@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import sys
 
 from .loader import load_all, load_goods, DEFAULT_DATA_DIR
-from .query import GoodNotFoundError, find_good, good_as_row, good_field_names
+from .query import (
+    GoodNotFoundError,
+    find_good,
+    format_record_table,
+    good_as_row,
+    good_field_names,
+)
 from .validation import ValidationError, validate_all
 
 
@@ -27,9 +32,8 @@ def _cmd_good(identifier: str) -> int:
     except GoodNotFoundError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    writer = csv.writer(sys.stdout, lineterminator="\n")
-    writer.writerow(good_field_names())
-    writer.writerow(good_as_row(good))
+    rows = list(zip(good_field_names(), good_as_row(good)))
+    print(format_record_table(rows))
     return 0
 
 
