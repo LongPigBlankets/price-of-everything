@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://7ifxcs5gigwx"]
+
+[sub_resource type="TileSet" id="TileSet_sgp6g"]
+tile_shape = 3
+tile_size = Vector2i(64, 56)
+
+[node name="Main" type="Node2D" unique_id=2144397903]
+
+[node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=561777040]
+tile_set = SubResource("TileSet_sgp6g")
