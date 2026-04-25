@@ -51,3 +51,14 @@ def _format(value: object) -> str:
     if isinstance(value, bool):
         return "TRUE" if value else "FALSE"
     return str(value)
+
+
+def format_record_table(rows: list[tuple[str, str]]) -> str:
+    field_w = max(len(f) for f, _ in rows)
+    value_w = max(len(v) for _, v in rows)
+    border = "+" + "-" * (field_w + 2) + "+" + "-" * (value_w + 2) + "+"
+    lines = [border]
+    for field, value in rows:
+        lines.append(f"| {field:<{field_w}} | {value:<{value_w}} |")
+    lines.append(border)
+    return "\n".join(lines)

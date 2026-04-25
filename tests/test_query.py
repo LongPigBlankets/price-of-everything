@@ -5,6 +5,7 @@ import pytest
 from price_of_everything.query import (
     GoodNotFoundError,
     find_good,
+    format_record_table,
     good_as_row,
     good_field_names,
 )
@@ -38,3 +39,22 @@ def test_good_as_row_formats_booleans(clean_goods):
     headers = good_field_names()
     assert row[headers.index("is_buyable")] == "TRUE"
     assert row[headers.index("is_fossil_fuel")] == "FALSE"
+
+
+def test_format_record_table_basic():
+    out = format_record_table([("id", "g_001"), ("internal_name", "coal")])
+    lines = out.splitlines()
+    # top border + 2 data rows + bottom border = 4 lines
+    assert len(lines) == 4
+    assert lines[0] == lines[-1]
+    assert lines[0].startswith("+") and lines[0].endswith("+")
+    assert "id" in lines[1] and "g_001" in lines[1]
+    assert "internal_name" in lines[2] and "coal" in lines[2]
+
+
+def test_format_record_table_pads_columns_consistently():
+    out = format_record_table(
+        [("a", "very_long_value"), ("long_field_name", "x")]
+    )
+    lines = out.splitlines()
+    assert len({len(line) for line in lines}) == 1
