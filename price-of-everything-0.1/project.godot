@@ -15,6 +15,10 @@ run/main_scene="uid://7ifxcs5gigwx"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://scenes/icon.svg"
 
+[autoload]
+
+TurnManager="*res://scripts/turn_manager.gd"
+
 [display]
 
 window/size/viewport_width=1920
