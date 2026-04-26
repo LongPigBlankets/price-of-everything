@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://0j8x8wtn1tgm"
+
+[deps]
+
+files=["res://data/tile_properties.nickname.translation", "res://data/tile_properties.type.translation", "res://data/tile_properties.deposits.translation", "res://data/tile_properties.solar.translation", "res://data/tile_properties.wind.translation", "res://data/tile_properties.build.translation", "res://data/tile_properties.buildings.translation", "res://data/tile_properties.tile.translation", "res://data/tile_properties.infrastructure.translation"]
+
+source_file="res://data/tile_properties.csv"
+dest_files=["res://data/tile_properties.nickname.translation", "res://data/tile_properties.type.translation", "res://data/tile_properties.deposits.translation", "res://data/tile_properties.solar.translation", "res://data/tile_properties.wind.translation", "res://data/tile_properties.build.translation", "res://data/tile_properties.buildings.translation", "res://data/tile_properties.tile.translation", "res://data/tile_properties.infrastructure.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true
