@@ -18,6 +18,7 @@ func _ready() -> void:
 
 	await _run_all_tests()
 	_print_summary()
+	await get_tree().create_timer(0.5).timeout  # let output flush
 	get_tree().quit(0 if _all_passed() else 1)
 
 func _log(name: String, payload = null) -> void:
