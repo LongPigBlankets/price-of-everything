@@ -6,6 +6,8 @@
 [ext_resource type="Script" uid="uid://dawfi8ltfxfwf" path="res://scripts/tile_info_panel.gd" id="4_jyhfs"]
 [ext_resource type="Script" uid="uid://bt2kwldefvxx1" path="res://scripts/camera_controller.gd" id="5_tbgi4"]
 [ext_resource type="Script" uid="uid://b0bw6robispat" path="res://scripts/building_detail_panel.gd" id="6_tefeu"]
+[ext_resource type="Script" uid="uid://deebj4rvhlw4h" path="res://scripts/modal_population.gd" id="7_o6xl0"]
+[ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="8_tipki"]
 
 [node name="WorldMap" type="Node2D" unique_id=2144397903]
 script = ExtResource("1_sugp2")
@@ -44,6 +46,7 @@ offset_right = -100.0
 offset_bottom = 100.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_styles/panel = ExtResource("8_tipki")
 script = ExtResource("4_jyhfs")
 
 [node name="MarginContainer" type="MarginContainer" parent="UILayer/TileInfoPanel" unique_id=1770119683]
@@ -95,6 +98,7 @@ anchor_right = 1.0
 offset_left = -720.0
 offset_top = 100.0
 offset_right = -440.0
+theme_override_styles/panel = ExtResource("8_tipki")
 script = ExtResource("6_tefeu")
 
 [node name="MarginContainer" type="MarginContainer" parent="UILayer/BuildingDetailPanel" unique_id=182094468]
@@ -116,8 +120,141 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 18
 
-[node name="CloseButton" type="Button" parent="UILayer/BuildingDetailPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=657271318]
+[node name="CloseButton" type="Button" parent="UILayer/BuildingDetailPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=1498546560]
 custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
 text = "X"
+
+[node name="HUD" type="Control" parent="UILayer" unique_id=1849223856]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+script = ExtResource("7_o6xl0")
+
+[node name="EndTurnButton" type="Button" parent="UILayer/HUD" unique_id=1501825753]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -150.0
+offset_top = -70.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 20
+text = "End Turn"
+
+[node name="PhaseLabel" type="Label" parent="UILayer/HUD" unique_id=1169980527]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -150.0
+offset_top = -30.0
+grow_horizontal = 0
+grow_vertical = 0
+text = "Decide"
+horizontal_alignment = 1
+
+[node name="TurnCounter" type="Label" parent="UILayer/HUD" unique_id=94115056]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -150.0
+offset_bottom = 40.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 24
+text = "Turn 1/300"
+horizontal_alignment = 2
+
+[node name="GenericModal" type="PanelContainer" parent="UILayer/HUD" unique_id=707740275]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+offset_right = 420.0
+offset_bottom = 620.0
+theme_override_styles/panel = ExtResource("8_tipki")
+
+[node name="ModalLayout" type="VBoxContainer" parent="UILayer/HUD/GenericModal" unique_id=573777827]
+layout_mode = 2
+
+[node name="HeaderRow" type="HBoxContainer" parent="UILayer/HUD/GenericModal/ModalLayout" unique_id=920509542]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="UILayer/HUD/GenericModal/ModalLayout/HeaderRow" unique_id=386018032]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Title"
+
+[node name="CloseButton" type="Button" parent="UILayer/HUD/GenericModal/ModalLayout/HeaderRow" unique_id=112225534]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "X"
+
+[node name="HSeparator" type="HSeparator" parent="UILayer/HUD/GenericModal/ModalLayout" unique_id=997827423]
+layout_mode = 2
+
+[node name="ScrollContainer" type="ScrollContainer" parent="UILayer/HUD/GenericModal/ModalLayout" unique_id=1434937598]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ItemList" type="VBoxContainer" parent="UILayer/HUD/GenericModal/ModalLayout/ScrollContainer" unique_id=595702278]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BottomMenu" type="HBoxContainer" parent="UILayer/HUD" unique_id=1999718027]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -20.0
+offset_top = -40.0
+offset_right = 20.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/separation = 10
+
+[node name="ConstructButton" type="Button" parent="UILayer/HUD/BottomMenu" unique_id=322645843]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+text = "C"
+
+[node name="ResourcesButton" type="Button" parent="UILayer/HUD/BottomMenu" unique_id=1627309058]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+text = "R"
+
+[node name="BuildingsButton" type="Button" parent="UILayer/HUD/BottomMenu" unique_id=1728871726]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+text = "B"
+
+[node name="MarketButton" type="Button" parent="UILayer/HUD/BottomMenu" unique_id=758586746]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+text = "M"
+
+[node name="PoliticsButton" type="Button" parent="UILayer/HUD/BottomMenu" unique_id=301230184]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+text = "P"
+
+[node name="TechButton" type="Button" parent="UILayer/HUD/BottomMenu" unique_id=919485106]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+text = "T"
