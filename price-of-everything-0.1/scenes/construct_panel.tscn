@@ -1,0 +1,43 @@
+[gd_scene format=3 uid="uid://qvtflfd45g0d"]
+
+[ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="1_gpfoh"]
+[ext_resource type="Script" uid="uid://500cpp3t7mpe" path="res://scripts/construct_panel.gd" id="2_mlggt"]
+
+[node name="ConstructPanel" type="PanelContainer" unique_id=1084051515]
+visible = false
+anchors_preset = -1
+offset_right = 420.0
+offset_bottom = 620.0
+theme_override_styles/panel = ExtResource("1_gpfoh")
+script = ExtResource("2_mlggt")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=508730674]
+layout_mode = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=1630737408]
+layout_mode = 2
+
+[node name="HeaderRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=108599339]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/VBoxContainer/HeaderRow" unique_id=1102158044]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Title"
+
+[node name="CloseButton" type="Button" parent="MarginContainer/VBoxContainer/HeaderRow" unique_id=1594527010]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "X"
+
+[node name="HSeparator" type="HSeparator" parent="MarginContainer/VBoxContainer" unique_id=1469869396]
+layout_mode = 2
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/VBoxContainer" unique_id=1246011277]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ContentVBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer" unique_id=430416437]
+layout_mode = 2
+size_flags_horizontal = 3

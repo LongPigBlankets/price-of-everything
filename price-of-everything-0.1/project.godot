@@ -18,6 +18,7 @@ config/icon="res://scenes/icon.svg"
 [autoload]
 
 TurnManager="*res://scripts/turn_manager.gd"
+BuildMode="*uid://wqxliv5e1r7u"
 
 [display]
 

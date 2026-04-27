@@ -1,4 +1,4 @@
-ID,internal_name,display_name,energy_cost,building_stockpile,base_price,build_cost_money,build_cost_1,build_cost_1_qty,build_cost_2,build_cost_2_qty,build_cost_3,build_cost_3_qty,build_cost_4,build_cost_4_qty,build_cost_5,build_cost_5_qty,build_duration,tile_size_used,building_type,upgrade_path,upgrade_cost,upgrade_build_cost_1,upgrade_build_cost_1_qty,upgrade_build_cost_2,upgrade_build_cost_2_qty
+ID,internal_name,display_name,energy_cost,building_stockpile,base_price,build_cost_money,build_material_1,build_qty_1,build_material_2,build_qty_2,build_material_3,build_qty_3,build_material_4,build_qty_4,build_material_5,build_qty_5,build_duration,tile_size_used,building_category,upgrade_path,upgrade_cost,upgrade_material_1,upgrade_qty_1,upgrade_material_2,upgrade_qty_2
 b_001,mine,Mine,1,10000,10,10000,,,,,,,,,,,1,1,production,standard,10000,,,,
 b_002,furnace,Furnace,1,10000,10,10000,,,,,,,,,,,1,1,production,standard,10000,,,,
 b_003,coal_power,Coal Power Plant,0,0,30,10000,,,,,,,,,,,2,1,power,standard,10000,,,,

@@ -109,8 +109,27 @@ func _id_to_coord(id: String) -> Vector2i:
 	return Vector2i(int(parts[1]) - 1, int(parts[2]) - 1)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+	if not (event is InputEventMouseButton and event.pressed):
+		return
+	
+	# Right-click cancels build mode
+	if event.button_index == MOUSE_BUTTON_RIGHT:
+		if BuildMode.is_active:
+			BuildMode.exit_build_mode()
+			get_viewport().set_input_as_handled()
+		return
+	
+	# Left-click: build or select based on mode
+	if event.button_index == MOUSE_BUTTON_LEFT:
 		var world_pos := get_global_mouse_position()
 		var map_pos := local_to_map(to_local(world_pos))
-		if tiles.has(map_pos):
-			tile_selected.emit(tiles[map_pos])
+		
+		if not tiles.has(map_pos):
+			return
+		
+		var tile_data: Dictionary = tiles[map_pos]
+		
+		if BuildMode.is_active:
+			BuildMode.attempt_build(tile_data.id)
+		else:
+			tile_selected.emit(tile_data)

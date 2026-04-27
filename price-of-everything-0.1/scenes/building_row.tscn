@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://dnvlysd173ebx"]
+
+[ext_resource type="Script" uid="uid://p2w1gosygs0x" path="res://scripts/building_row.gd" id="1_620pn"]
+
+[node name="BuildingRow" type="HBoxContainer" unique_id=1578638429]
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("1_620pn")
+
+[node name="IconLabel" type="Label" parent="." unique_id=1631918123]
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="." unique_id=421982417]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="CostLabel" type="Label" parent="." unique_id=1277188386]
+layout_mode = 2
+
+[node name="MaterialsContainer" type="HBoxContainer" parent="." unique_id=778301480]
+layout_mode = 2
+
+[node name="BuildButton" type="Button" parent="." unique_id=437467866]
+layout_mode = 2
+text = "+"
+
+[node name="ExpandButton" type="Button" parent="." unique_id=1700318961]
+layout_mode = 2
+text = "^"
