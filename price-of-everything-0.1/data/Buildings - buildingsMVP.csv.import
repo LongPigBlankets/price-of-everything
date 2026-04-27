@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://d4kys5hdrdtqk"
+
+[deps]
+
+files=["res://data/Buildings - buildingsMVP.internal.translation", "res://data/Buildings - buildingsMVP.display.translation", "res://data/Buildings - buildingsMVP.energy.translation", "res://data/Buildings - buildingsMVP.building.translation", "res://data/Buildings - buildingsMVP.base.translation", "res://data/Buildings - buildingsMVP.build.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.build.translation", "res://data/Buildings - buildingsMVP.tile.translation", "res://data/Buildings - buildingsMVP.building.translation", "res://data/Buildings - buildingsMVP.upgrade.translation", "res://data/Buildings - buildingsMVP.upgrade.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation"]
+
+source_file="res://data/Buildings - buildingsMVP.csv"
+dest_files=["res://data/Buildings - buildingsMVP.internal.translation", "res://data/Buildings - buildingsMVP.display.translation", "res://data/Buildings - buildingsMVP.energy.translation", "res://data/Buildings - buildingsMVP.building.translation", "res://data/Buildings - buildingsMVP.base.translation", "res://data/Buildings - buildingsMVP.build.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.build.translation", "res://data/Buildings - buildingsMVP.tile.translation", "res://data/Buildings - buildingsMVP.building.translation", "res://data/Buildings - buildingsMVP.upgrade.translation", "res://data/Buildings - buildingsMVP.upgrade.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation", "res://data/Buildings - buildingsMVP.en.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

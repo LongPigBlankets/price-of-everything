@@ -3,9 +3,13 @@
 [ext_resource type="TileSet" uid="uid://cdbno8hcn1m5e" path="res://assets/main_tileset.tres" id="1_o5qli"]
 [ext_resource type="Script" uid="uid://dm5it1ktocdqj" path="res://scripts/world_map.gd" id="1_sugp2"]
 [ext_resource type="Script" uid="uid://dg8tjsup0xurr" path="res://scripts/hex_map.gd" id="2_0wfyh"]
+[ext_resource type="Script" uid="uid://dpj2cadgfaauj" path="res://scenes/building_visuals.gd" id="4_choun"]
 [ext_resource type="Script" uid="uid://dawfi8ltfxfwf" path="res://scripts/tile_info_panel.gd" id="4_jyhfs"]
 [ext_resource type="Script" uid="uid://bt2kwldefvxx1" path="res://scripts/camera_controller.gd" id="5_tbgi4"]
 [ext_resource type="Script" uid="uid://b0bw6robispat" path="res://scripts/building_detail_panel.gd" id="6_tefeu"]
+[ext_resource type="Script" uid="uid://dpavib658u0dd" path="res://scripts/bottom_menu.gd" id="8_85g3d"]
+[ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="8_tipki"]
+[ext_resource type="PackedScene" uid="uid://qvtflfd45g0d" path="res://scenes/construct_panel.tscn" id="9_85g3d"]
 
 [node name="WorldMap" type="Node2D" unique_id=2144397903]
 script = ExtResource("1_sugp2")
@@ -20,6 +24,10 @@ script = ExtResource("2_0wfyh")
 tile_map_data = PackedByteArray("AAABAAMAAwAAAAAAAAAMAA4AAwAAAAAAABASAAwAAwAAAAAAABATAAUAAwAAAAAAABAVAAkAAwAAAAAAABALAAAAAwAAAAAAABAFAAAAAwAAAAAAACAGAAAADAAAAAAAADAKAAAADAAAAAAAAAAHAAEAFgAAAAAAAAAJAAUAHwAAAAAAAAAOAAkAHwAAAAAAABAJAAgAIAAAAAAAAAALAAUAIgAAAAAAAAAJAAMAIgAAAAAAAAARAAMAIwAAAAAAAAAUAAIAIwAAAAAAADANAAoAHgAAAAAAADAHAA4AHgAAAAAAADAIAAcALAAAAAAAAAAKAAQALQAAAAAAAAAIAAMALAAAAAAAABAGAAEAKgAAAAAAABAGAAIAKgAAAAAAACAFAAIAMQAAAAAAAAAEAAIAMQAAAAAAABAIAAQAKwAAAAAAADAJAAkAKwAAAAAAACAKAA0AKwAAAAAAACAGAA0AKwAAAAAAACAGAAwALQAAAAAAABAKAAoALQAAAAAAABAKAAkAKwAAAAAAAAALAAgAKwAAAAAAADALAAcALAAAAAAAABAOAAgAKQAAAAAAACAQAAsAKQAAAAAAACASAAUAKQAAAAAAABATAAIAKQAAAAAAADAPAAsAHQAAAAAAAAAJAAIAMgAAAAAAACAMAAEAKAAAAAAAACAIAAYALAAAAAAAAAAOAAsAKgAAAAAAADANAAgAKgAAAAAAADAMAAcAKgAAAAAAAAADAAIAKgAAAAAAABACAAMAKgAAAAAAACAGAAsAKgAAAAAAABALAA4AKgAAAAAAADARAAwAKgAAAAAAADAUAAkAKgAAAAAAADAUAAgAKwAAAAAAABASAAMAKgAAAAAAACALAAEAKgAAAAAAABAMAAUAKgAAAAAAACAHAAsAKgAAAAAAACAHAAcAKgAAAAAAABAHAAgAKQAAAAAAAAATAAgALQAAAAAAAAAKAAsAKQAAAAAAABALAAsAKQAAAAAAACAMAAwANAAAAAAAAAAKAAwANAAAAAAAADAOAAoAMwAAAAAAABASAAQAKwAAAAAAABAHAAUAMwAAAAAAABAIAAoAMwAAAAAAACAHAAkAKgAAAAAAAAAGAAkAKgAAAAAAADAGAAgANAAAAAAAADALAAwAHQAAAAAAAAANAAMAHQAAAAAAAAAOAAMAHQAAAAAAABAPAAMAJAAAAAAAABAPAAIAJAAAAAAAACASAAIALgAAAAAAADATAAEAKQAAAAAAACASAAEAKQAAAAAAADARAAIAKQAAAAAAACAQAAIAHQAAAAAAAAARAAcAHQAAAAAAAAAMAAYAMwAAAAAAAAAKAAMANAAAAAAAACAQAAcAMQAAAAAAAAAPAAYAMwAAAAAAABAEAAcAMwAAAAAAABAGAAYAMQAAAAAAAAAHAAYAMQAAAAAAABAFAAYAKgAAAAAAABANAAQAKgAAAAAAABAOAAQAKgAAAAAAAAAOAAUAKQAAAAAAABAPAAUANAAAAAAAACAPAAcAKgAAAAAAADASAAcALAAAAAAAAAAKAAUAKgAAAAAAABALAAMALAAAAAAAADAMAAMAHQAAAAAAAAAKAAYAMgAAAAAAAAAMAAQANAAAAAAAAAALAAQANAAAAAAAADALAAIAMwAAAAAAABARAAEAMwAAAAAAABASAAAAIwAAAAAAABARAAAANAAAAAAAABATAAMANAAAAAAAABAFAAgANAAAAAAAAAAEAAgAMQAAAAAAAAADAAgAKAAAAAAAABAFAAsAJgAAAAAAABASAAkALQAAAAAAADATAAoAKwAAAAAAABATAAcAMgAAAAAAACASAAoAMwAAAAAAABAUAAwAMAAAAAAAABAUAAsANAAAAAAAACAVAAwANAAAAAAAACAUAA0AMwAAAAAAABAVAA4AJQAAAAAAADATAAsAKgAAAAAAADASAAYANAAAAAAAADATAAYAHQAAAAAAAAAUAAYACgAAAAAAAAASAAsAJgAAAAAAACA=")
 tile_set = ExtResource("1_o5qli")
 
+[node name="BuildingVisuals" type="Node2D" parent="." unique_id=1233661023]
+unique_name_in_owner = true
+script = ExtResource("4_choun")
+
 [node name="Camera2D" type="Camera2D" parent="." unique_id=2114942879]
 position = Vector2(820, 430)
 script = ExtResource("5_tbgi4")
@@ -30,93 +38,236 @@ map_max = Vector2(1640, 860)
 
 [node name="UILayer" type="CanvasLayer" parent="." unique_id=1882417710]
 
-[node name="TileInfoPanel" type="PanelContainer" parent="UILayer" unique_id=361507145]
+[node name="HUD" type="Control" parent="UILayer" unique_id=1849223856]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+script = ExtResource("8_85g3d")
+
+[node name="EndTurnButton" type="Button" parent="UILayer/HUD" unique_id=1501825753]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -150.0
+offset_top = -70.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 20
+text = "End Turn"
+
+[node name="PhaseLabel" type="Label" parent="UILayer/HUD" unique_id=1169980527]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -150.0
+offset_top = -30.0
+grow_horizontal = 0
+grow_vertical = 0
+text = "Decide"
+horizontal_alignment = 1
+
+[node name="TurnCounter" type="Label" parent="UILayer/HUD" unique_id=94115056]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -150.0
+offset_bottom = 40.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 24
+text = "Turn 1/300"
+horizontal_alignment = 2
+
+[node name="ConstructPanel" parent="UILayer/HUD" unique_id=1084051515 instance=ExtResource("9_85g3d")]
+unique_name_in_owner = true
+layout_mode = 0
+anchors_preset = 0
+
+[node name="GenericModal" type="PanelContainer" parent="UILayer/HUD" unique_id=346683391]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+offset_right = 420.0
+offset_bottom = 620.0
+theme_override_styles/panel = ExtResource("8_tipki")
+
+[node name="ModalLayout" type="VBoxContainer" parent="UILayer/HUD/GenericModal" unique_id=1074147763]
+layout_mode = 2
+
+[node name="HeaderRow" type="HBoxContainer" parent="UILayer/HUD/GenericModal/ModalLayout" unique_id=352429581]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="UILayer/HUD/GenericModal/ModalLayout/HeaderRow" unique_id=217193705]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Title"
+
+[node name="CloseButton" type="Button" parent="UILayer/HUD/GenericModal/ModalLayout/HeaderRow" unique_id=707395261]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "X"
+
+[node name="HSeparator" type="HSeparator" parent="UILayer/HUD/GenericModal/ModalLayout" unique_id=1249532115]
+layout_mode = 2
+
+[node name="ScrollContainer" type="ScrollContainer" parent="UILayer/HUD/GenericModal/ModalLayout" unique_id=1732854860]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ItemList" type="VBoxContainer" parent="UILayer/HUD/GenericModal/ModalLayout/ScrollContainer" unique_id=1386651822]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BottomMenu" type="HBoxContainer" parent="UILayer/HUD" unique_id=1999718027]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -20.0
+offset_top = -40.0
+offset_right = 20.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/separation = 10
+
+[node name="ConstructButton" type="Button" parent="UILayer/HUD/BottomMenu" unique_id=322645843]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+text = "C"
+
+[node name="ResourcesButton" type="Button" parent="UILayer/HUD/BottomMenu" unique_id=1627309058]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+text = "R"
+
+[node name="BuildingsButton" type="Button" parent="UILayer/HUD/BottomMenu" unique_id=1728871726]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+text = "B"
+
+[node name="MarketButton" type="Button" parent="UILayer/HUD/BottomMenu" unique_id=758586746]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+text = "M"
+
+[node name="PoliticsButton" type="Button" parent="UILayer/HUD/BottomMenu" unique_id=301230184]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+text = "P"
+
+[node name="TechButton" type="Button" parent="UILayer/HUD/BottomMenu" unique_id=919485106]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+text = "T"
+
+[node name="TileInfoPanel" type="PanelContainer" parent="UILayer/HUD" unique_id=361507145]
 unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(280, 0)
+layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
 anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -380.0
+offset_left = -300.0
 offset_top = 100.0
-offset_right = -100.0
-offset_bottom = 100.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_right = -20.0
+offset_bottom = 700.0
+grow_horizontal = 0
+theme_override_styles/panel = ExtResource("8_tipki")
 script = ExtResource("4_jyhfs")
 
-[node name="MarginContainer" type="MarginContainer" parent="UILayer/TileInfoPanel" unique_id=1770119683]
+[node name="MarginContainer" type="MarginContainer" parent="UILayer/HUD/TileInfoPanel" unique_id=1770119683]
 layout_mode = 2
 theme_override_constants/margin_left = 12
 theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 12
 theme_override_constants/margin_bottom = 12
 
-[node name="VBoxContainer" type="VBoxContainer" parent="UILayer/TileInfoPanel/MarginContainer" unique_id=332018308]
+[node name="VBoxContainer" type="VBoxContainer" parent="UILayer/HUD/TileInfoPanel/MarginContainer" unique_id=332018308]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="HeaderRow" type="HBoxContainer" parent="UILayer/TileInfoPanel/MarginContainer/VBoxContainer" unique_id=1767854924]
+[node name="HeaderRow" type="HBoxContainer" parent="UILayer/HUD/TileInfoPanel/MarginContainer/VBoxContainer" unique_id=1767854924]
 layout_mode = 2
 
-[node name="TitleLabel" type="Label" parent="UILayer/TileInfoPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=1046508715]
+[node name="TitleLabel" type="Label" parent="UILayer/HUD/TileInfoPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=1046508715]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 20.0
 theme_override_font_sizes/font_size = 18
 text = "Tile Info"
 
-[node name="CloseButton" type="Button" parent="UILayer/TileInfoPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=1603141935]
+[node name="CloseButton" type="Button" parent="UILayer/HUD/TileInfoPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=1603141935]
 custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
 localize_numeral_system = false
 theme_override_font_sizes/font_size = 14
 text = "X"
 
-[node name="PropertyTable" type="GridContainer" parent="UILayer/TileInfoPanel/MarginContainer/VBoxContainer" unique_id=671887475]
+[node name="PropertyTable" type="GridContainer" parent="UILayer/HUD/TileInfoPanel/MarginContainer/VBoxContainer" unique_id=671887475]
 layout_mode = 2
 theme_override_constants/h_separation = 16
 columns = 2
 
-[node name="BuildingsHeader" type="Label" parent="UILayer/TileInfoPanel/MarginContainer/VBoxContainer" unique_id=808164662]
+[node name="BuildingsHeader" type="Label" parent="UILayer/HUD/TileInfoPanel/MarginContainer/VBoxContainer" unique_id=808164662]
 layout_mode = 2
 
-[node name="BuildingsList" type="VBoxContainer" parent="UILayer/TileInfoPanel/MarginContainer/VBoxContainer" unique_id=897654742]
+[node name="BuildingsList" type="VBoxContainer" parent="UILayer/HUD/TileInfoPanel/MarginContainer/VBoxContainer" unique_id=897654742]
 layout_mode = 2
+mouse_filter = 0
 
-[node name="BuildingDetailPanel" type="PanelContainer" parent="UILayer" unique_id=1081644289]
+[node name="BuildingDetailPanel" type="PanelContainer" parent="UILayer/HUD" unique_id=1081644289]
 unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(220, 0)
+layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -720.0
 offset_top = 100.0
 offset_right = -440.0
+offset_bottom = 176.0
+theme_override_styles/panel = ExtResource("8_tipki")
 script = ExtResource("6_tefeu")
 
-[node name="MarginContainer" type="MarginContainer" parent="UILayer/BuildingDetailPanel" unique_id=182094468]
+[node name="MarginContainer" type="MarginContainer" parent="UILayer/HUD/BuildingDetailPanel" unique_id=182094468]
 layout_mode = 2
 theme_override_constants/margin_left = 12
 theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 12
 theme_override_constants/margin_bottom = 12
 
-[node name="VBoxContainer" type="VBoxContainer" parent="UILayer/BuildingDetailPanel/MarginContainer" unique_id=1621942127]
+[node name="VBoxContainer" type="VBoxContainer" parent="UILayer/HUD/BuildingDetailPanel/MarginContainer" unique_id=1621942127]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="HeaderRow" type="HBoxContainer" parent="UILayer/BuildingDetailPanel/MarginContainer/VBoxContainer" unique_id=1746784582]
+[node name="HeaderRow" type="HBoxContainer" parent="UILayer/HUD/BuildingDetailPanel/MarginContainer/VBoxContainer" unique_id=1746784582]
 layout_mode = 2
 
-[node name="TitleLabel" type="Label" parent="UILayer/BuildingDetailPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=195859302]
+[node name="TitleLabel" type="Label" parent="UILayer/HUD/BuildingDetailPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=195859302]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 18
 
-[node name="CloseButton" type="Button" parent="UILayer/BuildingDetailPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=657271318]
+[node name="CloseButton" type="Button" parent="UILayer/HUD/BuildingDetailPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=1498546560]
 custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
 theme_override_font_sizes/font_size = 14

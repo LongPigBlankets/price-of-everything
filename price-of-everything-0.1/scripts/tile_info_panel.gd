@@ -106,3 +106,8 @@ func _format_value(value: Variant) -> String:
 	if value is Array:
 		return "—" if value.is_empty() else ", ".join(value)
 	return str(value)
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		print(">>> TileInfoPanel received click at ", event.position)
+		accept_event()

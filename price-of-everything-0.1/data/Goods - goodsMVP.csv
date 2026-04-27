@@ -1,0 +1,6 @@
+ID,internal_name,display_name,category,transport_class,transport_cost,transport_duration,transport_method,good_type,decay_rate,base_price,is_buyable,is_sellable,green_sales_premium,is_fossil_fuel,co2_tax_multiplier
+g_001,coal,Coal,,,0,1,,raw,0.001,1,TRUE,TRUE,0,yes,0
+g_002,iron_ore,Iron Ore,,,0,1,,raw,0.001,1,TRUE,TRUE,0,no,0
+g_003,steel,Steel,,,0,1,,intermediate,0.001,4,TRUE,TRUE,0,no,0
+g_004,power,Power,,,0,0,,power,0,1,TRUE,TRUE,0,yes,0
+g_005,oxygen,Oxygen,,,,1,,intermediate,0.001,3,TRUE,TRUE,0,no,0
