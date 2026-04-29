@@ -1,29 +1,40 @@
 [gd_scene format=3 uid="uid://dnvlysd173ebx"]
 
 [ext_resource type="Script" uid="uid://p2w1gosygs0x" path="res://scripts/building_row.gd" id="1_620pn"]
+[ext_resource type="PackedScene" uid="uid://b320p282xchg0" path="res://scenes/recipe_row.tscn" id="2_fmx1i"]
 
-[node name="BuildingRow" type="HBoxContainer" unique_id=1578638429]
-offset_right = 40.0
+[node name="BuildingRow" type="VBoxContainer" unique_id=517143830]
+offset_right = 59.0
 offset_bottom = 40.0
 script = ExtResource("1_620pn")
 
-[node name="IconLabel" type="Label" parent="." unique_id=1631918123]
+[node name="MainRow" type="HBoxContainer" parent="." unique_id=1994815628]
 layout_mode = 2
 
-[node name="NameLabel" type="Label" parent="." unique_id=421982417]
+[node name="IconLabel" type="Label" parent="MainRow" unique_id=1631918123]
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="MainRow" unique_id=421982417]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="CostLabel" type="Label" parent="." unique_id=1277188386]
+[node name="CostLabel" type="Label" parent="MainRow" unique_id=1277188386]
 layout_mode = 2
 
-[node name="MaterialsContainer" type="HBoxContainer" parent="." unique_id=778301480]
+[node name="MaterialsContainer" type="HBoxContainer" parent="MainRow" unique_id=778301480]
 layout_mode = 2
 
-[node name="BuildButton" type="Button" parent="." unique_id=437467866]
+[node name="BuildButton" type="Button" parent="MainRow" unique_id=437467866]
 layout_mode = 2
 text = "+"
 
-[node name="ExpandButton" type="Button" parent="." unique_id=1700318961]
+[node name="ExpandButton" type="Button" parent="MainRow" unique_id=1700318961]
 layout_mode = 2
 text = "^"
+
+[node name="RecipesContainer" type="VBoxContainer" parent="." unique_id=1780365462]
+visible = false
+layout_mode = 2
+
+[node name="RecipeRow" parent="RecipesContainer" unique_id=531799353 instance=ExtResource("2_fmx1i")]
+layout_mode = 2

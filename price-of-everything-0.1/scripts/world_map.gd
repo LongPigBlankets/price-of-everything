@@ -28,6 +28,12 @@ func _ready() -> void:
 	building_placed.connect(building_visuals.on_building_placed)
 	
 	print("WorldMap ready, signals connected")
+	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
+	var test_id = MatchState.add_building("b_001", "r_001", "tile_5_7")
+	print("Added building, ID: ", test_id)
+	print("Buildings on tile_5_7: ", MatchState.get_buildings_on_tile("tile_5_7"))
+	print("All buildings: ", MatchState.buildings)
+	print("State dump: ", MatchState.debug_dump())
 
 func _on_end_turn_pressed() -> void:
 	TurnManager.commit_turn()
@@ -35,22 +41,20 @@ func _on_end_turn_pressed() -> void:
 func _on_build_attempted(building_id: String, tile_id: String) -> void:
 	var coord := _id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1):
-		push_warning("Invalid tile id: %s" % tile_id)
 		return
 	
-	if not terrain_layer.tiles.has(coord):
-		push_warning("Tile not found in terrain_layer: %s" % tile_id)
+	var recipe_id: String = BuildMode.current_recipe_id
+	if recipe_id == "":
+		push_warning("Build attempted with no recipe selected")
 		return
 	
-	var tile_data: Dictionary = terrain_layer.tiles[coord]
-	if not tile_data.has("buildings_present"):
-		tile_data.buildings_present = []
-	tile_data.buildings_present.append(building_id)
+	# Add to MatchState (single source of truth)
+	var instance_id := MatchState.add_building(building_id, recipe_id, tile_id)
 	
-	var building_name := _get_building_display_name(building_id)
-	print("Building %s, %s, added to %s" % [building_id, building_name, tile_id])
+	var _building_name := _get_building_display_name(building_id)
+	print("Built %s (instance %s, recipe %s) on %s" % [building_id, instance_id, recipe_id, tile_id])
 	
-	building_placed.emit(tile_id, building_id, coord)
+	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
 
 func _get_building_display_name(building_id: String) -> String:
 	match building_id:

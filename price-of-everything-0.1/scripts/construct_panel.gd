@@ -13,16 +13,20 @@ const SECTION_DISPLAY_NAMES: Dictionary = {
 	"infrastructure": "INFRASTRUCTURE",
 }
 
-var buildings_by_category: Dictionary = {}  # category -> Array of building data dicts
+var buildings_by_category: Dictionary = {}  # category -> Array of building data
+var recipes_by_building: Dictionary = {}    # building_id -> Array of recipe data
 
 func _ready() -> void:
 	close_button.pressed.connect(hide)
 	title_label.text = "Construct Building"
 	_load_buildings()
+	_load_recipes()
+	print(">>> recipes_by_building keys: ", recipes_by_building.keys())
+	print(">>> sample: ", recipes_by_building.get("b_001", []))
 	_build_panel_content()
 
 func _load_buildings() -> void:
-	var path := "res://data/Buildings - buildingsMVP.csv"  # rename your CSV to remove the spaces
+	var path := "res://data/Buildings - buildingsMVP.csv"
 	if not FileAccess.file_exists(path):
 		push_error("Buildings CSV not found at %s" % path)
 		return
@@ -46,18 +50,42 @@ func _load_buildings() -> void:
 	
 	file.close()
 
+func _load_recipes() -> void:
+	var path := "res://data/recipesMVP.csv"  # adjust to your actual CSV filename
+	if not FileAccess.file_exists(path):
+		push_error("Recipes CSV not found at %s" % path)
+		return
+	
+	var file := FileAccess.open(path, FileAccess.READ)
+	var headers := file.get_csv_line()
+	
+	while not file.eof_reached():
+		var line := file.get_csv_line()
+		if line.size() < 3 or line[0] == "":
+			continue
+		
+		var recipe := _parse_recipe_row(headers, line)
+		if recipe.is_empty():
+			continue
+		
+		var building_id: String = recipe.building_id
+		if building_id == "":
+			continue
+		if not recipes_by_building.has(building_id):
+			recipes_by_building[building_id] = []
+		recipes_by_building[building_id].append(recipe)
+	
+	file.close()
+
 func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) -> Dictionary:
-	# Map columns by header name. Adjust to match your CSV's actual headers.
 	var result := {}
 	for i in headers.size():
 		var key := headers[i].strip_edges().to_lower().replace(" ", "_")
 		var val: String = line[i].strip_edges() if i < line.size() else ""
 		result[key] = val
 	
-	# Build the materials array. Assumes columns named like
-	# build_material_1, build_qty_1, build_material_2, build_qty_2, etc.
 	var materials: Array = []
-	for n in range(1, 6):  # support up to 5 materials
+	for n in range(1, 6):
 		var mat_name: String = result.get("build_material_%d" % n, "")
 		var mat_qty_str: String = result.get("build_qty_%d" % n, "")
 		if mat_name != "" and mat_qty_str != "":
@@ -72,8 +100,40 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 		"icon": result.get("icon", "•"),
 	}
 
+func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> Dictionary:
+	var result := {}
+	for i in headers.size():
+		var key := headers[i].strip_edges().to_lower().replace(" ", "_")
+		var val: String = line[i].strip_edges() if i < line.size() else ""
+		result[key] = val
+	
+	# Parse output (first output is the primary)
+	var output_name: String = result.get("output_1", "")
+	var output_qty_str: String = result.get("output_qty_1", "0")
+	var output_qty: int = 0 if output_qty_str == "" else int(output_qty_str)
+	
+	# Parse inputs (up to 5)
+	var inputs: Array = []
+	for n in range(1, 6):
+		var inp_name: String = result.get("input_%d" % n, "")
+		var inp_qty_str: String = result.get("qty_%d" % n, "")
+		if inp_name != "" and inp_qty_str != "":
+			inputs.append({"name": inp_name, "qty": int(inp_qty_str)})
+	
+	var energy_str: String = result.get("energy_req", "0")
+	var energy_req: int = 0 if energy_str == "" else int(energy_str)
+	
+	return {
+		"recipe_id": result.get("recipe_id", ""),
+		"display_name": result.get("display_name", ""),
+		"building_id": result.get("building_id", ""),
+		"energy_req": energy_req,
+		"output_name": output_name,
+		"output_qty": output_qty,
+		"inputs": inputs,
+	}
+
 func _build_panel_content() -> void:
-	# Clear any existing children
 	for child in content_vbox.get_children():
 		child.queue_free()
 	
@@ -81,25 +141,25 @@ func _build_panel_content() -> void:
 		if not buildings_by_category.has(category):
 			continue
 		
-		# Section header
 		var header := Label.new()
 		header.text = SECTION_DISPLAY_NAMES.get(category, category.to_upper())
 		header.add_theme_font_size_override("font_size", 14)
-		header.modulate = Color(0.7, 0.85, 1.0)  # subtle blue tint
+		header.modulate = Color(0.7, 0.85, 1.0)
 		content_vbox.add_child(header)
 		
-		# Rows for this section
 		for building_data in buildings_by_category[category]:
 			var row := BuildingRowScene.instantiate()
 			content_vbox.add_child(row)
-			row.setup(building_data)
-			row.build_requested.connect(_on_build_requested)
+			
+			var building_id: String = building_data.id
+			var recipes_for_this: Array = recipes_by_building.get(building_id, [])
+			row.setup(building_data, recipes_for_this)
+			row.recipe_selected.connect(_on_recipe_selected)
 			row.expand_toggled.connect(_on_expand_toggled)
 
-func _on_build_requested(building_id: String) -> void:
-	print("Build requested: ", building_id)
-	BuildMode.enter_build_mode(building_id)
+func _on_recipe_selected(building_id: String, recipe_id: String) -> void:
+	print("Recipe selected: %s for %s" % [recipe_id, building_id])
+	BuildMode.enter_build_mode(building_id, recipe_id)
 
 func _on_expand_toggled(building_id: String, is_expanded: bool) -> void:
 	print("Expand toggled: ", building_id, " expanded=", is_expanded)
-	# TODO: show/hide expanded detail content

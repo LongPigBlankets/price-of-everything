@@ -53,19 +53,25 @@ func _rebuild_table(tile_data: Dictionary) -> void:
 func _rebuild_buildings(tile_data: Dictionary) -> void:
 	for child in buildings_list.get_children():
 		child.queue_free()
-
-	var buildings: Array = tile_data.get("buildings_present", [])
-
+	
+	var tile_id: String = tile_data.id
+	var buildings: Array = MatchState.get_buildings_on_tile(tile_id)
+	
 	if buildings.is_empty():
 		buildings_header.visible = false
 		buildings_list.visible = false
 		return
-
+	
 	buildings_header.visible = true
 	buildings_list.visible = true
+	
+	for building in buildings:
+		var display_name := _format_building_label(building)
+		buildings_list.add_child(_make_building_button(display_name))
 
-	for building_name in buildings:
-		buildings_list.add_child(_make_building_button(building_name))
+func _format_building_label(building: Dictionary) -> String:
+	# Placeholder until you wire up Catalog lookups
+	return "%s [%s]" % [building.building_id, building.recipe_id]
 
 func _make_building_button(building_name: String) -> Button:
 	var btn := Button.new()

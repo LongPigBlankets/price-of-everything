@@ -1,0 +1,73 @@
+[gd_scene format=3 uid="uid://3m4d36nhu7ah"]
+
+[ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="1_0525w"]
+[ext_resource type="PackedScene" uid="uid://6mw4oeurekpg" path="res://scenes/market_row.tscn" id="2_kj8a1"]
+[ext_resource type="Script" uid="uid://bpectiok40fx1" path="res://scripts/market_panel.gd" id="2_knqdd"]
+
+[node name="MarketPanel" type="PanelContainer" unique_id=964377119]
+visible = false
+offset_right = 400.0
+offset_bottom = 500.0
+theme_override_styles/panel = ExtResource("1_0525w")
+script = ExtResource("2_knqdd")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=1167203190]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=1777895577]
+layout_mode = 2
+
+[node name="HeaderRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1528125047]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/VBoxContainer/HeaderRow" unique_id=2067052034]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Markets"
+
+[node name="CloseButton" type="Button" parent="MarginContainer/VBoxContainer/HeaderRow" unique_id=1030587035]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "X"
+
+[node name="HSeparator" type="HSeparator" parent="MarginContainer/VBoxContainer" unique_id=155141885]
+layout_mode = 2
+
+[node name="HeaderRowStatic" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=197247178]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="NameLabel" type="Label" parent="MarginContainer/VBoxContainer/HeaderRowStatic" unique_id=239059745]
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+text = "Good"
+
+[node name="PriceLabel" type="Label" parent="MarginContainer/VBoxContainer/HeaderRowStatic" unique_id=310797280]
+custom_minimum_size = Vector2(50, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Price"
+
+[node name="EstPriceLabel" type="Label" parent="MarginContainer/VBoxContainer/HeaderRowStatic" unique_id=880882733]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Est. Price in 10 turns"
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/VBoxContainer" unique_id=408526181]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ContentVBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer" unique_id=941126852]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="MarketRow" parent="MarginContainer/VBoxContainer/ScrollContainer/ContentVBox" unique_id=1669068725 instance=ExtResource("2_kj8a1")]
+layout_mode = 2

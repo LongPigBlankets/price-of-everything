@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://wu0ik3q8f8y0"]
+
+[ext_resource type="Script" uid="uid://d2oo1dhw03ueo" path="res://scripts/slice_marker.gd" id="1_hncer"]
+
+[node name="SliceMarker" type="Node2D" unique_id=1176557869]
+script = ExtResource("1_hncer")

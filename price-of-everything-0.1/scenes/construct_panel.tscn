@@ -2,6 +2,7 @@
 
 [ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="1_gpfoh"]
 [ext_resource type="Script" uid="uid://500cpp3t7mpe" path="res://scripts/construct_panel.gd" id="2_mlggt"]
+[ext_resource type="PackedScene" uid="uid://dnvlysd173ebx" path="res://scenes/building_row.tscn" id="3_rmu31"]
 
 [node name="ConstructPanel" type="PanelContainer" unique_id=1084051515]
 visible = false
@@ -41,3 +42,6 @@ size_flags_vertical = 3
 [node name="ContentVBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer" unique_id=430416437]
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="BuildingRow" parent="MarginContainer/VBoxContainer/ScrollContainer/ContentVBox" unique_id=1578638429 instance=ExtResource("3_rmu31")]
+layout_mode = 2

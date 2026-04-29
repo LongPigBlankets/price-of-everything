@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://bh8wsxlkvr5ge"
+
+[deps]
+
+files=["res://data/recipesMVP.display.translation", "res://data/recipesMVP.building.translation", "res://data/recipesMVP.building.translation", "res://data/Recipes - recipesMVP.input.translation", "res://data/Recipes - recipesMVP.qty.translation", "res://data/Recipes - recipesMVP.input.translation", "res://data/Recipes - recipesMVP.qty.translation", "res://data/Recipes - recipesMVP.input.translation", "res://data/Recipes - recipesMVP.qty.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/recipesMVP.energy.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.output.translation", "res://data/Recipes - recipesMVP.output.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation"]
+
+source_file="res://data/recipesMVP.csv"
+dest_files=["res://data/recipesMVP.display.translation", "res://data/recipesMVP.building.translation", "res://data/recipesMVP.building.translation", "res://data/Recipes - recipesMVP.input.translation", "res://data/Recipes - recipesMVP.qty.translation", "res://data/Recipes - recipesMVP.input.translation", "res://data/Recipes - recipesMVP.qty.translation", "res://data/Recipes - recipesMVP.input.translation", "res://data/Recipes - recipesMVP.qty.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/recipesMVP.energy.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.output.translation", "res://data/Recipes - recipesMVP.output.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation", "res://data/Recipes - recipesMVP.en.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

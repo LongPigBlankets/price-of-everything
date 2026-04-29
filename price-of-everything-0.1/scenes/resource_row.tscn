@@ -1,0 +1,38 @@
+[gd_scene format=3 uid="uid://d3hty384xemad"]
+
+[ext_resource type="Script" uid="uid://ckm8xss8q0sy2" path="res://scripts/resource_row.gd" id="1_51jwl"]
+
+[node name="ResourceRow" type="HBoxContainer" unique_id=499583770]
+offset_right = 492.0
+offset_bottom = 140.0
+script = ExtResource("1_51jwl")
+
+[node name="NameLabel" type="Label" parent="." unique_id=290236625]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+
+[node name="PotentialsButton" type="Button" parent="." unique_id=9350024]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+
+[node name="ProducingButton" type="Button" parent="." unique_id=945254790]
+layout_mode = 2
+
+[node name="ConsumingButton" type="Button" parent="." unique_id=216480338]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+
+[node name="ProducedLabel" type="Label" parent="." unique_id=462482880]
+visible = false
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+
+[node name="ConsumedLabel" type="Label" parent="." unique_id=1616263092]
+visible = false
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+
+[node name="SurplusLabel" type="Label" parent="." unique_id=790564141]
+visible = false
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2

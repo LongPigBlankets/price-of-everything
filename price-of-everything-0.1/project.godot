@@ -19,6 +19,10 @@ config/icon="res://scenes/icon.svg"
 
 TurnManager="*res://scripts/turn_manager.gd"
 BuildMode="*uid://wqxliv5e1r7u"
+MatchState="*uid://bx4xkvtpn5mxr"
+MapMode="*uid://dvsgkg2qos415"
+Catalog="*uid://dknl8ax7uvew7"
+MarketState="*uid://p821obaxl80d"
 
 [display]
 

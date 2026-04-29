@@ -6,10 +6,14 @@
 [ext_resource type="Script" uid="uid://dpj2cadgfaauj" path="res://scenes/building_visuals.gd" id="4_choun"]
 [ext_resource type="Script" uid="uid://dawfi8ltfxfwf" path="res://scripts/tile_info_panel.gd" id="4_jyhfs"]
 [ext_resource type="Script" uid="uid://bt2kwldefvxx1" path="res://scripts/camera_controller.gd" id="5_tbgi4"]
+[ext_resource type="Script" uid="uid://dvo2xw2gwx3y4" path="res://scripts/map_overlay.gd" id="6_eb6dy"]
 [ext_resource type="Script" uid="uid://b0bw6robispat" path="res://scripts/building_detail_panel.gd" id="6_tefeu"]
 [ext_resource type="Script" uid="uid://dpavib658u0dd" path="res://scripts/bottom_menu.gd" id="8_85g3d"]
 [ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="8_tipki"]
 [ext_resource type="PackedScene" uid="uid://qvtflfd45g0d" path="res://scenes/construct_panel.tscn" id="9_85g3d"]
+[ext_resource type="PackedScene" uid="uid://cp8eoe568wruq" path="res://scenes/resource_panel.tscn" id="11_ya4ey"]
+[ext_resource type="PackedScene" uid="uid://bth2p1re62hjc" path="res://scenes/overlay_legend.tscn" id="13_trceg"]
+[ext_resource type="PackedScene" uid="uid://3m4d36nhu7ah" path="res://scenes/market_panel.tscn" id="14_a8y0u"]
 
 [node name="WorldMap" type="Node2D" unique_id=2144397903]
 script = ExtResource("1_sugp2")
@@ -35,6 +39,9 @@ zoom_min = 1.0
 zoom_max = 4.0
 map_min = Vector2(0, 0)
 map_max = Vector2(1640, 860)
+
+[node name="MapOverlay" type="Node2D" parent="." unique_id=1853095283]
+script = ExtResource("6_eb6dy")
 
 [node name="UILayer" type="CanvasLayer" parent="." unique_id=1882417710]
 
@@ -272,3 +279,20 @@ custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
 text = "X"
+
+[node name="ResourcePanel" parent="UILayer/HUD" unique_id=628861186 instance=ExtResource("11_ya4ey")]
+unique_name_in_owner = true
+layout_mode = 0
+anchors_preset = 0
+anchor_top = 0.0
+anchor_bottom = 0.0
+offset_top = 0.0
+offset_bottom = 620.0
+grow_vertical = 1
+
+[node name="Legend" parent="UILayer/HUD" unique_id=1839932953 instance=ExtResource("13_trceg")]
+layout_mode = 1
+
+[node name="MarketPanel" parent="UILayer/HUD" unique_id=964377119 instance=ExtResource("14_a8y0u")]
+unique_name_in_owner = true
+layout_mode = 0

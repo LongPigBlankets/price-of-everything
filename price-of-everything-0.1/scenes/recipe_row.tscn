@@ -1,0 +1,26 @@
+[gd_scene format=3 uid="uid://b320p282xchg0"]
+
+[ext_resource type="Script" uid="uid://cla8um2xwuron" path="res://scripts/recipe_row.gd" id="1_fudw1"]
+
+[node name="RecipeRow" type="HBoxContainer" unique_id=1687684604]
+offset_right = 61.0
+offset_bottom = 116.0
+script = ExtResource("1_fudw1")
+
+[node name="IndentSpacer" type="Control" parent="." unique_id=1548829931]
+custom_minimum_size = Vector2(24, 0)
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="." unique_id=2123025793]
+layout_mode = 2
+
+[node name="DetailsLabel" type="Label" parent="." unique_id=2043214964]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PowerLabel" type="Label" parent="." unique_id=955776865]
+layout_mode = 2
+
+[node name="BuildButton" type="Button" parent="." unique_id=1834315900]
+layout_mode = 2
+text = "+"

@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://bvbnqa5as1psy"]
+
+[node name="LegendEntry" type="HBoxContainer" unique_id=236654075]
+theme_override_constants/separation = 6
+
+[node name="ColourSwatch" type="ColorRect" parent="." unique_id=606117522]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="." unique_id=1244715051]
+layout_mode = 2

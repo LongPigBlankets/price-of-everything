@@ -112,14 +112,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton and event.pressed):
 		return
 	
-	# Right-click cancels build mode
 	if event.button_index == MOUSE_BUTTON_RIGHT:
+		var handled := false
 		if BuildMode.is_active:
 			BuildMode.exit_build_mode()
+			handled = true
+		if MapMode.is_active():
+			MapMode.exit_mode()
+			handled = true
+		if handled:
 			get_viewport().set_input_as_handled()
 		return
 	
-	# Left-click: build or select based on mode
+	# Left-click logic unchanged
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		var world_pos := get_global_mouse_position()
 		var map_pos := local_to_map(to_local(world_pos))

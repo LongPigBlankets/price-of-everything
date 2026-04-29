@@ -1,0 +1,161 @@
+[gd_scene format=3 uid="uid://cp8eoe568wruq"]
+
+[ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="1_ls4bu"]
+[ext_resource type="Script" uid="uid://c662pbb48ej1o" path="res://scripts/resource_panel.gd" id="2_48lnh"]
+[ext_resource type="PackedScene" uid="uid://d3hty384xemad" path="res://scenes/resource_row.tscn" id="2_eqtha"]
+
+[node name="ResourcePanel" type="PanelContainer" unique_id=628861186]
+visible = false
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_top = -310.0
+offset_right = 620.0
+offset_bottom = 310.0
+grow_vertical = 2
+theme_override_styles/panel = ExtResource("1_ls4bu")
+script = ExtResource("2_48lnh")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=1612045024]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=1820813138]
+layout_mode = 2
+
+[node name="HeaderRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=881111491]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/VBoxContainer/HeaderRow" unique_id=266559380]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Resources"
+
+[node name="CloseButton" type="Button" parent="MarginContainer/VBoxContainer/HeaderRow" unique_id=698544874]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "X"
+
+[node name="HSeparator" type="HSeparator" parent="MarginContainer/VBoxContainer" unique_id=2128386791]
+layout_mode = 2
+
+[node name="TabContainer" type="TabContainer" parent="MarginContainer/VBoxContainer" unique_id=407560337]
+layout_mode = 2
+size_flags_vertical = 3
+current_tab = 0
+
+[node name="EconomyTab" type="VBoxContainer" parent="MarginContainer/VBoxContainer/TabContainer" unique_id=758525021]
+layout_mode = 2
+metadata/_tab_index = 0
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab" unique_id=1394766773]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ContentVBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer" unique_id=713272938]
+layout_mode = 2
+
+[node name="HeaderRowStatic" type="HBoxContainer" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox" unique_id=1472982286]
+layout_mode = 2
+
+[node name="NameHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=871922647]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Good"
+
+[node name="PotentialsHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=407879135]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "Potentials"
+
+[node name="ProducingHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=926868080]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "Producing"
+
+[node name="ConsumingHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=958719553]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "Consuming"
+
+[node name="ProducedHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=1323734265]
+visible = false
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "Produced/Turn"
+
+[node name="ConsumedHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=110528758]
+visible = false
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "Consumed/Turn"
+
+[node name="SurplusHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=432907023]
+visible = false
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "Surplus/Turn"
+
+[node name="ResourceRow" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox" unique_id=750221307 instance=ExtResource("2_eqtha")]
+layout_mode = 2
+
+[node name="MapOverlaysTab" type="VBoxContainer" parent="MarginContainer/VBoxContainer/TabContainer" unique_id=1370564014]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 1
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/VBoxContainer/TabContainer/MapOverlaysTab" unique_id=349508525]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ContentVBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/TabContainer/MapOverlaysTab/ScrollContainer" unique_id=547501136]
+layout_mode = 2
+
+[node name="HeaderRowStatic" type="HBoxContainer" parent="MarginContainer/VBoxContainer/TabContainer/MapOverlaysTab/ScrollContainer/ContentVBox" unique_id=257241827]
+layout_mode = 2
+
+[node name="NameHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/MapOverlaysTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=459048889]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Good"
+
+[node name="PotentialsHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/MapOverlaysTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=1758178489]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "Potentials"
+
+[node name="ProducingHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/MapOverlaysTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=2027739739]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "Producing"
+
+[node name="ConsumingHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/MapOverlaysTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=238864326]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "Consuming"
+
+[node name="ProducedHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/MapOverlaysTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=1970860920]
+visible = false
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "Produced/Turn"
+
+[node name="ConsumedHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/MapOverlaysTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=1426039452]
+visible = false
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "Consumed/Turn"
+
+[node name="SurplusHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/MapOverlaysTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=886154208]
+visible = false
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "Surplus/Turn"
+
+[node name="ResourceRow" parent="MarginContainer/VBoxContainer/TabContainer/MapOverlaysTab/ScrollContainer/ContentVBox" unique_id=499583770 instance=ExtResource("2_eqtha")]
+layout_mode = 2

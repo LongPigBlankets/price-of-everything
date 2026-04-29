@@ -43,34 +43,47 @@ func _load_building_icons() -> void:
 		else:
 			push_warning("Icon not found for %s at %s" % [building_id, path])
 
-func on_building_placed(tile_id: String, building_id: String, coord: Vector2i) -> void:
+const MAX_VISIBLE_BUILDINGS := 12  # 4 cols × 3 rows
+const OVERFLOW_INDEX := 11         # 12th slot (0-indexed)
+
+func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, _instance_id: String, coord: Vector2i) -> void:
 	if not building_icons.has(building_id):
 		push_warning("No icon registered for building %s" % building_id)
 		return
 	
-	# Track how many buildings are already on this tile
 	if not tile_building_counts.has(tile_id):
 		tile_building_counts[tile_id] = 0
 	var slot_index: int = tile_building_counts[tile_id]
 	tile_building_counts[tile_id] = slot_index + 1
 	
-	# Compute the world position for this slot on this tile
 	var tile_center := _tile_center_world_pos(coord)
-	var slot_pos := _slot_position(tile_center, slot_index)
 	
-	# Create and place the sprite
+	if slot_index < OVERFLOW_INDEX:
+		var slot_pos := _slot_position(tile_center, slot_index)
+		_create_icon_sprite(building_icons[building_id], slot_pos)
+	elif slot_index == OVERFLOW_INDEX:
+		var slot_pos := _slot_position(tile_center, slot_index)
+		_create_overflow_indicator(slot_pos)
+
+func _create_icon_sprite(texture: Texture2D, slot_pos: Vector2) -> void:
 	var sprite := Sprite2D.new()
-	sprite.texture = building_icons[building_id]
+	sprite.texture = texture
 	sprite.position = slot_pos
-	# Scale the sprite to fit the slot, assuming source PNGs are larger
-	var tex_size := sprite.texture.get_size()
+	var tex_size := texture.get_size()
 	if tex_size.x > 0 and tex_size.y > 0:
 		var scale_x: float = float(ICON_SIZE_X) / tex_size.x
 		var scale_y: float = float(ICON_SIZE_Y) / tex_size.y
-		var scale_uniform: float = min(scale_x, scale_y) * 0.9  # slight padding
+		var scale_uniform: float = min(scale_x, scale_y) * 0.9
 		sprite.scale = Vector2(scale_uniform, scale_uniform)
-	
 	add_child(sprite)
+
+func _create_overflow_indicator(slot_pos: Vector2) -> void:
+	var label := Label.new()
+	label.text = "…"
+	label.position = slot_pos - Vector2(6, 8)  # rough centering
+	label.add_theme_font_size_override("font_size", 12)
+	label.modulate = Color(0.9, 0.9, 0.9)
+	add_child(label)
 
 func _tile_center_world_pos(coord: Vector2i) -> Vector2:
 	# Convert hex coord to world position. For pointy-top hexes with offset

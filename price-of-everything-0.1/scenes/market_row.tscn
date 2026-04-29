@@ -1,0 +1,22 @@
+[gd_scene format=3 uid="uid://6mw4oeurekpg"]
+
+[ext_resource type="Script" uid="uid://bxfhdrarwjvti" path="res://scripts/market_row.gd" id="1_glg24"]
+
+[node name="MarketRow" type="HBoxContainer" unique_id=1669068725]
+theme_override_constants/separation = 10
+script = ExtResource("1_glg24")
+
+[node name="NameLabel" type="Label" parent="." unique_id=1959778942]
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PriceLabel" type="Label" parent="." unique_id=560446906]
+custom_minimum_size = Vector2(50, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="EstPriceLabel" type="Label" parent="." unique_id=282916546]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+size_flags_horizontal = 3
