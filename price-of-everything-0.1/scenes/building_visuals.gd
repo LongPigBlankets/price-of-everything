@@ -27,26 +27,30 @@ func _ready() -> void:
 	_load_building_icons()
 
 func _load_building_icons() -> void:
-	# Map building IDs to icon paths. Adjust IDs to match your buildings.csv
-	var icon_paths := {
-		"b_001": "res://assets/icons/buildings/b_001_mine.png",
-		"b_002": "res://assets/icons/buildings/b_002_furnace.png",
-		"b_003": "res://assets/icons/buildings/b_003_coal_power.png",
-		"b_004": "res://assets/icons/buildings/b_004_port.png",
-		"b_005": "res://assets/icons/buildings/b_005_road.png",
-	}
-	
-	for building_id in icon_paths:
-		var path: String = icon_paths[building_id]
-		if ResourceLoader.exists(path):
-			building_icons[building_id] = load(path)
-		else:
-			push_warning("Icon not found for %s at %s" % [building_id, path])
-
+	for building in Catalog.all_buildings():
+		var building_id: String = building.id
+		var internal_name: String = building.internal_name
+		if building_id == "" or internal_name == "":
+			continue
+		
+		var primary_path: String = "res://assets/icons/buildings/%s_%s.png" % [building_id, internal_name]
+		if ResourceLoader.exists(primary_path):
+			building_icons[building_id] = load(primary_path)
+			continue
+		
+		var fallback_path: String = "res://assets/icons/buildings/%s.png" % building_id
+		if ResourceLoader.exists(fallback_path):
+			building_icons[building_id] = load(fallback_path)
+			continue
+		
+		push_warning("[BuildingVisuals] No icon for %s (tried %s and %s)" % [
+			building_id, primary_path, fallback_path
+		])
 const MAX_VISIBLE_BUILDINGS := 12  # 4 cols × 3 rows
 const OVERFLOW_INDEX := 11         # 12th slot (0-indexed)
 
 func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, _instance_id: String, coord: Vector2i) -> void:
+	print("[BuildingVisuals] placing for ", building_id)
 	if not building_icons.has(building_id):
 		push_warning("No icon registered for building %s" % building_id)
 		return

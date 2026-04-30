@@ -85,21 +85,26 @@ text = "Consuming"
 
 [node name="ProducedHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=1323734265]
 visible = false
-custom_minimum_size = Vector2(60, 0)
+custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "Produced/Turn"
 
 [node name="ConsumedHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=110528758]
 visible = false
-custom_minimum_size = Vector2(60, 0)
+custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "Consumed/Turn"
 
 [node name="SurplusHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=432907023]
 visible = false
-custom_minimum_size = Vector2(60, 0)
+custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "Surplus/Turn"
+
+[node name="StockpileHeader" type="Label" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox/HeaderRowStatic" unique_id=302823155]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Stockpile"
 
 [node name="ResourceRow" parent="MarginContainer/VBoxContainer/TabContainer/EconomyTab/ScrollContainer/ContentVBox" unique_id=750221307 instance=ExtResource("2_eqtha")]
 layout_mode = 2

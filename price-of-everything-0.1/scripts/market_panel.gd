@@ -22,7 +22,7 @@ func _build_content() -> void:
 		child.queue_free()
 	rows.clear()
 	
-	var all_goods = Catalog.all()
+	var all_goods = Catalog.all_goods()
 	print("MarketPanel building rows for %d goods" % all_goods.size())
 	
 	for good_data in all_goods:

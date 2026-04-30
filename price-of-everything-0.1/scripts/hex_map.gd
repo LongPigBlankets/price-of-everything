@@ -1,4 +1,5 @@
 extends TileMapLayer
+class_name HexMap
 
 const MAP_W := 30
 const MAP_H := 20
@@ -11,6 +12,7 @@ var tiles := {}  # Vector2i(q, r) -> Dictionary
 func _ready() -> void:
 	_generate_tile_data()
 	_load_tile_overrides()
+	add_to_group("hex_map")
 
 func _generate_tile_data() -> void:
 	for r in MAP_H:
@@ -65,7 +67,7 @@ func _load_tile_overrides() -> void:
 			rows_failed += 1
 			continue
 
-		var coord := _id_to_coord(parsed.id)
+		var coord := id_to_coord(parsed.id)
 		if coord == Vector2i(-1, -1):
 			push_warning("Line %d: bad id '%s' — skipping." % [line_num, parsed.id])
 			rows_failed += 1
@@ -100,7 +102,7 @@ func _parse_csv_row(header: PackedStringArray, row: PackedStringArray, line_num:
 
 	return result
 
-func _id_to_coord(id: String) -> Vector2i:
+func id_to_coord(id: String) -> Vector2i:
 	var parts := id.split("_")
 	if parts.size() != 3 or parts[0] != "tile":
 		return Vector2i(-1, -1)

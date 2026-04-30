@@ -15,7 +15,7 @@ func _on_turn_advanced(_new_turn: int) -> void:
 	tick_turn()
 
 func _init_prices_from_catalog() -> void:
-	for good in Catalog.all():
+	for good in Catalog.all_goods():
 		prices[good.id] = good.base_price
 	prices_updated.emit()
 

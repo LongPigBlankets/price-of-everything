@@ -93,6 +93,7 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 	
 	return {
 		"id": result.get("id", ""),
+		"internal_name": result.get("internal_name", ""),
 		"name": result.get("display_name", result.get("name", "")),
 		"cost": result.get("build_cost_money", "0"),
 		"category": result.get("building_category", "production").to_lower(),
@@ -133,6 +134,21 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 		"inputs": inputs,
 	}
 
+func _on_infrastructure_build_pressed(building_id: String) -> void:
+	var building_data: Dictionary = _find_building_data(building_id)
+	var infra_key: String = building_data.get("internal_name", "")
+	if infra_key == "":
+		push_warning("Infrastructure %s has no internal_name" % building_id)
+		return
+	BuildMode.enter_infrastructure_mode(infra_key)
+
+func _find_building_data(building_id: String) -> Dictionary:
+	for category in buildings_by_category.keys():
+		for b in buildings_by_category[category]:
+			if b.id == building_id:
+				return b
+	return {}
+	
 func _build_panel_content() -> void:
 	for child in content_vbox.get_children():
 		child.queue_free()
@@ -156,6 +172,7 @@ func _build_panel_content() -> void:
 			row.setup(building_data, recipes_for_this)
 			row.recipe_selected.connect(_on_recipe_selected)
 			row.expand_toggled.connect(_on_expand_toggled)
+			row.infrastructure_build_pressed.connect(_on_infrastructure_build_pressed)  # NEW
 
 func _on_recipe_selected(building_id: String, recipe_id: String) -> void:
 	print("Recipe selected: %s for %s" % [recipe_id, building_id])

@@ -1,0 +1,88 @@
+[gd_scene format=3 uid="uid://chcbv4uqt27uc"]
+
+[ext_resource type="Script" uid="uid://ln4om1f0c55j" path="res://scripts/turn_summary.gd" id="1_qj834"]
+
+[node name="TurnSummary" type="PanelContainer" unique_id=678202477]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = -230.0
+grow_horizontal = 0
+grow_vertical = 0
+script = ExtResource("1_qj834")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=2099769448]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=476879255]
+layout_mode = 2
+
+[node name="HeaderRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1651432002]
+layout_mode = 2
+
+[node name="HeaderLabel" type="Label" parent="MarginContainer/VBoxContainer/HeaderRow" unique_id=2036013014]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Turn Summary"
+
+[node name="ExpandIcon" type="Label" parent="MarginContainer/VBoxContainer/HeaderRow" unique_id=683224897]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "▾"
+
+[node name="ContentVBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1524921637]
+layout_mode = 2
+
+[node name="CashSection" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ContentVBox" unique_id=765941852]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="CashArrow" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox/CashSection" unique_id=1910229992]
+layout_mode = 2
+
+[node name="CashLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox/CashSection" unique_id=677007209]
+layout_mode = 2
+
+[node name="CashBreakdown" type="VBoxContainer" parent="MarginContainer/VBoxContainer/ContentVBox" unique_id=881840694]
+layout_mode = 2
+
+[node name="GoodsSalesLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox/CashBreakdown" unique_id=443629401]
+layout_mode = 2
+
+[node name="PowerSalesLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox/CashBreakdown" unique_id=1126037419]
+layout_mode = 2
+
+[node name="PowerPurchaseLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox/CashBreakdown" unique_id=326189284]
+layout_mode = 2
+
+[node name="CostsLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox/CashBreakdown" unique_id=427338653]
+layout_mode = 2
+
+[node name="TaxesLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox/CashBreakdown" unique_id=1477070834]
+layout_mode = 2
+
+[node name="HSeparator" type="HSeparator" parent="MarginContainer/VBoxContainer/ContentVBox" unique_id=1806435729]
+layout_mode = 2
+
+[node name="BuildingsBuiltLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox" unique_id=811740193]
+layout_mode = 2
+
+[node name="BuildingsStarvedLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox" unique_id=784532065]
+layout_mode = 2
+
+[node name="GoodsProducedLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox" unique_id=1368443108]
+layout_mode = 2
+
+[node name="GoodsRunningOutLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox" unique_id=1687857157]
+layout_mode = 2
+
+[node name="DismissButton" type="Button" parent="MarginContainer/VBoxContainer/ContentVBox" unique_id=2111253280]
+layout_mode = 2
+text = "Dismiss"

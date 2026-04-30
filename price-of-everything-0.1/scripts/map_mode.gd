@@ -1,7 +1,15 @@
 extends Node
 # Autoload. Single source of truth for resource overlay selection state.
 
-enum Mode { NONE, POTENTIALS, TILES_PRODUCING, TILES_CONSUMING }
+enum Mode {
+	NONE,
+	POTENTIALS,
+	TILES_PRODUCING,
+	TILES_CONSUMING,
+	POWER_BALANCE,
+}
+
+const POWER_SENTINEL := "power_balance_sentinel"
 
 const PALETTE: Array[Color] = [Color.RED, Color.BLUE, Color.YELLOW, Color.HOT_PINK]
 const MAX_SELECTIONS := 4

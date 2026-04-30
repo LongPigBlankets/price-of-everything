@@ -1,0 +1,48 @@
+[gd_scene format=3 uid="uid://c8o4a3033eoqq"]
+
+[ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="1_57dne"]
+[ext_resource type="Script" uid="uid://dfxabhtt5isu1" path="res://scripts/mapmodes_panel.gd" id="2_c7itr"]
+
+[node name="MapModesPanel" type="PanelContainer" unique_id=2117327633]
+visible = false
+anchors_preset = -1
+offset_right = 420.0
+offset_bottom = 620.0
+theme_override_styles/panel = ExtResource("1_57dne")
+script = ExtResource("2_c7itr")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=113830905]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="ModalLayout" type="VBoxContainer" parent="MarginContainer" unique_id=672214163]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HeaderRow" type="HBoxContainer" parent="MarginContainer/ModalLayout" unique_id=1625582456]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/ModalLayout/HeaderRow" unique_id=2075896692]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Mapmodes"
+
+[node name="CloseButton" type="Button" parent="MarginContainer/ModalLayout/HeaderRow" unique_id=1385459156]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "X"
+
+[node name="HSeparator" type="HSeparator" parent="MarginContainer/ModalLayout" unique_id=396841219]
+layout_mode = 2
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/ModalLayout" unique_id=1317552342]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ContentVBox" type="VBoxContainer" parent="MarginContainer/ModalLayout/ScrollContainer" unique_id=2059138973]
+layout_mode = 2
+size_flags_horizontal = 3

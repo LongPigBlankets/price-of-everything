@@ -4,7 +4,7 @@ extends Node
 # Other systems read and write here; never store match data elsewhere.
 
 # --- Player resources ---
-var money: int = 1000  # starting money for MVP
+var money: float = 1000.0  # was: int = 1000
 
 # --- Building instances ---
 # Flat dictionary: instance_id -> building data dict
@@ -19,23 +19,27 @@ var tile_buildings: Dictionary = {}
 # --- Instance ID generation ---
 var _next_instance_counter: int = 0
 
+enum SellMode { SELL_ALL, STOCKPILE_ALL }
+var sell_mode: int = SellMode.SELL_ALL
+
 # --- Signals ---
-signal money_changed(new_amount: int)
+signal money_changed(new_amount: float) 
 signal building_added(instance: Dictionary)
 signal building_removed(instance_id: String)
 signal state_reset
+signal sell_mode_changed(new_mode: int)
 
 # --- Initialization ---
 func _ready() -> void:
 	pass  # nothing to do at startup; systems push state into MatchState as they boot
-
+	money = EconomyConfig.STARTING_MONEY
+	money_changed.emit(money)
 # --- Public API: money ---
-func add_money(amount: int) -> void:
-	money += amount
+func add_money(delta: float) -> void:
+	money += delta
 	money_changed.emit(money)
 
-func deduct_money(amount: int) -> bool:
-	# Returns true if successful, false if insufficient funds
+func deduct_money(amount: float) -> bool:  # was: int
 	if money < amount:
 		return false
 	money -= amount
@@ -120,3 +124,7 @@ func debug_dump() -> Dictionary:
 		"tile_buildings": tile_buildings.duplicate(true),
 		"_next_instance_counter": _next_instance_counter,
 	}
+
+func set_sell_mode(mode: int) -> void:
+	sell_mode = mode
+	sell_mode_changed.emit(mode)

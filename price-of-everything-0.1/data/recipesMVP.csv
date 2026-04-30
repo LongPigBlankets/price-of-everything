@@ -1,7 +1,8 @@
 recipe_id,display_name,building_id,building_name,input_1,qty_1,input_2,qty_2,input_3,qty_3,input_4,qty_4,input_5,qty_5,energy_req,optional_input,optional_production_multiplier,output_1,output_qty_1,output_2,output_qty_2,output_3,output_qty_3,output_4,output_qty_4,output_5,output_qty_5
 r_001,Coal Mining,b_001,Mine,,,,,,,,,,,1,,,coal,1,,,,,,,,
 r_002,Iron Mining,b_001,Mine,,,,,,,,,,,1,,,iron_ore,1,,,,,,,,
-r_003,Steelmaking,b_002,Furnace,iron_ore,1,coal,1,oxygen,1,,,,,,,,steel,2,,,,,,,,
+r_003,Steelmaking,b_002,Furnace,iron_ore,1,coal,1,,,,,,,,,,steel,2,,,,,,,,
 r_004,Power Production,b_003,Power Plant,coal,1,pure_water,1,,,,,,,,,,power,10,,,,,,,,
 r_005,Roads,b_004,,,,,,,,,,,,,,,,,,,,,,,,
 r_006,Port,b_005,,,,,,,,,,,,,,,,,,,,,,,,
+r_007,Water Extraction,b_007,Water Pump,,,,,,,,,,,1,,,pure_water,2,,,,,,,,

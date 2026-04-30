@@ -11,9 +11,14 @@ signal consuming_pressed(good_id: String)
 @onready var produced_label: Label = $ProducedLabel
 @onready var consumed_label: Label = $ConsumedLabel
 @onready var surplus_label: Label = $SurplusLabel
+@onready var stockpile_label: Label = $StockpileLabel
 
 var good_id: String = ""
 var good_type: String = ""
+
+func _ready() -> void:
+	Stockpile.stockpile_changed.connect(_refresh_stockpile)
+	_refresh_stockpile()
 
 func setup(good_data: Dictionary) -> void:
 	good_id = good_data.id
@@ -34,6 +39,12 @@ func setup(good_data: Dictionary) -> void:
 		consuming_button.pressed.connect(_on_consuming_pressed)
 	
 	update_button_states()
+	_refresh_stockpile()
+
+func _refresh_stockpile() -> void:
+	if good_id == "":
+		return
+	stockpile_label.text = str(Stockpile.get_total(good_id))
 
 func update_button_states() -> void:
 	var potentials_permanent_disable := good_type != "raw"
@@ -57,6 +68,7 @@ func set_mode(is_economy: bool) -> void:
 	produced_label.visible = is_economy
 	consumed_label.visible = is_economy
 	surplus_label.visible = is_economy
+	stockpile_label.visible = is_economy
 
 func _on_potentials_pressed() -> void:
 	potentials_pressed.emit(good_id)

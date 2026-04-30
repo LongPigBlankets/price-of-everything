@@ -17,12 +17,16 @@ config/icon="res://scenes/icon.svg"
 
 [autoload]
 
-TurnManager="*res://scripts/turn_manager.gd"
-BuildMode="*uid://wqxliv5e1r7u"
-MatchState="*uid://bx4xkvtpn5mxr"
-MapMode="*uid://dvsgkg2qos415"
 Catalog="*uid://dknl8ax7uvew7"
 MarketState="*uid://p821obaxl80d"
+Stockpile="*uid://c5n4ujnawka3c"
+EconomyConfig="*uid://cvwgpbxofx0xa"
+MatchState="*uid://bx4xkvtpn5mxr"
+Power="*uid://bhf527lrt3srf"
+TurnManager="*res://scripts/turn_manager.gd"
+Production="*uid://ksp2ff7r06pj"
+BuildMode="*uid://wqxliv5e1r7u"
+MapMode="*uid://dvsgkg2qos415"
 
 [display]
 

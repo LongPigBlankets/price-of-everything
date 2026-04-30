@@ -1,6 +1,6 @@
 extends Node2D
 
-@onready var terrain_layer: TileMapLayer = %TerrainLayer
+@onready var terrain_layer: HexMap = %TerrainLayer
 @onready var info_panel: PanelContainer = %TileInfoPanel
 @onready var building_panel: PanelContainer = %BuildingDetailPanel
 @onready var end_turn_button: Button = %EndTurnButton
@@ -8,12 +8,13 @@ extends Node2D
 @onready var turn_counter: Label = %TurnCounter
 @onready var building_visuals: Node2D = %BuildingVisuals
 
-signal building_placed(tile_id: String, building_id: String, coord: Vector2i)
+signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
 
 func _ready() -> void:
 	terrain_layer.tile_selected.connect(info_panel.show_tile)
 	info_panel.building_clicked.connect(building_panel.show_building)
 	BuildMode.build_attempted.connect(_on_build_attempted)
+	BuildMode.infrastructure_attempted.connect(_on_infrastructure_attempted)  # NEW
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
 	
 	TurnManager.phase_started.connect(_on_phase_started)
@@ -29,17 +30,12 @@ func _ready() -> void:
 	
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
-	var test_id = MatchState.add_building("b_001", "r_001", "tile_5_7")
-	print("Added building, ID: ", test_id)
-	print("Buildings on tile_5_7: ", MatchState.get_buildings_on_tile("tile_5_7"))
-	print("All buildings: ", MatchState.buildings)
-	print("State dump: ", MatchState.debug_dump())
 
 func _on_end_turn_pressed() -> void:
 	TurnManager.commit_turn()
 
 func _on_build_attempted(building_id: String, tile_id: String) -> void:
-	var coord := _id_to_coord(tile_id)
+	var coord := terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1):
 		return
 	
@@ -48,30 +44,64 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 		push_warning("Build attempted with no recipe selected")
 		return
 	
+	# Look up cost
+	var building_data: Dictionary = Catalog.get_building(building_id)
+	var cost: float = building_data.get("base_price", 0.0)
+	
+	# Check + deduct money
+	if not MatchState.deduct_money(cost):
+		print("[Build] FAILED: insufficient money. Need £%.2f, have £%.2f" % [cost, MatchState.money])
+		return
+	
 	# Add to MatchState (single source of truth)
 	var instance_id := MatchState.add_building(building_id, recipe_id, tile_id)
 	
 	var _building_name := _get_building_display_name(building_id)
-	print("Built %s (instance %s, recipe %s) on %s" % [building_id, instance_id, recipe_id, tile_id])
+	print("Built %s (instance %s, recipe %s) on %s — cost £%.2f" % [building_id, instance_id, recipe_id, tile_id, cost])
 	
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
-
 func _get_building_display_name(building_id: String) -> String:
-	match building_id:
-		"b_001": return "Mine"
-		"b_002": return "Furnace"
-		"b_003": return "Coal Power Plant"
-		"b_004": return "Port"
-		"b_005": return "Roads"
-		_: return "Unknown"
+	return Catalog.get_building_display_name(building_id)
 
-func _id_to_coord(id: String) -> Vector2i:
-	var parts := id.split("_")
-	if parts.size() != 3 or parts[0] != "tile":
-		return Vector2i(-1, -1)
-	if not parts[1].is_valid_int() or not parts[2].is_valid_int():
-		return Vector2i(-1, -1)
-	return Vector2i(int(parts[1]) - 1, int(parts[2]) - 1)
+func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
+	var coord := terrain_layer.id_to_coord(tile_id)
+	if coord == Vector2i(-1, -1):
+		return
+	if not terrain_layer.tiles.has(coord):
+		return
+	
+	var tile: Dictionary = terrain_layer.tiles[coord]
+	var infra: Array = tile.get("infrastructure_present", [])
+	
+	# Already present — silently bail (no charge, no error)
+	if infra.has(infra_type):
+		print("Tile %s already has %s" % [tile_id, infra_type])
+		return
+	
+	# Lookup cost
+	var building_data: Dictionary = Catalog.get_building_by_internal_name(infra_type)
+	var cost: float = building_data.get("base_price", 0.0)
+	
+	# Check + deduct
+	if not MatchState.deduct_money(cost):
+		print("[Build] FAILED: insufficient money for %s. Need £%.2f, have £%.2f" % [infra_type, cost, MatchState.money])
+		return
+	
+	infra.append(infra_type)
+	tile["infrastructure_present"] = infra
+	terrain_layer.tiles[coord] = tile
+	
+	print("Built %s on %s — cost £%.2f" % [infra_type, tile_id, cost])
+	
+	var infra_building_id: String = building_data.get("id", "")
+	building_placed.emit(tile_id, infra_building_id, "", "", coord)
+
+func _infra_building_id_for(infra_type: String) -> String:
+	# Maps infrastructure internal_name -> the building_id used for visual icons
+	match infra_type:
+		"cables": return "b_006"
+		"roads": return "b_005"
+		_: return ""
 
 func _on_phase_started(phase: int) -> void:
 	_update_phase_label(phase)
@@ -91,3 +121,11 @@ func _update_turn_counter(turn: int) -> void:
 
 func _update_phase_label(phase: int) -> void:
 	phase_label.text = "Phase: %s" % TurnManager.get_phase_name(phase)
+	
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and event.keycode == KEY_1:
+		var current = MatchState.sell_mode
+		var new_mode = MatchState.SellMode.STOCKPILE_ALL if current == MatchState.SellMode.SELL_ALL else MatchState.SellMode.SELL_ALL
+		MatchState.set_sell_mode(new_mode)
+		var name = "STOCKPILE" if new_mode == MatchState.SellMode.STOCKPILE_ALL else "SELL_ALL"
+		print("[DEBUG] Sell mode toggled to: ", name)

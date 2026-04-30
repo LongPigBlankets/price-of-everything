@@ -2,6 +2,7 @@ extends VBoxContainer
 
 signal build_requested(building_id: String)
 signal recipe_selected(building_id: String, recipe_id: String)
+signal infrastructure_build_pressed(infrastructure_id: String)
 signal expand_toggled(building_id: String, is_expanded: bool)
 
 const RecipeRowScene: PackedScene = preload("res://scenes/recipe_row.tscn")
@@ -17,12 +18,15 @@ const RecipeRowScene: PackedScene = preload("res://scenes/recipe_row.tscn")
 var building_id: String = ""
 var is_expanded: bool = false
 var recipes_for_this_building: Array = []
+var is_infrastructure: bool = false   # set in setup()
 
 func setup(data: Dictionary, recipes: Array) -> void:
 	building_id = data.get("id", "")
+	is_infrastructure = data.get("category", "") == "infrastructure"
+	
 	icon_label.text = data.get("icon", "•")
 	name_label.text = data.get("name", "")
-	cost_label.text = "£%s" % data.get("cost", "0")
+	cost_label.text = ("£%.2f" % float(data.get("cost", 0))).trim_suffix(".00")
 	recipes_for_this_building = recipes
 	
 	# Clear and populate material costs
@@ -40,8 +44,10 @@ func setup(data: Dictionary, recipes: Array) -> void:
 	build_button.text = "+"
 	expand_button.text = "^"
 	
-	# Hide expand button if 0 or 1 recipes (nothing to expand to)
-	if recipes_for_this_building.size() <= 1:
+	# Infrastructure: never has recipes, no expansion possible
+	if is_infrastructure:
+		expand_button.visible = false
+	elif recipes_for_this_building.size() <= 1:
 		expand_button.visible = false
 	
 	# Recipes container starts hidden
@@ -51,13 +57,17 @@ func setup(data: Dictionary, recipes: Array) -> void:
 	expand_button.pressed.connect(_on_expand_pressed)
 
 func _on_build_pressed() -> void:
-	# Auto-select if only one recipe
+	# Infrastructure: directly enter infrastructure build mode, no recipe step
+	if is_infrastructure:
+		infrastructure_build_pressed.emit(building_id)
+		return
+	
+	# Building: existing recipe-driven flow
 	if recipes_for_this_building.size() == 1:
 		var only_recipe: Dictionary = recipes_for_this_building[0]
 		recipe_selected.emit(building_id, only_recipe.recipe_id)
 		return
 	
-	# Multiple recipes: toggle expansion
 	if recipes_for_this_building.size() > 1 and not is_expanded:
 		_set_expanded(true)
 		return

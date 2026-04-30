@@ -29,7 +29,7 @@ func _build_panel_content() -> void:
 	for i in range(overlay_children.size() - 1, 0, -1):
 		overlay_children[i].queue_free()
 	
-	for good_data in Catalog.all():
+	for good_data in Catalog.all_goods():
 		var econ_row := ResourceRowScene.instantiate()
 		economy_vbox.add_child(econ_row)
 		econ_row.setup(good_data)
