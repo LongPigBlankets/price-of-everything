@@ -1,0 +1,100 @@
+[gd_scene format=3 uid="uid://xcbva8p8n4ka"]
+
+[ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="1_abchj"]
+[ext_resource type="Script" uid="uid://lae7b42bsjps" path="res://scripts/take_loan_dialog.gd" id="1_voeeg"]
+
+[node name="TakeLoanDialog" type="PanelContainer" unique_id=1942295246]
+custom_minimum_size = Vector2(380, 280)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -98.5
+offset_top = -122.0
+offset_right = 98.5
+offset_bottom = 122.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = ExtResource("1_abchj")
+script = ExtResource("1_voeeg")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=1326480480]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=312730182]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/VBoxContainer" unique_id=1462384250]
+layout_mode = 2
+text = "Take New Loan"
+
+[node name="HSeparator" type="HSeparator" parent="MarginContainer/VBoxContainer" unique_id=1423165427]
+layout_mode = 2
+
+[node name="AmountRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1883813807]
+custom_minimum_size = Vector2(80, 100)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/AmountRow" unique_id=183114371]
+layout_mode = 2
+text = "Amount:"
+
+[node name="AmountSlider" type="HSlider" parent="MarginContainer/VBoxContainer/AmountRow" unique_id=2079899706]
+custom_minimum_size = Vector2(80, 20)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1.0
+max_value = 50.0
+value = 10.0
+
+[node name="AmountLabel" type="Label" parent="MarginContainer/VBoxContainer/AmountRow" unique_id=1027854064]
+layout_mode = 2
+text = "£10"
+
+[node name="CapacityLabel" type="Label" parent="MarginContainer/VBoxContainer" unique_id=216159243]
+layout_mode = 2
+text = "Available Capacity: £50"
+
+[node name="HSeparator2" type="HSeparator" parent="MarginContainer/VBoxContainer" unique_id=118384047]
+layout_mode = 2
+
+[node name="PreviewVBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1826380141]
+layout_mode = 2
+
+[node name="TermLabel" type="Label" parent="MarginContainer/VBoxContainer/PreviewVBox" unique_id=225697766]
+layout_mode = 2
+text = "Term: 40 turns"
+
+[node name="TotalRepayLabel" type="Label" parent="MarginContainer/VBoxContainer/PreviewVBox" unique_id=1195721664]
+layout_mode = 2
+text = "Total to Repay: £11.00"
+
+[node name="InterestLabel" type="Label" parent="MarginContainer/VBoxContainer/PreviewVBox" unique_id=842606569]
+layout_mode = 2
+text = "Interest costL £1.00"
+
+[node name="PerTurnLabel" type="Label" parent="MarginContainer/VBoxContainer/PreviewVBox" unique_id=854141184]
+layout_mode = 2
+text = "Per-turn payment: £0.275"
+
+[node name="HSeparator3" type="HSeparator" parent="MarginContainer/VBoxContainer" unique_id=1873159831]
+layout_mode = 2
+
+[node name="ButtonsRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1154011632]
+layout_mode = 2
+
+[node name="CancelButton" type="Button" parent="MarginContainer/VBoxContainer/ButtonsRow" unique_id=46549275]
+layout_mode = 2
+text = "Cancel"
+
+[node name="ConfirmButton" type="Button" parent="MarginContainer/VBoxContainer/ButtonsRow" unique_id=465700780]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Confirm"

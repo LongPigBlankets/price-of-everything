@@ -5,6 +5,13 @@ const MAX_PRODUCTION_PASSES := 30
 var last_turn_summary: Dictionary = {}
 var missing_by_building: Dictionary = {}  # instance_id -> Array of missing inputs
 var last_turn_run: Dictionary = {}  # instance_id -> true (set of buildings that ran)
+var summary := {
+	# ... existing fields ...
+	"interest_paid": 0.0,
+	"taxes_paid": 0.0,
+	"dividends_paid": 0.0,
+	# ... existing fields ...
+}
 
 signal turn_processed(summary: Dictionary)
 signal building_starved(starvation_record: Dictionary)
@@ -38,6 +45,7 @@ func _process_production() -> void:
 	"labour_paid": 0.0,
 	"taxes_paid": 0.0,
 	"dividends_paid": 0.0,
+	"interest_paid": 0.0,
 	# Aggregates (preserved for compatibility)
 	"money_in": 0.0,
 	"money_out": 0.0,
@@ -164,6 +172,31 @@ func _process_production() -> void:
 		summary.maintenance_paid += maint
 		summary.labour_paid += labour
 		summary.money_out += total_cost
+		# === LOAN INTEREST PAYMENTS ==+var loan_payment: float = LoanState.process_payments()
+	var loan_payment: float = LoanState.process_payments()
+	if loan_payment > 0:
+		summary.interest_paid = loan_payment
+		summary.money_out += loan_payment
+		# === TAX & DIVIDEND PHASE ===
+# Compute pre-tax profit: revenue - operating costs - interest.
+# Only deduct tax/dividends if profit is positive.
+	var revenue: float = summary.goods_sales_revenue + summary.power_sales_revenue
+	var operating_costs: float = summary.maintenance_paid + summary.labour_paid + summary.power_purchase_cost
+	var operating_profit: float = revenue - operating_costs
+	var pre_tax_profit: float = operating_profit - summary.interest_paid
+
+	if pre_tax_profit > 0:
+		var tax: float = pre_tax_profit * EconomyConfig.TAX_RATE
+		MatchState.add_money(-tax)
+		summary.taxes_paid = tax
+		summary.money_out += tax
+	
+		var post_tax_profit: float = pre_tax_profit - tax
+		if post_tax_profit > 0:
+			var dividends: float = post_tax_profit * EconomyConfig.DIVIDEND_RATE
+			MatchState.add_money(-dividends)
+			summary.dividends_paid = dividends
+			summary.money_out += dividends
 	
 	last_turn_summary = summary
 	turn_processed.emit(summary)
@@ -178,12 +211,19 @@ func _process_production() -> void:
 		summary.produced, summary.consumed, summary.sold, summary.starved.size(),
 		summary.money_in - summary.money_out, pass_count
 	])
-	# === TAX & DIVIDEND PHASE (placeholder) ===
-# Taxes will scale with revenue or asset value later.
-# Dividends will be a player choice (pay shareholders X% of profit).
-# For MVP: both are 0.
-	summary.taxes_paid = 0.0
-	summary.dividends_paid = 0.0
+	print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f interest=£%.2f tax=£%.2f div=£%.2f net=£%.2f" % [
+	summary.goods_sales_revenue,
+	summary.power_sales_revenue,
+	summary.power_purchase_cost,
+	summary.maintenance_paid + summary.labour_paid,
+	summary.interest_paid,
+	summary.taxes_paid,
+	summary.dividends_paid,
+	summary.money_in - summary.money_out
+])
+
+	
+
 # --- Helpers ---
 
 func _get_recipe(recipe_id: String) -> Dictionary:
@@ -216,15 +256,15 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 	summary.produced[good.id] = summary.produced.get(good.id, 0) + output_qty
 
 func _calculate_labour_cost(_building: Dictionary) -> float:
-	# MVP stub: every building has the same labour costs
 	var unskilled := 100
 	var skilled := 50
 	var high_skilled := 50
-	return (
+	var base_cost: float = (
 		unskilled * EconomyConfig.LABOUR_UNSKILLED_RATE
 		+ skilled * EconomyConfig.LABOUR_SKILLED_RATE
 		+ high_skilled * EconomyConfig.LABOUR_HIGH_SKILLED_RATE
 	)
+	return base_cost * MatchState.labour_multiplier
 
 func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
 	var inputs: Array = recipe.get("inputs", [])

@@ -8,7 +8,7 @@ extends Control
 @onready var mapmodes_panel: PanelContainer = %MapModesPanel
 @onready var top_bar: PanelContainer = %TopBar
 @onready var money_panel: PanelContainer = %MoneyPanel
-
+@onready var take_loan_dialog: PanelContainer = %TakeLoanDialog
 
 func _ready() -> void:
 	%ConstructButton.pressed.connect(_on_construct_pressed)
@@ -17,6 +17,9 @@ func _ready() -> void:
 	%MarketButton.pressed.connect(_on_market_pressed)
 	%PoliticsButton.pressed.connect(_on_politics_pressed)
 	%TechButton.pressed.connect(_on_tech_pressed)
+	money_panel.take_loan_dialog = take_loan_dialog
+	take_loan_dialog.loan_confirmed.connect(_on_loan_confirmed)
+	take_loan_dialog.hide()
 	
 	# All panels start hidden
 	construct_panel.hide()
@@ -60,4 +63,13 @@ func _on_tech_pressed() -> void:
 	
 func _on_money_widget_clicked() -> void:
 	_hide_all_panels()
+	money_panel.show()
+	
+func _on_loan_confirmed(amount: float) -> void:
+	var ok: bool = LoanState.take_loan(amount)
+	if not ok:
+		print("[HUD] Loan request failed for £%.2f" % amount)
+	# Auto-switch Money panel to Loans tab
+	var tab_container: TabContainer = money_panel.get_node("MarginContainer/ModalLayout/TabContainer")
+	tab_container.current_tab = 3  # 0=Stats, 1=Balance, 2=Budget, 3=Loans
 	money_panel.show()

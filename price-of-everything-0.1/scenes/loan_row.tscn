@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://gvdicu2eu882"]
+
+[ext_resource type="Script" uid="uid://dhxr0xbleli0u" path="res://scripts/loan_row.gd" id="1_mn58x"]
+
+[node name="LoanRow" type="PanelContainer" unique_id=545396293]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_mn58x")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=1683293382]
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer" unique_id=642096484]
+layout_mode = 2
+
+[node name="InfoVBox" type="VBoxContainer" parent="MarginContainer/HBoxContainer" unique_id=183562296]
+layout_mode = 2
+
+[node name="HeaderLabel" type="Label" parent="MarginContainer/HBoxContainer/InfoVBox" unique_id=1435645860]
+layout_mode = 2
+
+[node name="DetailLabel" type="Label" parent="MarginContainer/HBoxContainer/InfoVBox" unique_id=909563968]
+layout_mode = 2
+text = "£18.50 remaining · 36 turns · £0.55/turn"
+
+[node name="RepayButton" type="Button" parent="MarginContainer/HBoxContainer/InfoVBox" unique_id=495244131]
+layout_mode = 2
+text = "Repay Early"

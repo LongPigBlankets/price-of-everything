@@ -19,6 +19,10 @@ var tile_buildings: Dictionary = {}
 # --- Instance ID generation ---
 var _next_instance_counter: int = 0
 
+# --- Labour Slider ---
+var labour_multiplier: float = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
+
+
 enum SellMode { SELL_ALL, STOCKPILE_ALL }
 var sell_mode: int = SellMode.SELL_ALL
 
@@ -28,6 +32,7 @@ signal building_added(instance: Dictionary)
 signal building_removed(instance_id: String)
 signal state_reset
 signal sell_mode_changed(new_mode: int)
+signal labour_multiplier_changed(new_value: float)
 
 # --- Initialization ---
 func _ready() -> void:
@@ -128,3 +133,12 @@ func debug_dump() -> Dictionary:
 func set_sell_mode(mode: int) -> void:
 	sell_mode = mode
 	sell_mode_changed.emit(mode)
+
+func set_labour_multiplier(value: float) -> void:
+	# Clamp to valid range
+	value = clamp(value, EconomyConfig.LABOUR_MULTIPLIER_MIN, EconomyConfig.LABOUR_MULTIPLIER_MAX)
+	if value == labour_multiplier:
+		return
+	labour_multiplier = value
+	labour_multiplier_changed.emit(value)
+	print("[MatchState] Labour multiplier set to: %.2fx" % value)

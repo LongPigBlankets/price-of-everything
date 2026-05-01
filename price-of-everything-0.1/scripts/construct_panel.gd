@@ -12,9 +12,14 @@ const SECTION_DISPLAY_NAMES: Dictionary = {
 	"power": "POWER",
 	"infrastructure": "INFRASTRUCTURE",
 }
+const HEADER_HEIGHT := 40.0
 
 var buildings_by_category: Dictionary = {}  # category -> Array of building data
 var recipes_by_building: Dictionary = {}    # building_id -> Array of recipe data
+var take_loan_dialog: PanelContainer = null
+var overlay_rows: Array = []
+var _dragging := false
+var _drag_offset := Vector2.ZERO
 
 func _ready() -> void:
 	close_button.pressed.connect(hide)
@@ -180,3 +185,22 @@ func _on_recipe_selected(building_id: String, recipe_id: String) -> void:
 
 func _on_expand_toggled(building_id: String, is_expanded: bool) -> void:
 	print("Expand toggled: ", building_id, " expanded=", is_expanded)
+
+
+
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			# Only start drag if click is in the top strip
+			if event.position.y > HEADER_HEIGHT:
+				return
+			_dragging = true
+			_drag_offset = global_position - get_global_mouse_position()
+			accept_event()
+		else:
+			_dragging = false
+			accept_event()
+	elif event is InputEventMouseMotion and _dragging:
+		global_position = get_global_mouse_position() + _drag_offset
+		accept_event()

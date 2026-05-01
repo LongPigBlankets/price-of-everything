@@ -65,7 +65,14 @@ layout_mode = 2
 [node name="CostsLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox/CashBreakdown" unique_id=427338653]
 layout_mode = 2
 
+[node name="InterestLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox/CashBreakdown" unique_id=1249542634]
+layout_mode = 2
+text = "Interest"
+
 [node name="TaxesLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox/CashBreakdown" unique_id=1477070834]
+layout_mode = 2
+
+[node name="DividendsLabel" type="Label" parent="MarginContainer/VBoxContainer/ContentVBox/CashBreakdown" unique_id=1789486608]
 layout_mode = 2
 
 [node name="HSeparator" type="HSeparator" parent="MarginContainer/VBoxContainer/ContentVBox" unique_id=1806435729]

@@ -1,7 +1,7 @@
 ID,internal_name,display_name,energy_cost,building_stockpile,base_price,build_cost_money,build_material_1,build_qty_1,build_material_2,build_qty_2,build_material_3,build_qty_3,build_material_4,build_qty_4,build_material_5,build_qty_5,build_duration,tile_size_used,building_category,upgrade_path,upgrade_cost,upgrade_material_1,upgrade_qty_1,upgrade_material_2,upgrade_qty_2
-b_001,mine,Mine,1,10000,10,10000,,,,,,,,,,,1,1,production,standard,10000,,,,
-b_002,furnace,Furnace,1,10000,10,10000,,,,,,,,,,,1,1,production,standard,10000,,,,
-b_003,coal_power,Coal Power Plant,0,0,30,10000,,,,,,,,,,,2,1,power,standard,10000,,,,
+b_001,mine,Mine,1,10000,10,10,,,,,,,,,,,1,1,production,standard,10000,,,,
+b_002,furnace,Furnace,1,10000,10,12,,,,,,,,,,,1,1,production,standard,10000,,,,
+b_003,coal_power,Coal Power Plant,0,0,30,30,,,,,,,,,,,2,1,power,standard,10000,,,,
 b_004,port,Port,1,10000,10000,10000,,,,,,,,,,,100,1,infrastructure,standard,10000,,,,
 b_005,roads,Roads,0,0,5,5,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,
 b_006,cables,Cables,0,0,2,2,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,

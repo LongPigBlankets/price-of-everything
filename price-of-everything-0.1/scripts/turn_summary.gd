@@ -19,6 +19,9 @@ const MAX_LIST_ITEMS := 3
 @onready var power_purchase_label: Label = $MarginContainer/VBoxContainer/ContentVBox/CashBreakdown/PowerPurchaseLabel
 @onready var costs_label: Label = $MarginContainer/VBoxContainer/ContentVBox/CashBreakdown/CostsLabel
 @onready var taxes_label: Label = $MarginContainer/VBoxContainer/ContentVBox/CashBreakdown/TaxesLabel
+@onready var interest_label: Label = $MarginContainer/VBoxContainer/ContentVBox/CashBreakdown/InterestLabel
+@onready var tax_label: Label = $MarginContainer/VBoxContainer/ContentVBox/CashBreakdown/TaxesLabel
+@onready var dividends_label: Label = $MarginContainer/VBoxContainer/ContentVBox/CashBreakdown/DividendsLabel
 
 var _expanded: bool = true
 var _collapse_timer: SceneTreeTimer = null
@@ -67,7 +70,17 @@ func _render_summary(summary: Dictionary) -> void:
 	power_sales_label.visible = summary.power_sales_revenue > 0
 	power_purchase_label.visible = summary.power_purchase_cost > 0
 	taxes_label.visible = total_taxes > 0
-	
+	var interest: float = summary.get("interest_paid", 0.0)
+	interest_label.text = "  Interest: -£%.2f" % interest
+	interest_label.visible = interest > 0
+	var tax: float = summary.get("taxes_paid", 0.0)
+	tax_label.text = "  Tax: -£%.2f" % tax
+	tax_label.visible = tax > 0
+
+	var dividends: float = summary.get("dividends_paid", 0.0)
+	dividends_label.text = "  Dividends: -£%.2f" % dividends
+	dividends_label.visible = dividends > 0
+
 	# --- YOUR DEBUG PRINT (Added here so it has access to total_costs & total_taxes) ---
 	print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f taxes=£%.2f net=£%.2f" % [
 		summary.goods_sales_revenue,
