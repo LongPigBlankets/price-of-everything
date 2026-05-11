@@ -11,8 +11,11 @@ script = ExtResource("1_620pn")
 [node name="MainRow" type="HBoxContainer" parent="." unique_id=1994815628]
 layout_mode = 2
 
-[node name="IconLabel" type="Label" parent="MainRow" unique_id=1631918123]
+[node name="IconTexture" type="TextureRect" parent="MainRow" unique_id=45546956]
+custom_minimum_size = Vector2(40, 40)
 layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
 
 [node name="NameLabel" type="Label" parent="MainRow" unique_id=421982417]
 layout_mode = 2

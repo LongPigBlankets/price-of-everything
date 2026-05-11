@@ -7,7 +7,7 @@ signal expand_toggled(building_id: String, is_expanded: bool)
 
 const RecipeRowScene: PackedScene = preload("res://scenes/recipe_row.tscn")
 
-@onready var icon_label: Label = $MainRow/IconLabel
+@onready var icon_texture: TextureRect = $MainRow/IconTexture
 @onready var name_label: Label = $MainRow/NameLabel
 @onready var cost_label: Label = $MainRow/CostLabel
 @onready var materials_container: HBoxContainer = $MainRow/MaterialsContainer
@@ -24,7 +24,7 @@ func setup(data: Dictionary, recipes: Array) -> void:
 	building_id = data.get("id", "")
 	is_infrastructure = data.get("category", "") == "infrastructure"
 	
-	icon_label.text = data.get("icon", "•")
+	_load_icon(data)
 	name_label.text = data.get("name", "")
 	cost_label.text = ("£%.2f" % float(data.get("cost", 0))).trim_suffix(".00")
 	recipes_for_this_building = recipes
@@ -55,6 +55,23 @@ func setup(data: Dictionary, recipes: Array) -> void:
 	
 	build_button.pressed.connect(_on_build_pressed)
 	expand_button.pressed.connect(_on_expand_pressed)
+
+func _load_icon(data: Dictionary) -> void:
+	icon_texture.texture = null
+	var icon_paths: Array = []
+	var internal_name: String = data.get("internal_name", "")
+	
+	if building_id == "":
+		return
+	
+	if internal_name != "":
+		icon_paths.append("res://assets/icons/buildings/%s_%s.png" % [building_id, internal_name])
+	icon_paths.append("res://assets/icons/buildings/%s.png" % building_id)
+	
+	for icon_path in icon_paths:
+		if ResourceLoader.exists(icon_path):
+			icon_texture.texture = load(icon_path)
+			return
 
 func _on_build_pressed() -> void:
 	# Infrastructure: directly enter infrastructure build mode, no recipe step

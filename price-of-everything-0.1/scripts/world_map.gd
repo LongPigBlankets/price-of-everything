@@ -11,7 +11,7 @@ extends Node2D
 signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
 
 func _ready() -> void:
-	terrain_layer.tile_selected.connect(info_panel.show_tile)
+	terrain_layer.tile_selected.connect(_on_tile_selected)
 	info_panel.building_clicked.connect(building_panel.show_building)
 	BuildMode.build_attempted.connect(_on_build_attempted)
 	BuildMode.infrastructure_attempted.connect(_on_infrastructure_attempted)  # NEW
@@ -30,6 +30,9 @@ func _ready() -> void:
 	
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
+
+func _on_tile_selected(tile_data: Dictionary) -> void:
+	info_panel.show_tile(tile_data)
 
 func _on_end_turn_pressed() -> void:
 	TurnManager.commit_turn()
@@ -94,7 +97,10 @@ func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
 	print("Built %s on %s — cost £%.2f" % [infra_type, tile_id, cost])
 	
 	var infra_building_id: String = building_data.get("id", "")
-	building_placed.emit(tile_id, infra_building_id, "", "", coord)
+	var instance_id := ""
+	if infra_building_id != "":
+		instance_id = MatchState.add_building(infra_building_id, "", tile_id)
+	building_placed.emit(tile_id, infra_building_id, "", instance_id, coord)
 
 func _infra_building_id_for(infra_type: String) -> String:
 	# Maps infrastructure internal_name -> the building_id used for visual icons
