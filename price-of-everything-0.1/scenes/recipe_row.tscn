@@ -22,5 +22,6 @@ size_flags_horizontal = 3
 layout_mode = 2
 
 [node name="BuildButton" type="Button" parent="." unique_id=1834315900]
+visible = false
 layout_mode = 2
 text = "+"

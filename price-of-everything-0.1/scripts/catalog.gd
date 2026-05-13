@@ -158,12 +158,28 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 	var output_qty: int = int(raw.get("output_qty_1", "0"))
 	var output_good: Dictionary = get_good_by_internal_name(output_internal) if output_internal != "" else {}
 	var output_good_id: String = output_good.get("id", "")
+	var outputs: Array = []
+	for i in range(1, 6):
+		var output_name: String = raw.get("output_%d" % i, "")
+		var output_qty_str: String = raw.get("output_qty_%d" % i, "")
+		if output_name == "" or output_qty_str == "":
+			continue
+		var parsed_output_qty: int = int(output_qty_str)
+		if parsed_output_qty <= 0:
+			continue
+		var output_good_data: Dictionary = get_good_by_internal_name(output_name)
+		outputs.append({
+			"good_id": output_good_data.get("id", ""),
+			"internal_name": output_name,
+			"qty": parsed_output_qty,
+		})
 	
 	return {
 		"recipe_id": raw.get("recipe_id", ""),
 		"display_name": raw.get("display_name", ""),
 		"building_id": raw.get("building_id", ""),
 		"inputs": inputs,
+		"outputs": outputs,
 		"output_name": output_internal,
 		"output_good_id": output_good_id,
 		"output_qty": output_qty,
@@ -220,6 +236,7 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 		"display_name": raw.get("display_name", raw.get("internal_name", "")),
 		"category": raw.get("building_category", "production").to_lower(),
 		"base_price": float(raw.get("build_cost_money", "0")),
+		"tile_size_used": 1 if raw.get("tile_size_used", "") == "" else int(raw.get("tile_size_used", "1")),
 		"maintenance_cost": null if raw.get("maintenance_cost", "") == "" else float(raw.get("maintenance_cost", "0")),
 		"labour_unskilled_required": int(raw.get("labour_unskilled_required", "0")),
 		"labour_skilled_required": int(raw.get("labour_skilled_required", "0")),

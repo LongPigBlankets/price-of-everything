@@ -13,11 +13,19 @@ extends PanelContainer
 @onready var flow_arrow: TextureRect = $MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame/FlowRow/FlowArrow
 @onready var status_icon_column: VBoxContainer = $MarginContainer/VBoxContainer/ContentRow/StatusIconColumn
 @onready var fields_vbox: VBoxContainer = $MarginContainer/VBoxContainer/ContentRow/ScrollContainer/FieldsVBox
+@onready var panel_margin: MarginContainer = $MarginContainer
+@onready var panel_vbox: VBoxContainer = $MarginContainer/VBoxContainer
+@onready var content_row: HBoxContainer = $MarginContainer/VBoxContainer/ContentRow
+@onready var change_recipe_button: Button = $MarginContainer/VBoxContainer/ChangeRecipeButton
 
 const HEADER_HEIGHT := 40.0
 const PANEL_EDGE_MARGIN := 20.0
-const STATUS_ICON_SIZE := Vector2(24, 24)
-const STATUS_DOT_SIZE := Vector2(10, 10)
+const UPGRADE_BUTTON_SIZE := Vector2(30, 30)
+const STATUS_ICON_SIZE := Vector2(20, 20)
+const STATUS_DOT_SIZE := Vector2(8, 8)
+const STATUS_RAIL_WIDTH := 30.0
+const NORMAL_BUILDING_PANEL_LIMIT := 3
+const EXTENDED_BUILDING_PANEL_LIMIT := 4
 const FLOW_COMPACT_HEIGHT := 130.0
 const FLOW_LARGE_HEIGHT := 130.0
 const FLOW_SINGLE_CELL_SIZE := Vector2(110, 110)
@@ -38,6 +46,14 @@ const TOOLTIP_NAVY := Color(0.03, 0.07, 0.13)
 const DIAGRAM_NAVY := Color(0.0, 0.119856, 0.243095, 1.0)
 const DIAGRAM_PAPER := Color(0.9725, 0.9333, 0.8431, 1.0)
 const FLOW_SQUARE_COLOR := Color(1.0, 1.0, 1.0)
+const UPGRADE_BUTTON_BLUE := Color(0.05, 0.31, 0.56)
+const UPGRADE_BUTTON_HOVER_BLUE := Color(0.07, 0.39, 0.68)
+const UPGRADE_ARROW_BLUE := Color(0.52, 0.82, 1.0)
+const UPGRADE_GREEN := Color(0.25, 0.82, 0.36)
+const UPGRADE_RED := Color(0.95, 0.28, 0.24)
+const ROUTE_BUTTON_HEIGHT := 45.0
+const ROUTE_TO_ACTION_GAP := 5.0
+const ROUTE_LINK_FONT_SIZE := 14
 
 const STATUS_ICON_CONFIG := [
 	{
@@ -66,42 +82,86 @@ var _dragging := false
 var _drag_offset := Vector2.ZERO
 var _status_dots: Dictionary = {}
 var _tooltip_theme: Theme = null
+var _upgrade_button: Button = null
+var _upgrade_panel: PanelContainer = null
+var _current_building: Dictionary = {}
+var _current_recipe: Dictionary = {}
+var _route_row: HBoxContainer = null
+var _input_route_button: Button = null
+var _output_route_button: Button = null
+var _input_route_detail: VBoxContainer = null
+var _output_route_detail: VBoxContainer = null
+var _input_source_rows: Array = []
+var _building_panel_template: PanelContainer = null
+var _building_panel_instances: Array[PanelContainer] = []
+var _pending_dialog_building: Dictionary = {}
+var _route_action_spacer: Control = null
+var _is_secondary_panel := false
+var _allow_extended_building_panels := false
+var _busy_screen_dialog: ConfirmationDialog = null
+var _too_many_dialog: AcceptDialog = null
 
 func _ready() -> void:
-	close_button.pressed.connect(hide)
+	_is_secondary_panel = bool(get_meta("is_secondary_building_panel", false))
+	if not _is_secondary_panel:
+		_prepare_building_panel_template()
+	close_button.pressed.connect(_hide_panel)
 	_tooltip_theme = _make_tooltip_theme()
 	_style_flow_summary()
+	_build_status_right_rail()
 	_build_status_icon_column()
+	_build_route_controls()
+	_build_upgrade_controls()
+	set_meta("panel_ready", true)
 
 func show_building(building: Dictionary) -> void:
 	_rebuild_fields(building)
 	visible = true
-	_position_for_visible_panels()
+	if _is_secondary_panel:
+		_position_as_secondary_panel()
+	else:
+		_position_for_visible_panels()
+
+func _hide_panel() -> void:
+	hide()
+	if not _is_secondary_panel:
+		for panel in _building_panel_instances:
+			if panel != null:
+				panel.hide()
 
 func _rebuild_fields(building: Dictionary) -> void:
 	for child in fields_vbox.get_children():
 		child.queue_free()
-	
+
+	_current_building = building
 	var building_data: Dictionary = Catalog.get_building(building.get("building_id", ""))
 	var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
+	_current_recipe = recipe
 	var category: String = building_data.get("category", "")
 	var is_infrastructure: bool = category == "infrastructure"
-	
-	title_label.text = _building_display_name(building, building_data, recipe)
-	location_label.text = _format_location(building)
+
+	_update_change_recipe_button(building, is_infrastructure)
+	title_label.text = _building_display_name(building, building_data, recipe) + _tile_title_suffix(building)
+	title_label.tooltip_text = _tile_title_tooltip(building)
+	location_label.visible = false
 	_update_flow_summary(recipe)
+	_refresh_route_controls(building, recipe)
 	_update_status_icons(building, recipe, is_infrastructure)
 	_add_field("Value", _money_text(building_data.get("base_price", 0.0)))
-	
+
 	if not is_infrastructure and recipe.get("output_name", "") == "power":
 		_add_field("Power production", str(recipe.get("output_qty", 0)))
-	
-	
+
+
 	_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data)))
-	_add_field("Labour cost", _money_text(_labour_cost(building_data)))
-	
+
 	if not is_infrastructure and recipe.get("output_name", "") != "power":
 		_add_field("Output destination", _output_destination())
+
+	_add_separator()
+	_add_labour_table(building_data)
+	_add_separator()
+	_add_operation_table(building, recipe)
 
 func _add_text(text: String) -> void:
 	var label := Label.new()
@@ -112,11 +172,599 @@ func _add_text(text: String) -> void:
 func _add_field(field_name: String, value: String) -> void:
 	_add_text("%s: %s" % [field_name, value])
 
+func _add_separator() -> void:
+	var separator := HSeparator.new()
+	fields_vbox.add_child(separator)
+
+func _add_section_label(text: String) -> void:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 13)
+	label.modulate = Color(0.7, 0.85, 1.0)
+	fields_vbox.add_child(label)
+
+func _add_labour_table(building_data: Dictionary) -> void:
+	var header_row := HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 6)
+	fields_vbox.add_child(header_row)
+
+	var hardhat_icon := Label.new()
+	hardhat_icon.text = "[H]"
+	hardhat_icon.tooltip_text = "Hardhat"
+	hardhat_icon.custom_minimum_size = Vector2(28, 0)
+	header_row.add_child(hardhat_icon)
+
+	var title := Label.new()
+	title.text = "Labour"
+	title.add_theme_font_size_override("font_size", 13)
+	title.modulate = Color(0.7, 0.85, 1.0)
+	header_row.add_child(title)
+
+	var table := GridContainer.new()
+	table.columns = 3
+	table.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	table.add_theme_constant_override("h_separation", 12)
+	table.add_theme_constant_override("v_separation", 4)
+	fields_vbox.add_child(table)
+
+	table.add_child(_make_table_cell("Type", true, 120.0))
+	table.add_child(_make_table_cell("Count", true, 52.0))
+	table.add_child(_make_table_cell("Cost", true, 70.0))
+
+	_add_labour_row(table, "Unskilled", building_data.get("labour_unskilled_required", 0), EconomyConfig.LABOUR_UNSKILLED_RATE)
+	_add_labour_row(table, "Skilled", building_data.get("labour_skilled_required", 0), EconomyConfig.LABOUR_SKILLED_RATE)
+	_add_labour_row(table, "Highly Skilled", building_data.get("labour_h_skilled_required", 0), EconomyConfig.LABOUR_HIGH_SKILLED_RATE)
+
+func _add_labour_row(table: GridContainer, label: String, count_value: Variant, rate: float) -> void:
+	var count := int(count_value)
+	var cost := float(count) * rate * MatchState.labour_multiplier
+	table.add_child(_make_table_cell(label, false, 120.0))
+	table.add_child(_make_table_cell(str(count), false, 52.0))
+	table.add_child(_make_table_cell("%.2f" % cost, false, 70.0))
+
+func _add_operation_table(building: Dictionary, recipe: Dictionary) -> void:
+	_add_section_label("Operation")
+
+	var table := GridContainer.new()
+	table.columns = 2
+	table.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	table.add_theme_constant_override("h_separation", 12)
+	table.add_theme_constant_override("v_separation", 4)
+	fields_vbox.add_child(table)
+
+	table.add_child(_make_table_cell("Metric", true, 175.0))
+	table.add_child(_make_table_cell("Value", true, 100.0))
+	table.add_child(_make_table_cell("Produced since construction", false, 175.0))
+	table.add_child(_make_table_cell(_produced_since_construction(building, recipe), false, 100.0))
+	table.add_child(_make_table_cell("Turns at full output", false, 175.0))
+	table.add_child(_make_table_cell(str(_full_output_streak(building)), false, 100.0))
+
+func _make_table_cell(text: String, is_header: bool, min_width: float = 0.0) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if min_width > 0.0:
+		label.custom_minimum_size = Vector2(min_width, 0)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if is_header:
+		label.add_theme_font_size_override("font_size", 13)
+		label.modulate = Color(0.7, 0.85, 1.0)
+	return label
+
+func _build_status_right_rail() -> void:
+	if panel_margin.get_node_or_null("BuildingDetailLayout") != null:
+		return
+	var current_parent := panel_vbox.get_parent()
+	if current_parent != panel_margin:
+		return
+	panel_margin.remove_child(panel_vbox)
+	var layout := HBoxContainer.new()
+	layout.name = "BuildingDetailLayout"
+	layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_theme_constant_override("separation", 8)
+	panel_margin.add_child(layout)
+	panel_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_child(panel_vbox)
+	if status_icon_column.get_parent() != null:
+		status_icon_column.get_parent().remove_child(status_icon_column)
+	status_icon_column.custom_minimum_size = Vector2(STATUS_RAIL_WIDTH, 0)
+	status_icon_column.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	status_icon_column.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	status_icon_column.alignment = BoxContainer.ALIGNMENT_BEGIN
+	status_icon_column.add_theme_constant_override("separation", 6)
+	layout.add_child(status_icon_column)
+	if close_button.get_parent() != status_icon_column:
+		close_button.get_parent().remove_child(close_button)
+		close_button.custom_minimum_size = Vector2(STATUS_RAIL_WIDTH, 28)
+		close_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		status_icon_column.add_child(close_button)
+
+func _build_route_controls() -> void:
+	_route_row = HBoxContainer.new()
+	_route_row.custom_minimum_size = Vector2(0, ROUTE_BUTTON_HEIGHT)
+	_route_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_route_row.add_theme_constant_override("separation", 8)
+
+	_input_route_button = _make_route_button("Inputs", "", _on_input_route_pressed)
+	_output_route_button = _make_route_button("Outputs", "", _on_output_route_pressed)
+	_route_row.add_child(_input_route_button)
+	_route_row.add_child(_output_route_button)
+
+	panel_vbox.add_child(_route_row)
+	panel_vbox.move_child(_route_row, flow_summary.get_index() + 1)
+
+	_input_route_detail = VBoxContainer.new()
+	_input_route_detail.visible = false
+	_input_route_detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_input_route_detail.add_theme_constant_override("separation", 6)
+	panel_vbox.add_child(_input_route_detail)
+	panel_vbox.move_child(_input_route_detail, _route_row.get_index() + 1)
+
+	_output_route_detail = VBoxContainer.new()
+	_output_route_detail.visible = false
+	_output_route_detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_output_route_detail.add_theme_constant_override("separation", 6)
+	panel_vbox.add_child(_output_route_detail)
+	panel_vbox.move_child(_output_route_detail, _input_route_detail.get_index() + 1)
+
+	_route_action_spacer = Control.new()
+	_route_action_spacer.custom_minimum_size = Vector2(0, ROUTE_TO_ACTION_GAP)
+	panel_vbox.add_child(_route_action_spacer)
+	panel_vbox.move_child(_route_action_spacer, _output_route_detail.get_index() + 1)
+
+func _make_route_button(title: String, subtitle: String, pressed_method: Callable) -> Button:
+	var button := Button.new()
+	button.text = ""
+	button.custom_minimum_size = Vector2(0, ROUTE_BUTTON_HEIGHT)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.clip_contents = true
+	button.pressed.connect(pressed_method)
+
+	var content := VBoxContainer.new()
+	content.name = "Content"
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.set_anchors_preset(Control.PRESET_FULL_RECT)
+	button.add_child(content)
+
+	var title_label := Label.new()
+	title_label.name = "Title"
+	title_label.text = title
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override("font_size", 12)
+	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(title_label)
+
+	var subtitle_label := Label.new()
+	subtitle_label.name = "Subtitle"
+	subtitle_label.text = subtitle
+	subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle_label.add_theme_font_size_override("font_size", 10)
+	subtitle_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(subtitle_label)
+
+	return button
+
+func _set_route_button_text(button: Button, title: String, subtitle: String) -> void:
+	if button == null:
+		return
+	var title_label := button.get_node_or_null("Content/Title") as Label
+	var subtitle_label := button.get_node_or_null("Content/Subtitle") as Label
+	if title_label != null:
+		title_label.text = title
+	if subtitle_label != null:
+		subtitle_label.text = subtitle
+
+func _refresh_route_controls(building: Dictionary, recipe: Dictionary) -> void:
+	_input_source_rows = _find_input_source_rows(building, recipe)
+	var recipe_inputs: Array = recipe.get("inputs", [])
+	var input_subtitle: String = "No inputs" if recipe_inputs.is_empty() else "No linked inputs"
+	if _input_source_rows.size() == 1:
+		input_subtitle = _input_source_rows[0].get("building_name", "")
+	elif _input_source_rows.size() > 1:
+		input_subtitle = "See all buildings"
+	_set_route_button_text(_input_route_button, "Inputs", input_subtitle)
+	_input_route_button.disabled = _input_source_rows.is_empty()
+
+	_set_route_button_text(_output_route_button, "Outputs", _output_destination())
+	_output_route_button.disabled = _flow_output_items(recipe).is_empty()
+
+	_input_route_detail.visible = false
+	_output_route_detail.visible = false
+	_rebuild_input_route_detail()
+	_rebuild_output_route_detail()
+
+func _find_input_source_rows(building: Dictionary, recipe: Dictionary) -> Array:
+	var rows: Array = []
+	var inputs: Array = recipe.get("inputs", [])
+	var current_instance_id: String = building.get("instance_id", "")
+	for input in inputs:
+		var producers: Array = _producers_for_input(input, current_instance_id)
+		for producer in producers:
+			var producer_recipe: Dictionary = Catalog.get_recipe(producer.get("recipe_id", ""))
+			var producer_data: Dictionary = Catalog.get_building(producer.get("building_id", ""))
+			rows.append({
+				"input_name": _good_display_from_internal(input.get("internal_name", "")),
+				"building": producer,
+				"building_name": _building_display_name(producer, producer_data, producer_recipe),
+			})
+	return rows
+
+func _producers_for_input(input: Dictionary, current_instance_id: String) -> Array:
+	var producers: Array = []
+	var input_good_id: String = input.get("good_id", "")
+	var input_internal_name: String = input.get("internal_name", "")
+	for building in MatchState.buildings.values():
+		if building.get("instance_id", "") == current_instance_id:
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
+		for output in _flow_output_items(recipe):
+			if _good_matches_input(output, input_good_id, input_internal_name):
+				producers.append(building)
+				break
+	return producers
+
+func _good_matches_input(output: Dictionary, input_good_id: String, input_internal_name: String) -> bool:
+	var output_good_id: String = output.get("good_id", "")
+	if input_good_id != "" and output_good_id != "":
+		return input_good_id == output_good_id
+	return output.get("internal_name", "") == input_internal_name
+
+func _on_input_route_pressed() -> void:
+	if _input_source_rows.size() == 1:
+		_open_secondary_building(_input_source_rows[0].get("building", {}))
+		return
+	_input_route_detail.visible = not _input_route_detail.visible
+	_output_route_detail.visible = false
+
+func _on_output_route_pressed() -> void:
+	_output_route_detail.visible = not _output_route_detail.visible
+	_input_route_detail.visible = false
+
+func _rebuild_input_route_detail() -> void:
+	for child in _input_route_detail.get_children():
+		child.queue_free()
+
+	if _input_source_rows.is_empty():
+		return
+
+	for row in _input_source_rows:
+		var line := HBoxContainer.new()
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.add_theme_constant_override("separation", 8)
+		_input_route_detail.add_child(line)
+
+		var label := Label.new()
+		label.text = "%s: %s" % [row.get("input_name", "Input"), row.get("building_name", "Building")]
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.add_theme_font_size_override("font_size", ROUTE_LINK_FONT_SIZE)
+		line.add_child(label)
+
+		var go_to := LinkButton.new()
+		go_to.text = "Go to"
+		go_to.add_theme_font_size_override("font_size", ROUTE_LINK_FONT_SIZE)
+		var source_building: Dictionary = row.get("building", {})
+		go_to.pressed.connect(func() -> void:
+			_open_secondary_building(source_building)
+		)
+		line.add_child(go_to)
+
+func _rebuild_output_route_detail() -> void:
+	for child in _output_route_detail.get_children():
+		child.queue_free()
+
+	var market_button := Button.new()
+	market_button.text = "Market"
+	market_button.custom_minimum_size = Vector2(0, ROUTE_BUTTON_HEIGHT)
+	market_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	market_button.pressed.connect(func() -> void:
+		MatchState.set_sell_mode(MatchState.SellMode.SELL_ALL)
+		_refresh_route_controls(_current_building, _current_recipe)
+		_output_route_detail.visible = true
+	)
+	_output_route_detail.add_child(market_button)
+
+	var stockpile_button := Button.new()
+	stockpile_button.text = "Select tile to stockpile"
+	stockpile_button.custom_minimum_size = Vector2(0, ROUTE_BUTTON_HEIGHT)
+	stockpile_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stockpile_button.disabled = true
+	_output_route_detail.add_child(stockpile_button)
+
+func _open_secondary_building(building: Dictionary) -> void:
+	if building.is_empty():
+		return
+	if _is_secondary_panel:
+		var manager: Node = _building_panel_manager()
+		if manager != null:
+			manager.call("_request_open_building_panel", building)
+		return
+	_request_open_building_panel(building)
+
+func _request_open_building_panel(building: Dictionary) -> void:
+	if _is_secondary_panel:
+		var manager: Node = _building_panel_manager()
+		if manager != null:
+			manager.call("_request_open_building_panel", building)
+		return
+	var visible_count: int = _visible_building_panels().size()
+	if visible_count >= EXTENDED_BUILDING_PANEL_LIMIT:
+		_show_too_many_building_panels_dialog()
+		return
+	if visible_count >= NORMAL_BUILDING_PANEL_LIMIT and not _allow_extended_building_panels:
+		_pending_dialog_building = building
+		_show_busy_screen_dialog()
+		return
+	var target_panel: PanelContainer = _next_available_building_panel()
+	if target_panel == null:
+		_show_too_many_building_panels_dialog()
+		return
+	target_panel.call("show_building", building)
+	_position_visible_building_panels()
+
+func _prepare_building_panel_template() -> void:
+	if _building_panel_template != null:
+		return
+	var duplicate_panel: Node = duplicate()
+	_building_panel_template = duplicate_panel as PanelContainer
+	if _building_panel_template != null:
+		_building_panel_template.set_meta("is_building_panel_template", true)
+		_building_panel_template.hide()
+
+func _next_available_building_panel() -> PanelContainer:
+	for panel in _building_panel_instances:
+		if panel != null and not panel.visible:
+			return panel
+	if _building_panel_instances.size() >= EXTENDED_BUILDING_PANEL_LIMIT - 1:
+		return null
+	return _create_building_panel_instance()
+
+func _create_building_panel_instance() -> PanelContainer:
+	if _building_panel_template == null:
+		_prepare_building_panel_template()
+	if _building_panel_template == null:
+		return null
+	var duplicate_panel: Node = _building_panel_template.duplicate()
+	duplicate_panel.name = "BuildingDetailPanel%d" % (_building_panel_instances.size() + 2)
+	duplicate_panel.unique_name_in_owner = false
+	duplicate_panel.set_meta("is_secondary_building_panel", true)
+	get_parent().add_child(duplicate_panel)
+	var panel: PanelContainer = duplicate_panel as PanelContainer
+	if panel == null:
+		return null
+	panel.hide()
+	_building_panel_instances.append(panel)
+	return panel
+
+func _visible_building_panels() -> Array[PanelContainer]:
+	var panels: Array[PanelContainer] = []
+	if visible:
+		panels.append(self)
+	for panel in _building_panel_instances:
+		if panel != null and panel.visible:
+			panels.append(panel)
+	return panels
+
+func _building_panel_manager() -> Node:
+	if not _is_secondary_panel:
+		return self
+	if get_parent() == null:
+		return null
+	return get_parent().get_node_or_null("BuildingDetailPanel")
+
+func _show_busy_screen_dialog() -> void:
+	if _busy_screen_dialog == null:
+		_busy_screen_dialog = ConfirmationDialog.new()
+		_busy_screen_dialog.title = "Screen is getting busy"
+		_busy_screen_dialog.dialog_text = "Screen is getting busy, do you want to close all non-building panels?"
+		_busy_screen_dialog.confirmed.connect(_on_busy_screen_confirmed)
+		get_parent().add_child(_busy_screen_dialog)
+		_busy_screen_dialog.get_ok_button().text = "Yes, close them"
+		_busy_screen_dialog.get_cancel_button().text = "Cancel"
+	_busy_screen_dialog.popup_centered()
+
+func _on_busy_screen_confirmed() -> void:
+	_allow_extended_building_panels = true
+	_close_non_building_panels()
+	var building: Dictionary = _pending_dialog_building
+	_pending_dialog_building = {}
+	if not building.is_empty():
+		_request_open_building_panel(building)
+	_position_visible_building_panels()
+
+func _show_too_many_building_panels_dialog() -> void:
+	if _too_many_dialog == null:
+		_too_many_dialog = AcceptDialog.new()
+		_too_many_dialog.title = "Too many building panels"
+		_too_many_dialog.dialog_text = "There are too many building panels open at the same time. Close some before opening another."
+		get_parent().add_child(_too_many_dialog)
+	_too_many_dialog.popup_centered()
+
+func _close_non_building_panels() -> void:
+	var panel_names: Array = [
+		"TileInfoPanel",
+		"ConstructPanel",
+		"MapModesPanel",
+		"ResourcePanel",
+		"MarketPanel",
+	]
+	for panel_name in panel_names:
+		var panel: CanvasItem = get_parent().get_node_or_null(panel_name) as CanvasItem
+		if panel != null:
+			panel.hide()
+
+func _position_visible_building_panels() -> void:
+	if _is_secondary_panel:
+		return
+	var panels: Array[PanelContainer] = _visible_building_panels()
+	if panels.is_empty():
+		return
+	var viewport_size := get_viewport().get_visible_rect().size
+	var right_edge := viewport_size.x - PANEL_EDGE_MARGIN
+	var top_edge := 30.0
+	var tile_panel := get_parent().get_node_or_null("TileInfoPanel") as Control
+	if tile_panel != null and tile_panel.visible:
+		right_edge = tile_panel.global_position.x - PANEL_EDGE_MARGIN
+		top_edge = tile_panel.global_position.y
+	for i in range(panels.size()):
+		var panel: PanelContainer = panels[i]
+		if panel.custom_minimum_size.x > 0.0 and panel.custom_minimum_size.y > 0.0:
+			panel.size = panel.custom_minimum_size
+		var panel_size := panel.size
+		if panel_size.x <= 0.0:
+			panel_size.x = panel.custom_minimum_size.x
+		if panel_size.y <= 0.0:
+			panel_size.y = panel.custom_minimum_size.y
+		var x := right_edge - panel_size.x - (float(i) * (panel_size.x + PANEL_EDGE_MARGIN))
+		x = clampf(x, PANEL_EDGE_MARGIN, viewport_size.x - panel_size.x - PANEL_EDGE_MARGIN)
+		var y := clampf(top_edge, PANEL_EDGE_MARGIN, viewport_size.y - panel_size.y - PANEL_EDGE_MARGIN)
+		panel.global_position = Vector2(x, y)
+
+func _position_as_secondary_panel() -> void:
+	if custom_minimum_size.x > 0.0 and custom_minimum_size.y > 0.0:
+		size = custom_minimum_size
+	var panel_size := size
+	if panel_size.x <= 0.0:
+		panel_size.x = custom_minimum_size.x
+	if panel_size.y <= 0.0:
+		panel_size.y = custom_minimum_size.y
+	var primary_panel := get_parent().get_node_or_null("BuildingDetailPanel") as Control
+	if primary_panel == null:
+		_position_for_visible_panels()
+		return
+	var viewport_size := get_viewport().get_visible_rect().size
+	var target_x := primary_panel.global_position.x - panel_size.x - PANEL_EDGE_MARGIN
+	target_x = clampf(target_x, PANEL_EDGE_MARGIN, viewport_size.x - panel_size.x - PANEL_EDGE_MARGIN)
+	var target_y := clampf(primary_panel.global_position.y, PANEL_EDGE_MARGIN, viewport_size.y - panel_size.y - PANEL_EDGE_MARGIN)
+	global_position = Vector2(target_x, target_y)
+
+func _build_upgrade_controls() -> void:
+	var button_row := HBoxContainer.new()
+	button_row.add_theme_constant_override("separation", 8)
+	button_row.custom_minimum_size = Vector2(0, 30)
+	button_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var row_index := change_recipe_button.get_index()
+
+	_upgrade_button = Button.new()
+	_upgrade_button.custom_minimum_size = UPGRADE_BUTTON_SIZE
+	_upgrade_button.text = "^"
+	_upgrade_button.add_theme_font_size_override("font_size", 18)
+	_upgrade_button.add_theme_color_override("font_color", UPGRADE_ARROW_BLUE)
+	_upgrade_button.add_theme_color_override("font_hover_color", UPGRADE_ARROW_BLUE)
+	_upgrade_button.add_theme_color_override("font_pressed_color", UPGRADE_ARROW_BLUE)
+	_upgrade_button.add_theme_stylebox_override("normal", _make_upgrade_button_style(UPGRADE_BUTTON_BLUE))
+	_upgrade_button.add_theme_stylebox_override("hover", _make_upgrade_button_style(UPGRADE_BUTTON_HOVER_BLUE))
+	_upgrade_button.add_theme_stylebox_override("pressed", _make_upgrade_button_style(UPGRADE_BUTTON_BLUE.darkened(0.12)))
+	_upgrade_button.pressed.connect(_on_upgrade_button_pressed)
+	button_row.add_child(_upgrade_button)
+
+	panel_vbox.add_child(button_row)
+	panel_vbox.move_child(button_row, row_index)
+
+	panel_vbox.remove_child(change_recipe_button)
+	change_recipe_button.custom_minimum_size = Vector2(0, 30)
+	change_recipe_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button_row.add_child(change_recipe_button)
+
+	_upgrade_panel = _make_upgrade_panel()
+	panel_vbox.add_child(_upgrade_panel)
+	panel_vbox.move_child(_upgrade_panel, button_row.get_index() + 1)
+
+func _make_upgrade_button_style(color: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 4
+	style.corner_radius_bottom_left = 4
+	style.corner_radius_bottom_right = 4
+	style.content_margin_left = 0
+	style.content_margin_top = 0
+	style.content_margin_right = 0
+	style.content_margin_bottom = 0
+	return style
+
+func _make_upgrade_panel() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.visible = false
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.03, 0.08, 0.14, 0.98)
+	panel_style.border_width_left = 1
+	panel_style.border_width_top = 1
+	panel_style.border_width_right = 1
+	panel_style.border_width_bottom = 1
+	panel_style.border_color = Color(0.42, 0.68, 0.88, 0.75)
+	panel_style.set_content_margin_all(10)
+	panel.add_theme_stylebox_override("panel", panel_style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	panel.add_child(vbox)
+
+	var title := _make_upgrade_label("Upgrade to level 2.", Color.WHITE, 15)
+	vbox.add_child(title)
+	vbox.add_child(_make_upgrade_label("Cost: X, Materials required: A, B, C", Color.WHITE, 13))
+	vbox.add_child(HSeparator.new())
+	vbox.add_child(_make_upgrade_label("Output modifier: +150%", UPGRADE_GREEN, 13))
+	vbox.add_child(_make_upgrade_label("Power req: +100%", UPGRADE_RED, 13))
+	vbox.add_child(_make_upgrade_label("Tile size required: +80%", UPGRADE_RED, 13))
+	vbox.add_child(_make_upgrade_label("Maintenance required: +80%", UPGRADE_RED, 13))
+	vbox.add_child(_make_upgrade_label("Labour costs: +80%", UPGRADE_RED, 13))
+	var note := _make_upgrade_label("Note - output rounds to the nearest integer", Color(0.78, 0.84, 0.9), 11)
+	note.add_theme_font_override("font", get_theme_default_font())
+	vbox.add_child(note)
+
+	var button_row := HBoxContainer.new()
+	button_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(button_row)
+
+	var upgrade_button := Button.new()
+	upgrade_button.text = "Upgrade"
+	button_row.add_child(upgrade_button)
+
+	var cancel_button := Button.new()
+	cancel_button.text = "Cancel"
+	cancel_button.pressed.connect(_hide_upgrade_panel)
+	button_row.add_child(cancel_button)
+
+	return panel
+
+func _make_upgrade_label(text: String, color: Color, font_size: int) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_font_size_override("font_size", font_size)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return label
+
+func _on_upgrade_button_pressed() -> void:
+	if _upgrade_panel == null:
+		return
+	_upgrade_panel.visible = not _upgrade_panel.visible
+
+func _hide_upgrade_panel() -> void:
+	if _upgrade_panel != null:
+		_upgrade_panel.visible = false
+
+func _update_change_recipe_button(building: Dictionary, is_infrastructure: bool) -> void:
+	if change_recipe_button == null:
+		return
+	if is_infrastructure:
+		change_recipe_button.text = "Change Recipe (0 recipes)"
+		return
+	var building_id: String = building.get("building_id", "")
+	var recipe_count: int = Catalog.get_recipes_for_building(building_id).size()
+	var alternate_count: int = maxi(0, recipe_count - 1)
+	change_recipe_button.text = "Change Recipe (%d recipes)" % alternate_count
+
 func _style_flow_summary() -> void:
 	var summary_style := StyleBoxFlat.new()
 	summary_style.bg_color = DIAGRAM_PAPER
 	flow_summary.add_theme_stylebox_override("panel", summary_style)
-	
+
 	var frame_style := StyleBoxFlat.new()
 	frame_style.bg_color = Color(1.0, 1.0, 1.0, 0.0)
 	frame_style.border_width_left = 1
@@ -129,7 +777,7 @@ func _style_flow_summary() -> void:
 	frame_style.content_margin_right = 8
 	frame_style.content_margin_bottom = 0
 	flow_frame.add_theme_stylebox_override("panel", frame_style)
-	
+
 	flow_arrow.texture = load(RECIPE_ARROW_PATH)
 	flow_arrow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	flow_arrow.stretch_mode = TextureRect.STRETCH_SCALE
@@ -155,18 +803,18 @@ func _resize_flow_summary(large_layout: bool) -> void:
 func _populate_flow_grid(grid: GridContainer, goods: Array) -> void:
 	for child in grid.get_children():
 		child.queue_free()
-	
+
 	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	grid.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	grid.add_theme_constant_override("v_separation", 0)
 	var count: int = max(goods.size(), 1)
 	grid.columns = 2 if count > 2 else 1
 	var cell_size := _flow_cell_size(goods.size())
-	
+
 	if goods.is_empty():
 		grid.add_child(_make_flow_cell({}, cell_size))
 		return
-	
+
 	for good_item in goods:
 		grid.add_child(_make_flow_cell(good_item, cell_size))
 
@@ -179,11 +827,11 @@ func _make_flow_cell(good_item: Dictionary, cell_size: Vector2) -> Panel:
 	var cell := Panel.new()
 	cell.custom_minimum_size = cell_size
 	var texture: Texture2D = _load_good_texture(good_item)
-	
+
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(1.0, 1.0, 1.0, 0.0) if texture != null else FLOW_SQUARE_COLOR
 	cell.add_theme_stylebox_override("panel", style)
-	
+
 	if texture != null:
 		var texture_rect := TextureRect.new()
 		texture_rect.texture = texture
@@ -192,25 +840,25 @@ func _make_flow_cell(good_item: Dictionary, cell_size: Vector2) -> Panel:
 		texture_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 		texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cell.add_child(texture_rect)
-	
+
 	_add_flow_quantity_badge(cell, good_item, cell_size)
-	
+
 	return cell
 
 func _add_flow_quantity_badge(cell: Panel, good_item: Dictionary, cell_size: Vector2) -> void:
 	if not _should_show_quantity_badge(good_item):
 		return
-	
+
 	var qty := _badge_quantity(good_item)
 	if qty <= 0:
 		return
-	
+
 	var qty_text := str(qty)
 	var badge_height: int = FLOW_BADGE_DIAMETER
 	var badge_width: int = badge_height
 	if qty_text.length() > 1:
 		badge_width = max(badge_height, (qty_text.length() * 9) + 14)
-	
+
 	var badge := PanelContainer.new()
 	badge.custom_minimum_size = Vector2(badge_width, badge_height)
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -220,7 +868,7 @@ func _add_flow_quantity_badge(cell: Panel, good_item: Dictionary, cell_size: Vec
 	badge.offset_top = -badge_height + overlap
 	badge.offset_right = overlap
 	badge.offset_bottom = overlap
-	
+
 	var badge_style := StyleBoxFlat.new()
 	badge_style.bg_color = DIAGRAM_NAVY
 	badge_style.border_color = DIAGRAM_PAPER
@@ -238,11 +886,11 @@ func _add_flow_quantity_badge(cell: Panel, good_item: Dictionary, cell_size: Vec
 	badge_style.content_margin_right = 0
 	badge_style.content_margin_bottom = 0
 	badge.add_theme_stylebox_override("panel", badge_style)
-	
+
 	var label_settings := LabelSettings.new()
 	label_settings.font_color = DIAGRAM_PAPER
 	label_settings.font_size = FLOW_BADGE_TEXT_SIZE
-	
+
 	var label := Label.new()
 	label.text = qty_text
 	label.custom_minimum_size = Vector2(badge_width, badge_height)
@@ -258,11 +906,11 @@ func _add_flow_quantity_badge(cell: Panel, good_item: Dictionary, cell_size: Vec
 func _update_flow_power(recipe: Dictionary) -> void:
 	for child in flow_arrow.get_children():
 		child.queue_free()
-	
+
 	var energy_req: int = recipe.get("energy_req", 0)
 	if energy_req <= 0:
 		return
-	
+
 	var badge := PanelContainer.new()
 	badge.custom_minimum_size = Vector2(50, 30)
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -282,17 +930,17 @@ func _update_flow_power(recipe: Dictionary) -> void:
 	badge_style.content_margin_bottom = 0
 	badge.add_theme_stylebox_override("panel", badge_style)
 	flow_arrow.add_child(badge)
-	
+
 	var overlay := HBoxContainer.new()
 	overlay.alignment = BoxContainer.ALIGNMENT_CENTER
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.add_theme_constant_override("separation", 2)
 	badge.add_child(overlay)
-	
+
 	var label_settings := LabelSettings.new()
 	label_settings.font_color = DIAGRAM_PAPER
 	label_settings.font_size = 20
-	
+
 	var label := Label.new()
 	label.text = str(energy_req)
 	label.label_settings = label_settings
@@ -301,7 +949,7 @@ func _update_flow_power(recipe: Dictionary) -> void:
 	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.add_child(label)
-	
+
 	var icon := TextureRect.new()
 	icon.texture = load(RECIPE_POWER_ICON_PATH)
 	icon.custom_minimum_size = Vector2(20, 20)
@@ -336,7 +984,7 @@ func _load_good_texture(good_item: Dictionary) -> Texture2D:
 	var internal_name: String = good_item.get("internal_name", "")
 	if good_id == "" or internal_name == "":
 		return null
-	
+
 	var paths: Array = [
 		"%s/%s_%s.svg" % [GOODS_ICON_DIR, good_id, internal_name],
 		"%s/%s_%s.SVG" % [GOODS_ICON_DIR, good_id, internal_name],
@@ -356,7 +1004,7 @@ func _flow_output_items(recipe: Dictionary) -> Array:
 	if recipe.has("outputs"):
 		var outputs: Array = recipe.get("outputs", [])
 		return outputs
-	
+
 	var output_name: String = recipe.get("output_name", "")
 	var output_qty: int = recipe.get("output_qty", 0)
 	if output_name == "" or output_qty <= 0:
@@ -369,20 +1017,22 @@ func _flow_output_items(recipe: Dictionary) -> Array:
 
 func _build_status_icon_column() -> void:
 	for child in status_icon_column.get_children():
-		child.queue_free()
+		if child != close_button:
+			child.queue_free()
 	_status_dots.clear()
-	
+
 	for config in STATUS_ICON_CONFIG:
 		var key: String = config.get("key", "")
 		var icon_path: String = config.get("path", "")
 		var tooltip: String = config.get("tooltip", "")
 		var wrapper := HBoxContainer.new()
-		wrapper.alignment = BoxContainer.ALIGNMENT_END
+		wrapper.alignment = BoxContainer.ALIGNMENT_CENTER
 		wrapper.theme = _tooltip_theme
 		wrapper.tooltip_text = tooltip
 		wrapper.mouse_filter = Control.MOUSE_FILTER_STOP
-		wrapper.add_theme_constant_override("separation", 4)
-		
+		wrapper.add_theme_constant_override("separation", 1)
+		wrapper.custom_minimum_size = Vector2(STATUS_RAIL_WIDTH, 0)
+
 		var icon := TextureRect.new()
 		icon.custom_minimum_size = STATUS_ICON_SIZE
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -392,7 +1042,7 @@ func _build_status_icon_column() -> void:
 		icon.tooltip_text = tooltip
 		icon.theme = _tooltip_theme
 		wrapper.add_child(icon)
-		
+
 		var dot := Panel.new()
 		dot.custom_minimum_size = STATUS_DOT_SIZE
 		dot.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -401,7 +1051,7 @@ func _build_status_icon_column() -> void:
 		dot.theme = _tooltip_theme
 		wrapper.add_child(dot)
 		_status_dots[key] = dot
-		
+
 		status_icon_column.add_child(wrapper)
 
 func _update_status_icons(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> void:
@@ -416,10 +1066,11 @@ func _set_status_dot(key: String, color: Color) -> void:
 	var dot: Panel = _status_dots[key]
 	var style := StyleBoxFlat.new()
 	style.bg_color = color
-	style.corner_radius_top_left = 5
-	style.corner_radius_top_right = 5
-	style.corner_radius_bottom_left = 5
-	style.corner_radius_bottom_right = 5
+	var radius := roundi(STATUS_DOT_SIZE.x * 0.5)
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius
+	style.corner_radius_bottom_right = radius
 	dot.add_theme_stylebox_override("panel", style)
 
 func _make_tooltip_theme() -> Theme:
@@ -470,6 +1121,27 @@ func _format_location(building: Dictionary) -> String:
 		return "Tile %s" % tile_id.trim_prefix("tile_")
 	return tile_id
 
+func _tile_title_suffix(building: Dictionary) -> String:
+	var tile_id: String = building.get("tile_id", "")
+	if tile_id == "":
+		return ""
+	return " (%s)" % tile_id
+
+func _tile_title_tooltip(building: Dictionary) -> String:
+	var tile_coord := _tile_column_row(building)
+	if tile_coord == Vector2i(-1, -1):
+		return ""
+	return "column %d, row %d" % [tile_coord.x, tile_coord.y]
+
+func _tile_column_row(building: Dictionary) -> Vector2i:
+	var tile_id: String = building.get("tile_id", "")
+	if not tile_id.begins_with("tile_"):
+		return Vector2i(-1, -1)
+	var parts := tile_id.split("_")
+	if parts.size() != 3 or not parts[1].is_valid_int() or not parts[2].is_valid_int():
+		return Vector2i(-1, -1)
+	return Vector2i(int(parts[1]), int(parts[2]))
+
 func _power_supply(building: Dictionary) -> String:
 	var power_state := _tile_power_state(building.get("tile_id", ""))
 	if not power_state.get("connected", false):
@@ -503,7 +1175,7 @@ func _input_lines(building_data: Dictionary, recipe: Dictionary) -> Array:
 		for input in inputs:
 			lines.append("%d %s" % [input.get("qty", 0), _good_display_from_internal(input.get("internal_name", ""))])
 		return lines
-	
+
 	var internal_name: String = building_data.get("internal_name", "")
 	var output_name: String = recipe.get("output_name", "")
 	if internal_name == "mine" and output_name != "":
@@ -518,6 +1190,32 @@ func _output_lines(recipe: Dictionary) -> Array:
 	if output_name == "" or output_qty <= 0:
 		return []
 	return ["%d %s" % [output_qty, _good_display_from_internal(output_name)]]
+
+func _produced_since_construction(building: Dictionary, recipe: Dictionary) -> String:
+	var instance_id: String = building.get("instance_id", "")
+	var totals: Dictionary = Production.produced_by_building.get(instance_id, {}) as Dictionary
+	if totals.is_empty():
+		return "0"
+
+	var parts: Array = []
+	for good_key in totals.keys():
+		parts.append("%d %s" % [int(totals[good_key]), _produced_good_display_name(str(good_key), recipe)])
+	return ", ".join(parts)
+
+func _produced_good_display_name(good_key: String, recipe: Dictionary) -> String:
+	if good_key == "power":
+		return "Power"
+	var good: Dictionary = Catalog.get_good(good_key)
+	if not good.is_empty():
+		return good.get("display_name", good_key)
+	for output in _flow_output_items(recipe):
+		if output.get("internal_name", "") == good_key:
+			return _good_display_from_internal(good_key)
+	return good_key
+
+func _full_output_streak(building: Dictionary) -> int:
+	var instance_id: String = building.get("instance_id", "")
+	return int(Production.full_output_streak_by_building.get(instance_id, 0))
 
 func _primary_output_display_name(recipe: Dictionary) -> String:
 	var output_name: String = recipe.get("output_name", "")
@@ -560,7 +1258,7 @@ func _labour_cost(building_data: Dictionary) -> float:
 	return base_cost * MatchState.labour_multiplier
 
 func _output_destination() -> String:
-	return "Market" if MatchState.sell_mode == MatchState.SellMode.SELL_ALL else "Stockpile"
+	return "Market" if MatchState.sell_mode == MatchState.SellMode.SELL_ALL else "Tile stockpile"
 
 func _format_money(value: float) -> String:
 	var text := "%.2f" % value
@@ -571,7 +1269,7 @@ func _format_money(value: float) -> String:
 	return text
 
 func _money_text(value: float) -> String:
-	return "£%s" % _format_money(value)
+	return "Â£%s" % _format_money(value)
 
 func _position_for_visible_panels() -> void:
 	if custom_minimum_size.x > 0.0 and custom_minimum_size.y > 0.0:
@@ -581,21 +1279,16 @@ func _position_for_visible_panels() -> void:
 		panel_size.x = custom_minimum_size.x
 	if panel_size.y <= 0.0:
 		panel_size.y = custom_minimum_size.y
-	
+
 	var viewport_size := get_viewport().get_visible_rect().size
 	var right_edge := viewport_size.x - PANEL_EDGE_MARGIN
-	var top_edge := PANEL_EDGE_MARGIN
-	
-	var hud := get_parent().get_parent()
-	if hud != null:
-		var top_bar := hud.get_node_or_null("TopBar") as Control
-		if top_bar != null and top_bar.visible:
-			top_edge = top_bar.global_position.y + top_bar.size.y + PANEL_EDGE_MARGIN
-	
+	var top_edge := 30.0
+
 	var tile_panel := get_parent().get_node_or_null("TileInfoPanel") as Control
 	if tile_panel != null and tile_panel.visible:
 		right_edge = tile_panel.global_position.x - PANEL_EDGE_MARGIN
-	
+		top_edge = tile_panel.global_position.y
+
 	var x := clampf(right_edge - panel_size.x, PANEL_EDGE_MARGIN, viewport_size.x - panel_size.x - PANEL_EDGE_MARGIN)
 	var y := clampf(top_edge, PANEL_EDGE_MARGIN, viewport_size.y - panel_size.y - PANEL_EDGE_MARGIN)
 	global_position = Vector2(x, y)

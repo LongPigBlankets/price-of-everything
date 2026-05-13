@@ -28,6 +28,13 @@
 [ext_resource type="Texture2D" uid="uid://dtay78rouk87j" path="res://assets/icons/ui_icons/politics_icon.png" id="25_politics"]
 [ext_resource type="Texture2D" uid="uid://bt38bgcu8l5h7" path="res://assets/icons/ui_icons/tech_icon.png" id="26_tech"]
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tile_banner"]
+bg_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_normal"]
 content_margin_left = 0.0
 content_margin_top = 0.0
@@ -349,9 +356,9 @@ size_flags_vertical = 3
 theme_override_constants/separation = 12
 
 [node name="TileSizeChart" type="Control" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow" unique_id=1435297557]
-custom_minimum_size = Vector2(120, 0)
+custom_minimum_size = Vector2(230, 400)
 layout_mode = 2
-size_flags_vertical = 3
+size_flags_vertical = 0
 script = ExtResource("19_t88fa")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow" unique_id=332018308]
@@ -376,17 +383,32 @@ localize_numeral_system = false
 theme_override_font_sizes/font_size = 14
 text = "X"
 
+[node name="TileImageBanner" type="PanelContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer"]
+custom_minimum_size = Vector2(240, 150)
+layout_mode = 2
+size_flags_horizontal = 4
+clip_contents = true
+theme_override_styles/panel = SubResource("StyleBoxFlat_tile_banner")
+
+[node name="HeaderSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=1742528492]
+layout_mode = 2
+
 [node name="PropertyTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=671887475]
 layout_mode = 2
 theme_override_constants/h_separation = 16
 columns = 2
 
-[node name="BuildingsHeader" type="Label" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=808164662]
+[node name="DepositsSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=445841671]
 layout_mode = 2
 
-[node name="BuildingsList" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=897654742]
+[node name="DepositsTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=897654742]
 layout_mode = 2
-mouse_filter = 0
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 4
+columns = 3
+
+[node name="InfrastructureSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=288549859]
+layout_mode = 2
 
 [node name="InfrastructureTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=117922161]
 layout_mode = 2
@@ -397,15 +419,15 @@ columns = 4
 [node name="BuildingDetailPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=1081644289]
 unique_name_in_owner = true
 visible = false
-custom_minimum_size = Vector2(380, 380)
+custom_minimum_size = Vector2(380, 670)
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -860.0
-offset_top = 100.0
+offset_top = 30.0
 offset_right = -480.0
-offset_bottom = 480.0
+offset_bottom = 700.0
 theme_override_styles/panel = ExtResource("8_tipki")
 script = ExtResource("6_tefeu")
 
@@ -437,6 +459,13 @@ text = "X"
 [node name="LocationLabel" type="Label" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer" unique_id=478668762]
 layout_mode = 2
 text = "Tile"
+
+[node name="BuildingImageBanner" type="PanelContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+size_flags_horizontal = 3
+clip_contents = true
+theme_override_styles/panel = SubResource("StyleBoxFlat_tile_banner")
 
 [node name="FlowSummary" type="PanelContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer" unique_id=474898970]
 layout_mode = 2
@@ -486,6 +515,12 @@ size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 0
+
+[node name="ChangeRecipeButton" type="Button" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+disabled = true
+text = "Change Recipe"
 
 [node name="ContentRow" type="HBoxContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer" unique_id=1620921020]
 layout_mode = 2

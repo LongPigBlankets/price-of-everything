@@ -3,8 +3,7 @@ extends PanelContainer
 @onready var title_label: Label = $MarginContainer/ContentRow/VBoxContainer/HeaderRow/TitleLabel
 @onready var close_button: Button = $MarginContainer/ContentRow/VBoxContainer/HeaderRow/CloseButton
 @onready var property_table: GridContainer = $MarginContainer/ContentRow/VBoxContainer/PropertyTable
-@onready var buildings_header: Label = $MarginContainer/ContentRow/VBoxContainer/BuildingsHeader
-@onready var buildings_list: VBoxContainer = $MarginContainer/ContentRow/VBoxContainer/BuildingsList
+@onready var deposits_table: GridContainer = $MarginContainer/ContentRow/VBoxContainer/DepositsTable
 @onready var infrastructure_table: GridContainer = $MarginContainer/ContentRow/VBoxContainer/InfrastructureTable
 @onready var tile_size_chart = $MarginContainer/ContentRow/TileSizeChart
 
@@ -13,18 +12,13 @@ signal building_clicked(building: Dictionary)
 const HEADER_HEIGHT := 40.0
 
 const DISPLAY_FIELDS := [
-	"id", "nickname", "type", "deposits",
-	"solar_potential", "wind_potential", "build_capacity", "tile_price",
+	"id", "type",
+	"tile_price",
 ]
 
 const FIELD_LABELS := {
 	"id": "ID",
-	"nickname": "Nickname",
 	"type": "Type",
-	"deposits": "Deposits",
-	"solar_potential": "Solar Potential",
-	"wind_potential": "Wind Potential",
-	"build_capacity": "Build Capacity",
 	"tile_price": "Tile Price",
 }
 
@@ -45,6 +39,7 @@ func show_tile(tile_data: Dictionary) -> void:
 	title_label.text = tile_data.nickname if tile_data.nickname != "" else tile_data.id
 	_rebuild_table(tile_data)
 	_rebuild_buildings(tile_data)
+	_rebuild_deposits_table(tile_data)
 	_rebuild_infrastructure_table(tile_data)
 	visible = true
 
@@ -64,29 +59,28 @@ func _rebuild_table(tile_data: Dictionary) -> void:
 		property_table.add_child(_make_cell(value_text, false))
 
 func _rebuild_buildings(tile_data: Dictionary) -> void:
-	for child in buildings_list.get_children():
-		child.queue_free()
-	
 	var tile_id: String = tile_data.id
 	var buildings: Array = MatchState.get_buildings_on_tile(tile_id)
-	tile_size_chart.set_buildings(buildings)
-	var production_buildings: Array = []
+	var chart_buildings: Array = []
 	for building in buildings:
-		var building_data: Dictionary = Catalog.get_building(building.get("building_id", ""))
-		if building_data.get("category", "") != "infrastructure":
-			production_buildings.append(building)
-	
-	if production_buildings.is_empty():
-		buildings_header.visible = false
-		buildings_list.visible = false
-		return
-	
-	buildings_header.visible = true
-	buildings_list.visible = true
-	
-	for building in production_buildings:
-		var display_name := _format_building_label(building)
-		buildings_list.add_child(_make_building_button(display_name, building))
+		var chart_building: Dictionary = building.duplicate()
+		chart_building["display_label"] = _format_building_label(building)
+		chart_buildings.append(chart_building)
+	tile_size_chart.set_buildings(chart_buildings, int(tile_data.get("build_capacity", 10)))
+
+func _rebuild_deposits_table(_tile_data: Dictionary) -> void:
+	for child in deposits_table.get_children():
+		child.queue_free()
+
+	for header in ["Resource", "Quantity", "Action"]:
+		deposits_table.add_child(_make_cell(header, true))
+
+	deposits_table.add_child(_make_cell("Coal", false))
+	deposits_table.add_child(_make_cell("Infinite", false))
+
+	var add_button := Button.new()
+	add_button.text = "Add Building"
+	deposits_table.add_child(add_button)
 
 func _rebuild_infrastructure_table(tile_data: Dictionary) -> void:
 	for child in infrastructure_table.get_children():
@@ -147,33 +141,6 @@ func _format_building_label(building: Dictionary) -> String:
 	if output_name == "":
 		return "%s - %s" % [building_name, letter]
 	return "%s - %s - %s" % [building_name, output_name, letter]
-
-func _make_building_button(building_name: String, building: Dictionary) -> Button:
-	var btn := Button.new()
-	btn.text = building_name
-	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	# 10px padding on every side, achieved via theme constant overrides
-	btn.add_theme_constant_override("h_separation", 10)
-	# Stylebox padding gives the actual clickable inset
-	var style_normal := StyleBoxFlat.new()
-	style_normal.bg_color = Color(0.18, 0.22, 0.28)
-	style_normal.set_content_margin_all(10)
-	style_normal.corner_radius_top_left = 3
-	style_normal.corner_radius_top_right = 3
-	style_normal.corner_radius_bottom_left = 3
-	style_normal.corner_radius_bottom_right = 3
-	btn.add_theme_stylebox_override("normal", style_normal)
-
-	var style_hover := style_normal.duplicate()
-	style_hover.bg_color = Color(0.25, 0.30, 0.38)
-	btn.add_theme_stylebox_override("hover", style_hover)
-
-	var style_pressed := style_normal.duplicate()
-	style_pressed.bg_color = Color(0.30, 0.36, 0.45)
-	btn.add_theme_stylebox_override("pressed", style_pressed)
-
-	btn.pressed.connect(func(): building_clicked.emit(building))
-	return btn
 
 func _on_chart_segment_clicked(building: Dictionary) -> void:
 	building_clicked.emit(building)

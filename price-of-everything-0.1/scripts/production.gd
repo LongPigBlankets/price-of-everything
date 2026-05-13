@@ -5,6 +5,8 @@ const MAX_PRODUCTION_PASSES := 30
 var last_turn_summary: Dictionary = {}
 var missing_by_building: Dictionary = {}  # instance_id -> Array of missing inputs
 var last_turn_run: Dictionary = {}  # instance_id -> true (set of buildings that ran)
+var produced_by_building: Dictionary = {}  # instance_id -> good_id/internal_name -> lifetime qty
+var full_output_streak_by_building: Dictionary = {}  # instance_id -> consecutive turns at full output
 var summary := {
 	# ... existing fields ...
 	"interest_paid": 0.0,
@@ -94,12 +96,14 @@ func _process_production() -> void:
 				var output_qty: int = recipe.get("output_qty", 0)
 				Power.add_supply(output_qty)
 				summary.produced["power"] = summary.produced.get("power", 0) + output_qty
+				_record_building_output(instance_id, "power", output_qty)
 				print("[Production] Building %s produced %d Power" % [instance_id, output_qty])
 			else:
 				_produce_outputs(building, recipe, summary)
 			
 			has_run[instance_id] = true
 			last_turn_run[instance_id] = true
+			full_output_streak_by_building[instance_id] = full_output_streak_by_building.get(instance_id, 0) + 1
 			progress_made = true
 			missing_by_building.erase(instance_id)
 		
@@ -121,6 +125,7 @@ func _process_production() -> void:
 				"missing": missing,
 			}
 			summary.starved.append(record)
+			full_output_streak_by_building[building.instance_id] = 0
 			building_starved.emit(record)
 			
 			var missing_strs: Array = []
@@ -234,26 +239,46 @@ func _get_recipe(recipe_id: String) -> Dictionary:
 	
 	
 func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Dictionary) -> void:
+	for output in _recipe_output_items(recipe):
+		var output_name: String = output.get("internal_name", "")
+		var output_qty: int = output.get("qty", 0)
+		
+		if output_name == "" or output_qty <= 0:
+			continue
+
+		# Recipes use internal_name; need good_id
+		var good: Dictionary = Catalog.get_good_by_internal_name(output_name)
+		if good.is_empty():
+			push_warning("[Production] Unknown good '%s' from recipe %s" % [
+				output_name, recipe.get("recipe_id", "?")
+			])
+			continue
+		
+		print("[Production] Building %s produced %d %s" % [
+			building.instance_id, output_qty, good.display_name
+		])
+		
+		Stockpile.add(null, good.id, output_qty)
+		summary.produced[good.id] = summary.produced.get(good.id, 0) + output_qty
+		_record_building_output(building.instance_id, good.id, output_qty)
+
+func _recipe_output_items(recipe: Dictionary) -> Array:
+	if recipe.has("outputs"):
+		return recipe.get("outputs", [])
 	var output_name: String = recipe.get("output_name", "")
 	var output_qty: int = recipe.get("output_qty", 0)
-	
 	if output_name == "" or output_qty <= 0:
-		return
+		return []
+	return [{"internal_name": output_name, "qty": output_qty}]
 
-	# Recipes use internal_name; need good_id
-	var good: Dictionary = Catalog.get_good_by_internal_name(output_name)
-	if good.is_empty():
-		push_warning("[Production] Unknown good '%s' from recipe %s" % [
-			output_name, recipe.get("recipe_id", "?")
-		])
+func _record_building_output(instance_id: String, good_key: String, qty: int) -> void:
+	if instance_id == "" or good_key == "" or qty <= 0:
 		return
-	
-	print("[Production] Building %s produced %d %s" % [
-		building.instance_id, output_qty, good.display_name
-	])
-	
-	Stockpile.add(null, good.id, output_qty)
-	summary.produced[good.id] = summary.produced.get(good.id, 0) + output_qty
+	if not produced_by_building.has(instance_id):
+		produced_by_building[instance_id] = {}
+	var totals: Dictionary = produced_by_building[instance_id] as Dictionary
+	totals[good_key] = totals.get(good_key, 0) + qty
+	produced_by_building[instance_id] = totals
 
 func _calculate_labour_cost(_building: Dictionary) -> float:
 	var unskilled := 100

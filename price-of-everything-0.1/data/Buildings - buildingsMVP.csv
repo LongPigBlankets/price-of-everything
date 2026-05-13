@@ -1,11 +1,11 @@
 ID,internal_name,display_name,energy_cost,building_stockpile,base_price,build_cost_money,build_material_1,build_qty_1,build_material_2,build_qty_2,build_material_3,build_qty_3,build_material_4,build_qty_4,build_material_5,build_qty_5,build_duration,tile_size_used,building_category,upgrade_path,upgrade_cost,upgrade_material_1,upgrade_qty_1,upgrade_material_2,upgrade_qty_2,maintenance_cost,labour_unskilled_required,labour_skilled_required,labour_h_skilled_required
-b_001,mine,Mine,1,10000,10,10,,,,,,,,,,,1,1,production,standard,10000,,,,,1,150,50,20
-b_002,furnace,Furnace,1,10000,10,10,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
-b_003,coal_power,Coal Power Plant,0,0,30,30,,,,,,,,,,,2,1,power,standard,10000,,,,,1,50,100,40
-b_004,port,Port,1,10000,10000,10000,,,,,,,,,,,100,1,infrastructure,standard,10000,,,,,10,0,0,0
-b_005,roads,Roads,0,0,5,5,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,1,0,0,0
-b_006,cables,Cables,0,0,2,2,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,1,0,0,0
-b_007,industrial_factory,Industrial Goods Factory,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
+b_001,mine,Mine,1,10000,10,10,,,,,,,,,,,1,30,production,standard,10000,,,,,1,150,50,20
+b_002,furnace,Furnace,1,10000,10,10,,,,,,,,,,,1,20,production,standard,10000,,,,,2,100,50,30
+b_003,coal_power,Coal Power Plant,0,0,30,30,,,,,,,,,,,2,15,power,standard,10000,,,,,1,50,100,40
+b_004,port,Port,1,10000,10000,10000,,,,,,,,,,,100,15,infrastructure,standard,10000,,,,,10,0,0,0
+b_005,roads,Roads,0,0,5,5,,,,,,,,,,,1,2,infrastructure,standard,10000,,,,,1,0,0,0
+b_006,cables,Cables,0,0,2,2,,,,,,,,,,,1,2,infrastructure,standard,10000,,,,,1,0,0,0
+b_007,industrial_factory,Industrial Goods Factory,10,10000,1,1,,,,,,,,,,,1,10,production,standard,10000,,,,,2,100,50,30
 b_008,eaf,Electric Arc Furnace,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
 b_009,assembly_plant,Assembly Plant,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
 b_010,high_tech_manufactory,High Tech Manufactory,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
@@ -35,4 +35,4 @@ b_033,offshore_oil_platform,Offshore Oil Platform,1,10000,1,1,,,,,,,,,,,1,1,prod
 b_034,fracking_oil_well,Hydraulic Fracking Oil Wells,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
 b_035,airport,Airport,1,10000,10000,10000,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0
 b_036,recycling_plant,Recycling Plant,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
-b_037,water_pump,Water Pump,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
+b_037,water_pump,Water Pump,1,10000,1,1,,,,,,,,,,,1,8,production,standard,10000,,,,,2,100,50,30
