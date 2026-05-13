@@ -184,7 +184,39 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 		"output_good_id": output_good_id,
 		"output_qty": output_qty,
 		"energy_req": int(raw.get("energy_req", "0")),
+		"requirements": _parse_requirements(raw.get("requirements", "")),
 	}
+
+# Parses the requirements string into a list of typed entries.
+# Format: "type:value" entries joined by ";" (or "|"). Bare "wind"/"solar"
+# tokens are treated as potential requirements. Supported types: deposit,
+# produces, potential. Unknown tokens are kept as {"type": "other", ...}.
+func _parse_requirements(raw_str: String) -> Array:
+	var out: Array = []
+	if raw_str == "":
+		return out
+	var parts: PackedStringArray = raw_str.replace("|", ";").split(";", false)
+	for part in parts:
+		var token: String = part.strip_edges()
+		if token == "":
+			continue
+		if token == "wind" or token == "solar":
+			out.append({"type": "potential", "value": token})
+			continue
+		var colon: int = token.find(":")
+		if colon < 0:
+			out.append({"type": "other", "value": token})
+			continue
+		var key: String = token.substr(0, colon).strip_edges()
+		var val: String = token.substr(colon + 1).strip_edges()
+		match key:
+			"deposit", "produces":
+				out.append({"type": key, "value": val})
+			"potential":
+				out.append({"type": "potential", "value": val})
+			_:
+				out.append({"type": "other", "value": token})
+	return out
 
 # Public API: recipes
 func all_recipes() -> Array:
@@ -237,6 +269,7 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 		"category": raw.get("building_category", "production").to_lower(),
 		"base_price": float(raw.get("build_cost_money", "0")),
 		"tile_size_used": 1 if raw.get("tile_size_used", "") == "" else int(raw.get("tile_size_used", "1")),
+		"build_duration": 0 if raw.get("build_duration", "") == "" else int(raw.get("build_duration", "0")),
 		"maintenance_cost": null if raw.get("maintenance_cost", "") == "" else float(raw.get("maintenance_cost", "0")),
 		"labour_unskilled_required": int(raw.get("labour_unskilled_required", "0")),
 		"labour_skilled_required": int(raw.get("labour_skilled_required", "0")),
