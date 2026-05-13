@@ -5,6 +5,7 @@ extends PanelContainer
 @onready var property_table: GridContainer = $MarginContainer/ContentRow/VBoxContainer/PropertyTable
 @onready var buildings_header: Label = $MarginContainer/ContentRow/VBoxContainer/BuildingsHeader
 @onready var buildings_list: VBoxContainer = $MarginContainer/ContentRow/VBoxContainer/BuildingsList
+@onready var infrastructure_table: GridContainer = $MarginContainer/ContentRow/VBoxContainer/InfrastructureTable
 @onready var tile_size_chart = $MarginContainer/ContentRow/TileSizeChart
 
 signal building_clicked(building: Dictionary)
@@ -13,8 +14,7 @@ const HEADER_HEIGHT := 40.0
 
 const DISPLAY_FIELDS := [
 	"id", "nickname", "type", "deposits",
-	"solar_potential", "wind_potential",
-	"build_capacity", "tile_price", "infrastructure_present",
+	"solar_potential", "wind_potential", "build_capacity", "tile_price",
 ]
 
 const FIELD_LABELS := {
@@ -26,7 +26,6 @@ const FIELD_LABELS := {
 	"wind_potential": "Wind Potential",
 	"build_capacity": "Build Capacity",
 	"tile_price": "Tile Price",
-	"infrastructure_present": "Infrastructure",
 }
 
 var _current_tile_data: Dictionary = {}
@@ -46,6 +45,7 @@ func show_tile(tile_data: Dictionary) -> void:
 	title_label.text = tile_data.nickname if tile_data.nickname != "" else tile_data.id
 	_rebuild_table(tile_data)
 	_rebuild_buildings(tile_data)
+	_rebuild_infrastructure_table(tile_data)
 	visible = true
 
 func _rebuild_table(tile_data: Dictionary) -> void:
@@ -70,8 +70,13 @@ func _rebuild_buildings(tile_data: Dictionary) -> void:
 	var tile_id: String = tile_data.id
 	var buildings: Array = MatchState.get_buildings_on_tile(tile_id)
 	tile_size_chart.set_buildings(buildings)
+	var production_buildings: Array = []
+	for building in buildings:
+		var building_data: Dictionary = Catalog.get_building(building.get("building_id", ""))
+		if building_data.get("category", "") != "infrastructure":
+			production_buildings.append(building)
 	
-	if buildings.is_empty():
+	if production_buildings.is_empty():
 		buildings_header.visible = false
 		buildings_list.visible = false
 		return
@@ -79,9 +84,59 @@ func _rebuild_buildings(tile_data: Dictionary) -> void:
 	buildings_header.visible = true
 	buildings_list.visible = true
 	
-	for building in buildings:
+	for building in production_buildings:
 		var display_name := _format_building_label(building)
 		buildings_list.add_child(_make_building_button(display_name, building))
+
+func _rebuild_infrastructure_table(tile_data: Dictionary) -> void:
+	for child in infrastructure_table.get_children():
+		child.queue_free()
+	
+	for header in ["Inf", "lvl", "mnt", "cap"]:
+		infrastructure_table.add_child(_make_cell(header, true))
+	
+	var infrastructure_rows := _infrastructure_rows_for_tile(tile_data)
+	for building_data in infrastructure_rows:
+		infrastructure_table.add_child(_make_cell(building_data.get("display_name", ""), false))
+		infrastructure_table.add_child(_make_cell("1", false))
+		infrastructure_table.add_child(_make_cell(_format_nullable_money(building_data.get("maintenance_cost", null)), false))
+		infrastructure_table.add_child(_make_cell("1", false))
+	
+	if infrastructure_rows.size() < _all_infrastructure_buildings().size():
+		var add_button := Button.new()
+		add_button.text = "ADD"
+		infrastructure_table.add_child(add_button)
+		infrastructure_table.add_child(_make_cell("", false))
+		infrastructure_table.add_child(_make_cell("", false))
+		infrastructure_table.add_child(_make_cell("", false))
+
+func _infrastructure_rows_for_tile(tile_data: Dictionary) -> Array:
+	var rows: Array = []
+	var seen_ids := {}
+	for building in MatchState.get_buildings_on_tile(tile_data.id):
+		var building_data: Dictionary = Catalog.get_building(building.get("building_id", ""))
+		if building_data.get("category", "") == "infrastructure":
+			rows.append(building_data)
+			seen_ids[building_data.get("id", "")] = true
+	
+	var infrastructure_present: Array = tile_data.get("infrastructure_present", [])
+	for infra_name in infrastructure_present:
+		var building_data: Dictionary = Catalog.get_building_by_internal_name(str(infra_name))
+		if building_data.is_empty():
+			continue
+		var building_id: String = building_data.get("id", "")
+		if seen_ids.has(building_id):
+			continue
+		rows.append(building_data)
+		seen_ids[building_id] = true
+	return rows
+
+func _all_infrastructure_buildings() -> Array:
+	var buildings: Array = []
+	for building_data in Catalog.all_buildings():
+		if building_data.get("category", "") == "infrastructure":
+			buildings.append(building_data)
+	return buildings
 
 func _format_building_label(building: Dictionary) -> String:
 	var building_data: Dictionary = Catalog.get_building(building.get("building_id", ""))
@@ -151,10 +206,12 @@ func _on_building_added(instance: Dictionary) -> void:
 		return
 	if instance.get("tile_id", "") == _current_tile_id:
 		_rebuild_buildings(_current_tile_data)
+		_rebuild_infrastructure_table(_current_tile_data)
 
 func _on_building_removed(_instance_id: String) -> void:
 	if visible and _current_tile_id != "":
 		_rebuild_buildings(_current_tile_data)
+		_rebuild_infrastructure_table(_current_tile_data)
 
 func _make_cell(text: String, is_header: bool) -> Label:
 	var label := Label.new()
@@ -168,6 +225,11 @@ func _format_value(value: Variant) -> String:
 	if value is Array:
 		return "—" if value.is_empty() else ", ".join(value)
 	return str(value)
+
+func _format_nullable_money(value: Variant) -> String:
+	if value == null:
+		return "null"
+	return "£%.2f" % float(value)
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:

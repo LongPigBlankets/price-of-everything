@@ -20,6 +20,61 @@
 [ext_resource type="PackedScene" uid="uid://i4lmf80mnj8" path="res://scenes/money_panel.tscn" id="18_0ld40"]
 [ext_resource type="PackedScene" uid="uid://xcbva8p8n4ka" path="res://scenes/take_loan_dialog.tscn" id="18_gqmmt"]
 [ext_resource type="Script" uid="uid://d2f2bd1vkckvr" path="res://scripts/tile_size_chart.gd" id="19_t88fa"]
+[ext_resource type="Texture2D" uid="uid://ckuqeih7k3tec" path="res://assets/icons/ui_icons/construct_icon.png" id="20_construct"]
+[ext_resource type="Texture2D" uid="uid://p1gf548oa3wf" path="res://assets/icons/ui_icons/resources_icon.png" id="21_resources"]
+[ext_resource type="Texture2D" uid="uid://bv1mjv1hjfojl" path="res://assets/icons/ui_icons/buildings_icon.png" id="22_buildings"]
+[ext_resource type="Texture2D" uid="uid://prmefk2ufb1w" path="res://assets/icons/ui_icons/map_overlays_icon.png" id="23_map_overlays"]
+[ext_resource type="Texture2D" uid="uid://ukpwhcnaf613" path="res://assets/icons/ui_icons/markets_icon.png" id="24_markets"]
+[ext_resource type="Texture2D" uid="uid://dtay78rouk87j" path="res://assets/icons/ui_icons/politics_icon.png" id="25_politics"]
+[ext_resource type="Texture2D" uid="uid://bt38bgcu8l5h7" path="res://assets/icons/ui_icons/tech_icon.png" id="26_tech"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_normal"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0, 0.119856, 0.243095, 0.72)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.995234, 0.930806, 0.763265, 0.35)
+corner_radius_top_left = 50
+corner_radius_top_right = 50
+corner_radius_bottom_right = 50
+corner_radius_bottom_left = 50
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_pressed"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0, 0.08, 0.17, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.995234, 0.930806, 0.763265, 0.9)
+corner_radius_top_left = 50
+corner_radius_top_right = 50
+corner_radius_bottom_right = 50
+corner_radius_bottom_left = 50
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_hover"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.02, 0.17, 0.32, 0.84)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.995234, 0.930806, 0.763265, 0.7)
+corner_radius_top_left = 50
+corner_radius_top_right = 50
+corner_radius_bottom_right = 50
+corner_radius_bottom_left = 50
 
 [node name="WorldMap" type="Node2D" unique_id=2144397903]
 script = ExtResource("1_sugp2")
@@ -150,6 +205,21 @@ unique_name_in_owner = true
 layout_mode = 0
 anchors_preset = 0
 
+[node name="BottomMenuPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=1433701742]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -410.0
+offset_top = -120.0
+offset_right = 410.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/panel = ExtResource("8_tipki")
+
 [node name="BottomMenu" type="HBoxContainer" parent="UILayer/HUD/HUDContent" unique_id=1999718027]
 unique_name_in_owner = true
 layout_mode = 1
@@ -158,55 +228,97 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -297.5
-offset_top = -90.0
-offset_right = 182.5
-offset_bottom = -30.0
+offset_left = -380.0
+offset_top = -110.0
+offset_right = 380.0
+offset_bottom = -10.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_constants/separation = 10
 
 [node name="ConstructButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=322645843]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(60, 60)
+custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
-text = "C"
+tooltip_text = "Construct"
+theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_bottom_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_bottom_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_bottom_button_hover")
+icon = ExtResource("20_construct")
+expand_icon = true
 
 [node name="ResourcesButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=1627309058]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(60, 60)
+custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
-text = "R"
+tooltip_text = "Resources"
+theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_bottom_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_bottom_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_bottom_button_hover")
+icon = ExtResource("21_resources")
+expand_icon = true
 
 [node name="BuildingsButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=1728871726]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(60, 60)
+custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
-text = "B"
+tooltip_text = "Buildings"
+theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_bottom_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_bottom_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_bottom_button_hover")
+icon = ExtResource("22_buildings")
+expand_icon = true
 
 [node name="MapmodesButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=554623846]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(60, 60)
+custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
-text = "MM"
+tooltip_text = "Map Overlays"
+theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_bottom_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_bottom_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_bottom_button_hover")
+icon = ExtResource("23_map_overlays")
+expand_icon = true
 
 [node name="MarketButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=758586746]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(60, 60)
+custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
-text = "M"
+tooltip_text = "Markets"
+theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_bottom_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_bottom_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_bottom_button_hover")
+icon = ExtResource("24_markets")
+expand_icon = true
 
 [node name="PoliticsButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=301230184]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(60, 60)
+custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
-text = "P"
+tooltip_text = "Politics"
+theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_bottom_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_bottom_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_bottom_button_hover")
+icon = ExtResource("25_politics")
+expand_icon = true
 
 [node name="TechButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=919485106]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(60, 60)
+custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
-text = "T"
+tooltip_text = "Tech"
+theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_bottom_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_bottom_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_bottom_button_hover")
+icon = ExtResource("26_tech")
+expand_icon = true
 
 [node name="TileInfoPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=361507145]
 unique_name_in_owner = true
@@ -216,9 +328,9 @@ layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -460.0
-offset_top = 100.0
-offset_right = -40.0
+offset_left = -450.0
+offset_top = 30.0
+offset_right = -30.0
 offset_bottom = 700.0
 grow_horizontal = 0
 theme_override_styles/panel = ExtResource("8_tipki")
@@ -231,12 +343,12 @@ theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 12
 theme_override_constants/margin_bottom = 12
 
-[node name="ContentRow" type="HBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer"]
+[node name="ContentRow" type="HBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer" unique_id=615654805]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 12
 
-[node name="TileSizeChart" type="Control" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow"]
+[node name="TileSizeChart" type="Control" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow" unique_id=1435297557]
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 size_flags_vertical = 3
@@ -276,18 +388,24 @@ layout_mode = 2
 layout_mode = 2
 mouse_filter = 0
 
+[node name="InfrastructureTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=117922161]
+layout_mode = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 4
+columns = 4
+
 [node name="BuildingDetailPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=1081644289]
 unique_name_in_owner = true
 visible = false
-custom_minimum_size = Vector2(300, 300)
+custom_minimum_size = Vector2(380, 380)
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -790.0
+offset_left = -860.0
 offset_top = 100.0
-offset_right = -490.0
-offset_bottom = 400.0
+offset_right = -480.0
+offset_bottom = 480.0
 theme_override_styles/panel = ExtResource("8_tipki")
 script = ExtResource("6_tefeu")
 
@@ -316,14 +434,78 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 14
 text = "X"
 
-[node name="ScrollContainer" type="ScrollContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer"]
+[node name="LocationLabel" type="Label" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer" unique_id=478668762]
+layout_mode = 2
+text = "Tile"
+
+[node name="FlowSummary" type="PanelContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer" unique_id=474898970]
+layout_mode = 2
+
+[node name="FlowInset" type="MarginContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/FlowSummary" unique_id=1642417950]
+layout_mode = 2
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 5
+theme_override_constants/margin_bottom = 5
+
+[node name="FlowFrame" type="PanelContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/FlowSummary/FlowInset" unique_id=1098158720]
+layout_mode = 2
+
+[node name="FlowRow" type="HBoxContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame" unique_id=2092794403]
+layout_mode = 2
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="InputPreview" type="VBoxContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame/FlowRow" unique_id=283313563]
+layout_mode = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="InputGrid" type="GridContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame/FlowRow/InputPreview" unique_id=1831959929]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+theme_override_constants/h_separation = 4
+theme_override_constants/v_separation = 0
+
+[node name="FlowArrow" type="TextureRect" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame/FlowRow" unique_id=2116048691]
+custom_minimum_size = Vector2(130, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+expand_mode = 1
+
+[node name="OutputPreview" type="VBoxContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame/FlowRow" unique_id=920321160]
+layout_mode = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="OutputGrid" type="GridContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame/FlowRow/OutputPreview" unique_id=1919210345]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+theme_override_constants/h_separation = 4
+theme_override_constants/v_separation = 0
+
+[node name="ContentRow" type="HBoxContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer" unique_id=1620921020]
 layout_mode = 2
 size_flags_vertical = 3
+theme_override_constants/separation = 12
 
-[node name="FieldsVBox" type="VBoxContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/ScrollContainer"]
+[node name="ScrollContainer" type="ScrollContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/ContentRow" unique_id=1203041290]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="FieldsVBox" type="VBoxContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/ContentRow/ScrollContainer" unique_id=1922200215]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 4
+
+[node name="StatusIconColumn" type="VBoxContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/ContentRow" unique_id=1011949239]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+theme_override_constants/separation = 10
 
 [node name="ResourcePanel" parent="UILayer/HUD/HUDContent" unique_id=628861186 instance=ExtResource("11_ya4ey")]
 unique_name_in_owner = true
