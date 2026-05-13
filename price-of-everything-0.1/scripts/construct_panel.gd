@@ -6,13 +6,16 @@ extends PanelContainer
 
 const BuildingRowScene: PackedScene = preload("res://scenes/building_row.tscn")
 
-const SECTION_ORDER: Array = ["production", "power", "infrastructure"]
+const SECTION_ORDER: Array = ["production", "power", "infrastructure", "battery"]
 const SECTION_DISPLAY_NAMES: Dictionary = {
 	"production": "PRODUCTION",
 	"power": "POWER",
 	"infrastructure": "INFRASTRUCTURE",
+	"battery": "BATTERY",
 }
 const HEADER_HEIGHT := 40.0
+const SECTION_HEADER_COLOR := Color(0.05, 0.18, 0.32, 0.92)
+const SECTION_HEADER_TEXT_COLOR := Color(0.78, 0.9, 1.0)
 
 var buildings_by_category: Dictionary = {}  # category -> Array of building data
 var recipes_by_building: Dictionary = {}    # building_id -> Array of recipe data
@@ -20,6 +23,10 @@ var take_loan_dialog: PanelContainer = null
 var overlay_rows: Array = []
 var _dragging := false
 var _drag_offset := Vector2.ZERO
+var _section_containers: Dictionary = {}
+var _section_toggle_buttons: Dictionary = {}
+var _section_labels: Dictionary = {}
+var _section_expanded: Dictionary = {}
 
 func _ready() -> void:
 	close_button.pressed.connect(hide)
@@ -157,20 +164,21 @@ func _find_building_data(building_id: String) -> Dictionary:
 func _build_panel_content() -> void:
 	for child in content_vbox.get_children():
 		child.queue_free()
+	_section_containers.clear()
+	_section_toggle_buttons.clear()
+	_section_labels.clear()
+	_section_expanded.clear()
 	
 	for category in SECTION_ORDER:
 		if not buildings_by_category.has(category):
 			continue
 		
-		var header := Label.new()
-		header.text = SECTION_DISPLAY_NAMES.get(category, category.to_upper())
-		header.add_theme_font_size_override("font_size", 14)
-		header.modulate = Color(0.7, 0.85, 1.0)
-		content_vbox.add_child(header)
+		_add_section(category)
+		var section_container: VBoxContainer = _section_containers[category]
 		
 		for building_data in buildings_by_category[category]:
 			var row := BuildingRowScene.instantiate()
-			content_vbox.add_child(row)
+			section_container.add_child(row)
 			
 			var building_id: String = building_data.id
 			var recipes_for_this: Array = recipes_by_building.get(building_id, [])
@@ -178,6 +186,61 @@ func _build_panel_content() -> void:
 			row.recipe_selected.connect(_on_recipe_selected)
 			row.expand_toggled.connect(_on_expand_toggled)
 			row.infrastructure_build_pressed.connect(_on_infrastructure_build_pressed)  # NEW
+
+func _add_section(category: String) -> void:
+	var header_panel := PanelContainer.new()
+	header_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var header_style := StyleBoxFlat.new()
+	header_style.bg_color = SECTION_HEADER_COLOR
+	header_style.corner_radius_top_left = 4
+	header_style.corner_radius_top_right = 4
+	header_style.corner_radius_bottom_left = 4
+	header_style.corner_radius_bottom_right = 4
+	header_style.content_margin_left = 8
+	header_style.content_margin_top = 4
+	header_style.content_margin_right = 6
+	header_style.content_margin_bottom = 4
+	header_panel.add_theme_stylebox_override("panel", header_style)
+	content_vbox.add_child(header_panel)
+	
+	var header_row := HBoxContainer.new()
+	header_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header_row.add_theme_constant_override("separation", 8)
+	header_panel.add_child(header_row)
+	
+	var label := Label.new()
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_font_size_override("font_size", 18)
+	label.add_theme_color_override("font_color", SECTION_HEADER_TEXT_COLOR)
+	header_row.add_child(label)
+	
+	var toggle_button := Button.new()
+	toggle_button.custom_minimum_size = Vector2(28, 28)
+	toggle_button.add_theme_font_size_override("font_size", 16)
+	header_row.add_child(toggle_button)
+	
+	var section_container := VBoxContainer.new()
+	content_vbox.add_child(section_container)
+	
+	_section_containers[category] = section_container
+	_section_labels[category] = label
+	_section_toggle_buttons[category] = toggle_button
+	_section_expanded[category] = true
+	_update_section_header(category)
+	toggle_button.pressed.connect(_on_section_header_pressed.bind(category))
+
+func _on_section_header_pressed(category: String) -> void:
+	var expanded: bool = _section_expanded.get(category, true)
+	_section_expanded[category] = not expanded
+	_section_containers[category].visible = not expanded
+	_update_section_header(category)
+
+func _update_section_header(category: String) -> void:
+	var expanded: bool = _section_expanded.get(category, true)
+	var marker := "v" if expanded else ">"
+	var label: String = SECTION_DISPLAY_NAMES.get(category, category.to_upper())
+	_section_labels[category].text = label
+	_section_toggle_buttons[category].text = marker
 
 func _on_recipe_selected(building_id: String, recipe_id: String) -> void:
 	print("Recipe selected: %s for %s" % [recipe_id, building_id])

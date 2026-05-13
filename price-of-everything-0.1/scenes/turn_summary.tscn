@@ -29,8 +29,13 @@ layout_mode = 2
 
 [node name="HeaderLabel" type="Label" parent="MarginContainer/VBoxContainer/HeaderRow" unique_id=2036013014]
 layout_mode = 2
+size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 20
 text = "Turn Summary"
+
+[node name="CompactCashLabel" type="Label" parent="MarginContainer/VBoxContainer/HeaderRow"]
+visible = false
+layout_mode = 2
 
 [node name="ExpandIcon" type="Label" parent="MarginContainer/VBoxContainer/HeaderRow" unique_id=683224897]
 layout_mode = 2

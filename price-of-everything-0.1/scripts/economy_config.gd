@@ -4,7 +4,7 @@ extends Node
 # this is the only file you need to edit.
 
 # --- Player starting state ---
-const STARTING_MONEY: float = 50.0
+const STARTING_MONEY: float = 200.0
 
 # --- Per-building per-turn costs ---
 const MAINTENANCE_PER_BUILDING: float = 1.0

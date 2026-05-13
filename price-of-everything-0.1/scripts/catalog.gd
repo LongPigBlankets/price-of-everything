@@ -220,6 +220,10 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 		"display_name": raw.get("display_name", raw.get("internal_name", "")),
 		"category": raw.get("building_category", "production").to_lower(),
 		"base_price": float(raw.get("build_cost_money", "0")),
+		"maintenance_cost": null if raw.get("maintenance_cost", "") == "" else float(raw.get("maintenance_cost", "0")),
+		"labour_unskilled_required": int(raw.get("labour_unskilled_required", "0")),
+		"labour_skilled_required": int(raw.get("labour_skilled_required", "0")),
+		"labour_h_skilled_required": int(raw.get("labour_h_skilled_required", "0")),
 	}
 
 # Public API

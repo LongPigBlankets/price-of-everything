@@ -7,8 +7,8 @@
 [node name="ConstructPanel" type="PanelContainer" unique_id=1084051515]
 visible = false
 anchors_preset = -1
-offset_right = 420.0
-offset_bottom = 620.0
+offset_right = 480.0
+offset_bottom = 740.0
 theme_override_styles/panel = ExtResource("1_gpfoh")
 script = ExtResource("2_mlggt")
 

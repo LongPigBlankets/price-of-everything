@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://6w8njo0sega5"
-path="res://.godot/imported/b_007_water_pump.png-9f085b24342202b737ddf448f73db056.ctex"
+uid="uid://bcckwqhm7kr5g"
+path="res://.godot/imported/coal2.png-649744672b28cb8e600a075934ee62db.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/icons/buildings/b_007_water_pump.png"
-dest_files=["res://.godot/imported/b_007_water_pump.png-9f085b24342202b737ddf448f73db056.ctex"]
+source_file="res://assets/icons/goods/small/coal2.png"
+dest_files=["res://.godot/imported/coal2.png-649744672b28cb8e600a075934ee62db.ctex"]
 
 [params]
 
