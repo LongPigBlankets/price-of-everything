@@ -27,6 +27,7 @@
 [ext_resource type="Texture2D" uid="uid://ukpwhcnaf613" path="res://assets/icons/ui_icons/markets_icon.png" id="24_markets"]
 [ext_resource type="Texture2D" uid="uid://dtay78rouk87j" path="res://assets/icons/ui_icons/politics_icon.png" id="25_politics"]
 [ext_resource type="Texture2D" uid="uid://bt38bgcu8l5h7" path="res://assets/icons/ui_icons/tech_icon.png" id="26_tech"]
+[ext_resource type="Script" path="res://scripts/toast_manager.gd" id="27_toast"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tile_banner"]
 bg_color = Color(1, 1, 1, 1)
@@ -633,3 +634,13 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "Turn 1/300"
 horizontal_alignment = 2
+
+[node name="ToastLayer" type="Control" parent="UILayer/HUD"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("27_toast")

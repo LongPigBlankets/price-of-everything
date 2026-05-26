@@ -151,6 +151,7 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 		"output_name": output_name,
 		"output_qty": output_qty,
 		"inputs": inputs,
+		"requirements_raw": result.get("requirements", ""),
 	}
 
 func _on_infrastructure_build_pressed(building_id: String) -> void:

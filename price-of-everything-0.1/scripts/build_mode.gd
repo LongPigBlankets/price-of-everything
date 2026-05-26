@@ -7,11 +7,17 @@ signal infrastructure_attempted(infra_type: String, tile_id: String)
 
 enum Kind { NONE, BUILDING, INFRASTRUCTURE }
 
+# Minimum gap between successful attempt_build calls. Rapid clicks below this
+# threshold are silently ignored — protects downstream signal handlers (toasts,
+# building visuals, money panel) from queuing more work than a frame can absorb.
+const MIN_BUILD_INTERVAL_MS := 150
+
 var is_active: bool = false
 var kind: Kind = Kind.NONE
 var current_building_id: String = ""
 var current_recipe_id: String = ""
 var current_infrastructure_type: String = ""
+var _last_attempt_ms: int = 0
 
 func enter_build_mode(building_id: String, recipe_id: String) -> void:
 	if building_id == "" or recipe_id == "":
@@ -54,6 +60,10 @@ func exit_build_mode() -> void:
 func attempt_build(tile_id: String) -> void:
 	if not is_active:
 		return
+	var now: int = Time.get_ticks_msec()
+	if now - _last_attempt_ms < MIN_BUILD_INTERVAL_MS:
+		return
+	_last_attempt_ms = now
 	if kind == Kind.BUILDING:
 		build_attempted.emit(current_building_id, tile_id)
 	elif kind == Kind.INFRASTRUCTURE:

@@ -15,12 +15,17 @@ const POWER_CIRCLE_RADIUS := 18.0
 
 @onready var terrain_layer: TileMapLayer = %TerrainLayer
 
+const BUILD_REQ_MARKER_SIZE := 32.0
+
 var current_overlays: Array = []
+var build_overlays: Array = []
 
 func _ready() -> void:
 	MapMode.selections_changed.connect(_on_selections_changed)
 	MapMode.mode_cleared.connect(_on_mode_cleared)
 	Production.turn_processed.connect(_on_turn_processed)
+	BuildMode.mode_entered.connect(_on_build_mode_entered)
+	BuildMode.mode_exited.connect(_on_build_mode_exited)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton \
@@ -48,6 +53,95 @@ func _clear_overlays() -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 	current_overlays.clear()
+
+# --- Build-mode requirement overlay (deposits / potentials) ---
+# Shown while BuildMode is active for a recipe whose `requirements` reference
+# a deposit or potential. Persists across placements; cleared only when
+# BuildMode exits (right-click).
+
+func _on_build_mode_entered(_building_id: String, recipe_id: String) -> void:
+	_clear_build_overlays()
+	if recipe_id == "":
+		return
+	var recipe: Dictionary = Catalog.get_recipe(recipe_id)
+	if recipe.is_empty():
+		return
+	var reqs: Array = recipe.get("requirements", [])
+	if reqs.is_empty():
+		return
+	_render_build_overlay(reqs)
+
+func _on_build_mode_exited() -> void:
+	_clear_build_overlays()
+
+func _clear_build_overlays() -> void:
+	for node in build_overlays:
+		if is_instance_valid(node):
+			node.queue_free()
+	build_overlays.clear()
+
+func _render_build_overlay(reqs: Array) -> void:
+	for coord in terrain_layer.tiles:
+		var tile_data: Dictionary = terrain_layer.tiles[coord]
+		var matched_req: Dictionary = _first_matching_req(tile_data, reqs)
+		if matched_req.is_empty():
+			continue
+		var marker := _make_build_req_marker(matched_req)
+		marker.position = terrain_layer.map_to_local(coord)
+		add_child(marker)
+		build_overlays.append(marker)
+
+func _first_matching_req(tile_data: Dictionary, reqs: Array) -> Dictionary:
+	for req in reqs:
+		if _tile_meets_build_req(tile_data, req):
+			return req
+	return {}
+
+func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
+	match req.get("type", ""):
+		"deposit":
+			var deps: Array = tile_data.get("deposits", [])
+			return deps.has(req.get("value", ""))
+		"potential":
+			var v: String = req.get("value", "")
+			if v == "wind":
+				return tile_data.get("wind_potential", 0) > 0
+			if v == "solar":
+				return tile_data.get("solar_potential", 0) > 0
+			return false
+		_:
+			return false
+
+func _make_build_req_marker(req: Dictionary) -> Node2D:
+	if req.get("type", "") == "deposit":
+		var tex: Texture2D = _load_deposit_icon(req.get("value", ""))
+		if tex != null:
+			var sprite := Sprite2D.new()
+			sprite.texture = tex
+			var tex_size: Vector2 = tex.get_size()
+			if tex_size.x > 0 and tex_size.y > 0:
+				var s: float = BUILD_REQ_MARKER_SIZE / max(tex_size.x, tex_size.y)
+				sprite.scale = Vector2(s, s)
+			return sprite
+	# Fallback to a red potentials-style marker
+	var marker := SliceMarkerScene.instantiate()
+	marker.set_colors([Color.RED])
+	return marker
+
+func _load_deposit_icon(deposit_name: String) -> Texture2D:
+	if deposit_name == "":
+		return null
+	var good: Dictionary = Catalog.get_good_by_internal_name(deposit_name)
+	if good.is_empty():
+		return null
+	var good_id: String = good.get("id", "")
+	if good_id == "":
+		return null
+	for ext in ["PNG", "png"]:
+		var path: String = "res://assets/icons/goods/medium/%s_%s.%s" % [good_id, deposit_name, ext]
+		if ResourceLoader.exists(path):
+			return load(path) as Texture2D
+	return null
 
 # --- Top-level dispatch ---
 
