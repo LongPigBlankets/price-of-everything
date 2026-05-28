@@ -35,10 +35,17 @@ const HSM_POINTS := {
 const HSM_ORDER := ["HSM1", "HSM2", "HSM3", "HSM4", "HSM5", "HSM6"]
 
 signal tile_selected(tile_data)
+signal stockpile_destination_selected(tile_data)
 
 var tiles := {}  # Vector2i(q, r) -> Dictionary
 var river_properties := {}
 var cities := {}
+var _stockpile_destination_selection_active := false
+var _hovered_destination_coord := Vector2i(-1, -1)
+var _hover_overlay: TileMapLayer = null
+var _overlay_consumer: TileMapLayer = null   # light green — tiles that consume the stockpile good
+var _overlay_viable: TileMapLayer = null     # dark green — tiles with buildings but not consuming
+var _overlay_neutral: TileMapLayer = null    # dark grey — all other tiles
 
 func _enter_tree() -> void:
 	add_to_group("hex_map")
@@ -50,6 +57,104 @@ func _ready() -> void:
 	cities = _load_cities()
 	_sync_tile_types_from_existing_map()
 	_build_prototype_map()
+	_build_hover_overlay()
+	_build_category_overlays()
+
+func begin_stockpile_destination_selection(good_id: String = "") -> void:
+	_stockpile_destination_selection_active = true
+	_paint_stockpile_categories(good_id)
+	_update_destination_hover()
+
+func end_stockpile_destination_selection() -> void:
+	_stockpile_destination_selection_active = false
+	_clear_destination_hover()
+	_clear_category_overlays()
+
+func _build_hover_overlay() -> void:
+	_hover_overlay = TileMapLayer.new()
+	_hover_overlay.name = "StockpileDestinationHover"
+	_hover_overlay.tile_set = tile_set
+	_hover_overlay.modulate = Color(1.55, 1.55, 1.35, 0.42)
+	_hover_overlay.z_index = 22
+	_hover_overlay.enabled = true
+	add_child(_hover_overlay)
+
+func _build_category_overlays() -> void:
+	_overlay_consumer = _make_tinted_overlay("StockpileConsumer", Color(0.35, 1.0, 0.35, 0.45), 10)
+	_overlay_viable   = _make_tinted_overlay("StockpileViable",   Color(0.1,  0.45, 0.1,  0.45), 10)
+	_overlay_neutral  = _make_tinted_overlay("StockpileNeutral",  Color(0.25, 0.25, 0.25, 0.45), 10)
+
+func _make_tinted_overlay(overlay_name: String, color: Color, z: int) -> TileMapLayer:
+	var layer := TileMapLayer.new()
+	layer.name = overlay_name
+	layer.tile_set = tile_set
+	layer.modulate = color
+	layer.z_index = z
+	layer.enabled = true
+	layer.visible = false
+	add_child(layer)
+	return layer
+
+func _paint_stockpile_categories(good_id: String) -> void:
+	_overlay_consumer.clear()
+	_overlay_viable.clear()
+	_overlay_neutral.clear()
+	_overlay_consumer.visible = true
+	_overlay_viable.visible = true
+	_overlay_neutral.visible = true
+
+	for coord in tiles:
+		var tile_data: Dictionary = tiles[coord]
+		var tile_id: String = tile_data.get("id", "")
+		var map_coord := map_coord_for_tile_coord(coord)
+		var src := _source_for_tile_type(tile_data.get("type", ""))
+
+		if good_id != "" and _tile_consumes_good(tile_id, good_id):
+			_overlay_consumer.set_cell(map_coord, src, Vector2i.ZERO)
+		elif _tile_has_buildings(tile_id):
+			_overlay_viable.set_cell(map_coord, src, Vector2i.ZERO)
+		else:
+			_overlay_neutral.set_cell(map_coord, src, Vector2i.ZERO)
+
+func _clear_category_overlays() -> void:
+	for layer in [_overlay_consumer, _overlay_viable, _overlay_neutral]:
+		if layer != null:
+			layer.clear()
+			layer.visible = false
+
+func _tile_consumes_good(tile_id: String, good_id: String) -> bool:
+	var instance_ids: Array = MatchState.tile_buildings.get(tile_id, [])
+	for instance_id in instance_ids:
+		var building: Dictionary = MatchState.buildings.get(instance_id, {})
+		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
+		var inputs: Array = recipe.get("inputs", [])
+		for inp in inputs:
+			if inp.get("good_id", "") == good_id:
+				return true
+	return false
+
+func _tile_has_buildings(tile_id: String) -> bool:
+	return MatchState.tile_buildings.get(tile_id, []).size() > 0
+
+func _process(_delta: float) -> void:
+	if _stockpile_destination_selection_active:
+		_update_destination_hover()
+
+func _update_destination_hover() -> void:
+	var coord := _tile_coord_under_mouse()
+	if coord == _hovered_destination_coord:
+		return
+	_clear_destination_hover()
+	if not tiles.has(coord):
+		return
+	_hovered_destination_coord = coord
+	var tile_data: Dictionary = tiles[coord]
+	_hover_overlay.set_cell(map_coord_for_tile_coord(coord), _source_for_tile_type(tile_data.get("type", "")), Vector2i.ZERO)
+
+func _clear_destination_hover() -> void:
+	if _hover_overlay != null:
+		_hover_overlay.clear()
+	_hovered_destination_coord = Vector2i(-1, -1)
 
 func map_coord_for_tile_coord(coord: Vector2i) -> Vector2i:
 	return coord + Vector2i(MAP_PADDING, MAP_PADDING)
@@ -312,12 +417,20 @@ func id_to_coord(id: String) -> Vector2i:
 		return Vector2i(-1, -1)
 	return Vector2i(int(parts[1]) - 1, int(parts[2]) - 1)
 
+func _tile_coord_under_mouse() -> Vector2i:
+	var world_pos := get_global_mouse_position()
+	return tile_coord_for_map_coord(local_to_map(to_local(world_pos)))
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton and event.pressed):
 		return
 
 	if event.button_index == MOUSE_BUTTON_RIGHT:
 		var handled := false
+		if _stockpile_destination_selection_active:
+			MatchState.cancel_output_stockpile_selection()
+			end_stockpile_destination_selection()
+			handled = true
 		if BuildMode.is_active:
 			BuildMode.exit_build_mode()
 			handled = true
@@ -330,34 +443,21 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	# Left-click logic unchanged
 	if event.button_index == MOUSE_BUTTON_LEFT:
-		var world_pos := get_global_mouse_position()
-		var map_pos := tile_coord_for_map_coord(local_to_map(to_local(world_pos)))
+		var map_pos := _tile_coord_under_mouse()
 
 		if not tiles.has(map_pos):
 			return
 
 		var tile_data: Dictionary = tiles[map_pos]
 
-		if BuildMode.is_active:
+		if _stockpile_destination_selection_active:
+			stockpile_destination_selected.emit(tile_data)
+			end_stockpile_destination_selection()
+			get_viewport().set_input_as_handled()
+		elif BuildMode.is_active:
 			BuildMode.attempt_build(tile_data.id)
 		else:
 			tile_selected.emit(tile_data)
-		call_deferred("_log_subtile_buildability", tile_data)
-
-func _log_subtile_buildability(tile_data: Dictionary) -> void:
-	var river_data: Dictionary = _river_data_for_tile(tile_data)
-	var road_segments: Array[Dictionary] = _road_segments_for_tile(tile_data)
-	var report: Dictionary = SubtileGrid.unbuildable_report(river_data, road_segments)
-	print("[SubtileGrid] %s unbuildable=%d/%d (%.2f%%)" % [
-		tile_data.get("id", "unknown"),
-		report["unbuildable_count"],
-		report["total_subtiles"],
-		report["unbuildable_percent"],
-	])
-	print("[SubtileGrid] %s unbuildable areas: %s" % [
-		tile_data.get("id", "unknown"),
-		report["formatted_unbuildable_by_row"],
-	])
 
 func _river_data_for_tile(tile_data: Dictionary) -> Dictionary:
 	if not tile_data.get("has_river", false):

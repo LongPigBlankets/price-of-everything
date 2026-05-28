@@ -30,6 +30,7 @@
 [ext_resource type="Texture2D" uid="uid://dtay78rouk87j" path="res://assets/icons/ui_icons/politics_icon.png" id="25_politics"]
 [ext_resource type="Texture2D" uid="uid://bt38bgcu8l5h7" path="res://assets/icons/ui_icons/tech_icon.png" id="26_tech"]
 [ext_resource type="Script" path="res://scripts/toast_manager.gd" id="27_toast"]
+[ext_resource type="Script" path="res://scripts/building_connection_visuals.gd" id="28_bcv"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_normal"]
 content_margin_left = 0.0
@@ -120,6 +121,10 @@ map_max = Vector2(1640, 860)
 
 [node name="MapOverlay" type="Node2D" parent="." unique_id=1853095283]
 script = ExtResource("6_eb6dy")
+
+[node name="BuildingConnectionVisuals" type="Node2D" parent="." unique_id=1853095284]
+unique_name_in_owner = true
+script = ExtResource("28_bcv")
 
 [node name="UILayer" type="CanvasLayer" parent="." unique_id=1882417710]
 

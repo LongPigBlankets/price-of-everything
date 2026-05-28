@@ -1,12 +1,15 @@
 recipe_id,display_name,building_id,building_name,input_1,qty_1,input_2,qty_2,input_3,qty_3,input_4,qty_4,input_5,qty_5,energy_req,optional_input,optional_production_multiplier,output_1,output_qty_1,output_2,output_qty_2,output_3,output_qty_3,output_4,output_qty_4,output_5,output_qty_5,requirements
 r_001,Coal Mining,b_001,Mine,,,,,,,,,,,1,,,coal,1,,,,,,,,,deposit:coal
 r_002,Iron Mining,b_001,Mine,,,,,,,,,,,1,,,iron_ore,1,,,,,,,,,deposit:iron_ore
-r_003,Steelmaking,b_002,Furnace,iron_ingots,1,coal,1,,,,,,,2,,,steel,2,,,,,,,,,
+r_003,Steelmaking,b_002,Furnace,iron_ingots,1,coal,1,,,,,,,2,,,steel,4,,,,,,,,,
 r_004,Power Production,b_003,Power Plant,coal,1,pure_water,1,,,,,,,0,,,power,10,,,,,,,,,
 r_005,Roads,b_004,,,,,,,,,,,,0,,,,,,,,,,,,,
 r_006,Port,b_005,,,,,,,,,,,,0,,,,,,,,,,,,,
-r_007,Iron Smelting,b_002,Furnace,iron_ore,1,,,,,,,,,2,,,iron_ingots,2,,,,,,,,,
+r_007,Iron Smelting,b_002,Furnace,iron_ore,1,,,,,,,,,2,,,iron_ingots,4,,,,,,,,,
 r_008,Copper Mining,b_001,Mine,,,,,,,,,,,1,,,copper_ore,1,,,,,,,,,deposit:copper_ore
-r_009,Copper Smelting,b_002,Furnace,copper_ore,1,,,,,,,,,2,,,copper_ingots,1,,,,,,,,,
-r_010,Copper Wire Drawing,b_007,Industrial Factory,copper_ingots,1,,,,,,,,,2,,,copper_wiring,2,,,,,,,,,
-r_011,Motor Manufacture,b_007,Industrial Factory,steel,1,copper_wiring,1,,,,,,,1,,,motor,1,,,,,,,,,
+r_009,Copper Smelting,b_002,Furnace,copper_ore,1,,,,,,,,,2,,,copper_ingots,4,,,,,,,,,
+r_010,Copper Wire Drawing,b_007,Industrial Factory,copper_ingots,1,,,,,,,,,2,,,copper_wiring,3,,,,,,,,,
+r_011,Motor Manufacture,b_007,Industrial Factory,steel,1,copper_wiring,1,,,,,,,1,,,motor,3,,,,,,,,,
+r_012,Salt Mining,b_001,Mine,,,,,,,,,,,1,,,basic_salt,4,,,,,,,,,deposit:basic_salt
+r_013,Water Pumping,b_037,Water Pump,,,,,,,,,,,1,,,pure_water,4,,,,,,,,,
+r_014,Chlor-Alkali Process,b_012,Chemical Plant,basic_salt,1,pure_water,1,,,,,,,5,,,chlorine,10,sodium_hydroxide,8,hydrogen,2,,,,,

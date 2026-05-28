@@ -10,7 +10,7 @@ b_008,eaf,Electric Arc Furnace,1,10000,1,1,,,,,,,,,,,1,1,production,standard,100
 b_009,assembly_plant,Assembly Plant,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
 b_010,high_tech_manufactory,High Tech Manufactory,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
 b_011,petro_refinery,Petrochemical Refinery,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
-b_012,chem_plant,Chemical Plant,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
+b_012,chem_plant,Chemical Plant,1,10000,1,1,,,,,,,,,,,1,18,production,standard,10000,,,,,2,100,50,30
 b_013,poly_plant,Polymerisation Refinery,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
 b_014,farm,Farm,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30
 b_015,new_forest,New Growth Forest,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30

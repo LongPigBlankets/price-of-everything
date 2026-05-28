@@ -22,6 +22,12 @@ var _next_instance_counter: int = 0
 # --- Labour Slider ---
 var labour_multiplier: float = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
 
+# --- Output routing ---
+var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
+var pending_output_stockpile_selection: Dictionary = {}
+var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
+var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (standing order)
+var pending_transport_shipments: Array = []
 
 enum SellMode { SELL_ALL, STOCKPILE_ALL }
 var sell_mode: int = SellMode.SELL_ALL
@@ -33,6 +39,13 @@ signal building_removed(instance_id: String)
 signal state_reset
 signal sell_mode_changed(new_mode: int)
 signal labour_multiplier_changed(new_value: float)
+signal output_stockpile_selection_started(selection: Dictionary)
+signal output_stockpile_selection_cancelled
+signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)
+signal stockpile_market_sale_queue_changed(tile_id: String)
+signal stockpile_market_sale_completed(sale_record: Dictionary)
+signal sell_surplus_changed(tile_id: String)
+signal transport_shipments_changed
 
 # --- Initialization ---
 func _ready() -> void:
@@ -88,6 +101,7 @@ func remove_building(instance_id: String) -> bool:
 			tile_buildings.erase(tile_id)
 	
 	buildings.erase(instance_id)
+	output_stockpile_destinations.erase(instance_id)
 	building_removed.emit(instance_id)
 	return true
 
@@ -117,6 +131,11 @@ func reset() -> void:
 	money = 1000
 	buildings.clear()
 	tile_buildings.clear()
+	output_stockpile_destinations.clear()
+	pending_output_stockpile_selection.clear()
+	queued_stockpile_market_sales.clear()
+	sell_surplus_tiles.clear()
+	pending_transport_shipments.clear()
 	_next_instance_counter = 0
 	state_reset.emit()
 
@@ -127,12 +146,128 @@ func debug_dump() -> Dictionary:
 		"money": money,
 		"buildings": buildings.duplicate(true),
 		"tile_buildings": tile_buildings.duplicate(true),
+		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
+		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
+		"pending_transport_shipments": pending_transport_shipments.duplicate(true),
 		"_next_instance_counter": _next_instance_counter,
 	}
 
 func set_sell_mode(mode: int) -> void:
 	sell_mode = mode
 	sell_mode_changed.emit(mode)
+
+func begin_output_stockpile_selection(instance_id: String, good_id: String) -> void:
+	if instance_id == "" or good_id == "":
+		return
+	pending_output_stockpile_selection = {
+		"instance_id": instance_id,
+		"good_id": good_id,
+	}
+	output_stockpile_selection_started.emit(pending_output_stockpile_selection.duplicate())
+
+func cancel_output_stockpile_selection() -> void:
+	if pending_output_stockpile_selection.is_empty():
+		return
+	pending_output_stockpile_selection.clear()
+	output_stockpile_selection_cancelled.emit()
+
+func set_output_stockpile_destination(instance_id: String, tile_id: String, good_id: String) -> void:
+	if instance_id == "" or tile_id == "" or good_id == "":
+		return
+	output_stockpile_destinations[instance_id] = {
+		"tile_id": tile_id,
+		"good_id": good_id,
+	}
+	pending_output_stockpile_selection.clear()
+	output_stockpile_destination_changed.emit(instance_id, tile_id, good_id)
+
+func clear_output_stockpile_destination(instance_id: String) -> void:
+	if instance_id == "":
+		return
+	output_stockpile_destinations.erase(instance_id)
+
+func get_output_stockpile_destination(instance_id: String, good_id: String = "") -> String:
+	var destination: Dictionary = output_stockpile_destinations.get(instance_id, {})
+	if destination.is_empty():
+		return ""
+	if good_id != "" and destination.get("good_id", "") != good_id:
+		return ""
+	return destination.get("tile_id", "")
+
+func queue_stockpile_market_sale(tile_id: String) -> void:
+	if tile_id == "":
+		return
+	queued_stockpile_market_sales[tile_id] = true
+	stockpile_market_sale_queue_changed.emit(tile_id)
+
+func clear_stockpile_market_sale_queue(tile_id: String) -> void:
+	if tile_id == "":
+		return
+	if queued_stockpile_market_sales.erase(tile_id):
+		stockpile_market_sale_queue_changed.emit(tile_id)
+
+func is_stockpile_market_sale_queued(tile_id: String) -> bool:
+	return queued_stockpile_market_sales.has(tile_id)
+
+func consume_queued_stockpile_market_sales() -> Array:
+	var queued_tiles: Array = queued_stockpile_market_sales.keys()
+	queued_stockpile_market_sales.clear()
+	for tile_id in queued_tiles:
+		stockpile_market_sale_queue_changed.emit(str(tile_id))
+	return queued_tiles
+
+func emit_stockpile_market_sale_completed(sale_record: Dictionary) -> void:
+	stockpile_market_sale_completed.emit(sale_record)
+
+func queue_transport_shipment(shipment: Dictionary) -> void:
+	pending_transport_shipments.append(shipment.duplicate(true))
+	transport_shipments_changed.emit()
+
+func get_pending_transport_shipments() -> Array:
+	return pending_transport_shipments.duplicate(true)
+
+func get_inbound_transport_shipments(destination_tile: String, good_id: String = "") -> Array:
+	var result: Array = []
+	for shipment in pending_transport_shipments:
+		if shipment.get("destination_tile", "") != destination_tile:
+			continue
+		if good_id != "" and shipment.get("good_id", "") != good_id:
+			continue
+		result.append(shipment.duplicate(true))
+	return result
+
+func advance_transport_shipments() -> Array:
+	var arrived: Array = []
+	var remaining: Array = []
+	for shipment in pending_transport_shipments:
+		var record: Dictionary = shipment.duplicate(true)
+		record.turns_remaining = int(record.get("turns_remaining", 0)) - 1
+		if int(record.turns_remaining) <= 0:
+			arrived.append(record)
+		else:
+			remaining.append(record)
+	pending_transport_shipments = remaining
+	if not arrived.is_empty():
+		transport_shipments_changed.emit()
+	return arrived
+
+func enable_sell_surplus(tile_id: String) -> void:
+	if tile_id == "" or sell_surplus_tiles.has(tile_id):
+		return
+	sell_surplus_tiles[tile_id] = true
+	sell_surplus_changed.emit(tile_id)
+
+func disable_sell_surplus(tile_id: String) -> void:
+	if tile_id == "" or not sell_surplus_tiles.has(tile_id):
+		return
+	sell_surplus_tiles.erase(tile_id)
+	sell_surplus_changed.emit(tile_id)
+
+func is_sell_surplus_enabled(tile_id: String) -> bool:
+	return sell_surplus_tiles.has(tile_id)
+
+func get_sell_surplus_tiles() -> Array:
+	return sell_surplus_tiles.keys()
 
 func set_labour_multiplier(value: float) -> void:
 	# Clamp to valid range
