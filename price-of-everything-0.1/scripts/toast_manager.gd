@@ -36,6 +36,7 @@ func _ready() -> void:
 	_prev_money = MatchState.money
 	MatchState.building_added.connect(_on_building_added)
 	MatchState.money_changed.connect(_on_money_changed)
+	MatchState.stockpile_market_sale_completed.connect(_on_stockpile_market_sale_completed)
 
 func _build_stacks() -> void:
 	_success_stack = VBoxContainer.new()
@@ -112,6 +113,45 @@ func _format_building_message(instance: Dictionary) -> String:
 	if not meta.is_empty():
 		line += "  ·  " + "  ·  ".join(meta)
 	return line
+
+func _on_stockpile_market_sale_completed(sale_record: Dictionary) -> void:
+	var msg := _format_stockpile_sale_message(sale_record)
+	if msg != "":
+		_push_toast(_success_stack, msg, false)
+
+func _format_stockpile_sale_message(sale_record: Dictionary) -> String:
+	var items: Array = sale_record.get("items", [])
+	if items.is_empty():
+		return ""
+	items.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if int(a.get("qty", 0)) == int(b.get("qty", 0)):
+			return str(a.get("good_id", "")) < str(b.get("good_id", ""))
+		return int(a.get("qty", 0)) > int(b.get("qty", 0))
+	)
+	var first: Dictionary = items[0]
+	var first_qty: int = int(first.get("qty", 0))
+	var first_good_id: String = first.get("good_id", "")
+	var first_revenue: float = float(first.get("revenue", 0.0))
+	var message := "%d %s sold to market for £%.2f" % [
+		first_qty,
+		Catalog.get_display_name(first_good_id),
+		first_revenue,
+	]
+	if items.size() > 1:
+		var other_qty := 0
+		var other_revenue := 0.0
+		for i in range(1, items.size()):
+			other_qty += int(items[i].get("qty", 0))
+			other_revenue += float(items[i].get("revenue", 0.0))
+		var good_word := "good" if items.size() == 2 else "goods"
+		message += " and %d units of %d other %s sold for £%.2f" % [
+			other_qty,
+			items.size() - 1,
+			good_word,
+			other_revenue,
+		]
+	message += ". Total sales: £%.2f" % float(sale_record.get("total_revenue", 0.0))
+	return message
 
 func _push_toast(stack: VBoxContainer, message: String, is_warning: bool) -> void:
 	var toast: PanelContainer = _make_toast(message, is_warning)

@@ -27,6 +27,19 @@ const BANKRUPTCY_FLOOR: float = -10.0
 const GRID_BUY_PRICE: float = 0.5    # £/unit when buying from grid (shortfall)
 const GRID_SELL_PRICE: float = 0.25  # £/unit when selling surplus to grid
 
+# --- Transport ---
+const TRANSPORT_MAX_TILES_PER_TURN: int = 2
+const DEFAULT_TRANSPORT_WEIGHT_CLASS := "standard"
+const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
+	"standard": 0.2,
+	"solid_light": 0.2,
+	"solid_heavy": 0.2,
+	"ultra_heavy": 0.2,
+	"liquid": 0.2,
+	"gas": 0.2,
+	"electricity": 0.2,
+}
+
 # --- Loans ---
 const LOAN_MAX_CAPACITY: float = 50.0     # Maximum outstanding initial principal
 const LOAN_TERM_TURNS: int = 40            # How many turns to repay over
@@ -40,3 +53,21 @@ const DIVIDEND_RATE: float = 0.20
 const LABOUR_MULTIPLIER_MIN: float = 0.75
 const LABOUR_MULTIPLIER_DEFAULT: float = 1.0
 const LABOUR_MULTIPLIER_MAX: float = 1.25
+
+func transport_turns_for_tile_distance(tile_distance: int) -> int:
+	if tile_distance <= 0:
+		return 0
+	return maxi(1, ceili(float(maxi(tile_distance, 0)) / float(TRANSPORT_MAX_TILES_PER_TURN)))
+
+func transport_cost_per_unit_turn(weight_class: String) -> float:
+	var resolved_class := weight_class.strip_edges()
+	if resolved_class == "":
+		resolved_class = DEFAULT_TRANSPORT_WEIGHT_CLASS
+	return float(TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS.get(
+		resolved_class,
+		TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS[DEFAULT_TRANSPORT_WEIGHT_CLASS]
+	))
+
+func transport_cost_for(good_id: String, qty: int, transport_turns: int) -> float:
+	var weight_class := Catalog.get_transport_class(good_id)
+	return float(qty) * float(maxi(transport_turns, 0)) * transport_cost_per_unit_turn(weight_class)

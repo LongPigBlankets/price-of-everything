@@ -66,6 +66,7 @@ func _parse_good_row(headers: PackedStringArray, line: PackedStringArray) -> Dic
 		"internal_name": raw.get("internal_name", ""),
 		"display_name": raw.get("display_name", raw.get("internal_name", "")),
 		"category": raw.get("category", ""),
+		"transport_class": raw.get("transport_class", EconomyConfig.DEFAULT_TRANSPORT_WEIGHT_CLASS),
 		"good_type": raw.get("good_type", ""),
 		"base_price": float(raw.get("base_price", "1")),
 		"decay_rate": float(raw.get("decay_rate", "0")),
@@ -95,6 +96,11 @@ func get_internal_name(good_id: String) -> String:
 func get_base_price(good_id: String) -> float:
 	var g: Dictionary = _goods_by_id.get(good_id, {})
 	return g.get("base_price", 1.0)
+
+func get_transport_class(good_id: String) -> String:
+	var g: Dictionary = _goods_by_id.get(good_id, {})
+	var weight_class: String = g.get("transport_class", "")
+	return EconomyConfig.DEFAULT_TRANSPORT_WEIGHT_CLASS if weight_class == "" else weight_class
 
 func is_raw(good_id: String) -> bool:
 	var g: Dictionary = _goods_by_id.get(good_id, {})

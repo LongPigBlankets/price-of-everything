@@ -31,26 +31,42 @@ func _ready() -> void:
 	money_panel.hide()
 
 func _hide_all_panels() -> void:
-	construct_panel.hide()
-	resource_panel.hide()
-	market_panel.hide()
-	mapmodes_panel.hide()
-	money_panel.hide()
+	_set_panel_visible(construct_panel, false)
+	_set_panel_visible(resource_panel, false)
+	_set_panel_visible(market_panel, false)
+	_set_panel_visible(mapmodes_panel, false)
+	_set_panel_visible(money_panel, false)
+
+func _set_panel_visible(panel: Control, show_it: bool) -> void:
+	if show_it:
+		panel.show()
+		PanelStack.push(panel)
+	else:
+		if panel.visible:
+			PanelStack.remove(panel)
+		panel.hide()
+
+func hide_bottom_menu() -> void:
+	_hide_all_panels()
+	bottom_menu.hide()
+
+func show_bottom_menu() -> void:
+	bottom_menu.show()
 
 func _on_construct_pressed() -> void:
 	_hide_all_panels()
-	construct_panel.show()
+	_set_panel_visible(construct_panel, true)
 
 func _on_resources_pressed() -> void:
 	_hide_all_panels()
-	resource_panel.show()
+	_set_panel_visible(resource_panel, true)
 
 func _on_mapmodes_pressed() -> void:
-	mapmodes_panel.show()
+	_set_panel_visible(mapmodes_panel, true)
 
 func _on_market_pressed() -> void:
 	_hide_all_panels()
-	market_panel.show()
+	_set_panel_visible(market_panel, true)
 
 func _on_buildings_pressed() -> void:
 	print("Buildings panel not yet implemented")
@@ -63,7 +79,7 @@ func _on_tech_pressed() -> void:
 	
 func _on_money_widget_clicked() -> void:
 	_hide_all_panels()
-	money_panel.show()
+	_set_panel_visible(money_panel, true)
 	
 func _on_loan_confirmed(amount: float) -> void:
 	var ok: bool = LoanState.take_loan(amount)

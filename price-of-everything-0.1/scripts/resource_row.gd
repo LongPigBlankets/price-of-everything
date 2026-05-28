@@ -15,10 +15,19 @@ signal consuming_pressed(good_id: String)
 
 var good_id: String = ""
 var good_type: String = ""
+var _cost_label: Label = null
 
 func _ready() -> void:
 	Stockpile.stockpile_changed.connect(_refresh_stockpile)
 	_refresh_stockpile()
+	_cost_label = Label.new()
+	_cost_label.text = "--"
+	_cost_label.custom_minimum_size = Vector2(48, 0)
+	_cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_cost_label.tooltip_text = "Production cost per unit"
+	_cost_label.visible = false
+	add_child(_cost_label)
+	CostSolver.costs_updated.connect(_refresh_cost)
 
 func setup(good_data: Dictionary) -> void:
 	good_id = good_data.id
@@ -40,11 +49,18 @@ func setup(good_data: Dictionary) -> void:
 	
 	update_button_states()
 	_refresh_stockpile()
+	_refresh_cost()
 
 func _refresh_stockpile() -> void:
 	if good_id == "":
 		return
 	stockpile_label.text = str(Stockpile.get_total(good_id))
+
+func _refresh_cost() -> void:
+	if _cost_label == null or good_id == "":
+		return
+	var uc: float = CostSolver.get_good_unit_cost(good_id)
+	_cost_label.text = "--" if uc < 0.0 else "£%.2f" % uc
 
 func update_button_states() -> void:
 	var potentials_permanent_disable := good_type != "raw"
@@ -69,6 +85,8 @@ func set_mode(is_economy: bool) -> void:
 	consumed_label.visible = is_economy
 	surplus_label.visible = is_economy
 	stockpile_label.visible = is_economy
+	if _cost_label != null:
+		_cost_label.visible = is_economy
 
 func _on_potentials_pressed() -> void:
 	potentials_pressed.emit(good_id)

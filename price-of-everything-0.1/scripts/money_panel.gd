@@ -157,6 +157,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	var power_revenue: float = summary.get("power_sales_revenue", 0.0)
 	var maintenance: float = summary.get("maintenance_paid", 0.0)
 	var labour: float = summary.get("labour_paid", 0.0)
+	var transport: float = summary.get("transport_paid", 0.0)
 	var power_purchase: float = summary.get("power_purchase_cost", 0.0)
 	var interest: float = summary.get("interest_paid", 0.0)
 	var tax: float = summary.get("taxes_paid", 0.0)
@@ -164,7 +165,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	
 	# Compute derived
 	var total_revenue: float = goods_revenue + power_revenue
-	var total_costs: float = maintenance + labour + power_purchase
+	var total_costs: float = maintenance + labour + transport + power_purchase
 	var operating_profit: float = total_revenue - total_costs
 	var pretax: float = operating_profit - interest
 	var posttax: float = pretax - tax
@@ -269,6 +270,7 @@ func _project_next_turn() -> Dictionary:
 	var power_demand: int = 0
 	var maintenance: float = 0.0
 	var labour: float = 0.0
+	var transport: float = 0.0
 	
 	# Use last_turn_run if available; else iterate all buildings
 	var building_ids_to_consider: Array
@@ -302,6 +304,7 @@ func _project_next_turn() -> Dictionary:
 		# Per-building costs
 		maintenance += EconomyConfig.MAINTENANCE_PER_BUILDING
 		labour += _calculate_projected_labour_cost(building)
+		transport += _projected_transport_cost(building, recipe)
 	
 	# Grid settlement
 	var net_power: int = power_supply - power_demand
@@ -317,7 +320,7 @@ func _project_next_turn() -> Dictionary:
 	
 	# Compute the chain
 	var total_revenue: float = goods_revenue + power_revenue
-	var total_costs: float = maintenance + labour + power_purchase
+	var total_costs: float = maintenance + labour + transport + power_purchase
 	var operating_profit: float = total_revenue - total_costs
 	var pretax: float = operating_profit - interest
 	var tax: float = max(pretax, 0.0) * EconomyConfig.TAX_RATE
@@ -353,6 +356,56 @@ func _calculate_projected_labour_cost(_building: Dictionary) -> float:
 		+ high_skilled * EconomyConfig.LABOUR_HIGH_SKILLED_RATE
 	)
 	return base_cost * MatchState.labour_multiplier
+
+func _projected_transport_cost(building: Dictionary, recipe: Dictionary) -> float:
+	var instance_id: String = building.get("instance_id", "")
+	var source_tile: String = building.get("tile_id", "")
+	var cost := 0.0
+	for output in _recipe_output_items(recipe):
+		var good_id: String = output.get("good_id", "")
+		if good_id == "":
+			var internal_name: String = output.get("internal_name", "")
+			var good: Dictionary = Catalog.get_good_by_internal_name(internal_name)
+			good_id = good.get("id", "")
+		var destination_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
+		if destination_tile == "" or good_id == "":
+			continue
+		var turns := EconomyConfig.transport_turns_for_tile_distance(_tile_distance(source_tile, destination_tile))
+		cost += EconomyConfig.transport_cost_for(good_id, int(output.get("qty", 0)), turns)
+	return cost
+
+func _recipe_output_items(recipe: Dictionary) -> Array:
+	if recipe.has("outputs"):
+		return recipe.get("outputs", [])
+	var output_name: String = recipe.get("output_name", "")
+	var output_qty: int = recipe.get("output_qty", 0)
+	if output_name == "" or output_qty <= 0:
+		return []
+	return [{
+		"good_id": recipe.get("output_good_id", ""),
+		"internal_name": output_name,
+		"qty": output_qty,
+	}]
+
+func _tile_distance(source_tile: String, destination_tile: String) -> int:
+	var source := _tile_id_to_coord(source_tile)
+	var destination := _tile_id_to_coord(destination_tile)
+	if source == Vector2i(-1, -1) or destination == Vector2i(-1, -1):
+		return 0
+	var source_axial := _oddq_to_axial(source)
+	var destination_axial := _oddq_to_axial(destination)
+	var dq := source_axial.x - destination_axial.x
+	var dr := source_axial.y - destination_axial.y
+	return int((abs(dq) + abs(dr) + abs(dq + dr)) / 2)
+
+func _tile_id_to_coord(tile_id: String) -> Vector2i:
+	var parts := tile_id.split("_")
+	if parts.size() != 3 or not parts[1].is_valid_int() or not parts[2].is_valid_int():
+		return Vector2i(-1, -1)
+	return Vector2i(int(parts[1]) - 1, int(parts[2]) - 1)
+
+func _oddq_to_axial(coord: Vector2i) -> Vector2i:
+	return Vector2i(coord.x, coord.y - int((coord.x - (coord.x & 1)) / 2))
 
 
 func _gui_input(event: InputEvent) -> void:

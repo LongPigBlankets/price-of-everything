@@ -78,9 +78,18 @@ const STATUS_ICON_CONFIG := [
 	},
 ]
 
+## Emitted whenever the displayed building's connection data changes (or clears on hide).
+## origin_tile_id: the building's own tile
+## input_tile_ids: tile IDs of buildings supplying this building's inputs
+## output_tile_ids: tile IDs where this building's outputs are stockpiled
+## has_market_output: true if any output goes to market (no stockpile destination)
+signal building_connections_changed(origin_tile_id: String, input_tile_ids: Array, output_tile_ids: Array, has_market_output: bool)
+
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 var _status_dots: Dictionary = {}
+var _cost_label: Panel = null
+var _cost_wrapper: HBoxContainer = null
 var _tooltip_theme: Theme = null
 var _upgrade_button: Button = null
 var _upgrade_panel: PanelContainer = null
@@ -112,15 +121,30 @@ func _ready() -> void:
 	_build_status_icon_column()
 	_build_route_controls()
 	_build_upgrade_controls()
+	if not MatchState.output_stockpile_destination_changed.is_connected(_on_output_stockpile_destination_changed):
+		MatchState.output_stockpile_destination_changed.connect(_on_output_stockpile_destination_changed)
+	if not MatchState.transport_shipments_changed.is_connected(_on_logistics_changed):
+		MatchState.transport_shipments_changed.connect(_on_logistics_changed)
+	if not Stockpile.stockpile_changed.is_connected(_on_logistics_changed):
+		Stockpile.stockpile_changed.connect(_on_logistics_changed)
+	if not CostSolver.costs_updated.is_connected(_on_costs_updated):
+		CostSolver.costs_updated.connect(_on_costs_updated)
 	set_meta("panel_ready", true)
 
 func show_building(building: Dictionary) -> void:
 	_rebuild_fields(building)
 	visible = true
+	PanelStack.push(self)
 	if _is_secondary_panel:
 		_position_as_secondary_panel()
 	else:
 		_position_for_visible_panels()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_VISIBILITY_CHANGED and not visible:
+		PanelStack.remove(self)
+		if not _is_secondary_panel:
+			building_connections_changed.emit("", [], [], false)
 
 func _hide_panel() -> void:
 	hide()
@@ -159,6 +183,8 @@ func _rebuild_fields(building: Dictionary) -> void:
 		_add_field("Output destination", _output_destination())
 
 	_add_separator()
+	_add_inbound_inputs_section(building, recipe)
+	_add_separator()
 	_add_labour_table(building_data)
 	_add_separator()
 	_add_operation_table(building, recipe)
@@ -182,6 +208,55 @@ func _add_section_label(text: String) -> void:
 	label.add_theme_font_size_override("font_size", 13)
 	label.modulate = Color(0.7, 0.85, 1.0)
 	fields_vbox.add_child(label)
+
+func _add_inbound_inputs_section(building: Dictionary, recipe: Dictionary) -> void:
+	var inputs: Array = recipe.get("inputs", [])
+	if inputs.is_empty():
+		return
+	_add_section_label("Receiving inputs")
+	var tile_id: String = building.get("tile_id", "")
+	for input in inputs:
+		var good_id: String = input.get("good_id", "")
+		var needed := int(input.get("qty", 0))
+		var stored := Stockpile.get_at_tile(tile_id, good_id)
+		var line := "%s: %d/%d stored" % [
+			_good_display_from_internal(input.get("internal_name", "")),
+			stored,
+			needed,
+		]
+		var inbound_summary := _inbound_input_summary(tile_id, good_id)
+		if inbound_summary != "":
+			line += " · " + inbound_summary
+		else:
+			line += " · no inbound shipment scheduled"
+		_add_text(line)
+
+func _inbound_input_summary(tile_id: String, good_id: String) -> String:
+	var shipments := MatchState.get_inbound_transport_shipments(tile_id, good_id)
+	if shipments.is_empty():
+		return ""
+	shipments.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.get("turns_remaining", 0)) < int(b.get("turns_remaining", 0))
+	)
+	var next_turns := int(shipments[0].get("turns_remaining", 0))
+	var source_tiles: Array = []
+	var total_qty := 0
+	for shipment in shipments:
+		total_qty += int(shipment.get("qty", 0))
+		var source_tile: String = shipment.get("source_tile", "")
+		if source_tile != "" and not source_tiles.has(source_tile):
+			source_tiles.append(source_tile)
+	var source_text := ", ".join(source_tiles) if not source_tiles.is_empty() else "unknown tile"
+	return "%d inbound from %s, next %s" % [
+		total_qty,
+		source_text,
+		_arrival_text(next_turns),
+	]
+
+func _arrival_text(turns_remaining: int) -> String:
+	if turns_remaining <= 1:
+		return "next turn"
+	return "in %d turns" % turns_remaining
 
 func _add_labour_table(building_data: Dictionary) -> void:
 	var header_row := HBoxContainer.new()
@@ -375,13 +450,44 @@ func _refresh_route_controls(building: Dictionary, recipe: Dictionary) -> void:
 	_output_route_detail.visible = false
 	_rebuild_input_route_detail()
 	_rebuild_output_route_detail()
+	_emit_building_connections(building, recipe)
+
+func _emit_building_connections(building: Dictionary, recipe: Dictionary) -> void:
+	var origin_tile_id: String = building.get("tile_id", "")
+	var instance_id: String = building.get("instance_id", "")
+
+	# Collect input source tile IDs (deduplicated)
+	var input_tile_ids: Array = []
+	for row in _input_source_rows:
+		var src_tile_id: String = row.get("building", {}).get("tile_id", "")
+		if src_tile_id != "" and src_tile_id != origin_tile_id and not input_tile_ids.has(src_tile_id):
+			input_tile_ids.append(src_tile_id)
+
+	# Collect output destination tile IDs and detect market outputs
+	var output_tile_ids: Array = []
+	var has_market_output := false
+	for output in _flow_output_items(recipe):
+		var good_id: String = output.get("good_id", "")
+		if good_id == "":
+			var good: Dictionary = Catalog.get_good_by_internal_name(output.get("internal_name", ""))
+			good_id = good.get("id", "")
+		if good_id == "":
+			continue
+		var dest: String = MatchState.get_output_stockpile_destination(instance_id, good_id)
+		if dest != "" and dest != origin_tile_id and not output_tile_ids.has(dest):
+			output_tile_ids.append(dest)
+		elif dest == "":
+			has_market_output = true
+
+	building_connections_changed.emit(origin_tile_id, input_tile_ids, output_tile_ids, has_market_output)
 
 func _find_input_source_rows(building: Dictionary, recipe: Dictionary) -> Array:
 	var rows: Array = []
 	var inputs: Array = recipe.get("inputs", [])
 	var current_instance_id: String = building.get("instance_id", "")
+	var current_tile_id: String = building.get("tile_id", "")
 	for input in inputs:
-		var producers: Array = _producers_for_input(input, current_instance_id)
+		var producers: Array = _producers_for_input(input, current_instance_id, current_tile_id)
 		for producer in producers:
 			var producer_recipe: Dictionary = Catalog.get_recipe(producer.get("recipe_id", ""))
 			var producer_data: Dictionary = Catalog.get_building(producer.get("building_id", ""))
@@ -392,7 +498,7 @@ func _find_input_source_rows(building: Dictionary, recipe: Dictionary) -> Array:
 			})
 	return rows
 
-func _producers_for_input(input: Dictionary, current_instance_id: String) -> Array:
+func _producers_for_input(input: Dictionary, current_instance_id: String, current_tile_id: String) -> Array:
 	var producers: Array = []
 	var input_good_id: String = input.get("good_id", "")
 	var input_internal_name: String = input.get("internal_name", "")
@@ -401,7 +507,7 @@ func _producers_for_input(input: Dictionary, current_instance_id: String) -> Arr
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		for output in _flow_output_items(recipe):
-			if _good_matches_input(output, input_good_id, input_internal_name):
+			if _good_matches_input(output, input_good_id, input_internal_name) and _producer_routes_output_to_tile(building, output, current_tile_id):
 				producers.append(building)
 				break
 	return producers
@@ -411,6 +517,18 @@ func _good_matches_input(output: Dictionary, input_good_id: String, input_intern
 	if input_good_id != "" and output_good_id != "":
 		return input_good_id == output_good_id
 	return output.get("internal_name", "") == input_internal_name
+
+func _producer_routes_output_to_tile(producer: Dictionary, output: Dictionary, tile_id: String) -> bool:
+	if tile_id == "":
+		return false
+	var good_id: String = output.get("good_id", "")
+	if good_id == "":
+		var internal_name: String = output.get("internal_name", "")
+		var good: Dictionary = Catalog.get_good_by_internal_name(internal_name)
+		good_id = good.get("id", "")
+	if good_id == "":
+		return false
+	return MatchState.get_output_stockpile_destination(producer.get("instance_id", ""), good_id) == tile_id
 
 func _on_input_route_pressed() -> void:
 	if _input_source_rows.size() == 1:
@@ -422,6 +540,18 @@ func _on_input_route_pressed() -> void:
 func _on_output_route_pressed() -> void:
 	_output_route_detail.visible = not _output_route_detail.visible
 	_input_route_detail.visible = false
+
+func _on_output_stockpile_destination_changed(instance_id: String, _tile_id: String, _good_id: String) -> void:
+	if not visible:
+		return
+	if _current_building.get("instance_id", "") != instance_id:
+		return
+	_refresh_route_controls(_current_building, _current_recipe)
+
+func _on_logistics_changed() -> void:
+	if not visible or _current_building.is_empty():
+		return
+	_rebuild_fields(_current_building)
 
 func _rebuild_input_route_detail() -> void:
 	for child in _input_route_detail.get_children():
@@ -461,6 +591,7 @@ func _rebuild_output_route_detail() -> void:
 	market_button.custom_minimum_size = Vector2(0, ROUTE_BUTTON_HEIGHT)
 	market_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	market_button.pressed.connect(func() -> void:
+		MatchState.clear_output_stockpile_destination(_current_building.get("instance_id", ""))
 		MatchState.set_sell_mode(MatchState.SellMode.SELL_ALL)
 		_refresh_route_controls(_current_building, _current_recipe)
 		_output_route_detail.visible = true
@@ -471,7 +602,13 @@ func _rebuild_output_route_detail() -> void:
 	stockpile_button.text = "Select tile to stockpile"
 	stockpile_button.custom_minimum_size = Vector2(0, ROUTE_BUTTON_HEIGHT)
 	stockpile_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stockpile_button.disabled = true
+	stockpile_button.disabled = _primary_output_good_id(_current_recipe) == ""
+	stockpile_button.pressed.connect(func() -> void:
+		var instance_id: String = _current_building.get("instance_id", "")
+		var good_id := _primary_output_good_id(_current_recipe)
+		MatchState.begin_output_stockpile_selection(instance_id, good_id)
+		_output_route_detail.visible = false
+	)
 	_output_route_detail.add_child(stockpile_button)
 
 func _open_secondary_building(building: Dictionary) -> void:
@@ -1054,11 +1191,93 @@ func _build_status_icon_column() -> void:
 
 		status_icon_column.add_child(wrapper)
 
+	# 5th indicator: production cost per unit — RAG dot, cost in tooltip
+	_cost_wrapper = HBoxContainer.new()
+	_cost_wrapper.alignment = BoxContainer.ALIGNMENT_CENTER
+	_cost_wrapper.theme = _tooltip_theme
+	_cost_wrapper.mouse_filter = Control.MOUSE_FILTER_STOP
+	_cost_wrapper.add_theme_constant_override("separation", 1)
+	_cost_wrapper.custom_minimum_size = Vector2(STATUS_RAIL_WIDTH, 0)
+
+	var pound_icon := Label.new()
+	pound_icon.text = "£"
+	pound_icon.custom_minimum_size = STATUS_ICON_SIZE
+	pound_icon.add_theme_font_size_override("font_size", 14)
+	pound_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pound_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	pound_icon.modulate = ICON_TINT
+	pound_icon.mouse_filter = Control.MOUSE_FILTER_STOP
+	pound_icon.theme = _tooltip_theme
+	_cost_wrapper.add_child(pound_icon)
+
+	_cost_label = Panel.new()
+	_cost_label.custom_minimum_size = STATUS_DOT_SIZE
+	_cost_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_cost_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_cost_label.theme = _tooltip_theme
+	_cost_wrapper.add_child(_cost_label)
+
+	status_icon_column.add_child(_cost_wrapper)
+
 func _update_status_icons(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> void:
 	_set_status_dot("power", _power_status_color(building, recipe, is_infrastructure))
 	_set_status_dot("input", _input_status_color(building, recipe, is_infrastructure))
-	_set_status_dot("duration", STATUS_GREEN)
-	_set_status_dot("cost", STATUS_GREEN)
+	_set_status_dot("duration", _transport_duration_status_color(building, recipe, is_infrastructure))
+	_set_status_dot("cost", _transport_cost_status_color(building, recipe, is_infrastructure))
+	_update_cost_label(building)
+
+func _update_cost_label(building: Dictionary) -> void:
+	if _cost_label == null:
+		return
+	var instance_id: String = building.get("instance_id", "")
+	var uc: float = CostSolver.get_building_unit_cost(instance_id)
+	var color: Color
+	var tooltip: String
+	if uc < 0.0:
+		color = STATUS_GREY
+		tooltip = "--\nProduction cost per unit"
+	else:
+		var bd: Dictionary = CostSolver.last_result.get("per_building", {}).get(instance_id, {})
+		var output_good_id: String = bd.get("output_good_id", "")
+		var base_price: float = Catalog.get_base_price(output_good_id) if output_good_id != "" else 0.0
+		var pct: float = (uc / base_price * 100.0) if base_price > 0.0 else 0.0
+		if pct < 90.0:
+			color = STATUS_GREEN
+		elif pct <= 110.0:
+			color = STATUS_YELLOW
+		else:
+			color = STATUS_RED
+		var output_costs: Dictionary = bd.get("output_costs", {})
+		if output_costs.size() > 1:
+			# Multi-output: list the allocated cost basis for each product
+			var lines: PackedStringArray = ["Production cost per unit (market-value allocation)"]
+			for gid in output_costs:
+				var goc: float = output_costs[gid]
+				var bp: float = Catalog.get_base_price(gid)
+				var gpct: float = (goc / bp * 100.0) if bp > 0.0 else 0.0
+				lines.append("  %s: £%.2f (%.1f%% of market)" % [Catalog.get_display_name(gid), goc, gpct])
+			tooltip = "\n".join(lines)
+		else:
+			tooltip = "£%.2f (%.1f%% of market)\nProduction cost per unit" % [uc, pct]
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	var radius := roundi(STATUS_DOT_SIZE.x * 0.5)
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius
+	style.corner_radius_bottom_right = radius
+	_cost_label.add_theme_stylebox_override("panel", style)
+	_cost_label.tooltip_text = tooltip
+	if _cost_wrapper != null:
+		_cost_wrapper.tooltip_text = tooltip
+		var pound := _cost_wrapper.get_child(0) as Label
+		if pound != null:
+			pound.tooltip_text = tooltip
+
+func _on_costs_updated() -> void:
+	if _current_building.is_empty():
+		return
+	_update_cost_label(_current_building)
 
 func _set_status_dot(key: String, color: Color) -> void:
 	if not _status_dots.has(key):
@@ -1097,15 +1316,47 @@ func _input_status_color(building: Dictionary, recipe: Dictionary, is_infrastruc
 	if is_infrastructure:
 		return STATUS_GREY
 	var instance_id: String = building.get("instance_id", "")
+	if instance_id != "" and Production.last_turn_run.has(instance_id):
+		return STATUS_GREEN
 	if instance_id != "" and Production.missing_by_building.has(instance_id):
 		return STATUS_RED
 	var inputs: Array = recipe.get("inputs", [])
 	if inputs.is_empty():
 		return STATUS_GREEN
+	var tile_id: String = building.get("tile_id", "")
 	for input in inputs:
-		if Stockpile.get_total(input.get("good_id", "")) < input.get("qty", 0):
+		if Stockpile.get_at_tile(tile_id, input.get("good_id", "")) < input.get("qty", 0):
 			return STATUS_RED
 	return STATUS_YELLOW
+
+func _transport_duration_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
+	if is_infrastructure:
+		return STATUS_GREY
+	var route := _selected_output_route(building, recipe)
+	if route.is_empty():
+		return STATUS_GREEN
+	return STATUS_YELLOW if int(route.turns) > 1 else STATUS_GREEN
+
+func _transport_cost_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
+	if is_infrastructure:
+		return STATUS_GREY
+	var route := _selected_output_route(building, recipe)
+	if route.is_empty():
+		return STATUS_GREEN
+	return STATUS_YELLOW if float(route.cost) > 0.0 else STATUS_GREEN
+
+func _selected_output_route(building: Dictionary, recipe: Dictionary) -> Dictionary:
+	var instance_id: String = building.get("instance_id", "")
+	var good_id := _primary_output_good_id(recipe)
+	var destination_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
+	if destination_tile == "":
+		return {}
+	return _route_summary_for_good(
+		building.get("tile_id", ""),
+		destination_tile,
+		good_id,
+		_primary_output_qty(recipe)
+	)
 
 func _building_display_name(building: Dictionary, building_data: Dictionary, recipe: Dictionary) -> String:
 	var building_name: String = building_data.get("display_name", building.get("building_id", ""))
@@ -1258,7 +1509,69 @@ func _labour_cost(building_data: Dictionary) -> float:
 	return base_cost * MatchState.labour_multiplier
 
 func _output_destination() -> String:
+	var instance_id: String = _current_building.get("instance_id", "")
+	var good_id := _primary_output_good_id(_current_recipe)
+	var destination_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
+	if destination_tile != "":
+		var route := _route_summary_for_good(
+			_current_building.get("tile_id", ""),
+			destination_tile,
+			good_id,
+			_primary_output_qty(_current_recipe)
+		)
+		return "%s · %d turn%s · £%s" % [
+			destination_tile,
+			route.turns,
+			"" if int(route.turns) == 1 else "s",
+			_format_money(route.cost),
+		]
 	return "Market" if MatchState.sell_mode == MatchState.SellMode.SELL_ALL else "Tile stockpile"
+
+func _primary_output_good_id(recipe: Dictionary) -> String:
+	for output in _flow_output_items(recipe):
+		var output_good_id: String = output.get("good_id", "")
+		if output_good_id != "":
+			return output_good_id
+		var internal_name: String = output.get("internal_name", "")
+		if internal_name != "":
+			var good: Dictionary = Catalog.get_good_by_internal_name(internal_name)
+			return good.get("id", "")
+	return ""
+
+func _primary_output_qty(recipe: Dictionary) -> int:
+	for output in _flow_output_items(recipe):
+		return int(output.get("qty", 0))
+	return 0
+
+func _route_summary_for_good(source_tile: String, destination_tile: String, good_id: String, qty: int) -> Dictionary:
+	var distance := _tile_distance(source_tile, destination_tile)
+	var turns := EconomyConfig.transport_turns_for_tile_distance(distance)
+	var cost := EconomyConfig.transport_cost_for(good_id, qty, turns)
+	return {
+		"distance": distance,
+		"turns": turns,
+		"cost": cost,
+	}
+
+func _tile_distance(source_tile: String, destination_tile: String) -> int:
+	var source := _tile_id_to_coord(source_tile)
+	var destination := _tile_id_to_coord(destination_tile)
+	if source == Vector2i(-1, -1) or destination == Vector2i(-1, -1):
+		return 0
+	var source_axial := _oddq_to_axial(source)
+	var destination_axial := _oddq_to_axial(destination)
+	var dq := source_axial.x - destination_axial.x
+	var dr := source_axial.y - destination_axial.y
+	return int((abs(dq) + abs(dr) + abs(dq + dr)) / 2)
+
+func _tile_id_to_coord(tile_id: String) -> Vector2i:
+	var parts := tile_id.split("_")
+	if parts.size() != 3 or not parts[1].is_valid_int() or not parts[2].is_valid_int():
+		return Vector2i(-1, -1)
+	return Vector2i(int(parts[1]) - 1, int(parts[2]) - 1)
+
+func _oddq_to_axial(coord: Vector2i) -> Vector2i:
+	return Vector2i(coord.x, coord.y - int((coord.x - (coord.x & 1)) / 2))
 
 func _format_money(value: float) -> String:
 	var text := "%.2f" % value
