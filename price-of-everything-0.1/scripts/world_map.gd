@@ -6,8 +6,10 @@ extends Node2D
 @onready var end_turn_button: Button = %EndTurnButton
 @onready var phase_label: Label = %PhaseLabel
 @onready var turn_counter: Label = %TurnCounter
+@onready var encyclopedia_button: Button = %EncyclopediaButton
 @onready var building_visuals: Node2D = %BuildingVisuals
 @onready var building_connection_visuals: Node2D = %BuildingConnectionVisuals
+@onready var search_overlay: Control = %SearchOverlay
 @onready var river_layer: TileMapLayer = $RiverLayer
 @onready var hud_content: Control = $UILayer/HUD/HUDContent
 @onready var _hud: Control = $UILayer/HUD
@@ -27,6 +29,9 @@ func _ready() -> void:
 	BuildMode.build_attempted.connect(_on_build_attempted)
 	BuildMode.infrastructure_attempted.connect(_on_infrastructure_attempted)  # NEW
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
+	encyclopedia_button.pressed.connect(_on_encyclopedia_pressed)
+	if search_overlay.has_signal("recipe_build_requested"):
+		search_overlay.recipe_build_requested.connect(_on_search_recipe_build_requested)
 
 	TurnManager.phase_started.connect(_on_phase_started)
 	TurnManager.turn_advanced.connect(_on_turn_advanced)
@@ -196,6 +201,13 @@ func _make_legend_row(color: Color, text: String) -> HBoxContainer:
 func _on_end_turn_pressed() -> void:
 	TurnManager.commit_turn()
 
+func _on_encyclopedia_pressed() -> void:
+	if search_overlay != null and search_overlay.has_method("open_encyclopedia"):
+		search_overlay.open_encyclopedia()
+
+func _on_search_recipe_build_requested(building_id: String, recipe_id: String) -> void:
+	BuildMode.enter_build_mode(building_id, recipe_id)
+
 func _on_build_attempted(building_id: String, tile_id: String) -> void:
 	var coord := terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1):
@@ -342,6 +354,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not event is InputEventKey or not event.pressed:
 		return
 
+	if event.keycode == KEY_ESCAPE and search_overlay != null and search_overlay.visible:
+		search_overlay.call("close_search")
+		get_viewport().set_input_as_handled()
+		return
+
+	if event.keycode == KEY_X and _should_open_search(event):
+		search_overlay.call("open_search")
+		get_viewport().set_input_as_handled()
+		return
+
 	match event.keycode:
 		KEY_ESCAPE:
 			if not _pending_stockpile_selection.is_empty():
@@ -356,3 +378,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			MatchState.set_sell_mode(new_mode)
 			var mode_name = "STOCKPILE" if new_mode == MatchState.SellMode.STOCKPILE_ALL else "SELL_ALL"
 			print("[DEBUG] Sell mode toggled to: ", mode_name)
+
+func _should_open_search(event: InputEventKey) -> bool:
+	if search_overlay == null or search_overlay.visible:
+		return false
+	if event.echo or event.ctrl_pressed or event.alt_pressed or event.meta_pressed:
+		return false
+	if not _pending_stockpile_selection.is_empty():
+		return false
+	return not _is_text_entry_focused()
+
+func _is_text_entry_focused() -> bool:
+	var focus_owner := get_viewport().gui_get_focus_owner()
+	return focus_owner is LineEdit or focus_owner is TextEdit
