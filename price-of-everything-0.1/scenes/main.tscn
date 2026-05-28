@@ -31,6 +31,7 @@
 [ext_resource type="Texture2D" uid="uid://bt38bgcu8l5h7" path="res://assets/icons/ui_icons/tech_icon.png" id="26_tech"]
 [ext_resource type="Script" path="res://scripts/toast_manager.gd" id="27_toast"]
 [ext_resource type="Script" path="res://scripts/building_connection_visuals.gd" id="28_bcv"]
+[ext_resource type="Script" path="res://scripts/search_overlay.gd" id="29_search"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_normal"]
 content_margin_left = 0.0
@@ -649,6 +650,27 @@ theme_override_font_sizes/font_size = 24
 text = "Turn 1/300"
 horizontal_alignment = 2
 
+[node name="EncyclopediaButton" type="Button" parent="UILayer/HUD/TopBar"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(132, 26)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -324.0
+offset_top = 42.0
+offset_right = -188.0
+offset_bottom = 68.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.995234, 0.930806, 0.763265, 1)
+theme_override_colors/font_hover_color = Color(0.995234, 0.930806, 0.763265, 1)
+theme_override_colors/font_pressed_color = Color(0.995234, 0.930806, 0.763265, 0.82)
+theme_override_font_sizes/font_size = 12
+text = "ENCYCLOPEDIA"
+flat = true
+
 [node name="ToastLayer" type="Control" parent="UILayer/HUD" unique_id=386310155]
 layout_mode = 1
 anchors_preset = 15
@@ -658,3 +680,14 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("27_toast")
+[node name="SearchOverlay" type="Control" parent="UILayer/HUD"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+script = ExtResource("29_search")
