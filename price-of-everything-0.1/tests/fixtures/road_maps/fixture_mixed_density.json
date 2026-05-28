@@ -1,0 +1,92 @@
+{
+  "id": "fixture_mixed_density",
+  "name": "Adjacent sparse, medium, and city regions",
+  "tiles": [
+    {
+      "id": "tile_10_10",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "road_density": "sparse"
+    },
+    {
+      "id": "tile_11_10",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "road_density": "sparse"
+    },
+    {
+      "id": "tile_12_10",
+      "type": "hill",
+      "infrastructure_present": ["roads"],
+      "road_density": "medium"
+    },
+    {
+      "id": "tile_13_10",
+      "type": "hill",
+      "infrastructure_present": ["roads"],
+      "has_river": true,
+      "river_type": "river_single_224",
+      "road_density": "medium"
+    },
+    {
+      "id": "tile_14_10",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "city_id": "milltown",
+      "city_name": "Milltown",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_15_10",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "city_id": "milltown",
+      "city_name": "Milltown",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_14_11",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "has_river": true,
+      "river_type": "river_single_136",
+      "city_id": "milltown",
+      "city_name": "Milltown",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_15_11",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "city_id": "milltown",
+      "city_name": "Milltown",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_16_11",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "road_density": "sparse"
+    },
+    {
+      "id": "tile_17_11",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "road_density": "sparse"
+    }
+  ],
+  "cities": {
+    "milltown": {
+      "name": "Milltown",
+      "member_tiles": [
+        "tile_14_10",
+        "tile_15_10",
+        "tile_14_11",
+        "tile_15_11"
+      ],
+      "inset": 54.0,
+      "wobble_amplitude": 6.0,
+      "shape_variant": 2
+    }
+  }
+}

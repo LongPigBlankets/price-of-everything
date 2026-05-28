@@ -7,10 +7,12 @@ extends Node2D
 @onready var phase_label: Label = %PhaseLabel
 @onready var turn_counter: Label = %TurnCounter
 @onready var building_visuals: Node2D = %BuildingVisuals
+@onready var river_layer: TileMapLayer = $RiverLayer
 
 signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
 
 func _ready() -> void:
+	river_layer.clear()
 	terrain_layer.tile_selected.connect(_on_tile_selected)
 	info_panel.building_clicked.connect(building_panel.show_building)
 	BuildMode.build_attempted.connect(_on_build_attempted)

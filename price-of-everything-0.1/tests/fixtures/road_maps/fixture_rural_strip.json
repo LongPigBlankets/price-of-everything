@@ -1,0 +1,45 @@
+{
+  "id": "fixture_rural_strip",
+  "name": "Rural strip with one river crossing",
+  "tiles": [
+    {
+      "id": "tile_11_10",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "road_density": "sparse"
+    },
+    {
+      "id": "tile_12_10",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "road_density": "sparse"
+    },
+    {
+      "id": "tile_13_10",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "has_river": true,
+      "river_type": "river_single_144",
+      "road_density": "sparse"
+    },
+    {
+      "id": "tile_14_10",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "road_density": "sparse"
+    },
+    {
+      "id": "tile_15_10",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "road_density": "sparse"
+    },
+    {
+      "id": "tile_16_10",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "road_density": "sparse"
+    }
+  ],
+  "cities": {}
+}

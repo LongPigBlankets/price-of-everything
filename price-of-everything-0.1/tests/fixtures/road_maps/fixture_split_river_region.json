@@ -1,0 +1,41 @@
+{
+  "id": "fixture_split_river_region",
+  "name": "Five-tile road region bisected by rivers",
+  "tiles": [
+    {
+      "id": "tile_12_11",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "road_density": "medium"
+    },
+    {
+      "id": "tile_13_11",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "has_river": true,
+      "river_type": "river_single_144",
+      "road_density": "medium"
+    },
+    {
+      "id": "tile_14_11",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "road_density": "medium"
+    },
+    {
+      "id": "tile_13_12",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "has_river": true,
+      "river_type": "river_single_150",
+      "road_density": "medium"
+    },
+    {
+      "id": "tile_14_12",
+      "type": "rural",
+      "infrastructure_present": ["roads"],
+      "road_density": "medium"
+    }
+  ],
+  "cities": {}
+}

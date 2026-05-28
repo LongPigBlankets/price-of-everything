@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://rl5hpasjy21d"
+
+[deps]
+
+files=["res://data/river_properties.kind.translation", "res://data/river_properties.entry.translation", "res://data/river_properties.entry.translation", "res://data/river_properties.center.translation", "res://data/river_properties.exit.translation", "res://data/river_properties.exit.translation", "res://data/river_properties.exit.translation", "res://data/river_properties.exit.translation", "res://data/river_properties.lake.translation", "res://data/river_properties.lake.translation", "res://data/river_properties.lake.translation"]
+
+source_file="res://data/river_properties.csv"
+dest_files=["res://data/river_properties.kind.translation", "res://data/river_properties.entry.translation", "res://data/river_properties.entry.translation", "res://data/river_properties.center.translation", "res://data/river_properties.exit.translation", "res://data/river_properties.exit.translation", "res://data/river_properties.exit.translation", "res://data/river_properties.exit.translation", "res://data/river_properties.lake.translation", "res://data/river_properties.lake.translation", "res://data/river_properties.lake.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true
