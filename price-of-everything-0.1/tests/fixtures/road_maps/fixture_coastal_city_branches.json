@@ -1,0 +1,82 @@
+{
+  "id": "fixture_coastal_city_branches",
+  "name": "Dense cities with constrained coastlines",
+  "add_land_apron": false,
+  "tiles": [
+    {
+      "id": "tile_8_10",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "city_id": "islet",
+      "city_name": "Islet",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_19_10",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "city_id": "harbor",
+      "city_name": "Harbor",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_19_11",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "city_id": "harbor",
+      "city_name": "Harbor",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_20_10",
+      "type": "rural",
+      "infrastructure_present": [],
+      "road_density": "sparse"
+    },
+    {
+      "id": "tile_20_11",
+      "type": "rural",
+      "infrastructure_present": [],
+      "road_density": "sparse"
+    },
+    {
+      "id": "tile_21_10",
+      "type": "hill",
+      "infrastructure_present": [],
+      "road_density": "sparse"
+    },
+    {
+      "id": "tile_21_11",
+      "type": "rural",
+      "infrastructure_present": [],
+      "road_density": "sparse"
+    },
+    {
+      "id": "tile_22_10",
+      "type": "rural",
+      "infrastructure_present": [],
+      "road_density": "sparse"
+    }
+  ],
+  "cities": {
+    "islet": {
+      "name": "Islet",
+      "member_tiles": [
+        "tile_8_10"
+      ],
+      "inset": 54.0,
+      "wobble_amplitude": 6.0,
+      "shape_variant": 1
+    },
+    "harbor": {
+      "name": "Harbor",
+      "member_tiles": [
+        "tile_19_10",
+        "tile_19_11"
+      ],
+      "inset": 54.0,
+      "wobble_amplitude": 6.0,
+      "shape_variant": 2
+    }
+  }
+}

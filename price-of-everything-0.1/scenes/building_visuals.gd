@@ -7,21 +7,11 @@ var building_icons: Dictionary = {}
 # Used to determine the next grid slot for the next building on that tile
 var tile_building_counts: Dictionary = {}
 
-# Hex tile dimensions (matches your TileSet config)
-const TILE_WIDTH := 64
-const TILE_HEIGHT := 56
-
-# The "rectangular section" of a pointy-top hex is the middle band.
-# For a 64x56 hex, the central rectangle is roughly 64 wide x 36 tall.
-const ICON_AREA_WIDTH := 64
-const ICON_AREA_HEIGHT := 36
-
-# Each building icon is small enough to fit a grid in the icon area.
-# 4 columns x 3 rows = 12 slots per tile, each ~16x12 pixels.
 const ICONS_PER_ROW := 4
 const ICON_ROWS := 3
-const ICON_SIZE_X := ICON_AREA_WIDTH / ICONS_PER_ROW   # 16px
-const ICON_SIZE_Y := ICON_AREA_HEIGHT / ICON_ROWS      # 12px
+const ROADS_BUILDING_ID := "b_005"
+
+@onready var terrain_layer: HexMap = %TerrainLayer
 
 func _ready() -> void:
 	_load_building_icons()
@@ -50,6 +40,8 @@ const MAX_VISIBLE_BUILDINGS := 12  # 4 cols × 3 rows
 const OVERFLOW_INDEX := 11         # 12th slot (0-indexed)
 
 func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, _instance_id: String, coord: Vector2i) -> void:
+	if building_id == ROADS_BUILDING_ID:
+		return
 	print("[BuildingVisuals] placing for ", building_id)
 	if not building_icons.has(building_id):
 		push_warning("No icon registered for building %s" % building_id)
@@ -75,8 +67,9 @@ func _create_icon_sprite(texture: Texture2D, slot_pos: Vector2) -> void:
 	sprite.position = slot_pos
 	var tex_size := texture.get_size()
 	if tex_size.x > 0 and tex_size.y > 0:
-		var scale_x: float = float(ICON_SIZE_X) / tex_size.x
-		var scale_y: float = float(ICON_SIZE_Y) / tex_size.y
+		var icon_size := _icon_slot_size()
+		var scale_x: float = icon_size.x / tex_size.x
+		var scale_y: float = icon_size.y / tex_size.y
 		var scale_uniform: float = min(scale_x, scale_y) * 0.9
 		sprite.scale = Vector2(scale_uniform, scale_uniform)
 	add_child(sprite)
@@ -84,33 +77,43 @@ func _create_icon_sprite(texture: Texture2D, slot_pos: Vector2) -> void:
 func _create_overflow_indicator(slot_pos: Vector2) -> void:
 	var label := Label.new()
 	label.text = "…"
-	label.position = slot_pos - Vector2(6, 8)  # rough centering
-	label.add_theme_font_size_override("font_size", 12)
+	var tile_size := _tile_size()
+	label.position = slot_pos - (tile_size * 0.02)
+	label.add_theme_font_size_override("font_size", roundi(tile_size.y * 0.08))
 	label.modulate = Color(0.9, 0.9, 0.9)
 	add_child(label)
 
 func _tile_center_world_pos(coord: Vector2i) -> Vector2:
-	# Convert hex coord to world position. For pointy-top hexes with offset
-	# coordinates, we approximate by querying the TileMapLayer (most accurate).
-	# But a quick formula works too:
-	# Even rows offset right by half a tile, odd rows align.
-	var x := coord.x * TILE_WIDTH
-	if coord.y % 2 == 1:
-		x += TILE_WIDTH / 2
-	var y := coord.y * (TILE_HEIGHT * 3 / 4)  # 3/4 vertical for hex stagger
-	return Vector2(x + TILE_WIDTH / 2, y + TILE_HEIGHT / 2)
+	if terrain_layer != null:
+		return terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(coord))
+	return Vector2.ZERO
 
 func _slot_position(tile_center: Vector2, slot_index: int) -> Vector2:
 	# Lay out icons left-to-right, top-to-bottom in the icon area
 	# centered on the tile.
 	var col := slot_index % ICONS_PER_ROW
 	var row := slot_index / ICONS_PER_ROW
+	var icon_area := _icon_area_size()
+	var icon_size := _icon_slot_size()
 	
 	# Top-left of the icon area within the tile
-	var area_top_left := tile_center - Vector2(ICON_AREA_WIDTH / 2, ICON_AREA_HEIGHT / 2)
+	var area_top_left := tile_center - (icon_area * 0.5)
 	
 	# Center of the slot
-	var slot_x := area_top_left.x + col * ICON_SIZE_X + ICON_SIZE_X / 2
-	var slot_y := area_top_left.y + row * ICON_SIZE_Y + ICON_SIZE_Y / 2
+	var slot_x := area_top_left.x + col * icon_size.x + icon_size.x / 2
+	var slot_y := area_top_left.y + row * icon_size.y + icon_size.y / 2
 	
 	return Vector2(slot_x, slot_y)
+
+func _tile_size() -> Vector2:
+	if terrain_layer != null and terrain_layer.tile_set != null:
+		return Vector2(terrain_layer.tile_set.tile_size)
+	return Vector2(540, 480)
+
+func _icon_area_size() -> Vector2:
+	var tile_size := _tile_size()
+	return Vector2(tile_size.x * 0.72, tile_size.y * 0.56)
+
+func _icon_slot_size() -> Vector2:
+	var icon_area := _icon_area_size()
+	return Vector2(icon_area.x / ICONS_PER_ROW, icon_area.y / ICON_ROWS)

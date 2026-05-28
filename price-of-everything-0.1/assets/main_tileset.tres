@@ -1,13 +1,13 @@
 [gd_resource type="TileSet" format=3 uid="uid://cdbno8hcn1m5e"]
 
-[ext_resource type="Texture2D" uid="uid://ncghijtg1amj" path="res://assets/grass_tile.png" id="1_xea7k"]
-[ext_resource type="Texture2D" uid="uid://c34fce68x0321" path="res://assets/hill_tile.png" id="2_826h5"]
+[ext_resource type="Texture2D" uid="uid://d3arkig0epnj8" path="res://assets/icons/tile_assets/hex/rural_tile.png" id="1_xea7k"]
+[ext_resource type="Texture2D" uid="uid://bnm2lyrcd427a" path="res://assets/icons/tile_assets/hex/hill_tile.png" id="2_826h5"]
 [ext_resource type="Texture2D" uid="uid://csl1vrx77ies3" path="res://assets/delta_WE.png" id="2_yjkvj"]
 [ext_resource type="Texture2D" uid="uid://dtpv0pc218otx" path="res://assets/delta_WS.png" id="3_cufdr"]
-[ext_resource type="Texture2D" uid="uid://p6xd0bue7al4" path="res://assets/mountain_tile.png" id="3_dyeiw"]
+[ext_resource type="Texture2D" uid="uid://38r7r77cvguj" path="res://assets/icons/tile_assets/hex/mountain_tile.png" id="3_dyeiw"]
 [ext_resource type="Texture2D" uid="uid://y35thtfwc3jx" path="res://assets/lake_E.png" id="4_a18ft"]
-[ext_resource type="Texture2D" uid="uid://c3s7de5aupdq8" path="res://assets/sea_tile.png" id="4_pq8aw"]
-[ext_resource type="Texture2D" uid="uid://dtvxf5n72b23" path="res://assets/urban_tile.png" id="5_hssjj"]
+[ext_resource type="Texture2D" uid="uid://dagg7obeuig5m" path="res://assets/icons/tile_assets/hex/sea_tile.png" id="4_pq8aw"]
+[ext_resource type="Texture2D" uid="uid://dn4oheamg5pdv" path="res://assets/icons/tile_assets/hex/urban_tile.png" id="5_hssjj"]
 [ext_resource type="Texture2D" uid="uid://ch4axpy0ev5j5" path="res://assets/lake_W.png" id="6_em5y7"]
 [ext_resource type="Texture2D" uid="uid://daxeuq4vrfduj" path="res://assets/river_WE.png" id="7_icuay"]
 [ext_resource type="Texture2D" uid="uid://de66uhrct7l8s" path="res://assets/delta_EW.png" id="8_o2dx2"]
@@ -34,11 +34,11 @@
 [ext_resource type="Texture2D" uid="uid://ws0y6pw43nyg" path="res://assets/urban_river_top.png" id="31_ds01f"]
 [ext_resource type="Texture2D" uid="uid://dby44pp5athlx" path="res://assets/urban_river_straight.png" id="32_2of26"]
 [ext_resource type="Texture2D" uid="uid://csncvr564r3fy" path="res://assets/urban_river_joint.png" id="33_n5q2d"]
-[ext_resource type="Texture2D" uid="uid://ctb2shothqtf4" path="res://assets/deep_sea_tile.png" id="34_vg0vx"]
+[ext_resource type="Texture2D" uid="uid://bj7nrrhtc3twd" path="res://assets/icons/tile_assets/hex/deep_sea_tile.png" id="34_vg0vx"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_0wfyh"]
 texture = ExtResource("1_xea7k")
-texture_region_size = Vector2i(64, 56)
+texture_region_size = Vector2i(540, 480)
 0:0/0 = 0
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_2wn1s"]
@@ -58,7 +58,7 @@ texture_region_size = Vector2i(64, 56)
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_85g3d"]
 texture = ExtResource("2_826h5")
-texture_region_size = Vector2i(64, 56)
+texture_region_size = Vector2i(540, 480)
 0:0/0 = 0
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_tavii"]
@@ -128,7 +128,7 @@ texture_region_size = Vector2i(64, 56)
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_choun"]
 texture = ExtResource("3_dyeiw")
-texture_region_size = Vector2i(64, 56)
+texture_region_size = Vector2i(540, 480)
 0:0/0 = 0
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_wl6ao"]
@@ -183,7 +183,7 @@ texture_region_size = Vector2i(64, 56)
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_ya4ey"]
 texture = ExtResource("4_pq8aw")
-texture_region_size = Vector2i(64, 56)
+texture_region_size = Vector2i(540, 480)
 0:0/0 = 0
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_3givm"]
@@ -203,17 +203,18 @@ texture_region_size = Vector2i(64, 56)
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_fwcnq"]
 texture = ExtResource("34_vg0vx")
-texture_region_size = Vector2i(64, 56)
+texture_region_size = Vector2i(540, 480)
 0:0/0 = 0
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_eb6dy"]
 texture = ExtResource("5_hssjj")
-texture_region_size = Vector2i(64, 56)
+texture_region_size = Vector2i(540, 480)
 0:0/0 = 0
 
 [resource]
 tile_shape = 3
-tile_size = Vector2i(64, 56)
+tile_offset_axis = 1
+tile_size = Vector2i(540, 480)
 sources/0 = SubResource("TileSetAtlasSource_0wfyh")
 sources/2 = SubResource("TileSetAtlasSource_85g3d")
 sources/4 = SubResource("TileSetAtlasSource_choun")

@@ -1,0 +1,12 @@
+{
+  "stoneshore": {
+    "name": "Stoneshore",
+    "shape": "hex_union",
+    "member_tiles": ["tile_4_9", "tile_4_10", "tile_5_10"],
+    "shape_variant": 0,
+    "inset": 60.0,
+    "wobble_amplitude": 9.0,
+    "interior_grid_lines": 0,
+    "river_policy": "detour"
+  }
+}

@@ -1,0 +1,318 @@
+extends Node2D
+
+const RIVER_PROPERTIES_PATH := "res://data/river_properties.csv"
+const RIVER_COLOR := Color(0.17647059, 0.40784314, 0.76862745, 1.0)
+const RIVER_WIDTH := 15.0
+const RIVER_MOUTH_WIDTH := 25.0
+const CURVE_STEPS := 16
+const TILE_CENTER := Vector2(270, 240)
+const POINT_TENSIONS: Array[float] = [0.34, 0.22, 0.39, 0.27, 0.46]
+const MOUTH_EXIT_EXTENSION := 18.0
+const DEFAULT_LAKE_WIDTH := 200.0
+const DEFAULT_LAKE_HEIGHT := 150.0
+const LAKE_SHAPE_STEPS := 32
+
+const RIVER_POINTS := {
+	"C0": Vector2(270, 240),
+	"S1": Vector2(390, 120),
+	"S2": Vector2(390, 360),
+	"S3": Vector2(150, 360),
+	"S4": Vector2(150, 120),
+	"HSM1": Vector2(270, 0),
+	"HSM2": Vector2(472.5, 120),
+	"HSM3": Vector2(472.5, 360),
+	"HSM4": Vector2(270, 480),
+	"HSM5": Vector2(67.5, 360),
+	"HSM6": Vector2(67.5, 120),
+}
+
+@onready var terrain_layer: HexMap = %TerrainLayer
+
+var river_properties := {}
+
+func _ready() -> void:
+	river_properties = _load_river_properties()
+	queue_redraw()
+
+func _draw() -> void:
+	if terrain_layer == null:
+		return
+
+	for coord in terrain_layer.tiles:
+		var tile_data: Dictionary = terrain_layer.tiles[coord]
+		if not tile_data.get("has_river", false):
+			continue
+		var river_type: String = str(tile_data.get("river_type", ""))
+		if river_type == "" or not river_properties.has(river_type):
+			continue
+		var river_data: Dictionary = river_properties[river_type]
+		_draw_tile_river(coord, river_data)
+
+func _draw_tile_river(tile_coord: Vector2i, river_data: Dictionary) -> void:
+	var center: Vector2 = terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(tile_coord))
+	var kind: String = str(river_data.get("kind", "single"))
+	match kind:
+		"joint":
+			_draw_joint_river(tile_coord, center, river_data)
+		"source":
+			_draw_source_river(tile_coord, center, river_data)
+		"merge":
+			_draw_merge_river(center, river_data)
+		_:
+			_draw_single_river(tile_coord, center, river_data)
+
+func _draw_single_river(tile_coord: Vector2i, center: Vector2, river_data: Dictionary) -> void:
+	var point_ids: Array[String] = [
+		str(river_data["entry_hsm"]),
+		str(river_data["entry_square_point"]),
+		str(river_data["center_point"]),
+		str(river_data["exit_square_point"]),
+		str(river_data["exit_hsm"]),
+	]
+	var points := PackedVector2Array([
+		_river_point(center, point_ids[0]),
+		_river_point(center, point_ids[1]),
+		_river_point(center, point_ids[2]),
+		_river_point(center, point_ids[3]),
+		_river_point(center, point_ids[4]),
+	])
+	var exit_hsm: String = str(river_data["exit_hsm"])
+	var has_river_mouth: bool = _exit_meets_sea(tile_coord, exit_hsm)
+	_draw_curved_river_path(points, point_ids, has_river_mouth)
+
+func _draw_joint_river(tile_coord: Vector2i, center: Vector2, river_data: Dictionary) -> void:
+	var entry_point_ids: Array[String] = [
+		str(river_data["entry_hsm"]),
+		str(river_data["entry_square_point"]),
+		str(river_data["center_point"]),
+	]
+	_draw_path_for_ids(center, entry_point_ids, false)
+
+	var exit_point_ids: Array[String] = [
+		str(river_data["center_point"]),
+		str(river_data["exit_square_point"]),
+		str(river_data["exit_hsm"]),
+	]
+	_draw_path_for_ids(center, exit_point_ids, _exit_meets_sea(tile_coord, exit_point_ids[2]))
+
+	var second_exit_hsm: String = str(river_data.get("exit_hsm_2", ""))
+	if second_exit_hsm != "":
+		var second_exit_point_ids: Array[String] = [
+			str(river_data["center_point"]),
+			str(river_data["exit_square_point_2"]),
+			second_exit_hsm,
+		]
+		_draw_path_for_ids(center, second_exit_point_ids, _exit_meets_sea(tile_coord, second_exit_hsm))
+
+func _draw_source_river(tile_coord: Vector2i, center: Vector2, river_data: Dictionary) -> void:
+	var lake_point_id: String = str(river_data.get("lake_point", "C0"))
+	var lake_center: Vector2 = _river_point(center, lake_point_id)
+	var lake_width: float = _float_or_default(str(river_data.get("lake_width", "")), DEFAULT_LAKE_WIDTH)
+	var lake_height: float = _float_or_default(str(river_data.get("lake_height", "")), DEFAULT_LAKE_HEIGHT)
+	_draw_bean_lake(lake_center, lake_width, lake_height, str(river_data["river_type"]))
+
+	var exit_hsm: String = str(river_data["exit_hsm"])
+	var exit_point_ids: Array[String] = [
+		lake_point_id,
+		str(river_data["exit_square_point"]),
+		exit_hsm,
+	]
+	_draw_path_for_ids(center, exit_point_ids, _exit_meets_sea(tile_coord, exit_hsm))
+
+	var second_exit_hsm: String = str(river_data.get("exit_hsm_2", ""))
+	if second_exit_hsm != "":
+		var second_exit_point_ids: Array[String] = [
+			lake_point_id,
+			str(river_data["exit_square_point_2"]),
+			second_exit_hsm,
+		]
+		_draw_path_for_ids(center, second_exit_point_ids, _exit_meets_sea(tile_coord, second_exit_hsm))
+
+func _draw_merge_river(center: Vector2, river_data: Dictionary) -> void:
+	var entry_point_ids: Array[String] = [
+		str(river_data["entry_hsm"]),
+		str(river_data["entry_square_point"]),
+		str(river_data["center_point"]),
+	]
+	_draw_path_for_ids(center, entry_point_ids, false)
+
+	var second_entry_hsm: String = str(river_data.get("exit_hsm_2", ""))
+	if second_entry_hsm != "":
+		var second_entry_point_ids: Array[String] = [
+			second_entry_hsm,
+			str(river_data["exit_square_point_2"]),
+			str(river_data["center_point"]),
+		]
+		_draw_path_for_ids(center, second_entry_point_ids, false)
+
+func _draw_path_for_ids(center: Vector2, point_ids: Array[String], has_river_mouth: bool) -> void:
+	var points := PackedVector2Array()
+	for point_id in point_ids:
+		points.append(_river_point(center, point_id))
+	_draw_curved_river_path(points, point_ids, has_river_mouth)
+
+func _river_point(tile_center: Vector2, point_id: String) -> Vector2:
+	var local_point: Vector2 = RIVER_POINTS[point_id]
+	return tile_center + local_point - TILE_CENTER
+
+func _draw_curved_river_path(points: PackedVector2Array, point_ids: Array[String], has_river_mouth: bool) -> void:
+	var draw_points: PackedVector2Array = PackedVector2Array(points)
+	if has_river_mouth:
+		var last_index := draw_points.size() - 1
+		draw_points[last_index] = draw_points[last_index] + _hsm_outward_direction(point_ids[point_ids.size() - 1]) * MOUTH_EXIT_EXTENSION
+
+	var tangents: Array[Vector2] = _path_tangents(draw_points, point_ids)
+	for i in range(draw_points.size() - 1):
+		var start_width: float = RIVER_WIDTH
+		var end_width: float = RIVER_MOUTH_WIDTH if has_river_mouth and i == draw_points.size() - 2 else RIVER_WIDTH
+		_draw_cubic_segment(
+			draw_points[i],
+			draw_points[i + 1],
+			tangents[i],
+			tangents[i + 1],
+			POINT_TENSIONS[i],
+			POINT_TENSIONS[i + 1],
+			start_width,
+			end_width
+		)
+
+func _path_tangents(points: PackedVector2Array, point_ids: Array[String]) -> Array[Vector2]:
+	var tangents: Array[Vector2] = []
+	for i in range(points.size()):
+		if i == 0:
+			if _is_hsm(point_ids[i]):
+				tangents.append(-_hsm_outward_direction(point_ids[i]))
+			else:
+				tangents.append((points[i + 1] - points[i]).normalized())
+		elif i == points.size() - 1:
+			if _is_hsm(point_ids[i]):
+				tangents.append(_hsm_outward_direction(point_ids[i]))
+			else:
+				tangents.append((points[i] - points[i - 1]).normalized())
+		else:
+			var tangent: Vector2 = points[i + 1] - points[i - 1]
+			if tangent.is_zero_approx():
+				tangent = points[i + 1] - points[i]
+			tangents.append(tangent.normalized())
+	return tangents
+
+func _draw_bean_lake(center: Vector2, width: float, height: float, seed_text: String) -> void:
+	var points := PackedVector2Array()
+	var phase: float = float(abs(hash(seed_text)) % 628) / 100.0
+	for step in range(LAKE_SHAPE_STEPS):
+		var angle: float = TAU * float(step) / float(LAKE_SHAPE_STEPS)
+		var radius_x: float = width * 0.5 * (1.0 + 0.08 * sin(angle * 3.0 + phase))
+		var radius_y: float = height * 0.5 * (1.0 + 0.10 * cos(angle * 2.0 + phase))
+		points.append(center + Vector2(cos(angle) * radius_x, sin(angle) * radius_y))
+	draw_colored_polygon(points, RIVER_COLOR)
+
+func _draw_cubic_segment(
+	start: Vector2,
+	end: Vector2,
+	start_tangent: Vector2,
+	end_tangent: Vector2,
+	start_tension: float,
+	end_tension: float,
+	start_width: float,
+	end_width: float
+) -> void:
+	var segment_length: float = start.distance_to(end)
+	var control_a: Vector2 = start + start_tangent * segment_length * start_tension
+	var control_b: Vector2 = end - end_tangent * segment_length * end_tension
+	var previous: Vector2 = start
+
+	for step in range(1, CURVE_STEPS + 1):
+		var t: float = float(step) / float(CURVE_STEPS)
+		var point: Vector2 = _cubic_bezier(start, control_a, control_b, end, t)
+		var width: float = lerpf(start_width, end_width, t)
+		draw_line(previous, point, RIVER_COLOR, width, true)
+		previous = point
+
+func _hsm_outward_direction(hsm: String) -> Vector2:
+	match hsm:
+		"HSM1":
+			return Vector2(0, -1)
+		"HSM2":
+			return Vector2(240, -135).normalized()
+		"HSM3":
+			return Vector2(240, 135).normalized()
+		"HSM4":
+			return Vector2(0, 1)
+		"HSM5":
+			return Vector2(-240, 135).normalized()
+		"HSM6":
+			return Vector2(-240, -135).normalized()
+		_:
+			return Vector2.ZERO
+
+func _is_hsm(point_id: String) -> bool:
+	return point_id.begins_with("HSM")
+
+func _float_or_default(value: String, fallback: float) -> float:
+	if value == "":
+		return fallback
+	return float(value)
+
+func _cubic_bezier(a: Vector2, b: Vector2, c: Vector2, d: Vector2, t: float) -> Vector2:
+	var inverse_t: float = 1.0 - t
+	return (
+		a * inverse_t * inverse_t * inverse_t
+		+ b * 3.0 * inverse_t * inverse_t * t
+		+ c * 3.0 * inverse_t * t * t
+		+ d * t * t * t
+	)
+
+func _exit_meets_sea(tile_coord: Vector2i, exit_hsm: String) -> bool:
+	var neighbor_coord: Vector2i = tile_coord + _neighbor_offset_for_hsm(tile_coord, exit_hsm)
+	if not terrain_layer.tiles.has(neighbor_coord):
+		return false
+	var neighbor: Dictionary = terrain_layer.tiles[neighbor_coord]
+	if neighbor.get("has_river", false):
+		return false
+	var neighbor_type: String = str(neighbor.get("type", ""))
+	return neighbor_type == "sea" or neighbor_type == "deep_sea"
+
+func _neighbor_offset_for_hsm(tile_coord: Vector2i, hsm: String) -> Vector2i:
+	var is_odd_column: bool = tile_coord.x % 2 == 1
+	match hsm:
+		"HSM1":
+			return Vector2i(0, -1)
+		"HSM2":
+			return Vector2i(1, 0) if is_odd_column else Vector2i(1, -1)
+		"HSM3":
+			return Vector2i(1, 1) if is_odd_column else Vector2i(1, 0)
+		"HSM4":
+			return Vector2i(0, 1)
+		"HSM5":
+			return Vector2i(-1, 1) if is_odd_column else Vector2i(-1, 0)
+		"HSM6":
+			return Vector2i(-1, 0) if is_odd_column else Vector2i(-1, -1)
+		_:
+			return Vector2i.ZERO
+
+func _load_river_properties() -> Dictionary:
+	var result := {}
+	if not FileAccess.file_exists(RIVER_PROPERTIES_PATH):
+		push_warning("River properties CSV not found at %s." % RIVER_PROPERTIES_PATH)
+		return result
+
+	var file := FileAccess.open(RIVER_PROPERTIES_PATH, FileAccess.READ)
+	if file == null:
+		push_warning("Could not open %s." % RIVER_PROPERTIES_PATH)
+		return result
+
+	var header := file.get_csv_line()
+	while not file.eof_reached():
+		var row := file.get_csv_line()
+		if row.size() == 0 or (row.size() == 1 and row[0] == ""):
+			continue
+		if row.size() != header.size():
+			continue
+
+		var river_data := {}
+		for i in range(header.size()):
+			river_data[header[i]] = row[i]
+		result[river_data["river_type"]] = river_data
+
+	file.close()
+	return result

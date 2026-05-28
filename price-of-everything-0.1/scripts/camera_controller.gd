@@ -11,12 +11,38 @@ extends Camera2D
 @export var zoom_max: float = 2.5              # zoomed in
 @export var zoom_step: float = 0.1
 @export var zoom_smoothing: float = 8.0
+@export var zoomed_in_tile_count: float = 2.5
 
 var _target_zoom: Vector2
 
 func _ready() -> void:
 	make_current()
+	_configure_for_map()
 	_target_zoom = zoom
+	call_deferred("_configure_for_map_after_scene_ready")
+
+func _configure_for_map_after_scene_ready() -> void:
+	_configure_for_map()
+	_target_zoom = zoom
+
+func _configure_for_map() -> void:
+	var hex_map := get_tree().get_first_node_in_group("hex_map")
+	if hex_map == null or not hex_map.has_method("map_world_rect"):
+		return
+	var map_rect: Rect2 = hex_map.map_world_rect()
+	if map_rect.size == Vector2.ZERO:
+		return
+	map_min = map_rect.position
+	map_max = map_rect.end
+	position = map_rect.get_center()
+	var viewport_size := get_viewport_rect().size
+	if viewport_size.x > 0.0 and map_rect.size.x > 0.0:
+		zoom_min = viewport_size.x / map_rect.size.x
+	if hex_map.tile_set != null:
+		var tile_height := float(hex_map.tile_set.tile_size.y)
+		if tile_height > 0.0:
+			zoom_max = viewport_size.y / (tile_height * zoomed_in_tile_count)
+	zoom = Vector2.ONE * zoom_min
 
 func _process(delta: float) -> void:
 	_handle_keyboard_pan(delta)
@@ -26,12 +52,36 @@ func _process(delta: float) -> void:
 	_clamp_to_bounds()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("camera_zoom_in"):
-		_target_zoom = (_target_zoom + Vector2(zoom_step, zoom_step)).clamp(
-			Vector2(zoom_min, zoom_min), Vector2(zoom_max, zoom_max))
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_adjust_zoom(_scroll_factor(event))
+			get_viewport().set_input_as_handled()
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_adjust_zoom(-_scroll_factor(event))
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMagnifyGesture:
+		_adjust_zoom(event.factor - 1.0)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("camera_zoom_in"):
+		_adjust_zoom(1.0)
 	elif event.is_action_pressed("camera_zoom_out"):
-		_target_zoom = (_target_zoom - Vector2(zoom_step, zoom_step)).clamp(
-			Vector2(zoom_min, zoom_min), Vector2(zoom_max, zoom_max))
+		_adjust_zoom(-1.0)
+
+func _scroll_factor(event: InputEventMouseButton) -> float:
+	return maxf(absf(event.factor), 1.0)
+
+func _adjust_zoom(delta_steps: float) -> void:
+	var effective_min := _effective_zoom_min()
+	_target_zoom = (_target_zoom + Vector2.ONE * zoom_step * delta_steps).clamp(
+		Vector2(effective_min, effective_min),
+		Vector2(zoom_max, zoom_max))
+
+func _effective_zoom_min() -> float:
+	var viewport_size := get_viewport_rect().size
+	var map_size := map_max - map_min
+	var fit_zoom_x := viewport_size.x / map_size.x
+	var fit_zoom_y := viewport_size.y / map_size.y
+	return maxf(zoom_min, minf(fit_zoom_x, fit_zoom_y))
 
 func _handle_keyboard_pan(delta: float) -> void:
 	var direction := Vector2.ZERO
@@ -68,13 +118,7 @@ func _handle_edge_pan(delta: float) -> void:
 		position += direction.normalized() * edge_pan_speed * delta / zoom.x
 
 func _apply_zoom_smoothing(delta: float) -> void:
-	# Compute the minimum zoom that still keeps the map filling the view
-	var viewport_size := get_viewport_rect().size
-	var map_size := map_max - map_min
-	var fit_zoom_x := viewport_size.x / map_size.x
-	var fit_zoom_y := viewport_size.y / map_size.y
-	var effective_min : float = max(zoom_min, min(fit_zoom_x, fit_zoom_y))
-
+	var effective_min := _effective_zoom_min()
 	_target_zoom = _target_zoom.clamp(
 		Vector2(effective_min, effective_min),
 		Vector2(zoom_max, zoom_max))

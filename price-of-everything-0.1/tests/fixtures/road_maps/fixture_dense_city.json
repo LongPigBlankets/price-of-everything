@@ -1,0 +1,83 @@
+{
+  "id": "fixture_dense_city",
+  "name": "Dense city cluster with river",
+  "tiles": [
+    {
+      "id": "tile_14_10",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "city_id": "metro",
+      "city_name": "Metro",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_15_10",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "has_river": true,
+      "river_type": "river_single_150",
+      "city_id": "metro",
+      "city_name": "Metro",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_16_10",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "city_id": "metro",
+      "city_name": "Metro",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_14_11",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "city_id": "metro",
+      "city_name": "Metro",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_15_11",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "city_id": "metro",
+      "city_name": "Metro",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_16_11",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "has_river": true,
+      "river_type": "river_single_224",
+      "city_id": "metro",
+      "city_name": "Metro",
+      "road_density": "dense"
+    },
+    {
+      "id": "tile_15_12",
+      "type": "urban",
+      "infrastructure_present": ["roads"],
+      "city_id": "metro",
+      "city_name": "Metro",
+      "road_density": "dense"
+    }
+  ],
+  "cities": {
+    "metro": {
+      "name": "Metro",
+      "member_tiles": [
+        "tile_14_10",
+        "tile_15_10",
+        "tile_16_10",
+        "tile_14_11",
+        "tile_15_11",
+        "tile_16_11",
+        "tile_15_12"
+      ],
+      "inset": 58.0,
+      "wobble_amplitude": 8.0,
+      "shape_variant": 1
+    }
+  }
+}

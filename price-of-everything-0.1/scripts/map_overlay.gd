@@ -13,7 +13,7 @@ const POWER_COLORS: Dictionary = {
 const POWER_LABEL_FONT_SIZE := 22
 const POWER_CIRCLE_RADIUS := 18.0
 
-@onready var terrain_layer: TileMapLayer = %TerrainLayer
+@onready var terrain_layer: HexMap = %TerrainLayer
 
 const BUILD_REQ_MARKER_SIZE := 32.0
 
@@ -87,7 +87,7 @@ func _render_build_overlay(reqs: Array) -> void:
 		if matched_req.is_empty():
 			continue
 		var marker := _make_build_req_marker(matched_req)
-		marker.position = terrain_layer.map_to_local(coord)
+		marker.position = _tile_world_pos(coord)
 		add_child(marker)
 		build_overlays.append(marker)
 
@@ -120,11 +120,12 @@ func _make_build_req_marker(req: Dictionary) -> Node2D:
 			sprite.texture = tex
 			var tex_size: Vector2 = tex.get_size()
 			if tex_size.x > 0 and tex_size.y > 0:
-				var s: float = BUILD_REQ_MARKER_SIZE / max(tex_size.x, tex_size.y)
+				var s: float = _build_req_marker_size() / maxf(tex_size.x, tex_size.y)
 				sprite.scale = Vector2(s, s)
 			return sprite
 	# Fallback to a red potentials-style marker
 	var marker := SliceMarkerScene.instantiate()
+	marker.radius = _tile_marker_radius()
 	marker.set_colors([Color.RED])
 	return marker
 
@@ -162,7 +163,8 @@ func _render_resource_overlay(mode: int, selections: Array) -> void:
 				colors_for_tile.append(s.color)
 		if not colors_for_tile.is_empty():
 			var marker := SliceMarkerScene.instantiate()
-			marker.position = terrain_layer.map_to_local(coord)
+			marker.position = _tile_world_pos(coord)
+			marker.radius = _tile_marker_radius()
 			marker.set_colors(colors_for_tile)
 			add_child(marker)
 			current_overlays.append(marker)
@@ -258,7 +260,7 @@ func _render_power_overlay() -> void:
 		var status: Dictionary = _get_power_status_for_tile(tile_data)
 		if status.state == "none":
 			continue
-		var world_pos: Vector2 = terrain_layer.map_to_local(coord)
+		var world_pos: Vector2 = _tile_world_pos(coord)
 		_draw_power_marker(world_pos, status)
 
 func _draw_power_marker(world_pos: Vector2, status: Dictionary) -> void:
@@ -268,9 +270,10 @@ func _draw_power_marker(world_pos: Vector2, status: Dictionary) -> void:
 	current_overlays.append(marker)
 	
 	var color: Color = POWER_COLORS.get(status.state, Color.MAGENTA)
+	var radius := _power_circle_radius()
 	
 	# Coloured circle background
-	var circle := _make_circle_node(color, POWER_CIRCLE_RADIUS)
+	var circle := _make_circle_node(color, radius)
 	marker.add_child(circle)
 	
 	# Label (if state has a number)
@@ -279,12 +282,12 @@ func _draw_power_marker(world_pos: Vector2, status: Dictionary) -> void:
 	if label_text != "":
 		var label := Label.new()
 		label.text = label_text
-		label.add_theme_font_size_override("font_size", POWER_LABEL_FONT_SIZE)
+		label.add_theme_font_size_override("font_size", _power_label_font_size())
 		label.add_theme_color_override("font_color", Color.WHITE)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		# Fixed-size box centred on origin for any 1-5 char label
-		label.size = Vector2(POWER_CIRCLE_RADIUS * 2, POWER_CIRCLE_RADIUS * 2)
+		label.size = Vector2(radius * 2, radius * 2)
 		label.position = -label.size / 2.0
 		marker.add_child(label)
 
@@ -309,6 +312,26 @@ func _make_circle_node(color: Color, radius: float) -> Node2D:
 	node.set("color", color)
 	node.set("radius", radius)
 	return node
+
+func _tile_world_pos(coord: Vector2i) -> Vector2:
+	return terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(coord))
+
+func _tile_size() -> Vector2:
+	if terrain_layer != null and terrain_layer.tile_set != null:
+		return Vector2(terrain_layer.tile_set.tile_size)
+	return Vector2(540, 480)
+
+func _tile_marker_radius() -> float:
+	return maxf(20.0, minf(_tile_size().x, _tile_size().y) * 0.08)
+
+func _power_circle_radius() -> float:
+	return maxf(POWER_CIRCLE_RADIUS, minf(_tile_size().x, _tile_size().y) * 0.075)
+
+func _power_label_font_size() -> int:
+	return maxi(POWER_LABEL_FONT_SIZE, roundi(_power_circle_radius() * 0.85))
+
+func _build_req_marker_size() -> float:
+	return maxf(BUILD_REQ_MARKER_SIZE, minf(_tile_size().x, _tile_size().y) * 0.14)
 
 func _get_power_status_for_tile(tile_data: Dictionary) -> Dictionary:
 	var tile_id: String = tile_data.get("id", "")
