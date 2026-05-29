@@ -345,10 +345,12 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 	var current_space := MatchState.get_tile_space_used(tile_id)
 	var projected_space := current_space + added_space
 	if projected_space > float(MatchState.MAX_TILE_LAND):
+		print("[Build] FAILED: tile %s is full (need %s, max %s)" % [tile_id, str(projected_space), str(MatchState.MAX_TILE_LAND)])
 		_show_tile_space_error("There is no more room on that tile. Demolish buildings to make room.")
 		return {"allowed": false, "cost_multiplier": 1.0}
 	var land_owned := MatchState.get_tile_land_owned(tile_id)
 	if projected_space > float(land_owned):
+		print("[Build] FAILED: insufficient land on tile %s (need %s, own %s)" % [tile_id, str(projected_space), str(land_owned)])
 		_show_tile_space_error("You cannot build that. You do not own sufficient land on tile %s" % tile_id)
 		return {"allowed": false, "cost_multiplier": 1.0}
 	var cost_multiplier := 1.0

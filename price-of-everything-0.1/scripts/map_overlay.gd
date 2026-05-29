@@ -14,7 +14,6 @@ const POWER_COLORS: Dictionary = {
 
 const POWER_LABEL_FONT_SIZE := 22
 const POWER_CIRCLE_RADIUS := 18.0
-const BUILD_TILE_SIZE := Vector2(64, 56)
 const BUILD_TILE_VERTICAL_OFFSET := Vector2(0, -5)
 const BUILD_RED := Color(0.45, 0.02, 0.02, 0.42)
 const BUILD_DARK_GREEN := Color(0.02, 0.28, 0.1, 0.34)
@@ -120,7 +119,7 @@ func _map_bounds() -> Rect2:
 		max_pos.y = max(max_pos.y, pos.y)
 	if not has_tile:
 		return Rect2(Vector2.ZERO, Vector2.ZERO)
-	return Rect2(min_pos - BUILD_TILE_SIZE, (max_pos - min_pos) + BUILD_TILE_SIZE * 2.0)
+	return Rect2(min_pos - _tile_size(), (max_pos - min_pos) + _tile_size() * 2.0)
 
 func _build_overlay_state(tile_data: Dictionary, reqs: Array, input_names: Array[String]) -> String:
 	var matched_input_count := _tile_input_match_count(tile_data, input_names)
@@ -162,7 +161,7 @@ func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
 func _make_build_hex_marker(state: String) -> Node2D:
 	var marker := Node2D.new()
 	marker.set_script(BuildModeHexOverlayScript)
-	marker.set("tile_size", BUILD_TILE_SIZE)
+	marker.set("tile_size", _tile_size())
 	match state:
 		"blocked":
 			marker.set("fill_color", BUILD_RED)
