@@ -91,7 +91,7 @@ func _render_build_overlay(recipe: Dictionary) -> void:
 		if state == "none":
 			continue
 		var marker := _make_build_hex_marker(state)
-		marker.position = terrain_layer.map_to_local(coord) + BUILD_TILE_VERTICAL_OFFSET
+		marker.position = _tile_world_pos(coord) + BUILD_TILE_VERTICAL_OFFSET
 		add_child(marker)
 		build_overlays.append(marker)
 
@@ -107,7 +107,7 @@ func _map_bounds() -> Rect2:
 	var min_pos := Vector2.ZERO
 	var max_pos := Vector2.ZERO
 	for coord in terrain_layer.tiles:
-		var pos: Vector2 = terrain_layer.map_to_local(coord)
+		var pos: Vector2 = _tile_world_pos(coord)
 		if not has_tile:
 			min_pos = pos
 			max_pos = pos
