@@ -16,6 +16,8 @@ extends PanelContainer
 
 signal building_clicked(building: Dictionary)
 
+const STOCKPILE_VIEW_SCRIPT := preload("res://scripts/stockpile_view.gd")
+
 class StockpileUnitBlock:
 	extends Control
 
@@ -105,6 +107,7 @@ var _drag_offset := Vector2.ZERO
 var _stockpile_capacity_label: Label = null
 var _stockpile_goods_list: HFlowContainer = null
 var _stockpile_visual: Panel = null
+var _stockpile_view: VBoxContainer = null
 var _stockpile_sell_button: Button = null
 var _sell_surplus_button: CheckBox = null
 var _production_destination_option: OptionButton = null
@@ -1248,33 +1251,9 @@ func _build_stockpile_section() -> void:
 	title.modulate = Color(0.7, 0.85, 1.0)
 	_right_detail_parent().add_child(title)
 
-	_stockpile_capacity_label = Label.new()
-	_stockpile_capacity_label.text = "Stored 0 / %d" % Stockpile.get_capacity("")
-	_right_detail_parent().add_child(_stockpile_capacity_label)
-
-	_stockpile_visual = Panel.new()
-	_stockpile_visual.custom_minimum_size = Vector2(0, STOCKPILE_VISUAL_HEIGHT)
-	_stockpile_visual.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_stockpile_visual.clip_contents = true
-	_stockpile_visual.mouse_filter = Control.MOUSE_FILTER_STOP
-	_stockpile_visual.resized.connect(_rebuild_stockpile_visual)
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.02, 0.05, 0.09, 0.82)
-	style.border_color = Color(0.7, 0.85, 1.0, 0.35)
-	style.border_width_left = 1
-	style.border_width_top = 1
-	style.border_width_right = 1
-	style.border_width_bottom = 1
-	_stockpile_visual.add_theme_stylebox_override("panel", style)
-	_right_detail_parent().add_child(_stockpile_visual)
-
-	_stockpile_goods_list = HFlowContainer.new()
-	_stockpile_goods_list.custom_minimum_size = Vector2(0, STOCKPILE_LEGEND_MAX_HEIGHT)
-	_stockpile_goods_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_stockpile_goods_list.clip_contents = true
-	_stockpile_goods_list.add_theme_constant_override("h_separation", 12)
-	_stockpile_goods_list.add_theme_constant_override("v_separation", 4)
-	_right_detail_parent().add_child(_stockpile_goods_list)
+	_stockpile_view = STOCKPILE_VIEW_SCRIPT.new()
+	_stockpile_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_right_detail_parent().add_child(_stockpile_view)
 
 	_sell_surplus_button = CheckBox.new()
 	_sell_surplus_button.text = ""
@@ -1305,11 +1284,11 @@ func _build_stockpile_section() -> void:
 	_right_detail_parent().add_child(_stockpile_sell_button)
 
 func _refresh_stockpile_section() -> void:
-	if _stockpile_capacity_label == null or _stockpile_goods_list == null or _stockpile_visual == null:
+	if _stockpile_view == null:
 		return
+	_stockpile_view.set_tile(_current_tile_id)
+
 	var used: int = Stockpile.get_used_capacity(_current_tile_id)
-	var capacity: int = Stockpile.get_capacity(_current_tile_id)
-	_stockpile_capacity_label.text = "Stored %d / %d" % [used, capacity]
 	if _sell_surplus_button != null:
 		_sell_surplus_button.set_pressed_no_signal(MatchState.is_sell_surplus_enabled(_current_tile_id))
 
@@ -1317,21 +1296,6 @@ func _refresh_stockpile_section() -> void:
 		var sale_queued := MatchState.is_stockpile_market_sale_queued(_current_tile_id)
 		_stockpile_sell_button.text = "Sale Queued for End Turn" if sale_queued else "Sell All to Market"
 		_stockpile_sell_button.disabled = used <= 0 or sale_queued
-
-	for child in _stockpile_goods_list.get_children():
-		child.queue_free()
-
-	var committed: Dictionary = Production.compute_committed_for_tile(_current_tile_id)
-	_stockpile_visual.tooltip_text = _stockpile_tooltip_text(committed)
-	var stockpile_rows := _sorted_stockpile_visual_rows()
-	if stockpile_rows.is_empty():
-		_stockpile_goods_list.add_child(_make_stockpile_row("No goods stored"))
-	else:
-		for row in stockpile_rows:
-			var good_id: String = row.get("good_id", "")
-			_stockpile_goods_list.add_child(_make_stockpile_row(Catalog.get_display_name(good_id), good_id))
-
-	_rebuild_stockpile_visual()
 
 func _rebuild_stockpile_visual() -> void:
 	for child in _stockpile_visual.get_children():
