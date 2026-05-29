@@ -120,12 +120,15 @@ func _build_theme() -> Theme:
 		_stylebox(PALETTE["BG_INSET"], PALETTE["BORDER_SOFT"], 6, 1, 14, 10))
 
 	# ── Button base (secondary / dark) ────────────────────────────────
+	# Secondary buttons must stay clearly lighter than the dark panel bg, so use
+	# the lighter navy (BG_HIGHLIGHT) for normal, lighter still on hover, and a
+	# darker fill when pressed.
 	t.set_stylebox("normal", "Button",
-		_stylebox(PALETTE["BG_INSET"], PALETTE["BORDER_SOFT"], 6, 1, 22, 12))
+		_stylebox(PALETTE["BG_HIGHLIGHT"], PALETTE["BORDER_SOFT"], 6, 1, 22, 12))
 	t.set_stylebox("hover", "Button",
-		_stylebox(PALETTE["BG_CARD"], PALETTE["BORDER"], 6, 1, 22, 12))
+		_stylebox(Color(PALETTE["BG_HIGHLIGHT"]).lightened(0.10), PALETTE["BORDER"], 6, 1, 22, 12))
 	t.set_stylebox("pressed", "Button",
-		_stylebox(PALETTE["BG"], PALETTE["BORDER"], 6, 1, 22, 12))
+		_stylebox(PALETTE["BG_INSET"], PALETTE["BORDER"], 6, 1, 22, 12))
 	t.set_color("font_color", "Button", PALETTE["TEXT"])
 	t.set_color("font_hover_color", "Button", PALETTE["ACCENT"])
 	t.set_color("font_pressed_color", "Button", PALETTE["ACCENT"])
