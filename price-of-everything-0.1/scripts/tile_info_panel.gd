@@ -282,9 +282,7 @@ func show_tile(tile_data: Dictionary) -> void:
 	var nick: String = tile_data.get("nickname", "")
 	var tid: String = tile_data.get("id", "")
 	title_label.text = ("%s (%s)" % [nick, tid]) if nick != "" else tid
-	_rebuild_table(tile_data)
 	_rebuild_buildings(tile_data)
-	_rebuild_deposits_table(tile_data)
 	_rebuild_infrastructure_table(tile_data)
 	_refresh_tile_banner(tile_data)
 	_refresh_tile_type_summary(tile_data)
@@ -298,11 +296,6 @@ func show_tile(tile_data: Dictionary) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED and not visible:
 		PanelStack.remove(self)
-
-func _rebuild_table(_tile_data: Dictionary) -> void:
-	for child in property_table.get_children():
-		child.queue_free()
-	property_table.visible = false
 
 func _rebuild_buildings(tile_data: Dictionary) -> void:
 	var tile_id: String = tile_data.id
@@ -346,20 +339,6 @@ func _refresh_tile_banner(tile_data: Dictionary) -> void:
 		_tile_banner_texture_rect.texture = _rural_tile_banner_texture
 	else:
 		_tile_banner_texture_rect.texture = null
-
-func _rebuild_deposits_table(_tile_data: Dictionary) -> void:
-	for child in deposits_table.get_children():
-		child.queue_free()
-
-	for header in ["Resource", "Quantity", "Action"]:
-		deposits_table.add_child(_make_cell(header, true))
-
-	deposits_table.add_child(_make_cell("Coal", false))
-	deposits_table.add_child(_make_cell("Infinite", false))
-
-	var add_button := Button.new()
-	add_button.text = "Add Building"
-	deposits_table.add_child(add_button)
 
 func _rebuild_infrastructure_table(tile_data: Dictionary) -> void:
 	for child in infrastructure_table.get_children():
@@ -1600,14 +1579,6 @@ func _on_tile_land_owned_changed(tile_id: String) -> void:
 	if visible and tile_id == _current_tile_id:
 		_rebuild_buildings(_current_tile_data)
 		_refresh_land_purchase_section()
-
-func _make_cell(text: String, is_header: bool) -> Label:
-	var label := Label.new()
-	label.text = text
-	if is_header:
-		label.add_theme_font_size_override("font_size", 13)
-		label.modulate = Color(0.7, 0.85, 1.0)
-	return label
 
 func _format_nullable_money(value: Variant) -> String:
 	if value == null:
