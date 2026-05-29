@@ -138,7 +138,7 @@ func _build_stockpile_legend() -> void:
 	_stockpile_legend.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.02, 0.07, 0.13, 0.92)
+	style.bg_color = Color(DS.PALETTE.BG_PANEL, 0.92)
 	style.border_color = Color(0.995, 0.93, 0.76, 0.5)
 	style.border_width_left = 1
 	style.border_width_top = 1
@@ -418,7 +418,7 @@ func _build_stockpile_select_prompt() -> void:
 	_stockpile_select_prompt.offset_bottom = -128.0
 	_stockpile_select_prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.02, 0.07, 0.13, 0.94)
+	style.bg_color = Color(DS.PALETTE.BG_PANEL, 0.94)
 	style.border_color = Color(0.995, 0.93, 0.76, 0.6)
 	style.border_width_left = 1
 	style.border_width_top = 1
