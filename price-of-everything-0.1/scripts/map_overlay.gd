@@ -1,6 +1,8 @@
 extends Node2D
 
 const SliceMarkerScene: PackedScene = preload("res://scenes/slice_marker.tscn")
+const BuildModeHexOverlayScript: Script = preload("res://scripts/build_mode_hex_overlay.gd")
+const BuildModeBackdropScript: Script = preload("res://scripts/build_mode_backdrop.gd")
 
 const POWER_COLORS: Dictionary = {
 	"surplus": Color(0.2, 0.8, 0.2),         # green
@@ -12,13 +14,17 @@ const POWER_COLORS: Dictionary = {
 
 const POWER_LABEL_FONT_SIZE := 22
 const POWER_CIRCLE_RADIUS := 18.0
+const BUILD_TILE_SIZE := Vector2(64, 56)
+const BUILD_TILE_VERTICAL_OFFSET := Vector2(0, -5)
+const BUILD_RED := Color(0.45, 0.02, 0.02, 0.42)
+const BUILD_DARK_GREEN := Color(0.02, 0.28, 0.1, 0.34)
+const BUILD_LIGHT_GREEN := Color(0.45, 1.0, 0.48, 0.86)
 
 @onready var terrain_layer: TileMapLayer = %TerrainLayer
 
-const BUILD_REQ_MARKER_SIZE := 32.0
-
 var current_overlays: Array = []
 var build_overlays: Array = []
+var build_legend: PanelContainer = null
 
 func _ready() -> void:
 	MapMode.selections_changed.connect(_on_selections_changed)
@@ -54,25 +60,21 @@ func _clear_overlays() -> void:
 			node.queue_free()
 	current_overlays.clear()
 
-# --- Build-mode requirement overlay (deposits / potentials) ---
-# Shown while BuildMode is active for a recipe whose `requirements` reference
-# a deposit or potential. Persists across placements; cleared only when
-# BuildMode exits (right-click).
+# --- Build-mode viability overlay ---
 
 func _on_build_mode_entered(_building_id: String, recipe_id: String) -> void:
 	_clear_build_overlays()
+	_show_build_legend()
 	if recipe_id == "":
 		return
 	var recipe: Dictionary = Catalog.get_recipe(recipe_id)
 	if recipe.is_empty():
 		return
-	var reqs: Array = recipe.get("requirements", [])
-	if reqs.is_empty():
-		return
-	_render_build_overlay(reqs)
+	_render_build_overlay(recipe)
 
 func _on_build_mode_exited() -> void:
 	_clear_build_overlays()
+	_hide_build_legend()
 
 func _clear_build_overlays() -> void:
 	for node in build_overlays:
@@ -80,28 +82,73 @@ func _clear_build_overlays() -> void:
 			node.queue_free()
 	build_overlays.clear()
 
-func _render_build_overlay(reqs: Array) -> void:
+func _render_build_overlay(recipe: Dictionary) -> void:
+	_add_build_backdrop()
+	var reqs: Array = recipe.get("requirements", [])
+	var input_names: Array[String] = _recipe_input_internal_names(recipe)
 	for coord in terrain_layer.tiles:
 		var tile_data: Dictionary = terrain_layer.tiles[coord]
-		var matched_req: Dictionary = _first_matching_req(tile_data, reqs)
-		if matched_req.is_empty():
+		var state := _build_overlay_state(tile_data, reqs, input_names)
+		if state == "none":
 			continue
-		var marker := _make_build_req_marker(matched_req)
-		marker.position = terrain_layer.map_to_local(coord)
+		var marker := _make_build_hex_marker(state)
+		marker.position = terrain_layer.map_to_local(coord) + BUILD_TILE_VERTICAL_OFFSET
 		add_child(marker)
 		build_overlays.append(marker)
 
-func _first_matching_req(tile_data: Dictionary, reqs: Array) -> Dictionary:
+func _add_build_backdrop() -> void:
+	var backdrop := Node2D.new()
+	backdrop.set_script(BuildModeBackdropScript)
+	backdrop.set("bounds", _map_bounds())
+	add_child(backdrop)
+	build_overlays.append(backdrop)
+
+func _map_bounds() -> Rect2:
+	var has_tile := false
+	var min_pos := Vector2.ZERO
+	var max_pos := Vector2.ZERO
+	for coord in terrain_layer.tiles:
+		var pos: Vector2 = terrain_layer.map_to_local(coord)
+		if not has_tile:
+			min_pos = pos
+			max_pos = pos
+			has_tile = true
+			continue
+		min_pos.x = min(min_pos.x, pos.x)
+		min_pos.y = min(min_pos.y, pos.y)
+		max_pos.x = max(max_pos.x, pos.x)
+		max_pos.y = max(max_pos.y, pos.y)
+	if not has_tile:
+		return Rect2(Vector2.ZERO, Vector2.ZERO)
+	return Rect2(min_pos - BUILD_TILE_SIZE, (max_pos - min_pos) + BUILD_TILE_SIZE * 2.0)
+
+func _build_overlay_state(tile_data: Dictionary, reqs: Array, input_names: Array[String]) -> String:
+	var matched_input_count := _tile_input_match_count(tile_data, input_names)
+	var tracked_input_count := input_names.size()
+	if tracked_input_count > 0:
+		if matched_input_count >= 2 or matched_input_count >= tracked_input_count:
+			return "recommended"
+		if tracked_input_count > 1 and matched_input_count == 1:
+			return "viable"
+	if not reqs.is_empty() and _tile_meets_all_build_reqs(tile_data, reqs):
+		return "recommended"
+	if reqs.is_empty():
+		return "none"
+	return "blocked"
+
+func _tile_meets_all_build_reqs(tile_data: Dictionary, reqs: Array) -> bool:
 	for req in reqs:
-		if _tile_meets_build_req(tile_data, req):
-			return req
-	return {}
+		if not _tile_meets_build_req(tile_data, req):
+			return false
+	return true
 
 func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
 	match req.get("type", ""):
 		"deposit":
 			var deps: Array = tile_data.get("deposits", [])
 			return deps.has(req.get("value", ""))
+		"produces":
+			return _tile_produces_good(tile_data, req.get("value", ""))
 		"potential":
 			var v: String = req.get("value", "")
 			if v == "wind":
@@ -112,36 +159,122 @@ func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
 		_:
 			return false
 
-func _make_build_req_marker(req: Dictionary) -> Node2D:
-	if req.get("type", "") == "deposit":
-		var tex: Texture2D = _load_deposit_icon(req.get("value", ""))
-		if tex != null:
-			var sprite := Sprite2D.new()
-			sprite.texture = tex
-			var tex_size: Vector2 = tex.get_size()
-			if tex_size.x > 0 and tex_size.y > 0:
-				var s: float = BUILD_REQ_MARKER_SIZE / max(tex_size.x, tex_size.y)
-				sprite.scale = Vector2(s, s)
-			return sprite
-	# Fallback to a red potentials-style marker
-	var marker := SliceMarkerScene.instantiate()
-	marker.set_colors([Color.RED])
+func _make_build_hex_marker(state: String) -> Node2D:
+	var marker := Node2D.new()
+	marker.set_script(BuildModeHexOverlayScript)
+	marker.set("tile_size", BUILD_TILE_SIZE)
+	match state:
+		"blocked":
+			marker.set("fill_color", BUILD_RED)
+			marker.set("hatch_color", Color(1, 0.42, 0.42, 0.28))
+		"viable":
+			marker.set("fill_color", BUILD_DARK_GREEN)
+			marker.set("hatch_color", Color(0.65, 1, 0.72, 0.26))
+		"recommended":
+			marker.set("fill_color", BUILD_LIGHT_GREEN)
+			marker.set("hatch_color", Color(0.03, 0.2, 0.06, 0.34))
 	return marker
 
-func _load_deposit_icon(deposit_name: String) -> Texture2D:
-	if deposit_name == "":
-		return null
-	var good: Dictionary = Catalog.get_good_by_internal_name(deposit_name)
-	if good.is_empty():
-		return null
-	var good_id: String = good.get("id", "")
-	if good_id == "":
-		return null
-	for ext in ["PNG", "png"]:
-		var path: String = "res://assets/icons/goods/medium/%s_%s.%s" % [good_id, deposit_name, ext]
-		if ResourceLoader.exists(path):
-			return load(path) as Texture2D
-	return null
+func _recipe_input_internal_names(recipe: Dictionary) -> Array[String]:
+	var input_names: Array[String] = []
+	for input in recipe.get("inputs", []):
+		var internal_name: String = input.get("internal_name", "")
+		if internal_name != "" and not input_names.has(internal_name):
+			input_names.append(internal_name)
+	for req in recipe.get("requirements", []):
+		if req.get("type", "") == "deposit":
+			var deposit_name: String = req.get("value", "")
+			if deposit_name != "" and not input_names.has(deposit_name):
+				input_names.append(deposit_name)
+	return input_names
+
+func _tile_input_match_count(tile_data: Dictionary, input_names: Array[String]) -> int:
+	var matches := 0
+	for input_name in input_names:
+		if _tile_has_deposit(tile_data, input_name) or _tile_produces_good(tile_data, input_name):
+			matches += 1
+	return matches
+
+func _tile_has_deposit(tile_data: Dictionary, internal_name: String) -> bool:
+	var deposits: Array = tile_data.get("deposits", [])
+	return deposits.has(internal_name)
+
+func _tile_produces_good(tile_data: Dictionary, internal_name: String) -> bool:
+	var tile_id: String = tile_data.get("id", "")
+	if tile_id == "":
+		return false
+	var instance_ids: Array = MatchState.tile_buildings.get(tile_id, [])
+	for inst_id in instance_ids:
+		var building: Dictionary = MatchState.buildings.get(inst_id, {})
+		if building.is_empty():
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
+		if recipe.get("output_name", "") == internal_name:
+			return true
+		for output in recipe.get("outputs", []):
+			if output.get("internal_name", "") == internal_name:
+				return true
+	return false
+
+func _show_build_legend() -> void:
+	if build_legend == null:
+		build_legend = _make_build_legend()
+	build_legend.show()
+
+func _hide_build_legend() -> void:
+	if build_legend != null:
+		build_legend.hide()
+
+func _make_build_legend() -> PanelContainer:
+	var parent_control := get_parent().get_node_or_null("UILayer/HUD/HUDContent") as Control
+	var panel := PanelContainer.new()
+	panel.name = "BuildModeLegend"
+	panel.custom_minimum_size = Vector2(230, 132)
+	panel.anchor_left = 1.0
+	panel.anchor_top = 1.0
+	panel.anchor_right = 1.0
+	panel.anchor_bottom = 1.0
+	panel.offset_left = -250
+	panel.offset_top = -166
+	panel.offset_right = -20
+	panel.offset_bottom = -20
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.03, 0.07, 0.12, 0.92)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_color = Color(0.55, 0.7, 0.82, 0.65)
+	style.set_content_margin_all(10)
+	panel.add_theme_stylebox_override("panel", style)
+	if parent_control != null:
+		parent_control.add_child(panel)
+	else:
+		add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	panel.add_child(box)
+	var title := Label.new()
+	title.text = "Build viability"
+	title.add_theme_font_size_override("font_size", 14)
+	box.add_child(title)
+	_add_build_legend_row(box, BUILD_RED, "Cannot build")
+	_add_build_legend_row(box, BUILD_DARK_GREEN, "1 input present")
+	_add_build_legend_row(box, BUILD_LIGHT_GREEN, "2+ / all met")
+	_add_build_legend_row(box, Color(0, 0, 0, 0), "Unrestricted")
+	return panel
+
+func _add_build_legend_row(parent: VBoxContainer, color: Color, text: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	parent.add_child(row)
+	var swatch := ColorRect.new()
+	swatch.custom_minimum_size = Vector2(20, 20)
+	swatch.color = color
+	row.add_child(swatch)
+	var label := Label.new()
+	label.text = text
+	row.add_child(label)
 
 # --- Top-level dispatch ---
 

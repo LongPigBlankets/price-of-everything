@@ -46,6 +46,15 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 	if recipe_id == "":
 		push_warning("Build attempted with no recipe selected")
 		return
+	var recipe: Dictionary = Catalog.get_recipe(recipe_id)
+	if recipe.is_empty():
+		push_warning("Build attempted with unknown recipe %s" % recipe_id)
+		return
+	if terrain_layer.tiles.has(coord):
+		var tile_data: Dictionary = terrain_layer.tiles[coord]
+		if not _tile_meets_recipe_requirements(tile_data, recipe):
+			print("[Build] FAILED: recipe requirements not met on %s" % tile_id)
+			return
 	
 	# Look up cost
 	var building_data: Dictionary = Catalog.get_building(building_id)
@@ -65,6 +74,45 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
 func _get_building_display_name(building_id: String) -> String:
 	return Catalog.get_building_display_name(building_id)
+
+func _tile_meets_recipe_requirements(tile_data: Dictionary, recipe: Dictionary) -> bool:
+	for req in recipe.get("requirements", []):
+		if not _tile_meets_build_req(tile_data, req):
+			return false
+	return true
+
+func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
+	match req.get("type", ""):
+		"deposit":
+			var deposits: Array = tile_data.get("deposits", [])
+			return deposits.has(req.get("value", ""))
+		"produces":
+			return _tile_produces_good(tile_data, req.get("value", ""))
+		"potential":
+			var value: String = req.get("value", "")
+			if value == "wind":
+				return tile_data.get("wind_potential", 0) > 0
+			if value == "solar":
+				return tile_data.get("solar_potential", 0) > 0
+			return false
+	return false
+
+func _tile_produces_good(tile_data: Dictionary, internal_name: String) -> bool:
+	var tile_id: String = tile_data.get("id", "")
+	if tile_id == "":
+		return false
+	var instance_ids: Array = MatchState.tile_buildings.get(tile_id, [])
+	for inst_id in instance_ids:
+		var building: Dictionary = MatchState.buildings.get(inst_id, {})
+		if building.is_empty():
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
+		if recipe.get("output_name", "") == internal_name:
+			return true
+		for output in recipe.get("outputs", []):
+			if output.get("internal_name", "") == internal_name:
+				return true
+	return false
 
 func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
 	var coord := terrain_layer.id_to_coord(tile_id)

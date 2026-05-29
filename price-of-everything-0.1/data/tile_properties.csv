@@ -223,7 +223,7 @@ tile_12_1,Extra Test,,iron_ore,,,200,,,
 tile_12_2,Miney McMineface,hill,coal|iron_ore,0,0.8,200,mine1|mine2|furnace,15,roads|railways
 tile_12_3,Other Test Tile,,coal|iron_ore,,,200,,,
 tile_12_4,Test 3,,coal,,,200,,,
-tile_12_5,,,,,,200,,,
+tile_12_5,Copper Test,hill,copper_ore|sand|lithium_ore,,,200,,,
 tile_12_6,,,,,,200,,,
 tile_12_7,,,,,,200,,,
 tile_12_8,,,,,,200,,,
