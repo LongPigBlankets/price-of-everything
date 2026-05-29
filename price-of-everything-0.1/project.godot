@@ -17,6 +17,7 @@ config/icon="res://scenes/icon.svg"
 
 [autoload]
 
+DS="*res://scripts/ds.gd"
 Catalog="*uid://dknl8ax7uvew7"
 MarketState="*uid://p821obaxl80d"
 Stockpile="*uid://c5n4ujnawka3c"
@@ -35,6 +36,8 @@ PanelStack="*res://scripts/panel_stack.gd"
 
 window/size/viewport_width=1920
 window/size/viewport_height=1080
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 
 [input]
 

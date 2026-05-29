@@ -6,6 +6,11 @@ extends Node
 # --- Player resources ---
 var money: float = 1000.0  # was: int = 1000
 
+const DEFAULT_TILE_LAND_OWNED := 100
+const LAND_PATCH_SIZE := 10
+const LAND_PATCH_COST := 10.0
+const MAX_TILE_LAND := 200
+
 # --- Building instances ---
 # Flat dictionary: instance_id -> building data dict
 # Building data: {instance_id, building_id, recipe_id, tile_coord, owner}
@@ -28,9 +33,10 @@ var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
 var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (standing order)
 var pending_transport_shipments: Array = []
+var tile_land_owned: Dictionary = {}
 
-enum SellMode { SELL_ALL, STOCKPILE_ALL }
-var sell_mode: int = SellMode.SELL_ALL
+enum SellMode { SELL_ALL, STOCKPILE_ALL, BUILDING_BY_BUILDING }
+var sell_mode: int = SellMode.STOCKPILE_ALL
 
 # --- Signals ---
 signal money_changed(new_amount: float) 
@@ -46,6 +52,7 @@ signal stockpile_market_sale_queue_changed(tile_id: String)
 signal stockpile_market_sale_completed(sale_record: Dictionary)
 signal sell_surplus_changed(tile_id: String)
 signal transport_shipments_changed
+signal tile_land_owned_changed(tile_id: String)
 
 # --- Initialization ---
 func _ready() -> void:
@@ -116,6 +123,36 @@ func get_buildings_on_tile(tile_id: String) -> Array:
 			result.append(buildings[instance_id])
 	return result
 
+func get_tile_space_used(tile_id: String) -> float:
+	var total := 0.0
+	for instance in get_buildings_on_tile(tile_id):
+		var building_id: String = instance.get("building_id", "")
+		var building_data := Catalog.get_building(building_id)
+		total += float(building_data.get("tile_size_used", 1.0))
+	return total
+
+func get_tile_land_owned(tile_id: String) -> int:
+	return int(tile_land_owned.get(tile_id, DEFAULT_TILE_LAND_OWNED))
+
+func get_tile_land_patches_available(tile_id: String) -> int:
+	var remaining := MAX_TILE_LAND - get_tile_land_owned(tile_id)
+	return maxi(0, int(floor(float(remaining) / float(LAND_PATCH_SIZE))))
+
+func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
+	if tile_id == "":
+		return false
+	var available := get_tile_land_patches_available(tile_id)
+	if available <= 0:
+		return false
+	var clamped_patches: int = clampi(patches, 1, available)
+	var cost := float(clamped_patches) * LAND_PATCH_COST
+	if not deduct_money(cost):
+		return false
+	var owned := get_tile_land_owned(tile_id)
+	tile_land_owned[tile_id] = mini(MAX_TILE_LAND, owned + clamped_patches * LAND_PATCH_SIZE)
+	tile_land_owned_changed.emit(tile_id)
+	return true
+
 func get_building(instance_id: String) -> Dictionary:
 	# Returns the instance dict, or empty dict if not found
 	return buildings.get(instance_id, {})
@@ -136,6 +173,7 @@ func reset() -> void:
 	queued_stockpile_market_sales.clear()
 	sell_surplus_tiles.clear()
 	pending_transport_shipments.clear()
+	tile_land_owned.clear()
 	_next_instance_counter = 0
 	state_reset.emit()
 
@@ -149,6 +187,7 @@ func debug_dump() -> Dictionary:
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": pending_transport_shipments.duplicate(true),
+		"tile_land_owned": tile_land_owned.duplicate(true),
 		"_next_instance_counter": _next_instance_counter,
 	}
 

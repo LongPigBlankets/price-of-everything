@@ -346,15 +346,15 @@ expand_icon = true
 [node name="TileInfoPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=361507145]
 unique_name_in_owner = true
 visible = false
-custom_minimum_size = Vector2(420, 0)
+custom_minimum_size = Vector2(760, 0)
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -450.0
+offset_left = -790.0
 offset_top = 30.0
 offset_right = -30.0
-offset_bottom = 700.0
+offset_bottom = 660.0
 grow_horizontal = 0
 theme_override_styles/panel = ExtResource("8_tipki")
 script = ExtResource("4_jyhfs")
@@ -372,9 +372,10 @@ size_flags_vertical = 3
 theme_override_constants/separation = 12
 
 [node name="TileSizeChart" type="Control" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow" unique_id=1435297557]
-custom_minimum_size = Vector2(230, 400)
+custom_minimum_size = Vector2(336, 320)
 layout_mode = 2
-size_flags_vertical = 0
+size_flags_horizontal = 3
+size_flags_vertical = 3
 script = ExtResource("19_t88fa")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow" unique_id=332018308]
@@ -403,7 +404,7 @@ text = "X"
 clip_contents = true
 custom_minimum_size = Vector2(240, 150)
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_tile_banner")
 
 [node name="HeaderSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=1742528492]
@@ -464,7 +465,7 @@ layout_mode = 2
 [node name="TitleLabel" type="Label" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=195859302]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 18
+theme_type_variation = &"BuildingName"
 
 [node name="CloseButton" type="Button" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=1498546560]
 custom_minimum_size = Vector2(28, 28)
@@ -514,9 +515,9 @@ theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 0
 
 [node name="FlowArrow" type="TextureRect" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame/FlowRow" unique_id=2116048691]
-custom_minimum_size = Vector2(130, 60)
+custom_minimum_size = Vector2(80, 48)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_horizontal = 4
 size_flags_vertical = 4
 expand_mode = 1
 
@@ -615,6 +616,7 @@ script = ExtResource("17_muem4")
 
 [node name="MarginContainer" type="MarginContainer" parent="UILayer/HUD/TopBar" unique_id=24487180]
 layout_mode = 2
+theme_override_constants/margin_right = 276
 
 [node name="HBoxContainer" type="HBoxContainer" parent="UILayer/HUD/TopBar/MarginContainer" unique_id=284602422]
 layout_mode = 2
@@ -643,24 +645,21 @@ size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 18
 text = "£0.00"
 
-[node name="TurnCounter" type="Label" parent="UILayer/HUD/TopBar/MarginContainer" unique_id=94115056]
-unique_name_in_owner = true
+[node name="EncyclopediaHitBox" type="Control" parent="UILayer/HUD/TopBar"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
-text = "Turn 1/300"
-horizontal_alignment = 2
+mouse_filter = 2
 
-[node name="EncyclopediaButton" type="Button" parent="UILayer/HUD/TopBar"]
+[node name="EncyclopediaButton" type="Button" parent="UILayer/HUD/TopBar/EncyclopediaHitBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(132, 26)
+custom_minimum_size = Vector2(120, 36)
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -324.0
-offset_top = 42.0
-offset_right = -188.0
-offset_bottom = 68.0
+offset_left = -260.0
+offset_top = 36.0
+offset_right = -140.0
+offset_bottom = 72.0
 grow_horizontal = 0
 grow_vertical = 0
 mouse_default_cursor_shape = 2
@@ -671,6 +670,24 @@ theme_override_font_sizes/font_size = 12
 text = "ENCYCLOPEDIA"
 flat = true
 
+[node name="TurnCounter" type="Label" parent="UILayer/HUD/TopBar/EncyclopediaHitBox" unique_id=94115056]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 36)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -140.0
+offset_top = 36.0
+offset_right = 0.0
+offset_bottom = 72.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 24
+text = "Turn 1/300"
+vertical_alignment = 1
+horizontal_alignment = 2
+
 [node name="ToastLayer" type="Control" parent="UILayer/HUD" unique_id=386310155]
 layout_mode = 1
 anchors_preset = 15
@@ -680,6 +697,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("27_toast")
+
 [node name="SearchOverlay" type="Control" parent="UILayer/HUD"]
 unique_name_in_owner = true
 visible = false
