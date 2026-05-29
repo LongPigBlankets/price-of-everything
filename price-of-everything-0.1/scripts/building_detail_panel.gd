@@ -20,40 +20,40 @@ extends PanelContainer
 
 const HEADER_HEIGHT := 40.0
 const PANEL_EDGE_MARGIN := 20.0
-const UPGRADE_BUTTON_SIZE := Vector2(30, 30)
+const UPGRADE_BUTTON_SIZE := Vector2(40, 40)
 const STATUS_ICON_SIZE := Vector2(20, 20)
 const STATUS_DOT_SIZE := Vector2(8, 8)
 const STATUS_RAIL_WIDTH := 30.0
 const NORMAL_BUILDING_PANEL_LIMIT := 3
 const EXTENDED_BUILDING_PANEL_LIMIT := 4
-const FLOW_COMPACT_HEIGHT := 130.0
-const FLOW_LARGE_HEIGHT := 130.0
-const FLOW_SINGLE_CELL_SIZE := Vector2(110, 110)
-const FLOW_GRID_CELL_SIZE := Vector2(55, 55)
+const FLOW_COMPACT_HEIGHT := 108.0
+const FLOW_LARGE_HEIGHT := 108.0
+const FLOW_SINGLE_CELL_SIZE := Vector2(92, 92)
+const FLOW_GRID_CELL_SIZE := Vector2(52, 52)
 const GOODS_ICON_DIR := "res://assets/icons/goods/small"
 const RECIPE_ARROW_PATH := "res://assets/icons/ui_icons/recipe_arrow.png"
 const RECIPE_POWER_ICON_PATH := "res://assets/icons/ui_icons/recipe_power_icon.png"
-const FLOW_ARROW_COMPACT_SIZE := Vector2(130, 60)
-const FLOW_ARROW_LARGE_SIZE := Vector2(130, 60)
+const UPGRADE_ICON_PATH := "res://assets/icons/ui_icons/upgrade_icon_off_white.png"
+const FLOW_ARROW_COMPACT_SIZE := Vector2(80, 48)
+const FLOW_ARROW_LARGE_SIZE := Vector2(80, 48)
 const FLOW_BADGE_DIAMETER := 24
 const FLOW_BADGE_TEXT_SIZE := 14
-const STATUS_GREEN := Color(0.2, 0.75, 0.25)
-const STATUS_RED := Color(0.85, 0.15, 0.12)
+const STATUS_GREEN := Color("#5BD180")   # DS PALETTE OK
+const STATUS_RED := Color("#E66060")     # DS PALETTE DANGER
 const STATUS_GREY := Color(0.45, 0.48, 0.52)
-const STATUS_YELLOW := Color(0.95, 0.78, 0.18)
-const ICON_TINT := Color(0.92, 0.90, 0.82)
+const STATUS_YELLOW := Color("#E6B85C")  # DS PALETTE WARN
+const ICON_TINT := Color("#FDEDC3")      # DS PALETTE ACCENT
 const TOOLTIP_NAVY := Color(0.03, 0.07, 0.13)
 const DIAGRAM_NAVY := Color(0.0, 0.119856, 0.243095, 1.0)
 const DIAGRAM_PAPER := Color(0.9725, 0.9333, 0.8431, 1.0)
 const FLOW_SQUARE_COLOR := Color(1.0, 1.0, 1.0)
-const UPGRADE_BUTTON_BLUE := Color(0.05, 0.31, 0.56)
-const UPGRADE_BUTTON_HOVER_BLUE := Color(0.07, 0.39, 0.68)
-const UPGRADE_ARROW_BLUE := Color(0.52, 0.82, 1.0)
 const UPGRADE_GREEN := Color(0.25, 0.82, 0.36)
 const UPGRADE_RED := Color(0.95, 0.28, 0.24)
 const ROUTE_BUTTON_HEIGHT := 45.0
 const ROUTE_TO_ACTION_GAP := 5.0
 const ROUTE_LINK_FONT_SIZE := 14
+const UPGRADE_TILE_SIZE_MULTIPLIER := 0.8
+const DENSITY_SOFT_CAPACITY := 100.0
 
 const STATUS_ICON_CONFIG := [
 	{
@@ -112,6 +112,8 @@ var _too_many_dialog: AcceptDialog = null
 
 func _ready() -> void:
 	_is_secondary_panel = bool(get_meta("is_secondary_building_panel", false))
+	if DS and DS.theme:
+		theme = DS.theme  # inherit the design-system theme (fonts, buttons, palette)
 	if not _is_secondary_panel:
 		_prepare_building_panel_template()
 	close_button.pressed.connect(_hide_panel)
@@ -205,7 +207,6 @@ func _add_separator() -> void:
 func _add_section_label(text: String) -> void:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", 13)
 	label.modulate = Color(0.7, 0.85, 1.0)
 	fields_vbox.add_child(label)
 
@@ -271,7 +272,6 @@ func _add_labour_table(building_data: Dictionary) -> void:
 
 	var title := Label.new()
 	title.text = "Labour"
-	title.add_theme_font_size_override("font_size", 13)
 	title.modulate = Color(0.7, 0.85, 1.0)
 	header_row.add_child(title)
 
@@ -322,7 +322,6 @@ func _make_table_cell(text: String, is_header: bool, min_width: float = 0.0) -> 
 		label.custom_minimum_size = Vector2(min_width, 0)
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if is_header:
-		label.add_theme_font_size_override("font_size", 13)
 		label.modulate = Color(0.7, 0.85, 1.0)
 	return label
 
@@ -787,14 +786,12 @@ func _build_upgrade_controls() -> void:
 
 	_upgrade_button = Button.new()
 	_upgrade_button.custom_minimum_size = UPGRADE_BUTTON_SIZE
-	_upgrade_button.text = "^"
-	_upgrade_button.add_theme_font_size_override("font_size", 18)
-	_upgrade_button.add_theme_color_override("font_color", UPGRADE_ARROW_BLUE)
-	_upgrade_button.add_theme_color_override("font_hover_color", UPGRADE_ARROW_BLUE)
-	_upgrade_button.add_theme_color_override("font_pressed_color", UPGRADE_ARROW_BLUE)
-	_upgrade_button.add_theme_stylebox_override("normal", _make_upgrade_button_style(UPGRADE_BUTTON_BLUE))
-	_upgrade_button.add_theme_stylebox_override("hover", _make_upgrade_button_style(UPGRADE_BUTTON_HOVER_BLUE))
-	_upgrade_button.add_theme_stylebox_override("pressed", _make_upgrade_button_style(UPGRADE_BUTTON_BLUE.darkened(0.12)))
+	_upgrade_button.tooltip_text = "Upgrade"
+	_upgrade_button.icon = load(UPGRADE_ICON_PATH) as Texture2D
+	_upgrade_button.expand_icon = true
+	_upgrade_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_upgrade_button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+	_upgrade_button.theme_type_variation = "BuildIcon"  # DS light-blue square icon button
 	_upgrade_button.pressed.connect(_on_upgrade_button_pressed)
 	button_row.add_child(_upgrade_button)
 
@@ -809,19 +806,6 @@ func _build_upgrade_controls() -> void:
 	_upgrade_panel = _make_upgrade_panel()
 	panel_vbox.add_child(_upgrade_panel)
 	panel_vbox.move_child(_upgrade_panel, button_row.get_index() + 1)
-
-func _make_upgrade_button_style(color: Color) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = color
-	style.corner_radius_top_left = 4
-	style.corner_radius_top_right = 4
-	style.corner_radius_bottom_left = 4
-	style.corner_radius_bottom_right = 4
-	style.content_margin_left = 0
-	style.content_margin_top = 0
-	style.content_margin_right = 0
-	style.content_margin_bottom = 0
-	return style
 
 func _make_upgrade_panel() -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -860,6 +844,7 @@ func _make_upgrade_panel() -> PanelContainer:
 
 	var upgrade_button := Button.new()
 	upgrade_button.text = "Upgrade"
+	upgrade_button.pressed.connect(_on_upgrade_confirm_pressed)
 	button_row.add_child(upgrade_button)
 
 	var cancel_button := Button.new()
@@ -885,6 +870,30 @@ func _on_upgrade_button_pressed() -> void:
 func _hide_upgrade_panel() -> void:
 	if _upgrade_panel != null:
 		_upgrade_panel.visible = false
+
+func _on_upgrade_confirm_pressed() -> void:
+	var tile_id: String = _current_building.get("tile_id", "")
+	var building_id: String = _current_building.get("building_id", "")
+	if tile_id == "" or building_id == "":
+		return
+	var building_data := Catalog.get_building(building_id)
+	var added_space := float(building_data.get("tile_size_used", 1.0)) * UPGRADE_TILE_SIZE_MULTIPLIER
+	var projected_space := MatchState.get_tile_space_used(tile_id) + added_space
+	if projected_space > float(MatchState.MAX_TILE_LAND):
+		_show_tile_space_toast("There is no more room on that tile. Demolish buildings to make room.", "show_error")
+		return
+	if projected_space > float(MatchState.get_tile_land_owned(tile_id)):
+		_show_tile_space_toast("You cannot build that. You do not own sufficient land on tile %s" % tile_id, "show_error")
+		return
+	if projected_space > DENSITY_SOFT_CAPACITY:
+		_show_tile_space_toast("Local opposition to density on tile %s will increase material and money costs for new buildings by 50%%" % tile_id, "show_caution")
+
+func _show_tile_space_toast(message: String, method_name: String) -> void:
+	var toast := get_tree().root.find_child("ToastLayer", true, false)
+	if toast != null and toast.has_method(method_name):
+		toast.call(method_name, message)
+	else:
+		push_warning(message)
 
 func _update_change_recipe_button(building: Dictionary, is_infrastructure: bool) -> void:
 	if change_recipe_button == null:
@@ -1158,6 +1167,20 @@ func _build_status_icon_column() -> void:
 			child.queue_free()
 	_status_dots.clear()
 
+	# Group the five RAG indicators in a rounded highlight tray (DS BG_HIGHLIGHT).
+	var rag_panel := PanelContainer.new()
+	var rag_style := StyleBoxFlat.new()
+	rag_style.bg_color = DS.PALETTE["BG_HIGHLIGHT"]
+	rag_style.border_color = DS.PALETTE["BORDER_SOFT"]
+	rag_style.set_border_width_all(1)
+	rag_style.set_corner_radius_all(8)
+	rag_style.set_content_margin_all(5)
+	rag_panel.add_theme_stylebox_override("panel", rag_style)
+	rag_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var rag_box := VBoxContainer.new()
+	rag_box.add_theme_constant_override("separation", 6)
+	rag_panel.add_child(rag_box)
+
 	for config in STATUS_ICON_CONFIG:
 		var key: String = config.get("key", "")
 		var icon_path: String = config.get("path", "")
@@ -1189,7 +1212,7 @@ func _build_status_icon_column() -> void:
 		wrapper.add_child(dot)
 		_status_dots[key] = dot
 
-		status_icon_column.add_child(wrapper)
+		rag_box.add_child(wrapper)
 
 	# 5th indicator: production cost per unit — RAG dot, cost in tooltip
 	_cost_wrapper = HBoxContainer.new()
@@ -1217,7 +1240,8 @@ func _build_status_icon_column() -> void:
 	_cost_label.theme = _tooltip_theme
 	_cost_wrapper.add_child(_cost_label)
 
-	status_icon_column.add_child(_cost_wrapper)
+	rag_box.add_child(_cost_wrapper)
+	status_icon_column.add_child(rag_panel)
 
 func _update_status_icons(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> void:
 	_set_status_dot("power", _power_status_color(building, recipe, is_infrastructure))
@@ -1525,7 +1549,13 @@ func _output_destination() -> String:
 			"" if int(route.turns) == 1 else "s",
 			_format_money(route.cost),
 		]
-	return "Market" if MatchState.sell_mode == MatchState.SellMode.SELL_ALL else "Tile stockpile"
+	match MatchState.sell_mode:
+		MatchState.SellMode.STOCKPILE_ALL:
+			return "Tile stockpile"
+		MatchState.SellMode.BUILDING_BY_BUILDING:
+			return "Building-by-building"
+		_:
+			return "Market"
 
 func _primary_output_good_id(recipe: Dictionary) -> String:
 	for output in _flow_output_items(recipe):

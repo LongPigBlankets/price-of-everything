@@ -164,8 +164,8 @@ func _process_production() -> void:
 		MatchState.add_money(grid.grid_sell_revenue)
 		summary.power_sales_revenue = grid.grid_sell_revenue
 		summary.money_in += grid.grid_sell_revenue
-	# === SELL PHASE (only if SELL_ALL) ===
-	if MatchState.sell_mode == MatchState.SellMode.SELL_ALL:
+	# === SELL PHASE (when production defaults to market) ===
+	if MatchState.sell_mode != MatchState.SellMode.STOCKPILE_ALL:
 		var totals: Dictionary = Stockpile.get_tile_totals(null)
 		_sell_stockpile_totals(null, totals, summary, false)
 

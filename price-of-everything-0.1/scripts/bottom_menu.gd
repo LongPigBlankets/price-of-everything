@@ -1,5 +1,7 @@
 extends Control
 
+const BUILDING_LEDGER_PANEL_SCENE := preload("res://scenes/building_ledger_panel.tscn")
+
 @onready var bottom_menu = %BottomMenu
 @onready var construct_panel = %ConstructPanel
 @onready var resource_panel: PanelContainer = %ResourcePanel
@@ -9,6 +11,9 @@ extends Control
 @onready var top_bar: PanelContainer = %TopBar
 @onready var money_panel: PanelContainer = %MoneyPanel
 @onready var take_loan_dialog: PanelContainer = %TakeLoanDialog
+
+# Building ledger is instantiated lazily on first open (no main.tscn edit needed).
+var building_ledger_panel: PanelContainer = null
 
 func _ready() -> void:
 	%ConstructButton.pressed.connect(_on_construct_pressed)
@@ -20,7 +25,7 @@ func _ready() -> void:
 	money_panel.take_loan_dialog = take_loan_dialog
 	take_loan_dialog.loan_confirmed.connect(_on_loan_confirmed)
 	take_loan_dialog.hide()
-	
+
 	# All panels start hidden
 	construct_panel.hide()
 	resource_panel.hide()
@@ -36,6 +41,8 @@ func _hide_all_panels() -> void:
 	_set_panel_visible(market_panel, false)
 	_set_panel_visible(mapmodes_panel, false)
 	_set_panel_visible(money_panel, false)
+	if is_instance_valid(building_ledger_panel):
+		_set_panel_visible(building_ledger_panel, false)
 
 func _set_panel_visible(panel: Control, show_it: bool) -> void:
 	if show_it:
@@ -69,18 +76,27 @@ func _on_market_pressed() -> void:
 	_set_panel_visible(market_panel, true)
 
 func _on_buildings_pressed() -> void:
-	print("Buildings panel not yet implemented")
+	_hide_all_panels()
+	if not is_instance_valid(building_ledger_panel):
+		building_ledger_panel = BUILDING_LEDGER_PANEL_SCENE.instantiate()
+		# Add as sibling to the other panels so it lives in HUDContent.
+		construct_panel.get_parent().add_child(building_ledger_panel)
+		building_ledger_panel.hide()
+		building_ledger_panel.close_requested.connect(
+			func(): _set_panel_visible(building_ledger_panel, false)
+		)
+	_set_panel_visible(building_ledger_panel, true)
 
 func _on_politics_pressed() -> void:
 	print("Politics panel not yet implemented")
 
 func _on_tech_pressed() -> void:
 	print("Tech panel not yet implemented")
-	
+
 func _on_money_widget_clicked() -> void:
 	_hide_all_panels()
 	_set_panel_visible(money_panel, true)
-	
+
 func _on_loan_confirmed(amount: float) -> void:
 	var ok: bool = LoanState.take_loan(amount)
 	if not ok:

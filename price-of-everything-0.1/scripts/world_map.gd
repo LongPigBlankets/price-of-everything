@@ -13,6 +13,9 @@ extends Node2D
 @onready var river_layer: TileMapLayer = $RiverLayer
 @onready var hud_content: Control = $UILayer/HUD/HUDContent
 @onready var _hud: Control = $UILayer/HUD
+@onready var _toast_layer: Control = $UILayer/HUD/ToastLayer
+
+const DENSITY_SOFT_CAPACITY := 100.0
 
 signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
 
@@ -220,7 +223,10 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 
 	# Look up cost
 	var building_data: Dictionary = Catalog.get_building(building_id)
-	var cost: float = building_data.get("base_price", 0.0)
+	var space_check := _space_check_for_build(tile_id, building_id)
+	if not bool(space_check.get("allowed", false)):
+		return
+	var cost: float = float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0))
 
 	# Check + deduct money
 	if not MatchState.deduct_money(cost):
@@ -255,8 +261,20 @@ func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
 
 	# Lookup cost
 	var building_data: Dictionary = Catalog.get_building_by_internal_name(infra_type)
-	var cost: float = building_data.get("base_price", 0.0)
+	var infra_building_id: String = building_data.get("id", "")
+	var cost: float = float(building_data.get("base_price", 0.0))
+	if infra_building_id != "":
+		var space_check := _space_check_for_build(tile_id, infra_building_id)
+		if not bool(space_check.get("allowed", false)):
+			return
+		var cost_multiplier := float(space_check.get("cost_multiplier", 1.0))
+		cost *= cost_multiplier
+		_try_build_infrastructure(tile_id, coord, tile, infra, infra_type, infra_building_id, cost)
+		return
 
+	_try_build_infrastructure(tile_id, coord, tile, infra, infra_type, infra_building_id, cost)
+
+func _try_build_infrastructure(tile_id: String, coord: Vector2i, tile: Dictionary, infra: Array, infra_type: String, infra_building_id: String, cost: float) -> void:
 	# Check + deduct
 	if not MatchState.deduct_money(cost):
 		print("[Build] FAILED: insufficient money for %s. Need £%.2f, have £%.2f" % [infra_type, cost, MatchState.money])
@@ -268,11 +286,40 @@ func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
 
 	print("Built %s on %s — cost £%.2f" % [infra_type, tile_id, cost])
 
-	var infra_building_id: String = building_data.get("id", "")
 	var instance_id := ""
 	if infra_building_id != "":
 		instance_id = MatchState.add_building(infra_building_id, "", tile_id)
 	building_placed.emit(tile_id, infra_building_id, "", instance_id, coord)
+
+func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
+	var building_data: Dictionary = Catalog.get_building(building_id)
+	var added_space := maxf(0.0, float(building_data.get("tile_size_used", 1.0)))
+	var current_space := MatchState.get_tile_space_used(tile_id)
+	var projected_space := current_space + added_space
+	if projected_space > float(MatchState.MAX_TILE_LAND):
+		_show_tile_space_error("There is no more room on that tile. Demolish buildings to make room.")
+		return {"allowed": false, "cost_multiplier": 1.0}
+	var land_owned := MatchState.get_tile_land_owned(tile_id)
+	if projected_space > float(land_owned):
+		_show_tile_space_error("You cannot build that. You do not own sufficient land on tile %s" % tile_id)
+		return {"allowed": false, "cost_multiplier": 1.0}
+	var cost_multiplier := 1.0
+	if projected_space > DENSITY_SOFT_CAPACITY:
+		cost_multiplier = 1.5
+		_show_tile_space_caution("Local opposition to density on tile %s will increase material and money costs for new buildings by 50%%" % tile_id)
+	return {"allowed": true, "cost_multiplier": cost_multiplier}
+
+func _show_tile_space_error(message: String) -> void:
+	if _toast_layer != null and _toast_layer.has_method("show_error"):
+		_toast_layer.call("show_error", message)
+	else:
+		push_warning(message)
+
+func _show_tile_space_caution(message: String) -> void:
+	if _toast_layer != null and _toast_layer.has_method("show_caution"):
+		_toast_layer.call("show_caution", message)
+	else:
+		push_warning(message)
 
 func _infra_building_id_for(infra_type: String) -> String:
 	# Maps infrastructure internal_name -> the building_id used for visual icons
