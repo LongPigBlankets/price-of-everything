@@ -212,22 +212,28 @@ func _on_search_recipe_build_requested(building_id: String, recipe_id: String) -
 	BuildMode.enter_build_mode(building_id, recipe_id)
 
 func _on_build_attempted(building_id: String, tile_id: String) -> void:
+	print("[Build] attempt: building=%s tile=%s" % [building_id, tile_id])
 	var coord := terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1):
+		print("[Build] FAILED: tile_id %s did not resolve to a coord (id_to_coord returned -1,-1)" % tile_id)
 		return
 
 	var recipe_id: String = BuildMode.current_recipe_id
 	if recipe_id == "":
+		print("[Build] FAILED: no recipe selected (BuildMode.current_recipe_id is empty)")
 		push_warning("Build attempted with no recipe selected")
 		return
 	var recipe: Dictionary = Catalog.get_recipe(recipe_id)
 	if recipe.is_empty():
+		print("[Build] FAILED: unknown recipe %s (Catalog.get_recipe returned empty)" % recipe_id)
 		push_warning("Build attempted with unknown recipe %s" % recipe_id)
 		return
-	if terrain_layer.tiles.has(coord):
+	if not terrain_layer.tiles.has(coord):
+		print("[Build] WARNING: terrain_layer.tiles has no entry for coord %s (skipping requirement check)" % str(coord))
+	else:
 		var tile_data: Dictionary = terrain_layer.tiles[coord]
 		if not _tile_meets_recipe_requirements(tile_data, recipe):
-			print("[Build] FAILED: recipe requirements not met on %s" % tile_id)
+			print("[Build] FAILED: recipe requirements not met on %s (recipe=%s requirements=%s deposits=%s)" % [tile_id, recipe_id, str(recipe.get("requirements", [])), str(tile_data.get("deposits", []))])
 			return
 
 	# Look up cost
