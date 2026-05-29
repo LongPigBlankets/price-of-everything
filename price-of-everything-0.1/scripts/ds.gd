@@ -34,8 +34,8 @@ extends Node
 # ── Colour palette ─────────────────────────────────────────────────────────
 const PALETTE := {
 	"BG": Color(0, 0.07, 0.14),
-	"BG_PANEL": Color("#000435"),         # panel background — deep navy (all panels)
-	"BG_CARD": Color("#000435"),          # section cards — flush w/ panel, border-delineated
+	"BG_PANEL": Color("#040F1B"),         # panel background — tile-view pipe-frame navy (all panels)
+	"BG_CARD": Color("#040F1B"),          # section cards — flush w/ panel, border-delineated
 	"BG_INSET": Color(0, 0.08, 0.16),     # darker navy — insets / default buttons
 	"BG_HIGHLIGHT": Color(0, 0.18, 0.33), # lighter navy — outlined / highlighted sections (brighter than cards)
 	"BORDER": Color("#FDEDC3"),
