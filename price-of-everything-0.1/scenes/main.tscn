@@ -232,14 +232,14 @@ horizontal_alignment = 1
 unique_name_in_owner = true
 layout_mode = 1
 offset_left = 16.0
-offset_top = 78.0
+offset_top = 58.0
 
 [node name="MapModesPanel" parent="UILayer/HUD/HUDContent" unique_id=2117327633 instance=ExtResource("10_jbj1t")]
 unique_name_in_owner = true
 layout_mode = 0
 anchors_preset = 0
 offset_left = 16.0
-offset_top = 78.0
+offset_top = 58.0
 
 [node name="BottomMenuPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=1433701742]
 layout_mode = 1
@@ -258,6 +258,7 @@ theme_override_styles/panel = ExtResource("8_tipki")
 
 [node name="BottomMenu" type="HBoxContainer" parent="UILayer/HUD/HUDContent" unique_id=1999718027]
 unique_name_in_owner = true
+texture_filter = 2
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -595,7 +596,7 @@ anchors_preset = 0
 anchor_top = 0.0
 anchor_bottom = 0.0
 offset_left = 16.0
-offset_top = 78.0
+offset_top = 58.0
 offset_bottom = 620.0
 grow_vertical = 1
 
@@ -610,7 +611,7 @@ offset_bottom = -28.0
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 16.0
-offset_top = 78.0
+offset_top = 58.0
 offset_right = 479.0
 
 [node name="TurnSummary" parent="UILayer/HUD/HUDContent" unique_id=678202477 instance=ExtResource("15_jkv2x")]
@@ -640,7 +641,7 @@ custom_minimum_size = Vector2(0, 36)
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
-offset_top = -36.0
+offset_top = 0.0
 offset_bottom = 58.0
 grow_horizontal = 2
 mouse_filter = 1
@@ -659,7 +660,7 @@ theme_override_constants/separation = 16
 custom_minimum_size = Vector2(140, 0)
 layout_mode = 2
 mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 16
 flat = true
 
 [node name="HBoxContainer" type="HBoxContainer" parent="UILayer/HUD/TopBar/MarginContainer/HBoxContainer/MoneyWidget" unique_id=415391343]
@@ -675,7 +676,7 @@ layout_mode = 2
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 16
 text = "£0.00"
 
 [node name="EncyclopediaHitBox" type="Control" parent="UILayer/HUD/TopBar"]
@@ -689,17 +690,18 @@ layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
 anchor_right = 1.0
+anchor_bottom = 1.0
 offset_left = -260.0
-offset_top = 36.0
+offset_top = 0.0
 offset_right = -140.0
-offset_bottom = 72.0
+offset_bottom = 0.0
 grow_horizontal = 0
 grow_vertical = 0
 mouse_default_cursor_shape = 2
 theme_override_colors/font_color = Color(0.995234, 0.930806, 0.763265, 1)
 theme_override_colors/font_hover_color = Color(0.995234, 0.930806, 0.763265, 1)
 theme_override_colors/font_pressed_color = Color(0.995234, 0.930806, 0.763265, 0.82)
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 16
 text = "ENCYCLOPEDIA"
 flat = true
 
@@ -710,13 +712,15 @@ layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
 anchor_right = 1.0
+anchor_bottom = 1.0
 offset_left = -140.0
-offset_top = 36.0
+offset_top = 0.0
 offset_right = 0.0
-offset_bottom = 72.0
+offset_bottom = 0.0
 grow_horizontal = 0
 grow_vertical = 0
-theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.995234, 0.930806, 0.763265, 1)
+theme_override_font_sizes/font_size = 16
 text = "Turn 1/300"
 vertical_alignment = 1
 horizontal_alignment = 2
