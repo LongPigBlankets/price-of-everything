@@ -23,6 +23,7 @@ func _ready() -> void:
 	await _test_main_scene_instantiates()
 	_test_catalog_loaded()
 	_test_recipe_requirements()
+	_test_menu_icons()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -130,3 +131,12 @@ func _test_recipe_requirements() -> void:
 		and reqs[0].get("type", "") == "deposit" \
 		and reqs[0].get("value", "") == "coal"
 	_check(ok, "r_001 (Coal Mining) requires deposit:coal")
+
+# Logic: the regenerated bottom-menu icons import and load as textures.
+func _test_menu_icons() -> void:
+	var all_ok := true
+	for key in ["resources", "buildings", "map_overlays", "markets", "politics"]:
+		var path := "res://assets/icons/ui_icons/200/%s.png" % key
+		if not (ResourceLoader.exists(path) and load(path) is Texture2D):
+			all_ok = false
+	_check(all_ok, "bottom-menu icons (200px tier) import and load")

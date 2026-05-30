@@ -2,6 +2,16 @@ extends Control
 
 const BUILDING_LEDGER_PANEL_SCENE := preload("res://scenes/building_ledger_panel.tscn")
 
+# Bottom-menu buttons that have multi-resolution circular art in
+# assets/icons/ui_icons/{100,200,400}/. (Construct + Tech art added later.)
+const MENU_ICONS := {
+	"ResourcesButton": "resources",
+	"BuildingsButton": "buildings",
+	"MapmodesButton": "map_overlays",
+	"MarketButton": "markets",
+	"PoliticsButton": "politics",
+}
+
 @onready var bottom_menu = %BottomMenu
 @onready var construct_panel = %ConstructPanel
 @onready var resource_panel: PanelContainer = %ResourcePanel
@@ -16,6 +26,7 @@ const BUILDING_LEDGER_PANEL_SCENE := preload("res://scenes/building_ledger_panel
 var building_ledger_panel: PanelContainer = null
 
 func _ready() -> void:
+	_apply_menu_icons()
 	%ConstructButton.pressed.connect(_on_construct_pressed)
 	%ResourcesButton.pressed.connect(_on_resources_pressed)
 	%BuildingsButton.pressed.connect(_on_buildings_pressed)
@@ -34,6 +45,27 @@ func _ready() -> void:
 	mapmodes_panel.hide()
 	top_bar.money_widget_clicked.connect(_on_money_widget_clicked)
 	money_panel.hide()
+
+func _icon_tier() -> String:
+	# Pick icon resolution from window height: sub-1080p -> 100, 1080p -> 200,
+	# above 1080p -> 400. The buttons render small, so a larger source downscales
+	# crisply (with the BottomMenu's Linear texture filter).
+	var h := DisplayServer.window_get_size().y
+	if h >= 1440:
+		return "400"
+	if h >= 1080:
+		return "200"
+	return "100"
+
+func _apply_menu_icons() -> void:
+	var tier := _icon_tier()
+	for button_name in MENU_ICONS:
+		var path := "res://assets/icons/ui_icons/%s/%s.png" % [tier, MENU_ICONS[button_name]]
+		if not ResourceLoader.exists(path):
+			continue
+		var button := get_node_or_null("%" + button_name) as Button
+		if button != null:
+			button.icon = load(path)
 
 func _hide_all_panels() -> void:
 	_set_panel_visible(construct_panel, false)
