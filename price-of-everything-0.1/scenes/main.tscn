@@ -88,6 +88,15 @@ corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top_bar"]
+content_margin_left = 16.0
+content_margin_top = 6.0
+content_margin_right = 16.0
+content_margin_bottom = 6.0
+bg_color = Color(0.015686275, 0.058823529, 0.105882353, 1)
+border_width_bottom = 2
+border_color = Color(0.995234, 0.930806, 0.763265, 0.45)
+
 [node name="WorldMap" type="Node2D" unique_id=2144397903]
 script = ExtResource("1_sugp2")
 
@@ -635,6 +644,7 @@ offset_top = -36.0
 offset_bottom = 58.0
 grow_horizontal = 2
 mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_top_bar")
 script = ExtResource("17_muem4")
 
 [node name="MarginContainer" type="MarginContainer" parent="UILayer/HUD/TopBar" unique_id=24487180]
