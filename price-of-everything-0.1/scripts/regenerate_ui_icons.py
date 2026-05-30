@@ -18,7 +18,7 @@ ROOT = os.path.dirname(HERE)
 SRC_DIR = os.path.join(ROOT, "assets", "icons", "ui_icons", "source")
 OUT_DIR = os.path.join(ROOT, "assets", "icons", "ui_icons")
 
-KEYS = ["resources", "buildings", "map_overlays", "markets", "politics"]  # + construct, tech later
+KEYS = ["resources", "buildings", "map_overlays", "markets", "politics", "construct", "tech"]
 SIZES = [400, 200, 100]
 LUM_T = 40            # brightness threshold for rim detection (0..255)
 R_PAD = 0            # grow(+)/shrink(-) detected radius, in source px

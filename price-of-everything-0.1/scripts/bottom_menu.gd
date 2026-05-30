@@ -3,13 +3,15 @@ extends Control
 const BUILDING_LEDGER_PANEL_SCENE := preload("res://scenes/building_ledger_panel.tscn")
 
 # Bottom-menu buttons that have multi-resolution circular art in
-# assets/icons/ui_icons/{100,200,400}/. (Construct + Tech art added later.)
+# assets/icons/ui_icons/{100,200,400}/.
 const MENU_ICONS := {
+	"ConstructButton": "construct",
 	"ResourcesButton": "resources",
 	"BuildingsButton": "buildings",
 	"MapmodesButton": "map_overlays",
 	"MarketButton": "markets",
 	"PoliticsButton": "politics",
+	"TechButton": "tech",
 }
 
 @onready var bottom_menu = %BottomMenu

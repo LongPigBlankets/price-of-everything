@@ -135,7 +135,7 @@ func _test_recipe_requirements() -> void:
 # Logic: the regenerated bottom-menu icons import and load as textures.
 func _test_menu_icons() -> void:
 	var all_ok := true
-	for key in ["resources", "buildings", "map_overlays", "markets", "politics"]:
+	for key in ["resources", "buildings", "map_overlays", "markets", "politics", "construct", "tech"]:
 		var path := "res://assets/icons/ui_icons/200/%s.png" % key
 		if not (ResourceLoader.exists(path) and load(path) is Texture2D):
 			all_ok = false
