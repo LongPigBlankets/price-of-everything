@@ -416,12 +416,38 @@ localize_numeral_system = false
 theme_override_font_sizes/font_size = 14
 text = "X"
 
-[node name="TileImageBanner" type="PanelContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=1263267594]
+[node name="BannerSummary" type="PanelContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BannerMargin" type="MarginContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/BannerSummary"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="BannerContent" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/BannerSummary/BannerMargin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TileImageBanner" type="PanelContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/BannerSummary/BannerMargin/BannerContent" unique_id=1263267594]
 clip_contents = true
 custom_minimum_size = Vector2(240, 150)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_tile_banner")
+
+[node name="RightScroll" type="ScrollContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="RightScrollContent" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/RightScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
 
 [node name="BuildingDetailPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=1081644289]
 unique_name_in_owner = true

@@ -6,7 +6,7 @@ extends PanelContainer
 @onready var infrastructure_table: GridContainer = $MarginContainer/ContentRow/ChartColumn/InfrastructureTable
 @onready var content_vbox: VBoxContainer = $MarginContainer/ContentRow/VBoxContainer
 @onready var tile_size_chart = $MarginContainer/ContentRow/ChartColumn/TileSizeChart
-@onready var tile_image_banner: PanelContainer = $MarginContainer/ContentRow/VBoxContainer/TileImageBanner
+@onready var tile_image_banner: PanelContainer = $MarginContainer/ContentRow/VBoxContainer/BannerSummary/BannerMargin/BannerContent/TileImageBanner
 @onready var _content_row: HBoxContainer = $MarginContainer/ContentRow
 @onready var _margin_container: MarginContainer = $MarginContainer
 
@@ -87,14 +87,14 @@ var _checkbox_unchecked_icon_texture: Texture2D = null
 var _tile_modal_frame_texture: Texture2D = null
 var _rural_tile_banner_texture: Texture2D = null
 var _tile_banner_texture_rect: TextureRect = null
-var _banner_summary_wrapper: PanelContainer = null
-var _banner_summary_content: VBoxContainer = null
+@onready var _banner_summary_wrapper: PanelContainer = $MarginContainer/ContentRow/VBoxContainer/BannerSummary
+@onready var _banner_summary_content: VBoxContainer = $MarginContainer/ContentRow/VBoxContainer/BannerSummary/BannerMargin/BannerContent
 var _tile_type_summary_row: HBoxContainer = null
 var _tile_type_summary_label: Label = null
 var _tile_deposits_summary_label: Label = null
 var _survey_status_button: Button = null
-var _right_scroll: ScrollContainer = null
-var _right_scroll_content: VBoxContainer = null
+@onready var _right_scroll: ScrollContainer = $MarginContainer/ContentRow/VBoxContainer/RightScroll
+@onready var _right_scroll_content: VBoxContainer = $MarginContainer/ContentRow/VBoxContainer/RightScroll/RightScrollContent
 var _power_section_content: VBoxContainer = null
 var _production_section_content: VBoxContainer = null
 var _building_icon_cache: Dictionary = {}
@@ -131,30 +131,7 @@ func _restructure_layout() -> void:
 		_infra_grid.add_requested.connect(_on_add_infrastructure_pressed)
 		_chart_column.add_child(_infra_grid)
 
-	if _banner_summary_wrapper == null:
-		_banner_summary_wrapper = PanelContainer.new()
-		_banner_summary_wrapper.name = "BannerSummary"
-		_banner_summary_wrapper.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_banner_summary_wrapper.add_theme_stylebox_override("panel", _make_panel_style(Color.TRANSPARENT, SUMMARY_PANEL_BORDER, 8))
-		var margin := MarginContainer.new()
-		margin.add_theme_constant_override("margin_left", 8)
-		margin.add_theme_constant_override("margin_top", 8)
-		margin.add_theme_constant_override("margin_right", 8)
-		margin.add_theme_constant_override("margin_bottom", 8)
-		_banner_summary_wrapper.add_child(margin)
-		_banner_summary_content = VBoxContainer.new()
-		_banner_summary_content.add_theme_constant_override("separation", 8)
-		margin.add_child(_banner_summary_content)
-		content_vbox.add_child(_banner_summary_wrapper)
-		content_vbox.move_child(_banner_summary_wrapper, 1)
-
-	if tile_image_banner.get_parent() != _banner_summary_content:
-		var current_parent := tile_image_banner.get_parent()
-		if current_parent != null:
-			current_parent.remove_child(tile_image_banner)
-		_banner_summary_content.add_child(tile_image_banner)
-		_banner_summary_content.move_child(tile_image_banner, 0)
-	tile_image_banner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_banner_summary_wrapper.add_theme_stylebox_override("panel", _make_panel_style(Color.TRANSPARENT, SUMMARY_PANEL_BORDER, 8))
 
 	if _tile_type_summary_row == null:
 		_tile_type_summary_row = HBoxContainer.new()
@@ -185,20 +162,6 @@ func _restructure_layout() -> void:
 		_survey_status_button.add_theme_color_override("font_color", OFF_WHITE)
 		_survey_status_button.add_theme_color_override("font_hover_color", OFF_WHITE)
 		_tile_type_summary_row.add_child(_survey_status_button)
-
-	if _right_scroll == null:
-		_right_scroll = ScrollContainer.new()
-		_right_scroll.name = "TileInfoScroll"
-		_right_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_right_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		_right_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-		_right_scroll_content = VBoxContainer.new()
-		_right_scroll_content.name = "TileInfoScrollContent"
-		_right_scroll_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_right_scroll_content.add_theme_constant_override("separation", 8)
-		_right_scroll.add_child(_right_scroll_content)
-		content_vbox.add_child(_right_scroll)
-		content_vbox.move_child(_right_scroll, 2)
 
 func _setup_tile_banner() -> void:
 	if _tile_banner_texture_rect != null:

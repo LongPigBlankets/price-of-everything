@@ -85,7 +85,10 @@ func _test_main_scene_instantiates() -> void:
 		and panel.get("tile_size_chart") != null \
 		and panel.get("title_label") != null \
 		and panel.get("infrastructure_table") != null \
-		and panel.get("close_button") != null
+		and panel.get("close_button") != null \
+		and panel.get("tile_image_banner") != null \
+		and panel.get("_banner_summary_content") != null \
+		and panel.get("_right_scroll_content") != null
 	_check(ok, "main.tscn instantiates; TileInfoPanel @onready nodes resolve")
 	inst.queue_free()
 	await get_tree().process_frame
