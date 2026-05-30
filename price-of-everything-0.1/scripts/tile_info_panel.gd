@@ -18,32 +18,7 @@ signal building_clicked(building: Dictionary)
 
 const STOCKPILE_VIEW_SCRIPT := preload("res://scripts/stockpile_view.gd")
 
-class StockpileUnitBlock:
-	extends Control
-
-	var fill_color := Color(0.44, 0.48, 0.5, 0.22)
-
-	func _draw() -> void:
-		draw_rect(Rect2(Vector2.ZERO, size), fill_color, true)
-
 const HEADER_HEIGHT := 40.0
-const STOCKPILE_VISUAL_HEIGHT := 100.0
-const STOCKPILE_VISUAL_COLUMNS := 25
-const STOCKPILE_LEGEND_SWATCH_SIZE := Vector2(20, 20)
-const STOCKPILE_LEGEND_MAX_HEIGHT := 48.0
-const STOCKPILE_GOOD_LABEL_MAX_CHARS := 12
-const STOCKPILE_LEGEND_LABEL_WIDTH := 88.0
-const STOCKPILE_UNUSED_FILL := Color(0.44, 0.48, 0.5, 0.22)
-const STOCKPILE_COLOR_PALETTE := [
-	Color(0.13, 0.55, 0.13, 0.92),
-	Color(0.95, 0.83, 0.18, 0.92),
-	Color(0.47, 0.78, 1.0, 0.92),
-	Color(0.55, 0.35, 0.88, 0.92),
-	Color(0.22, 0.22, 0.22, 0.92),
-	Color(0.95, 0.48, 0.14, 0.92),
-	Color(0.48, 0.90, 0.72, 0.92),
-	Color(0.25, 0.41, 0.88, 0.92),
-]
 var OFF_WHITE: Color = DS.PALETTE.ACCENT
 const CONTROL_ROW_HEIGHT := 34.0
 const CONTROL_ROW_TALL_HEIGHT := 48.0
@@ -104,9 +79,6 @@ var _current_tile_data: Dictionary = {}
 var _current_tile_id: String = ""
 var _dragging := false
 var _drag_offset := Vector2.ZERO
-var _stockpile_capacity_label: Label = null
-var _stockpile_goods_list: HFlowContainer = null
-var _stockpile_visual: Panel = null
 var _stockpile_view: VBoxContainer = null
 var _stockpile_sell_button: Button = null
 var _sell_surplus_button: CheckBox = null
@@ -1296,141 +1268,6 @@ func _refresh_stockpile_section() -> void:
 		var sale_queued := MatchState.is_stockpile_market_sale_queued(_current_tile_id)
 		_stockpile_sell_button.text = "Sale Queued for End Turn" if sale_queued else "Sell All to Market"
 		_stockpile_sell_button.disabled = used <= 0 or sale_queued
-
-func _rebuild_stockpile_visual() -> void:
-	for child in _stockpile_visual.get_children():
-		child.queue_free()
-
-	var capacity := Stockpile.get_capacity(_current_tile_id)
-	if capacity <= 0:
-		return
-
-	var visual_width := maxf(maxf(_stockpile_visual.size.x, _stockpile_visual.custom_minimum_size.x), 1.0)
-	var visual_height := maxf(maxf(_stockpile_visual.size.y, STOCKPILE_VISUAL_HEIGHT), 1.0)
-	var columns := mini(STOCKPILE_VISUAL_COLUMNS, capacity)
-	columns = maxi(1, columns)
-	var rows := maxi(1, ceili(float(capacity) / float(columns)))
-	var unit_size := Vector2(visual_width / float(columns), visual_height / float(rows))
-
-	var block_index := 0
-	for row in _sorted_stockpile_visual_rows():
-		var good_id: String = row.get("good_id", "")
-		var qty: int = int(row.get("qty", 0))
-		var color := _stockpile_color_for_good(good_id)
-		for _i in range(qty):
-			if block_index >= capacity:
-				return
-			var block := StockpileUnitBlock.new()
-			block.fill_color = color
-			block.position = Vector2(
-				float(block_index % columns) * unit_size.x,
-				floorf(float(block_index) / float(columns)) * unit_size.y
-			)
-			block.size = unit_size
-			block.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			_stockpile_visual.add_child(block)
-			block_index += 1
-
-	while block_index < capacity:
-		var block := StockpileUnitBlock.new()
-		block.fill_color = STOCKPILE_UNUSED_FILL
-		block.position = Vector2(
-			float(block_index % columns) * unit_size.x,
-			floorf(float(block_index) / float(columns)) * unit_size.y
-		)
-		block.size = unit_size
-		block.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_stockpile_visual.add_child(block)
-		block_index += 1
-
-func _stockpile_tooltip_text(committed: Dictionary) -> String:
-	var rows := _sorted_stockpile_visual_rows()
-	var lines: Array[String] = []
-	if rows.is_empty():
-		lines.append("No goods stored")
-	else:
-		lines.append("Top goods on this tile")
-		var limit := mini(10, rows.size())
-		for i in range(limit):
-			var row: Dictionary = rows[i]
-			var good_id: String = row.get("good_id", "")
-			var qty := int(row.get("qty", 0))
-			var committed_qty := int(committed.get(good_id, 0))
-			var surplus := maxi(0, qty - committed_qty)
-			lines.append("%s: %d (%d)" % [Catalog.get_display_name(good_id), qty, surplus])
-	lines.append("")
-	lines.append("Brackets show surplus that will not be used this turn")
-	return "\n".join(lines)
-
-func _sorted_stockpile_visual_rows() -> Array:
-	var rows: Array = []
-	var totals: Dictionary = Stockpile.get_tile_totals(_current_tile_id)
-	for good_id in totals.keys():
-		var qty: int = int(totals[good_id])
-		if qty > 0:
-			rows.append({"good_id": good_id, "qty": qty})
-	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		if int(a.qty) == int(b.qty):
-			return str(a.good_id) < str(b.good_id)
-		return int(a.qty) > int(b.qty)
-	)
-	return rows
-
-func _make_stockpile_row(text: String, good_id: String = "") -> Control:
-	var row := HBoxContainer.new()
-	var row_width := STOCKPILE_LEGEND_LABEL_WIDTH
-	if good_id != "":
-		row_width += STOCKPILE_LEGEND_SWATCH_SIZE.x + 4.0
-	row.custom_minimum_size = Vector2(row_width, STOCKPILE_LEGEND_SWATCH_SIZE.y)
-	row.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	row.add_theme_constant_override("separation", 4)
-
-	var label := Label.new()
-	label.text = _truncate_stockpile_good_name(text)
-	label.autowrap_mode = TextServer.AUTOWRAP_OFF
-	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 12)
-	label.add_theme_color_override("font_color", OFF_WHITE)
-	label.custom_minimum_size = Vector2(STOCKPILE_LEGEND_LABEL_WIDTH, STOCKPILE_LEGEND_SWATCH_SIZE.y)
-	label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	row.add_child(label)
-
-	if good_id != "":
-		var swatch := ColorRect.new()
-		swatch.color = _stockpile_color_for_good(good_id)
-		swatch.custom_minimum_size = STOCKPILE_LEGEND_SWATCH_SIZE
-		row.add_child(swatch)
-	return row
-
-func _truncate_stockpile_good_name(good_name: String) -> String:
-	var display_name := _abbreviate_if_long(good_name, STOCKPILE_GOOD_LABEL_MAX_CHARS)
-	if display_name.length() > STOCKPILE_GOOD_LABEL_MAX_CHARS:
-		return "%s..." % display_name.substr(0, STOCKPILE_GOOD_LABEL_MAX_CHARS - 1)
-	return display_name
-
-func _stockpile_color_for_good(good_id: String) -> Color:
-	var index := _stockpile_color_index(good_id)
-	if index >= 0 and index < STOCKPILE_COLOR_PALETTE.size():
-		return STOCKPILE_COLOR_PALETTE[index]
-	return _generated_stockpile_color(good_id)
-
-func _stockpile_color_index(good_id: String) -> int:
-	var goods := Catalog.all_goods()
-	for i in goods.size():
-		var good: Dictionary = goods[i]
-		if good.get("id", "") == good_id:
-			return i
-	return -1
-
-func _generated_stockpile_color(good_id: String) -> Color:
-	var seed := 0
-	for i in good_id.length():
-		seed += good_id.unicode_at(i) * (i + 1)
-	var hue := fmod((float((seed * 37) % 360) / 360.0) + 0.09, 1.0)
-	if hue > 0.55 and hue < 0.68:
-		hue = fmod(hue + 0.18, 1.0)
-	return Color.from_hsv(hue, 0.62, 0.92, 0.92)
 
 func _on_stockpile_changed() -> void:
 	if visible and _current_tile_id != "":
