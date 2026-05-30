@@ -140,7 +140,9 @@ func _build_theme() -> Theme:
 		btn_font.spacing_glyph = 2
 		t.set_font("font", "Button", btn_font)
 	t.set_font_size("font_size", "Button", 16)
-	t.set_constant("icon_max_width", "Button", 24)   # cap icon size on icon buttons
+	# No base icon_max_width cap: icon buttons that want a large icon (e.g. the
+	# 100px circular bottom-menu buttons with expand_icon) size to their button.
+	# The small square icon buttons set their own cap via the BuildIcon variation.
 
 	# ── Primary button (gold CTA) ──────────────────────────────────────
 	t.set_type_variation("Primary", "Button")
