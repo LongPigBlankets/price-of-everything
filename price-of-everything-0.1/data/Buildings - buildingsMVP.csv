@@ -1,16 +1,16 @@
 ID,internal_name,display_name,energy_cost,building_stockpile,base_price,build_cost_money,build_material_1,build_qty_1,build_material_2,build_qty_2,build_material_3,build_qty_3,build_material_4,build_qty_4,build_material_5,build_qty_5,build_duration,tile_size_used,building_category,upgrade_path,upgrade_cost,upgrade_material_1,upgrade_qty_1,upgrade_material_2,upgrade_qty_2,maintenance_cost,labour_unskilled_required,labour_skilled_required,labour_h_skilled_required,building_type
 b_001,mine,Mine,1,10000,10,10,,,,,,,,,,,1,30,production,standard,10000,,,,,1,150,50,20,extraction
-b_002,furnace,Furnace,1,10000,10,10,,,,,,,,,,,1,20,production,standard,10000,,,,,2,100,50,30,metallurgy
-b_003,coal_power,Coal Power Plant,0,0,30,30,,,,,,,,,,,2,15,power,standard,10000,,,,,1,50,280,300,power
+b_002,furnace,Furnace,1,10000,10,10,coal,3,,,,,,,,,1,20,production,standard,10000,,,,,2,100,50,30,metallurgy
+b_003,coal_power,Coal Power Plant,0,0,30,30,steel,2,iron_ingots,2,hydrogen,2,coal,2,motor,2,2,15,power,standard,10000,,,,,1,50,280,300,power
 b_004,port,Port,1,10000,10000,10000,,,,,,,,,,,100,15,infrastructure,standard,10000,,,,,10,0,0,0,infrastructure
 b_005,roads,Roads,0,0,5,5,,,,,,,,,,,1,2,infrastructure,standard,10000,,,,,1,0,0,0,infrastructure
 b_006,cables,Cables,0,0,2,2,,,,,,,,,,,1,2,infrastructure,standard,10000,,,,,1,0,0,0,infrastructure
-b_007,industrial_factory,Industrial Goods Factory,10,10000,1,1,,,,,,,,,,,1,10,production,standard,10000,,,,,2,200,100,60,manufacturing
+b_007,industrial_factory,Industrial Goods Factory,10,10000,1,1,steel,3,copper_ingots,3,,,,,,,1,10,production,standard,10000,,,,,2,200,100,60,manufacturing
 b_008,eaf,Electric Arc Furnace,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,metallurgy
 b_009,assembly_plant,Assembly Plant,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,manufacturing
 b_010,high_tech_manufactory,High Tech Manufactory,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,manufacturing
 b_011,petro_refinery,Petrochemical Refinery,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,refinery
-b_012,chem_plant,Chemical Plant,1,10000,1,1,,,,,,,,,,,1,18,production,standard,10000,,,,,2,200,100,60,electrochemistry|refinery
+b_012,chem_plant,Chemical Plant,1,10000,1,1,coal,10,steel,10,iron_ingots,2,,,,,1,18,production,standard,10000,,,,,2,200,100,60,electrochemistry|refinery
 b_013,poly_plant,Polymerisation Refinery,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,refinery
 b_014,farm,Farm,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,farm_forests
 b_015,new_forest,New Growth Forest,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,farm_forests

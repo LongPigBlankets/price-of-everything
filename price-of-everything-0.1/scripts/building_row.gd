@@ -6,6 +6,12 @@ signal infrastructure_build_pressed(infrastructure_id: String)
 signal expand_toggled(building_id: String, is_expanded: bool)
 
 const RecipeRowScene: PackedScene = preload("res://scenes/recipe_row.tscn")
+const GoodIcons := preload("res://scripts/good_icons.gd")
+const MAT_SLOT_SIZE := Vector2(50, 50)
+const BADGE_DIAMETER := 24
+const BADGE_TEXT_SIZE := 14
+const BADGE_NAVY := Color(0.0, 0.119856, 0.243095, 1.0)
+const BADGE_PAPER := Color(0.9725, 0.9333, 0.8431, 1.0)
 const ROW_HOVER_TOOLTIP := "Click to build"
 const ACTIVE_COLOR := Color(0.15, 0.48, 0.76, 0.72)
 const UNAFFORDABLE_COLOR := Color(0.12, 0.12, 0.12, 0.28)
@@ -60,10 +66,10 @@ func setup(data: Dictionary, recipes: Array) -> void:
 		mat_label.text = "%s +%d" % [mat_name.substr(0, 3).to_upper(), mat_qty]
 		materials_container.add_child(mat_label)
 
-	# Build-material requirements shown as a 3x2 grid of hatched placeholder
-	# squares in a white rectangle (real materials wired later).
+	# Build-material requirements as a 3x2 grid (good icon + qty pill badge, hatched
+	# placeholder for empty slots) inside a white rectangle.
 	materials_container.visible = false
-	_build_material_grid()
+	_build_material_grid(materials)
 
 	build_button.visible = false
 	expand_button.visible = false
@@ -244,12 +250,13 @@ class HatchSquare extends Control:
 			draw_line(Vector2(x, size.y), Vector2(x + size.y, 0.0), off, 1.5)
 			x += step
 
-func _build_material_grid() -> void:
+func _build_material_grid(materials: Array) -> void:
 	if has_node("MaterialGrid"):
 		return
 	var panel := PanelContainer.new()
 	panel.name = "MaterialGrid"
 	panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var white := StyleBoxFlat.new()
 	white.bg_color = Color(0.995234, 0.930806, 0.763265)
 	white.set_corner_radius_all(6)
@@ -261,9 +268,66 @@ func _build_material_grid() -> void:
 	grid.add_theme_constant_override("v_separation", 5)
 	panel.add_child(grid)
 	for i in range(6):
-		var sq := HatchSquare.new()
-		sq.custom_minimum_size = Vector2(26, 26)
-		sq.clip_contents = true
-		grid.add_child(sq)
+		var mat: Dictionary = materials[i] if i < materials.size() else {}
+		grid.add_child(_make_material_slot(mat))
 	main_row.add_child(panel)
-	main_row.move_child(panel, 1)  # to the right of the building icon
+	main_row.move_child(panel, 2)  # name swapped left of the materials grid
+
+func _make_material_slot(material: Dictionary) -> Control:
+	var slot := Control.new()
+	slot.custom_minimum_size = MAT_SLOT_SIZE
+	var hatch := HatchSquare.new()
+	hatch.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hatch.clip_contents = true
+	hatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.add_child(hatch)
+	if material.is_empty():
+		return slot
+	var good: Dictionary = Catalog.get_good_by_internal_name(material.get("name", ""))
+	var tex: Texture2D = GoodIcons.texture_for(good.get("id", ""), material.get("name", ""))
+	if tex != null:
+		var icon := TextureRect.new()
+		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+		icon.texture = tex
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+	slot.add_child(_make_qty_badge(int(material.get("qty", 0))))
+	return slot
+
+# Quantity pill badge matching the build-details recipe cards.
+func _make_qty_badge(qty: int) -> Control:
+	var qty_text := str(qty)
+	var h: int = BADGE_DIAMETER
+	var w: int = h if qty_text.length() <= 1 else maxi(h, qty_text.length() * 9 + 14)
+	var badge := PanelContainer.new()
+	badge.custom_minimum_size = Vector2(w, h)
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	var overlap: int = maxi(4, roundi(MAT_SLOT_SIZE.x * 0.10))
+	badge.offset_left = -w + overlap
+	badge.offset_top = -h + overlap
+	badge.offset_right = overlap
+	badge.offset_bottom = overlap
+	var style := StyleBoxFlat.new()
+	style.bg_color = BADGE_NAVY
+	style.border_color = BADGE_PAPER
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(int(h / 2.0))
+	style.set_content_margin_all(0)
+	badge.add_theme_stylebox_override("panel", style)
+	var ls := LabelSettings.new()
+	ls.font_color = BADGE_PAPER
+	ls.font_size = BADGE_TEXT_SIZE
+	var label := Label.new()
+	label.text = qty_text
+	label.custom_minimum_size = Vector2(w, h)
+	label.label_settings = ls
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_child(label)
+	return badge
