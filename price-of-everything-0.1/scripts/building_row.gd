@@ -215,8 +215,6 @@ func _is_active_building() -> bool:
 func _draw() -> void:
 	if _unaffordable_flash:
 		draw_rect(Rect2(Vector2.ZERO, size), UNAFFORDABLE_FLASH_COLOR, true)
-	elif _is_active_building():
-		draw_rect(Rect2(Vector2.ZERO, size), ACTIVE_COLOR, true)
 	elif not is_affordable:
 		draw_rect(Rect2(Vector2.ZERO, size), UNAFFORDABLE_COLOR, true)
 

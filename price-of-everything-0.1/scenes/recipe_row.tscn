@@ -4,10 +4,6 @@
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_power"]
 bg_color = Color(0.015686275, 0.058823529, 0.105882353, 1)
-corner_radius_top_left = 5
-corner_radius_top_right = 5
-corner_radius_bottom_right = 5
-corner_radius_bottom_left = 5
 
 [node name="RecipeRow" type="HBoxContainer"]
 custom_minimum_size = Vector2(0, 60)
@@ -45,6 +41,7 @@ theme_type_variation = &"Caption"
 autowrap_mode = 2
 
 [node name="PowerBox" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_styles/panel = SubResource("StyleBoxFlat_power")

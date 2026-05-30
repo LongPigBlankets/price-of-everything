@@ -25,12 +25,12 @@ var _glow: GradientTexture2D
 func _ready() -> void:
 	_card_style = StyleBoxFlat.new()
 	_card_style.bg_color = OFF_WHITE
-	_card_style.set_corner_radius_all(8)
+	_card_style.set_corner_radius_all(0)
 	_selected_border = StyleBoxFlat.new()
 	_selected_border.bg_color = Color(0, 0, 0, 0)
 	_selected_border.set_border_width_all(2)
 	_selected_border.border_color = NAVY
-	_selected_border.set_corner_radius_all(6)
+	_selected_border.set_corner_radius_all(0)
 	# Soft white glow that feathers outward from the goods icon.
 	var g := Gradient.new()
 	g.offsets = PackedFloat32Array([0.0, 1.0])
