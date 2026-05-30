@@ -41,6 +41,7 @@ func _ready() -> void:
 
 	_capacity_label = Label.new()
 	_capacity_label.text = "Stored 0 / %d" % Stockpile.get_capacity("")
+	_capacity_label.theme_type_variation = &"Body"
 	add_child(_capacity_label)
 
 	_visual = Panel.new()
@@ -187,7 +188,7 @@ func _make_row(text: String, good_id: String = "") -> Control:
 	label.text = _truncate(text)
 	label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 12)
+	label.theme_type_variation = &"Caption"
 	label.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
 	label.custom_minimum_size = Vector2(0, LEGEND_SWATCH_SIZE.y)
 	label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN

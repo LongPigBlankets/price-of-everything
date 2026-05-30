@@ -73,7 +73,7 @@ func _make_cell(slot: Dictionary) -> Control:
 	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_label.max_lines_visible = max_label_lines
 	name_label.clip_text = true
-	name_label.add_theme_font_size_override("font_size", LABEL_FONT_SIZE)
+	name_label.theme_type_variation = &"Caption"
 	name_label.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
 	name_label.custom_minimum_size = Vector2(0, 22 if max_label_lines == 1 else 36)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
