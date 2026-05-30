@@ -45,6 +45,7 @@ func _test_scripts_parse() -> void:
 		"res://scripts/world_map.gd",
 		"res://scripts/map_overlay.gd",
 		"res://scripts/ds.gd",
+		"res://scripts/search_overlay.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 

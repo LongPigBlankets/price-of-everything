@@ -18,16 +18,20 @@ const BUILDING_ICON_DIR := "res://assets/icons/buildings"
 const HAMMER_ICON_PATH := "res://assets/icons/ui_icons/hammer_off_white.png"
 const BUILD_BUTTON_SIZE := Vector2(46, 46)
 
+# Palette aligned to the DS navy theme (was bespoke pure-black). Dark surfaces use
+# DS navy (#040F1B) / highlight (#002E54); muted text uses DS TEXT_MUTED; the build
+# button uses DS ACTION_BLUE. The cream accent already matches DS ACCENT. Kept as
+# consts (DS.PALETTE is a runtime autoload, not a compile-time constant).
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265, 1.0)
-const DIM_BLACK := Color(0.0, 0.0, 0.0, 0.30)
-const BAR_BLACK := Color(0.0, 0.0, 0.0, 1.0)
-const RESULT_BLACK := Color(0.015, 0.018, 0.02, 0.98)
-const RESULT_HOVER := Color(0.07, 0.095, 0.12, 0.98)
+const DIM_BLACK := Color(0.0, 0.0, 0.0, 0.40)
+const BAR_BLACK := Color(0.015686, 0.058824, 0.105882, 1.0)
+const RESULT_BLACK := Color(0.015686, 0.058824, 0.105882, 0.98)
+const RESULT_HOVER := Color(0.0, 0.180392, 0.329412, 0.98)
 const RESULT_BORDER := Color(0.995234, 0.930806, 0.763265, 0.22)
-const SUBTITLE_COLOR := Color(0.995234, 0.930806, 0.763265, 0.62)
-const MUTED_PANEL := Color(0.025, 0.03, 0.035, 0.96)
-const BUILD_BUTTON_BLUE := Color(0.05, 0.31, 0.56)
-const BUILD_BUTTON_HOVER_BLUE := Color(0.07, 0.39, 0.68)
+const SUBTITLE_COLOR := Color(0.760784, 0.823529, 0.898039, 1.0)
+const MUTED_PANEL := Color(0.015686, 0.058824, 0.105882, 0.96)
+const BUILD_BUTTON_BLUE := Color(0.176471, 0.439216, 0.658824, 1.0)
+const BUILD_BUTTON_HOVER_BLUE := Color(0.250980, 0.529412, 0.749020, 1.0)
 
 var _search_stack: VBoxContainer = null
 var _search_input: LineEdit = null
