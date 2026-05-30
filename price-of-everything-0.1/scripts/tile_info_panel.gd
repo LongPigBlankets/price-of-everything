@@ -2,10 +2,6 @@ extends PanelContainer
 
 @onready var title_label: Label = $MarginContainer/ContentRow/VBoxContainer/HeaderRow/TitleLabel
 @onready var close_button: Button = $MarginContainer/ContentRow/VBoxContainer/HeaderRow/CloseButton
-@onready var property_table: GridContainer = $MarginContainer/ContentRow/VBoxContainer/PropertyTable
-@onready var deposits_table: GridContainer = $MarginContainer/ContentRow/VBoxContainer/DepositsTable
-@onready var header_separator: HSeparator = $MarginContainer/ContentRow/VBoxContainer/HeaderSeparator
-@onready var deposits_separator: HSeparator = $MarginContainer/ContentRow/VBoxContainer/DepositsSeparator
 @onready var infrastructure_separator: HSeparator = $MarginContainer/ContentRow/VBoxContainer/InfrastructureSeparator
 @onready var infrastructure_table: GridContainer = $MarginContainer/ContentRow/VBoxContainer/InfrastructureTable
 @onready var content_vbox: VBoxContainer = $MarginContainer/ContentRow/VBoxContainer
@@ -125,11 +121,6 @@ func _ready() -> void:
 	_build_land_purchase_section()
 
 func _restructure_layout() -> void:
-	property_table.visible = false
-	header_separator.visible = false
-	deposits_separator.visible = false
-	deposits_table.visible = false
-
 	if _chart_column == null:
 		_chart_column = VBoxContainer.new()
 		_chart_column.name = "ChartColumn"

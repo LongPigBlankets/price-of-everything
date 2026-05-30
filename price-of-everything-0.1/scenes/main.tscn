@@ -407,23 +407,6 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_tile_banner")
 
-[node name="HeaderSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=1742528492]
-layout_mode = 2
-
-[node name="PropertyTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=671887475]
-layout_mode = 2
-theme_override_constants/h_separation = 16
-columns = 2
-
-[node name="DepositsSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=445841671]
-layout_mode = 2
-
-[node name="DepositsTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=897654742]
-layout_mode = 2
-theme_override_constants/h_separation = 8
-theme_override_constants/v_separation = 4
-columns = 3
-
 [node name="InfrastructureSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=288549859]
 layout_mode = 2
 
