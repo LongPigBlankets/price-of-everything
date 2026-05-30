@@ -105,7 +105,7 @@ func _build_theme() -> Theme:
 	# ── PanelContainer base + variations ───────────────────────────────
 	# Default panel: opaque navy + 2px solid cream outline + generous padding
 	t.set_stylebox("panel", "PanelContainer",
-		_stylebox(PALETTE["BG_PANEL"], PALETTE["BORDER"], 14, 2, 32, 28))
+		_stylebox(PALETTE["BG_PANEL"], PALETTE["BORDER"], 14, 2, 20, 16))
 
 	t.set_type_variation("Card", "PanelContainer")
 	t.set_stylebox("panel", "Card",
