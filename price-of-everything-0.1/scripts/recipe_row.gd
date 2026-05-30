@@ -27,7 +27,7 @@ func setup(recipe_data: Dictionary, parent_building_id: String) -> void:
 
 	var input_strs: Array = []
 	for inp in recipe_data.inputs:
-		input_strs.append("%s+%d" % [inp.name.substr(0, 3).to_upper(), inp.qty])
+		input_strs.append("%s+%d" % [inp.internal_name.substr(0, 3).to_upper(), inp.qty])
 	var inputs_str: String = ", ".join(input_strs) if input_strs.size() > 0 else "none"
 	var output_str := "->%s+%d" % [recipe_data.output_name.substr(0, 3).to_upper(), recipe_data.output_qty]
 	details_label.text = "%s  %s" % [inputs_str, output_str]

@@ -294,12 +294,20 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 		var val: String = line[i].strip_edges() if i < line.size() else ""
 		raw[key] = val
 	
+	var materials: Array = []
+	for n in range(1, 6):
+		var mat_name: String = raw.get("build_material_%d" % n, "")
+		var mat_qty_str: String = raw.get("build_qty_%d" % n, "")
+		if mat_name != "" and mat_qty_str != "":
+			materials.append({"name": mat_name, "qty": int(mat_qty_str)})
+
 	return {
 		"id": raw.get("id", ""),
 		"internal_name": raw.get("internal_name", ""),
 		"display_name": raw.get("display_name", raw.get("internal_name", "")),
 		"category": raw.get("building_category", "production").to_lower(),
 		"building_type": _split_types(raw.get("building_type", "")),
+		"materials": materials,
 		"base_price": float(raw.get("build_cost_money", "0")),
 		"tile_size_used": 1 if raw.get("tile_size_used", "") == "" else int(raw.get("tile_size_used", "1")),
 		"build_duration": 0 if raw.get("build_duration", "") == "" else int(raw.get("build_duration", "0")),

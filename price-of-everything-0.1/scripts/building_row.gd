@@ -36,7 +36,7 @@ func setup(data: Dictionary, recipes: Array) -> void:
 	building_id = data.get("id", "")
 	is_infrastructure = data.get("category", "") == "infrastructure"
 	infrastructure_key = data.get("internal_name", "")
-	build_cost = float(data.get("cost", 0.0))
+	build_cost = float(data.get("base_price", data.get("cost", 0.0)))
 	recipes_for_this_building = recipes
 
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -46,7 +46,7 @@ func setup(data: Dictionary, recipes: Array) -> void:
 		main_row.gui_input.connect(_on_main_row_gui_input)
 
 	_load_icon(data)
-	name_label.text = data.get("name", "")
+	name_label.text = data.get("display_name", data.get("name", ""))
 	cost_label.text = _money_text(build_cost)
 
 	for child in materials_container.get_children():
