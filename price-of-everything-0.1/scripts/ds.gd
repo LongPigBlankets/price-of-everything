@@ -59,7 +59,7 @@ const SP := {"XS": 4, "SM": 8, "MD": 12, "LG": 20, "XL": 32, "XXL": 48}
 
 # ── Font sizes ─────────────────────────────────────────────────────────────
 const FS := {
-	"H1": 48, "SECTION": 22, "BUILDING": 22,
+	"H1": 32, "SECTION": 22, "BUILDING": 22,
 	"BODY": 14, "CAPTION": 13, "NUMERIC": 16,
 }
 
@@ -124,11 +124,11 @@ func _build_theme() -> Theme:
 	# the lighter navy (BG_HIGHLIGHT) for normal, lighter still on hover, and a
 	# darker fill when pressed.
 	t.set_stylebox("normal", "Button",
-		_stylebox(PALETTE["BG_HIGHLIGHT"], PALETTE["BORDER_SOFT"], 6, 1, 22, 12))
+		_stylebox(PALETTE["BG_HIGHLIGHT"], PALETTE["BORDER_SOFT"], 6, 1, 18, 9))
 	t.set_stylebox("hover", "Button",
-		_stylebox(Color(PALETTE["BG_HIGHLIGHT"]).lightened(0.10), PALETTE["BORDER"], 6, 1, 22, 12))
+		_stylebox(Color(PALETTE["BG_HIGHLIGHT"]).lightened(0.10), PALETTE["BORDER"], 6, 1, 18, 9))
 	t.set_stylebox("pressed", "Button",
-		_stylebox(PALETTE["BG_INSET"], PALETTE["BORDER"], 6, 1, 22, 12))
+		_stylebox(PALETTE["BG_INSET"], PALETTE["BORDER"], 6, 1, 18, 9))
 	t.set_color("font_color", "Button", PALETTE["TEXT"])
 	t.set_color("font_hover_color", "Button", PALETTE["ACCENT"])
 	t.set_color("font_pressed_color", "Button", PALETTE["ACCENT"])
@@ -139,17 +139,17 @@ func _build_theme() -> Theme:
 		btn_font.base_font = fonts["BARLOW_BOLD"]
 		btn_font.spacing_glyph = 2
 		t.set_font("font", "Button", btn_font)
-	t.set_font_size("font_size", "Button", 18)
+	t.set_font_size("font_size", "Button", 16)
 	t.set_constant("icon_max_width", "Button", 24)   # cap icon size on icon buttons
 
 	# ── Primary button (gold CTA) ──────────────────────────────────────
 	t.set_type_variation("Primary", "Button")
 	t.set_stylebox("normal", "Primary",
-		_stylebox(PALETTE["ACCENT"], PALETTE["ACCENT"], 6, 1, 24, 12))
+		_stylebox(PALETTE["ACCENT"], PALETTE["ACCENT"], 6, 1, 20, 9))
 	t.set_stylebox("hover", "Primary",
-		_stylebox(Color(PALETTE["ACCENT"]).lightened(0.06), PALETTE["ACCENT"], 6, 1, 24, 12))
+		_stylebox(Color(PALETTE["ACCENT"]).lightened(0.06), PALETTE["ACCENT"], 6, 1, 20, 9))
 	t.set_stylebox("pressed", "Primary",
-		_stylebox(Color(PALETTE["ACCENT"]).darkened(0.10), PALETTE["ACCENT"], 6, 1, 24, 12))
+		_stylebox(Color(PALETTE["ACCENT"]).darkened(0.10), PALETTE["ACCENT"], 6, 1, 20, 9))
 	t.set_color("font_color", "Primary", PALETTE["BG"])
 	t.set_color("font_hover_color", "Primary", PALETTE["BG"])
 	t.set_color("font_pressed_color", "Primary", PALETTE["BG"])
@@ -157,11 +157,11 @@ func _build_theme() -> Theme:
 	# ── Build / Upgrade button (light blue, more rounded) ──────────────
 	t.set_type_variation("Build", "Button")
 	t.set_stylebox("normal", "Build",
-		_stylebox(PALETTE["ACTION_BLUE"], PALETTE["ACTION_BLUE_PRESSED"], 14, 1, 24, 12))
+		_stylebox(PALETTE["ACTION_BLUE"], PALETTE["ACTION_BLUE_PRESSED"], 14, 1, 20, 9))
 	t.set_stylebox("hover", "Build",
-		_stylebox(PALETTE["ACTION_BLUE_HOVER"], PALETTE["ACTION_BLUE_PRESSED"], 14, 1, 24, 12))
+		_stylebox(PALETTE["ACTION_BLUE_HOVER"], PALETTE["ACTION_BLUE_PRESSED"], 14, 1, 20, 9))
 	t.set_stylebox("pressed", "Build",
-		_stylebox(PALETTE["ACTION_BLUE_PRESSED"], PALETTE["ACTION_BLUE_PRESSED"], 14, 1, 24, 12))
+		_stylebox(PALETTE["ACTION_BLUE_PRESSED"], PALETTE["ACTION_BLUE_PRESSED"], 14, 1, 20, 9))
 	t.set_color("font_color", "Build", PALETTE["TEXT"])
 	t.set_color("font_hover_color", "Build", PALETTE["TEXT"])
 	t.set_color("font_pressed_color", "Build", PALETTE["ACCENT"])
