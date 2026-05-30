@@ -36,7 +36,6 @@ const TILE_MODAL_FRAME_SLICE := 32.0
 const TILE_MODAL_FRAME_OUTSET := 11.0
 const TILE_MODAL_CONTENT_MARGIN := 20
 const INFRA_GRID_WIDTH := 283.0
-const INFRA_BUTTON_SIZE := Vector2(42, 42)
 const INFRA_CELL_DEFAULT_SIZE := Vector2(87, 86)
 const INFRA_CELL_WIDTHS := {
 	"roads": 72.0,
@@ -45,14 +44,9 @@ const INFRA_CELL_WIDTHS := {
 	"reinf_pipes": 108.0,
 }
 const INFRA_LABEL_FONT_SIZE := 14
-const INFRA_GRID_H_SEPARATION := 8
-const INFRA_GRID_V_SEPARATION := 4
 const INFRA_LABEL_MAX_CHARS := 15
 # Colours sourced from the DS design system (see ds.gd). These are `var` (not
 # `const`) because DS.PALETTE is an autoload value resolved at runtime.
-var INFRA_ADD_BUTTON_BLUE: Color = DS.PALETTE.ACTION_BLUE
-var INFRA_ADD_BUTTON_HOVER_BLUE: Color = DS.PALETTE.ACTION_BLUE_HOVER
-var INFRA_DISABLED_BUTTON_BLUE: Color = DS.PALETTE.BG_INSET
 var SUMMARY_PANEL_BG: Color = Color(DS.PALETTE.BG_PANEL, 0.78)
 var SUMMARY_PANEL_BORDER: Color = DS.PALETTE.BORDER_SOFT
 var SUMMARY_SUBTLE_TEXT: Color = DS.PALETTE.TEXT_MUTED
@@ -995,84 +989,8 @@ func _infrastructure_slots() -> Array:
 		{"key": "reinf_pipes", "label": "Reinforced pipework"},
 	]
 
-func _make_infrastructure_slot(tile_data: Dictionary, slot: Dictionary) -> Control:
-	var key := str(slot.get("key", ""))
-	var label_text := str(slot.get("label", key.capitalize()))
-	var building_data := _infrastructure_building_data_for_key(key)
-	var instance := _infrastructure_instance_for_tile(tile_data, key, building_data)
-	var exists := not instance.is_empty()
-
-	var cell := VBoxContainer.new()
-	cell.custom_minimum_size = _infrastructure_cell_size(key)
-	cell.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	cell.add_theme_constant_override("separation", 4)
-
-	var button := Button.new()
-	button.custom_minimum_size = INFRA_BUTTON_SIZE
-	button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	button.focus_mode = Control.FOCUS_NONE
-	button.expand_icon = true
-	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
-	button.text = ""
-	if exists:
-		button.icon = _building_icon_for_data(building_data)
-		button.tooltip_text = _infrastructure_tooltip(tile_data, slot, instance)
-		button.pressed.connect(func() -> void: building_clicked.emit(instance))
-	else:
-		button.icon = _get_plus_icon()
-		_style_infrastructure_add_button(button, not building_data.is_empty())
-		if building_data.is_empty():
-			button.disabled = true
-			button.tooltip_text = "%s is not available yet" % label_text
-		else:
-			var internal_name := str(building_data.get("internal_name", key))
-			button.tooltip_text = "Add %s" % label_text
-			button.pressed.connect(_on_add_infrastructure_pressed.bind(internal_name))
-	cell.add_child(button)
-
-	var name_label := Label.new()
-	var display_label := _abbreviate_if_needed(label_text, _infrastructure_cell_size(key).x, INFRA_LABEL_FONT_SIZE)
-	var max_label_lines := 2
-	if key == "reinf_pipes":
-		display_label = _abbreviate_if_long(label_text, INFRA_LABEL_MAX_CHARS)
-		max_label_lines = 1
-	name_label.text = display_label
-	if display_label != label_text:
-		name_label.tooltip_text = label_text
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.autowrap_mode = TextServer.AUTOWRAP_OFF if max_label_lines == 1 else TextServer.AUTOWRAP_WORD_SMART
-	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	name_label.max_lines_visible = max_label_lines
-	name_label.clip_text = true
-	name_label.add_theme_font_size_override("font_size", INFRA_LABEL_FONT_SIZE)
-	name_label.add_theme_color_override("font_color", OFF_WHITE)
-	name_label.custom_minimum_size = Vector2(0, 22 if max_label_lines == 1 else 36)
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cell.add_child(name_label)
-	return cell
-
 func _infrastructure_cell_size(key: String) -> Vector2:
 	return Vector2(float(INFRA_CELL_WIDTHS.get(key, INFRA_CELL_DEFAULT_SIZE.x)), INFRA_CELL_DEFAULT_SIZE.y)
-
-func _style_infrastructure_add_button(button: Button, enabled: bool) -> void:
-	button.add_theme_stylebox_override("normal", _make_infrastructure_button_style(INFRA_ADD_BUTTON_BLUE if enabled else INFRA_DISABLED_BUTTON_BLUE))
-	button.add_theme_stylebox_override("hover", _make_infrastructure_button_style(INFRA_ADD_BUTTON_HOVER_BLUE if enabled else INFRA_DISABLED_BUTTON_BLUE))
-	button.add_theme_stylebox_override("pressed", _make_infrastructure_button_style(INFRA_ADD_BUTTON_HOVER_BLUE if enabled else INFRA_DISABLED_BUTTON_BLUE))
-	button.add_theme_stylebox_override("disabled", _make_infrastructure_button_style(INFRA_DISABLED_BUTTON_BLUE))
-
-func _make_infrastructure_button_style(color: Color) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = color
-	style.corner_radius_top_left = 6
-	style.corner_radius_top_right = 6
-	style.corner_radius_bottom_left = 6
-	style.corner_radius_bottom_right = 6
-	style.content_margin_left = 6
-	style.content_margin_top = 6
-	style.content_margin_right = 6
-	style.content_margin_bottom = 6
-	return style
 
 func _on_add_infrastructure_pressed(infra_type: String) -> void:
 	if _current_tile_id == "" or infra_type == "":
