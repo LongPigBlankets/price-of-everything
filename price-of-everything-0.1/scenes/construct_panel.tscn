@@ -35,6 +35,32 @@ text = "X"
 [node name="HSeparator" type="HSeparator" parent="MarginContainer/VBoxContainer" unique_id=1469869396]
 layout_mode = 2
 
+[node name="ControlsVBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="SearchInput" type="LineEdit" parent="MarginContainer/VBoxContainer/ControlsVBox"]
+layout_mode = 2
+placeholder_text = "Search buildings, recipes, goods"
+clear_button_enabled = true
+
+[node name="FilterBar" type="HFlowContainer" parent="MarginContainer/VBoxContainer/ControlsVBox"]
+layout_mode = 2
+theme_override_constants/h_separation = 4
+theme_override_constants/v_separation = 4
+
+[node name="SortRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ControlsVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SortLabel" type="Label" parent="MarginContainer/VBoxContainer/ControlsVBox/SortRow"]
+layout_mode = 2
+theme_type_variation = &"Caption"
+text = "Sort"
+
+[node name="SortOption" type="OptionButton" parent="MarginContainer/VBoxContainer/ControlsVBox/SortRow"]
+layout_mode = 2
+
 [node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/VBoxContainer" unique_id=1246011277]
 layout_mode = 2
 size_flags_vertical = 3

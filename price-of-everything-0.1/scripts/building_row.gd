@@ -129,13 +129,31 @@ func _populate_recipes_container() -> void:
 	for child in recipes_container.get_children():
 		child.queue_free()
 
+	# Group recipes by recipe_type, preserving first-seen order. Only show the
+	# type sub-headers when a building actually hosts more than one type.
+	var groups: Dictionary = {}
+	var order: Array = []
 	for recipe in recipes_for_this_building:
-		var recipe_row := RecipeRowScene.instantiate()
-		recipes_container.add_child(recipe_row)
-		recipe_row.setup(recipe, building_id)
-		recipe_row.set_affordable(is_affordable)
-		recipe_row.set_selected(recipe.recipe_id == _active_recipe_id and building_id == _active_building_id)
-		recipe_row.recipe_selected.connect(_on_recipe_row_selected)
+		var rtype: String = recipe.get("recipe_type", "")
+		if not groups.has(rtype):
+			groups[rtype] = []
+			order.append(rtype)
+		groups[rtype].append(recipe)
+
+	var show_headers: bool = order.size() > 1
+	for rtype in order:
+		if show_headers and rtype != "":
+			var header := Label.new()
+			header.text = rtype.to_upper().replace("_", " ")
+			header.theme_type_variation = &"Caption"
+			recipes_container.add_child(header)
+		for recipe in groups[rtype]:
+			var recipe_row := RecipeRowScene.instantiate()
+			recipes_container.add_child(recipe_row)
+			recipe_row.setup(recipe, building_id)
+			recipe_row.set_affordable(is_affordable)
+			recipe_row.set_selected(recipe.recipe_id == _active_recipe_id and building_id == _active_building_id)
+			recipe_row.recipe_selected.connect(_on_recipe_row_selected)
 
 func _on_recipe_row_selected(b_id: String, r_id: String) -> void:
 	if not is_affordable:

@@ -5,11 +5,11 @@ signal recipe_selected(building_id: String, recipe_id: String)
 const SELECTED_COLOR := Color(0.18, 0.52, 0.8, 0.65)
 const UNAFFORDABLE_COLOR := Color(0.12, 0.12, 0.12, 0.25)
 const UNAFFORDABLE_FLASH_COLOR := Color(0.7, 0.12, 0.08, 0.48)
+const GoodIcons := preload("res://scripts/good_icons.gd")
 
-@onready var name_label: Label = $NameLabel
-@onready var details_label: Label = $DetailsLabel
-@onready var power_label: Label = $PowerLabel
-@onready var build_button: Button = $BuildButton
+@onready var icon_texture: TextureRect = $OutputIcon/IconTexture
+@onready var name_label: Label = $TextColumn/NameLabel
+@onready var detail_label: Label = $TextColumn/DetailLabel
 
 var building_id: String = ""
 var recipe_id: String = ""
@@ -19,27 +19,34 @@ var _unaffordable_flash := false
 
 func setup(recipe_data: Dictionary, parent_building_id: String) -> void:
 	building_id = parent_building_id
-	recipe_id = recipe_data.recipe_id
-	name_label.text = recipe_data.display_name
+	recipe_id = recipe_data.get("recipe_id", "")
+	name_label.text = recipe_data.get("display_name", "")
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	if not gui_input.is_connected(_on_row_gui_input):
 		gui_input.connect(_on_row_gui_input)
 
-	var input_strs: Array = []
-	for inp in recipe_data.inputs:
-		input_strs.append("%s+%d" % [inp.internal_name.substr(0, 3).to_upper(), inp.qty])
-	var inputs_str: String = ", ".join(input_strs) if input_strs.size() > 0 else "none"
-	var output_str := "->%s+%d" % [recipe_data.output_name.substr(0, 3).to_upper(), recipe_data.output_qty]
-	details_label.text = "%s  %s" % [inputs_str, output_str]
+	# Output good icon (placeholder panel shows when a good has no art yet).
+	var out_good_id: String = recipe_data.get("output_good_id", "")
+	var out_internal: String = recipe_data.get("output_name", "")
+	icon_texture.texture = GoodIcons.texture_for(out_good_id, out_internal)
 
-	power_label.text = "pwr:%d" % recipe_data.energy_req
-	build_button.visible = false
-	if not build_button.pressed.is_connected(_on_build_pressed):
-		build_button.pressed.connect(_on_build_pressed)
+	# Detail line: inputs -> output xqty   energy.
+	var parts: Array = []
+	for inp in recipe_data.get("inputs", []):
+		parts.append("%d %s" % [int(inp.get("qty", 0)), _good_label(inp.get("good_id", ""), inp.get("internal_name", ""))])
+	var inputs_str: String = ", ".join(parts) if parts.size() > 0 else "raw extraction"
+	var detail: String = "%s  →  %d %s" % [
+		inputs_str, int(recipe_data.get("output_qty", 0)), _good_label(out_good_id, out_internal)]
+	var energy: int = int(recipe_data.get("energy_req", 0))
+	if energy != 0:
+		detail += "    ⚡%d" % energy
+	detail_label.text = detail
 	_update_visual_state()
 
-func _on_build_pressed() -> void:
-	_on_row_pressed()
+func _good_label(good_id: String, internal_name: String) -> String:
+	if good_id != "":
+		return Catalog.get_display_name(good_id)
+	return internal_name.capitalize()
 
 func _on_row_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -62,9 +69,9 @@ func set_affordable(value: bool) -> void:
 
 func _update_visual_state() -> void:
 	var dim := 0.45 if not is_affordable else 1.0
+	icon_texture.modulate = Color(1, 1, 1, dim)
 	name_label.modulate = Color(1, 1, 1, dim)
-	details_label.modulate = Color(1, 1, 1, dim)
-	power_label.modulate = Color(1, 1, 1, dim)
+	detail_label.modulate = Color(1, 1, 1, dim)
 	queue_redraw()
 
 func _draw() -> void:

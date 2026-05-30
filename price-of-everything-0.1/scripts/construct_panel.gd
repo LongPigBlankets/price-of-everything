@@ -29,6 +29,16 @@ var _section_labels: Dictionary = {}
 var _section_expanded: Dictionary = {}
 var _building_rows: Array = []
 
+# --- Search / filter / sort ---
+const FILTER_TYPES: Array = ["extraction", "refinery", "metallurgy", "electrochemistry",
+	"farm_forests", "power", "infrastructure", "water", "manufacturing"]
+@onready var search_input: LineEdit = $MarginContainer/VBoxContainer/ControlsVBox/SearchInput
+@onready var filter_bar: HFlowContainer = $MarginContainer/VBoxContainer/ControlsVBox/FilterBar
+@onready var sort_option: OptionButton = $MarginContainer/VBoxContainer/ControlsVBox/SortRow/SortOption
+var _search_query: String = ""
+var _active_filters: Dictionary = {}   # building_type -> true
+var _sort_mode: int = 0                # 0 name, 1 build cost, 2 materials cost
+
 func _ready() -> void:
 	close_button.pressed.connect(hide)
 	if not BuildMode.mode_entered.is_connected(_on_build_mode_entered):
@@ -39,6 +49,34 @@ func _ready() -> void:
 		MatchState.money_changed.connect(_on_money_changed)
 	title_label.text = "Construct Building"
 	_load_data()
+	_setup_controls()
+	_build_panel_content()
+
+func _setup_controls() -> void:
+	search_input.text_changed.connect(func(t: String) -> void:
+		_search_query = t
+		_build_panel_content())
+	sort_option.clear()
+	sort_option.add_item("Name")
+	sort_option.add_item("Build cost")
+	sort_option.add_item("Materials cost")
+	sort_option.item_selected.connect(func(i: int) -> void:
+		_sort_mode = i
+		_build_panel_content())
+	for t in FILTER_TYPES:
+		var chip := Button.new()
+		chip.toggle_mode = true
+		chip.focus_mode = Control.FOCUS_NONE
+		chip.text = String(t).capitalize().replace("_", " ")
+		chip.add_theme_font_size_override("font_size", 13)
+		chip.toggled.connect(_on_filter_toggled.bind(t))
+		filter_bar.add_child(chip)
+
+func _on_filter_toggled(pressed: bool, t: String) -> void:
+	if pressed:
+		_active_filters[t] = true
+	else:
+		_active_filters.erase(t)
 	_build_panel_content()
 
 func _load_data() -> void:
@@ -84,27 +122,94 @@ func _build_panel_content() -> void:
 	_section_expanded.clear()
 	_building_rows.clear()
 
-	for category in SECTION_ORDER:
-		if not buildings_by_category.has(category):
-			continue
+	var has_search: bool = _search_query.strip_edges() != ""
+	var has_filter: bool = not _active_filters.is_empty()
 
-		_add_section(category)
-		var section_container: VBoxContainer = _section_containers[category]
-
-		for building_data in buildings_by_category[category]:
-			var row := BuildingRowScene.instantiate()
-			section_container.add_child(row)
-
-			var building_id: String = building_data.id
-			var recipes_for_this: Array = recipes_by_building.get(building_id, [])
-			row.setup(building_data, recipes_for_this)
-			row.set_affordable(_is_building_affordable(building_data), MatchState.money)
-			row.recipe_selected.connect(_on_recipe_selected)
-			row.expand_toggled.connect(_on_expand_toggled)
-			row.infrastructure_build_pressed.connect(_on_infrastructure_build_pressed)  # NEW
-			_building_rows.append(row)
+	if not has_search and not has_filter:
+		# Default: collapsible category sections, sorted within each.
+		for category in SECTION_ORDER:
+			if not buildings_by_category.has(category):
+				continue
+			_add_section(category)
+			var section_container: VBoxContainer = _section_containers[category]
+			for building_data in _sorted(buildings_by_category[category]):
+				_add_building_row(building_data, section_container, false)
+	else:
+		# Flat filtered / searched list.
+		var candidates: Array = []
+		for category in buildings_by_category.keys():
+			for b in buildings_by_category[category]:
+				if has_filter and not _passes_filter(b):
+					continue
+				if has_search and not _matches_search(b):
+					continue
+				candidates.append(b)
+		candidates = _sorted(candidates)
+		if candidates.is_empty():
+			var empty := Label.new()
+			empty.text = "No buildings match."
+			empty.theme_type_variation = &"Caption"
+			content_vbox.add_child(empty)
+		for building_data in candidates:
+			_add_building_row(building_data, content_vbox, has_search)
 
 	_refresh_build_mode_selection()
+
+func _add_building_row(building_data: Dictionary, parent: Node, expand_for_search: bool) -> void:
+	var row := BuildingRowScene.instantiate()
+	parent.add_child(row)
+	var building_id: String = building_data.id
+	var recipes_for_this: Array = recipes_by_building.get(building_id, [])
+	row.setup(building_data, recipes_for_this)
+	row.set_affordable(_is_building_affordable(building_data), MatchState.money)
+	row.recipe_selected.connect(_on_recipe_selected)
+	row.expand_toggled.connect(_on_expand_toggled)
+	row.infrastructure_build_pressed.connect(_on_infrastructure_build_pressed)
+	_building_rows.append(row)
+	if expand_for_search and recipes_for_this.size() > 1:
+		row.call("_set_expanded", true)
+
+func _passes_filter(b: Dictionary) -> bool:
+	for t in b.get("building_type", []):
+		if _active_filters.has(t):
+			return true
+	return false
+
+func _matches_search(b: Dictionary) -> bool:
+	var q: String = _search_query.strip_edges().to_lower()
+	if q == "":
+		return true
+	if b.get("display_name", "").to_lower().contains(q):
+		return true
+	for recipe in recipes_by_building.get(b.get("id", ""), []):
+		if recipe.get("display_name", "").to_lower().contains(q):
+			return true
+		var out_id: String = recipe.get("output_good_id", "")
+		if out_id != "" and Catalog.get_display_name(out_id).to_lower().contains(q):
+			return true
+		for inp in recipe.get("inputs", []):
+			var gid: String = inp.get("good_id", "")
+			if gid != "" and Catalog.get_display_name(gid).to_lower().contains(q):
+				return true
+	return false
+
+func _sorted(buildings: Array) -> Array:
+	var arr: Array = buildings.duplicate()
+	match _sort_mode:
+		1:  # build cost
+			arr.sort_custom(func(a, b): return float(a.get("base_price", 0)) < float(b.get("base_price", 0)))
+		2:  # materials cost
+			arr.sort_custom(func(a, b): return _materials_value(a) < _materials_value(b))
+		_:  # name
+			arr.sort_custom(func(a, b): return a.get("display_name", "").naturalnocasecmp_to(b.get("display_name", "")) < 0)
+	return arr
+
+func _materials_value(b: Dictionary) -> float:
+	var total: float = 0.0
+	for mat in b.get("materials", []):
+		var good: Dictionary = Catalog.get_good_by_internal_name(mat.get("name", ""))
+		total += float(good.get("base_price", 0.0)) * float(mat.get("qty", 0))
+	return total
 
 func _add_section(category: String) -> void:
 	var header_panel := PanelContainer.new()

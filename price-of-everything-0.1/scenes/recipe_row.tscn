@@ -1,27 +1,52 @@
-[gd_scene format=3 uid="uid://b320p282xchg0"]
+[gd_scene load_steps=3 format=3 uid="uid://b320p282xchg0"]
 
 [ext_resource type="Script" uid="uid://cla8um2xwuron" path="res://scripts/recipe_row.gd" id="1_fudw1"]
 
-[node name="RecipeRow" type="HBoxContainer" unique_id=1687684604]
-offset_right = 61.0
-offset_bottom = 116.0
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_icon_bg"]
+bg_color = Color(0.03, 0.06, 0.1, 0.6)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[node name="RecipeRow" type="HBoxContainer"]
+custom_minimum_size = Vector2(0, 60)
+theme_override_constants/separation = 10
 script = ExtResource("1_fudw1")
 
-[node name="IndentSpacer" type="Control" parent="." unique_id=1548829931]
-custom_minimum_size = Vector2(24, 0)
+[node name="IndentSpacer" type="Control" parent="."]
+custom_minimum_size = Vector2(10, 0)
 layout_mode = 2
 
-[node name="NameLabel" type="Label" parent="." unique_id=2123025793]
+[node name="OutputIcon" type="Panel" parent="."]
+custom_minimum_size = Vector2(52, 52)
 layout_mode = 2
+size_flags_vertical = 4
+theme_override_styles/panel = SubResource("StyleBoxFlat_icon_bg")
 
-[node name="DetailsLabel" type="Label" parent="." unique_id=2043214964]
+[node name="IconTexture" type="TextureRect" parent="OutputIcon"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="TextColumn" type="VBoxContainer" parent="."]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
 
-[node name="PowerLabel" type="Label" parent="." unique_id=955776865]
+[node name="NameLabel" type="Label" parent="TextColumn"]
 layout_mode = 2
+theme_type_variation = &"Body"
+text = "Recipe"
 
-[node name="BuildButton" type="Button" parent="." unique_id=1834315900]
-visible = false
+[node name="DetailLabel" type="Label" parent="TextColumn"]
 layout_mode = 2
-text = "+"
+theme_type_variation = &"Caption"
+autowrap_mode = 2
