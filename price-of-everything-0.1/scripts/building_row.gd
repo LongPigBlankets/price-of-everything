@@ -60,6 +60,11 @@ func setup(data: Dictionary, recipes: Array) -> void:
 		mat_label.text = "%s +%d" % [mat_name.substr(0, 3).to_upper(), mat_qty]
 		materials_container.add_child(mat_label)
 
+	# Build-material requirements shown as a 3x2 grid of hatched placeholder
+	# squares in a white rectangle (real materials wired later).
+	materials_container.visible = false
+	_build_material_grid()
+
 	build_button.visible = false
 	expand_button.visible = false
 	recipes_container.visible = false
@@ -128,6 +133,7 @@ func _set_expanded(expanded: bool) -> void:
 func _populate_recipes_container() -> void:
 	for child in recipes_container.get_children():
 		child.queue_free()
+	recipes_container.add_theme_constant_override("separation", 8)  # navy gaps between cards
 
 	# Group recipes by recipe_type, preserving first-seen order. Only show the
 	# type sub-headers when a building actually hosts more than one type.
@@ -228,3 +234,38 @@ func _money_text(value: float) -> String:
 	if text.ends_with("."):
 		text = text.trim_suffix(".")
 	return "\u00a3%s" % text
+
+# A navy square with diagonal off-white hatching (placeholder build-material slot).
+class HatchSquare extends Control:
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.015686275, 0.058823529, 0.105882353), true)
+		var off := Color(0.995234, 0.930806, 0.763265, 0.55)
+		var step := 7.0
+		var x := -size.y
+		while x < size.x:
+			draw_line(Vector2(x, size.y), Vector2(x + size.y, 0.0), off, 1.5)
+			x += step
+
+func _build_material_grid() -> void:
+	if has_node("MaterialGrid"):
+		return
+	var panel := PanelContainer.new()
+	panel.name = "MaterialGrid"
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var white := StyleBoxFlat.new()
+	white.bg_color = Color(0.995234, 0.930806, 0.763265)
+	white.set_corner_radius_all(6)
+	white.set_content_margin_all(6)
+	panel.add_theme_stylebox_override("panel", white)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 5)
+	grid.add_theme_constant_override("v_separation", 5)
+	panel.add_child(grid)
+	for i in range(6):
+		var sq := HatchSquare.new()
+		sq.custom_minimum_size = Vector2(26, 26)
+		sq.clip_contents = true
+		grid.add_child(sq)
+	add_child(panel)
+	move_child(panel, 1)  # between MainRow and RecipesContainer

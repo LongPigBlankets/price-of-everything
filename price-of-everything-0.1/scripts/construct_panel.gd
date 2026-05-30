@@ -53,6 +53,13 @@ func _ready() -> void:
 	_build_panel_content()
 
 func _setup_controls() -> void:
+	# Click-only focus + release focus whenever the panel opens, so the search bar
+	# never auto-captures keystrokes — WASD keeps navigating the map. (The
+	# X-triggered search overlay is the only field that auto-focuses.)
+	search_input.focus_mode = Control.FOCUS_CLICK
+	visibility_changed.connect(func() -> void:
+		if visible:
+			search_input.release_focus())
 	search_input.text_changed.connect(func(t: String) -> void:
 		_search_query = t
 		_build_panel_content())
