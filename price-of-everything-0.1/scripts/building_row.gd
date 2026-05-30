@@ -265,5 +265,5 @@ func _build_material_grid() -> void:
 		sq.custom_minimum_size = Vector2(26, 26)
 		sq.clip_contents = true
 		grid.add_child(sq)
-	add_child(panel)
-	move_child(panel, 1)  # between MainRow and RecipesContainer
+	main_row.add_child(panel)
+	main_row.move_child(panel, 1)  # to the right of the building icon

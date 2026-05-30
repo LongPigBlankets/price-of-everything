@@ -7,11 +7,11 @@ const NAVY := Color(0.015686275, 0.058823529, 0.105882353)
 const UNAFFORDABLE_FLASH_COLOR := Color(0.7, 0.12, 0.08, 0.5)
 const GoodIcons := preload("res://scripts/good_icons.gd")
 
-@onready var output_icon: TextureRect = $OutputIcon
-@onready var name_label: Label = $TextColumn/NameLabel
-@onready var detail_label: Label = $TextColumn/DetailLabel
-@onready var power_box: PanelContainer = $PowerBox
-@onready var power_label: Label = $PowerBox/PowerMargin/PowerLabel
+@onready var output_icon: TextureRect = $Row/OutputIcon
+@onready var name_label: Label = $Row/TextColumn/NameLabel
+@onready var detail_label: Label = $Row/TextColumn/DetailLabel
+@onready var power_box: PanelContainer = $Row/PowerBox
+@onready var power_label: Label = $Row/PowerBox/PowerMargin/PowerLabel
 
 var building_id: String = ""
 var recipe_id: String = ""
@@ -102,7 +102,7 @@ func _draw() -> void:
 	# Off-white card.
 	draw_style_box(_card_style, Rect2(Vector2.ZERO, size))
 	# Feather glow radiating from the goods icon.
-	var icon_c := Vector2(34.0, size.y * 0.5)
+	var icon_c := Vector2(30.0, size.y * 0.5)
 	var r := size.y * 1.5
 	draw_texture_rect(_glow, Rect2(icon_c - Vector2(r, r), Vector2(r * 2.0, r * 2.0)), false)
 	# States.

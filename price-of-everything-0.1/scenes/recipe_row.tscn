@@ -1,64 +1,63 @@
-[gd_scene load_steps=2 format=3 uid="uid://b320p282xchg0"]
+[gd_scene load_steps=3 format=3 uid="uid://b320p282xchg0"]
 
 [ext_resource type="Script" uid="uid://cla8um2xwuron" path="res://scripts/recipe_row.gd" id="1_fudw1"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_power"]
 bg_color = Color(0.015686275, 0.058823529, 0.105882353, 1)
 
-[node name="RecipeRow" type="HBoxContainer"]
-custom_minimum_size = Vector2(0, 60)
+[node name="RecipeRow" type="MarginContainer"]
 clip_contents = true
-theme_override_constants/separation = 10
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 4
 script = ExtResource("1_fudw1")
 
-[node name="LeftPad" type="Control" parent="."]
-custom_minimum_size = Vector2(6, 0)
+[node name="Row" type="HBoxContainer" parent="."]
+custom_minimum_size = Vector2(0, 54)
 layout_mode = 2
+theme_override_constants/separation = 10
 
-[node name="OutputIcon" type="TextureRect" parent="."]
+[node name="OutputIcon" type="TextureRect" parent="Row"]
 custom_minimum_size = Vector2(52, 52)
 layout_mode = 2
 size_flags_vertical = 4
 expand_mode = 1
 stretch_mode = 5
 
-[node name="TextColumn" type="VBoxContainer" parent="."]
+[node name="TextColumn" type="VBoxContainer" parent="Row"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_vertical = 4
+size_flags_vertical = 1
 theme_override_constants/separation = 2
 
-[node name="NameLabel" type="Label" parent="TextColumn"]
+[node name="NameLabel" type="Label" parent="Row/TextColumn"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.015686275, 0.058823529, 0.105882353, 1)
 theme_type_variation = &"Body"
 text = "Recipe"
 
-[node name="DetailLabel" type="Label" parent="TextColumn"]
+[node name="DetailLabel" type="Label" parent="Row/TextColumn"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.015686275, 0.058823529, 0.105882353, 1)
 theme_type_variation = &"Caption"
 autowrap_mode = 2
 
-[node name="PowerBox" type="PanelContainer" parent="."]
-custom_minimum_size = Vector2(0, 52)
+[node name="PowerBox" type="PanelContainer" parent="Row"]
 layout_mode = 2
-size_flags_vertical = 4
+size_flags_vertical = 1
 theme_override_styles/panel = SubResource("StyleBoxFlat_power")
 
-[node name="PowerMargin" type="MarginContainer" parent="PowerBox"]
+[node name="PowerMargin" type="MarginContainer" parent="Row/PowerBox"]
 layout_mode = 2
 theme_override_constants/margin_left = 8
 theme_override_constants/margin_top = 4
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 4
 
-[node name="PowerLabel" type="Label" parent="PowerBox/PowerMargin"]
+[node name="PowerLabel" type="Label" parent="Row/PowerBox/PowerMargin"]
 layout_mode = 2
+size_flags_vertical = 4
 theme_override_colors/font_color = Color(0.995234, 0.930806, 0.763265, 1)
 theme_type_variation = &"Numeric"
 text = "0"
-
-[node name="RightPad" type="Control" parent="."]
-custom_minimum_size = Vector2(4, 0)
-layout_mode = 2
