@@ -19,7 +19,6 @@ const VISUAL_COLUMNS := 25
 const LEGEND_SWATCH_SIZE := Vector2(20, 20)
 const LEGEND_MAX_HEIGHT := 48.0
 const GOOD_LABEL_MAX_CHARS := 12
-const LEGEND_LABEL_WIDTH := 88.0
 const UNUSED_FILL := Color(0.44, 0.48, 0.5, 0.22)
 const COLOR_PALETTE := [
 	Color(0.13, 0.55, 0.13, 0.92),
@@ -177,13 +176,12 @@ func _sorted_rows() -> Array:
 	return rows
 
 func _make_row(text: String, good_id: String = "") -> Control:
+	# Row sizes to its content so the colour swatch sits right next to the good
+	# name (a fixed-width label pushed the swatch too far away to read as linked).
 	var row := HBoxContainer.new()
-	var row_width := LEGEND_LABEL_WIDTH
-	if good_id != "":
-		row_width += LEGEND_SWATCH_SIZE.x + 4.0
-	row.custom_minimum_size = Vector2(row_width, LEGEND_SWATCH_SIZE.y)
+	row.custom_minimum_size = Vector2(0, LEGEND_SWATCH_SIZE.y)
 	row.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	row.add_theme_constant_override("separation", 4)
+	row.add_theme_constant_override("separation", 5)
 
 	var label := Label.new()
 	label.text = _truncate(text)
@@ -192,7 +190,7 @@ func _make_row(text: String, good_id: String = "") -> Control:
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 12)
 	label.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
-	label.custom_minimum_size = Vector2(LEGEND_LABEL_WIDTH, LEGEND_SWATCH_SIZE.y)
+	label.custom_minimum_size = Vector2(0, LEGEND_SWATCH_SIZE.y)
 	label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	row.add_child(label)
 
@@ -200,6 +198,8 @@ func _make_row(text: String, good_id: String = "") -> Control:
 		var swatch := ColorRect.new()
 		swatch.color = _color_for_good(good_id)
 		swatch.custom_minimum_size = LEGEND_SWATCH_SIZE
+		swatch.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(swatch)
 	return row
 
