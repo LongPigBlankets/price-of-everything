@@ -2,10 +2,10 @@ extends PanelContainer
 
 @onready var title_label: Label = $MarginContainer/ContentRow/VBoxContainer/HeaderRow/TitleLabel
 @onready var close_button: Button = $MarginContainer/ContentRow/VBoxContainer/HeaderRow/CloseButton
-@onready var infrastructure_separator: HSeparator = $MarginContainer/ContentRow/VBoxContainer/InfrastructureSeparator
-@onready var infrastructure_table: GridContainer = $MarginContainer/ContentRow/VBoxContainer/InfrastructureTable
+@onready var infrastructure_separator: HSeparator = $MarginContainer/ContentRow/ChartColumn/InfrastructureSeparator
+@onready var infrastructure_table: GridContainer = $MarginContainer/ContentRow/ChartColumn/InfrastructureTable
 @onready var content_vbox: VBoxContainer = $MarginContainer/ContentRow/VBoxContainer
-@onready var tile_size_chart = $MarginContainer/ContentRow/TileSizeChart
+@onready var tile_size_chart = $MarginContainer/ContentRow/ChartColumn/TileSizeChart
 @onready var tile_image_banner: PanelContainer = $MarginContainer/ContentRow/VBoxContainer/TileImageBanner
 @onready var _content_row: HBoxContainer = $MarginContainer/ContentRow
 @onready var _margin_container: MarginContainer = $MarginContainer
@@ -75,7 +75,7 @@ var _infra_grid = null
 var _stockpile_sell_button: Button = null
 var _sell_surplus_button: CheckBox = null
 var _production_destination_option: OptionButton = null
-var _chart_column: VBoxContainer = null
+@onready var _chart_column: VBoxContainer = $MarginContainer/ContentRow/ChartColumn
 var _land_left_label: Label = null
 var _land_purchase_buttons_row: HBoxContainer = null
 var _land_buy_one_button: Button = null
@@ -121,32 +121,6 @@ func _ready() -> void:
 	_build_land_purchase_section()
 
 func _restructure_layout() -> void:
-	if _chart_column == null:
-		_chart_column = VBoxContainer.new()
-		_chart_column.name = "ChartColumn"
-		_chart_column.custom_minimum_size = Vector2(CHART_CONTROL_SIZE.x, 0)
-		_chart_column.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		_chart_column.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		_chart_column.add_theme_constant_override("separation", 8)
-		_content_row.add_child(_chart_column)
-		_content_row.move_child(_chart_column, 0)
-
-	if tile_size_chart.get_parent() != _chart_column:
-		var chart_parent := tile_size_chart.get_parent()
-		if chart_parent != null:
-			chart_parent.remove_child(tile_size_chart)
-		_chart_column.add_child(tile_size_chart)
-		_chart_column.move_child(tile_size_chart, 0)
-	tile_size_chart.custom_minimum_size = CHART_CONTROL_SIZE
-	tile_size_chart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tile_size_chart.size_flags_vertical = Control.SIZE_EXPAND_FILL
-
-	if infrastructure_separator.get_parent() != _chart_column:
-		var separator_parent := infrastructure_separator.get_parent()
-		if separator_parent != null:
-			separator_parent.remove_child(infrastructure_separator)
-		_chart_column.add_child(infrastructure_separator)
-
 	infrastructure_table.visible = false
 	if _infra_grid == null:
 		_infra_grid = INFRA_GRID_SCRIPT.new()

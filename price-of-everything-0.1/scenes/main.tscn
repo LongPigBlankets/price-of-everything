@@ -371,12 +371,28 @@ layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 12
 
-[node name="TileSizeChart" type="Control" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow" unique_id=1435297557]
+[node name="ChartColumn" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow"]
+custom_minimum_size = Vector2(336, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="TileSizeChart" type="Control" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/ChartColumn" unique_id=1435297557]
 custom_minimum_size = Vector2(336, 320)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 script = ExtResource("19_t88fa")
+
+[node name="InfrastructureSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/ChartColumn" unique_id=288549859]
+layout_mode = 2
+
+[node name="InfrastructureTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/ChartColumn" unique_id=117922161]
+layout_mode = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 4
+columns = 4
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow" unique_id=332018308]
 layout_mode = 2
@@ -406,15 +422,6 @@ custom_minimum_size = Vector2(240, 150)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_tile_banner")
-
-[node name="InfrastructureSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=288549859]
-layout_mode = 2
-
-[node name="InfrastructureTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=117922161]
-layout_mode = 2
-theme_override_constants/h_separation = 8
-theme_override_constants/v_separation = 4
-columns = 4
 
 [node name="BuildingDetailPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=1081644289]
 unique_name_in_owner = true
