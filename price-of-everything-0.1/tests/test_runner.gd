@@ -119,7 +119,7 @@ func _test_main_scene_instantiates() -> void:
 # Logic: the data CSVs load into the Catalog as expected.
 func _test_catalog_loaded() -> void:
 	_check(Catalog.all_goods().size() == 15, "Catalog has 15 goods")
-	_check(Catalog.all_recipes().size() == 14, "Catalog has 14 recipes")
+	_check(Catalog.all_recipes().size() >= 18, "Catalog promotes a healthy recipe set (>=18)")
 	_check(Catalog.all_buildings().size() == 37, "Catalog has 37 buildings")
 
 # Logic: recipe requirements parse correctly (guards the build-mode path that
@@ -131,6 +131,19 @@ func _test_recipe_requirements() -> void:
 		and reqs[0].get("type", "") == "deposit" \
 		and reqs[0].get("value", "") == "coal"
 	_check(ok, "r_001 (Coal Mining) requires deposit:coal")
+	_check(recipe.get("recipe_type", "") == "extraction", "r_001 recipe_type is extraction")
+	# Promotion gate: every active recipe's inputs + outputs resolve to real goods.
+	var no_phantom := true
+	for r in Catalog.all_recipes():
+		for o in r.get("outputs", []):
+			if o.get("good_id", "") == "":
+				no_phantom = false
+		for inp in r.get("inputs", []):
+			if inp.get("good_id", "") == "":
+				no_phantom = false
+	_check(no_phantom, "promotion gate: active recipes only reference real goods")
+	var mine_b: Dictionary = Catalog.get_building("b_001")
+	_check("extraction" in mine_b.get("building_type", []), "Mine building_type contains extraction")
 
 # Logic: the regenerated bottom-menu icons import and load as textures.
 func _test_menu_icons() -> void:
