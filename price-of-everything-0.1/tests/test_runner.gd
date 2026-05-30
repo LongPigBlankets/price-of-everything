@@ -19,6 +19,7 @@ func _ready() -> void:
 	_test_scripts_parse()
 	_test_widgets_instantiate()
 	_test_scene_loads()
+	await _test_main_scene_instantiates()
 	_test_catalog_loaded()
 	_test_recipe_requirements()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
@@ -67,6 +68,27 @@ func _test_widgets_instantiate() -> void:
 # Smoke: the big scene still loads as a resource (catches main.tscn corruption).
 func _test_scene_loads() -> void:
 	_check(load("res://scenes/main.tscn") != null, "main.tscn loads")
+
+# Instantiate the whole main scene and confirm the tile panel's @onready node
+# paths still resolve. This is the net for layout/scene restructuring (Slice D):
+# a broken node path leaves an @onready var null, which this catches.
+func _test_main_scene_instantiates() -> void:
+	var packed: PackedScene = load("res://scenes/main.tscn")
+	if packed == null:
+		_check(false, "main.tscn instantiates")
+		return
+	var inst: Node = packed.instantiate()
+	add_child(inst)
+	await get_tree().process_frame
+	var panel: Node = inst.find_child("TileInfoPanel", true, false)
+	var ok: bool = panel != null \
+		and panel.get("tile_size_chart") != null \
+		and panel.get("title_label") != null \
+		and panel.get("infrastructure_table") != null \
+		and panel.get("close_button") != null
+	_check(ok, "main.tscn instantiates; TileInfoPanel @onready nodes resolve")
+	inst.queue_free()
+	await get_tree().process_frame
 
 # Logic: the data CSVs load into the Catalog as expected.
 func _test_catalog_loaded() -> void:
