@@ -22,9 +22,9 @@ KEYS = ["resources", "buildings", "map_overlays", "markets", "politics"]  # + co
 SIZES = [400, 200, 100]
 LUM_T = 40            # brightness threshold for rim detection (0..255)
 R_PAD = 0            # grow(+)/shrink(-) detected radius, in source px
-FEATHER_AT_SRC = 30  # feather band width in source px (~10px at the 400 output)
-CROP_SCALE = 1.22    # crop half-width = R * this; the circle fills ~1/CROP_SCALE of
-                     # the output (1.22 -> ~82%, i.e. ~10px spare in a 100px round button)
+FEATHER_AT_SRC = 12  # feather band width in source px (gentle soft rim edge)
+CROP_MARGIN = 2      # transparent px beyond the feather; the feathered rim then reaches
+                     # the icon edge so the icon fills the round button (like construct)
 
 
 def detect_circle(im):
@@ -66,7 +66,7 @@ def main():
         cx, cy, R = detect_circle(im)
         print("%-13s %dx%d  center=(%d,%d)  R=%d" % (key, W, H, cx, cy, R))
         im.putalpha(build_mask(W, H, cx, cy, R, FEATHER_AT_SRC))
-        half = R * CROP_SCALE          # crop tight to the circle so it fills the button
+        half = R + FEATHER_AT_SRC + CROP_MARGIN   # feathered rim reaches the icon edge
         im = im.crop((int(round(cx - half)), int(round(cy - half)),
                       int(round(cx + half)), int(round(cy + half))))
         for s in SIZES:
