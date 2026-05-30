@@ -18,6 +18,7 @@ func _ready() -> void:
 	print("\n==== price-of-everything tests ====")
 	_test_scripts_parse()
 	_test_widgets_instantiate()
+	_test_recipe_row_instantiates()
 	await _test_stockpile_legend_label_visible()
 	_test_scene_loads()
 	await _test_main_scene_instantiates()
@@ -72,6 +73,23 @@ func _test_widgets_instantiate() -> void:
 	}])
 	_check(ig.get_child_count() == 1, "InfraGrid renders one slot")
 	ig.queue_free()
+
+# Regression: recipe_row.tscn must instantiate + setup (catches script/root type
+# mismatches — recipe rows are only built on expand, so the main-scene test misses them).
+func _test_recipe_row_instantiates() -> void:
+	var packed: PackedScene = load("res://scenes/recipe_row.tscn")
+	var ok: bool = packed != null
+	if ok:
+		var row: Node = packed.instantiate()
+		add_child(row)
+		row.call("setup", {
+			"recipe_id": "r_001", "display_name": "Test Recipe",
+			"output_good_id": "g_001", "output_name": "coal", "output_qty": 10,
+			"inputs": [], "energy_req": 4,
+		}, "b_001")
+		ok = row.get_node_or_null("Row/OutputIcon") != null
+		row.queue_free()
+	_check(ok, "recipe_row instantiates + setup runs")
 
 # Regression: a stockpile legend row's label must render with non-zero width
 # (a fixed-width label was removed; with ellipsis trimming the label collapsed

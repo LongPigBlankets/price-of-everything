@@ -1,4 +1,4 @@
-extends HBoxContainer
+extends MarginContainer
 
 signal recipe_selected(building_id: String, recipe_id: String)
 
