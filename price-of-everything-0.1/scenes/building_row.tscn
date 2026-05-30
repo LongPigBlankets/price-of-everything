@@ -9,6 +9,7 @@ offset_bottom = 40.0
 script = ExtResource("1_620pn")
 
 [node name="MainRow" type="HBoxContainer" parent="." unique_id=1994815628]
+custom_minimum_size = Vector2(0, 112)
 layout_mode = 2
 
 [node name="IconTexture" type="TextureRect" parent="MainRow" unique_id=45546956]

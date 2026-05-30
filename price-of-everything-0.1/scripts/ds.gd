@@ -38,10 +38,10 @@ const PALETTE := {
 	"BG_CARD": Color("#040F1B"),          # section cards — flush w/ panel, border-delineated
 	"BG_INSET": Color(0, 0.08, 0.16),     # darker navy — insets / default buttons
 	"BG_HIGHLIGHT": Color(0, 0.18, 0.33), # lighter navy — outlined / highlighted sections (brighter than cards)
-	"BORDER": Color("#FDEDC3"),
+	"BORDER": Color(0.995234, 0.930806, 0.763265),
 	"BORDER_SOFT": Color(0.995, 0.93, 0.76, 0.55),
-	"BORDER_STRONG": Color("#FDEDC3"),
-	"ACCENT": Color("#FDEDC3"),
+	"BORDER_STRONG": Color(0.995234, 0.930806, 0.763265),
+	"ACCENT": Color(0.995234, 0.930806, 0.763265),
 	"ACCENT_DIM": Color("#7A5F2C"),
 	"TEXT": Color("#E8EEF7"),
 	"TEXT_MUTED": Color("#C2D2E5"),       # was #9BB1CC — bumped much closer to white for legibility

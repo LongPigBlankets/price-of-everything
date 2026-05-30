@@ -11,7 +11,7 @@ const MAT_SLOT_SIZE := Vector2(50, 50)
 const BADGE_DIAMETER := 24
 const BADGE_TEXT_SIZE := 14
 const BADGE_NAVY := Color(0.0, 0.119856, 0.243095, 1.0)
-const BADGE_PAPER := Color(0.9725, 0.9333, 0.8431, 1.0)
+const BADGE_PAPER := Color(0.995234, 0.930806, 0.763265, 1.0)
 const ROW_HOVER_TOOLTIP := "Click to build"
 const ACTIVE_COLOR := Color(0.15, 0.48, 0.76, 0.72)
 const UNAFFORDABLE_COLOR := Color(0.12, 0.12, 0.12, 0.28)
@@ -209,7 +209,7 @@ func _update_visual_state() -> void:
 	name_label.modulate = Color(1, 1, 1, dim)
 	cost_label.modulate = Color(1.0, 0.45, 0.42, 1.0) if not is_affordable else Color(1, 1, 1, 1)
 	materials_container.modulate = Color(1, 1, 1, dim)
-	if _is_active_building() and not is_expanded and recipes_for_this_building.size() > 1:
+	if _is_active_building() and not is_expanded and recipes_for_this_building.size() >= 1:
 		_set_expanded(true)
 	queue_redraw()
 
@@ -261,7 +261,7 @@ func _build_material_grid(materials: Array) -> void:
 	var rows: int = 1 if count <= 2 else 2
 	var cols: int = ceili(float(count) / float(rows))
 	var container_h: float = 100.0
-	var icon_size: float = container_h / float(rows)
+	var icon_size: float = 50.0  # always the small icon; 1-2 sit centred in the row
 
 	var panel := PanelContainer.new()
 	panel.name = "MaterialGrid"
@@ -300,12 +300,8 @@ func _make_material_icon(material: Dictionary, slot_size: float) -> Control:
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.material = _icon_feather_material()  # feather the icon's edge into the off-white
 		slot.add_child(icon)
-		# Off-white edge feather blends the icon's own background into the container.
-		var feather := FeatherFrame.new()
-		feather.set_anchors_preset(Control.PRESET_FULL_RECT)
-		feather.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		slot.add_child(feather)
 	else:
 		var hatch := HatchSquare.new()
 		hatch.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -315,20 +311,17 @@ func _make_material_icon(material: Dictionary, slot_size: float) -> Control:
 	slot.add_child(_make_qty_badge(int(material.get("qty", 0)), slot_size))
 	return slot
 
-# Off-white edge feather: blends an icon's own background into the off-white
-# container over ~5px rather than showing a hard square edge.
-class FeatherFrame extends Control:
-	const FEATHER := 5.0
-	const FF_OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
-	func _draw() -> void:
-		for i in range(int(FEATHER)):
-			var a: float = 1.0 - float(i) / FEATHER
-			var c := Color(FF_OFF_WHITE.r, FF_OFF_WHITE.g, FF_OFF_WHITE.b, a)
-			var o: float = float(i) + 0.5
-			draw_line(Vector2(0, o), Vector2(size.x, o), c, 1.0)
-			draw_line(Vector2(0, size.y - o), Vector2(size.x, size.y - o), c, 1.0)
-			draw_line(Vector2(o, 0), Vector2(o, size.y), c, 1.0)
-			draw_line(Vector2(size.x - o, 0), Vector2(size.x - o, size.y), c, 1.0)
+# Shared shader material that feathers a goods-icon's edges outward, so the
+# icon's own background colour blends into the off-white container (~7px).
+static var _feather_mat: ShaderMaterial
+
+func _icon_feather_material() -> ShaderMaterial:
+	if _feather_mat == null:
+		var sh := Shader.new()
+		sh.code = "shader_type canvas_item;\nuniform float feather = 0.14;\nvoid fragment() {\n\tvec4 c = texture(TEXTURE, UV);\n\tfloat d = min(min(UV.x, 1.0 - UV.x), min(UV.y, 1.0 - UV.y));\n\tCOLOR = vec4(c.rgb, c.a * smoothstep(0.0, feather, d));\n}"
+		_feather_mat = ShaderMaterial.new()
+		_feather_mat.shader = sh
+	return _feather_mat
 
 # Quantity pill badge matching the build-details recipe cards.
 func _make_qty_badge(qty: int, slot_size: float) -> Control:
