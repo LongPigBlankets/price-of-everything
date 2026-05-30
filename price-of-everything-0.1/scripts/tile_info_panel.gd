@@ -17,6 +17,7 @@ extends PanelContainer
 signal building_clicked(building: Dictionary)
 
 const STOCKPILE_VIEW_SCRIPT := preload("res://scripts/stockpile_view.gd")
+const INFRA_GRID_SCRIPT := preload("res://scripts/infra_grid.gd")
 
 const HEADER_HEIGHT := 40.0
 var OFF_WHITE: Color = DS.PALETTE.ACCENT
@@ -80,6 +81,7 @@ var _current_tile_id: String = ""
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 var _stockpile_view: VBoxContainer = null
+var _infra_grid = null
 var _stockpile_sell_button: Button = null
 var _sell_surplus_button: CheckBox = null
 var _production_destination_option: OptionButton = null
@@ -160,14 +162,15 @@ func _restructure_layout() -> void:
 			separator_parent.remove_child(infrastructure_separator)
 		_chart_column.add_child(infrastructure_separator)
 
-	if infrastructure_table.get_parent() != _chart_column:
-		var infra_parent := infrastructure_table.get_parent()
-		if infra_parent != null:
-			infra_parent.remove_child(infrastructure_table)
-		_chart_column.add_child(infrastructure_table)
-	infrastructure_table.custom_minimum_size = Vector2(INFRA_GRID_WIDTH, 0)
-	infrastructure_table.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	infrastructure_table.size_flags_vertical = Control.SIZE_SHRINK_END
+	infrastructure_table.visible = false
+	if _infra_grid == null:
+		_infra_grid = INFRA_GRID_SCRIPT.new()
+		_infra_grid.custom_minimum_size = Vector2(INFRA_GRID_WIDTH, 0)
+		_infra_grid.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		_infra_grid.size_flags_vertical = Control.SIZE_SHRINK_END
+		_infra_grid.slot_activated.connect(func(inst: Dictionary) -> void: building_clicked.emit(inst))
+		_infra_grid.add_requested.connect(_on_add_infrastructure_pressed)
+		_chart_column.add_child(_infra_grid)
 
 	if _banner_summary_wrapper == null:
 		_banner_summary_wrapper = PanelContainer.new()
@@ -318,16 +321,45 @@ func _refresh_tile_banner(tile_data: Dictionary) -> void:
 		_tile_banner_texture_rect.texture = null
 
 func _rebuild_infrastructure_table(tile_data: Dictionary) -> void:
-	for child in infrastructure_table.get_children():
-		child.queue_free()
-	infrastructure_table.columns = 3
-	infrastructure_table.add_theme_constant_override("h_separation", INFRA_GRID_H_SEPARATION)
-	infrastructure_table.add_theme_constant_override("v_separation", INFRA_GRID_V_SEPARATION)
-	infrastructure_table.custom_minimum_size = Vector2(INFRA_GRID_WIDTH, 0)
-	infrastructure_table.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	if _infra_grid == null:
+		return
+	_infra_grid.set_slots(_build_infra_slot_data(tile_data))
 
+func _build_infra_slot_data(tile_data: Dictionary) -> Array:
+	var slots_data: Array = []
 	for slot in _infrastructure_slots():
-		infrastructure_table.add_child(_make_infrastructure_slot(tile_data, slot))
+		var key := str(slot.get("key", ""))
+		var label_text := str(slot.get("label", key.capitalize()))
+		var building_data := _infrastructure_building_data_for_key(key)
+		var instance := _infrastructure_instance_for_tile(tile_data, key, building_data)
+		var cell_size := _infrastructure_cell_size(key)
+		var display_label := _abbreviate_if_needed(label_text, cell_size.x, INFRA_LABEL_FONT_SIZE)
+		var max_label_lines := 2
+		if key == "reinf_pipes":
+			display_label = _abbreviate_if_long(label_text, INFRA_LABEL_MAX_CHARS)
+			max_label_lines = 1
+		var data := {
+			"cell_size": cell_size,
+			"display_label": display_label,
+			"label_tooltip": label_text if display_label != label_text else "",
+			"max_label_lines": max_label_lines,
+		}
+		if not instance.is_empty():
+			data["state"] = "exists"
+			data["icon"] = _building_icon_for_data(building_data)
+			data["button_tooltip"] = _infrastructure_tooltip(tile_data, slot, instance)
+			data["instance"] = instance
+		elif building_data.is_empty():
+			data["state"] = "unavailable"
+			data["icon"] = _get_plus_icon()
+			data["button_tooltip"] = "%s is not available yet" % label_text
+		else:
+			data["state"] = "add"
+			data["icon"] = _get_plus_icon()
+			data["button_tooltip"] = "Add %s" % label_text
+			data["internal_name"] = str(building_data.get("internal_name", key))
+		slots_data.append(data)
+	return slots_data
 
 func _right_detail_parent() -> VBoxContainer:
 	return _right_scroll_content if _right_scroll_content != null else content_vbox
