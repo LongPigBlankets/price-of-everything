@@ -186,7 +186,6 @@ func _make_row(text: String, good_id: String = "") -> Control:
 	var label := Label.new()
 	label.text = _truncate(text)
 	label.autowrap_mode = TextServer.AUTOWRAP_OFF
-	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 12)
 	label.add_theme_color_override("font_color", DS.PALETTE.ACCENT)

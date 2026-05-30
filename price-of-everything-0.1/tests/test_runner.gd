@@ -18,6 +18,7 @@ func _ready() -> void:
 	print("\n==== price-of-everything tests ====")
 	_test_scripts_parse()
 	_test_widgets_instantiate()
+	await _test_stockpile_legend_label_visible()
 	_test_scene_loads()
 	await _test_main_scene_instantiates()
 	_test_catalog_loaded()
@@ -64,6 +65,22 @@ func _test_widgets_instantiate() -> void:
 	}])
 	_check(ig.get_child_count() == 1, "InfraGrid renders one slot")
 	ig.queue_free()
+
+# Regression: a stockpile legend row's label must render with non-zero width
+# (a fixed-width label was removed; with ellipsis trimming the label collapsed
+# to zero and only the colour swatch showed).
+func _test_stockpile_legend_label_visible() -> void:
+	var sv: Node = load("res://scripts/stockpile_view.gd").new()
+	add_child(sv)
+	var row: Control = sv.call("_make_row", "Coal", "g_001")
+	add_child(row)
+	await get_tree().process_frame
+	var label := row.get_child(0) as Label
+	var ok: bool = label != null and label.text == "Coal" and label.size.x > 0.0
+	_check(ok, "stockpile legend label renders with width (not collapsed)")
+	row.queue_free()
+	sv.queue_free()
+	await get_tree().process_frame
 
 # Smoke: the big scene still loads as a resource (catches main.tscn corruption).
 func _test_scene_loads() -> void:
