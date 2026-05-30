@@ -222,11 +222,15 @@ horizontal_alignment = 1
 [node name="ConstructPanel" parent="UILayer/HUD/HUDContent" unique_id=1084051515 instance=ExtResource("9_85g3d")]
 unique_name_in_owner = true
 layout_mode = 1
+offset_left = 16.0
+offset_top = 78.0
 
 [node name="MapModesPanel" parent="UILayer/HUD/HUDContent" unique_id=2117327633 instance=ExtResource("10_jbj1t")]
 unique_name_in_owner = true
 layout_mode = 0
 anchors_preset = 0
+offset_left = 16.0
+offset_top = 78.0
 
 [node name="BottomMenuPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=1433701742]
 layout_mode = 1
@@ -581,7 +585,8 @@ layout_mode = 0
 anchors_preset = 0
 anchor_top = 0.0
 anchor_bottom = 0.0
-offset_top = 0.0
+offset_left = 16.0
+offset_top = 78.0
 offset_bottom = 620.0
 grow_vertical = 1
 
@@ -595,6 +600,8 @@ offset_bottom = -28.0
 [node name="MarketPanel" parent="UILayer/HUD/HUDContent" unique_id=964377119 instance=ExtResource("14_a8y0u")]
 unique_name_in_owner = true
 layout_mode = 0
+offset_left = 16.0
+offset_top = 78.0
 offset_right = 479.0
 
 [node name="TurnSummary" parent="UILayer/HUD/HUDContent" unique_id=678202477 instance=ExtResource("15_jkv2x")]
