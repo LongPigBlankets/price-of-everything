@@ -14,7 +14,7 @@ theme_override_constants/margin_bottom = 4
 script = ExtResource("1_fudw1")
 
 [node name="Row" type="HBoxContainer" parent="."]
-custom_minimum_size = Vector2(0, 54)
+custom_minimum_size = Vector2(0, 59)
 layout_mode = 2
 theme_override_constants/separation = 10
 
