@@ -321,12 +321,6 @@ func _make_material_icon(material: Dictionary, slot_size: float) -> Control:
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot.add_child(icon)
-		# 5px outline gradient from the icon's own background colour to the off-white.
-		var outline := GradientOutline.new()
-		outline.set_anchors_preset(Control.PRESET_FULL_RECT)
-		outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		outline.inner = _sample_bg(tex)
-		slot.add_child(outline)
 	else:
 		var hatch := HatchSquare.new()
 		hatch.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -335,27 +329,6 @@ func _make_material_icon(material: Dictionary, slot_size: float) -> Control:
 		slot.add_child(hatch)
 	slot.add_child(_make_qty_badge(int(material.get("qty", 0)), slot_size))
 	return slot
-
-func _sample_bg(tex: Texture2D) -> Color:
-	var img := tex.get_image()
-	if img == null:
-		return Color(0.995234, 0.930806, 0.763265)
-	if img.is_compressed():
-		img.decompress()
-	return img.get_pixel(1, 1)
-
-# 5px outline around a goods icon: gradient from the icon's background colour
-# (inner) to the off-white container colour (outer).
-class GradientOutline extends Control:
-	var inner := Color(1, 1, 1, 1)
-	const OUTER := Color(0.995234, 0.930806, 0.763265)
-	const THICK := 5
-	func _draw() -> void:
-		for i in range(THICK):
-			var t: float = float(i) / float(THICK - 1)
-			var c := OUTER.lerp(inner, t)
-			var o: float = float(i) + 0.5
-			draw_rect(Rect2(Vector2(o, o), size - Vector2(o * 2.0, o * 2.0)), c, false, 1.0)
 
 # Quantity pill badge matching the build-details recipe cards.
 func _make_qty_badge(qty: int, slot_size: float) -> Control:
