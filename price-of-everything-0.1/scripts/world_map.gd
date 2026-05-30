@@ -25,6 +25,10 @@ var _dim_overlay: ColorRect = null
 var _stockpile_legend: PanelContainer = null
 
 func _ready() -> void:
+	# DS assigns its Theme to the root Window, but Controls do not inherit a
+	# Window's theme — so apply it to the HUD Control subtree (where every panel
+	# lives) for DS fonts / type variations / button styles to actually resolve.
+	_hud.theme = DS.theme
 	river_layer.clear()
 	terrain_layer.tile_selected.connect(_on_tile_selected)
 	terrain_layer.stockpile_destination_selected.connect(_on_stockpile_destination_selected)
