@@ -253,36 +253,44 @@ class HatchSquare extends Control:
 func _build_material_grid(materials: Array) -> void:
 	if has_node("MaterialGrid"):
 		return
+	var count: int = mini(materials.size(), 6)
+	if count == 0:
+		return  # no materials -> no grid (keeps the card compact)
+	# 1-2 materials fill one row of card-height icons; 3-6 use two rows (half
+	# height), filled column-major so an odd last column sits centred.
+	var rows: int = 1 if count <= 2 else 2
+	var cols: int = ceili(float(count) / float(rows))
+	var container_h: float = 100.0
+	var icon_size: float = container_h / float(rows)
+
 	var panel := PanelContainer.new()
 	panel.name = "MaterialGrid"
-	panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_END
 	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var white := StyleBoxFlat.new()
 	white.bg_color = Color(0.995234, 0.930806, 0.763265)
-	white.set_corner_radius_all(6)
 	white.set_content_margin_all(6)
 	panel.add_theme_stylebox_override("panel", white)
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 5)
-	grid.add_theme_constant_override("v_separation", 5)
-	panel.add_child(grid)
-	for i in range(6):
-		var mat: Dictionary = materials[i] if i < materials.size() else {}
-		grid.add_child(_make_material_slot(mat))
-	main_row.add_child(panel)
-	main_row.move_child(panel, 2)  # name swapped left of the materials grid
 
-func _make_material_slot(material: Dictionary) -> Control:
+	var columns := HBoxContainer.new()
+	columns.add_theme_constant_override("separation", 4)
+	panel.add_child(columns)
+	for col in range(cols):
+		var column := VBoxContainer.new()
+		column.custom_minimum_size = Vector2(icon_size, container_h)
+		column.alignment = BoxContainer.ALIGNMENT_CENTER
+		column.add_theme_constant_override("separation", 0)
+		var items_in_col: int = mini(rows, count - col * rows)
+		for row in range(items_in_col):
+			column.add_child(_make_material_icon(materials[col * rows + row], icon_size))
+		columns.add_child(column)
+
+	main_row.add_child(panel)
+	main_row.move_child(panel, 2)  # name sits left of the materials grid
+
+func _make_material_icon(material: Dictionary, slot_size: float) -> Control:
 	var slot := Control.new()
-	slot.custom_minimum_size = MAT_SLOT_SIZE
-	var hatch := HatchSquare.new()
-	hatch.set_anchors_preset(Control.PRESET_FULL_RECT)
-	hatch.clip_contents = true
-	hatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	slot.add_child(hatch)
-	if material.is_empty():
-		return slot
+	slot.custom_minimum_size = Vector2(slot_size, slot_size)
 	var good: Dictionary = Catalog.get_good_by_internal_name(material.get("name", ""))
 	var tex: Texture2D = GoodIcons.texture_for(good.get("id", ""), material.get("name", ""))
 	if tex != null:
@@ -293,11 +301,37 @@ func _make_material_slot(material: Dictionary) -> Control:
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot.add_child(icon)
-	slot.add_child(_make_qty_badge(int(material.get("qty", 0))))
+		# Off-white edge feather blends the icon's own background into the container.
+		var feather := FeatherFrame.new()
+		feather.set_anchors_preset(Control.PRESET_FULL_RECT)
+		feather.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(feather)
+	else:
+		var hatch := HatchSquare.new()
+		hatch.set_anchors_preset(Control.PRESET_FULL_RECT)
+		hatch.clip_contents = true
+		hatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(hatch)
+	slot.add_child(_make_qty_badge(int(material.get("qty", 0)), slot_size))
 	return slot
 
+# Off-white edge feather: blends an icon's own background into the off-white
+# container over ~5px rather than showing a hard square edge.
+class FeatherFrame extends Control:
+	const FEATHER := 5.0
+	const FF_OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
+	func _draw() -> void:
+		for i in range(int(FEATHER)):
+			var a: float = 1.0 - float(i) / FEATHER
+			var c := Color(FF_OFF_WHITE.r, FF_OFF_WHITE.g, FF_OFF_WHITE.b, a)
+			var o: float = float(i) + 0.5
+			draw_line(Vector2(0, o), Vector2(size.x, o), c, 1.0)
+			draw_line(Vector2(0, size.y - o), Vector2(size.x, size.y - o), c, 1.0)
+			draw_line(Vector2(o, 0), Vector2(o, size.y), c, 1.0)
+			draw_line(Vector2(size.x - o, 0), Vector2(size.x - o, size.y), c, 1.0)
+
 # Quantity pill badge matching the build-details recipe cards.
-func _make_qty_badge(qty: int) -> Control:
+func _make_qty_badge(qty: int, slot_size: float) -> Control:
 	var qty_text := str(qty)
 	var h: int = BADGE_DIAMETER
 	var w: int = h if qty_text.length() <= 1 else maxi(h, qty_text.length() * 9 + 14)
@@ -305,7 +339,7 @@ func _make_qty_badge(qty: int) -> Control:
 	badge.custom_minimum_size = Vector2(w, h)
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	badge.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	var overlap: int = maxi(4, roundi(MAT_SLOT_SIZE.x * 0.10))
+	var overlap: int = maxi(4, roundi(slot_size * 0.10))
 	badge.offset_left = -w + overlap
 	badge.offset_top = -h + overlap
 	badge.offset_right = overlap

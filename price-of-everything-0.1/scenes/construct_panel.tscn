@@ -64,6 +64,7 @@ layout_mode = 2
 [node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/VBoxContainer" unique_id=1246011277]
 layout_mode = 2
 size_flags_vertical = 3
+horizontal_scroll_mode = 3
 
 [node name="ContentVBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer" unique_id=430416437]
 layout_mode = 2
