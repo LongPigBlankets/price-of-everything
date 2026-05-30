@@ -20,7 +20,7 @@ signal add_requested(internal_name: String)   # an empty "add" slot was pressed
 const GRID_COLUMNS := 3
 const H_SEPARATION := 8
 const V_SEPARATION := 4
-const BUTTON_SIZE := Vector2(42, 42)
+const BUTTON_SIZE := Vector2(56, 56)
 const LABEL_FONT_SIZE := 14
 
 func set_slots(slots: Array) -> void:

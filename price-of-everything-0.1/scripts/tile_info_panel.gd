@@ -32,7 +32,7 @@ const TILE_MODAL_FRAME_SLICE := 32.0
 const TILE_MODAL_FRAME_OUTSET := 11.0
 const TILE_MODAL_CONTENT_MARGIN := 20
 const INFRA_GRID_WIDTH := 283.0
-const INFRA_CELL_DEFAULT_SIZE := Vector2(87, 86)
+const INFRA_CELL_DEFAULT_SIZE := Vector2(87, 96)
 const INFRA_CELL_WIDTHS := {
 	"roads": 72.0,
 	"rails": 62.0,
@@ -1066,6 +1066,14 @@ func _apply_button_text_style(button: Button) -> void:
 	button.add_theme_color_override("font_hover_color", OFF_WHITE)
 	button.add_theme_color_override("font_pressed_color", Color(OFF_WHITE.r, OFF_WHITE.g, OFF_WHITE.b, 0.82))
 	button.add_theme_color_override("font_disabled_color", Color(OFF_WHITE.r, OFF_WHITE.g, OFF_WHITE.b, 0.45))
+	# Tighten horizontal padding (DS side padding is 18px) so labels in the narrow
+	# right column — e.g. "Buy 10 land" — fit instead of ellipsis-truncating.
+	for state in ["normal", "hover", "pressed"]:
+		if DS.theme.has_stylebox(state, "Button"):
+			var tight: StyleBox = DS.theme.get_stylebox(state, "Button").duplicate()
+			tight.content_margin_left = 8
+			tight.content_margin_right = 8
+			button.add_theme_stylebox_override(state, tight)
 
 func _get_checkbox_icon(checked: bool) -> Texture2D:
 	if checked and _checkbox_checked_icon_texture != null:
@@ -1110,16 +1118,24 @@ func _build_stockpile_section() -> void:
 	_sell_surplus_button.add_theme_icon_override("checked", _get_checkbox_icon(true))
 	_sell_surplus_button.add_theme_icon_override("unchecked_disabled", _get_checkbox_icon(false))
 	_sell_surplus_button.add_theme_icon_override("checked_disabled", _get_checkbox_icon(true))
+	# Show only the custom check icon — drop the DS button box around the checkbox.
+	_sell_surplus_button.flat = true
+	var no_box := StyleBoxEmpty.new()
+	for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
+		_sell_surplus_button.add_theme_stylebox_override(state, no_box)
 	_sell_surplus_button.toggled.connect(_on_sell_surplus_toggled)
 	_right_detail_parent().add_child(_make_setting_row("Sell surplus every turn", _sell_surplus_button))
 
 	_production_destination_option = OptionButton.new()
 	_production_destination_option.add_item("this tile")
 	_production_destination_option.add_item("market")
-	_production_destination_option.add_item("building-by-building")
+	_production_destination_option.add_item("per building")
 	_apply_button_text_style(_production_destination_option)
 	_production_destination_option.item_selected.connect(_on_production_destination_selected)
 	_right_detail_parent().add_child(_make_setting_row("Production destination for all buildings", _production_destination_option, CONTROL_ROW_TALL_HEIGHT))
+	# Compact, right-aligned dropdown instead of filling the row width.
+	_production_destination_option.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_production_destination_option.custom_minimum_size = Vector2(132, 30)
 	_sync_production_destination_option()
 
 	_stockpile_sell_button = Button.new()
