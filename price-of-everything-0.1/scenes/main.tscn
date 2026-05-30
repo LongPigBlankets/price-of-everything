@@ -406,7 +406,7 @@ layout_mode = 2
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 20.0
-theme_override_font_sizes/font_size = 18
+theme_type_variation = &"Title"
 text = "Tile Info"
 
 [node name="CloseButton" type="Button" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/HeaderRow" unique_id=1603141935]

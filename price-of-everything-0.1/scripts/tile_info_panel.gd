@@ -358,8 +358,7 @@ func _make_summary_chip_label() -> Label:
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	label.add_theme_font_size_override("font_size", TILE_TYPE_SUMMARY_FONT_SIZE)
-	label.add_theme_color_override("font_color", OFF_WHITE)
+	label.theme_type_variation = &"Caption"
 	return label
 
 func _make_summary_section(title_text: String) -> VBoxContainer:
@@ -375,8 +374,7 @@ func _make_summary_section(title_text: String) -> VBoxContainer:
 
 	var title := Label.new()
 	title.text = title_text
-	title.add_theme_font_size_override("font_size", 13)
-	title.add_theme_color_override("font_color", SUMMARY_SUBTLE_TEXT)
+	title.theme_type_variation = &"Section"
 	content.add_child(title)
 	return content
 
@@ -468,10 +466,10 @@ func _clear_summary_section(section: VBoxContainer) -> void:
 func _make_summary_title_row(left_text: String, right_text: String, right_color: Color) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var left := _make_summary_label(left_text, 13, SUMMARY_SUBTLE_TEXT)
+	var left := _make_summary_label(left_text, 13, DS.PALETTE.ACCENT, "Section")
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(left)
-	var right := _make_summary_label(right_text, 12, right_color)
+	var right := _make_summary_label(right_text, 12, right_color, "Caption")
 	right.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(right)
 	return row
@@ -482,7 +480,7 @@ func _make_power_metric_row(label_text: String, amount: int, source_text: String
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_theme_constant_override("separation", 8)
 	row.add_child(_make_fixed_summary_label(label_text, 88.0, 12, OFF_WHITE))
-	row.add_child(_make_fixed_summary_label("%d/turn" % amount, 74.0, 12, OFF_WHITE))
+	row.add_child(_make_fixed_summary_label("%d/turn" % amount, 74.0, 12, OFF_WHITE, "Numeric"))
 	var source := _make_summary_label("(%s)" % source_text, 12, SUMMARY_SUBTLE_TEXT)
 	source.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	source.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -496,7 +494,7 @@ func _make_power_net_row(net: int) -> HBoxContainer:
 	row.add_theme_constant_override("separation", 8)
 	row.add_child(_make_fixed_summary_label("Net", 88.0, 12, OFF_WHITE))
 	var sign := "+" if net > 0 else ""
-	row.add_child(_make_fixed_summary_label("%s%d" % [sign, net], 74.0, 12, OFF_WHITE))
+	row.add_child(_make_fixed_summary_label("%s%d" % [sign, net], 74.0, 12, OFF_WHITE, "Numeric"))
 	var destination := "→ grid" if net > 0 else ("← grid" if net < 0 else "balanced")
 	var dest_label := _make_summary_label(destination, 12, SUMMARY_SUBTLE_TEXT)
 	dest_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -509,8 +507,8 @@ func _make_production_row(row_data: Dictionary) -> HBoxContainer:
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_theme_constant_override("separation", 8)
 	row.add_child(_make_fixed_summary_label(str(row_data.get("display_name", "")), 94.0, 12, OFF_WHITE))
-	row.add_child(_make_fixed_summary_label("%d/turn" % int(row_data.get("qty", 0)), 62.0, 12, OFF_WHITE))
-	var cost_label := _make_fixed_summary_label(_format_unit_cost(float(row_data.get("unit_cost", -1.0))), 60.0, 12, _cost_color_for_row(row_data))
+	row.add_child(_make_fixed_summary_label("%d/turn" % int(row_data.get("qty", 0)), 62.0, 12, OFF_WHITE, "Numeric"))
+	var cost_label := _make_fixed_summary_label(_format_unit_cost(float(row_data.get("unit_cost", -1.0))), 60.0, 12, _cost_color_for_row(row_data), "Numeric")
 	row.add_child(cost_label)
 	var dest := _make_summary_label(str(row_data.get("destination", "")), 12, SUMMARY_SUBTLE_TEXT)
 	dest.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -518,17 +516,20 @@ func _make_production_row(row_data: Dictionary) -> HBoxContainer:
 	row.add_child(dest)
 	return row
 
-func _make_summary_label(text: String, font_size: int, color: Color) -> Label:
+func _make_summary_label(text: String, _font_size: int, color: Color, variation: String = "Body") -> Label:
+	# DS typography: the variation drives font + size; the explicit colour is kept
+	# so status hues (green/red/amber) survive. _font_size is unused now (callers
+	# still pass it; _make_fixed_summary_label uses it only for width estimation).
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", font_size)
+	label.theme_type_variation = variation
 	label.add_theme_color_override("font_color", color)
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	return label
 
-func _make_fixed_summary_label(text: String, width: float, font_size: int, color: Color) -> Label:
+func _make_fixed_summary_label(text: String, width: float, font_size: int, color: Color, variation: String = "Body") -> Label:
 	var display_text := _abbreviate_if_needed(text, width, font_size)
-	var label := _make_summary_label(display_text, font_size, color)
+	var label := _make_summary_label(display_text, font_size, color, variation)
 	label.custom_minimum_size = Vector2(width, 0)
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	if display_text != text:
@@ -838,8 +839,7 @@ func _build_land_purchase_section() -> void:
 	var title := Label.new()
 	title.text = "Buy land/buildings"
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 13)
-	title.add_theme_color_override("font_color", SUMMARY_SUBTLE_TEXT)
+	title.theme_type_variation = &"Section"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header_row.add_child(title)
 
@@ -847,8 +847,7 @@ func _build_land_purchase_section() -> void:
 	_land_left_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_land_left_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_land_left_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	_land_left_label.add_theme_font_size_override("font_size", 12)
-	_land_left_label.add_theme_color_override("font_color", OFF_WHITE)
+	_land_left_label.theme_type_variation = &"Body"
 	_land_left_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header_row.add_child(_land_left_label)
 
@@ -1041,8 +1040,7 @@ func _make_setting_row(label_text: String, control: Control, row_height: float =
 	label.max_lines_visible = 2
 	label.clip_text = true
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", CONTROL_LABEL_FONT_SIZE)
-	label.add_theme_color_override("font_color", OFF_WHITE)
+	label.theme_type_variation = &"Body"
 	label.custom_minimum_size = Vector2(0, row_height)
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.size_flags_stretch_ratio = CONTROL_LABEL_RATIO
@@ -1097,8 +1095,7 @@ func _build_stockpile_section() -> void:
 
 	var title := Label.new()
 	title.text = "Stockpile"
-	title.add_theme_font_size_override("font_size", 13)
-	title.modulate = Color(0.7, 0.85, 1.0)
+	title.theme_type_variation = &"Section"
 	_right_detail_parent().add_child(title)
 
 	_stockpile_view = STOCKPILE_VIEW_SCRIPT.new()
