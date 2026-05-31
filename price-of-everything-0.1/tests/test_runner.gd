@@ -32,6 +32,7 @@ func _ready() -> void:
 	_test_move_extras()
 	_test_storage_boost()
 	_test_queue_sell()
+	_test_npc_ports()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -47,6 +48,17 @@ func _test_storage_boost() -> void:
 	MatchState.add_building("b_004", "", "tile_3_3", "Three Diamonds Shipping Corporation")
 	_check(Stockpile.get_capacity("tile_3_3") == Stockpile.TILE_CAPACITY + 500,
 		"storage_boost raises tile capacity (port = +500)")
+
+func _test_npc_ports() -> void:
+	# The main scene's _ready places the 4 NPC ports; verify one landed + is NPC-owned.
+	var found_npc_port := false
+	for iid in MatchState.tile_buildings.get("tile_5_10", []):
+		var inst: Dictionary = MatchState.get_building(iid)
+		if str(inst.get("building_id", "")) == "b_004" and str(inst.get("owner", "")) == "Three Diamonds Shipping Corporation":
+			found_npc_port = true
+	_check(found_npc_port, "NPC port placed on a port tile (b_004, Three Diamonds)")
+	_check(Stockpile.get_capacity("tile_5_10") >= Stockpile.TILE_CAPACITY + 500,
+		"port tile capacity raised by the port's storage_boost")
 
 func _test_queue_sell() -> void:
 	Stockpile.add("tile_3_8", "g_001", 8)
@@ -136,6 +148,7 @@ func _test_scripts_parse() -> void:
 		"res://scripts/mapmodes_panel.gd",
 		"res://scripts/overlay_legend.gd",
 		"res://scripts/debug_terminal.gd",
+		"res://scripts/sale_effects.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 

@@ -66,6 +66,14 @@ func _ready() -> void:
 	# Debug cheat terminal (toggle with the ` key)
 	add_child(load("res://scripts/debug_terminal.gd").new())
 
+	# Floating £ that rises from a port whenever a market sale lands there
+	var _sale_fx: CanvasLayer = load("res://scripts/sale_effects.gd").new()
+	_sale_fx.terrain_layer = terrain_layer
+	add_child(_sale_fx)
+
+	# Pre-place the NPC-owned ports (Three Diamonds Shipping Corporation)
+	_place_npc_ports()
+
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
 
@@ -365,6 +373,27 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 
 func _get_building_display_name(building_id: String) -> String:
 	return Catalog.get_building_display_name(building_id)
+
+func _place_npc_ports() -> void:
+	# Each port from ports.csv is a Port building (b_004) owned by an NPC. Placing it
+	# as a real instance makes it render, appear in the tile chart, raise the tile's
+	# storage capacity (+500), and become clickable.
+	for port in Catalog.all_ports():
+		var tile_id := str(port.get("tile_id", ""))
+		if tile_id == "":
+			continue
+		var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
+		if coord == Vector2i(-1, -1):
+			continue
+		var already := false
+		for iid in MatchState.tile_buildings.get(tile_id, []):
+			if str(MatchState.get_building(iid).get("building_id", "")) == "b_004":
+				already = true
+				break
+		if already:
+			continue
+		var instance_id := MatchState.add_building("b_004", "", tile_id, "Three Diamonds Shipping Corporation")
+		building_placed.emit(tile_id, "b_004", "", instance_id, coord)
 
 func _tile_meets_recipe_requirements(tile_data: Dictionary, recipe: Dictionary) -> bool:
 	for req in recipe.get("requirements", []):

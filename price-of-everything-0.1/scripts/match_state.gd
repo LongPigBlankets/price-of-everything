@@ -57,6 +57,8 @@ signal sell_mode_changed(new_mode: int)
 signal route_objective_changed(new_objective: int)
 signal labour_multiplier_changed(new_value: float)
 signal toast_requested(message: String, toast_type: String)
+## A market sale was finalised at a port this turn (drives the £-rise effect).
+signal market_sale_arrived_at_port(port_tile_id: String, revenue: float)
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)
@@ -409,6 +411,8 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary) -> Dictionary:
 		for it in items:
 			add_money(float(it.revenue))
 		emit_stockpile_market_sale_completed(sale_record)
+		if port != "":
+			market_sale_arrived_at_port.emit(port, total_revenue)
 	return {"items": items, "total_qty": total_qty, "revenue": total_revenue, "turns": turns, "port": port}
 
 func get_pending_transport_shipments() -> Array:

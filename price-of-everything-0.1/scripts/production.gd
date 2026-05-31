@@ -329,6 +329,9 @@ func _credit_arrived_sale(shipment: Dictionary, summary: Dictionary) -> void:
 			_add_summary_sale(summary, gid, qty, rev)
 	if float(sale_record.get("total_revenue", 0.0)) > 0.0:
 		MatchState.emit_stockpile_market_sale_completed(sale_record)
+		var port_tile := str(shipment.get("destination_tile", ""))
+		if port_tile != "":
+			MatchState.market_sale_arrived_at_port.emit(port_tile, float(sale_record.get("total_revenue", 0.0)))
 
 func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, summary: Dictionary) -> void:
 	# Output destined for the market ships to the nearest port; revenue lands on arrival.
@@ -366,6 +369,8 @@ func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, sum
 		MatchState.add_money(revenue)
 		_add_summary_sale(summary, good_id, qty, revenue)
 		MatchState.emit_stockpile_market_sale_completed(sale_record)
+		if port_tile != "":
+			MatchState.market_sale_arrived_at_port.emit(port_tile, revenue)
 
 func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: int, summary: Dictionary) -> void:
 	var stockpile_coord = _output_stockpile_coord(building, good.id)

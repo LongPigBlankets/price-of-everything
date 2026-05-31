@@ -6,10 +6,10 @@ uid="uid://b4ibo4btcnk8c"
 
 [deps]
 
-files=["res://data/goods.internal.translation", "res://data/goods.display.translation", "res://data/goods.category.translation", "res://data/goods.transport.translation", "res://data/goods.transport.translation", "res://data/goods.transport.translation", "res://data/goods.transport.translation", "res://data/goods.good.translation", "res://data/goods.decay.translation", "res://data/goods.base.translation", "res://data/goods.is.translation", "res://data/goods.is.translation", "res://data/goods.green.translation", "res://data/goods.is.translation", "res://data/goods.co2.translation"]
+files=["res://data/goods.internal.translation", "res://data/goods.display.translation", "res://data/goods.category.translation", "res://data/goods.transport.translation", "res://data/goods.good.translation", "res://data/goods.decay.translation", "res://data/goods.base.translation", "res://data/goods.is.translation", "res://data/goods.is.translation", "res://data/goods.green.translation", "res://data/goods.is.translation", "res://data/goods.co2.translation"]
 
 source_file="res://data/goods.csv"
-dest_files=["res://data/goods.internal.translation", "res://data/goods.display.translation", "res://data/goods.category.translation", "res://data/goods.transport.translation", "res://data/goods.transport.translation", "res://data/goods.transport.translation", "res://data/goods.transport.translation", "res://data/goods.good.translation", "res://data/goods.decay.translation", "res://data/goods.base.translation", "res://data/goods.is.translation", "res://data/goods.is.translation", "res://data/goods.green.translation", "res://data/goods.is.translation", "res://data/goods.co2.translation"]
+dest_files=["res://data/goods.internal.translation", "res://data/goods.display.translation", "res://data/goods.category.translation", "res://data/goods.transport.translation", "res://data/goods.good.translation", "res://data/goods.decay.translation", "res://data/goods.base.translation", "res://data/goods.is.translation", "res://data/goods.is.translation", "res://data/goods.green.translation", "res://data/goods.is.translation", "res://data/goods.co2.translation"]
 
 [params]
 
