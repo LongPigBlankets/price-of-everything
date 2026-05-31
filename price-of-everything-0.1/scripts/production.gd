@@ -12,6 +12,9 @@ var _building_turn_reports: Array = []  # BuildingTurnReport dicts for CostSolve
 # { tile_id -> { good_id -> {"cost": float, "qty": float} } }. Used to impute inbound
 # transport into the unit cost of buildings that consume those goods.
 var _inbound_delivery_this_turn: Dictionary = {}
+# This turn's same-tile (0-turn) outputs, merged into stockpiles AFTER production
+# so a good produced this turn can't be consumed by another building the same turn.
+var _output_buffer: Array = []
 var summary := {
 	# ... existing fields ...
 	"interest_paid": 0.0,
@@ -39,6 +42,7 @@ func _process_production() -> void:
 	missing_by_building.clear()
 	_building_turn_reports.clear()
 	_inbound_delivery_this_turn.clear()
+	_output_buffer.clear()
 	Power.reset_for_turn()
 	
 	var summary := {
@@ -164,6 +168,10 @@ func _process_production() -> void:
 		MatchState.add_money(grid.grid_sell_revenue)
 		summary.power_sales_revenue = grid.grid_sell_revenue
 		summary.money_in += grid.grid_sell_revenue
+	# Merge this turn's same-tile outputs into stockpiles now — after all production
+	# (so they can't be consumed this turn) but before selling (so they're sellable).
+	_flush_output_buffer()
+
 	# === SELL PHASE (when production defaults to market) ===
 	if MatchState.sell_mode != MatchState.SellMode.STOCKPILE_ALL:
 		var totals: Dictionary = Stockpile.get_tile_totals(null)
@@ -368,7 +376,8 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 		summary.transport_paid += transport_cost
 		summary.money_out += transport_cost
 
-	if route.delayed:
+	if int(route.turns) >= 1:
+		# Inter-tile: in transit, arrives route.turns turns later.
 		MatchState.queue_transport_shipment({
 			"source_tile": building.get("tile_id", ""),
 			"destination_tile": str(stockpile_coord),
@@ -376,24 +385,32 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 			"qty": qty,
 			"tile_distance": route.tile_distance,
 			"transport_turns": route.turns,
-			"turns_remaining": int(route.turns) - 1,
+			"turns_remaining": int(route.turns),
 			"transport_cost": transport_cost,
 			"path": route.get("path", []),
 			"legs": route.get("legs", []),
 		})
 		return
 
-	var added: int = Stockpile.add(stockpile_coord, good.id, qty)
-	if stockpile_coord != null and str(stockpile_coord) != "":
-		var per_unit_transport: float = (transport_cost / float(qty)) if qty > 0 else 0.0
-		_record_inbound_delivery(str(stockpile_coord), good.id, added, per_unit_transport)
-	if added < qty:
-		push_warning("[Production] Stockpile full for %s; stored %d/%d %s" % [
-			str(stockpile_coord),
-			added,
-			qty,
-			good.display_name,
-		])
+	# Same-tile (0-turn) output: buffer it, merged after all production this turn.
+	_output_buffer.append({
+		"coord": stockpile_coord,
+		"good_id": good.id,
+		"qty": qty,
+		"transport_cost": transport_cost,
+	})
+
+func _flush_output_buffer() -> void:
+	for o in _output_buffer:
+		var added: int = Stockpile.add(o.coord, str(o.good_id), int(o.qty))
+		if o.coord != null and str(o.coord) != "":
+			var per_unit: float = (float(o.transport_cost) / float(o.qty)) if int(o.qty) > 0 else 0.0
+			_record_inbound_delivery(str(o.coord), str(o.good_id), added, per_unit)
+		if added < int(o.qty):
+			push_warning("[Production] Stockpile full for %s; stored %d/%d %s" % [
+				str(o.coord), added, int(o.qty), Catalog.get_display_name(str(o.good_id)),
+			])
+	_output_buffer.clear()
 
 func _output_stockpile_coord(building: Dictionary, good_id: String):
 	var instance_id: String = building.get("instance_id", "")
