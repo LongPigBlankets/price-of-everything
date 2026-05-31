@@ -183,6 +183,7 @@ func _rebuild_fields(building: Dictionary) -> void:
 
 	if not is_infrastructure and recipe.get("output_name", "") != "power":
 		_add_field("Output destination", _output_destination())
+		_add_field("Output transport", _output_transport_text())
 
 	_add_separator()
 	_add_inbound_inputs_section(building, recipe)
@@ -1556,6 +1557,27 @@ func _output_destination() -> String:
 			return "Building-by-building"
 		_:
 			return "Market"
+
+func _output_transport_text() -> String:
+	# Cost of shipping this building's output to its destination (market / tile / same tile).
+	var source_tile := str(_current_building.get("tile_id", ""))
+	var good_id := _primary_output_good_id(_current_recipe)
+	var qty := _primary_output_qty(_current_recipe)
+	var instance_id: String = _current_building.get("instance_id", "")
+	var dest_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
+	var target := ""
+	var where := ""
+	if dest_tile != "":
+		target = dest_tile
+		where = dest_tile
+	elif MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL:
+		target = source_tile
+		where = "same tile"
+	else:
+		target = Catalog.nearest_port_tile(source_tile)
+		where = ("market via %s" % target) if target != "" else "market"
+	var route := _route_summary_for_good(source_tile, target, good_id, qty)
+	return "%s to %s" % [_format_money(route.cost), where]
 
 func _primary_output_good_id(recipe: Dictionary) -> String:
 	for output in _flow_output_items(recipe):

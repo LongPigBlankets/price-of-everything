@@ -46,6 +46,10 @@ const HEADER_HEIGHT := 40.0
 @onready var proj_maintenance_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_MaintenanceRow/MaintenanceValue
 @onready var proj_labour_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_LabourRow/LabourValue
 @onready var proj_power_purchase_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_PowerPurchaseRow/PowerPurchaseValue
+@onready var _costs_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection
+@onready var _proj_costs_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection
+var _transport_value: Label
+var _proj_transport_value: Label
 @onready var proj_total_costs_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_TotalCostsRow/TotalCostsValue
 @onready var proj_operating_profit_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_OperatingProfitRow/OperatingProfitValue
 @onready var proj_interest_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_InterestRow/InterestValue
@@ -61,7 +65,28 @@ var overlay_rows: Array = []
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 
+func _insert_cost_row(section: VBoxContainer, after_node_name: String, label_text: String) -> Label:
+	var row := HBoxContainer.new()
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 8)
+	var name_label := Label.new()
+	name_label.custom_minimum_size = Vector2(80, 0)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text = label_text
+	row.add_child(name_label)
+	var value_label := Label.new()
+	value_label.custom_minimum_size = Vector2(80, 0)
+	value_label.text = "-£0.00"
+	row.add_child(value_label)
+	section.add_child(row)
+	var after := section.get_node_or_null(after_node_name)
+	if after != null:
+		section.move_child(row, after.get_index() + 1)
+	return value_label
+
 func _ready() -> void:
+	_transport_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Transport")
+	_proj_transport_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Transport")
 	close_button.pressed.connect(hide)
 	title_label.text = "Money & Budget"
 	
@@ -179,6 +204,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	maintenance_value.text = "-£%.2f" % maintenance
 	labour_value.text = "-£%.2f" % labour
 	power_purchase_value.text = "-£%.2f" % power_purchase
+	_transport_value.text = "-£%.2f" % transport
 	total_costs_value.text = "-£%.2f" % total_costs
 	
 	operating_profit_value.text = _format_signed(operating_profit)
@@ -241,6 +267,7 @@ func _render_projection(proj: Dictionary) -> void:
 	proj_maintenance_value.text = "-£%.2f" % proj.maintenance
 	proj_labour_value.text = "-£%.2f" % proj.labour
 	proj_power_purchase_value.text = "-£%.2f" % proj.power_purchase
+	_proj_transport_value.text = "-£%.2f" % proj.transport
 	proj_total_costs_value.text = "-£%.2f" % proj.total_costs
 	
 	proj_operating_profit_value.text = _format_signed(proj.operating_profit)
@@ -334,6 +361,7 @@ func _project_next_turn() -> Dictionary:
 		"total_revenue": total_revenue,
 		"maintenance": maintenance,
 		"labour": labour,
+		"transport": transport,
 		"power_purchase": power_purchase,
 		"total_costs": total_costs,
 		"operating_profit": operating_profit,
