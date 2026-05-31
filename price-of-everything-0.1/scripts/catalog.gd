@@ -48,6 +48,13 @@ var _tile_names: Dictionary = {}
 # Infrastructure type properties (range, routing, tolerated classes, ...) keyed by type
 var _infra_by_type: Dictionary = {}
 
+# Per-tile routing data (static, from tile_properties.csv; live infra is a later wire-up)
+var _tile_infra: Dictionary = {}   # tile_id -> ["roads","rail",...] (normalised)
+var _tile_land: Dictionary = {}    # tile_id -> bool (false for sea/deep_sea)
+
+const ROUTE_MAP_W := 30
+const ROUTE_MAP_H := 20
+
 func _ready() -> void:
 	_load_goods()
 	_load_buildings()
@@ -121,6 +128,8 @@ func _oddq_to_axial(coord: Vector2i) -> Vector2i:
 
 func _load_tile_names() -> void:
 	_tile_names.clear()
+	_tile_infra.clear()
+	_tile_land.clear()
 	if not FileAccess.file_exists(TILE_PROPS_CSV_PATH):
 		return
 	var file := FileAccess.open(TILE_PROPS_CSV_PATH, FileAccess.READ)
@@ -133,12 +142,15 @@ func _load_tile_names() -> void:
 	var id_i: int = idx.get("id", -1)
 	var nick_i: int = idx.get("nickname", -1)
 	var city_i: int = idx.get("city_name", -1)
+	var type_i: int = idx.get("type", -1)
+	var infra_i: int = idx.get("infrastructure_present", -1)
 	if id_i < 0:
 		return
 	while not file.eof_reached():
 		var line := file.get_csv_line()
 		if line.size() <= id_i or line[id_i].strip_edges() == "":
 			continue
+		var tid := line[id_i].strip_edges()
 		var nick := ""
 		if nick_i >= 0 and nick_i < line.size():
 			nick = line[nick_i].strip_edges()
@@ -147,7 +159,32 @@ func _load_tile_names() -> void:
 			city = line[city_i].strip_edges()
 		var label_name := nick if nick != "" else city
 		if label_name != "":
-			_tile_names[line[id_i].strip_edges()] = label_name
+			_tile_names[tid] = label_name
+		var ttype := ""
+		if type_i >= 0 and type_i < line.size():
+			ttype = line[type_i].strip_edges().to_lower()
+		_tile_land[tid] = ttype != "sea" and ttype != "deep_sea"
+		if infra_i >= 0 and infra_i < line.size():
+			var infra_list: Array = []
+			for part in str(line[infra_i]).split("|", false):
+				var norm := _normalise_infra_id(part.strip_edges().to_lower())
+				if norm != "" and not infra_list.has(norm):
+					infra_list.append(norm)
+			if not infra_list.is_empty():
+				_tile_infra[tid] = infra_list
+
+func _normalise_infra_id(value: String) -> String:
+	match value:
+		"roads", "road":
+			return "roads"
+		"rail", "railway", "railways":
+			return "rail"
+		"pipes", "pipework", "pipeworks":
+			return "pipes"
+		"reinf_pipes", "reinforced_pipes", "reinforced_pipework", "reinforced_pipeworks":
+			return "reinf_pipes"
+		_:
+			return value
 
 func tile_name(tile_id: String) -> String:
 	return _tile_names.get(tile_id, "")
@@ -200,6 +237,115 @@ func infra(type_id: String) -> Dictionary:
 
 func infra_range(type_id: String) -> int:
 	return int(_infra_by_type.get(type_id, {}).get("range", 0))
+
+# =========================================================================
+# TRANSPORT ROUTING (turn-move shortest path; see docs/transport-routing-plan.md)
+# =========================================================================
+
+const ROUTE_MODE_NONE := "nothing"
+
+func tile_neighbours(tile_id: String) -> Array:
+	# Hex (odd-q offset) neighbours, clamped to the map.
+	var c := _port_tile_to_coord(tile_id)  # (col-1, row-1) == (q, r)
+	if c == Vector2i(-1, -1):
+		return []
+	var offs: Array
+	if c.x % 2 == 1:
+		offs = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, 1), Vector2i(-1, 1), Vector2i(-1, 0)]
+	else:
+		offs = [Vector2i(0, -1), Vector2i(1, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(-1, -1)]
+	var out: Array = []
+	for o in offs:
+		var nc: int = c.x + o.x
+		var nr: int = c.y + o.y
+		if nc >= 0 and nc < ROUTE_MAP_W and nr >= 0 and nr < ROUTE_MAP_H:
+			out.append("tile_%d_%d" % [nc + 1, nr + 1])
+	return out
+
+func _mode_range(mode: String) -> int:
+	if mode == ROUTE_MODE_NONE:
+		return 1
+	return maxi(1, infra_range(mode))
+
+func _tile_supports_mode(tile_id: String, mode: String) -> bool:
+	if mode == ROUTE_MODE_NONE:
+		return bool(_tile_land.get(tile_id, true))
+	return _tile_infra.get(tile_id, []).has(mode)
+
+func _modes_for_good(good_id: String) -> Array:
+	var modes: Array = [ROUTE_MODE_NONE]
+	var tclass := get_transport_class(good_id) if good_id != "" else ""
+	for m in ["rail", "roads"]:  # rail first (longer range) so it's preferred on ties
+		var tolerated: Array = _infra_by_type.get(m, {}).get("good_types_tolerated", [])
+		if good_id == "" or tclass == "" or tolerated.has(tclass):
+			modes.append(m)
+	return modes
+
+func _turn_move_neighbours(tile_id: String, modes: Array) -> Array:
+	# Tiles reachable in ONE turn (one mode, up to its range hops). [{tile, mode}]
+	var out: Array = []
+	var seen: Dictionary = {}
+	for m in modes:
+		if not _tile_supports_mode(tile_id, m):
+			continue
+		var rng := _mode_range(m)
+		var visited: Dictionary = {tile_id: true}
+		var frontier: Array = [tile_id]
+		var depth := 0
+		while not frontier.is_empty() and depth < rng:
+			var nextf: Array = []
+			for t in frontier:
+				for nb in tile_neighbours(t):
+					if visited.has(nb) or not _tile_supports_mode(nb, m):
+						continue
+					visited[nb] = true
+					nextf.append(nb)
+					if not seen.has(nb):
+						seen[nb] = true
+						out.append({"tile": nb, "mode": m})
+			frontier = nextf
+			depth += 1
+	return out
+
+func route(source_tile: String, dest_tile: String, good_id: String = "") -> Dictionary:
+	# Fewest turns A->B. Returns {turns, path:[turn-boundary tiles], legs:[{mode,from,to}]}.
+	# (Objective currently FASTEST; cheapest/blended need infra cost_per_unit_shipped.)
+	if source_tile == "" or dest_tile == "":
+		return {"turns": 0, "path": [], "legs": []}
+	if source_tile == dest_tile:
+		return {"turns": 0, "path": [source_tile], "legs": []}  # 0-turn same-tile
+	var modes := _modes_for_good(good_id)
+	var INF := 1 << 30
+	var dist: Dictionary = {source_tile: 0}
+	var prev: Dictionary = {}  # tile -> {from, mode}
+	var visited: Dictionary = {}
+	while true:
+		var u := ""
+		var ud := INF
+		for t in dist.keys():
+			if not visited.has(t) and int(dist[t]) < ud:
+				ud = int(dist[t])
+				u = t
+		if u == "" or u == dest_tile:
+			break
+		visited[u] = true
+		for entry in _turn_move_neighbours(u, modes):
+			var nb: String = entry.tile
+			var nd := ud + 1
+			if nd < int(dist.get(nb, INF)):
+				dist[nb] = nd
+				prev[nb] = {"from": u, "mode": entry.mode}
+	if not dist.has(dest_tile):
+		return {"turns": INF, "path": [], "legs": []}  # unreachable via networks
+	var path: Array = [dest_tile]
+	var legs: Array = []
+	var cur := dest_tile
+	while prev.has(cur):
+		var p: Dictionary = prev[cur]
+		legs.push_front({"mode": p.mode, "from": p.from, "to": cur})
+		path.push_front(p.from)
+		cur = p.from
+	return {"turns": int(dist[dest_tile]), "path": path, "legs": legs}
 
 # =========================================================================
 # GOODS

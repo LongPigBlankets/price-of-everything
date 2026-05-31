@@ -66,6 +66,9 @@ func _test_ports() -> void:
 	_check(Catalog.infra_range("roads") == 2, "roads range is 2 tiles/turn")
 	_check(Catalog.infra_range("rail") == 4, "rail range is 4 tiles/turn")
 	_check(Catalog.all_infrastructure().size() == 5, "Catalog loads 5 infrastructure types")
+	_check(Catalog.tile_neighbours("tile_12_2").size() == 6, "interior tile has 6 hex neighbours")
+	_check(int(Catalog.route("tile_12_2", "tile_12_2").turns) == 0, "route same-tile = 0 turns")
+	_check(int(Catalog.route("tile_12_2", "tile_13_2").turns) == 1, "route to adjacent tile = 1 turn")
 
 # Smoke: every script we touch must still parse. load() returns null on a parse
 # error — this is the check that catches the bug class we couldn't verify by hand.

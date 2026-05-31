@@ -324,7 +324,7 @@ func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, sum
 	var good_id: String = good.id
 	var revenue: float = float(qty) * MarketState.get_price(good_id)
 	var port_tile := Catalog.nearest_port_tile(source_tile) if source_tile != "" else ""
-	var route := _transport_route(source_tile, port_tile)
+	var route := _transport_route(source_tile, port_tile, good_id)
 	# Pay to ship the output to its market (the port) — surfaced as transport cost.
 	var transport_cost: float = EconomyConfig.transport_cost_for(good_id, qty, int(route.turns))
 	if transport_cost > 0.0:
@@ -347,6 +347,8 @@ func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, sum
 			"tile_distance": route.tile_distance,
 			"transport_turns": route.turns,
 			"turns_remaining": int(route.turns),
+			"path": route.get("path", []),
+			"legs": route.get("legs", []),
 		})
 	else:
 		MatchState.add_money(revenue)
@@ -359,7 +361,7 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 		# Market-bound output (no stockpile destination): sell it via the nearest port.
 		_sell_output_to_market(str(building.get("tile_id", "")), good, qty, summary)
 		return
-	var route := _transport_route(building.get("tile_id", ""), stockpile_coord)
+	var route := _transport_route(building.get("tile_id", ""), stockpile_coord, good.id)
 	var transport_cost: float = EconomyConfig.transport_cost_for(good.id, qty, int(route.turns))
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
@@ -376,6 +378,8 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 			"transport_turns": route.turns,
 			"turns_remaining": int(route.turns) - 1,
 			"transport_cost": transport_cost,
+			"path": route.get("path", []),
+			"legs": route.get("legs", []),
 		})
 		return
 
@@ -400,19 +404,21 @@ func _output_stockpile_coord(building: Dictionary, good_id: String):
 		return building.get("tile_id", null)
 	return null
 
-func _transport_route(source_tile: String, destination_tile) -> Dictionary:
+func _transport_route(source_tile: String, destination_tile, good_id: String = "") -> Dictionary:
 	if destination_tile == null or str(destination_tile) == "":
-		return {
-			"tile_distance": 0,
-			"turns": 0,
-			"delayed": false,
-		}
-	var distance := _tile_distance(source_tile, str(destination_tile))
-	var turns := EconomyConfig.transport_turns_for_tile_distance(distance)
+		return {"tile_distance": 0, "turns": 0, "delayed": false, "path": [], "legs": []}
+	var dest := str(destination_tile)
+	var r := Catalog.route(source_tile, dest, good_id)
+	var turns: int = int(r.get("turns", 0))
+	if turns >= (1 << 30):
+		# Unreachable via road/rail/overland networks — fall back to straight-line overland.
+		turns = EconomyConfig.transport_turns_for_tile_distance(_tile_distance(source_tile, dest))
 	return {
-		"tile_distance": distance,
+		"tile_distance": _tile_distance(source_tile, dest),
 		"turns": turns,
 		"delayed": turns > 1,
+		"path": r.get("path", []),
+		"legs": r.get("legs", []),
 	}
 
 func _tile_distance(source_tile: String, destination_tile: String) -> int:
@@ -485,6 +491,8 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 			"tile_distance": route.tile_distance,
 			"transport_turns": route.turns,
 			"turns_remaining": int(route.turns),
+			"path": route.get("path", []),
+			"legs": route.get("legs", []),
 		})
 	elif emit_toast and float(sale_record.total_revenue) > 0.0:
 		MatchState.emit_stockpile_market_sale_completed(sale_record)

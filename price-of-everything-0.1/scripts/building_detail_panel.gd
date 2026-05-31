@@ -1604,7 +1604,10 @@ func _primary_output_qty(recipe: Dictionary) -> int:
 
 func _route_summary_for_good(source_tile: String, destination_tile: String, good_id: String, qty: int) -> Dictionary:
 	var distance := _tile_distance(source_tile, destination_tile)
-	var turns := EconomyConfig.transport_turns_for_tile_distance(distance)
+	var r := Catalog.route(source_tile, destination_tile, good_id)
+	var turns: int = int(r.get("turns", 0))
+	if turns >= (1 << 30):
+		turns = EconomyConfig.transport_turns_for_tile_distance(distance)
 	var cost := EconomyConfig.transport_cost_for(good_id, qty, turns)
 	return {
 		"distance": distance,
