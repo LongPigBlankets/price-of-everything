@@ -1121,6 +1121,35 @@ func _build_stockpile_section() -> void:
 	_stockpile_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_right_detail_parent().add_child(_stockpile_view)
 
+	_production_destination_option = OptionButton.new()
+	_production_destination_option.add_item("this tile")
+	_production_destination_option.add_item("market")
+	_production_destination_option.add_item("per building")
+	_apply_button_text_style(_production_destination_option)
+	_production_destination_option.item_selected.connect(_on_production_destination_selected)
+	_right_detail_parent().add_child(_make_setting_row("Production destination for all buildings", _production_destination_option, CONTROL_ROW_TALL_HEIGHT))
+	_production_destination_option.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_production_destination_option.custom_minimum_size = Vector2(132, 30)
+	_sync_production_destination_option()
+
+	# Move / Sell tabs under the stockpile.
+	var tabs := TabContainer.new()
+	tabs.custom_minimum_size = Vector2(0, 250)
+	tabs.add_theme_font_size_override("font_size", 21)  # ~30% larger / more visible tabs
+	_right_detail_parent().add_child(tabs)
+
+	var move_tab := VBoxContainer.new()
+	move_tab.name = "Move goods"
+	move_tab.add_theme_constant_override("separation", 6)
+	tabs.add_child(move_tab)
+	_build_move_tab(move_tab)
+
+	var sell_tab := VBoxContainer.new()
+	sell_tab.name = "Sell goods"
+	sell_tab.add_theme_constant_override("separation", 6)
+	tabs.add_child(sell_tab)
+
+	# Sell surplus + sell all live at the top of the Sell tab.
 	_sell_surplus_button = CheckBox.new()
 	_sell_surplus_button.text = ""
 	_sell_surplus_button.tooltip_text = "Automatically sell surplus stockpile that buildings on this tile do not require"
@@ -1129,25 +1158,12 @@ func _build_stockpile_section() -> void:
 	_sell_surplus_button.add_theme_icon_override("checked", _get_checkbox_icon(true))
 	_sell_surplus_button.add_theme_icon_override("unchecked_disabled", _get_checkbox_icon(false))
 	_sell_surplus_button.add_theme_icon_override("checked_disabled", _get_checkbox_icon(true))
-	# Show only the custom check icon — drop the DS button box around the checkbox.
 	_sell_surplus_button.flat = true
 	var no_box := StyleBoxEmpty.new()
 	for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
 		_sell_surplus_button.add_theme_stylebox_override(state, no_box)
 	_sell_surplus_button.toggled.connect(_on_sell_surplus_toggled)
-	_right_detail_parent().add_child(_make_setting_row("Sell surplus every turn", _sell_surplus_button))
-
-	_production_destination_option = OptionButton.new()
-	_production_destination_option.add_item("this tile")
-	_production_destination_option.add_item("market")
-	_production_destination_option.add_item("per building")
-	_apply_button_text_style(_production_destination_option)
-	_production_destination_option.item_selected.connect(_on_production_destination_selected)
-	_right_detail_parent().add_child(_make_setting_row("Production destination for all buildings", _production_destination_option, CONTROL_ROW_TALL_HEIGHT))
-	# Compact, right-aligned dropdown instead of filling the row width.
-	_production_destination_option.size_flags_horizontal = Control.SIZE_SHRINK_END
-	_production_destination_option.custom_minimum_size = Vector2(132, 30)
-	_sync_production_destination_option()
+	sell_tab.add_child(_make_setting_row("Sell surplus every turn", _sell_surplus_button))
 
 	_stockpile_sell_button = Button.new()
 	_stockpile_sell_button.text = "Sell All to Market"
@@ -1155,20 +1171,8 @@ func _build_stockpile_section() -> void:
 	_stockpile_sell_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_apply_button_text_style(_stockpile_sell_button)
 	_stockpile_sell_button.pressed.connect(_on_sell_stockpile_pressed)
-	_right_detail_parent().add_child(_stockpile_sell_button)
+	sell_tab.add_child(_stockpile_sell_button)
 
-	# Move / Sell tabs under the stockpile.
-	var tabs := TabContainer.new()
-	tabs.custom_minimum_size = Vector2(0, 240)
-	_right_detail_parent().add_child(tabs)
-	var move_tab := VBoxContainer.new()
-	move_tab.name = "Move goods"
-	move_tab.add_theme_constant_override("separation", 6)
-	tabs.add_child(move_tab)
-	_build_move_tab(move_tab)
-	var sell_tab := VBoxContainer.new()
-	sell_tab.name = "Sell goods"
-	tabs.add_child(sell_tab)
 	var sell_stub := Label.new()
 	sell_stub.text = "Per-good selling — coming next."
 	sell_stub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1272,34 +1276,45 @@ func _rebuild_move_steppers() -> void:
 
 func _make_move_stepper(good_id: String) -> Control:
 	var row := HBoxContainer.new()
-	row.custom_minimum_size = Vector2(0, 50)
-	row.add_theme_constant_override("separation", 6)
+	row.custom_minimum_size = Vector2(0, 40)
+	row.add_theme_constant_override("separation", 8)
 	var name_lbl := Label.new()
 	name_lbl.text = Catalog.get_display_name(good_id)
+	name_lbl.add_theme_font_size_override("font_size", 17)
 	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(name_lbl)
 	var qty_lbl := Label.new()
 	qty_lbl.text = str(int(_move_qtys.get(good_id, 0)))
-	qty_lbl.custom_minimum_size = Vector2(48, 0)
-	qty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	qty_lbl.add_theme_font_size_override("font_size", 17)
+	qty_lbl.custom_minimum_size = Vector2(52, 0)
+	qty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	qty_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(qty_lbl)
 	var arrows := VBoxContainer.new()
-	arrows.add_theme_constant_override("separation", 4)
+	arrows.add_theme_constant_override("separation", 2)
 	arrows.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var up := Button.new()
-	up.text = "▲"
-	up.custom_minimum_size = Vector2(30, 20)
+	var up := _make_arrow_button("▲")
 	up.pressed.connect(_on_move_qty_arrow.bind(good_id, 1, qty_lbl))
-	var down := Button.new()
-	down.text = "▼"
-	down.custom_minimum_size = Vector2(30, 20)
+	var down := _make_arrow_button("▼")
 	down.pressed.connect(_on_move_qty_arrow.bind(good_id, -1, qty_lbl))
 	arrows.add_child(up)
 	arrows.add_child(down)
 	row.add_child(arrows)
 	return row
+
+func _make_arrow_button(glyph: String) -> Button:
+	# Borderless 15px clickable arrow (no button box).
+	var b := Button.new()
+	b.text = glyph
+	b.flat = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(15, 15)
+	b.add_theme_font_size_override("font_size", 11)
+	var empty := StyleBoxEmpty.new()
+	for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
+		b.add_theme_stylebox_override(state, empty)
+	return b
 
 func _on_move_qty_arrow(good_id: String, delta: int, qty_lbl: Label) -> void:
 	var avail: int = Stockpile.get_at_tile(_current_tile_id, good_id)
