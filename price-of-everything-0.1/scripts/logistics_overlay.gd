@@ -334,7 +334,10 @@ func _draw_tag(tag: Dictionary, hovered: bool) -> void:
 	draw_polyline(PackedVector2Array([poly[0], poly[1], poly[2], poly[3], poly[4], poly[0]]),
 		Color(1, 1, 1, 0.85), 2.0)
 	var label := str(int(tag.turns))
-	draw_set_transform(c, along.angle(), Vector2.ONE)
+	var text_angle := along.angle()
+	if along.x < 0.0:  # keep the number upright — flip so it never reads upside down
+		text_angle += PI
+	draw_set_transform(c, text_angle, Vector2.ONE)
 	for off in [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]:
 		draw_string(ThemeDB.fallback_font, Vector2(-half_len, 9.0) + off, label,
 			HORIZONTAL_ALIGNMENT_CENTER, TAG_LEN, 26, Color.WHITE)
@@ -346,14 +349,41 @@ func _point_in_tag(p: Vector2, tag: Dictionary) -> bool:
 	return abs(local.dot(dir)) <= TAG_LEN / 2.0 and abs(local.dot(Vector2(-dir.y, dir.x))) <= TAG_WID / 2.0
 
 func _draw_hover_panel(tag: Dictionary) -> void:
-	var origin: Vector2 = tag.centre + Vector2(TAG_LEN / 2.0 + 6.0, -PANEL.y - 6.0)
-	draw_rect(Rect2(origin, PANEL), Color(0.03, 0.05, 0.09, 0.97))
-	draw_rect(Rect2(origin, PANEL), Color(0.7, 0.85, 1.0, 0.5), false, 2.0)
-	var y := 18.0
+	# ~quarter-tile on screen, snapped to 3 zoom steps (>=200px wide). Font fits one
+	# line without truncation; only grows taller when there are multiple goods.
+	var z := maxf(0.01, get_viewport().get_canvas_transform().get_scale().x)
+	var tile_w: float = terrain_layer.tile_set.tile_size.x
+	var quarter_screen := tile_w * 0.25 * z
+	var step_px := 200.0
+	if quarter_screen > 320.0:
+		step_px = 400.0
+	elif quarter_screen > 240.0:
+		step_px = 300.0
+	var world_w := step_px / z
+	var lines: Array = []
 	for g in tag.goods.keys():
-		draw_string(ThemeDB.fallback_font, origin + Vector2(8.0, y),
-			"%s  x%d" % [Catalog.get_display_name(str(g)), int(tag.goods[g])],
-			HORIZONTAL_ALIGNMENT_LEFT, PANEL.x - 16.0, 13, Color.WHITE)
-		y += 20.0
-		if y > PANEL.y - 6.0:
-			break
+		lines.append("%s x%d" % [Catalog.get_display_name(str(g)), int(tag.goods[g])])
+	if lines.is_empty():
+		lines = ["(empty)"]
+	var pad := world_w * 0.08
+	var avail := world_w - 2.0 * pad
+	var ref_size := 32
+	var max_w := 1.0
+	for ln in lines:
+		max_w = maxf(max_w, ThemeDB.fallback_font.get_string_size(ln, HORIZONTAL_ALIGNMENT_LEFT, -1, ref_size).x)
+	var font_world := float(ref_size)
+	if max_w > avail:
+		font_world = float(ref_size) * (avail / max_w)
+	font_world = clampf(font_world, 6.0, world_w * 0.35)
+	var line_h := font_world * 1.35
+	var n: int = lines.size()
+	var rows: int = n if n > 1 else 1
+	var world_h := 2.0 * pad + line_h * float(rows)
+	var origin: Vector2 = tag.centre + Vector2(TAG_LEN / 2.0 + 8.0, -world_h - 8.0)
+	draw_rect(Rect2(origin, Vector2(world_w, world_h)), Color(0.03, 0.05, 0.09, 0.97))
+	draw_rect(Rect2(origin, Vector2(world_w, world_h)), Color(0.7, 0.85, 1.0, 0.5), false, maxf(1.0, 2.0 / z))
+	var y := pad + font_world
+	for ln in lines:
+		draw_string(ThemeDB.fallback_font, origin + Vector2(pad, y), ln,
+			HORIZONTAL_ALIGNMENT_LEFT, avail, int(font_world), Color.WHITE)
+		y += line_h
