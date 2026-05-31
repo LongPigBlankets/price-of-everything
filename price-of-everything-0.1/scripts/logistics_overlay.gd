@@ -367,14 +367,16 @@ func _draw_hover_panel(tag: Dictionary) -> void:
 		lines = ["(empty)"]
 	var pad := world_w * 0.08
 	var avail := world_w - 2.0 * pad
-	var ref_size := 32
+	# Font scales with the panel (legible at every zoom step), shrinking only if a
+	# line would overflow the width.
+	var base := maxf(8.0, world_w * 0.16)
 	var max_w := 1.0
 	for ln in lines:
-		max_w = maxf(max_w, ThemeDB.fallback_font.get_string_size(ln, HORIZONTAL_ALIGNMENT_LEFT, -1, ref_size).x)
-	var font_world := float(ref_size)
+		max_w = maxf(max_w, ThemeDB.fallback_font.get_string_size(ln, HORIZONTAL_ALIGNMENT_LEFT, -1, int(base)).x)
+	var font_world := base
 	if max_w > avail:
-		font_world = float(ref_size) * (avail / max_w)
-	font_world = clampf(font_world, 6.0, world_w * 0.35)
+		font_world = base * (avail / max_w)
+	font_world = maxf(6.0, font_world)
 	var line_h := font_world * 1.35
 	var n: int = lines.size()
 	var rows: int = n if n > 1 else 1
