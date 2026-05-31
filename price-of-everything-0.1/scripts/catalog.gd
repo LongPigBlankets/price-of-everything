@@ -177,7 +177,7 @@ func _normalise_infra_id(value: String) -> String:
 	match value:
 		"roads", "road":
 			return "roads"
-		"rail", "railway", "railways":
+		"rail", "rails", "railway", "railways":
 			return "rail"
 		"pipes", "pipework", "pipeworks":
 			return "pipes"
@@ -188,6 +188,23 @@ func _normalise_infra_id(value: String) -> String:
 
 func tile_name(tile_id: String) -> String:
 	return _tile_names.get(tile_id, "")
+
+func add_tile_infrastructure(tile_id: String, infra_type: String) -> void:
+	# Mirror a runtime-built road/rail into the router's live infra map.
+	var norm := _normalise_infra_id(infra_type.strip_edges().to_lower())
+	if tile_id == "" or norm == "":
+		return
+	var list: Array = _tile_infra.get(tile_id, [])
+	if not list.has(norm):
+		list.append(norm)
+		_tile_infra[tile_id] = list
+
+func remove_tile_infrastructure(tile_id: String, infra_type: String) -> void:
+	var norm := _normalise_infra_id(infra_type.strip_edges().to_lower())
+	var list: Array = _tile_infra.get(tile_id, [])
+	if list.has(norm):
+		list.erase(norm)
+		_tile_infra[tile_id] = list
 
 func tile_label(tile_id: String) -> String:
 	# "name - (a_b)", or "(a_b)" when the tile has no nickname/city_name.
