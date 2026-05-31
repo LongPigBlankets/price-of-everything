@@ -47,8 +47,11 @@ func _test_ports() -> void:
 	_check(fields_ok, "every port has a tile_id and name")
 	_check(Catalog.tile_hex_distance("tile_5_10", "tile_5_10") == 0, "tile_hex_distance(self) == 0")
 	_check(Catalog.nearest_port_tile("tile_3_8") == "tile_5_10", "nearest_port_tile picks the closest port")
-	_check(Catalog.tile_label("tile_12_2") == "[Miney McMineface] - (12_2)", "tile_label uses nickname")
-	_check(Catalog.tile_label("tile_5_10") == "[Stoneshore Docks] - (5_10)", "tile_label falls back to city_name")
+	_check(Catalog.tile_label("tile_12_2") == "Miney McMineface - (12_2)", "tile_label uses nickname")
+	_check(Catalog.tile_label("tile_5_10") == "Stoneshore Docks - (5_10)", "tile_label falls back to city_name")
+	_check(Catalog.infra_range("roads") == 2, "roads range is 2 tiles/turn")
+	_check(Catalog.infra_range("rail") == 4, "rail range is 4 tiles/turn")
+	_check(Catalog.all_infrastructure().size() == 5, "Catalog loads 5 infrastructure types")
 
 # Smoke: every script we touch must still parse. load() returns null on a parse
 # error — this is the check that catches the bug class we couldn't verify by hand.

@@ -7,6 +7,7 @@ const RECIPES_CSV_PATH := "res://data/recipes_all.csv"
 const BUILDINGS_CSV_PATH := "res://data/Buildings - buildingsMVP.csv"
 const PORTS_CSV_PATH := "res://data/ports.csv"
 const TILE_PROPS_CSV_PATH := "res://data/tile_properties.csv"
+const INFRA_CSV_PATH := "res://data/infrastructure.csv"
 
 # recipes_all.csv references buildings by internal_name; a few don't match the
 # game's building internal_names, so alias them here. Recipes whose building can't
@@ -44,12 +45,16 @@ var _ports: Array = []
 # Tile display names (nickname, else city_name) for labelling tile ids in the UI
 var _tile_names: Dictionary = {}
 
+# Infrastructure type properties (range, routing, tolerated classes, ...) keyed by type
+var _infra_by_type: Dictionary = {}
+
 func _ready() -> void:
 	_load_goods()
 	_load_buildings()
 	_load_recipes()
 	_load_ports()
 	_load_tile_names()
+	_load_infrastructure()
 
 # =========================================================================
 # PORTS
@@ -148,14 +153,53 @@ func tile_name(tile_id: String) -> String:
 	return _tile_names.get(tile_id, "")
 
 func tile_label(tile_id: String) -> String:
-	# "[name] - (a_b)", or "(a_b)" when the tile has no nickname/city_name.
+	# "name - (a_b)", or "(a_b)" when the tile has no nickname/city_name.
 	if tile_id == "":
 		return ""
 	var coord_part := tile_id
 	if coord_part.begins_with("tile_"):
 		coord_part = coord_part.substr(5)
 	var label_name: String = _tile_names.get(tile_id, "")
-	return ("[%s] - (%s)" % [label_name, coord_part]) if label_name != "" else ("(%s)" % coord_part)
+	return ("%s - (%s)" % [label_name, coord_part]) if label_name != "" else ("(%s)" % coord_part)
+
+func _load_infrastructure() -> void:
+	_infra_by_type.clear()
+	if not FileAccess.file_exists(INFRA_CSV_PATH):
+		return
+	var file := FileAccess.open(INFRA_CSV_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var headers := file.get_csv_line()
+	while not file.eof_reached():
+		var line := file.get_csv_line()
+		if line.size() < 1 or line[0].strip_edges() == "":
+			continue
+		var raw := {}
+		for i in headers.size():
+			if i < line.size():
+				raw[headers[i].strip_edges().to_lower().replace(" ", "_")] = line[i].strip_edges()
+		var type_id := str(raw.get("type", ""))
+		if type_id == "":
+			continue
+		var range_str := str(raw.get("range", ""))
+		_infra_by_type[type_id] = {
+			"type": type_id,
+			"display_name": raw.get("display_name", ""),
+			"range": int(range_str) if range_str.is_valid_int() else 0,
+			"routing": raw.get("routing", ""),
+			"market_connector": str(raw.get("market_connector", "")).to_lower() == "true",
+			"good_types_tolerated": str(raw.get("good_types_tolerated", "")).split("|", false),
+			"double_cost_types": str(raw.get("double_cost_types", "")).split("|", false),
+		}
+
+func all_infrastructure() -> Array:
+	return _infra_by_type.values()
+
+func infra(type_id: String) -> Dictionary:
+	return _infra_by_type.get(type_id, {})
+
+func infra_range(type_id: String) -> int:
+	return int(_infra_by_type.get(type_id, {}).get("range", 0))
 
 # =========================================================================
 # GOODS
