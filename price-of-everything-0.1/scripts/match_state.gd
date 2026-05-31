@@ -38,12 +38,17 @@ var tile_land_owned: Dictionary = {}
 enum SellMode { SELL_ALL, STOCKPILE_ALL, BUILDING_BY_BUILDING }
 var sell_mode: int = SellMode.STOCKPILE_ALL
 
+# How the transport router picks a path between two tiles. FASTEST by default.
+enum RouteObjective { FASTEST, CHEAPEST, BLENDED }
+var route_objective: int = RouteObjective.FASTEST
+
 # --- Signals ---
 signal money_changed(new_amount: float) 
 signal building_added(instance: Dictionary)
 signal building_removed(instance_id: String)
 signal state_reset
 signal sell_mode_changed(new_mode: int)
+signal route_objective_changed(new_objective: int)
 signal labour_multiplier_changed(new_value: float)
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
@@ -194,6 +199,12 @@ func debug_dump() -> Dictionary:
 func set_sell_mode(mode: int) -> void:
 	sell_mode = mode
 	sell_mode_changed.emit(mode)
+
+func set_route_objective(objective: int) -> void:
+	if objective == route_objective:
+		return
+	route_objective = objective
+	route_objective_changed.emit(objective)
 
 func begin_output_stockpile_selection(instance_id: String, good_id: String) -> void:
 	if instance_id == "" or good_id == "":

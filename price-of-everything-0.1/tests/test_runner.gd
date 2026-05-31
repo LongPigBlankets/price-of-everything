@@ -26,6 +26,7 @@ func _ready() -> void:
 	_test_recipe_requirements()
 	_test_menu_icons()
 	_test_ports()
+	await _test_building_ledger()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -36,6 +37,19 @@ func _check(ok: bool, name: String) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  ", name)
+
+func _test_building_ledger() -> void:
+	_check(MatchState.route_objective == MatchState.RouteObjective.FASTEST,
+		"route objective defaults to FASTEST")
+	var scene := load("res://scenes/building_ledger_panel.tscn")
+	var ok := false
+	if scene != null:
+		var panel: Node = scene.instantiate()
+		add_child(panel)
+		await get_tree().process_frame
+		ok = panel.get_child_count() > 0
+		panel.queue_free()
+	_check(ok, "building_ledger_panel instantiates (routing dropdown builds)")
 
 func _test_ports() -> void:
 	var ports := Catalog.all_ports()
