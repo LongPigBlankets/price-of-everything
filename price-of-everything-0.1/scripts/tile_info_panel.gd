@@ -181,9 +181,8 @@ func _setup_tile_banner() -> void:
 func show_tile(tile_data: Dictionary) -> void:
 	_current_tile_data = tile_data
 	_current_tile_id = tile_data.id
-	var nick: String = tile_data.get("nickname", "")
 	var tid: String = tile_data.get("id", "")
-	title_label.text = ("%s (%s)" % [nick, tid]) if nick != "" else tid
+	title_label.text = Catalog.tile_label(tid)
 	_rebuild_buildings(tile_data)
 	_rebuild_infrastructure_table(tile_data)
 	_refresh_tile_banner(tile_data)

@@ -6,6 +6,7 @@ const GOODS_CSV_PATH := "res://data/Goods - goodsMVP.csv"
 const RECIPES_CSV_PATH := "res://data/recipes_all.csv"
 const BUILDINGS_CSV_PATH := "res://data/Buildings - buildingsMVP.csv"
 const PORTS_CSV_PATH := "res://data/ports.csv"
+const TILE_PROPS_CSV_PATH := "res://data/tile_properties.csv"
 
 # recipes_all.csv references buildings by internal_name; a few don't match the
 # game's building internal_names, so alias them here. Recipes whose building can't
@@ -40,11 +41,15 @@ var _all_buildings: Array = []
 # Ports storage
 var _ports: Array = []
 
+# Tile display names (nickname, else city_name) for labelling tile ids in the UI
+var _tile_names: Dictionary = {}
+
 func _ready() -> void:
 	_load_goods()
 	_load_buildings()
 	_load_recipes()
 	_load_ports()
+	_load_tile_names()
 
 # =========================================================================
 # PORTS
@@ -108,6 +113,49 @@ func _port_tile_to_coord(tile_id: String) -> Vector2i:
 
 func _oddq_to_axial(coord: Vector2i) -> Vector2i:
 	return Vector2i(coord.x, coord.y - int((coord.x - (coord.x & 1)) / 2))
+
+func _load_tile_names() -> void:
+	_tile_names.clear()
+	if not FileAccess.file_exists(TILE_PROPS_CSV_PATH):
+		return
+	var file := FileAccess.open(TILE_PROPS_CSV_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var headers := file.get_csv_line()
+	var idx := {}
+	for i in headers.size():
+		idx[headers[i].strip_edges().to_lower()] = i
+	var id_i: int = idx.get("id", -1)
+	var nick_i: int = idx.get("nickname", -1)
+	var city_i: int = idx.get("city_name", -1)
+	if id_i < 0:
+		return
+	while not file.eof_reached():
+		var line := file.get_csv_line()
+		if line.size() <= id_i or line[id_i].strip_edges() == "":
+			continue
+		var nick := ""
+		if nick_i >= 0 and nick_i < line.size():
+			nick = line[nick_i].strip_edges()
+		var city := ""
+		if city_i >= 0 and city_i < line.size():
+			city = line[city_i].strip_edges()
+		var label_name := nick if nick != "" else city
+		if label_name != "":
+			_tile_names[line[id_i].strip_edges()] = label_name
+
+func tile_name(tile_id: String) -> String:
+	return _tile_names.get(tile_id, "")
+
+func tile_label(tile_id: String) -> String:
+	# "[name] - (a_b)", or "(a_b)" when the tile has no nickname/city_name.
+	if tile_id == "":
+		return ""
+	var coord_part := tile_id
+	if coord_part.begins_with("tile_"):
+		coord_part = coord_part.substr(5)
+	var label_name: String = _tile_names.get(tile_id, "")
+	return ("[%s] - (%s)" % [label_name, coord_part]) if label_name != "" else ("(%s)" % coord_part)
 
 # =========================================================================
 # GOODS

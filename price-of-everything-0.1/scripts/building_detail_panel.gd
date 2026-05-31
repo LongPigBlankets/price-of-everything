@@ -252,7 +252,10 @@ func _inbound_input_summary(tile_id: String, good_id: String) -> String:
 		var source_tile: String = shipment.get("source_tile", "")
 		if source_tile != "" and not source_tiles.has(source_tile):
 			source_tiles.append(source_tile)
-	var source_text := ", ".join(source_tiles) if not source_tiles.is_empty() else "unknown tile"
+	var source_labels: Array = []
+	for st in source_tiles:
+		source_labels.append(Catalog.tile_label(st))
+	var source_text := ", ".join(source_labels) if not source_labels.is_empty() else "unknown tile"
 	return "%d inbound from %s, next %s" % [
 		total_qty,
 		source_text,
@@ -1549,7 +1552,7 @@ func _output_destination() -> String:
 			_primary_output_qty(_current_recipe)
 		)
 		return "%s · %d turn%s · £%s" % [
-			destination_tile,
+			Catalog.tile_label(destination_tile),
 			route.turns,
 			"" if int(route.turns) == 1 else "s",
 			_format_money(route.cost),
@@ -1573,13 +1576,13 @@ func _output_route_summary() -> Dictionary:
 	var destination := ""
 	if dest_tile != "":
 		target = dest_tile
-		destination = dest_tile
+		destination = Catalog.tile_label(dest_tile)
 	elif MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL:
 		target = source_tile
 		destination = "Tile stockpile (same tile)"
 	else:
 		target = Catalog.nearest_port_tile(source_tile)
-		destination = ("Market (via %s)" % target) if target != "" else "Market"
+		destination = ("Market (via %s)" % Catalog.tile_label(target)) if target != "" else "Market"
 	var route := _route_summary_for_good(source_tile, target, good_id, qty)
 	return {"destination": destination, "cost": route.cost, "turns": route.turns, "target": target}
 
