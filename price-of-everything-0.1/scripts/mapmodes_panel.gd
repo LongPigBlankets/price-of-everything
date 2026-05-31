@@ -35,21 +35,29 @@ func _build_content() -> void:
 		content_vbox.add_child(button)
 
 func _on_mapmode_pressed(mode_id: String) -> void:
+	var target := _mode_for_id(mode_id)
+	# Toggle off if this mode is already active.
+	if target != MapMode.Mode.NONE and MapMode.current_mode == target:
+		MapMode.clear_all()
+		return
+	# Switching mapmodes: close whatever's currently open, then open the new one.
+	MapMode.clear_all()
 	match mode_id:
 		"power":
-			if MapMode.current_mode == MapMode.Mode.POWER_BALANCE:
-				MapMode.clear_all()
-			else:
-				var ok: bool = MapMode.add_selection(MapMode.Mode.POWER_BALANCE, MapMode.POWER_SENTINEL)
-				if not ok:
-					print("[Mapmodes] Power rejected — another mode is active")
+			MapMode.add_selection(MapMode.Mode.POWER_BALANCE, MapMode.POWER_SENTINEL)
 		"logistics":
-			if MapMode.current_mode == MapMode.Mode.LOGISTICS:
-				MapMode.clear_all()
-			else:
-				MapMode.add_selection(MapMode.Mode.LOGISTICS, MapMode.LOGISTICS_SENTINEL)
+			MapMode.add_selection(MapMode.Mode.LOGISTICS, MapMode.LOGISTICS_SENTINEL)
 		"infrastructure":
 			print("[Mapmodes] infrastructure not yet implemented")
+
+func _mode_for_id(mode_id: String) -> int:
+	match mode_id:
+		"power":
+			return MapMode.Mode.POWER_BALANCE
+		"logistics":
+			return MapMode.Mode.LOGISTICS
+		_:
+			return MapMode.Mode.NONE
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:

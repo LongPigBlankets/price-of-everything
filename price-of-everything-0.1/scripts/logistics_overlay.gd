@@ -1,10 +1,11 @@
 extends Node2D
 ## Logistics map overlay. When the Logistics mapmode is active it dims the map and
-## draws every origin->destination route as a thick coloured line (with a soft white
-## glow) running tile-centre to tile-centre: a triangle at the origin and a 60x60 box
-## at the destination. Each IN-TRANSIT SHIPMENT gets a 60x40 tag at its current
-## position along the route showing that shipment's good + qty; hover it for the full
-## breakdown. Parallel routes sharing tiles spread 30px apart and cross when they diverge.
+## draws every origin->destination route as a thick coloured line (soft white glow)
+## running tile-centre to tile-centre, with a triangle at the origin and a 60x60 box
+## at the destination. Each IN-TRANSIT SHIPMENT gets a 120x60 pentagon (rectangle +
+## triangle pointing at the destination) in the route colour, with the turns-to-go
+## in bold white; hover it for the full goods breakdown. Parallel routes sharing
+## tiles spread 50px apart and cross when they diverge.
 ##
 ## NOTE: sizes are world-units (Node2D space), tuned by eye — expect in-engine tweaks.
 
@@ -12,9 +13,10 @@ extends Node2D
 
 const LINE_WIDTH := 20.0
 const DEST_BOX := 60.0
-const TAG_W := 60.0   # long edge (along the line)
-const TAG_H := 40.0   # short edge
-const PARALLEL_GAP := 30.0
+const TAG_LEN := 120.0   # along the line (incl. the pointed tip)
+const TAG_WID := 60.0    # across the line
+const TAG_TIP := 30.0    # length of the pointed tip
+const PARALLEL_GAP := 50.0
 const TRIANGLE_LEN := 30.0
 const TRIANGLE_HALF := 18.0
 const PANEL := Vector2(120, 120)
@@ -25,8 +27,8 @@ const PALETTE: Array = [
 	Color(0.48, 0.90, 0.72), Color(0.25, 0.41, 0.88),
 ]
 
-var _routes: Array = []        # [{source, dest, tiles, path, goods, color, index}]
-var _tag_hits: Array = []      # [{centre, dir, goods, color}] one per in-transit shipment
+var _routes: Array = []
+var _tag_hits: Array = []      # [{centre, dir, turns, goods, color}] one per in-transit shipment
 var _hover_tag := -1
 
 func _ready() -> void:
@@ -51,7 +53,6 @@ func _on_mode_cleared() -> void:
 func _process(_delta: float) -> void:
 	queue_redraw()
 
-# --- legend reads this ---
 func get_routes() -> Array:
 	_rebuild_routes()
 	return _routes
@@ -72,8 +73,9 @@ func _rebuild_routes() -> void:
 			entry.tiles = s.get("tiles", []).duplicate()
 		if entry.path.is_empty() and not s.get("path", []).is_empty():
 			entry.path = s.get("path", []).duplicate()
-		for g in _shipment_goods(s).keys():
-			entry.goods[g] = int(entry.goods.get(g, 0)) + int(_shipment_goods(s)[g])
+		var sg := _shipment_goods(s)
+		for g in sg.keys():
+			entry.goods[g] = int(entry.goods.get(g, 0)) + int(sg[g])
 	var keys: Array = by_route.keys()
 	keys.sort()
 	var idx := 0
@@ -140,8 +142,7 @@ func _draw() -> void:
 		_draw_route_line(r, seg_offsets)
 	_build_shipment_tags(route_colors)
 	for t in _tag_hits:
-		_draw_tag(t.centre, t.dir, t.color, t.goods, false)
-	# hover resolution
+		_draw_tag(t, false)
 	var mouse := to_local(get_global_mouse_position())
 	_hover_tag = -1
 	for i in _tag_hits.size():
@@ -149,15 +150,13 @@ func _draw() -> void:
 			_hover_tag = i
 			break
 	if _hover_tag >= 0:
-		var ht: Dictionary = _tag_hits[_hover_tag]
-		_draw_tag(ht.centre, ht.dir, ht.color, ht.goods, true)
-		_draw_hover_panel(ht)
+		_draw_tag(_tag_hits[_hover_tag], true)
+		_draw_hover_panel(_tag_hits[_hover_tag])
 
 func _offset_point(p: Vector2, seg_dir: Vector2, amount: float) -> Vector2:
 	return p + Vector2(-seg_dir.y, seg_dir.x) * amount
 
 func _draw_glow(pa: Vector2, pb: Vector2) -> void:
-	# Soft white halo (layered translucent strokes, widest+faintest outward).
 	draw_line(pa, pb, Color(1, 1, 1, 0.07), LINE_WIDTH + 18.0)
 	draw_line(pa, pb, Color(1, 1, 1, 0.12), LINE_WIDTH + 11.0)
 	draw_line(pa, pb, Color(1, 1, 1, 0.22), LINE_WIDTH + 5.0)
@@ -194,8 +193,8 @@ func _draw_route_line(r: Dictionary, seg_offsets: Dictionary) -> void:
 		draw_rect(Rect2(pd - Vector2(DEST_BOX, DEST_BOX) / 2.0, Vector2(DEST_BOX, DEST_BOX)), col)
 
 func _build_shipment_tags(route_colors: Dictionary) -> void:
-	# One tag per in-transit shipment, at its current position along its route.
 	_tag_hits.clear()
+	var tsz: float = terrain_layer.tile_set.tile_size.x
 	for s in MatchState.get_pending_transport_shipments():
 		var src := str(s.get("source_tile", ""))
 		var dst := str(s.get("destination_tile", ""))
@@ -205,59 +204,70 @@ func _build_shipment_tags(route_colors: Dictionary) -> void:
 		var total := int(s.get("transport_turns", path.size() - 1))
 		var rem := int(s.get("turns_remaining", 0))
 		var idx: int = clampi(total - rem, 0, path.size() - 1)
-		var pos := _tile_pos(str(path[idx]))
-		if pos == Vector2.INF:
+		var cur := _tile_pos(str(path[idx]))
+		if cur == Vector2.INF:
 			continue
-		var dir := Vector2.RIGHT
+		var incoming := Vector2.ZERO
 		if idx > 0:
 			var prev := _tile_pos(str(path[idx - 1]))
-			if prev != Vector2.INF and (pos - prev).length() > 0.5:
-				dir = (pos - prev).normalized()
-		elif path.size() > 1:
-			var nxt := _tile_pos(str(path[1]))
-			if nxt != Vector2.INF and (nxt - pos).length() > 0.5:
-				dir = (nxt - pos).normalized()
+			if prev != Vector2.INF and (cur - prev).length() > 0.5:
+				incoming = (cur - prev).normalized()
+		var outgoing := Vector2.ZERO
+		if idx < path.size() - 1:
+			var nxt := _tile_pos(str(path[idx + 1]))
+			if nxt != Vector2.INF and (nxt - cur).length() > 0.5:
+				outgoing = (nxt - cur).normalized()
+		var dir := outgoing if outgoing != Vector2.ZERO else incoming
+		if dir == Vector2.ZERO:
+			dir = Vector2.RIGHT
+		var pos := cur
+		# On a bend, slide the tag onto the outward (departing) leg and along its normal.
+		if incoming != Vector2.ZERO and outgoing != Vector2.ZERO and incoming.dot(outgoing) < 0.95:
+			var perp := Vector2(-outgoing.y, outgoing.x)
+			pos = cur + outgoing * (tsz * 0.28) + perp * (tsz * 0.10)
+			dir = outgoing
 		_tag_hits.append({
-			"centre": pos, "dir": dir,
+			"centre": pos, "dir": dir, "turns": rem,
 			"goods": _shipment_goods(s),
 			"color": route_colors.get(src + "->" + dst, Color.WHITE),
 		})
 
-func _draw_tag(centre: Vector2, dir: Vector2, col: Color, goods: Dictionary, hovered: bool) -> void:
-	var along := dir
-	var perp := Vector2(-dir.y, dir.x)
-	var hw := TAG_W / 2.0
-	var hh := TAG_H / 2.0
-	var corners := PackedVector2Array([
-		centre + along * hw + perp * hh, centre + along * hw - perp * hh,
-		centre - along * hw - perp * hh, centre - along * hw + perp * hh,
+func _draw_tag(tag: Dictionary, hovered: bool) -> void:
+	var c: Vector2 = tag.centre
+	var along: Vector2 = tag.dir
+	var perp := Vector2(-along.y, along.x)
+	var half_len := TAG_LEN / 2.0
+	var half_wid := TAG_WID / 2.0
+	var rect_front := half_len - TAG_TIP
+	# Pentagon: rectangle body + triangle tip pointing toward the destination.
+	var poly := PackedVector2Array([
+		c - along * half_len + perp * half_wid,
+		c - along * half_len - perp * half_wid,
+		c + along * rect_front - perp * half_wid,
+		c + along * half_len,                       # tip toward destination
+		c + along * rect_front + perp * half_wid,
 	])
-	var bg := Color(0.22, 0.28, 0.36, 0.99) if hovered else Color(0.04, 0.06, 0.10, 0.96)
-	draw_colored_polygon(corners, bg)
-	draw_polyline(PackedVector2Array([corners[0], corners[1], corners[2], corners[3], corners[0]]), col, 2.0)
-	var label := _tag_label(goods)
-	if label != "":
-		draw_set_transform(centre, along.angle(), Vector2.ONE)
-		draw_string(ThemeDB.fallback_font, Vector2(-hw + 4.0, 5.0), label,
-			HORIZONTAL_ALIGNMENT_LEFT, TAG_W - 8.0, 14, Color.WHITE)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-func _tag_label(goods: Dictionary) -> String:
-	if goods.is_empty():
-		return ""
-	var first = goods.keys()[0]
-	var txt := "%s x%d" % [Catalog.get_display_name(str(first)), int(goods[first])]
-	if goods.size() > 1:
-		txt += " +%d" % (goods.size() - 1)
-	return txt
+	var col: Color = tag.color
+	if hovered:
+		col = col.lightened(0.35)
+	draw_colored_polygon(poly, col)
+	draw_polyline(PackedVector2Array([poly[0], poly[1], poly[2], poly[3], poly[4], poly[0]]),
+		Color(1, 1, 1, 0.85), 2.0)
+	# Turns-to-go, bold white, centred (rotated with the tag).
+	var label := str(int(tag.turns))
+	draw_set_transform(c, along.angle(), Vector2.ONE)
+	for off in [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]:  # fake-bold
+		draw_string(ThemeDB.fallback_font, Vector2(-half_len, 9.0) + off, label,
+			HORIZONTAL_ALIGNMENT_CENTER, TAG_LEN, 26, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _point_in_tag(p: Vector2, tag: Dictionary) -> bool:
 	var local: Vector2 = p - tag.centre
 	var dir: Vector2 = tag.dir
-	return abs(local.dot(dir)) <= TAG_W / 2.0 and abs(local.dot(Vector2(-dir.y, dir.x))) <= TAG_H / 2.0
+	return abs(local.dot(dir)) <= TAG_LEN / 2.0 and abs(local.dot(Vector2(-dir.y, dir.x))) <= TAG_WID / 2.0
 
 func _draw_hover_panel(tag: Dictionary) -> void:
-	var origin: Vector2 = tag.centre + Vector2(TAG_W / 2.0 + 6.0, -PANEL.y - 6.0)
+	var origin: Vector2 = tag.centre + Vector2(TAG_LEN / 2.0 + 6.0, -PANEL.y - 6.0)
 	draw_rect(Rect2(origin, PANEL), Color(0.03, 0.05, 0.09, 0.97))
 	draw_rect(Rect2(origin, PANEL), Color(0.7, 0.85, 1.0, 0.5), false, 2.0)
 	var y := 18.0
