@@ -23,6 +23,7 @@ var _stockpile_select_prompt: PanelContainer = null
 var _pending_stockpile_selection: Dictionary = {}
 var _dim_overlay: ColorRect = null
 var _stockpile_legend: PanelContainer = null
+var _pending_move: Dictionary = {}  # {source, goods, recurring} while picking a Move destination
 
 func _ready() -> void:
 	# DS assigns its Theme to the root Window, but Controls do not inherit a
@@ -33,6 +34,7 @@ func _ready() -> void:
 	terrain_layer.tile_selected.connect(_on_tile_selected)
 	terrain_layer.stockpile_destination_selected.connect(_on_stockpile_destination_selected)
 	info_panel.building_clicked.connect(building_panel.show_building)
+	info_panel.move_goods_requested.connect(_on_move_goods_requested)
 	BuildMode.build_attempted.connect(_on_build_attempted)
 	BuildMode.infrastructure_attempted.connect(_on_infrastructure_attempted)  # NEW
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
@@ -83,7 +85,51 @@ func _on_output_stockpile_selection_cancelled() -> void:
 	_hide_stockpile_select_prompt()
 	_exit_stockpile_ui_mode()
 
+func _on_move_goods_requested(source_tile: String, goods_qtys: Dictionary, recurring: bool) -> void:
+	_pending_move = {"source": source_tile, "goods": goods_qtys, "recurring": recurring}
+	terrain_layer.begin_stockpile_destination_selection("")
+	_enter_stockpile_ui_mode()
+
+func _complete_move(tile_data: Dictionary) -> void:
+	var move := _pending_move
+	_pending_move = {}
+	terrain_layer.end_stockpile_destination_selection()
+	_exit_stockpile_ui_mode()
+	var dest: String = tile_data.get("id", "")
+	if dest == "" or dest == str(move.get("source", "")):
+		return
+	var summary: Dictionary = MatchState.queue_move(str(move.get("source", "")), dest, move.get("goods", {}))
+	if summary.is_empty():
+		return
+	MatchState.request_toast(_format_move_toast(summary, dest), "success")
+
+func _format_move_toast(summary: Dictionary, dest: String) -> String:
+	return "%s will ship next turn from %s to %s" % [
+		_format_goods_phrase(summary.get("items", [])),
+		Catalog.tile_label(str(summary.get("source", ""))), Catalog.tile_label(dest)
+	]
+
+func _format_goods_phrase(items: Array) -> String:
+	if items.is_empty():
+		return "Nothing"
+	var n := items.size()
+	if n == 1:
+		return "%d units of %s" % [int(items[0].qty), Catalog.get_display_name(str(items[0].good_id))]
+	if n == 2:
+		return "%d units of %s and %d units of %s" % [
+			int(items[0].qty), Catalog.get_display_name(str(items[0].good_id)),
+			int(items[1].qty), Catalog.get_display_name(str(items[1].good_id))]
+	var rest_qty := 0
+	for i in range(2, n):
+		rest_qty += int(items[i].qty)
+	return "%d units of %s, %d units of %s and %d units of %d other goods" % [
+		int(items[0].qty), Catalog.get_display_name(str(items[0].good_id)),
+		int(items[1].qty), Catalog.get_display_name(str(items[1].good_id)), rest_qty, n - 2]
+
 func _on_stockpile_destination_selected(tile_data: Dictionary) -> void:
+	if not _pending_move.is_empty():
+		_complete_move(tile_data)
+		return
 	if _pending_stockpile_selection.is_empty():
 		return
 	var instance_id: String = _pending_stockpile_selection.get("instance_id", "")

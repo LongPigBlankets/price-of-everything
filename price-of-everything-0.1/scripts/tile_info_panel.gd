@@ -75,6 +75,18 @@ var _infra_grid = null
 var _stockpile_sell_button: Button = null
 var _sell_surplus_button: CheckBox = null
 var _production_destination_option: OptionButton = null
+
+# --- Move-goods tab state ---
+signal move_goods_requested(source_tile: String, goods_qtys: Dictionary, recurring: bool)
+var _move_grid: GridContainer = null
+var _move_steppers: VBoxContainer = null
+var _move_all_button: Button = null
+var _move_recurring: CheckBox = null
+var _move_cta: Button = null
+var _move_selected: Dictionary = {}
+var _move_qtys: Dictionary = {}
+var _move_all_selected: bool = false
+const _MOVE_SELECTED_TINT := Color(1.45, 1.45, 1.45)
 @onready var _chart_column: VBoxContainer = $MarginContainer/ContentRow/ChartColumn
 var _land_left_label: Label = null
 var _land_purchase_buttons_row: HBoxContainer = null
@@ -1145,10 +1157,181 @@ func _build_stockpile_section() -> void:
 	_stockpile_sell_button.pressed.connect(_on_sell_stockpile_pressed)
 	_right_detail_parent().add_child(_stockpile_sell_button)
 
+	# Move / Sell tabs under the stockpile.
+	var tabs := TabContainer.new()
+	tabs.custom_minimum_size = Vector2(0, 240)
+	_right_detail_parent().add_child(tabs)
+	var move_tab := VBoxContainer.new()
+	move_tab.name = "Move goods"
+	move_tab.add_theme_constant_override("separation", 6)
+	tabs.add_child(move_tab)
+	_build_move_tab(move_tab)
+	var sell_tab := VBoxContainer.new()
+	sell_tab.name = "Sell goods"
+	tabs.add_child(sell_tab)
+	var sell_stub := Label.new()
+	sell_stub.text = "Per-good selling — coming next."
+	sell_stub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sell_tab.add_child(sell_stub)
+
+func _build_move_tab(parent: VBoxContainer) -> void:
+	_move_all_button = Button.new()
+	_move_all_button.text = "All goods in stockpile"
+	_move_all_button.toggle_mode = true
+	_move_all_button.custom_minimum_size = Vector2(0, 32)
+	_move_all_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_apply_button_text_style(_move_all_button)
+	_move_all_button.toggled.connect(_on_move_all_toggled)
+	parent.add_child(_move_all_button)
+
+	_move_grid = GridContainer.new()
+	_move_grid.columns = 2
+	_move_grid.add_theme_constant_override("h_separation", 6)
+	_move_grid.add_theme_constant_override("v_separation", 6)
+	parent.add_child(_move_grid)
+
+	_move_steppers = VBoxContainer.new()
+	_move_steppers.add_theme_constant_override("separation", 2)
+	parent.add_child(_move_steppers)
+
+	_move_recurring = CheckBox.new()
+	_move_recurring.text = "Make recurring every turn"
+	parent.add_child(_move_recurring)
+
+	_move_cta = Button.new()
+	_move_cta.custom_minimum_size = Vector2(0, 34)
+	_move_cta.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_apply_button_text_style(_move_cta)
+	_move_cta.pressed.connect(_on_move_cta_pressed)
+	parent.add_child(_move_cta)
+
+func _refresh_move_tab() -> void:
+	if _move_grid == null:
+		return
+	for c in _move_grid.get_children():
+		c.queue_free()
+	_move_selected.clear()
+	_move_qtys.clear()
+	_move_all_selected = false
+	if _move_all_button != null:
+		_move_all_button.set_pressed_no_signal(false)
+	if _move_recurring != null:
+		_move_recurring.set_pressed_no_signal(false)
+	var totals: Dictionary = Stockpile.get_tile_totals(_current_tile_id)
+	for good_id in totals.keys():
+		var btn := Button.new()
+		btn.text = Catalog.get_display_name(str(good_id))
+		btn.toggle_mode = true
+		btn.custom_minimum_size = Vector2(0, 30)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_apply_button_text_style(btn)
+		btn.toggled.connect(_on_move_good_toggled.bind(str(good_id), btn))
+		_move_grid.add_child(btn)
+	_rebuild_move_steppers()
+	_update_move_cta()
+
+func _selected_move_goods() -> Array:
+	if _move_all_selected:
+		return Stockpile.get_tile_totals(_current_tile_id).keys()
+	return _move_selected.keys()
+
+func _on_move_all_toggled(pressed: bool) -> void:
+	_move_all_selected = pressed
+	if pressed:
+		_move_selected.clear()
+		for c in _move_grid.get_children():
+			if c is Button:
+				c.set_pressed_no_signal(false)
+				c.modulate = Color.WHITE
+	_rebuild_move_steppers()
+	_update_move_cta()
+
+func _on_move_good_toggled(pressed: bool, good_id: String, btn: Button) -> void:
+	if pressed:
+		_move_selected[good_id] = true
+		btn.modulate = _MOVE_SELECTED_TINT
+		if _move_all_selected:
+			_move_all_selected = false
+			if _move_all_button != null:
+				_move_all_button.set_pressed_no_signal(false)
+	else:
+		_move_selected.erase(good_id)
+		btn.modulate = Color.WHITE
+	_rebuild_move_steppers()
+	_update_move_cta()
+
+func _rebuild_move_steppers() -> void:
+	for c in _move_steppers.get_children():
+		c.queue_free()
+	for good_id in _selected_move_goods():
+		var avail: int = Stockpile.get_at_tile(_current_tile_id, str(good_id))
+		if not _move_qtys.has(good_id):
+			_move_qtys[good_id] = avail  # default to the whole stack
+		_move_qtys[good_id] = clampi(int(_move_qtys[good_id]), 0, avail)
+		_move_steppers.add_child(_make_move_stepper(str(good_id)))
+
+func _make_move_stepper(good_id: String) -> Control:
+	var row := HBoxContainer.new()
+	row.custom_minimum_size = Vector2(0, 50)
+	row.add_theme_constant_override("separation", 6)
+	var name_lbl := Label.new()
+	name_lbl.text = Catalog.get_display_name(good_id)
+	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(name_lbl)
+	var qty_lbl := Label.new()
+	qty_lbl.text = str(int(_move_qtys.get(good_id, 0)))
+	qty_lbl.custom_minimum_size = Vector2(48, 0)
+	qty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	qty_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(qty_lbl)
+	var arrows := VBoxContainer.new()
+	arrows.add_theme_constant_override("separation", 4)
+	arrows.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var up := Button.new()
+	up.text = "▲"
+	up.custom_minimum_size = Vector2(30, 20)
+	up.pressed.connect(_on_move_qty_arrow.bind(good_id, 1, qty_lbl))
+	var down := Button.new()
+	down.text = "▼"
+	down.custom_minimum_size = Vector2(30, 20)
+	down.pressed.connect(_on_move_qty_arrow.bind(good_id, -1, qty_lbl))
+	arrows.add_child(up)
+	arrows.add_child(down)
+	row.add_child(arrows)
+	return row
+
+func _on_move_qty_arrow(good_id: String, delta: int, qty_lbl: Label) -> void:
+	var avail: int = Stockpile.get_at_tile(_current_tile_id, good_id)
+	_move_qtys[good_id] = clampi(int(_move_qtys.get(good_id, 0)) + delta, 0, avail)
+	qty_lbl.text = str(int(_move_qtys[good_id]))
+	_update_move_cta()
+
+func _update_move_cta() -> void:
+	if _move_cta == null:
+		return
+	var goods := _selected_move_goods()
+	var total := 0
+	for g in goods:
+		total += int(_move_qtys.get(g, 0))
+	_move_cta.text = "Move %d units of %d goods" % [total, goods.size()]
+	_move_cta.disabled = total <= 0
+
+func _on_move_cta_pressed() -> void:
+	var goods_qtys: Dictionary = {}
+	for g in _selected_move_goods():
+		var q := int(_move_qtys.get(g, 0))
+		if q > 0:
+			goods_qtys[str(g)] = q
+	if goods_qtys.is_empty():
+		return
+	move_goods_requested.emit(_current_tile_id, goods_qtys, _move_recurring != null and _move_recurring.button_pressed)
+
 func _refresh_stockpile_section() -> void:
 	if _stockpile_view == null:
 		return
 	_stockpile_view.set_tile(_current_tile_id)
+	_refresh_move_tab()
 
 	var used: int = Stockpile.get_used_capacity(_current_tile_id)
 	if _sell_surplus_button != null:
