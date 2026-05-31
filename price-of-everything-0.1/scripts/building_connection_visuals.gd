@@ -80,9 +80,16 @@ func _draw() -> void:
 		if dst_pos != Vector2.INF:
 			_draw_ant_path(origin_pos, dst_pos)
 
-	# Market output — float MARKET label above origin tile, draw ants toward it
+	# Market output — sold goods sail to the nearest port. Ants run in a straight
+	# line tile -> port, with the MARKET label floating just outside the port.
 	if _has_market_output:
-		var market_pos := _market_label_pos(origin_pos)
+		var market_pos := _market_label_pos(origin_pos)  # fallback: above origin tile
+		var port_tile := Catalog.nearest_port_tile(_origin_tile_id)
+		if port_tile != "":
+			var port_pos := _tile_world_pos_by_id(port_tile)
+			if port_pos != Vector2.INF and port_pos.distance_to(origin_pos) > 1.0:
+				var dir := (port_pos - origin_pos).normalized()
+				market_pos = port_pos + dir * (terrain_layer.tile_set.tile_size.x * 0.5 + 40.0)
 		_draw_ant_path(origin_pos, market_pos)
 		draw_string(
 			ThemeDB.fallback_font,

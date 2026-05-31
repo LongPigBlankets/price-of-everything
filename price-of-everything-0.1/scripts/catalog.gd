@@ -5,6 +5,7 @@ extends Node
 const GOODS_CSV_PATH := "res://data/Goods - goodsMVP.csv"
 const RECIPES_CSV_PATH := "res://data/recipes_all.csv"
 const BUILDINGS_CSV_PATH := "res://data/Buildings - buildingsMVP.csv"
+const PORTS_CSV_PATH := "res://data/ports.csv"
 
 # recipes_all.csv references buildings by internal_name; a few don't match the
 # game's building internal_names, so alias them here. Recipes whose building can't
@@ -36,10 +37,77 @@ var _buildings_by_id: Dictionary = {}
 var _buildings_by_internal_name: Dictionary = {}
 var _all_buildings: Array = []
 
+# Ports storage
+var _ports: Array = []
+
 func _ready() -> void:
 	_load_goods()
 	_load_buildings()
 	_load_recipes()
+	_load_ports()
+
+# =========================================================================
+# PORTS
+# =========================================================================
+
+func _load_ports() -> void:
+	_ports.clear()
+	if not FileAccess.file_exists(PORTS_CSV_PATH):
+		push_warning("Catalog: ports CSV not found at %s" % PORTS_CSV_PATH)
+		return
+	var file := FileAccess.open(PORTS_CSV_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var headers := file.get_csv_line()
+	while not file.eof_reached():
+		var line := file.get_csv_line()
+		if line.size() < headers.size() or line[0] == "":
+			continue
+		var raw := {}
+		for i in headers.size():
+			raw[headers[i].strip_edges().to_lower().replace(" ", "_")] = line[i].strip_edges()
+		_ports.append({
+			"id": raw.get("id", ""),
+			"name": raw.get("name", ""),
+			"tile_id": raw.get("tile_id", ""),
+			"region": raw.get("region", ""),
+		})
+
+func all_ports() -> Array:
+	return _ports.duplicate(true)
+
+func nearest_port_tile(from_tile_id: String) -> String:
+	var best := ""
+	var best_d := 1 << 30
+	for p in _ports:
+		var t: String = p.get("tile_id", "")
+		if t == "":
+			continue
+		var d := tile_hex_distance(from_tile_id, t)
+		if d < best_d:
+			best_d = d
+			best = t
+	return best
+
+func tile_hex_distance(a: String, b: String) -> int:
+	var ca := _port_tile_to_coord(a)
+	var cb := _port_tile_to_coord(b)
+	if ca == Vector2i(-1, -1) or cb == Vector2i(-1, -1):
+		return 0
+	var aa := _oddq_to_axial(ca)
+	var ab := _oddq_to_axial(cb)
+	var dq := aa.x - ab.x
+	var dr := aa.y - ab.y
+	return int((abs(dq) + abs(dr) + abs(dq + dr)) / 2)
+
+func _port_tile_to_coord(tile_id: String) -> Vector2i:
+	var parts := tile_id.split("_")
+	if parts.size() != 3 or not parts[1].is_valid_int() or not parts[2].is_valid_int():
+		return Vector2i(-1, -1)
+	return Vector2i(int(parts[1]) - 1, int(parts[2]) - 1)
+
+func _oddq_to_axial(coord: Vector2i) -> Vector2i:
+	return Vector2i(coord.x, coord.y - int((coord.x - (coord.x & 1)) / 2))
 
 # =========================================================================
 # GOODS

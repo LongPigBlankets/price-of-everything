@@ -25,6 +25,7 @@ func _ready() -> void:
 	_test_catalog_loaded()
 	_test_recipe_requirements()
 	_test_menu_icons()
+	_test_ports()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -35,6 +36,17 @@ func _check(ok: bool, name: String) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  ", name)
+
+func _test_ports() -> void:
+	var ports := Catalog.all_ports()
+	_check(ports.size() == 4, "Catalog loads 4 ports")
+	var fields_ok := true
+	for p in ports:
+		if str(p.get("tile_id", "")) == "" or str(p.get("name", "")) == "":
+			fields_ok = false
+	_check(fields_ok, "every port has a tile_id and name")
+	_check(Catalog.tile_hex_distance("tile_5_10", "tile_5_10") == 0, "tile_hex_distance(self) == 0")
+	_check(Catalog.nearest_port_tile("tile_3_8") == "tile_5_10", "nearest_port_tile picks the closest port")
 
 # Smoke: every script we touch must still parse. load() returns null on a parse
 # error — this is the check that catches the bug class we couldn't verify by hand.
