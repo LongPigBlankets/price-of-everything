@@ -34,6 +34,10 @@ var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
 var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (standing order)
 var pending_transport_shipments: Array = []
 var _shipment_id_counter: int = 0
+var recurring_moves: Array = []   # [{source, dest, goods}] re-issued every turn
+var scheduled_moves: Array = []   # [{source, dest, goods}] one-shot, fired next turn (e.g. split)
+const LARGE_SHIPMENT_THRESHOLD := 500
+const LARGE_SHIPMENT_SURCHARGE := 2.0   # >500 units in one move costs 2x transport (tunable)
 var tile_land_owned: Dictionary = {}
 
 enum SellMode { SELL_ALL, STOCKPILE_ALL, BUILDING_BY_BUILDING }
@@ -293,7 +297,6 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) 
 		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(source_tile, dest_tile))
 	var items: Array = []
 	var total_qty := 0
-	var total_cost := 0.0
 	for good_id in goods_qtys.keys():
 		var want := int(goods_qtys[good_id])
 		if want <= 0:
@@ -301,12 +304,15 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) 
 		var moved := Stockpile.consume(source_tile, str(good_id), want)
 		if moved <= 0:
 			continue
-		var cost := EconomyConfig.transport_cost_for(str(good_id), moved, turns)
-		total_cost += cost
 		total_qty += moved
-		items.append({"good_id": str(good_id), "qty": moved, "cost": cost})
+		items.append({"good_id": str(good_id), "qty": moved})
 	if items.is_empty():
 		return {}
+	var surcharge := LARGE_SHIPMENT_SURCHARGE if total_qty > LARGE_SHIPMENT_THRESHOLD else 1.0
+	var total_cost := 0.0
+	for it in items:
+		it["cost"] = EconomyConfig.transport_cost_for(str(it.good_id), int(it.qty), turns) * surcharge
+		total_cost += it.cost
 	if total_cost > 0.0:
 		add_money(-total_cost)
 	for it in items:
@@ -326,7 +332,39 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) 
 		else:
 			Stockpile.add(dest_tile, it.good_id, it.qty)
 	return {"items": items, "total_qty": total_qty, "turns": turns,
-		"cost": total_cost, "source": source_tile, "dest": dest_tile}
+		"cost": total_cost, "source": source_tile, "dest": dest_tile, "surcharged": surcharge > 1.0}
+
+func preview_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> Dictionary:
+	# Cost/turns for a move WITHOUT consuming — used to populate the large-shipment dialog.
+	var route := Catalog.route(source_tile, dest_tile)
+	var turns: int = int(route.get("turns", 0))
+	if turns >= (1 << 30):
+		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(source_tile, dest_tile))
+	var total_qty := 0
+	for good_id in goods_qtys.keys():
+		total_qty += mini(int(goods_qtys[good_id]), Stockpile.get_at_tile(source_tile, str(good_id)))
+	var surcharge := LARGE_SHIPMENT_SURCHARGE if total_qty > LARGE_SHIPMENT_THRESHOLD else 1.0
+	var total_cost := 0.0
+	for good_id in goods_qtys.keys():
+		var qty := mini(int(goods_qtys[good_id]), Stockpile.get_at_tile(source_tile, str(good_id)))
+		total_cost += EconomyConfig.transport_cost_for(str(good_id), qty, turns) * surcharge
+	return {"turns": turns, "cost": total_cost, "total_qty": total_qty,
+		"per_turn": total_cost / float(maxi(turns, 1)), "surcharged": surcharge > 1.0}
+
+func add_recurring_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> void:
+	recurring_moves.append({"source": source_tile, "dest": dest_tile, "goods": goods_qtys.duplicate(true)})
+
+func add_scheduled_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> void:
+	scheduled_moves.append({"source": source_tile, "dest": dest_tile, "goods": goods_qtys.duplicate(true)})
+
+func run_recurring_and_scheduled_moves() -> void:
+	# Fire one-shot scheduled moves (e.g. the split second half) then re-issue recurring moves.
+	var due: Array = scheduled_moves
+	scheduled_moves = []
+	for m in due:
+		queue_move(str(m.source), str(m.dest), m.goods)
+	for m in recurring_moves:
+		queue_move(str(m.source), str(m.dest), m.goods)
 
 func get_pending_transport_shipments() -> Array:
 	return pending_transport_shipments.duplicate(true)

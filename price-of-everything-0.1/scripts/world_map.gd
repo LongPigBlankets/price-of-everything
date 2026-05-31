@@ -98,10 +98,55 @@ func _complete_move(tile_data: Dictionary) -> void:
 	var dest: String = tile_data.get("id", "")
 	if dest == "" or dest == str(move.get("source", "")):
 		return
-	var summary: Dictionary = MatchState.queue_move(str(move.get("source", "")), dest, move.get("goods", {}))
+	move["dest"] = dest
+	var total := 0
+	for q in move.get("goods", {}).values():
+		total += int(q)
+	if total > MatchState.LARGE_SHIPMENT_THRESHOLD:
+		_show_large_move_dialog(move)
+	else:
+		_execute_move(move)
+
+func _execute_move(move: Dictionary) -> void:
+	var summary: Dictionary = MatchState.queue_move(str(move.source), str(move.dest), move.get("goods", {}))
 	if summary.is_empty():
 		return
-	MatchState.request_toast(_format_move_toast(summary, dest), "success")
+	MatchState.request_toast(_format_move_toast(summary, str(move.dest)), "success")
+	if bool(move.get("recurring", false)):
+		MatchState.add_recurring_move(str(move.source), str(move.dest), move.get("goods", {}))
+
+func _split_move(move: Dictionary) -> void:
+	var goods: Dictionary = move.get("goods", {})
+	var now_half: Dictionary = {}
+	var next_half: Dictionary = {}
+	for g in goods.keys():
+		var q := int(goods[g])
+		now_half[g] = q / 2
+		next_half[g] = q - (q / 2)
+	_execute_move({"source": move.source, "dest": move.dest, "goods": now_half, "recurring": move.get("recurring", false)})
+	MatchState.add_scheduled_move(str(move.source), str(move.dest), next_half)
+	MatchState.request_toast("Second half ships next turn (split to avoid the large-shipment surcharge).", "caution")
+
+func _show_large_move_dialog(move: Dictionary) -> void:
+	var preview: Dictionary = MatchState.preview_move(str(move.source), str(move.dest), move.get("goods", {}))
+	var turns := int(preview.get("turns", 0))
+	var dialog := AcceptDialog.new()
+	dialog.title = "Large shipment"
+	dialog.dialog_text = "Your shipment is too large and will incur additional transport costs.\n\nThis shipment will cost £%.2f per turn for %d turn%s while transiting. Are you sure you want to do this?" % [
+		float(preview.get("per_turn", 0.0)), turns, "" if turns == 1 else "s"]
+	dialog.ok_button_text = "Confirm"
+	dialog.add_cancel_button("Cancel shipment")
+	dialog.add_button("Split over the next 2 turns", true, "split")
+	dialog.confirmed.connect(func() -> void: _execute_move(move))
+	dialog.custom_action.connect(func(action: StringName) -> void:
+		if action == "split":
+			_split_move(move)
+		dialog.hide())
+	dialog.visibility_changed.connect(func() -> void:
+		if not dialog.visible:
+			dialog.queue_free())
+	add_child(dialog)
+	dialog.popup_centered()
 
 func _format_move_toast(summary: Dictionary, dest: String) -> String:
 	return "%s will ship next turn from %s to %s" % [

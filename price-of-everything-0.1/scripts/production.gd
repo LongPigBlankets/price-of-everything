@@ -172,6 +172,9 @@ func _process_production() -> void:
 	# (so they can't be consumed this turn) but before selling (so they're sellable).
 	_flush_output_buffer()
 
+	# Recurring + scheduled (split) tile-to-tile moves fire here, on the merged stock.
+	MatchState.run_recurring_and_scheduled_moves()
+
 	# === SELL PHASE (when production defaults to market) ===
 	if MatchState.sell_mode != MatchState.SellMode.STOCKPILE_ALL:
 		var totals: Dictionary = Stockpile.get_tile_totals(null)

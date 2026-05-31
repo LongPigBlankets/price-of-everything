@@ -29,6 +29,7 @@ func _ready() -> void:
 	await _test_building_ledger()
 	await _test_debug_terminal()
 	_test_queue_move()
+	_test_move_extras()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -39,6 +40,13 @@ func _check(ok: bool, name: String) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  ", name)
+
+func _test_move_extras() -> void:
+	var preview: Dictionary = MatchState.preview_move("tile_12_4", "tile_12_2", {"g_001": 5})
+	_check(preview.has("turns") and preview.has("cost") and preview.has("per_turn"),
+		"preview_move returns route info (turns/cost/per_turn)")
+	MatchState.run_recurring_and_scheduled_moves()  # empty queues — must not crash
+	_check(true, "run_recurring_and_scheduled_moves runs without error")
 
 func _test_queue_move() -> void:
 	Stockpile.add("tile_12_4", "g_001", 10)
