@@ -29,6 +29,16 @@ var _section_labels: Dictionary = {}
 var _section_expanded: Dictionary = {}
 var _building_rows: Array = []
 
+# --- Search / filter / sort ---
+const FILTER_TYPES: Array = ["extraction", "refinery", "metallurgy", "electrochemistry",
+	"farm_forests", "power", "infrastructure", "water", "manufacturing"]
+@onready var search_input: LineEdit = $MarginContainer/VBoxContainer/ControlsVBox/SearchInput
+@onready var filter_bar: HFlowContainer = $MarginContainer/VBoxContainer/ControlsVBox/FilterBar
+@onready var sort_option: OptionButton = $MarginContainer/VBoxContainer/ControlsVBox/SortRow/SortOption
+var _search_query: String = ""
+var _active_filters: Dictionary = {}   # building_type -> true
+var _sort_mode: int = 0                # 0 name, 1 build cost, 2 materials cost
+
 func _ready() -> void:
 	close_button.pressed.connect(hide)
 	if not BuildMode.mode_entered.is_connected(_on_build_mode_entered):
@@ -38,121 +48,61 @@ func _ready() -> void:
 	if not MatchState.money_changed.is_connected(_on_money_changed):
 		MatchState.money_changed.connect(_on_money_changed)
 	title_label.text = "Construct Building"
-	_load_buildings()
-	_load_recipes()
-	print(">>> recipes_by_building keys: ", recipes_by_building.keys())
-	print(">>> sample: ", recipes_by_building.get("b_001", []))
+	_load_data()
+	_setup_controls()
 	_build_panel_content()
 
-func _load_buildings() -> void:
-	var path := "res://data/Buildings - buildingsMVP.csv"
-	if not FileAccess.file_exists(path):
-		push_error("Buildings CSV not found at %s" % path)
-		return
+func _setup_controls() -> void:
+	# Click-only focus + release focus whenever the panel opens, so the search bar
+	# never auto-captures keystrokes — WASD keeps navigating the map. (The
+	# X-triggered search overlay is the only field that auto-focuses.)
+	search_input.focus_mode = Control.FOCUS_CLICK
+	visibility_changed.connect(func() -> void:
+		if visible:
+			search_input.release_focus())
+	search_input.text_changed.connect(func(t: String) -> void:
+		_search_query = t
+		_build_panel_content())
+	sort_option.clear()
+	sort_option.add_item("Name")
+	sort_option.add_item("Build cost")
+	sort_option.add_item("Materials cost")
+	sort_option.item_selected.connect(func(i: int) -> void:
+		_sort_mode = i
+		_build_panel_content())
+	for t in FILTER_TYPES:
+		var chip := Button.new()
+		chip.toggle_mode = true
+		chip.focus_mode = Control.FOCUS_NONE
+		chip.text = String(t).capitalize().replace("_", " ")
+		chip.add_theme_font_size_override("font_size", 13)
+		chip.toggled.connect(_on_filter_toggled.bind(t))
+		filter_bar.add_child(chip)
 
-	var file := FileAccess.open(path, FileAccess.READ)
-	var headers := file.get_csv_line()
+func _on_filter_toggled(pressed: bool, t: String) -> void:
+	if pressed:
+		_active_filters[t] = true
+	else:
+		_active_filters.erase(t)
+	_build_panel_content()
 
-	while not file.eof_reached():
-		var line := file.get_csv_line()
-		if line.size() < 7 or line[0] == "":
-			continue
-
-		var building := _parse_building_row(headers, line)
-		if building.is_empty():
-			continue
-
+func _load_data() -> void:
+	# Buildings + recipes come from Catalog — single source of truth, with the
+	# recipe promotion gate already applied.
+	buildings_by_category.clear()
+	recipes_by_building.clear()
+	for building in Catalog.all_buildings():
 		var category: String = building.get("category", "production")
 		if not buildings_by_category.has(category):
 			buildings_by_category[category] = []
 		buildings_by_category[category].append(building)
-
-	file.close()
-
-func _load_recipes() -> void:
-	var path := "res://data/recipesMVP.csv"  # adjust to your actual CSV filename
-	if not FileAccess.file_exists(path):
-		push_error("Recipes CSV not found at %s" % path)
-		return
-
-	var file := FileAccess.open(path, FileAccess.READ)
-	var headers := file.get_csv_line()
-
-	while not file.eof_reached():
-		var line := file.get_csv_line()
-		if line.size() < 3 or line[0] == "":
-			continue
-
-		var recipe := _parse_recipe_row(headers, line)
-		if recipe.is_empty():
-			continue
-
-		var building_id: String = recipe.building_id
+	for recipe in Catalog.all_recipes():
+		var building_id: String = recipe.get("building_id", "")
 		if building_id == "":
 			continue
 		if not recipes_by_building.has(building_id):
 			recipes_by_building[building_id] = []
 		recipes_by_building[building_id].append(recipe)
-
-	file.close()
-
-func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) -> Dictionary:
-	var result := {}
-	for i in headers.size():
-		var key := headers[i].strip_edges().to_lower().replace(" ", "_")
-		var val: String = line[i].strip_edges() if i < line.size() else ""
-		result[key] = val
-
-	var materials: Array = []
-	for n in range(1, 6):
-		var mat_name: String = result.get("build_material_%d" % n, "")
-		var mat_qty_str: String = result.get("build_qty_%d" % n, "")
-		if mat_name != "" and mat_qty_str != "":
-			materials.append({"name": mat_name, "qty": int(mat_qty_str)})
-
-	return {
-		"id": result.get("id", ""),
-		"internal_name": result.get("internal_name", ""),
-		"name": result.get("display_name", result.get("name", "")),
-		"cost": result.get("build_cost_money", "0"),
-		"category": result.get("building_category", "production").to_lower(),
-		"materials": materials,
-		"icon": result.get("icon", "*"),
-	}
-
-func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> Dictionary:
-	var result := {}
-	for i in headers.size():
-		var key := headers[i].strip_edges().to_lower().replace(" ", "_")
-		var val: String = line[i].strip_edges() if i < line.size() else ""
-		result[key] = val
-
-	# Parse output (first output is the primary)
-	var output_name: String = result.get("output_1", "")
-	var output_qty_str: String = result.get("output_qty_1", "0")
-	var output_qty: int = 0 if output_qty_str == "" else int(output_qty_str)
-
-	# Parse inputs (up to 5)
-	var inputs: Array = []
-	for n in range(1, 6):
-		var inp_name: String = result.get("input_%d" % n, "")
-		var inp_qty_str: String = result.get("qty_%d" % n, "")
-		if inp_name != "" and inp_qty_str != "":
-			inputs.append({"name": inp_name, "qty": int(inp_qty_str)})
-
-	var energy_str: String = result.get("energy_req", "0")
-	var energy_req: int = 0 if energy_str == "" else int(energy_str)
-
-	return {
-		"recipe_id": result.get("recipe_id", ""),
-		"display_name": result.get("display_name", ""),
-		"building_id": result.get("building_id", ""),
-		"energy_req": energy_req,
-		"output_name": output_name,
-		"output_qty": output_qty,
-		"inputs": inputs,
-		"requirements_raw": result.get("requirements", ""),
-	}
 
 func _on_infrastructure_build_pressed(building_id: String) -> void:
 	var building_data: Dictionary = _find_building_data(building_id)
@@ -179,27 +129,94 @@ func _build_panel_content() -> void:
 	_section_expanded.clear()
 	_building_rows.clear()
 
-	for category in SECTION_ORDER:
-		if not buildings_by_category.has(category):
-			continue
+	var has_search: bool = _search_query.strip_edges() != ""
+	var has_filter: bool = not _active_filters.is_empty()
 
-		_add_section(category)
-		var section_container: VBoxContainer = _section_containers[category]
-
-		for building_data in buildings_by_category[category]:
-			var row := BuildingRowScene.instantiate()
-			section_container.add_child(row)
-
-			var building_id: String = building_data.id
-			var recipes_for_this: Array = recipes_by_building.get(building_id, [])
-			row.setup(building_data, recipes_for_this)
-			row.set_affordable(_is_building_affordable(building_data), MatchState.money)
-			row.recipe_selected.connect(_on_recipe_selected)
-			row.expand_toggled.connect(_on_expand_toggled)
-			row.infrastructure_build_pressed.connect(_on_infrastructure_build_pressed)  # NEW
-			_building_rows.append(row)
+	if not has_search and not has_filter:
+		# Default: collapsible category sections, sorted within each.
+		for category in SECTION_ORDER:
+			if not buildings_by_category.has(category):
+				continue
+			_add_section(category)
+			var section_container: VBoxContainer = _section_containers[category]
+			for building_data in _sorted(buildings_by_category[category]):
+				_add_building_row(building_data, section_container, false)
+	else:
+		# Flat filtered / searched list.
+		var candidates: Array = []
+		for category in buildings_by_category.keys():
+			for b in buildings_by_category[category]:
+				if has_filter and not _passes_filter(b):
+					continue
+				if has_search and not _matches_search(b):
+					continue
+				candidates.append(b)
+		candidates = _sorted(candidates)
+		if candidates.is_empty():
+			var empty := Label.new()
+			empty.text = "No buildings match."
+			empty.theme_type_variation = &"Caption"
+			content_vbox.add_child(empty)
+		for building_data in candidates:
+			_add_building_row(building_data, content_vbox, has_search)
 
 	_refresh_build_mode_selection()
+
+func _add_building_row(building_data: Dictionary, parent: Node, expand_for_search: bool) -> void:
+	var row := BuildingRowScene.instantiate()
+	parent.add_child(row)
+	var building_id: String = building_data.id
+	var recipes_for_this: Array = recipes_by_building.get(building_id, [])
+	row.setup(building_data, recipes_for_this)
+	row.set_affordable(_is_building_affordable(building_data), MatchState.money)
+	row.recipe_selected.connect(_on_recipe_selected)
+	row.expand_toggled.connect(_on_expand_toggled)
+	row.infrastructure_build_pressed.connect(_on_infrastructure_build_pressed)
+	_building_rows.append(row)
+	if expand_for_search and recipes_for_this.size() > 1:
+		row.call("_set_expanded", true)
+
+func _passes_filter(b: Dictionary) -> bool:
+	for t in b.get("building_type", []):
+		if _active_filters.has(t):
+			return true
+	return false
+
+func _matches_search(b: Dictionary) -> bool:
+	var q: String = _search_query.strip_edges().to_lower()
+	if q == "":
+		return true
+	if b.get("display_name", "").to_lower().contains(q):
+		return true
+	for recipe in recipes_by_building.get(b.get("id", ""), []):
+		if recipe.get("display_name", "").to_lower().contains(q):
+			return true
+		var out_id: String = recipe.get("output_good_id", "")
+		if out_id != "" and Catalog.get_display_name(out_id).to_lower().contains(q):
+			return true
+		for inp in recipe.get("inputs", []):
+			var gid: String = inp.get("good_id", "")
+			if gid != "" and Catalog.get_display_name(gid).to_lower().contains(q):
+				return true
+	return false
+
+func _sorted(buildings: Array) -> Array:
+	var arr: Array = buildings.duplicate()
+	match _sort_mode:
+		1:  # build cost
+			arr.sort_custom(func(a, b): return float(a.get("base_price", 0)) < float(b.get("base_price", 0)))
+		2:  # materials cost
+			arr.sort_custom(func(a, b): return _materials_value(a) < _materials_value(b))
+		_:  # name
+			arr.sort_custom(func(a, b): return a.get("display_name", "").naturalnocasecmp_to(b.get("display_name", "")) < 0)
+	return arr
+
+func _materials_value(b: Dictionary) -> float:
+	var total: float = 0.0
+	for mat in b.get("materials", []):
+		var good: Dictionary = Catalog.get_good_by_internal_name(mat.get("name", ""))
+		total += float(good.get("base_price", 0.0)) * float(mat.get("qty", 0))
+	return total
 
 func _add_section(category: String) -> void:
 	var header_panel := PanelContainer.new()

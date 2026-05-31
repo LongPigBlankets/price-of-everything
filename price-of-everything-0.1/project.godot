@@ -17,6 +17,7 @@ config/icon="res://scenes/icon.svg"
 
 [autoload]
 
+DS="*res://scripts/ds.gd"
 Catalog="*uid://dknl8ax7uvew7"
 MarketState="*uid://p821obaxl80d"
 Stockpile="*uid://c5n4ujnawka3c"
@@ -35,6 +36,8 @@ PanelStack="*res://scripts/panel_stack.gd"
 
 window/size/viewport_width=1920
 window/size/viewport_height=1080
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 
 [input]
 
@@ -79,7 +82,7 @@ camera_zoom_out={
 
 [rendering]
 
-textures/canvas_textures/default_texture_filter=0
+textures/canvas_textures/default_texture_filter=3
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

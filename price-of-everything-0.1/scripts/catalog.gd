@@ -3,8 +3,23 @@ extends Node
 # Loaded once at game start. Never mutated during a match.
 
 const GOODS_CSV_PATH := "res://data/Goods - goodsMVP.csv"
-const RECIPES_CSV_PATH := "res://data/recipesMVP.csv"
+const RECIPES_CSV_PATH := "res://data/recipes_all.csv"
 const BUILDINGS_CSV_PATH := "res://data/Buildings - buildingsMVP.csv"
+
+# recipes_all.csv references buildings by internal_name; a few don't match the
+# game's building internal_names, so alias them here. Recipes whose building can't
+# be resolved (or whose goods don't all exist) are dropped by the promotion gate.
+const BUILDING_ALIAS := {
+	"power_plant": "coal_power",
+	"factory": "industrial_factory",
+	"industrial_goods_factory": "industrial_factory",
+	"consumer_goods_factory": "consumer_factory",
+	"water_well": "water_pump",
+	"desal_plant": "desal",
+	"water_treatment_plant": "water_recycling",
+	"hydro_dam": "hydro_power_plant",
+	"forest": "new_forest",
+}
 
 # --- Goods storage ---
 var _goods_by_id: Dictionary = {}
@@ -23,8 +38,8 @@ var _all_buildings: Array = []
 
 func _ready() -> void:
 	_load_goods()
-	_load_recipes()
 	_load_buildings()
+	_load_recipes()
 
 # =========================================================================
 # GOODS
@@ -143,27 +158,21 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 		var val: String = line[i].strip_edges() if i < line.size() else ""
 		raw[key] = val
 	
-	# Build inputs array from input_1/qty_1 through input_5/qty_5
+	# Inputs: input_1/qty_1 .. input_6/qty_6
 	var inputs: Array = []
-	for i in range(1, 6):
+	for i in range(1, 7):
 		var input_name: String = raw.get("input_%d" % i, "")
 		var input_qty_str: String = raw.get("qty_%d" % i, "")
 		if input_name == "" or input_qty_str == "":
 			continue
-		# Look up good_id from internal_name (goods loaded first, so this works)
 		var good: Dictionary = get_good_by_internal_name(input_name)
-		var input_good_id: String = good.get("id", "") if not good.is_empty() else ""
 		inputs.append({
-			"good_id": input_good_id,
+			"good_id": good.get("id", ""),
 			"internal_name": input_name,
 			"qty": int(input_qty_str),
 		})
-	
-	# Output: single output for MVP
-	var output_internal: String = raw.get("output_1", "")
-	var output_qty: int = int(raw.get("output_qty_1", "0"))
-	var output_good: Dictionary = get_good_by_internal_name(output_internal) if output_internal != "" else {}
-	var output_good_id: String = output_good.get("id", "")
+
+	# Outputs: output_1/output_qty_1 .. output_5/output_qty_5
 	var outputs: Array = []
 	for i in range(1, 6):
 		var output_name: String = raw.get("output_%d" % i, "")
@@ -179,16 +188,30 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 			"internal_name": output_name,
 			"qty": parsed_output_qty,
 		})
-	
+
+	# --- Promotion gate ---
+	# Active only if the building resolves, there's at least one output, and EVERY
+	# input + output is an existing good. Otherwise the recipe stays dormant.
+	var resolved_building_id := _resolve_building_id(raw.get("building_id", ""))
+	if resolved_building_id == "" or outputs.is_empty():
+		return {}
+	for inp in inputs:
+		if inp.good_id == "":
+			return {}
+	for outp in outputs:
+		if outp.good_id == "":
+			return {}
+
 	return {
 		"recipe_id": raw.get("recipe_id", ""),
 		"display_name": raw.get("display_name", ""),
-		"building_id": raw.get("building_id", ""),
+		"building_id": resolved_building_id,
+		"recipe_type": raw.get("category", ""),
 		"inputs": inputs,
 		"outputs": outputs,
-		"output_name": output_internal,
-		"output_good_id": output_good_id,
-		"output_qty": output_qty,
+		"output_name": outputs[0].internal_name,
+		"output_good_id": outputs[0].good_id,
+		"output_qty": outputs[0].qty,
 		"energy_req": int(raw.get("energy_req", "0")),
 		"requirements": _parse_requirements(raw.get("requirements", "")),
 	}
@@ -205,6 +228,9 @@ func _parse_requirements(raw_str: String) -> Array:
 	for part in parts:
 		var token: String = part.strip_edges()
 		if token == "":
+			continue
+		if token.ends_with("_deposit"):
+			out.append({"type": "deposit", "value": token.trim_suffix("_deposit")})
 			continue
 		if token == "wind" or token == "solar":
 			out.append({"type": "potential", "value": token})
@@ -268,11 +294,20 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 		var val: String = line[i].strip_edges() if i < line.size() else ""
 		raw[key] = val
 	
+	var materials: Array = []
+	for n in range(1, 6):
+		var mat_name: String = raw.get("build_material_%d" % n, "")
+		var mat_qty_str: String = raw.get("build_qty_%d" % n, "")
+		if mat_name != "" and mat_qty_str != "":
+			materials.append({"name": mat_name, "qty": int(mat_qty_str)})
+
 	return {
 		"id": raw.get("id", ""),
 		"internal_name": raw.get("internal_name", ""),
 		"display_name": raw.get("display_name", raw.get("internal_name", "")),
 		"category": raw.get("building_category", "production").to_lower(),
+		"building_type": _split_types(raw.get("building_type", "")),
+		"materials": materials,
 		"base_price": float(raw.get("build_cost_money", "0")),
 		"tile_size_used": 1 if raw.get("tile_size_used", "") == "" else int(raw.get("tile_size_used", "1")),
 		"build_duration": 0 if raw.get("build_duration", "") == "" else int(raw.get("build_duration", "0")),
@@ -295,3 +330,20 @@ func get_building_by_internal_name(internal_name: String) -> Dictionary:
 func get_building_display_name(building_id: String) -> String:
 	var b: Dictionary = _buildings_by_id.get(building_id, {})
 	return b.get("display_name", building_id)
+
+# Resolve a recipe's building reference (internal_name, possibly aliased) to a b_id.
+func _resolve_building_id(building_field: String) -> String:
+	if building_field == "":
+		return ""
+	var internal: String = BUILDING_ALIAS.get(building_field, building_field)
+	var b: Dictionary = _buildings_by_internal_name.get(internal, {})
+	return b.get("id", "")
+
+# Split a pipe-separated building_type field into an array of trimmed tokens.
+func _split_types(s: String) -> Array:
+	var result: Array = []
+	for t in s.split("|", false):
+		var tt: String = t.strip_edges()
+		if tt != "":
+			result.append(tt)
+	return result

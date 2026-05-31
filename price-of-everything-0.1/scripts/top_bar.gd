@@ -19,7 +19,7 @@ func _refresh_money_display(amount: float) -> void:
 	elif amount < 10:
 		money_widget.add_theme_color_override("font_color", Color(1.0, 0.6, 0.2))
 	else:
-		money_widget.add_theme_color_override("font_color", Color.WHITE)
+		money_widget.add_theme_color_override("font_color", Color(0.995234, 0.930806, 0.763265))
 
 func _on_money_clicked() -> void:
 	money_widget_clicked.emit()

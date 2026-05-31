@@ -6,6 +6,13 @@ signal infrastructure_build_pressed(infrastructure_id: String)
 signal expand_toggled(building_id: String, is_expanded: bool)
 
 const RecipeRowScene: PackedScene = preload("res://scenes/recipe_row.tscn")
+const GoodIcons := preload("res://scripts/good_icons.gd")
+const MAT_SLOT_SIZE := Vector2(50, 50)
+const BADGE_DIAMETER := 24
+const BADGE_TEXT_SIZE := 14
+const BADGE_NAVY := Color(0.0, 0.119856, 0.243095, 1.0)
+const BADGE_PAPER := Color(0.995234, 0.930806, 0.763265, 1.0)
+const NAVY := Color(0.015686275, 0.058823529, 0.105882353)
 const ROW_HOVER_TOOLTIP := "Click to build"
 const ACTIVE_COLOR := Color(0.15, 0.48, 0.76, 0.72)
 const UNAFFORDABLE_COLOR := Color(0.12, 0.12, 0.12, 0.28)
@@ -36,7 +43,7 @@ func setup(data: Dictionary, recipes: Array) -> void:
 	building_id = data.get("id", "")
 	is_infrastructure = data.get("category", "") == "infrastructure"
 	infrastructure_key = data.get("internal_name", "")
-	build_cost = float(data.get("cost", 0.0))
+	build_cost = float(data.get("base_price", data.get("cost", 0.0)))
 	recipes_for_this_building = recipes
 
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -46,7 +53,7 @@ func setup(data: Dictionary, recipes: Array) -> void:
 		main_row.gui_input.connect(_on_main_row_gui_input)
 
 	_load_icon(data)
-	name_label.text = data.get("name", "")
+	name_label.text = data.get("display_name", data.get("name", ""))
 	cost_label.text = _money_text(build_cost)
 
 	for child in materials_container.get_children():
@@ -59,6 +66,11 @@ func setup(data: Dictionary, recipes: Array) -> void:
 		var mat_qty: int = mat.get("qty", 0)
 		mat_label.text = "%s +%d" % [mat_name.substr(0, 3).to_upper(), mat_qty]
 		materials_container.add_child(mat_label)
+
+	# Build-material requirements as a 3x2 grid (good icon + qty pill badge, hatched
+	# placeholder for empty slots) inside a white rectangle.
+	materials_container.visible = false
+	_build_material_grid(materials)
 
 	build_button.visible = false
 	expand_button.visible = false
@@ -128,14 +140,33 @@ func _set_expanded(expanded: bool) -> void:
 func _populate_recipes_container() -> void:
 	for child in recipes_container.get_children():
 		child.queue_free()
+	recipes_container.add_theme_constant_override("separation", 8)  # navy gaps between cards
 
+	# Group recipes by recipe_type, preserving first-seen order. Only show the
+	# type sub-headers when a building actually hosts more than one type.
+	var groups: Dictionary = {}
+	var order: Array = []
 	for recipe in recipes_for_this_building:
-		var recipe_row := RecipeRowScene.instantiate()
-		recipes_container.add_child(recipe_row)
-		recipe_row.setup(recipe, building_id)
-		recipe_row.set_affordable(is_affordable)
-		recipe_row.set_selected(recipe.recipe_id == _active_recipe_id and building_id == _active_building_id)
-		recipe_row.recipe_selected.connect(_on_recipe_row_selected)
+		var rtype: String = recipe.get("recipe_type", "")
+		if not groups.has(rtype):
+			groups[rtype] = []
+			order.append(rtype)
+		groups[rtype].append(recipe)
+
+	var show_headers: bool = order.size() > 1
+	for rtype in order:
+		if show_headers and rtype != "":
+			var header := Label.new()
+			header.text = rtype.to_upper().replace("_", " ")
+			header.theme_type_variation = &"Caption"
+			recipes_container.add_child(header)
+		for recipe in groups[rtype]:
+			var recipe_row := RecipeRowScene.instantiate()
+			recipes_container.add_child(recipe_row)
+			recipe_row.setup(recipe, building_id)
+			recipe_row.set_affordable(is_affordable)
+			recipe_row.set_selected(recipe.recipe_id == _active_recipe_id and building_id == _active_building_id)
+			recipe_row.recipe_selected.connect(_on_recipe_row_selected)
 
 func _on_recipe_row_selected(b_id: String, r_id: String) -> void:
 	if not is_affordable:
@@ -179,7 +210,7 @@ func _update_visual_state() -> void:
 	name_label.modulate = Color(1, 1, 1, dim)
 	cost_label.modulate = Color(1.0, 0.45, 0.42, 1.0) if not is_affordable else Color(1, 1, 1, 1)
 	materials_container.modulate = Color(1, 1, 1, dim)
-	if _is_active_building() and not is_expanded and recipes_for_this_building.size() > 1:
+	if _is_active_building() and not is_expanded and recipes_for_this_building.size() >= 1:
 		_set_expanded(true)
 	queue_redraw()
 
@@ -191,8 +222,6 @@ func _is_active_building() -> bool:
 func _draw() -> void:
 	if _unaffordable_flash:
 		draw_rect(Rect2(Vector2.ZERO, size), UNAFFORDABLE_FLASH_COLOR, true)
-	elif _is_active_building():
-		draw_rect(Rect2(Vector2.ZERO, size), ACTIVE_COLOR, true)
 	elif not is_affordable:
 		draw_rect(Rect2(Vector2.ZERO, size), UNAFFORDABLE_COLOR, true)
 
@@ -210,3 +239,129 @@ func _money_text(value: float) -> String:
 	if text.ends_with("."):
 		text = text.trim_suffix(".")
 	return "\u00a3%s" % text
+
+# A navy square with diagonal off-white hatching (placeholder build-material slot).
+class HatchSquare extends Control:
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.015686275, 0.058823529, 0.105882353), true)
+		var off := Color(0.995234, 0.930806, 0.763265, 0.55)
+		var step := 7.0
+		var x := -size.y
+		while x < size.x:
+			draw_line(Vector2(x, size.y), Vector2(x + size.y, 0.0), off, 1.5)
+			x += step
+
+func _build_material_grid(materials: Array) -> void:
+	if has_node("MaterialGrid"):
+		return
+	var count: int = mini(materials.size(), 6)
+	# 1-2 materials sit centred in one row of small icons; 3-6 use two rows,
+	# filled column-major so an odd last column centres vertically.
+	var rows: int = 1 if count <= 2 else 2
+	var cols: int = ceili(float(maxi(count, 1)) / float(rows))
+	var container_h: float = 100.0
+	var icon_size: float = 50.0
+
+	# Off-white panel: expands to the card's right edge, holds the goods grid and
+	# the money cost (navy, Bebas).
+	var panel := PanelContainer.new()
+	panel.name = "MaterialGrid"
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	panel.custom_minimum_size = Vector2(0, container_h + 12.0)
+	var white := StyleBoxFlat.new()
+	white.bg_color = Color(0.995234, 0.930806, 0.763265)
+	white.set_content_margin_all(6)
+	panel.add_theme_stylebox_override("panel", white)
+
+	var inner := HBoxContainer.new()
+	inner.add_theme_constant_override("separation", 8)
+	panel.add_child(inner)
+
+	if count > 0:
+		var columns := HBoxContainer.new()
+		columns.add_theme_constant_override("separation", 4)
+		for col in range(cols):
+			var column := VBoxContainer.new()
+			column.custom_minimum_size = Vector2(icon_size, container_h)
+			column.alignment = BoxContainer.ALIGNMENT_CENTER
+			column.add_theme_constant_override("separation", 0)
+			var items_in_col: int = mini(rows, count - col * rows)
+			for row in range(items_in_col):
+				column.add_child(_make_material_icon(materials[col * rows + row], icon_size))
+			columns.add_child(column)
+		inner.add_child(columns)
+
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inner.add_child(spacer)
+
+	var cost := Label.new()
+	cost.text = _money_text(build_cost)
+	cost.theme_type_variation = &"Title"            # Bebas Neue
+	cost.add_theme_font_size_override("font_size", 32)
+	cost.add_theme_color_override("font_color", NAVY)
+	cost.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	inner.add_child(cost)
+
+	main_row.add_child(panel)
+	main_row.move_child(panel, 2)  # name sits left of the off-white panel
+	cost_label.visible = false       # the cost now lives inside the off-white panel
+
+func _make_material_icon(material: Dictionary, slot_size: float) -> Control:
+	var slot := Control.new()
+	slot.custom_minimum_size = Vector2(slot_size, slot_size)
+	var good: Dictionary = Catalog.get_good_by_internal_name(material.get("name", ""))
+	var tex: Texture2D = GoodIcons.texture_for(good.get("id", ""), material.get("name", ""))
+	if tex != null:
+		var icon := TextureRect.new()
+		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+		icon.texture = tex
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+	else:
+		var hatch := HatchSquare.new()
+		hatch.set_anchors_preset(Control.PRESET_FULL_RECT)
+		hatch.clip_contents = true
+		hatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(hatch)
+	slot.add_child(_make_qty_badge(int(material.get("qty", 0)), slot_size))
+	return slot
+
+# Quantity pill badge matching the build-details recipe cards.
+func _make_qty_badge(qty: int, slot_size: float) -> Control:
+	var qty_text := str(qty)
+	var h: int = BADGE_DIAMETER
+	var w: int = h if qty_text.length() <= 1 else maxi(h, qty_text.length() * 9 + 14)
+	var badge := PanelContainer.new()
+	badge.custom_minimum_size = Vector2(w, h)
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	var overlap: int = maxi(4, roundi(slot_size * 0.10))
+	badge.offset_left = -w + overlap
+	badge.offset_top = -h + overlap
+	badge.offset_right = overlap
+	badge.offset_bottom = overlap
+	var style := StyleBoxFlat.new()
+	style.bg_color = BADGE_NAVY
+	style.border_color = BADGE_PAPER
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(int(h / 2.0))
+	style.set_content_margin_all(0)
+	badge.add_theme_stylebox_override("panel", style)
+	var ls := LabelSettings.new()
+	ls.font_color = BADGE_PAPER
+	ls.font_size = BADGE_TEXT_SIZE
+	var label := Label.new()
+	label.text = qty_text
+	label.custom_minimum_size = Vector2(w, h)
+	label.label_settings = ls
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_child(label)
+	return badge

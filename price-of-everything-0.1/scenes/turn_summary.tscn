@@ -16,10 +16,10 @@ script = ExtResource("1_qj834")
 
 [node name="MarginContainer" type="MarginContainer" parent="." unique_id=2099769448]
 layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 6
 
 [node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=476879255]
 layout_mode = 2

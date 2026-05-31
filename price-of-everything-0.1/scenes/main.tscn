@@ -38,12 +38,12 @@ content_margin_left = 0.0
 content_margin_top = 0.0
 content_margin_right = 0.0
 content_margin_bottom = 0.0
-bg_color = Color(0, 0.119856, 0.243095, 0.72)
+bg_color = Color(0.015686275, 0.058823529, 0.105882353, 1)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.995234, 0.930806, 0.763265, 0.35)
+border_color = Color(0.015686275, 0.058823529, 0.105882353, 1)
 corner_radius_top_left = 50
 corner_radius_top_right = 50
 corner_radius_bottom_right = 50
@@ -54,12 +54,12 @@ content_margin_left = 0.0
 content_margin_top = 0.0
 content_margin_right = 0.0
 content_margin_bottom = 0.0
-bg_color = Color(0, 0.08, 0.17, 0.92)
+bg_color = Color(0.008, 0.03, 0.055, 1)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.995234, 0.930806, 0.763265, 0.9)
+border_color = Color(0.008, 0.03, 0.055, 1)
 corner_radius_top_left = 50
 corner_radius_top_right = 50
 corner_radius_bottom_right = 50
@@ -70,12 +70,12 @@ content_margin_left = 0.0
 content_margin_top = 0.0
 content_margin_right = 0.0
 content_margin_bottom = 0.0
-bg_color = Color(0.02, 0.17, 0.32, 0.84)
+bg_color = Color(0.05, 0.13, 0.22, 1)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.995234, 0.930806, 0.763265, 0.7)
+border_color = Color(0.05, 0.13, 0.22, 1)
 corner_radius_top_left = 50
 corner_radius_top_right = 50
 corner_radius_bottom_right = 50
@@ -87,6 +87,15 @@ corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top_bar"]
+content_margin_left = 16.0
+content_margin_top = 6.0
+content_margin_right = 16.0
+content_margin_bottom = 6.0
+bg_color = Color(0.015686275, 0.058823529, 0.105882353, 1)
+border_width_bottom = 2
+border_color = Color(0.995234, 0.930806, 0.763265, 0.45)
 
 [node name="WorldMap" type="Node2D" unique_id=2144397903]
 script = ExtResource("1_sugp2")
@@ -222,11 +231,15 @@ horizontal_alignment = 1
 [node name="ConstructPanel" parent="UILayer/HUD/HUDContent" unique_id=1084051515 instance=ExtResource("9_85g3d")]
 unique_name_in_owner = true
 layout_mode = 1
+offset_left = 16.0
+offset_top = 58.0
 
 [node name="MapModesPanel" parent="UILayer/HUD/HUDContent" unique_id=2117327633 instance=ExtResource("10_jbj1t")]
 unique_name_in_owner = true
 layout_mode = 0
 anchors_preset = 0
+offset_left = 16.0
+offset_top = 58.0
 
 [node name="BottomMenuPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=1433701742]
 layout_mode = 1
@@ -245,6 +258,7 @@ theme_override_styles/panel = ExtResource("8_tipki")
 
 [node name="BottomMenu" type="HBoxContainer" parent="UILayer/HUD/HUDContent" unique_id=1999718027]
 unique_name_in_owner = true
+texture_filter = 2
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -346,15 +360,15 @@ expand_icon = true
 [node name="TileInfoPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=361507145]
 unique_name_in_owner = true
 visible = false
-custom_minimum_size = Vector2(420, 0)
+custom_minimum_size = Vector2(760, 0)
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -450.0
+offset_left = -790.0
 offset_top = 30.0
 offset_right = -30.0
-offset_bottom = 700.0
+offset_bottom = 660.0
 grow_horizontal = 0
 theme_override_styles/panel = ExtResource("8_tipki")
 script = ExtResource("4_jyhfs")
@@ -371,11 +385,28 @@ layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 12
 
-[node name="TileSizeChart" type="Control" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow" unique_id=1435297557]
-custom_minimum_size = Vector2(230, 400)
+[node name="ChartColumn" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow"]
+custom_minimum_size = Vector2(336, 0)
 layout_mode = 2
-size_flags_vertical = 0
+size_flags_horizontal = 0
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="TileSizeChart" type="Control" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/ChartColumn" unique_id=1435297557]
+custom_minimum_size = Vector2(336, 320)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 script = ExtResource("19_t88fa")
+
+[node name="InfrastructureSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/ChartColumn" unique_id=288549859]
+layout_mode = 2
+
+[node name="InfrastructureTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/ChartColumn" unique_id=117922161]
+layout_mode = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 4
+columns = 4
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow" unique_id=332018308]
 layout_mode = 2
@@ -389,7 +420,7 @@ layout_mode = 2
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 20.0
-theme_override_font_sizes/font_size = 18
+theme_type_variation = &"Title"
 text = "Tile Info"
 
 [node name="CloseButton" type="Button" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/HeaderRow" unique_id=1603141935]
@@ -399,38 +430,38 @@ localize_numeral_system = false
 theme_override_font_sizes/font_size = 14
 text = "X"
 
-[node name="TileImageBanner" type="PanelContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=1263267594]
+[node name="BannerSummary" type="PanelContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BannerMargin" type="MarginContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/BannerSummary"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="BannerContent" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/BannerSummary/BannerMargin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TileImageBanner" type="PanelContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/BannerSummary/BannerMargin/BannerContent" unique_id=1263267594]
 clip_contents = true
 custom_minimum_size = Vector2(240, 150)
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_tile_banner")
 
-[node name="HeaderSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=1742528492]
+[node name="RightScroll" type="ScrollContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer"]
 layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
 
-[node name="PropertyTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=671887475]
+[node name="RightScrollContent" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/RightScroll"]
 layout_mode = 2
-theme_override_constants/h_separation = 16
-columns = 2
-
-[node name="DepositsSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=445841671]
-layout_mode = 2
-
-[node name="DepositsTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=897654742]
-layout_mode = 2
-theme_override_constants/h_separation = 8
-theme_override_constants/v_separation = 4
-columns = 3
-
-[node name="InfrastructureSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=288549859]
-layout_mode = 2
-
-[node name="InfrastructureTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=117922161]
-layout_mode = 2
-theme_override_constants/h_separation = 8
-theme_override_constants/v_separation = 4
-columns = 4
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
 
 [node name="BuildingDetailPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=1081644289]
 unique_name_in_owner = true
@@ -464,7 +495,7 @@ layout_mode = 2
 [node name="TitleLabel" type="Label" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=195859302]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 18
+theme_type_variation = &"BuildingName"
 
 [node name="CloseButton" type="Button" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/HeaderRow" unique_id=1498546560]
 custom_minimum_size = Vector2(28, 28)
@@ -514,9 +545,9 @@ theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 0
 
 [node name="FlowArrow" type="TextureRect" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame/FlowRow" unique_id=2116048691]
-custom_minimum_size = Vector2(130, 60)
+custom_minimum_size = Vector2(80, 48)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_horizontal = 4
 size_flags_vertical = 4
 expand_mode = 1
 
@@ -564,7 +595,8 @@ layout_mode = 0
 anchors_preset = 0
 anchor_top = 0.0
 anchor_bottom = 0.0
-offset_top = 0.0
+offset_left = 16.0
+offset_top = 58.0
 offset_bottom = 620.0
 grow_vertical = 1
 
@@ -578,6 +610,8 @@ offset_bottom = -28.0
 [node name="MarketPanel" parent="UILayer/HUD/HUDContent" unique_id=964377119 instance=ExtResource("14_a8y0u")]
 unique_name_in_owner = true
 layout_mode = 0
+offset_left = 16.0
+offset_top = 58.0
 offset_right = 479.0
 
 [node name="TurnSummary" parent="UILayer/HUD/HUDContent" unique_id=678202477 instance=ExtResource("15_jkv2x")]
@@ -607,14 +641,16 @@ custom_minimum_size = Vector2(0, 36)
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
-offset_top = -36.0
+offset_top = 0.0
 offset_bottom = 58.0
 grow_horizontal = 2
 mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_top_bar")
 script = ExtResource("17_muem4")
 
 [node name="MarginContainer" type="MarginContainer" parent="UILayer/HUD/TopBar" unique_id=24487180]
 layout_mode = 2
+theme_override_constants/margin_right = 276
 
 [node name="HBoxContainer" type="HBoxContainer" parent="UILayer/HUD/TopBar/MarginContainer" unique_id=284602422]
 layout_mode = 2
@@ -624,52 +660,54 @@ theme_override_constants/separation = 16
 custom_minimum_size = Vector2(140, 0)
 layout_mode = 2
 mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 16
 flat = true
 
-[node name="HBoxContainer" type="HBoxContainer" parent="UILayer/HUD/TopBar/MarginContainer/HBoxContainer/MoneyWidget" unique_id=415391343]
-layout_mode = 0
-offset_right = 1896.0
-offset_bottom = 34.0
-
-[node name="RedDot" type="Panel" parent="UILayer/HUD/TopBar/MarginContainer/HBoxContainer/MoneyWidget/HBoxContainer" unique_id=1149312814]
-custom_minimum_size = Vector2(12, 12)
+[node name="EncyclopediaHitBox" type="Control" parent="UILayer/HUD/TopBar"]
 layout_mode = 2
+mouse_filter = 2
 
-[node name="MoneyLabel" type="Label" parent="UILayer/HUD/TopBar/MarginContainer/HBoxContainer/MoneyWidget/HBoxContainer" unique_id=1855931887]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 18
-text = "£0.00"
-
-[node name="TurnCounter" type="Label" parent="UILayer/HUD/TopBar/MarginContainer" unique_id=94115056]
+[node name="EncyclopediaButton" type="Button" parent="UILayer/HUD/TopBar/EncyclopediaHitBox"]
 unique_name_in_owner = true
-layout_mode = 2
-theme_override_font_sizes/font_size = 24
-text = "Turn 1/300"
-horizontal_alignment = 2
-
-[node name="EncyclopediaButton" type="Button" parent="UILayer/HUD/TopBar"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(132, 26)
+custom_minimum_size = Vector2(120, 36)
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -324.0
-offset_top = 42.0
-offset_right = -188.0
-offset_bottom = 68.0
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = 0.0
+offset_right = -140.0
+offset_bottom = 0.0
 grow_horizontal = 0
 grow_vertical = 0
 mouse_default_cursor_shape = 2
 theme_override_colors/font_color = Color(0.995234, 0.930806, 0.763265, 1)
 theme_override_colors/font_hover_color = Color(0.995234, 0.930806, 0.763265, 1)
 theme_override_colors/font_pressed_color = Color(0.995234, 0.930806, 0.763265, 0.82)
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 16
 text = "ENCYCLOPEDIA"
 flat = true
+
+[node name="TurnCounter" type="Label" parent="UILayer/HUD/TopBar/EncyclopediaHitBox" unique_id=94115056]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 36)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -140.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.995234, 0.930806, 0.763265, 1)
+theme_override_font_sizes/font_size = 16
+text = "Turn 1/300"
+vertical_alignment = 1
+horizontal_alignment = 2
 
 [node name="ToastLayer" type="Control" parent="UILayer/HUD" unique_id=386310155]
 layout_mode = 1
@@ -680,6 +718,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("27_toast")
+
 [node name="SearchOverlay" type="Control" parent="UILayer/HUD"]
 unique_name_in_owner = true
 visible = false

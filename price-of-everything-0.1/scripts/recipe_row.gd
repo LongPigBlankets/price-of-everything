@@ -1,45 +1,77 @@
-extends HBoxContainer
+extends MarginContainer
 
 signal recipe_selected(building_id: String, recipe_id: String)
 
-const SELECTED_COLOR := Color(0.18, 0.52, 0.8, 0.65)
-const UNAFFORDABLE_COLOR := Color(0.12, 0.12, 0.12, 0.25)
-const UNAFFORDABLE_FLASH_COLOR := Color(0.7, 0.12, 0.08, 0.48)
+const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
+const NAVY := Color(0.015686275, 0.058823529, 0.105882353)
+const UNAFFORDABLE_FLASH_COLOR := Color(0.7, 0.12, 0.08, 0.5)
+const GoodIcons := preload("res://scripts/good_icons.gd")
 
-@onready var name_label: Label = $NameLabel
-@onready var details_label: Label = $DetailsLabel
-@onready var power_label: Label = $PowerLabel
-@onready var build_button: Button = $BuildButton
+@onready var output_icon: TextureRect = $Row/OutputIcon
+@onready var name_label: Label = $Row/TextColumn/NameLabel
+@onready var detail_label: Label = $Row/TextColumn/DetailLabel
+@onready var power_box: PanelContainer = $Row/PowerBox
+@onready var power_label: Label = $Row/PowerBox/PowerMargin/PowerLabel
 
 var building_id: String = ""
 var recipe_id: String = ""
 var is_selected: bool = false
 var is_affordable: bool = true
 var _unaffordable_flash := false
+var _card_style: StyleBoxFlat
+var _selected_border: StyleBoxFlat
+var _glow: GradientTexture2D
+
+func _ready() -> void:
+	_card_style = StyleBoxFlat.new()
+	_card_style.bg_color = OFF_WHITE
+	_card_style.set_corner_radius_all(0)
+	_selected_border = StyleBoxFlat.new()
+	_selected_border.bg_color = Color(0, 0, 0, 0)
+	_selected_border.set_border_width_all(2)
+	_selected_border.border_color = NAVY
+	_selected_border.set_corner_radius_all(0)
+	# Soft white glow that feathers outward from the goods icon.
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 1.0])
+	g.colors = PackedColorArray([Color(1, 1, 1, 0.45), Color(1, 1, 1, 0.0)])
+	_glow = GradientTexture2D.new()
+	_glow.gradient = g
+	_glow.fill = GradientTexture2D.FILL_RADIAL
+	_glow.fill_from = Vector2(0.5, 0.5)
+	_glow.fill_to = Vector2(1.0, 0.5)
+	_glow.width = 96
+	_glow.height = 96
+	queue_redraw()
 
 func setup(recipe_data: Dictionary, parent_building_id: String) -> void:
 	building_id = parent_building_id
-	recipe_id = recipe_data.recipe_id
-	name_label.text = recipe_data.display_name
+	recipe_id = recipe_data.get("recipe_id", "")
+	name_label.text = recipe_data.get("display_name", "")
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	if not gui_input.is_connected(_on_row_gui_input):
 		gui_input.connect(_on_row_gui_input)
 
-	var input_strs: Array = []
-	for inp in recipe_data.inputs:
-		input_strs.append("%s+%d" % [inp.name.substr(0, 3).to_upper(), inp.qty])
-	var inputs_str: String = ", ".join(input_strs) if input_strs.size() > 0 else "none"
-	var output_str := "->%s+%d" % [recipe_data.output_name.substr(0, 3).to_upper(), recipe_data.output_qty]
-	details_label.text = "%s  %s" % [inputs_str, output_str]
+	output_icon.texture = GoodIcons.texture_for(recipe_data.get("output_good_id", ""), recipe_data.get("output_name", ""))
 
-	power_label.text = "pwr:%d" % recipe_data.energy_req
-	build_button.visible = false
-	if not build_button.pressed.is_connected(_on_build_pressed):
-		build_button.pressed.connect(_on_build_pressed)
+	var parts: Array = []
+	for inp in recipe_data.get("inputs", []):
+		parts.append("%d %s" % [int(inp.get("qty", 0)), _good_label(inp.get("good_id", ""), inp.get("internal_name", ""))])
+	var inputs_str: String = ", ".join(parts) if parts.size() > 0 else "raw extraction"
+	detail_label.text = "%s  →  %d %s" % [
+		inputs_str, int(recipe_data.get("output_qty", 0)),
+		_good_label(recipe_data.get("output_good_id", ""), recipe_data.get("output_name", ""))]
+
+	var energy: int = int(recipe_data.get("energy_req", 0))
+	power_box.visible = energy != 0
+	power_label.text = "⚡%d" % energy
 	_update_visual_state()
+	queue_redraw()
 
-func _on_build_pressed() -> void:
-	_on_row_pressed()
+func _good_label(good_id: String, internal_name: String) -> String:
+	if good_id != "":
+		return Catalog.get_display_name(good_id)
+	return String(internal_name).capitalize()
 
 func _on_row_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -54,26 +86,31 @@ func _on_row_pressed() -> void:
 
 func set_selected(value: bool) -> void:
 	is_selected = value
-	_update_visual_state()
+	queue_redraw()
 
 func set_affordable(value: bool) -> void:
 	is_affordable = value
 	_update_visual_state()
 
 func _update_visual_state() -> void:
-	var dim := 0.45 if not is_affordable else 1.0
-	name_label.modulate = Color(1, 1, 1, dim)
-	details_label.modulate = Color(1, 1, 1, dim)
-	power_label.modulate = Color(1, 1, 1, dim)
+	modulate = Color(1, 1, 1, 0.5) if not is_affordable else Color(1, 1, 1, 1)
 	queue_redraw()
 
 func _draw() -> void:
+	if _card_style == null:
+		return
+	# Off-white card.
+	draw_style_box(_card_style, Rect2(Vector2.ZERO, size))
+	# Feather glow radiating from the goods icon.
+	var icon_c := Vector2(30.0, size.y * 0.5)
+	var r := size.y * 1.5
+	draw_texture_rect(_glow, Rect2(icon_c - Vector2(r, r), Vector2(r * 2.0, r * 2.0)), false)
+	# States.
 	if _unaffordable_flash:
 		draw_rect(Rect2(Vector2.ZERO, size), UNAFFORDABLE_FLASH_COLOR, true)
 	elif is_selected:
-		draw_rect(Rect2(Vector2.ZERO, size), SELECTED_COLOR, true)
-	elif not is_affordable:
-		draw_rect(Rect2(Vector2.ZERO, size), UNAFFORDABLE_COLOR, true)
+		# Confident navy border, inset from the white edge.
+		draw_style_box(_selected_border, Rect2(Vector2(4, 4), size - Vector2(8, 8)))
 
 func _flash_unaffordable() -> void:
 	_unaffordable_flash = true
