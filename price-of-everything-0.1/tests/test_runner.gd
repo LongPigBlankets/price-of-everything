@@ -30,6 +30,7 @@ func _ready() -> void:
 	await _test_debug_terminal()
 	_test_queue_move()
 	_test_move_extras()
+	_test_storage_boost()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -40,6 +41,11 @@ func _check(ok: bool, name: String) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  ", name)
+
+func _test_storage_boost() -> void:
+	MatchState.add_building("b_004", "", "tile_3_3", "Three Diamonds Shipping Corporation")
+	_check(Stockpile.get_capacity("tile_3_3") == Stockpile.TILE_CAPACITY + 500,
+		"storage_boost raises tile capacity (port = +500)")
 
 func _test_move_extras() -> void:
 	var preview: Dictionary = MatchState.preview_move("tile_12_4", "tile_12_2", {"g_001": 5})

@@ -671,6 +671,8 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 		"labour_unskilled_required": int(raw.get("labour_unskilled_required", "0")),
 		"labour_skilled_required": int(raw.get("labour_skilled_required", "0")),
 		"labour_h_skilled_required": int(raw.get("labour_h_skilled_required", "0")),
+		"storage_boost": int(raw.get("storage_boost", "0")) if str(raw.get("storage_boost", "0")).is_valid_int() else 0,
+		"energy_cost": int(raw.get("energy_cost", "0")) if str(raw.get("energy_cost", "0")).is_valid_int() else 0,
 	}
 
 # Public API
