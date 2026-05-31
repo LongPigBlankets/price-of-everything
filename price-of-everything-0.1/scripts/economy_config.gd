@@ -35,7 +35,8 @@ const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
 	"solid_light": 0.2,
 	"solid_heavy": 0.2,
 	"ultra_heavy": 0.2,
-	"liquid": 0.2,
+	"safe_liquid": 0.2,
+	"hazard_liquid": 0.2,
 	"gas": 0.2,
 	"electricity": 0.2,
 }

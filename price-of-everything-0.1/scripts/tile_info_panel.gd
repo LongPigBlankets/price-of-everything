@@ -1203,7 +1203,7 @@ func _normalise_infrastructure_name(infra_name: String) -> String:
 			return "rails"
 		"pipework", "pipeworks", "pipes":
 			return "pipes"
-		"reinforced_pipes", "reinforced_pipework", "reinforced_pipeworks":
+		"reinf_pipes":
 			return "reinf_pipes"
 		"hvdc":
 			return "hvdc"

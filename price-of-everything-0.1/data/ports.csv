@@ -1,0 +1,5 @@
+id,name,tile_id,region
+port_stoneshore,Stoneshore Docks,tile_5_10,west
+port_arin,Arin Estuary Docks,tile_11_17,south
+port_capital,Capital Port,tile_24_7,east
+port_vandel,Vandel's Skip,tile_22_16,east
