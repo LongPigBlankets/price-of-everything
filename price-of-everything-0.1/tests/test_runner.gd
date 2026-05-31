@@ -31,6 +31,7 @@ func _ready() -> void:
 	_test_queue_move()
 	_test_move_extras()
 	_test_storage_boost()
+	_test_queue_sell()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -46,6 +47,15 @@ func _test_storage_boost() -> void:
 	MatchState.add_building("b_004", "", "tile_3_3", "Three Diamonds Shipping Corporation")
 	_check(Stockpile.get_capacity("tile_3_3") == Stockpile.TILE_CAPACITY + 500,
 		"storage_boost raises tile capacity (port = +500)")
+
+func _test_queue_sell() -> void:
+	Stockpile.add("tile_3_8", "g_001", 8)
+	var before: int = MatchState.get_pending_transport_shipments().size()
+	var summary: Dictionary = MatchState.queue_sell("tile_3_8", {"g_001": 8})
+	_check(not summary.is_empty(), "queue_sell returns a summary")
+	_check(Stockpile.get_at_tile("tile_3_8", "g_001") == 0, "queue_sell consumes from source")
+	_check(str(summary.get("port", "")) != "" and MatchState.get_pending_transport_shipments().size() > before,
+		"queue_sell ships to a port")
 
 func _test_move_extras() -> void:
 	var preview: Dictionary = MatchState.preview_move("tile_12_4", "tile_12_2", {"g_001": 5})

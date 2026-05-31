@@ -36,6 +36,7 @@ var pending_transport_shipments: Array = []
 var _shipment_id_counter: int = 0
 var recurring_moves: Array = []   # [{source, dest, goods}] re-issued every turn
 var scheduled_moves: Array = []   # [{source, dest, goods}] one-shot, fired next turn (e.g. split)
+var recurring_sells: Array = []   # [{source, goods}] re-sold to the nearest port every turn
 const LARGE_SHIPMENT_THRESHOLD := 500
 const LARGE_SHIPMENT_SURCHARGE := 2.0   # >500 units in one move costs 2x transport (tunable)
 var tile_land_owned: Dictionary = {}
@@ -365,6 +366,50 @@ func run_recurring_and_scheduled_moves() -> void:
 		queue_move(str(m.source), str(m.dest), m.goods)
 	for m in recurring_moves:
 		queue_move(str(m.source), str(m.dest), m.goods)
+	for m in recurring_sells:
+		queue_sell(str(m.source), m.goods)
+
+func add_recurring_sell(source_tile: String, goods_qtys: Dictionary) -> void:
+	recurring_sells.append({"source": source_tile, "goods": goods_qtys.duplicate(true)})
+
+func queue_sell(source_tile: String, goods_qtys: Dictionary) -> Dictionary:
+	# Sell specific goods/qtys from a tile: ship to the nearest port, pay out on arrival.
+	if source_tile == "":
+		return {}
+	var port := Catalog.nearest_port_tile(source_tile)
+	var route := Catalog.route(source_tile, port) if port != "" else {}
+	var turns: int = int(route.get("turns", 0))
+	if turns >= (1 << 30):
+		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(source_tile, port))
+	var items: Array = []
+	var total_qty := 0
+	var total_revenue := 0.0
+	for good_id in goods_qtys.keys():
+		var want := int(goods_qtys[good_id])
+		if want <= 0:
+			continue
+		var sold := Stockpile.consume(source_tile, str(good_id), want)
+		if sold <= 0:
+			continue
+		var revenue := float(sold) * MarketState.get_price(str(good_id))
+		items.append({"good_id": str(good_id), "qty": sold, "revenue": revenue})
+		total_qty += sold
+		total_revenue += revenue
+	if items.is_empty():
+		return {}
+	var sale_record := {"tile_id": source_tile, "items": items, "total_qty": total_qty, "total_revenue": total_revenue}
+	if port != "" and turns >= 1:
+		queue_transport_shipment({
+			"is_sale": true, "source_tile": source_tile, "destination_tile": port,
+			"sale_record": sale_record.duplicate(true),
+			"turns_remaining": turns, "transport_turns": turns,
+			"tiles": route.get("tiles", []), "path": route.get("path", []), "legs": route.get("legs", []),
+		})
+	else:
+		for it in items:
+			add_money(float(it.revenue))
+		emit_stockpile_market_sale_completed(sale_record)
+	return {"items": items, "total_qty": total_qty, "revenue": total_revenue, "turns": turns, "port": port}
 
 func get_pending_transport_shipments() -> Array:
 	return pending_transport_shipments.duplicate(true)
