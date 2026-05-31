@@ -33,6 +33,7 @@ var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
 var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (standing order)
 var pending_transport_shipments: Array = []
+var _shipment_id_counter: int = 0
 var tile_land_owned: Dictionary = {}
 
 enum SellMode { SELL_ALL, STOCKPILE_ALL, BUILDING_BY_BUILDING }
@@ -270,7 +271,11 @@ func emit_stockpile_market_sale_completed(sale_record: Dictionary) -> void:
 	stockpile_market_sale_completed.emit(sale_record)
 
 func queue_transport_shipment(shipment: Dictionary) -> void:
-	pending_transport_shipments.append(shipment.duplicate(true))
+	var s := shipment.duplicate(true)
+	if not s.has("id"):
+		_shipment_id_counter += 1
+		s["id"] = _shipment_id_counter  # stable id so the overlay can track it across turns
+	pending_transport_shipments.append(s)
 	transport_shipments_changed.emit()
 
 func get_pending_transport_shipments() -> Array:

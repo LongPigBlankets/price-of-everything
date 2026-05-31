@@ -1,26 +1,33 @@
 extends Node2D
-## Logistics map overlay. When the Logistics mapmode is active it dims the map and
-## draws every origin->destination route as a thick coloured line (soft white glow)
-## running tile-centre to tile-centre, with a triangle at the origin and a 60x60 box
-## at the destination. Each IN-TRANSIT SHIPMENT gets a 120x60 pentagon (rectangle +
-## triangle pointing at the destination) in the route colour, with the turns-to-go
-## in bold white; hover it for the full goods breakdown. Parallel routes sharing
-## tiles spread 50px apart and cross when they diverge.
+## Logistics map overlay.
 ##
-## NOTE: sizes are world-units (Node2D space), tuned by eye — expect in-engine tweaks.
+## When the Logistics mapmode is active: dim the map and draw every
+## origin->destination route as a thick coloured line (soft white glow) tile-centre
+## to tile-centre, triangle at origin, 60x60 box at destination. Each in-transit
+## shipment gets a 120x60 pentagon (rectangle + tip toward the destination) in the
+## route colour with turns-to-go in bold white; hover it for the goods breakdown.
+## Parallel routes sharing tiles spread 50px apart and cross when they diverge.
+##
+## During the turn transition (TurnManager's 5 resolution phases x 0.5s = 2.5s) the
+## shipment pentagons also appear on the NORMAL map (no dim/lines), gliding from
+## their current tile to the next in 5 equal hops; the turn number is HELD during
+## the move and counts down once the new turn starts. They vanish when resolution ends.
+##
+## NOTE: sizes are world-units, tuned by eye — expect in-engine tweaks.
 
 @onready var terrain_layer: HexMap = %TerrainLayer
 
 const LINE_WIDTH := 20.0
 const DEST_BOX := 60.0
-const TAG_LEN := 120.0   # along the line (incl. the pointed tip)
-const TAG_WID := 60.0    # across the line
-const TAG_TIP := 30.0    # length of the pointed tip
+const TAG_LEN := 120.0
+const TAG_WID := 60.0
+const TAG_TIP := 30.0
 const PARALLEL_GAP := 50.0
 const TRIANGLE_LEN := 30.0
 const TRIANGLE_HALF := 18.0
 const PANEL := Vector2(120, 120)
 const DIM_COLOUR := Color(0, 0, 0, 0.55)
+const ANIM_TOTAL_STEPS := 5
 const PALETTE: Array = [
 	Color(0.13, 0.55, 0.13), Color(0.95, 0.83, 0.18), Color(0.47, 0.78, 1.0),
 	Color(0.55, 0.35, 0.88), Color(0.22, 0.22, 0.22), Color(0.95, 0.48, 0.14),
@@ -28,8 +35,12 @@ const PALETTE: Array = [
 ]
 
 var _routes: Array = []
-var _tag_hits: Array = []      # [{centre, dir, turns, goods, color}] one per in-transit shipment
+var _tag_hits: Array = []
 var _hover_tag := -1
+# Turn-transition animation
+var _resolving := false
+var _anim_steps := 0
+var _anim_snapshot: Array = []  # [{pos_a, pos_b, dir, turns, goods, color}]
 
 func _ready() -> void:
 	add_to_group("logistics_overlay")
@@ -37,25 +48,80 @@ func _ready() -> void:
 	set_process(false)
 	MapMode.selections_changed.connect(_on_mode_changed)
 	MapMode.mode_cleared.connect(_on_mode_cleared)
+	TurnManager.turn_resolution_started.connect(_on_resolution_started)
+	TurnManager.phase_completed.connect(_on_phase_completed)
+	TurnManager.turn_resolution_completed.connect(_on_resolution_completed)
 
-func _on_mode_changed(mode: int, _sel: Array) -> void:
-	var active := mode == MapMode.Mode.LOGISTICS
+func _update_visibility() -> void:
+	var active := MapMode.current_mode == MapMode.Mode.LOGISTICS or _resolving
 	visible = active
 	set_process(active)
 	queue_redraw()
 
+func _on_mode_changed(_mode: int, _sel: Array) -> void:
+	_update_visibility()
+
 func _on_mode_cleared() -> void:
-	visible = false
-	set_process(false)
 	_hover_tag = -1
-	queue_redraw()
+	_update_visibility()
 
 func _process(_delta: float) -> void:
 	queue_redraw()
 
+# --- turn-transition animation ---
+func _on_resolution_started() -> void:
+	_resolving = true
+	_anim_steps = 0
+	_snapshot_shipments()
+	_update_visibility()
+
+func _on_phase_completed(_phase: int) -> void:
+	if _resolving:
+		_anim_steps = mini(_anim_steps + 1, ANIM_TOTAL_STEPS)
+		queue_redraw()
+
+func _on_resolution_completed() -> void:
+	_resolving = false
+	_anim_snapshot.clear()
+	_update_visibility()
+
+func _snapshot_shipments() -> void:
+	# Captured BEFORE the PROCESS phase decrements turns_remaining, so pos_a/turns are
+	# the pre-turn values and pos_b is where the shipment moves to this turn.
+	_anim_snapshot.clear()
+	var colors := _route_color_map()
+	for s in MatchState.get_pending_transport_shipments():
+		var path: Array = s.get("path", [])
+		if path.is_empty():
+			continue
+		var total := int(s.get("transport_turns", path.size() - 1))
+		var rem := int(s.get("turns_remaining", 0))
+		var idx: int = clampi(total - rem, 0, path.size() - 1)
+		var pos_a := _tile_pos(str(path[idx]))
+		if pos_a == Vector2.INF:
+			continue
+		var pos_b := _tile_pos(str(path[clampi(idx + 1, 0, path.size() - 1)]))
+		if pos_b == Vector2.INF:
+			pos_b = pos_a
+		var dir := pos_b - pos_a
+		dir = dir.normalized() if dir.length() > 0.5 else Vector2.RIGHT
+		var key := str(s.get("source_tile", "")) + "->" + str(s.get("destination_tile", ""))
+		_anim_snapshot.append({
+			"pos_a": pos_a, "pos_b": pos_b, "dir": dir, "turns": rem,
+			"goods": _shipment_goods(s), "color": colors.get(key, Color.WHITE),
+		})
+
+# --- data ---
 func get_routes() -> Array:
 	_rebuild_routes()
 	return _routes
+
+func _route_color_map() -> Dictionary:
+	_rebuild_routes()
+	var m: Dictionary = {}
+	for r in _routes:
+		m[str(r.source) + "->" + str(r.dest)] = r.color
+	return m
 
 func _rebuild_routes() -> void:
 	_routes.clear()
@@ -127,31 +193,47 @@ func _build_segment_offsets() -> Dictionary:
 		offsets[k] = per
 	return offsets
 
+# --- drawing ---
 func _draw() -> void:
-	if MapMode.current_mode != MapMode.Mode.LOGISTICS:
+	var mapmode_on := MapMode.current_mode == MapMode.Mode.LOGISTICS
+	if not mapmode_on and not _resolving:
 		return
-	draw_rect(Rect2(-100000, -100000, 200000, 200000), DIM_COLOUR)
-	_rebuild_routes()
-	if _routes.is_empty():
-		return
-	var seg_offsets := _build_segment_offsets()
-	var route_colors: Dictionary = {}
-	for r in _routes:
-		route_colors[str(r.source) + "->" + str(r.dest)] = r.color
-	for r in _routes:
-		_draw_route_line(r, seg_offsets)
-	_build_shipment_tags(route_colors)
-	for t in _tag_hits:
-		_draw_tag(t, false)
-	var mouse := to_local(get_global_mouse_position())
-	_hover_tag = -1
-	for i in _tag_hits.size():
-		if _point_in_tag(mouse, _tag_hits[i]):
-			_hover_tag = i
-			break
-	if _hover_tag >= 0:
-		_draw_tag(_tag_hits[_hover_tag], true)
-		_draw_hover_panel(_tag_hits[_hover_tag])
+	if mapmode_on:
+		draw_rect(Rect2(-100000, -100000, 200000, 200000), DIM_COLOUR)
+		_rebuild_routes()
+		var route_colors: Dictionary = {}
+		for r in _routes:
+			route_colors[str(r.source) + "->" + str(r.dest)] = r.color
+		if not _routes.is_empty():
+			var seg_offsets := _build_segment_offsets()
+			for r in _routes:
+				_draw_route_line(r, seg_offsets)
+		if _resolving:
+			_draw_animated_tags()
+		else:
+			_build_shipment_tags(route_colors)
+			for t in _tag_hits:
+				_draw_tag(t, false)
+			var mouse := to_local(get_global_mouse_position())
+			_hover_tag = -1
+			for i in _tag_hits.size():
+				if _point_in_tag(mouse, _tag_hits[i]):
+					_hover_tag = i
+					break
+			if _hover_tag >= 0:
+				_draw_tag(_tag_hits[_hover_tag], true)
+				_draw_hover_panel(_tag_hits[_hover_tag])
+	else:
+		# Mapmode off but mid-transition: just the gliding shipment pentagons.
+		_draw_animated_tags()
+
+func _draw_animated_tags() -> void:
+	var p := float(_anim_steps) / float(ANIM_TOTAL_STEPS)
+	for snap in _anim_snapshot:
+		_draw_tag({
+			"centre": (snap.pos_a as Vector2).lerp(snap.pos_b, p),
+			"dir": snap.dir, "turns": snap.turns, "goods": snap.goods, "color": snap.color,
+		}, false)
 
 func _offset_point(p: Vector2, seg_dir: Vector2, amount: float) -> Vector2:
 	return p + Vector2(-seg_dir.y, seg_dir.x) * amount
@@ -221,7 +303,6 @@ func _build_shipment_tags(route_colors: Dictionary) -> void:
 		if dir == Vector2.ZERO:
 			dir = Vector2.RIGHT
 		var pos := cur
-		# On a bend, slide the tag onto the outward (departing) leg and along its normal.
 		if incoming != Vector2.ZERO and outgoing != Vector2.ZERO and incoming.dot(outgoing) < 0.95:
 			var perp := Vector2(-outgoing.y, outgoing.x)
 			pos = cur + outgoing * (tsz * 0.28) + perp * (tsz * 0.10)
@@ -239,12 +320,11 @@ func _draw_tag(tag: Dictionary, hovered: bool) -> void:
 	var half_len := TAG_LEN / 2.0
 	var half_wid := TAG_WID / 2.0
 	var rect_front := half_len - TAG_TIP
-	# Pentagon: rectangle body + triangle tip pointing toward the destination.
 	var poly := PackedVector2Array([
 		c - along * half_len + perp * half_wid,
 		c - along * half_len - perp * half_wid,
 		c + along * rect_front - perp * half_wid,
-		c + along * half_len,                       # tip toward destination
+		c + along * half_len,
 		c + along * rect_front + perp * half_wid,
 	])
 	var col: Color = tag.color
@@ -253,10 +333,9 @@ func _draw_tag(tag: Dictionary, hovered: bool) -> void:
 	draw_colored_polygon(poly, col)
 	draw_polyline(PackedVector2Array([poly[0], poly[1], poly[2], poly[3], poly[4], poly[0]]),
 		Color(1, 1, 1, 0.85), 2.0)
-	# Turns-to-go, bold white, centred (rotated with the tag).
 	var label := str(int(tag.turns))
 	draw_set_transform(c, along.angle(), Vector2.ONE)
-	for off in [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]:  # fake-bold
+	for off in [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]:
 		draw_string(ThemeDB.fallback_font, Vector2(-half_len, 9.0) + off, label,
 			HORIZONTAL_ALIGNMENT_CENTER, TAG_LEN, 26, Color.WHITE)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
