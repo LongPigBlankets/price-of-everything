@@ -43,6 +43,11 @@ func _ready() -> void:
 	MatchState.building_added.connect(_on_building_added)
 	MatchState.money_changed.connect(_on_money_changed)
 	MatchState.stockpile_market_sale_completed.connect(_on_stockpile_market_sale_completed)
+	MatchState.toast_requested.connect(_on_toast_requested)
+
+func _on_toast_requested(message: String, toast_type: String) -> void:
+	var stack := _warning_stack if toast_type == TOAST_WARNING else _success_stack
+	_push_toast(stack, message, toast_type)
 
 func _build_stacks() -> void:
 	_success_stack = VBoxContainer.new()

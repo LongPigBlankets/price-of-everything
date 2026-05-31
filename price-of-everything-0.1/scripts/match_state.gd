@@ -51,6 +51,7 @@ signal state_reset
 signal sell_mode_changed(new_mode: int)
 signal route_objective_changed(new_objective: int)
 signal labour_multiplier_changed(new_value: float)
+signal toast_requested(message: String, toast_type: String)
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)
@@ -277,6 +278,55 @@ func queue_transport_shipment(shipment: Dictionary) -> void:
 		s["id"] = _shipment_id_counter  # stable id so the overlay can track it across turns
 	pending_transport_shipments.append(s)
 	transport_shipments_changed.emit()
+
+func request_toast(message: String, toast_type: String = "success") -> void:
+	toast_requested.emit(message, toast_type)
+
+func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> Dictionary:
+	# Move goods from one tile to another: consume now, ship via the router, deliver
+	# to the destination stockpile on arrival. Returns a summary for the UI/toast.
+	if source_tile == "" or dest_tile == "" or source_tile == dest_tile:
+		return {}
+	var route := Catalog.route(source_tile, dest_tile)
+	var turns: int = int(route.get("turns", 0))
+	if turns >= (1 << 30):
+		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(source_tile, dest_tile))
+	var items: Array = []
+	var total_qty := 0
+	var total_cost := 0.0
+	for good_id in goods_qtys.keys():
+		var want := int(goods_qtys[good_id])
+		if want <= 0:
+			continue
+		var moved := Stockpile.consume(source_tile, str(good_id), want)
+		if moved <= 0:
+			continue
+		var cost := EconomyConfig.transport_cost_for(str(good_id), moved, turns)
+		total_cost += cost
+		total_qty += moved
+		items.append({"good_id": str(good_id), "qty": moved, "cost": cost})
+	if items.is_empty():
+		return {}
+	if total_cost > 0.0:
+		add_money(-total_cost)
+	for it in items:
+		if turns >= 1:
+			queue_transport_shipment({
+				"source_tile": source_tile,
+				"destination_tile": dest_tile,
+				"good_id": it.good_id,
+				"qty": it.qty,
+				"turns_remaining": turns,
+				"transport_turns": turns,
+				"transport_cost": it.cost,
+				"tiles": route.get("tiles", []),
+				"path": route.get("path", []),
+				"legs": route.get("legs", []),
+			})
+		else:
+			Stockpile.add(dest_tile, it.good_id, it.qty)
+	return {"items": items, "total_qty": total_qty, "turns": turns,
+		"cost": total_cost, "source": source_tile, "dest": dest_tile}
 
 func get_pending_transport_shipments() -> Array:
 	return pending_transport_shipments.duplicate(true)

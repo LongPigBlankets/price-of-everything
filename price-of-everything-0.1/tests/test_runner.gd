@@ -28,6 +28,7 @@ func _ready() -> void:
 	_test_ports()
 	await _test_building_ledger()
 	await _test_debug_terminal()
+	_test_queue_move()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -38,6 +39,14 @@ func _check(ok: bool, name: String) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  ", name)
+
+func _test_queue_move() -> void:
+	Stockpile.add("tile_12_4", "g_001", 10)
+	var before_pending: int = MatchState.get_pending_transport_shipments().size()
+	var summary: Dictionary = MatchState.queue_move("tile_12_4", "tile_12_2", {"g_001": 10})
+	_check(not summary.is_empty(), "queue_move returns a summary")
+	_check(Stockpile.get_at_tile("tile_12_4", "g_001") == 0, "queue_move consumes from source")
+	_check(MatchState.get_pending_transport_shipments().size() > before_pending, "queue_move queues a shipment")
 
 func _test_debug_terminal() -> void:
 	var term: Node = load("res://scripts/debug_terminal.gd").new()
