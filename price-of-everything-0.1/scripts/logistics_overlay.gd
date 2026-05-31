@@ -354,11 +354,11 @@ func _draw_hover_panel(tag: Dictionary) -> void:
 	var z := maxf(0.01, get_viewport().get_canvas_transform().get_scale().x)
 	var tile_w: float = terrain_layer.tile_set.tile_size.x
 	var quarter_screen := tile_w * 0.25 * z
-	var step_px := 200.0
+	var step_px := 140.0
 	if quarter_screen > 320.0:
-		step_px = 400.0
+		step_px = 280.0
 	elif quarter_screen > 240.0:
-		step_px = 300.0
+		step_px = 210.0
 	var world_w := step_px / z
 	var lines: Array = []
 	for g in tag.goods.keys():
@@ -369,7 +369,7 @@ func _draw_hover_panel(tag: Dictionary) -> void:
 	var avail := world_w - 2.0 * pad
 	# Font scales with the panel (legible at every zoom step), shrinking only if a
 	# line would overflow the width.
-	var base := maxf(8.0, world_w * 0.16)
+	var base := maxf(8.0, world_w * 0.15)
 	var max_w := 1.0
 	for ln in lines:
 		max_w = maxf(max_w, ThemeDB.fallback_font.get_string_size(ln, HORIZONTAL_ALIGNMENT_LEFT, -1, int(base)).x)
