@@ -85,16 +85,25 @@ func _on_output_stockpile_selection_cancelled() -> void:
 	_hide_stockpile_select_prompt()
 	_exit_stockpile_ui_mode()
 
+func _logistics_overlay() -> Node:
+	return get_tree().get_first_node_in_group("logistics_overlay")
+
 func _on_move_goods_requested(source_tile: String, goods_qtys: Dictionary, recurring: bool) -> void:
 	_pending_move = {"source": source_tile, "goods": goods_qtys, "recurring": recurring}
 	terrain_layer.begin_stockpile_destination_selection("")
 	_enter_stockpile_ui_mode()
+	var ov := _logistics_overlay()
+	if ov != null and ov.has_method("set_move_preview"):
+		ov.set_move_preview(source_tile, goods_qtys)
 
 func _complete_move(tile_data: Dictionary) -> void:
 	var move := _pending_move
 	_pending_move = {}
 	terrain_layer.end_stockpile_destination_selection()
 	_exit_stockpile_ui_mode()
+	var ov := _logistics_overlay()
+	if ov != null and ov.has_method("clear_move_preview"):
+		ov.clear_move_preview()
 	var dest: String = tile_data.get("id", "")
 	if dest == "" or dest == str(move.get("source", "")):
 		return

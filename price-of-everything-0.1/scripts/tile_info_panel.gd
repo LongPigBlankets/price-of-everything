@@ -1198,14 +1198,13 @@ func _build_move_tab(parent: VBoxContainer) -> void:
 	_move_steppers.add_theme_constant_override("separation", 2)
 	parent.add_child(_move_steppers)
 
-	_move_recurring = CheckBox.new()
-	_move_recurring.text = "Make recurring every turn"
-	parent.add_child(_move_recurring)
+	_move_recurring = _make_custom_checkbox()
+	parent.add_child(_make_setting_row("Make recurring every turn", _move_recurring))
 
 	_move_cta = Button.new()
 	_move_cta.custom_minimum_size = Vector2(0, 34)
 	_move_cta.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_apply_button_text_style(_move_cta)
+	_apply_button_paper_style(_move_cta)
 	_move_cta.pressed.connect(_on_move_cta_pressed)
 	parent.add_child(_move_cta)
 
@@ -1302,6 +1301,45 @@ func _make_move_stepper(good_id: String) -> Control:
 	arrows.add_child(down)
 	row.add_child(arrows)
 	return row
+
+func _make_custom_checkbox() -> CheckBox:
+	# Borderless checkbox with the custom check icon on the right (matches "sell surplus").
+	var cb := CheckBox.new()
+	cb.text = ""
+	cb.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	cb.add_theme_icon_override("unchecked", _get_checkbox_icon(false))
+	cb.add_theme_icon_override("checked", _get_checkbox_icon(true))
+	cb.add_theme_icon_override("unchecked_disabled", _get_checkbox_icon(false))
+	cb.add_theme_icon_override("checked_disabled", _get_checkbox_icon(true))
+	cb.flat = true
+	var no_box := StyleBoxEmpty.new()
+	for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
+		cb.add_theme_stylebox_override(state, no_box)
+	return cb
+
+func _apply_button_paper_style(button: Button) -> void:
+	# Off-white fill, navy text — the "paper" button (vs the blue/white-outline default).
+	var navy := Color(0.015686275, 0.058823529, 0.105882353)
+	button.add_theme_color_override("font_color", navy)
+	button.add_theme_color_override("font_hover_color", navy)
+	button.add_theme_color_override("font_pressed_color", Color(navy.r, navy.g, navy.b, 0.82))
+	button.add_theme_color_override("font_disabled_color", Color(navy.r, navy.g, navy.b, 0.4))
+	var base := StyleBoxFlat.new()
+	base.bg_color = OFF_WHITE
+	base.content_margin_left = 12
+	base.content_margin_right = 12
+	base.content_margin_top = 6
+	base.content_margin_bottom = 6
+	var hover := base.duplicate()
+	hover.bg_color = Color(OFF_WHITE.r, OFF_WHITE.g, OFF_WHITE.b, 0.9)
+	var pressed := base.duplicate()
+	pressed.bg_color = Color(OFF_WHITE.r * 0.9, OFF_WHITE.g * 0.9, OFF_WHITE.b * 0.9)
+	var disabled := base.duplicate()
+	disabled.bg_color = Color(OFF_WHITE.r, OFF_WHITE.g, OFF_WHITE.b, 0.5)
+	button.add_theme_stylebox_override("normal", base)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("disabled", disabled)
 
 func _make_arrow_button(glyph: String) -> Button:
 	# Borderless 15px clickable arrow (no button box).

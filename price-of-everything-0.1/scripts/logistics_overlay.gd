@@ -41,6 +41,9 @@ var _hover_tag := -1
 var _resolving := false
 var _anim_steps := 0
 var _anim_snapshot: Array = []  # [{pos_a, pos_b, dir, turns, goods, color}]
+# Move-destination preview (shown while picking a Move destination)
+var _move_preview_source := ""
+var _move_preview_goods: Dictionary = {}
 
 func _ready() -> void:
 	add_to_group("logistics_overlay")
@@ -53,10 +56,41 @@ func _ready() -> void:
 	TurnManager.turn_resolution_completed.connect(_on_resolution_completed)
 
 func _update_visibility() -> void:
-	var active := MapMode.current_mode == MapMode.Mode.LOGISTICS or _resolving
+	var active := MapMode.current_mode == MapMode.Mode.LOGISTICS or _resolving or _move_preview_source != ""
 	visible = active
 	set_process(active)
 	queue_redraw()
+
+func set_move_preview(source: String, goods: Dictionary) -> void:
+	_move_preview_source = source
+	_move_preview_goods = goods.duplicate(true)
+	_update_visibility()
+
+func clear_move_preview() -> void:
+	_move_preview_source = ""
+	_move_preview_goods = {}
+	_update_visibility()
+
+func _draw_move_preview() -> void:
+	var hovered := terrain_layer.get_hovered_destination_tile_id()
+	if hovered == "" or hovered == _move_preview_source:
+		return
+	var pos := _tile_pos(hovered)
+	if pos == Vector2.INF:
+		return
+	var preview: Dictionary = MatchState.preview_move(_move_preview_source, hovered, _move_preview_goods)
+	var turns := int(preview.get("turns", 0))
+	var text := "£%.2f/turn · %d turn%s" % [float(preview.get("per_turn", 0.0)), turns, "" if turns == 1 else "s"]
+	var tile_w: float = terrain_layer.tile_set.tile_size.x
+	var font := maxf(12.0, tile_w * 0.055)  # world units — scales with zoom, ~shipment-overlay size
+	var tw: float = ThemeDB.fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(font)).x
+	var pad := font * 0.5
+	var box := Vector2(tw + 2.0 * pad, font + 2.0 * pad)
+	var origin := pos - Vector2(box.x / 2.0, box.y + tile_w * 0.35)
+	draw_rect(Rect2(origin, box), Color(0.03, 0.05, 0.09, 0.95))
+	draw_rect(Rect2(origin, box), Color(0.7, 0.85, 1.0, 0.6), false, 2.0)
+	draw_string(ThemeDB.fallback_font, origin + Vector2(pad, pad + font * 0.85), text,
+		HORIZONTAL_ALIGNMENT_LEFT, box.x - 2.0 * pad, int(font), Color.WHITE)
 
 func _on_mode_changed(_mode: int, _sel: Array) -> void:
 	_update_visibility()
@@ -196,7 +230,7 @@ func _build_segment_offsets() -> Dictionary:
 # --- drawing ---
 func _draw() -> void:
 	var mapmode_on := MapMode.current_mode == MapMode.Mode.LOGISTICS
-	if not mapmode_on and not _resolving:
+	if not mapmode_on and not _resolving and _move_preview_source == "":
 		return
 	if mapmode_on:
 		draw_rect(Rect2(-100000, -100000, 200000, 200000), DIM_COLOUR)
@@ -223,9 +257,11 @@ func _draw() -> void:
 			if _hover_tag >= 0:
 				_draw_tag(_tag_hits[_hover_tag], true)
 				_draw_hover_panel(_tag_hits[_hover_tag])
-	else:
+	elif _resolving:
 		# Mapmode off but mid-transition: just the gliding shipment pentagons.
 		_draw_animated_tags()
+	if _move_preview_source != "":
+		_draw_move_preview()
 
 func _draw_animated_tags() -> void:
 	var p := float(_anim_steps) / float(ANIM_TOTAL_STEPS)
