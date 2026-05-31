@@ -44,7 +44,10 @@ func _on_mapmode_pressed(mode_id: String) -> void:
 				if not ok:
 					print("[Mapmodes] Power rejected — another mode is active")
 		"logistics":
-			print("[Mapmodes] logistics not yet implemented")
+			if MapMode.current_mode == MapMode.Mode.LOGISTICS:
+				MapMode.clear_all()
+			else:
+				MapMode.add_selection(MapMode.Mode.LOGISTICS, MapMode.LOGISTICS_SENTINEL)
 		"infrastructure":
 			print("[Mapmodes] infrastructure not yet implemented")
 

@@ -313,7 +313,7 @@ func route(source_tile: String, dest_tile: String, good_id: String = "") -> Dict
 	if source_tile == "" or dest_tile == "":
 		return {"turns": 0, "path": [], "legs": []}
 	if source_tile == dest_tile:
-		return {"turns": 0, "path": [source_tile], "legs": []}  # 0-turn same-tile
+		return {"turns": 0, "path": [source_tile], "legs": [], "tiles": [source_tile]}  # 0-turn same-tile
 	var modes := _modes_for_good(good_id)
 	var INF := 1 << 30
 	var dist: Dictionary = {source_tile: 0}
@@ -336,7 +336,7 @@ func route(source_tile: String, dest_tile: String, good_id: String = "") -> Dict
 				dist[nb] = nd
 				prev[nb] = {"from": u, "mode": entry.mode}
 	if not dist.has(dest_tile):
-		return {"turns": INF, "path": [], "legs": []}  # unreachable via networks
+		return {"turns": INF, "path": [], "legs": [], "tiles": []}  # unreachable via networks
 	var path: Array = [dest_tile]
 	var legs: Array = []
 	var cur := dest_tile
@@ -345,7 +345,40 @@ func route(source_tile: String, dest_tile: String, good_id: String = "") -> Dict
 		legs.push_front({"mode": p.mode, "from": p.from, "to": cur})
 		path.push_front(p.from)
 		cur = p.from
-	return {"turns": int(dist[dest_tile]), "path": path, "legs": legs}
+	var tiles: Array = [source_tile]
+	for leg in legs:
+		var seg := _mode_shortest_path(str(leg.from), str(leg.to), str(leg.mode))
+		for i in range(1, seg.size()):
+			tiles.append(seg[i])
+	return {"turns": int(dist[dest_tile]), "path": path, "legs": legs, "tiles": tiles}
+
+func _mode_shortest_path(from_tile: String, to_tile: String, mode: String) -> Array:
+	# BFS shortest tile path from->to staying on one mode's network.
+	if from_tile == to_tile:
+		return [from_tile]
+	var prev: Dictionary = {}
+	var visited: Dictionary = {from_tile: true}
+	var queue: Array = [from_tile]
+	var head := 0
+	while head < queue.size():
+		var u: String = queue[head]
+		head += 1
+		if u == to_tile:
+			break
+		for nb in tile_neighbours(u):
+			if visited.has(nb) or not _tile_supports_mode(nb, mode):
+				continue
+			visited[nb] = true
+			prev[nb] = u
+			queue.append(nb)
+	if not prev.has(to_tile):
+		return [from_tile, to_tile]  # fallback (shouldn't happen for a valid leg)
+	var out: Array = [to_tile]
+	var cur := to_tile
+	while prev.has(cur):
+		cur = prev[cur]
+		out.push_front(cur)
+	return out
 
 # =========================================================================
 # GOODS

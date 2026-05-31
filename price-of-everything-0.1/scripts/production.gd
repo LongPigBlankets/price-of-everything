@@ -357,6 +357,7 @@ func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, sum
 			"turns_remaining": int(route.turns),
 			"path": route.get("path", []),
 			"legs": route.get("legs", []),
+			"tiles": route.get("tiles", []),
 		})
 	else:
 		MatchState.add_money(revenue)
@@ -389,6 +390,7 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 			"transport_cost": transport_cost,
 			"path": route.get("path", []),
 			"legs": route.get("legs", []),
+			"tiles": route.get("tiles", []),
 		})
 		return
 
@@ -436,6 +438,7 @@ func _transport_route(source_tile: String, destination_tile, good_id: String = "
 		"delayed": turns > 1,
 		"path": r.get("path", []),
 		"legs": r.get("legs", []),
+		"tiles": r.get("tiles", []),
 	}
 
 func _tile_distance(source_tile: String, destination_tile: String) -> int:
@@ -510,6 +513,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 			"turns_remaining": int(route.turns),
 			"path": route.get("path", []),
 			"legs": route.get("legs", []),
+			"tiles": route.get("tiles", []),
 		})
 	elif emit_toast and float(sale_record.total_revenue) > 0.0:
 		MatchState.emit_stockpile_market_sale_completed(sale_record)

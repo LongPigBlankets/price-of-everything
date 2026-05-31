@@ -31,6 +31,7 @@
 [ext_resource type="Texture2D" uid="uid://bt38bgcu8l5h7" path="res://assets/icons/ui_icons/tech_icon.png" id="26_tech"]
 [ext_resource type="Script" path="res://scripts/toast_manager.gd" id="27_toast"]
 [ext_resource type="Script" path="res://scripts/building_connection_visuals.gd" id="28_bcv"]
+[ext_resource type="Script" path="res://scripts/logistics_overlay.gd" id="29_log"]
 [ext_resource type="Script" path="res://scripts/search_overlay.gd" id="29_search"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_normal"]
@@ -135,6 +136,9 @@ script = ExtResource("6_eb6dy")
 [node name="BuildingConnectionVisuals" type="Node2D" parent="." unique_id=1853095284]
 unique_name_in_owner = true
 script = ExtResource("28_bcv")
+
+[node name="LogisticsOverlay" type="Node2D" parent="."]
+script = ExtResource("29_log")
 
 [node name="UILayer" type="CanvasLayer" parent="." unique_id=1882417710]
 
