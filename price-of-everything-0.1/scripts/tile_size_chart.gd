@@ -578,7 +578,7 @@ func _infrastructure_internal_name(building: Dictionary) -> String:
 			return "rails"
 		"pipework", "pipeworks", "pipes":
 			return "pipes"
-		"reinforced_pipes", "reinforced_pipework", "reinforced_pipeworks":
+		"reinf_pipes":
 			return "reinf_pipes"
 		"hvdc":
 			return "hvdc"

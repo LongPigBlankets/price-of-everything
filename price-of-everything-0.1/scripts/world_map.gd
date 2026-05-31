@@ -341,6 +341,7 @@ func _try_build_infrastructure(tile_id: String, coord: Vector2i, tile: Dictionar
 	infra.append(infra_type)
 	tile["infrastructure_present"] = infra
 	terrain_layer.tiles[coord] = tile
+	Catalog.add_tile_infrastructure(tile_id, infra_type)  # so the router uses built roads/rail
 
 	print("Built %s on %s — cost £%.2f" % [infra_type, tile_id, cost])
 

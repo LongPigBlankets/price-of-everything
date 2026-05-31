@@ -12,6 +12,9 @@ var _building_turn_reports: Array = []  # BuildingTurnReport dicts for CostSolve
 # { tile_id -> { good_id -> {"cost": float, "qty": float} } }. Used to impute inbound
 # transport into the unit cost of buildings that consume those goods.
 var _inbound_delivery_this_turn: Dictionary = {}
+# This turn's same-tile (0-turn) outputs, merged into stockpiles AFTER production
+# so a good produced this turn can't be consumed by another building the same turn.
+var _output_buffer: Array = []
 var summary := {
 	# ... existing fields ...
 	"interest_paid": 0.0,
@@ -39,6 +42,7 @@ func _process_production() -> void:
 	missing_by_building.clear()
 	_building_turn_reports.clear()
 	_inbound_delivery_this_turn.clear()
+	_output_buffer.clear()
 	Power.reset_for_turn()
 	
 	var summary := {
@@ -164,6 +168,10 @@ func _process_production() -> void:
 		MatchState.add_money(grid.grid_sell_revenue)
 		summary.power_sales_revenue = grid.grid_sell_revenue
 		summary.money_in += grid.grid_sell_revenue
+	# Merge this turn's same-tile outputs into stockpiles now — after all production
+	# (so they can't be consumed this turn) but before selling (so they're sellable).
+	_flush_output_buffer()
+
 	# === SELL PHASE (when production defaults to market) ===
 	if MatchState.sell_mode != MatchState.SellMode.STOCKPILE_ALL:
 		var totals: Dictionary = Stockpile.get_tile_totals(null)
@@ -285,8 +293,11 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		summary.produced[good.id] = summary.produced.get(good.id, 0) + output_qty
 		_record_building_output(building.instance_id, good.id, output_qty)
 
-func _process_transport_arrivals(_summary: Dictionary) -> void:
+func _process_transport_arrivals(summary: Dictionary) -> void:
 	for shipment in MatchState.advance_transport_shipments():
+		if shipment.get("is_sale", false):
+			_credit_arrived_sale(shipment, summary)
+			continue
 		var destination_tile: String = shipment.get("destination_tile", "")
 		var good_id: String = shipment.get("good_id", "")
 		var qty: int = int(shipment.get("qty", 0))
@@ -303,16 +314,71 @@ func _process_transport_arrivals(_summary: Dictionary) -> void:
 				Catalog.get_display_name(good_id),
 			])
 
+func _credit_arrived_sale(shipment: Dictionary, summary: Dictionary) -> void:
+	# A sale shipment reached its port this turn — pay out the locked-in revenue.
+	var sale_record: Dictionary = shipment.get("sale_record", {})
+	for item in sale_record.get("items", []):
+		var gid := str(item.get("good_id", ""))
+		var qty := int(item.get("qty", 0))
+		var rev := float(item.get("revenue", 0.0))
+		if rev > 0.0:
+			MatchState.add_money(rev)
+			_add_summary_sale(summary, gid, qty, rev)
+	if float(sale_record.get("total_revenue", 0.0)) > 0.0:
+		MatchState.emit_stockpile_market_sale_completed(sale_record)
+
+func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, summary: Dictionary) -> void:
+	# Output destined for the market ships to the nearest port; revenue lands on arrival.
+	var good_id: String = good.id
+	var revenue: float = float(qty) * MarketState.get_price(good_id)
+	var port_tile := Catalog.nearest_port_tile(source_tile) if source_tile != "" else ""
+	var route := _transport_route(source_tile, port_tile, good_id)
+	# Pay to ship the output to its market (the port) — surfaced as transport cost.
+	var transport_cost: float = EconomyConfig.transport_cost_for(good_id, qty, int(route.turns))
+	if transport_cost > 0.0:
+		MatchState.add_money(-transport_cost)
+		summary.transport_paid += transport_cost
+		summary.money_out += transport_cost
+	var sale_record := {
+		"tile_id": source_tile,
+		"items": [{"good_id": good_id, "qty": qty, "revenue": revenue}],
+		"total_qty": qty,
+		"total_revenue": revenue,
+	}
+	if port_tile != "" and int(route.turns) >= 1:
+		# Goods are in transit; cash arrives when the port receives them (x turns later).
+		MatchState.queue_transport_shipment({
+			"is_sale": true,
+			"source_tile": source_tile,
+			"destination_tile": port_tile,
+			"sale_record": sale_record,
+			"tile_distance": route.tile_distance,
+			"transport_turns": route.turns,
+			"turns_remaining": int(route.turns),
+			"path": route.get("path", []),
+			"legs": route.get("legs", []),
+			"tiles": route.get("tiles", []),
+		})
+	else:
+		MatchState.add_money(revenue)
+		_add_summary_sale(summary, good_id, qty, revenue)
+		MatchState.emit_stockpile_market_sale_completed(sale_record)
+
 func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: int, summary: Dictionary) -> void:
 	var stockpile_coord = _output_stockpile_coord(building, good.id)
-	var route := _transport_route(building.get("tile_id", ""), stockpile_coord)
+	if stockpile_coord == null:
+		# Market-bound output (no stockpile destination): sell it via the nearest port.
+		_sell_output_to_market(str(building.get("tile_id", "")), good, qty, summary)
+		return
+	var route := _transport_route(building.get("tile_id", ""), stockpile_coord, good.id)
 	var transport_cost: float = EconomyConfig.transport_cost_for(good.id, qty, int(route.turns))
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 		summary.transport_paid += transport_cost
 		summary.money_out += transport_cost
 
-	if route.delayed:
+	if int(route.turns) >= 1:
+		# Inter-tile: in transit, arrives route.turns turns later.
 		MatchState.queue_transport_shipment({
 			"source_tile": building.get("tile_id", ""),
 			"destination_tile": str(stockpile_coord),
@@ -320,22 +386,33 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 			"qty": qty,
 			"tile_distance": route.tile_distance,
 			"transport_turns": route.turns,
-			"turns_remaining": int(route.turns) - 1,
+			"turns_remaining": int(route.turns),
 			"transport_cost": transport_cost,
+			"path": route.get("path", []),
+			"legs": route.get("legs", []),
+			"tiles": route.get("tiles", []),
 		})
 		return
 
-	var added: int = Stockpile.add(stockpile_coord, good.id, qty)
-	if stockpile_coord != null and str(stockpile_coord) != "":
-		var per_unit_transport: float = (transport_cost / float(qty)) if qty > 0 else 0.0
-		_record_inbound_delivery(str(stockpile_coord), good.id, added, per_unit_transport)
-	if added < qty:
-		push_warning("[Production] Stockpile full for %s; stored %d/%d %s" % [
-			str(stockpile_coord),
-			added,
-			qty,
-			good.display_name,
-		])
+	# Same-tile (0-turn) output: buffer it, merged after all production this turn.
+	_output_buffer.append({
+		"coord": stockpile_coord,
+		"good_id": good.id,
+		"qty": qty,
+		"transport_cost": transport_cost,
+	})
+
+func _flush_output_buffer() -> void:
+	for o in _output_buffer:
+		var added: int = Stockpile.add(o.coord, str(o.good_id), int(o.qty))
+		if o.coord != null and str(o.coord) != "":
+			var per_unit: float = (float(o.transport_cost) / float(o.qty)) if int(o.qty) > 0 else 0.0
+			_record_inbound_delivery(str(o.coord), str(o.good_id), added, per_unit)
+		if added < int(o.qty):
+			push_warning("[Production] Stockpile full for %s; stored %d/%d %s" % [
+				str(o.coord), added, int(o.qty), Catalog.get_display_name(str(o.good_id)),
+			])
+	_output_buffer.clear()
 
 func _output_stockpile_coord(building: Dictionary, good_id: String):
 	var instance_id: String = building.get("instance_id", "")
@@ -346,19 +423,22 @@ func _output_stockpile_coord(building: Dictionary, good_id: String):
 		return building.get("tile_id", null)
 	return null
 
-func _transport_route(source_tile: String, destination_tile) -> Dictionary:
+func _transport_route(source_tile: String, destination_tile, good_id: String = "") -> Dictionary:
 	if destination_tile == null or str(destination_tile) == "":
-		return {
-			"tile_distance": 0,
-			"turns": 0,
-			"delayed": false,
-		}
-	var distance := _tile_distance(source_tile, str(destination_tile))
-	var turns := EconomyConfig.transport_turns_for_tile_distance(distance)
+		return {"tile_distance": 0, "turns": 0, "delayed": false, "path": [], "legs": []}
+	var dest := str(destination_tile)
+	var r := Catalog.route(source_tile, dest, good_id)
+	var turns: int = int(r.get("turns", 0))
+	if turns >= (1 << 30):
+		# Unreachable via road/rail/overland networks — fall back to straight-line overland.
+		turns = EconomyConfig.transport_turns_for_tile_distance(_tile_distance(source_tile, dest))
 	return {
-		"tile_distance": distance,
+		"tile_distance": _tile_distance(source_tile, dest),
 		"turns": turns,
 		"delayed": turns > 1,
+		"path": r.get("path", []),
+		"legs": r.get("legs", []),
+		"tiles": r.get("tiles", []),
 	}
 
 func _tile_distance(source_tile: String, destination_tile: String) -> int:
@@ -382,12 +462,19 @@ func _oddq_to_axial(coord: Vector2i) -> Vector2i:
 	return Vector2i(coord.x, coord.y - int((coord.x - (coord.x & 1)) / 2))
 
 func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit_toast: bool) -> Dictionary:
+	var source_tile := "" if coord == null else str(coord)
 	var sale_record := {
-		"tile_id": "" if coord == null else str(coord),
+		"tile_id": source_tile,
 		"items": [],
 		"total_qty": 0,
 		"total_revenue": 0.0,
 	}
+	# Sold goods ship by sea: route to the nearest port; cash lands once it arrives
+	# (x turns later, x = transport duration at 2 tiles/turn). Shipping costs apply.
+	var port_tile := Catalog.nearest_port_tile(source_tile) if source_tile != "" else ""
+	var route := _transport_route(source_tile, port_tile)
+	var deferred: bool = port_tile != "" and int(route.turns) >= 1
+	var transport_cost := 0.0
 	for good_id in totals.keys():
 		var qty: int = int(totals[good_id])
 		if qty <= 0:
@@ -398,8 +485,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		if sold_qty <= 0:
 			continue
 		var sold_revenue: float = float(sold_qty) * price
-		MatchState.add_money(sold_revenue)
-		_add_summary_sale(summary, good_key, sold_qty, sold_revenue)
+		transport_cost += EconomyConfig.transport_cost_for(good_key, sold_qty, int(route.turns))
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,
@@ -407,7 +493,29 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		})
 		sale_record.total_qty += sold_qty
 		sale_record.total_revenue += sold_revenue
-	if emit_toast and float(sale_record.total_revenue) > 0.0:
+		if not deferred:
+			# No port (or distance 0) — pay out immediately.
+			MatchState.add_money(sold_revenue)
+			_add_summary_sale(summary, good_key, sold_qty, sold_revenue)
+	if transport_cost > 0.0:
+		MatchState.add_money(-transport_cost)
+		summary.transport_paid += transport_cost
+		summary.money_out += transport_cost
+	if deferred and int(sale_record.total_qty) > 0:
+		# Goods are already consumed (in transit); cash lands when the port receives them.
+		MatchState.queue_transport_shipment({
+			"is_sale": true,
+			"source_tile": source_tile,
+			"destination_tile": port_tile,
+			"sale_record": sale_record.duplicate(true),
+			"tile_distance": route.tile_distance,
+			"transport_turns": route.turns,
+			"turns_remaining": int(route.turns),
+			"path": route.get("path", []),
+			"legs": route.get("legs", []),
+			"tiles": route.get("tiles", []),
+		})
+	elif emit_toast and float(sale_record.total_revenue) > 0.0:
 		MatchState.emit_stockpile_market_sale_completed(sale_record)
 	return sale_record
 

@@ -5,6 +5,9 @@ extends Node
 const GOODS_CSV_PATH := "res://data/Goods - goodsMVP.csv"
 const RECIPES_CSV_PATH := "res://data/recipes_all.csv"
 const BUILDINGS_CSV_PATH := "res://data/Buildings - buildingsMVP.csv"
+const PORTS_CSV_PATH := "res://data/ports.csv"
+const TILE_PROPS_CSV_PATH := "res://data/tile_properties.csv"
+const INFRA_CSV_PATH := "res://data/infrastructure.csv"
 
 # recipes_all.csv references buildings by internal_name; a few don't match the
 # game's building internal_names, so alias them here. Recipes whose building can't
@@ -36,10 +39,363 @@ var _buildings_by_id: Dictionary = {}
 var _buildings_by_internal_name: Dictionary = {}
 var _all_buildings: Array = []
 
+# Ports storage
+var _ports: Array = []
+
+# Tile display names (nickname, else city_name) for labelling tile ids in the UI
+var _tile_names: Dictionary = {}
+
+# Infrastructure type properties (range, routing, tolerated classes, ...) keyed by type
+var _infra_by_type: Dictionary = {}
+
+# Per-tile routing data (static, from tile_properties.csv; live infra is a later wire-up)
+var _tile_infra: Dictionary = {}   # tile_id -> ["roads","rail",...] (normalised)
+var _tile_land: Dictionary = {}    # tile_id -> bool (false for sea/deep_sea)
+
+const ROUTE_MAP_W := 30
+const ROUTE_MAP_H := 20
+
 func _ready() -> void:
 	_load_goods()
 	_load_buildings()
 	_load_recipes()
+	_load_ports()
+	_load_tile_names()
+	_load_infrastructure()
+
+# =========================================================================
+# PORTS
+# =========================================================================
+
+func _load_ports() -> void:
+	_ports.clear()
+	if not FileAccess.file_exists(PORTS_CSV_PATH):
+		push_warning("Catalog: ports CSV not found at %s" % PORTS_CSV_PATH)
+		return
+	var file := FileAccess.open(PORTS_CSV_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var headers := file.get_csv_line()
+	while not file.eof_reached():
+		var line := file.get_csv_line()
+		if line.size() < headers.size() or line[0] == "":
+			continue
+		var raw := {}
+		for i in headers.size():
+			raw[headers[i].strip_edges().to_lower().replace(" ", "_")] = line[i].strip_edges()
+		_ports.append({
+			"id": raw.get("id", ""),
+			"name": raw.get("name", ""),
+			"tile_id": raw.get("tile_id", ""),
+			"region": raw.get("region", ""),
+		})
+
+func all_ports() -> Array:
+	return _ports.duplicate(true)
+
+func nearest_port_tile(from_tile_id: String) -> String:
+	var best := ""
+	var best_d := 1 << 30
+	for p in _ports:
+		var t: String = p.get("tile_id", "")
+		if t == "":
+			continue
+		var d := tile_hex_distance(from_tile_id, t)
+		if d < best_d:
+			best_d = d
+			best = t
+	return best
+
+func tile_hex_distance(a: String, b: String) -> int:
+	var ca := _port_tile_to_coord(a)
+	var cb := _port_tile_to_coord(b)
+	if ca == Vector2i(-1, -1) or cb == Vector2i(-1, -1):
+		return 0
+	var aa := _oddq_to_axial(ca)
+	var ab := _oddq_to_axial(cb)
+	var dq := aa.x - ab.x
+	var dr := aa.y - ab.y
+	return int((abs(dq) + abs(dr) + abs(dq + dr)) / 2)
+
+func _port_tile_to_coord(tile_id: String) -> Vector2i:
+	var parts := tile_id.split("_")
+	if parts.size() != 3 or not parts[1].is_valid_int() or not parts[2].is_valid_int():
+		return Vector2i(-1, -1)
+	return Vector2i(int(parts[1]) - 1, int(parts[2]) - 1)
+
+func _oddq_to_axial(coord: Vector2i) -> Vector2i:
+	return Vector2i(coord.x, coord.y - int((coord.x - (coord.x & 1)) / 2))
+
+func _load_tile_names() -> void:
+	_tile_names.clear()
+	_tile_infra.clear()
+	_tile_land.clear()
+	if not FileAccess.file_exists(TILE_PROPS_CSV_PATH):
+		return
+	var file := FileAccess.open(TILE_PROPS_CSV_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var headers := file.get_csv_line()
+	var idx := {}
+	for i in headers.size():
+		idx[headers[i].strip_edges().to_lower()] = i
+	var id_i: int = idx.get("id", -1)
+	var nick_i: int = idx.get("nickname", -1)
+	var city_i: int = idx.get("city_name", -1)
+	var type_i: int = idx.get("type", -1)
+	var infra_i: int = idx.get("infrastructure_present", -1)
+	if id_i < 0:
+		return
+	while not file.eof_reached():
+		var line := file.get_csv_line()
+		if line.size() <= id_i or line[id_i].strip_edges() == "":
+			continue
+		var tid := line[id_i].strip_edges()
+		var nick := ""
+		if nick_i >= 0 and nick_i < line.size():
+			nick = line[nick_i].strip_edges()
+		var city := ""
+		if city_i >= 0 and city_i < line.size():
+			city = line[city_i].strip_edges()
+		var label_name := nick if nick != "" else city
+		if label_name != "":
+			_tile_names[tid] = label_name
+		var ttype := ""
+		if type_i >= 0 and type_i < line.size():
+			ttype = line[type_i].strip_edges().to_lower()
+		_tile_land[tid] = ttype != "sea" and ttype != "deep_sea"
+		if infra_i >= 0 and infra_i < line.size():
+			var infra_list: Array = []
+			for part in str(line[infra_i]).split("|", false):
+				var norm := _normalise_infra_id(part.strip_edges().to_lower())
+				if norm != "" and not infra_list.has(norm):
+					infra_list.append(norm)
+			if not infra_list.is_empty():
+				_tile_infra[tid] = infra_list
+
+func _normalise_infra_id(value: String) -> String:
+	match value:
+		"roads", "road":
+			return "roads"
+		"rail", "rails", "railway", "railways":
+			return "rail"
+		"pipes", "pipework", "pipeworks":
+			return "pipes"
+		"reinf_pipes", "reinforced_pipes", "reinforced_pipework", "reinforced_pipeworks":
+			return "reinf_pipes"
+		_:
+			return value
+
+func tile_name(tile_id: String) -> String:
+	return _tile_names.get(tile_id, "")
+
+func add_tile_infrastructure(tile_id: String, infra_type: String) -> void:
+	# Mirror a runtime-built road/rail into the router's live infra map.
+	var norm := _normalise_infra_id(infra_type.strip_edges().to_lower())
+	if tile_id == "" or norm == "":
+		return
+	var list: Array = _tile_infra.get(tile_id, [])
+	if not list.has(norm):
+		list.append(norm)
+		_tile_infra[tile_id] = list
+
+func remove_tile_infrastructure(tile_id: String, infra_type: String) -> void:
+	var norm := _normalise_infra_id(infra_type.strip_edges().to_lower())
+	var list: Array = _tile_infra.get(tile_id, [])
+	if list.has(norm):
+		list.erase(norm)
+		_tile_infra[tile_id] = list
+
+func tile_label(tile_id: String) -> String:
+	# "name - (a_b)", or "(a_b)" when the tile has no nickname/city_name.
+	if tile_id == "":
+		return ""
+	var coord_part := tile_id
+	if coord_part.begins_with("tile_"):
+		coord_part = coord_part.substr(5)
+	var label_name: String = _tile_names.get(tile_id, "")
+	return ("%s - (%s)" % [label_name, coord_part]) if label_name != "" else ("(%s)" % coord_part)
+
+func _load_infrastructure() -> void:
+	_infra_by_type.clear()
+	if not FileAccess.file_exists(INFRA_CSV_PATH):
+		return
+	var file := FileAccess.open(INFRA_CSV_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var headers := file.get_csv_line()
+	while not file.eof_reached():
+		var line := file.get_csv_line()
+		if line.size() < 1 or line[0].strip_edges() == "":
+			continue
+		var raw := {}
+		for i in headers.size():
+			if i < line.size():
+				raw[headers[i].strip_edges().to_lower().replace(" ", "_")] = line[i].strip_edges()
+		var type_id := str(raw.get("type", ""))
+		if type_id == "":
+			continue
+		var range_str := str(raw.get("range", ""))
+		_infra_by_type[type_id] = {
+			"type": type_id,
+			"display_name": raw.get("display_name", ""),
+			"range": int(range_str) if range_str.is_valid_int() else 0,
+			"routing": raw.get("routing", ""),
+			"market_connector": str(raw.get("market_connector", "")).to_lower() == "true",
+			"good_types_tolerated": str(raw.get("good_types_tolerated", "")).split("|", false),
+			"double_cost_types": str(raw.get("double_cost_types", "")).split("|", false),
+		}
+
+func all_infrastructure() -> Array:
+	return _infra_by_type.values()
+
+func infra(type_id: String) -> Dictionary:
+	return _infra_by_type.get(type_id, {})
+
+func infra_range(type_id: String) -> int:
+	return int(_infra_by_type.get(type_id, {}).get("range", 0))
+
+# =========================================================================
+# TRANSPORT ROUTING (turn-move shortest path; see docs/transport-routing-plan.md)
+# =========================================================================
+
+const ROUTE_MODE_NONE := "nothing"
+
+func tile_neighbours(tile_id: String) -> Array:
+	# Hex (odd-q offset) neighbours, clamped to the map.
+	var c := _port_tile_to_coord(tile_id)  # (col-1, row-1) == (q, r)
+	if c == Vector2i(-1, -1):
+		return []
+	var offs: Array
+	if c.x % 2 == 1:
+		offs = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, 1), Vector2i(-1, 1), Vector2i(-1, 0)]
+	else:
+		offs = [Vector2i(0, -1), Vector2i(1, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(-1, -1)]
+	var out: Array = []
+	for o in offs:
+		var nc: int = c.x + o.x
+		var nr: int = c.y + o.y
+		if nc >= 0 and nc < ROUTE_MAP_W and nr >= 0 and nr < ROUTE_MAP_H:
+			out.append("tile_%d_%d" % [nc + 1, nr + 1])
+	return out
+
+func _mode_range(mode: String) -> int:
+	if mode == ROUTE_MODE_NONE:
+		return 1
+	return maxi(1, infra_range(mode))
+
+func _tile_supports_mode(tile_id: String, mode: String) -> bool:
+	if mode == ROUTE_MODE_NONE:
+		return bool(_tile_land.get(tile_id, true))
+	return _tile_infra.get(tile_id, []).has(mode)
+
+func _modes_for_good(good_id: String) -> Array:
+	var modes: Array = [ROUTE_MODE_NONE]
+	var tclass := get_transport_class(good_id) if good_id != "" else ""
+	for m in ["rail", "roads"]:  # rail first (longer range) so it's preferred on ties
+		var tolerated: Array = _infra_by_type.get(m, {}).get("good_types_tolerated", [])
+		if good_id == "" or tclass == "" or tolerated.has(tclass):
+			modes.append(m)
+	return modes
+
+func _turn_move_neighbours(tile_id: String, modes: Array) -> Array:
+	# Tiles reachable in ONE turn (one mode, up to its range hops). [{tile, mode}]
+	var out: Array = []
+	var seen: Dictionary = {}
+	for m in modes:
+		if not _tile_supports_mode(tile_id, m):
+			continue
+		var rng := _mode_range(m)
+		var visited: Dictionary = {tile_id: true}
+		var frontier: Array = [tile_id]
+		var depth := 0
+		while not frontier.is_empty() and depth < rng:
+			var nextf: Array = []
+			for t in frontier:
+				for nb in tile_neighbours(t):
+					if visited.has(nb) or not _tile_supports_mode(nb, m):
+						continue
+					visited[nb] = true
+					nextf.append(nb)
+					if not seen.has(nb):
+						seen[nb] = true
+						out.append({"tile": nb, "mode": m})
+			frontier = nextf
+			depth += 1
+	return out
+
+func route(source_tile: String, dest_tile: String, good_id: String = "") -> Dictionary:
+	# Fewest turns A->B. Returns {turns, path:[turn-boundary tiles], legs:[{mode,from,to}]}.
+	# (Objective currently FASTEST; cheapest/blended need infra cost_per_unit_shipped.)
+	if source_tile == "" or dest_tile == "":
+		return {"turns": 0, "path": [], "legs": []}
+	if source_tile == dest_tile:
+		return {"turns": 0, "path": [source_tile], "legs": [], "tiles": [source_tile]}  # 0-turn same-tile
+	var modes := _modes_for_good(good_id)
+	var INF := 1 << 30
+	var dist: Dictionary = {source_tile: 0}
+	var prev: Dictionary = {}  # tile -> {from, mode}
+	var visited: Dictionary = {}
+	while true:
+		var u := ""
+		var ud := INF
+		for t in dist.keys():
+			if not visited.has(t) and int(dist[t]) < ud:
+				ud = int(dist[t])
+				u = t
+		if u == "" or u == dest_tile:
+			break
+		visited[u] = true
+		for entry in _turn_move_neighbours(u, modes):
+			var nb: String = entry.tile
+			var nd := ud + 1
+			if nd < int(dist.get(nb, INF)):
+				dist[nb] = nd
+				prev[nb] = {"from": u, "mode": entry.mode}
+	if not dist.has(dest_tile):
+		return {"turns": INF, "path": [], "legs": [], "tiles": []}  # unreachable via networks
+	var path: Array = [dest_tile]
+	var legs: Array = []
+	var cur := dest_tile
+	while prev.has(cur):
+		var p: Dictionary = prev[cur]
+		legs.push_front({"mode": p.mode, "from": p.from, "to": cur})
+		path.push_front(p.from)
+		cur = p.from
+	var tiles: Array = [source_tile]
+	for leg in legs:
+		var seg := _mode_shortest_path(str(leg.from), str(leg.to), str(leg.mode))
+		for i in range(1, seg.size()):
+			tiles.append(seg[i])
+	return {"turns": int(dist[dest_tile]), "path": path, "legs": legs, "tiles": tiles}
+
+func _mode_shortest_path(from_tile: String, to_tile: String, mode: String) -> Array:
+	# BFS shortest tile path from->to staying on one mode's network.
+	if from_tile == to_tile:
+		return [from_tile]
+	var prev: Dictionary = {}
+	var visited: Dictionary = {from_tile: true}
+	var queue: Array = [from_tile]
+	var head := 0
+	while head < queue.size():
+		var u: String = queue[head]
+		head += 1
+		if u == to_tile:
+			break
+		for nb in tile_neighbours(u):
+			if visited.has(nb) or not _tile_supports_mode(nb, mode):
+				continue
+			visited[nb] = true
+			prev[nb] = u
+			queue.append(nb)
+	if not prev.has(to_tile):
+		return [from_tile, to_tile]  # fallback (shouldn't happen for a valid leg)
+	var out: Array = [to_tile]
+	var cur := to_tile
+	while prev.has(cur):
+		cur = prev[cur]
+		out.push_front(cur)
+	return out
 
 # =========================================================================
 # GOODS

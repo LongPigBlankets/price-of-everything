@@ -25,6 +25,8 @@ func _ready() -> void:
 	_test_catalog_loaded()
 	_test_recipe_requirements()
 	_test_menu_icons()
+	_test_ports()
+	await _test_building_ledger()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -35,6 +37,38 @@ func _check(ok: bool, name: String) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  ", name)
+
+func _test_building_ledger() -> void:
+	_check(MatchState.route_objective == MatchState.RouteObjective.FASTEST,
+		"route objective defaults to FASTEST")
+	var scene := load("res://scenes/building_ledger_panel.tscn")
+	var ok := false
+	if scene != null:
+		var panel: Node = scene.instantiate()
+		add_child(panel)
+		await get_tree().process_frame
+		ok = panel.get_child_count() > 0
+		panel.queue_free()
+	_check(ok, "building_ledger_panel instantiates (routing dropdown builds)")
+
+func _test_ports() -> void:
+	var ports := Catalog.all_ports()
+	_check(ports.size() == 4, "Catalog loads 4 ports")
+	var fields_ok := true
+	for p in ports:
+		if str(p.get("tile_id", "")) == "" or str(p.get("name", "")) == "":
+			fields_ok = false
+	_check(fields_ok, "every port has a tile_id and name")
+	_check(Catalog.tile_hex_distance("tile_5_10", "tile_5_10") == 0, "tile_hex_distance(self) == 0")
+	_check(Catalog.nearest_port_tile("tile_3_8") == "tile_5_10", "nearest_port_tile picks the closest port")
+	_check(Catalog.tile_label("tile_12_2") == "Miney McMineface - (12_2)", "tile_label uses nickname")
+	_check(Catalog.tile_label("tile_5_10") == "Stoneshore Docks - (5_10)", "tile_label falls back to city_name")
+	_check(Catalog.infra_range("roads") == 2, "roads range is 2 tiles/turn")
+	_check(Catalog.infra_range("rail") == 4, "rail range is 4 tiles/turn")
+	_check(Catalog.all_infrastructure().size() == 5, "Catalog loads 5 infrastructure types")
+	_check(Catalog.tile_neighbours("tile_12_2").size() == 6, "interior tile has 6 hex neighbours")
+	_check(int(Catalog.route("tile_12_2", "tile_12_2").turns) == 0, "route same-tile = 0 turns")
+	_check(int(Catalog.route("tile_12_2", "tile_13_2").turns) == 1, "route to adjacent tile = 1 turn")
 
 # Smoke: every script we touch must still parse. load() returns null on a parse
 # error — this is the check that catches the bug class we couldn't verify by hand.
@@ -53,6 +87,9 @@ func _test_scripts_parse() -> void:
 		"res://scripts/construct_panel.gd",
 		"res://scripts/building_row.gd",
 		"res://scripts/recipe_row.gd",
+		"res://scripts/logistics_overlay.gd",
+		"res://scripts/mapmodes_panel.gd",
+		"res://scripts/overlay_legend.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 
@@ -142,6 +179,11 @@ func _test_main_scene_instantiates() -> void:
 # Logic: the data CSVs load into the Catalog as expected.
 func _test_catalog_loaded() -> void:
 	_check(Catalog.all_goods().size() == 15, "Catalog has 15 goods")
+	var _all_classed := true
+	for g in Catalog.all_goods():
+		if str(g.get("transport_class", "")) == "":
+			_all_classed = false
+	_check(_all_classed, "every loaded good has a transport_class")
 	_check(Catalog.all_recipes().size() >= 18, "Catalog promotes a healthy recipe set (>=18)")
 	_check(Catalog.all_buildings().size() == 37, "Catalog has 37 buildings")
 

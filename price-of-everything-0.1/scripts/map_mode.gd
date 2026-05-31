@@ -7,9 +7,11 @@ enum Mode {
 	TILES_PRODUCING,
 	TILES_CONSUMING,
 	POWER_BALANCE,
+	LOGISTICS,
 }
 
 const POWER_SENTINEL := "power_balance_sentinel"
+const LOGISTICS_SENTINEL := "logistics_sentinel"
 
 const PALETTE: Array[Color] = [Color.RED, Color.BLUE, Color.YELLOW, Color.HOT_PINK]
 const MAX_SELECTIONS := 4

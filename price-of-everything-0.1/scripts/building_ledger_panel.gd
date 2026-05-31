@@ -31,11 +31,7 @@ func _ready() -> void:
 		theme = DS.theme
 	close_button.pressed.connect(func(): close_requested.emit())
 	header.gui_input.connect(_on_header_gui_input)
-	_populate_section(section1, LOREM_1, [
-		["Stat label", "42"],
-		["Another label", "73%"],
-		["Tiny metadata", "lorem ipsum"],
-	])
+	_populate_routing_section(section1)
 	_populate_section(section2, LOREM_2, [
 		["Lorem ipsum", "1,234"],
 		["Dolor sit amet", "£420"],
@@ -60,6 +56,23 @@ func _on_header_gui_input(event: InputEvent) -> void:
 			_dragging = false
 	elif event is InputEventMouseMotion and _dragging:
 		position = _drag_panel_start + (get_global_mouse_position() - _drag_mouse_start)
+
+func _populate_routing_section(section: SectionCard) -> void:
+	section.title = "Transport routing"
+	var label := Label.new()
+	label.theme_type_variation = "Body"
+	label.text = "How shipments choose a path between tiles:"
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	section.content.add_child(label)
+	var dropdown := OptionButton.new()
+	dropdown.add_item("Fastest", MatchState.RouteObjective.FASTEST)
+	dropdown.add_item("Cheapest", MatchState.RouteObjective.CHEAPEST)
+	dropdown.add_item("Blended (50% fast / 50% cheap)", MatchState.RouteObjective.BLENDED)
+	dropdown.select(dropdown.get_item_index(MatchState.route_objective))
+	dropdown.item_selected.connect(func(idx: int) -> void:
+		MatchState.set_route_objective(dropdown.get_item_id(idx))
+	)
+	section.content.add_child(dropdown)
 
 func _populate_section(section: SectionCard, body_text: String, stats: Array) -> void:
 	# Body text — Plex Medium 14, autowrapped via container width

@@ -182,7 +182,12 @@ func _rebuild_fields(building: Dictionary) -> void:
 	_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data)))
 
 	if not is_infrastructure and recipe.get("output_name", "") != "power":
-		_add_field("Output destination", _output_destination())
+		var route_info := _output_route_summary()
+		_add_field("Output destination", route_info.destination)
+		_add_field("Output transport cost", _format_money(route_info.cost))
+		_add_field("Duration to destination", "%d turn%s" % [
+			int(route_info.turns), "" if int(route_info.turns) == 1 else "s"
+		])
 
 	_add_separator()
 	_add_inbound_inputs_section(building, recipe)
@@ -247,7 +252,10 @@ func _inbound_input_summary(tile_id: String, good_id: String) -> String:
 		var source_tile: String = shipment.get("source_tile", "")
 		if source_tile != "" and not source_tiles.has(source_tile):
 			source_tiles.append(source_tile)
-	var source_text := ", ".join(source_tiles) if not source_tiles.is_empty() else "unknown tile"
+	var source_labels: Array = []
+	for st in source_tiles:
+		source_labels.append(Catalog.tile_label(st))
+	var source_text := ", ".join(source_labels) if not source_labels.is_empty() else "unknown tile"
 	return "%d inbound from %s, next %s" % [
 		total_qty,
 		source_text,
@@ -1544,7 +1552,7 @@ func _output_destination() -> String:
 			_primary_output_qty(_current_recipe)
 		)
 		return "%s · %d turn%s · £%s" % [
-			destination_tile,
+			Catalog.tile_label(destination_tile),
 			route.turns,
 			"" if int(route.turns) == 1 else "s",
 			_format_money(route.cost),
@@ -1556,6 +1564,27 @@ func _output_destination() -> String:
 			return "Building-by-building"
 		_:
 			return "Market"
+
+func _output_route_summary() -> Dictionary:
+	# Resolve where this building's output goes + the route cost/turns to get there.
+	var source_tile := str(_current_building.get("tile_id", ""))
+	var good_id := _primary_output_good_id(_current_recipe)
+	var qty := _primary_output_qty(_current_recipe)
+	var instance_id: String = _current_building.get("instance_id", "")
+	var dest_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
+	var target := ""
+	var destination := ""
+	if dest_tile != "":
+		target = dest_tile
+		destination = Catalog.tile_label(dest_tile)
+	elif MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL:
+		target = source_tile
+		destination = "Tile stockpile (same tile)"
+	else:
+		target = Catalog.nearest_port_tile(source_tile)
+		destination = ("Market (via %s)" % Catalog.tile_label(target)) if target != "" else "Market"
+	var route := _route_summary_for_good(source_tile, target, good_id, qty)
+	return {"destination": destination, "cost": route.cost, "turns": route.turns, "target": target}
 
 func _primary_output_good_id(recipe: Dictionary) -> String:
 	for output in _flow_output_items(recipe):
@@ -1575,7 +1604,10 @@ func _primary_output_qty(recipe: Dictionary) -> int:
 
 func _route_summary_for_good(source_tile: String, destination_tile: String, good_id: String, qty: int) -> Dictionary:
 	var distance := _tile_distance(source_tile, destination_tile)
-	var turns := EconomyConfig.transport_turns_for_tile_distance(distance)
+	var r := Catalog.route(source_tile, destination_tile, good_id)
+	var turns: int = int(r.get("turns", 0))
+	if turns >= (1 << 30):
+		turns = EconomyConfig.transport_turns_for_tile_distance(distance)
 	var cost := EconomyConfig.transport_cost_for(good_id, qty, turns)
 	return {
 		"distance": distance,
