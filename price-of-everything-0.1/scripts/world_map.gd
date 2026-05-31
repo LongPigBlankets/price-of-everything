@@ -61,6 +61,9 @@ func _ready() -> void:
 		building_connection_visuals.on_building_connections_changed
 	)
 
+	# Debug cheat terminal (toggle with the ` key)
+	add_child(load("res://scripts/debug_terminal.gd").new())
+
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
 
@@ -273,7 +276,7 @@ func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
 	match req.get("type", ""):
 		"deposit":
 			var deposits: Array = tile_data.get("deposits", [])
-			return deposits.has(req.get("value", ""))
+			return _deposits_include(deposits, str(req.get("value", "")))
 		"produces":
 			return _tile_produces_good(tile_data, req.get("value", ""))
 		"potential":
@@ -284,6 +287,21 @@ func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
 				return tile_data.get("solar_potential", 0) > 0
 			return false
 	return false
+
+func _deposits_include(deposits: Array, internal_name: String) -> bool:
+	if internal_name == "":
+		return false
+	for deposit in deposits:
+		if _deposit_base_name(str(deposit)) == internal_name:
+			return true
+	return false
+
+func _deposit_base_name(deposit: String) -> String:
+	var value := deposit.strip_edges()
+	var quantity_marker := value.find("(")
+	if quantity_marker > 0 and value.ends_with(")"):
+		return value.substr(0, quantity_marker)
+	return value
 
 func _tile_produces_good(tile_data: Dictionary, internal_name: String) -> bool:
 	var tile_id: String = tile_data.get("id", "")

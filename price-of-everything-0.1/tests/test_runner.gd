@@ -27,6 +27,7 @@ func _ready() -> void:
 	_test_menu_icons()
 	_test_ports()
 	await _test_building_ledger()
+	await _test_debug_terminal()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -37,6 +38,17 @@ func _check(ok: bool, name: String) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  ", name)
+
+func _test_debug_terminal() -> void:
+	var term: Node = load("res://scripts/debug_terminal.gd").new()
+	add_child(term)
+	await get_tree().process_frame
+	var before: float = MatchState.money
+	var result: String = term._run_command("cash 250")
+	_check(absf(MatchState.money - (before + 250.0)) < 0.001, "terminal: cash adds the amount")
+	_check("250" in result, "terminal: cash reports the amount")
+	_check(term._run_command("bogus").begins_with("unknown"), "terminal: unknown command handled")
+	term.queue_free()
 
 func _test_building_ledger() -> void:
 	_check(MatchState.route_objective == MatchState.RouteObjective.FASTEST,
@@ -90,6 +102,7 @@ func _test_scripts_parse() -> void:
 		"res://scripts/logistics_overlay.gd",
 		"res://scripts/mapmodes_panel.gd",
 		"res://scripts/overlay_legend.gd",
+		"res://scripts/debug_terminal.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 

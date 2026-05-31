@@ -84,6 +84,8 @@ func _effective_zoom_min() -> float:
 	return maxf(zoom_min, minf(fit_zoom_x, fit_zoom_y))
 
 func _handle_keyboard_pan(delta: float) -> void:
+	if get_viewport().gui_get_focus_owner() is LineEdit:
+		return  # a text field (e.g. the debug terminal) has keyboard focus
 	var direction := Vector2.ZERO
 	if Input.is_action_pressed("camera_right"):
 		direction.x += 1
