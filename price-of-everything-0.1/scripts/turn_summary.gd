@@ -34,6 +34,7 @@ var _in_transit_details: VBoxContainer = null
 var _in_transit_expanded := false
 
 var _buildings_added_this_turn: Array = []
+var _suppress_expand := false  # set by the "don't expand again" tickbox; resets each game
 
 func _ready() -> void:
 	_expanded_offset_top = offset_top
@@ -43,16 +44,26 @@ func _ready() -> void:
 	Production.turn_processed.connect(_on_turn_processed)
 	MatchState.building_added.connect(_on_building_added)
 	_build_in_transit_section()
+	_build_suppress_expand_checkbox()
 	_render_empty()
 	_collapse()
+
+func _build_suppress_expand_checkbox() -> void:
+	var checkbox := CheckBox.new()
+	checkbox.text = "Don't expand again"
+	checkbox.add_theme_font_size_override("font_size", 12)
+	checkbox.toggled.connect(func(pressed: bool) -> void: _suppress_expand = pressed)
+	content_vbox.add_child(checkbox)
+	content_vbox.move_child(checkbox, dismiss_button.get_index() + 1)
 
 func _on_building_added(instance: Dictionary) -> void:
 	_buildings_added_this_turn.append(instance)
 
 func _on_turn_processed(summary: Dictionary) -> void:
 	_render_summary(summary)
-	_expand()
-	_start_collapse_timer()
+	if not _suppress_expand:
+		_expand()
+		_start_collapse_timer()
 	_buildings_added_this_turn.clear()
 
 func _render_empty() -> void:

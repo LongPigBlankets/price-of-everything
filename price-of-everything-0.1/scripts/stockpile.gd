@@ -126,6 +126,10 @@ func clear_all() -> void:
 	_by_tile.clear()
 	stockpile_changed.emit()
 
+func tiles_with_stock() -> Array:
+	# Tile keys that currently hold goods (callers filter to real "tile_*" ids).
+	return _by_tile.keys()
+
 func get_all_totals() -> Dictionary:
 	var totals := {}
 	for tile_stockpile in _by_tile.values():

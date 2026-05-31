@@ -374,6 +374,46 @@ func run_recurring_and_scheduled_moves() -> void:
 func add_recurring_sell(source_tile: String, goods_qtys: Dictionary) -> void:
 	recurring_sells.append({"source": source_tile, "goods": goods_qtys.duplicate(true)})
 
+func _is_finished_good(good_id: String) -> bool:
+	# No explicit "finished" tier in the MVP, so "finished/manufactured" = non-raw, non-power.
+	var gt := str(Catalog.get_good(good_id).get("good_type", ""))
+	return gt != "" and gt != "raw" and gt != "power"
+
+func sell_all_to_market(params: Dictionary) -> Dictionary:
+	# Stories 4 & 5: sweep every tile's stockpile and sell to the nearest port, filtered by
+	#   good_id     ("" = all goods, else a specific good)
+	#   finished_only (only manufactured/non-raw goods)
+	#   per_tile_keep (leave this many of each good per tile; sell the surplus above it)
+	var good_filter := str(params.get("good_id", ""))
+	var finished_only := bool(params.get("finished_only", false))
+	var keep: int = maxi(0, int(params.get("per_tile_keep", 0)))
+	var total_qty := 0
+	var total_revenue := 0.0
+	var tiles_sold := 0
+	for tile_key in Stockpile.tiles_with_stock():
+		var tile_id := str(tile_key)
+		if not tile_id.begins_with("tile_"):
+			continue
+		var totals: Dictionary = Stockpile.get_tile_totals(tile_id)
+		var goods_qtys: Dictionary = {}
+		for gid in totals.keys():
+			var g := str(gid)
+			if good_filter != "" and g != good_filter:
+				continue
+			if finished_only and not _is_finished_good(g):
+				continue
+			var surplus := int(totals[gid]) - keep
+			if surplus > 0:
+				goods_qtys[g] = surplus
+		if goods_qtys.is_empty():
+			continue
+		var summary := queue_sell(tile_id, goods_qtys)
+		if not summary.is_empty():
+			total_qty += int(summary.get("total_qty", 0))
+			total_revenue += float(summary.get("revenue", 0.0))
+			tiles_sold += 1
+	return {"total_qty": total_qty, "revenue": total_revenue, "tiles": tiles_sold}
+
 func queue_sell(source_tile: String, goods_qtys: Dictionary) -> Dictionary:
 	# Sell specific goods/qtys from a tile: ship to the nearest port, pay out on arrival.
 	if source_tile == "":

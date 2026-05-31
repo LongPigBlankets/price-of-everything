@@ -33,6 +33,7 @@ func _ready() -> void:
 	_test_storage_boost()
 	_test_queue_sell()
 	_test_npc_ports()
+	_test_bulk_sell()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -48,6 +49,12 @@ func _test_storage_boost() -> void:
 	MatchState.add_building("b_004", "", "tile_3_3", "Three Diamonds Shipping Corporation")
 	_check(Stockpile.get_capacity("tile_3_3") == Stockpile.TILE_CAPACITY + 500,
 		"storage_boost raises tile capacity (port = +500)")
+
+func _test_bulk_sell() -> void:
+	Stockpile.add("tile_3_8", "g_001", 30)
+	var result: Dictionary = MatchState.sell_all_to_market({"good_id": "", "finished_only": false, "per_tile_keep": 10})
+	_check(int(result.get("total_qty", 0)) >= 20, "sell_all_to_market sells the surplus above per-tile keep")
+	_check(Stockpile.get_at_tile("tile_3_8", "g_001") == 10, "bulk sell leaves the kept amount on the tile")
 
 func _test_npc_ports() -> void:
 	# The main scene's _ready places the 4 NPC ports; verify one landed + is NPC-owned.
