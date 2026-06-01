@@ -90,7 +90,7 @@ signal building_connections_changed(origin_tile_id: String, input_tile_ids: Arra
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 var _status_dots: Dictionary = {}
-var _cost_label: Label = null
+var _cost_label: Panel = null
 var _cost_wrapper: HBoxContainer = null
 var _tooltip_theme: Theme = null
 var _upgrade_button: Button = null
@@ -1328,19 +1328,29 @@ func _build_status_icon_column() -> void:
 
 		rag_box.add_child(wrapper)
 
-	# 5th indicator: production cost per unit — shown as "£x/unit", coloured by RAG
+	# 5th indicator: production cost per unit — RAG dot, cost + legend in tooltip
 	_cost_wrapper = HBoxContainer.new()
 	_cost_wrapper.alignment = BoxContainer.ALIGNMENT_CENTER
 	_cost_wrapper.theme = _tooltip_theme
 	_cost_wrapper.mouse_filter = Control.MOUSE_FILTER_STOP
+	_cost_wrapper.add_theme_constant_override("separation", 1)
 	_cost_wrapper.custom_minimum_size = Vector2(STATUS_RAIL_WIDTH, 0)
 
-	_cost_label = Label.new()
-	_cost_label.text = "£--/unit"
-	_cost_label.add_theme_font_size_override("font_size", 11)
-	_cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_cost_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_cost_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	var pound_icon := Label.new()
+	pound_icon.text = "£"
+	pound_icon.custom_minimum_size = STATUS_ICON_SIZE
+	pound_icon.add_theme_font_size_override("font_size", 14)
+	pound_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pound_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	pound_icon.modulate = ICON_TINT
+	pound_icon.mouse_filter = Control.MOUSE_FILTER_STOP
+	pound_icon.theme = _tooltip_theme
+	_cost_wrapper.add_child(pound_icon)
+
+	_cost_label = Panel.new()
+	_cost_label.custom_minimum_size = STATUS_DOT_SIZE
+	_cost_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_cost_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_cost_label.theme = _tooltip_theme
 	_cost_wrapper.add_child(_cost_label)
 
@@ -1363,12 +1373,10 @@ func _update_cost_label(building: Dictionary) -> void:
 	var instance_id: String = building.get("instance_id", "")
 	var uc: float = CostSolver.get_building_unit_cost(instance_id)
 	var color: Color
-	var value_text: String
 	var tooltip: String
 	if uc < 0.0:
 		color = STATUS_GREY
-		value_text = "£--/unit"
-		tooltip = "Cost to produce one unit: --\n" + _COST_RAG_LEGEND
+		tooltip = "Production cost per unit: --\n" + _COST_RAG_LEGEND
 	else:
 		var bd: Dictionary = CostSolver.last_result.get("per_building", {}).get(instance_id, {})
 		var output_good_id: String = bd.get("output_good_id", "")
@@ -1380,23 +1388,30 @@ func _update_cost_label(building: Dictionary) -> void:
 			color = STATUS_YELLOW
 		else:
 			color = STATUS_RED
-		value_text = "£%.2f/unit" % uc
 		var output_costs: Dictionary = bd.get("output_costs", {})
 		if output_costs.size() > 1:
 			# Multi-output: list the allocated cost basis for each product
-			var lines: PackedStringArray = ["Cost to produce one unit (market-value allocation):"]
+			var lines: PackedStringArray = ["Production cost per unit (market-value allocation):"]
 			for gid in output_costs:
-				var goc: float = output_costs[gid]
-				lines.append("  %s: £%.2f" % [Catalog.get_display_name(gid), goc])
+				lines.append("  %s: £%.2f" % [Catalog.get_display_name(gid), output_costs[gid]])
 			lines.append(_COST_RAG_LEGEND)
 			tooltip = "\n".join(lines)
 		else:
-			tooltip = "Cost to produce one unit: £%.2f\n%s" % [uc, _COST_RAG_LEGEND]
-	_cost_label.text = value_text
-	_cost_label.add_theme_color_override("font_color", color)
+			tooltip = "Production cost per unit: £%.2f\n%s" % [uc, _COST_RAG_LEGEND]
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	var radius := roundi(STATUS_DOT_SIZE.x * 0.5)
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius
+	style.corner_radius_bottom_right = radius
+	_cost_label.add_theme_stylebox_override("panel", style)
 	_cost_label.tooltip_text = tooltip
 	if _cost_wrapper != null:
 		_cost_wrapper.tooltip_text = tooltip
+		var pound := _cost_wrapper.get_child(0) as Label
+		if pound != null:
+			pound.tooltip_text = tooltip
 
 func _on_costs_updated() -> void:
 	if _current_building.is_empty():

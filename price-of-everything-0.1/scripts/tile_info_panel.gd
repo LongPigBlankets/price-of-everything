@@ -529,7 +529,9 @@ func _make_production_row(row_data: Dictionary) -> HBoxContainer:
 	row.add_theme_constant_override("separation", 8)
 	row.add_child(_make_fixed_summary_label(str(row_data.get("display_name", "")), 94.0, 12, OFF_WHITE))
 	row.add_child(_make_fixed_summary_label("%d/turn" % int(row_data.get("qty", 0)), 62.0, 12, OFF_WHITE, "Numeric"))
-	var cost_label := _make_fixed_summary_label(_format_unit_cost(float(row_data.get("unit_cost", -1.0))), 60.0, 12, _cost_color_for_row(row_data), "Numeric")
+	var unit_cost := float(row_data.get("unit_cost", -1.0))
+	var cost_label := _make_fixed_summary_label(_format_unit_cost(unit_cost), 84.0, 12, _cost_color_for_row(row_data), "Numeric")
+	cost_label.tooltip_text = _unit_cost_tooltip(unit_cost)
 	row.add_child(cost_label)
 	var dest := _make_summary_label(str(row_data.get("destination", "")), 12, SUMMARY_SUBTLE_TEXT)
 	dest.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -731,8 +733,14 @@ func _cost_color_for_row(row_data: Dictionary) -> Color:
 		return SUMMARY_AMBER
 	return SUMMARY_GREEN
 
+const _COST_RAG_LEGEND := "Green if cheaper than buying from the market, amber if even with market and red if more expensive than purchasing from the market"
+
 func _format_unit_cost(unit_cost: float) -> String:
-	return "—" if unit_cost < 0.0 else "£%.2f" % unit_cost
+	return "—" if unit_cost < 0.0 else "£%.2f/unit" % unit_cost
+
+func _unit_cost_tooltip(unit_cost: float) -> String:
+	var amount := "—" if unit_cost < 0.0 else "£%.2f" % unit_cost
+	return "Cost to produce one unit: %s\n%s" % [amount, _COST_RAG_LEGEND]
 
 func _tile_deposits(tile_data: Dictionary) -> Array[String]:
 	var deposits: Array[String] = []
