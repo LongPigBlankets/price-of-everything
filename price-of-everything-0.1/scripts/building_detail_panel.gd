@@ -305,26 +305,6 @@ func _add_inbound_inputs_section(building: Dictionary, recipe: Dictionary) -> vo
 		else:
 			line += " · no inbound shipment scheduled"
 		_add_text(line)
-		_add_input_source_selector(str(building.get("instance_id", "")), good_id)
-
-func _add_input_source_selector(instance_id: String, good_id: String) -> void:
-	if instance_id == "" or good_id == "":
-		return
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	var label := Label.new()
-	label.text = "  Source"
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(label)
-	var opt := OptionButton.new()
-	opt.add_item("Local stockpile")  # index 0
-	opt.add_item("Market")           # index 1
-	opt.select(1 if MatchState.is_input_from_market(instance_id, good_id) else 0)
-	opt.item_selected.connect(func(idx: int) -> void:
-		MatchState.set_input_from_market(instance_id, good_id, idx == 1)
-	)
-	row.add_child(opt)
-	fields_vbox.add_child(row)
 
 func _inbound_input_summary(tile_id: String, good_id: String) -> String:
 	var shipments := MatchState.get_inbound_transport_shipments(tile_id, good_id)
@@ -537,7 +517,7 @@ func _refresh_route_controls(building: Dictionary, recipe: Dictionary) -> void:
 	elif _input_source_rows.size() > 1:
 		input_subtitle = "See all buildings"
 	_set_route_button_text(_input_route_button, "Inputs", input_subtitle)
-	_input_route_button.disabled = _input_source_rows.is_empty()
+	_input_route_button.disabled = recipe_inputs.is_empty()  # enabled when there are inputs to source
 
 	_set_route_button_text(_output_route_button, "Outputs", _output_destination())
 	_output_route_button.disabled = _flow_output_items(recipe).is_empty()
@@ -627,9 +607,6 @@ func _producer_routes_output_to_tile(producer: Dictionary, output: Dictionary, t
 	return MatchState.get_output_stockpile_destination(producer.get("instance_id", ""), good_id) == tile_id
 
 func _on_input_route_pressed() -> void:
-	if _input_source_rows.size() == 1:
-		_open_secondary_building(_input_source_rows[0].get("building", {}))
-		return
 	_input_route_detail.visible = not _input_route_detail.visible
 	_output_route_detail.visible = false
 
@@ -653,8 +630,29 @@ func _rebuild_input_route_detail() -> void:
 	for child in _input_route_detail.get_children():
 		child.queue_free()
 
-	if _input_source_rows.is_empty():
-		return
+	# Per-input source selector: Tile stockpile or Market (buy from nearest port).
+	var instance_id := str(_current_building.get("instance_id", ""))
+	for input in _current_recipe.get("inputs", []):
+		var good_id := str(input.get("good_id", ""))
+		if good_id == "":
+			continue
+		var sel_row := HBoxContainer.new()
+		sel_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sel_row.add_theme_constant_override("separation", 8)
+		var name_lbl := Label.new()
+		name_lbl.text = _good_display_from_internal(input.get("internal_name", ""))
+		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_lbl.add_theme_font_size_override("font_size", ROUTE_LINK_FONT_SIZE)
+		sel_row.add_child(name_lbl)
+		var opt := OptionButton.new()
+		opt.add_item("Tile stockpile")  # index 0
+		opt.add_item("Market")          # index 1
+		opt.select(1 if MatchState.is_input_from_market(instance_id, good_id) else 0)
+		opt.item_selected.connect(func(idx: int) -> void:
+			MatchState.set_input_from_market(instance_id, good_id, idx == 1)
+		)
+		sel_row.add_child(opt)
+		_input_route_detail.add_child(sel_row)
 
 	for row in _input_source_rows:
 		var line := HBoxContainer.new()

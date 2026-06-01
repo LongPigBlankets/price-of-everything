@@ -69,6 +69,11 @@ func _test_market_buy() -> void:
 	var rows: Array = MatchState.get_oneoff_transaction_rows()
 	_check(rows.size() == t_before + 1 and str(rows[rows.size() - 1].get("type", "")) == "Buy",
 		"a buy is logged with type Buy")
+	# Best-effort: a big order with little cash buys a partial amount, not nothing.
+	MatchState.money = 50.0
+	var partial: Dictionary = MatchState.queue_buy("tile_3_8", "g_002", 1000)
+	_check(not partial.is_empty() and int(partial.get("qty", 0)) > 0 and int(partial.get("qty", 0)) < 1000,
+		"queue_buy buys a partial amount when cash is short")
 
 func _test_transaction_ledger() -> void:
 	Stockpile.add("tile_3_8", "g_001", 12)

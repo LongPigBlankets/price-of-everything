@@ -503,10 +503,20 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	var turns: int = int(route.get("turns", 0))
 	if turns >= (1 << 30):
 		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, dest_tile))
+	var unit_price := MarketState.get_price(good_id)
 	var transport := EconomyConfig.transport_cost_for(good_id, qty, turns)
-	var total := float(qty) * MarketState.get_price(good_id) + transport
-	if money < total:
-		return {}  # can't afford this order
+	var total := float(qty) * unit_price + transport
+	if total > money:
+		# Best-effort: buy as much as we can afford rather than nothing (avoids an
+		# all-or-nothing starvation cliff when cash dips below a full order).
+		var per_unit := unit_price + transport / float(maxi(qty, 1))
+		qty = mini(qty, int(floor(money / maxf(per_unit, 0.0001))))
+		if qty <= 0:
+			return {}
+		transport = EconomyConfig.transport_cost_for(good_id, qty, turns)
+		total = float(qty) * unit_price + transport
+		if total > money:
+			return {}
 	add_money(-total)
 	if log_oneoff:
 		var started := _ledger_turn()
