@@ -265,6 +265,19 @@ func _process_production() -> void:
 	summary.dividends_paid,
 	summary.money_in - summary.money_out
 ])
+	# Diagnostic: goods sitting in pending shipments (sales + moves). If a produced good
+	# is neither stockpiled nor sold, it should show here as in-transit; if not, it's lost.
+	var _in_transit_dbg: Dictionary = {}
+	for s in MatchState.get_pending_transport_shipments():
+		if bool(s.get("is_sale", false)):
+			for it in s.get("sale_record", {}).get("items", []):
+				var sg := str(it.get("good_id", ""))
+				_in_transit_dbg[sg] = int(_in_transit_dbg.get(sg, 0)) + int(it.get("qty", 0))
+		else:
+			var mg := str(s.get("good_id", ""))
+			if mg != "":
+				_in_transit_dbg[mg] = int(_in_transit_dbg.get(mg, 0)) + int(s.get("qty", 0))
+	print("[Production] In transit (pending shipments): ", _in_transit_dbg)
 
 	
 

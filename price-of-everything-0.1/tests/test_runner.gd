@@ -37,6 +37,8 @@ func _ready() -> void:
 	_test_output_market_route()
 	_test_transaction_ledger()
 	_test_market_buy()
+	_test_output_conservation()
+	_test_market_sale_credits()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -52,6 +54,36 @@ func _test_storage_boost() -> void:
 	MatchState.add_building("b_004", "", "tile_3_3", "Three Diamonds Shipping Corporation")
 	_check(Stockpile.get_capacity("tile_3_3") == Stockpile.TILE_CAPACITY + 500,
 		"storage_boost raises tile capacity (port = +500)")
+
+func _test_market_sale_credits() -> void:
+	# Output routed to market should be sold and its revenue credited on arrival,
+	# not silently lost. (Reproduces the "produced but never stockpiled/consumed/sold".)
+	MatchState.reset()
+	Stockpile.clear_all()
+	MatchState.money = 0.0
+	var summary := {"transport_paid": 0.0, "money_out": 0.0, "money_in": 0.0,
+		"goods_sales_revenue": 0.0, "sold": {}}
+	Production._sell_output_to_market("tile_3_8", Catalog.get_good("g_001"), 20, summary)
+	# Drive arrivals for a few turns; a deferred sale should eventually credit.
+	for _i in range(25):
+		Production._process_transport_arrivals(summary)
+		if MatchState.money > 0.0:
+			break
+	_check(MatchState.money > 0.0, "a market-routed output sale credits revenue (money=%.2f)" % MatchState.money)
+	_check(summary.goods_sales_revenue > 0.0, "the sale appears in goods_sales_revenue")
+
+func _test_output_conservation() -> void:
+	# Default (STOCKPILE_ALL): a building's output should land in its own tile's stockpile.
+	MatchState.reset()
+	Stockpile.clear_all()
+	var building := {"instance_id": "inst_conserve", "building_id": "b_001", "tile_id": "tile_3_3", "recipe_id": "r_001"}
+	var good: Dictionary = Catalog.get_good("g_001")
+	var summary := {"transport_paid": 0.0, "money_out": 0.0, "goods_purchased_cost": 0.0}
+	var before: int = Stockpile.get_total("g_001")
+	Production._dispatch_output_to_stockpile(building, good, 20, summary)
+	Production._flush_output_buffer()
+	var gained: int = Stockpile.get_total("g_001") - before
+	_check(gained == 20, "output is conserved into the tile stockpile (got %d of 20)" % gained)
 
 func _test_market_buy() -> void:
 	_check(not MatchState.is_input_tile_only("inst_x", "g_002"), "inputs default to stockpile-then-market")
