@@ -54,10 +54,11 @@ func _test_storage_boost() -> void:
 		"storage_boost raises tile capacity (port = +500)")
 
 func _test_market_buy() -> void:
-	MatchState.set_input_from_market("inst_x", "g_002", true)
-	_check(MatchState.is_input_from_market("inst_x", "g_002"), "input can be set to market source")
-	MatchState.set_input_from_market("inst_x", "g_002", false)
-	_check(not MatchState.is_input_from_market("inst_x", "g_002"), "input source resets to local")
+	_check(not MatchState.is_input_tile_only("inst_x", "g_002"), "inputs default to stockpile-then-market")
+	MatchState.set_input_tile_only("inst_x", "g_002", true)
+	_check(MatchState.is_input_tile_only("inst_x", "g_002"), "input can be set to tile-stockpile-only")
+	MatchState.set_input_tile_only("inst_x", "g_002", false)
+	_check(not MatchState.is_input_tile_only("inst_x", "g_002"), "input resets to stockpile-then-market")
 	MatchState.money = 100000.0
 	var t_before: int = MatchState.get_oneoff_transaction_rows().size()
 	var ship_before: int = MatchState.get_pending_transport_shipments().size()

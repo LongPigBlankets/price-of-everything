@@ -20,6 +20,8 @@ extends PanelContainer
 
 const HEADER_HEIGHT := 40.0
 const PANEL_EDGE_MARGIN := 20.0
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
+static var _suppress_tile_only_warning := false  # session-wide "Don't show again"
 const UPGRADE_BUTTON_SIZE := Vector2(40, 40)
 const STATUS_ICON_SIZE := Vector2(20, 20)
 const STATUS_DOT_SIZE := Vector2(8, 8)
@@ -109,6 +111,7 @@ var _is_secondary_panel := false
 var _allow_extended_building_panels := false
 var _busy_screen_dialog: ConfirmationDialog = null
 var _too_many_dialog: AcceptDialog = null
+var _tile_only_dialog: AcceptDialog = null
 var _rag_panel: PanelContainer = null
 var _action_button_row: HBoxContainer = null
 var _npc_panel: PanelContainer = null
@@ -305,6 +308,18 @@ func _add_inbound_inputs_section(building: Dictionary, recipe: Dictionary) -> vo
 		else:
 			line += " · no inbound shipment scheduled"
 		_add_text(line)
+
+func _show_tile_only_warning() -> void:
+	if _tile_only_dialog == null:
+		_tile_only_dialog = AcceptDialog.new()
+		_tile_only_dialog.title = "Tile stockpile only"
+		_tile_only_dialog.dialog_text = "This may make your buildings stop producing when the stockpile is insufficient."
+		var checkbox := UIHelpers.make_custom_checkbox()
+		checkbox.toggled.connect(func(pressed: bool) -> void: _suppress_tile_only_warning = pressed)
+		var row := UIHelpers.make_setting_row("Don't show again", checkbox)
+		_tile_only_dialog.add_child(row)
+		get_parent().add_child(_tile_only_dialog)
+	_tile_only_dialog.popup_centered()
 
 func _inbound_input_summary(tile_id: String, good_id: String) -> String:
 	var shipments := MatchState.get_inbound_transport_shipments(tile_id, good_id)
@@ -645,11 +660,14 @@ func _rebuild_input_route_detail() -> void:
 		name_lbl.add_theme_font_size_override("font_size", ROUTE_LINK_FONT_SIZE)
 		sel_row.add_child(name_lbl)
 		var opt := OptionButton.new()
-		opt.add_item("Tile stockpile")  # index 0
-		opt.add_item("Market")          # index 1
-		opt.select(1 if MatchState.is_input_from_market(instance_id, good_id) else 0)
+		opt.add_item("Stockpile then market")  # index 0 (default)
+		opt.add_item("Tile stockpile only")    # index 1
+		opt.select(1 if MatchState.is_input_tile_only(instance_id, good_id) else 0)
 		opt.item_selected.connect(func(idx: int) -> void:
-			MatchState.set_input_from_market(instance_id, good_id, idx == 1)
+			var tile_only := idx == 1
+			MatchState.set_input_tile_only(instance_id, good_id, tile_only)
+			if tile_only and not _suppress_tile_only_warning:
+				_show_tile_only_warning()
 		)
 		sel_row.add_child(opt)
 		_input_route_detail.add_child(sel_row)

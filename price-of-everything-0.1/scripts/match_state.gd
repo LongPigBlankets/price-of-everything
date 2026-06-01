@@ -30,7 +30,7 @@ var labour_multiplier: float = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
 # --- Output routing ---
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
 const MARKET_DESTINATION := "__market__"  # sentinel tile_id: route this building's output to market
-var input_market_sources: Dictionary = {}  # "instance_id|good_id" -> true (buy this input from market)
+var input_tile_only: Dictionary = {}  # "instance_id|good_id" -> true (tile stockpile ONLY; default buys from market)
 var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
 var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (standing order)
@@ -203,7 +203,7 @@ func reset() -> void:
 	recurring_bulk_sells.clear()
 	transaction_log.clear()
 	move_log.clear()
-	input_market_sources.clear()
+	input_tile_only.clear()
 	_next_instance_counter = 0
 	state_reset.emit()
 
@@ -480,16 +480,17 @@ func _move_row(good: String, qty: int, tile_from: String, tile_to: String, start
 func _input_key(instance_id: String, good_id: String) -> String:
 	return instance_id + "|" + good_id
 
-func set_input_from_market(instance_id: String, good_id: String, from_market: bool) -> void:
+func set_input_tile_only(instance_id: String, good_id: String, tile_only: bool) -> void:
+	# Default (not set) = "stockpile then market" (buys the shortfall). tile_only = never buy.
 	if instance_id == "" or good_id == "":
 		return
-	if from_market:
-		input_market_sources[_input_key(instance_id, good_id)] = true
+	if tile_only:
+		input_tile_only[_input_key(instance_id, good_id)] = true
 	else:
-		input_market_sources.erase(_input_key(instance_id, good_id))
+		input_tile_only.erase(_input_key(instance_id, good_id))
 
-func is_input_from_market(instance_id: String, good_id: String) -> bool:
-	return bool(input_market_sources.get(_input_key(instance_id, good_id), false))
+func is_input_tile_only(instance_id: String, good_id: String) -> bool:
+	return bool(input_tile_only.get(_input_key(instance_id, good_id), false))
 
 func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = true) -> Dictionary:
 	# Buy goods from the nearest port to dest_tile: pay now (price + transport), ship in,

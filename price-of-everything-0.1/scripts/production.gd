@@ -716,8 +716,8 @@ func _buy_market_inputs(all_buildings: Array) -> void:
 		lead = maxi(1, lead)
 		for input in inputs:
 			var good_id := str(input.good_id)
-			if not MatchState.is_input_from_market(instance_id, good_id):
-				continue
+			if MatchState.is_input_tile_only(instance_id, good_id):
+				continue  # player opted this input out of market top-up
 			var need_per_turn := int(input.qty)
 			if need_per_turn <= 0:
 				continue
