@@ -37,6 +37,7 @@ func _ready() -> void:
 	_test_output_market_route()
 	_test_transaction_ledger()
 	_test_market_buy()
+	_test_purchases()
 	_test_output_conservation()
 	_test_market_sale_credits()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
@@ -84,6 +85,18 @@ func _test_output_conservation() -> void:
 	Production._flush_output_buffer()
 	var gained: int = Stockpile.get_total("g_001") - before
 	_check(gained == 20, "output is conserved into the tile stockpile (got %d of 20)" % gained)
+
+func _test_purchases() -> void:
+	_check(Catalog.buyable_goods().size() > 0 and Catalog.sellable_goods().size() > 0,
+		"Catalog exposes buyable + sellable good lists")
+	_check(Catalog.is_good_buyable("g_001"), "coal is buyable")
+	var before: int = MatchState.get_recurring_transaction_rows().size()
+	MatchState.add_recurring_buy("tile_3_8", "g_001", 25)
+	var rows: Array = MatchState.get_recurring_transaction_rows()
+	_check(rows.size() == before + 1, "recurring buy registers in the dashboard")
+	var last: Dictionary = rows[rows.size() - 1]
+	_check(str(last.get("type", "")) == "Buy" and int(last.get("qty", 0)) == 25,
+		"recurring buy shows as a Buy row")
 
 func _test_market_buy() -> void:
 	_check(not MatchState.is_input_tile_only("inst_x", "g_002"), "inputs default to stockpile-then-market")

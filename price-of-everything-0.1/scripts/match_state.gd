@@ -40,6 +40,7 @@ var recurring_moves: Array = []   # [{source, dest, goods}] re-issued every turn
 var scheduled_moves: Array = []   # [{source, dest, goods}] one-shot, fired next turn (e.g. split)
 var recurring_sells: Array = []   # [{source, goods}] re-sold to the nearest port every turn
 var recurring_bulk_sells: Array = []  # [{params, turn_started}] re-run via sell_all_to_market every turn
+var recurring_buys: Array = []  # [{dest, good, qty}] re-bought from market every turn
 # View-only ledgers for the Transactions / Movements tabs (one-off entries; recurring
 # rules are read from the recurring_* arrays). Rows: {good_id, qty, tile_from, tile_to,
 # turn_started, turn_ended} (+ kind for transactions).
@@ -70,6 +71,9 @@ signal toast_requested(message: String, toast_type: String)
 signal market_sale_arrived_at_port(port_tile_id: String, revenue: float)
 ## A build was rejected for lack of funds (drives the error toast + money flash).
 signal build_rejected_no_funds(message: String)
+## Purchases tab asked the player to pick a delivery tile on the map.
+signal buy_tile_pick_requested()
+signal buy_tile_picked(tile_id: String)  # tile_id == "" means cancelled
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)
@@ -203,6 +207,7 @@ func reset() -> void:
 	scheduled_moves.clear()
 	recurring_sells.clear()
 	recurring_bulk_sells.clear()
+	recurring_buys.clear()
 	transaction_log.clear()
 	move_log.clear()
 	input_tile_only.clear()
@@ -422,6 +427,9 @@ func add_recurring_sell(source_tile: String, goods_qtys: Dictionary) -> void:
 func add_recurring_bulk_sell(params: Dictionary) -> void:
 	recurring_bulk_sells.append({"params": params.duplicate(true), "turn_started": _ledger_turn()})
 
+func add_recurring_buy(dest_tile: String, good_id: String, qty: int) -> void:
+	recurring_buys.append({"dest": dest_tile, "good": good_id, "qty": qty, "turn_started": _ledger_turn()})
+
 # --- Ledger helpers for the Transactions / Movements tabs ---
 
 func _ledger_turn() -> int:
@@ -562,6 +570,9 @@ func get_recurring_transaction_rows() -> Array:
 		if bool(p.get("finished_only", false)):
 			good_label += " (finished)"
 		rows.append(_txn_row("sell", good_label, -1, "All tiles", "Market", int(r.get("turn_started", 0)), -1))
+	for b in recurring_buys:
+		rows.append(_txn_row("buy", Catalog.get_display_name(str(b.get("good", ""))), int(b.get("qty", 0)),
+			Catalog.nearest_port_tile(str(b.get("dest", ""))), str(b.get("dest", "")), int(b.get("turn_started", 0)), -1))
 	return rows
 
 func get_oneoff_move_rows() -> Array:
@@ -604,6 +615,8 @@ func sell_all_to_market(params: Dictionary, log_oneoff: bool = true) -> Dictiona
 		var goods_qtys: Dictionary = {}
 		for gid in totals.keys():
 			var g := str(gid)
+			if not Catalog.is_good_sellable(g):
+				continue
 			if good_filter != "" and g != good_filter:
 				continue
 			if finished_only and not _is_finished_good(g):

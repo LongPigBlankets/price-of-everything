@@ -24,6 +24,7 @@ var _pending_stockpile_selection: Dictionary = {}
 var _dim_overlay: ColorRect = null
 var _stockpile_legend: PanelContainer = null
 var _pending_move: Dictionary = {}  # {source, goods, recurring} while picking a Move destination
+var _picking_buy_tile := false  # true while picking a Purchases-tab delivery tile
 
 func _ready() -> void:
 	# DS assigns its Theme to the root Window, but Controls do not inherit a
@@ -35,6 +36,7 @@ func _ready() -> void:
 	terrain_layer.stockpile_destination_selected.connect(_on_stockpile_destination_selected)
 	info_panel.building_clicked.connect(building_panel.show_building)
 	info_panel.move_goods_requested.connect(_on_move_goods_requested)
+	MatchState.buy_tile_pick_requested.connect(_on_buy_tile_pick_requested)
 	BuildMode.build_attempted.connect(_on_build_attempted)
 	BuildMode.infrastructure_attempted.connect(_on_infrastructure_attempted)  # NEW
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
@@ -188,7 +190,18 @@ func _format_goods_phrase(items: Array) -> String:
 		int(items[0].qty), Catalog.get_display_name(str(items[0].good_id)),
 		int(items[1].qty), Catalog.get_display_name(str(items[1].good_id)), rest_qty, n - 2]
 
+func _on_buy_tile_pick_requested() -> void:
+	_picking_buy_tile = true
+	terrain_layer.begin_stockpile_destination_selection("")
+	_enter_stockpile_ui_mode()
+
 func _on_stockpile_destination_selected(tile_data: Dictionary) -> void:
+	if _picking_buy_tile:
+		_picking_buy_tile = false
+		terrain_layer.end_stockpile_destination_selection()
+		_exit_stockpile_ui_mode()
+		MatchState.buy_tile_picked.emit(str(tile_data.get("id", "")))
+		return
 	if not _pending_move.is_empty():
 		_complete_move(tile_data)
 		return

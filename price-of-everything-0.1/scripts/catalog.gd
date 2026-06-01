@@ -453,6 +453,18 @@ func all_goods() -> Array:
 func get_good(good_id: String) -> Dictionary:
 	return _goods_by_id.get(good_id, {})
 
+func buyable_goods() -> Array:
+	return _all_goods.filter(func(g: Dictionary) -> bool: return bool(g.get("is_buyable", false)))
+
+func sellable_goods() -> Array:
+	return _all_goods.filter(func(g: Dictionary) -> bool: return bool(g.get("is_sellable", false)))
+
+func is_good_buyable(good_id: String) -> bool:
+	return bool(get_good(good_id).get("is_buyable", false))
+
+func is_good_sellable(good_id: String) -> bool:
+	return bool(get_good(good_id).get("is_sellable", false))
+
 func get_good_by_internal_name(internal_name: String) -> Dictionary:
 	return _goods_by_internal_name.get(internal_name, {})
 

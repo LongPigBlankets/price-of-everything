@@ -1369,6 +1369,8 @@ func _refresh_sell_tab() -> void:
 	if _sell_recurring != null:
 		_sell_recurring.set_pressed_no_signal(false)
 	for good_id in Stockpile.get_tile_totals(_current_tile_id).keys():
+		if not Catalog.is_good_sellable(str(good_id)):
+			continue
 		var btn := Button.new()
 		btn.text = Catalog.get_display_name(str(good_id))
 		btn.toggle_mode = true
@@ -1382,7 +1384,8 @@ func _refresh_sell_tab() -> void:
 
 func _selected_sell_goods() -> Array:
 	if _sell_all_selected:
-		return Stockpile.get_tile_totals(_current_tile_id).keys()
+		return Stockpile.get_tile_totals(_current_tile_id).keys().filter(
+			func(gid: String) -> bool: return Catalog.is_good_sellable(str(gid)))
 	return _sell_selected.keys()
 
 func _on_sell_all_toggled(pressed: bool) -> void:
