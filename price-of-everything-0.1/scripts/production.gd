@@ -175,6 +175,9 @@ func _process_production() -> void:
 	# Recurring + scheduled (split) tile-to-tile moves fire here, on the merged stock.
 	MatchState.run_recurring_and_scheduled_moves()
 
+	# Top up market-sourced building inputs (bought from the nearest port, arrive in N turns).
+	_buy_market_inputs(all_buildings)
+
 	# === SELL PHASE (when production defaults to market) ===
 	if MatchState.sell_mode != MatchState.SellMode.STOCKPILE_ALL:
 		var totals: Dictionary = Stockpile.get_tile_totals(null)
@@ -680,6 +683,48 @@ func compute_committed_for_tile(tile_id: String) -> Dictionary:
 			if good_id != "" and qty > 0:
 				committed[good_id] = committed.get(good_id, 0) + qty
 	return committed
+
+func _inbound_qty(tile_id: String, good_id: String) -> int:
+	var total := 0
+	for s in MatchState.get_inbound_transport_shipments(tile_id, good_id):
+		total += int(s.get("qty", 0))
+	return total
+
+func _buy_market_inputs(all_buildings: Array) -> void:
+	# For every input a player has set to "Market", keep the pipeline topped up to
+	# (lead+1) turns of demand: order = target - on_tile - in_transit, shipped from the port.
+	for building in all_buildings:
+		var recipe: Dictionary = Catalog.get_recipe(building.recipe_id)
+		if recipe.is_empty():
+			continue
+		var inputs: Array = recipe.get("inputs", [])
+		if inputs.is_empty():
+			continue
+		var instance_id: String = building.instance_id
+		var tile_id: String = str(building.get("tile_id", ""))
+		# Don't buy inputs for a building that can't run for power reasons (avoids waste).
+		var energy_req: int = recipe.get("energy_req", 0)
+		var needs_power: bool = energy_req > 0 or recipe.get("output_name", "") == "power"
+		if needs_power and not Power.is_supplied(tile_id, energy_req):
+			continue
+		var port := Catalog.nearest_port_tile(tile_id)
+		if port == "":
+			continue
+		var lead := int(Catalog.route(port, tile_id).get("turns", 1))
+		if lead >= (1 << 30):
+			lead = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, tile_id))
+		lead = maxi(1, lead)
+		for input in inputs:
+			var good_id := str(input.good_id)
+			if not MatchState.is_input_from_market(instance_id, good_id):
+				continue
+			var need_per_turn := int(input.qty)
+			if need_per_turn <= 0:
+				continue
+			var target := need_per_turn * (lead + 1)
+			var order := target - Stockpile.get_at_tile(tile_id, good_id) - _inbound_qty(tile_id, good_id)
+			if order > 0:
+				MatchState.queue_buy(tile_id, good_id, order)
 
 func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictionary) -> void:
 	var inputs: Array = recipe.get("inputs", [])

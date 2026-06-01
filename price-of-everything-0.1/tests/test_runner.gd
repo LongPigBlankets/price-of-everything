@@ -36,6 +36,7 @@ func _ready() -> void:
 	_test_bulk_sell()
 	_test_output_market_route()
 	_test_transaction_ledger()
+	_test_market_buy()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -51,6 +52,23 @@ func _test_storage_boost() -> void:
 	MatchState.add_building("b_004", "", "tile_3_3", "Three Diamonds Shipping Corporation")
 	_check(Stockpile.get_capacity("tile_3_3") == Stockpile.TILE_CAPACITY + 500,
 		"storage_boost raises tile capacity (port = +500)")
+
+func _test_market_buy() -> void:
+	MatchState.set_input_from_market("inst_x", "g_002", true)
+	_check(MatchState.is_input_from_market("inst_x", "g_002"), "input can be set to market source")
+	MatchState.set_input_from_market("inst_x", "g_002", false)
+	_check(not MatchState.is_input_from_market("inst_x", "g_002"), "input source resets to local")
+	MatchState.money = 100000.0
+	var t_before: int = MatchState.get_oneoff_transaction_rows().size()
+	var ship_before: int = MatchState.get_pending_transport_shipments().size()
+	var money_before: float = MatchState.money
+	var result: Dictionary = MatchState.queue_buy("tile_3_8", "g_002", 10)
+	_check(not result.is_empty(), "queue_buy returns a summary")
+	_check(MatchState.money < money_before, "queue_buy pays for goods + transport")
+	_check(MatchState.get_pending_transport_shipments().size() > ship_before, "queue_buy queues an inbound shipment")
+	var rows: Array = MatchState.get_oneoff_transaction_rows()
+	_check(rows.size() == t_before + 1 and str(rows[rows.size() - 1].get("type", "")) == "Buy",
+		"a buy is logged with type Buy")
 
 func _test_transaction_ledger() -> void:
 	Stockpile.add("tile_3_8", "g_001", 12)

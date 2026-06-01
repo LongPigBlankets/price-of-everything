@@ -30,6 +30,7 @@ var labour_multiplier: float = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
 # --- Output routing ---
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
 const MARKET_DESTINATION := "__market__"  # sentinel tile_id: route this building's output to market
+var input_market_sources: Dictionary = {}  # "instance_id|good_id" -> true (buy this input from market)
 var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
 var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (standing order)
@@ -202,6 +203,7 @@ func reset() -> void:
 	recurring_bulk_sells.clear()
 	transaction_log.clear()
 	move_log.clear()
+	input_market_sources.clear()
 	_next_instance_counter = 0
 	state_reset.emit()
 
@@ -474,6 +476,56 @@ func _move_row(good: String, qty: int, tile_from: String, tile_to: String, start
 		"type": "Move", "from": _ledger_tile_label(tile_from), "to": _ledger_tile_label(tile_to),
 		"good": good, "qty": qty, "turn_started": started, "turn_ended": ended,
 	}
+
+func _input_key(instance_id: String, good_id: String) -> String:
+	return instance_id + "|" + good_id
+
+func set_input_from_market(instance_id: String, good_id: String, from_market: bool) -> void:
+	if instance_id == "" or good_id == "":
+		return
+	if from_market:
+		input_market_sources[_input_key(instance_id, good_id)] = true
+	else:
+		input_market_sources.erase(_input_key(instance_id, good_id))
+
+func is_input_from_market(instance_id: String, good_id: String) -> bool:
+	return bool(input_market_sources.get(_input_key(instance_id, good_id), false))
+
+func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = true) -> Dictionary:
+	# Buy goods from the nearest port to dest_tile: pay now (price + transport), ship in,
+	# arrive in N turns. The reusable buy primitive for market-sourced inputs (and later a Buy tab).
+	if dest_tile == "" or good_id == "" or qty <= 0:
+		return {}
+	var port := Catalog.nearest_port_tile(dest_tile)
+	if port == "":
+		return {}
+	var route := Catalog.route(port, dest_tile)
+	var turns: int = int(route.get("turns", 0))
+	if turns >= (1 << 30):
+		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, dest_tile))
+	var transport := EconomyConfig.transport_cost_for(good_id, qty, turns)
+	var total := float(qty) * MarketState.get_price(good_id) + transport
+	if money < total:
+		return {}  # can't afford this order
+	add_money(-total)
+	if log_oneoff:
+		var started := _ledger_turn()
+		_log_transaction({
+			"kind": "buy", "good_id": good_id, "qty": qty,
+			"tile_from": port, "tile_to": dest_tile,
+			"turn_started": started, "turn_ended": started + maxi(0, turns),
+		})
+	if turns >= 1:
+		queue_transport_shipment({
+			"source_tile": port, "destination_tile": dest_tile,
+			"good_id": good_id, "qty": qty,
+			"turns_remaining": turns, "transport_turns": turns,
+			"transport_cost": transport, "is_purchase": true,
+			"tiles": route.get("tiles", []), "path": route.get("path", []), "legs": route.get("legs", []),
+		})
+	else:
+		Stockpile.add(dest_tile, good_id, qty)
+	return {"qty": qty, "turns": turns, "cost": total, "port": port}
 
 func get_oneoff_transaction_rows() -> Array:
 	var rows: Array = []
