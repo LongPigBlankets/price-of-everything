@@ -30,20 +30,40 @@ var _buy_good_id: String = ""
 var _buy_dest_tile: String = ""
 var _buy_search_results: Array = []  # good_ids for the current filter
 var _pick_in_progress := false  # true while the panel is hidden for a map tile-pick
+var _buy_cost_label: Label = null
 
 func _ready() -> void:
 	title_label.text = "Market"
 	close_button.pressed.connect(hide)
 	_build_content()
+	_add_prod_cost_header()
 	_build_tabs()
 	MarketState.prices_updated.connect(_on_prices_updated)
 	MatchState.buy_tile_picked.connect(_on_buy_tile_picked)
 	visibility_changed.connect(_on_panel_visibility_changed)
 	Production.turn_processed.connect(_refresh_ledgers)
 
+func _add_prod_cost_header() -> void:
+	var lbl := Label.new()
+	lbl.text = "Prod. cost/unit"
+	lbl.custom_minimum_size = Vector2(120, 0)
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header_static.add_child(lbl)
+
+func _centre_and_resize() -> void:
+	# Double-width, centred on screen.
+	var vp := get_viewport_rect().size
+	var w := 800.0
+	var h := minf(640.0, vp.y - 80.0)
+	offset_left = maxf(0.0, (vp.x - w) / 2.0)
+	offset_top = maxf(40.0, (vp.y - h) / 2.0)
+	offset_right = offset_left + w
+	offset_bottom = offset_top + h
+
 func _on_panel_visibility_changed() -> void:
 	if not visible:
 		return
+	_centre_and_resize()
 	_refresh_ledgers()
 	if not _pick_in_progress:
 		# Fresh open (not a reopen after a map pick): clear stale "recurring" choices.
@@ -113,6 +133,11 @@ func _build_purchases_tab() -> VBoxContainer:
 
 	_buy_recurring_check = UIHelpers.make_custom_checkbox()
 	tab.add_child(UIHelpers.make_setting_row("Make recurring every turn", _buy_recurring_check))
+
+	_buy_cost_label = Label.new()
+	_buy_cost_label.text = "Cost to buy: —"
+	_buy_cost_label.add_theme_font_size_override("font_size", 13)
+	tab.add_child(_buy_cost_label)
 
 	_buy_cta = Button.new()
 	_buy_cta.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -205,6 +230,12 @@ func _update_buy_cta() -> void:
 	var good_label := Catalog.get_display_name(_buy_good_id) if _buy_good_id != "" else "—"
 	_buy_cta.text = "Buy %d %s" % [qty, good_label]
 	_buy_cta.disabled = _buy_good_id == "" or qty <= 0 or _buy_dest_tile == ""
+	if _buy_cost_label != null:
+		if _buy_good_id != "" and qty > 0 and _buy_dest_tile != "":
+			var prev: Dictionary = MatchState.preview_buy(_buy_dest_tile, _buy_good_id, qty)
+			_buy_cost_label.text = ("Cost to buy: £%.2f" % float(prev.get("cost", 0.0))) if not prev.is_empty() else "Cost to buy: —"
+		else:
+			_buy_cost_label.text = "Cost to buy: —"
 
 func _on_buy_pressed() -> void:
 	var qty: int = int(_buy_qty_field.text) if _buy_qty_field.text.is_valid_int() else 0
@@ -213,9 +244,9 @@ func _on_buy_pressed() -> void:
 	var result: Dictionary = MatchState.queue_buy(_buy_dest_tile, _buy_good_id, qty)
 	if not result.is_empty():
 		var turns := int(result.get("turns", 0))
-		MatchState.request_toast("Buying %d %s to %s — arrives in %d turn%s" % [
+		MatchState.request_toast("Buying %d %s to %s for £%.2f — arrives in %d turn%s" % [
 			int(result.get("qty", qty)), Catalog.get_display_name(_buy_good_id),
-			Catalog.tile_label(_buy_dest_tile), turns, "" if turns == 1 else "s"], "success")
+			Catalog.tile_label(_buy_dest_tile), float(result.get("cost", 0.0)), turns, "" if turns == 1 else "s"], "success")
 	else:
 		MatchState.request_toast("Couldn't buy %s — not enough cash" % Catalog.get_display_name(_buy_good_id), "warning")
 	if _buy_recurring_check != null and _buy_recurring_check.button_pressed:

@@ -97,6 +97,10 @@ func _test_purchases() -> void:
 	var last: Dictionary = rows[rows.size() - 1]
 	_check(str(last.get("type", "")) == "Buy" and int(last.get("qty", 0)) == 25,
 		"recurring buy shows as a Buy row")
+	var m: float = MatchState.money
+	var prev: Dictionary = MatchState.preview_buy("tile_3_8", "g_001", 10)
+	_check(not prev.is_empty() and float(prev.get("cost", 0)) > 0.0 and MatchState.money == m,
+		"preview_buy returns a cost without spending")
 
 func _test_market_buy() -> void:
 	_check(not MatchState.is_input_tile_only("inst_x", "g_002"), "inputs default to stockpile-then-market")

@@ -549,6 +549,22 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	return {"qty": qty, "turns": turns, "cost": total,
 		"goods_cost": float(qty) * unit_price, "transport_cost": transport, "port": port}
 
+func preview_buy(dest_tile: String, good_id: String, qty: int) -> Dictionary:
+	# Cost/turns for a buy WITHOUT executing — for the Purchases "Cost to buy" line.
+	if dest_tile == "" or good_id == "" or qty <= 0:
+		return {}
+	var port := Catalog.nearest_port_tile(dest_tile)
+	if port == "":
+		return {}
+	var route := Catalog.route(port, dest_tile)
+	var turns: int = int(route.get("turns", 0))
+	if turns >= (1 << 30):
+		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, dest_tile))
+	var transport := EconomyConfig.transport_cost_for(good_id, qty, turns)
+	var goods_cost := float(qty) * MarketState.get_price(good_id)
+	return {"cost": goods_cost + transport, "goods_cost": goods_cost,
+		"transport_cost": transport, "turns": turns, "port": port}
+
 func get_oneoff_transaction_rows() -> Array:
 	var rows: Array = []
 	for t in transaction_log:
