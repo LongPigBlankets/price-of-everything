@@ -55,6 +55,7 @@ func _process_production() -> void:
 	"power_sales_revenue": 0.0,
 	"power_purchase_cost": 0.0,
 	"transport_paid": 0.0,
+	"goods_purchased_cost": 0.0,
 	"maintenance_paid": 0.0,
 	"labour_paid": 0.0,
 	"taxes_paid": 0.0,
@@ -176,7 +177,7 @@ func _process_production() -> void:
 	MatchState.run_recurring_and_scheduled_moves()
 
 	# Top up market-sourced building inputs (bought from the nearest port, arrive in N turns).
-	_buy_market_inputs(all_buildings)
+	_buy_market_inputs(all_buildings, summary)
 
 	# === SELL PHASE (when production defaults to market) ===
 	if MatchState.sell_mode != MatchState.SellMode.STOCKPILE_ALL:
@@ -253,11 +254,12 @@ func _process_production() -> void:
 		summary.produced, summary.consumed, summary.sold, summary.starved.size(),
 		summary.money_in - summary.money_out, pass_count
 	])
-	print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f interest=£%.2f tax=£%.2f div=£%.2f net=£%.2f" % [
+	print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f interest=£%.2f tax=£%.2f div=£%.2f net=£%.2f" % [
 	summary.goods_sales_revenue,
 	summary.power_sales_revenue,
 	summary.power_purchase_cost,
 	summary.maintenance_paid + summary.labour_paid + summary.transport_paid,
+	summary.goods_purchased_cost,
 	summary.interest_paid,
 	summary.taxes_paid,
 	summary.dividends_paid,
@@ -690,7 +692,7 @@ func _inbound_qty(tile_id: String, good_id: String) -> int:
 		total += int(s.get("qty", 0))
 	return total
 
-func _buy_market_inputs(all_buildings: Array) -> void:
+func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 	# For every input a player has set to "Market", keep the pipeline topped up to
 	# (lead+1) turns of demand: order = target - on_tile - in_transit, shipped from the port.
 	for building in all_buildings:
@@ -724,7 +726,11 @@ func _buy_market_inputs(all_buildings: Array) -> void:
 			var target := need_per_turn * (lead + 1)
 			var order := target - Stockpile.get_at_tile(tile_id, good_id) - _inbound_qty(tile_id, good_id)
 			if order > 0:
-				MatchState.queue_buy(tile_id, good_id, order)
+				var bought: Dictionary = MatchState.queue_buy(tile_id, good_id, order)
+				if not bought.is_empty():
+					summary.goods_purchased_cost += float(bought.get("goods_cost", 0.0))
+					summary.transport_paid += float(bought.get("transport_cost", 0.0))
+					summary.money_out += float(bought.get("cost", 0.0))
 
 func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictionary) -> void:
 	var inputs: Array = recipe.get("inputs", [])

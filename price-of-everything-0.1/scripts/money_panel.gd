@@ -50,6 +50,8 @@ const HEADER_HEIGHT := 40.0
 @onready var _proj_costs_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection
 var _transport_value: Label
 var _proj_transport_value: Label
+var _goods_purchased_value: Label
+var _proj_goods_purchased_value: Label
 @onready var proj_total_costs_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_TotalCostsRow/TotalCostsValue
 @onready var proj_operating_profit_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_OperatingProfitRow/OperatingProfitValue
 @onready var proj_interest_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_InterestRow/InterestValue
@@ -87,6 +89,8 @@ func _insert_cost_row(section: VBoxContainer, after_node_name: String, label_tex
 func _ready() -> void:
 	_transport_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Transport")
 	_proj_transport_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Transport")
+	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
+	_proj_goods_purchased_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Goods purchased")
 	close_button.pressed.connect(hide)
 	title_label.text = "Money & Budget"
 	
@@ -184,13 +188,14 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	var labour: float = summary.get("labour_paid", 0.0)
 	var transport: float = summary.get("transport_paid", 0.0)
 	var power_purchase: float = summary.get("power_purchase_cost", 0.0)
+	var goods_purchased: float = summary.get("goods_purchased_cost", 0.0)
 	var interest: float = summary.get("interest_paid", 0.0)
 	var tax: float = summary.get("taxes_paid", 0.0)
 	var dividends: float = summary.get("dividends_paid", 0.0)
-	
+
 	# Compute derived
 	var total_revenue: float = goods_revenue + power_revenue
-	var total_costs: float = maintenance + labour + transport + power_purchase
+	var total_costs: float = maintenance + labour + transport + power_purchase + goods_purchased
 	var operating_profit: float = total_revenue - total_costs
 	var pretax: float = operating_profit - interest
 	var posttax: float = pretax - tax
@@ -205,6 +210,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	labour_value.text = "-£%.2f" % labour
 	power_purchase_value.text = "-£%.2f" % power_purchase
 	_transport_value.text = "-£%.2f" % transport
+	_goods_purchased_value.text = "-£%.2f" % goods_purchased
 	total_costs_value.text = "-£%.2f" % total_costs
 	
 	operating_profit_value.text = _format_signed(operating_profit)
@@ -268,6 +274,7 @@ func _render_projection(proj: Dictionary) -> void:
 	proj_labour_value.text = "-£%.2f" % proj.labour
 	proj_power_purchase_value.text = "-£%.2f" % proj.power_purchase
 	_proj_transport_value.text = "-£%.2f" % proj.transport
+	_proj_goods_purchased_value.text = "-£%.2f" % proj.goods_purchased
 	proj_total_costs_value.text = "-£%.2f" % proj.total_costs
 	
 	proj_operating_profit_value.text = _format_signed(proj.operating_profit)
@@ -298,7 +305,8 @@ func _project_next_turn() -> Dictionary:
 	var maintenance: float = 0.0
 	var labour: float = 0.0
 	var transport: float = 0.0
-	
+	var goods_purchased: float = 0.0
+
 	# Use last_turn_run if available; else iterate all buildings
 	var building_ids_to_consider: Array
 	if Production.last_turn_run.is_empty():
@@ -332,6 +340,12 @@ func _project_next_turn() -> Dictionary:
 		maintenance += EconomyConfig.MAINTENANCE_PER_BUILDING
 		labour += _calculate_projected_labour_cost(building)
 		transport += _projected_transport_cost(building, recipe)
+		# Market-sourced inputs (upper bound: full per-turn demand at market price)
+		for input in recipe.get("inputs", []):
+			var in_gid: String = str(input.get("good_id", ""))
+			if in_gid == "" or MatchState.is_input_tile_only(inst_id, in_gid):
+				continue
+			goods_purchased += int(input.get("qty", 0)) * MarketState.get_price(in_gid)
 	
 	# Grid settlement
 	var net_power: int = power_supply - power_demand
@@ -347,7 +361,7 @@ func _project_next_turn() -> Dictionary:
 	
 	# Compute the chain
 	var total_revenue: float = goods_revenue + power_revenue
-	var total_costs: float = maintenance + labour + transport + power_purchase
+	var total_costs: float = maintenance + labour + transport + power_purchase + goods_purchased
 	var operating_profit: float = total_revenue - total_costs
 	var pretax: float = operating_profit - interest
 	var tax: float = max(pretax, 0.0) * EconomyConfig.TAX_RATE
@@ -363,6 +377,7 @@ func _project_next_turn() -> Dictionary:
 		"labour": labour,
 		"transport": transport,
 		"power_purchase": power_purchase,
+		"goods_purchased": goods_purchased,
 		"total_costs": total_costs,
 		"operating_profit": operating_profit,
 		"interest": interest,

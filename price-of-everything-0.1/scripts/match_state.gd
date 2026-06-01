@@ -68,6 +68,8 @@ signal labour_multiplier_changed(new_value: float)
 signal toast_requested(message: String, toast_type: String)
 ## A market sale was finalised at a port this turn (drives the £-rise effect).
 signal market_sale_arrived_at_port(port_tile_id: String, revenue: float)
+## A build was rejected for lack of funds (drives the error toast + money flash).
+signal build_rejected_no_funds(message: String)
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)
@@ -536,7 +538,8 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 		})
 	else:
 		Stockpile.add(dest_tile, good_id, qty)
-	return {"qty": qty, "turns": turns, "cost": total, "port": port}
+	return {"qty": qty, "turns": turns, "cost": total,
+		"goods_cost": float(qty) * unit_price, "transport_cost": transport, "port": port}
 
 func get_oneoff_transaction_rows() -> Array:
 	var rows: Array = []

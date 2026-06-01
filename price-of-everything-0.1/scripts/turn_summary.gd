@@ -36,6 +36,8 @@ var _in_transit_expanded := false
 
 var _buildings_added_this_turn: Array = []
 var _suppress_expand := false  # set by the "don't expand again" tickbox; resets each game
+var _transport_cost_label: Label = null
+var _goods_purchased_label: Label = null
 
 func _ready() -> void:
 	_expanded_offset_top = offset_top
@@ -45,9 +47,20 @@ func _ready() -> void:
 	Production.turn_processed.connect(_on_turn_processed)
 	MatchState.building_added.connect(_on_building_added)
 	_build_in_transit_section()
+	_build_cost_breakdown_rows()
 	_build_suppress_expand_checkbox()
 	_render_empty()
 	_collapse()
+
+func _build_cost_breakdown_rows() -> void:
+	# Split out Transport + Goods purchased from the combined Costs line.
+	var parent := costs_label.get_parent()
+	_transport_cost_label = costs_label.duplicate()
+	parent.add_child(_transport_cost_label)
+	parent.move_child(_transport_cost_label, costs_label.get_index() + 1)
+	_goods_purchased_label = costs_label.duplicate()
+	parent.add_child(_goods_purchased_label)
+	parent.move_child(_goods_purchased_label, _transport_cost_label.get_index() + 1)
 
 func _build_suppress_expand_checkbox() -> void:
 	var checkbox := UIHelpers.make_custom_checkbox()
@@ -80,8 +93,12 @@ func _render_summary(summary: Dictionary) -> void:
 	goods_sales_label.text = "  Goods sold: +£%.2f" % summary.goods_sales_revenue
 	power_sales_label.text = "  Power sold: +£%.2f" % summary.power_sales_revenue
 	power_purchase_label.text = "  Power bought: -£%.2f" % summary.power_purchase_cost
-	var total_costs: float = summary.maintenance_paid + summary.labour_paid + summary.get("transport_paid", 0.0)
+	var total_costs: float = summary.maintenance_paid + summary.labour_paid
 	costs_label.text = "  Costs: -£%.2f" % total_costs
+	if _transport_cost_label != null:
+		_transport_cost_label.text = "  Transport costs: -£%.2f" % summary.get("transport_paid", 0.0)
+	if _goods_purchased_label != null:
+		_goods_purchased_label.text = "  Goods purchased: -£%.2f" % summary.get("goods_purchased_cost", 0.0)
 	var total_taxes: float = summary.taxes_paid + summary.dividends_paid
 	taxes_label.text = "  Taxes & dividends: -£%.2f" % total_taxes
 	

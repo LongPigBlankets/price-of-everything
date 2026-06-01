@@ -361,6 +361,7 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 	# Check + deduct money
 	if not MatchState.deduct_money(cost):
 		print("[Build] FAILED: insufficient money. Need £%.2f, have £%.2f" % [cost, MatchState.money])
+		MatchState.build_rejected_no_funds.emit("Not enough money — need £%.2f, you have £%.2f" % [cost, MatchState.money])
 		return
 
 	# Add to MatchState (single source of truth)
@@ -483,6 +484,7 @@ func _try_build_infrastructure(tile_id: String, coord: Vector2i, tile: Dictionar
 	# Check + deduct
 	if not MatchState.deduct_money(cost):
 		print("[Build] FAILED: insufficient money for %s. Need £%.2f, have £%.2f" % [infra_type, cost, MatchState.money])
+		MatchState.build_rejected_no_funds.emit("Not enough money to build %s — need £%.2f, you have £%.2f" % [infra_type, cost, MatchState.money])
 		return
 
 	infra.append(infra_type)

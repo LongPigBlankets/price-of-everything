@@ -65,6 +65,8 @@ func _test_market_buy() -> void:
 	var money_before: float = MatchState.money
 	var result: Dictionary = MatchState.queue_buy("tile_3_8", "g_002", 10)
 	_check(not result.is_empty(), "queue_buy returns a summary")
+	_check(absf(float(result.get("goods_cost", 0)) + float(result.get("transport_cost", 0)) - float(result.get("cost", 0))) < 0.01,
+		"queue_buy splits cost into goods + transport")
 	_check(MatchState.money < money_before, "queue_buy pays for goods + transport")
 	_check(MatchState.get_pending_transport_shipments().size() > ship_before, "queue_buy queues an inbound shipment")
 	var rows: Array = MatchState.get_oneoff_transaction_rows()
