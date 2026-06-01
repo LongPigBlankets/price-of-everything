@@ -29,6 +29,7 @@ var _buy_cta: Button = null
 var _buy_good_id: String = ""
 var _buy_dest_tile: String = ""
 var _buy_search_results: Array = []  # good_ids for the current filter
+var _pick_in_progress := false  # true while the panel is hidden for a map tile-pick
 
 func _ready() -> void:
 	title_label.text = "Market"
@@ -37,8 +38,19 @@ func _ready() -> void:
 	_build_tabs()
 	MarketState.prices_updated.connect(_on_prices_updated)
 	MatchState.buy_tile_picked.connect(_on_buy_tile_picked)
-	visibility_changed.connect(_refresh_ledgers)
+	visibility_changed.connect(_on_panel_visibility_changed)
 	Production.turn_processed.connect(_refresh_ledgers)
+
+func _on_panel_visibility_changed() -> void:
+	if not visible:
+		return
+	_refresh_ledgers()
+	if not _pick_in_progress:
+		# Fresh open (not a reopen after a map pick): clear stale "recurring" choices.
+		if _buy_recurring_check != null:
+			_buy_recurring_check.set_pressed_no_signal(false)
+		if _recurring_check != null:
+			_recurring_check.set_pressed_no_signal(false)
 
 func _build_tabs() -> void:
 	# Two tabs: the price table ("Good prices", default) and bulk selling ("Sales").
@@ -96,7 +108,7 @@ func _build_purchases_tab() -> VBoxContainer:
 	# Destination — picked on the map
 	_buy_dest_button = Button.new()
 	_buy_dest_button.text = "Choose tile on map"
-	_buy_dest_button.pressed.connect(func() -> void: MatchState.buy_tile_pick_requested.emit())
+	_buy_dest_button.pressed.connect(_on_choose_dest_pressed)
 	tab.add_child(_make_labeled_row("Deliver to", _buy_dest_button))
 
 	_buy_recurring_check = UIHelpers.make_custom_checkbox()
@@ -172,10 +184,19 @@ func _on_buy_good_selected(index: int) -> void:
 	_buy_search_list.visible = false
 	_update_buy_cta()
 
+func _on_choose_dest_pressed() -> void:
+	# Hide the panel for the map pick, then reopen it once a tile is chosen.
+	_pick_in_progress = true
+	hide()
+	MatchState.buy_tile_pick_requested.emit()
+
 func _on_buy_tile_picked(tile_id: String) -> void:
 	_buy_dest_tile = tile_id
 	_buy_dest_button.text = "Choose tile on map" if tile_id == "" else Catalog.tile_label(tile_id)
 	_update_buy_cta()
+	if _pick_in_progress:
+		show()  # reopen on the Purchases tab; recurring is preserved (guarded in visibility handler)
+		_pick_in_progress = false
 
 func _update_buy_cta() -> void:
 	if _buy_cta == null:
