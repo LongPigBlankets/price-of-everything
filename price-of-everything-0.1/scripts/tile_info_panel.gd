@@ -1290,24 +1290,32 @@ func _make_move_stepper(good_id: String) -> Control:
 	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(name_lbl)
-	var qty_lbl := Label.new()
-	qty_lbl.text = str(int(_move_qtys.get(good_id, 0)))
-	qty_lbl.add_theme_font_size_override("font_size", 17)
-	qty_lbl.custom_minimum_size = Vector2(52, 0)
-	qty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	qty_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(qty_lbl)
+	var qty_field := _make_qty_field(int(_move_qtys.get(good_id, 0)))
+	qty_field.text_submitted.connect(func(t: String) -> void: _on_move_qty_edited(good_id, t, qty_field))
+	qty_field.focus_exited.connect(func() -> void: _on_move_qty_edited(good_id, qty_field.text, qty_field))
+	row.add_child(qty_field)
 	var arrows := VBoxContainer.new()
 	arrows.add_theme_constant_override("separation", 2)
 	arrows.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var up := _make_arrow_button("▲")
-	up.pressed.connect(_on_move_qty_arrow.bind(good_id, 1, qty_lbl))
+	up.pressed.connect(_on_move_qty_arrow.bind(good_id, 1, qty_field))
 	var down := _make_arrow_button("▼")
-	down.pressed.connect(_on_move_qty_arrow.bind(good_id, -1, qty_lbl))
+	down.pressed.connect(_on_move_qty_arrow.bind(good_id, -1, qty_field))
 	arrows.add_child(up)
 	arrows.add_child(down)
 	row.add_child(arrows)
 	return row
+
+func _make_qty_field(value: int) -> LineEdit:
+	# Editable numbers box used by the Move/Sell steppers — type a value or use the arrows.
+	var field := LineEdit.new()
+	field.text = str(value)
+	field.add_theme_font_size_override("font_size", 17)
+	field.custom_minimum_size = Vector2(56, 0)
+	field.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	field.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	field.select_all_on_focus = true
+	return field
 
 func _build_sell_goods_controls(parent: VBoxContainer) -> void:
 	parent.add_child(HSeparator.new())
@@ -1414,29 +1422,33 @@ func _make_sell_stepper(good_id: String) -> Control:
 	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(name_lbl)
-	var qty_lbl := Label.new()
-	qty_lbl.text = str(int(_sell_qtys.get(good_id, 0)))
-	qty_lbl.add_theme_font_size_override("font_size", 17)
-	qty_lbl.custom_minimum_size = Vector2(52, 0)
-	qty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	qty_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(qty_lbl)
+	var qty_field := _make_qty_field(int(_sell_qtys.get(good_id, 0)))
+	qty_field.text_submitted.connect(func(t: String) -> void: _on_sell_qty_edited(good_id, t, qty_field))
+	qty_field.focus_exited.connect(func() -> void: _on_sell_qty_edited(good_id, qty_field.text, qty_field))
+	row.add_child(qty_field)
 	var arrows := VBoxContainer.new()
 	arrows.add_theme_constant_override("separation", 2)
 	arrows.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var up := _make_arrow_button("▲")
-	up.pressed.connect(_on_sell_qty_arrow.bind(good_id, 1, qty_lbl))
+	up.pressed.connect(_on_sell_qty_arrow.bind(good_id, 1, qty_field))
 	var down := _make_arrow_button("▼")
-	down.pressed.connect(_on_sell_qty_arrow.bind(good_id, -1, qty_lbl))
+	down.pressed.connect(_on_sell_qty_arrow.bind(good_id, -1, qty_field))
 	arrows.add_child(up)
 	arrows.add_child(down)
 	row.add_child(arrows)
 	return row
 
-func _on_sell_qty_arrow(good_id: String, delta: int, qty_lbl: Label) -> void:
+func _on_sell_qty_arrow(good_id: String, delta: int, qty_field: LineEdit) -> void:
 	var avail: int = Stockpile.get_at_tile(_current_tile_id, good_id)
 	_sell_qtys[good_id] = clampi(int(_sell_qtys.get(good_id, 0)) + delta, 0, avail)
-	qty_lbl.text = str(int(_sell_qtys[good_id]))
+	qty_field.text = str(int(_sell_qtys[good_id]))
+	_update_sell_cta()
+
+func _on_sell_qty_edited(good_id: String, text: String, qty_field: LineEdit) -> void:
+	var avail: int = Stockpile.get_at_tile(_current_tile_id, good_id)
+	var v: int = clampi(int(text) if text.is_valid_int() else 0, 0, avail)
+	_sell_qtys[good_id] = v
+	qty_field.text = str(v)
 	_update_sell_cta()
 
 func _update_sell_cta() -> void:
@@ -1519,10 +1531,17 @@ func _make_arrow_button(glyph: String) -> Button:
 		b.add_theme_stylebox_override(state, empty)
 	return b
 
-func _on_move_qty_arrow(good_id: String, delta: int, qty_lbl: Label) -> void:
+func _on_move_qty_arrow(good_id: String, delta: int, qty_field: LineEdit) -> void:
 	var avail: int = Stockpile.get_at_tile(_current_tile_id, good_id)
 	_move_qtys[good_id] = clampi(int(_move_qtys.get(good_id, 0)) + delta, 0, avail)
-	qty_lbl.text = str(int(_move_qtys[good_id]))
+	qty_field.text = str(int(_move_qtys[good_id]))
+	_update_move_cta()
+
+func _on_move_qty_edited(good_id: String, text: String, qty_field: LineEdit) -> void:
+	var avail: int = Stockpile.get_at_tile(_current_tile_id, good_id)
+	var v: int = clampi(int(text) if text.is_valid_int() else 0, 0, avail)
+	_move_qtys[good_id] = v
+	qty_field.text = str(v)
 	_update_move_cta()
 
 func _update_move_cta() -> void:

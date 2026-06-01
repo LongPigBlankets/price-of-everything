@@ -37,6 +37,7 @@ var _shipment_id_counter: int = 0
 var recurring_moves: Array = []   # [{source, dest, goods}] re-issued every turn
 var scheduled_moves: Array = []   # [{source, dest, goods}] one-shot, fired next turn (e.g. split)
 var recurring_sells: Array = []   # [{source, goods}] re-sold to the nearest port every turn
+var recurring_bulk_sells: Array = []  # [params] re-run via sell_all_to_market every turn
 const LARGE_SHIPMENT_THRESHOLD := 500
 const LARGE_SHIPMENT_SURCHARGE := 2.0   # >500 units in one move costs 2x transport (tunable)
 var tile_land_owned: Dictionary = {}
@@ -370,9 +371,14 @@ func run_recurring_and_scheduled_moves() -> void:
 		queue_move(str(m.source), str(m.dest), m.goods)
 	for m in recurring_sells:
 		queue_sell(str(m.source), m.goods)
+	for params in recurring_bulk_sells:
+		sell_all_to_market(params)
 
 func add_recurring_sell(source_tile: String, goods_qtys: Dictionary) -> void:
 	recurring_sells.append({"source": source_tile, "goods": goods_qtys.duplicate(true)})
+
+func add_recurring_bulk_sell(params: Dictionary) -> void:
+	recurring_bulk_sells.append(params.duplicate(true))
 
 func _is_finished_good(good_id: String) -> bool:
 	# No explicit "finished" tier in the MVP, so "finished/manufactured" = non-raw, non-power.

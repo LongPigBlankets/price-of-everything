@@ -3,8 +3,12 @@ extends PanelContainer
 @onready var title_label: Label = $MarginContainer/VBoxContainer/HeaderRow/TitleLabel
 @onready var close_button: Button = $MarginContainer/VBoxContainer/HeaderRow/CloseButton
 @onready var content_vbox: VBoxContainer = $MarginContainer/VBoxContainer/ScrollContainer/ContentVBox
+@onready var main_vbox: VBoxContainer = $MarginContainer/VBoxContainer
+@onready var header_static: HBoxContainer = $MarginContainer/VBoxContainer/HeaderRowStatic
+@onready var scroll: ScrollContainer = $MarginContainer/VBoxContainer/ScrollContainer
 
 const MarketRowScene: PackedScene = preload("res://scenes/market_row.tscn")
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const HEADER_HEIGHT := 40.0
 
 var rows: Array = []
@@ -12,24 +16,44 @@ var _dragging := false
 var _drag_offset := Vector2.ZERO
 var _good_option: OptionButton = null
 var _finished_check: CheckBox = null
+var _recurring_check: CheckBox = null
 var _keep_spin: SpinBox = null
 
 func _ready() -> void:
 	title_label.text = "Market"
 	close_button.pressed.connect(hide)
 	_build_content()
-	_build_bulk_sell_section()
+	_build_tabs()
 	MarketState.prices_updated.connect(_on_prices_updated)
 
-func _build_bulk_sell_section() -> void:
-	# Stories 4 & 5: sell across many/all tiles to market, with good / finished / threshold filters.
-	var section := VBoxContainer.new()
-	section.add_theme_constant_override("separation", 6)
+func _build_tabs() -> void:
+	# Two tabs: the price table ("Good prices", default) and bulk selling ("Sales").
+	var tabs := TabContainer.new()
+	tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
+	var prices_tab := VBoxContainer.new()
+	prices_tab.name = "Good prices"
+	main_vbox.remove_child(header_static)
+	main_vbox.remove_child(scroll)
+	prices_tab.add_child(header_static)  # table header sits above the rows
+	prices_tab.add_child(scroll)
+	tabs.add_child(prices_tab)
+
+	var sales_tab := VBoxContainer.new()
+	sales_tab.name = "Sales"
+	sales_tab.add_theme_constant_override("separation", 6)
+	_build_bulk_sell_section(sales_tab)
+	tabs.add_child(sales_tab)
+
+	main_vbox.add_child(tabs)
+
+func _build_bulk_sell_section(parent: VBoxContainer) -> void:
+	# Stories 4 & 5: sell across many/all tiles to market, with good / finished / threshold filters.
 	var header := Label.new()
 	header.text = "Sell to market (bulk)"
 	header.add_theme_font_size_override("font_size", 16)
-	section.add_child(header)
+	parent.add_child(header)
 
 	_good_option = OptionButton.new()
 	_good_option.add_item("All goods")
@@ -37,29 +61,26 @@ func _build_bulk_sell_section() -> void:
 	for g in Catalog.all_goods():
 		_good_option.add_item(str(g.display_name))
 		_good_option.set_item_metadata(_good_option.item_count - 1, str(g.id))
-	section.add_child(_make_labeled_row("Good", _good_option))
+	parent.add_child(_make_labeled_row("Good", _good_option))
 
-	_finished_check = CheckBox.new()
-	_finished_check.text = "Finished goods only (non-raw)"
-	section.add_child(_finished_check)
+	_finished_check = UIHelpers.make_custom_checkbox()
+	parent.add_child(UIHelpers.make_setting_row("Finished goods only (non-raw)", _finished_check))
 
 	_keep_spin = SpinBox.new()
 	_keep_spin.min_value = 0
 	_keep_spin.max_value = 100000
 	_keep_spin.step = 1
 	_keep_spin.value = 0
-	section.add_child(_make_labeled_row("Keep per tile", _keep_spin))
+	parent.add_child(_make_labeled_row("Keep per tile", _keep_spin))
+
+	_recurring_check = UIHelpers.make_custom_checkbox()
+	parent.add_child(UIHelpers.make_setting_row("Make recurring every turn", _recurring_check))
 
 	var sell_btn := Button.new()
 	sell_btn.text = "Sell from all tiles"
 	sell_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sell_btn.pressed.connect(_on_bulk_sell_pressed)
-	section.add_child(sell_btn)
-
-	section.add_child(HSeparator.new())
-
-	content_vbox.add_child(section)
-	content_vbox.move_child(section, 0)
+	parent.add_child(sell_btn)
 
 func _make_labeled_row(label_text: String, control: Control) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -86,6 +107,8 @@ func _on_bulk_sell_pressed() -> void:
 			qty, tiles, "" if tiles == 1 else "s"], "success")
 	else:
 		MatchState.request_toast("Nothing to sell with those filters", "warning")
+	if _recurring_check != null and _recurring_check.button_pressed:
+		MatchState.add_recurring_bulk_sell(params)
 
 func _build_content() -> void:
 	for child in content_vbox.get_children():

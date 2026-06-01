@@ -1,5 +1,6 @@
 extends PanelContainer
 
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const RUNWAY_THRESHOLD_TURNS := 5
 const AUTO_COLLAPSE_DELAY := 5.0
 const MAX_LIST_ITEMS := 3
@@ -49,12 +50,11 @@ func _ready() -> void:
 	_collapse()
 
 func _build_suppress_expand_checkbox() -> void:
-	var checkbox := CheckBox.new()
-	checkbox.text = "Don't expand again"
-	checkbox.add_theme_font_size_override("font_size", 12)
+	var checkbox := UIHelpers.make_custom_checkbox()
 	checkbox.toggled.connect(func(pressed: bool) -> void: _suppress_expand = pressed)
-	content_vbox.add_child(checkbox)
-	content_vbox.move_child(checkbox, dismiss_button.get_index() + 1)
+	var row := UIHelpers.make_setting_row("Don't expand again", checkbox)
+	content_vbox.add_child(row)
+	content_vbox.move_child(row, dismiss_button.get_index() + 1)
 
 func _on_building_added(instance: Dictionary) -> void:
 	_buildings_added_this_turn.append(instance)
