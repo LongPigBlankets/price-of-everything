@@ -1,6 +1,6 @@
 # Fonts
 
-All 6 TTFs are already in this folder — downloaded from the official open-source repos:
+All 7 TTFs are already in this folder — downloaded from the official open-source repos:
 
 | File | Source | Role (see `scripts/ds.gd`) |
 |---|---|---|
@@ -10,6 +10,7 @@ All 6 TTFs are already in this folder — downloaded from the official open-sour
 | `IBMPlexSans-Regular.ttf` | IBM/plex | `"Caption"` — 12px muted metadata |
 | `IBMPlexSans-Medium.ttf` | IBM/plex | `"Body"` — 14px default body / stats / labels |
 | `IBMPlexSans-SemiBold.ttf` | IBM/plex | `"Numeric"` — 16px numbers / percentages |
+| `IBMPlexSansCondensed-SemiBold.ttf` | IBM/plex | `Button` / button variations — 17px UI actions |
 
 If you ever delete a TTF, the theme falls back to the engine default for that role with a console warning — UI still works.
 
@@ -29,4 +30,8 @@ BASE="https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans/fonts
 curl -fsSL -o IBMPlexSans-Regular.ttf  "$BASE/IBMPlexSans-Regular.ttf"
 curl -fsSL -o IBMPlexSans-Medium.ttf   "$BASE/IBMPlexSans-Medium.ttf"
 curl -fsSL -o IBMPlexSans-SemiBold.ttf "$BASE/IBMPlexSans-SemiBold.ttf"
+# IBM Plex Sans Condensed
+CONDENSED_BASE="https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans-condensed/fonts/complete/ttf"
+curl -fsSL -o IBMPlexSansCondensed-SemiBold.ttf \
+  "$CONDENSED_BASE/IBMPlexSansCondensed-SemiBold.ttf"
 ```
