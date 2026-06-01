@@ -26,7 +26,16 @@ func get_at_tile(coord, good_id: String) -> int:
 func get_capacity(coord) -> int:
 	if coord == null:
 		return 999999
-	return TILE_CAPACITY
+	return TILE_CAPACITY + _storage_boost_for(coord)
+
+func _storage_boost_for(coord) -> int:
+	var tile_id := str(coord)
+	var boost := 0
+	for instance_id in MatchState.tile_buildings.get(tile_id, []):
+		var inst: Dictionary = MatchState.get_building(instance_id)
+		var bd: Dictionary = Catalog.get_building(str(inst.get("building_id", "")))
+		boost += int(bd.get("storage_boost", 0))
+	return boost
 
 func get_used_capacity(coord) -> int:
 	var used := 0
@@ -116,6 +125,10 @@ func consume_anywhere(good_id: String, qty: int) -> int:
 func clear_all() -> void:
 	_by_tile.clear()
 	stockpile_changed.emit()
+
+func tiles_with_stock() -> Array:
+	# Tile keys that currently hold goods (callers filter to real "tile_*" ids).
+	return _by_tile.keys()
 
 func get_all_totals() -> Dictionary:
 	var totals := {}

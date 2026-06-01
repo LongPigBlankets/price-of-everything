@@ -162,6 +162,12 @@ func map_coord_for_tile_coord(coord: Vector2i) -> Vector2i:
 func tile_coord_for_map_coord(map_coord: Vector2i) -> Vector2i:
 	return map_coord - Vector2i(MAP_PADDING, MAP_PADDING)
 
+func get_hovered_destination_tile_id() -> String:
+	# The tile currently under the mouse while a destination selection is active ("" otherwise).
+	if not _stockpile_destination_selection_active or _hovered_destination_coord == Vector2i(-1, -1):
+		return ""
+	return "tile_%d_%d" % [_hovered_destination_coord.x + 1, _hovered_destination_coord.y + 1]
+
 func map_center_world() -> Vector2:
 	return map_world_rect().get_center()
 

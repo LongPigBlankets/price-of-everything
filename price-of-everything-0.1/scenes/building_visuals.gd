@@ -10,6 +10,8 @@ var tile_building_counts: Dictionary = {}
 const ICONS_PER_ROW := 4
 const ICON_ROWS := 3
 const ROADS_BUILDING_ID := "b_005"
+const NPC_NAVY := Color(0.015686275, 0.058823529, 0.105882353)
+const NPC_OUTLINE_PX := 10.0
 
 @onready var terrain_layer: HexMap = %TerrainLayer
 
@@ -39,24 +41,29 @@ func _load_building_icons() -> void:
 const MAX_VISIBLE_BUILDINGS := 12  # 4 cols × 3 rows
 const OVERFLOW_INDEX := 11         # 12th slot (0-indexed)
 
-func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, _instance_id: String, coord: Vector2i) -> void:
+func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, instance_id: String, coord: Vector2i) -> void:
 	if building_id == ROADS_BUILDING_ID:
 		return
 	print("[BuildingVisuals] placing for ", building_id)
 	if not building_icons.has(building_id):
 		push_warning("No icon registered for building %s" % building_id)
 		return
-	
+
 	if not tile_building_counts.has(tile_id):
 		tile_building_counts[tile_id] = 0
 	var slot_index: int = tile_building_counts[tile_id]
 	tile_building_counts[tile_id] = slot_index + 1
-	
+
 	var tile_center := _tile_center_world_pos(coord)
-	
+	var owner_id := str(MatchState.get_building(instance_id).get("owner", ""))
+	var is_npc: bool = owner_id != "" and owner_id != "player_1"
+
 	if slot_index < OVERFLOW_INDEX:
 		var slot_pos := _slot_position(tile_center, slot_index)
-		_create_icon_sprite(building_icons[building_id], slot_pos)
+		if is_npc:
+			_create_npc_marker(building_icons[building_id], slot_pos)
+		else:
+			_create_icon_sprite(building_icons[building_id], slot_pos)
 	elif slot_index == OVERFLOW_INDEX:
 		var slot_pos := _slot_position(tile_center, slot_index)
 		_create_overflow_indicator(slot_pos)
@@ -72,6 +79,35 @@ func _create_icon_sprite(texture: Texture2D, slot_pos: Vector2) -> void:
 		var scale_y: float = icon_size.y / tex_size.y
 		var scale_uniform: float = min(scale_x, scale_y) * 0.9
 		sprite.scale = Vector2(scale_uniform, scale_uniform)
+	add_child(sprite)
+
+func _create_npc_marker(texture: Texture2D, slot_pos: Vector2) -> void:
+	# NPC-owned buildings (e.g. ports) read as a WHITE box with a thick navy outline,
+	# the building icon centred inside.
+	var icon_size := _icon_slot_size()
+	var hw: float = icon_size.x * 0.45
+	var hh: float = icon_size.y * 0.45
+	var b := NPC_OUTLINE_PX
+	var navy := Polygon2D.new()
+	navy.color = NPC_NAVY
+	navy.position = slot_pos
+	navy.polygon = PackedVector2Array([
+		Vector2(-hw - b, -hh - b), Vector2(hw + b, -hh - b),
+		Vector2(hw + b, hh + b), Vector2(-hw - b, hh + b)])
+	add_child(navy)
+	var white := Polygon2D.new()
+	white.color = Color.WHITE
+	white.position = slot_pos
+	white.polygon = PackedVector2Array([
+		Vector2(-hw, -hh), Vector2(hw, -hh), Vector2(hw, hh), Vector2(-hw, hh)])
+	add_child(white)
+	var sprite := Sprite2D.new()
+	sprite.texture = texture
+	sprite.position = slot_pos
+	var tex_size := texture.get_size()
+	if tex_size.x > 0 and tex_size.y > 0:
+		var s: float = min(hw * 2.0 / tex_size.x, hh * 2.0 / tex_size.y) * 0.8
+		sprite.scale = Vector2(s, s)
 	add_child(sprite)
 
 func _create_overflow_indicator(slot_pos: Vector2) -> void:

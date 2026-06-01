@@ -27,6 +27,13 @@ func _ready() -> void:
 	_test_menu_icons()
 	_test_ports()
 	await _test_building_ledger()
+	await _test_debug_terminal()
+	_test_queue_move()
+	_test_move_extras()
+	_test_storage_boost()
+	_test_queue_sell()
+	_test_npc_ports()
+	_test_bulk_sell()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -37,6 +44,63 @@ func _check(ok: bool, name: String) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  ", name)
+
+func _test_storage_boost() -> void:
+	MatchState.add_building("b_004", "", "tile_3_3", "Three Diamonds Shipping Corporation")
+	_check(Stockpile.get_capacity("tile_3_3") == Stockpile.TILE_CAPACITY + 500,
+		"storage_boost raises tile capacity (port = +500)")
+
+func _test_bulk_sell() -> void:
+	Stockpile.add("tile_3_8", "g_001", 30)
+	var result: Dictionary = MatchState.sell_all_to_market({"good_id": "", "finished_only": false, "per_tile_keep": 10})
+	_check(int(result.get("total_qty", 0)) >= 20, "sell_all_to_market sells the surplus above per-tile keep")
+	_check(Stockpile.get_at_tile("tile_3_8", "g_001") == 10, "bulk sell leaves the kept amount on the tile")
+
+func _test_npc_ports() -> void:
+	# The main scene's _ready places the 4 NPC ports; verify one landed + is NPC-owned.
+	var found_npc_port := false
+	for iid in MatchState.tile_buildings.get("tile_5_10", []):
+		var inst: Dictionary = MatchState.get_building(iid)
+		if str(inst.get("building_id", "")) == "b_004" and str(inst.get("owner", "")) == "Three Diamonds Shipping Corporation":
+			found_npc_port = true
+	_check(found_npc_port, "NPC port placed on a port tile (b_004, Three Diamonds)")
+	_check(Stockpile.get_capacity("tile_5_10") >= Stockpile.TILE_CAPACITY + 500,
+		"port tile capacity raised by the port's storage_boost")
+
+func _test_queue_sell() -> void:
+	Stockpile.add("tile_3_8", "g_001", 8)
+	var before: int = MatchState.get_pending_transport_shipments().size()
+	var summary: Dictionary = MatchState.queue_sell("tile_3_8", {"g_001": 8})
+	_check(not summary.is_empty(), "queue_sell returns a summary")
+	_check(Stockpile.get_at_tile("tile_3_8", "g_001") == 0, "queue_sell consumes from source")
+	_check(str(summary.get("port", "")) != "" and MatchState.get_pending_transport_shipments().size() > before,
+		"queue_sell ships to a port")
+
+func _test_move_extras() -> void:
+	var preview: Dictionary = MatchState.preview_move("tile_12_4", "tile_12_2", {"g_001": 5})
+	_check(preview.has("turns") and preview.has("cost") and preview.has("per_turn"),
+		"preview_move returns route info (turns/cost/per_turn)")
+	MatchState.run_recurring_and_scheduled_moves()  # empty queues — must not crash
+	_check(true, "run_recurring_and_scheduled_moves runs without error")
+
+func _test_queue_move() -> void:
+	Stockpile.add("tile_12_4", "g_001", 10)
+	var before_pending: int = MatchState.get_pending_transport_shipments().size()
+	var summary: Dictionary = MatchState.queue_move("tile_12_4", "tile_12_2", {"g_001": 10})
+	_check(not summary.is_empty(), "queue_move returns a summary")
+	_check(Stockpile.get_at_tile("tile_12_4", "g_001") == 0, "queue_move consumes from source")
+	_check(MatchState.get_pending_transport_shipments().size() > before_pending, "queue_move queues a shipment")
+
+func _test_debug_terminal() -> void:
+	var term: Node = load("res://scripts/debug_terminal.gd").new()
+	add_child(term)
+	await get_tree().process_frame
+	var before: float = MatchState.money
+	var result: String = term._run_command("cash 250")
+	_check(absf(MatchState.money - (before + 250.0)) < 0.001, "terminal: cash adds the amount")
+	_check("250" in result, "terminal: cash reports the amount")
+	_check(term._run_command("bogus").begins_with("unknown"), "terminal: unknown command handled")
+	term.queue_free()
 
 func _test_building_ledger() -> void:
 	_check(MatchState.route_objective == MatchState.RouteObjective.FASTEST,
@@ -90,6 +154,8 @@ func _test_scripts_parse() -> void:
 		"res://scripts/logistics_overlay.gd",
 		"res://scripts/mapmodes_panel.gd",
 		"res://scripts/overlay_legend.gd",
+		"res://scripts/debug_terminal.gd",
+		"res://scripts/sale_effects.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 

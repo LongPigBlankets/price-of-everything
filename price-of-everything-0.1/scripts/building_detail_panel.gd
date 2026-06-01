@@ -109,6 +109,9 @@ var _is_secondary_panel := false
 var _allow_extended_building_panels := false
 var _busy_screen_dialog: ConfirmationDialog = null
 var _too_many_dialog: AcceptDialog = null
+var _rag_panel: PanelContainer = null
+var _action_button_row: HBoxContainer = null
+var _npc_panel: PanelContainer = null
 
 func _ready() -> void:
 	_is_secondary_panel = bool(get_meta("is_secondary_building_panel", false))
@@ -123,6 +126,7 @@ func _ready() -> void:
 	_build_status_icon_column()
 	_build_route_controls()
 	_build_upgrade_controls()
+	_build_npc_panel()
 	if not MatchState.output_stockpile_destination_changed.is_connected(_on_output_stockpile_destination_changed):
 		MatchState.output_stockpile_destination_changed.connect(_on_output_stockpile_destination_changed)
 	if not MatchState.transport_shipments_changed.is_connected(_on_logistics_changed):
@@ -166,6 +170,17 @@ func _rebuild_fields(building: Dictionary) -> void:
 	var category: String = building_data.get("category", "")
 	var is_infrastructure: bool = category == "infrastructure"
 
+	var owner_id := str(building.get("owner", ""))
+	if owner_id == "" and str(building.get("instance_id", "")) != "":
+		owner_id = str(MatchState.get_building(str(building.get("instance_id", ""))).get("owner", ""))
+	if owner_id != "" and owner_id != "player_1" and owner_id != "tile_data":
+		_apply_npc_mode(true)
+		title_label.text = _building_display_name(building, building_data, recipe) + _tile_title_suffix(building)
+		title_label.tooltip_text = _tile_title_tooltip(building)
+		location_label.visible = false
+		return
+	_apply_npc_mode(false)
+
 	_update_change_recipe_button(building, is_infrastructure)
 	title_label.text = _building_display_name(building, building_data, recipe) + _tile_title_suffix(building)
 	title_label.tooltip_text = _tile_title_tooltip(building)
@@ -195,6 +210,60 @@ func _rebuild_fields(building: Dictionary) -> void:
 	_add_labour_table(building_data)
 	_add_separator()
 	_add_operation_table(building, recipe)
+
+func _build_npc_panel() -> void:
+	if _npc_panel != null:
+		return
+	_npc_panel = PanelContainer.new()
+	_npc_panel.visible = false
+	_npc_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.45, 0.48, 0.52)  # grey
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(16)
+	_npc_panel.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	_npc_panel.add_child(vbox)
+
+	var label := Label.new()
+	label.text = "Building operated by the Three Diamonds Shipping Corporation"
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_color_override("font_color", Color.WHITE)
+	vbox.add_child(label)
+
+	var buy := Button.new()
+	buy.text = "Buy"
+	buy.disabled = true
+	buy.tooltip_text = "Ports cannot be purchased (yet)"
+	buy.mouse_filter = Control.MOUSE_FILTER_STOP
+	buy.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	vbox.add_child(buy)
+
+	panel_vbox.add_child(_npc_panel)
+	panel_vbox.move_child(_npc_panel, flow_summary.get_index() + 1)
+
+func _apply_npc_mode(on: bool) -> void:
+	# NPC-owned buildings show only the grey "operated by…" card + a disabled Buy —
+	# no recipe diagram, status lights, routes, or upgrade/recipe controls.
+	flow_summary.visible = not on
+	if _route_row != null:
+		_route_row.visible = not on
+	if _input_route_detail != null:
+		_input_route_detail.visible = false
+	if _output_route_detail != null:
+		_output_route_detail.visible = false
+	if _route_action_spacer != null:
+		_route_action_spacer.visible = not on
+	if _action_button_row != null:
+		_action_button_row.visible = not on
+	if _upgrade_panel != null and on:
+		_upgrade_panel.visible = false
+	if _rag_panel != null:
+		_rag_panel.visible = not on
+	if _npc_panel != null:
+		_npc_panel.visible = on
 
 func _add_text(text: String) -> void:
 	var label := Label.new()
@@ -790,6 +859,7 @@ func _build_upgrade_controls() -> void:
 	button_row.add_theme_constant_override("separation", 8)
 	button_row.custom_minimum_size = Vector2(0, 30)
 	button_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_action_button_row = button_row
 	var row_index := change_recipe_button.get_index()
 
 	_upgrade_button = Button.new()
@@ -1249,6 +1319,7 @@ func _build_status_icon_column() -> void:
 	_cost_wrapper.add_child(_cost_label)
 
 	rag_box.add_child(_cost_wrapper)
+	_rag_panel = rag_panel
 	status_icon_column.add_child(rag_panel)
 
 func _update_status_icons(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> void:

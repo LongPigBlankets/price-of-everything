@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://bw8l24bc7pmxh"
+
+[deps]
+
+files=["res://data/ports.name.translation", "res://data/ports.tile.translation", "res://data/ports.region.translation"]
+
+source_file="res://data/ports.csv"
+dest_files=["res://data/ports.name.translation", "res://data/ports.tile.translation", "res://data/ports.region.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

@@ -23,6 +23,7 @@ var _stockpile_select_prompt: PanelContainer = null
 var _pending_stockpile_selection: Dictionary = {}
 var _dim_overlay: ColorRect = null
 var _stockpile_legend: PanelContainer = null
+var _pending_move: Dictionary = {}  # {source, goods, recurring} while picking a Move destination
 
 func _ready() -> void:
 	# DS assigns its Theme to the root Window, but Controls do not inherit a
@@ -33,6 +34,7 @@ func _ready() -> void:
 	terrain_layer.tile_selected.connect(_on_tile_selected)
 	terrain_layer.stockpile_destination_selected.connect(_on_stockpile_destination_selected)
 	info_panel.building_clicked.connect(building_panel.show_building)
+	info_panel.move_goods_requested.connect(_on_move_goods_requested)
 	BuildMode.build_attempted.connect(_on_build_attempted)
 	BuildMode.infrastructure_attempted.connect(_on_infrastructure_attempted)  # NEW
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
@@ -61,6 +63,17 @@ func _ready() -> void:
 		building_connection_visuals.on_building_connections_changed
 	)
 
+	# Debug cheat terminal (toggle with the ` key)
+	add_child(load("res://scripts/debug_terminal.gd").new())
+
+	# Floating £ that rises from a port whenever a market sale lands there
+	var _sale_fx: CanvasLayer = load("res://scripts/sale_effects.gd").new()
+	_sale_fx.terrain_layer = terrain_layer
+	add_child(_sale_fx)
+
+	# Pre-place the NPC-owned ports (Three Diamonds Shipping Corporation)
+	_place_npc_ports()
+
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
 
@@ -80,7 +93,105 @@ func _on_output_stockpile_selection_cancelled() -> void:
 	_hide_stockpile_select_prompt()
 	_exit_stockpile_ui_mode()
 
+func _logistics_overlay() -> Node:
+	return get_tree().get_first_node_in_group("logistics_overlay")
+
+func _on_move_goods_requested(source_tile: String, goods_qtys: Dictionary, recurring: bool) -> void:
+	_pending_move = {"source": source_tile, "goods": goods_qtys, "recurring": recurring}
+	terrain_layer.begin_stockpile_destination_selection("")
+	_enter_stockpile_ui_mode()
+	var ov := _logistics_overlay()
+	if ov != null and ov.has_method("set_move_preview"):
+		ov.set_move_preview(source_tile, goods_qtys)
+
+func _complete_move(tile_data: Dictionary) -> void:
+	var move := _pending_move
+	_pending_move = {}
+	terrain_layer.end_stockpile_destination_selection()
+	_exit_stockpile_ui_mode()
+	var ov := _logistics_overlay()
+	if ov != null and ov.has_method("clear_move_preview"):
+		ov.clear_move_preview()
+	var dest: String = tile_data.get("id", "")
+	if dest == "" or dest == str(move.get("source", "")):
+		return
+	move["dest"] = dest
+	var total := 0
+	for q in move.get("goods", {}).values():
+		total += int(q)
+	if total > MatchState.LARGE_SHIPMENT_THRESHOLD:
+		_show_large_move_dialog(move)
+	else:
+		_execute_move(move)
+
+func _execute_move(move: Dictionary) -> void:
+	var summary: Dictionary = MatchState.queue_move(str(move.source), str(move.dest), move.get("goods", {}))
+	if summary.is_empty():
+		return
+	MatchState.request_toast(_format_move_toast(summary, str(move.dest)), "success")
+	if bool(move.get("recurring", false)):
+		MatchState.add_recurring_move(str(move.source), str(move.dest), move.get("goods", {}))
+
+func _split_move(move: Dictionary) -> void:
+	var goods: Dictionary = move.get("goods", {})
+	var now_half: Dictionary = {}
+	var next_half: Dictionary = {}
+	for g in goods.keys():
+		var q := int(goods[g])
+		now_half[g] = q / 2
+		next_half[g] = q - (q / 2)
+	_execute_move({"source": move.source, "dest": move.dest, "goods": now_half, "recurring": move.get("recurring", false)})
+	MatchState.add_scheduled_move(str(move.source), str(move.dest), next_half)
+	MatchState.request_toast("Second half ships next turn (split to avoid the large-shipment surcharge).", "caution")
+
+func _show_large_move_dialog(move: Dictionary) -> void:
+	var preview: Dictionary = MatchState.preview_move(str(move.source), str(move.dest), move.get("goods", {}))
+	var turns := int(preview.get("turns", 0))
+	var dialog := AcceptDialog.new()
+	dialog.title = "Large shipment"
+	dialog.dialog_text = "Your shipment is too large and will incur additional transport costs.\n\nThis shipment will cost £%.2f per turn for %d turn%s while transiting. Are you sure you want to do this?" % [
+		float(preview.get("per_turn", 0.0)), turns, "" if turns == 1 else "s"]
+	dialog.ok_button_text = "Confirm"
+	dialog.add_cancel_button("Cancel shipment")
+	dialog.add_button("Split over the next 2 turns", true, "split")
+	dialog.confirmed.connect(func() -> void: _execute_move(move))
+	dialog.custom_action.connect(func(action: StringName) -> void:
+		if action == "split":
+			_split_move(move)
+		dialog.hide())
+	dialog.visibility_changed.connect(func() -> void:
+		if not dialog.visible:
+			dialog.queue_free())
+	add_child(dialog)
+	dialog.popup_centered()
+
+func _format_move_toast(summary: Dictionary, dest: String) -> String:
+	return "%s will ship next turn from %s to %s" % [
+		_format_goods_phrase(summary.get("items", [])),
+		Catalog.tile_label(str(summary.get("source", ""))), Catalog.tile_label(dest)
+	]
+
+func _format_goods_phrase(items: Array) -> String:
+	if items.is_empty():
+		return "Nothing"
+	var n := items.size()
+	if n == 1:
+		return "%d units of %s" % [int(items[0].qty), Catalog.get_display_name(str(items[0].good_id))]
+	if n == 2:
+		return "%d units of %s and %d units of %s" % [
+			int(items[0].qty), Catalog.get_display_name(str(items[0].good_id)),
+			int(items[1].qty), Catalog.get_display_name(str(items[1].good_id))]
+	var rest_qty := 0
+	for i in range(2, n):
+		rest_qty += int(items[i].qty)
+	return "%d units of %s, %d units of %s and %d units of %d other goods" % [
+		int(items[0].qty), Catalog.get_display_name(str(items[0].good_id)),
+		int(items[1].qty), Catalog.get_display_name(str(items[1].good_id)), rest_qty, n - 2]
+
 func _on_stockpile_destination_selected(tile_data: Dictionary) -> void:
+	if not _pending_move.is_empty():
+		_complete_move(tile_data)
+		return
 	if _pending_stockpile_selection.is_empty():
 		return
 	var instance_id: String = _pending_stockpile_selection.get("instance_id", "")
@@ -263,6 +374,27 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 func _get_building_display_name(building_id: String) -> String:
 	return Catalog.get_building_display_name(building_id)
 
+func _place_npc_ports() -> void:
+	# Each port from ports.csv is a Port building (b_004) owned by an NPC. Placing it
+	# as a real instance makes it render, appear in the tile chart, raise the tile's
+	# storage capacity (+500), and become clickable.
+	for port in Catalog.all_ports():
+		var tile_id := str(port.get("tile_id", ""))
+		if tile_id == "":
+			continue
+		var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
+		if coord == Vector2i(-1, -1):
+			continue
+		var already := false
+		for iid in MatchState.tile_buildings.get(tile_id, []):
+			if str(MatchState.get_building(iid).get("building_id", "")) == "b_004":
+				already = true
+				break
+		if already:
+			continue
+		var instance_id := MatchState.add_building("b_004", "", tile_id, "Three Diamonds Shipping Corporation")
+		building_placed.emit(tile_id, "b_004", "", instance_id, coord)
+
 func _tile_meets_recipe_requirements(tile_data: Dictionary, recipe: Dictionary) -> bool:
 	for req in recipe.get("requirements", []):
 		if not _tile_meets_build_req(tile_data, req):
@@ -273,7 +405,7 @@ func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
 	match req.get("type", ""):
 		"deposit":
 			var deposits: Array = tile_data.get("deposits", [])
-			return deposits.has(req.get("value", ""))
+			return _deposits_include(deposits, str(req.get("value", "")))
 		"produces":
 			return _tile_produces_good(tile_data, req.get("value", ""))
 		"potential":
@@ -284,6 +416,21 @@ func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
 				return tile_data.get("solar_potential", 0) > 0
 			return false
 	return false
+
+func _deposits_include(deposits: Array, internal_name: String) -> bool:
+	if internal_name == "":
+		return false
+	for deposit in deposits:
+		if _deposit_base_name(str(deposit)) == internal_name:
+			return true
+	return false
+
+func _deposit_base_name(deposit: String) -> String:
+	var value := deposit.strip_edges()
+	var quantity_marker := value.find("(")
+	if quantity_marker > 0 and value.ends_with(")"):
+		return value.substr(0, quantity_marker)
+	return value
 
 func _tile_produces_good(tile_data: Dictionary, internal_name: String) -> bool:
 	var tile_id: String = tile_data.get("id", "")

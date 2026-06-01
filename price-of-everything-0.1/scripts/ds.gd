@@ -19,9 +19,9 @@
 #     "Inset"        — inset / track (darker, tighter padding)
 #
 #   Button:
-#     (default)      — secondary button (dark)
-#     "Primary"      — gold CTA
-#     "Build"        — light-blue build / upgrade button (pill-ish)
+#     (default)      — Plex Sans Condensed SemiBold 17 steel-blue button
+#     "Primary"      — brighter steel-blue CTA
+#     "Build"        — steel-blue build / upgrade button (pill-ish)
 #
 # Code tokens (don't hardcode hex / px in panels):
 #   DS.PALETTE.* / DS.SP.* / DS.FS.*
@@ -46,9 +46,14 @@ const PALETTE := {
 	"TEXT": Color("#E8EEF7"),
 	"TEXT_MUTED": Color("#C2D2E5"),       # was #9BB1CC — bumped much closer to white for legibility
 	"TEXT_DIM": Color("#6B7F98"),
-	"ACTION_BLUE": Color("#2D70A8"),      # darker steel blue — build / upgrade
-	"ACTION_BLUE_HOVER": Color("#3D85BD"),
-	"ACTION_BLUE_PRESSED": Color("#1F5685"),
+	"ACTION_BLUE": Color("#314B55"),      # skeuomorphic steel-blue — build / upgrade
+	"ACTION_BLUE_HOVER": Color("#3C5C68"),
+	"ACTION_BLUE_PRESSED": Color("#263A43"),
+	"ACTION_BLUE_TOP": Color("#506B75"),
+	"ACTION_BLUE_BORDER": Color("#17252B"),
+	"BUTTON_RIM_LIGHT": Color("#B9C1C3"),
+	"BUTTON_RIM_MID": Color("#5D696E"),
+	"BUTTON_RIM_DARK": Color("#20282C"),
 	"OK": Color("#5BD180"),
 	"WARN": Color("#E6B85C"),
 	"DANGER": Color("#E66060"),
@@ -61,6 +66,7 @@ const SP := {"XS": 4, "SM": 8, "MD": 12, "LG": 20, "XL": 32, "XXL": 48}
 const FS := {
 	"H1": 32, "SECTION": 22, "BUILDING": 22,
 	"BODY": 14, "CAPTION": 13, "NUMERIC": 16,
+	"BUTTON": 17,
 }
 
 # ── Font paths ─────────────────────────────────────────────────────────────
@@ -71,6 +77,7 @@ const FONT_PATHS := {
 	"PLEX": "res://assets/fonts/IBMPlexSans-Regular.ttf",
 	"PLEX_MED": "res://assets/fonts/IBMPlexSans-Medium.ttf",
 	"PLEX_SEMI": "res://assets/fonts/IBMPlexSans-SemiBold.ttf",
+	"PLEX_COND_SEMI": "res://assets/fonts/IBMPlexSansCondensed-SemiBold.ttf",
 }
 
 var theme: Theme
@@ -119,68 +126,90 @@ func _build_theme() -> Theme:
 	t.set_stylebox("panel", "Inset",
 		_stylebox(PALETTE["BG_INSET"], PALETTE["BORDER_SOFT"], 6, 1, 14, 10))
 
-	# ── Button base (secondary / dark) ────────────────────────────────
-	# Secondary buttons must stay clearly lighter than the dark panel bg, so use
-	# the lighter navy (BG_HIGHLIGHT) for normal, lighter still on hover, and a
-	# darker fill when pressed.
+	# ── Button base (secondary / steel blue) ──────────────────────────
+	# The generated texture adds a pale top glint and darker lower bevel so the
+	# buttons sit closer to the chunky upgrade-button reference.
 	t.set_stylebox("normal", "Button",
-		_stylebox(PALETTE["BG_HIGHLIGHT"], PALETTE["BORDER_SOFT"], 6, 1, 18, 9))
+		_button_stylebox(PALETTE["ACTION_BLUE_TOP"], PALETTE["ACTION_BLUE"], PALETTE["ACTION_BLUE_BORDER"], 8, 2, 19, 10))
 	t.set_stylebox("hover", "Button",
-		_stylebox(Color(PALETTE["BG_HIGHLIGHT"]).lightened(0.10), PALETTE["BORDER"], 6, 1, 18, 9))
+		_button_stylebox(Color(PALETTE["ACTION_BLUE_TOP"]).lightened(0.10), PALETTE["ACTION_BLUE_HOVER"], PALETTE["BORDER"], 8, 2, 19, 10, 0.44))
 	t.set_stylebox("pressed", "Button",
-		_stylebox(PALETTE["BG_INSET"], PALETTE["BORDER"], 6, 1, 18, 9))
-	t.set_color("font_color", "Button", PALETTE["TEXT"])
+		_button_stylebox(PALETTE["ACTION_BLUE"], PALETTE["ACTION_BLUE_PRESSED"], Color(PALETTE["ACTION_BLUE_BORDER"]).darkened(0.20), 8, 2, 19, 9, 0.18))
+	t.set_stylebox("disabled", "Button",
+		_button_stylebox(Color("#435965"), Color("#2D414C"), Color("#657883"), 8, 2, 19, 10, 0.16))
+	t.set_stylebox("focus", "Button", t.get_stylebox("hover", "Button"))
+	t.set_color("font_color", "Button", PALETTE["ACCENT"])
 	t.set_color("font_hover_color", "Button", PALETTE["ACCENT"])
 	t.set_color("font_pressed_color", "Button", PALETTE["ACCENT"])
-	# Barlow Condensed Bold is a narrow face — add letter-spacing so button labels
-	# don't look cramped, and size up 2 steps from body (14 → 18).
-	if fonts.get("BARLOW_BOLD"):
-		var btn_font := FontVariation.new()
-		btn_font.base_font = fonts["BARLOW_BOLD"]
-		btn_font.spacing_glyph = 2
-		t.set_font("font", "Button", btn_font)
-	t.set_font_size("font_size", "Button", 16)
+	t.set_color("font_disabled_color", "Button", Color(PALETTE["ACCENT"].r, PALETTE["ACCENT"].g, PALETTE["ACCENT"].b, 0.45))
+	# IBM Plex Sans Condensed is used for every themed button variant, with
+	# IBM Plex Sans SemiBold as a local fallback if the condensed asset is absent.
+	_apply_button_font(t, fonts, "Button")
 	# No base icon_max_width cap: icon buttons that want a large icon (e.g. the
 	# 100px circular bottom-menu buttons with expand_icon) size to their button.
 	# The small square icon buttons set their own cap via the BuildIcon variation.
 
-	# ── Primary button (gold CTA) ──────────────────────────────────────
+	# ── Primary button (brighter steel-blue CTA) ───────────────────────
 	t.set_type_variation("Primary", "Button")
 	t.set_stylebox("normal", "Primary",
-		_stylebox(PALETTE["ACCENT"], PALETTE["ACCENT"], 6, 1, 20, 9))
+		_button_stylebox(Color("#A7C8D3"), PALETTE["ACTION_BLUE_HOVER"], PALETTE["BORDER"], 8, 2, 21, 10, 0.46))
 	t.set_stylebox("hover", "Primary",
-		_stylebox(Color(PALETTE["ACCENT"]).lightened(0.06), PALETTE["ACCENT"], 6, 1, 20, 9))
+		_button_stylebox(Color("#BBD5DD"), Color("#81AFC0"), PALETTE["BORDER"], 8, 2, 21, 10, 0.50))
 	t.set_stylebox("pressed", "Primary",
-		_stylebox(Color(PALETTE["ACCENT"]).darkened(0.10), PALETTE["ACCENT"], 6, 1, 20, 9))
-	t.set_color("font_color", "Primary", PALETTE["BG"])
-	t.set_color("font_hover_color", "Primary", PALETTE["BG"])
-	t.set_color("font_pressed_color", "Primary", PALETTE["BG"])
+		_button_stylebox(PALETTE["ACTION_BLUE"], PALETTE["ACTION_BLUE_PRESSED"], Color(PALETTE["BORDER"]).darkened(0.18), 8, 2, 21, 9, 0.20))
+	t.set_stylebox("focus", "Primary", t.get_stylebox("hover", "Primary"))
+	t.set_color("font_color", "Primary", PALETTE["ACCENT"])
+	t.set_color("font_hover_color", "Primary", PALETTE["ACCENT"])
+	t.set_color("font_pressed_color", "Primary", PALETTE["ACCENT"])
+	_apply_button_font(t, fonts, "Primary")
 
-	# ── Build / Upgrade button (light blue, more rounded) ──────────────
+	# ── Build / Upgrade button (steel blue, more rounded) ──────────────
 	t.set_type_variation("Build", "Button")
 	t.set_stylebox("normal", "Build",
-		_stylebox(PALETTE["ACTION_BLUE"], PALETTE["ACTION_BLUE_PRESSED"], 14, 1, 20, 9))
+		_button_stylebox(PALETTE["ACTION_BLUE_TOP"], PALETTE["ACTION_BLUE"], PALETTE["ACTION_BLUE_BORDER"], 14, 2, 21, 10))
 	t.set_stylebox("hover", "Build",
-		_stylebox(PALETTE["ACTION_BLUE_HOVER"], PALETTE["ACTION_BLUE_PRESSED"], 14, 1, 20, 9))
+		_button_stylebox(Color(PALETTE["ACTION_BLUE_TOP"]).lightened(0.10), PALETTE["ACTION_BLUE_HOVER"], PALETTE["BORDER"], 14, 2, 21, 10, 0.46))
 	t.set_stylebox("pressed", "Build",
-		_stylebox(PALETTE["ACTION_BLUE_PRESSED"], PALETTE["ACTION_BLUE_PRESSED"], 14, 1, 20, 9))
-	t.set_color("font_color", "Build", PALETTE["TEXT"])
-	t.set_color("font_hover_color", "Build", PALETTE["TEXT"])
+		_button_stylebox(PALETTE["ACTION_BLUE"], PALETTE["ACTION_BLUE_PRESSED"], Color(PALETTE["ACTION_BLUE_BORDER"]).darkened(0.20), 14, 2, 21, 9, 0.18))
+	t.set_stylebox("focus", "Build", t.get_stylebox("hover", "Build"))
+	t.set_color("font_color", "Build", PALETTE["ACCENT"])
+	t.set_color("font_hover_color", "Build", PALETTE["ACCENT"])
 	t.set_color("font_pressed_color", "Build", PALETTE["ACCENT"])
+	_apply_button_font(t, fonts, "Build")
 
-	# ── Build icon button (square 40×40, light blue, large off-white icon) ──
+	# ── Build icon button (square 40×40, steel blue, large off-white icon) ──
 	# Tight padding (6) so a 28px icon fills the small square; the text Build
 	# variation's 24px padding alone would force the button wider than 40px.
 	t.set_type_variation("BuildIcon", "Button")
 	t.set_stylebox("normal", "BuildIcon",
-		_stylebox(PALETTE["ACTION_BLUE"], PALETTE["ACTION_BLUE_PRESSED"], 10, 1, 6, 6))
+		_button_stylebox(PALETTE["ACTION_BLUE_TOP"], PALETTE["ACTION_BLUE"], PALETTE["ACTION_BLUE_BORDER"], 10, 2, 6, 6))
 	t.set_stylebox("hover", "BuildIcon",
-		_stylebox(PALETTE["ACTION_BLUE_HOVER"], PALETTE["ACTION_BLUE_PRESSED"], 10, 1, 6, 6))
+		_button_stylebox(Color(PALETTE["ACTION_BLUE_TOP"]).lightened(0.10), PALETTE["ACTION_BLUE_HOVER"], PALETTE["BORDER"], 10, 2, 6, 6, 0.46))
 	t.set_stylebox("pressed", "BuildIcon",
-		_stylebox(PALETTE["ACTION_BLUE_PRESSED"], PALETTE["ACTION_BLUE_PRESSED"], 10, 1, 6, 6))
+		_button_stylebox(PALETTE["ACTION_BLUE"], PALETTE["ACTION_BLUE_PRESSED"], Color(PALETTE["ACTION_BLUE_BORDER"]).darkened(0.20), 10, 2, 6, 5, 0.18))
+	t.set_stylebox("focus", "BuildIcon", t.get_stylebox("hover", "BuildIcon"))
 	t.set_constant("icon_max_width", "BuildIcon", 28)
+	_apply_button_font(t, fonts, "BuildIcon")
+	_apply_button_font(t, fonts, "OptionButton")
+	_apply_button_font(t, fonts, "MenuButton")
+	_copy_button_surface(t, "OptionButton", "Button")
+	_copy_button_surface(t, "MenuButton", "Button")
 
 	return t
+
+func _copy_button_surface(t: Theme, type_name: String, source_type: String) -> void:
+	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
+		if t.has_stylebox(state, source_type):
+			t.set_stylebox(state, type_name, t.get_stylebox(state, source_type))
+
+func _apply_button_font(t: Theme, fonts: Dictionary, type_name: String) -> void:
+	if fonts.get("PLEX_COND_SEMI"):
+		t.set_font("font", type_name, fonts["PLEX_COND_SEMI"])
+	elif fonts.get("PLEX_SEMI"):
+		t.set_font("font", type_name, fonts["PLEX_SEMI"])
+	t.set_font_size("font_size", type_name, FS["BUTTON"])
+	t.set_color("font_outline_color", type_name, Color(0, 0, 0, 0.92))
+	t.set_constant("outline_size", type_name, 1)
 
 func _label_var(t: Theme, fonts: Dictionary, name: String, font_key: String,
 		size: int, color: Color, tracking_em: float = 0.0) -> void:
@@ -219,6 +248,100 @@ func _stylebox(bg: Color, border: Color, radius: int, border_w: int,
 	s.content_margin_top = pad_v
 	s.content_margin_bottom = pad_v
 	return s
+
+func _button_stylebox(top: Color, bottom: Color, border: Color, radius: int,
+		border_w: int, pad_h: int, pad_v: int, shine: float = 0.38) -> StyleBoxTexture:
+	var width := 112
+	var height := 56
+	var img := Image.create(width, height, false, Image.FORMAT_RGBA8)
+	var rim_w := maxi(3, border_w + 1)
+	var line_w := 1
+	var bevel_w := 1
+	var bevel_inset := rim_w + line_w
+	var fill_inset := bevel_inset + bevel_w
+	var fill_width := width - (fill_inset * 2)
+	var fill_height := height - (fill_inset * 2)
+	var rim_radius := float(radius)
+	var line_radius: float = maxf(0.0, float(radius - rim_w))
+	var bevel_radius: float = maxf(0.0, float(radius - bevel_inset))
+	var fill_radius: float = maxf(0.0, float(radius - fill_inset))
+
+	for y in range(height):
+		var y_t: float = clampf(float(y - fill_inset) / maxf(1.0, float(fill_height - 1)), 0.0, 1.0)
+		for x in range(width):
+			if not _inside_rounded_rect(x, y, width, height, rim_radius):
+				img.set_pixel(x, y, Color(0, 0, 0, 0))
+				continue
+
+			var is_fill := _inside_rounded_rect(x - fill_inset, y - fill_inset, fill_width, fill_height, fill_radius)
+			if is_fill:
+				var x_t: float = clampf(float(x - fill_inset) / maxf(1.0, float(fill_width - 1)), 0.0, 1.0)
+				var diagonal := (x_t + y_t) * 0.5
+				var fill := top.lerp(bottom, clampf((diagonal * 0.70) + (y_t * 0.30), 0.0, 1.0))
+				if diagonal < 0.34:
+					fill = fill.lerp(Color.WHITE, shine * 0.38 * (1.0 - (diagonal / 0.34)))
+				elif diagonal > 0.72:
+					fill = fill.darkened(0.18 * ((diagonal - 0.72) / 0.28))
+				img.set_pixel(x, y, fill)
+			else:
+				var is_bevel := _inside_rounded_rect(
+					x - bevel_inset,
+					y - bevel_inset,
+					width - (bevel_inset * 2),
+					height - (bevel_inset * 2),
+					bevel_radius
+				)
+				if is_bevel:
+					var bevel_diagonal := (float(x) / float(width - 1) + float(y) / float(height - 1)) * 0.5
+					var bevel := top.lerp(border, bevel_diagonal)
+					if bevel_diagonal < 0.42:
+						bevel = bevel.lerp(Color.WHITE, 0.20)
+					elif bevel_diagonal > 0.66:
+						bevel = bevel.darkened(0.35)
+					img.set_pixel(x, y, bevel)
+					continue
+
+				var is_inner_line := _inside_rounded_rect(
+					x - rim_w,
+					y - rim_w,
+					width - (rim_w * 2),
+					height - (rim_w * 2),
+					line_radius
+				)
+				if is_inner_line:
+					img.set_pixel(x, y, border)
+				else:
+					var diagonal := (float(x) / float(width - 1) + float(y) / float(height - 1)) * 0.5
+					var rim := PALETTE["BUTTON_RIM_LIGHT"].lerp(PALETTE["BUTTON_RIM_DARK"], diagonal)
+					if diagonal > 0.40:
+						rim = rim.lerp(PALETTE["BUTTON_RIM_MID"], 0.28)
+					if x < rim_w or y < rim_w:
+						rim = rim.lerp(Color.WHITE, 0.18)
+					if x >= width - rim_w or y >= height - rim_w:
+						rim = rim.darkened(0.26)
+					img.set_pixel(x, y, rim)
+
+	var texture := ImageTexture.create_from_image(img)
+	var s := StyleBoxTexture.new()
+	s.texture = texture
+	s.texture_margin_left = radius + rim_w
+	s.texture_margin_top = radius + rim_w
+	s.texture_margin_right = radius + rim_w
+	s.texture_margin_bottom = radius + rim_w
+	s.content_margin_left = pad_h
+	s.content_margin_right = pad_h
+	s.content_margin_top = pad_v
+	s.content_margin_bottom = pad_v
+	return s
+
+func _inside_rounded_rect(x: int, y: int, width: int, height: int, radius: float) -> bool:
+	if width <= 0 or height <= 0:
+		return false
+	var px := float(x) + 0.5
+	var py := float(y) + 0.5
+	var cx: float = clampf(px, radius, float(width) - radius)
+	var cy: float = clampf(py, radius, float(height) - radius)
+	return Vector2(px - cx, py - cy).length() <= radius
 
 func _load_fonts() -> Dictionary:
 	var fonts := {}
