@@ -38,7 +38,12 @@ var _shipment_id_counter: int = 0
 var recurring_moves: Array = []   # [{source, dest, goods}] re-issued every turn
 var scheduled_moves: Array = []   # [{source, dest, goods}] one-shot, fired next turn (e.g. split)
 var recurring_sells: Array = []   # [{source, goods}] re-sold to the nearest port every turn
-var recurring_bulk_sells: Array = []  # [params] re-run via sell_all_to_market every turn
+var recurring_bulk_sells: Array = []  # [{params, turn_started}] re-run via sell_all_to_market every turn
+# View-only ledgers for the Transactions / Movements tabs (one-off entries; recurring
+# rules are read from the recurring_* arrays). Rows: {good_id, qty, tile_from, tile_to,
+# turn_started, turn_ended} (+ kind for transactions).
+var transaction_log: Array = []
+var move_log: Array = []
 const LARGE_SHIPMENT_THRESHOLD := 500
 const LARGE_SHIPMENT_SURCHARGE := 2.0   # >500 units in one move costs 2x transport (tunable)
 var tile_land_owned: Dictionary = {}
@@ -190,6 +195,12 @@ func reset() -> void:
 	sell_surplus_tiles.clear()
 	pending_transport_shipments.clear()
 	tile_land_owned.clear()
+	recurring_moves.clear()
+	scheduled_moves.clear()
+	recurring_sells.clear()
+	recurring_bulk_sells.clear()
+	transaction_log.clear()
+	move_log.clear()
 	_next_instance_counter = 0
 	state_reset.emit()
 
@@ -313,7 +324,7 @@ func queue_transport_shipment(shipment: Dictionary) -> void:
 func request_toast(message: String, toast_type: String = "success") -> void:
 	toast_requested.emit(message, toast_type)
 
-func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> Dictionary:
+func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, log_oneoff: bool = true) -> Dictionary:
 	# Move goods from one tile to another: consume now, ship via the router, deliver
 	# to the destination stockpile on arrival. Returns a summary for the UI/toast.
 	if source_tile == "" or dest_tile == "" or source_tile == dest_tile:
@@ -358,6 +369,14 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) 
 			})
 		else:
 			Stockpile.add(dest_tile, it.good_id, it.qty)
+	if log_oneoff:
+		var started := _ledger_turn()
+		for it in items:
+			move_log.append({
+				"good_id": str(it.good_id), "qty": int(it.qty),
+				"tile_from": source_tile, "tile_to": dest_tile,
+				"turn_started": started, "turn_ended": started + turns,
+			})
 	return {"items": items, "total_qty": total_qty, "turns": turns,
 		"cost": total_cost, "source": source_tile, "dest": dest_tile, "surcharged": surcharge > 1.0}
 
@@ -379,7 +398,7 @@ func preview_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary
 		"per_turn": total_cost / float(maxi(turns, 1)), "surcharged": surcharge > 1.0}
 
 func add_recurring_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> void:
-	recurring_moves.append({"source": source_tile, "dest": dest_tile, "goods": goods_qtys.duplicate(true)})
+	recurring_moves.append({"source": source_tile, "dest": dest_tile, "goods": goods_qtys.duplicate(true), "turn_started": _ledger_turn()})
 
 func add_scheduled_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> void:
 	scheduled_moves.append({"source": source_tile, "dest": dest_tile, "goods": goods_qtys.duplicate(true)})
@@ -389,26 +408,90 @@ func run_recurring_and_scheduled_moves() -> void:
 	var due: Array = scheduled_moves
 	scheduled_moves = []
 	for m in due:
-		queue_move(str(m.source), str(m.dest), m.goods)
+		queue_move(str(m.source), str(m.dest), m.goods, true)  # split second-half = a one-off
 	for m in recurring_moves:
-		queue_move(str(m.source), str(m.dest), m.goods)
+		queue_move(str(m.source), str(m.dest), m.goods, false)
 	for m in recurring_sells:
-		queue_sell(str(m.source), m.goods)
-	for params in recurring_bulk_sells:
-		sell_all_to_market(params)
+		queue_sell(str(m.source), m.goods, false)
+	for r in recurring_bulk_sells:
+		sell_all_to_market(r.get("params", {}), false)
 
 func add_recurring_sell(source_tile: String, goods_qtys: Dictionary) -> void:
-	recurring_sells.append({"source": source_tile, "goods": goods_qtys.duplicate(true)})
+	recurring_sells.append({"source": source_tile, "goods": goods_qtys.duplicate(true), "turn_started": _ledger_turn()})
 
 func add_recurring_bulk_sell(params: Dictionary) -> void:
-	recurring_bulk_sells.append(params.duplicate(true))
+	recurring_bulk_sells.append({"params": params.duplicate(true), "turn_started": _ledger_turn()})
+
+# --- Ledger helpers for the Transactions / Movements tabs ---
+
+func _ledger_turn() -> int:
+	return int(TurnManager.current_turn) if TurnManager else 0
+
+func _ledger_tile_label(tile_id: String) -> String:
+	if tile_id == "":
+		return "—"
+	if tile_id.begins_with("tile_"):
+		return Catalog.tile_label(tile_id)
+	return tile_id  # e.g. "Market", "All tiles"
+
+func _txn_row(kind: String, good: String, qty: int, tile_from: String, tile_to: String, started: int, ended: int) -> Dictionary:
+	return {
+		"type": "Buy" if kind == "buy" else "Sell",
+		"from": _ledger_tile_label(tile_from), "to": _ledger_tile_label(tile_to),
+		"good": good, "qty": qty, "turn_started": started, "turn_ended": ended,
+	}
+
+func _move_row(good: String, qty: int, tile_from: String, tile_to: String, started: int, ended: int) -> Dictionary:
+	return {
+		"type": "Move", "from": _ledger_tile_label(tile_from), "to": _ledger_tile_label(tile_to),
+		"good": good, "qty": qty, "turn_started": started, "turn_ended": ended,
+	}
+
+func get_oneoff_transaction_rows() -> Array:
+	var rows: Array = []
+	for t in transaction_log:
+		rows.append(_txn_row(str(t.get("kind", "sell")), Catalog.get_display_name(str(t.get("good_id", ""))),
+			int(t.get("qty", 0)), str(t.get("tile_from", "")), str(t.get("tile_to", "")),
+			int(t.get("turn_started", 0)), int(t.get("turn_ended", -1))))
+	return rows
+
+func get_recurring_transaction_rows() -> Array:
+	var rows: Array = []
+	for m in recurring_sells:
+		var port := Catalog.nearest_port_tile(str(m.get("source", "")))
+		for gid in m.get("goods", {}).keys():
+			rows.append(_txn_row("sell", Catalog.get_display_name(str(gid)), int(m.goods[gid]),
+				str(m.get("source", "")), port, int(m.get("turn_started", 0)), -1))
+	for r in recurring_bulk_sells:
+		var p: Dictionary = r.get("params", {})
+		var good_label := "All goods" if str(p.get("good_id", "")) == "" else Catalog.get_display_name(str(p.get("good_id", "")))
+		if bool(p.get("finished_only", false)):
+			good_label += " (finished)"
+		rows.append(_txn_row("sell", good_label, -1, "All tiles", "Market", int(r.get("turn_started", 0)), -1))
+	return rows
+
+func get_oneoff_move_rows() -> Array:
+	var rows: Array = []
+	for m in move_log:
+		rows.append(_move_row(Catalog.get_display_name(str(m.get("good_id", ""))), int(m.get("qty", 0)),
+			str(m.get("tile_from", "")), str(m.get("tile_to", "")),
+			int(m.get("turn_started", 0)), int(m.get("turn_ended", -1))))
+	return rows
+
+func get_recurring_move_rows() -> Array:
+	var rows: Array = []
+	for m in recurring_moves:
+		for gid in m.get("goods", {}).keys():
+			rows.append(_move_row(Catalog.get_display_name(str(gid)), int(m.goods[gid]),
+				str(m.get("source", "")), str(m.get("dest", "")), int(m.get("turn_started", 0)), -1))
+	return rows
 
 func _is_finished_good(good_id: String) -> bool:
 	# No explicit "finished" tier in the MVP, so "finished/manufactured" = non-raw, non-power.
 	var gt := str(Catalog.get_good(good_id).get("good_type", ""))
 	return gt != "" and gt != "raw" and gt != "power"
 
-func sell_all_to_market(params: Dictionary) -> Dictionary:
+func sell_all_to_market(params: Dictionary, log_oneoff: bool = true) -> Dictionary:
 	# Stories 4 & 5: sweep every tile's stockpile and sell to the nearest port, filtered by
 	#   good_id     ("" = all goods, else a specific good)
 	#   finished_only (only manufactured/non-raw goods)
@@ -436,14 +519,14 @@ func sell_all_to_market(params: Dictionary) -> Dictionary:
 				goods_qtys[g] = surplus
 		if goods_qtys.is_empty():
 			continue
-		var summary := queue_sell(tile_id, goods_qtys)
+		var summary := queue_sell(tile_id, goods_qtys, log_oneoff)
 		if not summary.is_empty():
 			total_qty += int(summary.get("total_qty", 0))
 			total_revenue += float(summary.get("revenue", 0.0))
 			tiles_sold += 1
 	return {"total_qty": total_qty, "revenue": total_revenue, "tiles": tiles_sold}
 
-func queue_sell(source_tile: String, goods_qtys: Dictionary) -> Dictionary:
+func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = true) -> Dictionary:
 	# Sell specific goods/qtys from a tile: ship to the nearest port, pay out on arrival.
 	if source_tile == "":
 		return {}
@@ -482,6 +565,14 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary) -> Dictionary:
 		emit_stockpile_market_sale_completed(sale_record)
 		if port != "":
 			market_sale_arrived_at_port.emit(port, total_revenue)
+	if log_oneoff:
+		var started := _ledger_turn()
+		for it in items:
+			transaction_log.append({
+				"kind": "sell", "good_id": str(it.good_id), "qty": int(it.qty),
+				"tile_from": source_tile, "tile_to": port,
+				"turn_started": started, "turn_ended": started + turns,
+			})
 	return {"items": items, "total_qty": total_qty, "revenue": total_revenue, "turns": turns, "port": port}
 
 func get_pending_transport_shipments() -> Array:

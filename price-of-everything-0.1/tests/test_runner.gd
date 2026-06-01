@@ -35,6 +35,7 @@ func _ready() -> void:
 	_test_npc_ports()
 	_test_bulk_sell()
 	_test_output_market_route()
+	_test_transaction_ledger()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -50,6 +51,21 @@ func _test_storage_boost() -> void:
 	MatchState.add_building("b_004", "", "tile_3_3", "Three Diamonds Shipping Corporation")
 	_check(Stockpile.get_capacity("tile_3_3") == Stockpile.TILE_CAPACITY + 500,
 		"storage_boost raises tile capacity (port = +500)")
+
+func _test_transaction_ledger() -> void:
+	Stockpile.add("tile_3_8", "g_001", 12)
+	MatchState.queue_sell("tile_3_8", {"g_001": 12})  # one-off → logged
+	var rows: Array = MatchState.get_oneoff_transaction_rows()
+	_check(rows.size() > 0, "one-off sell appears in the transaction ledger")
+	var last: Dictionary = rows[rows.size() - 1]
+	_check(str(last.get("type", "")) == "Sell" and int(last.get("qty", 0)) == 12,
+		"ledger row carries type=Sell and qty")
+	MatchState.add_recurring_move("tile_3_8", "tile_3_9", {"g_001": 5})
+	_check(MatchState.get_recurring_move_rows().size() > 0, "recurring move appears in the movements ledger")
+	# A recurring execution must NOT also be logged as a one-off.
+	var before: int = MatchState.get_oneoff_move_rows().size()
+	MatchState.run_recurring_and_scheduled_moves()
+	_check(MatchState.get_oneoff_move_rows().size() == before, "recurring executions are not double-logged as one-offs")
 
 func _test_output_market_route() -> void:
 	var mode_before: int = MatchState.sell_mode

@@ -18,6 +18,7 @@ var _good_option: OptionButton = null
 var _finished_check: CheckBox = null
 var _recurring_check: CheckBox = null
 var _keep_spin: SpinBox = null
+var _ledger_refreshers: Array = []  # Callables that rebuild the Transactions/Movements tabs
 
 func _ready() -> void:
 	title_label.text = "Market"
@@ -25,6 +26,8 @@ func _ready() -> void:
 	_build_content()
 	_build_tabs()
 	MarketState.prices_updated.connect(_on_prices_updated)
+	visibility_changed.connect(_refresh_ledgers)
+	Production.turn_processed.connect(_refresh_ledgers)
 
 func _build_tabs() -> void:
 	# Two tabs: the price table ("Good prices", default) and bulk selling ("Sales").
@@ -46,7 +49,105 @@ func _build_tabs() -> void:
 	_build_bulk_sell_section(sales_tab)
 	tabs.add_child(sales_tab)
 
+	tabs.add_child(_build_ledger_tab("Transactions",
+		MatchState.get_recurring_transaction_rows, MatchState.get_oneoff_transaction_rows))
+	tabs.add_child(_build_ledger_tab("Movements",
+		MatchState.get_recurring_move_rows, MatchState.get_oneoff_move_rows))
+
 	main_vbox.add_child(tabs)
+
+func _build_ledger_tab(title: String, recurring_getter: Callable, oneoff_getter: Callable) -> VBoxContainer:
+	# View-only ledger: a "Recurring" accordion + a "One-off" accordion, each a small table.
+	var tab := VBoxContainer.new()
+	tab.name = title
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var body := VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 10)
+	scroll.add_child(body)
+	tab.add_child(scroll)
+
+	var recurring := _make_accordion()
+	var oneoff := _make_accordion()
+	body.add_child(recurring.root)
+	body.add_child(oneoff.root)
+
+	var refresh := func() -> void:
+		_populate_accordion(recurring, "Recurring", recurring_getter.call())
+		_populate_accordion(oneoff, "One-off", oneoff_getter.call())
+	_ledger_refreshers.append(refresh)
+	refresh.call()
+	return tab
+
+func _make_accordion() -> Dictionary:
+	var root := VBoxContainer.new()
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var header := Button.new()
+	header.toggle_mode = true
+	header.button_pressed = true
+	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.add_child(header)
+	var content := VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.add_child(content)
+	var acc := {"root": root, "header": header, "content": content, "title": ""}
+	header.toggled.connect(func(pressed: bool) -> void:
+		content.visible = pressed
+		header.text = ("▾ " if pressed else "▸ ") + str(acc.get("title", ""))
+	)
+	return acc
+
+func _populate_accordion(acc: Dictionary, label: String, rows: Array) -> void:
+	var content: VBoxContainer = acc.content
+	for c in content.get_children():
+		c.queue_free()
+	acc["title"] = "%s (%d)" % [label, rows.size()]
+	var expanded: bool = acc.header.button_pressed
+	acc.header.text = ("▾ " if expanded else "▸ ") + str(acc.title)
+	if rows.is_empty():
+		var empty := Label.new()
+		empty.text = "  None"
+		empty.add_theme_font_size_override("font_size", 12)
+		empty.modulate = Color(0.7, 0.7, 0.7)
+		content.add_child(empty)
+		return
+	var grid := GridContainer.new()
+	grid.columns = 7
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 2)
+	content.add_child(grid)
+	for h in ["Type", "From", "To", "Good", "Qty", "Started", "Ended"]:
+		grid.add_child(_ledger_cell(h, true))
+	for r in rows:
+		grid.add_child(_ledger_cell(str(r.get("type", "")), false))
+		grid.add_child(_ledger_cell(str(r.get("from", "")), false))
+		grid.add_child(_ledger_cell(str(r.get("to", "")), false))
+		grid.add_child(_ledger_cell(str(r.get("good", "")), false))
+		grid.add_child(_ledger_cell("—" if int(r.get("qty", 0)) < 0 else str(int(r.get("qty", 0))), false))
+		grid.add_child(_ledger_cell("T%d" % int(r.get("turn_started", 0)), false))
+		grid.add_child(_ledger_cell(_format_turn_ended(int(r.get("turn_ended", -1))), false))
+
+func _ledger_cell(text: String, is_header: bool) -> Label:
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.add_theme_font_size_override("font_size", 12)
+	if is_header:
+		lbl.modulate = Color(0.7, 0.85, 1.0)
+	return lbl
+
+func _format_turn_ended(ended: int) -> String:
+	if ended < 0 or ended > int(TurnManager.current_turn):
+		return "Ongoing"
+	return "T%d" % ended
+
+func _refresh_ledgers() -> void:
+	if not visible:
+		return
+	for refresh in _ledger_refreshers:
+		refresh.call()
 
 func _build_bulk_sell_section(parent: VBoxContainer) -> void:
 	# Stories 4 & 5: sell across many/all tiles to market, with good / finished / threshold filters.
