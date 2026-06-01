@@ -351,6 +351,7 @@ func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, sum
 		"total_qty": qty,
 		"total_revenue": revenue,
 	}
+	MatchState.log_market_sale(source_tile, port_tile, good_id, qty, int(route.turns))
 	if port_tile != "" and int(route.turns) >= 1:
 		# Goods are in transit; cash arrives when the port receives them (x turns later).
 		MatchState.queue_transport_shipment({
@@ -386,7 +387,8 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 		summary.money_out += transport_cost
 
 	if int(route.turns) >= 1:
-		# Inter-tile: in transit, arrives route.turns turns later.
+		# Inter-tile: in transit, arrives route.turns turns later (a tile-to-tile move).
+		MatchState.log_move_shipment(str(building.get("tile_id", "")), str(stockpile_coord), good.id, qty, int(route.turns))
 		MatchState.queue_transport_shipment({
 			"source_tile": building.get("tile_id", ""),
 			"destination_tile": str(stockpile_coord),
@@ -503,6 +505,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		})
 		sale_record.total_qty += sold_qty
 		sale_record.total_revenue += sold_revenue
+		MatchState.log_market_sale(source_tile, port_tile, good_key, sold_qty, int(route.turns))
 		if not deferred:
 			# No port (or distance 0) — pay out immediately.
 			MatchState.add_money(sold_revenue)

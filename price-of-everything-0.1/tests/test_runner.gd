@@ -66,6 +66,11 @@ func _test_transaction_ledger() -> void:
 	var before: int = MatchState.get_oneoff_move_rows().size()
 	MatchState.run_recurring_and_scheduled_moves()
 	_check(MatchState.get_oneoff_move_rows().size() == before, "recurring executions are not double-logged as one-offs")
+	# Production-driven sales/moves must show up too (the bulk of real activity).
+	var t_before: int = MatchState.get_oneoff_transaction_rows().size()
+	MatchState.log_market_sale("tile_6_8", "tile_5_10", "g_001", 20, 2)
+	_check(MatchState.get_oneoff_transaction_rows().size() == t_before + 1,
+		"a production market sale is logged to the transaction ledger")
 
 func _test_output_market_route() -> void:
 	var mode_before: int = MatchState.sell_mode

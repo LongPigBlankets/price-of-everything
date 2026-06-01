@@ -44,6 +44,7 @@ var recurring_bulk_sells: Array = []  # [{params, turn_started}] re-run via sell
 # turn_started, turn_ended} (+ kind for transactions).
 var transaction_log: Array = []
 var move_log: Array = []
+const LEDGER_MAX := 500  # keep the newest N entries so the logs stay bounded
 const LARGE_SHIPMENT_THRESHOLD := 500
 const LARGE_SHIPMENT_SURCHARGE := 2.0   # >500 units in one move costs 2x transport (tunable)
 var tile_land_owned: Dictionary = {}
@@ -370,13 +371,8 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, 
 		else:
 			Stockpile.add(dest_tile, it.good_id, it.qty)
 	if log_oneoff:
-		var started := _ledger_turn()
 		for it in items:
-			move_log.append({
-				"good_id": str(it.good_id), "qty": int(it.qty),
-				"tile_from": source_tile, "tile_to": dest_tile,
-				"turn_started": started, "turn_ended": started + turns,
-			})
+			log_move_shipment(source_tile, dest_tile, str(it.good_id), int(it.qty), turns)
 	return {"items": items, "total_qty": total_qty, "turns": turns,
 		"cost": total_cost, "source": source_tile, "dest": dest_tile, "surcharged": surcharge > 1.0}
 
@@ -426,6 +422,38 @@ func add_recurring_bulk_sell(params: Dictionary) -> void:
 
 func _ledger_turn() -> int:
 	return int(TurnManager.current_turn) if TurnManager else 0
+
+func _log_transaction(entry: Dictionary) -> void:
+	transaction_log.append(entry)
+	if transaction_log.size() > LEDGER_MAX:
+		transaction_log = transaction_log.slice(transaction_log.size() - LEDGER_MAX)
+
+func _log_move(entry: Dictionary) -> void:
+	move_log.append(entry)
+	if move_log.size() > LEDGER_MAX:
+		move_log = move_log.slice(move_log.size() - LEDGER_MAX)
+
+func log_market_sale(source_tile: String, port_tile: String, good_id: String, qty: int, turns: int) -> void:
+	# Production calls this when output / stockpile sells to market, so the ledger reflects it.
+	if qty <= 0:
+		return
+	var started := _ledger_turn()
+	_log_transaction({
+		"kind": "sell", "good_id": str(good_id), "qty": int(qty),
+		"tile_from": source_tile, "tile_to": port_tile if port_tile != "" else "Market",
+		"turn_started": started, "turn_ended": started + maxi(0, turns),
+	})
+
+func log_move_shipment(source_tile: String, dest_tile: String, good_id: String, qty: int, turns: int) -> void:
+	# Production calls this when output is routed to ANOTHER tile's stockpile (a tile-to-tile move).
+	if qty <= 0:
+		return
+	var started := _ledger_turn()
+	_log_move({
+		"good_id": str(good_id), "qty": int(qty),
+		"tile_from": source_tile, "tile_to": dest_tile,
+		"turn_started": started, "turn_ended": started + maxi(0, turns),
+	})
 
 func _ledger_tile_label(tile_id: String) -> String:
 	if tile_id == "":
@@ -566,13 +594,8 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = 
 		if port != "":
 			market_sale_arrived_at_port.emit(port, total_revenue)
 	if log_oneoff:
-		var started := _ledger_turn()
 		for it in items:
-			transaction_log.append({
-				"kind": "sell", "good_id": str(it.good_id), "qty": int(it.qty),
-				"tile_from": source_tile, "tile_to": port,
-				"turn_started": started, "turn_ended": started + turns,
-			})
+			log_market_sale(source_tile, port, str(it.good_id), int(it.qty), turns)
 	return {"items": items, "total_qty": total_qty, "revenue": total_revenue, "turns": turns, "port": port}
 
 func get_pending_transport_shipments() -> Array:
