@@ -61,22 +61,22 @@ const STATUS_ICON_CONFIG := [
 	{
 		"key": "power",
 		"path": "res://assets/icons/ui_icons/power_status_icon.png",
-		"tooltip": "Power status",
+		"tooltip": "Power status\nGreen: powered by your own supply · Amber: powered via the grid · Red: not powered · Grey: no power needed",
 	},
 	{
 		"key": "input",
 		"path": "res://assets/icons/ui_icons/input_status_icon.png",
-		"tooltip": "Input status",
+		"tooltip": "Input status\nGreen: ran with inputs available · Amber: inputs present but idle · Red: missing inputs · Grey: not applicable",
 	},
 	{
 		"key": "duration",
 		"path": "res://assets/icons/ui_icons/input_transport_duration_icon.png",
-		"tooltip": "Input transport duration",
+		"tooltip": "Output transport duration\nGreen: arrives same turn · Amber: multi-turn shipment · Grey: building didn't run this turn",
 	},
 	{
 		"key": "cost",
 		"path": "res://assets/icons/ui_icons/cost_of_transport_icon.png",
-		"tooltip": "Cost of transport",
+		"tooltip": "Cost of transport\nGreen: no shipping cost · Amber: paying to ship output · Grey: building didn't run this turn",
 	},
 ]
 
@@ -90,7 +90,7 @@ signal building_connections_changed(origin_tile_id: String, input_tile_ids: Arra
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 var _status_dots: Dictionary = {}
-var _cost_label: Panel = null
+var _cost_label: Label = null
 var _cost_wrapper: HBoxContainer = null
 var _tooltip_theme: Theme = null
 var _upgrade_button: Button = null
@@ -1328,29 +1328,19 @@ func _build_status_icon_column() -> void:
 
 		rag_box.add_child(wrapper)
 
-	# 5th indicator: production cost per unit — RAG dot, cost in tooltip
+	# 5th indicator: production cost per unit — shown as "£x/unit", coloured by RAG
 	_cost_wrapper = HBoxContainer.new()
 	_cost_wrapper.alignment = BoxContainer.ALIGNMENT_CENTER
 	_cost_wrapper.theme = _tooltip_theme
 	_cost_wrapper.mouse_filter = Control.MOUSE_FILTER_STOP
-	_cost_wrapper.add_theme_constant_override("separation", 1)
 	_cost_wrapper.custom_minimum_size = Vector2(STATUS_RAIL_WIDTH, 0)
 
-	var pound_icon := Label.new()
-	pound_icon.text = "£"
-	pound_icon.custom_minimum_size = STATUS_ICON_SIZE
-	pound_icon.add_theme_font_size_override("font_size", 14)
-	pound_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	pound_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	pound_icon.modulate = ICON_TINT
-	pound_icon.mouse_filter = Control.MOUSE_FILTER_STOP
-	pound_icon.theme = _tooltip_theme
-	_cost_wrapper.add_child(pound_icon)
-
-	_cost_label = Panel.new()
-	_cost_label.custom_minimum_size = STATUS_DOT_SIZE
-	_cost_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_cost_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_cost_label = Label.new()
+	_cost_label.text = "£--/unit"
+	_cost_label.add_theme_font_size_override("font_size", 11)
+	_cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_cost_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_cost_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	_cost_label.theme = _tooltip_theme
 	_cost_wrapper.add_child(_cost_label)
 
@@ -1365,16 +1355,20 @@ func _update_status_icons(building: Dictionary, recipe: Dictionary, is_infrastru
 	_set_status_dot("cost", _transport_cost_status_color(building, recipe, is_infrastructure))
 	_update_cost_label(building)
 
+const _COST_RAG_LEGEND := "Green if cheaper than buying from the market, amber if even with market and red if more expensive than purchasing from the market"
+
 func _update_cost_label(building: Dictionary) -> void:
 	if _cost_label == null:
 		return
 	var instance_id: String = building.get("instance_id", "")
 	var uc: float = CostSolver.get_building_unit_cost(instance_id)
 	var color: Color
+	var value_text: String
 	var tooltip: String
 	if uc < 0.0:
 		color = STATUS_GREY
-		tooltip = "--\nProduction cost per unit"
+		value_text = "£--/unit"
+		tooltip = "Cost to produce one unit: --\n" + _COST_RAG_LEGEND
 	else:
 		var bd: Dictionary = CostSolver.last_result.get("per_building", {}).get(instance_id, {})
 		var output_good_id: String = bd.get("output_good_id", "")
@@ -1386,32 +1380,23 @@ func _update_cost_label(building: Dictionary) -> void:
 			color = STATUS_YELLOW
 		else:
 			color = STATUS_RED
+		value_text = "£%.2f/unit" % uc
 		var output_costs: Dictionary = bd.get("output_costs", {})
 		if output_costs.size() > 1:
 			# Multi-output: list the allocated cost basis for each product
-			var lines: PackedStringArray = ["Production cost per unit (market-value allocation)"]
+			var lines: PackedStringArray = ["Cost to produce one unit (market-value allocation):"]
 			for gid in output_costs:
 				var goc: float = output_costs[gid]
-				var bp: float = Catalog.get_base_price(gid)
-				var gpct: float = (goc / bp * 100.0) if bp > 0.0 else 0.0
-				lines.append("  %s: £%.2f (%.1f%% of market)" % [Catalog.get_display_name(gid), goc, gpct])
+				lines.append("  %s: £%.2f" % [Catalog.get_display_name(gid), goc])
+			lines.append(_COST_RAG_LEGEND)
 			tooltip = "\n".join(lines)
 		else:
-			tooltip = "£%.2f (%.1f%% of market)\nProduction cost per unit" % [uc, pct]
-	var style := StyleBoxFlat.new()
-	style.bg_color = color
-	var radius := roundi(STATUS_DOT_SIZE.x * 0.5)
-	style.corner_radius_top_left = radius
-	style.corner_radius_top_right = radius
-	style.corner_radius_bottom_left = radius
-	style.corner_radius_bottom_right = radius
-	_cost_label.add_theme_stylebox_override("panel", style)
+			tooltip = "Cost to produce one unit: £%.2f\n%s" % [uc, _COST_RAG_LEGEND]
+	_cost_label.text = value_text
+	_cost_label.add_theme_color_override("font_color", color)
 	_cost_label.tooltip_text = tooltip
 	if _cost_wrapper != null:
 		_cost_wrapper.tooltip_text = tooltip
-		var pound := _cost_wrapper.get_child(0) as Label
-		if pound != null:
-			pound.tooltip_text = tooltip
 
 func _on_costs_updated() -> void:
 	if _current_building.is_empty():
@@ -1471,6 +1456,8 @@ func _input_status_color(building: Dictionary, recipe: Dictionary, is_infrastruc
 func _transport_duration_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
 	if is_infrastructure:
 		return STATUS_GREY
+	if not Production.last_turn_run.has(str(building.get("instance_id", ""))):
+		return STATUS_GREY  # building didn't run this turn — no output to transport
 	var route := _selected_output_route(building, recipe)
 	if route.is_empty():
 		return STATUS_GREEN
@@ -1479,6 +1466,8 @@ func _transport_duration_status_color(building: Dictionary, recipe: Dictionary, 
 func _transport_cost_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
 	if is_infrastructure:
 		return STATUS_GREY
+	if not Production.last_turn_run.has(str(building.get("instance_id", ""))):
+		return STATUS_GREY  # building didn't run this turn — no output to transport
 	var route := _selected_output_route(building, recipe)
 	if route.is_empty():
 		return STATUS_GREEN

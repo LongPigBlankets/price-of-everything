@@ -52,6 +52,7 @@ func _make_cell(slot: Dictionary) -> Control:
 	match str(slot.get("state", "")):
 		"exists":
 			var inst: Dictionary = slot.get("instance", {})
+			_style_exists_button(button)
 			button.pressed.connect(func() -> void: slot_activated.emit(inst))
 		"add":
 			_style_add_button(button, true)
@@ -79,6 +80,14 @@ func _make_cell(slot: Dictionary) -> Control:
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cell.add_child(name_label)
 	return cell
+
+func _style_exists_button(button: Button) -> void:
+	# Built infrastructure: drop the inner padding so the image fills the whole button.
+	var style := _button_style(DS.PALETTE.BG_INSET)
+	style.set_content_margin_all(0)
+	button.add_theme_stylebox_override("normal", style)
+	button.add_theme_stylebox_override("hover", style)
+	button.add_theme_stylebox_override("pressed", style)
 
 func _style_add_button(button: Button, enabled: bool) -> void:
 	var base: Color = DS.PALETTE.ACTION_BLUE if enabled else DS.PALETTE.BG_INSET
