@@ -34,6 +34,7 @@ func _ready() -> void:
 	_test_queue_sell()
 	_test_npc_ports()
 	_test_bulk_sell()
+	_test_output_market_route()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -49,6 +50,16 @@ func _test_storage_boost() -> void:
 	MatchState.add_building("b_004", "", "tile_3_3", "Three Diamonds Shipping Corporation")
 	_check(Stockpile.get_capacity("tile_3_3") == Stockpile.TILE_CAPACITY + 500,
 		"storage_boost raises tile capacity (port = +500)")
+
+func _test_output_market_route() -> void:
+	var mode_before: int = MatchState.sell_mode
+	MatchState.route_output_to_market("inst_test_market", "g_001")
+	_check(MatchState.is_output_market("inst_test_market", "g_001"),
+		"route_output_to_market marks the building for market")
+	_check(MatchState.get_output_stockpile_destination("inst_test_market", "g_001") == "",
+		"a market route reads as no stockpile tile")
+	_check(MatchState.sell_mode == mode_before,
+		"per-building market route leaves the global sell mode unchanged")
 
 func _test_bulk_sell() -> void:
 	Stockpile.add("tile_3_8", "g_001", 30)

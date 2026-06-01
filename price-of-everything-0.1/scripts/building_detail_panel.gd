@@ -667,8 +667,8 @@ func _rebuild_output_route_detail() -> void:
 	market_button.custom_minimum_size = Vector2(0, ROUTE_BUTTON_HEIGHT)
 	market_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	market_button.pressed.connect(func() -> void:
-		MatchState.clear_output_stockpile_destination(_current_building.get("instance_id", ""))
-		MatchState.set_sell_mode(MatchState.SellMode.SELL_ALL)
+		# Route THIS building's output to market — does not flip the global sell mode.
+		MatchState.route_output_to_market(_current_building.get("instance_id", ""), _primary_output_good_id(_current_recipe))
 		_refresh_route_controls(_current_building, _current_recipe)
 		_output_route_detail.visible = true
 	)
@@ -1614,6 +1614,8 @@ func _labour_cost(building_data: Dictionary) -> float:
 func _output_destination() -> String:
 	var instance_id: String = _current_building.get("instance_id", "")
 	var good_id := _primary_output_good_id(_current_recipe)
+	if MatchState.is_output_market(instance_id, good_id):
+		return "Market"
 	var destination_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
 	if destination_tile != "":
 		var route := _route_summary_for_good(

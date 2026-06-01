@@ -29,6 +29,7 @@ var labour_multiplier: float = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
 
 # --- Output routing ---
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
+const MARKET_DESTINATION := "__market__"  # sentinel tile_id: route this building's output to market
 var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
 var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (standing order)
@@ -252,7 +253,29 @@ func get_output_stockpile_destination(instance_id: String, good_id: String = "")
 		return ""
 	if good_id != "" and destination.get("good_id", "") != good_id:
 		return ""
-	return destination.get("tile_id", "")
+	var tile_id := str(destination.get("tile_id", ""))
+	if tile_id == MARKET_DESTINATION:
+		return ""  # a market route is not a stockpile tile
+	return tile_id
+
+func route_output_to_market(instance_id: String, good_id: String) -> void:
+	# Per-building "send output to market" — does NOT touch the global sell_mode.
+	if instance_id == "" or good_id == "":
+		return
+	output_stockpile_destinations[instance_id] = {
+		"tile_id": MARKET_DESTINATION,
+		"good_id": good_id,
+	}
+	pending_output_stockpile_selection.clear()
+	output_stockpile_destination_changed.emit(instance_id, MARKET_DESTINATION, good_id)
+
+func is_output_market(instance_id: String, good_id: String = "") -> bool:
+	var destination: Dictionary = output_stockpile_destinations.get(instance_id, {})
+	if destination.is_empty():
+		return false
+	if good_id != "" and destination.get("good_id", "") != good_id:
+		return false
+	return str(destination.get("tile_id", "")) == MARKET_DESTINATION
 
 func queue_stockpile_market_sale(tile_id: String) -> void:
 	if tile_id == "":

@@ -424,6 +424,8 @@ func _flush_output_buffer() -> void:
 
 func _output_stockpile_coord(building: Dictionary, good_id: String):
 	var instance_id: String = building.get("instance_id", "")
+	if MatchState.is_output_market(instance_id, good_id):
+		return null  # explicit per-building market route — sell to nearest port
 	var destination_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
 	if destination_tile != "":
 		return destination_tile
