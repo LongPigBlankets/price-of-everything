@@ -627,13 +627,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				PanelStack.close_top()
 			get_viewport().set_input_as_handled()
 
-		KEY_1:
-			var current = MatchState.sell_mode
-			var new_mode = MatchState.SellMode.STOCKPILE_ALL if current == MatchState.SellMode.SELL_ALL else MatchState.SellMode.SELL_ALL
-			MatchState.set_sell_mode(new_mode)
-			var mode_name = "STOCKPILE" if new_mode == MatchState.SellMode.STOCKPILE_ALL else "SELL_ALL"
-			print("[DEBUG] Sell mode toggled to: ", mode_name)
-
 func _should_open_search(event: InputEventKey) -> bool:
 	if search_overlay == null or search_overlay.visible:
 		return false

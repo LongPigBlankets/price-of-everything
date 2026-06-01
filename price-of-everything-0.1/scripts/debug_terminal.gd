@@ -3,8 +3,9 @@ extends CanvasLayer
 ## Type a command and press Enter. Add new cheats in _run_command().
 ##
 ## Commands:
-##   cash <int>   add that much cash (negative allowed)
-##   help         list commands
+##   cash <int>                       add that much cash (negative allowed)
+##   sellmode <stockpile|market|building>  set the global production sell mode
+##   help                             list commands
 
 const TOGGLE_KEY := KEY_QUOTELEFT  # the ` / ~ key
 
@@ -94,7 +95,31 @@ func _run_command(text: String) -> String:
 			var amount := int(parts[1])
 			MatchState.add_money(float(amount))
 			return "Added £%d  (balance now £%.2f)" % [amount, MatchState.money]
+		"sellmode":
+			if parts.size() < 2:
+				return "usage: sellmode <stockpile|market|building>  (current: %s)" % _sell_mode_name()
+			match parts[1].to_lower():
+				"stockpile":
+					MatchState.set_sell_mode(MatchState.SellMode.STOCKPILE_ALL)
+				"market":
+					MatchState.set_sell_mode(MatchState.SellMode.SELL_ALL)
+				"building":
+					MatchState.set_sell_mode(MatchState.SellMode.BUILDING_BY_BUILDING)
+				_:
+					return "usage: sellmode <stockpile|market|building>"
+			return "sell mode → %s" % _sell_mode_name()
 		"help":
-			return "commands:  cash <int>   |   help"
+			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
+
+func _sell_mode_name() -> String:
+	match MatchState.sell_mode:
+		MatchState.SellMode.STOCKPILE_ALL:
+			return "stockpile"
+		MatchState.SellMode.SELL_ALL:
+			return "market"
+		MatchState.SellMode.BUILDING_BY_BUILDING:
+			return "building"
+		_:
+			return "unknown"
