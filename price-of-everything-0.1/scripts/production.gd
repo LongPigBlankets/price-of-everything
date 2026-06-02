@@ -49,6 +49,7 @@ func _process_production() -> void:
 	"produced": {},
 	"consumed": {},
 	"sold": {},
+	"purchased": {},
 	"starved": [],
 	# Money breakdown (Pass 8 additions)
 	"goods_sales_revenue": 0.0,
@@ -744,13 +745,16 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 					summary.goods_purchased_cost += float(bought.get("goods_cost", 0.0))
 					summary.transport_paid += float(bought.get("transport_cost", 0.0))
 					summary.money_out += float(bought.get("cost", 0.0))
+					summary.purchased[good_id] = int(summary.purchased.get(good_id, 0)) + int(bought.get("qty", 0))
 	# Player-set recurring market purchases (Purchases tab), delivered to the chosen tile.
 	for rb in MatchState.recurring_buys:
-		var rbought: Dictionary = MatchState.queue_buy(str(rb.get("dest", "")), str(rb.get("good", "")), int(rb.get("qty", 0)), false)
+		var rgood := str(rb.get("good", ""))
+		var rbought: Dictionary = MatchState.queue_buy(str(rb.get("dest", "")), rgood, int(rb.get("qty", 0)), false)
 		if not rbought.is_empty():
 			summary.goods_purchased_cost += float(rbought.get("goods_cost", 0.0))
 			summary.transport_paid += float(rbought.get("transport_cost", 0.0))
 			summary.money_out += float(rbought.get("cost", 0.0))
+			summary.purchased[rgood] = int(summary.purchased.get(rgood, 0)) + int(rbought.get("qty", 0))
 
 func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictionary) -> void:
 	var inputs: Array = recipe.get("inputs", [])

@@ -38,6 +38,7 @@ func _ready() -> void:
 	_test_transaction_ledger()
 	_test_market_buy()
 	_test_purchases()
+	_test_recipes_producing()
 	_test_output_conservation()
 	_test_market_sale_credits()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
@@ -85,6 +86,12 @@ func _test_output_conservation() -> void:
 	Production._flush_output_buffer()
 	var gained: int = Stockpile.get_total("g_001") - before
 	_check(gained == 20, "output is conserved into the tile stockpile (got %d of 20)" % gained)
+
+func _test_recipes_producing() -> void:
+	_check(Catalog.recipes_producing("g_001").size() > 0, "recipes_producing finds producers of coal")
+	_check(Catalog.recipes_producing("g_nope").is_empty(), "recipes_producing is empty for an unknown good")
+	_check(Catalog.recipe_produces(Catalog.get_recipe("r_001"), "g_001"),
+		"recipe_produces detects a recipe's output good")
 
 func _test_purchases() -> void:
 	_check(Catalog.buyable_goods().size() > 0 and Catalog.sellable_goods().size() > 0,

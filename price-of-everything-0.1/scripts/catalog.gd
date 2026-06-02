@@ -627,6 +627,19 @@ func get_recipe(recipe_id: String) -> Dictionary:
 
 func get_recipes_for_building(building_id: String) -> Array:
 	return _recipes_by_building.get(building_id, [])
+
+func recipe_produces(recipe: Dictionary, good_id: String) -> bool:
+	if str(recipe.get("output_good_id", "")) == good_id:
+		return true
+	for o in recipe.get("outputs", []):
+		if str(o.get("good_id", "")) == good_id:
+			return true
+	return false
+
+func recipes_producing(good_id: String) -> Array:
+	if good_id == "":
+		return []
+	return _all_recipes.filter(func(r: Dictionary) -> bool: return recipe_produces(r, good_id))
 	
 	
 # =========================================================================

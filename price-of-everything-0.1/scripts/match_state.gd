@@ -74,6 +74,8 @@ signal build_rejected_no_funds(message: String)
 ## Purchases tab asked the player to pick a delivery tile on the map.
 signal buy_tile_pick_requested()
 signal buy_tile_picked(tile_id: String)  # tile_id == "" means cancelled
+## Market row "Expand" — open the construct panel filtered to producers of this good.
+signal show_construct_for_good(good_id: String)
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)

@@ -36,19 +36,41 @@ func _ready() -> void:
 	title_label.text = "Market"
 	close_button.pressed.connect(hide)
 	_build_content()
-	_add_prod_cost_header()
+	_rebuild_header()
 	_build_tabs()
 	MarketState.prices_updated.connect(_on_prices_updated)
 	MatchState.buy_tile_picked.connect(_on_buy_tile_picked)
+	MatchState.show_construct_for_good.connect(_on_show_construct_for_good)
 	visibility_changed.connect(_on_panel_visibility_changed)
 	Production.turn_processed.connect(_refresh_ledgers)
 
-func _add_prod_cost_header() -> void:
-	var lbl := Label.new()
-	lbl.text = "Prod. cost/unit"
-	lbl.custom_minimum_size = Vector2(120, 0)
-	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header_static.add_child(lbl)
+func _rebuild_header() -> void:
+	for c in header_static.get_children():
+		header_static.remove_child(c)
+		c.queue_free()
+	header_static.add_theme_constant_override("separation", 10)
+	header_static.add_child(_header_spacer(60.0))             # icon column
+	header_static.add_child(_header_label("Product", 160.0))
+	header_static.add_child(_header_label("Price now", 80.0))
+	header_static.add_child(_header_label("Price +10t", 90.0))
+	header_static.add_child(_header_label("Sold", 80.0))
+	header_static.add_child(_header_label("Bought", 90.0))
+	header_static.add_child(_header_label("Cost/unit", 100.0))
+	header_static.add_child(_header_label("Profit/unit", 110.0))
+
+func _header_label(text: String, width: float) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.custom_minimum_size = Vector2(width, 0)
+	return l
+
+func _header_spacer(width: float) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(width, 0)
+	return c
+
+func _on_show_construct_for_good(_good_id: String) -> void:
+	hide()  # close the market panel; the construct panel opens itself filtered
 
 func _centre_and_resize() -> void:
 	# Double-width, centred on screen.
