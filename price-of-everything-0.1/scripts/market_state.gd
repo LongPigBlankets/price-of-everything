@@ -20,7 +20,13 @@ func _init_prices_from_catalog() -> void:
 	prices_updated.emit()
 
 func get_price(good_id: String) -> float:
+	# The price you RECEIVE when selling a unit to the market.
 	return prices.get(good_id, 1.0)
+
+func get_buy_price(good_id: String) -> float:
+	# The price you PAY to buy a unit from the market — the sale price plus the
+	# market spread (EconomyConfig.MARKET_BUY_MARKUP).
+	return get_price(good_id) * (1.0 + EconomyConfig.MARKET_BUY_MARKUP)
 
 func get_estimated_price_in_n_turns(good_id: String, n: int) -> float:
 	var current: float = prices.get(good_id, 1.0)

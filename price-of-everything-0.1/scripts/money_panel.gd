@@ -383,12 +383,12 @@ func _project_next_turn() -> Dictionary:
 		maintenance += EconomyConfig.MAINTENANCE_PER_BUILDING if bmaint == null else float(bmaint)
 		labour += _calculate_projected_labour_cost(building)
 		transport += _projected_transport_cost(building, recipe)
-		# Market-sourced inputs (upper bound: full per-turn demand at market price)
+		# Market-sourced inputs (upper bound: full per-turn demand at the buy price)
 		for input in recipe.get("inputs", []):
 			var in_gid: String = str(input.get("good_id", ""))
 			if in_gid == "" or MatchState.is_input_tile_only(inst_id, in_gid):
 				continue
-			goods_purchased += int(input.get("qty", 0)) * MarketState.get_price(in_gid)
+			goods_purchased += int(input.get("qty", 0)) * MarketState.get_buy_price(in_gid)
 	
 	# Grid settlement
 	var net_power: int = power_supply - power_demand

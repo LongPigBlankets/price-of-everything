@@ -30,6 +30,9 @@ const BANKRUPTCY_FLOOR: float = -10.0
 const GLUT_UNITS: int = 100
 const MAX_PRICE_IMPACT_PCT: int = 10
 
+# Market spread: buying a unit costs the sale price plus this markup.
+const MARKET_BUY_MARKUP: float = 0.05
+
 func price_impact_pct_for(units: int) -> int:
 	# % downward price impact from selling `units` of one good in a single turn.
 	if units <= GLUT_UNITS:

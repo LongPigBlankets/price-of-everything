@@ -46,6 +46,7 @@ func _ready() -> void:
 	_test_recurring_sell_multitile()
 	_test_auto_sell_goods()
 	_test_price_impact()
+	_test_buy_price()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -162,6 +163,19 @@ func _test_auto_sell_goods() -> void:
 	MatchState.disable_auto_sell_good(t, "g_001")
 	_check(not MatchState.is_auto_sell_good(t, "g_001"), "per-good auto-sell clears")
 	_check(not MatchState.get_auto_sell_tiles().has(t), "tile drops out once no orders remain")
+
+func _test_buy_price() -> void:
+	var gid := "g_001"
+	var sell := MarketState.get_price(gid)
+	var buy := MarketState.get_buy_price(gid)
+	_check(absf(buy - sell * (1.0 + EconomyConfig.MARKET_BUY_MARKUP)) < 0.0001,
+		"buy price is the sale price plus the market markup")
+	_check(buy > sell, "buying costs more than selling (spread)")
+	# preview_buy should value goods at the buy price.
+	var prev: Dictionary = MatchState.preview_buy("tile_3_8", gid, 10)
+	if not prev.is_empty():
+		_check(absf(float(prev.get("goods_cost", 0.0)) - 10.0 * buy) < 0.01,
+			"preview_buy values goods at the buy price")
 
 func _test_price_impact() -> void:
 	var g: int = EconomyConfig.GLUT_UNITS

@@ -562,7 +562,7 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	var turns: int = int(route.get("turns", 0))
 	if turns >= (1 << 30):
 		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, dest_tile))
-	var unit_price := MarketState.get_price(good_id)
+	var unit_price := MarketState.get_buy_price(good_id)
 	var transport := EconomyConfig.transport_cost_for(good_id, qty, turns)
 	var total := float(qty) * unit_price + transport
 	if total > money:
@@ -625,7 +625,7 @@ func preview_buy(dest_tile: String, good_id: String, qty: int) -> Dictionary:
 	if turns >= (1 << 30):
 		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, dest_tile))
 	var transport := EconomyConfig.transport_cost_for(good_id, qty, turns)
-	var goods_cost := float(qty) * MarketState.get_price(good_id)
+	var goods_cost := float(qty) * MarketState.get_buy_price(good_id)
 	return {"cost": goods_cost + transport, "goods_cost": goods_cost,
 		"transport_cost": transport, "turns": turns, "port": port}
 
