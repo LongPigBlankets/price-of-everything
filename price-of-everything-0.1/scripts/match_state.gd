@@ -82,6 +82,8 @@ signal buy_tile_picked(tile_id: String)  # tile_id == "" means cancelled
 signal show_construct_for_good(good_id: String)
 ## Market row "Move" — start the on-map transfer flow for this good.
 signal transfer_for_good_requested(good_id: String)
+## Market-row "Purchase" asked to open the per-good buy flow.
+signal purchase_for_good_requested(good_id: String)
 ## A UI element asked to open an Encyclopedia entry (e.g. a "More info" link).
 signal encyclopedia_entry_requested(entry_id: String)
 signal output_stockpile_selection_started(selection: Dictionary)

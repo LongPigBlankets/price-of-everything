@@ -45,6 +45,19 @@ var _tr_modal: PanelContainer = null
 var _tr_modal_label: Label = null
 const _TR_YELLOW := Color(1.0, 1.0, 0.45)
 
+# Per-good BUY flow (market is the implicit origin; ships via nearest port).
+var _buy: Dictionary = {}  # {good, qty, tiles: Array, state}
+var _buy_dialog: PanelContainer = null
+var _buy_title: Label = null
+var _buy_qty: SpinBox = null
+var _buy_dest: Label = null
+var _buy_cost: Label = null
+var _buy_recurring: CheckBox = null
+var _buy_cta: Button = null
+var _buy_legend: VBoxContainer = null
+var _buy_modal: PanelContainer = null
+var _buy_modal_label: Label = null
+
 func _ready() -> void:
 	# DS assigns its Theme to the root Window, but Controls do not inherit a
 	# Window's theme — so apply it to the HUD Control subtree (where every panel
@@ -57,6 +70,7 @@ func _ready() -> void:
 	info_panel.move_goods_requested.connect(_on_move_goods_requested)
 	MatchState.buy_tile_pick_requested.connect(_on_buy_tile_pick_requested)
 	MatchState.transfer_for_good_requested.connect(_on_transfer_requested)
+	MatchState.purchase_for_good_requested.connect(_on_purchase_requested)
 	BuildMode.build_attempted.connect(_on_build_attempted)
 	BuildMode.infrastructure_attempted.connect(_on_infrastructure_attempted)  # NEW
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
@@ -527,12 +541,272 @@ func _update_transfer_legend() -> void:
 		_tr_legend.add_child(_legend_row(_TR_DARK_GREEN, "Consumes & produces"))
 		_tr_legend.add_child(_legend_row(_TR_RED, "Can't fit this quantity"))
 
+# ===== Per-good BUY flow (market origin; Shift-click multiplies the order) =====
+
+func _on_purchase_requested(good_id: String) -> void:
+	_build_buy_dialog()
+	_buy = {"good": good_id, "qty": 10, "tiles": [], "state": "dest"}
+	_buy_title.text = "Buy %s" % Catalog.get_display_name(good_id)
+	_buy_dest.text = "Deliver to: pick a tile"
+	_buy_cost.text = ""
+	_buy_recurring.set_pressed_no_signal(false)
+	_buy_qty.set_value_no_signal(10.0)
+	_buy_cta.text = "Buy"
+	_buy_cta.disabled = true
+	_buy_dialog.visible = true
+	_enter_transfer_ui()
+	_update_buy_highlights()
+	_update_buy_legend()
+	_update_buy_modal()
+	terrain_layer.begin_stockpile_destination_selection("", false)
+
+func _on_buy_tile_picked(tile_data: Dictionary) -> void:
+	var tile_id := str(tile_data.get("id", ""))
+	if tile_id == "":
+		return
+	var shift := Input.is_key_pressed(KEY_SHIFT)
+	var tiles: Array = _buy.get("tiles", [])
+	if not tiles.has(tile_id):
+		tiles.append(tile_id)
+	_buy["tiles"] = tiles
+	_update_buy_dest_label()
+	_update_buy_highlights()
+	_update_buy_cost()
+	if _buy_cta != null:
+		_buy_cta.disabled = tiles.is_empty()
+	if shift:
+		_buy["state"] = "multi"
+		_update_buy_modal()
+		terrain_layer.call_deferred("begin_stockpile_destination_selection", "", false)
+	else:
+		_buy["state"] = "ready"
+		terrain_layer.end_stockpile_destination_selection()
+		_update_buy_modal()
+
+func _update_buy_dest_label() -> void:
+	if _buy_dest == null:
+		return
+	var tiles: Array = _buy.get("tiles", [])
+	if tiles.is_empty():
+		_buy_dest.text = "Deliver to: pick a tile"
+	elif tiles.size() == 1:
+		_buy_dest.text = "Deliver to: %s" % Catalog.tile_label(str(tiles[0]))
+	else:
+		_buy_dest.text = "Deliver to: %d tiles" % tiles.size()
+
+func _update_buy_highlights() -> void:
+	if _buy.is_empty():
+		return
+	var good := str(_buy.get("good", ""))
+	var producing := MatchState.tiles_producing(good)
+	var consuming := MatchState.tiles_consuming(good)
+	var qty := int(_buy.get("qty", 0))
+	var highlights: Dictionary = {}
+	for tid in _relevant_transfer_tiles():
+		var consumes: bool = consuming.has(tid)
+		var produces: bool = producing.has(tid)
+		if consumes and not produces:
+			highlights[tid] = _TR_LIGHT_GREEN
+		elif consumes and produces:
+			highlights[tid] = _TR_DARK_GREEN
+		elif Stockpile.get_free_capacity(tid) < qty:
+			highlights[tid] = _TR_RED
+	for tid in _buy.get("tiles", []):
+		highlights[str(tid)] = _TR_YELLOW
+	var ov := _logistics_overlay()
+	if ov != null and ov.has_method("set_transfer_state"):
+		ov.set_transfer_state(true, highlights, "", "")
+
+func _update_buy_cost() -> void:
+	if _buy.is_empty() or _buy_cost == null:
+		return
+	var good := str(_buy.get("good", ""))
+	var qty := int(_buy.get("qty", 0))
+	var tiles: Array = _buy.get("tiles", [])
+	var recurring: bool = _buy_recurring != null and _buy_recurring.button_pressed
+	if tiles.is_empty() or qty <= 0:
+		_buy_cost.text = ""
+	else:
+		var total := 0.0
+		var goods := 0.0
+		var transport := 0.0
+		var max_turns := 0
+		for tid in tiles:
+			var prev: Dictionary = MatchState.preview_buy(str(tid), good, qty)
+			total += float(prev.get("cost", 0.0))
+			goods += float(prev.get("goods_cost", 0.0))
+			transport += float(prev.get("transport_cost", 0.0))
+			max_turns = maxi(max_turns, int(prev.get("turns", 0)))
+		var suffix := " every turn" if recurring else ", one off"
+		_buy_cost.text = "Cost: £%.2f (goods £%.2f + transport £%.2f)%s\nArrives in %d turn%s" % [
+			total, goods, transport, suffix, max_turns, "" if max_turns == 1 else "s"]
+	if _buy_cta != null:
+		var n: int = tiles.size()
+		var times := (" × %d tiles" % n) if n > 1 else ""
+		var rec := " every turn" if recurring else ""
+		_buy_cta.text = "Buy %d %s%s%s" % [qty, Catalog.get_display_name(good), times, rec]
+
+func _on_buy_qty_changed(value: float) -> void:
+	if _buy.is_empty():
+		return
+	_buy["qty"] = int(value)
+	_update_buy_highlights()
+	_update_buy_cost()
+
+func _on_buy_recurring_toggled(_pressed: bool) -> void:
+	_update_buy_cost()
+
+func _on_buy_confirm() -> void:
+	if _buy.is_empty():
+		return
+	var good := str(_buy.get("good", ""))
+	var qty := int(_buy.get("qty", 0))
+	var tiles: Array = _buy.get("tiles", [])
+	if tiles.is_empty() or qty <= 0:
+		return
+	var recurring: bool = _buy_recurring != null and _buy_recurring.button_pressed
+	var bought := 0
+	for tid in tiles:
+		var summary: Dictionary = MatchState.queue_buy(str(tid), good, qty)
+		if not summary.is_empty():
+			bought += int(summary.get("qty", 0))
+		if recurring:
+			MatchState.add_recurring_buy(str(tid), good, qty)
+	MatchState.request_toast("Buying %d %s to %d tile%s%s" % [
+		bought, Catalog.get_display_name(good), tiles.size(), "" if tiles.size() == 1 else "s",
+		" every turn" if recurring else ""], "success")
+	_close_buy()
+
+func _close_buy() -> void:
+	_buy = {}
+	terrain_layer.end_stockpile_destination_selection()
+	var ov := _logistics_overlay()
+	if ov != null and ov.has_method("clear_transfer"):
+		ov.clear_transfer()
+	if _buy_dialog != null:
+		_buy_dialog.visible = false
+	if _buy_modal != null:
+		_buy_modal.visible = false
+	_exit_transfer_ui()
+
+func _update_buy_modal() -> void:
+	if _buy_modal == null:
+		return
+	_buy_modal.visible = not _buy.is_empty() and str(_buy.get("state", "")) != "ready"
+
+func _process(_delta: float) -> void:
+	# Live-update the buy step modal so it flips to the multi-tile hint while Shift is held.
+	if _buy.is_empty() or _buy_modal == null or not _buy_modal.visible:
+		return
+	var want := "Select multiple tiles to multiply order" if Input.is_key_pressed(KEY_SHIFT) \
+		else "Set quantity, then select a delivery tile  (hold Shift for multiple)"
+	if _buy_modal_label.text != want:
+		_buy_modal_label.text = want
+
+func _update_buy_legend() -> void:
+	if _buy_legend == null:
+		return
+	for c in _buy_legend.get_children():
+		c.queue_free()
+	_buy_legend.add_child(_legend_row(_TR_LIGHT_GREEN, "Consumes it (needs delivery)"))
+	_buy_legend.add_child(_legend_row(_TR_DARK_GREEN, "Consumes & produces"))
+	_buy_legend.add_child(_legend_row(_TR_YELLOW, "Selected delivery tile"))
+	_buy_legend.add_child(_legend_row(_TR_RED, "No room for this quantity"))
+
+func _build_buy_dialog() -> void:
+	if _buy_dialog != null:
+		return
+	_buy_dialog = PanelContainer.new()
+	_buy_dialog.theme = DS.theme
+	_buy_dialog.anchor_left = 1.0
+	_buy_dialog.anchor_right = 1.0
+	_buy_dialog.offset_left = -340.0
+	_buy_dialog.offset_right = -20.0
+	_buy_dialog.offset_top = 80.0
+	_buy_dialog.offset_bottom = 470.0
+	_buy_dialog.visible = false
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 14)
+	_buy_dialog.add_child(margin)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 8)
+	margin.add_child(vb)
+	_buy_title = Label.new()
+	_buy_title.add_theme_font_size_override("font_size", 18)
+	vb.add_child(_buy_title)
+	var src := Label.new()
+	src.text = "From: World market (ships via nearest port)"
+	src.add_theme_font_size_override("font_size", 12)
+	src.modulate = Color(1, 1, 1, 0.75)
+	vb.add_child(src)
+	var qrow := HBoxContainer.new()
+	qrow.add_theme_constant_override("separation", 8)
+	var qlbl := Label.new()
+	qlbl.text = "Quantity (scroll to change)"
+	qlbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	qrow.add_child(qlbl)
+	_buy_qty = SpinBox.new()
+	_buy_qty.min_value = 1
+	_buy_qty.max_value = 99999
+	_buy_qty.step = 1
+	_buy_qty.value = 10
+	_buy_qty.value_changed.connect(_on_buy_qty_changed)
+	qrow.add_child(_buy_qty)
+	vb.add_child(qrow)
+	_buy_dest = Label.new()
+	vb.add_child(_buy_dest)
+	_buy_legend = VBoxContainer.new()
+	_buy_legend.add_theme_constant_override("separation", 2)
+	vb.add_child(_buy_legend)
+	_buy_cost = Label.new()
+	_buy_cost.add_theme_font_size_override("font_size", 13)
+	_buy_cost.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vb.add_child(_buy_cost)
+	_buy_recurring = UIHelpers.make_custom_checkbox()
+	_buy_recurring.toggled.connect(_on_buy_recurring_toggled)
+	vb.add_child(UIHelpers.make_setting_row("Make recurring every turn", _buy_recurring))
+	_buy_cta = Button.new()
+	_buy_cta.text = "Buy"
+	_buy_cta.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_buy_cta.pressed.connect(_on_buy_confirm)
+	vb.add_child(_buy_cta)
+	var cancel := Button.new()
+	cancel.text = "Cancel"
+	cancel.pressed.connect(_close_buy)
+	vb.add_child(cancel)
+	_hud.add_child(_buy_dialog)
+	# Bottom step modal.
+	_buy_modal = PanelContainer.new()
+	_buy_modal.theme = DS.theme
+	_buy_modal.anchor_left = 0.5
+	_buy_modal.anchor_right = 0.5
+	_buy_modal.anchor_top = 1.0
+	_buy_modal.anchor_bottom = 1.0
+	_buy_modal.offset_left = -230.0
+	_buy_modal.offset_right = 230.0
+	_buy_modal.offset_top = -156.0
+	_buy_modal.offset_bottom = -112.0
+	_buy_modal.visible = false
+	var mmargin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		mmargin.add_theme_constant_override("margin_" + side, 10)
+	_buy_modal.add_child(mmargin)
+	_buy_modal_label = Label.new()
+	_buy_modal_label.add_theme_font_size_override("font_size", 16)
+	_buy_modal_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mmargin.add_child(_buy_modal_label)
+	_hud.add_child(_buy_modal)
+
 func _on_buy_tile_pick_requested() -> void:
 	_picking_buy_tile = true
 	terrain_layer.begin_stockpile_destination_selection("")
 	_enter_stockpile_ui_mode()
 
 func _on_stockpile_destination_selected(tile_data: Dictionary) -> void:
+	if not _buy.is_empty():
+		_on_buy_tile_picked(tile_data)
+		return
 	if not _transfer.is_empty():
 		_on_transfer_tile_picked(tile_data)
 		return

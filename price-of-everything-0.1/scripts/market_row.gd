@@ -77,6 +77,11 @@ func setup(good_data: Dictionary) -> void:
 			b.pressed.connect(_on_expand_to_construct)
 		elif action == "Move":
 			b.pressed.connect(_on_move)
+		elif action == "Purchase":
+			b.pressed.connect(_on_purchase)
+			if not Catalog.is_good_buyable(good_id):
+				b.disabled = true
+				b.tooltip_text = "This good can't be bought from the market."
 		_expand_section.add_child(b)
 	add_child(_expand_section)
 
@@ -101,6 +106,9 @@ func _on_expand_to_construct() -> void:
 
 func _on_move() -> void:
 	MatchState.transfer_for_good_requested.emit(good_id)
+
+func _on_purchase() -> void:
+	MatchState.purchase_for_good_requested.emit(good_id)
 
 func _on_turn_processed(_summary: Dictionary) -> void:
 	_refresh()

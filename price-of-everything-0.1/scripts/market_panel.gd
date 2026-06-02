@@ -19,18 +19,7 @@ var _finished_check: CheckBox = null
 var _recurring_check: CheckBox = null
 var _keep_spin: SpinBox = null
 var _ledger_refreshers: Array = []  # Callables that rebuild the Transactions/Movements tabs
-# Purchases tab
-var _buy_search_field: LineEdit = null
-var _buy_search_list: ItemList = null
-var _buy_qty_field: LineEdit = null
-var _buy_dest_button: Button = null
-var _buy_recurring_check: CheckBox = null
-var _buy_cta: Button = null
-var _buy_good_id: String = ""
-var _buy_dest_tile: String = ""
-var _buy_search_results: Array = []  # good_ids for the current filter
-var _pick_in_progress := false  # true while the panel is hidden for a map tile-pick
-var _buy_cost_label: Label = null
+# Buying now lives in the per-good "Purchase" flow on the world map (world_map.gd).
 
 func _ready() -> void:
 	title_label.text = "Market"
@@ -39,9 +28,9 @@ func _ready() -> void:
 	_rebuild_header()
 	_build_tabs()
 	MarketState.prices_updated.connect(_on_prices_updated)
-	MatchState.buy_tile_picked.connect(_on_buy_tile_picked)
 	MatchState.show_construct_for_good.connect(_on_show_construct_for_good)
 	MatchState.transfer_for_good_requested.connect(func(_g: String) -> void: hide())
+	MatchState.purchase_for_good_requested.connect(func(_g: String) -> void: hide())
 	visibility_changed.connect(_on_panel_visibility_changed)
 	Production.turn_processed.connect(_refresh_ledgers)
 
@@ -88,12 +77,9 @@ func _on_panel_visibility_changed() -> void:
 		return
 	_centre_and_resize()
 	_refresh_ledgers()
-	if not _pick_in_progress:
-		# Fresh open (not a reopen after a map pick): clear stale "recurring" choices.
-		if _buy_recurring_check != null:
-			_buy_recurring_check.set_pressed_no_signal(false)
-		if _recurring_check != null:
-			_recurring_check.set_pressed_no_signal(false)
+	# Fresh open: clear the stale "recurring" choice on the Sales tab.
+	if _recurring_check != null:
+		_recurring_check.set_pressed_no_signal(false)
 
 func _build_tabs() -> void:
 	# Two tabs: the price table ("Good prices", default) and bulk selling ("Sales").
@@ -115,165 +101,12 @@ func _build_tabs() -> void:
 	_build_bulk_sell_section(sales_tab)
 	tabs.add_child(sales_tab)
 
-	tabs.add_child(_build_purchases_tab())
 	tabs.add_child(_build_ledger_tab("Transactions",
 		MatchState.get_recurring_transaction_rows, MatchState.get_oneoff_transaction_rows))
 	tabs.add_child(_build_ledger_tab("Movements",
 		MatchState.get_recurring_move_rows, MatchState.get_oneoff_move_rows))
 
 	main_vbox.add_child(tabs)
-
-func _build_purchases_tab() -> VBoxContainer:
-	var tab := VBoxContainer.new()
-	tab.name = "Purchases"
-	tab.add_theme_constant_override("separation", 6)
-
-	var header := Label.new()
-	header.text = "Buy from market"
-	header.add_theme_font_size_override("font_size", 16)
-	tab.add_child(header)
-
-	# Good — search with live string-matched results (buyable goods only).
-	tab.add_child(_make_caption("Good"))
-	_buy_search_field = LineEdit.new()
-	_buy_search_field.placeholder_text = "Search goods…"
-	_buy_search_field.text_changed.connect(_on_buy_search_changed)
-	tab.add_child(_buy_search_field)
-	_buy_search_list = ItemList.new()
-	_buy_search_list.visible = false
-	_buy_search_list.custom_minimum_size = Vector2(0, 110)
-	_buy_search_list.item_selected.connect(_on_buy_good_selected)
-	tab.add_child(_buy_search_list)
-
-	# Quantity (editable box + arrows, like the Sell steppers)
-	tab.add_child(_make_buy_qty_row())
-
-	# Destination — picked on the map
-	_buy_dest_button = Button.new()
-	_buy_dest_button.text = "Choose tile on map"
-	_buy_dest_button.pressed.connect(_on_choose_dest_pressed)
-	tab.add_child(_make_labeled_row("Deliver to", _buy_dest_button))
-
-	_buy_recurring_check = UIHelpers.make_custom_checkbox()
-	tab.add_child(UIHelpers.make_setting_row("Make recurring every turn", _buy_recurring_check))
-
-	_buy_cost_label = Label.new()
-	_buy_cost_label.text = "Cost to buy: —"
-	_buy_cost_label.add_theme_font_size_override("font_size", 13)
-	tab.add_child(_buy_cost_label)
-
-	_buy_cta = Button.new()
-	_buy_cta.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_buy_cta.pressed.connect(_on_buy_pressed)
-	tab.add_child(_buy_cta)
-	_update_buy_cta()
-	return tab
-
-func _make_caption(text: String) -> Label:
-	var lbl := Label.new()
-	lbl.text = text
-	lbl.add_theme_font_size_override("font_size", 12)
-	return lbl
-
-func _make_buy_qty_row() -> HBoxContainer:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	var lbl := Label.new()
-	lbl.text = "Quantity"
-	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(lbl)
-	_buy_qty_field = LineEdit.new()
-	_buy_qty_field.text = "10"
-	_buy_qty_field.alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_buy_qty_field.custom_minimum_size = Vector2(64, 0)
-	_buy_qty_field.text_changed.connect(func(_t: String) -> void: _update_buy_cta())
-	row.add_child(_buy_qty_field)
-	var arrows := VBoxContainer.new()
-	arrows.add_theme_constant_override("separation", 2)
-	var up := _make_tiny_arrow("▲")
-	up.pressed.connect(_on_buy_qty_arrow.bind(1))
-	var down := _make_tiny_arrow("▼")
-	down.pressed.connect(_on_buy_qty_arrow.bind(-1))
-	arrows.add_child(up)
-	arrows.add_child(down)
-	row.add_child(arrows)
-	return row
-
-func _make_tiny_arrow(glyph: String) -> Button:
-	var b := Button.new()
-	b.text = glyph
-	b.flat = true
-	b.focus_mode = Control.FOCUS_NONE
-	b.custom_minimum_size = Vector2(16, 14)
-	b.add_theme_font_size_override("font_size", 10)
-	return b
-
-func _on_buy_qty_arrow(delta: int) -> void:
-	var v: int = (int(_buy_qty_field.text) if _buy_qty_field.text.is_valid_int() else 0) + delta
-	_buy_qty_field.text = str(maxi(1, v))
-	_update_buy_cta()
-
-func _on_buy_search_changed(text: String) -> void:
-	_buy_search_list.clear()
-	_buy_search_results.clear()
-	var needle := text.strip_edges().to_lower()
-	for g in Catalog.buyable_goods():
-		var name := str(g.get("display_name", ""))
-		if needle == "" or name.to_lower().contains(needle):
-			_buy_search_list.add_item(name)
-			_buy_search_results.append(str(g.get("id", "")))
-	_buy_search_list.visible = not _buy_search_results.is_empty()
-
-func _on_buy_good_selected(index: int) -> void:
-	if index < 0 or index >= _buy_search_results.size():
-		return
-	_buy_good_id = str(_buy_search_results[index])
-	_buy_search_field.text = Catalog.get_display_name(_buy_good_id)
-	_buy_search_list.visible = false
-	_update_buy_cta()
-
-func _on_choose_dest_pressed() -> void:
-	# Hide the panel for the map pick, then reopen it once a tile is chosen.
-	_pick_in_progress = true
-	hide()
-	MatchState.buy_tile_pick_requested.emit()
-
-func _on_buy_tile_picked(tile_id: String) -> void:
-	_buy_dest_tile = tile_id
-	_buy_dest_button.text = "Choose tile on map" if tile_id == "" else Catalog.tile_label(tile_id)
-	_update_buy_cta()
-	if _pick_in_progress:
-		show()  # reopen on the Purchases tab; recurring is preserved (guarded in visibility handler)
-		_pick_in_progress = false
-
-func _update_buy_cta() -> void:
-	if _buy_cta == null:
-		return
-	var qty: int = int(_buy_qty_field.text) if _buy_qty_field != null and _buy_qty_field.text.is_valid_int() else 0
-	var good_label := Catalog.get_display_name(_buy_good_id) if _buy_good_id != "" else "—"
-	_buy_cta.text = "Buy %d %s" % [qty, good_label]
-	_buy_cta.disabled = _buy_good_id == "" or qty <= 0 or _buy_dest_tile == ""
-	if _buy_cost_label != null:
-		if _buy_good_id != "" and qty > 0 and _buy_dest_tile != "":
-			var prev: Dictionary = MatchState.preview_buy(_buy_dest_tile, _buy_good_id, qty)
-			_buy_cost_label.text = ("Cost to buy: £%.2f" % float(prev.get("cost", 0.0))) if not prev.is_empty() else "Cost to buy: —"
-		else:
-			_buy_cost_label.text = "Cost to buy: —"
-
-func _on_buy_pressed() -> void:
-	var qty: int = int(_buy_qty_field.text) if _buy_qty_field.text.is_valid_int() else 0
-	if _buy_good_id == "" or qty <= 0 or _buy_dest_tile == "":
-		return
-	var result: Dictionary = MatchState.queue_buy(_buy_dest_tile, _buy_good_id, qty)
-	if not result.is_empty():
-		var turns := int(result.get("turns", 0))
-		MatchState.request_toast("Buying %d %s to %s for £%.2f — arrives in %d turn%s" % [
-			int(result.get("qty", qty)), Catalog.get_display_name(_buy_good_id),
-			Catalog.tile_label(_buy_dest_tile), float(result.get("cost", 0.0)), turns, "" if turns == 1 else "s"], "success")
-	else:
-		MatchState.request_toast("Couldn't buy %s — not enough cash" % Catalog.get_display_name(_buy_good_id), "warning")
-	if _buy_recurring_check != null and _buy_recurring_check.button_pressed:
-		MatchState.add_recurring_buy(_buy_dest_tile, _buy_good_id, qty)
 
 func _build_ledger_tab(title: String, recurring_getter: Callable, oneoff_getter: Callable) -> VBoxContainer:
 	# View-only ledger: a "Recurring" accordion + a "One-off" accordion, each a small table.
