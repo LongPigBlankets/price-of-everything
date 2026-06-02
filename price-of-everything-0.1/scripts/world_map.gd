@@ -63,6 +63,7 @@ func _ready() -> void:
 	encyclopedia_button.pressed.connect(_on_encyclopedia_pressed)
 	if search_overlay.has_signal("recipe_build_requested"):
 		search_overlay.recipe_build_requested.connect(_on_search_recipe_build_requested)
+	MatchState.encyclopedia_entry_requested.connect(_on_encyclopedia_entry_requested)
 
 	TurnManager.phase_started.connect(_on_phase_started)
 	TurnManager.turn_advanced.connect(_on_turn_advanced)
@@ -674,6 +675,10 @@ func _on_end_turn_pressed() -> void:
 func _on_encyclopedia_pressed() -> void:
 	if search_overlay != null and search_overlay.has_method("open_encyclopedia"):
 		search_overlay.open_encyclopedia()
+
+func _on_encyclopedia_entry_requested(entry_id: String) -> void:
+	if search_overlay != null and search_overlay.has_method("open_encyclopedia_entry"):
+		search_overlay.open_encyclopedia_entry(entry_id)
 
 func _on_search_recipe_build_requested(building_id: String, recipe_id: String) -> void:
 	BuildMode.enter_build_mode(building_id, recipe_id)

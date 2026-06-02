@@ -214,11 +214,14 @@ func _process_production() -> void:
 	for tile_id in MatchState.get_auto_sell_tiles():
 		var committed: Dictionary = compute_committed_for_tile(str(tile_id))
 		var tile_totals: Dictionary = Stockpile.get_tile_totals(str(tile_id))
+		# Per-turn, per-good volume cap from the tile's price-impact tolerance.
+		var unit_cap: int = MatchState.auto_sell_unit_cap(str(tile_id))
 		var surplus: Dictionary = {}
 		for good_id in tile_totals:
 			if not MatchState.should_auto_sell_good(str(tile_id), str(good_id)):
 				continue
 			var surplus_qty: int = max(0, int(tile_totals[good_id]) - int(committed.get(good_id, 0)))
+			surplus_qty = mini(surplus_qty, unit_cap)
 			if surplus_qty > 0:
 				surplus[good_id] = surplus_qty
 		if not surplus.is_empty():

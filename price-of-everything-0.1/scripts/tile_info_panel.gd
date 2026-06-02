@@ -90,6 +90,10 @@ const _MOVE_SELECTED_TINT := Color(1.45, 1.45, 1.45)
 
 # --- Sell-goods tab state (mirrors Move) ---
 var _auto_sell_section: VBoxContainer = null
+var _auto_sell_summary_btn: Button = null
+var _auto_sell_impact_option: OptionButton = null
+var _auto_sell_info_btn: Button = null
+var _auto_sell_expanded: bool = false
 @onready var _chart_column: VBoxContainer = $MarginContainer/ContentRow/ChartColumn
 var _land_left_label: Label = null
 var _land_purchase_buttons_row: HBoxContainer = null
@@ -1160,23 +1164,45 @@ func _build_stockpile_section() -> void:
 	sell_tab.add_theme_constant_override("separation", 6)
 	tabs.add_child(sell_tab)
 
-	# Sell surplus + sell all live at the top of the Sell tab.
-	_sell_surplus_button = CheckBox.new()
-	_sell_surplus_button.text = ""
-	_sell_surplus_button.tooltip_text = "Standing order: every turn, ship this tile's leftover stockpile of EVERY good to the nearest port and sell it. Runs after production and outbound moves, so it only sells what the tile and its shipments don't need — it can't starve your buildings."
-	_sell_surplus_button.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_sell_surplus_button.add_theme_icon_override("unchecked", _get_checkbox_icon(false))
-	_sell_surplus_button.add_theme_icon_override("checked", _get_checkbox_icon(true))
-	_sell_surplus_button.add_theme_icon_override("unchecked_disabled", _get_checkbox_icon(false))
-	_sell_surplus_button.add_theme_icon_override("checked_disabled", _get_checkbox_icon(true))
-	_sell_surplus_button.flat = true
-	var no_box := StyleBoxEmpty.new()
-	for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
-		_sell_surplus_button.add_theme_stylebox_override(state, no_box)
-	_sell_surplus_button.toggled.connect(_on_sell_surplus_toggled)
-	sell_tab.add_child(_make_setting_row("Auto-sell ALL surplus every turn", _sell_surplus_button))
+	# Auto-sell standing order: "Auto sell [selection] [impact] [on] (i)".
+	var auto_row := HBoxContainer.new()
+	auto_row.add_theme_constant_override("separation", 6)
+	var auto_lbl := Label.new()
+	auto_lbl.text = "Auto sell"
+	auto_row.add_child(auto_lbl)
+	# Selection summary — click to expand the per-good picker.
+	_auto_sell_summary_btn = Button.new()
+	_auto_sell_summary_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_auto_sell_summary_btn.clip_text = true
+	_apply_button_text_style(_auto_sell_summary_btn)
+	_auto_sell_summary_btn.pressed.connect(_on_auto_sell_summary_pressed)
+	auto_row.add_child(_auto_sell_summary_btn)
+	# Price-impact tolerance dropdown.
+	_auto_sell_impact_option = OptionButton.new()
+	_auto_sell_impact_option.add_item("with no price impact per turn")
+	_auto_sell_impact_option.set_item_metadata(0, 0)
+	_auto_sell_impact_option.add_item("max 1% price impact per turn")
+	_auto_sell_impact_option.set_item_metadata(1, 1)
+	_auto_sell_impact_option.add_item("any price impact allowed")
+	_auto_sell_impact_option.set_item_metadata(2, MatchState.IMPACT_ANY)
+	_auto_sell_impact_option.item_selected.connect(_on_auto_sell_impact_selected)
+	auto_row.add_child(_auto_sell_impact_option)
+	# Enable tickbox.
+	_sell_surplus_button = _make_custom_checkbox()
+	_sell_surplus_button.toggled.connect(_on_auto_sell_enable_toggled)
+	auto_row.add_child(_sell_surplus_button)
+	# Info icon — hover for the glut rule, click for the encyclopedia entry.
+	_auto_sell_info_btn = Button.new()
+	_auto_sell_info_btn.text = "ⓘ"
+	_auto_sell_info_btn.flat = true
+	_auto_sell_info_btn.focus_mode = Control.FOCUS_NONE
+	_auto_sell_info_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_auto_sell_info_btn.tooltip_text = "Selling more than %d of any good will begin to impact the price by 1%%. Every %d over that will impact the price by another 1%% up to max %d%% per turn. This can crash the price temporarily.\n\nClick for more info." % [EconomyConfig.GLUT_UNITS, EconomyConfig.GLUT_UNITS, EconomyConfig.MAX_PRICE_IMPACT_PCT]
+	_auto_sell_info_btn.pressed.connect(func() -> void: MatchState.encyclopedia_entry_requested.emit("market_price_mechanics"))
+	auto_row.add_child(_auto_sell_info_btn)
+	sell_tab.add_child(auto_row)
 
-	# Per-good auto-sell overrides — sell only chosen goods' surplus every turn.
+	# Expandable per-good picker (hidden until the summary is clicked).
 	_auto_sell_section = VBoxContainer.new()
 	_auto_sell_section.add_theme_constant_override("separation", 2)
 	sell_tab.add_child(_auto_sell_section)
@@ -1413,8 +1439,7 @@ func _refresh_stockpile_section() -> void:
 	_refresh_move_tab()
 
 	var used: int = Stockpile.get_used_capacity(_current_tile_id)
-	if _sell_surplus_button != null:
-		_sell_surplus_button.set_pressed_no_signal(MatchState.is_sell_surplus_enabled(_current_tile_id))
+	_refresh_auto_sell_controls()
 	_refresh_auto_sell_section()
 
 	if _stockpile_sell_button != null:
@@ -1541,13 +1566,27 @@ func _format_nullable_money(value: Variant) -> String:
 		return "null"
 	return "£%.2f" % float(value)
 
-func _on_sell_surplus_toggled(pressed: bool) -> void:
+func _on_auto_sell_enable_toggled(pressed: bool) -> void:
 	if _current_tile_id == "":
 		return
 	if pressed:
-		MatchState.enable_sell_surplus(_current_tile_id)
+		# Default to "all goods" unless specific goods were already chosen.
+		if not MatchState.is_sell_surplus_enabled(_current_tile_id) \
+				and (MatchState.auto_sell_goods.get(_current_tile_id, {}) as Dictionary).is_empty():
+			MatchState.enable_sell_surplus(_current_tile_id)
 	else:
 		MatchState.disable_sell_surplus(_current_tile_id)
+		for g in (MatchState.auto_sell_goods.get(_current_tile_id, {}) as Dictionary).keys():
+			MatchState.disable_auto_sell_good(_current_tile_id, str(g))
+
+func _on_auto_sell_summary_pressed() -> void:
+	_auto_sell_expanded = not _auto_sell_expanded
+	_refresh_auto_sell_section()
+
+func _on_auto_sell_impact_selected(index: int) -> void:
+	if _current_tile_id == "" or _auto_sell_impact_option == null:
+		return
+	MatchState.set_auto_sell_impact(_current_tile_id, int(_auto_sell_impact_option.get_item_metadata(index)))
 
 func _on_sell_surplus_changed(tile_id: String) -> void:
 	if visible and tile_id == _current_tile_id:
@@ -1571,31 +1610,68 @@ func _tile_auto_sell_candidate_goods() -> Array:
 			found[ogid] = true
 	return found.keys()
 
+func _refresh_auto_sell_controls() -> void:
+	var master_on: bool = MatchState.is_sell_surplus_enabled(_current_tile_id)
+	var per_good: Array = (MatchState.auto_sell_goods.get(_current_tile_id, {}) as Dictionary).keys()
+	if _sell_surplus_button != null:
+		_sell_surplus_button.set_pressed_no_signal(master_on or not per_good.is_empty())
+	if _auto_sell_summary_btn != null:
+		_auto_sell_summary_btn.text = "%s  ▾" % _auto_sell_summary_text(master_on, per_good)
+	if _auto_sell_impact_option != null:
+		var impact: int = MatchState.get_auto_sell_impact(_current_tile_id)
+		for i in _auto_sell_impact_option.item_count:
+			if int(_auto_sell_impact_option.get_item_metadata(i)) == impact:
+				_auto_sell_impact_option.select(i)
+				break
+
+func _auto_sell_summary_text(master_on: bool, per_good: Array) -> String:
+	if master_on:
+		return "all goods"
+	if per_good.is_empty():
+		return "(nothing)"
+	if per_good.size() <= 3:
+		var names: Array = []
+		for g in per_good:
+			names.append(Catalog.get_display_name(str(g)))
+		return ", ".join(names)
+	return "%d goods" % per_good.size()
+
 func _refresh_auto_sell_section() -> void:
 	if _auto_sell_section == null:
 		return
 	for c in _auto_sell_section.get_children():
 		c.queue_free()
-	var goods: Array = _tile_auto_sell_candidate_goods()
-	if goods.is_empty():
+	if not _auto_sell_expanded:
 		return
-	var hdr := Label.new()
-	hdr.text = "…or auto-sell specific goods:"
-	hdr.add_theme_font_size_override("font_size", 13)
-	hdr.modulate = Color(1, 1, 1, 0.75)
-	_auto_sell_section.add_child(hdr)
 	var master_on: bool = MatchState.is_sell_surplus_enabled(_current_tile_id)
-	for good_id in goods:
+	var all_cb := _make_custom_checkbox()
+	all_cb.set_pressed_no_signal(master_on)
+	all_cb.toggled.connect(_on_auto_sell_all_toggled)
+	_auto_sell_section.add_child(_make_setting_row("All goods", all_cb))
+	for good_id in _tile_auto_sell_candidate_goods():
 		var cb := _make_custom_checkbox()
 		cb.set_pressed_no_signal(master_on or MatchState.is_auto_sell_good(_current_tile_id, str(good_id)))
-		cb.disabled = master_on  # the master order already covers every good
+		cb.disabled = master_on  # the master "all goods" order already covers every good
 		cb.toggled.connect(_on_auto_sell_good_toggled.bind(str(good_id)))
 		_auto_sell_section.add_child(_make_setting_row(Catalog.get_display_name(str(good_id)), cb))
+
+func _on_auto_sell_all_toggled(pressed: bool) -> void:
+	if _current_tile_id == "":
+		return
+	if pressed:
+		for g in (MatchState.auto_sell_goods.get(_current_tile_id, {}) as Dictionary).keys():
+			MatchState.disable_auto_sell_good(_current_tile_id, str(g))
+		MatchState.enable_sell_surplus(_current_tile_id)
+	else:
+		MatchState.disable_sell_surplus(_current_tile_id)
 
 func _on_auto_sell_good_toggled(pressed: bool, good_id: String) -> void:
 	if _current_tile_id == "":
 		return
 	if pressed:
+		# Picking a specific good switches the tile out of "all goods" mode.
+		if MatchState.is_sell_surplus_enabled(_current_tile_id):
+			MatchState.disable_sell_surplus(_current_tile_id)
 		MatchState.enable_auto_sell_good(_current_tile_id, good_id)
 	else:
 		MatchState.disable_auto_sell_good(_current_tile_id, good_id)

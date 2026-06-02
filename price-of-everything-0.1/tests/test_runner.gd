@@ -45,6 +45,7 @@ func _ready() -> void:
 	_test_owner_costs()
 	_test_recurring_sell_multitile()
 	_test_auto_sell_goods()
+	_test_price_impact()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -161,6 +162,23 @@ func _test_auto_sell_goods() -> void:
 	MatchState.disable_auto_sell_good(t, "g_001")
 	_check(not MatchState.is_auto_sell_good(t, "g_001"), "per-good auto-sell clears")
 	_check(not MatchState.get_auto_sell_tiles().has(t), "tile drops out once no orders remain")
+
+func _test_price_impact() -> void:
+	var g: int = EconomyConfig.GLUT_UNITS
+	_check(EconomyConfig.price_impact_pct_for(g) == 0, "selling up to the glut has no price impact")
+	_check(EconomyConfig.price_impact_pct_for(g + 1) == 1, "just over the glut is 1% impact")
+	_check(EconomyConfig.price_impact_pct_for(2 * g) == 1, "twice the glut is still 1%")
+	_check(EconomyConfig.price_impact_pct_for(2 * g + 1) == 2, "past 2x glut is 2%")
+	_check(EconomyConfig.price_impact_pct_for(1000 * g) == EconomyConfig.MAX_PRICE_IMPACT_PCT, "impact caps at the max")
+	_check(EconomyConfig.units_cap_for_impact(0) == g, "no-impact cap is the glut")
+	_check(EconomyConfig.units_cap_for_impact(1) == 2 * g, "1% cap is twice the glut")
+	MatchState.set_auto_sell_impact("tile_4_5", 0)
+	_check(MatchState.auto_sell_unit_cap("tile_4_5") == g, "tile NONE tolerance caps at the glut")
+	MatchState.set_auto_sell_impact("tile_4_5", 1)
+	_check(MatchState.auto_sell_unit_cap("tile_4_5") == 2 * g, "tile 1% tolerance caps at 2x glut")
+	MatchState.set_auto_sell_impact("tile_4_5", MatchState.IMPACT_ANY)
+	_check(MatchState.auto_sell_unit_cap("tile_4_5") > 1000000, "tile ANY tolerance is effectively uncapped")
+	_check(MatchState.get_auto_sell_impact("tile_unset_99") == MatchState.IMPACT_ANY, "default tolerance is ANY")
 
 func _test_owner_costs() -> void:
 	_check(MatchState.is_player_owned({"owner": "player_1"}), "player_1 building is player-owned")

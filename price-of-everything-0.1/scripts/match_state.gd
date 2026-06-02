@@ -36,6 +36,8 @@ var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
 var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (master: auto-sell ALL surplus goods)
 var auto_sell_goods: Dictionary = {}                 # tile_id -> { good_id -> true } (per-good auto-sell overrides)
+const IMPACT_ANY := -1                               # auto-sell tolerance sentinel: no per-turn volume cap
+var auto_sell_impact: Dictionary = {}                # tile_id -> max price-impact % tolerated per turn (or IMPACT_ANY)
 var pending_transport_shipments: Array = []
 var _shipment_id_counter: int = 0
 var recurring_moves: Array = []   # [{source, dest, goods}] re-issued every turn
@@ -80,6 +82,8 @@ signal buy_tile_picked(tile_id: String)  # tile_id == "" means cancelled
 signal show_construct_for_good(good_id: String)
 ## Market row "Move" — start the on-map transfer flow for this good.
 signal transfer_for_good_requested(good_id: String)
+## A UI element asked to open an Encyclopedia entry (e.g. a "More info" link).
+signal encyclopedia_entry_requested(entry_id: String)
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)
@@ -213,6 +217,7 @@ func reset() -> void:
 	queued_stockpile_market_sales.clear()
 	sell_surplus_tiles.clear()
 	auto_sell_goods.clear()
+	auto_sell_impact.clear()
 	pending_transport_shipments.clear()
 	tile_land_owned.clear()
 	recurring_moves.clear()
@@ -837,6 +842,24 @@ func get_auto_sell_tiles() -> Array:
 	for t in auto_sell_goods.keys():
 		tiles[t] = true
 	return tiles.keys()
+
+func set_auto_sell_impact(tile_id: String, max_pct: int) -> void:
+	# max_pct is the largest per-turn price impact the auto-sell may cause (or IMPACT_ANY for no cap).
+	if tile_id == "":
+		return
+	auto_sell_impact[tile_id] = max_pct
+	sell_surplus_changed.emit(tile_id)
+
+func get_auto_sell_impact(tile_id: String) -> int:
+	return int(auto_sell_impact.get(tile_id, IMPACT_ANY))
+
+func auto_sell_unit_cap(tile_id: String) -> int:
+	# Per-turn, per-good sell cap implied by the tile's price-impact tolerance.
+	# Returns a very large number when ANY impact is allowed (effectively uncapped).
+	var impact: int = get_auto_sell_impact(tile_id)
+	if impact == IMPACT_ANY:
+		return 1 << 30
+	return EconomyConfig.units_cap_for_impact(impact)
 
 func set_labour_multiplier(value: float) -> void:
 	# Clamp to valid range

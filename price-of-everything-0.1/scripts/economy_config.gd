@@ -21,7 +21,26 @@ const STUB_SKILLED_PER_BUILDING: int = 50
 const STUB_HIGH_SKILLED_PER_BUILDING: int = 50
 
 # --- Bankruptcy ---
-const BANKRUPTCY_FLOOR: float = -10.0 
+const BANKRUPTCY_FLOOR: float = -10.0
+
+# --- Market price impact (glut model) ---
+# Selling more than GLUT_UNITS of a single good in one turn starts to move its
+# price. Every further GLUT_UNITS over the threshold adds another 1% of downward
+# impact, capped at MAX_PRICE_IMPACT_PCT. (Placeholder model — tunable.)
+const GLUT_UNITS: int = 100
+const MAX_PRICE_IMPACT_PCT: int = 10
+
+func price_impact_pct_for(units: int) -> int:
+	# % downward price impact from selling `units` of one good in a single turn.
+	if units <= GLUT_UNITS:
+		return 0
+	var steps: int = int(ceil(float(units - GLUT_UNITS) / float(GLUT_UNITS)))
+	return mini(MAX_PRICE_IMPACT_PCT, steps)
+
+func units_cap_for_impact(max_pct: int) -> int:
+	# Largest single-turn sell volume of one good that stays within max_pct impact.
+	# max_pct 0 -> GLUT_UNITS (no impact); 1 -> 2*GLUT_UNITS; etc.
+	return GLUT_UNITS * (max_pct + 1)
 
 # --- Power grid pricing ---
 const GRID_BUY_PRICE: float = 0.5    # £/unit when buying from grid (shortfall)
