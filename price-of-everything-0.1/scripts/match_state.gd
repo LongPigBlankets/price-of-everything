@@ -34,7 +34,8 @@ const MARKET_DESTINATION := "__market__"  # sentinel tile_id: route this buildin
 var input_tile_only: Dictionary = {}  # "instance_id|good_id" -> true (tile stockpile ONLY; default buys from market)
 var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
-var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (standing order)
+var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (master: auto-sell ALL surplus goods)
+var auto_sell_goods: Dictionary = {}                 # tile_id -> { good_id -> true } (per-good auto-sell overrides)
 var pending_transport_shipments: Array = []
 var _shipment_id_counter: int = 0
 var recurring_moves: Array = []   # [{source, dest, goods}] re-issued every turn
@@ -211,6 +212,7 @@ func reset() -> void:
 	pending_output_stockpile_selection.clear()
 	queued_stockpile_market_sales.clear()
 	sell_surplus_tiles.clear()
+	auto_sell_goods.clear()
 	pending_transport_shipments.clear()
 	tile_land_owned.clear()
 	recurring_moves.clear()
@@ -795,6 +797,46 @@ func is_sell_surplus_enabled(tile_id: String) -> bool:
 
 func get_sell_surplus_tiles() -> Array:
 	return sell_surplus_tiles.keys()
+
+# --- Per-good auto-sell (a standing order to sell a specific good's surplus every turn) ---
+
+func enable_auto_sell_good(tile_id: String, good_id: String) -> void:
+	if tile_id == "" or good_id == "":
+		return
+	if not auto_sell_goods.has(tile_id):
+		auto_sell_goods[tile_id] = {}
+	if auto_sell_goods[tile_id].has(good_id):
+		return
+	auto_sell_goods[tile_id][good_id] = true
+	sell_surplus_changed.emit(tile_id)
+
+func disable_auto_sell_good(tile_id: String, good_id: String) -> void:
+	if not auto_sell_goods.has(tile_id):
+		return
+	if auto_sell_goods[tile_id].erase(good_id):
+		if (auto_sell_goods[tile_id] as Dictionary).is_empty():
+			auto_sell_goods.erase(tile_id)
+		sell_surplus_changed.emit(tile_id)
+
+func is_auto_sell_good(tile_id: String, good_id: String) -> bool:
+	return auto_sell_goods.get(tile_id, {}).has(good_id)
+
+func get_auto_sell_good_tiles() -> Array:
+	return auto_sell_goods.keys()
+
+func should_auto_sell_good(tile_id: String, good_id: String) -> bool:
+	# A good auto-sells if the master "sell everything" order is on for the tile,
+	# or it has an explicit per-good auto-sell override.
+	return sell_surplus_tiles.has(tile_id) or auto_sell_goods.get(tile_id, {}).has(good_id)
+
+func get_auto_sell_tiles() -> Array:
+	# Union of tiles with the master order and tiles with any per-good override.
+	var tiles: Dictionary = {}
+	for t in sell_surplus_tiles.keys():
+		tiles[t] = true
+	for t in auto_sell_goods.keys():
+		tiles[t] = true
+	return tiles.keys()
 
 func set_labour_multiplier(value: float) -> void:
 	# Clamp to valid range

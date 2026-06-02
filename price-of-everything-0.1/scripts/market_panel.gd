@@ -362,7 +362,9 @@ func _format_turn_ended(ended: int) -> String:
 		return "Ongoing"
 	return "T%d" % ended
 
-func _refresh_ledgers() -> void:
+func _refresh_ledgers(_summary: Dictionary = {}) -> void:
+	# Accept the optional summary arg so the turn_processed signal (which emits one)
+	# can connect directly without an arg-count error.
 	if not visible:
 		return
 	for refresh in _ledger_refreshers:

@@ -97,6 +97,7 @@ var _sell_cta: Button = null
 var _sell_selected: Dictionary = {}
 var _sell_qtys: Dictionary = {}
 var _sell_all_selected: bool = false
+var _auto_sell_section: VBoxContainer = null
 @onready var _chart_column: VBoxContainer = $MarginContainer/ContentRow/ChartColumn
 var _land_left_label: Label = null
 var _land_purchase_buttons_row: HBoxContainer = null
@@ -1170,7 +1171,7 @@ func _build_stockpile_section() -> void:
 	# Sell surplus + sell all live at the top of the Sell tab.
 	_sell_surplus_button = CheckBox.new()
 	_sell_surplus_button.text = ""
-	_sell_surplus_button.tooltip_text = "Automatically sell surplus stockpile that buildings on this tile do not require"
+	_sell_surplus_button.tooltip_text = "Standing order: every turn, ship this tile's leftover stockpile of EVERY good to the nearest port and sell it. Runs after production and outbound moves, so it only sells what the tile and its shipments don't need — it can't starve your buildings."
 	_sell_surplus_button.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_sell_surplus_button.add_theme_icon_override("unchecked", _get_checkbox_icon(false))
 	_sell_surplus_button.add_theme_icon_override("checked", _get_checkbox_icon(true))
@@ -1181,7 +1182,12 @@ func _build_stockpile_section() -> void:
 	for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
 		_sell_surplus_button.add_theme_stylebox_override(state, no_box)
 	_sell_surplus_button.toggled.connect(_on_sell_surplus_toggled)
-	sell_tab.add_child(_make_setting_row("Sell surplus every turn", _sell_surplus_button))
+	sell_tab.add_child(_make_setting_row("Auto-sell ALL surplus every turn", _sell_surplus_button))
+
+	# Per-good auto-sell overrides — sell only chosen goods' surplus every turn.
+	_auto_sell_section = VBoxContainer.new()
+	_auto_sell_section.add_theme_constant_override("separation", 2)
+	sell_tab.add_child(_auto_sell_section)
 
 	_stockpile_sell_button = Button.new()
 	_stockpile_sell_button.text = "Sell All to Market"
@@ -1585,6 +1591,7 @@ func _refresh_stockpile_section() -> void:
 	var used: int = Stockpile.get_used_capacity(_current_tile_id)
 	if _sell_surplus_button != null:
 		_sell_surplus_button.set_pressed_no_signal(MatchState.is_sell_surplus_enabled(_current_tile_id))
+	_refresh_auto_sell_section()
 
 	if _stockpile_sell_button != null:
 		var sale_queued := MatchState.is_stockpile_market_sale_queued(_current_tile_id)
@@ -1721,6 +1728,53 @@ func _on_sell_surplus_toggled(pressed: bool) -> void:
 func _on_sell_surplus_changed(tile_id: String) -> void:
 	if visible and tile_id == _current_tile_id:
 		_refresh_stockpile_section()
+
+func _tile_auto_sell_candidate_goods() -> Array:
+	# Sellable goods this tile either holds in stockpile or produces — so an auto-sell
+	# order can be armed before any stock exists.
+	var found: Dictionary = {}
+	for good_id in Stockpile.get_tile_totals(_current_tile_id).keys():
+		if Catalog.is_good_sellable(str(good_id)):
+			found[str(good_id)] = true
+	for b in MatchState.get_buildings_on_tile(_current_tile_id):
+		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		for o in recipe.get("outputs", []):
+			var gid := str(o.get("good_id", ""))
+			if gid != "" and Catalog.is_good_sellable(gid):
+				found[gid] = true
+		var ogid := str(recipe.get("output_good_id", ""))
+		if ogid != "" and Catalog.is_good_sellable(ogid):
+			found[ogid] = true
+	return found.keys()
+
+func _refresh_auto_sell_section() -> void:
+	if _auto_sell_section == null:
+		return
+	for c in _auto_sell_section.get_children():
+		c.queue_free()
+	var goods: Array = _tile_auto_sell_candidate_goods()
+	if goods.is_empty():
+		return
+	var hdr := Label.new()
+	hdr.text = "…or auto-sell specific goods:"
+	hdr.add_theme_font_size_override("font_size", 13)
+	hdr.modulate = Color(1, 1, 1, 0.75)
+	_auto_sell_section.add_child(hdr)
+	var master_on: bool = MatchState.is_sell_surplus_enabled(_current_tile_id)
+	for good_id in goods:
+		var cb := _make_custom_checkbox()
+		cb.set_pressed_no_signal(master_on or MatchState.is_auto_sell_good(_current_tile_id, str(good_id)))
+		cb.disabled = master_on  # the master order already covers every good
+		cb.toggled.connect(_on_auto_sell_good_toggled.bind(str(good_id)))
+		_auto_sell_section.add_child(_make_setting_row(Catalog.get_display_name(str(good_id)), cb))
+
+func _on_auto_sell_good_toggled(pressed: bool, good_id: String) -> void:
+	if _current_tile_id == "":
+		return
+	if pressed:
+		MatchState.enable_auto_sell_good(_current_tile_id, good_id)
+	else:
+		MatchState.disable_auto_sell_good(_current_tile_id, good_id)
 
 func _on_production_destination_selected(index: int) -> void:
 	match index:

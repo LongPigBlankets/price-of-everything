@@ -207,11 +207,17 @@ func _process_production() -> void:
 		var tile_totals: Dictionary = Stockpile.get_tile_totals(str(tile_id))
 		_sell_stockpile_totals(str(tile_id), tile_totals, summary, true)
 
-	for tile_id in MatchState.get_sell_surplus_tiles():
+	# Auto-sell standing orders: the master "sell everything" toggle (sell_surplus_tiles)
+	# and per-good overrides (auto_sell_goods). Runs AFTER production consumes inputs and
+	# AFTER outbound moves ship, so anything still on the tile is genuine surplus — this
+	# can never starve a local consumer or a downstream tile fed by recurring moves.
+	for tile_id in MatchState.get_auto_sell_tiles():
 		var committed: Dictionary = compute_committed_for_tile(str(tile_id))
 		var tile_totals: Dictionary = Stockpile.get_tile_totals(str(tile_id))
 		var surplus: Dictionary = {}
 		for good_id in tile_totals:
+			if not MatchState.should_auto_sell_good(str(tile_id), str(good_id)):
+				continue
 			var surplus_qty: int = max(0, int(tile_totals[good_id]) - int(committed.get(good_id, 0)))
 			if surplus_qty > 0:
 				surplus[good_id] = surplus_qty

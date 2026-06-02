@@ -44,6 +44,7 @@ func _ready() -> void:
 	_test_market_sale_credits()
 	_test_owner_costs()
 	_test_recurring_sell_multitile()
+	_test_auto_sell_goods()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -144,6 +145,22 @@ func _test_market_buy() -> void:
 	var partial: Dictionary = MatchState.queue_buy("tile_3_8", "g_002", 1000)
 	_check(not partial.is_empty() and int(partial.get("qty", 0)) > 0 and int(partial.get("qty", 0)) < 1000,
 		"queue_buy buys a partial amount when cash is short")
+
+func _test_auto_sell_goods() -> void:
+	var t := "tile_4_4"
+	MatchState.enable_auto_sell_good(t, "g_001")
+	_check(MatchState.is_auto_sell_good(t, "g_001"), "per-good auto-sell registers")
+	_check(MatchState.should_auto_sell_good(t, "g_001"), "should_auto_sell true for an armed good")
+	_check(not MatchState.should_auto_sell_good(t, "g_002"), "should_auto_sell false for an unarmed good")
+	_check(MatchState.get_auto_sell_tiles().has(t), "tile appears in the auto-sell tile set")
+	# Master order covers every good regardless of per-good arming.
+	MatchState.enable_sell_surplus(t)
+	_check(MatchState.should_auto_sell_good(t, "g_009"), "master 'sell all' order auto-sells any good")
+	MatchState.disable_sell_surplus(t)
+	# Disarming the last per-good order removes the tile from the set.
+	MatchState.disable_auto_sell_good(t, "g_001")
+	_check(not MatchState.is_auto_sell_good(t, "g_001"), "per-good auto-sell clears")
+	_check(not MatchState.get_auto_sell_tiles().has(t), "tile drops out once no orders remain")
 
 func _test_owner_costs() -> void:
 	_check(MatchState.is_player_owned({"owner": "player_1"}), "player_1 building is player-owned")
