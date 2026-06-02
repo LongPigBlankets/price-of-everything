@@ -19,12 +19,17 @@ const COST_AMBER := Color(0.95, 0.72, 0.22)
 const COST_RED := Color(0.90, 0.38, 0.38)
 const COST_GREY := Color(0.62, 0.62, 0.62)
 const COST_LEGEND := "Green: cheaper than market (<90%) · Amber: about even (90–110%) · Red: dearer than market (>110%)"
+# Column tints: the sale pair (light grey) and the purchase pair (medium grey).
+const SALE_TINT := Color(0.82, 0.85, 0.90, 0.10)
+const BUY_TINT := Color(0.50, 0.53, 0.58, 0.22)
 
 var good_id: String = ""
 var internal_name: String = ""
 
 var _price_label: Label = null
 var _est_label: Label = null
+var _buy_price_label: Label = null
+var _buy_est_label: Label = null
 var _sold_label: Label = null
 var _bought_label: Label = null
 var _cost_label: Label = null
@@ -59,11 +64,18 @@ func setup(good_data: Dictionary) -> void:
 
 	_price_label = _make_col(COL_PRICE)
 	_est_label = _make_col(COL_EST)
+	_buy_price_label = _make_col(COL_PRICE)
+	_buy_est_label = _make_col(COL_EST)
 	_sold_label = _make_col(COL_SOLD)
 	_bought_label = _make_col(COL_BOUGHT)
 	_cost_label = _make_col(COL_COST)
 	_profit_label = _make_col(COL_PROFIT)
-	for l in [_price_label, _est_label, _sold_label, _bought_label, _cost_label, _profit_label]:
+	# Sale pair (light grey) then purchase pair (medium grey).
+	_tint_col(_price_label, SALE_TINT)
+	_tint_col(_est_label, SALE_TINT)
+	_tint_col(_buy_price_label, BUY_TINT)
+	_tint_col(_buy_est_label, BUY_TINT)
+	for l in [_price_label, _est_label, _buy_price_label, _buy_est_label, _sold_label, _bought_label, _cost_label, _profit_label]:
 		main.add_child(l)
 
 	_expand_section = VBoxContainer.new()
@@ -97,6 +109,13 @@ func _make_col(width: float) -> Label:
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	return l
 
+func _tint_col(l: Label, tint: Color) -> void:
+	var box := StyleBoxFlat.new()
+	box.bg_color = tint
+	box.content_margin_left = 6
+	box.content_margin_right = 6
+	l.add_theme_stylebox_override("normal", box)
+
 func _toggle_expand() -> void:
 	_expanded = not _expanded
 	_expand_section.visible = _expanded
@@ -118,6 +137,9 @@ func _refresh() -> void:
 		return
 	_price_label.text = "£%.2f" % MarketState.get_price(good_id)
 	_est_label.text = "£%.2f" % MarketState.get_estimated_price_in_n_turns(good_id, FORECAST)
+	var markup: float = 1.0 + EconomyConfig.MARKET_BUY_MARKUP
+	_buy_price_label.text = "£%.2f" % MarketState.get_buy_price(good_id)
+	_buy_est_label.text = "£%.2f" % (MarketState.get_estimated_price_in_n_turns(good_id, FORECAST) * markup)
 
 	var summary: Dictionary = Production.last_turn_summary
 	var sold_entry: Dictionary = summary.get("sold", {}).get(good_id, {})

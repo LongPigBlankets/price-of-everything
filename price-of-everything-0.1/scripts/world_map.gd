@@ -667,14 +667,20 @@ func _on_buy_confirm() -> void:
 	var recurring: bool = _buy_recurring != null and _buy_recurring.button_pressed
 	var bought := 0
 	for tid in tiles:
-		var summary: Dictionary = MatchState.queue_buy(str(tid), good, qty)
-		if not summary.is_empty():
-			bought += int(summary.get("qty", 0))
 		if recurring:
+			# A standing order executes (and is logged) every turn by production — don't
+			# also fire a one-off buy now, or it double-buys and double-lists.
 			MatchState.add_recurring_buy(str(tid), good, qty)
-	MatchState.request_toast("Buying %d %s to %d tile%s%s" % [
-		bought, Catalog.get_display_name(good), tiles.size(), "" if tiles.size() == 1 else "s",
-		" every turn" if recurring else ""], "success")
+		else:
+			var summary: Dictionary = MatchState.queue_buy(str(tid), good, qty)
+			if not summary.is_empty():
+				bought += int(summary.get("qty", 0))
+	if recurring:
+		MatchState.request_toast("Will buy %d %s every turn to %d tile%s" % [
+			qty, Catalog.get_display_name(good), tiles.size(), "" if tiles.size() == 1 else "s"], "success")
+	else:
+		MatchState.request_toast("Buying %d %s to %d tile%s" % [
+			bought, Catalog.get_display_name(good), tiles.size(), "" if tiles.size() == 1 else "s"], "success")
 	_close_buy()
 
 func _close_buy() -> void:

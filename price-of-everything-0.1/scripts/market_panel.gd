@@ -41,17 +41,28 @@ func _rebuild_header() -> void:
 	header_static.add_theme_constant_override("separation", 10)
 	header_static.add_child(_header_spacer(60.0))             # icon column
 	header_static.add_child(_header_label("Product", 160.0))
-	header_static.add_child(_header_label("Price now", 80.0))
-	header_static.add_child(_header_label("Price +10t", 90.0))
+	header_static.add_child(_header_label("Sale now", 80.0, SALE_TINT))
+	header_static.add_child(_header_label("Sale +10t", 90.0, SALE_TINT))
+	header_static.add_child(_header_label("Buy now", 80.0, BUY_TINT))
+	header_static.add_child(_header_label("Buy +10t", 90.0, BUY_TINT))
 	header_static.add_child(_header_label("Sold", 80.0))
 	header_static.add_child(_header_label("Bought", 90.0))
 	header_static.add_child(_header_label("Cost/unit", 100.0))
 	header_static.add_child(_header_label("Profit/unit", 110.0))
 
-func _header_label(text: String, width: float) -> Label:
+const SALE_TINT := Color(0.82, 0.85, 0.90, 0.10)
+const BUY_TINT := Color(0.50, 0.53, 0.58, 0.22)
+
+func _header_label(text: String, width: float, tint: Color = Color(0, 0, 0, 0)) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.custom_minimum_size = Vector2(width, 0)
+	if tint.a > 0.0:
+		var box := StyleBoxFlat.new()
+		box.bg_color = tint
+		box.content_margin_left = 6
+		box.content_margin_right = 6
+		l.add_theme_stylebox_override("normal", box)
 	return l
 
 func _header_spacer(width: float) -> Control:
