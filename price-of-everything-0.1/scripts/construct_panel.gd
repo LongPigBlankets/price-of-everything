@@ -37,6 +37,9 @@ const FILTER_TYPES: Array = ["extraction", "refinery", "metallurgy", "electroche
 @onready var sort_option: OptionButton = $MarginContainer/VBoxContainer/ControlsVBox/SortRow/SortOption
 var _search_query: String = ""
 var _active_filters: Dictionary = {}   # building_type -> true
+@onready var controls_vbox: Control = $MarginContainer/VBoxContainer/ControlsVBox
+var _output_good_filter: String = ""   # when set, show only producers of this good
+var _opened_for_good := false
 var _sort_mode: int = 0                # 0 name, 1 build cost, 2 materials cost
 
 func _ready() -> void:
@@ -48,18 +51,29 @@ func _ready() -> void:
 	if not MatchState.money_changed.is_connected(_on_money_changed):
 		MatchState.money_changed.connect(_on_money_changed)
 	title_label.text = "Construct Building"
+	if not MatchState.show_construct_for_good.is_connected(open_for_output_good):
+		MatchState.show_construct_for_good.connect(open_for_output_good)
 	_load_data()
 	_setup_controls()
 	_build_panel_content()
+
+func open_for_output_good(good_id: String) -> void:
+	# Open the panel showing only buildings/recipes that produce good_id, with the
+	# search/filter/sort controls hidden.
+	_opened_for_good = true
+	_output_good_filter = good_id
+	controls_vbox.visible = false
+	title_label.text = "Produces %s" % Catalog.get_display_name(good_id)
+	_build_panel_content()
+	show()
+	_opened_for_good = false
 
 func _setup_controls() -> void:
 	# Click-only focus + release focus whenever the panel opens, so the search bar
 	# never auto-captures keystrokes — WASD keeps navigating the map. (The
 	# X-triggered search overlay is the only field that auto-focuses.)
 	search_input.focus_mode = Control.FOCUS_CLICK
-	visibility_changed.connect(func() -> void:
-		if visible:
-			search_input.release_focus())
+	visibility_changed.connect(_on_visibility_changed)
 	search_input.text_changed.connect(func(t: String) -> void:
 		_search_query = t
 		_build_panel_content())
@@ -78,6 +92,17 @@ func _setup_controls() -> void:
 		chip.add_theme_font_size_override("font_size", 13)
 		chip.toggled.connect(_on_filter_toggled.bind(t))
 		filter_bar.add_child(chip)
+
+func _on_visibility_changed() -> void:
+	if not visible:
+		return
+	search_input.release_focus()
+	if not _opened_for_good and _output_good_filter != "":
+		# Normal open after a "produces X" open: restore the full browser.
+		_output_good_filter = ""
+		controls_vbox.visible = true
+		title_label.text = "Construct Building"
+		_build_panel_content()
 
 func _on_filter_toggled(pressed: bool, t: String) -> void:
 	if pressed:
@@ -129,6 +154,29 @@ func _build_panel_content() -> void:
 	_section_expanded.clear()
 	_building_rows.clear()
 
+	if _output_good_filter != "":
+		var by_building: Dictionary = {}
+		for r in Catalog.recipes_producing(_output_good_filter):
+			var bid := str(r.get("building_id", ""))
+			if bid == "":
+				continue
+			if not by_building.has(bid):
+				by_building[bid] = []
+			by_building[bid].append(r)
+		var any := false
+		for category in buildings_by_category.keys():
+			for b in buildings_by_category[category]:
+				if by_building.has(b.id):
+					any = true
+					_add_building_row(b, content_vbox, true, by_building[b.id])
+		if not any:
+			var empty := Label.new()
+			empty.text = "Nothing produces %s yet." % Catalog.get_display_name(_output_good_filter)
+			empty.theme_type_variation = &"Caption"
+			content_vbox.add_child(empty)
+		_refresh_build_mode_selection()
+		return
+
 	var has_search: bool = _search_query.strip_edges() != ""
 	var has_filter: bool = not _active_filters.is_empty()
 
@@ -162,18 +210,18 @@ func _build_panel_content() -> void:
 
 	_refresh_build_mode_selection()
 
-func _add_building_row(building_data: Dictionary, parent: Node, expand_for_search: bool) -> void:
+func _add_building_row(building_data: Dictionary, parent: Node, expand_for_search: bool, recipes_override: Array = []) -> void:
 	var row := BuildingRowScene.instantiate()
 	parent.add_child(row)
 	var building_id: String = building_data.id
-	var recipes_for_this: Array = recipes_by_building.get(building_id, [])
+	var recipes_for_this: Array = recipes_override if not recipes_override.is_empty() else recipes_by_building.get(building_id, [])
 	row.setup(building_data, recipes_for_this)
 	row.set_affordable(_is_building_affordable(building_data), MatchState.money)
 	row.recipe_selected.connect(_on_recipe_selected)
 	row.expand_toggled.connect(_on_expand_toggled)
 	row.infrastructure_build_pressed.connect(_on_infrastructure_build_pressed)
 	_building_rows.append(row)
-	if expand_for_search and recipes_for_this.size() > 1:
+	if (expand_for_search and recipes_for_this.size() > 1) or not recipes_override.is_empty():
 		row.call("_set_expanded", true)
 
 func _passes_filter(b: Dictionary) -> bool:

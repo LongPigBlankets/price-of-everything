@@ -38,8 +38,15 @@ func _ready() -> void:
 	_test_transaction_ledger()
 	_test_market_buy()
 	_test_purchases()
+	_test_recipes_producing()
+	_test_transfer_helpers()
 	_test_output_conservation()
 	_test_market_sale_credits()
+	_test_owner_costs()
+	_test_recurring_sell_multitile()
+	_test_auto_sell_goods()
+	_test_price_impact()
+	_test_buy_price()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -86,6 +93,20 @@ func _test_output_conservation() -> void:
 	var gained: int = Stockpile.get_total("g_001") - before
 	_check(gained == 20, "output is conserved into the tile stockpile (got %d of 20)" % gained)
 
+func _test_transfer_helpers() -> void:
+	MatchState.reset()
+	MatchState.add_building("b_001", "r_001", "tile_5_5", "player_1")  # coal mine → produces g_001
+	MatchState.add_building("b_002", "r_005", "tile_6_6", "player_1")  # iron furnace → consumes g_002
+	_check(MatchState.tiles_producing("g_001").has("tile_5_5"), "tiles_producing finds a producer tile")
+	_check(not MatchState.tiles_producing("g_001").has("tile_6_6"), "tiles_producing excludes a non-producer")
+	_check(MatchState.tiles_consuming("g_002").has("tile_6_6"), "tiles_consuming finds a consumer tile")
+
+func _test_recipes_producing() -> void:
+	_check(Catalog.recipes_producing("g_001").size() > 0, "recipes_producing finds producers of coal")
+	_check(Catalog.recipes_producing("g_nope").is_empty(), "recipes_producing is empty for an unknown good")
+	_check(Catalog.recipe_produces(Catalog.get_recipe("r_001"), "g_001"),
+		"recipe_produces detects a recipe's output good")
+
 func _test_purchases() -> void:
 	_check(Catalog.buyable_goods().size() > 0 and Catalog.sellable_goods().size() > 0,
 		"Catalog exposes buyable + sellable good lists")
@@ -126,6 +147,75 @@ func _test_market_buy() -> void:
 	var partial: Dictionary = MatchState.queue_buy("tile_3_8", "g_002", 1000)
 	_check(not partial.is_empty() and int(partial.get("qty", 0)) > 0 and int(partial.get("qty", 0)) < 1000,
 		"queue_buy buys a partial amount when cash is short")
+
+func _test_auto_sell_goods() -> void:
+	var t := "tile_4_4"
+	MatchState.enable_auto_sell_good(t, "g_001")
+	_check(MatchState.is_auto_sell_good(t, "g_001"), "per-good auto-sell registers")
+	_check(MatchState.should_auto_sell_good(t, "g_001"), "should_auto_sell true for an armed good")
+	_check(not MatchState.should_auto_sell_good(t, "g_002"), "should_auto_sell false for an unarmed good")
+	_check(MatchState.get_auto_sell_tiles().has(t), "tile appears in the auto-sell tile set")
+	# Master order covers every good regardless of per-good arming.
+	MatchState.enable_sell_surplus(t)
+	_check(MatchState.should_auto_sell_good(t, "g_009"), "master 'sell all' order auto-sells any good")
+	MatchState.disable_sell_surplus(t)
+	# Disarming the last per-good order removes the tile from the set.
+	MatchState.disable_auto_sell_good(t, "g_001")
+	_check(not MatchState.is_auto_sell_good(t, "g_001"), "per-good auto-sell clears")
+	_check(not MatchState.get_auto_sell_tiles().has(t), "tile drops out once no orders remain")
+
+func _test_buy_price() -> void:
+	var gid := "g_001"
+	var sell := MarketState.get_price(gid)
+	var buy := MarketState.get_buy_price(gid)
+	_check(absf(buy - sell * (1.0 + EconomyConfig.MARKET_BUY_MARKUP)) < 0.0001,
+		"buy price is the sale price plus the market markup")
+	_check(buy > sell, "buying costs more than selling (spread)")
+	# preview_buy should value goods at the buy price.
+	var prev: Dictionary = MatchState.preview_buy("tile_3_8", gid, 10)
+	if not prev.is_empty():
+		_check(absf(float(prev.get("goods_cost", 0.0)) - 10.0 * buy) < 0.01,
+			"preview_buy values goods at the buy price")
+
+func _test_price_impact() -> void:
+	var g: int = EconomyConfig.GLUT_UNITS
+	_check(EconomyConfig.price_impact_pct_for(g) == 0, "selling up to the glut has no price impact")
+	_check(EconomyConfig.price_impact_pct_for(g + 1) == 1, "just over the glut is 1% impact")
+	_check(EconomyConfig.price_impact_pct_for(2 * g) == 1, "twice the glut is still 1%")
+	_check(EconomyConfig.price_impact_pct_for(2 * g + 1) == 2, "past 2x glut is 2%")
+	_check(EconomyConfig.price_impact_pct_for(1000 * g) == EconomyConfig.MAX_PRICE_IMPACT_PCT, "impact caps at the max")
+	_check(EconomyConfig.units_cap_for_impact(0) == g, "no-impact cap is the glut")
+	_check(EconomyConfig.units_cap_for_impact(1) == 2 * g, "1% cap is twice the glut")
+	MatchState.set_auto_sell_impact("tile_4_5", 0)
+	_check(MatchState.auto_sell_unit_cap("tile_4_5") == g, "tile NONE tolerance caps at the glut")
+	MatchState.set_auto_sell_impact("tile_4_5", 1)
+	_check(MatchState.auto_sell_unit_cap("tile_4_5") == 2 * g, "tile 1% tolerance caps at 2x glut")
+	MatchState.set_auto_sell_impact("tile_4_5", MatchState.IMPACT_ANY)
+	_check(MatchState.auto_sell_unit_cap("tile_4_5") > 1000000, "tile ANY tolerance is effectively uncapped")
+	_check(MatchState.get_auto_sell_impact("tile_unset_99") == MatchState.IMPACT_ANY, "default tolerance is ANY")
+
+func _test_owner_costs() -> void:
+	_check(MatchState.is_player_owned({"owner": "player_1"}), "player_1 building is player-owned")
+	_check(MatchState.is_player_owned({}), "building with no owner defaults to player-owned")
+	_check(not MatchState.is_player_owned({"owner": "Three Diamonds Shipping Corporation"}),
+		"NPC-owned building is not player-owned (not charged maintenance)")
+
+func _test_recurring_sell_multitile() -> void:
+	# A recurring sell bound to an empty source tile should still sell the good
+	# from another tile that holds it (the fix for "sold once then stopped").
+	var src := "tile_3_8"
+	var other := "tile_9_5"
+	var have: int = Stockpile.get_at_tile(src, "g_001")
+	if have > 0:
+		Stockpile.consume(src, "g_001", have)
+	Stockpile.add(other, "g_001", 25)
+	var before: int = Stockpile.get_at_tile(other, "g_001")
+	MatchState.add_recurring_sell(src, {"g_001": 10})
+	MatchState.run_recurring_and_scheduled_moves()
+	var sold: int = before - Stockpile.get_at_tile(other, "g_001")
+	_check(sold == 10, "recurring sell draws from another tile when source is empty (sold %d)" % sold)
+	if not MatchState.recurring_sells.is_empty():
+		MatchState.recurring_sells.pop_back()
 
 func _test_transaction_ledger() -> void:
 	Stockpile.add("tile_3_8", "g_001", 12)

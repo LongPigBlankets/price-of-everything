@@ -89,14 +89,12 @@ var _move_all_selected: bool = false
 const _MOVE_SELECTED_TINT := Color(1.45, 1.45, 1.45)
 
 # --- Sell-goods tab state (mirrors Move) ---
-var _sell_grid: GridContainer = null
-var _sell_steppers: VBoxContainer = null
-var _sell_all_goods_button: Button = null
-var _sell_recurring: CheckBox = null
-var _sell_cta: Button = null
-var _sell_selected: Dictionary = {}
-var _sell_qtys: Dictionary = {}
-var _sell_all_selected: bool = false
+var _auto_sell_section: VBoxContainer = null
+var _auto_sell_toggle_btn: Button = null
+var _auto_sell_goods_box: VBoxContainer = null
+var _auto_sell_impact_option: OptionButton = null
+var _auto_sell_info_btn: Button = null
+var _auto_sell_expanded: bool = false
 @onready var _chart_column: VBoxContainer = $MarginContainer/ContentRow/ChartColumn
 var _land_left_label: Label = null
 var _land_purchase_buttons_row: HBoxContainer = null
@@ -1167,21 +1165,48 @@ func _build_stockpile_section() -> void:
 	sell_tab.add_theme_constant_override("separation", 6)
 	tabs.add_child(sell_tab)
 
-	# Sell surplus + sell all live at the top of the Sell tab.
-	_sell_surplus_button = CheckBox.new()
-	_sell_surplus_button.text = ""
-	_sell_surplus_button.tooltip_text = "Automatically sell surplus stockpile that buildings on this tile do not require"
-	_sell_surplus_button.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_sell_surplus_button.add_theme_icon_override("unchecked", _get_checkbox_icon(false))
-	_sell_surplus_button.add_theme_icon_override("checked", _get_checkbox_icon(true))
-	_sell_surplus_button.add_theme_icon_override("unchecked_disabled", _get_checkbox_icon(false))
-	_sell_surplus_button.add_theme_icon_override("checked_disabled", _get_checkbox_icon(true))
-	_sell_surplus_button.flat = true
-	var no_box := StyleBoxEmpty.new()
-	for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
-		_sell_surplus_button.add_theme_stylebox_override(state, no_box)
-	_sell_surplus_button.toggled.connect(_on_sell_surplus_toggled)
-	sell_tab.add_child(_make_setting_row("Sell surplus every turn", _sell_surplus_button))
+	# Auto-sell: one button that expands the full config (good selection, price
+	# impact, recurring, info).
+	_auto_sell_toggle_btn = Button.new()
+	_auto_sell_toggle_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_auto_sell_toggle_btn.custom_minimum_size = Vector2(0, 30)
+	_auto_sell_toggle_btn.clip_text = true
+	_apply_button_text_style(_auto_sell_toggle_btn)
+	_auto_sell_toggle_btn.pressed.connect(_on_auto_sell_toggle)
+	sell_tab.add_child(_auto_sell_toggle_btn)
+
+	_auto_sell_section = VBoxContainer.new()
+	_auto_sell_section.visible = false
+	_auto_sell_section.add_theme_constant_override("separation", 4)
+	sell_tab.add_child(_auto_sell_section)
+	# Good selection (All goods + per-good) is rebuilt into this sub-box.
+	_auto_sell_goods_box = VBoxContainer.new()
+	_auto_sell_goods_box.add_theme_constant_override("separation", 2)
+	_auto_sell_section.add_child(_auto_sell_goods_box)
+	# Price-impact tolerance.
+	_auto_sell_impact_option = OptionButton.new()
+	_auto_sell_impact_option.add_item("with no price impact per turn")
+	_auto_sell_impact_option.set_item_metadata(0, 0)
+	_auto_sell_impact_option.add_item("max 1% price impact per turn")
+	_auto_sell_impact_option.set_item_metadata(1, 1)
+	_auto_sell_impact_option.add_item("any price impact allowed")
+	_auto_sell_impact_option.set_item_metadata(2, MatchState.IMPACT_ANY)
+	_auto_sell_impact_option.item_selected.connect(_on_auto_sell_impact_selected)
+	_auto_sell_section.add_child(_make_setting_row("Price impact", _auto_sell_impact_option))
+	# Recurring = the on switch for the standing order.
+	_sell_surplus_button = _make_custom_checkbox()
+	_sell_surplus_button.toggled.connect(_on_auto_sell_enable_toggled)
+	_auto_sell_section.add_child(_make_setting_row("Recurring every turn", _sell_surplus_button))
+	# Info — hover for the rule (≤150px wide), click for the encyclopedia.
+	_auto_sell_info_btn = preload("res://scripts/info_button.gd").new()
+	_auto_sell_info_btn.text = "ⓘ  How this works"
+	_auto_sell_info_btn.flat = true
+	_auto_sell_info_btn.focus_mode = Control.FOCUS_NONE
+	_auto_sell_info_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_auto_sell_info_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_auto_sell_info_btn.tooltip_text = "This will only sell units that are not needed for production. Buildings continue to pre-reserve their units for their recipe.\n\nSelling more than %d of any good begins to move its price (1%% per extra %d sold, up to %d%% per turn), which can crash it temporarily.\n\nClick for more info." % [EconomyConfig.GLUT_UNITS, EconomyConfig.GLUT_UNITS, EconomyConfig.MAX_PRICE_IMPACT_PCT]
+	_auto_sell_info_btn.pressed.connect(func() -> void: MatchState.encyclopedia_entry_requested.emit("market_price_mechanics"))
+	_auto_sell_section.add_child(_auto_sell_info_btn)
 
 	_stockpile_sell_button = Button.new()
 	_stockpile_sell_button.text = "Sell All to Market"
@@ -1190,8 +1215,6 @@ func _build_stockpile_section() -> void:
 	_apply_button_text_style(_stockpile_sell_button)
 	_stockpile_sell_button.pressed.connect(_on_sell_stockpile_pressed)
 	sell_tab.add_child(_stockpile_sell_button)
-
-	_build_sell_goods_controls(sell_tab)
 
 func _build_move_tab(parent: VBoxContainer) -> void:
 	_move_all_button = Button.new()
@@ -1325,171 +1348,6 @@ func _make_qty_field(value: int) -> LineEdit:
 	field.select_all_on_focus = true
 	return field
 
-func _build_sell_goods_controls(parent: VBoxContainer) -> void:
-	parent.add_child(HSeparator.new())
-	var hdr := Label.new()
-	hdr.text = "Sell specific goods"
-	hdr.theme_type_variation = &"Body"
-	parent.add_child(hdr)
-	_sell_all_goods_button = Button.new()
-	_sell_all_goods_button.text = "All goods in stockpile"
-	_sell_all_goods_button.toggle_mode = true
-	_sell_all_goods_button.custom_minimum_size = Vector2(0, 32)
-	_sell_all_goods_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_apply_button_text_style(_sell_all_goods_button)
-	_sell_all_goods_button.toggled.connect(_on_sell_all_toggled)
-	parent.add_child(_sell_all_goods_button)
-	_sell_grid = GridContainer.new()
-	_sell_grid.columns = 2
-	_sell_grid.add_theme_constant_override("h_separation", 6)
-	_sell_grid.add_theme_constant_override("v_separation", 6)
-	parent.add_child(_sell_grid)
-	_sell_steppers = VBoxContainer.new()
-	_sell_steppers.add_theme_constant_override("separation", 2)
-	parent.add_child(_sell_steppers)
-	_sell_recurring = _make_custom_checkbox()
-	parent.add_child(_make_setting_row("Make recurring every turn", _sell_recurring))
-	_sell_cta = Button.new()
-	_sell_cta.custom_minimum_size = Vector2(0, 34)
-	_sell_cta.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_apply_button_paper_style(_sell_cta)
-	_sell_cta.pressed.connect(_on_sell_cta_pressed)
-	parent.add_child(_sell_cta)
-
-func _refresh_sell_tab() -> void:
-	if _sell_grid == null:
-		return
-	for c in _sell_grid.get_children():
-		c.queue_free()
-	_sell_selected.clear()
-	_sell_qtys.clear()
-	_sell_all_selected = false
-	if _sell_all_goods_button != null:
-		_sell_all_goods_button.set_pressed_no_signal(false)
-	if _sell_recurring != null:
-		_sell_recurring.set_pressed_no_signal(false)
-	for good_id in Stockpile.get_tile_totals(_current_tile_id).keys():
-		if not Catalog.is_good_sellable(str(good_id)):
-			continue
-		var btn := Button.new()
-		btn.text = Catalog.get_display_name(str(good_id))
-		btn.toggle_mode = true
-		btn.custom_minimum_size = Vector2(0, 30)
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_apply_button_text_style(btn)
-		btn.toggled.connect(_on_sell_good_toggled.bind(str(good_id), btn))
-		_sell_grid.add_child(btn)
-	_rebuild_sell_steppers()
-	_update_sell_cta()
-
-func _selected_sell_goods() -> Array:
-	if _sell_all_selected:
-		return Stockpile.get_tile_totals(_current_tile_id).keys().filter(
-			func(gid: String) -> bool: return Catalog.is_good_sellable(str(gid)))
-	return _sell_selected.keys()
-
-func _on_sell_all_toggled(pressed: bool) -> void:
-	_sell_all_selected = pressed
-	if pressed:
-		_sell_selected.clear()
-		for c in _sell_grid.get_children():
-			if c is Button:
-				c.set_pressed_no_signal(false)
-				c.modulate = Color.WHITE
-	_rebuild_sell_steppers()
-	_update_sell_cta()
-
-func _on_sell_good_toggled(pressed: bool, good_id: String, btn: Button) -> void:
-	if pressed:
-		_sell_selected[good_id] = true
-		btn.modulate = _MOVE_SELECTED_TINT
-		if _sell_all_selected:
-			_sell_all_selected = false
-			if _sell_all_goods_button != null:
-				_sell_all_goods_button.set_pressed_no_signal(false)
-	else:
-		_sell_selected.erase(good_id)
-		btn.modulate = Color.WHITE
-	_rebuild_sell_steppers()
-	_update_sell_cta()
-
-func _rebuild_sell_steppers() -> void:
-	for c in _sell_steppers.get_children():
-		c.queue_free()
-	for good_id in _selected_sell_goods():
-		var avail: int = Stockpile.get_at_tile(_current_tile_id, str(good_id))
-		if not _sell_qtys.has(good_id):
-			_sell_qtys[good_id] = avail
-		_sell_qtys[good_id] = clampi(int(_sell_qtys[good_id]), 0, avail)
-		_sell_steppers.add_child(_make_sell_stepper(str(good_id)))
-
-func _make_sell_stepper(good_id: String) -> Control:
-	var row := HBoxContainer.new()
-	row.custom_minimum_size = Vector2(0, 40)
-	row.add_theme_constant_override("separation", 8)
-	var name_lbl := Label.new()
-	name_lbl.text = Catalog.get_display_name(good_id)
-	name_lbl.add_theme_font_size_override("font_size", 17)
-	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(name_lbl)
-	var qty_field := _make_qty_field(int(_sell_qtys.get(good_id, 0)))
-	qty_field.text_submitted.connect(func(t: String) -> void: _on_sell_qty_edited(good_id, t, qty_field))
-	qty_field.focus_exited.connect(func() -> void: _on_sell_qty_edited(good_id, qty_field.text, qty_field))
-	row.add_child(qty_field)
-	var arrows := VBoxContainer.new()
-	arrows.add_theme_constant_override("separation", 2)
-	arrows.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var up := _make_arrow_button("▲")
-	up.pressed.connect(_on_sell_qty_arrow.bind(good_id, 1, qty_field))
-	var down := _make_arrow_button("▼")
-	down.pressed.connect(_on_sell_qty_arrow.bind(good_id, -1, qty_field))
-	arrows.add_child(up)
-	arrows.add_child(down)
-	row.add_child(arrows)
-	return row
-
-func _on_sell_qty_arrow(good_id: String, delta: int, qty_field: LineEdit) -> void:
-	var avail: int = Stockpile.get_at_tile(_current_tile_id, good_id)
-	_sell_qtys[good_id] = clampi(int(_sell_qtys.get(good_id, 0)) + delta, 0, avail)
-	qty_field.text = str(int(_sell_qtys[good_id]))
-	_update_sell_cta()
-
-func _on_sell_qty_edited(good_id: String, text: String, qty_field: LineEdit) -> void:
-	var avail: int = Stockpile.get_at_tile(_current_tile_id, good_id)
-	var v: int = clampi(int(text) if text.is_valid_int() else 0, 0, avail)
-	_sell_qtys[good_id] = v
-	qty_field.text = str(v)
-	_update_sell_cta()
-
-func _update_sell_cta() -> void:
-	if _sell_cta == null:
-		return
-	var goods := _selected_sell_goods()
-	var total := 0
-	for g in goods:
-		total += int(_sell_qtys.get(g, 0))
-	_sell_cta.text = "Sell %d units of %d goods" % [total, goods.size()]
-	_sell_cta.disabled = total <= 0
-
-func _on_sell_cta_pressed() -> void:
-	var goods_qtys: Dictionary = {}
-	for g in _selected_sell_goods():
-		var q := int(_sell_qtys.get(g, 0))
-		if q > 0:
-			goods_qtys[str(g)] = q
-	if goods_qtys.is_empty():
-		return
-	var summary: Dictionary = MatchState.queue_sell(_current_tile_id, goods_qtys)
-	if not summary.is_empty():
-		var turns := int(summary.get("turns", 0))
-		MatchState.request_toast("Selling %d units of %d goods to %s — cash in %d turn%s" % [
-			int(summary.get("total_qty", 0)), goods_qtys.size(),
-			Catalog.tile_label(str(summary.get("port", ""))), turns, "" if turns == 1 else "s"], "success")
-	if _sell_recurring != null and _sell_recurring.button_pressed:
-		MatchState.add_recurring_sell(_current_tile_id, goods_qtys)
-	_refresh_sell_tab()
-
 func _make_custom_checkbox() -> CheckBox:
 	# Borderless checkbox with the custom check icon on the right (matches "sell surplus").
 	var cb := CheckBox.new()
@@ -1580,11 +1438,10 @@ func _refresh_stockpile_section() -> void:
 		return
 	_stockpile_view.set_tile(_current_tile_id)
 	_refresh_move_tab()
-	_refresh_sell_tab()
 
 	var used: int = Stockpile.get_used_capacity(_current_tile_id)
-	if _sell_surplus_button != null:
-		_sell_surplus_button.set_pressed_no_signal(MatchState.is_sell_surplus_enabled(_current_tile_id))
+	_refresh_auto_sell_controls()
+	_refresh_auto_sell_section()
 
 	if _stockpile_sell_button != null:
 		var sale_queued := MatchState.is_stockpile_market_sale_queued(_current_tile_id)
@@ -1710,17 +1567,125 @@ func _format_nullable_money(value: Variant) -> String:
 		return "null"
 	return "£%.2f" % float(value)
 
-func _on_sell_surplus_toggled(pressed: bool) -> void:
+func _on_auto_sell_enable_toggled(pressed: bool) -> void:
 	if _current_tile_id == "":
 		return
 	if pressed:
-		MatchState.enable_sell_surplus(_current_tile_id)
+		# Default to "all goods" unless specific goods were already chosen.
+		if not MatchState.is_sell_surplus_enabled(_current_tile_id) \
+				and (MatchState.auto_sell_goods.get(_current_tile_id, {}) as Dictionary).is_empty():
+			MatchState.enable_sell_surplus(_current_tile_id)
 	else:
 		MatchState.disable_sell_surplus(_current_tile_id)
+		for g in (MatchState.auto_sell_goods.get(_current_tile_id, {}) as Dictionary).keys():
+			MatchState.disable_auto_sell_good(_current_tile_id, str(g))
+
+func _on_auto_sell_toggle() -> void:
+	_auto_sell_expanded = not _auto_sell_expanded
+	if _auto_sell_section != null:
+		_auto_sell_section.visible = _auto_sell_expanded
+	_refresh_auto_sell_section()
+	_refresh_auto_sell_controls()
+
+func _on_auto_sell_impact_selected(index: int) -> void:
+	if _current_tile_id == "" or _auto_sell_impact_option == null:
+		return
+	MatchState.set_auto_sell_impact(_current_tile_id, int(_auto_sell_impact_option.get_item_metadata(index)))
 
 func _on_sell_surplus_changed(tile_id: String) -> void:
 	if visible and tile_id == _current_tile_id:
 		_refresh_stockpile_section()
+
+func _tile_auto_sell_candidate_goods() -> Array:
+	# Sellable goods this tile either holds in stockpile or produces — so an auto-sell
+	# order can be armed before any stock exists.
+	var found: Dictionary = {}
+	for good_id in Stockpile.get_tile_totals(_current_tile_id).keys():
+		if Catalog.is_good_sellable(str(good_id)):
+			found[str(good_id)] = true
+	for b in MatchState.get_buildings_on_tile(_current_tile_id):
+		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		for o in recipe.get("outputs", []):
+			var gid := str(o.get("good_id", ""))
+			if gid != "" and Catalog.is_good_sellable(gid):
+				found[gid] = true
+		var ogid := str(recipe.get("output_good_id", ""))
+		if ogid != "" and Catalog.is_good_sellable(ogid):
+			found[ogid] = true
+	return found.keys()
+
+func _refresh_auto_sell_controls() -> void:
+	var master_on: bool = MatchState.is_sell_surplus_enabled(_current_tile_id)
+	var per_good: Array = (MatchState.auto_sell_goods.get(_current_tile_id, {}) as Dictionary).keys()
+	var active: bool = master_on or not per_good.is_empty()
+	if _auto_sell_section != null:
+		_auto_sell_section.visible = _auto_sell_expanded
+	if _sell_surplus_button != null:
+		_sell_surplus_button.set_pressed_no_signal(active)
+	if _auto_sell_toggle_btn != null:
+		var arrow := "▾" if _auto_sell_expanded else "▸"
+		var state := (": %s" % _auto_sell_summary_text(master_on, per_good)) if active else ""
+		_auto_sell_toggle_btn.text = "%s  Auto sell surplus%s" % [arrow, state]
+	if _auto_sell_impact_option != null:
+		var impact: int = MatchState.get_auto_sell_impact(_current_tile_id)
+		for i in _auto_sell_impact_option.item_count:
+			if int(_auto_sell_impact_option.get_item_metadata(i)) == impact:
+				_auto_sell_impact_option.select(i)
+				break
+
+func _auto_sell_summary_text(master_on: bool, per_good: Array) -> String:
+	if master_on:
+		return "all goods"
+	if per_good.is_empty():
+		return "(nothing)"
+	if per_good.size() <= 3:
+		var names: Array = []
+		for g in per_good:
+			names.append(Catalog.get_display_name(str(g)))
+		return ", ".join(names)
+	return "%d goods" % per_good.size()
+
+func _refresh_auto_sell_section() -> void:
+	# Rebuilds only the good-selection checkboxes (the impact/recurring/info widgets
+	# in the section persist).
+	if _auto_sell_goods_box == null:
+		return
+	for c in _auto_sell_goods_box.get_children():
+		c.queue_free()
+	if not _auto_sell_expanded:
+		return
+	var master_on: bool = MatchState.is_sell_surplus_enabled(_current_tile_id)
+	var all_cb := _make_custom_checkbox()
+	all_cb.set_pressed_no_signal(master_on)
+	all_cb.toggled.connect(_on_auto_sell_all_toggled)
+	_auto_sell_goods_box.add_child(_make_setting_row("All goods", all_cb))
+	for good_id in _tile_auto_sell_candidate_goods():
+		var cb := _make_custom_checkbox()
+		cb.set_pressed_no_signal(master_on or MatchState.is_auto_sell_good(_current_tile_id, str(good_id)))
+		cb.disabled = master_on  # the master "all goods" order already covers every good
+		cb.toggled.connect(_on_auto_sell_good_toggled.bind(str(good_id)))
+		_auto_sell_goods_box.add_child(_make_setting_row(Catalog.get_display_name(str(good_id)), cb))
+
+func _on_auto_sell_all_toggled(pressed: bool) -> void:
+	if _current_tile_id == "":
+		return
+	if pressed:
+		for g in (MatchState.auto_sell_goods.get(_current_tile_id, {}) as Dictionary).keys():
+			MatchState.disable_auto_sell_good(_current_tile_id, str(g))
+		MatchState.enable_sell_surplus(_current_tile_id)
+	else:
+		MatchState.disable_sell_surplus(_current_tile_id)
+
+func _on_auto_sell_good_toggled(pressed: bool, good_id: String) -> void:
+	if _current_tile_id == "":
+		return
+	if pressed:
+		# Picking a specific good switches the tile out of "all goods" mode.
+		if MatchState.is_sell_surplus_enabled(_current_tile_id):
+			MatchState.disable_sell_surplus(_current_tile_id)
+		MatchState.enable_auto_sell_good(_current_tile_id, good_id)
+	else:
+		MatchState.disable_auto_sell_good(_current_tile_id, good_id)
 
 func _on_production_destination_selected(index: int) -> void:
 	match index:

@@ -42,6 +42,7 @@ var river_properties := {}
 var cities := {}
 var _stockpile_destination_selection_active := false
 var _hovered_destination_coord := Vector2i(-1, -1)
+var _selection_paint := true  # false = capture clicks only, no terrain category/hover overlays
 var _hover_overlay: TileMapLayer = null
 var _overlay_consumer: TileMapLayer = null   # light green — tiles that consume the stockpile good
 var _overlay_viable: TileMapLayer = null     # dark green — tiles with buildings but not consuming
@@ -60,10 +61,15 @@ func _ready() -> void:
 	_build_hover_overlay()
 	_build_category_overlays()
 
-func begin_stockpile_destination_selection(good_id: String = "") -> void:
+func begin_stockpile_destination_selection(good_id: String = "", paint: bool = true) -> void:
 	_stockpile_destination_selection_active = true
-	_paint_stockpile_categories(good_id)
-	_update_destination_hover()
+	_selection_paint = paint
+	if paint:
+		_paint_stockpile_categories(good_id)
+		_update_destination_hover()
+	else:
+		_clear_category_overlays()
+		_clear_destination_hover()
 
 func end_stockpile_destination_selection() -> void:
 	_stockpile_destination_selection_active = false
@@ -137,19 +143,25 @@ func _tile_has_buildings(tile_id: String) -> bool:
 	return MatchState.tile_buildings.get(tile_id, []).size() > 0
 
 func _process(_delta: float) -> void:
+	# Track the hovered tile whenever a selection is active (so the logistics
+	# overlay's hover info can read it). Only PAINT the terrain hover when painting.
 	if _stockpile_destination_selection_active:
 		_update_destination_hover()
 
 func _update_destination_hover() -> void:
 	var coord := _tile_coord_under_mouse()
+	if not tiles.has(coord):
+		coord = Vector2i(-1, -1)
 	if coord == _hovered_destination_coord:
 		return
-	_clear_destination_hover()
-	if not tiles.has(coord):
-		return
 	_hovered_destination_coord = coord
-	var tile_data: Dictionary = tiles[coord]
-	_hover_overlay.set_cell(map_coord_for_tile_coord(coord), _source_for_tile_type(tile_data.get("type", "")), Vector2i.ZERO)
+	if not _selection_paint:
+		return  # tracking only — no terrain hover overlay (transfer / buy / sell flows)
+	if _hover_overlay != null:
+		_hover_overlay.clear()
+	if coord != Vector2i(-1, -1):
+		var tile_data: Dictionary = tiles[coord]
+		_hover_overlay.set_cell(map_coord_for_tile_coord(coord), _source_for_tile_type(tile_data.get("type", "")), Vector2i.ZERO)
 
 func _clear_destination_hover() -> void:
 	if _hover_overlay != null:
@@ -426,6 +438,13 @@ func id_to_coord(id: String) -> Vector2i:
 func _tile_coord_under_mouse() -> Vector2i:
 	var world_pos := get_global_mouse_position()
 	return tile_coord_for_map_coord(local_to_map(to_local(world_pos)))
+
+func tile_id_under_mouse() -> String:
+	# "tile_X_Y" for the tile under the cursor, or "" if the cursor isn't over a tile.
+	var coord := _tile_coord_under_mouse()
+	if not tiles.has(coord):
+		return ""
+	return "tile_%d_%d" % [coord.x + 1, coord.y + 1]
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton and event.pressed):

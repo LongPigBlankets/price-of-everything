@@ -195,7 +195,46 @@ func _build_theme() -> Theme:
 	_copy_button_surface(t, "OptionButton", "Button")
 	_copy_button_surface(t, "MenuButton", "Button")
 
+	# ── TabContainer (spaced, rounded-top tabs) ────────────────────────
+	# Tabs read as distinct chips: rounded tops, a gap between them (drawn bg is
+	# inset horizontally), and the selected tab inverts to off-white + navy text.
+	t.set_stylebox("tab_unselected", "TabContainer", _tab_box(PALETTE["BG_INSET"], PALETTE["BORDER_SOFT"]))
+	t.set_stylebox("tab_hovered", "TabContainer", _tab_box(PALETTE["BG_HIGHLIGHT"], PALETTE["BORDER_SOFT"]))
+	t.set_stylebox("tab_selected", "TabContainer", _tab_box(PALETTE["ACCENT"], PALETTE["BORDER"]))  # off-white
+	t.set_stylebox("tab_disabled", "TabContainer", _tab_box(PALETTE["BG_INSET"], PALETTE["BORDER_SOFT"]))
+	t.set_stylebox("tab_focus", "TabContainer", StyleBoxEmpty.new())
+	t.set_stylebox("tabbar_background", "TabContainer", StyleBoxEmpty.new())
+	t.set_stylebox("panel", "TabContainer", _stylebox(PALETTE["BG_PANEL"], PALETTE["BORDER_SOFT"], 8, 1, 12, 12))
+	t.set_color("font_selected_color", "TabContainer", PALETTE["BG_PANEL"])   # navy on off-white
+	t.set_color("font_unselected_color", "TabContainer", PALETTE["ACCENT"])    # off-white on navy
+	t.set_color("font_hovered_color", "TabContainer", PALETTE["ACCENT"])
+	t.set_color("font_disabled_color", "TabContainer", PALETTE["TEXT_DIM"])
+	if fonts.get("PLEX_COND_SEMI"):
+		t.set_font("font", "TabContainer", fonts["PLEX_COND_SEMI"])
+	elif fonts.get("PLEX_SEMI"):
+		t.set_font("font", "TabContainer", fonts["PLEX_SEMI"])
+	t.set_font_size("font_size", "TabContainer", FS["BODY"])
+
 	return t
+
+func _tab_box(bg: Color, border: Color) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = bg
+	s.border_color = border
+	s.border_width_left = 1
+	s.border_width_top = 1
+	s.border_width_right = 1
+	s.border_width_bottom = 0
+	s.corner_radius_top_left = 8
+	s.corner_radius_top_right = 8
+	s.content_margin_left = 18
+	s.content_margin_right = 18
+	s.content_margin_top = 8
+	s.content_margin_bottom = 8
+	# Inset the drawn background horizontally so adjacent tabs show a visible gap.
+	s.expand_margin_left = -4
+	s.expand_margin_right = -4
+	return s
 
 func _copy_button_surface(t: Theme, type_name: String, source_type: String) -> void:
 	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
