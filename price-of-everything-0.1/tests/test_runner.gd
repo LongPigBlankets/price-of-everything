@@ -47,6 +47,7 @@ func _ready() -> void:
 	_test_auto_sell_goods()
 	_test_price_impact()
 	_test_buy_price()
+	_test_limestone_concrete()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -163,6 +164,20 @@ func _test_auto_sell_goods() -> void:
 	MatchState.disable_auto_sell_good(t, "g_001")
 	_check(not MatchState.is_auto_sell_good(t, "g_001"), "per-good auto-sell clears")
 	_check(not MatchState.get_auto_sell_tiles().has(t), "tile drops out once no orders remain")
+
+func _test_limestone_concrete() -> void:
+	_check(not Catalog.get_good_by_internal_name("limestone").is_empty(), "limestone good exists")
+	_check(not Catalog.get_good_by_internal_name("concrete").is_empty(), "concrete good exists")
+	var found := false
+	for r in Catalog.all_recipes():
+		if str(r.get("output_name", "")) == "limestone" and str(r.get("building_id", "")) != "":
+			found = true
+			var gated := false
+			for req in r.get("requirements", []):
+				if str(req.get("type", "")) == "deposit" and str(req.get("value", "")) == "limestone":
+					gated = true
+			_check(gated, "limestone mining is gated on a limestone deposit")
+	_check(found, "a mine recipe produces limestone")
 
 func _test_buy_price() -> void:
 	var gid := "g_001"
@@ -444,7 +459,7 @@ func _test_main_scene_instantiates() -> void:
 
 # Logic: the data CSVs load into the Catalog as expected.
 func _test_catalog_loaded() -> void:
-	_check(Catalog.all_goods().size() == 15, "Catalog has 15 goods")
+	_check(Catalog.all_goods().size() == 17, "Catalog has 17 goods")
 	var _all_classed := true
 	for g in Catalog.all_goods():
 		if str(g.get("transport_class", "")) == "":

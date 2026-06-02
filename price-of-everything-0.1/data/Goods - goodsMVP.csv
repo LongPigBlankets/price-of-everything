@@ -14,3 +14,5 @@ g_012,chlorine,Chlorine,,hazard_liquid,intermediate,0.001,1.2,TRUE,TRUE,0,no,0
 g_013,sodium_hydroxide,Sodium Hydroxide,,hazard_liquid,intermediate,0.001,0.8,TRUE,TRUE,0,no,0
 g_014,hydrogen,Hydrogen,,hazard_liquid,intermediate,0.001,1.5,TRUE,TRUE,0,no,0
 g_015,basic_salt,Basic Salt,,solid_heavy,raw,0.001,0.5,TRUE,TRUE,0,no,0
+g_016,limestone,Limestone,,solid_heavy,raw,0.001,1,TRUE,TRUE,0,no,0
+g_017,concrete,Concrete,,solid_heavy,intermediate,0.001,2,TRUE,TRUE,0,no,0
