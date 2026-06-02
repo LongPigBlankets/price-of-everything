@@ -41,6 +41,7 @@ func _ready() -> void:
 	MarketState.prices_updated.connect(_on_prices_updated)
 	MatchState.buy_tile_picked.connect(_on_buy_tile_picked)
 	MatchState.show_construct_for_good.connect(_on_show_construct_for_good)
+	MatchState.transfer_for_good_requested.connect(func(_g: String) -> void: hide())
 	visibility_changed.connect(_on_panel_visibility_changed)
 	Production.turn_processed.connect(_refresh_ledgers)
 

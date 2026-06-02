@@ -39,6 +39,7 @@ func _ready() -> void:
 	_test_market_buy()
 	_test_purchases()
 	_test_recipes_producing()
+	_test_transfer_helpers()
 	_test_output_conservation()
 	_test_market_sale_credits()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
@@ -86,6 +87,14 @@ func _test_output_conservation() -> void:
 	Production._flush_output_buffer()
 	var gained: int = Stockpile.get_total("g_001") - before
 	_check(gained == 20, "output is conserved into the tile stockpile (got %d of 20)" % gained)
+
+func _test_transfer_helpers() -> void:
+	MatchState.reset()
+	MatchState.add_building("b_001", "r_001", "tile_5_5", "player_1")  # coal mine → produces g_001
+	MatchState.add_building("b_002", "r_005", "tile_6_6", "player_1")  # iron furnace → consumes g_002
+	_check(MatchState.tiles_producing("g_001").has("tile_5_5"), "tiles_producing finds a producer tile")
+	_check(not MatchState.tiles_producing("g_001").has("tile_6_6"), "tiles_producing excludes a non-producer")
+	_check(MatchState.tiles_consuming("g_002").has("tile_6_6"), "tiles_consuming finds a consumer tile")
 
 func _test_recipes_producing() -> void:
 	_check(Catalog.recipes_producing("g_001").size() > 0, "recipes_producing finds producers of coal")

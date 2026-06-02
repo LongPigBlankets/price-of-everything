@@ -76,6 +76,8 @@ signal buy_tile_pick_requested()
 signal buy_tile_picked(tile_id: String)  # tile_id == "" means cancelled
 ## Market row "Expand" — open the construct panel filtered to producers of this good.
 signal show_construct_for_good(good_id: String)
+## Market row "Move" — start the on-map transfer flow for this good.
+signal transfer_for_good_requested(good_id: String)
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)
@@ -550,6 +552,22 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 		Stockpile.add(dest_tile, good_id, qty)
 	return {"qty": qty, "turns": turns, "cost": total,
 		"goods_cost": float(qty) * unit_price, "transport_cost": transport, "port": port}
+
+func tiles_producing(good_id: String) -> Dictionary:
+	var out: Dictionary = {}
+	for inst in buildings.values():
+		if Catalog.recipe_produces(Catalog.get_recipe(str(inst.get("recipe_id", ""))), good_id):
+			out[str(inst.get("tile_id", ""))] = true
+	return out
+
+func tiles_consuming(good_id: String) -> Dictionary:
+	var out: Dictionary = {}
+	for inst in buildings.values():
+		for input in Catalog.get_recipe(str(inst.get("recipe_id", ""))).get("inputs", []):
+			if str(input.get("good_id", "")) == good_id:
+				out[str(inst.get("tile_id", ""))] = true
+				break
+	return out
 
 func preview_buy(dest_tile: String, good_id: String, qty: int) -> Dictionary:
 	# Cost/turns for a buy WITHOUT executing — for the Purchases "Cost to buy" line.

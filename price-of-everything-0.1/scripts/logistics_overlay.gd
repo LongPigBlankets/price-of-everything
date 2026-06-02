@@ -44,6 +44,12 @@ var _anim_snapshot: Array = []  # [{pos_a, pos_b, dir, turns, goods, color}]
 # Move-destination preview (shown while picking a Move destination)
 var _move_preview_source := ""
 var _move_preview_goods: Dictionary = {}
+# Transfer flow (market "Move"): per-tile highlights + origin/dest + dashed line
+var _transfer_active := false
+var _transfer_highlights: Dictionary = {}  # tile_id -> Color
+var _transfer_origin := ""
+var _transfer_dest := ""
+var _transfer_line_color := Color(0.95, 0.83, 0.18)
 
 func _ready() -> void:
 	add_to_group("logistics_overlay")
@@ -56,10 +62,25 @@ func _ready() -> void:
 	TurnManager.turn_resolution_completed.connect(_on_resolution_completed)
 
 func _update_visibility() -> void:
-	var active := MapMode.current_mode == MapMode.Mode.LOGISTICS or _resolving or _move_preview_source != ""
+	var active := MapMode.current_mode == MapMode.Mode.LOGISTICS or _resolving or _move_preview_source != "" or _transfer_active
 	visible = active
 	set_process(active)
 	queue_redraw()
+
+func set_transfer_state(active: bool, highlights: Dictionary, origin: String, dest: String, line_color: Color = Color(0.95, 0.83, 0.18)) -> void:
+	_transfer_active = active
+	_transfer_highlights = highlights.duplicate()
+	_transfer_origin = origin
+	_transfer_dest = dest
+	_transfer_line_color = line_color
+	_update_visibility()
+
+func clear_transfer() -> void:
+	_transfer_active = false
+	_transfer_highlights = {}
+	_transfer_origin = ""
+	_transfer_dest = ""
+	_update_visibility()
 
 func set_move_preview(source: String, goods: Dictionary) -> void:
 	_move_preview_source = source
@@ -197,6 +218,51 @@ func _shipment_goods(s: Dictionary) -> Dictionary:
 			g[gid] = int(s.get("qty", 0))
 	return g
 
+func _draw_transfer() -> void:
+	var tw: float = terrain_layer.tile_set.tile_size.x
+	var r := tw * 0.46
+	for tid in _transfer_highlights.keys():
+		var pos := _tile_pos(str(tid))
+		if pos == Vector2.INF:
+			continue
+		var c: Color = _transfer_highlights[tid]
+		draw_colored_polygon(_hex_points(pos, r), Color(c.r, c.g, c.b, 0.42))
+		draw_polyline(_hex_outline(pos, r), Color(c.r, c.g, c.b, 0.85), 2.0)
+	if _transfer_origin != "":
+		var op := _tile_pos(_transfer_origin)
+		if op != Vector2.INF:
+			draw_colored_polygon(_hex_points(op, r), Color(1.0, 1.0, 0.45, 0.5))  # selected = light yellow
+			draw_polyline(_hex_outline(op, r), Color(1.0, 1.0, 0.4, 0.95), 3.0)
+	if _transfer_origin != "" and _transfer_dest != "":
+		var a := _tile_pos(_transfer_origin)
+		var b := _tile_pos(_transfer_dest)
+		if a != Vector2.INF and b != Vector2.INF:
+			_draw_dashed_line(a, b, _transfer_line_color, 100.0, 50.0, LINE_WIDTH)
+
+func _hex_points(center: Vector2, r: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in 6:
+		var ang := deg_to_rad(60.0 * float(i))
+		pts.append(center + Vector2(cos(ang), sin(ang)) * r)
+	return pts
+
+func _hex_outline(center: Vector2, r: float) -> PackedVector2Array:
+	var pts := _hex_points(center, r)
+	pts.append(pts[0])
+	return pts
+
+func _draw_dashed_line(a: Vector2, b: Vector2, color: Color, on_len: float, off_len: float, width: float) -> void:
+	var dir := b - a
+	var total := dir.length()
+	if total < 0.5:
+		return
+	dir = dir / total
+	var d := 0.0
+	while d < total:
+		var seg_end: float = minf(d + on_len, total)
+		draw_line(a + dir * d, a + dir * seg_end, color, width)
+		d = seg_end + off_len
+
 func _tile_pos(tile_id: String) -> Vector2:
 	var coord := terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1):
@@ -230,7 +296,11 @@ func _build_segment_offsets() -> Dictionary:
 # --- drawing ---
 func _draw() -> void:
 	var mapmode_on := MapMode.current_mode == MapMode.Mode.LOGISTICS
-	if not mapmode_on and not _resolving and _move_preview_source == "":
+	if not mapmode_on and not _resolving and _move_preview_source == "" and not _transfer_active:
+		return
+	if _transfer_active:
+		draw_rect(Rect2(-100000, -100000, 200000, 200000), DIM_COLOUR)
+		_draw_transfer()
 		return
 	if mapmode_on:
 		draw_rect(Rect2(-100000, -100000, 200000, 200000), DIM_COLOUR)

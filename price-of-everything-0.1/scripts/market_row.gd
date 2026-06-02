@@ -75,6 +75,8 @@ func setup(good_data: Dictionary) -> void:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if action == "Expand":
 			b.pressed.connect(_on_expand_to_construct)
+		elif action == "Move":
+			b.pressed.connect(_on_move)
 		_expand_section.add_child(b)
 	add_child(_expand_section)
 
@@ -96,6 +98,9 @@ func _toggle_expand() -> void:
 
 func _on_expand_to_construct() -> void:
 	MatchState.show_construct_for_good.emit(good_id)
+
+func _on_move() -> void:
+	MatchState.transfer_for_good_requested.emit(good_id)
 
 func _on_turn_processed(_summary: Dictionary) -> void:
 	_refresh()
