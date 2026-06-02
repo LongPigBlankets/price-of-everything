@@ -240,6 +240,9 @@ func _on_transfer_requested(good_id: String) -> void:
 	_update_transfer_highlights()
 	_update_transfer_legend()
 	_update_transfer_modal()
+	var _ov := _logistics_overlay()
+	if _ov != null and _ov.has_method("set_hover_good"):
+		_ov.set_hover_good(good_id)
 	terrain_layer.begin_stockpile_destination_selection("", false)  # capture clicks, no terrain overlays
 
 func _on_transfer_tile_picked(tile_data: Dictionary) -> void:
@@ -558,6 +561,9 @@ func _on_purchase_requested(good_id: String) -> void:
 	_update_buy_highlights()
 	_update_buy_legend()
 	_update_buy_modal()
+	var _ov := _logistics_overlay()
+	if _ov != null and _ov.has_method("set_hover_good"):
+		_ov.set_hover_good(good_id)
 	terrain_layer.begin_stockpile_destination_selection("", false)
 
 func _on_buy_tile_picked(tile_data: Dictionary) -> void:

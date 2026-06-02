@@ -50,6 +50,9 @@ var _transfer_highlights: Dictionary = {}  # tile_id -> Color
 var _transfer_origin := ""
 var _transfer_dest := ""
 var _transfer_line_color := Color(0.95, 0.83, 0.18)
+# Hover info panel (transfer / buy / sell flows): shows the hovered tile's
+# per-turn production and current stockpile of the active good.
+var _hover_good := ""
 
 func _ready() -> void:
 	add_to_group("logistics_overlay")
@@ -80,7 +83,83 @@ func clear_transfer() -> void:
 	_transfer_highlights = {}
 	_transfer_origin = ""
 	_transfer_dest = ""
+	_hover_good = ""
 	_update_visibility()
+
+func set_hover_good(good_id: String) -> void:
+	_hover_good = good_id
+	queue_redraw()
+
+func clear_hover_good() -> void:
+	_hover_good = ""
+	queue_redraw()
+
+func _hover_tile_production_per_turn(tile_id: String, good_id: String) -> int:
+	var total := 0
+	for iid in MatchState.tile_buildings.get(tile_id, []):
+		var b: Dictionary = MatchState.get_building(str(iid))
+		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		total += Catalog.recipe_output_qty(recipe, good_id)
+	return total
+
+func _draw_hover_good_info() -> void:
+	# A 2-cell card over the hovered tile: production/turn (left) + stockpile (right),
+	# with the good name as a header straddling both. ~160x80 at max zoom, snapped to
+	# 3 zoom steps like the shipment hover panel.
+	if _hover_good == "":
+		return
+	var hovered := terrain_layer.get_hovered_destination_tile_id()
+	if hovered == "":
+		return
+	var pos := _tile_pos(hovered)
+	if pos == Vector2.INF:
+		return
+	var prod := _hover_tile_production_per_turn(hovered, _hover_good)
+	var stock := Stockpile.get_at_tile(hovered, _hover_good)
+
+	var z := maxf(0.01, get_viewport().get_canvas_transform().get_scale().x)
+	var tile_w: float = terrain_layer.tile_set.tile_size.x
+	var quarter_screen := tile_w * 0.25 * z
+	var step_px := 100.0
+	if quarter_screen > 320.0:
+		step_px = 160.0
+	elif quarter_screen > 240.0:
+		step_px = 130.0
+	var world_w := step_px / z
+	var world_h := world_w * 0.5
+	var origin := pos - Vector2(world_w / 2.0, world_h + tile_w * 0.35)
+	var line_w := maxf(1.0, 2.0 / z)
+	var header_h := world_h * 0.40
+	var mid := origin.x + world_w / 2.0
+	var font := ThemeDB.fallback_font
+
+	# Backplate + header strip + divider.
+	draw_rect(Rect2(origin, Vector2(world_w, world_h)), Color(0.03, 0.05, 0.09, 0.97))
+	draw_rect(Rect2(origin, Vector2(world_w, header_h)), Color(0.10, 0.16, 0.26, 0.98))
+	draw_rect(Rect2(origin, Vector2(world_w, world_h)), Color(0.7, 0.85, 1.0, 0.6), false, line_w)
+	draw_line(Vector2(mid, origin.y + header_h), Vector2(mid, origin.y + world_h), Color(0.7, 0.85, 1.0, 0.4), line_w)
+	draw_line(Vector2(origin.x, origin.y + header_h), Vector2(origin.x + world_w, origin.y + header_h), Color(0.7, 0.85, 1.0, 0.4), line_w)
+
+	# Header (good name).
+	_draw_card_text(font, Catalog.get_display_name(_hover_good),
+		Rect2(origin.x, origin.y, world_w, header_h), int(maxf(7.0, header_h * 0.52)),
+		Color(0.92, 0.96, 1.0), 0.5)
+	# Cells: production/turn (left), stockpile (right).
+	var body_y := origin.y + header_h
+	var body_h := world_h - header_h
+	var cell_w := world_w / 2.0
+	var val_fs := int(maxf(8.0, body_h * 0.44))
+	var cap_fs := int(maxf(6.0, body_h * 0.24))
+	_draw_card_text(font, "%d" % prod, Rect2(origin.x, body_y, cell_w, body_h), val_fs, Color.WHITE, 0.40)
+	_draw_card_text(font, "/turn", Rect2(origin.x, body_y, cell_w, body_h), cap_fs, Color(0.75, 0.85, 0.95), 0.80)
+	_draw_card_text(font, "%d" % stock, Rect2(mid, body_y, cell_w, body_h), val_fs, Color.WHITE, 0.40)
+	_draw_card_text(font, "in stock", Rect2(mid, body_y, cell_w, body_h), cap_fs, Color(0.75, 0.85, 0.95), 0.80)
+
+func _draw_card_text(font: Font, text: String, rect: Rect2, fs: int, color: Color, v_frac: float) -> void:
+	# Horizontally centred in rect; baseline at v_frac of the rect height.
+	var w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var p := rect.position + Vector2((rect.size.x - w) / 2.0, rect.size.y * v_frac)
+	draw_string(font, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, color)
 
 func set_move_preview(source: String, goods: Dictionary) -> void:
 	_move_preview_source = source
@@ -301,6 +380,7 @@ func _draw() -> void:
 	if _transfer_active:
 		draw_rect(Rect2(-100000, -100000, 200000, 200000), DIM_COLOUR)
 		_draw_transfer()
+		_draw_hover_good_info()
 		return
 	if mapmode_on:
 		draw_rect(Rect2(-100000, -100000, 200000, 200000), DIM_COLOUR)
