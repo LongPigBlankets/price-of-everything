@@ -14,8 +14,8 @@ g_012,chlorine,Chlorine,,hazard_liquid,,,,intermediate,0.001,1.2,TRUE,TRUE,0,no,
 g_013,sodium_hydroxide,Sodium Hydroxide,,hazard_liquid,,,,intermediate,0.001,0.8,TRUE,TRUE,0,no,0
 g_014,hydrogen,Hydrogen,,hazard_liquid,,,,intermediate,0.001,1.5,TRUE,TRUE,0,no,0
 g_015,basic_salt,Basic Salt,,solid_heavy,,,,raw,0.001,0.5,TRUE,TRUE,0,no,0
-g_016,limestone,Limestone,construction,solid_heavy,1,1,vehicle,raw,0.005,0.1,TRUE,TRUE,0,no,0
-g_017,concrete,Concrete,construction,solid_heavy,1,1,vehicle,intermediate,0.002,1,TRUE,TRUE,0,no,0
-g_018,sand,Sand,construction,solid_heavy,1,1,vehicle,raw,0.005,0.1,TRUE,TRUE,0,no,0
+g_016,limestone,Limestone,construction,solid_heavy,1,1,vehicle,raw,0.005,1.0,TRUE,TRUE,0,no,0
+g_017,concrete,Concrete,construction,solid_heavy,1,1,vehicle,intermediate,0.002,7.0,TRUE,TRUE,0,no,0
+g_018,sand,Sand,construction,solid_heavy,1,1,vehicle,raw,0.005,0.5,TRUE,TRUE,0,no,0
 g_019,chem_salts,Chemical Salts,chems,solid_heavy,1,1,vehicle,intermediate,0.002,1,TRUE,TRUE,0,no,0
-g_020,silica,Silica,chems,solid_heavy,1,1,vehicle,intermediate,0.002,1.5,TRUE,TRUE,0,no,0
+g_020,silica,Silica,chems,solid_heavy,1,1,vehicle,intermediate,0.002,2.5,TRUE,TRUE,0,no,0
