@@ -445,9 +445,10 @@ func _build_content() -> void:
 		rows.append(row)
 
 func _on_prices_updated() -> void:
-	# Pass 2 will use this to refresh visible prices when decay ticks
+	# Refresh visible prices/cols when decay ticks.
 	for row in rows:
-		row._update_price()
+		if is_instance_valid(row) and row.has_method("_refresh"):
+			row._refresh()
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
