@@ -42,6 +42,7 @@ var river_properties := {}
 var cities := {}
 var _stockpile_destination_selection_active := false
 var _hovered_destination_coord := Vector2i(-1, -1)
+var _selection_paint := true  # false = capture clicks only, no terrain category/hover overlays
 var _hover_overlay: TileMapLayer = null
 var _overlay_consumer: TileMapLayer = null   # light green — tiles that consume the stockpile good
 var _overlay_viable: TileMapLayer = null     # dark green — tiles with buildings but not consuming
@@ -60,10 +61,15 @@ func _ready() -> void:
 	_build_hover_overlay()
 	_build_category_overlays()
 
-func begin_stockpile_destination_selection(good_id: String = "") -> void:
+func begin_stockpile_destination_selection(good_id: String = "", paint: bool = true) -> void:
 	_stockpile_destination_selection_active = true
-	_paint_stockpile_categories(good_id)
-	_update_destination_hover()
+	_selection_paint = paint
+	if paint:
+		_paint_stockpile_categories(good_id)
+		_update_destination_hover()
+	else:
+		_clear_category_overlays()
+		_clear_destination_hover()
 
 func end_stockpile_destination_selection() -> void:
 	_stockpile_destination_selection_active = false
@@ -137,7 +143,7 @@ func _tile_has_buildings(tile_id: String) -> bool:
 	return MatchState.tile_buildings.get(tile_id, []).size() > 0
 
 func _process(_delta: float) -> void:
-	if _stockpile_destination_selection_active:
+	if _stockpile_destination_selection_active and _selection_paint:
 		_update_destination_hover()
 
 func _update_destination_hover() -> void:

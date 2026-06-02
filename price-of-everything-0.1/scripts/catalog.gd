@@ -640,6 +640,14 @@ func recipes_producing(good_id: String) -> Array:
 	if good_id == "":
 		return []
 	return _all_recipes.filter(func(r: Dictionary) -> bool: return recipe_produces(r, good_id))
+
+func recipe_output_qty(recipe: Dictionary, good_id: String) -> int:
+	for o in recipe.get("outputs", []):
+		if str(o.get("good_id", "")) == good_id:
+			return int(o.get("qty", 0))
+	if str(recipe.get("output_good_id", "")) == good_id:
+		return int(recipe.get("output_qty", 0))
+	return 0
 	
 	
 # =========================================================================

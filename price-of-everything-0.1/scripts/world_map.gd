@@ -39,6 +39,11 @@ var _tr_dest: Label = null
 var _tr_cost: Label = null
 var _tr_recurring: CheckBox = null
 var _tr_cta: Button = null
+var _tr_cap: Label = null
+var _tr_legend: VBoxContainer = null
+var _tr_modal: PanelContainer = null
+var _tr_modal_label: Label = null
+const _TR_YELLOW := Color(1.0, 1.0, 0.45)
 
 func _ready() -> void:
 	# DS assigns its Theme to the root Window, but Controls do not inherit a
@@ -218,7 +223,9 @@ func _on_transfer_requested(good_id: String) -> void:
 	_transfer_dialog.visible = true
 	_enter_transfer_ui()
 	_update_transfer_highlights()
-	terrain_layer.begin_stockpile_destination_selection("")
+	_update_transfer_legend()
+	_update_transfer_modal()
+	terrain_layer.begin_stockpile_destination_selection("", false)  # capture clicks, no terrain overlays
 
 func _on_transfer_tile_picked(tile_data: Dictionary) -> void:
 	var tile_id := str(tile_data.get("id", ""))
@@ -226,18 +233,27 @@ func _on_transfer_tile_picked(tile_data: Dictionary) -> void:
 		return
 	var good := str(_transfer.get("good", ""))
 	if str(_transfer.get("state", "")) == "origin":
+		# Reject tiles with neither stock nor production of the good.
+		if Stockpile.get_at_tile(tile_id, good) <= 0 and not MatchState.tiles_producing(good).has(tile_id):
+			MatchState.request_toast("Cannot select tile. No %s available to be transferred." % Catalog.get_display_name(good), "warning")
+			terrain_layer.call_deferred("begin_stockpile_destination_selection", "", false)  # re-arm
+			return
 		_transfer["origin"] = tile_id
 		var stock := Stockpile.get_at_tile(tile_id, good)
-		_transfer["qty"] = stock if stock > 0 else 10
+		_transfer["qty"] = stock if stock > 0 else _tile_production_per_turn(tile_id, good)
 		_tr_origin.text = "From: %s" % Catalog.tile_label(tile_id)
-		_tr_qty.set_value_no_signal(float(_transfer["qty"]))
+		_tr_qty.set_value_no_signal(float(maxi(1, int(_transfer["qty"]))))
 		_tr_qty.grab_focus()
 		_transfer["state"] = "dest"
 		_update_transfer_highlights()
 		_update_transfer_cost()
-		terrain_layer.begin_stockpile_destination_selection("")  # re-arm for the destination
+		_update_transfer_cap()
+		_update_transfer_legend()
+		_update_transfer_modal()
+		terrain_layer.call_deferred("begin_stockpile_destination_selection", "", false)  # re-arm for destination
 	elif str(_transfer.get("state", "")) == "dest":
 		if tile_id == str(_transfer.get("origin", "")):
+			terrain_layer.call_deferred("begin_stockpile_destination_selection", "", false)
 			return
 		_transfer["dest"] = tile_id
 		_tr_dest.text = "To: %s" % Catalog.tile_label(tile_id)
@@ -245,6 +261,7 @@ func _on_transfer_tile_picked(tile_data: Dictionary) -> void:
 		terrain_layer.end_stockpile_destination_selection()
 		_update_transfer_highlights()
 		_update_transfer_cost()
+		_update_transfer_modal()
 		_tr_cta.disabled = false
 
 func _relevant_transfer_tiles() -> Array:
@@ -313,6 +330,7 @@ func _on_transfer_qty_changed(value: float) -> void:
 	if str(_transfer.get("state", "")) != "origin":
 		_update_transfer_highlights()
 	_update_transfer_cost()
+	_update_transfer_cap()
 
 func _on_transfer_recurring_toggled(_pressed: bool) -> void:
 	_update_transfer_cost()
@@ -342,6 +360,8 @@ func _close_transfer() -> void:
 		ov.clear_transfer()
 	if _transfer_dialog != null:
 		_transfer_dialog.visible = false
+	if _tr_modal != null:
+		_tr_modal.visible = false
 	_exit_transfer_ui()
 
 func _enter_transfer_ui() -> void:
@@ -392,8 +412,17 @@ func _build_transfer_dialog() -> void:
 	_tr_qty.value_changed.connect(_on_transfer_qty_changed)
 	qrow.add_child(_tr_qty)
 	vb.add_child(qrow)
+	_tr_cap = Label.new()
+	_tr_cap.add_theme_font_size_override("font_size", 12)
+	_tr_cap.add_theme_color_override("font_color", Color.WHITE)
+	_tr_cap.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tr_cap.visible = false
+	vb.add_child(_tr_cap)
 	_tr_dest = Label.new()
 	vb.add_child(_tr_dest)
+	_tr_legend = VBoxContainer.new()
+	_tr_legend.add_theme_constant_override("separation", 2)
+	vb.add_child(_tr_legend)
 	_tr_cost = Label.new()
 	_tr_cost.add_theme_font_size_override("font_size", 13)
 	vb.add_child(_tr_cost)
@@ -410,6 +439,92 @@ func _build_transfer_dialog() -> void:
 	cancel.pressed.connect(_close_transfer)
 	vb.add_child(cancel)
 	_hud.add_child(_transfer_dialog)
+	# Bottom step modal (above the bottom menu).
+	_tr_modal = PanelContainer.new()
+	_tr_modal.theme = DS.theme
+	_tr_modal.anchor_left = 0.5
+	_tr_modal.anchor_right = 0.5
+	_tr_modal.anchor_top = 1.0
+	_tr_modal.anchor_bottom = 1.0
+	_tr_modal.offset_left = -180.0
+	_tr_modal.offset_right = 180.0
+	_tr_modal.offset_top = -156.0
+	_tr_modal.offset_bottom = -112.0
+	_tr_modal.visible = false
+	var mmargin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		mmargin.add_theme_constant_override("margin_" + side, 10)
+	_tr_modal.add_child(mmargin)
+	_tr_modal_label = Label.new()
+	_tr_modal_label.add_theme_font_size_override("font_size", 16)
+	_tr_modal_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mmargin.add_child(_tr_modal_label)
+	_hud.add_child(_tr_modal)
+
+func _tile_production_per_turn(tile: String, good: String) -> int:
+	var total := 0
+	for iid in MatchState.tile_buildings.get(tile, []):
+		var b: Dictionary = MatchState.get_building(str(iid))
+		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		total += Catalog.recipe_output_qty(recipe, good)
+	return total
+
+func _update_transfer_cap() -> void:
+	if _tr_cap == null or _transfer.is_empty():
+		return
+	var origin := str(_transfer.get("origin", ""))
+	var good := str(_transfer.get("good", ""))
+	var qty := int(_transfer.get("qty", 0))
+	if origin == "":
+		_tr_cap.visible = false
+		return
+	var avail := Stockpile.get_at_tile(origin, good) + _tile_production_per_turn(origin, good)
+	if qty > avail and avail >= 0:
+		_tr_cap.text = "Only %d %s available — the transfer will move the maximum." % [avail, Catalog.get_display_name(good)]
+		_tr_cap.visible = true
+	else:
+		_tr_cap.visible = false
+
+func _update_transfer_modal() -> void:
+	if _tr_modal == null:
+		return
+	match str(_transfer.get("state", "")):
+		"origin":
+			_tr_modal_label.text = "Select origin tile"
+			_tr_modal.visible = true
+		"dest":
+			_tr_modal_label.text = "Set quantity, then select destination tile"
+			_tr_modal.visible = true
+		_:
+			_tr_modal.visible = false
+
+func _legend_row(swatch: Color, text: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	var rect := ColorRect.new()
+	rect.color = swatch
+	rect.custom_minimum_size = Vector2(14, 14)
+	rect.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(rect)
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.add_theme_font_size_override("font_size", 12)
+	row.add_child(lbl)
+	return row
+
+func _update_transfer_legend() -> void:
+	if _tr_legend == null:
+		return
+	for c in _tr_legend.get_children():
+		c.queue_free()
+	if str(_transfer.get("state", "")) == "origin":
+		_tr_legend.add_child(_legend_row(_TR_LIGHT_GREEN, "Has it in stockpile"))
+		_tr_legend.add_child(_legend_row(_TR_DARK_GREEN, "Produces it"))
+	else:
+		_tr_legend.add_child(_legend_row(_TR_YELLOW, "Selected origin"))
+		_tr_legend.add_child(_legend_row(_TR_LIGHT_GREEN, "Consumes it"))
+		_tr_legend.add_child(_legend_row(_TR_DARK_GREEN, "Consumes & produces"))
+		_tr_legend.add_child(_legend_row(_TR_RED, "Can't fit this quantity"))
 
 func _on_buy_tile_pick_requested() -> void:
 	_picking_buy_tile = true
