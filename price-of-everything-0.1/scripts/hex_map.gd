@@ -439,6 +439,13 @@ func _tile_coord_under_mouse() -> Vector2i:
 	var world_pos := get_global_mouse_position()
 	return tile_coord_for_map_coord(local_to_map(to_local(world_pos)))
 
+func tile_id_under_mouse() -> String:
+	# "tile_X_Y" for the tile under the cursor, or "" if the cursor isn't over a tile.
+	var coord := _tile_coord_under_mouse()
+	if not tiles.has(coord):
+		return ""
+	return "tile_%d_%d" % [coord.x + 1, coord.y + 1]
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton and event.pressed):
 		return

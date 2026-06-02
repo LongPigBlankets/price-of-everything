@@ -103,19 +103,59 @@ func _hover_tile_production_per_turn(tile_id: String, good_id: String) -> int:
 	return total
 
 func _draw_hover_good_info() -> void:
-	# A 2-cell card over the hovered tile: production/turn (left) + stockpile (right),
-	# with the good name as a header straddling both. ~160x80 at max zoom, snapped to
-	# 3 zoom steps like the shipment hover panel.
+	# Transfer / buy flow: the active good is fixed; the hovered tile comes from the
+	# destination-selection tracking.
 	if _hover_good == "":
 		return
 	var hovered := terrain_layer.get_hovered_destination_tile_id()
-	if hovered == "":
+	if hovered != "":
+		_draw_tile_good_card(hovered, _hover_good)
+
+func _draw_logistics_hover_info() -> void:
+	# Logistics mapmode: no fixed good, so show the tile's primary good. The shipment
+	# hover panel takes precedence when the cursor is over a shipment tag.
+	if _hover_tag >= 0:
 		return
-	var pos := _tile_pos(hovered)
+	var tile_id := terrain_layer.tile_id_under_mouse()
+	if tile_id == "":
+		return
+	var good := _primary_good_for_tile(tile_id)
+	if good != "":
+		_draw_tile_good_card(tile_id, good)
+
+func _primary_good_for_tile(tile_id: String) -> String:
+	# The good this tile produces most per turn; if it produces nothing, the good it
+	# holds the most of in stock.
+	var best_good := ""
+	var best_prod := 0
+	for iid in MatchState.tile_buildings.get(tile_id, []):
+		var b: Dictionary = MatchState.get_building(str(iid))
+		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		for o in recipe.get("outputs", []):
+			var gid := str(o.get("good_id", ""))
+			var q := Catalog.recipe_output_qty(recipe, gid)
+			if gid != "" and q > best_prod:
+				best_prod = q
+				best_good = gid
+	if best_good != "":
+		return best_good
+	var best_stock := 0
+	for gid in Stockpile.get_tile_totals(tile_id):
+		var s := int(Stockpile.get_tile_totals(tile_id)[gid])
+		if s > best_stock:
+			best_stock = s
+			best_good = str(gid)
+	return best_good
+
+func _draw_tile_good_card(tile_id: String, good_id: String) -> void:
+	# A 2-cell card over the tile: production/turn (left) + stockpile (right), with the
+	# good name as a header straddling both. ~160x80 at max zoom, snapped to 3 zoom
+	# steps like the shipment hover panel.
+	var pos := _tile_pos(tile_id)
 	if pos == Vector2.INF:
 		return
-	var prod := _hover_tile_production_per_turn(hovered, _hover_good)
-	var stock := Stockpile.get_at_tile(hovered, _hover_good)
+	var prod := _hover_tile_production_per_turn(tile_id, good_id)
+	var stock := Stockpile.get_at_tile(tile_id, good_id)
 
 	var z := maxf(0.01, get_viewport().get_canvas_transform().get_scale().x)
 	var tile_w: float = terrain_layer.tile_set.tile_size.x
@@ -141,7 +181,7 @@ func _draw_hover_good_info() -> void:
 	draw_line(Vector2(origin.x, origin.y + header_h), Vector2(origin.x + world_w, origin.y + header_h), Color(0.7, 0.85, 1.0, 0.4), line_w)
 
 	# Header (good name).
-	_draw_card_text(font, Catalog.get_display_name(_hover_good),
+	_draw_card_text(font, Catalog.get_display_name(good_id),
 		Rect2(origin.x, origin.y, world_w, header_h), int(maxf(7.0, header_h * 0.52)),
 		Color(0.92, 0.96, 1.0), 0.5)
 	# Cells: production/turn (left), stockpile (right).
@@ -407,6 +447,7 @@ func _draw() -> void:
 			if _hover_tag >= 0:
 				_draw_tag(_tag_hits[_hover_tag], true)
 				_draw_hover_panel(_tag_hits[_hover_tag])
+			_draw_logistics_hover_info()
 	elif _resolving:
 		# Mapmode off but mid-transition: just the gliding shipment pentagons.
 		_draw_animated_tags()
