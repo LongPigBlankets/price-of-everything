@@ -231,6 +231,45 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	net_cashflow_value.text = _format_signed(net_cashflow)
 	_color_for_value(net_cashflow_value, net_cashflow)
 
+	# Per-building-type breakdown tooltips.
+	_apply_breakdown_tooltip(maintenance_value, summary.get("maintenance_by_type", {}), "maintenance")
+	_apply_breakdown_tooltip(labour_value, summary.get("labour_by_type", {}), "labour")
+	_apply_breakdown_tooltip(power_purchase_value, summary.get("power_purchase_by_type", {}), "power")
+	_apply_breakdown_tooltip(_goods_purchased_value, summary.get("goods_purchased_by_type", {}), "goods purchased")
+
+func _apply_breakdown_tooltip(value_label: Label, by_type: Dictionary, category: String) -> void:
+	if value_label == null:
+		return
+	var tip := _format_breakdown(by_type, category)
+	var row := value_label.get_parent()
+	var controls: Array = [value_label]
+	if row != null:
+		controls.append(row)
+		if row.get_child_count() > 0:
+			controls.append(row.get_child(0))  # the name label
+	for c in controls:
+		if c is Control:
+			c.mouse_filter = Control.MOUSE_FILTER_STOP
+			c.tooltip_text = tip
+
+func _format_breakdown(by_type: Dictionary, category: String) -> String:
+	if by_type.is_empty():
+		return "No %s costs this turn." % category
+	var keys: Array = by_type.keys()
+	keys.sort_custom(func(a, b): return float(by_type[a].get("amount", 0.0)) > float(by_type[b].get("amount", 0.0)))
+	var lines: Array = []
+	for k in keys:
+		var entry: Dictionary = by_type[k]
+		var amt: float = float(entry.get("amount", 0.0))
+		var count: int = int(entry.get("count", 0))
+		var bname: String = "Purchase orders" if str(k) == "" else Catalog.get_building_display_name(str(k))
+		if count > 0:
+			var plural := "s" if count != 1 else ""
+			lines.append("%d %s%s: £%.2f" % [count, bname, plural, amt])
+		else:
+			lines.append("%s: £%.2f" % [bname, amt])
+	return "\n".join(lines)
+
 func _format_signed(amount: float) -> String:
 	if amount > 0.005:
 		return "+£%.2f" % amount
@@ -319,6 +358,8 @@ func _project_next_turn() -> Dictionary:
 		var building: Dictionary = MatchState.buildings.get(inst_id, {})
 		if building.is_empty():
 			continue
+		if not MatchState.is_player_owned(building):
+			continue  # don't project costs for NPC-owned infrastructure
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		if recipe.is_empty():
 			continue
@@ -337,7 +378,9 @@ func _project_next_turn() -> Dictionary:
 		power_demand += recipe.get("energy_req", 0)
 		
 		# Per-building costs
-		maintenance += EconomyConfig.MAINTENANCE_PER_BUILDING
+		var bdata: Dictionary = Catalog.get_building(str(building.get("building_id", "")))
+		var bmaint = bdata.get("maintenance_cost", null)
+		maintenance += EconomyConfig.MAINTENANCE_PER_BUILDING if bmaint == null else float(bmaint)
 		labour += _calculate_projected_labour_cost(building)
 		transport += _projected_transport_cost(building, recipe)
 		# Market-sourced inputs (upper bound: full per-turn demand at market price)

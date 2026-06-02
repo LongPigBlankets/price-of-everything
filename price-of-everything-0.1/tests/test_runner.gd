@@ -42,6 +42,8 @@ func _ready() -> void:
 	_test_transfer_helpers()
 	_test_output_conservation()
 	_test_market_sale_credits()
+	_test_owner_costs()
+	_test_recurring_sell_multitile()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -142,6 +144,29 @@ func _test_market_buy() -> void:
 	var partial: Dictionary = MatchState.queue_buy("tile_3_8", "g_002", 1000)
 	_check(not partial.is_empty() and int(partial.get("qty", 0)) > 0 and int(partial.get("qty", 0)) < 1000,
 		"queue_buy buys a partial amount when cash is short")
+
+func _test_owner_costs() -> void:
+	_check(MatchState.is_player_owned({"owner": "player_1"}), "player_1 building is player-owned")
+	_check(MatchState.is_player_owned({}), "building with no owner defaults to player-owned")
+	_check(not MatchState.is_player_owned({"owner": "Three Diamonds Shipping Corporation"}),
+		"NPC-owned building is not player-owned (not charged maintenance)")
+
+func _test_recurring_sell_multitile() -> void:
+	# A recurring sell bound to an empty source tile should still sell the good
+	# from another tile that holds it (the fix for "sold once then stopped").
+	var src := "tile_3_8"
+	var other := "tile_9_5"
+	var have: int = Stockpile.get_at_tile(src, "g_001")
+	if have > 0:
+		Stockpile.consume(src, "g_001", have)
+	Stockpile.add(other, "g_001", 25)
+	var before: int = Stockpile.get_at_tile(other, "g_001")
+	MatchState.add_recurring_sell(src, {"g_001": 10})
+	MatchState.run_recurring_and_scheduled_moves()
+	var sold: int = before - Stockpile.get_at_tile(other, "g_001")
+	_check(sold == 10, "recurring sell draws from another tile when source is empty (sold %d)" % sold)
+	if not MatchState.recurring_sells.is_empty():
+		MatchState.recurring_sells.pop_back()
 
 func _test_transaction_ledger() -> void:
 	Stockpile.add("tile_3_8", "g_001", 12)

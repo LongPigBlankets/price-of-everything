@@ -4,6 +4,7 @@ extends Node
 # Other systems read and write here; never store match data elsewhere.
 
 # --- Player resources ---
+const LOCAL_PLAYER := "player_1"
 var money: float = 1000.0  # was: int = 1000
 
 const DEFAULT_TILE_LAND_OWNED := 100
@@ -105,6 +106,11 @@ func deduct_money(amount: float) -> bool:  # was: int
 	return true
 
 # --- Public API: buildings ---
+func is_player_owned(building: Dictionary) -> bool:
+	# NPC-owned infrastructure (e.g. the shipping corporation's ports) is not the
+	# player's to pay for. Buildings default to the local player when owner is unset.
+	return str(building.get("owner", LOCAL_PLAYER)) == LOCAL_PLAYER
+
 func add_building(building_id: String, recipe_id: String, tile_id: String, owner: String = "player_1") -> String:
 	# Pass the building_id here!
 	var instance_id := _generate_instance_id(building_id) 
@@ -421,9 +427,40 @@ func run_recurring_and_scheduled_moves() -> void:
 	for m in recurring_moves:
 		queue_move(str(m.source), str(m.dest), m.goods, false)
 	for m in recurring_sells:
-		queue_sell(str(m.source), m.goods, false)
+		_run_recurring_sell(m)
 	for r in recurring_bulk_sells:
 		sell_all_to_market(r.get("params", {}), false)
+
+func _run_recurring_sell(entry: Dictionary) -> void:
+	# Sell the configured qty of each good every turn, drawing from the bound source
+	# tile first and then any other tile that holds the good. This keeps "sell N coal
+	# every turn" working even after the source tile is drained — the produced coal
+	# now sits on the mine tiles, not the tile the order was created from.
+	var source := str(entry.get("source", ""))
+	var goods: Dictionary = entry.get("goods", {})
+	for good_id in goods.keys():
+		var remaining := int(goods[good_id])
+		if remaining <= 0:
+			continue
+		# Ordered draw list: source tile first, then other tiles holding the good.
+		var draw_tiles: Array = []
+		if source != "" and Stockpile.get_at_tile(source, str(good_id)) > 0:
+			draw_tiles.append(source)
+		for t in Stockpile.tiles_with_stock():
+			var ts := str(t)
+			if ts == source or not ts.begins_with("tile_"):
+				continue
+			if Stockpile.get_at_tile(ts, str(good_id)) > 0:
+				draw_tiles.append(ts)
+		for t in draw_tiles:
+			if remaining <= 0:
+				break
+			var avail := Stockpile.get_at_tile(str(t), str(good_id))
+			var take: int = mini(remaining, avail)
+			if take <= 0:
+				continue
+			queue_sell(str(t), {good_id: take}, false)
+			remaining -= take
 
 func add_recurring_sell(source_tile: String, goods_qtys: Dictionary) -> void:
 	recurring_sells.append({"source": source_tile, "goods": goods_qtys.duplicate(true), "turn_started": _ledger_turn()})
