@@ -40,7 +40,7 @@ func _rebuild_header() -> void:
 		c.queue_free()
 	header_static.add_theme_constant_override("separation", 10)
 	header_static.add_child(_header_spacer(60.0))             # icon column
-	header_static.add_child(_header_label("Product", 160.0))
+	header_static.add_child(_header_label("Product", 160.0, Color(0, 0, 0, 0), false))
 	header_static.add_child(_header_label("Sale now", 80.0, SALE_TINT))
 	header_static.add_child(_header_label("Sale +10t", 90.0, SALE_TINT))
 	header_static.add_child(_header_label("Buy now", 80.0, BUY_TINT))
@@ -53,10 +53,12 @@ func _rebuild_header() -> void:
 const SALE_TINT := Color(0.82, 0.85, 0.90, 0.10)
 const BUY_TINT := Color(0.50, 0.53, 0.58, 0.22)
 
-func _header_label(text: String, width: float, tint: Color = Color(0, 0, 0, 0)) -> Label:
+func _header_label(text: String, width: float, tint: Color = Color(0, 0, 0, 0), center: bool = true) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.custom_minimum_size = Vector2(width, 0)
+	if center:
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if tint.a > 0.0:
 		var box := StyleBoxFlat.new()
 		box.bg_color = tint

@@ -12,6 +12,7 @@ const COL_SOLD := 80.0
 const COL_BOUGHT := 90.0
 const COL_COST := 100.0
 const COL_PROFIT := 110.0
+const FIELD_FS := 19  # larger per-field text
 const FORECAST := 10  # "price in 10 turns"
 
 const COST_GREEN := Color(0.36, 0.82, 0.40)
@@ -42,12 +43,13 @@ func setup(good_data: Dictionary) -> void:
 	internal_name = str(good_data.get("internal_name", ""))
 
 	var main := HBoxContainer.new()
-	main.custom_minimum_size = Vector2(0, ICON_SIZE + 6)
+	main.custom_minimum_size = Vector2(0, ICON_SIZE)  # row height == icon == name button
 	main.add_theme_constant_override("separation", 10)
 	add_child(main)
 
 	var icon := TextureRect.new()
 	icon.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
+	icon.size_flags_vertical = Control.SIZE_FILL
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	var tex: Texture2D = GoodIcons.texture_for(good_id, internal_name)
@@ -106,7 +108,9 @@ func setup(good_data: Dictionary) -> void:
 func _make_col(width: float) -> Label:
 	var l := Label.new()
 	l.custom_minimum_size = Vector2(width, ICON_SIZE)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.add_theme_font_size_override("font_size", FIELD_FS)
 	return l
 
 func _tint_col(l: Label, tint: Color) -> void:
