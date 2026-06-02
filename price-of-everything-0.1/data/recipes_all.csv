@@ -16,7 +16,7 @@ r_014,Oil Drilling,oil_well,,,,,,,,,,,,,2,crude_oil,10,,,,,,,,,crude_oil_deposit
 r_015,Bauxite Mining,mine,,,,,,,,,,,,,3,bauxite_ore,10,,,,,,,,,,,,Extraction,
 r_016,Lithium Mining,mine,,,,,,,,,,,,,3,lithium_ore,10,,,,,,,,,,,,Extraction,
 r_017,Rare Earth Mining,mine,,,,,,,,,,,,,3,ree_ore,10,,,,,,,,,,,,Extraction,
-r_018,Sand Excavation,mine,,,,,,,,,,,,,2,sand,10,,,,,,,,,,,,Extraction,
+r_018,Sand Excavation,mine,,,,,,,,,,,,,2,sand,10,,,,,,,,,deposit:sand,,,Extraction,
 r_019,Limestone Mining,mine,,,,,,,,,,,,,4,limestone,20,,,,,,,,,deposit:limestone,,,Extraction,
 r_020,Flash Copper Smelting,furnace,copper_ore,1,industrial_acids,1,oxygen,1,,,,,,,6,copper_ingots,3,,,,,,,,,,,,Copper,
 r_021,Heavy Fuels Refining,petro_refinery,heavy_oil,4,,,,,,,,,,,4,fuels,3,,,,,,,,,,,,Crude Oil,
