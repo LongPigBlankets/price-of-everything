@@ -73,9 +73,9 @@ func _initialize() -> void:
 	# every production recipe in this chain has energy_req > 0.
 	_install_hexmap_stub()
 
-	# Speed up resolution: no inter-phase pause needed for a headless sim.
+	# Compute-constrained: no human pacing delay needed for a headless sim.
 	if TurnManager:
-		TurnManager.phase_pause_duration = 0.0
+		TurnManager.fast_mode = true
 
 	# Let the autoloads finish their deferred _ready wiring (Production connects to
 	# TurnManager.phase_started, MarketState to turn_advanced, RunMetrics to both).

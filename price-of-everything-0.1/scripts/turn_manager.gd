@@ -27,7 +27,16 @@ signal phase_completed(phase: int)
 signal turn_advanced(new_turn: int)
 signal game_ended_signal(reason: String)
 
-@export var phase_pause_duration: float = 0.5
+# Per-phase human pacing delay. The whole-turn transition is this x the 5
+# resolution phases, so the default 0.1 gives a ~0.5s turn (compute is a flat
+# ~37ms on top) — Civ-like early-game snappiness that, thanks to the route cache,
+# no longer grows with building count. Raise for a slower reveal; the per-phase
+# split keeps each phase (SEND/AI/NARRATIVE/...) individually visible.
+@export var phase_pause_duration: float = 0.1
+# Compute-constrained mode: skip ALL pacing so turns resolve as fast as the engine
+# can compute them. Set true for headless sims (no human watching) or an in-game
+# "instant" speed. Overrides phase_pause_duration.
+@export var fast_mode: bool = false
 @export var auto_start_first_turn: bool = true
 
 var current_turn: int = 1
@@ -86,7 +95,11 @@ func _run_resolution() -> void:
 		TurnProfiler.phase_end(phase)
 		await get_tree().process_frame
 		phase_completed.emit(phase)
-		await get_tree().create_timer(phase_pause_duration).timeout
+		# Artificial inter-phase pacing for the human. Skipped entirely in fast_mode
+		# (or when the pause is zero), leaving only the one process_frame yield above
+		# so the turn is bounded purely by compute.
+		if not fast_mode and phase_pause_duration > 0.0:
+			await get_tree().create_timer(phase_pause_duration).timeout
 
 	# Flush this turn's profile (per-phase + PROCESS sub-step durations + scale).
 	TurnProfiler.finalize_turn(profiled_turn)

@@ -122,7 +122,7 @@ func _initialize() -> void:
 	_resolve()
 	_stub = _HexMapStub.new()
 	get_root().add_child(_stub)
-	TurnManager.phase_pause_duration = 0.0
+	TurnManager.fast_mode = true   # compute-constrained: no human pacing delay
 	# Let the autoloads settle before we touch money / build.
 	await process_frame
 	await process_frame
