@@ -173,11 +173,11 @@ func capacity_total() -> float:
 	var avg_profit: float = _avg(_profit_history)
 	if avg_profit <= 0.0:
 		return base
-	# Serviceable debt service = the genuinely-available rolling profit, plus a SMALL
-	# revenue buffer capped at the base so it can never dominate the profit term.
+	# Serviceable debt service = genuinely-available rolling profit + a small slice of
+	# revenue (LOAN_REVENUE_BUFFER). The profit gate above keeps revenue from unlocking
+	# credit on its own, so the slice is a modest top-up, not the driver.
 	var avg_revenue: float = _avg(_revenue_history)
-	var revenue_buffer: float = minf(base, EconomyConfig.LOAN_REVENUE_BUFFER * maxf(0.0, avg_revenue))
-	var serviceable: float = avg_profit + revenue_buffer
+	var serviceable: float = avg_profit + EconomyConfig.LOAN_REVENUE_BUFFER * maxf(0.0, avg_revenue)
 	var payment_rate: float = (1.0 + EconomyConfig.LOAN_INTEREST_RATE) / float(EconomyConfig.LOAN_TERM_TURNS)
 	var scaled: float = serviceable / payment_rate
 	return maxf(base, scaled)
