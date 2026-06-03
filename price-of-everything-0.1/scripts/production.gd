@@ -300,6 +300,12 @@ func _process_production() -> void:
 			summary.money_out += dividends
 	TurnProfiler.section_end("tax_dividends")
 
+	# Feed this turn's retained net profit + gross revenue to the loan facility so
+	# borrowing capacity scales with the business. taxes_paid/dividends_paid are 0
+	# when the turn was a loss, so retained then equals the (negative) pre-tax profit.
+	var retained_profit: float = pre_tax_profit - summary.taxes_paid - summary.dividends_paid
+	LoanState.record_turn_economics(retained_profit, revenue)
+
 	TurnProfiler.section_begin("cost_solve")
 	CostSolver.solve(_building_turn_reports)
 	TurnProfiler.section_end("cost_solve")
@@ -708,12 +714,20 @@ func _calculate_labour_cost(building: Dictionary) -> float:
 	var unskilled: int   = bdata.get("labour_unskilled_required", EconomyConfig.STUB_UNSKILLED_PER_BUILDING)
 	var skilled: int     = bdata.get("labour_skilled_required",   EconomyConfig.STUB_SKILLED_PER_BUILDING)
 	var high_skilled: int = bdata.get("labour_h_skilled_required", EconomyConfig.STUB_HIGH_SKILLED_PER_BUILDING)
+	# Wage rates compound every turn (EconomyConfig.LABOUR_*_GROWTH), so the same
+	# building costs more to staff as the game goes on.
 	var base_cost: float = (
-		unskilled    * EconomyConfig.LABOUR_UNSKILLED_RATE
-		+ skilled    * EconomyConfig.LABOUR_SKILLED_RATE
-		+ high_skilled * EconomyConfig.LABOUR_HIGH_SKILLED_RATE
+		unskilled    * _grown_labour_rate(EconomyConfig.LABOUR_UNSKILLED_RATE, EconomyConfig.LABOUR_UNSKILLED_GROWTH)
+		+ skilled    * _grown_labour_rate(EconomyConfig.LABOUR_SKILLED_RATE, EconomyConfig.LABOUR_SKILLED_GROWTH)
+		+ high_skilled * _grown_labour_rate(EconomyConfig.LABOUR_HIGH_SKILLED_RATE, EconomyConfig.LABOUR_HIGH_SKILLED_GROWTH)
 	)
 	return base_cost * MatchState.labour_multiplier
+
+func _grown_labour_rate(base_rate: float, growth: float) -> float:
+	# Compounded wage at the current turn: base * (1 + growth) ^ (turn - 1).
+	# Turn 1 pays the base rate; growth accrues from turn 2 onward.
+	var t: int = maxi(0, int(TurnManager.current_turn) - 1)
+	return base_rate * pow(1.0 + growth, float(t))
 
 func _calculate_maintenance_cost(building: Dictionary) -> float:
 	var bdata: Dictionary = Catalog.get_building(building.get("building_id", ""))

@@ -14,6 +14,15 @@ const LABOUR_UNSKILLED_RATE: float = 0.001
 const LABOUR_SKILLED_RATE: float = 0.003
 const LABOUR_HIGH_SKILLED_RATE: float = 0.005
 
+# --- Labour wage growth (compounding per turn) ---
+# Wages drift upward every turn: the effective rate at turn t is
+#   base_rate * (1 + growth) ^ (t - 1).
+# Higher-skilled labour inflates fastest, so margins compress over a long game
+# and the player must keep expanding revenue to stay ahead of the wage bill.
+const LABOUR_UNSKILLED_GROWTH: float = 0.0015    # +0.15%/turn
+const LABOUR_SKILLED_GROWTH: float = 0.0025      # +0.25%/turn
+const LABOUR_HIGH_SKILLED_GROWTH: float = 0.004  # +0.40%/turn
+
 # --- MVP labour stub: every building has these counts ---
 # Remove these once buildings catalog has real employment data.
 const STUB_UNSKILLED_PER_BUILDING: int = 100
@@ -64,9 +73,17 @@ const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
 }
 
 # --- Loans ---
-const LOAN_MAX_CAPACITY: float = 50.0     # Maximum outstanding initial principal
+# Capacity is no longer a flat ceiling. It STARTS at the base below and scales with
+# the company's recent performance so you can borrow against a growing business and
+# outgrow debt (see LoanState.capacity_total). The cap is sized so the per-turn loan
+# repayment (principal + interest, amortised over LOAN_TERM_TURNS) stays within
+# rolling profit plus a slice of revenue — the 40-turn payoff is the affordance that
+# lets debt service sit above pure interest without being unserviceable.
+const LOAN_BASE_CAPACITY: float = 50.0     # Floor on borrowing capacity (turn 1, no history)
 const LOAN_TERM_TURNS: int = 40            # How many turns to repay over
 const LOAN_INTEREST_RATE: float = 0.10     # 10% over total term (not per turn)
+const LOAN_PROFIT_WINDOW: int = 5          # Rolling window (turns) for the profit/revenue average
+const LOAN_REVENUE_BUFFER: float = 0.10    # Extra serviceable debt = this share of avg revenue
 
 # --- Tax & Dividends ---
 const TAX_RATE: float = 0.20

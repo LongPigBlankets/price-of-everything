@@ -88,6 +88,24 @@ var _stub
 var _chains := 0
 var _chain_cost := 0.0
 var _turns_to_second_chain := -1
+var _turn_out_of_red := -1
+var _total_borrowed := 0.0
+
+
+func _finance() -> void:
+	# Draw on the dynamic loan facility to cover any cash deficit. Under the new 10x
+	# build costs the seed chain (~£1.7k) and its ramp run the company deep into the
+	# red; borrowing capacity scales with rolling profit, so the facility digs the
+	# company out as motors start selling. Expansion stays CASH-funded (loans only
+	# bootstrap) per the original "expand once cash exceeds a chain's cost" rule.
+	if MatchState.money >= 0.0:
+		return
+	var cap: float = LoanState.available_capacity()
+	if cap < 1.0:
+		return
+	var amt: float = minf(-MatchState.money, cap)
+	if amt >= 1.0 and LoanState.take_loan(amt):
+		_total_borrowed += amt
 
 
 func _resolve() -> void:
@@ -132,51 +150,51 @@ func _initialize() -> void:
 
 	_chain_cost = _compute_chain_cost()
 
-	# RULE 1: start with 300 cash. Take a loan ONLY if 300 can't fund chain #1.
+	print("[sim] CHAIN_COST = %.2f (sum of build cost over %d buildings/chain)" % [
+		_chain_cost, _chain_building_count()])
+
+	# Start with 300 cash and build the seed chain. Under the new 10x build costs the
+	# seed dwarfs 300, dropping cash into the red; _finance() then draws on the dynamic
+	# loan facility (base capacity until profit history exists) to start covering it.
 	MatchState.money = STARTING_CASH
 	if MatchState.has_signal("money_changed"):
 		MatchState.money_changed.emit(MatchState.money)
-	var loan_taken := 0.0
-	if MatchState.money < _chain_cost:
-		loan_taken = ceil(_chain_cost - MatchState.money)
-		LoanState.take_loan(loan_taken)
-		print("[sim] loan %.0f taken (300 < chain cost %.0f)" % [loan_taken, _chain_cost])
-
-	print("[sim] CHAIN_COST = %.2f (sum of base_price over %d buildings/chain)" % [
-		_chain_cost, _chain_building_count()])
-
-	# Build chain #1 at start and deduct its cost (RULE 2 + RULE 3).
 	_build_chain()
+	_finance()
 	await process_frame
 	await process_frame
-	print("[sim] start: cash=%.2f buildings=%d chains=%d (no expansion until cash > CHAIN_COST)" % [
-		MatchState.money, MatchState.buildings.size(), _chains])
+	print("[sim] start: cash=%.2f debt=%.2f buildings=%d chains=%d (expansion is cash-gated > CHAIN_COST)" % [
+		MatchState.money, LoanState.total_outstanding(), MatchState.buildings.size(), _chains])
 
 	for t in range(TURNS):
 		TurnManager.commit_turn()
 		await TurnManager.turn_resolution_completed
 		var turn := t + 1
 
-		# RULE 3: expand when affordable (cash strictly greater than one chain's cost).
-		# One new chain per turn, up to MAX_CHAINS — "stabilise then expand" plays out
-		# turn by turn instead of all at once.
+		_finance()   # keep covering any deficit from the (growing) loan facility
+		if _turn_out_of_red < 0 and MatchState.money >= 0.0:
+			_turn_out_of_red = turn
+
+		# RULE 3: expand when affordable from CASH (cash strictly greater than one
+		# chain's cost). One new chain per turn, up to MAX_CHAINS — "stabilise then
+		# expand" plays out turn by turn instead of all at once.
 		if MatchState.money > _chain_cost and _chains < MAX_CHAINS:
 			_build_chain()
 			if _chains == 2 and _turns_to_second_chain < 0:
 				_turns_to_second_chain = turn
-				print("[sim] >>> 2nd chain built at turn %d (cash before deduct was > %.0f)" % [
+				print("[sim] >>> 2nd chain built at turn %d (cash exceeded CHAIN_COST %.0f)" % [
 					turn, _chain_cost])
 
 		if turn % 20 == 0 or turn == 1:
 			var eq := _equity()
-			print("[sim] turn %3d | chains=%2d buildings=%3d | cash=%9.1f equity=%9.1f | motor(life)=%5d shipments=%d" % [
-				turn, _chains, MatchState.buildings.size(), MatchState.money, eq,
-				_lifetime(G_MOTOR), MatchState.pending_transport_shipments.size()])
+			print("[sim] turn %3d | chains=%2d buildings=%3d | cash=%9.1f debt=%8.1f equity=%9.1f | motor(life)=%5d" % [
+				turn, _chains, MatchState.buildings.size(), MatchState.money,
+				LoanState.total_outstanding(), eq, _lifetime(G_MOTOR)])
 
 	if RunMetrics and RunMetrics.has_method("finish_run"):
 		RunMetrics.finish_run()
 
-	_print_report(loan_taken)
+	_print_report()
 	quit(0)
 
 
@@ -247,7 +265,7 @@ func _equity() -> float:
 	return cash + stock + bval - debt
 
 
-func _print_report(loan_taken: float) -> void:
+func _print_report() -> void:
 	# Pull the per-run roll-up + the per-turn CSV to judge steady-state profitability.
 	var final_cash := float(MatchState.money)
 	var final_equity := _equity()
@@ -284,8 +302,12 @@ func _print_report(loan_taken: float) -> void:
 
 	print("\n================ MOTOR-CHAIN PROFITABILITY REPORT ================")
 	print("CHAIN_COST (build cost / chain)      : %.2f" % _chain_cost)
-	print("Starting cash                        : %.2f%s" % [
-		STARTING_CASH, (" (+ loan %.0f)" % loan_taken) if loan_taken > 0.0 else " (no loan)"])
+	print("Starting cash                        : %.2f" % STARTING_CASH)
+	print("Total borrowed over run              : %.2f" % _total_borrowed)
+	print("Outstanding debt at end              : %.2f" % LoanState.total_outstanding())
+	print("Loan capacity at end                 : %.2f" % LoanState.capacity_total())
+	print("Turn cash first climbed out of red   : %s" % (
+		str(_turn_out_of_red) if _turn_out_of_red > 0 else "STILL IN RED"))
 	print("turns_to_second_chain                : %s" % (
 		str(_turns_to_second_chain) if _turns_to_second_chain > 0 else "NOT REACHED"))
 	print("Chains built by turn %d              : %d" % [TURNS, _chains])
