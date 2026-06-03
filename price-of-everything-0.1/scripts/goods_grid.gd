@@ -5,8 +5,9 @@ extends Control
 ## category doesn't sit beside itself, and the deck reshuffles/cycles to fill all
 ## cells from the goods that have art.
 ##
-## Every CYCLE_INTERVAL seconds one line shifts by a cell - alternating a column
-## (leftmost, sliding DOWN) and a row (top, sliding RIGHT) like a Rubik's cube.
+## Every CYCLE_INTERVAL seconds one line shifts by a cell, Rubik's-cube style,
+## walking the grid: column 0 (down), row 0 (right), column 1, row 1, ... and
+## wrapping back to 0 after column/row 6.
 ## The motion eases most of the way early, creeps, then SNAPS the last bit into
 ## place - timed so the snap lands on the click baked into the slide cue (~1.4s).
 
@@ -32,6 +33,8 @@ var _anim_active := false
 var _anim_elapsed := 0.0
 var _anim_is_column := true     # true = column-down, false = row-right
 var _next_is_column := true     # sequence: column, row, column, row, ...
+var _anim_line := 0             # which column/row this step moves
+var _line_index := 0            # advances 0..6 after each column+row pair
 
 
 func _ready() -> void:
@@ -145,6 +148,10 @@ func _play_next() -> void:
 	if _anim_active:
 		return
 	_anim_is_column = _next_is_column
+	_anim_line = _line_index
+	if not _anim_is_column:
+		# a row completes the pair (col N, row N); advance to the next index
+		_line_index = (_line_index + 1) % COLS
 	_next_is_column = not _next_is_column
 	_anim_elapsed = 0.0
 	_anim_active = true
@@ -182,7 +189,7 @@ func _apply_slide(p: float) -> void:
 	var cell := _cell_size()
 	var pad := cell * CELL_PADDING
 	if _anim_is_column:
-		var c := 0  # leftmost column
+		var c := _anim_line  # the active column
 		for r in ROWS:
 			var icon = _icons[r * COLS + c]
 			if icon == null:
@@ -191,7 +198,7 @@ func _apply_slide(p: float) -> void:
 			var draw_row: float = (r + p) if r < ROWS - 1 else (p - 1.0)
 			icon.position = Vector2(c * cell.x, draw_row * cell.y) + pad
 	else:
-		var rr := 0  # top row
+		var rr := _anim_line  # the active row
 		for c2 in COLS:
 			var icon = _icons[rr * COLS + c2]
 			if icon == null:
@@ -205,9 +212,9 @@ func _finish_slide() -> void:
 	_anim_active = false
 	set_process(false)
 	if _anim_is_column:
-		_shift_column_down(0)
+		_shift_column_down(_anim_line)
 	else:
-		_shift_row_right(0)
+		_shift_row_right(_anim_line)
 	_relayout_icons()  # rebuild at the new static positions (seamless with the snap)
 
 
