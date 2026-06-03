@@ -155,7 +155,8 @@ func _play_next() -> void:
 	_make_ghost()
 	_anim_elapsed = 0.0
 	_anim_active = true
-	_player.play()
+	_apply_slide(0.0)   # place the icons + ghost off-edge before this frame renders
+	_player.play()      # (otherwise the ghost flashes at 0,0 for one frame)
 	set_process(true)
 
 

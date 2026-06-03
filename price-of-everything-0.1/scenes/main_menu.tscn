@@ -20,7 +20,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0, 0, 0, 1)
+color = Color(0, 0.07, 0.14, 1)
 
 [node name="GoodsGrid" type="Control" parent="."]
 layout_mode = 1
@@ -32,12 +32,3 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("2_grid")
-
-[node name="NewGameButton" type="Button" parent="."]
-layout_mode = 1
-anchors_preset = 0
-offset_left = 60.0
-offset_top = 300.0
-offset_right = 190.0
-offset_bottom = 344.0
-text = "New Game"
