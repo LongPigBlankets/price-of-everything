@@ -165,9 +165,19 @@ func capacity_total() -> float:
 	var base: float = EconomyConfig.LOAN_BASE_CAPACITY
 	if _profit_history.is_empty():
 		return base
+	# PROFIT GATE: until the company is actually making money on a rolling basis,
+	# borrowing is limited to the base floor. Revenue alone must not unlock credit —
+	# a loss-making firm with strong turnover is still a bad lend, and without this
+	# gate "10% of revenue" amplified over the loan term hands a brand-new, still
+	# unprofitable business a four-figure credit line.
 	var avg_profit: float = _avg(_profit_history)
+	if avg_profit <= 0.0:
+		return base
+	# Serviceable debt service = the genuinely-available rolling profit, plus a SMALL
+	# revenue buffer capped at the base so it can never dominate the profit term.
 	var avg_revenue: float = _avg(_revenue_history)
-	var serviceable: float = maxf(0.0, avg_profit) + EconomyConfig.LOAN_REVENUE_BUFFER * maxf(0.0, avg_revenue)
+	var revenue_buffer: float = minf(base, EconomyConfig.LOAN_REVENUE_BUFFER * maxf(0.0, avg_revenue))
+	var serviceable: float = avg_profit + revenue_buffer
 	var payment_rate: float = (1.0 + EconomyConfig.LOAN_INTEREST_RATE) / float(EconomyConfig.LOAN_TERM_TURNS)
 	var scaled: float = serviceable / payment_rate
 	return maxf(base, scaled)
