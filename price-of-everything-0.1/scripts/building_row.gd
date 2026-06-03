@@ -259,8 +259,8 @@ func _build_material_grid(materials: Array) -> void:
 	# filled column-major so an odd last column centres vertically.
 	var rows: int = 1 if count <= 2 else 2
 	var cols: int = ceili(float(maxi(count, 1)) / float(rows))
-	var container_h: float = 100.0
-	var icon_size: float = 50.0
+	var container_h: float = 130.0
+	var icon_size: float = 65.0
 
 	# Off-white panel: expands to the card's right edge, holds the goods grid and
 	# the money cost (navy, Bebas).
@@ -312,7 +312,7 @@ func _make_material_icon(material: Dictionary, slot_size: float) -> Control:
 	var slot := Control.new()
 	slot.custom_minimum_size = Vector2(slot_size, slot_size)
 	var good: Dictionary = Catalog.get_good_by_internal_name(material.get("name", ""))
-	var tex: Texture2D = GoodIcons.texture_for(good.get("id", ""), material.get("name", ""))
+	var tex: Texture2D = GoodIcons.texture_for(good.get("id", ""), material.get("name", ""), true)
 	if tex != null:
 		var icon := TextureRect.new()
 		icon.set_anchors_preset(Control.PRESET_FULL_RECT)

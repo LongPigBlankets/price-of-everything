@@ -28,16 +28,16 @@ const STATUS_DOT_SIZE := Vector2(8, 8)
 const STATUS_RAIL_WIDTH := 30.0
 const NORMAL_BUILDING_PANEL_LIMIT := 3
 const EXTENDED_BUILDING_PANEL_LIMIT := 4
-const FLOW_COMPACT_HEIGHT := 108.0
-const FLOW_LARGE_HEIGHT := 108.0
-const FLOW_SINGLE_CELL_SIZE := Vector2(92, 92)
-const FLOW_GRID_CELL_SIZE := Vector2(52, 52)
-const GOODS_ICON_DIR := "res://assets/icons/goods/small"
+const FLOW_COMPACT_HEIGHT := 130.0
+const FLOW_LARGE_HEIGHT := 130.0
+const FLOW_SINGLE_CELL_SIZE := Vector2(110, 110)
+const FLOW_GRID_CELL_SIZE := Vector2(62, 62)
+const GoodIcons := preload("res://scripts/good_icons.gd")
 const RECIPE_ARROW_PATH := "res://assets/icons/ui_icons/recipe_arrow.png"
 const RECIPE_POWER_ICON_PATH := "res://assets/icons/ui_icons/recipe_power_icon.png"
 const UPGRADE_ICON_PATH := "res://assets/icons/ui_icons/upgrade_icon_off_white.png"
-const FLOW_ARROW_COMPACT_SIZE := Vector2(80, 48)
-const FLOW_ARROW_LARGE_SIZE := Vector2(80, 48)
+const FLOW_ARROW_COMPACT_SIZE := Vector2(96, 58)
+const FLOW_ARROW_LARGE_SIZE := Vector2(96, 58)
 const FLOW_BADGE_DIAMETER := 24
 const FLOW_BADGE_TEXT_SIZE := 14
 const STATUS_GREEN := Color("#5BD180")   # DS PALETTE OK
@@ -1070,23 +1070,28 @@ func _populate_flow_grid(grid: GridContainer, goods: Array) -> void:
 	var count: int = max(goods.size(), 1)
 	grid.columns = 2 if count > 2 else 1
 	var cell_size := _flow_cell_size(goods.size())
+	# A single input/output is shown large (one 92px cell) so it uses the medium
+	# master; a 2x2 grid crams several into 52px cells, so those use the small
+	# variant to keep VRAM down.
+	var prefer_small := goods.size() > 1
 
 	if goods.is_empty():
-		grid.add_child(_make_flow_cell({}, cell_size))
+		grid.add_child(_make_flow_cell({}, cell_size, prefer_small))
 		return
 
 	for good_item in goods:
-		grid.add_child(_make_flow_cell(good_item, cell_size))
+		grid.add_child(_make_flow_cell(good_item, cell_size, prefer_small))
 
 func _flow_cell_size(good_count: int) -> Vector2:
 	if good_count <= 1:
 		return FLOW_SINGLE_CELL_SIZE
 	return FLOW_GRID_CELL_SIZE
 
-func _make_flow_cell(good_item: Dictionary, cell_size: Vector2) -> Panel:
+func _make_flow_cell(good_item: Dictionary, cell_size: Vector2, prefer_small: bool) -> Panel:
 	var cell := Panel.new()
 	cell.custom_minimum_size = cell_size
-	var texture: Texture2D = _load_good_texture(good_item)
+	var texture: Texture2D = GoodIcons.texture_for(
+		good_item.get("good_id", ""), good_item.get("internal_name", ""), prefer_small)
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(1.0, 1.0, 1.0, 0.0) if texture != null else FLOW_SQUARE_COLOR
@@ -1238,27 +1243,6 @@ func _badge_quantity(good_item: Dictionary) -> int:
 	if good_item.has("output_qty"):
 		return roundi(float(good_item.get("output_qty", 0)))
 	return 0
-
-func _load_good_texture(good_item: Dictionary) -> Texture2D:
-	var good_id: String = good_item.get("good_id", "")
-	var internal_name: String = good_item.get("internal_name", "")
-	if good_id == "" or internal_name == "":
-		return null
-
-	var paths: Array = [
-		"%s/%s_%s.svg" % [GOODS_ICON_DIR, good_id, internal_name],
-		"%s/%s_%s.SVG" % [GOODS_ICON_DIR, good_id, internal_name],
-		"%s/%s_%s.PNG" % [GOODS_ICON_DIR, good_id, internal_name],
-		"%s/%s_%s.png" % [GOODS_ICON_DIR, good_id, internal_name],
-		"%s/%s.svg" % [GOODS_ICON_DIR, good_id],
-		"%s/%s.SVG" % [GOODS_ICON_DIR, good_id],
-		"%s/%s.PNG" % [GOODS_ICON_DIR, good_id],
-		"%s/%s.png" % [GOODS_ICON_DIR, good_id],
-	]
-	for path in paths:
-		if ResourceLoader.exists(path):
-			return load(path) as Texture2D
-	return null
 
 func _flow_output_items(recipe: Dictionary) -> Array:
 	if recipe.has("outputs"):

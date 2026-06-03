@@ -76,9 +76,10 @@ func _on_show_construct_for_good(_good_id: String) -> void:
 	hide()  # close the market panel; the construct panel opens itself filtered
 
 func _centre_and_resize() -> void:
-	# Double-width, centred on screen.
+	# Wide enough to show every column without sideways scrolling, centred on
+	# screen (capped to the viewport on narrow displays).
 	var vp := get_viewport_rect().size
-	var w := 800.0
+	var w := minf(1120.0, vp.x - 60.0)
 	var h := minf(640.0, vp.y - 80.0)
 	offset_left = maxf(0.0, (vp.x - w) / 2.0)
 	offset_top = maxf(40.0, (vp.y - h) / 2.0)

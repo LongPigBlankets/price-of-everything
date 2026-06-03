@@ -4,7 +4,7 @@ extends VBoxContainer
 
 const GoodIcons := preload("res://scripts/good_icons.gd")
 
-const ICON_SIZE := 60
+const ICON_SIZE := 78
 const NAME_W := 160.0
 const COL_PRICE := 80.0
 const COL_EST := 90.0

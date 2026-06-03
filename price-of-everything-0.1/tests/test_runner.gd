@@ -459,7 +459,7 @@ func _test_main_scene_instantiates() -> void:
 
 # Logic: the data CSVs load into the Catalog as expected.
 func _test_catalog_loaded() -> void:
-	_check(Catalog.all_goods().size() == 20, "Catalog has 20 goods")
+	_check(Catalog.all_goods().size() == 31, "Catalog has 31 goods")
 	var _all_classed := true
 	for g in Catalog.all_goods():
 		if str(g.get("transport_class", "")) == "":
