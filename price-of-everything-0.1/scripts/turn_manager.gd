@@ -72,12 +72,24 @@ func _run_resolution() -> void:
 	is_resolving = true
 	turn_resolution_started.emit()
 
+	# Profiler: which turn this resolution belongs to (current_turn ticks up below).
+	var profiled_turn: int = current_turn
+
 	for phase in _RESOLUTION_PHASES:
 		current_phase = phase
+		# Time only the synchronous work of the phase: the listener bodies run
+		# inside phase_started.emit() (no awaits). The create_timer pause that
+		# follows is the artificial inter-phase delay we want to measure AGAINST,
+		# so it is deliberately excluded from the bracket.
+		TurnProfiler.phase_begin(phase)
 		phase_started.emit(phase)
+		TurnProfiler.phase_end(phase)
 		await get_tree().process_frame
 		phase_completed.emit(phase)
 		await get_tree().create_timer(phase_pause_duration).timeout
+
+	# Flush this turn's profile (per-phase + PROCESS sub-step durations + scale).
+	TurnProfiler.finalize_turn(profiled_turn)
 
 	current_turn += 1
 	if current_turn > MAX_TURNS:

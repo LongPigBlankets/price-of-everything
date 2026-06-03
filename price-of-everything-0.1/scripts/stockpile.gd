@@ -7,6 +7,11 @@ const LEGACY_TILE_KEY := "__legacy_global__"
 
 var _by_tile: Dictionary = {}  # tile_key -> good_id -> int
 
+# --- Silent-leak metric: goods that couldn't be stored this turn because the tile
+# was at capacity. RunMetrics reads + resets this once per turn. Purely additive;
+# nothing in the game loop depends on it, so it can never change stockpile behaviour.
+var _capacity_lost_this_turn: int = 0
+
 signal stockpile_changed()
 
 # --- Public API ---
@@ -70,6 +75,9 @@ func add(coord, good_id: String, qty: int) -> int:
 		return 0
 	var free_capacity := get_free_capacity(coord)
 	var added: int = mini(qty, free_capacity)
+	if added < qty:
+		# Whatever couldn't fit is lost to the capacity cap — record it for metrics.
+		_capacity_lost_this_turn += (qty - added)
 	if added <= 0:
 		return 0
 	var tile_stockpile := _stockpile_for_tile(coord, true)
@@ -136,6 +144,14 @@ func get_all_totals() -> Dictionary:
 		for good_id in tile_stockpile.keys():
 			totals[good_id] = int(totals.get(good_id, 0)) + int(tile_stockpile[good_id])
 	return totals
+
+# --- Silent-leak metric API (read + reset by RunMetrics each turn) ---
+
+func get_capacity_lost_this_turn() -> int:
+	return _capacity_lost_this_turn
+
+func reset_capacity_lost_this_turn() -> void:
+	_capacity_lost_this_turn = 0
 
 func _stockpile_for_tile(coord, create_if_missing: bool) -> Dictionary:
 	var tile_key := _tile_key(coord)

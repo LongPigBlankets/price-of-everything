@@ -43,8 +43,10 @@ func _process_production() -> void:
 	_building_turn_reports.clear()
 	_inbound_delivery_this_turn.clear()
 	_output_buffer.clear()
+	TurnProfiler.section_begin("power_reset")
 	Power.reset_for_turn()
-	
+	TurnProfiler.section_end("power_reset")
+
 	var summary := {
 	"produced": {},
 	"consumed": {},
@@ -79,12 +81,15 @@ func _process_production() -> void:
 	"grid_sold": 0,
 }
 
+	TurnProfiler.section_begin("transport_arrivals")
 	_process_transport_arrivals(summary)
-	
+	TurnProfiler.section_end("transport_arrivals")
+
 	var all_buildings: Array = MatchState.buildings.values()
 	var has_run: Dictionary = {}
-	
+
 	# === CASCADING PRODUCTION PHASE ===
+	TurnProfiler.section_begin("production_passes")
 	var pass_count := 0
 	while pass_count < MAX_PRODUCTION_PASSES:
 		var progress_made := false
@@ -139,8 +144,11 @@ func _process_production() -> void:
 	
 	if pass_count >= MAX_PRODUCTION_PASSES:
 		push_warning("[Production] Hit MAX_PRODUCTION_PASSES (%d). Possible cycle in recipes." % MAX_PRODUCTION_PASSES)
-	
+	TurnProfiler.section_end("production_passes")
+	TurnProfiler.note_scale("production_passes", pass_count)
+
 	# === STARVATION REPORTING ===
+	TurnProfiler.section_begin("starvation_report")
 	for building in all_buildings:
 		if not has_run.get(building.instance_id, false):
 			var missing: Array = missing_by_building.get(building.instance_id, [])
@@ -163,8 +171,10 @@ func _process_production() -> void:
 			print("[Production] Building %s STARVED — missing: %s" % [
 				building.instance_id, missing_msg
 			])
-	
+	TurnProfiler.section_end("starvation_report")
+
 	# === GRID SETTLEMENT ===
+	TurnProfiler.section_begin("grid_settlement")
 	var grid: Dictionary = Power.settle_grid_transactions()
 	summary.power_supply = grid.supply
 	summary.power_demand = grid.demand
@@ -188,17 +198,26 @@ func _process_production() -> void:
 		MatchState.add_money(grid.grid_sell_revenue)
 		summary.power_sales_revenue = grid.grid_sell_revenue
 		summary.money_in += grid.grid_sell_revenue
+	TurnProfiler.section_end("grid_settlement")
+
 	# Merge this turn's same-tile outputs into stockpiles now — after all production
 	# (so they can't be consumed this turn) but before selling (so they're sellable).
+	TurnProfiler.section_begin("flush_outputs")
 	_flush_output_buffer()
+	TurnProfiler.section_end("flush_outputs")
 
 	# Recurring + scheduled (split) tile-to-tile moves fire here, on the merged stock.
+	TurnProfiler.section_begin("recurring_moves")
 	MatchState.run_recurring_and_scheduled_moves()
+	TurnProfiler.section_end("recurring_moves")
 
 	# Top up market-sourced building inputs (bought from the nearest port, arrive in N turns).
+	TurnProfiler.section_begin("buy_market_inputs")
 	_buy_market_inputs(all_buildings, summary)
+	TurnProfiler.section_end("buy_market_inputs")
 
 	# === SELL PHASE (when production defaults to market) ===
+	TurnProfiler.section_begin("sell_phase")
 	if MatchState.sell_mode != MatchState.SellMode.STOCKPILE_ALL:
 		var totals: Dictionary = Stockpile.get_tile_totals(null)
 		_sell_stockpile_totals(null, totals, summary, false)
@@ -226,10 +245,12 @@ func _process_production() -> void:
 				surplus[good_id] = surplus_qty
 		if not surplus.is_empty():
 			_sell_stockpile_totals(str(tile_id), surplus, summary, true)
+	TurnProfiler.section_end("sell_phase")
 
 	# === COSTS PHASE ===
 	# Only the player pays maintenance/labour on the buildings they own — NPC-owned
 	# infrastructure (e.g. the shipping corporation's ports) is not the player's expense.
+	TurnProfiler.section_begin("maintenance_labour")
 	for building in all_buildings:
 		if not MatchState.is_player_owned(building):
 			continue
@@ -244,6 +265,8 @@ func _process_production() -> void:
 		_accumulate_by_type(summary.maintenance_by_type, btype, maint)
 		_accumulate_by_type(summary.labour_by_type, btype, labour)
 		# === LOAN INTEREST PAYMENTS ==+var loan_payment: float = LoanState.process_payments()
+	TurnProfiler.section_end("maintenance_labour")
+	TurnProfiler.section_begin("loan_payments")
 	var loan_payment: float = LoanState.process_payments()
 	if loan_payment > 0:
 		summary.interest_paid = loan_payment
@@ -251,6 +274,8 @@ func _process_production() -> void:
 		# === TAX & DIVIDEND PHASE ===
 # Compute pre-tax profit: revenue - operating costs - interest.
 # Only deduct tax/dividends if profit is positive.
+	TurnProfiler.section_end("loan_payments")
+	TurnProfiler.section_begin("tax_dividends")
 	var revenue: float = summary.goods_sales_revenue + summary.power_sales_revenue
 	var operating_costs: float = (
 		summary.maintenance_paid
@@ -273,12 +298,17 @@ func _process_production() -> void:
 			MatchState.add_money(-dividends)
 			summary.dividends_paid = dividends
 			summary.money_out += dividends
-	
-	CostSolver.solve(_building_turn_reports)
+	TurnProfiler.section_end("tax_dividends")
 
+	TurnProfiler.section_begin("cost_solve")
+	CostSolver.solve(_building_turn_reports)
+	TurnProfiler.section_end("cost_solve")
+
+	TurnProfiler.section_begin("emit_summary")
 	last_turn_summary = summary
 	turn_processed.emit(summary)
-	
+	TurnProfiler.section_end("emit_summary")
+
 	print("[Production] Stockpile after turn: ", Stockpile.get_all_totals())
 	print("[Production] Power: supply=%d demand=%d net=%d (bought=%d sold=%d)" % [
 		summary.power_supply, summary.power_demand,
