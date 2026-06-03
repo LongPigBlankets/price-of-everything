@@ -13,7 +13,8 @@ const TITLE_PLATE: Texture2D = preload("res://assets/ui/title_plate.png")
 const PANEL_INSET := 24.0   # frame inset from the screen edges
 const SIDE_PAD := 30        # left/right padding inside the frame
 const EDGE_PAD := 44        # New Game from the top of the buttons / Quit from the bottom
-const TITLE_AREA := 206     # top strip the title plate occupies (buttons start below it)
+const TITLE_AREA := 218     # top strip the title plate occupies (buttons start below it)
+const TITLE_FONT := 56      # block-caps title size
 
 # 9-slice borders of the plate (source pixels, sized to keep the corner bolts in
 # the fixed corner regions) and where the plate sits in the frame.
@@ -22,7 +23,7 @@ const PLATE_R := 44
 const PLATE_T := 42
 const PLATE_B := 42
 const PLATE_TOP := -16.0
-const PLATE_BOTTOM := 194.0
+const PLATE_BOTTOM := 206.0
 
 
 func _ready() -> void:
@@ -91,26 +92,40 @@ func _build_menu() -> void:
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(plate)
 
-	var title := Label.new()
-	title.text = "PRICE OF EVERYTHING"
-	title.theme_type_variation = &"Title"   # Bebas Neue - block capitals
-	title.add_theme_font_size_override("font_size", 50)
+	# Title in the plate's cream middle: a navy block-caps label over a soft,
+	# fading black shadow - stacked outlines that grow and fade out, rather than
+	# one hard-edged shadow.
+	var title_box := Control.new()
+	title_box.anchor_right = 1.0
+	title_box.anchor_bottom = 1.0
+	title_box.offset_left = PLATE_L
+	title_box.offset_top = PLATE_T
+	title_box.offset_right = -PLATE_R
+	title_box.offset_bottom = -PLATE_B
+	title_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.add_child(title_box)
+	for layer in [Vector2(4, 0.26), Vector2(8, 0.15), Vector2(13, 0.07)]:
+		var s := _title_label()
+		s.add_theme_color_override("font_color", Color(0, 0, 0, layer.y))
+		s.add_theme_color_override("font_outline_color", Color(0, 0, 0, layer.y))
+		s.add_theme_constant_override("outline_size", int(layer.x))
+		title_box.add_child(s)
+	var title := _title_label()
 	title.add_theme_color_override("font_color", NAVY)
-	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.35))
-	title.add_theme_constant_override("shadow_offset_x", 2)
-	title.add_theme_constant_override("shadow_offset_y", 2)
-	title.add_theme_constant_override("shadow_outline_size", 2)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD
-	title.anchor_right = 1.0
-	title.anchor_bottom = 1.0
-	title.offset_left = PLATE_L
-	title.offset_top = PLATE_T
-	title.offset_right = -PLATE_R
-	title.offset_bottom = -PLATE_B
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	plate.add_child(title)
+	title_box.add_child(title)
+
+
+func _title_label() -> Label:
+	var l := Label.new()
+	l.text = "PRICE OF EVERYTHING"
+	l.theme_type_variation = &"Title"   # Bebas Neue - block capitals
+	l.add_theme_font_size_override("font_size", TITLE_FONT)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD
+	l.set_anchors_preset(Control.PRESET_FULL_RECT)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
 
 
 func _make_button(text: String, primary: bool) -> Button:
