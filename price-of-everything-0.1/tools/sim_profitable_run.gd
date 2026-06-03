@@ -1,78 +1,71 @@
 extends SceneTree
-# Headless PROFITABLE MOTOR supply-chain run to turn 200, with CASH-GATED expansion.
+# Headless MOTOR supply-chain run to turn 200 on the REAL tiles around Stoneshore,
+# with land purchase, density build-cost penalties, and genuine inter-tile transport.
 #
 #   <godot> --headless --path . --script res://tools/sim_profitable_run.gd
 #
-# Strategy: start the player with 300 cash and build ONE balanced motor chain on a
-# tile (deducting its real build cost). The chain sells ONLY its motors (g_008) to
-# market; every intermediate stays on-tile to feed the next stage. Each turn AFTER
-# resolution, if cash exceeds the build cost of one full chain, build the next
-# identical chain on a fresh tile and deduct the cost. "Stabilise then expand"
-# therefore emerges on its own: the first chain must ramp and accumulate cash before
-# the gate (cash > CHAIN_COST) opens. We record the turn the 2nd chain is built.
+# SPATIAL MODEL (this is the point of this version):
+# The deposits near the Stoneshore Docks port (tile_5_10) are FIXED tiles:
+#   COAL   tile_6_8   (coal,       2 hexes from port, roads)
+#   IRON   tile_7_10  (iron_ore,   3 hexes from port, roads)
+#   COPPER tile_8_12  (copper_ore, 4 hexes from port, no roads -> overland)
+# Final assembly sits on a corridor tile next to the port:
+#   MOTOR  tile_5_8   (1 hex from port, roads)
+# Every chain mines the SAME deposit tiles, so as we expand the deposit tiles fill
+# up: land must be bought (10 land/patch at GBP10) and, past 100 land used, every new
+# building costs 1.5x (density). Per the brief we DO NOT cap a tile at 200 — buildings
+# keep stacking and keep paying land + density.
 #
-# One chain lives on ONE tile. Balanced so nothing starves at steady state (per-turn,
-# full-output throughput in []):
-#   copper branch
-#     3x copper mine     b_001/r_006  -> copper_ore [60]
-#     2x copper furnace  b_002/r_007  copper_ore 60 -> copper_ingots [60]
-#     2x wire factory    b_007/r_008  copper_ingots 40 -> copper_wiring [40]
-#   steel branch
-#     2x iron mine       b_001/r_002  -> iron_ore [40]
-#     1x coal mine       b_001/r_001  -> coal [20]
-#     1x pig-iron furnace b_002/r_005 iron_ore 30 + coal 10 -> iron_ingots [30]
-#     1x steel furnace   b_002/r_003  iron_ingots 20 + coal 10 -> steel [30]
-#   motor
-#     2x motor factory   b_007/r_009  steel 30 + copper_wiring 24 -> motor [30]  (-> MARKET)
+# Each branch refines ON its deposit tile (so bulky ore never ships); only the refined
+# product travels toward the port, which is where the real transport bill comes from:
+#   copper:  3 mine + 2 furnace + 2 wire   on COPPER ; copper_wiring -> MOTOR
+#   iron:    2 mine + 1 pig-iron + 1 steel on IRON   ; steel        -> MOTOR
+#   coal:    1 mine                        on COAL   ; coal         -> IRON
+#   motor:   2 motor factory               on MOTOR  ; motor        -> MARKET (port)
+# Per-chain inter-tile flow (qty/turn): coal 20 (COAL->IRON), steel 30 (IRON->MOTOR),
+# copper_wiring 40 (COPPER->MOTOR), motor 30 (MOTOR->port). Transport = qty x turns x 0.2,
+# turns = ceil(hex_distance / 2). Refined intermediates that the next stage can't absorb
+# (copper_ingots, spare iron, surplus wiring) are drained by a standing sell-surplus order
+# on each tile so the 500-unit tile cap doesn't clog.
 #
-# Limiter is the motor stage at a clean 30 steel + 24 copper_wiring per turn, so the two
-# motor factories run at full output (30 motors/turn) once ramped. The steel->motor and
-# coal handoffs are exactly balanced; the copper branch carries a small STRUCTURAL
-# surplus that the motor recipe can't absorb (copper_ingots +20/turn, copper_wiring
-# +16/turn) — the motor quantities simply don't tile evenly onto the furnaces/wire
-# factories, and no integer building count removes it.
+# Recipe quantities (data/recipes_all.csv): r_006 copper_ore 20; r_007 copper_ore 30 ->
+# copper_ingots 30; r_008 copper_ingots 20 -> copper_wiring 20; r_002 iron_ore 20;
+# r_001 coal 20; r_005 iron_ore 30 + coal 10 -> iron_ingots 30; r_003 iron_ingots 20 +
+# coal 10 -> steel 30; r_009 steel 15 + copper_wiring 12 -> motor 15.
 #
-# Why this matters: a tile's stockpile is hard-capped at 500 units
-# (Stockpile.TILE_CAPACITY). Left alone, that copper surplus saturates the cap in ~15
-# turns, then crowds STEEL and COPPER_WIRING off the tile and the motor factories
-# starve (motors stop, revenue -> 0). So per the brief's "rebalance if it runs a big
-# surplus", each chain tile runs a standing AUTO-SELL-SURPLUS order
-# (MatchState.enable_sell_surplus). The engine sells only what is left AFTER every
-# on-tile consumer's full per-turn demand is reserved (Production.compute_committed_for_tile),
-# so it can NEVER starve the chain — it just drains the genuine, unconsumable copper
-# surplus and keeps the tile lean. Motors are the primary product (routed to market);
-# the small surplus-copper sales are incidental.
-#
-# Build cost is charged manually (add_building is free under --script): CHAIN_COST is
-# the sum of Catalog.get_building(id).base_price over the chain's buildings. Operating
-# cost is maintenance + labour + grid power + transport; revenue is motor + surplus
-# sales. We report the actual cash/equity trajectory from RunMetrics, not an assumption.
+# add_building is free under --script, so _place() charges build + density + land
+# manually; that (plus operating cost, transport, loan interest) is what the reported
+# cash/equity trajectory reflects.
 
 const TURNS := 200
 const G_MOTOR := "g_008"
 const STARTING_CASH := 300.0
-# Cap on simultaneous chains. The motor chain is so profitable that, left unbounded,
-# cash clears CHAIN_COST several times over every turn and the run builds dozens of
-# chains per turn — thousands of buildings — which makes the per-turn PROCESS pass (no
-# route cache here) explode and turn 200 unreachable. We therefore build at most ONE
-# new chain per turn (the brief's "build the next chain") and stop at MAX_CHAINS, which
-# keeps the 200-turn run tractable while still exercising cash-gated expansion. Set to a
-# large number to let it run away.
 const MAX_CHAINS := 10
 
-# One chain's buildings: [building_id, recipe_id, count, is_motor_factory].
+# Real tiles near the Stoneshore Docks port (tile_5_10).
+const COAL_TILE := "tile_6_8"
+const IRON_TILE := "tile_7_10"
+const COPPER_TILE := "tile_8_12"
+const MOTOR_TILE := "tile_5_8"
+
+# Land / density rules (mirrors MatchState + world_map._space_check_for_build, minus the
+# 200 hard cap, which the brief says to ignore).
+const FREE_LAND := 100.0       # MatchState.DEFAULT_TILE_LAND_OWNED
+const LAND_PATCH := 10.0       # MatchState.LAND_PATCH_SIZE
+const LAND_PATCH_COST := 10.0  # MatchState.LAND_PATCH_COST
+const DENSITY_SOFT_CAP := 100.0  # world_map.DENSITY_SOFT_CAPACITY -> 1.5x build cost above this
+
+# One chain's buildings: [building_id, recipe_id, count, tile_role, output_dest].
+# output_dest: "" = stays on the tile (STOCKPILE_ALL default), a role = ship there, "MARKET" = sell at port.
 const CHAIN_SPEC := [
-	# copper branch
-	["b_001", "r_006", 3, false],   # 3x copper mine
-	["b_002", "r_007", 2, false],   # 2x copper furnace
-	["b_007", "r_008", 2, false],   # 2x wire factory
-	# steel branch
-	["b_001", "r_002", 2, false],   # 2x iron mine
-	["b_001", "r_001", 1, false],   # 1x coal mine
-	["b_002", "r_005", 1, false],   # 1x pig-iron furnace
-	["b_002", "r_003", 1, false],   # 1x steel furnace
-	# motor
-	["b_007", "r_009", 2, true],    # 2x motor factory -> MARKET
+	["b_001", "r_006", 3, "COPPER", ""],        # copper mine   -> copper_ore (local)
+	["b_002", "r_007", 2, "COPPER", ""],        # copper furnace -> copper_ingots (local)
+	["b_007", "r_008", 2, "COPPER", "MOTOR"],   # wire factory  -> copper_wiring -> MOTOR
+	["b_001", "r_002", 2, "IRON", ""],          # iron mine     -> iron_ore (local)
+	["b_001", "r_001", 1, "COAL", "IRON"],      # coal mine     -> coal -> IRON
+	["b_002", "r_005", 1, "IRON", ""],          # pig-iron furnace -> iron_ingots (local)
+	["b_002", "r_003", 1, "IRON", "MOTOR"],     # steel furnace -> steel -> MOTOR
+	["b_007", "r_009", 2, "MOTOR", "MARKET"],   # motor factory -> motor -> port market
 ]
 
 var MatchState: Node
@@ -86,18 +79,37 @@ var LoanState: Node
 
 var _stub
 var _chains := 0
-var _chain_cost := 0.0
+var _chain_cost := 0.0            # base build cost (no density/land), for reference
+var _last_chain_cost := 0.0       # actual cost of the most recent chain (build + density + land)
 var _turns_to_second_chain := -1
 var _turn_out_of_red := -1
 var _total_borrowed := 0.0
+var _total_build_spent := 0.0     # build cost incl. density multiplier
+var _total_land_spent := 0.0      # land patches purchased
+var _land_owned: Dictionary = {}  # tile_id -> land units owned (starts at FREE_LAND)
+
+
+func _role_tile(role: String) -> String:
+	match role:
+		"COAL": return COAL_TILE
+		"IRON": return IRON_TILE
+		"COPPER": return COPPER_TILE
+		"MOTOR": return MOTOR_TILE
+	return MOTOR_TILE
+
+
+func _recipe_output_good(recipe_id: String) -> String:
+	var r: Dictionary = Catalog.get_recipe(recipe_id)
+	var outs: Array = r.get("outputs", [])
+	if outs.size() > 0:
+		return str(outs[0].get("good_id", ""))
+	return ""
 
 
 func _finance() -> void:
-	# Draw on the dynamic loan facility to cover any cash deficit. Under the new 10x
-	# build costs the seed chain (~£1.7k) and its ramp run the company deep into the
-	# red; borrowing capacity scales with rolling profit, so the facility digs the
-	# company out as motors start selling. Expansion stays CASH-funded (loans only
-	# bootstrap) per the original "expand once cash exceeds a chain's cost" rule.
+	# Draw on the dynamic (profit-gated) loan facility to cover any cash deficit. The
+	# seed chain and its ramp run the company into the red; capacity scales with rolling
+	# profit, so the facility digs it out once motors sell. Expansion stays CASH-funded.
 	if MatchState.money >= 0.0:
 		return
 	var cap: float = LoanState.available_capacity()
@@ -135,13 +147,66 @@ func _compute_chain_cost() -> float:
 	return total
 
 
+func _place(building_id: String, recipe_id: String, tile_id: String) -> String:
+	# Place one building, charging land purchase (no 200 cap) + density build cost.
+	var size: float = float(Catalog.get_building(building_id).get("tile_size_used", 1.0))
+	var used: float = MatchState.get_tile_space_used(tile_id)
+	var projected: float = used + size
+	# Buy land patches to cover the projected footprint.
+	var owned: float = float(_land_owned.get(tile_id, FREE_LAND))
+	if projected > owned:
+		var patches: int = int(ceil((projected - owned) / LAND_PATCH))
+		var land_cost: float = float(patches) * LAND_PATCH_COST
+		MatchState.add_money(-land_cost)
+		_land_owned[tile_id] = owned + float(patches) * LAND_PATCH
+		_total_land_spent += land_cost
+	# Density build-cost multiplier above the soft cap (1.5x), as in the real game.
+	var mult: float = 1.5 if projected > DENSITY_SOFT_CAP else 1.0
+	var cost: float = float(Catalog.get_building(building_id).get("base_price", 0.0)) * mult
+	MatchState.add_money(-cost)
+	_total_build_spent += cost
+	return MatchState.add_building(building_id, recipe_id, tile_id)
+
+
+func _build_chain() -> void:
+	var spent_before: float = _total_build_spent + _total_land_spent
+	var tiles_used: Dictionary = {}
+	for spec in CHAIN_SPEC:
+		var bid: String = str(spec[0])
+		var rid: String = str(spec[1])
+		var cnt: int = int(spec[2])
+		var tile: String = _role_tile(str(spec[3]))
+		var dest: String = str(spec[4])
+		_stub.set_cabled_tile(tile)
+		tiles_used[tile] = true
+		var out_good: String = _recipe_output_good(rid)
+		for i in cnt:
+			var inst: String = _place(bid, rid, tile)
+			if dest == "MARKET":
+				MatchState.route_output_to_market(inst, out_good)        # sell at the nearest port
+			elif dest != "":
+				MatchState.set_output_stockpile_destination(inst, _role_tile(dest), out_good)  # ship to next tile
+			# Force every input from the local tile stockpile (the chain makes/ships its
+			# own intermediates; never top them up from the market).
+			var recipe: Dictionary = Catalog.get_recipe(rid)
+			for input in recipe.get("inputs", []):
+				MatchState.set_input_tile_only(inst, str(input.get("good_id", "")), true)
+	# Drain each touched tile's structural surplus (copper ingots, spare iron, surplus
+	# wiring) so the 500-unit tile cap never clogs and starves a consumer.
+	for tile in tiles_used:
+		MatchState.enable_sell_surplus(tile)
+	if MatchState.has_signal("money_changed"):
+		MatchState.money_changed.emit(MatchState.money)
+	_chains += 1
+	_last_chain_cost = (_total_build_spent + _total_land_spent) - spent_before
+
+
 func _initialize() -> void:
-	print("\n==== sim_profitable_run (MOTOR chain, 200 turns, cash-gated expansion) ====")
+	print("\n==== sim_profitable_run (MOTOR chain on Stoneshore tiles, 200 turns) ====")
 	_resolve()
 	_stub = _HexMapStub.new()
 	get_root().add_child(_stub)
 	TurnManager.fast_mode = true   # compute-constrained: no human pacing delay
-	# Let the autoloads settle before we touch money / build.
 	await process_frame
 	await process_frame
 	await process_frame
@@ -149,13 +214,10 @@ func _initialize() -> void:
 		RunMetrics.reset()
 
 	_chain_cost = _compute_chain_cost()
-
-	print("[sim] CHAIN_COST = %.2f (sum of build cost over %d buildings/chain)" % [
+	print("[sim] base CHAIN_COST = %.2f over %d buildings/chain (before density + land)" % [
 		_chain_cost, _chain_building_count()])
 
-	# Start with 300 cash and build the seed chain. Under the new 10x build costs the
-	# seed dwarfs 300, dropping cash into the red; _finance() then draws on the dynamic
-	# loan facility (base capacity until profit history exists) to start covering it.
+	# Start with 300 cash and build the seed chain across the real deposit tiles.
 	MatchState.money = STARTING_CASH
 	if MatchState.has_signal("money_changed"):
 		MatchState.money_changed.emit(MatchState.money)
@@ -163,27 +225,26 @@ func _initialize() -> void:
 	_finance()
 	await process_frame
 	await process_frame
-	print("[sim] start: cash=%.2f debt=%.2f buildings=%d chains=%d (expansion is cash-gated > CHAIN_COST)" % [
-		MatchState.money, LoanState.total_outstanding(), MatchState.buildings.size(), _chains])
+	print("[sim] start: cash=%.2f debt=%.2f buildings=%d | seed cost(build+density+land)=%.2f" % [
+		MatchState.money, LoanState.total_outstanding(), MatchState.buildings.size(), _last_chain_cost])
 
 	for t in range(TURNS):
 		TurnManager.commit_turn()
 		await TurnManager.turn_resolution_completed
 		var turn := t + 1
 
-		_finance()   # keep covering any deficit from the (growing) loan facility
+		_finance()
 		if _turn_out_of_red < 0 and MatchState.money >= 0.0:
 			_turn_out_of_red = turn
 
-		# RULE 3: expand when affordable from CASH (cash strictly greater than one
-		# chain's cost). One new chain per turn, up to MAX_CHAINS — "stabilise then
-		# expand" plays out turn by turn instead of all at once.
-		if MatchState.money > _chain_cost and _chains < MAX_CHAINS:
+		# Expand when cash exceeds what the LAST chain actually cost (which climbs as the
+		# deposit tiles fill with density + land charges). One new chain per turn.
+		if MatchState.money > _last_chain_cost and _chains < MAX_CHAINS:
 			_build_chain()
 			if _chains == 2 and _turns_to_second_chain < 0:
 				_turns_to_second_chain = turn
-				print("[sim] >>> 2nd chain built at turn %d (cash exceeded CHAIN_COST %.0f)" % [
-					turn, _chain_cost])
+				print("[sim] >>> 2nd chain built at turn %d (cash exceeded last-chain cost %.0f)" % [
+					turn, _last_chain_cost])
 
 		if turn % 20 == 0 or turn == 1:
 			var eq := _equity()
@@ -198,47 +259,6 @@ func _initialize() -> void:
 	quit(0)
 
 
-func _chain_tile(idx: int) -> String:
-	# Each chain gets its OWN tile (sharing one would re-trigger the 500-unit cap clog).
-	# Lay them out in a compact band of tiles hugging the nearest port (tile_5_10):
-	# columns 3..7, rows 9 up to 1 — 45 distinct tiles, all a few hops from the port so
-	# the motor-sale + surplus-drain shipping stays cheap (cost = qty x turns x 0.2, and
-	# turns grows with port distance).
-	var cols := [5, 4, 6, 3, 7]
-	var col: int = cols[idx % cols.size()]
-	var row: int = 9 - int(idx / cols.size())   # 9, 8, 7, ... as the band fills
-	if row < 1:
-		row = 1                                  # clamp (we never expect this many chains)
-	return "tile_%d_%d" % [col, row]
-
-
-func _build_chain() -> void:
-	var tile := _chain_tile(_chains)
-	_stub.set_cabled_tile(tile)
-	for spec in CHAIN_SPEC:
-		for i in int(spec[2]):
-			var inst: String = MatchState.add_building(str(spec[0]), str(spec[1]), tile)
-			if bool(spec[3]):
-				MatchState.route_output_to_market(inst, G_MOTOR)   # sell ONLY the motors
-			# Force every input to come from the ON-TILE stockpile only — the chain
-			# produces all its own intermediates, so it must never buy them from the
-			# market (the default "stockpile then buy the shortfall" would bleed cash
-			# topping up inputs we already make).
-			var recipe: Dictionary = Catalog.get_recipe(str(spec[1]))
-			for input in recipe.get("inputs", []):
-				MatchState.set_input_tile_only(inst, str(input.get("good_id", "")), true)
-	# Standing auto-sell-surplus order: drains the unconsumable copper surplus AFTER
-	# every on-tile consumer's full demand is reserved, so it can never starve the
-	# chain. Without it the 500/tile cap clogs and the motor factories starve.
-	MatchState.enable_sell_surplus(tile)
-	# Charge the build cost manually — add_building is free under --script, so this
-	# is what makes the expansion gate real.
-	MatchState.money -= _chain_cost
-	if MatchState.has_signal("money_changed"):
-		MatchState.money_changed.emit(MatchState.money)
-	_chains += 1
-
-
 func _lifetime(good_id: String) -> int:
 	var total := 0
 	for d in Production.produced_by_building.values():
@@ -248,6 +268,7 @@ func _lifetime(good_id: String) -> int:
 
 func _equity() -> float:
 	# cash + stockpile value + building value - debt (mirrors RunMetrics' definition).
+	# Land + density spend is sunk (not an asset), so it shows up only as reduced cash.
 	var cash: float = float(MatchState.money)
 	var stock := 0.0
 	var totals: Dictionary = Stockpile.get_all_totals()
@@ -265,8 +286,16 @@ func _equity() -> float:
 	return cash + stock + bval - debt
 
 
+func _tile_land_summary() -> String:
+	var parts: Array = []
+	for tile in [COPPER_TILE, IRON_TILE, COAL_TILE, MOTOR_TILE]:
+		var land: float = float(_land_owned.get(tile, FREE_LAND))
+		var used: float = MatchState.get_tile_space_used(tile)
+		parts.append("%s used=%d/owned=%d" % [tile, int(used), int(land)])
+	return " | ".join(parts)
+
+
 func _print_report() -> void:
-	# Pull the per-run roll-up + the per-turn CSV to judge steady-state profitability.
 	var final_cash := float(MatchState.money)
 	var final_equity := _equity()
 	var peak_equity := final_equity
@@ -282,11 +311,10 @@ func _print_report() -> void:
 			peak_equity = float(j.get("peak_equity", peak_equity))
 			total_produced = int(j.get("total_produced", 0))
 
-	# Steady-state per-turn net: average post-tax profit over the LAST 20 logged turns
-	# (well after the first chain has ramped), plus the equity slope over that window.
 	var rows: Array = RunMetrics.read_rows() if RunMetrics.has_method("read_rows") else []
 	var ramped_net := 0.0
 	var equity_slope := 0.0
+	var transport_last := 0.0
 	if rows.size() >= 2:
 		var window: int = mini(20, rows.size() - 1)
 		var first: Dictionary = rows[rows.size() - 1 - window]
@@ -297,37 +325,39 @@ func _print_report() -> void:
 		ramped_net = sum_profit / float(window)
 		var de := float(last.get("equity", "0")) - float(first.get("equity", "0"))
 		equity_slope = de / float(window)
+		transport_last = float(last.get("cost_transport", "0"))
 
 	var profitable := ramped_net > 0.0 and equity_slope > 0.0 and final_equity > 0.0
 
-	print("\n================ MOTOR-CHAIN PROFITABILITY REPORT ================")
-	print("CHAIN_COST (build cost / chain)      : %.2f" % _chain_cost)
+	print("\n============ MOTOR-CHAIN (STONESHORE TILES) REPORT ============")
+	print("Base build cost / chain              : %.2f (before density + land)" % _chain_cost)
+	print("Last chain actual cost               : %.2f (build+density+land)" % _last_chain_cost)
+	print("Total spent on construction          : %.2f (incl. density)" % _total_build_spent)
+	print("Total spent on land patches          : %.2f" % _total_land_spent)
 	print("Starting cash                        : %.2f" % STARTING_CASH)
 	print("Total borrowed over run              : %.2f" % _total_borrowed)
 	print("Outstanding debt at end              : %.2f" % LoanState.total_outstanding())
-	print("Loan capacity at end                 : %.2f" % LoanState.capacity_total())
 	print("Turn cash first climbed out of red   : %s" % (
 		str(_turn_out_of_red) if _turn_out_of_red > 0 else "STILL IN RED"))
 	print("turns_to_second_chain                : %s" % (
 		str(_turns_to_second_chain) if _turns_to_second_chain > 0 else "NOT REACHED"))
 	print("Chains built by turn %d              : %d" % [TURNS, _chains])
+	print("Transport cost (last logged turn)    : %.2f / turn" % transport_last)
+	print("Tile occupancy: %s" % _tile_land_summary())
 	print("Total motors produced (lifetime)     : %d" % _lifetime(G_MOTOR))
 	print("Total units produced (all goods)     : %d" % total_produced)
 	print("Per-turn net (avg post-tax, last 20) : %+.2f  (ramped/steady state)" % ramped_net)
 	print("Equity slope (last 20 turns)         : %+.2f / turn" % equity_slope)
 	print("Final cash                           : %.2f" % final_cash)
 	print("Final equity                         : %.2f" % final_equity)
-	print("Peak equity                          : %.2f" % peak_equity)
 	print("Profitable (net>0 & equity growing>0): %s" % ("YES" if profitable else "NO"))
-	print("Equity positive & growing            : %s" % (
-		"YES" if (final_equity > 0.0 and equity_slope > 0.0) else "NO"))
-	print("==================================================================")
+	print("===============================================================")
 	print("[sim] run_metrics.csv -> user://run_metrics.csv ; summary -> %s" % summary_path)
 	print("[sim] turn_profile.csv -> user://turn_profile.csv (%d turns)" % TURNS)
 	print("==== sim_profitable_run: DONE ====\n")
 
 
-# Minimal hex_map stub so Power.is_supplied() sees cables on each chain's tile.
+# Minimal hex_map stub so Power.is_supplied() sees cables on each production tile.
 class _HexMapStub extends Node:
 	var tiles: Dictionary = {}
 	func _enter_tree() -> void:
