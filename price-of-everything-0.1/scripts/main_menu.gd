@@ -13,15 +13,16 @@ const TITLE_PLATE: Texture2D = preload("res://assets/ui/title_plate.png")
 const PANEL_INSET := 24.0   # frame inset from the screen edges
 const SIDE_PAD := 30        # left/right padding inside the frame
 const EDGE_PAD := 44        # New Game from the top of the buttons / Quit from the bottom
-const TITLE_AREA := 270     # top strip the title plate occupies (buttons start below it)
+const TITLE_AREA := 206     # top strip the title plate occupies (buttons start below it)
 
-# 9-slice borders of the plate (source pixels) and where it sits in the frame.
-const PLATE_L := 95
-const PLATE_R := 107
-const PLATE_T := 65
-const PLATE_B := 79
+# 9-slice borders of the plate (source pixels, sized to keep the corner bolts in
+# the fixed corner regions) and where the plate sits in the frame.
+const PLATE_L := 44
+const PLATE_R := 44
+const PLATE_T := 42
+const PLATE_B := 42
 const PLATE_TOP := -16.0
-const PLATE_BOTTOM := 258.0
+const PLATE_BOTTOM := 194.0
 
 
 func _ready() -> void:
@@ -93,7 +94,7 @@ func _build_menu() -> void:
 	var title := Label.new()
 	title.text = "PRICE OF EVERYTHING"
 	title.theme_type_variation = &"Title"   # Bebas Neue - block capitals
-	title.add_theme_font_size_override("font_size", 46)
+	title.add_theme_font_size_override("font_size", 50)
 	title.add_theme_color_override("font_color", NAVY)
 	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.35))
 	title.add_theme_constant_override("shadow_offset_x", 2)
