@@ -10,9 +10,10 @@ const STARTING_MONEY: float = 200.0
 const MAINTENANCE_PER_BUILDING: float = 1.0
 
 # --- Labour rates (cost per worker per turn) ---
-const LABOUR_UNSKILLED_RATE: float = 0.001
-const LABOUR_SKILLED_RATE: float = 0.003
-const LABOUR_HIGH_SKILLED_RATE: float = 0.005
+# Doubled from the original 0.001/0.003/0.005 — a higher starting wage bill.
+const LABOUR_UNSKILLED_RATE: float = 0.002
+const LABOUR_SKILLED_RATE: float = 0.006
+const LABOUR_HIGH_SKILLED_RATE: float = 0.010
 
 # --- Labour wage growth (compounding per turn) ---
 # Wages drift upward every turn: the effective rate at turn t is
@@ -81,7 +82,7 @@ const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
 # lets debt service sit above pure interest without being unserviceable.
 const LOAN_BASE_CAPACITY: float = 50.0     # Floor on borrowing capacity (turn 1, no history)
 const LOAN_TERM_TURNS: int = 40            # How many turns to repay over
-const LOAN_INTEREST_RATE: float = 0.10     # 10% over total term (not per turn)
+const LOAN_INTEREST_RATE: float = 0.15     # 15% over total term (not per turn)
 const LOAN_PROFIT_WINDOW: int = 5          # Rolling window (turns) for the profit/revenue average
 const LOAN_REVENUE_BUFFER: float = 0.10    # Extra serviceable debt = this share of avg revenue
 

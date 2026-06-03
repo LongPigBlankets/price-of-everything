@@ -6,7 +6,7 @@ g_004,iron_ingots,Iron Ingots,,solid_heavy,,,,intermediate,0.001,1.6,TRUE,TRUE,0
 g_005,copper_ingots,Copper Ingots,,solid_heavy,,,,intermediate,0.001,1.6,TRUE,TRUE,0,no,0
 g_006,steel,Steel,,solid_heavy,,,,intermediate,0.001,2.25,TRUE,TRUE,0,no,0
 g_007,copper_wiring,Copper Wiring,,solid_light,,,,intermediate,0.001,3.2,TRUE,TRUE,0,no,0
-g_008,motor,Motor,,solid_heavy,,,,intermediate,0.001,6,TRUE,TRUE,0,no,0
+g_008,motor,Motor,,solid_heavy,,,,intermediate,0.001,6.1,TRUE,TRUE,0,no,0
 g_009,pure_water,Pure Water,,safe_liquid,,,,raw,0.001,0.5,TRUE,TRUE,0,no,0
 g_010,power,Power,,electricity,,,,power,0,1,TRUE,TRUE,0,yes,0
 g_011,oxygen,Oxygen,,hazard_liquid,,,,intermediate,0.001,3,TRUE,TRUE,0,no,0
