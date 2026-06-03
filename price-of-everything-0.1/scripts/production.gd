@@ -49,17 +49,26 @@ func _process_production() -> void:
 	"produced": {},
 	"consumed": {},
 	"sold": {},
+	"purchased": {},
 	"starved": [],
 	# Money breakdown (Pass 8 additions)
 	"goods_sales_revenue": 0.0,
 	"power_sales_revenue": 0.0,
 	"power_purchase_cost": 0.0,
 	"transport_paid": 0.0,
+	"goods_purchased_cost": 0.0,
 	"maintenance_paid": 0.0,
 	"labour_paid": 0.0,
 	"taxes_paid": 0.0,
 	"dividends_paid": 0.0,
 	"interest_paid": 0.0,
+	# Per-building-type cost breakdowns for money-panel tooltips.
+	# Each maps building_id -> {"count": int, "amount": float}.
+	"maintenance_by_type": {},
+	"labour_by_type": {},
+	"goods_purchased_by_type": {},
+	"power_purchase_by_type": {},
+	"power_demand_by_type": {},
 	# Aggregates (preserved for compatibility)
 	"money_in": 0.0,
 	"money_out": 0.0,
@@ -103,6 +112,8 @@ func _process_production() -> void:
 			if energy_req > 0:
 				Power.add_demand(energy_req)
 				summary.consumed["power"] = summary.consumed.get("power", 0) + energy_req
+				if MatchState.is_player_owned(building):
+					_accumulate_by_type(summary.power_demand_by_type, str(building.get("building_id", "")), float(energy_req))
 			
 			# Route output: power goes to Power supply, everything else to Stockpile
 			var output_name: String = recipe.get("output_name", "")
@@ -163,6 +174,15 @@ func _process_production() -> void:
 		MatchState.add_money(-grid.grid_buy_cost)
 		summary.power_purchase_cost = grid.grid_buy_cost
 		summary.money_out += grid.grid_buy_cost
+		# Attribute the grid purchase across consumer building types by demand share.
+		var total_demand := 0.0
+		for k in summary.power_demand_by_type:
+			total_demand += float(summary.power_demand_by_type[k].get("amount", 0.0))
+		if total_demand > 0.0:
+			for k in summary.power_demand_by_type:
+				var d: Dictionary = summary.power_demand_by_type[k]
+				var share: float = float(d.get("amount", 0.0)) / total_demand
+				_accumulate_by_type(summary.power_purchase_by_type, str(k), grid.grid_buy_cost * share, int(d.get("count", 0)))
 
 	if grid.grid_sell_revenue > 0:
 		MatchState.add_money(grid.grid_sell_revenue)
@@ -175,6 +195,9 @@ func _process_production() -> void:
 	# Recurring + scheduled (split) tile-to-tile moves fire here, on the merged stock.
 	MatchState.run_recurring_and_scheduled_moves()
 
+	# Top up market-sourced building inputs (bought from the nearest port, arrive in N turns).
+	_buy_market_inputs(all_buildings, summary)
+
 	# === SELL PHASE (when production defaults to market) ===
 	if MatchState.sell_mode != MatchState.SellMode.STOCKPILE_ALL:
 		var totals: Dictionary = Stockpile.get_tile_totals(null)
@@ -184,19 +207,33 @@ func _process_production() -> void:
 		var tile_totals: Dictionary = Stockpile.get_tile_totals(str(tile_id))
 		_sell_stockpile_totals(str(tile_id), tile_totals, summary, true)
 
-	for tile_id in MatchState.get_sell_surplus_tiles():
+	# Auto-sell standing orders: the master "sell everything" toggle (sell_surplus_tiles)
+	# and per-good overrides (auto_sell_goods). Runs AFTER production consumes inputs and
+	# AFTER outbound moves ship, so anything still on the tile is genuine surplus — this
+	# can never starve a local consumer or a downstream tile fed by recurring moves.
+	for tile_id in MatchState.get_auto_sell_tiles():
 		var committed: Dictionary = compute_committed_for_tile(str(tile_id))
 		var tile_totals: Dictionary = Stockpile.get_tile_totals(str(tile_id))
+		# Per-turn, per-good volume cap from the tile's price-impact tolerance.
+		var unit_cap: int = MatchState.auto_sell_unit_cap(str(tile_id))
 		var surplus: Dictionary = {}
 		for good_id in tile_totals:
+			if not MatchState.should_auto_sell_good(str(tile_id), str(good_id)):
+				continue
 			var surplus_qty: int = max(0, int(tile_totals[good_id]) - int(committed.get(good_id, 0)))
+			surplus_qty = mini(surplus_qty, unit_cap)
 			if surplus_qty > 0:
 				surplus[good_id] = surplus_qty
 		if not surplus.is_empty():
 			_sell_stockpile_totals(str(tile_id), surplus, summary, true)
 
 	# === COSTS PHASE ===
+	# Only the player pays maintenance/labour on the buildings they own — NPC-owned
+	# infrastructure (e.g. the shipping corporation's ports) is not the player's expense.
 	for building in all_buildings:
+		if not MatchState.is_player_owned(building):
+			continue
+		var btype: String = str(building.get("building_id", ""))
 		var maint: float = _calculate_maintenance_cost(building)
 		var labour: float = _calculate_labour_cost(building)
 		var total_cost: float = maint + labour
@@ -204,6 +241,8 @@ func _process_production() -> void:
 		summary.maintenance_paid += maint
 		summary.labour_paid += labour
 		summary.money_out += total_cost
+		_accumulate_by_type(summary.maintenance_by_type, btype, maint)
+		_accumulate_by_type(summary.labour_by_type, btype, labour)
 		# === LOAN INTEREST PAYMENTS ==+var loan_payment: float = LoanState.process_payments()
 	var loan_payment: float = LoanState.process_payments()
 	if loan_payment > 0:
@@ -250,16 +289,30 @@ func _process_production() -> void:
 		summary.produced, summary.consumed, summary.sold, summary.starved.size(),
 		summary.money_in - summary.money_out, pass_count
 	])
-	print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f interest=£%.2f tax=£%.2f div=£%.2f net=£%.2f" % [
+	print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f interest=£%.2f tax=£%.2f div=£%.2f net=£%.2f" % [
 	summary.goods_sales_revenue,
 	summary.power_sales_revenue,
 	summary.power_purchase_cost,
 	summary.maintenance_paid + summary.labour_paid + summary.transport_paid,
+	summary.goods_purchased_cost,
 	summary.interest_paid,
 	summary.taxes_paid,
 	summary.dividends_paid,
 	summary.money_in - summary.money_out
 ])
+	# Diagnostic: goods sitting in pending shipments (sales + moves). If a produced good
+	# is neither stockpiled nor sold, it should show here as in-transit; if not, it's lost.
+	var _in_transit_dbg: Dictionary = {}
+	for s in MatchState.get_pending_transport_shipments():
+		if bool(s.get("is_sale", false)):
+			for it in s.get("sale_record", {}).get("items", []):
+				var sg := str(it.get("good_id", ""))
+				_in_transit_dbg[sg] = int(_in_transit_dbg.get(sg, 0)) + int(it.get("qty", 0))
+		else:
+			var mg := str(s.get("good_id", ""))
+			if mg != "":
+				_in_transit_dbg[mg] = int(_in_transit_dbg.get(mg, 0)) + int(s.get("qty", 0))
+	print("[Production] In transit (pending shipments): ", _in_transit_dbg)
 
 	
 
@@ -351,6 +404,7 @@ func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, sum
 		"total_qty": qty,
 		"total_revenue": revenue,
 	}
+	MatchState.log_market_sale(source_tile, port_tile, good_id, qty, int(route.turns))
 	if port_tile != "" and int(route.turns) >= 1:
 		# Goods are in transit; cash arrives when the port receives them (x turns later).
 		MatchState.queue_transport_shipment({
@@ -386,7 +440,8 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 		summary.money_out += transport_cost
 
 	if int(route.turns) >= 1:
-		# Inter-tile: in transit, arrives route.turns turns later.
+		# Inter-tile: in transit, arrives route.turns turns later (a tile-to-tile move).
+		MatchState.log_move_shipment(str(building.get("tile_id", "")), str(stockpile_coord), good.id, qty, int(route.turns))
 		MatchState.queue_transport_shipment({
 			"source_tile": building.get("tile_id", ""),
 			"destination_tile": str(stockpile_coord),
@@ -424,6 +479,8 @@ func _flush_output_buffer() -> void:
 
 func _output_stockpile_coord(building: Dictionary, good_id: String):
 	var instance_id: String = building.get("instance_id", "")
+	if MatchState.is_output_market(instance_id, good_id):
+		return null  # explicit per-building market route — sell to nearest port
 	var destination_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
 	if destination_tile != "":
 		return destination_tile
@@ -501,6 +558,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		})
 		sale_record.total_qty += sold_qty
 		sale_record.total_revenue += sold_revenue
+		MatchState.log_market_sale(source_tile, port_tile, good_key, sold_qty, int(route.turns))
 		if not deferred:
 			# No port (or distance 0) — pay out immediately.
 			MatchState.add_money(sold_revenue)
@@ -632,6 +690,13 @@ func _calculate_maintenance_cost(building: Dictionary) -> float:
 	var maint = bdata.get("maintenance_cost", null)
 	return EconomyConfig.MAINTENANCE_PER_BUILDING if maint == null else float(maint)
 
+func _accumulate_by_type(target: Dictionary, building_id: String, amount: float, count: int = 1) -> void:
+	# target maps building_id -> {"count": int, "amount": float} for money-panel tooltips.
+	var entry: Dictionary = target.get(building_id, {"count": 0, "amount": 0.0})
+	entry["count"] = int(entry.get("count", 0)) + count
+	entry["amount"] = float(entry.get("amount", 0.0)) + amount
+	target[building_id] = entry
+
 func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
 	var inputs: Array = recipe.get("inputs", [])
 	var missing: Array = []
@@ -675,6 +740,64 @@ func compute_committed_for_tile(tile_id: String) -> Dictionary:
 			if good_id != "" and qty > 0:
 				committed[good_id] = committed.get(good_id, 0) + qty
 	return committed
+
+func _inbound_qty(tile_id: String, good_id: String) -> int:
+	var total := 0
+	for s in MatchState.get_inbound_transport_shipments(tile_id, good_id):
+		total += int(s.get("qty", 0))
+	return total
+
+func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
+	# For every input a player has set to "Market", keep the pipeline topped up to
+	# (lead+1) turns of demand: order = target - on_tile - in_transit, shipped from the port.
+	for building in all_buildings:
+		var recipe: Dictionary = Catalog.get_recipe(building.recipe_id)
+		if recipe.is_empty():
+			continue
+		var inputs: Array = recipe.get("inputs", [])
+		if inputs.is_empty():
+			continue
+		var instance_id: String = building.instance_id
+		var tile_id: String = str(building.get("tile_id", ""))
+		# Don't buy inputs for a building that can't run for power reasons (avoids waste).
+		var energy_req: int = recipe.get("energy_req", 0)
+		var needs_power: bool = energy_req > 0 or recipe.get("output_name", "") == "power"
+		if needs_power and not Power.is_supplied(tile_id, energy_req):
+			continue
+		var port := Catalog.nearest_port_tile(tile_id)
+		if port == "":
+			continue
+		var lead := int(Catalog.route(port, tile_id).get("turns", 1))
+		if lead >= (1 << 30):
+			lead = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, tile_id))
+		lead = maxi(1, lead)
+		for input in inputs:
+			var good_id := str(input.good_id)
+			if MatchState.is_input_tile_only(instance_id, good_id):
+				continue  # player opted this input out of market top-up
+			var need_per_turn := int(input.qty)
+			if need_per_turn <= 0:
+				continue
+			var target := need_per_turn * (lead + 1)
+			var order := target - Stockpile.get_at_tile(tile_id, good_id) - _inbound_qty(tile_id, good_id)
+			if order > 0:
+				var bought: Dictionary = MatchState.queue_buy(tile_id, good_id, order)
+				if not bought.is_empty():
+					summary.goods_purchased_cost += float(bought.get("goods_cost", 0.0))
+					summary.transport_paid += float(bought.get("transport_cost", 0.0))
+					summary.money_out += float(bought.get("cost", 0.0))
+					summary.purchased[good_id] = int(summary.purchased.get(good_id, 0)) + int(bought.get("qty", 0))
+					_accumulate_by_type(summary.goods_purchased_by_type, str(building.get("building_id", "")), float(bought.get("goods_cost", 0.0)), 0)
+	# Player-set recurring market purchases (Purchases tab), delivered to the chosen tile.
+	for rb in MatchState.recurring_buys:
+		var rgood := str(rb.get("good", ""))
+		var rbought: Dictionary = MatchState.queue_buy(str(rb.get("dest", "")), rgood, int(rb.get("qty", 0)), false)
+		if not rbought.is_empty():
+			summary.goods_purchased_cost += float(rbought.get("goods_cost", 0.0))
+			summary.transport_paid += float(rbought.get("transport_cost", 0.0))
+			summary.money_out += float(rbought.get("cost", 0.0))
+			summary.purchased[rgood] = int(summary.purchased.get(rgood, 0)) + int(rbought.get("qty", 0))
+			_accumulate_by_type(summary.goods_purchased_by_type, "", float(rbought.get("goods_cost", 0.0)), 0)
 
 func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictionary) -> void:
 	var inputs: Array = recipe.get("inputs", [])

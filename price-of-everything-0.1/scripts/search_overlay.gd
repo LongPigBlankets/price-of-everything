@@ -10,7 +10,7 @@ const SEARCH_HEIGHT := 660.0
 const SCREEN_MARGIN := 48.0
 const BAR_HEIGHT := 58.0
 const RESULT_HEIGHT := 58.0
-const DETAIL_IMAGE_SIZE := Vector2(180, 150)
+const DETAIL_IMAGE_SIZE := Vector2(216, 180)
 const ACCORDION_ICON_SIZE := Vector2(80, 80)
 const GOODS_ICON_DIR_MEDIUM := "res://assets/icons/goods/medium"
 const GOODS_ICON_DIR_SMALL := "res://assets/icons/goods/small"
@@ -32,6 +32,11 @@ const SUBTITLE_COLOR := Color(0.760784, 0.823529, 0.898039, 1.0)
 const MUTED_PANEL := Color(0.015686, 0.058824, 0.105882, 0.96)
 const BUILD_BUTTON_BLUE := Color(0.176471, 0.439216, 0.658824, 1.0)
 const BUILD_BUTTON_HOVER_BLUE := Color(0.250980, 0.529412, 0.749020, 1.0)
+
+# Encyclopedia "Mechanics" entries (content-light for now; bodies built in _mechanic_body).
+const MECHANIC_ENTRIES := [
+	{"id": "market_price_mechanics", "title": "Market price mechanics"},
+]
 
 var _search_stack: VBoxContainer = null
 var _search_input: LineEdit = null
@@ -69,6 +74,40 @@ func open_encyclopedia() -> void:
 	_empty_view = "encyclopedia"
 	_search_input.text = ""
 	_show_encyclopedia_landing()
+
+func open_encyclopedia_entry(entry_id: String) -> void:
+	# Deep-link straight to a Mechanics entry (used by in-game "More info" links).
+	show()
+	PanelStack.push(self)
+	move_to_front()
+	_empty_view = "encyclopedia"
+	_search_input.text = ""
+	for entry in MECHANIC_ENTRIES:
+		if str(entry.get("id", "")) == entry_id:
+			_show_result_detail(_mechanic_result(entry))
+			return
+	_show_encyclopedia_landing()
+
+func _mechanic_result(entry: Dictionary) -> Dictionary:
+	return {
+		"type": "mechanic",
+		"id": str(entry.get("id", "")),
+		"title": str(entry.get("title", "")),
+		"subtitle": "Game mechanic",
+		"payload": entry,
+	}
+
+func _mechanic_body(entry_id: String) -> String:
+	if entry_id == "market_price_mechanics":
+		var glut: int = EconomyConfig.GLUT_UNITS
+		var maxp: int = EconomyConfig.MAX_PRICE_IMPACT_PCT
+		return ("Every good has a market price that drifts over time and reacts to how much you sell.\n\n"
+			+ "Selling is gentle up to a point: move up to %d units of a single good in one turn and the price barely notices. "
+			+ "Push past that and you flood the market — every further %d units knocks roughly another 1%% off the price that turn, up to about %d%%. "
+			+ "Dumping a large stockpile all at once can crash the price temporarily; it recovers over the following turns.\n\n"
+			+ "The per-tile auto-sell control lets you cap this: pick how much price impact you'll tolerate each turn and it ships only enough to stay within that band, keeping the rest stockpiled for later.\n\n"
+			+ "(Detailed numbers and worked examples will live here in a later content pass.)") % [glut, glut, maxp]
+	return ""
 
 func close_search() -> void:
 	if not visible:
@@ -451,7 +490,7 @@ func _start_recipe_build(recipe: Dictionary) -> void:
 
 func _show_result_detail(result: Dictionary) -> void:
 	var result_type: String = result.get("type", "")
-	if result_type != "good" and result_type != "recipe" and result_type != "building":
+	if result_type != "good" and result_type != "recipe" and result_type != "building" and result_type != "mechanic":
 		return
 	_clear_results_content()
 	_results_panel.visible = true
@@ -635,6 +674,8 @@ func _load_building_texture(building_id: String) -> Texture2D:
 
 func _entry_placeholder_text(result: Dictionary) -> String:
 	var title: String = result.get("title", "")
+	if result.get("type", "") == "mechanic":
+		return _mechanic_body(str(result.get("id", "")))
 	if result.get("type", "") == "good":
 		return "%s is part of the production economy. This entry will later explain where it comes from, what it enables, and the tradeoffs around storing, selling, and routing it." % title
 	if result.get("type", "") == "recipe":
@@ -697,6 +738,8 @@ func _result_type_label(result: Dictionary) -> String:
 		return "RECIPE"
 	if result_type == "building":
 		return "BUILDING"
+	if result_type == "mechanic":
+		return "MECHANIC"
 	return ""
 
 func _make_fact_label(fact: Dictionary) -> Label:
@@ -809,21 +852,17 @@ func _make_encyclopedia_landing() -> Control:
 	_add_accordion_section(sections, "Goods", Catalog.all_goods(), "good")
 	_add_accordion_section(sections, "Recipes", Catalog.all_recipes(), "recipe")
 	_add_accordion_section(sections, "Buildings", Catalog.all_buildings(), "building")
-	_add_accordion_section(sections, "Mechanics", [], "mechanic")
+	_add_accordion_section(sections, "Mechanics", MECHANIC_ENTRIES, "mechanic")
 	return root
 
 func _add_accordion_section(parent: VBoxContainer, title: String, items: Array, result_type: String) -> void:
-	var is_mechanics := result_type == "mechanic"
 	var expanded: bool = _accordion_expanded.get(title, false)
 
 	var header := Button.new()
 	header.custom_minimum_size = Vector2(0, 34)
 	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.mouse_default_cursor_shape = Control.CURSOR_ARROW if is_mechanics else Control.CURSOR_POINTING_HAND
+	header.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	header.text = "%s  %s" % ["v" if expanded else ">", title]
-	if is_mechanics:
-		header.text = ">  Mechanics    No concepts yet"
-		header.disabled = true
 	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	header.add_theme_font_size_override("font_size", 16)
 	header.add_theme_color_override("font_color", OFF_WHITE)
@@ -832,16 +871,15 @@ func _add_accordion_section(parent: VBoxContainer, title: String, items: Array, 
 	header.add_theme_stylebox_override("hover", _make_panel_style(RESULT_HOVER, RESULT_BORDER, 1.0, 5, 8))
 	parent.add_child(header)
 
-	if not is_mechanics:
-		header.pressed.connect(func() -> void:
-			var next_expanded := not bool(_accordion_expanded.get(title, false))
-			for section_title in ["Goods", "Recipes", "Buildings"]:
-				_accordion_expanded[section_title] = false
-			_accordion_expanded[title] = next_expanded
-			_show_encyclopedia_landing()
-		)
+	header.pressed.connect(func() -> void:
+		var next_expanded := not bool(_accordion_expanded.get(title, false))
+		for section_title in ["Goods", "Recipes", "Buildings", "Mechanics"]:
+			_accordion_expanded[section_title] = false
+		_accordion_expanded[title] = next_expanded
+		_show_encyclopedia_landing()
+	)
 
-	if is_mechanics or not expanded:
+	if not expanded:
 		return
 
 	var scroll := ScrollContainer.new()
@@ -970,9 +1008,13 @@ func _catalog_item_subtitle(result: Dictionary) -> String:
 		return "Made in %s" % Catalog.get_building_display_name(payload.get("building_id", ""))
 	if result_type == "building":
 		return _title_or_dash(payload.get("category", ""))
+	if result_type == "mechanic":
+		return "Game mechanic"
 	return ""
 
 func _result_from_catalog_item(item: Dictionary, result_type: String) -> Dictionary:
+	if result_type == "mechanic":
+		return _mechanic_result(item)
 	if result_type == "good":
 		return {
 			"type": "good",

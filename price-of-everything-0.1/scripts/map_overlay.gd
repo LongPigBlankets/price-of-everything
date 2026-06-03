@@ -416,27 +416,31 @@ func _draw_power_marker(world_pos: Vector2, status: Dictionary) -> void:
 	marker.position = world_pos
 	add_child(marker)
 	current_overlays.append(marker)
-	
+
 	var color: Color = POWER_COLORS.get(status.state, Color.MAGENTA)
-	var radius := _power_circle_radius()
-	
-	# Coloured circle background
-	var circle := _make_circle_node(color, radius)
-	marker.add_child(circle)
-	
-	# Label (if state has a number)
-	# Label (if state has a number)
+	var tile := _tile_size()
+
+	# Transparent hex the size of the tile (was a small circle).
+	var hex := Node2D.new()
+	hex.set_script(load("res://scripts/power_hex_overlay.gd"))
+	hex.set("tile_size", tile)
+	hex.set("color", Color(color.r, color.g, color.b, 0.40))
+	marker.add_child(hex)
+
+	# Label (if state has a number) — outlined so it stays legible over the tile.
 	var label_text: String = _format_power_label(status)
 	if label_text != "":
 		var label := Label.new()
 		label.text = label_text
 		label.add_theme_font_size_override("font_size", _power_label_font_size())
 		label.add_theme_color_override("font_color", Color.WHITE)
+		label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		label.add_theme_constant_override("outline_size", 5)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		# Fixed-size box centred on origin for any 1-5 char label
-		label.size = Vector2(radius * 2, radius * 2)
-		label.position = -label.size / 2.0
+		# Box spans the tile so the number sits at the hex centre.
+		label.size = tile
+		label.position = -tile / 2.0
 		marker.add_child(label)
 
 func _format_power_label(status: Dictionary) -> String:

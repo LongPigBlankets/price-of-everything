@@ -479,12 +479,12 @@ theme_override_constants/separation = 8
 [node name="BuildingDetailPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=1081644289]
 unique_name_in_owner = true
 visible = false
-custom_minimum_size = Vector2(380, 670)
+custom_minimum_size = Vector2(418, 670)
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -860.0
+offset_left = -898.0
 offset_top = 30.0
 offset_right = -480.0
 offset_bottom = 700.0

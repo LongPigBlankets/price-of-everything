@@ -52,7 +52,7 @@ func setup(recipe_data: Dictionary, parent_building_id: String) -> void:
 	if not gui_input.is_connected(_on_row_gui_input):
 		gui_input.connect(_on_row_gui_input)
 
-	output_icon.texture = GoodIcons.texture_for(recipe_data.get("output_good_id", ""), recipe_data.get("output_name", ""))
+	output_icon.texture = GoodIcons.texture_for(recipe_data.get("output_good_id", ""), recipe_data.get("output_name", ""), true)
 
 	var parts: Array = []
 	for inp in recipe_data.get("inputs", []):
@@ -102,7 +102,7 @@ func _draw() -> void:
 	# Off-white card.
 	draw_style_box(_card_style, Rect2(Vector2.ZERO, size))
 	# Feather glow radiating from the goods icon.
-	var icon_c := Vector2(30.0, size.y * 0.5)
+	var icon_c := Vector2(39.0, size.y * 0.5)
 	var r := size.y * 1.5
 	draw_texture_rect(_glow, Rect2(icon_c - Vector2(r, r), Vector2(r * 2.0, r * 2.0)), false)
 	# States.

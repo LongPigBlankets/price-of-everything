@@ -20,22 +20,24 @@ extends PanelContainer
 
 const HEADER_HEIGHT := 40.0
 const PANEL_EDGE_MARGIN := 20.0
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
+static var _suppress_tile_only_warning := false  # session-wide "Don't show again"
 const UPGRADE_BUTTON_SIZE := Vector2(40, 40)
 const STATUS_ICON_SIZE := Vector2(20, 20)
 const STATUS_DOT_SIZE := Vector2(8, 8)
 const STATUS_RAIL_WIDTH := 30.0
 const NORMAL_BUILDING_PANEL_LIMIT := 3
 const EXTENDED_BUILDING_PANEL_LIMIT := 4
-const FLOW_COMPACT_HEIGHT := 108.0
-const FLOW_LARGE_HEIGHT := 108.0
-const FLOW_SINGLE_CELL_SIZE := Vector2(92, 92)
-const FLOW_GRID_CELL_SIZE := Vector2(52, 52)
-const GOODS_ICON_DIR := "res://assets/icons/goods/small"
+const FLOW_COMPACT_HEIGHT := 130.0
+const FLOW_LARGE_HEIGHT := 130.0
+const FLOW_SINGLE_CELL_SIZE := Vector2(110, 110)
+const FLOW_GRID_CELL_SIZE := Vector2(62, 62)
+const GoodIcons := preload("res://scripts/good_icons.gd")
 const RECIPE_ARROW_PATH := "res://assets/icons/ui_icons/recipe_arrow.png"
 const RECIPE_POWER_ICON_PATH := "res://assets/icons/ui_icons/recipe_power_icon.png"
 const UPGRADE_ICON_PATH := "res://assets/icons/ui_icons/upgrade_icon_off_white.png"
-const FLOW_ARROW_COMPACT_SIZE := Vector2(80, 48)
-const FLOW_ARROW_LARGE_SIZE := Vector2(80, 48)
+const FLOW_ARROW_COMPACT_SIZE := Vector2(96, 58)
+const FLOW_ARROW_LARGE_SIZE := Vector2(96, 58)
 const FLOW_BADGE_DIAMETER := 24
 const FLOW_BADGE_TEXT_SIZE := 14
 const STATUS_GREEN := Color("#5BD180")   # DS PALETTE OK
@@ -59,22 +61,22 @@ const STATUS_ICON_CONFIG := [
 	{
 		"key": "power",
 		"path": "res://assets/icons/ui_icons/power_status_icon.png",
-		"tooltip": "Power status",
+		"tooltip": "Power status\nGreen: powered by your own supply · Amber: powered via the grid · Red: not powered · Grey: no power needed",
 	},
 	{
 		"key": "input",
 		"path": "res://assets/icons/ui_icons/input_status_icon.png",
-		"tooltip": "Input status",
+		"tooltip": "Input status\nGreen: ran with inputs available · Amber: inputs present but idle · Red: missing inputs · Grey: not applicable",
 	},
 	{
 		"key": "duration",
 		"path": "res://assets/icons/ui_icons/input_transport_duration_icon.png",
-		"tooltip": "Input transport duration",
+		"tooltip": "Output transport duration\nGreen: arrives same turn · Amber: multi-turn shipment · Grey: building didn't run this turn",
 	},
 	{
 		"key": "cost",
 		"path": "res://assets/icons/ui_icons/cost_of_transport_icon.png",
-		"tooltip": "Cost of transport",
+		"tooltip": "Cost of transport\nGreen: no shipping cost · Amber: paying to ship output · Grey: building didn't run this turn",
 	},
 ]
 
@@ -109,6 +111,7 @@ var _is_secondary_panel := false
 var _allow_extended_building_panels := false
 var _busy_screen_dialog: ConfirmationDialog = null
 var _too_many_dialog: AcceptDialog = null
+var _tile_only_dialog: AcceptDialog = null
 var _rag_panel: PanelContainer = null
 var _action_button_row: HBoxContainer = null
 var _npc_panel: PanelContainer = null
@@ -305,6 +308,18 @@ func _add_inbound_inputs_section(building: Dictionary, recipe: Dictionary) -> vo
 		else:
 			line += " · no inbound shipment scheduled"
 		_add_text(line)
+
+func _show_tile_only_warning() -> void:
+	if _tile_only_dialog == null:
+		_tile_only_dialog = AcceptDialog.new()
+		_tile_only_dialog.title = "Tile stockpile only"
+		_tile_only_dialog.dialog_text = "This may make your buildings stop producing when the stockpile is insufficient."
+		var checkbox := UIHelpers.make_custom_checkbox()
+		checkbox.toggled.connect(func(pressed: bool) -> void: _suppress_tile_only_warning = pressed)
+		var row := UIHelpers.make_setting_row("Don't show again", checkbox)
+		_tile_only_dialog.add_child(row)
+		get_parent().add_child(_tile_only_dialog)
+	_tile_only_dialog.popup_centered()
 
 func _inbound_input_summary(tile_id: String, good_id: String) -> String:
 	var shipments := MatchState.get_inbound_transport_shipments(tile_id, good_id)
@@ -517,7 +532,7 @@ func _refresh_route_controls(building: Dictionary, recipe: Dictionary) -> void:
 	elif _input_source_rows.size() > 1:
 		input_subtitle = "See all buildings"
 	_set_route_button_text(_input_route_button, "Inputs", input_subtitle)
-	_input_route_button.disabled = _input_source_rows.is_empty()
+	_input_route_button.disabled = recipe_inputs.is_empty()  # enabled when there are inputs to source
 
 	_set_route_button_text(_output_route_button, "Outputs", _output_destination())
 	_output_route_button.disabled = _flow_output_items(recipe).is_empty()
@@ -607,9 +622,6 @@ func _producer_routes_output_to_tile(producer: Dictionary, output: Dictionary, t
 	return MatchState.get_output_stockpile_destination(producer.get("instance_id", ""), good_id) == tile_id
 
 func _on_input_route_pressed() -> void:
-	if _input_source_rows.size() == 1:
-		_open_secondary_building(_input_source_rows[0].get("building", {}))
-		return
 	_input_route_detail.visible = not _input_route_detail.visible
 	_output_route_detail.visible = false
 
@@ -633,8 +645,32 @@ func _rebuild_input_route_detail() -> void:
 	for child in _input_route_detail.get_children():
 		child.queue_free()
 
-	if _input_source_rows.is_empty():
-		return
+	# Per-input source selector: Tile stockpile or Market (buy from nearest port).
+	var instance_id := str(_current_building.get("instance_id", ""))
+	for input in _current_recipe.get("inputs", []):
+		var good_id := str(input.get("good_id", ""))
+		if good_id == "":
+			continue
+		var sel_row := HBoxContainer.new()
+		sel_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sel_row.add_theme_constant_override("separation", 8)
+		var name_lbl := Label.new()
+		name_lbl.text = _good_display_from_internal(input.get("internal_name", ""))
+		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_lbl.add_theme_font_size_override("font_size", ROUTE_LINK_FONT_SIZE)
+		sel_row.add_child(name_lbl)
+		var opt := OptionButton.new()
+		opt.add_item("Stockpile then market")  # index 0 (default)
+		opt.add_item("Tile stockpile only")    # index 1
+		opt.select(1 if MatchState.is_input_tile_only(instance_id, good_id) else 0)
+		opt.item_selected.connect(func(idx: int) -> void:
+			var tile_only := idx == 1
+			MatchState.set_input_tile_only(instance_id, good_id, tile_only)
+			if tile_only and not _suppress_tile_only_warning:
+				_show_tile_only_warning()
+		)
+		sel_row.add_child(opt)
+		_input_route_detail.add_child(sel_row)
 
 	for row in _input_source_rows:
 		var line := HBoxContainer.new()
@@ -667,8 +703,8 @@ func _rebuild_output_route_detail() -> void:
 	market_button.custom_minimum_size = Vector2(0, ROUTE_BUTTON_HEIGHT)
 	market_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	market_button.pressed.connect(func() -> void:
-		MatchState.clear_output_stockpile_destination(_current_building.get("instance_id", ""))
-		MatchState.set_sell_mode(MatchState.SellMode.SELL_ALL)
+		# Route THIS building's output to market — does not flip the global sell mode.
+		MatchState.route_output_to_market(_current_building.get("instance_id", ""), _primary_output_good_id(_current_recipe))
 		_refresh_route_controls(_current_building, _current_recipe)
 		_output_route_detail.visible = true
 	)
@@ -1034,23 +1070,28 @@ func _populate_flow_grid(grid: GridContainer, goods: Array) -> void:
 	var count: int = max(goods.size(), 1)
 	grid.columns = 2 if count > 2 else 1
 	var cell_size := _flow_cell_size(goods.size())
+	# A single input/output is shown large (one 92px cell) so it uses the medium
+	# master; a 2x2 grid crams several into 52px cells, so those use the small
+	# variant to keep VRAM down.
+	var prefer_small := goods.size() > 1
 
 	if goods.is_empty():
-		grid.add_child(_make_flow_cell({}, cell_size))
+		grid.add_child(_make_flow_cell({}, cell_size, prefer_small))
 		return
 
 	for good_item in goods:
-		grid.add_child(_make_flow_cell(good_item, cell_size))
+		grid.add_child(_make_flow_cell(good_item, cell_size, prefer_small))
 
 func _flow_cell_size(good_count: int) -> Vector2:
 	if good_count <= 1:
 		return FLOW_SINGLE_CELL_SIZE
 	return FLOW_GRID_CELL_SIZE
 
-func _make_flow_cell(good_item: Dictionary, cell_size: Vector2) -> Panel:
+func _make_flow_cell(good_item: Dictionary, cell_size: Vector2, prefer_small: bool) -> Panel:
 	var cell := Panel.new()
 	cell.custom_minimum_size = cell_size
-	var texture: Texture2D = _load_good_texture(good_item)
+	var texture: Texture2D = GoodIcons.texture_for(
+		good_item.get("good_id", ""), good_item.get("internal_name", ""), prefer_small)
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(1.0, 1.0, 1.0, 0.0) if texture != null else FLOW_SQUARE_COLOR
@@ -1203,27 +1244,6 @@ func _badge_quantity(good_item: Dictionary) -> int:
 		return roundi(float(good_item.get("output_qty", 0)))
 	return 0
 
-func _load_good_texture(good_item: Dictionary) -> Texture2D:
-	var good_id: String = good_item.get("good_id", "")
-	var internal_name: String = good_item.get("internal_name", "")
-	if good_id == "" or internal_name == "":
-		return null
-
-	var paths: Array = [
-		"%s/%s_%s.svg" % [GOODS_ICON_DIR, good_id, internal_name],
-		"%s/%s_%s.SVG" % [GOODS_ICON_DIR, good_id, internal_name],
-		"%s/%s_%s.PNG" % [GOODS_ICON_DIR, good_id, internal_name],
-		"%s/%s_%s.png" % [GOODS_ICON_DIR, good_id, internal_name],
-		"%s/%s.svg" % [GOODS_ICON_DIR, good_id],
-		"%s/%s.SVG" % [GOODS_ICON_DIR, good_id],
-		"%s/%s.PNG" % [GOODS_ICON_DIR, good_id],
-		"%s/%s.png" % [GOODS_ICON_DIR, good_id],
-	]
-	for path in paths:
-		if ResourceLoader.exists(path):
-			return load(path) as Texture2D
-	return null
-
 func _flow_output_items(recipe: Dictionary) -> Array:
 	if recipe.has("outputs"):
 		var outputs: Array = recipe.get("outputs", [])
@@ -1292,7 +1312,7 @@ func _build_status_icon_column() -> void:
 
 		rag_box.add_child(wrapper)
 
-	# 5th indicator: production cost per unit — RAG dot, cost in tooltip
+	# 5th indicator: production cost per unit — RAG dot, cost + legend in tooltip
 	_cost_wrapper = HBoxContainer.new()
 	_cost_wrapper.alignment = BoxContainer.ALIGNMENT_CENTER
 	_cost_wrapper.theme = _tooltip_theme
@@ -1329,6 +1349,8 @@ func _update_status_icons(building: Dictionary, recipe: Dictionary, is_infrastru
 	_set_status_dot("cost", _transport_cost_status_color(building, recipe, is_infrastructure))
 	_update_cost_label(building)
 
+const _COST_RAG_LEGEND := "Green if cheaper than buying from the market, amber if even with market and red if more expensive than purchasing from the market"
+
 func _update_cost_label(building: Dictionary) -> void:
 	if _cost_label == null:
 		return
@@ -1338,7 +1360,7 @@ func _update_cost_label(building: Dictionary) -> void:
 	var tooltip: String
 	if uc < 0.0:
 		color = STATUS_GREY
-		tooltip = "--\nProduction cost per unit"
+		tooltip = "Production cost per unit: --\n" + _COST_RAG_LEGEND
 	else:
 		var bd: Dictionary = CostSolver.last_result.get("per_building", {}).get(instance_id, {})
 		var output_good_id: String = bd.get("output_good_id", "")
@@ -1353,15 +1375,13 @@ func _update_cost_label(building: Dictionary) -> void:
 		var output_costs: Dictionary = bd.get("output_costs", {})
 		if output_costs.size() > 1:
 			# Multi-output: list the allocated cost basis for each product
-			var lines: PackedStringArray = ["Production cost per unit (market-value allocation)"]
+			var lines: PackedStringArray = ["Production cost per unit (market-value allocation):"]
 			for gid in output_costs:
-				var goc: float = output_costs[gid]
-				var bp: float = Catalog.get_base_price(gid)
-				var gpct: float = (goc / bp * 100.0) if bp > 0.0 else 0.0
-				lines.append("  %s: £%.2f (%.1f%% of market)" % [Catalog.get_display_name(gid), goc, gpct])
+				lines.append("  %s: £%.2f" % [Catalog.get_display_name(gid), output_costs[gid]])
+			lines.append(_COST_RAG_LEGEND)
 			tooltip = "\n".join(lines)
 		else:
-			tooltip = "£%.2f (%.1f%% of market)\nProduction cost per unit" % [uc, pct]
+			tooltip = "Production cost per unit: £%.2f\n%s" % [uc, _COST_RAG_LEGEND]
 	var style := StyleBoxFlat.new()
 	style.bg_color = color
 	var radius := roundi(STATUS_DOT_SIZE.x * 0.5)
@@ -1435,6 +1455,8 @@ func _input_status_color(building: Dictionary, recipe: Dictionary, is_infrastruc
 func _transport_duration_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
 	if is_infrastructure:
 		return STATUS_GREY
+	if not Production.last_turn_run.has(str(building.get("instance_id", ""))):
+		return STATUS_GREY  # building didn't run this turn — no output to transport
 	var route := _selected_output_route(building, recipe)
 	if route.is_empty():
 		return STATUS_GREEN
@@ -1443,6 +1465,8 @@ func _transport_duration_status_color(building: Dictionary, recipe: Dictionary, 
 func _transport_cost_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
 	if is_infrastructure:
 		return STATUS_GREY
+	if not Production.last_turn_run.has(str(building.get("instance_id", ""))):
+		return STATUS_GREY  # building didn't run this turn — no output to transport
 	var route := _selected_output_route(building, recipe)
 	if route.is_empty():
 		return STATUS_GREEN
@@ -1614,6 +1638,8 @@ func _labour_cost(building_data: Dictionary) -> float:
 func _output_destination() -> String:
 	var instance_id: String = _current_building.get("instance_id", "")
 	var good_id := _primary_output_good_id(_current_recipe)
+	if MatchState.is_output_market(instance_id, good_id):
+		return "Market"
 	var destination_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
 	if destination_tile != "":
 		var route := _route_summary_for_good(

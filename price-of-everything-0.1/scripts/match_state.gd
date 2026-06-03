@@ -4,6 +4,7 @@ extends Node
 # Other systems read and write here; never store match data elsewhere.
 
 # --- Player resources ---
+const LOCAL_PLAYER := "player_1"
 var money: float = 1000.0  # was: int = 1000
 
 const DEFAULT_TILE_LAND_OWNED := 100
@@ -29,14 +30,27 @@ var labour_multiplier: float = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
 
 # --- Output routing ---
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
+const MARKET_DESTINATION := "__market__"  # sentinel tile_id: route this building's output to market
+var input_tile_only: Dictionary = {}  # "instance_id|good_id" -> true (tile stockpile ONLY; default buys from market)
 var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
-var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (standing order)
+var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (master: auto-sell ALL surplus goods)
+var auto_sell_goods: Dictionary = {}                 # tile_id -> { good_id -> true } (per-good auto-sell overrides)
+const IMPACT_ANY := -1                               # auto-sell tolerance sentinel: no per-turn volume cap
+var auto_sell_impact: Dictionary = {}                # tile_id -> max price-impact % tolerated per turn (or IMPACT_ANY)
 var pending_transport_shipments: Array = []
 var _shipment_id_counter: int = 0
 var recurring_moves: Array = []   # [{source, dest, goods}] re-issued every turn
 var scheduled_moves: Array = []   # [{source, dest, goods}] one-shot, fired next turn (e.g. split)
 var recurring_sells: Array = []   # [{source, goods}] re-sold to the nearest port every turn
+var recurring_bulk_sells: Array = []  # [{params, turn_started}] re-run via sell_all_to_market every turn
+var recurring_buys: Array = []  # [{dest, good, qty}] re-bought from market every turn
+# View-only ledgers for the Transactions / Movements tabs (one-off entries; recurring
+# rules are read from the recurring_* arrays). Rows: {good_id, qty, tile_from, tile_to,
+# turn_started, turn_ended} (+ kind for transactions).
+var transaction_log: Array = []
+var move_log: Array = []
+const LEDGER_MAX := 500  # keep the newest N entries so the logs stay bounded
 const LARGE_SHIPMENT_THRESHOLD := 500
 const LARGE_SHIPMENT_SURCHARGE := 2.0   # >500 units in one move costs 2x transport (tunable)
 var tile_land_owned: Dictionary = {}
@@ -59,6 +73,19 @@ signal labour_multiplier_changed(new_value: float)
 signal toast_requested(message: String, toast_type: String)
 ## A market sale was finalised at a port this turn (drives the £-rise effect).
 signal market_sale_arrived_at_port(port_tile_id: String, revenue: float)
+## A build was rejected for lack of funds (drives the error toast + money flash).
+signal build_rejected_no_funds(message: String)
+## Purchases tab asked the player to pick a delivery tile on the map.
+signal buy_tile_pick_requested()
+signal buy_tile_picked(tile_id: String)  # tile_id == "" means cancelled
+## Market row "Expand" — open the construct panel filtered to producers of this good.
+signal show_construct_for_good(good_id: String)
+## Market row "Move" — start the on-map transfer flow for this good.
+signal transfer_for_good_requested(good_id: String)
+## Market-row "Purchase" asked to open the per-good buy flow.
+signal purchase_for_good_requested(good_id: String)
+## A UI element asked to open an Encyclopedia entry (e.g. a "More info" link).
+signal encyclopedia_entry_requested(entry_id: String)
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)
@@ -86,6 +113,11 @@ func deduct_money(amount: float) -> bool:  # was: int
 	return true
 
 # --- Public API: buildings ---
+func is_player_owned(building: Dictionary) -> bool:
+	# NPC-owned infrastructure (e.g. the shipping corporation's ports) is not the
+	# player's to pay for. Buildings default to the local player when owner is unset.
+	return str(building.get("owner", LOCAL_PLAYER)) == LOCAL_PLAYER
+
 func add_building(building_id: String, recipe_id: String, tile_id: String, owner: String = "player_1") -> String:
 	# Pass the building_id here!
 	var instance_id := _generate_instance_id(building_id) 
@@ -186,8 +218,18 @@ func reset() -> void:
 	pending_output_stockpile_selection.clear()
 	queued_stockpile_market_sales.clear()
 	sell_surplus_tiles.clear()
+	auto_sell_goods.clear()
+	auto_sell_impact.clear()
 	pending_transport_shipments.clear()
 	tile_land_owned.clear()
+	recurring_moves.clear()
+	scheduled_moves.clear()
+	recurring_sells.clear()
+	recurring_bulk_sells.clear()
+	recurring_buys.clear()
+	transaction_log.clear()
+	move_log.clear()
+	input_tile_only.clear()
 	_next_instance_counter = 0
 	state_reset.emit()
 
@@ -251,7 +293,29 @@ func get_output_stockpile_destination(instance_id: String, good_id: String = "")
 		return ""
 	if good_id != "" and destination.get("good_id", "") != good_id:
 		return ""
-	return destination.get("tile_id", "")
+	var tile_id := str(destination.get("tile_id", ""))
+	if tile_id == MARKET_DESTINATION:
+		return ""  # a market route is not a stockpile tile
+	return tile_id
+
+func route_output_to_market(instance_id: String, good_id: String) -> void:
+	# Per-building "send output to market" — does NOT touch the global sell_mode.
+	if instance_id == "" or good_id == "":
+		return
+	output_stockpile_destinations[instance_id] = {
+		"tile_id": MARKET_DESTINATION,
+		"good_id": good_id,
+	}
+	pending_output_stockpile_selection.clear()
+	output_stockpile_destination_changed.emit(instance_id, MARKET_DESTINATION, good_id)
+
+func is_output_market(instance_id: String, good_id: String = "") -> bool:
+	var destination: Dictionary = output_stockpile_destinations.get(instance_id, {})
+	if destination.is_empty():
+		return false
+	if good_id != "" and destination.get("good_id", "") != good_id:
+		return false
+	return str(destination.get("tile_id", "")) == MARKET_DESTINATION
 
 func queue_stockpile_market_sale(tile_id: String) -> void:
 	if tile_id == "":
@@ -289,7 +353,7 @@ func queue_transport_shipment(shipment: Dictionary) -> void:
 func request_toast(message: String, toast_type: String = "success") -> void:
 	toast_requested.emit(message, toast_type)
 
-func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> Dictionary:
+func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, log_oneoff: bool = true) -> Dictionary:
 	# Move goods from one tile to another: consume now, ship via the router, deliver
 	# to the destination stockpile on arrival. Returns a summary for the UI/toast.
 	if source_tile == "" or dest_tile == "" or source_tile == dest_tile:
@@ -334,6 +398,9 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) 
 			})
 		else:
 			Stockpile.add(dest_tile, it.good_id, it.qty)
+	if log_oneoff:
+		for it in items:
+			log_move_shipment(source_tile, dest_tile, str(it.good_id), int(it.qty), turns)
 	return {"items": items, "total_qty": total_qty, "turns": turns,
 		"cost": total_cost, "source": source_tile, "dest": dest_tile, "surcharged": surcharge > 1.0}
 
@@ -355,7 +422,7 @@ func preview_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary
 		"per_turn": total_cost / float(maxi(turns, 1)), "surcharged": surcharge > 1.0}
 
 func add_recurring_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> void:
-	recurring_moves.append({"source": source_tile, "dest": dest_tile, "goods": goods_qtys.duplicate(true)})
+	recurring_moves.append({"source": source_tile, "dest": dest_tile, "goods": goods_qtys.duplicate(true), "turn_started": _ledger_turn()})
 
 func add_scheduled_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> void:
 	scheduled_moves.append({"source": source_tile, "dest": dest_tile, "goods": goods_qtys.duplicate(true)})
@@ -365,21 +432,253 @@ func run_recurring_and_scheduled_moves() -> void:
 	var due: Array = scheduled_moves
 	scheduled_moves = []
 	for m in due:
-		queue_move(str(m.source), str(m.dest), m.goods)
+		queue_move(str(m.source), str(m.dest), m.goods, true)  # split second-half = a one-off
 	for m in recurring_moves:
-		queue_move(str(m.source), str(m.dest), m.goods)
+		queue_move(str(m.source), str(m.dest), m.goods, false)
 	for m in recurring_sells:
-		queue_sell(str(m.source), m.goods)
+		_run_recurring_sell(m)
+	for r in recurring_bulk_sells:
+		sell_all_to_market(r.get("params", {}), false)
+
+func _run_recurring_sell(entry: Dictionary) -> void:
+	# Sell the configured qty of each good every turn, drawing from the bound source
+	# tile first and then any other tile that holds the good. This keeps "sell N coal
+	# every turn" working even after the source tile is drained — the produced coal
+	# now sits on the mine tiles, not the tile the order was created from.
+	var source := str(entry.get("source", ""))
+	var goods: Dictionary = entry.get("goods", {})
+	for good_id in goods.keys():
+		var remaining := int(goods[good_id])
+		if remaining <= 0:
+			continue
+		# Ordered draw list: source tile first, then other tiles holding the good.
+		var draw_tiles: Array = []
+		if source != "" and Stockpile.get_at_tile(source, str(good_id)) > 0:
+			draw_tiles.append(source)
+		for t in Stockpile.tiles_with_stock():
+			var ts := str(t)
+			if ts == source or not ts.begins_with("tile_"):
+				continue
+			if Stockpile.get_at_tile(ts, str(good_id)) > 0:
+				draw_tiles.append(ts)
+		for t in draw_tiles:
+			if remaining <= 0:
+				break
+			var avail := Stockpile.get_at_tile(str(t), str(good_id))
+			var take: int = mini(remaining, avail)
+			if take <= 0:
+				continue
+			queue_sell(str(t), {good_id: take}, false)
+			remaining -= take
 
 func add_recurring_sell(source_tile: String, goods_qtys: Dictionary) -> void:
-	recurring_sells.append({"source": source_tile, "goods": goods_qtys.duplicate(true)})
+	recurring_sells.append({"source": source_tile, "goods": goods_qtys.duplicate(true), "turn_started": _ledger_turn()})
+
+func add_recurring_bulk_sell(params: Dictionary) -> void:
+	recurring_bulk_sells.append({"params": params.duplicate(true), "turn_started": _ledger_turn()})
+
+func add_recurring_buy(dest_tile: String, good_id: String, qty: int) -> void:
+	recurring_buys.append({"dest": dest_tile, "good": good_id, "qty": qty, "turn_started": _ledger_turn()})
+
+# --- Ledger helpers for the Transactions / Movements tabs ---
+
+func _ledger_turn() -> int:
+	return int(TurnManager.current_turn) if TurnManager else 0
+
+func _log_transaction(entry: Dictionary) -> void:
+	transaction_log.append(entry)
+	if transaction_log.size() > LEDGER_MAX:
+		transaction_log = transaction_log.slice(transaction_log.size() - LEDGER_MAX)
+
+func _log_move(entry: Dictionary) -> void:
+	move_log.append(entry)
+	if move_log.size() > LEDGER_MAX:
+		move_log = move_log.slice(move_log.size() - LEDGER_MAX)
+
+func log_market_sale(source_tile: String, port_tile: String, good_id: String, qty: int, turns: int) -> void:
+	# Production calls this when output / stockpile sells to market, so the ledger reflects it.
+	if qty <= 0:
+		return
+	var started := _ledger_turn()
+	_log_transaction({
+		"kind": "sell", "good_id": str(good_id), "qty": int(qty),
+		"tile_from": source_tile, "tile_to": port_tile if port_tile != "" else "Market",
+		"turn_started": started, "turn_ended": started + maxi(0, turns),
+	})
+
+func log_move_shipment(source_tile: String, dest_tile: String, good_id: String, qty: int, turns: int) -> void:
+	# Production calls this when output is routed to ANOTHER tile's stockpile (a tile-to-tile move).
+	if qty <= 0:
+		return
+	var started := _ledger_turn()
+	_log_move({
+		"good_id": str(good_id), "qty": int(qty),
+		"tile_from": source_tile, "tile_to": dest_tile,
+		"turn_started": started, "turn_ended": started + maxi(0, turns),
+	})
+
+func _ledger_tile_label(tile_id: String) -> String:
+	if tile_id == "":
+		return "—"
+	if tile_id.begins_with("tile_"):
+		return Catalog.tile_label(tile_id)
+	return tile_id  # e.g. "Market", "All tiles"
+
+func _txn_row(kind: String, good: String, qty: int, tile_from: String, tile_to: String, started: int, ended: int) -> Dictionary:
+	return {
+		"type": "Buy" if kind == "buy" else "Sell",
+		"from": _ledger_tile_label(tile_from), "to": _ledger_tile_label(tile_to),
+		"good": good, "qty": qty, "turn_started": started, "turn_ended": ended,
+	}
+
+func _move_row(good: String, qty: int, tile_from: String, tile_to: String, started: int, ended: int) -> Dictionary:
+	return {
+		"type": "Move", "from": _ledger_tile_label(tile_from), "to": _ledger_tile_label(tile_to),
+		"good": good, "qty": qty, "turn_started": started, "turn_ended": ended,
+	}
+
+func _input_key(instance_id: String, good_id: String) -> String:
+	return instance_id + "|" + good_id
+
+func set_input_tile_only(instance_id: String, good_id: String, tile_only: bool) -> void:
+	# Default (not set) = "stockpile then market" (buys the shortfall). tile_only = never buy.
+	if instance_id == "" or good_id == "":
+		return
+	if tile_only:
+		input_tile_only[_input_key(instance_id, good_id)] = true
+	else:
+		input_tile_only.erase(_input_key(instance_id, good_id))
+
+func is_input_tile_only(instance_id: String, good_id: String) -> bool:
+	return bool(input_tile_only.get(_input_key(instance_id, good_id), false))
+
+func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = true) -> Dictionary:
+	# Buy goods from the nearest port to dest_tile: pay now (price + transport), ship in,
+	# arrive in N turns. The reusable buy primitive for market-sourced inputs (and later a Buy tab).
+	if dest_tile == "" or good_id == "" or qty <= 0:
+		return {}
+	var port := Catalog.nearest_port_tile(dest_tile)
+	if port == "":
+		return {}
+	var route := Catalog.route(port, dest_tile)
+	var turns: int = int(route.get("turns", 0))
+	if turns >= (1 << 30):
+		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, dest_tile))
+	var unit_price := MarketState.get_buy_price(good_id)
+	var transport := EconomyConfig.transport_cost_for(good_id, qty, turns)
+	var total := float(qty) * unit_price + transport
+	if total > money:
+		# Best-effort: buy as much as we can afford rather than nothing (avoids an
+		# all-or-nothing starvation cliff when cash dips below a full order).
+		var per_unit := unit_price + transport / float(maxi(qty, 1))
+		qty = mini(qty, int(floor(money / maxf(per_unit, 0.0001))))
+		if qty <= 0:
+			return {}
+		transport = EconomyConfig.transport_cost_for(good_id, qty, turns)
+		total = float(qty) * unit_price + transport
+		if total > money:
+			return {}
+	add_money(-total)
+	if log_oneoff:
+		var started := _ledger_turn()
+		_log_transaction({
+			"kind": "buy", "good_id": good_id, "qty": qty,
+			"tile_from": port, "tile_to": dest_tile,
+			"turn_started": started, "turn_ended": started + maxi(0, turns),
+		})
+	if turns >= 1:
+		queue_transport_shipment({
+			"source_tile": port, "destination_tile": dest_tile,
+			"good_id": good_id, "qty": qty,
+			"turns_remaining": turns, "transport_turns": turns,
+			"transport_cost": transport, "is_purchase": true,
+			"tiles": route.get("tiles", []), "path": route.get("path", []), "legs": route.get("legs", []),
+		})
+	else:
+		Stockpile.add(dest_tile, good_id, qty)
+	return {"qty": qty, "turns": turns, "cost": total,
+		"goods_cost": float(qty) * unit_price, "transport_cost": transport, "port": port}
+
+func tiles_producing(good_id: String) -> Dictionary:
+	var out: Dictionary = {}
+	for inst in buildings.values():
+		if Catalog.recipe_produces(Catalog.get_recipe(str(inst.get("recipe_id", ""))), good_id):
+			out[str(inst.get("tile_id", ""))] = true
+	return out
+
+func tiles_consuming(good_id: String) -> Dictionary:
+	var out: Dictionary = {}
+	for inst in buildings.values():
+		for input in Catalog.get_recipe(str(inst.get("recipe_id", ""))).get("inputs", []):
+			if str(input.get("good_id", "")) == good_id:
+				out[str(inst.get("tile_id", ""))] = true
+				break
+	return out
+
+func preview_buy(dest_tile: String, good_id: String, qty: int) -> Dictionary:
+	# Cost/turns for a buy WITHOUT executing — for the Purchases "Cost to buy" line.
+	if dest_tile == "" or good_id == "" or qty <= 0:
+		return {}
+	var port := Catalog.nearest_port_tile(dest_tile)
+	if port == "":
+		return {}
+	var route := Catalog.route(port, dest_tile)
+	var turns: int = int(route.get("turns", 0))
+	if turns >= (1 << 30):
+		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, dest_tile))
+	var transport := EconomyConfig.transport_cost_for(good_id, qty, turns)
+	var goods_cost := float(qty) * MarketState.get_buy_price(good_id)
+	return {"cost": goods_cost + transport, "goods_cost": goods_cost,
+		"transport_cost": transport, "turns": turns, "port": port}
+
+func get_oneoff_transaction_rows() -> Array:
+	var rows: Array = []
+	for t in transaction_log:
+		rows.append(_txn_row(str(t.get("kind", "sell")), Catalog.get_display_name(str(t.get("good_id", ""))),
+			int(t.get("qty", 0)), str(t.get("tile_from", "")), str(t.get("tile_to", "")),
+			int(t.get("turn_started", 0)), int(t.get("turn_ended", -1))))
+	return rows
+
+func get_recurring_transaction_rows() -> Array:
+	var rows: Array = []
+	for m in recurring_sells:
+		var port := Catalog.nearest_port_tile(str(m.get("source", "")))
+		for gid in m.get("goods", {}).keys():
+			rows.append(_txn_row("sell", Catalog.get_display_name(str(gid)), int(m.goods[gid]),
+				str(m.get("source", "")), port, int(m.get("turn_started", 0)), -1))
+	for r in recurring_bulk_sells:
+		var p: Dictionary = r.get("params", {})
+		var good_label := "All goods" if str(p.get("good_id", "")) == "" else Catalog.get_display_name(str(p.get("good_id", "")))
+		if bool(p.get("finished_only", false)):
+			good_label += " (finished)"
+		rows.append(_txn_row("sell", good_label, -1, "All tiles", "Market", int(r.get("turn_started", 0)), -1))
+	for b in recurring_buys:
+		rows.append(_txn_row("buy", Catalog.get_display_name(str(b.get("good", ""))), int(b.get("qty", 0)),
+			Catalog.nearest_port_tile(str(b.get("dest", ""))), str(b.get("dest", "")), int(b.get("turn_started", 0)), -1))
+	return rows
+
+func get_oneoff_move_rows() -> Array:
+	var rows: Array = []
+	for m in move_log:
+		rows.append(_move_row(Catalog.get_display_name(str(m.get("good_id", ""))), int(m.get("qty", 0)),
+			str(m.get("tile_from", "")), str(m.get("tile_to", "")),
+			int(m.get("turn_started", 0)), int(m.get("turn_ended", -1))))
+	return rows
+
+func get_recurring_move_rows() -> Array:
+	var rows: Array = []
+	for m in recurring_moves:
+		for gid in m.get("goods", {}).keys():
+			rows.append(_move_row(Catalog.get_display_name(str(gid)), int(m.goods[gid]),
+				str(m.get("source", "")), str(m.get("dest", "")), int(m.get("turn_started", 0)), -1))
+	return rows
 
 func _is_finished_good(good_id: String) -> bool:
 	# No explicit "finished" tier in the MVP, so "finished/manufactured" = non-raw, non-power.
 	var gt := str(Catalog.get_good(good_id).get("good_type", ""))
 	return gt != "" and gt != "raw" and gt != "power"
 
-func sell_all_to_market(params: Dictionary) -> Dictionary:
+func sell_all_to_market(params: Dictionary, log_oneoff: bool = true) -> Dictionary:
 	# Stories 4 & 5: sweep every tile's stockpile and sell to the nearest port, filtered by
 	#   good_id     ("" = all goods, else a specific good)
 	#   finished_only (only manufactured/non-raw goods)
@@ -398,6 +697,8 @@ func sell_all_to_market(params: Dictionary) -> Dictionary:
 		var goods_qtys: Dictionary = {}
 		for gid in totals.keys():
 			var g := str(gid)
+			if not Catalog.is_good_sellable(g):
+				continue
 			if good_filter != "" and g != good_filter:
 				continue
 			if finished_only and not _is_finished_good(g):
@@ -407,14 +708,14 @@ func sell_all_to_market(params: Dictionary) -> Dictionary:
 				goods_qtys[g] = surplus
 		if goods_qtys.is_empty():
 			continue
-		var summary := queue_sell(tile_id, goods_qtys)
+		var summary := queue_sell(tile_id, goods_qtys, log_oneoff)
 		if not summary.is_empty():
 			total_qty += int(summary.get("total_qty", 0))
 			total_revenue += float(summary.get("revenue", 0.0))
 			tiles_sold += 1
 	return {"total_qty": total_qty, "revenue": total_revenue, "tiles": tiles_sold}
 
-func queue_sell(source_tile: String, goods_qtys: Dictionary) -> Dictionary:
+func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = true) -> Dictionary:
 	# Sell specific goods/qtys from a tile: ship to the nearest port, pay out on arrival.
 	if source_tile == "":
 		return {}
@@ -453,6 +754,9 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary) -> Dictionary:
 		emit_stockpile_market_sale_completed(sale_record)
 		if port != "":
 			market_sale_arrived_at_port.emit(port, total_revenue)
+	if log_oneoff:
+		for it in items:
+			log_market_sale(source_tile, port, str(it.good_id), int(it.qty), turns)
 	return {"items": items, "total_qty": total_qty, "revenue": total_revenue, "turns": turns, "port": port}
 
 func get_pending_transport_shipments() -> Array:
@@ -500,6 +804,64 @@ func is_sell_surplus_enabled(tile_id: String) -> bool:
 
 func get_sell_surplus_tiles() -> Array:
 	return sell_surplus_tiles.keys()
+
+# --- Per-good auto-sell (a standing order to sell a specific good's surplus every turn) ---
+
+func enable_auto_sell_good(tile_id: String, good_id: String) -> void:
+	if tile_id == "" or good_id == "":
+		return
+	if not auto_sell_goods.has(tile_id):
+		auto_sell_goods[tile_id] = {}
+	if auto_sell_goods[tile_id].has(good_id):
+		return
+	auto_sell_goods[tile_id][good_id] = true
+	sell_surplus_changed.emit(tile_id)
+
+func disable_auto_sell_good(tile_id: String, good_id: String) -> void:
+	if not auto_sell_goods.has(tile_id):
+		return
+	if auto_sell_goods[tile_id].erase(good_id):
+		if (auto_sell_goods[tile_id] as Dictionary).is_empty():
+			auto_sell_goods.erase(tile_id)
+		sell_surplus_changed.emit(tile_id)
+
+func is_auto_sell_good(tile_id: String, good_id: String) -> bool:
+	return auto_sell_goods.get(tile_id, {}).has(good_id)
+
+func get_auto_sell_good_tiles() -> Array:
+	return auto_sell_goods.keys()
+
+func should_auto_sell_good(tile_id: String, good_id: String) -> bool:
+	# A good auto-sells if the master "sell everything" order is on for the tile,
+	# or it has an explicit per-good auto-sell override.
+	return sell_surplus_tiles.has(tile_id) or auto_sell_goods.get(tile_id, {}).has(good_id)
+
+func get_auto_sell_tiles() -> Array:
+	# Union of tiles with the master order and tiles with any per-good override.
+	var tiles: Dictionary = {}
+	for t in sell_surplus_tiles.keys():
+		tiles[t] = true
+	for t in auto_sell_goods.keys():
+		tiles[t] = true
+	return tiles.keys()
+
+func set_auto_sell_impact(tile_id: String, max_pct: int) -> void:
+	# max_pct is the largest per-turn price impact the auto-sell may cause (or IMPACT_ANY for no cap).
+	if tile_id == "":
+		return
+	auto_sell_impact[tile_id] = max_pct
+	sell_surplus_changed.emit(tile_id)
+
+func get_auto_sell_impact(tile_id: String) -> int:
+	return int(auto_sell_impact.get(tile_id, IMPACT_ANY))
+
+func auto_sell_unit_cap(tile_id: String) -> int:
+	# Per-turn, per-good sell cap implied by the tile's price-impact tolerance.
+	# Returns a very large number when ANY impact is allowed (effectively uncapped).
+	var impact: int = get_auto_sell_impact(tile_id)
+	if impact == IMPACT_ANY:
+		return 1 << 30
+	return EconomyConfig.units_cap_for_impact(impact)
 
 func set_labour_multiplier(value: float) -> void:
 	# Clamp to valid range

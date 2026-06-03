@@ -16,6 +16,9 @@ const SUCCESS_LEFT_MARGIN := 20.0
 const SUCCESS_BOTTOM_OFFSET := -140.0
 # Bottom-centre stack for warnings.
 const WARNING_BOTTOM_OFFSET := -140.0
+# Bottom-right stack for errors (e.g. can't afford a build).
+const ERROR_RIGHT_MARGIN := 20.0
+const ERROR_BOTTOM_OFFSET := -140.0
 
 const SUCCESS_BG := Color(0.05, 0.18, 0.32, 0.94)
 const SUCCESS_BORDER := Color(0.4, 0.85, 0.4, 0.9)
@@ -30,9 +33,11 @@ const CAUTION_TEXT := Color(1.0, 0.96, 0.84)
 const TOAST_SUCCESS := "success"
 const TOAST_WARNING := "warning"
 const TOAST_CAUTION := "caution"
+const TOAST_ERROR := "error"
 
 var _success_stack: VBoxContainer
 var _warning_stack: VBoxContainer
+var _error_stack: VBoxContainer
 var _prev_money: float = 0.0
 
 func _ready() -> void:
@@ -44,8 +49,15 @@ func _ready() -> void:
 	MatchState.money_changed.connect(_on_money_changed)
 	MatchState.stockpile_market_sale_completed.connect(_on_stockpile_market_sale_completed)
 	MatchState.toast_requested.connect(_on_toast_requested)
+	MatchState.build_rejected_no_funds.connect(_on_build_rejected_no_funds)
+
+func _on_build_rejected_no_funds(message: String) -> void:
+	_push_toast(_error_stack, message, TOAST_WARNING)  # red, bottom-right
 
 func _on_toast_requested(message: String, toast_type: String) -> void:
+	if toast_type == TOAST_ERROR:
+		_push_toast(_error_stack, message, TOAST_WARNING)  # red styling, bottom-right
+		return
 	var stack := _warning_stack if toast_type == TOAST_WARNING else _success_stack
 	_push_toast(stack, message, toast_type)
 
@@ -81,6 +93,22 @@ func _build_stacks() -> void:
 	_warning_stack.offset_bottom = WARNING_BOTTOM_OFFSET
 	_warning_stack.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	add_child(_warning_stack)
+
+	_error_stack = VBoxContainer.new()
+	_error_stack.name = "ErrorStack"
+	_error_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_error_stack.add_theme_constant_override("separation", 6)
+	_error_stack.alignment = BoxContainer.ALIGNMENT_END
+	_error_stack.anchor_left = 1.0
+	_error_stack.anchor_right = 1.0
+	_error_stack.anchor_top = 1.0
+	_error_stack.anchor_bottom = 1.0
+	_error_stack.offset_left = -ERROR_RIGHT_MARGIN - TOAST_WIDTH
+	_error_stack.offset_right = -ERROR_RIGHT_MARGIN
+	_error_stack.offset_top = ERROR_BOTTOM_OFFSET
+	_error_stack.offset_bottom = ERROR_BOTTOM_OFFSET
+	_error_stack.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	add_child(_error_stack)
 
 func _on_building_added(instance: Dictionary) -> void:
 	var msg: String = _format_building_message(instance)
