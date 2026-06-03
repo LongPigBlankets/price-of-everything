@@ -52,6 +52,16 @@ var _infra_by_type: Dictionary = {}
 var _tile_infra: Dictionary = {}   # tile_id -> ["roads","rail",...] (normalised)
 var _tile_land: Dictionary = {}    # tile_id -> bool (false for sea/deep_sea)
 
+# Routing caches. route() pathfinding and nearest_port_tile() are recomputed per
+# building, per input good, EVERY turn by the production loop — and the results
+# only change when the road/rail network changes (route) or never (ports are
+# static). Memoise them. _route_cache is cleared whenever _tile_infra mutates;
+# _port_cache is permanent (ports + geometry are static).
+var _route_cache: Dictionary = {}  # "src|dst|modes" -> route dict
+var _port_cache: Dictionary = {}   # from_tile -> nearest port tile_id
+
+const MARKET_DESTINATION := "__market__"
+
 const ROUTE_MAP_W := 30
 const ROUTE_MAP_H := 20
 
@@ -62,6 +72,37 @@ func _ready() -> void:
 	_load_ports()
 	_load_tile_names()
 	_load_infrastructure()
+	# Wire the output-destination safeguard after the other autoloads exist.
+	call_deferred("_wire_routing_safeguard")
+
+
+# When a building's output destination changes, re-validate the route it will now
+# use (warming the cache) and warn if the new destination is unreachable. The
+# route cache is keyed by (source, dest, modes) — pure map facts — so a changed
+# destination never makes a cached entry stale; this is a reachability safeguard.
+func _wire_routing_safeguard() -> void:
+	var ms := get_node_or_null("/root/MatchState")
+	if ms != null and ms.has_signal("output_stockpile_destination_changed"):
+		if not ms.output_stockpile_destination_changed.is_connected(_on_output_destination_changed):
+			ms.output_stockpile_destination_changed.connect(_on_output_destination_changed)
+
+
+func _on_output_destination_changed(instance_id: String, tile_id: String, good_id: String) -> void:
+	var ms := get_node_or_null("/root/MatchState")
+	if ms == null:
+		return
+	var building: Dictionary = ms.buildings.get(instance_id, {})
+	var source: String = str(building.get("tile_id", ""))
+	if source == "":
+		return
+	var dest := tile_id
+	if dest == MARKET_DESTINATION:
+		dest = nearest_port_tile(source)
+	if dest == "" or dest == source:
+		return
+	var r := route(source, dest, good_id)
+	if int(r.get("turns", 0)) >= (1 << 30):
+		push_warning("[Catalog] Output of %s now routes to %s, which is unreachable." % [instance_id, dest])
 
 # =========================================================================
 # PORTS
@@ -94,6 +135,8 @@ func all_ports() -> Array:
 	return _ports.duplicate(true)
 
 func nearest_port_tile(from_tile_id: String) -> String:
+	if _port_cache.has(from_tile_id):
+		return _port_cache[from_tile_id]
 	var best := ""
 	var best_d := 1 << 30
 	for p in _ports:
@@ -104,6 +147,7 @@ func nearest_port_tile(from_tile_id: String) -> String:
 		if d < best_d:
 			best_d = d
 			best = t
+	_port_cache[from_tile_id] = best
 	return best
 
 func tile_hex_distance(a: String, b: String) -> int:
@@ -198,6 +242,7 @@ func add_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 	if not list.has(norm):
 		list.append(norm)
 		_tile_infra[tile_id] = list
+		_route_cache.clear()   # network changed: cached paths may now be shorter
 
 func remove_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 	var norm := _normalise_infra_id(infra_type.strip_edges().to_lower())
@@ -205,6 +250,7 @@ func remove_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 	if list.has(norm):
 		list.erase(norm)
 		_tile_infra[tile_id] = list
+		_route_cache.clear()   # network changed: cached paths may now be invalid
 
 func tile_label(tile_id: String) -> String:
 	# "name - (a_b)", or "(a_b)" when the tile has no nickname/city_name.
@@ -325,6 +371,18 @@ func _turn_move_neighbours(tile_id: String, modes: Array) -> Array:
 	return out
 
 func route(source_tile: String, dest_tile: String, good_id: String = "") -> Dictionary:
+	# Cached front for the Dijkstra solver below. Trivial cases pass through;
+	# reachable/unreachable results are memoised per (src, dst, modes) and the
+	# cache is cleared whenever the network changes (see add/remove_tile_infrastructure).
+	if source_tile == "" or dest_tile == "" or source_tile == dest_tile:
+		return _route_uncached(source_tile, dest_tile, good_id)
+	var key := "%s|%s|%s" % [source_tile, dest_tile, "-".join(_modes_for_good(good_id))]
+	if not _route_cache.has(key):
+		_route_cache[key] = _route_uncached(source_tile, dest_tile, good_id)
+	return _route_cache[key]
+
+
+func _route_uncached(source_tile: String, dest_tile: String, good_id: String = "") -> Dictionary:
 	# Fewest turns A->B. Returns {turns, path:[turn-boundary tiles], legs:[{mode,from,to}]}.
 	# (Objective currently FASTEST; cheapest/blended need infra cost_per_unit_shipped.)
 	if source_tile == "" or dest_tile == "":
