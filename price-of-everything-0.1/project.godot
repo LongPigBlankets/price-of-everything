@@ -31,6 +31,8 @@ CostSolver="*res://scripts/cost_solver.gd"
 BuildMode="*uid://wqxliv5e1r7u"
 MapMode="*uid://dvsgkg2qos415"
 PanelStack="*res://scripts/panel_stack.gd"
+TurnProfiler="*res://scripts/turn_profiler.gd"
+RunMetrics="*res://scripts/run_metrics.gd"
 
 [display]
 
