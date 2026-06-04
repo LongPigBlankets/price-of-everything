@@ -35,11 +35,13 @@ const DENSITY_SOFT_CAP := 100.0
 
 # Each chain's branches. builds = [[building_id, recipe_id, count], ...]; the building
 # whose recipe output == export_good ships to the export_to branch's tile (or MARKET).
+# "deposit": a mine-bearing branch may only be placed on a tile carrying that deposit
+# (mines/oil-wells/water-pumps are deposit-gated). "" = no deposit needed (free spill).
 const BRANCHES := [
-	{"role": "COPPER", "anchor": "tile_8_12", "builds": [["b_001", "r_006", 3], ["b_002", "r_007", 2], ["b_007", "r_008", 2]], "export_good": "g_007", "export_to": "MOTOR"},
-	{"role": "IRON", "anchor": "tile_7_10", "builds": [["b_001", "r_002", 2], ["b_002", "r_005", 1], ["b_002", "r_003", 1]], "export_good": "g_006", "export_to": "MOTOR"},
-	{"role": "COAL", "anchor": "tile_6_8", "builds": [["b_001", "r_001", 1]], "export_good": "g_001", "export_to": "IRON"},
-	{"role": "MOTOR", "anchor": "tile_5_8", "builds": [["b_007", "r_009", 2]], "export_good": "g_008", "export_to": "MARKET"},
+	{"role": "COPPER", "anchor": "tile_8_12", "deposit": "copper_ore", "builds": [["b_001", "r_006", 3], ["b_002", "r_007", 2], ["b_007", "r_008", 2]], "export_good": "g_007", "export_to": "MOTOR"},
+	{"role": "IRON", "anchor": "tile_7_10", "deposit": "iron_ore", "builds": [["b_001", "r_002", 2], ["b_002", "r_005", 1], ["b_002", "r_003", 1]], "export_good": "g_006", "export_to": "MOTOR"},
+	{"role": "COAL", "anchor": "tile_6_8", "deposit": "coal", "builds": [["b_001", "r_001", 1]], "export_good": "g_001", "export_to": "IRON"},
+	{"role": "MOTOR", "anchor": "tile_5_8", "deposit": "", "builds": [["b_007", "r_009", 2]], "export_good": "g_008", "export_to": "MARKET"},
 ]
 
 var MatchState: Node
@@ -53,6 +55,7 @@ var LoanState: Node
 
 var _stub
 var _pool: Array = []               # nearby land tiles (spill targets), nearest port first
+var _deposit_tiles: Dictionary = {} # deposit name -> [land tile_ids carrying it], nearest port first
 var _road_cost := 0.0
 var _rail_cost := 0.0
 var _total_rail_spent := 0.0
@@ -98,7 +101,7 @@ func _resolve() -> void:
 
 func _build_pool() -> void:
 	# Land tiles in a band around the port (excluding the port itself), nearest first,
-	# as spill targets when a branch can't fit on its preferred anchor.
+	# as spill targets for non-mine branches.
 	for col in range(4, 11):
 		for row in range(6, 15):
 			var t := "tile_%d_%d" % [col, row]
@@ -107,6 +110,36 @@ func _build_pool() -> void:
 			if Catalog.is_land_tile(t):
 				_pool.append(t)
 	_pool.sort_custom(func(a, b): return Catalog.tile_hex_distance(a, PORT) < Catalog.tile_hex_distance(b, PORT))
+
+
+func _load_deposits() -> void:
+	# Read tile deposits straight from the data so mine/oil/water branches can only be
+	# placed on tiles that actually carry the required deposit (qty suffix stripped).
+	var f := FileAccess.open("res://data/tile_properties.csv", FileAccess.READ)
+	if f == null:
+		return
+	f.get_csv_line()  # header
+	while not f.eof_reached():
+		var line := f.get_csv_line()
+		if line.size() < 4 or line[0] == "":
+			continue
+		var tid: String = line[0]
+		if line[3] == "" or not Catalog.is_land_tile(tid):
+			continue
+		for d in line[3].split("|"):
+			var base := d.strip_edges()
+			var paren := base.find("(")
+			if paren > 0:
+				base = base.substr(0, paren)
+			if base == "":
+				continue
+			if not _deposit_tiles.has(base):
+				_deposit_tiles[base] = []
+			if not _deposit_tiles[base].has(tid):
+				_deposit_tiles[base].append(tid)
+	f.close()
+	for k in _deposit_tiles.keys():
+		_deposit_tiles[k].sort_custom(func(a, b): return Catalog.tile_hex_distance(a, PORT) < Catalog.tile_hex_distance(b, PORT))
 
 
 func _recipe_output_good(recipe_id: String) -> String:
@@ -122,19 +155,25 @@ func _branch_land(branch: Dictionary) -> float:
 	return total
 
 
-func _alloc_branch(anchor: String, land: float, reserved: Dictionary) -> String:
-	# First land tile (anchor, then nearest pool tiles) that can fit `land` under the cap,
-	# accounting for what other branches of THIS chain have already reserved this turn.
-	var cands: Array = [anchor]
-	for t in _pool:
-		if not cands.has(t):
-			cands.append(t)
+func _alloc_branch(branch: Dictionary, land: float, reserved: Dictionary) -> String:
+	# First land tile that can fit `land` under the cap (accounting for this chain's other
+	# branches). A mine-bearing branch (deposit != "") is restricted to tiles carrying that
+	# deposit, nearest port first; other branches spill from the anchor across the pool.
+	var dep := str(branch.get("deposit", ""))
+	var cands: Array = []
+	if dep != "":
+		cands = _deposit_tiles.get(dep, [])
+	else:
+		cands = [str(branch.anchor)]
+		for t in _pool:
+			if not cands.has(t):
+				cands.append(t)
 	for t in cands:
 		if t == PORT or not Catalog.is_land_tile(t):
 			continue
-		var occ: float = MatchState.get_tile_space_used(t) + float(reserved.get(t, 0.0))
+		var occ: float = MatchState.get_tile_space_used(str(t)) + float(reserved.get(t, 0.0))
 		if occ + land <= MAX_TILE_LAND:
-			return t
+			return str(t)
 	return ""
 
 
@@ -193,9 +232,9 @@ func _build_chain() -> bool:
 	var reserved: Dictionary = {}
 	for b in BRANCHES:
 		var land: float = _branch_land(b)
-		var t: String = _alloc_branch(str(b.anchor), land, reserved)
+		var t: String = _alloc_branch(b, land, reserved)
 		if t == "":
-			return false   # no nearby land left
+			return false   # no deposit tile / nearby land left for this branch
 		reserved[t] = float(reserved.get(t, 0.0)) + land
 		chain_tiles[b.role] = t
 
@@ -260,6 +299,10 @@ func _initialize() -> void:
 		RunMetrics.reset()
 
 	_build_pool()
+	_load_deposits()
+	print("[sim] deposit tiles: copper=%d iron=%d coal=%d" % [
+		_deposit_tiles.get("copper_ore", []).size(), _deposit_tiles.get("iron_ore", []).size(),
+		_deposit_tiles.get("coal", []).size()])
 	_road_cost = float(Catalog.get_building("b_005").get("base_price", 25.0))
 	_rail_cost = float(Catalog.get_building("b_019").get("base_price", 1.0))
 	print("[sim] %d nearby land tiles in pool; road=%.0f rail=%.0f /tile; tile cap = %.0f" % [
