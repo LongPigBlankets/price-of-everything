@@ -100,6 +100,9 @@ func _ready() -> void:
 		building_connection_visuals.on_building_connections_changed
 	)
 
+	# Capacity dialog: prompts the player when a tile first hits max storage.
+	_hud.add_child(load("res://scripts/capacity_dialog.gd").new())
+
 	# Debug cheat terminal (toggle with the ` key)
 	add_child(load("res://scripts/debug_terminal.gd").new())
 

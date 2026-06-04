@@ -12,7 +12,15 @@ var _by_tile: Dictionary = {}  # tile_key -> good_id -> int
 # nothing in the game loop depends on it, so it can never change stockpile behaviour.
 var _capacity_lost_this_turn: int = 0
 
+# Tracks which tiles are currently at/over capacity, so tile_reached_capacity fires
+# only on the FIRST add that fills a tile (not every subsequent add while it stays
+# full). Cleared when a consume drops the tile back below capacity.
+var _at_capacity: Dictionary = {}  # tile_key -> bool
+
 signal stockpile_changed()
+# Fired the moment a tile crosses from below to at/over its storage capacity. The
+# capacity dialog listens to this to prompt the player (sell surplus / expand / stop).
+signal tile_reached_capacity(tile_id: String)
 
 # --- Public API ---
 
@@ -83,6 +91,7 @@ func add(coord, good_id: String, qty: int) -> int:
 	var tile_stockpile := _stockpile_for_tile(coord, true)
 	tile_stockpile[good_id] = int(tile_stockpile.get(good_id, 0)) + added
 	stockpile_changed.emit()
+	_check_capacity(coord)
 	return added
 
 func consume(coord, good_id: String, qty: int) -> int:
@@ -102,7 +111,21 @@ func consume(coord, good_id: String, qty: int) -> int:
 			tile_stockpile.erase(good_id)
 		_prune_empty_tile(coord)
 		stockpile_changed.emit()
+		_check_capacity(coord)
 	return taken
+
+func _check_capacity(coord) -> void:
+	# Emit tile_reached_capacity on the rising edge (below -> at/over capacity); reset
+	# the latch once the tile drops back below, so a later refill can prompt again.
+	if coord == null:
+		return
+	var key := str(coord)
+	var full: bool = get_used_capacity(coord) >= get_capacity(coord)
+	if full and not bool(_at_capacity.get(key, false)):
+		_at_capacity[key] = true
+		tile_reached_capacity.emit(key)
+	elif not full and bool(_at_capacity.get(key, false)):
+		_at_capacity[key] = false
 
 func consume_anywhere(good_id: String, qty: int) -> int:
 	if qty <= 0 or good_id == "":
