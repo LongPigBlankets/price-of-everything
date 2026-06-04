@@ -25,6 +25,7 @@ const LAND_PATCH := 10.0
 const LAND_PATCH_COST := 10.0
 const DENSITY_SOFT_CAP := 100.0
 const RAMP_TURNS := 10
+const WC_FLOOR := 400.0   # per-turn working-capital floor (tracked as construction debt; equity-neutral)
 
 const CH_MOTORS := [
 	{"role": "COPPER", "deposit": "copper_ore", "builds": [["b_001", "r_006", 3], ["b_002", "r_007", 2], ["b_007", "r_008", 2]], "export_good": "g_007", "export_to": "MOTOR"},
@@ -55,13 +56,22 @@ const CH_ELECTRICAL := [
 	{"role": "PLASTICS", "deposit": "", "builds": [["b_013", "r_024", 1]], "export_good": "g_027", "export_to": "EC"},
 	{"role": "EC", "deposit": "", "builds": [["b_007", "r_126", 1]], "export_good": "g_036", "export_to": "MARKET"},
 ]
+# uPVC glass feeders: full chlor-alkali chain. CHLOR sits on a river tile with its
+# OWN water pump (r_011) so chlor-alkali's water is produced & consumed on-tile (no
+# piped-water latency); it ships only NaOH (reinforced pipe) to the glass furnaces.
 const CH_GLASS_FEEDERS := [
 	{"role": "SAND", "deposit": "sand", "builds": [["b_001", "r_018", 2]], "export_good": "g_018", "export_to": "GLASS"},
 	{"role": "LIMESTONE", "deposit": "limestone", "builds": [["b_001", "r_019", 1]], "export_good": "g_016", "export_to": "GLASS"},
 	{"role": "SALT", "deposit": "basic_salt", "builds": [["b_001", "r_010", 1]], "export_good": "g_015", "export_to": "CHLOR"},
-	{"role": "WATER", "deposit": "water", "builds": [["b_037", "r_011", 1]], "export_good": "g_009", "export_to": "CHLOR"},
-	{"role": "CHLOR", "deposit": "", "builds": [["b_012", "r_012", 1]], "export_good": "g_013", "export_to": "GLASS"},
+	{"role": "CHLOR", "deposit": "water", "builds": [["b_037", "r_011", 1], ["b_012", "r_012", 1]], "export_good": "g_013", "export_to": "GLASS"},
 	{"role": "GLASS", "deposit": "", "builds": [["b_002", "r_053", 2]], "export_good": "g_038", "export_to": "WINDOW"},
+]
+# Aluminium glass feeders: NO chlor-alkali chain — the glass furnaces import NaOH
+# from the market (cheap at £0.8) instead of building salt + water + electrochemistry.
+const CH_GLASS_FEEDERS_IMPORT := [
+	{"role": "SAND", "deposit": "sand", "builds": [["b_001", "r_018", 2]], "export_good": "g_018", "export_to": "GLASS"},
+	{"role": "LIMESTONE", "deposit": "limestone", "builds": [["b_001", "r_019", 1]], "export_good": "g_016", "export_to": "GLASS"},
+	{"role": "GLASS", "deposit": "", "builds": [["b_002", "r_053", 2]], "export_good": "g_038", "export_to": "WINDOW", "buy": ["g_013"]},
 ]
 # Building frame: makes its OWN windows in-chain by importing glass + pvc to a window
 # factory, then assembles (steel self; copper_pipe + electrical_components imported).
@@ -123,6 +133,7 @@ var _total_rail := 0.0
 var _total_pipe := 0.0
 var _land_owned: Dictionary = {}
 var _land_exhausted := false
+var _construction_debt := 0.0
 var _net_hist: Array = []
 var _pre_expand_net := 0.0
 var _judge_turn := 0
@@ -167,7 +178,7 @@ func _branches_for_next() -> Array:
 			u.append({"role": "WINDOW", "deposit": "", "builds": [["b_007", "r_055", 1]], "export_good": "g_039", "export_to": "MARKET", "buy": ["g_033"]})
 			return u
 		"aluminium_windows":
-			var a := CH_GLASS_FEEDERS.duplicate(true)
+			var a := CH_GLASS_FEEDERS_IMPORT.duplicate(true)
 			a.append({"role": "WINDOW", "deposit": "", "builds": [["b_007", "r_056", 1]], "export_good": "g_039", "export_to": "MARKET", "buy": ["g_029"]})
 			return a
 		"building_frame":
@@ -273,10 +284,10 @@ func _infra_cost(infra: String) -> float:
 			return _rail_cost
 
 
-func _tile_path(src: String, dst: String) -> Array:
-	# Shortest chain of ADJACENT tiles src->dst (BFS over land; dst may be a port/sea
-	# tile). Laying infra on every tile of this path yields a connected corridor even
-	# for range-1 pipes.
+func _tile_path(src: String, dst: String, allow_sea: bool = false) -> Array:
+	# Shortest chain of ADJACENT tiles src->dst. Rail stays on land; pipes may run
+	# subsea (allow_sea) so an import pipeline can always reach a coastal port. Laying
+	# infra on every tile of this path yields a connected corridor.
 	if src == dst:
 		return [src]
 	var prev: Dictionary = {src: ""}
@@ -291,7 +302,7 @@ func _tile_path(src: String, dst: String) -> Array:
 			var n := str(nb)
 			if prev.has(n):
 				continue
-			if n != dst and not Catalog.is_land_tile(n):
+			if not allow_sea and n != dst and not Catalog.is_land_tile(n):
 				continue
 			prev[n] = u
 			q.append(n)
@@ -309,7 +320,7 @@ func _ensure_corridor(src: String, dst: String, infra: String) -> void:
 	if src == "" or dst == "" or src == dst:
 		return
 	var cost: float = _infra_cost(infra)
-	for t in _tile_path(src, dst):
+	for t in _tile_path(src, dst, infra != "rail"):
 		if not Catalog.tile_has_infrastructure(str(t), infra):
 			MatchState.add_money(-cost)
 			if infra == "rail":
@@ -391,6 +402,12 @@ func _build_branches(branches: Array, count_as_chain: bool) -> bool:
 		var src: String = chain_tiles[b.role]
 		var dst: String = Catalog.nearest_port_tile(src) if str(b.export_to) == "MARKET" else chain_tiles[str(b.export_to)]
 		_ensure_corridor(src, dst, _corridor_mode(str(b.export_good)))
+		# Imported fluids (e.g. NaOH) can only be delivered from the port by pipe, so
+		# lay an import pipeline tile -> port for any bought liquid/gas input.
+		for gid in b.get("buy", []):
+			var mode: String = _corridor_mode(str(gid))
+			if mode != "rail":
+				_ensure_corridor(src, Catalog.nearest_port_tile(src), mode)
 	if MatchState.has_signal("money_changed"):
 		MatchState.money_changed.emit(MatchState.money)
 	if count_as_chain:
@@ -400,14 +417,22 @@ func _build_branches(branches: Array, count_as_chain: bool) -> bool:
 
 
 func _finance() -> void:
-	if MatchState.money >= 0.0:
-		return
-	var cap: float = LoanState.available_capacity()
-	if cap < 1.0:
-		return
-	var amt: float = minf(-MatchState.money, cap)
-	if amt >= 1.0 and LoanState.take_loan(amt):
-		_total_borrowed += amt
+	if MatchState.money < 0.0:
+		var cap: float = LoanState.available_capacity()
+		if cap >= 1.0:
+			var amt: float = minf(-MatchState.money, cap)
+			if amt >= 1.0 and LoanState.take_loan(amt):
+				_total_borrowed += amt
+	# Working-capital floor, drawn as a construction loan tracked in _construction_debt.
+	# EQUITY-NEUTRAL (it just turns ignored negative cash into cash minus an equal debt)
+	# but lets every chain pay for market imports during ramp, since the buy primitive
+	# refuses to purchase while cash is non-positive. Expansion is paced separately (one
+	# chain per marginal-profit judgment) so this floor does not cause over-building.
+	if MatchState.money < WC_FLOOR:
+		var topup: float = WC_FLOOR - MatchState.money
+		MatchState.add_money(topup)
+		_construction_debt += topup
+		_total_borrowed += topup
 
 
 func _lifetime(good_id: String) -> int:
@@ -428,7 +453,7 @@ func _equity() -> float:
 	for inst in MatchState.buildings.values():
 		bval += float(Catalog.get_building(str(inst.get("building_id", ""))).get("base_price", 0.0))
 	var debt := float(LoanState.total_outstanding()) if LoanState.has_method("total_outstanding") else 0.0
-	return cash + stock + bval - debt
+	return cash + stock + bval - debt - _construction_debt
 
 
 func _initialize() -> void:
@@ -470,11 +495,13 @@ func _initialize() -> void:
 		await TurnManager.turn_resolution_completed
 		var turn := t + 1
 		_finance()
-		if _turn_out_of_red < 0 and MatchState.money >= 0.0:
-			_turn_out_of_red = turn
 		var s: Dictionary = Production.last_turn_summary
 		_net_hist.append(float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0)))
 		var rn: float = _rolling_net()
+		# "Out of red" = operating cash flow first turns positive (the WC floor keeps raw
+		# cash positive, so this tracks real operations, not the construction loan).
+		if _turn_out_of_red < 0 and rn > 0.0:
+			_turn_out_of_red = turn
 		var eq: float = _equity()
 		for m in PROFIT_MILESTONES:
 			if not _profit_at.has(m) and rn >= float(m):
@@ -495,7 +522,10 @@ func _initialize() -> void:
 					_stopped_turn = turn
 				_land_exhausted = true
 			_judge_turn = 0
-		if not _land_exhausted and MatchState.money > _last_chain_cost and _chains < MAX_CHAINS:
+		# Expand only when no marginal-profit judgment is pending: build one chain, wait
+		# RAMP_TURNS, judge whether it helped, THEN consider the next. This paces growth
+		# so thin-margin chains don't over-build before the guard can fire.
+		if not _land_exhausted and _judge_turn == 0 and MatchState.money > _last_chain_cost and _chains < MAX_CHAINS:
 			var pre: float = _rolling_net()
 			if _build_chain():
 				_pre_expand_net = pre
@@ -527,8 +557,8 @@ func _report() -> void:
 	print("\n==== REPORT: %s ====" % _chain)
 	print("chains=%d tiles=%d  seed/last_cost=%.0f  stopped=%s" % [
 		_chains, _land_owned.size(), _last_chain_cost, (str(_stopped_turn) if _stopped_turn > 0 else "no")])
-	print("build=%.0f land=%.0f road=%.0f rail=%.0f pipe=%.0f borrowed=%.0f debt_end=%.0f" % [
-		_total_build, _total_land, _total_road, _total_rail, _total_pipe, _total_borrowed, LoanState.total_outstanding()])
+	print("build=%.0f land=%.0f road=%.0f rail=%.0f pipe=%.0f borrowed=%.0f wc_debt=%.0f debt_end=%.0f" % [
+		_total_build, _total_land, _total_road, _total_rail, _total_pipe, _total_borrowed, _construction_debt, LoanState.total_outstanding()])
 	print("out_of_red=%s  2nd_chain=%s  transport/turn=%.1f  product_lifetime=%d" % [
 		str(_turn_out_of_red), str(_turns_to_second), transport, _lifetime(_product)])
 	print("steady net/turn=%+.1f  equity_slope=%+.1f  final_equity=%.0f  profitable=%s" % [

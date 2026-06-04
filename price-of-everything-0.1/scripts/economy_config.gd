@@ -149,7 +149,10 @@ func transport_cost_for_route(good_id: String, qty: int, route: Dictionary) -> f
 	for leg in legs:
 		var mode := str(leg.get("mode", ""))
 		if PIPE_MODES.has(mode):
-			total += float(qty) * PIPE_COST_PER_UNIT_PER_TURN
+			# Pipes charge per TILE (a leg may span several tiles per turn), so the
+			# 0.05/unit/tile rate holds regardless of pipe range.
+			var tiles: int = maxi(1, Catalog.tile_hex_distance(str(leg.get("from", "")), str(leg.get("to", ""))))
+			total += float(qty) * float(tiles) * PIPE_COST_PER_UNIT_PER_TURN
 		else:
 			total += float(qty) * class_rate * float(TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
 	return total
