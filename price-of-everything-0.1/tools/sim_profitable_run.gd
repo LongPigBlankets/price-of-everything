@@ -46,14 +46,14 @@ const CH_CONCRETE_EAF := [
 	{"role": "WATER", "deposit": "water", "builds": [["b_037", "r_011", 1]], "export_good": "g_009", "export_to": "CONCRETE"},
 	{"role": "CONCRETE", "deposit": "", "builds": [["b_011", "r_035", 1], ["b_008", "r_030", 1]], "export_good": "g_017", "export_to": "MARKET"},
 ]
-# Electrical components now make their OWN plastics in-chain (oil -> processed_oil ->
-# ethylene -> plastics) rather than importing them. copper_wiring + chem_salts self.
+# Electrical components make their OWN plastics in-chain. The whole oil train (shale
+# fracking -> refining -> ethylene -> plastics) is CO-LOCATED on a shale_oil tile so
+# crude/processed/ethylene never leave the tile (no fragile liquid pipes); only solid
+# plastics ships (by rail) to the EC factory. copper_wiring + chem_salts self too.
 const CH_ELECTRICAL := [
 	{"role": "COPPER", "deposit": "copper_ore", "builds": [["b_001", "r_006", 2], ["b_002", "r_007", 1], ["b_007", "r_008", 1]], "export_good": "g_007", "export_to": "EC"},
 	{"role": "SALT", "deposit": "basic_salt", "builds": [["b_001", "r_010", 1]], "export_good": "g_019", "export_to": "EC"},
-	{"role": "OIL", "deposit": "crude_oil", "builds": [["b_032", "r_014", 2]], "export_good": "g_026", "export_to": "REFINE"},
-	{"role": "REFINE", "deposit": "", "builds": [["b_011", "r_180", 1], ["b_011", "r_023", 1]], "export_good": "g_024", "export_to": "PLASTICS"},
-	{"role": "PLASTICS", "deposit": "", "builds": [["b_013", "r_024", 1]], "export_good": "g_027", "export_to": "EC"},
+	{"role": "PLASTICS", "deposit": "shale_oil", "builds": [["b_034", "r_177", 2], ["b_011", "r_180", 1], ["b_011", "r_023", 1], ["b_013", "r_024", 1]], "export_good": "g_027", "export_to": "EC"},
 	{"role": "EC", "deposit": "", "builds": [["b_007", "r_126", 1]], "export_good": "g_036", "export_to": "MARKET"},
 ]
 # uPVC glass feeders: full chlor-alkali chain. CHLOR sits on a river tile with its
@@ -81,25 +81,21 @@ const CH_FRAME := [
 	{"role": "WINDOW", "deposit": "", "builds": [["b_007", "r_055", 1]], "export_good": "g_039", "export_to": "FRAME", "buy": ["g_038", "g_033"]},
 	{"role": "FRAME", "deposit": "", "builds": [["b_009", "r_057", 1]], "export_good": "g_023", "export_to": "MARKET", "buy": ["g_036", "g_021"]},
 ]
-# Plastics-only chain: oil -> processed_oil -> ethylene -> plastics (sold). Its self-
-# supply power plant burns processed_oil (r_181), not coal (see CH_POWER_STATION_OIL).
+# Plastics-only chain: the entire train (shale fracking -> refining -> ethylene ->
+# plastics) is co-located on one shale_oil tile; only solid plastics ships to market.
+# Its self-supply power plant burns processed_oil (r_181), not coal (CH_POWER_STATION_OIL).
 const CH_PLASTICS := [
-	{"role": "OIL", "deposit": "crude_oil", "builds": [["b_032", "r_014", 2]], "export_good": "g_026", "export_to": "REFINE"},
-	{"role": "REFINE", "deposit": "", "builds": [["b_011", "r_180", 1], ["b_011", "r_023", 1]], "export_good": "g_024", "export_to": "PLASTICS"},
-	{"role": "PLASTICS", "deposit": "", "builds": [["b_013", "r_024", 1]], "export_good": "g_027", "export_to": "MARKET"},
+	{"role": "PLASTICS", "deposit": "shale_oil", "builds": [["b_034", "r_177", 2], ["b_011", "r_180", 1], ["b_011", "r_023", 1], ["b_013", "r_024", 1]], "export_good": "g_027", "export_to": "MARKET"},
 ]
 # Self-supply power station, built ONCE per run after the chain turns profitable. The
 # PLANT branch exports to itself (export_to == role) so the power good is NOT routed
 # off-tile — it flows into the shared grid and offsets the chain's own consumption.
 const CH_POWER_STATION := [
 	{"role": "COAL", "deposit": "coal", "builds": [["b_001", "r_001", 1]], "export_good": "g_001", "export_to": "PLANT"},
-	{"role": "WATER", "deposit": "water", "builds": [["b_037", "r_011", 1]], "export_good": "g_009", "export_to": "PLANT"},
-	{"role": "PLANT", "deposit": "", "builds": [["b_003", "r_004", 1]], "export_good": "g_010", "export_to": "PLANT"},
+	{"role": "PLANT", "deposit": "water", "builds": [["b_037", "r_011", 1], ["b_003", "r_004", 1]], "export_good": "g_010", "export_to": "PLANT"},
 ]
 const CH_POWER_STATION_OIL := [
-	{"role": "OIL", "deposit": "crude_oil", "builds": [["b_032", "r_014", 2]], "export_good": "g_026", "export_to": "REFINE"},
-	{"role": "REFINE", "deposit": "", "builds": [["b_011", "r_180", 1]], "export_good": "g_025", "export_to": "PLANT"},
-	{"role": "PLANT", "deposit": "", "builds": [["b_003", "r_181", 1]], "export_good": "g_010", "export_to": "PLANT"},
+	{"role": "PLANT", "deposit": "shale_oil", "builds": [["b_034", "r_177", 2], ["b_011", "r_180", 1], ["b_003", "r_181", 1]], "export_good": "g_010", "export_to": "PLANT"},
 ]
 const CHAIN_PRODUCT := {"motors": "g_008", "concrete": "g_017", "electrical": "g_036", "upvc_windows": "g_039", "aluminium_windows": "g_039", "building_frame": "g_023", "plastics": "g_027"}
 
@@ -284,10 +280,10 @@ func _infra_cost(infra: String) -> float:
 			return _rail_cost
 
 
-func _tile_path(src: String, dst: String, allow_sea: bool = false) -> Array:
-	# Shortest chain of ADJACENT tiles src->dst. Rail stays on land; pipes may run
-	# subsea (allow_sea) so an import pipeline can always reach a coastal port. Laying
-	# infra on every tile of this path yields a connected corridor.
+func _tile_path(src: String, dst: String) -> Array:
+	# Shortest chain of ADJACENT LAND tiles src->dst (dst itself may be a coastal port
+	# tile). All infrastructure — rail and pipes alike — is land-only. Laying infra on
+	# every tile of this path yields a connected corridor.
 	if src == dst:
 		return [src]
 	var prev: Dictionary = {src: ""}
@@ -302,7 +298,7 @@ func _tile_path(src: String, dst: String, allow_sea: bool = false) -> Array:
 			var n := str(nb)
 			if prev.has(n):
 				continue
-			if not allow_sea and n != dst and not Catalog.is_land_tile(n):
+			if n != dst and not Catalog.is_land_tile(n):
 				continue
 			prev[n] = u
 			q.append(n)
@@ -320,7 +316,7 @@ func _ensure_corridor(src: String, dst: String, infra: String) -> void:
 	if src == "" or dst == "" or src == dst:
 		return
 	var cost: float = _infra_cost(infra)
-	for t in _tile_path(src, dst, infra != "rail"):
+	for t in _tile_path(src, dst):
 		if not Catalog.tile_has_infrastructure(str(t), infra):
 			MatchState.add_money(-cost)
 			if infra == "rail":
@@ -524,8 +520,10 @@ func _initialize() -> void:
 			_judge_turn = 0
 		# Expand only when no marginal-profit judgment is pending: build one chain, wait
 		# RAMP_TURNS, judge whether it helped, THEN consider the next. This paces growth
-		# so thin-margin chains don't over-build before the guard can fire.
-		if not _land_exhausted and _judge_turn == 0 and MatchState.money > _last_chain_cost and _chains < MAX_CHAINS:
+		# so thin-margin chains don't over-build before the guard can fire. Funded from
+		# REAL accumulated cash (net of the working-capital loan) so a loss-making chain
+		# — whose cash is only propped up by the WC floor — never expands.
+		if not _land_exhausted and _judge_turn == 0 and (MatchState.money - _construction_debt) > _last_chain_cost and _chains < MAX_CHAINS:
 			var pre: float = _rolling_net()
 			if _build_chain():
 				_pre_expand_net = pre
