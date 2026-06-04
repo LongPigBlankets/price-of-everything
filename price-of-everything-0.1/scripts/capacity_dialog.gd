@@ -10,6 +10,14 @@ extends PanelContainer
 
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const GOODS_FRAME := preload("res://assets/ui/goods_frame.tres")  # pipe frame, matches the title card
+
+# Standard quantity pill (mirrors building_row._make_qty_badge).
+const BADGE_DIAMETER := 24
+const BADGE_TEXT_SIZE := 14
+const BADGE_NAVY := Color(0.0, 0.119856, 0.243095, 1.0)
+const BADGE_PAPER := Color(0.995234, 0.930806, 0.763265, 1.0)
+const ICON_SIZE := 60.0
 
 # Placeholder expansion cost (hardcoded for now): 10 steel, 10 concrete, 10 copper
 # wiring + £50.  g_006 steel, g_017 concrete, g_007 copper_wiring.
@@ -102,12 +110,12 @@ func _build_ui() -> void:
 	anchor_right = 0.5
 	anchor_top = 0.5
 	anchor_bottom = 0.5
-	offset_left = -300.0
-	offset_right = 300.0
+	offset_left = -400.0
+	offset_right = 400.0
 	offset_top = -200.0
 	offset_bottom = 200.0
-	custom_minimum_size = Vector2(600, 400)
-	clip_contents = true   # never let content push the panel past 600x400
+	custom_minimum_size = Vector2(800, 400)
+	clip_contents = true   # never let content push the panel past 800x400
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
@@ -156,50 +164,89 @@ func _make_option_button(text: String, action: String, ratio: float) -> Button:
 
 
 func _build_cost_section() -> Control:
-	# A single horizontal row of 60x60 good icons (with qty), then the money cost.
+	# A framed card (the pipe frame, matching the title card) holding the 60x60 good
+	# icons — each with the standard quantity pill — and the money cost.
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", GOODS_FRAME)
+	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var inner := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		inner.add_theme_constant_override("margin_" + side, 20)
+	card.add_child(inner)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
+	row.add_theme_constant_override("separation", 24)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	for m in EXPAND_MATERIALS:
 		row.add_child(_cost_cell(str(m[0]), int(m[1])))
 	var money := Label.new()
 	money.text = "+ £%d" % EXPAND_MONEY
-	money.add_theme_font_size_override("font_size", 16)
+	money.add_theme_font_size_override("font_size", 18)
 	money.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(money)
-	return row
+	inner.add_child(row)
+	return card
 
 
 func _cost_cell(gid: String, qty: int) -> Control:
-	var cell := VBoxContainer.new()
-	cell.add_theme_constant_override("separation", 2)
+	# A 60x60 icon slot with the quantity pill overlaid on its corner.
+	var slot := Control.new()
+	slot.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
+	slot.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var icon := GoodIcons.texture_for(gid, Catalog.get_internal_name(gid))
 	if icon != null:
 		var tr := TextureRect.new()
 		tr.texture = icon
-		tr.custom_minimum_size = Vector2(60, 60)
-		# Pin to 60x60: ignore the texture's native size for min-size, fit inside,
-		# and don't let the container stretch the cell wider/taller.
 		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tr.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		tr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		cell.add_child(tr)
+		tr.set_anchors_preset(Control.PRESET_FULL_RECT)
+		slot.add_child(tr)
 	else:
-		# Placeholder 60x60 so the slot reads even when the good has no art yet.
+		# Placeholder so the slot reads even when the good has no art yet.
 		var ph := Label.new()
-		ph.custom_minimum_size = Vector2(60, 60)
 		ph.text = Catalog.get_display_name(gid)
 		ph.add_theme_font_size_override("font_size", 9)
 		ph.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		ph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		ph.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		ph.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		ph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		cell.add_child(ph)
-	var qlbl := Label.new()
-	qlbl.text = "x%d" % qty
-	qlbl.add_theme_font_size_override("font_size", 11)
-	qlbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	cell.add_child(qlbl)
-	return cell
+		ph.set_anchors_preset(Control.PRESET_FULL_RECT)
+		slot.add_child(ph)
+	slot.add_child(_make_qty_badge(qty, ICON_SIZE))
+	return slot
+
+
+func _make_qty_badge(qty: int, slot_size: float) -> Control:
+	# Standard quantity pill (mirrors building_row._make_qty_badge): navy rounded
+	# pill with paper border + text, anchored to the slot's bottom-right corner.
+	var qty_text := str(qty)
+	var h: int = BADGE_DIAMETER
+	var w: int = h if qty_text.length() <= 1 else maxi(h, qty_text.length() * 9 + 14)
+	var badge := PanelContainer.new()
+	badge.custom_minimum_size = Vector2(w, h)
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	var overlap: int = maxi(4, roundi(slot_size * 0.10))
+	badge.offset_left = -w + overlap
+	badge.offset_top = -h + overlap
+	badge.offset_right = overlap
+	badge.offset_bottom = overlap
+	var style := StyleBoxFlat.new()
+	style.bg_color = BADGE_NAVY
+	style.border_color = BADGE_PAPER
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(int(h / 2.0))
+	style.set_content_margin_all(0)
+	badge.add_theme_stylebox_override("panel", style)
+	var ls := LabelSettings.new()
+	ls.font_color = BADGE_PAPER
+	ls.font_size = BADGE_TEXT_SIZE
+	var label := Label.new()
+	label.text = qty_text
+	label.label_settings = ls
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_child(label)
+	return badge
