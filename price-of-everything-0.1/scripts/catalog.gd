@@ -345,10 +345,14 @@ func _tile_supports_mode(tile_id: String, mode: String) -> bool:
 		return bool(_tile_land.get(tile_id, true))
 	return _tile_infra.get(tile_id, []).has(mode)
 
+const FLUID_CLASSES := ["safe_liquid", "hazard_liquid", "liquid", "gas"]
+
 func _modes_for_good(good_id: String) -> Array:
-	var modes: Array = [ROUTE_MODE_NONE]
 	var tclass := get_transport_class(good_id) if good_id != "" else ""
-	for m in ["rail", "roads"]:  # rail first (longer range) so it's preferred on ties
+	# Fluids (liquids/gases) move ONLY by pipe — no overland haul. Solids may go
+	# overland (slow fallback) or by rail/road. rail first (longer range) wins ties.
+	var modes: Array = [] if FLUID_CLASSES.has(tclass) else [ROUTE_MODE_NONE]
+	for m in ["rail", "roads", "pipes", "reinf_pipes"]:
 		var tolerated: Array = _infra_by_type.get(m, {}).get("good_types_tolerated", [])
 		if good_id == "" or tclass == "" or tolerated.has(tclass):
 			modes.append(m)

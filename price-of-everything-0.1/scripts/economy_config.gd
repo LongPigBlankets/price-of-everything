@@ -56,11 +56,15 @@ func units_cap_for_impact(max_pct: int) -> int:
 	return GLUT_UNITS * (max_pct + 1)
 
 # --- Power grid pricing ---
-const GRID_BUY_PRICE: float = 0.5    # £/unit when buying from grid (shortfall)
-const GRID_SELL_PRICE: float = 0.25  # £/unit when selling surplus to grid
+const GRID_BUY_PRICE: float = 1.0    # £/unit when buying from grid (shortfall)
+const GRID_SELL_PRICE: float = 0.6   # £/unit when selling surplus to grid
 
 # --- Transport ---
 const TRANSPORT_MAX_TILES_PER_TURN: int = 2
+# Liquids & gases move by pipe ONLY (1 tile/turn — see infrastructure.csv pipe range)
+# at a flat per-unit-per-tile rate, regardless of weight class.
+const PIPE_MODES := ["pipes", "reinf_pipes"]
+const PIPE_COST_PER_UNIT_PER_TURN: float = 0.05
 const DEFAULT_TRANSPORT_WEIGHT_CLASS := "standard"
 const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
 	"standard": 0.2,        # fallback / unset
@@ -79,6 +83,8 @@ const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
 const TRANSPORT_MODE_COST_MULT := {
 	"rail": 0.5,
 	"roads": 1.0,
+	"pipes": 1.0,        # pipe cost is flat (PIPE_COST_PER_UNIT_PER_TURN), not class-scaled
+	"reinf_pipes": 1.0,
 	"nothing": 1.0,
 }
 # Per-turn throughput a single link can carry by mode (goods/turn). NOTE: not yet
@@ -128,3 +134,22 @@ func transport_cost_per_unit_turn(weight_class: String) -> float:
 func transport_cost_for(good_id: String, qty: int, transport_turns: int, mode_mult: float = 1.0) -> float:
 	var weight_class := Catalog.get_transport_class(good_id)
 	return float(qty) * float(maxi(transport_turns, 0)) * transport_cost_per_unit_turn(weight_class) * mode_mult
+
+func transport_cost_for_route(good_id: String, qty: int, route: Dictionary) -> float:
+	# Leg-aware cost. Each leg is one turn-move; pipe legs charge the flat liquid rate,
+	# rail/road legs charge weight-class * mode multiplier. Falls back to a turns-based
+	# overland charge when the route has no infra legs (straight-line haul).
+	var legs: Array = route.get("legs", [])
+	var weight_class := Catalog.get_transport_class(good_id)
+	var class_rate := transport_cost_per_unit_turn(weight_class)
+	if legs.is_empty():
+		var turns: int = int(route.get("turns", 0))
+		return float(qty) * float(maxi(turns, 0)) * class_rate
+	var total := 0.0
+	for leg in legs:
+		var mode := str(leg.get("mode", ""))
+		if PIPE_MODES.has(mode):
+			total += float(qty) * PIPE_COST_PER_UNIT_PER_TURN
+		else:
+			total += float(qty) * class_rate * float(TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
+	return total

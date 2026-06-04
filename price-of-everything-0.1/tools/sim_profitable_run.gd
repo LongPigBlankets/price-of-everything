@@ -56,12 +56,12 @@ const CH_ELECTRICAL := [
 	{"role": "EC", "deposit": "", "builds": [["b_007", "r_126", 1]], "export_good": "g_036", "export_to": "MARKET"},
 ]
 const CH_GLASS_FEEDERS := [
-	{"role": "SAND", "deposit": "sand", "builds": [["b_001", "r_018", 1]], "export_good": "g_018", "export_to": "GLASS"},
+	{"role": "SAND", "deposit": "sand", "builds": [["b_001", "r_018", 2]], "export_good": "g_018", "export_to": "GLASS"},
 	{"role": "LIMESTONE", "deposit": "limestone", "builds": [["b_001", "r_019", 1]], "export_good": "g_016", "export_to": "GLASS"},
 	{"role": "SALT", "deposit": "basic_salt", "builds": [["b_001", "r_010", 1]], "export_good": "g_015", "export_to": "CHLOR"},
 	{"role": "WATER", "deposit": "water", "builds": [["b_037", "r_011", 1]], "export_good": "g_009", "export_to": "CHLOR"},
 	{"role": "CHLOR", "deposit": "", "builds": [["b_012", "r_012", 1]], "export_good": "g_013", "export_to": "GLASS"},
-	{"role": "GLASS", "deposit": "", "builds": [["b_002", "r_053", 1]], "export_good": "g_038", "export_to": "WINDOW"},
+	{"role": "GLASS", "deposit": "", "builds": [["b_002", "r_053", 2]], "export_good": "g_038", "export_to": "WINDOW"},
 ]
 # Building frame: makes its OWN windows in-chain by importing glass + pvc to a window
 # factory, then assembles (steel self; copper_pipe + electrical_components imported).
@@ -109,6 +109,8 @@ var _pool: Array = []
 var _deposit_tiles: Dictionary = {}
 var _road_cost := 0.0
 var _rail_cost := 0.0
+var _pipe_cost := 0.0
+var _reinf_pipe_cost := 0.0
 var _chains := 0
 var _last_chain_cost := 0.0
 var _turns_to_second := -1
@@ -118,6 +120,7 @@ var _total_build := 0.0
 var _total_land := 0.0
 var _total_road := 0.0
 var _total_rail := 0.0
+var _total_pipe := 0.0
 var _land_owned: Dictionary = {}
 var _land_exhausted := false
 var _net_hist: Array = []
@@ -249,18 +252,71 @@ func _ensure_roads(tile: String) -> void:
 		Catalog.add_tile_infrastructure(tile, "roads")
 
 
-func _ensure_rail_corridor(src: String, dst: String) -> void:
+func _corridor_mode(good_id: String) -> String:
+	# Liquids/gases move by pipe (hazard liquids need reinforced pipe); solids by rail.
+	match Catalog.get_transport_class(good_id):
+		"hazard_liquid":
+			return "reinf_pipes"
+		"safe_liquid", "liquid", "gas":
+			return "pipes"
+		_:
+			return "rail"
+
+
+func _infra_cost(infra: String) -> float:
+	match infra:
+		"pipes":
+			return _pipe_cost
+		"reinf_pipes":
+			return _reinf_pipe_cost
+		_:
+			return _rail_cost
+
+
+func _tile_path(src: String, dst: String) -> Array:
+	# Shortest chain of ADJACENT tiles src->dst (BFS over land; dst may be a port/sea
+	# tile). Laying infra on every tile of this path yields a connected corridor even
+	# for range-1 pipes.
+	if src == dst:
+		return [src]
+	var prev: Dictionary = {src: ""}
+	var q: Array = [src]
+	var head := 0
+	while head < q.size():
+		var u: String = str(q[head])
+		head += 1
+		if u == dst:
+			break
+		for nb in Catalog.tile_neighbours(u):
+			var n := str(nb)
+			if prev.has(n):
+				continue
+			if n != dst and not Catalog.is_land_tile(n):
+				continue
+			prev[n] = u
+			q.append(n)
+	if not prev.has(dst):
+		return [src, dst]
+	var path: Array = [dst]
+	var c := dst
+	while c != src:
+		c = str(prev[c])
+		path.push_front(c)
+	return path
+
+
+func _ensure_corridor(src: String, dst: String, infra: String) -> void:
 	if src == "" or dst == "" or src == dst:
 		return
-	var r: Dictionary = Catalog.route(src, dst, "")
-	var tiles: Array = r.get("tiles", [])
-	if tiles.is_empty():
-		tiles = [src, dst]
-	for t in tiles:
-		if not Catalog.tile_has_infrastructure(str(t), "rail"):
-			MatchState.add_money(-_rail_cost)
-			_total_rail += _rail_cost
-			Catalog.add_tile_infrastructure(str(t), "rail")
+	var cost: float = _infra_cost(infra)
+	for t in _tile_path(src, dst):
+		if not Catalog.tile_has_infrastructure(str(t), infra):
+			MatchState.add_money(-cost)
+			if infra == "rail":
+				_total_rail += cost
+			else:
+				_total_pipe += cost
+			Catalog.add_tile_infrastructure(str(t), infra)
 
 
 func _place_on(building_id: String, recipe_id: String, tile: String) -> String:
@@ -301,7 +357,7 @@ func _build_branches(branches: Array, count_as_chain: bool) -> bool:
 			return false
 		reserved[t] = float(reserved.get(t, 0.0)) + land
 		chain_tiles[b.role] = t
-	var spent_before: float = _total_build + _total_land + _total_road + _total_rail
+	var spent_before: float = _total_build + _total_land + _total_road + _total_rail + _total_pipe
 	for b in branches:
 		var tile: String = chain_tiles[b.role]
 		_ensure_roads(tile)
@@ -329,16 +385,17 @@ func _build_branches(branches: Array, count_as_chain: bool) -> bool:
 					if not buy.has(gid):
 						MatchState.set_input_tile_only(inst, gid, true)
 		MatchState.enable_sell_surplus(tile)
-	# Rail each export corridor (branch tile -> its destination / port).
+	# Build each export corridor (branch tile -> destination / port): pipes for
+	# liquids & gases (reinforced for hazardous), rail for solids.
 	for b in branches:
 		var src: String = chain_tiles[b.role]
 		var dst: String = Catalog.nearest_port_tile(src) if str(b.export_to) == "MARKET" else chain_tiles[str(b.export_to)]
-		_ensure_rail_corridor(src, dst)
+		_ensure_corridor(src, dst, _corridor_mode(str(b.export_good)))
 	if MatchState.has_signal("money_changed"):
 		MatchState.money_changed.emit(MatchState.money)
 	if count_as_chain:
 		_chains += 1
-		_last_chain_cost = (_total_build + _total_land + _total_road + _total_rail) - spent_before
+		_last_chain_cost = (_total_build + _total_land + _total_road + _total_rail + _total_pipe) - spent_before
 	return true
 
 
@@ -393,6 +450,8 @@ func _initialize() -> void:
 	_load_deposits()
 	_road_cost = float(Catalog.get_building("b_005").get("base_price", 25.0))
 	_rail_cost = float(Catalog.get_building("b_019").get("base_price", 70.0))
+	_pipe_cost = float(Catalog.get_building("b_017").get("base_price", 30.0))
+	_reinf_pipe_cost = float(Catalog.get_building("b_018").get("base_price", 50.0))
 
 	MatchState.money = STARTING_CASH
 	if MatchState.has_signal("money_changed"):
@@ -468,8 +527,8 @@ func _report() -> void:
 	print("\n==== REPORT: %s ====" % _chain)
 	print("chains=%d tiles=%d  seed/last_cost=%.0f  stopped=%s" % [
 		_chains, _land_owned.size(), _last_chain_cost, (str(_stopped_turn) if _stopped_turn > 0 else "no")])
-	print("build=%.0f land=%.0f road=%.0f rail=%.0f borrowed=%.0f debt_end=%.0f" % [
-		_total_build, _total_land, _total_road, _total_rail, _total_borrowed, LoanState.total_outstanding()])
+	print("build=%.0f land=%.0f road=%.0f rail=%.0f pipe=%.0f borrowed=%.0f debt_end=%.0f" % [
+		_total_build, _total_land, _total_road, _total_rail, _total_pipe, _total_borrowed, LoanState.total_outstanding()])
 	print("out_of_red=%s  2nd_chain=%s  transport/turn=%.1f  product_lifetime=%d" % [
 		str(_turn_out_of_red), str(_turns_to_second), transport, _lifetime(_product)])
 	print("steady net/turn=%+.1f  equity_slope=%+.1f  final_equity=%.0f  profitable=%s" % [

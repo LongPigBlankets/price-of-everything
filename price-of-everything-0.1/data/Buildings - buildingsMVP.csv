@@ -15,8 +15,8 @@ b_013,poly_plant,Polymerisation Refinery,1,10000,250,250,,,,,,,,,,,1,1,productio
 b_014,farm,Farm,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,farm_forests,0
 b_015,new_forest,New Growth Forest,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,farm_forests,0
 b_016,old_forest,Old Growth Forest,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,farm_forests,0
-b_017,pipes,Pipeworks,1,10000,1,1,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
-b_018,reinf_pipes,Reinforced Pipeworks,1,10000,1,1,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
+b_017,pipes,Pipeworks,1,10000,30,30,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
+b_018,reinf_pipes,Reinforced Pipeworks,1,10000,50,50,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
 b_019,rails,Railways,1,10000,70,70,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
 b_020,electrolyser,Electrolyser,1,10000,400,400,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,electrochemistry,0
 b_021,desal,Desalination Plant,1,10000,120,120,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,water,0
