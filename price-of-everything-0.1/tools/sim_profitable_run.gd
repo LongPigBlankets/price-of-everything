@@ -54,6 +54,8 @@ var LoanState: Node
 var _stub
 var _pool: Array = []               # nearby land tiles (spill targets), nearest port first
 var _road_cost := 0.0
+var _rail_cost := 0.0
+var _total_rail_spent := 0.0
 var _chains := 0
 var _last_chain_cost := 0.0
 var _turns_to_second_chain := -1
@@ -129,6 +131,24 @@ func _ensure_roads(tile: String) -> void:
 		Catalog.add_tile_infrastructure(tile, "roads")
 
 
+func _ensure_rail_corridor(src: String, dst: String, good: String) -> void:
+	# Lay rail along the whole route between src and dst so the haul runs at rail range
+	# (4 tiles/turn, infrastructure.csv) instead of the road/overland fallback (2),
+	# roughly halving transport turns -> cost. Rail is added to every tile on the path;
+	# idempotent per tile.
+	if src == "" or dst == "" or src == dst:
+		return
+	var r: Dictionary = Catalog.route(src, dst, good)
+	var tiles: Array = r.get("tiles", [])
+	if tiles.is_empty():
+		tiles = [src, dst]
+	for t in tiles:
+		if not Catalog.tile_has_infrastructure(str(t), "rail"):
+			MatchState.add_money(-_rail_cost)
+			_total_rail_spent += _rail_cost
+			Catalog.add_tile_infrastructure(str(t), "rail")
+
+
 func _place_on(building_id: String, recipe_id: String, tile: String) -> String:
 	var size: float = float(Catalog.get_building(building_id).get("tile_size_used", 1.0))
 	var used: float = MatchState.get_tile_space_used(tile)
@@ -163,7 +183,7 @@ func _build_chain() -> bool:
 		reserved[t] = float(reserved.get(t, 0.0)) + land
 		chain_tiles[b.role] = t
 
-	var spent_before: float = _total_build_spent + _total_land_spent + _total_road_spent
+	var spent_before: float = _total_build_spent + _total_land_spent + _total_road_spent + _total_rail_spent
 	for b in BRANCHES:
 		var tile: String = chain_tiles[b.role]
 		_ensure_roads(tile)
@@ -183,10 +203,20 @@ func _build_chain() -> bool:
 				for input in recipe.get("inputs", []):
 					MatchState.set_input_tile_only(inst, str(input.get("good_id", "")), true)
 		MatchState.enable_sell_surplus(tile)
+	# Lay rail along this chain's shipment corridors (inter-tile hauls + each tile to
+	# its nearest port), so transport runs at rail range instead of the fallback.
+	var motor_tile: String = chain_tiles["MOTOR"]
+	_ensure_rail_corridor(chain_tiles["COAL"], chain_tiles["IRON"], "g_001")
+	_ensure_rail_corridor(chain_tiles["COPPER"], motor_tile, "g_007")
+	_ensure_rail_corridor(chain_tiles["IRON"], motor_tile, "g_006")
+	_ensure_rail_corridor(motor_tile, Catalog.nearest_port_tile(motor_tile), "g_008")
+	for role in ["COPPER", "IRON", "COAL"]:
+		var rt: String = chain_tiles[role]
+		_ensure_rail_corridor(rt, Catalog.nearest_port_tile(rt), "")
 	if MatchState.has_signal("money_changed"):
 		MatchState.money_changed.emit(MatchState.money)
 	_chains += 1
-	_last_chain_cost = (_total_build_spent + _total_land_spent + _total_road_spent) - spent_before
+	_last_chain_cost = (_total_build_spent + _total_land_spent + _total_road_spent + _total_rail_spent) - spent_before
 	return true
 
 
@@ -215,8 +245,9 @@ func _initialize() -> void:
 
 	_build_pool()
 	_road_cost = float(Catalog.get_building("b_005").get("base_price", 25.0))
-	print("[sim] %d nearby land tiles in pool; road cost = %.0f; tile cap = %.0f" % [
-		_pool.size(), _road_cost, MAX_TILE_LAND])
+	_rail_cost = float(Catalog.get_building("b_019").get("base_price", 1.0))
+	print("[sim] %d nearby land tiles in pool; road=%.0f rail=%.0f /tile; tile cap = %.0f" % [
+		_pool.size(), _road_cost, _rail_cost, MAX_TILE_LAND])
 
 	MatchState.money = STARTING_CASH
 	if MatchState.has_signal("money_changed"):
@@ -312,6 +343,7 @@ func _print_report() -> void:
 	print("Total construction (incl. density)   : %.2f" % _total_build_spent)
 	print("Total land purchased                 : %.2f" % _total_land_spent)
 	print("Total roads purchased                : %.2f" % _total_road_spent)
+	print("Total rail purchased                 : %.2f" % _total_rail_spent)
 	print("Total borrowed over run              : %.2f" % _total_borrowed)
 	print("Outstanding debt at end              : %.2f" % LoanState.total_outstanding())
 	print("Turn cash first climbed out of red   : %s" % (str(_turn_out_of_red) if _turn_out_of_red > 0 else "STILL IN RED"))
