@@ -30,3 +30,9 @@ g_028,rubber,Rubber,construction,solid_light,1,1,vehicle,finished,0.0005,5,TRUE,
 g_029,aluminium,Aluminium,metals,solid_heavy,1,1,vehicle,intermediate,0.002,3,TRUE,TRUE,0.15,no,0
 g_030,alumina,Alumina,chems,solid_heavy,1,1,vehicle,intermediate,0.002,2.2,TRUE,TRUE,0,no,0
 g_031,fuels,Diesel Fuel,energy,liquid,2,1,pipe,finished,0.0005,6,TRUE,TRUE,0,no,0
+g_032,ree_ore,Rare Earth Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,2,TRUE,TRUE,0,no,0
+g_033,pvc,PVC,construction,solid_light,1,1,vehicle,intermediate,0.002,8,TRUE,TRUE,0,no,0
+g_034,alloy_ingots,Alloy Metals Ingots,metals,solid_heavy,1,1,vehicle,intermediate,0.002,1.5,TRUE,TRUE,0,no,0
+g_035,refined_ree,Refined Rare Earths,metals,solid_heavy,1,1,vehicle,intermediate,0.002,6,TRUE,TRUE,0,no,0
+g_036,electrical_components,Electrical Components,construction,solid_heavy,1,1,vehicle,intermediate,0.002,6,TRUE,TRUE,0,no,0
+g_037,alloy_ore,Alloy Metals Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,1,TRUE,TRUE,0,no,0
