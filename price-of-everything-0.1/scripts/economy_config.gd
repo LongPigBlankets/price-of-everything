@@ -61,6 +61,8 @@ func units_cap_for_impact(max_pct: int) -> int:
 # per-unit transport — just this standing subscription. (Sim auto-subscribes from turn 1;
 # the game will expose this as a per-good toggle.)
 const SEAPORT_SUBSCRIPTION_COST_PER_GOOD: float = 1.0
+# A seaport can only service tiles within this many tiles of it (per turn).
+const SEAPORT_RANGE_TILES: int = 10
 
 # --- Power grid pricing ---
 const GRID_BUY_PRICE: float = 1.0    # £/unit when buying from grid (shortfall)
@@ -71,19 +73,18 @@ const TRANSPORT_MAX_TILES_PER_TURN: int = 2
 # Liquids & gases move by pipe ONLY (1 tile/turn — see infrastructure.csv pipe range)
 # at a flat per-unit-per-tile rate, regardless of weight class.
 const PIPE_MODES := ["pipes", "reinf_pipes"]
-const PIPE_COST_PER_UNIT_PER_TURN: float = 0.02   # liquids/gas (pipe legs), per unit per tile
 const DEFAULT_TRANSPORT_WEIGHT_CLASS := "standard"
-# Flat per-unit transport rates: 0.01 for everything, 0.02 for fluids, 0.03 for ultra-heavy.
+# Per-unit-per-turn transport rates by weight class (a leg is one turn-move).
 const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
-	"standard": 0.01,
-	"solid_light": 0.01,
-	"solid_heavy": 0.01,
-	"ultra_heavy": 0.03,
-	"safe_liquid": 0.02,
-	"hazard_liquid": 0.02,
-	"liquid": 0.02,
-	"gas": 0.02,
-	"electricity": 0.01,
+	"standard": 0.02,
+	"solid_light": 0.02,
+	"solid_heavy": 0.03,
+	"ultra_heavy": 0.06,
+	"safe_liquid": 0.03,
+	"hazard_liquid": 0.03,
+	"liquid": 0.03,
+	"gas": 0.03,
+	"electricity": 0.02,
 }
 
 # Per-mode multiplier on the weight-class rate. Rail is half the per-unit cost of
@@ -155,12 +156,8 @@ func transport_cost_for_route(good_id: String, qty: int, route: Dictionary) -> f
 		return float(qty) * float(maxi(turns, 0)) * class_rate
 	var total := 0.0
 	for leg in legs:
+		# Every leg is one turn-move: charge the per-unit-per-turn class rate times the
+		# mode multiplier (rail 0.5x; roads/pipes 1x).
 		var mode := str(leg.get("mode", ""))
-		if PIPE_MODES.has(mode):
-			# Pipes charge per TILE (a leg may span several tiles per turn), so the
-			# 0.05/unit/tile rate holds regardless of pipe range.
-			var tiles: int = maxi(1, Catalog.tile_hex_distance(str(leg.get("from", "")), str(leg.get("to", ""))))
-			total += float(qty) * float(tiles) * PIPE_COST_PER_UNIT_PER_TURN
-		else:
-			total += float(qty) * class_rate * float(TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
+		total += float(qty) * class_rate * float(TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
 	return total

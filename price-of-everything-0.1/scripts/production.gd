@@ -591,11 +591,13 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 	# (x turns later, x = transport duration at 2 tiles/turn). Shipping costs apply.
 	var port_tile := Catalog.nearest_port_tile(source_tile) if source_tile != "" else ""
 	var route := _transport_route(source_tile, port_tile)
-	# Seaport subscription: if every good sold here is covered, the port ships any volume
-	# in 1 turn for the flat per-turn fee (charged once per turn), with no per-unit cost.
-	var covered_all := port_tile != ""
+	# Seaport subscription: a port only services tiles within SEAPORT_RANGE_TILES. If in
+	# range AND every good sold here is covered, the port ships any volume in 1 turn for
+	# the flat per-turn fee (charged once per turn), with no per-unit cost.
+	var in_port_range: bool = port_tile != "" and Catalog.tile_hex_distance(source_tile, port_tile) <= EconomyConfig.SEAPORT_RANGE_TILES
+	var covered_all := in_port_range
 	for gid in totals.keys():
-		if int(totals[gid]) > 0 and not MatchState.seaport_covers(str(gid)):
+		if int(totals[gid]) > 0 and not (in_port_range and MatchState.seaport_covers(str(gid))):
 			covered_all = false
 	var ship_turns: int = 1 if covered_all else int(route.turns)
 	var deferred: bool = port_tile != "" and ship_turns >= 1
@@ -610,7 +612,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		if sold_qty <= 0:
 			continue
 		var sold_revenue: float = float(sold_qty) * price
-		if not MatchState.seaport_covers(good_key):
+		if not (in_port_range and MatchState.seaport_covers(good_key)):
 			transport_cost += EconomyConfig.transport_cost_for_route(good_key, sold_qty, route)
 		sale_record.items.append({
 			"good_id": good_key,

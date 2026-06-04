@@ -6,10 +6,10 @@ uid="uid://d3e8yrlmdtcpx"
 
 [deps]
 
-files=["res://data/infrastructure.display.translation", "res://data/infrastructure.range.translation", "res://data/infrastructure.routing.translation", "res://data/infrastructure.market.translation", "res://data/infrastructure.good.translation", "res://data/infrastructure.double.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation"]
+files=["res://data/infrastructure.display.translation", "res://data/infrastructure.range.translation", "res://data/infrastructure.routing.translation", "res://data/infrastructure.market.translation", "res://data/infrastructure.good.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation"]
 
 source_file="res://data/infrastructure.csv"
-dest_files=["res://data/infrastructure.display.translation", "res://data/infrastructure.range.translation", "res://data/infrastructure.routing.translation", "res://data/infrastructure.market.translation", "res://data/infrastructure.good.translation", "res://data/infrastructure.double.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation"]
+dest_files=["res://data/infrastructure.display.translation", "res://data/infrastructure.range.translation", "res://data/infrastructure.routing.translation", "res://data/infrastructure.market.translation", "res://data/infrastructure.good.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation", "res://data/infrastructure.en.translation"]
 
 [params]
 

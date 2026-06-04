@@ -580,7 +580,7 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	var port := Catalog.nearest_port_tile(dest_tile)
 	if port == "":
 		return {}
-	var covered := seaport_covers(good_id)
+	var covered := seaport_covers(good_id) and Catalog.tile_hex_distance(port, dest_tile) <= EconomyConfig.SEAPORT_RANGE_TILES
 	var route := Catalog.route(port, dest_tile)
 	var turns: int = int(route.get("turns", 0))
 	if turns >= (1 << 30):

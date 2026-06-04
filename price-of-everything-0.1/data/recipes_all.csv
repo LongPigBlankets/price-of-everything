@@ -10,7 +10,7 @@ r_008,Copper Wire Drawing,industrial_factory,copper_ingots,20,,,,,,,,,,,13,coppe
 r_009,Motor Manufacture,industrial_factory,steel,15,copper_wiring,12,,,,,,,,,6,motor,15,,,,,,,,,,,,manufacturing,
 r_010,Salt Mining,mine,,,,,,,,,,,,,4,basic_salt,20,chem_salts,10,,,,,,,deposit:basic_salt,,,extraction,
 r_011,Water Pumping,water_pump,,,,,,,,,,,,,3,pure_water,40,,,,,,,,,deposit:water,,,water,
-r_012,Chlor-Alkali Process,chem_plant,basic_salt,20,pure_water,20,,,,,,,,,10,chlorine,24,sodium_hydroxide,18,hydrogen,6,,,,,,,,electrochemistry,
+r_012,Chlor-Alkali Process,chem_plant,basic_salt,20,pure_water,20,,,,,,,,,10,chlorine,48,sodium_hydroxide,36,hydrogen,12,,,,,,,,electrochemistry,
 r_013,Water Extraction,water_well,,,,,,,,,,,,,3,water,10,,,,,,,,,water_deposit OR river_water,,,Extraction,
 r_014,Oil Drilling,oil_well,,,,,,,,,,,,,2,crude_oil,10,,,,,,,,,deposit:crude_oil,,,Extraction,
 r_015,Bauxite Mining,mine,,,,,,,,,,,,,3,bauxite_ore,12,,,,,,,,,deposit:bauxite_ore,,,Extraction,
