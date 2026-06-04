@@ -102,12 +102,12 @@ func _build_ui() -> void:
 	anchor_right = 0.5
 	anchor_top = 0.5
 	anchor_bottom = 0.5
-	offset_left = -200.0
-	offset_right = 200.0
+	offset_left = -300.0
+	offset_right = 300.0
 	offset_top = -200.0
 	offset_bottom = 200.0
-	custom_minimum_size = Vector2(400, 400)
-	clip_contents = true   # never let content push the panel past 400x400
+	custom_minimum_size = Vector2(600, 400)
+	clip_contents = true   # never let content push the panel past 600x400
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
