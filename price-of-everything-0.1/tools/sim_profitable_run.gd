@@ -60,18 +60,18 @@ const CH_ELECTRICAL := [
 # OWN water pump (r_011) so chlor-alkali's water is produced & consumed on-tile (no
 # piped-water latency); it ships only NaOH (reinforced pipe) to the glass furnaces.
 const CH_GLASS_FEEDERS := [
-	{"role": "SAND", "deposit": "sand", "builds": [["b_001", "r_018", 2]], "export_good": "g_018", "export_to": "GLASS"},
+	{"role": "SAND", "deposit": "sand", "builds": [["b_001", "r_018", 1]], "export_good": "g_018", "export_to": "GLASS"},
 	{"role": "LIMESTONE", "deposit": "limestone", "builds": [["b_001", "r_019", 1]], "export_good": "g_016", "export_to": "GLASS"},
 	{"role": "SALT", "deposit": "basic_salt", "builds": [["b_001", "r_010", 1]], "export_good": "g_015", "export_to": "CHLOR"},
 	{"role": "CHLOR", "deposit": "water", "builds": [["b_037", "r_011", 1], ["b_012", "r_012", 1]], "export_good": "g_013", "export_to": "GLASS"},
-	{"role": "GLASS", "deposit": "", "builds": [["b_002", "r_053", 2]], "export_good": "g_038", "export_to": "WINDOW"},
+	{"role": "GLASS", "deposit": "", "builds": [["b_002", "r_053", 1]], "export_good": "g_038", "export_to": "WINDOW"},
 ]
 # Aluminium glass feeders: NO chlor-alkali chain — the glass furnaces import NaOH
 # from the market (cheap at £0.8) instead of building salt + water + electrochemistry.
 const CH_GLASS_FEEDERS_IMPORT := [
-	{"role": "SAND", "deposit": "sand", "builds": [["b_001", "r_018", 2]], "export_good": "g_018", "export_to": "GLASS"},
+	{"role": "SAND", "deposit": "sand", "builds": [["b_001", "r_018", 1]], "export_good": "g_018", "export_to": "GLASS"},
 	{"role": "LIMESTONE", "deposit": "limestone", "builds": [["b_001", "r_019", 1]], "export_good": "g_016", "export_to": "GLASS"},
-	{"role": "GLASS", "deposit": "", "builds": [["b_002", "r_053", 2]], "export_good": "g_038", "export_to": "WINDOW", "buy": ["g_013"]},
+	{"role": "GLASS", "deposit": "", "builds": [["b_002", "r_053", 1]], "export_good": "g_038", "export_to": "WINDOW", "buy": ["g_013"]},
 ]
 # Building frame: makes its OWN windows in-chain by importing glass + pvc to a window
 # factory, then assembles (steel self; copper_pipe + electrical_components imported).
@@ -462,6 +462,7 @@ func _initialize() -> void:
 	_stub = _HexMapStub.new()
 	get_root().add_child(_stub)
 	TurnManager.fast_mode = true
+	MatchState.seaport_auto_subscribe = true   # seaports transfer any volume in 1 turn for a flat per-good fee
 	await process_frame
 	await process_frame
 	await process_frame

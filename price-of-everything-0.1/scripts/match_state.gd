@@ -552,6 +552,26 @@ func set_input_tile_only(instance_id: String, good_id: String, tile_only: bool) 
 func is_input_tile_only(instance_id: String, good_id: String) -> bool:
 	return bool(input_tile_only.get(_input_key(instance_id, good_id), false))
 
+# --- Seaport subscriptions ---
+# A subscribed good transfers through a seaport in 1 turn at ANY volume for a flat
+# per-turn fee (see EconomyConfig.SEAPORT_SUBSCRIPTION_COST_PER_GOOD), with no per-unit
+# market shipping cost. The sim sets seaport_auto_subscribe = true (every traded good
+# is covered from turn 1); the game will expose per-good toggles.
+var seaport_auto_subscribe: bool = false
+var seaport_subscribed: Dictionary = {}
+
+func seaport_covers(good_id: String) -> bool:
+	if seaport_auto_subscribe:
+		seaport_subscribed[good_id] = true
+		return true
+	return seaport_subscribed.has(good_id)
+
+func subscribe_seaport(good_id: String) -> void:
+	seaport_subscribed[good_id] = true
+
+func seaport_subscription_fee() -> float:
+	return float(seaport_subscribed.size()) * EconomyConfig.SEAPORT_SUBSCRIPTION_COST_PER_GOOD
+
 func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = true) -> Dictionary:
 	# Buy goods from the nearest port to dest_tile: pay now (price + transport), ship in,
 	# arrive in N turns. The reusable buy primitive for market-sourced inputs (and later a Buy tab).
@@ -560,12 +580,15 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	var port := Catalog.nearest_port_tile(dest_tile)
 	if port == "":
 		return {}
+	var covered := seaport_covers(good_id)
 	var route := Catalog.route(port, dest_tile)
 	var turns: int = int(route.get("turns", 0))
 	if turns >= (1 << 30):
 		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, dest_tile))
+	if covered:
+		turns = 1   # seaport delivers any volume in 1 turn
 	var unit_price := MarketState.get_buy_price(good_id)
-	var transport := EconomyConfig.transport_cost_for(good_id, qty, turns)
+	var transport := 0.0 if covered else EconomyConfig.transport_cost_for(good_id, qty, turns)
 	var total := float(qty) * unit_price + transport
 	if total > money:
 		# Best-effort: buy as much as we can afford rather than nothing (avoids an

@@ -265,6 +265,11 @@ func _process_production() -> void:
 		_accumulate_by_type(summary.maintenance_by_type, btype, maint)
 		_accumulate_by_type(summary.labour_by_type, btype, labour)
 		# === LOAN INTEREST PAYMENTS ==+var loan_payment: float = LoanState.process_payments()
+	# Seaport subscription fees: flat per-turn charge per subscribed good.
+	var seaport_fee: float = MatchState.seaport_subscription_fee()
+	if seaport_fee > 0.0:
+		MatchState.add_money(-seaport_fee)
+		summary.money_out += seaport_fee
 	TurnProfiler.section_end("maintenance_labour")
 	TurnProfiler.section_begin("loan_payments")
 	var loan_payment: float = LoanState.process_payments()
@@ -586,7 +591,14 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 	# (x turns later, x = transport duration at 2 tiles/turn). Shipping costs apply.
 	var port_tile := Catalog.nearest_port_tile(source_tile) if source_tile != "" else ""
 	var route := _transport_route(source_tile, port_tile)
-	var deferred: bool = port_tile != "" and int(route.turns) >= 1
+	# Seaport subscription: if every good sold here is covered, the port ships any volume
+	# in 1 turn for the flat per-turn fee (charged once per turn), with no per-unit cost.
+	var covered_all := port_tile != ""
+	for gid in totals.keys():
+		if int(totals[gid]) > 0 and not MatchState.seaport_covers(str(gid)):
+			covered_all = false
+	var ship_turns: int = 1 if covered_all else int(route.turns)
+	var deferred: bool = port_tile != "" and ship_turns >= 1
 	var transport_cost := 0.0
 	for good_id in totals.keys():
 		var qty: int = int(totals[good_id])
@@ -598,7 +610,8 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		if sold_qty <= 0:
 			continue
 		var sold_revenue: float = float(sold_qty) * price
-		transport_cost += EconomyConfig.transport_cost_for_route(good_key, sold_qty, route)
+		if not MatchState.seaport_covers(good_key):
+			transport_cost += EconomyConfig.transport_cost_for_route(good_key, sold_qty, route)
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,
@@ -623,8 +636,8 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 			"destination_tile": port_tile,
 			"sale_record": sale_record.duplicate(true),
 			"tile_distance": route.tile_distance,
-			"transport_turns": route.turns,
-			"turns_remaining": int(route.turns),
+			"transport_turns": ship_turns,
+			"turns_remaining": ship_turns,
 			"path": route.get("path", []),
 			"legs": route.get("legs", []),
 			"tiles": route.get("tiles", []),
