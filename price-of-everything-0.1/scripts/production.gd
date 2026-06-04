@@ -429,7 +429,7 @@ func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, sum
 	var port_tile := Catalog.nearest_port_tile(source_tile) if source_tile != "" else ""
 	var route := _transport_route(source_tile, port_tile, good_id)
 	# Pay to ship the output to its market (the port) — surfaced as transport cost.
-	var transport_cost: float = EconomyConfig.transport_cost_for(good_id, qty, int(route.turns))
+	var transport_cost: float = EconomyConfig.transport_cost_for(good_id, qty, int(route.turns), float(route.get("cost_mult", 1.0)))
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 		summary.transport_paid += transport_cost
@@ -469,7 +469,7 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 		_sell_output_to_market(str(building.get("tile_id", "")), good, qty, summary)
 		return
 	var route := _transport_route(building.get("tile_id", ""), stockpile_coord, good.id)
-	var transport_cost: float = EconomyConfig.transport_cost_for(good.id, qty, int(route.turns))
+	var transport_cost: float = EconomyConfig.transport_cost_for(good.id, qty, int(route.turns), float(route.get("cost_mult", 1.0)))
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 		summary.transport_paid += transport_cost
@@ -533,14 +533,26 @@ func _transport_route(source_tile: String, destination_tile, good_id: String = "
 	if turns >= (1 << 30):
 		# Unreachable via road/rail/overland networks — fall back to straight-line overland.
 		turns = EconomyConfig.transport_turns_for_tile_distance(_tile_distance(source_tile, dest))
+	var legs: Array = r.get("legs", [])
 	return {
 		"tile_distance": _tile_distance(source_tile, dest),
 		"turns": turns,
 		"delayed": turns > 1,
 		"path": r.get("path", []),
-		"legs": r.get("legs", []),
+		"legs": legs,
 		"tiles": r.get("tiles", []),
+		"cost_mult": _route_cost_mult(legs),
 	}
+
+func _route_cost_mult(legs: Array) -> float:
+	# Average per-leg mode multiplier (rail 0.5x, roads/overland 1x). A rail-only route
+	# costs half; mixed routes blend by leg count.
+	if legs.is_empty():
+		return 1.0
+	var s := 0.0
+	for leg in legs:
+		s += float(EconomyConfig.TRANSPORT_MODE_COST_MULT.get(str(leg.get("mode", "")), 1.0))
+	return s / float(legs.size())
 
 func _tile_distance(source_tile: String, destination_tile: String) -> int:
 	var source := _tile_id_to_coord(source_tile)
@@ -586,7 +598,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		if sold_qty <= 0:
 			continue
 		var sold_revenue: float = float(sold_qty) * price
-		transport_cost += EconomyConfig.transport_cost_for(good_key, sold_qty, int(route.turns))
+		transport_cost += EconomyConfig.transport_cost_for(good_key, sold_qty, int(route.turns), float(route.get("cost_mult", 1.0)))
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,

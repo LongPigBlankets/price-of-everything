@@ -66,6 +66,22 @@ var _total_land_spent := 0.0
 var _total_road_spent := 0.0
 var _land_owned: Dictionary = {}    # tile -> land units owned
 var _land_exhausted := false
+var _net_hist: Array = []           # per-turn operating net (money_in - money_out)
+var _pre_expand_net := 0.0          # rolling net just before the most recent expansion
+var _judge_turn := 0                # turn at which to judge that expansion's marginal effect
+var _stopped_turn := -1
+
+const RAMP_TURNS := 10              # let a new chain ramp before judging its marginal profit
+
+
+func _rolling_net() -> float:
+	if _net_hist.is_empty():
+		return 0.0
+	var n: int = mini(5, _net_hist.size())
+	var s := 0.0
+	for i in range(_net_hist.size() - n, _net_hist.size()):
+		s += float(_net_hist[i])
+	return s / float(n)
 
 
 func _resolve() -> void:
@@ -271,9 +287,25 @@ func _initialize() -> void:
 		if _turn_out_of_red < 0 and MatchState.money >= 0.0:
 			_turn_out_of_red = turn
 
+		var s: Dictionary = Production.last_turn_summary
+		_net_hist.append(float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0)))
+
+		# STOP the run the moment a ramped expansion has driven marginal profit < 0
+		# (the rolling net is now lower than it was just before that expansion).
+		if _judge_turn > 0 and turn >= _judge_turn:
+			var marginal: float = _rolling_net() - _pre_expand_net
+			if marginal < 0.0:
+				_stopped_turn = turn
+				print("[sim] >>> marginal profit negative (%+.1f/turn) after the last expansion — stopping at turn %d" % [marginal, turn])
+				break
+			_judge_turn = 0   # that expansion paid off; clear the pending judgment
+
 		# Expand from CASH when affordable, until nearby land runs out.
 		if not _land_exhausted and MatchState.money > _last_chain_cost and _chains < MAX_CHAINS:
+			var pre: float = _rolling_net()
 			if _build_chain():
+				_pre_expand_net = pre
+				_judge_turn = turn + RAMP_TURNS
 				if _chains == 2 and _turns_to_second_chain < 0:
 					_turns_to_second_chain = turn
 					print("[sim] >>> 2nd chain built at turn %d" % turn)
@@ -336,7 +368,9 @@ func _print_report() -> void:
 	var profitable := ramped_net > 0.0 and equity_slope > 0.0 and final_equity > 0.0
 
 	print("\n========= MOTOR-CHAIN (HARD CAP + ROADS) REPORT =========")
-	print("Chains built by turn %d              : %d%s" % [TURNS, _chains,
+	if _stopped_turn > 0:
+		print("STOPPED early at turn %d (marginal profit went negative)" % _stopped_turn)
+	print("Chains built                         : %d%s" % [_chains,
 		"  (land-limited)" if _land_exhausted else ""])
 	print("Distinct tiles built on              : %d" % _land_owned.size())
 	print("Last chain actual cost               : %.2f (build+density+land+roads)" % _last_chain_cost)

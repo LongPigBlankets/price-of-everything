@@ -63,14 +63,30 @@ const GRID_SELL_PRICE: float = 0.25  # £/unit when selling surplus to grid
 const TRANSPORT_MAX_TILES_PER_TURN: int = 2
 const DEFAULT_TRANSPORT_WEIGHT_CLASS := "standard"
 const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
-	"standard": 0.2,
-	"solid_light": 0.2,
+	"standard": 0.2,        # fallback / unset
+	"solid_light": 0.15,
 	"solid_heavy": 0.2,
-	"ultra_heavy": 0.2,
+	"ultra_heavy": 0.4,
 	"safe_liquid": 0.2,
-	"hazard_liquid": 0.2,
-	"gas": 0.2,
+	"hazard_liquid": 0.4,
+	"liquid": 0.2,          # oils/fuels currently use this class (see note: reclassify?)
+	"gas": 0.25,
 	"electricity": 0.2,
+}
+
+# Per-mode multiplier on the weight-class rate. Rail is half the per-unit cost of
+# roads/overland (and also faster — see infrastructure.csv range 4 vs 2).
+const TRANSPORT_MODE_COST_MULT := {
+	"rail": 0.5,
+	"roads": 1.0,
+	"nothing": 1.0,
+}
+# Per-turn throughput a single link can carry by mode (goods/turn). NOTE: not yet
+# enforced — a per-link flow-accounting pass is needed (see infrastructure.csv's
+# max_goods_carried / soft_capacity columns). Kept here as the agreed values.
+const TRANSPORT_LINK_CAP_BY_MODE := {
+	"roads": 200,
+	"rail": 400,
 }
 
 # --- Loans ---
@@ -109,6 +125,6 @@ func transport_cost_per_unit_turn(weight_class: String) -> float:
 		TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS[DEFAULT_TRANSPORT_WEIGHT_CLASS]
 	))
 
-func transport_cost_for(good_id: String, qty: int, transport_turns: int) -> float:
+func transport_cost_for(good_id: String, qty: int, transport_turns: int, mode_mult: float = 1.0) -> float:
 	var weight_class := Catalog.get_transport_class(good_id)
-	return float(qty) * float(maxi(transport_turns, 0)) * transport_cost_per_unit_turn(weight_class)
+	return float(qty) * float(maxi(transport_turns, 0)) * transport_cost_per_unit_turn(weight_class) * mode_mult

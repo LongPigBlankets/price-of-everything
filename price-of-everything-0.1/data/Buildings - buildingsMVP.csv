@@ -17,7 +17,7 @@ b_015,new_forest,New Growth Forest,1,10000,1,1,,,,,,,,,,,1,1,production,standard
 b_016,old_forest,Old Growth Forest,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,farm_forests,0
 b_017,pipes,Pipeworks,1,10000,1,1,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
 b_018,reinf_pipes,Reinforced Pipeworks,1,10000,1,1,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
-b_019,rails,Railways,1,10000,1,1,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
+b_019,rails,Railways,1,10000,70,70,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
 b_020,electrolyser,Electrolyser,1,10000,400,400,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,electrochemistry,0
 b_021,desal,Desalination Plant,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,water,0
 b_022,water_recycling,Water Recyling Plant,1,10000,1,1,,,,,,,,,,,1,1,production,standard,10000,,,,,2,100,50,30,water,0
