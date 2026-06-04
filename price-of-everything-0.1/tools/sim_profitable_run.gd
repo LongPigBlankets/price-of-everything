@@ -11,9 +11,11 @@ extends SceneTree
 # in-chain (tile-only) unless listed in "buy" (bought from market — used where the
 # domestic recipe chain is unavailable, e.g. oil-derived plastics/pvc, or aluminium).
 
-const TURNS := 200
+const TURNS := 300
 const STARTING_CASH := 300.0
 const MAX_CHAINS := 12
+const PROFIT_MILESTONES := [100, 500, 1000]
+const EQUITY_MILESTONES := [500, 1000, 2500, 5000, 10000]
 const PORT := "tile_5_10"
 const MAX_TILE_LAND := 200.0
 const FREE_LAND := 100.0
@@ -47,19 +49,27 @@ const CH_ELECTRICAL := [
 	{"role": "EC", "deposit": "", "builds": [["b_007", "r_126", 1]], "export_good": "g_036", "export_to": "MARKET", "buy": ["g_027"]},
 ]
 const CH_GLASS_FEEDERS := [
-	{"role": "SAND", "deposit": "sand", "builds": [["b_001", "r_018", 1]], "export_good": "g_018", "export_to": "GLASS"},
+	{"role": "SAND", "deposit": "sand", "builds": [["b_001", "r_018", 2]], "export_good": "g_018", "export_to": "GLASS"},
 	{"role": "LIMESTONE", "deposit": "limestone", "builds": [["b_001", "r_019", 1]], "export_good": "g_016", "export_to": "GLASS"},
 	{"role": "SALT", "deposit": "basic_salt", "builds": [["b_001", "r_010", 1]], "export_good": "g_015", "export_to": "CHLOR"},
 	{"role": "WATER", "deposit": "water", "builds": [["b_037", "r_011", 1]], "export_good": "g_009", "export_to": "CHLOR"},
 	{"role": "CHLOR", "deposit": "", "builds": [["b_012", "r_012", 1]], "export_good": "g_013", "export_to": "GLASS"},
-	{"role": "GLASS", "deposit": "", "builds": [["b_002", "r_053", 1]], "export_good": "g_038", "export_to": "WINDOW"},
+	{"role": "GLASS", "deposit": "", "builds": [["b_002", "r_053", 2]], "export_good": "g_038", "export_to": "WINDOW"},
 ]
+# Building frame: makes its OWN windows in-chain by importing glass + pvc to a window
+# factory, then assembles (steel self; copper_pipe + electrical_components imported).
 const CH_FRAME := [
 	{"role": "COAL", "deposit": "coal", "builds": [["b_001", "r_001", 1]], "export_good": "g_001", "export_to": "IRON"},
 	{"role": "IRON", "deposit": "iron_ore", "builds": [["b_001", "r_002", 2], ["b_002", "r_005", 1], ["b_002", "r_003", 1]], "export_good": "g_006", "export_to": "FRAME"},
-	{"role": "FRAME", "deposit": "", "builds": [["b_009", "r_057", 1]], "export_good": "g_023", "export_to": "MARKET", "buy": ["g_039", "g_036", "g_021"]},
+	{"role": "WINDOW", "deposit": "", "builds": [["b_007", "r_055", 1]], "export_good": "g_039", "export_to": "FRAME", "buy": ["g_038", "g_033"]},
+	{"role": "FRAME", "deposit": "", "builds": [["b_009", "r_057", 1]], "export_good": "g_023", "export_to": "MARKET", "buy": ["g_036", "g_021"]},
 ]
-const CHAIN_PRODUCT := {"motors": "g_008", "concrete": "g_017", "electrical": "g_036", "upvc_windows": "g_039", "aluminium_windows": "g_039", "building_frame": "g_023"}
+const CH_POWER := [
+	{"role": "COAL", "deposit": "coal", "builds": [["b_001", "r_001", 1]], "export_good": "g_001", "export_to": "POWER"},
+	{"role": "WATER", "deposit": "water", "builds": [["b_037", "r_011", 1]], "export_good": "g_009", "export_to": "POWER"},
+	{"role": "POWER", "deposit": "", "builds": [["b_003", "r_004", 1]], "export_good": "g_010", "export_to": "MARKET"},
+]
+const CHAIN_PRODUCT := {"motors": "g_008", "concrete": "g_017", "electrical": "g_036", "upvc_windows": "g_039", "aluminium_windows": "g_039", "building_frame": "g_023", "power": "g_010"}
 
 var MatchState: Node
 var Stockpile: Node
@@ -92,7 +102,8 @@ var _net_hist: Array = []
 var _pre_expand_net := 0.0
 var _judge_turn := 0
 var _stopped_turn := -1
-var _dbg_tile := ""
+var _profit_at: Dictionary = {}     # profit/turn threshold -> first turn reached
+var _equity_at: Dictionary = {}     # equity threshold -> first turn reached
 
 
 func _rolling_net() -> float:
@@ -134,6 +145,8 @@ func _branches_for_next() -> Array:
 			return a
 		"building_frame":
 			return CH_FRAME
+		"power":
+			return CH_POWER
 		_:
 			return CH_MOTORS
 
@@ -286,10 +299,6 @@ func _build_chain() -> bool:
 		var src: String = chain_tiles[b.role]
 		var dst: String = Catalog.nearest_port_tile(src) if str(b.export_to) == "MARKET" else chain_tiles[str(b.export_to)]
 		_ensure_rail_corridor(src, dst)
-	if _chains == 0:
-		for b in branches:
-			if str(b.export_to) == "MARKET":
-				_dbg_tile = chain_tiles[b.role]
 	if MatchState.has_signal("money_changed"):
 		MatchState.money_changed.emit(MatchState.money)
 	_chains += 1
@@ -370,12 +379,21 @@ func _initialize() -> void:
 			_turn_out_of_red = turn
 		var s: Dictionary = Production.last_turn_summary
 		_net_hist.append(float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0)))
+		var rn: float = _rolling_net()
+		var eq: float = _equity()
+		for m in PROFIT_MILESTONES:
+			if not _profit_at.has(m) and rn >= float(m):
+				_profit_at[m] = turn
+		for m in EQUITY_MILESTONES:
+			if not _equity_at.has(m) and eq >= float(m):
+				_equity_at[m] = turn
 		if _judge_turn > 0 and turn >= _judge_turn:
-			var marginal: float = _rolling_net() - _pre_expand_net
-			if marginal < 0.0:
-				_stopped_turn = turn
-				print("[sim] marginal profit negative (%+.1f) — stop at turn %d" % [marginal, turn])
-				break
+			# Marginal profit of the last expansion went negative: record the turn and
+			# stop expanding, but keep running to TURNS so the held trajectory is logged.
+			if rn - _pre_expand_net < 0.0:
+				if _stopped_turn < 0:
+					_stopped_turn = turn
+				_land_exhausted = true
 			_judge_turn = 0
 		if not _land_exhausted and MatchState.money > _last_chain_cost and _chains < MAX_CHAINS:
 			var pre: float = _rolling_net()
@@ -415,7 +433,39 @@ func _report() -> void:
 		str(_turn_out_of_red), str(_turns_to_second), transport, _lifetime(_product)])
 	print("steady net/turn=%+.1f  equity_slope=%+.1f  final_equity=%.0f  profitable=%s" % [
 		ramped, slope, _equity(), ("YES" if (ramped > 0 and slope > 0 and _equity() > 0) else "NO")])
+	print("profit@/turn: 100=%s 500=%s 1000=%s" % [_ms(_profit_at, 100), _ms(_profit_at, 500), _ms(_profit_at, 1000)])
+	print("equity@: 500=%s 1000=%s 2500=%s 5000=%s 10000=%s" % [
+		_ms(_equity_at, 500), _ms(_equity_at, 1000), _ms(_equity_at, 2500), _ms(_equity_at, 5000), _ms(_equity_at, 10000)])
+	var tm := _tile_metrics()
+	print("tiles=%d  80pct-cap_tiles=%d  transit-cap_tiles=%d (max outflow=%.0f/turn vs road200/rail400)  marginal0@turn=%s" % [
+		int(tm[0]), int(tm[1]), int(tm[2]), float(tm[3]), (str(_stopped_turn) if _stopped_turn > 0 else "never")])
 	print("==== DONE %s ====\n" % _chain)
+
+
+func _ms(d: Dictionary, key: int) -> String:
+	return str(d[key]) if d.has(key) else "-"
+
+
+func _tile_metrics() -> Array:
+	var present := 0
+	var eighty := 0
+	var transit := 0
+	var maxflow := 0.0
+	for tid in MatchState.tile_buildings.keys():
+		present += 1
+		if MatchState.get_tile_space_used(tid) >= 0.8 * MAX_TILE_LAND:
+			eighty += 1
+		var outflow := 0.0
+		for inst_id in MatchState.tile_buildings[tid]:
+			var inst: Dictionary = MatchState.get_building(inst_id)
+			for o in Catalog.get_recipe(str(inst.get("recipe_id", ""))).get("outputs", []):
+				var gid: String = str(o.get("good_id", ""))
+				if MatchState.is_output_market(inst_id, gid) or MatchState.get_output_stockpile_destination(inst_id, gid) != "":
+					outflow += float(o.get("qty", 0))
+		maxflow = maxf(maxflow, outflow)
+		if outflow >= 200.0:
+			transit += 1
+	return [present, eighty, transit, maxflow]
 
 
 class _HexMapStub extends Node:
