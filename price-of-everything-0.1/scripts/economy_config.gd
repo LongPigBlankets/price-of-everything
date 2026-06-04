@@ -81,8 +81,8 @@ const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
 # rolling profit plus a slice of revenue — the 40-turn payoff is the affordance that
 # lets debt service sit above pure interest without being unserviceable.
 const LOAN_BASE_CAPACITY: float = 50.0     # Floor on borrowing capacity (turn 1, no history)
-const LOAN_TERM_TURNS: int = 30            # How many turns to repay over
-const LOAN_INTEREST_RATE: float = 0.15     # 15% over total term (not per turn)
+const LOAN_TERM_TURNS: int = 36            # How many turns to repay over
+const LOAN_INTEREST_RATE: float = 0.10     # 10% over total term (not per turn)
 const LOAN_PROFIT_WINDOW: int = 5          # Rolling window (turns) for the profit/revenue average
 const LOAN_REVENUE_BUFFER: float = 0.02    # Extra serviceable debt = this share of avg revenue
 
