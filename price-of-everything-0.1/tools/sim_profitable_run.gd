@@ -3,7 +3,9 @@ extends SceneTree
 # under the live rules: per-tile land cap, deposit-gated mines/wells/pumps, road/rail
 # build, profit-gated loans, and a marginal-profit stop. Pick the chain with:
 #   <godot> --headless --path . --script res://tools/sim_profitable_run.gd -- <chain>
-# chain in: motors | concrete | electrical | upvc_windows | aluminium_windows | building_frame
+# chain in: motors | concrete | electrical | upvc_windows | aluminium_windows | building_frame | plastics
+# Once a chain turns profitable it builds ONE self-supply power station (coal-fired,
+# or processed_oil-fired for the plastics chain) whose power flows into the shared grid.
 #
 # A chain is a list of BRANCHES. Each branch is co-located on one tile and ships its
 # single export_good to another branch's tile (or MARKET). A mine-bearing branch
@@ -43,18 +45,23 @@ const CH_CONCRETE_EAF := [
 	{"role": "WATER", "deposit": "water", "builds": [["b_037", "r_011", 1]], "export_good": "g_009", "export_to": "CONCRETE"},
 	{"role": "CONCRETE", "deposit": "", "builds": [["b_011", "r_035", 1], ["b_008", "r_030", 1]], "export_good": "g_017", "export_to": "MARKET"},
 ]
+# Electrical components now make their OWN plastics in-chain (oil -> processed_oil ->
+# ethylene -> plastics) rather than importing them. copper_wiring + chem_salts self.
 const CH_ELECTRICAL := [
 	{"role": "COPPER", "deposit": "copper_ore", "builds": [["b_001", "r_006", 2], ["b_002", "r_007", 1], ["b_007", "r_008", 1]], "export_good": "g_007", "export_to": "EC"},
 	{"role": "SALT", "deposit": "basic_salt", "builds": [["b_001", "r_010", 1]], "export_good": "g_019", "export_to": "EC"},
-	{"role": "EC", "deposit": "", "builds": [["b_007", "r_126", 1]], "export_good": "g_036", "export_to": "MARKET", "buy": ["g_027"]},
+	{"role": "OIL", "deposit": "crude_oil", "builds": [["b_032", "r_014", 2]], "export_good": "g_026", "export_to": "REFINE"},
+	{"role": "REFINE", "deposit": "", "builds": [["b_011", "r_180", 1], ["b_011", "r_023", 1]], "export_good": "g_024", "export_to": "PLASTICS"},
+	{"role": "PLASTICS", "deposit": "", "builds": [["b_013", "r_024", 1]], "export_good": "g_027", "export_to": "EC"},
+	{"role": "EC", "deposit": "", "builds": [["b_007", "r_126", 1]], "export_good": "g_036", "export_to": "MARKET"},
 ]
 const CH_GLASS_FEEDERS := [
-	{"role": "SAND", "deposit": "sand", "builds": [["b_001", "r_018", 2]], "export_good": "g_018", "export_to": "GLASS"},
+	{"role": "SAND", "deposit": "sand", "builds": [["b_001", "r_018", 1]], "export_good": "g_018", "export_to": "GLASS"},
 	{"role": "LIMESTONE", "deposit": "limestone", "builds": [["b_001", "r_019", 1]], "export_good": "g_016", "export_to": "GLASS"},
 	{"role": "SALT", "deposit": "basic_salt", "builds": [["b_001", "r_010", 1]], "export_good": "g_015", "export_to": "CHLOR"},
 	{"role": "WATER", "deposit": "water", "builds": [["b_037", "r_011", 1]], "export_good": "g_009", "export_to": "CHLOR"},
 	{"role": "CHLOR", "deposit": "", "builds": [["b_012", "r_012", 1]], "export_good": "g_013", "export_to": "GLASS"},
-	{"role": "GLASS", "deposit": "", "builds": [["b_002", "r_053", 2]], "export_good": "g_038", "export_to": "WINDOW"},
+	{"role": "GLASS", "deposit": "", "builds": [["b_002", "r_053", 1]], "export_good": "g_038", "export_to": "WINDOW"},
 ]
 # Building frame: makes its OWN windows in-chain by importing glass + pvc to a window
 # factory, then assembles (steel self; copper_pipe + electrical_components imported).
@@ -64,12 +71,27 @@ const CH_FRAME := [
 	{"role": "WINDOW", "deposit": "", "builds": [["b_007", "r_055", 1]], "export_good": "g_039", "export_to": "FRAME", "buy": ["g_038", "g_033"]},
 	{"role": "FRAME", "deposit": "", "builds": [["b_009", "r_057", 1]], "export_good": "g_023", "export_to": "MARKET", "buy": ["g_036", "g_021"]},
 ]
-const CH_POWER := [
-	{"role": "COAL", "deposit": "coal", "builds": [["b_001", "r_001", 1]], "export_good": "g_001", "export_to": "POWER"},
-	{"role": "WATER", "deposit": "water", "builds": [["b_037", "r_011", 1]], "export_good": "g_009", "export_to": "POWER"},
-	{"role": "POWER", "deposit": "", "builds": [["b_003", "r_004", 1]], "export_good": "g_010", "export_to": "MARKET"},
+# Plastics-only chain: oil -> processed_oil -> ethylene -> plastics (sold). Its self-
+# supply power plant burns processed_oil (r_181), not coal (see CH_POWER_STATION_OIL).
+const CH_PLASTICS := [
+	{"role": "OIL", "deposit": "crude_oil", "builds": [["b_032", "r_014", 2]], "export_good": "g_026", "export_to": "REFINE"},
+	{"role": "REFINE", "deposit": "", "builds": [["b_011", "r_180", 1], ["b_011", "r_023", 1]], "export_good": "g_024", "export_to": "PLASTICS"},
+	{"role": "PLASTICS", "deposit": "", "builds": [["b_013", "r_024", 1]], "export_good": "g_027", "export_to": "MARKET"},
 ]
-const CHAIN_PRODUCT := {"motors": "g_008", "concrete": "g_017", "electrical": "g_036", "upvc_windows": "g_039", "aluminium_windows": "g_039", "building_frame": "g_023", "power": "g_010"}
+# Self-supply power station, built ONCE per run after the chain turns profitable. The
+# PLANT branch exports to itself (export_to == role) so the power good is NOT routed
+# off-tile — it flows into the shared grid and offsets the chain's own consumption.
+const CH_POWER_STATION := [
+	{"role": "COAL", "deposit": "coal", "builds": [["b_001", "r_001", 1]], "export_good": "g_001", "export_to": "PLANT"},
+	{"role": "WATER", "deposit": "water", "builds": [["b_037", "r_011", 1]], "export_good": "g_009", "export_to": "PLANT"},
+	{"role": "PLANT", "deposit": "", "builds": [["b_003", "r_004", 1]], "export_good": "g_010", "export_to": "PLANT"},
+]
+const CH_POWER_STATION_OIL := [
+	{"role": "OIL", "deposit": "crude_oil", "builds": [["b_032", "r_014", 2]], "export_good": "g_026", "export_to": "REFINE"},
+	{"role": "REFINE", "deposit": "", "builds": [["b_011", "r_180", 1]], "export_good": "g_025", "export_to": "PLANT"},
+	{"role": "PLANT", "deposit": "", "builds": [["b_003", "r_181", 1]], "export_good": "g_010", "export_to": "PLANT"},
+]
+const CHAIN_PRODUCT := {"motors": "g_008", "concrete": "g_017", "electrical": "g_036", "upvc_windows": "g_039", "aluminium_windows": "g_039", "building_frame": "g_023", "plastics": "g_027"}
 
 var MatchState: Node
 var Stockpile: Node
@@ -104,6 +126,8 @@ var _judge_turn := 0
 var _stopped_turn := -1
 var _profit_at: Dictionary = {}     # profit/turn threshold -> first turn reached
 var _equity_at: Dictionary = {}     # equity threshold -> first turn reached
+var _power_built := false            # self-supply power station built once profitable
+var _power_turn := -1
 
 
 func _rolling_net() -> float:
@@ -145,8 +169,8 @@ func _branches_for_next() -> Array:
 			return a
 		"building_frame":
 			return CH_FRAME
-		"power":
-			return CH_POWER
+		"plastics":
+			return CH_PLASTICS
 		_:
 			return CH_MOTORS
 
@@ -256,7 +280,18 @@ func _place_on(building_id: String, recipe_id: String, tile: String) -> String:
 
 
 func _build_chain() -> bool:
-	var branches: Array = _branches_for_next()
+	return _build_branches(_branches_for_next(), true)
+
+
+func _build_power_station() -> bool:
+	var branches: Array = CH_POWER_STATION_OIL if _chain == "plastics" else CH_POWER_STATION
+	if _build_branches(branches, false):
+		_power_built = true
+		return true
+	return false
+
+
+func _build_branches(branches: Array, count_as_chain: bool) -> bool:
 	var chain_tiles: Dictionary = {}
 	var reserved: Dictionary = {}
 	for b in branches:
@@ -301,8 +336,9 @@ func _build_chain() -> bool:
 		_ensure_rail_corridor(src, dst)
 	if MatchState.has_signal("money_changed"):
 		MatchState.money_changed.emit(MatchState.money)
-	_chains += 1
-	_last_chain_cost = (_total_build + _total_land + _total_road + _total_rail) - spent_before
+	if count_as_chain:
+		_chains += 1
+		_last_chain_cost = (_total_build + _total_land + _total_road + _total_rail) - spent_before
 	return true
 
 
@@ -387,6 +423,11 @@ func _initialize() -> void:
 		for m in EQUITY_MILESTONES:
 			if not _equity_at.has(m) and eq >= float(m):
 				_equity_at[m] = turn
+		# Once the chain is profitable, add ONE self-supply power station.
+		if not _power_built and rn > 0.0 and turn > RAMP_TURNS:
+			if _build_power_station():
+				_power_turn = turn
+				_finance()
 		if _judge_turn > 0 and turn >= _judge_turn:
 			# Marginal profit of the last expansion went negative: record the turn and
 			# stop expanding, but keep running to TURNS so the held trajectory is logged.
@@ -439,6 +480,9 @@ func _report() -> void:
 	var tm := _tile_metrics()
 	print("tiles=%d  80pct-cap_tiles=%d  transit-cap_tiles=%d (max outflow=%.0f/turn vs road200/rail400)  marginal0@turn=%s" % [
 		int(tm[0]), int(tm[1]), int(tm[2]), float(tm[3]), (str(_stopped_turn) if _stopped_turn > 0 else "never")])
+	print("power_station=%s (%s)" % [
+		(("built@turn " + str(_power_turn)) if _power_built else "not built"),
+		("processed_oil-fired" if _chain == "plastics" else "coal-fired")])
 	print("==== DONE %s ====\n" % _chain)
 
 
