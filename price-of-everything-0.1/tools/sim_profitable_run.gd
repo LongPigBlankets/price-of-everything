@@ -92,6 +92,7 @@ var _net_hist: Array = []
 var _pre_expand_net := 0.0
 var _judge_turn := 0
 var _stopped_turn := -1
+var _dbg_tile := ""
 
 
 func _rolling_net() -> float:
@@ -120,7 +121,7 @@ func _branches_for_next() -> Array:
 	# The branch list for the NEXT chain. Concrete switches from furnace to EAF after 2.
 	match _chain:
 		"concrete":
-			return CH_CONCRETE_FURNACE if _chains < 2 else CH_CONCRETE_EAF
+			return CH_CONCRETE_EAF
 		"electrical":
 			return CH_ELECTRICAL
 		"upvc_windows":
@@ -259,17 +260,23 @@ func _build_chain() -> bool:
 		_stub.set_cabled_tile(tile)
 		var buy: Array = b.get("buy", [])
 		for build in b.builds:
+			var recipe: Dictionary = Catalog.get_recipe(str(build[1]))
+			# Route the export good to its destination if THIS recipe produces it as
+			# ANY output (salt mine, chlor-alkali etc. have the wanted good as output 2+).
+			var makes_export := false
+			for o in recipe.get("outputs", []):
+				if str(o.get("good_id", "")) == str(b.export_good):
+					makes_export = true
 			for i in int(build[2]):
 				var inst: String = _place_on(str(build[0]), str(build[1]), tile)
-				var out: String = _recipe_output_good(str(build[1]))
-				if out == str(b.export_good):
+				if makes_export:
 					if str(b.export_to) == "MARKET":
-						MatchState.route_output_to_market(inst, out)
+						MatchState.route_output_to_market(inst, str(b.export_good))
 					else:
 						var dest: String = chain_tiles[str(b.export_to)]
 						if dest != tile:
-							MatchState.set_output_stockpile_destination(inst, dest, out)
-				for input in Catalog.get_recipe(str(build[1])).get("inputs", []):
+							MatchState.set_output_stockpile_destination(inst, dest, str(b.export_good))
+				for input in recipe.get("inputs", []):
 					var gid: String = str(input.get("good_id", ""))
 					if not buy.has(gid):
 						MatchState.set_input_tile_only(inst, gid, true)
@@ -279,6 +286,10 @@ func _build_chain() -> bool:
 		var src: String = chain_tiles[b.role]
 		var dst: String = Catalog.nearest_port_tile(src) if str(b.export_to) == "MARKET" else chain_tiles[str(b.export_to)]
 		_ensure_rail_corridor(src, dst)
+	if _chains == 0:
+		for b in branches:
+			if str(b.export_to) == "MARKET":
+				_dbg_tile = chain_tiles[b.role]
 	if MatchState.has_signal("money_changed"):
 		MatchState.money_changed.emit(MatchState.money)
 	_chains += 1
