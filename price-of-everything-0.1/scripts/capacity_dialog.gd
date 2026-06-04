@@ -107,6 +107,7 @@ func _build_ui() -> void:
 	offset_top = -200.0
 	offset_bottom = 200.0
 	custom_minimum_size = Vector2(400, 400)
+	clip_contents = true   # never let content push the panel past 400x400
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
@@ -149,6 +150,7 @@ func _make_option_button(text: String, action: String, ratio: float) -> Button:
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	b.size_flags_stretch_ratio = ratio
+	b.custom_minimum_size = Vector2(60, 0)   # let autowrap shrink width; share the 400 row
 	b.pressed.connect(_choose.bind(action))
 	return b
 
@@ -176,7 +178,12 @@ func _cost_cell(gid: String, qty: int) -> Control:
 		var tr := TextureRect.new()
 		tr.texture = icon
 		tr.custom_minimum_size = Vector2(60, 60)
+		# Pin to 60x60: ignore the texture's native size for min-size, fit inside,
+		# and don't let the container stretch the cell wider/taller.
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		tr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		cell.add_child(tr)
 	else:
 		# Placeholder 60x60 so the slot reads even when the good has no art yet.
@@ -187,6 +194,8 @@ func _cost_cell(gid: String, qty: int) -> Control:
 		ph.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		ph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		ph.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		ph.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		ph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		cell.add_child(ph)
 	var qlbl := Label.new()
 	qlbl.text = "x%d" % qty
