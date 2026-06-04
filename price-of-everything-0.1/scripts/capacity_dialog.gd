@@ -17,7 +17,9 @@ const BADGE_DIAMETER := 24
 const BADGE_TEXT_SIZE := 14
 const BADGE_NAVY := Color(0.0, 0.119856, 0.243095, 1.0)
 const BADGE_PAPER := Color(0.995234, 0.930806, 0.763265, 1.0)
-const ICON_SIZE := 60.0
+const ICON_SIZE := 100.0
+const CARD_WIDTH := 340.0       # fixed so the icons can pin to the frame edges
+const MONEY_FONT := preload("res://assets/fonts/BarlowCondensed-Bold.ttf")
 
 # Placeholder expansion cost (hardcoded for now): 10 steel, 10 concrete, 10 copper
 # wiring + £50.  g_006 steel, g_017 concrete, g_007 copper_wiring.
@@ -112,10 +114,10 @@ func _build_ui() -> void:
 	anchor_bottom = 0.5
 	offset_left = -400.0
 	offset_right = 400.0
-	offset_top = -200.0
-	offset_bottom = 200.0
-	custom_minimum_size = Vector2(800, 400)
-	clip_contents = true   # never let content push the panel past 800x400
+	offset_top = -270.0
+	offset_bottom = 270.0
+	custom_minimum_size = Vector2(800, 540)
+	clip_contents = true   # backstop against overflow
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
@@ -142,18 +144,28 @@ func _build_ui() -> void:
 	row.add_child(_make_option_button("Stop Production on tile", ACTION_STOP, 1.0))
 	vb.add_child(row)
 
-	# "This will cost:" introduces the expansion cost card below the options.
+	# "This will cost:" — compact row introducing the cost card below the options.
 	var cost_label := Label.new()
 	cost_label.text = "This will cost:"
+	cost_label.add_theme_font_size_override("font_size", 12)
 	cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vb.add_child(cost_label)
 
-	# Framed goods card (main-menu title plate) with the expansion materials.
+	# Framed goods card with the expansion materials.
 	vb.add_child(_build_cost_section())
 
-	# "Don't ask me again" — applies the chosen action to all future tiles.
+	# Divider, then the "don't ask again" label + tickbox pushed to the right.
+	vb.add_child(HSeparator.new())
+	var cb_row := HBoxContainer.new()
+	cb_row.alignment = BoxContainer.ALIGNMENT_END
+	cb_row.add_theme_constant_override("separation", 8)
+	var cb_label := Label.new()
+	cb_label.text = "Don't ask me again, apply to all tiles"
+	cb_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	cb_row.add_child(cb_label)
 	_checkbox = UIHelpers.make_custom_checkbox()
-	vb.add_child(UIHelpers.make_setting_row("Don't ask me again, apply to all tiles", _checkbox))
+	cb_row.add_child(_checkbox)
+	vb.add_child(cb_row)
 
 
 func _make_option_button(text: String, action: String, ratio: float) -> Button:
@@ -172,23 +184,64 @@ func _make_option_button(text: String, action: String, ratio: float) -> Button:
 func _build_cost_section() -> Control:
 	# A framed card (the pipe frame, matching the title card) holding the 60x60 good
 	# icons — each with the standard quantity pill — and the money cost.
-	# The frame's content margins (from goods_frame.tres) inset the row into the
-	# plate's cream middle, so no extra MarginContainer is needed.
+	# Fixed-width framed card. The icons are placed by anchor (not a row container):
+	# the left icon's left edge and the right icon's right edge pin to the frame's
+	# inner edges, the middle icon centres, and they overlap if 3x100 exceeds the
+	# inner width. The money cost sits navy + bold along the bottom of the frame.
 	var card := PanelContainer.new()
 	card.add_theme_stylebox_override("panel", GOODS_FRAME)
 	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 24)
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	for m in EXPAND_MATERIALS:
-		row.add_child(_cost_cell(str(m[0]), int(m[1])))
+	card.custom_minimum_size = Vector2(CARD_WIDTH, 0)
+
+	var inner := Control.new()
+	# Icons (100) at the top + 50px breathing room + the money strip (30) at the bottom.
+	inner.custom_minimum_size = Vector2(0, ICON_SIZE + 50.0 + 30.0)
+	card.add_child(inner)
+
+	var mats := EXPAND_MATERIALS
+
+	# Middle (centred), added first so the edge-pinned icons draw over it.
+	var mid := _cost_cell(str(mats[1][0]), int(mats[1][1]))
+	_anchor_slot(mid, 0.5, -ICON_SIZE / 2.0, ICON_SIZE / 2.0)
+	inner.add_child(mid)
+
+	# Left: left edge pinned to the frame's inner-left.
+	var left := _cost_cell(str(mats[0][0]), int(mats[0][1]))
+	_anchor_slot(left, 0.0, 0.0, ICON_SIZE)
+	inner.add_child(left)
+
+	# Right: right edge pinned to the frame's inner-right.
+	var right := _cost_cell(str(mats[2][0]), int(mats[2][1]))
+	_anchor_slot(right, 1.0, -ICON_SIZE, 0.0)
+	inner.add_child(right)
+
+	# Money cost: navy, bold, bottom of the frame.
 	var money := Label.new()
-	money.text = "+ £%d" % EXPAND_MONEY
-	money.add_theme_font_size_override("font_size", 18)
+	money.text = "and £%d" % EXPAND_MONEY
+	money.add_theme_font_override("font", MONEY_FONT)
+	money.add_theme_font_size_override("font_size", 22)
+	money.add_theme_color_override("font_color", BADGE_NAVY)
+	money.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	money.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.add_child(money)
-	card.add_child(row)
+	money.anchor_left = 0.0
+	money.anchor_right = 1.0
+	money.anchor_top = 1.0
+	money.anchor_bottom = 1.0
+	money.offset_top = -30.0
+	inner.add_child(money)
 	return card
+
+
+func _anchor_slot(slot: Control, anchor_x: float, off_left: float, off_right: float) -> void:
+	# Pin a 100x100 icon slot to the top of `inner` at the given horizontal anchor.
+	slot.anchor_left = anchor_x
+	slot.anchor_right = anchor_x
+	slot.anchor_top = 0.0
+	slot.anchor_bottom = 0.0
+	slot.offset_left = off_left
+	slot.offset_right = off_right
+	slot.offset_top = 0.0
+	slot.offset_bottom = ICON_SIZE
 
 
 func _cost_cell(gid: String, qty: int) -> Control:
