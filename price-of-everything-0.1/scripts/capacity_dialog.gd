@@ -97,19 +97,20 @@ func _apply_action(action: String, tile_id: String) -> void:
 
 func _build_ui() -> void:
 	theme = DS.theme
-	# Centre on screen.
+	# Centred, capped at 400x400.
 	anchor_left = 0.5
 	anchor_right = 0.5
 	anchor_top = 0.5
 	anchor_bottom = 0.5
-	offset_left = -240.0
-	offset_right = 240.0
-	offset_top = -190.0
-	offset_bottom = 190.0
+	offset_left = -200.0
+	offset_right = 200.0
+	offset_top = -200.0
+	offset_bottom = 200.0
+	custom_minimum_size = Vector2(400, 400)
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 16)
+		margin.add_theme_constant_override("margin_" + side, 12)
 	add_child(margin)
 
 	var vb := VBoxContainer.new()
@@ -117,66 +118,79 @@ func _build_ui() -> void:
 	margin.add_child(vb)
 
 	_title = Label.new()
-	_title.add_theme_font_size_override("font_size", 16)
+	_title.add_theme_font_size_override("font_size", 15)
 	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vb.add_child(_title)
 	vb.add_child(HSeparator.new())
 
-	# Option 1 — sell surplus automatically (the one that actually does something).
-	vb.add_child(_make_option_button("Sell surplus automatically", ACTION_SELL))
-	var hint := Label.new()
-	hint.text = "Creates a standing sale for this tile's surplus every turn, keeping room for what it uses. Shown under Transactions."
-	hint.add_theme_font_size_override("font_size", 11)
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vb.add_child(hint)
+	# The three options sit on one row; the expand option is wider (stretch ratio 2).
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.add_child(_make_option_button("Sell surplus automatically", ACTION_SELL, 1.0))
+	row.add_child(_make_option_button("Expand Logistics and Storage on tile by 500. This will cost:", ACTION_EXPAND, 2.0))
+	row.add_child(_make_option_button("Stop Production on tile", ACTION_STOP, 1.0))
+	vb.add_child(row)
 
-	# Option 2 — expand storage (+500). Cost shown; no effect yet.
-	vb.add_child(_make_option_button("Expand Logistics and Storage on tile by 500. This will cost:", ACTION_EXPAND))
+	# Goods-icon cost row (60x60) for the expand option, underneath the options.
 	vb.add_child(_build_cost_section())
-
-	# Option 3 — stop production (no effect yet).
-	vb.add_child(_make_option_button("Stop Production on tile", ACTION_STOP))
-
-	vb.add_child(HSeparator.new())
 
 	# "Don't ask me again" — applies the chosen action to all future tiles.
 	_checkbox = UIHelpers.make_custom_checkbox()
-	vb.add_child(UIHelpers.make_setting_row(
-		"Don't ask me again, apply this to all tiles if they hit capacity", _checkbox))
+	vb.add_child(UIHelpers.make_setting_row("Don't ask me again, apply to all tiles", _checkbox))
 
 
-func _make_option_button(text: String, action: String) -> Button:
+func _make_option_button(text: String, action: String, ratio: float) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.clip_text = false
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	b.size_flags_stretch_ratio = ratio
 	b.pressed.connect(_choose.bind(action))
 	return b
 
 
 func _build_cost_section() -> Control:
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
+	# A single horizontal row of 60x60 good icons (with qty), then the money cost.
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	for m in EXPAND_MATERIALS:
-		var gid := str(m[0])
-		var qty := int(m[1])
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 6)
-		var icon := GoodIcons.texture_for(gid, Catalog.get_internal_name(gid))
-		if icon != null:
-			var tr := TextureRect.new()
-			tr.texture = icon
-			tr.custom_minimum_size = Vector2(18, 18)
-			tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			row.add_child(tr)
-		var lbl := Label.new()
-		lbl.text = "%d  %s" % [qty, Catalog.get_display_name(gid)]
-		lbl.add_theme_font_size_override("font_size", 12)
-		row.add_child(lbl)
-		box.add_child(row)
+		row.add_child(_cost_cell(str(m[0]), int(m[1])))
 	var money := Label.new()
-	money.text = "£%d" % EXPAND_MONEY
-	money.add_theme_font_size_override("font_size", 12)
-	box.add_child(money)
-	return box
+	money.text = "+ £%d" % EXPAND_MONEY
+	money.add_theme_font_size_override("font_size", 16)
+	money.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(money)
+	return row
+
+
+func _cost_cell(gid: String, qty: int) -> Control:
+	var cell := VBoxContainer.new()
+	cell.add_theme_constant_override("separation", 2)
+	var icon := GoodIcons.texture_for(gid, Catalog.get_internal_name(gid))
+	if icon != null:
+		var tr := TextureRect.new()
+		tr.texture = icon
+		tr.custom_minimum_size = Vector2(60, 60)
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		cell.add_child(tr)
+	else:
+		# Placeholder 60x60 so the slot reads even when the good has no art yet.
+		var ph := Label.new()
+		ph.custom_minimum_size = Vector2(60, 60)
+		ph.text = Catalog.get_display_name(gid)
+		ph.add_theme_font_size_override("font_size", 9)
+		ph.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		ph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		ph.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		cell.add_child(ph)
+	var qlbl := Label.new()
+	qlbl.text = "x%d" % qty
+	qlbl.add_theme_font_size_override("font_size", 11)
+	qlbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cell.add_child(qlbl)
+	return cell
