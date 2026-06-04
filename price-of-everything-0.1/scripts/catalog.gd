@@ -237,6 +237,12 @@ func _normalise_infra_id(value: String) -> String:
 func tile_name(tile_id: String) -> String:
 	return _tile_names.get(tile_id, "")
 
+func tile_has_infrastructure(tile_id: String, infra_type: String) -> bool:
+	return _tile_infra.get(tile_id, []).has(_normalise_infra_id(infra_type.strip_edges().to_lower()))
+
+func is_land_tile(tile_id: String) -> bool:
+	return bool(_tile_land.get(tile_id, true))
+
 func add_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 	# Mirror a runtime-built road/rail into the router's live infra map.
 	var norm := _normalise_infra_id(infra_type.strip_edges().to_lower())
