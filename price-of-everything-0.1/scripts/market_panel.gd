@@ -39,8 +39,8 @@ func _rebuild_header() -> void:
 		header_static.remove_child(c)
 		c.queue_free()
 	header_static.add_theme_constant_override("separation", 10)
-	header_static.add_child(_header_spacer(60.0))             # icon column
-	header_static.add_child(_header_label("Product", 160.0, Color(0, 0, 0, 0), false))
+	header_static.add_child(_header_spacer(78.0))             # framed icon column
+	header_static.add_child(_header_label("Product", 240.0, Color(0, 0, 0, 0), false))
 	header_static.add_child(_header_label("Sale now", 80.0, SALE_TINT))
 	header_static.add_child(_header_label("Sale +10t", 90.0, SALE_TINT))
 	header_static.add_child(_header_label("Buy now", 80.0, BUY_TINT))
@@ -79,7 +79,7 @@ func _centre_and_resize() -> void:
 	# Wide enough to show every column without sideways scrolling, centred on
 	# screen (capped to the viewport on narrow displays).
 	var vp := get_viewport_rect().size
-	var w := minf(1120.0, vp.x - 60.0)
+	var w := minf(1220.0, vp.x - 60.0)
 	var h := minf(640.0, vp.y - 80.0)
 	offset_left = maxf(0.0, (vp.x - w) / 2.0)
 	offset_top = maxf(40.0, (vp.y - h) / 2.0)

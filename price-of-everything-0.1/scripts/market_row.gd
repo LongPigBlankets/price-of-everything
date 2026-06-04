@@ -3,9 +3,12 @@ extends VBoxContainer
 ## expandable Sell / Purchase / Move / Expand action block underneath.
 
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const GOODS_ICON_FRAME := preload("res://assets/ui/goods_icon_frame.tres")
 
 const ICON_SIZE := 78
-const NAME_W := 160.0
+const ICON_INNER := 54     # icon inside the frame; +12px frame margin each side ≈ ICON_SIZE
+const NAME_W := 240.0
+const NAME_MAX_CHARS := 24
 const COL_PRICE := 80.0
 const COL_EST := 90.0
 const COL_SOLD := 80.0
@@ -47,18 +50,29 @@ func setup(good_data: Dictionary) -> void:
 	main.add_theme_constant_override("separation", 10)
 	add_child(main)
 
+	# Icon sits inside a small pipe-frame slot (matches the goods frame elsewhere).
 	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
-	icon.size_flags_vertical = Control.SIZE_FILL
+	icon.custom_minimum_size = Vector2(ICON_INNER, ICON_INNER)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var tex: Texture2D = GoodIcons.texture_for(good_id, internal_name)
 	if tex != null:
 		icon.texture = tex
-	main.add_child(icon)
+	var icon_frame := PanelContainer.new()
+	icon_frame.add_theme_stylebox_override("panel", GOODS_ICON_FRAME)
+	icon_frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	icon_frame.add_child(icon)
+	main.add_child(icon_frame)
 
+	# Name button, truncated to NAME_MAX_CHARS so long names don't blow out the column.
+	var disp := str(good_data.get("display_name", good_id))
+	if disp.length() > NAME_MAX_CHARS:
+		disp = disp.substr(0, NAME_MAX_CHARS) + "…"
 	var name_btn := Button.new()
-	name_btn.text = str(good_data.get("display_name", good_id))
+	name_btn.text = disp
+	name_btn.clip_text = true
 	name_btn.custom_minimum_size = Vector2(NAME_W, ICON_SIZE)
 	name_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	name_btn.pressed.connect(_toggle_expand)
