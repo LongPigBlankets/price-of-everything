@@ -5,14 +5,14 @@ extends VBoxContainer
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const GOODS_ICON_FRAME := preload("res://assets/ui/goods_icon_frame.tres")
 
-const ICON_SIZE := 78
-const ICON_INNER := 54     # icon inside the frame; +12px frame margin each side ≈ ICON_SIZE
+const ICON_SIZE := 98
+const ICON_INNER := 74     # icon inside the frame; +12px frame margin each side = ICON_SIZE
 const NAME_W := 240.0
 const NAME_MAX_CHARS := 24
-const COL_PRICE := 80.0
-const COL_EST := 90.0
-const COL_SOLD := 80.0
-const COL_BOUGHT := 90.0
+const COL_PRICE := 70.0
+const COL_EST := 80.0
+const COL_SOLD := 60.0
+const COL_BOUGHT := 64.0
 const COL_COST := 100.0
 const COL_PROFIT := 110.0
 const FIELD_FS := 19  # larger per-field text

@@ -39,14 +39,14 @@ func _rebuild_header() -> void:
 		header_static.remove_child(c)
 		c.queue_free()
 	header_static.add_theme_constant_override("separation", 10)
-	header_static.add_child(_header_spacer(78.0))             # framed icon column
+	header_static.add_child(_header_spacer(98.0))             # framed icon column
 	header_static.add_child(_header_label("Product", 240.0, Color(0, 0, 0, 0), false))
-	header_static.add_child(_header_label("Sale now", 80.0, SALE_TINT))
-	header_static.add_child(_header_label("Sale +10t", 90.0, SALE_TINT))
-	header_static.add_child(_header_label("Buy now", 80.0, BUY_TINT))
-	header_static.add_child(_header_label("Buy +10t", 90.0, BUY_TINT))
-	header_static.add_child(_header_label("Sold", 80.0))
-	header_static.add_child(_header_label("Bought", 90.0))
+	header_static.add_child(_header_label("Sale now", 70.0, SALE_TINT))
+	header_static.add_child(_header_label("Sale +10t", 80.0, SALE_TINT))
+	header_static.add_child(_header_label("Buy now", 70.0, BUY_TINT))
+	header_static.add_child(_header_label("Buy +10t", 80.0, BUY_TINT))
+	header_static.add_child(_header_label("Sold", 60.0))
+	header_static.add_child(_header_label("Bought", 64.0))
 	header_static.add_child(_header_label("Cost/unit", 100.0))
 	header_static.add_child(_header_label("Profit/unit", 110.0))
 
