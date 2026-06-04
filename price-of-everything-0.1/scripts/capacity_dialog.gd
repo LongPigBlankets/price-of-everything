@@ -138,11 +138,17 @@ func _build_ui() -> void:
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	row.add_child(_make_option_button("Sell surplus automatically", ACTION_SELL, 1.0))
-	row.add_child(_make_option_button("Expand Logistics and Storage on tile by 500. This will cost:", ACTION_EXPAND, 2.0))
+	row.add_child(_make_option_button("Expand Logistics and Storage on tile by 500", ACTION_EXPAND, 2.0))
 	row.add_child(_make_option_button("Stop Production on tile", ACTION_STOP, 1.0))
 	vb.add_child(row)
 
-	# Goods-icon cost row (60x60) for the expand option, underneath the options.
+	# "This will cost:" introduces the expansion cost card below the options.
+	var cost_label := Label.new()
+	cost_label.text = "This will cost:"
+	cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vb.add_child(cost_label)
+
+	# Framed goods card (main-menu title plate) with the expansion materials.
 	vb.add_child(_build_cost_section())
 
 	# "Don't ask me again" — applies the chosen action to all future tiles.
@@ -166,13 +172,11 @@ func _make_option_button(text: String, action: String, ratio: float) -> Button:
 func _build_cost_section() -> Control:
 	# A framed card (the pipe frame, matching the title card) holding the 60x60 good
 	# icons — each with the standard quantity pill — and the money cost.
+	# The frame's content margins (from goods_frame.tres) inset the row into the
+	# plate's cream middle, so no extra MarginContainer is needed.
 	var card := PanelContainer.new()
 	card.add_theme_stylebox_override("panel", GOODS_FRAME)
 	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var inner := MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]:
-		inner.add_theme_constant_override("margin_" + side, 20)
-	card.add_child(inner)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 24)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -183,7 +187,7 @@ func _build_cost_section() -> Control:
 	money.add_theme_font_size_override("font_size", 18)
 	money.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(money)
-	inner.add_child(row)
+	card.add_child(row)
 	return card
 
 
