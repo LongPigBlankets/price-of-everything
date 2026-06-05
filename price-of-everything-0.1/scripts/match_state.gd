@@ -118,10 +118,12 @@ func is_player_owned(building: Dictionary) -> bool:
 	# player's to pay for. Buildings default to the local player when owner is unset.
 	return str(building.get("owner", LOCAL_PLAYER)) == LOCAL_PLAYER
 
-func add_building(building_id: String, recipe_id: String, tile_id: String, owner: String = "player_1") -> String:
-	# Pass the building_id here!
-	var instance_id := _generate_instance_id(building_id) 
-	
+func add_building(building_id: String, recipe_id: String, tile_id: String, owner: String = "player_1", instance_id: String = "") -> String:
+	# Pass the building_id here! An explicit instance_id lets a construction project keep one
+	# stable id from placement through completion; empty means generate a fresh one.
+	if instance_id == "":
+		instance_id = _generate_instance_id(building_id)
+
 	var instance := {
 		"instance_id": instance_id,
 		"building_id": building_id,
@@ -175,6 +177,8 @@ func get_tile_space_used(tile_id: String) -> float:
 		var building_id: String = instance.get("building_id", "")
 		var building_data := Catalog.get_building(building_id)
 		total += float(building_data.get("tile_size_used", 1.0))
+	# Pending construction projects reserve their footprint up front (Phase 1: none linger).
+	total += Construction.reserved_space_on_tile(tile_id)
 	return total
 
 func get_tile_land_owned(tile_id: String) -> int:
@@ -208,6 +212,11 @@ func _generate_instance_id(building_id: String) -> String:
 	_next_instance_counter += 1
 	# %s injects the string, %06x injects the hex counter
 	return "inst_%s_%06x" % [building_id, _next_instance_counter]
+
+# Public: reserve a unique instance id before the building exists. Used by Construction so a
+# project keeps the same id from placement to completion.
+func reserve_instance_id(building_id: String) -> String:
+	return _generate_instance_id(building_id)
 
 # --- Reset (useful for new game / testing) ---
 func reset() -> void:
@@ -353,7 +362,7 @@ func queue_transport_shipment(shipment: Dictionary) -> void:
 func request_toast(message: String, toast_type: String = "success") -> void:
 	toast_requested.emit(message, toast_type)
 
-func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, log_oneoff: bool = true) -> Dictionary:
+func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, log_oneoff: bool = true, extra: Dictionary = {}) -> Dictionary:
 	# Move goods from one tile to another: consume now, ship via the router, deliver
 	# to the destination stockpile on arrival. Returns a summary for the UI/toast.
 	if source_tile == "" or dest_tile == "" or source_tile == dest_tile:
@@ -384,7 +393,7 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, 
 		add_money(-total_cost)
 	for it in items:
 		if turns >= 1:
-			queue_transport_shipment({
+			var shipment: Dictionary = {
 				"source_tile": source_tile,
 				"destination_tile": dest_tile,
 				"good_id": it.good_id,
@@ -395,7 +404,9 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, 
 				"tiles": route.get("tiles", []),
 				"path": route.get("path", []),
 				"legs": route.get("legs", []),
-			})
+			}
+			shipment.merge(extra, true)  # optional tags, e.g. construction_instance_id
+			queue_transport_shipment(shipment)
 		else:
 			Stockpile.add(dest_tile, it.good_id, it.qty)
 	if log_oneoff:
@@ -572,7 +583,7 @@ func subscribe_seaport(good_id: String) -> void:
 func seaport_subscription_fee() -> float:
 	return float(seaport_subscribed.size()) * EconomyConfig.SEAPORT_SUBSCRIPTION_COST_PER_GOOD
 
-func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = true) -> Dictionary:
+func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = true, extra: Dictionary = {}) -> Dictionary:
 	# Buy goods from the nearest port to dest_tile: pay now (price + transport), ship in,
 	# arrive in N turns. The reusable buy primitive for market-sourced inputs (and later a Buy tab).
 	if dest_tile == "" or good_id == "" or qty <= 0:
@@ -610,13 +621,15 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 			"turn_started": started, "turn_ended": started + maxi(0, turns),
 		})
 	if turns >= 1:
-		queue_transport_shipment({
+		var shipment: Dictionary = {
 			"source_tile": port, "destination_tile": dest_tile,
 			"good_id": good_id, "qty": qty,
 			"turns_remaining": turns, "transport_turns": turns,
 			"transport_cost": transport, "is_purchase": true,
 			"tiles": route.get("tiles", []), "path": route.get("path", []), "legs": route.get("legs", []),
-		})
+		}
+		shipment.merge(extra, true)  # optional tags, e.g. construction_instance_id
+		queue_transport_shipment(shipment)
 	else:
 		Stockpile.add(dest_tile, good_id, qty)
 	return {"qty": qty, "turns": turns, "cost": total,
@@ -792,19 +805,25 @@ func get_inbound_transport_shipments(destination_tile: String, good_id: String =
 			continue
 		if good_id != "" and shipment.get("good_id", "") != good_id:
 			continue
-		result.append(shipment.duplicate(true))
+		# Shallow copy: callers only read scalar fields (qty, turns_remaining). Avoids
+		# deep-cloning the heavy path/tiles/legs/sale_record arrays every call (this runs
+		# per building, per market input, every turn).
+		result.append(shipment.duplicate())
 	return result
 
 func advance_transport_shipments() -> Array:
 	var arrived: Array = []
 	var remaining: Array = []
+	# Decrement in place — Dictionaries are references, and the only mutation is the
+	# countdown. The previous deep-copy of every shipment (with its path/tiles arrays)
+	# every turn was a top sim hot-spot. Arrived shipments are read-only consumed by the
+	# caller and then discarded; remaining keep their identity in the live list.
 	for shipment in pending_transport_shipments:
-		var record: Dictionary = shipment.duplicate(true)
-		record.turns_remaining = int(record.get("turns_remaining", 0)) - 1
-		if int(record.turns_remaining) <= 0:
-			arrived.append(record)
+		shipment.turns_remaining = int(shipment.get("turns_remaining", 0)) - 1
+		if int(shipment.turns_remaining) <= 0:
+			arrived.append(shipment)
 		else:
-			remaining.append(record)
+			remaining.append(shipment)
 	pending_transport_shipments = remaining
 	if not arrived.is_empty():
 		transport_shipments_changed.emit()

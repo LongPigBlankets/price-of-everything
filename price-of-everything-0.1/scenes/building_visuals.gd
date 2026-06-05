@@ -7,6 +7,10 @@ var building_icons: Dictionary = {}
 # Used to determine the next grid slot for the next building on that tile
 var tile_building_counts: Dictionary = {}
 
+# instance_id -> Array[Node] of the visual node(s) created for that placement, so a cancelled
+# construction site can have its icon removed (the slot is left vacant; no reindexing).
+var _instance_nodes: Dictionary = {}
+
 const ICONS_PER_ROW := 4
 const ICON_ROWS := 3
 const ROADS_BUILDING_ID := "b_005"
@@ -58,6 +62,7 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 	var owner_id := str(MatchState.get_building(instance_id).get("owner", ""))
 	var is_npc: bool = owner_id != "" and owner_id != "player_1"
 
+	var before_count := get_child_count()
 	if slot_index < OVERFLOW_INDEX:
 		var slot_pos := _slot_position(tile_center, slot_index)
 		if is_npc:
@@ -67,6 +72,21 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 	elif slot_index == OVERFLOW_INDEX:
 		var slot_pos := _slot_position(tile_center, slot_index)
 		_create_overflow_indicator(slot_pos)
+	# Track the node(s) created for this instance so they can be removed later (e.g. cancel).
+	if instance_id != "":
+		var added: Array = []
+		for i in range(before_count, get_child_count()):
+			added.append(get_child(i))
+		if not added.is_empty():
+			_instance_nodes[instance_id] = added
+
+func remove_instance(instance_id: String) -> void:
+	if not _instance_nodes.has(instance_id):
+		return
+	for node in _instance_nodes[instance_id]:
+		if is_instance_valid(node):
+			node.queue_free()
+	_instance_nodes.erase(instance_id)
 
 func _create_icon_sprite(texture: Texture2D, slot_pos: Vector2) -> void:
 	var sprite := Sprite2D.new()

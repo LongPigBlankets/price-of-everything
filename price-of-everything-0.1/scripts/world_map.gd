@@ -57,6 +57,7 @@ var _buy_cta: Button = null
 var _buy_legend: VBoxContainer = null
 var _buy_modal: PanelContainer = null
 var _buy_modal_label: Label = null
+var _construction_dialog: PanelContainer = null
 
 func _ready() -> void:
 	# DS assigns its Theme to the root Window, but Controls do not inherit a
@@ -94,6 +95,8 @@ func _ready() -> void:
 
 	# Wire visuals to react to building placements
 	building_placed.connect(building_visuals.on_building_placed)
+	# A cancelled construction site removes its hex icon (it was never a real building).
+	Construction.construction_cancelled.connect(_on_construction_cancelled)
 
 	# Wire building connection visuals to building detail panel
 	building_panel.building_connections_changed.connect(
@@ -1004,19 +1007,85 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 		return
 	var cost: float = float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0))
 
+	# Construction materials must be present on the tile. If any are missing, offer the
+	# order-or-cancel dialog and stop here — no money deducted, no tile space reserved.
+	var mat_check: Dictionary = Construction.check_tile(tile_id, building_id)
+	if not bool(mat_check.get("satisfied", false)):
+		print("[Build] materials missing on %s for %s: %s" % [tile_id, building_id, str(mat_check.get("missing", {}))])
+		_show_construction_missing_dialog(building_id, recipe_id, tile_id, mat_check.get("missing", {}))
+		return
+
 	# Check + deduct money
 	if not MatchState.deduct_money(cost):
 		print("[Build] FAILED: insufficient money. Need £%.2f, have £%.2f" % [cost, MatchState.money])
 		MatchState.build_rejected_no_funds.emit("Not enough money — need £%.2f, you have £%.2f" % [cost, MatchState.money])
 		return
 
-	# Add to MatchState (single source of truth)
-	var instance_id := MatchState.add_building(building_id, recipe_id, tile_id)
+	# Consume the construction materials and start the build (deferred behind a countdown).
+	var instance_id := Construction.start_on_tile(building_id, recipe_id, tile_id, cost)
 
 	var _building_name := _get_building_display_name(building_id)
 	print("Built %s (instance %s, recipe %s) on %s — cost £%.2f" % [building_id, instance_id, recipe_id, tile_id, cost])
 
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
+
+func _show_construction_missing_dialog(building_id: String, recipe_id: String, tile_id: String, missing: Dictionary) -> void:
+	# Lazily build one reusable dialog on the HUD. Phase 1 only wires Cancel (close); the
+	# Buy / Use-stockpile CTAs are disabled in the dialog and connected here for later phases.
+	if _construction_dialog == null:
+		_construction_dialog = load("res://scripts/construction_missing_dialog.gd").new()
+		_hud.add_child(_construction_dialog)
+		_construction_dialog.buy_requested.connect(_on_construction_buy_requested)
+		_construction_dialog.use_stockpile_requested.connect(_on_construction_use_stockpile_requested)
+	_construction_dialog.open(building_id, recipe_id, tile_id, missing)
+
+func _on_construction_buy_requested(building_id: String, recipe_id: String, tile_id: String) -> void:
+	# Buy-from-market path: charge the build cost now, order the missing materials, reserve the
+	# site as an awaiting_materials project. The material cost is charged inside queue_buy, so we
+	# confirm the player can afford build + materials together before committing to either.
+	var coord := terrain_layer.id_to_coord(tile_id)
+	var building_data: Dictionary = Catalog.get_building(building_id)
+	var space_check := _space_check_for_build(tile_id, building_id)
+	if not bool(space_check.get("allowed", false)):
+		return
+	var cost: float = float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0))
+	var material_cost: float = Construction.estimate_market_cost(tile_id, building_id)
+	if MatchState.money < cost + material_cost:
+		MatchState.build_rejected_no_funds.emit(
+			"Not enough money — build £%.0f + materials £%.0f, you have £%.0f" % [cost, material_cost, MatchState.money])
+		return
+	if not MatchState.deduct_money(cost):
+		return
+	var instance_id := Construction.start_awaiting_market(building_id, recipe_id, tile_id, cost)
+	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
+
+func _on_construction_use_stockpile_requested(building_id: String, recipe_id: String, tile_id: String) -> void:
+	# Source the missing materials from another tile's spare stock: charge the build cost +
+	# transport, pull the shortfall into the build site, reserve it as an awaiting project.
+	var coord := terrain_layer.id_to_coord(tile_id)
+	var building_data: Dictionary = Catalog.get_building(building_id)
+	var space_check := _space_check_for_build(tile_id, building_id)
+	if not bool(space_check.get("allowed", false)):
+		return
+	var cost: float = float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0))
+	var missing: Dictionary = Construction.check_tile(tile_id, building_id).get("missing", {})
+	var source: Dictionary = Construction.find_source_tile(tile_id, missing)
+	if source.is_empty():
+		MatchState.build_rejected_no_funds.emit("No tile has the spare materials to build this here")
+		return
+	var move_cost: float = float(MatchState.preview_move(str(source.get("tile_id", "")), tile_id, missing).get("cost", 0.0))
+	if MatchState.money < cost + move_cost:
+		MatchState.build_rejected_no_funds.emit(
+			"Not enough money — build £%.0f + transport £%.0f, you have £%.0f" % [cost, move_cost, MatchState.money])
+		return
+	if not MatchState.deduct_money(cost):
+		return
+	var instance_id := Construction.start_awaiting_from_tile(building_id, recipe_id, tile_id, str(source.get("tile_id", "")), cost)
+	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
+
+func _on_construction_cancelled(instance_id: String, _tile_id: String) -> void:
+	if building_visuals.has_method("remove_instance"):
+		building_visuals.remove_instance(instance_id)
 
 func _get_building_display_name(building_id: String) -> String:
 	return Catalog.get_building_display_name(building_id)

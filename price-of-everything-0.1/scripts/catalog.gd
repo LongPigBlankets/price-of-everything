@@ -55,10 +55,15 @@ var _tile_land: Dictionary = {}    # tile_id -> bool (false for sea/deep_sea)
 # Routing caches. route() pathfinding and nearest_port_tile() are recomputed per
 # building, per input good, EVERY turn by the production loop — and the results
 # only change when the road/rail network changes (route) or never (ports are
-# static). Memoise them. _route_cache is cleared whenever _tile_infra mutates;
-# _port_cache is permanent (ports + geometry are static).
+# static). Memoise them. _route_cache is cleared only when a *routing* mode
+# (rail/roads/pipes) is added or removed; _port_cache is permanent (static).
 var _route_cache: Dictionary = {}  # "src|dst|modes" -> route dict
 var _port_cache: Dictionary = {}   # from_tile -> nearest port tile_id
+
+# Infra ids that goods routing actually traverses (see _modes_for_good). Adding or
+# removing anything else (notably cables, which carry power, not goods) leaves every
+# route unchanged, so we must NOT clear the route cache for it.
+const ROUTE_AFFECTING_INFRA := ["roads", "rail", "pipes", "reinf_pipes"]
 
 const MARKET_DESTINATION := "__market__"
 
@@ -252,7 +257,8 @@ func add_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 	if not list.has(norm):
 		list.append(norm)
 		_tile_infra[tile_id] = list
-		_route_cache.clear()   # network changed: cached paths may now be shorter
+		if ROUTE_AFFECTING_INFRA.has(norm):
+			_route_cache.clear()   # routing network changed: cached paths may now be shorter
 
 func remove_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 	var norm := _normalise_infra_id(infra_type.strip_edges().to_lower())
@@ -260,7 +266,8 @@ func remove_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 	if list.has(norm):
 		list.erase(norm)
 		_tile_infra[tile_id] = list
-		_route_cache.clear()   # network changed: cached paths may now be invalid
+		if ROUTE_AFFECTING_INFRA.has(norm):
+			_route_cache.clear()   # routing network changed: cached paths may now be invalid
 
 func tile_label(tile_id: String) -> String:
 	# "name - (a_b)", or "(a_b)" when the tile has no nickname/city_name.
@@ -407,23 +414,26 @@ func _route_uncached(source_tile: String, dest_tile: String, good_id: String = "
 	var INF := 1 << 30
 	var dist: Dictionary = {source_tile: 0}
 	var prev: Dictionary = {}  # tile -> {from, mode}
-	var visited: Dictionary = {}
-	while true:
-		var u := ""
-		var ud := INF
-		for t in dist.keys():
-			if not visited.has(t) and int(dist[t]) < ud:
-				ud = int(dist[t])
-				u = t
-		if u == "" or u == dest_tile:
+	# Every turn-move costs exactly 1 turn, so this graph is unit-weight: plain BFS finds
+	# shortest paths in O(V+E). (The old solver re-scanned every known tile for the minimum
+	# on each step — O(V^2) — which dominated routing once the road/rail network spanned the
+	# map.) A unit-weight node can never be relaxed below the distance it is first reached at,
+	# so processing the queue FIFO yields the identical prev-tree/distances the old code did.
+	var queue: Array = [source_tile]
+	var head := 0
+	while head < queue.size():
+		var u: String = str(queue[head])
+		head += 1
+		if u == dest_tile:
 			break
-		visited[u] = true
+		var nd := int(dist[u]) + 1
 		for entry in _turn_move_neighbours(u, modes):
 			var nb: String = entry.tile
-			var nd := ud + 1
-			if nd < int(dist.get(nb, INF)):
-				dist[nb] = nd
-				prev[nb] = {"from": u, "mode": entry.mode}
+			if dist.has(nb):
+				continue
+			dist[nb] = nd
+			prev[nb] = {"from": u, "mode": entry.mode}
+			queue.append(nb)
 	if not dist.has(dest_tile):
 		return {"turns": INF, "path": [], "legs": [], "tiles": []}  # unreachable via networks
 	var path: Array = [dest_tile]

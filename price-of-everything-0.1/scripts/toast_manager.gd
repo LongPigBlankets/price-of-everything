@@ -46,6 +46,9 @@ func _ready() -> void:
 	_build_stacks()
 	_prev_money = MatchState.money
 	MatchState.building_added.connect(_on_building_added)
+	Construction.construction_started.connect(_on_construction_started)
+	Construction.materials_ordered.connect(_on_materials_ordered)
+	Construction.construction_cancelled.connect(_on_construction_cancelled)
 	MatchState.money_changed.connect(_on_money_changed)
 	MatchState.stockpile_market_sale_completed.connect(_on_stockpile_market_sale_completed)
 	MatchState.toast_requested.connect(_on_toast_requested)
@@ -111,7 +114,39 @@ func _build_stacks() -> void:
 	add_child(_error_stack)
 
 func _on_building_added(instance: Dictionary) -> void:
+	# building_added now fires at completion (promotion), so this is the "built" toast.
 	var msg: String = _format_building_message(instance)
+	_push_toast(_success_stack, msg, TOAST_SUCCESS)
+
+func _on_materials_ordered(instance_id: String, tile_id: String) -> void:
+	var parts: Array = []
+	var max_turns: int = 0
+	for s in MatchState.get_inbound_transport_shipments(tile_id):
+		if str(s.get("construction_instance_id", "")) != instance_id:
+			continue
+		parts.append("%d %s" % [int(s.get("qty", 0)), Catalog.get_display_name(str(s.get("good_id", "")))])
+		max_turns = maxi(max_turns, int(s.get("turns_remaining", 0)))
+	if parts.is_empty():
+		return
+	var msg: String = "Ordered %s — arriving in %d turn%s" % [", ".join(parts), max_turns, "" if max_turns == 1 else "s"]
+	_push_toast(_success_stack, msg, TOAST_SUCCESS)
+
+func _on_construction_cancelled(_instance_id: String, tile_id: String) -> void:
+	_push_toast(_success_stack, "Construction cancelled on tile %s — build cost refunded" % Catalog.tile_label(tile_id), TOAST_CAUTION)
+
+func _on_construction_started(instance_id: String, tile_id: String) -> void:
+	var project: Dictionary = Construction.construction_projects.get(instance_id, {})
+	if project.is_empty():
+		return  # 0-duration build completed instantly; the "built" toast covers it.
+	var building: Dictionary = Catalog.get_building(str(project.get("building_id", "")))
+	var b_name: String = str(building.get("display_name", project.get("building_id", "")))
+	var recipe: Dictionary = Catalog.get_recipe(str(project.get("recipe_id", "")))
+	var recipe_name: String = str(recipe.get("display_name", ""))
+	var who: String = b_name if recipe_name == "" else "%s — %s" % [b_name, recipe_name]
+	var duration: int = int(project.get("construction_duration", 0))
+	var msg: String = "Construction started for %s on tile %s. Will be complete in %d turn%s" % [
+		who, Catalog.tile_label(tile_id), duration, "" if duration == 1 else "s"
+	]
 	_push_toast(_success_stack, msg, TOAST_SUCCESS)
 
 func _on_money_changed(new_amount: float) -> void:
@@ -131,7 +166,6 @@ func _format_building_message(instance: Dictionary) -> String:
 	var building: Dictionary = Catalog.get_building(building_id)
 	var b_name: String = building.get("display_name", building_id)
 	var cost: float = building.get("base_price", 0.0)
-	var duration: int = int(building.get("build_duration", 0))
 
 	var line: String = "Built %s" % b_name
 
@@ -153,8 +187,6 @@ func _format_building_message(instance: Dictionary) -> String:
 	var meta: Array = []
 	if cost > 0:
 		meta.append("£%.0f" % cost)
-	if duration > 0:
-		meta.append("%d turn%s build" % [duration, "" if duration == 1 else "s"])
 	if not meta.is_empty():
 		line += "  ·  " + "  ·  ".join(meta)
 	return line

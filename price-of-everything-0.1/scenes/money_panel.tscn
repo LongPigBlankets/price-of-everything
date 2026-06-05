@@ -2,11 +2,12 @@
 
 [ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="1_nyab5"]
 [ext_resource type="Script" uid="uid://ne623jmsjf30" path="res://scripts/money_panel.gd" id="2_0jbw7"]
+[ext_resource type="Script" path="res://scripts/money_chart.gd" id="3_chart"]
 
 [node name="MoneyPanel" type="PanelContainer" unique_id=1508307227]
 visible = false
 anchors_preset = -1
-offset_right = 420.0
+offset_right = 560.0
 offset_bottom = 620.0
 mouse_filter = 1
 theme_override_styles/panel = ExtResource("1_nyab5")
@@ -737,3 +738,39 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_force_pass_scroll_events = false
 text = "Take New Loan"
+
+[node name="Charts" type="VBoxContainer" parent="MarginContainer/ModalLayout/TabContainer"]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 4
+
+[node name="MarginContainer" type="MarginContainer" parent="MarginContainer/ModalLayout/TabContainer/Charts"]
+layout_mode = 2
+
+[node name="ChartsContent" type="VBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ToggleRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="RevenueButton" type="Button" parent="MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent/ToggleRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+button_pressed = true
+text = "Revenue"
+
+[node name="CostsButton" type="Button" parent="MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent/ToggleRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "Costs"
+
+[node name="Chart" type="Control" parent="MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent"]
+custom_minimum_size = Vector2(0, 320)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("3_chart")

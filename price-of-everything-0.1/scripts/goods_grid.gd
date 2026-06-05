@@ -1,21 +1,26 @@
 extends Control
 
-## The off-white goods board on the main menu: a 5x5 board filled with good icons.
-## Goods are shuffled into the cells with a light touch so the same good / category
-## doesn't sit beside itself, and the deck reshuffles/cycles to fill all cells from
-## the goods that have art.
+## The off-white goods board on the main menu. An 8x8 grid of good icons sits behind a
+## window zoomed to its bottom-right 5x5: 5x5 is visible while 3 extra cells per row and
+## column wait off the top/left edges. Goods are shuffled in with a light touch so the same
+## good / category doesn't sit beside itself; the deck reshuffles to fill all cells from the
+## goods that have art.
 ##
-## Every CYCLE_INTERVAL seconds one line shifts by a cell, Rubik's-cube style,
-## walking the grid: column 0 (down), row 0 (right), column 1, row 1, ... wrapping
-## back to 0 after 4. The leaving good slides all the way off the edge while a copy
-## wraps in from the opposite side. The motion eases ~3/4 of the way early, creeps,
-## then SNAPS home at ~1.4s - landing on the click baked into the slide cue.
+## Every CYCLE_INTERVAL seconds one visible line shifts by a cell, Rubik's-cube style,
+## walking columns/rows 3..7: column 3 (down), row 3 (right), column 4, row 4, ... back to 3.
+## The bottom/right good slides off the edge while the off-screen buffer feeds a fresh good in
+## from the top/left - so each line cycles all 8 goods (the 3 extras) before it repeats. The
+## motion eases ~3/4 of the way early, creeps, then SNAPS home at ~1.4s - landing on the click
+## baked into the slide cue.
 
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const SLIDE_SOUND: AudioStream = preload("res://assets/audio/ui_sounds/slide_into_slot.wav")
 
-const COLS := 5
-const ROWS := 5
+const COLS := 8
+const ROWS := 8
+const VISIBLE := 5              # cells shown per axis; the board zooms to the bottom-right 5x5
+const OFFSET := COLS - VISIBLE  # 3 buffer cells held off the top/left edges, so each row and
+								# column cycles all 8 goods (3 extras) before it repeats
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
 const CELL_PADDING := 0.08     # share of each cell kept as margin (small = big icons)
 
@@ -25,7 +30,6 @@ const SNAP_T := 0.859          # 1.4s / 1.63s - the click (and the snap) land he
 
 var _layout: Array = []        # one good dict (or null) per cell
 var _icons: Array = []         # one TextureRect (or null) per cell
-var _ghost: TextureRect = null  # copy of the leaving good, wrapping in from the far side
 
 var _player: AudioStreamPlayer
 var _started := false
@@ -33,8 +37,8 @@ var _anim_active := false
 var _anim_elapsed := 0.0
 var _anim_is_column := true     # true = column-down, false = row-right
 var _next_is_column := true     # sequence: column, row, column, row, ...
-var _anim_line := 0             # which column/row this step moves
-var _line_index := 0            # advances 0..4 after each column+row pair
+var _anim_line := OFFSET        # which column/row this step moves (3..7, visible lines)
+var _line_index := OFFSET       # advances over the visible lines 3..7 after each col+row pair
 
 
 func _ready() -> void:
@@ -113,7 +117,7 @@ func _relayout_icons() -> void:
 		if tex == null:
 			continue
 		var icon := _new_icon(tex, cell - pad * 2.0)
-		icon.position = Vector2(i % COLS, i / COLS) * cell + pad
+		icon.position = (Vector2(i % COLS, i / COLS) - Vector2(OFFSET, OFFSET)) * cell + pad
 		add_child(icon)
 		_icons[i] = icon
 	# kick off the slide loop once the board is actually laid out
@@ -138,7 +142,7 @@ func _new_icon(tex: Texture2D, icon_size: Vector2) -> TextureRect:
 
 
 func _cell_size() -> Vector2:
-	return Vector2(size.x / float(COLS), size.y / float(ROWS))
+	return Vector2(size.x / float(VISIBLE), size.y / float(VISIBLE))
 
 
 # --- the slide animation ---------------------------------------------------
@@ -149,27 +153,14 @@ func _play_next() -> void:
 	_anim_is_column = _next_is_column
 	_anim_line = _line_index
 	if not _anim_is_column:
-		# a row completes the pair (col N, row N); advance to the next index
-		_line_index = (_line_index + 1) % COLS
+		# a row completes the pair (col N, row N); advance to the next visible line (3..7)
+		_line_index = OFFSET + ((_line_index - OFFSET + 1) % VISIBLE)
 	_next_is_column = not _next_is_column
-	_make_ghost()
 	_anim_elapsed = 0.0
 	_anim_active = true
-	_apply_slide(0.0)   # place the icons + ghost off-edge before this frame renders
-	_player.play()      # (otherwise the ghost flashes at 0,0 for one frame)
+	_apply_slide(0.0)   # place the icons at their pre-slide offsets before this frame renders
+	_player.play()
 	set_process(true)
-
-
-## A copy of the good that's about to slide off the far edge, so it can wrap in
-## from the opposite side while the original is still visibly leaving.
-func _make_ghost() -> void:
-	var wrap_index := (ROWS - 1) * COLS + _anim_line if _anim_is_column \
-		else _anim_line * COLS + (COLS - 1)
-	var src: TextureRect = _icons[wrap_index]
-	if src == null:
-		return
-	_ghost = _new_icon(src.texture, src.size)
-	add_child(_ghost)
 
 
 func _process(delta: float) -> void:
@@ -203,30 +194,24 @@ func _apply_slide(p: float) -> void:
 	var pad := cell * CELL_PADDING
 	if _anim_is_column:
 		var c := _anim_line
-		# every good in the column slides down by p; the bottom one slides off
+		# every good in the column slides down by p; the off-screen buffer above feeds the new
+		# top good while the bottom good slides off the edge (all 8 cells move, 5 are visible)
 		for r in ROWS:
 			var icon = _icons[r * COLS + c]
 			if icon != null:
-				icon.position = Vector2(c * cell.x, (r + p) * cell.y) + pad
-		if _ghost != null:
-			_ghost.position = Vector2(c * cell.x, (p - 1.0) * cell.y) + pad
+				icon.position = Vector2((c - OFFSET) * cell.x, (r - OFFSET + p) * cell.y) + pad
 	else:
 		var rr := _anim_line
-		# every good in the row slides right by p; the rightmost one slides off
+		# every good in the row slides right by p; the off-screen buffer to the left feeds in
 		for c2 in COLS:
 			var icon = _icons[rr * COLS + c2]
 			if icon != null:
-				icon.position = Vector2((c2 + p) * cell.x, rr * cell.y) + pad
-		if _ghost != null:
-			_ghost.position = Vector2((p - 1.0) * cell.x, rr * cell.y) + pad
+				icon.position = Vector2((c2 - OFFSET + p) * cell.x, (rr - OFFSET) * cell.y) + pad
 
 
 func _finish_slide() -> void:
 	_anim_active = false
 	set_process(false)
-	if is_instance_valid(_ghost):
-		_ghost.free()
-	_ghost = null
 	if _anim_is_column:
 		_shift_column_down(_anim_line)
 	else:

@@ -67,6 +67,17 @@ var overlay_rows: Array = []
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 
+# Charts tab
+const CHART_MAX_TURNS := 10
+const DEFAULT_PANEL_SIZE := Vector2(560, 620)
+const CHART_PANEL_SIZE := Vector2(620, 600)
+@onready var _tab_container: TabContainer = $MarginContainer/ModalLayout/TabContainer
+@onready var _chart: Control = $MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent/Chart
+@onready var _chart_revenue_button: Button = $MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent/ToggleRow/RevenueButton
+@onready var _chart_costs_button: Button = $MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent/ToggleRow/CostsButton
+var _chart_history: Array = []   # ring buffer of the last CHART_MAX_TURNS turn breakdowns
+var _chart_mode: String = "revenue"
+
 func _insert_cost_row(section: VBoxContainer, after_node_name: String, label_text: String) -> Label:
 	var row := HBoxContainer.new()
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -115,10 +126,17 @@ func _ready() -> void:
 	
 	MatchState.building_added.connect(_on_buildings_changed)
 	MatchState.building_removed.connect(_on_buildings_changed)
-	
+
+	_chart_revenue_button.pressed.connect(_on_chart_mode_pressed.bind("revenue"))
+	_chart_costs_button.pressed.connect(_on_chart_mode_pressed.bind("costs"))
+	_tab_container.tab_changed.connect(_on_tab_changed)
+	_apply_tab_size(_tab_container.current_tab)
+
 func _on_turn_processed(_summary: Dictionary) -> void:
 	_refresh_balance_sheet()
 	_refresh_projection()
+	_record_chart_history(_summary)
+	_refresh_chart()
 
 func _on_money_changed(_amount: float) -> void:
 	_refresh()
@@ -493,6 +511,88 @@ func _tile_id_to_coord(tile_id: String) -> Vector2i:
 func _oddq_to_axial(coord: Vector2i) -> Vector2i:
 	return Vector2i(coord.x, coord.y - int((coord.x - (coord.x & 1)) / 2))
 
+
+# --- Charts tab ---
+
+func _on_tab_changed(idx: int) -> void:
+	_apply_tab_size(idx)
+	if _tab_container.get_tab_title(idx) == "Charts":
+		_refresh_chart()
+
+func _apply_tab_size(idx: int) -> void:
+	# The Charts tab needs more room; every other tab uses the compact panel size.
+	var is_charts := _tab_container.get_tab_title(idx) == "Charts"
+	custom_minimum_size = Vector2.ZERO
+	size = CHART_PANEL_SIZE if is_charts else DEFAULT_PANEL_SIZE
+
+func _on_chart_mode_pressed(mode: String) -> void:
+	_chart_mode = mode
+	_chart_revenue_button.button_pressed = (mode == "revenue")
+	_chart_costs_button.button_pressed = (mode == "costs")
+	_refresh_chart()
+
+func _refresh_chart() -> void:
+	if _chart != null and _chart.has_method("set_data"):
+		_chart.set_data(_chart_history, _chart_mode)
+
+func _record_chart_history(summary: Dictionary) -> void:
+	var revenue := {
+		"finished": 0.0, "intermediate": 0.0, "raw": 0.0, "construction": 0.0, "power": 0.0,
+	}
+	var costs := {
+		"raw": 0.0, "intermediate": 0.0, "construction": 0.0, "power": 0.0,
+		"maintenance": 0.0, "labour": 0.0, "taxes": 0.0, "dividends": 0.0, "interest": 0.0,
+	}
+
+	# Goods sold, split by tier.
+	var sold: Dictionary = summary.get("sold", {})
+	for gid in sold:
+		var tier := _good_tier(str(gid))
+		var rev := float(sold[gid].get("revenue", 0.0))
+		match tier:
+			"finished", "intermediate", "raw", "construction":
+				revenue[tier] += rev
+			_:
+				revenue["intermediate"] += rev  # mixed/waste fall back to intermediate
+	revenue["power"] = float(summary.get("power_sales_revenue", 0.0))
+
+	# Goods purchased, split by tier (goods value only — transport is excluded).
+	var purchased: Dictionary = summary.get("purchased_cost", {})
+	for gid in purchased:
+		var tier := _good_tier(str(gid))
+		var cost := float(purchased[gid])
+		match tier:
+			"raw", "intermediate", "construction":
+				costs[tier] += cost
+			_:
+				costs["intermediate"] += cost  # finished/mixed inputs are rare; lump in
+	costs["power"] = float(summary.get("power_purchase_cost", 0.0))
+	costs["maintenance"] = float(summary.get("maintenance_paid", 0.0))
+	costs["labour"] = float(summary.get("labour_paid", 0.0))
+	costs["taxes"] = float(summary.get("taxes_paid", 0.0))
+	costs["dividends"] = float(summary.get("dividends_paid", 0.0))
+	costs["interest"] = float(summary.get("interest_paid", 0.0))
+
+	_chart_history.append({
+		"turn": int(TurnManager.current_turn),
+		"revenue": revenue,
+		"costs": costs,
+	})
+	while _chart_history.size() > CHART_MAX_TURNS:
+		_chart_history.pop_front()
+
+func _good_tier(good_id: String) -> String:
+	# Construction is a good category that spans several good_types; it takes priority
+	# so construction materials chart as their own band. Otherwise classify by good_type.
+	var good: Dictionary = Catalog.get_good(good_id)
+	if good.is_empty():
+		return "other"
+	if str(good.get("category", "")).to_lower() == "construction":
+		return "construction"
+	var gt := str(good.get("good_type", "")).to_lower()
+	if gt == "finished" or gt == "intermediate" or gt == "raw":
+		return gt
+	return "other"
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:

@@ -129,6 +129,11 @@ func _ready() -> void:
 	MatchState.sell_mode_changed.connect(_on_sell_mode_changed)
 	MatchState.tile_land_owned_changed.connect(_on_tile_land_owned_changed)
 	Production.turn_processed.connect(_on_turn_processed)
+	Construction.construction_started.connect(_on_construction_changed)
+	Construction.construction_completed.connect(_on_construction_changed)
+	Construction.materials_ordered.connect(_on_construction_changed)
+	Construction.construction_materials_updated.connect(_on_construction_changed)
+	Construction.construction_cancelled.connect(_on_construction_changed)
 	CostSolver.costs_updated.connect(_on_costs_updated)
 	Stockpile.stockpile_changed.connect(_on_stockpile_changed)
 	_apply_tile_modal_frame_style()
@@ -248,7 +253,37 @@ func _rebuild_buildings(tile_data: Dictionary) -> void:
 		})
 		seen_infrastructure[normalized_name] = true
 
+	# Construction projects reserve space and appear as distinct segments — warning styling
+	# while awaiting materials, construction styling once the build countdown is running.
+	for project in Construction.projects_on_tile(tile_id):
+		var p_building: Dictionary = Catalog.get_building(str(project.get("building_id", "")))
+		var p_name: String = str(p_building.get("display_name", project.get("building_id", "")))
+		var status: String = str(project.get("status", Construction.STATUS_UNDER_CONSTRUCTION))
+		chart_buildings.append({
+			"instance_id": str(project.get("instance_id", "")),
+			"building_id": str(project.get("building_id", "")),
+			"recipe_id": str(project.get("recipe_id", "")),
+			"tile_id": tile_id,
+			"owner": MatchState.LOCAL_PLAYER,
+			"construction_status": status,
+			"display_label": _construction_hover_label(p_name, project),
+		})
+
 	tile_size_chart.set_buildings(chart_buildings, _tile_size_capacity_for_tile(tile_data), MatchState.get_tile_land_owned(tile_id))
+
+func _construction_hover_label(building_name: String, project: Dictionary) -> String:
+	var status: String = str(project.get("status", Construction.STATUS_UNDER_CONSTRUCTION))
+	var duration: int = int(project.get("construction_duration", 0))
+	if status == Construction.STATUS_AWAITING_MATERIALS:
+		var missing: Dictionary = project.get("missing_materials", {})
+		var parts: Array = []
+		for gid in missing:
+			parts.append("%d %s" % [int(missing[gid]), Catalog.get_display_name(str(gid))])
+		var eta: int = Construction.materials_eta(project)
+		var finish: String = "ETA to finished: pending delivery" if eta < 0 else "ETA to finished: %d turns" % (eta + duration)
+		return "%s\nAwaiting building materials\nMissing: %s\n%s" % [building_name, ", ".join(parts), finish]
+	var turns: int = int(project.get("turns_remaining", 0))
+	return "%s\nUnder construction\n%d turn%s until complete" % [building_name, turns, "" if turns == 1 else "s"]
 
 func _refresh_tile_banner(tile_data: Dictionary) -> void:
 	if _tile_banner_texture_rect == null:
@@ -1720,9 +1755,14 @@ func _on_sell_mode_changed(_new_mode: int) -> void:
 
 func _on_turn_processed(_summary: Dictionary) -> void:
 	if visible and _current_tile_id != "":
+		_rebuild_buildings(_current_tile_data)  # under-construction countdown + promotions
 		_refresh_power_section()
 		_refresh_production_section()
 		_refresh_stockpile_section()
+
+func _on_construction_changed(_instance_id: String, tile_id: String) -> void:
+	if visible and tile_id == _current_tile_id:
+		_rebuild_buildings(_current_tile_data)
 
 func _on_costs_updated() -> void:
 	if visible and _current_tile_id != "":

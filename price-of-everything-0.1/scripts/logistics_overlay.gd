@@ -264,6 +264,7 @@ func _snapshot_shipments() -> void:
 	# the pre-turn values and pos_b is where the shipment moves to this turn.
 	_anim_snapshot.clear()
 	var colors := _route_color_map()
+	var by_key: Dictionary = {}
 	for s in MatchState.get_pending_transport_shipments():
 		var path: Array = s.get("path", [])
 		if path.is_empty():
@@ -279,11 +280,22 @@ func _snapshot_shipments() -> void:
 			pos_b = pos_a
 		var dir := pos_b - pos_a
 		dir = dir.normalized() if dir.length() > 0.5 else Vector2.RIGHT
-		var key := str(s.get("source_tile", "")) + "->" + str(s.get("destination_tile", ""))
-		_anim_snapshot.append({
-			"pos_a": pos_a, "pos_b": pos_b, "dir": dir, "turns": rem,
-			"goods": _shipment_goods(s), "color": colors.get(key, Color.WHITE),
-		})
+		var route_key := str(s.get("source_tile", "")) + "->" + str(s.get("destination_tile", ""))
+		# Merge shipments sharing a route AND the same position so their tags don't render
+		# exactly on top of each other (e.g. a build's two materials bought together).
+		var key := route_key + "@" + str(idx)
+		if by_key.has(key):
+			var existing_goods: Dictionary = by_key[key].goods
+			var sg: Dictionary = _shipment_goods(s)
+			for g in sg.keys():
+				existing_goods[g] = int(existing_goods.get(g, 0)) + int(sg[g])
+		else:
+			by_key[key] = {
+				"pos_a": pos_a, "pos_b": pos_b, "dir": dir, "turns": rem,
+				"goods": _shipment_goods(s), "color": colors.get(route_key, Color.WHITE),
+			}
+	for entry in by_key.values():
+		_anim_snapshot.append(entry)
 
 # --- data ---
 func get_routes() -> Array:
