@@ -1,6 +1,6 @@
 type,display_name,range,routing,market_connector,good_types_tolerated,double_cost_types,max_goods_carried,soft_capacity,cost_above_soft_cap,cost_per_unit_shipped
-roads,Roads,2,via_self,false,solid_heavy|solid_light|ultra_heavy|safe_liquid|gas,safe_liquid|gas,,,,
-rail,Rail,4,via_self,false,solid_heavy|solid_light|ultra_heavy|safe_liquid|gas,safe_liquid|gas,,,,
-pipes,Pipework,,via_self,false,safe_liquid|gas,,,,,
-reinf_pipes,Reinforced Pipework,,via_self,false,safe_liquid|hazard_liquid|gas,,,,,
+roads,Roads,2,via_self,false,solid_heavy|solid_light|ultra_heavy,,,,,
+rail,Rail,4,via_self,false,solid_heavy|solid_light|ultra_heavy,,,,,
+pipes,Pipework,2,via_self,false,safe_liquid|liquid|gas,,,,,
+reinf_pipes,Reinforced Pipework,2,via_self,false,safe_liquid|hazard_liquid|liquid|gas,,,,,
 port,Port,10,via_sea,true,solid_heavy|solid_light|ultra_heavy|safe_liquid|hazard_liquid|gas,,,,,

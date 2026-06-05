@@ -3,13 +3,22 @@ extends VBoxContainer
 ## expandable Sell / Purchase / Move / Expand action block underneath.
 
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const GOODS_ICON_FRAME := preload("res://assets/ui/goods_icon_frame.tres")
 
-const ICON_SIZE := 78
-const NAME_W := 160.0
-const COL_PRICE := 80.0
-const COL_EST := 90.0
-const COL_SOLD := 80.0
-const COL_BOUGHT := 90.0
+const ICON_SIZE := 98
+const ICON_INNER := 74     # icon inside the frame; +12px frame margin each side = ICON_SIZE
+const NAME_W := 240.0
+const NAME_MAX_CHARS := 24
+# Name font is sized as large as possible while the longest real name still fits
+# the button with NAME_RIGHT_PAD px clear of the right edge.
+const NAME_BOUND := "Electrical Components"
+const NAME_RIGHT_PAD := 20.0
+const NAME_FS_MAX := 30
+const NAME_FS_MIN := 14
+const COL_PRICE := 70.0
+const COL_EST := 80.0
+const COL_SOLD := 60.0
+const COL_BOUGHT := 64.0
 const COL_COST := 100.0
 const COL_PROFIT := 110.0
 const FIELD_FS := 19  # larger per-field text
@@ -47,22 +56,34 @@ func setup(good_data: Dictionary) -> void:
 	main.add_theme_constant_override("separation", 10)
 	add_child(main)
 
+	# Icon sits inside a small pipe-frame slot (matches the goods frame elsewhere).
 	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
-	icon.size_flags_vertical = Control.SIZE_FILL
+	icon.custom_minimum_size = Vector2(ICON_INNER, ICON_INNER)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var tex: Texture2D = GoodIcons.texture_for(good_id, internal_name)
 	if tex != null:
 		icon.texture = tex
-	main.add_child(icon)
+	var icon_frame := PanelContainer.new()
+	icon_frame.add_theme_stylebox_override("panel", GOODS_ICON_FRAME)
+	icon_frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	icon_frame.add_child(icon)
+	main.add_child(icon_frame)
 
+	# Name button, truncated to NAME_MAX_CHARS so long names don't blow out the column.
+	var disp := str(good_data.get("display_name", good_id))
+	if disp.length() > NAME_MAX_CHARS:
+		disp = disp.substr(0, NAME_MAX_CHARS) + "…"
 	var name_btn := Button.new()
-	name_btn.text = str(good_data.get("display_name", good_id))
+	name_btn.text = disp
+	name_btn.clip_text = true
 	name_btn.custom_minimum_size = Vector2(NAME_W, ICON_SIZE)
 	name_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	name_btn.pressed.connect(_toggle_expand)
 	main.add_child(name_btn)
+	name_btn.add_theme_font_size_override("font_size", _fit_name_font_size(name_btn))
 
 	_price_label = _make_col(COL_PRICE)
 	_est_label = _make_col(COL_EST)
@@ -104,6 +125,26 @@ func setup(good_data: Dictionary) -> void:
 	if not Production.turn_processed.is_connected(_on_turn_processed):
 		Production.turn_processed.connect(_on_turn_processed)
 	_refresh()
+
+func _fit_name_font_size(btn: Button) -> int:
+	# Largest font size (<= NAME_FS_MAX) at which NAME_BOUND fits the button width
+	# with NAME_RIGHT_PAD px clear of the right edge. Measured against the button's
+	# actual theme font + left content margin so it stays correct if the theme changes.
+	var font := btn.get_theme_font("font")
+	if font == null:
+		return NAME_FS_MAX
+	var left_margin := 8.0
+	var sb := btn.get_theme_stylebox("normal")
+	if sb != null:
+		left_margin = maxf(0.0, sb.get_margin(SIDE_LEFT))
+	var avail := NAME_W - left_margin - NAME_RIGHT_PAD
+	var fs := NAME_FS_MAX
+	while fs > NAME_FS_MIN:
+		if font.get_string_size(NAME_BOUND, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x <= avail:
+			break
+		fs -= 1
+	return fs
+
 
 func _make_col(width: float) -> Label:
 	var l := Label.new()

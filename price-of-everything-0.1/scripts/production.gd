@@ -43,8 +43,10 @@ func _process_production() -> void:
 	_building_turn_reports.clear()
 	_inbound_delivery_this_turn.clear()
 	_output_buffer.clear()
+	TurnProfiler.section_begin("power_reset")
 	Power.reset_for_turn()
-	
+	TurnProfiler.section_end("power_reset")
+
 	var summary := {
 	"produced": {},
 	"consumed": {},
@@ -79,12 +81,15 @@ func _process_production() -> void:
 	"grid_sold": 0,
 }
 
+	TurnProfiler.section_begin("transport_arrivals")
 	_process_transport_arrivals(summary)
-	
+	TurnProfiler.section_end("transport_arrivals")
+
 	var all_buildings: Array = MatchState.buildings.values()
 	var has_run: Dictionary = {}
-	
+
 	# === CASCADING PRODUCTION PHASE ===
+	TurnProfiler.section_begin("production_passes")
 	var pass_count := 0
 	while pass_count < MAX_PRODUCTION_PASSES:
 		var progress_made := false
@@ -139,8 +144,11 @@ func _process_production() -> void:
 	
 	if pass_count >= MAX_PRODUCTION_PASSES:
 		push_warning("[Production] Hit MAX_PRODUCTION_PASSES (%d). Possible cycle in recipes." % MAX_PRODUCTION_PASSES)
-	
+	TurnProfiler.section_end("production_passes")
+	TurnProfiler.note_scale("production_passes", pass_count)
+
 	# === STARVATION REPORTING ===
+	TurnProfiler.section_begin("starvation_report")
 	for building in all_buildings:
 		if not has_run.get(building.instance_id, false):
 			var missing: Array = missing_by_building.get(building.instance_id, [])
@@ -163,8 +171,10 @@ func _process_production() -> void:
 			print("[Production] Building %s STARVED — missing: %s" % [
 				building.instance_id, missing_msg
 			])
-	
+	TurnProfiler.section_end("starvation_report")
+
 	# === GRID SETTLEMENT ===
+	TurnProfiler.section_begin("grid_settlement")
 	var grid: Dictionary = Power.settle_grid_transactions()
 	summary.power_supply = grid.supply
 	summary.power_demand = grid.demand
@@ -188,17 +198,26 @@ func _process_production() -> void:
 		MatchState.add_money(grid.grid_sell_revenue)
 		summary.power_sales_revenue = grid.grid_sell_revenue
 		summary.money_in += grid.grid_sell_revenue
+	TurnProfiler.section_end("grid_settlement")
+
 	# Merge this turn's same-tile outputs into stockpiles now — after all production
 	# (so they can't be consumed this turn) but before selling (so they're sellable).
+	TurnProfiler.section_begin("flush_outputs")
 	_flush_output_buffer()
+	TurnProfiler.section_end("flush_outputs")
 
 	# Recurring + scheduled (split) tile-to-tile moves fire here, on the merged stock.
+	TurnProfiler.section_begin("recurring_moves")
 	MatchState.run_recurring_and_scheduled_moves()
+	TurnProfiler.section_end("recurring_moves")
 
 	# Top up market-sourced building inputs (bought from the nearest port, arrive in N turns).
+	TurnProfiler.section_begin("buy_market_inputs")
 	_buy_market_inputs(all_buildings, summary)
+	TurnProfiler.section_end("buy_market_inputs")
 
 	# === SELL PHASE (when production defaults to market) ===
+	TurnProfiler.section_begin("sell_phase")
 	if MatchState.sell_mode != MatchState.SellMode.STOCKPILE_ALL:
 		var totals: Dictionary = Stockpile.get_tile_totals(null)
 		_sell_stockpile_totals(null, totals, summary, false)
@@ -226,10 +245,12 @@ func _process_production() -> void:
 				surplus[good_id] = surplus_qty
 		if not surplus.is_empty():
 			_sell_stockpile_totals(str(tile_id), surplus, summary, true)
+	TurnProfiler.section_end("sell_phase")
 
 	# === COSTS PHASE ===
 	# Only the player pays maintenance/labour on the buildings they own — NPC-owned
 	# infrastructure (e.g. the shipping corporation's ports) is not the player's expense.
+	TurnProfiler.section_begin("maintenance_labour")
 	for building in all_buildings:
 		if not MatchState.is_player_owned(building):
 			continue
@@ -244,6 +265,13 @@ func _process_production() -> void:
 		_accumulate_by_type(summary.maintenance_by_type, btype, maint)
 		_accumulate_by_type(summary.labour_by_type, btype, labour)
 		# === LOAN INTEREST PAYMENTS ==+var loan_payment: float = LoanState.process_payments()
+	# Seaport subscription fees: flat per-turn charge per subscribed good.
+	var seaport_fee: float = MatchState.seaport_subscription_fee()
+	if seaport_fee > 0.0:
+		MatchState.add_money(-seaport_fee)
+		summary.money_out += seaport_fee
+	TurnProfiler.section_end("maintenance_labour")
+	TurnProfiler.section_begin("loan_payments")
 	var loan_payment: float = LoanState.process_payments()
 	if loan_payment > 0:
 		summary.interest_paid = loan_payment
@@ -251,6 +279,8 @@ func _process_production() -> void:
 		# === TAX & DIVIDEND PHASE ===
 # Compute pre-tax profit: revenue - operating costs - interest.
 # Only deduct tax/dividends if profit is positive.
+	TurnProfiler.section_end("loan_payments")
+	TurnProfiler.section_begin("tax_dividends")
 	var revenue: float = summary.goods_sales_revenue + summary.power_sales_revenue
 	var operating_costs: float = (
 		summary.maintenance_paid
@@ -273,12 +303,23 @@ func _process_production() -> void:
 			MatchState.add_money(-dividends)
 			summary.dividends_paid = dividends
 			summary.money_out += dividends
-	
-	CostSolver.solve(_building_turn_reports)
+	TurnProfiler.section_end("tax_dividends")
 
+	# Feed this turn's retained net profit + gross revenue to the loan facility so
+	# borrowing capacity scales with the business. taxes_paid/dividends_paid are 0
+	# when the turn was a loss, so retained then equals the (negative) pre-tax profit.
+	var retained_profit: float = pre_tax_profit - summary.taxes_paid - summary.dividends_paid
+	LoanState.record_turn_economics(retained_profit, revenue)
+
+	TurnProfiler.section_begin("cost_solve")
+	CostSolver.solve(_building_turn_reports)
+	TurnProfiler.section_end("cost_solve")
+
+	TurnProfiler.section_begin("emit_summary")
 	last_turn_summary = summary
 	turn_processed.emit(summary)
-	
+	TurnProfiler.section_end("emit_summary")
+
 	print("[Production] Stockpile after turn: ", Stockpile.get_all_totals())
 	print("[Production] Power: supply=%d demand=%d net=%d (bought=%d sold=%d)" % [
 		summary.power_supply, summary.power_demand,
@@ -393,7 +434,7 @@ func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, sum
 	var port_tile := Catalog.nearest_port_tile(source_tile) if source_tile != "" else ""
 	var route := _transport_route(source_tile, port_tile, good_id)
 	# Pay to ship the output to its market (the port) — surfaced as transport cost.
-	var transport_cost: float = EconomyConfig.transport_cost_for(good_id, qty, int(route.turns))
+	var transport_cost: float = EconomyConfig.transport_cost_for_route(good_id, qty, route)
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 		summary.transport_paid += transport_cost
@@ -433,7 +474,7 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 		_sell_output_to_market(str(building.get("tile_id", "")), good, qty, summary)
 		return
 	var route := _transport_route(building.get("tile_id", ""), stockpile_coord, good.id)
-	var transport_cost: float = EconomyConfig.transport_cost_for(good.id, qty, int(route.turns))
+	var transport_cost: float = EconomyConfig.transport_cost_for_route(good.id, qty, route)
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 		summary.transport_paid += transport_cost
@@ -497,14 +538,26 @@ func _transport_route(source_tile: String, destination_tile, good_id: String = "
 	if turns >= (1 << 30):
 		# Unreachable via road/rail/overland networks — fall back to straight-line overland.
 		turns = EconomyConfig.transport_turns_for_tile_distance(_tile_distance(source_tile, dest))
+	var legs: Array = r.get("legs", [])
 	return {
 		"tile_distance": _tile_distance(source_tile, dest),
 		"turns": turns,
 		"delayed": turns > 1,
 		"path": r.get("path", []),
-		"legs": r.get("legs", []),
+		"legs": legs,
 		"tiles": r.get("tiles", []),
+		"cost_mult": _route_cost_mult(legs),
 	}
+
+func _route_cost_mult(legs: Array) -> float:
+	# Average per-leg mode multiplier (rail 0.5x, roads/overland 1x). A rail-only route
+	# costs half; mixed routes blend by leg count.
+	if legs.is_empty():
+		return 1.0
+	var s := 0.0
+	for leg in legs:
+		s += float(EconomyConfig.TRANSPORT_MODE_COST_MULT.get(str(leg.get("mode", "")), 1.0))
+	return s / float(legs.size())
 
 func _tile_distance(source_tile: String, destination_tile: String) -> int:
 	var source := _tile_id_to_coord(source_tile)
@@ -538,7 +591,16 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 	# (x turns later, x = transport duration at 2 tiles/turn). Shipping costs apply.
 	var port_tile := Catalog.nearest_port_tile(source_tile) if source_tile != "" else ""
 	var route := _transport_route(source_tile, port_tile)
-	var deferred: bool = port_tile != "" and int(route.turns) >= 1
+	# Seaport subscription: a port only services tiles within SEAPORT_RANGE_TILES. If in
+	# range AND every good sold here is covered, the port ships any volume in 1 turn for
+	# the flat per-turn fee (charged once per turn), with no per-unit cost.
+	var in_port_range: bool = port_tile != "" and Catalog.tile_hex_distance(source_tile, port_tile) <= EconomyConfig.SEAPORT_RANGE_TILES
+	var covered_all := in_port_range
+	for gid in totals.keys():
+		if int(totals[gid]) > 0 and not (in_port_range and MatchState.seaport_covers(str(gid))):
+			covered_all = false
+	var ship_turns: int = 1 if covered_all else int(route.turns)
+	var deferred: bool = port_tile != "" and ship_turns >= 1
 	var transport_cost := 0.0
 	for good_id in totals.keys():
 		var qty: int = int(totals[good_id])
@@ -550,7 +612,8 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		if sold_qty <= 0:
 			continue
 		var sold_revenue: float = float(sold_qty) * price
-		transport_cost += EconomyConfig.transport_cost_for(good_key, sold_qty, int(route.turns))
+		if not (in_port_range and MatchState.seaport_covers(good_key)):
+			transport_cost += EconomyConfig.transport_cost_for_route(good_key, sold_qty, route)
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,
@@ -575,8 +638,8 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 			"destination_tile": port_tile,
 			"sale_record": sale_record.duplicate(true),
 			"tile_distance": route.tile_distance,
-			"transport_turns": route.turns,
-			"turns_remaining": int(route.turns),
+			"transport_turns": ship_turns,
+			"turns_remaining": ship_turns,
 			"path": route.get("path", []),
 			"legs": route.get("legs", []),
 			"tiles": route.get("tiles", []),
@@ -678,12 +741,20 @@ func _calculate_labour_cost(building: Dictionary) -> float:
 	var unskilled: int   = bdata.get("labour_unskilled_required", EconomyConfig.STUB_UNSKILLED_PER_BUILDING)
 	var skilled: int     = bdata.get("labour_skilled_required",   EconomyConfig.STUB_SKILLED_PER_BUILDING)
 	var high_skilled: int = bdata.get("labour_h_skilled_required", EconomyConfig.STUB_HIGH_SKILLED_PER_BUILDING)
+	# Wage rates compound every turn (EconomyConfig.LABOUR_*_GROWTH), so the same
+	# building costs more to staff as the game goes on.
 	var base_cost: float = (
-		unskilled    * EconomyConfig.LABOUR_UNSKILLED_RATE
-		+ skilled    * EconomyConfig.LABOUR_SKILLED_RATE
-		+ high_skilled * EconomyConfig.LABOUR_HIGH_SKILLED_RATE
+		unskilled    * _grown_labour_rate(EconomyConfig.LABOUR_UNSKILLED_RATE, EconomyConfig.LABOUR_UNSKILLED_GROWTH)
+		+ skilled    * _grown_labour_rate(EconomyConfig.LABOUR_SKILLED_RATE, EconomyConfig.LABOUR_SKILLED_GROWTH)
+		+ high_skilled * _grown_labour_rate(EconomyConfig.LABOUR_HIGH_SKILLED_RATE, EconomyConfig.LABOUR_HIGH_SKILLED_GROWTH)
 	)
 	return base_cost * MatchState.labour_multiplier
+
+func _grown_labour_rate(base_rate: float, growth: float) -> float:
+	# Compounded wage at the current turn: base * (1 + growth) ^ (turn - 1).
+	# Turn 1 pays the base rate; growth accrues from turn 2 onward.
+	var t: int = maxi(0, int(TurnManager.current_turn) - 1)
+	return base_rate * pow(1.0 + growth, float(t))
 
 func _calculate_maintenance_cost(building: Dictionary) -> float:
 	var bdata: Dictionary = Catalog.get_building(building.get("building_id", ""))

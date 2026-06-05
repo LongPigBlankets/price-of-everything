@@ -130,7 +130,7 @@ func _refresh() -> void:
 	# Stats
 	money_value.text = "£%.2f" % MatchState.money
 	var outstanding: float = LoanState.total_outstanding()
-	debt_value.text = "£%.2f / £%.2f" % [outstanding, EconomyConfig.LOAN_MAX_CAPACITY]
+	debt_value.text = "£%.2f / £%.2f" % [outstanding, LoanState.capacity_total()]
 	payment_value.text = "£%.2f" % LoanState.total_per_turn_payment()
 	
 	if MatchState.money < 0:

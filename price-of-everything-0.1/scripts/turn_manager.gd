@@ -27,7 +27,16 @@ signal phase_completed(phase: int)
 signal turn_advanced(new_turn: int)
 signal game_ended_signal(reason: String)
 
-@export var phase_pause_duration: float = 0.5
+# Per-phase human pacing delay. The whole-turn transition is this x the 5
+# resolution phases, so the default 0.1 gives a ~0.5s turn (compute is a flat
+# ~37ms on top) — Civ-like early-game snappiness that, thanks to the route cache,
+# no longer grows with building count. Raise for a slower reveal; the per-phase
+# split keeps each phase (SEND/AI/NARRATIVE/...) individually visible.
+@export var phase_pause_duration: float = 0.1
+# Compute-constrained mode: skip ALL pacing so turns resolve as fast as the engine
+# can compute them. Set true for headless sims (no human watching) or an in-game
+# "instant" speed. Overrides phase_pause_duration.
+@export var fast_mode: bool = false
 @export var auto_start_first_turn: bool = true
 
 var current_turn: int = 1
@@ -72,12 +81,28 @@ func _run_resolution() -> void:
 	is_resolving = true
 	turn_resolution_started.emit()
 
+	# Profiler: which turn this resolution belongs to (current_turn ticks up below).
+	var profiled_turn: int = current_turn
+
 	for phase in _RESOLUTION_PHASES:
 		current_phase = phase
+		# Time only the synchronous work of the phase: the listener bodies run
+		# inside phase_started.emit() (no awaits). The create_timer pause that
+		# follows is the artificial inter-phase delay we want to measure AGAINST,
+		# so it is deliberately excluded from the bracket.
+		TurnProfiler.phase_begin(phase)
 		phase_started.emit(phase)
+		TurnProfiler.phase_end(phase)
 		await get_tree().process_frame
 		phase_completed.emit(phase)
-		await get_tree().create_timer(phase_pause_duration).timeout
+		# Artificial inter-phase pacing for the human. Skipped entirely in fast_mode
+		# (or when the pause is zero), leaving only the one process_frame yield above
+		# so the turn is bounded purely by compute.
+		if not fast_mode and phase_pause_duration > 0.0:
+			await get_tree().create_timer(phase_pause_duration).timeout
+
+	# Flush this turn's profile (per-phase + PROCESS sub-step durations + scale).
+	TurnProfiler.finalize_turn(profiled_turn)
 
 	current_turn += 1
 	if current_turn > MAX_TURNS:

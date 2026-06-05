@@ -31,6 +31,8 @@ CostSolver="*res://scripts/cost_solver.gd"
 BuildMode="*uid://wqxliv5e1r7u"
 MapMode="*uid://dvsgkg2qos415"
 PanelStack="*res://scripts/panel_stack.gd"
+TurnProfiler="*res://scripts/turn_profiler.gd"
+RunMetrics="*res://scripts/run_metrics.gd"
 
 [display]
 
@@ -38,7 +40,6 @@ window/size/viewport_width=1920
 window/size/viewport_height=1080
 window/size/window_width_override=2360
 window/size/window_height_override=1328
-window/size/resizable=true
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 

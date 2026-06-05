@@ -10,9 +10,19 @@ const STARTING_MONEY: float = 200.0
 const MAINTENANCE_PER_BUILDING: float = 1.0
 
 # --- Labour rates (cost per worker per turn) ---
-const LABOUR_UNSKILLED_RATE: float = 0.001
-const LABOUR_SKILLED_RATE: float = 0.003
-const LABOUR_HIGH_SKILLED_RATE: float = 0.005
+# Doubled from the original 0.001/0.003/0.005 — a higher starting wage bill.
+const LABOUR_UNSKILLED_RATE: float = 0.002
+const LABOUR_SKILLED_RATE: float = 0.006
+const LABOUR_HIGH_SKILLED_RATE: float = 0.010
+
+# --- Labour wage growth (compounding per turn) ---
+# Wages drift upward every turn: the effective rate at turn t is
+#   base_rate * (1 + growth) ^ (t - 1).
+# Higher-skilled labour inflates fastest, so margins compress over a long game
+# and the player must keep expanding revenue to stay ahead of the wage bill.
+const LABOUR_UNSKILLED_GROWTH: float = 0.0015    # +0.15%/turn
+const LABOUR_SKILLED_GROWTH: float = 0.0025      # +0.25%/turn
+const LABOUR_HIGH_SKILLED_GROWTH: float = 0.004  # +0.40%/turn
 
 # --- MVP labour stub: every building has these counts ---
 # Remove these once buildings catalog has real employment data.
@@ -45,28 +55,67 @@ func units_cap_for_impact(max_pct: int) -> int:
 	# max_pct 0 -> GLUT_UNITS (no impact); 1 -> 2*GLUT_UNITS; etc.
 	return GLUT_UNITS * (max_pct + 1)
 
+# --- Seaport subscription shipping ---
+# A seaport can transfer ANY volume of a subscribed good in 1 turn for a flat per-turn
+# fee per good (NOT per unit). When a good is covered, market buy/sell shipping pays no
+# per-unit transport — just this standing subscription. (Sim auto-subscribes from turn 1;
+# the game will expose this as a per-good toggle.)
+const SEAPORT_SUBSCRIPTION_COST_PER_GOOD: float = 1.0
+# A seaport can only service tiles within this many tiles of it (per turn).
+const SEAPORT_RANGE_TILES: int = 10
+
 # --- Power grid pricing ---
-const GRID_BUY_PRICE: float = 0.5    # £/unit when buying from grid (shortfall)
-const GRID_SELL_PRICE: float = 0.25  # £/unit when selling surplus to grid
+const GRID_BUY_PRICE: float = 1.0    # £/unit when buying from grid (shortfall)
+const GRID_SELL_PRICE: float = 0.6   # £/unit when selling surplus to grid
 
 # --- Transport ---
 const TRANSPORT_MAX_TILES_PER_TURN: int = 2
+# Liquids & gases move by pipe ONLY (1 tile/turn — see infrastructure.csv pipe range)
+# at a flat per-unit-per-tile rate, regardless of weight class.
+const PIPE_MODES := ["pipes", "reinf_pipes"]
 const DEFAULT_TRANSPORT_WEIGHT_CLASS := "standard"
+# Per-unit-per-turn transport rates by weight class (a leg is one turn-move).
 const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
-	"standard": 0.2,
-	"solid_light": 0.2,
-	"solid_heavy": 0.2,
-	"ultra_heavy": 0.2,
-	"safe_liquid": 0.2,
-	"hazard_liquid": 0.2,
-	"gas": 0.2,
-	"electricity": 0.2,
+	"standard": 0.02,
+	"solid_light": 0.02,
+	"solid_heavy": 0.03,
+	"ultra_heavy": 0.06,
+	"safe_liquid": 0.03,
+	"hazard_liquid": 0.03,
+	"liquid": 0.03,
+	"gas": 0.03,
+	"electricity": 0.02,
+}
+
+# Per-mode multiplier on the weight-class rate. Rail is half the per-unit cost of
+# roads/overland (and also faster — see infrastructure.csv range 4 vs 2).
+const TRANSPORT_MODE_COST_MULT := {
+	"rail": 0.5,
+	"roads": 1.0,
+	"pipes": 1.0,        # pipe cost is flat (PIPE_COST_PER_UNIT_PER_TURN), not class-scaled
+	"reinf_pipes": 1.0,
+	"nothing": 1.0,
+}
+# Per-turn throughput a single link can carry by mode (goods/turn). NOTE: not yet
+# enforced — a per-link flow-accounting pass is needed (see infrastructure.csv's
+# max_goods_carried / soft_capacity columns). Kept here as the agreed values.
+const TRANSPORT_LINK_CAP_BY_MODE := {
+	"roads": 200,
+	"rail": 400,
 }
 
 # --- Loans ---
-const LOAN_MAX_CAPACITY: float = 50.0     # Maximum outstanding initial principal
-const LOAN_TERM_TURNS: int = 40            # How many turns to repay over
+# Capacity is no longer a flat ceiling. It STARTS at the base below and scales with
+# the company's recent performance so you can borrow against a growing business and
+# outgrow debt (see LoanState.capacity_total). The cap is sized so the per-turn loan
+# repayment (principal + interest, amortised over LOAN_TERM_TURNS) stays within
+# rolling profit plus a slice of revenue — the 40-turn payoff is the affordance that
+# lets debt service sit above pure interest without being unserviceable.
+const LOAN_BASE_CAPACITY: float = 50.0     # Floor on borrowing capacity (turn 1, no history)
+const LOAN_TERM_TURNS: int = 36            # How many turns to repay over
 const LOAN_INTEREST_RATE: float = 0.10     # 10% over total term (not per turn)
+const LOAN_PROFIT_WINDOW: int = 5          # Rolling window (turns) for the profit/revenue average
+const LOAN_REVENUE_BUFFER: float = 0.02    # Extra serviceable debt = this share of avg revenue
 
 # --- Tax & Dividends ---
 const TAX_RATE: float = 0.20
@@ -91,6 +140,24 @@ func transport_cost_per_unit_turn(weight_class: String) -> float:
 		TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS[DEFAULT_TRANSPORT_WEIGHT_CLASS]
 	))
 
-func transport_cost_for(good_id: String, qty: int, transport_turns: int) -> float:
+func transport_cost_for(good_id: String, qty: int, transport_turns: int, mode_mult: float = 1.0) -> float:
 	var weight_class := Catalog.get_transport_class(good_id)
-	return float(qty) * float(maxi(transport_turns, 0)) * transport_cost_per_unit_turn(weight_class)
+	return float(qty) * float(maxi(transport_turns, 0)) * transport_cost_per_unit_turn(weight_class) * mode_mult
+
+func transport_cost_for_route(good_id: String, qty: int, route: Dictionary) -> float:
+	# Leg-aware cost. Each leg is one turn-move; pipe legs charge the flat liquid rate,
+	# rail/road legs charge weight-class * mode multiplier. Falls back to a turns-based
+	# overland charge when the route has no infra legs (straight-line haul).
+	var legs: Array = route.get("legs", [])
+	var weight_class := Catalog.get_transport_class(good_id)
+	var class_rate := transport_cost_per_unit_turn(weight_class)
+	if legs.is_empty():
+		var turns: int = int(route.get("turns", 0))
+		return float(qty) * float(maxi(turns, 0)) * class_rate
+	var total := 0.0
+	for leg in legs:
+		# Every leg is one turn-move: charge the per-unit-per-turn class rate times the
+		# mode multiplier (rail 0.5x; roads/pipes 1x).
+		var mode := str(leg.get("mode", ""))
+		total += float(qty) * class_rate * float(TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
+	return total

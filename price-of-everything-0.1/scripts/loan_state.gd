@@ -14,6 +14,12 @@ var _next_loan_id: int = 1
 # Set during process_payments(); read by Production.
 var last_payment_total: float = 0.0
 
+# Rolling per-turn economics that drive the dynamic borrowing capacity. Production
+# pushes (net_profit, revenue) here each turn via record_turn_economics(); only the
+# last LOAN_PROFIT_WINDOW turns are kept.
+var _profit_history: Array = []   # retained net profit per turn (can be negative)
+var _revenue_history: Array = []  # gross sales revenue per turn
+
 signal loans_updated
 signal loan_taken(loan: Dictionary)
 signal loan_repaid(loan_id: int)
@@ -135,13 +141,62 @@ func total_per_turn_payment() -> float:
 		sum += loan.payment_per_turn
 	return sum
 
+func record_turn_economics(net_profit: float, revenue: float) -> void:
+	# Called once per turn by Production with the company's retained net profit and
+	# gross revenue. Feeds the rolling average that scales borrowing capacity.
+	_profit_history.append(net_profit)
+	_revenue_history.append(revenue)
+	var window: int = EconomyConfig.LOAN_PROFIT_WINDOW
+	while _profit_history.size() > window:
+		_profit_history.pop_front()
+	while _revenue_history.size() > window:
+		_revenue_history.pop_front()
+
+func capacity_total() -> float:
+	# Total borrowing capacity (initial principal you may have outstanding at once).
+	# Starts at LOAN_BASE_CAPACITY and grows so the per-turn loan repayment of a
+	# fully-drawn facility stays within recent profit plus a slice of revenue:
+	#   serviceable/turn = max(0, avg_profit_5) + REVENUE_BUFFER * avg_revenue_5
+	#   per-turn payment per £1 borrowed = (1 + INTEREST) / TERM   (amortised)
+	#   capacity = serviceable / payment_rate
+	# The amortised payment (not bare interest) is the bar, so the "paid off in
+	# ~40 turns" affordance is baked in: debt service can exceed pure interest while
+	# the principal is whittled down over the term.
+	var base: float = EconomyConfig.LOAN_BASE_CAPACITY
+	if _profit_history.is_empty():
+		return base
+	# PROFIT GATE: until the company is actually making money on a rolling basis,
+	# borrowing is limited to the base floor. Revenue alone must not unlock credit —
+	# a loss-making firm with strong turnover is still a bad lend, and without this
+	# gate "10% of revenue" amplified over the loan term hands a brand-new, still
+	# unprofitable business a four-figure credit line.
+	var avg_profit: float = _avg(_profit_history)
+	if avg_profit <= 0.0:
+		return base
+	# Serviceable debt service = genuinely-available rolling profit + a small slice of
+	# revenue (LOAN_REVENUE_BUFFER). The profit gate above keeps revenue from unlocking
+	# credit on its own, so the slice is a modest top-up, not the driver.
+	var avg_revenue: float = _avg(_revenue_history)
+	var serviceable: float = avg_profit + EconomyConfig.LOAN_REVENUE_BUFFER * maxf(0.0, avg_revenue)
+	var payment_rate: float = (1.0 + EconomyConfig.LOAN_INTEREST_RATE) / float(EconomyConfig.LOAN_TERM_TURNS)
+	var scaled: float = serviceable / payment_rate
+	return maxf(base, scaled)
+
 func available_capacity() -> float:
-	# Capacity = MAX - sum of initial principal of active loans.
+	# Headroom = dynamic total capacity minus initial principal of active loans.
 	# Once you fully repay a loan, its initial principal returns to capacity.
 	var initial_outstanding: float = 0.0
 	for loan in loans:
 		initial_outstanding += loan.principal_initial
-	return EconomyConfig.LOAN_MAX_CAPACITY - initial_outstanding
+	return capacity_total() - initial_outstanding
+
+func _avg(arr: Array) -> float:
+	if arr.is_empty():
+		return 0.0
+	var sum: float = 0.0
+	for v in arr:
+		sum += float(v)
+	return sum / float(arr.size())
 
 # === Helpers ===
 
