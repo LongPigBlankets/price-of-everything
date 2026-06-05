@@ -805,19 +805,25 @@ func get_inbound_transport_shipments(destination_tile: String, good_id: String =
 			continue
 		if good_id != "" and shipment.get("good_id", "") != good_id:
 			continue
-		result.append(shipment.duplicate(true))
+		# Shallow copy: callers only read scalar fields (qty, turns_remaining). Avoids
+		# deep-cloning the heavy path/tiles/legs/sale_record arrays every call (this runs
+		# per building, per market input, every turn).
+		result.append(shipment.duplicate())
 	return result
 
 func advance_transport_shipments() -> Array:
 	var arrived: Array = []
 	var remaining: Array = []
+	# Decrement in place — Dictionaries are references, and the only mutation is the
+	# countdown. The previous deep-copy of every shipment (with its path/tiles arrays)
+	# every turn was a top sim hot-spot. Arrived shipments are read-only consumed by the
+	# caller and then discarded; remaining keep their identity in the live list.
 	for shipment in pending_transport_shipments:
-		var record: Dictionary = shipment.duplicate(true)
-		record.turns_remaining = int(record.get("turns_remaining", 0)) - 1
-		if int(record.turns_remaining) <= 0:
-			arrived.append(record)
+		shipment.turns_remaining = int(shipment.get("turns_remaining", 0)) - 1
+		if int(shipment.turns_remaining) <= 0:
+			arrived.append(shipment)
 		else:
-			remaining.append(record)
+			remaining.append(shipment)
 	pending_transport_shipments = remaining
 	if not arrived.is_empty():
 		transport_shipments_changed.emit()
