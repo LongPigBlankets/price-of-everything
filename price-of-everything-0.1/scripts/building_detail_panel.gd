@@ -33,6 +33,7 @@ const FLOW_LARGE_HEIGHT := 130.0
 const FLOW_SINGLE_CELL_SIZE := Vector2(110, 110)
 const FLOW_GRID_CELL_SIZE := Vector2(62, 62)
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const CONSTRUCTION_BLUR_SHADER := preload("res://assets/shaders/ui_blur.gdshader")
 const RECIPE_ARROW_PATH := "res://assets/icons/ui_icons/recipe_arrow.png"
 const RECIPE_POWER_ICON_PATH := "res://assets/icons/ui_icons/recipe_power_icon.png"
 const UPGRADE_ICON_PATH := "res://assets/icons/ui_icons/upgrade_icon_off_white.png"
@@ -115,6 +116,8 @@ var _tile_only_dialog: AcceptDialog = null
 var _rag_panel: PanelContainer = null
 var _action_button_row: HBoxContainer = null
 var _npc_panel: PanelContainer = null
+var _construction_overlay: Control = null  # blur + "Under Construction" pill over the diagram
+var _showing_construction_instance: String = ""  # instance_id while rendering construction mode
 
 func _ready() -> void:
 	_is_secondary_panel = bool(get_meta("is_secondary_building_panel", false))
@@ -138,6 +141,18 @@ func _ready() -> void:
 		Stockpile.stockpile_changed.connect(_on_logistics_changed)
 	if not CostSolver.costs_updated.is_connected(_on_costs_updated):
 		CostSolver.costs_updated.connect(_on_costs_updated)
+	# Keep a shown construction site's countdowns/ETAs live, and cross-fade to the running
+	# building when it completes.
+	if not Production.turn_processed.is_connected(_on_turn_processed_construction):
+		Production.turn_processed.connect(_on_turn_processed_construction)
+	if not Construction.construction_materials_updated.is_connected(_on_construction_progress):
+		Construction.construction_materials_updated.connect(_on_construction_progress)
+	if not Construction.construction_started.is_connected(_on_construction_progress):
+		Construction.construction_started.connect(_on_construction_progress)
+	if not Construction.construction_completed.is_connected(_on_construction_finished):
+		Construction.construction_completed.connect(_on_construction_finished)
+	if not Construction.construction_cancelled.is_connected(_on_construction_cancelled_detail):
+		Construction.construction_cancelled.connect(_on_construction_cancelled_detail)
 	set_meta("panel_ready", true)
 
 func show_building(building: Dictionary) -> void:
@@ -165,6 +180,8 @@ func _hide_panel() -> void:
 func _rebuild_fields(building: Dictionary) -> void:
 	for child in fields_vbox.get_children():
 		child.queue_free()
+	_clear_construction_overlay()  # drop any frosted-diagram overlay from a previous render
+	_showing_construction_instance = ""
 
 	_current_building = building
 	var building_data: Dictionary = Catalog.get_building(building.get("building_id", ""))
@@ -183,6 +200,13 @@ func _rebuild_fields(building: Dictionary) -> void:
 		location_label.visible = false
 		return
 	_apply_npc_mode(false)
+
+	# Construction sites (awaiting materials / under construction) show none of the usual
+	# building info — just a frosted diagram and the materials/ETA breakdown.
+	var project: Dictionary = Construction.construction_projects.get(str(building.get("instance_id", "")), {})
+	if not project.is_empty():
+		_render_construction_mode(building, building_data, recipe, project)
+		return
 
 	_update_change_recipe_button(building, is_infrastructure)
 	title_label.text = _building_display_name(building, building_data, recipe) + _tile_title_suffix(building)
@@ -267,6 +291,160 @@ func _apply_npc_mode(on: bool) -> void:
 		_rag_panel.visible = not on
 	if _npc_panel != null:
 		_npc_panel.visible = on
+
+func _render_construction_mode(building: Dictionary, building_data: Dictionary, recipe: Dictionary, project: Dictionary) -> void:
+	var b_name: String = str(building_data.get("display_name", building.get("building_id", "")))
+	var recipe_name: String = str(recipe.get("display_name", ""))
+	title_label.text = b_name if recipe_name == "" else "%s — %s" % [b_name, recipe_name]
+	title_label.tooltip_text = ""
+	location_label.visible = false
+	_showing_construction_instance = str(building.get("instance_id", ""))
+	_update_flow_summary(recipe)  # populate the diagram so there's something to frost
+	_hide_operational_controls()
+	_apply_construction_overlay()
+	_build_construction_materials_section(project)
+	_add_cancel_construction_button(str(building.get("instance_id", "")))
+
+func _hide_operational_controls() -> void:
+	# Suppress every interactive/info control; the diagram stays (it gets frosted over).
+	# NOTE: the close (X) button is reparented INTO status_icon_column, so that column must
+	# stay visible — we hide the RAG tray (_rag_panel) instead to drop the status dots.
+	change_recipe_button.visible = false
+	for node in [_route_row, _input_route_detail, _output_route_detail, _route_action_spacer,
+			_action_button_row, _rag_panel, _upgrade_panel, _npc_panel]:
+		if node != null:
+			node.visible = false
+
+func _apply_construction_overlay() -> void:
+	_clear_construction_overlay()
+	var overlay := Control.new()
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var blur := ColorRect.new()
+	blur.set_anchors_preset(Control.PRESET_FULL_RECT)
+	blur.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = CONSTRUCTION_BLUR_SHADER
+	blur.material = mat
+	overlay.add_child(blur)
+
+	# Single-row "Under Construction" pill anchored to the diagram's centre.
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pill := PanelContainer.new()
+	var pill_style := StyleBoxFlat.new()
+	pill_style.bg_color = DIAGRAM_NAVY
+	pill_style.set_corner_radius_all(4)
+	pill_style.set_content_margin_all(8)
+	pill.add_theme_stylebox_override("panel", pill_style)
+	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pill_label := Label.new()
+	pill_label.text = "Under Construction"
+	pill_label.add_theme_color_override("font_color", DIAGRAM_PAPER)
+	pill.add_child(pill_label)
+	center.add_child(pill)
+	overlay.add_child(center)
+
+	flow_summary.add_child(overlay)
+	_construction_overlay = overlay
+
+func _clear_construction_overlay() -> void:
+	if _construction_overlay != null and is_instance_valid(_construction_overlay):
+		_construction_overlay.queue_free()
+	_construction_overlay = null
+
+func _add_cancel_construction_button(instance_id: String) -> void:
+	var btn := Button.new()
+	btn.text = "Cancel construction"
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.pressed.connect(func() -> void: _on_cancel_construction_pressed(instance_id))
+	fields_vbox.add_child(btn)
+
+func _on_cancel_construction_pressed(instance_id: String) -> void:
+	Construction.cancel(instance_id)  # refunds + returns secured materials + frees the site
+	_hide_panel()
+
+func _on_turn_processed_construction(_summary: Dictionary) -> void:
+	_refresh_if_showing_construction()
+
+func _on_construction_progress(instance_id: String, _tile_id: String) -> void:
+	if instance_id == _showing_construction_instance:
+		_refresh_if_showing_construction()
+
+func _refresh_if_showing_construction() -> void:
+	# Re-render the construction view so material ETAs and the build countdown stay current.
+	if not visible or _showing_construction_instance == "":
+		return
+	if Construction.construction_projects.has(_showing_construction_instance):
+		_rebuild_fields(_current_building)
+
+func _on_construction_finished(instance_id: String, _tile_id: String) -> void:
+	if not visible or instance_id != _showing_construction_instance:
+		return
+	_crossfade_to_running(instance_id)
+
+func _on_construction_cancelled_detail(instance_id: String, _tile_id: String) -> void:
+	# Whether cancelled from this panel or elsewhere, the site is gone — close the panel.
+	if visible and instance_id == _showing_construction_instance:
+		_hide_panel()
+
+func _crossfade_to_running(instance_id: String) -> void:
+	# 2s cross-dissolve from the frosted construction view to the live, running building.
+	var building: Dictionary = MatchState.get_building(instance_id)
+	if building.is_empty():
+		return
+	_showing_construction_instance = ""  # stop per-turn construction refreshes during the swap
+	var tween := create_tween()
+	tween.tween_property(panel_vbox, "modulate:a", 0.0, 1.0)
+	tween.tween_callback(func() -> void: show_building(building))
+	tween.tween_property(panel_vbox, "modulate:a", 1.0, 1.0)
+
+func _build_construction_materials_section(project: Dictionary) -> void:
+	# Navy card under the diagram: off-white rows, one per material with qty + arrival ETA.
+	var status: String = str(project.get("status", Construction.STATUS_UNDER_CONSTRUCTION))
+	var tile_id: String = str(project.get("tile_id", ""))
+	var navy := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = DIAGRAM_NAVY
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(12)
+	navy.add_theme_stylebox_override("panel", style)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 6)
+	navy.add_child(vb)
+
+	var header := Label.new()
+	header.text = "Awaiting building materials" if status == Construction.STATUS_AWAITING_MATERIALS else "Under construction"
+	header.add_theme_font_size_override("font_size", 15)
+	header.add_theme_color_override("font_color", DIAGRAM_PAPER)
+	vb.add_child(header)
+
+	var required: Dictionary = project.get("required_materials", {})
+	var missing: Dictionary = project.get("missing_materials", {})
+	for gid in required:
+		var line: String = "%d %s — " % [int(required[gid]), Catalog.get_display_name(str(gid))]
+		if missing.has(gid):
+			var eta: int = Construction.material_arrival_eta(tile_id, str(gid))
+			line += ("arrives in %d turn%s" % [eta, "" if eta == 1 else "s"]) if eta >= 0 else "pending delivery"
+		else:
+			line += "secured"
+		var row := Label.new()
+		row.text = line
+		row.add_theme_color_override("font_color", DIAGRAM_PAPER)
+		vb.add_child(row)
+
+	var duration: int = int(project.get("construction_duration", 0))
+	var foot := Label.new()
+	if status == Construction.STATUS_UNDER_CONSTRUCTION:
+		var rem: int = int(project.get("turns_remaining", 0))
+		foot.text = "Construction: %d turn%s remaining" % [rem, "" if rem == 1 else "s"]
+	else:
+		foot.text = "Construction completes %d turn%s after materials arrive" % [duration, "" if duration == 1 else "s"]
+	foot.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
+	vb.add_child(foot)
+	fields_vbox.add_child(navy)
 
 func _add_text(text: String) -> void:
 	var label := Label.new()
@@ -1012,6 +1190,7 @@ func _show_tile_space_toast(message: String, method_name: String) -> void:
 func _update_change_recipe_button(building: Dictionary, is_infrastructure: bool) -> void:
 	if change_recipe_button == null:
 		return
+	change_recipe_button.visible = true  # restore it after a construction-mode render hid it
 	if is_infrastructure:
 		change_recipe_button.text = "Change Recipe (0 recipes)"
 		return

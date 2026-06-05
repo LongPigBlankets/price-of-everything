@@ -250,4 +250,99 @@ colour = ran (green) / starved (red)** — plus a "Ran N/10" headline and a bott
   (`{ran, fill_ratio, limiting_good}`), snapshotted on the existing `turn_processed` signal.
   need/have are already computed in `_can_run_recipe`/`missing_by_building`, so fill ratio is ~free.
 - Lives beside the building detail inputs section + input-status RAG dot.
+
+---
+
+## Construction material requirements  (Size: L, risk: med-high)
+
+**Goal:** a building can't start construction until its materials are present on the target
+tile. If missing, the player can (a) pull uncommitted stock from another tile, (b) buy from
+market, or (c) cancel. Sourced goods travel to the tile, are claimed with priority over all
+other systems, then a `build_duration`-turn countdown runs before the building goes active.
+
+### Locked design decisions
+- **Data model: separate collection.** New `Construction` autoload owns
+  `construction_projects: {instance_id -> project}`. Projects promote into `MatchState.buildings`
+  only at completion, so the ~20 operational readers of `MatchState.buildings`
+  (production.gd:88, stockpile.gd:44 storage-boost, money_panel.gd:353, run_metrics.gd:292, …)
+  need **zero edits** and a half-built building can never produce/boost/cost. Display code
+  (chart, visuals, tile-space, detail panel) reads the **union** of both collections via one
+  helper — route all tile-occupant display through it.
+- **No "halt/blocked" state.** Every project has a deterministic routing ETA, so it always
+  progresses. Dropped the original spec's `construction_blocked_changed` + flashing-red chart.
+- **Duration is data, not a constant.** `build_duration` already exists (CSV col 17, parsed at
+  catalog.gd:774, currently 0). Set every row to `2`; read `Catalog.get_building(id).build_duration`
+  everywhere. Per-building variation is then free later.
+- **0-material buildings** (ports, roads, wind, oil_well, …) skip `awaiting_materials` and go
+  straight to the countdown. `coal_power` uses **5** materials — UI must handle ≥3.
+- **Cancellation in scope.** Full build-cost refund; consumed/claimed materials returned to the
+  tile; in-flight construction-tagged shipments dump to the tile stockpile as ordinary goods on
+  arrival (no transport-pipeline surgery, no goods refund).
+- **Sourcing locks at source.** "Use stockpile from tile X" immediately `consume`s at the source
+  into a construction-tagged transport shipment → goods can't be reused there; reuses existing
+  transport ETA. Market buys tag the existing nearest-port shipment.
+
+### Project shape
+```
+{ instance_id, building_id, recipe_id, tile_id,
+  status: "awaiting_materials" | "under_construction",   # "active" = promoted out
+  required_materials: {good_id: qty},
+  material_arrivals:  {good_id: turns_remaining},          # 0 = present; decremented each turn
+  construction_duration: <Catalog…build_duration>,
+  turns_remaining: int,                                    # the under_construction countdown
+  reserved_space: float,
+  source: {kind: "on_tile"|"market"|"tile", from_tile_id?} }  # for cancel/refund
+```
+`turns_until_materials_arrive` = `max(material_arrivals.values())`; ETA to finished = that + duration.
+
+### Signals (consolidated)
+`materials_ordered`, `construction_started`, `construction_completed`, `construction_cancelled`.
+`building_added` is redefined to mean **completion**.
+
+### Toasts (four)
+1. `materials_ordered` (sourced paths only) — "Ordered 10 Steel, 10 Concrete — arriving in N turns".
+2. `construction_started` (clock starts: same-tile/0-material immediately, sourced on final arrival)
+   — "Construction started for [display_name — recipe] on tile [xyz]. Will be complete in {duration} turns."
+3. *(no halt toast)*
+4. built (existing, at promotion).
+
+### Turn order (insert in `production.gd` between `_process_transport_arrivals` (:85) and the cascade (:88))
+deliveries arrive → **`Construction.claim_materials()`** (consume tile stock into awaiting projects;
+satisfied → under_construction, turns_remaining = duration) → **`Construction.tick_turn()`**
+(countdown; 0 → promote + `construction_completed`) → production → recurring moves (:211) →
+sells (:225). Claim must beat production **and** sells/surplus. Snapshot `all_buildings` at :88
+before promotion so a project completing turn N first produces turn N+1.
+
+### Phases (each ships independently)
+- **P1 — Gate + same-tile build + full modal UI.** New `scripts/construction.gd`
+  (`requirements_for`, `check_tile`, `start_on_tile`). `world_map.gd:_on_build_attempted` (:975):
+  after money + `_space_check_for_build`, check tile materials → present: consume + create project +
+  promote instantly; missing: open `construction_missing_dialog` (full 3-button layout, only Cancel
+  wired). `match_state.get_tile_space_used` (:172) unions projects. `reset`/`debug_dump` include the
+  new collection. *Ships: materials enforced, same-tile works as today.*
+- **P2 — Lifecycle.** `build_duration` → 2 in CSV; `start_on_tile` sets under_construction +
+  countdown (no instant promote); `tick_turn` promotes at 0. Insert tick at the turn-order seam.
+  Chart (tile_size_chart.gd) renders under_construction segment + hover. `construction_started`
+  toast; `building_added` semantics move to promotion (toast_manager.gd:113, turn_summary.gd:72).
+  Lightweight detail-panel "Construction: N turns". *Ships: 2-turn non-producing builds.*
+- **P3 — awaiting_materials + claim + "Buy from market" wired.** `start_awaiting_market`
+  (deduct cost, reserve, queue port shipment tagged `construction_instance_id`), `claim_materials`,
+  per-material `material_arrivals` from routing. Transport dict gains `construction_instance_id`.
+  Modal ETA numbers (per-material + total). Detail-panel **construction mode**: blurred diagram +
+  single-row "Under Construction" overlay; **navy section below** the diagram, off-white text, one
+  row per material `{qty} {material} — arrives in N`, + trailing "completes {duration} after".
+  `materials_ordered` toast. Detail-panel lookup must also check `construction_projects`.
+- **P4 — "Use unused stockpile from tile X" wired.** `find_source_tile` (nearest single tile whose
+  uncommitted surplus = `get_tile_totals − compute_committed_for_tile` covers all missing; else CTA
+  disabled). `start_awaiting_from_tile` consumes at source into tagged shipment → P3 claim finishes.
+- **P5 — Cancellation (all states).** `cancel(instance_id)`: refund cost, return consumed/claimed
+  goods, in-flight tagged shipments dump on arrival, remove project (frees reserved space),
+  `construction_cancelled`. Cancel affordance in tile_info_panel.gd.
+
+### Residual risks
+1. Promote-vs-produce same turn (snapshot ordering at production.gd:88).
+2. Claim must run before sells (:225) and recurring moves (:211) or surplus eats incoming goods.
+3. Stockpile 500 cap (stockpile.gd:42) could refuse construction deliveries on a full tile —
+   decide in P3 whether tagged arrivals bypass the cap.
+4. Two-source-of-truth display — funnel all tile-occupant reads through one union helper.
 - Bonus: same per-building signal feeds the Feature 3 ledger "productivity" column.

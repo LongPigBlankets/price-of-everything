@@ -32,6 +32,8 @@ const FACTORY_COLOR := Color(0.12, 0.38, 0.70)
 const POWER_COLOR := Color(1.0, 0.8, 0.0)
 const INFRASTRUCTURE_COLOR := Color(0.92, 0.90, 0.82)
 const DEFAULT_COLOR := Color(0.18, 0.18, 0.18)
+const CONSTRUCTION_COLOR := Color(0.55, 0.62, 0.70, 0.65)  # muted blue-grey: under-construction segment
+const AWAITING_COLOR := Color(0.85, 0.55, 0.10, 0.55)       # warning amber: awaiting-materials segment
 const NAVY_TEXT_COLOR := Color(0.015, 0.06, 0.105)
 const BORDER_COLOR := Color(0.7, 0.85, 1.0, 0.65)
 const HOVER_BORDER_COLOR := Color(1.0, 1.0, 1.0, 0.95)
@@ -526,6 +528,13 @@ func _is_over_capacity() -> bool:
 	return total_size_taken > SOFT_CAPACITY
 
 func _color_for_building(building: Dictionary) -> Color:
+	# Construction segments get distinct styling: amber while awaiting materials, blue-grey
+	# once the build countdown is running.
+	var cstatus: String = str(building.get("construction_status", ""))
+	if cstatus == "awaiting_materials":
+		return AWAITING_COLOR
+	if cstatus != "":
+		return CONSTRUCTION_COLOR
 	var building_id: String = building.get("building_id", "")
 	var building_data: Dictionary = Catalog.get_building(building_id)
 	var internal_name: String = building_data.get("internal_name", "")

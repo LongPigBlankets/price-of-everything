@@ -48,6 +48,11 @@ func _ready() -> void:
 	_test_price_impact()
 	_test_buy_price()
 	_test_limestone_concrete()
+	_test_construction()
+	_test_construction_awaiting()
+	_test_construction_sourcing()
+	_test_construction_cancel()
+	await _test_construction_detail_panel()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -178,6 +183,271 @@ func _test_limestone_concrete() -> void:
 					gated = true
 			_check(gated, "limestone mining is gated on a limestone deposit")
 	_check(found, "a mine recipe produces limestone")
+
+func _test_construction() -> void:
+	# Pick a building that actually has construction materials (data-driven so it survives
+	# CSV changes). requirements_for must resolve the CSV's internal material names to good_ids.
+	var bid := ""
+	var reqs := {}
+	for b in Catalog.all_buildings():
+		var r: Dictionary = Construction.requirements_for(str(b.get("id", "")))
+		if not r.is_empty():
+			bid = str(b.get("id", ""))
+			reqs = r
+			break
+	_check(bid != "" and not reqs.is_empty(), "a building has resolvable construction materials")
+	if bid == "":
+		return
+
+	var tile := "tile_construction_test"
+	for gid in reqs:
+		Stockpile.consume(tile, gid, 1 << 30)  # ensure the test tile starts empty
+
+	# Empty tile: gate blocks, every required good reported short.
+	var chk0: Dictionary = Construction.check_tile(tile, bid)
+	_check(not bool(chk0.get("satisfied", false)), "missing materials -> not satisfied")
+	_check(chk0.get("missing", {}).size() == reqs.size(), "all required goods reported missing")
+
+	# Stock exactly the requirements -> gate clears.
+	for gid in reqs:
+		Stockpile.add(tile, gid, int(reqs[gid]))
+	_check(bool(Construction.check_tile(tile, bid).get("satisfied", false)),
+		"materials present -> satisfied")
+
+	# start_on_tile consumes the materials and starts an under_construction project — the
+	# building is NOT live yet; it promotes only after build_duration ticks.
+	var before: int = MatchState.buildings.size()
+	var iid: String = Construction.start_on_tile(bid, "", tile)
+	var consumed_ok := true
+	for gid in reqs:
+		if Stockpile.get_at_tile(tile, gid) != 0:
+			consumed_ok = false
+	_check(consumed_ok, "start_on_tile consumes the construction materials")
+	var duration: int = int(Catalog.get_building(bid).get("build_duration", 0))
+	_check(duration >= 1, "building has a positive build_duration")
+	_check(not MatchState.buildings.has(iid) and Construction.construction_projects.has(iid),
+		"start_on_tile creates an under_construction project, not a live building")
+	_check(int(Construction.construction_projects[iid].get("turns_remaining", -1)) == duration,
+		"project counts down from build_duration")
+	_check(Construction.reserved_space_on_tile(tile) > 0.0, "project reserves tile space")
+
+	# Tick out the countdown; the building promotes on the final tick, keeping the same id.
+	for _i in range(duration):
+		Construction.tick_turn()
+	_check(MatchState.buildings.has(iid) and not Construction.construction_projects.has(iid),
+		"project promotes to a live building after build_duration turns")
+	_check(MatchState.buildings.size() == before + 1, "exactly one building added on promotion")
+	_check(Construction.reserved_space_on_tile(tile) == 0.0, "reserved space frees on promotion")
+
+	# Cleanup so later assertions over MatchState.buildings aren't polluted.
+	MatchState.remove_building(iid)
+
+	# Dialog smoke test: instantiates + builds its UI without error.
+	var dlg: Node = load("res://scripts/construction_missing_dialog.gd").new()
+	add_child(dlg)
+	dlg.call("open", bid, "", tile, reqs)
+	_check(dlg.visible and dlg.get_child_count() > 0, "missing-materials dialog builds + opens")
+	dlg.queue_free()
+
+func _test_construction_cancel() -> void:
+	var bid := ""
+	var reqs := {}
+	for b in Catalog.all_buildings():
+		var r: Dictionary = Construction.requirements_for(str(b.get("id", "")))
+		if not r.is_empty():
+			bid = str(b.get("id", ""))
+			reqs = r
+			break
+	if bid == "":
+		return
+	var first := str(reqs.keys()[0])
+
+	# --- Cancel an under_construction build: full refund, all materials returned, space freed.
+	var tile := "tile_cancel_uc"
+	for gid in reqs:
+		Stockpile.consume(tile, str(gid), 1 << 30)
+		Stockpile.add(tile, str(gid), int(reqs[gid]))
+	var money_before: float = MatchState.money
+	var iid: String = Construction.start_on_tile(bid, "", tile, 80.0)
+	_check(Construction.reserved_space_on_tile(tile) > 0.0, "under-construction reserves space before cancel")
+	var ok: bool = Construction.cancel(iid)
+	_check(ok and not Construction.construction_projects.has(iid), "cancel removes the project")
+	_check(absf(MatchState.money - (money_before + 80.0)) < 0.001, "cancel refunds the full build cost")
+	_check(Stockpile.get_at_tile(tile, first) == int(reqs[first]), "cancel returns the consumed materials")
+	_check(Construction.reserved_space_on_tile(tile) == 0.0, "cancel frees the reserved space")
+	for gid in reqs:
+		Stockpile.consume(tile, str(gid), 1 << 30)
+
+	# --- Cancel an awaiting build: only SECURED materials return, still-missing ones don't.
+	var tile2 := "tile_cancel_aw"
+	for gid in reqs:
+		Stockpile.consume(tile2, str(gid), 1 << 30)
+	var missing2: Dictionary = reqs.duplicate()
+	missing2.erase(first)  # pretend the first good was already secured (claimed)
+	var iid2: String = MatchState.reserve_instance_id(bid)
+	Construction.construction_projects[iid2] = {
+		"instance_id": iid2, "building_id": bid, "recipe_id": "", "tile_id": tile2,
+		"status": Construction.STATUS_AWAITING_MATERIALS,
+		"required_materials": reqs, "missing_materials": missing2,
+		"turns_remaining": 2, "construction_duration": 2, "reserved_space": 10.0, "build_cost": 50.0,
+	}
+	var m2: float = MatchState.money
+	Construction.cancel(iid2)
+	_check(Stockpile.get_at_tile(tile2, first) == int(reqs[first]), "cancel returns only the secured materials (awaiting)")
+	if not missing2.is_empty():
+		var miss_gid := str(missing2.keys()[0])
+		_check(Stockpile.get_at_tile(tile2, miss_gid) == 0, "still-missing materials are not returned on cancel")
+	_check(absf(MatchState.money - (m2 + 50.0)) < 0.001, "cancel refunds the build cost (awaiting)")
+	for gid in reqs:
+		Stockpile.consume(tile2, str(gid), 1 << 30)
+
+func _test_construction_sourcing() -> void:
+	var bid := ""
+	var reqs := {}
+	for b in Catalog.all_buildings():
+		var r: Dictionary = Construction.requirements_for(str(b.get("id", "")))
+		if not r.is_empty():
+			bid = str(b.get("id", ""))
+			reqs = r
+			break
+	if bid == "":
+		return
+	# Real tiles so the router resolves source -> dest turns.
+	var src := "tile_5_10"
+	var dest := "tile_3_8"
+	for gid in reqs:
+		Stockpile.consume(src, str(gid), 1 << 30)
+		Stockpile.consume(dest, str(gid), 1 << 30)
+		Stockpile.add(src, str(gid), int(reqs[gid]) * 3)  # comfortable spare surplus
+
+	var found: Dictionary = Construction.find_source_tile(dest, reqs)
+	_check(not found.is_empty(), "find_source_tile finds a tile with spare stock")
+	if not found.is_empty():
+		var s := str(found.get("tile_id", ""))
+		var committed: Dictionary = Production.compute_committed_for_tile(s)
+		var covers := true
+		for gid in reqs:
+			if Stockpile.get_at_tile(s, str(gid)) - int(committed.get(gid, 0)) < int(reqs[gid]):
+				covers = false
+		_check(covers, "the chosen source tile actually covers the requirement")
+
+	var first_gid := str(reqs.keys()[0])
+	var src_before: int = Stockpile.get_at_tile(src, first_gid)
+	var iid: String = Construction.start_awaiting_from_tile(bid, "", dest, src)
+	_check(Construction.construction_projects.has(iid)
+		and str(Construction.construction_projects[iid].get("status", "")) == Construction.STATUS_AWAITING_MATERIALS,
+		"start_awaiting_from_tile creates an awaiting project")
+	_check(Stockpile.get_at_tile(src, first_gid) == src_before - int(reqs[first_gid]),
+		"sourcing consumes the shortfall from the source tile")
+
+	# Deliver to the build site and claim -> construction begins.
+	for gid in reqs:
+		Stockpile.add(dest, str(gid), int(reqs[gid]))
+	Construction.claim_materials()
+	_check(str(Construction.construction_projects.get(iid, {}).get("status", "")) == Construction.STATUS_UNDER_CONSTRUCTION,
+		"sourced project begins construction once delivered")
+
+	Construction.construction_projects.erase(iid)
+	for gid in reqs:
+		Stockpile.consume(src, str(gid), 1 << 30)
+		Stockpile.consume(dest, str(gid), 1 << 30)
+
+func _test_construction_detail_panel() -> void:
+	var bid := ""
+	var reqs := {}
+	for b in Catalog.all_buildings():
+		var r: Dictionary = Construction.requirements_for(str(b.get("id", "")))
+		if not r.is_empty():
+			bid = str(b.get("id", ""))
+			reqs = r
+			break
+	if bid == "":
+		return
+	var tile := "tile_detail_test"
+	for gid in reqs:
+		Stockpile.consume(tile, gid, 1 << 30)
+		Stockpile.add(tile, gid, int(reqs[gid]))
+	var iid: String = Construction.start_on_tile(bid, "", tile)  # under_construction project
+
+	# The detail panel lives inside main.tscn (no standalone scene), so instantiate and find it.
+	var packed: PackedScene = load("res://scenes/main.tscn")
+	var ok: bool = packed != null and Construction.construction_projects.has(iid)
+	if ok:
+		var inst: Node = packed.instantiate()
+		add_child(inst)
+		await get_tree().process_frame
+		var panel: Node = inst.find_child("BuildingDetailPanel", true, false)
+		ok = panel != null
+		if ok:
+			panel.call("show_building", {
+				"instance_id": iid, "building_id": bid, "recipe_id": "",
+				"tile_id": tile, "owner": MatchState.LOCAL_PLAYER,
+				"construction_status": "under_construction",
+			})
+			var fv: Node = panel.get("fields_vbox")
+			_check(fv != null and fv.get_child_count() > 0, "construction detail panel renders the materials section")
+			# Regression guards: the close (X) button lives in the status rail and must stay,
+			# while Change Recipe is hidden during construction.
+			_check(panel.get("status_icon_column").visible and panel.get("close_button").visible,
+				"construction panel keeps the close (X) button")
+			_check(not panel.get("change_recipe_button").visible, "construction panel hides Change Recipe")
+			# Switching to a running building restores the operational controls.
+			var rid: String = MatchState.add_building(bid, "", "tile_detail_running")
+			panel.call("show_building", MatchState.get_building(rid))
+			_check(panel.get("change_recipe_button").visible, "Change Recipe restored on a running building")
+			MatchState.remove_building(rid)
+			ok = true
+		inst.queue_free()
+		await get_tree().process_frame
+	if not ok:
+		_check(false, "construction detail panel instantiates")
+	Construction.construction_projects.erase(iid)
+
+func _test_construction_awaiting() -> void:
+	var bid := ""
+	var reqs := {}
+	for b in Catalog.all_buildings():
+		var r: Dictionary = Construction.requirements_for(str(b.get("id", "")))
+		if not r.is_empty():
+			bid = str(b.get("id", ""))
+			reqs = r
+			break
+	if bid == "":
+		return
+
+	var tile := "tile_awaiting_test"
+	for gid in reqs:
+		Stockpile.consume(tile, gid, 1 << 30)
+	# Stock all materials up front so start_awaiting_market orders nothing from the market
+	# (keeps the test port-independent); claim_materials then secures them in place.
+	for gid in reqs:
+		Stockpile.add(tile, gid, int(reqs[gid]))
+
+	var iid: String = Construction.start_awaiting_market(bid, "", tile)
+	_check(Construction.construction_projects.has(iid)
+		and str(Construction.construction_projects[iid].get("status", "")) == Construction.STATUS_AWAITING_MATERIALS,
+		"start_awaiting_market creates an awaiting_materials project")
+	_check(not MatchState.buildings.has(iid), "awaiting project is not a live building")
+	_check(Construction.reserved_space_on_tile(tile) > 0.0, "awaiting project reserves tile space")
+
+	# The priority claim secures the on-tile materials and starts the build countdown.
+	Construction.claim_materials()
+	var consumed_ok := true
+	for gid in reqs:
+		if Stockpile.get_at_tile(tile, gid) != 0:
+			consumed_ok = false
+	_check(consumed_ok, "claim_materials consumes the secured materials")
+	_check(Construction.construction_projects.has(iid)
+		and str(Construction.construction_projects[iid].get("status", "")) == Construction.STATUS_UNDER_CONSTRUCTION,
+		"awaiting project begins construction once materials are secured")
+
+	# Countdown then completes the build with the same id.
+	var duration: int = int(Catalog.get_building(bid).get("build_duration", 0))
+	for _i in range(duration):
+		Construction.tick_turn()
+	_check(MatchState.buildings.has(iid) and not Construction.construction_projects.has(iid),
+		"awaiting project promotes after securing materials + countdown")
+	MatchState.remove_building(iid)
 
 func _test_buy_price() -> void:
 	var gid := "g_001"
@@ -371,6 +641,8 @@ func _test_scripts_parse() -> void:
 		"res://scripts/ui_helpers.gd",
 		"res://scripts/market_panel.gd",
 		"res://scripts/turn_summary.gd",
+		"res://scripts/construction.gd",
+		"res://scripts/construction_missing_dialog.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 

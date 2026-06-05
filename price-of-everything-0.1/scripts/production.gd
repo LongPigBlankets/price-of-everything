@@ -85,6 +85,16 @@ func _process_production() -> void:
 	_process_transport_arrivals(summary)
 	TurnProfiler.section_end("transport_arrivals")
 
+	# Advance construction AFTER deliveries, BEFORE production and selling. tick_turn() promotes
+	# any build whose countdown reached zero (it's then in the snapshot below and produces this
+	# turn). claim_materials() lets awaiting projects consume their goods off the tile first, so
+	# construction owns them ahead of production/sell/surplus. Order matters: tick before claim,
+	# so a project that becomes under_construction this turn isn't also ticked the same turn.
+	TurnProfiler.section_begin("construction")
+	Construction.tick_turn()
+	Construction.claim_materials()
+	TurnProfiler.section_end("construction")
+
 	var all_buildings: Array = MatchState.buildings.values()
 	var has_run: Dictionary = {}
 
