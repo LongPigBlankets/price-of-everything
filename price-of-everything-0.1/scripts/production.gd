@@ -59,6 +59,9 @@ func _process_production() -> void:
 	"power_purchase_cost": 0.0,
 	"transport_paid": 0.0,
 	"goods_purchased_cost": 0.0,
+	# Per-good purchased goods cost (goods value only, excludes transport), used by
+	# the money panel's Charts tab to split purchases by good tier.
+	"purchased_cost": {},
 	"maintenance_paid": 0.0,
 	"labour_paid": 0.0,
 	"taxes_paid": 0.0,
@@ -354,7 +357,9 @@ func _process_production() -> void:
 	# Diagnostic: goods sitting in pending shipments (sales + moves). If a produced good
 	# is neither stockpiled nor sold, it should show here as in-transit; if not, it's lost.
 	var _in_transit_dbg: Dictionary = {}
-	for s in MatchState.get_pending_transport_shipments():
+	# Read-only summation — iterate the live list directly rather than paying for a
+	# deep copy of every shipment (with its path/tiles arrays) just to tally quantities.
+	for s in MatchState.pending_transport_shipments:
 		if bool(s.get("is_sale", false)):
 			for it in s.get("sale_record", {}).get("items", []):
 				var sg := str(it.get("good_id", ""))
@@ -831,6 +836,10 @@ func _inbound_qty(tile_id: String, good_id: String) -> int:
 func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 	# For every input a player has set to "Market", keep the pipeline topped up to
 	# (lead+1) turns of demand: order = target - on_tile - in_transit, shipped from the port.
+	# Memoise (port, lead) per tile for this turn — co-located buildings share a tile, so
+	# without this each one re-routes from the port (costly on rail/road placement turns
+	# when the route cache is cold). {tile_id -> {"port": String, "lead": int}}.
+	var port_lead_by_tile: Dictionary = {}
 	for building in all_buildings:
 		var recipe: Dictionary = Catalog.get_recipe(building.recipe_id)
 		if recipe.is_empty():
@@ -845,13 +854,20 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		var needs_power: bool = energy_req > 0 or recipe.get("output_name", "") == "power"
 		if needs_power and not Power.is_supplied(tile_id, energy_req):
 			continue
-		var port := Catalog.nearest_port_tile(tile_id)
-		if port == "":
+		var pl: Dictionary = port_lead_by_tile.get(tile_id, {})
+		if pl.is_empty():
+			var port := Catalog.nearest_port_tile(tile_id)
+			var computed_lead := 0
+			if port != "":
+				computed_lead = int(Catalog.route(port, tile_id).get("turns", 1))
+				if computed_lead >= (1 << 30):
+					computed_lead = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, tile_id))
+				computed_lead = maxi(1, computed_lead)
+			pl = {"port": port, "lead": computed_lead}
+			port_lead_by_tile[tile_id] = pl
+		if str(pl.get("port", "")) == "":
 			continue
-		var lead := int(Catalog.route(port, tile_id).get("turns", 1))
-		if lead >= (1 << 30):
-			lead = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, tile_id))
-		lead = maxi(1, lead)
+		var lead: int = int(pl.get("lead", 1))
 		for input in inputs:
 			var good_id := str(input.good_id)
 			if MatchState.is_input_tile_only(instance_id, good_id):
@@ -868,6 +884,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 					summary.transport_paid += float(bought.get("transport_cost", 0.0))
 					summary.money_out += float(bought.get("cost", 0.0))
 					summary.purchased[good_id] = int(summary.purchased.get(good_id, 0)) + int(bought.get("qty", 0))
+					summary.purchased_cost[good_id] = float(summary.purchased_cost.get(good_id, 0.0)) + float(bought.get("goods_cost", 0.0))
 					_accumulate_by_type(summary.goods_purchased_by_type, str(building.get("building_id", "")), float(bought.get("goods_cost", 0.0)), 0)
 	# Player-set recurring market purchases (Purchases tab), delivered to the chosen tile.
 	for rb in MatchState.recurring_buys:
@@ -878,6 +895,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 			summary.transport_paid += float(rbought.get("transport_cost", 0.0))
 			summary.money_out += float(rbought.get("cost", 0.0))
 			summary.purchased[rgood] = int(summary.purchased.get(rgood, 0)) + int(rbought.get("qty", 0))
+			summary.purchased_cost[rgood] = float(summary.purchased_cost.get(rgood, 0.0)) + float(rbought.get("goods_cost", 0.0))
 			_accumulate_by_type(summary.goods_purchased_by_type, "", float(rbought.get("goods_cost", 0.0)), 0)
 
 func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictionary) -> void:
