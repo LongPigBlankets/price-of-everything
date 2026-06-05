@@ -698,7 +698,10 @@ func _production_destination_text(building: Dictionary, good_id: String, power_f
 		return "to grid" if net > 0 else "balanced"
 	if _tile_good_is_locally_consumed(good_id):
 		return "self-consumed"
-	var explicit_destination := MatchState.get_output_stockpile_destination(str(building.get("instance_id", "")), good_id)
+	var inst_id := str(building.get("instance_id", ""))
+	if MatchState.is_output_market(inst_id, good_id):
+		return "to market"
+	var explicit_destination := MatchState.get_output_stockpile_destination(inst_id, good_id)
 	if explicit_destination != "":
 		return "to %s" % explicit_destination
 	match MatchState.sell_mode:
@@ -1143,7 +1146,7 @@ func _build_stockpile_section() -> void:
 	_production_destination_option.add_item("per building")
 	_apply_button_text_style(_production_destination_option)
 	_production_destination_option.item_selected.connect(_on_production_destination_selected)
-	_right_detail_parent().add_child(_make_setting_row("Production destination for all buildings", _production_destination_option, CONTROL_ROW_TALL_HEIGHT))
+	_right_detail_parent().add_child(_make_setting_row("Production destination (this tile)", _production_destination_option, CONTROL_ROW_TALL_HEIGHT))
 	_production_destination_option.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_production_destination_option.custom_minimum_size = Vector2(132, 30)
 	_sync_production_destination_option()
@@ -1688,15 +1691,27 @@ func _on_auto_sell_good_toggled(pressed: bool, good_id: String) -> void:
 		MatchState.disable_auto_sell_good(_current_tile_id, good_id)
 
 func _on_production_destination_selected(index: int) -> void:
-	match index:
-		0:
-			MatchState.set_sell_mode(MatchState.SellMode.STOCKPILE_ALL)
-		1:
-			MatchState.set_sell_mode(MatchState.SellMode.SELL_ALL)
-		2:
-			# Building-by-building routing uses per-building destinations where
-			# they exist, with market as the fallback for unassigned buildings.
-			MatchState.set_sell_mode(MatchState.SellMode.BUILDING_BY_BUILDING)
+	# Applies to THIS tile's buildings only (per-building routes), NOT the global
+	# sell_mode — picking "market" here used to flip every tile in the game to market.
+	if _current_tile_id == "":
+		return
+	for building in MatchState.get_buildings_on_tile(_current_tile_id):
+		var inst := str(building.get("instance_id", ""))
+		var good := _primary_output_good_id(str(building.get("recipe_id", "")))
+		if inst == "" or good == "" or Catalog.get_internal_name(good) == "power":
+			continue
+		match index:
+			0:  # keep output on this tile
+				MatchState.set_output_stockpile_destination(inst, _current_tile_id, good)
+			1:  # sell this tile's output to market
+				MatchState.route_output_to_market(inst, good)
+			2:  # per building — clear the tile-wide override so each can be set on its own
+				MatchState.clear_output_stockpile_destination(inst)
+	_refresh_production_section()
+
+func _primary_output_good_id(recipe_id: String) -> String:
+	var outputs: Array = Catalog.get_recipe(recipe_id).get("outputs", [])
+	return str(outputs[0].get("good_id", "")) if outputs.size() > 0 else ""
 
 func _on_sell_mode_changed(_new_mode: int) -> void:
 	_sync_production_destination_option()
@@ -1716,14 +1731,28 @@ func _on_costs_updated() -> void:
 func _sync_production_destination_option() -> void:
 	if _production_destination_option == null:
 		return
-	var selected_index := 0
-	match MatchState.sell_mode:
-		MatchState.SellMode.STOCKPILE_ALL:
-			selected_index = 0
-		MatchState.SellMode.BUILDING_BY_BUILDING:
-			selected_index = 2
-		_:
-			selected_index = 1
+	# Reflect THIS tile's buildings: 0 all-on-tile, 1 all-to-market, 2 mixed/per-building.
+	var any := false
+	var all_market := true
+	var all_tile := true
+	for building in MatchState.get_buildings_on_tile(_current_tile_id):
+		var inst := str(building.get("instance_id", ""))
+		var good := _primary_output_good_id(str(building.get("recipe_id", "")))
+		if inst == "" or good == "" or Catalog.get_internal_name(good) == "power":
+			continue
+		any = true
+		if MatchState.is_output_market(inst, good):
+			all_tile = false
+		elif MatchState.get_output_stockpile_destination(inst, good) == _current_tile_id:
+			all_market = false
+		else:
+			all_market = false
+			all_tile = false
+	var selected_index := 2
+	if any and all_tile:
+		selected_index = 0
+	elif any and all_market:
+		selected_index = 1
 	_production_destination_option.select(selected_index)
 
 func _gui_input(event: InputEvent) -> void:
