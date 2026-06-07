@@ -46,10 +46,10 @@ border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.365, 0.412, 0.431, 1)
-corner_radius_top_left = 50
-corner_radius_top_right = 50
-corner_radius_bottom_right = 50
-corner_radius_bottom_left = 50
+corner_radius_top_left = 45
+corner_radius_top_right = 45
+corner_radius_bottom_right = 45
+corner_radius_bottom_left = 45
 shadow_color = Color(0.02, 0.035, 0.045, 0.55)
 shadow_size = 3
 shadow_offset = Vector2(0, 2)
@@ -65,10 +65,10 @@ border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.125, 0.157, 0.173, 1)
-corner_radius_top_left = 50
-corner_radius_top_right = 50
-corner_radius_bottom_right = 50
-corner_radius_bottom_left = 50
+corner_radius_top_left = 45
+corner_radius_top_right = 45
+corner_radius_bottom_right = 45
+corner_radius_bottom_left = 45
 shadow_color = Color(0.01, 0.02, 0.03, 0.7)
 shadow_size = 2
 shadow_offset = Vector2(0, 1)
@@ -84,10 +84,10 @@ border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.718, 0.792, 0.816, 1)
-corner_radius_top_left = 50
-corner_radius_top_right = 50
-corner_radius_bottom_right = 50
-corner_radius_bottom_left = 50
+corner_radius_top_left = 45
+corner_radius_top_right = 45
+corner_radius_bottom_right = 45
+corner_radius_bottom_left = 45
 shadow_color = Color(0.02, 0.035, 0.045, 0.55)
 shadow_size = 4
 shadow_offset = Vector2(0, 2)
@@ -269,9 +269,9 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -410.0
-offset_top = -60.0
-offset_right = 410.0
+offset_left = -375.0
+offset_top = -55.0
+offset_right = 375.0
 offset_bottom = 30.0
 grow_horizontal = 2
 grow_vertical = 0
@@ -292,9 +292,9 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -380.0
-offset_top = -110.0
-offset_right = 380.0
+offset_left = -345.0
+offset_top = -100.0
+offset_right = 345.0
 offset_bottom = -10.0
 grow_horizontal = 2
 grow_vertical = 0
@@ -302,7 +302,7 @@ theme_override_constants/separation = 10
 
 [node name="ConstructButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=322645843]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Construct"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -314,7 +314,7 @@ expand_icon = true
 
 [node name="ResourcesButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=1627309058]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Resources"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -326,7 +326,7 @@ expand_icon = true
 
 [node name="BuildingsButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=1728871726]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Buildings"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -338,7 +338,7 @@ expand_icon = true
 
 [node name="MapmodesButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=554623846]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Map Overlays"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -350,7 +350,7 @@ expand_icon = true
 
 [node name="MarketButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=758586746]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Markets"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -362,7 +362,7 @@ expand_icon = true
 
 [node name="PoliticsButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=301230184]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Politics"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -374,7 +374,7 @@ expand_icon = true
 
 [node name="TechButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=919485106]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Tech"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
