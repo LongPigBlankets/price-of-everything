@@ -286,6 +286,8 @@ func _expand() -> void:
 	content_vbox.show()
 	compact_cash_label.hide()
 	expand_icon.text = "▾"
+	# Draw above sibling panels (e.g. the tile view panel) while expanded.
+	move_to_front()
 	_cancel_collapse_timer()
 
 func _collapse() -> void:

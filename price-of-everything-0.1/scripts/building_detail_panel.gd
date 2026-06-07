@@ -3,6 +3,7 @@ extends PanelContainer
 @onready var title_label: Label = $MarginContainer/VBoxContainer/HeaderRow/TitleLabel
 @onready var close_button: Button = $MarginContainer/VBoxContainer/HeaderRow/CloseButton
 @onready var location_label: Label = $MarginContainer/VBoxContainer/LocationLabel
+@onready var building_image_banner: PanelContainer = $MarginContainer/VBoxContainer/BuildingImageBanner
 @onready var flow_summary: PanelContainer = $MarginContainer/VBoxContainer/FlowSummary
 @onready var flow_frame: PanelContainer = $MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame
 @onready var flow_row: HBoxContainer = $MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame/FlowRow
@@ -33,7 +34,22 @@ const FLOW_LARGE_HEIGHT := 130.0
 const FLOW_SINGLE_CELL_SIZE := Vector2(110, 110)
 const FLOW_GRID_CELL_SIZE := Vector2(62, 62)
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
+const GOODS_FRAME := preload("res://assets/ui/goods_frame.tres")  # 9-slice panel frame
+const SILVER_FRAME := preload("res://assets/ui/silver_frame.tres")  # beige chroma-keyed out
 const CONSTRUCTION_BLUR_SHADER := preload("res://assets/shaders/ui_blur.gdshader")
+# Per-building banner art shown in the BuildingImageBanner header, keyed by the
+# building's internal_name.
+const BUILDING_BANNERS := {
+	"mine": "res://assets/building_banners/mine.jpg",
+	"furnace": "res://assets/building_banners/furnace.jpg",
+	"eaf": "res://assets/building_banners/furnace.jpg",
+	"chem_plant": "res://assets/building_banners/chem_plant.jpg",
+	"petro_refinery": "res://assets/building_banners/petro_refinery.jpg",
+	"poly_plant": "res://assets/building_banners/poly_plant.jpg",
+}
+var _building_banner_rect: TextureRect = null
+var _building_banner_cache: Dictionary = {}
 const RECIPE_ARROW_PATH := "res://assets/icons/ui_icons/recipe_arrow.png"
 const RECIPE_POWER_ICON_PATH := "res://assets/icons/ui_icons/recipe_power_icon.png"
 const UPGRADE_ICON_PATH := "res://assets/icons/ui_icons/upgrade_icon_off_white.png"
@@ -116,6 +132,7 @@ var _tile_only_dialog: AcceptDialog = null
 var _rag_panel: PanelContainer = null
 var _action_button_row: HBoxContainer = null
 var _npc_panel: PanelContainer = null
+var _npc_label: Label = null
 var _construction_overlay: Control = null  # blur + "Under Construction" pill over the diagram
 var _showing_construction_instance: String = ""  # instance_id while rendering construction mode
 
@@ -126,9 +143,12 @@ func _ready() -> void:
 	if not _is_secondary_panel:
 		_prepare_building_panel_template()
 	close_button.pressed.connect(_hide_panel)
+	_setup_building_banner()
+	_apply_goods_frame_border()
 	_tooltip_theme = _make_tooltip_theme()
 	_style_flow_summary()
-	_build_status_right_rail()
+	# The status indicators now live in a horizontal strip inside the main column
+	# (built by _build_status_icon_column); the old vertical right rail is gone.
 	_build_status_icon_column()
 	_build_route_controls()
 	_build_upgrade_controls()
@@ -177,6 +197,57 @@ func _hide_panel() -> void:
 			if panel != null:
 				panel.hide()
 
+# Ornate goods-frame as a 9-slice BORDER around the panel — the navy background is
+# kept (the frame's centre is transparent), and the content is padded so it sits
+# inside the frame. Added after the template is duplicated so secondaries don't
+# inherit a duplicate overlay (each adds its own).
+func _apply_goods_frame_border() -> void:
+	# Navy background with no content margin so the overlay can reach the panel edge.
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.015686275, 0.058823529, 0.105882353, 1.0)
+	bg.set_corner_radius_all(8)
+	bg.set_content_margin_all(0)
+	add_theme_stylebox_override("panel", bg)
+	# Pad the inner content so it clears the ornate frame border.
+	if panel_margin != null:
+		for side in ["left", "right", "top", "bottom"]:
+			panel_margin.add_theme_constant_override("margin_" + side, 26)
+	# The frame border itself (transparent centre → navy shows through).
+	var frame := NinePatchRect.new()
+	frame.name = "GoodsFrameBorder"
+	frame.texture = SILVER_FRAME.texture  # beige chroma-keyed out → silver border only
+	frame.draw_center = false
+	# Cropped plate (transparent margin removed) → smaller 9-slice corners so the
+	# silver band sits flush with the panel edge.
+	frame.patch_margin_left = 18
+	frame.patch_margin_right = 18
+	frame.patch_margin_top = 18
+	frame.patch_margin_bottom = 18
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(frame)
+
+func _setup_building_banner() -> void:
+	if building_image_banner == null:
+		return
+	_building_banner_rect = TextureRect.new()
+	_building_banner_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_building_banner_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_building_banner_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_building_banner_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	building_image_banner.add_child(_building_banner_rect)
+
+func _update_building_banner(building_data: Dictionary) -> void:
+	if _building_banner_rect == null:
+		return
+	var internal := str(building_data.get("internal_name", "")).strip_edges().to_lower()
+	var path := str(BUILDING_BANNERS.get(internal, ""))
+	if path == "":
+		_building_banner_rect.texture = null
+		return
+	if not _building_banner_cache.has(path):
+		_building_banner_cache[path] = load(path) as Texture2D if ResourceLoader.exists(path) else null
+	_building_banner_rect.texture = _building_banner_cache.get(path)
+
 func _rebuild_fields(building: Dictionary) -> void:
 	for child in fields_vbox.get_children():
 		child.queue_free()
@@ -185,6 +256,7 @@ func _rebuild_fields(building: Dictionary) -> void:
 
 	_current_building = building
 	var building_data: Dictionary = Catalog.get_building(building.get("building_id", ""))
+	_update_building_banner(building_data)
 	var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 	_current_recipe = recipe
 	var category: String = building_data.get("category", "")
@@ -195,6 +267,9 @@ func _rebuild_fields(building: Dictionary) -> void:
 		owner_id = str(MatchState.get_building(str(building.get("instance_id", ""))).get("owner", ""))
 	if owner_id != "" and owner_id != "player_1" and owner_id != "tile_data":
 		_apply_npc_mode(true)
+		if _npc_label != null:
+			var is_ruins := str(building.get("building_id", "")) == "b_031"
+			_npc_label.text = ("Disused — operated by %s" % owner_id) if is_ruins else ("Building operated by %s" % owner_id)
 		title_label.text = _building_display_name(building, building_data, recipe) + _tile_title_suffix(building)
 		title_label.tooltip_text = _tile_title_tooltip(building)
 		location_label.visible = false
@@ -254,11 +329,11 @@ func _build_npc_panel() -> void:
 	vbox.add_theme_constant_override("separation", 12)
 	_npc_panel.add_child(vbox)
 
-	var label := Label.new()
-	label.text = "Building operated by the Three Diamonds Shipping Corporation"
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.add_theme_color_override("font_color", Color.WHITE)
-	vbox.add_child(label)
+	_npc_label = Label.new()
+	_npc_label.text = "Building operated by another party"
+	_npc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_npc_label.add_theme_color_override("font_color", Color.WHITE)
+	vbox.add_child(_npc_label)
 
 	var buy := Button.new()
 	buy.text = "Buy"
@@ -876,30 +951,83 @@ func _rebuild_output_route_detail() -> void:
 	for child in _output_route_detail.get_children():
 		child.queue_free()
 
-	var market_button := Button.new()
-	market_button.text = "Market"
-	market_button.custom_minimum_size = Vector2(0, ROUTE_BUTTON_HEIGHT)
-	market_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	market_button.pressed.connect(func() -> void:
-		# Route THIS building's output to market — does not flip the global sell mode.
-		MatchState.route_output_to_market(_current_building.get("instance_id", ""), _primary_output_good_id(_current_recipe))
+	var instance_id: String = _current_building.get("instance_id", "")
+	var source_tile: String = str(_current_building.get("tile_id", ""))
+	# One routing row PER output good, so every output of a multi-output recipe can be
+	# directed independently (the old single control only routed the primary output).
+	for good_id in _output_good_ids(_current_recipe):
+		_output_route_detail.add_child(_make_output_route_row(instance_id, source_tile, good_id))
+
+# All distinct output good ids of a recipe (resolving internal names).
+func _output_good_ids(recipe: Dictionary) -> Array:
+	var ids: Array = []
+	for o in _flow_output_items(recipe):
+		var gid := str(o.get("good_id", ""))
+		if gid == "":
+			var internal := str(o.get("internal_name", ""))
+			if internal != "":
+				gid = str(Catalog.get_good_by_internal_name(internal).get("id", ""))
+		if gid != "" and not ids.has(gid):
+			ids.append(gid)
+	return ids
+
+func _make_output_route_row(instance_id: String, source_tile: String, good_id: String) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var name_lbl := Label.new()
+	name_lbl.text = Catalog.get_display_name(good_id)
+	name_lbl.add_theme_font_size_override("font_size", ROUTE_LINK_FONT_SIZE)
+	box.add_child(name_lbl)
+
+	var btns := HBoxContainer.new()
+	btns.add_theme_constant_override("separation", 6)
+	btns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(btns)
+
+	var is_market := MatchState.is_output_market(instance_id, good_id)
+	var dest := MatchState.get_output_stockpile_destination(instance_id, good_id)
+	var on_tile := dest != "" and dest == source_tile
+	var other_tile := dest != "" and dest != source_tile
+
+	var market_btn := _make_route_choice_button("Market", is_market)
+	market_btn.pressed.connect(func() -> void:
+		# Route THIS output good to market — does not flip the global sell mode.
+		MatchState.route_output_to_market(instance_id, good_id)
 		_refresh_route_controls(_current_building, _current_recipe)
 		_output_route_detail.visible = true
 	)
-	_output_route_detail.add_child(market_button)
+	btns.add_child(market_btn)
 
-	var stockpile_button := Button.new()
-	stockpile_button.text = "Select tile to stockpile"
-	stockpile_button.custom_minimum_size = Vector2(0, ROUTE_BUTTON_HEIGHT)
-	stockpile_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stockpile_button.disabled = _primary_output_good_id(_current_recipe) == ""
-	stockpile_button.pressed.connect(func() -> void:
-		var instance_id: String = _current_building.get("instance_id", "")
-		var good_id := _primary_output_good_id(_current_recipe)
+	# "Store on tile" records this tile as the destination directly (no map mode).
+	var store_btn := _make_route_choice_button("Store on tile", on_tile)
+	store_btn.disabled = source_tile == ""
+	store_btn.pressed.connect(func() -> void:
+		MatchState.set_output_stockpile_destination(instance_id, source_tile, good_id)
+		_refresh_route_controls(_current_building, _current_recipe)
+		_output_route_detail.visible = true
+	)
+	btns.add_child(store_btn)
+
+	# "Send to other tile" opens the logistics map mode to pick a destination tile.
+	var other_btn := _make_route_choice_button("Send to other tile", other_tile)
+	other_btn.pressed.connect(func() -> void:
 		MatchState.begin_output_stockpile_selection(instance_id, good_id)
 		_output_route_detail.visible = false
 	)
-	_output_route_detail.add_child(stockpile_button)
+	btns.add_child(other_btn)
+	return box
+
+func _make_route_choice_button(text: String, active: bool) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = Vector2(0, ROUTE_BUTTON_HEIGHT)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.toggle_mode = true                 # pressed state shows the active destination
+	b.button_pressed = active
+	b.focus_mode = Control.FOCUS_NONE
+	return b
 
 func _open_secondary_building(building: Dictionary) -> void:
 	if building.is_empty():
@@ -1033,6 +1161,10 @@ func _position_visible_building_panels() -> void:
 	var right_edge := viewport_size.x - PANEL_EDGE_MARGIN
 	var top_edge := 30.0
 	var tile_panel := get_parent().get_node_or_null("TileInfoPanel") as Control
+	# The alternate (tabbed) TVP, when active, takes precedence as the anchor panel.
+	var tile_panel_v2 := get_parent().get_node_or_null("TileInfoPanelV2") as Control
+	if tile_panel_v2 != null and tile_panel_v2.visible:
+		tile_panel = tile_panel_v2
 	if tile_panel != null and tile_panel.visible:
 		right_edge = tile_panel.global_position.x - PANEL_EDGE_MARGIN
 		top_edge = tile_panel.global_position.y
@@ -1223,12 +1355,16 @@ func _style_flow_summary() -> void:
 	flow_arrow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 func _update_flow_summary(recipe: Dictionary) -> void:
-	var inputs: Array = recipe.get("inputs", [])
+	var inputs: Array = (recipe.get("inputs", []) as Array).duplicate()
+	# Solar/wind have no good inputs — show their tile potential as a text cell.
+	var potential := _recipe_potential(recipe)
+	if potential != "":
+		inputs.append({"_potential": potential})
 	var outputs: Array = _flow_output_items(recipe)
 	var large_layout: bool = inputs.size() >= 2 or outputs.size() >= 2
 	_resize_flow_summary(large_layout)
-	_populate_flow_grid(input_grid, inputs)
-	_populate_flow_grid(output_grid, outputs)
+	_populate_flow_grid(input_grid, inputs, true)
+	_populate_flow_grid(output_grid, outputs, false)
 	_update_flow_power(recipe)
 
 func _resize_flow_summary(large_layout: bool) -> void:
@@ -1239,7 +1375,7 @@ func _resize_flow_summary(large_layout: bool) -> void:
 	flow_arrow.custom_minimum_size = FLOW_ARROW_LARGE_SIZE if large_layout else FLOW_ARROW_COMPACT_SIZE
 	flow_arrow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
-func _populate_flow_grid(grid: GridContainer, goods: Array) -> void:
+func _populate_flow_grid(grid: GridContainer, goods: Array, is_input: bool = false) -> void:
 	for child in grid.get_children():
 		child.queue_free()
 
@@ -1255,18 +1391,21 @@ func _populate_flow_grid(grid: GridContainer, goods: Array) -> void:
 	var prefer_small := goods.size() > 1
 
 	if goods.is_empty():
-		grid.add_child(_make_flow_cell({}, cell_size, prefer_small))
+		grid.add_child(_make_flow_cell({}, cell_size, prefer_small, is_input))
 		return
 
 	for good_item in goods:
-		grid.add_child(_make_flow_cell(good_item, cell_size, prefer_small))
+		grid.add_child(_make_flow_cell(good_item, cell_size, prefer_small, is_input))
 
 func _flow_cell_size(good_count: int) -> Vector2:
 	if good_count <= 1:
 		return FLOW_SINGLE_CELL_SIZE
 	return FLOW_GRID_CELL_SIZE
 
-func _make_flow_cell(good_item: Dictionary, cell_size: Vector2, prefer_small: bool) -> Panel:
+func _make_flow_cell(good_item: Dictionary, cell_size: Vector2, prefer_small: bool, is_input: bool = false) -> Panel:
+	# Tile potential (wind/solar) inputs render as text inside the icon cell.
+	if good_item.has("_potential"):
+		return _make_potential_flow_cell(str(good_item["_potential"]), cell_size)
 	var cell := Panel.new()
 	cell.custom_minimum_size = cell_size
 	var texture: Texture2D = GoodIcons.texture_for(
@@ -1274,6 +1413,14 @@ func _make_flow_cell(good_item: Dictionary, cell_size: Vector2, prefer_small: bo
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(1.0, 1.0, 1.0, 0.0) if texture != null else FLOW_SQUARE_COLOR
+	# Supply source (your supply vs market) is kept as a hover tooltip only — the
+	# coloured border read as a stray dark-yellow square, so it's been removed.
+	if is_input:
+		var src_good_id := _flow_cell_good_id(good_item)
+		var instance_id := str(_current_building.get("instance_id", ""))
+		if src_good_id != "" and instance_id != "":
+			var from_player := MatchState.is_input_tile_only(instance_id, src_good_id)
+			cell.tooltip_text = "Supplied by you" if from_player else "Supplied by the market"
 	cell.add_theme_stylebox_override("panel", style)
 
 	if texture != null:
@@ -1288,6 +1435,49 @@ func _make_flow_cell(good_item: Dictionary, cell_size: Vector2, prefer_small: bo
 	_add_flow_quantity_badge(cell, good_item, cell_size)
 
 	return cell
+
+func _recipe_potential(recipe: Dictionary) -> String:
+	for req in recipe.get("requirements", []):
+		if str(req.get("type", "")).to_lower() == "potential":
+			var v := str(req.get("value", "")).to_lower()
+			if v.contains("solar"):
+				return "solar"
+			if v.contains("wind"):
+				return "wind"
+	var internal := str(Catalog.get_building(str(recipe.get("building_id", ""))).get("internal_name", "")).to_lower()
+	if internal.contains("solar_farm"):
+		return "solar"
+	if internal.contains("wind_farm"):
+		return "wind"
+	return ""
+
+func _make_potential_flow_cell(value: String, cell_size: Vector2) -> Panel:
+	var cell := Panel.new()
+	cell.custom_minimum_size = cell_size
+	var style := StyleBoxFlat.new()
+	style.bg_color = FLOW_SQUARE_COLOR
+	style.set_corner_radius_all(6)
+	cell.add_theme_stylebox_override("panel", style)
+	var label := Label.new()
+	label.text = "%s\npotential" % value.capitalize()
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", 11 if cell_size.x > 70 else 9)
+	label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cell.add_child(label)
+	cell.tooltip_text = "Requires %s potential on this tile" % value.capitalize()
+	return cell
+
+func _flow_cell_good_id(good_item: Dictionary) -> String:
+	var gid := str(good_item.get("good_id", ""))
+	if gid != "":
+		return gid
+	var internal := str(good_item.get("internal_name", ""))
+	if internal == "":
+		return ""
+	return str(Catalog.get_good_by_internal_name(internal).get("id", ""))
 
 func _add_flow_quantity_badge(cell: Panel, good_item: Dictionary, cell_size: Vector2) -> void:
 	if not _should_show_quantity_badge(good_item):
@@ -1454,8 +1644,9 @@ func _build_status_icon_column() -> void:
 	rag_style.set_content_margin_all(5)
 	rag_panel.add_theme_stylebox_override("panel", rag_style)
 	rag_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var rag_box := VBoxContainer.new()
-	rag_box.add_theme_constant_override("separation", 6)
+	# Horizontal strip (was a vertical rail).
+	var rag_box := HBoxContainer.new()
+	rag_box.add_theme_constant_override("separation", 10)
 	rag_panel.add_child(rag_box)
 
 	for config in STATUS_ICON_CONFIG:
@@ -1519,7 +1710,17 @@ func _build_status_icon_column() -> void:
 
 	rag_box.add_child(_cost_wrapper)
 	_rag_panel = rag_panel
-	status_icon_column.add_child(rag_panel)
+
+	# Place the strip in the main column, directly BELOW the recipe (inputs/outputs)
+	# flow summary. Remove the vertical split: hide the old rail and let the fields
+	# scroll fill the full width.
+	panel_vbox.add_child(rag_panel)
+	panel_vbox.move_child(rag_panel, flow_summary.get_index() + 1)
+	status_icon_column.visible = false
+	var scroll := fields_vbox.get_parent()
+	if scroll is Control:
+		(scroll as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 func _update_status_icons(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> void:
 	_set_status_dot("power", _power_status_color(building, recipe, is_infrastructure))
@@ -1665,12 +1866,10 @@ func _selected_output_route(building: Dictionary, recipe: Dictionary) -> Diction
 	)
 
 func _building_display_name(building: Dictionary, building_data: Dictionary, recipe: Dictionary) -> String:
-	var building_name: String = building_data.get("display_name", building.get("building_id", ""))
-	var output_name := _primary_output_display_name(recipe)
-	var letter := _building_letter_for_tile(building)
-	if output_name == "":
-		return "%s - %s" % [building_name, letter]
-	return "%s - %s - %s" % [building_name, output_name, letter]
+	# Codified naming: "<Type> - <Output> - <Letter>" (see building_naming.gd).
+	return BuildingNaming.label_for_tile(
+		str(building.get("tile_id", "")), str(building.get("instance_id", "")),
+		str(building.get("building_id", "")), str(building.get("recipe_id", "")))
 
 func _format_location(building: Dictionary) -> String:
 	var tile_id: String = building.get("tile_id", "")
@@ -1936,6 +2135,10 @@ func _position_for_visible_panels() -> void:
 	var top_edge := 30.0
 
 	var tile_panel := get_parent().get_node_or_null("TileInfoPanel") as Control
+	# The alternate (tabbed) TVP, when active, takes precedence as the anchor panel.
+	var tile_panel_v2 := get_parent().get_node_or_null("TileInfoPanelV2") as Control
+	if tile_panel_v2 != null and tile_panel_v2.visible:
+		tile_panel = tile_panel_v2
 	if tile_panel != null and tile_panel.visible:
 		right_edge = tile_panel.global_position.x - PANEL_EDGE_MARGIN
 		top_edge = tile_panel.global_position.y

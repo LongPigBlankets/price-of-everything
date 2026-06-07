@@ -17,6 +17,7 @@ signal materials_ordered(instance_id: String, tile_id: String)
 signal construction_materials_updated(instance_id: String, tile_id: String)
 signal construction_cancelled(instance_id: String, tile_id: String)
 
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 const STATUS_UNDER_CONSTRUCTION := "under_construction"
 const STATUS_AWAITING_MATERIALS := "awaiting_materials"
 
@@ -104,6 +105,7 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 		"reserved_space": float(building.get("tile_size_used", 1)),
 		"build_cost": build_cost,
 	}
+	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, recipe_id)
 	construction_started.emit(instance_id, tile_id)
 	return instance_id
 
@@ -130,7 +132,15 @@ func start_awaiting_market(building_id: String, recipe_id: String, tile_id: Stri
 	var duration: int = int(building.get("build_duration", 0))
 	var instance_id: String = MatchState.reserve_instance_id(building_id)
 
-	# Buy only the shortfall; goods already on the tile will be claimed in place next PROCESS.
+	# Reserve the in-place portion of every material RIGHT NOW, so co-located production
+	# buildings can't consume it before claim_materials runs. Only the shortfall is then
+	# bought and remains to be claimed on arrival. (Previously the in-place goods were
+	# left on the tile to be claimed "next PROCESS", which let production eat them first
+	# and stalled the build.)
+	for good_id in reqs:
+		var on_tile_part: int = int(reqs[good_id]) - int(missing.get(good_id, 0))
+		if on_tile_part > 0:
+			Stockpile.consume(tile_id, good_id, on_tile_part)
 	for good_id in missing:
 		MatchState.queue_buy(tile_id, good_id, int(missing[good_id]), false, {"construction_instance_id": instance_id})
 
@@ -141,12 +151,14 @@ func start_awaiting_market(building_id: String, recipe_id: String, tile_id: Stri
 		"tile_id": tile_id,
 		"status": STATUS_AWAITING_MATERIALS,
 		"required_materials": reqs,
-		"missing_materials": reqs.duplicate(),  # everything must be claimed off the tile
+		"missing_materials": missing.duplicate(),  # only the ordered shortfall remains
 		"turns_remaining": duration,
 		"construction_duration": duration,
 		"reserved_space": float(building.get("tile_size_used", 1)),
+		"source": {"kind": "market"},  # re-ordered from market each turn until secured
 		"build_cost": build_cost,
 	}
+	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, recipe_id)
 	materials_ordered.emit(instance_id, tile_id)
 	return instance_id
 
@@ -192,6 +204,12 @@ func start_awaiting_from_tile(building_id: String, recipe_id: String, dest_tile:
 	var duration: int = int(building.get("build_duration", 0))
 	var instance_id: String = MatchState.reserve_instance_id(building_id)
 
+	# Reserve the in-place portion now (see start_awaiting_market); only the shortfall is
+	# moved in from the source tile and remains to be claimed.
+	for good_id in reqs:
+		var on_tile_part: int = int(reqs[good_id]) - int(missing.get(good_id, 0))
+		if on_tile_part > 0:
+			Stockpile.consume(dest_tile, good_id, on_tile_part)
 	MatchState.queue_move(source_tile, dest_tile, missing, false, {"construction_instance_id": instance_id})
 
 	construction_projects[instance_id] = {
@@ -201,13 +219,14 @@ func start_awaiting_from_tile(building_id: String, recipe_id: String, dest_tile:
 		"tile_id": dest_tile,
 		"status": STATUS_AWAITING_MATERIALS,
 		"required_materials": reqs,
-		"missing_materials": reqs.duplicate(),
+		"missing_materials": missing.duplicate(),
 		"turns_remaining": duration,
 		"construction_duration": duration,
 		"reserved_space": float(building.get("tile_size_used", 1)),
 		"source": {"kind": "tile", "from_tile_id": source_tile},
 		"build_cost": build_cost,
 	}
+	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(dest_tile, instance_id, building_id, recipe_id)
 	materials_ordered.emit(instance_id, dest_tile)
 	return instance_id
 
@@ -216,6 +235,28 @@ func start_awaiting_from_tile(building_id: String, recipe_id: String, dest_tile:
 # required goods are sitting on its tile (arrived purchases or pre-existing stock), so the
 # construction owns them ahead of every other system. A project whose materials are all
 # secured transitions to under_construction and starts its countdown (next turn).
+# Market-sourced awaiting projects re-order any still-missing materials every turn, so a
+# build whose order failed at creation (e.g. the player was momentarily broke after paying
+# the build cost) self-heals once cash is available — instead of stalling forever. Only the
+# shortfall not already on the tile or inbound is ordered, to avoid double-buying.
+func reorder_market_materials() -> void:
+	for instance_id in construction_projects.keys():
+		var project: Dictionary = construction_projects[instance_id]
+		if str(project.get("status", "")) != STATUS_AWAITING_MATERIALS:
+			continue
+		if str(project.get("source", {}).get("kind", "")) != "market":
+			continue
+		var tile_id: String = str(project.get("tile_id", ""))
+		for good_id in (project.get("missing_materials", {}) as Dictionary).keys():
+			var need: int = int(project["missing_materials"][good_id])
+			var on_tile: int = Stockpile.get_at_tile(tile_id, str(good_id))
+			var inbound: int = 0
+			for shipment in MatchState.get_inbound_transport_shipments(tile_id, str(good_id)):
+				inbound += int(shipment.get("qty", 0))
+			var shortfall: int = need - on_tile - inbound
+			if shortfall > 0:
+				MatchState.queue_buy(tile_id, str(good_id), shortfall, false, {"construction_instance_id": instance_id})
+
 func claim_materials() -> void:
 	for instance_id in construction_projects.keys():
 		var project: Dictionary = construction_projects[instance_id]
