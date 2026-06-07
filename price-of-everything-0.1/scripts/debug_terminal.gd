@@ -6,6 +6,7 @@ extends CanvasLayer
 ##   cash <int>                       add that much cash (negative allowed)
 ##   sellmode <stockpile|market|building>  set the global production sell mode
 ##   swap tvp                         toggle between the classic and alternate Tile View Panel
+##   swap bottom menu                 toggle between the current and alternate bottom-menu icons
 ##   help                             list commands
 
 const TOGGLE_KEY := KEY_QUOTELEFT  # the ` / ~ key
@@ -110,17 +111,23 @@ func _run_command(text: String) -> String:
 					return "usage: sellmode <stockpile|market|building>"
 			return "sell mode → %s" % _sell_mode_name()
 		"swap":
-			if parts.size() < 2 or parts[1].to_lower() != "tvp":
-				return "usage: swap tvp  (current TVP: %s)" % _tvp_name()
-			MatchState.toggle_use_alt_tvp()
-			return "TVP → %s" % _tvp_name()
+			if parts.size() >= 2 and parts[1].to_lower() == "tvp":
+				MatchState.toggle_use_alt_tvp()
+				return "TVP → %s" % _tvp_name()
+			if parts.size() >= 3 and parts[1].to_lower() == "bottom" and parts[2].to_lower() == "menu":
+				MatchState.toggle_use_alt_bottom_menu()
+				return "Bottom menu icons → %s" % _bottom_menu_name()
+			return "usage: swap tvp  (current: %s)  |  swap bottom menu  (current: %s)" % [_tvp_name(), _bottom_menu_name()]
 		"help":
-			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap tvp   |   help"
+			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap tvp   |   swap bottom menu   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
 func _tvp_name() -> String:
 	return "alternate (tabbed)" if MatchState.use_alt_tvp else "classic"
+
+func _bottom_menu_name() -> String:
+	return "alternate" if MatchState.use_alt_bottom_menu else "current"
 
 func _sell_mode_name() -> String:
 	match MatchState.sell_mode:

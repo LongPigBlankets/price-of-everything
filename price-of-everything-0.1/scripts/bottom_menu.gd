@@ -14,6 +14,18 @@ const MENU_ICONS := {
 	"TechButton": "tech",
 }
 
+# Alternate icon set — single-resolution PNGs under assets/icons/ui_icons/alt/.
+# Toggled at runtime by the `swap bottom menu` cheat (MatchState.use_alt_bottom_menu).
+const ALT_MENU_ICONS := {
+	"ConstructButton": "construct",
+	"ResourcesButton": "goods",
+	"BuildingsButton": "building_ledger",
+	"MapmodesButton": "mapmodes",
+	"MarketButton": "market",
+	"PoliticsButton": "politics",
+	"TechButton": "research",
+}
+
 @onready var bottom_menu = %BottomMenu
 @onready var construct_panel = %ConstructPanel
 @onready var resource_panel: PanelContainer = %ResourcePanel
@@ -29,6 +41,8 @@ var building_ledger_panel: PanelContainer = null
 
 func _ready() -> void:
 	_apply_menu_icons()
+	# `swap bottom menu` cheat flips the icon set live.
+	MatchState.alt_bottom_menu_changed.connect(func(_enabled): _apply_menu_icons())
 	%ConstructButton.pressed.connect(_on_construct_pressed)
 	%ResourcesButton.pressed.connect(_on_resources_pressed)
 	%BuildingsButton.pressed.connect(_on_buildings_pressed)
@@ -60,14 +74,22 @@ func _icon_tier() -> String:
 	return "100"
 
 func _apply_menu_icons() -> void:
+	# Alternate set: single-resolution PNGs in assets/icons/ui_icons/alt/.
+	if MatchState.use_alt_bottom_menu:
+		for button_name in ALT_MENU_ICONS:
+			_set_button_icon(button_name, "res://assets/icons/ui_icons/alt/%s.png" % ALT_MENU_ICONS[button_name])
+		return
+	# Current set: multi-resolution circular art picked by window height.
 	var tier := _icon_tier()
 	for button_name in MENU_ICONS:
-		var path := "res://assets/icons/ui_icons/%s/%s.png" % [tier, MENU_ICONS[button_name]]
-		if not ResourceLoader.exists(path):
-			continue
-		var button := get_node_or_null("%" + button_name) as Button
-		if button != null:
-			button.icon = load(path)
+		_set_button_icon(button_name, "res://assets/icons/ui_icons/%s/%s.png" % [tier, MENU_ICONS[button_name]])
+
+func _set_button_icon(button_name: String, path: String) -> void:
+	if not ResourceLoader.exists(path):
+		return
+	var button := get_node_or_null("%" + button_name) as Button
+	if button != null:
+		button.icon = load(path)
 
 func _hide_all_panels() -> void:
 	_set_panel_visible(construct_panel, false)
