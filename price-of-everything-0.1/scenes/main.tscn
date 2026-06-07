@@ -99,6 +99,18 @@ corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_inner_outline"]
+draw_center = false
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.909804, 0.933333, 0.968627, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tile_banner"]
 bg_color = Color(1, 1, 1, 1)
 corner_radius_top_left = 8
@@ -282,6 +294,18 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_bottom_navy_fill")
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = ExtResource("8_silvfrm")
+
+[node name="InnerOutline" type="Panel" parent="UILayer/HUD/HUDContent/BottomMenuPanel/SilverFrame"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = -20.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_bottom_inner_outline")
 
 [node name="BottomMenu" type="HBoxContainer" parent="UILayer/HUD/HUDContent" unique_id=1999718027]
 unique_name_in_owner = true
