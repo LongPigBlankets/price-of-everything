@@ -12,6 +12,7 @@
 [ext_resource type="Script" uid="uid://b0bw6robispat" path="res://scripts/building_detail_panel.gd" id="6_tefeu"]
 [ext_resource type="Script" uid="uid://dpavib658u0dd" path="res://scripts/bottom_menu.gd" id="8_85g3d"]
 [ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="8_tipki"]
+[ext_resource type="StyleBox" path="res://assets/ui/silver_frame.tres" id="8_silvfrm"]
 [ext_resource type="PackedScene" uid="uid://qvtflfd45g0d" path="res://scenes/construct_panel.tscn" id="9_85g3d"]
 [ext_resource type="PackedScene" uid="uid://c8o4a3033eoqq" path="res://scenes/mapmodes_panel.tscn" id="10_jbj1t"]
 [ext_resource type="PackedScene" uid="uid://cp8eoe568wruq" path="res://scenes/resource_panel.tscn" id="11_ya4ey"]
@@ -35,76 +36,68 @@
 [ext_resource type="Script" path="res://scripts/search_overlay.gd" id="29_search"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_normal"]
-content_margin_left = 0.0
-content_margin_top = 0.0
-content_margin_right = 0.0
-content_margin_bottom = 0.0
+content_margin_left = 5.0
+content_margin_top = 5.0
+content_margin_right = 5.0
+content_margin_bottom = 5.0
 bg_color = Color(0.192, 0.294, 0.333, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.365, 0.412, 0.431, 1)
-corner_radius_top_left = 30
-corner_radius_top_right = 30
-corner_radius_bottom_right = 30
-corner_radius_bottom_left = 30
+corner_radius_top_left = 50
+corner_radius_top_right = 50
+corner_radius_bottom_right = 50
+corner_radius_bottom_left = 50
 shadow_color = Color(0.02, 0.035, 0.045, 0.55)
 shadow_size = 3
 shadow_offset = Vector2(0, 2)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_pressed"]
-content_margin_left = 0.0
-content_margin_top = 0.0
-content_margin_right = 0.0
-content_margin_bottom = 0.0
+content_margin_left = 5.0
+content_margin_top = 5.0
+content_margin_right = 5.0
+content_margin_bottom = 5.0
 bg_color = Color(0.149, 0.227, 0.263, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.125, 0.157, 0.173, 1)
-corner_radius_top_left = 30
-corner_radius_top_right = 30
-corner_radius_bottom_right = 30
-corner_radius_bottom_left = 30
+corner_radius_top_left = 50
+corner_radius_top_right = 50
+corner_radius_bottom_right = 50
+corner_radius_bottom_left = 50
 shadow_color = Color(0.01, 0.02, 0.03, 0.7)
 shadow_size = 2
 shadow_offset = Vector2(0, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_hover"]
-content_margin_left = 0.0
-content_margin_top = 0.0
-content_margin_right = 0.0
-content_margin_bottom = 0.0
+content_margin_left = 5.0
+content_margin_top = 5.0
+content_margin_right = 5.0
+content_margin_bottom = 5.0
 bg_color = Color(0.235, 0.361, 0.408, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.718, 0.792, 0.816, 1)
-corner_radius_top_left = 30
-corner_radius_top_right = 30
-corner_radius_bottom_right = 30
-corner_radius_bottom_left = 30
+corner_radius_top_left = 50
+corner_radius_top_right = 50
+corner_radius_bottom_right = 50
+corner_radius_bottom_left = 50
 shadow_color = Color(0.02, 0.035, 0.045, 0.55)
 shadow_size = 4
 shadow_offset = Vector2(0, 2)
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_silver_frame"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_navy_fill"]
 bg_color = Color(0.015686275, 0.058823529, 0.105882353, 1)
-border_width_left = 4
-border_width_top = 4
-border_width_right = 4
-border_width_bottom = 4
-border_color = Color(0.718, 0.792, 0.816, 1)
-corner_radius_top_left = 45
-corner_radius_top_right = 45
-corner_radius_bottom_right = 0
-corner_radius_bottom_left = 0
-shadow_color = Color(0.02, 0.035, 0.045, 0.55)
-shadow_size = 4
-shadow_offset = Vector2(0, 2)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tile_banner"]
 bg_color = Color(1, 1, 1, 1)
@@ -283,7 +276,12 @@ offset_bottom = 30.0
 grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_bottom_silver_frame")
+theme_override_styles/panel = SubResource("StyleBoxFlat_bottom_navy_fill")
+
+[node name="SilverFrame" type="Panel" parent="UILayer/HUD/HUDContent/BottomMenuPanel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = ExtResource("8_silvfrm")
 
 [node name="BottomMenu" type="HBoxContainer" parent="UILayer/HUD/HUDContent" unique_id=1999718027]
 unique_name_in_owner = true
