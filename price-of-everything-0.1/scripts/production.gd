@@ -43,6 +43,7 @@ func _process_production() -> void:
 	_building_turn_reports.clear()
 	_inbound_delivery_this_turn.clear()
 	_output_buffer.clear()
+	MatchState.reset_tile_sales_for_turn()  # per-turn sales figure, not accumulated
 	TurnProfiler.section_begin("power_reset")
 	Power.reset_for_turn()
 	TurnProfiler.section_end("power_reset")
@@ -96,6 +97,7 @@ func _process_production() -> void:
 	TurnProfiler.section_begin("construction")
 	Construction.tick_turn()
 	Construction.claim_materials()
+	Construction.reorder_market_materials()  # re-buy any still-missing build materials
 	TurnProfiler.section_end("construction")
 
 	var all_buildings: Array = MatchState.buildings.values()
@@ -406,6 +408,8 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		_record_building_output(building.instance_id, good.id, output_qty)
 
 func _process_transport_arrivals(summary: Dictionary) -> void:
+	# First, retry any shipments that arrived earlier at a then-full tile.
+	MatchState.retry_overflow_unload()
 	for shipment in MatchState.advance_transport_shipments():
 		if shipment.get("is_sale", false):
 			_credit_arrived_sale(shipment, summary)
@@ -419,12 +423,15 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 		var per_unit_transport: float = float(shipment.get("transport_cost", 0.0)) / float(qty)
 		_record_inbound_delivery(destination_tile, good_id, added, per_unit_transport)
 		if added < qty:
-			push_warning("[Production] Transport arrival for %s only stored %d/%d %s" % [
-				destination_tile,
-				added,
-				qty,
-				Catalog.get_display_name(good_id),
-			])
+			# Tile is full: hold the remainder instead of losing it. It waits on the
+			# tile and retries each turn until there's room (see retry_overflow_unload).
+			MatchState.hold_overflow_shipment({
+				"source_tile": str(shipment.get("source_tile", "")),
+				"destination_tile": destination_tile,
+				"good_id": good_id,
+				"qty": qty - added,
+				"construction_instance_id": str(shipment.get("construction_instance_id", "")),
+			})
 
 func _credit_arrived_sale(shipment: Dictionary, summary: Dictionary) -> void:
 	# A sale shipment reached its port this turn — pay out the locked-in revenue.
@@ -437,6 +444,7 @@ func _credit_arrived_sale(shipment: Dictionary, summary: Dictionary) -> void:
 			MatchState.add_money(rev)
 			_add_summary_sale(summary, gid, qty, rev)
 	if float(sale_record.get("total_revenue", 0.0)) > 0.0:
+		MatchState.record_tile_sale(str(sale_record.get("tile_id", "")), int(sale_record.get("total_qty", 0)), float(sale_record.get("total_revenue", 0.0)))
 		MatchState.emit_stockpile_market_sale_completed(sale_record)
 		var port_tile := str(shipment.get("destination_tile", ""))
 		if port_tile != "":
@@ -840,6 +848,13 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 	# without this each one re-routes from the port (costly on rail/road placement turns
 	# when the route cache is cold). {tile_id -> {"port": String, "lead": int}}.
 	var port_lead_by_tile: Dictionary = {}
+	# Aggregate per-turn market demand per (tile, good) across ALL co-located buildings
+	# FIRST. The pipeline target (need * (lead+1)) is netted against the tile-wide
+	# stockpile + in-transit, both shared by every building on the tile — so computing
+	# an order per building lets the first one's order zero out the rest, leaving extra
+	# duplicates perpetually starved. Summing demand up front tops the tile up for all
+	# of them. {tile_id -> {good_id -> {"need": int, "building_id": String}}}.
+	var demand_by_tile: Dictionary = {}
 	for building in all_buildings:
 		var recipe: Dictionary = Catalog.get_recipe(building.recipe_id)
 		if recipe.is_empty():
@@ -854,6 +869,20 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		var needs_power: bool = energy_req > 0 or recipe.get("output_name", "") == "power"
 		if needs_power and not Power.is_supplied(tile_id, energy_req):
 			continue
+		var tile_demand: Dictionary = demand_by_tile.get(tile_id, {})
+		for input in inputs:
+			var good_id := str(input.good_id)
+			if MatchState.is_input_tile_only(instance_id, good_id):
+				continue  # player opted this input out of market top-up
+			var need_per_turn := int(input.qty)
+			if need_per_turn <= 0:
+				continue
+			var entry: Dictionary = tile_demand.get(good_id, {"need": 0, "building_id": str(building.get("building_id", ""))})
+			entry["need"] = int(entry.get("need", 0)) + need_per_turn
+			tile_demand[good_id] = entry
+		demand_by_tile[tile_id] = tile_demand
+
+	for tile_id in demand_by_tile:
 		var pl: Dictionary = port_lead_by_tile.get(tile_id, {})
 		if pl.is_empty():
 			var port := Catalog.nearest_port_tile(tile_id)
@@ -868,13 +897,9 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		if str(pl.get("port", "")) == "":
 			continue
 		var lead: int = int(pl.get("lead", 1))
-		for input in inputs:
-			var good_id := str(input.good_id)
-			if MatchState.is_input_tile_only(instance_id, good_id):
-				continue  # player opted this input out of market top-up
-			var need_per_turn := int(input.qty)
-			if need_per_turn <= 0:
-				continue
+		var tile_demand: Dictionary = demand_by_tile[tile_id]
+		for good_id in tile_demand:
+			var need_per_turn: int = int(tile_demand[good_id].get("need", 0))
 			var target := need_per_turn * (lead + 1)
 			var order := target - Stockpile.get_at_tile(tile_id, good_id) - _inbound_qty(tile_id, good_id)
 			if order > 0:
@@ -885,7 +910,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 					summary.money_out += float(bought.get("cost", 0.0))
 					summary.purchased[good_id] = int(summary.purchased.get(good_id, 0)) + int(bought.get("qty", 0))
 					summary.purchased_cost[good_id] = float(summary.purchased_cost.get(good_id, 0.0)) + float(bought.get("goods_cost", 0.0))
-					_accumulate_by_type(summary.goods_purchased_by_type, str(building.get("building_id", "")), float(bought.get("goods_cost", 0.0)), 0)
+					_accumulate_by_type(summary.goods_purchased_by_type, str(tile_demand[good_id].get("building_id", "")), float(bought.get("goods_cost", 0.0)), 0)
 	# Player-set recurring market purchases (Purchases tab), delivered to the chosen tile.
 	for rb in MatchState.recurring_buys:
 		var rgood := str(rb.get("good", ""))

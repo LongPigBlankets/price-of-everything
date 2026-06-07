@@ -12,7 +12,7 @@ const POWER_COLORS: Dictionary = {
 	"cables_unused": Color(0.5, 0.5, 0.5),   # grey
 }
 
-const POWER_LABEL_FONT_SIZE := 22
+const POWER_LABEL_FONT_SIZE := 40
 const POWER_CIRCLE_RADIUS := 18.0
 const BUILD_TILE_VERTICAL_OFFSET := Vector2(0, -5)
 const BUILD_RED := Color(0.45, 0.02, 0.02, 0.42)
@@ -480,7 +480,9 @@ func _power_circle_radius() -> float:
 	return maxf(POWER_CIRCLE_RADIUS, minf(_tile_size().x, _tile_size().y) * 0.075)
 
 func _power_label_font_size() -> int:
-	return maxi(POWER_LABEL_FONT_SIZE, roundi(_power_circle_radius() * 0.85))
+	# Sized as a fraction of the tile (world units) — like the shipment/logistics
+	# overlay labels — so it scales with camera zoom. Larger coefficient = bigger.
+	return maxi(POWER_LABEL_FONT_SIZE, roundi(minf(_tile_size().x, _tile_size().y) * 0.18))
 
 func _get_power_status_for_tile(tile_data: Dictionary) -> Dictionary:
 	var tile_id: String = tile_data.get("id", "")

@@ -126,6 +126,22 @@ func setup(good_data: Dictionary) -> void:
 		Production.turn_processed.connect(_on_turn_processed)
 	_refresh()
 
+# ── Filter helpers (used by the market panel's filter bar) ───────────────────
+## True when the player actually produces this good (a unit cost has been solved).
+func is_produced() -> bool:
+	return CostSolver.get_good_unit_cost(good_id) >= 0.0
+
+## Profit per unit sold to market last turn, or NAN when there were no sales.
+func profit_per_unit() -> float:
+	var summary: Dictionary = Production.last_turn_summary
+	var sold_entry: Dictionary = summary.get("sold", {}).get(good_id, {})
+	var sold_qty := int(sold_entry.get("qty", 0))
+	if sold_qty <= 0:
+		return NAN
+	var uc: float = CostSolver.get_good_unit_cost(good_id)
+	var sale_price := float(sold_entry.get("revenue", 0.0)) / float(sold_qty)
+	return sale_price - (uc if uc >= 0.0 else 0.0)
+
 func _fit_name_font_size(btn: Button) -> int:
 	# Largest font size (<= NAME_FS_MAX) at which NAME_BOUND fits the button width
 	# with NAME_RIGHT_PAD px clear of the right edge. Measured against the button's

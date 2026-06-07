@@ -3,6 +3,13 @@ extends Node2D
 @onready var terrain_layer: HexMap = %TerrainLayer
 @onready var info_panel: PanelContainer = %TileInfoPanel
 @onready var building_panel: PanelContainer = %BuildingDetailPanel
+## Alternate tabbed Tile View Panel (TVP v2), instantiated in code and shown only
+## while the `swap tvp` debug cheat has flipped MatchState.use_alt_tvp.
+var info_panel_v2: PanelContainer = null
+## The most recently selected tile, kept so a live TVP swap can re-render it.
+var _last_selected_tile: Dictionary = {}
+## True while the v2 stockpile "Move/Sell" flow is picking a destination tile.
+var _v2_picking_dest: bool = false
 @onready var end_turn_button: Button = %EndTurnButton
 @onready var phase_label: Label = %PhaseLabel
 @onready var turn_counter: Label = %TurnCounter
@@ -106,6 +113,20 @@ func _ready() -> void:
 	# Capacity dialog: prompts the player when a tile first hits max storage.
 	_hud.add_child(load("res://scripts/capacity_dialog.gd").new())
 
+	# Overflow dialog: prompts when construction materials arrive at a full tile.
+	var overflow_dialog: Node = load("res://scripts/overflow_dialog.gd").new()
+	_hud.add_child(overflow_dialog)
+	overflow_dialog.go_to_stockpile_requested.connect(_on_go_to_tile_stockpile)
+
+	# Alternate tabbed Tile View Panel (TVP v2). Hidden until `swap tvp` flips the
+	# MatchState flag; lives next to the classic panel under HUDContent.
+	info_panel_v2 = load("res://scripts/tile_info_panel_v2.gd").new()
+	info_panel_v2.name = "TileInfoPanelV2"
+	hud_content.add_child(info_panel_v2)
+	info_panel_v2.building_clicked.connect(_on_v2_building_clicked)
+	info_panel_v2.pick_destination_requested.connect(_on_v2_pick_destination)
+	MatchState.alt_tvp_changed.connect(_on_alt_tvp_changed)
+
 	# Debug cheat terminal (toggle with the ` key)
 	add_child(load("res://scripts/debug_terminal.gd").new())
 
@@ -116,12 +137,39 @@ func _ready() -> void:
 
 	# Pre-place the NPC-owned ports (Three Diamonds Shipping Corporation)
 	_place_npc_ports()
+	# A disused/ruins building near Vandel's Skip (tile_22_16), owned by an NPC.
+	_place_ruins("tile_23_16")
 
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
 
 func _on_tile_selected(tile_data: Dictionary) -> void:
-	info_panel.show_tile(tile_data)
+	_last_selected_tile = tile_data
+	if MatchState.use_alt_tvp and info_panel_v2 != null:
+		info_panel.hide()
+		info_panel_v2.show_tile(tile_data)
+	else:
+		if info_panel_v2 != null:
+			info_panel_v2.hide()
+		info_panel.show_tile(tile_data)
+
+func _on_v2_building_clicked(building: Dictionary) -> void:
+	# v2 is added to HUDContent after the building panel, so it would otherwise draw
+	# on top. Raise the building panel FIRST (the re-sort re-asserts scene anchors),
+	# then show/position it — otherwise the first click positions then the re-sort
+	# undoes it, leaving an empty-looking panel until the next click.
+	building_panel.move_to_front()
+	building_panel.show_building(building)
+
+func _on_alt_tvp_changed(_enabled: bool) -> void:
+	# Live swap: if a tile panel is open, re-render the same tile in the now-active
+	# panel so the cheat takes effect without needing to re-click the tile.
+	var was_open := info_panel.visible or (info_panel_v2 != null and info_panel_v2.visible)
+	info_panel.hide()
+	if info_panel_v2 != null:
+		info_panel_v2.hide()
+	if was_open and not _last_selected_tile.is_empty():
+		_on_tile_selected(_last_selected_tile)
 
 func _on_output_stockpile_selection_started(selection: Dictionary) -> void:
 	_pending_stockpile_selection = selection.duplicate()
@@ -821,7 +869,40 @@ func _on_buy_tile_pick_requested() -> void:
 	terrain_layer.begin_stockpile_destination_selection("")
 	_enter_stockpile_ui_mode()
 
+func _tile_data_by_id(tile_id: String) -> Dictionary:
+	for coord in terrain_layer.tiles:
+		var td: Dictionary = terrain_layer.tiles[coord]
+		if str(td.get("id", "")) == tile_id:
+			return td
+	return {}
+
+func _on_go_to_tile_stockpile(tile_id: String) -> void:
+	var td := _tile_data_by_id(tile_id)
+	if td.is_empty():
+		return
+	_last_selected_tile = td
+	if MatchState.use_alt_tvp and info_panel_v2 != null:
+		info_panel.hide()
+		info_panel_v2._active_tab = "stock"
+		info_panel_v2.show_tile(td)
+	else:
+		if info_panel_v2 != null:
+			info_panel_v2.hide()
+		info_panel.show_tile(td)
+
+func _on_v2_pick_destination() -> void:
+	# Enter map pick mode but keep the v2 panel visible; the result returns via
+	# on_destination_picked() so the player can then confirm in the panel.
+	_v2_picking_dest = true
+	terrain_layer.begin_stockpile_destination_selection("")
+
 func _on_stockpile_destination_selected(tile_data: Dictionary) -> void:
+	if _v2_picking_dest:
+		_v2_picking_dest = false
+		terrain_layer.end_stockpile_destination_selection()
+		if info_panel_v2 != null:
+			info_panel_v2.on_destination_picked(str(tile_data.get("id", "")))
+		return
 	if not _buy.is_empty():
 		_on_buy_tile_picked(tile_data)
 		return
@@ -1110,6 +1191,17 @@ func _place_npc_ports() -> void:
 			continue
 		var instance_id := MatchState.add_building("b_004", "", tile_id, "Three Diamonds Shipping Corporation")
 		building_placed.emit(tile_id, "b_004", "", instance_id, coord)
+
+func _place_ruins(tile_id: String) -> void:
+	# A pre-placed disused/ruins building (b_031), NPC-owned to start with.
+	var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
+	if coord == Vector2i(-1, -1):
+		return
+	for iid in MatchState.tile_buildings.get(tile_id, []):
+		if str(MatchState.get_building(iid).get("building_id", "")) == "b_031":
+			return
+	var instance_id := MatchState.add_building("b_031", "", tile_id, "Abandoned Holdings")
+	building_placed.emit(tile_id, "b_031", "", instance_id, coord)
 
 func _tile_meets_recipe_requirements(tile_data: Dictionary, recipe: Dictionary) -> bool:
 	for req in recipe.get("requirements", []):

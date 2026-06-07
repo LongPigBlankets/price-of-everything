@@ -41,6 +41,14 @@ var _active_filters: Dictionary = {}   # building_type -> true
 var _output_good_filter: String = ""   # when set, show only producers of this good
 var _opened_for_good := false
 var _sort_mode: int = 0                # 0 name, 1 build cost, 2 materials cost
+# When opened from the TVP "Build" button: restrict to buildings/recipes valid for
+# this tile, and build directly there (no placement map-mode).
+var _tile_filter: String = ""
+var _tile_filter_data: Dictionary = {}
+var _opened_for_tile := false
+# The anchored "home" position; the panel always reopens here (item: don't reopen
+# where it was last dragged to).
+var _home_offset := Vector2.ZERO
 
 func _ready() -> void:
 	close_button.pressed.connect(hide)
@@ -56,6 +64,25 @@ func _ready() -> void:
 	_load_data()
 	_setup_controls()
 	_build_panel_content()
+	_home_offset = Vector2(offset_left, offset_top)
+
+func _reset_position() -> void:
+	# Restore the anchored home position (undo any drag). Setting position keeps
+	# the current size and just moves the panel back.
+	position = _home_offset
+
+## Open from the TVP "Build" button: only buildings/recipes valid for this tile,
+## and selecting a recipe builds it directly on this tile.
+func open_for_tile(tile_id: String, tile_data: Dictionary) -> void:
+	_opened_for_tile = true
+	_tile_filter = tile_id
+	_tile_filter_data = tile_data
+	_output_good_filter = ""
+	controls_vbox.visible = false
+	title_label.text = "Build on %s" % Catalog.tile_label(tile_id)
+	_build_panel_content()
+	show()
+	_opened_for_tile = false
 
 func open_for_output_good(good_id: String) -> void:
 	# Open the panel showing only buildings/recipes that produce good_id, with the
@@ -97,9 +124,14 @@ func _on_visibility_changed() -> void:
 	if not visible:
 		return
 	search_input.release_focus()
-	if not _opened_for_good and _output_good_filter != "":
-		# Normal open after a "produces X" open: restore the full browser.
+	# Always reopen at the anchored home position (undo any prior drag).
+	_reset_position.call_deferred()
+	var opened_special := _opened_for_good or _opened_for_tile
+	if not opened_special and (_output_good_filter != "" or _tile_filter != ""):
+		# Normal open after a filtered ("produces X" / tile) open: restore browser.
 		_output_good_filter = ""
+		_tile_filter = ""
+		_tile_filter_data = {}
 		controls_vbox.visible = true
 		title_label.text = "Construct Building"
 		_build_panel_content()
@@ -153,6 +185,27 @@ func _build_panel_content() -> void:
 	_section_labels.clear()
 	_section_expanded.clear()
 	_building_rows.clear()
+
+	if _tile_filter != "":
+		# Only buildings with at least one recipe valid for this tile, showing only
+		# the valid recipes.
+		var any_tile := false
+		for category in buildings_by_category.keys():
+			for b in buildings_by_category[category]:
+				var valid_recipes: Array = []
+				for r in recipes_by_building.get(b.id, []):
+					if _recipe_valid_for_tile(r, _tile_filter_data):
+						valid_recipes.append(r)
+				if not valid_recipes.is_empty():
+					any_tile = true
+					_add_building_row(b, content_vbox, true, valid_recipes)
+		if not any_tile:
+			var none := Label.new()
+			none.text = "No buildings can be built on this tile."
+			none.theme_type_variation = &"Caption"
+			content_vbox.add_child(none)
+		_refresh_build_mode_selection()
+		return
 
 	if _output_good_filter != "":
 		var by_building: Dictionary = {}
@@ -322,9 +375,40 @@ func _update_section_header(category: String) -> void:
 	_section_toggle_buttons[category].text = marker
 
 func _on_recipe_selected(building_id: String, recipe_id: String) -> void:
-	print("Recipe selected: %s for %s" % [recipe_id, building_id])
+	if _tile_filter != "":
+		# Opened from the TVP "Build": build directly on the known tile, no map-mode.
+		BuildMode.enter_build_mode(building_id, recipe_id)
+		BuildMode.attempt_build(_tile_filter)
+		BuildMode.exit_build_mode()
+		hide()
+		return
 	BuildMode.enter_build_mode(building_id, recipe_id)
 	_refresh_build_mode_selection()
+
+## A recipe is valid for a tile when its deposit / potential requirements are met.
+func _recipe_valid_for_tile(recipe: Dictionary, tile_data: Dictionary) -> bool:
+	for req in recipe.get("requirements", []):
+		var rtype := str(req.get("type", "")).to_lower()
+		var rval := str(req.get("value", "")).strip_edges().to_lower()
+		match rtype:
+			"deposit":
+				if not _tile_has_deposit(tile_data, rval):
+					return false
+			"potential":
+				if rval == "wind" and int(tile_data.get("wind_potential", 0)) <= 0:
+					return false
+				if rval == "solar" and int(tile_data.get("solar_potential", 0)) <= 0:
+					return false
+			_:
+				pass  # other requirement types don't gate tile validity here
+	return true
+
+func _tile_has_deposit(tile_data: Dictionary, name: String) -> bool:
+	for deposit in tile_data.get("deposits", []):
+		var bare := str(deposit).split("(")[0].strip_edges().to_lower()
+		if bare == name or bare.replace(" ", "_") == name or bare.replace("_", " ") == name:
+			return true
+	return false
 
 func _on_expand_toggled(building_id: String, is_expanded: bool) -> void:
 	print("Expand toggled: ", building_id, " expanded=", is_expanded)

@@ -39,6 +39,14 @@ var auto_sell_goods: Dictionary = {}                 # tile_id -> { good_id -> t
 const IMPACT_ANY := -1                               # auto-sell tolerance sentinel: no per-turn volume cap
 var auto_sell_impact: Dictionary = {}                # tile_id -> max price-impact % tolerated per turn (or IMPACT_ANY)
 var pending_transport_shipments: Array = []
+# Shipments that arrived at a destination tile whose stockpile was full and so
+# couldn't unload. They wait here and retry each turn until there's room.
+# Record: {source_tile, destination_tile, good_id, qty, turns_waiting, construction_instance_id}
+var overflow_shipments: Array = []
+# Realised market sales per source tile THIS TURN: tile_id -> {units, revenue}.
+# Reset at the start of each turn's processing so the figure is per-turn, not
+# accumulated.
+var sales_by_tile: Dictionary = {}
 var _shipment_id_counter: int = 0
 var recurring_moves: Array = []   # [{source, dest, goods}] re-issued every turn
 var scheduled_moves: Array = []   # [{source, dest, goods}] one-shot, fired next turn (e.g. split)
@@ -61,6 +69,12 @@ var sell_mode: int = SellMode.STOCKPILE_ALL
 # How the transport router picks a path between two tiles. FASTEST by default.
 enum RouteObjective { FASTEST, CHEAPEST, BLENDED }
 var route_objective: int = RouteObjective.FASTEST
+
+# Debug-only: when true the alternate tabbed Tile View Panel (TVP v2) is shown
+# instead of the classic one. Toggled at runtime via the `swap tvp` cheat.
+# Session-only; never persisted. Defaults to the alternate panel; `swap tvp`
+# flips back to the classic one.
+var use_alt_tvp: bool = true
 
 # --- Signals ---
 signal money_changed(new_amount: float) 
@@ -94,6 +108,10 @@ signal stockpile_market_sale_completed(sale_record: Dictionary)
 signal sell_surplus_changed(tile_id: String)
 signal transport_shipments_changed
 signal tile_land_owned_changed(tile_id: String)
+## A shipment arrived at a full tile and is now waiting to unload.
+signal overflow_shipment_held(record: Dictionary)
+## Debug cheat `swap tvp` flipped which Tile View Panel is active.
+signal alt_tvp_changed(enabled: bool)
 
 # --- Initialization ---
 func _ready() -> void:
@@ -230,6 +248,8 @@ func reset() -> void:
 	auto_sell_goods.clear()
 	auto_sell_impact.clear()
 	pending_transport_shipments.clear()
+	overflow_shipments.clear()
+	sales_by_tile.clear()
 	tile_land_owned.clear()
 	recurring_moves.clear()
 	scheduled_moves.clear()
@@ -260,6 +280,18 @@ func set_sell_mode(mode: int) -> void:
 	sell_mode = mode
 	sell_mode_changed.emit(mode)
 
+## Debug cheat: switch between the classic and alternate Tile View Panels.
+## Returns the new state. Session-only, never persisted.
+func set_use_alt_tvp(enabled: bool) -> bool:
+	if enabled == use_alt_tvp:
+		return use_alt_tvp
+	use_alt_tvp = enabled
+	alt_tvp_changed.emit(use_alt_tvp)
+	return use_alt_tvp
+
+func toggle_use_alt_tvp() -> bool:
+	return set_use_alt_tvp(not use_alt_tvp)
+
 func set_route_objective(objective: int) -> void:
 	if objective == route_objective:
 		return
@@ -281,50 +313,64 @@ func cancel_output_stockpile_selection() -> void:
 	pending_output_stockpile_selection.clear()
 	output_stockpile_selection_cancelled.emit()
 
+# Destinations are stored PER OUTPUT GOOD so a multi-output building (e.g. a
+# chlor-alkali plant making chlorine + sodium hydroxide + hydrogen) can route each
+# output independently. Shape: instance_id -> { good_id -> tile_id|MARKET_DESTINATION }.
 func set_output_stockpile_destination(instance_id: String, tile_id: String, good_id: String) -> void:
 	if instance_id == "" or tile_id == "" or good_id == "":
 		return
-	output_stockpile_destinations[instance_id] = {
-		"tile_id": tile_id,
-		"good_id": good_id,
-	}
+	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
+	per_good[good_id] = tile_id
+	output_stockpile_destinations[instance_id] = per_good
 	pending_output_stockpile_selection.clear()
 	output_stockpile_destination_changed.emit(instance_id, tile_id, good_id)
 
-func clear_output_stockpile_destination(instance_id: String) -> void:
+func clear_output_stockpile_destination(instance_id: String, good_id: String = "") -> void:
 	if instance_id == "":
 		return
-	output_stockpile_destinations.erase(instance_id)
+	if good_id == "":
+		output_stockpile_destinations.erase(instance_id)  # clear the whole building
+		return
+	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
+	per_good.erase(good_id)
+	if per_good.is_empty():
+		output_stockpile_destinations.erase(instance_id)
+	else:
+		output_stockpile_destinations[instance_id] = per_good
 
 func get_output_stockpile_destination(instance_id: String, good_id: String = "") -> String:
-	var destination: Dictionary = output_stockpile_destinations.get(instance_id, {})
-	if destination.is_empty():
+	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
+	if per_good.is_empty():
 		return ""
-	if good_id != "" and destination.get("good_id", "") != good_id:
-		return ""
-	var tile_id := str(destination.get("tile_id", ""))
-	if tile_id == MARKET_DESTINATION:
-		return ""  # a market route is not a stockpile tile
+	var tile_id := ""
+	if good_id != "":
+		tile_id = str(per_good.get(good_id, ""))
+	elif per_good.size() == 1:
+		tile_id = str(per_good.values()[0])  # unambiguous single-output building
+	if tile_id == "" or tile_id == MARKET_DESTINATION:
+		return ""  # unset, or a market route (not a stockpile tile)
 	return tile_id
 
 func route_output_to_market(instance_id: String, good_id: String) -> void:
-	# Per-building "send output to market" — does NOT touch the global sell_mode.
+	# Per-building, per-good "send output to market" — does NOT touch global sell_mode.
 	if instance_id == "" or good_id == "":
 		return
-	output_stockpile_destinations[instance_id] = {
-		"tile_id": MARKET_DESTINATION,
-		"good_id": good_id,
-	}
+	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
+	per_good[good_id] = MARKET_DESTINATION
+	output_stockpile_destinations[instance_id] = per_good
 	pending_output_stockpile_selection.clear()
 	output_stockpile_destination_changed.emit(instance_id, MARKET_DESTINATION, good_id)
 
 func is_output_market(instance_id: String, good_id: String = "") -> bool:
-	var destination: Dictionary = output_stockpile_destinations.get(instance_id, {})
-	if destination.is_empty():
+	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
+	if per_good.is_empty():
 		return false
-	if good_id != "" and destination.get("good_id", "") != good_id:
-		return false
-	return str(destination.get("tile_id", "")) == MARKET_DESTINATION
+	if good_id != "":
+		return str(per_good.get(good_id, "")) == MARKET_DESTINATION
+	for v in per_good.values():
+		if str(v) == MARKET_DESTINATION:
+			return true
+	return false
 
 func queue_stockpile_market_sale(tile_id: String) -> void:
 	if tile_id == "":
@@ -794,6 +840,58 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = 
 		for it in items:
 			log_market_sale(source_tile, port, str(it.good_id), int(it.qty), turns)
 	return {"items": items, "total_qty": total_qty, "revenue": total_revenue, "turns": turns, "port": port}
+
+## A shipment couldn't fully unload at a full tile — hold the remainder so the
+## goods aren't lost; it retries each turn.
+func hold_overflow_shipment(record: Dictionary) -> void:
+	var rec := record.duplicate(true)
+	rec["turns_waiting"] = int(rec.get("turns_waiting", 0))
+	overflow_shipments.append(rec)
+	overflow_shipment_held.emit(rec)
+	transport_shipments_changed.emit()
+
+func get_overflow_shipments_for_tile(tile_id: String) -> Array:
+	var out: Array = []
+	for r in overflow_shipments:
+		if str(r.get("destination_tile", "")) == tile_id:
+			out.append(r)
+	return out
+
+## Retry unloading every waiting shipment into its destination stockpile. Fully
+## unloaded ones drop off the list; the rest wait another turn. Call this before
+## construction claims materials so unloaded build materials are picked up.
+func retry_overflow_unload() -> void:
+	if overflow_shipments.is_empty():
+		return
+	var remaining: Array = []
+	for r in overflow_shipments:
+		var dest := str(r.get("destination_tile", ""))
+		var gid := str(r.get("good_id", ""))
+		var qty := int(r.get("qty", 0))
+		var added := Stockpile.add(dest, gid, qty) if (dest != "" and gid != "" and qty > 0) else 0
+		if added >= qty:
+			continue  # fully unloaded — drop it
+		r["qty"] = qty - added
+		r["turns_waiting"] = int(r.get("turns_waiting", 0)) + 1
+		remaining.append(r)
+	overflow_shipments = remaining
+	transport_shipments_changed.emit()
+
+## Clear per-turn sales at the start of each turn's processing.
+func reset_tile_sales_for_turn() -> void:
+	sales_by_tile.clear()
+
+## Record a realised market sale shipped from a source tile (units + £ revenue).
+func record_tile_sale(tile_id: String, units: int, revenue: float) -> void:
+	if tile_id == "" or (units <= 0 and revenue <= 0.0):
+		return
+	var rec: Dictionary = sales_by_tile.get(tile_id, {"units": 0, "revenue": 0.0})
+	rec["units"] = int(rec.get("units", 0)) + units
+	rec["revenue"] = float(rec.get("revenue", 0.0)) + revenue
+	sales_by_tile[tile_id] = rec
+
+func get_tile_sales(tile_id: String) -> Dictionary:
+	return sales_by_tile.get(tile_id, {"units": 0, "revenue": 0.0})
 
 func get_pending_transport_shipments() -> Array:
 	return pending_transport_shipments.duplicate(true)

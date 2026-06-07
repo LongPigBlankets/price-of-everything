@@ -21,6 +21,15 @@ var _keep_spin: SpinBox = null
 var _ledger_refreshers: Array = []  # Callables that rebuild the Transactions/Movements tabs
 # Buying now lives in the per-good "Purchase" flow on the world map (world_map.gd).
 
+# Filter bar (Good prices tab): search + three exclusive-ish toggle filters.
+var _search: LineEdit = null
+var _filter_produce_btn: Button = null
+var _filter_profit_btn: Button = null
+var _filter_unprofit_btn: Button = null
+var _filter_produce := false
+var _filter_profitable := false
+var _filter_unprofitable := false
+
 func _ready() -> void:
 	title_label.text = "Market"
 	close_button.pressed.connect(hide)
@@ -33,6 +42,7 @@ func _ready() -> void:
 	MatchState.purchase_for_good_requested.connect(func(_g: String) -> void: hide())
 	visibility_changed.connect(_on_panel_visibility_changed)
 	Production.turn_processed.connect(_refresh_ledgers)
+	Production.turn_processed.connect(func(_s: Dictionary = {}) -> void: _update_filter_availability())
 
 func _rebuild_header() -> void:
 	for c in header_static.get_children():
@@ -80,9 +90,11 @@ func _centre_and_resize() -> void:
 	# screen (capped to the viewport on narrow displays).
 	var vp := get_viewport_rect().size
 	var w := minf(1220.0, vp.x - 60.0)
-	var h := minf(640.0, vp.y - 80.0)
+	var base_h := minf(640.0, vp.y - 80.0)
+	var h := base_h + 40.0  # 40px taller…
+	var centred_top := maxf(40.0, (vp.y - base_h) / 2.0)
 	offset_left = maxf(0.0, (vp.x - w) / 2.0)
-	offset_top = maxf(40.0, (vp.y - h) / 2.0)
+	offset_top = maxf(0.0, centred_top - 40.0)  # …with the extra height added at the top
 	offset_right = offset_left + w
 	offset_bottom = offset_top + h
 
@@ -91,6 +103,7 @@ func _on_panel_visibility_changed() -> void:
 		return
 	_centre_and_resize()
 	_refresh_ledgers()
+	_update_filter_availability()
 	# Fresh open: clear the stale "recurring" choice on the Sales tab.
 	if _recurring_check != null:
 		_recurring_check.set_pressed_no_signal(false)
@@ -103,8 +116,10 @@ func _build_tabs() -> void:
 
 	var prices_tab := VBoxContainer.new()
 	prices_tab.name = "Good prices"
+	prices_tab.add_theme_constant_override("separation", 6)
 	main_vbox.remove_child(header_static)
 	main_vbox.remove_child(scroll)
+	prices_tab.add_child(_build_filter_row())  # search + filters, above the headers
 	prices_tab.add_child(header_static)  # table header sits above the rows
 	prices_tab.add_child(scroll)
 	tabs.add_child(prices_tab)
@@ -279,6 +294,133 @@ func _on_bulk_sell_pressed() -> void:
 	if _recurring_check != null and _recurring_check.button_pressed:
 		MatchState.add_recurring_bulk_sell(params)
 
+# ── Filter bar ───────────────────────────────────────────────────────────────
+func _build_filter_row() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+
+	_search = LineEdit.new()
+	_search.placeholder_text = "Search products…"
+	_search.clear_button_enabled = true
+	_search.size_flags_horizontal = Control.SIZE_EXPAND_FILL  # pushes filters to the right
+	_search.custom_minimum_size = Vector2(180, 0)
+	_search.text_changed.connect(func(_t: String) -> void: _apply_filters())
+	row.add_child(_search)
+
+	_filter_produce_btn = _make_filter_button("Goods you produce")
+	_filter_profit_btn = _make_filter_button("Profitable Goods")
+	_filter_unprofit_btn = _make_filter_button("Unprofitable Goods")
+	_filter_produce_btn.toggled.connect(func(p: bool) -> void: _on_filter_toggled("produce", p))
+	_filter_profit_btn.toggled.connect(func(p: bool) -> void: _on_filter_toggled("profit", p))
+	_filter_unprofit_btn.toggled.connect(func(p: bool) -> void: _on_filter_toggled("unprofit", p))
+	row.add_child(_filter_produce_btn)
+	row.add_child(_filter_profit_btn)
+	row.add_child(_filter_unprofit_btn)
+
+	_update_filter_availability()
+	return row
+
+func _make_filter_button(text: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.toggle_mode = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.size_flags_horizontal = Control.SIZE_SHRINK_END
+	b.add_theme_stylebox_override("normal", _filter_box(DS.PALETTE.BG_INSET, DS.PALETTE.BORDER_SOFT))
+	b.add_theme_stylebox_override("hover", _filter_box(DS.PALETTE.BG_HIGHLIGHT, DS.PALETTE.ACCENT))
+	b.add_theme_stylebox_override("pressed", _filter_box(DS.PALETTE.ACCENT, DS.PALETTE.ACCENT))
+	b.add_theme_stylebox_override("hover_pressed", _filter_box(DS.PALETTE.ACCENT, DS.PALETTE.ACCENT))
+	b.add_theme_stylebox_override("disabled", _filter_box(DS.PALETTE.BG_PANEL, DS.PALETTE.BORDER_SOFT))
+	b.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+	b.add_theme_color_override("font_hover_color", DS.PALETTE.TEXT)
+	b.add_theme_color_override("font_pressed_color", Color.WHITE)        # selected
+	b.add_theme_color_override("font_hover_pressed_color", Color.WHITE)
+	b.add_theme_color_override("font_disabled_color", DS.PALETTE.TEXT_DIM)
+	return b
+
+func _filter_box(bg: Color, border: Color) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = bg
+	s.border_color = border
+	s.set_border_width_all(1)
+	s.set_corner_radius_all(6)
+	s.content_margin_left = 12
+	s.content_margin_right = 12
+	s.content_margin_top = 6
+	s.content_margin_bottom = 6
+	return s
+
+func _on_filter_toggled(which: String, pressed: bool) -> void:
+	match which:
+		"produce":
+			_filter_produce = pressed
+		"profit":
+			_filter_profitable = pressed
+			# Profitable and Unprofitable are mutually exclusive.
+			if pressed and _filter_unprofit_btn.button_pressed:
+				_filter_unprofit_btn.set_pressed_no_signal(false)
+				_filter_unprofitable = false
+		"unprofit":
+			_filter_unprofitable = pressed
+			if pressed and _filter_profit_btn.button_pressed:
+				_filter_profit_btn.set_pressed_no_signal(false)
+				_filter_profitable = false
+	_apply_filters()
+
+func _apply_filters() -> void:
+	var q := _search.text.strip_edges().to_lower() if _search != null else ""
+	for row in rows:
+		if not is_instance_valid(row):
+			continue
+		var show := true
+		if q != "" and not Catalog.get_display_name(row.good_id).to_lower().contains(q):
+			show = false
+		if show and _filter_produce and not row.is_produced():
+			show = false
+		if show and _filter_profitable:
+			var p: float = row.profit_per_unit()
+			if is_nan(p) or p <= 0.0:
+				show = false
+		if show and _filter_unprofitable:
+			var p2: float = row.profit_per_unit()
+			if is_nan(p2) or p2 >= 0.0:
+				show = false
+		row.visible = show
+
+func _update_filter_availability() -> void:
+	if _filter_produce_btn == null:
+		return
+	var any_produce := false
+	var any_profit := false
+	var any_unprofit := false
+	for row in rows:
+		if not is_instance_valid(row):
+			continue
+		if row.is_produced():
+			any_produce = true
+		var p: float = row.profit_per_unit()
+		if not is_nan(p):
+			if p > 0.0:
+				any_profit = true
+			elif p < 0.0:
+				any_unprofit = true
+	_set_filter_enabled(_filter_produce_btn, any_produce, "You don't produce any goods yet.")
+	_set_filter_enabled(_filter_profit_btn, any_profit, "No goods were sold at a profit last turn.")
+	_set_filter_enabled(_filter_unprofit_btn, any_unprofit, "No goods were sold at a loss last turn.")
+	_apply_filters()
+
+func _set_filter_enabled(btn: Button, enabled: bool, reason: String) -> void:
+	btn.disabled = not enabled
+	btn.tooltip_text = "" if enabled else reason
+	if not enabled and btn.button_pressed:
+		btn.set_pressed_no_signal(false)
+		if btn == _filter_produce_btn:
+			_filter_produce = false
+		elif btn == _filter_profit_btn:
+			_filter_profitable = false
+		elif btn == _filter_unprofit_btn:
+			_filter_unprofitable = false
+
 func _build_content() -> void:
 	for child in content_vbox.get_children():
 		child.queue_free()
@@ -299,6 +441,7 @@ func _on_prices_updated() -> void:
 	for row in rows:
 		if is_instance_valid(row) and row.has_method("_refresh"):
 			row._refresh()
+	_update_filter_availability()
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:

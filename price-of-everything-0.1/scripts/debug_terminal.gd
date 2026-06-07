@@ -5,6 +5,7 @@ extends CanvasLayer
 ## Commands:
 ##   cash <int>                       add that much cash (negative allowed)
 ##   sellmode <stockpile|market|building>  set the global production sell mode
+##   swap tvp                         toggle between the classic and alternate Tile View Panel
 ##   help                             list commands
 
 const TOGGLE_KEY := KEY_QUOTELEFT  # the ` / ~ key
@@ -108,10 +109,18 @@ func _run_command(text: String) -> String:
 				_:
 					return "usage: sellmode <stockpile|market|building>"
 			return "sell mode → %s" % _sell_mode_name()
+		"swap":
+			if parts.size() < 2 or parts[1].to_lower() != "tvp":
+				return "usage: swap tvp  (current TVP: %s)" % _tvp_name()
+			MatchState.toggle_use_alt_tvp()
+			return "TVP → %s" % _tvp_name()
 		"help":
-			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   help"
+			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap tvp   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
+
+func _tvp_name() -> String:
+	return "alternate (tabbed)" if MatchState.use_alt_tvp else "classic"
 
 func _sell_mode_name() -> String:
 	match MatchState.sell_mode:
