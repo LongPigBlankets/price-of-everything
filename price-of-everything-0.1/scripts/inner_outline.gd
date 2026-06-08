@@ -18,7 +18,6 @@ func _ready() -> void:
 
 func _draw() -> void:
 	var w := size.x
-	var h := size.y
 	# Each button's ring as a circle in this node's local space: [cx, cy, radius].
 	var rings: Array = []
 	var menu := get_node_or_null("%BottomMenu")
@@ -28,10 +27,10 @@ func _draw() -> void:
 				var gx: float = c.global_position.x + c.size.x * 0.5
 				var gy: float = c.global_position.y + c.size.y * 0.5
 				rings.append([gx - global_position.x, gy - global_position.y, c.size.x * 0.5 + RING_PAD])
-	# One continuous stroke: up the left side, across the notched top, down the right.
+	# Just the notched rail: a horizontal line that dips into a round notch under
+	# each button. No vertical sides — the buttons sit so close to the edges that
+	# a side rising to a corner reads as a rounded-rect frame instead of notches.
 	var pts := PackedVector2Array()
-	pts.append(Vector2(1.0, h))
-	pts.append(Vector2(1.0, TOP_Y))
 	var x := 1.0
 	while x <= w - 1.0:
 		var y := TOP_Y
@@ -44,6 +43,4 @@ func _draw() -> void:
 					y = y_low  # follow the ring where it sits below the outline line
 		pts.append(Vector2(x, y))
 		x += 1.0
-	pts.append(Vector2(w - 1.0, TOP_Y))
-	pts.append(Vector2(w - 1.0, h))
 	draw_polyline(pts, COLOR, LINE_W, true)
