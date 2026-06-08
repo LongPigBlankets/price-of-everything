@@ -61,6 +61,7 @@ var _hovered := {}        # button -> true while the mouse is over it
 @onready var market_panel: PanelContainer = %MarketPanel
 @onready var mapmodes_button: Button = %MapmodesButton
 @onready var mapmodes_panel: PanelContainer = %MapModesPanel
+@onready var research_panel: Control = %ResearchPanel
 @onready var top_bar: PanelContainer = %TopBar
 @onready var money_panel: PanelContainer = %MoneyPanel
 @onready var take_loan_dialog: PanelContainer = %TakeLoanDialog
@@ -81,7 +82,7 @@ func _ready() -> void:
 	%BuildingsButton.pressed.connect(_on_buildings_pressed)
 	%MarketButton.pressed.connect(_on_market_pressed)
 	%PoliticsButton.pressed.connect(_on_politics_pressed)
-	%TechButton.pressed.connect(_on_tech_pressed)
+	%TechButton.pressed.connect(_on_research_pressed)
 	%PeopleButton.pressed.connect(_on_people_pressed)
 	money_panel.take_loan_dialog = take_loan_dialog
 	take_loan_dialog.loan_confirmed.connect(_on_loan_confirmed)
@@ -91,17 +92,19 @@ func _ready() -> void:
 	construct_panel.hide()
 	resource_panel.hide()
 	market_panel.hide()
+	research_panel.hide()
 	mapmodes_button.pressed.connect(_on_mapmodes_pressed)
 	mapmodes_panel.hide()
 	top_bar.money_widget_clicked.connect(_on_money_widget_clicked)
 	money_panel.hide()
 
 	# A button rises while its panel is open and drops when it closes. Buttons
-	# with no panel (Politics/Tech/People) and disabled buttons never rise.
+	# with no panel (Politics/People) and disabled buttons never rise.
 	_link_rise(construct_panel, %ConstructButton)
 	_link_rise(resource_panel, %ResourcesButton)
 	_link_rise(market_panel, %MarketButton)
 	_link_rise(mapmodes_panel, %MapmodesButton)
+	_link_rise(research_panel, %TechButton)
 
 func _icon_tier() -> String:
 	# Pick icon resolution from window height: sub-1080p -> 100, 1080p -> 200,
@@ -226,6 +229,7 @@ func _hide_all_panels() -> void:
 	_set_panel_visible(market_panel, false)
 	_set_panel_visible(mapmodes_panel, false)
 	_set_panel_visible(money_panel, false)
+	_set_panel_visible(research_panel, false)
 	if is_instance_valid(building_ledger_panel):
 		_set_panel_visible(building_ledger_panel, false)
 
@@ -346,8 +350,9 @@ func _on_buildings_pressed() -> void:
 func _on_politics_pressed() -> void:
 	print("Politics panel not yet implemented")
 
-func _on_tech_pressed() -> void:
-	print("Tech panel not yet implemented")
+func _on_research_pressed() -> void:
+	_hide_all_panels()
+	_set_panel_visible(research_panel, true)
 
 func _on_people_pressed() -> void:
 	print("People panel not yet implemented")

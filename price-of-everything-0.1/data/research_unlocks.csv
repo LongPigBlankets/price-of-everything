@@ -1,0 +1,205 @@
+category,prereq_1,prereq_2,prereq_3,prereq_othercategory,rank,Action,Object,Quantity,Unit,title,icon,description
+Mining and Surveying,,,,,I,Build,Mine,3,units,Improved Coal Mining,coal,Higher wall cuts and better sorting improve coal output.
+Mining and Surveying,,,,,I,Sell,Iron Ore,250,units,Beneficiated Iron Mining,iron,Basic washing and grading raise iron ore quality.
+Mining and Surveying,Improved Coal Mining,Beneficiated Iron Mining,,,II,Run,Mine,12,turns,Deep Seam Surveying,survey,Better bore data reveals richer seams and safer shafts.
+Mining and Surveying,Beneficiated Iron Mining,,,,II,Own,land,5,units,Copper Froth Flotation,copper,Froth cells lift copper recovery from marginal ore.
+Mining and Surveying,Deep Seam Surveying,Copper Froth Flotation,,,III,Run,Mine,15,turns,Automated Mine Dispatch,truck,Dispatch logic reduces idle haulage and loading delays.
+Petrochemistry,,,,,I,Build,Oil Refinery,3,units,Fractional Distillation,oil,Tall columns split crude into reliable process streams.
+Petrochemistry,Fractional Distillation,,,,I,Sell,Processed Oil,250,units,Catalytic Cracking,catalyst,Cracking units convert heavy fractions into useful inputs.
+Petrochemistry,Catalytic Cracking,,,,II,Run,Oil Refinery,12,turns,Polymer Feedstocks,poly,Olefin handling unlocks plastics and synthetic materials.
+Petrochemistry,Fractional Distillation,,,,II,Own,land,5,units,Solvent Recovery,solvent,Closed loops reclaim reagents from petrochemical lines.
+Petrochemistry,Polymer Feedstocks,Solvent Recovery,,,III,Run,Polymer Feedstocks,15,turns,Advanced Elastomers,rubber,Stable polymer blends improve seals belts and insulation.
+Metallurgy,,,,,I,Build,Furnace,3,units,Basic Blast Furnaces,furnace,Hotter burden control raises ingot consistency.
+Metallurgy,Basic Blast Furnaces,,,,I,Sell,Steel,250,units,Continuous Casting,cast,Continuous lines reduce waste and speed metal forming.
+Metallurgy,Continuous Casting,,,,II,Run,Steel Mill,12,turns,Alloy Heat Treatment,alloy,Controlled cycles strengthen common engineering alloys.
+Metallurgy,Alloy Heat Treatment,,,,II,Own,land,5,units,Electric Arc Refining,eaf,Arc furnaces recycle scrap into precise steel grades.
+Metallurgy,Electric Arc Refining,,,,III,Run,Glass,15,turns,High Strength Glassmaking,glass,Refined furnace linings support stronger industrial glass.
+Inorganic Chemistry,,,,,I,Build,Chemical Plant,3,units,Chlor Alkali Cells,cell,Electrolysis creates chlorine caustic soda and hydrogen.
+Inorganic Chemistry,Chlor Alkali Cells,,,,I,Sell,Chlorine,250,units,Acid Gas Scrubbing,scrub,Scrubbers clean acidic emissions for safer processing.
+Inorganic Chemistry,Acid Gas Scrubbing,,,,II,Run,Chemical Plant,12,turns,Industrial Salt Purification,salt,Purified salts improve chemical yields and reliability.
+Inorganic Chemistry,Chlor Alkali Cells,,,,II,Own,land,5,units,Ceramic Catalyst Supports,ceramic,Porous ceramics improve surface reactions in reactors.
+Inorganic Chemistry,Industrial Salt Purification,Ceramic Catalyst Supports,,,III,Run,Precision Reagent Handling,15,turns,Precision Reagent Handling,flask,Accurate dosing unlocks more demanding chemical chains.
+Biochemistry,,,,,I,Build,Farm,3,units,Sterile Fermentation,ferment,Clean fermenters convert biomass into controlled outputs.
+Biochemistry,Sterile Fermentation,,,,I,Sell,Bioplastics,250,units,Enzyme Screening,enzyme,Screening discovers faster catalysts for bio routes.
+Biochemistry,Enzyme Screening,,,,II,Run,Bioreactor,12,turns,Bioplastic Precursors,bio,Renewable precursors reduce dependence on oil inputs.
+Biochemistry,Sterile Fermentation,,,,II,Own,land,5,units,Wastewater Bioreactors,water,Microbial treatment recovers usable water from effluent.
+Biochemistry,Bioplastic Precursors,Wastewater Bioreactors,,,III,Run,Cell Culture Automation,15,turns,Cell Culture Automation,culture,Automated cultures raise repeatability in bio production.
+Manufacturing,,,,,I,Build,Factory,3,units,Interchangeable Tooling,tools,Standardized fixtures make factory changeovers faster.
+Manufacturing,Interchangeable Tooling,,,,I,Sell,Motors,250,units,Precision Assembly Lines,assembly,Guided stations reduce defects in complex goods.
+Manufacturing,Precision Assembly Lines,,,,II,Run,Factory,12,turns,Motor Winding Automation,motor,Automated winding improves motor throughput.
+Manufacturing,Interchangeable Tooling,,,,II,Own,land,5,units,Composite Panel Pressing,press,Panel presses unlock stronger lightweight components.
+Manufacturing,Motor Winding Automation,Composite Panel Pressing,,,III,Run,Modular Factory Cells,15,turns,Modular Factory Cells,cell,Flexible cells let factories swap recipes with less downtime.
+Hydrocarbon Power,,,,,I,Build,Coal Power Plant,3,units,Pulverized Coal Boilers,boiler,Finer coal preparation improves boiler efficiency.
+Hydrocarbon Power,Pulverized Coal Boilers,,,,I,Sell,Power,250,units,Steam Turbine Upgrades,turbine,Better blades convert heat into more power.
+Hydrocarbon Power,Steam Turbine Upgrades,,,,II,Run,Gas Plant,12,turns,Combined Cycle Gas,gas,Waste heat recovery raises gas plant performance.
+Hydrocarbon Power,Pulverized Coal Boilers,,,,II,Own,land,5,units,Flue Heat Recovery,heat,Heat exchangers reclaim energy from exhaust streams.
+Hydrocarbon Power,Combined Cycle Gas,Flue Heat Recovery,,,III,Run,Grid Synchronous Generation,15,turns,Grid Synchronous Generation,grid,Stable governors support larger shared power networks.
+Renewable Power,,,,,I,Build,Solar Farm,3,units,Utility Solar Arrays,solar,Panel fields provide scalable daytime power.
+Renewable Power,Utility Solar Arrays,,,,I,Sell,Power,250,units,Onshore Wind Control,wind,Pitch control raises output in variable winds.
+Renewable Power,Onshore Wind Control,,,,II,Run,Wind Farm,12,turns,Battery Balancing,battery,Cell balancing extends storage life and capacity.
+Renewable Power,Utility Solar Arrays,,,,II,Own,land,5,units,Hydro Intake Design,hydro,Improved intakes stabilize river power generation.
+Renewable Power,Battery Balancing,Hydro Intake Design,,,III,Run,Renewable Dispatch Forecasting,15,turns,Renewable Dispatch Forecasting,forecast,Forecasts combine storage and renewables with fewer shortages.
+Infrastructure,,,,,I,Build,Roads,3,units,Reinforced Roadbeds,road,Better foundations increase road throughput and durability.
+Infrastructure,Reinforced Roadbeds,,,,I,Sell,Concrete,250,units,Pipe Trench Standards,pipe,Standard trenches make long pipe networks cheaper.
+Infrastructure,Pipe Trench Standards,,,,II,Run,Pipe Network,12,turns,High Pressure Mains,main,Stronger mains move liquids with fewer leaks.
+Infrastructure,Reinforced Roadbeds,,,,II,Own,land,5,units,Substation Layouts,substation,Clean layouts reduce cable losses and outage risk.
+Infrastructure,High Pressure Mains,Substation Layouts,,,III,Run,Utility Corridor,15,turns,Integrated Utility Corridors,corridor,Shared corridors simplify roads cables and pipes.
+Logistics,,,,,I,Build,Port,3,units,Depot Scheduling,depot,Depot timing reduces queueing at busy producers.
+Logistics,Depot Scheduling,,,,I,Sell,Freight,250,units,Containerized Freight,container,Standard containers speed port and rail transfer.
+Logistics,Containerized Freight,,,,II,Run,Depot,12,turns,Route Optimization,route,Optimized routing cuts empty trips across the network.
+Logistics,Depot Scheduling,,,,II,Own,land,5,units,Cold Chain Handling,cold,Temperature controls preserve sensitive goods in transit.
+Logistics,Route Optimization,Cold Chain Handling,,,III,Run,Dispatch Room,15,turns,Autonomous Dispatch Rooms,dispatch,Central dispatch coordinates fleets across regions.
+Markets and Operations,,,,,I,Build,Market Office,3,units,Spot Price Reporting,price,Frequent reporting makes market swings easier to read.
+Markets and Operations,Spot Price Reporting,,,,I,Sell,Steel,250,units,Forward Contracts,contract,Forward deals smooth revenue and input costs.
+Markets and Operations,Forward Contracts,,,,II,Run,Operations Desk,12,turns,Risk Desk Procedures,risk,Risk desks expose dangerous concentration before shocks.
+Markets and Operations,Spot Price Reporting,,,,II,Own,land,5,units,Maintenance Budgeting,budget,Budget cycles make upkeep costs more predictable.
+Markets and Operations,Risk Desk Procedures,Maintenance Budgeting,,,III,Run,Operations Planning,15,turns,Integrated Operations Planning,ops,Shared plans coordinate production finance and maintenance.
+People Management,,,,,I,Build,Training Office,3,units,Shift Supervisors,shift,Supervisors reduce downtime and improve site discipline.
+People Management,Shift Supervisors,,,,I,Sell,Labour,250,units,Safety Training,safety,Training lowers incidents in mines factories and plants.
+People Management,Safety Training,,,,II,Run,Factory,12,turns,Specialist Apprenticeships,apprentice,Apprenticeships grow skilled labor for advanced sites.
+People Management,Shift Supervisors,,,,II,Own,land,5,units,Union Liaison Offices,union,Liaison offices reduce disruption during expansion.
+People Management,Specialist Apprenticeships,Union Liaison Offices,,,III,Run,Continuous Improvement Team,15,turns,Continuous Improvement Teams,team,Small teams identify bottlenecks across operations.
+Mining and Surveying,"","","","",I,Build,Mine,2,units,Overburden Mapping,om,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,"","","","",I,Own,Mine,4,units,Shaft Ventilation Teams,svt,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,"","","","",I,Run,Mine,8,turns,Ore Stockpile Sorting,oss,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,"","","","",I,Buy,Mine,120,units,Blast Pattern Drilling,bpd,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,"","","","",I,Sell,Mine,160,units,Tailings Reclaim Pads,trp,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,"","","","",I,Run,Mine,85,percentage,Remote Pump Monitoring,rpm,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,"","","","",II,Build,Mine,2,units,Selective Ore Blending,sob,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,"","","","",II,Own,Mine,4,units,Pit Wall Stabilisation,pws,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,"","","","",II,Run,Mine,8,turns,Mine Fleet Telemetry,mft,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,"","","","",III,Buy,Mine,120,units,Autonomous Drill Rooms,adr,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,"","","","",III,Sell,Mine,160,units,Rare Vein Prospecting,rvp,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,"","","","",III,Run,Mine,85,percentage,Deep Mine Resilience,dmr,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Petrochemistry,"","","","",I,Build,Oil Refinery,2,units,Crude Assay Logging,cal,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
+Petrochemistry,"","","","",I,Own,Oil Refinery,4,units,Tank Farm Gauging,tfg,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
+Petrochemistry,"","","","",I,Run,Oil Refinery,8,turns,Heat Exchanger Cleaning,hec,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
+Petrochemistry,"","","","",I,Buy,Oil Refinery,120,units,Light Ends Recovery,ler,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
+Petrochemistry,"","","","",I,Sell,Oil Refinery,160,units,Catalyst Storekeeping,cs,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
+Petrochemistry,"","","","",I,Run,Oil Refinery,85,percentage,Solvent Loss Audits,sla,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
+Petrochemistry,"","","","",II,Build,Oil Refinery,2,units,Polymer Quality Loops,pql,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
+Petrochemistry,"","","","",II,Own,Oil Refinery,4,units,Refinery Energy Balance,reb,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
+Petrochemistry,"","","","",II,Run,Oil Refinery,8,turns,Sulphur Handling Units,shu,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
+Petrochemistry,"","","","",III,Buy,Oil Refinery,120,units,Olefin Scheduling,os,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
+Petrochemistry,"","","","",III,Sell,Oil Refinery,160,units,Advanced Process Control,apc,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
+Petrochemistry,"","","","",III,Run,Oil Refinery,85,percentage,Closed Carbon Loops,ccl,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
+Metallurgy,"","","","",I,Build,Steel Mill,2,units,Charge Basket Prep,cbp,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
+Metallurgy,"","","","",I,Own,Steel Mill,4,units,Slag Granulation,sg,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
+Metallurgy,"","","","",I,Run,Steel Mill,8,turns,Ladle Preheating,lp,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
+Metallurgy,"","","","",I,Buy,Steel Mill,120,units,Billet Inspection,bi,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
+Metallurgy,"","","","",I,Sell,Steel Mill,160,units,Scrap Yard Sorting,sys,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
+Metallurgy,"","","","",I,Run,Steel Mill,85,percentage,Refractory Patch Teams,rpt,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
+Metallurgy,"","","","",II,Build,Steel Mill,2,units,Vacuum Degassing,vd,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
+Metallurgy,"","","","",II,Own,Steel Mill,4,units,Rolling Mill Tensioning,rmt,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
+Metallurgy,"","","","",II,Run,Steel Mill,8,turns,Foundry Yield Audits,fya,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
+Metallurgy,"","","","",III,Buy,Steel Mill,120,units,Alloy Recipe Libraries,arl,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
+Metallurgy,"","","","",III,Sell,Steel Mill,160,units,Continuous Furnace Tuning,cft,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
+Metallurgy,"","","","",III,Run,Steel Mill,85,percentage,Ultra Clean Steel Practice,ucsp,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
+Inorganic Chemistry,"","","","",I,Build,Chemical Plant,2,units,Brine Intake Tests,bit,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
+Inorganic Chemistry,"","","","",I,Own,Chemical Plant,4,units,Reagent Label Discipline,rld,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
+Inorganic Chemistry,"","","","",I,Run,Chemical Plant,8,turns,Filter Cake Drying,fcd,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
+Inorganic Chemistry,"","","","",I,Buy,Chemical Plant,120,units,Caustic Storage Rules,csr,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
+Inorganic Chemistry,"","","","",I,Sell,Chemical Plant,160,units,Lime Slurry Control,lsc,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
+Inorganic Chemistry,"","","","",I,Run,Chemical Plant,85,percentage,Scrubber Packing Checks,spc,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
+Inorganic Chemistry,"","","","",II,Build,Chemical Plant,2,units,Membrane Cell Balancing,mcb,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
+Inorganic Chemistry,"","","","",II,Own,Chemical Plant,4,units,Acid Plant Heat Recovery,aphr,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
+Inorganic Chemistry,"","","","",II,Run,Chemical Plant,8,turns,Bulk Salt Logistics,bsl,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
+Inorganic Chemistry,"","","","",III,Buy,Chemical Plant,120,units,High Purity Chlorine,hpc,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
+Inorganic Chemistry,"","","","",III,Sell,Chemical Plant,160,units,Ceramic Reactor Linings,crl,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
+Inorganic Chemistry,"","","","",III,Run,Chemical Plant,85,percentage,Automated Reagent Rooms,arr,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
+Biochemistry,"","","","",I,Build,Bioreactor,2,units,Culture Media Prep,cmp,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
+Biochemistry,"","","","",I,Own,Bioreactor,4,units,Sterile Valve Checks,svc,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
+Biochemistry,"","","","",I,Run,Bioreactor,8,turns,Feedstock Pasteurisation,fp,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
+Biochemistry,"","","","",I,Buy,Bioreactor,120,units,Biofilter Maintenance,bm,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
+Biochemistry,"","","","",I,Sell,Bioreactor,160,units,Enzyme Batch Records,ebr,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
+Biochemistry,"","","","",I,Run,Bioreactor,85,percentage,Nutrient Recovery Tanks,nrt,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
+Biochemistry,"","","","",II,Build,Bioreactor,2,units,Fermenter Yield Audits,fya,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
+Biochemistry,"","","","",II,Own,Bioreactor,4,units,Strain Library Handling,slh,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
+Biochemistry,"","","","",II,Run,Bioreactor,8,turns,Effluent Biomass Capture,ebc,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
+Biochemistry,"","","","",III,Buy,Bioreactor,120,units,Continuous Fermentation,cf,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
+Biochemistry,"","","","",III,Sell,Bioreactor,160,units,Precision Culture Rooms,pcr,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
+Biochemistry,"","","","",III,Run,Bioreactor,85,percentage,Bio Route Integration,bri,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
+Manufacturing,"","","","",I,Build,Factory,2,units,Jig Calibration,jc,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
+Manufacturing,"","","","",I,Own,Factory,4,units,Tool Crib Audits,tca,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
+Manufacturing,"","","","",I,Run,Factory,8,turns,Line Balance Boards,lbb,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
+Manufacturing,"","","","",I,Buy,Factory,120,units,Fixture Changeover,fc,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
+Manufacturing,"","","","",I,Sell,Factory,160,units,Defect Tagging,dt,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
+Manufacturing,"","","","",I,Run,Factory,85,percentage,Parts Bin Kanban,pbk,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
+Manufacturing,"","","","",II,Build,Factory,2,units,Servo Press Tuning,spt,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
+Manufacturing,"","","","",II,Own,Factory,4,units,Assembly Cell Audits,aca,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
+Manufacturing,"","","","",II,Run,Factory,8,turns,Motor Test Benches,mtb,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
+Manufacturing,"","","","",III,Buy,Factory,120,units,Flexible Tool Libraries,ftl,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
+Manufacturing,"","","","",III,Sell,Factory,160,units,Lights Out Inspection,loi,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
+Manufacturing,"","","","",III,Run,Factory,85,percentage,Factory Level Two,flt,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
+Hydrocarbon Power,"","","","",I,Build,Power Plant,2,units,Coal Yard Moisture Tests,cymt,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
+Hydrocarbon Power,"","","","",I,Own,Power Plant,4,units,Boiler Tube Walkdowns,btw,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
+Hydrocarbon Power,"","","","",I,Run,Power Plant,8,turns,Ash Handling Routes,ahr,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
+Hydrocarbon Power,"","","","",I,Buy,Power Plant,120,units,Turbine Lube Checks,tlc,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
+Hydrocarbon Power,"","","","",I,Sell,Power Plant,160,units,Fuel Stock Forecasting,fsf,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
+Hydrocarbon Power,"","","","",I,Run,Power Plant,85,percentage,Stack Monitoring,sm,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
+Hydrocarbon Power,"","","","",II,Build,Power Plant,2,units,Heat Rate Audits,hra,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
+Hydrocarbon Power,"","","","",II,Own,Power Plant,4,units,Turbine Outage Planning,top,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
+Hydrocarbon Power,"","","","",II,Run,Power Plant,8,turns,Gas Peaker Dispatch,gpd,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
+Hydrocarbon Power,"","","","",III,Buy,Power Plant,120,units,Sootblower Automation,sa,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
+Hydrocarbon Power,"","","","",III,Sell,Power Plant,160,units,Integrated Fuel Control,ifc,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
+Hydrocarbon Power,"","","","",III,Run,Power Plant,85,percentage,High Reliability Thermal Fleet,hrtf,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
+Renewable Power,"","","","",I,Build,Renewable Site,2,units,Panel Cleaning Routes,pcr,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
+Renewable Power,"","","","",I,Own,Renewable Site,4,units,Wind Mast Surveys,wms,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
+Renewable Power,"","","","",I,Run,Renewable Site,8,turns,Inverter Spares,is,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
+Renewable Power,"","","","",I,Buy,Renewable Site,120,units,Hydro Trash Rack Checks,htrc,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
+Renewable Power,"","","","",I,Sell,Renewable Site,160,units,Battery Room Rounds,brr,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
+Renewable Power,"","","","",I,Run,Renewable Site,85,percentage,Weather Data Logging,wdl,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
+Renewable Power,"","","","",II,Build,Renewable Site,2,units,Array Curtailment Rules,acr,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
+Renewable Power,"","","","",II,Own,Renewable Site,4,units,Turbine Wake Mapping,twm,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
+Renewable Power,"","","","",II,Run,Renewable Site,8,turns,Storage Cycle Audits,sca,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
+Renewable Power,"","","","",III,Buy,Renewable Site,120,units,Hybrid Dispatch Desk,hdd,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
+Renewable Power,"","","","",III,Sell,Renewable Site,160,units,Long Duration Storage,lds,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
+Renewable Power,"","","","",III,Run,Renewable Site,85,percentage,Renewable Control Center,rcc,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
+Infrastructure,"","","","",I,Build,Infrastructure,2,units,Road Crew Scheduling,rcs,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
+Infrastructure,"","","","",I,Own,Infrastructure,4,units,Cable Trench Marking,ctm,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
+Infrastructure,"","","","",I,Run,Infrastructure,8,turns,Pipe Bedding Checks,pbc,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
+Infrastructure,"","","","",I,Buy,Infrastructure,120,units,Bridge Load Posting,blp,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
+Infrastructure,"","","","",I,Sell,Infrastructure,160,units,Drainage Ditch Clearing,ddc,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
+Infrastructure,"","","","",I,Run,Infrastructure,85,percentage,Substation Spares,ss,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
+Infrastructure,"","","","",II,Build,Infrastructure,2,units,Utility Easement Mapping,uem,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
+Infrastructure,"","","","",II,Own,Infrastructure,4,units,Road Surface Renewal,rsr,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
+Infrastructure,"","","","",II,Run,Infrastructure,8,turns,Pressure Zone Audits,pza,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
+Infrastructure,"","","","",III,Buy,Infrastructure,120,units,Smart Corridor Sensors,scs,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
+Infrastructure,"","","","",III,Sell,Infrastructure,160,units,Redundant Grid Loops,rgl,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
+Infrastructure,"","","","",III,Run,Infrastructure,85,percentage,Regional Utility Spine,rus,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
+Logistics,"","","","",I,Build,Depot,2,units,Loading Bay Marking,lbm,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
+Logistics,"","","","",I,Own,Depot,4,units,Truck Slot Booking,tsb,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
+Logistics,"","","","",I,Run,Depot,8,turns,Pallet Standardisation,ps,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
+Logistics,"","","","",I,Buy,Depot,120,units,Rail Siding Checks,rsc,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
+Logistics,"","","","",I,Sell,Depot,160,units,Port Crane Rosters,pcr,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
+Logistics,"","","","",I,Run,Depot,85,percentage,Depot Fuel Logs,dfl,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
+Logistics,"","","","",II,Build,Depot,2,units,Backhaul Matching,bm,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
+Logistics,"","","","",II,Own,Depot,4,units,Warehouse Cross Docking,wcd,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
+Logistics,"","","","",II,Run,Depot,8,turns,Fleet Maintenance Windows,fmw,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
+Logistics,"","","","",III,Buy,Depot,120,units,Regional Control Tower,rct,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
+Logistics,"","","","",III,Sell,Depot,160,units,Autonomous Yard Moves,aym,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
+Logistics,"","","","",III,Run,Depot,85,percentage,Multi Modal Dispatch,mmd,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
+Markets and Operations,"","","","",I,Build,Operations Desk,2,units,Daily Price Ledger,dpl,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
+Markets and Operations,"","","","",I,Own,Operations Desk,4,units,Input Cost Alerts,ica,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
+Markets and Operations,"","","","",I,Run,Operations Desk,8,turns,Contract Filing,cf,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
+Markets and Operations,"","","","",I,Buy,Operations Desk,120,units,Maintenance Backlog Review,mbr,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
+Markets and Operations,"","","","",I,Sell,Operations Desk,160,units,Working Capital Checks,wcc,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
+Markets and Operations,"","","","",I,Run,Operations Desk,85,percentage,Sales Mix Reports,smr,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
+Markets and Operations,"","","","",II,Build,Operations Desk,2,units,Margin Review Boards,mrb,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
+Markets and Operations,"","","","",II,Own,Operations Desk,4,units,Forward Sales Windows,fsw,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
+Markets and Operations,"","","","",II,Run,Operations Desk,8,turns,Reliability Accounting,ra,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
+Markets and Operations,"","","","",III,Buy,Operations Desk,120,units,Scenario Planning Desk,spd,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
+Markets and Operations,"","","","",III,Sell,Operations Desk,160,units,Portfolio Risk Signals,prs,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
+Markets and Operations,"","","","",III,Run,Operations Desk,85,percentage,Integrated Enterprise Planning,iep,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
+People Management,"","","","",I,Build,Workforce,2,units,Crew Briefing Boards,cbb,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+People Management,"","","","",I,Own,Workforce,4,units,Safety Walkarounds,sw,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+People Management,"","","","",I,Run,Workforce,8,turns,Shift Handover Notes,shn,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+People Management,"","","","",I,Buy,Workforce,120,units,Absence Cover Pool,acp,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+People Management,"","","","",I,Sell,Workforce,160,units,Skills Matrix,sm,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+People Management,"","","","",I,Run,Workforce,85,percentage,Supervisor Rounds,sr,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+People Management,"","","","",II,Build,Workforce,2,units,Apprentice Rotations,ar,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+People Management,"","","","",II,Own,Workforce,4,units,Incident Review Panels,irp,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+People Management,"","","","",II,Run,Workforce,8,turns,Retention Interviews,ri,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+People Management,"","","","",III,Buy,Workforce,120,units,Continuous Training Cells,ctc,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+People Management,"","","","",III,Sell,Workforce,160,units,Leadership Bench Planning,lbp,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+People Management,"","","","",III,Run,Workforce,85,percentage,High Trust Operating Model,htom,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
