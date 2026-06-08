@@ -153,7 +153,7 @@ func _make_alt_button_style(fg: Color, fill: Color) -> StyleBoxFlat:
 	sb.set_content_margin_all(0)
 	sb.shadow_color = Color(0.02, 0.035, 0.045, 0.55)
 	sb.shadow_size = 3
-	sb.shadow_offset = Vector2(2, 2)  # cast to the bottom-right (light from top-left)
+	sb.shadow_offset = Vector2(4, 4)  # to the bottom-right (offset > blur, light from top-left)
 	return sb
 
 func _apply_alt_button_style(button_name: String) -> void:
@@ -279,8 +279,10 @@ func _set_lifted(button: Button, lifted: bool) -> void:
 			_rest_styles[button][s] = sb
 			if sb is StyleBoxFlat:
 				var lf: StyleBoxFlat = sb.duplicate()
-				lf.shadow_size = 11
-				lf.shadow_offset = Vector2(8, 9)  # longer, to the bottom-right (light from top-left)
+				lf.shadow_size = 10
+				# Offset > blur so the shadow falls only to the bottom-right
+				# (diagonal with the top-left light), not straight down on the left.
+				lf.shadow_offset = Vector2(13, 13)
 				lf.shadow_color = Color(0, 0, 0, 0.55)
 				button.add_theme_stylebox_override(s, lf)
 		_ensure_specular(button).visible = true

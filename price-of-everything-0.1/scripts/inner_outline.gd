@@ -4,7 +4,7 @@ extends Control
 ## bottom of that button's ring (the part of the ring sitting below the outline
 ## line), meeting the straight edge at a sharp angle on each side.
 
-const COLOR := Color(0.995234, 0.930806, 0.763265)  # DS cream (same as the Build button text)
+const COLOR := Color(0.78, 0.80, 0.83)  # light metal grey
 const LINE_W := 2.0
 const TOP_Y := 1.0      # resting height of the straight outline (node-local)
 const RING_PAD := 1.5   # trace just outside the button edge so the notch reads
