@@ -51,6 +51,8 @@ const RISE_PX := 25.0
 const RISE_TIME := 0.12
 var _button_home_y := {}  # button -> resting y (captured on first rise)
 var _rise_tween := {}     # button -> active rise/drop tween
+var _lifted := {}         # button -> true while raised (longer shadow + specular)
+var _rest_styles := {}    # button -> resting styleboxes captured while lifting
 
 @onready var bottom_menu = %BottomMenu
 @onready var construct_panel = %ConstructPanel
@@ -112,6 +114,15 @@ func _icon_tier() -> String:
 	return "100"
 
 func _apply_menu_icons() -> void:
+	# Swapping menus re-applies resting styleboxes, so drop any lifted tracking.
+	_lifted.clear()
+	_rest_styles.clear()
+	for bn in MENU_ICONS:
+		var b := get_node_or_null("%" + bn) as Button
+		if b != null:
+			var sp := b.get_node_or_null("Specular")
+			if sp != null:
+				sp.visible = false
 	# Alternate set: single-resolution PNGs in assets/icons/ui_icons/alt/, each
 	# button recoloured to its own scheme (background fill + object/ring colour).
 	if MatchState.use_alt_bottom_menu:
@@ -246,6 +257,49 @@ func _raise_button(button: Button, raised: bool) -> void:
 	tw.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tw.tween_property(button, "position:y", target, RISE_TIME)
 	_rise_tween[button] = tw
+	_set_lifted(button, raised)
+
+# Lifted look for the selected button: a longer/softer drop shadow (it's higher
+# off the plate) and a faint specular highlight on the top of the disc.
+func _set_lifted(button: Button, lifted: bool) -> void:
+	if lifted == _lifted.get(button, false):
+		return
+	_lifted[button] = lifted
+	if lifted:
+		_rest_styles[button] = {}
+		for s in ["normal", "hover", "pressed", "focus"]:
+			var sb := button.get_theme_stylebox(s)
+			_rest_styles[button][s] = sb
+			if sb is StyleBoxFlat:
+				var lf: StyleBoxFlat = sb.duplicate()
+				lf.shadow_size = 11
+				lf.shadow_offset = Vector2(0, 9)
+				lf.shadow_color = Color(0, 0, 0, 0.55)
+				button.add_theme_stylebox_override(s, lf)
+		_ensure_specular(button).visible = true
+	else:
+		if _rest_styles.has(button):
+			for s in _rest_styles[button]:
+				if _rest_styles[button][s] != null:
+					button.add_theme_stylebox_override(s, _rest_styles[button][s])
+			_rest_styles.erase(button)
+		var sp := button.get_node_or_null("Specular")
+		if sp != null:
+			sp.visible = false
+
+func _ensure_specular(button: Button) -> TextureRect:
+	var sp := button.get_node_or_null("Specular") as TextureRect
+	if sp == null:
+		sp = TextureRect.new()
+		sp.name = "Specular"
+		sp.texture = load("res://assets/icons/ui_icons/alt/_specular.png")
+		sp.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		sp.stretch_mode = TextureRect.STRETCH_SCALE
+		sp.set_anchors_preset(Control.PRESET_FULL_RECT)
+		sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(sp)
+		sp.visible = false
+	return sp
 
 func _on_construct_pressed() -> void:
 	_hide_all_panels()
