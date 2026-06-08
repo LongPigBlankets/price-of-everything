@@ -46,6 +46,12 @@ const ALT_COLORS := {
 # alt menu is toggled back off.
 var _orig_button_styles := {}
 
+# Selected button rises while its panel is open, then drops when it closes.
+const RISE_PX := 30.0
+const RISE_TIME := 0.12
+var _button_home_y := {}  # button -> resting y (captured on first rise)
+var _rise_tween := {}     # button -> active rise/drop tween
+
 @onready var bottom_menu = %BottomMenu
 @onready var construct_panel = %ConstructPanel
 @onready var resource_panel: PanelContainer = %ResourcePanel
@@ -86,6 +92,13 @@ func _ready() -> void:
 	mapmodes_panel.hide()
 	top_bar.money_widget_clicked.connect(_on_money_widget_clicked)
 	money_panel.hide()
+
+	# A button rises while its panel is open and drops when it closes. Buttons
+	# with no panel (Politics/Tech/People) and disabled buttons never rise.
+	_link_rise(construct_panel, %ConstructButton)
+	_link_rise(resource_panel, %ResourcesButton)
+	_link_rise(market_panel, %MarketButton)
+	_link_rise(mapmodes_panel, %MapmodesButton)
 
 func _icon_tier() -> String:
 	# Pick icon resolution from window height: sub-1080p -> 100, 1080p -> 200,
@@ -214,6 +227,26 @@ func hide_bottom_menu() -> void:
 func show_bottom_menu() -> void:
 	bottom_menu.show()
 
+# Raise a button while its panel is visible; drop it when hidden. 120ms each way.
+func _link_rise(panel: Control, button: Button) -> void:
+	panel.visibility_changed.connect(func(): _raise_button(button, panel.visible))
+
+func _raise_button(button: Button, raised: bool) -> void:
+	if button == null or button.disabled:
+		return  # disabled / not-enabled buttons stay put
+	if raised and not _button_home_y.has(button):
+		_button_home_y[button] = button.position.y  # capture resting y once, post-layout
+	if not _button_home_y.has(button):
+		return  # never raised yet → nothing to drop
+	var home: float = _button_home_y[button]
+	var target: float = (home - RISE_PX) if raised else home
+	if _rise_tween.has(button) and _rise_tween[button] != null and _rise_tween[button].is_valid():
+		_rise_tween[button].kill()
+	var tw := create_tween()
+	tw.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(button, "position:y", target, RISE_TIME)
+	_rise_tween[button] = tw
+
 func _on_construct_pressed() -> void:
 	_hide_all_panels()
 	_set_panel_visible(construct_panel, true)
@@ -239,6 +272,7 @@ func _on_buildings_pressed() -> void:
 		building_ledger_panel.close_requested.connect(
 			func(): _set_panel_visible(building_ledger_panel, false)
 		)
+		_link_rise(building_ledger_panel, %BuildingsButton)
 	_set_panel_visible(building_ledger_panel, true)
 
 func _on_politics_pressed() -> void:
