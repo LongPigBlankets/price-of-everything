@@ -47,7 +47,7 @@ const ALT_COLORS := {
 var _orig_button_styles := {}
 
 # Selected button rises while its panel is open, then drops when it closes.
-const RISE_PX := 30.0
+const RISE_PX := 25.0
 const RISE_TIME := 0.12
 var _button_home_y := {}  # button -> resting y (captured on first rise)
 var _rise_tween := {}     # button -> active rise/drop tween
@@ -256,6 +256,10 @@ func _on_resources_pressed() -> void:
 	_set_panel_visible(resource_panel, true)
 
 func _on_mapmodes_pressed() -> void:
+	# Closes the other menu modals (construct/resources/buildings ledger/market/
+	# money) but leaves building-detail and tile-view panels alone — those aren't
+	# in _hide_all_panels().
+	_hide_all_panels()
 	_set_panel_visible(mapmodes_panel, true)
 
 func _on_market_pressed() -> void:
