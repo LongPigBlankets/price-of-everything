@@ -122,9 +122,10 @@ func _make_alt_button_style(fg: Color, fill: Color) -> StyleBoxFlat:
 	sb.set_border_width_all(6)  # 6px outer ring, same colour as the object
 	sb.border_color = fg
 	sb.set_corner_radius_all(45)  # round on the 90px button
-	# Negative so the objects render larger than the button and their outer
-	# reach (e.g. the hammer handle, politics block) pushes out to meet the ring.
-	sb.set_content_margin_all(-5)
+	# 0 keeps the icon filling the whole button (Godot clamps the expanded icon
+	# to the button rect, so negative margins have no extra effect). The objects'
+	# reach to the ring is handled by the artwork scale instead.
+	sb.set_content_margin_all(0)
 	sb.shadow_color = Color(0.02, 0.035, 0.045, 0.55)
 	sb.shadow_size = 3
 	sb.shadow_offset = Vector2(0, 2)
