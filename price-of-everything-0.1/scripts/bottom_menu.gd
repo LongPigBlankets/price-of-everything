@@ -145,7 +145,7 @@ func _apply_alt_button_style(button_name: String) -> void:
 	button.add_theme_stylebox_override("focus", _make_alt_button_style(fg, bg))
 	# Per-button glow texture: an inside-out radial (bright centre → fades to the
 	# ring) with the object cut out, so only the background glows on hover.
-	_ensure_alt_glow(button, bg.lightened(0.45), "res://assets/icons/ui_icons/alt/_glow_%s.png" % ALT_MENU_ICONS[button_name])
+	_ensure_alt_glow(button, Color(bg.lightened(0.3), 0.55), "res://assets/icons/ui_icons/alt/_glow_%s.png" % ALT_MENU_ICONS[button_name])
 
 func _ensure_alt_glow(button: Button, glow_color: Color, tex_path: String) -> void:
 	var glow := button.get_node_or_null("AltGlow") as TextureRect
