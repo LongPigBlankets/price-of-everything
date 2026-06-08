@@ -131,8 +131,6 @@ func _make_alt_button_style(fg: Color, fill: Color) -> StyleBoxFlat:
 	sb.shadow_offset = Vector2(0, 2)
 	return sb
 
-const ALT_GLOW_TEX := "res://assets/icons/ui_icons/alt/_hover_glow.png"
-
 func _apply_alt_button_style(button_name: String) -> void:
 	if not ALT_COLORS.has(button_name):
 		return
@@ -145,16 +143,15 @@ func _apply_alt_button_style(button_name: String) -> void:
 	button.add_theme_stylebox_override("hover", _make_alt_button_style(fg, bg))
 	button.add_theme_stylebox_override("pressed", _make_alt_button_style(fg, bg.darkened(0.08)))
 	button.add_theme_stylebox_override("focus", _make_alt_button_style(fg, bg))
-	_ensure_alt_glow(button, bg.lightened(0.45))
+	# Per-button glow texture: an inside-out radial (bright centre → fades to the
+	# ring) with the object cut out, so only the background glows on hover.
+	_ensure_alt_glow(button, bg.lightened(0.45), "res://assets/icons/ui_icons/alt/_glow_%s.png" % ALT_MENU_ICONS[button_name])
 
-# Hover glow: a soft additive ring of brighter-background colour just inside the
-# ring, fading toward the centre ("from the outside in"). Shown only on hover.
-func _ensure_alt_glow(button: Button, glow_color: Color) -> void:
+func _ensure_alt_glow(button: Button, glow_color: Color, tex_path: String) -> void:
 	var glow := button.get_node_or_null("AltGlow") as TextureRect
 	if glow == null:
 		glow = TextureRect.new()
 		glow.name = "AltGlow"
-		glow.texture = load(ALT_GLOW_TEX)
 		glow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		glow.stretch_mode = TextureRect.STRETCH_SCALE
 		glow.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -165,6 +162,8 @@ func _ensure_alt_glow(button: Button, glow_color: Color) -> void:
 		button.add_child(glow)
 		button.mouse_entered.connect(func(): glow.visible = MatchState.use_alt_bottom_menu)
 		button.mouse_exited.connect(func(): glow.visible = false)
+	if ResourceLoader.exists(tex_path):
+		glow.texture = load(tex_path)
 	glow.modulate = glow_color
 	glow.visible = false
 
