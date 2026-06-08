@@ -12,6 +12,7 @@ const MENU_ICONS := {
 	"MarketButton": "markets",
 	"PoliticsButton": "politics",
 	"TechButton": "tech",
+	"PeopleButton": "",  # empty slot in the current set (no icon)
 }
 
 # Alternate icon set — single-resolution PNGs under assets/icons/ui_icons/alt/.
@@ -24,6 +25,7 @@ const ALT_MENU_ICONS := {
 	"MarketButton": "market",
 	"PoliticsButton": "politics",
 	"TechButton": "research",
+	"PeopleButton": "people",
 }
 
 @onready var bottom_menu = %BottomMenu
@@ -49,6 +51,7 @@ func _ready() -> void:
 	%MarketButton.pressed.connect(_on_market_pressed)
 	%PoliticsButton.pressed.connect(_on_politics_pressed)
 	%TechButton.pressed.connect(_on_tech_pressed)
+	%PeopleButton.pressed.connect(_on_people_pressed)
 	money_panel.take_loan_dialog = take_loan_dialog
 	take_loan_dialog.loan_confirmed.connect(_on_loan_confirmed)
 	take_loan_dialog.hide()
@@ -82,14 +85,22 @@ func _apply_menu_icons() -> void:
 	# Current set: multi-resolution circular art picked by window height.
 	var tier := _icon_tier()
 	for button_name in MENU_ICONS:
-		_set_button_icon(button_name, "res://assets/icons/ui_icons/%s/%s.png" % [tier, MENU_ICONS[button_name]])
+		var icon_name: String = MENU_ICONS[button_name]
+		if icon_name == "":
+			_set_button_icon(button_name, "")  # empty slot → clear any icon
+		else:
+			_set_button_icon(button_name, "res://assets/icons/ui_icons/%s/%s.png" % [tier, icon_name])
 
 func _set_button_icon(button_name: String, path: String) -> void:
+	var button := get_node_or_null("%" + button_name) as Button
+	if button == null:
+		return
+	if path == "":
+		button.icon = null  # explicit empty slot
+		return
 	if not ResourceLoader.exists(path):
 		return
-	var button := get_node_or_null("%" + button_name) as Button
-	if button != null:
-		button.icon = load(path)
+	button.icon = load(path)
 
 func _hide_all_panels() -> void:
 	_set_panel_visible(construct_panel, false)
@@ -148,6 +159,9 @@ func _on_politics_pressed() -> void:
 
 func _on_tech_pressed() -> void:
 	print("Tech panel not yet implemented")
+
+func _on_people_pressed() -> void:
+	print("People panel not yet implemented")
 
 func _on_money_widget_clicked() -> void:
 	_hide_all_panels()
