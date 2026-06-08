@@ -62,8 +62,11 @@ const EDGE_NEIGHBOUR_ODD: Array[Vector2i] = [
 const WAVE_AMP := 18.0
 const WAVE_COUNT := 2.0
 const WAVE_SEGMENTS := 10
-const COAST_AMP := 30.0       # max coastline wobble (px in/out of a tile)
+const COAST_AMP := 30.0       # max smooth coastline wobble (px in/out of a tile)
 const COAST_SEGMENTS := 16    # more samples to resolve the higher-frequency octave
+const CORNER_MAX := 40.0      # max random displacement of a shared hex corner
+const SPIKE_AMP := 40.0       # occasional sharp coastline spike (px)
+const SPIKE_W := 0.09         # spike half-width in edge-fraction (small => sharp)
 const PATCH_RADIUS := 110.0
 const PATCH_SIDES := 22
 const TEX_WORLD := 900.0
@@ -191,13 +194,23 @@ func _is_sea_type(coord: Vector2i) -> bool:
 	var ty: String = str(t.get("type", ""))
 	return ty == "sea" or ty == "deep_sea"
 
+# Each shared hex corner gets a deterministic random offset (up to CORNER_MAX),
+# computed from its undisplaced world position so all three tiles meeting there
+# agree — the grid stays gap-free but the corners no longer pin the coastline.
+func _corner(p: Vector2) -> Vector2:
+	var cx := int(round(p.x))
+	var cy := int(round(p.y))
+	var mag: float = CORNER_MAX * pow(_hashf(cx, cy, 400), 1.05)
+	var ang: float = _hashf(cx, cy, 401) * TAU
+	return p + Vector2(cos(ang), sin(ang)) * mag
+
 func _hex_poly(coord: Vector2i, centre: Vector2) -> PackedVector2Array:
 	var offs: Array[Vector2i] = EDGE_NEIGHBOUR_ODD if (coord.x % 2) == 1 else EDGE_NEIGHBOUR_EVEN
 	var this_sea := _is_sea_type(coord)
 	var poly := PackedVector2Array()
 	for i in 6:
-		var a: Vector2 = centre + CORNERS[i]
-		var b: Vector2 = centre + CORNERS[(i + 1) % 6]
+		var a: Vector2 = _corner(centre + CORNERS[i])
+		var b: Vector2 = _corner(centre + CORNERS[(i + 1) % 6])
 		poly.append(a)
 		var ncoord: Vector2i = coord + offs[i]
 		var neigh: String = _status_at(ncoord)
@@ -222,7 +235,7 @@ func _hex_poly(coord: Vector2i, centre: Vector2) -> PackedVector2Array:
 # curve regardless of which way it walks the shared edge. Tapers to 0 at the
 # corners (which are shared by 3 tiles) and reaches at most COAST_AMP px in/out.
 func _coastline_curve(a: Vector2, b: Vector2) -> PackedVector2Array:
-	var flip := a.x > b.x
+	var flip := a.x > b.x or (a.x == b.x and a.y > b.y)
 	var p: Vector2 = b if flip else a
 	var q: Vector2 = a if flip else b
 	# Three octaves of sine (low/mid/high frequency) with independent random phases
@@ -234,6 +247,10 @@ func _coastline_curve(a: Vector2, b: Vector2) -> PackedVector2Array:
 	var p1: float = _edge_rand(p, q, 313) * TAU
 	var p2: float = _edge_rand(p, q, 314) * TAU
 	var p3: float = _edge_rand(p, q, 315) * TAU
+	# Every so often a single sharp spike (a narrow tent) pokes ~40px in or out.
+	var spiked: bool = _edge_rand(p, q, 320) > 0.5
+	var spike_t: float = lerpf(0.2, 0.8, _edge_rand(p, q, 321))
+	var spike_d: float = (1.0 if _edge_rand(p, q, 322) > 0.5 else -1.0) * SPIKE_AMP
 	var edge: Vector2 = q - p
 	var perp: Vector2 = Vector2(-edge.y, edge.x).normalized()
 	var canon := PackedVector2Array()
@@ -243,6 +260,8 @@ func _coastline_curve(a: Vector2, b: Vector2) -> PackedVector2Array:
 			+ 0.3 * sin(t * PI * f2 + p2)
 			+ 0.15 * sin(t * PI * f3 + p3))
 		var d: float = sin(PI * t) * amp * wobble  # taper to 0 at the shared corners
+		if spiked:
+			d += spike_d * maxf(0.0, 1.0 - absf(t - spike_t) / SPIKE_W)
 		canon.append(p + edge * t + perp * d)
 	if flip:
 		canon.reverse()
