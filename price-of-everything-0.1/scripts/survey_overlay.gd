@@ -62,6 +62,8 @@ const EDGE_NEIGHBOUR_ODD: Array[Vector2i] = [
 const WAVE_AMP := 18.0
 const WAVE_COUNT := 2.0
 const WAVE_SEGMENTS := 10
+const COAST_AMP := 30.0       # max coastline wobble (px in/out of a tile)
+const COAST_SEGMENTS := 10
 const PATCH_RADIUS := 110.0
 const PATCH_SIDES := 22
 const TEX_WORLD := 900.0
@@ -181,15 +183,30 @@ func _patch_poly(centre: Vector2) -> PackedVector2Array:
 		pts.append(centre + Vector2(cos(a), sin(a)) * r)
 	return pts
 
+func _is_sea_type(coord: Vector2i) -> bool:
+	var t: Variant = terrain_layer.tiles.get(coord)
+	if t == null:
+		return false
+	var ty: String = str(t.get("type", ""))
+	return ty == "sea" or ty == "deep_sea"
+
 func _hex_poly(coord: Vector2i, centre: Vector2) -> PackedVector2Array:
 	var offs: Array[Vector2i] = EDGE_NEIGHBOUR_ODD if (coord.x % 2) == 1 else EDGE_NEIGHBOUR_EVEN
+	var this_sea := _is_sea_type(coord)
 	var poly := PackedVector2Array()
 	for i in 6:
 		var a: Vector2 = centre + CORNERS[i]
 		var b: Vector2 = centre + CORNERS[(i + 1) % 6]
 		poly.append(a)
-		var neigh: String = _status_at(coord + offs[i])
-		if neigh == "surveyed" or neigh == "partial":
+		var ncoord: Vector2i = coord + offs[i]
+		var neigh: String = _status_at(ncoord)
+		if neigh == "unsurveyed" and this_sea != _is_sea_type(ncoord):
+			# Coastline: a shared randomised sine wobble (peninsulas/gulfs). Both the
+			# sea and land tiles trace the identical curve, so their fills stay
+			# complementary — blue spills onto land where the sea bulges in, cream
+			# spills onto sea where the land bulges out.
+			poly.append_array(_coastline_curve(a, b))
+		elif neigh == "surveyed" or neigh == "partial":
 			var edge: Vector2 = b - a
 			var perp: Vector2 = Vector2(-edge.y, edge.x).normalized()
 			var phase: float = a.x * 0.013 + a.y * 0.017
@@ -198,6 +215,32 @@ func _hex_poly(coord: Vector2i, centre: Vector2) -> PackedVector2Array:
 				var off: float = WAVE_AMP * sin(PI * t) * sin(t * PI * WAVE_COUNT + phase)
 				poly.append(a + edge * t + perp * off)
 	return poly
+
+# Interior wobble points for a coastline edge a->b. Computed in a canonical
+# corner order (+ midpoint hash) so the adjacent tile produces the same world
+# curve regardless of which way it walks the shared edge. Tapers to 0 at the
+# corners (which are shared by 3 tiles) and reaches at most COAST_AMP px in/out.
+func _coastline_curve(a: Vector2, b: Vector2) -> PackedVector2Array:
+	var flip := a.x > b.x
+	var p: Vector2 = b if flip else a
+	var q: Vector2 = a if flip else b
+	var amp: float = lerpf(15.0, COAST_AMP, _edge_rand(p, q, 300))
+	var ks: Array[float] = [1.0, 1.5, 2.0]
+	var k: float = ks[int(_edge_rand(p, q, 301) * 3.0) % 3]
+	var phase: float = _edge_rand(p, q, 302) * TAU
+	var edge: Vector2 = q - p
+	var perp: Vector2 = Vector2(-edge.y, edge.x).normalized()
+	var canon := PackedVector2Array()
+	for s in range(1, COAST_SEGMENTS):
+		var t: float = float(s) / float(COAST_SEGMENTS)
+		var d: float = sin(PI * t) * amp * sin(t * PI * k + phase)
+		canon.append(p + edge * t + perp * d)
+	if flip:
+		canon.reverse()
+	return canon
+
+func _edge_rand(p: Vector2, q: Vector2, salt: int) -> float:
+	return _hashf(int(round((p.x + q.x) * 0.5)), int(round((p.y + q.y) * 0.5)), salt)
 
 # --- hills ---
 func _draw_hills(coord: Vector2i, centre: Vector2, river_pts: Array) -> void:
