@@ -119,10 +119,12 @@ func _apply_menu_icons() -> void:
 func _make_alt_button_style(fg: Color, fill: Color) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = fill
-	sb.set_border_width_all(10)  # 10px outer ring, same colour as the object
+	sb.set_border_width_all(6)  # 6px outer ring, same colour as the object
 	sb.border_color = fg
 	sb.set_corner_radius_all(45)  # round on the 90px button
-	sb.set_content_margin_all(15)  # keep the object inside the ring (bg shows between)
+	# Slightly negative so the objects render full-size (not shrunk) and their
+	# outer reach (e.g. the hammer handle, politics block) meets the ring.
+	sb.set_content_margin_all(-2)
 	sb.shadow_color = Color(0.02, 0.035, 0.045, 0.55)
 	sb.shadow_size = 3
 	sb.shadow_offset = Vector2(0, 2)
