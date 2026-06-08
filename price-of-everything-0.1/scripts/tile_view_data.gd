@@ -634,6 +634,40 @@ static func deposits_summary(tile_id: String, tile_data: Dictionary) -> Array:
 		})
 	return rows
 
+## Deposits gated by the tile's survey status, for the Tile View Panel.
+## Returns {status, rows}. Each row adds to a deposits_summary row:
+##   - is_water:   water (Pure Water) is permanent and always shown.
+##   - size_qty:   -1 unknown/water, -2 "size ?" (partial), else the surveyed amount.
+##   - chip_label: ready-to-show label, e.g. "Coal (480)", "Coal (size ?)", "Pure Water".
+## Unsurveyed: only water is returned; the panel shows a "Deposits Unknown" line.
+## Depleted (mined-out) non-water deposits are dropped entirely.
+static func survey_gated_deposits(tile_id: String, tile_data: Dictionary) -> Dictionary:
+	var status := MatchState.survey_status(tile_id, str(tile_data.get("type", "")))
+	var rows: Array = []
+	for r in deposits_summary(tile_id, tile_data):
+		var token := str(r.get("deposit_token", ""))
+		var is_water := token == "water"
+		var remaining := MatchState.deposit_remaining_for(tile_id, token)
+		if not is_water and remaining == 0:
+			continue  # mined out — the deposit is gone
+		var row: Dictionary = (r as Dictionary).duplicate()
+		row["is_water"] = is_water
+		if is_water:
+			row["display_name"] = "Pure Water"
+			row["size_qty"] = -1
+			row["chip_label"] = "Pure Water"
+		elif status == "unsurveyed":
+			continue  # hidden; the panel shows "Deposits Unknown"
+		elif status == "partial":
+			row["size_qty"] = -2
+			row["chip_label"] = "%s (size ?)" % str(r.get("display_name", token))
+		else:  # surveyed: show the (depleting) amount when one is tracked
+			var n := remaining if remaining > 0 else int(r.get("qty", -1))
+			row["size_qty"] = n
+			row["chip_label"] = ("%s (%d)" % [str(r.get("display_name", token)), n]) if n >= 0 else str(r.get("display_name", token))
+		rows.append(row)
+	return {"status": status, "rows": rows}
+
 ## Bare deposit name: strips any "(1000)" amount and surrounding whitespace.
 static func _deposit_token(raw: String) -> String:
 	var name := raw

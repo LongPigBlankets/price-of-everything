@@ -80,6 +80,8 @@ func _ready() -> void:
 	Construction.construction_started.connect(func(_a = null, _b = null): _refresh_if_visible())
 	Construction.construction_completed.connect(func(_a = null, _b = null): _refresh_if_visible())
 	Construction.construction_cancelled.connect(func(_a = null, _b = null): _refresh_if_visible())
+	MatchState.surveyed_tiles_changed.connect(func(): _refresh_if_visible())
+	MatchState.deposits_changed.connect(func(_t = null): _refresh_if_visible())
 	# Awaiting-materials projects fire materials_ordered (not construction_started),
 	# so listen for it too — show the build the same turn it's placed.
 	Construction.materials_ordered.connect(func(_a = null, _b = null): _refresh_if_visible())
@@ -494,10 +496,12 @@ func _refresh_banner(tile_data: Dictionary) -> void:
 		_chips_row.add_child(_make_survey_button(survey))
 	var terrain := str(tile_data.get("type", "")).strip_edges().capitalize()
 	_chips_row.add_child(_make_chip(terrain if terrain != "" else "—", DS.PALETTE.TEXT_MUTED))
-	for deposit in tile_data.get("deposits", []):
-		var dep := str(deposit).strip_edges()
-		if dep != "":
-			_chips_row.add_child(_make_chip("%s deposit" % dep.capitalize(), DS.PALETTE.TEXT_MUTED))
+	# Deposits, gated by survey status (unknown / "size ?" / actual size; water always shown).
+	var gated: Dictionary = TileViewData.survey_gated_deposits(str(tile_data.get("id", "")), tile_data)
+	if gated.status == "unsurveyed":
+		_chips_row.add_child(_make_chip("Deposits Unknown", DS.PALETTE.TEXT_MUTED))
+	for row in gated.rows:
+		_chips_row.add_child(_make_chip(str(row.chip_label), DS.PALETTE.TEXT_MUTED))
 	# built | buyable | max — one row, same figures as the land rail.
 	var totals := TileViewData.land_totals(_current_tile_id, _current_tile_data)
 	var spacer := Control.new()
@@ -1362,11 +1366,17 @@ func _build_prod_pane(pane: VBoxContainer) -> void:
 	for r in prod.rows:
 		pane.add_child(_make_production_row(r))
 
-	# Deposits on this tile — buildable resources, with a Build / Go-to-building action.
-	var deposits := TileViewData.deposits_summary(_current_tile_id, _current_tile_data)
-	if not deposits.is_empty():
+	# Deposits on this tile — gated by survey status; buildable, with a Build action.
+	var gated: Dictionary = TileViewData.survey_gated_deposits(_current_tile_id, _current_tile_data)
+	if gated.status == "unsurveyed" or not gated.rows.is_empty():
 		pane.add_child(_make_section_header("Deposits", "buildable", "ok"))
-		for d in deposits:
+		if gated.status == "unsurveyed":
+			var unknown := Label.new()
+			unknown.text = "Deposits Unknown"
+			unknown.theme_type_variation = &"Body"
+			unknown.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+			pane.add_child(unknown)
+		for d in gated.rows:
 			pane.add_child(_make_deposit_row(d))
 
 func _make_deposit_row(d: Dictionary) -> HBoxContainer:
@@ -1375,14 +1385,15 @@ func _make_deposit_row(d: Dictionary) -> HBoxContainer:
 	row.custom_minimum_size = Vector2(0, 34)
 
 	var name_label := Label.new()
-	name_label.text = "%s deposit" % str(d.display_name)
+	name_label.text = str(d.display_name) if bool(d.get("is_water", false)) else "%s deposit" % str(d.display_name)
 	name_label.theme_type_variation = &"Body"
 	name_label.add_theme_font_size_override("font_size", 14)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(name_label)
 
+	var size_qty := int(d.get("size_qty", int(d.get("qty", -1))))
 	var qty := Label.new()
-	qty.text = ("%d" % int(d.qty)) if int(d.qty) >= 0 else "—"
+	qty.text = "?" if size_qty == -2 else (("%d" % size_qty) if size_qty >= 0 else "—")
 	qty.theme_type_variation = &"Numeric"
 	qty.add_theme_font_size_override("font_size", 12)
 	qty.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)

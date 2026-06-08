@@ -81,7 +81,8 @@ func open_for(tile_id: String, tile_name: String, is_partial: bool) -> void:
 	_is_partial = is_partial
 	_computers = 1 if is_partial else 2
 	_title_label.text = "Survey %s" % tile_name
-	_cost_label.text = "Cost: £%d  +  %d Computer%s" % [int(MONEY_COST), _computers, "" if _computers == 1 else "s"]
+	_cost_label.text = "Cost: £%d  +  %d Computer%s   ·   %d turns" % [
+		int(MONEY_COST), _computers, "" if _computers == 1 else "s", MatchState.SURVEY_TURNS]
 	_note_label.visible = not is_partial  # auto-reveal only happens on a full 2-turn survey
 	var buy_total: float = MONEY_COST + float(_computers) * MarketState.get_buy_price(COMPUTER)
 	_market_btn.text = "Order from market (£%d)" % int(round(buy_total))
@@ -109,12 +110,9 @@ func _on_stock() -> void:
 	_finish_survey()
 
 func _finish_survey() -> void:
-	if _is_partial:
-		MatchState.survey_partial_now(_tile_id)
-		MatchState.request_toast("Tile surveyed.", "success")
-	else:
-		MatchState.begin_survey(_tile_id)
-		MatchState.request_toast("Survey started — %d turns." % MatchState.SURVEY_TURNS, "success")
+	# Partially surveyed tiles don't auto-reveal a neighbour when finished.
+	MatchState.begin_survey(_tile_id, not _is_partial)
+	MatchState.request_toast("Survey started — %d turns." % MatchState.SURVEY_TURNS, "success")
 	_close()
 
 func _close() -> void:

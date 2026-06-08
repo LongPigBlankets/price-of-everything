@@ -145,6 +145,8 @@ func _ready() -> void:
 	_place_npc_ports()
 	# The port tiles start surveyed (the Surveying mapmode reveals them on turn 1).
 	MatchState.seed_surveyed_ports()
+	# Track depletable-deposit yields so mining can run them down over time.
+	MatchState.seed_deposits(terrain_layer)
 	# A disused/ruins building near Vandel's Skip (tile_22_16), owned by an NPC.
 	_place_ruins("tile_23_16")
 

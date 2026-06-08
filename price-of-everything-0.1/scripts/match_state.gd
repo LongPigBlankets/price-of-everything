@@ -70,7 +70,12 @@ var tile_land_owned: Dictionary = {}
 var surveyed_tiles: Dictionary = {}
 var partially_surveyed_tiles: Dictionary = {}   # tile_id -> true (auto-revealed nearby)
 var surveying_in_progress: Dictionary = {}      # tile_id -> turns remaining (>0)
-const SURVEY_TURNS := 2                          # an unsurveyed tile takes 2 turns
+var surveying_reveal: Dictionary = {}           # tile_id -> bool (auto-reveal a neighbour on completion)
+const SURVEY_TURNS := 2                          # surveying a tile takes 2 turns
+# Temporary-deposit depletion: remaining yield per tile per deposit token (e.g.
+# tile_5_3 -> {"coal": 480}). Seeded from the CSV "(amount)" on each deposit;
+# water never depletes so it is never tracked. Reaching 0 means the deposit is gone.
+var deposit_remaining: Dictionary = {}
 
 enum SellMode { SELL_ALL, STOCKPILE_ALL, BUILDING_BY_BUILDING }
 var sell_mode: int = SellMode.STOCKPILE_ALL
@@ -126,6 +131,8 @@ signal tile_land_owned_changed(tile_id: String)
 signal surveyed_tiles_changed
 ## A tile's in-progress survey changed (started / ticked down / finished).
 signal surveying_in_progress_changed
+## A tile's deposit remaining amount changed (depleted by mining).
+signal deposits_changed(tile_id: String)
 ## A shipment arrived at a full tile and is now waiting to unload.
 signal overflow_shipment_held(record: Dictionary)
 ## Debug cheat `swap tvp` flipped which Tile View Panel is active.
@@ -264,19 +271,15 @@ func is_survey_in_progress(tile_id: String) -> bool:
 func survey_turns_left(tile_id: String) -> int:
 	return int(surveying_in_progress.get(tile_id, 0))
 
-## Begin a 2-turn survey of an unsurveyed tile (cost is charged by the caller).
-func begin_survey(tile_id: String) -> void:
+## Begin a 2-turn survey of a tile (cost is charged by the caller). reveal_nearby
+## auto-(partially-)surveys one neighbour on completion — true for a full survey of
+## an unsurveyed tile, false when just finishing a partially surveyed tile.
+func begin_survey(tile_id: String, reveal_nearby: bool = true) -> void:
 	if tile_id == "" or surveyed_tiles.has(tile_id) or surveying_in_progress.has(tile_id):
 		return
 	surveying_in_progress[tile_id] = SURVEY_TURNS
+	surveying_reveal[tile_id] = reveal_nearby
 	surveying_in_progress_changed.emit()
-
-## Instantly finish surveying a partially-surveyed tile (no auto-reveal of nearby).
-func survey_partial_now(tile_id: String) -> void:
-	if tile_id == "":
-		return
-	partially_surveyed_tiles.erase(tile_id)
-	mark_tile_surveyed(tile_id)
 
 ## Mark a tile partially surveyed (auto-revealed by a nearby survey).
 func mark_tile_partial(tile_id: String) -> void:
@@ -296,20 +299,75 @@ func tick_surveys() -> void:
 		if int(surveying_in_progress[tile_id]) <= 0:
 			done.append(tile_id)
 	for tile_id in done:
+		var reveal: bool = bool(surveying_reveal.get(tile_id, true))
 		surveying_in_progress.erase(tile_id)
-		_complete_survey(tile_id)
+		surveying_reveal.erase(tile_id)
+		_complete_survey(tile_id, reveal)
 	surveying_in_progress_changed.emit()
 
-func _complete_survey(tile_id: String) -> void:
+func _complete_survey(tile_id: String, reveal_nearby: bool) -> void:
 	partially_surveyed_tiles.erase(tile_id)
 	mark_tile_surveyed(tile_id)
-	# Surveying a tile may automatically (partially) survey one nearby tile.
+	if not reveal_nearby:
+		return
+	# Surveying an unsurveyed tile may automatically (partially) survey one neighbour.
 	var fresh: Array = []
 	for n in Catalog.tile_neighbours(tile_id):
 		if not surveyed_tiles.has(n) and not partially_surveyed_tiles.has(n) and not surveying_in_progress.has(n):
 			fresh.append(n)
 	if not fresh.is_empty():
 		mark_tile_partial(str(fresh[randi() % fresh.size()]))
+
+# --- Public API: depletable deposits ---
+## Seed each tile's depletable-deposit yields from its CSV deposits. Water is
+## permanent and never seeded. Call once at match start (see world_map._ready).
+func seed_deposits(terrain) -> void:
+	deposit_remaining.clear()
+	for coord in terrain.tiles:
+		var td: Dictionary = terrain.tiles[coord]
+		var tid := str(td.get("id", ""))
+		for dep in td.get("deposits", []):
+			var token := _deposit_token_of(str(dep))
+			var qty := _deposit_qty_of(str(dep))
+			if token == "" or token == "water" or qty <= 0:
+				continue
+			if not deposit_remaining.has(tid):
+				deposit_remaining[tid] = {}
+			deposit_remaining[tid][token] = qty
+
+## Remaining yield of a deposit, or -1 if the deposit isn't tracked (e.g. water,
+## or a deposit given no amount in the CSV). 0 means it has been mined out.
+func deposit_remaining_for(tile_id: String, token: String) -> int:
+	return int((deposit_remaining.get(tile_id, {}) as Dictionary).get(token, -1))
+
+func deposit_depleted(tile_id: String, token: String) -> bool:
+	return int((deposit_remaining.get(tile_id, {}) as Dictionary).get(token, -1)) == 0
+
+## Reduce a tile's deposit by the amount mined this turn (floored at 0 = gone).
+func deplete_deposit(tile_id: String, token: String, amount: int) -> void:
+	if amount <= 0 or not deposit_remaining.has(tile_id):
+		return
+	var t: Dictionary = deposit_remaining[tile_id]
+	if not t.has(token) or int(t[token]) <= 0:
+		return
+	t[token] = maxi(0, int(t[token]) - amount)
+	deposits_changed.emit(tile_id)
+
+func _deposit_token_of(raw: String) -> String:
+	var p := raw.find("(")
+	return (raw.substr(0, p) if p >= 0 else raw).strip_edges().to_lower()
+
+func _deposit_qty_of(raw: String) -> int:
+	var o := raw.find("(")
+	var c := raw.find(")")
+	if o >= 0 and c > o:
+		var digits := ""
+		for ch in raw.substr(o + 1, c - o - 1):
+			if ch >= "0" and ch <= "9":
+				digits += ch
+		if digits != "":
+			return int(digits)
+	return -1
 
 func get_tile_land_owned(tile_id: String) -> int:
 	return int(tile_land_owned.get(tile_id, DEFAULT_TILE_LAND_OWNED))
