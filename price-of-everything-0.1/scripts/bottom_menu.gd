@@ -53,6 +53,7 @@ var _button_home_y := {}  # button -> resting y (captured on first rise)
 var _rise_tween := {}     # button -> active rise/drop tween
 var _lifted := {}         # button -> true while raised (longer shadow + specular)
 var _rest_styles := {}    # button -> resting styleboxes captured while lifting
+var _hovered := {}        # button -> true while the mouse is over it
 
 @onready var bottom_menu = %BottomMenu
 @onready var construct_panel = %ConstructPanel
@@ -152,7 +153,7 @@ func _make_alt_button_style(fg: Color, fill: Color) -> StyleBoxFlat:
 	sb.set_content_margin_all(0)
 	sb.shadow_color = Color(0.02, 0.035, 0.045, 0.55)
 	sb.shadow_size = 3
-	sb.shadow_offset = Vector2(0, 2)
+	sb.shadow_offset = Vector2(2, 2)  # cast to the bottom-right (light from top-left)
 	return sb
 
 func _apply_alt_button_style(button_name: String) -> void:
@@ -184,12 +185,18 @@ func _ensure_alt_glow(button: Button, glow_color: Color, tex_path: String) -> vo
 		mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 		glow.material = mat
 		button.add_child(glow)
-		button.mouse_entered.connect(func(): glow.visible = MatchState.use_alt_bottom_menu)
-		button.mouse_exited.connect(func(): glow.visible = false)
+		button.mouse_entered.connect(func(): _hovered[button] = true; _update_glow(button))
+		button.mouse_exited.connect(func(): _hovered[button] = false; _update_glow(button))
 	if ResourceLoader.exists(tex_path):
 		glow.texture = load(tex_path)
 	glow.modulate = glow_color
-	glow.visible = false
+	_update_glow(button)
+
+# Glow shows on hover OR while the button is selected (raised), in alt mode.
+func _update_glow(button: Button) -> void:
+	var glow := button.get_node_or_null("AltGlow")
+	if glow != null:
+		glow.visible = MatchState.use_alt_bottom_menu and (_hovered.get(button, false) or _lifted.get(button, false))
 
 func _restore_button_style(button_name: String) -> void:
 	var button := get_node_or_null("%" + button_name) as Button
@@ -273,7 +280,7 @@ func _set_lifted(button: Button, lifted: bool) -> void:
 			if sb is StyleBoxFlat:
 				var lf: StyleBoxFlat = sb.duplicate()
 				lf.shadow_size = 11
-				lf.shadow_offset = Vector2(0, 9)
+				lf.shadow_offset = Vector2(8, 9)  # longer, to the bottom-right (light from top-left)
 				lf.shadow_color = Color(0, 0, 0, 0.55)
 				button.add_theme_stylebox_override(s, lf)
 		_ensure_specular(button).visible = true
@@ -286,6 +293,7 @@ func _set_lifted(button: Button, lifted: bool) -> void:
 		var sp := button.get_node_or_null("Specular")
 		if sp != null:
 			sp.visible = false
+	_update_glow(button)  # keep glowing while selected; drop when deselected
 
 func _ensure_specular(button: Button) -> TextureRect:
 	var sp := button.get_node_or_null("Specular") as TextureRect
