@@ -36,6 +36,7 @@
 [ext_resource type="Script" path="res://scripts/toast_manager.gd" id="27_toast"]
 [ext_resource type="Script" path="res://scripts/building_connection_visuals.gd" id="28_bcv"]
 [ext_resource type="Script" path="res://scripts/logistics_overlay.gd" id="29_log"]
+[ext_resource type="Script" path="res://scripts/survey_overlay.gd" id="31_survey"]
 [ext_resource type="Script" path="res://scripts/search_overlay.gd" id="29_search"]
 [ext_resource type="Script" path="res://scripts/research_panel.gd" id="30_research"]
 
@@ -172,6 +173,9 @@ script = ExtResource("28_bcv")
 
 [node name="LogisticsOverlay" type="Node2D" parent="."]
 script = ExtResource("29_log")
+
+[node name="SurveyOverlay" type="Node2D" parent="."]
+script = ExtResource("31_survey")
 
 [node name="UILayer" type="CanvasLayer" parent="." unique_id=1882417710]
 

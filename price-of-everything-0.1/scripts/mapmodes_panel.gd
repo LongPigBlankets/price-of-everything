@@ -15,6 +15,7 @@ var _drag_offset := Vector2.ZERO
 const MAPMODE_ROWS: Array = [
 	{"id": "power", "label": "Power"},
 	{"id": "logistics", "label": "Logistics"},
+	{"id": "surveying", "label": "Surveying"},
 	{"id": "infrastructure", "label": "Infrastructure"},
 ]
 
@@ -47,6 +48,8 @@ func _on_mapmode_pressed(mode_id: String) -> void:
 			MapMode.add_selection(MapMode.Mode.POWER_BALANCE, MapMode.POWER_SENTINEL)
 		"logistics":
 			MapMode.add_selection(MapMode.Mode.LOGISTICS, MapMode.LOGISTICS_SENTINEL)
+		"surveying":
+			MapMode.add_selection(MapMode.Mode.SURVEYING, MapMode.SURVEYING_SENTINEL)
 		"infrastructure":
 			print("[Mapmodes] infrastructure not yet implemented")
 
@@ -56,6 +59,8 @@ func _mode_for_id(mode_id: String) -> int:
 			return MapMode.Mode.POWER_BALANCE
 		"logistics":
 			return MapMode.Mode.LOGISTICS
+		"surveying":
+			return MapMode.Mode.SURVEYING
 		_:
 			return MapMode.Mode.NONE
 

@@ -805,13 +805,11 @@ func _survey_status_for_tile(tile_data: Dictionary) -> String:
 	var explicit := str(tile_data.get("survey_status", "")).strip_edges()
 	if explicit != "":
 		return _compact_survey_status(explicit)
-	match str(tile_data.get("type", "")).strip_edges().to_lower():
-		"rural", "grass":
+	match MatchState.survey_status(str(tile_data.get("id", "")), str(tile_data.get("type", ""))):
+		"surveyed":
 			return "Surveyed"
-		"urban":
+		"partial":
 			return "P Surveyed"
-		"mountain":
-			return "Unsurveyed"
 		_:
 			return "Unsurveyed"
 

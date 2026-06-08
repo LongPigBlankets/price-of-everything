@@ -63,6 +63,12 @@ const LARGE_SHIPMENT_THRESHOLD := 500
 const LARGE_SHIPMENT_SURCHARGE := 2.0   # >500 units in one move costs 2x transport (tunable)
 var tile_land_owned: Dictionary = {}
 
+# Survey state: the set of tiles the player has surveyed (tile_id -> true).
+# Dynamic; seeded with the port tiles at match start (see seed_surveyed_ports).
+# A tile not in this set reads as "unsurveyed", except urban tiles which read as
+# "partially surveyed" until fully surveyed.
+var surveyed_tiles: Dictionary = {}
+
 enum SellMode { SELL_ALL, STOCKPILE_ALL, BUILDING_BY_BUILDING }
 var sell_mode: int = SellMode.STOCKPILE_ALL
 
@@ -113,6 +119,8 @@ signal stockpile_market_sale_completed(sale_record: Dictionary)
 signal sell_surplus_changed(tile_id: String)
 signal transport_shipments_changed
 signal tile_land_owned_changed(tile_id: String)
+## The set of surveyed tiles changed (drives the Surveying mapmode + tile panel).
+signal surveyed_tiles_changed
 ## A shipment arrived at a full tile and is now waiting to unload.
 signal overflow_shipment_held(record: Dictionary)
 ## Debug cheat `swap tvp` flipped which Tile View Panel is active.
@@ -205,6 +213,35 @@ func get_tile_space_used(tile_id: String) -> float:
 	# Pending construction projects reserve their footprint up front (Phase 1: none linger).
 	total += Construction.reserved_space_on_tile(tile_id)
 	return total
+
+# --- Public API: survey state ---
+## Seed the surveyed set with the NPC port tiles (called once at match start).
+func seed_surveyed_ports() -> void:
+	for port in Catalog.all_ports():
+		var tile_id := str(port.get("tile_id", ""))
+		if tile_id != "":
+			surveyed_tiles[tile_id] = true
+	surveyed_tiles_changed.emit()
+
+func is_tile_surveyed(tile_id: String) -> bool:
+	return surveyed_tiles.has(tile_id)
+
+## Mark a tile fully surveyed (no-op if already surveyed).
+func mark_tile_surveyed(tile_id: String) -> void:
+	if tile_id == "" or surveyed_tiles.has(tile_id):
+		return
+	surveyed_tiles[tile_id] = true
+	surveyed_tiles_changed.emit()
+
+## Survey status for a tile: "surveyed", "partial", or "unsurveyed". Urban tiles
+## that haven't been fully surveyed read as partially surveyed; pass the tile's
+## type so this can be decided without a tile-data lookup.
+func survey_status(tile_id: String, tile_type: String = "") -> String:
+	if surveyed_tiles.has(tile_id):
+		return "surveyed"
+	if tile_type.strip_edges().to_lower() == "urban":
+		return "partial"
+	return "unsurveyed"
 
 func get_tile_land_owned(tile_id: String) -> int:
 	return int(tile_land_owned.get(tile_id, DEFAULT_TILE_LAND_OWNED))
