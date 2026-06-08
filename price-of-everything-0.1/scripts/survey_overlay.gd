@@ -56,8 +56,7 @@ const PATCH_RADIUS := 110.0
 const PATCH_SIDES := 22
 const TEX_WORLD := 900.0
 
-const HILL_CHANCE := 0.34      # fraction of unsurveyed tiles that get a hill cluster
-const LABEL_CHANCE := 0.1      # fraction that get a scrawled note (large, spans tiles)
+const LABEL_CHANCE := 0.1      # fraction of unsurveyed tiles that get a scrawled note
 const GREEN_FADE := 50.0       # downward green-slope gradient height
 const X_MARK_COUNT := 10
 
@@ -179,17 +178,21 @@ func _hex_poly(coord: Vector2i, centre: Vector2) -> PackedVector2Array:
 
 # --- hills ---
 func _draw_hills(coord: Vector2i, centre: Vector2, river_pts: Array) -> void:
-	if _hashf(coord.x, coord.y, 11) > HILL_CHANCE:
+	# Hills are anchored to hill-type tiles only. Three flattened bell curves: the
+	# first is a "full hill" kept inside the tile (small + central, towards the
+	# top); the other two may stretch out over the neighbouring paper.
+	var tile: Variant = terrain_layer.tiles.get(coord)
+	if tile == null or str(tile.get("type", "")) != "hill":
 		return
-	# 3 flattened bell curves; the first sits towards the top of the tile.
 	var slots: Array[Vector2] = [
-		Vector2(_rr(coord, 1, -55.0, 55.0), -115.0),
-		Vector2(-95.0 + _rr(coord, 2, -20.0, 20.0), 45.0),
-		Vector2(95.0 + _rr(coord, 3, -20.0, 20.0), 30.0),
+		Vector2(_rr(coord, 1, -22.0, 22.0), -78.0),           # contained, towards the top
+		Vector2(-110.0 + _rr(coord, 2, -25.0, 25.0), 60.0),   # stretches left
+		Vector2(110.0 + _rr(coord, 3, -25.0, 25.0), 35.0),    # stretches right
 	]
 	for si in 3:
-		var amp: float = _rr(coord, 10 + si, 28.0, 46.0)
-		var wide: float = _rr(coord, 20 + si, 75.0, 112.0)
+		var amp: float = _rr(coord, 10 + si, 30.0, 46.0)
+		# The anchor hill is narrow enough to sit fully inside the tile.
+		var wide: float = _rr(coord, 20, 56.0, 74.0) if si == 0 else _rr(coord, 20 + si, 82.0, 115.0)
 		var c: Vector2 = _avoid_rivers(centre + slots[si], wide, river_pts)
 		var arc := _hill_arc(c, amp, wide)
 		_draw_green_slope(arc)
