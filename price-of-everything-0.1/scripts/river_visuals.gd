@@ -48,6 +48,75 @@ func _draw() -> void:
 		var river_data: Dictionary = river_properties[river_type]
 		_draw_tile_river(coord, river_data)
 
+## Returns every river path as a world-space, sampled polyline along the exact
+## same routes the river is drawn on (one entry per path; tiles with joints/merges
+## yield several). Each entry is {coord: Vector2i, points: PackedVector2Array}.
+## Used by the Survey overlay to redraw rivers as hand-drawn cartographer lines.
+func get_river_polylines() -> Array:
+	var out: Array = []
+	if terrain_layer == null:
+		return out
+	for coord in terrain_layer.tiles:
+		var tile_data: Dictionary = terrain_layer.tiles[coord]
+		if not tile_data.get("has_river", false):
+			continue
+		var river_type: String = str(tile_data.get("river_type", ""))
+		if river_type == "" or not river_properties.has(river_type):
+			continue
+		var river_data: Dictionary = river_properties[river_type]
+		var center: Vector2 = terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(coord))
+		for path in _river_paths_for_tile(coord, center, river_data):
+			out.append({"coord": coord, "points": path})
+	return out
+
+# The list of point-id sequences (with mouth flags) the river follows on a tile,
+# mirroring the _draw_* dispatch, returned as sampled world-space polylines.
+func _river_paths_for_tile(tile_coord: Vector2i, center: Vector2, river_data: Dictionary) -> Array:
+	var paths: Array = []
+	var kind: String = str(river_data.get("kind", "single"))
+	match kind:
+		"joint":
+			paths.append(_sampled_ids(center, [str(river_data["entry_hsm"]), str(river_data["entry_square_point"]), str(river_data["center_point"])], false))
+			paths.append(_sampled_ids(center, [str(river_data["center_point"]), str(river_data["exit_square_point"]), str(river_data["exit_hsm"])], _exit_meets_sea(tile_coord, str(river_data["exit_hsm"]))))
+			var jx2: String = str(river_data.get("exit_hsm_2", ""))
+			if jx2 != "":
+				paths.append(_sampled_ids(center, [str(river_data["center_point"]), str(river_data["exit_square_point_2"]), jx2], _exit_meets_sea(tile_coord, jx2)))
+		"source":
+			var lake_id: String = str(river_data.get("lake_point", "C0"))
+			paths.append(_sampled_ids(center, [lake_id, str(river_data["exit_square_point"]), str(river_data["exit_hsm"])], _exit_meets_sea(tile_coord, str(river_data["exit_hsm"]))))
+			var sx2: String = str(river_data.get("exit_hsm_2", ""))
+			if sx2 != "":
+				paths.append(_sampled_ids(center, [lake_id, str(river_data["exit_square_point_2"]), sx2], _exit_meets_sea(tile_coord, sx2)))
+		"merge":
+			paths.append(_sampled_ids(center, [str(river_data["entry_hsm"]), str(river_data["entry_square_point"]), str(river_data["center_point"])], false))
+			var mx2: String = str(river_data.get("exit_hsm_2", ""))
+			if mx2 != "":
+				paths.append(_sampled_ids(center, [mx2, str(river_data["exit_square_point_2"]), str(river_data["center_point"])], false))
+		_:
+			paths.append(_sampled_ids(center, [str(river_data["entry_hsm"]), str(river_data["entry_square_point"]), str(river_data["center_point"]), str(river_data["exit_square_point"]), str(river_data["exit_hsm"])], _exit_meets_sea(tile_coord, str(river_data["exit_hsm"]))))
+	return paths
+
+func _sampled_ids(center: Vector2, point_ids: Array, has_river_mouth: bool) -> PackedVector2Array:
+	var ids: Array[String] = []
+	var points := PackedVector2Array()
+	for pid in point_ids:
+		ids.append(str(pid))
+		points.append(_river_point(center, str(pid)))
+	var draw_points := PackedVector2Array(points)
+	if has_river_mouth:
+		var li := draw_points.size() - 1
+		draw_points[li] = draw_points[li] + _hsm_outward_direction(ids[li]) * MOUTH_EXIT_EXTENSION
+	var tangents: Array[Vector2] = _path_tangents(draw_points, ids)
+	var out := PackedVector2Array()
+	for i in range(draw_points.size() - 1):
+		var seg_len: float = draw_points[i].distance_to(draw_points[i + 1])
+		var ca: Vector2 = draw_points[i] + tangents[i] * seg_len * POINT_TENSIONS[i]
+		var cb: Vector2 = draw_points[i + 1] - tangents[i + 1] * seg_len * POINT_TENSIONS[i + 1]
+		var first_step := 0 if i == 0 else 1
+		for step in range(first_step, CURVE_STEPS + 1):
+			out.append(_cubic_bezier(draw_points[i], ca, cb, draw_points[i + 1], float(step) / float(CURVE_STEPS)))
+	return out
+
 func _draw_tile_river(tile_coord: Vector2i, river_data: Dictionary) -> void:
 	var center: Vector2 = terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(tile_coord))
 	var kind: String = str(river_data.get("kind", "single"))
