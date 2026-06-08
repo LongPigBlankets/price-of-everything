@@ -11,7 +11,11 @@
 [ext_resource type="Script" uid="uid://dvo2xw2gwx3y4" path="res://scripts/map_overlay.gd" id="6_eb6dy"]
 [ext_resource type="Script" uid="uid://b0bw6robispat" path="res://scripts/building_detail_panel.gd" id="6_tefeu"]
 [ext_resource type="Script" uid="uid://dpavib658u0dd" path="res://scripts/bottom_menu.gd" id="8_85g3d"]
+[ext_resource type="Script" path="res://scripts/inner_outline.gd" id="8_inoutl"]
+[ext_resource type="Script" path="res://scripts/button_sockets.gd" id="8_sockets"]
+[ext_resource type="Script" path="res://scripts/plate_surface.gd" id="8_plate"]
 [ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="8_tipki"]
+[ext_resource type="StyleBox" path="res://assets/ui/silver_frame.tres" id="8_silvfrm"]
 [ext_resource type="PackedScene" uid="uid://qvtflfd45g0d" path="res://scenes/construct_panel.tscn" id="9_85g3d"]
 [ext_resource type="PackedScene" uid="uid://c8o4a3033eoqq" path="res://scenes/mapmodes_panel.tscn" id="10_jbj1t"]
 [ext_resource type="PackedScene" uid="uid://cp8eoe568wruq" path="res://scenes/resource_panel.tscn" id="11_ya4ey"]
@@ -35,61 +39,80 @@
 [ext_resource type="Script" path="res://scripts/search_overlay.gd" id="29_search"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_normal"]
-content_margin_left = 0.0
-content_margin_top = 0.0
-content_margin_right = 0.0
-content_margin_bottom = 0.0
+content_margin_left = 1.5
+content_margin_top = 1.5
+content_margin_right = 1.5
+content_margin_bottom = 1.5
 bg_color = Color(0.192, 0.294, 0.333, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.365, 0.412, 0.431, 1)
-corner_radius_top_left = 50
-corner_radius_top_right = 50
-corner_radius_bottom_right = 50
-corner_radius_bottom_left = 50
+corner_radius_top_left = 45
+corner_radius_top_right = 45
+corner_radius_bottom_right = 45
+corner_radius_bottom_left = 45
 shadow_color = Color(0.02, 0.035, 0.045, 0.55)
 shadow_size = 3
 shadow_offset = Vector2(0, 2)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_pressed"]
-content_margin_left = 0.0
-content_margin_top = 0.0
-content_margin_right = 0.0
-content_margin_bottom = 0.0
+content_margin_left = 1.5
+content_margin_top = 1.5
+content_margin_right = 1.5
+content_margin_bottom = 1.5
 bg_color = Color(0.149, 0.227, 0.263, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.125, 0.157, 0.173, 1)
-corner_radius_top_left = 50
-corner_radius_top_right = 50
-corner_radius_bottom_right = 50
-corner_radius_bottom_left = 50
+corner_radius_top_left = 45
+corner_radius_top_right = 45
+corner_radius_bottom_right = 45
+corner_radius_bottom_left = 45
 shadow_color = Color(0.01, 0.02, 0.03, 0.7)
 shadow_size = 2
 shadow_offset = Vector2(0, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_hover"]
-content_margin_left = 0.0
-content_margin_top = 0.0
-content_margin_right = 0.0
-content_margin_bottom = 0.0
+content_margin_left = 1.5
+content_margin_top = 1.5
+content_margin_right = 1.5
+content_margin_bottom = 1.5
 bg_color = Color(0.235, 0.361, 0.408, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.718, 0.792, 0.816, 1)
-corner_radius_top_left = 50
-corner_radius_top_right = 50
-corner_radius_bottom_right = 50
-corner_radius_bottom_left = 50
+corner_radius_top_left = 45
+corner_radius_top_right = 45
+corner_radius_bottom_right = 45
+corner_radius_bottom_left = 45
 shadow_color = Color(0.02, 0.035, 0.045, 0.55)
 shadow_size = 4
 shadow_offset = Vector2(0, 2)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_navy_fill"]
+bg_color = Color(0.015686275, 0.058823529, 0.105882353, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_inner_outline"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.995234, 0.930806, 0.763265, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tile_banner"]
 bg_color = Color(1, 1, 1, 1)
@@ -261,13 +284,44 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -410.0
-offset_top = -120.0
-offset_right = 410.0
+offset_left = -425.0
+offset_top = -55.0
+offset_right = 425.0
+offset_bottom = 80.0
 grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 2
-theme_override_styles/panel = ExtResource("8_tipki")
+theme_override_styles/panel = SubResource("StyleBoxFlat_bottom_navy_fill")
+
+[node name="PlateSurface" type="Control" parent="UILayer/HUD/HUDContent/BottomMenuPanel"]
+layout_mode = 2
+mouse_filter = 2
+script = ExtResource("8_plate")
+
+[node name="SilverFrame" type="Panel" parent="UILayer/HUD/HUDContent/BottomMenuPanel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = ExtResource("8_silvfrm")
+
+[node name="Sockets" type="Control" parent="UILayer/HUD/HUDContent/BottomMenuPanel/SilverFrame"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("8_sockets")
+
+[node name="InnerOutline" type="Control" parent="UILayer/HUD/HUDContent/BottomMenuPanel/SilverFrame"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = -20.0
+mouse_filter = 2
+script = ExtResource("8_inoutl")
 
 [node name="BottomMenu" type="HBoxContainer" parent="UILayer/HUD/HUDContent" unique_id=1999718027]
 unique_name_in_owner = true
@@ -278,9 +332,9 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -380.0
-offset_top = -110.0
-offset_right = 380.0
+offset_left = -395.0
+offset_top = -100.0
+offset_right = 395.0
 offset_bottom = -10.0
 grow_horizontal = 2
 grow_vertical = 0
@@ -288,7 +342,7 @@ theme_override_constants/separation = 10
 
 [node name="ConstructButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=322645843]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Construct"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -300,7 +354,7 @@ expand_icon = true
 
 [node name="ResourcesButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=1627309058]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Resources"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -312,7 +366,7 @@ expand_icon = true
 
 [node name="BuildingsButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=1728871726]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Buildings"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -324,7 +378,7 @@ expand_icon = true
 
 [node name="MapmodesButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=554623846]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Map Overlays"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -336,7 +390,7 @@ expand_icon = true
 
 [node name="MarketButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=758586746]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Markets"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -348,7 +402,7 @@ expand_icon = true
 
 [node name="PoliticsButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=301230184]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Politics"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -360,7 +414,7 @@ expand_icon = true
 
 [node name="TechButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=919485106]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(90, 90)
 layout_mode = 2
 tooltip_text = "Tech"
 theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
@@ -368,6 +422,17 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_bottom_button_pressed"
 theme_override_styles/hover = SubResource("StyleBoxFlat_bottom_button_hover")
 theme_override_styles/focus = SubResource("StyleBoxFlat_bottom_button_hover")
 icon = ExtResource("26_tech")
+expand_icon = true
+
+[node name="PeopleButton" type="Button" parent="UILayer/HUD/HUDContent/BottomMenu" unique_id=770000007]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(90, 90)
+layout_mode = 2
+tooltip_text = "People"
+theme_override_styles/normal = SubResource("StyleBoxFlat_bottom_button_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_bottom_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_bottom_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_bottom_button_hover")
 expand_icon = true
 
 [node name="TileInfoPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=361507145]

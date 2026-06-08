@@ -4,6 +4,7 @@ extends VBoxContainer
 
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const GOODS_ICON_FRAME := preload("res://assets/ui/goods_icon_frame.tres")
+const BevelEdge := preload("res://scripts/bevel_edge.gd")
 
 const ICON_SIZE := 98
 const ICON_INNER := 74     # icon inside the frame; +12px frame margin each side = ICON_SIZE
@@ -66,6 +67,11 @@ func setup(good_data: Dictionary) -> void:
 	var tex: Texture2D = GoodIcons.texture_for(good_id, internal_name)
 	if tex != null:
 		icon.texture = tex
+	# Raised bevel edge 5px in from the frame, so the icon reads as a raised plate.
+	var bevel := BevelEdge.new()
+	bevel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bevel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.add_child(bevel)
 	var icon_frame := PanelContainer.new()
 	icon_frame.add_theme_stylebox_override("panel", GOODS_ICON_FRAME)
 	icon_frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER

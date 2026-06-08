@@ -76,6 +76,11 @@ var route_objective: int = RouteObjective.FASTEST
 # flips back to the classic one.
 var use_alt_tvp: bool = true
 
+# Debug-only: when true the bottom menu shows the alternate icon set instead of
+# the current icons. Toggled at runtime via the `swap bottom menu` cheat.
+# Session-only; never persisted. Defaults to the current icons.
+var use_alt_bottom_menu: bool = false
+
 # --- Signals ---
 signal money_changed(new_amount: float) 
 signal building_added(instance: Dictionary)
@@ -112,6 +117,8 @@ signal tile_land_owned_changed(tile_id: String)
 signal overflow_shipment_held(record: Dictionary)
 ## Debug cheat `swap tvp` flipped which Tile View Panel is active.
 signal alt_tvp_changed(enabled: bool)
+## Debug cheat `swap bottom menu` flipped which bottom-menu icon set is active.
+signal alt_bottom_menu_changed(enabled: bool)
 
 # --- Initialization ---
 func _ready() -> void:
@@ -291,6 +298,18 @@ func set_use_alt_tvp(enabled: bool) -> bool:
 
 func toggle_use_alt_tvp() -> bool:
 	return set_use_alt_tvp(not use_alt_tvp)
+
+## Debug cheat: switch between the current and alternate bottom-menu icon sets.
+## Returns the new state. Session-only, never persisted.
+func set_use_alt_bottom_menu(enabled: bool) -> bool:
+	if enabled == use_alt_bottom_menu:
+		return use_alt_bottom_menu
+	use_alt_bottom_menu = enabled
+	alt_bottom_menu_changed.emit(use_alt_bottom_menu)
+	return use_alt_bottom_menu
+
+func toggle_use_alt_bottom_menu() -> bool:
+	return set_use_alt_bottom_menu(not use_alt_bottom_menu)
 
 func set_route_objective(objective: int) -> void:
 	if objective == route_objective:
