@@ -28,6 +28,24 @@ const ALT_MENU_ICONS := {
 	"PeopleButton": "people",
 }
 
+# Per-button colours for the alt menu: [background, object+ring]. The object
+# (icon art) is baked to the object colour; the button fill uses the background
+# and the 10px outer ring uses the object colour. Only applied in alt mode.
+const ALT_COLORS := {
+	"ConstructButton": ["#b5641f", "#f8e6cb"],
+	"ResourcesButton": ["#2c4a66", "#f0e6cb"],
+	"BuildingsButton": ["#8e3a33", "#f4dec8"],
+	"MapmodesButton":  ["#ffffff", "#45597e"],
+	"MarketButton":    ["#235b3c", "#e4efcf"],
+	"PoliticsButton":  ["#5a2c56", "#ecdce6"],
+	"TechButton":      ["#1e5e63", "#ddefec"],
+	"PeopleButton":    ["#a8466b", "#f6dfe7"],
+}
+
+# Original (shared) button styleboxes captured at _ready, re-applied when the
+# alt menu is toggled back off.
+var _orig_button_styles := {}
+
 @onready var bottom_menu = %BottomMenu
 @onready var construct_panel = %ConstructPanel
 @onready var resource_panel: PanelContainer = %ResourcePanel
@@ -42,6 +60,10 @@ const ALT_MENU_ICONS := {
 var building_ledger_panel: PanelContainer = null
 
 func _ready() -> void:
+	# Capture the shared button styleboxes before any alt override so we can
+	# restore them when the alt menu is toggled off.
+	for s in ["normal", "hover", "pressed", "focus"]:
+		_orig_button_styles[s] = %ConstructButton.get_theme_stylebox(s)
 	_apply_menu_icons()
 	# `swap bottom menu` cheat flips the icon set live.
 	MatchState.alt_bottom_menu_changed.connect(func(_enabled): _apply_menu_icons())
@@ -77,19 +99,55 @@ func _icon_tier() -> String:
 	return "100"
 
 func _apply_menu_icons() -> void:
-	# Alternate set: single-resolution PNGs in assets/icons/ui_icons/alt/.
+	# Alternate set: single-resolution PNGs in assets/icons/ui_icons/alt/, each
+	# button recoloured to its own scheme (background fill + object/ring colour).
 	if MatchState.use_alt_bottom_menu:
 		for button_name in ALT_MENU_ICONS:
 			_set_button_icon(button_name, "res://assets/icons/ui_icons/alt/%s.png" % ALT_MENU_ICONS[button_name])
+			_apply_alt_button_style(button_name)
 		return
 	# Current set: multi-resolution circular art picked by window height.
 	var tier := _icon_tier()
 	for button_name in MENU_ICONS:
+		_restore_button_style(button_name)
 		var icon_name: String = MENU_ICONS[button_name]
 		if icon_name == "":
 			_set_button_icon(button_name, "")  # empty slot → clear any icon
 		else:
 			_set_button_icon(button_name, "res://assets/icons/ui_icons/%s/%s.png" % [tier, icon_name])
+
+func _make_alt_button_style(fg: Color, fill: Color) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = fill
+	sb.set_border_width_all(10)  # 10px outer ring, same colour as the object
+	sb.border_color = fg
+	sb.set_corner_radius_all(45)  # round on the 90px button
+	sb.set_content_margin_all(15)  # keep the object inside the ring (bg shows between)
+	sb.shadow_color = Color(0.02, 0.035, 0.045, 0.55)
+	sb.shadow_size = 3
+	sb.shadow_offset = Vector2(0, 2)
+	return sb
+
+func _apply_alt_button_style(button_name: String) -> void:
+	if not ALT_COLORS.has(button_name):
+		return
+	var button := get_node_or_null("%" + button_name) as Button
+	if button == null:
+		return
+	var bg := Color(ALT_COLORS[button_name][0])
+	var fg := Color(ALT_COLORS[button_name][1])
+	button.add_theme_stylebox_override("normal", _make_alt_button_style(fg, bg))
+	button.add_theme_stylebox_override("hover", _make_alt_button_style(fg, bg.lightened(0.08)))
+	button.add_theme_stylebox_override("pressed", _make_alt_button_style(fg, bg.darkened(0.08)))
+	button.add_theme_stylebox_override("focus", _make_alt_button_style(fg, bg))
+
+func _restore_button_style(button_name: String) -> void:
+	var button := get_node_or_null("%" + button_name) as Button
+	if button == null:
+		return
+	for s in ["normal", "hover", "pressed", "focus"]:
+		if _orig_button_styles.has(s) and _orig_button_styles[s] != null:
+			button.add_theme_stylebox_override(s, _orig_button_styles[s])
 
 func _set_button_icon(button_name: String, path: String) -> void:
 	var button := get_node_or_null("%" + button_name) as Button
