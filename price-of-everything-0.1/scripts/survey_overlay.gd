@@ -24,11 +24,21 @@ const FONT_SCRAWL := preload("res://assets/fonts/Inkfree.ttf")
 const FONT_TYPE := preload("res://assets/fonts/CourierNew.ttf")
 
 const CREAM := Color(0.995234, 0.930806, 0.763265)   # DS PALETTE.ACCENT off-white
-const CHARCOAL := Color(0.2, 0.19, 0.17)             # hill / X lines (not pure black)
+const CHARCOAL := Color(0.2, 0.19, 0.17)             # hill / mountain / X lines
 const NOTE_GREY := Color(0.3, 0.29, 0.31)            # scrawled-note text
-const GREEN_TOP := Color(0.09, 0.26, 0.11, 0.5)      # hill slope shade
-const GREEN_BOT := Color(0.09, 0.26, 0.11, 0.0)      # fades to nothing
+const GREEN_SOLID := Color(0.09, 0.26, 0.11, 0.82)   # solid hill body (dark green)
+const GREEN_FADE_COL := Color(0.09, 0.26, 0.11, 0.0) # green skirt fades to nothing
+const GREY_SOLID := Color(0.44, 0.44, 0.47, 0.9)     # mountain body (grey)
+const GREY_FADE_COL := Color(0.44, 0.44, 0.47, 0.0)  # grey gradient fades to nothing
+const SNOW := Color(0.97, 0.97, 0.98, 1.0)           # peak snow-cap
 const RIVER_BLUE := Color(0.17647059, 0.40784314, 0.76862745, 1.0)
+# Sea: radial gradient (lighter centre -> deep edges so neighbours stay blue).
+const SEA_CENTRE := Color(0.34, 0.55, 0.76)
+const SEA_EDGE := Color(0.18, 0.38, 0.62)
+const DEEP_CENTRE := Color(0.17, 0.34, 0.55)
+const DEEP_EDGE := Color(0.07, 0.19, 0.4)
+const WAVE_SEA := Color(0.74, 0.86, 0.95, 0.7)
+const WAVE_DEEP := Color(0.55, 0.72, 0.88, 0.7)
 
 const LABELS: Array[String] = [
 	"Ores here?", "Flat land maybe", "Oil?", "How big is the deposit?", "Must dig deeper...",
@@ -56,9 +66,14 @@ const PATCH_RADIUS := 110.0
 const PATCH_SIDES := 22
 const TEX_WORLD := 900.0
 
-const LABEL_CHANCE := 0.1      # fraction of unsurveyed tiles that get a scrawled note
-const GREEN_FADE := 50.0       # downward green-slope gradient height
+const LABEL_CHANCE := 0.1      # fraction of unsurveyed land tiles that get a note
+const HILL_FADE := 46.0        # green skirt height below the hill baseline
+const MOUNT_FADE := 200.0      # grey gradient height up the mountain body
 const X_MARK_COUNT := 10
+const SQRT3 := 1.7320508       # tan(60 deg): a 60deg slope rises sqrt3 per 1 across
+const MOUNT_HALF := 195.0      # mountain base half-width (~3/4 of the 540 tile)
+const MOUNT_BASE_Y := 110.0    # mountain baseline offset below tile centre
+const SNOW_HEIGHT := 30.0      # max snow-cap height under the peak line
 
 func _ready() -> void:
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
@@ -114,32 +129,40 @@ func _draw() -> void:
 			rivers_by_coord[c] = []
 		rivers_by_coord[c].append(entry.points)
 
-	# PASS 1 — cream paper base; remember each cream polygon for the grunge pass.
-	var cream_polys: Array = []
-	var unsurveyed: Array = []
+	# PASS 1 — base fills: cream paper on land, weathered blue on sea/deep sea.
+	# Every base polygon is remembered for the final grunge pass.
+	var weathered_polys: Array = []
+	var land: Array = []  # unsurveyed land tiles get hills/mountains/notes/X-marks
 	for coord in terrain_layer.tiles:
 		var status: String = _status_at(coord)
 		if status == "surveyed":
 			continue
 		var centre: Vector2 = _centre(coord)
+		var ttype: String = str(terrain_layer.tiles[coord].get("type", ""))
+		if status != "partial" and (ttype == "sea" or ttype == "deep_sea"):
+			var sea_poly := _hex_poly(coord, centre)
+			_draw_sea(sea_poly, centre, coord, ttype == "deep_sea")
+			weathered_polys.append({"poly": sea_poly, "uvs": _uvs(sea_poly)})
+			continue
 		var poly: PackedVector2Array = _patch_poly(centre) if status == "partial" else _hex_poly(coord, centre)
 		var uvs := _uvs(poly)
 		draw_colored_polygon(poly, CREAM, uvs, PAPER_TEX)
-		cream_polys.append({"poly": poly, "uvs": uvs})
+		weathered_polys.append({"poly": poly, "uvs": uvs})
 		if status == "unsurveyed":
-			unsurveyed.append(coord)
+			land.append(coord)
 
-	# PASS 2 — decorations on the cream (under the grunge).
-	for coord in unsurveyed:
+	# PASS 2 — decorations on the paper (under the grunge).
+	for coord in land:
 		var centre := _centre(coord)
 		_draw_hills(coord, centre, rivers_by_coord.get(coord, []))
+		_draw_mountain(coord, centre, rivers_by_coord.get(coord, []))
 		_draw_label(coord, centre)
-	_draw_x_marks(unsurveyed)
+	_draw_x_marks(land)
 	for entry in rivers:
 		_draw_thick_river(entry.points)
 
 	# PASS 3 — grunge applied last, so every decoration (rivers included) weathers.
-	for cp in cream_polys:
+	for cp in weathered_polys:
 		draw_colored_polygon(cp.poly, Color.WHITE, cp.uvs, GRUNGE_TEX)
 
 func _uvs(poly: PackedVector2Array) -> PackedVector2Array:
@@ -210,16 +233,18 @@ func _hill_arc(peak_base: Vector2, amp: float, wide: float) -> PackedVector2Arra
 	return pts
 
 func _draw_green_slope(arc: PackedVector2Array) -> void:
-	# A dark-green band hanging off the hill line, fading out over GREEN_FADE px.
-	var pts := PackedVector2Array()
-	var cols := PackedColorArray()
+	# The hill body (inside the arc, down to its flat baseline) is solid green; a
+	# gradient skirt then hangs from that lowest line, fading out over HILL_FADE px.
+	var base_y: float = arc[0].y
 	for p in arc:
-		pts.append(p)
-		cols.append(GREEN_TOP)
-	for i in range(arc.size() - 1, -1, -1):
-		pts.append(arc[i] + Vector2(0.0, GREEN_FADE))
-		cols.append(GREEN_BOT)
-	draw_polygon(pts, cols)
+		base_y = maxf(base_y, p.y)
+	# Solid body — the arc closes along its baseline, so this fills the hill shape.
+	draw_colored_polygon(arc, GREEN_SOLID)
+	var left := Vector2(arc[0].x, base_y)
+	var right := Vector2(arc[arc.size() - 1].x, base_y)
+	draw_polygon(
+		PackedVector2Array([left, right, right + Vector2(0.0, HILL_FADE), left + Vector2(0.0, HILL_FADE)]),
+		PackedColorArray([GREEN_SOLID, GREEN_SOLID, GREEN_FADE_COL, GREEN_FADE_COL]))
 
 func _avoid_rivers(c: Vector2, wide: float, river_pts: Array) -> Vector2:
 	if river_pts.is_empty():
@@ -241,6 +266,76 @@ func _avoid_rivers(c: Vector2, wide: float, river_pts: Array) -> Vector2:
 			away = Vector2(0.0, -1.0)
 		c = nearest + away.normalized() * clear
 	return c
+
+# --- mountains ---
+func _draw_mountain(coord: Vector2i, centre: Vector2, _river_pts: Array) -> void:
+	# Mountains are anchored to mountain-type tiles and stay fully inside the tile
+	# (no overspill): a 60deg incline to the peak then 60deg down, ~3/4 tile wide.
+	# Two of the three variations add a small second peak left or right of the main.
+	var tile: Variant = terrain_layer.tiles.get(coord)
+	if tile == null or str(tile.get("type", "")) != "mountain":
+		return
+	var base_y: float = centre.y + MOUNT_BASE_Y
+	var variation: int = int(_hashf(coord.x, coord.y, 80) * 3.0) % 3
+	# Draw the small second peak first so the main peak sits in front of it.
+	if variation != 0:
+		var side: float = -1.0 if variation == 1 else 1.0
+		_draw_peak(Vector2(centre.x + side * MOUNT_HALF * 0.5, base_y), base_y,
+			MOUNT_HALF * 0.45, false, coord, 91)
+	_draw_peak(Vector2(centre.x, base_y), base_y, MOUNT_HALF, true, coord, 90)
+
+func _draw_peak(base_centre: Vector2, base_y: float, half: float, snow: bool, coord: Vector2i, salt: int) -> void:
+	# One 60deg triangle peak. Grey body solid at the baseline, fading up the slopes.
+	var apex := Vector2(base_centre.x, base_y - half * SQRT3)
+	var bl := Vector2(base_centre.x - half, base_y)
+	var br := Vector2(base_centre.x + half, base_y)
+	var tri := PackedVector2Array([apex, br, bl])
+	var cols := PackedColorArray()
+	for v in tri:
+		var f: float = clampf(1.0 - (base_y - v.y) / MOUNT_FADE, 0.0, 1.0)
+		cols.append(Color(GREY_SOLID.r, GREY_SOLID.g, GREY_SOLID.b, GREY_SOLID.a * f))
+	draw_polygon(tri, cols)
+	if snow:
+		# White snow-cap under the peak line; <= SNOW_HEIGHT tall and, since the
+		# slopes are 60deg, exactly the peak's width at that height (stays inside).
+		var hw: float = SNOW_HEIGHT / SQRT3
+		draw_colored_polygon(PackedVector2Array([
+			apex, apex + Vector2(hw, SNOW_HEIGHT), apex + Vector2(-hw, SNOW_HEIGHT)]), SNOW)
+	draw_polyline(PackedVector2Array([apex, br, bl, apex]), CHARCOAL, _rr(coord, salt, 3.5, 5.0), true)
+
+# --- sea / deep sea ---
+func _draw_sea(poly: PackedVector2Array, centre: Vector2, coord: Vector2i, deep: bool) -> void:
+	# Weathered blue with a radial gradient: lighter centre, deep edges (so where
+	# two sea tiles meet the shared edge stays solidly blue).
+	var c_in: Color = DEEP_CENTRE if deep else SEA_CENTRE
+	var c_edge: Color = DEEP_EDGE if deep else SEA_EDGE
+	var n := poly.size()
+	for i in n:
+		draw_polygon(PackedVector2Array([centre, poly[i], poly[(i + 1) % n]]),
+			PackedColorArray([c_in, c_edge, c_edge]))
+	# A few wave crests (two arcs meeting at a peak).
+	var wcol: Color = WAVE_DEEP if deep else WAVE_SEA
+	for w in 6:
+		var pos := centre + Vector2(_rr(coord, 200 + w, -150.0, 150.0), _rr(coord, 220 + w, -150.0, 150.0))
+		var ww: float = _rr(coord, 240 + w, 30.0, 48.0)
+		var wh: float = ww * _rr(coord, 260 + w, 0.42, 0.6)
+		_draw_wave(pos, ww, wh, deg_to_rad(_rr(coord, 280 + w, -12.0, 12.0)), wcol)
+
+func _draw_wave(pos: Vector2, w: float, h: float, rot: float, col: Color) -> void:
+	# Left arc (-w,0) up to the peak (0,-h), then right arc down to (w,0); the base
+	# closes the polygon. Two convex arcs connecting at the peak.
+	var pts := PackedVector2Array()
+	var steps := 6
+	for i in steps + 1:
+		var a: float = (float(i) / float(steps)) * (PI * 0.5)
+		pts.append(Vector2(-w * cos(a), -h * sin(a)))
+	for i in range(1, steps + 1):
+		var a: float = (float(i) / float(steps)) * (PI * 0.5)
+		pts.append(Vector2(w * sin(a), -h * cos(a)))
+	var out := PackedVector2Array()
+	for p in pts:
+		out.append(pos + p.rotated(rot))
+	draw_colored_polygon(out, col)
 
 # --- scrawled notes ---
 func _draw_label(coord: Vector2i, centre: Vector2) -> void:
