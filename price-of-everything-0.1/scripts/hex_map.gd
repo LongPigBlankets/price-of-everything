@@ -36,6 +36,7 @@ const HSM_ORDER := ["HSM1", "HSM2", "HSM3", "HSM4", "HSM5", "HSM6"]
 
 signal tile_selected(tile_data)
 signal stockpile_destination_selected(tile_data)
+signal survey_tile_clicked(tile_data)
 
 var tiles := {}  # Vector2i(q, r) -> Dictionary
 var river_properties := {}
@@ -478,6 +479,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _stockpile_destination_selection_active:
 			stockpile_destination_selected.emit(tile_data)
 			end_stockpile_destination_selection()
+			get_viewport().set_input_as_handled()
+		elif MapMode.current_mode == MapMode.Mode.SURVEYING:
+			survey_tile_clicked.emit(tile_data)
 			get_viewport().set_input_as_handled()
 		elif BuildMode.is_active:
 			BuildMode.attempt_build(tile_data.id)

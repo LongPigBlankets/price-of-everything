@@ -26,6 +26,7 @@ const DENSITY_SOFT_CAPACITY := 100.0
 
 signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
 
+var _survey_dialog: PanelContainer = null
 var _stockpile_select_prompt: PanelContainer = null
 var _pending_stockpile_selection: Dictionary = {}
 var _dim_overlay: ColorRect = null
@@ -74,6 +75,7 @@ func _ready() -> void:
 	river_layer.clear()
 	terrain_layer.tile_selected.connect(_on_tile_selected)
 	terrain_layer.stockpile_destination_selected.connect(_on_stockpile_destination_selected)
+	terrain_layer.survey_tile_clicked.connect(_on_survey_tile_clicked)
 	info_panel.building_clicked.connect(building_panel.show_building)
 	info_panel.move_goods_requested.connect(_on_move_goods_requested)
 	MatchState.buy_tile_pick_requested.connect(_on_buy_tile_pick_requested)
@@ -118,6 +120,10 @@ func _ready() -> void:
 	_hud.add_child(overflow_dialog)
 	overflow_dialog.go_to_stockpile_requested.connect(_on_go_to_tile_stockpile)
 
+	# Survey dialog: opened by clicking a tile in the Surveying mapmode.
+	_survey_dialog = load("res://scripts/survey_dialog.gd").new()
+	_hud.add_child(_survey_dialog)
+
 	# Alternate tabbed Tile View Panel (TVP v2). Hidden until `swap tvp` flips the
 	# MatchState flag; lives next to the classic panel under HUDContent.
 	info_panel_v2 = load("res://scripts/tile_info_panel_v2.gd").new()
@@ -154,6 +160,23 @@ func _on_tile_selected(tile_data: Dictionary) -> void:
 		if info_panel_v2 != null:
 			info_panel_v2.hide()
 		info_panel.show_tile(tile_data)
+
+func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
+	# Clicking a tile in the Surveying mapmode opens its survey dialog. Fully
+	# surveyed tiles (and ones already being surveyed) trigger no dialog.
+	var tile_id := str(tile_data.get("id", ""))
+	if MatchState.is_survey_in_progress(tile_id):
+		MatchState.request_toast("Survey already in progress (%d turns)." % MatchState.survey_turns_left(tile_id), "info")
+		return
+	var status := MatchState.survey_status(tile_id, str(tile_data.get("type", "")))
+	if status == "surveyed":
+		return  # already surveyed — no dialog
+	var tile_name := str(tile_data.get("nickname", ""))
+	if tile_name == "":
+		tile_name = str(tile_data.get("city_name", ""))
+	if tile_name == "":
+		tile_name = tile_id
+	_survey_dialog.open_for(tile_id, tile_name, status == "partial")
 
 func _on_v2_building_clicked(building: Dictionary) -> void:
 	# v2 is added to HUDContent after the building panel, so it would otherwise draw

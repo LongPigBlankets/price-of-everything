@@ -31,6 +31,7 @@ const GREEN_FADE_COL := Color(0.09, 0.26, 0.11, 0.0) # green skirt fades to noth
 const GREY_SOLID := Color(0.44, 0.44, 0.47, 0.9)     # mountain body (grey)
 const GREY_FADE_COL := Color(0.44, 0.44, 0.47, 0.0)  # grey gradient fades to nothing
 const SNOW := Color(0.97, 0.97, 0.98, 1.0)           # peak snow-cap
+const NAVY := Color(0.016, 0.059, 0.106)             # in-progress survey hex fill
 const RIVER_BLUE := Color(0.17647059, 0.40784314, 0.76862745, 1.0)
 # Sea: radial gradient (lighter centre -> deep edges so neighbours stay blue).
 const SEA_CENTRE := Color(0.34, 0.55, 0.76)
@@ -87,6 +88,7 @@ func _ready() -> void:
 	MapMode.selections_changed.connect(_on_mode_changed)
 	MapMode.mode_cleared.connect(_on_mode_cleared)
 	MatchState.surveyed_tiles_changed.connect(_on_survey_changed)
+	MatchState.surveying_in_progress_changed.connect(_on_survey_changed)
 
 func _on_mode_changed(_mode: int, _sel: Array) -> void:
 	_update()
@@ -170,6 +172,9 @@ func _draw() -> void:
 	# PASS 3 — grunge applied last, so every decoration (rivers included) weathers.
 	for cp in weathered_polys:
 		draw_colored_polygon(cp.poly, Color.WHITE, cp.uvs, GRUNGE_TEX)
+
+	# On top of everything: an in-progress survey marker on each tile being surveyed.
+	_draw_survey_progress()
 
 func _uvs(poly: PackedVector2Array) -> PackedVector2Array:
 	var uvs := PackedVector2Array()
@@ -515,3 +520,52 @@ func _draw_thick_river(pts: PackedVector2Array) -> void:
 	for i in range(right.size() - 1, -1, -1):
 		band.append(right[i])
 	draw_colored_polygon(band, RIVER_BLUE)
+
+# --- in-progress survey marker ---
+func _draw_survey_progress() -> void:
+	for tile_id in MatchState.surveying_in_progress:
+		var coord: Vector2i = terrain_layer.id_to_coord(str(tile_id))
+		if coord == Vector2i(-1, -1) or not terrain_layer.tiles.has(coord):
+			continue
+		_draw_progress_hex(_centre(coord), int(MatchState.surveying_in_progress[tile_id]))
+
+func _draw_progress_hex(centre: Vector2, turns: int) -> void:
+	# A rounded-corner navy hex (200px tall, shape borrowed from the research ranks)
+	# with the turns-left number centred in off-white.
+	var w := 178.0
+	var h := 200.0
+	var pts := _rounded_hex_pts(Rect2(centre.x - w * 0.5, centre.y - h * 0.5, w, h), 0.22, 22.0)
+	draw_colored_polygon(pts, NAVY)
+	var ring := PackedVector2Array(pts)
+	ring.append(pts[0])
+	draw_polyline(ring, CREAM, 4.0, true)
+	var s := str(turns)
+	var fs := 118
+	var sz: Vector2 = FONT_TYPE.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+	draw_string(FONT_TYPE, Vector2(centre.x - sz.x * 0.5, centre.y + fs * 0.36), s,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, fs, CREAM)
+
+# A flat-top hex (HSM-style 22% bevel) with quadratic-bezier rounded corners.
+func _rounded_hex_pts(rect: Rect2, bevel_frac: float, radius: float) -> PackedVector2Array:
+	var l := rect.position.x
+	var r := rect.end.x
+	var t := rect.position.y
+	var b := rect.end.y
+	var my := (t + b) * 0.5
+	var bev := rect.size.x * bevel_frac
+	var hex: Array[Vector2] = [
+		Vector2(l + bev, t), Vector2(r - bev, t), Vector2(r, my),
+		Vector2(r - bev, b), Vector2(l + bev, b), Vector2(l, my)]
+	var out := PackedVector2Array()
+	var n := hex.size()
+	for i in n:
+		var cur: Vector2 = hex[i]
+		var to_prev: Vector2 = hex[(i - 1 + n) % n] - cur
+		var to_next: Vector2 = hex[(i + 1) % n] - cur
+		var rr: float = minf(radius, minf(to_prev.length(), to_next.length()) * 0.5)
+		var a: Vector2 = cur + to_prev.normalized() * rr
+		var c2: Vector2 = cur + to_next.normalized() * rr
+		for st in 5:
+			var tt := float(st) / 4.0
+			out.append(a.lerp(cur, tt).lerp(cur.lerp(c2, tt), tt))  # quadratic bezier
+	return out

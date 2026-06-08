@@ -65,9 +65,12 @@ var tile_land_owned: Dictionary = {}
 
 # Survey state: the set of tiles the player has surveyed (tile_id -> true).
 # Dynamic; seeded with the port tiles at match start (see seed_surveyed_ports).
-# A tile not in this set reads as "unsurveyed", except urban tiles which read as
-# "partially surveyed" until fully surveyed.
+# A tile not in this set reads as "unsurveyed", except urban tiles and tiles in
+# partially_surveyed_tiles, which read as "partially surveyed" until fully surveyed.
 var surveyed_tiles: Dictionary = {}
+var partially_surveyed_tiles: Dictionary = {}   # tile_id -> true (auto-revealed nearby)
+var surveying_in_progress: Dictionary = {}      # tile_id -> turns remaining (>0)
+const SURVEY_TURNS := 2                          # an unsurveyed tile takes 2 turns
 
 enum SellMode { SELL_ALL, STOCKPILE_ALL, BUILDING_BY_BUILDING }
 var sell_mode: int = SellMode.STOCKPILE_ALL
@@ -121,6 +124,8 @@ signal transport_shipments_changed
 signal tile_land_owned_changed(tile_id: String)
 ## The set of surveyed tiles changed (drives the Surveying mapmode + tile panel).
 signal surveyed_tiles_changed
+## A tile's in-progress survey changed (started / ticked down / finished).
+signal surveying_in_progress_changed
 ## A shipment arrived at a full tile and is now waiting to unload.
 signal overflow_shipment_held(record: Dictionary)
 ## Debug cheat `swap tvp` flipped which Tile View Panel is active.
@@ -130,9 +135,19 @@ signal alt_bottom_menu_changed(enabled: bool)
 
 # --- Initialization ---
 func _ready() -> void:
-	pass  # nothing to do at startup; systems push state into MatchState as they boot
 	money = EconomyConfig.STARTING_MONEY
 	money_changed.emit(money)
+	# TurnManager is registered after MatchState, so wire the per-turn survey tick
+	# once every autoload exists.
+	call_deferred("_connect_turn_signals")
+
+func _connect_turn_signals() -> void:
+	if TurnManager != null and not TurnManager.phase_started.is_connected(_on_survey_phase_started):
+		TurnManager.phase_started.connect(_on_survey_phase_started)
+
+func _on_survey_phase_started(phase: int) -> void:
+	if phase == TurnManager.Phase.PROCESS:
+		tick_surveys()
 # --- Public API: money ---
 func add_money(delta: float) -> void:
 	money += delta
@@ -234,14 +249,67 @@ func mark_tile_surveyed(tile_id: String) -> void:
 	surveyed_tiles_changed.emit()
 
 ## Survey status for a tile: "surveyed", "partial", or "unsurveyed". Urban tiles
-## that haven't been fully surveyed read as partially surveyed; pass the tile's
-## type so this can be decided without a tile-data lookup.
+## (and tiles auto-revealed by a nearby survey) read as partially surveyed until
+## fully surveyed; pass the tile's type so this needs no tile-data lookup.
 func survey_status(tile_id: String, tile_type: String = "") -> String:
 	if surveyed_tiles.has(tile_id):
 		return "surveyed"
-	if tile_type.strip_edges().to_lower() == "urban":
+	if partially_surveyed_tiles.has(tile_id) or tile_type.strip_edges().to_lower() == "urban":
 		return "partial"
 	return "unsurveyed"
+
+func is_survey_in_progress(tile_id: String) -> bool:
+	return surveying_in_progress.has(tile_id)
+
+func survey_turns_left(tile_id: String) -> int:
+	return int(surveying_in_progress.get(tile_id, 0))
+
+## Begin a 2-turn survey of an unsurveyed tile (cost is charged by the caller).
+func begin_survey(tile_id: String) -> void:
+	if tile_id == "" or surveyed_tiles.has(tile_id) or surveying_in_progress.has(tile_id):
+		return
+	surveying_in_progress[tile_id] = SURVEY_TURNS
+	surveying_in_progress_changed.emit()
+
+## Instantly finish surveying a partially-surveyed tile (no auto-reveal of nearby).
+func survey_partial_now(tile_id: String) -> void:
+	if tile_id == "":
+		return
+	partially_surveyed_tiles.erase(tile_id)
+	mark_tile_surveyed(tile_id)
+
+## Mark a tile partially surveyed (auto-revealed by a nearby survey).
+func mark_tile_partial(tile_id: String) -> void:
+	if tile_id == "" or surveyed_tiles.has(tile_id) or partially_surveyed_tiles.has(tile_id):
+		return
+	partially_surveyed_tiles[tile_id] = true
+	surveyed_tiles_changed.emit()
+
+## Tick every in-progress survey down by one turn; complete any that hit zero.
+## Called once per turn during the PROCESS phase.
+func tick_surveys() -> void:
+	if surveying_in_progress.is_empty():
+		return
+	var done: Array = []
+	for tile_id in surveying_in_progress:
+		surveying_in_progress[tile_id] = int(surveying_in_progress[tile_id]) - 1
+		if int(surveying_in_progress[tile_id]) <= 0:
+			done.append(tile_id)
+	for tile_id in done:
+		surveying_in_progress.erase(tile_id)
+		_complete_survey(tile_id)
+	surveying_in_progress_changed.emit()
+
+func _complete_survey(tile_id: String) -> void:
+	partially_surveyed_tiles.erase(tile_id)
+	mark_tile_surveyed(tile_id)
+	# Surveying a tile may automatically (partially) survey one nearby tile.
+	var fresh: Array = []
+	for n in Catalog.tile_neighbours(tile_id):
+		if not surveyed_tiles.has(n) and not partially_surveyed_tiles.has(n) and not surveying_in_progress.has(n):
+			fresh.append(n)
+	if not fresh.is_empty():
+		mark_tile_partial(str(fresh[randi() % fresh.size()]))
 
 func get_tile_land_owned(tile_id: String) -> int:
 	return int(tile_land_owned.get(tile_id, DEFAULT_TILE_LAND_OWNED))
