@@ -122,9 +122,10 @@ func _make_alt_button_style(fg: Color, fill: Color) -> StyleBoxFlat:
 	sb.set_border_width_all(6)  # 6px outer ring, same colour as the object
 	sb.border_color = fg
 	sb.set_corner_radius_all(45)  # round on the 90px button
-	# Slightly negative so the objects render full-size (not shrunk) and their
-	# outer reach (e.g. the hammer handle, politics block) meets the ring.
-	sb.set_content_margin_all(-2)
+	# Negative so the objects render slightly larger than the button and their
+	# outer reach (e.g. the hammer handle, politics block) pushes out to meet
+	# the ring (~3% bigger than a flush fit).
+	sb.set_content_margin_all(-3.5)
 	sb.shadow_color = Color(0.02, 0.035, 0.045, 0.55)
 	sb.shadow_size = 3
 	sb.shadow_offset = Vector2(0, 2)
