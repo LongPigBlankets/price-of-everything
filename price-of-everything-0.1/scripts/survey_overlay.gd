@@ -63,7 +63,7 @@ const WAVE_AMP := 18.0
 const WAVE_COUNT := 2.0
 const WAVE_SEGMENTS := 10
 const COAST_AMP := 30.0       # max coastline wobble (px in/out of a tile)
-const COAST_SEGMENTS := 10
+const COAST_SEGMENTS := 16    # more samples to resolve the higher-frequency octave
 const PATCH_RADIUS := 110.0
 const PATCH_SIDES := 22
 const TEX_WORLD := 900.0
@@ -71,6 +71,7 @@ const TEX_WORLD := 900.0
 const LABEL_CHANCE := 0.1      # fraction of unsurveyed land tiles that get a note
 const HILL_FADE := 46.0        # green skirt height below the hill baseline
 const MOUNT_FADE := 200.0      # grey gradient height up the mountain body
+const MOUNT_SKIRT := 70.0      # grey gradient skirt radiating down past the base
 const X_MARK_COUNT := 10
 const SQRT3 := 1.7320508       # tan(60 deg): a 60deg slope rises sqrt3 per 1 across
 const MOUNT_HALF := 195.0      # mountain base half-width (~3/4 of the 540 tile)
@@ -224,16 +225,24 @@ func _coastline_curve(a: Vector2, b: Vector2) -> PackedVector2Array:
 	var flip := a.x > b.x
 	var p: Vector2 = b if flip else a
 	var q: Vector2 = a if flip else b
-	var amp: float = lerpf(15.0, COAST_AMP, _edge_rand(p, q, 300))
-	var ks: Array[float] = [1.0, 1.5, 2.0]
-	var k: float = ks[int(_edge_rand(p, q, 301) * 3.0) % 3]
-	var phase: float = _edge_rand(p, q, 302) * TAU
+	# Three octaves of sine (low/mid/high frequency) with independent random phases
+	# and weights summing to ~1, so the coast is irregular rather than a clean wave.
+	var amp: float = lerpf(20.0, COAST_AMP, _edge_rand(p, q, 300))
+	var f1: float = lerpf(0.8, 1.6, _edge_rand(p, q, 310))
+	var f2: float = lerpf(2.4, 3.6, _edge_rand(p, q, 311))
+	var f3: float = lerpf(4.4, 6.4, _edge_rand(p, q, 312))
+	var p1: float = _edge_rand(p, q, 313) * TAU
+	var p2: float = _edge_rand(p, q, 314) * TAU
+	var p3: float = _edge_rand(p, q, 315) * TAU
 	var edge: Vector2 = q - p
 	var perp: Vector2 = Vector2(-edge.y, edge.x).normalized()
 	var canon := PackedVector2Array()
 	for s in range(1, COAST_SEGMENTS):
 		var t: float = float(s) / float(COAST_SEGMENTS)
-		var d: float = sin(PI * t) * amp * sin(t * PI * k + phase)
+		var wobble: float = (0.55 * sin(t * PI * f1 + p1)
+			+ 0.3 * sin(t * PI * f2 + p2)
+			+ 0.15 * sin(t * PI * f3 + p3))
+		var d: float = sin(PI * t) * amp * wobble  # taper to 0 at the shared corners
 		canon.append(p + edge * t + perp * d)
 	if flip:
 		canon.reverse()
@@ -312,39 +321,72 @@ func _avoid_rivers(c: Vector2, wide: float, river_pts: Array) -> Vector2:
 
 # --- mountains ---
 func _draw_mountain(coord: Vector2i, centre: Vector2, _river_pts: Array) -> void:
-	# Mountains are anchored to mountain-type tiles and stay fully inside the tile
-	# (no overspill): a 60deg incline to the peak then 60deg down, ~3/4 tile wide.
-	# Two of the three variations add a small second peak left or right of the main.
+	# Mountains are anchored to mountain-type tiles and stay inside the tile: a 60deg
+	# incline to the peak then 60deg down, ~3/4 tile wide. Two of the three
+	# variations connect a smaller second peak to the side (the line goes up-down-
+	# up-down). The ridge has no bottom line; its grey gradient radiates out in every
+	# direction, including down through the open base.
 	var tile: Variant = terrain_layer.tiles.get(coord)
 	if tile == null or str(tile.get("type", "")) != "mountain":
 		return
 	var base_y: float = centre.y + MOUNT_BASE_Y
+	var bl := Vector2(centre.x - MOUNT_HALF, base_y)
+	var br := Vector2(centre.x + MOUNT_HALF, base_y)
 	var variation: int = int(_hashf(coord.x, coord.y, 80) * 3.0) % 3
-	# Draw the small second peak first so the main peak sits in front of it.
-	if variation != 0:
-		var side: float = -1.0 if variation == 1 else 1.0
-		_draw_peak(Vector2(centre.x + side * MOUNT_HALF * 0.5, base_y), base_y,
-			MOUNT_HALF * 0.45, false, coord, 91)
-	_draw_peak(Vector2(centre.x, base_y), base_y, MOUNT_HALF, true, coord, 90)
+	var outline := PackedVector2Array()
+	var apex_idx := 1
+	match variation:
+		1:  # smaller second peak connected to the LEFT of the main peak
+			outline = PackedVector2Array([
+				bl,
+				Vector2(centre.x - 95.0, base_y - 165.0),  # second (left) peak
+				Vector2(centre.x - 30.0, base_y - 80.0),   # valley
+				Vector2(centre.x + 22.0, base_y - 300.0),  # main peak (right slope ~60deg to br)
+				br])
+			apex_idx = 3
+		2:  # smaller second peak connected to the RIGHT of the main peak
+			outline = PackedVector2Array([
+				bl,
+				Vector2(centre.x - 22.0, base_y - 300.0),  # main peak (left slope ~60deg from bl)
+				Vector2(centre.x + 30.0, base_y - 80.0),   # valley
+				Vector2(centre.x + 95.0, base_y - 165.0),  # second (right) peak
+				br])
+			apex_idx = 1
+		_:  # single 60deg peak
+			outline = PackedVector2Array([bl, Vector2(centre.x, base_y - MOUNT_HALF * SQRT3), br])
+			apex_idx = 1
+	_draw_mountain_body(outline, bl, br, base_y)
+	_draw_snow(outline, apex_idx)
+	# Charcoal ridge line on top — an OPEN polyline, so there is no bottom edge.
+	draw_polyline(outline, CHARCOAL, _rr(coord, 90, 3.5, 5.0), true)
 
-func _draw_peak(base_centre: Vector2, base_y: float, half: float, snow: bool, coord: Vector2i, salt: int) -> void:
-	# One 60deg triangle peak. Grey body solid at the baseline, fading up the slopes.
-	var apex := Vector2(base_centre.x, base_y - half * SQRT3)
-	var bl := Vector2(base_centre.x - half, base_y)
-	var br := Vector2(base_centre.x + half, base_y)
-	var tri := PackedVector2Array([apex, br, bl])
-	var cols := PackedColorArray()
-	for v in tri:
-		var f: float = clampf(1.0 - (base_y - v.y) / MOUNT_FADE, 0.0, 1.0)
-		cols.append(Color(GREY_SOLID.r, GREY_SOLID.g, GREY_SOLID.b, GREY_SOLID.a * f))
-	draw_polygon(tri, cols)
-	if snow:
-		# White snow-cap under the peak line; <= SNOW_HEIGHT tall and, since the
-		# slopes are 60deg, exactly the peak's width at that height (stays inside).
-		var hw: float = SNOW_HEIGHT / SQRT3
-		draw_colored_polygon(PackedVector2Array([
-			apex, apex + Vector2(hw, SNOW_HEIGHT), apex + Vector2(-hw, SNOW_HEIGHT)]), SNOW)
-	draw_polyline(PackedVector2Array([apex, br, bl, apex]), CHARCOAL, _rr(coord, salt, 3.5, 5.0), true)
+func _draw_mountain_body(outline: PackedVector2Array, bl: Vector2, br: Vector2, base_y: float) -> void:
+	# Grey, densest along the base and fading up the slopes (over MOUNT_FADE) and a
+	# short skirt down past the base, so the gradient radiates out through the bottom.
+	var body_cols := PackedColorArray()
+	for v in outline:
+		body_cols.append(_grey_at(v.y, base_y))
+	draw_polygon(outline, body_cols)  # closes along the base for the fill only
+	draw_polygon(
+		PackedVector2Array([bl, br, br + Vector2(0.0, MOUNT_SKIRT), bl + Vector2(0.0, MOUNT_SKIRT)]),
+		PackedColorArray([_grey_at(base_y, base_y), _grey_at(base_y, base_y), GREY_FADE_COL, GREY_FADE_COL]))
+
+func _grey_at(y: float, base_y: float) -> Color:
+	var f: float = clampf(1.0 - (base_y - y) / MOUNT_FADE, 0.0, 1.0)
+	return Color(GREY_SOLID.r, GREY_SOLID.g, GREY_SOLID.b, GREY_SOLID.a * f)
+
+func _draw_snow(outline: PackedVector2Array, apex_idx: int) -> void:
+	# White snow-cap on the main peak, its base points sitting ON the two adjacent
+	# ridge edges SNOW_HEIGHT below the peak, so it always stays inside the outline.
+	var m: Vector2 = outline[apex_idx]
+	var lp: Vector2 = _ridge_point_below(m, outline[apex_idx - 1], SNOW_HEIGHT)
+	var rp: Vector2 = _ridge_point_below(m, outline[apex_idx + 1], SNOW_HEIGHT)
+	draw_colored_polygon(PackedVector2Array([m, rp, lp]), SNOW)
+
+func _ridge_point_below(m: Vector2, other: Vector2, depth: float) -> Vector2:
+	if other.y <= m.y + 0.001:
+		return m + Vector2(0.0, depth)
+	return m.lerp(other, clampf(depth / (other.y - m.y), 0.0, 1.0))
 
 # --- sea / deep sea ---
 func _draw_sea(poly: PackedVector2Array, centre: Vector2, coord: Vector2i, deep: bool) -> void:
