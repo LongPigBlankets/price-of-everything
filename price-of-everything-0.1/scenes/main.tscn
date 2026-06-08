@@ -12,6 +12,7 @@
 [ext_resource type="Script" uid="uid://b0bw6robispat" path="res://scripts/building_detail_panel.gd" id="6_tefeu"]
 [ext_resource type="Script" uid="uid://dpavib658u0dd" path="res://scripts/bottom_menu.gd" id="8_85g3d"]
 [ext_resource type="Script" path="res://scripts/inner_outline.gd" id="8_inoutl"]
+[ext_resource type="Script" path="res://scripts/button_sockets.gd" id="8_sockets"]
 [ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="8_tipki"]
 [ext_resource type="StyleBox" path="res://assets/ui/silver_frame.tres" id="8_silvfrm"]
 [ext_resource type="PackedScene" uid="uid://qvtflfd45g0d" path="res://scenes/construct_panel.tscn" id="9_85g3d"]
@@ -295,6 +296,14 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_bottom_navy_fill")
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = ExtResource("8_silvfrm")
+
+[node name="Sockets" type="Control" parent="UILayer/HUD/HUDContent/BottomMenuPanel/SilverFrame"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("8_sockets")
 
 [node name="InnerOutline" type="Control" parent="UILayer/HUD/HUDContent/BottomMenuPanel/SilverFrame"]
 layout_mode = 1
