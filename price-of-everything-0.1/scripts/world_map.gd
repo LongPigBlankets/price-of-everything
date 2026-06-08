@@ -27,6 +27,7 @@ const DENSITY_SOFT_CAPACITY := 100.0
 signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
 
 var _survey_dialog: PanelContainer = null
+var _unlock_dialog: PanelContainer = null
 var _stockpile_select_prompt: PanelContainer = null
 var _pending_stockpile_selection: Dictionary = {}
 var _dim_overlay: ColorRect = null
@@ -124,6 +125,11 @@ func _ready() -> void:
 	_survey_dialog = load("res://scripts/survey_dialog.gd").new()
 	_hud.add_child(_survey_dialog)
 
+	# "Unlocked …" popup, shown when a research unlock is earned by its condition.
+	_unlock_dialog = load("res://scripts/unlock_dialog.gd").new()
+	_hud.add_child(_unlock_dialog)
+	MatchState.unlock_granted.connect(_on_unlock_granted)
+
 	# Alternate tabbed Tile View Panel (TVP v2). Hidden until `swap tvp` flips the
 	# MatchState flag; lives next to the classic panel under HUDContent.
 	info_panel_v2 = load("res://scripts/tile_info_panel_v2.gd").new()
@@ -173,12 +179,19 @@ func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
 	var status := MatchState.survey_status(tile_id, str(tile_data.get("type", "")))
 	if status == "surveyed":
 		return  # already surveyed — no dialog
+	if not MatchState.is_tile_surveyable(tile_id):
+		MatchState.request_toast("That tile is beyond the survey range.", "warning")
+		return
 	var tile_name := str(tile_data.get("nickname", ""))
 	if tile_name == "":
 		tile_name = str(tile_data.get("city_name", ""))
 	if tile_name == "":
 		tile_name = tile_id
 	_survey_dialog.open_for(tile_id, tile_name, status == "partial")
+
+func _on_unlock_granted(title: String, description: String, via_condition: bool) -> void:
+	if via_condition:
+		_unlock_dialog.show_unlock(title, description)
 
 func _on_v2_building_clicked(building: Dictionary) -> void:
 	# v2 is added to HUDContent after the building panel, so it would otherwise draw

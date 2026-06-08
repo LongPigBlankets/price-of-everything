@@ -203,3 +203,5 @@ People Management,"","","","",II,Run,Workforce,8,turns,Retention Interviews,ri,"
 People Management,"","","","",III,Buy,Workforce,120,units,Continuous Training Cells,ctc,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
 People Management,"","","","",III,Sell,Workforce,160,units,Leadership Bench Planning,lbp,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
 People Management,"","","","",III,Run,Workforce,85,percentage,High Trust Operating Model,htom,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,,,,,I,Survey,deposits,2,deposits,Spectral Crystallography,survey,+1 adjacent tile revealed when surveying
+Mining and Surveying,Spectral Crystallography,,,,II,Survey,tiles,5,tiles,Computer Assisted Geoscanning,svt,+1 Survey range (2 to 3)

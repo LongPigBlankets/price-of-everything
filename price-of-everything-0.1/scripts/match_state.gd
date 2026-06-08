@@ -76,6 +76,18 @@ const SURVEY_TURNS := 2                          # surveying a tile takes 2 turn
 # tile_5_3 -> {"coal": 480}). Seeded from the CSV "(amount)" on each deposit;
 # water never depletes so it is never tracked. Reaching 0 means the deposit is gone.
 var deposit_remaining: Dictionary = {}
+var _deposit_terrain = null  # HexMap, for counting a tile's deposits when surveyed
+
+# Research unlocks: which are unlocked (by free choice or by meeting a condition),
+# and progress toward the action+object+quantity conditions (e.g. "Survey|tiles").
+var unlocked_titles: Dictionary = {}
+var _unlock_progress: Dictionary = {}
+var _unlock_defs: Array = []   # [{title, action, object, qty, prereqs, description}]
+# Survey range: how many tiles out from a surveyed tile you may survey. The red
+# limit line and the click check both use it; +1 once Geoscanning is unlocked.
+const SURVEY_RANGE_BASE := 2
+var _surveyable_cache: Dictionary = {}
+var _surveyable_dirty := true
 
 enum SellMode { SELL_ALL, STOCKPILE_ALL, BUILDING_BY_BUILDING }
 var sell_mode: int = SellMode.STOCKPILE_ALL
@@ -133,6 +145,9 @@ signal surveyed_tiles_changed
 signal surveying_in_progress_changed
 ## A tile's deposit remaining amount changed (depleted by mining).
 signal deposits_changed(tile_id: String)
+## A research unlock was granted. via_condition is true when earned by meeting its
+## condition (shows the "Unlocked …" dialog); false for a free-chosen unlock.
+signal unlock_granted(title: String, description: String, via_condition: bool)
 ## A shipment arrived at a full tile and is now waiting to unload.
 signal overflow_shipment_held(record: Dictionary)
 ## Debug cheat `swap tvp` flipped which Tile View Panel is active.
@@ -144,6 +159,7 @@ signal alt_bottom_menu_changed(enabled: bool)
 func _ready() -> void:
 	money = EconomyConfig.STARTING_MONEY
 	money_changed.emit(money)
+	_load_unlock_defs()
 	# TurnManager is registered after MatchState, so wire the per-turn survey tick
 	# once every autoload exists.
 	call_deferred("_connect_turn_signals")
@@ -243,6 +259,7 @@ func seed_surveyed_ports() -> void:
 		var tile_id := str(port.get("tile_id", ""))
 		if tile_id != "":
 			surveyed_tiles[tile_id] = true
+	_surveyable_dirty = true
 	surveyed_tiles_changed.emit()
 
 func is_tile_surveyed(tile_id: String) -> bool:
@@ -253,6 +270,7 @@ func mark_tile_surveyed(tile_id: String) -> void:
 	if tile_id == "" or surveyed_tiles.has(tile_id):
 		return
 	surveyed_tiles[tile_id] = true
+	_surveyable_dirty = true
 	surveyed_tiles_changed.emit()
 
 ## Survey status for a tile: "surveyed", "partial", or "unsurveyed". Urban tiles
@@ -308,20 +326,28 @@ func tick_surveys() -> void:
 func _complete_survey(tile_id: String, reveal_nearby: bool) -> void:
 	partially_surveyed_tiles.erase(tile_id)
 	mark_tile_surveyed(tile_id)
+	# Surveying a tile counts toward the research conditions (tiles + deposits found).
+	record_unlock_progress("Survey", "tiles", 1)
+	record_unlock_progress("Survey", "deposits", _tile_deposit_count(tile_id))
 	if not reveal_nearby:
 		return
-	# Surveying an unsurveyed tile may automatically (partially) survey one neighbour.
-	var fresh: Array = []
-	for n in Catalog.tile_neighbours(tile_id):
-		if not surveyed_tiles.has(n) and not partially_surveyed_tiles.has(n) and not surveying_in_progress.has(n):
-			fresh.append(n)
-	if not fresh.is_empty():
+	# A full survey auto-(partially-)surveys a neighbour; Spectral Crystallography
+	# reveals one extra ("+1 adjacent tile revealed when surveying").
+	var reveals := 2 if is_unlocked("Spectral Crystallography") else 1
+	for _i in reveals:
+		var fresh: Array = []
+		for n in Catalog.tile_neighbours(tile_id):
+			if not surveyed_tiles.has(n) and not partially_surveyed_tiles.has(n) and not surveying_in_progress.has(n):
+				fresh.append(n)
+		if fresh.is_empty():
+			break
 		mark_tile_partial(str(fresh[randi() % fresh.size()]))
 
 # --- Public API: depletable deposits ---
 ## Seed each tile's depletable-deposit yields from its CSV deposits. Water is
 ## permanent and never seeded. Call once at match start (see world_map._ready).
 func seed_deposits(terrain) -> void:
+	_deposit_terrain = terrain
 	deposit_remaining.clear()
 	for coord in terrain.tiles:
 		var td: Dictionary = terrain.tiles[coord]
@@ -368,6 +394,130 @@ func _deposit_qty_of(raw: String) -> int:
 		if digits != "":
 			return int(digits)
 	return -1
+
+func _tile_deposit_count(tile_id: String) -> int:
+	if _deposit_terrain == null:
+		return 0
+	var coord: Vector2i = _deposit_terrain.id_to_coord(tile_id)
+	if not _deposit_terrain.tiles.has(coord):
+		return 0
+	return (_deposit_terrain.tiles[coord].get("deposits", []) as Array).size()
+
+# --- Public API: research unlocks ---
+func _load_unlock_defs() -> void:
+	_unlock_defs.clear()
+	var path := "res://data/research_unlocks.csv"
+	if not FileAccess.file_exists(path):
+		return
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return
+	var header := f.get_csv_line()
+	var idx := {}
+	for i in header.size():
+		idx[header[i].strip_edges()] = i
+	while not f.eof_reached():
+		var row := f.get_csv_line()
+		if row.is_empty() or row[0].strip_edges() == "":
+			continue
+		var prereqs: Array = []
+		for col in ["prereq_1", "prereq_2", "prereq_3"]:
+			var p := _csv_at(row, idx, col)
+			if p != "":
+				prereqs.append(p)
+		var q := _csv_at(row, idx, "Quantity")
+		_unlock_defs.append({
+			"title": _csv_at(row, idx, "title"),
+			"action": _csv_at(row, idx, "Action"),
+			"object": _csv_at(row, idx, "Object"),
+			"qty": int(q) if q.is_valid_int() else 0,
+			"prereqs": prereqs,
+			"description": _csv_at(row, idx, "description"),
+		})
+	f.close()
+
+func _csv_at(row: PackedStringArray, idx: Dictionary, col: String) -> String:
+	if not idx.has(col):
+		return ""
+	var i: int = idx[col]
+	return row[i].strip_edges() if i < row.size() else ""
+
+func is_unlocked(title: String) -> bool:
+	return unlocked_titles.has(title)
+
+## Grant an unlock. via_condition true => earned by its condition (drives the
+## "Unlocked …" dialog); false => a free-chosen unlock (no dialog).
+func grant_unlock(title: String, via_condition: bool = false) -> void:
+	if title == "" or unlocked_titles.has(title):
+		return
+	unlocked_titles[title] = true
+	_surveyable_dirty = true  # e.g. Geoscanning changes survey range
+	var desc := ""
+	for d in _unlock_defs:
+		if str(d.title) == title:
+			desc = str(d.description)
+			break
+	unlock_granted.emit(title, desc, via_condition)
+
+## Record progress toward action+object conditions (e.g. record("Survey","tiles")).
+func record_unlock_progress(action: String, object: String, amount: int = 1) -> void:
+	if amount <= 0:
+		return
+	var key := (action + "|" + object).to_lower()
+	_unlock_progress[key] = int(_unlock_progress.get(key, 0)) + amount
+	_check_unlock_conditions()
+
+func _check_unlock_conditions() -> void:
+	for d in _unlock_defs:
+		var title := str(d.title)
+		if title == "" or unlocked_titles.has(title) or int(d.qty) <= 0:
+			continue
+		if str(d.action) == "" or str(d.object) == "":
+			continue
+		var prereqs_met := true
+		for p in d.prereqs:
+			if not unlocked_titles.has(str(p)):
+				prereqs_met = false
+				break
+		if not prereqs_met:
+			continue
+		var key := (str(d.action) + "|" + str(d.object)).to_lower()
+		if int(_unlock_progress.get(key, 0)) >= int(d.qty):
+			grant_unlock(title, true)
+
+# --- Public API: survey range ---
+func survey_range() -> int:
+	return SURVEY_RANGE_BASE + (1 if is_unlocked("Computer Assisted Geoscanning") else 0)
+
+## A tile is surveyable when it lies within survey_range() tiles of a surveyed
+## tile. Cached; invalidated whenever the surveyed set or range changes.
+func is_tile_surveyable(tile_id: String) -> bool:
+	if _surveyable_dirty:
+		_rebuild_surveyable()
+	return _surveyable_cache.has(tile_id)
+
+func _rebuild_surveyable() -> void:
+	_surveyable_cache.clear()
+	var rng := survey_range()
+	var dist: Dictionary = {}
+	var queue: Array = []
+	for t in surveyed_tiles:
+		dist[t] = 0
+		_surveyable_cache[t] = true
+		queue.append(t)
+	var head := 0
+	while head < queue.size():
+		var t: String = str(queue[head])
+		head += 1
+		var d := int(dist[t])
+		if d >= rng:
+			continue
+		for n in Catalog.tile_neighbours(t):
+			if not dist.has(n):
+				dist[n] = d + 1
+				_surveyable_cache[n] = true
+				queue.append(n)
+	_surveyable_dirty = false
 
 func get_tile_land_owned(tile_id: String) -> int:
 	return int(tile_land_owned.get(tile_id, DEFAULT_TILE_LAND_OWNED))

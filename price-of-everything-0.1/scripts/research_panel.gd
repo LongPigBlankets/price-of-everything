@@ -605,6 +605,7 @@ func _try_choose_free_unlock(position: Vector2) -> bool:
 	if title.is_empty():
 		return false
 	_free_unlocked_titles[title] = true
+	MatchState.grant_unlock(title, false)  # free choice — unlocked, but no "Unlocked …" dialog
 	_free_unlocks = maxi(0, _free_unlocks - 1)
 	_hover_unlock_title = ""
 	if _free_unlocks <= 0:
@@ -1324,7 +1325,7 @@ func _unlock_brightness(rect: Rect2, bounds: Rect2) -> float:
 
 func _draw_unlock(unlock: Dictionary, rect: Rect2, brightness: float) -> void:
 	var title: String = unlock["title"]
-	var free_unlocked := _free_unlocked_titles.has(title)
+	var free_unlocked := _free_unlocked_titles.has(title) or MatchState.is_unlocked(title)
 	var hovered_for_free := _choosing_free_unlock and _hover_unlock_title == title and not free_unlocked and not bool(unlock.get("is_category_root", false))
 	_draw_unlock_shell(rect, brightness, unlock, free_unlocked, hovered_for_free)
 	_draw_unlock_rivets(rect, brightness)

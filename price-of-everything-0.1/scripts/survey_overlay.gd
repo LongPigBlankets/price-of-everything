@@ -32,6 +32,7 @@ const GREY_SOLID := Color(0.44, 0.44, 0.47, 0.9)     # mountain body (grey)
 const GREY_FADE_COL := Color(0.44, 0.44, 0.47, 0.0)  # grey gradient fades to nothing
 const SNOW := Color(0.97, 0.97, 0.98, 1.0)           # peak snow-cap
 const NAVY := Color(0.016, 0.059, 0.106)             # in-progress survey hex fill
+const SURVEY_LIMIT_RED := Color(0.86, 0.13, 0.13)    # max survey-range boundary line
 const RIVER_BLUE := Color(0.17647059, 0.40784314, 0.76862745, 1.0)
 # Sea: radial gradient (lighter centre -> deep edges so neighbours stay blue).
 const SEA_CENTRE := Color(0.34, 0.55, 0.76)
@@ -173,7 +174,8 @@ func _draw() -> void:
 	for cp in weathered_polys:
 		draw_colored_polygon(cp.poly, Color.WHITE, cp.uvs, GRUNGE_TEX)
 
-	# On top of everything: an in-progress survey marker on each tile being surveyed.
+	# On top: the red maximum-survey-range boundary, then the in-progress markers.
+	_draw_survey_limit()
 	_draw_survey_progress()
 
 func _uvs(poly: PackedVector2Array) -> PackedVector2Array:
@@ -520,6 +522,24 @@ func _draw_thick_river(pts: PackedVector2Array) -> void:
 	for i in range(right.size() - 1, -1, -1):
 		band.append(right[i])
 	draw_colored_polygon(band, RIVER_BLUE)
+
+# --- maximum survey-range boundary ---
+func _draw_survey_limit() -> void:
+	# Red line on every edge where a surveyable tile meets a non-surveyable one —
+	# the outer limit of what can currently be surveyed.
+	for coord in terrain_layer.tiles:
+		var tid := str(terrain_layer.tiles[coord].get("id", ""))
+		if not MatchState.is_tile_surveyable(tid):
+			continue
+		var centre := _centre(coord)
+		var offs: Array[Vector2i] = EDGE_NEIGHBOUR_ODD if (coord.x % 2) == 1 else EDGE_NEIGHBOUR_EVEN
+		for i in 6:
+			var ncoord: Vector2i = coord + offs[i]
+			if not terrain_layer.tiles.has(ncoord):
+				continue  # off the playable map
+			if MatchState.is_tile_surveyable(str(terrain_layer.tiles[ncoord].get("id", ""))):
+				continue
+			draw_line(centre + CORNERS[i], centre + CORNERS[(i + 1) % 6], SURVEY_LIMIT_RED, 6.0, true)
 
 # --- in-progress survey marker ---
 func _draw_survey_progress() -> void:
