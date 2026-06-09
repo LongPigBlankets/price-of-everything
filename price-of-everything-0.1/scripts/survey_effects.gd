@@ -16,11 +16,11 @@ const CORNERS: Array[Vector2] = [
 	Vector2(135.0, 240.0), Vector2(-135.0, 240.0), Vector2(-270.0, 0.0),
 ]
 const HEX_W := 25.0          # thick outline width
-const HEX_PULSE := 0.3       # one collapse
-const HEX_PULSES := 2        # repeats twice -> 0.6s total
+const HEX_PULSE := 0.5       # one collapse
+const HEX_PULSES := 2        # repeats twice -> 1.0s total
 const ICON_DUR := 1.0        # icons rise over 1s
-const ICON_RISE := 220.0
-const ICON_SIZE := 120.0
+const ICON_RISE := 200.0
+const ICON_SIZE := 80.0
 const ICON_SPACING := 210.0
 const GLOW_R := 100.0
 const GLOW_RINGS := 9
