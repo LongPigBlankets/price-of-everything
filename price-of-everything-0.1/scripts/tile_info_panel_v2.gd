@@ -518,31 +518,26 @@ func _refresh_banner(tile_data: Dictionary) -> void:
 	stats.add_child(_make_land_stat("max", int(totals.max)))
 	_chips_row.add_child(stats)
 
-# Two-line survey call-to-action (status + hint). Opens the survey dialog.
-func _make_survey_button(status: String) -> Button:
-	var btn := Button.new()
-	btn.size_flags_horizontal = Control.SIZE_FILL
-	btn.custom_minimum_size = Vector2(0, 46)
-	btn.add_theme_constant_override("h_separation", 0)
-	btn.tooltip_text = "Survey this tile"
-	btn.pressed.connect(func(): survey_requested.emit(_current_tile_data))
+# Survey call-to-action: a darker section showing the status + hint, with a DS
+# "Survey" button underneath. The button opens the survey dialog.
+func _make_survey_button(status: String) -> Control:
+	var section := PanelContainer.new()
+	section.size_flags_horizontal = Control.SIZE_FILL
+	section.custom_minimum_size = Vector2(0, 86)  # was 46; +40 to fit the Survey button
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = DS.PALETTE.BG_INSET
+	sb.bg_color = DS.PALETTE.BG_CARD  # darker section background
 	sb.border_color = Color(DS.PALETTE.WARN, 0.6)
 	sb.set_border_width_all(1)
 	sb.set_corner_radius_all(8)
-	sb.content_margin_top = 4
-	sb.content_margin_bottom = 4
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
 	sb.content_margin_left = 8
 	sb.content_margin_right = 8
-	btn.add_theme_stylebox_override("normal", sb)
-	btn.add_theme_stylebox_override("hover", sb)
-	btn.add_theme_stylebox_override("pressed", sb)
+	section.add_theme_stylebox_override("panel", sb)
 	var col := VBoxContainer.new()
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.set_anchors_preset(Control.PRESET_FULL_RECT)
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 1)
+	col.add_theme_constant_override("separation", 4)
+	section.add_child(col)
 	var top := Label.new()
 	top.text = status if status != "" else "Survey"
 	top.theme_type_variation = &"Caption"
@@ -558,8 +553,14 @@ func _make_survey_button(status: String) -> Button:
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(sub)
-	btn.add_child(col)
-	return btn
+	# DS default button — bluish-grey, metal-edge skeuomorphic style.
+	var btn := Button.new()
+	btn.text = "Survey"
+	btn.tooltip_text = "Survey this tile"
+	btn.size_flags_horizontal = Control.SIZE_FILL
+	btn.pressed.connect(func(): survey_requested.emit(_current_tile_data))
+	col.add_child(btn)
+	return section
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Metric tiles

@@ -335,6 +335,7 @@ func _complete_survey(tile_id: String, reveal_nearby: bool) -> void:
 	record_unlock_progress("Survey", "tiles", 1)
 	record_unlock_progress("Survey", "deposits", found.size())
 	tile_survey_completed.emit(tile_id, found)
+	request_toast(_survey_toast(tile_id, found), "info")
 	if not reveal_nearby:
 		return
 	# A full survey auto-(partially-)surveys a neighbour; Spectral Crystallography
@@ -414,9 +415,39 @@ func _tile_deposit_goods(tile_id: String) -> Array:
 		var token := _deposit_token_of(str(dep))
 		if token == "" or token == "water":
 			continue
+		var qty := _deposit_qty_of(str(dep))  # -1 => no amount given => infinite deposit
 		var good: Dictionary = Catalog.get_good_by_internal_name(token)
-		out.append({"good_id": str(good.get("id", token)), "internal_name": token})
+		out.append({
+			"good_id": str(good.get("id", token)),
+			"internal_name": token,
+			"display_name": str(good.get("display_name", token)),
+			"qty": qty,
+			"infinite": qty < 0,
+		})
 	return out
+
+## "Survey complete." toast describing what a finished survey revealed.
+func _survey_toast(tile_id: String, found: Array) -> String:
+	var label := tile_id.trim_prefix("tile_")
+	if found.is_empty():
+		return "Survey complete. Tile %s showed no resources." % label
+	var parts: Array = []
+	for d in found:
+		var name := str(d.get("display_name", d.get("internal_name", ""))).capitalize()
+		if bool(d.get("infinite", false)):
+			parts.append("an inexhaustible deposit of %s" % name)
+		else:
+			var size := "large" if int(d.get("qty", 0)) >= 500 else "small"
+			parts.append("a %s deposit of %s" % [size, name])
+	return "Survey complete. Tile %s revealed %s." % [label, _join_and(parts)]
+
+func _join_and(parts: Array) -> String:
+	if parts.size() <= 1:
+		return str(parts[0]) if parts.size() == 1 else ""
+	if parts.size() == 2:
+		return "%s and %s" % [str(parts[0]), str(parts[1])]
+	var head: Array = parts.slice(0, parts.size() - 1)
+	return "%s, and %s" % [", ".join(head), str(parts[parts.size() - 1])]
 
 # --- Public API: research unlocks ---
 func _load_unlock_defs() -> void:
@@ -552,12 +583,19 @@ func cheat_survey_within_limits() -> void:
 		if is_tile_surveyable(tid):
 			targets.append(tid)
 	for tid in targets:
-		mark_tile_surveyed(tid)
+		_cheat_reveal(tid)
 
 ## Instantly fully-survey every tile on the map.
 func cheat_survey_all() -> void:
 	for tid in _all_tile_ids():
-		mark_tile_surveyed(tid)
+		_cheat_reveal(tid)
+
+## Survey one tile and play its reveal animation (but no per-tile toast).
+func _cheat_reveal(tile_id: String) -> void:
+	if surveyed_tiles.has(tile_id):
+		return
+	tile_survey_completed.emit(tile_id, _tile_deposit_goods(tile_id))
+	mark_tile_surveyed(tile_id)
 
 ## Partially survey every tile within the survey limit (already-surveyed tiles stay surveyed).
 func cheat_partial_within_limits() -> void:
