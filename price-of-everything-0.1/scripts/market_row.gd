@@ -2,12 +2,9 @@ extends VBoxContainer
 ## A market goods row: 60x60 icon + name button + market/cost columns, with an
 ## expandable Sell / Purchase / Move / Expand action block underneath.
 
-const GoodIcons := preload("res://scripts/good_icons.gd")
-const GOODS_ICON_FRAME := preload("res://assets/ui/goods_icon_frame.tres")
-const BevelEdge := preload("res://scripts/bevel_edge.gd")
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
 
-const ICON_SIZE := 98
-const ICON_INNER := 74     # icon inside the frame; +12px frame margin each side = ICON_SIZE
+const ICON_SIZE := 98      # outer plate; icon fills ICON_SIZE - 2×12px frame margin
 const NAME_W := 240.0
 const NAME_MAX_CHARS := 24
 # Name font is sized as large as possible while the longest real name still fits
@@ -57,26 +54,10 @@ func setup(good_data: Dictionary) -> void:
 	main.add_theme_constant_override("separation", 10)
 	add_child(main)
 
-	# Icon sits inside a small pipe-frame slot (matches the goods frame elsewhere).
-	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(ICON_INNER, ICON_INNER)
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var tex: Texture2D = GoodIcons.texture_for(good_id, internal_name)
-	if tex != null:
-		icon.texture = tex
-	# Raised bevel edge 5px in from the frame, so the icon reads as a raised plate.
-	var bevel := BevelEdge.new()
-	bevel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bevel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon.add_child(bevel)
-	var icon_frame := PanelContainer.new()
-	icon_frame.add_theme_stylebox_override("panel", GOODS_ICON_FRAME)
-	icon_frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	icon_frame.add_child(icon)
-	main.add_child(icon_frame)
+	# Icon sits inside the off-white pipe-frame slot. Shared with the mapmode good
+	# picker (UIHelpers) so both stay identical. prefer_small=false keeps the
+	# higher-res texture the bigger market icon wants.
+	main.add_child(UIHelpers.make_framed_good_icon(good_id, internal_name, ICON_SIZE, false))
 
 	# Name button, truncated to NAME_MAX_CHARS so long names don't blow out the column.
 	var disp := str(good_data.get("display_name", good_id))

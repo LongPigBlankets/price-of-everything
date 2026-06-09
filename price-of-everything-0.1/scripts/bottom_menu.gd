@@ -230,6 +230,10 @@ func _hide_all_panels() -> void:
 	_set_panel_visible(mapmodes_panel, false)
 	_set_panel_visible(money_panel, false)
 	_set_panel_visible(research_panel, false)
+	# The mapmode good-select side panel follows the mapmodes panel.
+	var good_panel := get_node_or_null("%GoodSelectPanel")
+	if good_panel != null:
+		good_panel.hide()
 	if is_instance_valid(building_ledger_panel):
 		_set_panel_visible(building_ledger_panel, false)
 

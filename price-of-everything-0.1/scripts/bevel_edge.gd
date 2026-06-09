@@ -1,9 +1,10 @@
 extends Control
 ## A thin raised bevel edge drawn inset from the node's rect: bright on the top
 ## and left, dark on the bottom and right (lit from the top-left), so a framed
-## icon reads as a raised plate. Inset matches "5px in from the frame".
+## icon reads as a raised plate. The rim sits INSET px in from the node's edge;
+## the helper spans the whole frame, so this is the distance from the frame edge.
 
-const INSET := 5.0
+const INSET := 6.0
 const T := 2.0
 const LIGHT := Color(1.0, 1.0, 1.0, 0.65)
 const DARK := Color(0.0, 0.0, 0.0, 0.5)
