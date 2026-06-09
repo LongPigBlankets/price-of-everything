@@ -151,6 +151,7 @@ func _ready() -> void:
 
 	# Collapsing-hex + rising-deposit-icon animation when a tile finishes surveying.
 	var _survey_fx: Node2D = load("res://scripts/survey_effects.gd").new()
+	_survey_fx.name = "SurveyEffects"
 	_survey_fx.terrain_layer = terrain_layer
 	add_child(_survey_fx)
 

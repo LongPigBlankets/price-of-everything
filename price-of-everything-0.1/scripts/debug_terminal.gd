@@ -118,8 +118,24 @@ func _run_command(text: String) -> String:
 				MatchState.toggle_use_alt_bottom_menu()
 				return "Bottom menu icons → %s" % _bottom_menu_name()
 			return "usage: swap tvp  (current: %s)  |  swap bottom menu  (current: %s)" % [_tvp_name(), _bottom_menu_name()]
+		"survey":
+			if parts.size() >= 2 and parts[1].to_lower() == "limit":
+				MatchState.cheat_survey_within_limits()
+				return "Surveyed all tiles within the current survey limit."
+			if parts.size() >= 2 and parts[1].to_lower() == "all":
+				MatchState.cheat_survey_all()
+				return "Surveyed the whole map."
+			return "usage: survey limit  |  survey all"
+		"p_survey":
+			if parts.size() >= 2 and parts[1].to_lower() == "limit":
+				MatchState.cheat_partial_within_limits()
+				return "Partially surveyed all tiles within the current survey limit."
+			if parts.size() >= 2 and parts[1].to_lower() == "all":
+				MatchState.cheat_partial_all()
+				return "Partially surveyed the whole map."
+			return "usage: p_survey limit  |  p_survey all"
 		"help":
-			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap tvp   |   swap bottom menu   |   help"
+			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap tvp   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

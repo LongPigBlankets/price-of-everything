@@ -18,11 +18,15 @@ const CORNERS: Array[Vector2] = [
 const HEX_W := 25.0          # thick outline width
 const HEX_PULSE := 0.5       # one collapse
 const HEX_PULSES := 2        # repeats twice -> 1.0s total
-const ICON_DUR := 1.0        # icons rise over 1s
-const ICON_RISE := 200.0
-const ICON_SIZE := 80.0
-const ICON_SPACING := 210.0
-const GLOW_R := 100.0
+const ICON_DUR := 1.0          # icons rise over 1s
+# Icons/glow + rise scale with the camera zoom (captured when the survey lands):
+# small + short at max zoom-in, large + tall at max zoom-out, so they stay readable.
+const ICON_SIZE_IN := 80.0     # at max zoom in
+const ICON_SIZE_OUT := 320.0   # at max zoom out
+const RISE_IN := 200.0
+const RISE_OUT := 800.0
+const GLOW_FACTOR := 1.25      # glow radius relative to icon size
+const SPACING_FACTOR := 2.6    # icon spacing relative to icon size
 const GLOW_RINGS := 9
 
 var terrain_layer: Node = null
@@ -40,6 +44,11 @@ func _on_tile_surveyed(tile_id: String, deposit_goods: Array) -> void:
 	if coord == Vector2i(-1, -1):
 		return
 	var centre: Vector2 = terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(coord))
+	# Size/rise/spacing scale with how zoomed out the camera is right now.
+	var zt := _zoom_t()
+	var icon_size := lerpf(ICON_SIZE_IN, ICON_SIZE_OUT, zt)
+	var rise := lerpf(RISE_IN, RISE_OUT, zt)
+	var spacing := icon_size * SPACING_FACTOR
 	# Resolve icons; lay them out side by side, centred on the tile.
 	var icons: Array = []
 	for d in deposit_goods:
@@ -48,10 +57,23 @@ func _on_tile_surveyed(tile_id: String, deposit_goods: Array) -> void:
 			icons.append({"tex": tex})
 	var n := icons.size()
 	for i in n:
-		icons[i]["x"] = (float(i) - float(n - 1) * 0.5) * ICON_SPACING
-	_fx.append({"centre": centre, "t": 0.0, "icons": icons})
+		icons[i]["x"] = (float(i) - float(n - 1) * 0.5) * spacing
+	_fx.append({"centre": centre, "t": 0.0, "icons": icons, "icon_size": icon_size, "rise": rise, "spacing": spacing})
 	set_process(true)
 	queue_redraw()
+
+## 0 at max zoom-in (largest zoom), 1 at max zoom-out (smallest zoom).
+func _zoom_t() -> float:
+	var cam := get_viewport().get_camera_2d()
+	if cam == null:
+		return 0.0
+	var zmax: Variant = cam.get("zoom_max")
+	var zmin: Variant = cam.get("zoom_min")
+	var hi: float = float(zmax) if zmax != null else 4.0
+	var lo: float = float(zmin) if zmin != null else 1.0
+	if absf(hi - lo) < 0.001:
+		return 0.0
+	return clampf((cam.zoom.x - hi) / (lo - hi), 0.0, 1.0)
 
 func _process(delta: float) -> void:
 	var alive: Array = []
@@ -67,7 +89,7 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	for f in _fx:
 		_draw_collapse(f.centre, f.t)
-		_draw_icons(f.centre, f.t, f.icons)
+		_draw_icons(f)
 
 func _draw_collapse(centre: Vector2, t: float) -> void:
 	var total := HEX_PULSE * float(HEX_PULSES)
@@ -89,22 +111,27 @@ func _hex(centre: Vector2, s: float) -> PackedVector2Array:
 	pts.append(centre + CORNERS[0] * s)
 	return pts
 
-func _draw_icons(centre: Vector2, t: float, icons: Array) -> void:
+func _draw_icons(f: Dictionary) -> void:
+	var icons: Array = f.icons
+	var t: float = f.t
 	if icons.is_empty() or t > ICON_DUR:
 		return
+	var centre: Vector2 = f.centre
+	var icon_size: float = f.icon_size
 	var prog := t / ICON_DUR
-	var y := centre.y - ICON_RISE * prog
+	var y := centre.y - float(f.rise) * prog
 	var alpha := 1.0
 	if t < 0.15:
 		alpha = t / 0.15
 	elif t > 0.7:
 		alpha = maxf(0.0, 1.0 - (t - 0.7) / 0.3)
 	var scale := minf(1.0, 0.5 + prog * 2.5)  # pop to full size in the first ~0.2s
-	var glow_r: float = minf(GLOW_R, ICON_SPACING * 0.5) * scale
+	# Glow radius scales with the icon, capped so it never reaches a neighbour icon.
+	var glow_r: float = minf(icon_size * GLOW_FACTOR, float(f.spacing) * 0.5) * scale
 	# Glows first, then icons on top — so a glow never obscures a neighbouring icon.
 	for ic in icons:
 		_draw_glow(Vector2(centre.x + float(ic.x), y), glow_r, alpha)
-	var sz := ICON_SIZE * scale
+	var sz := icon_size * scale
 	for ic in icons:
 		var pos := Vector2(centre.x + float(ic.x), y)
 		draw_texture_rect(ic.tex, Rect2(pos - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), false,

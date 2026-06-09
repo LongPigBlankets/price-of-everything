@@ -534,6 +534,45 @@ func _rebuild_surveyable() -> void:
 				queue.append(n)
 	_surveyable_dirty = false
 
+# --- Cheats (debug terminal) ---
+func _all_tile_ids() -> Array:
+	var out: Array = []
+	if _deposit_terrain == null:
+		return out
+	for coord in _deposit_terrain.tiles:
+		var tid := str(_deposit_terrain.tiles[coord].get("id", ""))
+		if tid != "":
+			out.append(tid)
+	return out
+
+## Instantly fully-survey every tile currently within the survey limit.
+func cheat_survey_within_limits() -> void:
+	var targets: Array = []
+	for tid in _all_tile_ids():
+		if is_tile_surveyable(tid):
+			targets.append(tid)
+	for tid in targets:
+		mark_tile_surveyed(tid)
+
+## Instantly fully-survey every tile on the map.
+func cheat_survey_all() -> void:
+	for tid in _all_tile_ids():
+		mark_tile_surveyed(tid)
+
+## Partially survey every tile within the survey limit (already-surveyed tiles stay surveyed).
+func cheat_partial_within_limits() -> void:
+	var targets: Array = []
+	for tid in _all_tile_ids():
+		if is_tile_surveyable(tid):
+			targets.append(tid)
+	for tid in targets:
+		mark_tile_partial(tid)
+
+## Partially survey the whole map (already-surveyed tiles stay surveyed).
+func cheat_partial_all() -> void:
+	for tid in _all_tile_ids():
+		mark_tile_partial(tid)
+
 func get_tile_land_owned(tile_id: String) -> int:
 	return int(tile_land_owned.get(tile_id, DEFAULT_TILE_LAND_OWNED))
 
