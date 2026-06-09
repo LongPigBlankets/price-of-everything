@@ -2,11 +2,12 @@ extends Node2D
 ## On-map animation played whenever a tile finishes being surveyed (in any view).
 ##
 ## - A thick off-white hex outline at the tile edge "shoots" a hexagon outline that
-##   collapses into the centre; each pulse runs 0.5s and repeats three times (1.5s).
+##   collapses into the centre; each pulse runs 0.5s and repeats four times (2.0s).
 ## - For each non-water deposit revealed, the resource's icon rises from the tile
-##   over 1.5s, holds 0.5s, then fades over 0.5s (side by side if several). Finite
-##   deposits glow white (~icon-sized); an infinite deposit glows yellow-gold and
-##   radiates roughly twice as far — only that deposit's icon is gold.
+##   over 2s, holds 0.5s, then fades over 0.5s (side by side if several). Infinite
+##   deposits' icons hold a further 1s before fading. Finite deposits glow white
+##   (~icon-sized); an infinite deposit glows yellow-gold and radiates roughly
+##   twice as far — only that deposit's icon is gold.
 
 const GoodIcons := preload("res://scripts/good_icons.gd")
 
@@ -19,11 +20,11 @@ const CORNERS: Array[Vector2] = [
 ]
 const HEX_W := 25.0          # thick outline width
 const HEX_PULSE := 0.5       # one collapse
-const HEX_PULSES := 3        # repeats three times -> 1.5s total
-const RISE_DUR := 1.5        # icons rise over 1.5s
+const HEX_PULSES := 4        # repeats four times -> 2.0s total
+const RISE_DUR := 2.0        # icons rise over 2s
 const HOLD := 0.5            # then sit stationary for 0.5s
+const INF_EXTRA := 1.0       # infinite-deposit icons hold a further 1s before fading
 const FADE := 0.5            # then fade over 0.5s
-const FX_TOTAL := RISE_DUR + HOLD + FADE  # 2.5s lifetime
 # Icons/glow + rise scale with the camera zoom (captured when the survey lands):
 # small + short at max zoom-in, large + tall at max zoom-out, so they stay readable.
 const ICON_SIZE_IN := 80.0     # at max zoom in
@@ -62,9 +63,15 @@ func _on_tile_surveyed(tile_id: String, deposit_goods: Array) -> void:
 		if tex != null:
 			icons.append({"tex": tex, "infinite": bool(d.get("infinite", false))})
 	var n := icons.size()
+	var has_inf := false
 	for i in n:
 		icons[i]["x"] = (float(i) - float(n - 1) * 0.5) * spacing
-	_fx.append({"centre": centre, "t": 0.0, "icons": icons, "icon_size": icon_size, "rise": rise, "spacing": spacing})
+		if bool(icons[i].get("infinite", false)):
+			has_inf = true
+	# Infinite-deposit icons hold an extra second, so the effect lives that bit longer.
+	var lifetime := RISE_DUR + HOLD + FADE + (INF_EXTRA if has_inf else 0.0)
+	_fx.append({"centre": centre, "t": 0.0, "icons": icons, "icon_size": icon_size,
+		"rise": rise, "spacing": spacing, "lifetime": lifetime})
 	set_process(true)
 	queue_redraw()
 
@@ -85,7 +92,7 @@ func _process(delta: float) -> void:
 	var alive: Array = []
 	for f in _fx:
 		f.t += delta
-		if f.t <= FX_TOTAL:
+		if f.t <= float(f.lifetime):
 			alive.append(f)
 	_fx = alive
 	queue_redraw()
@@ -120,19 +127,15 @@ func _hex(centre: Vector2, s: float) -> PackedVector2Array:
 func _draw_icons(f: Dictionary) -> void:
 	var icons: Array = f.icons
 	var t: float = f.t
-	if icons.is_empty() or t > FX_TOTAL:
+	if icons.is_empty() or t > float(f.lifetime):
 		return
 	var centre: Vector2 = f.centre
 	var icon_size: float = f.icon_size
-	# Rise over RISE_DUR, then sit still; fade over the last FADE seconds.
+	# All icons rise together over RISE_DUR, then sit still. Each icon fades at its
+	# own time (infinite icons hold an extra INF_EXTRA seconds first).
 	var prog := minf(1.0, t / RISE_DUR)
 	var y := centre.y - float(f.rise) * prog
-	var alpha := 1.0
-	if t < 0.15:
-		alpha = t / 0.15
-	elif t > RISE_DUR + HOLD:
-		alpha = maxf(0.0, 1.0 - (t - RISE_DUR - HOLD) / FADE)
-	var scale := minf(1.0, 0.5 + (t / RISE_DUR) * 2.5)  # pop to full size in the first ~0.25s
+	var scale := minf(1.0, 0.5 + t * 2.5)  # pop to full size in the first ~0.2s
 	# White glow is capped so it never reaches a neighbour; the gold (infinite) glow
 	# is larger and uncapped — icons draw on top, so no icon is obscured.
 	var white_r: float = minf(icon_size * GLOW_FACTOR, float(f.spacing) * 0.5) * scale
@@ -140,13 +143,21 @@ func _draw_icons(f: Dictionary) -> void:
 	# Glows first, then icons on top.
 	for ic in icons:
 		var infinite: bool = bool(ic.get("infinite", false))
-		_draw_glow(Vector2(centre.x + float(ic.x), y), gold_r if infinite else white_r, alpha,
-			GOLD if infinite else OFF_WHITE)
+		_draw_glow(Vector2(centre.x + float(ic.x), y), gold_r if infinite else white_r,
+			_icon_alpha(t, infinite), GOLD if infinite else OFF_WHITE)
 	var sz := icon_size * scale
 	for ic in icons:
 		var pos := Vector2(centre.x + float(ic.x), y)
 		draw_texture_rect(ic.tex, Rect2(pos - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), false,
-			Color(1.0, 1.0, 1.0, alpha))
+			Color(1.0, 1.0, 1.0, _icon_alpha(t, bool(ic.get("infinite", false)))))
+
+func _icon_alpha(t: float, infinite: bool) -> float:
+	var fade_start := RISE_DUR + HOLD + (INF_EXTRA if infinite else 0.0)
+	if t < 0.15:
+		return t / 0.15
+	if t > fade_start:
+		return maxf(0.0, 1.0 - (t - fade_start) / FADE)
+	return 1.0
 
 func _draw_glow(pos: Vector2, r: float, a: float, col: Color) -> void:
 	if r <= 1.0:
