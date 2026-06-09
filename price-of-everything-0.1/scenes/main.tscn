@@ -37,6 +37,9 @@
 [ext_resource type="Script" path="res://scripts/building_connection_visuals.gd" id="28_bcv"]
 [ext_resource type="Script" path="res://scripts/logistics_overlay.gd" id="29_log"]
 [ext_resource type="Script" path="res://scripts/survey_overlay.gd" id="31_survey"]
+[ext_resource type="Script" path="res://scripts/deposits_overlay.gd" id="32_deposits"]
+[ext_resource type="Script" path="res://scripts/water_overlay.gd" id="33_water"]
+[ext_resource type="Script" path="res://scripts/good_select_panel.gd" id="34_goodsel"]
 [ext_resource type="Script" path="res://scripts/search_overlay.gd" id="29_search"]
 [ext_resource type="Script" path="res://scripts/research_panel.gd" id="30_research"]
 
@@ -177,6 +180,12 @@ script = ExtResource("29_log")
 [node name="SurveyOverlay" type="Node2D" parent="."]
 script = ExtResource("31_survey")
 
+[node name="DepositsOverlay" type="Node2D" parent="."]
+script = ExtResource("32_deposits")
+
+[node name="WaterOverlay" type="Node2D" parent="."]
+script = ExtResource("33_water")
+
 [node name="UILayer" type="CanvasLayer" parent="." unique_id=1882417710]
 
 [node name="HUD" type="Control" parent="UILayer" unique_id=1849223856]
@@ -281,6 +290,18 @@ layout_mode = 0
 anchors_preset = 0
 offset_left = 16.0
 offset_top = 58.0
+
+[node name="GoodSelectPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 0
+anchors_preset = 0
+offset_left = 440.0
+offset_top = 58.0
+offset_right = 820.0
+offset_bottom = 660.0
+theme_override_styles/panel = ExtResource("8_tipki")
+script = ExtResource("34_goodsel")
 
 [node name="BottomMenuPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=1433701742]
 layout_mode = 1
@@ -453,6 +474,7 @@ offset_top = 30.0
 offset_right = -30.0
 offset_bottom = 660.0
 grow_horizontal = 0
+mouse_filter = 0
 theme_override_styles/panel = ExtResource("8_tipki")
 script = ExtResource("4_jyhfs")
 
@@ -558,6 +580,7 @@ offset_left = -898.0
 offset_top = 30.0
 offset_right = -480.0
 offset_bottom = 760.0
+mouse_filter = 0
 theme_override_styles/panel = ExtResource("8_tipki")
 script = ExtResource("6_tefeu")
 

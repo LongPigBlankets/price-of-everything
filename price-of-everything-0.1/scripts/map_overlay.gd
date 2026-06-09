@@ -3,6 +3,29 @@ extends Node2D
 const SliceMarkerScene: PackedScene = preload("res://scenes/slice_marker.tscn")
 const BuildModeHexOverlayScript: Script = preload("res://scripts/build_mode_hex_overlay.gd")
 const BuildModeBackdropScript: Script = preload("res://scripts/build_mode_backdrop.gd")
+const GoodIcons := preload("res://scripts/good_icons.gd")
+
+# Producing / Consuming icons are sized as a fraction of the tile (world units),
+# so they scale with zoom. Multiple selected goods on one tile cluster + shrink.
+# Cluster shapes (offsets are tile fractions, centred on the tile):
+#   1 centre · 2 side-by-side · 3 triangle · 4 square · 5 square + one on top
+#   middle · 6 a 3-row × 2-column grid. Player can pick at most MAX_SELECTIONS (6).
+const RESOURCE_ICON_TILE_FRACTION := 0.5
+const RESOURCE_CLUSTER_OFFSETS := {
+	1: [Vector2(0, 0)],
+	2: [Vector2(-0.18, 0), Vector2(0.18, 0)],
+	3: [Vector2(0, -0.19), Vector2(-0.19, 0.16), Vector2(0.19, 0.16)],
+	4: [Vector2(-0.18, -0.18), Vector2(0.18, -0.18), Vector2(-0.18, 0.18), Vector2(0.18, 0.18)],
+	5: [Vector2(0, -0.32), Vector2(-0.22, -0.04), Vector2(0.22, -0.04), Vector2(-0.22, 0.26), Vector2(0.22, 0.26)],
+	6: [Vector2(-0.22, -0.30), Vector2(0.22, -0.30), Vector2(-0.22, 0.0), Vector2(0.22, 0.0), Vector2(-0.22, 0.30), Vector2(0.22, 0.30)],
+}
+# Icon scale (fraction of the single-icon size) per cluster count. The single-icon
+# size is RESOURCE_ICON_TILE_FRACTION (0.5) of the tile, so a 0.80 factor → 40% of
+# the tile each. Counts 2–4 stay large (fill the tile, overlap a little); 5–6
+# shrink so the grid still fits.
+const RESOURCE_CLUSTER_SCALE := {
+	1: 1.0, 2: 0.80, 3: 0.80, 4: 0.80, 5: 0.46, 6: 0.44,
+}
 
 const POWER_COLORS: Dictionary = {
 	"surplus": Color(0.2, 0.8, 0.2),         # green
@@ -18,6 +41,7 @@ const BUILD_TILE_VERTICAL_OFFSET := Vector2(0, -5)
 const BUILD_RED := Color(0.45, 0.02, 0.02, 0.42)
 const BUILD_DARK_GREEN := Color(0.02, 0.28, 0.1, 0.34)
 const BUILD_LIGHT_GREEN := Color(0.45, 1.0, 0.48, 0.86)
+const BUILD_GREY := Color(0.32, 0.34, 0.37, 0.55)   # unsurveyed tile (deposit recipes)
 
 @onready var terrain_layer: HexMap = %TerrainLayer
 
@@ -63,13 +87,20 @@ func _clear_overlays() -> void:
 
 func _on_build_mode_entered(_building_id: String, recipe_id: String) -> void:
 	_clear_build_overlays()
-	_show_build_legend()
-	if recipe_id == "":
-		return
-	var recipe: Dictionary = Catalog.get_recipe(recipe_id)
+	var recipe: Dictionary = Catalog.get_recipe(recipe_id) if recipe_id != "" else {}
+	var requires_deposit := _recipe_requires_deposit(recipe)
+	_show_build_legend(requires_deposit)
 	if recipe.is_empty():
 		return
-	_render_build_overlay(recipe)
+	_render_build_overlay(recipe, requires_deposit)
+
+func _recipe_requires_deposit(recipe: Dictionary) -> bool:
+	# Water is visible and never depletes, so water-only recipes (desalination)
+	# don't need surveying — only real mineral deposits gate on survey.
+	for req in recipe.get("requirements", []):
+		if str(req.get("type", "")) == "deposit" and str(req.get("value", "")) != "water":
+			return true
+	return false
 
 func _on_build_mode_exited() -> void:
 	_clear_build_overlays()
@@ -81,13 +112,13 @@ func _clear_build_overlays() -> void:
 			node.queue_free()
 	build_overlays.clear()
 
-func _render_build_overlay(recipe: Dictionary) -> void:
+func _render_build_overlay(recipe: Dictionary, requires_deposit: bool) -> void:
 	_add_build_backdrop()
 	var reqs: Array = recipe.get("requirements", [])
 	var input_names: Array[String] = _recipe_input_internal_names(recipe)
 	for coord in terrain_layer.tiles:
 		var tile_data: Dictionary = terrain_layer.tiles[coord]
-		var state := _build_overlay_state(tile_data, reqs, input_names)
+		var state := _build_overlay_state(tile_data, reqs, input_names, requires_deposit)
 		if state == "none":
 			continue
 		var marker := _make_build_hex_marker(state)
@@ -121,7 +152,12 @@ func _map_bounds() -> Rect2:
 		return Rect2(Vector2.ZERO, Vector2.ZERO)
 	return Rect2(min_pos - _tile_size(), (max_pos - min_pos) + _tile_size() * 2.0)
 
-func _build_overlay_state(tile_data: Dictionary, reqs: Array, input_names: Array[String]) -> String:
+func _build_overlay_state(tile_data: Dictionary, reqs: Array, input_names: Array[String], requires_deposit: bool) -> String:
+	# For deposit recipes you can't know viability until the tile is surveyed.
+	if requires_deposit:
+		var tile_id: String = tile_data.get("id", "")
+		if MatchState.survey_status(tile_id, str(tile_data.get("type", ""))) == "unsurveyed":
+			return "unsurveyed"
 	var matched_input_count := _tile_input_match_count(tile_data, input_names)
 	var tracked_input_count := input_names.size()
 	if tracked_input_count > 0:
@@ -163,6 +199,9 @@ func _make_build_hex_marker(state: String) -> Node2D:
 	marker.set_script(BuildModeHexOverlayScript)
 	marker.set("tile_size", _tile_size())
 	match state:
+		"unsurveyed":
+			marker.set("fill_color", BUILD_GREY)
+			marker.set("hatch_color", Color(0.7, 0.72, 0.76, 0.22))
 		"blocked":
 			marker.set("fill_color", BUILD_RED)
 			marker.set("hatch_color", Color(1, 0.42, 0.42, 0.28))
@@ -232,26 +271,29 @@ func _tile_produces_good(tile_data: Dictionary, internal_name: String) -> bool:
 				return true
 	return false
 
-func _show_build_legend() -> void:
-	if build_legend == null:
-		build_legend = _make_build_legend()
+func _show_build_legend(requires_deposit: bool) -> void:
+	# Rebuilt each time so the "Tile unsurveyed" row only appears for deposit recipes.
+	if build_legend != null and is_instance_valid(build_legend):
+		build_legend.queue_free()
+	build_legend = _make_build_legend(requires_deposit)
 	build_legend.show()
 
 func _hide_build_legend() -> void:
 	if build_legend != null:
 		build_legend.hide()
 
-func _make_build_legend() -> PanelContainer:
+func _make_build_legend(requires_deposit: bool) -> PanelContainer:
 	var parent_control := get_parent().get_node_or_null("UILayer/HUD/HUDContent") as Control
 	var panel := PanelContainer.new()
 	panel.name = "BuildModeLegend"
-	panel.custom_minimum_size = Vector2(230, 132)
+	var height := 156 if requires_deposit else 132
+	panel.custom_minimum_size = Vector2(230, height)
 	panel.anchor_left = 1.0
 	panel.anchor_top = 1.0
 	panel.anchor_right = 1.0
 	panel.anchor_bottom = 1.0
 	panel.offset_left = -250
-	panel.offset_top = -166
+	panel.offset_top = -(height + 34)
 	panel.offset_right = -20
 	panel.offset_bottom = -20
 	var style := StyleBoxFlat.new()
@@ -277,6 +319,8 @@ func _make_build_legend() -> PanelContainer:
 	_add_build_legend_row(box, BUILD_RED, "Cannot build")
 	_add_build_legend_row(box, BUILD_DARK_GREEN, "1 input present")
 	_add_build_legend_row(box, BUILD_LIGHT_GREEN, "2+ / all met")
+	if requires_deposit:
+		_add_build_legend_row(box, BUILD_GREY, "Tile unsurveyed")
 	_add_build_legend_row(box, Color(0, 0, 0, 0), "Unrestricted")
 	return panel
 
@@ -300,43 +344,62 @@ func _render_overlay(mode: int, selections: Array) -> void:
 	else:
 		_render_resource_overlay(mode, selections)
 
-# --- Resource overlay (Potentials / Producing / Consuming) ---
+# --- Resource overlay (Producing / Consuming) ---
+# Each selected good is drawn on a matching tile as its own icon (goods with no
+# art fall back to a colour slice so they stay visible).
 
 func _render_resource_overlay(mode: int, selections: Array) -> void:
+	var icon_world := _resource_icon_world_size()
+	var tile := _tile_size()
 	for coord in terrain_layer.tiles:
 		var tile_data: Dictionary = terrain_layer.tiles[coord]
-		var colors_for_tile: Array[Color] = []
+		var matched: Array = []
 		for s in selections:
 			if _tile_matches(mode, tile_data, s.good_id):
-				colors_for_tile.append(s.color)
-		if not colors_for_tile.is_empty():
-			var marker := SliceMarkerScene.instantiate()
-			marker.position = _tile_world_pos(coord)
-			marker.radius = _tile_marker_radius()
-			marker.set_colors(colors_for_tile)
-			add_child(marker)
-			current_overlays.append(marker)
+				matched.append(s)
+		if matched.is_empty():
+			continue
+		_place_resource_markers(_tile_world_pos(coord), matched, icon_world, tile)
+
+func _place_resource_markers(center: Vector2, matched: Array, icon_world: float, tile: Vector2) -> void:
+	# Up to 6 icons cluster on one tile (matches the MAX_SELECTIONS cap).
+	var count: int = mini(matched.size(), 6)
+	var offsets: Array = RESOURCE_CLUSTER_OFFSETS.get(count, RESOURCE_CLUSTER_OFFSETS[1])
+	var size := icon_world * float(RESOURCE_CLUSTER_SCALE.get(count, 1.0))
+	for i in count:
+		var s: Dictionary = matched[i]
+		var offset: Vector2 = offsets[i] * tile
+		var node := _make_resource_marker(str(s.good_id), s.color, size)
+		node.position = center + offset
+		add_child(node)
+		current_overlays.append(node)
+
+func _make_resource_marker(good_id: String, color: Color, world_size: float) -> Node2D:
+	var tex := GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id), true)
+	if tex != null:
+		var sprite := Sprite2D.new()
+		sprite.texture = tex
+		sprite.centered = true
+		var dim: float = maxf(1.0, float(maxi(tex.get_width(), tex.get_height())))
+		var scale_factor := world_size / dim
+		sprite.scale = Vector2(scale_factor, scale_factor)
+		return sprite
+	# No art for this good — fall back to the colour slice marker.
+	var marker := SliceMarkerScene.instantiate()
+	marker.radius = _tile_marker_radius()
+	marker.set_colors([color] as Array[Color])
+	return marker
+
+func _resource_icon_world_size() -> float:
+	return minf(_tile_size().x, _tile_size().y) * RESOURCE_ICON_TILE_FRACTION
 
 func _tile_matches(mode: int, tile_data: Dictionary, good_id: String) -> bool:
 	match mode:
-		MapMode.Mode.POTENTIALS:
-			return _tile_has_potential(tile_data, good_id)
 		MapMode.Mode.TILES_PRODUCING:
 			return _tile_produces(tile_data, good_id)
 		MapMode.Mode.TILES_CONSUMING:
 			return _tile_consumes(tile_data, good_id)
 	return false
-
-func _tile_has_potential(tile_data: Dictionary, good_id: String) -> bool:
-	if good_id == "solar" or good_id == "g_solar":
-		return tile_data.get("solar_potential", 0) > 0
-	if good_id == "wind" or good_id == "g_wind":
-		return tile_data.get("wind_potential", 0) > 0
-	var deposits: Array = tile_data.get("deposits", [])
-	if deposits.is_empty():
-		return false
-	var internal := Catalog.get_internal_name(good_id)
-	return _deposits_include(deposits, good_id) or _deposits_include(deposits, internal)
 
 func _tile_produces(tile_data: Dictionary, good_id: String) -> bool:
 	var tile_id: String = tile_data.get("id", "")
@@ -362,10 +425,37 @@ func _tile_produces(tile_data: Dictionary, good_id: String) -> bool:
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		if recipe.is_empty():
 			continue
-		
-		if recipe.get("output_name", "") == target_internal:
+
+		# Match ANY output, not just the primary one — a chemical plant emits
+		# chlorine *and* sodium hydroxide, so both goods must light up its tile.
+		if _recipe_outputs_good(recipe, target_internal):
+			# A mine whose deposit ran out is no longer producing — drop the icon.
+			if _recipe_deposit_exhausted(tile_id, recipe):
+				continue
 			return true
-	
+
+	return false
+
+# True if internal_name is the recipe's primary output or any secondary output.
+func _recipe_outputs_good(recipe: Dictionary, internal_name: String) -> bool:
+	if recipe.get("output_name", "") == internal_name:
+		return true
+	for output in recipe.get("outputs", []):
+		if str(output.get("internal_name", "")) == internal_name:
+			return true
+	return false
+
+# True if the recipe needs a (depletable) deposit that this tile has mined out.
+# Pure water never depletes, so it's ignored.
+func _recipe_deposit_exhausted(tile_id: String, recipe: Dictionary) -> bool:
+	for req in recipe.get("requirements", []):
+		if str(req.get("type", "")) != "deposit":
+			continue
+		var token: String = str(req.get("value", ""))
+		if token == "" or token == "water":
+			continue
+		if MatchState.deposit_remaining_for(tile_id, token) == 0:
+			return true
 	return false
 
 func _tile_consumes(tile_data: Dictionary, good_id: String) -> bool:
