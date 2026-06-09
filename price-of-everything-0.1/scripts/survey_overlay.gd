@@ -17,6 +17,8 @@ extends Node2D
 ## Decorations are placed deterministically from tile coords so they stay put.
 
 @onready var terrain_layer: HexMap = %TerrainLayer
+var _radial_tex: Texture2D  # baked radial gradient, tinted per sea tile
+var _live_meshes: Array = []  # keep batched meshes alive while the canvas item references them
 
 const PAPER_TEX := preload("res://assets/ui/survey_paper.png")
 const GRUNGE_TEX := preload("res://assets/ui/survey_grunge.png")
@@ -85,6 +87,7 @@ const SNOW_HEIGHT := 30.0      # max snow-cap height under the peak line
 
 func _ready() -> void:
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	_radial_tex = _make_radial_tex()
 	visible = false
 	MapMode.selections_changed.connect(_on_mode_changed)
 	MapMode.mode_cleared.connect(_on_mode_cleared)
@@ -127,6 +130,7 @@ func _status_at(coord: Vector2i) -> String:
 func _draw() -> void:
 	if MapMode.current_mode != MapMode.Mode.SURVEYING:
 		return
+	_live_meshes.clear()  # release last redraw's meshes; this pass rebuilds them
 
 	# Rivers that run through unsurveyed/partial tiles (same routes the river drawer
 	# uses), grouped by tile for hill avoidance.
@@ -139,9 +143,13 @@ func _draw() -> void:
 		rivers_by_coord[c].append(entry.points)
 
 	# PASS 1 — base fills: cream paper on land, weathered blue on sea/deep sea.
-	# Every base polygon is remembered for the final grunge pass.
+	# Polygons are collected and drawn grouped by texture so the work stays cheap.
+	# Sea uses ONE radial-gradient textured polygon per tile (was a ~30-call fan).
 	var weathered_polys: Array = []
 	var land: Array = []  # unsurveyed land tiles get hills/mountains/notes/X-marks
+	var cream_polys: Array = []  # [{poly, uvs}]
+	var sea_polys: Array = []    # [{poly, uvs, tint}]
+	var waves: Array = []        # [{pts, col}]
 	for coord in terrain_layer.tiles:
 		var status: String = _status_at(coord)
 		if status == "surveyed":
@@ -150,29 +158,62 @@ func _draw() -> void:
 		var ttype: String = str(terrain_layer.tiles[coord].get("type", ""))
 		if status != "partial" and (ttype == "sea" or ttype == "deep_sea"):
 			var sea_poly := _hex_poly(coord, centre)
-			_draw_sea(sea_poly, centre, coord, ttype == "deep_sea")
+			var deep := ttype == "deep_sea"
+			sea_polys.append({"poly": sea_poly, "uvs": _radial_uvs(sea_poly, centre),
+				"color": DEEP_CENTRE if deep else SEA_CENTRE})
+			_collect_waves(centre, coord, deep, waves)
 			weathered_polys.append({"poly": sea_poly, "uvs": _uvs(sea_poly)})
 			continue
 		var poly: PackedVector2Array = _patch_poly(centre) if status == "partial" else _hex_poly(coord, centre)
 		var uvs := _uvs(poly)
-		draw_colored_polygon(poly, CREAM, uvs, PAPER_TEX)
+		cream_polys.append({"poly": poly, "uvs": uvs, "color": CREAM})
 		weathered_polys.append({"poly": poly, "uvs": uvs})
 		if status == "unsurveyed":
 			land.append(coord)
 
-	# PASS 2 — decorations on the paper (under the grunge).
+	var cm := _fill_mesh(cream_polys)
+	if cm != null:
+		draw_mesh(cm, PAPER_TEX)
+	var sm := _fill_mesh(sea_polys)
+	if sm != null:
+		draw_mesh(sm, _radial_tex)
+	var wm := _fill_mesh(waves)
+	if wm != null:
+		draw_mesh(wm, null)
+
+	# PASS 2 — decorations on the paper (under the grunge). Hill/mountain fills are
+	# collected into meshes and their ridge lines into one multiline, so the whole
+	# pass costs a handful of draws instead of ~9 per hill/mountain tile.
+	var green_fills: Array = []
+	var grey_fills: Array = []
+	var ridge_lines := PackedVector2Array()
 	for coord in land:
 		var centre := _centre(coord)
-		_draw_hills(coord, centre, rivers_by_coord.get(coord, []))
-		_draw_mountain(coord, centre, rivers_by_coord.get(coord, []))
+		_collect_hills(coord, centre, rivers_by_coord.get(coord, []), green_fills, ridge_lines)
+		_collect_mountain(coord, centre, rivers_by_coord.get(coord, []), grey_fills, ridge_lines)
 		_draw_label(coord, centre)
+	var gfm := _fill_mesh(green_fills)
+	if gfm != null:
+		draw_mesh(gfm, null)
+	var mfm := _fill_mesh(grey_fills)
+	if mfm != null:
+		draw_mesh(mfm, null)
+	if ridge_lines.size() >= 2:
+		draw_multiline(ridge_lines, CHARCOAL, 4.0, true)
 	_draw_x_marks(land)
+	var river_fills: Array = []
 	for entry in rivers:
-		_draw_thick_river(entry.points)
+		var band := _river_band(entry.points)
+		if band.size() >= 3:
+			river_fills.append({"poly": band, "color": RIVER_BLUE})
+	var rfm := _fill_mesh(river_fills)
+	if rfm != null:
+		draw_mesh(rfm, null)
 
 	# PASS 3 — grunge applied last, so every decoration (rivers included) weathers.
-	for cp in weathered_polys:
-		draw_colored_polygon(cp.poly, Color.WHITE, cp.uvs, GRUNGE_TEX)
+	var gm := _fill_mesh(weathered_polys)
+	if gm != null:
+		draw_mesh(gm, GRUNGE_TEX)
 
 	# On top: the red maximum-survey-range boundary, then the in-progress markers.
 	_draw_survey_limit()
@@ -278,10 +319,11 @@ func _edge_rand(p: Vector2, q: Vector2, salt: int) -> float:
 	return _hashf(int(round((p.x + q.x) * 0.5)), int(round((p.y + q.y) * 0.5)), salt)
 
 # --- hills ---
-func _draw_hills(coord: Vector2i, centre: Vector2, river_pts: Array) -> void:
+func _collect_hills(coord: Vector2i, centre: Vector2, river_pts: Array, fills: Array, lines: PackedVector2Array) -> void:
 	# Hills are anchored to hill-type tiles only. Three flattened bell curves: the
 	# first is a "full hill" kept inside the tile (small + central, towards the
-	# top); the other two may stretch out over the neighbouring paper.
+	# top); the other two may stretch out over the neighbouring paper. Green fills
+	# are collected into one mesh; charcoal arcs into one multiline.
 	var tile: Variant = terrain_layer.tiles.get(coord)
 	if tile == null or str(tile.get("type", "")) != "hill":
 		return
@@ -296,8 +338,14 @@ func _draw_hills(coord: Vector2i, centre: Vector2, river_pts: Array) -> void:
 		var wide: float = _rr(coord, 20, 56.0, 74.0) if si == 0 else _rr(coord, 20 + si, 82.0, 115.0)
 		var c: Vector2 = _avoid_rivers(centre + slots[si], wide, river_pts)
 		var arc := _hill_arc(c, amp, wide)
-		_draw_green_slope(arc)
-		draw_polyline(arc, CHARCOAL, _rr(coord, 30 + si, 3.0, 5.0), true)
+		_collect_green_slope(arc, fills)
+		_append_segments(arc, lines)
+
+func _append_segments(pts: PackedVector2Array, out: PackedVector2Array) -> void:
+	# Convert a polyline into disjoint segments for a single batched draw_multiline.
+	for i in pts.size() - 1:
+		out.append(pts[i])
+		out.append(pts[i + 1])
 
 func _hill_arc(peak_base: Vector2, amp: float, wide: float) -> PackedVector2Array:
 	# Flattened normal distribution; only the top of the hill is drawn.
@@ -310,19 +358,19 @@ func _hill_arc(peak_base: Vector2, amp: float, wide: float) -> PackedVector2Arra
 		pts.append(peak_base + Vector2(x, -amp * exp(-dx * dx)))
 	return pts
 
-func _draw_green_slope(arc: PackedVector2Array) -> void:
+func _collect_green_slope(arc: PackedVector2Array, fills: Array) -> void:
 	# The hill body (inside the arc, down to its flat baseline) is solid green; a
 	# gradient skirt then hangs from that lowest line, fading out over HILL_FADE px.
 	var base_y: float = arc[0].y
 	for p in arc:
 		base_y = maxf(base_y, p.y)
 	# Solid body — the arc closes along its baseline, so this fills the hill shape.
-	draw_colored_polygon(arc, GREEN_SOLID)
+	fills.append({"poly": arc, "color": GREEN_SOLID})
 	var left := Vector2(arc[0].x, base_y)
 	var right := Vector2(arc[arc.size() - 1].x, base_y)
-	draw_polygon(
-		PackedVector2Array([left, right, right + Vector2(0.0, HILL_FADE), left + Vector2(0.0, HILL_FADE)]),
-		PackedColorArray([GREEN_SOLID, GREEN_SOLID, GREEN_FADE_COL, GREEN_FADE_COL]))
+	fills.append({
+		"poly": PackedVector2Array([left, right, right + Vector2(0.0, HILL_FADE), left + Vector2(0.0, HILL_FADE)]),
+		"colors": PackedColorArray([GREEN_SOLID, GREEN_SOLID, GREEN_FADE_COL, GREEN_FADE_COL])})
 
 func _avoid_rivers(c: Vector2, wide: float, river_pts: Array) -> Vector2:
 	if river_pts.is_empty():
@@ -346,7 +394,7 @@ func _avoid_rivers(c: Vector2, wide: float, river_pts: Array) -> Vector2:
 	return c
 
 # --- mountains ---
-func _draw_mountain(coord: Vector2i, centre: Vector2, _river_pts: Array) -> void:
+func _collect_mountain(coord: Vector2i, centre: Vector2, _river_pts: Array, fills: Array, lines: PackedVector2Array) -> void:
 	# Mountains are anchored to mountain-type tiles and stay inside the tile: a 60deg
 	# incline to the peak then 60deg down, ~3/4 tile wide. Two of the three
 	# variations connect a smaller second peak to the side (the line goes up-down-
@@ -381,33 +429,33 @@ func _draw_mountain(coord: Vector2i, centre: Vector2, _river_pts: Array) -> void
 		_:  # single 60deg peak
 			outline = PackedVector2Array([bl, Vector2(centre.x, base_y - MOUNT_HALF * SQRT3), br])
 			apex_idx = 1
-	_draw_mountain_body(outline, bl, br, base_y)
-	_draw_snow(outline, apex_idx)
+	_collect_mountain_body(outline, bl, br, base_y, fills)
+	_collect_snow(outline, apex_idx, fills)
 	# Charcoal ridge line on top — an OPEN polyline, so there is no bottom edge.
-	draw_polyline(outline, CHARCOAL, _rr(coord, 90, 3.5, 5.0), true)
+	_append_segments(outline, lines)
 
-func _draw_mountain_body(outline: PackedVector2Array, bl: Vector2, br: Vector2, base_y: float) -> void:
+func _collect_mountain_body(outline: PackedVector2Array, bl: Vector2, br: Vector2, base_y: float, fills: Array) -> void:
 	# Grey, densest along the base and fading up the slopes (over MOUNT_FADE) and a
 	# short skirt down past the base, so the gradient radiates out through the bottom.
 	var body_cols := PackedColorArray()
 	for v in outline:
 		body_cols.append(_grey_at(v.y, base_y))
-	draw_polygon(outline, body_cols)  # closes along the base for the fill only
-	draw_polygon(
-		PackedVector2Array([bl, br, br + Vector2(0.0, MOUNT_SKIRT), bl + Vector2(0.0, MOUNT_SKIRT)]),
-		PackedColorArray([_grey_at(base_y, base_y), _grey_at(base_y, base_y), GREY_FADE_COL, GREY_FADE_COL]))
+	fills.append({"poly": outline, "colors": body_cols})  # closes along the base for the fill only
+	fills.append({
+		"poly": PackedVector2Array([bl, br, br + Vector2(0.0, MOUNT_SKIRT), bl + Vector2(0.0, MOUNT_SKIRT)]),
+		"colors": PackedColorArray([_grey_at(base_y, base_y), _grey_at(base_y, base_y), GREY_FADE_COL, GREY_FADE_COL])})
 
 func _grey_at(y: float, base_y: float) -> Color:
 	var f: float = clampf(1.0 - (base_y - y) / MOUNT_FADE, 0.0, 1.0)
 	return Color(GREY_SOLID.r, GREY_SOLID.g, GREY_SOLID.b, GREY_SOLID.a * f)
 
-func _draw_snow(outline: PackedVector2Array, apex_idx: int) -> void:
+func _collect_snow(outline: PackedVector2Array, apex_idx: int, fills: Array) -> void:
 	# White snow-cap on the main peak, its base points sitting ON the two adjacent
 	# ridge edges SNOW_HEIGHT below the peak, so it always stays inside the outline.
 	var m: Vector2 = outline[apex_idx]
 	var lp: Vector2 = _ridge_point_below(m, outline[apex_idx - 1], SNOW_HEIGHT)
 	var rp: Vector2 = _ridge_point_below(m, outline[apex_idx + 1], SNOW_HEIGHT)
-	draw_colored_polygon(PackedVector2Array([m, rp, lp]), SNOW)
+	fills.append({"poly": PackedVector2Array([m, rp, lp]), "color": SNOW})
 
 func _ridge_point_below(m: Vector2, other: Vector2, depth: float) -> Vector2:
 	if other.y <= m.y + 0.001:
@@ -415,26 +463,84 @@ func _ridge_point_below(m: Vector2, other: Vector2, depth: float) -> Vector2:
 	return m.lerp(other, clampf(depth / (other.y - m.y), 0.0, 1.0))
 
 # --- sea / deep sea ---
-func _draw_sea(poly: PackedVector2Array, centre: Vector2, coord: Vector2i, deep: bool) -> void:
-	# Weathered blue with a radial gradient: lighter centre, deep edges (so where
-	# two sea tiles meet the shared edge stays solidly blue).
-	var c_in: Color = DEEP_CENTRE if deep else SEA_CENTRE
-	var c_edge: Color = DEEP_EDGE if deep else SEA_EDGE
-	var n := poly.size()
-	for i in n:
-		draw_polygon(PackedVector2Array([centre, poly[i], poly[(i + 1) % n]]),
-			PackedColorArray([c_in, c_edge, c_edge]))
-	# A few wave crests (two arcs meeting at a peak).
+## Grayscale radial gradient (centre 1.0 -> edge ~0.6). Tinted per sea tile and
+## drawn as ONE textured polygon, so each sea tile costs a single draw call instead
+## of a ~30-call per-edge triangle fan. The lighter centre / darker edge keeps the
+## "deep where neighbours meet" look from the old fan.
+func _make_radial_tex() -> Texture2D:
+	var n := 64
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var c := (float(n) - 1.0) * 0.5
+	for y in n:
+		for x in n:
+			var d: float = Vector2(float(x) - c, float(y) - c).length() / (float(n) * 0.5)
+			var v: float = clampf(1.0 - d * 0.6, 0.55, 1.0)
+			img.set_pixel(x, y, Color(v, v, v, 1.0))
+	return ImageTexture.create_from_image(img)
+
+## UVs that centre the radial gradient on the tile (corners reach the texture edge).
+## Clamped to [0,1] so wavy-coastline points don't wrap under TEXTURE_REPEAT_ENABLED.
+func _radial_uvs(poly: PackedVector2Array, centre: Vector2) -> PackedVector2Array:
+	var uvs := PackedVector2Array()
+	for p in poly:
+		uvs.append(Vector2(
+			clampf(0.5 + (p.x - centre.x) / 540.0, 0.0, 1.0),
+			clampf(0.5 + (p.y - centre.y) / 480.0, 0.0, 1.0)))
+	return uvs
+
+func _collect_waves(centre: Vector2, coord: Vector2i, deep: bool, out: Array) -> void:
+	# A few wave crests (two arcs meeting at a peak), collected for a grouped draw.
 	var wcol: Color = WAVE_DEEP if deep else WAVE_SEA
-	for w in 6:
+	for w in 3:
 		var pos := centre + Vector2(_rr(coord, 200 + w, -150.0, 150.0), _rr(coord, 220 + w, -150.0, 150.0))
 		var ww: float = _rr(coord, 240 + w, 30.0, 48.0)
 		var wh: float = ww * _rr(coord, 260 + w, 0.42, 0.6)
-		_draw_wave(pos, ww, wh, deg_to_rad(_rr(coord, 280 + w, -12.0, 12.0)), wcol)
+		out.append({"poly": _wave_points(pos, ww, wh, deg_to_rad(_rr(coord, 280 + w, -12.0, 12.0))), "color": wcol})
 
-func _draw_wave(pos: Vector2, w: float, h: float, rot: float, col: Color) -> void:
-	# Left arc (-w,0) up to the peak (0,-h), then right arc down to (w,0); the base
-	# closes the polygon. Two convex arcs connecting at the peak.
+## Merge many polygons into ONE triangle mesh, so a whole group (e.g. every cream
+## tile, or every grunge overlay) costs a single draw_mesh call instead of one
+## draw_colored_polygon per polygon (which the 2D batcher does not merge).
+## entries: [{poly: PackedVector2Array, uvs?: PackedVector2Array, color?: Color}]
+func _fill_mesh(entries: Array) -> ArrayMesh:
+	var verts := PackedVector2Array()
+	var uvs := PackedVector2Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	for e in entries:
+		var poly: PackedVector2Array = e.poly
+		if poly.size() < 3:
+			continue
+		var tri := Geometry2D.triangulate_polygon(poly)
+		if tri.is_empty():
+			continue
+		var base := verts.size()
+		var euv: PackedVector2Array = e.get("uvs", PackedVector2Array())
+		var col: Color = e.get("color", Color.WHITE)
+		var pcols: PackedColorArray = e.get("colors", PackedColorArray())
+		var have_uv := euv.size() == poly.size()
+		var have_pc := pcols.size() == poly.size()  # per-vertex gradient
+		for i in poly.size():
+			verts.append(poly[i])
+			uvs.append(euv[i] if have_uv else Vector2.ZERO)
+			cols.append(pcols[i] if have_pc else col)
+		for t in tri:
+			idx.append(base + t)
+	if verts.is_empty():
+		return null
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_TEX_UV] = uvs
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	# draw_mesh only stores the mesh RID on the canvas item; hold a reference so the
+	# resource isn't freed (and the RID invalidated) before the item is re-rendered.
+	_live_meshes.append(mesh)
+	return mesh
+
+func _wave_points(pos: Vector2, w: float, h: float, rot: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	var steps := 6
 	for i in steps + 1:
@@ -446,7 +552,7 @@ func _draw_wave(pos: Vector2, w: float, h: float, rot: float, col: Color) -> voi
 	var out := PackedVector2Array()
 	for p in pts:
 		out.append(pos + p.rotated(rot))
-	draw_colored_polygon(out, col)
+	return out
 
 # --- scrawled notes ---
 func _draw_label(coord: Vector2i, centre: Vector2) -> void:
@@ -495,9 +601,9 @@ func _survey_rivers() -> Array:
 			out.append(entry)
 	return out
 
-func _draw_thick_river(pts: PackedVector2Array) -> void:
+func _river_band(pts: PackedVector2Array) -> PackedVector2Array:
 	if pts.size() < 2:
-		return
+		return PackedVector2Array()
 	var left := PackedVector2Array()
 	var right := PackedVector2Array()
 	var acc := 0.0
@@ -521,7 +627,7 @@ func _draw_thick_river(pts: PackedVector2Array) -> void:
 	band.append_array(left)
 	for i in range(right.size() - 1, -1, -1):
 		band.append(right[i])
-	draw_colored_polygon(band, RIVER_BLUE)
+	return band
 
 # --- maximum survey-range boundary ---
 func _draw_survey_limit() -> void:
