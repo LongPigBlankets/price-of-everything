@@ -384,10 +384,25 @@ static func _building_full_name(bd: Dictionary, recipe: Dictionary) -> String:
 # RAG for OUTPUT transport duration — mirrors building_detail_panel: grey until
 # the building has run a turn; green if no off-tile destination; amber if the
 # shipment takes more than one turn.
+# A mined-out (non-water) deposit means the building can't run — used to keep
+# these RAG strings in step with building_detail_panel._recipe_deposit_exhausted.
+static func deposit_exhausted_for(tile_id: String, recipe: Dictionary) -> bool:
+	if tile_id == "":
+		return false
+	for req in recipe.get("requirements", []):
+		if str(req.get("type", "")) != "deposit":
+			continue
+		var token := str(req.get("value", ""))
+		if token == "" or token == "water":
+			continue
+		if MatchState.deposit_remaining_for(tile_id, token) == 0:
+			return true
+	return false
+
 static func _transport_duration_status_for(instance_id: String, tile_id: String, recipe: Dictionary, is_infra: bool) -> String:
 	if is_infra:
 		return "muted"
-	if not Production.last_turn_run.has(instance_id):
+	if not Production.last_turn_run.has(instance_id) or deposit_exhausted_for(tile_id, recipe):
 		return "muted"
 	var route := _output_route(instance_id, tile_id, recipe)
 	if route.is_empty():
@@ -399,7 +414,7 @@ static func _transport_duration_status_for(instance_id: String, tile_id: String,
 static func _transport_cost_status_for(instance_id: String, tile_id: String, recipe: Dictionary, is_infra: bool) -> String:
 	if is_infra:
 		return "muted"
-	if not Production.last_turn_run.has(instance_id):
+	if not Production.last_turn_run.has(instance_id) or deposit_exhausted_for(tile_id, recipe):
 		return "muted"
 	var route := _output_route(instance_id, tile_id, recipe)
 	if route.is_empty():
@@ -432,6 +447,10 @@ static func _output_route(instance_id: String, tile_id: String, recipe: Dictiona
 # grey if unknown; green if < 90% of base price, amber 90–110%, red above.
 static func _produce_cost_status_for(instance_id: String, is_infra: bool) -> String:
 	if is_infra:
+		return "muted"
+	# Exhausted deposit → not producing → no cost to compute (match the BDP).
+	var b: Dictionary = MatchState.get_building(instance_id)
+	if deposit_exhausted_for(str(b.get("tile_id", "")), Catalog.get_recipe(str(b.get("recipe_id", "")))):
 		return "muted"
 	var uc := CostSolver.get_building_unit_cost(instance_id)
 	if uc < 0.0:
@@ -492,6 +511,8 @@ static func _recipe_produces_power(recipe: Dictionary) -> bool:
 static func _inputs_status_for(instance_id: String, tile_id: String, recipe: Dictionary, is_infra: bool) -> String:
 	if is_infra:
 		return "muted"
+	if deposit_exhausted_for(tile_id, recipe):
+		return "problem"  # mined-out deposit — same as the BDP input dot
 	if instance_id != "" and Production.last_turn_run.has(instance_id):
 		return "ok"
 	if instance_id != "" and Production.missing_by_building.has(instance_id):
@@ -657,7 +678,12 @@ static func survey_gated_deposits(tile_id: String, tile_data: Dictionary) -> Dic
 			row["size_qty"] = -1
 			row["chip_label"] = "Pure Water"
 		elif status == "unsurveyed":
-			continue  # hidden; the panel shows "Deposits Unknown"
+			# A deposit individually revealed (by building a mine on it) shows
+			# its existence with an unknown size; the rest stay hidden.
+			if not MatchState.is_deposit_revealed(tile_id, token):
+				continue
+			row["size_qty"] = -2
+			row["chip_label"] = "%s (size ?)" % str(r.get("display_name", token))
 		elif status == "partial":
 			row["size_qty"] = -2
 			row["chip_label"] = "%s (size ?)" % str(r.get("display_name", token))

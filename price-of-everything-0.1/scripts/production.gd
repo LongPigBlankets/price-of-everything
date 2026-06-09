@@ -822,7 +822,18 @@ func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
 				"need": input.qty,
 				"have": have,
 			})
-	
+
+	# A mined-out deposit stops the building entirely — no inputs consumed, no power
+	# drawn, no output. (Maintenance + labour are charged separately, regardless.)
+	var dep_token: String = _recipe_deposit_token(recipe)
+	if dep_token != "" and MatchState.deposit_depleted(tile_id, dep_token):
+		missing.append({
+			"good_id": dep_token,
+			"internal_name": dep_token,
+			"need": 1,
+			"have": 0,
+		})
+
 	# Cable check: required for power consumers AND power producers
 	var energy_req: int = recipe.get("energy_req", 0)
 	var produces_power: bool = recipe.get("output_name", "") == "power"

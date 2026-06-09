@@ -219,6 +219,76 @@ func _build_prototype_map() -> void:
 	for coord in tiles:
 		var tile_data: Dictionary = tiles[coord]
 		set_cell(map_coord_for_tile_coord(coord), _source_for_tile_type(tile_data.get("type", "")), Vector2i.ZERO)
+	_paint_north_decoration()
+	_paint_sea_frame()
+
+# Land columns of the top-row decoration (cols 5..28); hills are sprinkled on top.
+const NORTH_LAND_FROM := 5
+const NORTH_LAND_TO := 28
+# Hills bounded to cols 5..21: three on the top row's left coast, a few more on
+# the row below.
+const NORTH_TOP_HILLS := [5, 6, 7]
+const NORTH_LOW_HILLS := [7, 10]
+# Mountains and a small sea inlet on the north edge. Outer row = "2 tiles north"
+# (y=0), inner row = "1 tile north" (y=1).
+const NORTH_TOP_MTN := [11, 18]                # 2 tiles north of 11_1; mountains north of 18_1
+const NORTH_LOW_MTN := [11, 12, 13, 18]        # 1 mountain north of 11_1/12_1/13_1; and 18_1
+const NORTH_SEA := [14, 15]                     # sea north of 14_1 and 15_1
+
+# Hand-painted scenery on the unclickable border rows above the playable map.
+# The north edge is a rural coast (col C sits at cell x = C+1); the far west/east
+# stay sea and step out to the deep-sea frame painted by _paint_sea_frame().
+func _paint_north_decoration() -> void:
+	# Coastal shallow sea west of col 5 and east of col 28.
+	for col in range(1, NORTH_LAND_FROM):
+		_set_north_cell(col, 0, SOURCE_SEA)
+		_set_north_cell(col, 1, SOURCE_SEA)
+	for col in range(NORTH_LAND_TO + 1, MAP_W + 1):
+		_set_north_cell(col, 0, SOURCE_SEA)
+		_set_north_cell(col, 1, SOURCE_SEA)
+	# Rural land across both border rows.
+	for col in range(NORTH_LAND_FROM, NORTH_LAND_TO + 1):
+		_set_north_cell(col, 0, SOURCE_RURAL)
+		_set_north_cell(col, 1, SOURCE_RURAL)
+	# Hills (bounded to cols 5..21).
+	for col in NORTH_TOP_HILLS:
+		_set_north_cell(col, 0, SOURCE_HILL)
+	for col in NORTH_LOW_HILLS:
+		_set_north_cell(col, 1, SOURCE_HILL)
+	# Mountains and the sea inlet (override the rural base).
+	for col in NORTH_TOP_MTN:
+		_set_north_cell(col, 0, SOURCE_MOUNTAIN)
+	for col in NORTH_LOW_MTN:
+		_set_north_cell(col, 1, SOURCE_MOUNTAIN)
+	for col in NORTH_SEA:
+		_set_north_cell(col, 0, SOURCE_SEA)
+		_set_north_cell(col, 1, SOURCE_SEA)
+
+func _set_north_cell(col: int, row: int, src: int) -> void:
+	set_cell(Vector2i(col + 1, row), src, Vector2i.ZERO)
+
+# The two left + two right decorative columns are deep sea, except a ~10-tile
+# shallow-sea inlet at the bottom of the east columns that joins the shallow sea
+# at tiles 30_16 / 30_17 (the east edge; "bottom-left" in the request reads as
+# the corner next to those tiles).
+func _paint_sea_frame() -> void:
+	var left_a := 0
+	var left_b := 1
+	var right_a := RENDERED_MAP_W - 2   # x = 32
+	var right_b := RENDERED_MAP_W - 1   # x = 33
+	for y in RENDERED_MAP_H:
+		set_cell(Vector2i(left_a, y), SOURCE_DEEP_SEA, Vector2i.ZERO)
+		set_cell(Vector2i(left_b, y), SOURCE_DEEP_SEA, Vector2i.ZERO)
+		set_cell(Vector2i(right_a, y), SOURCE_DEEP_SEA, Vector2i.ZERO)
+		set_cell(Vector2i(right_b, y), SOURCE_DEEP_SEA, Vector2i.ZERO)
+	# The bottom two decorative rows are deep sea.
+	for x in RENDERED_MAP_W:
+		set_cell(Vector2i(x, RENDERED_MAP_H - 2), SOURCE_DEEP_SEA, Vector2i.ZERO)
+		set_cell(Vector2i(x, RENDERED_MAP_H - 1), SOURCE_DEEP_SEA, Vector2i.ZERO)
+	# Shallow inlet: east columns, rows abreast of 30_16 (cell y=17) and 30_17 (y=18).
+	for y in range(16, 21):
+		set_cell(Vector2i(right_a, y), SOURCE_SEA, Vector2i.ZERO)
+		set_cell(Vector2i(right_b, y), SOURCE_SEA, Vector2i.ZERO)
 
 func _source_for_tile_type(tile_type: String) -> int:
 	match tile_type:

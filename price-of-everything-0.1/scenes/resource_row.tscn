@@ -4,44 +4,28 @@
 
 [node name="ResourceRow" type="HBoxContainer" unique_id=499583770]
 offset_right = 492.0
-offset_bottom = 140.0
+offset_bottom = 34.0
+theme_override_constants/separation = 12
+
 script = ExtResource("1_51jwl")
 
 [node name="NameLabel" type="Label" parent="." unique_id=290236625]
-custom_minimum_size = Vector2(80, 0)
-layout_mode = 2
-
-[node name="PotentialsButton" type="Button" parent="." unique_id=9350024]
-custom_minimum_size = Vector2(100, 0)
-layout_mode = 2
-
-[node name="ProducingButton" type="Button" parent="." unique_id=945254790]
-layout_mode = 2
-
-[node name="ConsumingButton" type="Button" parent="." unique_id=216480338]
-custom_minimum_size = Vector2(100, 0)
-layout_mode = 2
-
-[node name="ProducedLabel" type="Label" parent="." unique_id=462482880]
-visible = false
-custom_minimum_size = Vector2(80, 0)
+custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-
-[node name="ConsumedLabel" type="Label" parent="." unique_id=1616263092]
-visible = false
-custom_minimum_size = Vector2(80, 0)
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="SurplusLabel" type="Label" parent="." unique_id=790564141]
-visible = false
-custom_minimum_size = Vector2(80, 0)
-layout_mode = 2
-size_flags_horizontal = 3
+theme_type_variation = &"Body"
 
 [node name="StockpileLabel" type="Label" parent="." unique_id=714827646]
-visible = false
-custom_minimum_size = Vector2(80, 0)
+custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"Numeric"
+horizontal_alignment = 2
+
+[node name="CostLabel" type="Label" parent="." unique_id=381947113]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Numeric"
+horizontal_alignment = 2
+text = "--"

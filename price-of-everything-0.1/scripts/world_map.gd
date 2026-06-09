@@ -67,6 +67,7 @@ var _buy_legend: VBoxContainer = null
 var _buy_modal: PanelContainer = null
 var _buy_modal_label: Label = null
 var _construction_dialog: PanelContainer = null
+var _deposit_dialog: Control = null  # reused "no deposit" / "deposit exhausted" modal
 
 func _ready() -> void:
 	# DS assigns its Theme to the root Window, but Controls do not inherit a
@@ -108,6 +109,10 @@ func _ready() -> void:
 	building_placed.connect(building_visuals.on_building_placed)
 	# A cancelled construction site removes its hex icon (it was never a real building).
 	Construction.construction_cancelled.connect(_on_construction_cancelled)
+	# Deposit feedback: reveal/popup when a blind (unsurveyed) build finishes, and a
+	# centre-screen prompt when a deposit runs out under a working building.
+	Construction.construction_completed.connect(_on_construction_completed_deposit_check)
+	MatchState.deposit_exhausted.connect(_on_deposit_exhausted)
 
 	# Wire building connection visuals to building detail panel
 	building_panel.building_connections_changed.connect(
@@ -1125,8 +1130,14 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 		print("[Build] WARNING: terrain_layer.tiles has no entry for coord %s (skipping requirement check)" % str(coord))
 	else:
 		var tile_data: Dictionary = terrain_layer.tiles[coord]
-		if not _tile_meets_recipe_requirements(tile_data, recipe):
-			print("[Build] FAILED: recipe requirements not met on %s (recipe=%s requirements=%s deposits=%s)" % [tile_id, recipe_id, str(recipe.get("requirements", [])), str(tile_data.get("deposits", []))])
+		# Deposit recipes: block on a KNOWN-bad tile (toast), but let the player build
+		# blind on an unsurveyed tile — the outcome is revealed when it finishes.
+		var req_block := _recipe_requirement_block(tile_data, recipe, tile_id)
+		if req_block == "deposit":
+			MatchState.request_toast("Cannot build mine there, it does not have the right deposit.", "warning")
+			return
+		elif req_block == "other":
+			print("[Build] FAILED: recipe requirements not met on %s" % tile_id)
 			return
 
 	# Look up cost
@@ -1251,11 +1262,80 @@ func _place_ruins(tile_id: String) -> void:
 	var instance_id := MatchState.add_building("b_031", "", tile_id, "Abandoned Holdings")
 	building_placed.emit(tile_id, "b_031", "", instance_id, coord)
 
-func _tile_meets_recipe_requirements(tile_data: Dictionary, recipe: Dictionary) -> bool:
+# "" = buildable, "deposit" = known-missing deposit (toast + block),
+# "other" = some other requirement (potential/produces) not met.
+func _recipe_requirement_block(tile_data: Dictionary, recipe: Dictionary, tile_id: String) -> String:
+	var status := MatchState.survey_status(tile_id, str(tile_data.get("type", "")))
 	for req in recipe.get("requirements", []):
-		if not _tile_meets_build_req(tile_data, req):
-			return false
-	return true
+		var rtype := str(req.get("type", ""))
+		if rtype == "deposit":
+			var token := str(req.get("value", ""))
+			# Unknown ground: allow a blind build (water is always visible, so it's
+			# still checked normally).
+			if token != "water" and status == "unsurveyed":
+				continue
+			if not _tile_meets_build_req(tile_data, req):
+				return "deposit"
+		else:
+			if not _tile_meets_build_req(tile_data, req):
+				return "other"
+	return ""
+
+func _recipe_nonwater_deposit_token(recipe: Dictionary) -> String:
+	for req in recipe.get("requirements", []):
+		if str(req.get("type", "")) == "deposit":
+			var token := str(req.get("value", ""))
+			if token != "" and token != "water":
+				return token
+	return ""
+
+func _good_display_for_deposit(token: String) -> String:
+	var internal := "pure_water" if token == "water" else token
+	var good: Dictionary = Catalog.get_good_by_internal_name(internal)
+	return str(good.get("display_name", token.capitalize()))
+
+# When a blind (unsurveyed) deposit build finishes: reveal the deposit if it's
+# there, otherwise warn the player it will not run. Partial/surveyed tiles are
+# skipped (the player already knew the ground).
+func _on_construction_completed_deposit_check(instance_id: String, tile_id: String) -> void:
+	var building: Dictionary = MatchState.get_building(instance_id)
+	if building.is_empty():
+		return
+	var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
+	var token := _recipe_nonwater_deposit_token(recipe)
+	if token == "":
+		return
+	var coord := terrain_layer.id_to_coord(tile_id)
+	if not terrain_layer.tiles.has(coord):
+		return
+	var tile_data: Dictionary = terrain_layer.tiles[coord]
+	if MatchState.survey_status(tile_id, str(tile_data.get("type", ""))) != "unsurveyed":
+		return
+	if _deposits_include(tile_data.get("deposits", []), token):
+		MatchState.reveal_deposit(tile_id, token)
+	else:
+		_show_deposit_dialog(
+			"No deposit found",
+			"This tile has no deposit of %s so it will not run. Surveying could have warned us this was the case." % _good_display_for_deposit(token),
+			[{"id": "demolish", "label": "Demolish"}])
+
+func _on_deposit_exhausted(tile_id: String, token: String) -> void:
+	if token == "water":
+		return
+	_show_deposit_dialog(
+		"Deposit exhausted",
+		"The %s deposit here has run out — this building can no longer produce." % _good_display_for_deposit(token),
+		[{"id": "demolish", "label": "Demolish"}, {"id": "change", "label": "Change Recipe"}])
+
+func _show_deposit_dialog(title: String, body: String, buttons: Array) -> void:
+	if _deposit_dialog == null:
+		_deposit_dialog = load("res://scripts/deposit_dialog.gd").new()
+		_hud.add_child(_deposit_dialog)
+		_deposit_dialog.action_chosen.connect(_on_deposit_dialog_action)
+	_deposit_dialog.open(title, body, buttons)
+
+func _on_deposit_dialog_action(_id: String) -> void:
+	pass  # Demolish / Change Recipe are no-ops for now; the dialog closes itself.
 
 func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
 	match req.get("type", ""):
