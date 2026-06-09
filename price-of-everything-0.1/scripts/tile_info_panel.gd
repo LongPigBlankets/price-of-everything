@@ -11,9 +11,12 @@ extends PanelContainer
 @onready var _margin_container: MarginContainer = $MarginContainer
 
 signal building_clicked(building: Dictionary)
+## The survey-status chip was clicked — opens the survey dialog for this tile.
+signal survey_requested(tile_data: Dictionary)
 
 const STOCKPILE_VIEW_SCRIPT := preload("res://scripts/stockpile_view.gd")
 const INFRA_GRID_SCRIPT := preload("res://scripts/infra_grid.gd")
+const TileViewData := preload("res://scripts/tile_view_data.gd")
 
 const HEADER_HEIGHT := 40.0
 var OFF_WHITE: Color = DS.PALETTE.ACCENT
@@ -186,6 +189,7 @@ func _restructure_layout() -> void:
 		_survey_status_button.add_theme_stylebox_override("pressed", _make_summary_chip_style(Color(0.7, 0.85, 1.0, 0.14), Color(0.7, 0.85, 1.0, 0.9)))
 		_survey_status_button.add_theme_color_override("font_color", OFF_WHITE)
 		_survey_status_button.add_theme_color_override("font_hover_color", OFF_WHITE)
+		_survey_status_button.pressed.connect(func(): survey_requested.emit(_current_tile_data))
 		_tile_type_summary_row.add_child(_survey_status_button)
 
 func _setup_tile_banner() -> void:
@@ -443,11 +447,11 @@ func _refresh_tile_type_summary(tile_data: Dictionary) -> void:
 		return
 	var raw_tile_type := str(tile_data.get("type", "")).strip_edges().to_lower()
 	var tile_type := _title_or_dash(raw_tile_type)
-	var deposits: Array[String] = _tile_deposits(tile_data)
+	var gated: Dictionary = TileViewData.survey_gated_deposits(str(tile_data.get("id", "")), tile_data)
 	_tile_type_summary_label.text = tile_type
 	_tile_type_summary_label.tooltip_text = _tile_type_tooltip_text(raw_tile_type)
-	_tile_deposits_summary_label.text = _deposit_summary_text(deposits)
-	_tile_deposits_summary_label.tooltip_text = _deposit_tooltip_text(deposits)
+	_tile_deposits_summary_label.text = _gated_deposit_text(gated)
+	_tile_deposits_summary_label.tooltip_text = _gated_deposit_text(gated)
 	_survey_status_button.text = _survey_status_for_tile(tile_data)
 	_survey_status_button.tooltip_text = "Survey status"
 
@@ -786,6 +790,14 @@ func _tile_deposits(tile_data: Dictionary) -> Array[String]:
 			deposits.append(value)
 	return deposits
 
+func _gated_deposit_text(gated: Dictionary) -> String:
+	var parts: Array[String] = []
+	if str(gated.get("status", "")) == "unsurveyed":
+		parts.append("Deposits Unknown")
+	for r in gated.get("rows", []):
+		parts.append(str(r.get("chip_label", "")))
+	return "No deposits" if parts.is_empty() else "  ·  ".join(parts)
+
 func _deposit_summary_text(deposits: Array[String]) -> String:
 	if deposits.is_empty():
 		return "No deposits"
@@ -805,13 +817,11 @@ func _survey_status_for_tile(tile_data: Dictionary) -> String:
 	var explicit := str(tile_data.get("survey_status", "")).strip_edges()
 	if explicit != "":
 		return _compact_survey_status(explicit)
-	match str(tile_data.get("type", "")).strip_edges().to_lower():
-		"rural", "grass":
+	match MatchState.survey_status(str(tile_data.get("id", "")), str(tile_data.get("type", ""))):
+		"surveyed":
 			return "Surveyed"
-		"urban":
+		"partial":
 			return "P Surveyed"
-		"mountain":
-			return "Unsurveyed"
 		_:
 			return "Unsurveyed"
 

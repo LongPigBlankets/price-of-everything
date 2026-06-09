@@ -11,6 +11,8 @@ extends PanelContainer
 ## fonts/colours are used throughout.
 
 signal building_clicked(building: Dictionary)
+## The survey call-to-action was clicked — opens the survey dialog for this tile.
+signal survey_requested(tile_data: Dictionary)
 ## Asks the host (world_map) to enter map "pick a destination tile" mode; the
 ## result comes back via on_destination_picked().
 signal pick_destination_requested()
@@ -80,6 +82,8 @@ func _ready() -> void:
 	Construction.construction_started.connect(func(_a = null, _b = null): _refresh_if_visible())
 	Construction.construction_completed.connect(func(_a = null, _b = null): _refresh_if_visible())
 	Construction.construction_cancelled.connect(func(_a = null, _b = null): _refresh_if_visible())
+	MatchState.surveyed_tiles_changed.connect(func(): _refresh_if_visible())
+	MatchState.deposits_changed.connect(func(_t = null): _refresh_if_visible())
 	# Awaiting-materials projects fire materials_ordered (not construction_started),
 	# so listen for it too — show the build the same turn it's placed.
 	Construction.materials_ordered.connect(func(_a = null, _b = null): _refresh_if_visible())
@@ -343,8 +347,13 @@ func _build_banner() -> HBoxContainer:
 	bs.set_content_margin_all(0)  # image fills edge-to-edge; container rounds it
 	banner.add_theme_stylebox_override("panel", bs)
 
-	# The tile render fills the 192×108 box (cover-fit, cropping any overflow).
+	# The tile render fills the fixed box (cover-fit, cropping any overflow). The
+	# banner stays exactly BANNER_IMG_W×BANNER_IMG_H — it never widens or shrinks
+	# with the panel's content.
 	var inner := Control.new()
+	inner.custom_minimum_size = Vector2(BANNER_IMG_W, BANNER_IMG_H)
+	inner.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	inner.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	banner.add_child(inner)
 	_banner_texture = TextureRect.new()
 	_banner_texture.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -492,12 +501,24 @@ func _refresh_banner(tile_data: Dictionary) -> void:
 	else:
 		# Not (fully) surveyed → a double-height, full-width call-to-action button.
 		_chips_row.add_child(_make_survey_button(survey))
+	# Deposits, gated by survey status (unknown / "size ?" / actual size; water always shown).
+	var gated: Dictionary = TileViewData.survey_gated_deposits(str(tile_data.get("id", "")), tile_data)
+	# Terrain type and Pure Water sit together on one row; other deposits go below.
 	var terrain := str(tile_data.get("type", "")).strip_edges().capitalize()
-	_chips_row.add_child(_make_chip(terrain if terrain != "" else "—", DS.PALETTE.TEXT_MUTED))
-	for deposit in tile_data.get("deposits", []):
-		var dep := str(deposit).strip_edges()
-		if dep != "":
-			_chips_row.add_child(_make_chip("%s deposit" % dep.capitalize(), DS.PALETTE.TEXT_MUTED))
+	var terrain_row := HBoxContainer.new()
+	terrain_row.add_theme_constant_override("separation", 6)
+	terrain_row.add_child(_make_chip(terrain if terrain != "" else "—", DS.PALETTE.TEXT_MUTED))
+	var other_rows: Array = []
+	for row in gated.rows:
+		if bool(row.get("is_water", false)):
+			terrain_row.add_child(_make_chip(str(row.chip_label), DS.PALETTE.TEXT_MUTED))
+		else:
+			other_rows.append(row)
+	_chips_row.add_child(terrain_row)
+	if gated.status == "unsurveyed":
+		_chips_row.add_child(_make_chip("Deposits Unknown", DS.PALETTE.TEXT_MUTED))
+	for row in other_rows:
+		_chips_row.add_child(_make_chip(str(row.chip_label), DS.PALETTE.TEXT_MUTED))
 	# built | buyable | max — one row, same figures as the land rail.
 	var totals := TileViewData.land_totals(_current_tile_id, _current_tile_data)
 	var spacer := Control.new()
@@ -512,30 +533,26 @@ func _refresh_banner(tile_data: Dictionary) -> void:
 	stats.add_child(_make_land_stat("max", int(totals.max)))
 	_chips_row.add_child(stats)
 
-# Two-line survey call-to-action (status + hint). Inert for now.
-func _make_survey_button(status: String) -> Button:
-	var btn := Button.new()
-	btn.size_flags_horizontal = Control.SIZE_FILL
-	btn.custom_minimum_size = Vector2(0, 46)
-	btn.add_theme_constant_override("h_separation", 0)
-	btn.tooltip_text = "Survey this tile"
+# Survey call-to-action: a darker section showing the status + hint, with a DS
+# "Survey" button underneath. The button opens the survey dialog.
+func _make_survey_button(status: String) -> Control:
+	var section := PanelContainer.new()
+	section.size_flags_horizontal = Control.SIZE_FILL
+	section.custom_minimum_size = Vector2(0, 72)  # status + hint + a skinny Survey button
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = DS.PALETTE.BG_INSET
+	sb.bg_color = DS.PALETTE.BG_CARD  # darker section background
 	sb.border_color = Color(DS.PALETTE.WARN, 0.6)
 	sb.set_border_width_all(1)
 	sb.set_corner_radius_all(8)
-	sb.content_margin_top = 4
-	sb.content_margin_bottom = 4
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
 	sb.content_margin_left = 8
 	sb.content_margin_right = 8
-	btn.add_theme_stylebox_override("normal", sb)
-	btn.add_theme_stylebox_override("hover", sb)
-	btn.add_theme_stylebox_override("pressed", sb)
+	section.add_theme_stylebox_override("panel", sb)
 	var col := VBoxContainer.new()
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.set_anchors_preset(Control.PRESET_FULL_RECT)
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 1)
+	col.add_theme_constant_override("separation", 4)
+	section.add_child(col)
 	var top := Label.new()
 	top.text = status if status != "" else "Survey"
 	top.theme_type_variation = &"Caption"
@@ -551,8 +568,16 @@ func _make_survey_button(status: String) -> Button:
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(sub)
-	btn.add_child(col)
-	return btn
+	# Same DS button as the "Build" action (matching height), bluish-grey metal edges.
+	var btn := _make_action_button("Survey")
+	btn.pressed.connect(func(): survey_requested.emit(_current_tile_data))
+	if MatchState.is_tile_surveyable(_current_tile_id):
+		btn.tooltip_text = "Survey this tile"
+	else:
+		btn.disabled = true
+		btn.tooltip_text = "This tile is out of survey range. Survey more tiles to extend your range."
+	col.add_child(btn)
+	return section
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Metric tiles
@@ -1362,11 +1387,17 @@ func _build_prod_pane(pane: VBoxContainer) -> void:
 	for r in prod.rows:
 		pane.add_child(_make_production_row(r))
 
-	# Deposits on this tile — buildable resources, with a Build / Go-to-building action.
-	var deposits := TileViewData.deposits_summary(_current_tile_id, _current_tile_data)
-	if not deposits.is_empty():
+	# Deposits on this tile — gated by survey status; buildable, with a Build action.
+	var gated: Dictionary = TileViewData.survey_gated_deposits(_current_tile_id, _current_tile_data)
+	if gated.status == "unsurveyed" or not gated.rows.is_empty():
 		pane.add_child(_make_section_header("Deposits", "buildable", "ok"))
-		for d in deposits:
+		if gated.status == "unsurveyed":
+			var unknown := Label.new()
+			unknown.text = "Deposits Unknown"
+			unknown.theme_type_variation = &"Body"
+			unknown.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+			pane.add_child(unknown)
+		for d in gated.rows:
 			pane.add_child(_make_deposit_row(d))
 
 func _make_deposit_row(d: Dictionary) -> HBoxContainer:
@@ -1375,14 +1406,15 @@ func _make_deposit_row(d: Dictionary) -> HBoxContainer:
 	row.custom_minimum_size = Vector2(0, 34)
 
 	var name_label := Label.new()
-	name_label.text = "%s deposit" % str(d.display_name)
+	name_label.text = str(d.display_name) if bool(d.get("is_water", false)) else "%s deposit" % str(d.display_name)
 	name_label.theme_type_variation = &"Body"
 	name_label.add_theme_font_size_override("font_size", 14)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(name_label)
 
+	var size_qty := int(d.get("size_qty", int(d.get("qty", -1))))
 	var qty := Label.new()
-	qty.text = ("%d" % int(d.qty)) if int(d.qty) >= 0 else "—"
+	qty.text = "?" if size_qty == -2 else (("%d" % size_qty) if size_qty >= 0 else "—")
 	qty.theme_type_variation = &"Numeric"
 	qty.add_theme_font_size_override("font_size", 12)
 	qty.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
@@ -2785,7 +2817,7 @@ func _survey_status_for_tile(tile_data: Dictionary) -> String:
 	var explicit := str(tile_data.get("survey_status", "")).strip_edges()
 	if explicit != "":
 		return explicit
-	match str(tile_data.get("type", "")).strip_edges().to_lower():
-		"rural", "grass": return "Surveyed"
-		"urban": return "Partially surveyed"
+	match MatchState.survey_status(str(tile_data.get("id", "")), str(tile_data.get("type", ""))):
+		"surveyed": return "Surveyed"
+		"partial": return "Partially surveyed"
 		_: return "Unsurveyed"

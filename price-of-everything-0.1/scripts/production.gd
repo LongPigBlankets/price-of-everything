@@ -384,10 +384,17 @@ func _get_recipe(recipe_id: String) -> Dictionary:
 	
 	
 func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Dictionary) -> void:
+	# A recipe that mines a depletable deposit stops once that deposit is gone, and
+	# what it mines this turn is subtracted from the deposit.
+	var dep_token: String = _recipe_deposit_token(recipe)
+	var tile_id: String = building.get("tile_id", "")
+	if dep_token != "" and MatchState.deposit_depleted(tile_id, dep_token):
+		return
+	var mined := 0
 	for output in _recipe_output_items(recipe):
 		var output_name: String = output.get("internal_name", "")
 		var output_qty: int = output.get("qty", 0)
-		
+
 		if output_name == "" or output_qty <= 0:
 			continue
 
@@ -398,14 +405,23 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 				output_name, recipe.get("recipe_id", "?")
 			])
 			continue
-		
+
 		print("[Production] Building %s produced %d %s" % [
 			building.instance_id, output_qty, good.display_name
 		])
-		
+
 		_dispatch_output_to_stockpile(building, good, output_qty, summary)
 		summary.produced[good.id] = summary.produced.get(good.id, 0) + output_qty
 		_record_building_output(building.instance_id, good.id, output_qty)
+		mined += output_qty
+	if dep_token != "" and mined > 0:
+		MatchState.deplete_deposit(tile_id, dep_token, mined)
+
+func _recipe_deposit_token(recipe: Dictionary) -> String:
+	for req in recipe.get("requirements", []):
+		if str(req.get("type", "")) == "deposit":
+			return str(req.get("value", ""))
+	return ""
 
 func _process_transport_arrivals(summary: Dictionary) -> void:
 	# First, retry any shipments that arrived earlier at a then-full tile.

@@ -26,6 +26,8 @@ const DENSITY_SOFT_CAPACITY := 100.0
 
 signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
 
+var _survey_dialog: PanelContainer = null
+var _unlock_dialog: PanelContainer = null
 var _stockpile_select_prompt: PanelContainer = null
 var _pending_stockpile_selection: Dictionary = {}
 var _dim_overlay: ColorRect = null
@@ -74,8 +76,10 @@ func _ready() -> void:
 	river_layer.clear()
 	terrain_layer.tile_selected.connect(_on_tile_selected)
 	terrain_layer.stockpile_destination_selected.connect(_on_stockpile_destination_selected)
+	terrain_layer.survey_tile_clicked.connect(_on_survey_tile_clicked)
 	info_panel.building_clicked.connect(building_panel.show_building)
 	info_panel.move_goods_requested.connect(_on_move_goods_requested)
+	info_panel.survey_requested.connect(_on_survey_tile_clicked)
 	MatchState.buy_tile_pick_requested.connect(_on_buy_tile_pick_requested)
 	MatchState.transfer_for_good_requested.connect(_on_transfer_requested)
 	MatchState.purchase_for_good_requested.connect(_on_purchase_requested)
@@ -118,6 +122,15 @@ func _ready() -> void:
 	_hud.add_child(overflow_dialog)
 	overflow_dialog.go_to_stockpile_requested.connect(_on_go_to_tile_stockpile)
 
+	# Survey dialog: opened by clicking a tile in the Surveying mapmode.
+	_survey_dialog = load("res://scripts/survey_dialog.gd").new()
+	_hud.add_child(_survey_dialog)
+
+	# "Unlocked …" popup, shown when a research unlock is earned by its condition.
+	_unlock_dialog = load("res://scripts/unlock_dialog.gd").new()
+	_hud.add_child(_unlock_dialog)
+	MatchState.unlock_granted.connect(_on_unlock_granted)
+
 	# Alternate tabbed Tile View Panel (TVP v2). Hidden until `swap tvp` flips the
 	# MatchState flag; lives next to the classic panel under HUDContent.
 	info_panel_v2 = load("res://scripts/tile_info_panel_v2.gd").new()
@@ -125,6 +138,7 @@ func _ready() -> void:
 	hud_content.add_child(info_panel_v2)
 	info_panel_v2.building_clicked.connect(_on_v2_building_clicked)
 	info_panel_v2.pick_destination_requested.connect(_on_v2_pick_destination)
+	info_panel_v2.survey_requested.connect(_on_survey_tile_clicked)
 	MatchState.alt_tvp_changed.connect(_on_alt_tvp_changed)
 
 	# Debug cheat terminal (toggle with the ` key)
@@ -135,8 +149,18 @@ func _ready() -> void:
 	_sale_fx.terrain_layer = terrain_layer
 	add_child(_sale_fx)
 
+	# Collapsing-hex + rising-deposit-icon animation when a tile finishes surveying.
+	var _survey_fx: Node2D = load("res://scripts/survey_effects.gd").new()
+	_survey_fx.name = "SurveyEffects"
+	_survey_fx.terrain_layer = terrain_layer
+	add_child(_survey_fx)
+
 	# Pre-place the NPC-owned ports (Three Diamonds Shipping Corporation)
 	_place_npc_ports()
+	# The port tiles start surveyed (the Surveying mapmode reveals them on turn 1).
+	MatchState.seed_surveyed_ports()
+	# Track depletable-deposit yields so mining can run them down over time.
+	MatchState.seed_deposits(terrain_layer)
 	# A disused/ruins building near Vandel's Skip (tile_22_16), owned by an NPC.
 	_place_ruins("tile_23_16")
 
@@ -152,6 +176,30 @@ func _on_tile_selected(tile_data: Dictionary) -> void:
 		if info_panel_v2 != null:
 			info_panel_v2.hide()
 		info_panel.show_tile(tile_data)
+
+func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
+	# Clicking a tile in the Surveying mapmode opens its survey dialog. Fully
+	# surveyed tiles (and ones already being surveyed) trigger no dialog.
+	var tile_id := str(tile_data.get("id", ""))
+	if MatchState.is_survey_in_progress(tile_id):
+		MatchState.request_toast("Survey already in progress (%d turns)." % MatchState.survey_turns_left(tile_id), "info")
+		return
+	var status := MatchState.survey_status(tile_id, str(tile_data.get("type", "")))
+	if status == "surveyed":
+		return  # already surveyed — no dialog
+	if not MatchState.is_tile_surveyable(tile_id):
+		MatchState.request_toast("That tile is beyond the survey range.", "warning")
+		return
+	var tile_name := str(tile_data.get("nickname", ""))
+	if tile_name == "":
+		tile_name = str(tile_data.get("city_name", ""))
+	if tile_name == "":
+		tile_name = tile_id
+	_survey_dialog.open_for(tile_id, tile_name, status == "partial")
+
+func _on_unlock_granted(title: String, description: String, via_condition: bool) -> void:
+	if via_condition:
+		_unlock_dialog.show_unlock(title, description)
 
 func _on_v2_building_clicked(building: Dictionary) -> void:
 	# v2 is added to HUDContent after the building panel, so it would otherwise draw
