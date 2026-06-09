@@ -77,6 +77,9 @@ const SURVEY_TURNS := 2                          # surveying a tile takes 2 turn
 # water never depletes so it is never tracked. Reaching 0 means the deposit is gone.
 var deposit_remaining: Dictionary = {}
 var _deposit_terrain = null  # HexMap, for counting a tile's deposits when surveyed
+# Single deposits revealed by building a mine on an unsurveyed tile: existence is
+# known but the size stays hidden and the tile remains "unsurveyed".
+var revealed_deposits: Dictionary = {}  # tile_id -> {token: true}
 
 # Research unlocks: which are unlocked (by free choice or by meeting a condition),
 # and progress toward the action+object+quantity conditions (e.g. "Survey|tiles").
@@ -145,6 +148,8 @@ signal surveyed_tiles_changed
 signal surveying_in_progress_changed
 ## A tile's deposit remaining amount changed (depleted by mining).
 signal deposits_changed(tile_id: String)
+## A tile's deposit just reached 0 this turn (fires once, on the 0 transition).
+signal deposit_exhausted(tile_id: String, token: String)
 ## A research unlock was granted. via_condition is true when earned by meeting its
 ## condition (shows the "Unlocked …" dialog); false for a free-chosen unlock.
 signal unlock_granted(title: String, description: String, via_condition: bool)
@@ -385,6 +390,27 @@ func deplete_deposit(tile_id: String, token: String, amount: int) -> void:
 		return
 	t[token] = maxi(0, int(t[token]) - amount)
 	deposits_changed.emit(tile_id)
+	if int(t[token]) == 0:
+		deposit_exhausted.emit(tile_id, token)
+
+## True if a deposit's existence is known to the player: fully surveyed reveals
+## everything; otherwise a deposit must have been individually revealed (by
+## building a mine on it).
+func is_deposit_revealed(tile_id: String, token: String) -> bool:
+	if surveyed_tiles.has(tile_id):
+		return true
+	return (revealed_deposits.get(tile_id, {}) as Dictionary).has(token)
+
+## Reveal one deposit's existence (size stays hidden, tile stays unsurveyed).
+func reveal_deposit(tile_id: String, token: String) -> void:
+	if tile_id == "" or token == "":
+		return
+	if not revealed_deposits.has(tile_id):
+		revealed_deposits[tile_id] = {}
+	if revealed_deposits[tile_id].has(token):
+		return
+	revealed_deposits[tile_id][token] = true
+	surveyed_tiles_changed.emit()  # refresh tile panel + deposits overlay
 
 func _deposit_token_of(raw: String) -> String:
 	var p := raw.find("(")

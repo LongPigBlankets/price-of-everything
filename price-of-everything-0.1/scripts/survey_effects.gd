@@ -148,8 +148,18 @@ func _draw_icons(f: Dictionary) -> void:
 	var sz := icon_size * scale
 	for ic in icons:
 		var pos := Vector2(centre.x + float(ic.x), y)
-		draw_texture_rect(ic.tex, Rect2(pos - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), false,
+		# Fit the texture in the sz×sz box keeping its aspect ratio (so portrait
+		# icons like crude oil aren't squashed square).
+		draw_texture_rect(ic.tex, _fitted_rect(ic.tex, pos, sz), false,
 			Color(1.0, 1.0, 1.0, _icon_alpha(t, bool(ic.get("infinite", false)))))
+
+# Centred rect that fits a texture inside a square box, preserving aspect ratio.
+func _fitted_rect(tex: Texture2D, center: Vector2, box: float) -> Rect2:
+	var tw := float(tex.get_width())
+	var th := float(tex.get_height())
+	var f := box / maxf(1.0, maxf(tw, th))
+	var size := Vector2(tw * f, th * f)
+	return Rect2(center - size * 0.5, size)
 
 func _icon_alpha(t: float, infinite: bool) -> float:
 	var fade_start := RISE_DUR + HOLD + (INF_EXTRA if infinite else 0.0)

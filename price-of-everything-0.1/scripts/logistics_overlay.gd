@@ -17,6 +17,20 @@ extends Node2D
 
 @onready var terrain_layer: HexMap = %TerrainLayer
 
+const GoodIcons := preload("res://scripts/good_icons.gd")
+const TileViewData := preload("res://scripts/tile_view_data.gd")
+const SEMIBOLD_FONT: Font = preload("res://assets/fonts/BarlowCondensed-SemiBold.ttf")
+
+# Stockpile hover panel: a square that's STOCK_PANEL_MIN px on screen at max
+# zoom-in and STOCK_PANEL_MAX px at max zoom-out (interpolated by zoom).
+const STOCK_PANEL_MIN := 200.0
+const STOCK_PANEL_MAX := 300.0
+const STOCK_PANEL_BARS := 6
+const STOCK_BAR_COLORS := [
+	Color(0.36, 0.82, 0.5), Color(0.42, 0.65, 0.84), Color(0.9, 0.72, 0.36),
+	Color(0.76, 0.82, 0.9), Color(0.55, 0.62, 0.70),
+]
+
 const LINE_WIDTH := 20.0
 const DEST_BOX := 60.0
 const TAG_LEN := 120.0
@@ -112,40 +126,174 @@ func _draw_hover_good_info() -> void:
 		_draw_tile_good_card(hovered, _hover_good)
 
 func _draw_logistics_hover_info() -> void:
-	# Logistics mapmode: no fixed good, so show the tile's primary good. The shipment
+	# Logistics mapmode: hovering a tile shows its stockpile chart. The shipment
 	# hover panel takes precedence when the cursor is over a shipment tag.
 	if _hover_tag >= 0:
 		return
 	var tile_id := terrain_layer.tile_id_under_mouse()
-	if tile_id == "":
-		return
-	var good := _primary_good_for_tile(tile_id)
-	if good != "":
-		_draw_tile_good_card(tile_id, good)
+	if tile_id != "":
+		_draw_stockpile_panel(tile_id)
 
-func _primary_good_for_tile(tile_id: String) -> String:
-	# The good this tile produces most per turn; if it produces nothing, the good it
-	# holds the most of in stock.
-	var best_good := ""
-	var best_prod := 0
-	for iid in MatchState.tile_buildings.get(tile_id, []):
-		var b: Dictionary = MatchState.get_building(str(iid))
-		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
-		for o in recipe.get("outputs", []):
-			var gid := str(o.get("good_id", ""))
-			var q := Catalog.recipe_output_qty(recipe, gid)
-			if gid != "" and q > best_prod:
-				best_prod = q
-				best_good = gid
-	if best_good != "":
-		return best_good
-	var best_stock := 0
-	for gid in Stockpile.get_tile_totals(tile_id):
-		var s := int(Stockpile.get_tile_totals(tile_id)[gid])
-		if s > best_stock:
-			best_stock = s
-			best_good = str(gid)
-	return best_good
+# Screen-space side length of the hover panel (interpolated 200→600px by zoom).
+func _stock_panel_screen_size() -> float:
+	var cam := get_viewport().get_camera_2d()
+	if cam == null:
+		return 0.5 * (STOCK_PANEL_MIN + STOCK_PANEL_MAX)
+	var zmin := 1.0
+	var zmax := 4.0
+	var zn = cam.get("zoom_min")
+	var zx = cam.get("zoom_max")
+	if zn != null:
+		zmin = float(zn)
+	if zx != null:
+		zmax = float(zx)
+	var t := clampf((cam.zoom.x - zmin) / maxf(0.0001, zmax - zmin), 0.0, 1.0)
+	return lerpf(STOCK_PANEL_MAX, STOCK_PANEL_MIN, t)  # zoomed out → big, zoomed in → small
+
+# A rounded, lit panel above the tile: the tile name, then "Stockpile" + fullness
+# %, then the same bar-per-good chart as the tile view panel.
+func _draw_stockpile_panel(tile_id: String) -> void:
+	var pos := _tile_pos(tile_id)
+	if pos == Vector2.INF:
+		return
+	# Highlight the hovered tile in transparent cream.
+	_draw_hover_highlight(pos)
+
+	var stock: Dictionary = TileViewData.stockpile_summary(tile_id)
+	var z := maxf(0.01, get_viewport().get_canvas_transform().get_scale().x)
+	var s := _stock_panel_screen_size() / z   # base world size for the target screen size
+	# Wider by ~40px and taller by ~30px (plus a tile-name row), all scaling with zoom.
+	var extra := s / 200.0   # 1 unit ≈ 1px at the min panel size
+	var w := s + 40.0 * extra
+	var h := s + 30.0 * extra + s * 0.18   # +30px breathing + the new name row
+	var tile_w: float = terrain_layer.tile_set.tile_size.x
+	var origin := pos - Vector2(w * 0.5, h + tile_w * 0.30)
+	var rect := Rect2(origin, Vector2(w, h))
+	var radius := s * 0.06
+	var border := maxf(2.0, s * 0.025)   # ~5px at min size
+
+	# Rounded navy plate with a thick cream bevel outline.
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = DS.PALETTE.BG_CARD
+	sb.set_corner_radius_all(int(radius))
+	sb.set_border_width_all(int(border))
+	sb.border_color = DS.PALETTE.BORDER
+	draw_style_box(sb, rect)
+	# Diagonal light (top-left → bottom-right) over plate + bevel.
+	_draw_diag_light(rect, Color(1, 1, 1, 0.10), Color(0, 0, 0, 0.16))
+	_draw_bevel(rect, border, radius, Color(1, 1, 1, 0.40), Color(0.10, 0.07, 0.02, 0.40))
+
+	var pad := w * 0.06
+	var font := ThemeDB.fallback_font
+	# Row 1: tile name (SemiBold 22). Row 2: "Stockpile" (SemiBold) + fullness %.
+	var name_h := s * 0.17
+	var head_h := s * 0.17
+	var name_y := origin.y + border + name_h * 0.74
+	var head_y := origin.y + border + name_h + head_h * 0.74
+	_stock_text(SEMIBOLD_FONT, Catalog.tile_label(tile_id), Vector2(origin.x + w * 0.5, name_y), int(s * 0.10), DS.PALETTE.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
+	var pct: float = float(stock.get("pct", 0.0))
+	var pct_text: String = "FULL" if bool(stock.get("is_full", false)) else "%d%%" % roundi(pct * 100.0)
+	var pct_col: Color = DS.PALETTE.DANGER if bool(stock.get("is_full", false)) else (DS.PALETTE.WARN if pct >= 0.9 else DS.PALETTE.TEXT_MUTED)
+	_stock_text(SEMIBOLD_FONT, "Stockpile", Vector2(origin.x + pad, head_y), int(s * 0.10), DS.PALETTE.ACCENT, HORIZONTAL_ALIGNMENT_LEFT)
+	_stock_text(font, pct_text, Vector2(origin.x + w - pad, head_y), int(s * 0.075), pct_col, HORIZONTAL_ALIGNMENT_RIGHT)
+	var div_y := origin.y + border + name_h + head_h
+	draw_line(Vector2(origin.x + pad, div_y), Vector2(origin.x + w - pad, div_y), DS.PALETTE.BORDER_SOFT, maxf(1.0, 1.5 / z))
+
+	var goods: Array = stock.get("goods", [])
+	if goods.is_empty():
+		_stock_text(font, "Stockpile is empty", Vector2(origin.x + w * 0.5, div_y + (rect.end.y - div_y) * 0.5), int(s * 0.06), DS.PALETTE.TEXT_DIM, HORIZONTAL_ALIGNMENT_CENTER)
+		return
+
+	# Lump overflow goods into a single "Other" bar, like the TVP.
+	var shown: Array = goods
+	var other_sum := 0
+	if goods.size() > STOCK_PANEL_BARS:
+		shown = goods.slice(0, STOCK_PANEL_BARS - 1)
+		for i in range(STOCK_PANEL_BARS - 1, goods.size()):
+			other_sum += int(goods[i].qty)
+	var bar_count: int = shown.size() + (1 if other_sum > 0 else 0)
+	var max_qty := 1
+	for g in shown:
+		max_qty = maxi(max_qty, int(g.qty))
+	max_qty = maxi(max_qty, other_sum)
+
+	var area_left := origin.x + pad
+	var area_w := w - 2.0 * pad
+	var col_w := area_w / float(bar_count)
+	var icon_sz: float = minf(col_w * 0.74, s * 0.16)
+	var baseline := rect.end.y - border - icon_sz - s * 0.02
+	var bar_top := div_y + s * 0.08
+	var bar_max_h := baseline - bar_top
+	var bar_w: float = minf(col_w * 0.5, s * 0.12)
+	var qty_fs := int(s * 0.055)
+
+	var idx := 0
+	for g in shown:
+		_draw_stock_bar_im(area_left + col_w * float(idx), col_w, baseline, bar_max_h, bar_w,
+			int(g.qty), max_qty, STOCK_BAR_COLORS[idx % STOCK_BAR_COLORS.size()], str(g.good_id), font, qty_fs, icon_sz)
+		idx += 1
+	if other_sum > 0:
+		_draw_stock_bar_im(area_left + col_w * float(idx), col_w, baseline, bar_max_h, bar_w,
+			other_sum, max_qty, DS.PALETTE.TEXT_DIM, "", font, qty_fs, icon_sz)
+
+func _draw_stock_bar_im(col_x: float, col_w: float, baseline: float, bar_max_h: float, bar_w: float,
+		qty: int, max_qty: int, color: Color, good_id: String, font: Font, qty_fs: int, icon_sz: float) -> void:
+	var cx := col_x + col_w * 0.5
+	var bh: float = maxf(2.0, bar_max_h * (float(qty) / float(max_qty)))
+	var bar_rect := Rect2(cx - bar_w * 0.5, baseline - bh, bar_w, bh)
+	# Embossed bar: filled body, dark rim, and a diagonal sheen.
+	var bsb := StyleBoxFlat.new()
+	bsb.bg_color = color
+	bsb.set_corner_radius_all(int(maxf(2.0, bar_w * 0.2)))
+	bsb.set_border_width_all(maxi(1, int(bar_w * 0.08)))
+	bsb.border_color = color.darkened(0.45)
+	draw_style_box(bsb, bar_rect)
+	_draw_diag_light(bar_rect, Color(1, 1, 1, 0.28), Color(0, 0, 0, 0.28))
+	_stock_text(font, str(qty), Vector2(cx, baseline - bh - qty_fs * 0.3), qty_fs, DS.PALETTE.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	if good_id != "":
+		var tex := GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id), true)
+		if tex != null:
+			draw_texture_rect(tex, Rect2(cx - icon_sz * 0.5, baseline + icon_sz * 0.05, icon_sz, icon_sz), false)
+
+# Transparent cream fill + outline over the hovered tile's hex.
+func _draw_hover_highlight(center: Vector2) -> void:
+	var r: float = terrain_layer.tile_set.tile_size.x * 0.5
+	var cream: Color = DS.PALETTE.ACCENT
+	draw_colored_polygon(_hex_points(center, r), Color(cream.r, cream.g, cream.b, 0.16))
+	draw_polyline(_hex_outline(center, r), Color(cream.r, cream.g, cream.b, 0.55), 3.0, true)
+
+# A subtle top-left → bottom-right light wash over a rect (vertex-colour quad).
+func _draw_diag_light(rect: Rect2, light: Color, dark: Color) -> void:
+	var mid := light.lerp(dark, 0.5)
+	var pts := PackedVector2Array([
+		rect.position,
+		Vector2(rect.end.x, rect.position.y),
+		rect.end,
+		Vector2(rect.position.x, rect.end.y)])
+	draw_polygon(pts, PackedColorArray([light, mid, dark, mid]))
+
+# Inner bevel highlight/shadow lines so the cream outline catches the light.
+func _draw_bevel(rect: Rect2, bw: float, radius: float, hi: Color, lo: Color) -> void:
+	var x := rect.position.x
+	var y := rect.position.y
+	var w := rect.size.x
+	var hgt := rect.size.y
+	var lw := maxf(1.0, bw * 0.45)
+	var inn := bw
+	draw_line(Vector2(x + radius, y + inn), Vector2(x + w - radius, y + inn), hi, lw)          # top
+	draw_line(Vector2(x + inn, y + radius), Vector2(x + inn, y + hgt - radius), hi, lw)          # left
+	draw_line(Vector2(x + radius, y + hgt - inn), Vector2(x + w - radius, y + hgt - inn), lo, lw) # bottom
+	draw_line(Vector2(x + w - inn, y + radius), Vector2(x + w - inn, y + hgt - radius), lo, lw)   # right
+
+# Draws text with the given horizontal alignment; `anchor` is the baseline point.
+func _stock_text(font: Font, text: String, anchor: Vector2, fs: int, color: Color, align: int) -> void:
+	var w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var x := anchor.x
+	if align == HORIZONTAL_ALIGNMENT_CENTER:
+		x -= w * 0.5
+	elif align == HORIZONTAL_ALIGNMENT_RIGHT:
+		x -= w
+	draw_string(font, Vector2(x, anchor.y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, color)
 
 func _draw_tile_good_card(tile_id: String, good_id: String) -> void:
 	# A 2-cell card over the tile: production/turn (left) + stockpile (right), with the

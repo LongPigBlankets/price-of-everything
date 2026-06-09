@@ -35,6 +35,10 @@ const GREY_FADE_COL := Color(0.44, 0.44, 0.47, 0.0)  # grey gradient fades to no
 const SNOW := Color(0.97, 0.97, 0.98, 1.0)           # peak snow-cap
 const NAVY := Color(0.016, 0.059, 0.106)             # in-progress survey hex fill
 const SURVEY_LIMIT_RED := Color(0.86, 0.13, 0.13)    # max survey-range boundary line
+const SURVEY_LIMIT_BURGUNDY := Color(0.45, 0.04, 0.12)  # thick boundary line
+const SURVEY_LIMIT_GLOW := Color(0.78, 0.16, 0.16, 0.45)  # outward gradient at the line
+const SURVEY_LIMIT_WIDTH := 30.0       # world px, boundary line thickness
+const SURVEY_LIMIT_GLOW_LEN := 300.0   # world px, how far the gradient projects out
 const RIVER_BLUE := Color(0.17647059, 0.40784314, 0.76862745, 1.0)
 # Sea: radial gradient (lighter centre -> deep edges so neighbours stay blue).
 const SEA_CENTRE := Color(0.34, 0.55, 0.76)
@@ -631,8 +635,14 @@ func _river_band(pts: PackedVector2Array) -> PackedVector2Array:
 
 # --- maximum survey-range boundary ---
 func _draw_survey_limit() -> void:
-	# Red line on every edge where a surveyable tile meets a non-surveyable one —
-	# the outer limit of what can currently be surveyed.
+	# Burgundy line on every edge where a surveyable tile meets a non-surveyable one
+	# — the outer limit of what can currently be surveyed — with a medium-red gradient
+	# projecting outward. Gather the boundary edges first so the glow sits behind the
+	# lines (and adjacent edges don't paint glow over each other's lines).
+	# Each band's corners are pushed out along their RADIAL direction (centre→corner),
+	# not the edge normal — so two edges that share a corner push it out identically
+	# and their glow bands meet, leaving no wedge gap at outward hex corners.
+	var edges: Array = []  # [{a, b, a2, b2}]
 	for coord in terrain_layer.tiles:
 		var tid := str(terrain_layer.tiles[coord].get("id", ""))
 		if not MatchState.is_tile_surveyable(tid):
@@ -645,7 +655,23 @@ func _draw_survey_limit() -> void:
 				continue  # off the playable map
 			if MatchState.is_tile_surveyable(str(terrain_layer.tiles[ncoord].get("id", ""))):
 				continue
-			draw_line(centre + CORNERS[i], centre + CORNERS[(i + 1) % 6], SURVEY_LIMIT_RED, 6.0, true)
+			var ca: Vector2 = CORNERS[i]
+			var cb: Vector2 = CORNERS[(i + 1) % 6]
+			var a := centre + ca
+			var b := centre + cb
+			edges.append({
+				"a": a, "b": b,
+				"a2": a + ca.normalized() * SURVEY_LIMIT_GLOW_LEN,
+				"b2": b + cb.normalized() * SURVEY_LIMIT_GLOW_LEN,
+			})
+	# Outward gradient band (medium red → transparent over SURVEY_LIMIT_GLOW_LEN).
+	var transparent := Color(SURVEY_LIMIT_GLOW.r, SURVEY_LIMIT_GLOW.g, SURVEY_LIMIT_GLOW.b, 0.0)
+	for e in edges:
+		draw_polygon(PackedVector2Array([e.a, e.b, e.b2, e.a2]),
+			PackedColorArray([SURVEY_LIMIT_GLOW, SURVEY_LIMIT_GLOW, transparent, transparent]))
+	# Thick burgundy boundary line on top.
+	for e in edges:
+		draw_line(e.a, e.b, SURVEY_LIMIT_BURGUNDY, SURVEY_LIMIT_WIDTH, true)
 
 # --- in-progress survey marker ---
 func _draw_survey_progress() -> void:

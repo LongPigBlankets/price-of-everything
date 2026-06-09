@@ -161,6 +161,10 @@ func _ready() -> void:
 		Stockpile.stockpile_changed.connect(_on_logistics_changed)
 	if not CostSolver.costs_updated.is_connected(_on_costs_updated):
 		CostSolver.costs_updated.connect(_on_costs_updated)
+	# A deposit running out must refresh the shown building's RAG dots, production
+	# status and recipe diagram (it stops being able to produce).
+	if not MatchState.deposits_changed.is_connected(_on_deposit_changed):
+		MatchState.deposits_changed.connect(_on_deposit_changed)
 	# Keep a shown construction site's countdowns/ETAs live, and cross-fade to the running
 	# building when it completes.
 	if not Production.turn_processed.is_connected(_on_turn_processed_construction):
@@ -443,6 +447,15 @@ func _on_cancel_construction_pressed(instance_id: String) -> void:
 
 func _on_turn_processed_construction(_summary: Dictionary) -> void:
 	_refresh_if_showing_construction()
+
+func _on_deposit_changed(tile_id: String) -> void:
+	# Recompute the whole panel when this building's own deposit changes.
+	if not visible or _current_building.is_empty():
+		return
+	if _showing_construction_instance != "":
+		return  # construction view refreshes on its own
+	if str(_current_building.get("tile_id", "")) == tile_id:
+		_rebuild_fields(_current_building)
 
 func _on_construction_progress(instance_id: String, _tile_id: String) -> void:
 	if instance_id == _showing_construction_instance:
@@ -1356,6 +1369,9 @@ func _style_flow_summary() -> void:
 
 func _update_flow_summary(recipe: Dictionary) -> void:
 	var inputs: Array = (recipe.get("inputs", []) as Array).duplicate()
+	# Deposit requirements (mines etc.) show as an input cell — greyed "EXHAUSTED"
+	# once the tile's deposit runs out.
+	inputs.append_array(_recipe_deposit_items(recipe))
 	# Solar/wind have no good inputs — show their tile potential as a text cell.
 	var potential := _recipe_potential(recipe)
 	if potential != "":
@@ -1423,6 +1439,7 @@ func _make_flow_cell(good_item: Dictionary, cell_size: Vector2, prefer_small: bo
 			cell.tooltip_text = "Supplied by you" if from_player else "Supplied by the market"
 	cell.add_theme_stylebox_override("panel", style)
 
+	var exhausted := _flow_item_exhausted(good_item)
 	if texture != null:
 		var texture_rect := TextureRect.new()
 		texture_rect.texture = texture
@@ -1430,11 +1447,82 @@ func _make_flow_cell(good_item: Dictionary, cell_size: Vector2, prefer_small: bo
 		texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		texture_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 		texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if exhausted:
+			texture_rect.modulate = Color(0.5, 0.5, 0.5, 0.85)  # greyed out
 		cell.add_child(texture_rect)
 
-	_add_flow_quantity_badge(cell, good_item, cell_size)
+	if exhausted:
+		_add_exhausted_overlay(cell)
+	else:
+		_add_flow_quantity_badge(cell, good_item, cell_size)
 
 	return cell
+
+# "EXHAUSTED" ribbon over a mined-out deposit cell in the recipe diagram.
+func _add_exhausted_overlay(cell: Panel) -> void:
+	var label := Label.new()
+	label.text = "EXHAUSTED"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ls := LabelSettings.new()
+	ls.font_color = STATUS_RED
+	ls.font_size = 11
+	ls.outline_color = Color(0, 0, 0, 0.85)
+	ls.outline_size = 4
+	label.label_settings = ls
+	cell.add_child(label)
+	cell.tooltip_text = "This deposit is exhausted — the building can no longer produce."
+
+# Deposit requirements as flow-input items (one per "deposit" requirement).
+# The CSV deposit token "water" maps to the pure_water good.
+func _recipe_deposit_items(recipe: Dictionary) -> Array:
+	var items: Array = []
+	for req in recipe.get("requirements", []):
+		if str(req.get("type", "")) != "deposit":
+			continue
+		var token := str(req.get("value", ""))
+		if token == "":
+			continue
+		var internal := "pure_water" if token == "water" else token
+		var good: Dictionary = Catalog.get_good_by_internal_name(internal)
+		items.append({
+			"good_id": str(good.get("id", internal)),
+			"internal_name": internal,
+			"type": "deposit",
+			"deposit_token": token,
+		})
+	return items
+
+# True when the building's tile has mined out a deposit the recipe needs.
+# Pure water never depletes, so it never counts as exhausted.
+func _recipe_deposit_exhausted(building: Dictionary, recipe: Dictionary) -> bool:
+	var tile_id := str(building.get("tile_id", ""))
+	if tile_id == "":
+		return false
+	for req in recipe.get("requirements", []):
+		if str(req.get("type", "")) != "deposit":
+			continue
+		var token := str(req.get("value", ""))
+		if token == "" or token == "water":
+			continue
+		if MatchState.deposit_remaining_for(tile_id, token) == 0:
+			return true
+	return false
+
+# Whether a flow good_item is a deposit cell whose deposit is mined out.
+func _flow_item_exhausted(good_item: Dictionary) -> bool:
+	if str(good_item.get("type", "")) != "deposit":
+		return false
+	var token := str(good_item.get("deposit_token", ""))
+	if token == "" or token == "water":
+		return false
+	var tile_id := str(_current_building.get("tile_id", ""))
+	if tile_id == "":
+		return false
+	return MatchState.deposit_remaining_for(tile_id, token) == 0
 
 func _recipe_potential(recipe: Dictionary) -> String:
 	for req in recipe.get("requirements", []):
@@ -1488,53 +1576,15 @@ func _add_flow_quantity_badge(cell: Panel, good_item: Dictionary, cell_size: Vec
 		return
 
 	var qty_text := str(qty)
-	var badge_height: int = FLOW_BADGE_DIAMETER
-	var badge_width: int = badge_height
-	if qty_text.length() > 1:
-		badge_width = max(badge_height, (qty_text.length() * 9) + 14)
-
-	var badge := PanelContainer.new()
-	badge.custom_minimum_size = Vector2(badge_width, badge_height)
-	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# The shared quantity pill (also used by the deposits mapmode overlay).
+	var badge := UIHelpers.make_quantity_pill(qty_text, FLOW_BADGE_DIAMETER, FLOW_BADGE_TEXT_SIZE)
+	var badge_size := badge.custom_minimum_size
 	badge.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	var overlap: int = max(4, roundi(min(cell_size.x, cell_size.y) * 0.10))
-	badge.offset_left = -badge_width + overlap
-	badge.offset_top = -badge_height + overlap
+	badge.offset_left = -badge_size.x + overlap
+	badge.offset_top = -badge_size.y + overlap
 	badge.offset_right = overlap
 	badge.offset_bottom = overlap
-
-	var badge_style := StyleBoxFlat.new()
-	badge_style.bg_color = DIAGRAM_NAVY
-	badge_style.border_color = DIAGRAM_PAPER
-	badge_style.border_width_left = 2
-	badge_style.border_width_top = 2
-	badge_style.border_width_right = 2
-	badge_style.border_width_bottom = 2
-	var radius: int = int(badge_height / 2.0)
-	badge_style.corner_radius_top_left = radius
-	badge_style.corner_radius_top_right = radius
-	badge_style.corner_radius_bottom_left = radius
-	badge_style.corner_radius_bottom_right = radius
-	badge_style.content_margin_left = 0
-	badge_style.content_margin_top = 0
-	badge_style.content_margin_right = 0
-	badge_style.content_margin_bottom = 0
-	badge.add_theme_stylebox_override("panel", badge_style)
-
-	var label_settings := LabelSettings.new()
-	label_settings.font_color = DIAGRAM_PAPER
-	label_settings.font_size = FLOW_BADGE_TEXT_SIZE
-
-	var label := Label.new()
-	label.text = qty_text
-	label.custom_minimum_size = Vector2(badge_width, badge_height)
-	label.label_settings = label_settings
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge.add_child(label)
 	cell.add_child(badge)
 
 func _update_flow_power(recipe: Dictionary) -> void:
@@ -1736,6 +1786,9 @@ func _update_cost_label(building: Dictionary) -> void:
 		return
 	var instance_id: String = building.get("instance_id", "")
 	var uc: float = CostSolver.get_building_unit_cost(instance_id)
+	# A mined-out deposit means the building produces nothing — no unit cost.
+	if _recipe_deposit_exhausted(building, Catalog.get_recipe(str(building.get("recipe_id", "")))):
+		uc = -1.0
 	var color: Color
 	var tooltip: String
 	if uc < 0.0:
@@ -1818,6 +1871,9 @@ func _power_status_color(building: Dictionary, recipe: Dictionary, is_infrastruc
 func _input_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
 	if is_infrastructure:
 		return STATUS_GREY
+	# An extraction building whose deposit is mined out can no longer produce.
+	if _recipe_deposit_exhausted(building, recipe):
+		return STATUS_RED
 	var instance_id: String = building.get("instance_id", "")
 	if instance_id != "" and Production.last_turn_run.has(instance_id):
 		return STATUS_GREEN
@@ -1835,8 +1891,9 @@ func _input_status_color(building: Dictionary, recipe: Dictionary, is_infrastruc
 func _transport_duration_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
 	if is_infrastructure:
 		return STATUS_GREY
-	if not Production.last_turn_run.has(str(building.get("instance_id", ""))):
-		return STATUS_GREY  # building didn't run this turn — no output to transport
+	# No output to transport when the building isn't running (or its deposit ran out).
+	if not Production.last_turn_run.has(str(building.get("instance_id", ""))) or _recipe_deposit_exhausted(building, recipe):
+		return STATUS_GREY
 	var route := _selected_output_route(building, recipe)
 	if route.is_empty():
 		return STATUS_GREEN
@@ -1845,8 +1902,8 @@ func _transport_duration_status_color(building: Dictionary, recipe: Dictionary, 
 func _transport_cost_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
 	if is_infrastructure:
 		return STATUS_GREY
-	if not Production.last_turn_run.has(str(building.get("instance_id", ""))):
-		return STATUS_GREY  # building didn't run this turn — no output to transport
+	if not Production.last_turn_run.has(str(building.get("instance_id", ""))) or _recipe_deposit_exhausted(building, recipe):
+		return STATUS_GREY
 	var route := _selected_output_route(building, recipe)
 	if route.is_empty():
 		return STATUS_GREEN
