@@ -570,8 +570,12 @@ func _make_survey_button(status: String) -> Control:
 	col.add_child(sub)
 	# Same DS button as the "Build" action (matching height), bluish-grey metal edges.
 	var btn := _make_action_button("Survey")
-	btn.tooltip_text = "Survey this tile"
 	btn.pressed.connect(func(): survey_requested.emit(_current_tile_data))
+	if MatchState.is_tile_surveyable(_current_tile_id):
+		btn.tooltip_text = "Survey this tile"
+	else:
+		btn.disabled = true
+		btn.tooltip_text = "This tile is out of survey range. Survey more tiles to extend your range."
 	col.add_child(btn)
 	return section
 
