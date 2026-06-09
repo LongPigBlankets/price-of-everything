@@ -148,6 +148,9 @@ signal deposits_changed(tile_id: String)
 ## A research unlock was granted. via_condition is true when earned by meeting its
 ## condition (shows the "Unlocked …" dialog); false for a free-chosen unlock.
 signal unlock_granted(title: String, description: String, via_condition: bool)
+## A tile finished being surveyed (drives the on-map survey animation). deposit_goods
+## is an array of {good_id, internal_name} for the non-water deposits revealed.
+signal tile_survey_completed(tile_id: String, deposit_goods: Array)
 ## A shipment arrived at a full tile and is now waiting to unload.
 signal overflow_shipment_held(record: Dictionary)
 ## Debug cheat `swap tvp` flipped which Tile View Panel is active.
@@ -326,9 +329,12 @@ func tick_surveys() -> void:
 func _complete_survey(tile_id: String, reveal_nearby: bool) -> void:
 	partially_surveyed_tiles.erase(tile_id)
 	mark_tile_surveyed(tile_id)
-	# Surveying a tile counts toward the research conditions (tiles + deposits found).
+	# Surveying a tile counts toward the research conditions (tiles + deposits found,
+	# pure water excluded) and drives the on-map survey animation.
+	var found: Array = _tile_deposit_goods(tile_id)
 	record_unlock_progress("Survey", "tiles", 1)
-	record_unlock_progress("Survey", "deposits", _tile_deposit_count(tile_id))
+	record_unlock_progress("Survey", "deposits", found.size())
+	tile_survey_completed.emit(tile_id, found)
 	if not reveal_nearby:
 		return
 	# A full survey auto-(partially-)surveys a neighbour; Spectral Crystallography
@@ -395,13 +401,22 @@ func _deposit_qty_of(raw: String) -> int:
 			return int(digits)
 	return -1
 
-func _tile_deposit_count(tile_id: String) -> int:
+## The non-water deposits on a tile as [{good_id, internal_name}]. Pure water is
+## excluded (it is permanent and does not count as a found deposit / for unlocks).
+func _tile_deposit_goods(tile_id: String) -> Array:
+	var out: Array = []
 	if _deposit_terrain == null:
-		return 0
+		return out
 	var coord: Vector2i = _deposit_terrain.id_to_coord(tile_id)
 	if not _deposit_terrain.tiles.has(coord):
-		return 0
-	return (_deposit_terrain.tiles[coord].get("deposits", []) as Array).size()
+		return out
+	for dep in _deposit_terrain.tiles[coord].get("deposits", []):
+		var token := _deposit_token_of(str(dep))
+		if token == "" or token == "water":
+			continue
+		var good: Dictionary = Catalog.get_good_by_internal_name(token)
+		out.append({"good_id": str(good.get("id", token)), "internal_name": token})
+	return out
 
 # --- Public API: research unlocks ---
 func _load_unlock_defs() -> void:

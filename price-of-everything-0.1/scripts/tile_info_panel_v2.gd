@@ -11,6 +11,8 @@ extends PanelContainer
 ## fonts/colours are used throughout.
 
 signal building_clicked(building: Dictionary)
+## The survey call-to-action was clicked — opens the survey dialog for this tile.
+signal survey_requested(tile_data: Dictionary)
 ## Asks the host (world_map) to enter map "pick a destination tile" mode; the
 ## result comes back via on_destination_picked().
 signal pick_destination_requested()
@@ -516,13 +518,14 @@ func _refresh_banner(tile_data: Dictionary) -> void:
 	stats.add_child(_make_land_stat("max", int(totals.max)))
 	_chips_row.add_child(stats)
 
-# Two-line survey call-to-action (status + hint). Inert for now.
+# Two-line survey call-to-action (status + hint). Opens the survey dialog.
 func _make_survey_button(status: String) -> Button:
 	var btn := Button.new()
 	btn.size_flags_horizontal = Control.SIZE_FILL
 	btn.custom_minimum_size = Vector2(0, 46)
 	btn.add_theme_constant_override("h_separation", 0)
 	btn.tooltip_text = "Survey this tile"
+	btn.pressed.connect(func(): survey_requested.emit(_current_tile_data))
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = DS.PALETTE.BG_INSET
 	sb.border_color = Color(DS.PALETTE.WARN, 0.6)

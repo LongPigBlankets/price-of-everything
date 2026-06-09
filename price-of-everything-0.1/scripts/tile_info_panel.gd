@@ -11,6 +11,8 @@ extends PanelContainer
 @onready var _margin_container: MarginContainer = $MarginContainer
 
 signal building_clicked(building: Dictionary)
+## The survey-status chip was clicked — opens the survey dialog for this tile.
+signal survey_requested(tile_data: Dictionary)
 
 const STOCKPILE_VIEW_SCRIPT := preload("res://scripts/stockpile_view.gd")
 const INFRA_GRID_SCRIPT := preload("res://scripts/infra_grid.gd")
@@ -187,6 +189,7 @@ func _restructure_layout() -> void:
 		_survey_status_button.add_theme_stylebox_override("pressed", _make_summary_chip_style(Color(0.7, 0.85, 1.0, 0.14), Color(0.7, 0.85, 1.0, 0.9)))
 		_survey_status_button.add_theme_color_override("font_color", OFF_WHITE)
 		_survey_status_button.add_theme_color_override("font_hover_color", OFF_WHITE)
+		_survey_status_button.pressed.connect(func(): survey_requested.emit(_current_tile_data))
 		_tile_type_summary_row.add_child(_survey_status_button)
 
 func _setup_tile_banner() -> void:

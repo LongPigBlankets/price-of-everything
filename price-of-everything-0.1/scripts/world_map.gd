@@ -79,6 +79,7 @@ func _ready() -> void:
 	terrain_layer.survey_tile_clicked.connect(_on_survey_tile_clicked)
 	info_panel.building_clicked.connect(building_panel.show_building)
 	info_panel.move_goods_requested.connect(_on_move_goods_requested)
+	info_panel.survey_requested.connect(_on_survey_tile_clicked)
 	MatchState.buy_tile_pick_requested.connect(_on_buy_tile_pick_requested)
 	MatchState.transfer_for_good_requested.connect(_on_transfer_requested)
 	MatchState.purchase_for_good_requested.connect(_on_purchase_requested)
@@ -137,6 +138,7 @@ func _ready() -> void:
 	hud_content.add_child(info_panel_v2)
 	info_panel_v2.building_clicked.connect(_on_v2_building_clicked)
 	info_panel_v2.pick_destination_requested.connect(_on_v2_pick_destination)
+	info_panel_v2.survey_requested.connect(_on_survey_tile_clicked)
 	MatchState.alt_tvp_changed.connect(_on_alt_tvp_changed)
 
 	# Debug cheat terminal (toggle with the ` key)
@@ -146,6 +148,11 @@ func _ready() -> void:
 	var _sale_fx: CanvasLayer = load("res://scripts/sale_effects.gd").new()
 	_sale_fx.terrain_layer = terrain_layer
 	add_child(_sale_fx)
+
+	# Collapsing-hex + rising-deposit-icon animation when a tile finishes surveying.
+	var _survey_fx: Node2D = load("res://scripts/survey_effects.gd").new()
+	_survey_fx.terrain_layer = terrain_layer
+	add_child(_survey_fx)
 
 	# Pre-place the NPC-owned ports (Three Diamonds Shipping Corporation)
 	_place_npc_ports()
