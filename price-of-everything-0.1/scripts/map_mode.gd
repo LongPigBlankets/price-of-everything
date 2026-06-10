@@ -10,6 +10,7 @@ enum Mode {
 	POWER_BALANCE,
 	LOGISTICS,
 	SURVEYING,
+	INFRASTRUCTURE,
 }
 
 const POWER_SENTINEL := "power_balance_sentinel"
@@ -17,6 +18,7 @@ const LOGISTICS_SENTINEL := "logistics_sentinel"
 const SURVEYING_SENTINEL := "surveying_sentinel"
 const DEPOSITS_SENTINEL := "deposits_sentinel"
 const WATER_SENTINEL := "water_sentinel"
+const INFRASTRUCTURE_SENTINEL := "infrastructure_sentinel"
 
 # Per-good modes (Producing / Consuming): the player ticks up to MAX_SELECTIONS
 # goods, each shown on the map with its own icon (clustered when a tile has more
@@ -27,10 +29,14 @@ const MAX_SELECTIONS := 6
 # Modes driven by a single sentinel selection (whole-map overlays, no good picker).
 const SENTINEL_MODES: Array = [
 	Mode.DEPOSITS, Mode.WATER, Mode.POWER_BALANCE, Mode.LOGISTICS, Mode.SURVEYING,
+	Mode.INFRASTRUCTURE,
 ]
 
 var current_mode: Mode = Mode.NONE
 var selections: Array = []  # [{good_id: String, color: Color}, ...]
+# Infrastructure mapmode: the single infrastructure type being shown on the map
+# ("" = none picked yet). Set from the Infrastructure panel's radio buttons.
+var infrastructure_selection: String = ""
 # Deposits the player has un-ticked in the Deposits panel (good_id -> true); the
 # deposits mapmode hides these. Empty = show all (the default).
 var deposit_hidden: Dictionary = {}
@@ -39,6 +45,8 @@ signal selections_changed(mode: Mode, selections: Array)
 signal mode_cleared()
 ## A deposit good's visibility was toggled in the Deposits panel.
 signal deposit_filter_changed()
+## The Infrastructure panel's single-pick changed (including back to "").
+signal infrastructure_selection_changed()
 
 func add_selection(mode: Mode, good_id: String) -> bool:
 	# Reject if a different mode is already locked
@@ -97,10 +105,19 @@ func set_sentinel_mode(mode: Mode, sentinel: String) -> bool:
 	clear_all()
 	return add_selection(mode, sentinel)
 
+# Pick the single infrastructure type the Infrastructure mapmode shows;
+# re-picking the current one deselects it (back to backdrop only).
+func set_infrastructure_selection(infra_key: String) -> void:
+	if current_mode != Mode.INFRASTRUCTURE:
+		return
+	infrastructure_selection = "" if infrastructure_selection == infra_key else infra_key
+	infrastructure_selection_changed.emit()
+
 func clear_all() -> void:
 	if current_mode == Mode.NONE and selections.is_empty():
 		return
 	selections.clear()
+	infrastructure_selection = ""
 	current_mode = Mode.NONE
 	mode_cleared.emit()
 

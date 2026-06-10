@@ -105,6 +105,9 @@ func _ready() -> void:
 	_build_dim_overlay()
 	_build_stockpile_legend()
 
+	# Infrastructure mapmode panel: shows/hides itself with the mapmode.
+	hud_content.add_child(load("res://scripts/infrastructure_panel.gd").new())
+
 	# Wire visuals to react to building placements
 	building_placed.connect(building_visuals.on_building_placed)
 	# A cancelled construction site removes its hex icon (it was never a real building).

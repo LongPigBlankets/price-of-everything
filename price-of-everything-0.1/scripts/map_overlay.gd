@@ -4,6 +4,8 @@ const SliceMarkerScene: PackedScene = preload("res://scenes/slice_marker.tscn")
 const BuildModeHexOverlayScript: Script = preload("res://scripts/build_mode_hex_overlay.gd")
 const BuildModeBackdropScript: Script = preload("res://scripts/build_mode_backdrop.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const InfraIcons := preload("res://scripts/infra_icons.gd")
+const InfraMarkersScript := preload("res://scripts/infra_mapmode_markers.gd")
 
 # Producing / Consuming icons are sized as a fraction of the tile (world units),
 # so they scale with zoom. Multiple selected goods on one tile cluster + shrink.
@@ -52,6 +54,7 @@ var build_legend: PanelContainer = null
 func _ready() -> void:
 	MapMode.selections_changed.connect(_on_selections_changed)
 	MapMode.mode_cleared.connect(_on_mode_cleared)
+	MapMode.infrastructure_selection_changed.connect(_on_infra_selection_changed)
 	Production.turn_processed.connect(_on_turn_processed)
 	BuildMode.mode_entered.connect(_on_build_mode_entered)
 	BuildMode.mode_exited.connect(_on_build_mode_exited)
@@ -70,6 +73,10 @@ func _on_selections_changed(mode: int, selections: Array) -> void:
 
 func _on_mode_cleared() -> void:
 	_clear_overlays()
+
+func _on_infra_selection_changed() -> void:
+	if MapMode.current_mode == MapMode.Mode.INFRASTRUCTURE:
+		_on_selections_changed(MapMode.current_mode, MapMode.selections)
 
 func _on_turn_processed(_summary: Dictionary) -> void:
 	print("[MapOverlay] turn_processed received, current_mode=", MapMode.current_mode)
@@ -341,8 +348,44 @@ func _add_build_legend_row(parent: VBoxContainer, color: Color, text: String) ->
 func _render_overlay(mode: int, selections: Array) -> void:
 	if mode == MapMode.Mode.POWER_BALANCE:
 		_render_power_overlay()
+	elif mode == MapMode.Mode.INFRASTRUCTURE:
+		_render_infrastructure_overlay()
 	else:
 		_render_resource_overlay(mode, selections)
+
+# --- Infrastructure overlay ---
+# Entering the mode darkens the map (build-mode backdrop); the Infrastructure
+# panel's single pick then shows every tile holding that infrastructure as a
+# bare icon marker (80px at zoom 1, growing sub-proportionally on zoom-out).
+
+func _render_infrastructure_overlay() -> void:
+	var backdrop := Node2D.new()
+	backdrop.set_script(BuildModeBackdropScript)
+	backdrop.set("bounds", _map_bounds())
+	add_child(backdrop)
+	current_overlays.append(backdrop)
+	var infra_key: String = MapMode.infrastructure_selection
+	if infra_key == "":
+		return
+	var building: Dictionary = Catalog.get_building_by_internal_name(infra_key)
+	var texture := InfraIcons.texture_for(str(building.get("id", "")), infra_key)
+	if texture == null:
+		return
+	var markers := InfraMarkersScript.new()
+	markers.texture = texture
+	markers.tile_size = _tile_size()
+	add_child(markers)
+	current_overlays.append(markers)
+	for coord in terrain_layer.tiles:
+		var tile_data: Dictionary = terrain_layer.tiles[coord]
+		if _tile_has_infrastructure(tile_data, infra_key):
+			markers.add_marker(_tile_world_pos(coord))
+
+func _tile_has_infrastructure(tile_data: Dictionary, infra_key: String) -> bool:
+	for entry in tile_data.get("infrastructure_present", []):
+		if InfraIcons.normalise(str(entry)) == infra_key:
+			return true
+	return false
 
 # --- Resource overlay (Producing / Consuming) ---
 # Each selected good is drawn on a matching tile as its own icon (goods with no
