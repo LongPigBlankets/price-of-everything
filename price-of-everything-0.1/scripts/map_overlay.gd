@@ -55,6 +55,10 @@ func _ready() -> void:
 	MapMode.selections_changed.connect(_on_selections_changed)
 	MapMode.mode_cleared.connect(_on_mode_cleared)
 	MapMode.infrastructure_selection_changed.connect(_on_infra_selection_changed)
+	# Construction lifecycle redraws the infrastructure overlay's dashed state.
+	Construction.construction_started.connect(_on_construction_changed)
+	Construction.construction_completed.connect(_on_construction_changed)
+	Construction.construction_cancelled.connect(_on_construction_changed)
 	Production.turn_processed.connect(_on_turn_processed)
 	BuildMode.mode_entered.connect(_on_build_mode_entered)
 	BuildMode.mode_exited.connect(_on_build_mode_exited)
@@ -77,6 +81,9 @@ func _on_mode_cleared() -> void:
 func _on_infra_selection_changed() -> void:
 	if MapMode.current_mode == MapMode.Mode.INFRASTRUCTURE:
 		_on_selections_changed(MapMode.current_mode, MapMode.selections)
+
+func _on_construction_changed(_instance_id: String, _tile_id: String) -> void:
+	_on_infra_selection_changed()
 
 func _on_turn_processed(_summary: Dictionary) -> void:
 	print("[MapOverlay] turn_processed received, current_mode=", MapMode.current_mode)
@@ -356,7 +363,8 @@ func _render_overlay(mode: int, selections: Array) -> void:
 # --- Infrastructure overlay ---
 # Entering the mode darkens the map (build-mode backdrop); the Infrastructure
 # panel's single pick then shows every tile holding that infrastructure as a
-# bare icon marker (80px at zoom 1, growing sub-proportionally on zoom-out).
+# coloured circle, with lines joining adjacent same-infrastructure tiles
+# (dashed when under construction — see infra_mapmode_markers.gd).
 
 func _render_infrastructure_overlay() -> void:
 	var backdrop := Node2D.new()
@@ -367,19 +375,59 @@ func _render_infrastructure_overlay() -> void:
 	var infra_key: String = MapMode.infrastructure_selection
 	if infra_key == "":
 		return
-	var building: Dictionary = Catalog.get_building_by_internal_name(infra_key)
-	var texture := InfraIcons.texture_for(str(building.get("id", "")), infra_key)
-	if texture == null:
-		return
+
+	var built: Dictionary = {}  # coord -> tile-centre world pos
+	for coord in terrain_layer.tiles:
+		if _tile_has_infrastructure(terrain_layer.tiles[coord], infra_key):
+			built[coord] = _tile_world_pos(coord)
+	var under_construction := _infra_construction_tiles(infra_key, built)
+
 	var markers := InfraMarkersScript.new()
-	markers.texture = texture
-	markers.tile_size = _tile_size()
+	markers.color = InfraIcons.color_for(infra_key)
+	markers.circles = built.values()
+	for coord in built:
+		for n in terrain_layer.neighbor_coords(coord):
+			if built.has(n):
+				if _coord_precedes(coord, n):  # each pair once
+					markers.solid_links.append([built[coord], built[n]])
+			elif under_construction.has(n):
+				markers.dashed_links.append([built[coord], under_construction[n]])
+	for coord in under_construction:
+		var neighbors := terrain_layer.neighbor_coords(coord)
+		var connected := false
+		for n in neighbors:
+			if built.has(n):
+				connected = true
+			elif under_construction.has(n):
+				connected = true
+				if _coord_precedes(coord, n):
+					markers.dashed_links.append([under_construction[coord], under_construction[n]])
+		if connected:
+			markers.uc_circles.append(under_construction[coord])
+		else:
+			var edge_mids: Array = []
+			for n in neighbors:
+				edge_mids.append((under_construction[coord] + _tile_world_pos(n)) * 0.5)
+			markers.stranded.append({"pos": under_construction[coord], "edge_mids": edge_mids})
 	add_child(markers)
 	current_overlays.append(markers)
-	for coord in terrain_layer.tiles:
-		var tile_data: Dictionary = terrain_layer.tiles[coord]
-		if _tile_has_infrastructure(tile_data, infra_key):
-			markers.add_marker(_tile_world_pos(coord))
+
+# Tiles with a pending construction project for this infrastructure type
+# (coord -> world pos). Tiles that already hold the built infra are skipped.
+func _infra_construction_tiles(infra_key: String, built: Dictionary) -> Dictionary:
+	var result: Dictionary = {}
+	for instance_id in Construction.construction_projects:
+		var project: Dictionary = Construction.construction_projects[instance_id]
+		var building: Dictionary = Catalog.get_building(str(project.get("building_id", "")))
+		if InfraIcons.normalise(str(building.get("internal_name", ""))) != infra_key:
+			continue
+		var coord: Vector2i = terrain_layer.id_to_coord(str(project.get("tile_id", "")))
+		if coord != Vector2i(-1, -1) and terrain_layer.tiles.has(coord) and not built.has(coord):
+			result[coord] = _tile_world_pos(coord)
+	return result
+
+func _coord_precedes(a: Vector2i, b: Vector2i) -> bool:
+	return a.y < b.y if a.x == b.x else a.x < b.x
 
 func _tile_has_infrastructure(tile_data: Dictionary, infra_key: String) -> bool:
 	for entry in tile_data.get("infrastructure_present", []):
