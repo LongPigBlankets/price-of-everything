@@ -25,6 +25,8 @@ extends Node
 const HISTORY_CAP := 200       # bounds save size and per-turn iteration cost
 const STARVATION_RAMP_TURNS := 3  # amber on turn 1, critical from turn 3+
 
+const BuildingNaming := preload("res://scripts/building_naming.gd")
+
 const SEVERITY_INFO := "info"
 const SEVERITY_WARNING := "warning"
 const SEVERITY_CRITICAL := "critical"
@@ -432,7 +434,13 @@ func _on_building_starved(record: Dictionary) -> void:
 	var ev_id := "starvation:%s" % inst_id
 	var building_id := str(record.get("building_id", ""))
 	var tile_id := str(record.get("tile_id", ""))
-	var name := str(Catalog.get_building(building_id).get("display_name", building_id))
+	# The building's name exactly as the detail panel shows it (codified
+	# "<Type> - <Output> - <Letter>"), plus the tile nickname (or the tile id
+	# when it has none) for the bracketed location.
+	var recipe_id := str(MatchState.get_building(inst_id).get("recipe_id", ""))
+	var building_name := BuildingNaming.label_for_tile(tile_id, inst_id, building_id, recipe_id)
+	var nick := Catalog.tile_name(tile_id)
+	var where := nick if nick != "" else tile_id
 
 	if _active.has(ev_id):
 		# Update in place (re-fires on severity change so the bell flashes). The
@@ -441,7 +449,9 @@ func _on_building_starved(record: Dictionary) -> void:
 		var ev: Dictionary = _active[ev_id]
 		ev.severity = severity
 		ev.streak = streak
-		ev.title = "%s starved (%d turn%s)" % [name, streak, "" if streak == 1 else "s"]
+		ev.title = "%s starved (%d turn%s)" % [building_name, streak, "" if streak == 1 else "s"]
+		ev.building_name = building_name
+		ev.where = where
 		ev.group_key = group_key
 		ev.group_title = group_title
 		event_fired.emit(ev)
@@ -451,7 +461,9 @@ func _on_building_starved(record: Dictionary) -> void:
 		"id": ev_id,
 		"kind": "building_starved",
 		"severity": severity,
-		"title": "%s starved" % name,
+		"title": "%s starved" % building_name,
+		"building_name": building_name,
+		"where": where,
 		"body": "Production halted — %s." % ("no power" if lacks_power else "missing inputs"),
 		"source": "production",
 		"deeplink": {"panel": "building", "tile_id": tile_id, "building_id": inst_id},

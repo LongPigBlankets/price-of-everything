@@ -783,8 +783,8 @@ func _fresh_production_summary() -> Dictionary:
 		"sold": {},
 	}
 
-# UI smoke: the bell builds, reads EventScheduler state, the badge follows the
-# active count, the bell colour follows max severity, and the dropdown opens.
+# UI smoke: the navy bell builds, the badge follows the active count (shown at
+# >=1), the dropdown opens with one row per event, and dismiss_all clears it.
 func _test_notification_bell_smoke() -> void:
 	EventScheduler.reset()
 	TurnManager.current_turn = 1
@@ -792,51 +792,38 @@ func _test_notification_bell_smoke() -> void:
 	add_child(bell)
 	await get_tree().process_frame
 	_check(bell.get("_dropdown") != null, "bell builds its dropdown")
-	# Empty: badge hidden, bell grey (no flash).
-	_check(not (bell.get("_badge") as Label).visible,
-		"badge hidden when no events")
-	# Fire a warning event; badge stays hidden (n<=1), bell colour amber.
-	# The bell coalesces refreshes via call_deferred, so settle two frames before
-	# reading the deferred-updated colour/badge.
+	_check(not (bell.get("_badge") as Label).visible, "badge hidden when no events")
+	# One event → badge shows "1" (the navy trigger keeps the unread count).
+	# Refreshes coalesce via call_deferred, so settle two frames before reading.
 	EventScheduler.emit_event({"id": "u1", "title": "Test warn",
 		"severity": EventScheduler.SEVERITY_WARNING})
 	await get_tree().process_frame
 	await get_tree().process_frame
-	_check(bell._bg_target_color == DS.PALETTE.WARN,
-		"single warning → bell amber")
-	# Add a critical → bell red; badge shows "2".
+	_check((bell.get("_badge") as Label).visible and (bell.get("_badge") as Label).text == "1",
+		"badge shows 1 with one event (got '%s')" % (bell.get("_badge") as Label).text)
 	EventScheduler.emit_event({"id": "u2", "title": "Test crit",
 		"severity": EventScheduler.SEVERITY_CRITICAL})
 	await get_tree().process_frame
 	await get_tree().process_frame
-	_check(bell._bg_target_color == DS.PALETTE.DANGER,
-		"warning + critical → bell red")
-	_check((bell.get("_badge") as Label).visible
-		and (bell.get("_badge") as Label).text == "2",
+	_check((bell.get("_badge") as Label).text == "2",
 		"badge shows the unread count (got '%s')" % (bell.get("_badge") as Label).text)
-	# Open dropdown, expect rows for both events.
+	# Open dropdown, expect one row per (ungrouped) event.
 	bell.call("toggle_dropdown")
 	await get_tree().process_frame
 	_check((bell.get("_dropdown") as PanelContainer).visible, "dropdown opens on click")
 	var list: VBoxContainer = bell.get("_dropdown_list")
-	# rows = list children excluding the always-present "empty" label.
 	var row_count := 0
 	for c in list.get_children():
 		if c is PanelContainer:
 			row_count += 1
 	_check(row_count == 2, "dropdown shows one row per active event (got %d)" % row_count)
-	# Dismiss the critical from inside the EventScheduler; bell falls back to amber.
 	EventScheduler.dismiss("u2")
 	await get_tree().process_frame
 	await get_tree().process_frame
-	_check(bell._bg_target_color == DS.PALETTE.WARN,
-		"dismissing the critical drops bell back to amber")
-	# Mark all read → bell grey, badge hidden, dropdown shows the empty label.
+	_check((bell.get("_badge") as Label).text == "1", "badge drops to 1 after a dismiss")
 	EventScheduler.dismiss_all()
 	await get_tree().process_frame
 	await get_tree().process_frame
-	_check(bell._bg_target_color == DS.PALETTE.BG_INSET,
-		"dismiss_all → bell grey (BG_INSET)")
 	_check(not (bell.get("_badge") as Label).visible, "badge hidden after dismiss_all")
 	bell.queue_free()
 	await get_tree().process_frame
