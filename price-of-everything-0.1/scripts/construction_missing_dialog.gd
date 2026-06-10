@@ -62,11 +62,9 @@ func _update_use_button(missing: Dictionary) -> void:
 
 func _update_eta() -> void:
 	var lead: int = 0
-	var port: String = Catalog.nearest_port_tile(_tile_id)
+	var port: String = TransportService.nearest_port_tile(_tile_id)
 	if port != "":
-		lead = int(Catalog.route(port, _tile_id).get("turns", 0))
-		if lead >= (1 << 30):
-			lead = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, _tile_id))
+		lead = int(TransportService.route(port, _tile_id).get("turns", 0))
 	var duration: int = int(Catalog.get_building(_building_id).get("build_duration", 0))
 	_eta_label.text = "Estimated delivery ~%d turn%s · build %d turn%s · ready in ~%d turns" % [
 		lead, "" if lead == 1 else "s", duration, "" if duration == 1 else "s", lead + duration

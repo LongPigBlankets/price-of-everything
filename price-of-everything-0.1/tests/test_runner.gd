@@ -25,7 +25,12 @@ func _ready() -> void:
 	_test_catalog_loaded()
 	_test_recipe_requirements()
 	_test_menu_icons()
+	_test_bottom_menu_default()
 	_test_ports()
+	_test_transport_service()
+	_test_transport_boundaries()
+	_test_build_mode_overlay_survey_visibility()
+	_test_direct_build_skips_build_overlay()
 	await _test_building_ledger()
 	await _test_debug_terminal()
 	_test_queue_move()
@@ -37,6 +42,7 @@ func _ready() -> void:
 	_test_output_market_route()
 	_test_transaction_ledger()
 	_test_market_buy()
+	_test_tax_dividend_caps()
 	_test_purchases()
 	_test_recipes_producing()
 	_test_transfer_helpers()
@@ -64,6 +70,11 @@ func _check(ok: bool, name: String) -> void:
 		_failed += 1
 		printerr("  FAIL  ", name)
 
+func _replace_dict(target: Dictionary, source: Dictionary) -> void:
+	target.clear()
+	for key in source:
+		target[key] = source[key]
+
 func _test_storage_boost() -> void:
 	MatchState.add_building("b_004", "", "tile_3_3", "Three Diamonds Shipping Corporation")
 	_check(Stockpile.get_capacity("tile_3_3") == Stockpile.TILE_CAPACITY + 500,
@@ -85,6 +96,35 @@ func _test_market_sale_credits() -> void:
 			break
 	_check(MatchState.money > 0.0, "a market-routed output sale credits revenue (money=%.2f)" % MatchState.money)
 	_check(summary.goods_sales_revenue > 0.0, "the sale appears in goods_sales_revenue")
+
+func _test_tax_dividend_caps() -> void:
+	MatchState.reset()
+	MatchState.money = 1000.0
+	var loss_summary := {
+		"money_in": 235.0,
+		"money_out": 239.0,
+		"taxes_paid": 0.0,
+		"dividends_paid": 0.0,
+	}
+	var money_before := MatchState.money
+	var loss_pretax: float = Production._apply_tax_and_dividends(loss_summary)
+	_check(loss_pretax < 0.0
+		and float(loss_summary.get("taxes_paid", -1.0)) == 0.0
+		and float(loss_summary.get("dividends_paid", -1.0)) == 0.0
+		and is_equal_approx(MatchState.money, money_before),
+		"loss-making turns do not pay tax or dividends")
+
+	var profit_summary := {
+		"money_in": 100.0,
+		"money_out": 90.0,
+		"taxes_paid": 0.0,
+		"dividends_paid": 0.0,
+	}
+	Production._apply_tax_and_dividends(profit_summary)
+	_check(is_equal_approx(float(profit_summary.get("taxes_paid", 0.0)), 2.0)
+		and is_equal_approx(float(profit_summary.get("dividends_paid", 0.0)), 1.6)
+		and is_equal_approx(float(profit_summary.get("money_in", 0.0)) - float(profit_summary.get("money_out", 0.0)), 6.4),
+		"tax is capped to profit and dividends are calculated after tax")
 
 func _test_output_conservation() -> void:
 	# Default (STOCKPILE_ALL): a building's output should land in its own tile's stockpile.
@@ -388,7 +428,8 @@ func _test_construction_detail_panel() -> void:
 			_check(fv != null and fv.get_child_count() > 0, "construction detail panel renders the materials section")
 			# Regression guards: the close (X) button lives in the status rail and must stay,
 			# while Change Recipe is hidden during construction.
-			_check(panel.get("status_icon_column").visible and panel.get("close_button").visible,
+			var close_button := panel.get("close_button") as Button
+			_check(close_button != null and close_button.visible and close_button.is_inside_tree(),
 				"construction panel keeps the close (X) button")
 			_check(not panel.get("change_recipe_button").visible, "construction panel hides Change Recipe")
 			# Switching to a running building restores the operational controls.
@@ -613,8 +654,108 @@ func _test_ports() -> void:
 	_check(Catalog.infra_range("rail") == 4, "rail range is 4 tiles/turn")
 	_check(Catalog.all_infrastructure().size() == 5, "Catalog loads 5 infrastructure types")
 	_check(Catalog.tile_neighbours("tile_12_2").size() == 6, "interior tile has 6 hex neighbours")
-	_check(int(Catalog.route("tile_12_2", "tile_12_2").turns) == 0, "route same-tile = 0 turns")
-	_check(int(Catalog.route("tile_12_2", "tile_13_2").turns) == 1, "route to adjacent tile = 1 turn")
+	_check(int(TransportService.route("tile_12_2", "tile_12_2").get("turns", -1)) == 0, "route same-tile = 0 turns")
+	_check(int(TransportService.route("tile_12_2", "tile_13_2").get("turns", -1)) == 1, "route to adjacent tile = 1 turn")
+
+func _test_transport_service() -> void:
+	var route: Dictionary = TransportService.route("tile_12_2", "tile_13_2", "g_001")
+	_check(int(route.get("turns", -1)) == 1, "TransportService routes adjacent tiles")
+	var quote: Dictionary = TransportService.quote_manifest("tile_12_2", "tile_13_2", {"g_001": 10})
+	_check(int(quote.get("turns", -1)) == 1 and float(quote.get("cost", 0.0)) > 0.0,
+		"TransportService quotes a manifest with turns and cost")
+	var buy_quote: Dictionary = TransportService.quote_market_buy("tile_3_8", "g_001", 10, false)
+	_check(str(buy_quote.get("port", "")) == "tile_5_10"
+		and absf(float(buy_quote.get("cost", 0.0)) - (float(buy_quote.get("goods_cost", 0.0)) + float(buy_quote.get("transport_cost", 0.0)))) < 0.01,
+		"TransportService quotes a market buy through the nearest port")
+	var covered_buy: Dictionary = TransportService.quote_market_buy("tile_3_8", "g_001", 10, true)
+	_check(int(covered_buy.get("turns", 0)) == 1 and float(covered_buy.get("transport_cost", -1.0)) == 0.0,
+		"TransportService applies covered seaport buy quotes")
+	var covered_sell: Dictionary = TransportService.quote_market_sell("tile_3_8", {"g_001": 10}, {"g_001": true})
+	_check(int(covered_sell.get("turns", 0)) == 1 and float(covered_sell.get("transport_cost", -1.0)) == 0.0,
+		"TransportService applies covered seaport sell quotes")
+
+func _test_transport_boundaries() -> void:
+	var offenders: Array[String] = []
+	var files: Array[String] = []
+	_collect_gd_files("res://scripts", files)
+	for path in files:
+		if path.ends_with("/transport_service.gd"):
+			continue
+		var text := FileAccess.get_file_as_string(path)
+		if text.find("Catalog.route(") >= 0:
+			offenders.append(path + " uses Catalog.route")
+		if text.find("EconomyConfig.transport_") >= 0:
+			offenders.append(path + " uses EconomyConfig.transport_*")
+	_check(offenders.is_empty(),
+		"gameplay transport route/cost callers go through TransportService" + (": " + ", ".join(offenders) if not offenders.is_empty() else ""))
+
+func _collect_gd_files(path: String, out: Array[String]) -> void:
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var name := dir.get_next()
+	while name != "":
+		if not name.begins_with("."):
+			var child := path.path_join(name)
+			if dir.current_is_dir():
+				_collect_gd_files(child, out)
+			elif name.ends_with(".gd"):
+				out.append(child)
+		name = dir.get_next()
+	dir.list_dir_end()
+
+func _test_build_mode_overlay_survey_visibility() -> void:
+	var saved_surveyed := MatchState.surveyed_tiles.duplicate(true)
+	var saved_partial := MatchState.partially_surveyed_tiles.duplicate(true)
+	MatchState.surveyed_tiles.clear()
+	MatchState.partially_surveyed_tiles.clear()
+	var overlay: Node = load("res://scripts/map_overlay.gd").new()
+	var recipe: Dictionary = Catalog.get_recipe("r_001")
+	var input_names: Array[String] = []
+	for input_name in overlay.call("_recipe_input_internal_names", recipe):
+		input_names.append(str(input_name))
+	var reqs: Array = recipe.get("requirements", [])
+	var coal_tile := {"id": "tile_test_construct_coal", "type": "hill", "deposits": ["coal(1000)"]}
+	_check(str(overlay.call("_build_overlay_state", coal_tile, reqs, input_names)) == "none",
+		"build overlay hides unsurveyed viable tiles")
+	MatchState.mark_tile_partial("tile_test_construct_coal")
+	_check(str(overlay.call("_build_overlay_state", coal_tile, reqs, input_names)) == "recommended",
+		"build overlay can recommend partially surveyed matching tiles")
+	_replace_dict(MatchState.surveyed_tiles, saved_surveyed)
+	_replace_dict(MatchState.partially_surveyed_tiles, saved_partial)
+	overlay.free()
+
+func _test_direct_build_skips_build_overlay() -> void:
+	var saved_active := BuildMode.is_active
+	var saved_kind := BuildMode.kind
+	var saved_building := BuildMode.current_building_id
+	var saved_recipe := BuildMode.current_recipe_id
+	var saved_infra := BuildMode.current_infrastructure_type
+	var saved_last_attempt := BuildMode._last_attempt_ms
+	BuildMode.exit_build_mode()
+	BuildMode._last_attempt_ms = -100000
+	var observed := {"entered": false, "attempted": false, "recipe_seen": ""}
+	var on_entered := func(_building_id: String, _recipe_id: String) -> void:
+		observed["entered"] = true
+	var on_attempted := func(_building_id: String, _tile_id: String) -> void:
+		observed["attempted"] = true
+		observed["recipe_seen"] = BuildMode.current_recipe_id
+	BuildMode.mode_entered.connect(on_entered)
+	BuildMode.build_attempted.connect(on_attempted)
+	BuildMode.attempt_direct_build("b_001", "r_001", "tile_test_direct_build")
+	_check(bool(observed.get("attempted", false)) and str(observed.get("recipe_seen", "")) == "r_001",
+		"direct build emits with recipe context")
+	_check(not bool(observed.get("entered", false)) and not BuildMode.is_active,
+		"direct build does not enter overlay mode")
+	BuildMode.mode_entered.disconnect(on_entered)
+	BuildMode.build_attempted.disconnect(on_attempted)
+	BuildMode.is_active = saved_active
+	BuildMode.kind = saved_kind
+	BuildMode.current_building_id = saved_building
+	BuildMode.current_recipe_id = saved_recipe
+	BuildMode.current_infrastructure_type = saved_infra
+	BuildMode._last_attempt_ms = saved_last_attempt
 
 # Smoke: every script we touch must still parse. load() returns null on a parse
 # error — this is the check that catches the bug class we couldn't verify by hand.
@@ -623,14 +764,21 @@ func _test_scripts_parse() -> void:
 		"res://scripts/stockpile_view.gd",
 		"res://scripts/infra_grid.gd",
 		"res://scripts/tile_info_panel.gd",
+		"res://scripts/tile_info_panel_v2.gd",
 		"res://scripts/building_detail_panel.gd",
 		"res://scripts/world_map.gd",
 		"res://scripts/map_overlay.gd",
+		"res://scripts/build_mode_hex_overlay.gd",
+		"res://scripts/build_mode_backdrop.gd",
+		"res://scripts/power_hex_overlay.gd",
+		"res://scripts/water_overlay.gd",
+		"res://scripts/hex_map.gd",
 		"res://scripts/ds.gd",
 		"res://scripts/search_overlay.gd",
 		"res://scripts/good_icons.gd",
 		"res://scripts/catalog.gd",
 		"res://scripts/construct_panel.gd",
+		"res://scripts/build_mode.gd",
 		"res://scripts/building_row.gd",
 		"res://scripts/recipe_row.gd",
 		"res://scripts/logistics_overlay.gd",
@@ -643,6 +791,7 @@ func _test_scripts_parse() -> void:
 		"res://scripts/turn_summary.gd",
 		"res://scripts/construction.gd",
 		"res://scripts/construction_missing_dialog.gd",
+		"res://scripts/transport_service.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 
@@ -771,3 +920,12 @@ func _test_menu_icons() -> void:
 		if not (ResourceLoader.exists(path) and load(path) is Texture2D):
 			all_ok = false
 	_check(all_ok, "bottom-menu icons (200px tier) import and load")
+
+func _test_bottom_menu_default() -> void:
+	_check(MatchState.use_alt_bottom_menu, "white-rimmed bottom menu is the default")
+	var all_ok := true
+	for key in ["construct", "goods", "building_ledger", "mapmodes", "market", "politics", "research", "people"]:
+		var path := "res://assets/icons/ui_icons/alt/%s.png" % key
+		if not (ResourceLoader.exists(path) and load(path) is Texture2D):
+			all_ok = false
+	_check(all_ok, "white-rimmed bottom-menu icons import and load")

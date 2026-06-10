@@ -377,9 +377,7 @@ func _update_section_header(category: String) -> void:
 func _on_recipe_selected(building_id: String, recipe_id: String) -> void:
 	if _tile_filter != "":
 		# Opened from the TVP "Build": build directly on the known tile, no map-mode.
-		BuildMode.enter_build_mode(building_id, recipe_id)
-		BuildMode.attempt_build(_tile_filter)
-		BuildMode.exit_build_mode()
+		BuildMode.attempt_direct_build(building_id, recipe_id, _tile_filter)
 		hide()
 		return
 	BuildMode.enter_build_mode(building_id, recipe_id)

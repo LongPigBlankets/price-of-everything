@@ -425,9 +425,11 @@ func _project_next_turn() -> Dictionary:
 	var total_costs: float = maintenance + labour + transport + power_purchase + goods_purchased
 	var operating_profit: float = total_revenue - total_costs
 	var pretax: float = operating_profit - interest
-	var tax: float = max(pretax, 0.0) * EconomyConfig.TAX_RATE
+	var taxable_profit := maxf(pretax, 0.0)
+	var tax: float = minf(taxable_profit, taxable_profit * EconomyConfig.TAX_RATE)
 	var posttax: float = pretax - tax
-	var dividends: float = max(posttax, 0.0) * EconomyConfig.DIVIDEND_RATE
+	var dividend_base := maxf(posttax, 0.0)
+	var dividends: float = minf(dividend_base, dividend_base * EconomyConfig.DIVIDEND_RATE)
 	var net_cashflow: float = posttax - dividends
 	
 	return {
@@ -474,8 +476,8 @@ func _projected_transport_cost(building: Dictionary, recipe: Dictionary) -> floa
 		var destination_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
 		if destination_tile == "" or good_id == "":
 			continue
-		var turns := EconomyConfig.transport_turns_for_tile_distance(_tile_distance(source_tile, destination_tile))
-		cost += EconomyConfig.transport_cost_for(good_id, int(output.get("qty", 0)), turns)
+		var route := TransportService.route(source_tile, destination_tile, good_id)
+		cost += TransportService.transport_cost_for_route(good_id, int(output.get("qty", 0)), route)
 	return cost
 
 func _recipe_output_items(recipe: Dictionary) -> Array:
@@ -490,27 +492,6 @@ func _recipe_output_items(recipe: Dictionary) -> Array:
 		"internal_name": output_name,
 		"qty": output_qty,
 	}]
-
-func _tile_distance(source_tile: String, destination_tile: String) -> int:
-	var source := _tile_id_to_coord(source_tile)
-	var destination := _tile_id_to_coord(destination_tile)
-	if source == Vector2i(-1, -1) or destination == Vector2i(-1, -1):
-		return 0
-	var source_axial := _oddq_to_axial(source)
-	var destination_axial := _oddq_to_axial(destination)
-	var dq := source_axial.x - destination_axial.x
-	var dr := source_axial.y - destination_axial.y
-	return int((abs(dq) + abs(dr) + abs(dq + dr)) / 2)
-
-func _tile_id_to_coord(tile_id: String) -> Vector2i:
-	var parts := tile_id.split("_")
-	if parts.size() != 3 or not parts[1].is_valid_int() or not parts[2].is_valid_int():
-		return Vector2i(-1, -1)
-	return Vector2i(int(parts[1]) - 1, int(parts[2]) - 1)
-
-func _oddq_to_axial(coord: Vector2i) -> Vector2i:
-	return Vector2i(coord.x, coord.y - int((coord.x - (coord.x & 1)) / 2))
-
 
 # --- Charts tab ---
 

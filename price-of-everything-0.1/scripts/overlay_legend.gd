@@ -1,6 +1,10 @@
 extends PanelContainer
 
 const LegendEntryScene: PackedScene = preload("res://scenes/legend_entry.tscn")
+const LEGEND_LEFT := 12.0
+const LEGEND_BOTTOM := 24.0
+const LEGEND_WIDTH := 240.0
+const LEGEND_HEIGHT := 190.0
 
 # Power state legend rows. Fixed colours + labels for power balance mode.
 const POWER_LEGEND_ROWS: Array = [
@@ -30,9 +34,20 @@ const WATER_LEGEND_ROWS: Array = [
 @onready var title_label: Label = $MarginContainer/VBoxContainer/TitleLabel
 
 func _ready() -> void:
+	_pin_bottom_left()
 	MapMode.selections_changed.connect(_on_selections_changed)
 	MapMode.mode_cleared.connect(_on_mode_cleared)
 	call_deferred("hide")
+
+func _pin_bottom_left() -> void:
+	anchor_left = 0.0
+	anchor_right = 0.0
+	anchor_top = 1.0
+	anchor_bottom = 1.0
+	offset_left = LEGEND_LEFT
+	offset_right = LEGEND_LEFT + LEGEND_WIDTH
+	offset_top = -(LEGEND_HEIGHT + LEGEND_BOTTOM)
+	offset_bottom = -LEGEND_BOTTOM
 
 func _on_selections_changed(mode: int, _selections: Array) -> void:
 	# Producing / Consuming have no legend here — their goods live in the tick-list

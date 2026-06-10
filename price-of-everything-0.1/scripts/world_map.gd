@@ -51,9 +51,12 @@ var _tr_recurring: CheckBox = null
 var _tr_cta: Button = null
 var _tr_cap: Label = null
 var _tr_legend: VBoxContainer = null
+var _tr_legend_panel: PanelContainer = null
 var _tr_modal: PanelContainer = null
 var _tr_modal_label: Label = null
 const _TR_YELLOW := Color(1.0, 1.0, 0.45)
+const LEGEND_LEFT := 12.0
+const LEGEND_BOTTOM := 24.0
 
 # Per-good BUY flow (market is the implicit origin; ships via nearest port).
 var _buy: Dictionary = {}  # {good, qty, tiles: Array, state}
@@ -65,6 +68,7 @@ var _buy_cost: Label = null
 var _buy_recurring: CheckBox = null
 var _buy_cta: Button = null
 var _buy_legend: VBoxContainer = null
+var _buy_legend_panel: PanelContainer = null
 var _buy_modal: PanelContainer = null
 var _buy_modal_label: Label = null
 var _construction_dialog: PanelContainer = null
@@ -350,6 +354,8 @@ func _on_transfer_requested(good_id: String) -> void:
 	_tr_cta.text = "Transfer"
 	_tr_cta.disabled = true
 	_transfer_dialog.visible = true
+	if _tr_legend_panel != null:
+		_tr_legend_panel.visible = true
 	_enter_transfer_ui()
 	_update_transfer_highlights()
 	_update_transfer_legend()
@@ -492,6 +498,8 @@ func _close_transfer() -> void:
 		ov.clear_transfer()
 	if _transfer_dialog != null:
 		_transfer_dialog.visible = false
+	if _tr_legend_panel != null:
+		_tr_legend_panel.visible = false
 	if _tr_modal != null:
 		_tr_modal.visible = false
 	_exit_transfer_ui()
@@ -552,9 +560,9 @@ func _build_transfer_dialog() -> void:
 	vb.add_child(_tr_cap)
 	_tr_dest = Label.new()
 	vb.add_child(_tr_dest)
-	_tr_legend = VBoxContainer.new()
-	_tr_legend.add_theme_constant_override("separation", 2)
-	vb.add_child(_tr_legend)
+	var transfer_legend := _make_bottom_left_legend("TransferLegend", "Tile colours", 250.0, 132.0)
+	_tr_legend_panel = transfer_legend["panel"]
+	_tr_legend = transfer_legend["entries"]
 	_tr_cost = Label.new()
 	_tr_cost.add_theme_font_size_override("font_size", 13)
 	vb.add_child(_tr_cost)
@@ -632,8 +640,10 @@ func _update_transfer_modal() -> void:
 
 func _legend_row(swatch: Color, text: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 6)
 	var rect := ColorRect.new()
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	rect.color = swatch
 	rect.custom_minimum_size = Vector2(14, 14)
 	rect.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -641,8 +651,60 @@ func _legend_row(swatch: Color, text: String) -> HBoxContainer:
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.add_theme_font_size_override("font_size", 12)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(lbl)
 	return row
+
+func _make_bottom_left_legend(panel_name: String, title: String, width: float, height: float) -> Dictionary:
+	var panel := PanelContainer.new()
+	panel.name = panel_name
+	panel.theme = DS.theme
+	panel.visible = false
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.custom_minimum_size = Vector2(width, height)
+	_pin_bottom_left_legend(panel, width, height)
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(DS.PALETTE.BG_PANEL, 0.92)
+	style.border_color = Color(0.995, 0.93, 0.76, 0.5)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	panel.add_theme_stylebox_override("panel", style)
+
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 10)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(margin)
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 5)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(box)
+
+	var title_label := Label.new()
+	title_label.text = title
+	title_label.add_theme_font_size_override("font_size", 11)
+	title_label.add_theme_color_override("font_color", Color(0.995, 0.93, 0.76, 0.7))
+	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(title_label)
+
+	var entries := VBoxContainer.new()
+	entries.add_theme_constant_override("separation", 2)
+	entries.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(entries)
+	hud_content.add_child(panel)
+	return {"panel": panel, "entries": entries}
+
+func _pin_bottom_left_legend(panel: Control, width: float, height: float) -> void:
+	panel.anchor_left = 0.0
+	panel.anchor_right = 0.0
+	panel.anchor_top = 1.0
+	panel.anchor_bottom = 1.0
+	panel.offset_left = LEGEND_LEFT
+	panel.offset_right = LEGEND_LEFT + width
+	panel.offset_top = -(height + LEGEND_BOTTOM)
+	panel.offset_bottom = -LEGEND_BOTTOM
 
 func _update_transfer_legend() -> void:
 	if _tr_legend == null:
@@ -671,6 +733,8 @@ func _on_purchase_requested(good_id: String) -> void:
 	_buy_cta.text = "Buy"
 	_buy_cta.disabled = true
 	_buy_dialog.visible = true
+	if _buy_legend_panel != null:
+		_buy_legend_panel.visible = true
 	_enter_transfer_ui()
 	_update_buy_highlights()
 	_update_buy_legend()
@@ -811,6 +875,8 @@ func _close_buy() -> void:
 		ov.clear_transfer()
 	if _buy_dialog != null:
 		_buy_dialog.visible = false
+	if _buy_legend_panel != null:
+		_buy_legend_panel.visible = false
 	if _buy_modal != null:
 		_buy_modal.visible = false
 	_exit_transfer_ui()
@@ -882,9 +948,9 @@ func _build_buy_dialog() -> void:
 	vb.add_child(qrow)
 	_buy_dest = Label.new()
 	vb.add_child(_buy_dest)
-	_buy_legend = VBoxContainer.new()
-	_buy_legend.add_theme_constant_override("separation", 2)
-	vb.add_child(_buy_legend)
+	var buy_legend := _make_bottom_left_legend("BuyLegend", "Tile colours", 250.0, 144.0)
+	_buy_legend_panel = buy_legend["panel"]
+	_buy_legend = buy_legend["entries"]
 	_buy_cost = Label.new()
 	_buy_cost.add_theme_font_size_override("font_size", 13)
 	_buy_cost.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1028,14 +1094,7 @@ func _build_stockpile_legend() -> void:
 	_stockpile_legend.name = "StockpileLegend"
 	_stockpile_legend.visible = false
 	_stockpile_legend.custom_minimum_size = Vector2(210, 0)
-	_stockpile_legend.anchor_left = 0.0
-	_stockpile_legend.anchor_right = 0.0
-	_stockpile_legend.anchor_top = 1.0
-	_stockpile_legend.anchor_bottom = 1.0
-	_stockpile_legend.offset_left = 12.0
-	_stockpile_legend.offset_right = 222.0
-	_stockpile_legend.offset_top = -160.0
-	_stockpile_legend.offset_bottom = -24.0
+	_pin_bottom_left_legend(_stockpile_legend, 210.0, 136.0)
 	_stockpile_legend.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var style := StyleBoxFlat.new()

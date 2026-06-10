@@ -193,9 +193,11 @@ func _capture_row() -> void:
 	# here (it is captured in cash directly) so the column stays stable for later.
 	var cost_build_land: float = float(summary.get("build_land_cost", 0.0))
 
-	# Pre-tax profit mirrors Production's own definition (operating profit - interest).
-	var operating_costs: float = cost_maintenance + cost_labour + cost_grid_power + cost_transport
-	var profit_pre_tax: float = revenue - operating_costs - cost_interest
+	# Pre-tax profit mirrors Production's own definition: actual turn cashflow before
+	# tax and dividends. This includes market input buys and any other summary outflows.
+	var money_in: float = float(summary.get("money_in", 0.0))
+	var money_out: float = float(summary.get("money_out", 0.0))
+	var profit_pre_tax: float = money_in - (money_out - cost_taxes - cost_dividends)
 	var profit_post_tax: float = profit_pre_tax - cost_taxes - cost_dividends
 
 	# --- Operational ---

@@ -1,0 +1,11 @@
+{
+	"scenario": "e2e_stoneshore",
+	"description": "Committed Stoneshore E2E benchmark budget from the first green local run. The runner writes exact latest metrics to user://e2e_stoneshore_latest.json.",
+	"load_ms": 2000.0,
+	"ready_ms": 4000.0,
+	"turn_mean_ms": 150.0,
+	"turn_p95_ms": 900.0,
+	"min_turns_measured": 55,
+	"max_multiplier": 3.0,
+	"absolute_slack_ms": 1000.0
+}

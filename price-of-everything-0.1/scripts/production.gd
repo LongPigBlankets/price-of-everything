@@ -292,32 +292,10 @@ func _process_production() -> void:
 		summary.interest_paid = loan_payment
 		summary.money_out += loan_payment
 		# === TAX & DIVIDEND PHASE ===
-# Compute pre-tax profit: revenue - operating costs - interest.
-# Only deduct tax/dividends if profit is positive.
 	TurnProfiler.section_end("loan_payments")
 	TurnProfiler.section_begin("tax_dividends")
 	var revenue: float = summary.goods_sales_revenue + summary.power_sales_revenue
-	var operating_costs: float = (
-		summary.maintenance_paid
-		+ summary.labour_paid
-		+ summary.power_purchase_cost
-		+ summary.transport_paid
-	)
-	var operating_profit: float = revenue - operating_costs
-	var pre_tax_profit: float = operating_profit - summary.interest_paid
-
-	if pre_tax_profit > 0:
-		var tax: float = pre_tax_profit * EconomyConfig.TAX_RATE
-		MatchState.add_money(-tax)
-		summary.taxes_paid = tax
-		summary.money_out += tax
-	
-		var post_tax_profit: float = pre_tax_profit - tax
-		if post_tax_profit > 0:
-			var dividends: float = post_tax_profit * EconomyConfig.DIVIDEND_RATE
-			MatchState.add_money(-dividends)
-			summary.dividends_paid = dividends
-			summary.money_out += dividends
+	var pre_tax_profit: float = _apply_tax_and_dividends(summary)
 	TurnProfiler.section_end("tax_dividends")
 
 	# Feed this turn's retained net profit + gross revenue to the loan facility so
@@ -334,6 +312,7 @@ func _process_production() -> void:
 	last_turn_summary = summary
 	turn_processed.emit(summary)
 	TurnProfiler.section_end("emit_summary")
+
 
 	print("[Production] Stockpile after turn: ", Stockpile.get_all_totals())
 	print("[Production] Power: supply=%d demand=%d net=%d (bought=%d sold=%d)" % [
@@ -375,6 +354,31 @@ func _process_production() -> void:
 	
 
 # --- Helpers ---
+
+func _apply_tax_and_dividends(summary: Dictionary) -> float:
+	# Use actual pre-tax cashflow, not just sales minus a narrow operating-cost
+	# subset. Market input buys are real expenses and must prevent loss-making turns
+	# from paying tax or dividends.
+	var pre_tax_profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
+	var taxable_profit := maxf(0.0, pre_tax_profit)
+	if taxable_profit <= 0.0:
+		summary.taxes_paid = 0.0
+		summary.dividends_paid = 0.0
+		return pre_tax_profit
+
+	var tax: float = minf(taxable_profit, taxable_profit * EconomyConfig.TAX_RATE)
+	if tax > 0.0:
+		MatchState.add_money(-tax)
+		summary.taxes_paid = tax
+		summary.money_out += tax
+
+	var post_tax_profit := maxf(0.0, taxable_profit - tax)
+	var dividends: float = minf(post_tax_profit, post_tax_profit * EconomyConfig.DIVIDEND_RATE)
+	if dividends > 0.0:
+		MatchState.add_money(-dividends)
+		summary.dividends_paid = dividends
+		summary.money_out += dividends
+	return pre_tax_profit
 
 func _get_recipe(recipe_id: String) -> Dictionary:
 	if recipe_id == "":
@@ -470,10 +474,10 @@ func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, sum
 	# Output destined for the market ships to the nearest port; revenue lands on arrival.
 	var good_id: String = good.id
 	var revenue: float = float(qty) * MarketState.get_price(good_id)
-	var port_tile := Catalog.nearest_port_tile(source_tile) if source_tile != "" else ""
-	var route := _transport_route(source_tile, port_tile, good_id)
+	var route := TransportService.route_to_nearest_port(source_tile, good_id)
+	var port_tile := str(route.get("port", ""))
 	# Pay to ship the output to its market (the port) — surfaced as transport cost.
-	var transport_cost: float = EconomyConfig.transport_cost_for_route(good_id, qty, route)
+	var transport_cost: float = TransportService.transport_cost_for_route(good_id, qty, route)
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 		summary.transport_paid += transport_cost
@@ -513,7 +517,7 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 		_sell_output_to_market(str(building.get("tile_id", "")), good, qty, summary)
 		return
 	var route := _transport_route(building.get("tile_id", ""), stockpile_coord, good.id)
-	var transport_cost: float = EconomyConfig.transport_cost_for_route(good.id, qty, route)
+	var transport_cost: float = TransportService.transport_cost_for_route(good.id, qty, route)
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 		summary.transport_paid += transport_cost
@@ -569,54 +573,7 @@ func _output_stockpile_coord(building: Dictionary, good_id: String):
 	return null
 
 func _transport_route(source_tile: String, destination_tile, good_id: String = "") -> Dictionary:
-	if destination_tile == null or str(destination_tile) == "":
-		return {"tile_distance": 0, "turns": 0, "delayed": false, "path": [], "legs": []}
-	var dest := str(destination_tile)
-	var r := Catalog.route(source_tile, dest, good_id)
-	var turns: int = int(r.get("turns", 0))
-	if turns >= (1 << 30):
-		# Unreachable via road/rail/overland networks — fall back to straight-line overland.
-		turns = EconomyConfig.transport_turns_for_tile_distance(_tile_distance(source_tile, dest))
-	var legs: Array = r.get("legs", [])
-	return {
-		"tile_distance": _tile_distance(source_tile, dest),
-		"turns": turns,
-		"delayed": turns > 1,
-		"path": r.get("path", []),
-		"legs": legs,
-		"tiles": r.get("tiles", []),
-		"cost_mult": _route_cost_mult(legs),
-	}
-
-func _route_cost_mult(legs: Array) -> float:
-	# Average per-leg mode multiplier (rail 0.5x, roads/overland 1x). A rail-only route
-	# costs half; mixed routes blend by leg count.
-	if legs.is_empty():
-		return 1.0
-	var s := 0.0
-	for leg in legs:
-		s += float(EconomyConfig.TRANSPORT_MODE_COST_MULT.get(str(leg.get("mode", "")), 1.0))
-	return s / float(legs.size())
-
-func _tile_distance(source_tile: String, destination_tile: String) -> int:
-	var source := _tile_id_to_coord(source_tile)
-	var destination := _tile_id_to_coord(destination_tile)
-	if source == Vector2i(-1, -1) or destination == Vector2i(-1, -1):
-		return 0
-	var source_axial := _oddq_to_axial(source)
-	var destination_axial := _oddq_to_axial(destination)
-	var dq := source_axial.x - destination_axial.x
-	var dr := source_axial.y - destination_axial.y
-	return int((abs(dq) + abs(dr) + abs(dq + dr)) / 2)
-
-func _tile_id_to_coord(tile_id: String) -> Vector2i:
-	var parts := tile_id.split("_")
-	if parts.size() != 3 or not parts[1].is_valid_int() or not parts[2].is_valid_int():
-		return Vector2i(-1, -1)
-	return Vector2i(int(parts[1]) - 1, int(parts[2]) - 1)
-
-func _oddq_to_axial(coord: Vector2i) -> Vector2i:
-	return Vector2i(coord.x, coord.y - int((coord.x - (coord.x & 1)) / 2))
+	return TransportService.route(source_tile, destination_tile, good_id)
 
 func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit_toast: bool) -> Dictionary:
 	var source_tile := "" if coord == null else str(coord)
@@ -628,17 +585,18 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 	}
 	# Sold goods ship by sea: route to the nearest port; cash lands once it arrives
 	# (x turns later, x = transport duration at 2 tiles/turn). Shipping costs apply.
-	var port_tile := Catalog.nearest_port_tile(source_tile) if source_tile != "" else ""
-	var route := _transport_route(source_tile, port_tile)
+	var covered_goods: Dictionary = {}
+	for gid in totals.keys():
+		if int(totals[gid]) > 0:
+			covered_goods[str(gid)] = MatchState.seaport_covers(str(gid))
+	var quote := TransportService.quote_market_sell(source_tile, totals, covered_goods)
+	var port_tile := str(quote.get("port", ""))
+	var route: Dictionary = quote.get("route", {})
 	# Seaport subscription: a port only services tiles within SEAPORT_RANGE_TILES. If in
 	# range AND every good sold here is covered, the port ships any volume in 1 turn for
 	# the flat per-turn fee (charged once per turn), with no per-unit cost.
-	var in_port_range: bool = port_tile != "" and Catalog.tile_hex_distance(source_tile, port_tile) <= EconomyConfig.SEAPORT_RANGE_TILES
-	var covered_all := in_port_range
-	for gid in totals.keys():
-		if int(totals[gid]) > 0 and not (in_port_range and MatchState.seaport_covers(str(gid))):
-			covered_all = false
-	var ship_turns: int = 1 if covered_all else int(route.turns)
+	var in_port_range: bool = port_tile != "" and TransportService.tile_distance(source_tile, port_tile) <= EconomyConfig.SEAPORT_RANGE_TILES
+	var ship_turns: int = int(quote.get("turns", 0))
 	var deferred: bool = port_tile != "" and ship_turns >= 1
 	var transport_cost := 0.0
 	for good_id in totals.keys():
@@ -651,8 +609,8 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		if sold_qty <= 0:
 			continue
 		var sold_revenue: float = float(sold_qty) * price
-		if not (in_port_range and MatchState.seaport_covers(good_key)):
-			transport_cost += EconomyConfig.transport_cost_for_route(good_key, sold_qty, route)
+		if not (in_port_range and bool(covered_goods.get(good_key, false))):
+			transport_cost += TransportService.transport_cost_for_route(good_key, sold_qty, route)
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,
@@ -871,10 +829,9 @@ func _inbound_qty(tile_id: String, good_id: String) -> int:
 func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 	# For every input a player has set to "Market", keep the pipeline topped up to
 	# (lead+1) turns of demand: order = target - on_tile - in_transit, shipped from the port.
-	# Memoise (port, lead) per tile for this turn — co-located buildings share a tile, so
-	# without this each one re-routes from the port (costly on rail/road placement turns
-	# when the route cache is cold). {tile_id -> {"port": String, "lead": int}}.
-	var port_lead_by_tile: Dictionary = {}
+	# Memoise (port, lead) per tile+good for this turn. Lead can be good-specific
+	# because seaport coverage and infra eligibility affect the actual buy quote.
+	var market_lead_cache: Dictionary = {}
 	# Aggregate per-turn market demand per (tile, good) across ALL co-located buildings
 	# FIRST. The pipeline target (need * (lead+1)) is netted against the tile-wide
 	# stockpile + in-transit, both shared by every building on the tile — so computing
@@ -910,22 +867,20 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		demand_by_tile[tile_id] = tile_demand
 
 	for tile_id in demand_by_tile:
-		var pl: Dictionary = port_lead_by_tile.get(tile_id, {})
-		if pl.is_empty():
-			var port := Catalog.nearest_port_tile(tile_id)
-			var computed_lead := 0
-			if port != "":
-				computed_lead = int(Catalog.route(port, tile_id).get("turns", 1))
-				if computed_lead >= (1 << 30):
-					computed_lead = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, tile_id))
-				computed_lead = maxi(1, computed_lead)
-			pl = {"port": port, "lead": computed_lead}
-			port_lead_by_tile[tile_id] = pl
-		if str(pl.get("port", "")) == "":
-			continue
-		var lead: int = int(pl.get("lead", 1))
 		var tile_demand: Dictionary = demand_by_tile[tile_id]
 		for good_id in tile_demand:
+			var cache_key := "%s|%s" % [str(tile_id), str(good_id)]
+			var pl: Dictionary = market_lead_cache.get(cache_key, {})
+			if pl.is_empty():
+				var lead_quote := TransportService.quote_market_buy(str(tile_id), str(good_id), 1, MatchState.seaport_would_cover(str(good_id)))
+				pl = {
+					"port": str(lead_quote.get("port", "")),
+					"lead": maxi(1, int(lead_quote.get("turns", 1))),
+				} if not lead_quote.is_empty() else {"port": "", "lead": 0}
+				market_lead_cache[cache_key] = pl
+			if str(pl.get("port", "")) == "":
+				continue
+			var lead: int = int(pl.get("lead", 1))
 			var need_per_turn: int = int(tile_demand[good_id].get("need", 0))
 			var target := need_per_turn * (lead + 1)
 			var order := target - Stockpile.get_at_tile(tile_id, good_id) - _inbound_qty(tile_id, good_id)
