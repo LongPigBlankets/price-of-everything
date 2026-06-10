@@ -36,14 +36,23 @@ func _build_content() -> void:
 	for child in content_vbox.get_children():
 		child.queue_free()
 	_buttons.clear()
+	# Two-column grid: row-major fill puts odd list positions (1st, 3rd, …) in
+	# the left column and even positions in the right one.
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 4)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_vbox.add_child(grid)
 	for row in ROWS:
 		var button := Button.new()
 		button.text = row.label
 		# Unimplemented rows stay plain so they don't latch pressed.
 		button.toggle_mode = row.kind != "none"
 		button.custom_minimum_size = Vector2(0, ROW_HEIGHT)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(_on_row_pressed.bind(str(row.id), str(row.kind)))
-		content_vbox.add_child(button)
+		grid.add_child(button)
 		var mode := _mode_for_id(str(row.id))
 		if mode != MapMode.Mode.NONE:
 			_buttons[mode] = button

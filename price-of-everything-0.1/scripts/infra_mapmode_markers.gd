@@ -12,6 +12,10 @@ extends Node2D
 const CIRCLE_DIAMETER := 80.0
 const LINE_WIDTH := 10.0
 const DASH_LEN := 24.0
+# Infrastructure level styling: level 2 adds a thin "rail" running parallel to
+# the main line (RAIL_GAP clear of its edge); level 3 adds one on each side.
+const RAIL_WIDTH := 3.0
+const RAIL_GAP := 2.0
 const CROSS_HALF_WIDTH := 9.0    # half-thickness of the cut-out cross arms
 const STUB_EDGE_FRACTION := 0.5  # stubs stop halfway to the edge midpoint
 const ARC_SEGMENTS := 24
@@ -20,14 +24,14 @@ var color := Color.WHITE
 var circles: Array = []        # Vector2 tile centres — built infrastructure
 var uc_circles: Array = []     # Vector2 — under construction with a neighbour
 var stranded: Array = []       # {pos: Vector2, edge_mids: Array} — isolated UC
-var solid_links: Array = []    # [Vector2, Vector2] pairs — built <-> built
-var dashed_links: Array = []   # pairs with an under-construction endpoint
+var solid_links: Array = []    # {a, b, level} — built <-> built
+var dashed_links: Array = []   # {a, b, level} with an under-construction endpoint
 
 func _draw() -> void:
 	for link in solid_links:
-		draw_line(link[0], link[1], color, LINE_WIDTH)
+		_draw_link(link.a, link.b, int(link.level), false)
 	for link in dashed_links:
-		draw_dashed_line(link[0], link[1], color, LINE_WIDTH, DASH_LEN)
+		_draw_link(link.a, link.b, int(link.level), true)
 	var radius := CIRCLE_DIAMETER * 0.5
 	for entry in stranded:
 		_draw_stranded(entry.pos, entry.edge_mids, radius)
@@ -35,6 +39,22 @@ func _draw() -> void:
 		draw_circle(pos, radius, color)
 	for pos in uc_circles:
 		draw_circle(pos, radius, color)
+
+func _draw_link(a: Vector2, b: Vector2, level: int, dashed: bool) -> void:
+	_draw_link_line(a, b, LINE_WIDTH, dashed)
+	if level < 2:
+		return
+	var offset: Vector2 = (b - a).normalized().orthogonal() \
+			* (LINE_WIDTH * 0.5 + RAIL_GAP + RAIL_WIDTH * 0.5)
+	_draw_link_line(a + offset, b + offset, RAIL_WIDTH, dashed)
+	if level >= 3:
+		_draw_link_line(a - offset, b - offset, RAIL_WIDTH, dashed)
+
+func _draw_link_line(from: Vector2, to: Vector2, width: float, dashed: bool) -> void:
+	if dashed:
+		draw_dashed_line(from, to, color, width, DASH_LEN)
+	else:
+		draw_line(from, to, color, width)
 
 func _draw_stranded(pos: Vector2, edge_mids: Array, radius: float) -> void:
 	# Dashed stubs start at the circle rim (the cross hole is see-through, so

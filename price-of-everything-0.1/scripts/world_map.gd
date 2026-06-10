@@ -107,6 +107,7 @@ func _ready() -> void:
 
 	# Infrastructure mapmode panel: shows/hides itself with the mapmode.
 	hud_content.add_child(load("res://scripts/infrastructure_panel.gd").new())
+	_apply_demo_infra_levels()
 
 	# Wire visuals to react to building placements
 	building_placed.connect(building_visuals.on_building_placed)
@@ -1468,6 +1469,36 @@ func _show_tile_space_caution(message: String) -> void:
 		_toast_layer.call("show_caution", message)
 	else:
 		push_warning(message)
+
+# DEMO: hardcoded infrastructure levels (until levels become real gameplay) —
+# a pipes chain stepping lvl 1 -> 2 and a rails chain stepping lvl 1 -> 3, so
+# the Infrastructure mapmode's level line styles can be compared on the map.
+const _DEMO_INFRA_LEVELS: Array = [
+	{"tile": "tile_5_3", "infra": "pipes", "level": 1},
+	{"tile": "tile_5_4", "infra": "pipes", "level": 1},
+	{"tile": "tile_5_5", "infra": "pipes", "level": 2},
+	{"tile": "tile_5_6", "infra": "pipes", "level": 2},
+	{"tile": "tile_7_1", "infra": "rails", "level": 1},
+	{"tile": "tile_7_2", "infra": "rails", "level": 1},
+	{"tile": "tile_7_3", "infra": "rails", "level": 3},
+	{"tile": "tile_7_4", "infra": "rails", "level": 3},
+]
+
+func _apply_demo_infra_levels() -> void:
+	for entry in _DEMO_INFRA_LEVELS:
+		var coord := terrain_layer.id_to_coord(str(entry.tile))
+		if not terrain_layer.tiles.has(coord):
+			continue
+		var tile: Dictionary = terrain_layer.tiles[coord]
+		var infra: Array = tile.get("infrastructure_present", [])
+		if not infra.has(str(entry.infra)):
+			infra.append(str(entry.infra))
+			tile["infrastructure_present"] = infra
+			Catalog.add_tile_infrastructure(str(entry.tile), str(entry.infra))
+		var levels: Dictionary = tile.get("infrastructure_levels", {})
+		levels[str(entry.infra)] = int(entry.level)
+		tile["infrastructure_levels"] = levels
+		terrain_layer.tiles[coord] = tile
 
 func _infra_building_id_for(infra_type: String) -> String:
 	# Maps infrastructure internal_name -> the building_id used for visual icons

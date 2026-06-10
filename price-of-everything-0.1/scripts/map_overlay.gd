@@ -389,9 +389,11 @@ func _render_infrastructure_overlay() -> void:
 		for n in terrain_layer.neighbor_coords(coord):
 			if built.has(n):
 				if _coord_precedes(coord, n):  # each pair once
-					markers.solid_links.append([built[coord], built[n]])
+					var level: int = mini(_infra_level(coord, infra_key), _infra_level(n, infra_key))
+					markers.solid_links.append({"a": built[coord], "b": built[n], "level": level})
 			elif under_construction.has(n):
-				markers.dashed_links.append([built[coord], under_construction[n]])
+				# Under-construction infrastructure has no level yet — level 1.
+				markers.dashed_links.append({"a": built[coord], "b": under_construction[n], "level": 1})
 	for coord in under_construction:
 		var neighbors := terrain_layer.neighbor_coords(coord)
 		var connected := false
@@ -401,7 +403,7 @@ func _render_infrastructure_overlay() -> void:
 			elif under_construction.has(n):
 				connected = true
 				if _coord_precedes(coord, n):
-					markers.dashed_links.append([under_construction[coord], under_construction[n]])
+					markers.dashed_links.append({"a": under_construction[coord], "b": under_construction[n], "level": 1})
 		if connected:
 			markers.uc_circles.append(under_construction[coord])
 		else:
@@ -428,6 +430,12 @@ func _infra_construction_tiles(infra_key: String, built: Dictionary) -> Dictiona
 
 func _coord_precedes(a: Vector2i, b: Vector2i) -> bool:
 	return a.y < b.y if a.x == b.x else a.x < b.x
+
+# A tile's level for an infrastructure type (default 1). Levels live in the
+# tile's `infrastructure_levels` dict, keyed by the canonical slot key.
+func _infra_level(coord: Vector2i, infra_key: String) -> int:
+	var tile_data: Dictionary = terrain_layer.tiles.get(coord, {})
+	return int(tile_data.get("infrastructure_levels", {}).get(infra_key, 1))
 
 func _tile_has_infrastructure(tile_data: Dictionary, infra_key: String) -> bool:
 	for entry in tile_data.get("infrastructure_present", []):
