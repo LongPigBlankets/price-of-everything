@@ -155,7 +155,20 @@ func consume_anywhere(good_id: String, qty: int) -> int:
 
 func clear_all() -> void:
 	_by_tile.clear()
+	_at_capacity.clear()
+	_capacity_lost_this_turn = 0
 	stockpile_changed.emit()
+
+# --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
+
+func export_state() -> Dictionary:
+	return {"by_tile": _by_tile.duplicate(true)}
+
+func import_state(d: Dictionary) -> void:
+	# Silent: SaveLoad emits stockpile_changed once after every system imports.
+	_by_tile = (d.get("by_tile", {}) as Dictionary).duplicate(true)
+	_at_capacity.clear()
+	_capacity_lost_this_turn = 0
 
 func tiles_with_stock() -> Array:
 	# Tile keys that currently hold goods (callers filter to real "tile_*" ids).

@@ -26,6 +26,22 @@ var summary := {
 signal turn_processed(summary: Dictionary)
 signal building_starved(starvation_record: Dictionary)
 
+# --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
+# Only lifetime stats persist; everything else here is rebuilt each PROCESS phase.
+
+func export_state() -> Dictionary:
+	return {
+		"produced_by_building": produced_by_building.duplicate(true),
+		"full_output_streak_by_building": full_output_streak_by_building.duplicate(true),
+	}
+
+func import_state(d: Dictionary) -> void:
+	produced_by_building = (d.get("produced_by_building", {}) as Dictionary).duplicate(true)
+	full_output_streak_by_building = (d.get("full_output_streak_by_building", {}) as Dictionary).duplicate(true)
+	last_turn_summary.clear()
+	missing_by_building.clear()
+	last_turn_run.clear()
+
 func _ready() -> void:
 	await get_tree().process_frame
 	if not TurnManager.phase_started.is_connected(_on_phase_started):

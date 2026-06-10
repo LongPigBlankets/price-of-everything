@@ -80,6 +80,14 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 		if not added.is_empty():
 			_instance_nodes[instance_id] = added
 
+func clear_all() -> void:
+	# Remove every placed icon and reset slot bookkeeping. Used when a loaded save
+	# rebuilds the map visuals from state (world_map._rebuild_after_load).
+	for child in get_children():
+		child.queue_free()
+	tile_building_counts.clear()
+	_instance_nodes.clear()
+
 func remove_instance(instance_id: String) -> void:
 	if not _instance_nodes.has(instance_id):
 		return

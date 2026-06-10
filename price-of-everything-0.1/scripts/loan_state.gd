@@ -198,6 +198,25 @@ func _avg(arr: Array) -> float:
 		sum += float(v)
 	return sum / float(arr.size())
 
+# === Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ===
+
+func export_state() -> Dictionary:
+	return {
+		"loans": loans.duplicate(true),
+		"next_loan_id": _next_loan_id,
+		# The rolling windows drive borrowing capacity, so they are part of the save.
+		"profit_history": _profit_history.duplicate(),
+		"revenue_history": _revenue_history.duplicate(),
+	}
+
+func import_state(d: Dictionary) -> void:
+	# Silent: SaveLoad emits loans_updated once after every system imports.
+	loans = (d.get("loans", []) as Array).duplicate(true)
+	_next_loan_id = int(d.get("next_loan_id", 1))
+	_profit_history = (d.get("profit_history", []) as Array).duplicate()
+	_revenue_history = (d.get("revenue_history", []) as Array).duplicate()
+	last_payment_total = 0.0
+
 # === Helpers ===
 
 func _find_loan_index(loan_id: int) -> int:

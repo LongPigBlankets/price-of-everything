@@ -7,6 +7,13 @@ extends Node
 const LOCAL_PLAYER := "player_1"
 var money: float = 1000.0  # was: int = 1000
 
+# --- Ruleset ---
+# Which rule variant this match plays under. Carried in saves and start configs so
+# future rule changes (scoring, brakes, era pacing, …) can key off it; only "name"
+# is defined today — add per-rule keys beside it as rules become real.
+const DEFAULT_RULESET := {"name": "standard"}
+var ruleset: Dictionary = DEFAULT_RULESET.duplicate(true)
+
 const DEFAULT_TILE_LAND_OWNED := 100
 const LAND_PATCH_SIZE := 10
 const LAND_PATCH_COST := 10.0
@@ -698,6 +705,7 @@ func reset() -> void:
 	move_log.clear()
 	input_tile_only.clear()
 	_next_instance_counter = 0
+	ruleset = DEFAULT_RULESET.duplicate(true)
 	state_reset.emit()
 
 # --- Debug ---
@@ -713,6 +721,130 @@ func debug_dump() -> Dictionary:
 		"tile_land_owned": tile_land_owned.duplicate(true),
 		"_next_instance_counter": _next_instance_counter,
 	}
+
+# --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
+
+# Route geometry (tiles/path/legs) is stripped from shipments on save — it can hold
+# Vector2s (not JSON-safe) and is purely visual; it is re-quoted from the live route
+# graph on import so paths stay valid even if infrastructure changed.
+const _SHIPMENT_ROUTE_KEYS: Array = ["tiles", "path", "legs"]
+
+func export_state() -> Dictionary:
+	return {
+		"money": money,
+		"ruleset": ruleset.duplicate(true),
+		"next_instance_counter": _next_instance_counter,
+		"shipment_id_counter": _shipment_id_counter,
+		"buildings": buildings.duplicate(true),
+		"tile_land_owned": tile_land_owned.duplicate(true),
+		"labour_multiplier": labour_multiplier,
+		"sell_mode": sell_mode,
+		"route_objective": route_objective,
+		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
+		"input_tile_only": input_tile_only.duplicate(true),
+		"recurring_moves": recurring_moves.duplicate(true),
+		"scheduled_moves": scheduled_moves.duplicate(true),
+		"recurring_sells": recurring_sells.duplicate(true),
+		"recurring_bulk_sells": recurring_bulk_sells.duplicate(true),
+		"recurring_buys": recurring_buys.duplicate(true),
+		"sell_surplus_tiles": sell_surplus_tiles.duplicate(true),
+		"auto_sell_goods": auto_sell_goods.duplicate(true),
+		"auto_sell_impact": auto_sell_impact.duplicate(true),
+		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
+		"pending_transport_shipments": _shipments_for_save(),
+		"overflow_shipments": overflow_shipments.duplicate(true),
+		"transaction_log": transaction_log.duplicate(true),
+		"move_log": move_log.duplicate(true),
+		"surveyed_tiles": surveyed_tiles.duplicate(true),
+		"partially_surveyed_tiles": partially_surveyed_tiles.duplicate(true),
+		"surveying_in_progress": surveying_in_progress.duplicate(true),
+		"surveying_reveal": surveying_reveal.duplicate(true),
+		"revealed_deposits": revealed_deposits.duplicate(true),
+		"deposit_remaining": deposit_remaining.duplicate(true),
+		"unlocked_titles": unlocked_titles.duplicate(true),
+		"unlock_progress": _unlock_progress.duplicate(true),
+		"seaport_auto_subscribe": seaport_auto_subscribe,
+		"seaport_subscribed": seaport_subscribed.duplicate(true),
+	}
+
+func import_state(d: Dictionary) -> void:
+	# Silent full overwrite of every exported field — SaveLoad emits the refresh
+	# signals once after every system has imported. Missing keys fall back to the
+	# new-game default, so older/partial snapshots (and Phase 3 start configs) load.
+	money = float(d.get("money", EconomyConfig.STARTING_MONEY))
+	ruleset = (d.get("ruleset", DEFAULT_RULESET) as Dictionary).duplicate(true)
+	_next_instance_counter = int(d.get("next_instance_counter", 0))
+	_shipment_id_counter = int(d.get("shipment_id_counter", 0))
+	buildings = (d.get("buildings", {}) as Dictionary).duplicate(true)
+	tile_land_owned = (d.get("tile_land_owned", {}) as Dictionary).duplicate(true)
+	labour_multiplier = float(d.get("labour_multiplier", EconomyConfig.LABOUR_MULTIPLIER_DEFAULT))
+	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
+	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
+	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
+	input_tile_only = (d.get("input_tile_only", {}) as Dictionary).duplicate(true)
+	recurring_moves = (d.get("recurring_moves", []) as Array).duplicate(true)
+	scheduled_moves = (d.get("scheduled_moves", []) as Array).duplicate(true)
+	recurring_sells = (d.get("recurring_sells", []) as Array).duplicate(true)
+	recurring_bulk_sells = (d.get("recurring_bulk_sells", []) as Array).duplicate(true)
+	recurring_buys = (d.get("recurring_buys", []) as Array).duplicate(true)
+	sell_surplus_tiles = (d.get("sell_surplus_tiles", {}) as Dictionary).duplicate(true)
+	auto_sell_goods = (d.get("auto_sell_goods", {}) as Dictionary).duplicate(true)
+	auto_sell_impact = (d.get("auto_sell_impact", {}) as Dictionary).duplicate(true)
+	queued_stockpile_market_sales = (d.get("queued_stockpile_market_sales", {}) as Dictionary).duplicate(true)
+	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
+	overflow_shipments = (d.get("overflow_shipments", []) as Array).duplicate(true)
+	transaction_log = (d.get("transaction_log", []) as Array).duplicate(true)
+	move_log = (d.get("move_log", []) as Array).duplicate(true)
+	surveyed_tiles = (d.get("surveyed_tiles", {}) as Dictionary).duplicate(true)
+	partially_surveyed_tiles = (d.get("partially_surveyed_tiles", {}) as Dictionary).duplicate(true)
+	surveying_in_progress = (d.get("surveying_in_progress", {}) as Dictionary).duplicate(true)
+	surveying_reveal = (d.get("surveying_reveal", {}) as Dictionary).duplicate(true)
+	revealed_deposits = (d.get("revealed_deposits", {}) as Dictionary).duplicate(true)
+	# Default to the CURRENT value, not {}: a start config carries no deposit data,
+	# so the CSV-seeded yields from world_map._ready must survive the import. Full
+	# saves always carry the key and overwrite as usual.
+	deposit_remaining = (d.get("deposit_remaining", deposit_remaining) as Dictionary).duplicate(true)
+	unlocked_titles = (d.get("unlocked_titles", {}) as Dictionary).duplicate(true)
+	_unlock_progress = (d.get("unlock_progress", {}) as Dictionary).duplicate(true)
+	seaport_auto_subscribe = bool(d.get("seaport_auto_subscribe", false))
+	seaport_subscribed = (d.get("seaport_subscribed", {}) as Dictionary).duplicate(true)
+	# Derived state: the tile index is rebuilt, never saved; caches invalidate.
+	_rebuild_tile_index()
+	_surveyable_dirty = true
+	pending_output_stockpile_selection.clear()
+	sales_by_tile.clear()
+	_requote_shipment_routes()
+
+func _shipments_for_save() -> Array:
+	var out: Array = []
+	for shipment in pending_transport_shipments:
+		var s: Dictionary = shipment.duplicate(true)
+		for key in _SHIPMENT_ROUTE_KEYS:
+			s.erase(key)
+		out.append(s)
+	return out
+
+func _rebuild_tile_index() -> void:
+	tile_buildings.clear()
+	for instance_id in buildings:
+		var tile_id := str(buildings[instance_id].get("tile_id", ""))
+		if tile_id == "":
+			continue
+		if not tile_buildings.has(tile_id):
+			tile_buildings[tile_id] = []
+		tile_buildings[tile_id].append(instance_id)
+
+func _requote_shipment_routes() -> void:
+	# Restore the visual route geometry stripped on save. Countdown fields
+	# (turns_remaining / transport_turns) are the saved truth and stay untouched.
+	for shipment in pending_transport_shipments:
+		var src := str(shipment.get("source_tile", ""))
+		var dst := str(shipment.get("destination_tile", ""))
+		if src == "" or dst == "":
+			continue
+		var route: Dictionary = TransportService.route(src, dst, str(shipment.get("good_id", "")))
+		for key in _SHIPMENT_ROUTE_KEYS:
+			shipment[key] = route.get(key, [])
 
 func set_sell_mode(mode: int) -> void:
 	sell_mode = mode

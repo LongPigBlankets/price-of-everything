@@ -70,6 +70,18 @@ func commit_turn() -> void:
 		return
 	_run_resolution()
 
+# --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
+
+func export_state() -> Dictionary:
+	return {"current_turn": current_turn, "game_ended": game_ended}
+
+func import_state(d: Dictionary) -> void:
+	# Saving is only allowed in DECIDE, so a load always lands back in DECIDE.
+	current_turn = int(d.get("current_turn", 1))
+	game_ended = bool(d.get("game_ended", false))
+	current_phase = Phase.DECIDE
+	is_resolving = false
+
 # Test hook: reset to a clean DECIDE state on turn 1 without re-emitting startup signals.
 func reset_for_test() -> void:
 	current_turn = 1

@@ -180,8 +180,33 @@ func _ready() -> void:
 	# A disused/ruins building near Vandel's Skip (tile_22_16), owned by an NPC.
 	_place_ruins("tile_23_16")
 
+	# A loaded save applies only now, once the terrain and default seeding exist;
+	# it overwrites the fresh-match state above (docs/save_load_spec.md).
+	if SaveLoad.apply_pending():
+		_rebuild_after_load()
+
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
+
+func _rebuild_after_load() -> void:
+	# Redraw per-building visuals from the imported state: clear everything placed
+	# during _ready (NPC ports, ruins) and re-emit building_placed for every live
+	# building and in-progress construction project. Toasts stay silent — they
+	# listen to building_added / construction_started, which are not re-emitted.
+	if building_visuals.has_method("clear_all"):
+		building_visuals.clear_all()
+	for instance_id in MatchState.buildings:
+		var inst: Dictionary = MatchState.buildings[instance_id]
+		var tile_id := str(inst.get("tile_id", ""))
+		building_placed.emit(tile_id, str(inst.get("building_id", "")),
+			str(inst.get("recipe_id", "")), str(instance_id), terrain_layer.id_to_coord(tile_id))
+	for instance_id in Construction.construction_projects:
+		var proj: Dictionary = Construction.construction_projects[instance_id]
+		var tile_id := str(proj.get("tile_id", ""))
+		building_placed.emit(tile_id, str(proj.get("building_id", "")),
+			str(proj.get("recipe_id", "")), str(instance_id), terrain_layer.id_to_coord(tile_id))
+	_update_turn_counter(TurnManager.current_turn)
+	_update_phase_label(TurnManager.current_phase)
 
 func _on_tile_selected(tile_data: Dictionary) -> void:
 	_last_selected_tile = tile_data
@@ -1696,8 +1721,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_ESCAPE:
 			if not _pending_stockpile_selection.is_empty():
 				MatchState.cancel_output_stockpile_selection()
-			else:
-				PanelStack.close_top()
+			elif not PanelStack.close_top():
+				# Nothing left to close: Esc opens the in-game menu.
+				PauseMenu.open(_hud)
 			get_viewport().set_input_as_handled()
 
 func _should_open_search(event: InputEventKey) -> bool:

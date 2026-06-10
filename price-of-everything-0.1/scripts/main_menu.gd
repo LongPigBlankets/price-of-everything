@@ -31,7 +31,14 @@ func _ready() -> void:
 
 
 func _on_new_game_pressed() -> void:
-	get_tree().change_scene_to_file(MAP_SCENE)
+	# New Game flows through the same snapshot pipeline as Load Game: the default
+	# start config expands to a pending snapshot and applies once the map is ready.
+	LoadingScreen.show_global(get_tree())
+	SaveLoad.start_new_game()
+
+
+func _on_load_game_pressed() -> void:
+	SaveLoadScreen.open(self, SaveLoadScreen.Mode.LOAD)
 
 
 func _build_menu() -> void:
@@ -70,7 +77,10 @@ func _build_menu() -> void:
 	new_game.pressed.connect(_on_new_game_pressed)
 	vbox.add_child(new_game)
 	for label in ["Load Game", "Settings", "Credits", "Encyclopedia"]:
-		vbox.add_child(_make_button(label, false))
+		var b := _make_button(label, false)
+		if label == "Load Game":
+			b.pressed.connect(_on_load_game_pressed)
+		vbox.add_child(b)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(spacer)
