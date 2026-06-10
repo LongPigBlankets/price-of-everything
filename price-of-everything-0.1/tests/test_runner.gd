@@ -89,6 +89,7 @@ func _ready() -> void:
 	await _test_mining_mastery_tech_unlock()
 	await _test_mining_mastery_free_unlock()
 	_test_event_grouping()
+	_test_survey_grouping()
 	_test_starvation_deeplink_building()
 	await _test_notification_group_inline_expand()
 	await _test_notification_header_filter()
@@ -675,6 +676,27 @@ func _test_mining_mastery_free_unlock() -> void:
 
 # Identical notifications fold into display groups by reason; dismiss_group
 # clears only its own members.
+# Survey-complete notifications collapse into one "N Surveys Completed" card,
+# and each member carries the tile + revealed deposits.
+func _test_survey_grouping() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	EventScheduler._on_survey_completed("tile_6_8", [{"internal_name": "coal"}])
+	EventScheduler._on_survey_completed("tile_7_10", [{"internal_name": "iron_ore"}])
+	var groups := EventScheduler.grouped_active()
+	var survey_group := {}
+	for g in groups:
+		if str(g.group_key) == "surveys_complete":
+			survey_group = g
+	_check(not survey_group.is_empty() and (survey_group.members as Array).size() == 2,
+		"two surveys fold into one group")
+	_check(str(survey_group.get("title", "")) == "Surveys Completed",
+		"survey group title is 'Surveys Completed'")
+	var m: Dictionary = (survey_group.members as Array)[0]
+	_check(str(m.get("where", "")) == "coal" or str(m.get("where", "")) == "iron_ore",
+		"survey member carries the revealed deposit in `where`")
+	EventScheduler.reset()
+
 func _test_event_grouping() -> void:
 	EventScheduler.reset()
 	TurnManager.current_turn = 1

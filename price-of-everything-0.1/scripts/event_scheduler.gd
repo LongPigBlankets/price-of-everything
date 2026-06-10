@@ -506,22 +506,26 @@ func _on_sale_arrived(_port_tile_id: String, revenue: float) -> void:
 	aggregate("sales_arrived", _SALES_AGG_TEMPLATE, 1, revenue)
 
 func _on_survey_completed(tile_id: String, deposit_goods: Array) -> void:
-	var body := "Survey complete."
-	if not deposit_goods.is_empty():
-		var names: Array = []
-		for d in deposit_goods:
-			names.append(str(d.get("internal_name", "")))
-		body = "Revealed: %s." % ", ".join(names)
+	var names: Array = []
+	for d in deposit_goods:
+		names.append(str(d.get("internal_name", "")))
+	var revealed := ", ".join(names)
+	var body := "Revealed: %s." % revealed if revealed != "" else "Survey complete."
 	emit_event({
 		"id": "survey:%s" % tile_id,
 		"kind": "survey_completed",
 		"severity": SEVERITY_INFO,
 		"title": "Survey complete — %s" % Catalog.tile_label(tile_id),
+		# Surveys collapse into one "N Surveys Completed" card; each member row
+		# shows the tile and (in brackets) the deposits it revealed.
+		"group_key": "surveys_complete",
+		"group_title": "Surveys Completed",
+		"building_name": Catalog.tile_label(tile_id),
+		"where": revealed,
 		"body": body,
 		"source": "match_state",
 		"deeplink": {"panel": "tile", "tile_id": tile_id},
 		"persistent": false,
-		"auto_dismiss_turns": 3,
 	})
 
 func _on_tile_reached_capacity(tile_id: String) -> void:
