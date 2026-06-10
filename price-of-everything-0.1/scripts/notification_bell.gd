@@ -43,7 +43,10 @@ var _flash_tween: Tween = null
 # `pressed` emission (which would free that button mid-dispatch and hard-crash).
 var _refresh_queued := false
 var _pending_flash := false
-var _group_modal: PanelContainer = null
+# Which group is expanded inline in the dropdown ("" = none). Clicking a group
+# header toggles this; its members render indented underneath.
+var _expanded_group_key := ""
+var _icon_rect: TextureRect = null
 
 
 func _ready() -> void:
@@ -53,9 +56,9 @@ func _ready() -> void:
 	tooltip_text = "Notifications"
 	if ResourceLoader.exists(BELL_TEXTURE_PATH):
 		_bell_texture = load(BELL_TEXTURE_PATH) as Texture2D
+	_build_icon()
 	_build_badge()
 	_build_dropdown()
-	_build_group_modal()
 	_refresh_bg()
 	# All three collapse into one deferred refresh per frame (see _mark_dirty).
 	# event_fired additionally arms a single flash.
@@ -64,17 +67,43 @@ func _ready() -> void:
 	EventScheduler.active_events_changed.connect(_mark_dirty)
 
 
+# Recolours any silhouette texture to a flat tint using only its alpha, so a
+# dark or coloured source icon still renders in the DS cream. Built in code so
+# there's no .tres/.gdshader asset to ship.
+const _ICON_TINT_SHADER := "shader_type canvas_item;\nuniform vec4 tint : source_color;\nvoid fragment() { COLOR = vec4(tint.rgb, tint.a * texture(TEXTURE, UV).a); }"
+
 # ── Painting ─────────────────────────────────────────────────────────────
+
+func _build_icon() -> void:
+	# The bell glyph: a recoloured TextureRect when a bell.png is present,
+	# otherwise the vector glyph drawn in _draw(). The off-white ring + coloured
+	# disc are always drawn in _draw() so the icon sits inside the DS ring.
+	if _bell_texture == null:
+		return
+	_icon_rect = TextureRect.new()
+	_icon_rect.texture = _bell_texture
+	_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_icon_rect.position = Vector2(7, 7)
+	_icon_rect.size = Vector2(SIZE - 14, SIZE - 14)
+	var shader := Shader.new()
+	shader.code = _ICON_TINT_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mat.set_shader_parameter("tint", DS.PALETTE.BORDER)  # off-white cream
+	_icon_rect.material = mat
+	add_child(_icon_rect)
 
 func _draw() -> void:
 	var centre := Vector2(SIZE / 2.0, SIZE / 2.0)
 	var radius := SIZE / 2.0 - 1.0
 	draw_circle(centre, radius, _bg_current_color)
+	# The off-white ring (same cream as the bottom-menu icon rings).
 	draw_arc(centre, radius, 0.0, TAU, 64, DS.PALETTE.BORDER, RING_WIDTH, true)
-	if _bell_texture != null:
-		var dest := Rect2(Vector2(8, 8), Vector2(SIZE - 16, SIZE - 16))
-		draw_texture_rect(_bell_texture, dest, false, DS.PALETTE.BORDER)
-	else:
+	# Vector fallback only when no texture was supplied (recoloured TextureRect
+	# handles the textured case).
+	if _bell_texture == null:
 		_draw_bell_glyph(centre, DS.PALETTE.BORDER)
 
 # A bell silhouette built from primitives — proportions kept close to the icon
@@ -260,30 +289,36 @@ func _rebuild_dropdown_rows() -> void:
 		if child != _empty_label:
 			child.queue_free()
 	# Identical messages collapse: a group with 2+ members renders as one
-	# "N Buildings Starved of …" row (click → modal); a lone event renders as
-	# its own normal row. So 35 starvations become ONE row, not 35.
+	# "N Buildings Starved of …" header; clicking it expands the members inline
+	# (indented) in this same panel. A lone event renders as its own row.
 	var groups: Array = EventScheduler.grouped_active()
 	_empty_label.visible = groups.is_empty()
 	var shown: int = mini(groups.size(), MAX_VISIBLE_ROWS)
 	for i in range(shown):
 		var g: Dictionary = groups[i]
-		if (g.members as Array).size() <= 1:
-			_dropdown_list.add_child(_make_row(g.members[0]))
-		else:
-			_dropdown_list.add_child(_make_group_row(g))
+		var members: Array = g.members
+		if members.size() <= 1:
+			_dropdown_list.add_child(_make_row(members[0]))
+			continue
+		_dropdown_list.add_child(_make_group_row(g))
+		if str(g.group_key) == _expanded_group_key:
+			var mshown: int = mini(members.size(), MAX_VISIBLE_ROWS)
+			for j in range(mshown):
+				_dropdown_list.add_child(_make_member_row(members[j]))
+			if members.size() > mshown:
+				_dropdown_list.add_child(_make_indent_note(
+					"+%d more — “Dismiss all” to clear" % (members.size() - mshown)))
 	if groups.size() > shown:
-		var more := Label.new()
-		more.text = "+%d more — “Mark all read” to clear" % (groups.size() - shown)
-		more.theme_type_variation = &"Caption"
-		more.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
-		more.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_dropdown_list.add_child(more)
+		_dropdown_list.add_child(_make_indent_note(
+			"+%d more — “Mark all read” to clear" % (groups.size() - shown), false))
 
 
-# A collapsed group: severity dot + "N {group title}" + a dismiss-group ✕. The
-# row body (not the ✕) opens the member modal.
+# A group header: severity dot + chevron (▾ when expanded) + "N {title}" + a
+# dismiss-all ✕. Clicking the body toggles inline expansion in place.
 func _make_group_row(group: Dictionary) -> Control:
 	var members: Array = group.members
+	var gk := str(group.group_key)
+	var expanded := gk == _expanded_group_key
 	var row := PanelContainer.new()
 	row.theme_type_variation = &"Card"
 	row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -294,6 +329,12 @@ func _make_group_row(group: Dictionary) -> Control:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 8)
 	m.add_child(hb)
+
+	var chevron := Label.new()
+	chevron.text = "▾" if expanded else "▸"
+	chevron.theme_type_variation = &"Body"
+	chevron.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	hb.add_child(chevron)
 
 	var dot := Panel.new()
 	dot.custom_minimum_size = Vector2(8, 8)
@@ -311,45 +352,99 @@ func _make_group_row(group: Dictionary) -> Control:
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hb.add_child(label)
 
-	var chevron := Label.new()
-	chevron.text = "›"
-	chevron.theme_type_variation = &"Body"
-	chevron.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
-	hb.add_child(chevron)
-
 	var dismiss := Button.new()
 	dismiss.text = "✕"
 	dismiss.custom_minimum_size = Vector2(20, 20)
 	dismiss.tooltip_text = "Dismiss all"
-	dismiss.pressed.connect(func(): EventScheduler.dismiss_group(str(group.group_key)))
+	dismiss.pressed.connect(func(): EventScheduler.dismiss_group(gk))
 	hb.add_child(dismiss)
 
-	var gk := str(group.group_key)
 	row.gui_input.connect(func(e):
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			_open_group_modal(gk))
+			_expanded_group_key = "" if expanded else gk
+			_rebuild_dropdown_rows())
 	return row
 
 
-func _build_group_modal() -> void:
-	_group_modal = load("res://scripts/notification_group_modal.gd").new()
-	_group_modal.name = "NotificationGroupModal"
-	_group_modal.top_level = true
-	add_child(_group_modal)
+# An indented member of an expanded group: building + tile, a tertiary (text)
+# "Go to" link, and a per-member dismiss.
+func _make_member_row(ev: Dictionary) -> Control:
+	var indent := MarginContainer.new()
+	indent.add_theme_constant_override("margin_left", 18)
+	var row := PanelContainer.new()
+	row.theme_type_variation = &"Inset"
+	indent.add_child(row)
+	var m := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]:
+		m.add_theme_constant_override("margin_" + s, 6)
+	row.add_child(m)
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 6)
+	m.add_child(hb)
+
+	var deeplink: Dictionary = ev.get("deeplink", {})
+	var tile_id := str(deeplink.get("tile_id", ""))
+
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 0)
+	var name_label := Label.new()
+	name_label.text = str(ev.get("title", ""))
+	name_label.theme_type_variation = &"Caption"
+	col.add_child(name_label)
+	if tile_id != "":
+		var where := Label.new()
+		where.text = Catalog.tile_label(tile_id)
+		where.theme_type_variation = &"Caption"
+		where.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+		col.add_child(where)
+	hb.add_child(col)
+
+	# Tertiary action: an underlined text link (LinkButton), not a padded button.
+	var go := LinkButton.new()
+	go.text = "Go to"
+	go.underline = LinkButton.UNDERLINE_MODE_ALWAYS
+	go.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	go.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
+	go.pressed.connect(func(): _go_to(ev))
+	hb.add_child(go)
+
+	var dismiss := Button.new()
+	dismiss.text = "✕"
+	dismiss.custom_minimum_size = Vector2(20, 20)
+	dismiss.tooltip_text = "Dismiss"
+	dismiss.pressed.connect(func(): EventScheduler.dismiss(str(ev.id)))
+	hb.add_child(dismiss)
+	return indent
 
 
-func _open_group_modal(group_key: String) -> void:
-	var group := _group_by_key(group_key)
-	if group.is_empty():
-		return
-	_group_modal.open_group(group_key, str(group.title), group.members)
+func _make_indent_note(text: String, indented: bool = true) -> Control:
+	var note := Label.new()
+	note.text = text
+	note.theme_type_variation = &"Caption"
+	note.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	if indented:
+		note.add_theme_constant_override("margin_left", 18)
+		var wrap := MarginContainer.new()
+		wrap.add_theme_constant_override("margin_left", 24)
+		wrap.add_child(note)
+		return wrap
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	return note
 
 
-func _group_by_key(group_key: String) -> Dictionary:
-	for g in EventScheduler.grouped_active():
-		if str(g.group_key) == group_key:
-			return g
-	return {}
+# Deep-link: a starved-building event opens the building detail panel; anything
+# else with a tile focuses the tile. Closes the dropdown after navigating.
+func _go_to(ev: Dictionary) -> void:
+	var dl: Dictionary = ev.get("deeplink", {})
+	var building_id := str(dl.get("building_id", ""))
+	var tile_id := str(dl.get("tile_id", ""))
+	if str(dl.get("panel", "")) == "building" and building_id != "":
+		MatchState.focus_building_requested.emit(building_id)
+	elif tile_id != "":
+		MatchState.focus_tile_requested.emit(tile_id)
+	if _dropdown != null and _dropdown.visible:
+		toggle_dropdown()
 
 
 func _make_row(ev: Dictionary) -> Control:
@@ -431,14 +526,6 @@ func _apply_refresh() -> void:
 	_refresh_bg()
 	if _dropdown != null and _dropdown.visible:
 		_rebuild_dropdown_rows()
-	# Keep an open group modal in sync: re-list its members, or close it if the
-	# group has been fully dismissed / cured.
-	if _group_modal != null and _group_modal.visible:
-		var g := _group_by_key(_group_modal._group_key)
-		if g.is_empty():
-			_group_modal.close_modal()
-		else:
-			_group_modal.refresh(g.members)
 
 # Flash brightens the bell briefly to draw the eye when a new event arrives.
 func _flash() -> void:

@@ -91,6 +91,7 @@ func _ready() -> void:
 		search_overlay.recipe_build_requested.connect(_on_search_recipe_build_requested)
 	MatchState.encyclopedia_entry_requested.connect(_on_encyclopedia_entry_requested)
 	MatchState.focus_tile_requested.connect(_on_focus_tile_requested)
+	MatchState.focus_building_requested.connect(_on_focus_building_requested)
 
 	TurnManager.phase_started.connect(_on_phase_started)
 	TurnManager.turn_advanced.connect(_on_turn_advanced)
@@ -924,16 +925,32 @@ func _on_go_to_tile_stockpile(tile_id: String) -> void:
 ## Deep-link target for notifications etc: centre the camera on the tile and
 ## open its panel. Emitted via MatchState.focus_tile_requested.
 func _on_focus_tile_requested(tile_id: String) -> void:
+	var td := _focus_camera_on_tile(tile_id)
+	if td.is_empty():
+		return
+	_last_selected_tile = td
+	info_panel.show_tile(td)
+
+## Deep-link target for a specific building (starvation notifications): centre on
+## its tile and open the building detail panel rather than the tile panel.
+func _on_focus_building_requested(instance_id: String) -> void:
+	var building: Dictionary = MatchState.get_building(instance_id)
+	if building.is_empty():
+		return
+	_focus_camera_on_tile(str(building.get("tile_id", "")))
+	building_panel.move_to_front()
+	building_panel.show_building(building)
+
+## Centre the camera on a tile; returns its tile_data ({} if unknown).
+func _focus_camera_on_tile(tile_id: String) -> Dictionary:
 	var coord := terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1) or not terrain_layer.tiles.has(coord):
-		return
-	var td: Dictionary = terrain_layer.tiles[coord]
+		return {}
 	var cam := get_viewport().get_camera_2d()
 	if cam != null:
 		var cell := terrain_layer.map_coord_for_tile_coord(coord)
 		cam.position = terrain_layer.to_global(terrain_layer.map_to_local(cell))
-	_last_selected_tile = td
-	info_panel.show_tile(td)
+	return terrain_layer.tiles[coord]
 
 func _on_v2_pick_destination() -> void:
 	# Enter map pick mode but keep the v2 panel visible; the result returns via

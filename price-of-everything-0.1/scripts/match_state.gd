@@ -165,6 +165,10 @@ signal alt_bottom_menu_changed(enabled: bool)
 ## A UI surface (notification deep-link, etc.) asks the map to focus a tile:
 ## centre the camera on it and open its tile panel. world_map handles it.
 signal focus_tile_requested(tile_id: String)
+## Like focus_tile_requested, but opens the building detail panel for a specific
+## building instance (centring the camera on its tile). Used by starvation
+## notifications' "Go to".
+signal focus_building_requested(instance_id: String)
 
 # --- Initialization ---
 func _ready() -> void:

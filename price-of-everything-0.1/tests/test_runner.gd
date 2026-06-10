@@ -89,7 +89,8 @@ func _ready() -> void:
 	await _test_mining_mastery_tech_unlock()
 	await _test_mining_mastery_free_unlock()
 	_test_event_grouping()
-	await _test_notification_group_modal()
+	_test_starvation_deeplink_building()
+	await _test_notification_group_inline_expand()
 	await _test_notification_bell_smoke()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -704,48 +705,71 @@ func _test_event_grouping() -> void:
 		"only the input group remains after dismissing the power group")
 	EventScheduler.reset()
 
-# The group modal lists one member per starved building, each with a Go-to that
-# fires MatchState.focus_tile_requested for that building's tile.
-func _test_notification_group_modal() -> void:
+# A starvation event deep-links to the BUILDING panel (not the tile panel): its
+# deeplink names the building instance, and the bell's _go_to routes it to
+# MatchState.focus_building_requested.
+func _test_starvation_deeplink_building() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	EventScheduler._on_building_starved({"instance_id": "inst_dl", "building_id": "b_001",
+		"tile_id": "tile_6_8", "missing": [{"internal_name": "power"}]})
+	var ev: Dictionary = EventScheduler._active["starvation:inst_dl"]
+	var dl: Dictionary = ev.get("deeplink", {})
+	_check(str(dl.get("panel", "")) == "building" and str(dl.get("building_id", "")) == "inst_dl",
+		"starvation event deep-links to its building instance")
+	EventScheduler.reset()
+
+# Clicking a group header expands its members inline (indented) in the same
+# dropdown; a member's "Go to" routes a starved building to the building panel.
+func _test_notification_group_inline_expand() -> void:
 	EventScheduler.reset()
 	MatchState.reset()
 	TurnManager.current_turn = 1
 	for i in range(3):
-		EventScheduler._on_building_starved({"instance_id": "m_%d" % i, "building_id": "b_001",
+		EventScheduler._on_building_starved({"instance_id": "ex_%d" % i, "building_id": "b_001",
 			"tile_id": "tile_6_8", "missing": [{"internal_name": "power"}]})
-	var modal: Node = load("res://scripts/notification_group_modal.gd").new()
-	add_child(modal)
+	var bell: Node = load("res://scripts/notification_bell.gd").new()
+	add_child(bell)
 	await get_tree().process_frame
-	var g: Dictionary = EventScheduler.grouped_active()[0]
-	modal.call("open_group", str(g.group_key), str(g.title), g.members)
+	bell.call("toggle_dropdown")  # opens + builds rows (one collapsed group header)
 	await get_tree().process_frame
-	_check(modal.visible, "group modal opens")
-	var member_rows := 0
-	for c in (modal.get("_list") as Node).get_children():
-		if c is PanelContainer:
-			member_rows += 1
-	_check(member_rows == 3, "modal lists one row per member (got %d)" % member_rows)
-	# Go-to fires focus_tile_requested with the member's tile.
-	var focused: Array = []
-	var cb := func(t): focused.append(t)
-	MatchState.focus_tile_requested.connect(cb)
-	var buttons: Array = []
-	_collect_buttons(modal, buttons)
-	var go_btn: Button = null
-	for b in buttons:
-		if (b as Button).text == "Go to":
-			go_btn = b
-			break
-	_check(go_btn != null, "modal row has a Go to button")
-	if go_btn != null:
-		go_btn.pressed.emit()
-	_check(focused.size() == 1 and str(focused[0]) == "tile_6_8",
-		"Go to fires focus_tile_requested with the member's tile")
-	MatchState.focus_tile_requested.disconnect(cb)
-	modal.queue_free()
+	var list: VBoxContainer = bell.get("_dropdown_list")
+	_check(_count_panels(list) == 1, "collapsed: one group header row (got %d)" % _count_panels(list))
+	# Expand the group: header + 3 indented members.
+	bell.set("_expanded_group_key", "starved_power")
+	bell.call("_rebuild_dropdown_rows")
+	await get_tree().process_frame
+	_check(_count_panels(list) >= 4, "expanded: header + 3 member rows (got %d)" % _count_panels(list))
+	# A member "Go to" routes to the building panel.
+	var focused_buildings: Array = []
+	var cb := func(b): focused_buildings.append(b)
+	MatchState.focus_building_requested.connect(cb)
+	var links: Array = []
+	_collect_links(bell, links)
+	_check(links.size() >= 3, "each expanded member has a Go-to link (got %d)" % links.size())
+	if not links.is_empty():
+		(links[0] as LinkButton).pressed.emit()
+	_check(focused_buildings.size() == 1 and str(focused_buildings[0]).begins_with("ex_"),
+		"member Go-to fires focus_building_requested for the building instance")
+	MatchState.focus_building_requested.disconnect(cb)
+	bell.queue_free()
 	await get_tree().process_frame
 	EventScheduler.reset()
 	MatchState.reset()
+
+func _count_panels(node: Node) -> int:
+	var n := 0
+	for c in node.get_children():
+		n += _count_panels(c)
+		if c is PanelContainer:
+			n += 1
+	return n
+
+func _collect_links(node: Node, out: Array) -> void:
+	if node is LinkButton:
+		out.append(node)
+	for child in node.get_children():
+		_collect_links(child, out)
 
 func _fresh_production_summary() -> Dictionary:
 	# Minimal summary skeleton Production._dispatch_output_to_stockpile reads/writes.
@@ -1663,7 +1687,6 @@ func _test_scripts_parse() -> void:
 		"res://scripts/event_scheduler.gd",
 		"res://scripts/modifier_state.gd",
 		"res://scripts/notification_bell.gd",
-		"res://scripts/notification_group_modal.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 

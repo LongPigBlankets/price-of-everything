@@ -454,7 +454,7 @@ func _on_building_starved(record: Dictionary) -> void:
 		"title": "%s starved" % name,
 		"body": "Production halted — %s." % ("no power" if lacks_power else "missing inputs"),
 		"source": "production",
-		"deeplink": {"panel": "tile", "tile_id": tile_id, "building_id": inst_id},
+		"deeplink": {"panel": "building", "tile_id": tile_id, "building_id": inst_id},
 		"group_key": group_key,
 		"group_title": group_title,
 		"streak": streak,
