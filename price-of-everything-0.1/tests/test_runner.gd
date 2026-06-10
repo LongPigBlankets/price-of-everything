@@ -37,6 +37,9 @@ func _ready() -> void:
 	_test_move_extras()
 	_test_storage_boost()
 	_test_queue_sell()
+	_test_market_execute_sale()
+	_test_market_execute_sale_skip_consume()
+	_test_market_execute_sale_pay_transport()
 	_test_npc_ports()
 	_test_bulk_sell()
 	_test_output_market_route()
@@ -860,6 +863,56 @@ func _test_queue_sell() -> void:
 	_check(Stockpile.get_at_tile("tile_3_8", "g_001") == 0, "queue_sell consumes from source")
 	_check(str(summary.get("port", "")) != "" and MatchState.get_pending_transport_shipments().size() > before,
 		"queue_sell ships to a port")
+
+# MarketState.execute_sale is the unified low-level sell primitive. The three tests
+# below pin the three axes the option dict toggles, so any drift in queue_sell's or
+# Production's wrapper is caught by something tighter than the E2E suite.
+
+func _test_market_execute_sale() -> void:
+	# Default behaviour: consume from the tile, log to ledger, defer revenue until
+	# the shipment lands at the port. Mirrors the queue_sell path.
+	Stockpile.add("tile_3_8", "g_001", 12)
+	var ships_before := MatchState.get_pending_transport_shipments().size()
+	var txn_before := MatchState.get_oneoff_transaction_rows().size()
+	var result: Dictionary = MarketState.execute_sale("tile_3_8", {"g_001": 12})
+	_check(not result.is_empty(), "execute_sale returns a result")
+	_check(Stockpile.get_at_tile("tile_3_8", "g_001") == 0, "execute_sale consumes from the tile")
+	_check(bool(result.get("deferred", false)) and MatchState.get_pending_transport_shipments().size() > ships_before,
+		"execute_sale queues a shipment (deferred sale)")
+	_check(MatchState.get_oneoff_transaction_rows().size() > txn_before,
+		"execute_sale logs a transaction row by default")
+	_check(float(result.get("transport_cost", -1.0)) == 0.0,
+		"execute_sale: transport not paid from seller unless requested")
+
+func _test_market_execute_sale_skip_consume() -> void:
+	# skip_consume: the goods are already in the caller's hand (production output);
+	# the stockpile is not touched.
+	var tile := "tile_3_8"
+	Stockpile.consume(tile, "g_001", 1 << 30)  # drain
+	var before: int = Stockpile.get_at_tile(tile, "g_001")
+	var result: Dictionary = MarketState.execute_sale(tile, {"g_001": 5},
+		{"skip_consume": true, "log_oneoff": false})
+	_check(not result.is_empty(), "execute_sale(skip_consume) sells without stockpile")
+	_check(Stockpile.get_at_tile(tile, "g_001") == before,
+		"execute_sale(skip_consume) does not touch the stockpile")
+	_check(int(result.get("total_qty", 0)) == 5,
+		"execute_sale(skip_consume) sells the full requested quantity")
+
+func _test_market_execute_sale_pay_transport() -> void:
+	# pay_transport_from_seller: the seller eats the freight cost upfront. This is
+	# the difference between Production's output-routed sales and the gross manual
+	# sells from queue_sell.
+	var tile := "tile_3_8"
+	Stockpile.add(tile, "g_001", 20)
+	var money_before: float = MatchState.money
+	var result: Dictionary = MarketState.execute_sale(tile, {"g_001": 20},
+		{"pay_transport_from_seller": true, "log_oneoff": false})
+	_check(not result.is_empty(), "execute_sale(pay_transport) returns a result")
+	var paid: float = float(result.get("transport_cost", 0.0))
+	_check(paid > 0.0, "execute_sale(pay_transport) charges a non-zero transport cost")
+	_check(absf((money_before - paid) - MatchState.money) < 0.01,
+		"execute_sale(pay_transport) deducts transport upfront (paid=%.4f, Δmoney=%.4f)"
+			% [paid, money_before - MatchState.money])
 
 func _test_move_extras() -> void:
 	var preview: Dictionary = MatchState.preview_move("tile_12_4", "tile_12_2", {"g_001": 5})

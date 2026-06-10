@@ -1357,46 +1357,20 @@ func sell_all_to_market(params: Dictionary, log_oneoff: bool = true) -> Dictiona
 	return {"total_qty": total_qty, "revenue": total_revenue, "tiles": tiles_sold}
 
 func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = true) -> Dictionary:
-	# Sell specific goods/qtys from a tile: ship to the nearest port, pay out on arrival.
-	if source_tile == "":
+	# Sell specific goods/qtys from a tile: consume from the stockpile, ship to the
+	# nearest port, pay out on arrival. All of that lives in MarketState.execute_sale
+	# now; this wrapper preserves the public API (note: returns `revenue`, not
+	# `total_revenue`, for back-compat with existing callers).
+	var result := MarketState.execute_sale(source_tile, goods_qtys, {"log_oneoff": log_oneoff})
+	if result.is_empty():
 		return {}
-	var route := TransportService.route_to_nearest_port(source_tile)
-	var port := str(route.get("port", ""))
-	var turns: int = int(route.get("turns", 0))
-	var items: Array = []
-	var total_qty := 0
-	var total_revenue := 0.0
-	for good_id in goods_qtys.keys():
-		var want := int(goods_qtys[good_id])
-		if want <= 0:
-			continue
-		var sold := Stockpile.consume(source_tile, str(good_id), want)
-		if sold <= 0:
-			continue
-		var revenue := float(sold) * MarketState.get_price(str(good_id))
-		items.append({"good_id": str(good_id), "qty": sold, "revenue": revenue})
-		total_qty += sold
-		total_revenue += revenue
-	if items.is_empty():
-		return {}
-	var sale_record := {"tile_id": source_tile, "items": items, "total_qty": total_qty, "total_revenue": total_revenue}
-	if port != "" and turns >= 1:
-		queue_transport_shipment({
-			"is_sale": true, "source_tile": source_tile, "destination_tile": port,
-			"sale_record": sale_record.duplicate(true),
-			"turns_remaining": turns, "transport_turns": turns,
-			"tiles": route.get("tiles", []), "path": route.get("path", []), "legs": route.get("legs", []),
-		})
-	else:
-		for it in items:
-			add_money(float(it.revenue))
-		emit_stockpile_market_sale_completed(sale_record)
-		if port != "":
-			market_sale_arrived_at_port.emit(port, total_revenue)
-	if log_oneoff:
-		for it in items:
-			log_market_sale(source_tile, port, str(it.good_id), int(it.qty), turns)
-	return {"items": items, "total_qty": total_qty, "revenue": total_revenue, "turns": turns, "port": port}
+	return {
+		"items": result.items,
+		"total_qty": result.total_qty,
+		"revenue": result.total_revenue,
+		"turns": result.turns,
+		"port": result.port,
+	}
 
 ## A shipment couldn't fully unload at a full tile — hold the remainder so the
 ## goods aren't lost; it retries each turn.
