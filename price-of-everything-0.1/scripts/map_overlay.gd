@@ -51,7 +51,19 @@ var current_overlays: Array = []
 var build_overlays: Array = []
 var build_legend: PanelContainer = null
 
+# Infrastructure hover: while the infra overlay is up, the built tile under the
+# mouse gets a white glow + throughput card (see infra_mapmode_markers.gd).
+var _infra_markers: Node2D = null
+var _infra_built_pos: Dictionary = {}   # tile_id -> tile-centre world pos
+var _infra_hover_tile := ""
+
+# Infrastructure mapmode key -> the router's mode name (Catalog namespace).
+const INFRA_ROUTE_MODES := {
+	"roads": "roads", "rails": "rail", "pipes": "pipes", "reinf_pipes": "reinf_pipes",
+}
+
 func _ready() -> void:
+	set_process(false)
 	MapMode.selections_changed.connect(_on_selections_changed)
 	MapMode.mode_cleared.connect(_on_mode_cleared)
 	MapMode.infrastructure_selection_changed.connect(_on_infra_selection_changed)
@@ -99,6 +111,10 @@ func _clear_overlays() -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 	current_overlays.clear()
+	_infra_markers = null
+	_infra_built_pos.clear()
+	_infra_hover_tile = ""
+	set_process(false)
 
 # --- Build-mode viability overlay ---
 
@@ -416,6 +432,105 @@ func _render_infrastructure_overlay() -> void:
 			markers.stranded.append({"pos": under_construction[coord], "edge_mids": edge_mids})
 	add_child(markers)
 	current_overlays.append(markers)
+
+	# Hover: track the built tile under the mouse every frame while this
+	# overlay is up (cleared with the overlay in _clear_overlays).
+	_infra_markers = markers
+	for coord in built:
+		_infra_built_pos["tile_%d_%d" % [coord.x + 1, coord.y + 1]] = built[coord]
+	set_process(true)
+
+func _process(_delta: float) -> void:
+	if _infra_markers == null or not is_instance_valid(_infra_markers):
+		set_process(false)
+		return
+	var tile_id := terrain_layer.tile_id_under_mouse()
+	if not _infra_built_pos.has(tile_id):
+		tile_id = ""
+	if tile_id == _infra_hover_tile:
+		return
+	_infra_hover_tile = tile_id
+	if tile_id == "":
+		_infra_markers.set_hover(Vector2.INF, [])
+	else:
+		_infra_markers.set_hover(_infra_built_pos[tile_id],
+			_infra_hover_lines(tile_id, MapMode.infrastructure_selection))
+
+# Throughput card rows for a hovered built tile. Shipment-carried infra counts
+# the in-transit units whose route crosses this tile on this infra's network;
+# cables report the (single, global) grid's energy flow — uncapped.
+func _infra_hover_lines(tile_id: String, infra_key: String) -> Array:
+	var lines: Array = ["%s throughput" % _infra_slot_label(infra_key)]
+	match infra_key:
+		"cables":
+			lines.append("Grid energy: %d" % maxi(Power.supply_this_turn, Power.demand_this_turn))
+			lines.append("No cap")
+		"pipes":
+			var t: Dictionary = _tile_mode_throughput(tile_id, "pipes")
+			lines.append("Liquids: %d" % (int(t.get("safe_liquid", 0)) + int(t.get("liquid", 0))))
+			lines.append("Gases: %d" % int(t.get("gas", 0)))
+		"reinf_pipes":
+			var t2: Dictionary = _tile_mode_throughput(tile_id, "reinf_pipes")
+			lines.append("Hazard liquids: %d" % int(t2.get("hazard_liquid", 0)))
+			lines.append("Gases: %d" % int(t2.get("gas", 0)))
+		_:
+			var total := 0
+			var mode: String = INFRA_ROUTE_MODES.get(infra_key, "")
+			if mode != "":
+				for v in _tile_mode_throughput(tile_id, mode).values():
+					total += int(v)
+			lines.append("Transit units: %d" % total)
+	return lines
+
+func _infra_slot_label(infra_key: String) -> String:
+	for slot in InfraIcons.SLOTS:
+		if str(slot.key) == infra_key:
+			return str(slot.label)
+	return infra_key.capitalize()
+
+# Units of in-transit goods crossing `tile_id` on a leg of routing `mode`,
+# bucketed by the good's transport class.
+func _tile_mode_throughput(tile_id: String, mode: String) -> Dictionary:
+	var totals: Dictionary = {}
+	for s in MatchState.get_pending_transport_shipments():
+		var tiles: Array = s.get("tiles", [])
+		var legs: Array = s.get("legs", [])
+		if tiles.is_empty() or legs.is_empty():
+			continue
+		if not _shipment_mode_tiles(tiles, legs, mode).has(tile_id):
+			continue
+		var goods := _shipment_goods(s)
+		for good_id in goods:
+			var cls := Catalog.get_transport_class(str(good_id))
+			totals[cls] = int(totals.get(cls, 0)) + int(goods[good_id])
+	return totals
+
+# The tiles a shipment crosses using `mode` (tile_id -> true). A route's
+# `tiles` array is its legs' tile segments concatenated in order, so walking
+# it leg by leg recovers which slice belongs to which mode.
+func _shipment_mode_tiles(tiles: Array, legs: Array, mode: String) -> Dictionary:
+	var result: Dictionary = {}
+	var idx := 0
+	for leg in legs:
+		var start := idx
+		while idx < tiles.size() - 1 and str(tiles[idx]) != str(leg.get("to", "")):
+			idx += 1
+		if str(leg.get("mode", "")) == mode:
+			for i in range(start, idx + 1):
+				result[str(tiles[i])] = true
+	return result
+
+# {good_id: qty} carried by a shipment (sale shipments carry several goods).
+func _shipment_goods(s: Dictionary) -> Dictionary:
+	var g: Dictionary = {}
+	if bool(s.get("is_sale", false)):
+		for item in s.get("sale_record", {}).get("items", []):
+			g[str(item.get("good_id", ""))] = int(item.get("qty", 0))
+	else:
+		var gid := str(s.get("good_id", ""))
+		if gid != "":
+			g[gid] = int(s.get("qty", 0))
+	return g
 
 # Tiles with a pending construction project for this infrastructure type
 # (coord -> world pos). Tiles that already hold the built infra are skipped.
