@@ -79,6 +79,7 @@ func _ready() -> void:
 	await _test_event_scheduler_aggregator()
 	await _test_event_scheduler_max_severity()
 	await _test_event_scheduler_roundtrip()
+	await _test_notification_bell_smoke()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -430,6 +431,59 @@ func _test_event_scheduler_roundtrip() -> void:
 	_check(EventScheduler._watches.size() == 1
 		and str(EventScheduler._watches[0].id) == "watch_a",
 		"round-trip restores watches")
+	EventScheduler.reset()
+
+# UI smoke: the bell builds, reads EventScheduler state, the badge follows the
+# active count, the bell colour follows max severity, and the dropdown opens.
+func _test_notification_bell_smoke() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	var bell: Node = load("res://scripts/notification_bell.gd").new()
+	add_child(bell)
+	await get_tree().process_frame
+	_check(bell.get("_dropdown") != null, "bell builds its dropdown")
+	# Empty: badge hidden, bell grey (no flash).
+	_check(not (bell.get("_badge") as Label).visible,
+		"badge hidden when no events")
+	# Fire a warning event; badge stays hidden (n<=1), bell colour amber.
+	EventScheduler.emit_event({"id": "u1", "title": "Test warn",
+		"severity": EventScheduler.SEVERITY_WARNING})
+	await get_tree().process_frame
+	_check(bell._bg_target_color == DS.PALETTE.WARN,
+		"single warning → bell amber")
+	# Add a critical → bell red; badge shows "2".
+	EventScheduler.emit_event({"id": "u2", "title": "Test crit",
+		"severity": EventScheduler.SEVERITY_CRITICAL})
+	await get_tree().process_frame
+	_check(bell._bg_target_color == DS.PALETTE.DANGER,
+		"warning + critical → bell red")
+	_check((bell.get("_badge") as Label).visible
+		and (bell.get("_badge") as Label).text == "2",
+		"badge shows the unread count (got '%s')" % (bell.get("_badge") as Label).text)
+	# Open dropdown, expect rows for both events.
+	bell.call("toggle_dropdown")
+	await get_tree().process_frame
+	_check((bell.get("_dropdown") as PanelContainer).visible, "dropdown opens on click")
+	var list: VBoxContainer = bell.get("_dropdown_list")
+	# rows = list children excluding the always-present "empty" label.
+	var row_count := 0
+	for c in list.get_children():
+		if c is PanelContainer:
+			row_count += 1
+	_check(row_count == 2, "dropdown shows one row per active event (got %d)" % row_count)
+	# Dismiss the critical from inside the EventScheduler; bell falls back to amber.
+	EventScheduler.dismiss("u2")
+	await get_tree().process_frame
+	_check(bell._bg_target_color == DS.PALETTE.WARN,
+		"dismissing the critical drops bell back to amber")
+	# Mark all read → bell grey, badge hidden, dropdown shows the empty label.
+	EventScheduler.dismiss_all()
+	await get_tree().process_frame
+	_check(bell._bg_target_color == DS.PALETTE.BG_INSET,
+		"dismiss_all → bell grey (BG_INSET)")
+	_check(not (bell.get("_badge") as Label).visible, "badge hidden after dismiss_all")
+	bell.queue_free()
+	await get_tree().process_frame
 	EventScheduler.reset()
 
 # UI: the save/load screens and the Esc pause menu build, gate their CTAs, and

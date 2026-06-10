@@ -33,6 +33,29 @@ const STATE_ACTIVE := "active"
 const STATE_DISMISSED := "dismissed"
 const STATE_CLEARED := "cleared"
 
+# Hot-path templates — hoisted from the per-signal handlers so the per-turn
+# storm of sale/construction signals doesn't allocate a fresh dict per call.
+const _SALES_AGG_TEMPLATE := {
+	"kind": "sales_aggregate",
+	"severity": SEVERITY_INFO,
+	"title_template": "{count} sales arrived — £{value}",
+	"body_template": "{count} shipments unloaded at ports this turn.",
+	"source": "production",
+	"deeplink": {"panel": "money"},
+	"persistent": false,
+	"auto_dismiss_turns": 3,
+}
+const _CONSTRUCTION_AGG_TEMPLATE := {
+	"kind": "construction_completed",
+	"severity": SEVERITY_INFO,
+	"title_template": "{count} buildings completed",
+	"body_template": "Constructions finished this turn.",
+	"source": "construction",
+	"deeplink": {"panel": "tile"},
+	"persistent": false,
+	"auto_dismiss_turns": 3,
+}
+
 # A new event landed in the bell. UI listens here for the flash and badge update.
 signal event_fired(event: Dictionary)
 # An event left the bell (dismissed by player, or auto-cleared).
@@ -393,16 +416,7 @@ func _on_unlock_granted(title: String, _description: String, via_condition: bool
 
 func _on_sale_arrived(_port_tile_id: String, revenue: float) -> void:
 	# Aggregated: one rolled-up "12 sales, £4,300" event per turn.
-	aggregate("sales_arrived", {
-		"kind": "sales_aggregate",
-		"severity": SEVERITY_INFO,
-		"title_template": "{count} sales arrived — £{value}",
-		"body_template": "{count} shipments unloaded at ports this turn.",
-		"source": "production",
-		"deeplink": {"panel": "money"},
-		"persistent": false,
-		"auto_dismiss_turns": 3,
-	}, 1, revenue)
+	aggregate("sales_arrived", _SALES_AGG_TEMPLATE, 1, revenue)
 
 func _on_survey_completed(tile_id: String, deposit_goods: Array) -> void:
 	var body := "Survey complete."
@@ -447,19 +461,10 @@ func _on_bankruptcy_warning(money: float, floor: float) -> void:
 		"persistent": true,
 	})
 
-func _on_construction_completed(instance_id: String, tile_id: String) -> void:
+func _on_construction_completed(_instance_id: String, _tile_id: String) -> void:
 	# Aggregated: typical late-game turn finishes many constructions at once.
-	aggregate("construction_completed", {
-		"kind": "construction_completed",
-		"severity": SEVERITY_INFO,
-		"title_template": "{count} building{plural} completed",
-		"body_template": "Constructions finished this turn.",
-		"source": "construction",
-		"deeplink": {"panel": "tile", "tile_id": tile_id},
-		"persistent": false,
-		"auto_dismiss_turns": 3,
-		"payload": {"last_instance_id": instance_id, "last_tile_id": tile_id},
-	}, 1, 0.0)
+	# (No payload — the rolled-up event is a count, not a specific tile.)
+	aggregate("construction_completed", _CONSTRUCTION_AGG_TEMPLATE, 1, 0.0)
 
 
 # ---------------------------------------------------------------------------
