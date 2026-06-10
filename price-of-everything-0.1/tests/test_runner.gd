@@ -37,6 +37,9 @@ func _ready() -> void:
 	_test_move_extras()
 	_test_storage_boost()
 	_test_queue_sell()
+	_test_market_execute_sale()
+	_test_market_execute_sale_skip_consume()
+	_test_market_execute_sale_pay_transport()
 	_test_npc_ports()
 	_test_bulk_sell()
 	_test_output_market_route()
@@ -68,6 +71,29 @@ func _ready() -> void:
 	_test_construction_survives_load()
 	_test_autosave_rotation()
 	await _test_save_load_ui()
+	await _test_event_scheduler_emit()
+	await _test_event_scheduler_schedule()
+	await _test_event_scheduler_forewarn()
+	await _test_event_scheduler_watch_oneshot()
+	await _test_event_scheduler_starvation_ramp()
+	await _test_event_scheduler_aggregator()
+	await _test_event_scheduler_max_severity()
+	await _test_event_scheduler_roundtrip()
+	await _test_modifiers_basic()
+	await _test_modifiers_stacking()
+	await _test_modifiers_target_match()
+	await _test_modifiers_expiry()
+	await _test_modifiers_event_payload()
+	await _test_modifiers_production_recipe_output()
+	await _test_modifiers_roundtrip()
+	await _test_mining_mastery_tech_unlock()
+	await _test_mining_mastery_free_unlock()
+	_test_event_grouping()
+	_test_survey_grouping()
+	_test_starvation_deeplink_building()
+	await _test_notification_group_inline_expand()
+	await _test_notification_header_filter()
+	await _test_notification_bell_smoke()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -98,7 +124,7 @@ func _test_save_load_roundtrip() -> void:
 	# full game scene; the visual rebuild is exercised manually / by scene tests).
 	_check(SaveLoad.load_slot("__test_roundtrip", false) == "", "load_slot applies without error")
 	var snap2: Dictionary = SaveLoad.export_snapshot()
-	for section in ["turn", "match", "stockpile", "loans", "construction", "market", "production", "infrastructure"]:
+	for section in ["turn", "match", "stockpile", "loans", "construction", "market", "production", "events", "modifiers", "infrastructure"]:
 		_check(_canonical_json(snap1[section]) == _canonical_json(snap2[section]),
 			"round-trip preserves '%s'" % section)
 
@@ -260,6 +286,605 @@ func _test_autosave_rotation() -> void:
 	DirAccess.remove_absolute("user://saves/autosave_2.json")
 	TurnManager.current_turn = saved_turn
 	SaveLoad._autosave_index = saved_index
+
+# --- EventScheduler ----------------------------------------------------------
+# Substrate tests. The bell UI lives separately and has its own UI smoke test.
+
+# Drive a synthetic turn: bump current_turn and emit phase_started(NARRATIVE)
+# so EventScheduler ticks. Avoids running the full TurnManager resolution which
+# would have side-effects on every other system.
+func _tick_event_scheduler_to(new_turn: int) -> void:
+	TurnManager.current_turn = new_turn
+	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
+	await get_tree().process_frame
+
+func _test_event_scheduler_emit() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	var fired: Array = []
+	var cb := func(ev): fired.append(ev)
+	EventScheduler.event_fired.connect(cb)
+	var ev := EventScheduler.emit_event({"title": "Hi", "severity": EventScheduler.SEVERITY_INFO})
+	_check(fired.size() == 1 and str(fired[0].id) == str(ev.id),
+		"emit_event puts an event in the bell + fires event_fired")
+	_check(EventScheduler.active_count() == 1, "active_count reflects the new event")
+	_check(int(ev.turn_fired) == 1, "event records the turn it fired on")
+	_check(EventScheduler.dismiss(str(ev.id)) and EventScheduler.active_count() == 0,
+		"dismiss removes from active list")
+	if EventScheduler.event_fired.is_connected(cb):
+		EventScheduler.event_fired.disconnect(cb)
+	EventScheduler.reset()
+
+func _test_event_scheduler_schedule() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 5
+	EventScheduler.schedule(8, {"id": "scheduled_test", "title": "Fires on 8",
+		"severity": EventScheduler.SEVERITY_WARNING})
+	# Turn 6, 7: scheduled event should NOT have fired yet.
+	await _tick_event_scheduler_to(6)
+	_check(not EventScheduler._active.has("scheduled_test"), "scheduled event waits past turn 6")
+	await _tick_event_scheduler_to(7)
+	_check(not EventScheduler._active.has("scheduled_test"), "scheduled event waits past turn 7")
+	# Turn 8: fires.
+	await _tick_event_scheduler_to(8)
+	_check(EventScheduler._active.has("scheduled_test"), "scheduled event fires on its turn")
+	EventScheduler.reset()
+
+func _test_event_scheduler_forewarn() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 10
+	EventScheduler.schedule(20, {"id": "carbon_tax", "title": "Carbon Tax Applied",
+		"severity": EventScheduler.SEVERITY_CRITICAL, "forewarn_turns": 5,
+		"forewarn_body": "Tax begins in 5 turns."})
+	# Turn 14: still no forewarning.
+	await _tick_event_scheduler_to(14)
+	_check(not EventScheduler._active.has("carbon_tax:forewarn"), "forewarn not yet armed")
+	# Turn 15: forewarning fires (20 - 5).
+	await _tick_event_scheduler_to(15)
+	_check(EventScheduler._active.has("carbon_tax:forewarn"),
+		"forewarning fires N turns before the scheduled event")
+	_check(not EventScheduler._active.has("carbon_tax"),
+		"main event has not fired yet at forewarn turn")
+	# Turn 20: main event fires.
+	await _tick_event_scheduler_to(20)
+	_check(EventScheduler._active.has("carbon_tax"),
+		"main scheduled event fires on its target turn")
+	EventScheduler.reset()
+
+func _test_event_scheduler_watch_oneshot() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	EventScheduler.watch({"type": "turn_reached", "value": 3},
+		{"id": "turn3", "title": "Hit turn 3", "severity": EventScheduler.SEVERITY_INFO},
+		true)
+	await _tick_event_scheduler_to(2)
+	_check(not EventScheduler._active.has("turn3"), "watch doesn't fire before predicate is true")
+	await _tick_event_scheduler_to(3)
+	_check(EventScheduler._active.has("turn3"), "watch fires the turn its predicate becomes true")
+	# Dismiss and tick again — one-shot must not re-fire.
+	EventScheduler.dismiss("turn3")
+	await _tick_event_scheduler_to(4)
+	_check(not EventScheduler._active.has("turn3"), "one-shot watch does not re-fire")
+	EventScheduler.reset()
+
+func _test_event_scheduler_starvation_ramp() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	var record := {"instance_id": "inst_test", "building_id": "b_001", "tile_id": "tile_12_4", "missing": []}
+	EventScheduler._on_building_starved(record)
+	var ev: Dictionary = EventScheduler._active.get("starvation:inst_test", {})
+	_check(str(ev.get("severity", "")) == EventScheduler.SEVERITY_WARNING,
+		"starvation turn 1 = amber")
+	# Turn 2: still amber.
+	TurnManager.current_turn = 2
+	EventScheduler._on_building_starved(record)
+	_check(str(EventScheduler._active["starvation:inst_test"].severity) == EventScheduler.SEVERITY_WARNING,
+		"starvation turn 2 = amber")
+	# Turn 3: ramps to critical (STARVATION_RAMP_TURNS = 3).
+	TurnManager.current_turn = 3
+	EventScheduler._on_building_starved(record)
+	_check(str(EventScheduler._active["starvation:inst_test"].severity) == EventScheduler.SEVERITY_CRITICAL,
+		"starvation turn 3 ramps to critical (red)")
+	# Skip turn 4 — building runs (no starvation signal); turn 5 NARRATIVE clears it.
+	await _tick_event_scheduler_to(5)
+	_check(not EventScheduler._active.has("starvation:inst_test"),
+		"auto-clear removes starvation when the building runs again")
+	EventScheduler.reset()
+
+func _test_event_scheduler_aggregator() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 10
+	var template := {"title_template": "{count} sales — £{value}",
+		"body_template": "rolled up", "severity": EventScheduler.SEVERITY_INFO}
+	for i in range(12):
+		EventScheduler.aggregate("test_agg", template, 1, 350.0)
+	# Aggregator stays open during the turn — no event in bell yet.
+	_check(EventScheduler.active_count() == 0, "aggregator does not fire mid-turn")
+	# NARRATIVE flushes: one rolled-up event.
+	await _tick_event_scheduler_to(10)
+	_check(EventScheduler.active_count() == 1,
+		"flush_aggregators emits one event per bucket (got %d)" % EventScheduler.active_count())
+	var rows: Array = EventScheduler.active_events()
+	_check(str(rows[0].title).begins_with("12 sales"),
+		"aggregated title interpolates {count} (got '%s')" % str(rows[0].title))
+	EventScheduler.reset()
+
+func _test_event_scheduler_max_severity() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	EventScheduler.emit_event({"id": "i", "title": "i", "severity": EventScheduler.SEVERITY_INFO})
+	_check(EventScheduler.max_severity() == EventScheduler.SEVERITY_INFO, "1 info → info")
+	EventScheduler.emit_event({"id": "w", "title": "w", "severity": EventScheduler.SEVERITY_WARNING})
+	_check(EventScheduler.max_severity() == EventScheduler.SEVERITY_WARNING, "info+warning → warning")
+	EventScheduler.emit_event({"id": "c", "title": "c", "severity": EventScheduler.SEVERITY_CRITICAL})
+	_check(EventScheduler.max_severity() == EventScheduler.SEVERITY_CRITICAL, "info+warning+critical → critical")
+	EventScheduler.dismiss("c")
+	_check(EventScheduler.max_severity() == EventScheduler.SEVERITY_WARNING,
+		"dismissing the critical drops bell back to warning")
+	EventScheduler.reset()
+
+func _test_event_scheduler_roundtrip() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 50
+	EventScheduler.emit_event({"id": "active_a", "title": "A",
+		"severity": EventScheduler.SEVERITY_WARNING})
+	EventScheduler.schedule(80, {"id": "future_a", "title": "future",
+		"severity": EventScheduler.SEVERITY_CRITICAL, "forewarn_turns": 5})
+	EventScheduler.watch({"type": "turn_reached", "value": 100},
+		{"id": "watch_a", "title": "watched", "severity": EventScheduler.SEVERITY_INFO}, true)
+	var snap := EventScheduler.export_state()
+	# Wipe and reimport.
+	EventScheduler.reset()
+	_check(EventScheduler.active_count() == 0 and EventScheduler._scheduled.is_empty()
+		and EventScheduler._watches.is_empty(), "reset clears all state")
+	EventScheduler.import_state(snap)
+	_check(EventScheduler._active.has("active_a"), "round-trip restores active events")
+	_check(EventScheduler._scheduled.size() == 1
+		and str(EventScheduler._scheduled[0].event.id) == "future_a",
+		"round-trip restores scheduled events")
+	_check(EventScheduler._watches.size() == 1
+		and str(EventScheduler._watches[0].id) == "watch_a",
+		"round-trip restores watches")
+	EventScheduler.reset()
+
+# --- Modifiers ---------------------------------------------------------------
+
+func _test_modifiers_basic() -> void:
+	Modifiers.reset()
+	TurnManager.current_turn = 1
+	# No active modifiers → base passes through untouched.
+	_check(Modifiers.apply("recipe_output", "r_001", 20.0) == 20.0,
+		"apply with empty registry returns base unchanged")
+	# Add a +5% recipe_output modifier on r_001.
+	var mid := Modifiers.add({"id": "test_a", "domain": "recipe_output",
+		"target": "r_001", "mult": 1.05, "label": "Test +5%"})
+	_check(mid == "test_a" and Modifiers.has("test_a"),
+		"add registers the modifier with the supplied id")
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 20.0) - 21.0) < 0.001,
+		"applied to r_001: 20 * 1.05 = 21")
+	# Different target → unchanged.
+	_check(absf(Modifiers.apply("recipe_output", "r_002", 20.0) - 20.0) < 0.001,
+		"r_001-targeted modifier does NOT affect r_002")
+	# Different domain → unchanged even for the same target.
+	_check(absf(Modifiers.apply("transport_cost", "r_001", 20.0) - 20.0) < 0.001,
+		"recipe_output modifier does NOT affect the transport_cost domain")
+	_check(Modifiers.remove("test_a") and not Modifiers.has("test_a"),
+		"remove drops the modifier")
+	Modifiers.reset()
+
+func _test_modifiers_stacking() -> void:
+	Modifiers.reset()
+	# Add-then-mult stacking: (base + adds) * prod(mults).
+	# base = 10, +2 (add) and +3 (add) → 15; then *1.5 and *1.2 → 27.
+	Modifiers.add({"id": "a", "domain": "recipe_output", "target": "*", "add": 2.0})
+	Modifiers.add({"id": "b", "domain": "recipe_output", "target": "*", "add": 3.0})
+	Modifiers.add({"id": "c", "domain": "recipe_output", "target": "*", "mult": 1.5})
+	Modifiers.add({"id": "d", "domain": "recipe_output", "target": "*", "mult": 1.2})
+	var got: float = Modifiers.apply("recipe_output", "r_001", 10.0)
+	_check(absf(got - 27.0) < 0.001,
+		"stacking: (10+2+3)*1.5*1.2 = 27 (got %.3f)" % got)
+	Modifiers.reset()
+
+func _test_modifiers_target_match() -> void:
+	Modifiers.reset()
+	# target_match: only fires when ctx provides the required keys.
+	Modifiers.add({"id": "extraction_only", "domain": "recipe_output",
+		"target_match": {"recipe_type": "extraction"}, "mult": 1.10})
+	var ctx_ext := {"recipe_type": "extraction"}
+	var ctx_smelt := {"recipe_type": "smelting"}
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 20.0, ctx_ext) - 22.0) < 0.001,
+		"target_match recipe_type=extraction applies to extraction ctx")
+	_check(absf(Modifiers.apply("recipe_output", "r_003", 20.0, ctx_smelt) - 20.0) < 0.001,
+		"target_match recipe_type=extraction does NOT apply to a smelting ctx")
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 20.0) - 20.0) < 0.001,
+		"target_match modifier inert when ctx is missing the key")
+	Modifiers.reset()
+
+func _test_modifiers_expiry() -> void:
+	Modifiers.reset()
+	TurnManager.current_turn = 10
+	Modifiers.add({"id": "tempo", "domain": "recipe_output",
+		"target": "*", "mult": 2.0, "duration_turns": 5})
+	_check(int(Modifiers._modifiers["tempo"]["expires_turn"]) == 15,
+		"duration_turns is converted into an absolute expires_turn")
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 10.0) - 20.0) < 0.001,
+		"modifier active before expiry")
+	# Tick NARRATIVE phases up to and past expiry.
+	TurnManager.current_turn = 14
+	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
+	await get_tree().process_frame
+	_check(Modifiers.has("tempo"), "still active one turn before expiry")
+	TurnManager.current_turn = 15
+	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
+	await get_tree().process_frame
+	_check(not Modifiers.has("tempo"), "pruned on the turn it expires")
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 10.0) - 10.0) < 0.001,
+		"expired modifier no longer affects apply")
+	Modifiers.reset()
+
+func _test_modifiers_event_payload() -> void:
+	Modifiers.reset()
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	# An EventScheduler event with a modifiers payload should auto-add them.
+	EventScheduler.emit_event({
+		"id": "carbon_tax_apply",
+		"title": "Carbon Tax applied",
+		"severity": EventScheduler.SEVERITY_CRITICAL,
+		"modifiers": [{
+			"id": "carbon_tax_transport",
+			"domain": "transport_cost", "target": "*",
+			"mult": 1.30, "duration_turns": 20,
+		}],
+	})
+	_check(Modifiers.has("carbon_tax_transport"),
+		"event with `modifiers` payload auto-registers the modifier on fire")
+	_check(absf(Modifiers.apply("transport_cost", "g_001", 10.0) - 13.0) < 0.001,
+		"the auto-registered modifier is live for apply (10 * 1.30 = 13)")
+	Modifiers.reset()
+	EventScheduler.reset()
+
+func _test_modifiers_production_recipe_output() -> void:
+	# Drives a coal mine through Production once with no modifier (baseline),
+	# then a second time with +5% extraction. Asserts the +5% takes effect end
+	# to end: not just in Modifiers.apply but in what lands in the stockpile.
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+	var tile := "tile_6_8"  # has a coal deposit
+	var inst: String = MatchState.add_building("b_001", "r_001", tile)
+	# Force-allow the mine to run (deposit is seeded from the live tile map,
+	# which a clean test environment doesn't have — drop the depletion gate by
+	# revealing + topping up the deposit).
+	MatchState.reveal_deposit(tile, "coal")
+	MatchState.deposit_remaining[tile] = {"coal": 999}
+
+	var summary := _fresh_production_summary()
+	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
+	Production._flush_output_buffer()
+	var base_produced: int = int(summary.produced.get("g_001", 0))
+	_check(base_produced == 20, "baseline: coal recipe produces 20 (got %d)" % base_produced)
+
+	# Now with the Mining Mastery modifier active: extraction recipes +5%.
+	Stockpile.clear_all()
+	Modifiers.add({"id": "mining_mastery_bonus", "domain": "recipe_output",
+		"target_match": {"recipe_type": "extraction"}, "mult": 1.05})
+	summary = _fresh_production_summary()
+	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
+	Production._flush_output_buffer()
+	var boosted_produced: int = int(summary.produced.get("g_001", 0))
+	_check(boosted_produced == 21, "with +5% extraction modifier: 20 → 21 (got %d)" % boosted_produced)
+	_check(Stockpile.get_at_tile(tile, "g_001") == 21,
+		"the boosted output lands in the tile stockpile (got %d)" % Stockpile.get_at_tile(tile, "g_001"))
+	Modifiers.reset()
+	MatchState.remove_building(inst)
+
+func _test_modifiers_roundtrip() -> void:
+	Modifiers.reset()
+	TurnManager.current_turn = 50
+	Modifiers.add({"id": "a", "domain": "recipe_output", "target": "*",
+		"mult": 1.07, "expires_turn": 100, "label": "A"})
+	Modifiers.add({"id": "b", "domain": "transport_cost",
+		"target_match": {"good_id": "g_001"}, "add": 0.5, "expires_turn": 80})
+	var snap: Dictionary = Modifiers.export_state()
+	Modifiers.reset()
+	_check(Modifiers.active_count() == 0, "reset clears the registry")
+	Modifiers.import_state(snap)
+	_check(Modifiers.has("a") and Modifiers.has("b"),
+		"round-trip restores both modifiers")
+	_check(absf(Modifiers.apply("recipe_output", "anything", 10.0) - 10.7) < 0.001,
+		"restored 'a' still applies (10 * 1.07 = 10.7)")
+	_check(absf(Modifiers.apply("transport_cost", "g_001", 1.0, {"good_id": "g_001"}) - 1.5) < 0.001,
+		"restored 'b' still applies (1 + 0.5)")
+	Modifiers.reset()
+
+# End-to-end the demo unlock: a mine for each of the 6 staple deposits triggers
+# the research tech ("Mining Mastery", research_unlocks.csv) → MatchState grants
+# the unlock when its condition is met → Modifiers applies the +5% bonus.
+func _test_mining_mastery_tech_unlock() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+
+	# The tech exists in the loaded research defs.
+	var found_def := false
+	for d in MatchState._unlock_defs:
+		if str(d.title) == "Mining Mastery":
+			found_def = true
+	_check(found_def, "Mining Mastery exists as a research unlock def")
+
+	# Recipes whose deposit requirement matches the six staple types — all run
+	# on the b_001 (Mine) building.
+	var by_deposit := {
+		"coal": "r_001", "iron_ore": "r_002", "copper_ore": "r_006",
+		"basic_salt": "r_010", "limestone": "r_019", "bauxite_ore": "r_015",
+	}
+	# Build FIVE of the six first: condition not yet met, no unlock, no modifier.
+	var deps: Array = by_deposit.keys()
+	for j in range(5):
+		MatchState.add_building("b_001", str(by_deposit[deps[j]]), "tile_mm_%d" % j)
+	_check(not MatchState.has_mine_for_each_staple_ore(),
+		"condition false with only 5 of 6 staple ores")
+	_check(not MatchState.is_unlocked("Mining Mastery"),
+		"tech not unlocked with 5 of 6 mines")
+	_check(not Modifiers.has("mining_mastery_bonus"),
+		"modifier not granted before the tech unlocks")
+
+	# Build the sixth — add_building re-checks unlock conditions, which grants
+	# the tech, which (via MatchState.unlock_granted) registers the modifier.
+	MatchState.add_building("b_001", str(by_deposit[deps[5]]), "tile_mm_5")
+	_check(MatchState.has_mine_for_each_staple_ore(),
+		"condition true once all six staple ores have mines")
+	_check(MatchState.is_unlocked("Mining Mastery"),
+		"the sixth mine unlocks Mining Mastery")
+	_check(Modifiers.has("mining_mastery_bonus"),
+		"unlocking the tech registers the +5% extraction modifier")
+
+	# Non-extraction recipes unaffected; extraction recipes get +5%.
+	_check(absf(Modifiers.apply("recipe_output", "r_003", 30.0,
+			{"recipe_type": "smelting"}) - 30.0) < 0.001,
+		"the bonus only applies to extraction recipes")
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 20.0,
+			{"recipe_type": "extraction"}) - 21.0) < 0.001,
+		"an extraction recipe gets 20 → 21 with the bonus")
+
+	# The bonus is timed: 30 turns from grant. Check the expiry stamp.
+	var mod: Dictionary = Modifiers._modifiers["mining_mastery_bonus"]
+	_check(int(mod.get("expires_turn", 0)) == int(TurnManager.current_turn) + 30,
+		"the bonus expires 30 turns after it is granted")
+
+	# Idempotent: building a seventh mine doesn't re-grant or stack.
+	MatchState.add_building("b_001", "r_001", "tile_mm_extra")
+	_check(Modifiers.active_count() == 1,
+		"the one-shot unlock does not re-grant the modifier on further mines")
+
+	Modifiers.reset()
+	MatchState.reset()
+
+# Free-pick path: spending a free unlock on Mining Mastery (via_condition=false)
+# also routes through grant_unlock → unlock_granted, so the bonus still lands.
+func _test_mining_mastery_free_unlock() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	_check(not Modifiers.has("mining_mastery_bonus"), "no bonus before free pick")
+	MatchState.grant_unlock("Mining Mastery", false)
+	_check(MatchState.is_unlocked("Mining Mastery"), "free pick unlocks the tech")
+	_check(Modifiers.has("mining_mastery_bonus"),
+		"free-picking the tech also grants the modifier")
+	Modifiers.reset()
+	MatchState.reset()
+
+# Identical notifications fold into display groups by reason; dismiss_group
+# clears only its own members.
+# Survey-complete notifications collapse into one "N Surveys Completed" card,
+# and each member carries the tile + revealed deposits.
+func _test_survey_grouping() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	EventScheduler._on_survey_completed("tile_6_8", [{"internal_name": "coal"}])
+	EventScheduler._on_survey_completed("tile_7_10", [{"internal_name": "iron_ore"}])
+	var groups := EventScheduler.grouped_active()
+	var survey_group := {}
+	for g in groups:
+		if str(g.group_key) == "surveys_complete":
+			survey_group = g
+	_check(not survey_group.is_empty() and (survey_group.members as Array).size() == 2,
+		"two surveys fold into one group")
+	_check(str(survey_group.get("title", "")) == "Surveys Completed",
+		"survey group title is 'Surveys Completed'")
+	var m: Dictionary = (survey_group.members as Array)[0]
+	_check(str(m.get("where", "")) == "coal" or str(m.get("where", "")) == "iron_ore",
+		"survey member carries the revealed deposit in `where`")
+	EventScheduler.reset()
+
+func _test_event_grouping() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	for i in range(3):
+		EventScheduler._on_building_starved({"instance_id": "p_%d" % i, "building_id": "b_001",
+			"tile_id": "tile_6_8", "missing": [{"internal_name": "power", "need": 4, "have": 0}]})
+	for i in range(2):
+		EventScheduler._on_building_starved({"instance_id": "in_%d" % i, "building_id": "b_002",
+			"tile_id": "tile_7_10", "missing": [{"internal_name": "coal", "need": 10, "have": 0}]})
+	var power_group := {}
+	var input_group := {}
+	for g in EventScheduler.grouped_active():
+		if str(g.group_key) == "starved_power":
+			power_group = g
+		elif str(g.group_key) == "starved_inputs":
+			input_group = g
+	_check(not power_group.is_empty() and (power_group.members as Array).size() == 3,
+		"3 power starvations fold into one group")
+	_check(str(power_group.get("title", "")) == "Buildings Starved of Power",
+		"power group carries the plural title")
+	_check(not input_group.is_empty() and (input_group.members as Array).size() == 2,
+		"2 input starvations fold into a separate group")
+	# dismiss_group clears only that group.
+	EventScheduler.dismiss_group("starved_power")
+	_check(EventScheduler._active.size() == 2,
+		"dismiss_group removes only its own members (got %d left)" % EventScheduler._active.size())
+	var remaining := EventScheduler.grouped_active()
+	_check(remaining.size() == 1 and str(remaining[0].group_key) == "starved_inputs",
+		"only the input group remains after dismissing the power group")
+	EventScheduler.reset()
+
+# A starvation event deep-links to the BUILDING panel (not the tile panel): its
+# deeplink names the building instance, and the bell's _go_to routes it to
+# MatchState.focus_building_requested.
+func _test_starvation_deeplink_building() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	EventScheduler._on_building_starved({"instance_id": "inst_dl", "building_id": "b_001",
+		"tile_id": "tile_6_8", "missing": [{"internal_name": "power"}]})
+	var ev: Dictionary = EventScheduler._active["starvation:inst_dl"]
+	var dl: Dictionary = ev.get("deeplink", {})
+	_check(str(dl.get("panel", "")) == "building" and str(dl.get("building_id", "")) == "inst_dl",
+		"starvation event deep-links to its building instance")
+	EventScheduler.reset()
+
+# Clicking a group header expands its members inline (indented) in the same
+# dropdown; a member's "Go to" routes a starved building to the building panel.
+func _test_notification_group_inline_expand() -> void:
+	EventScheduler.reset()
+	MatchState.reset()
+	TurnManager.current_turn = 1
+	for i in range(3):
+		EventScheduler._on_building_starved({"instance_id": "ex_%d" % i, "building_id": "b_001",
+			"tile_id": "tile_6_8", "missing": [{"internal_name": "power"}]})
+	var bell: Node = load("res://scripts/notification_bell.gd").new()
+	add_child(bell)
+	await get_tree().process_frame
+	bell.call("toggle_dropdown")  # opens + builds rows (one collapsed group header)
+	await get_tree().process_frame
+	var list: VBoxContainer = bell.get("_dropdown_list")
+	_check(_count_panels(list) == 1, "collapsed: one group header row (got %d)" % _count_panels(list))
+	# Expand the group: header + 3 indented members.
+	bell.set("_expanded_group_key", "starved_power")
+	bell.call("_rebuild_dropdown_rows")
+	await get_tree().process_frame
+	_check(_count_panels(list) >= 4, "expanded: header + 3 member rows (got %d)" % _count_panels(list))
+	# A member "Go to" routes to the building panel.
+	var focused_buildings: Array = []
+	var cb := func(b): focused_buildings.append(b)
+	MatchState.focus_building_requested.connect(cb)
+	var links: Array = []
+	_collect_links(bell, links)
+	_check(links.size() >= 3, "each expanded member has a Go-to link (got %d)" % links.size())
+	if not links.is_empty():
+		(links[0] as LinkButton).pressed.emit()
+	_check(focused_buildings.size() == 1 and str(focused_buildings[0]).begins_with("ex_"),
+		"member Go-to fires focus_building_requested for the building instance")
+	MatchState.focus_building_requested.disconnect(cb)
+	bell.queue_free()
+	await get_tree().process_frame
+	EventScheduler.reset()
+	MatchState.reset()
+
+# The header bells filter the list by severity ("" = show all).
+func _test_notification_header_filter() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	# Two groups: a critical one and a warning one (2 members each so they group).
+	for id in ["c1", "c2"]:
+		EventScheduler.emit_event({"id": id, "group_key": "g_crit", "group_title": "Crit",
+			"severity": EventScheduler.SEVERITY_CRITICAL})
+	for id in ["w1", "w2"]:
+		EventScheduler.emit_event({"id": id, "group_key": "g_warn", "group_title": "Warn",
+			"severity": EventScheduler.SEVERITY_WARNING})
+	var bell: Node = load("res://scripts/notification_bell.gd").new()
+	add_child(bell)
+	await get_tree().process_frame
+	bell.call("toggle_dropdown")
+	await get_tree().process_frame
+	var list: VBoxContainer = bell.get("_dropdown_list")
+	_check(_count_panels(list) == 2, "no filter: both groups show (got %d)" % _count_panels(list))
+	# Filter to critical → only the critical group.
+	bell.set("_filter_severity", "critical")
+	bell.call("_rebuild_dropdown_rows")
+	await get_tree().process_frame
+	_check(_count_panels(list) == 1, "critical filter: one group (got %d)" % _count_panels(list))
+	# Four header filter bells were built.
+	_check((bell.get("_filter_bells") as Array).size() == 4, "four header filter bells built")
+	# Clearing (navy) shows all again.
+	bell.set("_filter_severity", "")
+	bell.call("_rebuild_dropdown_rows")
+	await get_tree().process_frame
+	_check(_count_panels(list) == 2, "cleared filter: both groups show again (got %d)" % _count_panels(list))
+	bell.queue_free()
+	await get_tree().process_frame
+	EventScheduler.reset()
+
+func _count_panels(node: Node) -> int:
+	var n := 0
+	for c in node.get_children():
+		n += _count_panels(c)
+		if c is PanelContainer:
+			n += 1
+	return n
+
+func _collect_links(node: Node, out: Array) -> void:
+	if node is LinkButton:
+		out.append(node)
+	for child in node.get_children():
+		_collect_links(child, out)
+
+func _fresh_production_summary() -> Dictionary:
+	# Minimal summary skeleton Production._dispatch_output_to_stockpile reads/writes.
+	return {
+		"produced": {},
+		"transport_paid": 0.0,
+		"money_out": 0.0,
+		"money_in": 0.0,
+		"goods_sales_revenue": 0.0,
+		"goods_purchased_cost": 0.0,
+		"sold": {},
+	}
+
+# UI smoke: the navy bell builds, the badge follows the active count (shown at
+# >=1), the dropdown opens with one row per event, and dismiss_all clears it.
+func _test_notification_bell_smoke() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	var bell: Node = load("res://scripts/notification_bell.gd").new()
+	add_child(bell)
+	await get_tree().process_frame
+	_check(bell.get("_dropdown") != null, "bell builds its dropdown")
+	_check(not (bell.get("_badge") as Label).visible, "badge hidden when no events")
+	# One event → badge shows "1" (the navy trigger keeps the unread count).
+	# Refreshes coalesce via call_deferred, so settle two frames before reading.
+	EventScheduler.emit_event({"id": "u1", "title": "Test warn",
+		"severity": EventScheduler.SEVERITY_WARNING})
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check((bell.get("_badge") as Label).visible and (bell.get("_badge") as Label).text == "1",
+		"badge shows 1 with one event (got '%s')" % (bell.get("_badge") as Label).text)
+	EventScheduler.emit_event({"id": "u2", "title": "Test crit",
+		"severity": EventScheduler.SEVERITY_CRITICAL})
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check((bell.get("_badge") as Label).text == "2",
+		"badge shows the unread count (got '%s')" % (bell.get("_badge") as Label).text)
+	# Open dropdown, expect one row per (ungrouped) event.
+	bell.call("toggle_dropdown")
+	await get_tree().process_frame
+	_check((bell.get("_dropdown") as PanelContainer).visible, "dropdown opens on click")
+	var list: VBoxContainer = bell.get("_dropdown_list")
+	var row_count := 0
+	for c in list.get_children():
+		if c is PanelContainer:
+			row_count += 1
+	_check(row_count == 2, "dropdown shows one row per active event (got %d)" % row_count)
+	EventScheduler.dismiss("u2")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check((bell.get("_badge") as Label).text == "1", "badge drops to 1 after a dismiss")
+	EventScheduler.dismiss_all()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(not (bell.get("_badge") as Label).visible, "badge hidden after dismiss_all")
+	bell.queue_free()
+	await get_tree().process_frame
+	EventScheduler.reset()
 
 # UI: the save/load screens and the Esc pause menu build, gate their CTAs, and
 # the save screen actually writes the named slot.
@@ -861,6 +1486,56 @@ func _test_queue_sell() -> void:
 	_check(str(summary.get("port", "")) != "" and MatchState.get_pending_transport_shipments().size() > before,
 		"queue_sell ships to a port")
 
+# MarketState.execute_sale is the unified low-level sell primitive. The three tests
+# below pin the three axes the option dict toggles, so any drift in queue_sell's or
+# Production's wrapper is caught by something tighter than the E2E suite.
+
+func _test_market_execute_sale() -> void:
+	# Default behaviour: consume from the tile, log to ledger, defer revenue until
+	# the shipment lands at the port. Mirrors the queue_sell path.
+	Stockpile.add("tile_3_8", "g_001", 12)
+	var ships_before := MatchState.get_pending_transport_shipments().size()
+	var txn_before := MatchState.get_oneoff_transaction_rows().size()
+	var result: Dictionary = MarketState.execute_sale("tile_3_8", {"g_001": 12})
+	_check(not result.is_empty(), "execute_sale returns a result")
+	_check(Stockpile.get_at_tile("tile_3_8", "g_001") == 0, "execute_sale consumes from the tile")
+	_check(bool(result.get("deferred", false)) and MatchState.get_pending_transport_shipments().size() > ships_before,
+		"execute_sale queues a shipment (deferred sale)")
+	_check(MatchState.get_oneoff_transaction_rows().size() > txn_before,
+		"execute_sale logs a transaction row by default")
+	_check(float(result.get("transport_cost", -1.0)) == 0.0,
+		"execute_sale: transport not paid from seller unless requested")
+
+func _test_market_execute_sale_skip_consume() -> void:
+	# skip_consume: the goods are already in the caller's hand (production output);
+	# the stockpile is not touched.
+	var tile := "tile_3_8"
+	Stockpile.consume(tile, "g_001", 1 << 30)  # drain
+	var before: int = Stockpile.get_at_tile(tile, "g_001")
+	var result: Dictionary = MarketState.execute_sale(tile, {"g_001": 5},
+		{"skip_consume": true, "log_oneoff": false})
+	_check(not result.is_empty(), "execute_sale(skip_consume) sells without stockpile")
+	_check(Stockpile.get_at_tile(tile, "g_001") == before,
+		"execute_sale(skip_consume) does not touch the stockpile")
+	_check(int(result.get("total_qty", 0)) == 5,
+		"execute_sale(skip_consume) sells the full requested quantity")
+
+func _test_market_execute_sale_pay_transport() -> void:
+	# pay_transport_from_seller: the seller eats the freight cost upfront. This is
+	# the difference between Production's output-routed sales and the gross manual
+	# sells from queue_sell.
+	var tile := "tile_3_8"
+	Stockpile.add(tile, "g_001", 20)
+	var money_before: float = MatchState.money
+	var result: Dictionary = MarketState.execute_sale(tile, {"g_001": 20},
+		{"pay_transport_from_seller": true, "log_oneoff": false})
+	_check(not result.is_empty(), "execute_sale(pay_transport) returns a result")
+	var paid: float = float(result.get("transport_cost", 0.0))
+	_check(paid > 0.0, "execute_sale(pay_transport) charges a non-zero transport cost")
+	_check(absf((money_before - paid) - MatchState.money) < 0.01,
+		"execute_sale(pay_transport) deducts transport upfront (paid=%.4f, Δmoney=%.4f)"
+			% [paid, money_before - MatchState.money])
+
 func _test_move_extras() -> void:
 	var preview: Dictionary = MatchState.preview_move("tile_12_4", "tile_12_2", {"g_001": 5})
 	_check(preview.has("turns") and preview.has("cost") and preview.has("per_turn"),
@@ -1025,7 +1700,6 @@ func _test_scripts_parse() -> void:
 	for path in [
 		"res://scripts/stockpile_view.gd",
 		"res://scripts/infra_grid.gd",
-		"res://scripts/tile_info_panel.gd",
 		"res://scripts/tile_info_panel_v2.gd",
 		"res://scripts/building_detail_panel.gd",
 		"res://scripts/world_map.gd",
@@ -1054,6 +1728,9 @@ func _test_scripts_parse() -> void:
 		"res://scripts/construction.gd",
 		"res://scripts/construction_missing_dialog.gd",
 		"res://scripts/transport_service.gd",
+		"res://scripts/event_scheduler.gd",
+		"res://scripts/modifier_state.gd",
+		"res://scripts/notification_bell.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 
@@ -1124,19 +1801,30 @@ func _test_main_scene_instantiates() -> void:
 	add_child(inst)
 	await get_tree().process_frame
 	var panel: Node = inst.find_child("TileInfoPanel", true, false)
-	var tl = panel.get("title_label") if panel != null else null
+	_check(panel != null and panel.has_method("show_tile"),
+		"main.tscn instantiates; the tile panel exists and exposes show_tile")
+	# Exactly one tile panel: the classic (v1) panel is gone for good.
+	var hud_content: Node = inst.find_child("HUDContent", true, false)
+	var panel_count := 0
+	if hud_content != null:
+		for child in hud_content.get_children():
+			if str(child.name).begins_with("TileInfoPanel"):
+				panel_count += 1
+	_check(panel_count == 1, "exactly one tile panel lives under HUDContent (found %d)" % panel_count)
 	# Guards the theme-cascade fix: DS variations must actually resolve on panels.
+	var tl = panel.get("_title_label") if panel != null else null
 	_check(tl != null and tl.get_theme_font_size("font_size") == DS.FS["H1"],
 		"DS theme reaches the tile panel (title uses the DS Title font)")
-	var ok: bool = panel != null \
-		and panel.get("tile_size_chart") != null \
-		and panel.get("title_label") != null \
-		and panel.get("infrastructure_table") != null \
-		and panel.get("close_button") != null \
-		and panel.get("tile_image_banner") != null \
-		and panel.get("_banner_summary_content") != null \
-		and panel.get("_right_scroll_content") != null
-	_check(ok, "main.tscn instantiates; TileInfoPanel @onready nodes resolve")
+	# Selecting a tile through the terrain layer's click signal opens the panel.
+	var terrain: Node = inst.find_child("TerrainLayer", true, false)
+	if panel != null and terrain != null and not terrain.tiles.is_empty():
+		var td: Dictionary = terrain.tiles[terrain.tiles.keys()[0]]
+		terrain.tile_selected.emit(td)
+		await get_tree().process_frame
+		_check(panel.visible, "selecting a tile opens the tile panel")
+		panel.hide()
+	else:
+		_check(false, "terrain layer with tiles available for tile-select test")
 	inst.queue_free()
 	await get_tree().process_frame
 

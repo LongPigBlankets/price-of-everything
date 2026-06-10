@@ -1,11 +1,9 @@
 extends Node2D
 
 @onready var terrain_layer: HexMap = %TerrainLayer
-@onready var info_panel: PanelContainer = %TileInfoPanel
 @onready var building_panel: PanelContainer = %BuildingDetailPanel
-## Alternate tabbed Tile View Panel (TVP v2), instantiated in code and shown only
-## while the `swap tvp` debug cheat has flipped MatchState.use_alt_tvp.
-var info_panel_v2: PanelContainer = null
+## The tabbed Tile View Panel, instantiated in code in _ready.
+var info_panel: PanelContainer = null
 ## The most recently selected tile, kept so a live TVP swap can re-render it.
 var _last_selected_tile: Dictionary = {}
 ## True while the v2 stockpile "Move/Sell" flow is picking a destination tile.
@@ -33,7 +31,6 @@ var _stockpile_select_prompt: PanelContainer = null
 var _pending_stockpile_selection: Dictionary = {}
 var _dim_overlay: ColorRect = null
 var _stockpile_legend: PanelContainer = null
-var _pending_move: Dictionary = {}  # {source, goods, recurring} while picking a Move destination
 var _picking_buy_tile := false  # true while picking a Purchases-tab delivery tile
 # --- Market "Move" transfer flow ---
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
@@ -83,9 +80,6 @@ func _ready() -> void:
 	terrain_layer.tile_selected.connect(_on_tile_selected)
 	terrain_layer.stockpile_destination_selected.connect(_on_stockpile_destination_selected)
 	terrain_layer.survey_tile_clicked.connect(_on_survey_tile_clicked)
-	info_panel.building_clicked.connect(building_panel.show_building)
-	info_panel.move_goods_requested.connect(_on_move_goods_requested)
-	info_panel.survey_requested.connect(_on_survey_tile_clicked)
 	MatchState.buy_tile_pick_requested.connect(_on_buy_tile_pick_requested)
 	MatchState.transfer_for_good_requested.connect(_on_transfer_requested)
 	MatchState.purchase_for_good_requested.connect(_on_purchase_requested)
@@ -96,6 +90,8 @@ func _ready() -> void:
 	if search_overlay.has_signal("recipe_build_requested"):
 		search_overlay.recipe_build_requested.connect(_on_search_recipe_build_requested)
 	MatchState.encyclopedia_entry_requested.connect(_on_encyclopedia_entry_requested)
+	MatchState.focus_tile_requested.connect(_on_focus_tile_requested)
+	MatchState.focus_building_requested.connect(_on_focus_building_requested)
 
 	TurnManager.phase_started.connect(_on_phase_started)
 	TurnManager.turn_advanced.connect(_on_turn_advanced)
@@ -147,15 +143,14 @@ func _ready() -> void:
 	_hud.add_child(_unlock_dialog)
 	MatchState.unlock_granted.connect(_on_unlock_granted)
 
-	# Alternate tabbed Tile View Panel (TVP v2). Hidden until `swap tvp` flips the
-	# MatchState flag; lives next to the classic panel under HUDContent.
-	info_panel_v2 = load("res://scripts/tile_info_panel_v2.gd").new()
-	info_panel_v2.name = "TileInfoPanelV2"
-	hud_content.add_child(info_panel_v2)
-	info_panel_v2.building_clicked.connect(_on_v2_building_clicked)
-	info_panel_v2.pick_destination_requested.connect(_on_v2_pick_destination)
-	info_panel_v2.survey_requested.connect(_on_survey_tile_clicked)
-	MatchState.alt_tvp_changed.connect(_on_alt_tvp_changed)
+	# The tabbed Tile View Panel; built in code, lives under HUDContent. Named
+	# "TileInfoPanel" so building_detail_panel's panel-stacking lookups find it.
+	info_panel = load("res://scripts/tile_info_panel_v2.gd").new()
+	info_panel.name = "TileInfoPanel"
+	hud_content.add_child(info_panel)
+	info_panel.building_clicked.connect(_on_v2_building_clicked)
+	info_panel.pick_destination_requested.connect(_on_v2_pick_destination)
+	info_panel.survey_requested.connect(_on_survey_tile_clicked)
 
 	# Debug cheat terminal (toggle with the ` key)
 	add_child(load("res://scripts/debug_terminal.gd").new())
@@ -210,13 +205,7 @@ func _rebuild_after_load() -> void:
 
 func _on_tile_selected(tile_data: Dictionary) -> void:
 	_last_selected_tile = tile_data
-	if MatchState.use_alt_tvp and info_panel_v2 != null:
-		info_panel.hide()
-		info_panel_v2.show_tile(tile_data)
-	else:
-		if info_panel_v2 != null:
-			info_panel_v2.hide()
-		info_panel.show_tile(tile_data)
+	info_panel.show_tile(tile_data)
 
 func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
 	# Clicking a tile in the Surveying mapmode opens its survey dialog. Fully
@@ -250,16 +239,6 @@ func _on_v2_building_clicked(building: Dictionary) -> void:
 	building_panel.move_to_front()
 	building_panel.show_building(building)
 
-func _on_alt_tvp_changed(_enabled: bool) -> void:
-	# Live swap: if a tile panel is open, re-render the same tile in the now-active
-	# panel so the cheat takes effect without needing to re-click the tile.
-	var was_open := info_panel.visible or (info_panel_v2 != null and info_panel_v2.visible)
-	info_panel.hide()
-	if info_panel_v2 != null:
-		info_panel_v2.hide()
-	if was_open and not _last_selected_tile.is_empty():
-		_on_tile_selected(_last_selected_tile)
-
 func _on_output_stockpile_selection_started(selection: Dictionary) -> void:
 	_pending_stockpile_selection = selection.duplicate()
 	var good_id: String = selection.get("good_id", "")
@@ -275,98 +254,6 @@ func _on_output_stockpile_selection_cancelled() -> void:
 
 func _logistics_overlay() -> Node:
 	return get_tree().get_first_node_in_group("logistics_overlay")
-
-func _on_move_goods_requested(source_tile: String, goods_qtys: Dictionary, recurring: bool) -> void:
-	_pending_move = {"source": source_tile, "goods": goods_qtys, "recurring": recurring}
-	terrain_layer.begin_stockpile_destination_selection("")
-	_enter_stockpile_ui_mode()
-	var ov := _logistics_overlay()
-	if ov != null and ov.has_method("set_move_preview"):
-		ov.set_move_preview(source_tile, goods_qtys)
-
-func _complete_move(tile_data: Dictionary) -> void:
-	var move := _pending_move
-	_pending_move = {}
-	terrain_layer.end_stockpile_destination_selection()
-	_exit_stockpile_ui_mode()
-	var ov := _logistics_overlay()
-	if ov != null and ov.has_method("clear_move_preview"):
-		ov.clear_move_preview()
-	var dest: String = tile_data.get("id", "")
-	if dest == "" or dest == str(move.get("source", "")):
-		return
-	move["dest"] = dest
-	var total := 0
-	for q in move.get("goods", {}).values():
-		total += int(q)
-	if total > MatchState.LARGE_SHIPMENT_THRESHOLD:
-		_show_large_move_dialog(move)
-	else:
-		_execute_move(move)
-
-func _execute_move(move: Dictionary) -> void:
-	var summary: Dictionary = MatchState.queue_move(str(move.source), str(move.dest), move.get("goods", {}))
-	if summary.is_empty():
-		return
-	MatchState.request_toast(_format_move_toast(summary, str(move.dest)), "success")
-	if bool(move.get("recurring", false)):
-		MatchState.add_recurring_move(str(move.source), str(move.dest), move.get("goods", {}))
-
-func _split_move(move: Dictionary) -> void:
-	var goods: Dictionary = move.get("goods", {})
-	var now_half: Dictionary = {}
-	var next_half: Dictionary = {}
-	for g in goods.keys():
-		var q := int(goods[g])
-		now_half[g] = q / 2
-		next_half[g] = q - (q / 2)
-	_execute_move({"source": move.source, "dest": move.dest, "goods": now_half, "recurring": move.get("recurring", false)})
-	MatchState.add_scheduled_move(str(move.source), str(move.dest), next_half)
-	MatchState.request_toast("Second half ships next turn (split to avoid the large-shipment surcharge).", "caution")
-
-func _show_large_move_dialog(move: Dictionary) -> void:
-	var preview: Dictionary = MatchState.preview_move(str(move.source), str(move.dest), move.get("goods", {}))
-	var turns := int(preview.get("turns", 0))
-	var dialog := AcceptDialog.new()
-	dialog.title = "Large shipment"
-	dialog.dialog_text = "Your shipment is too large and will incur additional transport costs.\n\nThis shipment will cost £%.2f per turn for %d turn%s while transiting. Are you sure you want to do this?" % [
-		float(preview.get("per_turn", 0.0)), turns, "" if turns == 1 else "s"]
-	dialog.ok_button_text = "Confirm"
-	dialog.add_cancel_button("Cancel shipment")
-	dialog.add_button("Split over the next 2 turns", true, "split")
-	dialog.confirmed.connect(func() -> void: _execute_move(move))
-	dialog.custom_action.connect(func(action: StringName) -> void:
-		if action == "split":
-			_split_move(move)
-		dialog.hide())
-	dialog.visibility_changed.connect(func() -> void:
-		if not dialog.visible:
-			dialog.queue_free())
-	add_child(dialog)
-	dialog.popup_centered()
-
-func _format_move_toast(summary: Dictionary, dest: String) -> String:
-	return "%s will ship next turn from %s to %s" % [
-		_format_goods_phrase(summary.get("items", [])),
-		Catalog.tile_label(str(summary.get("source", ""))), Catalog.tile_label(dest)
-	]
-
-func _format_goods_phrase(items: Array) -> String:
-	if items.is_empty():
-		return "Nothing"
-	var n := items.size()
-	if n == 1:
-		return "%d units of %s" % [int(items[0].qty), Catalog.get_display_name(str(items[0].good_id))]
-	if n == 2:
-		return "%d units of %s and %d units of %s" % [
-			int(items[0].qty), Catalog.get_display_name(str(items[0].good_id)),
-			int(items[1].qty), Catalog.get_display_name(str(items[1].good_id))]
-	var rest_qty := 0
-	for i in range(2, n):
-		rest_qty += int(items[i].qty)
-	return "%d units of %s, %d units of %s and %d units of %d other goods" % [
-		int(items[0].qty), Catalog.get_display_name(str(items[0].good_id)),
-		int(items[1].qty), Catalog.get_display_name(str(items[1].good_id)), rest_qty, n - 2]
 
 func _on_transfer_requested(good_id: String) -> void:
 	_build_transfer_dialog()
@@ -1032,14 +919,38 @@ func _on_go_to_tile_stockpile(tile_id: String) -> void:
 	if td.is_empty():
 		return
 	_last_selected_tile = td
-	if MatchState.use_alt_tvp and info_panel_v2 != null:
-		info_panel.hide()
-		info_panel_v2._active_tab = "stock"
-		info_panel_v2.show_tile(td)
-	else:
-		if info_panel_v2 != null:
-			info_panel_v2.hide()
-		info_panel.show_tile(td)
+	info_panel._active_tab = "stock"
+	info_panel.show_tile(td)
+
+## Deep-link target for notifications etc: centre the camera on the tile and
+## open its panel. Emitted via MatchState.focus_tile_requested.
+func _on_focus_tile_requested(tile_id: String) -> void:
+	var td := _focus_camera_on_tile(tile_id)
+	if td.is_empty():
+		return
+	_last_selected_tile = td
+	info_panel.show_tile(td)
+
+## Deep-link target for a specific building (starvation notifications): centre on
+## its tile and open the building detail panel rather than the tile panel.
+func _on_focus_building_requested(instance_id: String) -> void:
+	var building: Dictionary = MatchState.get_building(instance_id)
+	if building.is_empty():
+		return
+	_focus_camera_on_tile(str(building.get("tile_id", "")))
+	building_panel.move_to_front()
+	building_panel.show_building(building)
+
+## Centre the camera on a tile; returns its tile_data ({} if unknown).
+func _focus_camera_on_tile(tile_id: String) -> Dictionary:
+	var coord := terrain_layer.id_to_coord(tile_id)
+	if coord == Vector2i(-1, -1) or not terrain_layer.tiles.has(coord):
+		return {}
+	var cam := get_viewport().get_camera_2d()
+	if cam != null:
+		var cell := terrain_layer.map_coord_for_tile_coord(coord)
+		cam.position = terrain_layer.to_global(terrain_layer.map_to_local(cell))
+	return terrain_layer.tiles[coord]
 
 func _on_v2_pick_destination() -> void:
 	# Enter map pick mode but keep the v2 panel visible; the result returns via
@@ -1051,8 +962,7 @@ func _on_stockpile_destination_selected(tile_data: Dictionary) -> void:
 	if _v2_picking_dest:
 		_v2_picking_dest = false
 		terrain_layer.end_stockpile_destination_selection()
-		if info_panel_v2 != null:
-			info_panel_v2.on_destination_picked(str(tile_data.get("id", "")))
+		info_panel.on_destination_picked(str(tile_data.get("id", "")))
 		return
 	if not _buy.is_empty():
 		_on_buy_tile_picked(tile_data)
@@ -1065,9 +975,6 @@ func _on_stockpile_destination_selected(tile_data: Dictionary) -> void:
 		terrain_layer.end_stockpile_destination_selection()
 		_exit_stockpile_ui_mode()
 		MatchState.buy_tile_picked.emit(str(tile_data.get("id", "")))
-		return
-	if not _pending_move.is_empty():
-		_complete_move(tile_data)
 		return
 	if _pending_stockpile_selection.is_empty():
 		return

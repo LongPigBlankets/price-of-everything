@@ -5,7 +5,6 @@
 [ext_resource type="Script" uid="uid://dg8tjsup0xurr" path="res://scripts/hex_map.gd" id="2_0wfyh"]
 [ext_resource type="Script" uid="uid://camy6u2jwixt4" path="res://scripts/river_visuals.gd" id="3_river"]
 [ext_resource type="Script" uid="uid://dpj2cadgfaauj" path="res://scenes/building_visuals.gd" id="4_choun"]
-[ext_resource type="Script" uid="uid://dawfi8ltfxfwf" path="res://scripts/tile_info_panel.gd" id="4_jyhfs"]
 [ext_resource type="Script" uid="uid://cfsobrtsqmg7x" path="res://scripts/road_visuals.gd" id="4_roads"]
 [ext_resource type="Script" uid="uid://bt2kwldefvxx1" path="res://scripts/camera_controller.gd" id="5_tbgi4"]
 [ext_resource type="Script" uid="uid://dvo2xw2gwx3y4" path="res://scripts/map_overlay.gd" id="6_eb6dy"]
@@ -25,7 +24,6 @@
 [ext_resource type="Script" uid="uid://vthsyq3fe101" path="res://scripts/top_bar.gd" id="17_muem4"]
 [ext_resource type="PackedScene" uid="uid://i4lmf80mnj8" path="res://scenes/money_panel.tscn" id="18_0ld40"]
 [ext_resource type="PackedScene" uid="uid://xcbva8p8n4ka" path="res://scenes/take_loan_dialog.tscn" id="18_gqmmt"]
-[ext_resource type="Script" uid="uid://d2f2bd1vkckvr" path="res://scripts/tile_size_chart.gd" id="19_t88fa"]
 [ext_resource type="Texture2D" uid="uid://ckuqeih7k3tec" path="res://assets/icons/ui_icons/construct_icon.png" id="20_construct"]
 [ext_resource type="Texture2D" uid="uid://p1gf548oa3wf" path="res://assets/icons/ui_icons/resources_icon.png" id="21_resources"]
 [ext_resource type="Texture2D" uid="uid://bv1mjv1hjfojl" path="res://assets/icons/ui_icons/buildings_icon.png" id="22_buildings"]
@@ -460,113 +458,6 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_bottom_button_pressed"
 theme_override_styles/hover = SubResource("StyleBoxFlat_bottom_button_hover")
 theme_override_styles/focus = SubResource("StyleBoxFlat_bottom_button_hover")
 expand_icon = true
-
-[node name="TileInfoPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=361507145]
-unique_name_in_owner = true
-visible = false
-custom_minimum_size = Vector2(760, 0)
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -790.0
-offset_top = 30.0
-offset_right = -30.0
-offset_bottom = 660.0
-grow_horizontal = 0
-mouse_filter = 0
-theme_override_styles/panel = ExtResource("8_tipki")
-script = ExtResource("4_jyhfs")
-
-[node name="MarginContainer" type="MarginContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel" unique_id=1770119683]
-layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
-
-[node name="ContentRow" type="HBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer" unique_id=615654805]
-layout_mode = 2
-size_flags_vertical = 3
-theme_override_constants/separation = 12
-
-[node name="ChartColumn" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow"]
-custom_minimum_size = Vector2(336, 0)
-layout_mode = 2
-size_flags_horizontal = 0
-size_flags_vertical = 3
-theme_override_constants/separation = 8
-
-[node name="TileSizeChart" type="Control" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/ChartColumn" unique_id=1435297557]
-custom_minimum_size = Vector2(336, 320)
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-script = ExtResource("19_t88fa")
-
-[node name="InfrastructureSeparator" type="HSeparator" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/ChartColumn" unique_id=288549859]
-layout_mode = 2
-
-[node name="InfrastructureTable" type="GridContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/ChartColumn" unique_id=117922161]
-layout_mode = 2
-theme_override_constants/h_separation = 8
-theme_override_constants/v_separation = 4
-columns = 4
-
-[node name="VBoxContainer" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow" unique_id=332018308]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="HeaderRow" type="HBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer" unique_id=1767854924]
-layout_mode = 2
-
-[node name="TitleLabel" type="Label" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/HeaderRow" unique_id=1046508715]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_stretch_ratio = 20.0
-theme_type_variation = &"Title"
-text = "Tile Info"
-
-[node name="CloseButton" type="Button" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/HeaderRow" unique_id=1603141935]
-custom_minimum_size = Vector2(28, 28)
-layout_mode = 2
-localize_numeral_system = false
-theme_override_font_sizes/font_size = 14
-text = "X"
-
-[node name="BannerSummary" type="PanelContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="BannerMargin" type="MarginContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/BannerSummary"]
-layout_mode = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
-
-[node name="BannerContent" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/BannerSummary/BannerMargin"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="TileImageBanner" type="PanelContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/BannerSummary/BannerMargin/BannerContent" unique_id=1263267594]
-clip_contents = true
-custom_minimum_size = Vector2(240, 150)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_styles/panel = SubResource("StyleBoxFlat_tile_banner")
-
-[node name="RightScroll" type="ScrollContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-horizontal_scroll_mode = 0
-
-[node name="RightScrollContent" type="VBoxContainer" parent="UILayer/HUD/HUDContent/TileInfoPanel/MarginContainer/ContentRow/VBoxContainer/RightScroll"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
 
 [node name="BuildingDetailPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent" unique_id=1081644289]
 unique_name_in_owner = true

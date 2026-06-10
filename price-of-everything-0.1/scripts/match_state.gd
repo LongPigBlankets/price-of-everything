@@ -106,11 +106,6 @@ var sell_mode: int = SellMode.STOCKPILE_ALL
 enum RouteObjective { FASTEST, CHEAPEST, BLENDED }
 var route_objective: int = RouteObjective.FASTEST
 
-# Debug-only: when true the alternate tabbed Tile View Panel (TVP v2) is shown
-# instead of the classic one. Toggled at runtime via the `swap tvp` cheat.
-# Session-only; never persisted. Defaults to the alternate panel; `swap tvp`
-# flips back to the classic one.
-var use_alt_tvp: bool = true
 
 # Debug-only: when true the bottom menu shows the alternate icon set instead of
 # the old circular icon set. Toggled at runtime via the `swap bottom menu` cheat.
@@ -165,10 +160,15 @@ signal unlock_granted(title: String, description: String, via_condition: bool)
 signal tile_survey_completed(tile_id: String, deposit_goods: Array)
 ## A shipment arrived at a full tile and is now waiting to unload.
 signal overflow_shipment_held(record: Dictionary)
-## Debug cheat `swap tvp` flipped which Tile View Panel is active.
-signal alt_tvp_changed(enabled: bool)
 ## Debug cheat `swap bottom menu` flipped which bottom-menu icon set is active.
 signal alt_bottom_menu_changed(enabled: bool)
+## A UI surface (notification deep-link, etc.) asks the map to focus a tile:
+## centre the camera on it and open its tile panel. world_map handles it.
+signal focus_tile_requested(tile_id: String)
+## Like focus_tile_requested, but opens the building detail panel for a specific
+## building instance (centring the camera on its tile). Used by starvation
+## notifications' "Go to".
+signal focus_building_requested(instance_id: String)
 
 # --- Initialization ---
 func _ready() -> void:
@@ -224,8 +224,10 @@ func add_building(building_id: String, recipe_id: String, tile_id: String, owner
 	if not tile_buildings.has(tile_id):
 		tile_buildings[tile_id] = []
 	tile_buildings[tile_id].append(instance_id)
-	
+
 	building_added.emit(instance)
+	# Building-driven research conditions (e.g. Mining Mastery) re-evaluate here.
+	_check_unlock_conditions()
 	return instance_id
 
 func remove_building(instance_id: String) -> bool:
@@ -546,6 +548,12 @@ func record_unlock_progress(action: String, object: String, amount: int = 1) -> 
 	_unlock_progress[key] = int(_unlock_progress.get(key, 0)) + amount
 	_check_unlock_conditions()
 
+# Staple ores whose presence (one operating mine each) earns "Mining Mastery".
+const MINING_MASTERY_DEPOSITS := [
+	"coal", "iron_ore", "copper_ore",
+	"basic_salt", "limestone", "bauxite_ore",
+]
+
 func _check_unlock_conditions() -> void:
 	for d in _unlock_defs:
 		var title := str(d.title)
@@ -560,9 +568,34 @@ func _check_unlock_conditions() -> void:
 				break
 		if not prereqs_met:
 			continue
+		# Special conditions the flat action|object accumulator can't express are
+		# recognised by title and evaluated against live state.
+		if title == "Mining Mastery":
+			if has_mine_for_each_staple_ore():
+				grant_unlock(title, true)
+			continue
 		var key := (str(d.action) + "|" + str(d.object)).to_lower()
 		if int(_unlock_progress.get(key, 0)) >= int(d.qty):
 			grant_unlock(title, true)
+
+## True when the player operates at least one mine for every staple ore — i.e.
+## owns a live building whose recipe has a `deposit` requirement matching each
+## entry in MINING_MASTERY_DEPOSITS. Drives the "Mining Mastery" research unlock.
+func has_mine_for_each_staple_ore() -> bool:
+	var seen := {}
+	for inst in buildings.values():
+		if not is_player_owned(inst):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
+		if recipe.is_empty():
+			continue
+		for req in recipe.get("requirements", []):
+			if str(req.get("type", "")) == "deposit":
+				seen[str(req.get("value", ""))] = true
+	for dep in MINING_MASTERY_DEPOSITS:
+		if not seen.has(str(dep)):
+			return false
+	return true
 
 # --- Public API: survey range ---
 func survey_range() -> int:
@@ -704,6 +737,11 @@ func reset() -> void:
 	transaction_log.clear()
 	move_log.clear()
 	input_tile_only.clear()
+	# Research state is match-scoped: a reset (new game / scenario start) must
+	# clear it, or unlocks leak from the previous match. (Load overwrites it via
+	# import_state, so this only bites the reset-without-import paths.)
+	unlocked_titles.clear()
+	_unlock_progress.clear()
 	_next_instance_counter = 0
 	ruleset = DEFAULT_RULESET.duplicate(true)
 	state_reset.emit()
@@ -849,18 +887,6 @@ func _requote_shipment_routes() -> void:
 func set_sell_mode(mode: int) -> void:
 	sell_mode = mode
 	sell_mode_changed.emit(mode)
-
-## Debug cheat: switch between the classic and alternate Tile View Panels.
-## Returns the new state. Session-only, never persisted.
-func set_use_alt_tvp(enabled: bool) -> bool:
-	if enabled == use_alt_tvp:
-		return use_alt_tvp
-	use_alt_tvp = enabled
-	alt_tvp_changed.emit(use_alt_tvp)
-	return use_alt_tvp
-
-func toggle_use_alt_tvp() -> bool:
-	return set_use_alt_tvp(not use_alt_tvp)
 
 ## Debug cheat: switch between the current and alternate bottom-menu icon sets.
 ## Returns the new state. Session-only, never persisted.
@@ -1376,46 +1402,20 @@ func sell_all_to_market(params: Dictionary, log_oneoff: bool = true) -> Dictiona
 	return {"total_qty": total_qty, "revenue": total_revenue, "tiles": tiles_sold}
 
 func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = true) -> Dictionary:
-	# Sell specific goods/qtys from a tile: ship to the nearest port, pay out on arrival.
-	if source_tile == "":
+	# Sell specific goods/qtys from a tile: consume from the stockpile, ship to the
+	# nearest port, pay out on arrival. All of that lives in MarketState.execute_sale
+	# now; this wrapper preserves the public API (note: returns `revenue`, not
+	# `total_revenue`, for back-compat with existing callers).
+	var result := MarketState.execute_sale(source_tile, goods_qtys, {"log_oneoff": log_oneoff})
+	if result.is_empty():
 		return {}
-	var route := TransportService.route_to_nearest_port(source_tile)
-	var port := str(route.get("port", ""))
-	var turns: int = int(route.get("turns", 0))
-	var items: Array = []
-	var total_qty := 0
-	var total_revenue := 0.0
-	for good_id in goods_qtys.keys():
-		var want := int(goods_qtys[good_id])
-		if want <= 0:
-			continue
-		var sold := Stockpile.consume(source_tile, str(good_id), want)
-		if sold <= 0:
-			continue
-		var revenue := float(sold) * MarketState.get_price(str(good_id))
-		items.append({"good_id": str(good_id), "qty": sold, "revenue": revenue})
-		total_qty += sold
-		total_revenue += revenue
-	if items.is_empty():
-		return {}
-	var sale_record := {"tile_id": source_tile, "items": items, "total_qty": total_qty, "total_revenue": total_revenue}
-	if port != "" and turns >= 1:
-		queue_transport_shipment({
-			"is_sale": true, "source_tile": source_tile, "destination_tile": port,
-			"sale_record": sale_record.duplicate(true),
-			"turns_remaining": turns, "transport_turns": turns,
-			"tiles": route.get("tiles", []), "path": route.get("path", []), "legs": route.get("legs", []),
-		})
-	else:
-		for it in items:
-			add_money(float(it.revenue))
-		emit_stockpile_market_sale_completed(sale_record)
-		if port != "":
-			market_sale_arrived_at_port.emit(port, total_revenue)
-	if log_oneoff:
-		for it in items:
-			log_market_sale(source_tile, port, str(it.good_id), int(it.qty), turns)
-	return {"items": items, "total_qty": total_qty, "revenue": total_revenue, "turns": turns, "port": port}
+	return {
+		"items": result.items,
+		"total_qty": result.total_qty,
+		"revenue": result.total_revenue,
+		"turns": result.turns,
+		"port": result.port,
+	}
 
 ## A shipment couldn't fully unload at a full tile — hold the remainder so the
 ## goods aren't lost; it retries each turn.

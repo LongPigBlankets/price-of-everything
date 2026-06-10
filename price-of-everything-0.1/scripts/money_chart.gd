@@ -1,7 +1,7 @@
 extends Control
 # Stacked line/area chart of the last N turns of money, split by colour-coded series.
 # Toggles between "revenue" and "costs". Axes are kept thin and skinny to match the
-# tile-view panel (tile_size_chart.gd uses the same light-blue BORDER_COLOR treatment).
+# tile-view panel (the same light-blue BORDER_COLOR treatment).
 
 const AXIS_COLOR := Color(0.7, 0.85, 1.0, 0.65)
 const GRID_COLOR := Color(0.7, 0.85, 1.0, 0.14)

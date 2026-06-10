@@ -1,7 +1,6 @@
 extends PanelContainer
-## Alternate, tabbed Tile View Panel (TVP v2) — "Direction B" modular dashboard.
+## The Tile View Panel — tabbed modular dashboard.
 ##
-## Shown only when the `swap tvp` debug cheat flips MatchState.use_alt_tvp.
 ## Pattern: a persistent banner, then a row of four STATUS METRIC TILES that act
 ## as the tab bar (each shows a status pip + a status-coloured headline number),
 ## then the selected tab's body. The Stockpile pane renders stored goods as a

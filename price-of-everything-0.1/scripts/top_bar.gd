@@ -14,6 +14,15 @@ func _ready() -> void:
 	MatchState.build_rejected_no_funds.connect(_on_build_rejected_no_funds)
 	_refresh_money_display(MatchState.money)
 	_add_save_button()
+	_add_notification_bell()
+
+func _add_notification_bell() -> void:
+	# The bell sits at the right end of the top-bar HBox, just inside the money
+	# row's container — it's a peer to MoneyWidget and the (programmatic) Save
+	# button. EventScheduler signals drive its colour, badge and dropdown.
+	var bell: Control = load("res://scripts/notification_bell.gd").new()
+	bell.name = "NotificationBell"
+	money_widget.get_parent().add_child(bell)
 
 func _add_save_button() -> void:
 	# Quicksave to the "quicksave" slot (named saves via the debug terminal /

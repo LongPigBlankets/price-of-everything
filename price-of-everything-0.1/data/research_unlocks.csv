@@ -61,7 +61,7 @@ People Management,Shift Supervisors,,,,II,Own,land,5,units,Union Liaison Offices
 People Management,Specialist Apprenticeships,Union Liaison Offices,,,III,Run,Continuous Improvement Team,15,turns,Continuous Improvement Teams,team,Small teams identify bottlenecks across operations.
 Mining and Surveying,"","","","",I,Build,Mine,2,units,Overburden Mapping,om,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
 Mining and Surveying,"","","","",I,Own,Mine,4,units,Shaft Ventilation Teams,svt,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
-Mining and Surveying,"","","","",I,Run,Mine,8,turns,Ore Stockpile Sorting,oss,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,"","","","",I,Operate,Staple Ore Mines,6,ores,Mining Mastery,+5%,"Operate a mine for each of the six staple ores (coal, iron, copper, salt, limestone, bauxite) at once to gain +5% extraction output for 30 turns."
 Mining and Surveying,"","","","",I,Buy,Mine,120,units,Blast Pattern Drilling,bpd,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
 Mining and Surveying,"","","","",I,Sell,Mine,160,units,Tailings Reclaim Pads,trp,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
 Mining and Surveying,"","","","",I,Run,Mine,85,percentage,Remote Pump Monitoring,rpm,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."

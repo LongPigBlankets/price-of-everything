@@ -21,6 +21,8 @@ extends PanelContainer
 
 const HEADER_HEIGHT := 40.0
 const PANEL_EDGE_MARGIN := 20.0
+# The top bar is 36px tall; keep the panel 20px clear of it so it never overlaps.
+const TOP_BAR_CLEARANCE := 56.0
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 static var _suppress_tile_only_warning := false  # session-wide "Don't show again"
 const UPGRADE_BUTTON_SIZE := Vector2(40, 40)
@@ -1172,15 +1174,11 @@ func _position_visible_building_panels() -> void:
 		return
 	var viewport_size := get_viewport().get_visible_rect().size
 	var right_edge := viewport_size.x - PANEL_EDGE_MARGIN
-	var top_edge := 30.0
+	var top_edge := TOP_BAR_CLEARANCE
 	var tile_panel := get_parent().get_node_or_null("TileInfoPanel") as Control
-	# The alternate (tabbed) TVP, when active, takes precedence as the anchor panel.
-	var tile_panel_v2 := get_parent().get_node_or_null("TileInfoPanelV2") as Control
-	if tile_panel_v2 != null and tile_panel_v2.visible:
-		tile_panel = tile_panel_v2
 	if tile_panel != null and tile_panel.visible:
 		right_edge = tile_panel.global_position.x - PANEL_EDGE_MARGIN
-		top_edge = tile_panel.global_position.y
+		top_edge = maxf(tile_panel.global_position.y, TOP_BAR_CLEARANCE)
 	for i in range(panels.size()):
 		var panel: PanelContainer = panels[i]
 		if panel.custom_minimum_size.x > 0.0 and panel.custom_minimum_size.y > 0.0:
@@ -1767,6 +1765,14 @@ func _build_status_icon_column() -> void:
 	panel_vbox.add_child(rag_panel)
 	panel_vbox.move_child(rag_panel, flow_summary.get_index() + 1)
 	status_icon_column.visible = false
+	# The close (X) was reparented to the top of the rail; with the rail hidden it
+	# vanished with it. Return it to the header row so the panel keeps its X.
+	var header_row := panel_vbox.get_node_or_null("HeaderRow")
+	if header_row != null and close_button.get_parent() != header_row:
+		close_button.get_parent().remove_child(close_button)
+		close_button.custom_minimum_size = Vector2(28, 28)
+		close_button.size_flags_horizontal = Control.SIZE_SHRINK_END
+		header_row.add_child(close_button)
 	var scroll := fields_vbox.get_parent()
 	if scroll is Control:
 		(scroll as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2166,16 +2172,12 @@ func _position_for_visible_panels() -> void:
 
 	var viewport_size := get_viewport().get_visible_rect().size
 	var right_edge := viewport_size.x - PANEL_EDGE_MARGIN
-	var top_edge := 30.0
+	var top_edge := TOP_BAR_CLEARANCE
 
 	var tile_panel := get_parent().get_node_or_null("TileInfoPanel") as Control
-	# The alternate (tabbed) TVP, when active, takes precedence as the anchor panel.
-	var tile_panel_v2 := get_parent().get_node_or_null("TileInfoPanelV2") as Control
-	if tile_panel_v2 != null and tile_panel_v2.visible:
-		tile_panel = tile_panel_v2
 	if tile_panel != null and tile_panel.visible:
 		right_edge = tile_panel.global_position.x - PANEL_EDGE_MARGIN
-		top_edge = tile_panel.global_position.y
+		top_edge = maxf(tile_panel.global_position.y, TOP_BAR_CLEARANCE)
 
 	var x := clampf(right_edge - panel_size.x, PANEL_EDGE_MARGIN, viewport_size.x - panel_size.x - PANEL_EDGE_MARGIN)
 	var y := clampf(top_edge, PANEL_EDGE_MARGIN, viewport_size.y - panel_size.y - PANEL_EDGE_MARGIN)

@@ -1,9 +1,9 @@
 extends GridContainer
 ## Presentational infrastructure grid. Renders a set of slot dicts (each an icon
 ## button + label) and reports interactions via signals. ALL data lookup and the
-## build action stay in tile_info_panel — this widget never touches Catalog /
+## build action stay in the tile panel — this widget never touches Catalog /
 ## MatchState / BuildMode; it only renders what set_slots() is given and emits
-## back. Extracted from tile_info_panel.gd (Slice B).
+## back. Extracted from the tile panel (Slice B).
 ##
 ## Slot dict shape (built by the panel):
 ##   {

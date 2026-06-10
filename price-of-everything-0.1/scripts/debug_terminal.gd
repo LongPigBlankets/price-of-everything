@@ -111,13 +111,10 @@ func _run_command(text: String) -> String:
 					return "usage: sellmode <stockpile|market|building>"
 			return "sell mode → %s" % _sell_mode_name()
 		"swap":
-			if parts.size() >= 2 and parts[1].to_lower() == "tvp":
-				MatchState.toggle_use_alt_tvp()
-				return "TVP → %s" % _tvp_name()
 			if parts.size() >= 3 and parts[1].to_lower() == "bottom" and parts[2].to_lower() == "menu":
 				MatchState.toggle_use_alt_bottom_menu()
 				return "Bottom menu icons → %s" % _bottom_menu_name()
-			return "usage: swap tvp  (current: %s)  |  swap bottom menu  (current: %s)" % [_tvp_name(), _bottom_menu_name()]
+			return "usage: swap bottom menu  (current: %s)" % _bottom_menu_name()
 		"survey":
 			if parts.size() >= 2 and parts[1].to_lower() == "limit":
 				MatchState.cheat_survey_within_limits()
@@ -154,12 +151,9 @@ func _run_command(text: String) -> String:
 				lines.append("%s — turn %d, £%.2f  (%s)" % [s.slot, int(s.turn), float(s.money), str(s.timestamp)])
 			return "\n".join(lines)
 		"help":
-			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap tvp   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
-
-func _tvp_name() -> String:
-	return "alternate (tabbed)" if MatchState.use_alt_tvp else "classic"
 
 func _bottom_menu_name() -> String:
 	return "alternate" if MatchState.use_alt_bottom_menu else "current"
