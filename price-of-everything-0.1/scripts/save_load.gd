@@ -66,6 +66,7 @@ func export_snapshot() -> Dictionary:
 		"construction": Construction.export_state(),
 		"market": MarketState.export_state(),
 		"production": Production.export_state(),
+		"events": EventScheduler.export_state(),
 		"infrastructure": _collect_infrastructure(),
 	}
 
@@ -81,6 +82,7 @@ func import_snapshot(snap: Dictionary) -> void:
 	Construction.import_state(snap.get("construction", {}))
 	MarketState.import_state(snap.get("market", {}))
 	Production.import_state(snap.get("production", {}))
+	EventScheduler.import_state(snap.get("events", {}))
 	_emit_refresh()
 	match_loaded.emit()
 

@@ -35,6 +35,7 @@ MapMode="*uid://dvsgkg2qos415"
 PanelStack="*res://scripts/panel_stack.gd"
 TurnProfiler="*res://scripts/turn_profiler.gd"
 RunMetrics="*res://scripts/run_metrics.gd"
+EventScheduler="*res://scripts/event_scheduler.gd"
 SaveLoad="*res://scripts/save_load.gd"
 
 [display]

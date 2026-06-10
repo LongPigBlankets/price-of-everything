@@ -71,6 +71,14 @@ func _ready() -> void:
 	_test_construction_survives_load()
 	_test_autosave_rotation()
 	await _test_save_load_ui()
+	await _test_event_scheduler_emit()
+	await _test_event_scheduler_schedule()
+	await _test_event_scheduler_forewarn()
+	await _test_event_scheduler_watch_oneshot()
+	await _test_event_scheduler_starvation_ramp()
+	await _test_event_scheduler_aggregator()
+	await _test_event_scheduler_max_severity()
+	await _test_event_scheduler_roundtrip()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -101,7 +109,7 @@ func _test_save_load_roundtrip() -> void:
 	# full game scene; the visual rebuild is exercised manually / by scene tests).
 	_check(SaveLoad.load_slot("__test_roundtrip", false) == "", "load_slot applies without error")
 	var snap2: Dictionary = SaveLoad.export_snapshot()
-	for section in ["turn", "match", "stockpile", "loans", "construction", "market", "production", "infrastructure"]:
+	for section in ["turn", "match", "stockpile", "loans", "construction", "market", "production", "events", "infrastructure"]:
 		_check(_canonical_json(snap1[section]) == _canonical_json(snap2[section]),
 			"round-trip preserves '%s'" % section)
 
@@ -263,6 +271,166 @@ func _test_autosave_rotation() -> void:
 	DirAccess.remove_absolute("user://saves/autosave_2.json")
 	TurnManager.current_turn = saved_turn
 	SaveLoad._autosave_index = saved_index
+
+# --- EventScheduler ----------------------------------------------------------
+# Substrate tests. The bell UI lives separately and has its own UI smoke test.
+
+# Drive a synthetic turn: bump current_turn and emit phase_started(NARRATIVE)
+# so EventScheduler ticks. Avoids running the full TurnManager resolution which
+# would have side-effects on every other system.
+func _tick_event_scheduler_to(new_turn: int) -> void:
+	TurnManager.current_turn = new_turn
+	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
+	await get_tree().process_frame
+
+func _test_event_scheduler_emit() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	var fired: Array = []
+	var cb := func(ev): fired.append(ev)
+	EventScheduler.event_fired.connect(cb)
+	var ev := EventScheduler.emit_event({"title": "Hi", "severity": EventScheduler.SEVERITY_INFO})
+	_check(fired.size() == 1 and str(fired[0].id) == str(ev.id),
+		"emit_event puts an event in the bell + fires event_fired")
+	_check(EventScheduler.active_count() == 1, "active_count reflects the new event")
+	_check(int(ev.turn_fired) == 1, "event records the turn it fired on")
+	_check(EventScheduler.dismiss(str(ev.id)) and EventScheduler.active_count() == 0,
+		"dismiss removes from active list")
+	if EventScheduler.event_fired.is_connected(cb):
+		EventScheduler.event_fired.disconnect(cb)
+	EventScheduler.reset()
+
+func _test_event_scheduler_schedule() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 5
+	EventScheduler.schedule(8, {"id": "scheduled_test", "title": "Fires on 8",
+		"severity": EventScheduler.SEVERITY_WARNING})
+	# Turn 6, 7: scheduled event should NOT have fired yet.
+	await _tick_event_scheduler_to(6)
+	_check(not EventScheduler._active.has("scheduled_test"), "scheduled event waits past turn 6")
+	await _tick_event_scheduler_to(7)
+	_check(not EventScheduler._active.has("scheduled_test"), "scheduled event waits past turn 7")
+	# Turn 8: fires.
+	await _tick_event_scheduler_to(8)
+	_check(EventScheduler._active.has("scheduled_test"), "scheduled event fires on its turn")
+	EventScheduler.reset()
+
+func _test_event_scheduler_forewarn() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 10
+	EventScheduler.schedule(20, {"id": "carbon_tax", "title": "Carbon Tax Applied",
+		"severity": EventScheduler.SEVERITY_CRITICAL, "forewarn_turns": 5,
+		"forewarn_body": "Tax begins in 5 turns."})
+	# Turn 14: still no forewarning.
+	await _tick_event_scheduler_to(14)
+	_check(not EventScheduler._active.has("carbon_tax:forewarn"), "forewarn not yet armed")
+	# Turn 15: forewarning fires (20 - 5).
+	await _tick_event_scheduler_to(15)
+	_check(EventScheduler._active.has("carbon_tax:forewarn"),
+		"forewarning fires N turns before the scheduled event")
+	_check(not EventScheduler._active.has("carbon_tax"),
+		"main event has not fired yet at forewarn turn")
+	# Turn 20: main event fires.
+	await _tick_event_scheduler_to(20)
+	_check(EventScheduler._active.has("carbon_tax"),
+		"main scheduled event fires on its target turn")
+	EventScheduler.reset()
+
+func _test_event_scheduler_watch_oneshot() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	EventScheduler.watch({"type": "turn_reached", "value": 3},
+		{"id": "turn3", "title": "Hit turn 3", "severity": EventScheduler.SEVERITY_INFO},
+		true)
+	await _tick_event_scheduler_to(2)
+	_check(not EventScheduler._active.has("turn3"), "watch doesn't fire before predicate is true")
+	await _tick_event_scheduler_to(3)
+	_check(EventScheduler._active.has("turn3"), "watch fires the turn its predicate becomes true")
+	# Dismiss and tick again — one-shot must not re-fire.
+	EventScheduler.dismiss("turn3")
+	await _tick_event_scheduler_to(4)
+	_check(not EventScheduler._active.has("turn3"), "one-shot watch does not re-fire")
+	EventScheduler.reset()
+
+func _test_event_scheduler_starvation_ramp() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	var record := {"instance_id": "inst_test", "building_id": "b_001", "tile_id": "tile_12_4", "missing": []}
+	EventScheduler._on_building_starved(record)
+	var ev: Dictionary = EventScheduler._active.get("starvation:inst_test", {})
+	_check(str(ev.get("severity", "")) == EventScheduler.SEVERITY_WARNING,
+		"starvation turn 1 = amber")
+	# Turn 2: still amber.
+	TurnManager.current_turn = 2
+	EventScheduler._on_building_starved(record)
+	_check(str(EventScheduler._active["starvation:inst_test"].severity) == EventScheduler.SEVERITY_WARNING,
+		"starvation turn 2 = amber")
+	# Turn 3: ramps to critical (STARVATION_RAMP_TURNS = 3).
+	TurnManager.current_turn = 3
+	EventScheduler._on_building_starved(record)
+	_check(str(EventScheduler._active["starvation:inst_test"].severity) == EventScheduler.SEVERITY_CRITICAL,
+		"starvation turn 3 ramps to critical (red)")
+	# Skip turn 4 — building runs (no starvation signal); turn 5 NARRATIVE clears it.
+	await _tick_event_scheduler_to(5)
+	_check(not EventScheduler._active.has("starvation:inst_test"),
+		"auto-clear removes starvation when the building runs again")
+	EventScheduler.reset()
+
+func _test_event_scheduler_aggregator() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 10
+	var template := {"title_template": "{count} sales — £{value}",
+		"body_template": "rolled up", "severity": EventScheduler.SEVERITY_INFO}
+	for i in range(12):
+		EventScheduler.aggregate("test_agg", template, 1, 350.0)
+	# Aggregator stays open during the turn — no event in bell yet.
+	_check(EventScheduler.active_count() == 0, "aggregator does not fire mid-turn")
+	# NARRATIVE flushes: one rolled-up event.
+	await _tick_event_scheduler_to(10)
+	_check(EventScheduler.active_count() == 1,
+		"flush_aggregators emits one event per bucket (got %d)" % EventScheduler.active_count())
+	var rows: Array = EventScheduler.active_events()
+	_check(str(rows[0].title).begins_with("12 sales"),
+		"aggregated title interpolates {count} (got '%s')" % str(rows[0].title))
+	EventScheduler.reset()
+
+func _test_event_scheduler_max_severity() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	EventScheduler.emit_event({"id": "i", "title": "i", "severity": EventScheduler.SEVERITY_INFO})
+	_check(EventScheduler.max_severity() == EventScheduler.SEVERITY_INFO, "1 info → info")
+	EventScheduler.emit_event({"id": "w", "title": "w", "severity": EventScheduler.SEVERITY_WARNING})
+	_check(EventScheduler.max_severity() == EventScheduler.SEVERITY_WARNING, "info+warning → warning")
+	EventScheduler.emit_event({"id": "c", "title": "c", "severity": EventScheduler.SEVERITY_CRITICAL})
+	_check(EventScheduler.max_severity() == EventScheduler.SEVERITY_CRITICAL, "info+warning+critical → critical")
+	EventScheduler.dismiss("c")
+	_check(EventScheduler.max_severity() == EventScheduler.SEVERITY_WARNING,
+		"dismissing the critical drops bell back to warning")
+	EventScheduler.reset()
+
+func _test_event_scheduler_roundtrip() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 50
+	EventScheduler.emit_event({"id": "active_a", "title": "A",
+		"severity": EventScheduler.SEVERITY_WARNING})
+	EventScheduler.schedule(80, {"id": "future_a", "title": "future",
+		"severity": EventScheduler.SEVERITY_CRITICAL, "forewarn_turns": 5})
+	EventScheduler.watch({"type": "turn_reached", "value": 100},
+		{"id": "watch_a", "title": "watched", "severity": EventScheduler.SEVERITY_INFO}, true)
+	var snap := EventScheduler.export_state()
+	# Wipe and reimport.
+	EventScheduler.reset()
+	_check(EventScheduler.active_count() == 0 and EventScheduler._scheduled.is_empty()
+		and EventScheduler._watches.is_empty(), "reset clears all state")
+	EventScheduler.import_state(snap)
+	_check(EventScheduler._active.has("active_a"), "round-trip restores active events")
+	_check(EventScheduler._scheduled.size() == 1
+		and str(EventScheduler._scheduled[0].event.id) == "future_a",
+		"round-trip restores scheduled events")
+	_check(EventScheduler._watches.size() == 1
+		and str(EventScheduler._watches[0].id) == "watch_a",
+		"round-trip restores watches")
+	EventScheduler.reset()
 
 # UI: the save/load screens and the Esc pause menu build, gate their CTAs, and
 # the save screen actually writes the named slot.
