@@ -1025,7 +1025,6 @@ func _test_scripts_parse() -> void:
 	for path in [
 		"res://scripts/stockpile_view.gd",
 		"res://scripts/infra_grid.gd",
-		"res://scripts/tile_info_panel.gd",
 		"res://scripts/tile_info_panel_v2.gd",
 		"res://scripts/building_detail_panel.gd",
 		"res://scripts/world_map.gd",
@@ -1124,19 +1123,30 @@ func _test_main_scene_instantiates() -> void:
 	add_child(inst)
 	await get_tree().process_frame
 	var panel: Node = inst.find_child("TileInfoPanel", true, false)
-	var tl = panel.get("title_label") if panel != null else null
+	_check(panel != null and panel.has_method("show_tile"),
+		"main.tscn instantiates; the tile panel exists and exposes show_tile")
+	# Exactly one tile panel: the classic (v1) panel is gone for good.
+	var hud_content: Node = inst.find_child("HUDContent", true, false)
+	var panel_count := 0
+	if hud_content != null:
+		for child in hud_content.get_children():
+			if str(child.name).begins_with("TileInfoPanel"):
+				panel_count += 1
+	_check(panel_count == 1, "exactly one tile panel lives under HUDContent (found %d)" % panel_count)
 	# Guards the theme-cascade fix: DS variations must actually resolve on panels.
+	var tl = panel.get("_title_label") if panel != null else null
 	_check(tl != null and tl.get_theme_font_size("font_size") == DS.FS["H1"],
 		"DS theme reaches the tile panel (title uses the DS Title font)")
-	var ok: bool = panel != null \
-		and panel.get("tile_size_chart") != null \
-		and panel.get("title_label") != null \
-		and panel.get("infrastructure_table") != null \
-		and panel.get("close_button") != null \
-		and panel.get("tile_image_banner") != null \
-		and panel.get("_banner_summary_content") != null \
-		and panel.get("_right_scroll_content") != null
-	_check(ok, "main.tscn instantiates; TileInfoPanel @onready nodes resolve")
+	# Selecting a tile through the terrain layer's click signal opens the panel.
+	var terrain: Node = inst.find_child("TerrainLayer", true, false)
+	if panel != null and terrain != null and not terrain.tiles.is_empty():
+		var td: Dictionary = terrain.tiles[terrain.tiles.keys()[0]]
+		terrain.tile_selected.emit(td)
+		await get_tree().process_frame
+		_check(panel.visible, "selecting a tile opens the tile panel")
+		panel.hide()
+	else:
+		_check(false, "terrain layer with tiles available for tile-select test")
 	inst.queue_free()
 	await get_tree().process_frame
 

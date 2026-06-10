@@ -4,7 +4,7 @@ extends VBoxContainer
 ## it refreshes itself whenever the global Stockpile changes. Pure display — it
 ## reads Stockpile/Catalog/Production and never mutates state.
 ##
-## Extracted from tile_info_panel.gd (Slice A). The stockpile *controls* (sell
+## Extracted from the tile panel (Slice A). The stockpile *controls* (sell
 ## button, sell-surplus toggle, production-destination dropdown) stay in the
 ## panel; this widget is only the read-out.
 

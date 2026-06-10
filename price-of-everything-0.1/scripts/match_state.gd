@@ -106,11 +106,6 @@ var sell_mode: int = SellMode.STOCKPILE_ALL
 enum RouteObjective { FASTEST, CHEAPEST, BLENDED }
 var route_objective: int = RouteObjective.FASTEST
 
-# Debug-only: when true the alternate tabbed Tile View Panel (TVP v2) is shown
-# instead of the classic one. Toggled at runtime via the `swap tvp` cheat.
-# Session-only; never persisted. Defaults to the alternate panel; `swap tvp`
-# flips back to the classic one.
-var use_alt_tvp: bool = true
 
 # Debug-only: when true the bottom menu shows the alternate icon set instead of
 # the old circular icon set. Toggled at runtime via the `swap bottom menu` cheat.
@@ -165,8 +160,6 @@ signal unlock_granted(title: String, description: String, via_condition: bool)
 signal tile_survey_completed(tile_id: String, deposit_goods: Array)
 ## A shipment arrived at a full tile and is now waiting to unload.
 signal overflow_shipment_held(record: Dictionary)
-## Debug cheat `swap tvp` flipped which Tile View Panel is active.
-signal alt_tvp_changed(enabled: bool)
 ## Debug cheat `swap bottom menu` flipped which bottom-menu icon set is active.
 signal alt_bottom_menu_changed(enabled: bool)
 
@@ -849,18 +842,6 @@ func _requote_shipment_routes() -> void:
 func set_sell_mode(mode: int) -> void:
 	sell_mode = mode
 	sell_mode_changed.emit(mode)
-
-## Debug cheat: switch between the classic and alternate Tile View Panels.
-## Returns the new state. Session-only, never persisted.
-func set_use_alt_tvp(enabled: bool) -> bool:
-	if enabled == use_alt_tvp:
-		return use_alt_tvp
-	use_alt_tvp = enabled
-	alt_tvp_changed.emit(use_alt_tvp)
-	return use_alt_tvp
-
-func toggle_use_alt_tvp() -> bool:
-	return set_use_alt_tvp(not use_alt_tvp)
 
 ## Debug cheat: switch between the current and alternate bottom-menu icon sets.
 ## Returns the new state. Session-only, never persisted.
