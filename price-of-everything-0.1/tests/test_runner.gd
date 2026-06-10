@@ -91,6 +91,7 @@ func _ready() -> void:
 	_test_event_grouping()
 	_test_starvation_deeplink_building()
 	await _test_notification_group_inline_expand()
+	await _test_notification_header_filter()
 	await _test_notification_bell_smoke()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -756,6 +757,40 @@ func _test_notification_group_inline_expand() -> void:
 	await get_tree().process_frame
 	EventScheduler.reset()
 	MatchState.reset()
+
+# The header bells filter the list by severity ("" = show all).
+func _test_notification_header_filter() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	# Two groups: a critical one and a warning one (2 members each so they group).
+	for id in ["c1", "c2"]:
+		EventScheduler.emit_event({"id": id, "group_key": "g_crit", "group_title": "Crit",
+			"severity": EventScheduler.SEVERITY_CRITICAL})
+	for id in ["w1", "w2"]:
+		EventScheduler.emit_event({"id": id, "group_key": "g_warn", "group_title": "Warn",
+			"severity": EventScheduler.SEVERITY_WARNING})
+	var bell: Node = load("res://scripts/notification_bell.gd").new()
+	add_child(bell)
+	await get_tree().process_frame
+	bell.call("toggle_dropdown")
+	await get_tree().process_frame
+	var list: VBoxContainer = bell.get("_dropdown_list")
+	_check(_count_panels(list) == 2, "no filter: both groups show (got %d)" % _count_panels(list))
+	# Filter to critical → only the critical group.
+	bell.set("_filter_severity", "critical")
+	bell.call("_rebuild_dropdown_rows")
+	await get_tree().process_frame
+	_check(_count_panels(list) == 1, "critical filter: one group (got %d)" % _count_panels(list))
+	# Four header filter bells were built.
+	_check((bell.get("_filter_bells") as Array).size() == 4, "four header filter bells built")
+	# Clearing (navy) shows all again.
+	bell.set("_filter_severity", "")
+	bell.call("_rebuild_dropdown_rows")
+	await get_tree().process_frame
+	_check(_count_panels(list) == 2, "cleared filter: both groups show again (got %d)" % _count_panels(list))
+	bell.queue_free()
+	await get_tree().process_frame
+	EventScheduler.reset()
 
 func _count_panels(node: Node) -> int:
 	var n := 0

@@ -58,6 +58,9 @@ var _refresh_queued := false
 var _pending_flash := false
 # Which group is expanded inline in the dropdown ("" = none).
 var _expanded_group_key := ""
+# Severity filter from the header bells ("" = navy = show all).
+var _filter_severity := ""
+var _filter_bells: Array = []   # [{sev, bg, hover}] for the 4 header bells
 
 
 func _ready() -> void:
@@ -197,31 +200,38 @@ func _refresh_badge() -> void:
 
 func _build_dropdown() -> void:
 	_dropdown = PanelContainer.new()
-	_dropdown.theme_type_variation = &"Outlined"
 	_dropdown.custom_minimum_size = Vector2(DROPDOWN_WIDTH, 0)
 	_dropdown.visible = false
 	_dropdown.mouse_filter = Control.MOUSE_FILTER_STOP
 	_dropdown.z_index = 100
 	_dropdown.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	_dropdown.top_level = true
+	# Tight stylebox: the DS "Outlined" variation pads 24px each side — way too
+	# much. Same navy + cream-border look, but only 5px horizontal padding so the
+	# list uses the full width.
+	var panel_sb := StyleBoxFlat.new()
+	panel_sb.bg_color = DS.PALETTE.BG_HIGHLIGHT
+	panel_sb.border_color = DS.PALETTE.BORDER
+	panel_sb.set_border_width_all(2)
+	panel_sb.set_corner_radius_all(10)
+	panel_sb.content_margin_left = 5
+	panel_sb.content_margin_right = 5
+	panel_sb.content_margin_top = 8
+	panel_sb.content_margin_bottom = 8
+	_dropdown.add_theme_stylebox_override("panel", panel_sb)
 	add_child(_dropdown)
-	# Clamp the scroll wheel to the panel: when the list is at its limit the
-	# event must NOT fall through to the map's camera zoom.
+	# Clamp the scroll wheel to the panel so reaching the list end never zooms
+	# the map behind it.
 	_dropdown.gui_input.connect(func(e):
 		if e is InputEventMouseButton and (e as InputEventMouseButton).button_index in \
 				[MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
 			_dropdown.accept_event())
 
+	# VBox sits directly in the panel — the stylebox content margins ARE the
+	# padding (no extra MarginContainer).
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 6)
-	# Outer padding: minimal, so the scroll list keeps only ~5px left/right.
-	var mc := MarginContainer.new()
-	mc.add_theme_constant_override("margin_left", 5)
-	mc.add_theme_constant_override("margin_right", 5)
-	mc.add_theme_constant_override("margin_top", 8)
-	mc.add_theme_constant_override("margin_bottom", 8)
-	mc.add_child(vb)
-	_dropdown.add_child(mc)
+	_dropdown.add_child(vb)
 
 	# Header: title + close.
 	var header := HBoxContainer.new()
@@ -237,12 +247,13 @@ func _build_dropdown() -> void:
 	header.add_child(close)
 	vb.add_child(header)
 
-	# The four severity bells under the title (red / amber / navy / green).
+	# The four severity bells under the title — clickable filters (navy = all).
+	_filter_bells.clear()
 	var bells := HBoxContainer.new()
 	bells.add_theme_constant_override("separation", 10)
 	bells.alignment = BoxContainer.ALIGNMENT_CENTER
 	for entry in HEADER_BELLS:
-		bells.add_child(_make_header_bell(DS.PALETTE[str(entry[1])]))
+		bells.add_child(_make_filter_bell(str(entry[0]), DS.PALETTE[str(entry[1])]))
 	vb.add_child(bells)
 	vb.add_child(HSeparator.new())
 
@@ -251,8 +262,6 @@ func _build_dropdown() -> void:
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	# Absorb the wheel here too (the ScrollContainer sees it before the panel),
-	# so reaching the top/bottom of the list never zooms the map behind it.
 	scroll.gui_input.connect(func(e):
 		if e is InputEventMouseButton and (e as InputEventMouseButton).button_index in \
 				[MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
@@ -269,7 +278,7 @@ func _build_dropdown() -> void:
 	_empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_dropdown_list.add_child(_empty_label)
 
-	# Footer: no separator before it — just the vbox spacing, then the button.
+	# Footer: no separator — just the vbox spacing, then the button.
 	var clear_btn := Button.new()
 	clear_btn.text = "Mark all read"
 	clear_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -277,31 +286,89 @@ func _build_dropdown() -> void:
 	vb.add_child(clear_btn)
 
 
-func _make_header_bell(color: Color) -> Control:
+# A header bell that filters the list to one severity. Each has a 2px off-white
+# rounded-square outline; the bg fills on hover and on the active (selected)
+# state. Navy ("" severity) clears the filter / shows all.
+func _make_filter_bell(sev: String, color: Color) -> Control:
 	var holder := Control.new()
-	holder.custom_minimum_size = Vector2(22, 22)
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var tr := TextureRect.new()
-	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
-	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.custom_minimum_size = Vector2(26, 26)
+	holder.mouse_filter = Control.MOUSE_FILTER_STOP
+	holder.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	holder.tooltip_text = _filter_tooltip(sev)
+	var bgp := Panel.new()
+	bgp.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bgp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(bgp)
+	var inner := MarginContainer.new()
+	inner.set_anchors_preset(Control.PRESET_FULL_RECT)
+	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for s in ["left", "right", "top", "bottom"]:
+		inner.add_theme_constant_override("margin_" + s, 4)
+	holder.add_child(inner)
 	if _bell_texture != null:
+		var tr := TextureRect.new()
 		tr.texture = _bell_texture
 		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		tr.material = _tint_material(color)
+		inner.add_child(tr)
 	else:
-		# No PNG: a coloured dot stands in.
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = color
-		sb.set_corner_radius_all(11)
-		var p := Panel.new()
-		p.set_anchors_preset(Control.PRESET_FULL_RECT)
-		p.add_theme_stylebox_override("panel", sb)
-		p.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		holder.add_child(p)
-		return holder
-	holder.add_child(tr)
+		var dot := Panel.new()
+		var dsb := StyleBoxFlat.new()
+		dsb.bg_color = color
+		dsb.set_corner_radius_all(8)
+		dot.add_theme_stylebox_override("panel", dsb)
+		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		inner.add_child(dot)
+	var entry := {"sev": sev, "bg": bgp, "hover": false}
+	_filter_bells.append(entry)
+	holder.mouse_entered.connect(func(): entry.hover = true; _style_filter_bell(entry))
+	holder.mouse_exited.connect(func(): entry.hover = false; _style_filter_bell(entry))
+	holder.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_filter_severity = "" if _filter_severity == sev else sev
+			for fe in _filter_bells:
+				_style_filter_bell(fe)
+			_rebuild_dropdown_rows())
+	_style_filter_bell(entry)
 	return holder
+
+func _filter_tooltip(sev: String) -> String:
+	match sev:
+		"critical": return "Show critical only"
+		"warning": return "Show warnings only"
+		"info": return "Show info only"
+		_: return "Show all"
+
+func _style_filter_bell(entry: Dictionary) -> void:
+	var active := _filter_severity == str(entry.sev)
+	var sb := StyleBoxFlat.new()
+	sb.set_corner_radius_all(6)
+	sb.set_border_width_all(2)
+	sb.border_color = DS.PALETTE.BORDER
+	if active:
+		sb.bg_color = DS.PALETTE.ACTION_BLUE
+	elif bool(entry.hover):
+		sb.bg_color = DS.PALETTE.BG_HIGHLIGHT
+	else:
+		sb.bg_color = Color(0, 0, 0, 0)
+	(entry.bg as Panel).add_theme_stylebox_override("panel", sb)
+
+
+# Tight row backgrounds (the DS Card/Inset variations pad 24px/14px each side);
+# content_margins 0 so the row's own MarginContainer fully controls padding.
+func _row_style(inset: bool) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = DS.PALETTE.BG_INSET if inset else DS.PALETTE.BG_CARD
+	sb.border_color = DS.PALETTE.BORDER_SOFT
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(6)
+	sb.content_margin_left = 0
+	sb.content_margin_right = 0
+	sb.content_margin_top = 0
+	sb.content_margin_bottom = 0
+	return sb
 
 
 func _position_dropdown() -> void:
@@ -321,7 +388,19 @@ func _rebuild_dropdown_rows() -> void:
 		if child != _empty_label:
 			child.queue_free()
 	var groups: Array = EventScheduler.grouped_active()
-	_empty_label.visible = groups.is_empty()
+	# Header-bell filter: when a severity is selected, show only matching groups.
+	if _filter_severity != "":
+		var kept: Array = []
+		for g in groups:
+			if str(g.severity) == _filter_severity:
+				kept.append(g)
+		groups = kept
+	if groups.is_empty():
+		_empty_label.visible = true
+		_empty_label.text = "No notifications." if _filter_severity == "" \
+			else "No %s notifications." % _filter_severity
+	else:
+		_empty_label.visible = false
 	var shown: int = mini(groups.size(), MAX_VISIBLE_ROWS)
 	for i in range(shown):
 		var g: Dictionary = groups[i]
@@ -349,11 +428,11 @@ func _make_group_row(group: Dictionary) -> Control:
 	var gk := str(group.group_key)
 	var expanded := gk == _expanded_group_key
 	var row := PanelContainer.new()
-	row.theme_type_variation = &"Card"
+	row.add_theme_stylebox_override("panel", _row_style(false))
 	row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var m := MarginContainer.new()
 	m.add_theme_constant_override("margin_left", 8)
-	m.add_theme_constant_override("margin_right", 8)
+	m.add_theme_constant_override("margin_right", 5)  # X sits 5px from the card edge
 	m.add_theme_constant_override("margin_top", 8)
 	m.add_theme_constant_override("margin_bottom", 8)
 	row.add_child(m)
@@ -392,7 +471,7 @@ func _make_group_row(group: Dictionary) -> Control:
 	label.max_lines_visible = 2
 	hb.add_child(label)
 
-	var dismiss := _make_x_button("Dismiss all")
+	var dismiss := _make_x_button("Dismiss all", 10)  # small X on the group card
 	dismiss.pressed.connect(func(): EventScheduler.dismiss_group(gk))
 	hb.add_child(dismiss)
 
@@ -409,7 +488,7 @@ func _make_member_row(ev: Dictionary) -> Control:
 	var indent := MarginContainer.new()
 	indent.add_theme_constant_override("margin_left", 20)
 	var row := PanelContainer.new()
-	row.theme_type_variation = &"Inset"
+	row.add_theme_stylebox_override("panel", _row_style(true))
 	indent.add_child(row)
 	var m := MarginContainer.new()
 	m.add_theme_constant_override("margin_left", 8)
@@ -450,12 +529,18 @@ func _member_label(ev: Dictionary) -> String:
 	return "%s (%s)" % [name, where] if where != "" else name
 
 
-func _make_x_button(tip: String) -> Button:
+func _make_x_button(tip: String, px: int = 18) -> Button:
 	var b := Button.new()
 	b.text = "✕"
-	b.custom_minimum_size = Vector2(20, 20)
+	b.custom_minimum_size = Vector2(px, px)
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	b.tooltip_text = tip
+	b.add_theme_font_size_override("font_size", maxi(9, int(px * 0.85)))
+	# Strip the button's own padding so a tiny (e.g. 10px) button fits the glyph.
+	for st in ["normal", "hover", "pressed", "focus"]:
+		b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	b.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+	b.add_theme_color_override("font_hover_color", DS.PALETTE.TEXT)
 	return b
 
 
@@ -476,10 +561,10 @@ func _make_indent_note(text: String, indented: bool = true) -> Control:
 # A lone (ungrouped) event row: severity dot + title (≤2 lines) + dismiss.
 func _make_row(ev: Dictionary) -> Control:
 	var row := PanelContainer.new()
-	row.theme_type_variation = &"Card"
+	row.add_theme_stylebox_override("panel", _row_style(false))
 	var m := MarginContainer.new()
 	m.add_theme_constant_override("margin_left", 8)
-	m.add_theme_constant_override("margin_right", 8)
+	m.add_theme_constant_override("margin_right", 5)
 	m.add_theme_constant_override("margin_top", 8)
 	m.add_theme_constant_override("margin_bottom", 8)
 	row.add_child(m)
