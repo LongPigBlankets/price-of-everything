@@ -32,6 +32,12 @@ var _dropdown: PanelContainer = null
 var _dropdown_list: VBoxContainer = null
 var _empty_label: Label = null
 var _flash_tween: Tween = null
+# Refreshes are coalesced: signals set _refresh_queued and defer one _apply_refresh
+# to idle, so a storm of events in a single turn (e.g. 10 buildings starving) does
+# ONE dropdown rebuild, not 20 — and the rebuild never runs inside a row button's
+# `pressed` emission (which would free that button mid-dispatch and hard-crash).
+var _refresh_queued := false
+var _pending_flash := false
 
 
 func _ready() -> void:
@@ -44,9 +50,11 @@ func _ready() -> void:
 	_build_badge()
 	_build_dropdown()
 	_refresh_bg()
+	# All three collapse into one deferred refresh per frame (see _mark_dirty).
+	# event_fired additionally arms a single flash.
 	EventScheduler.event_fired.connect(_on_event_fired)
-	EventScheduler.event_dismissed.connect(func(_id): _refresh())
-	EventScheduler.active_events_changed.connect(_refresh)
+	EventScheduler.event_dismissed.connect(func(_id): _mark_dirty())
+	EventScheduler.active_events_changed.connect(_mark_dirty)
 
 
 # ── Painting ─────────────────────────────────────────────────────────────
@@ -307,10 +315,24 @@ func _make_row(ev: Dictionary) -> Control:
 # ── Signals ──────────────────────────────────────────────────────────────
 
 func _on_event_fired(_ev: Dictionary) -> void:
-	_flash()
-	_refresh()
+	_pending_flash = true
+	_mark_dirty()
 
-func _refresh() -> void:
+# Coalesce: many signal emissions in one frame queue exactly one _apply_refresh,
+# run at idle — AFTER the current input/signal dispatch unwinds. This is what
+# stops a row's ✕ from rebuilding (and freeing) the dropdown while that button
+# is still mid-`pressed`.
+func _mark_dirty() -> void:
+	if _refresh_queued:
+		return
+	_refresh_queued = true
+	call_deferred("_apply_refresh")
+
+func _apply_refresh() -> void:
+	_refresh_queued = false
+	if _pending_flash:
+		_pending_flash = false
+		_flash()
 	_refresh_badge()
 	_refresh_bg()
 	if _dropdown != null and _dropdown.visible:

@@ -694,14 +694,18 @@ func _test_notification_bell_smoke() -> void:
 	_check(not (bell.get("_badge") as Label).visible,
 		"badge hidden when no events")
 	# Fire a warning event; badge stays hidden (n<=1), bell colour amber.
+	# The bell coalesces refreshes via call_deferred, so settle two frames before
+	# reading the deferred-updated colour/badge.
 	EventScheduler.emit_event({"id": "u1", "title": "Test warn",
 		"severity": EventScheduler.SEVERITY_WARNING})
+	await get_tree().process_frame
 	await get_tree().process_frame
 	_check(bell._bg_target_color == DS.PALETTE.WARN,
 		"single warning → bell amber")
 	# Add a critical → bell red; badge shows "2".
 	EventScheduler.emit_event({"id": "u2", "title": "Test crit",
 		"severity": EventScheduler.SEVERITY_CRITICAL})
+	await get_tree().process_frame
 	await get_tree().process_frame
 	_check(bell._bg_target_color == DS.PALETTE.DANGER,
 		"warning + critical → bell red")
@@ -722,10 +726,12 @@ func _test_notification_bell_smoke() -> void:
 	# Dismiss the critical from inside the EventScheduler; bell falls back to amber.
 	EventScheduler.dismiss("u2")
 	await get_tree().process_frame
+	await get_tree().process_frame
 	_check(bell._bg_target_color == DS.PALETTE.WARN,
 		"dismissing the critical drops bell back to amber")
 	# Mark all read → bell grey, badge hidden, dropdown shows the empty label.
 	EventScheduler.dismiss_all()
+	await get_tree().process_frame
 	await get_tree().process_frame
 	_check(bell._bg_target_color == DS.PALETTE.BG_INSET,
 		"dismiss_all → bell grey (BG_INSET)")
