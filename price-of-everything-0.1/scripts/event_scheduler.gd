@@ -178,10 +178,19 @@ func dismiss(event_id: String) -> bool:
 	active_events_changed.emit()
 	return true
 
+## Clear every active event in one shot. Unlike calling dismiss() in a loop
+## (which would emit 2 signals PER event — 2N for hundreds), this stamps them
+## all, clears the dict, and emits active_events_changed ONCE. The bell does a
+## single deferred rebuild that finds an empty list. Cheap even at hundreds.
 func dismiss_all() -> void:
-	var ids := _active.keys().duplicate()
-	for id in ids:
-		dismiss(str(id))
+	if _active.is_empty():
+		return
+	var turn := int(TurnManager.current_turn)
+	for ev in _active.values():
+		ev.state = STATE_DISMISSED
+		ev.dismissed_turn = turn
+	_active.clear()
+	active_events_changed.emit()
 
 ## All currently-active events, newest first. The bell renders this.
 func active_events() -> Array:

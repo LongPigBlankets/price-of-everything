@@ -13,6 +13,11 @@ const BELL_TEXTURE_PATH := "res://assets/icons/ui_icons/bell.png"
 const SIZE := 36.0
 const RING_WIDTH := 2.0
 const BADGE_DIAM := 14.0
+# Hard cap on how many event rows the dropdown ever builds. The list scrolls, so
+# the player never sees more than a handful at once anyway — building 400 row
+# node-trees just to scroll past them is the real "hundreds of notifications"
+# cost. Beyond this we render a "+N more" note and "Mark all read" clears them.
+const MAX_VISIBLE_ROWS := 40
 const DROPDOWN_WIDTH := 340.0
 const DROPDOWN_MAX_HEIGHT := 420.0
 const FLASH_DURATION := 0.4
@@ -254,8 +259,18 @@ func _rebuild_dropdown_rows() -> void:
 			child.queue_free()
 	var rows: Array = EventScheduler.active_events()
 	_empty_label.visible = rows.is_empty()
-	for ev in rows:
-		_dropdown_list.add_child(_make_row(ev))
+	var shown: int = mini(rows.size(), MAX_VISIBLE_ROWS)
+	for i in range(shown):
+		_dropdown_list.add_child(_make_row(rows[i]))
+	# Overflow note (a plain Label, rebuilt each pass alongside the rows) so a
+	# few hundred active events never become a few thousand UI nodes.
+	if rows.size() > shown:
+		var more := Label.new()
+		more.text = "+%d more — “Mark all read” to clear" % (rows.size() - shown)
+		more.theme_type_variation = &"Caption"
+		more.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+		more.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_dropdown_list.add_child(more)
 
 
 func _make_row(ev: Dictionary) -> Control:
