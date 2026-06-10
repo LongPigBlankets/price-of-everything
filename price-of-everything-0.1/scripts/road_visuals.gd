@@ -14,6 +14,8 @@ func _ready() -> void:
 	var world_map: Node = get_parent()
 	if world_map != null and world_map.has_signal("building_placed"):
 		world_map.connect("building_placed", Callable(self, "_on_building_placed"))
+	# Roads join the tile only when their construction completes — redraw then too.
+	Construction.construction_completed.connect(_on_construction_completed)
 	queue_redraw()
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -121,6 +123,10 @@ func _tile_has_roads(tile_data: Dictionary) -> bool:
 	return infrastructure.has("roads")
 
 func _on_building_placed(_tile_id: String, _building_id: String, _recipe_id: String, _instance_id: String, _coord: Vector2i) -> void:
+	_region_city_plan_cache.clear()
+	queue_redraw()
+
+func _on_construction_completed(_instance_id: String, _tile_id: String) -> void:
 	_region_city_plan_cache.clear()
 	queue_redraw()
 

@@ -3,8 +3,8 @@ b_001,mine,Mine,1,10000,80,80,,,,,,,,,,,2,30,production,standard,10000,,,,,1,150
 b_002,furnace,Furnace,1,10000,100,100,coal,3,,,,,,,,,2,20,production,standard,10000,,,,,2,100,50,30,metallurgy,0
 b_003,coal_power,Coal Power Plant,0,0,200,200,steel,2,iron_ingots,2,hydrogen,2,coal,2,motor,2,2,15,power,standard,10000,,,,,1,50,280,300,power,0
 b_004,port,Port,1,10000,10000,10000,,,,,,,,,,,2,15,infrastructure,standard,10000,,,,,10,0,0,0,infrastructure,500
-b_005,roads,Roads,0,0,25,25,,,,,,,,,,,2,2,infrastructure,standard,10000,,,,,1,0,0,0,infrastructure,0
-b_006,cables,Cables,0,0,15,15,,,,,,,,,,,2,2,infrastructure,standard,10000,,,,,1,0,0,0,infrastructure,0
+b_005,roads,Roads,0,0,25,25,,,,,,,,,,,1,2,infrastructure,standard,10000,,,,,1,0,0,0,infrastructure,0
+b_006,cables,Cables,0,0,15,15,,,,,,,,,,,1,2,infrastructure,standard,10000,,,,,1,0,0,0,infrastructure,0
 b_007,industrial_factory,Industrial Goods Factory,10,10000,200,200,steel,3,copper_ingots,3,,,,,,,2,10,production,standard,10000,,,,,2,200,100,60,manufacturing,0
 b_008,eaf,Electric Arc Furnace,1,10000,300,300,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,metallurgy,0
 b_009,assembly_plant,Assembly Plant,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,manufacturing,0
@@ -15,9 +15,9 @@ b_013,poly_plant,Polymerisation Refinery,1,10000,250,250,,,,,,,,,,,2,10,producti
 b_014,farm,Farm,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,farm_forests,0
 b_015,new_forest,New Growth Forest,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,farm_forests,0
 b_016,old_forest,Old Growth Forest,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,farm_forests,0
-b_017,pipes,Pipeworks,1,10000,30,30,,,,,,,,,,,2,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
-b_018,reinf_pipes,Reinforced Pipeworks,1,10000,50,50,,,,,,,,,,,2,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
-b_019,rails,Railways,1,10000,70,70,,,,,,,,,,,2,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
+b_017,pipes,Pipeworks,1,10000,30,30,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
+b_018,reinf_pipes,Reinforced Pipeworks,1,10000,50,50,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
+b_019,rails,Railways,1,10000,70,70,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
 b_020,electrolyser,Electrolyser,1,10000,400,400,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,electrochemistry,0
 b_021,desal,Desalination Plant,1,10000,120,120,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,water,0
 b_022,water_recycling,Water Recyling Plant,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,water,0

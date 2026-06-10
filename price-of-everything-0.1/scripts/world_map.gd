@@ -23,6 +23,7 @@ var _v2_picking_dest: bool = false
 @onready var _toast_layer: Control = $UILayer/HUD/ToastLayer
 
 const DENSITY_SOFT_CAPACITY := 100.0
+const InfraIcons := preload("res://scripts/infra_icons.gd")
 
 signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
 
@@ -116,6 +117,8 @@ func _ready() -> void:
 	# Deposit feedback: reveal/popup when a blind (unsurveyed) build finishes, and a
 	# centre-screen prompt when a deposit runs out under a working building.
 	Construction.construction_completed.connect(_on_construction_completed_deposit_check)
+	# Infrastructure joins the tile / routing network only when its build completes.
+	Construction.construction_completed.connect(_on_construction_completed_infra)
 	MatchState.deposit_exhausted.connect(_on_deposit_exhausted)
 
 	# Wire building connection visuals to building detail panel
@@ -1409,34 +1412,74 @@ func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
 	var infra_building_id: String = building_data.get("id", "")
 	var cost: float = float(building_data.get("base_price", 0.0))
 	if infra_building_id != "":
+		# Already being built here — silently bail rather than charging twice.
+		for project in Construction.projects_on_tile(tile_id):
+			if str(project.get("building_id", "")) == infra_building_id:
+				print("Tile %s is already building %s" % [tile_id, infra_type])
+				return
 		var space_check := _space_check_for_build(tile_id, infra_building_id)
 		if not bool(space_check.get("allowed", false)):
 			return
 		var cost_multiplier := float(space_check.get("cost_multiplier", 1.0))
 		cost *= cost_multiplier
-		_try_build_infrastructure(tile_id, coord, tile, infra, infra_type, infra_building_id, cost)
+		_try_build_infrastructure(tile_id, coord, infra_type, infra_building_id, cost)
 		return
 
-	_try_build_infrastructure(tile_id, coord, tile, infra, infra_type, infra_building_id, cost)
+	_try_build_infrastructure(tile_id, coord, infra_type, infra_building_id, cost)
 
-func _try_build_infrastructure(tile_id: String, coord: Vector2i, tile: Dictionary, infra: Array, infra_type: String, infra_building_id: String, cost: float) -> void:
+func _try_build_infrastructure(tile_id: String, coord: Vector2i, infra_type: String, infra_building_id: String, cost: float) -> void:
 	# Check + deduct
 	if not MatchState.deduct_money(cost):
 		print("[Build] FAILED: insufficient money for %s. Need £%.2f, have £%.2f" % [infra_type, cost, MatchState.money])
 		MatchState.build_rejected_no_funds.emit("Not enough money to build %s — need £%.2f, you have £%.2f" % [infra_type, cost, MatchState.money])
 		return
 
-	infra.append(infra_type)
-	tile["infrastructure_present"] = infra
-	terrain_layer.tiles[coord] = tile
-	Catalog.add_tile_infrastructure(tile_id, infra_type)  # so the router uses built roads/rail
+	if infra_building_id == "":
+		# No catalog building backs this type, so there is nothing to construct:
+		# apply it instantly (none of the buildable types hit this path).
+		_apply_built_infrastructure(coord, tile_id, infra_type)
+		building_placed.emit(tile_id, "", "", "", coord)
+		return
 
-	print("Built %s on %s — cost £%.2f" % [infra_type, tile_id, cost])
-
-	var instance_id := ""
-	if infra_building_id != "":
-		instance_id = MatchState.add_building(infra_building_id, "", tile_id)
+	# Infrastructure builds like buildings: a construction project counting down
+	# build_duration turns (from the CSV) — the started/built toasts come from the
+	# same Construction signals. The tile gains the infra only when the project
+	# completes (_on_construction_completed_infra); until then the Infrastructure
+	# mapmode shows it dashed/under-construction.
+	var instance_id := Construction.start_on_tile(infra_building_id, "", tile_id, cost)
+	print("Started building %s on %s — cost £%.2f" % [infra_type, tile_id, cost])
 	building_placed.emit(tile_id, infra_building_id, "", instance_id, coord)
+
+# A finished infrastructure build joins the tile's infrastructure_present and the
+# router's live infra map (so roads/rails affect routing only once finished).
+func _apply_built_infrastructure(coord: Vector2i, tile_id: String, infra_type: String) -> void:
+	if not terrain_layer.tiles.has(coord):
+		return
+	var tile: Dictionary = terrain_layer.tiles[coord]
+	var infra: Array = tile.get("infrastructure_present", [])
+	if not infra.has(infra_type):
+		infra.append(infra_type)
+		tile["infrastructure_present"] = infra
+		terrain_layer.tiles[coord] = tile
+	Catalog.add_tile_infrastructure(tile_id, infra_type)
+	print("Built %s on %s" % [infra_type, tile_id])
+
+func _on_construction_completed_infra(instance_id: String, tile_id: String) -> void:
+	var building_id := str(MatchState.get_building(instance_id).get("building_id", ""))
+	var internal_name := str(Catalog.get_building(building_id).get("internal_name", ""))
+	if not _is_tile_infra_type(internal_name):
+		return
+	_apply_built_infrastructure(terrain_layer.id_to_coord(tile_id), tile_id, internal_name)
+
+# The infra types that live on tiles (the canonical slot set). Port/airport are
+# category "infrastructure" in the CSV but are ordinary buildings on the map.
+func _is_tile_infra_type(internal_name: String) -> bool:
+	if internal_name == "":
+		return false
+	for slot in InfraIcons.SLOTS:
+		if str(slot.key) == internal_name:
+			return true
+	return false
 
 func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 	var building_data: Dictionary = Catalog.get_building(building_id)

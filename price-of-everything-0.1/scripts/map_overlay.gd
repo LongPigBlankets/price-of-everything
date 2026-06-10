@@ -56,9 +56,12 @@ func _ready() -> void:
 	MapMode.mode_cleared.connect(_on_mode_cleared)
 	MapMode.infrastructure_selection_changed.connect(_on_infra_selection_changed)
 	# Construction lifecycle redraws the infrastructure overlay's dashed state.
-	Construction.construction_started.connect(_on_construction_changed)
-	Construction.construction_completed.connect(_on_construction_changed)
-	Construction.construction_cancelled.connect(_on_construction_changed)
+	# Deferred so world_map applies a completed infra build to its tile first —
+	# otherwise the re-render runs before the tile gains the infra and the
+	# just-finished tile would briefly show neither dashed nor solid.
+	Construction.construction_started.connect(_on_construction_changed, CONNECT_DEFERRED)
+	Construction.construction_completed.connect(_on_construction_changed, CONNECT_DEFERRED)
+	Construction.construction_cancelled.connect(_on_construction_changed, CONNECT_DEFERRED)
 	Production.turn_processed.connect(_on_turn_processed)
 	BuildMode.mode_entered.connect(_on_build_mode_entered)
 	BuildMode.mode_exited.connect(_on_build_mode_exited)
