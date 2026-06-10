@@ -198,6 +198,55 @@ func active_events() -> Array:
 	rows.sort_custom(func(a, b): return int(a.get("turn_fired", 0)) > int(b.get("turn_fired", 0)))
 	return rows
 
+## Active events folded into display GROUPS. Events sharing a `group_key`
+## collapse into one entry the bell renders as "N {group_title}" (clicking it
+## opens a modal listing the members). Events with no group_key are their own
+## single-member group. Each group: {group_key, title, severity (max of
+## members), members: [event]}. Groups are ordered by their newest member.
+func grouped_active() -> Array:
+	var by_key := {}        # group_key -> group dict
+	var order := []         # group_keys in first-seen (newest-first) order
+	for ev in active_events():  # already newest-first
+		var gk := str(ev.get("group_key", ""))
+		if gk == "":
+			gk = "single:%s" % str(ev.id)  # standalone — its own group
+		if not by_key.has(gk):
+			by_key[gk] = {
+				"group_key": gk,
+				"title": str(ev.get("group_title", ev.get("title", ""))),
+				"severity": str(ev.get("severity", SEVERITY_INFO)),
+				"members": [],
+			}
+			order.append(gk)
+		var g: Dictionary = by_key[gk]
+		g.members.append(ev)
+		g.severity = _worse_severity(str(g.severity), str(ev.get("severity", SEVERITY_INFO)))
+	var out := []
+	for gk in order:
+		out.append(by_key[gk])
+	return out
+
+## Dismiss every member of a display group in one shot (one signal), mirroring
+## dismiss_all's cheap bulk path.
+func dismiss_group(group_key: String) -> void:
+	var turn := int(TurnManager.current_turn)
+	var removed := false
+	for ev in _active.values().duplicate():
+		var gk := str(ev.get("group_key", ""))
+		if gk == "":
+			gk = "single:%s" % str(ev.id)
+		if gk == group_key:
+			ev.state = STATE_DISMISSED
+			ev.dismissed_turn = turn
+			_active.erase(str(ev.id))
+			removed = true
+	if removed:
+		active_events_changed.emit()
+
+func _worse_severity(a: String, b: String) -> String:
+	var rank := {SEVERITY_INFO: 1, SEVERITY_WARNING: 2, SEVERITY_CRITICAL: 3}
+	return a if int(rank.get(a, 0)) >= int(rank.get(b, 0)) else b
+
 func active_count() -> int:
 	return _active.size()
 
@@ -369,17 +418,32 @@ func _on_building_starved(record: Dictionary) -> void:
 	var streak: int = int(_starvation_streaks[inst_id])
 	var severity := SEVERITY_CRITICAL if streak >= STARVATION_RAMP_TURNS else SEVERITY_WARNING
 
+	# Split into two groups so the bell can show "5 Buildings Starved of Power"
+	# separately from "35 Buildings Starved of Inputs". Power gates production
+	# regardless of inputs, so a building missing power is grouped as power.
+	var lacks_power := false
+	for m in record.get("missing", []):
+		if str(m.get("internal_name", "")) == "power":
+			lacks_power = true
+			break
+	var group_key := "starved_power" if lacks_power else "starved_inputs"
+	var group_title := "Buildings Starved of Power" if lacks_power else "Buildings Starved of Inputs"
+
 	var ev_id := "starvation:%s" % inst_id
 	var building_id := str(record.get("building_id", ""))
 	var tile_id := str(record.get("tile_id", ""))
 	var name := str(Catalog.get_building(building_id).get("display_name", building_id))
 
 	if _active.has(ev_id):
-		# Update in place (re-fires on severity change so the bell flashes).
+		# Update in place (re-fires on severity change so the bell flashes). The
+		# group can change if the missing reason flips (e.g. power restored but
+		# now short on ore).
 		var ev: Dictionary = _active[ev_id]
 		ev.severity = severity
 		ev.streak = streak
 		ev.title = "%s starved (%d turn%s)" % [name, streak, "" if streak == 1 else "s"]
+		ev.group_key = group_key
+		ev.group_title = group_title
 		event_fired.emit(ev)
 		active_events_changed.emit()
 		return
@@ -388,9 +452,11 @@ func _on_building_starved(record: Dictionary) -> void:
 		"kind": "building_starved",
 		"severity": severity,
 		"title": "%s starved" % name,
-		"body": "Missing inputs — production halted. Click to inspect.",
+		"body": "Production halted — %s." % ("no power" if lacks_power else "missing inputs"),
 		"source": "production",
 		"deeplink": {"panel": "tile", "tile_id": tile_id, "building_id": inst_id},
+		"group_key": group_key,
+		"group_title": group_title,
 		"streak": streak,
 		"persistent": true,
 	})

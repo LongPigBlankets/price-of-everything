@@ -90,6 +90,7 @@ func _ready() -> void:
 	if search_overlay.has_signal("recipe_build_requested"):
 		search_overlay.recipe_build_requested.connect(_on_search_recipe_build_requested)
 	MatchState.encyclopedia_entry_requested.connect(_on_encyclopedia_entry_requested)
+	MatchState.focus_tile_requested.connect(_on_focus_tile_requested)
 
 	TurnManager.phase_started.connect(_on_phase_started)
 	TurnManager.turn_advanced.connect(_on_turn_advanced)
@@ -918,6 +919,20 @@ func _on_go_to_tile_stockpile(tile_id: String) -> void:
 		return
 	_last_selected_tile = td
 	info_panel._active_tab = "stock"
+	info_panel.show_tile(td)
+
+## Deep-link target for notifications etc: centre the camera on the tile and
+## open its panel. Emitted via MatchState.focus_tile_requested.
+func _on_focus_tile_requested(tile_id: String) -> void:
+	var coord := terrain_layer.id_to_coord(tile_id)
+	if coord == Vector2i(-1, -1) or not terrain_layer.tiles.has(coord):
+		return
+	var td: Dictionary = terrain_layer.tiles[coord]
+	var cam := get_viewport().get_camera_2d()
+	if cam != null:
+		var cell := terrain_layer.map_coord_for_tile_coord(coord)
+		cam.position = terrain_layer.to_global(terrain_layer.map_to_local(cell))
+	_last_selected_tile = td
 	info_panel.show_tile(td)
 
 func _on_v2_pick_destination() -> void:

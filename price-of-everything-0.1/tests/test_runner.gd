@@ -88,6 +88,8 @@ func _ready() -> void:
 	await _test_modifiers_roundtrip()
 	await _test_mining_mastery_tech_unlock()
 	await _test_mining_mastery_free_unlock()
+	_test_event_grouping()
+	await _test_notification_group_modal()
 	await _test_notification_bell_smoke()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -667,6 +669,82 @@ func _test_mining_mastery_free_unlock() -> void:
 	_check(Modifiers.has("mining_mastery_bonus"),
 		"free-picking the tech also grants the modifier")
 	Modifiers.reset()
+	MatchState.reset()
+
+# Identical notifications fold into display groups by reason; dismiss_group
+# clears only its own members.
+func _test_event_grouping() -> void:
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	for i in range(3):
+		EventScheduler._on_building_starved({"instance_id": "p_%d" % i, "building_id": "b_001",
+			"tile_id": "tile_6_8", "missing": [{"internal_name": "power", "need": 4, "have": 0}]})
+	for i in range(2):
+		EventScheduler._on_building_starved({"instance_id": "in_%d" % i, "building_id": "b_002",
+			"tile_id": "tile_7_10", "missing": [{"internal_name": "coal", "need": 10, "have": 0}]})
+	var power_group := {}
+	var input_group := {}
+	for g in EventScheduler.grouped_active():
+		if str(g.group_key) == "starved_power":
+			power_group = g
+		elif str(g.group_key) == "starved_inputs":
+			input_group = g
+	_check(not power_group.is_empty() and (power_group.members as Array).size() == 3,
+		"3 power starvations fold into one group")
+	_check(str(power_group.get("title", "")) == "Buildings Starved of Power",
+		"power group carries the plural title")
+	_check(not input_group.is_empty() and (input_group.members as Array).size() == 2,
+		"2 input starvations fold into a separate group")
+	# dismiss_group clears only that group.
+	EventScheduler.dismiss_group("starved_power")
+	_check(EventScheduler._active.size() == 2,
+		"dismiss_group removes only its own members (got %d left)" % EventScheduler._active.size())
+	var remaining := EventScheduler.grouped_active()
+	_check(remaining.size() == 1 and str(remaining[0].group_key) == "starved_inputs",
+		"only the input group remains after dismissing the power group")
+	EventScheduler.reset()
+
+# The group modal lists one member per starved building, each with a Go-to that
+# fires MatchState.focus_tile_requested for that building's tile.
+func _test_notification_group_modal() -> void:
+	EventScheduler.reset()
+	MatchState.reset()
+	TurnManager.current_turn = 1
+	for i in range(3):
+		EventScheduler._on_building_starved({"instance_id": "m_%d" % i, "building_id": "b_001",
+			"tile_id": "tile_6_8", "missing": [{"internal_name": "power"}]})
+	var modal: Node = load("res://scripts/notification_group_modal.gd").new()
+	add_child(modal)
+	await get_tree().process_frame
+	var g: Dictionary = EventScheduler.grouped_active()[0]
+	modal.call("open_group", str(g.group_key), str(g.title), g.members)
+	await get_tree().process_frame
+	_check(modal.visible, "group modal opens")
+	var member_rows := 0
+	for c in (modal.get("_list") as Node).get_children():
+		if c is PanelContainer:
+			member_rows += 1
+	_check(member_rows == 3, "modal lists one row per member (got %d)" % member_rows)
+	# Go-to fires focus_tile_requested with the member's tile.
+	var focused: Array = []
+	var cb := func(t): focused.append(t)
+	MatchState.focus_tile_requested.connect(cb)
+	var buttons: Array = []
+	_collect_buttons(modal, buttons)
+	var go_btn: Button = null
+	for b in buttons:
+		if (b as Button).text == "Go to":
+			go_btn = b
+			break
+	_check(go_btn != null, "modal row has a Go to button")
+	if go_btn != null:
+		go_btn.pressed.emit()
+	_check(focused.size() == 1 and str(focused[0]) == "tile_6_8",
+		"Go to fires focus_tile_requested with the member's tile")
+	MatchState.focus_tile_requested.disconnect(cb)
+	modal.queue_free()
+	await get_tree().process_frame
+	EventScheduler.reset()
 	MatchState.reset()
 
 func _fresh_production_summary() -> Dictionary:
@@ -1582,6 +1660,10 @@ func _test_scripts_parse() -> void:
 		"res://scripts/construction.gd",
 		"res://scripts/construction_missing_dialog.gd",
 		"res://scripts/transport_service.gd",
+		"res://scripts/event_scheduler.gd",
+		"res://scripts/modifier_state.gd",
+		"res://scripts/notification_bell.gd",
+		"res://scripts/notification_group_modal.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 

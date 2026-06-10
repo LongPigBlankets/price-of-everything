@@ -162,6 +162,9 @@ signal tile_survey_completed(tile_id: String, deposit_goods: Array)
 signal overflow_shipment_held(record: Dictionary)
 ## Debug cheat `swap bottom menu` flipped which bottom-menu icon set is active.
 signal alt_bottom_menu_changed(enabled: bool)
+## A UI surface (notification deep-link, etc.) asks the map to focus a tile:
+## centre the camera on it and open its tile panel. world_map handles it.
+signal focus_tile_requested(tile_id: String)
 
 # --- Initialization ---
 func _ready() -> void:

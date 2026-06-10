@@ -43,6 +43,7 @@ var _flash_tween: Tween = null
 # `pressed` emission (which would free that button mid-dispatch and hard-crash).
 var _refresh_queued := false
 var _pending_flash := false
+var _group_modal: PanelContainer = null
 
 
 func _ready() -> void:
@@ -54,6 +55,7 @@ func _ready() -> void:
 		_bell_texture = load(BELL_TEXTURE_PATH) as Texture2D
 	_build_badge()
 	_build_dropdown()
+	_build_group_modal()
 	_refresh_bg()
 	# All three collapse into one deferred refresh per frame (see _mark_dirty).
 	# event_fired additionally arms a single flash.
@@ -257,20 +259,97 @@ func _rebuild_dropdown_rows() -> void:
 	for child in _dropdown_list.get_children():
 		if child != _empty_label:
 			child.queue_free()
-	var rows: Array = EventScheduler.active_events()
-	_empty_label.visible = rows.is_empty()
-	var shown: int = mini(rows.size(), MAX_VISIBLE_ROWS)
+	# Identical messages collapse: a group with 2+ members renders as one
+	# "N Buildings Starved of …" row (click → modal); a lone event renders as
+	# its own normal row. So 35 starvations become ONE row, not 35.
+	var groups: Array = EventScheduler.grouped_active()
+	_empty_label.visible = groups.is_empty()
+	var shown: int = mini(groups.size(), MAX_VISIBLE_ROWS)
 	for i in range(shown):
-		_dropdown_list.add_child(_make_row(rows[i]))
-	# Overflow note (a plain Label, rebuilt each pass alongside the rows) so a
-	# few hundred active events never become a few thousand UI nodes.
-	if rows.size() > shown:
+		var g: Dictionary = groups[i]
+		if (g.members as Array).size() <= 1:
+			_dropdown_list.add_child(_make_row(g.members[0]))
+		else:
+			_dropdown_list.add_child(_make_group_row(g))
+	if groups.size() > shown:
 		var more := Label.new()
-		more.text = "+%d more — “Mark all read” to clear" % (rows.size() - shown)
+		more.text = "+%d more — “Mark all read” to clear" % (groups.size() - shown)
 		more.theme_type_variation = &"Caption"
 		more.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
 		more.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_dropdown_list.add_child(more)
+
+
+# A collapsed group: severity dot + "N {group title}" + a dismiss-group ✕. The
+# row body (not the ✕) opens the member modal.
+func _make_group_row(group: Dictionary) -> Control:
+	var members: Array = group.members
+	var row := PanelContainer.new()
+	row.theme_type_variation = &"Card"
+	row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var m := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]:
+		m.add_theme_constant_override("margin_" + s, 8)
+	row.add_child(m)
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 8)
+	m.add_child(hb)
+
+	var dot := Panel.new()
+	dot.custom_minimum_size = Vector2(8, 8)
+	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var dot_sb := StyleBoxFlat.new()
+	dot_sb.bg_color = _palette_for_severity(str(group.severity))
+	dot_sb.set_corner_radius_all(4)
+	dot.add_theme_stylebox_override("panel", dot_sb)
+	hb.add_child(dot)
+
+	var label := Label.new()
+	label.text = "%d %s" % [members.size(), str(group.title)]
+	label.theme_type_variation = &"Body"
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hb.add_child(label)
+
+	var chevron := Label.new()
+	chevron.text = "›"
+	chevron.theme_type_variation = &"Body"
+	chevron.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	hb.add_child(chevron)
+
+	var dismiss := Button.new()
+	dismiss.text = "✕"
+	dismiss.custom_minimum_size = Vector2(20, 20)
+	dismiss.tooltip_text = "Dismiss all"
+	dismiss.pressed.connect(func(): EventScheduler.dismiss_group(str(group.group_key)))
+	hb.add_child(dismiss)
+
+	var gk := str(group.group_key)
+	row.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_open_group_modal(gk))
+	return row
+
+
+func _build_group_modal() -> void:
+	_group_modal = load("res://scripts/notification_group_modal.gd").new()
+	_group_modal.name = "NotificationGroupModal"
+	_group_modal.top_level = true
+	add_child(_group_modal)
+
+
+func _open_group_modal(group_key: String) -> void:
+	var group := _group_by_key(group_key)
+	if group.is_empty():
+		return
+	_group_modal.open_group(group_key, str(group.title), group.members)
+
+
+func _group_by_key(group_key: String) -> Dictionary:
+	for g in EventScheduler.grouped_active():
+		if str(g.group_key) == group_key:
+			return g
+	return {}
 
 
 func _make_row(ev: Dictionary) -> Control:
@@ -352,6 +431,14 @@ func _apply_refresh() -> void:
 	_refresh_bg()
 	if _dropdown != null and _dropdown.visible:
 		_rebuild_dropdown_rows()
+	# Keep an open group modal in sync: re-list its members, or close it if the
+	# group has been fully dismissed / cured.
+	if _group_modal != null and _group_modal.visible:
+		var g := _group_by_key(_group_modal._group_key)
+		if g.is_empty():
+			_group_modal.close_modal()
+		else:
+			_group_modal.refresh(g.members)
 
 # Flash brightens the bell briefly to draw the eye when a new event arrives.
 func _flash() -> void:
