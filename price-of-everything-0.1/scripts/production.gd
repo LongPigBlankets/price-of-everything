@@ -411,6 +411,8 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 	if dep_token != "" and MatchState.deposit_depleted(tile_id, dep_token):
 		return
 	var mined := 0
+	var recipe_id: String = str(recipe.get("recipe_id", ""))
+	var recipe_type: String = str(recipe.get("recipe_type", "")).to_lower()
 	for output in _recipe_output_items(recipe):
 		var output_name: String = output.get("internal_name", "")
 		var output_qty: int = output.get("qty", 0)
@@ -424,6 +426,19 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 			push_warning("[Production] Unknown good '%s' from recipe %s" % [
 				output_name, recipe.get("recipe_id", "?")
 			])
+			continue
+
+		# Modifier hook: advisor bonuses, "Mining Mastery" research, carbon-tax
+		# productivity hits etc. all land here. With no active modifiers this is
+		# one dict-emptiness check.
+		var mod_ctx := {
+			"recipe_id": recipe_id,
+			"recipe_type": recipe_type,
+			"building_id": str(building.get("building_id", "")),
+			"good_id": str(good.id),
+		}
+		output_qty = int(round(Modifiers.apply("recipe_output", recipe_id, float(output_qty), mod_ctx)))
+		if output_qty <= 0:
 			continue
 
 		print("[Production] Building %s produced %d %s" % [

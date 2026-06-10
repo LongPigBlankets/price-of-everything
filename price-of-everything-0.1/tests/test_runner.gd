@@ -79,6 +79,14 @@ func _ready() -> void:
 	await _test_event_scheduler_aggregator()
 	await _test_event_scheduler_max_severity()
 	await _test_event_scheduler_roundtrip()
+	await _test_modifiers_basic()
+	await _test_modifiers_stacking()
+	await _test_modifiers_target_match()
+	await _test_modifiers_expiry()
+	await _test_modifiers_event_payload()
+	await _test_modifiers_production_recipe_output()
+	await _test_modifiers_roundtrip()
+	await _test_mining_mastery_demo_unlock()
 	await _test_notification_bell_smoke()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -110,7 +118,7 @@ func _test_save_load_roundtrip() -> void:
 	# full game scene; the visual rebuild is exercised manually / by scene tests).
 	_check(SaveLoad.load_slot("__test_roundtrip", false) == "", "load_slot applies without error")
 	var snap2: Dictionary = SaveLoad.export_snapshot()
-	for section in ["turn", "match", "stockpile", "loans", "construction", "market", "production", "events", "infrastructure"]:
+	for section in ["turn", "match", "stockpile", "loans", "construction", "market", "production", "events", "modifiers", "infrastructure"]:
 		_check(_canonical_json(snap1[section]) == _canonical_json(snap2[section]),
 			"round-trip preserves '%s'" % section)
 
@@ -419,19 +427,249 @@ func _test_event_scheduler_roundtrip() -> void:
 	EventScheduler.watch({"type": "turn_reached", "value": 100},
 		{"id": "watch_a", "title": "watched", "severity": EventScheduler.SEVERITY_INFO}, true)
 	var snap := EventScheduler.export_state()
-	# Wipe and reimport.
+	# Wipe and reimport. After reset the demo watches (Mining Mastery, etc.) are
+	# re-armed, so we assert on the user-scoped state, not raw emptiness.
 	EventScheduler.reset()
-	_check(EventScheduler.active_count() == 0 and EventScheduler._scheduled.is_empty()
-		and EventScheduler._watches.is_empty(), "reset clears all state")
+	_check(EventScheduler.active_count() == 0 and EventScheduler._scheduled.is_empty(),
+		"reset clears active + scheduled state")
 	EventScheduler.import_state(snap)
 	_check(EventScheduler._active.has("active_a"), "round-trip restores active events")
 	_check(EventScheduler._scheduled.size() == 1
 		and str(EventScheduler._scheduled[0].event.id) == "future_a",
 		"round-trip restores scheduled events")
-	_check(EventScheduler._watches.size() == 1
-		and str(EventScheduler._watches[0].id) == "watch_a",
-		"round-trip restores watches")
+	# watch_a is the user-added one; the snapshot was taken while the demo
+	# watches were already armed, so they come back too — assert on identity.
+	var saw_watch_a := false
+	for w in EventScheduler._watches:
+		if str(w.id) == "watch_a":
+			saw_watch_a = true
+	_check(saw_watch_a, "round-trip restores the user-added watch (watch_a)")
 	EventScheduler.reset()
+
+# --- Modifiers ---------------------------------------------------------------
+
+func _test_modifiers_basic() -> void:
+	Modifiers.reset()
+	TurnManager.current_turn = 1
+	# No active modifiers → base passes through untouched.
+	_check(Modifiers.apply("recipe_output", "r_001", 20.0) == 20.0,
+		"apply with empty registry returns base unchanged")
+	# Add a +5% recipe_output modifier on r_001.
+	var mid := Modifiers.add({"id": "test_a", "domain": "recipe_output",
+		"target": "r_001", "mult": 1.05, "label": "Test +5%"})
+	_check(mid == "test_a" and Modifiers.has("test_a"),
+		"add registers the modifier with the supplied id")
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 20.0) - 21.0) < 0.001,
+		"applied to r_001: 20 * 1.05 = 21")
+	# Different target → unchanged.
+	_check(absf(Modifiers.apply("recipe_output", "r_002", 20.0) - 20.0) < 0.001,
+		"r_001-targeted modifier does NOT affect r_002")
+	# Different domain → unchanged even for the same target.
+	_check(absf(Modifiers.apply("transport_cost", "r_001", 20.0) - 20.0) < 0.001,
+		"recipe_output modifier does NOT affect the transport_cost domain")
+	_check(Modifiers.remove("test_a") and not Modifiers.has("test_a"),
+		"remove drops the modifier")
+	Modifiers.reset()
+
+func _test_modifiers_stacking() -> void:
+	Modifiers.reset()
+	# Add-then-mult stacking: (base + adds) * prod(mults).
+	# base = 10, +2 (add) and +3 (add) → 15; then *1.5 and *1.2 → 27.
+	Modifiers.add({"id": "a", "domain": "recipe_output", "target": "*", "add": 2.0})
+	Modifiers.add({"id": "b", "domain": "recipe_output", "target": "*", "add": 3.0})
+	Modifiers.add({"id": "c", "domain": "recipe_output", "target": "*", "mult": 1.5})
+	Modifiers.add({"id": "d", "domain": "recipe_output", "target": "*", "mult": 1.2})
+	var got: float = Modifiers.apply("recipe_output", "r_001", 10.0)
+	_check(absf(got - 27.0) < 0.001,
+		"stacking: (10+2+3)*1.5*1.2 = 27 (got %.3f)" % got)
+	Modifiers.reset()
+
+func _test_modifiers_target_match() -> void:
+	Modifiers.reset()
+	# target_match: only fires when ctx provides the required keys.
+	Modifiers.add({"id": "extraction_only", "domain": "recipe_output",
+		"target_match": {"recipe_type": "extraction"}, "mult": 1.10})
+	var ctx_ext := {"recipe_type": "extraction"}
+	var ctx_smelt := {"recipe_type": "smelting"}
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 20.0, ctx_ext) - 22.0) < 0.001,
+		"target_match recipe_type=extraction applies to extraction ctx")
+	_check(absf(Modifiers.apply("recipe_output", "r_003", 20.0, ctx_smelt) - 20.0) < 0.001,
+		"target_match recipe_type=extraction does NOT apply to a smelting ctx")
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 20.0) - 20.0) < 0.001,
+		"target_match modifier inert when ctx is missing the key")
+	Modifiers.reset()
+
+func _test_modifiers_expiry() -> void:
+	Modifiers.reset()
+	TurnManager.current_turn = 10
+	Modifiers.add({"id": "tempo", "domain": "recipe_output",
+		"target": "*", "mult": 2.0, "duration_turns": 5})
+	_check(int(Modifiers._modifiers["tempo"]["expires_turn"]) == 15,
+		"duration_turns is converted into an absolute expires_turn")
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 10.0) - 20.0) < 0.001,
+		"modifier active before expiry")
+	# Tick NARRATIVE phases up to and past expiry.
+	TurnManager.current_turn = 14
+	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
+	await get_tree().process_frame
+	_check(Modifiers.has("tempo"), "still active one turn before expiry")
+	TurnManager.current_turn = 15
+	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
+	await get_tree().process_frame
+	_check(not Modifiers.has("tempo"), "pruned on the turn it expires")
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 10.0) - 10.0) < 0.001,
+		"expired modifier no longer affects apply")
+	Modifiers.reset()
+
+func _test_modifiers_event_payload() -> void:
+	Modifiers.reset()
+	EventScheduler.reset()
+	TurnManager.current_turn = 1
+	# An EventScheduler event with a modifiers payload should auto-add them.
+	EventScheduler.emit_event({
+		"id": "carbon_tax_apply",
+		"title": "Carbon Tax applied",
+		"severity": EventScheduler.SEVERITY_CRITICAL,
+		"modifiers": [{
+			"id": "carbon_tax_transport",
+			"domain": "transport_cost", "target": "*",
+			"mult": 1.30, "duration_turns": 20,
+		}],
+	})
+	_check(Modifiers.has("carbon_tax_transport"),
+		"event with `modifiers` payload auto-registers the modifier on fire")
+	_check(absf(Modifiers.apply("transport_cost", "g_001", 10.0) - 13.0) < 0.001,
+		"the auto-registered modifier is live for apply (10 * 1.30 = 13)")
+	Modifiers.reset()
+	EventScheduler.reset()
+
+func _test_modifiers_production_recipe_output() -> void:
+	# Drives a coal mine through Production once with no modifier (baseline),
+	# then a second time with +5% extraction. Asserts the +5% takes effect end
+	# to end: not just in Modifiers.apply but in what lands in the stockpile.
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+	var tile := "tile_6_8"  # has a coal deposit
+	var inst: String = MatchState.add_building("b_001", "r_001", tile)
+	# Force-allow the mine to run (deposit is seeded from the live tile map,
+	# which a clean test environment doesn't have — drop the depletion gate by
+	# revealing + topping up the deposit).
+	MatchState.reveal_deposit(tile, "coal")
+	MatchState.deposit_remaining[tile] = {"coal": 999}
+
+	var summary := _fresh_production_summary()
+	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
+	Production._flush_output_buffer()
+	var base_produced: int = int(summary.produced.get("g_001", 0))
+	_check(base_produced == 20, "baseline: coal recipe produces 20 (got %d)" % base_produced)
+
+	# Now with the Mining Mastery modifier active: extraction recipes +5%.
+	Stockpile.clear_all()
+	Modifiers.add({"id": "mining_mastery_bonus", "domain": "recipe_output",
+		"target_match": {"recipe_type": "extraction"}, "mult": 1.05})
+	summary = _fresh_production_summary()
+	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
+	Production._flush_output_buffer()
+	var boosted_produced: int = int(summary.produced.get("g_001", 0))
+	_check(boosted_produced == 21, "with +5% extraction modifier: 20 → 21 (got %d)" % boosted_produced)
+	_check(Stockpile.get_at_tile(tile, "g_001") == 21,
+		"the boosted output lands in the tile stockpile (got %d)" % Stockpile.get_at_tile(tile, "g_001"))
+	Modifiers.reset()
+	MatchState.remove_building(inst)
+
+func _test_modifiers_roundtrip() -> void:
+	Modifiers.reset()
+	TurnManager.current_turn = 50
+	Modifiers.add({"id": "a", "domain": "recipe_output", "target": "*",
+		"mult": 1.07, "expires_turn": 100, "label": "A"})
+	Modifiers.add({"id": "b", "domain": "transport_cost",
+		"target_match": {"good_id": "g_001"}, "add": 0.5, "expires_turn": 80})
+	var snap: Dictionary = Modifiers.export_state()
+	Modifiers.reset()
+	_check(Modifiers.active_count() == 0, "reset clears the registry")
+	Modifiers.import_state(snap)
+	_check(Modifiers.has("a") and Modifiers.has("b"),
+		"round-trip restores both modifiers")
+	_check(absf(Modifiers.apply("recipe_output", "anything", 10.0) - 10.7) < 0.001,
+		"restored 'a' still applies (10 * 1.07 = 10.7)")
+	_check(absf(Modifiers.apply("transport_cost", "g_001", 1.0, {"good_id": "g_001"}) - 1.5) < 0.001,
+		"restored 'b' still applies (1 + 0.5)")
+	Modifiers.reset()
+
+# End-to-end the demo unlock: a mine for each of the 6 staple deposits triggers
+# the watch → event with modifiers payload → Modifiers registry → Production sees it.
+func _test_mining_mastery_demo_unlock() -> void:
+	Modifiers.reset()
+	EventScheduler.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+
+	# Recipes whose deposit requirement matches the six staple types.
+	# These all run on the b_001 (Mine) building.
+	var by_deposit := {
+		"coal": "r_001",
+		"iron_ore": "r_002",
+		"copper_ore": "r_006",
+		"basic_salt": "r_010",
+		"limestone": "r_019",
+		"bauxite_ore": "r_015",
+	}
+	# Build one mine per deposit on distinct tiles. The watch fires only on
+	# NARRATIVE, so we tick after the last mine goes up.
+	var i := 0
+	for dep in by_deposit.keys():
+		var tile := "tile_demo_%d" % i
+		i += 1
+		MatchState.add_building("b_001", str(by_deposit[dep]), tile)
+	# Before NARRATIVE: nothing fired yet.
+	_check(not Modifiers.has("mining_mastery_bonus"),
+		"modifier not yet applied before the NARRATIVE tick")
+	# Tick NARRATIVE — the watch evaluates true and fires.
+	TurnManager.current_turn = 2
+	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
+	await get_tree().process_frame
+	_check(EventScheduler._active.has("mining_mastery_unlock"),
+		"the demo watch fires its unlock event")
+	_check(Modifiers.has("mining_mastery_bonus"),
+		"the unlock event's modifier payload registers in Modifiers")
+	# A non-extraction recipe should still see no change.
+	_check(absf(Modifiers.apply("recipe_output", "r_003", 30.0,
+			{"recipe_type": "smelting"}) - 30.0) < 0.001,
+		"the bonus only applies to extraction recipes")
+	# An extraction recipe sees +5%.
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 20.0,
+			{"recipe_type": "extraction"}) - 21.0) < 0.001,
+		"an extraction recipe gets 20 → 21 with the bonus")
+	# A second NARRATIVE tick must not re-fire the one-shot watch.
+	TurnManager.current_turn = 3
+	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
+	await get_tree().process_frame
+	_check(EventScheduler._watches.size() == 0
+		or _watches_count_with_id("mining_mastery_unlock") == 0,
+		"the one-shot watch is consumed and does not re-arm")
+	Modifiers.reset()
+	EventScheduler.reset()
+	MatchState.reset()
+
+func _watches_count_with_id(id: String) -> int:
+	var n := 0
+	for w in EventScheduler._watches:
+		if str(w.id) == id:
+			n += 1
+	return n
+
+func _fresh_production_summary() -> Dictionary:
+	# Minimal summary skeleton Production._dispatch_output_to_stockpile reads/writes.
+	return {
+		"produced": {},
+		"transport_paid": 0.0,
+		"money_out": 0.0,
+		"money_in": 0.0,
+		"goods_sales_revenue": 0.0,
+		"goods_purchased_cost": 0.0,
+		"sold": {},
+	}
 
 # UI smoke: the bell builds, reads EventScheduler state, the badge follows the
 # active count, the bell colour follows max severity, and the dropdown opens.

@@ -109,6 +109,7 @@ func _ready() -> void:
 		Construction.construction_completed.connect(_on_construction_completed)
 	# A clean slate when the game resets (new game, scenario start, etc).
 	MatchState.state_reset.connect(reset)
+	_register_default_watches()
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +219,44 @@ func reset() -> void:
 	_aggregators.clear()
 	_starvation_streaks.clear()
 	_starvation_last_turn.clear()
+	_register_default_watches()
 	active_events_changed.emit()
+
+## Re-arm the standing watches the game ships with. SaveLoad.import_state
+## REPLACES _watches with the loaded array, so this only counts at boot and
+## on state_reset paths — both of which are correct.
+func _register_default_watches() -> void:
+	# Mining Mastery: the first turn the player operates a mine for every
+	# staple mineable deposit, a one-shot info event fires with a `modifiers`
+	# payload — picked up by the Modifiers autoload — granting +5% recipe
+	# output to every extraction recipe for 30 turns.
+	const MINING_MASTERY_DEPOSITS := [
+		"coal", "iron_ore", "copper_ore",
+		"basic_salt", "limestone", "bauxite_ore",
+	]
+	watch(
+		{"type": "mines_per_deposit_type", "deposits": MINING_MASTERY_DEPOSITS},
+		{
+			"id": "mining_mastery_unlock",
+			"kind": "research_unlocked",
+			"severity": SEVERITY_INFO,
+			"title": "Mining Mastery unlocked!",
+			"body": "A mine for every staple deposit grants +5% output to extraction recipes for 30 turns.",
+			"source": "research",
+			"persistent": false,
+			"auto_dismiss_turns": 8,
+			"modifiers": [{
+				"id": "mining_mastery_bonus",
+				"domain": "recipe_output",
+				"target_match": {"recipe_type": "extraction"},
+				"mult": 1.05,
+				"duration_turns": 30,
+				"label": "Mining Mastery: +5% output (extraction)",
+				"source": "research:mining_mastery",
+			}],
+		},
+		true,
+	)
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +379,26 @@ func _check_condition(c: Dictionary) -> bool:
 			if gid == "":
 				return false
 			return Stockpile.get_total(gid) >= int(c.get("value", 0))
+		"mines_per_deposit_type":
+			# Player has at least one (live, player-owned) building running a
+			# recipe whose `deposit` requirement matches each entry in `deposits`.
+			var required: Array = c.get("deposits", [])
+			if required.is_empty():
+				return false
+			var seen: Dictionary = {}
+			for inst in MatchState.buildings.values():
+				if not MatchState.is_player_owned(inst):
+					continue
+				var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
+				if recipe.is_empty():
+					continue
+				for req in recipe.get("requirements", []):
+					if str(req.get("type", "")) == "deposit":
+						seen[str(req.get("value", ""))] = true
+			for d in required:
+				if not seen.has(str(d)):
+					return false
+			return true
 		_:
 			return false
 
