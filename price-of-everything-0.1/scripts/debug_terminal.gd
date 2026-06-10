@@ -134,8 +134,27 @@ func _run_command(text: String) -> String:
 				MatchState.cheat_partial_all()
 				return "Partially surveyed the whole map."
 			return "usage: p_survey limit  |  p_survey all"
+		"save":
+			if parts.size() < 2:
+				return "usage: save <name>"
+			var save_err: String = SaveLoad.save_slot(parts[1])
+			return "saved '%s'" % parts[1] if save_err == "" else save_err
+		"load":
+			if parts.size() < 2:
+				return "usage: load <name>"
+			var load_err: String = SaveLoad.load_slot(parts[1])
+			# On success the map scene reloads and the save applies once it's ready.
+			return "loading '%s'…" % parts[1] if load_err == "" else load_err
+		"saves":
+			var slots: Array = SaveLoad.list_slots()
+			if slots.is_empty():
+				return "no saves yet  (try: save <name>)"
+			var lines: Array = []
+			for s in slots:
+				lines.append("%s — turn %d, £%.2f  (%s)" % [s.slot, int(s.turn), float(s.money), str(s.timestamp)])
+			return "\n".join(lines)
 		"help":
-			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap tvp   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   help"
+			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap tvp   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

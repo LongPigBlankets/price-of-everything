@@ -59,8 +59,270 @@ func _ready() -> void:
 	_test_construction_sourcing()
 	_test_construction_cancel()
 	await _test_construction_detail_panel()
+	_test_save_load_roundtrip()
+	await _test_pending_load_applies_on_scene_ready()
+	_test_start_config_expansion()
+	await _test_start_config_applies_on_scene_ready()
+	_test_save_version_migration()
+	_test_game_ended_persists()
+	_test_construction_survives_load()
+	_test_autosave_rotation()
+	await _test_save_load_ui()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
+
+# Save/load round-trip: populate every save-relevant system, export → JSON → import
+# into the reset systems → export again; the two snapshots must agree section by
+# section. Catches any state field a later change forgets to serialize.
+func _test_save_load_roundtrip() -> void:
+	MatchState.add_money(123.0)
+	var inst: String = MatchState.add_building("b_001", "r_001", "tile_12_4")
+	Stockpile.add("tile_12_4", "g_001", 25)
+	MatchState.mark_tile_surveyed("tile_12_4")
+	MatchState.add_recurring_move("tile_12_4", "tile_12_2", {"g_001": 5})
+	MatchState.add_recurring_sell("tile_12_4", {"g_001": 3})
+	MatchState.add_recurring_buy("tile_12_4", "g_001", 7)
+	MatchState.add_recurring_bulk_sell({"good_id": "", "finished_only": true, "per_tile_keep": 2})
+	MatchState.queue_move("tile_12_4", "tile_3_8", {"g_001": 5})  # an in-flight shipment
+	_check(LoanState.take_loan(30.0), "roundtrip: loan taken for debt state")
+
+	var snap1: Dictionary = SaveLoad.export_snapshot()
+	# Real file round-trip via the slot API (covers JSON I/O + slot listing too).
+	_check(SaveLoad.save_slot("__test_roundtrip") == "", "save_slot writes without error")
+	var found := false
+	for s in SaveLoad.list_slots():
+		if str(s.slot) == "__test_roundtrip":
+			found = true
+	_check(found, "list_slots sees the new save")
+	# restart_scene=false: apply in place (the default scene-reload path needs the
+	# full game scene; the visual rebuild is exercised manually / by scene tests).
+	_check(SaveLoad.load_slot("__test_roundtrip", false) == "", "load_slot applies without error")
+	var snap2: Dictionary = SaveLoad.export_snapshot()
+	for section in ["turn", "match", "stockpile", "loans", "construction", "market", "production", "infrastructure"]:
+		_check(_canonical_json(snap1[section]) == _canonical_json(snap2[section]),
+			"round-trip preserves '%s'" % section)
+
+	# Spot-check the loaded state is live, not just equal-on-paper.
+	_check(str(MatchState.get_building(inst).get("tile_id", "")) == "tile_12_4",
+		"loaded building is queryable")
+	_check(Stockpile.get_at_tile("tile_12_4", "g_001") == 20, "loaded stockpile intact (25 - 5 moved)")
+	_check(LoanState.total_outstanding() > 0.0, "loaded debt outstanding")
+	_check(MatchState.recurring_moves.size() == 1 and MatchState.recurring_buys.size() == 1,
+		"recurring orders survive the round-trip")
+	var requoted := true
+	for shipment in MatchState.pending_transport_shipments:
+		if not (shipment.has("tiles") and shipment.has("path") and shipment.has("legs")):
+			requoted = false
+	_check(requoted, "in-flight shipment routes re-quoted on load")
+	DirAccess.remove_absolute("user://saves/__test_roundtrip.json")
+
+# Both sides of a comparison pass through stringify -> parse -> normalize so 5.0
+# (native float) and 5 (JSON-round-tripped int) canonicalise identically.
+func _canonical_json(section: Variant) -> String:
+	return JSON.stringify(SaveLoad.normalize_jsonish(JSON.parse_string(JSON.stringify(section))))
+
+# Phase 3 start configs: the authoring shape expands into a full snapshot —
+# default money, loans become debt without cash, recurring orders stamped,
+# port tiles + owned-building tiles pre-surveyed, instance ids collision-free.
+func _test_start_config_expansion() -> void:
+	var snap: Dictionary = SaveLoad.expand_start_config({
+		"start": true,
+		"money": 350,
+		"loans": [{"principal": 150}],
+		"buildings": [{"building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_6_8"}],
+		"stockpile": {"tile_6_8": {"g_001": 50}},
+		"recurring": {"sells": [{"source": "tile_6_8", "goods": {"g_001": 10}}]},
+	})
+	var match_d: Dictionary = snap.get("match", {})
+	_check(float(match_d.get("money", 0.0)) == 350.0, "start config: money set")
+	var buildings: Dictionary = match_d.get("buildings", {})
+	_check(buildings.size() == 1 and str(buildings.values()[0].get("tile_id", "")) == "tile_6_8",
+		"start config: building expanded with tile")
+	_check(str(buildings.keys()[0]).begins_with("inst_b_001_"), "start config: instance id assigned")
+	var loans: Array = (snap.get("loans", {}) as Dictionary).get("loans", [])
+	var loan_ok: bool = loans.size() == 1 \
+		and absf(float(loans[0].principal_remaining) - 165.0) < 0.001 \
+		and absf(float(loans[0].payment_per_turn) - 165.0 / float(EconomyConfig.LOAN_TERM_TURNS)) < 0.001
+	_check(loan_ok, "start config: loan amortised like take_loan (150 -> 165 owed)")
+	var surveyed: Dictionary = match_d.get("surveyed_tiles", {})
+	_check(surveyed.has("tile_6_8") and surveyed.has("tile_5_10"),
+		"start config: owned-building tile + port tiles pre-surveyed")
+	var sells: Array = match_d.get("recurring_sells", [])
+	_check(sells.size() == 1 and int(sells[0].get("turn_started", -1)) == 1,
+		"start config: recurring sell stamped turn_started 1")
+	var defaults: Dictionary = SaveLoad.expand_start_config({"start": true})
+	_check(float((defaults.get("match", {}) as Dictionary).get("money", 0.0)) == EconomyConfig.STARTING_MONEY,
+		"start config: omitted money falls back to STARTING_MONEY")
+
+# Phase 3 end-to-end: a start config applied through the scene pipeline keeps
+# the scene-seeded NPC buildings (ports/ruins), seeds debt WITHOUT cash, and
+# leaves the CSV deposit yields intact (the config carries no deposit data).
+func _test_start_config_applies_on_scene_ready() -> void:
+	var cfg: Dictionary = SaveLoad._read_json_file("res://data/starts/coal_baron.json")
+	_check(not cfg.is_empty(), "coal_baron.json parses")
+	SaveLoad._pending_snapshot = SaveLoad.expand_start_config(cfg)
+	var inst: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	add_child(inst)
+	await get_tree().process_frame
+	_check(absf(MatchState.money - 350.0) < 0.001, "start: money is the configured 350 (no loan cash)")
+	_check(absf(LoanState.total_outstanding() - 165.0) < 0.001, "start: debt outstanding 165")
+	var mines := 0
+	var npc := 0
+	for iid in MatchState.buildings:
+		var b: Dictionary = MatchState.buildings[iid]
+		if str(b.get("building_id", "")) == "b_001":
+			mines += 1
+		if not MatchState.is_player_owned(b):
+			npc += 1
+	_check(mines == 1, "start: configured mine exists")
+	_check(npc >= 5, "start: scene-seeded NPC ports/ruins survive the start import")
+	_check(Stockpile.get_at_tile("tile_6_8", "g_001") == 50, "start: stockpile seeded")
+	_check(MatchState.recurring_sells.size() == 1, "start: recurring sell order live")
+	_check(MatchState.deposit_remaining_for("tile_6_8", "coal") == 1000,
+		"start: CSV deposit yields survive (no deposit data in the config)")
+	inst.queue_free()
+	await get_tree().process_frame
+
+# Phase 4: a v1 save (no ruleset) steps up the migration ladder on load and
+# arrives with the standard ruleset filled in.
+func _test_save_version_migration() -> void:
+	var snap: Dictionary = SaveLoad.export_snapshot()
+	snap["save_version"] = 1
+	(snap.get("match", {}) as Dictionary).erase("ruleset")
+	(snap.get("meta", {}) as Dictionary).erase("ruleset")
+	DirAccess.make_dir_recursive_absolute("user://saves")
+	var f := FileAccess.open("user://saves/__test_v1.json", FileAccess.WRITE)
+	f.store_string(JSON.stringify(snap))
+	f.close()
+	MatchState.ruleset = {"name": "__sentinel__"}
+	_check(SaveLoad.load_slot("__test_v1", false) == "", "v1 save loads through migration")
+	_check(str(MatchState.ruleset.get("name", "")) == "standard",
+		"v1 -> v2 migration fills in the standard ruleset")
+	_check(str(SaveLoad.export_snapshot().get("meta", {}).get("ruleset", "")) == "standard",
+		"migrated save re-exports with meta.ruleset")
+	DirAccess.remove_absolute("user://saves/__test_v1.json")
+
+# Phase 4: a finished game stays finished across save/load.
+func _test_game_ended_persists() -> void:
+	var snap: Dictionary = SaveLoad.export_snapshot()
+	(snap.get("turn", {}) as Dictionary)["game_ended"] = true
+	(snap.get("turn", {}) as Dictionary)["current_turn"] = TurnManager.MAX_TURNS + 1
+	SaveLoad.import_snapshot(snap)
+	_check(TurnManager.game_ended and TurnManager.current_turn == TurnManager.MAX_TURNS + 1,
+		"game_ended + final turn survive a load")
+	TurnManager.reset_for_test()
+
+# Phase 4: an awaiting-materials construction project keeps working after a
+# save/load — the project dict, its missing-materials map and the
+# construction-tagged shipments are all id/tile keyed, so once the materials
+# reach the tile post-load, claim_materials promotes it.
+func _test_construction_survives_load() -> void:
+	MatchState.add_money(1000.0)
+	var inst_id: String = Construction.start_awaiting_market("b_002", "r_002", "tile_13_2", 100.0)
+	_check(inst_id != "", "awaiting-market construction project created")
+	SaveLoad.import_snapshot(SaveLoad.normalize_jsonish(
+		JSON.parse_string(JSON.stringify(SaveLoad.export_snapshot()))))
+	var project: Dictionary = Construction.construction_projects.get(inst_id, {})
+	_check(str(project.get("status", "")) == Construction.STATUS_AWAITING_MATERIALS,
+		"project still awaiting materials after load")
+	var tagged := false
+	for shipment in MatchState.pending_transport_shipments:
+		if str(shipment.get("construction_instance_id", "")) == inst_id:
+			tagged = true
+	_check(tagged, "construction-tagged material shipment survives the load")
+	# Materials land on the tile (as an arrived shipment would deliver them) and
+	# the loaded project claims them and starts its countdown.
+	for good_id in (project.get("missing_materials", {}) as Dictionary).keys():
+		Stockpile.add("tile_13_2", str(good_id), int(project["missing_materials"][good_id]))
+	Construction.claim_materials()
+	_check(str(Construction.construction_projects.get(inst_id, {}).get("status", "")) \
+		== Construction.STATUS_UNDER_CONSTRUCTION,
+		"loaded project claims arrived materials and starts construction")
+	Construction.cancel(inst_id)
+
+# Phase 4: the autosave hook fires only on every Nth finished turn and rotates
+# its slot index. (Drive the handler directly; committing 10 real turns is slow.)
+func _test_autosave_rotation() -> void:
+	var saved_turn: int = TurnManager.current_turn
+	var saved_index: int = SaveLoad._autosave_index
+	SaveLoad._autosave_index = 0
+	TurnManager.current_turn = SaveLoad.AUTOSAVE_EVERY_TURNS + 1  # turn N just finished
+	SaveLoad._on_turn_resolution_completed()
+	_check(SaveLoad._autosave_index == 1 and FileAccess.file_exists("user://saves/autosave_1.json"),
+		"autosave fires on the Nth finished turn into slot 1")
+	TurnManager.current_turn = SaveLoad.AUTOSAVE_EVERY_TURNS + 2  # off-cadence turn
+	SaveLoad._on_turn_resolution_completed()
+	_check(SaveLoad._autosave_index == 1, "no autosave between cadence points")
+	TurnManager.current_turn = 2 * SaveLoad.AUTOSAVE_EVERY_TURNS + 1
+	SaveLoad._on_turn_resolution_completed()
+	_check(SaveLoad._autosave_index == 2, "next cadence point rotates to slot 2")
+	DirAccess.remove_absolute("user://saves/autosave_1.json")
+	DirAccess.remove_absolute("user://saves/autosave_2.json")
+	TurnManager.current_turn = saved_turn
+	SaveLoad._autosave_index = saved_index
+
+# UI: the save/load screens and the Esc pause menu build, gate their CTAs, and
+# the save screen actually writes the named slot.
+func _test_save_load_ui() -> void:
+	_check(SaveLoad.save_slot("__test_ui") == "", "fixture save for the load screen")
+	var screen: SaveLoadScreen = SaveLoadScreen.open(self, SaveLoadScreen.Mode.LOAD)
+	await get_tree().process_frame
+	_check(screen._cta != null and screen._cta.disabled,
+		"load screen: CTA disabled until a save is picked")
+	var rows: Array = []
+	_collect_buttons(screen, rows)
+	var toggle_rows := 0
+	for b in rows:
+		if (b as Button).toggle_mode:
+			toggle_rows += 1
+	_check(toggle_rows == SaveLoad.list_slots().size(),
+		"load screen: one selectable row per save slot")
+	screen.hide()  # frees itself
+	await get_tree().process_frame
+
+	var save_screen: SaveLoadScreen = SaveLoadScreen.open(self, SaveLoadScreen.Mode.SAVE)
+	await get_tree().process_frame
+	_check(save_screen._cta.disabled, "save screen: CTA disabled while the name is empty")
+	save_screen._name_edit.text = "__test_ui_named"
+	save_screen._do_save()
+	_check(FileAccess.file_exists("user://saves/__test_ui_named.json"),
+		"save screen: writes the named slot")
+	_check(not save_screen.visible, "save screen: closes after saving")
+	await get_tree().process_frame
+
+	var menu: PauseMenu = PauseMenu.open(self)
+	await get_tree().process_frame
+	var menu_buttons: Array = []
+	_collect_buttons(menu, menu_buttons)
+	_check(menu_buttons.size() == 5, "pause menu: shows the 5 options")
+	_check(PanelStack.close_top() and not menu.visible, "pause menu: Esc path (close_top) closes it")
+	await get_tree().process_frame
+	DirAccess.remove_absolute("user://saves/__test_ui.json")
+	DirAccess.remove_absolute("user://saves/__test_ui_named.json")
+
+func _collect_buttons(node: Node, out: Array) -> void:
+	if node is Button:
+		out.append(node)
+	for child in node.get_children():
+		_collect_buttons(child, out)
+
+# Phase 2 load sequencing: a pending snapshot must apply at the end of
+# world_map._ready (after NPC ports/deposit seeding) and overwrite fresh-match
+# state — this is the path the main menu's Load Game and the terminal use.
+func _test_pending_load_applies_on_scene_ready() -> void:
+	var before_money: float = MatchState.money
+	var before_buildings: int = MatchState.buildings.size()
+	var snap: Dictionary = SaveLoad.export_snapshot()
+	MatchState.add_money(777.0)  # diverge so the apply is observable
+	SaveLoad._pending_snapshot = snap
+	var inst: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	add_child(inst)
+	await get_tree().process_frame
+	_check(not SaveLoad.has_pending(), "pending save is consumed when the map scene readies")
+	_check(absf(MatchState.money - before_money) < 0.001, "pending save restores money over fresh-match state")
+	_check(MatchState.buildings.size() == before_buildings, "pending save restores the building set")
+	inst.queue_free()
+	await get_tree().process_frame
 
 func _check(ok: bool, name: String) -> void:
 	if ok:

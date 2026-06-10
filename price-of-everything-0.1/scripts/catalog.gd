@@ -260,6 +260,14 @@ func add_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 		if ROUTE_AFFECTING_INFRA.has(norm):
 			_route_cache.clear()   # routing network changed: cached paths may now be shorter
 
+func reset_runtime_infrastructure() -> void:
+	# Rebuild the tile-infra map from the CSV baseline, dropping runtime-built
+	# roads/rails (this autoload outlives the map scene, so a previous match's
+	# infrastructure would otherwise leak into a loaded save). SaveLoad calls this
+	# before re-applying a snapshot's infrastructure.
+	_load_tile_names()
+	_route_cache.clear()
+
 func remove_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 	var norm := _normalise_infra_id(infra_type.strip_edges().to_lower())
 	var list: Array = _tile_infra.get(tile_id, [])

@@ -34,6 +34,15 @@ func _on_state_reset() -> void:
 	construction_projects.clear()
 
 
+# --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
+
+func export_state() -> Dictionary:
+	return {"projects": construction_projects.duplicate(true)}
+
+func import_state(d: Dictionary) -> void:
+	construction_projects = (d.get("projects", {}) as Dictionary).duplicate(true)
+
+
 # --- Requirements ---
 
 # Construction materials for a building as {good_id: qty}. The Catalog stores build
