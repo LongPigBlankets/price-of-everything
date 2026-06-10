@@ -685,6 +685,14 @@ func _nearest_grid_point_local(grid_rect: Rect2, anchor: Vector2) -> Vector2:
 		clampf(anchor.y, grid_rect.position.y, grid_rect.end.y)
 	)
 
+## The six neighbouring tile coords of a tile (HSM order). Off-map coords are
+## included — callers filter against `tiles` when they need real neighbours.
+func neighbor_coords(tile_coord: Vector2i) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for hsm in HSM_ORDER:
+		result.append(tile_coord + _neighbor_offset_for_hsm(tile_coord, hsm))
+	return result
+
 func _neighbor_offset_for_hsm(tile_coord: Vector2i, hsm: String) -> Vector2i:
 	var is_odd_column: bool = tile_coord.x % 2 == 1
 	match hsm:

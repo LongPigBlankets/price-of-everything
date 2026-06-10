@@ -4,6 +4,8 @@ const SliceMarkerScene: PackedScene = preload("res://scenes/slice_marker.tscn")
 const BuildModeHexOverlayScript: Script = preload("res://scripts/build_mode_hex_overlay.gd")
 const BuildModeBackdropScript: Script = preload("res://scripts/build_mode_backdrop.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const InfraIcons := preload("res://scripts/infra_icons.gd")
+const InfraMarkersScript := preload("res://scripts/infra_mapmode_markers.gd")
 
 # Producing / Consuming icons are sized as a fraction of the tile (world units),
 # so they scale with zoom. Multiple selected goods on one tile cluster + shrink.
@@ -52,6 +54,14 @@ var build_legend: PanelContainer = null
 func _ready() -> void:
 	MapMode.selections_changed.connect(_on_selections_changed)
 	MapMode.mode_cleared.connect(_on_mode_cleared)
+	MapMode.infrastructure_selection_changed.connect(_on_infra_selection_changed)
+	# Construction lifecycle redraws the infrastructure overlay's dashed state.
+	# Deferred so world_map applies a completed infra build to its tile first —
+	# otherwise the re-render runs before the tile gains the infra and the
+	# just-finished tile would briefly show neither dashed nor solid.
+	Construction.construction_started.connect(_on_construction_changed, CONNECT_DEFERRED)
+	Construction.construction_completed.connect(_on_construction_changed, CONNECT_DEFERRED)
+	Construction.construction_cancelled.connect(_on_construction_changed, CONNECT_DEFERRED)
 	Production.turn_processed.connect(_on_turn_processed)
 	BuildMode.mode_entered.connect(_on_build_mode_entered)
 	BuildMode.mode_exited.connect(_on_build_mode_exited)
@@ -70,6 +80,13 @@ func _on_selections_changed(mode: int, selections: Array) -> void:
 
 func _on_mode_cleared() -> void:
 	_clear_overlays()
+
+func _on_infra_selection_changed() -> void:
+	if MapMode.current_mode == MapMode.Mode.INFRASTRUCTURE:
+		_on_selections_changed(MapMode.current_mode, MapMode.selections)
+
+func _on_construction_changed(_instance_id: String, _tile_id: String) -> void:
+	_on_infra_selection_changed()
 
 func _on_turn_processed(_summary: Dictionary) -> void:
 	print("[MapOverlay] turn_processed received, current_mode=", MapMode.current_mode)
@@ -341,8 +358,93 @@ func _add_build_legend_row(parent: VBoxContainer, color: Color, text: String) ->
 func _render_overlay(mode: int, selections: Array) -> void:
 	if mode == MapMode.Mode.POWER_BALANCE:
 		_render_power_overlay()
+	elif mode == MapMode.Mode.INFRASTRUCTURE:
+		_render_infrastructure_overlay()
 	else:
 		_render_resource_overlay(mode, selections)
+
+# --- Infrastructure overlay ---
+# Entering the mode darkens the map (build-mode backdrop); the Infrastructure
+# panel's single pick then shows every tile holding that infrastructure as a
+# coloured circle, with lines joining adjacent same-infrastructure tiles
+# (dashed when under construction — see infra_mapmode_markers.gd).
+
+func _render_infrastructure_overlay() -> void:
+	var backdrop := Node2D.new()
+	backdrop.set_script(BuildModeBackdropScript)
+	backdrop.set("bounds", _map_bounds())
+	add_child(backdrop)
+	current_overlays.append(backdrop)
+	var infra_key: String = MapMode.infrastructure_selection
+	if infra_key == "":
+		return
+
+	var built: Dictionary = {}  # coord -> tile-centre world pos
+	for coord in terrain_layer.tiles:
+		if _tile_has_infrastructure(terrain_layer.tiles[coord], infra_key):
+			built[coord] = _tile_world_pos(coord)
+	var under_construction := _infra_construction_tiles(infra_key, built)
+
+	var markers := InfraMarkersScript.new()
+	markers.color = InfraIcons.color_for(infra_key)
+	markers.circles = built.values()
+	for coord in built:
+		for n in terrain_layer.neighbor_coords(coord):
+			if built.has(n):
+				if _coord_precedes(coord, n):  # each pair once
+					var level: int = mini(_infra_level(coord, infra_key), _infra_level(n, infra_key))
+					markers.solid_links.append({"a": built[coord], "b": built[n], "level": level})
+			elif under_construction.has(n):
+				# Under-construction infrastructure has no level yet — level 1.
+				markers.dashed_links.append({"a": built[coord], "b": under_construction[n], "level": 1})
+	for coord in under_construction:
+		var neighbors := terrain_layer.neighbor_coords(coord)
+		var connected := false
+		for n in neighbors:
+			if built.has(n):
+				connected = true
+			elif under_construction.has(n):
+				connected = true
+				if _coord_precedes(coord, n):
+					markers.dashed_links.append({"a": under_construction[coord], "b": under_construction[n], "level": 1})
+		if connected:
+			markers.uc_circles.append(under_construction[coord])
+		else:
+			var edge_mids: Array = []
+			for n in neighbors:
+				edge_mids.append((under_construction[coord] + _tile_world_pos(n)) * 0.5)
+			markers.stranded.append({"pos": under_construction[coord], "edge_mids": edge_mids})
+	add_child(markers)
+	current_overlays.append(markers)
+
+# Tiles with a pending construction project for this infrastructure type
+# (coord -> world pos). Tiles that already hold the built infra are skipped.
+func _infra_construction_tiles(infra_key: String, built: Dictionary) -> Dictionary:
+	var result: Dictionary = {}
+	for instance_id in Construction.construction_projects:
+		var project: Dictionary = Construction.construction_projects[instance_id]
+		var building: Dictionary = Catalog.get_building(str(project.get("building_id", "")))
+		if InfraIcons.normalise(str(building.get("internal_name", ""))) != infra_key:
+			continue
+		var coord: Vector2i = terrain_layer.id_to_coord(str(project.get("tile_id", "")))
+		if coord != Vector2i(-1, -1) and terrain_layer.tiles.has(coord) and not built.has(coord):
+			result[coord] = _tile_world_pos(coord)
+	return result
+
+func _coord_precedes(a: Vector2i, b: Vector2i) -> bool:
+	return a.y < b.y if a.x == b.x else a.x < b.x
+
+# A tile's level for an infrastructure type (default 1). Levels live in the
+# tile's `infrastructure_levels` dict, keyed by the canonical slot key.
+func _infra_level(coord: Vector2i, infra_key: String) -> int:
+	var tile_data: Dictionary = terrain_layer.tiles.get(coord, {})
+	return int(tile_data.get("infrastructure_levels", {}).get(infra_key, 1))
+
+func _tile_has_infrastructure(tile_data: Dictionary, infra_key: String) -> bool:
+	for entry in tile_data.get("infrastructure_present", []):
+		if InfraIcons.normalise(str(entry)) == infra_key:
+			return true
+	return false
 
 # --- Resource overlay (Producing / Consuming) ---
 # Each selected good is drawn on a matching tile as its own icon (goods with no
