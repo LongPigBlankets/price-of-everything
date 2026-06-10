@@ -86,7 +86,8 @@ func _ready() -> void:
 	await _test_modifiers_event_payload()
 	await _test_modifiers_production_recipe_output()
 	await _test_modifiers_roundtrip()
-	await _test_mining_mastery_demo_unlock()
+	await _test_mining_mastery_tech_unlock()
+	await _test_mining_mastery_free_unlock()
 	await _test_notification_bell_smoke()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -427,23 +428,18 @@ func _test_event_scheduler_roundtrip() -> void:
 	EventScheduler.watch({"type": "turn_reached", "value": 100},
 		{"id": "watch_a", "title": "watched", "severity": EventScheduler.SEVERITY_INFO}, true)
 	var snap := EventScheduler.export_state()
-	# Wipe and reimport. After reset the demo watches (Mining Mastery, etc.) are
-	# re-armed, so we assert on the user-scoped state, not raw emptiness.
+	# Wipe and reimport.
 	EventScheduler.reset()
-	_check(EventScheduler.active_count() == 0 and EventScheduler._scheduled.is_empty(),
-		"reset clears active + scheduled state")
+	_check(EventScheduler.active_count() == 0 and EventScheduler._scheduled.is_empty()
+		and EventScheduler._watches.is_empty(), "reset clears all state")
 	EventScheduler.import_state(snap)
 	_check(EventScheduler._active.has("active_a"), "round-trip restores active events")
 	_check(EventScheduler._scheduled.size() == 1
 		and str(EventScheduler._scheduled[0].event.id) == "future_a",
 		"round-trip restores scheduled events")
-	# watch_a is the user-added one; the snapshot was taken while the demo
-	# watches were already armed, so they come back too — assert on identity.
-	var saw_watch_a := false
-	for w in EventScheduler._watches:
-		if str(w.id) == "watch_a":
-			saw_watch_a = true
-	_check(saw_watch_a, "round-trip restores the user-added watch (watch_a)")
+	_check(EventScheduler._watches.size() == 1
+		and str(EventScheduler._watches[0].id) == "watch_a",
+		"round-trip restores watches")
 	EventScheduler.reset()
 
 # --- Modifiers ---------------------------------------------------------------
@@ -598,66 +594,80 @@ func _test_modifiers_roundtrip() -> void:
 	Modifiers.reset()
 
 # End-to-end the demo unlock: a mine for each of the 6 staple deposits triggers
-# the watch → event with modifiers payload → Modifiers registry → Production sees it.
-func _test_mining_mastery_demo_unlock() -> void:
+# the research tech ("Mining Mastery", research_unlocks.csv) → MatchState grants
+# the unlock when its condition is met → Modifiers applies the +5% bonus.
+func _test_mining_mastery_tech_unlock() -> void:
 	Modifiers.reset()
-	EventScheduler.reset()
 	MatchState.reset()
 	Stockpile.clear_all()
 
-	# Recipes whose deposit requirement matches the six staple types.
-	# These all run on the b_001 (Mine) building.
+	# The tech exists in the loaded research defs.
+	var found_def := false
+	for d in MatchState._unlock_defs:
+		if str(d.title) == "Mining Mastery":
+			found_def = true
+	_check(found_def, "Mining Mastery exists as a research unlock def")
+
+	# Recipes whose deposit requirement matches the six staple types — all run
+	# on the b_001 (Mine) building.
 	var by_deposit := {
-		"coal": "r_001",
-		"iron_ore": "r_002",
-		"copper_ore": "r_006",
-		"basic_salt": "r_010",
-		"limestone": "r_019",
-		"bauxite_ore": "r_015",
+		"coal": "r_001", "iron_ore": "r_002", "copper_ore": "r_006",
+		"basic_salt": "r_010", "limestone": "r_019", "bauxite_ore": "r_015",
 	}
-	# Build one mine per deposit on distinct tiles. The watch fires only on
-	# NARRATIVE, so we tick after the last mine goes up.
-	var i := 0
-	for dep in by_deposit.keys():
-		var tile := "tile_demo_%d" % i
-		i += 1
-		MatchState.add_building("b_001", str(by_deposit[dep]), tile)
-	# Before NARRATIVE: nothing fired yet.
+	# Build FIVE of the six first: condition not yet met, no unlock, no modifier.
+	var deps: Array = by_deposit.keys()
+	for j in range(5):
+		MatchState.add_building("b_001", str(by_deposit[deps[j]]), "tile_mm_%d" % j)
+	_check(not MatchState.has_mine_for_each_staple_ore(),
+		"condition false with only 5 of 6 staple ores")
+	_check(not MatchState.is_unlocked("Mining Mastery"),
+		"tech not unlocked with 5 of 6 mines")
 	_check(not Modifiers.has("mining_mastery_bonus"),
-		"modifier not yet applied before the NARRATIVE tick")
-	# Tick NARRATIVE — the watch evaluates true and fires.
-	TurnManager.current_turn = 2
-	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
-	await get_tree().process_frame
-	_check(EventScheduler._active.has("mining_mastery_unlock"),
-		"the demo watch fires its unlock event")
+		"modifier not granted before the tech unlocks")
+
+	# Build the sixth — add_building re-checks unlock conditions, which grants
+	# the tech, which (via MatchState.unlock_granted) registers the modifier.
+	MatchState.add_building("b_001", str(by_deposit[deps[5]]), "tile_mm_5")
+	_check(MatchState.has_mine_for_each_staple_ore(),
+		"condition true once all six staple ores have mines")
+	_check(MatchState.is_unlocked("Mining Mastery"),
+		"the sixth mine unlocks Mining Mastery")
 	_check(Modifiers.has("mining_mastery_bonus"),
-		"the unlock event's modifier payload registers in Modifiers")
-	# A non-extraction recipe should still see no change.
+		"unlocking the tech registers the +5% extraction modifier")
+
+	# Non-extraction recipes unaffected; extraction recipes get +5%.
 	_check(absf(Modifiers.apply("recipe_output", "r_003", 30.0,
 			{"recipe_type": "smelting"}) - 30.0) < 0.001,
 		"the bonus only applies to extraction recipes")
-	# An extraction recipe sees +5%.
 	_check(absf(Modifiers.apply("recipe_output", "r_001", 20.0,
 			{"recipe_type": "extraction"}) - 21.0) < 0.001,
 		"an extraction recipe gets 20 → 21 with the bonus")
-	# A second NARRATIVE tick must not re-fire the one-shot watch.
-	TurnManager.current_turn = 3
-	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
-	await get_tree().process_frame
-	_check(EventScheduler._watches.size() == 0
-		or _watches_count_with_id("mining_mastery_unlock") == 0,
-		"the one-shot watch is consumed and does not re-arm")
+
+	# The bonus is timed: 30 turns from grant. Check the expiry stamp.
+	var mod: Dictionary = Modifiers._modifiers["mining_mastery_bonus"]
+	_check(int(mod.get("expires_turn", 0)) == int(TurnManager.current_turn) + 30,
+		"the bonus expires 30 turns after it is granted")
+
+	# Idempotent: building a seventh mine doesn't re-grant or stack.
+	MatchState.add_building("b_001", "r_001", "tile_mm_extra")
+	_check(Modifiers.active_count() == 1,
+		"the one-shot unlock does not re-grant the modifier on further mines")
+
 	Modifiers.reset()
-	EventScheduler.reset()
 	MatchState.reset()
 
-func _watches_count_with_id(id: String) -> int:
-	var n := 0
-	for w in EventScheduler._watches:
-		if str(w.id) == id:
-			n += 1
-	return n
+# Free-pick path: spending a free unlock on Mining Mastery (via_condition=false)
+# also routes through grant_unlock → unlock_granted, so the bonus still lands.
+func _test_mining_mastery_free_unlock() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	_check(not Modifiers.has("mining_mastery_bonus"), "no bonus before free pick")
+	MatchState.grant_unlock("Mining Mastery", false)
+	_check(MatchState.is_unlocked("Mining Mastery"), "free pick unlocks the tech")
+	_check(Modifiers.has("mining_mastery_bonus"),
+		"free-picking the tech also grants the modifier")
+	Modifiers.reset()
+	MatchState.reset()
 
 func _fresh_production_summary() -> Dictionary:
 	# Minimal summary skeleton Production._dispatch_output_to_stockpile reads/writes.

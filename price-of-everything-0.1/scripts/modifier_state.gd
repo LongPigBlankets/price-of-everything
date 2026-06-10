@@ -24,6 +24,22 @@ extends Node
 
 const HISTORY_CAP := 50
 
+# Research unlocks that grant a timed/standing modifier when earned. Keyed by the
+# unlock title exactly as it appears in research_unlocks.csv. Both the condition
+# path (grant_unlock via_condition=true) and the free-pick path (via_condition=
+# false) route through MatchState.unlock_granted, so either way the bonus lands.
+const UNLOCK_MODIFIERS := {
+	"Mining Mastery": {
+		"id": "mining_mastery_bonus",
+		"domain": "recipe_output",
+		"target_match": {"recipe_type": "extraction"},
+		"mult": 1.05,
+		"duration_turns": 30,
+		"label": "Mining Mastery: +5% extraction output",
+		"source": "research:mining_mastery",
+	},
+}
+
 signal modifiers_changed()
 
 # id -> modifier dict
@@ -38,7 +54,15 @@ func _ready() -> void:
 	await get_tree().process_frame
 	TurnManager.phase_started.connect(_on_phase_started)
 	EventScheduler.event_fired.connect(_on_event_fired)
+	MatchState.unlock_granted.connect(_on_unlock_granted)
 	MatchState.state_reset.connect(reset)
+
+# A research unlock that maps to a modifier grants it on earn (condition or free
+# pick). One-shot: grant_unlock never re-fires for an already-unlocked title, so
+# the timed bonus lands exactly once.
+func _on_unlock_granted(title: String, _description: String, _via_condition: bool) -> void:
+	if UNLOCK_MODIFIERS.has(title):
+		add(UNLOCK_MODIFIERS[title])
 
 
 # ── Public API ────────────────────────────────────────────────────────────

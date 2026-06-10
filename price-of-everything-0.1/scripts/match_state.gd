@@ -217,8 +217,10 @@ func add_building(building_id: String, recipe_id: String, tile_id: String, owner
 	if not tile_buildings.has(tile_id):
 		tile_buildings[tile_id] = []
 	tile_buildings[tile_id].append(instance_id)
-	
+
 	building_added.emit(instance)
+	# Building-driven research conditions (e.g. Mining Mastery) re-evaluate here.
+	_check_unlock_conditions()
 	return instance_id
 
 func remove_building(instance_id: String) -> bool:
@@ -539,6 +541,12 @@ func record_unlock_progress(action: String, object: String, amount: int = 1) -> 
 	_unlock_progress[key] = int(_unlock_progress.get(key, 0)) + amount
 	_check_unlock_conditions()
 
+# Staple ores whose presence (one operating mine each) earns "Mining Mastery".
+const MINING_MASTERY_DEPOSITS := [
+	"coal", "iron_ore", "copper_ore",
+	"basic_salt", "limestone", "bauxite_ore",
+]
+
 func _check_unlock_conditions() -> void:
 	for d in _unlock_defs:
 		var title := str(d.title)
@@ -553,9 +561,34 @@ func _check_unlock_conditions() -> void:
 				break
 		if not prereqs_met:
 			continue
+		# Special conditions the flat action|object accumulator can't express are
+		# recognised by title and evaluated against live state.
+		if title == "Mining Mastery":
+			if has_mine_for_each_staple_ore():
+				grant_unlock(title, true)
+			continue
 		var key := (str(d.action) + "|" + str(d.object)).to_lower()
 		if int(_unlock_progress.get(key, 0)) >= int(d.qty):
 			grant_unlock(title, true)
+
+## True when the player operates at least one mine for every staple ore — i.e.
+## owns a live building whose recipe has a `deposit` requirement matching each
+## entry in MINING_MASTERY_DEPOSITS. Drives the "Mining Mastery" research unlock.
+func has_mine_for_each_staple_ore() -> bool:
+	var seen := {}
+	for inst in buildings.values():
+		if not is_player_owned(inst):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
+		if recipe.is_empty():
+			continue
+		for req in recipe.get("requirements", []):
+			if str(req.get("type", "")) == "deposit":
+				seen[str(req.get("value", ""))] = true
+	for dep in MINING_MASTERY_DEPOSITS:
+		if not seen.has(str(dep)):
+			return false
+	return true
 
 # --- Public API: survey range ---
 func survey_range() -> int:
@@ -697,6 +730,11 @@ func reset() -> void:
 	transaction_log.clear()
 	move_log.clear()
 	input_tile_only.clear()
+	# Research state is match-scoped: a reset (new game / scenario start) must
+	# clear it, or unlocks leak from the previous match. (Load overwrites it via
+	# import_state, so this only bites the reset-without-import paths.)
+	unlocked_titles.clear()
+	_unlock_progress.clear()
 	_next_instance_counter = 0
 	ruleset = DEFAULT_RULESET.duplicate(true)
 	state_reset.emit()
