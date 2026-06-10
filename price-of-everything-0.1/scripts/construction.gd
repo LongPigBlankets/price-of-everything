@@ -185,9 +185,7 @@ func find_source_tile(dest_tile: String, missing: Dictionary) -> Dictionary:
 				break
 		if not covers:
 			continue
-		var turns: int = int(Catalog.route(src, dest_tile).get("turns", 0))
-		if turns >= (1 << 30):
-			turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(src, dest_tile))
+		var turns: int = int(TransportService.route(src, dest_tile).get("turns", 0))
 		if turns < best_turns:
 			best_turns = turns
 			best = {"tile_id": src, "turns": turns}

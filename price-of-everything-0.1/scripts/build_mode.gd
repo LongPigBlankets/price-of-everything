@@ -60,11 +60,35 @@ func exit_build_mode() -> void:
 func attempt_build(tile_id: String) -> void:
 	if not is_active:
 		return
-	var now: int = Time.get_ticks_msec()
-	if now - _last_attempt_ms < MIN_BUILD_INTERVAL_MS:
+	if not _can_attempt_now():
 		return
-	_last_attempt_ms = now
 	if kind == Kind.BUILDING:
 		build_attempted.emit(current_building_id, tile_id)
 	elif kind == Kind.INFRASTRUCTURE:
 		infrastructure_attempted.emit(current_infrastructure_type, tile_id)
+
+func attempt_direct_build(building_id: String, recipe_id: String, tile_id: String) -> void:
+	if building_id == "" or recipe_id == "" or tile_id == "":
+		return
+	if not _can_attempt_now():
+		return
+	var previous_kind := kind
+	var previous_building := current_building_id
+	var previous_recipe := current_recipe_id
+	var previous_infra := current_infrastructure_type
+	kind = Kind.BUILDING
+	current_building_id = building_id
+	current_recipe_id = recipe_id
+	current_infrastructure_type = ""
+	build_attempted.emit(building_id, tile_id)
+	kind = previous_kind
+	current_building_id = previous_building
+	current_recipe_id = previous_recipe
+	current_infrastructure_type = previous_infra
+
+func _can_attempt_now() -> bool:
+	var now: int = Time.get_ticks_msec()
+	if now - _last_attempt_ms < MIN_BUILD_INTERVAL_MS:
+		return false
+	_last_attempt_ms = now
+	return true

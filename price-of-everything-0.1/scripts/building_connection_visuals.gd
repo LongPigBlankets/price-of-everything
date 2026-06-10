@@ -84,7 +84,7 @@ func _draw() -> void:
 	# line tile -> port, with the MARKET label floating just outside the port.
 	if _has_market_output:
 		var market_pos := _market_label_pos(origin_pos)  # fallback: above origin tile
-		var port_tile := Catalog.nearest_port_tile(_origin_tile_id)
+		var port_tile := TransportService.nearest_port_tile(_origin_tile_id)
 		if port_tile != "":
 			var port_pos := _tile_world_pos_by_id(port_tile)
 			if port_pos != Vector2.INF and port_pos.distance_to(origin_pos) > 1.0:

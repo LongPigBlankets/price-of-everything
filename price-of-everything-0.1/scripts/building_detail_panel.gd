@@ -2113,7 +2113,7 @@ func _output_route_summary() -> Dictionary:
 		target = source_tile
 		destination = "Tile stockpile (same tile)"
 	else:
-		target = Catalog.nearest_port_tile(source_tile)
+		target = TransportService.nearest_port_tile(source_tile)
 		destination = ("Market (via %s)" % Catalog.tile_label(target)) if target != "" else "Market"
 	var route := _route_summary_for_good(source_tile, target, good_id, qty)
 	return {"destination": destination, "cost": route.cost, "turns": route.turns, "target": target}
@@ -2135,37 +2135,14 @@ func _primary_output_qty(recipe: Dictionary) -> int:
 	return 0
 
 func _route_summary_for_good(source_tile: String, destination_tile: String, good_id: String, qty: int) -> Dictionary:
-	var distance := _tile_distance(source_tile, destination_tile)
-	var r := Catalog.route(source_tile, destination_tile, good_id)
+	var r := TransportService.route(source_tile, destination_tile, good_id)
 	var turns: int = int(r.get("turns", 0))
-	if turns >= (1 << 30):
-		turns = EconomyConfig.transport_turns_for_tile_distance(distance)
-	var cost := EconomyConfig.transport_cost_for(good_id, qty, turns)
+	var cost := TransportService.transport_cost_for_route(good_id, qty, r)
 	return {
-		"distance": distance,
+		"distance": int(r.get("tile_distance", 0)),
 		"turns": turns,
 		"cost": cost,
 	}
-
-func _tile_distance(source_tile: String, destination_tile: String) -> int:
-	var source := _tile_id_to_coord(source_tile)
-	var destination := _tile_id_to_coord(destination_tile)
-	if source == Vector2i(-1, -1) or destination == Vector2i(-1, -1):
-		return 0
-	var source_axial := _oddq_to_axial(source)
-	var destination_axial := _oddq_to_axial(destination)
-	var dq := source_axial.x - destination_axial.x
-	var dr := source_axial.y - destination_axial.y
-	return int((abs(dq) + abs(dr) + abs(dq + dr)) / 2)
-
-func _tile_id_to_coord(tile_id: String) -> Vector2i:
-	var parts := tile_id.split("_")
-	if parts.size() != 3 or not parts[1].is_valid_int() or not parts[2].is_valid_int():
-		return Vector2i(-1, -1)
-	return Vector2i(int(parts[1]) - 1, int(parts[2]) - 1)
-
-func _oddq_to_axial(coord: Vector2i) -> Vector2i:
-	return Vector2i(coord.x, coord.y - int((coord.x - (coord.x & 1)) / 2))
 
 func _format_money(value: float) -> String:
 	var text := "%.2f" % value

@@ -40,7 +40,9 @@ const PARALLEL_GAP := 50.0
 const TRIANGLE_LEN := 30.0
 const TRIANGLE_HALF := 18.0
 const PANEL := Vector2(120, 120)
-const DIM_COLOUR := Color(0, 0, 0, 0.55)
+# 10% transparent black: route/tile masks read clearly over muted terrain.
+const DIM_COLOUR := Color(0, 0, 0, 0.90)
+const TILE_MASK_ALPHA := 0.5
 const ANIM_TOTAL_STEPS := 5
 const PALETTE: Array = [
 	Color(0.13, 0.55, 0.13), Color(0.95, 0.83, 0.18), Color(0.47, 0.78, 1.0),
@@ -255,12 +257,11 @@ func _draw_stock_bar_im(col_x: float, col_w: float, baseline: float, bar_max_h: 
 		if tex != null:
 			draw_texture_rect(tex, Rect2(cx - icon_sz * 0.5, baseline + icon_sz * 0.05, icon_sz, icon_sz), false)
 
-# Transparent cream fill + outline over the hovered tile's hex.
+# Transparent cream mask over the hovered tile's hex.
 func _draw_hover_highlight(center: Vector2) -> void:
 	var r: float = terrain_layer.tile_set.tile_size.x * 0.5
 	var cream: Color = DS.PALETTE.ACCENT
-	draw_colored_polygon(_hex_points(center, r), Color(cream.r, cream.g, cream.b, 0.16))
-	draw_polyline(_hex_outline(center, r), Color(cream.r, cream.g, cream.b, 0.55), 3.0, true)
+	draw_colored_polygon(_hex_points(center, r), Color(cream.r, cream.g, cream.b, TILE_MASK_ALPHA))
 
 # A subtle top-left → bottom-right light wash over a rect (vertex-colour quad).
 func _draw_diag_light(rect: Rect2, light: Color, dark: Color) -> void:
@@ -505,13 +506,11 @@ func _draw_transfer() -> void:
 		if pos == Vector2.INF:
 			continue
 		var c: Color = _transfer_highlights[tid]
-		draw_colored_polygon(_hex_points(pos, r), Color(c.r, c.g, c.b, 0.42))
-		draw_polyline(_hex_outline(pos, r), Color(c.r, c.g, c.b, 0.85), 2.0)
+		draw_colored_polygon(_hex_points(pos, r), Color(c.r, c.g, c.b, TILE_MASK_ALPHA))
 	if _transfer_origin != "":
 		var op := _tile_pos(_transfer_origin)
 		if op != Vector2.INF:
-			draw_colored_polygon(_hex_points(op, r), Color(1.0, 1.0, 0.45, 0.5))  # selected = light yellow
-			draw_polyline(_hex_outline(op, r), Color(1.0, 1.0, 0.4, 0.95), 3.0)
+			draw_colored_polygon(_hex_points(op, r), Color(1.0, 1.0, 0.45, TILE_MASK_ALPHA))
 	if _transfer_origin != "" and _transfer_dest != "":
 		var a := _tile_pos(_transfer_origin)
 		var b := _tile_pos(_transfer_dest)
@@ -523,11 +522,6 @@ func _hex_points(center: Vector2, r: float) -> PackedVector2Array:
 	for i in 6:
 		var ang := deg_to_rad(60.0 * float(i))
 		pts.append(center + Vector2(cos(ang), sin(ang)) * r)
-	return pts
-
-func _hex_outline(center: Vector2, r: float) -> PackedVector2Array:
-	var pts := _hex_points(center, r)
-	pts.append(pts[0])
 	return pts
 
 func _draw_dashed_line(a: Vector2, b: Vector2, color: Color, on_len: float, off_len: float, width: float) -> void:

@@ -3,11 +3,11 @@ extends Node2D
 # (adjacent to a sea / deep-sea tile, where desalination plants belong) in amber.
 # Unlike the deposits mapmode it draws no icons — just tinted hexes.
 
-# Highlights are fairly opaque so the underlying terrain colours don't distract;
-# every other tile (plain land + the sea) is dimmed to ~20% brightness.
-const RIVER_COLOR := Color(0.45, 0.95, 0.5, 0.72)
-const DESAL_COLOR := Color(0.90, 0.72, 0.36, 0.72)
-const DARKEN_COLOR := Color(0.0, 0.0, 0.0, 0.8)
+# Highlights use the shared 50% tile mask convention.
+const TILE_MASK_ALPHA := 0.5
+const RIVER_COLOR := Color(0.45, 0.95, 0.5, TILE_MASK_ALPHA)
+const DESAL_COLOR := Color(0.90, 0.72, 0.36, TILE_MASK_ALPHA)
+const DARKEN_COLOR := Color(0.0, 0.0, 0.0, 0.90)
 const SEA_TYPES := ["sea", "deep_sea"]
 
 @onready var terrain_layer: HexMap = %TerrainLayer
@@ -40,20 +40,19 @@ func _rebuild() -> void:
 		var tile_data: Dictionary = terrain_layer.tiles[coord]
 		var is_land := not _is_sea(str(tile_data.get("type", "")))
 		var color: Color
-		var highlight := true
 		if is_land and bool(tile_data.get("has_river", false)):
 			color = RIVER_COLOR
 		elif is_land and _is_coastal(coord):
 			color = DESAL_COLOR
 		else:
-			# Plain land and the sea are dimmed so the highlights stand out.
-			color = DARKEN_COLOR
-			highlight = false
-		_markers.append({"center": _tile_world_pos(coord), "color": color, "highlight": highlight})
+			continue
+		_markers.append({"center": _tile_world_pos(coord), "color": color})
 
 func _draw() -> void:
 	if not _active:
 		return
+	if terrain_layer != null and terrain_layer.has_method("map_world_rect"):
+		draw_rect(terrain_layer.map_world_rect(), DARKEN_COLOR, true)
 	var tile := _tile_size()
 	var half_w := tile.x * 0.5
 	var half_h := tile.y * 0.5
@@ -73,11 +72,6 @@ func _draw() -> void:
 		for p in shape:
 			pts.append(p + center)
 		draw_colored_polygon(pts, color)
-		# Only the green/amber highlights get a brighter rim; dimmed tiles don't.
-		if bool(m.highlight):
-			var outline := pts.duplicate()
-			outline.append(pts[0])
-			draw_polyline(outline, Color(color.r, color.g, color.b, minf(1.0, color.a + 0.28)), 2.0, true)
 
 # ── Geometry helpers ──────────────────────────────────────────────────────────
 

@@ -346,12 +346,12 @@ static func _output_route_label(instance_id: String, tile_id: String, recipe: Di
 	var dest_tile := ""
 	if MatchState.is_output_market(instance_id, good_id):
 		label = "market"
-		dest_tile = Catalog.nearest_port_tile(tile_id)
+		dest_tile = TransportService.nearest_port_tile(tile_id)
 	else:
 		var explicit := MatchState.get_output_stockpile_destination(instance_id, good_id)
 		if explicit == MatchState.MARKET_DESTINATION:
 			label = "market"
-			dest_tile = Catalog.nearest_port_tile(tile_id)
+			dest_tile = TransportService.nearest_port_tile(tile_id)
 		elif explicit != "":
 			label = Catalog.tile_label(explicit)
 			dest_tile = explicit
@@ -359,16 +359,14 @@ static func _output_route_label(instance_id: String, tile_id: String, recipe: Di
 			match MatchState.sell_mode:
 				MatchState.SellMode.SELL_ALL:
 					label = "market"
-					dest_tile = Catalog.nearest_port_tile(tile_id)
+					dest_tile = TransportService.nearest_port_tile(tile_id)
 				_:
 					label = "this tile"
 					dest_tile = tile_id
 	var turns := 0
 	if dest_tile != "" and dest_tile != tile_id:
-		var r: Dictionary = Catalog.route(tile_id, dest_tile, good_id)
+		var r: Dictionary = TransportService.route(tile_id, dest_tile, good_id)
 		turns = int(r.get("turns", 0))
-		if turns >= (1 << 30):
-			turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(tile_id, dest_tile))
 	if turns > 0:
 		return "→ %s, %d turn%s" % [label, turns, "" if turns == 1 else "s"]
 	return "→ %s" % label
@@ -432,16 +430,14 @@ static func _output_route(instance_id: String, tile_id: String, recipe: Dictiona
 	var dest := MatchState.get_output_stockpile_destination(instance_id, good_id)
 	if dest == "":
 		return {}
-	var r: Dictionary = Catalog.route(tile_id, dest, good_id)
+	var r: Dictionary = TransportService.route(tile_id, dest, good_id)
 	var turns := int(r.get("turns", 0))
-	if turns >= (1 << 30):
-		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(tile_id, dest))
 	var qty := 0
 	for output in _recipe_outputs(recipe):
 		if _output_good_id(output) == good_id:
 			qty = int(output.get("qty", 0))
 			break
-	return {"turns": turns, "cost": EconomyConfig.transport_cost_for(good_id, qty, turns)}
+	return {"turns": turns, "cost": TransportService.transport_cost_for_route(good_id, qty, r)}
 
 # RAG for cost to produce — mirrors building_detail_panel._update_cost_label:
 # grey if unknown; green if < 90% of base price, amber 90–110%, red above.

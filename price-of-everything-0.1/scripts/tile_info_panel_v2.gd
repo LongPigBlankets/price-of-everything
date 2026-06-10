@@ -78,7 +78,7 @@ func _ready() -> void:
 	MatchState.building_removed.connect(func(_i): _refresh_if_visible())
 	MatchState.tile_land_owned_changed.connect(func(_t): _refresh_if_visible())
 	Stockpile.stockpile_changed.connect(_refresh_if_visible)
-	Production.turn_processed.connect(func(): _refresh_if_visible())
+	Production.turn_processed.connect(func(_summary): _refresh_if_visible())
 	Construction.construction_started.connect(func(_a = null, _b = null): _refresh_if_visible())
 	Construction.construction_completed.connect(func(_a = null, _b = null): _refresh_if_visible())
 	Construction.construction_cancelled.connect(func(_a = null, _b = null): _refresh_if_visible())
@@ -785,9 +785,7 @@ func _make_power_build_button(spec: Array, opt: Dictionary) -> Button:
 	return btn
 
 func _build_power(building_id: String, recipe_id: String) -> void:
-	BuildMode.enter_build_mode(building_id, recipe_id)
-	BuildMode.attempt_build(_current_tile_id)
-	BuildMode.exit_build_mode()
+	BuildMode.attempt_direct_build(building_id, recipe_id, _current_tile_id)
 
 func _on_power_goto() -> void:
 	# Open the Power map mode without closing the TVP.
@@ -1478,9 +1476,7 @@ func _on_deposit_build(deposit_token: String, good_id: String, anchor: Control) 
 
 func _build_deposit_option(opt: Dictionary) -> void:
 	# Build directly on the current tile (no interactive placement).
-	BuildMode.enter_build_mode(str(opt.building_id), str(opt.recipe_id))
-	BuildMode.attempt_build(_current_tile_id)
-	BuildMode.exit_build_mode()
+	BuildMode.attempt_direct_build(str(opt.building_id), str(opt.recipe_id), _current_tile_id)
 
 func _go_to_building(instance_id: String) -> void:
 	var inst := MatchState.get_building(instance_id)

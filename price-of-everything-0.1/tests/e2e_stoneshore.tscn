@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://tests/e2e_stoneshore.gd" id="1_runner"]
+
+[node name="E2EStoneshore" type="Node"]
+script = ExtResource("1_runner")

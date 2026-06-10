@@ -106,9 +106,9 @@ var route_objective: int = RouteObjective.FASTEST
 var use_alt_tvp: bool = true
 
 # Debug-only: when true the bottom menu shows the alternate icon set instead of
-# the current icons. Toggled at runtime via the `swap bottom menu` cheat.
-# Session-only; never persisted. Defaults to the current icons.
-var use_alt_bottom_menu: bool = false
+# the old circular icon set. Toggled at runtime via the `swap bottom menu` cheat.
+# Session-only; never persisted. Defaults to the white-rimmed alternate buttons.
+var use_alt_bottom_menu: bool = true
 
 # --- Signals ---
 signal money_changed(new_amount: float) 
@@ -863,11 +863,8 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, 
 	# to the destination stockpile on arrival. Returns a summary for the UI/toast.
 	if source_tile == "" or dest_tile == "" or source_tile == dest_tile:
 		return {}
-	var route := Catalog.route(source_tile, dest_tile)
-	var turns: int = int(route.get("turns", 0))
-	if turns >= (1 << 30):
-		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(source_tile, dest_tile))
 	var items: Array = []
+	var manifest: Dictionary = {}
 	var total_qty := 0
 	for good_id in goods_qtys.keys():
 		var want := int(goods_qtys[good_id])
@@ -878,13 +875,15 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, 
 			continue
 		total_qty += moved
 		items.append({"good_id": str(good_id), "qty": moved})
+		manifest[str(good_id)] = int(manifest.get(str(good_id), 0)) + moved
 	if items.is_empty():
 		return {}
 	var surcharge := LARGE_SHIPMENT_SURCHARGE if total_qty > LARGE_SHIPMENT_THRESHOLD else 1.0
-	var total_cost := 0.0
-	for it in items:
-		it["cost"] = EconomyConfig.transport_cost_for(str(it.good_id), int(it.qty), turns) * surcharge
-		total_cost += it.cost
+	var quote := TransportService.quote_manifest(source_tile, dest_tile, manifest, {"surcharge": surcharge})
+	var route: Dictionary = quote.get("route", {})
+	var turns: int = int(quote.get("turns", 0))
+	items = quote.get("items", [])
+	var total_cost := float(quote.get("cost", 0.0))
 	if total_cost > 0.0:
 		add_money(-total_cost)
 	for it in items:
@@ -913,18 +912,17 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, 
 
 func preview_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> Dictionary:
 	# Cost/turns for a move WITHOUT consuming — used to populate the large-shipment dialog.
-	var route := Catalog.route(source_tile, dest_tile)
-	var turns: int = int(route.get("turns", 0))
-	if turns >= (1 << 30):
-		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(source_tile, dest_tile))
+	var manifest: Dictionary = {}
 	var total_qty := 0
 	for good_id in goods_qtys.keys():
-		total_qty += mini(int(goods_qtys[good_id]), Stockpile.get_at_tile(source_tile, str(good_id)))
-	var surcharge := LARGE_SHIPMENT_SURCHARGE if total_qty > LARGE_SHIPMENT_THRESHOLD else 1.0
-	var total_cost := 0.0
-	for good_id in goods_qtys.keys():
 		var qty := mini(int(goods_qtys[good_id]), Stockpile.get_at_tile(source_tile, str(good_id)))
-		total_cost += EconomyConfig.transport_cost_for(str(good_id), qty, turns) * surcharge
+		if qty > 0:
+			manifest[str(good_id)] = qty
+			total_qty += qty
+	var surcharge := LARGE_SHIPMENT_SURCHARGE if total_qty > LARGE_SHIPMENT_THRESHOLD else 1.0
+	var quote := TransportService.quote_manifest(source_tile, dest_tile, manifest, {"surcharge": surcharge})
+	var turns: int = int(quote.get("turns", 0))
+	var total_cost := float(quote.get("cost", 0.0))
 	return {"turns": turns, "cost": total_cost, "total_qty": total_qty,
 		"per_turn": total_cost / float(maxi(turns, 1)), "surcharged": surcharge > 1.0}
 
@@ -1073,6 +1071,9 @@ func seaport_covers(good_id: String) -> bool:
 		return true
 	return seaport_subscribed.has(good_id)
 
+func seaport_would_cover(good_id: String) -> bool:
+	return seaport_auto_subscribe or seaport_subscribed.has(good_id)
+
 func subscribe_seaport(good_id: String) -> void:
 	seaport_subscribed[good_id] = true
 
@@ -1084,19 +1085,16 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	# arrive in N turns. The reusable buy primitive for market-sourced inputs (and later a Buy tab).
 	if dest_tile == "" or good_id == "" or qty <= 0:
 		return {}
-	var port := Catalog.nearest_port_tile(dest_tile)
-	if port == "":
+	var covered := seaport_covers(good_id)
+	var quote := TransportService.quote_market_buy(dest_tile, good_id, qty, covered)
+	if quote.is_empty():
 		return {}
-	var covered := seaport_covers(good_id) and Catalog.tile_hex_distance(port, dest_tile) <= EconomyConfig.SEAPORT_RANGE_TILES
-	var route := Catalog.route(port, dest_tile)
-	var turns: int = int(route.get("turns", 0))
-	if turns >= (1 << 30):
-		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, dest_tile))
-	if covered:
-		turns = 1   # seaport delivers any volume in 1 turn
+	var port := str(quote.get("port", ""))
+	var route: Dictionary = quote.get("route", {})
+	var turns: int = int(quote.get("turns", 0))
 	var unit_price := MarketState.get_buy_price(good_id)
-	var transport := 0.0 if covered else EconomyConfig.transport_cost_for(good_id, qty, turns)
-	var total := float(qty) * unit_price + transport
+	var transport := float(quote.get("transport_cost", 0.0))
+	var total := float(quote.get("cost", 0.0))
 	if total > money:
 		# Best-effort: buy as much as we can afford rather than nothing (avoids an
 		# all-or-nothing starvation cliff when cash dips below a full order).
@@ -1104,8 +1102,11 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 		qty = mini(qty, int(floor(money / maxf(per_unit, 0.0001))))
 		if qty <= 0:
 			return {}
-		transport = EconomyConfig.transport_cost_for(good_id, qty, turns)
-		total = float(qty) * unit_price + transport
+		quote = TransportService.quote_market_buy(dest_tile, good_id, qty, covered)
+		route = quote.get("route", {})
+		turns = int(quote.get("turns", 0))
+		transport = float(quote.get("transport_cost", 0.0))
+		total = float(quote.get("cost", 0.0))
 		if total > money:
 			return {}
 	add_money(-total)
@@ -1151,17 +1152,12 @@ func preview_buy(dest_tile: String, good_id: String, qty: int) -> Dictionary:
 	# Cost/turns for a buy WITHOUT executing — for the Purchases "Cost to buy" line.
 	if dest_tile == "" or good_id == "" or qty <= 0:
 		return {}
-	var port := Catalog.nearest_port_tile(dest_tile)
-	if port == "":
+	var quote := TransportService.quote_market_buy(dest_tile, good_id, qty, seaport_would_cover(good_id))
+	if quote.is_empty():
 		return {}
-	var route := Catalog.route(port, dest_tile)
-	var turns: int = int(route.get("turns", 0))
-	if turns >= (1 << 30):
-		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(port, dest_tile))
-	var transport := EconomyConfig.transport_cost_for(good_id, qty, turns)
-	var goods_cost := float(qty) * MarketState.get_buy_price(good_id)
-	return {"cost": goods_cost + transport, "goods_cost": goods_cost,
-		"transport_cost": transport, "turns": turns, "port": port}
+	return {"cost": float(quote.get("cost", 0.0)), "goods_cost": float(quote.get("goods_cost", 0.0)),
+		"transport_cost": float(quote.get("transport_cost", 0.0)), "turns": int(quote.get("turns", 0)),
+		"port": str(quote.get("port", ""))}
 
 func get_oneoff_transaction_rows() -> Array:
 	var rows: Array = []
@@ -1174,7 +1170,7 @@ func get_oneoff_transaction_rows() -> Array:
 func get_recurring_transaction_rows() -> Array:
 	var rows: Array = []
 	for m in recurring_sells:
-		var port := Catalog.nearest_port_tile(str(m.get("source", "")))
+		var port := TransportService.nearest_port_tile(str(m.get("source", "")))
 		for gid in m.get("goods", {}).keys():
 			rows.append(_txn_row("sell", Catalog.get_display_name(str(gid)), int(m.goods[gid]),
 				str(m.get("source", "")), port, int(m.get("turn_started", 0)), -1))
@@ -1186,7 +1182,7 @@ func get_recurring_transaction_rows() -> Array:
 		rows.append(_txn_row("sell", good_label, -1, "All tiles", "Market", int(r.get("turn_started", 0)), -1))
 	for b in recurring_buys:
 		rows.append(_txn_row("buy", Catalog.get_display_name(str(b.get("good", ""))), int(b.get("qty", 0)),
-			Catalog.nearest_port_tile(str(b.get("dest", ""))), str(b.get("dest", "")), int(b.get("turn_started", 0)), -1))
+			TransportService.nearest_port_tile(str(b.get("dest", ""))), str(b.get("dest", "")), int(b.get("turn_started", 0)), -1))
 	return rows
 
 func get_oneoff_move_rows() -> Array:
@@ -1251,11 +1247,9 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = 
 	# Sell specific goods/qtys from a tile: ship to the nearest port, pay out on arrival.
 	if source_tile == "":
 		return {}
-	var port := Catalog.nearest_port_tile(source_tile)
-	var route := Catalog.route(source_tile, port) if port != "" else {}
+	var route := TransportService.route_to_nearest_port(source_tile)
+	var port := str(route.get("port", ""))
 	var turns: int = int(route.get("turns", 0))
-	if turns >= (1 << 30):
-		turns = EconomyConfig.transport_turns_for_tile_distance(Catalog.tile_hex_distance(source_tile, port))
 	var items: Array = []
 	var total_qty := 0
 	var total_revenue := 0.0

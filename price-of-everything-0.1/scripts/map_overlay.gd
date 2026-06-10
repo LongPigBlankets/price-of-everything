@@ -40,10 +40,12 @@ const POWER_COLORS: Dictionary = {
 const POWER_LABEL_FONT_SIZE := 40
 const POWER_CIRCLE_RADIUS := 18.0
 const BUILD_TILE_VERTICAL_OFFSET := Vector2(0, -5)
-const BUILD_RED := Color(0.45, 0.02, 0.02, 0.42)
-const BUILD_DARK_GREEN := Color(0.02, 0.28, 0.1, 0.34)
-const BUILD_LIGHT_GREEN := Color(0.45, 1.0, 0.48, 0.86)
-const BUILD_GREY := Color(0.32, 0.34, 0.37, 0.55)   # unsurveyed tile (deposit recipes)
+const TILE_MASK_ALPHA := 0.5
+const LEGEND_LEFT := 12.0
+const LEGEND_BOTTOM := 24.0
+const BUILD_RED := Color(0.45, 0.02, 0.02, TILE_MASK_ALPHA)
+const BUILD_DARK_GREEN := Color(0.02, 0.34, 0.12, TILE_MASK_ALPHA)
+const BUILD_LIGHT_GREEN := Color(0.45, 1.0, 0.48, TILE_MASK_ALPHA)
 
 @onready var terrain_layer: HexMap = %TerrainLayer
 
@@ -121,19 +123,10 @@ func _clear_overlays() -> void:
 func _on_build_mode_entered(_building_id: String, recipe_id: String) -> void:
 	_clear_build_overlays()
 	var recipe: Dictionary = Catalog.get_recipe(recipe_id) if recipe_id != "" else {}
-	var requires_deposit := _recipe_requires_deposit(recipe)
-	_show_build_legend(requires_deposit)
+	_show_build_legend()
 	if recipe.is_empty():
 		return
-	_render_build_overlay(recipe, requires_deposit)
-
-func _recipe_requires_deposit(recipe: Dictionary) -> bool:
-	# Water is visible and never depletes, so water-only recipes (desalination)
-	# don't need surveying — only real mineral deposits gate on survey.
-	for req in recipe.get("requirements", []):
-		if str(req.get("type", "")) == "deposit" and str(req.get("value", "")) != "water":
-			return true
-	return false
+	_render_build_overlay(recipe)
 
 func _on_build_mode_exited() -> void:
 	_clear_build_overlays()
@@ -145,13 +138,13 @@ func _clear_build_overlays() -> void:
 			node.queue_free()
 	build_overlays.clear()
 
-func _render_build_overlay(recipe: Dictionary, requires_deposit: bool) -> void:
+func _render_build_overlay(recipe: Dictionary) -> void:
 	_add_build_backdrop()
 	var reqs: Array = recipe.get("requirements", [])
 	var input_names: Array[String] = _recipe_input_internal_names(recipe)
 	for coord in terrain_layer.tiles:
 		var tile_data: Dictionary = terrain_layer.tiles[coord]
-		var state := _build_overlay_state(tile_data, reqs, input_names, requires_deposit)
+		var state := _build_overlay_state(tile_data, reqs, input_names)
 		if state == "none":
 			continue
 		var marker := _make_build_hex_marker(state)
@@ -167,6 +160,8 @@ func _add_build_backdrop() -> void:
 	build_overlays.append(backdrop)
 
 func _map_bounds() -> Rect2:
+	if terrain_layer != null and terrain_layer.has_method("map_world_rect"):
+		return terrain_layer.map_world_rect()
 	var has_tile := false
 	var min_pos := Vector2.ZERO
 	var max_pos := Vector2.ZERO
@@ -185,12 +180,10 @@ func _map_bounds() -> Rect2:
 		return Rect2(Vector2.ZERO, Vector2.ZERO)
 	return Rect2(min_pos - _tile_size(), (max_pos - min_pos) + _tile_size() * 2.0)
 
-func _build_overlay_state(tile_data: Dictionary, reqs: Array, input_names: Array[String], requires_deposit: bool) -> String:
-	# For deposit recipes you can't know viability until the tile is surveyed.
-	if requires_deposit:
-		var tile_id: String = tile_data.get("id", "")
-		if MatchState.survey_status(tile_id, str(tile_data.get("type", ""))) == "unsurveyed":
-			return "unsurveyed"
+func _build_overlay_state(tile_data: Dictionary, reqs: Array, input_names: Array[String]) -> String:
+	var tile_id: String = tile_data.get("id", "")
+	if MatchState.survey_status(tile_id, str(tile_data.get("type", ""))) == "unsurveyed":
+		return "none"
 	var matched_input_count := _tile_input_match_count(tile_data, input_names)
 	var tracked_input_count := input_names.size()
 	if tracked_input_count > 0:
@@ -232,18 +225,12 @@ func _make_build_hex_marker(state: String) -> Node2D:
 	marker.set_script(BuildModeHexOverlayScript)
 	marker.set("tile_size", _tile_size())
 	match state:
-		"unsurveyed":
-			marker.set("fill_color", BUILD_GREY)
-			marker.set("hatch_color", Color(0.7, 0.72, 0.76, 0.22))
 		"blocked":
 			marker.set("fill_color", BUILD_RED)
-			marker.set("hatch_color", Color(1, 0.42, 0.42, 0.28))
 		"viable":
 			marker.set("fill_color", BUILD_DARK_GREEN)
-			marker.set("hatch_color", Color(0.65, 1, 0.72, 0.26))
 		"recommended":
 			marker.set("fill_color", BUILD_LIGHT_GREEN)
-			marker.set("hatch_color", Color(0.03, 0.2, 0.06, 0.34))
 	return marker
 
 func _recipe_input_internal_names(recipe: Dictionary) -> Array[String]:
@@ -304,31 +291,30 @@ func _tile_produces_good(tile_data: Dictionary, internal_name: String) -> bool:
 				return true
 	return false
 
-func _show_build_legend(requires_deposit: bool) -> void:
-	# Rebuilt each time so the "Tile unsurveyed" row only appears for deposit recipes.
+func _show_build_legend() -> void:
 	if build_legend != null and is_instance_valid(build_legend):
 		build_legend.queue_free()
-	build_legend = _make_build_legend(requires_deposit)
+	build_legend = _make_build_legend()
 	build_legend.show()
 
 func _hide_build_legend() -> void:
 	if build_legend != null:
 		build_legend.hide()
 
-func _make_build_legend(requires_deposit: bool) -> PanelContainer:
+func _make_build_legend() -> PanelContainer:
 	var parent_control := get_parent().get_node_or_null("UILayer/HUD/HUDContent") as Control
 	var panel := PanelContainer.new()
 	panel.name = "BuildModeLegend"
-	var height := 156 if requires_deposit else 132
+	var height := 146
 	panel.custom_minimum_size = Vector2(230, height)
-	panel.anchor_left = 1.0
+	panel.anchor_left = 0.0
 	panel.anchor_top = 1.0
-	panel.anchor_right = 1.0
+	panel.anchor_right = 0.0
 	panel.anchor_bottom = 1.0
-	panel.offset_left = -250
-	panel.offset_top = -(height + 34)
-	panel.offset_right = -20
-	panel.offset_bottom = -20
+	panel.offset_left = LEGEND_LEFT
+	panel.offset_top = -(height + LEGEND_BOTTOM)
+	panel.offset_right = LEGEND_LEFT + 230
+	panel.offset_bottom = -LEGEND_BOTTOM
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.03, 0.07, 0.12, 0.92)
 	style.border_width_left = 1
@@ -352,9 +338,8 @@ func _make_build_legend(requires_deposit: bool) -> PanelContainer:
 	_add_build_legend_row(box, BUILD_RED, "Cannot build")
 	_add_build_legend_row(box, BUILD_DARK_GREEN, "1 input present")
 	_add_build_legend_row(box, BUILD_LIGHT_GREEN, "2+ / all met")
-	if requires_deposit:
-		_add_build_legend_row(box, BUILD_GREY, "Tile unsurveyed")
-	_add_build_legend_row(box, Color(0, 0, 0, 0), "Unrestricted")
+	_add_build_legend_note(box, "Unsurveyed tiles are hidden")
+	_add_build_legend_note(box, "Partial surveys can match")
 	return panel
 
 func _add_build_legend_row(parent: VBoxContainer, color: Color, text: String) -> void:
@@ -368,6 +353,13 @@ func _add_build_legend_row(parent: VBoxContainer, color: Color, text: String) ->
 	var label := Label.new()
 	label.text = text
 	row.add_child(label)
+
+func _add_build_legend_note(parent: VBoxContainer, text: String) -> void:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", Color(0.78, 0.86, 0.9, 0.82))
+	parent.add_child(label)
 
 # --- Top-level dispatch ---
 
@@ -731,7 +723,7 @@ func _draw_power_marker(world_pos: Vector2, status: Dictionary) -> void:
 	var hex := Node2D.new()
 	hex.set_script(load("res://scripts/power_hex_overlay.gd"))
 	hex.set("tile_size", tile)
-	hex.set("color", Color(color.r, color.g, color.b, 0.40))
+	hex.set("color", Color(color.r, color.g, color.b, TILE_MASK_ALPHA))
 	marker.add_child(hex)
 
 	# Label (if state has a number) — outlined so it stays legible over the tile.

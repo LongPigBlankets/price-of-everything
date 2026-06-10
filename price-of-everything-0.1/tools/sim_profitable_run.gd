@@ -107,6 +107,7 @@ var Production: Node
 var TurnManager: Node
 var RunMetrics: Node
 var LoanState: Node
+var TransportService: Node
 
 var _stub
 var _chain := "motors"
@@ -160,6 +161,7 @@ func _resolve() -> void:
 	TurnManager = r.get_node("TurnManager")
 	RunMetrics = r.get_node("RunMetrics")
 	LoanState = r.get_node("LoanState")
+	TransportService = r.get_node("TransportService")
 
 
 func _branches_for_next() -> Array:
@@ -396,14 +398,14 @@ func _build_branches(branches: Array, count_as_chain: bool) -> bool:
 	# liquids & gases (reinforced for hazardous), rail for solids.
 	for b in branches:
 		var src: String = chain_tiles[b.role]
-		var dst: String = Catalog.nearest_port_tile(src) if str(b.export_to) == "MARKET" else chain_tiles[str(b.export_to)]
+		var dst: String = TransportService.nearest_port_tile(src) if str(b.export_to) == "MARKET" else chain_tiles[str(b.export_to)]
 		_ensure_corridor(src, dst, _corridor_mode(str(b.export_good)))
 		# Imported fluids (e.g. NaOH) can only be delivered from the port by pipe, so
 		# lay an import pipeline tile -> port for any bought liquid/gas input.
 		for gid in b.get("buy", []):
 			var mode: String = _corridor_mode(str(gid))
 			if mode != "rail":
-				_ensure_corridor(src, Catalog.nearest_port_tile(src), mode)
+				_ensure_corridor(src, TransportService.nearest_port_tile(src), mode)
 	if MatchState.has_signal("money_changed"):
 		MatchState.money_changed.emit(MatchState.money)
 	if count_as_chain:

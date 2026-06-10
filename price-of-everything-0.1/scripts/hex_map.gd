@@ -48,6 +48,7 @@ var _hover_overlay: TileMapLayer = null
 var _overlay_consumer: TileMapLayer = null   # light green — tiles that consume the stockpile good
 var _overlay_viable: TileMapLayer = null     # dark green — tiles with buildings but not consuming
 var _overlay_neutral: TileMapLayer = null    # dark grey — all other tiles
+const TILE_HIGHLIGHT_ALPHA := 0.5
 
 func _enter_tree() -> void:
 	add_to_group("hex_map")
@@ -81,15 +82,15 @@ func _build_hover_overlay() -> void:
 	_hover_overlay = TileMapLayer.new()
 	_hover_overlay.name = "StockpileDestinationHover"
 	_hover_overlay.tile_set = tile_set
-	_hover_overlay.modulate = Color(1.55, 1.55, 1.35, 0.42)
+	_hover_overlay.modulate = Color(1.55, 1.55, 1.35, TILE_HIGHLIGHT_ALPHA)
 	_hover_overlay.z_index = 22
 	_hover_overlay.enabled = true
 	add_child(_hover_overlay)
 
 func _build_category_overlays() -> void:
-	_overlay_consumer = _make_tinted_overlay("StockpileConsumer", Color(0.35, 1.0, 0.35, 0.45), 10)
-	_overlay_viable   = _make_tinted_overlay("StockpileViable",   Color(0.1,  0.45, 0.1,  0.45), 10)
-	_overlay_neutral  = _make_tinted_overlay("StockpileNeutral",  Color(0.25, 0.25, 0.25, 0.45), 10)
+	_overlay_consumer = _make_tinted_overlay("StockpileConsumer", Color(0.35, 1.0, 0.35, TILE_HIGHLIGHT_ALPHA), 10)
+	_overlay_viable   = _make_tinted_overlay("StockpileViable",   Color(0.1,  0.45, 0.1,  TILE_HIGHLIGHT_ALPHA), 10)
+	_overlay_neutral  = _make_tinted_overlay("StockpileNeutral",  Color(0.25, 0.25, 0.25, TILE_HIGHLIGHT_ALPHA), 10)
 
 func _make_tinted_overlay(overlay_name: String, color: Color, z: int) -> TileMapLayer:
 	var layer := TileMapLayer.new()
