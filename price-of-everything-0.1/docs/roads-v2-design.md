@@ -342,6 +342,22 @@ predetermined).
    constant-level rim as a scenic corridor (cheap ring around lakes), or
    should rims carry a small penalty to avoid every lake growing a ring road?
 
+## 8.5 Decision gates (what must be decided up front, and what it locks)
+
+| # | Decision | Options | Gates | Recommendation |
+|---|---|---|---|---|
+| 1 | Routing lattice + height encoding | 12u bake lattice vs 20u subtile grid; 4-bit level + water channel | bake format/GEN_VERSION, TileHeights API, A* node count (~2.8x between options), smoothing aggressiveness, Phase-0 benchmark target | benchmark both in Phase 0, pick from numbers |
+| 2 | 50% penalty semantics | per level crossed vs per transition event | the entire cost-table tuning pass (everything balances against it) | per level — literal reading of (c); mountains stay meaningfully harder |
+| 3 | Network persistence + order-dependence | save full graph incl. geometry vs re-derive; accept build-order-dependent roads? | save schema (retrofit risk), determinism contract + tests, merge aggressiveness | persist geometry; embrace order-dependence ("same save, same result" only) |
+| 4 | Starting-network migration | big-bang CSV re-seed through v2 vs v1 art persists until a tile is touched | Phase 5 shape, survival of road_hsms/road_seed columns, visual continuity of the hand-tuned map | decide early — defines "done"; lean big-bang with one approval pass |
+| 5 | Roads in TileOccupancy | register footprints now (flagged) vs keep roads non-blocking | occupancy producer API, save size, buildability shifts on existing road tiles | register behind a flag; enforce only when buildings get footprints (k) |
+| 6 | Trunk/local tier rule | by origin (crossing/orbital/corridor=trunk) vs by usage/upgrade | network edge schema, visual language semantics | by origin first; usage-upgrades later |
+| 7 | Phase-0 escape-hatch threshold | µs/expansion cutoffs for: coarsen lattice / corridor-restrict / C# port | whether the C# toolchain question ever opens (project-wide cost) | pre-commit thresholds before benchmarking |
+| 8 | Crossing schema reservation | reserve ford→bridge upgrade + per-arm metadata fields | crossing registry + bake format stability | reserve now, costs nothing |
+
+Deferrable to tuning with no hardening risk: lake-rim pricing, reveal order,
+orbital tiering by region size, miniregion re-cluster cadence.
+
 ## 9. Suggested phases
 
 - **Phase 0** — A* benchmark spike (gate); `RiverGeometry` extraction;
