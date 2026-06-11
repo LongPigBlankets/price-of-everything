@@ -233,6 +233,50 @@ baseline.
 
 ---
 
+## 4.5 Gateways: tile entry/exit policy
+
+**Topology: demand-driven hierarchy, not adjacency.** v1 already caps visible
+exits at 3–4 per tile (spread scoring) because 6-way connection reads as a
+triangular lattice; v2 goes further — edges exist because of *demand events*,
+never because two road tiles happen to touch:
+
+- **TRUNK** edges come from the network (crossings, orbital ports,
+  inter-region corridors) and are routed as **single multi-tile jobs** — a
+  trunk crosses six tiles as one polyline with no internal seams.
+- **LOCAL** rule on road-tile creation: enqueue exactly one job, *"connect to
+  the nearest point of the existing network"*. The reuse discount turns this
+  into a T-junction merge. Additional jobs only if a road neighbour is not
+  reachable through the drawn network within a ~2-tile detour.
+- Result: degree emerges (dead-end spurs allowed, 6-way stars structurally
+  impossible); a tile ringed by road neighbours shows a trunk passing through
+  plus at most one joining spur. The gameplay boolean is honoured as a
+  *network* property (adjacent road pairs connected through the network), not
+  per shared edge — `catalog.gd` routing only consumes the boolean.
+
+**Geometry: terrain-elected gateways, not enumerated slots.** Multi-tile
+routes cross hex edges wherever the cost field dictates — i.e. at local height
+minima, the way real roads cross ridgelines at passes. Fixed quarter-point
+slots (even randomized) would re-print a hex-edge rhythm onto the map.
+Gateway points are only *needed* where jobs split (a route ends at an edge and
+a later job continues from the far side; miniregion boundaries; the one-time
+CSV re-seed). Mechanism:
+
+1. **First-writer-wins, graph-stored**: the first route to reach a shared edge
+   records crossing point **and arrival tangent** on the GATEWAY node
+   (undirected edge key — both tiles see the same node). Later jobs on the far
+   side take that point+tangent as a boundary constraint. This single
+   mechanism is also the fix for the tangent-continuity kink risk (§7.3).
+2. **Election rule when no route exists yet** (CSV re-seeding, pre-planned
+   gateways): deterministic and terrain-derived — argmin of height along the
+   shared edge, ≥40 units from hex corners, river-cleared (reuse v1's
+   `_offset_anchor_to_buildable_edge` tangent search), ±5% deterministic
+   jitter for wobble. HSM midpoints survive only as the tie-break default on
+   featureless edges.
+3. **One gateway per tile-pair edge** (crossroads rule (f) governs meetings);
+   per-tile gateway degree soft-capped at 3 unless a trunk passes through.
+
+---
+
 ## 5. Performance plan and the Phase-0 gate
 
 Both judges converged on one hard prerequisite: **benchmark before
