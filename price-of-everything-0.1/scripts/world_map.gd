@@ -19,9 +19,14 @@ var _v2_picking_dest: bool = false
 @onready var hud_content: Control = $UILayer/HUD/HUDContent
 @onready var _hud: Control = $UILayer/HUD
 @onready var _toast_layer: Control = $UILayer/HUD/ToastLayer
+@onready var forest_visuals: Node2D = %ForestVisuals
 
 const DENSITY_SOFT_CAPACITY := 100.0
 const InfraIcons := preload("res://scripts/infra_icons.gd")
+const OLD_GROWTH_FOREST_BUILDING_ID := "b_016"
+const OLD_GROWTH_FOREST_OWNER := "tile_data"
+const NORTH_OLD_GROWTH_MAX_ROW := 6
+const OLD_GROWTH_TILE_TYPES := ["rural", "hill"]
 
 signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
 
@@ -112,6 +117,7 @@ func _ready() -> void:
 
 	# Wire visuals to react to building placements
 	building_placed.connect(building_visuals.on_building_placed)
+	building_placed.connect(forest_visuals.on_building_placed)
 	# A cancelled construction site removes its hex icon (it was never a real building).
 	Construction.construction_cancelled.connect(_on_construction_cancelled)
 	# Deposit feedback: reveal/popup when a blind (unsurveyed) build finishes, and a
@@ -175,10 +181,14 @@ func _ready() -> void:
 	# A disused/ruins building near Vandel's Skip (tile_22_16), owned by an NPC.
 	_place_ruins("tile_23_16")
 
+	var pending_start := SaveLoad.pending_is_start()
 	# A loaded save applies only now, once the terrain and default seeding exist;
 	# it overwrites the fresh-match state above (docs/save_load_spec.md).
-	if SaveLoad.apply_pending():
+	var loaded_pending := SaveLoad.apply_pending()
+	if loaded_pending:
 		_rebuild_after_load()
+	if not loaded_pending or pending_start:
+		_place_northern_old_growth_forests()
 
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
@@ -190,6 +200,8 @@ func _rebuild_after_load() -> void:
 	# listen to building_added / construction_started, which are not re-emitted.
 	if building_visuals.has_method("clear_all"):
 		building_visuals.clear_all()
+	if forest_visuals.has_method("clear_all"):
+		forest_visuals.clear_all()
 	for instance_id in MatchState.buildings:
 		var inst: Dictionary = MatchState.buildings[instance_id]
 		var tile_id := str(inst.get("tile_id", ""))
@@ -1224,6 +1236,8 @@ func _on_construction_use_stockpile_requested(building_id: String, recipe_id: St
 func _on_construction_cancelled(instance_id: String, _tile_id: String) -> void:
 	if building_visuals.has_method("remove_instance"):
 		building_visuals.remove_instance(instance_id)
+	if forest_visuals.has_method("remove_instance"):
+		forest_visuals.remove_instance(instance_id)
 
 func _get_building_display_name(building_id: String) -> String:
 	return Catalog.get_building_display_name(building_id)
@@ -1259,6 +1273,35 @@ func _place_ruins(tile_id: String) -> void:
 			return
 	var instance_id := MatchState.add_building("b_031", "", tile_id, "Abandoned Holdings")
 	building_placed.emit(tile_id, "b_031", "", instance_id, coord)
+
+func _place_northern_old_growth_forests() -> void:
+	for coord_key in terrain_layer.tiles:
+		var coord: Vector2i = coord_key
+		var tile_data: Dictionary = terrain_layer.tiles[coord]
+		var row: int = coord.y + 1
+		if row > NORTH_OLD_GROWTH_MAX_ROW:
+			continue
+		var tile_type: String = str(tile_data.get("type", "")).strip_edges().to_lower()
+		if not OLD_GROWTH_TILE_TYPES.has(tile_type):
+			continue
+		var tile_id: String = str(tile_data.get("id", ""))
+		if tile_id == "" or _tile_has_building(tile_id, OLD_GROWTH_FOREST_BUILDING_ID):
+			continue
+		var instance_id: String = MatchState.add_building(
+			OLD_GROWTH_FOREST_BUILDING_ID,
+			"",
+			tile_id,
+			OLD_GROWTH_FOREST_OWNER,
+			"",
+			false
+		)
+		building_placed.emit(tile_id, OLD_GROWTH_FOREST_BUILDING_ID, "", instance_id, coord)
+
+func _tile_has_building(tile_id: String, building_id: String) -> bool:
+	for iid in MatchState.tile_buildings.get(tile_id, []):
+		if str(MatchState.get_building(str(iid)).get("building_id", "")) == building_id:
+			return true
+	return false
 
 # "" = buildable, "deposit" = known-missing deposit (toast + block),
 # "other" = some other requirement (potential/produces) not met.

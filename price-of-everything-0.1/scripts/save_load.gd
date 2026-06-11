@@ -153,6 +153,9 @@ func load_slot(slot: String, restart_scene: bool = true) -> String:
 func has_pending() -> bool:
 	return not _pending_snapshot.is_empty()
 
+func pending_is_start() -> bool:
+	return bool(_pending_snapshot.get("start", false))
+
 ## Called by world_map at the very end of _ready, after the terrain is built and
 ## the default match seeding (NPC ports, deposits) ran. Returns true when a
 ## pending save was applied — the caller then rebuilds its visuals.
