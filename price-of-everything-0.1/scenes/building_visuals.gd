@@ -14,6 +14,7 @@ var _instance_nodes: Dictionary = {}
 const ICONS_PER_ROW := 4
 const ICON_ROWS := 3
 const ROADS_BUILDING_ID := "b_005"
+const FOREST_BUILDING_IDS := {"b_015": true, "b_016": true}
 const NPC_NAVY := Color(0.015686275, 0.058823529, 0.105882353)
 const NPC_OUTLINE_PX := 10.0
 
@@ -46,7 +47,7 @@ const MAX_VISIBLE_BUILDINGS := 12  # 4 cols × 3 rows
 const OVERFLOW_INDEX := 11         # 12th slot (0-indexed)
 
 func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, instance_id: String, coord: Vector2i) -> void:
-	if building_id == ROADS_BUILDING_ID:
+	if building_id == ROADS_BUILDING_ID or FOREST_BUILDING_IDS.has(building_id):
 		return
 	print("[BuildingVisuals] placing for ", building_id)
 	if not building_icons.has(building_id):
