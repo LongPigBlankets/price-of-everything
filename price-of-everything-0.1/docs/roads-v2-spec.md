@@ -284,6 +284,47 @@ through one gateway → angle between end tangents < 15°).
 
 ---
 
+## 4.5 Phase 2.5 — route seed cache (designer-requested precompute)
+
+Measured baseline (tools/bench_realizer.tscn, hierarchical realizer over the
+baked navgrid): local P50 17.6 ms / P95 46 ms; regional P50 149 ms / P95
+556 ms; trunk P50 489 ms / P95 977 ms; 100% success. Single jobs are fine;
+BATCHES are the cost (20-trunk mass build ≈ 10-20 s of planning; the Phase-5
+re-seed ≈ minutes). The cache targets batches.
+
+**Why not cache final answers**: the reuse discount (organic T-merging),
+forest obstacles, and congestion are runtime-dynamic by design — a verbatim
+precomputed route braids past existing roads and through later forests.
+
+**What we cache — corridor seeds** (`data/routes_baked.json`, own bake tool
+`tools/bake_routes.tscn`, staleness = terrain source hash + regions hash +
+GEN_VERSION):
+
+- Catalogue: pairs the job generators actually request — intra-region pattern
+  pairs (~400 of the ~650 possible member pairs across the 50 regions),
+  map-wide adjacent-tile-centre pairs (~1,700, the LOCAL connect jobs), and
+  neighbouring-region gateway pairs. ≈ 2,000-2,500 routes, ~1 MB, ~2.5-4 min
+  one-time bake with the hierarchical realizer.
+- Each entry: terrain-only geometry (all static cost terms incl. jitter —
+  fully deterministic), bridges used, corridor bbox.
+- Runtime lookup (endpoints within ~100 u of a cached pair):
+  1. validity scan along the seed: forest discs intersecting? network
+     occupancy hash within the corridor? congestion above threshold?
+  2. CLEAN → cached geometry verbatim + endpoint stitches (≈ 0 ms; this is
+     the whole Phase-5 re-seed and most jobs on a young map);
+  3. DIRTY → fine A* restricted to a ~70 u corridor around the seed (no
+     coarse pass; est. 2-3x under hierarchical numbers) — every dynamic term
+     still applies, so merging/forests/congestion behave exactly as designed.
+- Cache misses (moved endpoints, un-catalogued pairs) fall through to the
+  normal hierarchical route — the cache is an accelerator, never a
+  correctness dependency.
+
+Tests: seed determinism (re-bake → identical), clean-path verbatim equality
+vs a live terrain-only route, dirty-path merge behaviour (a seed crossing an
+existing edge must still T-merge, not braid).
+
+---
+
 ## 5. Phase 3 — RoadWorks pipeline (turn-phased, chunked)
 
 - `scripts/road_works.gd`: WorkOrder {edges to plan, reveal state}. On road
