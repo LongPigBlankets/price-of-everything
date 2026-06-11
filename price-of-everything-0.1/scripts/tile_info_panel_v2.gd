@@ -67,6 +67,10 @@ var _tiles: Dictionary = {}        # tab_id -> {root, pip, metric, unit}
 var _panes: Dictionary = {}        # tab_id -> Control (body container)
 var _pane_host: VBoxContainer = null
 
+func _enter_tree() -> void:
+	# the hex grid overlay mirrors this panel's tile as its brass selection
+	add_to_group("tile_view_panel")
+
 func _ready() -> void:
 	_apply_anchors()
 	_apply_panel_style()

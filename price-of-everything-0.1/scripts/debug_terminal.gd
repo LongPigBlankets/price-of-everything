@@ -150,8 +150,19 @@ func _run_command(text: String) -> String:
 			for s in slots:
 				lines.append("%s — turn %d, £%.2f  (%s)" % [s.slot, int(s.turn), float(s.money), str(s.timestamp)])
 			return "\n".join(lines)
+		"toggle":
+			if parts.size() >= 2 and parts[1].to_lower() == "heightmap":
+				var layers := get_tree().get_nodes_in_group("hill_visuals")
+				if layers.is_empty():
+					return "heightmap layer not found (not in a match scene?)"
+				var now_visible := false
+				for layer in layers:
+					layer.visible = not layer.visible
+					now_visible = layer.visible
+				return "heightmap → %s" % ("on" if now_visible else "off (plain map + rivers)")
+			return "usage: toggle heightmap"
 		"help":
-			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
