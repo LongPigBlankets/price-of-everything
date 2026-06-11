@@ -76,6 +76,10 @@ static func sea() -> Array:
 		out.append({"b": int(entry.get("b", 5)), "p": _unflatten(entry.get("p", []))})
 	return out
 
+## Roads-v2 routing navgrid (12u lattice: band + water class + water distance).
+static func navgrid() -> Dictionary:
+	return data().get("navgrid", {})
+
 static func _unflatten(flat: Array) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	var i := 0

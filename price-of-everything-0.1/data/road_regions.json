@@ -397,8 +397,8 @@
   },
   "shoulderland": {
    "name": "Shoulderland",
-   "identity": "sparse_rural",
-   "identity_source": "inferred",
+   "identity": "mountain_range",
+   "identity_source": "designer",
    "tiles": [
     "tile_6_1",
     "tile_6_2",

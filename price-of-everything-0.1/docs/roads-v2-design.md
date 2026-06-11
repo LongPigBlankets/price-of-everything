@@ -1,6 +1,7 @@
 # Roads v2 — review of the existing system & design for organic heightmap-driven roads
 
-Status: **design with decisions taken** (no implementation in this branch yet).
+Status: **design with decisions taken** (region-style loader contract now
+implemented; routing phases remain pending).
 Inputs: multi-agent review of the road + terrain code (3 readers), three competing
 architecture designs, two adversarial judges, plus designer rulings on the
 decision gates (2026-06-11, see §8.5).
@@ -163,16 +164,23 @@ sparse_city | dense_rural | sparse_rural | mountain_range}}`.
 
 Identity drives a style table (all tunables in one place):
 
-| Identity | Wiggle (cost jitter amp) | Interconnections (redundant LOCAL links) | Local density | Orbital |
+| Identity | Wiggle (cost jitter amp) | Job pattern | Local density | Orbital |
 |---|---|---|---|---|
-| dense_city | low | high (grid-like mesh) | high | yes |
-| sparse_city | medium | medium | medium | yes |
-| dense_rural | medium | low-medium | medium | no |
-| sparse_rural | high | low (spurs + single links) | low | no |
-| mountain_range | high | minimal (one pass road) | minimal | no |
+| dense_city | low | full beltway + urban minihubs + gateway spokes + nearby member mesh | high | yes |
+| sparse_city | medium | 1-2 urban minihubs, gateway spokes, nearby member links, optional partial bypass | medium | no full orbital |
+| dense_rural | medium | cohesive hub-and-spokes + few cross-links | medium | no |
+| sparse_rural | high | low (through-route + farm links) | low | no |
+| mountain_range | high | max 3 crossing segments | minimal | no |
 
 Tiles outside any region default to sparse_rural. The orbital-ring machinery
-(§4 g) keys off identity, not raw urban-tile clustering.
+(§4 g) is mandatory for dense cities and forbidden for sparse cities except for
+partial bypass spans; it keys off identity, not raw urban-tile clustering.
+Dense-rural identity stays terrain/region authored for now, then gets revisited
+once seeded buildings exist: farms across three rural tiles can remain sparse,
+while farms plus a few factories should change the region's character.
+Regions with more than 1 mountain tile always use the `mountain_range` special
+style: no web, no orbital, at most three road segments, optimized to find the
+cheapest pass to the far side under elevation-change costs.
 
 ### Data flow
 
@@ -216,22 +224,25 @@ ascent. Mechanism is emergent, not templated:
   *along* the gradient is expensive, traversing *across* it is cheap, so A*
   naturally tacks diagonally up slopes.
 - **Conditional hairpin allowance**: the ≥135° turn penalty (which normally
-  forbids hairpins) is waived when both adjacent steps are on steep cells and
-  the elevation gained since the last reversal exceeds ~1 level — without
-  this, the turn costs would fight the zigzag and A* would pay the direct
-  climb instead.
-- Post-check: any realized segment ascending ≥2 levels must contain ≥2
-  direction reversals; failures re-route with doubled k (assert in tests).
+  forbids hairpins) is waived only on hill/mountain tiles when the local climb
+  gains more than 1 elevation level within 20 u — without this, the turn costs
+  would fight legitimate switchbacks while still allowing flatland nonsense.
+- Post-check: switchback reversals are valid only under that hill/mountain +
+  >1-level-in-20u gate; failures re-route with doubled k (assert in tests).
 
-**d) Lakes are obstacles.** LAKE and SOURCE_LAKE water classes are
-infinite-cost. Explicit channel, not inferred from height. *Lake rims*
-(designer ruling): roads may hug the rim — no special discount or penalty;
+**d) Water is a hard obstacle.** SEA, DEEP_SEA, LAKE, and SOURCE_LAKE water
+classes are infinite-cost. Roads never go onto water. They may follow coastlines
+only from the land side; if that coast-hugging path is efficient, the cost field
+can pick it, and if the coast is a scenic detour, A* should find the cheaper
+inland path. Explicit channel, not inferred from height. *Lake rims* (designer
+ruling): roads may hug the rim on LAND cells — no special discount or penalty;
 the rim's constant level makes it naturally cheap, and normal height rules
 apply on the way in and out.
 
 **e) Only −1 and above tolerate roads.** Passability = `water_class == LAND`
 (and outside the river corridor except at gates). Level is never a hard block
-for roads — bands −1..10 all routable, only priced.
+for roads — bands −1..10 all routable, only priced. The only allowed water
+crossing is a river at a predetermined gate/bridge.
 
 **f) Curves; crossroads only at genuine meetings.** A* state is
 (cell, direction-octant); turn penalties: straight 0, 45° +0.2·STEP,
@@ -245,11 +256,14 @@ forms only on a transversal crossing with both sides continuing and angle
 table (§3.1)**: wiggle = deterministic per-cell cost jitter amplitude;
 interconnections = how many redundant LOCAL jobs the region enqueues.
 
-**g) Urban miniregions with orbitals.** Regions with city identity get an
+**g) Urban miniregions with orbitals/minihubs.** Dense-city regions get a full
 orbital: `region_road_planner.gd`'s boundary/inset scaffolding places 8–12
 ORBITAL_PORT waypoints; the ring is *routed* through the cost field between
 consecutive ports, so the ≤50% overflow into non-urban neighbours happens
-exactly where the heightmap allows. Trunk roads attach at ports.
+exactly where the heightmap allows. Sparse-city regions get 1–2 minihubs,
+gateway spokes, nearby member links, and only a partial bypass when it improves
+through movement; they never get a full orbital. Trunk roads attach at dense-city ports or sparse-city
+gateways/minihubs.
 
 **h) Building bunches.** BUNCH nodes with the invariant
 `bunch.created_turn < edge.planned_turn` — roads only connect bunches that
@@ -384,8 +398,8 @@ brute-force crossing scans (crossings predetermined).
    no kinks at seams).
 3. **Hairpin/turn-penalty interaction** (new, from the serpentine ruling):
    the waiver condition must be tight or flatland routes will exploit free
-   hairpins; covered by the ≥2-reversals post-check + a flatland no-hairpin
-   assert.
+   hairpins; covered by the hill/mountain >1-level-in-20u switchback gate +
+   a flatland no-hairpin assert.
 4. **The atlas visual language ships WITH the router** (tiered widths/colors,
    casing, roundabout glyphs at ports) — a perfect router drawn as uniform
    black lines reads as spiderweb.
@@ -412,7 +426,7 @@ brute-force crossing scans (crossings predetermined).
 | # | Decision | Ruling |
 |---|---|---|
 | 1 | Lattice resolution | **Finest affordable**; 12u default (= hills field), bench 8u; density at zoom comes from network density via region identities; per-subtile heights exported for gameplay regardless |
-| 2 | 50% penalty semantics | **Per level crossed** (2-level climb = +100%); multi-level climbs must serpentine perpendicular to ascent (emergent: gradient-alignment penalty + conditional hairpin waiver) |
+| 2 | 50% penalty semantics | **Per level crossed** (2-level climb = +100%); switchbacks allowed on hill/mountain climbs only when >1 level is gained within 20 u (emergent: gradient-alignment penalty + conditional hairpin waiver) |
 | 3 | Persistence / order-dependence | **Save stores the network as built**; build order produces different networks — accepted ("same save, same result" is the only guarantee) |
 | 4 | Migration | **Nuke v1**, keep bridge logic + salvage list; pattern control moves to hand-authored `road_regions.json` (dense/sparse city, dense/sparse rural, mountain range) |
 | 5 | Roads in occupancy | **Yes** — block road corridor + small buffer so buildings get close but never on top |
@@ -435,6 +449,7 @@ brute-force crossing scans (crossings predetermined).
 - **Phase 3** — RoadWorks queue + chunked reveal (j) with
   network-outward/trunk-first order; event-scoped invalidation; road
   footprints into TileOccupancy (k).
-- **Phase 4** — region-identity styles + orbitals (g) for city identities.
+- **Phase 4** — region-identity styles, dense-city orbitals, sparse-city
+  minihubs/partial bypasses.
 - **Phase 5** — big-bang re-seed of CSV roads through v2 (designer approval
   pass); delete v1 planners; bunch API (h) stubbed for buildings.

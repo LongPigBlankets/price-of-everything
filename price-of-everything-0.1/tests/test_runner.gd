@@ -14,6 +14,8 @@ extends Node
 var _passed := 0
 var _failed := 0
 
+const RoadRegionsLoader := preload("res://scripts/road_regions.gd")
+
 func _ready() -> void:
 	print("\n==== price-of-everything tests ====")
 	_test_scripts_parse()
@@ -94,9 +96,11 @@ func _ready() -> void:
 	await _test_notification_group_inline_expand()
 	await _test_notification_header_filter()
 	await _test_notification_bell_smoke()
+	_test_road_regions()
 	_test_hills_baked_fresh()
 	await _test_hill_field_determinism()
 	await _test_grid_selection_follows_panel()
+	await _test_roads_v2()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -167,6 +171,51 @@ func _test_hills_baked_fresh() -> void:
 	_check(not SubtileGrid.is_subtile_buildable(col, row, {}, [], sample_tile),
 		"hills: blocked subtile is unbuildable via SubtileGrid")
 
+func _test_road_regions() -> void:
+	RoadRegionsLoader.reset_for_tests()
+	var ids := RoadRegionsLoader.region_ids()
+	_check(ids.size() == 50, "road regions: 50 authored regions")
+	_check(RoadRegionsLoader.region_of("tile_6_1") == "shoulderland",
+		"road regions: tile lookup returns Shoulderland")
+	_check(RoadRegionsLoader.identity("shoulderland") == RoadRegionsLoader.ID_MOUNTAIN_RANGE,
+		"road regions: Shoulderland uses mountain_range special style")
+	_check(RoadRegionsLoader.identity_for_tile("tile_12_2") == RoadRegionsLoader.ID_SPARSE_RURAL,
+		"road regions: unassigned land defaults to sparse_rural")
+
+	var mountain_style := RoadRegionsLoader.style_for_identity(RoadRegionsLoader.ID_MOUNTAIN_RANGE)
+	_check(int(mountain_style.get("max_segments", 0)) == 3,
+		"road regions: mountain_range caps at 3 segments")
+	_check(str(mountain_style.get("network_pattern", "")) == RoadRegionsLoader.PATTERN_MOUNTAIN_PASS,
+		"road regions: mountain_range uses pass routing")
+	_check(str(mountain_style.get("water_policy", "")) == RoadRegionsLoader.WATER_POLICY,
+		"road regions: water is impassable for road styles")
+	var sparse_style := RoadRegionsLoader.style_for_identity(RoadRegionsLoader.ID_SPARSE_RURAL)
+	_check(str(sparse_style.get("network_pattern", "")) == RoadRegionsLoader.PATTERN_THROUGH_FARM_LINKS,
+		"road regions: sparse_rural uses through-route/farm links")
+	var sparse_city_style := RoadRegionsLoader.style_for_identity(RoadRegionsLoader.ID_SPARSE_CITY)
+	_check(not bool(sparse_city_style.get("full_orbital_allowed", true)),
+		"road regions: sparse_city forbids full orbitals")
+
+	var report := RoadRegionsLoader.validation_report()
+	var overlaps: Array = report.get("overlaps", [])
+	var water_tiles: Array = report.get("water_tiles", [])
+	var lake_tiles: Array = report.get("lake_tiles", [])
+	var mountain_mismatches: Array = report.get("mountain_rule_mismatches", [])
+	var invalid_ids: Array = report.get("invalid_identities", [])
+	var unknown_tiles: Array = report.get("unknown_tiles", [])
+	_check(overlaps.is_empty(), "road regions: no overlapping member tiles")
+	_check(RoadRegionsLoader.region_of("tile_11_7") == "kindling_mountains",
+		"road regions: Kindling Mountains owns tile_11_7")
+	_check(RoadRegionsLoader.region_of("tile_9_14") == "green_flats",
+		"road regions: Green Flats owns tile_9_14")
+	_check(water_tiles.size() == 1 and str(water_tiles[0].get("tile_id", "")) == "tile_24_18",
+		"road regions: Vandel Island sea tile is the only water claim")
+	_check(lake_tiles.is_empty(), "road regions: no authored region claims lake tiles")
+	_check(mountain_mismatches.is_empty(),
+		"road regions: all >1 mountain tile regions use mountain_range")
+	_check(invalid_ids.is_empty(), "road regions: all identities are valid")
+	_check(unknown_tiles.is_empty(), "road regions: all member tiles exist in tile_properties.csv")
+
 # Regenerate one small massif twice — identical output proves the generator is
 # deterministic (the bake -> cache contract depends on it).
 func _test_hill_field_determinism() -> void:
@@ -219,6 +268,101 @@ func _test_grid_selection_follows_panel() -> void:
 	_check(overlay._selected == Vector2i(-999, -999), "grid: selection clears when the panel closes")
 	panel.queue_free()
 	overlay.queue_free()
+	terrain.queue_free()
+	await get_tree().process_frame
+
+# Roads-v2 Phase 2: baked navgrid, predetermined crossings, the hierarchical
+# realizer (determinism + water/forest avoidance), and network save round-trip.
+func _test_roads_v2() -> void:
+	var nav := NavGrid.instance()
+	_check(nav.is_ready(), "roads v2: baked navgrid decodes (%dx%d)" % [nav.gw, nav.gh])
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+
+	# crossings: one per arm, deterministic, interior to the tile
+	RoadCrossings.reset_for_tests()
+	RoadCrossings.build(terrain)
+	var river_tiles := 0
+	var branch_ok := true
+	var arm_counts_ok := true
+	for coord in terrain.tiles:
+		var td: Dictionary = terrain.tiles[coord]
+		if not td.get("has_river", false):
+			continue
+		var rt := str(td.get("river_type", ""))
+		if rt == "" or not terrain.river_properties.has(rt):
+			continue
+		river_tiles += 1
+		var crossings := RoadCrossings.for_tile(str(td.id))
+		if crossings.is_empty():
+			arm_counts_ok = false
+		var rd: Dictionary = terrain.river_properties[rt]
+		if str(rd.get("exit_hsm_2", "")) != "" and crossings.size() < 2:
+			branch_ok = false
+	_check(river_tiles > 0 and arm_counts_ok, "roads v2: every river tile has a crossing (%d tiles)" % river_tiles)
+	_check(branch_ok, "roads v2: branching rivers get one crossing per arm")
+	var sample_tile: String = RoadCrossings.all_tiles()[0]
+	var first_point: Vector2 = RoadCrossings.for_tile(sample_tile)[0].point
+	RoadCrossings.reset_for_tests()
+	RoadCrossings.build(terrain)
+	_check(RoadCrossings.for_tile(sample_tile)[0].point == first_point, "roads v2: crossings deterministic")
+
+	# realizer: deterministic land route that respects water
+	var pa: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(Vector2i(9, 10)))
+	var pb: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(Vector2i(11, 10)))
+	var realizer := RoadRealizer.new()
+	var net := RoadNetwork.new()
+	var r1 := realizer.route(nav, net, pa, pb, {"identity": "dense_rural", "salt": 7})
+	_check(r1.ok, "roads v2: route succeeds (%s)" % str(r1.get("reason", "")))
+	if r1.ok:
+		var r2 := realizer.route(nav, net, pa, pb, {"identity": "dense_rural", "salt": 7})
+		_check(r2.ok and r2.geometry == r1.geometry, "roads v2: route deterministic")
+		var water_ok := true
+		for p in r1.geometry:
+			var c: Vector2i = nav.cell_of(p)
+			if nav.water(c.x, c.y) == NavGrid.WATER_SEA or nav.water(c.x, c.y) == NavGrid.WATER_LAKE:
+				water_ok = false
+				break
+		_check(water_ok, "roads v2: route never enters sea or lakes")
+
+	# forests are hard obstacles (shared footprint)
+	var forest_tile := "tile_11_11"
+	var inst: String = MatchState.add_building("b_016", "", forest_tile, "tile_data", "", false)
+	var fcoord: Vector2i = terrain.id_to_coord(forest_tile)
+	var fcenter: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(fcoord))
+	var disc := ForestFootprint.footprint(inst, forest_tile, fcoord, fcenter,
+		RiverGeometry.arms(terrain.tiles[fcoord], terrain.river_properties, fcenter),
+		RiverGeometry.lake_ellipse(terrain.tiles[fcoord], terrain.river_properties, fcenter))
+	var disc2 := ForestFootprint.footprint(inst, forest_tile, fcoord, fcenter,
+		RiverGeometry.arms(terrain.tiles[fcoord], terrain.river_properties, fcenter),
+		RiverGeometry.lake_ellipse(terrain.tiles[fcoord], terrain.river_properties, fcenter))
+	_check(disc.center == disc2.center, "roads v2: forest footprint deterministic")
+	var across := realizer.route(nav, net, fcenter + Vector2(-420, 0), fcenter + Vector2(420, 0), {"identity": "sparse_rural", "salt": 3})
+	_check(across.ok, "roads v2: route across a forest tile succeeds")
+	if across.ok:
+		var clear := true
+		for p in across.geometry:
+			if p.distance_to(disc.center) < disc.radius - 6.0:
+				clear = false
+				break
+		_check(clear, "roads v2: route avoids the forest disc")
+	MatchState.remove_building(inst)
+
+	# network graph save round-trip
+	if r1.ok:
+		var na := net.ensure_node("dbg:a", RoadNetwork.KIND_JUNCTION, pa, Vector2i(9, 10))
+		var nb := net.ensure_node("dbg:b", RoadNetwork.KIND_JUNCTION, pb, Vector2i(11, 10))
+		realizer.commit(net, na.id, nb.id, RoadNetwork.TIER_LOCAL, r1, 1)
+		var snap1 := net.export_state()
+		var net2 := RoadNetwork.new()
+		net2.import_state(snap1)
+		_check(JSON.stringify(net2.export_state()) == JSON.stringify(snap1), "roads v2: network save round-trip")
+		_check(net2.near_network(r1.geometry[r1.geometry.size() / 2]), "roads v2: occupancy hash survives import")
 	terrain.queue_free()
 	await get_tree().process_frame
 
@@ -1890,6 +2034,7 @@ func _test_scripts_parse() -> void:
 		"res://scripts/event_scheduler.gd",
 		"res://scripts/modifier_state.gd",
 		"res://scripts/notification_bell.gd",
+		"res://scripts/road_regions.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 

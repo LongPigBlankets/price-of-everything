@@ -6,8 +6,9 @@ deliverables, file-level specs, benchmarks with pass/fail thresholds, tests,
 and an exit checklist. Constants carry rationale; change them knowingly.
 
 Already on this branch: the design doc, `data/road_regions.json`
-(50 hand-authored regions, identities inferred — see Appendix B for the
-review flags), and the merged forest-visuals work (PR #34).
+(50 hand-authored regions, identities inferred then designer-edited — see
+Appendix B for the review flags), `scripts/road_regions.gd`, the benchmark
+harness, and the merged forest-visuals work (PR #34).
 
 ---
 
@@ -168,18 +169,18 @@ before the queue visibly lags a mass build):
 
 `scripts/road_regions.gd` (lazy static): `region_of(tile_id) -> String`,
 `identity(region_id)`, `style(region_id) -> Dictionary` (from the Phase-4
-style table; until then returns defaults). On load, re-run the validation the
-generator ran offline and `push_warning` on: unknown tile ids, overlaps,
-lake-tile membership, identity/name mismatches. Unassigned tiles →
-`sparse_rural` defaults. (Appendix B lists the current flags for designer
-cleanup — two overlaps and one sea tile.)
+style table). On load, re-run the validation the generator ran offline and
+`push_warning` on: unknown tile ids, overlaps, lake-tile membership, sea/deep
+sea membership, invalid identities, and hard-rule mountain mismatches.
+Unassigned tiles → `sparse_rural` defaults. (Appendix B lists the current
+designer cleanup flag — one sea tile.)
 
 ### Phase 1 exit checklist
 
 - [ ] bake runs (~+10–15 s), JSON ≤ 8 MB, staleness machinery forces re-bake
 - [ ] `TileHeights` equality test vs old blocked masks passes; `blocked` key dropped
 - [ ] benchmark gates G1–G4 evaluated → lattice recorded
-- [ ] regions loader warns on the known flags and nothing else
+- [ ] regions loader warns on the known Vandel sea-tile flag and nothing else
 
 ---
 
@@ -235,18 +236,26 @@ the clock every 64 expansions; `MAX_EXPANSIONS` abort = 4× the bench P95.
 | river hug | ×0.85 @ 30–60 u from water; ×1.15 @ 13–30 u | principle (b); centred on v1's proven 42 u offset |
 | turn penalty | +0.2·STEP @45°, +0.9 @90°, +3.0 @≥135° | principle (f) curves; hairpin waiver below |
 | gradient alignment (steep cells: ≥1 level per 2 cells) | ×(1 + 1.5·\|dot(step_dir, ∇level)\|) | decision #2 serpentines: traverse across slopes, not up them |
-| hairpin waiver | ≥135° penalty waived iff both steps on steep cells AND ≥1 level gained since last reversal | lets switchbacks exist exactly where they belong, nowhere on flatland |
+| hairpin waiver | ≥135° penalty waived only on hill/mountain tiles when the local climb gains >1 elevation level within 20 u | lets switchbacks exist exactly where they belong, nowhere on flatland |
 | reuse discount | ×0.6 within 24 u of existing network | organic T-junction merging; prevents parallel braids |
 | congestion | ×(1 + 0.8·occupied_fraction(tile)) | decision #6: crowded tiles force roundabout routes |
 | region wiggle | ×(1 ± jitter·noise(cell, seed)) | per-identity jitter amp (Phase 4 table), deterministic |
-| water | impassable (SEA/LAKE/SOURCE_LAKE; RIVER except within 18 u of a crossing gate) | principles (d)(e)(a) |
+| water | impassable (SEA/DEEP_SEA/LAKE/SOURCE_LAKE; RIVER except within 18 u of a crossing gate) | roads never enter water; they follow land-side coastlines or choose cheaper inland routes |
 | forest discs | impassable (dynamic overlay, §1) | forests avoided once built |
+
+Water/coast rule: a road may run along the coast only on LAND cells adjacent to
+water; it never steps onto sea, deep sea, lakes, or source lakes. Coastal
+following is a cost-field preference, not a mandate: if the land-side coast is
+the efficient path, the road hugs it; if the coast would be a long detour, A*
+should find the cheaper inland route. The only water crossing exception is a
+river at a predetermined gate/bridge.
 
 Post-pass: Catmull-Rom smoothing (min turn radius 28 u), level-transition
 preserving simplification (never adds transitions the raw path didn't pay
-for), serpentine post-check (any segment ascending ≥2 levels must contain ≥2
-direction reversals; on failure re-route with gradient k doubled), bridge
-emission at gate crossings using the salvaged v1 invariant
+for), serpentine post-check (switchback reversals are legal on hill/mountain
+tiles only when the segment ascends >1 elevation level within a 20 u window;
+on failure re-route with gradient k doubled), bridge emission at gate
+crossings using the salvaged v1 invariant
 (`_path_crossings_are_bound`), junction merge (split within 10 u; 4-way only
 on transversal crossing, both sides continuing, angle ≥50°).
 
@@ -267,9 +276,9 @@ casing) — the atlas language ships now per risk #4, polish in Phase 4.
 ### Phase 2 tests
 
 Golden-route determinism (5 fixed jobs → exact geometry hash, twice + across
-save/load); serpentine reversal assert on a 3-level climb fixture; flatland
-no-hairpin assert; crossroads angle rule (crossing at 30° must NOT create a
-4-way); river crossing only at gates; forest disc avoidance; quartile
+save/load); switchback gate assert on a hill/mountain >1-level-in-20u climb
+fixture; flatland no-hairpin assert; crossroads angle rule (crossing at 30°
+must NOT create a 4-way); river crossing only at gates; forest disc avoidance; quartile
 crossing determinism per arm; gateway tangent continuity (route A then B
 through one gateway → angle between end tangents < 15°).
 
@@ -287,7 +296,7 @@ through one gateway → angle between end tangents < 15°).
   active layer draws only in-flight orders, static layer redraws once on
   settlement.
 - Invalidation matrix: road built on tile T → plan jobs for T only; region
-  membership change → that region's orbital only; building placed → nothing
+  membership change → that region's style jobs/orbital only; building placed → nothing
   (the v1 map-wide handler is deleted); forest planted/removed → re-route
   PLANNED (not BUILT) edges intersecting its disc — built roads stay (history
   is history).
@@ -314,27 +323,52 @@ through one gateway → angle between end tangents < 15°).
 Style table (first-pass numbers; tune against the atlas reference; lives in
 `road_regions.gd::STYLE`):
 
-| Identity | wiggle jitter | interconnection jobs | trunk turn-penalty × | orbital |
+| Identity | wiggle jitter | job pattern | trunk turn-penalty x | orbital |
 |---|---|---|---|---|
-| dense_city | ±2% | every adjacent member pair within 1.5 tiles | 1.0 | yes, ports = external land neighbours (8–12) |
-| sparse_city | ±4% | member pairs within 1 tile | 1.0 | yes, 6–8 ports |
-| dense_rural | ±5% | nearest-network only + 1 redundant link per 4 tiles | 1.2 | no |
-| sparse_rural | ±7% | nearest-network only | 1.3 | no |
-| mountain_range | ±8% | single pass road (one trunk job through the range, serpentine rules do the rest) | 1.5 | no |
+| dense_city | +/-2% | full beltway + urban minihubs + gateway spokes + adjacent member links within 1.5 tiles | 1.0 | yes, ports = external land neighbours (8-12) |
+| sparse_city | +/-4% | 1-2 urban minihubs, gateway spokes, nearby member links, optional partial bypass | 1.0 | no full orbital |
+| dense_rural | +/-5% | cohesive hub-and-spokes + 1 redundant link per 4 tiles | 1.2 | no |
+| sparse_rural | +/-7% | through-route first; optionally connect nearby farms/isolated rural buildings along it | 1.3 | no |
+| mountain_range | +/-8% | max 3 road segments; cheapest pass route(s) to the far side under elevation costs | 1.5 | no |
 
 (Trunk turn-penalty multiplier answers open question: A-roads straighter in
-cities, twistier in the wilds.)
+cities, twistier in the wilds.) Any region with **more than 1 mountain tile**
+uses the `mountain_range` special style. These regions are deliberately sparse:
+no local web, no orbital, at most three realized road segments whose job is to
+find the cheapest crossing to the other side under the elevation-change rules.
 
-Orbitals: ports placed via the salvaged `region_road_planner.gd` boundary/
-inset scaffolding; ring routed port-to-port through the cost field. The ≤50%
+Job-generation contract:
+
+1. `dense_city`: place a routed beltway first, then minihub nodes around urban
+   subcenters and ports; add gateway spokes and short adjacent-member links so
+   the result reads as an equal urban network rather than one star.
+2. `sparse_city`: pick 1-2 urban minihubs, connect them to gateways and nearby
+   member tiles, and only add a partial bypass if it improves through movement.
+   A sparse city never gets a full orbital.
+3. `dense_rural`: choose a hub (urban tile if present, otherwise the central or
+   lowest-cost rural tile), route spokes to members, then add a small number of
+   cross-links for resilience. Once seeded buildings exist, this identity should
+   consider building character: three farm tiles can stay sparse, while farms
+   plus a few factories can become dense rural.
+4. `sparse_rural`: route through the region first; connect farms or isolated
+   rural buildings along that route when cheap and nearby.
+5. `mountain_range`: if a region has more than one mountain tile, cap it at
+   three realized road segments and optimize for the cheapest far-side pass.
+   Switchbacks are legal only under the hill/mountain + >1 level within 20 u
+   gate from the realizer cost rules.
+
+Dense-city orbitals: ports placed via the salvaged `region_road_planner.gd`
+boundary/inset scaffolding; ring routed port-to-port through the cost field. The ≤50%
 overflow rule is enforced as a post-check: if > 50% of realized ring length
 lies outside member tiles, re-route the offending spans with an
 outside-region penalty ×1.5 (repeat once; then accept and warn — heightmap
 wins over the quota per the ruling "if heightmap allows").
 
-Exit: every city-identity region grows an orbital on first member road;
-overflow check covered by a test on a hand-picked coastal city (Stoneshore)
-and an inland one (Patran City).
+Exit: every dense-city region grows an orbital on first member road; sparse
+city regions get minihub/gateway networks and may get partial bypasses, never
+full orbitals. Overflow
+check covered by a test on a hand-picked coastal city (Stoneshore) and an inland
+one (Patran City).
 
 ---
 
@@ -364,7 +398,7 @@ and an inland one (Patran City).
 | B4 | mass build 100 tiles | 3 | no frame > 8 ms; settle ≤ 6 s |
 | B5 | bake time + JSON size | 1 | ≤ +20 s; ≤ 8 MB |
 | T1 | golden routes ×5 deterministic | 2 | exact geometry hash |
-| T2 | serpentine ≥2 reversals on ≥2-level climbs | 2 | fixture |
+| T2 | switchbacks only on hill/mountain climbs with >1 level gained within 20 u | 2 | fixture |
 | T3 | flatland no-hairpin | 2 | fixture |
 | T4 | crossroads only ≥50° transversal | 2 | fixture |
 | T5 | crossings: gates only, quartile determinism, per-arm count | 2 | fixtures |
@@ -390,23 +424,17 @@ PLAN_BUDGET_MS=4 · REVEAL=3 s · corridor capsule 480 u · smoothing min radius
 ## Appendix B — regions as authored (validation results)
 
 `data/road_regions.json`: 50 regions, 286/600 tiles assigned (rest default
-sparse_rural). Identities inferred from tile composition (urban ≥3 →
-dense_city; ≥1 → sparse_city; mountains ≥34% or name → mountain_range;
-hills ≥50% → sparse_rural; ≥7 tiles → dense_rural) — all marked
-`identity_source: "inferred"`, **edit freely, the loader treats the file as
-truth**.
+sparse_rural). Initial identities were inferred from tile composition (urban
+≥3 → dense_city; ≥1 → sparse_city; mountains ≥34% or name → mountain_range;
+hills ≥50% → sparse_rural; ≥7 tiles → dense_rural), then edited by designer
+rules. Current hard rule: regions with >1 mountain tile are `mountain_range`
+(e.g. Shoulderland). **Edit freely, the loader treats the file as truth**.
 
 Designer review flags found by validation:
 
-1. **Overlap**: `11-7` listed in both Kindling Mountains and Pebble Valley —
-   kept in Kindling Mountains (first listed). Edit if wrong.
-2. **Overlap**: `9-14` listed in both Green Flats and Arin Hold — kept in
-   Green Flats.
-3. **Vandel Island** contains a sea tile (one of 23-18/24-18) — harmless
-   (sea tiles never route) but flagged.
-4. **Arin Hold** is named like a settlement but contains no urban tiles →
-   inferred sparse_rural; confirm.
-5. Duplicates silently cleaned: 22-12 (Knot Valley), 6-3 (Shoulderland),
-   7-17 (Peatsfield). Crossed-out tiles honoured (18-12 → Teganfort;
-   3-3/3-4 → Klade Estuary).
-6. No region claims any of the 17 lake tiles ✓.
+1. **Vandel Island** contains one sea tile (`tile_24_18`) — harmless (sea tiles
+   never route) but flagged.
+2. No overlapping member tiles.
+3. No duplicate member tiles.
+4. No region claims any of the 17 lake tiles.
+5. Every region with more than one mountain tile uses `mountain_range`.

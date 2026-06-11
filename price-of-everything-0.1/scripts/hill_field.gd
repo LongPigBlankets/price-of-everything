@@ -20,7 +20,7 @@ extends RefCounted
 ## tools/bake_hills.tscn to data/hills_baked.json — the map is hand-painted,
 ## so the baked shape is canonical and identical every start.
 
-const GEN_VERSION := 9
+const GEN_VERSION := 10
 const STEP := 12.0                  # field sample spacing (world units)
 const MARGIN := 300.0               # bbox inflation
 ## THRESHOLDS[k] is the lower bound of level k-1... band index = number of
@@ -144,7 +144,7 @@ static var debug_raw_loops := 0
 ## tile_filter: optional Array of tile ids — restricts to the matching
 ##   massifs' bounding box (lowland included, depressions skipped). Used by
 ##   tests for fast deterministic regeneration; the full bake is canonical.
-static func generate(tiles: Dictionary, centers: Dictionary, rivers: Array, lakes: Array, seed_base: int, tile_filter: Array = []) -> Dictionary:
+static func generate(tiles: Dictionary, centers: Dictionary, rivers: Array, lakes: Array, seed_base: int, tile_filter: Array = [], include_nav_source: bool = false, nav_source_only: bool = false) -> Dictionary:
 	var ctx := {}
 	ctx.seed_base = seed_base
 	ctx.filtered = not tile_filter.is_empty()
@@ -318,13 +318,20 @@ static func generate(tiles: Dictionary, centers: Dictionary, rivers: Array, lake
 			break
 	_build_coast(ctx, rivers)
 	_sample_field(ctx)
+	if nav_source_only:
+		return {
+			"version": GEN_VERSION,
+			"nav_source": _nav_source_from_ctx(ctx),
+			"grid": [ctx.gw, ctx.gh],
+			"field_max": ctx.field_max,
+		}
 	var polys := _extract_contours(ctx)
 	var lake_polys: Array = [] if ctx.filtered else _extract_lake_polys(ctx)
 	var sea_polys: Array = [] if ctx.filtered else _extract_sea_polys(ctx)
 	var blocked := {}
 	for m2 in massifs:
 		_collect_blocked(ctx, m2, blocked)
-	return {
+	var result := {
 		"version": GEN_VERSION,
 		"polys": polys,
 		"lakes": lake_polys,
@@ -337,6 +344,122 @@ static func generate(tiles: Dictionary, centers: Dictionary, rivers: Array, lake
 		"depression_subtiles": depr_subtiles,
 		"grid": [ctx.gw, ctx.gh],
 		"field_max": ctx.field_max,
+	}
+	if include_nav_source:
+		result["nav_source"] = _nav_source_from_ctx(ctx)
+	if not ctx.filtered:
+		result["navgrid"] = _collect_navgrid(ctx)
+	return result
+
+## Routing navgrid for roads-v2 (spec 1.1): one byte per 12u lattice cell —
+## low nibble = band (0..11, level+1), high nibble = water class
+## (0 land, 1 sea/void, 2 lake, 3 river corridor) — plus a water-distance
+## byte (units of 4u, clamped 255) for the river-hug cost band. Baked so the
+## game/preview never regenerates the field (72 s) to route.
+const NAV_WATER_LAND := 0
+const NAV_WATER_SEA := 1
+const NAV_WATER_LAKE := 2
+const NAV_WATER_RIVER := 3
+const NAV_RIVER_CORRIDOR := 13.0   # RIVER_BLOCK_RADIUS 10.5 + road half-width
+
+static func _collect_navgrid(ctx: Dictionary) -> Dictionary:
+	var gw: int = ctx.gw
+	var gh: int = ctx.gh
+	var origin: Vector2 = ctx.origin
+	var grid: PackedFloat32Array = ctx.grid
+	var types: PackedByteArray = ctx.types
+	var coast: PackedFloat32Array = ctx.coast_land
+	var lake_blur: PackedFloat32Array = ctx.lake_blur
+	var riv_bins := _bin_segments(ctx.riv_buf, 5, NAV_RIVER_CORRIDOR + BIN_CELL, origin)
+	var cells := PackedByteArray()
+	cells.resize(gw * gh)
+	var water_mask := PackedByteArray()
+	water_mask.resize(gw * gh)
+	for gy in gh:
+		var y := origin.y + gy * STEP
+		for gx in gw:
+			var gi := gy * gw + gx
+			var t := types[gi]
+			var water := NAV_WATER_LAND
+			if t == T_VOID or t == T_SEA or coast[gi] < 0.5:
+				water = NAV_WATER_SEA
+			elif t == T_LAKE or lake_blur[gi] > 0.5:
+				water = NAV_WATER_LAKE
+			else:
+				var x := origin.x + gx * STEP
+				var key := int(floor((y - origin.y) / BIN_CELL)) * 100000 + int(floor((x - origin.x) / BIN_CELL))
+				if _min_dist_binned(ctx.riv_buf, riv_bins, key, x, y) < NAV_RIVER_CORRIDOR:
+					water = NAV_WATER_RIVER
+				elif _lake_dist(ctx, x, y) <= 0.0:
+					water = NAV_WATER_LAKE   # source lakes sit on land tiles
+			var band := 0
+			var v := grid[gi]
+			for thr in THRESHOLDS:
+				if v >= thr:
+					band += 1
+				else:
+					break
+			cells[gi] = clampi(band, 0, 11) | (water << 4)
+			water_mask[gi] = 1 if water != NAV_WATER_LAND else 0
+	var dist := _chamfer_mask(water_mask, gw, gh)
+	var dist_q := PackedByteArray()
+	dist_q.resize(gw * gh)
+	for i in gw * gh:
+		dist_q[i] = clampi(int(dist[i] / 4.0), 0, 255)
+	return {
+		"origin": [origin.x, origin.y],
+		"step": STEP,
+		"gw": gw,
+		"gh": gh,
+		"cells_b64": Marshalls.raw_to_base64(cells),
+		"dist_b64": Marshalls.raw_to_base64(dist_q),
+	}
+
+static func _chamfer_mask(mask: PackedByteArray, gw: int, gh: int) -> PackedFloat32Array:
+	var dt := PackedFloat32Array()
+	dt.resize(gw * gh)
+	for i in gw * gh:
+		dt[i] = 0.0 if mask[i] == 1 else 1e9
+	var a := STEP
+	var b := STEP * 1.41421356
+	for j in gh:
+		for i in gw:
+			var idx := j * gw + i
+			var v := dt[idx]
+			if i > 0:
+				v = minf(v, dt[idx - 1] + a)
+			if j > 0:
+				v = minf(v, dt[idx - gw] + a)
+				if i > 0:
+					v = minf(v, dt[idx - gw - 1] + b)
+				if i < gw - 1:
+					v = minf(v, dt[idx - gw + 1] + b)
+			dt[idx] = v
+	for j2 in range(gh - 1, -1, -1):
+		for i2 in range(gw - 1, -1, -1):
+			var idx2 := j2 * gw + i2
+			var v2 := dt[idx2]
+			if i2 < gw - 1:
+				v2 = minf(v2, dt[idx2 + 1] + a)
+			if j2 < gh - 1:
+				v2 = minf(v2, dt[idx2 + gw] + a)
+				if i2 < gw - 1:
+					v2 = minf(v2, dt[idx2 + gw + 1] + b)
+				if i2 > 0:
+					v2 = minf(v2, dt[idx2 + gw - 1] + b)
+			dt[idx2] = v2
+	return dt
+
+static func _nav_source_from_ctx(ctx: Dictionary) -> Dictionary:
+	return {
+		"origin": ctx.origin,
+		"step": STEP,
+		"gw": ctx.gw,
+		"gh": ctx.gh,
+		"field": ctx.grid,
+		"types": ctx.types,
+		"coast_land": ctx.coast_land,
+		"lake_blur": ctx.lake_blur,
 	}
 
 ## Blocked-percentage report per hill tile — drives the hand-tuning loop.

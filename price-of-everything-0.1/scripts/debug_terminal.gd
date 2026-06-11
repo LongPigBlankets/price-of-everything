@@ -150,7 +150,14 @@ func _run_command(text: String) -> String:
 			for s in slots:
 				lines.append("%s — turn %d, £%.2f  (%s)" % [s.slot, int(s.turn), float(s.money), str(s.timestamp)])
 			return "\n".join(lines)
+		"roads":
+			if parts.size() >= 4 and parts[1].to_lower() == "route":
+				return _roads_route(parts[2], parts[3])
+			return "usage: roads route <tile_a> <tile_b>   (e.g. roads route tile_8_6 tile_11_7)"
 		"toggle":
+			if parts.size() >= 2 and parts[1].to_lower() == "roadsv2":
+				RoadNetwork.v2_enabled = not RoadNetwork.v2_enabled
+				return "roads v2 → %s" % ("on" if RoadNetwork.v2_enabled else "off")
 			if parts.size() >= 2 and parts[1].to_lower() == "heightmap":
 				var layers := get_tree().get_nodes_in_group("hill_visuals")
 				if layers.is_empty():
@@ -165,6 +172,42 @@ func _run_command(text: String) -> String:
 			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
+
+func _roads_route(tile_a: String, tile_b: String) -> String:
+	var maps := get_tree().get_nodes_in_group("hex_map")
+	if maps.is_empty():
+		return "no map loaded"
+	var terrain: HexMap = maps[0]
+	var ca: Vector2i = terrain.id_to_coord(tile_a)
+	var cb: Vector2i = terrain.id_to_coord(tile_b)
+	if not terrain.tiles.has(ca) or not terrain.tiles.has(cb):
+		return "unknown tile id(s)"
+	if not RoadCrossings.is_built():
+		RoadCrossings.build(terrain)
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return "navgrid missing — re-run tools/bake_hills.tscn"
+	var network := RoadNetwork.instance()
+	var pa: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(ca))
+	var pb: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(cb))
+	var identity: String = RoadRegions.identity_for_tile(tile_a)
+	var realizer := RoadRealizer.new()
+	var started := Time.get_ticks_usec()
+	var result := realizer.route(nav, network, pa, pb, {
+		"identity": identity,
+		"salt": RoadHash.pick(tile_a + "|" + tile_b, 1 << 30),
+	})
+	var elapsed := float(Time.get_ticks_usec() - started) / 1000.0
+	if not result.ok:
+		return "route failed: %s (%.1f ms)" % [str(result.reason), elapsed]
+	var na := network.ensure_node("dbg:" + tile_a, RoadNetwork.KIND_JUNCTION, pa, ca)
+	var nb := network.ensure_node("dbg:" + tile_b, RoadNetwork.KIND_JUNCTION, pb, cb)
+	var tier := RoadNetwork.TIER_TRUNK if pa.distance_to(pb) > 1500.0 else RoadNetwork.TIER_LOCAL
+	realizer.commit(network, na.id, nb.id, tier, result, TurnManager.current_turn)
+	RoadNetwork.v2_enabled = true
+	return "routed %s→%s: %d pts, %d bridges, %d expansions, %.1f ms (%s)" % [
+		tile_a, tile_b, result.geometry.size(), result.bridges.size(),
+		result.expansions, elapsed, identity]
 
 func _bottom_menu_name() -> String:
 	return "alternate" if MatchState.use_alt_bottom_menu else "current"

@@ -103,24 +103,16 @@ func _draw_forest_patch(instance_id: String, tile_id: String, coord: Vector2i) -
 	_draw_edge_dots(instance_id, tile_id, center, visible_circles, coord)
 
 func _forest_center(instance_id: String, tile_id: String, coord: Vector2i) -> Vector2:
-	var tile_center: Vector2 = _tile_center(coord)
-	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
-	rng.seed = _seed("%s|%s|center" % [instance_id, tile_id])
-	var best: Vector2 = tile_center
-	var best_score: float = -1.0
-	for _i in range(28):
-		var angle: float = rng.randf_range(0.0, TAU)
-		var distance: float = sqrt(rng.randf()) * rng.randf_range(32.0, 104.0)
-		var candidate: Vector2 = tile_center + Vector2(cos(angle) * distance * 1.10, sin(angle) * distance * 0.84)
-		if not _inside_hex(candidate, tile_center, 28.0):
-			continue
-		var score: float = _water_clearance_score(candidate, coord)
-		if score > best_score:
-			best_score = score
-			best = candidate
-		if _circle_drawable(candidate, 18.0, coord):
-			return candidate
-	return best
+	# Delegates to ForestFootprint so the drawn blob and the road/occupancy
+	# obstacle disc can never diverge (roads-v2 spec section 1).
+	_ensure_river_cache()
+	var paths: Array = _river_paths_by_coord.get(coord, [])
+	return ForestFootprint._center(instance_id, tile_id, _tile_center(coord), paths, _lake_for_coord(coord))
+
+func _lake_for_coord(coord: Vector2i) -> Dictionary:
+	if terrain_layer == null or not terrain_layer.tiles.has(coord):
+		return {}
+	return RiverGeometry.lake_ellipse(terrain_layer.tiles[coord], terrain_layer.river_properties, _tile_center(coord))
 
 func _sort_circle_radius_desc(a: Dictionary, b: Dictionary) -> bool:
 	return float(a.get("r", 0.0)) > float(b.get("r", 0.0))
