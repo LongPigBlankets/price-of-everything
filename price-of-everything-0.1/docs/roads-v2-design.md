@@ -1,13 +1,13 @@
 # Roads v2 — review of the existing system & design for organic heightmap-driven roads
 
-Status: **design only** (no implementation in this branch yet).
+Status: **design with decisions taken** (no implementation in this branch yet).
 Inputs: multi-agent review of the road + terrain code (3 readers), three competing
-architecture designs, two adversarial judges (codebase feasibility; principle
-coverage a–k + aesthetics). This document is the synthesis.
+architecture designs, two adversarial judges, plus designer rulings on the
+decision gates (2026-06-11, see §8.5).
 
 Reference aesthetic: a UK regional road atlas — organic curving A-roads (orange)
 and B-roads (yellow), ring roads around urban areas, valley- and river-following
-trunk routes.
+trunk routes, serpentine mountain ascents.
 
 ---
 
@@ -44,330 +44,397 @@ half the file is unreachable:
 | Templates | 1752–2093 | near-dead (0-HSM + explicit road_type only) |
 | Geometry/river/bridge core | 2618–3280 | live, the valuable part |
 
-### 1.2 What is genuinely worth salvaging
+### 1.2 What is salvaged (designer ruling: keep this, nuke the rest)
 
-The **bridge/crossing primitive layer** is good and lifts nearly verbatim:
+The **bridge/crossing primitive layer** lifts nearly verbatim:
 
 - `_segment_intersection` (2968), `_path_river_crossings` (2949) — dedupe within
   `BRIDGE_LENGTH`, sorted along the road.
 - The key invariant `_path_crossings_are_bound` (2681): *a path is legal iff
   every river crossing lies within `BRIDGE_LENGTH` of a registered bridge.*
-  This is exactly the bookkeeping v2 needs.
 - Bank classification (`_river_side_value/_sign`, `_path_endpoints_same_river_side`),
   bridge tangents (`_bridge_tangent_for_river`), nearest-existing-bridge choice.
 - The detour kit: `_push_path_away_from_river`, `_same_bank_detour_path`,
   `_riverbank_template_path` (river-hug offset 42), arc-length trims.
-- The **HSM shared-anchor contract** (`_road_anchor_world` + `_edge_key`):
-  flanking tiles agree on one edge point. v2 keeps the *contract* but moves it
-  into a persistent graph (see §3).
+- The **HSM shared-anchor contract** (`_road_anchor_world` + `_edge_key`) as the
+  *convention* for shared graph nodes (the cache moves into the network graph).
 - `region_road_planner.gd`'s boundary/inset scaffolding (`_trace_boundary`,
-  `_coastal_anchor_loop`, `_inset_polygon`) for orbital ring placement.
+  `_coastal_anchor_loop`, `_inset_polygon`) for orbital ring port placement.
 
-### 1.3 Debt and traps that fight v2
+Everything else — all four planner generations, templates, repair passes,
+dense grids — **is deleted** in Phase 5 (big-bang migration, §6).
+
+### 1.3 Debt and traps v2 eliminates
 
 1. **No plan cache + disk I/O per redraw** (a fresh `RoadPlanner` per `_draw`).
 2. **Total invalidation**: any `building_placed` / `construction_completed`
-   anywhere clears the region cache and queues a full-map redraw — the exact
-   opposite of incremental, and the known blocker for per-turn growth.
+   anywhere clears the region cache and queues a full-map redraw.
 3. **Roads don't block anything**: `hex_map._road_segments_for_tile` has zero
    callers; every `is_subtile_buildable` call site passes `road_segments=[]`.
-   Visual roads and occupancy are fully disconnected (buildings can sit on
-   roads). Principle (k) will need this wired eventually — by design, not by
-   accident.
+   Buildings can sit on drawn roads today. (Ruled: v2 fixes this — §4 (k).)
 4. **River-kind bug**: the planner's private river path builder only understands
    the `single` kind; `source`/`merge`/`joint` rivers get a bogus path through
    tile center — bridges and bank roads on those tiles are wrong today.
 5. **River geometry triplication**: `RIVER_POINTS` + Bezier sampling exist in
    `subtile_grid.gd`, `river_visuals.gd`, and `road_planner.gd` (the third copy
-   is the buggy one). v2 must extract a single static `RiverGeometry`.
-6. **`SubtileGrid.hex_polygon()` is rotated 90°** from the real flat-top tile
-   (pending bug chip) — it is the "inside the tile" gate for buildability and
-   must be fixed before heights replace blocking.
-7. Brute-force geometry everywhere (no spatial index); fine at current scale
-   only because redraws are event-driven.
+   is the buggy one). v2 extracts a single static `RiverGeometry`.
+6. **`SubtileGrid.hex_polygon()` is rotated 90°** from the real flat-top tile —
+   ruled: fixed in Phase 0 (pending bug chip).
+7. Brute-force geometry everywhere (no spatial index).
 
 ---
 
-## 2. What the heightmap already gives us — and the one thing it doesn't
+## 2. What the heightmap provides — and the one missing layer
 
 The terrain bake (`hill_field.gd`) computes a continuous elevation field over
 the whole map on a 12-unit lattice, with everything roads need **alive at bake
-time**: `ctx.grid` (field values), `ctx.types` (land/sea/hill/mtn/lake raster),
-`ctx.coast_land` (organic coastline), `ctx.lake_blur` (lake shapes), river
-valley caps, distance transforms. But `hills_baked.json` persists only render
-polygons + binary blocked masks — **no height grid survives the bake**.
+time**: `ctx.grid` (field values), `ctx.types` raster, `ctx.coast_land`,
+`ctx.lake_blur`, river valley caps, distance transforms. But
+`hills_baked.json` persists only render polygons + binary blocked masks — **no
+height grid survives the bake**.
 
-Principle (i) is therefore a bake change, not a runtime computation:
+Principle (i) is therefore a bake change, not a runtime computation: a
+`_collect_levels` pass beside `_collect_blocked` emits, for every playable
+tile, per-cell **level + water class** (LAND / SEA / LAKE / SOURCE_LAKE /
+RIVER_CORRIDOR — lakes must be an explicit channel; their rims clamp to field
+0.06–0.33 and cannot be inferred from height). Persisted as a `"heights"` key
+(hex digits + RLE water channel), GEN_VERSION bump, decoded once at runtime
+into a lazy-static `TileHeights` registry beside `TileOccupancy`. During
+migration `TileOccupancy.is_blocked` ≡ `level_at >= 3` so nothing downstream
+changes until roads opt into real costs.
 
-- Add a `_collect_levels` pass next to `_collect_blocked`
-  (hill_field.gd:1946-1960): for **every** playable tile, emit per-subtile
-  level (via `_band_at` at the existing subtile-center transform) plus a
-  **water class channel** (LAND / SEA / LAKE / SOURCE_LAKE / RIVER_CORRIDOR).
-  Lakes must be an explicit channel — their rims clamp to field 0.06–0.33,
-  far below any threshold you could infer them from.
-- Persist as `"heights"` in the bake (one hex digit per subtile + RLE for the
-  water channel ≈ +0.4 MB on the current 5.4 MB). Bump `GEN_VERSION` so
-  staleness detection forces a re-bake everywhere.
-- Runtime: a lazy-static `TileHeights` registry beside `TileOccupancy`
-  (`level_at(tile_id, col, row)`, `water_kind(...)`). During migration
-  `TileOccupancy.is_blocked` simply becomes `level_at >= 3` so nothing
-  downstream changes until roads opt into real costs.
+### 2.1 Lattice resolution (decided: finest affordable; benchmark picks)
+
+Ruling: prefer the **denser grid** — higher zooms will eventually show more
+road detail — with the Phase-0 benchmark deciding what we can afford. The
+candidate matrix (map ≈ 12,950 × 10,500 world units incl. decorative border):
+
+| Lattice | Cells | Height layer (raw) | Notes |
+|---|---|---|---|
+| 20u (subtile) | ~340k | ~340 KB | gameplay-aligned, coarsest |
+| **12u (= hills field)** | **~944k** | **~950 KB** | free — the bake already computes exactly this grid |
+| 8u | ~2.1M | ~2.1 MB | resample field at bake (cheap); A* area ×2.25 vs 12u |
+| 6u | ~3.8M | ~3.8 MB | A* area ×4 vs 12u |
+
+Two clarifications that bound how fine we *need* to go:
+
+- **Lattice fineness controls path-placement fidelity** (how precisely a road
+  hugs a contour or threads a gap), not visual smoothness — Catmull-Rom
+  smoothing already removes lattice staircase at any resolution.
+- **Road density at high zoom is network density** (more LOCAL edges per
+  region, governed by the hand-authored region identities, §3.1), not lattice
+  resolution. A 12u lattice can carry arbitrarily dense networks; what it
+  cannot do is place two parallel roads closer than ~2 cells (~24u ≈ 1.2
+  subtiles), which is already denser than v1 ever draws.
+
+Plan: bench 12u and 8u (20u only as a fallback datum). 12u is the default —
+it is literally the grid the bake already computes and throws away. Go to 8u
+only if µs/expansion × worst-case search area stays inside the 4 ms slice.
+Per-subtile (20u) heights are exported *as well* for gameplay queries
+(`TileHeights.level_at(tile_id, col, row)`) regardless of navgrid choice.
 
 ---
 
 ## 3. The synthesized architecture
 
-The judges split — feasibility preferred the turn-phased pipeline design
-("RoadWorks"), aesthetics decisively preferred world-space cost-field routing
-("Wayfield") — and both flagged the same grafts. The synthesis:
-
-> **Wayfield's cost-field router as the core, inside RoadWorks' turn-phased
-> work-order pipeline, organized by Atlas's persistent network graph.**
+> **Cost-field A\* routing core (Wayfield) inside a turn-phased work-order
+> pipeline (RoadWorks), organized by a persistent network graph (Atlas),
+> styled by hand-authored region identities.**
 
 ### Components
 
 | Component | Kind | Responsibility |
 |---|---|---|
-| `heights` bake layer | baked | per-subtile level + water class (§2) |
-| `river_geometry.gd` | static | single owner of river polylines, all 4 kinds, binned segment hash (kills the triplication) |
-| `road_crossings.gd` | static, lazy | predetermined crossing(s) per river tile (principle a) |
-| `road_network.gd` | persistent node / autoload | the graph: nodes (GATEWAY / CROSSING / ORBITAL_PORT / BUNCH / JUNCTION), edges (tier TRUNK/LOCAL, state PLANNED/BUILDING/BUILT, geometry, bridges, `planned_turn`), per-tile edge buckets; **serialized in saves** |
-| `road_realizer.gd` | per-job | resumable, frame-budgeted A* over the height lattice + smoothing + junction merge + bridge emission; carries the salvaged primitive belt |
-| `road_works.gd` | queue | turn-phased work orders: gameplay flag flips atomically in PROCESS; geometry plans under a 4 ms/frame budget; visuals reveal over ~3 s (principle j) |
-| `road_visuals_v2` | render | static layer (settled network, redrawn on settlement only) + active layer (in-flight reveals only); tiered atlas styling |
+| `heights` bake layer | baked | navgrid level + water class (§2), per-subtile levels for gameplay |
+| `data/road_regions.json` | hand-authored | region → member tiles + identity (§3.1) |
+| `river_geometry.gd` | static | single owner of river polylines, all 4 kinds, binned segment hash |
+| `road_crossings.gd` | static, lazy | predetermined quartile crossings per river tile (§4 a) |
+| `road_network.gd` | persistent, **saved** | the graph: nodes (GATEWAY / CROSSING / ORBITAL_PORT / BUNCH / JUNCTION), edges (tier, state, geometry, bridges, `planned_turn`), per-tile edge buckets |
+| `road_realizer.gd` | per-job | resumable frame-budgeted A* + serpentine handling + smoothing + junction merge + bridge emission; carries the salvaged primitive belt |
+| `road_works.gd` | queue | turn-phased work orders; gameplay flag atomic in PROCESS; 4 ms/frame planning; ~3 s chunked reveal |
+| `road_visuals_v2` | render | static layer (settled network) + active layer (in-flight reveals); tiered atlas styling |
+
+### 3.1 Hand-authored region identities (designer ruling)
+
+A new input replaces auto-detected miniregion *identity* (clustering still
+finds tile groups; the designer names what they are):
+`data/road_regions.json`: `{region_id: {tiles: [...], identity: dense_city |
+sparse_city | dense_rural | sparse_rural | mountain_range}}`.
+
+Identity drives a style table (all tunables in one place):
+
+| Identity | Wiggle (cost jitter amp) | Interconnections (redundant LOCAL links) | Local density | Orbital |
+|---|---|---|---|---|
+| dense_city | low | high (grid-like mesh) | high | yes |
+| sparse_city | medium | medium | medium | yes |
+| dense_rural | medium | low-medium | medium | no |
+| sparse_rural | high | low (spurs + single links) | low | no |
+| mountain_range | high | minimal (one pass road) | minimal | no |
+
+Tiles outside any region default to sparse_rural. The orbital-ring machinery
+(§4 g) keys off identity, not raw urban-tile clustering.
 
 ### Data flow
 
-CSV/bake (heights, rivers, cities) → static registries (heights, crossings,
-river geometry) → `RoadNetwork` accumulates nodes/edges as players build →
-`RoadRealizer` routes each edge through the cost field → smoothed segments +
-bridges land in the network → visuals reveal them in chunks.
-
-GATEWAY nodes reuse the undirected `_edge_key` convention so flanking tiles
-share one node — the per-instance anchor cache disappears because **the graph
-is the cache**. Invalidation becomes event-scoped (road built on/adjacent to a
-tile; miniregion membership changed) — the map-wide `building_placed` redraw
-handler is deleted.
+CSV/bake (heights, rivers) + `road_regions.json` → static registries
+(heights, crossings, river geometry, region styles) → `RoadNetwork`
+accumulates nodes/edges as players build → `RoadRealizer` routes each edge
+through the cost field → smoothed segments + bridges land in the network →
+visuals reveal them in chunks. Invalidation is event-scoped; the map-wide
+`building_placed` redraw handler is deleted.
 
 ---
 
 ## 4. The principles, mechanism by mechanism
 
-**a) Predetermined river crossings.** Built lazily at first query from baked
-field + CSV (both static → fixed for the whole game, no serialization). Per
-river *arm* (1 for `single`; 2 where `exit_hsm_2` branches): crossing = argmin
-over polyline samples of
-`2.0·|level(bank_a) − level(bank_b)| + 0.05·max(level) + edge_proximity_penalty + tangent_instability`,
-ties by sample index. Output includes bridge tangent and two *gate* points at
-±(BRIDGE_LENGTH/2 + 6). Routing-wise the river corridor is impassable **except
-within ~18 px of a gate** — crossings are mandatory without waypoint plumbing.
-⚠ Seam rule (judge-flagged): rivers cross HSM edges, so adjacent river tiles
-must canonicalize crossings near a shared edge with the same undirected
-edge-key trick as gateways, or two bridges 60 px apart will straddle seams.
+**a) Predetermined river crossings (designer ruling: quartile points).** Per
+river *arm* on a tile (1 for `single`; 2 where the river branches), the
+crossing is a **seeded random pick among the ¼, ½, and ¾ arc-length points**
+of that arm's polyline within the tile. Branch tiles get one crossing per arm.
+Output per crossing: {point, river tangent, perpendicular bridge tangent, two
+gate points at ±(BRIDGE_LENGTH/2 + 6)}. Routing-wise the river corridor is
+impassable except within ~18 px of a gate — crossings are mandatory without
+waypoint plumbing. Side effect of the quartile rule: crossings are interior to
+the tile by construction, so the hex-seam duplicate-crossing risk from the
+panel review largely evaporates (kept as a cheap assert, not a mechanism).
 
-**b) Hug rivers / be efficient.** Step-cost multiplier 0.85 inside the hug band
-(30–60 px from the river, centred on v1's proven 42), 1.15 when crowding
-(13–30 px). Efficiency is the A* objective itself (ε = 1.1 weighted).
+**b) Hug rivers / be efficient.** Step-cost ×0.85 inside the hug band
+(30–60 u from the river, centred on v1's proven 42), ×1.15 when crowding
+(13–30 u). Efficiency is the A* objective itself (ε = 1.1 weighted).
 
-**c) Height costs with hysteresis.** Step cost = base ×
-`(1 + 0.5·|level(v) − level(u)|)` — 50% per altitude level changed — plus a mild
-per-step surcharge `×(1 + 0.03·max(level, 0))` so equal-length options prefer
-the valley floor. "Prefers to stay at the new height" is *emergent*: staying
-costs nothing, re-transitioning pays again; the simplification pass refuses
-shortcuts that change level more often than the raw path did.
-⚠ Open decision: 50% **per level crossed** (a 2-level jump costs +100%) vs per
-transition event. The panel recommends per-level (above); confirm.
+**c) Height costs + serpentine ascents (designer ruling).** Step cost = base ×
+`(1 + 0.5·|level(v) − level(u)|)` — **50% per altitude level crossed** (a
+2-level climb costs +100%). "Prefers to stay at the new height" is emergent:
+staying costs nothing, re-transitioning pays again; the simplification pass
+refuses shortcuts that change level more often than the raw path did.
+
+*Serpentines:* climbs of more than one level must wind perpendicular to the
+ascent. Mechanism is emergent, not templated:
+
+- **Gradient-alignment penalty**: on steep cells (local slope ≥ ~1 level per
+  2 cells), step cost ×(1 + k·|dot(step_dir, ∇height)|), k ≈ 1.5 — moving
+  *along* the gradient is expensive, traversing *across* it is cheap, so A*
+  naturally tacks diagonally up slopes.
+- **Conditional hairpin allowance**: the ≥135° turn penalty (which normally
+  forbids hairpins) is waived when both adjacent steps are on steep cells and
+  the elevation gained since the last reversal exceeds ~1 level — without
+  this, the turn costs would fight the zigzag and A* would pay the direct
+  climb instead.
+- Post-check: any realized segment ascending ≥2 levels must contain ≥2
+  direction reversals; failures re-route with doubled k (assert in tests).
 
 **d) Lakes are obstacles.** LAKE and SOURCE_LAKE water classes are
-infinite-cost. Explicit channel, not inferred from height (see §2).
+infinite-cost. Explicit channel, not inferred from height. *Lake rims*
+(designer ruling): roads may hug the rim — no special discount or penalty;
+the rim's constant level makes it naturally cheap, and normal height rules
+apply on the way in and out.
 
 **e) Only −1 and above tolerate roads.** Passability = `water_class == LAND`
-(and outside the river corridor except at gates). Level is **never** a hard
-block for roads — bands −1..10 are all routable, only priced. This formally
-ends BLOCK_FIELD-style binary cliffs for road routing (principle i).
+(and outside the river corridor except at gates). Level is never a hard block
+for roads — bands −1..10 all routable, only priced.
 
 **f) Curves; crossroads only at genuine meetings.** A* state is
-(cell, direction-octant) with turn penalties: straight 0, 45° +0.2·STEP,
-90° +0.9·STEP, ≥135° +3.0·STEP; Catmull-Rom smoothing (min turn radius ~28 px)
-converts the 45° staircase into arcs. Junctions: a route ending within ~10 px
-of an existing segment splits it into a 3-way node; cells within ~24 px of the
-existing network get cost ×0.6 (**reuse discount**) so new roads merge and run
-along old ones — T-junctions are the natural outcome. A 4-way crossroads forms
-only when a new path transversally crosses an existing segment with both sides
-continuing and crossing angle ≥50°.
+(cell, direction-octant); turn penalties: straight 0, 45° +0.2·STEP,
+90° +0.9·STEP, ≥135° +3.0·STEP (waived per the hairpin rule above);
+Catmull-Rom smoothing (min turn radius ~28 u). Junction rules: route ending
+within ~10 u of an existing segment splits it into a 3-way node; cells within
+~24 u of the network get cost ×0.6 (reuse discount) so roads merge and run
+along each other — T-junctions are the natural outcome. A 4-way crossroads
+forms only on a transversal crossing with both sides continuing and angle
+≥50°. **Wiggle amount and interconnection count come from the region style
+table (§3.1)**: wiggle = deterministic per-cell cost jitter amplitude;
+interconnections = how many redundant LOCAL jobs the region enqueues.
 
-**g) Urban miniregions with orbitals.** Miniregion = flood-fill cluster of
-urban tiles (re-clustered when membership changes). Keep
-`region_road_planner.gd`'s boundary/inset scaffolding to place 8–12
-ORBITAL_PORT waypoints; the ring itself is *routed* through the cost field
-between consecutive ports (not clamped geometry), so the ≤50% overflow into
-non-urban neighbours happens exactly where the heightmap allows it and nowhere
-else. Trunk roads attach at ports — defined junctions, like real ring-road
-interchanges.
+**g) Urban miniregions with orbitals.** Regions with city identity get an
+orbital: `region_road_planner.gd`'s boundary/inset scaffolding places 8–12
+ORBITAL_PORT waypoints; the ring is *routed* through the cost field between
+consecutive ports, so the ≤50% overflow into non-urban neighbours happens
+exactly where the heightmap allows. Trunk roads attach at ports.
 
-**h) Building bunches.** BUNCH nodes with the formal invariant
+**h) Building bunches.** BUNCH nodes with the invariant
 `bunch.created_turn < edge.planned_turn` — roads only connect bunches that
 existed before the road was planned. API lands now; populated when buildings
 get map footprints.
 
 **i) Heights instead of blocking.** §2. `SubtileGrid.is_subtile_buildable`
-remains the single choke point: its TileOccupancy check becomes a height/water
-rule, and its rotated `hex_polygon()` must be fixed first (pending chip).
+remains the single choke point: TileOccupancy check becomes a height/water
+rule; the rotated `hex_polygon()` is fixed in Phase 0.
 
-**j) Chunked layout over ~3 s.** RoadWorks pipeline: the gameplay flag flips
-atomically during PROCESS (turn correctness unchanged — transport routing never
-waits on geometry). Geometry planning runs in `_process` under
-`PLAN_BUDGET_MS = 4.0` with a *resumable* A* (budget checked every N
-expansions); visuals reveal each order over `REVEAL_DURATION = 3.0 s`, with
-concurrent reveals. Worst case examined: 100 road tiles completing in one turn
-≈ 300–400 ms of planning spread over ~75–100 frames with zero over-budget
-frames; the whole batch is visually complete ~4–5 s after the turn. Save/load
-mid-layout: finished geometry persists in the network; unfinished orders
-re-plan deterministically from the queue.
+**j) Chunked layout (designer ruling on order).** Gameplay flag flips
+atomically during PROCESS; geometry planned in `_process` under
+`PLAN_BUDGET_MS = 4.0` with resumable A*; visuals reveal over
+`REVEAL_DURATION ≈ 3.0 s`. **Reveal order: grow from the existing network —
+start at the connection edge on already-built tiles and extend outward into
+the new tiles; trunk segments reveal before their branches.** Worst case
+examined: 100 road tiles in one turn ≈ 300–400 ms planning spread over
+~75–100 frames, batch visually complete ~4–5 s after the turn. Save/load
+mid-layout: finished geometry persists; unfinished orders re-plan
+deterministically from the queue.
 
-**k) Building symbiosis (future).** The network's per-tile edge buckets +
-`road_segments` already give future building-placement the query it needs
-("does this footprint cross a road?"). Nothing else built now — but the v1
-discovery that roads block nothing today means (k) starts from an honest
-baseline.
+**k) Roads block pixels (designer ruling: yes, now).** v2 registers road
+footprints into `TileOccupancy` from day one: blocked corridor = road
+half-width + small buffer (~width/2 + 3 u, matching v1's `ROAD_BUILD_BUFFER`),
+so buildings can sit close to roads but never on them. This also feeds the
+**congestion mechanic** (designer ruling on tiers): each tile carries a
+congestion factor = fraction of subtiles occupied (buildings + roads). High
+congestion raises local routing costs, so crowded tiles narratively force
+roundabout, wiggly routes instead of straight lines — and when buildings get
+real footprints later (k), the same factor keeps working with no new design.
 
 ---
 
 ## 4.5 Gateways: tile entry/exit policy
 
-**Topology: demand-driven hierarchy, not adjacency.** v1 already caps visible
-exits at 3–4 per tile (spread scoring) because 6-way connection reads as a
-triangular lattice; v2 goes further — edges exist because of *demand events*,
-never because two road tiles happen to touch:
+**Topology: demand-driven hierarchy, not adjacency.** Edges exist because of
+demand events, never because two road tiles touch:
 
 - **TRUNK** edges come from the network (crossings, orbital ports,
-  inter-region corridors) and are routed as **single multi-tile jobs** — a
-  trunk crosses six tiles as one polyline with no internal seams.
-- **LOCAL** rule on road-tile creation: enqueue exactly one job, *"connect to
-  the nearest point of the existing network"*. The reuse discount turns this
-  into a T-junction merge. Additional jobs only if a road neighbour is not
-  reachable through the drawn network within a ~2-tile detour.
-- Result: degree emerges (dead-end spurs allowed, 6-way stars structurally
-  impossible); a tile ringed by road neighbours shows a trunk passing through
-  plus at most one joining spur. The gameplay boolean is honoured as a
-  *network* property (adjacent road pairs connected through the network), not
-  per shared edge — `catalog.gd` routing only consumes the boolean.
+  inter-region corridors) and are routed as **single multi-tile jobs** — no
+  internal seams.
+- **LOCAL** rule on road-tile creation: enqueue one job, *"connect to the
+  nearest point of the existing network"* (reuse discount → T-junction
+  merge). The region's interconnection style (§3.1) adds redundant LOCAL jobs
+  in dense identities. Additional connectivity jobs only if a road neighbour
+  is unreachable through the drawn network within a ~2-tile detour.
+- **Tier assignment (designer ruling): contextual, not fixed by origin.**
+  Base tier by origin (crossing/orbital/inter-region = trunk; tile-connect =
+  local), then locally modulated: how many nearby tiles carry roads, and how
+  congested the corridor tiles are. A heavily-roaded corridor upgrades the
+  through-edge's visual weight; a congested tile downgrades straightness
+  (higher effective wiggle) regardless of tier.
+- Result: degree is emergent (dead-end spurs allowed, 6-way stars
+  structurally impossible); the gameplay boolean is honoured as a *network*
+  property — `catalog.gd` routing only consumes the boolean.
 
 **Geometry: terrain-elected gateways, not enumerated slots.** Multi-tile
-routes cross hex edges wherever the cost field dictates — i.e. at local height
-minima, the way real roads cross ridgelines at passes. Fixed quarter-point
-slots (even randomized) would re-print a hex-edge rhythm onto the map.
-Gateway points are only *needed* where jobs split (a route ends at an edge and
-a later job continues from the far side; miniregion boundaries; the one-time
-CSV re-seed). Mechanism:
+routes cross hex edges wherever the cost field dictates (local passes).
+Gateways only exist where jobs split. Mechanism:
 
 1. **First-writer-wins, graph-stored**: the first route to reach a shared edge
    records crossing point **and arrival tangent** on the GATEWAY node
-   (undirected edge key — both tiles see the same node). Later jobs on the far
-   side take that point+tangent as a boundary constraint. This single
-   mechanism is also the fix for the tangent-continuity kink risk (§7.3).
-2. **Election rule when no route exists yet** (CSV re-seeding, pre-planned
-   gateways): deterministic and terrain-derived — argmin of height along the
-   shared edge, ≥40 units from hex corners, river-cleared (reuse v1's
-   `_offset_anchor_to_buildable_edge` tangent search), ±5% deterministic
-   jitter for wobble. HSM midpoints survive only as the tie-break default on
-   featureless edges.
-3. **One gateway per tile-pair edge** (crossroads rule (f) governs meetings);
-   per-tile gateway degree soft-capped at 3 unless a trunk passes through.
+   (undirected edge key). Later jobs take both as boundary constraints — this
+   is also the tangent-continuity fix (§7).
+2. **Election when no route exists yet** (CSV re-seed): deterministic —
+   height-argmin along the shared edge, ≥40 u from corners, river-cleared
+   (v1's `_offset_anchor_to_buildable_edge` search), ±5% seeded jitter. HSM
+   midpoints survive only as the featureless-edge tie-break.
+3. **One gateway per tile-pair edge**; per-tile gateway degree soft-capped at
+   3 unless a trunk passes through.
 
 ---
 
-## 5. Performance plan and the Phase-0 gate
+## 5. Performance plan, the Phase-0 gate, and the escape ladder
 
-Both judges converged on one hard prerequisite: **benchmark before
-architecture hardens.** The three designs' GDScript A* per-expansion estimates
-spanned 50× (0.1–5 µs). Phase 0 is a half-day spike: route random pairs over
-the real baked lattice on target hardware, measure µs/expansion. Every budget
-(4 ms slice, 3 s reveal, single-tile vs corridor routing, the
-coarsen-lattice / C#-port escape hatches) keys off that number.
+**Benchmark first.** The three designs' GDScript A* per-expansion estimates
+spanned 50× (0.1–5 µs). Phase 0: route random pairs over the real baked
+lattice at **12u and 8u** on target hardware; measure µs/expansion; derive
+worst-case search areas for the longest realistic trunk job. Exit criterion
+for every budget (4 ms slice, 3 s reveal, lattice choice §2.1).
+
+**Escape ladder if the numbers disappoint (designer question 7 answered —
+C# de-prioritized):**
+
+1. **Corridor-bounding**: restrict each job's search space to a capsule
+   around the straight line between endpoints (×3–10 area reduction, no
+   quality loss for sane corridors).
+2. **Hierarchical routing**: route trunk jobs on a 24u downsample, then
+   refine per-segment on the fine lattice (×4+ on long jobs).
+3. **Per-region lattice**: fine lattice only inside city identities; 12u
+   elsewhere.
+4. **GDExtension (C++) module** for the inner A* loop only — last resort.
+
+**Why not C#:** Godot's C# (.NET) typically gives 5–20× on tight numeric
+loops over GDScript (real arrays, JIT, no Variant boxing) — but it brings the
+.NET toolchain into the project for every contributor, complicates exports,
+and **Godot 4 C# does not support web export** — which would close the door
+on a browser demo build, a real distribution option for the beta. The
+cross-language call overhead also means only the hot loop could move anyway —
+which is exactly what GDExtension does without the platform cost. C# is
+struck from the ladder.
 
 Eliminated v1 traps: no planner construction or JSON disk read per redraw, no
-map-wide replans on building placement, no per-call river tessellation
-(water pre-baked), no brute-force crossing scans in hot paths (crossings are
-predetermined).
+map-wide replans on building placement, no per-call river tessellation, no
+brute-force crossing scans (crossings predetermined).
 
 ---
 
-## 6. Migration from v1
+## 6. Migration from v1 (designer ruling: nuke and re-seed)
 
 1. Bake heights (+ water classes, lake rims, river mouths) — GEN_VERSION bump.
-2. Extract `RiverGeometry` (fixes the source/merge/joint river bug as a side
-   effect — v1's river builder gets the correct polylines too).
+2. Extract `RiverGeometry` (fixes the source/merge/joint river path bug for
+   anything that still reads river polylines).
 3. Fix `hex_polygon()` rotation (pending chip) before heights replace blocking.
-4. Stand up `RoadNetwork` + realizer behind a debug flag; route NEW
-   construction through v2 while existing CSV-seeded road tiles keep v1 art.
-5. Migrate city beltways to routed orbitals (RegionRoadPlanner scaffolding
-   reused for port placement, then retired).
-6. Re-seed the hand-painted starting road network as v2 edges (one-time bake
-   of the CSV `road_hsms` topology through the realizer); delete v1 planners
-   (~2,400 lines, including all four dead generations).
+4. Stand up `RoadNetwork` + realizer + region styles behind a debug flag.
+5. **Big-bang cutover**: re-seed the hand-painted CSV road network through the
+   v2 realizer once (one designer approval pass over the result), then
+   **delete v1 wholesale** — all four planner generations, templates, repair
+   passes (~2,400+ lines). Only the salvage list (§1.2) survives, relocated
+   into `road_realizer.gd` / `river_geometry.gd`. The `road_type`,
+   `road_hsms`, `road_density` CSV columns retire; `road_regions.json` takes
+   over pattern control; `road_seed` survives as the per-tile determinism
+   seed.
 
 ---
 
-## 7. Risks & gaps the panel flagged (do not lose these)
+## 7. Risks (updated after rulings)
 
-1. **Benchmark first** (§5) — exit criterion for Phase 0.
-2. **Crossing dedup at hex seams** — canonicalize per river arm across tiles.
-3. **Tangent continuity at shared anchors**: flanking tiles agree on the
-   anchor *point* but not the arrival *direction*; per-route smoothing can
-   kink at every gateway and print the hex grid onto long roads. Fix: store
-   an agreed tangent on the GATEWAY node (first router to arrive sets it;
-   the neighbour route receives it as a boundary constraint).
-4. **The atlas visual language is the aesthetic** — tiered styling
-   (orange trunk 6 px / yellow local 4 px with casing outlines, roundabout
-   glyphs at orbital ports) must ship with v2, not after; a perfect router
-   drawn as uniform black lines still reads as spiderweb.
-5. **50%-penalty semantics** (per level vs per transition) — designer call.
-6. **Determinism hygiene**: explicit FNV-1a hashing for seeds (GDScript
+1. **Benchmark first** (§5) — Phase-0 exit criterion.
+2. **Tangent continuity at shared gateways** — solved by design (first-writer
+   stores point + tangent); keep a visual test (long trunk across 4+ tiles,
+   no kinks at seams).
+3. **Hairpin/turn-penalty interaction** (new, from the serpentine ruling):
+   the waiver condition must be tight or flatland routes will exploit free
+   hairpins; covered by the ≥2-reversals post-check + a flatland no-hairpin
+   assert.
+4. **The atlas visual language ships WITH the router** (tiered widths/colors,
+   casing, roundabout glyphs at ports) — a perfect router drawn as uniform
+   black lines reads as spiderweb.
+5. **Quartile crossings vs terrain**: a seeded quartile point can land on a
+   poor spot (steep bank). Accepted by ruling (simplicity + variety win);
+   keep bank-level delta as a tie-break among the three candidates if it
+   bothers the eye in practice.
+6. **Determinism hygiene**: FNV-1a style explicit hashing for seeds (GDScript
    `hash()` is not guaranteed stable across engine versions); ±5%
-   deterministic per-subtile cost jitter for organic wobble.
-7. **Mass-build worst case** is the design's stress test (100 tiles/turn);
-   keep it as an automated perf test, not a hope.
+   deterministic per-cell cost jitter scaled by region wiggle.
+7. **Mass-build worst case** (100 tiles/turn) stays an automated perf test.
 
-## 8. Open questions for the designer
+## 8. Remaining open questions
 
-1. 50% penalty: per altitude level crossed, or per transition event?
-2. Should trunk (orange) roads pay a *higher* turn penalty than local (yellow)
-   ones — straighter A-roads, twistier B-roads?
-3. Orbital ring tier: always trunk, or tier by miniregion size?
-4. Do predetermined crossings ever upgrade (ford → bridge art) with tech?
-5. Reveal order during the 3 s: outward from the construction site, or
-   network-topological (trunk first)?
-6. Lake-rim roads: principle (d) makes lakes obstacles — may roads use the
-   constant-level rim as a scenic corridor (cheap ring around lakes), or
-   should rims carry a small penalty to avoid every lake growing a ring road?
+1. Trunk vs local turn-penalty split (straighter A-roads, twistier B-roads)?
+   — likely fold into the region style table as a per-identity multiplier.
+2. Do predetermined crossings ever upgrade visually (ford → bridge art)?
+   Schema field reserved.
+3. Region style table numbers (§3.1) — first pass at implementation time,
+   tuned against the reference atlas.
 
-## 8.5 Decision gates (what must be decided up front, and what it locks)
+## 8.5 Decision log (designer rulings, 2026-06-11)
 
-| # | Decision | Options | Gates | Recommendation |
-|---|---|---|---|---|
-| 1 | Routing lattice + height encoding | 12u bake lattice vs 20u subtile grid; 4-bit level + water channel | bake format/GEN_VERSION, TileHeights API, A* node count (~2.8x between options), smoothing aggressiveness, Phase-0 benchmark target | benchmark both in Phase 0, pick from numbers |
-| 2 | 50% penalty semantics | per level crossed vs per transition event | the entire cost-table tuning pass (everything balances against it) | per level — literal reading of (c); mountains stay meaningfully harder |
-| 3 | Network persistence + order-dependence | save full graph incl. geometry vs re-derive; accept build-order-dependent roads? | save schema (retrofit risk), determinism contract + tests, merge aggressiveness | persist geometry; embrace order-dependence ("same save, same result" only) |
-| 4 | Starting-network migration | big-bang CSV re-seed through v2 vs v1 art persists until a tile is touched | Phase 5 shape, survival of road_hsms/road_seed columns, visual continuity of the hand-tuned map | decide early — defines "done"; lean big-bang with one approval pass |
-| 5 | Roads in TileOccupancy | register footprints now (flagged) vs keep roads non-blocking | occupancy producer API, save size, buildability shifts on existing road tiles | register behind a flag; enforce only when buildings get footprints (k) |
-| 6 | Trunk/local tier rule | by origin (crossing/orbital/corridor=trunk) vs by usage/upgrade | network edge schema, visual language semantics | by origin first; usage-upgrades later |
-| 7 | Phase-0 escape-hatch threshold | µs/expansion cutoffs for: coarsen lattice / corridor-restrict / C# port | whether the C# toolchain question ever opens (project-wide cost) | pre-commit thresholds before benchmarking |
-| 8 | Crossing schema reservation | reserve ford→bridge upgrade + per-arm metadata fields | crossing registry + bake format stability | reserve now, costs nothing |
+| # | Decision | Ruling |
+|---|---|---|
+| 1 | Lattice resolution | **Finest affordable**; 12u default (= hills field), bench 8u; density at zoom comes from network density via region identities; per-subtile heights exported for gameplay regardless |
+| 2 | 50% penalty semantics | **Per level crossed** (2-level climb = +100%); multi-level climbs must serpentine perpendicular to ascent (emergent: gradient-alignment penalty + conditional hairpin waiver) |
+| 3 | Persistence / order-dependence | **Save stores the network as built**; build order produces different networks — accepted ("same save, same result" is the only guarantee) |
+| 4 | Migration | **Nuke v1**, keep bridge logic + salvage list; pattern control moves to hand-authored `road_regions.json` (dense/sparse city, dense/sparse rural, mountain range) |
+| 5 | Roads in occupancy | **Yes** — block road corridor + small buffer so buildings get close but never on top |
+| 6 | Tier rule | **Contextual**: origin base + nearby road count + tile congestion (occupied-subtile fraction forces roundabout routes) |
+| 7 | C# | **Struck** — no web export in Godot 4 C#, toolchain cost; escape ladder is corridor-bounding → hierarchical routing → per-region lattice → GDExtension |
+| 8 | River crossings | **Seeded quartile pick** (¼ / ½ / ¾ of the arm's in-tile arc length; one per arm, two on branch tiles) |
+| — | Lake rims | Roads may hug rims; normal height rules, no special pricing |
+| — | Reveal order | From existing network at the connection edge, outward; trunk before branches |
 
-Deferrable to tuning with no hardening risk: lake-rim pricing, reveal order,
-orbital tiering by region size, miniregion re-cluster cadence.
+## 9. Phases
 
-## 9. Suggested phases
-
-- **Phase 0** — A* benchmark spike (gate); `RiverGeometry` extraction;
-  `hex_polygon()` fix.
-- **Phase 1** — heights/water bake layer + `TileHeights`; blocking becomes
-  level-derived (no behavior change).
-- **Phase 2** — `RoadNetwork` + crossings registry + realizer core (cost
-  function b/c/e/f), behind a debug flag; tiered rendering.
-- **Phase 3** — RoadWorks queue + 3 s chunked reveal (j); event-scoped
-  invalidation replaces map-wide redraws.
-- **Phase 4** — miniregion orbitals (g); migrate cities; retire v1 city code.
-- **Phase 5** — re-seed CSV roads through v2; delete v1 planners; bunch API (h)
-  stubbed for buildings (k).
+- **Phase 0** — A* benchmark spike at 12u and 8u (gate); `RiverGeometry`
+  extraction; `hex_polygon()` rotation fix (pending chip).
+- **Phase 1** — heights/water bake layer (navgrid at chosen resolution +
+  per-subtile levels) + `TileHeights`; blocking becomes level-derived
+  (no behavior change); `road_regions.json` format + loader.
+- **Phase 2** — `RoadNetwork` + quartile crossings registry + realizer core
+  (cost function b/c/e/f incl. serpentine rules), behind a debug flag;
+  tiered atlas rendering.
+- **Phase 3** — RoadWorks queue + chunked reveal (j) with
+  network-outward/trunk-first order; event-scoped invalidation; road
+  footprints into TileOccupancy (k).
+- **Phase 4** — region-identity styles + orbitals (g) for city identities.
+- **Phase 5** — big-bang re-seed of CSV roads through v2 (designer approval
+  pass); delete v1 planners; bunch API (h) stubbed for buildings.
