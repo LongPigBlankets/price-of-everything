@@ -94,8 +94,157 @@ func _ready() -> void:
 	await _test_notification_group_inline_expand()
 	await _test_notification_header_filter()
 	await _test_notification_bell_smoke()
+	_test_hills_baked_fresh()
+	await _test_hill_field_determinism()
+	await _test_grid_selection_follows_panel()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
+
+# Baked hills are the canonical hand-painted shape: the file must exist, match
+# the current CSVs/generator (else someone forgot to re-bake), and only ever
+# block subtiles on hill tiles (flat tiles take lv1-2 spill but never block).
+func _test_hills_baked_fresh() -> void:
+	_check(FileAccess.file_exists(HillBaked.BAKED_PATH), "hills: baked file exists")
+	var doc := HillBaked.data()
+	_check(not doc.is_empty(), "hills: baked file parses")
+	_check(str(doc.get("source_hash", "")) == HillBaked.source_hash(),
+		"hills: bake is fresh (re-run tools/bake_hills.tscn after map/generator edits)")
+	var polys := HillBaked.polys()
+	_check(polys.size() > 100, "hills: baked polys present (%d)" % polys.size())
+	var bands_ok := true
+	var has_mountain_bands := false
+	var depr_area := 0.0
+	var depr_min_ok := true
+	for entry in polys:
+		if entry.b < 0 or entry.b > 11 or entry.p.size() < 3:
+			bands_ok = false
+			break
+		if entry.b >= 8:
+			has_mountain_bands = true
+		if entry.b == 0:
+			var a: float = absf(_shoelace(entry.p))
+			depr_area += a
+			if a < 3500.0:   # 10 subtiles = 4000 u^2, minus Chaikin shrink tolerance
+				depr_min_ok = false
+	_check(bands_ok, "hills: every poly has a valid band (0-11) and >= 3 points")
+	_check(has_mountain_bands, "mountains: brown/snow bands (lv 7+) present in bake")
+	_check(depr_area > 0.0, "depressions: lv -1 areas present in bake")
+	_check(depr_area <= 45000.0, "depressions: total within the 100-subtile budget (%.0f u2)" % depr_area)
+	_check(depr_min_ok, "depressions: every lv -1 basin is >= 10 subtile units")
+	var lakes := HillBaked.lakes()
+	_check(lakes.size() >= 6, "lakes: organic lake polys present (%d)" % lakes.size())
+	var sea := HillBaked.sea()
+	_check(sea.size() >= 25, "coast: sea/coast polys present (%d)" % sea.size())
+	var sea_bands_ok := true
+	var has_navy := false
+	for entry in sea:
+		if entry.b < 0 or entry.b > 5:
+			sea_bands_ok = false
+		if entry.b == 0:
+			has_navy = true
+	_check(sea_bands_ok, "coast: sea bands within 0..5")
+	_check(has_navy, "coast: lv -6 navy zone present around deep sea")
+	# blocked masks may only name hill tiles, with sane bit indices
+	var types := _tile_types_from_csv()
+	var blocked := HillBaked.blocked()
+	_check(blocked.size() > 0, "hills: blocked masks present")
+	var only_hills := true
+	var bits_ok := true
+	for tile_id in blocked:
+		if str(types.get(tile_id, "")) != "hill":
+			only_hills = false
+		for b in blocked[tile_id]:
+			if int(b) < 0 or int(b) >= SubtileGrid.COLUMNS * SubtileGrid.ROWS:
+				bits_ok = false
+	_check(only_hills, "hills: blocked subtiles only on hill tiles")
+	_check(bits_ok, "hills: blocked bit indices in range")
+	# occupancy consumes the bake: a blocked subtile must be unbuildable
+	var sample_tile: String = blocked.keys()[0]
+	var bit: int = blocked[sample_tile][0]
+	var col := bit % SubtileGrid.COLUMNS + 1
+	var row := bit / SubtileGrid.COLUMNS + 1
+	_check(TileOccupancy.is_blocked(sample_tile, col, row), "hills: TileOccupancy sees baked mask")
+	_check(not SubtileGrid.is_subtile_buildable(col, row, {}, [], sample_tile),
+		"hills: blocked subtile is unbuildable via SubtileGrid")
+
+# Regenerate one small massif twice — identical output proves the generator is
+# deterministic (the bake -> cache contract depends on it).
+func _test_hill_field_determinism() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var centers := {}
+	for coord in terrain.tiles:
+		centers[coord] = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+	var r1: Dictionary = HillField.generate(terrain.tiles, centers, [], [], HillBaked.SEED, ["tile_6_8"])
+	var r2: Dictionary = HillField.generate(terrain.tiles, centers, [], [], HillBaked.SEED, ["tile_6_8"])
+	terrain.queue_free()
+	_check(r1.polys.size() > 0, "hills: regenerated massif produced polys")
+	_check(r1.polys.size() == r2.polys.size(), "hills: determinism — same poly count")
+	var same := true
+	for i in r1.polys.size():
+		if r1.polys[i].b != r2.polys[i].b or r1.polys[i].p != r2.polys[i].p:
+			same = false
+			break
+	_check(same, "hills: determinism — identical polygons")
+	_check(JSON.stringify(r1.blocked) == JSON.stringify(r2.blocked), "hills: determinism — identical blocked masks")
+
+# The hex grid overlay's brass selection mirrors the tile view panel: shows
+# the panel's tile, follows tile changes, clears on close.
+func _test_grid_selection_follows_panel() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.name = "TerrainLayer"
+	terrain.unique_name_in_owner = false
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var overlay: Node2D = load("res://scripts/hex_grid_overlay.gd").new()
+	overlay.set_process(false)
+	add_child(overlay)
+	overlay.terrain = terrain   # %TerrainLayer only resolves inside the scene file
+	var panel: Control = load("res://scripts/tile_info_panel_v2.gd").new()
+	add_child(panel)
+	await get_tree().process_frame
+	panel.show_tile(terrain.tiles[Vector2i(5, 7)])
+	overlay._sync_selection()
+	_check(overlay._selected == Vector2i(5, 7), "grid: selection follows the panel's tile")
+	panel.show_tile(terrain.tiles[Vector2i(8, 9)])
+	overlay._sync_selection()
+	_check(overlay._selected == Vector2i(8, 9), "grid: selection follows a tile change")
+	panel.visible = false
+	overlay._sync_selection()
+	_check(overlay._selected == Vector2i(-999, -999), "grid: selection clears when the panel closes")
+	panel.queue_free()
+	overlay.queue_free()
+	terrain.queue_free()
+	await get_tree().process_frame
+
+func _shoelace(pts: PackedVector2Array) -> float:
+	var area := 0.0
+	var n := pts.size()
+	for i in n:
+		var p := pts[i]
+		var q := pts[(i + 1) % n]
+		area += p.x * q.y - q.x * p.y
+	return area * 0.5
+
+func _tile_types_from_csv() -> Dictionary:
+	var out := {}
+	var file := FileAccess.open("res://data/tile_properties.csv", FileAccess.READ)
+	if file == null:
+		return out
+	var header := file.get_csv_line()
+	var id_i := header.find("id")
+	var type_i := header.find("type")
+	while not file.eof_reached():
+		var row := file.get_csv_line()
+		if row.size() > maxi(id_i, type_i):
+			out[row[id_i]] = row[type_i]
+	file.close()
+	return out
 
 # Save/load round-trip: populate every save-relevant system, export → JSON → import
 # into the reset systems → export again; the two snapshots must agree section by
@@ -1560,6 +1709,16 @@ func _test_debug_terminal() -> void:
 	_check(absf(MatchState.money - (before + 250.0)) < 0.001, "terminal: cash adds the amount")
 	_check("250" in result, "terminal: cash reports the amount")
 	_check(term._run_command("bogus").begins_with("unknown"), "terminal: unknown command handled")
+	# 'toggle heightmap' flips the hill/sea/lake layer; default is visible
+	var fake_layer := Node2D.new()
+	fake_layer.add_to_group("hill_visuals")
+	add_child(fake_layer)
+	_check(fake_layer.visible, "terminal: heightmap starts visible")
+	_check("off" in term._run_command("toggle heightmap"), "terminal: toggle heightmap reports off")
+	_check(not fake_layer.visible, "terminal: heightmap hidden after first toggle")
+	_check("on" in term._run_command("toggle heightmap"), "terminal: toggle heightmap reports on")
+	_check(fake_layer.visible, "terminal: heightmap visible after second toggle")
+	fake_layer.queue_free()
 	term.queue_free()
 
 func _test_building_ledger() -> void:

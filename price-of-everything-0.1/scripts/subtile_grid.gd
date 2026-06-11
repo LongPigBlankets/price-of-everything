@@ -49,8 +49,10 @@ static func hex_polygon() -> PackedVector2Array:
 		Vector2(0, 120),
 	])
 
-static func is_subtile_buildable(col: int, row: int, river_data: Dictionary = {}, road_segments: Array[Dictionary] = []) -> bool:
+static func is_subtile_buildable(col: int, row: int, river_data: Dictionary = {}, road_segments: Array[Dictionary] = [], tile_id: String = "") -> bool:
 	if not _point_is_inside_polygon(subtile_center(col, row), hex_polygon()):
+		return false
+	if tile_id != "" and TileOccupancy.is_blocked(tile_id, col, row):
 		return false
 	if not river_data.is_empty() and _river_intersects_subtile(col, row, river_data):
 		return false

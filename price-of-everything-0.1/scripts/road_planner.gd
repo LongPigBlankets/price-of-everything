@@ -2695,18 +2695,22 @@ func _crossing_matches_bridge(point: Vector2, bridges: Array) -> bool:
 
 func _road_grid_world_rect(tile_coord: Vector2i) -> Rect2:
 	var river_data: Dictionary = _river_data_for_tile(tile_coord)
+	var tile_id := _tile_id_for_coord(tile_coord)
 	for row in range(10, 2, -1):
 		for col in range(12, 2, -1):
-			if _grid_fits(col, row, river_data):
+			if _grid_fits(col, row, river_data, tile_id):
 				return _grid_rect_from_subtiles(tile_coord, col, row)
 	return _grid_rect_from_subtiles(tile_coord, 13, 12)
 
-func _grid_fits(start_col: int, start_row: int, river_data: Dictionary) -> bool:
+func _grid_fits(start_col: int, start_row: int, river_data: Dictionary, tile_id: String = "") -> bool:
 	for row in range(start_row, start_row + GRID_CELLS.y):
 		for col in range(start_col, start_col + GRID_CELLS.x):
-			if not SubtileGrid.is_subtile_buildable(col, row, river_data):
+			if not SubtileGrid.is_subtile_buildable(col, row, river_data, [], tile_id):
 				return false
 	return true
+
+func _tile_id_for_coord(tile_coord: Vector2i) -> String:
+	return "tile_%d_%d" % [tile_coord.x + 1, tile_coord.y + 1]
 
 func _grid_rect_from_subtiles(tile_coord: Vector2i, start_col: int, start_row: int) -> Rect2:
 	var center: Vector2 = _tile_world_center(tile_coord)
@@ -2770,7 +2774,7 @@ func _road_anchor_is_buildable(tile_coord: Vector2i, world_point: Vector2) -> bo
 	var row: int = int(floor(local_point.y / SUBTILE_SIZE)) + 1
 	if col < 1 or col > SubtileGrid.COLUMNS or row < 1 or row > SubtileGrid.ROWS:
 		return false
-	return SubtileGrid.is_subtile_buildable(col, row, _river_data_for_tile(tile_coord))
+	return SubtileGrid.is_subtile_buildable(col, row, _river_data_for_tile(tile_coord), [], _tile_id_for_coord(tile_coord))
 
 func _road_anchor_has_river_clearance(tile_coord: Vector2i, world_point: Vector2) -> bool:
 	var river_path: PackedVector2Array = _river_path_for_tile(tile_coord)
