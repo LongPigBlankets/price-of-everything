@@ -353,6 +353,40 @@ func _test_roads_v2() -> void:
 		_check(clear, "roads v2: route avoids the forest disc")
 	MatchState.remove_building(inst)
 
+	# starting anchor network (spec 4.5b): baked, fresh, bootstrappable
+	var baked := RoadsBaked.data()
+	_check(not baked.is_empty(), "roads v2: starting network bake present")
+	if not baked.is_empty():
+		_check(str(baked.get("hills_hash", "")) == HillBaked.source_hash(),
+			"roads v2: starting network fresh vs terrain bake")
+		_check(RoadsBaked.anchors().size() >= 2, "roads v2: anchor list present (%d)" % RoadsBaked.anchors().size())
+		RoadNetwork.reset()
+		RoadNetwork.bootstrap_from_bake()
+		var boot := RoadNetwork.instance()
+		_check(boot.edge_count() >= RoadsBaked.anchors().size() - 2,
+			"roads v2: bootstrap imports the anchor spine (%d edges)" % boot.edge_count())
+		# baked geometry avoids the deterministic game-start forest discs
+		var forests_clear := true
+		for coord2 in terrain.tiles:
+			if coord2.y + 1 > 6:
+				continue
+			var td2: Dictionary = terrain.tiles[coord2]
+			var tt2 := str(td2.get("type", "")).strip_edges().to_lower()
+			if tt2 != "rural" and tt2 != "hill":
+				continue
+			var tid2 := str(td2.get("id", ""))
+			var fc2: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord2))
+			var fdisc := ForestFootprint.footprint("forest_b_016_" + tid2, tid2, coord2, fc2,
+				RiverGeometry.arms(td2, terrain.river_properties, fc2),
+				RiverGeometry.lake_ellipse(td2, terrain.river_properties, fc2))
+			for eid in boot.edges:
+				for p2 in boot.edges[eid].geometry:
+					if p2.distance_to(fdisc.center) < fdisc.radius - 6.0:
+						forests_clear = false
+						break
+		_check(forests_clear, "roads v2: baked spine avoids game-start forest discs")
+		RoadNetwork.reset()
+
 	# network graph save round-trip
 	if r1.ok:
 		var na := net.ensure_node("dbg:a", RoadNetwork.KIND_JUNCTION, pa, Vector2i(9, 10))

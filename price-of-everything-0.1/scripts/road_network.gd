@@ -46,6 +46,18 @@ static func instance() -> RoadNetwork:
 static func reset() -> void:
 	_inst = null
 
+## Fresh-match bootstrap: import the baked starting anchor network (spec
+## 4.5b) so the trunk spine exists from turn 0. No-op when the network
+## already has edges (e.g. once Phase 3 restores it from a save).
+static func bootstrap_from_bake() -> void:
+	var net := instance()
+	if net.has_any_edges():
+		return
+	var state := RoadsBaked.network_state()
+	if state.is_empty():
+		return
+	net.import_state(state)
+
 # ------------------------------------------------------------------- nodes
 
 func gateway_id(tile_a: Vector2i, tile_b: Vector2i) -> String:

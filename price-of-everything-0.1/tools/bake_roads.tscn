@@ -1,0 +1,18 @@
+[gd_scene load_steps=5 format=4]
+
+[ext_resource type="Script" path="res://tools/bake_roads.gd" id="1_bench"]
+[ext_resource type="TileSet" uid="uid://cdbno8hcn1m5e" path="res://assets/main_tileset.tres" id="2_tileset"]
+[ext_resource type="Script" uid="uid://dg8tjsup0xurr" path="res://scripts/hex_map.gd" id="3_hex_map"]
+[ext_resource type="Script" path="res://scripts/river_visuals.gd" id="4_rivers"]
+
+[node name="BakeRoads" type="Node2D"]
+script = ExtResource("1_bench")
+
+[node name="TerrainLayer" type="TileMapLayer" parent="."]
+unique_name_in_owner = true
+tile_set = ExtResource("2_tileset")
+script = ExtResource("3_hex_map")
+
+[node name="RiverVisuals" type="Node2D" parent="."]
+unique_name_in_owner = true
+script = ExtResource("4_rivers")

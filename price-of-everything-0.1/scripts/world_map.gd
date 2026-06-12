@@ -190,6 +190,11 @@ func _ready() -> void:
 	if not loaded_pending or pending_start:
 		_place_northern_old_growth_forests()
 
+	# roads-v2: every match starts with the baked anchor network (spec 4.5b);
+	# Phase 3 will restore the player-grown network from saves on top.
+	RoadNetwork.reset()
+	RoadNetwork.bootstrap_from_bake()
+
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
 
@@ -1287,12 +1292,16 @@ func _place_northern_old_growth_forests() -> void:
 		var tile_id: String = str(tile_data.get("id", ""))
 		if tile_id == "" or _tile_has_building(tile_id, OLD_GROWTH_FOREST_BUILDING_ID):
 			continue
+		# Deterministic instance id: the forest footprint disc is seeded from
+		# (instance_id, tile_id), and the roads-v2 starting-network bake must
+		# reproduce the exact discs a fresh match creates. One old-growth per
+		# tile (guarded above), so the id cannot collide.
 		var instance_id: String = MatchState.add_building(
 			OLD_GROWTH_FOREST_BUILDING_ID,
 			"",
 			tile_id,
 			OLD_GROWTH_FOREST_OWNER,
-			"",
+			"forest_%s_%s" % [OLD_GROWTH_FOREST_BUILDING_ID, tile_id],
 			false
 		)
 		building_placed.emit(tile_id, OLD_GROWTH_FOREST_BUILDING_ID, "", instance_id, coord)
