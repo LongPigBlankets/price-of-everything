@@ -319,9 +319,43 @@ GEN_VERSION):
   normal hierarchical route — the cache is an accelerator, never a
   correctness dependency.
 
-Tests: seed determinism (re-bake → identical), clean-path verbatim equality
-vs a live terrain-only route, dirty-path merge behaviour (a seed crossing an
-existing edge must still T-merge, not braid).
+**Invalidation granularity** (designer question): per-corridor, never
+per-tile-event, and dirty ≠ discarded (a dirty seed still serves as the
+thin-corridor hint). What dirties a corridor: a forest disc intersecting it
+(forests are the only buildings with footprints today), existing network
+geometry nearby (by design — forces T-merging), and later the Phase-3
+congestion threshold on tiles the corridor crosses. A footprint-less
+building dirties nothing.
+
+### 4.5b Starting anchor network (designer ruling — supersedes most of the cache)
+
+Hand-author ~50–70 tiles with roads at game start (the existing
+`infrastructure_present` "roads" CSV column IS this input; curate it). Then:
+
+1. **Bake the starting network as final geometry** (`tools/bake_roads.tscn`
+   → `data/roads_baked.json`): realize trunk + region-pattern connections
+   over the anchor tiles on virgin terrain. Fully deterministic INCLUDING
+   forest avoidance — game-start old-growth forests are seeded
+   deterministically, so they exist at bake time. Staleness = terrain source
+   hash + regions hash + anchor-tile set + GEN_VERSION.
+2. **Load it as RoadNetwork's initial state** on a fresh match (saves carry
+   the network thereafter; the gameplay roads flags stay as-is for
+   catalog.gd routing). This is the Phase-5 re-seed moved to game start and
+   made canonical — the designer approval pass happens once, on the bake.
+3. **Runtime jobs collapse to the cheap bands**: new road tiles connect to
+   the nearest anchor network (local/regional ≈ 17–150 ms measured); the
+   reuse discount pulls every connection into the anchors, so players
+   densify a mature spine — the atlas look by construction. Mass-build worst
+   case ≈ 100 local jobs ≈ 1.7 s of budgeted planning.
+
+With 4.5b in place, the general seed cache (4.5) becomes OPTIONAL — revisit
+only if post-Phase-3 telemetry shows slow batches (e.g. dense-city orbital
+rebuilds). Implement 4.5b first.
+
+Tests: starting-network bake determinism (re-bake → identical JSON); fresh
+match loads N anchor edges and `roads route` merges into them; anchor tiles'
+gameplay flags untouched; a forest seeded on an anchor tile's corridor is
+avoided in the baked geometry.
 
 ---
 
