@@ -20,7 +20,7 @@ extends RefCounted
 ## tools/bake_hills.tscn to data/hills_baked.json — the map is hand-painted,
 ## so the baked shape is canonical and identical every start.
 
-const GEN_VERSION := 10
+const GEN_VERSION := 11
 const STEP := 12.0                  # field sample spacing (world units)
 const MARGIN := 300.0               # bbox inflation
 ## THRESHOLDS[k] is the lower bound of level k-1... band index = number of
@@ -54,6 +54,7 @@ const LAKE_TILES := [
 	"tile_20_13", "tile_20_14", "tile_20_15", "tile_21_16", "tile_21_15", "tile_22_14",
 	"tile_25_15", "tile_23_13", "tile_23_12", "tile_21_11",
 	"tile_21_6", "tile_21_4", "tile_23_3", "tile_22_2",
+	"tile_21_1", "tile_9_1",   # mountain tarns (enclosed sea tiles), drawn like the others
 ]
 const RIM_VALUES := [0.06, 0.19, 0.33]   # mid-band field values for lv 0 / 1 / 2
 
@@ -718,17 +719,21 @@ static func _box_blur(src: PackedFloat32Array, gw: int, gh: int, r: int) -> Pack
 
 ## Regional coast character at a point: returns [warp_scale, jag_amplitude].
 ## Jagged on the west coast from the north edge down to Stoneshore (~45% of
-## map height); very smooth on the SW coast below it; moderate elsewhere.
+## map height); smooth on most of the SW, but the far-SW shore (around the
+## Sandy Shore / Blackfarm tiles, ~tile_3_12 down to tile_2_16) is fractal.
 static func _coast_region(ctx: Dictionary, x: float, y: float) -> Array:
 	var span: Vector2 = ctx.map_max - ctx.map_min
 	var nx: float = (x - ctx.map_min.x) / maxf(span.x, 1.0)
 	var ny: float = (y - ctx.map_min.y) / maxf(span.y, 1.0)
 	var jag_w := (1.0 - _sstep(nx, 0.30, 0.48)) * (1.0 - _sstep(ny, 0.45, 0.58))
+	# Far-SW fractal band: far west (nx<~0.27), mid-south rows (ny 0.55-0.85).
+	var sw_w := (1.0 - _sstep(nx, 0.13, 0.28)) * _sstep(ny, 0.52, 0.63) * (1.0 - _sstep(ny, 0.84, 0.94))
 	var smooth_w := (1.0 - _sstep(nx, 0.35, 0.50)) * _sstep(ny, 0.50, 0.62)
+	smooth_w *= (1.0 - sw_w)   # don't smooth the far-SW fractal band
 	var se_w := _sstep(nx, 0.55, 0.70) * _sstep(ny, 0.45, 0.60)   # extra gulfs SE
 	return [
-		1.0 + 1.1 * jag_w - 0.45 * smooth_w + 0.7 * se_w,
-		0.05 + 0.15 * jag_w - 0.028 * smooth_w + 0.085 * se_w,
+		1.0 + 1.1 * jag_w - 0.40 * smooth_w + 0.7 * se_w + 1.0 * sw_w,
+		0.06 + 0.16 * jag_w - 0.025 * smooth_w + 0.085 * se_w + 0.14 * sw_w,
 	]
 
 ## Builds ctx.coast_land — the organic "landness" field (>= 0.5 is land).
@@ -865,7 +870,10 @@ static func _build_coast(ctx: Dictionary, rivers: Array) -> void:
 			var wxc := x + (n_wx1.get_noise_2d(x, y) * 26.0 + n_wx2.get_noise_2d(x, y) * 10.0) * ws
 			var wyc := y + (n_wy1.get_noise_2d(x, y) * 26.0 + n_wy2.get_noise_2d(x, y) * 10.0) * ws
 			var lv := _grid_bilinear(ind, ctx, wxc, wyc)
+			# Two octaves of coast noise — the second, finer one adds the fractal
+			# crenellation (scaled by the region amplitude, so smooth coasts stay smooth).
 			lv += reg[1] * n_coast.get_noise_2d(x, y)
+			lv += reg[1] * 0.5 * n_coast.get_noise_2d(x * 2.7 + 1234.0, y * 2.7 - 987.0)
 			for m2 in mouths:
 				var md: float = (m2 as Vector2).distance_squared_to(Vector2(x, y))
 				if md < ESTUARY_R * ESTUARY_R:
@@ -1792,9 +1800,10 @@ static func _sample_field(ctx: Dictionary) -> void:
 			var lake_d := _lake_dist(ctx, x, y)
 			fl = maxf(0.0, fl - 0.30 * _sstep(lake_d, 300.0, 80.0))
 			# global lowland: lv1-2 across all land, fading at coasts and where
-			# the type floor already provides elevation
+			# the type floor already provides elevation. The dt_sea window is tight
+			# so the lv0 beach is a thin fringe and elevated land runs near the sea.
 			var u_low := _lowland_at(ctx, wx, wy)
-			u_low *= _sstep(dt_sea[gi], 20.0, 160.0)
+			u_low *= _sstep(dt_sea[gi], 8.0, 65.0)
 			u_low *= 1.0 - _sstep(fl, 0.10, 0.28)
 			v = _smax(v, u_low, SMAX_K)
 			# budgeted lv -1 depressions
@@ -1833,8 +1842,9 @@ static func _sample_field(ctx: Dictionary) -> void:
 			if water_d < 170.0:
 				var cap_r: float = river_cap[gi]
 				v = cap_r + (v - cap_r) * _sstep(water_d, 40.0, 170.0)
-			# land bands stop at the organic coastline (gulfs carve into tiles)
-			v *= _sstep(coast_land[gi], 0.42, 0.58)
+			# land bands stop at the organic coastline (gulfs carve into tiles);
+			# a tighter window makes the land/sea transition crisper (thinner beach).
+			v *= _sstep(coast_land[gi], 0.45, 0.57)
 			grid[gi] = v
 			if v > field_max:
 				field_max = v
