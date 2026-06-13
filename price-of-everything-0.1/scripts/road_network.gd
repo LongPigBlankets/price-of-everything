@@ -28,7 +28,10 @@ const STATE_BUILT := "built"
 ## Reuse-discount occupancy hash cell (cost x0.6 within ~24 u of the network).
 const OCCUPANCY_CELL := 24.0
 
-static var v2_enabled := false           # 'toggle roadsv2' debug cheat
+# Roads-v2 is the only road system (Phase 5 cutover). This flag no longer
+# switches v1/v2 — it only shows/hides the road VISUALS ('toggle roads' cheat).
+# Road logic (network, RoadWorks, occupancy) runs regardless.
+static var roads_visible := true
 static var _inst: RoadNetwork = null
 
 var nodes: Dictionary = {}               # id -> node dict

@@ -122,8 +122,10 @@ func _draw_hover_grid(width: float) -> void:
 					continue
 				pts.append(c1)
 				pts.append(c2)
-				cols.append(Color(GRID_COLOR.r, GRID_COLOR.g, GRID_COLOR.b, a1))
-				cols.append(Color(GRID_COLOR.r, GRID_COLOR.g, GRID_COLOR.b, a2))
+				# draw_multiline_colors takes ONE colour per SEGMENT (not per
+				# point); use the edge's mean fade. Per-segment is plenty for the
+				# soft grid falloff.
+				cols.append(Color(GRID_COLOR.r, GRID_COLOR.g, GRID_COLOR.b, (a1 + a2) * 0.5))
 	if not pts.is_empty():
 		draw_multiline_colors(pts, cols, width)
 

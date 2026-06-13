@@ -39,15 +39,43 @@ const SEA_COLORS: Array[Color] = [
 	Color("ffeeb8"),
 ]
 ## Longest side of the baked terrain texture, in pixels. The map is ~12,950 ×
-## 10,500 world units; 4096 keeps it crisp at the default view and only mildly
-## soft at max zoom, for ~54 MB of VRAM. Bump for sharper zoom, at more VRAM.
+## 10,500 world units; 4096 keeps it crisp at the default view, for ~54 MB of
+## VRAM. The texture is only ever shown ZOOMED OUT now (where its softness is
+## invisible) — zoomed in, the real vector polygons are drawn (perfectly crisp).
 const BAKE_LONG_SIDE := 4096.0
+## Hybrid LOD: when no more than this many contour polygons are on screen, draw
+## the real vectors (crisp at any zoom); above it, draw the baked texture (one
+## draw call). At max zoom only a handful of tiles are visible, so the vector
+## path is cheap; the crossover lands at a moderate zoom-out.
+const VECTOR_CAP := 450
+const CULL_MARGIN := 320.0   # world units; keep partially-visible polys
+
+enum { MODE_TEXTURE, MODE_VECTOR }
 
 var _polys: Array = []
 var _lakes: Array = []
 var _sea: Array = []
+var _poly_bb: Array = []     # parallel Rect2 bbox per _polys entry
+var _sea_bb: Array = []
+var _lake_bb: Array = []
 var _baked_tex: Texture2D = null
 var _bake_rect: Rect2 = Rect2()
+var _mode := MODE_TEXTURE
+var _view_rect := Rect2()
+# Lazily-triangulated fill meshes, keyed "p<i>"/"s<i>"/"l<i>". draw_colored_polygon
+# re-triangulates a concave polygon EVERY call (marching-squares contours have
+# hundreds of verts) — that was 1 fps at max zoom. A cached mesh triangulates
+# once, then draw_mesh just renders the tris. null entry = triangulation failed
+# (fall back to draw_colored_polygon for that poly).
+var _mesh_cache: Dictionary = {}
+var _white_tex: Texture2D = null
+
+func _white_texture() -> Texture2D:
+	if _white_tex == null:
+		var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_white_tex = ImageTexture.create_from_image(img)
+	return _white_tex
 
 func _enter_tree() -> void:
 	# the 'toggle heightmap' debug cheat flips visibility on this group
@@ -57,18 +85,70 @@ func _ready() -> void:
 	_polys = HillBaked.polys()
 	_lakes = HillBaked.lakes()
 	_sea = HillBaked.sea()
+	_poly_bb = _bboxes(_polys, true)
+	_sea_bb = _bboxes(_sea, true)
+	_lake_bb = _bboxes(_lakes, false)
 	_bake_rect = _compute_bounds()
+	_warm_all_meshes()   # triangulate every contour ONCE now, never during a pan
 	queue_redraw()
 	# Headless (tests) has no GPU to render the SubViewport into — fall back to
 	# direct polygon drawing (harmless, nothing is displayed there anyway).
 	if DisplayServer.get_name() != "headless":
 		_bake_to_texture()
 
-func _draw() -> void:
-	if _baked_tex != null:
-		draw_texture_rect(_baked_tex, _bake_rect, false)
+func _bboxes(coll: Array, has_p_key: bool) -> Array:
+	var out: Array = []
+	for entry in coll:
+		var pts: PackedVector2Array = entry.p if has_p_key else entry
+		var mn := Vector2(INF, INF)
+		var mx := Vector2(-INF, -INF)
+		for p in pts:
+			mn = mn.min(p)
+			mx = mx.max(p)
+		out.append(Rect2(mn, mx - mn) if mn.x != INF else Rect2())
+	return out
+
+## Pick the LOD each frame: count on-screen contour polygons; below the cap draw
+## crisp vectors (and redraw as the camera moves), above it the baked texture.
+func _process(_delta: float) -> void:
+	if not visible or _baked_tex == null:
 		return
-	_draw_polys_direct()   # fallback until the bake lands (and in headless)
+	var view := _visible_world_rect()
+	var visible_polys := _count_visible(_poly_bb, view) + _count_visible(_sea_bb, view) + _count_visible(_lake_bb, view)
+	var want := MODE_VECTOR if visible_polys <= VECTOR_CAP else MODE_TEXTURE
+	if want != _mode:
+		_mode = want
+		_view_rect = view
+		queue_redraw()
+	elif want == MODE_VECTOR and view != _view_rect:
+		_view_rect = view   # camera moved while zoomed in — recull next draw
+		queue_redraw()
+
+func _draw() -> void:
+	if _baked_tex == null:
+		_draw_polys_direct()   # fallback until the bake lands (and in headless)
+		return
+	if _mode == MODE_TEXTURE:
+		draw_texture_rect(_baked_tex, _bake_rect, false)
+	else:
+		_draw_culled_meshes(_view_rect)
+
+func _visible_world_rect() -> Rect2:
+	var vp := get_viewport()
+	if vp == null:
+		return Rect2()
+	var size := vp.get_visible_rect().size
+	if size.x <= 0.0:
+		return Rect2()
+	var world := vp.get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, size)
+	return world.grow(CULL_MARGIN)
+
+func _count_visible(bboxes: Array, view: Rect2) -> int:
+	var n := 0
+	for bb in bboxes:
+		if view.intersects(bb):
+			n += 1
+	return n
 
 func _compute_bounds() -> Rect2:
 	var mn := Vector2(INF, INF)
@@ -114,25 +194,109 @@ func _bake_to_texture() -> void:
 	vp.queue_free()
 	queue_redraw()
 
-func _draw_polys_direct() -> void:
-	for entry in _sea:
-		var spts: PackedVector2Array = entry.p
+## Zoomed-in vector LOD: draw only polygons whose bbox is on screen, using
+## cached pre-triangulated meshes (no per-frame triangulation) + non-AA
+## outlines (AA polylines on huge contours were also a per-frame cost).
+func _draw_culled_meshes(cull: Rect2) -> void:
+	var white := _white_texture()
+	for i in _sea.size():
+		if not cull.intersects(_sea_bb[i]):
+			continue
+		var spts: PackedVector2Array = _sea[i].p
 		if spts.size() < 3:
 			continue
-		var sband: int = clampi(entry.b, 0, SEA_COLORS.size() - 1)
-		draw_colored_polygon(spts, SEA_COLORS[sband])
-	for entry in _polys:
-		var pts: PackedVector2Array = entry.p
+		_draw_fill("s%d" % i, spts, SEA_COLORS[clampi(_sea[i].b, 0, SEA_COLORS.size() - 1)], white)
+	for i in _polys.size():
+		if not cull.intersects(_poly_bb[i]):
+			continue
+		var pts: PackedVector2Array = _polys[i].p
 		if pts.size() < 3:
 			continue
-		var band: int = clampi(entry.b, 0, BAND_COLORS.size() - 1)
+		var color: Color = BAND_COLORS[clampi(_polys[i].b, 0, BAND_COLORS.size() - 1)]
+		_draw_fill("p%d" % i, pts, color, white)
+		var outline := pts.duplicate()
+		outline.append(pts[0])
+		draw_polyline(outline, color.darkened(OUTLINE_DARKEN), OUTLINE_WIDTH, false)
+	for i in _lakes.size():
+		if not cull.intersects(_lake_bb[i]):
+			continue
+		var lake_pts: PackedVector2Array = _lakes[i]
+		if lake_pts.size() < 3:
+			continue
+		_draw_fill("l%d" % i, lake_pts, WATER_COLOR, white)
+		var shore := lake_pts.duplicate()
+		shore.append(lake_pts[0])
+		draw_polyline(shore, WATER_COLOR.darkened(0.25), 2.0, false)
+
+## Triangulate every fill polygon once (load-time, ~tens of ms — the old direct
+## draw triangulated all of these EVERY frame), so panning only ever draws
+## already-built meshes.
+func _warm_all_meshes() -> void:
+	if DisplayServer.get_name() == "headless":
+		return   # tests never render the vector LOD; skip the triangulation cost
+	for i in _sea.size():
+		if (_sea[i].p as PackedVector2Array).size() >= 3:
+			_build_fill_mesh("s%d" % i, _sea[i].p)
+	for i in _polys.size():
+		if (_polys[i].p as PackedVector2Array).size() >= 3:
+			_build_fill_mesh("p%d" % i, _polys[i].p)
+	for i in _lakes.size():
+		if (_lakes[i] as PackedVector2Array).size() >= 3:
+			_build_fill_mesh("l%d" % i, _lakes[i])
+
+func _draw_fill(key: String, pts: PackedVector2Array, color: Color, white: Texture2D) -> void:
+	var mesh: Mesh = _mesh_cache.get(key, null) if _mesh_cache.has(key) else _build_fill_mesh(key, pts)
+	if mesh != null:
+		draw_mesh(mesh, white, Transform2D.IDENTITY, color)
+	else:
+		draw_colored_polygon(pts, color)   # triangulation failed — rare
+
+func _build_fill_mesh(key: String, pts: PackedVector2Array) -> Mesh:
+	var idx := Geometry2D.triangulate_polygon(pts)
+	var mesh: ArrayMesh = null
+	if not idx.is_empty():
+		var verts := PackedVector3Array()
+		verts.resize(pts.size())
+		for i in pts.size():
+			verts[i] = Vector3(pts[i].x, pts[i].y, 0.0)
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_INDEX] = idx
+		mesh = ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	_mesh_cache[key] = mesh
+	return mesh
+
+## Draw the contour polygons directly. `cull` (when sized) keeps only polygons
+## whose bbox intersects it — the zoomed-in vector LOD; an empty rect draws all
+## (headless / pre-bake fallback).
+func _draw_polys_direct(cull: Rect2 = Rect2()) -> void:
+	var culling := cull.size.x > 0.0
+	for i in _sea.size():
+		if culling and not cull.intersects(_sea_bb[i]):
+			continue
+		var spts: PackedVector2Array = _sea[i].p
+		if spts.size() < 3:
+			continue
+		var sband: int = clampi(_sea[i].b, 0, SEA_COLORS.size() - 1)
+		draw_colored_polygon(spts, SEA_COLORS[sband])
+	for i in _polys.size():
+		if culling and not cull.intersects(_poly_bb[i]):
+			continue
+		var pts: PackedVector2Array = _polys[i].p
+		if pts.size() < 3:
+			continue
+		var band: int = clampi(_polys[i].b, 0, BAND_COLORS.size() - 1)
 		var color: Color = BAND_COLORS[band]
 		draw_colored_polygon(pts, color)
 		var outline := pts.duplicate()
 		outline.append(pts[0])
 		draw_polyline(outline, color.darkened(OUTLINE_DARKEN), OUTLINE_WIDTH, true)
-	for lake_entry in _lakes:
-		var lake_pts: PackedVector2Array = lake_entry
+	for i in _lakes.size():
+		if culling and not cull.intersects(_lake_bb[i]):
+			continue
+		var lake_pts: PackedVector2Array = _lakes[i]
 		if lake_pts.size() < 3:
 			continue
 		draw_colored_polygon(lake_pts, WATER_COLOR)

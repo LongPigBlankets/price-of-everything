@@ -14,7 +14,11 @@ extends Node
 ## planted/removed -> restart orders still planning whose corridor intersects
 ## the disc — BUILT/revealing edges stay (history is history).
 
-const PLAN_BUDGET_MS := 4.0
+## Per-frame planning budget. 6 ms lets a lone hard route (e.g. a river tile
+## that must detour to a bridge gate via the coarse pass) finish in a few
+## seconds rather than ~10 — the work is small (~0.5 s CPU) but the conservative
+## old 4 ms budget only ran ~1 search unit per frame.
+const PLAN_BUDGET_MS := 6.0
 ## Mass-build burst: with a deep queue (e.g. 100 completions in one PROCESS)
 ## the budget rises toward the 8 ms frame ceiling so the backlog clears fast.
 const PLAN_BUDGET_BURST_MS := 7.8
@@ -45,6 +49,16 @@ var _next_order := 1
 ## Regions whose style jobs (spec §6) have already been generated — each region
 ## grows its web exactly once, on its first member road (persisted in saves).
 var _styled_regions: Dictionary = {}
+## Preview bridges shown the instant a river road's construction completes, at
+## the tile's PREDETERMINED crossing(s) — immediate feedback while the
+## connecting road plans (which can take a few seconds on a hard river tile).
+## order_id -> Array[{point, tangent}]; cleared when that order settles or
+## fails (the real edge's bridges then represent reality).
+var _preview_bridges: Dictionary = {}
+## Adjacent road-tile pairs already joined by a connect/link, so a cluster of
+## built tiles meshes instead of each tile reaching back to the trunk alone.
+## Key "tileA|tileB" (sorted). Persisted so a reload doesn't double-link.
+var _linked_pairs: Dictionary = {}
 ## Dedicated realizer: its scratch buffers hold the one in-flight paused job.
 var _realizer := RoadRealizer.new()
 var _job: Dictionary = {}
@@ -68,8 +82,6 @@ func _ready() -> void:
 # ----------------------------------------------------------------- enqueue
 
 func _on_construction_completed(instance_id: String, tile_id: String) -> void:
-	if not RoadNetwork.v2_enabled:
-		return
 	var building_id := str(MatchState.get_building(instance_id).get("building_id", ""))
 	var internal := str(Catalog.get_building(building_id).get("internal_name", ""))
 	if internal != "roads":
@@ -117,8 +129,23 @@ func enqueue_for_tile(tile_id: String) -> int:
 	order["kind"] = "connect"
 	orders[id2] = order
 	_queue.append(id2)
+	# Show the tile's predetermined bridge(s) immediately — instant feedback that
+	# the river road is going in, before the connecting road has planned.
+	var crossings := RoadCrossings.for_tile(tile_id)
+	if not crossings.is_empty():
+		var pb: Array = []
+		for c in crossings:
+			pb.append({"point": c.point, "tangent": c.bridge_tangent})
+		_preview_bridges[id2] = pb
 	orders_changed.emit()
 	return id2
+
+## Preview bridges to draw (RoadNetworkVisuals), flattened across pending orders.
+func preview_bridges() -> Array:
+	var out: Array = []
+	for oid in _preview_bridges:
+		out.append_array(_preview_bridges[oid])
+	return out
 
 ## Generate and queue a region's style jobs (spec §6) — its beltway/minihub/
 ## through-route character. Runs once per region, triggered by its first
@@ -169,11 +196,20 @@ func enqueue_region_jobs(region_id: String) -> int:
 ## geometry (roads connect to the road they meet, not to the distant junction).
 ## Returns {pos, id} — id "" when the attachment is mid-edge (a junction node is
 ## created there when the order commits).
+## Roads merge into at most a 5-way junction. A node already carrying MAX_JUNCTION
+## edges is "full": a new road attaches to a ROAD near it (an edge sample) instead
+## of piling a 6th arm onto the point — it merges into a road that connects to the
+## others rather than overloading the junction.
+const MAX_JUNCTION := 5
+
 func _nearest_attachment(from: Vector2) -> Dictionary:
 	var net := RoadNetwork.instance()
+	var degree := _node_degrees(net)
 	var best: Dictionary = {}
 	var best_d := 1e30
 	for node_id in net.nodes:
+		if int(degree.get(str(node_id), 0)) >= MAX_JUNCTION:
+			continue   # full junction — don't add a 6th arm to the point
 		var node: Dictionary = net.nodes[node_id]
 		var d: float = (node.pos as Vector2).distance_squared_to(from)
 		if d < best_d:
@@ -261,6 +297,7 @@ func _finish_active() -> void:
 	if not bool(res.get("ok", false)):
 		order.state = "failed"
 		order.reason = str(res.get("reason", ""))
+		_preview_bridges.erase(int(order.id))   # route failed — drop its preview bridge
 		# buffered, NOT printed — stdout flush (and push_warning's backtrace,
 		# ~40 ms) cannot run inside the planning frame budget
 		failure_log.append("order %d (%s): %s" % [int(order.id), str(order.tile_id), str(order.reason)])
@@ -304,19 +341,113 @@ func _settle(order: Dictionary) -> void:
 	var net := RoadNetwork.instance()
 	net.set_edge_state(str(order.edge_id), RoadNetwork.STATE_BUILT)
 	order.state = "built"
+	# The real edge's bridges now represent the crossing — drop the preview.
+	_preview_bridges.erase(int(order.id))
 	if TileOccupancy.OCCUPANCY_ROADS_ENABLED:
 		var edge: Dictionary = net.edges.get(str(order.edge_id), {})
 		if not edge.is_empty():
 			_register_edge_occupancy(edge)
 	order_settled.emit(int(order.id))
-	# A region's first member road triggers its style web (spec §6: every
-	# dense-city region grows an orbital on first member road; other identities
-	# get their pattern). Generated exactly once per region.
+	# Roads appear only where the player builds (roadsv2.5 ruling): a settled
+	# member road does NOT auto-grow the whole region's web — it just connects
+	# this tile into the network. Regional beltways/webs exist only in the baked
+	# starting cities (tools/bake_roads via RoadRegionJobs.realize_region).
+	# enqueue_region_jobs() is kept for the bake path and possible future use.
+	# But adjacent built tiles SHOULD join up: a connect that lands as a stub
+	# beside neighbours that already have roads now links to them (mesh, not a
+	# fan of separate spurs back to the trunk). Link orders don't recurse.
 	if str(order.get("kind", "connect")) == "connect":
-		var region_id := RoadRegions.region_of(str(order.tile_id))
-		if not _styled_regions.has(region_id):
-			enqueue_region_jobs(region_id)
+		_link_adjacent_roads(order)
 	orders_changed.emit()
+
+## Join a just-settled connect tile to any adjacent tile that already has a road
+## but isn't directly joined to it. One short link order per new adjacency (the
+## later-built tile of the pair drives it); _linked_pairs dedupes, and an
+## existing direct edge means the connect already joined them — skip.
+func _link_adjacent_roads(order: Dictionary) -> void:
+	var terrain := _terrain()
+	if terrain == null:
+		return
+	var net := RoadNetwork.instance()
+	var t_id := str(order.tile_id)
+	var t_node := "rw:%s" % t_id
+	if not net.nodes.has(t_node):
+		return
+	var degree := _node_degrees(net)
+	var t_deg := int(degree.get(t_node, 0))
+	for ncoord in terrain.neighbor_coords(order.coord as Vector2i):
+		if t_deg >= MAX_JUNCTION:
+			break   # this tile's junction is full — keep it to a 5-way
+		if not terrain.tiles.has(ncoord):
+			continue
+		var n_id := "tile_%d_%d" % [ncoord.x + 1, ncoord.y + 1]
+		var n_node := "rw:%s" % n_id
+		if not net.nodes.has(n_node):
+			continue   # neighbour carries no road
+		var key := ("%s|%s" % [t_id, n_id]) if t_id < n_id else ("%s|%s" % [n_id, t_id])
+		if _linked_pairs.has(key):
+			continue
+		if int(degree.get(n_node, 0)) >= MAX_JUNCTION:
+			continue   # neighbour's junction is full — don't overload it
+		_linked_pairs[key] = true
+		if _edge_between(net, t_node, n_node):
+			continue   # the connect already joined these two — no extra road
+		_enqueue_link(t_id, order.coord as Vector2i, t_node, net.nodes[t_node].pos,
+			n_node, net.nodes[n_node].pos)
+		t_deg += 1
+
+## Committed-edge degree per node PLUS the arms that in-flight orders will add
+## once they commit (a connect/link adds one to its own tile node and one to its
+## attach node). Counting the reservation stops a mass-build burst from racing a
+## dozen roads onto the same junction before any of their edges exist.
+func _node_degrees(net: RoadNetwork) -> Dictionary:
+	var deg: Dictionary = {}
+	for eid in net.edges:
+		var e: Dictionary = net.edges[eid]
+		deg[str(e.a)] = int(deg.get(str(e.a), 0)) + 1
+		deg[str(e.b)] = int(deg.get(str(e.b), 0)) + 1
+	for id in orders:
+		var o: Dictionary = orders[id]
+		if not (str(o.state) in ["queued", "planning"]):
+			continue   # revealing/built orders already own an edge counted above
+		if str(o.get("kind", "connect")) in ["connect", "link"]:
+			var snode := "rw:%s" % str(o.tile_id)
+			deg[snode] = int(deg.get(snode, 0)) + 1
+		var aid := str(o.attach_id)
+		if aid != "":
+			deg[aid] = int(deg.get(aid, 0)) + 1
+	return deg
+
+func _edge_between(net: RoadNetwork, a: String, b: String) -> bool:
+	for eid in net.edges:
+		var e: Dictionary = net.edges[eid]
+		if (str(e.a) == a and str(e.b) == b) or (str(e.a) == b and str(e.b) == a):
+			return true
+	return false
+
+## A short connect between two existing road nodes. kind="link" so _begin_next
+## keeps these authored endpoints (no re-attach) and _settle does not recurse.
+func _enqueue_link(t_id: String, coord: Vector2i, a_node: String, a_pos: Vector2, b_node: String, b_pos: Vector2) -> void:
+	var id := _next_order
+	_next_order += 1
+	orders[id] = {
+		"id": id,
+		"kind": "link",
+		"tile_id": t_id,
+		"state": "queued",
+		"start": a_pos,
+		"goal": b_pos,
+		"attach_id": b_node,
+		"coord": coord,
+		"tier": RoadNetwork.TIER_LOCAL,
+		"salt": RoadHash.pick("link|%s|%s" % [a_node, b_node], 1 << 30),
+		"turn": TurnManager.current_turn,
+		"edge_id": "",
+		"reveal_t": 0.0,
+		"reason": "",
+		"plan_ms": 0.0,
+	}
+	_queue.append(id)
 
 ## Reveal fraction for an edge mid-reveal (visuals): 1.0 when settled/unknown.
 ## The reveal grows from the network attachment (the goal end of the geometry)
@@ -506,7 +637,8 @@ func export_state() -> Dictionary:
 			"region_id": str(o.get("region_id", "")),
 			"orbital": bool(o.get("orbital", false)),
 		})
-	return {"orders": out, "next_order": _next_order, "styled_regions": _styled_regions.keys()}
+	return {"orders": out, "next_order": _next_order, "styled_regions": _styled_regions.keys(),
+		"linked_pairs": _linked_pairs.keys()}
 
 ## BUILT geometry rides in the network state; BUILDING orders resume planning
 ## deterministically; mid-reveal orders restart their reveal (cosmetic only).
@@ -515,6 +647,8 @@ func import_state(d: Dictionary) -> void:
 	_next_order = int(d.get("next_order", 1))
 	for region_id in d.get("styled_regions", []):
 		_styled_regions[str(region_id)] = true
+	for pair_key in d.get("linked_pairs", []):
+		_linked_pairs[str(pair_key)] = true
 	for raw in d.get("orders", []):
 		var o := {
 			"id": int(raw.id), "tile_id": str(raw.tile_id), "state": str(raw.state),
@@ -553,6 +687,8 @@ func reset() -> void:
 	max_finish_ms = 0.0
 	failure_log.clear()
 	_styled_regions.clear()
+	_preview_bridges.clear()
+	_linked_pairs.clear()
 
 # ------------------------------------------------------------------ helpers
 

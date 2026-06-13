@@ -24,8 +24,18 @@ const NPC_NAVY := Color(0.015686275, 0.058823529, 0.105882353)
 const NPC_OUTLINE_PX := 10.0
 const MAX_VISIBLE_BUILDINGS := 12  # 4 cols × 3 rows
 const OVERFLOW_INDEX := 11         # 12th slot (0-indexed)
+## Viewport culling: when no more than this many icons are on screen (zoomed in)
+## draw only the visible ones and redraw as the camera moves; above it (zoomed
+## out) draw everything once and stay static. Drawing all ~560 buildings every
+## frame at max zoom was a hard bottleneck.
+const CULL_CAP := 160
+const CULL_MARGIN := 600.0   # world units — pop icons in just off-screen
 
 @onready var terrain_layer: HexMap = %TerrainLayer
+
+var _cull := false           # currently in culled (zoomed-in) mode
+var _view := Rect2()
+var _icon_size := Vector2.ZERO
 
 func _ready() -> void:
 	_load_building_icons()
@@ -69,10 +79,13 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 	var owner_id := str(MatchState.get_building(instance_id).get("owner", ""))
 	var is_npc: bool = owner_id != "" and owner_id != "player_1"
 
+	var pos := _slot_position(tile_center, slot_index)
+	var half := _icon_slot_size() * 0.5 + Vector2(NPC_OUTLINE_PX, NPC_OUTLINE_PX)
 	var placement := {
 		"instance_id": instance_id,
 		"slot": slot_index,
-		"pos": _slot_position(tile_center, slot_index),
+		"pos": pos,
+		"bb": Rect2(pos - half, half * 2.0),
 		"texture": building_icons[building_id] if slot_index < OVERFLOW_INDEX else null,
 		"is_npc": is_npc,
 	}
@@ -80,6 +93,36 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 		_placement_index[instance_id] = _placements.size()
 	_placements.append(placement)
 	queue_redraw()
+
+## Cull to the viewport when zoomed in (few icons on screen), else draw all and
+## stay static — so panning while zoomed out doesn't redraw ~560 icons a frame.
+func _process(_delta: float) -> void:
+	if _placements.is_empty():
+		return
+	var view := _visible_world_rect()
+	if view.size.x <= 0.0:
+		return
+	var visible := 0
+	for p in _placements:
+		if view.intersects(p.bb):
+			visible += 1
+	var want_cull := visible <= CULL_CAP
+	if want_cull != _cull:
+		_cull = want_cull
+		_view = view
+		queue_redraw()
+	elif _cull and view != _view:
+		_view = view   # camera moved while zoomed in — recull next draw
+		queue_redraw()
+
+func _visible_world_rect() -> Rect2:
+	var vp := get_viewport()
+	if vp == null:
+		return Rect2()
+	var size := vp.get_visible_rect().size
+	if size.x <= 0.0:
+		return Rect2()
+	return (vp.get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, size)).grow(CULL_MARGIN)
 
 func clear_all() -> void:
 	# Used when a loaded save rebuilds the map visuals (world_map._rebuild_after_load).
@@ -104,6 +147,8 @@ func remove_instance(instance_id: String) -> void:
 func _draw() -> void:
 	var icon_size := _icon_slot_size()
 	for placement in _placements:
+		if _cull and not _view.intersects(placement.bb):
+			continue
 		if int(placement.slot) == OVERFLOW_INDEX:
 			_draw_overflow(placement.pos)
 			continue

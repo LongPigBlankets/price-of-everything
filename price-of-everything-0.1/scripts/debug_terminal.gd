@@ -165,14 +165,11 @@ func _run_command(text: String) -> String:
 				return "roadworks: could not queue %s (no map or empty network?)" % parts[2]
 			return "usage: roads route <tile_a> <tile_b> | roads connect <tile>"
 		"toggle":
-			if parts.size() >= 2 and parts[1].to_lower() == "roadsv2":
-				RoadNetwork.v2_enabled = not RoadNetwork.v2_enabled
-				# v2 on hides the whole v1 road layer (v2 draws the roads instead)
-				for v1 in get_tree().get_nodes_in_group("road_visuals_v1"):
-					(v1 as CanvasItem).visible = not RoadNetwork.v2_enabled
-				return "roads v2 → %s  (roads v1 %s)" % [
-					"on" if RoadNetwork.v2_enabled else "off",
-					"hidden" if RoadNetwork.v2_enabled else "shown"]
+			if parts.size() >= 2 and parts[1].to_lower() in ["roads", "roadsv2"]:
+				# Phase-5 cutover: roads-v2 is the only system. This just shows/hides
+				# the road VISUALS — the network/logic runs regardless.
+				RoadNetwork.roads_visible = not RoadNetwork.roads_visible
+				return "roads %s" % ("shown" if RoadNetwork.roads_visible else "hidden")
 			if parts.size() >= 2 and parts[1].to_lower() == "roadocc":
 				TileOccupancy.OCCUPANCY_ROADS_ENABLED = not TileOccupancy.OCCUPANCY_ROADS_ENABLED
 				RoadWorks.rebuild_occupancy()
@@ -186,9 +183,9 @@ func _run_command(text: String) -> String:
 					layer.visible = not layer.visible
 					now_visible = layer.visible
 				return "heightmap → %s" % ("on" if now_visible else "off (plain map + rivers)")
-			return "usage: toggle heightmap | roadsv2 | roadocc"
+			return "usage: toggle heightmap | roads | roadocc"
 		"help":
-			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roadsv2|roadocc   |   roads route <a> <b> | roads connect <tile>   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
@@ -223,7 +220,7 @@ func _roads_route(tile_a: String, tile_b: String) -> String:
 	var nb := network.ensure_node("dbg:" + tile_b, RoadNetwork.KIND_JUNCTION, pb, cb)
 	var tier := RoadNetwork.TIER_TRUNK if pa.distance_to(pb) > 1500.0 else RoadNetwork.TIER_LOCAL
 	realizer.commit(network, na.id, nb.id, tier, result, TurnManager.current_turn)
-	RoadNetwork.v2_enabled = true
+	RoadNetwork.roads_visible = true
 	return "routed %s→%s: %d pts, %d bridges, %d expansions, %.1f ms (%s)" % [
 		tile_a, tile_b, result.geometry.size(), result.bridges.size(),
 		result.expansions, elapsed, identity]

@@ -525,6 +525,95 @@ func _test_road_works() -> void:
 		"road works: settled edge is BUILT in the network")
 	_check(RoadWorks.reveal_fraction(edge_id) >= 1.0, "road works: reveal fraction settles at 1")
 
+	# --- hard connect: a road on a RIVER tile far from the network must still
+	# build (the direct corridor can't reach the bridge gate, so it escalates to
+	# the coarse pathfinder). Regression for "roads along a river drew nothing".
+	var oidr := RoadWorks.enqueue_for_tile("tile_12_10")
+	_check(oidr >= 0, "road works: river-tile connect enqueues")
+	# the predetermined bridge previews immediately, before the road has planned
+	_check(RoadWorks.preview_bridges().size() > 0, "road works: river road shows a preview bridge at once")
+	frames = 0
+	while frames < 8000 and str(RoadWorks.orders[oidr].state) in ["queued", "planning", "revealing"]:
+		RoadWorks._process(1.0 / 60.0)
+		frames += 1
+	_check(str(RoadWorks.orders[oidr].state) == "built",
+		"road works: river-tile road routes via coarse fallback (state %s)" % str(RoadWorks.orders[oidr].state))
+	_check(RoadWorks.preview_bridges().size() == 0, "road works: preview bridge clears once the road settles")
+
+	# --- neighbour mesh: two hex-adjacent built tiles must end up DIRECTLY joined
+	# by an edge (not separate spurs reaching back to the trunk). Build one, then
+	# its neighbour; after everything (incl. any link order) drains, a road runs
+	# between their nodes. Regression for "adjacent tiles' roads never connect".
+	var na := "tile_8_8"
+	var nb := "tile_8_9"   # hex-adjacent to tile_8_8
+	RoadWorks.enqueue_for_tile(na)
+	_drain_road_works(8000)
+	RoadWorks.enqueue_for_tile(nb)
+	_drain_road_works(8000)
+	var na_node := "rw:%s" % na
+	var nb_node := "rw:%s" % nb
+	var joined := false
+	for eid in net.edges:
+		var e: Dictionary = net.edges[eid]
+		if (str(e.a) == na_node and str(e.b) == nb_node) or (str(e.a) == nb_node and str(e.b) == na_node):
+			joined = true
+			break
+	_check(joined, "road works: adjacent built tiles are directly joined (mesh, not spurs)")
+	_check(RoadWorks.export_state().get("linked_pairs", []).size() > 0, "road works: neighbour link recorded for dedupe")
+
+	# --- offshoots: a tile with >3 non-forest/non-farm buildings sprouts short
+	# branching stubs off the road running through it (ancillary roads, separate
+	# from the routing network). tile_8_8 carries a settled road from above.
+	var tc88: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(terrain.id_to_coord("tile_8_8")))
+	for n in 4:
+		MatchState.add_building("b_test_factory", "", "tile_8_8", "npc", "off_test_%d" % n)
+	var offs := RoadOffshoots.generate_stubs(terrain, net)
+	var off_on88 := 0
+	var off_maxlen := 0.0
+	for s in offs:
+		var poly: PackedVector2Array = s
+		if poly.size() >= 2 and poly[0].distance_to(tc88) < 350.0:
+			off_on88 += 1
+			off_maxlen = maxf(off_maxlen, poly[0].distance_to(poly[poly.size() - 1]))
+	_check(off_on88 > 0, "road offshoots: built-up tile (>3 buildings) sprouts stubs (%d)" % off_on88)
+	_check(off_maxlen <= RoadOffshoots.OFFSHOOT_MAX_LEN + RoadOffshoots.OFFSHOOT_CONNECT_DIST + 1.0,
+		"road offshoots: stub length bounded to ~12u (max %.0f)" % off_maxlen)
+	# add a forest on tile_8_8: it must NOT count toward the building threshold
+	MatchState.add_building("b_016", "", "tile_8_8", "npc", "off_test_forest")
+	MatchState.remove_building("off_test_0")
+	MatchState.remove_building("off_test_1")
+	var offs2 := RoadOffshoots.generate_stubs(terrain, net)
+	var off_on88_b := 0
+	for s2 in offs2:
+		var p2: PackedVector2Array = s2
+		if p2.size() >= 2 and p2[0].distance_to(tc88) < 350.0:
+			off_on88_b += 1
+	_check(off_on88_b == 0, "road offshoots: forest doesn't count — 2 real buildings is below threshold (%d)" % off_on88_b)
+	for cleanup_id in ["off_test_2", "off_test_3", "off_test_forest"]:
+		MatchState.remove_building(cleanup_id)
+
+	# --- peak ban: roads are forbidden on the snow cap (level >= BAN_LEVEL). A route
+	# straight at 16_9's cap must still succeed, routing AROUND it, and no point of
+	# its geometry may sit on a banned level.
+	var cap_center := Vector2(7155, 5280)
+	var cap_band := -9
+	for dyc in range(-220, 221, 24):
+		for dxc in range(-250, 251, 24):
+			var cc := nav.cell_of(cap_center + Vector2(dxc, dyc))
+			cap_band = maxi(cap_band, (nav.cells[cc.y * nav.gw + cc.x] & 0x0F) - 1)
+	_check(cap_band >= RoadRealizer.BAN_LEVEL, "peak ban: 16_9 has a banned snow cap (band %d)" % cap_band)
+	if cap_band >= RoadRealizer.BAN_LEVEL:
+		var peak_rz := RoadRealizer.new()
+		var pr := peak_rz.route(nav, net, Vector2(6905, 4820), Vector2(6905, 5440),
+			{"identity": "sparse_rural", "salt": 9, "thorough": true})
+		var route_max := -9
+		if pr.ok:
+			for pp in (pr.geometry as PackedVector2Array):
+				var pc := nav.cell_of(pp)
+				route_max = maxi(route_max, (nav.cells[pc.y * nav.gw + pc.x] & 0x0F) - 1)
+		_check(pr.ok and route_max < RoadRealizer.BAN_LEVEL,
+			"peak ban: route gets past the cap without entering a banned level (max lv %d, ban %d)" % [route_max, RoadRealizer.BAN_LEVEL])
+
 	# --- forest invalidation: a forest planted on a PLANNING order's corridor
 	# restarts it; the settled edge above stays (history is history). Use a tile
 	# far from the network so planning genuinely spans frames.
@@ -621,6 +710,10 @@ func _test_road_works() -> void:
 	var planned_frame := -1
 	var settled_frame := -1
 	frames = 0
+	# 25 s window. Neighbour-linking adds orders beyond the 100 completions, but
+	# the 5-way junction cap keeps that bounded, so the build drains and settles
+	# inside the original window even with the climb-cost / 100%-split model. The
+	# anti-LAG gate is over_budget_frames below; this only bounds total settle.
 	while frames < 1500:
 		RoadWorks._process(1.0 / 60.0)
 		b4_max_plan = maxf(b4_max_plan, RoadWorks.last_frame_plan_ms)
@@ -656,6 +749,17 @@ func _test_road_works() -> void:
 	_check(RoadWorks.max_unit_ms <= 25.0,
 		"B4: planning stays chunked - no unit over 25 ms (max %.2f ms)" % RoadWorks.max_unit_ms)
 	_check(failed_orders <= 6, "B4: at most 6 unroutable orders (%d failed, %d built)" % [failed_orders, built_orders])
+	# Junction cap: even under a 100-tile mass build, no node carries more than a
+	# 5-way junction (excess connections merge into a road instead of the point).
+	var b4_max_deg := 0
+	var b4_deg: Dictionary = {}
+	for be in net2.edges:
+		var bed: Dictionary = net2.edges[be]
+		b4_deg[str(bed.a)] = int(b4_deg.get(str(bed.a), 0)) + 1
+		b4_deg[str(bed.b)] = int(b4_deg.get(str(bed.b), 0)) + 1
+	for bn in b4_deg:
+		b4_max_deg = maxi(b4_max_deg, int(b4_deg[bn]))
+	_check(b4_max_deg <= 5, "B4: junctions stay <= 5-way (max degree %d)" % b4_max_deg)
 	print("  [B4] planned=%.1fs settled=%.1fs max_frame_plan=%.2fms built=%d failed=%d" % [
 		float(planned_frame) / 60.0, float(settled_frame) / 60.0, b4_max_plan, built_orders, failed_orders])
 	var times: Array = []
@@ -730,7 +834,9 @@ func _test_region_styles() -> void:
 	_check(RoadNetwork.instance().edge_count() > 30,
 		"region styles: baked network carries the anchor webs (%d edges)" % RoadNetwork.instance().edge_count())
 
-	# RoadWorks trigger: the first settled member road styles its region ONCE
+	# roadsv2.5: a settled member road connects the tile but does NOT auto-grow
+	# the whole region's web (roads appear only where built). Only the connect
+	# order exists after building; no "style" orders are spawned at runtime.
 	RoadWorks.reset()
 	var oid := RoadWorks.enqueue_for_tile("tile_12_8")   # copperstown, dense city
 	var frames := 0
@@ -741,10 +847,10 @@ func _test_region_styles() -> void:
 			break
 	var style_orders := 0
 	for id in RoadWorks.orders:
-		if str(RoadWorks.orders[id].get("kind", "")) == "style" and str(RoadWorks.orders[id].get("region_id", "")) == "copperstown":
+		if str(RoadWorks.orders[id].get("kind", "")) == "style":
 			style_orders += 1
-	_check(style_orders > 0, "region styles: first member road triggers the region web (%d orders)" % style_orders)
-	_check(RoadWorks.enqueue_region_jobs("copperstown") == 0, "region styles: a region is styled exactly once")
+	_check(style_orders == 0, "region styles: building a road does NOT auto-grow the region web (%d style orders)" % style_orders)
+	_check(str(RoadWorks.orders[oid].state) == "built", "region styles: the built tile still connects to the network")
 
 	RoadWorks.reset()
 	RoadNetwork.reset()
@@ -1634,6 +1740,20 @@ func _test_pending_load_applies_on_scene_ready() -> void:
 	_check(MatchState.buildings.size() == before_buildings, "pending save restores the building set")
 	inst.queue_free()
 	await get_tree().process_frame
+
+## Step RoadWorks until no order is queued/planning/revealing (or frame cap).
+func _drain_road_works(max_frames: int) -> void:
+	var frames := 0
+	while frames < max_frames:
+		RoadWorks._process(1.0 / 60.0)
+		frames += 1
+		var pending := false
+		for oid_k in RoadWorks.orders:
+			if str(RoadWorks.orders[oid_k].state) in ["queued", "planning", "revealing"]:
+				pending = true
+				break
+		if not pending:
+			return
 
 func _check(ok: bool, name: String) -> void:
 	if ok:
