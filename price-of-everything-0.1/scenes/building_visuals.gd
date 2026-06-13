@@ -34,6 +34,11 @@ const CELL := 20.0
 const TILE_CENTER := Vector2(270.0, 240.0)
 const DESIGN_GAP := 5.0              # gap kept around each footprint
 const BUILDABLE_MIN_AREA := 400.0    # never size a footprint below ~1 cell
+# Packing-efficiency factor on every footprint. A tile holds `capacity` size-units,
+# so footprints sized at the raw size/capacity fraction sum to ~100% of the buildable
+# area when the tile is full — leaving no room for gaps, so they overflow and vanish.
+# Scaling down means a capacity-full tile sits at ~this density and the buildings fit.
+const FOOTPRINT_SCALE := 0.5
 
 # Layout cost weights (tile-local units; all guesses to tune in-engine). Cost is
 # minimised: cost = W_ROAD*road_dist + W_ELEV*level − W_SAME*same_attract.
@@ -97,8 +102,10 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var is_edge: bool = types.has("extraction") or str(bd.get("internal_name", "")).to_lower().contains("recycl")
 	var cat := TileViewData.category_key(bd)
 	var size_units := int(bd.get("tile_size_used", 1))
-	var capacity := maxi(int(terrain_layer.tiles.get(coord, {}).get("build_capacity", 200)), 1)
-	var area := maxf(float(size_units) / float(capacity) * float(_tile_area[tile_id]), BUILDABLE_MIN_AREA)
+	# Denominator is the size-chart capacity (base 200 + tile-type modifier), matching
+	# the tile size chart; FOOTPRINT_SCALE leaves packing room so capacity-full tiles fit.
+	var capacity := maxi(TileViewData.tile_capacity(terrain_layer.tiles.get(coord, {})), 1)
+	var area := maxf(float(size_units) / float(capacity) * float(_tile_area[tile_id]) * FOOTPRINT_SCALE, BUILDABLE_MIN_AREA)
 	var kind: String = BuildingShapes.KINDS[RoadHash.pick("poly|%s|%s|kind" % [tile_id, instance_id], BuildingShapes.KINDS.size())]
 	var seed_v := RoadHash.pick("poly|%s|%s|var" % [tile_id, instance_id], 9)
 	var placed_here := _placed_on_tile(tile_id)
@@ -111,7 +118,12 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		placed = _search(tile_id, coord, kind, maxf(area, BUILDABLE_MIN_AREA), seed_v, cat, is_edge, placed_here)
 		tries += 1
 	if placed.is_empty():
-		return  # genuinely no room left on the tile
+		# Tile genuinely full — show the building anyway at the floor size, overlapping
+		# rather than vanishing. It claims no cells (cells stay empty), so it neither
+		# corrupts packing nor frees others' cells when removed.
+		placed = _search(tile_id, coord, kind, BUILDABLE_MIN_AREA, seed_v, cat, is_edge, placed_here, true)
+	if placed.is_empty():
+		return  # no buildable land on the tile at all
 
 	var verts: PackedVector2Array = placed.verts
 	var placement := {
@@ -212,8 +224,11 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 	_tile_area[tile_id] = maxf(float(land_count) * CELL * CELL, BUILDABLE_MIN_AREA)
 
 ## Cost-search the tile for the best free pocket the shape's bbox fits in. Returns
-## {verts (world), cells (occupied keys), center_rel}; {} if nothing fits.
-func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array) -> Dictionary:
+## {verts (world), cells (occupied keys), center_rel}; {} if nothing fits. When
+## `allow_overlap` is set (overflow fallback on a full tile) the fit ignores
+## occupancy and the placement claims NO cells, so it draws on top without
+## corrupting the pack or freeing a neighbour's cells when removed.
+func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array, allow_overlap := false) -> Dictionary:
 	if not _tile_land.has(tile_id):
 		return {}   # caller must _ensure_tile first; never KeyError-crash on a miss
 	var shape := BuildingShapes.make(kind, area, seed_v)
@@ -231,7 +246,7 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 		var row := key / GRID_COLS
 		if col < chw or col >= GRID_COLS - chw or row < chh or row >= GRID_ROWS - chh:
 			continue
-		if not _fits(land, occ, col, row, chw, chh):
+		if not _fits(land, occ, col, row, chw, chh, allow_overlap):
 			continue
 		var rel := Vector2((col + 0.5) * CELL, (row + 0.5) * CELL) - TILE_CENTER
 		var cost: float
@@ -247,7 +262,7 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 		return {}
 	var bcol := best_key % GRID_COLS
 	var brow := best_key / GRID_COLS
-	var cells := _mark(occ, bcol, brow, chw, chh)
+	var cells: PackedInt32Array = PackedInt32Array() if allow_overlap else _mark(occ, bcol, brow, chw, chh)
 	var rel_best := Vector2((bcol + 0.5) * CELL, (brow + 0.5) * CELL) - TILE_CENTER
 	var world_center := _tile_center_world_pos(coord) + rel_best
 	var verts := PackedVector2Array()
@@ -329,12 +344,14 @@ func _pt_seg_dist(p: Vector2, a: Vector2, b: Vector2) -> float:
 		t = clampf((p - a).dot(ab) / denom, 0.0, 1.0)
 	return p.distance_to(a + ab * t)
 
-func _fits(land: PackedByteArray, occ: PackedByteArray, col: int, row: int, chw: int, chh: int) -> bool:
+func _fits(land: PackedByteArray, occ: PackedByteArray, col: int, row: int, chw: int, chh: int, ignore_occ := false) -> bool:
 	for r in range(row - chh, row + chh + 1):
 		var base := r * GRID_COLS
 		for c in range(col - chw, col + chw + 1):
 			var key := base + c
-			if land[key] == 0 or occ[key] == 1:
+			if land[key] == 0:
+				return false
+			if not ignore_occ and occ[key] == 1:
 				return false
 	return true
 

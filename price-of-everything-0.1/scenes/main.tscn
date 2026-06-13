@@ -164,15 +164,15 @@ script = ExtResource("3_river")
 [node name="RoadOffshoots" type="Node2D" parent="." unique_id=1474032120]
 script = ExtResource("3_roadoff")
 
+[node name="BuildingVisuals" type="Node2D" parent="." unique_id=1233661023]
+unique_name_in_owner = true
+script = ExtResource("4_choun")
+
 [node name="RoadNetworkVisuals" type="Node2D" parent="." unique_id=1474032119]
 script = ExtResource("3_roadsv2")
 
 [node name="HexGridOverlay" type="Node2D" parent="." unique_id=1474032118]
 script = ExtResource("3_hexgrid")
-
-[node name="BuildingVisuals" type="Node2D" parent="." unique_id=1233661023]
-unique_name_in_owner = true
-script = ExtResource("4_choun")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=2114942879]
 position = Vector2(820, 430)

@@ -337,6 +337,13 @@ static func _category_color(bd: Dictionary) -> Color:
 # Max tile space capacity, including the tile-type modifier (rural +50, hill +25,
 # mountain −25, urban 0). Mirrors the classic tile-size chart.
 const BASE_TILE_CAPACITY := 200
+
+## Public: the size-chart build capacity for a tile (base 200 + tile-type modifier).
+## The polygon layout uses this as the footprint-size denominator — NOT the raw
+## tile "build_capacity" field, which is unset (0) on most tiles.
+static func tile_capacity(tile_data: Dictionary) -> int:
+	return _tile_max_capacity(tile_data)
+
 static func _tile_max_capacity(tile_data: Dictionary) -> int:
 	var impact := 0
 	match str(tile_data.get("type", "")).strip_edges().to_lower():
