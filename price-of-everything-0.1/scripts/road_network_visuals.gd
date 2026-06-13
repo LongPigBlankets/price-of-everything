@@ -16,6 +16,7 @@ const LOCAL_WIDTH := 4.5
 const BRIDGE_COLOR := Color(0.32, 0.2, 0.08)
 
 var _drawn_edges := -1
+var _drawn_previews := -1
 var _active_layer: Node2D = null
 
 func _ready() -> void:
@@ -28,8 +29,10 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	var network := RoadNetwork.instance()
 	var want := _built_count(network) if RoadNetwork.v2_enabled else 0
-	if want != _drawn_edges:
+	var previews := RoadWorks.preview_bridges().size() if RoadNetwork.v2_enabled else 0
+	if want != _drawn_edges or previews != _drawn_previews:
 		_drawn_edges = want
+		_drawn_previews = previews
 		queue_redraw()
 	# the active layer animates only while something is revealing
 	if RoadNetwork.v2_enabled and RoadWorks.has_active_reveals():
@@ -62,6 +65,11 @@ func _draw() -> void:
 		for bridge in edge2.bridges:
 			var t: Vector2 = bridge.tangent
 			draw_line(bridge.point - t * 21.0, bridge.point + t * 21.0, BRIDGE_COLOR, 10.0, true)
+	# Preview bridges: drawn the instant a river road is built, at its
+	# predetermined crossing, while the connecting road is still planning.
+	for pb in RoadWorks.preview_bridges():
+		var pt: Vector2 = pb.tangent
+		draw_line(pb.point - pt * 21.0, pb.point + pt * 21.0, BRIDGE_COLOR, 10.0, true)
 
 func _draw_active() -> void:
 	if not RoadNetwork.v2_enabled:

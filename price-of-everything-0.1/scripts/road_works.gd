@@ -49,6 +49,12 @@ var _next_order := 1
 ## Regions whose style jobs (spec §6) have already been generated — each region
 ## grows its web exactly once, on its first member road (persisted in saves).
 var _styled_regions: Dictionary = {}
+## Preview bridges shown the instant a river road's construction completes, at
+## the tile's PREDETERMINED crossing(s) — immediate feedback while the
+## connecting road plans (which can take a few seconds on a hard river tile).
+## order_id -> Array[{point, tangent}]; cleared when that order settles or
+## fails (the real edge's bridges then represent reality).
+var _preview_bridges: Dictionary = {}
 ## Dedicated realizer: its scratch buffers hold the one in-flight paused job.
 var _realizer := RoadRealizer.new()
 var _job: Dictionary = {}
@@ -121,8 +127,23 @@ func enqueue_for_tile(tile_id: String) -> int:
 	order["kind"] = "connect"
 	orders[id2] = order
 	_queue.append(id2)
+	# Show the tile's predetermined bridge(s) immediately — instant feedback that
+	# the river road is going in, before the connecting road has planned.
+	var crossings := RoadCrossings.for_tile(tile_id)
+	if not crossings.is_empty():
+		var pb: Array = []
+		for c in crossings:
+			pb.append({"point": c.point, "tangent": c.bridge_tangent})
+		_preview_bridges[id2] = pb
 	orders_changed.emit()
 	return id2
+
+## Preview bridges to draw (RoadNetworkVisuals), flattened across pending orders.
+func preview_bridges() -> Array:
+	var out: Array = []
+	for oid in _preview_bridges:
+		out.append_array(_preview_bridges[oid])
+	return out
 
 ## Generate and queue a region's style jobs (spec §6) — its beltway/minihub/
 ## through-route character. Runs once per region, triggered by its first
@@ -265,6 +286,7 @@ func _finish_active() -> void:
 	if not bool(res.get("ok", false)):
 		order.state = "failed"
 		order.reason = str(res.get("reason", ""))
+		_preview_bridges.erase(int(order.id))   # route failed — drop its preview bridge
 		# buffered, NOT printed — stdout flush (and push_warning's backtrace,
 		# ~40 ms) cannot run inside the planning frame budget
 		failure_log.append("order %d (%s): %s" % [int(order.id), str(order.tile_id), str(order.reason)])
@@ -308,6 +330,8 @@ func _settle(order: Dictionary) -> void:
 	var net := RoadNetwork.instance()
 	net.set_edge_state(str(order.edge_id), RoadNetwork.STATE_BUILT)
 	order.state = "built"
+	# The real edge's bridges now represent the crossing — drop the preview.
+	_preview_bridges.erase(int(order.id))
 	if TileOccupancy.OCCUPANCY_ROADS_ENABLED:
 		var edge: Dictionary = net.edges.get(str(order.edge_id), {})
 		if not edge.is_empty():
@@ -555,6 +579,7 @@ func reset() -> void:
 	max_finish_ms = 0.0
 	failure_log.clear()
 	_styled_regions.clear()
+	_preview_bridges.clear()
 
 # ------------------------------------------------------------------ helpers
 

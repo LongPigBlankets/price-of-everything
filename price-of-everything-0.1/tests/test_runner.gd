@@ -530,12 +530,15 @@ func _test_road_works() -> void:
 	# the coarse pathfinder). Regression for "roads along a river drew nothing".
 	var oidr := RoadWorks.enqueue_for_tile("tile_12_10")
 	_check(oidr >= 0, "road works: river-tile connect enqueues")
+	# the predetermined bridge previews immediately, before the road has planned
+	_check(RoadWorks.preview_bridges().size() > 0, "road works: river road shows a preview bridge at once")
 	frames = 0
 	while frames < 8000 and str(RoadWorks.orders[oidr].state) in ["queued", "planning", "revealing"]:
 		RoadWorks._process(1.0 / 60.0)
 		frames += 1
 	_check(str(RoadWorks.orders[oidr].state) == "built",
 		"road works: river-tile road routes via coarse fallback (state %s)" % str(RoadWorks.orders[oidr].state))
+	_check(RoadWorks.preview_bridges().size() == 0, "road works: preview bridge clears once the road settles")
 
 	# --- forest invalidation: a forest planted on a PLANNING order's corridor
 	# restarts it; the settled edge above stays (history is history). Use a tile

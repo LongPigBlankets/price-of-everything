@@ -191,7 +191,14 @@ func _ready() -> void:
 		_place_northern_old_growth_forests()
 		_place_start_buildings()
 
-	# roads-v2: a loaded save restores its as-built network + work orders
+	# roads-v2: the predetermined river crossings must exist before any runtime
+	# routing — the realizer whitelists river cells near these gates, so without
+	# them a road can never cross a river (it was only ever built by the bake and
+	# debug cheats, so river roads silently failed in normal play). Cheap (~123
+	# river tiles), static for the match.
+	if not RoadCrossings.is_built():
+		RoadCrossings.build(terrain_layer)
+	# A loaded save restores its as-built network + work orders
 	# (SaveLoad.import_snapshot); anything else starts from the baked anchor
 	# spine (spec 4.5b). bootstrap_from_bake no-ops when edges were imported.
 	if not loaded_pending or pending_start:
