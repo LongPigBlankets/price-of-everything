@@ -14,6 +14,13 @@ const CASING := Color(0.24, 0.16, 0.05, 0.9)
 const TRUNK_WIDTH := 7.0
 const LOCAL_WIDTH := 4.5
 const BRIDGE_COLOR := Color(0.32, 0.2, 0.08)
+# Roundabout: a node where MORE than 4 roads meet gets an oval ring (~3u x 2u);
+# the roads run into its centre and disappear under it. The oval flattens along
+# the uphill so it doesn't climb, but its inner gap never closes below ~1u.
+const ROUNDABOUT_MIN_DEGREE := 5
+const ROUNDABOUT_MAJOR := 15.0       # semi-major (~3u across)
+const ROUNDABOUT_MINOR_MAX := 10.0   # semi-minor, unflattened (~2u across)
+const ROUNDABOUT_MINOR_MIN := 5.0    # never narrower than ~1u between the loop's two sides
 
 var _drawn_edges := -1
 var _drawn_previews := -1
@@ -75,6 +82,54 @@ func _draw() -> void:
 	for pb in RoadWorks.preview_bridges():
 		var pt: Vector2 = pb.tangent
 		draw_line(pb.point - pt * 21.0, pb.point + pt * 21.0, BRIDGE_COLOR, 10.0, true)
+	_draw_roundabouts(network)
+
+## An oval ring at every node where >4 BUILT roads meet. The minor axis runs
+## along the uphill and shrinks with steepness (so the oval avoids climbing),
+## clamped so the loop's gap stays >= ~1u; the major axis runs along the contour.
+func _draw_roundabouts(network: RoadNetwork) -> void:
+	var degree: Dictionary = {}
+	for eid in network.edges:
+		var e: Dictionary = network.edges[eid]
+		if str(e.state) != RoadNetwork.STATE_BUILT:
+			continue
+		degree[str(e.a)] = int(degree.get(str(e.a), 0)) + 1
+		degree[str(e.b)] = int(degree.get(str(e.b), 0)) + 1
+	if degree.is_empty():
+		return
+	var nav := NavGrid.instance()
+	for nid in degree:
+		if int(degree[nid]) < ROUNDABOUT_MIN_DEGREE:
+			continue
+		var node: Dictionary = network.nodes.get(nid, {})
+		if node.is_empty():
+			continue
+		var c: Vector2 = node.pos
+		var g := _elevation_gradient(nav, c)
+		var minor := ROUNDABOUT_MINOR_MAX
+		var rot := 0.0
+		if g.length() > 0.05:
+			rot = g.angle() - PI * 0.5            # minor axis points uphill
+			minor = clampf(ROUNDABOUT_MINOR_MAX - g.length() * 2.0, ROUNDABOUT_MINOR_MIN, ROUNDABOUT_MINOR_MAX)
+		var ring := PackedVector2Array()
+		for k in 25:
+			var t := TAU * float(k) / 24.0
+			ring.append(c + Vector2(cos(t) * ROUNDABOUT_MAJOR, sin(t) * minor).rotated(rot))
+		draw_polyline(ring, CASING, LOCAL_WIDTH + 3.0, true)
+		draw_polyline(ring, LOCAL_COLOR, LOCAL_WIDTH, true)
+
+## Level gradient (levels per ~2 cells) at a world point, from the navgrid bands.
+func _elevation_gradient(nav: NavGrid, world: Vector2) -> Vector2:
+	if nav == null or not nav.is_ready():
+		return Vector2.ZERO
+	var cell := nav.cell_of(world)
+	if cell.x <= 0 or cell.y <= 0 or cell.x >= nav.gw - 1 or cell.y >= nav.gh - 1:
+		return Vector2.ZERO
+	var gw := nav.gw
+	var i := cell.y * gw + cell.x
+	var gx := float((nav.cells[i + 1] & 0x0F) - (nav.cells[i - 1] & 0x0F))
+	var gy := float((nav.cells[i + gw] & 0x0F) - (nav.cells[i - gw] & 0x0F))
+	return Vector2(gx, gy)
 
 func _draw_active() -> void:
 	var network := RoadNetwork.instance()

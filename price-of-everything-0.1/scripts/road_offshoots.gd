@@ -12,11 +12,15 @@ extends Node2D
 ## above this and is never abstracted.
 
 const BUILDING_THRESHOLD := 3        # > this many qualifying buildings -> offshoots
-const OFFSHOOT_MAX_LEN := 50.0       # ~5u, projected off the through-road into the tile
+# Stub length range (1u..3u, where 1u ≈ 10 world units). Tune freely.
+const OFFSHOOT_MIN_LEN := 10.0       # ~1u
+const OFFSHOOT_MAX_LEN := 30.0       # ~3u
+const OFFSHOOT_CURVE := 0.32         # lateral bulge as a fraction of length (the curve)
 const OFFSHOOT_CONNECT_DIST := 30.0  # ~3u: nearer than this to another road -> bend in
 const ZOOM_SHOW := 0.6               # only drawn when zoomed in past this
 const MAX_STUBS := 240               # global draw-cost cap
 const NON_BUILDINGS := {"farm": true, "new_forest": true, "roads": true}
+const NAV_WATER_RIVER := 3           # navgrid cell high-nibble class (see hill_field)
 
 const COLOR := Color("e8c84a")       # matches the network's LOCAL_COLOR
 const CASING := Color(0.24, 0.16, 0.05, 0.85)
@@ -64,6 +68,7 @@ func _terrain() -> HexMap:
 static func generate_stubs(terrain: HexMap, net: RoadNetwork) -> Array:
 	if terrain == null or net == null or not net.has_any_edges():
 		return []
+	var nav := NavGrid.instance()   # for the river-aim test (may be null in tests)
 	# Count qualifying (non-forest/farm/road) buildings per tile.
 	var count_by_tile: Dictionary = {}
 	for iid in MatchState.buildings:
@@ -102,18 +107,67 @@ static func generate_stubs(terrain: HexMap, net: RoadNetwork) -> Array:
 			var perp := Vector2(-dir.y, dir.x)
 			if RoadHash.pick("offshoot|%s|%d|side" % [tid, i], 2) == 1:
 				perp = -perp
-			var length := 25.0 + float(RoadHash.pick("offshoot|%s|%d|len" % [tid, i], 26))
+			# only bridges cross rivers — a stub near a river always aims away from it
+			perp = _away_from_river(origin, perp, nav)
+			var span := OFFSHOOT_MAX_LEN - OFFSHOOT_MIN_LEN
+			var length := OFFSHOOT_MIN_LEN + float(RoadHash.pick("offshoot|%s|%d|len" % [tid, i], int(span) + 1))
 			var endp := origin + perp * length
 			if not _in_hex(endp, center):
-				endp = origin + perp * (length * 0.5)
+				length *= 0.5
+				endp = origin + perp * length
 				if not _in_hex(endp, center):
 					continue
 			# bend into a nearby road if the stub reaches one (skip the origin road itself)
 			var snap := _nearest_road(all_pts, endp, origin)
 			if not snap.is_empty():
 				endp = snap.point
-			stubs.append(PackedVector2Array([origin, endp]))
+			# curve the stub one way or the other (seeded)
+			var curve_sign := 1.0 if RoadHash.pick("offshoot|%s|%d|curve" % [tid, i], 2) == 0 else -1.0
+			stubs.append(_curved_stub(origin, endp, curve_sign))
 	return stubs
+
+## Quadratic-bezier polyline from `a` to `b`, bulging to one side (curve_sign).
+static func _curved_stub(a: Vector2, b: Vector2, curve_sign: float) -> PackedVector2Array:
+	var d := b - a
+	var lateral := Vector2(-d.y, d.x) * (curve_sign * OFFSHOOT_CURVE)
+	var ctrl := (a + b) * 0.5 + lateral
+	var out := PackedVector2Array()
+	for k in 6:
+		var t := float(k) / 5.0
+		out.append(a.lerp(ctrl, t).lerp(ctrl.lerp(b, t), t))
+	return out
+
+## Orient `perp` to point AWAY from the nearest river within OFFSHOOT_MAX_LEN of
+## `origin` (rivers are crossed only by bridges, never by a stub). Unchanged when
+## no river is near.
+static func _away_from_river(origin: Vector2, perp: Vector2, nav: NavGrid) -> Vector2:
+	if nav == null or not nav.is_ready():
+		return perp
+	var c := nav.cell_of(origin)
+	var reach := int(ceil(OFFSHOOT_MAX_LEN / nav.step)) + 1
+	var best := OFFSHOOT_MAX_LEN * OFFSHOOT_MAX_LEN
+	var nearest := Vector2.ZERO
+	var found := false
+	for dy in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			var nx := c.x + dx
+			var ny := c.y + dy
+			if nx < 0 or ny < 0 or nx >= nav.gw or ny >= nav.gh:
+				continue
+			if (nav.cells[ny * nav.gw + nx] >> 4) != NAV_WATER_RIVER:
+				continue
+			var wp := nav.world_of(nx, ny)
+			var d := wp.distance_squared_to(origin)
+			if d < best:
+				best = d
+				nearest = wp
+				found = true
+	if not found:
+		return perp
+	var away := origin - nearest
+	if away.length_squared() < 1.0:
+		return perp
+	return perp if perp.dot(away) >= 0.0 else -perp
 
 ## (point, unit_tangent) pairs along network edges whose segment midpoint sits
 ## inside this tile's hex — the road through the tile, sampled for branch roots.

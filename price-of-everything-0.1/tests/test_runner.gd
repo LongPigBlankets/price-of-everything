@@ -592,6 +592,27 @@ func _test_road_works() -> void:
 	for cleanup_id in ["off_test_2", "off_test_3", "off_test_forest"]:
 		MatchState.remove_building(cleanup_id)
 
+	# --- peak avoidance: a road routed across a snow cap (16_9) detours around the
+	# highest band instead of going straight over it.
+	var cap_center := Vector2(7155, 5280)
+	var cap_band := -9
+	for dyc in range(-220, 221, 24):
+		for dxc in range(-250, 251, 24):
+			var cc := nav.cell_of(cap_center + Vector2(dxc, dyc))
+			cap_band = maxi(cap_band, (nav.cells[cc.y * nav.gw + cc.x] & 0x0F) - 1)
+	_check(cap_band >= 9, "peak avoidance: 16_9 has a snow cap to avoid (band %d)" % cap_band)
+	if cap_band >= 9:
+		var peak_rz := RoadRealizer.new()
+		var pr := peak_rz.route(nav, net, Vector2(6865, 5120), Vector2(7445, 5120),
+			{"identity": "sparse_rural", "salt": 9, "thorough": true})
+		var route_max := -9
+		if pr.ok:
+			for pp in (pr.geometry as PackedVector2Array):
+				var pc := nav.cell_of(pp)
+				route_max = maxi(route_max, (nav.cells[pc.y * nav.gw + pc.x] & 0x0F) - 1)
+		_check(pr.ok and route_max < cap_band,
+			"peak avoidance: route stays below the cap (route max %d < cap %d)" % [route_max, cap_band])
+
 	# --- forest invalidation: a forest planted on a PLANNING order's corridor
 	# restarts it; the settled edge above stays (history is history). Use a tile
 	# far from the network so planning genuinely spans frames.

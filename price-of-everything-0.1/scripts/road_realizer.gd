@@ -43,6 +43,9 @@ const PREP_CELLS_PER_SLICE := 1100
 ## Cost table (spec Appendix A — change knowingly).
 const COST_ALTITUDE_PER_LEVEL := 0.5     # decision #2: +50% per level crossed
 const COST_VALLEY := 0.03                # prefer the lowest path
+const PEAK_LEVEL := 7                     # the snow cap (lv8+) is what a road goes AROUND;
+                                          # the brown shoulder (lv7) it may still cross
+const COST_PEAK := 0.6                    # extra per level over PEAK_LEVEL (lv8 ×1.6, lv10 ×2.8)
 # River hug (roadsv2.5): roads follow a river bank, running tight and parallel.
 # Applies ONLY near an actual river (NAV_WATER_RIVER) — sea/lake are excluded
 # (so coastal/lakeside roads stay straight). The discount is strong enough that
@@ -54,13 +57,16 @@ const RIVER_HUG_FAR := 24.0             # u — outer edge of the hug band (~1-2
 const NAV_WATER_RIVER := 3              # navgrid cell high-nibble class (see hill_field)
 const COST_GRADIENT_K := 1.5             # serpentine: across-slope is cheap, up-slope is not
 const STEEP_GRAD := 1.0                  # |level gradient| (per cell pair) considered steep
-# MERGE: a cell sharing a road's 24 u cell. Roads that come together run as ONE
-# line and stay merged until splitting would be cheaper. The split tolerance is
-# 1/COST_REUSE − 1, so 0.77 ≈ a road sticks to the shared line until going its
-# own way is >30% shorter, then it branches off again (roadsv2.5 ruling).
-const COST_REUSE := 0.77
-const COST_CROWD := 1.18                 # BESIDE: one cell off a road — discourage
-                                         # running exactly parallel (merge or veer away)
+# MERGE: a cell sharing a road's 24 u cell. Strong discount so roads that come
+# close COLLAPSE onto one shared line instead of shadowing each other (the
+# "still seeing close parallels" report). 0.62 also means they stay merged until
+# going their own way is ~60% shorter — i.e. merge is sticky, split is decisive.
+const COST_REUSE := 0.62
+const COST_CROWD := 1.18                 # BESIDE: one cell off a road — discourage running
+                                         # parallel (merge onto it or veer clear). Kept at
+                                         # baseline; raising it slowed dense mass-builds (B4)
+                                         # without helping as much as the stronger MERGE above.
+const CROWD_RINGS := 1                   # occupancy-cell rings around a road that count as BESIDE
 const TURN_45 := 0.18
 const TURN_90 := 0.85
 const TURN_135 := 3.0
@@ -650,6 +656,11 @@ func _fine_step(job: Dictionary) -> String:
 			var dl := next_level - cur_level
 			move *= 1.0 + COST_ALTITUDE_PER_LEVEL * absf(float(dl))
 			move *= 1.0 + COST_VALLEY * maxf(float(next_level), 0.0)
+			# peak avoidance: the tall mountain bands (the snow/brown cap) are very
+			# dear, so a road detours N/S around a cap (staying on the lower shoulder)
+			# instead of going straight over it. Ramps hard above PEAK_LEVEL.
+			if next_level > PEAK_LEVEL:
+				move *= 1.0 + COST_PEAK * float(next_level - PEAK_LEVEL)
 			# river hug: run tight and parallel to a river bank. _river_near is the
 			# corridor-local distance to the nearest RIVER cell (sea/lake excluded),
 			# so this fires ONLY where the tile actually has a river nearby.
@@ -871,9 +882,9 @@ func _scatter_near_net(nav: NavGrid, c0: Vector2i, lw: int, lh: int, keys: Array
 	var cell_u := RoadNetwork.OCCUPANCY_CELL
 	for i in range(i0, i1):
 		var oc: Vector2i = keys[i]
-		# BESIDE (1): nav cells in the ±1 ring around the occupied 24u cell.
-		var w_lo := Vector2(float(oc.x - 1) * cell_u, float(oc.y - 1) * cell_u)
-		var w_hi := Vector2(float(oc.x + 2) * cell_u, float(oc.y + 2) * cell_u)
+		# BESIDE (1): nav cells in the ±CROWD_RINGS ring around the occupied 24u cell.
+		var w_lo := Vector2(float(oc.x - CROWD_RINGS) * cell_u, float(oc.y - CROWD_RINGS) * cell_u)
+		var w_hi := Vector2(float(oc.x + 1 + CROWD_RINGS) * cell_u, float(oc.y + 1 + CROWD_RINGS) * cell_u)
 		var n_lo := nav.cell_of(w_lo)
 		var n_hi := nav.cell_of(w_hi)
 		for ny in range(maxi(n_lo.y, c0.y), mini(n_hi.y, c0.y + lh - 1) + 1):
