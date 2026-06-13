@@ -11,10 +11,15 @@ const ROAD_COLOR := Color.BLACK
 var _region_city_plan_cache := {}
 
 func _ready() -> void:
-	var world_map: Node = get_parent()
-	if world_map != null and world_map.has_signal("building_placed"):
-		world_map.connect("building_placed", Callable(self, "_on_building_placed"))
-	# Roads join the tile only when their construction completes — redraw then too.
+	# Group lets the 'toggle roadsv2' cheat hide the whole v1 layer when v2 is on
+	# (v2's RoadNetworkVisuals draws the roads instead). At Phase-5 cutover this
+	# node and the v1 planners are deleted outright.
+	add_to_group("road_visuals_v1")
+	visible = not RoadNetwork.v2_enabled
+	# Phase 3 invalidation matrix: building placed -> NOTHING. The old map-wide
+	# building_placed handler (clear region cache + full replan) is deleted —
+	# v1 plans never depended on live buildings, and it fired once per seeded
+	# building at match start. Only a finished ROAD build changes the drawing.
 	Construction.construction_completed.connect(_on_construction_completed)
 	queue_redraw()
 
@@ -122,11 +127,12 @@ func _tile_has_roads(tile_data: Dictionary) -> bool:
 	var infrastructure: Array = tile_data.get("infrastructure_present", [])
 	return infrastructure.has("roads")
 
-func _on_building_placed(_tile_id: String, _building_id: String, _recipe_id: String, _instance_id: String, _coord: Vector2i) -> void:
-	_region_city_plan_cache.clear()
-	queue_redraw()
-
-func _on_construction_completed(_instance_id: String, _tile_id: String) -> void:
+func _on_construction_completed(instance_id: String, _tile_id: String) -> void:
+	# Only a completed ROAD build joins infrastructure_present and changes the
+	# v1 drawing — building completions invalidate nothing (Phase 3 matrix).
+	var building_id := str(MatchState.get_building(instance_id).get("building_id", ""))
+	if str(Catalog.get_building(building_id).get("internal_name", "")) != "roads":
+		return
 	_region_city_plan_cache.clear()
 	queue_redraw()
 

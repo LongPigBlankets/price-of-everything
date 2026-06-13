@@ -1,9 +1,10 @@
 extends Node2D
 ## Draws the baked hill contours (data/hills_baked.json) as stacked OS-relief
-## bands. Pure playback: polygons arrive in paint order (descending area, fill
-## colour pre-resolved per loop), so holes from sinks/ravines render correctly
-## without any clipping. Sits between TerrainLayer and RiverLayer — rivers
-## always draw over the hills.
+## bands. The map is hand-painted and never changes during a match, so at load
+## we render the ~1,300 contour polygons into ONE texture (a SubViewport bake)
+## and from then on draw that single texture every frame — turning ~4,100 draw
+## calls + 1.8M primitives per frame into one textured quad. Sits between
+## TerrainLayer and RiverLayer; rivers always draw over the hills.
 
 ## band = level + 1: [0] = lv -1 sub-sea depressions (deep green);
 ## [1] = lv 0 coastal cream; [2..6] = lv 1-5 vibrant green -> pastel yellow;
@@ -37,10 +38,16 @@ const SEA_COLORS: Array[Color] = [
 	Color(0.17647059, 0.40784314, 0.76862745),
 	Color("ffeeb8"),
 ]
+## Longest side of the baked terrain texture, in pixels. The map is ~12,950 ×
+## 10,500 world units; 4096 keeps it crisp at the default view and only mildly
+## soft at max zoom, for ~54 MB of VRAM. Bump for sharper zoom, at more VRAM.
+const BAKE_LONG_SIDE := 4096.0
 
 var _polys: Array = []
 var _lakes: Array = []
 var _sea: Array = []
+var _baked_tex: Texture2D = null
+var _bake_rect: Rect2 = Rect2()
 
 func _enter_tree() -> void:
 	# the 'toggle heightmap' debug cheat flips visibility on this group
@@ -50,9 +57,64 @@ func _ready() -> void:
 	_polys = HillBaked.polys()
 	_lakes = HillBaked.lakes()
 	_sea = HillBaked.sea()
+	_bake_rect = _compute_bounds()
 	queue_redraw()
+	# Headless (tests) has no GPU to render the SubViewport into — fall back to
+	# direct polygon drawing (harmless, nothing is displayed there anyway).
+	if DisplayServer.get_name() != "headless":
+		_bake_to_texture()
 
 func _draw() -> void:
+	if _baked_tex != null:
+		draw_texture_rect(_baked_tex, _bake_rect, false)
+		return
+	_draw_polys_direct()   # fallback until the bake lands (and in headless)
+
+func _compute_bounds() -> Rect2:
+	var mn := Vector2(INF, INF)
+	var mx := Vector2(-INF, -INF)
+	for coll in [_sea, _polys]:
+		for entry in coll:
+			for p in entry.p:
+				mn = mn.min(p)
+				mx = mx.max(p)
+	for lk in _lakes:
+		for p in lk:
+			mn = mn.min(p)
+			mx = mx.max(p)
+	if mn.x == INF:
+		return Rect2()
+	return Rect2(mn, mx - mn)
+
+## Render every contour into an off-screen SubViewport once, copy it into a
+## standalone ImageTexture, then free the viewport.
+func _bake_to_texture() -> void:
+	var size := _bake_rect.size
+	if size.x <= 0.0 or size.y <= 0.0:
+		return
+	var scale: float = BAKE_LONG_SIDE / maxf(size.x, size.y)
+	var tex_w := int(ceil(size.x * scale))
+	var tex_h := int(ceil(size.y * scale))
+	var vp := SubViewport.new()
+	vp.size = Vector2i(tex_w, tex_h)
+	vp.transparent_bg = true
+	vp.disable_3d = true
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(vp)
+	var painter := HillPainter.new()
+	painter.configure(_sea, _polys, _lakes, _bake_rect.position, scale,
+		SEA_COLORS, BAND_COLORS, WATER_COLOR, OUTLINE_DARKEN, OUTLINE_WIDTH)
+	vp.add_child(painter)
+	# Let the viewport render its single frame, then grab the pixels.
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var img := vp.get_texture().get_image()
+	if img != null and not img.is_empty():
+		_baked_tex = ImageTexture.create_from_image(img)
+	vp.queue_free()
+	queue_redraw()
+
+func _draw_polys_direct() -> void:
 	for entry in _sea:
 		var spts: PackedVector2Array = entry.p
 		if spts.size() < 3:
@@ -77,3 +139,67 @@ func _draw() -> void:
 		var shore: PackedVector2Array = lake_pts.duplicate()
 		shore.append(lake_pts[0])
 		draw_polyline(shore, WATER_COLOR.darkened(0.25), 2.0, true)
+
+## Node2D that paints the contours into the bake SubViewport in texture space
+## (world point -> (p - origin) * scale). Line widths stay in texture pixels so
+## the OS-relief band outlines survive the downscale.
+class HillPainter:
+	extends Node2D
+	var _sea: Array
+	var _polys: Array
+	var _lakes: Array
+	var _origin: Vector2
+	var _scale: float
+	var _sea_colors: Array
+	var _band_colors: Array
+	var _water: Color
+	var _outline_darken: float
+	var _outline_width: float
+
+	func configure(sea: Array, polys: Array, lakes: Array, origin: Vector2, scale: float,
+			sea_colors: Array, band_colors: Array, water: Color, outline_darken: float, outline_width: float) -> void:
+		_sea = sea
+		_polys = polys
+		_lakes = lakes
+		_origin = origin
+		_scale = scale
+		_sea_colors = sea_colors
+		_band_colors = band_colors
+		_water = water
+		_outline_darken = outline_darken
+		_outline_width = outline_width
+
+	func _to_tex(pts: PackedVector2Array) -> PackedVector2Array:
+		var out := PackedVector2Array()
+		out.resize(pts.size())
+		for i in pts.size():
+			out[i] = (pts[i] - _origin) * _scale
+		return out
+
+	func _draw() -> void:
+		for entry in _sea:
+			var spts: PackedVector2Array = entry.p
+			if spts.size() < 3:
+				continue
+			var sband: int = clampi(entry.b, 0, _sea_colors.size() - 1)
+			draw_colored_polygon(_to_tex(spts), _sea_colors[sband])
+		for entry in _polys:
+			var pts: PackedVector2Array = entry.p
+			if pts.size() < 3:
+				continue
+			var band: int = clampi(entry.b, 0, _band_colors.size() - 1)
+			var color: Color = _band_colors[band]
+			var tp := _to_tex(pts)
+			draw_colored_polygon(tp, color)
+			var outline := tp.duplicate()
+			outline.append(tp[0])
+			draw_polyline(outline, color.darkened(_outline_darken), _outline_width, true)
+		for lake_entry in _lakes:
+			var lake_pts: PackedVector2Array = lake_entry
+			if lake_pts.size() < 3:
+				continue
+			var tl := _to_tex(lake_pts)
+			draw_colored_polygon(tl, _water)
+			var shore := tl.duplicate()
+			shore.append(tl[0])
+			draw_polyline(shore, _water.darkened(0.25), 2.0, true)

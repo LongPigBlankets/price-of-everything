@@ -204,7 +204,14 @@ func is_player_owned(building: Dictionary) -> bool:
 	# player's to pay for. Buildings default to the local player when owner is unset.
 	return str(building.get("owner", LOCAL_PLAYER)) == LOCAL_PLAYER
 
-func add_building(building_id: String, recipe_id: String, tile_id: String, owner: String = "player_1", instance_id: String = "") -> String:
+func add_building(
+	building_id: String,
+	recipe_id: String,
+	tile_id: String,
+	owner: String = "player_1",
+	instance_id: String = "",
+	emit_added: bool = true
+) -> String:
 	# Pass the building_id here! An explicit instance_id lets a construction project keep one
 	# stable id from placement through completion; empty means generate a fresh one.
 	if instance_id == "":
@@ -225,9 +232,10 @@ func add_building(building_id: String, recipe_id: String, tile_id: String, owner
 		tile_buildings[tile_id] = []
 	tile_buildings[tile_id].append(instance_id)
 
-	building_added.emit(instance)
-	# Building-driven research conditions (e.g. Mining Mastery) re-evaluate here.
-	_check_unlock_conditions()
+	if emit_added:
+		building_added.emit(instance)
+		# Building-driven research conditions (e.g. Mining Mastery) re-evaluate here.
+		_check_unlock_conditions()
 	return instance_id
 
 func remove_building(instance_id: String) -> bool:

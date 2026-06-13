@@ -1,0 +1,641 @@
+{
+ "version": 1,
+ "regions": {
+  "capital_port": {
+   "name": "Capital Port",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_24_7",
+    "tile_23_8",
+    "tile_24_8",
+    "tile_24_9",
+    "tile_25_9",
+    "tile_26_8",
+    "tile_27_9"
+   ]
+  },
+  "blue_mountains": {
+   "name": "Blue Mountains",
+   "identity": "mountain_range",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_20_9",
+    "tile_21_10",
+    "tile_22_10",
+    "tile_23_11",
+    "tile_24_11",
+    "tile_22_11",
+    "tile_21_9",
+    "tile_22_9",
+    "tile_23_10",
+    "tile_24_10",
+    "tile_25_11"
+   ]
+  },
+  "kingstown": {
+   "name": "Kingstown",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_20_6",
+    "tile_21_7",
+    "tile_20_7",
+    "tile_20_8",
+    "tile_21_8"
+   ]
+  },
+  "long_valley": {
+   "name": "Long Valley",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_20_4",
+    "tile_20_5",
+    "tile_21_5",
+    "tile_22_4",
+    "tile_22_3",
+    "tile_23_4",
+    "tile_22_5",
+    "tile_23_5",
+    "tile_24_4"
+   ]
+  },
+  "asp_city": {
+   "name": "Asp City",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_27_3",
+    "tile_28_3",
+    "tile_27_4",
+    "tile_26_3"
+   ]
+  },
+  "north_aspland": {
+   "name": "North Aspland",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_23_1",
+    "tile_23_2",
+    "tile_24_2",
+    "tile_25_2",
+    "tile_26_2",
+    "tile_27_2",
+    "tile_25_3"
+   ]
+  },
+  "gold_arm": {
+   "name": "Gold Arm",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_24_5",
+    "tile_25_5",
+    "tile_26_5",
+    "tile_25_6",
+    "tile_26_6",
+    "tile_27_7",
+    "tile_28_6",
+    "tile_28_7",
+    "tile_29_8"
+   ]
+  },
+  "hollow_ring": {
+   "name": "Hollow Ring",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_26_11",
+    "tile_25_12",
+    "tile_26_12",
+    "tile_27_12",
+    "tile_28_11",
+    "tile_28_12"
+   ]
+  },
+  "knot_valley": {
+   "name": "Knot Valley",
+   "identity": "sparse_rural",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_21_12",
+    "tile_20_12",
+    "tile_22_12",
+    "tile_21_13",
+    "tile_21_14",
+    "tile_22_13"
+   ]
+  },
+  "tallow_river_valley": {
+   "name": "Tallow River Valley",
+   "identity": "sparse_rural",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_24_13",
+    "tile_23_14",
+    "tile_23_15",
+    "tile_25_14",
+    "tile_24_12",
+    "tile_25_13"
+   ]
+  },
+  "southlake": {
+   "name": "Southlake",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_26_14",
+    "tile_26_15"
+   ]
+  },
+  "southlake_hills": {
+   "name": "Southlake Hills",
+   "identity": "sparse_rural",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_26_13",
+    "tile_27_14",
+    "tile_27_15",
+    "tile_28_14"
+   ]
+  },
+  "farpoint": {
+   "name": "Farpoint",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_29_17",
+    "tile_28_17",
+    "tile_27_18",
+    "tile_27_17",
+    "tile_28_16"
+   ]
+  },
+  "vandel_port": {
+   "name": "Vandel Port",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_23_16",
+    "tile_22_16",
+    "tile_21_17",
+    "tile_21_18"
+   ]
+  },
+  "vandel_island": {
+   "name": "Vandel Island",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_23_18",
+    "tile_24_18"
+   ]
+  },
+  "ashmouth": {
+   "name": "Ashmouth",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_18_18",
+    "tile_18_17",
+    "tile_17_17",
+    "tile_17_18",
+    "tile_19_18",
+    "tile_18_16",
+    "tile_19_17"
+   ]
+  },
+  "teganfort": {
+   "name": "Teganfort",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_18_14",
+    "tile_19_14",
+    "tile_19_13",
+    "tile_19_12",
+    "tile_20_11",
+    "tile_19_11",
+    "tile_18_11",
+    "tile_18_12",
+    "tile_18_13"
+   ]
+  },
+  "new_tegan": {
+   "name": "New Tegan",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_15_14",
+    "tile_16_14",
+    "tile_14_13",
+    "tile_14_14",
+    "tile_16_15"
+   ]
+  },
+  "tegan_valley": {
+   "name": "Tegan Valley",
+   "identity": "sparse_rural",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_15_11",
+    "tile_16_11",
+    "tile_17_12",
+    "tile_15_12",
+    "tile_15_13"
+   ]
+  },
+  "patransland": {
+   "name": "Patransland",
+   "identity": "sparse_rural",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_17_10",
+    "tile_16_10",
+    "tile_17_11",
+    "tile_18_10",
+    "tile_19_10",
+    "tile_17_9"
+   ]
+  },
+  "patran_city": {
+   "name": "Patran City",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_17_8",
+    "tile_18_7",
+    "tile_18_8",
+    "tile_18_9",
+    "tile_19_9",
+    "tile_19_8"
+   ]
+  },
+  "grey_peaks": {
+   "name": "Grey Peaks",
+   "identity": "mountain_range",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_16_8",
+    "tile_15_9",
+    "tile_15_10",
+    "tile_16_9",
+    "tile_14_10",
+    "tile_14_11"
+   ]
+  },
+  "arinnal": {
+   "name": "Arinnal",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_14_6",
+    "tile_14_5",
+    "tile_15_5",
+    "tile_15_6",
+    "tile_16_6",
+    "tile_16_5",
+    "tile_16_4",
+    "tile_17_6",
+    "tile_17_7"
+   ]
+  },
+  "queens_blood": {
+   "name": "Queens Blood",
+   "identity": "sparse_rural",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_17_2",
+    "tile_17_3",
+    "tile_16_3",
+    "tile_17_4",
+    "tile_17_5",
+    "tile_18_5"
+   ]
+  },
+  "leathertown": {
+   "name": "Leathertown",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_18_3",
+    "tile_18_2",
+    "tile_19_3",
+    "tile_19_2",
+    "tile_20_2"
+   ]
+  },
+  "bloodied_mountains": {
+   "name": "Bloodied Mountains",
+   "identity": "mountain_range",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_17_1",
+    "tile_18_1",
+    "tile_19_1",
+    "tile_20_1",
+    "tile_21_2",
+    "tile_21_3",
+    "tile_20_3",
+    "tile_19_4",
+    "tile_19_5",
+    "tile_18_4"
+   ]
+  },
+  "port_lightning": {
+   "name": "Port Lightning",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_13_2",
+    "tile_14_2",
+    "tile_15_2",
+    "tile_14_3"
+   ]
+  },
+  "lightning_bourne": {
+   "name": "Lightning Bourne",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_11_4",
+    "tile_12_3",
+    "tile_13_4",
+    "tile_12_4",
+    "tile_13_5",
+    "tile_10_3"
+   ]
+  },
+  "kindling_mountains": {
+   "name": "Kindling Mountains",
+   "identity": "mountain_range",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_11_5",
+    "tile_12_5",
+    "tile_12_6",
+    "tile_11_7",
+    "tile_10_6",
+    "tile_11_6"
+   ]
+  },
+  "klades_bourne": {
+   "name": "Klades Bourne",
+   "identity": "mountain_range",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_8_2",
+    "tile_9_3",
+    "tile_9_2",
+    "tile_8_1",
+    "tile_7_2",
+    "tile_7_3",
+    "tile_8_3"
+   ]
+  },
+  "shoulderland": {
+   "name": "Shoulderland",
+   "identity": "mountain_range",
+   "identity_source": "designer",
+   "tiles": [
+    "tile_6_1",
+    "tile_6_2",
+    "tile_5_2",
+    "tile_4_2",
+    "tile_5_3",
+    "tile_6_3"
+   ]
+  },
+  "pepper_valley": {
+   "name": "Pepper Valley",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_4_3",
+    "tile_4_4",
+    "tile_4_5",
+    "tile_5_5",
+    "tile_5_4",
+    "tile_6_4",
+    "tile_6_5",
+    "tile_5_6"
+   ]
+  },
+  "klade_estuary": {
+   "name": "Klade Estuary",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_3_3",
+    "tile_2_4",
+    "tile_3_4",
+    "tile_3_5"
+   ]
+  },
+  "silkstown": {
+   "name": "Silkstown",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_9_7",
+    "tile_9_8",
+    "tile_9_9",
+    "tile_8_8",
+    "tile_8_7",
+    "tile_10_7"
+   ]
+  },
+  "pebble_ridge": {
+   "name": "Pebble Ridge",
+   "identity": "mountain_range",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_10_8",
+    "tile_10_9",
+    "tile_9_10"
+   ]
+  },
+  "pebble_valley": {
+   "name": "Pebble Valley",
+   "identity": "sparse_rural",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_11_8",
+    "tile_11_10"
+   ]
+  },
+  "copperstown": {
+   "name": "Copperstown",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_12_8",
+    "tile_12_9",
+    "tile_13_9",
+    "tile_14_9"
+   ]
+  },
+  "green_flats": {
+   "name": "Green Flats",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_10_11",
+    "tile_9_11",
+    "tile_9_12",
+    "tile_9_13",
+    "tile_9_14",
+    "tile_10_13",
+    "tile_11_13",
+    "tile_10_12",
+    "tile_11_11",
+    "tile_11_12"
+   ]
+  },
+  "arin_city": {
+   "name": "Arin City",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_9_16",
+    "tile_10_16",
+    "tile_11_16",
+    "tile_12_16",
+    "tile_12_17",
+    "tile_11_17",
+    "tile_10_17",
+    "tile_9_18",
+    "tile_10_18"
+   ]
+  },
+  "tomash": {
+   "name": "Tomash",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_13_15",
+    "tile_13_14",
+    "tile_12_14",
+    "tile_12_15"
+   ]
+  },
+  "arin_hold": {
+   "name": "Arin Hold",
+   "identity": "sparse_rural",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_9_15",
+    "tile_8_14",
+    "tile_8_15"
+   ]
+  },
+  "sandy_shore": {
+   "name": "Sandy Shore",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_2_12",
+    "tile_3_12",
+    "tile_3_13",
+    "tile_2_13"
+   ]
+  },
+  "stoneshore": {
+   "name": "Stoneshore",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_4_9",
+    "tile_4_10",
+    "tile_5_10",
+    "tile_6_9",
+    "tile_5_9"
+   ]
+  },
+  "crying_shore": {
+   "name": "Crying Shore",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_3_8",
+    "tile_4_8",
+    "tile_5_8"
+   ]
+  },
+  "peatsfield": {
+   "name": "Peatsfield",
+   "identity": "sparse_rural",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_7_15",
+    "tile_6_15",
+    "tile_6_16",
+    "tile_7_17",
+    "tile_7_16"
+   ]
+  },
+  "blackfarm": {
+   "name": "Blackfarm",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_3_15",
+    "tile_2_15",
+    "tile_2_16",
+    "tile_4_15",
+    "tile_3_17"
+   ]
+  },
+  "fort_silversworth": {
+   "name": "Fort Silversworth",
+   "identity": "dense_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_6_12",
+    "tile_6_13",
+    "tile_5_14",
+    "tile_6_14"
+   ]
+  },
+  "snare_harbour": {
+   "name": "Snare Harbour",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_7_12",
+    "tile_7_11",
+    "tile_8_11",
+    "tile_7_10",
+    "tile_8_10"
+   ]
+  },
+  "lighthaven": {
+   "name": "Lighthaven",
+   "identity": "sparse_city",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_14_17",
+    "tile_14_18",
+    "tile_15_18",
+    "tile_15_17",
+    "tile_15_16"
+   ]
+  },
+  "holyfinger": {
+   "name": "Holyfinger",
+   "identity": "dense_rural",
+   "identity_source": "inferred",
+   "tiles": [
+    "tile_4_17",
+    "tile_3_18",
+    "tile_3_19",
+    "tile_4_18",
+    "tile_5_18",
+    "tile_6_17",
+    "tile_5_17"
+   ]
+  }
+ }
+}

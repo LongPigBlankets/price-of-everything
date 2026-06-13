@@ -5,7 +5,9 @@
 [ext_resource type="Script" uid="uid://dg8tjsup0xurr" path="res://scripts/hex_map.gd" id="2_0wfyh"]
 [ext_resource type="Script" uid="uid://camy6u2jwixt4" path="res://scripts/river_visuals.gd" id="3_river"]
 [ext_resource type="Script" path="res://scripts/hill_visuals.gd" id="3_hills"]
+[ext_resource type="Script" path="res://scripts/forest_visuals.gd" id="3_forest"]
 [ext_resource type="Script" path="res://scripts/hex_grid_overlay.gd" id="3_hexgrid"]
+[ext_resource type="Script" path="res://scripts/road_network_visuals.gd" id="3_roadsv2"]
 [ext_resource type="Script" uid="uid://dpj2cadgfaauj" path="res://scenes/building_visuals.gd" id="4_choun"]
 [ext_resource type="Script" uid="uid://cfsobrtsqmg7x" path="res://scripts/road_visuals.gd" id="4_roads"]
 [ext_resource type="Script" uid="uid://bt2kwldefvxx1" path="res://scripts/camera_controller.gd" id="5_tbgi4"]
@@ -147,6 +149,10 @@ script = ExtResource("2_0wfyh")
 [node name="HillVisuals" type="Node2D" parent="." unique_id=1474032117]
 script = ExtResource("3_hills")
 
+[node name="ForestVisuals" type="Node2D" parent="."]
+unique_name_in_owner = true
+script = ExtResource("3_forest")
+
 [node name="RiverLayer" type="TileMapLayer" parent="." unique_id=102520984]
 position = Vector2(0, -5)
 tile_map_data = PackedByteArray("AAABAAMAAwAAAAAAAAAMAA4AAwAAAAAAABASAAwAAwAAAAAAABATAAUAAwAAAAAAABAVAAkAAwAAAAAAABALAAAAAwAAAAAAABAFAAAAAwAAAAAAACAGAAAADAAAAAAAADAKAAAADAAAAAAAAAAHAAEAFgAAAAAAAAAJAAUAHwAAAAAAAAAOAAkAHwAAAAAAABAJAAgAIAAAAAAAAAALAAUAIgAAAAAAAAAJAAMAIgAAAAAAAAARAAMAIwAAAAAAAAAUAAIAIwAAAAAAADANAAoAHgAAAAAAADAHAA4AHgAAAAAAADAIAAcALAAAAAAAAAAKAAQALQAAAAAAAAAIAAMALAAAAAAAABAGAAEAKgAAAAAAABAGAAIAKgAAAAAAACAFAAIAMQAAAAAAAAAEAAIAMQAAAAAAABAIAAQAKwAAAAAAADAJAAkAKwAAAAAAACAKAA0AKwAAAAAAACAGAA0AKwAAAAAAACAGAAwALQAAAAAAABAKAAoALQAAAAAAABAKAAkAKwAAAAAAAAALAAgAKwAAAAAAADALAAcALAAAAAAAABAOAAgAKQAAAAAAACAQAAsAKQAAAAAAACASAAUAKQAAAAAAABATAAIAKQAAAAAAADAPAAsAHQAAAAAAAAAJAAIAMgAAAAAAACAMAAEAKAAAAAAAACAIAAYALAAAAAAAAAAOAAsAKgAAAAAAADANAAgAKgAAAAAAADAMAAcAKgAAAAAAAAADAAIAKgAAAAAAABACAAMAKgAAAAAAACAGAAsAKgAAAAAAABALAA4AKgAAAAAAADARAAwAKgAAAAAAADAUAAkAKgAAAAAAADAUAAgAKwAAAAAAABASAAMAKgAAAAAAACALAAEAKgAAAAAAABAMAAUAKgAAAAAAACAHAAsAKgAAAAAAACAHAAcAKgAAAAAAABAHAAgAKQAAAAAAAAATAAgALQAAAAAAAAAKAAsAKQAAAAAAABALAAsAKQAAAAAAACAMAAwANAAAAAAAAAAKAAwANAAAAAAAADAOAAoAMwAAAAAAABASAAQAKwAAAAAAABAHAAUAMwAAAAAAABAIAAoAMwAAAAAAACAHAAkAKgAAAAAAAAAGAAkAKgAAAAAAADAGAAgANAAAAAAAADALAAwAHQAAAAAAAAANAAMAHQAAAAAAAAAOAAMAHQAAAAAAABAPAAMAJAAAAAAAABAPAAIAJAAAAAAAACASAAIALgAAAAAAADATAAEAKQAAAAAAACASAAEAKQAAAAAAADARAAIAKQAAAAAAACAQAAIAHQAAAAAAAAARAAcAHQAAAAAAAAAMAAYAMwAAAAAAAAAKAAMANAAAAAAAACAQAAcAMQAAAAAAAAAPAAYAMwAAAAAAABAEAAcAMwAAAAAAABAGAAYAMQAAAAAAAAAHAAYAMQAAAAAAABAFAAYAKgAAAAAAABANAAQAKgAAAAAAABAOAAQAKgAAAAAAAAAOAAUAKQAAAAAAABAPAAUANAAAAAAAACAPAAcAKgAAAAAAADASAAcALAAAAAAAAAAKAAUAKgAAAAAAABALAAMALAAAAAAAADAMAAMAHQAAAAAAAAAKAAYAMgAAAAAAAAAMAAQANAAAAAAAAAALAAQANAAAAAAAADALAAIAMwAAAAAAABARAAEAMwAAAAAAABASAAAAIwAAAAAAABARAAAANAAAAAAAABATAAMANAAAAAAAABAFAAgANAAAAAAAAAAEAAgAMQAAAAAAAAADAAgAKAAAAAAAABAFAAsAJgAAAAAAABASAAkALQAAAAAAADATAAoAKwAAAAAAABATAAcAMgAAAAAAACASAAoAMwAAAAAAABAUAAwAMAAAAAAAABAUAAsANAAAAAAAACAVAAwANAAAAAAAACAUAA0AMwAAAAAAABAVAA4AJQAAAAAAADATAAsAKgAAAAAAADASAAYANAAAAAAAADATAAYAHQAAAAAAAAAUAAYACgAAAAAAAAASAAsAJgAAAAAAACA=")
@@ -157,6 +163,9 @@ script = ExtResource("3_river")
 
 [node name="RoadVisuals" type="Node2D" parent="." unique_id=641880522]
 script = ExtResource("4_roads")
+
+[node name="RoadNetworkVisuals" type="Node2D" parent="." unique_id=1474032119]
+script = ExtResource("3_roadsv2")
 
 [node name="HexGridOverlay" type="Node2D" parent="." unique_id=1474032118]
 script = ExtResource("3_hexgrid")
@@ -579,12 +588,21 @@ layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 12
 
-[node name="ScrollContainer" type="ScrollContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/ContentRow" unique_id=1203041290]
+[node name="FieldsHost" type="Control" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/ContentRow" unique_id=1203041291]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
+mouse_filter = 1
 
-[node name="FieldsVBox" type="VBoxContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/ContentRow/ScrollContainer" unique_id=1922200215]
+[node name="ScrollContainer" type="ScrollContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/ContentRow/FieldsHost" unique_id=1203041290]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="FieldsVBox" type="VBoxContainer" parent="UILayer/HUD/HUDContent/BuildingDetailPanel/MarginContainer/VBoxContainer/ContentRow/FieldsHost/ScrollContainer" unique_id=1922200215]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 4

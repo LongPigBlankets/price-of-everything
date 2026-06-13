@@ -106,6 +106,7 @@ func _write_json(result: Dictionary) -> void:
 		"sea": sea_out,
 		"blocked": result.blocked,
 		"massifs": result.massifs,
+		"navgrid": result.get("navgrid", {}),
 	}
 	var file := FileAccess.open(HillBaked.BAKED_PATH, FileAccess.WRITE)
 	file.store_string(JSON.stringify(doc))

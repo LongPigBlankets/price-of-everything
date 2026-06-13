@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dwmhwebrxjjsq"
-path="res://.godot/imported/b_010_petro_refinery.PNG-8f44c3e33c1ca0de4d536e9b6eca4ef2.ctex"
+uid="uid://utk7426lsdux"
+path="res://.godot/imported/b_011_petro_refinery.PNG-23321b1242355eca30e86195b1fc69bd.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/icons/buildings/b_010_petro_refinery.PNG"
-dest_files=["res://.godot/imported/b_010_petro_refinery.PNG-8f44c3e33c1ca0de4d536e9b6eca4ef2.ctex"]
+source_file="res://assets/icons/buildings/b_011_petro_refinery.PNG"
+dest_files=["res://.godot/imported/b_011_petro_refinery.PNG-23321b1242355eca30e86195b1fc69bd.ctex"]
 
 [params]
 

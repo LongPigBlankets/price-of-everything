@@ -90,7 +90,12 @@ func _draw() -> void:
 		_draw_brass_outline(_selected, width)
 
 func _draw_hover_grid(width: float) -> void:
+	# Collect every (deduped) hex edge as a disjoint segment, then submit the whole
+	# grid in ONE draw_multiline_colors — this redraws on every mouse move, so the
+	# old per-edge draw_polyline_colors (≈900 draw calls) showed up badly when panning.
 	var drawn := {}
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
 	for dq in range(-HOVER_RANGE, HOVER_RANGE + 1):
 		for dr in range(-HOVER_RANGE - 3, HOVER_RANGE + 4):
 			var coord := _hover + Vector2i(dq, dr)
@@ -115,12 +120,12 @@ func _draw_hover_grid(width: float) -> void:
 				var a2 := _corner_alpha(coord, (i + 1) % 6)
 				if a1 <= 0.0 and a2 <= 0.0:
 					continue
-				var pts := PackedVector2Array([c1, c2])
-				var cols := PackedColorArray([
-					Color(GRID_COLOR.r, GRID_COLOR.g, GRID_COLOR.b, a1),
-					Color(GRID_COLOR.r, GRID_COLOR.g, GRID_COLOR.b, a2),
-				])
-				draw_polyline_colors(pts, cols, width, true)
+				pts.append(c1)
+				pts.append(c2)
+				cols.append(Color(GRID_COLOR.r, GRID_COLOR.g, GRID_COLOR.b, a1))
+				cols.append(Color(GRID_COLOR.r, GRID_COLOR.g, GRID_COLOR.b, a2))
+	if not pts.is_empty():
+		draw_multiline_colors(pts, cols, width)
 
 ## Corner i of a tile is shared with the neighbours across edges i-1 and i;
 ## its fade value is the closest graph distance among the touching tiles.
