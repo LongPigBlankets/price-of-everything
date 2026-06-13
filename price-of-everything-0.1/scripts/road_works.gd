@@ -309,13 +309,11 @@ func _settle(order: Dictionary) -> void:
 		if not edge.is_empty():
 			_register_edge_occupancy(edge)
 	order_settled.emit(int(order.id))
-	# A region's first member road triggers its style web (spec §6: every
-	# dense-city region grows an orbital on first member road; other identities
-	# get their pattern). Generated exactly once per region.
-	if str(order.get("kind", "connect")) == "connect":
-		var region_id := RoadRegions.region_of(str(order.tile_id))
-		if not _styled_regions.has(region_id):
-			enqueue_region_jobs(region_id)
+	# Roads appear only where the player builds (roadsv2.5 ruling): a settled
+	# member road does NOT auto-grow the whole region's web — it just connects
+	# this tile into the network. Regional beltways/webs exist only in the baked
+	# starting cities (tools/bake_roads via RoadRegionJobs.realize_region).
+	# enqueue_region_jobs() is kept for the bake path and possible future use.
 	orders_changed.emit()
 
 ## Reveal fraction for an edge mid-reveal (visuals): 1.0 when settled/unknown.

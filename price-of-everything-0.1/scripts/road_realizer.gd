@@ -47,7 +47,9 @@ const COST_HUG_DISCOUNT := 0.85          # 30-60 u from water
 const COST_HUG_CROWD := 1.15             # 13-30 u from water
 const COST_GRADIENT_K := 1.5             # serpentine: across-slope is cheap, up-slope is not
 const STEEP_GRAD := 1.0                  # |level gradient| (per cell pair) considered steep
-const COST_REUSE := 0.6                  # within ~24 u of the network
+const COST_REUSE := 0.6                  # MERGE: cell shares a road's 24 u cell
+const COST_CROWD := 1.18                 # BESIDE: one cell off a road — discourage
+                                         # running exactly parallel (merge or veer away)
 const TURN_45 := 0.18
 const TURN_90 := 0.85
 const TURN_135 := 3.0
@@ -632,9 +634,14 @@ func _fine_step(job: Dictionary) -> String:
 				var grad_len := sqrt(grad_len_sq)
 				var along := absf(float(DIR_NX[nd]) * gx_f + float(DIR_NY[nd]) * gy_f) / grad_len
 				move *= 1.0 + grad_k * along * clampf(grad_len / 2.0, 0.0, 1.0)
-			# reuse discount: merge with the existing network (precomputed bitmap)
-			if _near_net[ncell] == 1:
+			# network proximity (precomputed 2-tier bitmap): 2 = merge onto the
+			# road (discount, T-junctions form); 1 = one cell beside it (crowd
+			# penalty, so a 2nd road merges fully or veers off — never parallel)
+			var nn := _near_net[ncell]
+			if nn == 2:
 				move *= COST_REUSE
+			elif nn == 1:
+				move *= COST_CROWD
 			# orbital containment: leaving the region's member tiles is dear
 			if use_region and _region_out[ncell] == 1:
 				move *= outside_mult
@@ -787,14 +794,23 @@ func _scatter_near_net(nav: NavGrid, c0: Vector2i, lw: int, lh: int, keys: Array
 	var cell_u := RoadNetwork.OCCUPANCY_CELL
 	for i in range(i0, i1):
 		var oc: Vector2i = keys[i]
-		# every nav cell whose 24u cell is within ±1 of this occupied cell
+		# BESIDE (1): nav cells in the ±1 ring around the occupied 24u cell.
 		var w_lo := Vector2(float(oc.x - 1) * cell_u, float(oc.y - 1) * cell_u)
 		var w_hi := Vector2(float(oc.x + 2) * cell_u, float(oc.y + 2) * cell_u)
 		var n_lo := nav.cell_of(w_lo)
 		var n_hi := nav.cell_of(w_hi)
 		for ny in range(maxi(n_lo.y, c0.y), mini(n_hi.y, c0.y + lh - 1) + 1):
 			for nx in range(maxi(n_lo.x, c0.x), mini(n_hi.x, c0.x + lw - 1) + 1):
-				_near_net[(ny - c0.y) * lw + (nx - c0.x)] = 1
+				var li := (ny - c0.y) * lw + (nx - c0.x)
+				if _near_net[li] < 1:
+					_near_net[li] = 1
+		# MERGE (2): nav cells inside the occupied 24u cell itself (a road runs
+		# here). max-write (2 > 1) keeps this order-independent across keys.
+		var m_lo := nav.cell_of(Vector2(float(oc.x) * cell_u, float(oc.y) * cell_u))
+		var m_hi := nav.cell_of(Vector2(float(oc.x + 1) * cell_u, float(oc.y + 1) * cell_u))
+		for my in range(maxi(m_lo.y, c0.y), mini(m_hi.y, c0.y + lh - 1) + 1):
+			for mx in range(maxi(m_lo.x, c0.x), mini(m_hi.x, c0.x + lw - 1) + 1):
+				_near_net[(my - c0.y) * lw + (mx - c0.x)] = 2
 
 ## Rebuild the forest-disc cache now if stale — call OUTSIDE the frame budget
 ## (e.g. at enqueue, in turn context) so the ~40 ms rebuild never lands inside

@@ -730,7 +730,9 @@ func _test_region_styles() -> void:
 	_check(RoadNetwork.instance().edge_count() > 30,
 		"region styles: baked network carries the anchor webs (%d edges)" % RoadNetwork.instance().edge_count())
 
-	# RoadWorks trigger: the first settled member road styles its region ONCE
+	# roadsv2.5: a settled member road connects the tile but does NOT auto-grow
+	# the whole region's web (roads appear only where built). Only the connect
+	# order exists after building; no "style" orders are spawned at runtime.
 	RoadWorks.reset()
 	var oid := RoadWorks.enqueue_for_tile("tile_12_8")   # copperstown, dense city
 	var frames := 0
@@ -741,10 +743,10 @@ func _test_region_styles() -> void:
 			break
 	var style_orders := 0
 	for id in RoadWorks.orders:
-		if str(RoadWorks.orders[id].get("kind", "")) == "style" and str(RoadWorks.orders[id].get("region_id", "")) == "copperstown":
+		if str(RoadWorks.orders[id].get("kind", "")) == "style":
 			style_orders += 1
-	_check(style_orders > 0, "region styles: first member road triggers the region web (%d orders)" % style_orders)
-	_check(RoadWorks.enqueue_region_jobs("copperstown") == 0, "region styles: a region is styled exactly once")
+	_check(style_orders == 0, "region styles: building a road does NOT auto-grow the region web (%d style orders)" % style_orders)
+	_check(str(RoadWorks.orders[oid].state) == "built", "region styles: the built tile still connects to the network")
 
 	RoadWorks.reset()
 	RoadNetwork.reset()
