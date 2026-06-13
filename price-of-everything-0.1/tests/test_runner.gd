@@ -561,6 +561,37 @@ func _test_road_works() -> void:
 	_check(joined, "road works: adjacent built tiles are directly joined (mesh, not spurs)")
 	_check(RoadWorks.export_state().get("linked_pairs", []).size() > 0, "road works: neighbour link recorded for dedupe")
 
+	# --- offshoots: a tile with >3 non-forest/non-farm buildings sprouts short
+	# branching stubs off the road running through it (ancillary roads, separate
+	# from the routing network). tile_8_8 carries a settled road from above.
+	var tc88: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(terrain.id_to_coord("tile_8_8")))
+	for n in 4:
+		MatchState.add_building("b_test_factory", "", "tile_8_8", "npc", "off_test_%d" % n)
+	var offs := RoadOffshoots.generate_stubs(terrain, net)
+	var off_on88 := 0
+	var off_maxlen := 0.0
+	for s in offs:
+		var poly: PackedVector2Array = s
+		if poly.size() >= 2 and poly[0].distance_to(tc88) < 350.0:
+			off_on88 += 1
+			off_maxlen = maxf(off_maxlen, poly[0].distance_to(poly[poly.size() - 1]))
+	_check(off_on88 > 0, "road offshoots: built-up tile (>3 buildings) sprouts stubs (%d)" % off_on88)
+	_check(off_maxlen <= RoadOffshoots.OFFSHOOT_MAX_LEN + RoadOffshoots.OFFSHOOT_CONNECT_DIST + 1.0,
+		"road offshoots: stub length bounded to ~5u (max %.0f)" % off_maxlen)
+	# add a forest on tile_8_8: it must NOT count toward the building threshold
+	MatchState.add_building("b_016", "", "tile_8_8", "npc", "off_test_forest")
+	MatchState.remove_building("off_test_0")
+	MatchState.remove_building("off_test_1")
+	var offs2 := RoadOffshoots.generate_stubs(terrain, net)
+	var off_on88_b := 0
+	for s2 in offs2:
+		var p2: PackedVector2Array = s2
+		if p2.size() >= 2 and p2[0].distance_to(tc88) < 350.0:
+			off_on88_b += 1
+	_check(off_on88_b == 0, "road offshoots: forest doesn't count — 2 real buildings is below threshold (%d)" % off_on88_b)
+	for cleanup_id in ["off_test_2", "off_test_3", "off_test_forest"]:
+		MatchState.remove_building(cleanup_id)
+
 	# --- forest invalidation: a forest planted on a PLANNING order's corridor
 	# restarts it; the settled edge above stays (history is history). Use a tile
 	# far from the network so planning genuinely spans frames.

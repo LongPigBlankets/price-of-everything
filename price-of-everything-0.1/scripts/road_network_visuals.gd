@@ -27,19 +27,26 @@ func _ready() -> void:
 	RoadWorks.order_settled.connect(func(_id: int) -> void: _drawn_edges = -1)
 
 func _process(_delta: float) -> void:
+	# 'toggle roads' hides the whole layer; drawing is skipped while hidden.
+	if visible != RoadNetwork.roads_visible:
+		visible = RoadNetwork.roads_visible
+		_active_layer.visible = RoadNetwork.roads_visible
+		queue_redraw()
+	if not RoadNetwork.roads_visible:
+		return
 	var network := RoadNetwork.instance()
-	var want := _built_count(network) if RoadNetwork.v2_enabled else 0
-	var previews := RoadWorks.preview_bridges().size() if RoadNetwork.v2_enabled else 0
+	var want := _built_count(network)
+	var previews := RoadWorks.preview_bridges().size()
 	if want != _drawn_edges or previews != _drawn_previews:
 		_drawn_edges = want
 		_drawn_previews = previews
 		queue_redraw()
 	# the active layer animates only while something is revealing
-	if RoadNetwork.v2_enabled and RoadWorks.has_active_reveals():
+	if RoadWorks.has_active_reveals():
 		_active_layer.queue_redraw()
 	elif _active_layer.get_meta("had_reveals", false):
 		_active_layer.queue_redraw()   # one clearing redraw after the last settle
-	_active_layer.set_meta("had_reveals", RoadNetwork.v2_enabled and RoadWorks.has_active_reveals())
+	_active_layer.set_meta("had_reveals", RoadWorks.has_active_reveals())
 
 func _built_count(network: RoadNetwork) -> int:
 	var n := 0
@@ -49,8 +56,6 @@ func _built_count(network: RoadNetwork) -> int:
 	return n
 
 func _draw() -> void:
-	if not RoadNetwork.v2_enabled:
-		return
 	var network := RoadNetwork.instance()
 	for pass_i in 2:   # casing under colour
 		for edge_id in network.edges:
@@ -72,8 +77,6 @@ func _draw() -> void:
 		draw_line(pb.point - pt * 21.0, pb.point + pt * 21.0, BRIDGE_COLOR, 10.0, true)
 
 func _draw_active() -> void:
-	if not RoadNetwork.v2_enabled:
-		return
 	var network := RoadNetwork.instance()
 	for edge_id in network.edges:
 		var edge: Dictionary = network.edges[edge_id]

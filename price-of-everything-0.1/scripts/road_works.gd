@@ -82,8 +82,6 @@ func _ready() -> void:
 # ----------------------------------------------------------------- enqueue
 
 func _on_construction_completed(instance_id: String, tile_id: String) -> void:
-	if not RoadNetwork.v2_enabled:
-		return
 	var building_id := str(MatchState.get_building(instance_id).get("building_id", ""))
 	var internal := str(Catalog.get_building(building_id).get("internal_name", ""))
 	if internal != "roads":

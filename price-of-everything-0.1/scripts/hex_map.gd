@@ -1,7 +1,6 @@
 extends TileMapLayer
 class_name HexMap
 
-const RoadPlannerScript := preload("res://scripts/road_planner.gd")
 
 const MAP_W := 30
 const MAP_H := 20
@@ -568,12 +567,6 @@ func _river_data_for_tile(tile_data: Dictionary) -> Dictionary:
 	var river_data: Dictionary = river_properties[river_type]
 	return river_data
 
-func _road_segments_for_tile(tile_data: Dictionary) -> Array[Dictionary]:
-	if not _tile_has_roads(tile_data):
-		return []
-	var coord: Vector2i = tile_data["coord"]
-	var planner = RoadPlannerScript.new(self)
-	return planner.road_segments_for_tile_local(coord)
 
 func _tile_has_roads(tile_data: Dictionary) -> bool:
 	var infrastructure: Array = tile_data.get("infrastructure_present", [])

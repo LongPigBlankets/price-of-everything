@@ -54,7 +54,11 @@ const RIVER_HUG_FAR := 24.0             # u — outer edge of the hug band (~1-2
 const NAV_WATER_RIVER := 3              # navgrid cell high-nibble class (see hill_field)
 const COST_GRADIENT_K := 1.5             # serpentine: across-slope is cheap, up-slope is not
 const STEEP_GRAD := 1.0                  # |level gradient| (per cell pair) considered steep
-const COST_REUSE := 0.6                  # MERGE: cell shares a road's 24 u cell
+# MERGE: a cell sharing a road's 24 u cell. Roads that come together run as ONE
+# line and stay merged until splitting would be cheaper. The split tolerance is
+# 1/COST_REUSE − 1, so 0.77 ≈ a road sticks to the shared line until going its
+# own way is >30% shorter, then it branches off again (roadsv2.5 ruling).
+const COST_REUSE := 0.77
 const COST_CROWD := 1.18                 # BESIDE: one cell off a road — discourage
                                          # running exactly parallel (merge or veer away)
 const TURN_45 := 0.18
@@ -266,7 +270,7 @@ func _advance(job: Dictionary) -> void:
 					return
 			job.stage = "finish_smooth"
 		"finish_smooth":
-			job.smoothed = _smooth(_thin(job.full_points, 30.0), 1)
+			job.smoothed = _snap_bridges(_smooth(_thin(job.full_points, 30.0), 1), job.bridges)
 			job.stage = "finish"
 		"finish":
 			var smoothed: PackedVector2Array = job.smoothed
@@ -999,6 +1003,52 @@ func _nearest_passable_local(nav: NavGrid, c0: Vector2i, lw: int, lh: int, world
 					return ny2 * lw + nx2
 	return -1
 
+## A road goes INTO its bridge: the crossing is straightened onto the bridge
+## axis (gate_a → bridge point → gate_b) and a ~1u stub is projected onto each
+## bank past the gate, so approaching roads connect into the bridge rather than
+## wandering near it. Deterministic (gates + geometry are). One straight span
+## replaces the smoothed wander within the crossing zone.
+const BRIDGE_BANK_STUB := 10.0   # ~1u of road projected onto each bank past the gate
+
+func _snap_bridges(geometry: PackedVector2Array, bridges: Array) -> PackedVector2Array:
+	if geometry.size() < 2 or bridges.is_empty():
+		return geometry
+	var pts: Array[Vector2] = []
+	for p in geometry:
+		pts.append(p)
+	for b in bridges:
+		if not b.has("gate_a"):
+			continue
+		var bp: Vector2 = b.point
+		var n: Vector2 = (b.tangent as Vector2).normalized()
+		if n == Vector2.ZERO:
+			continue
+		var reach := RoadCrossings.GATE_OFFSET + BRIDGE_BANK_STUB   # stub end on each bank
+		var e1 := bp + n * reach
+		var e2 := bp - n * reach
+		var zone := reach + 14.0
+		var i0 := -1
+		var i1 := -1
+		for i in pts.size():
+			if pts[i].distance_to(bp) <= zone:
+				if i0 < 0:
+					i0 = i
+				i1 = i
+		if i0 < 0:
+			continue   # this bridge belongs to a different polyline run
+		var prev: Vector2 = pts[i0 - 1] if i0 > 0 else e1
+		# the bank end nearer the approach comes first, then the bridge, then the far end
+		var a := e1 if prev.distance_to(e1) <= prev.distance_to(e2) else e2
+		var far := e2 if a == e1 else e1
+		var out: Array[Vector2] = []
+		out.append_array(pts.slice(0, i0))
+		out.append(a)
+		out.append(bp)
+		out.append(far)
+		out.append_array(pts.slice(i1 + 1))
+		pts = out
+	return PackedVector2Array(pts)
+
 func _bridges_for_path(nav: NavGrid, points: Array[Vector2]) -> Array:
 	var bridges: Array = []
 	for p in points:
@@ -1020,7 +1070,8 @@ func _bridges_for_path(nav: NavGrid, points: Array[Vector2]) -> Array:
 				dup = true
 				break
 		if not dup:
-			bridges.append({"point": best.point, "tangent": best.bridge_tangent})
+			bridges.append({"point": best.point, "tangent": best.bridge_tangent,
+				"gate_a": best.gate_a, "gate_b": best.gate_b})
 	return bridges
 
 func _total_climb(levels: Array[int]) -> int:
