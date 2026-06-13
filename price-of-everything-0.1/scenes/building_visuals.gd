@@ -1,17 +1,18 @@
 extends Node2D
 
 # Polygon building footprints (polygon-buildings plan, phases 1-3). Each
-# non-forest, non-road building is a coloured SHAPE (square/rect/L×2/squared-C),
-# its AREA = (tile_size_used / build_capacity) × the tile's buildable area, packed
-# onto the tile's free LAND cells. Phase 3 makes the layout intelligent:
-#   • the buildable mask now also subtracts ROADS (a clearance around built road
-#     polylines) and FOREST canopies, not just water;
-#   • placement is COST-SCORED, not centre-out: most buildings gravitate to road
-#     frontage, break ties toward low ground, and cluster with same-type neighbours;
+# non-forest, non-road building is a coloured SHAPE (square/rect/L×2/squared-C)
+# whose AREA is a FIXED amount per tile_size_used point (SIZE_UNIT_AREA) — the same
+# building is the same size on every tile, deliberately undersized so a tile never
+# fills (Sanborn/Booth look). It is packed onto the tile's free LAND cells, never
+# shrinking or overlapping. Phase 3 makes the layout intelligent:
+#   • the buildable mask subtracts ROADS (a clearance around built road polylines)
+#     and FOREST canopies, not just water;
+#   • placement is COST-SCORED: most buildings gravitate to road frontage, break ties
+#     toward low ground, pack tight against neighbours, and cluster with same-type;
 #   • recycling/extraction INVERT — they seek the far corners, away from everything.
-# Footprints are axis-aligned (the "lined-up along the road" look comes from the
-# road-distance gravitation + same-type clustering, not per-building rotation).
-# Placement stays incremental + stable: a building keeps its spot until demolished.
+# Footprints are axis-aligned. Placement is incremental + stable: a building keeps
+# its spot until demolished.
 #
 # Ordering note: on a fresh match the seed buildings are emitted BEFORE the road
 # network is bootstrapped, so they first lay out with no road data; world_map calls
@@ -34,19 +35,21 @@ const CELL := 20.0
 const TILE_CENTER := Vector2(270.0, 240.0)
 const DESIGN_GAP := 5.0              # gap kept around each footprint
 const BUILDABLE_MIN_AREA := 400.0    # never size a footprint below ~1 cell
-# Packing-efficiency factor on every footprint. A tile holds `capacity` size-units,
-# so footprints sized at the raw size/capacity fraction sum to ~100% of the buildable
-# area when the tile is full — leaving no room for gaps, so they overflow and vanish.
-# Scaling down means a capacity-full tile sits at ~this density and the buildings fit.
-const FOOTPRINT_SCALE := 0.5
+# Footprint area is a FIXED amount per tile_size_used point, so the same building is the
+# same size on every tile — no crowd-dependent shrinking, no overlap. Deliberately
+# UNDERSIZED: a size-20 building (10% of the base-200 capacity) is ~3% of the hex, so
+# even a capacity-full tile covers only ~30% of it, leaving the hex edges clear for
+# roads, rivers, lakes, sea and relief (the Sanborn/Booth look). Tune to taste.
+const SIZE_UNIT_AREA := 165.0
 
 # Layout cost weights (tile-local units; all guesses to tune in-engine). Cost is
-# minimised: cost = W_ROAD*road_dist + W_ELEV*level − W_SAME*same_attract.
+# minimised: cost = W_ROAD*road_dist + W_ELEV*level + W_COMPACT*dist_to_buildings − W_SAME*same_attract.
 const ROAD_CLEAR := 18.0             # cells within this of a road centreline aren't buildable
 const ROAD_REACH := 160.0            # clip road geometry to roughly this past the hex
 const NO_ROAD_DIST := 100000.0       # road_dist sentinel when the tile has no built road
 const W_ROAD := 1.0                  # gravitate to road frontage (road_dist spans ~0..300)
 const W_ELEV := 4.0                  # low-ground tie-break (level 0..11 → 0..44)
+const W_COMPACT := 3.0               # pack tight against existing buildings (dist spans ~0..400)
 const W_SAME := 50.0                 # same-type cluster pull (same_attract 0..1)
 const SAME_RANGE := 160.0            # same-type attraction radius
 const W_AWAY := 1.5                  # edge-seekers: weight on distance-from-buildings vs from-centre
@@ -75,7 +78,6 @@ var _tile_occ: Dictionary = {}        # tile_id -> PackedByteArray (1 = taken by
 var _tile_roadd: Dictionary = {}      # tile_id -> PackedFloat32Array (dist to nearest road, u)
 var _tile_level: Dictionary = {}      # tile_id -> PackedByteArray (NavGrid level + 1, 0..11)
 var _tile_landkeys: Dictionary = {}   # tile_id -> PackedInt32Array (buildable cell keys)
-var _tile_area: Dictionary = {}       # tile_id -> buildable area (u²)
 
 var _cull := false
 var _view := Rect2()
@@ -102,28 +104,20 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var is_edge: bool = types.has("extraction") or str(bd.get("internal_name", "")).to_lower().contains("recycl")
 	var cat := TileViewData.category_key(bd)
 	var size_units := int(bd.get("tile_size_used", 1))
-	# Denominator is the size-chart capacity (base 200 + tile-type modifier), matching
-	# the tile size chart; FOOTPRINT_SCALE leaves packing room so capacity-full tiles fit.
-	var capacity := maxi(TileViewData.tile_capacity(terrain_layer.tiles.get(coord, {})), 1)
-	var area := maxf(float(size_units) / float(capacity) * float(_tile_area[tile_id]) * FOOTPRINT_SCALE, BUILDABLE_MIN_AREA)
+	# Fixed area per size point (see SIZE_UNIT_AREA): consistent on every tile, no
+	# crowd-dependent shrink, undersized so the tile never fills. The footprint is
+	# planned at this size up front.
+	var area := maxf(float(size_units) * SIZE_UNIT_AREA, BUILDABLE_MIN_AREA)
 	var kind: String = BuildingShapes.KINDS[RoadHash.pick("poly|%s|%s|kind" % [tile_id, instance_id], BuildingShapes.KINDS.size())]
 	var seed_v := RoadHash.pick("poly|%s|%s|var" % [tile_id, instance_id], 9)
 	var placed_here := _placed_on_tile(tile_id)
 
-	# Place at the requested area; shrink and retry if the tile is too full.
+	# Place at the fixed size in the best free pocket — never shrinking, never
+	# overlapping. If the tile is somehow too crowded to fit it (rare while
+	# undersized), the building isn't drawn rather than distorting the layout.
 	var placed := _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here)
-	var tries := 0
-	while placed.is_empty() and tries < 4:
-		area *= 0.6
-		placed = _search(tile_id, coord, kind, maxf(area, BUILDABLE_MIN_AREA), seed_v, cat, is_edge, placed_here)
-		tries += 1
 	if placed.is_empty():
-		# Tile genuinely full — show the building anyway at the floor size, overlapping
-		# rather than vanishing. It claims no cells (cells stay empty), so it neither
-		# corrupts packing nor frees others' cells when removed.
-		placed = _search(tile_id, coord, kind, BUILDABLE_MIN_AREA, seed_v, cat, is_edge, placed_here, true)
-	if placed.is_empty():
-		return  # no buildable land on the tile at all
+		return
 
 	var verts: PackedVector2Array = placed.verts
 	var placement := {
@@ -187,7 +181,6 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 	var segs := _tile_road_segments(coord, center)
 	var discs := _forest_discs(coord, center)
 	var keys := PackedInt32Array()
-	var land_count := 0
 	for row in GRID_ROWS:
 		for col in GRID_COLS:
 			var rel := Vector2((col + 0.5) * CELL, (row + 0.5) * CELL) - TILE_CENTER
@@ -214,21 +207,17 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 			if in_forest:
 				continue   # under a forest canopy
 			land[key] = 1
-			land_count += 1
 			keys.append(key)
 	_tile_land[tile_id] = land
 	_tile_occ[tile_id] = occ
 	_tile_roadd[tile_id] = roadd
 	_tile_level[tile_id] = lvl
 	_tile_landkeys[tile_id] = keys
-	_tile_area[tile_id] = maxf(float(land_count) * CELL * CELL, BUILDABLE_MIN_AREA)
 
 ## Cost-search the tile for the best free pocket the shape's bbox fits in. Returns
-## {verts (world), cells (occupied keys), center_rel}; {} if nothing fits. When
-## `allow_overlap` is set (overflow fallback on a full tile) the fit ignores
-## occupancy and the placement claims NO cells, so it draws on top without
-## corrupting the pack or freeing a neighbour's cells when removed.
-func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array, allow_overlap := false) -> Dictionary:
+## {verts (world), cells (occupied keys), center_rel}; {} if nothing fits (no shrink,
+## no overlap — the caller just doesn't draw it).
+func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array) -> Dictionary:
 	if not _tile_land.has(tile_id):
 		return {}   # caller must _ensure_tile first; never KeyError-crash on a miss
 	var shape := BuildingShapes.make(kind, area, seed_v)
@@ -246,7 +235,7 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 		var row := key / GRID_COLS
 		if col < chw or col >= GRID_COLS - chw or row < chh or row >= GRID_ROWS - chh:
 			continue
-		if not _fits(land, occ, col, row, chw, chh, allow_overlap):
+		if not _fits(land, occ, col, row, chw, chh):
 			continue
 		var rel := Vector2((col + 0.5) * CELL, (row + 0.5) * CELL) - TILE_CENTER
 		var cost: float
@@ -254,7 +243,12 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 			# Maximise distance from the centre AND from other buildings → far corner.
 			cost = -(rel.length() + W_AWAY * _nearest_building_dist(rel, placed_here))
 		else:
-			cost = W_ROAD * roadd[key] + W_ELEV * float(lvl[key]) - W_SAME * _same_attract(rel, cat, placed_here)
+			# Road frontage + low ground + same-type pull, plus a compactness term that
+			# packs each new footprint tight against its neighbours so a busy tile fills
+			# as dense blocks (Sanborn look) instead of spreading and fragmenting.
+			cost = W_ROAD * roadd[key] + W_ELEV * float(lvl[key]) \
+				+ W_COMPACT * _nearest_building_dist(rel, placed_here) \
+				- W_SAME * _same_attract(rel, cat, placed_here)
 		if cost < best_cost:
 			best_cost = cost
 			best_key = key
@@ -262,7 +256,7 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 		return {}
 	var bcol := best_key % GRID_COLS
 	var brow := best_key / GRID_COLS
-	var cells: PackedInt32Array = PackedInt32Array() if allow_overlap else _mark(occ, bcol, brow, chw, chh)
+	var cells := _mark(occ, bcol, brow, chw, chh)
 	var rel_best := Vector2((bcol + 0.5) * CELL, (brow + 0.5) * CELL) - TILE_CENTER
 	var world_center := _tile_center_world_pos(coord) + rel_best
 	var verts := PackedVector2Array()
@@ -344,14 +338,12 @@ func _pt_seg_dist(p: Vector2, a: Vector2, b: Vector2) -> float:
 		t = clampf((p - a).dot(ab) / denom, 0.0, 1.0)
 	return p.distance_to(a + ab * t)
 
-func _fits(land: PackedByteArray, occ: PackedByteArray, col: int, row: int, chw: int, chh: int, ignore_occ := false) -> bool:
+func _fits(land: PackedByteArray, occ: PackedByteArray, col: int, row: int, chw: int, chh: int) -> bool:
 	for r in range(row - chh, row + chh + 1):
 		var base := r * GRID_COLS
 		for c in range(col - chw, col + chw + 1):
 			var key := base + c
-			if land[key] == 0:
-				return false
-			if not ignore_occ and occ[key] == 1:
+			if land[key] == 0 or occ[key] == 1:
 				return false
 	return true
 
@@ -407,7 +399,6 @@ func _clear_tile_caches() -> void:
 	_tile_roadd.clear()
 	_tile_level.clear()
 	_tile_landkeys.clear()
-	_tile_area.clear()
 
 func clear_all() -> void:
 	# A loaded save rebuilds visuals (world_map._rebuild_after_load).
