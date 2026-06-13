@@ -13,7 +13,8 @@ extends PanelContainer
 @onready var output_grid: GridContainer = $MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame/FlowRow/OutputPreview/OutputGrid
 @onready var flow_arrow: TextureRect = $MarginContainer/VBoxContainer/FlowSummary/FlowInset/FlowFrame/FlowRow/FlowArrow
 @onready var status_icon_column: VBoxContainer = $MarginContainer/VBoxContainer/ContentRow/StatusIconColumn
-@onready var fields_vbox: VBoxContainer = $MarginContainer/VBoxContainer/ContentRow/ScrollContainer/FieldsVBox
+@onready var fields_host: Control = $MarginContainer/VBoxContainer/ContentRow/FieldsHost
+@onready var fields_vbox: VBoxContainer = $MarginContainer/VBoxContainer/ContentRow/FieldsHost/ScrollContainer/FieldsVBox
 @onready var panel_margin: MarginContainer = $MarginContainer
 @onready var panel_vbox: VBoxContainer = $MarginContainer/VBoxContainer
 @onready var content_row: HBoxContainer = $MarginContainer/VBoxContainer/ContentRow
@@ -136,6 +137,7 @@ var _action_button_row: HBoxContainer = null
 var _npc_panel: PanelContainer = null
 var _npc_label: Label = null
 var _construction_overlay: Control = null  # blur + "Under Construction" pill over the diagram
+var _npc_blur_rect: ColorRect = null  # frost over an NPC building's info fields (top_level, rect-synced)
 var _showing_construction_instance: String = ""  # instance_id while rendering construction mode
 
 func _ready() -> void:
@@ -258,6 +260,7 @@ func _rebuild_fields(building: Dictionary) -> void:
 	for child in fields_vbox.get_children():
 		child.queue_free()
 	_clear_construction_overlay()  # drop any frosted-diagram overlay from a previous render
+	_clear_npc_field_blur()
 	_showing_construction_instance = ""
 
 	_current_building = building
@@ -279,6 +282,16 @@ func _rebuild_fields(building: Dictionary) -> void:
 		title_label.text = _building_display_name(building, building_data, recipe) + _tile_title_suffix(building)
 		title_label.tooltip_text = _tile_title_tooltip(building)
 		location_label.visible = false
+		# Banner + recipe diagram stay readable; the detail fields render but sit
+		# behind a frost blur — a future specialist advisor can reveal them.
+		_update_flow_summary(recipe)
+		_add_field("Value", _money_text(building_data.get("base_price", 0.0)))
+		_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data)))
+		_add_separator()
+		_add_labour_table(building_data)
+		_add_separator()
+		_add_operation_table(building, recipe)
+		_apply_npc_field_blur()
 		return
 	_apply_npc_mode(false)
 
@@ -344,7 +357,7 @@ func _build_npc_panel() -> void:
 	var buy := Button.new()
 	buy.text = "Buy"
 	buy.disabled = true
-	buy.tooltip_text = "Ports cannot be purchased (yet)"
+	buy.tooltip_text = "NPC buildings rotate onto the purchase market in phases (coming soon)"
 	buy.mouse_filter = Control.MOUSE_FILTER_STOP
 	buy.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	vbox.add_child(buy)
@@ -353,9 +366,11 @@ func _build_npc_panel() -> void:
 	panel_vbox.move_child(_npc_panel, flow_summary.get_index() + 1)
 
 func _apply_npc_mode(on: bool) -> void:
-	# NPC-owned buildings show only the grey "operated by…" card + a disabled Buy —
-	# no recipe diagram, status lights, routes, or upgrade/recipe controls.
-	flow_summary.visible = not on
+	# NPC-owned buildings keep the banner + recipe diagram readable and show the
+	# grey "operated by…" card + a disabled Buy; the info fields below are frosted
+	# (_apply_npc_field_blur). No status lights, routes, or upgrade/recipe controls.
+	flow_summary.visible = true
+	change_recipe_button.visible = change_recipe_button.visible and not on
 	if _route_row != null:
 		_route_row.visible = not on
 	if _input_route_detail != null:
@@ -435,6 +450,33 @@ func _clear_construction_overlay() -> void:
 	if _construction_overlay != null and is_instance_valid(_construction_overlay):
 		_construction_overlay.queue_free()
 	_construction_overlay = null
+
+# --- NPC field frosting -------------------------------------------------------
+# The info fields under an NPC building render normally but sit behind a strong
+# screen-space blur. FieldsHost is a plain full-rect Control wrapping the
+# ScrollContainer, so the overlay anchors over the fields without disturbing
+# the HBox layout (same pattern as the construction overlay on FlowSummary).
+
+func _apply_npc_field_blur() -> void:
+	_clear_npc_field_blur()
+	var blur := ColorRect.new()
+	blur.name = "NPCFieldBlur"
+	blur.set_anchors_preset(Control.PRESET_FULL_RECT)
+	blur.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = CONSTRUCTION_BLUR_SHADER
+	mat.set_shader_parameter("blur_px", 9.0)
+	blur.material = mat
+	fields_host.add_child(blur)
+	_npc_blur_rect = blur
+
+func _clear_npc_field_blur() -> void:
+	_npc_blur_rect = null
+	if fields_host == null:
+		return
+	var existing := fields_host.get_node_or_null("NPCFieldBlur")
+	if existing != null:
+		existing.queue_free()
 
 func _add_cancel_construction_button(instance_id: String) -> void:
 	var btn := Button.new()

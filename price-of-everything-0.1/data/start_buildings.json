@@ -1,0 +1,3138 @@
+{
+ "version": 1,
+ "generated_by": "scripts/build_start_buildings.py",
+ "regions": {
+  "capital_port": {
+   "name": "Capital Port",
+   "owner": "Capital Port Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_010",
+     "recipe": "r_127",
+     "tile": "tile_24_7",
+     "phase": 5
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_23_8",
+     "phase": 5
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_24_8",
+     "phase": 1
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_24_9",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_26_8",
+     "phase": 3
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_27_9",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_24_7",
+     "phase": 5
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_23_8",
+     "phase": 1
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_24_8",
+     "phase": 2
+    },
+    {
+     "building": "b_008",
+     "recipe": "r_076",
+     "tile": "tile_24_9",
+     "phase": 3
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_053",
+     "tile": "tile_25_9",
+     "phase": 4
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_26_8",
+     "phase": 5
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_27_9",
+     "phase": 1
+    },
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_24_7",
+     "phase": 2
+    },
+    {
+     "building": "b_020",
+     "recipe": "r_079",
+     "tile": "tile_23_8",
+     "phase": 3
+    },
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_25_9",
+     "phase": 4
+    },
+    {
+     "building": "b_020",
+     "recipe": "r_079",
+     "tile": "tile_26_8",
+     "phase": 5
+    },
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_23_8",
+     "phase": 1
+    },
+    {
+     "building": "b_020",
+     "recipe": "r_079",
+     "tile": "tile_24_8",
+     "phase": 2
+    },
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_26_8",
+     "phase": 3
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_24_7",
+     "phase": 4
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_24_7",
+     "phase": 5
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_23_8",
+     "phase": 1
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_24_8",
+     "phase": 2
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_24_8",
+     "phase": 3
+    }
+   ]
+  },
+  "blue_mountains": {
+   "name": "Blue Mountains",
+   "owner": "Blue Mountains Mining Syndicate",
+   "buildings": [
+    {
+     "building": "b_001",
+     "recipe": "r_001",
+     "tile": "tile_22_9",
+     "phase": 4
+    },
+    {
+     "building": "b_001",
+     "recipe": "r_001",
+     "tile": "tile_23_10",
+     "phase": 5
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_21_9",
+     "phase": 1
+    }
+   ]
+  },
+  "kingstown": {
+   "name": "Kingstown",
+   "owner": "Kingstown Ironworks",
+   "buildings": [
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_20_6",
+     "phase": 5
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_21_7",
+     "phase": 1
+    },
+    {
+     "building": "b_008",
+     "recipe": "r_076",
+     "tile": "tile_20_7",
+     "phase": 2
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_053",
+     "tile": "tile_20_8",
+     "phase": 3
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_20_6",
+     "phase": 4
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_21_7",
+     "phase": 5
+    },
+    {
+     "building": "b_008",
+     "recipe": "r_076",
+     "tile": "tile_20_7",
+     "phase": 1
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_053",
+     "tile": "tile_20_8",
+     "phase": 2
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_20_6",
+     "phase": 3
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_20_6",
+     "phase": 4
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_21_7",
+     "phase": 5
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_21_7",
+     "phase": 1
+    },
+    {
+     "building": "b_008",
+     "recipe": "r_076",
+     "tile": "tile_20_7",
+     "phase": 2
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_20_7",
+     "phase": 3
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_20_8",
+     "phase": 4
+    }
+   ]
+  },
+  "long_valley": {
+   "name": "Long Valley",
+   "owner": "Long Valley Ironworks",
+   "buildings": [
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_21_5",
+     "phase": 4
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_22_4",
+     "phase": 5
+    },
+    {
+     "building": "b_008",
+     "recipe": "r_076",
+     "tile": "tile_21_5",
+     "phase": 1
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_20_5",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_23_4",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_22_5",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_23_5",
+     "phase": 5
+    }
+   ]
+  },
+  "asp_city": {
+   "name": "Asp City",
+   "owner": "Asp City Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_001",
+     "recipe": "r_018",
+     "tile": "tile_28_3",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_27_3",
+     "phase": 3
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_28_3",
+     "phase": 4
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_27_4",
+     "phase": 5
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_28_3",
+     "phase": 1
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_27_4",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_27_3",
+     "phase": 3
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_28_3",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_27_3",
+     "phase": 5
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_27_3",
+     "phase": 1
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_27_3",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_26_3",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_26_3",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_26_3",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_26_3",
+     "phase": 1
+    }
+   ]
+  },
+  "north_aspland": {
+   "name": "North Aspland",
+   "owner": "North Aspland Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_23_2",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_23_2",
+     "phase": 3
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_23_2",
+     "phase": 4
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_23_2",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_25_2",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_26_2",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_27_2",
+     "phase": 3
+    }
+   ]
+  },
+  "gold_arm": {
+   "name": "Gold Arm",
+   "owner": "Gold Arm Electrochemical Works",
+   "buildings": [
+    {
+     "building": "b_001",
+     "recipe": "r_019",
+     "tile": "tile_24_5",
+     "phase": 2
+    },
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_25_6",
+     "phase": 3
+    },
+    {
+     "building": "b_020",
+     "recipe": "r_079",
+     "tile": "tile_26_6",
+     "phase": 4
+    },
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_25_6",
+     "phase": 5
+    },
+    {
+     "building": "b_020",
+     "recipe": "r_079",
+     "tile": "tile_26_6",
+     "phase": 1
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_27_7",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_28_7",
+     "phase": 3
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_25_6",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_27_7",
+     "phase": 5
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_25_6",
+     "phase": 1
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_26_6",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_24_5",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_25_5",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_28_6",
+     "phase": 5
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_29_8",
+     "phase": 1
+    }
+   ]
+  },
+  "hollow_ring": {
+   "name": "Hollow Ring",
+   "owner": "Hollow Ring Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_001",
+     "recipe": "r_018",
+     "tile": "tile_28_11",
+     "phase": 3
+    },
+    {
+     "building": "b_001",
+     "recipe": "r_018",
+     "tile": "tile_28_12",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_26_11",
+     "phase": 5
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_26_11",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_25_12",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_26_12",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_25_12",
+     "phase": 4
+    }
+   ]
+  },
+  "knot_valley": {
+   "name": "Knot Valley",
+   "owner": "Knot Valley Agricultural Cooperative",
+   "buildings": [
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_21_12",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_20_12",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_21_13",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_21_12",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_20_12",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_21_13",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_21_12",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_21_12",
+     "phase": 2
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_20_12",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_22_12",
+     "phase": 4
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_21_13",
+     "phase": 5
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_21_14",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_22_13",
+     "phase": 2
+    }
+   ]
+  },
+  "tallow_river_valley": {
+   "name": "Tallow River Valley",
+   "owner": "Tallow River Valley Agricultural Cooperative",
+   "buildings": [
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_24_13",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_23_14",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_23_15",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_24_12",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_25_13",
+     "phase": 2
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_24_13",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_23_14",
+     "phase": 4
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_23_15",
+     "phase": 5
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_25_14",
+     "phase": 1
+    },
+    {
+     "building": "b_032",
+     "recipe": "r_014",
+     "tile": "tile_23_14",
+     "phase": 2
+    },
+    {
+     "building": "b_001",
+     "recipe": "r_015",
+     "tile": "tile_23_15",
+     "phase": 3
+    }
+   ]
+  },
+  "southlake": {
+   "name": "Southlake",
+   "owner": "Southlake Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_26_14",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_26_15",
+     "phase": 3
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_26_14",
+     "phase": 4
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_26_14",
+     "phase": 5
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_26_14",
+     "phase": 1
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_26_14",
+     "phase": 2
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_26_15",
+     "phase": 3
+    }
+   ]
+  },
+  "southlake_hills": {
+   "name": "Southlake Hills",
+   "owner": "Southlake Hills Agricultural Cooperative",
+   "buildings": [
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_28_14",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_28_14",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_28_14",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_28_14",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_28_14",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_28_14",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_26_13",
+     "phase": 4
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_27_14",
+     "phase": 5
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_27_15",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_28_14",
+     "phase": 2
+    },
+    {
+     "building": "b_001",
+     "recipe": "r_006",
+     "tile": "tile_26_13",
+     "phase": 3
+    }
+   ]
+  },
+  "farpoint": {
+   "name": "Farpoint",
+   "owner": "Farpoint Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_29_17",
+     "phase": 3
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_29_17",
+     "phase": 4
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_29_17",
+     "phase": 5
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_29_17",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_28_17",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_27_18",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_28_17",
+     "phase": 4
+    }
+   ]
+  },
+  "vandel_port": {
+   "name": "Vandel Port",
+   "owner": "Vandel Port Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_032",
+     "recipe": "r_014",
+     "tile": "tile_23_16",
+     "phase": 3
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_23_16",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_22_16",
+     "phase": 5
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_21_17",
+     "phase": 1
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_23_16",
+     "phase": 2
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_22_16",
+     "phase": 3
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_21_17",
+     "phase": 4
+    },
+    {
+     "building": "b_008",
+     "recipe": "r_076",
+     "tile": "tile_21_18",
+     "phase": 5
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_053",
+     "tile": "tile_23_16",
+     "phase": 1
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_22_16",
+     "phase": 2
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_23_16",
+     "phase": 3
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_22_16",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_21_17",
+     "phase": 5
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_22_16",
+     "phase": 1
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_22_16",
+     "phase": 2
+    }
+   ]
+  },
+  "vandel_island": {
+   "name": "Vandel Island",
+   "owner": "Vandel Island Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_23_18",
+     "phase": 5
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_23_18",
+     "phase": 1
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_23_18",
+     "phase": 2
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_23_18",
+     "phase": 3
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_23_18",
+     "phase": 4
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_23_18",
+     "phase": 5
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_23_18",
+     "phase": 1
+    }
+   ]
+  },
+  "ashmouth": {
+   "name": "Ashmouth",
+   "owner": "Ashmouth Petrochemical Co.",
+   "buildings": [
+    {
+     "building": "b_001",
+     "recipe": "r_015",
+     "tile": "tile_18_18",
+     "phase": 3
+    },
+    {
+     "building": "b_001",
+     "recipe": "r_006",
+     "tile": "tile_19_18",
+     "phase": 4
+    },
+    {
+     "building": "b_011",
+     "recipe": "r_180",
+     "tile": "tile_18_16",
+     "phase": 5
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_18_18",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_18_18",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_18_17",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_18_18",
+     "phase": 4
+    }
+   ]
+  },
+  "teganfort": {
+   "name": "Teganfort",
+   "owner": "Teganfort Ironworks",
+   "buildings": [
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_18_14",
+     "phase": 3
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_19_14",
+     "phase": 4
+    },
+    {
+     "building": "b_008",
+     "recipe": "r_076",
+     "tile": "tile_19_13",
+     "phase": 5
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_053",
+     "tile": "tile_19_12",
+     "phase": 1
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_20_11",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_18_14",
+     "phase": 3
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_19_14",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_19_12",
+     "phase": 5
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_20_11",
+     "phase": 1
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_18_14",
+     "phase": 2
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_18_14",
+     "phase": 3
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_18_14",
+     "phase": 4
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_19_14",
+     "phase": 5
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_19_14",
+     "phase": 1
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_19_14",
+     "phase": 2
+    }
+   ]
+  },
+  "new_tegan": {
+   "name": "New Tegan",
+   "owner": "New Tegan Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_15_14",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_15_14",
+     "phase": 5
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_15_14",
+     "phase": 1
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_15_14",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_16_14",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_14_13",
+     "phase": 4
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_16_14",
+     "phase": 5
+    }
+   ]
+  },
+  "tegan_valley": {
+   "name": "Tegan Valley",
+   "owner": "Tegan Valley Agricultural Cooperative",
+   "buildings": [
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_15_11",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_16_11",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_17_12",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_15_12",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_15_13",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_15_11",
+     "phase": 2
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_15_11",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_16_11",
+     "phase": 4
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_17_12",
+     "phase": 5
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_15_12",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_15_13",
+     "phase": 2
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_15_11",
+     "phase": 3
+    }
+   ]
+  },
+  "patransland": {
+   "name": "Patransland",
+   "owner": "Patransland Agricultural Cooperative",
+   "buildings": [
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_17_10",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_16_10",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_17_11",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_18_10",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_19_10",
+     "phase": 5
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_17_10",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_16_10",
+     "phase": 2
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_17_11",
+     "phase": 3
+    }
+   ]
+  },
+  "patran_city": {
+   "name": "Patran City",
+   "owner": "Patran City Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_17_8",
+     "phase": 3
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_18_7",
+     "phase": 4
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_18_8",
+     "phase": 5
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_17_8",
+     "phase": 1
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_18_7",
+     "phase": 2
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_18_8",
+     "phase": 3
+    },
+    {
+     "building": "b_008",
+     "recipe": "r_076",
+     "tile": "tile_18_9",
+     "phase": 4
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_053",
+     "tile": "tile_17_8",
+     "phase": 5
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_18_7",
+     "phase": 1
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_17_8",
+     "phase": 2
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_17_8",
+     "phase": 3
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_18_8",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_18_9",
+     "phase": 5
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_18_7",
+     "phase": 1
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_18_7",
+     "phase": 2
+    }
+   ]
+  },
+  "grey_peaks": {
+   "name": "Grey Peaks",
+   "owner": "Grey Peaks Mining Syndicate",
+   "buildings": [
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_14_10",
+     "phase": 1
+    }
+   ]
+  },
+  "arinnal": {
+   "name": "Arinnal",
+   "owner": "Arinnal Electrochemical Works",
+   "buildings": [
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_14_6",
+     "phase": 5
+    },
+    {
+     "building": "b_020",
+     "recipe": "r_079",
+     "tile": "tile_14_6",
+     "phase": 1
+    },
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_14_6",
+     "phase": 2
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_14_6",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_14_5",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_15_5",
+     "phase": 5
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_17_7",
+     "phase": 1
+    }
+   ]
+  },
+  "queens_blood": {
+   "name": "Queens Blood",
+   "owner": "Queens Blood Agricultural Cooperative",
+   "buildings": [
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_17_2",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_17_3",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_16_3",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_17_4",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_17_5",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_18_5",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_17_2",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_17_3",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_16_3",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_17_4",
+     "phase": 3
+    }
+   ]
+  },
+  "leathertown": {
+   "name": "Leathertown",
+   "owner": "Leathertown Ironworks",
+   "buildings": [
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_18_3",
+     "phase": 2
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_18_3",
+     "phase": 3
+    },
+    {
+     "building": "b_008",
+     "recipe": "r_076",
+     "tile": "tile_18_3",
+     "phase": 4
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_18_3",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_20_2",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_20_2",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_20_2",
+     "phase": 3
+    }
+   ]
+  },
+  "bloodied_mountains": {
+   "name": "Bloodied Mountains",
+   "owner": "Bloodied Mountains Mining Syndicate",
+   "buildings": [
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_17_1",
+     "phase": 4
+    }
+   ]
+  },
+  "port_lightning": {
+   "name": "Port Lightning",
+   "owner": "Port Lightning Electrochemical Works",
+   "buildings": [
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_13_2",
+     "phase": 2
+    },
+    {
+     "building": "b_020",
+     "recipe": "r_079",
+     "tile": "tile_14_2",
+     "phase": 3
+    },
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_13_2",
+     "phase": 4
+    },
+    {
+     "building": "b_020",
+     "recipe": "r_079",
+     "tile": "tile_14_2",
+     "phase": 5
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_15_2",
+     "phase": 1
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_14_3",
+     "phase": 2
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_13_2",
+     "phase": 3
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_15_2",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_14_3",
+     "phase": 5
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_13_2",
+     "phase": 1
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_13_2",
+     "phase": 2
+    },
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_15_2",
+     "phase": 3
+    },
+    {
+     "building": "b_020",
+     "recipe": "r_079",
+     "tile": "tile_14_3",
+     "phase": 4
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_14_2",
+     "phase": 5
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_14_2",
+     "phase": 1
+    }
+   ]
+  },
+  "lightning_bourne": {
+   "name": "Lightning Bourne",
+   "owner": "Lightning Bourne Ironworks",
+   "buildings": [
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_10_3",
+     "phase": 2
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_10_3",
+     "phase": 3
+    },
+    {
+     "building": "b_008",
+     "recipe": "r_076",
+     "tile": "tile_10_3",
+     "phase": 4
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_11_4",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_12_3",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_13_4",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_12_3",
+     "phase": 3
+    }
+   ]
+  },
+  "kindling_mountains": {
+   "name": "Kindling Mountains",
+   "owner": "Kindling Mountains Mining Syndicate",
+   "buildings": [
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_11_7",
+     "phase": 3
+    }
+   ]
+  },
+  "klades_bourne": {
+   "name": "Klades Bourne",
+   "owner": "Klades Bourne Mining Syndicate",
+   "buildings": [
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_7_3",
+     "phase": 1
+    }
+   ]
+  },
+  "shoulderland": {
+   "name": "Shoulderland",
+   "owner": "Shoulderland Mining Syndicate",
+   "buildings": [
+    {
+     "building": "b_001",
+     "recipe": "r_018",
+     "tile": "tile_4_2",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_6_2",
+     "phase": 2
+    }
+   ]
+  },
+  "pepper_valley": {
+   "name": "Pepper Valley",
+   "owner": "Pepper Valley Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_5_4",
+     "phase": 5
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_6_5",
+     "phase": 1
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_5_4",
+     "phase": 2
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_4_4",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_4_3",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_4_4",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_4_5",
+     "phase": 1
+    }
+   ]
+  },
+  "klade_estuary": {
+   "name": "Klade Estuary",
+   "owner": "Klade Estuary Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_3_3",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_2_4",
+     "phase": 3
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_3_3",
+     "phase": 4
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_3_3",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_3_4",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_3_4",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_3_4",
+     "phase": 3
+    }
+   ]
+  },
+  "silkstown": {
+   "name": "Silkstown",
+   "owner": "Silkstown Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_9_8",
+     "phase": 1
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_9_9",
+     "phase": 2
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_9_8",
+     "phase": 3
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_9_7",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_9_7",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_8_8",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_9_7",
+     "phase": 2
+    }
+   ]
+  },
+  "pebble_ridge": {
+   "name": "Pebble Ridge",
+   "owner": "Pebble Ridge Mining Syndicate",
+   "buildings": [
+    {
+     "building": "b_001",
+     "recipe": "r_006",
+     "tile": "tile_10_8",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_9_10",
+     "phase": 2
+    }
+   ]
+  },
+  "pebble_valley": {
+   "name": "Pebble Valley",
+   "owner": "Pebble Valley Agricultural Cooperative",
+   "buildings": [
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_11_8",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_11_10",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_11_8",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_11_10",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_11_8",
+     "phase": 2
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_11_8",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_11_10",
+     "phase": 4
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_11_8",
+     "phase": 5
+    }
+   ]
+  },
+  "copperstown": {
+   "name": "Copperstown",
+   "owner": "Copperstown Copperworks",
+   "buildings": [
+    {
+     "building": "b_002",
+     "recipe": "r_007",
+     "tile": "tile_12_8",
+     "phase": 1
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_12_9",
+     "phase": 2
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_007",
+     "tile": "tile_14_9",
+     "phase": 3
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_007",
+     "tile": "tile_12_8",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_12_9",
+     "phase": 5
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_007",
+     "tile": "tile_14_9",
+     "phase": 1
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_007",
+     "tile": "tile_12_8",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_12_9",
+     "phase": 3
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_007",
+     "tile": "tile_14_9",
+     "phase": 4
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_12_9",
+     "phase": 5
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_12_8",
+     "phase": 1
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_007",
+     "tile": "tile_12_8",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_12_9",
+     "phase": 3
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_12_9",
+     "phase": 4
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_13_9",
+     "phase": 5
+    }
+   ]
+  },
+  "green_flats": {
+   "name": "Green Flats",
+   "owner": "Green Flats Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_11_12",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_11_12",
+     "phase": 3
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_11_12",
+     "phase": 4
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_10_11",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_10_11",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_9_11",
+     "phase": 2
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_10_11",
+     "phase": 3
+    }
+   ]
+  },
+  "arin_city": {
+   "name": "Arin City",
+   "owner": "Arin City Petrochemical Co.",
+   "buildings": [
+    {
+     "building": "b_001",
+     "recipe": "r_019",
+     "tile": "tile_12_17",
+     "phase": 2
+    },
+    {
+     "building": "b_011",
+     "recipe": "r_180",
+     "tile": "tile_9_16",
+     "phase": 3
+    },
+    {
+     "building": "b_013",
+     "recipe": "r_024",
+     "tile": "tile_10_16",
+     "phase": 4
+    },
+    {
+     "building": "b_013",
+     "recipe": "r_028",
+     "tile": "tile_12_16",
+     "phase": 5
+    },
+    {
+     "building": "b_011",
+     "recipe": "r_180",
+     "tile": "tile_12_17",
+     "phase": 1
+    },
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_11_17",
+     "phase": 2
+    },
+    {
+     "building": "b_020",
+     "recipe": "r_079",
+     "tile": "tile_10_17",
+     "phase": 3
+    },
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_9_16",
+     "phase": 4
+    },
+    {
+     "building": "b_020",
+     "recipe": "r_079",
+     "tile": "tile_10_16",
+     "phase": 5
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_11_16",
+     "phase": 1
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_9_16",
+     "phase": 2
+    },
+    {
+     "building": "b_013",
+     "recipe": "r_024",
+     "tile": "tile_11_16",
+     "phase": 3
+    },
+    {
+     "building": "b_013",
+     "recipe": "r_028",
+     "tile": "tile_12_17",
+     "phase": 4
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_10_16",
+     "phase": 5
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_11_17",
+     "phase": 1
+    }
+   ]
+  },
+  "tomash": {
+   "name": "Tomash",
+   "owner": "Tomash Ironworks",
+   "buildings": [
+    {
+     "building": "b_001",
+     "recipe": "r_134",
+     "tile": "tile_13_14",
+     "phase": 4
+    },
+    {
+     "building": "b_001",
+     "recipe": "r_001",
+     "tile": "tile_12_14",
+     "phase": 5
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_13_15",
+     "phase": 1
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_13_15",
+     "phase": 2
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_13_15",
+     "phase": 3
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_13_15",
+     "phase": 4
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_13_15",
+     "phase": 5
+    }
+   ]
+  },
+  "arin_hold": {
+   "name": "Arin Hold",
+   "owner": "Arin Hold Agricultural Cooperative",
+   "buildings": [
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_9_15",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_9_15",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_9_15",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_9_15",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_9_15",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_9_15",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_9_15",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_9_15",
+     "phase": 2
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_8_14",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_8_15",
+     "phase": 4
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_8_14",
+     "phase": 5
+    }
+   ]
+  },
+  "sandy_shore": {
+   "name": "Sandy Shore",
+   "owner": "Sandy Shore Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_2_12",
+     "phase": 3
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_3_12",
+     "phase": 4
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_2_12",
+     "phase": 5
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_2_12",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_3_13",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_2_13",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_3_13",
+     "phase": 4
+    }
+   ]
+  },
+  "stoneshore": {
+   "name": "Stoneshore",
+   "owner": "Stoneshore Ironworks",
+   "buildings": [
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_4_9",
+     "phase": 5
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_4_10",
+     "phase": 1
+    },
+    {
+     "building": "b_008",
+     "recipe": "r_076",
+     "tile": "tile_5_10",
+     "phase": 2
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_053",
+     "tile": "tile_4_9",
+     "phase": 3
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_4_10",
+     "phase": 4
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_5_10",
+     "phase": 5
+    },
+    {
+     "building": "b_008",
+     "recipe": "r_076",
+     "tile": "tile_4_9",
+     "phase": 1
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_053",
+     "tile": "tile_4_10",
+     "phase": 2
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_5_10",
+     "phase": 3
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_6_9",
+     "phase": 4
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_4_9",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_6_9",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_5_9",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_6_9",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_6_9",
+     "phase": 4
+    }
+   ]
+  },
+  "crying_shore": {
+   "name": "Crying Shore",
+   "owner": "Crying Shore Electrochemical Works",
+   "buildings": [
+    {
+     "building": "b_001",
+     "recipe": "r_010",
+     "tile": "tile_5_8",
+     "phase": 5
+    },
+    {
+     "building": "b_012",
+     "recipe": "r_012",
+     "tile": "tile_3_8",
+     "phase": 1
+    },
+    {
+     "building": "b_020",
+     "recipe": "r_079",
+     "tile": "tile_3_8",
+     "phase": 2
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_3_8",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_4_8",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_5_8",
+     "phase": 5
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_4_8",
+     "phase": 1
+    }
+   ]
+  },
+  "peatsfield": {
+   "name": "Peatsfield",
+   "owner": "Peatsfield Agricultural Cooperative",
+   "buildings": [
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_7_15",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_7_17",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_7_16",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_7_15",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_7_15",
+     "phase": 2
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_6_15",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_6_16",
+     "phase": 4
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_7_17",
+     "phase": 5
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_7_16",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_7_15",
+     "phase": 2
+    },
+    {
+     "building": "b_011",
+     "recipe": "r_180",
+     "tile": "tile_7_15",
+     "phase": 3
+    }
+   ]
+  },
+  "blackfarm": {
+   "name": "Blackfarm",
+   "owner": "Blackfarm Petrochemical Co.",
+   "buildings": [
+    {
+     "building": "b_011",
+     "recipe": "r_180",
+     "tile": "tile_3_15",
+     "phase": 3
+    },
+    {
+     "building": "b_013",
+     "recipe": "r_024",
+     "tile": "tile_2_15",
+     "phase": 4
+    },
+    {
+     "building": "b_013",
+     "recipe": "r_028",
+     "tile": "tile_3_15",
+     "phase": 5
+    },
+    {
+     "building": "b_011",
+     "recipe": "r_180",
+     "tile": "tile_2_15",
+     "phase": 1
+    },
+    {
+     "building": "b_013",
+     "recipe": "r_024",
+     "tile": "tile_2_16",
+     "phase": 2
+    },
+    {
+     "building": "b_013",
+     "recipe": "r_028",
+     "tile": "tile_2_15",
+     "phase": 3
+    },
+    {
+     "building": "b_011",
+     "recipe": "r_180",
+     "tile": "tile_2_16",
+     "phase": 4
+    },
+    {
+     "building": "b_013",
+     "recipe": "r_024",
+     "tile": "tile_3_15",
+     "phase": 5
+    },
+    {
+     "building": "b_013",
+     "recipe": "r_028",
+     "tile": "tile_2_16",
+     "phase": 1
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_3_15",
+     "phase": 2
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_2_15",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_4_15",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_3_17",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_4_15",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_4_15",
+     "phase": 2
+    }
+   ]
+  },
+  "fort_silversworth": {
+   "name": "Fort Silversworth",
+   "owner": "Fort Silversworth Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_6_12",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_6_13",
+     "phase": 5
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_5_14",
+     "phase": 1
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_6_12",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_6_13",
+     "phase": 3
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_5_14",
+     "phase": 4
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_6_14",
+     "phase": 5
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_6_13",
+     "phase": 1
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_5_14",
+     "phase": 2
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_6_12",
+     "phase": 3
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_6_13",
+     "phase": 4
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_6_14",
+     "phase": 5
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_6_12",
+     "phase": 1
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_5_14",
+     "phase": 2
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_6_14",
+     "phase": 3
+    }
+   ]
+  },
+  "snare_harbour": {
+   "name": "Snare Harbour",
+   "owner": "Snare Harbour Ironworks",
+   "buildings": [
+    {
+     "building": "b_001",
+     "recipe": "r_017",
+     "tile": "tile_7_12",
+     "phase": 1
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_005",
+     "tile": "tile_7_11",
+     "phase": 2
+    },
+    {
+     "building": "b_002",
+     "recipe": "r_003",
+     "tile": "tile_7_11",
+     "phase": 3
+    },
+    {
+     "building": "b_037",
+     "recipe": "r_011",
+     "tile": "tile_7_12",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_7_12",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_8_11",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_7_12",
+     "phase": 2
+    }
+   ]
+  },
+  "lighthaven": {
+   "name": "Lighthaven",
+   "owner": "Lighthaven Manufacturing Co.",
+   "buildings": [
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_14_17",
+     "phase": 2
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_009",
+     "tile": "tile_14_18",
+     "phase": 3
+    },
+    {
+     "building": "b_009",
+     "recipe": "r_057",
+     "tile": "tile_14_17",
+     "phase": 4
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_14_17",
+     "phase": 5
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_008",
+     "tile": "tile_14_17",
+     "phase": 1
+    },
+    {
+     "building": "b_021",
+     "recipe": "r_051",
+     "tile": "tile_14_18",
+     "phase": 2
+    },
+    {
+     "building": "b_003",
+     "recipe": "r_004",
+     "tile": "tile_14_17",
+     "phase": 3
+    }
+   ]
+  },
+  "holyfinger": {
+   "name": "Holyfinger",
+   "owner": "Holyfinger Agricultural Cooperative",
+   "buildings": [
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_4_17",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_3_18",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_3_19",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_4_18",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_5_18",
+     "phase": 5
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_6_17",
+     "phase": 1
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_5_17",
+     "phase": 2
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_4_17",
+     "phase": 3
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_3_18",
+     "phase": 4
+    },
+    {
+     "building": "b_014",
+     "recipe": "",
+     "tile": "tile_3_19",
+     "phase": 5
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_4_17",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_3_18",
+     "phase": 2
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_3_19",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_4_18",
+     "phase": 4
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_5_18",
+     "phase": 5
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_6_17",
+     "phase": 1
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_5_17",
+     "phase": 2
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_4_17",
+     "phase": 3
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_3_18",
+     "phase": 4
+    },
+    {
+     "building": "b_015",
+     "recipe": "",
+     "tile": "tile_3_19",
+     "phase": 5
+    },
+    {
+     "building": "b_007",
+     "recipe": "r_126",
+     "tile": "tile_4_17",
+     "phase": 1
+    }
+   ]
+  }
+ }
+}

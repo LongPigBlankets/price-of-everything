@@ -116,7 +116,14 @@ func _process_production() -> void:
 	Construction.reorder_market_materials()  # re-buy any still-missing build materials
 	TurnProfiler.section_end("construction")
 
-	var all_buildings: Array = MatchState.buildings.values()
+	# Only the player's buildings are simulated each turn. The pre-existing NPC
+	# pool (data/start_buildings.json) is inert scenery until bought — pre-filtering
+	# here keeps turn cost proportional to the player's empire, not the ~500 NPC
+	# buildings on the map. (Build the list once; every per-turn loop reuses it.)
+	var all_buildings: Array = []
+	for b in MatchState.buildings.values():
+		if MatchState.is_player_owned(b):
+			all_buildings.append(b)
 	var has_run: Dictionary = {}
 
 	# === CASCADING PRODUCTION PHASE ===
@@ -124,12 +131,12 @@ func _process_production() -> void:
 	var pass_count := 0
 	while pass_count < MAX_PRODUCTION_PASSES:
 		var progress_made := false
-		
+
 		for building in all_buildings:
 			var instance_id: String = building.instance_id
 			if has_run.get(instance_id, false):
 				continue
-			
+
 			var recipe: Dictionary = Catalog.get_recipe(building.recipe_id)
 			if recipe.is_empty():
 				has_run[instance_id] = true
@@ -279,12 +286,10 @@ func _process_production() -> void:
 	TurnProfiler.section_end("sell_phase")
 
 	# === COSTS PHASE ===
-	# Only the player pays maintenance/labour on the buildings they own — NPC-owned
-	# infrastructure (e.g. the shipping corporation's ports) is not the player's expense.
+	# all_buildings is already player-only, so every building here is the player's
+	# expense (NPC-owned scenery never reaches this loop).
 	TurnProfiler.section_begin("maintenance_labour")
 	for building in all_buildings:
-		if not MatchState.is_player_owned(building):
-			continue
 		var btype: String = str(building.get("building_id", ""))
 		var maint: float = _calculate_maintenance_cost(building)
 		var labour: float = _calculate_labour_cost(building)
@@ -302,6 +307,7 @@ func _process_production() -> void:
 		MatchState.add_money(-seaport_fee)
 		summary.money_out += seaport_fee
 	TurnProfiler.section_end("maintenance_labour")
+
 	TurnProfiler.section_begin("loan_payments")
 	var loan_payment: float = LoanState.process_payments()
 	if loan_payment > 0:
