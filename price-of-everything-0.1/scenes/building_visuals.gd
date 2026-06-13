@@ -1,12 +1,13 @@
 extends Node2D
 
-# Draws every building's map icon in a single _draw() pass. Previously each
-# placement spawned 1-3 child nodes (an NPC marker is a navy box + white box +
-# sprite); with the ~500-building start pool that was well over a thousand
-# canvas items submitted every frame. Holding the placements as plain data and
-# drawing them here collapses that to one canvas item.
+# Draws every (non-forest, non-road) building as a coloured polygon footprint —
+# Phase 1 of the polygon-buildings plan: one square per building at its tile
+# slot, filled with the size-chart CATEGORY colour, NPC-owned ones outlined in
+# thick white. The slot layout + viewport cull are the old icon-grid machinery;
+# later phases swap the slot positions for a road-frontage layout engine. Held
+# as plain placement data, drawn in one _draw() pass (no child nodes).
 
-var building_icons: Dictionary = {}
+const TileViewData := preload("res://scripts/tile_view_data.gd")
 
 # Per-tile occupancy: tile_id -> count, to assign the next grid slot.
 var tile_building_counts: Dictionary = {}
@@ -20,10 +21,12 @@ const ICONS_PER_ROW := 4
 const ICON_ROWS := 3
 const ROADS_BUILDING_ID := "b_005"
 const FOREST_BUILDING_IDS := {"b_015": true, "b_016": true}
-const NPC_NAVY := Color(0.015686275, 0.058823529, 0.105882353)
-const NPC_OUTLINE_PX := 10.0
 const MAX_VISIBLE_BUILDINGS := 12  # 4 cols × 3 rows
 const OVERFLOW_INDEX := 11         # 12th slot (0-indexed)
+const SQUARE_FILL := 0.42          # square half as a fraction of the slot (leaves a gap)
+const NPC_OUTLINE_W := 7.0         # thick white outline for NPC-owned buildings
+const CASING := Color(0.12, 0.10, 0.06, 0.85)
+const CASING_W := 2.0
 ## Viewport culling: when no more than this many icons are on screen (zoomed in)
 ## draw only the visible ones and redraw as the camera moves; above it (zoomed
 ## out) draw everything once and stay static. Drawing all ~560 buildings every
@@ -35,37 +38,10 @@ const CULL_MARGIN := 600.0   # world units — pop icons in just off-screen
 
 var _cull := false           # currently in culled (zoomed-in) mode
 var _view := Rect2()
-var _icon_size := Vector2.ZERO
-
-func _ready() -> void:
-	_load_building_icons()
-
-func _load_building_icons() -> void:
-	for building in Catalog.all_buildings():
-		var building_id: String = building.id
-		var internal_name: String = building.internal_name
-		if building_id == "" or internal_name == "":
-			continue
-
-		var primary_path: String = "res://assets/icons/buildings/%s_%s.png" % [building_id, internal_name]
-		if ResourceLoader.exists(primary_path):
-			building_icons[building_id] = load(primary_path)
-			continue
-
-		var fallback_path: String = "res://assets/icons/buildings/%s.png" % building_id
-		if ResourceLoader.exists(fallback_path):
-			building_icons[building_id] = load(fallback_path)
-			continue
-
-		push_warning("[BuildingVisuals] No icon for %s (tried %s and %s)" % [
-			building_id, primary_path, fallback_path
-		])
 
 func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, instance_id: String, coord: Vector2i) -> void:
+	# Roads aren't buildings; forests are drawn by ForestVisuals.
 	if building_id == ROADS_BUILDING_ID or FOREST_BUILDING_IDS.has(building_id):
-		return
-	if not building_icons.has(building_id):
-		push_warning("No icon registered for building %s" % building_id)
 		return
 
 	if not tile_building_counts.has(tile_id):
@@ -76,18 +52,20 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 		return  # past the overflow indicator — nothing more to draw on this tile
 
 	var tile_center := _tile_center_world_pos(coord)
-	var owner_id := str(MatchState.get_building(instance_id).get("owner", ""))
-	var is_npc: bool = owner_id != "" and owner_id != "player_1"
+	var is_npc := not MatchState.is_player_owned(MatchState.get_building(instance_id))
+	var color: Color = TileViewData.category_color(Catalog.get_building(building_id))
 
 	var pos := _slot_position(tile_center, slot_index)
-	var half := _icon_slot_size() * 0.5 + Vector2(NPC_OUTLINE_PX, NPC_OUTLINE_PX)
+	var sq_half := _icon_slot_size() * SQUARE_FILL
+	var bb_half := sq_half + Vector2(NPC_OUTLINE_W, NPC_OUTLINE_W)
 	var placement := {
 		"instance_id": instance_id,
 		"slot": slot_index,
 		"pos": pos,
-		"bb": Rect2(pos - half, half * 2.0),
-		"texture": building_icons[building_id] if slot_index < OVERFLOW_INDEX else null,
+		"half": sq_half,
+		"color": color,
 		"is_npc": is_npc,
+		"bb": Rect2(pos - bb_half, bb_half * 2.0),
 	}
 	if instance_id != "":
 		_placement_index[instance_id] = _placements.size()
@@ -145,51 +123,33 @@ func remove_instance(instance_id: String) -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	var icon_size := _icon_slot_size()
 	for placement in _placements:
 		if _cull and not _view.intersects(placement.bb):
 			continue
 		if int(placement.slot) == OVERFLOW_INDEX:
 			_draw_overflow(placement.pos)
 			continue
-		var texture: Texture2D = placement.texture
-		if texture == null:
-			continue
-		if bool(placement.is_npc):
-			_draw_npc_marker(texture, placement.pos, icon_size)
-		else:
-			_draw_icon(texture, placement.pos, icon_size)
+		_draw_square(placement.pos, placement.half, placement.color, bool(placement.is_npc))
 
-func _draw_icon(texture: Texture2D, slot_pos: Vector2, icon_size: Vector2) -> void:
-	var dest := _fit_rect(texture, slot_pos, icon_size, 0.9)
-	draw_texture_rect(texture, dest, false)
-
-func _draw_npc_marker(texture: Texture2D, slot_pos: Vector2, icon_size: Vector2) -> void:
-	# NPC-owned buildings read as a WHITE box with a thick navy outline, icon inside.
-	var hw: float = icon_size.x * 0.45
-	var hh: float = icon_size.y * 0.45
-	var b := NPC_OUTLINE_PX
-	draw_rect(Rect2(slot_pos - Vector2(hw + b, hh + b), Vector2(hw + b, hh + b) * 2.0), NPC_NAVY, true)
-	draw_rect(Rect2(slot_pos - Vector2(hw, hh), Vector2(hw, hh) * 2.0), Color.WHITE, true)
-	var inner := Vector2(hw * 2.0, hh * 2.0)
-	draw_texture_rect(texture, _fit_rect_size(texture, slot_pos, inner, 0.8), false)
+func _draw_square(center: Vector2, half: Vector2, color: Color, is_npc: bool) -> void:
+	var verts := PackedVector2Array([
+		center + Vector2(-half.x, -half.y), center + Vector2(half.x, -half.y),
+		center + Vector2(half.x, half.y), center + Vector2(-half.x, half.y),
+	])
+	draw_colored_polygon(verts, color)
+	var loop := verts.duplicate()
+	loop.append(verts[0])
+	# NPC: thick white outline; player: thin dark casing.
+	if is_npc:
+		draw_polyline(loop, Color.WHITE, NPC_OUTLINE_W, true)
+	else:
+		draw_polyline(loop, CASING, CASING_W, true)
 
 func _draw_overflow(slot_pos: Vector2) -> void:
 	var font := ThemeDB.fallback_font
 	var size := roundi(_tile_size().y * 0.08)
 	draw_string(font, slot_pos - Vector2(size * 0.25, -size * 0.35), "…",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.9, 0.9, 0.9))
-
-func _fit_rect(texture: Texture2D, center: Vector2, slot: Vector2, fill: float) -> Rect2:
-	return _fit_rect_size(texture, center, slot, fill)
-
-func _fit_rect_size(texture: Texture2D, center: Vector2, box: Vector2, fill: float) -> Rect2:
-	var tex_size := texture.get_size()
-	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
-		return Rect2(center - box * 0.5, box)
-	var scale_uniform: float = min(box.x / tex_size.x, box.y / tex_size.y) * fill
-	var draw_size := tex_size * scale_uniform
-	return Rect2(center - draw_size * 0.5, draw_size)
 
 func _tile_center_world_pos(coord: Vector2i) -> Vector2:
 	if terrain_layer != null:

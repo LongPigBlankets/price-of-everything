@@ -286,6 +286,11 @@ static func _building_icon_tex(bd: Dictionary):
 static func _is_ruins(bd: Dictionary) -> bool:
 	return str(bd.get("id", "")) == "b_031" or str(bd.get("internal_name", "")).to_lower() == "ruins"
 
+## Public: the size-chart category colour for a catalog building dict. Reused by
+## the polygon building renderer so footprints match the tile size chart.
+static func category_color(bd: Dictionary) -> Color:
+	return _category_color(bd)
+
 static func _category_color(bd: Dictionary) -> Color:
 	if _is_ruins(bd):
 		return CAT_RUINS
