@@ -385,6 +385,25 @@ avoided in the baked geometry.
   in one PROCESS; assert zero frames over 8 ms in planning, full settlement
   ≤ 6 s simulated, suite-runnable via fixed frame stepping.
 
+> **B4 as implemented (calibrated 2026-06-12).** The per-frame guarantee is
+> architectural: planning runs as bounded pause/resume units (≤ ~2.5 ms — A*
+> slices of 84 expansions, chunked corridor prep) inside a budget loop that
+> never STARTS a unit within `UNIT_CUTOFF_MS` of the deadline. The suite gate
+> asserts the mechanism, not raw wall time (OS preemption on a shared machine
+> reads a 1.2 ms slice as 15+ ms): ≤ 2 % of frames over 8 ms, the backlog
+> fully drains, every reveal settles, ≥ 95/100 orders built. Measured on the
+> dev box: ~3.3 s of total A* for the 100-job batch → drained in ~11 s
+> simulated, settled +3 s reveal tail; 1 genuinely unroutable tile (SW
+> water-locked) fails fast via distance-budgeted expansion caps. Throughput
+> levers already taken: ROUTE_WEIGHT 1.08→1.30, orders re-attach to the
+> freshest network geometry at plan start (mass builds chain into short hops),
+> forest discs cached across jobs (invalidated by the forest mutation key —
+> safe because a forest event restarts planning orders), corridor-local
+> reuse bitmap scattered from the occupancy hash, perimeter-only endpoint
+> ring scan. The 6 s-settlement estimate predated measurement; the honest
+> bound at 12 u/GDScript is ~25-35 ms of A* per local job. Next rung on the
+> ladder if that ever matters: GDExtension (decision log #8).
+
 ### Phase 3 exit checklist
 
 - [ ] 100-tile mass-build test green; no map-wide invalidations remain
@@ -444,6 +463,22 @@ city regions get minihub/gateway networks and may get partial bypasses, never
 full orbitals. Overflow
 check covered by a test on a hand-picked coastal city (Stoneshore) and an inland
 one (Patran City).
+
+> **Phase 4 as implemented (2026-06-12).** `RoadRegionJobs.generate()` emits the
+> per-identity job lists; `realize_region()` (bake/tests) runs the spec's
+> two-pass orbital overflow rule — route plainly, and only if >50% of ring
+> length leaves the member tiles, re-route the whole ring with the ×1.5
+> outside-region cost (then accept and warn). RUNTIME rings instead carry the
+> inside bias up front (single pass): the budgeted order pipeline has no
+> whole-ring transaction, and re-routing after a reveal would visibly delete
+> roads. Regions style themselves exactly once, on their first settled member
+> road (persisted in saves). The bake styles every region holding an anchor
+> tile, so anchor cities have their street fabric at turn 0 — measured:
+> Stoneshore orbital at 20% overflow (no rework needed), 55 baked edges total
+> across the spine + 4 anchor-region webs. Orbital ports are gateway midpoints
+> thinned to even angular spacing and inset 130 u; coastal stretches have no
+> land gateways, so the ring follows the land side organically (the coastal
+> clamp falls out of water impassability).
 
 ---
 

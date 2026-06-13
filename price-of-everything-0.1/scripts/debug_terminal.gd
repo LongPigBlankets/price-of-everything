@@ -153,11 +153,30 @@ func _run_command(text: String) -> String:
 		"roads":
 			if parts.size() >= 4 and parts[1].to_lower() == "route":
 				return _roads_route(parts[2], parts[3])
-			return "usage: roads route <tile_a> <tile_b>   (e.g. roads route tile_8_6 tile_11_7)"
+			if parts.size() >= 3 and parts[1].to_lower() == "connect":
+				# exercise the Phase-3 RoadWorks queue (budgeted planning + reveal)
+				if not RoadCrossings.is_built():
+					var maps := get_tree().get_nodes_in_group("hex_map")
+					if not maps.is_empty():
+						RoadCrossings.build(maps[0])
+				var oid := RoadWorks.enqueue_for_tile(parts[2])
+				if oid >= 0:
+					return "roadworks: order %d queued for %s (pending %d)" % [oid, parts[2], RoadWorks.pending_count()]
+				return "roadworks: could not queue %s (no map or empty network?)" % parts[2]
+			return "usage: roads route <tile_a> <tile_b> | roads connect <tile>"
 		"toggle":
 			if parts.size() >= 2 and parts[1].to_lower() == "roadsv2":
 				RoadNetwork.v2_enabled = not RoadNetwork.v2_enabled
-				return "roads v2 → %s" % ("on" if RoadNetwork.v2_enabled else "off")
+				# v2 on hides the whole v1 road layer (v2 draws the roads instead)
+				for v1 in get_tree().get_nodes_in_group("road_visuals_v1"):
+					(v1 as CanvasItem).visible = not RoadNetwork.v2_enabled
+				return "roads v2 → %s  (roads v1 %s)" % [
+					"on" if RoadNetwork.v2_enabled else "off",
+					"hidden" if RoadNetwork.v2_enabled else "shown"]
+			if parts.size() >= 2 and parts[1].to_lower() == "roadocc":
+				TileOccupancy.OCCUPANCY_ROADS_ENABLED = not TileOccupancy.OCCUPANCY_ROADS_ENABLED
+				RoadWorks.rebuild_occupancy()
+				return "road/forest occupancy → %s" % ("on" if TileOccupancy.OCCUPANCY_ROADS_ENABLED else "off")
 			if parts.size() >= 2 and parts[1].to_lower() == "heightmap":
 				var layers := get_tree().get_nodes_in_group("hill_visuals")
 				if layers.is_empty():
@@ -167,9 +186,9 @@ func _run_command(text: String) -> String:
 					layer.visible = not layer.visible
 					now_visible = layer.visible
 				return "heightmap → %s" % ("on" if now_visible else "off (plain map + rivers)")
-			return "usage: toggle heightmap"
+			return "usage: toggle heightmap | roadsv2 | roadocc"
 		"help":
-			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roadsv2|roadocc   |   roads route <a> <b> | roads connect <tile>   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

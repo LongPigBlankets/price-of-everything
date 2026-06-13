@@ -34,6 +34,7 @@ func _ready() -> void:
 		return
 	RoadCrossings.build(terrain)
 	_seed_start_forests()
+	_seed_start_buildings()
 
 	var anchors := _anchor_tiles()
 	print("bake_roads: %d anchor tiles (infrastructure_present 'roads')" % anchors.size())
@@ -68,6 +69,25 @@ func _ready() -> void:
 		print("bake_roads: %s -> %s  %s, %d pts, %d bridges (%s)" % [
 			a.id, b.id, tier, result.geometry.size(), result.bridges.size(), identity])
 
+	# Phase 4: each region holding an anchor tile grows its style web at bake
+	# time (Stoneshore's orbital, sparse-city minihub webs, rural through-routes)
+	# so cities have street fabric at turn 0 — also what the building visuals
+	# will front onto.
+	var styled: Array = []
+	var style_regions := {}
+	for a3 in anchors:
+		var region_id := RoadRegions.region_of(str(a3.id))
+		if region_id != RoadRegions.DEFAULT_REGION_ID:
+			style_regions[region_id] = true
+	var region_keys := style_regions.keys()
+	region_keys.sort()
+	for region_id2 in region_keys:
+		var rep := RoadRegionJobs.realize_region(str(region_id2), terrain, nav, network, realizer, 0)
+		styled.append(str(region_id2))
+		print("bake_roads: region %-16s (%s)  jobs=%d committed=%d failed=%d overflow=%.0f%%%s" % [
+			region_id2, RoadRegions.identity(str(region_id2)), int(rep.jobs), int(rep.committed),
+			int(rep.failed), float(rep.overflow) * 100.0, " REWORKED" if bool(rep.reworked) else ""])
+
 	var anchor_ids: Array = []
 	for a2 in anchors:
 		anchor_ids.append(str(a2.id))
@@ -75,6 +95,7 @@ func _ready() -> void:
 		"version": 1,
 		"hills_hash": HillBaked.source_hash(),
 		"anchors": anchor_ids,
+		"style_regions": styled,
 		"network": network.export_state(),
 	}
 	var file := FileAccess.open(OUT_PATH, FileAccess.WRITE)
@@ -104,6 +125,22 @@ func _seed_start_forests() -> void:
 			"forest_%s_%s" % [OLD_GROWTH_BUILDING, tile_id], false)
 		seeded += 1
 	print("bake_roads: seeded %d deterministic game-start forests" % seeded)
+
+## Mirrors world_map._place_start_buildings (the pre-existing NPC pool): the
+## new-growth forests in it (b_015) are road obstacles, and their footprint
+## discs are seeded from the SAME deterministic instance ids a fresh match uses.
+func _seed_start_buildings() -> void:
+	var seeded := 0
+	for entry in StartBuildings.entries():
+		var tile_id := str(entry.tile)
+		if terrain.id_to_coord(tile_id) == Vector2i(-1, -1):
+			continue
+		if MatchState.buildings.has(str(entry.instance_id)):
+			continue
+		MatchState.add_building(str(entry.building), str(entry.recipe), tile_id,
+			str(entry.owner), str(entry.instance_id), false)
+		seeded += 1
+	print("bake_roads: seeded %d deterministic start buildings" % seeded)
 
 func _anchor_tiles() -> Array:
 	var anchors: Array = []

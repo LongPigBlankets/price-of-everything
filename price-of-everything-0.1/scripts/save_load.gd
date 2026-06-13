@@ -69,6 +69,10 @@ func export_snapshot() -> Dictionary:
 		"events": EventScheduler.export_state(),
 		"modifiers": Modifiers.export_state(),
 		"infrastructure": _collect_infrastructure(),
+		"roads": {
+			"network": RoadNetwork.instance().export_state(),
+			"works": RoadWorks.export_state(),
+		},
 	}
 
 func import_snapshot(snap: Dictionary) -> void:
@@ -85,6 +89,16 @@ func import_snapshot(snap: Dictionary) -> void:
 	Production.import_state(snap.get("production", {}))
 	EventScheduler.import_state(snap.get("events", {}))
 	Modifiers.import_state(snap.get("modifiers", {}))
+	# roads-v2: BUILT geometry restores verbatim; planning orders resume
+	# deterministically; mid-reveal orders restart their reveal (cosmetic).
+	# Old saves carry no "roads" key — the network stays empty here and
+	# world_map bootstraps the baked anchor spine instead.
+	var roads: Dictionary = snap.get("roads", {})
+	RoadNetwork.reset()
+	RoadWorks.reset()
+	if not (roads.get("network", {}) as Dictionary).is_empty():
+		RoadNetwork.instance().import_state(roads.get("network", {}))
+	RoadWorks.import_state(roads.get("works", {}))
 	_emit_refresh()
 	match_loaded.emit()
 

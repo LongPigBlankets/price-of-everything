@@ -189,11 +189,16 @@ func _ready() -> void:
 		_rebuild_after_load()
 	if not loaded_pending or pending_start:
 		_place_northern_old_growth_forests()
+		_place_start_buildings()
 
-	# roads-v2: every match starts with the baked anchor network (spec 4.5b);
-	# Phase 3 will restore the player-grown network from saves on top.
-	RoadNetwork.reset()
+	# roads-v2: a loaded save restores its as-built network + work orders
+	# (SaveLoad.import_snapshot); anything else starts from the baked anchor
+	# spine (spec 4.5b). bootstrap_from_bake no-ops when edges were imported.
+	if not loaded_pending or pending_start:
+		RoadNetwork.reset()
+		RoadWorks.reset()
 	RoadNetwork.bootstrap_from_bake()
+	RoadWorks.rebuild_occupancy()   # no-op until OCCUPANCY_ROADS_ENABLED
 
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
@@ -1305,6 +1310,24 @@ func _place_northern_old_growth_forests() -> void:
 			false
 		)
 		building_placed.emit(tile_id, OLD_GROWTH_FOREST_BUILDING_ID, "", instance_id, coord)
+
+func _place_start_buildings() -> void:
+	# The pre-existing NPC building pool (data/start_buildings.json): one themed
+	# company per road region, real recipes, market phase tags for the later
+	# purchase rotation. Deterministic instance ids — the roads-v2 bake seeds the
+	# same list, so its forest footprint discs match a fresh match exactly.
+	for entry in StartBuildings.entries():
+		var tile_id := str(entry.tile)
+		var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
+		if coord == Vector2i(-1, -1):
+			continue
+		var instance_id := str(entry.instance_id)
+		if MatchState.buildings.has(instance_id):
+			continue
+		MatchState.add_building(
+			str(entry.building), str(entry.recipe), tile_id,
+			str(entry.owner), instance_id, false)
+		building_placed.emit(tile_id, str(entry.building), str(entry.recipe), instance_id, coord)
 
 func _tile_has_building(tile_id: String, building_id: String) -> bool:
 	for iid in MatchState.tile_buildings.get(tile_id, []):

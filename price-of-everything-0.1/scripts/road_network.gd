@@ -95,12 +95,12 @@ func agree_tangent(node_id: String, tangent: Vector2) -> Vector2:
 
 # ------------------------------------------------------------------- edges
 
-func add_edge(a_id: String, b_id: String, tier: String, geometry: PackedVector2Array, tiles: Array, bridges: Array, planned_turn: int) -> Dictionary:
+func add_edge(a_id: String, b_id: String, tier: String, geometry: PackedVector2Array, tiles: Array, bridges: Array, planned_turn: int, state: String = STATE_BUILT) -> Dictionary:
 	var id := "e:%d" % _next_edge
 	_next_edge += 1
 	var edge := {
 		"id": id, "a": a_id, "b": b_id, "tier": tier,
-		"state": STATE_BUILT, "tiles": tiles, "geometry": geometry,
+		"state": state, "tiles": tiles, "geometry": geometry,
 		"bridges": bridges, "planned_turn": planned_turn,
 	}
 	edges[id] = edge
@@ -110,6 +110,11 @@ func add_edge(a_id: String, b_id: String, tier: String, geometry: PackedVector2A
 		_edges_by_tile[t].append(id)
 	_stamp_occupancy(geometry)
 	return edge
+
+## Settle a BUILDING edge to BUILT once its reveal finishes (RoadWorks).
+func set_edge_state(edge_id: String, state: String) -> void:
+	if edges.has(edge_id):
+		edges[edge_id].state = state
 
 func edges_on_tile(tile: Vector2i) -> Array:
 	return _edges_by_tile.get(tile, [])
@@ -123,6 +128,12 @@ func _stamp_occupancy(geometry: PackedVector2Array) -> void:
 	for p in geometry:
 		var c := Vector2i(int(floor(p.x / OCCUPANCY_CELL)), int(floor(p.y / OCCUPANCY_CELL)))
 		_occupancy[c] = true
+
+## The raw occupancy hash (24 u cells -> true). The realizer builds its
+## corridor-local reuse bitmap by iterating THIS (O(network) work) instead of
+## probing per corridor cell (O(corridor x 9 dict probes)).
+func occupied_cells() -> Dictionary:
+	return _occupancy
 
 ## True when a world point sits within ~one hash cell of existing roads.
 func near_network(p: Vector2) -> bool:
