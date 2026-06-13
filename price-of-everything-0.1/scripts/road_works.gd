@@ -55,6 +55,10 @@ var _styled_regions: Dictionary = {}
 ## order_id -> Array[{point, tangent}]; cleared when that order settles or
 ## fails (the real edge's bridges then represent reality).
 var _preview_bridges: Dictionary = {}
+## Adjacent road-tile pairs already joined by a connect/link, so a cluster of
+## built tiles meshes instead of each tile reaching back to the trunk alone.
+## Key "tileA|tileB" (sorted). Persisted so a reload doesn't double-link.
+var _linked_pairs: Dictionary = {}
 ## Dedicated realizer: its scratch buffers hold the one in-flight paused job.
 var _realizer := RoadRealizer.new()
 var _job: Dictionary = {}
@@ -342,7 +346,72 @@ func _settle(order: Dictionary) -> void:
 	# this tile into the network. Regional beltways/webs exist only in the baked
 	# starting cities (tools/bake_roads via RoadRegionJobs.realize_region).
 	# enqueue_region_jobs() is kept for the bake path and possible future use.
+	# But adjacent built tiles SHOULD join up: a connect that lands as a stub
+	# beside neighbours that already have roads now links to them (mesh, not a
+	# fan of separate spurs back to the trunk). Link orders don't recurse.
+	if str(order.get("kind", "connect")) == "connect":
+		_link_adjacent_roads(order)
 	orders_changed.emit()
+
+## Join a just-settled connect tile to any adjacent tile that already has a road
+## but isn't directly joined to it. One short link order per new adjacency (the
+## later-built tile of the pair drives it); _linked_pairs dedupes, and an
+## existing direct edge means the connect already joined them — skip.
+func _link_adjacent_roads(order: Dictionary) -> void:
+	var terrain := _terrain()
+	if terrain == null:
+		return
+	var net := RoadNetwork.instance()
+	var t_id := str(order.tile_id)
+	var t_node := "rw:%s" % t_id
+	if not net.nodes.has(t_node):
+		return
+	for ncoord in terrain.neighbor_coords(order.coord as Vector2i):
+		if not terrain.tiles.has(ncoord):
+			continue
+		var n_id := "tile_%d_%d" % [ncoord.x + 1, ncoord.y + 1]
+		var n_node := "rw:%s" % n_id
+		if not net.nodes.has(n_node):
+			continue   # neighbour carries no road
+		var key := ("%s|%s" % [t_id, n_id]) if t_id < n_id else ("%s|%s" % [n_id, t_id])
+		if _linked_pairs.has(key):
+			continue
+		_linked_pairs[key] = true
+		if _edge_between(net, t_node, n_node):
+			continue   # the connect already joined these two — no extra road
+		_enqueue_link(t_id, order.coord as Vector2i, t_node, net.nodes[t_node].pos,
+			n_node, net.nodes[n_node].pos)
+
+func _edge_between(net: RoadNetwork, a: String, b: String) -> bool:
+	for eid in net.edges:
+		var e: Dictionary = net.edges[eid]
+		if (str(e.a) == a and str(e.b) == b) or (str(e.a) == b and str(e.b) == a):
+			return true
+	return false
+
+## A short connect between two existing road nodes. kind="link" so _begin_next
+## keeps these authored endpoints (no re-attach) and _settle does not recurse.
+func _enqueue_link(t_id: String, coord: Vector2i, a_node: String, a_pos: Vector2, b_node: String, b_pos: Vector2) -> void:
+	var id := _next_order
+	_next_order += 1
+	orders[id] = {
+		"id": id,
+		"kind": "link",
+		"tile_id": t_id,
+		"state": "queued",
+		"start": a_pos,
+		"goal": b_pos,
+		"attach_id": b_node,
+		"coord": coord,
+		"tier": RoadNetwork.TIER_LOCAL,
+		"salt": RoadHash.pick("link|%s|%s" % [a_node, b_node], 1 << 30),
+		"turn": TurnManager.current_turn,
+		"edge_id": "",
+		"reveal_t": 0.0,
+		"reason": "",
+		"plan_ms": 0.0,
+	}
+	_queue.append(id)
 
 ## Reveal fraction for an edge mid-reveal (visuals): 1.0 when settled/unknown.
 ## The reveal grows from the network attachment (the goal end of the geometry)
@@ -532,7 +601,8 @@ func export_state() -> Dictionary:
 			"region_id": str(o.get("region_id", "")),
 			"orbital": bool(o.get("orbital", false)),
 		})
-	return {"orders": out, "next_order": _next_order, "styled_regions": _styled_regions.keys()}
+	return {"orders": out, "next_order": _next_order, "styled_regions": _styled_regions.keys(),
+		"linked_pairs": _linked_pairs.keys()}
 
 ## BUILT geometry rides in the network state; BUILDING orders resume planning
 ## deterministically; mid-reveal orders restart their reveal (cosmetic only).
@@ -541,6 +611,8 @@ func import_state(d: Dictionary) -> void:
 	_next_order = int(d.get("next_order", 1))
 	for region_id in d.get("styled_regions", []):
 		_styled_regions[str(region_id)] = true
+	for pair_key in d.get("linked_pairs", []):
+		_linked_pairs[str(pair_key)] = true
 	for raw in d.get("orders", []):
 		var o := {
 			"id": int(raw.id), "tile_id": str(raw.tile_id), "state": str(raw.state),
@@ -580,6 +652,7 @@ func reset() -> void:
 	failure_log.clear()
 	_styled_regions.clear()
 	_preview_bridges.clear()
+	_linked_pairs.clear()
 
 # ------------------------------------------------------------------ helpers
 

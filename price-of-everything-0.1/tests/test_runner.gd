@@ -540,6 +540,27 @@ func _test_road_works() -> void:
 		"road works: river-tile road routes via coarse fallback (state %s)" % str(RoadWorks.orders[oidr].state))
 	_check(RoadWorks.preview_bridges().size() == 0, "road works: preview bridge clears once the road settles")
 
+	# --- neighbour mesh: two hex-adjacent built tiles must end up DIRECTLY joined
+	# by an edge (not separate spurs reaching back to the trunk). Build one, then
+	# its neighbour; after everything (incl. any link order) drains, a road runs
+	# between their nodes. Regression for "adjacent tiles' roads never connect".
+	var na := "tile_8_8"
+	var nb := "tile_8_9"   # hex-adjacent to tile_8_8
+	RoadWorks.enqueue_for_tile(na)
+	_drain_road_works(8000)
+	RoadWorks.enqueue_for_tile(nb)
+	_drain_road_works(8000)
+	var na_node := "rw:%s" % na
+	var nb_node := "rw:%s" % nb
+	var joined := false
+	for eid in net.edges:
+		var e: Dictionary = net.edges[eid]
+		if (str(e.a) == na_node and str(e.b) == nb_node) or (str(e.a) == nb_node and str(e.b) == na_node):
+			joined = true
+			break
+	_check(joined, "road works: adjacent built tiles are directly joined (mesh, not spurs)")
+	_check(RoadWorks.export_state().get("linked_pairs", []).size() > 0, "road works: neighbour link recorded for dedupe")
+
 	# --- forest invalidation: a forest planted on a PLANNING order's corridor
 	# restarts it; the settled edge above stays (history is history). Use a tile
 	# far from the network so planning genuinely spans frames.
@@ -1651,6 +1672,20 @@ func _test_pending_load_applies_on_scene_ready() -> void:
 	_check(MatchState.buildings.size() == before_buildings, "pending save restores the building set")
 	inst.queue_free()
 	await get_tree().process_frame
+
+## Step RoadWorks until no order is queued/planning/revealing (or frame cap).
+func _drain_road_works(max_frames: int) -> void:
+	var frames := 0
+	while frames < max_frames:
+		RoadWorks._process(1.0 / 60.0)
+		frames += 1
+		var pending := false
+		for oid_k in RoadWorks.orders:
+			if str(RoadWorks.orders[oid_k].state) in ["queued", "planning", "revealing"]:
+				pending = true
+				break
+		if not pending:
+			return
 
 func _check(ok: bool, name: String) -> void:
 	if ok:

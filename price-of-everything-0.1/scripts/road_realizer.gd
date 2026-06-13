@@ -43,8 +43,15 @@ const PREP_CELLS_PER_SLICE := 1100
 ## Cost table (spec Appendix A — change knowingly).
 const COST_ALTITUDE_PER_LEVEL := 0.5     # decision #2: +50% per level crossed
 const COST_VALLEY := 0.03                # prefer the lowest path
-const COST_HUG_DISCOUNT := 0.85          # 30-60 u from water
-const COST_HUG_CROWD := 1.15             # 13-30 u from water
+# River hug (roadsv2.5): roads follow a river bank, running tight and parallel.
+# Applies ONLY near an actual river (NAV_WATER_RIVER) — sea/lake are excluded
+# (so coastal/lakeside roads stay straight). The discount is strong enough that
+# a river-following route wins unless a straight route is ~50%+ shorter: at 0.6,
+# a hugging path up to ~1.6x longer still beats the straight one.
+const COST_RIVER_HUG := 0.6              # multiplier on cells hugging a river bank
+const RIVER_HUG_NEAR := 4.0              # u — nearer than this you're in the bank itself
+const RIVER_HUG_FAR := 24.0             # u — outer edge of the hug band (~1-2 cells off)
+const NAV_WATER_RIVER := 3              # navgrid cell high-nibble class (see hill_field)
 const COST_GRADIENT_K := 1.5             # serpentine: across-slope is cheap, up-slope is not
 const STEEP_GRAD := 1.0                  # |level gradient| (per cell pair) considered steep
 const COST_REUSE := 0.6                  # MERGE: cell shares a road's 24 u cell
@@ -83,6 +90,8 @@ var _closed := PackedByteArray()
 var _passable := PackedByteArray()
 var _near_net := PackedByteArray()   # corridor-local reuse-discount bitmap
 var _region_out := PackedByteArray() # corridor-local outside-region penalty bitmap
+var _river_near := PackedByteArray() # corridor-local river-distance (4u units, 255 = none)
+var _river_disc: Array = []          # cached [dx, dy, dist4] stamp offsets for one river cell
 # All forest discs, cached across jobs and invalidated by a mutation key over
 # the forest instance set (computing ~150 footprints was a 40 ms prep spike
 # per corridor). Safe: RoadWorks restarts any planning order when a forest is
@@ -462,6 +471,8 @@ func _fine_begin(job: Dictionary, corridor: Array, radius: float, salt: int, sta
 		_near_net.resize(lcount)
 	if _region_out.size() < lcount:
 		_region_out.resize(lcount)
+	if _river_near.size() < lcount:
+		_river_near.resize(lcount)
 
 ## One bounded prep unit. Returns when the unit's work is done; flips
 ## ctx.ready after the final phase.
@@ -478,6 +489,19 @@ func _fine_prep_unit(job: Dictionary) -> void:
 			_build_passable_rows(nav, c0, lw, row0, mini(row0 + rows, lh), ctx.a, ctx.b, float(ctx.radius))
 			ctx.prep_row = row0 + rows
 			if int(ctx.prep_row) >= lh:
+				ctx.prep_phase = "rivers"
+		"rivers":
+			# Stamp every land cell with its distance to the nearest RIVER cell so
+			# the hot loop can hug a bank (sea/lake excluded — only class 3 seeds).
+			if not ctx.has("river_row"):
+				_river_near.fill(255)
+				_ensure_river_disc(nav)
+				ctx.river_row = 0
+			var rrows := maxi(1, int(PREP_CELLS_PER_SLICE / float(lw)))
+			var rr0: int = ctx.river_row
+			_stamp_river_near_rows(nav, c0, lw, lh, rr0, mini(rr0 + rrows, lh))
+			ctx.river_row = rr0 + rrows
+			if int(ctx.river_row) >= lh:
 				ctx.prep_phase = "gates"
 		"gates":
 			_open_crossing_gates(nav, c0, lw, lh)
@@ -576,7 +600,6 @@ func _fine_step(job: Dictionary) -> String:
 	var exp_cap: int = ctx.exp_cap
 	# hoisted hot-loop locals (member access on RefCounted is slow in GDScript)
 	var cells: PackedByteArray = nav.cells
-	var dist4: PackedByteArray = nav.dist4
 	var nav_gw: int = nav.gw
 	var nav_gh: int = nav.gh
 	var use_region: bool = bool(ctx.get("use_region", false))
@@ -623,12 +646,12 @@ func _fine_step(job: Dictionary) -> String:
 			var dl := next_level - cur_level
 			move *= 1.0 + COST_ALTITUDE_PER_LEVEL * absf(float(dl))
 			move *= 1.0 + COST_VALLEY * maxf(float(next_level), 0.0)
-			# river hug band from the baked water distance
-			var wd := float(dist4[n_nav]) * 4.0
-			if wd >= 30.0 and wd <= 60.0:
-				move *= COST_HUG_DISCOUNT
-			elif wd > 13.0 and wd < 30.0:
-				move *= COST_HUG_CROWD
+			# river hug: run tight and parallel to a river bank. _river_near is the
+			# corridor-local distance to the nearest RIVER cell (sea/lake excluded),
+			# so this fires ONLY where the tile actually has a river nearby.
+			var rwd := float(_river_near[ncell]) * 4.0
+			if rwd >= RIVER_HUG_NEAR and rwd <= RIVER_HUG_FAR:
+				move *= COST_RIVER_HUG
 			# serpentines: moving along the height gradient on steep ground is
 			# dear (inlined, sqrt-free until the steep branch actually fires)
 			var grad_len_sq := 0.0
@@ -797,6 +820,48 @@ func _clear_region_hexes(nav: NavGrid, terrain: HexMap, c0: Vector2i, lw: int, l
 				var dy := absf(w.y - center.y)
 				if dx <= 270.0 and dy <= 240.0 and 240.0 * dx + 135.0 * dy <= 64800.0:
 					_region_out[(ny - c0.y) * lw + (nx - c0.x)] = 0
+
+## Cache the disc of cell offsets a single river cell stamps into _river_near,
+## with each offset's quantised distance (4u units). Depends only on the grid
+## step, so it is computed once and reused for every river cell / corridor.
+func _ensure_river_disc(nav: NavGrid) -> void:
+	var step_u := nav.step
+	var reach := int(ceil(RIVER_HUG_FAR / step_u)) + 1
+	if not _river_disc.is_empty() and int(_river_disc[0][3]) == reach:
+		return
+	_river_disc = [[0, 0, 0, reach]]   # head carries `reach` so a step change re-caches
+	for dy in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			if dx == 0 and dy == 0:
+				continue
+			var d := sqrt(float(dx * dx + dy * dy)) * step_u
+			if d > RIVER_HUG_FAR + step_u:
+				continue
+			_river_disc.append([dx, dy, clampi(int(d / 4.0), 0, 255)])
+
+## Stamp river-distance into _river_near for land cells near a RIVER cell found
+## in rows [row0, row1). Stamps may reach cells in adjacent chunks — safe, since
+## _river_near is pre-filled with 255 and we only ever keep the minimum.
+func _stamp_river_near_rows(nav: NavGrid, c0: Vector2i, lw: int, lh: int, row0: int, row1: int) -> void:
+	var nav_gw := nav.gw
+	var disc: Array = _river_disc
+	var n := disc.size()
+	for ly in range(row0, row1):
+		var wy := c0.y + ly
+		var base := wy * nav_gw + c0.x
+		for lx in lw:
+			if (nav.cells[base + lx] >> 4) != NAV_WATER_RIVER:
+				continue
+			# this is a river cell — stamp its land neighbourhood (skip head [0])
+			for k in range(1, n):
+				var off: Array = disc[k]
+				var nx: int = lx + int(off[0])
+				var ny: int = ly + int(off[1])
+				if nx < 0 or ny < 0 or nx >= lw or ny >= lh:
+					continue
+				var li := ny * lw + nx
+				if int(off[2]) < _river_near[li]:
+					_river_near[li] = int(off[2])
 
 func _scatter_near_net(nav: NavGrid, c0: Vector2i, lw: int, lh: int, keys: Array, i0: int, i1: int) -> void:
 	var cell_u := RoadNetwork.OCCUPANCY_CELL
