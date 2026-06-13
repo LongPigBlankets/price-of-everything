@@ -35,6 +35,7 @@ func _ready() -> void:
 	_test_direct_build_skips_build_overlay()
 	await _test_building_ledger()
 	await _test_debug_terminal()
+	_test_building_shapes()
 	_test_queue_move()
 	_test_move_extras()
 	_test_storage_boost()
@@ -1754,6 +1755,25 @@ func _drain_road_works(max_frames: int) -> void:
 				break
 		if not pending:
 			return
+
+func _test_building_shapes() -> void:
+	# Each shape holds its target area within tolerance and is deterministic.
+	for kind in BuildingShapes.KINDS:
+		for area in [400.0, 4000.0, 15000.0]:
+			var s := BuildingShapes.make(str(kind), float(area), 3)
+			var got := BuildingShapes.polygon_area(s.verts)
+			_check(absf(got - float(area)) <= float(area) * 0.02 + 1.0,
+				"building shapes: %s area %.0f within 2%% (got %.0f)" % [str(kind), float(area), got])
+			var mx := 0.0
+			var my := 0.0
+			for v in (s.verts as PackedVector2Array):
+				mx = maxf(mx, absf(v.x))
+				my = maxf(my, absf(v.y))
+			_check(absf(mx - float(s.half.x)) <= 0.5 and absf(my - float(s.half.y)) <= 0.5,
+				"building shapes: %s half-extent matches verts" % str(kind))
+	var a := BuildingShapes.make("l_base", 5000.0, 2)
+	var b := BuildingShapes.make("l_base", 5000.0, 2)
+	_check(a.verts == b.verts, "building shapes: deterministic for same params")
 
 func _check(ok: bool, name: String) -> void:
 	if ok:
