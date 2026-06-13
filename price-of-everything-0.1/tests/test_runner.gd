@@ -577,7 +577,7 @@ func _test_road_works() -> void:
 			off_maxlen = maxf(off_maxlen, poly[0].distance_to(poly[poly.size() - 1]))
 	_check(off_on88 > 0, "road offshoots: built-up tile (>3 buildings) sprouts stubs (%d)" % off_on88)
 	_check(off_maxlen <= RoadOffshoots.OFFSHOOT_MAX_LEN + RoadOffshoots.OFFSHOOT_CONNECT_DIST + 1.0,
-		"road offshoots: stub length bounded to ~5u (max %.0f)" % off_maxlen)
+		"road offshoots: stub length bounded to ~12u (max %.0f)" % off_maxlen)
 	# add a forest on tile_8_8: it must NOT count toward the building threshold
 	MatchState.add_building("b_016", "", "tile_8_8", "npc", "off_test_forest")
 	MatchState.remove_building("off_test_0")

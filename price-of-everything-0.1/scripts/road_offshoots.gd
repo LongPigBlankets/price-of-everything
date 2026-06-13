@@ -12,9 +12,12 @@ extends Node2D
 ## above this and is never abstracted.
 
 const BUILDING_THRESHOLD := 3        # > this many qualifying buildings -> offshoots
-# Stub length range (1u..3u, where 1u ≈ 10 world units). Tune freely.
-const OFFSHOOT_MIN_LEN := 10.0       # ~1u
-const OFFSHOOT_MAX_LEN := 30.0       # ~3u
+# Stub length range (4u..12u, where 1u ≈ 10 world units). Tune freely.
+const OFFSHOOT_MIN_LEN := 40.0       # ~4u
+const OFFSHOOT_MAX_LEN := 120.0      # ~12u
+const OFFSHOOT_Y_SPLIT := 80.0       # stubs longer than ~8u fork into a Y at the tip
+const OFFSHOOT_Y_BRANCH := 30.0      # ~3u each Y arm
+const OFFSHOOT_Y_ANGLE := 0.5        # ~29° spread of each Y arm off the stub's heading
 const OFFSHOOT_CURVE := 0.32         # lateral bulge as a fraction of length (the curve)
 const OFFSHOOT_CONNECT_DIST := 30.0  # ~3u: nearer than this to another road -> bend in
 const ZOOM_SHOW := 0.6               # only drawn when zoomed in past this
@@ -124,6 +127,13 @@ static func generate_stubs(terrain: HexMap, net: RoadNetwork) -> Array:
 			# curve the stub one way or the other (seeded)
 			var curve_sign := 1.0 if RoadHash.pick("offshoot|%s|%d|curve" % [tid, i], 2) == 0 else -1.0
 			stubs.append(_curved_stub(origin, endp, curve_sign))
+			# a long free-ending stub forks into a Y at the tip
+			if snap.is_empty() and origin.distance_to(endp) > OFFSHOOT_Y_SPLIT:
+				var heading := (endp - origin).normalized()
+				for sgn in [1.0, -1.0]:
+					var arm := endp + heading.rotated(OFFSHOOT_Y_ANGLE * sgn) * OFFSHOOT_Y_BRANCH
+					if _in_hex(arm, center):
+						stubs.append(PackedVector2Array([endp, arm]))
 	return stubs
 
 ## Quadratic-bezier polyline from `a` to `b`, bulging to one side (curve_sign).
