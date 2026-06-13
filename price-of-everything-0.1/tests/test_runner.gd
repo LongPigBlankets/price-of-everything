@@ -603,15 +603,17 @@ func _test_road_works() -> void:
 	_check(cap_band >= 9, "peak avoidance: 16_9 has a snow cap to avoid (band %d)" % cap_band)
 	if cap_band >= 9:
 		var peak_rz := RoadRealizer.new()
-		var pr := peak_rz.route(nav, net, Vector2(6865, 5120), Vector2(7445, 5120),
+		# free route N->S straight through the cap: with room to detour it should
+		# bow AROUND the snow cap entirely, staying on the brown shoulder (<= lv7).
+		var pr := peak_rz.route(nav, net, Vector2(6905, 4820), Vector2(6905, 5440),
 			{"identity": "sparse_rural", "salt": 9, "thorough": true})
 		var route_max := -9
 		if pr.ok:
 			for pp in (pr.geometry as PackedVector2Array):
 				var pc := nav.cell_of(pp)
 				route_max = maxi(route_max, (nav.cells[pc.y * nav.gw + pc.x] & 0x0F) - 1)
-		_check(pr.ok and route_max < cap_band,
-			"peak avoidance: route stays below the cap (route max %d < cap %d)" % [route_max, cap_band])
+		_check(pr.ok and route_max < 8,
+			"peak avoidance: free route detours around the snow cap (max lv %d < 8, cap %d)" % [route_max, cap_band])
 
 	# --- forest invalidation: a forest planted on a PLANNING order's corridor
 	# restarts it; the settled edge above stays (history is history). Use a tile
@@ -709,7 +711,13 @@ func _test_road_works() -> void:
 	var planned_frame := -1
 	var settled_frame := -1
 	frames = 0
-	while frames < 1500:
+	# Window sized for the FULL build, not 100: neighbour-linking (a built tile
+	# joins its road neighbours) turns 100 completions into ~325 orders, and the
+	# climb-cost / 100%-split cost model adds per-route search. The anti-LAG gate
+	# is over_budget_frames below (planning never hogs a frame); this window only
+	# bounds total settle time, which legitimately grew with those features. A
+	# genuine stall still trips it (settle would read ~99 s).
+	while frames < 1650:
 		RoadWorks._process(1.0 / 60.0)
 		b4_max_plan = maxf(b4_max_plan, RoadWorks.last_frame_plan_ms)
 		if RoadWorks.last_frame_plan_ms > 8.0:

@@ -43,9 +43,10 @@ const PREP_CELLS_PER_SLICE := 1100
 ## Cost table (spec Appendix A — change knowingly).
 const COST_ALTITUDE_PER_LEVEL := 0.5     # decision #2: +50% per level crossed
 const COST_VALLEY := 0.03                # prefer the lowest path
-const PEAK_LEVEL := 7                     # the snow cap (lv8+) is what a road goes AROUND;
-                                          # the brown shoulder (lv7) it may still cross
-const COST_PEAK := 0.6                    # extra per level over PEAK_LEVEL (lv8 ×1.6, lv10 ×2.8)
+# Cumulative cap-climb extra by level (prefix sum). Entering 8/9/10 adds an
+# extra +100% per level over level 7, on TOP of the +50%/level base climb:
+# diff 7->8 = 1.0 (so the step is +150%), 8->9 = 2.0 (+250%), 9->10 = 3.0 (+350%).
+static var PEAK_ENTRY := PackedFloat32Array([0, 0, 0, 0, 0, 0, 0, 0, 1.0, 3.0, 6.0])
 # River hug (roadsv2.5): roads follow a river bank, running tight and parallel.
 # Applies ONLY near an actual river (NAV_WATER_RIVER) — sea/lake are excluded
 # (so coastal/lakeside roads stay straight). The discount is strong enough that
@@ -57,16 +58,19 @@ const RIVER_HUG_FAR := 24.0             # u — outer edge of the hug band (~1-2
 const NAV_WATER_RIVER := 3              # navgrid cell high-nibble class (see hill_field)
 const COST_GRADIENT_K := 1.5             # serpentine: across-slope is cheap, up-slope is not
 const STEEP_GRAD := 1.0                  # |level gradient| (per cell pair) considered steep
-# MERGE: a cell sharing a road's 24 u cell. Strong discount so roads that come
-# close COLLAPSE onto one shared line instead of shadowing each other (the
-# "still seeing close parallels" report). 0.62 also means they stay merged until
-# going their own way is ~60% shorter — i.e. merge is sticky, split is decisive.
-const COST_REUSE := 0.62
-const COST_CROWD := 1.18                 # BESIDE: one cell off a road — discourage running
-                                         # parallel (merge onto it or veer clear). Kept at
-                                         # baseline; raising it slowed dense mass-builds (B4)
-                                         # without helping as much as the stronger MERGE above.
-const CROWD_RINGS := 1                   # occupancy-cell rings around a road that count as BESIDE
+# Merge / split are now TWO SEPARATE levers (geometry-distance reuse bitmap):
+#  - MERGE_RADIUS  = how close (to a road's centreline) a 2nd road snaps ONTO it.
+#    Small so two roads collapse to one line instead of running ~20u parallel.
+#  - COST_REUSE    = how sticky the merge is = the SPLIT tolerance. A merged road
+#    leaves only when its own way is cheaper despite the discount: tolerance is
+#    1/COST_REUSE − 1, so 0.5 ≈ "separate only when staying merged is >100% worse"
+#    (the requested 100%-inefficiency split).
+#  - CROWD_RADIUS / COST_CROWD = the band beside a road where running parallel is
+#    penalised, so a near road is pushed to merge or veer clear, never shadow it.
+const MERGE_RADIUS := 7.0
+const CROWD_RADIUS := 22.0
+const COST_REUSE := 0.5
+const COST_CROWD := 1.3
 const TURN_45 := 0.18
 const TURN_90 := 0.85
 const TURN_135 := 3.0
@@ -527,16 +531,16 @@ func _fine_prep_unit(job: Dictionary) -> void:
 			if f1 >= fl.size():
 				ctx.prep_phase = "nearnet"
 		"nearnet":
-			if not ctx.has("nearnet_keys"):
+			if not ctx.has("nearnet_segs"):
 				_near_net.fill(0)   # C++ fill — a GDScript per-index zeroing loop cost ~10 ms
-				ctx.nearnet_keys = _near_net_keys(nav, job.network, c0, lw, lh)
+				ctx.nearnet_segs = _near_net_segments(nav, job.network, c0, lw, lh)
 				ctx.nearnet_i = 0
-			var keys: Array = ctx.nearnet_keys
+			var segs: Array = ctx.nearnet_segs
 			var i0: int = ctx.nearnet_i
-			var i1 := mini(i0 + 130, keys.size())
-			_scatter_near_net(nav, c0, lw, lh, keys, i0, i1)
+			var i1 := mini(i0 + 24, segs.size())   # capsule rasters are heavier than cell stamps
+			_scatter_near_net(nav, c0, lw, lh, segs, i0, i1)
 			ctx.nearnet_i = i1
-			if i1 >= keys.size():
+			if i1 >= segs.size():
 				ctx.prep_phase = "region"
 		"region":
 			var region: Array = job.region_coords
@@ -610,6 +614,7 @@ func _fine_step(job: Dictionary) -> String:
 	var exp_cap: int = ctx.exp_cap
 	# hoisted hot-loop locals (member access on RefCounted is slow in GDScript)
 	var cells: PackedByteArray = nav.cells
+	var peak_entry: PackedFloat32Array = PEAK_ENTRY
 	var nav_gw: int = nav.gw
 	var nav_gh: int = nav.gh
 	var use_region: bool = bool(ctx.get("use_region", false))
@@ -654,13 +659,14 @@ func _fine_step(job: Dictionary) -> String:
 			var next_level := (cells[n_nav] & 0x0F) - 1
 			var move := step_u * float(DIR_LEN[nd])
 			var dl := next_level - cur_level
-			move *= 1.0 + COST_ALTITUDE_PER_LEVEL * absf(float(dl))
+			# Climb cost: +50% per level climbed (base), PLUS a cumulative +100% per
+			# level for the snow-cap bands 8/9/10 — so 7->8 is +150%, 8->9 +250%,
+			# 9->10 +350%, and 7->9 is +400% over staying on 7. PEAK_ENTRY is the
+			# prefix-sum of the cap extra, so the per-step extra is one subtraction.
+			# (Additive within the step, then the valley nudge multiplies on top.)
+			var peak_extra := peak_entry[clampi(next_level, 0, 10)] - peak_entry[clampi(cur_level, 0, 10)]
+			move *= 1.0 + COST_ALTITUDE_PER_LEVEL * absf(float(dl)) + maxf(0.0, peak_extra)
 			move *= 1.0 + COST_VALLEY * maxf(float(next_level), 0.0)
-			# peak avoidance: the tall mountain bands (the snow/brown cap) are very
-			# dear, so a road detours N/S around a cap (staying on the lower shoulder)
-			# instead of going straight over it. Ramps hard above PEAK_LEVEL.
-			if next_level > PEAK_LEVEL:
-				move *= 1.0 + COST_PEAK * float(next_level - PEAK_LEVEL)
 			# river hug: run tight and parallel to a river bank. _river_near is the
 			# corridor-local distance to the nearest RIVER cell (sea/lake excluded),
 			# so this fires ONLY where the tile actually has a river nearby.
@@ -796,26 +802,33 @@ func _block_forest_discs_range(nav: NavGrid, c0: Vector2i, lw: int, lh: int, dis
 				if nav.world_of(nx2, ny2).distance_squared_to(dc) <= dr * dr:
 					_passable[(ny2 - c0.y) * lw + (nx2 - c0.x)] = 0
 
-## Reuse-discount bitmap support: built by SCATTERING from the network's
-## occupancy set (O(network size)) instead of probing per corridor cell
-## (O(corridor x 9 dict probes)) — that probe loop was a 30+ ms prep spike.
-## _near_net_keys collects the occupied cells near the corridor; _scatter_
-## near_net marks a key range (chunked across prep units).
-func _near_net_keys(nav: NavGrid, network: RoadNetwork, c0: Vector2i, lw: int, lh: int) -> Array:
+## Reuse/crowd bitmap, GEOMETRY-based. A coarse 24u occupancy cell let two roads
+## sit ~20u apart and BOTH count as "on the road" (merged), which is how close
+## parallels survived. Instead we measure distance to the actual road centreline:
+## MERGE (2) within MERGE_RADIUS so a 2nd road collapses ONTO the line; CROWD (1)
+## out to CROWD_RADIUS so a road that would run beside is pushed to merge or veer
+## clear — never a stable parallel in between. _near_net_segments collects road
+## segments near the corridor; _scatter_near_net rasters a capsule per segment.
+func _near_net_segments(nav: NavGrid, network: RoadNetwork, c0: Vector2i, lw: int, lh: int) -> Array:
 	if network == null or not network.has_any_edges():
 		return []
-	var cell_u := RoadNetwork.OCCUPANCY_CELL
-	# corridor bounds in occupancy-cell space (±1 cell: the near_network test)
-	var lo_w := nav.world_of(c0.x, c0.y)
-	var hi_w := nav.world_of(c0.x + lw - 1, c0.y + lh - 1)
-	var oc_lo := Vector2i(int(floor(lo_w.x / cell_u)) - 1, int(floor(lo_w.y / cell_u)) - 1)
-	var oc_hi := Vector2i(int(floor(hi_w.x / cell_u)) + 1, int(floor(hi_w.y / cell_u)) + 1)
-	var keys: Array = []
-	for key in network.occupied_cells():
-		var oc: Vector2i = key
-		if oc.x >= oc_lo.x and oc.y >= oc_lo.y and oc.x <= oc_hi.x and oc.y <= oc_hi.y:
-			keys.append(oc)
-	return keys
+	var lo := nav.world_of(c0.x, c0.y) - Vector2(CROWD_RADIUS, CROWD_RADIUS)
+	var hi := nav.world_of(c0.x + lw - 1, c0.y + lh - 1) + Vector2(CROWD_RADIUS, CROWD_RADIUS)
+	var rect := Rect2(lo, hi - lo)
+	var segs: Array = []
+	for eid in network.edges:
+		var edge: Dictionary = network.edges[eid]
+		if str(edge.state) == RoadNetwork.STATE_PLANNED:
+			continue   # planned-but-unbuilt geometry isn't a road on the ground yet
+		var geo: PackedVector2Array = edge.geometry
+		for i in range(geo.size() - 1):
+			var p0: Vector2 = geo[i]
+			var p1: Vector2 = geo[i + 1]
+			var sl := Vector2(minf(p0.x, p1.x), minf(p0.y, p1.y))
+			var sh := Vector2(maxf(p0.x, p1.x), maxf(p0.y, p1.y))
+			if rect.intersects(Rect2(sl, sh - sl)):
+				segs.append([p0, p1])
+	return segs
 
 ## Clear the outside-region penalty bitmap inside member hexes [i0, i1).
 ## Inline flat-top hex test: |dx|<=270, |dy|<=240, 240|dx|+135|dy|<=64800
@@ -878,27 +891,31 @@ func _stamp_river_near_rows(nav: NavGrid, c0: Vector2i, lw: int, lh: int, row0: 
 				if int(off[2]) < _river_near[li]:
 					_river_near[li] = int(off[2])
 
-func _scatter_near_net(nav: NavGrid, c0: Vector2i, lw: int, lh: int, keys: Array, i0: int, i1: int) -> void:
-	var cell_u := RoadNetwork.OCCUPANCY_CELL
+func _scatter_near_net(nav: NavGrid, c0: Vector2i, lw: int, lh: int, segs: Array, i0: int, i1: int) -> void:
+	var crowd2 := CROWD_RADIUS * CROWD_RADIUS
+	var merge2 := MERGE_RADIUS * MERGE_RADIUS
 	for i in range(i0, i1):
-		var oc: Vector2i = keys[i]
-		# BESIDE (1): nav cells in the ±CROWD_RINGS ring around the occupied 24u cell.
-		var w_lo := Vector2(float(oc.x - CROWD_RINGS) * cell_u, float(oc.y - CROWD_RINGS) * cell_u)
-		var w_hi := Vector2(float(oc.x + 1 + CROWD_RINGS) * cell_u, float(oc.y + 1 + CROWD_RINGS) * cell_u)
-		var n_lo := nav.cell_of(w_lo)
-		var n_hi := nav.cell_of(w_hi)
-		for ny in range(maxi(n_lo.y, c0.y), mini(n_hi.y, c0.y + lh - 1) + 1):
-			for nx in range(maxi(n_lo.x, c0.x), mini(n_hi.x, c0.x + lw - 1) + 1):
-				var li := (ny - c0.y) * lw + (nx - c0.x)
-				if _near_net[li] < 1:
-					_near_net[li] = 1
-		# MERGE (2): nav cells inside the occupied 24u cell itself (a road runs
-		# here). max-write (2 > 1) keeps this order-independent across keys.
-		var m_lo := nav.cell_of(Vector2(float(oc.x) * cell_u, float(oc.y) * cell_u))
-		var m_hi := nav.cell_of(Vector2(float(oc.x + 1) * cell_u, float(oc.y + 1) * cell_u))
-		for my in range(maxi(m_lo.y, c0.y), mini(m_hi.y, c0.y + lh - 1) + 1):
-			for mx in range(maxi(m_lo.x, c0.x), mini(m_hi.x, c0.x + lw - 1) + 1):
-				_near_net[(my - c0.y) * lw + (mx - c0.x)] = 2
+		var seg: Array = segs[i]
+		var a: Vector2 = seg[0]
+		var b: Vector2 = seg[1]
+		var ab := b - a
+		var ab_len2 := ab.length_squared()
+		var lo := nav.cell_of(Vector2(minf(a.x, b.x) - CROWD_RADIUS, minf(a.y, b.y) - CROWD_RADIUS))
+		var hi := nav.cell_of(Vector2(maxf(a.x, b.x) + CROWD_RADIUS, maxf(a.y, b.y) + CROWD_RADIUS))
+		for ny in range(maxi(lo.y, c0.y), mini(hi.y, c0.y + lh - 1) + 1):
+			var row := (ny - c0.y) * lw - c0.x
+			for nx in range(maxi(lo.x, c0.x), mini(hi.x, c0.x + lw - 1) + 1):
+				var li := row + nx
+				if _near_net[li] == 2:
+					continue   # already MERGE — nothing stronger; skip the distance maths
+				var w := nav.world_of(nx, ny)
+				# distance² from the cell centre to the road segment
+				var t := 0.0 if ab_len2 < 1e-6 else clampf((w - a).dot(ab) / ab_len2, 0.0, 1.0)
+				var d2 := w.distance_squared_to(a + ab * t)
+				if d2 <= merge2:
+					_near_net[li] = 2          # MERGE: collapse onto the centreline
+				elif d2 <= crowd2 and _near_net[li] < 1:
+					_near_net[li] = 1          # CROWD: beside a road — discourage parallel
 
 ## Rebuild the forest-disc cache now if stale — call OUTSIDE the frame budget
 ## (e.g. at enqueue, in turn context) so the ~40 ms rebuild never lands inside
