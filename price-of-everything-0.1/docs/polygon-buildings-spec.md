@@ -80,14 +80,20 @@ dark casing only.
 
 ## 4. Footprint sizing
 
+The building takes its capacity fraction of the tile's **actually buildable** area — not the whole
+hex — so roads, rivers and forests shrink it automatically (no fudge factor):
+
 ```
-target_area = (tile_size_used / build_capacity) * HEX_AREA(194400) * OCCUPANCY (~0.9)
+buildable_area = (free subtiles: is_subtile_buildable ∧ not TileOccupancy-blocked ∧ outside every
+                  forest disc) × 400 u²        # roads, rivers, hills, forests already removed
+target_area    = (tile_size_used / build_capacity) * buildable_area
 ```
-`OCCUPANCY < 1` bakes in the "a little under" — roads/rivers already eat tile space, so a size-20
-building on a 200-capacity tile aims at ~10% but lands under it once fit into the free mask. The
-chosen shape is scaled to `target_area`; if the best free pocket can't hold it, shrink to fit
-(min ~1 subtile) rather than overflow. A small **DESIGN_GAP** (~4–6u) is kept between footprints
-and between footprint and road — for visibility and for future building/road upgrades growing.
+A size-20 building on a 200-capacity tile aims at 10% of the *buildable* area, which is already
+"a little under" 10% of the full hex. `buildable_area` is computed once per tile from the static
+map; it does NOT subtract other buildings — collective overflow is handled by placement, which
+shrinks a footprint to the largest free pocket (min ~1 subtile) rather than overlap. A small
+**DESIGN_GAP** (~4–6u) is kept between footprints and between footprint and road, for visibility
+and for buildings/roads growing on upgrade.
 
 ---
 
@@ -102,8 +108,9 @@ not already covered by a placed building. Precompute, on the subtile grid:
 
 **Placing one building** (category `t`, area `A`, shape `s` seeded by `instance_id`):
 
-- **Recycling (`b_036`/internal `recycling_plant`) and Extraction (`building_type` has
-  `extraction`)** → go to the **far edge**, away from everything. Candidate score (maximise):
+- **Recycling (internal_name contains `recycl` — `b_036` recycling_plant AND `b_022`
+  water_recycling) and Extraction (`building_type` has `extraction`)** → go to the **far edge**,
+  away from everything. Candidate score (maximise):
   `dist_to_tile_centre + W_AWAY * dist_to_nearest_building`. Pick the free pocket that fits `A`
   with the highest score (a tile corner that's empty).
 - **Everyone else** → road-frontage first, low ground as the tie-break:
@@ -200,15 +207,16 @@ drives the outline.
 
 ## 11. Open decisions (pick before/while building)
 
-1. **Tile-size denominator**: fixed 200, or the live `build_capacity` (grows as land is bought, so
-   buildings shrink as a fraction)? Plan assumes the live value.
+1. ~~Tile-size denominator~~ **RESOLVED**: a building takes `tile_size_used / build_capacity` of the
+   tile's **max buildable area** (hex minus roads/rivers/forests), per §4. (`build_capacity` is the
+   fraction denominator, base 200; the area it scales is the buildable space.)
 2. **Weights**: `W_ROAD : W_ELEV : W_SAME`, `OCCUPANCY`, `DESIGN_GAP`, the two zoom thresholds, hatch
    spacing — all guesses to tune visually.
 3. **Forests**: drawn by `ForestVisuals` already — buildings layer **skips** `is_forest` ids.
    Confirm we don't want to also re-skin forests here.
 4. **Grey blob** geometry: convex hull (cheap, may look bloated) vs a merged/inflated outline.
-5. **Recycling identification**: only `b_036` today — generalise by internal_name `recycling_plant`
-   so future recyclers inherit the edge rule.
+5. ~~Recycling identification~~ **RESOLVED**: match internal_name containing `recycl` — covers both
+   `b_036` recycling_plant (manufacturing) and `b_022` water_recycling (water). Both edge-gravitate.
 
 ## 12. Phased build order
 
