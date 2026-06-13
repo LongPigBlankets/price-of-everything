@@ -525,6 +525,18 @@ func _test_road_works() -> void:
 		"road works: settled edge is BUILT in the network")
 	_check(RoadWorks.reveal_fraction(edge_id) >= 1.0, "road works: reveal fraction settles at 1")
 
+	# --- hard connect: a road on a RIVER tile far from the network must still
+	# build (the direct corridor can't reach the bridge gate, so it escalates to
+	# the coarse pathfinder). Regression for "roads along a river drew nothing".
+	var oidr := RoadWorks.enqueue_for_tile("tile_12_10")
+	_check(oidr >= 0, "road works: river-tile connect enqueues")
+	frames = 0
+	while frames < 8000 and str(RoadWorks.orders[oidr].state) in ["queued", "planning", "revealing"]:
+		RoadWorks._process(1.0 / 60.0)
+		frames += 1
+	_check(str(RoadWorks.orders[oidr].state) == "built",
+		"road works: river-tile road routes via coarse fallback (state %s)" % str(RoadWorks.orders[oidr].state))
+
 	# --- forest invalidation: a forest planted on a PLANNING order's corridor
 	# restarts it; the settled edge above stays (history is history). Use a tile
 	# far from the network so planning genuinely spans frames.

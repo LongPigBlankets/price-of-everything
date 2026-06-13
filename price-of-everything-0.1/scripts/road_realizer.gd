@@ -176,6 +176,7 @@ func _advance(job: Dictionary) -> void:
 	match str(job.stage):
 		"init":
 			job.seg_wide_retry = false
+			job.coarse_fallback = false
 			var start: Vector2 = job.start
 			var goal: Vector2 = job.goal
 			if start.distance_to(goal) <= FINE_DIRECT_MAX:
@@ -216,11 +217,18 @@ func _advance(job: Dictionary) -> void:
 					var i2: int = job.seg_i
 					var target2: Vector2 = job.goal if i2 == waypoints2.size() - 1 else waypoints2[i2]
 					_fine_begin(job, [job.cursor, target2], DIRECT_CAPSULE, int(job.salt) + i2, job.cursor, target2)
-				elif str(job.mode) == "direct" and not bool(job.seg_wide_retry):
-					# the tight adaptive corridor can miss a detour around water/
-					# forests — retry once at the full capsule before failing
-					job.seg_wide_retry = true
-					_fine_begin(job, [job.start, job.goal], DIRECT_CAPSULE, int(job.salt), job.start, job.goal)
+				elif str(job.mode) == "direct" and not bool(job.get("coarse_fallback", false)):
+					# A short job that can't route directly almost always needs to
+					# DETOUR (across a river to a crossing gate, around a forest
+					# field). The direct corridor has no global pathfinder; go
+					# straight to coarse routing (threads the 36u graph to a gate,
+					# refines along it) rather than burning a second doomed direct
+					# attempt. This is why a road on a river tile drew nothing —
+					# the bridge was outside the capsule.
+					job.coarse_fallback = true
+					job.mode = "segments"
+					_coarse_begin(job)
+					job.stage = "coarse"
 				else:
 					_fail(job, ("refine_failed:" if str(job.mode) == "segments" else "") + str(job.fine.get("reason", "no_route")))
 			elif status == "done":
@@ -315,7 +323,7 @@ func _coarse_begin(job: Dictionary) -> void:
 		"expansions": 0, "reason": "", "path": [],
 		# distance-budgeted cap (unroutable far jobs must not burn the max)
 		"exp_cap": MAX_COARSE_EXPANSIONS if bool(job.get("thorough", false)) \
-			else clampi(int(job.start.distance_to(job.goal) / nav.coarse_step) * 140, 3000, 16000),
+			else clampi(int(job.start.distance_to(job.goal) / nav.coarse_step) * 200, 8000, 32000),
 	}
 	job.coarse = ctx
 	if s < 0 or g < 0:
@@ -440,7 +448,7 @@ func _fine_begin(job: Dictionary, corridor: Array, radius: float, salt: int, sta
 		# (rivers, forest fields) need real headroom — budget by job length.
 		# Thorough (frame-budget-free) callers search to the hard maximum.
 		"exp_cap": MAX_FINE_EXPANSIONS if bool(job.get("thorough", false)) \
-			else clampi(int(start.distance_to(goal) / nav.step) * 280, 7000, 20000),
+			else clampi(int(start.distance_to(goal) / nav.step) * 280, 20000, 48000),
 	}
 	job.fine = ctx
 	if lw < 2 or lh < 2:

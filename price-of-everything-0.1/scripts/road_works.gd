@@ -14,7 +14,11 @@ extends Node
 ## planted/removed -> restart orders still planning whose corridor intersects
 ## the disc — BUILT/revealing edges stay (history is history).
 
-const PLAN_BUDGET_MS := 4.0
+## Per-frame planning budget. 6 ms lets a lone hard route (e.g. a river tile
+## that must detour to a bridge gate via the coarse pass) finish in a few
+## seconds rather than ~10 — the work is small (~0.5 s CPU) but the conservative
+## old 4 ms budget only ran ~1 search unit per frame.
+const PLAN_BUDGET_MS := 6.0
 ## Mass-build burst: with a deep queue (e.g. 100 completions in one PROCESS)
 ## the budget rises toward the 8 ms frame ceiling so the backlog clears fast.
 const PLAN_BUDGET_BURST_MS := 7.8
