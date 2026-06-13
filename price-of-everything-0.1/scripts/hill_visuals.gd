@@ -62,6 +62,20 @@ var _baked_tex: Texture2D = null
 var _bake_rect: Rect2 = Rect2()
 var _mode := MODE_TEXTURE
 var _view_rect := Rect2()
+# Lazily-triangulated fill meshes, keyed "p<i>"/"s<i>"/"l<i>". draw_colored_polygon
+# re-triangulates a concave polygon EVERY call (marching-squares contours have
+# hundreds of verts) — that was 1 fps at max zoom. A cached mesh triangulates
+# once, then draw_mesh just renders the tris. null entry = triangulation failed
+# (fall back to draw_colored_polygon for that poly).
+var _mesh_cache: Dictionary = {}
+var _white_tex: Texture2D = null
+
+func _white_texture() -> Texture2D:
+	if _white_tex == null:
+		var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_white_tex = ImageTexture.create_from_image(img)
+	return _white_tex
 
 func _enter_tree() -> void:
 	# the 'toggle heightmap' debug cheat flips visibility on this group
@@ -75,6 +89,7 @@ func _ready() -> void:
 	_sea_bb = _bboxes(_sea, true)
 	_lake_bb = _bboxes(_lakes, false)
 	_bake_rect = _compute_bounds()
+	_warm_all_meshes()   # triangulate every contour ONCE now, never during a pan
 	queue_redraw()
 	# Headless (tests) has no GPU to render the SubViewport into — fall back to
 	# direct polygon drawing (harmless, nothing is displayed there anyway).
@@ -116,7 +131,7 @@ func _draw() -> void:
 	if _mode == MODE_TEXTURE:
 		draw_texture_rect(_baked_tex, _bake_rect, false)
 	else:
-		_draw_polys_direct(_view_rect)
+		_draw_culled_meshes(_view_rect)
 
 func _visible_world_rect() -> Rect2:
 	var vp := get_viewport()
@@ -178,6 +193,80 @@ func _bake_to_texture() -> void:
 		_baked_tex = ImageTexture.create_from_image(img)
 	vp.queue_free()
 	queue_redraw()
+
+## Zoomed-in vector LOD: draw only polygons whose bbox is on screen, using
+## cached pre-triangulated meshes (no per-frame triangulation) + non-AA
+## outlines (AA polylines on huge contours were also a per-frame cost).
+func _draw_culled_meshes(cull: Rect2) -> void:
+	var white := _white_texture()
+	for i in _sea.size():
+		if not cull.intersects(_sea_bb[i]):
+			continue
+		var spts: PackedVector2Array = _sea[i].p
+		if spts.size() < 3:
+			continue
+		_draw_fill("s%d" % i, spts, SEA_COLORS[clampi(_sea[i].b, 0, SEA_COLORS.size() - 1)], white)
+	for i in _polys.size():
+		if not cull.intersects(_poly_bb[i]):
+			continue
+		var pts: PackedVector2Array = _polys[i].p
+		if pts.size() < 3:
+			continue
+		var color: Color = BAND_COLORS[clampi(_polys[i].b, 0, BAND_COLORS.size() - 1)]
+		_draw_fill("p%d" % i, pts, color, white)
+		var outline := pts.duplicate()
+		outline.append(pts[0])
+		draw_polyline(outline, color.darkened(OUTLINE_DARKEN), OUTLINE_WIDTH, false)
+	for i in _lakes.size():
+		if not cull.intersects(_lake_bb[i]):
+			continue
+		var lake_pts: PackedVector2Array = _lakes[i]
+		if lake_pts.size() < 3:
+			continue
+		_draw_fill("l%d" % i, lake_pts, WATER_COLOR, white)
+		var shore := lake_pts.duplicate()
+		shore.append(lake_pts[0])
+		draw_polyline(shore, WATER_COLOR.darkened(0.25), 2.0, false)
+
+## Triangulate every fill polygon once (load-time, ~tens of ms — the old direct
+## draw triangulated all of these EVERY frame), so panning only ever draws
+## already-built meshes.
+func _warm_all_meshes() -> void:
+	if DisplayServer.get_name() == "headless":
+		return   # tests never render the vector LOD; skip the triangulation cost
+	for i in _sea.size():
+		if (_sea[i].p as PackedVector2Array).size() >= 3:
+			_build_fill_mesh("s%d" % i, _sea[i].p)
+	for i in _polys.size():
+		if (_polys[i].p as PackedVector2Array).size() >= 3:
+			_build_fill_mesh("p%d" % i, _polys[i].p)
+	for i in _lakes.size():
+		if (_lakes[i] as PackedVector2Array).size() >= 3:
+			_build_fill_mesh("l%d" % i, _lakes[i])
+
+func _draw_fill(key: String, pts: PackedVector2Array, color: Color, white: Texture2D) -> void:
+	var mesh: Mesh = _mesh_cache.get(key, null) if _mesh_cache.has(key) else _build_fill_mesh(key, pts)
+	if mesh != null:
+		draw_mesh(mesh, white, Transform2D.IDENTITY, color)
+	else:
+		draw_colored_polygon(pts, color)   # triangulation failed — rare
+
+func _build_fill_mesh(key: String, pts: PackedVector2Array) -> Mesh:
+	var idx := Geometry2D.triangulate_polygon(pts)
+	var mesh: ArrayMesh = null
+	if not idx.is_empty():
+		var verts := PackedVector3Array()
+		verts.resize(pts.size())
+		for i in pts.size():
+			verts[i] = Vector3(pts[i].x, pts[i].y, 0.0)
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_INDEX] = idx
+		mesh = ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	_mesh_cache[key] = mesh
+	return mesh
 
 ## Draw the contour polygons directly. `cull` (when sized) keeps only polygons
 ## whose bbox intersects it — the zoomed-in vector LOD; an empty rect draws all
