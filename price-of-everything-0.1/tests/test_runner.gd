@@ -36,6 +36,7 @@ func _ready() -> void:
 	await _test_building_ledger()
 	await _test_debug_terminal()
 	_test_building_shapes()
+	_test_building_category_key()
 	_test_queue_move()
 	_test_move_extras()
 	_test_storage_boost()
@@ -1774,6 +1775,31 @@ func _test_building_shapes() -> void:
 	var a := BuildingShapes.make("l_base", 5000.0, 2)
 	var b := BuildingShapes.make("l_base", 5000.0, 2)
 	_check(a.verts == b.verts, "building shapes: deterministic for same params")
+
+func _test_building_category_key() -> void:
+	# The polygon layout clusters on category_key and edge-seeks on
+	# extraction|recycling — guard those classifications against catalog drift.
+	var TileViewData := preload("res://scripts/tile_view_data.gd")
+	var mine := Catalog.get_building("b_001")
+	if not mine.is_empty():
+		_check((mine.get("building_type", []) as Array).has("extraction"),
+			"layout edge rule: b_001 is extraction (mine)")
+		_check(TileViewData.category_key(mine) == "extraction",
+			"layout category_key: b_001 -> extraction")
+	# Both recycling buildings must trip the edge rule (internal_name ~ 'recycl')
+	# while keeping their own colour category.
+	var wrec := Catalog.get_building("b_022")
+	if not wrec.is_empty():
+		_check(str(wrec.get("internal_name", "")).to_lower().contains("recycl"),
+			"layout edge rule: b_022 water_recycling matches 'recycl'")
+		_check(TileViewData.category_key(wrec) == "water",
+			"layout category_key: b_022 -> water (colour stays water)")
+	var prec := Catalog.get_building("b_036")
+	if not prec.is_empty():
+		_check(str(prec.get("internal_name", "")).to_lower().contains("recycl"),
+			"layout edge rule: b_036 recycling_plant matches 'recycl'")
+		_check(TileViewData.category_key(prec) == "manufacturing",
+			"layout category_key: b_036 -> manufacturing")
 
 func _check(ok: bool, name: String) -> void:
 	if ok:

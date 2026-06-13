@@ -291,6 +291,20 @@ static func _is_ruins(bd: Dictionary) -> bool:
 static func category_color(bd: Dictionary) -> Color:
 	return _category_color(bd)
 
+## Public: a stable category KEY for a catalog building dict, mirroring the colour
+## priority above. The polygon layout uses it to cluster same-type buildings.
+static func category_key(bd: Dictionary) -> String:
+	if _is_ruins(bd):
+		return "ruins"
+	var types: Array = bd.get("building_type", [])
+	var internal := str(bd.get("internal_name", "")).to_lower()
+	for t in ["infrastructure", "extraction", "metallurgy", "electrochemistry", "refinery", "manufacturing", "water", "power"]:
+		if types.has(t):
+			return t
+	if types.has("farm_forests"):
+		return "forest" if internal.contains("forest") else "farm"
+	return str(bd.get("category", "default"))
+
 static func _category_color(bd: Dictionary) -> Color:
 	if _is_ruins(bd):
 		return CAT_RUINS

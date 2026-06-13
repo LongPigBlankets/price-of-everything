@@ -207,6 +207,12 @@ func _ready() -> void:
 	RoadNetwork.bootstrap_from_bake()
 	RoadWorks.rebuild_occupancy()   # no-op until OCCUPANCY_ROADS_ENABLED
 
+	# Seed buildings were emitted above, BEFORE the road network existed, so they
+	# laid out with no frontage data. Re-gravitate them now that roads are up (one
+	# shot; deterministic, and idempotent on load where roads were already present).
+	if building_visuals.has_method("relayout"):
+		building_visuals.relayout()
+
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
 

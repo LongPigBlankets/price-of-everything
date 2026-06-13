@@ -217,6 +217,22 @@ func _forest_draw_data(instance_id: String, tile_id: String, coord: Vector2i) ->
 	_draw_cache[instance_id] = data
 	return data
 
+## World-space avoidance discs {center, radius} for every forest on `coord`,
+## matching the drawn blob exactly (same _forest_center + circumscribing radius).
+## The polygon building layout keeps footprints out of these so a building never
+## lands under a canopy. Cheap — only the forests actually on this tile.
+func discs_on_tile(coord: Vector2i) -> Array:
+	var out: Array = []
+	for key in _forests:
+		var e: Dictionary = _forests[key]
+		if (e.get("coord", Vector2i(-1, -1)) as Vector2i) != coord:
+			continue
+		var tid := str(e.get("tile_id", ""))
+		var center := _forest_center(str(key), tid, coord)
+		var shape := ForestFootprint.shape_for(str(key), tid, center)
+		out.append({"center": center, "radius": float(shape.radius)})
+	return out
+
 func _forest_center(instance_id: String, tile_id: String, coord: Vector2i) -> Vector2:
 	# Delegates to ForestFootprint so the drawn blob and the road/occupancy
 	# obstacle disc can never diverge (roads-v2 spec section 1).
