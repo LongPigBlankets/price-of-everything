@@ -43,10 +43,10 @@ const PREP_CELLS_PER_SLICE := 1100
 ## Cost table (spec Appendix A — change knowingly).
 const COST_ALTITUDE_PER_LEVEL := 0.5     # decision #2: +50% per level crossed
 const COST_VALLEY := 0.03                # prefer the lowest path
-# Cumulative cap-climb extra by level (prefix sum). Entering 8/9/10 adds an
-# extra +100% per level over level 7, on TOP of the +50%/level base climb:
-# diff 7->8 = 1.0 (so the step is +150%), 8->9 = 2.0 (+250%), 9->10 = 3.0 (+350%).
-static var PEAK_ENTRY := PackedFloat32Array([0, 0, 0, 0, 0, 0, 0, 0, 1.0, 3.0, 6.0])
+# Roads are BANNED from the snow cap: any land cell at this level or above is
+# impassable (a road routes around the peak, never over it). Level 10 is the
+# white snow band; 9 is the darkest umber just below — both are off-limits.
+const BAN_LEVEL := 9
 # River hug (roadsv2.5): roads follow a river bank, running tight and parallel.
 # Applies ONLY near an actual river (NAV_WATER_RIVER) — sea/lake are excluded
 # (so coastal/lakeside roads stay straight). The discount is strong enough that
@@ -614,7 +614,6 @@ func _fine_step(job: Dictionary) -> String:
 	var exp_cap: int = ctx.exp_cap
 	# hoisted hot-loop locals (member access on RefCounted is slow in GDScript)
 	var cells: PackedByteArray = nav.cells
-	var peak_entry: PackedFloat32Array = PEAK_ENTRY
 	var nav_gw: int = nav.gw
 	var nav_gh: int = nav.gh
 	var use_region: bool = bool(ctx.get("use_region", false))
@@ -659,13 +658,13 @@ func _fine_step(job: Dictionary) -> String:
 			var next_level := (cells[n_nav] & 0x0F) - 1
 			var move := step_u * float(DIR_LEN[nd])
 			var dl := next_level - cur_level
-			# Climb cost: +50% per level climbed (base), PLUS a cumulative +100% per
-			# level for the snow-cap bands 8/9/10 — so 7->8 is +150%, 8->9 +250%,
-			# 9->10 +350%, and 7->9 is +400% over staying on 7. PEAK_ENTRY is the
-			# prefix-sum of the cap extra, so the per-step extra is one subtraction.
-			# (Additive within the step, then the valley nudge multiplies on top.)
-			var peak_extra := peak_entry[clampi(next_level, 0, 10)] - peak_entry[clampi(cur_level, 0, 10)]
-			move *= 1.0 + COST_ALTITUDE_PER_LEVEL * absf(float(dl)) + maxf(0.0, peak_extra)
+			# Climb cost: a single level is +50%; a step that gains MORE than one
+			# level (a steep cell) is TRIPLED — so a 2-level gain is +300% and a
+			# 3-level gain +450% (vs +100%/+150% straight). Descents stay at base.
+			var climb_extra := COST_ALTITUDE_PER_LEVEL * absf(float(dl))
+			if dl >= 2:
+				climb_extra *= 3.0
+			move *= 1.0 + climb_extra
 			move *= 1.0 + COST_VALLEY * maxf(float(next_level), 0.0)
 			# river hug: run tight and parallel to a river bank. _river_near is the
 			# corridor-local distance to the nearest RIVER cell (sea/lake excluded),
@@ -769,8 +768,9 @@ func _build_passable_rows(nav: NavGrid, c0: Vector2i, lw: int, row0: int, row1: 
 			if world.distance_squared_to(a + seg * t) > r_sq:
 				_passable[li] = 0
 				continue
-			var w := nav.cells[(c0.y + ly) * nav.gw + (c0.x + lx)] >> 4
-			_passable[li] = 1 if w == NavGrid.WATER_LAND else 0
+			var cell_byte := nav.cells[(c0.y + ly) * nav.gw + (c0.x + lx)]
+			# land, and below the banned snow-cap level
+			_passable[li] = 1 if ((cell_byte >> 4) == NavGrid.WATER_LAND and ((cell_byte & 0x0F) - 1) < BAN_LEVEL) else 0
 
 ## Crossing gates re-open river cells along the bridge line (principle (a)).
 func _open_crossing_gates(nav: NavGrid, c0: Vector2i, lw: int, lh: int) -> void:

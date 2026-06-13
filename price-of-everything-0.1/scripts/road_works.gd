@@ -196,11 +196,20 @@ func enqueue_region_jobs(region_id: String) -> int:
 ## geometry (roads connect to the road they meet, not to the distant junction).
 ## Returns {pos, id} — id "" when the attachment is mid-edge (a junction node is
 ## created there when the order commits).
+## Roads merge into at most a 5-way junction. A node already carrying MAX_JUNCTION
+## edges is "full": a new road attaches to a ROAD near it (an edge sample) instead
+## of piling a 6th arm onto the point — it merges into a road that connects to the
+## others rather than overloading the junction.
+const MAX_JUNCTION := 5
+
 func _nearest_attachment(from: Vector2) -> Dictionary:
 	var net := RoadNetwork.instance()
+	var degree := _node_degrees(net)
 	var best: Dictionary = {}
 	var best_d := 1e30
 	for node_id in net.nodes:
+		if int(degree.get(str(node_id), 0)) >= MAX_JUNCTION:
+			continue   # full junction — don't add a 6th arm to the point
 		var node: Dictionary = net.nodes[node_id]
 		var d: float = (node.pos as Vector2).distance_squared_to(from)
 		if d < best_d:
@@ -364,7 +373,11 @@ func _link_adjacent_roads(order: Dictionary) -> void:
 	var t_node := "rw:%s" % t_id
 	if not net.nodes.has(t_node):
 		return
+	var degree := _node_degrees(net)
+	var t_deg := int(degree.get(t_node, 0))
 	for ncoord in terrain.neighbor_coords(order.coord as Vector2i):
+		if t_deg >= MAX_JUNCTION:
+			break   # this tile's junction is full — keep it to a 5-way
 		if not terrain.tiles.has(ncoord):
 			continue
 		var n_id := "tile_%d_%d" % [ncoord.x + 1, ncoord.y + 1]
@@ -374,11 +387,36 @@ func _link_adjacent_roads(order: Dictionary) -> void:
 		var key := ("%s|%s" % [t_id, n_id]) if t_id < n_id else ("%s|%s" % [n_id, t_id])
 		if _linked_pairs.has(key):
 			continue
+		if int(degree.get(n_node, 0)) >= MAX_JUNCTION:
+			continue   # neighbour's junction is full — don't overload it
 		_linked_pairs[key] = true
 		if _edge_between(net, t_node, n_node):
 			continue   # the connect already joined these two — no extra road
 		_enqueue_link(t_id, order.coord as Vector2i, t_node, net.nodes[t_node].pos,
 			n_node, net.nodes[n_node].pos)
+		t_deg += 1
+
+## Committed-edge degree per node PLUS the arms that in-flight orders will add
+## once they commit (a connect/link adds one to its own tile node and one to its
+## attach node). Counting the reservation stops a mass-build burst from racing a
+## dozen roads onto the same junction before any of their edges exist.
+func _node_degrees(net: RoadNetwork) -> Dictionary:
+	var deg: Dictionary = {}
+	for eid in net.edges:
+		var e: Dictionary = net.edges[eid]
+		deg[str(e.a)] = int(deg.get(str(e.a), 0)) + 1
+		deg[str(e.b)] = int(deg.get(str(e.b), 0)) + 1
+	for id in orders:
+		var o: Dictionary = orders[id]
+		if not (str(o.state) in ["queued", "planning"]):
+			continue   # revealing/built orders already own an edge counted above
+		if str(o.get("kind", "connect")) in ["connect", "link"]:
+			var snode := "rw:%s" % str(o.tile_id)
+			deg[snode] = int(deg.get(snode, 0)) + 1
+		var aid := str(o.attach_id)
+		if aid != "":
+			deg[aid] = int(deg.get(aid, 0)) + 1
+	return deg
 
 func _edge_between(net: RoadNetwork, a: String, b: String) -> bool:
 	for eid in net.edges:

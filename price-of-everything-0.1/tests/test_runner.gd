@@ -592,19 +592,18 @@ func _test_road_works() -> void:
 	for cleanup_id in ["off_test_2", "off_test_3", "off_test_forest"]:
 		MatchState.remove_building(cleanup_id)
 
-	# --- peak avoidance: a road routed across a snow cap (16_9) detours around the
-	# highest band instead of going straight over it.
+	# --- peak ban: roads are forbidden on the snow cap (level >= BAN_LEVEL). A route
+	# straight at 16_9's cap must still succeed, routing AROUND it, and no point of
+	# its geometry may sit on a banned level.
 	var cap_center := Vector2(7155, 5280)
 	var cap_band := -9
 	for dyc in range(-220, 221, 24):
 		for dxc in range(-250, 251, 24):
 			var cc := nav.cell_of(cap_center + Vector2(dxc, dyc))
 			cap_band = maxi(cap_band, (nav.cells[cc.y * nav.gw + cc.x] & 0x0F) - 1)
-	_check(cap_band >= 9, "peak avoidance: 16_9 has a snow cap to avoid (band %d)" % cap_band)
-	if cap_band >= 9:
+	_check(cap_band >= RoadRealizer.BAN_LEVEL, "peak ban: 16_9 has a banned snow cap (band %d)" % cap_band)
+	if cap_band >= RoadRealizer.BAN_LEVEL:
 		var peak_rz := RoadRealizer.new()
-		# free route N->S straight through the cap: with room to detour it should
-		# bow AROUND the snow cap entirely, staying on the brown shoulder (<= lv7).
 		var pr := peak_rz.route(nav, net, Vector2(6905, 4820), Vector2(6905, 5440),
 			{"identity": "sparse_rural", "salt": 9, "thorough": true})
 		var route_max := -9
@@ -612,8 +611,8 @@ func _test_road_works() -> void:
 			for pp in (pr.geometry as PackedVector2Array):
 				var pc := nav.cell_of(pp)
 				route_max = maxi(route_max, (nav.cells[pc.y * nav.gw + pc.x] & 0x0F) - 1)
-		_check(pr.ok and route_max < 8,
-			"peak avoidance: free route detours around the snow cap (max lv %d < 8, cap %d)" % [route_max, cap_band])
+		_check(pr.ok and route_max < RoadRealizer.BAN_LEVEL,
+			"peak ban: route gets past the cap without entering a banned level (max lv %d, ban %d)" % [route_max, RoadRealizer.BAN_LEVEL])
 
 	# --- forest invalidation: a forest planted on a PLANNING order's corridor
 	# restarts it; the settled edge above stays (history is history). Use a tile
@@ -711,13 +710,11 @@ func _test_road_works() -> void:
 	var planned_frame := -1
 	var settled_frame := -1
 	frames = 0
-	# Window sized for the FULL build, not 100: neighbour-linking (a built tile
-	# joins its road neighbours) turns 100 completions into ~325 orders, and the
-	# climb-cost / 100%-split cost model adds per-route search. The anti-LAG gate
-	# is over_budget_frames below (planning never hogs a frame); this window only
-	# bounds total settle time, which legitimately grew with those features. A
-	# genuine stall still trips it (settle would read ~99 s).
-	while frames < 1650:
+	# 25 s window. Neighbour-linking adds orders beyond the 100 completions, but
+	# the 5-way junction cap keeps that bounded, so the build drains and settles
+	# inside the original window even with the climb-cost / 100%-split model. The
+	# anti-LAG gate is over_budget_frames below; this only bounds total settle.
+	while frames < 1500:
 		RoadWorks._process(1.0 / 60.0)
 		b4_max_plan = maxf(b4_max_plan, RoadWorks.last_frame_plan_ms)
 		if RoadWorks.last_frame_plan_ms > 8.0:
@@ -752,6 +749,17 @@ func _test_road_works() -> void:
 	_check(RoadWorks.max_unit_ms <= 25.0,
 		"B4: planning stays chunked - no unit over 25 ms (max %.2f ms)" % RoadWorks.max_unit_ms)
 	_check(failed_orders <= 6, "B4: at most 6 unroutable orders (%d failed, %d built)" % [failed_orders, built_orders])
+	# Junction cap: even under a 100-tile mass build, no node carries more than a
+	# 5-way junction (excess connections merge into a road instead of the point).
+	var b4_max_deg := 0
+	var b4_deg: Dictionary = {}
+	for be in net2.edges:
+		var bed: Dictionary = net2.edges[be]
+		b4_deg[str(bed.a)] = int(b4_deg.get(str(bed.a), 0)) + 1
+		b4_deg[str(bed.b)] = int(b4_deg.get(str(bed.b), 0)) + 1
+	for bn in b4_deg:
+		b4_max_deg = maxi(b4_max_deg, int(b4_deg[bn]))
+	_check(b4_max_deg <= 5, "B4: junctions stay <= 5-way (max degree %d)" % b4_max_deg)
 	print("  [B4] planned=%.1fs settled=%.1fs max_frame_plan=%.2fms built=%d failed=%d" % [
 		float(planned_frame) / 60.0, float(settled_frame) / 60.0, b4_max_plan, built_orders, failed_orders])
 	var times: Array = []
