@@ -1,101 +1,370 @@
 extends Node2D
 
-# Draws every building's map icon in a single _draw() pass. Previously each
-# placement spawned 1-3 child nodes (an NPC marker is a navy box + white box +
-# sprite); with the ~500-building start pool that was well over a thousand
-# canvas items submitted every frame. Holding the placements as plain data and
-# drawing them here collapses that to one canvas item.
+# Polygon building footprints (polygon-buildings plan, phases 1-3). Each
+# non-forest, non-road building is a coloured SHAPE (square/rect/L×2/squared-C)
+# whose AREA is a FIXED amount per tile_size_used point (SIZE_UNIT_AREA) — the same
+# building is the same size on every tile, deliberately undersized so a tile never
+# fills (Sanborn/Booth look). It is packed onto the tile's free LAND cells, never
+# shrinking or overlapping. Phase 3 makes the layout intelligent:
+#   • the buildable mask subtracts ROADS (a clearance around built road polylines)
+#     and FOREST canopies, not just water;
+#   • placement is COST-SCORED: most buildings gravitate to road frontage, break ties
+#     toward low ground, pack tight against neighbours, and cluster with same-type;
+#   • recycling/extraction INVERT — they seek the far corners, away from everything.
+# Footprints are axis-aligned. Placement is incremental + stable: a building keeps
+# its spot until demolished.
+#
+# Ordering note: on a fresh match the seed buildings are emitted BEFORE the road
+# network is bootstrapped, so they first lay out with no road data; world_map calls
+# relayout() once roads exist to re-gravitate them. On load roads are already
+# present at re-emit, so relayout() is idempotent there.
 
-var building_icons: Dictionary = {}
+const TileViewData := preload("res://scripts/tile_view_data.gd")
 
-# Per-tile occupancy: tile_id -> count, to assign the next grid slot.
-var tile_building_counts: Dictionary = {}
+const ROADS_BUILDING_ID := "b_005"
+const FOREST_BUILDING_IDS := {"b_015": true, "b_016": true}
 
-# Ordered placements + an index for O(1) removal. Each placement:
-#   {instance_id, slot, pos, texture, is_npc}
+# Buildable grid: 27×24 cells of 20u in the tile-local frame. The hex is FLAT-TOP
+# (verts (135,0)(405,0)(540,240)(405,480)(135,480)(0,240), centre (270,240)) — the
+# geometry roads/forests/navgrid all use; SubtileGrid's hex_polygon is pointy-top
+# and inconsistent, so we test the hex ourselves and derive road/forest blocking
+# here rather than via TileOccupancy (whose grid is pointy-top and hills-only).
+const GRID_COLS := 27
+const GRID_ROWS := 24
+const CELL := 20.0
+const TILE_CENTER := Vector2(270.0, 240.0)
+const DESIGN_GAP := 5.0              # gap kept around each footprint
+const BUILDABLE_MIN_AREA := 400.0    # never size a footprint below ~1 cell
+# Footprint area is a FIXED amount per tile_size_used point, so the same building is the
+# same size on every tile — no crowd-dependent shrinking, no overlap. Deliberately
+# UNDERSIZED: a size-20 building (10% of the base-200 capacity) is ~3% of the hex, so
+# even a capacity-full tile covers only ~30% of it, leaving the hex edges clear for
+# roads, rivers, lakes, sea and relief (the Sanborn/Booth look). Tune to taste.
+const SIZE_UNIT_AREA := 165.0
+
+# Layout cost weights (tile-local units; all guesses to tune in-engine). Cost is
+# minimised: cost = W_ROAD*road_dist + W_ELEV*level + W_COMPACT*dist_to_buildings − W_SAME*same_attract.
+const ROAD_CLEAR := 18.0             # cells within this of a road centreline aren't buildable
+const ROAD_REACH := 160.0            # clip road geometry to roughly this past the hex
+const NO_ROAD_DIST := 100000.0       # road_dist sentinel when the tile has no built road
+const W_ROAD := 1.0                  # gravitate to road frontage (road_dist spans ~0..300)
+const W_ELEV := 4.0                  # low-ground tie-break (level 0..11 → 0..44)
+const W_COMPACT := 3.0               # pack tight against existing buildings (dist spans ~0..400)
+const W_SAME := 50.0                 # same-type cluster pull (same_attract 0..1)
+const SAME_RANGE := 160.0            # same-type attraction radius
+const W_AWAY := 1.5                  # edge-seekers: weight on distance-from-buildings vs from-centre
+
+const NPC_OUTLINE_W := 7.0
+const CASING := Color(0.12, 0.10, 0.06, 0.85)
+const CASING_W := 2.0
+
+## Viewport culling: when no more than this many footprints are on screen (zoomed
+## in) draw only the visible ones; above it draw everything once and stay static.
+const CULL_CAP := 160
+const CULL_MARGIN := 600.0
+
+@onready var terrain_layer: HexMap = %TerrainLayer
+@onready var _forest_visuals: Node = get_node_or_null("../ForestVisuals")
+
+# Per-placement: {instance_id, building_id, tile_id, coord, cells: PackedInt32Array,
+#                 verts, color, is_npc, bb, cat, center_rel}
 var _placements: Array = []
 var _placement_index: Dictionary = {}   # instance_id -> index into _placements
 
-const ICONS_PER_ROW := 4
-const ICON_ROWS := 3
-const ROADS_BUILDING_ID := "b_005"
-const FOREST_BUILDING_IDS := {"b_015": true, "b_016": true}
-const NPC_NAVY := Color(0.015686275, 0.058823529, 0.105882353)
-const NPC_OUTLINE_PX := 10.0
-const MAX_VISIBLE_BUILDINGS := 12  # 4 cols × 3 rows
-const OVERFLOW_INDEX := 11         # 12th slot (0-indexed)
-## Viewport culling: when no more than this many icons are on screen (zoomed in)
-## draw only the visible ones and redraw as the camera moves; above it (zoomed
-## out) draw everything once and stay static. Drawing all ~560 buildings every
-## frame at max zoom was a hard bottleneck.
-const CULL_CAP := 160
-const CULL_MARGIN := 600.0   # world units — pop icons in just off-screen
+# Per-tile caches (built lazily, on first building). The road_dist / level fields
+# are static per tile; _tile_occ tracks what footprints have taken.
+var _tile_land: Dictionary = {}       # tile_id -> PackedByteArray (1 = buildable land cell)
+var _tile_occ: Dictionary = {}        # tile_id -> PackedByteArray (1 = taken by a footprint)
+var _tile_roadd: Dictionary = {}      # tile_id -> PackedFloat32Array (dist to nearest road, u)
+var _tile_level: Dictionary = {}      # tile_id -> PackedByteArray (NavGrid level + 1, 0..11)
+var _tile_landkeys: Dictionary = {}   # tile_id -> PackedInt32Array (buildable cell keys)
 
-@onready var terrain_layer: HexMap = %TerrainLayer
-
-var _cull := false           # currently in culled (zoomed-in) mode
+var _cull := false
 var _view := Rect2()
-var _icon_size := Vector2.ZERO
-
-func _ready() -> void:
-	_load_building_icons()
-
-func _load_building_icons() -> void:
-	for building in Catalog.all_buildings():
-		var building_id: String = building.id
-		var internal_name: String = building.internal_name
-		if building_id == "" or internal_name == "":
-			continue
-
-		var primary_path: String = "res://assets/icons/buildings/%s_%s.png" % [building_id, internal_name]
-		if ResourceLoader.exists(primary_path):
-			building_icons[building_id] = load(primary_path)
-			continue
-
-		var fallback_path: String = "res://assets/icons/buildings/%s.png" % building_id
-		if ResourceLoader.exists(fallback_path):
-			building_icons[building_id] = load(fallback_path)
-			continue
-
-		push_warning("[BuildingVisuals] No icon for %s (tried %s and %s)" % [
-			building_id, primary_path, fallback_path
-		])
+var _warned_no_nav := false
 
 func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, instance_id: String, coord: Vector2i) -> void:
 	if building_id == ROADS_BUILDING_ID or FOREST_BUILDING_IDS.has(building_id):
+		return  # roads aren't buildings; forests are drawn by ForestVisuals
+	# Re-placement (e.g. a load re-emitting building_placed) must not orphan the
+	# old footprint — drop it first so its cells free and it can't ghost.
+	if instance_id != "" and _placement_index.has(instance_id):
+		remove_instance(instance_id)
+	_place_building(instance_id, building_id, tile_id, coord)
+	queue_redraw()
+
+## Lay out one building: size it, pick a shape, and cost-search the tile for the
+## best free pocket. Appends a placement (or nothing if the tile is genuinely full).
+func _place_building(instance_id: String, building_id: String, tile_id: String, coord: Vector2i) -> void:
+	_ensure_tile(tile_id, coord)
+	var bd := Catalog.get_building(building_id)
+	var types: Array = bd.get("building_type", [])
+	# Recycling (internal_name ~ "recycl": b_036 recycling_plant + b_022 water_recycling)
+	# and extraction (mines) invert the score — they seek the far tile edges.
+	var is_edge: bool = types.has("extraction") or str(bd.get("internal_name", "")).to_lower().contains("recycl")
+	var cat := TileViewData.category_key(bd)
+	var size_units := int(bd.get("tile_size_used", 1))
+	# Fixed area per size point (see SIZE_UNIT_AREA): consistent on every tile, no
+	# crowd-dependent shrink, undersized so the tile never fills. The footprint is
+	# planned at this size up front.
+	var area := maxf(float(size_units) * SIZE_UNIT_AREA, BUILDABLE_MIN_AREA)
+	var kind: String = BuildingShapes.KINDS[RoadHash.pick("poly|%s|%s|kind" % [tile_id, instance_id], BuildingShapes.KINDS.size())]
+	var seed_v := RoadHash.pick("poly|%s|%s|var" % [tile_id, instance_id], 9)
+	var placed_here := _placed_on_tile(tile_id)
+
+	# Place at the fixed size in the best free pocket — never shrinking, never
+	# overlapping. If the tile is somehow too crowded to fit it (rare while
+	# undersized), the building isn't drawn rather than distorting the layout.
+	var placed := _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here)
+	if placed.is_empty():
 		return
-	if not building_icons.has(building_id):
-		push_warning("No icon registered for building %s" % building_id)
-		return
 
-	if not tile_building_counts.has(tile_id):
-		tile_building_counts[tile_id] = 0
-	var slot_index: int = tile_building_counts[tile_id]
-	tile_building_counts[tile_id] = slot_index + 1
-	if slot_index > OVERFLOW_INDEX:
-		return  # past the overflow indicator — nothing more to draw on this tile
-
-	var tile_center := _tile_center_world_pos(coord)
-	var owner_id := str(MatchState.get_building(instance_id).get("owner", ""))
-	var is_npc: bool = owner_id != "" and owner_id != "player_1"
-
-	var pos := _slot_position(tile_center, slot_index)
-	var half := _icon_slot_size() * 0.5 + Vector2(NPC_OUTLINE_PX, NPC_OUTLINE_PX)
+	var verts: PackedVector2Array = placed.verts
 	var placement := {
 		"instance_id": instance_id,
-		"slot": slot_index,
-		"pos": pos,
-		"bb": Rect2(pos - half, half * 2.0),
-		"texture": building_icons[building_id] if slot_index < OVERFLOW_INDEX else null,
-		"is_npc": is_npc,
+		"building_id": building_id,
+		"tile_id": tile_id,
+		"coord": coord,
+		"cells": placed.cells,
+		"verts": verts,
+		"color": TileViewData.category_color(bd),
+		"is_npc": not MatchState.is_player_owned(MatchState.get_building(instance_id)),
+		"bb": _verts_bb(verts).grow(NPC_OUTLINE_W),
+		"cat": cat,
+		"center_rel": placed.center_rel,
 	}
 	if instance_id != "":
 		_placement_index[instance_id] = _placements.size()
 	_placements.append(placement)
+
+## Re-run every placement (one-shot) now that the road network exists, so seeds
+## laid out before bootstrap gravitate to frontage — and so any seed laid out
+## before NavGrid was ready gets its water/elevation re-masked. Replays in
+## _placements (emit) order with the same per-instance seeds, so it reproduces the
+## layout for a given emit order. Positions are RE-DERIVED from that order, not
+## persisted, so they depend on emit order (true save/load position stability is a
+## later milestone). NOT called per road change — existing buildings stay put when
+## the player builds a new road.
+func relayout() -> void:
+	if _placements.is_empty():
+		return
+	var src: Array = []
+	for p in _placements:
+		src.append({"iid": p.instance_id, "bid": p.building_id, "tid": p.tile_id, "coord": p.coord})
+	_placements.clear()
+	_placement_index.clear()
+	_clear_tile_caches()
+	for s in src:
+		_place_building(str(s.iid), str(s.bid), str(s.tid), s.coord as Vector2i)
 	queue_redraw()
 
-## Cull to the viewport when zoomed in (few icons on screen), else draw all and
-## stay static — so panning while zoomed out doesn't redraw ~560 icons a frame.
+## Build (once) the tile's buildable mask, road-distance + elevation fields, and
+## the list of buildable cell keys. Buildable = inside the flat-top hex ∧ not water
+## ∧ outside road clearance ∧ outside every forest disc.
+func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
+	if _tile_land.has(tile_id):
+		return
+	var n := GRID_COLS * GRID_ROWS
+	var land := PackedByteArray(); land.resize(n)
+	var occ := PackedByteArray(); occ.resize(n)
+	var roadd := PackedFloat32Array(); roadd.resize(n)
+	var lvl := PackedByteArray(); lvl.resize(n)
+	var center := _tile_center_world_pos(coord)
+	var nav := NavGrid.instance()
+	var nav_ok := nav != null and nav.is_ready()
+	if not nav_ok and not _warned_no_nav:
+		# Degenerate (unbaked map): can't exclude water/elevation. We still place so
+		# relayout() has something to replay; once a bake exists nav loads (it loads
+		# synchronously on instance()) and relayout re-masks this tile correctly.
+		_warned_no_nav = true
+		push_warning("BuildingVisuals: NavGrid not ready — water/elevation exclusion skipped until relayout.")
+	var segs := _tile_road_segments(coord, center)
+	var discs := _forest_discs(coord, center)
+	var keys := PackedInt32Array()
+	for row in GRID_ROWS:
+		for col in GRID_COLS:
+			var rel := Vector2((col + 0.5) * CELL, (row + 0.5) * CELL) - TILE_CENTER
+			if absf(rel.x) > 270.0 or absf(rel.y) > 240.0 or 240.0 * absf(rel.x) + 135.0 * absf(rel.y) > 64800.0:
+				continue   # outside the flat-top hex
+			var key := row * GRID_COLS + col
+			# road distance field (kept even for non-buildable cells — used by cost)
+			var rd := NO_ROAD_DIST
+			for s in segs:
+				rd = minf(rd, _pt_seg_dist(rel, s[0], s[1]))
+			roadd[key] = rd
+			if nav_ok:
+				var c := nav.cell_of(center + rel)
+				if nav.water(c.x, c.y) != 0:
+					continue   # water (sea/lake/river) — not buildable
+				lvl[key] = clampi(nav.level(c.x, c.y) + 1, 0, 11)
+			if rd < ROAD_CLEAR:
+				continue   # too close to a road carriageway
+			var in_forest := false
+			for d in discs:
+				if rel.distance_to(d.c) < d.r:
+					in_forest = true
+					break
+			if in_forest:
+				continue   # under a forest canopy
+			land[key] = 1
+			keys.append(key)
+	_tile_land[tile_id] = land
+	_tile_occ[tile_id] = occ
+	_tile_roadd[tile_id] = roadd
+	_tile_level[tile_id] = lvl
+	_tile_landkeys[tile_id] = keys
+
+## Cost-search the tile for the best free pocket the shape's bbox fits in. Returns
+## {verts (world), cells (occupied keys), center_rel}; {} if nothing fits (no shrink,
+## no overlap — the caller just doesn't draw it).
+func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array) -> Dictionary:
+	if not _tile_land.has(tile_id):
+		return {}   # caller must _ensure_tile first; never KeyError-crash on a miss
+	var shape := BuildingShapes.make(kind, area, seed_v)
+	var half: Vector2 = shape.half
+	var chw := int(ceil((half.x + DESIGN_GAP) / CELL))
+	var chh := int(ceil((half.y + DESIGN_GAP) / CELL))
+	var land: PackedByteArray = _tile_land[tile_id]
+	var occ: PackedByteArray = _tile_occ[tile_id]
+	var roadd: PackedFloat32Array = _tile_roadd[tile_id]
+	var lvl: PackedByteArray = _tile_level[tile_id]
+	var best_key := -1
+	var best_cost := INF
+	for key in (_tile_landkeys[tile_id] as PackedInt32Array):
+		var col := key % GRID_COLS
+		var row := key / GRID_COLS
+		if col < chw or col >= GRID_COLS - chw or row < chh or row >= GRID_ROWS - chh:
+			continue
+		if not _fits(land, occ, col, row, chw, chh):
+			continue
+		var rel := Vector2((col + 0.5) * CELL, (row + 0.5) * CELL) - TILE_CENTER
+		var cost: float
+		if is_edge:
+			# Maximise distance from the centre AND from other buildings → far corner.
+			cost = -(rel.length() + W_AWAY * _nearest_building_dist(rel, placed_here))
+		else:
+			# Road frontage + low ground + same-type pull, plus a compactness term that
+			# packs each new footprint tight against its neighbours so a busy tile fills
+			# as dense blocks (Sanborn look) instead of spreading and fragmenting.
+			cost = W_ROAD * roadd[key] + W_ELEV * float(lvl[key]) \
+				+ W_COMPACT * _nearest_building_dist(rel, placed_here) \
+				- W_SAME * _same_attract(rel, cat, placed_here)
+		if cost < best_cost:
+			best_cost = cost
+			best_key = key
+	if best_key < 0:
+		return {}
+	var bcol := best_key % GRID_COLS
+	var brow := best_key / GRID_COLS
+	var cells := _mark(occ, bcol, brow, chw, chh)
+	var rel_best := Vector2((bcol + 0.5) * CELL, (brow + 0.5) * CELL) - TILE_CENTER
+	var world_center := _tile_center_world_pos(coord) + rel_best
+	var verts := PackedVector2Array()
+	for v in (shape.verts as PackedVector2Array):
+		verts.append(world_center + v)
+	return {"verts": verts, "cells": cells, "center_rel": rel_best}
+
+## Same-type clustering: 0..1, peaking when an already-placed same-category building
+## sits right next to this pocket and fading to 0 past SAME_RANGE.
+func _same_attract(rel: Vector2, cat: String, placed_here: Array) -> float:
+	var nearest := 1.0e9
+	for e in placed_here:
+		if e.cat != cat:
+			continue
+		nearest = minf(nearest, rel.distance_to(e.pos))
+	if nearest >= SAME_RANGE:
+		return 0.0
+	return clampf((SAME_RANGE - nearest) / SAME_RANGE, 0.0, 1.0)
+
+## Distance to the nearest already-placed building on the tile (0 when alone, so an
+## edge-seeker that's first simply heads for the farthest corner).
+func _nearest_building_dist(rel: Vector2, placed_here: Array) -> float:
+	if placed_here.is_empty():
+		return 0.0
+	var nearest := 1.0e9
+	for e in placed_here:
+		nearest = minf(nearest, rel.distance_to(e.pos))
+	return nearest
+
+func _placed_on_tile(tile_id: String) -> Array:
+	var out: Array = []
+	for p in _placements:
+		if p.tile_id == tile_id:
+			out.append({"pos": p.center_rel, "cat": p.cat})
+	return out
+
+## World-space road polylines on the tile (built infrastructure only), as segment
+## pairs relative to the tile centre and clipped to roughly the hex + ROAD_REACH.
+func _tile_road_segments(coord: Vector2i, center: Vector2) -> Array:
+	var out: Array = []
+	if terrain_layer == null:
+		return out
+	var td: Dictionary = terrain_layer.tiles.get(coord, {})
+	if not (td.get("infrastructure_present", []) as Array).has("roads"):
+		return out
+	var net := RoadNetwork.instance()
+	if net == null:
+		return out
+	var limx := 270.0 + ROAD_REACH
+	var limy := 240.0 + ROAD_REACH
+	for edge_id in net.edges_on_tile(coord):
+		var edge: Dictionary = net.edges.get(edge_id, {})
+		if str(edge.get("state", "")) != RoadNetwork.STATE_BUILT:
+			continue
+		var geo: PackedVector2Array = edge.get("geometry", PackedVector2Array())
+		for i in range(geo.size() - 1):
+			var a := geo[i] - center
+			var b := geo[i + 1] - center
+			if (absf(a.x) > limx and absf(b.x) > limx) or (absf(a.y) > limy and absf(b.y) > limy):
+				continue
+			out.append([a, b])
+	return out
+
+## Forest canopy discs on the tile, centre relative to the tile centre. Delegated
+## to ForestVisuals so the avoided disc matches the drawn blob exactly.
+func _forest_discs(coord: Vector2i, center: Vector2) -> Array:
+	var out: Array = []
+	if _forest_visuals == null or not _forest_visuals.has_method("discs_on_tile"):
+		return out
+	for d in _forest_visuals.discs_on_tile(coord):
+		out.append({"c": (d.center as Vector2) - center, "r": float(d.radius)})
+	return out
+
+func _pt_seg_dist(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	var denom := ab.length_squared()
+	var t := 0.0
+	if denom > 0.0001:
+		t = clampf((p - a).dot(ab) / denom, 0.0, 1.0)
+	return p.distance_to(a + ab * t)
+
+func _fits(land: PackedByteArray, occ: PackedByteArray, col: int, row: int, chw: int, chh: int) -> bool:
+	for r in range(row - chh, row + chh + 1):
+		var base := r * GRID_COLS
+		for c in range(col - chw, col + chw + 1):
+			var key := base + c
+			if land[key] == 0 or occ[key] == 1:
+				return false
+	return true
+
+func _mark(occ: PackedByteArray, col: int, row: int, chw: int, chh: int) -> PackedInt32Array:
+	var cells := PackedInt32Array()
+	for r in range(row - chh, row + chh + 1):
+		var base := r * GRID_COLS
+		for c in range(col - chw, col + chw + 1):
+			occ[base + c] = 1
+			cells.append(base + c)
+	return cells
+
+func _verts_bb(verts: PackedVector2Array) -> Rect2:
+	var lo := verts[0]
+	var hi := verts[0]
+	for v in verts:
+		lo = Vector2(minf(lo.x, v.x), minf(lo.y, v.y))
+		hi = Vector2(maxf(hi.x, v.x), maxf(hi.y, v.y))
+	return Rect2(lo, hi - lo)
+
+## Cull to the viewport when zoomed in, else draw all once and stay static.
 func _process(_delta: float) -> void:
 	if _placements.is_empty():
 		return
@@ -112,7 +381,7 @@ func _process(_delta: float) -> void:
 		_view = view
 		queue_redraw()
 	elif _cull and view != _view:
-		_view = view   # camera moved while zoomed in — recull next draw
+		_view = view
 		queue_redraw()
 
 func _visible_world_rect() -> Rect2:
@@ -124,98 +393,54 @@ func _visible_world_rect() -> Rect2:
 		return Rect2()
 	return (vp.get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, size)).grow(CULL_MARGIN)
 
+func _clear_tile_caches() -> void:
+	_tile_land.clear()
+	_tile_occ.clear()
+	_tile_roadd.clear()
+	_tile_level.clear()
+	_tile_landkeys.clear()
+
 func clear_all() -> void:
-	# Used when a loaded save rebuilds the map visuals (world_map._rebuild_after_load).
+	# A loaded save rebuilds visuals (world_map._rebuild_after_load).
 	_placements.clear()
 	_placement_index.clear()
-	tile_building_counts.clear()
+	_clear_tile_caches()
 	queue_redraw()
 
 func remove_instance(instance_id: String) -> void:
-	# A cancelled construction frees its icon; the slot is left vacant (no reindex).
+	# A cancelled/demolished building frees its footprint cells.
 	if not _placement_index.has(instance_id):
 		return
 	var idx: int = _placement_index[instance_id]
+	var p: Dictionary = _placements[idx]
+	# Free the footprint's cells. Direct dict access (not .get with a default) so
+	# the write lands on the cached array, not a throwaway; guard a missing tile.
+	if _tile_occ.has(p.tile_id):
+		var occ: PackedByteArray = _tile_occ[p.tile_id]
+		for key in (p.cells as PackedInt32Array):
+			if key >= 0 and key < occ.size():
+				occ[key] = 0
 	_placements.remove_at(idx)
 	_placement_index.erase(instance_id)
-	# Indices after the removed one shifted down by one.
 	for iid in _placement_index:
 		if _placement_index[iid] > idx:
 			_placement_index[iid] -= 1
 	queue_redraw()
 
 func _draw() -> void:
-	var icon_size := _icon_slot_size()
 	for placement in _placements:
 		if _cull and not _view.intersects(placement.bb):
 			continue
-		if int(placement.slot) == OVERFLOW_INDEX:
-			_draw_overflow(placement.pos)
-			continue
-		var texture: Texture2D = placement.texture
-		if texture == null:
-			continue
+		var verts: PackedVector2Array = placement.verts
+		draw_colored_polygon(verts, placement.color)
+		var loop := verts.duplicate()
+		loop.append(verts[0])
 		if bool(placement.is_npc):
-			_draw_npc_marker(texture, placement.pos, icon_size)
+			draw_polyline(loop, Color.WHITE, NPC_OUTLINE_W, true)
 		else:
-			_draw_icon(texture, placement.pos, icon_size)
-
-func _draw_icon(texture: Texture2D, slot_pos: Vector2, icon_size: Vector2) -> void:
-	var dest := _fit_rect(texture, slot_pos, icon_size, 0.9)
-	draw_texture_rect(texture, dest, false)
-
-func _draw_npc_marker(texture: Texture2D, slot_pos: Vector2, icon_size: Vector2) -> void:
-	# NPC-owned buildings read as a WHITE box with a thick navy outline, icon inside.
-	var hw: float = icon_size.x * 0.45
-	var hh: float = icon_size.y * 0.45
-	var b := NPC_OUTLINE_PX
-	draw_rect(Rect2(slot_pos - Vector2(hw + b, hh + b), Vector2(hw + b, hh + b) * 2.0), NPC_NAVY, true)
-	draw_rect(Rect2(slot_pos - Vector2(hw, hh), Vector2(hw, hh) * 2.0), Color.WHITE, true)
-	var inner := Vector2(hw * 2.0, hh * 2.0)
-	draw_texture_rect(texture, _fit_rect_size(texture, slot_pos, inner, 0.8), false)
-
-func _draw_overflow(slot_pos: Vector2) -> void:
-	var font := ThemeDB.fallback_font
-	var size := roundi(_tile_size().y * 0.08)
-	draw_string(font, slot_pos - Vector2(size * 0.25, -size * 0.35), "…",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.9, 0.9, 0.9))
-
-func _fit_rect(texture: Texture2D, center: Vector2, slot: Vector2, fill: float) -> Rect2:
-	return _fit_rect_size(texture, center, slot, fill)
-
-func _fit_rect_size(texture: Texture2D, center: Vector2, box: Vector2, fill: float) -> Rect2:
-	var tex_size := texture.get_size()
-	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
-		return Rect2(center - box * 0.5, box)
-	var scale_uniform: float = min(box.x / tex_size.x, box.y / tex_size.y) * fill
-	var draw_size := tex_size * scale_uniform
-	return Rect2(center - draw_size * 0.5, draw_size)
+			draw_polyline(loop, CASING, CASING_W, true)
 
 func _tile_center_world_pos(coord: Vector2i) -> Vector2:
 	if terrain_layer != null:
 		return terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(coord))
 	return Vector2.ZERO
-
-func _slot_position(tile_center: Vector2, slot_index: int) -> Vector2:
-	# Lay out icons left-to-right, top-to-bottom in the icon area, centered on the tile.
-	var col := slot_index % ICONS_PER_ROW
-	var row := slot_index / ICONS_PER_ROW
-	var icon_area := _icon_area_size()
-	var icon_size := _icon_slot_size()
-	var area_top_left := tile_center - (icon_area * 0.5)
-	var slot_x := area_top_left.x + col * icon_size.x + icon_size.x / 2
-	var slot_y := area_top_left.y + row * icon_size.y + icon_size.y / 2
-	return Vector2(slot_x, slot_y)
-
-func _tile_size() -> Vector2:
-	if terrain_layer != null and terrain_layer.tile_set != null:
-		return Vector2(terrain_layer.tile_set.tile_size)
-	return Vector2(540, 480)
-
-func _icon_area_size() -> Vector2:
-	var tile_size := _tile_size()
-	return Vector2(tile_size.x * 0.72, tile_size.y * 0.56)
-
-func _icon_slot_size() -> Vector2:
-	var icon_area := _icon_area_size()
-	return Vector2(icon_area.x / ICONS_PER_ROW, icon_area.y / ICON_ROWS)
