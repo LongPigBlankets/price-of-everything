@@ -1,0 +1,3283 @@
+{
+  "meta": {
+    "description": "Goods production-flow graph for Price of Everything.",
+    "source_goods_csv": "Goods - goodsMVP.csv",
+    "source_recipes_csv": "recipes_all.csv",
+    "selection_rule": "least efficient = most distinct inputs, then highest energy_req, then largest total input quantity; a recipe produces a good when it is the primary output (output_1), with a by-product fallback",
+    "aliases": {
+      "CPU": "cpu",
+      "tires": "tyres",
+      "copper_piping": "copper_pipe"
+    },
+    "counts": {
+      "goods_in_csv": 51,
+      "external_feedstocks": 11,
+      "nodes_total": 62,
+      "edges": 100,
+      "tiers": 9,
+      "goods_with_multiple_recipes": 27,
+      "goods_never_produced": [
+        "high_grade_silicon",
+        "lithium_carbonate",
+        "metallurgical_silicon"
+      ]
+    }
+  },
+  "tiers": [
+    {
+      "tier": 0,
+      "label": "Raw / ores",
+      "goods": [
+        "alloy_metal_ingots",
+        "alloy_ore",
+        "basic_salt",
+        "bauxite_ore",
+        "biomass",
+        "chem_salts",
+        "coal",
+        "copper_ore",
+        "crude_oil",
+        "graphite",
+        "high_grade_silicon",
+        "iron_ore",
+        "limestone",
+        "lithium_carbonate",
+        "lithium_ore",
+        "metallurgical_silicon",
+        "methane",
+        "noble_gases",
+        "oxygen",
+        "ree_ore",
+        "sand",
+        "sulphur",
+        "waste_water"
+      ]
+    },
+    {
+      "tier": 1,
+      "label": "Tier 1",
+      "goods": [
+        "alkaline_battery",
+        "iron_ingots",
+        "processed_oil",
+        "pure_water",
+        "spec_microbes"
+      ]
+    },
+    {
+      "tier": 2,
+      "label": "Tier 2",
+      "goods": [
+        "chlorine",
+        "ethylene",
+        "hydrogen",
+        "power",
+        "silica",
+        "sodium_hydroxide",
+        "steel"
+      ]
+    },
+    {
+      "tier": 3,
+      "label": "Tier 3",
+      "goods": [
+        "alloy_ingots",
+        "alumina",
+        "concrete",
+        "fuels",
+        "glass",
+        "industrial_acids",
+        "pvc",
+        "plastics",
+        "refined_ree",
+        "rubber",
+        "silicon"
+      ]
+    },
+    {
+      "tier": 4,
+      "label": "Tier 4",
+      "goods": [
+        "aluminium",
+        "copper_ingots",
+        "fibreglass",
+        "polysilicon",
+        "tyres"
+      ]
+    },
+    {
+      "tier": 5,
+      "label": "Tier 5",
+      "goods": [
+        "car_body",
+        "copper_pipe",
+        "copper_wiring",
+        "windows"
+      ]
+    },
+    {
+      "tier": 6,
+      "label": "Tier 6",
+      "goods": [
+        "circuit_board",
+        "electrical_components",
+        "motor"
+      ]
+    },
+    {
+      "tier": 7,
+      "label": "Tier 7",
+      "goods": [
+        "building_frame",
+        "cpu",
+        "engine"
+      ]
+    },
+    {
+      "tier": 8,
+      "label": "Finished",
+      "goods": [
+        "computer"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "alloy_metal_ingots",
+      "display_name": "Alloy Metal Ingots",
+      "category": null,
+      "good_type": null,
+      "source": "recipe_feedstock",
+      "in_goods_csv": false,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_107",
+        "name": "E-Waste Recycling",
+        "building": "recycling_plant",
+        "energy_req": 2.0,
+        "inputs": [
+          {
+            "good": "municipal_waste",
+            "qty": 10.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "copper_wiring",
+            "qty": 1.0
+          },
+          {
+            "good": "rubber",
+            "qty": 1.0
+          },
+          {
+            "good": "aluminium",
+            "qty": 1.0
+          },
+          {
+            "good": "alloy_metal_ingots",
+            "qty": 1.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "alkaline_battery",
+        "circuit_board",
+        "motor",
+        "polysilicon"
+      ]
+    },
+    {
+      "id": "alloy_ore",
+      "display_name": "Alloy Metals Ore",
+      "category": "metals",
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_134",
+        "name": "Alloy Metal Mining",
+        "building": "mine",
+        "energy_req": 3.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "alloy_ore",
+            "qty": 12.0
+          }
+        ],
+        "requirements": "deposit:alloy_ore",
+        "tag": "extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "alloy_ingots"
+      ]
+    },
+    {
+      "id": "basic_salt",
+      "display_name": "Basic Salt",
+      "category": null,
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_010",
+        "name": "Salt Mining",
+        "building": "mine",
+        "energy_req": 4.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "basic_salt",
+            "qty": 20.0
+          },
+          {
+            "good": "chem_salts",
+            "qty": 10.0
+          }
+        ],
+        "requirements": "deposit:basic_salt",
+        "tag": "extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "chlorine",
+        "sodium_hydroxide"
+      ]
+    },
+    {
+      "id": "bauxite_ore",
+      "display_name": "Bauxite Ore",
+      "category": "metals",
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_015",
+        "name": "Bauxite Mining",
+        "building": "mine",
+        "energy_req": 3.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "bauxite_ore",
+            "qty": 12.0
+          }
+        ],
+        "requirements": "deposit:bauxite_ore",
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "alumina"
+      ]
+    },
+    {
+      "id": "biomass",
+      "display_name": "Biomass",
+      "category": null,
+      "good_type": null,
+      "source": "recipe_feedstock",
+      "in_goods_csv": false,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_108",
+        "name": "Biowaste Recycling",
+        "building": "recycling_plant",
+        "energy_req": 3.0,
+        "inputs": [
+          {
+            "good": "municipal_waste",
+            "qty": 5.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "biomass",
+            "qty": 2.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "ethylene",
+        "spec_microbes"
+      ]
+    },
+    {
+      "id": "chem_salts",
+      "display_name": "Chemical Salts",
+      "category": "chems",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_051",
+        "name": "Desalination",
+        "building": "desal_plant",
+        "energy_req": 5.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "pure_water",
+            "qty": 8.0
+          },
+          {
+            "good": "basic_salt",
+            "qty": 2.0
+          },
+          {
+            "good": "chem_salts",
+            "qty": 1.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 3,
+      "alternative_recipe_ids": [
+        "r_010",
+        "r_049"
+      ],
+      "inputs": [],
+      "feeds_into": [
+        "alkaline_battery",
+        "aluminium",
+        "industrial_acids"
+      ]
+    },
+    {
+      "id": "coal",
+      "display_name": "Coal",
+      "category": null,
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_001",
+        "name": "Coal Mining",
+        "building": "mine",
+        "energy_req": 4.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "coal",
+            "qty": 20.0
+          }
+        ],
+        "requirements": "deposit:coal",
+        "tag": "extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "concrete",
+        "fuels",
+        "iron_ingots",
+        "power",
+        "silicon",
+        "steel"
+      ]
+    },
+    {
+      "id": "copper_ore",
+      "display_name": "Copper Ore",
+      "category": null,
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_006",
+        "name": "Copper Mining",
+        "building": "mine",
+        "energy_req": 4.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "copper_ore",
+            "qty": 20.0
+          }
+        ],
+        "requirements": "deposit:copper_ore",
+        "tag": "extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "copper_ingots"
+      ]
+    },
+    {
+      "id": "crude_oil",
+      "display_name": "Crude Oil",
+      "category": "energy",
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_178",
+        "name": "Offshore Oil Extraction",
+        "building": "offshore_oil_platform",
+        "energy_req": 3.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "crude_oil",
+            "qty": 10.0
+          }
+        ],
+        "requirements": "deposit:crude_oil",
+        "tag": "Extraction"
+      },
+      "recipe_options": 3,
+      "alternative_recipe_ids": [
+        "r_014",
+        "r_177"
+      ],
+      "inputs": [],
+      "feeds_into": [
+        "processed_oil"
+      ]
+    },
+    {
+      "id": "graphite",
+      "display_name": "Graphite",
+      "category": null,
+      "good_type": null,
+      "source": "recipe_feedstock",
+      "in_goods_csv": false,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_042",
+        "name": "Bio-Graphitisation",
+        "building": "furnace",
+        "energy_req": 7.0,
+        "inputs": [
+          {
+            "good": "compressed_biomass",
+            "qty": 5.0
+          },
+          {
+            "good": "ammonia",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "graphite",
+            "qty": 2.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Carbon"
+      },
+      "recipe_options": 2,
+      "alternative_recipe_ids": [
+        "r_150"
+      ],
+      "inputs": [],
+      "feeds_into": [
+        "aluminium"
+      ]
+    },
+    {
+      "id": "high_grade_silicon",
+      "display_name": "High Grade Silicon",
+      "category": "metals",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": null,
+      "recipe_options": 0,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": []
+    },
+    {
+      "id": "iron_ore",
+      "display_name": "Iron Ore",
+      "category": null,
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_002",
+        "name": "Iron Mining",
+        "building": "mine",
+        "energy_req": 4.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "iron_ore",
+            "qty": 20.0
+          }
+        ],
+        "requirements": "deposit:iron_ore",
+        "tag": "extraction"
+      },
+      "recipe_options": 2,
+      "alternative_recipe_ids": [
+        "r_075"
+      ],
+      "inputs": [],
+      "feeds_into": [
+        "iron_ingots"
+      ]
+    },
+    {
+      "id": "limestone",
+      "display_name": "Limestone",
+      "category": "construction",
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_019",
+        "name": "Limestone Mining",
+        "building": "mine",
+        "energy_req": 4.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "limestone",
+            "qty": 20.0
+          }
+        ],
+        "requirements": "deposit:limestone",
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "concrete",
+        "glass"
+      ]
+    },
+    {
+      "id": "lithium_carbonate",
+      "display_name": "Lithium Carbonate",
+      "category": "chems",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": null,
+      "recipe_options": 0,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": []
+    },
+    {
+      "id": "lithium_ore",
+      "display_name": "Lithium Ore",
+      "category": "metals",
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_016",
+        "name": "Lithium Mining",
+        "building": "mine",
+        "energy_req": 3.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "lithium_ore",
+            "qty": 10.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": []
+    },
+    {
+      "id": "metallurgical_silicon",
+      "display_name": "Metallurgical Silicon",
+      "category": "metals",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": null,
+      "recipe_options": 0,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": []
+    },
+    {
+      "id": "methane",
+      "display_name": "Methane",
+      "category": null,
+      "good_type": null,
+      "source": "recipe_feedstock",
+      "in_goods_csv": false,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_144",
+        "name": "Gas to Methane",
+        "building": "petro_refinery",
+        "energy_req": 3.0,
+        "inputs": [
+          {
+            "good": "petro_gases",
+            "qty": 6.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "methane",
+            "qty": 4.0
+          },
+          {
+            "good": "propane",
+            "qty": 1.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "hydrogen"
+      ]
+    },
+    {
+      "id": "noble_gases",
+      "display_name": "Noble Gases",
+      "category": null,
+      "good_type": null,
+      "source": "recipe_feedstock",
+      "in_goods_csv": false,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_086",
+        "name": "Oxygen Air Separation",
+        "building": "chem_plant",
+        "energy_req": 12.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "oxygen",
+            "qty": 2.0
+          },
+          {
+            "good": "noble_gases",
+            "qty": 4.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "computer",
+        "electrical_components"
+      ]
+    },
+    {
+      "id": "oxygen",
+      "display_name": "Oxygen",
+      "category": null,
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_086",
+        "name": "Oxygen Air Separation",
+        "building": "chem_plant",
+        "energy_req": 12.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "oxygen",
+            "qty": 2.0
+          },
+          {
+            "good": "noble_gases",
+            "qty": 4.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "copper_ingots",
+        "rubber",
+        "steel"
+      ]
+    },
+    {
+      "id": "ree_ore",
+      "display_name": "Rare Earth Ore",
+      "category": "metals",
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_017",
+        "name": "Rare Earth Mining",
+        "building": "mine",
+        "energy_req": 3.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "ree_ore",
+            "qty": 10.0
+          }
+        ],
+        "requirements": "deposit:ree_ore",
+        "tag": "extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "refined_ree"
+      ]
+    },
+    {
+      "id": "sand",
+      "display_name": "Sand",
+      "category": "construction",
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_018",
+        "name": "Sand Excavation",
+        "building": "mine",
+        "energy_req": 2.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "sand",
+            "qty": 21.0
+          }
+        ],
+        "requirements": "deposit:sand",
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [],
+      "feeds_into": [
+        "glass",
+        "silica"
+      ]
+    },
+    {
+      "id": "sulphur",
+      "display_name": "Sulphur",
+      "category": "chems",
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_179",
+        "name": "Sulphur Mining",
+        "building": "mine",
+        "energy_req": 3.0,
+        "inputs": [],
+        "outputs": [
+          {
+            "good": "sulphur",
+            "qty": 15.0
+          }
+        ],
+        "requirements": "deposit:sulphur",
+        "tag": "extraction"
+      },
+      "recipe_options": 2,
+      "alternative_recipe_ids": [
+        "r_049"
+      ],
+      "inputs": [],
+      "feeds_into": [
+        "tyres"
+      ]
+    },
+    {
+      "id": "waste_water",
+      "display_name": "Waste Water",
+      "category": null,
+      "good_type": null,
+      "source": "recipe_feedstock",
+      "in_goods_csv": false,
+      "tier": 0,
+      "tier_label": "Raw / ores",
+      "is_raw": true,
+      "recipe": {
+        "id": "r_091",
+        "name": "Strip Farming",
+        "building": "farm",
+        "energy_req": 2.0,
+        "inputs": [
+          {
+            "good": "fertilisers",
+            "qty": 4.0
+          },
+          {
+            "good": "pure_water",
+            "qty": 2.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "food",
+            "qty": 10.0
+          },
+          {
+            "good": "biomass",
+            "qty": 5.0
+          },
+          {
+            "good": "waste_water",
+            "qty": 3.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 5,
+      "alternative_recipe_ids": [
+        "r_090",
+        "r_092",
+        "r_093",
+        "r_094"
+      ],
+      "inputs": [
+        "pure_water"
+      ],
+      "feeds_into": [
+        "pure_water"
+      ]
+    },
+    {
+      "id": "alkaline_battery",
+      "display_name": "Alkaline Battery",
+      "category": null,
+      "good_type": null,
+      "source": "recipe_feedstock",
+      "in_goods_csv": false,
+      "tier": 1,
+      "tier_label": "Tier 1",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_101",
+        "name": "Alkaline Battery Manufacturing",
+        "building": "factory",
+        "energy_req": 2.0,
+        "inputs": [
+          {
+            "good": "alloy_metal_ingots",
+            "qty": 1.0
+          },
+          {
+            "good": "chem_salts",
+            "qty": 2.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "alkaline_battery",
+            "qty": 2.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "alloy_metal_ingots",
+        "chem_salts"
+      ],
+      "feeds_into": [
+        "engine"
+      ]
+    },
+    {
+      "id": "iron_ingots",
+      "display_name": "Iron Ingots",
+      "category": null,
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 1,
+      "tier_label": "Tier 1",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_005",
+        "name": "Pig Iron Smelting",
+        "building": "furnace",
+        "energy_req": 14.0,
+        "inputs": [
+          {
+            "good": "iron_ore",
+            "qty": 30.0
+          },
+          {
+            "good": "coal",
+            "qty": 10.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "iron_ingots",
+            "qty": 30.0
+          }
+        ],
+        "requirements": null,
+        "tag": "smelting"
+      },
+      "recipe_options": 2,
+      "alternative_recipe_ids": [
+        "r_031"
+      ],
+      "inputs": [
+        "coal",
+        "iron_ore"
+      ],
+      "feeds_into": [
+        "steel"
+      ]
+    },
+    {
+      "id": "processed_oil",
+      "display_name": "Processed Oil",
+      "category": "chems",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 1,
+      "tier_label": "Tier 1",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_180",
+        "name": "Oil Refining",
+        "building": "petro_refinery",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "crude_oil",
+            "qty": 20.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "processed_oil",
+            "qty": 18.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Oil Refining"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "crude_oil"
+      ],
+      "feeds_into": [
+        "engine"
+      ]
+    },
+    {
+      "id": "pure_water",
+      "display_name": "Pure Water",
+      "category": null,
+      "good_type": "raw",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 1,
+      "tier_label": "Tier 1",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_105",
+        "name": "Water Treatment",
+        "building": "water_treatment_plant",
+        "energy_req": 2.0,
+        "inputs": [
+          {
+            "good": "waste_water",
+            "qty": 5.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "pure_water",
+            "qty": 2.0
+          }
+        ],
+        "requirements": "urban AND waste_water",
+        "tag": "Extraction"
+      },
+      "recipe_options": 3,
+      "alternative_recipe_ids": [
+        "r_011",
+        "r_051"
+      ],
+      "inputs": [
+        "waste_water"
+      ],
+      "feeds_into": [
+        "chlorine",
+        "concrete",
+        "ethylene",
+        "hydrogen",
+        "power",
+        "silica",
+        "sodium_hydroxide",
+        "waste_water"
+      ]
+    },
+    {
+      "id": "spec_microbes",
+      "display_name": "Spec Microbes",
+      "category": null,
+      "good_type": null,
+      "source": "recipe_feedstock",
+      "in_goods_csv": false,
+      "tier": 1,
+      "tier_label": "Tier 1",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_173",
+        "name": "Specialty Microbe Production",
+        "building": "bio_chem_plant",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "biomass",
+            "qty": 2.0
+          },
+          {
+            "good": "ethanol",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "spec_microbes",
+            "qty": 2.0
+          }
+        ],
+        "requirements": null,
+        "tag": null
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "biomass"
+      ],
+      "feeds_into": [
+        "ethylene"
+      ]
+    },
+    {
+      "id": "chlorine",
+      "display_name": "Chlorine",
+      "category": null,
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 2,
+      "tier_label": "Tier 2",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_012",
+        "name": "Chlor-Alkali Process",
+        "building": "chem_plant",
+        "energy_req": 10.0,
+        "inputs": [
+          {
+            "good": "basic_salt",
+            "qty": 20.0
+          },
+          {
+            "good": "pure_water",
+            "qty": 20.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "chlorine",
+            "qty": 48.0
+          },
+          {
+            "good": "sodium_hydroxide",
+            "qty": 36.0
+          },
+          {
+            "good": "hydrogen",
+            "qty": 12.0
+          }
+        ],
+        "requirements": null,
+        "tag": "electrochemistry"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "basic_salt",
+        "pure_water"
+      ],
+      "feeds_into": [
+        "pvc",
+        "refined_ree"
+      ]
+    },
+    {
+      "id": "ethylene",
+      "display_name": "Ethylene",
+      "category": "chems",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 2,
+      "tier_label": "Tier 2",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_155",
+        "name": "Micro Algae Digestion",
+        "building": "bio_chem_plant",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "biomass",
+            "qty": 4.0
+          },
+          {
+            "good": "spec_microbes",
+            "qty": 2.0
+          },
+          {
+            "good": "pure_water",
+            "qty": 2.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "ethylene",
+            "qty": 2.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 4,
+      "alternative_recipe_ids": [
+        "r_023",
+        "r_104",
+        "r_148"
+      ],
+      "inputs": [
+        "biomass",
+        "pure_water",
+        "spec_microbes"
+      ],
+      "feeds_into": [
+        "plastics",
+        "pvc",
+        "rubber"
+      ]
+    },
+    {
+      "id": "hydrogen",
+      "display_name": "Hydrogen",
+      "category": null,
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 2,
+      "tier_label": "Tier 2",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_088",
+        "name": "Steam Methane Reforming",
+        "building": "petro_refinery",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "methane",
+            "qty": 3.0
+          },
+          {
+            "good": "pure_water",
+            "qty": 3.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "hydrogen",
+            "qty": 3.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 5,
+      "alternative_recipe_ids": [
+        "r_078",
+        "r_079",
+        "r_080",
+        "r_147"
+      ],
+      "inputs": [
+        "methane",
+        "pure_water"
+      ],
+      "feeds_into": [
+        "alumina",
+        "fuels",
+        "industrial_acids",
+        "polysilicon"
+      ]
+    },
+    {
+      "id": "power",
+      "display_name": "Power",
+      "category": null,
+      "good_type": "power",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 2,
+      "tier_label": "Tier 2",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_004",
+        "name": "Power Production",
+        "building": "coal_power",
+        "energy_req": 0.0,
+        "inputs": [
+          {
+            "good": "coal",
+            "qty": 20.0
+          },
+          {
+            "good": "pure_water",
+            "qty": 6.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "power",
+            "qty": 100.0
+          }
+        ],
+        "requirements": null,
+        "tag": "power"
+      },
+      "recipe_options": 9,
+      "alternative_recipe_ids": [
+        "r_036",
+        "r_037",
+        "r_038",
+        "r_131",
+        "r_145",
+        "r_146",
+        "r_151",
+        "r_181"
+      ],
+      "inputs": [
+        "coal",
+        "pure_water"
+      ],
+      "feeds_into": []
+    },
+    {
+      "id": "silica",
+      "display_name": "Silica",
+      "category": "chems",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 2,
+      "tier_label": "Tier 2",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_035",
+        "name": "Silica Washing",
+        "building": "petro_refinery",
+        "energy_req": 2.0,
+        "inputs": [
+          {
+            "good": "sand",
+            "qty": 10.0
+          },
+          {
+            "good": "pure_water",
+            "qty": 10.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "silica",
+            "qty": 10.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Silica"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "pure_water",
+        "sand"
+      ],
+      "feeds_into": [
+        "concrete",
+        "silicon"
+      ]
+    },
+    {
+      "id": "sodium_hydroxide",
+      "display_name": "Sodium Hydroxide",
+      "category": null,
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 2,
+      "tier_label": "Tier 2",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_012",
+        "name": "Chlor-Alkali Process",
+        "building": "chem_plant",
+        "energy_req": 10.0,
+        "inputs": [
+          {
+            "good": "basic_salt",
+            "qty": 20.0
+          },
+          {
+            "good": "pure_water",
+            "qty": 20.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "chlorine",
+            "qty": 48.0
+          },
+          {
+            "good": "sodium_hydroxide",
+            "qty": 36.0
+          },
+          {
+            "good": "hydrogen",
+            "qty": 12.0
+          }
+        ],
+        "requirements": null,
+        "tag": "electrochemistry"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "basic_salt",
+        "pure_water"
+      ],
+      "feeds_into": [
+        "alloy_ingots",
+        "alumina",
+        "glass",
+        "refined_ree"
+      ]
+    },
+    {
+      "id": "steel",
+      "display_name": "Steel",
+      "category": null,
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 2,
+      "tier_label": "Tier 2",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_077",
+        "name": "HIsarna Steel Making",
+        "building": "furnace",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "iron_ingots",
+            "qty": 4.0
+          },
+          {
+            "good": "oxygen",
+            "qty": 2.0
+          },
+          {
+            "good": "coal",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "steel",
+            "qty": 4.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 5,
+      "alternative_recipe_ids": [
+        "r_003",
+        "r_025",
+        "r_076",
+        "r_106"
+      ],
+      "inputs": [
+        "coal",
+        "iron_ingots",
+        "oxygen"
+      ],
+      "feeds_into": [
+        "building_frame",
+        "car_body",
+        "engine",
+        "motor",
+        "tyres"
+      ]
+    },
+    {
+      "id": "alloy_ingots",
+      "display_name": "Alloy Metals Ingots",
+      "category": "metals",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 3,
+      "tier_label": "Tier 3",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_133",
+        "name": "Alloy Metal Electrolysis",
+        "building": "electrolyser",
+        "energy_req": 14.0,
+        "inputs": [
+          {
+            "good": "alloy_ore",
+            "qty": 20.0
+          },
+          {
+            "good": "sodium_hydroxide",
+            "qty": 5.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "alloy_ingots",
+            "qty": 30.0
+          }
+        ],
+        "requirements": null,
+        "tag": "smelting"
+      },
+      "recipe_options": 2,
+      "alternative_recipe_ids": [
+        "r_132"
+      ],
+      "inputs": [
+        "alloy_ore",
+        "sodium_hydroxide"
+      ],
+      "feeds_into": []
+    },
+    {
+      "id": "alumina",
+      "display_name": "Alumina",
+      "category": "chems",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 3,
+      "tier_label": "Tier 3",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_082",
+        "name": "Electric Calcination Alumina",
+        "building": "chem_plant",
+        "energy_req": 8.0,
+        "inputs": [
+          {
+            "good": "bauxite_ore",
+            "qty": 2.0
+          },
+          {
+            "good": "hydrogen",
+            "qty": 2.0
+          },
+          {
+            "good": "sodium_hydroxide",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "alumina",
+            "qty": 3.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 2,
+      "alternative_recipe_ids": [
+        "r_040"
+      ],
+      "inputs": [
+        "bauxite_ore",
+        "hydrogen",
+        "sodium_hydroxide"
+      ],
+      "feeds_into": [
+        "aluminium"
+      ]
+    },
+    {
+      "id": "concrete",
+      "display_name": "Concrete",
+      "category": "construction",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 3,
+      "tier_label": "Tier 3",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_029",
+        "name": "Concrete Firing",
+        "building": "furnace",
+        "energy_req": 5.0,
+        "inputs": [
+          {
+            "good": "limestone",
+            "qty": 20.0
+          },
+          {
+            "good": "pure_water",
+            "qty": 10.0
+          },
+          {
+            "good": "silica",
+            "qty": 10.0
+          },
+          {
+            "good": "coal",
+            "qty": 5.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "concrete",
+            "qty": 15.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Concrete"
+      },
+      "recipe_options": 2,
+      "alternative_recipe_ids": [
+        "r_030"
+      ],
+      "inputs": [
+        "coal",
+        "limestone",
+        "pure_water",
+        "silica"
+      ],
+      "feeds_into": []
+    },
+    {
+      "id": "fuels",
+      "display_name": "Diesel Fuel",
+      "category": "energy",
+      "good_type": "finished",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 3,
+      "tier_label": "Tier 3",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_154",
+        "name": "Coal Liquefaction",
+        "building": "chem_plant",
+        "energy_req": 6.0,
+        "inputs": [
+          {
+            "good": "coal",
+            "qty": 10.0
+          },
+          {
+            "good": "hydrogen",
+            "qty": 2.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "fuels",
+            "qty": 4.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 5,
+      "alternative_recipe_ids": [
+        "r_021",
+        "r_022",
+        "r_140",
+        "r_153"
+      ],
+      "inputs": [
+        "coal",
+        "hydrogen"
+      ],
+      "feeds_into": []
+    },
+    {
+      "id": "glass",
+      "display_name": "Glass",
+      "category": "construction",
+      "good_type": "finished",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 3,
+      "tier_label": "Tier 3",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_053",
+        "name": "Industrial Glassmaking",
+        "building": "furnace",
+        "energy_req": 8.0,
+        "inputs": [
+          {
+            "good": "sand",
+            "qty": 20.0
+          },
+          {
+            "good": "sodium_hydroxide",
+            "qty": 6.0
+          },
+          {
+            "good": "limestone",
+            "qty": 6.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "glass",
+            "qty": 25.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Glass"
+      },
+      "recipe_options": 4,
+      "alternative_recipe_ids": [
+        "r_052",
+        "r_054",
+        "r_176"
+      ],
+      "inputs": [
+        "limestone",
+        "sand",
+        "sodium_hydroxide"
+      ],
+      "feeds_into": [
+        "fibreglass",
+        "windows"
+      ]
+    },
+    {
+      "id": "industrial_acids",
+      "display_name": "Industrial Acids",
+      "category": null,
+      "good_type": null,
+      "source": "recipe_feedstock",
+      "in_goods_csv": false,
+      "tier": 3,
+      "tier_label": "Tier 3",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_116",
+        "name": "Generic Acid Production",
+        "building": "industrial_goods_factory",
+        "energy_req": 2.0,
+        "inputs": [
+          {
+            "good": "chem_salts",
+            "qty": 4.0
+          },
+          {
+            "good": "hydrogen",
+            "qty": 2.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "industrial_acids",
+            "qty": 1.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 3,
+      "alternative_recipe_ids": [
+        "r_114",
+        "r_115"
+      ],
+      "inputs": [
+        "chem_salts",
+        "hydrogen"
+      ],
+      "feeds_into": [
+        "copper_ingots",
+        "cpu",
+        "polysilicon"
+      ]
+    },
+    {
+      "id": "pvc",
+      "display_name": "PVC",
+      "category": "construction",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 3,
+      "tier_label": "Tier 3",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_175",
+        "name": "PVC Polymerisation",
+        "building": "poly_plant",
+        "energy_req": 6.0,
+        "inputs": [
+          {
+            "good": "ethylene",
+            "qty": 10.0
+          },
+          {
+            "good": "chlorine",
+            "qty": 10.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "pvc",
+            "qty": 8.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Polymers"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "chlorine",
+        "ethylene"
+      ],
+      "feeds_into": []
+    },
+    {
+      "id": "plastics",
+      "display_name": "Plastics",
+      "category": "construction",
+      "good_type": "finished",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 3,
+      "tier_label": "Tier 3",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_024",
+        "name": "Plastics Manufacturing",
+        "building": "poly_plant",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "ethylene",
+            "qty": 10.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "plastics",
+            "qty": 12.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Polymers"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "ethylene"
+      ],
+      "feeds_into": [
+        "circuit_board",
+        "computer",
+        "fibreglass"
+      ]
+    },
+    {
+      "id": "refined_ree",
+      "display_name": "Refined Rare Earths",
+      "category": "metals",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 3,
+      "tier_label": "Tier 3",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_041",
+        "name": "Rare Earth Reduction",
+        "building": "electrolyser",
+        "energy_req": 16.0,
+        "inputs": [
+          {
+            "good": "ree_ore",
+            "qty": 10.0
+          },
+          {
+            "good": "sodium_hydroxide",
+            "qty": 5.0
+          },
+          {
+            "good": "chlorine",
+            "qty": 5.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "refined_ree",
+            "qty": 6.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Rare Earths"
+      },
+      "recipe_options": 2,
+      "alternative_recipe_ids": [
+        "r_110"
+      ],
+      "inputs": [
+        "chlorine",
+        "ree_ore",
+        "sodium_hydroxide"
+      ],
+      "feeds_into": [
+        "cpu",
+        "electrical_components",
+        "motor"
+      ]
+    },
+    {
+      "id": "rubber",
+      "display_name": "Rubber",
+      "category": "construction",
+      "good_type": "finished",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 3,
+      "tier_label": "Tier 3",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_028",
+        "name": "Synthetic Rubber Production",
+        "building": "poly_plant",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "ethylene",
+            "qty": 8.0
+          },
+          {
+            "good": "oxygen",
+            "qty": 4.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "rubber",
+            "qty": 10.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Polymers"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "ethylene",
+        "oxygen"
+      ],
+      "feeds_into": [
+        "tyres"
+      ]
+    },
+    {
+      "id": "silicon",
+      "display_name": "Silicon",
+      "category": null,
+      "good_type": null,
+      "source": "recipe_feedstock",
+      "in_goods_csv": false,
+      "tier": 3,
+      "tier_label": "Tier 3",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_044",
+        "name": "Silicon Smelting",
+        "building": "eaf",
+        "energy_req": 6.0,
+        "inputs": [
+          {
+            "good": "silica",
+            "qty": 1.0
+          },
+          {
+            "good": "coal",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "silicon",
+            "qty": 3.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "coal",
+        "silica"
+      ],
+      "feeds_into": [
+        "cpu",
+        "polysilicon"
+      ]
+    },
+    {
+      "id": "aluminium",
+      "display_name": "Aluminium",
+      "category": "metals",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 4,
+      "tier_label": "Tier 4",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_050",
+        "name": "Aluminium (Hall Heroult) Smelting",
+        "building": "chem_plant",
+        "energy_req": 8.0,
+        "inputs": [
+          {
+            "good": "alumina",
+            "qty": 1.0
+          },
+          {
+            "good": "graphite",
+            "qty": 1.0
+          },
+          {
+            "good": "chem_salts",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "aluminium",
+            "qty": 2.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 4,
+      "alternative_recipe_ids": [
+        "r_083",
+        "r_084",
+        "r_113"
+      ],
+      "inputs": [
+        "alumina",
+        "chem_salts",
+        "graphite"
+      ],
+      "feeds_into": [
+        "car_body",
+        "computer",
+        "engine",
+        "windows"
+      ]
+    },
+    {
+      "id": "copper_ingots",
+      "display_name": "Copper Ingots",
+      "category": null,
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 4,
+      "tier_label": "Tier 4",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_020",
+        "name": "Flash Copper Smelting",
+        "building": "furnace",
+        "energy_req": 6.0,
+        "inputs": [
+          {
+            "good": "copper_ore",
+            "qty": 1.0
+          },
+          {
+            "good": "industrial_acids",
+            "qty": 1.0
+          },
+          {
+            "good": "oxygen",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "copper_ingots",
+            "qty": 3.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Copper"
+      },
+      "recipe_options": 3,
+      "alternative_recipe_ids": [
+        "r_007",
+        "r_085"
+      ],
+      "inputs": [
+        "copper_ore",
+        "industrial_acids",
+        "oxygen"
+      ],
+      "feeds_into": [
+        "copper_pipe",
+        "copper_wiring"
+      ]
+    },
+    {
+      "id": "fibreglass",
+      "display_name": "Fibreglass",
+      "category": null,
+      "good_type": null,
+      "source": "recipe_feedstock",
+      "in_goods_csv": false,
+      "tier": 4,
+      "tier_label": "Tier 4",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_135",
+        "name": "Fibreglass Production",
+        "building": "factory",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "glass",
+            "qty": 2.0
+          },
+          {
+            "good": "plastics",
+            "qty": 2.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "fibreglass",
+            "qty": 4.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "glass",
+        "plastics"
+      ],
+      "feeds_into": [
+        "car_body"
+      ]
+    },
+    {
+      "id": "polysilicon",
+      "display_name": "Polysilicon",
+      "category": "chems",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 4,
+      "tier_label": "Tier 4",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_081",
+        "name": "Fluidised Bed Reactor + CZ Silicon",
+        "building": "chem_plant",
+        "energy_req": 6.0,
+        "inputs": [
+          {
+            "good": "silicon",
+            "qty": 4.0
+          },
+          {
+            "good": "industrial_acids",
+            "qty": 2.0
+          },
+          {
+            "good": "hydrogen",
+            "qty": 2.0
+          },
+          {
+            "good": "alloy_metal_ingots",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "polysilicon",
+            "qty": 8.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 2,
+      "alternative_recipe_ids": [
+        "r_045"
+      ],
+      "inputs": [
+        "alloy_metal_ingots",
+        "hydrogen",
+        "industrial_acids",
+        "silicon"
+      ],
+      "feeds_into": []
+    },
+    {
+      "id": "tyres",
+      "display_name": "Tyres",
+      "category": "construction",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 4,
+      "tier_label": "Tier 4",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_165",
+        "name": "Radial Axial Tire Production",
+        "building": "factory",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "rubber",
+            "qty": 3.0
+          },
+          {
+            "good": "sulphur",
+            "qty": 2.0
+          },
+          {
+            "good": "steel",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "tyres",
+            "qty": 8.0
+          }
+        ],
+        "requirements": null,
+        "tag": null
+      },
+      "recipe_options": 2,
+      "alternative_recipe_ids": [
+        "r_067"
+      ],
+      "inputs": [
+        "rubber",
+        "steel",
+        "sulphur"
+      ],
+      "feeds_into": []
+    },
+    {
+      "id": "car_body",
+      "display_name": "Car Body",
+      "category": "construction",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 5,
+      "tier_label": "Tier 5",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_069",
+        "name": "Lightweight Car Bodies",
+        "building": "assembly_plant",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "steel",
+            "qty": 3.0
+          },
+          {
+            "good": "aluminium",
+            "qty": 2.0
+          },
+          {
+            "good": "fibreglass",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "car_body",
+            "qty": 3.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 3,
+      "alternative_recipe_ids": [
+        "r_068",
+        "r_070"
+      ],
+      "inputs": [
+        "aluminium",
+        "fibreglass",
+        "steel"
+      ],
+      "feeds_into": []
+    },
+    {
+      "id": "copper_pipe",
+      "display_name": "Copper Pipe",
+      "category": "construction",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 5,
+      "tier_label": "Tier 5",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_026",
+        "name": "Copper pressing",
+        "building": "factory",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "copper_ingots",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "copper_pipe",
+            "qty": 1.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Copper products"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "copper_ingots"
+      ],
+      "feeds_into": [
+        "building_frame"
+      ]
+    },
+    {
+      "id": "copper_wiring",
+      "display_name": "Copper Wiring",
+      "category": null,
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 5,
+      "tier_label": "Tier 5",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_008",
+        "name": "Copper Wire Drawing",
+        "building": "industrial_factory",
+        "energy_req": 13.0,
+        "inputs": [
+          {
+            "good": "copper_ingots",
+            "qty": 20.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "copper_wiring",
+            "qty": 20.0
+          }
+        ],
+        "requirements": null,
+        "tag": "manufacturing"
+      },
+      "recipe_options": 3,
+      "alternative_recipe_ids": [
+        "r_027",
+        "r_107"
+      ],
+      "inputs": [
+        "copper_ingots"
+      ],
+      "feeds_into": [
+        "circuit_board",
+        "electrical_components",
+        "motor"
+      ]
+    },
+    {
+      "id": "windows",
+      "display_name": "Windows",
+      "category": "construction",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 5,
+      "tier_label": "Tier 5",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_056",
+        "name": "Window Manufacturing",
+        "building": "industrial_factory",
+        "energy_req": 5.0,
+        "inputs": [
+          {
+            "good": "glass",
+            "qty": 20.0
+          },
+          {
+            "good": "aluminium",
+            "qty": 10.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "windows",
+            "qty": 20.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Manufacturing"
+      },
+      "recipe_options": 2,
+      "alternative_recipe_ids": [
+        "r_055"
+      ],
+      "inputs": [
+        "aluminium",
+        "glass"
+      ],
+      "feeds_into": [
+        "building_frame"
+      ]
+    },
+    {
+      "id": "circuit_board",
+      "display_name": "Circuit Board",
+      "category": "construction",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 6,
+      "tier_label": "Tier 6",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_120",
+        "name": "Basic Circuit Soldering",
+        "building": "factory",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "copper_wiring",
+            "qty": 4.0
+          },
+          {
+            "good": "plastics",
+            "qty": 4.0
+          },
+          {
+            "good": "alloy_metal_ingots",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "circuit_board",
+            "qty": 2.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 2,
+      "alternative_recipe_ids": [
+        "r_121"
+      ],
+      "inputs": [
+        "alloy_metal_ingots",
+        "copper_wiring",
+        "plastics"
+      ],
+      "feeds_into": [
+        "computer",
+        "cpu"
+      ]
+    },
+    {
+      "id": "electrical_components",
+      "display_name": "Electrical Components",
+      "category": "construction",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 6,
+      "tier_label": "Tier 6",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_128",
+        "name": "Inert-Atmosphere Precision Components",
+        "building": "high_tech_manufactory",
+        "energy_req": 8.0,
+        "inputs": [
+          {
+            "good": "copper_wiring",
+            "qty": 12.0
+          },
+          {
+            "good": "refined_ree",
+            "qty": 5.0
+          },
+          {
+            "good": "noble_gases",
+            "qty": 6.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "electrical_components",
+            "qty": 16.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Manufacturing"
+      },
+      "recipe_options": 3,
+      "alternative_recipe_ids": [
+        "r_126",
+        "r_127"
+      ],
+      "inputs": [
+        "copper_wiring",
+        "noble_gases",
+        "refined_ree"
+      ],
+      "feeds_into": [
+        "building_frame",
+        "engine"
+      ]
+    },
+    {
+      "id": "motor",
+      "display_name": "Motor",
+      "category": null,
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 6,
+      "tier_label": "Tier 6",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_066",
+        "name": "Axial Flux Motors",
+        "building": "assembly_plant",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "steel",
+            "qty": 3.0
+          },
+          {
+            "good": "copper_wiring",
+            "qty": 6.0
+          },
+          {
+            "good": "refined_ree",
+            "qty": 2.0
+          },
+          {
+            "good": "alloy_metal_ingots",
+            "qty": 2.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "motor",
+            "qty": 6.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 3,
+      "alternative_recipe_ids": [
+        "r_009",
+        "r_065"
+      ],
+      "inputs": [
+        "alloy_metal_ingots",
+        "copper_wiring",
+        "refined_ree",
+        "steel"
+      ],
+      "feeds_into": []
+    },
+    {
+      "id": "building_frame",
+      "display_name": "Building Frame",
+      "category": "construction",
+      "good_type": "finished",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 7,
+      "tier_label": "Tier 7",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_057",
+        "name": "Building Frame Manufacture",
+        "building": "assembly_plant",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "steel",
+            "qty": 6.0
+          },
+          {
+            "good": "windows",
+            "qty": 3.0
+          },
+          {
+            "good": "copper_pipe",
+            "qty": 2.0
+          },
+          {
+            "good": "electrical_components",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "building_frame",
+            "qty": 10.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Construction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "copper_pipe",
+        "electrical_components",
+        "steel",
+        "windows"
+      ],
+      "feeds_into": []
+    },
+    {
+      "id": "cpu",
+      "display_name": "CPU",
+      "category": "construction",
+      "good_type": "finished",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 7,
+      "tier_label": "Tier 7",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_122",
+        "name": "Semiconductor Fabbing",
+        "building": "assembly_plant",
+        "energy_req": 5.0,
+        "inputs": [
+          {
+            "good": "silicon",
+            "qty": 4.0
+          },
+          {
+            "good": "circuit_board",
+            "qty": 2.0
+          },
+          {
+            "good": "industrial_acids",
+            "qty": 1.0
+          },
+          {
+            "good": "refined_ree",
+            "qty": 2.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "cpu",
+            "qty": 2.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 3,
+      "alternative_recipe_ids": [
+        "r_123",
+        "r_124"
+      ],
+      "inputs": [
+        "circuit_board",
+        "industrial_acids",
+        "refined_ree",
+        "silicon"
+      ],
+      "feeds_into": [
+        "computer"
+      ]
+    },
+    {
+      "id": "engine",
+      "display_name": "Engine",
+      "category": "construction",
+      "good_type": "intermediate",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 7,
+      "tier_label": "Tier 7",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_072",
+        "name": "V8 Engine Manufacturing",
+        "building": "factory",
+        "energy_req": 4.0,
+        "inputs": [
+          {
+            "good": "steel",
+            "qty": 1.0
+          },
+          {
+            "good": "aluminium",
+            "qty": 2.0
+          },
+          {
+            "good": "processed_oil",
+            "qty": 2.0
+          },
+          {
+            "good": "electrical_components",
+            "qty": 1.0
+          },
+          {
+            "good": "alkaline_battery",
+            "qty": 1.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "engine",
+            "qty": 3.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 4,
+      "alternative_recipe_ids": [
+        "r_071",
+        "r_074",
+        "r_089"
+      ],
+      "inputs": [
+        "alkaline_battery",
+        "aluminium",
+        "electrical_components",
+        "processed_oil",
+        "steel"
+      ],
+      "feeds_into": []
+    },
+    {
+      "id": "computer",
+      "display_name": "Computer",
+      "category": "construction",
+      "good_type": "finished",
+      "source": "goods_csv",
+      "in_goods_csv": true,
+      "tier": 8,
+      "tier_label": "Finished",
+      "is_raw": false,
+      "recipe": {
+        "id": "r_125",
+        "name": "Computer Assembly",
+        "building": "assembly_plant",
+        "energy_req": 3.0,
+        "inputs": [
+          {
+            "good": "circuit_board",
+            "qty": 2.0
+          },
+          {
+            "good": "cpu",
+            "qty": 1.0
+          },
+          {
+            "good": "aluminium",
+            "qty": 1.0
+          },
+          {
+            "good": "noble_gases",
+            "qty": 1.0
+          },
+          {
+            "good": "plastics",
+            "qty": 2.0
+          }
+        ],
+        "outputs": [
+          {
+            "good": "computer",
+            "qty": 2.0
+          }
+        ],
+        "requirements": null,
+        "tag": "Extraction"
+      },
+      "recipe_options": 1,
+      "alternative_recipe_ids": [],
+      "inputs": [
+        "aluminium",
+        "circuit_board",
+        "cpu",
+        "noble_gases",
+        "plastics"
+      ],
+      "feeds_into": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "alkaline_battery",
+      "to": "engine"
+    },
+    {
+      "from": "alloy_metal_ingots",
+      "to": "alkaline_battery"
+    },
+    {
+      "from": "alloy_metal_ingots",
+      "to": "circuit_board"
+    },
+    {
+      "from": "alloy_metal_ingots",
+      "to": "motor"
+    },
+    {
+      "from": "alloy_metal_ingots",
+      "to": "polysilicon"
+    },
+    {
+      "from": "alloy_ore",
+      "to": "alloy_ingots"
+    },
+    {
+      "from": "alumina",
+      "to": "aluminium"
+    },
+    {
+      "from": "aluminium",
+      "to": "car_body"
+    },
+    {
+      "from": "aluminium",
+      "to": "computer"
+    },
+    {
+      "from": "aluminium",
+      "to": "engine"
+    },
+    {
+      "from": "aluminium",
+      "to": "windows"
+    },
+    {
+      "from": "basic_salt",
+      "to": "chlorine"
+    },
+    {
+      "from": "basic_salt",
+      "to": "sodium_hydroxide"
+    },
+    {
+      "from": "bauxite_ore",
+      "to": "alumina"
+    },
+    {
+      "from": "biomass",
+      "to": "ethylene"
+    },
+    {
+      "from": "biomass",
+      "to": "spec_microbes"
+    },
+    {
+      "from": "chem_salts",
+      "to": "alkaline_battery"
+    },
+    {
+      "from": "chem_salts",
+      "to": "aluminium"
+    },
+    {
+      "from": "chem_salts",
+      "to": "industrial_acids"
+    },
+    {
+      "from": "chlorine",
+      "to": "pvc"
+    },
+    {
+      "from": "chlorine",
+      "to": "refined_ree"
+    },
+    {
+      "from": "circuit_board",
+      "to": "computer"
+    },
+    {
+      "from": "circuit_board",
+      "to": "cpu"
+    },
+    {
+      "from": "coal",
+      "to": "concrete"
+    },
+    {
+      "from": "coal",
+      "to": "fuels"
+    },
+    {
+      "from": "coal",
+      "to": "iron_ingots"
+    },
+    {
+      "from": "coal",
+      "to": "power"
+    },
+    {
+      "from": "coal",
+      "to": "silicon"
+    },
+    {
+      "from": "coal",
+      "to": "steel"
+    },
+    {
+      "from": "copper_ingots",
+      "to": "copper_pipe"
+    },
+    {
+      "from": "copper_ingots",
+      "to": "copper_wiring"
+    },
+    {
+      "from": "copper_ore",
+      "to": "copper_ingots"
+    },
+    {
+      "from": "copper_pipe",
+      "to": "building_frame"
+    },
+    {
+      "from": "copper_wiring",
+      "to": "circuit_board"
+    },
+    {
+      "from": "copper_wiring",
+      "to": "electrical_components"
+    },
+    {
+      "from": "copper_wiring",
+      "to": "motor"
+    },
+    {
+      "from": "cpu",
+      "to": "computer"
+    },
+    {
+      "from": "crude_oil",
+      "to": "processed_oil"
+    },
+    {
+      "from": "electrical_components",
+      "to": "building_frame"
+    },
+    {
+      "from": "electrical_components",
+      "to": "engine"
+    },
+    {
+      "from": "ethylene",
+      "to": "plastics"
+    },
+    {
+      "from": "ethylene",
+      "to": "pvc"
+    },
+    {
+      "from": "ethylene",
+      "to": "rubber"
+    },
+    {
+      "from": "fibreglass",
+      "to": "car_body"
+    },
+    {
+      "from": "glass",
+      "to": "fibreglass"
+    },
+    {
+      "from": "glass",
+      "to": "windows"
+    },
+    {
+      "from": "graphite",
+      "to": "aluminium"
+    },
+    {
+      "from": "hydrogen",
+      "to": "alumina"
+    },
+    {
+      "from": "hydrogen",
+      "to": "fuels"
+    },
+    {
+      "from": "hydrogen",
+      "to": "industrial_acids"
+    },
+    {
+      "from": "hydrogen",
+      "to": "polysilicon"
+    },
+    {
+      "from": "industrial_acids",
+      "to": "copper_ingots"
+    },
+    {
+      "from": "industrial_acids",
+      "to": "cpu"
+    },
+    {
+      "from": "industrial_acids",
+      "to": "polysilicon"
+    },
+    {
+      "from": "iron_ingots",
+      "to": "steel"
+    },
+    {
+      "from": "iron_ore",
+      "to": "iron_ingots"
+    },
+    {
+      "from": "limestone",
+      "to": "concrete"
+    },
+    {
+      "from": "limestone",
+      "to": "glass"
+    },
+    {
+      "from": "methane",
+      "to": "hydrogen"
+    },
+    {
+      "from": "noble_gases",
+      "to": "computer"
+    },
+    {
+      "from": "noble_gases",
+      "to": "electrical_components"
+    },
+    {
+      "from": "oxygen",
+      "to": "copper_ingots"
+    },
+    {
+      "from": "oxygen",
+      "to": "rubber"
+    },
+    {
+      "from": "oxygen",
+      "to": "steel"
+    },
+    {
+      "from": "plastics",
+      "to": "circuit_board"
+    },
+    {
+      "from": "plastics",
+      "to": "computer"
+    },
+    {
+      "from": "plastics",
+      "to": "fibreglass"
+    },
+    {
+      "from": "processed_oil",
+      "to": "engine"
+    },
+    {
+      "from": "pure_water",
+      "to": "chlorine"
+    },
+    {
+      "from": "pure_water",
+      "to": "concrete"
+    },
+    {
+      "from": "pure_water",
+      "to": "ethylene"
+    },
+    {
+      "from": "pure_water",
+      "to": "hydrogen"
+    },
+    {
+      "from": "pure_water",
+      "to": "power"
+    },
+    {
+      "from": "pure_water",
+      "to": "silica"
+    },
+    {
+      "from": "pure_water",
+      "to": "sodium_hydroxide"
+    },
+    {
+      "from": "pure_water",
+      "to": "waste_water"
+    },
+    {
+      "from": "ree_ore",
+      "to": "refined_ree"
+    },
+    {
+      "from": "refined_ree",
+      "to": "cpu"
+    },
+    {
+      "from": "refined_ree",
+      "to": "electrical_components"
+    },
+    {
+      "from": "refined_ree",
+      "to": "motor"
+    },
+    {
+      "from": "rubber",
+      "to": "tyres"
+    },
+    {
+      "from": "sand",
+      "to": "glass"
+    },
+    {
+      "from": "sand",
+      "to": "silica"
+    },
+    {
+      "from": "silica",
+      "to": "concrete"
+    },
+    {
+      "from": "silica",
+      "to": "silicon"
+    },
+    {
+      "from": "silicon",
+      "to": "cpu"
+    },
+    {
+      "from": "silicon",
+      "to": "polysilicon"
+    },
+    {
+      "from": "sodium_hydroxide",
+      "to": "alloy_ingots"
+    },
+    {
+      "from": "sodium_hydroxide",
+      "to": "alumina"
+    },
+    {
+      "from": "sodium_hydroxide",
+      "to": "glass"
+    },
+    {
+      "from": "sodium_hydroxide",
+      "to": "refined_ree"
+    },
+    {
+      "from": "spec_microbes",
+      "to": "ethylene"
+    },
+    {
+      "from": "steel",
+      "to": "building_frame"
+    },
+    {
+      "from": "steel",
+      "to": "car_body"
+    },
+    {
+      "from": "steel",
+      "to": "engine"
+    },
+    {
+      "from": "steel",
+      "to": "motor"
+    },
+    {
+      "from": "steel",
+      "to": "tyres"
+    },
+    {
+      "from": "sulphur",
+      "to": "tyres"
+    },
+    {
+      "from": "waste_water",
+      "to": "pure_water"
+    },
+    {
+      "from": "windows",
+      "to": "building_frame"
+    }
+  ]
+}
