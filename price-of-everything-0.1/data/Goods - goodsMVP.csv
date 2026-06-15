@@ -50,3 +50,13 @@ g_048,polysilicon,Polysilicon,chems,solid_heavy,1,1,vehicle,intermediate,0.002,3
 g_049,high_grade_silicon,High Grade Silicon,metals,solid_light,1,1,vehicle,intermediate,0.001,60,TRUE,TRUE,0,no,0
 g_050,lithium_ore,Lithium Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,5,TRUE,TRUE,0,no,0
 g_051,lithium_carbonate,Lithium Carbonate,chems,solid_heavy,1,1,vehicle,intermediate,0.002,25,TRUE,TRUE,0,no,0
+g_052,large_engine,Large Engine,construction,ultra_heavy,1,1,vehicle,intermediate,0.001,140,TRUE,TRUE,0,no,0
+g_053,wind_turbine,Wind Turbine,energy,ultra_heavy,1,1,vehicle,finished,0.0005,130,TRUE,TRUE,0,no,0
+g_054,solar_panel,Solar Panel,energy,ultra_heavy,1,1,vehicle,finished,0.0005,90,TRUE,TRUE,0,no,0
+g_055,heavy_vehicle,Heavy Vehicle,construction,ultra_heavy,1,1,vehicle,finished,0.0005,320,TRUE,TRUE,0,no,0
+g_056,ice_car,Diesel Car,construction,ultra_heavy,1,1,vehicle,finished,0.0005,220,TRUE,TRUE,0,no,0
+g_057,ev_car,Electric Car,construction,ultra_heavy,1,1,vehicle,finished,0.0005,260,TRUE,TRUE,0,no,0
+g_058,fibreglass,Fibreglass,construction,solid_light,1,1,vehicle,intermediate,0.001,14,TRUE,TRUE,0,no,0
+g_059,lithium_battery,Lithium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,60,TRUE,TRUE,0,no,0
+g_060,sodium_battery,Sodium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,45,TRUE,TRUE,0,no,0
+g_061,iron_battery,Iron Air Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,40,TRUE,TRUE,0,no,0
