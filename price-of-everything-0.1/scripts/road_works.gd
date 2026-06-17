@@ -40,6 +40,9 @@ const NEIGHBOUR_OFFSETS: Array[Vector2i] = [
 
 signal order_settled(order_id: int)
 signal orders_changed()
+## A farm tile's cosmetic web (outer ring + one through-path) was promoted to real roads because a
+## player road reached it — BuildingVisuals stops drawing those brown tracks (tile_id).
+signal farm_roads_promoted(tile_id: String)
 
 var orders: Dictionary = {}     # id -> order dict
 var _queue: Array = []          # order ids awaiting planning (FIFO)
@@ -59,6 +62,12 @@ var _preview_bridges: Dictionary = {}
 ## built tiles meshes instead of each tile reaching back to the trunk alone.
 ## Key "tileA|tileB" (sorted). Persisted so a reload doesn't double-link.
 var _linked_pairs: Dictionary = {}
+## Farm tiles whose web (outer ring + one path) has been promoted to real RoadNetwork roads. Persisted
+## so a reload doesn't re-promote (the edges themselves ride in RoadNetwork state). tile_id -> true.
+var _farm_promoted: Dictionary = {}
+## Promoted-ring endpoint nodes already bridged across a tile seam to a neighbour's road. endpoint_id ->
+## true. Persisted so a reload never re-bridges (the bridge edge itself rides in RoadNetwork state).
+var _farm_links: Dictionary = {}
 ## Dedicated realizer: its scratch buffers hold the one in-flight paused job.
 var _realizer := RoadRealizer.new()
 var _job: Dictionary = {}
@@ -90,6 +99,11 @@ func _on_construction_completed(instance_id: String, tile_id: String) -> void:
 
 ## Queue a connect-to-network job for the tile (spec: road built on tile T
 ## plans jobs for T only). Returns the order id, or -1 when skipped.
+## The tile an order belongs to ("" if unknown). Lets a listener re-pack exactly
+## the tile whose road just settled (BuildingVisuals re-snap on order_settled).
+func order_tile(order_id: int) -> String:
+	return str((orders.get(order_id, {}) as Dictionary).get("tile_id", ""))
+
 func enqueue_for_tile(tile_id: String) -> int:
 	for id in orders:
 		var existing: Dictionary = orders[id]
@@ -106,8 +120,10 @@ func enqueue_for_tile(tile_id: String) -> int:
 	if attach.is_empty():
 		return -1   # no network yet (bootstrap missing) — nothing to connect to
 	# Forest discs rebuild here (turn context) so the ~40 ms cache build never
-	# lands inside a budgeted planning frame.
+	# lands inside a budgeted planning frame. Building-cost discs warm here too, so a
+	# road planned after a building is placed routes around it.
 	_realizer.warm_forest_cache()
+	_realizer.warm_building_cache()
 	var id2 := _next_order
 	_next_order += 1
 	var order := {
@@ -202,6 +218,12 @@ func enqueue_region_jobs(region_id: String) -> int:
 ## others rather than overloading the junction.
 const MAX_JUNCTION := 5
 
+## Two adjacent tiles' promoted rings are bridged only when their closest approach is within this gap —
+## enough to span the two 1u hex insets plus the lateral offset between the clipped rings (~2.7u for
+## straddling clusters) with a little margin, but small enough that the bridge is a short seam stub and
+## never connects two clusters that aren't actually adjacent (stays below FARM_RING_DEDUP_RADIUS=14u).
+const FARM_BRIDGE_MAX := 8.0
+
 func _nearest_attachment(from: Vector2) -> Dictionary:
 	var net := RoadNetwork.instance()
 	var degree := _node_degrees(net)
@@ -217,14 +239,16 @@ func _nearest_attachment(from: Vector2) -> Dictionary:
 			best = {"pos": node.pos, "id": str(node.id)}
 	for edge_id in net.edges:
 		var geometry: PackedVector2Array = net.edges[edge_id].geometry
-		# sparse samples are plenty (~60-100 u apart) — the realizer's reuse
-		# discount snaps the final approach onto the road anyway, and this runs
-		# inside the planning frame for every order start
-		for i in range(0, geometry.size(), 8):
-			var d2 := geometry[i].distance_squared_to(from)
+		# Project `from` onto each SEGMENT (not just every-8th vertex): the goal must pin to the
+		# TRUE nearest point on the centreline. A sparse vertex sample could sit 8-20u off the
+		# line, and that offset is exactly what seeds a parallel "doubled" road (the reuse bias has
+		# no snap of its own). O(network) like the old loop — same cost, just exact.
+		for i in range(geometry.size() - 1):
+			var cp := Geometry2D.get_closest_point_to_segment(from, geometry[i], geometry[i + 1])
+			var d2 := cp.distance_squared_to(from)
 			if d2 < best_d:
 				best_d = d2
-				best = {"pos": geometry[i], "id": ""}
+				best = {"pos": cp, "id": ""}
 	return best
 
 # ---------------------------------------------------------------- planning
@@ -303,6 +327,7 @@ func _finish_active() -> void:
 		failure_log.append("order %d (%s): %s" % [int(order.id), str(order.tile_id), str(order.reason)])
 		orders_changed.emit()
 		return
+	_snap_route_to_web(res)   # where the road crosses a farm cluster, run it ON the web (not over fields)
 	var net := RoadNetwork.instance()
 	var a_id: String
 	if str(order.get("kind", "connect")) == "style":
@@ -348,6 +373,7 @@ func _settle(order: Dictionary) -> void:
 		if not edge.is_empty():
 			_register_edge_occupancy(edge)
 	order_settled.emit(int(order.id))
+	_promote_farm_roads_if_reached(order, net)
 	# Roads appear only where the player builds (roadsv2.5 ruling): a settled
 	# member road does NOT auto-grow the whole region's web — it just connects
 	# this tile into the network. Regional beltways/webs exist only in the baked
@@ -359,6 +385,406 @@ func _settle(order: Dictionary) -> void:
 	if str(order.get("kind", "connect")) == "connect":
 		_link_adjacent_roads(order)
 	orders_changed.emit()
+
+## True if this farm tile's web has already been promoted to real roads.
+func is_farm_promoted(tile_id: String) -> bool:
+	return bool(_farm_promoted.get(tile_id, false))
+
+## A promoted farm-web polyline is suppressed where it runs within this of a road already on the tile
+## (the connect road that reached the farm), so the ring never doubles up alongside it. ~one grid cell
+## (12u) + a margin, so a road up to a cell away still counts as "already covering" the ring there.
+const FARM_RING_DEDUP_RADIUS := 14.0
+
+## Split `poly` into the maximal runs of vertices NOT already within `radius` of a road on `coord`, so
+## promoting a farm-web polyline never re-draws over a connect road that's already there. Each free run
+## is dilated one vertex into the covered zone on each side so it still meets the road (no visible gap).
+func _undoubled_runs(net: RoadNetwork, coord: Vector2i, poly: PackedVector2Array, radius: float) -> Array:
+	var segs: Array = []
+	for eid in net.edges_on_tile(coord):
+		var g: PackedVector2Array = net.edges[eid].geometry
+		for i in range(g.size() - 1):
+			segs.append([g[i], g[i + 1]])
+	if segs.is_empty():
+		return [poly]   # nothing to double against — promote the whole polyline
+	var r2 := radius * radius
+	var n := poly.size()
+	var include := PackedByteArray()
+	include.resize(n)
+	include.fill(0)
+	for i in n:
+		var p: Vector2 = poly[i]
+		var covered := false
+		for s in segs:
+			if p.distance_squared_to(Geometry2D.get_closest_point_to_segment(p, s[0], s[1])) <= r2:
+				covered = true
+				break
+		if not covered:
+			include[i] = 1
+			if i > 0:
+				include[i - 1] = 1   # bridge backward into the covered road
+			if i < n - 1:
+				include[i + 1] = 1   # bridge forward
+	var runs: Array = []
+	var cur := PackedVector2Array()
+	for i in n:
+		if include[i] == 1:
+			cur.append(poly[i])
+		else:
+			if cur.size() >= 2:
+				runs.append(cur)
+			cur = PackedVector2Array()
+	if cur.size() >= 2:
+		runs.append(cur)
+	return runs
+
+## When a player road settles ON a farm tile, promote that tile's cosmetic web (BuildingVisuals'
+## outer ring + one through-path) into real RoadNetwork roads — STATE_BUILT, drawn yellow, persisted.
+## One-time per tile (idempotent via _farm_promoted; the edges themselves ride in RoadNetwork state).
+func _promote_farm_roads_if_reached(order: Dictionary, net) -> void:
+	var bv := _building_visuals()
+	if bv == null or not bv.has_method("farm_promote_candidates_for_coord"):
+		return
+	# Every tile the settled edge actually crosses (so a road that PASSES THROUGH a farm tile promotes it,
+	# not just the order's own tile). Falls back to the order's coord when the edge has no tile list.
+	var coords: Array = []
+	var edge: Dictionary = net.edges.get(str(order.get("edge_id", "")), {})
+	for t in edge.get("tiles", []):
+		coords.append(t)
+	if coords.is_empty():
+		coords.append(order.get("coord", Vector2i.ZERO))
+	for tc in coords:
+		var coord: Vector2i = tc
+		var cands: Dictionary = bv.farm_promote_candidates_for_coord(coord)
+		if cands.is_empty():
+			continue
+		var tile_id := str(cands.get("tile_id", ""))
+		if tile_id == "" or bool(_farm_promoted.get(tile_id, false)):
+			continue
+		var polylines: Array = []
+		for poly in (cands.get("ring", []) as Array):
+			polylines.append(poly)
+		var trunk: PackedVector2Array = cands.get("trunk", PackedVector2Array())
+		if trunk.size() >= 2:
+			polylines.append(trunk)
+		# The connect/through road that reached this farm has ALREADY committed; promoting the ring/trunk
+		# raw would DOUBLE it wherever they overlap (the parallel roads hugging a farm cluster). So promote
+		# only the parts of each web polyline that aren't already within FARM_RING_DEDUP_RADIUS of a road on
+		# this tile — split each polyline into its "uncovered" runs (each bridged one vertex into the road).
+		var run_id := 0
+		for poly in polylines:
+			if (poly as PackedVector2Array).size() < 2:
+				continue
+			for run in _undoubled_runs(net, coord, poly, FARM_RING_DEDUP_RADIUS):
+				var rp: PackedVector2Array = run
+				if rp.size() < 2:
+					continue
+				var na: Dictionary = net.ensure_node("farmr:%s:%d:a" % [tile_id, run_id], RoadNetwork.KIND_JUNCTION, rp[0], coord)
+				var nb: Dictionary = net.ensure_node("farmr:%s:%d:b" % [tile_id, run_id], RoadNetwork.KIND_JUNCTION, rp[rp.size() - 1], coord)
+				net.add_edge(str(na.id), str(nb.id), RoadNetwork.TIER_LOCAL, rp, [coord], [], 0, RoadNetwork.STATE_BUILT)
+				run_id += 1
+		# The ring is clipped 1u inside the hex, so adjacent tiles' rings stop ~1u short of the shared edge:
+		# bridge this tile's ring to the neighbour's ring at their closest approach so the two yellow roads meet.
+		_bridge_ring_to_neighbours(net, coord, tile_id)
+		# Flag promoted even if everything was already covered (nothing added): the cosmetic brown ring is
+		# then suppressed and the existing road stands in for it, so we never re-attempt this tile.
+		_farm_promoted[tile_id] = true
+		farm_roads_promoted.emit(tile_id)
+
+## Connect this tile's freshly-promoted RING to an ADJACENT farm tile's RING across the shared hex edge,
+## closing the ~2-3u inset gap that leaves two tiles' yellow ring roads unjoined. Works whether the rings
+## are open (clipped) or closed loops — it bridges their CLOSEST APPROACH, not endpoints. Deterministic
+## (pure geometry + sorted edge iteration, no RNG), synchronous (no work order/realizer), persisted (an
+## ordinary STATE_BUILT edge; _farm_links dedupes by sorted tile-pair so a reload or the other tile
+## promoting never adds a second bridge for the same seam). A genuine VISUAL join (the stub's ends land ON
+## each ring's centreline; it does not split the ring edges). Never bridges across water (no bridgeless
+## river/lake crossing) and only fires within FARM_BRIDGE_MAX so it's a short seam stub, never a long road.
+func _bridge_ring_to_neighbours(net: RoadNetwork, coord: Vector2i, tile_id: String) -> void:
+	var terrain := _terrain()
+	if terrain == null:
+		return
+	var my_segs := _ring_segments_on(net, coord)
+	if my_segs.is_empty():
+		return
+	var cap2 := FARM_BRIDGE_MAX * FARM_BRIDGE_MAX
+	for ncoord in terrain.neighbor_coords(coord):
+		if not terrain.tiles.has(ncoord):
+			continue
+		var n_id := "tile_%d_%d" % [ncoord.x + 1, ncoord.y + 1]
+		var pair := ("%s|%s" % [tile_id, n_id]) if tile_id < n_id else ("%s|%s" % [n_id, tile_id])
+		if _farm_links.has(pair):
+			continue   # this seam already bridged (once per adjacent pair, in either promotion order)
+		var nbr_segs := _ring_segments_on(net, ncoord)
+		if nbr_segs.is_empty():
+			continue   # neighbour not promoted yet — its ring isn't there to bridge to
+		# closest approach between my ring and the neighbour's ring (sample my vertices onto nbr segments)
+		var best_a := Vector2.ZERO
+		var best_b := Vector2.ZERO
+		var best_d2 := cap2
+		for ms in my_segs:
+			for mp in [ms[0] as Vector2, ms[1] as Vector2]:
+				var mpv: Vector2 = mp
+				for ns in nbr_segs:
+					var cp := Geometry2D.get_closest_point_to_segment(mpv, ns[0] as Vector2, ns[1] as Vector2)
+					var d2 := mpv.distance_squared_to(cp)
+					if d2 < best_d2:
+						best_d2 = d2
+						best_a = mpv
+						best_b = cp
+		if best_d2 >= cap2 or best_a.distance_to(best_b) < 0.5:
+			continue   # no ring within FARM_BRIDGE_MAX, or already touching (no stub needed)
+		if not _bridge_on_land(best_a, best_b):
+			continue   # would cross water — rivers cross only at gates, lakes never
+		_farm_links[pair] = true
+		var ja := net.add_junction(best_a, coord)
+		var jb := net.add_junction(best_b, coord)
+		net.add_edge(str(ja.id), str(jb.id), RoadNetwork.TIER_LOCAL, PackedVector2Array([best_a, best_b]), [coord], [], 0, RoadNetwork.STATE_BUILT)
+
+## The [a,b] segments of every promoted RING (farmr:) edge on `coord` — the geometry to bridge across a seam.
+func _ring_segments_on(net: RoadNetwork, coord: Vector2i) -> Array:
+	var segs: Array = []
+	for eid in _sorted_edge_ids(net):
+		var e: Dictionary = net.edges[eid]
+		if not (str(e.a).begins_with("farmr:") or str(e.b).begins_with("farmr:")):
+			continue
+		var on_tile := false
+		for t in (e.tiles as Array):
+			if (t as Vector2i) == coord:
+				on_tile = true
+				break
+		if not on_tile:
+			continue
+		var g: PackedVector2Array = e.geometry
+		for i in range(g.size() - 1):
+			segs.append([g[i], g[i + 1]])
+	return segs
+
+## RoadNetwork edge ids in stable numeric order ("e:<n>") so the bridge is deterministic across runs/reloads
+## (assumes the "e:<int>" id scheme from RoadNetwork.add_edge).
+func _sorted_edge_ids(net: RoadNetwork) -> Array:
+	var ids: Array = net.edges.keys()
+	ids.sort_custom(func(a, b): return int(str(a).split(":")[1]) < int(str(b).split(":")[1]))
+	return ids
+
+## True only when every sample of [a,b] is on land — a ring-seam bridge must never cross open water
+## (rivers cross only at gates, lakes never). Degrades to true if the navgrid isn't baked yet.
+func _bridge_on_land(a: Vector2, b: Vector2) -> bool:
+	var nav := NavGrid.instance()
+	if nav == null or not nav.is_ready():
+		return true
+	var n := maxi(1, int(ceil(a.distance_to(b) / (nav.step * 0.5))))
+	for i in range(n + 1):
+		var c := nav.cell_of(a.lerp(b, float(i) / float(n)))
+		if nav.water(c.x, c.y) != NavGrid.WATER_LAND:
+			return false
+	return true
+
+## The BuildingVisuals node, via the shared "building_footprints" group (mirrors RoadRealizer).
+func _building_visuals() -> Node:
+	var loop := Engine.get_main_loop()
+	if loop == null or not (loop is SceneTree):
+		return null
+	var found := (loop as SceneTree).get_nodes_in_group("building_footprints")
+	return found[0] if not found.is_empty() else null
+
+## "Borrow the web": where a routed road crosses a farm cluster, replace the in-cluster portion with the
+## web route from entry to exit — the SHORTEST path through the track graph (now that the inter-field web
+## extends out to meet the ring, the graph is connected, so the road can thread THROUGH the cluster), or
+## the ring arc as a fallback if the graph somehow has no path. Modifies res.geometry.
+func _snap_route_to_web(res: Dictionary) -> void:
+	var geo: PackedVector2Array = res.get("geometry", PackedVector2Array())
+	if geo.size() < 3:
+		return
+	var bv := _building_visuals()
+	if bv == null or not bv.has_method("all_farm_cluster_rings"):
+		return
+	for ring in bv.all_farm_cluster_rings():
+		var rp: PackedVector2Array = ring
+		if rp.size() < 3:
+			continue
+		var enter := -1
+		var exit := -1
+		for i in geo.size():
+			if Geometry2D.is_point_in_polygon(geo[i], rp):
+				if enter < 0:
+					enter = i
+				exit = i
+		if enter < 1 or exit <= enter or exit >= geo.size() - 1:
+			continue   # this ring isn't cleanly crossed
+		var path := _web_path_through(bv, geo, enter, exit, rp)
+		if path.size() < 2:
+			continue
+		var out := PackedVector2Array()
+		for i in range(0, enter):
+			out.append(geo[i])
+		for p in path:
+			out.append(p)
+		for i in range(exit + 1, geo.size()):
+			out.append(geo[i])
+		res.geometry = out
+		return   # one cluster handled
+
+## The web route from the road's entry to its exit: shortest path through the connected track graph
+## (thread THROUGH the cluster), or the ring arc as a fallback if the graph has no path.
+func _web_path_through(bv: Node, geo: PackedVector2Array, enter: int, exit: int, rp: PackedVector2Array) -> PackedVector2Array:
+	var p_in: Vector2 = geo[enter - 1]
+	var p_out: Vector2 = geo[exit + 1]
+	# Tracks near the road's bbox (grown enough to capture the whole crossed cluster).
+	var bb := Rect2(geo[0], Vector2.ZERO)
+	for p in geo:
+		bb = bb.expand(p)
+	bb = bb.grow(160.0)
+	var segs: Array = []
+	for s in bv.all_farm_lane_segments():
+		if bb.has_point(s[0]) or bb.has_point(s[1]):
+			segs.append(s)
+	if segs.size() >= 2:
+		var graph := _build_web_graph(segs)
+		var ni := _nearest_graph_node(graph, p_in)
+		var nj := _nearest_graph_node(graph, p_out)
+		if ni >= 0 and nj >= 0 and ni != nj:
+			var nodes_path: Array = _dijkstra_path(graph, ni, nj)
+			if nodes_path.size() >= 2:
+				var out := PackedVector2Array()
+				for p in nodes_path:
+					out.append(p)
+				return out
+	return _ring_arc(rp, p_in, p_out)   # fallback: around the ring
+
+## Undirected graph from web segments: nodes are unique endpoints (deduped within 3u), edges carry their
+## length; nearby nodes (<= 16u) get short connectors so junction sub-gaps don't fragment it.
+func _build_web_graph(segs: Array) -> Dictionary:
+	var nodes: Array = []
+	var adj: Array = []
+	for s in segs:
+		var a: Vector2 = s[0]
+		var b: Vector2 = s[1]
+		if a.distance_to(b) < 0.5:
+			continue
+		var ia := _graph_node_of(nodes, adj, a)
+		var ib := _graph_node_of(nodes, adj, b)
+		if ia == ib:
+			continue
+		var d := a.distance_to(b)
+		(adj[ia] as Array).append([ib, d])
+		(adj[ib] as Array).append([ia, d])
+	for x in nodes.size():
+		for y in range(x + 1, nodes.size()):
+			var dd: float = (nodes[x] as Vector2).distance_to(nodes[y])
+			if dd > 3.0 and dd <= 16.0:
+				(adj[x] as Array).append([y, dd])
+				(adj[y] as Array).append([x, dd])
+	return {"nodes": nodes, "adj": adj}
+
+func _graph_node_of(nodes: Array, adj: Array, p: Vector2) -> int:
+	for k in nodes.size():
+		if (nodes[k] as Vector2).distance_to(p) < 3.0:
+			return k
+	nodes.append(p)
+	adj.append([])
+	return nodes.size() - 1
+
+func _nearest_graph_node(graph: Dictionary, p: Vector2) -> int:
+	var nodes: Array = graph.nodes
+	var best := -1
+	var bd := 1.0e20
+	for k in nodes.size():
+		var d: float = (nodes[k] as Vector2).distance_to(p)
+		if d < bd:
+			bd = d
+			best = k
+	return best
+
+## Dijkstra shortest path (node positions) from src to dst; [] if disconnected.
+func _dijkstra_path(graph: Dictionary, src: int, dst: int) -> Array:
+	var nodes: Array = graph.nodes
+	var adj: Array = graph.adj
+	var n := nodes.size()
+	var dist := PackedFloat32Array()
+	dist.resize(n)
+	dist.fill(1.0e20)
+	var prev := PackedInt32Array()
+	prev.resize(n)
+	prev.fill(-1)
+	var seen := PackedByteArray()
+	seen.resize(n)
+	dist[src] = 0.0
+	while true:
+		var u := -1
+		var ud := 1.0e20
+		for k in n:
+			if seen[k] == 0 and dist[k] < ud:
+				ud = dist[k]
+				u = k
+		if u < 0 or u == dst:
+			break
+		seen[u] = 1
+		for e in (adj[u] as Array):
+			var v: int = e[0]
+			var nd: float = dist[u] + float(e[1])
+			if nd < dist[v]:
+				dist[v] = nd
+				prev[v] = u
+	if dist[dst] >= 1.0e20:
+		return []
+	var path: Array = []
+	var cur := dst
+	while cur != -1:
+		path.append(nodes[cur])
+		cur = prev[cur]
+	path.reverse()
+	return path
+
+## The shorter boundary arc of `poly` between the boundary point nearest `p_in` and that nearest `p_out`.
+func _ring_arc(poly: PackedVector2Array, p_in: Vector2, p_out: Vector2) -> PackedVector2Array:
+	var n := poly.size()
+	var ei := _closest_edge(poly, p_in)
+	var ej := _closest_edge(poly, p_out)
+	var pe: Vector2 = ei.point
+	var pj: Vector2 = ej.point
+	var i0: int = ei.idx
+	var j0: int = ej.idx
+	if i0 == j0:
+		return PackedVector2Array([pe, pj])   # entry + exit on the same ring edge
+	# Forward (increasing index): pe → poly[i0+1] → … → poly[j0] → pj
+	var fwd := PackedVector2Array([pe])
+	var k := (i0 + 1) % n
+	for _g in n + 1:
+		fwd.append(poly[k])
+		if k == j0:
+			break
+		k = (k + 1) % n
+	fwd.append(pj)
+	# Backward (decreasing index): pe → poly[i0] → … → poly[j0+1] → pj
+	var bwd := PackedVector2Array([pe])
+	k = i0
+	for _g in n + 1:
+		bwd.append(poly[k])
+		if k == (j0 + 1) % n:
+			break
+		k = (k - 1 + n) % n
+	bwd.append(pj)
+	return fwd if _polyline_len(fwd) <= _polyline_len(bwd) else bwd
+
+## Index of the polygon edge nearest p, and the closest point on it: {idx, point}.
+func _closest_edge(poly: PackedVector2Array, p: Vector2) -> Dictionary:
+	var n := poly.size()
+	var best := 0
+	var bp: Vector2 = poly[0]
+	var bd := 1.0e20
+	for k in n:
+		var cp := Geometry2D.get_closest_point_to_segment(p, poly[k], poly[(k + 1) % n])
+		var d: float = p.distance_to(cp)
+		if d < bd:
+			bd = d
+			best = k
+			bp = cp
+	return {"idx": best, "point": bp}
+
+func _polyline_len(pl: PackedVector2Array) -> float:
+	var L := 0.0
+	for i in range(pl.size() - 1):
+		L += pl[i].distance_to(pl[i + 1])
+	return L
 
 ## Join a just-settled connect tile to any adjacent tile that already has a road
 ## but isn't directly joined to it. One short link order per new adjacency (the
@@ -638,7 +1064,8 @@ func export_state() -> Dictionary:
 			"orbital": bool(o.get("orbital", false)),
 		})
 	return {"orders": out, "next_order": _next_order, "styled_regions": _styled_regions.keys(),
-		"linked_pairs": _linked_pairs.keys()}
+		"linked_pairs": _linked_pairs.keys(), "farm_promoted": _farm_promoted.keys(),
+		"farm_links": _farm_links.keys()}
 
 ## BUILT geometry rides in the network state; BUILDING orders resume planning
 ## deterministically; mid-reveal orders restart their reveal (cosmetic only).
@@ -649,6 +1076,12 @@ func import_state(d: Dictionary) -> void:
 		_styled_regions[str(region_id)] = true
 	for pair_key in d.get("linked_pairs", []):
 		_linked_pairs[str(pair_key)] = true
+	for ftile in d.get("farm_promoted", []):
+		_farm_promoted[str(ftile)] = true
+		farm_roads_promoted.emit(str(ftile))   # tell BuildingVisuals to suppress those brown tracks
+	for flink in d.get("farm_links", []):
+		_farm_links[str(flink)] = true   # a reload must not re-bridge an already-bridged seam endpoint
+
 	for raw in d.get("orders", []):
 		var o := {
 			"id": int(raw.id), "tile_id": str(raw.tile_id), "state": str(raw.state),
@@ -689,6 +1122,8 @@ func reset() -> void:
 	_styled_regions.clear()
 	_preview_bridges.clear()
 	_linked_pairs.clear()
+	_farm_promoted.clear()
+	_farm_links.clear()
 
 # ------------------------------------------------------------------ helpers
 
