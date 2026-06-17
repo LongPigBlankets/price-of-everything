@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b8farmshot01x"]
+
+[ext_resource type="Script" path="res://tools/farm_shot.gd" id="1"]
+
+[node name="FarmShot" type="Node2D"]
+script = ExtResource("1")

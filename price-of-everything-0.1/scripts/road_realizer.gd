@@ -71,6 +71,28 @@ const MERGE_RADIUS := 7.0
 const CROWD_RADIUS := 22.0
 const COST_REUSE := 0.5
 const COST_CROWD := 1.3
+# Convergence gradient inside the MERGE band. The OLD bitmap was binary (2 = anywhere within 7u of
+# a centreline, flat COST_REUSE), a 14u plateau with no minimum — so a 2nd road paid the same on
+# the line or 7u beside it and never collapsed onto it (the doubling). Now _near_net stores a TIER:
+# 2 = dead on the centreline (cheapest), rising by distance, so the search has a strict minimum to
+# fall into and the 2nd road snaps ONTO the line. The cost stays a discount across the whole band
+# (≤~0.92 at the 7u edge) but is strictly increasing, so a near road still merges rather than splits.
+const MERGE_TIER_SCALE := 1.0    # _near_net tiers per world-u from the centreline: tier = 2 + int(d * scale)
+const MERGE_RAMP := 0.06         # cost added per tier past the centreline (0.50 on the line → ~0.92 at 7u)
+# Building footprints raise the A* step cost so roads bend around them — a GRADUATED cost, never
+# a wall (the reverted attempt put footprints in _passable and made dense tiles non-routable).
+const COST_BUILDING_CORE := 4.0          # multiplier inside a footprint disc
+const COST_BUILDING_NEAR := 1.5          # multiplier in the ring just outside it
+const BUILDING_ROAD_BUFFER := 8.0        # NEAR-ring width past the footprint radius (= forest buffer)
+const BUILDING_DISCS_PER_UNIT := 16      # footprint discs rasterised per prep unit (chunked)
+const BUILDING_CORRIDOR_GROW := 80.0     # corridor-rect grow for the footprint filter (= forest)
+# Farm-web follow: a road crossing a farm cluster PREFERS the cosmetic track web — cells within
+# FARM_LANE_NEAR of a track get COST_FARM_LANE (a discount) and bypass the field-footprint penalty,
+# so the road threads the web instead of being shoved around the (big) farm fields.
+const COST_FARM_LANE := 0.5              # multiplier on a cell sitting on a farm track
+const FARM_LANE_NEAR := 7.0              # a cell within this of a track centreline is "on the track"
+const FARM_LANE_SEGS_PER_UNIT := 40      # track segments rasterised per prep unit (chunked)
+const FARM_LANE_CORRIDOR_GROW := 80.0    # corridor-rect grow for the track filter
 const TURN_45 := 0.18
 const TURN_90 := 0.85
 const TURN_135 := 3.0
@@ -103,6 +125,8 @@ var _parent := PackedInt32Array()
 var _closed := PackedByteArray()
 var _passable := PackedByteArray()
 var _near_net := PackedByteArray()   # corridor-local reuse-discount bitmap
+var _building_cost := PackedByteArray() # corridor-local building-cost tiers (0 clear / 1 near / 2 core)
+var _farm_lane_cost := PackedByteArray() # corridor-local farm-track bitmap (1 = on a track → discount)
 var _region_out := PackedByteArray() # corridor-local outside-region penalty bitmap
 var _river_near := PackedByteArray() # corridor-local river-distance (4u units, 255 = none)
 var _river_disc: Array = []          # cached [dx, dy, dist4] stamp offsets for one river cell
@@ -112,6 +136,13 @@ var _river_disc: Array = []          # cached [dx, dy, dist4] stamp offsets for 
 # planted or removed, so a job never outlives its disc snapshot.
 var _forest_discs_cache: Array = []
 var _forest_discs_key := 0
+# Building footprint discs, version-keyed off building_visuals.footprint_version. Read as a COST
+# tier (never _passable), so a built-up tile always stays routable.
+var _building_discs_cache: Array = []
+var _building_discs_key := -1
+# Farm-track segments, version-keyed off building_visuals.farm_lanes_version.
+var _farm_lane_cache: Array = []
+var _farm_lane_key := -1
 
 # ------------------------------------------------------------------ public
 
@@ -280,7 +311,7 @@ func _advance(job: Dictionary) -> void:
 					return
 			job.stage = "finish_smooth"
 		"finish_smooth":
-			job.smoothed = _snap_bridges(_smooth(_thin(job.full_points, 30.0), 1), job.bridges)
+			job.smoothed = _snap_bridges(_declamp_water(_smooth(_thin(job.full_points, 30.0), 1), job.nav), job.bridges)
 			job.stage = "finish"
 		"finish":
 			var smoothed: PackedVector2Array = job.smoothed
@@ -483,6 +514,10 @@ func _fine_begin(job: Dictionary, corridor: Array, radius: float, salt: int, sta
 		_passable.resize(lcount)
 	if _near_net.size() < lcount:
 		_near_net.resize(lcount)
+	if _building_cost.size() < lcount:
+		_building_cost.resize(lcount)
+	if _farm_lane_cost.size() < lcount:
+		_farm_lane_cost.resize(lcount)
 	if _region_out.size() < lcount:
 		_region_out.resize(lcount)
 	if _river_near.size() < lcount:
@@ -541,6 +576,30 @@ func _fine_prep_unit(job: Dictionary) -> void:
 			_scatter_near_net(nav, c0, lw, lh, segs, i0, i1)
 			ctx.nearnet_i = i1
 			if i1 >= segs.size():
+				ctx.prep_phase = "buildings"
+		"buildings":
+			if not ctx.has("building_discs"):
+				_building_cost.fill(0)   # C++ fill (a GDScript zero loop would cost ~10 ms)
+				ctx.building_discs = _building_discs_in(nav, c0, lw, lh)
+				ctx.building_i = 0
+			var bdiscs: Array = ctx.building_discs
+			var bi0: int = ctx.building_i
+			var bi1 := mini(bi0 + BUILDING_DISCS_PER_UNIT, bdiscs.size())
+			_scatter_building_cost(nav, c0, lw, lh, bdiscs, bi0, bi1)
+			ctx.building_i = bi1
+			if bi1 >= bdiscs.size():
+				ctx.prep_phase = "farm_lanes"
+		"farm_lanes":
+			if not ctx.has("farm_lane_segs"):
+				_farm_lane_cost.fill(0)
+				ctx.farm_lane_segs = _farm_lane_segs_in(nav, c0, lw, lh)
+				ctx.farm_lane_i = 0
+			var fsegs: Array = ctx.farm_lane_segs
+			var fi0: int = ctx.farm_lane_i
+			var fi1 := mini(fi0 + FARM_LANE_SEGS_PER_UNIT, fsegs.size())
+			_scatter_farm_lanes(nav, c0, lw, lh, fsegs, fi0, fi1)
+			ctx.farm_lane_i = fi1
+			if fi1 >= fsegs.size():
 				ctx.prep_phase = "region"
 		"region":
 			var region: Array = job.region_coords
@@ -689,10 +748,21 @@ func _fine_step(job: Dictionary) -> String:
 			# road (discount, T-junctions form); 1 = one cell beside it (crowd
 			# penalty, so a 2nd road merges fully or veers off — never parallel)
 			var nn := _near_net[ncell]
-			if nn == 2:
-				move *= COST_REUSE
-			elif nn == 1:
+			if nn == 1:
 				move *= COST_CROWD
+			elif nn >= 2:
+				move *= COST_REUSE + float(nn - 2) * MERGE_RAMP   # cheapest on the centreline, ramping out
+			# farm tracks: a road threading a farm cluster PREFERS the cosmetic web (a cheap, clear
+			# corridor) and bypasses the field-footprint penalty there; otherwise the graduated
+			# building cost applies so a road bends around buildings (never a wall — stays routable).
+			if _farm_lane_cost[ncell] == 1:
+				move *= COST_FARM_LANE
+			else:
+				var bc := _building_cost[ncell]
+				if bc == 2:
+					move *= COST_BUILDING_CORE
+				elif bc == 1:
+					move *= COST_BUILDING_NEAR
 			# orbital containment: leaving the region's member tiles is dear
 			if use_region and _region_out[ncell] == 1:
 				move *= outside_mult
@@ -802,6 +872,29 @@ func _block_forest_discs_range(nav: NavGrid, c0: Vector2i, lw: int, lh: int, dis
 				if nav.world_of(nx2, ny2).distance_squared_to(dc) <= dr * dr:
 					_passable[(ny2 - c0.y) * lw + (nx2 - c0.x)] = 0
 
+## Building footprints as a GRADUATED COST (tier 2 = core inside, 1 = near ring), NEVER a wall —
+## written to _building_cost, never _passable. Max-combine (core beats near), so the raster is
+## independent of disc order. radius is the AABB half-diagonal, so CORE is scaled 0.8 to hug the
+## visual rectangle; NEAR adds BUILDING_ROAD_BUFFER.
+func _scatter_building_cost(nav: NavGrid, c0: Vector2i, lw: int, lh: int, discs: Array, i0: int, i1: int) -> void:
+	for i in range(i0, i1):
+		var disc: Dictionary = discs[i]
+		var dc: Vector2 = disc.center
+		var rc: float = float(disc.radius) * 0.8
+		var rn: float = float(disc.radius) + BUILDING_ROAD_BUFFER
+		var rc2 := rc * rc
+		var rn2 := rn * rn
+		var d0 := nav.cell_of(dc - Vector2(rn, rn))
+		var d1 := nav.cell_of(dc + Vector2(rn, rn))
+		for ny2 in range(maxi(d0.y, c0.y), mini(d1.y, c0.y + lh - 1) + 1):
+			for nx2 in range(maxi(d0.x, c0.x), mini(d1.x, c0.x + lw - 1) + 1):
+				var d2 := nav.world_of(nx2, ny2).distance_squared_to(dc)
+				var li := (ny2 - c0.y) * lw + (nx2 - c0.x)
+				if d2 <= rc2:
+					_building_cost[li] = 2
+				elif d2 <= rn2 and _building_cost[li] < 1:
+					_building_cost[li] = 1
+
 ## Reuse/crowd bitmap, GEOMETRY-based. A coarse 24u occupancy cell let two roads
 ## sit ~20u apart and BOTH count as "on the road" (merged), which is how close
 ## parallels survived. Instead we measure distance to the actual road centreline:
@@ -907,13 +1000,17 @@ func _scatter_near_net(nav: NavGrid, c0: Vector2i, lw: int, lh: int, segs: Array
 			for nx in range(maxi(lo.x, c0.x), mini(hi.x, c0.x + lw - 1) + 1):
 				var li := row + nx
 				if _near_net[li] == 2:
-					continue   # already MERGE — nothing stronger; skip the distance maths
+					continue   # already dead on a centreline (cheapest tier) — nothing beats it
 				var w := nav.world_of(nx, ny)
 				# distance² from the cell centre to the road segment
 				var t := 0.0 if ab_len2 < 1e-6 else clampf((w - a).dot(ab) / ab_len2, 0.0, 1.0)
 				var d2 := w.distance_squared_to(a + ab * t)
 				if d2 <= merge2:
-					_near_net[li] = 2          # MERGE: collapse onto the centreline
+					# MERGE band — store a distance TIER (2 on the centreline, rising outward) and
+					# min-combine across segments so the cheapest (nearest-centreline) tier wins.
+					var tier := 2 + int(sqrt(d2) * MERGE_TIER_SCALE)
+					if _near_net[li] < 2 or tier < _near_net[li]:
+						_near_net[li] = tier
 				elif d2 <= crowd2 and _near_net[li] < 1:
 					_near_net[li] = 1          # CROWD: beside a road — discourage parallel
 
@@ -924,6 +1021,97 @@ func warm_forest_cache() -> void:
 	var terrain: HexMap = _terrain()
 	if terrain != null:
 		_ensure_forest_discs(terrain)
+
+## Rebuild the building-disc cache now if stale — call OUTSIDE the frame budget (at enqueue), so
+## a road planned AFTER a building is placed routes around it.
+func warm_building_cache() -> void:
+	_ensure_building_discs()
+
+## Building footprint discs intersecting the corridor (cost obstacles, not walls).
+func _building_discs_in(nav: NavGrid, c0: Vector2i, lw: int, lh: int) -> Array:
+	_ensure_building_discs()
+	if _building_discs_cache.is_empty():
+		return []
+	var rect := Rect2(nav.world_of(c0.x, c0.y), Vector2(lw * nav.step, lh * nav.step)).grow(BUILDING_CORRIDOR_GROW)
+	var out: Array = []
+	for disc in _building_discs_cache:
+		if rect.grow(float(disc.radius)).has_point(disc.center):
+			out.append(disc)
+	return out
+
+## Rebuild the building-disc cache when BuildingVisuals' footprint_version changes. RefCounted has
+## no get_tree(), so reach the node via the main-loop group (the _terrain() pattern).
+func _ensure_building_discs() -> void:
+	var loop := Engine.get_main_loop()
+	if loop == null or not (loop is SceneTree):
+		return
+	var found := (loop as SceneTree).get_nodes_in_group("building_footprints")
+	if found.is_empty():
+		_building_discs_cache = []
+		_building_discs_key = -1
+		return
+	var bv: Node = found[0]
+	# The enclosure test stub is in this group but has no footprint geometry — guard, don't crash.
+	if not bv.has_method("footprint_discs"):
+		_building_discs_cache = []
+		return
+	var key := int(bv.footprint_version)
+	if key == _building_discs_key:
+		return
+	_building_discs_key = key
+	_building_discs_cache = bv.footprint_discs()
+
+## Farm-track segments intersecting the corridor (a cost discount, never a wall).
+func _farm_lane_segs_in(nav: NavGrid, c0: Vector2i, lw: int, lh: int) -> Array:
+	_ensure_farm_lanes()
+	if _farm_lane_cache.is_empty():
+		return []
+	var rect := Rect2(nav.world_of(c0.x, c0.y), Vector2(lw * nav.step, lh * nav.step)).grow(FARM_LANE_CORRIDOR_GROW)
+	var out: Array = []
+	for s in _farm_lane_cache:
+		if rect.has_point(s[0]) or rect.has_point(s[1]):
+			out.append(s)
+	return out
+
+## Stamp _farm_lane_cost = 1 on every corridor cell within FARM_LANE_NEAR of a track segment.
+func _scatter_farm_lanes(nav: NavGrid, c0: Vector2i, lw: int, lh: int, segs: Array, i0: int, i1: int) -> void:
+	var r := FARM_LANE_NEAR
+	var r2 := r * r
+	for i in range(i0, i1):
+		var s: Array = segs[i]
+		var a: Vector2 = s[0]
+		var b: Vector2 = s[1]
+		var ab := b - a
+		var ab2 := ab.length_squared()
+		var lo := nav.cell_of(Vector2(minf(a.x, b.x), minf(a.y, b.y)) - Vector2(r, r))
+		var hi := nav.cell_of(Vector2(maxf(a.x, b.x), maxf(a.y, b.y)) + Vector2(r, r))
+		for ny in range(maxi(lo.y, c0.y), mini(hi.y, c0.y + lh - 1) + 1):
+			for nx in range(maxi(lo.x, c0.x), mini(hi.x, c0.x + lw - 1) + 1):
+				var w := nav.world_of(nx, ny)
+				var t := 0.0 if ab2 < 1.0e-6 else clampf((w - a).dot(ab) / ab2, 0.0, 1.0)
+				if w.distance_squared_to(a + ab * t) <= r2:
+					_farm_lane_cost[(ny - c0.y) * lw + (nx - c0.x)] = 1
+
+## Rebuild the farm-track cache when BuildingVisuals.farm_lanes_version changes.
+func _ensure_farm_lanes() -> void:
+	var bv := _bv_node()
+	if bv == null or not bv.has_method("all_farm_lane_segments"):
+		_farm_lane_cache = []
+		_farm_lane_key = -1
+		return
+	var key := int(bv.farm_lanes_version)
+	if key == _farm_lane_key:
+		return
+	_farm_lane_key = key
+	_farm_lane_cache = bv.all_farm_lane_segments()
+
+## The BuildingVisuals node via the shared "building_footprints" group.
+func _bv_node() -> Node:
+	var loop := Engine.get_main_loop()
+	if loop == null or not (loop is SceneTree):
+		return null
+	var found := (loop as SceneTree).get_nodes_in_group("building_footprints")
+	return null if found.is_empty() else found[0]
 
 ## Forest obstacle discs intersecting the corridor, from the cached full-map
 ## disc list (rebuilt when the forest instance set changes).
@@ -1064,15 +1252,33 @@ func _snap_bridges(geometry: PackedVector2Array, bridges: Array) -> PackedVector
 				i1 = i
 		if i0 < 0:
 			continue   # this bridge belongs to a different polyline run
-		var prev: Vector2 = pts[i0 - 1] if i0 > 0 else e1
-		# the bank end nearer the approach comes first, then the bridge, then the far end
-		var a := e1 if prev.distance_to(e1) <= prev.distance_to(e2) else e2
-		var far := e2 if a == e1 else e1
+		var has_app := i0 > 0
+		var has_ext := i1 + 1 < pts.size()
+		# Which bank each side of the bridge zone sits on (sign of the offset along the
+		# bridge axis n): e1 is the +n bank, e2 the −n bank. `and` short-circuits so the
+		# missing-neighbour index is never read.
+		var app_e1 := has_app and (pts[i0 - 1] - bp).dot(n) >= 0.0
+		var ext_e1 := has_ext and (pts[i1 + 1] - bp).dot(n) >= 0.0
 		var out: Array[Vector2] = []
 		out.append_array(pts.slice(0, i0))
-		out.append(a)
-		out.append(bp)
-		out.append(far)
+		if has_app and has_ext and app_e1 != ext_e1:
+			# genuine crossing: approach-bank gate → bridge → exit-bank gate
+			out.append(e1 if app_e1 else e2)
+			out.append(bp)
+			out.append(e1 if ext_e1 else e2)
+		else:
+			# the route does NOT cross the river: it starts/ends ON the water (an estuary
+			# dock tile whose centre sits on the river, like Arin) or stays on one bank.
+			# Connect the bridge to ONLY the bank it uses — forcing the far gate here is
+			# what made Arin's road jump bridgelessly to the wrong bridgehead and back.
+			var use_e1 := ext_e1 if has_ext else app_e1
+			var g := e1 if use_e1 else e2
+			if has_app:
+				out.append(g)
+				out.append(bp)
+			else:
+				out.append(bp)
+				out.append(g)
 		out.append_array(pts.slice(i1 + 1))
 		pts = out
 	return PackedVector2Array(pts)
@@ -1187,6 +1393,41 @@ func _smooth(points: Array[Vector2], iterations: int) -> PackedVector2Array:
 	for p in current:
 		out.append(p)
 	return out
+
+## Pull any smoothed point that landed on SEA or LAKE back to the nearest land cell. Chaikin smoothing
+## has no water awareness, so a road hugging a concave sea/lake shore can have its rounded curve bulge
+## across the water. RIVERS are exempt — they are crossed legitimately at gates (and _snap_bridges
+## straightens those after this), and a river point is class WATER_RIVER, not SEA/LAKE. A correct road
+## never has a sea/lake point, so this is a no-op except on the artifact it repairs.
+func _declamp_water(points: PackedVector2Array, nav: NavGrid) -> PackedVector2Array:
+	if nav == null or not nav.is_ready():
+		return points
+	var out := PackedVector2Array()
+	for p in points:
+		var c := nav.cell_of(p)
+		var w := nav.water(c.x, c.y)
+		if w == NavGrid.WATER_SEA or w == NavGrid.WATER_LAKE:
+			var land := _nearest_land_cell_world(nav, c)
+			out.append(land if land != Vector2.INF else p)
+		else:
+			out.append(p)
+	return out
+
+## Nearest WATER_LAND cell centre to grid cell `c`, by expanding ring search (deterministic). INF if
+## none within the cap (a point deep in a large lake — left as-is rather than teleported far).
+func _nearest_land_cell_world(nav: NavGrid, c: Vector2i) -> Vector2:
+	for rad in range(1, 12):
+		for dy in range(-rad, rad + 1):
+			for dx in range(-rad, rad + 1):
+				if maxi(absi(dx), absi(dy)) != rad:
+					continue   # ring perimeter only
+				var nx := c.x + dx
+				var ny := c.y + dy
+				if nx < 0 or ny < 0 or nx >= nav.gw or ny >= nav.gh:
+					continue
+				if nav.water(nx, ny) == NavGrid.WATER_LAND:
+					return nav.world_of(nx, ny)
+	return Vector2.INF
 
 func _dist_to_segment(point: Vector2, a: Vector2, b: Vector2) -> float:
 	var ab := b - a
