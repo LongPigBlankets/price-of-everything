@@ -2249,6 +2249,18 @@ func _make_building_row(b: Dictionary) -> HBoxContainer:
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title_row.add_child(name_label)
+	# NPC buildings (a rival company's, not yours) are tagged so they're distinguishable
+	# from your own in a shared type+recipe group; the owner is in the tooltip.
+	var inst := MatchState.get_building(str(b.get("instance_id", "")))
+	if not inst.is_empty() and not MatchState.is_player_owned(inst):
+		var npc_tag := Label.new()
+		npc_tag.text = "NPC"
+		npc_tag.theme_type_variation = &"Caption"
+		npc_tag.add_theme_font_size_override("font_size", 10)
+		npc_tag.add_theme_color_override("font_color", DS.PALETTE.WARN)
+		npc_tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		npc_tag.tooltip_text = "Operated by %s" % str(inst.get("owner", "an independent operator"))
+		title_row.add_child(npc_tag)
 	var dest := Label.new()
 	dest.text = str(b.get("route_label", ""))
 	dest.theme_type_variation = &"Body"  # same face/size as the Rural/Urban chips

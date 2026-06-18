@@ -1051,7 +1051,7 @@ func _ensure_building_discs() -> void:
 		_building_discs_key = -1
 		return
 	var bv: Node = found[0]
-	# The enclosure test stub is in this group but has no footprint geometry — guard, don't crash.
+	# A group member may lack footprint geometry (e.g. a render or test stub) — guard, don't crash.
 	if not bv.has_method("footprint_discs"):
 		_building_discs_cache = []
 		return

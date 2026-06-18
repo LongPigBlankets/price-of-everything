@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c6e8hmx8udx2d"
-path="res://.godot/imported/b_003_coal_power.png-6876587e32eda7f4796ac708a6e06c0c.ctex"
+uid="uid://cb5pn6e2u7ayt"
+path="res://.godot/imported/enclosure.png-bddc85ed6101a57c5089e60588ced152.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/icons/buildings/b_003_coal_power.png"
-dest_files=["res://.godot/imported/b_003_coal_power.png-6876587e32eda7f4796ac708a6e06c0c.ctex"]
+source_file="res://enclosure.png"
+dest_files=["res://.godot/imported/enclosure.png-bddc85ed6101a57c5089e60588ced152.ctex"]
 
 [params]
 

@@ -212,3 +212,6 @@ __marimo__/
    export.cfg
    export_presets.cfg
    *.translation
+
+# macOS Finder metadata
+**/.DS_Store

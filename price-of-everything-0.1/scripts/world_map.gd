@@ -172,14 +172,13 @@ func _ready() -> void:
 	_survey_fx.terrain_layer = terrain_layer
 	add_child(_survey_fx)
 
-	# Pre-place the NPC-owned ports (Three Diamonds Shipping Corporation)
-	_place_npc_ports()
 	# The port tiles start surveyed (the Surveying mapmode reveals them on turn 1).
 	MatchState.seed_surveyed_ports()
 	# Track depletable-deposit yields so mining can run them down over time.
 	MatchState.seed_deposits(terrain_layer)
-	# A disused/ruins building near Vandel's Skip (tile_22_16), owned by an NPC.
-	_place_ruins("tile_23_16")
+	# NOTE: the game-start BUILDINGS (NPC ports, the ruins, the start companies — and any future player
+	# start buildings) are placed LATER, AFTER roads + enclosures exist, so they drop into the ready chunk
+	# grid and fill the blocks. See the "roads → enclosures → buildings" sequence below.
 
 	var pending_start := SaveLoad.pending_is_start()
 	# A loaded save applies only now, once the terrain and default seeding exist;
@@ -187,9 +186,10 @@ func _ready() -> void:
 	var loaded_pending := SaveLoad.apply_pending()
 	if loaded_pending:
 		_rebuild_after_load()
+	# Forests are a TERRAIN feature (the land mask + block templates read them), so they come before roads
+	# and enclosures. The buildings that used to follow here are deferred until after the blocks exist.
 	if not loaded_pending or pending_start:
 		_place_northern_old_growth_forests()
-		_place_start_buildings()
 
 	# roads-v2: the predetermined river crossings must exist before any runtime
 	# routing — the realizer whitelists river cells near these gates, so without
@@ -205,11 +205,23 @@ func _ready() -> void:
 		RoadNetwork.reset()
 		RoadWorks.reset()
 	RoadNetwork.bootstrap_from_bake()
+	# Match-start ENCLOSURES on urban tiles (after the bake's roads exist, BEFORE any building): each urban
+	# tile gets a city block + organic enclosure RING — the ring is the tile's visible road (no straight
+	# centre-to-centre connector lines), and inland tiles like Arin dock now enclose. seed_urban_enclosures
+	# lays a short INVISIBLE frontage anchor where there's no real road, then derives + draws the ring and
+	# flags the tile "roads". Fresh start only; a loaded save carries the rings in its network snapshot.
+	if not loaded_pending or pending_start:
+		RoadWorks.seed_urban_enclosures(terrain_layer)
+		# BUILDINGS now — after roads + enclosures — so they drop into the ready chunk grid and FILL the
+		# blocks they land in (NPC ports, the ruins, the start companies, + any future player start builds).
+		_place_npc_ports()
+		_place_ruins("tile_23_16")
+		_place_start_buildings()
 	RoadWorks.rebuild_occupancy()   # no-op until OCCUPANCY_ROADS_ENABLED
 
-	# Seed buildings were emitted above, BEFORE the road network existed, so they
-	# laid out with no frontage data. Re-gravitate them now that roads are up (one
-	# shot; deterministic, and idempotent on load where roads were already present).
+	# Re-gravitate every building once (deterministic, idempotent): a loaded save re-emitted its buildings
+	# before its imported road network was in hand, and this also re-fills the enclosure chunk grids now that
+	# the templates + rings all exist. Fresh-start buildings were already laid out against roads above.
 	if building_visuals.has_method("relayout"):
 		building_visuals.relayout()
 

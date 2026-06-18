@@ -158,6 +158,124 @@ road creation. Mechanism for the enclosure step (B1):
 > can be injected post-bootstrap without a full re-realize, and how `RoadNetworkVisuals` redraws on
 > edge changes. Spec these in the build phase.
 
+### B4 build progress
+
+The old beige *cosmetic* enclosure grid (`EnclosureRoads`/`EnclosureVisuals`/`grid_geometry.gd`) was
+**removed**; B4 now grows **real** roads. Phased build (see the design review for the full plan):
+
+- **P1 — block-template-derived ring, up front + connected — DONE.** The enclosure is now part of the block
+  **template**, not a post-hoc footprint cluster. A player build on an **urban** tile that is **seeded**
+  (`RoadHash.pick("enclseed|<tile>",100) < ENCLOSURE_PROB`, ~**40%** of block-eligible tiles) and has a block
+  grid (road run + room) wraps that grid in a real `STATE_BUILT`, `TIER_LOCAL`, **`encl:`-tagged** ring,
+  **CONNECTED to the road network**. Prepared **UP FRONT** (first qualifying build, NOT density-gated); the
+  rest stay open frontage. Fires **exactly ONCE per tile** (`_enclosure_bands[tile]=1` sentinel gates later
+  builds + reloads). (`RoadWorks._maybe_enclose`/`_emit_enclosure`, **deferred** so instant builds —
+  `build_duration<=0`, which fire `construction_completed` before `building_placed` — place first.) Geometry
+  from `BuildingVisuals.enclosure_geometry_for_coord(coord)` = the **oriented bbox of the template's LOTS**
+  (centre-relative, road frame via `tmpl.angle`) grown by HALF a cell (`tmpl.cell/2` for chunk tiles, else
+  `BLOCK_LOT·BLOCK_FILL_MAX/2`, via `grow_individual`) + `ENCL_CLEAR`, clamped
+  to `[ENCL_MIN(150/100), ENCL_MAX(240/180)]`, seeded jitter (hard-clamped to MAX), rounded, river-clipped,
+  hex-clipped, chained. Returns `[]` when the tile has **no block template** — so a ring NEVER wraps
+  fallback-scattered buildings, and since it follows the FIXED lots, **no building inside the grid is ever
+  excluded**. Deduped against existing roads via `_undoubled_runs`. Never NPC, never non-urban. Tunable:
+  `ENCLOSURE_PROB`/`ENCL_MIN_*`/`ENCL_MAX_*`/`ENCL_CLEAR`/`ENCL_ROUND_*`/`ENCL_IRREGULAR_PCT`/`ENCL_JITTER_FRAC`.
+  - **Chunk fill (DONE):** an enclosure-seeded tile builds a COARSE block grid — a few BIG cells (`_chunk_template`:
+    `CHUNK_COLS_TARGET`→2-3 cols, **ADAPTIVE depth**, **2-6** cells; `cell` stored on the template) — and each
+    building FILLS its cell (`make_rect(cell − CHUNK_GAP)` in `_claim_slot`), so the ring reads as a dense,
+    fully-built block instead of small lots floating in a courtyard. Visual size is decoupled from `tile_size`
+    (economy still uses `tile_size`); overflow past the cells falls back OUTSIDE the ring. Chunks use a RELAXED
+    validate (`_chunk_valid`: centre on land + in-hex + off road/river centrelines; the big footprint may overlap
+    a forest/road-clearance edge) and NO AABB-overlap test (the grid is non-overlapping; rotated AABBs falsely
+    collide). **Depth is adaptive** — it tries the full 2-row block, then a single deeper row, then a 3-wide
+    frontage row, keeping whichever fits the MOST cells. This is the fix for "chunks not showing": a RIGID
+    `cols×rows` grid dropped below the 3-cell floor whenever a **river or hex edge cut the deep row**, so the
+    template returned `{}` and the ring wrapped the sparse fine grid. The floor is now **2** real cells; only a
+    genuinely cramped tile (`< 2`) falls back to the fine lot grid. Non-seeded block tiles keep the fine grid.
+  - **Coarse→fine + TIGHT pocket (DONE):** real urban/port tiles have DENSE crossing roads (the Stoneshore hub
+    measured ~200 road segments) that no big cell can clear → the rigid grid validated **0 cells**. So the grid
+    now steps **coarse→fine** (more, smaller cells: `[base,2] … [base+2,3]`) until cells land in the road-free
+    gaps, and at each step takes the **largest all-valid axis-aligned sub-rectangle** (`_largest_valid_rect`) —
+    ONE clean pocket — not every scattered cell (which gave a loose, oversized ring spanning the gaps). Open
+    tiles still get a big 3-6 cell block; choppy tiles get a tight 2-4 small-cell block + overflow outside.
+  - **Match-start enclosures = the urban roads (DONE):** the visible road on an urban tile is its ENCLOSURE
+    RING — organic, not a straight line. `RoadWorks.seed_urban_enclosures(terrain)` runs at match start (after
+    the bake's roads, before any building) over EVERY urban tile: where the tile has no real road it lays a
+    SHORT, seeded-angle `urbanr:` anchor through the centre purely to orient the block — that anchor is
+    **INVISIBLE** (RoadNetworkVisuals `continue`s on `urbanr:` edges) — then builds the chunk template, emits
+    the ring (`_emit_enclosure(tile,coord,"")`, tile-centre attach reference), and **adds the `"roads"`
+    infrastructure** so the tile chart shows it. The `"roads"` flag is FREE: `get_tile_space_used` /
+    `get_tile_land_owned` never count infrastructure, only buildings + reservations (an earlier "the flag
+    breaks builds" reading was wrong — that e2e land failure is pre-existing). ~81 of 92 urban tiles enclose
+    (the rest lack room). The earlier `_seed_urban_roads` (straight centre-to-centre `urbanr:` streets) is
+    REMOVED — it drew ugly diagonal lines between tile centres; the ring is the road now.
+  - **Match-start order: roads → enclosures → buildings (DONE):** `WorldMap._ready` lays terrain (forests),
+    then roads (`bootstrap_from_bake`), then `seed_urban_enclosures` (above), and ONLY THEN the game-start
+    buildings (NPC ports, ruins, start companies, + future player start buildings) — so a building drops into a
+    ready chunk grid and FILLS its enclosure instead of scattering and being re-gravitated afterwards. The later
+    player-build `_maybe_enclose` finds these already enclosed (sentinel `_enclosure_bands`). Fresh-start only;
+    a loaded save restores rings + buildings from its snapshot.
+  - **The ring is NOT a street (DONE — critical):** the enclosure ring/connector are real `STATE_BUILT` edges, so
+    `_block_road_segments`, `_longest_straight_road` and `_tile_road_segments` MUST skip them (`_is_enclosure_edge`
+    — `encl:`-tagged endpoints). Otherwise, the instant a tile is rebuilt with its ring live (any **relayout /
+    reload**), the ring (a) **out-measures the real road** so the block anchors to the ring itself and (b) **clears
+    via `BLOCK_ROAD_PAD` the very lots it wraps** — collapsing the grid to 0 lots. Symptom before the filter:
+    enclosures **vanished on reload**, chunk tiles fell back to a **sparse fine grid (1 building)**, and later
+    buildings **scattered under the ring**. Guarded by a test that rebuilds the template with the ring live and
+    asserts the SAME chunk grid re-forms.
+  - **Road connection (DONE):** `_emit_enclosure` snapshots the nearest pre-existing road (`_nearest_road_attach`,
+    which skips `encl:` nodes/edges) BEFORE injecting the ring, then `_connect_ring_to_road` adds a short
+    **`encl:`-tagged** connector from the nearest ring vertex to that attachment (sharing the road node, or a
+    new `add_junction` mid-edge). The `encl:` tag means `_clip_out_hulls` draws it in full (never clips it out).
+    No-op when the dedup already merged the frontage onto the road. The ring was a floating loop before (3_12).
+    The attachment stays on LAND (`_nearest_road_attach` skips edge projections over water, so it doesn't pin to
+    a bridge's river crossing) and the connector is dropped if it would cross water (`RoadOffshoots._crosses_water`)
+    — the block never bridges itself over the river to a far-bank road; it waits for a same-bank road.
+  - **River bank (DONE):** the grid is pre-validated off rivers in `_build_block_template`, so it sits on one
+    bank; the ring is still clipped to a half-plane `RIVER_ROAD_PAD` off the near bank (`_clip_to_river_bank` →
+    `_clip_poly_halfplane`, bank reference = the lot-grid centroid) as a belt-and-suspenders cut. `_river_side`
+    breaks near-ties deterministically (earlier segment wins, for bends).
+  - **No through-roads inside a block (DONE):** `RoadNetworkVisuals` clips every non-`encl:` edge OUT of the
+    enclosure interior (`_enclosure_hulls` = convex hull of each tile's `encl:` points; `_clip_out_hulls`),
+    in BOTH the static `_draw` and the reveal `_draw_active` layer (no flicker), so the ring is the block's
+    access and the courtyard stays road-free. The ring edges still draw in full.
+  - **Connect nearby stub tips (DONE):** after generating stubs, `_connect_stub_tips` links any two free
+    tips within `STUB_CONNECT_GAP` (20u) — each tip to its nearest clearable neighbour — but ONLY if the
+    straight connector clears water AND banned levels (`_connector_clear` vs `nav.water`/`nav.level` ≥
+    `RoadRealizer.BAN_LEVEL`). Never bridges a river, crosses the sea, or runs over a peak. Connectors are
+    3-point polylines so they draw at road width.
+  - **Stubs (`RoadOffshoots`) respect enclosures + water:** stubs never sprout from an `encl:` ring nor
+    project into one (per-tile keep-out = convex hull of the tile's `encl:` points, live from the network so
+    it survives reload; `_away_from_enclosure` + a final `_poly_in_polygon` that samples verts AND edge
+    midpoints). Stubs never cross water — `_crosses_water` (samples each segment at ½ nav step vs
+    `nav.water`) drops any stub or Y-arm touching a river/sea/lake, even after a snap-into-road. Two stub
+    roots on a tile must start ≥ `STUB_MIN_GAP` (50u) apart (`_too_close`/`_alt_origin`).
+  - **No doubled roads (DONE):** a stub that runs ALONGSIDE an existing road is dropped — `_runs_alongside_road`
+    flags it when ≥2 of its MIDDLE segments (ends skipped, since the root sits on its origin road and a tip may
+    snap into one) sit within `STUB_OVERLAP_RADIUS` (20u) of a road segment AND point roughly the same way
+    (|dot| ≥ 0.7). Perpendicular spurs and tip-snapped connectors aren't parallel, so they survive; only true
+    parallel doubles are removed. (Decision: drop, not promote-to-road.)
+  - **Bridge-head links (DONE, `road_works.gd`):** a connect-road near a bridge meets the bank HEAD on land,
+    not a mid-edge point that can sit on the crossing. `_nearest_attachment` folds in each bridge's near-bank
+    head (`point ± tangent·(GATE_OFFSET+BRIDGE_BANK_STUB)`, the same-bank one is always nearer) within
+    `BRIDGE_HEAD_RANGE` (500u) with a `BRIDGE_HEAD_BIAS` (0.6×) discount, so a head wins over a nearby mid-edge
+    projection. The river's own water-avoidance keeps opposite-bank tiles off the head. Positional attachment
+    (no edge split).
+  - **Known limit (B4 P6):** demolishing every building does NOT clear the band lock or remove the stale ring
+    (needs `RoadNetwork.remove_edge` + recompute).
+- **Visibility (option B) — DONE.** Drawing uses a **clip-bypass**: `RoadNetworkVisuals` draws
+  `encl:`-tagged edges regardless of the tile's `roads` infrastructure flag, so they render in the normal
+  yellow style **without** the economy/routing meaning that flag carries. Normal edges still clip to
+  roads-flagged tiles, so an already-flagged tile shows its real roads as before. (Headless can't catch
+  the clip — verified in-engine via `tools/enclosure_shot.tscn`.)
+- **P2 — save/load — DONE.** `RoadWorks` persists `_enclosure_bands` (tile→band) and `_enclosure_edges`
+  (tile→edge ids) as **full dicts** (not `.keys()` — the values are meaningful); edges restore from
+  RoadNetwork state, bands keep a reload from re-firing. Test: `_test_enclosure_ring` (9 assertions:
+  inject/tag/in-hex/band/idempotent/non-urban/save-load). 592 tests pass.
+- **Remaining:** P3 per-block grouping (≤6 + gap) + internal lanes; P4 +50% growth buffer (level-gate
+  hook, default tight until upgrades exist); P5 stability + future-frontage; P6 demolish/recompute (needs
+  a new `RoadNetwork.remove_edge` + a reverse instance→tile map); P7 overflow (two-pass transaction) +
+  seam bridging. See the design review for risks (esp. demolish scope, derive-region-from-non-`encl:`-roads).
+
 ## B5. Farms (goal 5)
 
 - Farms (`b_014`) keep **far from industrial buildings** (existing edge-seek logic, but keyed to
@@ -204,14 +322,16 @@ fields), `#6B7682`. **Major roads stay crisp on top** — never abstracted.
    (Cheapest, immediately visible.)
 2. **Road snap + align** — re-introduce road-tangent orientation + perpendicular frontage snap;
    rebalance weights so roads win in reach.
-   - **Re-snap on road build — DONE**: the packer already reads real road geometry
-     (`building_visuals._tile_road_segments` → `_place_frontage`), but `relayout()` ran only ONCE at
-     startup, so a building placed BEFORE a road kept its roadless fallback layout forever — the
-     "buildings don't snap" symptom. Fix: `building_visuals` subscribes to `RoadWorks.order_settled` and
-     calls the new scoped `relayout_tile(tile_id)` (re-packs just that tile, coalesced via a deferred
-     flush so a batch of settles is one pass). `RoadWorks.order_tile(order_id)` maps the signal to its
-     tile. NOT global `relayout()` per settle (keeps B4 mass-build under the 8 ms ceiling). Verified by
-     `_test_building_resnap` (building 140u from a built road → 30u frontage after re-pack).
+   - **Re-snap on road build — DONE**: `building_visuals` subscribes to `RoadWorks.order_settled` and calls
+     the scoped `relayout_tile(tile_id)` (coalesced via a deferred flush), not the global `relayout()` (keeps
+     B4 mass-build under the 8 ms ceiling). `RoadWorks.order_tile(order_id)` maps the signal to its tile.
+   - **Occupancy — buildings STAY PUT on road-settle (DONE)**: roads route AROUND buildings (the graduated
+     building cost in `road_realizer`), so a building must NOT shuffle just because a road appeared.
+     `relayout_tile` now guards: if NO building's footprint is OVERLAPPED by the new road
+     (`_placement_hits_road`: road within `ROAD_OVERLAP`=5u of the AABB, well inside the 18u `ROAD_CLEAR`
+     frontage), it keeps every building in place and only refreshes the tile caches + farm lanes. Only a
+     building the road truly lands ON is re-packed off it. Verified by `_test_building_resnap` (untouched
+     building stays; a road THROUGH a building re-packs it ~249u off).
    - **Stub gate — DONE**: the forked "Y" access stubs (`RoadOffshoots`, cosmetic, >3-building
      densifying tiles) are now gated to `type == "rural"` only — cities use the beige enclosure grid as
      their road fabric, so no Y-stubs there. (Also excludes hill/mountain densifying tiles; flip to
@@ -225,9 +345,13 @@ fields), `#6B7682`. **Major roads stay crisp on top** — never abstracted.
    - **Block-subdivision (city blocks) — DONE**: ~`BLOCK_PROB`% of tiles (any type) anchor a "city
      block" to their longest near-STRAIGHT road RUN (≥`BLOCK_MIN_ROAD`, clipped to the in-tile portion —
      road polylines are finely sampled so a single segment is tiny and a multi-tile run would anchor
-     outside the hex). A grid of `BLOCK_LOT`-pitch lots reaches back from that frontage (axis-aligned via
-     90° snap so lots pack tight); only lots within `BLOCK_ROAD_ADJ` of a road are used (deeper interior =
-     empty courtyard); buildings claim lots in emit order, the rest fall back to the continuous packer.
+     outside the hex). A grid of `BLOCK_LOT`-pitch lots reaches back from that frontage, ORIENTED to the
+     actual road tilt — the run angle normalised to `[-90,90)` (rect period) so each building snaps its
+     LONGEST side along the road (`_claim_slot` makes a `fill × fill·BLOCK_ASPECT` rect, `BLOCK_SQUARE_PCT`
+     kept square for variety); a near-square block reads as a ±45° tilt. (Earlier the angle was 90-snapped,
+     so lots/buildings were axis-aligned.) Only lots within `BLOCK_ROAD_ADJ` of a road are used (deeper
+     interior = empty courtyard); buildings claim lots in emit order, the rest fall back to the continuous
+     packer (`_place_frontage` also aligns fallbacks to the road, so the two modes agree).
      Road geometry comes from `_block_road_segments` (RoadNetwork `edges_on_tile`, STATE_BUILT, NOT the
      `infrastructure_present` flag — which only 3/92 urban tiles carry). Empty templates are NOT cached
      (retry until a road exists); real blocks STAY PUT on road-settle (only blocked lots fall back).

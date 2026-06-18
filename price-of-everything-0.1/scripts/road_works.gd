@@ -68,6 +68,16 @@ var _farm_promoted: Dictionary = {}
 ## Promoted-ring endpoint nodes already bridged across a tile seam to a neighbour's road. endpoint_id ->
 ## true. Persisted so a reload never re-bridges (the bridge edge itself rides in RoadNetwork state).
 var _farm_links: Dictionary = {}
+## Block-enclosure (B4): per urban tile, the highest threshold band already enclosed (tile_id -> int),
+## and the RoadNetwork edge ids of that tile's injected enclosure ring (tile_id -> Array[edge_id]). Both
+## persist in export/import_state with their FULL values so a reload restores exactly (never re-fires,
+## never re-injects — the edges themselves ride in RoadNetwork state, like the farm ring).
+var _enclosure_bands: Dictionary = {}
+var _enclosure_edges: Dictionary = {}
+## tile_size_used thresholds (legacy: enclosure is now prepared up front, not density-gated; kept for old saves).
+const ENCLOSURE_BANDS := [50, 100, 150, 180]
+## % of block-eligible urban tiles that get an up-front enclosure ring (the rest stay open frontage).
+const ENCLOSURE_PROB := 40
 ## Dedicated realizer: its scratch buffers hold the one in-flight paused job.
 var _realizer := RoadRealizer.new()
 var _job: Dictionary = {}
@@ -93,9 +103,14 @@ func _ready() -> void:
 func _on_construction_completed(instance_id: String, tile_id: String) -> void:
 	var building_id := str(MatchState.get_building(instance_id).get("building_id", ""))
 	var internal := str(Catalog.get_building(building_id).get("internal_name", ""))
-	if internal != "roads":
+	if internal == "roads":
+		enqueue_for_tile(tile_id)
 		return
-	enqueue_for_tile(tile_id)
+	# Any OTHER completed building may trip a block-enclosure threshold on its (urban) tile. DEFERRED:
+	# instant builds (build_duration <= 0) fire construction_completed BEFORE world_map emits
+	# building_placed, so the trigger building isn't in BuildingVisuals' placements yet. Deferring runs
+	# the enclosure at idle, after the footprint is placed, so the block anchors on the real building.
+	_maybe_enclose.call_deferred(instance_id, tile_id)
 
 ## Queue a connect-to-network job for the tile (spec: road built on tile T
 ## plans jobs for T only). Returns the order id, or -1 when skipped.
@@ -155,6 +170,180 @@ func enqueue_for_tile(tile_id: String) -> int:
 		_preview_bridges[id2] = pb
 	orders_changed.emit()
 	return id2
+
+# ------------------------------------------------------------- block enclosure (B4)
+
+## When a player building completes on a SEEDED urban tile that has a block grid (road run + room), wrap that
+## block in a real "encl:"-tagged perimeter road CONNECTED to the road network — prepared UP FRONT (the first
+## qualifying build, NOT density-gated). Fires exactly ONCE per tile (the marker gates later builds + reloads).
+## Only ~ENCLOSURE_PROB% of block-eligible tiles enclose; the rest stay open frontage. Never NPC / non-urban.
+func _maybe_enclose(instance_id: String, tile_id: String) -> void:
+	var terrain := _terrain()
+	if terrain == null:
+		return
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		return
+	if str(terrain.tiles[coord].get("type", "")).to_lower() != "urban":
+		return   # enclosure is an urban-tile mechanic
+	if not MatchState.is_player_owned(MatchState.get_building(instance_id)):
+		return   # player builds only (redundant with the construction-completed source, but explicit)
+	if int(_enclosure_bands.get(tile_id, 0)) > 0:
+		return   # already enclosed — fire ONCE per tile (no re-fire on later builds or reload).
+		# NOTE: demolishing every building does NOT clear this marker or remove the stale ring (would need
+		# RoadNetwork.remove_edge + recompute — B4 P6). A fully-cleared tile keeps its ring for now.
+	if RoadHash.pick("enclseed|%s" % tile_id, 100) >= ENCLOSURE_PROB:
+		return   # not a seeded enclosure tile — stays open frontage (distinct salt from blockmode|)
+	var bv := _building_visuals()
+	if bv == null or not bv.has_method("ensure_block_template_for"):
+		return
+	if not bv.ensure_block_template_for(tile_id, coord):
+		return   # no neat block grid yet (no road run / no room) — record nothing, retry on the next build
+	if _emit_enclosure(tile_id, coord, instance_id):
+		_enclosure_bands[tile_id] = 1   # sentinel: "enclosed"
+
+## Build + inject the tile's block-grid enclosure ring (derived from the block template's lots) as real
+## STATE_BUILT, TIER_LOCAL, "encl:"-tagged edges, deduped against existing roads, then CONNECT it to the
+## nearest road so it isn't a floating loop. Records the injected edge ids (incl. the connector). Returns
+## true if the tile had a block grid to enclose. Drawn automatically: RoadNetworkVisuals polls STATE_BUILT.
+func _emit_enclosure(tile_id: String, coord: Vector2i, instance_id: String) -> bool:
+	var bv := _building_visuals()
+	if bv == null or not bv.has_method("enclosure_geometry_for_coord"):
+		return false
+	var net := RoadNetwork.instance()
+	# Snapshot the nearest EXISTING (non-enclosure) road BEFORE injecting the ring, so the connector joins a
+	# real street, not the ring we're about to add.
+	var from: Vector2 = bv.footprint_center_for(instance_id, coord)
+	var att := _nearest_road_attach(net, from)
+	var polys: Array = bv.enclosure_geometry_for_coord(coord, instance_id)
+	if polys.is_empty():
+		return false   # no block grid — nothing to enclose
+	var added: Array = _enclosure_edges.get(tile_id, [])
+	var run_id := added.size()   # keep node ids unique across re-emits on the same tile
+	for poly in polys:
+		for run in _undoubled_runs(net, coord, poly, FARM_RING_DEDUP_RADIUS):
+			var rp: PackedVector2Array = run
+			if rp.size() < 2:
+				continue
+			var na: Dictionary = net.ensure_node("encl:%s:%d:a" % [tile_id, run_id], RoadNetwork.KIND_JUNCTION, rp[0], coord)
+			var nb: Dictionary = net.ensure_node("encl:%s:%d:b" % [tile_id, run_id], RoadNetwork.KIND_JUNCTION, rp[rp.size() - 1], coord)
+			var e: Dictionary = net.add_edge(str(na.id), str(nb.id), RoadNetwork.TIER_LOCAL, rp, [coord], [], 0, RoadNetwork.STATE_BUILT)
+			added.append(str(e.id))
+			run_id += 1
+	_connect_ring_to_road(net, tile_id, coord, att, added)
+	_enclosure_edges[tile_id] = added
+	return true
+
+## Form the enclosure (ring + cached chunk template) on EVERY seeded urban tile at MATCH START — after roads
+## are laid, BEFORE buildings are placed — so the game-start buildings drop into the ready chunk grid and FILL
+## the block. No building / player trigger needed: the template is road-derived and _emit_enclosure takes the
+## tile centre as its road-attach reference (footprint_center_for("") → tile centre). Idempotent via the
+## _enclosure_bands sentinel. The later player-build path (_maybe_enclose) then finds these already enclosed.
+func seed_urban_enclosures(terrain) -> void:
+	if terrain == null:
+		return
+	var bv := _building_visuals()
+	if bv == null or not bv.has_method("ensure_block_template_for"):
+		return
+	var net := RoadNetwork.instance()
+	if net == null:
+		return
+	for coord in terrain.tiles:
+		var td: Dictionary = terrain.tiles[coord]
+		if str(td.get("type", "")).to_lower() != "urban":
+			continue
+		var tile_id := "tile_%d_%d" % [coord.x + 1, coord.y + 1]
+		if int(_enclosure_bands.get(tile_id, 0)) > 0:
+			continue   # already enclosed
+		# A block needs a frontage to align to. If the tile has no real road, lay a SHORT, seeded-angle
+		# anchor street through its centre — INVISIBLE (RoadNetworkVisuals skips urbanr: edges); it exists
+		# only to orient the block. The VISIBLE road is the organic enclosure ring derived below, so urban
+		# tiles read as city blocks (templates + ring), never as straight centre-to-centre connector lines.
+		if bv._longest_straight_road(coord).is_empty():
+			var center: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+			var deg := float(RoadHash.pick("enclangle|%s" % tile_id, 180)) - 90.0   # -90..90, deterministic
+			var dir := Vector2.RIGHT.rotated(deg_to_rad(deg))
+			var a := center - dir * 150.0
+			var b := center + dir * 150.0
+			var geo := PackedVector2Array()
+			var steps := int(a.distance_to(b) / 12.0)
+			for s in range(steps + 1):
+				geo.append(a.lerp(b, float(s) / float(steps)))
+			var na: Dictionary = net.ensure_node("urbanr:%s:a" % tile_id, RoadNetwork.KIND_JUNCTION, a, coord)
+			var nb: Dictionary = net.ensure_node("urbanr:%s:b" % tile_id, RoadNetwork.KIND_JUNCTION, b, coord)
+			net.add_edge(str(na.id), str(nb.id), RoadNetwork.TIER_LOCAL, geo, [coord], [], 0, RoadNetwork.STATE_BUILT)
+		if not bv.ensure_block_template_for(tile_id, coord):
+			continue   # no room (water / hex edge) — nothing to enclose
+		if _emit_enclosure(tile_id, coord, ""):
+			_enclosure_bands[tile_id] = 1   # sentinel: enclosed
+			# Show "roads" in the tile panel — the enclosure ring IS this tile's road. Free: infrastructure
+			# does NOT consume build capacity (get_tile_space_used counts only buildings + reservations).
+			if not (td.get("infrastructure_present", []) as Array).has("roads"):
+				var infra: Array = (td.get("infrastructure_present", []) as Array).duplicate()
+				infra.append("roads")
+				td["infrastructure_present"] = infra
+				Catalog.add_tile_infrastructure(tile_id, "roads")
+
+## Add a short "encl:"-tagged connector from the ring to a pre-snapshotted road attachment, so the block
+## joins the street network (it would otherwise be a floating loop). No-op when the ring already touches the
+## road (the dedup merged the frontage), or there's no attachment / no ring. The ring end is "encl:"-tagged so
+## RoadNetworkVisuals draws the connector in full (not clipped out of the enclosure interior).
+func _connect_ring_to_road(net: RoadNetwork, tile_id: String, coord: Vector2i, att: Dictionary, added: Array) -> void:
+	if att.is_empty():
+		return
+	var ap: Vector2 = att.get("pos", Vector2.ZERO)
+	var rv := Vector2.ZERO
+	var best := 1.0e30
+	for eid in added:
+		for p in (net.edges.get(str(eid), {}).get("geometry", PackedVector2Array()) as PackedVector2Array):
+			var d: float = (p as Vector2).distance_squared_to(ap)
+			if d < best:
+				best = d
+				rv = p
+	if best > 1.0e29 or rv.distance_to(ap) < 0.5:
+		return   # no ring vertices, or the frontage already merged onto the road (dedup) — nothing to add
+	if RoadOffshoots._crosses_water(PackedVector2Array([rv, ap]), NavGrid.instance()):
+		return   # the only road is ACROSS the river — never bridge the block over water (it waits for a same-bank road)
+	var attach_id := str(att.get("id", ""))
+	if attach_id == "":
+		attach_id = str(net.add_junction(ap, coord).id)   # mid-edge attachment — create a node on the road
+	var rn: Dictionary = net.ensure_node("encl:%s:conn" % tile_id, RoadNetwork.KIND_JUNCTION, rv, coord)
+	var ce: Dictionary = net.add_edge(str(rn.id), attach_id, RoadNetwork.TIER_LOCAL, PackedVector2Array([rv, ap]), [coord], [], 0, RoadNetwork.STATE_BUILT)
+	added.append(str(ce.id))
+
+## Nearest point on a NON-enclosure road (node or edge centreline) to `from`, skipping `encl:`-tagged nodes/
+## edges and full junctions. {pos, id} (id "" = mid-edge), or {} when the network has no road yet. Mirrors
+## _nearest_attachment but filters out enclosure rings so a block connects to the STREET, not another ring.
+func _nearest_road_attach(net: RoadNetwork, from: Vector2) -> Dictionary:
+	var degree := _node_degrees(net)
+	var nav := NavGrid.instance()
+	var water_ok := nav != null and nav.is_ready()
+	var best: Dictionary = {}
+	var best_d := 1.0e30
+	for node_id in net.nodes:
+		if str(node_id).begins_with("encl:") or int(degree.get(str(node_id), 0)) >= MAX_JUNCTION:
+			continue
+		var node: Dictionary = net.nodes[node_id]
+		var d: float = (node.pos as Vector2).distance_squared_to(from)
+		if d < best_d:
+			best_d = d
+			best = {"pos": node.pos, "id": str(node.id)}
+	for edge_id in net.edges:
+		var ed: Dictionary = net.edges[edge_id]
+		if str(ed.a).begins_with("encl:") or str(ed.b).begins_with("encl:"):
+			continue
+		var geometry: PackedVector2Array = ed.geometry
+		for i in range(geometry.size() - 1):
+			var cp := Geometry2D.get_closest_point_to_segment(from, geometry[i], geometry[i + 1])
+			if water_ok:
+				var cc := nav.cell_of(cp)
+				if cc.x >= 0 and cc.y >= 0 and cc.x < nav.gw and cc.y < nav.gh and nav.water(cc.x, cc.y) != NavGrid.WATER_LAND:
+					continue   # a projection onto a bridge's river crossing — attach to the bank, not the water
+			var d2 := cp.distance_squared_to(from)
+			if d2 < best_d:
+				best_d = d2
+				best = {"pos": cp, "id": ""}
+	return best
 
 ## Preview bridges to draw (RoadNetworkVisuals), flattened across pending orders.
 func preview_bridges() -> Array:
@@ -217,6 +406,10 @@ func enqueue_region_jobs(region_id: String) -> int:
 ## of piling a 6th arm onto the point — it merges into a road that connects to the
 ## others rather than overloading the junction.
 const MAX_JUNCTION := 5
+## A connect-road within BRIDGE_HEAD_RANGE of a bridge prefers the bank HEAD (discounted by BRIDGE_HEAD_BIAS)
+## over a nearby mid-edge point, so roads meet the bridge tidily on land instead of forcing to mid-tile.
+const BRIDGE_HEAD_RANGE := 500.0
+const BRIDGE_HEAD_BIAS := 0.6
 
 ## Two adjacent tiles' promoted rings are bridged only when their closest approach is within this gap —
 ## enough to span the two 1u hex insets plus the lateral offset between the clipped rings (~2.7u for
@@ -249,6 +442,25 @@ func _nearest_attachment(from: Vector2) -> Dictionary:
 			if d2 < best_d:
 				best_d = d2
 				best = {"pos": cp, "id": ""}
+	# Bridge heads: fold in each bridge's NEAR-bank head (the same-bank one is always nearer than the
+	# across-river head) with a distance discount, so a connect-road near a bridge meets the bank head
+	# rather than a mid-edge projection that can land on the river crossing. Positional attachment (id "").
+	var reach := RoadCrossings.GATE_OFFSET + RoadRealizer.BRIDGE_BANK_STUB
+	for edge_id2 in net.edges:
+		for br in (net.edges[edge_id2].get("bridges", []) as Array):
+			var tg: Vector2 = br.get("tangent", Vector2.ZERO)
+			if tg.length_squared() < 0.01:
+				continue
+			var pt: Vector2 = br.get("point", Vector2.ZERO)
+			var off := tg.normalized() * reach
+			var head: Vector2 = pt + off if (pt + off).distance_squared_to(from) < (pt - off).distance_squared_to(from) else pt - off
+			var raw := head.distance_to(from)
+			if raw > BRIDGE_HEAD_RANGE:
+				continue   # too far — don't pull a distant connect-road onto a bridge
+			var eff := raw * BRIDGE_HEAD_BIAS
+			if eff * eff < best_d:
+				best_d = eff * eff
+				best = {"pos": head, "id": ""}
 	return best
 
 # ---------------------------------------------------------------- planning
@@ -1065,7 +1277,11 @@ func export_state() -> Dictionary:
 		})
 	return {"orders": out, "next_order": _next_order, "styled_regions": _styled_regions.keys(),
 		"linked_pairs": _linked_pairs.keys(), "farm_promoted": _farm_promoted.keys(),
-		"farm_links": _farm_links.keys()}
+		"farm_links": _farm_links.keys(),
+		# enclosure carries MEANINGFUL values (band int + edge-id list), so serialize the FULL dicts,
+		# not .keys() — the edges restore from RoadNetwork state, the bands keep idempotency on reload.
+		"enclosure_bands": _enclosure_bands.duplicate(),
+		"enclosure_edges": _enclosure_edges.duplicate(true)}
 
 ## BUILT geometry rides in the network state; BUILDING orders resume planning
 ## deterministically; mid-reveal orders restart their reveal (cosmetic only).
@@ -1081,6 +1297,15 @@ func import_state(d: Dictionary) -> void:
 		farm_roads_promoted.emit(str(ftile))   # tell BuildingVisuals to suppress those brown tracks
 	for flink in d.get("farm_links", []):
 		_farm_links[str(flink)] = true   # a reload must not re-bridge an already-bridged seam endpoint
+	# Block enclosure: restore the FULL band + edge-id maps (don't recompute — the encl: edges restore
+	# from RoadNetwork state above; the bands keep a reload from re-firing). Coerce JSON float bands to int.
+	for etile in d.get("enclosure_bands", {}):
+		_enclosure_bands[str(etile)] = int(d["enclosure_bands"][etile])
+	for etile2 in d.get("enclosure_edges", {}):
+		var ids: Array = []
+		for eid in (d["enclosure_edges"][etile2] as Array):
+			ids.append(str(eid))
+		_enclosure_edges[str(etile2)] = ids
 
 	for raw in d.get("orders", []):
 		var o := {
@@ -1124,6 +1349,8 @@ func reset() -> void:
 	_linked_pairs.clear()
 	_farm_promoted.clear()
 	_farm_links.clear()
+	_enclosure_bands.clear()
+	_enclosure_edges.clear()
 
 # ------------------------------------------------------------------ helpers
 

@@ -61,9 +61,17 @@ const BLOCK_ROAD_PAD := 7.0          # gap from the road to a block's near edge 
 const BLOCK_FILL_MIN := 0.85         # smallest building as a fraction of the lot (tight gaps between block buildings)
 const BLOCK_FILL_MAX := 0.9          # largest (lots validated at this size)
 const BLOCK_MIN_LOTS := 3            # fewer usable lots than this -> skip block mode
+const BLOCK_ASPECT := 0.62           # block building depth as a fraction of its width — LONG side faces the road
+const BLOCK_SQUARE_PCT := 25         # % of block buildings kept square (seeded) for variety
+# Enclosure-seeded tiles fill the block with a FEW BIG CHUNKS (3-6) instead of the fine lot grid — each
+# building fills its chunk for a dense, fully-built interior (visual size decoupled from tile_size).
+const CHUNK_COLS_TARGET := 80.0      # chunk width target along the road → 2-3 columns by run length
+const CHUNK_DEPTH := 88.0            # chunk depth (perpendicular) → 1-2 rows deep within ENCL_MAX_V
+const CHUNK_GAP := 4.0               # gap between filled chunks (and to the ring)
 const BLOCK_DEBUG := false           # set true to log per-tile block decisions to the console ([BLOCKDBG])
 
 const ROAD_CLEAR := 18.0             # no footprint edge may come within this of a road centreline
+const ROAD_OVERLAP := 5.0            # relayout: a building is only re-packed if a new road comes THIS close to its footprint (an actual overlap, well inside ROAD_CLEAR) — otherwise it stays put
 const RIVER_CLEAR := 16.0            # no footprint edge may come within this of a river arm
 const RIVER_ROAD_PAD := 28.0         # reserve a road corridor: buildings keep this off river arms (room for a bank road to the bridge)
 const BRIDGE_APPROACH := 50.0        # reserved corridor straight out from each crossing, both banks (~5u "after the bridge")
@@ -311,6 +319,19 @@ func _ensure_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 		_tile_block_templates[tile_id] = tmpl
 	return tmpl
 
+## Public: build/cache this tile's block template if a road run + room exist; true when a real grid formed.
+## RoadWorks calls this before enclosing (the ring is derived from the template's lots). Ensures the tile's
+## land mask first so the template can validate lots.
+func ensure_block_template_for(tile_id: String, coord: Vector2i) -> bool:
+	_ensure_tile(tile_id, coord)
+	return not _ensure_block_template(tile_id, coord).is_empty()
+
+## Public: world centre (footprint bbox centre) of a placed building, or the tile centre when not placed.
+func footprint_center_for(instance_id: String, coord: Vector2i) -> Vector2:
+	if _placement_index.has(instance_id):
+		return _verts_bb(_placements[int(_placement_index[instance_id])].verts).get_center()
+	return _tile_center_world_pos(coord)
+
 ## Anchor a city block to the straightest long road segment on the tile: that road is the
 ## block frontage; a grid of lots reaches back from it (free to run up against the tile edge
 ## — out-of-hex/water cells just drop), and only the lots ADJACENT to a road are kept (the
@@ -330,7 +351,10 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	var ra: Vector2 = anchor[0]
 	var rb: Vector2 = anchor[1]
 	var best_len := ra.distance_to(rb)
-	var angle: float = round((rb - ra).angle() / (PI * 0.5)) * (PI * 0.5)
+	# Block aligns to the ACTUAL road tilt (not 90-snapped): the lot grid, the buildings' long side, and
+	# the enclosure all run along the road. Normalised to [-90,90) (rect period) so the long side is
+	# parallel to the road; for a near-square block this reads as a ±45 tilt.
+	var angle: float = wrapf((rb - ra).angle(), -PI * 0.5, PI * 0.5)
 	var tangent := Vector2.RIGHT.rotated(angle)
 	var normal := Vector2(-tangent.y, tangent.x)
 	# validate lots at the LARGEST building so any claimer fits.
@@ -342,6 +366,12 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	var mid := (ra + rb) * 0.5
 	if not _valid(mid + normal * frontage, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
 		normal = -normal
+	# Enclosure-seeded tiles fill the block with a few BIG chunks (one building per chunk) for a dense
+	# interior. Same template shape + a `cell` field; falls through to the fine grid if too cramped.
+	if RoadHash.pick("enclseed|%s" % tile_id, 100) < RoadWorks.ENCLOSURE_PROB:
+		var chunk := _chunk_template(best_len, mid, tangent, normal, angle, land, segs, rivers)
+		if not chunk.is_empty():
+			return chunk
 	var cols: int = clampi(int(best_len / BLOCK_LOT), 3, BLOCK_MAX_COLS)
 	var origin := ra + tangent * (BLOCK_LOT * 0.5) + normal * frontage
 	var lots: Array = []
@@ -361,6 +391,83 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	if BLOCK_DEBUG: print("[BLOCKDBG] %s: BLOCK formed — %d lots (run=%.0fu cols=%d)" % [tile_id, lots.size(), best_len, cols])
 	return {"angle": angle, "lots": lots, "claimed": claimed, "segs": segs}
 
+## A few BIG chunks filling the block box (enclosure-seeded tiles): C cols along the road (2-3 by run length)
+## x R rows deep (1-2), 3-6 total. Each cell is sized so its building FILLS it (`_claim_slot` reads `cell`),
+## for a dense interior the enclosure ring hugs. Returns {angle, lots, claimed, segs, cell} or {} (too cramped).
+func _chunk_template(best_len: float, mid: Vector2, tangent: Vector2, normal: Vector2, angle: float, land: PackedByteArray, segs: Array, rivers: Array) -> Dictionary:
+	var w := clampf(best_len, ENCL_MIN_U, ENCL_MAX_U)
+	var base: int = clampi(int(round(w / CHUNK_COLS_TARGET)), 2, 3)   # cols by run width → ~70-80u chunks
+	# Coarse-to-FINE grids, packed into a TIGHT block. A 2-row block of BIG cells is ideal, but real
+	# urban/port tiles have DENSE crossing roads (the Stoneshore hub measured ~200 road segments) that no
+	# big cell can clear — and a river or hex edge can cut a row too. So step the grid finer (more, smaller
+	# cells), and at each step take the largest all-valid axis-aligned SUB-RECTANGLE (one clean road-free
+	# pocket), NOT every scattered valid cell — otherwise the ring spans far-apart cells with gaps between
+	# (the "loose, oversized ring" look). Take the COARSEST grid whose pocket fills the block (>=3 cells —
+	# biggest cells win); else the densest pocket that fits. Floor of 2 — still a real filled block.
+	var combos: Array = [[base, 2], [base, 1], [base + 1, 2], [base + 1, 3], [base + 2, 2], [base + 2, 3]]
+	var best_lots: Array = []
+	var best_cell := Vector2.ZERO
+	for combo in combos:
+		var cols: int = combo[0]
+		var rows: int = combo[1]
+		var celly: float = minf(ENCL_MAX_V, CHUNK_DEPTH * 1.3) if rows == 1 else (ENCL_MAX_V / float(rows))
+		var cell := Vector2(w / float(cols), celly)
+		var frontage := BLOCK_ROAD_PAD + cell.y * 0.5
+		var origin := mid - tangent * (float(cols - 1) * cell.x * 0.5) + normal * frontage
+		var crect: PackedVector2Array = _rotate(BuildingShapes.make_rect(cell.x - CHUNK_GAP, cell.y - CHUNK_GAP).verts, angle)
+		var ctrs: Array = []    # ctrs[r][c] — cell centre
+		var valid: Array = []   # valid[r][c] — road/water/edge-free
+		for r in rows:
+			var crow: Array = []
+			var vrow: Array = []
+			for c in cols:
+				var ctr: Vector2 = origin + tangent * (float(c) * cell.x) + normal * (float(r) * cell.y)
+				crow.append(ctr)
+				vrow.append(_chunk_valid(ctr, crect, land, segs, rivers))
+			ctrs.append(crow)
+			valid.append(vrow)
+		var lots: Array = []
+		for ij in _largest_valid_rect(valid, cols, rows):
+			lots.append(ctrs[(ij as Vector2i).y][(ij as Vector2i).x])
+		if lots.size() >= 3:
+			best_lots = lots
+			best_cell = cell
+			break   # coarsest grid whose pocket fills the block — take it (prefers the biggest cells that fit)
+		if lots.size() > best_lots.size():
+			best_lots = lots
+			best_cell = cell
+	if best_lots.size() < 2:
+		return {}   # genuinely too cramped (water/road/edge) — caller uses the fine grid
+	var claimed: Array = []
+	for _i in best_lots.size():
+		claimed.append(false)
+	return {"angle": angle, "lots": best_lots, "claimed": claimed, "segs": segs, "cell": best_cell}
+
+## The largest all-valid axis-aligned sub-rectangle of a rows x cols boolean grid, as Vector2i(col, row) cells.
+## Used to pack chunks into ONE clean road-free pocket (a tight block) rather than every scattered free cell.
+## Grids are tiny (<=5x3), so the O(n^4) brute force over corner pairs is trivial.
+func _largest_valid_rect(valid: Array, cols: int, rows: int) -> Array:
+	var best: Array = []
+	for r1 in rows:
+		for r2 in range(r1, rows):
+			for c1 in cols:
+				for c2 in range(c1, cols):
+					var all_valid := true
+					for r in range(r1, r2 + 1):
+						for c in range(c1, c2 + 1):
+							if not bool(valid[r][c]):
+								all_valid = false
+								break
+						if not all_valid:
+							break
+					if all_valid and (r2 - r1 + 1) * (c2 - c1 + 1) > best.size():
+						var cells: Array = []
+						for r in range(r1, r2 + 1):
+							for c in range(c1, c2 + 1):
+								cells.append(Vector2i(c, r))
+						best = cells
+	return best
+
 ## STATE_BUILT road segments crossing this tile, centre-relative — like _tile_road_segments
 ## but NOT gated on the per-tile "roads" infra flag (which only 3 of 92 urban tiles have at
 ## start). A city block anchors to ANY road the player sees crossing the tile (baked spine,
@@ -378,6 +485,8 @@ func _block_road_segments(coord: Vector2i) -> Array:
 		var edge: Dictionary = net.edges.get(edge_id, {})
 		if str(edge.get("state", "")) != RoadNetwork.STATE_BUILT:
 			continue
+		if _is_enclosure_edge(edge):
+			continue   # a block's OWN enclosure ring/connector is not a street — see _is_enclosure_edge
 		var geo: PackedVector2Array = edge.get("geometry", PackedVector2Array())
 		for i in range(geo.size() - 1):
 			var a := geo[i] - center
@@ -386,6 +495,15 @@ func _block_road_segments(coord: Vector2i) -> Array:
 				continue
 			out.append([a, b])
 	return out
+
+## True if this edge is a block-enclosure ring/connector ("encl:"-tagged on its endpoint nodes) rather than a
+## real street. The block template + lot validation MUST ignore these: the ring is derived FROM the lots, so
+## treating it as a road would (a) hijack the block anchor in _longest_straight_road (the ring's long straight
+## side out-measures the actual road) and (b) clear via BLOCK_ROAD_PAD the very lots the ring is meant to wrap —
+## which left enclosed tiles unable to fill their chunks (buildings scattered under the ring) and, on a relayout
+## that rebuilt the template with the ring already present, dropped the grid entirely (the enclosure vanished).
+func _is_enclosure_edge(edge: Dictionary) -> bool:
+	return str(edge.get("a", "")).begins_with("encl:") or str(edge.get("b", "")).begins_with("encl:")
 
 func _in_tile_hex(p: Vector2, center: Vector2) -> bool:
 	var r := p - center
@@ -407,6 +525,8 @@ func _longest_straight_road(coord: Vector2i) -> Array:
 		var edge: Dictionary = net.edges.get(edge_id, {})
 		if str(edge.get("state", "")) != RoadNetwork.STATE_BUILT:
 			continue
+		if _is_enclosure_edge(edge):
+			continue   # never anchor a block to its own enclosure ring (it would out-measure the real road)
 		var geo: PackedVector2Array = edge.get("geometry", PackedVector2Array())
 		var i := 0
 		while i < geo.size() - 1:
@@ -455,14 +575,26 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 	var segs: Array = tmpl.get("segs", [])
 	var rivers: Array = _tile_rivers.get(tile_id, [])
 	var land: PackedByteArray = _tile_land.get(tile_id, PackedByteArray())
+	var cell: Vector2 = tmpl.get("cell", Vector2.ZERO)   # chunk tiles: the building FILLS the cell
 	var fill: float = BLOCK_LOT * clampf(BLOCK_FILL_MIN + 0.04 * float(size_units), BLOCK_FILL_MIN, BLOCK_FILL_MAX)
-	var rv: PackedVector2Array = _rotate(BuildingShapes.make_rect(fill, fill).verts, angle)
-	var half: Vector2 = _aabb_half(rv)
 	for i in lots.size():
 		if bool(claimed[i]):
 			continue
 		var ctr: Vector2 = lots[i]
-		if not _valid(ctr, rv, half, placed_here, land, segs, rivers, BLOCK_ROAD_PAD):
+		var rv: PackedVector2Array
+		if cell != Vector2.ZERO:
+			# CHUNK: the building fills its whole cell (long side already along the road via the box).
+			rv = _rotate(BuildingShapes.make_rect(cell.x - CHUNK_GAP, cell.y - CHUNK_GAP).verts, angle)
+		else:
+			# Fine lot: longest side along the road (rect with width along the tangent), or square for a seeded few.
+			var aspect: float = 1.0 if RoadHash.pick("blkaspect|%s|%d" % [tile_id, i], 100) < BLOCK_SQUARE_PCT else BLOCK_ASPECT
+			rv = _rotate(BuildingShapes.make_rect(fill, fill * aspect).verts, angle)
+		var half: Vector2 = _aabb_half(rv)
+		# Chunks use the RELAXED validation (the big footprint may overlap a forest/road-clearance edge but
+		# must stay in-hex + off road/river centrelines). NO AABB-overlap check — the chunk grid is
+		# non-overlapping by construction, and rotated cells' AABBs falsely collide. Fine lots: strict check.
+		var ok: bool = _chunk_valid(ctr, rv, land, segs, rivers) if cell != Vector2.ZERO else _valid(ctr, rv, half, placed_here, land, segs, rivers, BLOCK_ROAD_PAD)
+		if not ok:
 			claimed[i] = true   # blocked (a road moved onto it, or a fallback sits there) — consume it
 			continue
 		claimed[i] = true
@@ -489,10 +621,43 @@ func relayout() -> void:
 		_mark_subcomp_dirty(str(p.tile_id))   # re-derive ancillaries once mains are replayed
 	queue_redraw()
 
-## Re-pack ONE tile's buildings (cheaper + less disruptive than relayout()): used
-## when a road settles on a tile that already has buildings so they snap to the new
-## frontage without touching any other tile. Same per-instance seeds → deterministic.
+## True if `segs` (centre-relative road segments) OVERLAP this placement's footprint — the road comes within
+## ROAD_OVERLAP of the AABB (it would sit ON the building), so the building must be re-packed off it. A
+## building merely NEAR a road (placed at its ROAD_CLEAR=18u frontage) is NOT a hit, so it stays put.
+func _placement_hits_road(p: Dictionary, segs: Array) -> bool:
+	var cr: Vector2 = p.center_rel
+	var reach: float = maxf((p.half as Vector2).x, (p.half as Vector2).y) + ROAD_OVERLAP
+	for s in segs:
+		if _pt_seg_dist(cr, (s as Array)[0], (s as Array)[1]) < reach:
+			return true
+	return false
+
+## Re-pack ONE tile's buildings (cheaper + less disruptive than relayout()): used when a road settles on a
+## tile that already has buildings. Buildings now STAY PUT unless the new road overlaps them (see the guard
+## below) — the road routes around occupied space. Same per-instance seeds → deterministic.
 func relayout_tile(tile_id: String) -> void:
+	# OCCUPANCY: a settled road routes AROUND buildings (the graduated building cost in RoadRealizer), so a
+	# building does NOT need to move just because a road appeared. Only re-pack when the new road actually
+	# OVERLAPS a footprint (it would sit ON the road); otherwise keep every building in place and just refresh
+	# the tile's caches so the road merges with the mask + farm lanes. (Stops the "buildings shuffle on every
+	# road" churn — they only move when a road truly lands on them.)
+	if terrain_layer != null:
+		var rsegs := _block_road_segments(terrain_layer.id_to_coord(tile_id))
+		var conflict := false
+		for p in _placements:
+			if str(p.tile_id) == tile_id and str(p.cat) != "farm" and _placement_hits_road(p, rsegs):
+				conflict = true
+				break
+		if not conflict:
+			_tile_land.erase(tile_id)
+			_tile_landkeys.erase(tile_id)
+			_farm_land.erase(tile_id)
+			_farm_landkeys.erase(tile_id)
+			_tile_segs.erase(tile_id)
+			_tile_rivers.erase(tile_id)
+			_mark_subcomp_dirty(tile_id)   # re-derive farm lanes against the new road; buildings stay put
+			queue_redraw()
+			return
 	var src: Array = []
 	var kept: Array = []
 	var has_farm := false
@@ -1837,6 +2002,18 @@ func _valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, pla
 		and _footprint_clears(center, local_verts, segs, road_clear) \
 		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR)
 
+## Relaxed validation for a big CHUNK (it fills its cell): only the CENTRE must be buildable land (the chunk
+## may overlap a forest edge or the road-clearance band — the building just draws over it), but it must stay
+## IN-HEX (no corner outside the tile) and keep BLOCK_ROAD_PAD / RIVER_CLEAR off road + river centrelines.
+func _chunk_valid(center: Vector2, local_verts: PackedVector2Array, land: PackedByteArray, segs: Array, rivers: Array) -> bool:
+	if not _land_at(center, land):
+		return false
+	for v in local_verts:
+		var p: Vector2 = center + v
+		if absf(p.x) > 270.0 or absf(p.y) > 240.0 or 240.0 * absf(p.x) + 135.0 * absf(p.y) > 64800.0:
+			return false   # a corner off-hex would draw outside the tile
+	return _footprint_clears(center, local_verts, segs, BLOCK_ROAD_PAD) and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR)
+
 ## True if the WHOLE footprint polygon keeps `clearance` clear of every obstacle segment —
 ## every footprint edge is at least `clearance` from every segment. Catches a footprint whose
 ## far edge would angle across a curved road/river even though its anchor edge is snapped clear.
@@ -1908,6 +2085,8 @@ func _tile_road_segments(coord: Vector2i, center: Vector2) -> Array:
 		var edge: Dictionary = net.edges.get(edge_id, {})
 		if str(edge.get("state", "")) != RoadNetwork.STATE_BUILT:
 			continue
+		if _is_enclosure_edge(edge):
+			continue   # the enclosure ring is not a road corridor — don't carve it out of buildable land
 		var geo: PackedVector2Array = edge.get("geometry", PackedVector2Array())
 		for i in range(geo.size() - 1):
 			var a := geo[i] - center
@@ -2056,6 +2235,165 @@ func footprint_rects_on_tile(coord: Vector2i) -> Array:
 	for p in _placements:
 		if p.coord == coord:
 			out.append(_verts_bb(p.verts))
+	return out
+
+## Enclosure (B4) ring shape — kept TIGHT to the footprints (small clearance), with ROUNDED corners and
+## a seeded chance of an IRREGULAR (jittered) outline, so blocks read organic and varied, not as identical
+## boxes. Tune these to taste.
+const ENCL_CLEAR := 3.0            # clearance from the lot grid to the ring (tight — the grid reads busy)
+const ENCL_ROUND_FRAC := 0.24      # corner-rounding radius as a fraction of the shorter box side, ...
+const ENCL_ROUND_MAX := 30.0       # ... capped here (u)
+const ENCL_ROUND_SEGS := 3         # points per rounded corner (quadratic bezier)
+const ENCL_IRREGULAR_PCT := 25     # % of tiles (seeded) whose ring is jittered into an irregular quad
+const ENCL_JITTER_FRAC := 0.03     # max OUTWARD corner jitter, as a fraction of the box diagonal (small — neat grid reads crisp)
+# One enclosure wraps a single CITY BLOCK near the triggering building — the cluster of nearby footprints
+# that fits in a box this size (road frame: U = along the road, V = perpendicular), NOT the whole tile.
+const ENCL_MIN_U := 150.0          # smallest block along the road (a small lot grid isn't inflated past its size)
+const ENCL_MIN_V := 100.0          # smallest block depth (perpendicular)
+const ENCL_MAX_U := 240.0          # largest block along the road — footprints past this stay OUTSIDE the ring
+const ENCL_MAX_V := 180.0          # largest block depth (perpendicular)
+
+## World-space perimeter ring wrapping the tile's CITY BLOCK (block enclosure, B4): the oriented bounding
+## box of the block TEMPLATE's lot grid (road frame, so it runs along the street and matches the road-aligned
+## buildings), grown to cover the building in each lot + ENCL_CLEAR, clamped to [ENCL_MIN, ENCL_MAX], seeded
+## jitter, corners rounded, river-clipped to the near bank, hex-clipped, chained. Returns [] when the tile has
+## no block template — so a ring NEVER wraps fallback-scattered buildings, and since it follows the FIXED lots,
+## no building inside the grid is ever excluded. RoadWorks fires this once per tile, dedups against existing
+## roads, and connects it to the network. anchor_instance_id is unused here (kept for the call signature).
+## Deterministic off the template (angle + lots) + the coord seed (reload-reproducible).
+func enclosure_geometry_for_coord(coord: Vector2i, _anchor_instance_id: String = "") -> Array:
+	var tid := "tile_%d_%d" % [coord.x + 1, coord.y + 1]
+	var tmpl: Dictionary = _tile_block_templates.get(tid, {})
+	var lots: Array = tmpl.get("lots", [])
+	if lots.is_empty():
+		return []   # no neat block grid on this tile — no ring
+	var center := _tile_center_world_pos(coord)
+	var angle: float = float(tmpl.get("angle", 0.0))
+	var rivers: Array = _tile_rivers.get(tid, [])   # [a, b] segments, REL to the tile centre
+	# Oriented bbox of the lot grid in the road frame; grow to cover the building in each lot + clearance.
+	# Lots are already REL to the tile centre (the same frame as the ring we build below).
+	var lo := Vector2(1.0e9, 1.0e9)
+	var hi := Vector2(-1.0e9, -1.0e9)
+	var csum := Vector2.ZERO
+	for lot in lots:
+		var rc: Vector2 = lot
+		lo = lo.min(rc.rotated(-angle))
+		hi = hi.max(rc.rotated(-angle))
+		csum += rc
+	# Grow the lot-centre bbox by HALF a cell (chunk tiles store `cell`; fine tiles use the lot footprint) +
+	# clearance, so the ring hugs the filled chunks / lots. grow_individual in the road frame (x = along road).
+	var cellh: Vector2 = (tmpl.get("cell", Vector2(BLOCK_LOT * BLOCK_FILL_MAX, BLOCK_LOT * BLOCK_FILL_MAX)) as Vector2) * 0.5 + Vector2(ENCL_CLEAR, ENCL_CLEAR)
+	var box := Rect2(lo, hi - lo).grow_individual(cellh.x, cellh.y, cellh.x, cellh.y)
+	# Clamp to the size band [MIN, MAX] about the box centre (the grid normally sits under MAX).
+	var bc := box.get_center()
+	var bw := clampf(box.size.x, ENCL_MIN_U, ENCL_MAX_U)
+	var bh := clampf(box.size.y, ENCL_MIN_V, ENCL_MAX_V)
+	box = Rect2(bc - Vector2(bw, bh) * 0.5, Vector2(bw, bh))
+	# Bank reference: the grid is frontage-anchored on ONE bank (lots are pre-validated off rivers), so its
+	# centroid is a stable off-river reference — the clip then only budges an already-on-bank ring.
+	var bank_ref := csum / float(lots.size())
+	var aside := _river_side(bank_ref, rivers)
+	# Corners in the ROAD frame. Jitter (seeded, outward) then HARD-CLAMP to the MAX box, so the ring —
+	# jitter and inward rounding included — never exceeds the ENCL_MAX size cap. Then rotate to tile-local.
+	var q: Array = [box.position, Vector2(box.end.x, box.position.y), box.end, Vector2(box.position.x, box.end.y)]
+	var key := "encl|%d_%d" % [coord.x, coord.y]
+	if RoadHash.pick(key + "|irr", 100) < ENCL_IRREGULAR_PCT:
+		var jmax := box.size.length() * ENCL_JITTER_FRAC
+		var hm := Vector2(ENCL_MAX_U, ENCL_MAX_V) * 0.5
+		for i in 4:
+			var outd: Vector2 = ((q[i] as Vector2) - bc).normalized()
+			var jp: Vector2 = (q[i] as Vector2) + outd * (float(RoadHash.pick(key + "|j%d" % i, 1000)) / 1000.0 * jmax)
+			q[i] = Vector2(clampf(jp.x, bc.x - hm.x, bc.x + hm.x), clampf(jp.y, bc.y - hm.y, bc.y + hm.y))
+	for i in 4:
+		q[i] = (q[i] as Vector2).rotated(angle)   # back to tile-local — the OBB at the road angle
+	# If the block meets the river, budge its river-side edge back to the near bank (no crossing).
+	q = _clip_to_river_bank(q, rivers, bank_ref, aside)
+	if q.size() < 3:
+		return []
+	var radius := minf(minf(box.size.x, box.size.y) * ENCL_ROUND_FRAC, ENCL_ROUND_MAX)
+	var ring := _rounded_quad(q, radius, ENCL_ROUND_SEGS)
+	var hex := _hex_world(coord)
+	var pieces: Array = []
+	for i in ring.size():
+		var a: Vector2 = center + (ring[i] as Vector2)
+		var b: Vector2 = center + (ring[(i + 1) % ring.size()] as Vector2)
+		var seg := _clip_seg_to_convex(a, b, hex)
+		if seg.size() >= 2:
+			pieces.append(PackedVector2Array([seg[0], seg[1]]))
+	return _chain_segments(pieces)
+
+## Which bank of the river point `p` sits on: sign of the cross product against the NEAREST river
+## segment (+1 / -1), or 0 when there is no river. `p` and `rivers` are both rel-to-tile-centre.
+func _river_side(p: Vector2, rivers: Array) -> int:
+	var best := 1.0e18
+	var side := 0
+	for seg in rivers:
+		var a: Vector2 = seg[0]
+		var b: Vector2 = seg[1]
+		var d := _pt_seg_dist(p, a, b)
+		if d < best - 0.001:   # strictly nearer (deterministic: the earlier segment wins a near-tie at a bend)
+			best = d
+			var cr := (b - a).cross(p - a)
+			side = 1 if cr > 0.0 else (-1 if cr < 0.0 else 0)
+	return side
+
+## Budge an enclosure quad off a river it overlaps: clip it to the half-plane on the anchor's bank,
+## the cut line set RIVER_ROAD_PAD off the river (so the ring runs along the bank, not in the water).
+## No-op when there is no river, the block is off the river, or the bank is ambiguous. Rel-to-centre.
+func _clip_to_river_bank(quad: Array, rivers: Array, anchor: Vector2, aside: int) -> Array:
+	if rivers.is_empty() or aside == 0 or quad.size() < 3:
+		return quad
+	var qc := Vector2.ZERO
+	for p in quad:
+		qc += p as Vector2
+	qc /= float(quad.size())
+	var best := 1.0e18
+	var ba := Vector2.ZERO
+	var bb := Vector2.ZERO
+	for seg in rivers:
+		var d := _pt_seg_dist(qc, seg[0], seg[1])
+		if d < best:
+			best = d
+			ba = seg[0]
+			bb = seg[1]
+	# Only clip when the river actually reaches the block (within the box's own reach from its centre).
+	var reach := 0.0
+	for p in quad:
+		reach = maxf(reach, qc.distance_to(p as Vector2))
+	if best > reach or (bb - ba).length_squared() < 1.0:
+		return quad
+	var base := Geometry2D.get_closest_point_to_segment(qc, ba, bb)
+	var nrm := Vector2(-(bb - ba).y, (bb - ba).x).normalized()
+	if nrm.dot(anchor - base) < 0.0:
+		nrm = -nrm   # point toward the anchor's bank (the side we keep)
+	# Cut along the bank line (RIVER_ROAD_PAD off the river); keep the anchor's (+nrm) side. Reuse the
+	# bisector clip: two mirror points across the line so its perpendicular bisector IS the bank line.
+	var lp := base + nrm * RIVER_ROAD_PAD
+	var packed := PackedVector2Array()
+	for p in quad:
+		packed.append(p as Vector2)
+	var out: Array = []
+	for p in _clip_poly_halfplane(packed, lp + nrm, lp - nrm):
+		out.append(p)
+	return out
+
+## A closed rounded polyline through `c`'s corners: each corner becomes a quadratic-bezier fillet of
+## `radius` (clamped to the shorter incident edge), `segs` points each. Used for the enclosure ring.
+func _rounded_quad(c: Array, radius: float, segs: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var n := c.size()
+	for i in n:
+		var prev: Vector2 = c[(i - 1 + n) % n]
+		var cur: Vector2 = c[i]
+		var nxt: Vector2 = c[(i + 1) % n]
+		var din: Vector2 = cur - prev
+		var dout: Vector2 = nxt - cur
+		var r: float = minf(radius, minf(din.length(), dout.length()) * 0.49)
+		var a: Vector2 = cur - din.normalized() * r
+		var b: Vector2 = cur + dout.normalized() * r
+		for s in range(segs + 1):   # quadratic bezier a -> cur -> b
+			var t := float(s) / float(segs)
+			out.append(a.lerp(cur, t).lerp(cur.lerp(b, t), t))
 	return out
 
 ## World-space avoidance discs (one bounding circle per footprint) for the road
