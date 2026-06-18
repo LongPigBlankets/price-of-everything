@@ -60,3 +60,6 @@ g_058,fibreglass,Fibreglass,construction,solid_light,1,1,vehicle,intermediate,0.
 g_059,lithium_battery,Lithium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,60,TRUE,TRUE,0,no,0
 g_060,sodium_battery,Sodium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,45,TRUE,TRUE,0,no,0
 g_061,iron_battery,Iron Air Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,40,TRUE,TRUE,0,no,0
+g_062,biomass,Biomass,agribio,solid_light,1,1,vehicle,raw,0.005,1,TRUE,TRUE,0,no,0
+g_063,waste_water,Waste Water,waste,safe_liquid,,,,waste,0,0.1,FALSE,FALSE,0,no,0
+g_064,fertilisers,Fertilisers,agribio,solid_heavy,1,1,vehicle,intermediate,0.002,3.5,TRUE,TRUE,0,no,0

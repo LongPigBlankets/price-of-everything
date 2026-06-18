@@ -12,7 +12,7 @@ b_010,high_tech_manufactory,High Tech Manufactory,1,10000,1,1,,,,,,,,,,,2,10,pro
 b_011,petro_refinery,Petrochemical Refinery,1,10000,180,180,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,refinery,0
 b_012,chem_plant,Chemical Plant,1,10000,250,250,coal,10,steel,10,iron_ingots,2,,,,,2,18,production,standard,10000,,,,,2,200,100,60,electrochemistry|refinery,0
 b_013,poly_plant,Polymerisation Refinery,1,10000,250,250,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,refinery,0
-b_014,farm,Farm,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,farm_forests,0
+b_014,farm,Farm,1,10000,1,1,,,,,,,,,,,2,15,production,standard,10000,,,,,2,100,50,30,farm_forests,0
 b_015,new_forest,New Growth Forest,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,farm_forests,0
 b_016,old_forest,Old Growth Forest,1,10000,1,1,,,,,,,,,,,2,25,production,standard,10000,,,,,2,100,50,30,farm_forests,0
 b_017,pipes,Pipeworks,1,10000,30,30,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0

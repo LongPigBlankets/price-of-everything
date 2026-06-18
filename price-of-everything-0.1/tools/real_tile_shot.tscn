@@ -1,0 +1,4 @@
+[gd_scene format=3 uid="uid://dhdi01i0vkohk"]
+[ext_resource type="Script" path="res://tools/real_tile_shot.gd" id="1"]
+[node name="RealTileShot" type="Node2D"]
+script = ExtResource("1")

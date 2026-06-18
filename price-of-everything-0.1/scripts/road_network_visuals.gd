@@ -64,12 +64,29 @@ func _draw() -> void:
 	# Roads show ONLY where roads are built: clip every edge to tiles whose
 	# infrastructure carries "roads", dropping spans over roadless tiles (the
 	# baked region-web spill, a long connect across empty terrain, etc.).
+	# Through-roads also never DRAW inside a block enclosure — they clip to the ring, which is the block's
+	# access. (Keeps roads out of the enclosed courtyard; the ring itself draws in full below.)
+	var encl_hulls := _enclosure_hulls(network)
 	var runs_by_edge: Dictionary = {}
 	for edge_id in network.edges:
 		var edge: Dictionary = network.edges[edge_id]
 		if str(edge.state) != RoadNetwork.STATE_BUILT:
 			continue
-		runs_by_edge[edge_id] = _clip_to_built(edge.geometry, terrain, flagged)
+		# Enclosure roads (encl:-tagged) draw regardless of the tile's "roads" flag — they are real
+		# drawn edges WITHOUT the economy/routing meaning that flag carries. Normal edges still clip
+		# to roads-flagged tiles, so an already-flagged coastal / river-corridor tile shows its real
+		# roads as before, while an inland enclosure-only tile shows just its enclosure ring.
+		if _is_seeded_street(edge):
+			continue   # match-start block-frontage anchor (urbanr:) is INVISIBLE — it only orients the block;
+			# the organic enclosure RING is the tile's visible road, so urban tiles never show straight lines.
+		if _is_enclosure_edge(edge):
+			# Enclosure rings/connectors draw regardless of the tile's "roads" flag (real drawn edges WITHOUT
+			# the economy/routing meaning the flag carries). The ring IS its own hull, so it is NOT self-clipped.
+			runs_by_edge[edge_id] = [edge.geometry]
+		else:
+			# Normal edges clip to roads-flagged tiles (and out of enclosure interiors), so a flagged tile
+			# shows its real roads as before while never drawing a through-road inside a block courtyard.
+			runs_by_edge[edge_id] = _clip_out_hulls(_clip_to_built(edge.geometry, terrain, flagged), encl_hulls)
 	for pass_i in 2:   # casing under colour
 		for edge_id4 in runs_by_edge:
 			for run in runs_by_edge[edge_id4]:
@@ -95,6 +112,7 @@ func _draw_active() -> void:
 	var network := RoadNetwork.instance()
 	var terrain := _terrain()
 	var flagged := _flagged_tiles(terrain)
+	var encl_hulls := _enclosure_hulls(network)   # a revealing road also clips out of enclosures (no flicker)
 	for edge_id in network.edges:
 		var edge: Dictionary = network.edges[edge_id]
 		if str(edge.state) != RoadNetwork.STATE_BUILDING:
@@ -103,13 +121,65 @@ func _draw_active() -> void:
 		var revealed := _suffix_by_fraction(edge.geometry, frac)
 		if revealed.size() < 2:
 			continue
-		for run in _clip_to_built(revealed, terrain, flagged):
+		for run in _clip_out_hulls(_clip_to_built(revealed, terrain, flagged), encl_hulls):
 			for pass_i in 2:
 				_draw_edge_polyline(_active_layer, run, str(edge.tier), pass_i)
 
 func _terrain() -> HexMap:
 	var found := get_tree().get_nodes_in_group("hex_map")
 	return found[0] as HexMap if not found.is_empty() else null
+
+## An enclosure edge (block-enclosure ring/lane) — tagged via its endpoint node ids ("encl:...").
+func _is_enclosure_edge(edge: Dictionary) -> bool:
+	return str(edge.a).begins_with("encl:") or str(edge.b).begins_with("encl:")
+
+## A cosmetic match-start urban street (urbanr:-tagged), seeded so every urban tile can anchor a block.
+## Draws like a road but carries no "roads" infrastructure (no build-capacity / routing cost).
+func _is_seeded_street(edge: Dictionary) -> bool:
+	return str(edge.a).begins_with("urbanr:") or str(edge.b).begins_with("urbanr:")
+
+## Per-tile keep-out polygons: the convex hull of each enclosed tile's encl: ring points. Through-roads
+## are clipped OUT of these so they never draw inside a block (the ring is the block's access).
+func _enclosure_hulls(network: RoadNetwork) -> Array:
+	var pts_by_tile: Dictionary = {}
+	for edge_id in network.edges:
+		var edge: Dictionary = network.edges[edge_id]
+		if str(edge.state) != RoadNetwork.STATE_BUILT or not _is_enclosure_edge(edge):
+			continue
+		for tc in (edge.tiles as Array):
+			var arr: PackedVector2Array = pts_by_tile.get(tc, PackedVector2Array())
+			arr.append_array(edge.geometry as PackedVector2Array)
+			pts_by_tile[tc] = arr
+	var hulls: Array = []
+	for tc in pts_by_tile:
+		var h := Geometry2D.convex_hull(pts_by_tile[tc] as PackedVector2Array)
+		if h.size() >= 3:
+			hulls.append(h)
+	return hulls
+
+## Drop the portions of each run that fall inside any enclosure hull, splitting a run that passes through
+## into the segments on either side (point-membership, like _clip_to_built).
+func _clip_out_hulls(runs: Array, hulls: Array) -> Array:
+	if hulls.is_empty():
+		return runs
+	var out: Array = []
+	for run in runs:
+		var cur := PackedVector2Array()
+		for p in (run as PackedVector2Array):
+			var inside := false
+			for h in hulls:
+				if Geometry2D.is_point_in_polygon(p, h):
+					inside = true
+					break
+			if inside:
+				if cur.size() >= 2:
+					out.append(cur)
+				cur = PackedVector2Array()
+			else:
+				cur.append(p)
+		if cur.size() >= 2:
+			out.append(cur)
+	return out
 
 ## Set of tile coords whose infrastructure carries "roads" (built or seeded).
 func _flagged_tiles(terrain: HexMap) -> Dictionary:

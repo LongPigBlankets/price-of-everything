@@ -186,3 +186,7 @@ r_204,Heavy Vehicles Assembly,factory,car_body,4,large_engine,1,lithium_battery,
 r_205,Heavy Vehicles Automated Manufacturing,assembly_plant,car_body,4,large_engine,1,lithium_battery,1,fuels,10,,,,,5,heavy_vehicle,4,,,,,,,,,,,,Manufacturing,
 r_206,Electric Heavy Vehicles Manufacturing,assembly_plant,car_body,4,large_engine,1,lithium_battery,4,,,,,,,5,heavy_vehicle,4,,,,,,,,,,,,Manufacturing,
 r_207,Heavy Electric Motor,assembly_plant,steel,4,aluminium,3,motor,6,electrical_components,4,cpu,1,,,4,large_engine,2,,,,,,,,,,,,Manufacturing,
+r_208,Sustainable Biomass Production,farm,fertilisers,1,,,,,,,,,,,2,biomass,10,waste_water,5,,,,,,,,,,Farming,
+r_209,Strip Farming - Biomass,farm,fertilisers,4,pure_water,2,,,,,,,,,3,biomass,25,waste_water,15,,,,,,,,1,,Farming,20
+r_211,Agri Solar Farming - Biomass,farm,,,,,,,,,,,,,0,biomass,10,waste_water,5,,,,,,,solar_farm,,,Farming,
+r_212,Livestock Farming - Biomass,farm,pure_water,3,,,,,,,,,,,4,biomass,10,waste_water,10,,,,,,,2 farms,1,,Farming,

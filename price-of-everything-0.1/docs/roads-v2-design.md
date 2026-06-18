@@ -453,3 +453,78 @@ brute-force crossing scans (crossings predetermined).
   minihubs/partial bypasses.
 - **Phase 5** — big-bang re-seed of CSV roads through v2 (designer approval
   pass); delete v1 planners; bunch API (h) stubbed for buildings.
+
+## Revisions
+
+- **Road doubling (no-merge) fix.** Two roads on nearly the same route used to render
+  as one thick band / a teardrop loop instead of collapsing onto a single centreline.
+  Two causes, both fixed: (1) `_nearest_attachment` sampled existing edge geometry only
+  every 8th vertex (~240u apart after `_thin(…,30)`), so a connect order's GOAL could land
+  tens of u off the centreline (measured 48u in one case), seeding a parallel road. It now
+  projects `from` onto each edge SEGMENT (`Geometry2D.get_closest_point_to_segment`), pinning
+  the goal to the true foot-of-perpendicular (err → 0). (2) The `_near_net` MERGE band was a
+  flat plateau (any cell ≤`MERGE_RADIUS` of a centreline got the same `COST_REUSE`), so a route
+  in the band had no gradient pulling it onto the line. It now stores a distance TIER (cheapest
+  on the centreline, ramping out via `MERGE_RAMP`), so the search has a strict minimum to fall
+  into. Regression test: `_test_road_attachment_projection`. NB the nav grid step is 12u while
+  `MERGE_RADIUS` is 7u, so fix (1) is the dominant lever and (2) mainly helps sub-cell/diagonal
+  convergence.
+- **Farm-ring promotion doubling fix.** The merge cost-bias only collapses roads that co-exist
+  *during routing*; it can't help roads that never co-routed. The main such case: a connect road
+  reaches a farm and commits, then `_promote_farm_roads_if_reached` promotes the cluster's web (ring +
+  trunk) into raw `add_edge` roads — alongside the connect road that's already there, so they render
+  doubled around the cluster edge. Fixed by `_undoubled_runs`: before promoting each web polyline,
+  split it into the runs NOT already within `FARM_RING_DEDUP_RADIUS` (14u ≈ one grid cell + margin) of
+  a road on that tile, and promote only those (each dilated one vertex into the road so it still
+  meets it). A web fully covered by an existing road now promotes nothing (the road stands in for it);
+  the tile is still flagged promoted so the brown cosmetic ring is suppressed. Scoped to the promotion
+  path only — `add_edge`'s append-only contract is untouched. Regression test: `_test_farm_ring_dedup`
+  (covered web promotes 0u vs 673u baseline). NB the *merge bands* themselves already collapse simple
+  parallels up to ~36u when both roads are present at plan time, so widening MERGE_RADIUS/COST_REUSE was
+  not the fix here.
+- **Farm-cluster visual fixes (3 cosmetic bugs).** All in `building_visuals.gd` cosmetic farm-lane
+  geometry (+ one realizer smoothing guard); none touch RoadNetwork edge state, A*, promotion
+  bookkeeping, or the snap inside-cluster test (`cluster_rings` still uses the untouched ring polygon).
+  - *Road over a lake.* Two sources. (a) The cosmetic farm-merge connector (a straight `[best_fp,best_rp]`
+    lane to the nearest road) had no water test — now gated by `_seg_on_land` (rejects a connector whose
+    line samples any sea/lake/river cell). (b) Chaikin `_smooth` has no water awareness, so a routed road
+    hugging a concave sea/lake shore can bulge across it — now `_declamp_water` (realizer) pulls any
+    post-smooth point on SEA/LAKE back to the nearest land cell. Rivers are exempt (crossed at gates;
+    `_snap_bridges` runs after). A correct road never has a sea/lake point, so the clamp is a no-op except
+    on the artifact it repairs.
+  - *Residual doubling around farms.* The promotion dedup only fires when a road settles ON the farm tile.
+    A road in a NEIGHBOUR tile (or skimming the boundary) that never promotes the tile left the tan
+    cosmetic ring drawn parallel to it. Now the cosmetic ring is split at build time by
+    `_ring_runs_clear_of_roads` against this tile's AND its 6 neighbours' road segments (same 14u radius as
+    the promotion dedup), so the ring isn't drawn where a real road already covers it.
+  - *Unconnected ring outlines.* The ring was cut three ways with no replacement: a 3u hex-inset that
+    severed the loop at the tile edge, per-edge forest subtraction that deleted whole arcs, and a chainer
+    that couldn't bridge the holes. Now: inset reduced 3u→1u (stops adjacent-tile overlap without severing);
+    forests are detoured by CLIPPING the heptagon out of the ring polygon (`Geometry2D.clip_polygons`, one
+    continuous boundary that bends around the forest; interior-forest holes dropped); and `_chain_segments`
+    closes a loop whose ends meet (<1.5u). Render-verified: continuous closed ring on a clear cluster, a
+    detour around perimeter forests, and no boundary sprawl with the 1u inset. Tests: `_test_farm_ring_dedup`,
+    `_test_farm_ring_continuity` (closed-loop assertion). 594 pass.
+- **Adjacent farm tiles' yellow ring roads didn't connect.** A promoted farm-ring road is built per-tile
+  and its geometry is clipped to a 1u inset of the hex (`building_visuals.gd` inset_hex), so each ring's
+  open end stops ~1u inside a shared edge; two adjacent tiles' `farmr:` ring edges land ~2.7u apart with
+  no shared node, and nothing bridges them (`_link_adjacent_roads` only stitches `rw:` trunk anchors;
+  `gateway_id`/`KIND_GATEWAY` are dead code, zero callers). Fix: `_bridge_ring_to_neighbours`, called at the
+  end of `_promote_farm_roads_if_reached`, finds the closest approach between this tile's ring and an
+  adjacent farm tile's ring and, if within `FARM_BRIDGE_MAX`=8u, adds one short STATE_BUILT stub edge so the
+  two yellow roads meet at the seam. Works whether the rings are open or closed loops (bridges the closest
+  points, not endpoints). Deterministic (pure geometry + `_sorted_edge_ids`, no RNG), synchronous (no work
+  order), water-gated (`_bridge_on_land` — never a bridgeless river/lake crossing), and deduped per sorted
+  tile-pair in `_farm_links` (persisted in export/import) so a reload or the other tile promoting never
+  double-bridges. Regression test `_test_farm_ring_bridge`. NOTE: only fires when adjacent clusters' rings
+  actually reach within 8u of each other (the straddling case — contiguous farm regions that fill the tiles
+  to the shared edge); two clusters that genuinely stop short stay unbridged by design (the tight cap stops
+  a long doubled road). 598 tests pass.
+- **Bridge reuse — investigated, NOT changed.** River crossings are predetermined `RoadCrossings`
+  gates (one per arm, interior to the tile), so genuine gates are always ~150–240u apart. A
+  reuse-discount on an already-bridged gate can only justify ~27u of detour (a ~3.5-cell deck ×
+  the 0.65 saving), so it is INERT at real gate spacing — it cannot make a road detour to reuse a
+  distant bridge, nor should it. A road that "ignores a bridge" is therefore either using a
+  legitimately-closer different-arm gate (optimal given the crossing model) or showing the doubling
+  teardrop at the gate (fixed above). A true bridge-reuse change would require either denser/
+  reuse-aware crossings or taming the river-bank hug (`COST_RIVER_HUG`) on the approach to a gate.

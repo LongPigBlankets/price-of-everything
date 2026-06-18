@@ -17,6 +17,21 @@ GOODS_CSV     = DATA / "Goods - goodsMVP.csv"
 BUILDINGS_CSV = DATA / "Buildings - buildingsMVP.csv"
 RECIPES_CSV   = DATA / "recipes_all.csv"
 
+# recipes_all.csv references some buildings by alias; resolve them to the real
+# building internal_name exactly like the game (scripts/catalog.gd BUILDING_ALIAS)
+# so the promotion gate here matches the Catalog's.
+BUILDING_ALIAS = {
+    "power_plant": "coal_power",
+    "factory": "industrial_factory",
+    "industrial_goods_factory": "industrial_factory",
+    "consumer_goods_factory": "consumer_factory",
+    "water_well": "water_pump",
+    "desal_plant": "desal",
+    "water_treatment_plant": "water_recycling",
+    "hydro_dam": "hydro_power_plant",
+    "forest": "new_forest",
+}
+
 # --- cost-model parameters (not in CSVs; edit here to retune) ---
 SELL      = 0.95
 WAGE      = {"u": 0.02, "s": 0.05, "h": 0.10}
@@ -82,7 +97,8 @@ with open(RECIPES_CSV) as f:
         if not row.get("recipe_id"): continue
         ins, energy, outs = parse_recipe(row)
         if not outs: continue                                   # infra / no production
-        bid = row.get("building_id", "")
+        bid_raw = row.get("building_id", "")
+        bid = BUILDING_ALIAS.get(bid_raw, bid_raw)              # resolve alias like the game
         if bid not in BLD:                                      # building must resolve
             skipped += 1; continue
         if any(g not in PRICE for g in list(ins) + list(outs)): # promotion gate: priced goods only

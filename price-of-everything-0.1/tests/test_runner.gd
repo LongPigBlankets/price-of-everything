@@ -104,8 +104,24 @@ func _ready() -> void:
 	await _test_grid_selection_follows_panel()
 	_test_start_buildings()
 	await _test_roads_v2()
+	await _test_road_attachment_projection()
 	await _test_road_works()
+	await _test_arin_bridge()
 	await _test_region_styles()
+	await _test_roads_avoid_buildings()
+	await _test_building_resnap()
+	await _test_block_subdivision()
+	await _test_enclosure_ring()
+	await _test_enclosure_river_and_stubs()
+	await _test_bridge_corridor()
+	await _test_subcomponents()
+	await _test_farms()
+	await _test_farm_lanes()
+	await _test_farm_road_promotion()
+	await _test_farm_ring_dedup()
+	await _test_farm_ring_bridge()
+	await _test_farm_ring_continuity()
+	await _test_farm_road_routing_bias()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -479,6 +495,1281 @@ func _test_roads_v2() -> void:
 	terrain.queue_free()
 	await get_tree().process_frame
 
+# Road doubling — Fix 2 regression. _nearest_attachment used to sample edge geometry every 8th
+# vertex (~240u apart after thinning), so a connect order's GOAL could land tens of u off the road
+# centreline, seeding a parallel "doubled" road. It now projects onto each SEGMENT, pinning the goal
+# to the true foot-of-perpendicular. This pins that behaviour (pre-fix the projected error was ~48u).
+func _test_road_attachment_projection() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	var coord := Vector2i(8, 9)
+	var c: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+	var realizer := RoadRealizer.new()
+	var net := RoadNetwork.instance()
+	var resA := realizer.route(nav, net, c + Vector2(-330, 0), c + Vector2(330, 0), {"identity": "dense_rural", "salt": 5})
+	if resA.ok:
+		var na := str(net.add_junction(c + Vector2(-330, 0), coord).id)
+		var nb := str(net.add_junction(c + Vector2(330, 0), coord).id)
+		realizer.commit(net, na, nb, RoadNetwork.TIER_TRUNK, resA, 0, RoadNetwork.STATE_BUILT)
+		var a_geo: PackedVector2Array = resA.geometry
+		var from: Vector2 = c + Vector2(7, 5)   # a few u off the MIDDLE of A (between sparse samples)
+		# true foot-of-perpendicular on A
+		var foot: Vector2 = a_geo[0]
+		var fd := 1.0e30
+		for i in range(a_geo.size() - 1):
+			var cp := Geometry2D.get_closest_point_to_segment(from, a_geo[i], a_geo[i + 1])
+			var dd := cp.distance_squared_to(from)
+			if dd < fd:
+				fd = dd
+				foot = cp
+		# old every-8th-vertex pick (what _nearest_attachment used to return)
+		var old_pos: Vector2 = a_geo[0]
+		var od := 1.0e30
+		for j in range(0, a_geo.size(), 8):
+			var dj := a_geo[j].distance_squared_to(from)
+			if dj < od:
+				od = dj
+				old_pos = a_geo[j]
+		var new_pos: Vector2 = RoadWorks._nearest_attachment(from).pos
+		var new_err := new_pos.distance_to(foot)
+		var old_err := old_pos.distance_to(foot)
+		_check(new_err < 2.0, "road attach: goal projects onto the centreline (err %.1f u)" % new_err)
+		_check(new_err <= old_err + 0.01, "road attach: projection never worse than vertex sampling (%.1f <= %.1f)" % [new_err, old_err])
+	RoadNetwork.reset()
+	terrain.queue_free()
+	await get_tree().process_frame
+
+# Phase 4 — roads avoid building footprints as a graduated COST, never a wall.
+# The regression guard: a tile saturated with footprints must STILL route (the
+# cost raster is finite). This pins the earlier hard-block bug that made dense
+# tiles impassable and silently dropped their roads. See road_realizer's
+# _building_cost / the "buildings" prep phase / _scatter_building_cost.
+func _test_roads_avoid_buildings() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var ca := Vector2i(9, 10)
+	var cb := Vector2i(11, 10)
+	var cmid := Vector2i(10, 10)
+	if not (terrain.tiles.has(ca) and terrain.tiles.has(cb) and terrain.tiles.has(cmid)):
+		_check(false, "roads-avoid: test tiles present")
+		terrain.queue_free()
+		return
+	var pa: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(ca))
+	var pb: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(cb))
+	var mid: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(cmid))
+	var realizer := RoadRealizer.new()
+	var net := RoadNetwork.new()
+	var opts := {"identity": "dense_rural", "salt": 7}
+
+	# Baseline: no footprint provider in the group yet.
+	var base := realizer.route(nav, net, pa, pb, opts)
+	_check(base.ok and base.geometry.size() > 0, "roads-avoid: baseline route ok (%s)" % str(base.get("reason", "")))
+
+	# Footprint provider stub honouring the realizer's contract: a node in the
+	# "building_footprints" group exposing footprint_discs() + footprint_version.
+	var stub_script := GDScript.new()
+	stub_script.source_code = "extends Node\nvar footprint_version := 0\nvar discs := []\nfunc footprint_discs() -> Array:\n\treturn discs\n"
+	stub_script.reload()
+	var bv := Node.new()
+	bv.set_script(stub_script)
+	bv.add_to_group("building_footprints")
+	add_child(bv)
+	await get_tree().process_frame
+
+	# Saturate the mid tile (~140 footprints packed across it) and re-route the
+	# same corridor straight through it. Must STILL succeed with non-empty
+	# geometry — the cost is graduated, never impassable.
+	var many: Array = []
+	for ix in range(-5, 6):
+		for iy in range(-6, 7):
+			many.append({"center": mid + Vector2(float(ix) * 40.0, float(iy) * 36.0), "radius": 22.0})
+	bv.discs = many
+	bv.footprint_version = 1
+	var thru := realizer.route(nav, net, pa, pb, opts)
+	_check(thru.ok and thru.geometry.size() > 0,
+		"roads-avoid: saturated tile still routes, no wall (%d discs, %s)" % [many.size(), str(thru.get("reason", ""))])
+	# Proof the cost is actually applied (not silently inert): a fully-saturated
+	# corridor must reroute away from the baseline straight line.
+	_check(thru.ok and base.ok and thru.geometry != base.geometry,
+		"roads-avoid: building cost changes the route (avoidance is live)")
+
+	bv.queue_free()
+	terrain.queue_free()
+	await get_tree().process_frame
+
+# Phase 4 — buildings re-snap to a road the player builds AFTER they were placed.
+# The reported "buildings don't snap" symptom was a MISSING re-pack trigger:
+# building_visuals never reacted to a road settling, so pre-road buildings kept
+# their roadless fallback layout forever. relayout_tile() (wired to
+# RoadWorks.order_settled) is the fix. This test places a building on a roadless
+# tile, builds a road across it, then asserts the building snaps to the frontage.
+# Arin Estuary Docks (tile_11_17): the tile centre sits ON the river crossing, so the
+# connect road does NOT cross the river — it must meet the goal-side (west) bridgehead
+# and never touch the FAR gate. Before the _snap_bridges fix it forced the full
+# two-bank span, jumping bridgelessly to the far (east) bridgehead and back.
+func _test_arin_bridge() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadCrossings.reset_for_tests()
+	RoadCrossings.build(terrain)
+	RoadNetwork.reset()
+	RoadNetwork.bootstrap_from_bake()
+	RoadWorks.reset()
+	var net := RoadNetwork.instance()
+	var crossings := RoadCrossings.for_tile("tile_11_17")
+	if crossings.is_empty():
+		_check(false, "arin: tile_11_17 has a river crossing")
+		terrain.queue_free()
+		RoadNetwork.reset(); RoadWorks.reset(); RoadCrossings.reset_for_tests()
+		return
+	var cx: Dictionary = crossings[0]
+	var ga: Vector2 = cx.gate_a
+	var gb: Vector2 = cx.gate_b
+	var oid := RoadWorks.enqueue_for_tile("tile_11_17")
+	_check(oid >= 0, "arin: connect road enqueues")
+	var frames := 0
+	while oid >= 0 and frames < 8000 and str(RoadWorks.orders[oid].state) in ["queued", "planning", "revealing"]:
+		RoadWorks._process(1.0 / 60.0)
+		frames += 1
+	if oid >= 0:
+		var order: Dictionary = RoadWorks.orders[oid]
+		var eid := str(order.edge_id)
+		_check(str(order.state) == "built" and net.edges.has(eid), "arin: connect road builds (state %s)" % str(order.state))
+		if net.edges.has(eid):
+			var geo: PackedVector2Array = net.edges[eid].geometry
+			var goal: Vector2 = order.get("goal", Vector2.ZERO)
+			# the bridgehead on the route's continuation side vs the opposite (far) one
+			var near_gate := ga if ga.distance_to(goal) <= gb.distance_to(goal) else gb
+			var far_gate := gb if near_gate == ga else ga
+			var hits_near := false
+			var hits_far := false
+			for p in geo:
+				if p.distance_to(near_gate) < 14.0:
+					hits_near = true
+				if p.distance_to(far_gate) < 14.0:
+					hits_far = true
+			_check(not hits_far, "arin: road never touches the far bridgehead (no bridgeless crossing)")
+			_check(hits_near, "arin: road meets the goal-side bridgehead")
+	terrain.queue_free()
+	RoadNetwork.reset()
+	RoadWorks.reset()
+	RoadCrossings.reset_for_tests()
+	await get_tree().process_frame
+
+# Urban block-subdivision: a seeded urban tile lays a grid of lots; buildings claim them
+# in emit order (tight, non-overlapping), fall back to the continuous packer when full,
+# feed roads-avoid via real footprints, and the layout is deterministic + demolish-stable.
+func _test_block_subdivision() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	RoadNetwork.bootstrap_from_bake()
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	# Roomy open tile so the lot grid actually forms (dense beltway tiles correctly skip
+	# block mode — too little clear space — and fall back to the continuous packer).
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		_check(false, "block: test tile exists")
+		bv.queue_free(); terrain.queue_free(); RoadNetwork.reset(); return
+	# the seeded per-tile decision is deterministic (recompute after clearing the cache)
+	var dec1 := bv._use_block_mode(tile_id, coord)
+	bv._tile_block_mode.erase(tile_id)
+	_check(dec1 == bv._use_block_mode(tile_id, coord), "block: mode decision is deterministic per tile")
+	# give the tile a straight BUILT road to anchor the block to (+ the roads flag)
+	var center: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+	(terrain.tiles[coord] as Dictionary)["infrastructure_present"] = ["roads"]
+	var net := RoadNetwork.instance()
+	var na: Dictionary = net.ensure_node("blk:a", RoadNetwork.KIND_JUNCTION, center + Vector2(-160, -110), coord)
+	var nb: Dictionary = net.ensure_node("blk:b", RoadNetwork.KIND_JUNCTION, center + Vector2(160, -110), coord)
+	net.add_edge(str(na.id), str(nb.id), RoadNetwork.TIER_LOCAL, PackedVector2Array([center + Vector2(-160, -110), center + Vector2(160, -110)]), [coord], [], 1, RoadNetwork.STATE_BUILT)
+	# force block mode and fill a block
+	bv._tile_block_mode[tile_id] = true
+	var iids: Array = []
+	for i in 6:
+		iids.append(MatchState.add_building("b_test_factory", "", tile_id, "npc", "blk_%d" % i))
+		bv.on_building_placed(tile_id, "b_test_factory", "", str(iids[i]), coord)
+	var placed_n := 0
+	for q in iids:
+		if bv._placement_index.has(str(q)):
+			placed_n += 1
+	_check(placed_n == 6, "block: all buildings placed (lots + fallback) (%d/6)" % placed_n)
+	var tmpl: Dictionary = bv._tile_block_templates.get(tile_id, {})
+	_check(not tmpl.is_empty(), "block: a lot grid was built (%d lots)" % (tmpl.get("lots", []) as Array).size())
+	_check(bv.footprint_discs().size() == placed_n, "block: every building yields an avoidance disc")
+	# axis-aligned, spaced lots → footprints don't overlap each other
+	var rects: Array = bv.footprint_rects_on_tile(coord)
+	var overlap := false
+	for i in rects.size():
+		for j in range(i + 1, rects.size()):
+			if (rects[i] as Rect2).intersects(rects[j] as Rect2):
+				overlap = true
+	_check(not overlap, "block: lot buildings do not overlap (%d footprints)" % rects.size())
+	# demolish frees a lot; survivors stay put (re-pack re-claims the same lots)
+	bv.remove_instance(str(iids[0]))
+	var survivors := 0
+	for k in range(1, 6):
+		if bv._placement_index.has(str(iids[k])):
+			survivors += 1
+	_check(not bv._placement_index.has(str(iids[0])) and survivors == 5, "block: demolish frees a lot, survivors remain (%d/5)" % survivors)
+	# clip regression: a straight road running well beyond the tile must yield an IN-TILE
+	# anchor run, not the full multi-tile span (the tile_11_17 "run=1052u → 0 lots" bug).
+	var spanning := PackedVector2Array()
+	for k in range(-12, 13):
+		spanning.append(center + Vector2(float(k) * 60.0, 150.0))   # straight, x in [-720, 720]
+	var sa: Dictionary = net.ensure_node("blkspan:a", RoadNetwork.KIND_JUNCTION, spanning[0], coord)
+	var sb2: Dictionary = net.ensure_node("blkspan:b", RoadNetwork.KIND_JUNCTION, spanning[spanning.size() - 1], coord)
+	net.add_edge(str(sa.id), str(sb2.id), RoadNetwork.TIER_LOCAL, spanning, [coord], [], 1, RoadNetwork.STATE_BUILT)
+	var run := bv._longest_straight_road(coord)
+	_check(not run.is_empty(), "block: a road crossing the tile yields an anchor run")
+	if not run.is_empty():
+		var run_len: float = (run[0] as Vector2).distance_to(run[1] as Vector2)
+		_check(run_len < 560.0, "block: anchor run clipped to the tile (%.0fu, not the multi-tile span)" % run_len)
+	for c in 6:
+		MatchState.remove_building("blk_%d" % c)
+	bv.queue_free()
+	terrain.queue_free()
+	RoadNetwork.reset()
+	await get_tree().process_frame
+
+# Block enclosure (B4, redesigned): the ring is DERIVED FROM THE BLOCK TEMPLATE's lot grid (not a footprint
+# cluster), prepared UP FRONT on a seeded ~ENCLOSURE_PROB% of block tiles, and CONNECTED to the road network.
+# Fires once per tile (sentinel marker). Forces a road + block mode so a template builds, then checks the ring
+# geometry (template-derived, in-hex, bounded), the seed gate, the road connection, fire-once, and save/load.
+func _test_enclosure_ring() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	RoadWorks.reset()
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	var net := RoadNetwork.instance()
+	# Pick a SEEDED urban tile (enclseed < ENCLOSURE_PROB) and a NON-seeded urban tile.
+	var seeded := ""
+	var unseeded := ""
+	for coord in terrain.tiles:
+		if str(terrain.tiles[coord].get("type", "")).to_lower() != "urban":
+			continue
+		var tid := "tile_%d_%d" % [coord.x + 1, coord.y + 1]
+		if RoadHash.pick("enclseed|%s" % tid, 100) < RoadWorks.ENCLOSURE_PROB:
+			if seeded == "":
+				seeded = tid
+		elif unseeded == "":
+			unseeded = tid
+		if seeded != "" and unseeded != "":
+			break
+	if seeded == "":
+		_check(false, "enclosure: found a seeded urban tile")
+		bv.queue_free(); terrain.queue_free(); RoadNetwork.reset(); RoadWorks.reset(); return
+	# no block template anywhere yet -> the geometry function yields no ring
+	_check(bv.enclosure_geometry_for_coord(terrain.id_to_coord(seeded)).is_empty(), "enclosure: no block template -> no ring")
+	var ucoord: Vector2i = terrain.id_to_coord(seeded)
+	var c: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(ucoord))
+	# straight BUILT road (both ends in-hex) + force block mode, then place 6 player buildings → template builds
+	var na := net.ensure_node("etest:a", RoadNetwork.KIND_JUNCTION, c + Vector2(-160, -110), ucoord)
+	var nb := net.ensure_node("etest:b", RoadNetwork.KIND_JUNCTION, c + Vector2(160, -110), ucoord)
+	net.add_edge(str(na.id), str(nb.id), RoadNetwork.TIER_LOCAL, PackedVector2Array([c + Vector2(-160, -110), c + Vector2(160, -110)]), [ucoord], [], 1, RoadNetwork.STATE_BUILT)
+	bv._tile_block_mode[seeded] = true
+	var last := ""
+	for i in 6:
+		var iid: String = MatchState.add_building("b_007", "", seeded, "player_1", "encl_%d" % i)
+		bv.on_building_placed(seeded, "b_007", "", iid, ucoord)
+		last = iid
+	RoadWorks._on_construction_completed(last, seeded)
+	await get_tree().process_frame   # enclosure fires DEFERRED
+	var encl: Array = []
+	var all_ok := true
+	for eid in net.edges:
+		var e: Dictionary = net.edges[eid]
+		if not (str(e.a).begins_with("encl:") or str(e.b).begins_with("encl:")):
+			continue
+		encl.append(eid)
+		if str(e.state) != RoadNetwork.STATE_BUILT or str(e.tier) != RoadNetwork.TIER_LOCAL:
+			all_ok = false
+		for p in (e.geometry as PackedVector2Array):
+			var r: Vector2 = (p as Vector2) - c
+			if not (absf(r.x) <= 271.0 and absf(r.y) <= 241.0 and 240.0 * absf(r.x) + 135.0 * absf(r.y) <= 65200.0):
+				all_ok = false   # vertex outside the tile hex
+	_check(encl.size() >= 1, "enclosure: a ring was injected from the block template (%d edges)" % encl.size())
+	_check(all_ok, "enclosure: ring edges are STATE_BUILT + TIER_LOCAL + inside the hex")
+	_check(int(RoadWorks._enclosure_bands.get(seeded, 0)) == 1, "enclosure: sentinel marker recorded")
+	_check(not (bv._tile_block_templates.get(seeded, {}) as Dictionary).is_empty(), "enclosure: a block template backs the ring")
+	_check((RoadWorks._enclosure_edges.get(seeded, []) as Array).size() == encl.size(), "enclosure: edge ids tracked")
+	# CHUNK fill: a seeded tile uses a coarse 2-6 cell grid and a building FILLS its cell (big footprint).
+	# (Floor is 2 — the adaptive depth keeps a real block even when a river/edge cuts the deep row.)
+	var ctmpl: Dictionary = bv._tile_block_templates.get(seeded, {})
+	var clots: Array = ctmpl.get("lots", [])
+	_check(ctmpl.has("cell") and clots.size() >= 2 and clots.size() <= 6, "enclosure: seeded tile uses a 2-6 chunk grid (%d cells)" % clots.size())
+	# REGRESSION (the ring poisons the template on rebuild): the enclosure ring is a STATE_BUILT edge, so
+	# rebuilding the template with it live must NOT treat it as a street — otherwise _longest_straight_road
+	# anchors to the ring and _block_road_segments clears the lots the ring wraps, collapsing the grid (the
+	# enclosure then vanishes + buildings scatter under it on the next reload). Rebuild now (ring is live) and
+	# assert the SAME chunk grid re-forms — _is_enclosure_edge keeps the ring out of the block inputs.
+	bv._tile_block_templates.erase(seeded)
+	bv.ensure_block_template_for(seeded, ucoord)
+	var rtmpl: Dictionary = bv._tile_block_templates.get(seeded, {})
+	var rlots: Array = rtmpl.get("lots", [])
+	_check(rtmpl.get("cell", Vector2.ZERO) == ctmpl.get("cell", Vector2.ZERO) and rlots.size() == clots.size(), "enclosure: template SURVIVES rebuild with the ring live (%d lots cell=%s, was %d)" % [rlots.size(), str(rtmpl.get("cell", Vector2.ZERO)), clots.size()])
+	var cellv: Vector2 = ctmpl.get("cell", Vector2.ZERO)
+	if cellv != Vector2.ZERO:
+		var fmax := 0.0
+		for rect in bv.footprint_rects_on_tile(ucoord):
+			fmax = maxf(fmax, maxf((rect as Rect2).size.x, (rect as Rect2).size.y))
+		_check(fmax >= maxf(cellv.x, cellv.y) * 0.8, "enclosure: a building FILLS its chunk (footprint %.0f vs cell %.0fx%.0f)" % [fmax, cellv.x, cellv.y])
+	# ring bounded to ENCL_MAX in the road frame
+	var rang := 0.0
+	var rrun: Array = bv._longest_straight_road(ucoord)
+	if not rrun.is_empty():
+		rang = wrapf(((rrun[1] as Vector2) - (rrun[0] as Vector2)).angle(), -PI * 0.5, PI * 0.5)
+	var elo := Vector2(1.0e9, 1.0e9)
+	var ehi := Vector2(-1.0e9, -1.0e9)
+	for beid in encl:
+		var be: Dictionary = net.edges[beid]
+		if str(be.a).contains(":conn") or str(be.b).contains(":conn"):
+			continue   # the road connector reaches OUT to the street — not part of the ring's footprint
+		for bp in (be.geometry as PackedVector2Array):
+			var br: Vector2 = ((bp as Vector2) - c).rotated(-rang)
+			elo = elo.min(br)
+			ehi = ehi.max(br)
+	var eext: Vector2 = ehi - elo
+	_check(eext.x <= 246.0 and eext.y <= 186.0, "enclosure: ring bounded to the block-size cap (%.0fx%.0f)" % [eext.x, eext.y])
+	# CONNECTED: some encl: edge endpoint lands on a non-enclosure road (no longer a floating loop)
+	_check(_encl_touches_road(net), "enclosure: the ring connects to the road network")
+	# fire ONCE: re-firing adds no edges, marker stays at the sentinel
+	var after := net.edges.size()
+	RoadWorks._on_construction_completed(last, seeded)
+	await get_tree().process_frame
+	_check(net.edges.size() == after and int(RoadWorks._enclosure_bands.get(seeded, 0)) == 1, "enclosure: fires ONCE (no re-fire)")
+	# a NON-seeded urban tile never encloses, even with a road + block mode
+	if unseeded != "":
+		var ncoord: Vector2i = terrain.id_to_coord(unseeded)
+		var nc: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(ncoord))
+		var nna := net.ensure_node("ntest:a", RoadNetwork.KIND_JUNCTION, nc + Vector2(-160, -110), ncoord)
+		var nnb := net.ensure_node("ntest:b", RoadNetwork.KIND_JUNCTION, nc + Vector2(160, -110), ncoord)
+		net.add_edge(str(nna.id), str(nnb.id), RoadNetwork.TIER_LOCAL, PackedVector2Array([nc + Vector2(-160, -110), nc + Vector2(160, -110)]), [ncoord], [], 1, RoadNetwork.STATE_BUILT)
+		bv._tile_block_mode[unseeded] = true
+		var nlast := ""
+		for i in 6:
+			var nid: String = MatchState.add_building("b_007", "", unseeded, "player_1", "nencl_%d" % i)
+			bv.on_building_placed(unseeded, "b_007", "", nid, ncoord)
+			nlast = nid
+		var npre := net.edges.size()
+		RoadWorks._on_construction_completed(nlast, unseeded)
+		await get_tree().process_frame
+		_check(net.edges.size() == npre and not RoadWorks._enclosure_bands.has(unseeded), "enclosure: a non-seeded tile never encloses")
+		for i in 6:
+			MatchState.remove_building("nencl_%d" % i)
+	# a non-urban tile never encloses
+	var rural := ""
+	for coord in terrain.tiles:
+		if str(terrain.tiles[coord].get("type", "")).to_lower() == "rural":
+			rural = "tile_%d_%d" % [coord.x + 1, coord.y + 1]
+			break
+	if rural != "":
+		var rcoord: Vector2i = terrain.id_to_coord(rural)
+		for i in 6:
+			var rid: String = MatchState.add_building("b_007", "", rural, "player_1", "enclr_%d" % i)
+			bv.on_building_placed(rural, "b_007", "", rid, rcoord)
+		var rpre := net.edges.size()
+		RoadWorks._on_construction_completed("enclr_5", rural)
+		await get_tree().process_frame
+		_check(net.edges.size() == rpre and not RoadWorks._enclosure_bands.has(rural), "enclosure: a non-urban tile never encloses")
+		for i in 6:
+			MatchState.remove_building("enclr_%d" % i)
+	# save/load: encl: edges survive, marker persists, no re-fire
+	var net_snap := net.export_state()
+	var rw_snap := RoadWorks.export_state()
+	RoadNetwork.reset(); RoadWorks.reset()
+	RoadNetwork.instance().import_state(net_snap)
+	RoadWorks.import_state(rw_snap)
+	var net2 := RoadNetwork.instance()
+	var encl2 := 0
+	for eid2 in net2.edges:
+		var e2: Dictionary = net2.edges[eid2]
+		if str(e2.a).begins_with("encl:") or str(e2.b).begins_with("encl:"):
+			encl2 += 1
+	_check(encl2 == encl.size(), "enclosure: encl: edges survive save/load (%d)" % encl2)
+	_check(int(RoadWorks._enclosure_bands.get(seeded, 0)) == 1, "enclosure: marker persists across save/load")
+	for i in 6:
+		MatchState.remove_building("encl_%d" % i)
+	bv.queue_free()
+	terrain.queue_free()
+	RoadNetwork.reset()
+	RoadWorks.reset()
+	await get_tree().process_frame
+
+## True if any enclosure-ring endpoint lands on (within ~2u of) a non-enclosure road segment — i.e. the ring
+## is wired into the street network, not a floating loop.
+func _encl_touches_road(net) -> bool:
+	var road_segs: Array = []
+	for eid in net.edges:
+		var e: Dictionary = net.edges[eid]
+		if str(e.a).begins_with("encl:") or str(e.b).begins_with("encl:"):
+			continue
+		var g: PackedVector2Array = e.geometry
+		for i in range(g.size() - 1):
+			road_segs.append([g[i], g[i + 1]])
+	for eid in net.edges:
+		var e: Dictionary = net.edges[eid]
+		if not (str(e.a).begins_with("encl:") or str(e.b).begins_with("encl:")):
+			continue
+		var geo: PackedVector2Array = e.geometry
+		if geo.is_empty():
+			continue
+		for ep in [geo[0], geo[geo.size() - 1]]:
+			for s in road_segs:
+				if Geometry2D.get_closest_point_to_segment(ep, s[0], s[1]).distance_to(ep) < 2.0:
+					return true
+	return false
+
+# Enclosure river-bank clip + stub spacing/avoid helpers (the four "budge / no-cross / 50u / no-stub-inside"
+# rules). Pure geometry, so it runs without a baked map.
+func _test_enclosure_river_and_stubs() -> void:
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	# vertical river at x=0 (rel-to-centre): the two banks read as opposite sides; no river -> 0.
+	var rivers: Array = [[Vector2(0.0, -120.0), Vector2(0.0, 120.0)]]
+	var sL := bv._river_side(Vector2(-50.0, 0.0), rivers)
+	var sR := bv._river_side(Vector2(50.0, 0.0), rivers)
+	_check(sL != 0 and sR != 0 and sL != sR, "river: the two banks read as opposite sides")
+	_check(bv._river_side(Vector2(10.0, 0.0), []) == 0, "river: no river -> side 0")
+	# a block straddling the river, anchor on the LEFT bank -> clipped to the left, never crossing x=0
+	var quad: Array = [Vector2(-90.0, -60.0), Vector2(90.0, -60.0), Vector2(90.0, 60.0), Vector2(-90.0, 60.0)]
+	var clipped := bv._clip_to_river_bank(quad, rivers, Vector2(-50.0, 0.0), sL)
+	var maxx := -1.0e9
+	for p in clipped:
+		maxx = maxf(maxx, (p as Vector2).x)
+	_check(clipped.size() >= 3 and maxx <= 0.0, "river: block clipped to the anchor's bank, no crossing (max x=%.1f)" % maxx)
+	# a river far from the block leaves it untouched
+	var far := bv._clip_to_river_bank(quad, [[Vector2(900.0, -120.0), Vector2(900.0, 120.0)]], Vector2(-50.0, 0.0), -1)
+	_check(far.size() == quad.size(), "river: a distant river leaves the block unchanged")
+	# multi-segment (bent) river: the same bank reads consistently (deterministic nearest-segment tiebreak)
+	var bend: Array = [[Vector2(0.0, -100.0), Vector2(0.0, 0.0)], [Vector2(0.0, 0.0), Vector2(30.0, 100.0)]]
+	var b1 := bv._river_side(Vector2(-60.0, -50.0), bend)
+	var b2 := bv._river_side(Vector2(-60.0, 50.0), bend)
+	_check(b1 != 0 and b1 == b2, "river: a bent river gives one consistent side for the same bank")
+	bv.queue_free()
+	await get_tree().process_frame
+	# stub spacing: a root within 50u of a placed one is rejected; alt-origin finds a far one (or -1).
+	var placed: Array = [Vector2(0.0, 0.0)]
+	_check(RoadOffshoots._too_close(Vector2(30.0, 0.0), placed, RoadOffshoots.STUB_MIN_GAP), "stub: a 30u-apart root is too close (<50u)")
+	_check(not RoadOffshoots._too_close(Vector2(60.0, 0.0), placed, RoadOffshoots.STUB_MIN_GAP), "stub: a 60u-apart root is fine (>=50u)")
+	var origins: Array = [[Vector2(20.0, 0.0), Vector2.RIGHT], [Vector2(80.0, 0.0), Vector2.RIGHT]]
+	_check(RoadOffshoots._alt_origin(origins, placed, RoadOffshoots.STUB_MIN_GAP) == 1, "stub: alt-origin skips the close root for the far one")
+	_check(RoadOffshoots._alt_origin([[Vector2(20.0, 0.0), Vector2.RIGHT]], placed, RoadOffshoots.STUB_MIN_GAP) == -1, "stub: alt-origin returns -1 when no root is far enough")
+	# enclosure avoidance: perp flips away from the block centroid; poly-in-hull detects interior entry.
+	var away := RoadOffshoots._away_from_enclosure(Vector2(100.0, 0.0), Vector2(-1.0, 0.0), Vector2(0.0, 0.0), true)
+	_check(away.x > 0.0, "stub: perp re-aimed AWAY from the enclosure centroid")
+	var hull := PackedVector2Array([Vector2(-50.0, -50.0), Vector2(50.0, -50.0), Vector2(50.0, 50.0), Vector2(-50.0, 50.0)])
+	_check(RoadOffshoots._poly_in_polygon(PackedVector2Array([Vector2(0.0, 0.0), Vector2(200.0, 200.0)]), hull), "stub: a poly entering the enclosure hull is flagged")
+	_check(not RoadOffshoots._poly_in_polygon(PackedVector2Array([Vector2(200.0, 200.0), Vector2(300.0, 300.0)]), hull), "stub: a poly fully outside is not flagged")
+	# midpoint sampling: a poly whose VERTICES straddle the hull but whose edge crosses it is still flagged
+	_check(RoadOffshoots._poly_in_polygon(PackedVector2Array([Vector2(-200.0, 0.0), Vector2(200.0, 0.0)]), hull), "stub: an edge crossing the hull (vertices outside) is flagged")
+	# stubs never cross water (request 2): with the baked nav, a poly through a water cell is rejected
+	var nav := NavGrid.instance()
+	if nav != null and nav.is_ready():
+		var wat := Vector2.ZERO
+		var lnd := Vector2.ZERO
+		var fw := false
+		var fl := false
+		for gy in range(0, nav.gh, 5):
+			for gx in range(0, nav.gw, 5):
+				var w := nav.water(gx, gy)
+				if not fw and w != NavGrid.WATER_LAND:
+					wat = nav.world_of(gx, gy); fw = true
+				elif not fl and w == NavGrid.WATER_LAND:
+					lnd = nav.world_of(gx, gy); fl = true
+			if fw and fl:
+				break
+		if fw:
+			_check(RoadOffshoots._crosses_water(PackedVector2Array([wat, wat]), nav), "stub: a poly on water is flagged as crossing")
+		if fl:
+			_check(not RoadOffshoots._crosses_water(PackedVector2Array([lnd, lnd]), nav), "stub: a poly on land is not flagged")
+		# nearby stub tips connect (new request) — but only when the link clears water + banned terrain.
+		var solid := Vector2.ZERO
+		var fsolid := false
+		for gy2 in range(4, nav.gh - 4, 5):
+			for gx2 in range(4, nav.gw - 4, 5):
+				var ok := true
+				for d in [Vector2i(-3, -3), Vector2i(3, -3), Vector2i(-3, 3), Vector2i(3, 3), Vector2i.ZERO]:
+					if nav.water(gx2 + d.x, gy2 + d.y) != NavGrid.WATER_LAND or nav.level(gx2 + d.x, gy2 + d.y) >= RoadRealizer.BAN_LEVEL:
+						ok = false
+				if ok:
+					solid = nav.world_of(gx2, gy2); fsolid = true; break
+			if fsolid:
+				break
+		if fsolid:
+			_check(RoadOffshoots._connector_clear(solid + Vector2(-8.0, 0.0), solid + Vector2(8.0, 0.0), nav), "stub: a short link on solid land is clear")
+			if fw:
+				_check(not RoadOffshoots._connector_clear(solid, wat, nav), "stub: a link reaching into water is not clear")
+			# two free tips 10u apart on land -> one connector added (3-pt, road width)
+			var ss: Array = [PackedVector2Array([solid + Vector2(-40.0, 0.0), solid + Vector2(-5.0, 0.0)]), PackedVector2Array([solid + Vector2(40.0, 0.0), solid + Vector2(5.0, 0.0)])]
+			RoadOffshoots._connect_stub_tips(ss, nav)
+			_check(ss.size() == 3 and (ss[2] as PackedVector2Array).size() == 3, "stub: tips <20u apart on land are joined (%d stubs)" % ss.size())
+			# tips 80u apart -> no connector
+			var ss2: Array = [PackedVector2Array([solid + Vector2(-80.0, 0.0), solid + Vector2(-40.0, 0.0)]), PackedVector2Array([solid + Vector2(80.0, 0.0), solid + Vector2(40.0, 0.0)])]
+			RoadOffshoots._connect_stub_tips(ss2, nav)
+			_check(ss2.size() == 2, "stub: tips >20u apart are not joined")
+		# without a nav, a connection is never invented
+		var ss3: Array = [PackedVector2Array([Vector2(-40.0, 0.0), Vector2(-5.0, 0.0)]), PackedVector2Array([Vector2(40.0, 0.0), Vector2(5.0, 0.0)])]
+		RoadOffshoots._connect_stub_tips(ss3, null)
+		_check(ss3.size() == 2, "stub: without a nav, tips are never connected")
+	# network through-roads clip OUT of an enclosure interior (request 1)
+	var rnv := Node2D.new()
+	rnv.set_script(load("res://scripts/road_network_visuals.gd"))
+	add_child(rnv)
+	await get_tree().process_frame
+	var run2 := PackedVector2Array([Vector2(-100.0, 0.0), Vector2(-60.0, 0.0), Vector2(0.0, 0.0), Vector2(60.0, 0.0), Vector2(100.0, 0.0)])
+	var clipped2: Array = rnv._clip_out_hulls([run2], [hull])
+	var inside_n := 0
+	for r in clipped2:
+		for p in (r as PackedVector2Array):
+			if Geometry2D.is_point_in_polygon(p, hull):
+				inside_n += 1
+	_check(clipped2.size() >= 1 and inside_n == 0, "roads: a through-road is clipped OUT of the enclosure interior")
+	_check((rnv._clip_out_hulls([run2], []) as Array).size() == 1, "roads: no enclosure -> the road is unchanged")
+	rnv.queue_free()
+	await get_tree().process_frame
+	# stub overlap (new): a long stub running PARALLEL + close to a road is dropped; a perpendicular one isn't.
+	var hroad: Array = [[Vector2(0.0, 0.0), Vector2(220.0, 0.0)]]   # one horizontal road
+	var par := PackedVector2Array([Vector2(40.0, 12.0), Vector2(70.0, 12.0), Vector2(100.0, 12.0), Vector2(130.0, 12.0), Vector2(160.0, 12.0), Vector2(190.0, 12.0)])
+	_check(RoadOffshoots._runs_alongside_road(par, hroad), "stub: a parallel + close stub reads as a doubled road")
+	var perp := PackedVector2Array([Vector2(110.0, 0.0), Vector2(110.0, 30.0), Vector2(110.0, 60.0), Vector2(110.0, 95.0)])
+	_check(not RoadOffshoots._runs_alongside_road(perp, hroad), "stub: a perpendicular stub is not flagged as doubled")
+	# bridge-head attachment (new): a connect-road near a bridge targets the same-bank HEAD, not a mid-edge point.
+	RoadNetwork.reset()
+	var bnet := RoadNetwork.instance()
+	var bcoord := Vector2i(0, 0)
+	var ba := bnet.ensure_node("brtest:a", RoadNetwork.KIND_JUNCTION, Vector2(100.0, -80.0), bcoord)
+	var bb := bnet.ensure_node("brtest:b", RoadNetwork.KIND_JUNCTION, Vector2(100.0, 80.0), bcoord)
+	bnet.add_edge(str(ba.id), str(bb.id), RoadNetwork.TIER_LOCAL, PackedVector2Array([Vector2(100.0, -80.0), Vector2(100.0, 80.0)]), [bcoord], [{"point": Vector2(100.0, 0.0), "tangent": Vector2(0.0, 1.0)}], 0, RoadNetwork.STATE_BUILT)
+	var reach := RoadCrossings.GATE_OFFSET + RoadRealizer.BRIDGE_BANK_STUB
+	var att := RoadWorks._nearest_attachment(Vector2(60.0, -50.0))   # off the edge, north (same) bank
+	_check((att.get("pos", Vector2.ZERO) as Vector2).distance_to(Vector2(100.0, -reach)) < 2.0, "bridge: a connect-road near a bridge attaches to the same-bank head")
+	var att_far := RoadWorks._nearest_attachment(Vector2(60.0, 900.0))   # far from the bridge — unaffected
+	_check((att_far.get("pos", Vector2.ZERO) as Vector2).distance_to(Vector2(100.0, -reach)) > 50.0, "bridge: a road far from any bridge is not pulled to a head")
+	RoadNetwork.reset()
+	await get_tree().process_frame
+
+# A predetermined river crossing reserves a road corridor: a band along the river + a stub
+# straight out from the bridge on each bank, so the road reaches the bridge without being
+# forced over riverside buildings (the Arin overlap). Buildings keep RIVER_ROAD_PAD clear.
+# Subcomponents: sizable buildings fund a second pass of round tanks + annexes, placed in spare
+# space beside the parent, deterministic, never overlapping the buildings.
+func _test_subcomponents() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		_check(false, "subcomp: test tile exists")
+		bv.queue_free(); terrain.queue_free(); return
+	# two sizable buildings (industrial_factory, tile_size_used 10 -> ~3 ancillaries each)
+	for i in 2:
+		var iid: String = MatchState.add_building("b_007", "", tile_id, "npc", "sub_b_%d" % i)
+		bv.on_building_placed(tile_id, "b_007", "", iid, coord)
+	bv._rebuild_subcomponents(tile_id)
+	var n1 := (bv._subcomponents as Array).size()
+	_check(n1 > 0, "subcomp: tanks/annexes placed for sizable buildings (%d)" % n1)
+	bv._rebuild_subcomponents(tile_id)
+	_check((bv._subcomponents as Array).size() == n1, "subcomp: rebuild is deterministic (%d)" % (bv._subcomponents as Array).size())
+	var brects: Array = bv.footprint_rects_on_tile(coord)
+	var max_hits := 0
+	for sc in bv._subcomponents:
+		var hits := 0
+		for br in brects:
+			if (sc.bb as Rect2).intersects(br as Rect2):
+				hits += 1
+		max_hits = maxi(max_hits, hits)
+	# annexes attach to (overlap) their own parent; tanks sit clear. None may straddle two buildings.
+	_check(max_hits <= 1, "subcomp: each ancillary touches at most its own parent (max %d)" % max_hits)
+	for c in 2:
+		MatchState.remove_building("sub_b_%d" % c)
+	bv.queue_free()
+	terrain.queue_free()
+	RoadNetwork.reset()
+	await get_tree().process_frame
+
+func _test_farms() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		_check(false, "farms: test tile exists")
+		bv.queue_free(); terrain.queue_free(); return
+	var center: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+	# A farm-only tile gravitates to the river; the affinity flips to the edge only once a
+	# non-farm building shares the tile.
+	_check(not bv._has_non_farm_buildings(tile_id), "farms: tile starts with no non-farm buildings")
+	var fid: String = MatchState.add_building("b_014", "", tile_id, "npc", "farm_a")
+	bv.on_building_placed(tile_id, "b_014", "", fid, coord)
+	var farm := {}
+	for p in bv._placements:
+		if str(p.tile_id) == tile_id and str(p.cat) == "farm":
+			farm = p
+	_check(not farm.is_empty(), "farms: a farm field was placed")
+	if farm.is_empty():
+		MatchState.remove_building("farm_a")
+		bv.queue_free(); terrain.queue_free(); RoadNetwork.reset()
+		await get_tree().process_frame
+		return
+	var fverts: PackedVector2Array = farm.verts
+	_check(fverts.size() >= 5, "farms: field is polygonal (%d verts)" % fverts.size())
+	# Clipped to the hex: every vertex sits inside the flat-top hex (a hair of float slop allowed).
+	var all_in := true
+	for v in fverts:
+		var r: Vector2 = v - center
+		if absf(r.x) > 271.0 or absf(r.y) > 241.0 or 240.0 * absf(r.x) + 135.0 * absf(r.y) > 65200.0:
+			all_in = false
+	_check(all_in, "farms: field is clipped to the hex")
+	_check((farm.get("hatch", []) as Array).size() > 0, "farms: dark-green hatch baked")
+	# Brown barn + silo outbuildings.
+	bv._rebuild_subcomponents(tile_id)
+	var browns := 0
+	for sc in bv._subcomponents:
+		if str(sc.tile_id) == tile_id and (sc.color as Color).is_equal_approx(Color(0.50, 0.33, 0.16)):
+			browns += 1
+	_check(browns >= 1, "farms: brown barn/silo placed (%d)" % browns)
+	var n1 := (bv._subcomponents as Array).size()
+	bv._rebuild_subcomponents(tile_id)
+	_check((bv._subcomponents as Array).size() == n1, "farms: subcomponent rebuild is deterministic")
+	# A non-farm building on the tile flips the farm's affinity (river -> edge).
+	var bid: String = MatchState.add_building("b_007", "", tile_id, "npc", "farm_factory")
+	bv.on_building_placed(tile_id, "b_007", "", bid, coord)
+	_check(bv._has_non_farm_buildings(tile_id), "farms: a non-farm building flips edge-affinity")
+	# Regression: a farm on a BLOCK-MODE tile keeps its polygonal field + hatch — it must never be
+	# turned into a rectangular block lot (farms bypass _claim_slot). Give the tile a straight built
+	# road so a block template can form, force block mode on, then place a fresh farm.
+	var net := RoadNetwork.instance()
+	var fa: Dictionary = net.ensure_node("farmblk:a", RoadNetwork.KIND_JUNCTION, center + Vector2(-160, -110), coord)
+	var fb: Dictionary = net.ensure_node("farmblk:b", RoadNetwork.KIND_JUNCTION, center + Vector2(160, -110), coord)
+	net.add_edge(str(fa.id), str(fb.id), RoadNetwork.TIER_LOCAL, PackedVector2Array([center + Vector2(-160, -110), center + Vector2(160, -110)]), [coord], [], 1, RoadNetwork.STATE_BUILT)
+	bv._tile_block_mode[tile_id] = true
+	bv._tile_block_templates.erase(tile_id)
+	bv._tile_land.erase(tile_id); bv._tile_landkeys.erase(tile_id); bv._tile_segs.erase(tile_id); bv._tile_rivers.erase(tile_id)
+	var fid2: String = MatchState.add_building("b_014", "", tile_id, "npc", "farm_blk")
+	bv.on_building_placed(tile_id, "b_014", "", fid2, coord)
+	var farm2 := {}
+	for p in bv._placements:
+		if str(p.instance_id) == fid2:
+			farm2 = p
+	var poly_ok: bool = not farm2.is_empty() \
+		and (farm2.get("verts", PackedVector2Array()) as PackedVector2Array).size() >= 5 \
+		and (farm2.get("hatch", []) as Array).size() > 0
+	_check(poly_ok, "farms: a farm on a block-mode tile keeps its polygonal field (not a block lot)")
+	MatchState.remove_building("farm_a")
+	MatchState.remove_building("farm_factory")
+	MatchState.remove_building("farm_blk")
+	bv.queue_free()
+	terrain.queue_free()
+	RoadNetwork.reset()
+	await get_tree().process_frame
+
+func _test_farm_lanes() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		_check(false, "farm-lanes: test tile exists")
+		bv.queue_free(); terrain.queue_free(); return
+	# Two adjacent farms → they Voronoi-snap and a thin lane runs between them.
+	for i in 2:
+		var iid: String = MatchState.add_building("b_014", "", tile_id, "npc", "flane_%d" % i)
+		bv.on_building_placed(tile_id, "b_014", "", iid, coord)
+	bv._rebuild_subcomponents(tile_id)
+	var nfarms := 0
+	for p in bv._placements:
+		if str(p.tile_id) == tile_id and str(p.cat) == "farm":
+			nfarms += 1
+	_check(nfarms == 2, "farm-lanes: two farms placed on the tile (%d)" % nfarms)
+	if nfarms == 2:
+		var lanes: Array = bv._farm_lanes.get(tile_id, [])
+		_check(lanes.size() >= 1, "farm-lanes: a lane runs between adjacent farms (%d)" % lanes.size())
+		_check(bv._farm_render.has("flane_0") and bv._farm_render.has("flane_1"), "farm-lanes: each field has a cell-clipped render shape")
+		bv._rebuild_subcomponents(tile_id)   # deterministic
+		_check((bv._farm_lanes.get(tile_id, []) as Array).size() == lanes.size(), "farm-lanes: lane count is deterministic")
+	# Geometry kit (deterministic, map-independent):
+	var sq := PackedVector2Array([Vector2(-10, -10), Vector2(10, -10), Vector2(10, 10), Vector2(-10, 10)])
+	# _near_field_runs trims a long segment to just the part within `reach` of the square.
+	var runs: Array = bv._near_field_runs(Vector2(-100, 0), Vector2(100, 0), [sq], 5.0)
+	var trim_ok := runs.size() == 1
+	if trim_ok:
+		var span: float = (float(runs[0][1]) - float(runs[0][0])) * 200.0   # over a 200u segment
+		trim_ok = span > 10.0 and span < 60.0     # ~30u (x in [-15,15]), not the full 200u
+	_check(trim_ok, "farm-lanes: _near_field_runs trims a lane to within reach of the field")
+	# _seg_outside_convex routes a crossing segment around the obstacle (two outside pieces).
+	var outs: Array = bv._seg_outside_convex(Vector2(-50, 0), Vector2(50, 0), sq)
+	_check(outs.size() == 2, "farm-lanes: _seg_outside_convex splits a lane around a forest (%d)" % outs.size())
+	# River split: a river separates farms into independent per-bank groups (deterministic geometry).
+	var river: Array = [[Vector2(-100, -50), Vector2(100, 50)]]   # diagonal river line y = 0.5x
+	var sA := Vector2(-50, 50)   # above the line
+	var sB := Vector2(-40, 40)   # above (same bank as A)
+	var sC := Vector2(50, -50)   # below (other bank)
+	_check(bv._same_bank(sA, sB, river), "river-split: same-side farms read as same bank")
+	_check(not bv._same_bank(sA, sC, river), "river-split: cross-river farms read as different banks")
+	_check((bv._bank_components([sA, sB, sC], river) as Array).size() == 2, "river-split: a river yields 2 bank groups")
+	# Road merge: add a real built road just past the fields; a connector track should reach it (no new road).
+	if nfarms == 2:
+		var center: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+		var net := RoadNetwork.instance()
+		var ya: Dictionary = net.ensure_node("flr:a", RoadNetwork.KIND_JUNCTION, center + Vector2(-200, -150), coord)
+		var yb: Dictionary = net.ensure_node("flr:b", RoadNetwork.KIND_JUNCTION, center + Vector2(200, -150), coord)
+		net.add_edge(str(ya.id), str(yb.id), RoadNetwork.TIER_LOCAL, PackedVector2Array([center + Vector2(-200, -150), center + Vector2(200, -150)]), [coord], [], 1, RoadNetwork.STATE_BUILT)
+		bv._rebuild_subcomponents(tile_id)
+		var reached := false
+		for seg in (bv._farm_lanes.get(tile_id, []) as Array):
+			for pt in (seg as PackedVector2Array):
+				if absf((pt as Vector2).y - (center.y - 150.0)) < 3.0 and absf((pt as Vector2).x - center.x) < 200.0:
+					reached = true
+		_check(reached, "farm-lanes: a connector merges the tracks to a real road")
+	for i in 2:
+		MatchState.remove_building("flane_%d" % i)
+	bv.queue_free()
+	terrain.queue_free()
+	RoadNetwork.reset()
+	await get_tree().process_frame
+
+# Stage 1 of the farm→real-road integration: a player road settling on a farm tile PROMOTES that
+# tile's web (outer ring + one through-path) into real RoadNetwork edges — once, persisted, and the
+# cosmetic brown tracks are suppressed.
+func _test_farm_road_promotion() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	RoadWorks.reset()
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		_check(false, "promotion: test tile exists")
+		bv.queue_free(); terrain.queue_free(); return
+	for i in 2:
+		var iid: String = MatchState.add_building("b_014", "", tile_id, "npc", "fprom_%d" % i)
+		bv.on_building_placed(tile_id, "b_014", "", iid, coord)
+	bv._rebuild_subcomponents(tile_id)
+	var cands: Dictionary = bv.farm_promote_candidates(tile_id)
+	_check(not cands.is_empty(), "promotion: farm tile exposes promote candidates")
+	var ring_before := 0   # the outer ring is the only MULTI-point (chained) lane polyline
+	for poly in (bv._farm_lanes.get(tile_id, []) as Array):
+		if (poly as PackedVector2Array).size() > 2:
+			ring_before += 1
+	var net := RoadNetwork.instance()
+	var before: int = net.edges.size()
+	var order := {"id": 1, "tile_id": tile_id, "coord": coord, "edge_id": "", "state": "built", "kind": "connect"}
+	RoadWorks._promote_farm_roads_if_reached(order, net)
+	_check(net.edges.size() > before, "promotion: ring promoted to real RoadNetwork edges (%d new)" % (net.edges.size() - before))
+	_check(RoadWorks.is_farm_promoted(tile_id), "promotion: tile flagged promoted")
+	bv._rebuild_subcomponents(tile_id)   # exclusion is applied on rebuild (signal's dirty is deferred)
+	var ring_after := 0
+	for poly in (bv._farm_lanes.get(tile_id, []) as Array):
+		if (poly as PackedVector2Array).size() > 2:
+			ring_after += 1
+	_check(ring_before > 0 and ring_after == 0, "promotion: promoted ring leaves the brown tracks (%d -> %d ring polylines)" % [ring_before, ring_after])
+	var after1: int = net.edges.size()
+	RoadWorks._promote_farm_roads_if_reached(order, net)   # idempotent
+	_check(net.edges.size() == after1, "promotion: idempotent — no duplicate edges on a second settle")
+	# Persistence: the promoted flag survives a save/reset/load round-trip.
+	var st: Dictionary = RoadWorks.export_state()
+	RoadWorks.reset()
+	_check(not RoadWorks.is_farm_promoted(tile_id), "promotion: reset clears the promoted flag")
+	RoadWorks.import_state(st)
+	_check(RoadWorks.is_farm_promoted(tile_id), "promotion: promoted flag persists across save/load")
+	for i in 2:
+		MatchState.remove_building("fprom_%d" % i)
+	bv.queue_free()
+	terrain.queue_free()
+	RoadNetwork.reset()
+	RoadWorks.reset()
+	await get_tree().process_frame
+
+# Unconnected farm-web outlines — the cluster's tan outer ring must chain into a CLOSED, continuous
+# loop (the loop-closure in _chain_segments), not an open polyline with a hairline gap at the seam.
+func _test_farm_ring_continuity() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	for i in 8:
+		var iid: String = MatchState.add_building("b_014", "", tile_id, "npc", "frc_%d" % i)
+		bv.on_building_placed(tile_id, "b_014", "", iid, coord)
+	bv._rebuild_subcomponents(tile_id)
+	var rings: Array = []
+	for poly in (bv._farm_lanes.get(tile_id, []) as Array):
+		if (poly as PackedVector2Array).size() > 2:
+			rings.append(poly)
+	_check(rings.size() >= 1, "ring-continuity: cluster has an outer ring (%d polylines)" % rings.size())
+	if rings.size() >= 1:
+		var big: PackedVector2Array = rings[0]
+		for r in rings:
+			if (r as PackedVector2Array).size() > big.size():
+				big = r
+		var gap: float = big[0].distance_to(big[big.size() - 1])
+		_check(gap < 3.0, "ring-continuity: the outer ring is a closed loop (end gap %.1fu)" % gap)
+	for i in 8:
+		MatchState.remove_building("frc_%d" % i)
+	bv.queue_free()
+	terrain.queue_free()
+	RoadNetwork.reset()
+	await get_tree().process_frame
+
+# Road doubling — promotion dedup. The connect road that reaches a farm commits BEFORE the web ring is
+# promoted, so a raw ring would draw a 2nd road right alongside it (the parallel roads hugging a farm
+# cluster). Promotion now suppresses the parts of the web already within FARM_RING_DEDUP_RADIUS of a road
+# on the tile. This pins it: a web fully covered by an existing road promotes ~nothing new.
+func _test_farm_ring_dedup() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	RoadWorks.reset()
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	for i in 2:
+		var iid: String = MatchState.add_building("b_014", "", tile_id, "npc", "fdup_%d" % i)
+		bv.on_building_placed(tile_id, "b_014", "", iid, coord)
+	bv._rebuild_subcomponents(tile_id)
+	var cands: Dictionary = bv.farm_promote_candidates(tile_id)
+	if cands.is_empty():
+		_check(false, "ring-dedup: farm tile exposes promote candidates")
+		bv.queue_free(); terrain.queue_free(); RoadNetwork.reset(); RoadWorks.reset(); return
+	var web: Array = []
+	for poly in (cands.get("ring", []) as Array):
+		web.append(poly)
+	var trunk: PackedVector2Array = cands.get("trunk", PackedVector2Array())
+	if trunk.size() >= 2:
+		web.append(trunk)
+	var order := {"id": 1, "tile_id": tile_id, "coord": coord, "edge_id": "", "state": "built", "kind": "connect"}
+
+	# Case A — empty network: promotion adds the full web.
+	var netA := RoadNetwork.instance()
+	RoadWorks._promote_farm_roads_if_reached(order, netA)
+	var len_a := 0.0
+	for idA in netA.edges:
+		var ga: PackedVector2Array = netA.edges[idA].geometry
+		for i in range(ga.size() - 1):
+			len_a += ga[i].distance_to(ga[i + 1])
+	_check(len_a > 0.0, "ring-dedup: baseline promotes the web (%.0fu)" % len_a)
+
+	# Case B — a road already traces the whole web: promotion should add ~nothing new (no doubling).
+	RoadNetwork.reset()
+	RoadWorks.reset()
+	var netB := RoadNetwork.instance()
+	for k in web.size():
+		var gb: PackedVector2Array = web[k]
+		if gb.size() < 2:
+			continue
+		var pa: Dictionary = netB.add_junction(gb[0], coord)
+		var pb: Dictionary = netB.add_junction(gb[gb.size() - 1], coord)
+		netB.add_edge(str(pa.id), str(pb.id), RoadNetwork.TIER_LOCAL, gb, [coord], [], 1, RoadNetwork.STATE_BUILT)
+	var before_ids := {}
+	for idp in netB.edges:
+		before_ids[idp] = true
+	RoadWorks._promote_farm_roads_if_reached(order, netB)
+	var len_b := 0.0
+	for idB in netB.edges:
+		if before_ids.has(idB):
+			continue
+		var gB: PackedVector2Array = netB.edges[idB].geometry
+		for i in range(gB.size() - 1):
+			len_b += gB[i].distance_to(gB[i + 1])
+	_check(len_b < len_a * 0.2, "ring-dedup: web already covered → promotion adds ~none (%.0f vs %.0f new u)" % [len_b, len_a])
+	_check(RoadWorks.is_farm_promoted(tile_id), "ring-dedup: tile still flagged promoted when fully covered")
+	for i in 2:
+		MatchState.remove_building("fdup_%d" % i)
+	bv.queue_free()
+	terrain.queue_free()
+	RoadNetwork.reset()
+	RoadWorks.reset()
+	await get_tree().process_frame
+
+# Yellow roads not connecting tiles — promoted ring roads are clipped 1u inside the hex, so adjacent
+# tiles' rings stop ~1u short of the shared edge and never meet. _bridge_ring_to_neighbours closes the
+# seam: a short stub from this tile's ring endpoint onto the neighbour tile's road. This pins it
+# (deterministic: synthetic neighbour ring within FARM_BRIDGE_MAX → a stub lands on it; reload → no re-bridge).
+func _test_farm_ring_bridge() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	RoadWorks.reset()
+	var coordA := Vector2i(8, 9)   # tile_9_10
+	if not terrain.tiles.has(coordA):
+		terrain.queue_free(); return
+	var coordB := Vector2i(-1, -1)
+	for ncoord in terrain.neighbor_coords(coordA):
+		if terrain.tiles.has(ncoord):
+			coordB = ncoord
+			break
+	if coordB == Vector2i(-1, -1):
+		terrain.queue_free(); return
+	var net := RoadNetwork.instance()
+	var cA: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coordA))
+	# This tile's ring: an edge whose endpoint `aEnd` we will bridge.
+	var aEnd: Dictionary = net.ensure_node("farmr:tA:0:a", RoadNetwork.KIND_JUNCTION, cA, coordA)
+	var aOth: Dictionary = net.ensure_node("farmr:tA:0:b", RoadNetwork.KIND_JUNCTION, cA + Vector2(0, 20), coordA)
+	net.add_edge(str(aEnd.id), str(aOth.id), RoadNetwork.TIER_LOCAL, PackedVector2Array([cA, cA + Vector2(0, 20)]), [coordA], [], 0, RoadNetwork.STATE_BUILT)
+	# Neighbour's ring: a farmr edge tagged on tile B, geometry ~3u from aEnd (within FARM_BRIDGE_MAX).
+	var bGeo := PackedVector2Array([cA + Vector2(3, -10), cA + Vector2(3, 10)])
+	var b1: Dictionary = net.ensure_node("farmr:tB:0:a", RoadNetwork.KIND_JUNCTION, bGeo[0], coordB)
+	var b2: Dictionary = net.ensure_node("farmr:tB:0:b", RoadNetwork.KIND_JUNCTION, bGeo[1], coordB)
+	net.add_edge(str(b1.id), str(b2.id), RoadNetwork.TIER_LOCAL, bGeo, [coordB], [], 0, RoadNetwork.STATE_BUILT)
+	var aRingA: Vector2 = cA
+	var aRingB: Vector2 = cA + Vector2(0, 20)
+	var before: int = net.edges.size()
+	RoadWorks._bridge_ring_to_neighbours(net, coordA, "tile_9_10")
+	_check(net.edges.size() == before + 1, "ring-bridge: a seam bridge edge is created (%d new)" % (net.edges.size() - before))
+	# the stub spans A's ring to B's ring (both ends land ON a ring centreline), length within the cap
+	var joined := false
+	for eid in net.edges:
+		var g: PackedVector2Array = net.edges[eid].geometry
+		if g.size() != 2:
+			continue
+		var glen := g[0].distance_to(g[1])
+		if glen < 0.5 or glen >= RoadWorks.FARM_BRIDGE_MAX + 0.5:
+			continue
+		var d0a := g[0].distance_to(Geometry2D.get_closest_point_to_segment(g[0], aRingA, aRingB))
+		var d1a := g[1].distance_to(Geometry2D.get_closest_point_to_segment(g[1], aRingA, aRingB))
+		var d0b := g[0].distance_to(Geometry2D.get_closest_point_to_segment(g[0], bGeo[0], bGeo[1]))
+		var d1b := g[1].distance_to(Geometry2D.get_closest_point_to_segment(g[1], bGeo[0], bGeo[1]))
+		if (d0a < 0.6 and d1b < 0.6) or (d1a < 0.6 and d0b < 0.6):
+			joined = true
+	_check(joined, "ring-bridge: the stub joins A's ring to B's ring (yellow roads meet at the seam)")
+	# idempotent: re-running does NOT add a second bridge for the same seam pair
+	var after1: int = net.edges.size()
+	RoadWorks._bridge_ring_to_neighbours(net, coordA, "tile_9_10")
+	_check(net.edges.size() == after1, "ring-bridge: idempotent — seam bridged once per pair")
+	# water gate: a stub that would cross water is rejected (no bridgeless crossing)
+	var land := RoadWorks._bridge_on_land(cA, cA + Vector2(3, 0))
+	_check(land, "ring-bridge: an all-land stub passes the water gate (sanity)")
+	terrain.queue_free()
+	RoadNetwork.reset()
+	RoadWorks.reset()
+	await get_tree().process_frame
+
+# Stage 2: a road routed ACROSS a farm cluster should FOLLOW the cosmetic web (the realizer stamps a
+# cheap corridor along the tracks). A road that ignored the bias would detour around the big fields,
+# away from the web — so a high fraction of path points sitting on a track verifies the bias works.
+func _test_farm_road_routing_bias() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		_check(false, "routing-bias: test tile exists")
+		bv.queue_free(); terrain.queue_free(); return
+	for i in 5:
+		var iid: String = MatchState.add_building("b_014", "", tile_id, "npc", "fbias_%d" % i)
+		bv.on_building_placed(tile_id, "b_014", "", iid, coord)
+	bv._rebuild_subcomponents(tile_id)
+	var center: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+	var net := RoadNetwork.instance()
+	var realizer = preload("res://scripts/road_realizer.gd").new()
+	var res: Dictionary = realizer.route(nav, net, center + Vector2(-330, 0), center + Vector2(330, 0), {"thorough": true})
+	_check(bool(res.get("ok", false)), "routing-bias: a road routes across the farm cluster")
+	var segs: Array = bv.all_farm_lane_segments()
+	if bool(res.get("ok", false)):
+		_check(_frac_on_web(res.geometry, segs) > 0.25, "routing-bias: cost-bias pulls the road toward the web (%d%%)" % int(_frac_on_web(res.geometry, segs) * 100.0))
+	# "Borrow the web exactly": a straight road CUTTING THROUGH the cluster (the case the user dislikes)
+	# gets its in-cluster portion rerouted ONTO the track graph, so it runs on the tracks not over fields.
+	var rings0: Array = bv.all_farm_cluster_rings()
+	if rings0.size() > 0 and segs.size() >= 2:
+		var rp: PackedVector2Array = rings0[0]
+		var rc := Vector2.ZERO
+		for v in rp:
+			rc += v
+		rc /= float(maxi(rp.size(), 1))
+		var straight := PackedVector2Array()
+		for t in 21:
+			straight.append((rc + Vector2(-190, 0)).lerp(rc + Vector2(190, 0), float(t) / 20.0))
+		var fake := {"geometry": straight, "tiles": [coord], "bridges": []}
+		var frac_cut: float = _frac_on_web(straight, segs)
+		RoadWorks._snap_route_to_web(fake)
+		var frac_snap: float = _frac_on_web(fake.geometry, segs)
+		_check(frac_snap > frac_cut + 0.1, "routing-bias: borrowing the web threads the road onto the tracks (%d%% -> %d%%)" % [int(frac_cut * 100.0), int(frac_snap * 100.0)])
+	for i in 5:
+		MatchState.remove_building("fbias_%d" % i)
+	bv.queue_free()
+	terrain.queue_free()
+	RoadNetwork.reset()
+	await get_tree().process_frame
+
+## Fraction of a road's LENGTH (dense-sampled) sitting within 12u of any farm-track segment. Sampling
+## by length (not by vertex) is fair to the snapped road, whose on-web run has few but long edges.
+func _frac_on_web(geo: PackedVector2Array, segs: Array) -> float:
+	if geo.size() < 2:
+		return 0.0
+	var total := 0
+	var near := 0
+	for i in range(geo.size() - 1):
+		var a: Vector2 = geo[i]
+		var b: Vector2 = geo[i + 1]
+		var steps := maxi(1, int(a.distance_to(b) / 5.0))
+		for s in range(steps + 1):
+			var p := a.lerp(b, float(s) / float(steps))
+			total += 1
+			for sg in segs:
+				if p.distance_to(Geometry2D.get_closest_point_to_segment(p, sg[0], sg[1])) <= 12.0:
+					near += 1
+					break
+	return float(near) / maxf(float(total), 1.0)
+
+func _test_bridge_corridor() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadCrossings.reset_for_tests()
+	RoadCrossings.build(terrain)
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	var tile_id := "tile_11_17"   # Arin Estuary Docks — a river crossing
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord) or RoadCrossings.for_tile(tile_id).is_empty():
+		_check(false, "bridge-corridor: test tile has a crossing")
+		bv.queue_free(); terrain.queue_free(); RoadCrossings.reset_for_tests(); return
+	var center: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+	# the crossing reserves ≥2 approach stubs (both banks), each ~BRIDGE_APPROACH (50u) long
+	var stubs := bv._bridge_approach_segments(tile_id, center)
+	_check(stubs.size() >= 2, "bridge-corridor: a crossing reserves approach stubs (%d)" % stubs.size())
+	var len_ok := true
+	for st in stubs:
+		if absf((st[0] as Vector2).distance_to(st[1] as Vector2) - 50.0) > 1.0:
+			len_ok = false
+	_check(len_ok, "bridge-corridor: each approach stub spans ~50u")
+	# the mask reserves it: a LAND cell sitting on the approach is kept non-buildable
+	bv._ensure_tile(tile_id, coord)
+	var cx: Dictionary = RoadCrossings.for_tile(tile_id)[0]
+	var tan: Vector2 = (cx.bridge_tangent as Vector2).normalized()
+	var p0: Vector2 = (cx.point as Vector2) - center
+	var land_reserved := false
+	for s in [1.0, -1.0]:
+		for dist in [24.0, 36.0, 48.0]:
+			var probe: Vector2 = p0 + tan * (s * dist)
+			var c := nav.cell_of(center + probe)
+			if nav.water(c.x, c.y) == 0 and not _mask_buildable(bv, tile_id, probe):
+				land_reserved = true
+	_check(land_reserved, "bridge-corridor: a land cell on the bridge approach is reserved (kept clear for the road)")
+	bv.queue_free()
+	terrain.queue_free()
+	RoadCrossings.reset_for_tests()
+	await get_tree().process_frame
+
+## True if (tile-centre-relative) point `rel` maps to a buildable cell in the tile's mask.
+func _mask_buildable(bv, tile_id: String, rel: Vector2) -> bool:
+	var col := int((rel.x + 270.0) / 20.0)
+	var row := int((rel.y + 240.0) / 20.0)
+	if col < 0 or row < 0 or col >= 27 or row >= 24:
+		return false
+	var land: PackedByteArray = bv._tile_land.get(tile_id, PackedByteArray())
+	var key := row * 27 + col
+	return key < land.size() and land[key] == 1
+
+func _test_building_resnap() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		_check(false, "resnap: test tile exists")
+		terrain.queue_free()
+		return
+	var center: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+	# Force the tile roadless to start (a reference into terrain.tiles).
+	var td: Dictionary = terrain.tiles[coord]
+	td["infrastructure_present"] = []
+
+	RoadNetwork.reset()
+	var net := RoadNetwork.instance()
+
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain   # set AFTER _ready (no %TerrainLayer to resolve in a test)
+
+	_check(RoadWorks.order_settled.is_connected(Callable(bv, "_on_road_settled")),
+		"resnap: building_visuals subscribes to RoadWorks.order_settled")
+
+	# Place one building while the tile has no road — it lands via the fallback.
+	var iid: String = MatchState.add_building("b_test_factory", "", tile_id, "npc", "resnap_b0")
+	bv.on_building_placed(tile_id, "b_test_factory", "", iid, coord)
+	var idx0: int = int(bv._placement_index.get(iid, -1))
+	if idx0 < 0:
+		_check(false, "resnap: building placed on roadless tile")
+		MatchState.remove_building(iid)
+		bv.queue_free()
+		terrain.queue_free()
+		RoadNetwork.reset()
+		RoadNetwork.bootstrap_from_bake()
+		return
+	var before_rel: Vector2 = bv._placements[idx0].center_rel
+	_check((bv._tile_road_segments(coord, center) as Array).is_empty(), "resnap: tile starts with no road frontage")
+
+	# Build a road across the UPPER third of the tile (local frame y = -150).
+	td["infrastructure_present"] = ["roads"]
+	var ra: Dictionary = net.ensure_node("rs:a", RoadNetwork.KIND_JUNCTION, center + Vector2(-150, -150), coord)
+	var rb: Dictionary = net.ensure_node("rs:b", RoadNetwork.KIND_JUNCTION, center + Vector2(150, -150), coord)
+	var geo := PackedVector2Array([center + Vector2(-150, -150), center + Vector2(150, -150)])
+	net.add_edge(str(ra.id), str(rb.id), RoadNetwork.TIER_LOCAL, geo, [coord], [], 1, RoadNetwork.STATE_BUILT)
+	_check((bv._tile_road_segments(coord, center) as Array).size() > 0, "resnap: built road now visible to the packer")
+
+	# Re-snap the tile (this is what order_settled triggers via _flush_resnap). The road at y=-150 is FAR
+	# from the building (which landed mid-tile), so occupancy keeps it PUT — the road routes around it.
+	bv.relayout_tile(tile_id)
+	var idx1: int = int(bv._placement_index.get(iid, -1))
+	_check(idx1 >= 0, "resnap: building survives the re-pack")
+	if idx1 >= 0:
+		var after_rel: Vector2 = bv._placements[idx1].center_rel
+		_check(after_rel.distance_to(before_rel) < 1.0, "resnap: a building the road doesn't touch STAYS PUT (occupancy: y %.0f -> %.0f)" % [before_rel.y, after_rel.y])
+	# Now build a road straight THROUGH the building — it overlaps, so it must be re-packed off the road.
+	var oa: Dictionary = net.ensure_node("ro:a", RoadNetwork.KIND_JUNCTION, center + before_rel + Vector2(-150, 0), coord)
+	var ob: Dictionary = net.ensure_node("ro:b", RoadNetwork.KIND_JUNCTION, center + before_rel + Vector2(150, 0), coord)
+	net.add_edge(str(oa.id), str(ob.id), RoadNetwork.TIER_LOCAL, PackedVector2Array([center + before_rel + Vector2(-150, 0), center + before_rel + Vector2(150, 0)]), [coord], [], 1, RoadNetwork.STATE_BUILT)
+	bv.relayout_tile(tile_id)
+	var idx2: int = int(bv._placement_index.get(iid, -1))
+	if idx2 >= 0:
+		var after2: Vector2 = bv._placements[idx2].center_rel
+		_check(after2.distance_to(before_rel) > 5.0, "resnap: a building the road OVERLAPS is re-packed off it (moved %.0fu)" % after2.distance_to(before_rel))
+
+	MatchState.remove_building(iid)
+	bv.queue_free()
+	terrain.queue_free()
+	RoadNetwork.reset()
+	RoadNetwork.bootstrap_from_bake()
+	await get_tree().process_frame
+
 # Phase 3 — the RoadWorks pipeline: budgeted resumable planning, the 3 s
 # network-outward reveal, forest invalidation, occupancy producers, the saves
 # round-trip, and the B4 mass-build perf gate (fixed frame stepping).
@@ -563,9 +1854,11 @@ func _test_road_works() -> void:
 	_check(joined, "road works: adjacent built tiles are directly joined (mesh, not spurs)")
 	_check(RoadWorks.export_state().get("linked_pairs", []).size() > 0, "road works: neighbour link recorded for dedupe")
 
-	# --- offshoots: a tile with >3 non-forest/non-farm buildings sprouts short
-	# branching stubs off the road running through it (ancillary roads, separate
-	# from the routing network). tile_8_8 carries a settled road from above.
+	# --- offshoots: a tile with >3 non-forest/non-farm buildings sprouts short branching stubs off the road
+	# running through it (ancillary roads, separate from the routing network). tile_8_8 carries a settled road
+	# from above — but it now sits in the DENSE road mesh built earlier, so its branches would DOUBLE existing
+	# roads and are correctly dropped by the doubling guard. Here we just prove the road is there to stub from
+	# + length is bounded; ACTUAL sprouting is verified on the (un-doubled) urban beltway tile below.
 	var tc88: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(terrain.id_to_coord("tile_8_8")))
 	for n in 4:
 		MatchState.add_building("b_test_factory", "", "tile_8_8", "npc", "off_test_%d" % n)
@@ -577,7 +1870,7 @@ func _test_road_works() -> void:
 		if poly.size() >= 2 and poly[0].distance_to(tc88) < 350.0:
 			off_on88 += 1
 			off_maxlen = maxf(off_maxlen, poly[0].distance_to(poly[poly.size() - 1]))
-	_check(off_on88 > 0, "road offshoots: built-up tile (>3 buildings) sprouts stubs (%d)" % off_on88)
+	_check(RoadOffshoots._road_origins_in_tile(net, tc88).size() > 0, "road offshoots: built-up tile carries a road to stub from")
 	_check(off_maxlen <= RoadOffshoots.OFFSHOOT_MAX_LEN + RoadOffshoots.OFFSHOOT_CONNECT_DIST + 1.0,
 		"road offshoots: stub length bounded to ~12u (max %.0f)" % off_maxlen)
 	# add a forest on tile_8_8: it must NOT count toward the building threshold
@@ -593,6 +1886,86 @@ func _test_road_works() -> void:
 	_check(off_on88_b == 0, "road offshoots: forest doesn't count — 2 real buildings is below threshold (%d)" % off_on88_b)
 	for cleanup_id in ["off_test_2", "off_test_3", "off_test_forest"]:
 		MatchState.remove_building(cleanup_id)
+
+	# stubs now appear on ANY densifying tile (the beige enclosure grid was removed,
+	# so stubs are the universal informal-road texture) and are capped at
+	# MAX_STUBS_PER_TILE ROOTS per tile. Verify on an URBAN beltway tile, loading it
+	# well past the cap. (Roots are 6-pt curved beziers; Y-arms are 2-pt segments.)
+	var urb := "tile_4_9"   # Stoneshore beltway (urban) — has baked road geometry
+	var uc: Vector2i = terrain.id_to_coord(urb)
+	if terrain.tiles.has(uc):
+		var tcu: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(uc))
+		# guard: prove there IS a road to stub from, else the counts below are vacuous
+		_check(RoadOffshoots._road_origins_in_tile(net, tcu).size() > 0,
+			"road offshoots: urban beltway tile carries a road to stub from")
+		for nu in 8:   # well over the threshold so the per-tile cap must clamp
+			MatchState.add_building("b_test_factory", "", urb, "npc", "off_urb_%d" % nu)
+		var offs_u := RoadOffshoots.generate_stubs(terrain, net)
+		var urb_roots := 0
+		for su in offs_u:
+			var pu: PackedVector2Array = su
+			if pu.size() > 2 and RoadOffshoots._in_hex(pu[0], tcu):   # a stub root rooted in this tile
+				urb_roots += 1
+		_check(urb_roots > 0, "road offshoots: urban tile now sprouts stubs (grid removed) (%d roots)" % urb_roots)
+		_check(urb_roots <= RoadOffshoots.MAX_STUBS_PER_TILE,
+			"road offshoots: per-tile stub cap holds (%d <= %d)" % [urb_roots, RoadOffshoots.MAX_STUBS_PER_TILE])
+		for cu in 8:
+			MatchState.remove_building("off_urb_%d" % cu)
+
+	# --- footprint avoidance: a stub whose baseline path crosses a building must
+	# re-aim/shorten so it no longer crosses. Helper geometry first, then integration.
+	var ra := Vector2(0, 0)
+	var rb := Vector2(100, 0)
+	var box := Rect2(40, -20, 20, 40)               # straddles the segment at x∈[40,60]
+	_check(RoadOffshoots._seg_hits_rect(ra, rb, box), "road offshoots: seg-vs-rect detects a crossing")
+	_check(not RoadOffshoots._seg_hits_rect(Vector2(0, 100), Vector2(100, 100), box), "road offshoots: seg-vs-rect clears a miss")
+	var fcoord: Vector2i = terrain.id_to_coord("tile_8_8")
+	if terrain.tiles.has(fcoord):
+		var fc: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(fcoord))
+		for nf in 5:
+			MatchState.add_building("b_test_factory", "", "tile_8_8", "npc", "fp_test_%d" % nf)
+		var base_stubs := RoadOffshoots.generate_stubs(terrain, net)
+		var base_root := PackedVector2Array()
+		for s in base_stubs:
+			var ps: PackedVector2Array = s
+			if ps.size() > 2 and RoadOffshoots._in_hex(ps[0], fc):
+				base_root = ps
+				break
+		if base_root.size() > 2:
+			# obstacle on the OUTER part of the stub's baseline path (room to shorten/re-aim)
+			var tip: Vector2 = base_root[base_root.size() - 1]
+			var obstacle := Rect2(tip - Vector2(28, 28), Vector2(56, 56))
+			var prov_script := GDScript.new()
+			prov_script.source_code = "extends Node\nvar rects := []\nvar target := Vector2i.ZERO\nfunc footprint_rects_on_tile(c):\n\treturn rects if c == target else []\n"
+			prov_script.reload()
+			var prov := Node.new()
+			prov.set_script(prov_script)
+			prov.target = fcoord
+			prov.rects = [obstacle]
+			prov.add_to_group("building_footprints")
+			add_child(prov)
+			await get_tree().process_frame
+			_check(RoadOffshoots._poly_hits(base_root, [obstacle], RoadOffshoots.STUB_CLEAR), "road offshoots: baseline stub crosses the obstacle (setup)")
+			var avoid_stubs := RoadOffshoots.generate_stubs(terrain, net)
+			var crossings := 0
+			for s2 in avoid_stubs:
+				var ps2: PackedVector2Array = s2
+				if ps2.size() > 2 and RoadOffshoots._in_hex(ps2[0], fc) and RoadOffshoots._poly_hits(ps2, [obstacle], RoadOffshoots.STUB_CLEAR):
+					crossings += 1
+			_check(crossings == 0, "road offshoots: stubs re-aim/shorten around a building footprint (%d crossings)" % crossings)
+			# failure path: an obstacle covering the whole reachable area blocks every re-aim
+			# AND the shorten fallback, so the stub must be DROPPED — never drawn over a building.
+			prov.rects = [Rect2(fc - Vector2(450, 450), Vector2(900, 900))]
+			var blocked_stubs := RoadOffshoots.generate_stubs(terrain, net)
+			var survived := 0
+			for s3 in blocked_stubs:
+				var ps3: PackedVector2Array = s3
+				if ps3.size() > 2 and RoadOffshoots._in_hex(ps3[0], fc):
+					survived += 1
+			_check(survived == 0, "road offshoots: an unavoidable stub is dropped, not drawn over the building (%d survived)" % survived)
+			prov.queue_free()
+		for cf in 5:
+			MatchState.remove_building("fp_test_%d" % cf)
 
 	# --- peak ban: roads are forbidden on the snow cap (level >= BAN_LEVEL). A route
 	# straight at 16_9's cap must still succeed, routing AROUND it, and no point of
@@ -2693,7 +4066,7 @@ func _test_main_scene_instantiates() -> void:
 
 # Logic: the data CSVs load into the Catalog as expected.
 func _test_catalog_loaded() -> void:
-	_check(Catalog.all_goods().size() == 61, "Catalog has 61 goods")
+	_check(Catalog.all_goods().size() == 64, "Catalog has 64 goods")
 	var _all_classed := true
 	for g in Catalog.all_goods():
 		if str(g.get("transport_class", "")) == "":
@@ -2701,6 +4074,20 @@ func _test_catalog_loaded() -> void:
 	_check(_all_classed, "every loaded good has a transport_class")
 	_check(Catalog.all_recipes().size() >= 18, "Catalog promotes a healthy recipe set (>=18)")
 	_check(Catalog.all_buildings().size() == 37, "Catalog has 37 buildings")
+	# Regression (farm buildability): the agri goods (biomass, waste_water, fertilisers) exist, so the
+	# biomass farm recipes promote and the farm is no longer recipe-less — the "clicking the farm does
+	# nothing" bug, caused by every farm recipe being dropped at the promotion gate for missing goods.
+	_check(not Catalog.get_good_by_internal_name("biomass").is_empty(), "good 'biomass' is loaded")
+	_check(not Catalog.get_good_by_internal_name("waste_water").is_empty(), "good 'waste_water' is loaded")
+	_check(not Catalog.get_good_by_internal_name("fertilisers").is_empty(), "good 'fertilisers' is loaded")
+	var farm_id: String = str(Catalog.get_building_by_internal_name("farm").get("id", ""))
+	var farm_recipe_ids: Array = []
+	for r in Catalog.get_recipes_for_building(farm_id):
+		farm_recipe_ids.append(str(r.get("recipe_id", "")))
+	var has_all_biomass: bool = farm_recipe_ids.has("r_208") and farm_recipe_ids.has("r_209") \
+		and farm_recipe_ids.has("r_211") and farm_recipe_ids.has("r_212")
+	_check(has_all_biomass, "farm has its 4 biomass recipes (buildable, not recipe-less): %s" % str(farm_recipe_ids))
+	_check(int(Catalog.get_building_by_internal_name("farm").get("tile_size_used", 0)) == 15, "farm building is tile_size_used 15")
 
 # Logic: recipe requirements parse correctly (guards the build-mode path that
 # silently broke earlier in the merge).
