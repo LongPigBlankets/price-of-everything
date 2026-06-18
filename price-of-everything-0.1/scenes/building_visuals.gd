@@ -2205,8 +2205,30 @@ func _clear_tile_caches() -> void:
 	_farm_promote.clear()
 	_farm_cluster_rings.clear()
 
-## World-space AABB (one Rect2 per footprint) of the buildings on a tile, for a future block-enclosure
-## pass to prune lanes that would cross a building. Uses the raw vert bbox (NOT the
+## Tile-local (relative to TILE_CENTER) bounding box of all footprints on a tile, for the
+## enclosure-roads layer to wrap with a road ring. Empty Rect2 (zero area) if none.
+func tile_footprint_bounds_local(coord: Vector2i) -> Rect2:
+	var has := false
+	var lo := Vector2.ZERO
+	var hi := Vector2.ZERO
+	for p in _placements:
+		if p.coord != coord:
+			continue
+		var c: Vector2 = p.center_rel
+		var h: Vector2 = p.half
+		if not has:
+			lo = c - h
+			hi = c + h
+			has = true
+		else:
+			lo = Vector2(minf(lo.x, c.x - h.x), minf(lo.y, c.y - h.y))
+			hi = Vector2(maxf(hi.x, c.x + h.x), maxf(hi.y, c.y + h.y))
+	if not has:
+		return Rect2()
+	return Rect2(lo, hi - lo)
+
+## World-space AABB (one Rect2 per footprint) of the buildings on a tile, for the enclosure
+## layer to prune grid lanes that would cross a building. Uses the raw vert bbox (NOT the
 ## NPC-outline-grown bb) so the prune is tight to the footprint.
 func footprint_rects_on_tile(coord: Vector2i) -> Array:
 	var out: Array = []
