@@ -1,38 +1,38 @@
-ID,internal_name,display_name,energy_cost,building_stockpile,base_price,build_cost_money,build_material_1,build_qty_1,build_material_2,build_qty_2,build_material_3,build_qty_3,build_material_4,build_qty_4,build_material_5,build_qty_5,build_duration,tile_size_used,building_category,upgrade_path,upgrade_cost,upgrade_material_1,upgrade_qty_1,upgrade_material_2,upgrade_qty_2,maintenance_cost,labour_unskilled_required,labour_skilled_required,labour_h_skilled_required,building_type,storage_boost
-b_001,mine,Mine,1,10000,80,80,,,,,,,,,,,2,30,production,standard,10000,,,,,1,150,50,20,extraction,0
-b_002,furnace,Furnace,1,10000,100,100,coal,3,,,,,,,,,2,20,production,standard,10000,,,,,2,100,50,30,metallurgy,0
-b_003,coal_power,Coal Power Plant,0,0,200,200,steel,2,iron_ingots,2,hydrogen,2,coal,2,motor,2,2,15,power,standard,10000,,,,,1,50,280,300,power,0
-b_004,port,Port,1,10000,10000,10000,,,,,,,,,,,2,15,infrastructure,standard,10000,,,,,10,0,0,0,infrastructure,500
-b_005,roads,Roads,0,0,25,25,,,,,,,,,,,1,2,infrastructure,standard,10000,,,,,1,0,0,0,infrastructure,0
-b_006,cables,Cables,0,0,15,15,,,,,,,,,,,1,2,infrastructure,standard,10000,,,,,1,0,0,0,infrastructure,0
-b_007,industrial_factory,Industrial Goods Factory,10,10000,200,200,steel,3,copper_ingots,3,,,,,,,2,10,production,standard,10000,,,,,2,200,100,60,manufacturing,0
-b_008,eaf,Electric Arc Furnace,1,10000,300,300,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,metallurgy,0
-b_009,assembly_plant,Assembly Plant,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,manufacturing,0
-b_010,high_tech_manufactory,High Tech Manufactory,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,manufacturing,0
-b_011,petro_refinery,Petrochemical Refinery,1,10000,180,180,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,refinery,0
-b_012,chem_plant,Chemical Plant,1,10000,250,250,coal,10,steel,10,iron_ingots,2,,,,,2,18,production,standard,10000,,,,,2,200,100,60,electrochemistry|refinery,0
-b_013,poly_plant,Polymerisation Refinery,1,10000,250,250,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,refinery,0
-b_014,farm,Farm,1,10000,1,1,,,,,,,,,,,2,15,production,standard,10000,,,,,2,100,50,30,farm_forests,0
-b_015,new_forest,New Growth Forest,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,farm_forests,0
-b_016,old_forest,Old Growth Forest,1,10000,1,1,,,,,,,,,,,2,25,production,standard,10000,,,,,2,100,50,30,farm_forests,0
-b_017,pipes,Pipeworks,1,10000,30,30,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
-b_018,reinf_pipes,Reinforced Pipeworks,1,10000,50,50,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
-b_019,rails,Railways,1,10000,70,70,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
-b_020,electrolyser,Electrolyser,1,10000,400,400,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,electrochemistry,0
-b_021,desal,Desalination Plant,1,10000,120,120,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,water,0
-b_022,water_recycling,Water Recyling Plant,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,water,0
-b_023,landfill,Landfill,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,infrastructure,0
-b_024,solar_farm,Solar Farm,1,10000,1,1,,,,,,,,,,,2,10,power,standard,10000,,,,,2,100,50,30,power,0
-b_025,onshore_wind_farm,Onshore Wind Farm,1,10000,1,1,,,,,,,,,,,2,10,power,standard,10000,,,,,2,100,50,30,power,0
-b_026,offshore_wind_farm,Offshore Wind Farm,1,10000,1,1,,,,,,,,,,,2,10,power,standard,10000,,,,,2,100,50,30,power,0
-b_027,hydro_power_plant,Hydroelectric Dam,1,10000,1,1,,,,,,,,,,,2,10,power,standard,10000,,,,,2,100,50,30,power,0
-b_028,battery,Battery Electric Storage,1,10000,1,1,,,,,,,,,,,2,10,battery,standard,10000,,,,,2,100,50,30,power,0
-b_029,heat_battery,Thermal Battery Storage,1,10000,1,1,,,,,,,,,,,2,10,battery,standard,10000,,,,,2,100,50,30,power,0
-b_030,consumer_factory,Consumer Goods Factory,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,manufacturing,0
-b_031,ruins,Disused Buildings,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,,0
-b_032,oil_well,Oil Wells,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,extraction,0
-b_033,offshore_oil_platform,Offshore Oil Platform,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,extraction,0
-b_034,fracking_oil_well,Hydraulic Fracking Oil Wells,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,extraction,0
-b_035,airport,Airport,1,10000,10000,10000,,,,,,,,,,,2,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0
-b_036,recycling_plant,Recycling Plant,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,manufacturing,0
-b_037,water_pump,Water Pump,1,10000,70,70,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,water,0
+ID,internal_name,display_name,energy_cost,building_stockpile,base_price,build_cost_money,build_material_1,build_qty_1,build_material_2,build_qty_2,build_material_3,build_qty_3,build_material_4,build_qty_4,build_material_5,build_qty_5,build_duration,tile_size_used,building_category,upgrade_path,upgrade_cost,upgrade_material_1,upgrade_qty_1,upgrade_material_2,upgrade_qty_2,maintenance_cost,labour_unskilled_required,labour_skilled_required,labour_h_skilled_required,building_type,storage_boost,build_material_6,build_qty_6,build_material_7,build_qty_7,required_research
+b_001,mine,Mine,1,10000,30,30,construction_equipment_ice,1,concrete,3,rubber,5,plastics,5,,,2,30,production,standard,10000,,,,,1,400,150,50,extraction,0,,,,,
+b_002,furnace,Furnace,1,10000,20,20,concrete,3,building_frame,2,construction_equipment_ice,1,rubber,3,plastics,3,2,20,production,standard,10000,,,,,2,600,300,200,metallurgy,0,,,,,
+b_003,coal_power,Coal Power Plant,0,0,15,15,steel,4,concrete,4,construction_equipment_ice,1,rubber,5,plastics,5,2,15,power,standard,10000,,,,,2,50,280,300,power,0,,,,,
+b_004,port,Port,1,10000,10000,10000,,,,,,,,,,,2,15,infrastructure,standard,10000,,,,,10,0,0,0,infrastructure,500,,,,,
+b_005,roads,Roads,0,0,25,25,,,,,,,,,,,1,2,infrastructure,standard,10000,,,,,1,0,0,0,infrastructure,0,,,,,
+b_006,cables,Cables,0,0,15,15,,,,,,,,,,,1,2,infrastructure,standard,10000,,,,,1,0,0,0,infrastructure,0,,,,,
+b_007,industrial_factory,Industrial Goods Factory,10,10000,10,10,concrete,3,building_frame,3,construction_equipment_ice,1,rubber,5,plastics,5,2,10,production,standard,10000,,,,,2,600,350,250,manufacturing,0,,,,,
+b_008,eaf,Electric Arc Furnace,1,10000,10,10,concrete,2,building_frame,2,construction_equipment_ice,1,electrical_components,2,rubber,5,2,10,production,standard,10000,,,,,3,400,350,300,metallurgy,0,plastics,5,,,
+b_009,assembly_plant,Assembly Plant,1,10000,10,10,concrete,4,building_frame,4,construction_equipment_ice,2,computer,4,electrical_components,5,2,10,production,standard,10000,,,,,3,400,400,500,manufacturing,0,rubber,10,plastics,10,
+b_010,high_tech_manufactory,High Tech Manufactory,1,10000,10,10,concrete,4,building_frame,4,construction_equipment_ice,3,computer,6,electrical_components,8,2,10,production,standard,10000,,,,,3,200,400,700,manufacturing,0,rubber,10,plastics,10,
+b_011,petro_refinery,Petrochemical Refinery,1,10000,10,10,concrete,3,building_frame,2,chem_salts,6,construction_equipment_ice,1,rubber,10,2,10,production,standard,10000,,,,,2,500,300,200,refinery,0,plastics,10,,,
+b_012,chem_plant,Chemical Plant,1,10000,18,18,concrete,4,building_frame,3,chem_salts,8,industrial_acids,4,construction_equipment_ice,2,2,18,production,standard,10000,,,,,3,500,400,300,electrochemistry|refinery,0,rubber,10,plastics,10,
+b_013,poly_plant,Polymerisation Refinery,1,10000,10,10,concrete,3,building_frame,2,chem_salts,6,construction_equipment_ice,1,rubber,10,2,10,production,standard,10000,,,,,2,500,300,200,refinery,0,plastics,10,,,
+b_014,farm,Farm,1,10000,15,15,steel,2,concrete,3,biomass,8,,,,,2,15,production,standard,10000,,,,,1,300,150,100,farm_forests,0,,,,,
+b_015,new_forest,New Growth Forest,1,10000,10,10,biomass,8,,,,,,,,,2,10,production,standard,10000,,,,,1,200,100,100,farm_forests,0,,,,,
+b_016,old_forest,Old Growth Forest,1,10000,25,25,biomass,8,,,,,,,,,2,25,production,standard,10000,,,,,1,200,100,100,farm_forests,0,,,,,
+b_017,pipes,Pipeworks,1,10000,30,30,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0,,,,,
+b_018,reinf_pipes,Reinforced Pipeworks,1,10000,50,50,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0,,,,,
+b_019,rails,Railways,1,10000,70,70,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0,,,,,
+b_020,electrolyser,Electrolyser,1,10000,10,10,concrete,3,building_frame,2,construction_equipment_ice,1,electrical_components,2,rubber,12,2,10,production,standard,10000,,,,,3,400,350,350,electrochemistry,0,plastics,12,,,
+b_021,desal,Desalination Plant,1,10000,10,10,concrete,3,building_frame,2,construction_equipment_ice,1,rubber,12,plastics,12,2,10,production,standard,10000,,,,,2,400,250,150,water,0,,,,,
+b_022,water_recycling,Water Recyling Plant,1,10000,10,10,concrete,3,building_frame,1,construction_equipment_ice,1,rubber,3,plastics,3,2,10,production,standard,10000,,,,,2,400,250,200,water,0,,,,,
+b_023,landfill,Landfill,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,infrastructure,0,,,,,
+b_024,solar_farm,Solar Farm,1,10000,10,10,concrete,2,electrical_components,4,construction_equipment_ice,1,rubber,5,plastics,5,2,10,power,standard,10000,,,,,2,50,100,150,power,0,,,,,
+b_025,onshore_wind_farm,Onshore Wind Farm,1,10000,10,10,steel,4,concrete,2,construction_equipment_ice,1,rubber,5,plastics,5,2,10,power,standard,10000,,,,,2,50,100,150,power,0,,,,,
+b_026,offshore_wind_farm,Offshore Wind Farm,1,10000,10,10,steel,6,concrete,3,construction_equipment_ice,2,rubber,5,plastics,5,2,10,power,standard,10000,,,,,3,50,120,180,power,0,,,,,
+b_027,hydro_power_plant,Hydroelectric Dam,1,10000,10,10,concrete,6,construction_equipment_ice,2,rubber,5,plastics,5,,,2,10,power,standard,10000,,,,,3,50,150,200,power,0,,,,,hydro
+b_028,battery,Battery Electric Storage,1,10000,10,10,concrete,2,electrical_components,4,construction_equipment_ice,1,rubber,5,plastics,5,2,10,battery,standard,10000,,,,,2,100,150,150,power,0,,,,,
+b_029,heat_battery,Thermal Battery Storage,1,10000,10,10,concrete,2,construction_equipment_ice,1,rubber,5,plastics,5,,,2,10,battery,standard,10000,,,,,2,100,150,150,power,0,,,,,
+b_030,consumer_factory,Consumer Goods Factory,1,10000,10,10,concrete,3,building_frame,3,construction_equipment_ice,1,rubber,5,plastics,5,2,10,production,standard,10000,,,,,2,500,350,250,manufacturing,0,,,,,
+b_031,ruins,Disused Buildings,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,,0,,,,,
+b_032,oil_well,Oil Wells,1,10000,10,10,concrete,3,construction_equipment_ice,1,rubber,5,plastics,5,,,2,10,production,standard,10000,,,,,1,300,150,100,extraction,0,,,,,
+b_033,offshore_oil_platform,Offshore Oil Platform,1,10000,10,10,steel,6,construction_equipment_ice,2,rubber,5,plastics,5,,,2,10,production,standard,10000,,,,,2,300,200,150,extraction,0,,,,,
+b_034,fracking_oil_well,Hydraulic Fracking Oil Wells,1,10000,10,10,concrete,3,construction_equipment_ice,2,rubber,5,plastics,5,,,2,10,production,standard,10000,,,,,2,300,200,150,extraction,0,,,,,
+b_035,airport,Airport,1,10000,10000,10000,,,,,,,,,,,2,1,infrastructure,standard,10000,,,,,2,0,0,0,infrastructure,0,,,,,
+b_036,recycling_plant,Recycling Plant,1,10000,10,10,concrete,3,building_frame,2,construction_equipment_ice,1,rubber,5,plastics,5,2,10,production,standard,10000,,,,,2,400,250,200,manufacturing,0,,,,,
+b_037,water_pump,Water Pump,1,10000,10,10,concrete,2,construction_equipment_ice,1,rubber,3,plastics,3,,,2,10,production,standard,10000,,,,,2,500,300,200,water,0,,,,,

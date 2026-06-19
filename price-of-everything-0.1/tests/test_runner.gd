@@ -1,4 +1,5 @@
 extends Node
+const BuildingLevels := preload("res://scripts/building_levels.gd")
 ## Minimal, zero-dependency headless test runner for price-of-everything.
 ##
 ## Fast path (one command; exit code 0 = all pass, 1 = a failure):
@@ -90,8 +91,17 @@ func _ready() -> void:
 	await _test_modifiers_event_payload()
 	await _test_modifiers_production_recipe_output()
 	await _test_modifiers_roundtrip()
-	await _test_mining_mastery_tech_unlock()
+	_test_live_unlock_conditions()
+	_test_deposit_penalty_modifier()
+	_test_flavor_nodes_wired()
+	_test_transport_congestion()
+	_test_tile_mode_flow_endpoints()
+	_test_cable_power_cap()
+	_test_power_output_modifier()
+	_test_building_leveling()
 	await _test_mining_mastery_free_unlock()
+	_test_modifiers_pct_additive_and_resolve()
+	_test_modifiers_new_domain_unlocks()
 	_test_event_grouping()
 	_test_survey_grouping()
 	_test_starvation_deeplink_building()
@@ -2725,6 +2735,10 @@ func _test_modifiers_production_recipe_output() -> void:
 	# revealing + topping up the deposit).
 	MatchState.reveal_deposit(tile, "coal")
 	MatchState.deposit_remaining[tile] = {"coal": 999}
+	# Coal carries a standing −50% deposit-penalty modifier (re-seeded by the reset
+	# above); drop it so this test isolates the +5% extraction modifier on a clean
+	# 20-unit baseline.
+	Modifiers.remove("deposit_penalty_coal")
 
 	var summary := _fresh_production_summary()
 	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
@@ -2768,65 +2782,401 @@ func _test_modifiers_roundtrip() -> void:
 # End-to-end the demo unlock: a mine for each of the 6 staple deposits triggers
 # the research tech ("Mining Mastery", research_unlocks.csv) → MatchState grants
 # the unlock when its condition is met → Modifiers applies the +5% bonus.
-func _test_mining_mastery_tech_unlock() -> void:
+func _test_deposit_penalty_modifier() -> void:
+	# The deposit penalty + mining-yield research are recipe_output modifiers matched
+	# by good_internal, so they show in the net-modifier indicator AND apply through
+	# the production hook (no separate deposit-yield multiply).
+	Modifiers.reset()
+	MatchState.reset()          # re-seeds the standing per-good deposit penalties
+	Stockpile.clear_all()
+	# Coal starts at a standing −50% deposit penalty.
+	var r: Dictionary = Modifiers.resolve_pct("recipe_output", "r_001", {"good_internal": "coal"})
+	_check(absf(float(r.get("net", 0.0)) - (-50.0)) < 0.001,
+		"coal mine starts at a −50%% deposit penalty (got %s)" % float(r.get("net", 0.0)))
+	# Researching Improved Coal Mining adds a +20% tile → net −30% (additive, no cap).
+	MatchState.grant_unlock("Improved Coal Mining")
+	var r2: Dictionary = Modifiers.resolve_pct("recipe_output", "r_001", {"good_internal": "coal"})
+	_check(absf(float(r2.get("net", 0.0)) - (-30.0)) < 0.001,
+		"Improved Coal Mining: −50%% + 20%% = net −30%% (got %s)" % float(r2.get("net", 0.0)))
+	_check((r2.get("parts", []) as Array).size() == 2,
+		"breakdown shows both the penalty tile and the research tile")
+	# End to end: a coal mine produces round(20 * 0.70) = 14.
+	var tile := "tile_6_8"
+	var inst: String = MatchState.add_building("b_001", "r_001", tile)
+	MatchState.reveal_deposit(tile, "coal")
+	MatchState.deposit_remaining[tile] = {"coal": 999}
+	var summary := _fresh_production_summary()
+	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
+	Production._flush_output_buffer()
+	_check(int(summary.produced.get("g_001", 0)) == 14,
+		"coal output reflects net −30%% (20 → 14, got %d)" % int(summary.produced.get("g_001", 0)))
+	# Exempt goods (not in EXTRACTION_PENALTY_PCT) carry no penalty tile.
+	var ro: Dictionary = Modifiers.resolve_pct("recipe_output", "rX", {"good_internal": "crude_oil"})
+	_check(absf(float(ro.get("net", 0.0))) < 0.001,
+		"exempt goods (crude_oil) carry no deposit penalty")
+	# Loading a save (import_state) must NOT wipe the standing penalties — they are a
+	# baseline rule re-seeded on import (regression: penalties vanished after load).
+	Modifiers.import_state({"modifiers": {}, "history": [], "next_id": 1})
+	var rload: Dictionary = Modifiers.resolve_pct("recipe_output", "r_001", {"good_internal": "coal"})
+	_check(absf(float(rload.get("net", 0.0)) - (-50.0)) < 0.001,
+		"a load with no saved penalties re-seeds the coal penalty (got %s)" % float(rload.get("net", 0.0)))
+	MatchState.remove_building(inst)
+	Modifiers.reset()
+	MatchState.reset()
+
+func _test_building_leveling() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+	# --- Multipliers ---
+	_check(absf(BuildingLevels.mult("output", 2) - 2.0) < 0.001 and absf(BuildingLevels.mult("output", 3) - 3.5) < 0.001,
+		"output scales ×2 (L2) / ×3.5 (L3)")
+	_check(absf(BuildingLevels.mult("energy", 2) - 1.8) < 0.001 and absf(BuildingLevels.mult("input", 3) - 3.0) < 0.001
+			and absf(BuildingLevels.mult("labour", 3) - 2.0) < 0.001 and absf(BuildingLevels.mult("size", 2) - 1.8) < 0.001,
+		"energy/input/labour/size multipliers match spec")
+	# --- Production scaling (via power output + energy) ---
+	var rec := {"recipe_id": "rp", "output_qty": 100, "recipe_type": "power", "output_name": "power", "energy_req": 50}
+	_check(Production._effective_power_output({"building_id": "b_003", "level": 2}, rec) == 200, "L2 power output 100 → 200")
+	_check(Production._effective_power_output({"building_id": "b_003", "level": 3}, rec) == 350, "L3 power output 100 → 350")
+	_check(Production._effective_energy_req({"building_id": "b_003", "level": 2}, rec) == 90, "L2 energy draw 50 → 90 (×1.8)")
+	# --- Upgrade materials ---
+	var cp: Dictionary = BuildingLevels.upgrade_materials("chem_plant", 2)
+	_check(int(cp.get("building_frame", 0)) == 2 and int(cp.get("construction_equipment_ice", 0)) == 1
+			and int(cp.get("concrete", 0)) == 10 and int(cp.get("rubber", 0)) == 20 and int(cp.get("plastics", 0)) == 20,
+		"chem plant L2 = base kit + 20 rubber + 20 plastics")
+	var forest: Dictionary = BuildingLevels.upgrade_materials("new_forest", 2)
+	_check(forest.has("biomass") and not forest.has("building_frame"), "forest upgrade is biomass only (no base kit)")
+	var roads: Dictionary = BuildingLevels.upgrade_materials("roads", 2)
+	_check(int(roads.get("construction_equipment_ice", 0)) == 2 and not roads.has("concrete"),
+		"roads L2 = 2 construction equipment, no base kit")
+	_check(BuildingLevels.research_gate("chem_plant", 2) == "Larger Reactor Trains"
+			and BuildingLevels.research_gate("poly_plant", 2) == "",
+		"research gates: chem plant gated, poly plant ungated")
+	# --- Upgrade action (now a 3-turn project, not instant) ---
+	var tile := "tile_up"
+	MatchState.tile_land_owned[tile] = 200
+	var iid := MatchState.add_building("b_012", "", tile)  # Chemical Plant, starts L1
+	_check(int(MatchState.get_building(iid).get("level", 1)) == 1, "a new building starts at Level 1")
+	var r1: Dictionary = MatchState.start_upgrade(iid, "tile")
+	_check(not bool(r1.get("ok", false)) and str(r1.get("research", "")) == "Larger Reactor Trains",
+		"upgrade is gated on the L2 research")
+	MatchState.grant_unlock("Larger Reactor Trains")
+	var r2: Dictionary = MatchState.start_upgrade(iid, "tile")
+	_check(not bool(r2.get("ok", false)) and r2.has("missing"), "upgrade is blocked without materials on the tile")
+	var rubber_gid := str(Catalog.get_good_by_internal_name("rubber").get("id", ""))
+	for gi in BuildingLevels.upgrade_materials("chem_plant", 2):
+		Stockpile.add(tile, str(Catalog.get_good_by_internal_name(str(gi)).get("id", "")), int(cp[gi]))
+	# Preview reflects all-on-tile + the 3-turn duration before committing.
+	var pv: Dictionary = MatchState.preview_upgrade(iid)
+	_check(bool(pv.get("ok", false)) and bool(pv.get("all_on_tile", false)) and int(pv.get("duration", 0)) == 3,
+		"preview: all materials on tile, 3-turn duration")
+	var r3: Dictionary = MatchState.start_upgrade(iid, "tile")
+	_check(bool(r3.get("ok", false)) and str(r3.get("status", "")) == MatchState.UPGRADE_STATUS_UPGRADING,
+		"upgrade starts (materials consumed) and is now in progress")
+	_check(MatchState.is_upgrading(iid) and int(MatchState.get_building(iid).get("level", 1)) == 1,
+		"level stays 1 while the 3-turn upgrade runs")
+	_check(Stockpile.get_at_tile(tile, rubber_gid) == 0, "upgrade materials consumed from the tile on start")
+	_check(not bool(MatchState.start_upgrade(iid, "tile").get("ok", false)), "cannot queue a second upgrade while one is pending")
+	_check(MatchState.reserved_upgrade_space_on_tile(tile) > 0.0, "in-progress upgrade reserves the growth footprint")
+	MatchState.tick_upgrades()
+	MatchState.tick_upgrades()
+	_check(int(MatchState.get_building(iid).get("level", 1)) == 1, "still Level 1 after 2 of 3 turns")
+	var done: Array = MatchState.tick_upgrades()
+	_check(done.has(iid) and int(MatchState.get_building(iid).get("level", 1)) == 2 and not MatchState.is_upgrading(iid),
+		"upgrade completes to L2 after 3 turns")
+	MatchState.remove_building(iid)
+
+	# --- Awaiting-materials sourcing: claim arrivals off the tile, then count down ---
+	var tile2 := "tile_up2"
+	MatchState.tile_land_owned[tile2] = 200
+	MatchState.grant_unlock("Larger Reactor Trains")
+	var iid2 := MatchState.add_building("b_012", "", tile2)
+	MatchState.pending_upgrades.append({
+		"instance_id": iid2, "building_id": "b_012", "tile_id": tile2,
+		"from_level": 1, "target_level": 2, "status": MatchState.UPGRADE_STATUS_AWAITING,
+		"missing": {rubber_gid: 20}, "turns_remaining": 3, "size_delta": 0.0,
+	})
+	MatchState.tick_upgrades()  # nothing on the tile yet → stays awaiting, no countdown
+	_check(str(MatchState.pending_upgrade(iid2).get("status", "")) == MatchState.UPGRADE_STATUS_AWAITING
+			and int(MatchState.pending_upgrade(iid2).get("turns_remaining", 0)) == 3,
+		"awaiting upgrade holds until materials arrive")
+	Stockpile.add(tile2, rubber_gid, 20)
+	MatchState.tick_upgrades()  # claims the rubber → becomes upgrading (countdown not yet ticked)
+	_check(str(MatchState.pending_upgrade(iid2).get("status", "")) == MatchState.UPGRADE_STATUS_UPGRADING
+			and Stockpile.get_at_tile(tile2, rubber_gid) == 0,
+		"awaiting upgrade claims arrived materials and starts the countdown")
+	MatchState.tick_upgrades(); MatchState.tick_upgrades(); MatchState.tick_upgrades()
+	_check(int(MatchState.get_building(iid2).get("level", 1)) == 2, "sourced-then-built upgrade completes to L2")
+	MatchState.remove_building(iid2)
+
+	# --- Atomic start: market sourcing with no port/funds consumes nothing ---
+	var tile3 := "tile_up3"
+	MatchState.tile_land_owned[tile3] = 200
+	MatchState.grant_unlock("Larger Reactor Trains")
+	var iid3 := MatchState.add_building("b_012", "", tile3)
+	# Put only HALF of one material on the tile; the rest would have to be sourced.
+	Stockpile.add(tile3, rubber_gid, 5)
+	MatchState.money = 0  # broke → market order must be refused
+	var rm: Dictionary = MatchState.start_upgrade(iid3, "market")
+	_check(not bool(rm.get("ok", false)) and not MatchState.is_upgrading(iid3)
+			and Stockpile.get_at_tile(tile3, rubber_gid) == 5,
+		"failed market start is atomic: nothing consumed, no pending upgrade")
+	MatchState.remove_building(iid3)
+
+	# --- Cancel refunds banked materials ---
+	var tile4 := "tile_up4"
+	MatchState.tile_land_owned[tile4] = 200
+	MatchState.grant_unlock("Larger Reactor Trains")
+	var iid4 := MatchState.add_building("b_012", "", tile4)
+	for gi in BuildingLevels.upgrade_materials("chem_plant", 2):
+		Stockpile.add(tile4, str(Catalog.get_good_by_internal_name(str(gi)).get("id", "")), int(cp[gi]))
+	MatchState.start_upgrade(iid4, "tile")  # consumes the whole kit off the tile
+	_check(Stockpile.get_at_tile(tile4, rubber_gid) == 0, "tile-mode start consumed the kit")
+	_check(MatchState.cancel_upgrade(iid4) and not MatchState.is_upgrading(iid4)
+			and Stockpile.get_at_tile(tile4, rubber_gid) == int(cp["rubber"]),
+		"cancel refunds the banked materials and clears the pending upgrade")
+	MatchState.remove_building(iid4)
+
+	# --- Preview: non-integer energy + cost-of-production per unit ---
+	var tile5 := "tile_up5"
+	MatchState.tile_land_owned[tile5] = 200
+	MatchState.grant_unlock("Larger Reactor Trains")
+	var iid5 := MatchState.add_building("b_012", "r_012", tile5)  # Chlor-Alkali chem plant
+	var pv5: Dictionary = MatchState.preview_upgrade(iid5)
+	var en = pv5.get("stats", {}).get("cur", {}).get("energy", null)
+	_check(en != null and typeof(en) == TYPE_FLOAT, "preview energy is a float (non-integer power allowed)")
+	var ucp: Dictionary = pv5.get("unit_cost", {})
+	_check(ucp.has("cur") and ucp.has("new"), "preview includes cost-of-production-per-unit (cur→new)")
+	# The cost report (fed to CostSolver) must scale inputs/outputs by level, or the live unit
+	# cost is inflated after an upgrade (levelled fixed costs ÷ un-scaled output).
+	Production._building_turn_reports.clear()
+	Production._capture_turn_report({"instance_id": "rt", "building_id": "b_012", "tile_id": "tT", "level": 2}, Catalog.get_recipe("r_012"))
+	var rep: Dictionary = Production._building_turn_reports[-1]
+	var r012: Dictionary = Catalog.get_recipe("r_012")
+	var base_out := 0
+	for o in r012.get("outputs", []):
+		base_out += int(o.get("qty", 0))
+	var rep_out := 0
+	for gid in (rep.get("outputs_produced", {}) as Dictionary):
+		rep_out += int(rep["outputs_produced"][gid])
+	var base_in := 0
+	for inp in r012.get("inputs", []):
+		base_in += int(inp.get("qty", 0))
+	var rep_in := 0
+	for gid in (rep.get("inputs_consumed", {}) as Dictionary):
+		rep_in += int(rep["inputs_consumed"][gid])
+	_check(base_out > 0 and rep_out == base_out * 2, "cost report scales output by level (×2 at L2)")
+	_check(base_in > 0 and rep_in == base_in * 2, "cost report scales inputs by level (×2 at L2)")
+	Production._building_turn_reports.clear()
+	MatchState.remove_building(iid5)
+
 	Modifiers.reset()
 	MatchState.reset()
 	Stockpile.clear_all()
 
-	# The tech exists in the loaded research defs.
-	var found_def := false
-	for d in MatchState._unlock_defs:
-		if str(d.title) == "Mining Mastery":
-			found_def = true
-	_check(found_def, "Mining Mastery exists as a research unlock def")
+func _test_power_output_modifier() -> void:
+	# Power generation now flows through recipe_output modifiers (it used to bypass them).
+	Modifiers.reset()
+	var coal_plant := {"building_id": "b_003"}  # Coal Power Plant
+	var rec := {"recipe_id": "rp_power", "output_qty": 100, "recipe_type": "power", "output_name": "power"}
+	_check(Production._effective_power_output(coal_plant, rec) == 100, "base power output is unmodified (100)")
+	MatchState.grant_unlock("Pulverized Coal Boilers")  # +5% Coal Power Plant output
+	_check(Production._effective_power_output(coal_plant, rec) == 105,
+		"Pulverized Coal Boilers boosts coal-plant power output +5%% → 105 (got %d)" % Production._effective_power_output(coal_plant, rec))
+	_check(Production._effective_power_output({"building_id": "b_024"}, rec) == 100,
+		"the coal-plant boost leaves other power plants (solar) untouched")
+	Modifiers.reset()
 
-	# Recipes whose deposit requirement matches the six staple types — all run
-	# on the b_001 (Mine) building.
-	var by_deposit := {
-		"coal": "r_001", "iron_ore": "r_002", "copper_ore": "r_006",
-		"basic_salt": "r_010", "limestone": "r_019", "bauxite_ore": "r_015",
-	}
-	# Build FIVE of the six first: condition not yet met, no unlock, no modifier.
-	var deps: Array = by_deposit.keys()
-	for j in range(5):
-		MatchState.add_building("b_001", str(by_deposit[deps[j]]), "tile_mm_%d" % j)
-	_check(not MatchState.has_mine_for_each_staple_ore(),
-		"condition false with only 5 of 6 staple ores")
-	_check(not MatchState.is_unlocked("Mining Mastery"),
-		"tech not unlocked with 5 of 6 mines")
-	_check(not Modifiers.has("mining_mastery_bonus"),
-		"modifier not granted before the tech unlocks")
+func _test_tile_mode_flow_endpoints() -> void:
+	# Goods routing OVERLAND (no leg data) still use their source/dest tile's infra for
+	# the first/last mile — counted by transport class (regression: isolated road read 0).
+	MatchState.pending_transport_shipments.clear()
+	MatchState.pending_transport_shipments.append({
+		"good_id": "g_001", "qty": 100, "source_tile": "tile_a", "destination_tile": "port_x",
+		"tiles": [], "legs": [],
+	})  # coal = solid_heavy → roads
+	_check(MatchState.tile_mode_flow("tile_a", "roads") == 100,
+		"overland coal counts toward the SOURCE tile's roads (got %d)" % MatchState.tile_mode_flow("tile_a", "roads"))
+	_check(MatchState.tile_mode_flow("port_x", "roads") == 100, "and toward the DESTINATION tile's roads")
+	_check(MatchState.tile_mode_flow("tile_a", "pipes") == 0, "coal (solid) does not count toward pipes")
+	_check(MatchState.tile_mode_flow("elsewhere", "roads") == 0, "a non-endpoint tile counts nothing")
+	# Crude oil = liquid → pipes, not roads.
+	MatchState.pending_transport_shipments = [{
+		"good_id": "g_026", "qty": 50, "source_tile": "tile_a", "destination_tile": "port_x",
+		"tiles": [], "legs": [],
+	}]
+	_check(MatchState.tile_mode_flow("tile_a", "pipes") == 50, "overland crude oil counts toward the source tile's pipes")
+	_check(MatchState.tile_mode_flow("tile_a", "roads") == 0, "crude oil (liquid) does not count toward roads")
+	MatchState.pending_transport_shipments.clear()
 
-	# Build the sixth — add_building re-checks unlock conditions, which grants
-	# the tech, which (via MatchState.unlock_granted) registers the modifier.
-	MatchState.add_building("b_001", str(by_deposit[deps[5]]), "tile_mm_5")
-	_check(MatchState.has_mine_for_each_staple_ore(),
-		"condition true once all six staple ores have mines")
-	_check(MatchState.is_unlocked("Mining Mastery"),
-		"the sixth mine unlocks Mining Mastery")
-	_check(Modifiers.has("mining_mastery_bonus"),
-		"unlocking the tech registers the +5% extraction modifier")
+func _test_cable_power_cap() -> void:
+	# Cables hard-cap a tile's power per turn by cable level — produce + draw separately.
+	Modifiers.reset()
+	Power.reset_for_turn()
+	_check(int(EconomyConfig.CABLE_POWER_CAP[1]) == 200 and int(EconomyConfig.CABLE_POWER_CAP[2]) == 400
+			and int(EconomyConfig.CABLE_POWER_CAP[3]) == 700,
+		"cable power caps are 200 / 400 / 700 by level")
+	# No cables → 0 cap, nothing produces or draws.
+	_check(Power.tile_power_cap("tx") == 0, "a tile with no cables has a 0 power cap")
+	_check(not Power.can_produce("tx", 50) and not Power.can_draw("tx", 50),
+		"no cables → can neither produce nor draw power")
+	_check(Power.can_produce("tx", 0) and Power.can_draw("tx", 0), "zero power is always allowed")
 
-	# Non-extraction recipes unaffected; extraction recipes get +5%.
-	_check(absf(Modifiers.apply("recipe_output", "r_003", 30.0,
-			{"recipe_type": "smelting"}) - 30.0) < 0.001,
-		"the bonus only applies to extraction recipes")
-	_check(absf(Modifiers.apply("recipe_output", "r_001", 20.0,
-			{"recipe_type": "extraction"}) - 21.0) < 0.001,
-		"an extraction recipe gets 20 → 21 with the bonus")
+	# Fake an L2-cabled tile so the level threshold can be exercised headless.
+	var fake := Node.new()
+	var src := GDScript.new()
+	src.source_code = "extends Node\nvar tiles := {}\nfunc id_to_coord(_t): return Vector2i(0, 0)\n"
+	src.reload()
+	fake.set_script(src)
+	fake.set("tiles", {Vector2i(0, 0): {"infrastructure_present": ["cables"], "infrastructure_levels": {"cables": 2}}})
+	fake.add_to_group("hex_map")
+	get_tree().root.add_child(fake)
 
-	# The bonus is timed: 30 turns from grant. Check the expiry stamp.
-	var mod: Dictionary = Modifiers._modifiers["mining_mastery_bonus"]
-	_check(int(mod.get("expires_turn", 0)) == int(TurnManager.current_turn) + 30,
-		"the bonus expires 30 turns after it is granted")
+	_check(Power.tile_power_cap("t2") == 400, "an L2-cable tile caps power at 400 (got %d)" % Power.tile_power_cap("t2"))
+	# Produce AND draw are independent caps — 400 each on the same L2 tile.
+	Power.record_produced("t2", 400)
+	Power.record_drawn("t2", 400)
+	_check(int(Power.tile_produced["t2"]) == 400 and int(Power.tile_drawn["t2"]) == 400,
+		"a tile can produce 400 AND draw 400 with an L2 cable")
+	_check(not Power.can_produce("t2", 1), "at the production cap, no further power generates")
+	_check(not Power.can_draw("t2", 1), "at the draw cap, no further power is supplied")
+	# Substation Layouts research raises the cap: +5% → 420.
+	MatchState.grant_unlock("Substation Layouts")
+	_check(Power.tile_power_cap("t2") == 420,
+		"Substation Layouts raises the L2 cap 400 → 420 (got %d)" % Power.tile_power_cap("t2"))
 
-	# Idempotent: building a seventh mine doesn't re-grant or stack.
-	MatchState.add_building("b_001", "r_001", "tile_mm_extra")
-	_check(Modifiers.active_count() == 1,
-		"the one-shot unlock does not re-grant the modifier on further mines")
+	get_tree().root.remove_child(fake)
+	fake.free()
+	Modifiers.reset()
+	Power.reset_for_turn()
+
+func _test_transport_congestion() -> void:
+	# Throughput soft cap: routes over a link's capacity pay a transport-cost penalty.
+	Modifiers.reset()
+	MatchState.reset()
+	MatchState.pending_transport_shipments.clear()
+	MatchState._last_link_flow.clear()
+	# Capacity = base mode cap × infra-level multiplier (L1×1, L2×2, L3×3.5).
+	_check(absf(MatchState.tile_mode_capacity("roads", 1) - 200.0) < 0.001, "roads L1 capacity = 200")
+	_check(absf(MatchState.tile_mode_capacity("roads", 2) - 400.0) < 0.001, "roads L2 capacity = 400 (×2)")
+	_check(absf(MatchState.tile_mode_capacity("rail", 3) - 1400.0) < 0.001, "rail L3 capacity = 1400 (400×3.5)")
+	_check(absf(MatchState.tile_mode_capacity("cables", 1)) < 0.001, "an uncapped mode (cables) reports 0")
+	# Throughput research raises capacity: Containerized Freight +10% rail.
+	MatchState.grant_unlock("Containerized Freight")
+	_check(absf(MatchState.tile_mode_capacity("rail", 1) - 440.0) < 0.001,
+		"Containerized Freight raises rail L1 capacity 400 → 440")
+
+	var route := {"tiles": ["tile_a", "tile_b"],
+		"legs": [{"mode": "roads", "from": "tile_a", "to": "tile_b"}]}
+	_check(MatchState.route_congestion_tier(route) == 0, "no flow → tier 0 (no penalty)")
+
+	# Helper to load a flow level onto the road link and snapshot it.
+	var load_flow := func(units: int) -> void:
+		MatchState.pending_transport_shipments.clear()
+		MatchState.pending_transport_shipments.append({"qty": units, "good_id": "coal",
+			"turns_remaining": 2, "tiles": ["tile_a", "tile_b"],
+			"legs": [{"mode": "roads", "from": "tile_a", "to": "tile_b"}]})
+		MatchState.update_transport_congestion()
+	# roads L1 cap = 200; tier-2 threshold = cap + base L1 cap = 400.
+	load_flow.call(150)
+	_check(MatchState.route_congestion_tier(route) == 0, "150 under cap 200 → tier 0")
+	load_flow.call(300)
+	_check(MatchState.route_congestion_tier(route) == 1, "300 over cap 200 (≤ cap+L1 400) → tier 1 (+100%)")
+	load_flow.call(500)
+	_check(MatchState.route_congestion_tier(route) == 2, "500 over cap+L1 400 → tier 2 (+200%)")
 
 	Modifiers.reset()
 	MatchState.reset()
+	MatchState.pending_transport_shipments.clear()
+	MatchState._last_link_flow.clear()
+
+func _test_flavor_nodes_wired() -> void:
+	# The 41 wired flavor nodes register real modifiers on unlock, one per domain.
+	Modifiers.reset()
+	MatchState.reset()
+	# recipe_output: Fractional Distillation → +5% Petrochemical Refinery (b_011).
+	MatchState.grant_unlock("Fractional Distillation")
+	_check(absf(Modifiers.apply("recipe_output", "x", 100.0, {"building_id": "b_011"}) - 105.0) < 0.001,
+		"Fractional Distillation wires +5% petro-refinery output")
+	# building_power: Flue Heat Recovery → −10% Coal Power Plant (b_003) power draw.
+	MatchState.grant_unlock("Flue Heat Recovery")
+	_check(absf(Modifiers.apply("building_power", "b_003", 100.0, {"building_id": "b_003"}) - 90.0) < 0.001,
+		"Flue Heat Recovery wires −10% coal-plant power")
+	# labour: Safety Training → −5% labour on ALL buildings (empty target_match).
+	MatchState.grant_unlock("Safety Training")
+	_check(absf(Modifiers.apply("labour_headcount", "b_999", 100.0, {"building_id": "b_999"}) - 95.0) < 0.001,
+		"Safety Training wires −5% labour empire-wide")
+	# maintenance: Grid Synchronous Generation → −8% on each power plant (array spec).
+	MatchState.grant_unlock("Grid Synchronous Generation")
+	_check(absf(Modifiers.apply("maintenance", "b_024", 100.0, {"building_id": "b_024"}) - 92.0) < 0.001,
+		"Grid Synchronous Generation wires −8% maintenance on a power plant (solar)")
+	# market_price: Forward Contracts → +5% steel sale price, good-specific.
+	MatchState.grant_unlock("Forward Contracts")
+	_check(absf(Modifiers.apply("market_price", "gid", 10.0, {"good_internal": "steel"}) - 10.5) < 0.001,
+		"Forward Contracts wires +5% steel sale price")
+	_check(absf(Modifiers.apply("market_price", "gid", 10.0, {"good_internal": "coal"}) - 10.0) < 0.001,
+		"the steel sale-price modifier does not touch other goods")
+	# transport_cost: Route Optimization → −10% haulage.
+	MatchState.grant_unlock("Route Optimization")
+	_check(absf(Modifiers.apply("transport_cost", "g", 100.0, {"good_id": "g"}) - 90.0) < 0.001,
+		"Route Optimization wires −10% transport cost")
+	Modifiers.reset()
+	MatchState.reset()
+
+func _test_live_unlock_conditions() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+	Production.produced_by_building.clear()
+	Production.full_output_streak_by_building.clear()
+
+	# Research conditions are encoded as internal_name Objects: a good_id for the
+	# "Produce" verb, a building internal_name for the "Run …" verbs.
+	var def := {}
+	for d in MatchState._unlock_defs:
+		if str(d.title) == "Improved Coal Mining":
+			def = d
+	_check(not def.is_empty() and str(def.action) == "Produce" and str(def.object) == "coal",
+		"Improved Coal Mining now uses a Produce|coal condition")
+
+	# --- "Produce N units" verb: lifetime production across all buildings ---
+	# Production records under the catalog good_id (e.g. g_001), NOT the internal
+	# name; the condition Object is the internal name "coal", so lifetime_total must
+	# resolve it. Seed the ledger under the real good_id to exercise that path.
+	var coal_gid: String = str(Catalog.get_good_by_internal_name("coal").get("id", "coal"))
+	_check(coal_gid != "coal", "coal resolves to a catalog good_id (got %s)" % coal_gid)
+	# 499 coal: below the 500 threshold, stays locked.
+	Production.produced_by_building["bX"] = {coal_gid: 499}
+	MatchState._check_unlock_conditions()
+	_check(not MatchState.is_unlocked("Improved Coal Mining"),
+		"Produce condition unmet at 499/500 coal")
+	# Cross-building total reaches 500 → the lifetime sum trips the unlock.
+	Production.produced_by_building["bY"] = {coal_gid: 1}
+	MatchState._check_unlock_conditions()
+	_check(MatchState.is_unlocked("Improved Coal Mining"),
+		"Produce condition met once lifetime coal hits 500 (summed across buildings)")
+
+	# --- "Run L1 … for N turns": level + run-streak filter ---
+	MatchState.reset()
+	Production.full_output_streak_by_building.clear()
+	var iid := MatchState.add_building("b_003", "", "tile_lv_1")  # Coal Power Plant, Level 1
+	_check(MatchState._count_buildings("coal_power", 1, false, 20) == 0,
+		"a fresh L1 building (streak 0) does not count toward a 20-turn gate")
+	Production.full_output_streak_by_building[iid] = 20
+	_check(MatchState._count_buildings("coal_power", 1, false, 20) == 1,
+		"the L1 building counts once its run-streak reaches 20 turns")
+
+	# --- Forward-compatible level filter: no Level-2 buildings exist yet ---
+	_check(MatchState._count_buildings("coal_power", 2, false, 0) == 0,
+		"Level-2 gates stay unmet until the leveling mechanic ships")
+	# --- Profitability filter: a building with no costed output isn't profitable ---
+	_check(MatchState._count_buildings("coal_power", -1, true, 0) == 0,
+		"the profitable filter excludes buildings with no known unit cost")
+
+	Modifiers.reset()
+	MatchState.reset()
+	Production.produced_by_building.clear()
+	Production.full_output_streak_by_building.clear()
 
 # Free-pick path: spending a free unlock on Mining Mastery (via_condition=false)
 # also routes through grant_unlock → unlock_granted, so the bonus still lands.
@@ -2838,6 +3188,61 @@ func _test_mining_mastery_free_unlock() -> void:
 	_check(MatchState.is_unlocked("Mining Mastery"), "free pick unlocks the tech")
 	_check(Modifiers.has("mining_mastery_bonus"),
 		"free-picking the tech also grants the modifier")
+	Modifiers.reset()
+	MatchState.reset()
+
+# Percentage modifiers add (not chain): a −10% and a +15% on the same domain/target
+# net to +5%, applied as ×1.05. And resolve_pct hands the UI that net + the parts.
+func _test_modifiers_pct_additive_and_resolve() -> void:
+	Modifiers.reset()
+	Modifiers.add({"id": "down", "domain": "recipe_output", "target": "*",
+		"pct": -10.0, "label": "Tax productivity hit"})
+	Modifiers.add({"id": "up", "domain": "recipe_output", "target": "*",
+		"pct": 15.0, "label": "Process upgrade"})
+	# 100 → (100)*(1 + 5/100) = 105, because −10 and +15 SUM to +5 (not 0.90×1.15).
+	_check(absf(Modifiers.apply("recipe_output", "r_001", 100.0) - 105.0) < 0.001,
+		"pct modifiers add: −10% and +15% net +5% (→105, not 103.5)")
+	var res: Dictionary = Modifiers.resolve_pct("recipe_output", "r_001", {})
+	_check(absf(float(res.get("net", 0.0)) - 5.0) < 0.001,
+		"resolve_pct returns the summed net (+5%)")
+	_check((res.get("parts", []) as Array).size() == 2,
+		"resolve_pct lists both contributing multipliers for the hover")
+	# Domain isolation: a building_power pct doesn't bleed into recipe_output's net.
+	Modifiers.add({"id": "pwr", "domain": "building_power", "target": "*", "pct": -20.0})
+	_check(absf(float(Modifiers.resolve_pct("recipe_output", "r_001", {}).get("net", 0.0)) - 5.0) < 0.001,
+		"resolve_pct ignores other domains")
+	_check(absf(Modifiers.apply("building_power", "b_002", 100.0) - 80.0) < 0.001,
+		"a −20% building_power pct drops a 100-energy draw to 80")
+	Modifiers.reset()
+
+# The promoted research nodes register their modifiers on unlock, across all four
+# wired domains — including Lights-Out Automation, whose one node hits TWO buildings.
+func _test_modifiers_new_domain_unlocks() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	# recipe_output: Continuous-Flow Reactors → +5% at the chem plant (b_012) only.
+	MatchState.grant_unlock("Continuous-Flow Reactors")
+	_check(Modifiers.has("cfr_chem_output"), "Continuous-Flow Reactors registers its modifier")
+	_check(absf(Modifiers.apply("recipe_output", "any", 100.0, {"building_id": "b_012"}) - 105.0) < 0.001,
+		"chem plant (b_012) gets +5% output")
+	_check(absf(Modifiers.apply("recipe_output", "any", 100.0, {"building_id": "b_010"}) - 100.0) < 0.001,
+		"a different building (b_010) is untouched by the chem bonus")
+	# building_power: Energy-Recovery Devices → −50% at desal (b_021).
+	MatchState.grant_unlock("Energy-Recovery Devices")
+	_check(absf(Modifiers.apply("building_power", "b_021", 100.0, {"building_id": "b_021"}) - 50.0) < 0.001,
+		"desal (b_021) power draw halved")
+	# maintenance: Combined Heat & Power → −5% everywhere.
+	MatchState.grant_unlock("Combined Heat & Power")
+	_check(absf(Modifiers.apply("maintenance", "b_002", 100.0, {"building_id": "b_002"}) - 95.0) < 0.001,
+		"Combined Heat & Power cuts maintenance 5% empire-wide")
+	# labour_headcount: ONE Lights-Out node, TWO buildings (high-tech b_010 + assembly b_009).
+	MatchState.grant_unlock("Lights-Out Automation")
+	_check(Modifiers.has("lo_hightech_labour") and Modifiers.has("lo_assembly_labour"),
+		"Lights-Out Automation registers BOTH building modifiers from one unlock")
+	_check(absf(Modifiers.apply("labour_headcount", "b_010", 100.0, {"building_id": "b_010"}) - 80.0) < 0.001,
+		"high-tech (b_010) labour −20%")
+	_check(absf(Modifiers.apply("labour_headcount", "b_009", 100.0, {"building_id": "b_009"}) - 80.0) < 0.001,
+		"assembly (b_009) labour −20%")
 	Modifiers.reset()
 	MatchState.reset()
 
@@ -4066,7 +4471,7 @@ func _test_main_scene_instantiates() -> void:
 
 # Logic: the data CSVs load into the Catalog as expected.
 func _test_catalog_loaded() -> void:
-	_check(Catalog.all_goods().size() == 64, "Catalog has 64 goods")
+	_check(Catalog.all_goods().size() == 76, "Catalog has 76 goods")
 	var _all_classed := true
 	for g in Catalog.all_goods():
 		if str(g.get("transport_class", "")) == "":

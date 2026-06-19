@@ -1,4 +1,5 @@
 extends PanelContainer
+const BuildingLevels := preload("res://scripts/building_levels.gd")
 
 @onready var title_label: Label = $MarginContainer/VBoxContainer/HeaderRow/TitleLabel
 @onready var close_button: Button = $MarginContainer/VBoxContainer/HeaderRow/CloseButton
@@ -27,6 +28,7 @@ const TOP_BAR_CLEARANCE := 56.0
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 static var _suppress_tile_only_warning := false  # session-wide "Don't show again"
 const UPGRADE_BUTTON_SIZE := Vector2(40, 40)
+const UPGRADE_NUMERAL_BLUE := Color("#A7C8D3")  # light steel-blue (DS Primary-button face)
 const STATUS_ICON_SIZE := Vector2(20, 20)
 const STATUS_DOT_SIZE := Vector2(8, 8)
 const STATUS_RAIL_WIDTH := 30.0
@@ -64,6 +66,7 @@ const STATUS_GREEN := Color("#5BD180")   # DS PALETTE OK
 const STATUS_RED := Color("#E66060")     # DS PALETTE DANGER
 const STATUS_GREY := Color(0.45, 0.48, 0.52)
 const STATUS_YELLOW := Color("#E6B85C")  # DS PALETTE WARN
+const MOD_WHITE := Color(0.93, 0.94, 0.96)  # neutral band for the net-modifier %
 const ICON_TINT := Color(0.995234, 0.930806, 0.763265)   # off-white (recipe-card bg)
 const TOOLTIP_NAVY := Color(0.03, 0.07, 0.13)
 const DIAGRAM_NAVY := Color(0.0, 0.119856, 0.243095, 1.0)
@@ -112,9 +115,15 @@ var _drag_offset := Vector2.ZERO
 var _status_dots: Dictionary = {}
 var _cost_label: Panel = null
 var _cost_wrapper: HBoxContainer = null
+var _mod_label: Label = null
+var _mod_wrapper: HBoxContainer = null
 var _tooltip_theme: Theme = null
 var _upgrade_button: Button = null
-var _upgrade_panel: PanelContainer = null
+var _upgrade_numeral: Label = null         # target-level digit embossed inside the arrow
+var _max_lvl_badge: PanelContainer = null  # replaces the button once the building is maxed
+var _upgrade_panel: PanelContainer = null  # legacy inline panel — superseded by the upgrade dialog (kept null)
+var _upgrade_dialog: Control = null        # lazily-built expanded upgrade dialog (see upgrade_dialog.gd)
+var _upgrade_dialog_layer: CanvasLayer = null  # the top CanvasLayer the dialog lives on (built once, reused)
 var _current_building: Dictionary = {}
 var _current_recipe: Dictionary = {}
 var _route_row: HBoxContainer = null
@@ -165,6 +174,9 @@ func _ready() -> void:
 		Stockpile.stockpile_changed.connect(_on_logistics_changed)
 	if not CostSolver.costs_updated.is_connected(_on_costs_updated):
 		CostSolver.costs_updated.connect(_on_costs_updated)
+	# A research unlock (or any modifier change) can flip the net-modifier indicator.
+	if not Modifiers.modifiers_changed.is_connected(_on_modifiers_changed):
+		Modifiers.modifiers_changed.connect(_on_modifiers_changed)
 	# A deposit running out must refresh the shown building's RAG dots, production
 	# status and recipe diagram (it stops being able to produce).
 	if not MatchState.deposits_changed.is_connected(_on_deposit_changed):
@@ -181,6 +193,13 @@ func _ready() -> void:
 		Construction.construction_completed.connect(_on_construction_finished)
 	if not Construction.construction_cancelled.is_connected(_on_construction_cancelled_detail):
 		Construction.construction_cancelled.connect(_on_construction_cancelled_detail)
+	# Keep this panel live as an upgrade is queued, advances, and completes.
+	if not MatchState.building_upgraded.is_connected(_on_building_upgrade_changed):
+		MatchState.building_upgraded.connect(_on_building_upgrade_changed)
+	if not MatchState.building_upgrade_started.is_connected(_on_building_upgrade_changed):
+		MatchState.building_upgrade_started.connect(_on_building_upgrade_changed)
+	if not MatchState.building_upgrade_cancelled.is_connected(_on_building_upgrade_changed):
+		MatchState.building_upgrade_cancelled.connect(_on_building_upgrade_changed)
 	set_meta("panel_ready", true)
 
 func show_building(building: Dictionary) -> void:
@@ -264,6 +283,7 @@ func _rebuild_fields(building: Dictionary) -> void:
 	_showing_construction_instance = ""
 
 	_current_building = building
+	_refresh_upgrade_button()  # next-level digit / MAX LVL badge for the selected building
 	var building_data: Dictionary = Catalog.get_building(building.get("building_id", ""))
 	_update_building_banner(building_data)
 	var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
@@ -311,11 +331,14 @@ func _rebuild_fields(building: Dictionary) -> void:
 	_update_status_icons(building, recipe, is_infrastructure)
 	_add_field("Value", _money_text(building_data.get("base_price", 0.0)))
 
+	# Levelling raises the base, so these track the building's level (matching the engine).
+	var lvl := int(building.get("level", 1))
 	if not is_infrastructure and recipe.get("output_name", "") == "power":
-		_add_field("Power production", str(recipe.get("output_qty", 0)))
+		var power_out := int(round(float(recipe.get("output_qty", 0)) * BuildingLevels.mult("output", lvl)))
+		_add_field("Power production", str(power_out))
 
 
-	_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data)))
+	_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data) * BuildingLevels.mult("maint", lvl)))
 
 	if not is_infrastructure and recipe.get("output_name", "") != "power":
 		var route_info := _output_route_summary()
@@ -1270,7 +1293,45 @@ func _build_upgrade_controls() -> void:
 	_upgrade_button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
 	_upgrade_button.theme_type_variation = "BuildIcon"  # DS light-blue square icon button
 	_upgrade_button.pressed.connect(_on_upgrade_button_pressed)
+	# The target-level digit, embossed inside the arrow: light-blue (button colour) with a
+	# dark drop to the lower-right, as if lit from the upper-left.
+	_upgrade_numeral = Label.new()
+	_upgrade_numeral.theme_type_variation = "Numeric"
+	_upgrade_numeral.add_theme_font_size_override("font_size", 19)
+	_upgrade_numeral.add_theme_color_override("font_color", UPGRADE_NUMERAL_BLUE)
+	_upgrade_numeral.add_theme_color_override("font_shadow_color", Color(0.0, 0.04, 0.09, 0.9))
+	_upgrade_numeral.add_theme_constant_override("shadow_offset_x", 2)
+	_upgrade_numeral.add_theme_constant_override("shadow_offset_y", 2)
+	_upgrade_numeral.add_theme_color_override("font_outline_color", Color(0.0, 0.04, 0.09, 0.85))
+	_upgrade_numeral.add_theme_constant_override("outline_size", 3)
+	_upgrade_numeral.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_upgrade_numeral.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_upgrade_numeral.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_upgrade_numeral.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_upgrade_button.add_child(_upgrade_numeral)
 	button_row.add_child(_upgrade_button)
+
+	# Terminal state: a non-clickable rounded square reading MAX / LVL (off-white on transparent),
+	# shown in place of the button once the building reaches the maximum level.
+	_max_lvl_badge = PanelContainer.new()
+	_max_lvl_badge.custom_minimum_size = UPGRADE_BUTTON_SIZE
+	_max_lvl_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_max_lvl_badge.visible = false
+	var badge_style := StyleBoxFlat.new()
+	badge_style.bg_color = Color(0, 0, 0, 0)  # transparent
+	badge_style.border_color = DS.PALETTE.BORDER_SOFT
+	badge_style.set_border_width_all(2)
+	badge_style.set_corner_radius_all(10)
+	_max_lvl_badge.add_theme_stylebox_override("panel", badge_style)
+	var max_lbl := Label.new()
+	max_lbl.text = "MAX\nLVL"
+	max_lbl.add_theme_font_size_override("font_size", 12)
+	max_lbl.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
+	max_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	max_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	max_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_max_lvl_badge.add_child(max_lbl)
+	button_row.add_child(_max_lvl_badge)
 
 	panel_vbox.add_child(button_row)
 	panel_vbox.move_child(button_row, row_index)
@@ -1279,91 +1340,57 @@ func _build_upgrade_controls() -> void:
 	change_recipe_button.custom_minimum_size = Vector2(0, 30)
 	change_recipe_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button_row.add_child(change_recipe_button)
+	# The upgrade flow now opens the expanded upgrade_dialog (built lazily); no inline panel.
 
-	_upgrade_panel = _make_upgrade_panel()
-	panel_vbox.add_child(_upgrade_panel)
-	panel_vbox.move_child(_upgrade_panel, button_row.get_index() + 1)
-
-func _make_upgrade_panel() -> PanelContainer:
-	var panel := PanelContainer.new()
-	panel.visible = false
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.03, 0.08, 0.14, 0.98)
-	panel_style.border_width_left = 1
-	panel_style.border_width_top = 1
-	panel_style.border_width_right = 1
-	panel_style.border_width_bottom = 1
-	panel_style.border_color = Color(0.42, 0.68, 0.88, 0.75)
-	panel_style.set_content_margin_all(10)
-	panel.add_theme_stylebox_override("panel", panel_style)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	panel.add_child(vbox)
-
-	var title := _make_upgrade_label("Upgrade to level 2.", Color.WHITE, 15)
-	vbox.add_child(title)
-	vbox.add_child(_make_upgrade_label("Cost: X, Materials required: A, B, C", Color.WHITE, 13))
-	vbox.add_child(HSeparator.new())
-	vbox.add_child(_make_upgrade_label("Output modifier: +150%", UPGRADE_GREEN, 13))
-	vbox.add_child(_make_upgrade_label("Power req: +100%", UPGRADE_RED, 13))
-	vbox.add_child(_make_upgrade_label("Tile size required: +80%", UPGRADE_RED, 13))
-	vbox.add_child(_make_upgrade_label("Maintenance required: +80%", UPGRADE_RED, 13))
-	vbox.add_child(_make_upgrade_label("Labour costs: +80%", UPGRADE_RED, 13))
-	var note := _make_upgrade_label("Note - output rounds to the nearest integer", Color(0.78, 0.84, 0.9), 11)
-	note.add_theme_font_override("font", get_theme_default_font())
-	vbox.add_child(note)
-
-	var button_row := HBoxContainer.new()
-	button_row.add_theme_constant_override("separation", 8)
-	vbox.add_child(button_row)
-
-	var upgrade_button := Button.new()
-	upgrade_button.text = "Upgrade"
-	upgrade_button.pressed.connect(_on_upgrade_confirm_pressed)
-	button_row.add_child(upgrade_button)
-
-	var cancel_button := Button.new()
-	cancel_button.text = "Cancel"
-	cancel_button.pressed.connect(_hide_upgrade_panel)
-	button_row.add_child(cancel_button)
-
-	return panel
-
-func _make_upgrade_label(text: String, color: Color, font_size: int) -> Label:
-	var label := Label.new()
-	label.text = text
-	label.add_theme_color_override("font_color", color)
-	label.add_theme_font_size_override("font_size", font_size)
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	return label
-
+# Open the expanded upgrade dialog for the selected building. The dialog shows the material
+# kit (with market/stockpile sourcing), the cur→new benefit/cost deltas, and the 3-turn build
+# time, and commits via MatchState.start_upgrade(). Built lazily on a top CanvasLayer so it
+# floats above the HUD regardless of where this panel sits.
 func _on_upgrade_button_pressed() -> void:
-	if _upgrade_panel == null:
+	var instance_id: String = str(_current_building.get("instance_id", ""))
+	if instance_id == "":
 		return
-	_upgrade_panel.visible = not _upgrade_panel.visible
+	_ensure_upgrade_dialog()
+	_upgrade_dialog.open(instance_id)
 
-func _hide_upgrade_panel() -> void:
-	if _upgrade_panel != null:
-		_upgrade_panel.visible = false
+# Sync the upgrade control to the selected building: show the next-level digit in the arrow,
+# or swap to the non-clickable MAX LVL badge once the building can't be upgraded further.
+func _refresh_upgrade_button() -> void:
+	if _upgrade_button == null:
+		return
+	var level := int(_current_building.get("level", 1))
+	var maxed := level >= BuildingLevels.MAX_LEVEL
+	_upgrade_button.visible = not maxed
+	if _max_lvl_badge != null:
+		_max_lvl_badge.visible = maxed
+	if not maxed and _upgrade_numeral != null:
+		_upgrade_numeral.text = str(level + 1)
+		_upgrade_button.tooltip_text = "Upgrade to Level %d" % (level + 1)
 
-func _on_upgrade_confirm_pressed() -> void:
-	var tile_id: String = _current_building.get("tile_id", "")
-	var building_id: String = _current_building.get("building_id", "")
-	if tile_id == "" or building_id == "":
+func _ensure_upgrade_dialog() -> void:
+	if _upgrade_dialog != null and is_instance_valid(_upgrade_dialog):
 		return
-	var building_data := Catalog.get_building(building_id)
-	var added_space := float(building_data.get("tile_size_used", 1.0)) * UPGRADE_TILE_SIZE_MULTIPLIER
-	var projected_space := MatchState.get_tile_space_used(tile_id) + added_space
-	if projected_space > float(MatchState.MAX_TILE_LAND):
-		_show_tile_space_toast("There is no more room on that tile. Demolish buildings to make room.", "show_error")
-		return
-	if projected_space > float(MatchState.get_tile_land_owned(tile_id)):
-		_show_tile_space_toast("You cannot build that. You do not own sufficient land on tile %s" % tile_id, "show_error")
-		return
-	if projected_space > DENSITY_SOFT_CAPACITY:
-		_show_tile_space_toast("Local opposition to density on tile %s will increase material and money costs for new buildings by 50%%" % tile_id, "show_caution")
+	# One reusable dialog on a high CanvasLayer (built once, hidden on close — never re-created).
+	if _upgrade_dialog_layer == null or not is_instance_valid(_upgrade_dialog_layer):
+		_upgrade_dialog_layer = CanvasLayer.new()
+		_upgrade_dialog_layer.layer = 128
+		get_tree().root.add_child(_upgrade_dialog_layer)
+	_upgrade_dialog = (load("res://scripts/upgrade_dialog.gd") as Script).new()
+	_upgrade_dialog_layer.add_child(_upgrade_dialog)
+	_upgrade_dialog.committed.connect(_on_upgrade_committed)
+
+func _on_upgrade_committed(instance_id: String) -> void:
+	# The level changes a few turns later (building_upgraded); refresh now so the in-progress
+	# state shows immediately.
+	if str(_current_building.get("instance_id", "")) == instance_id:
+		_current_building = MatchState.get_building(instance_id)
+		_rebuild_fields(_current_building)
+
+# An upgrade for some building was queued, advanced, or completed — refresh if it's the one on screen.
+func _on_building_upgrade_changed(instance_id: String, _level_or_target: int = 0) -> void:
+	if str(_current_building.get("instance_id", "")) == instance_id and MatchState.buildings.has(instance_id):
+		_current_building = MatchState.get_building(instance_id)
+		_rebuild_fields(_current_building)
 
 func _show_tile_space_toast(message: String, method_name: String) -> void:
 	var toast := get_tree().root.find_child("ToastLayer", true, false)
@@ -1494,7 +1521,7 @@ func _make_flow_cell(good_item: Dictionary, cell_size: Vector2, prefer_small: bo
 	if exhausted:
 		_add_exhausted_overlay(cell)
 	else:
-		_add_flow_quantity_badge(cell, good_item, cell_size)
+		_add_flow_quantity_badge(cell, good_item, cell_size, is_input)
 
 	return cell
 
@@ -1607,31 +1634,156 @@ func _flow_cell_good_id(good_item: Dictionary) -> String:
 		return ""
 	return str(Catalog.get_good_by_internal_name(internal).get("id", ""))
 
-func _add_flow_quantity_badge(cell: Panel, good_item: Dictionary, cell_size: Vector2) -> void:
+func _add_flow_quantity_badge(cell: Panel, good_item: Dictionary, cell_size: Vector2, is_input: bool = false) -> void:
 	if not _should_show_quantity_badge(good_item):
 		return
 
-	var qty := _badge_quantity(good_item)
+	# Levelling raises the BASE recipe quantity (it is NOT a modifier): a Level-2 building
+	# consumes ×input_mult inputs and produces ×output_mult outputs. The card shows that
+	# levelled base; recipe_output modifiers then apply on top of it.
+	var lvl := int(_current_building.get("level", 1))
+	var qty := int(round(_badge_quantity(good_item) * BuildingLevels.mult("input" if is_input else "output", lvl)))
 	if qty <= 0:
 		return
 
-	var qty_text := str(qty)
-	# The shared quantity pill (also used by the deposits mapmode overlay).
-	var badge := UIHelpers.make_quantity_pill(qty_text, FLOW_BADGE_DIAMETER, FLOW_BADGE_TEXT_SIZE)
-	var badge_size := badge.custom_minimum_size
-	badge.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	# Only OUTPUTS whose modifier-adjusted quantity rounds to a DIFFERENT integer get
+	# the widened dual pill; inputs and unchanged outputs keep the normal narrow pill.
+	var modified := qty
+	if not is_input:
+		modified = _modified_output_qty(good_item, qty)
+
+	var height := FLOW_BADGE_DIAMETER
 	var overlap: int = max(4, roundi(min(cell_size.x, cell_size.y) * 0.10))
-	badge.offset_left = -badge_size.x + overlap
-	badge.offset_top = -badge_size.y + overlap
-	badge.offset_right = overlap
-	badge.offset_bottom = overlap
-	cell.add_child(badge)
+
+	if modified == qty:
+		var badge := UIHelpers.make_quantity_pill(str(qty), height, FLOW_BADGE_TEXT_SIZE)
+		var bs := badge.custom_minimum_size
+		badge.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+		badge.offset_left = -bs.x + overlap
+		badge.offset_top = -bs.y + overlap
+		badge.offset_right = overlap
+		badge.offset_bottom = overlap
+		cell.add_child(badge)
+		return
+
+	# Changed output: struck default + actual, sized to content (snug padding), centred
+	# on the same point the original single pill sat at.
+	var base_w: int = height if str(qty).length() <= 1 else maxi(height, str(qty).length() * 9 + 14)
+	var pill := _make_recipe_quantity_pill(qty, modified, height)
+	var w: float = pill.custom_minimum_size.x
+	var center_x: float = overlap - base_w / 2.0
+	pill.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	pill.offset_left = center_x - w / 2.0
+	pill.offset_right = center_x + w / 2.0
+	pill.offset_top = -height + overlap
+	pill.offset_bottom = overlap
+	cell.add_child(pill)
+
+# The output a recipe's good would actually produce after all recipe_output
+# modifiers (deposit penalty, mining/building research) — the production result.
+func _modified_output_qty(good_item: Dictionary, default_qty: int) -> int:
+	if _current_recipe.is_empty():
+		return default_qty
+	var recipe_id := str(_current_recipe.get("recipe_id", ""))
+	var good_id := str(good_item.get("good_id", ""))
+	var good_internal := str(good_item.get("internal_name", ""))
+	if good_internal == "" and good_id != "":
+		good_internal = str(Catalog.get_good(good_id).get("internal_name", ""))
+	var ctx := {
+		"recipe_id": recipe_id,
+		"recipe_type": str(_current_recipe.get("recipe_type", "")).to_lower(),
+		"building_id": str(_current_building.get("building_id", "")),
+		"good_id": good_id,
+		"good_internal": good_internal,
+	}
+	return int(round(Modifiers.apply("recipe_output", recipe_id, float(default_qty), ctx)))
+
+# The dual recipe-diagram quantity pill: struck default on the LEFT and the actual
+# on the RIGHT (red if the output dropped, green if it rose, each 1px white-outlined),
+# a small gap between, sized to content with snug padding.
+const _DUAL_PILL_PAD := 8   # horizontal padding inside the pill
+const _DUAL_PILL_GAP := 8   # space between the struck default and the actual
+func _make_recipe_quantity_pill(default_qty: int, modified_qty: int, height: int) -> Control:
+	var struck_w: int = str(default_qty).length() * 9 + 6
+	var actual_w: int = str(modified_qty).length() * 9 + 6
+	var width: int = _DUAL_PILL_PAD * 2 + struck_w + _DUAL_PILL_GAP + actual_w
+
+	var pill := Panel.new()
+	pill.custom_minimum_size = Vector2(width, height)
+	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pill.clip_contents = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = DIAGRAM_NAVY
+	style.border_color = DIAGRAM_PAPER
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(int(height / 2.0))
+	pill.add_theme_stylebox_override("panel", style)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pill.add_child(center)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", _DUAL_PILL_GAP)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.add_child(row)
+
+	row.add_child(_make_struck_number(default_qty, height))
+
+	var actual := Label.new()
+	actual.text = str(modified_qty)
+	var als := LabelSettings.new()
+	als.font_size = FLOW_BADGE_TEXT_SIZE
+	als.font_color = STATUS_GREEN if modified_qty > default_qty else STATUS_RED
+	als.outline_size = 1
+	als.outline_color = Color.WHITE
+	actual.label_settings = als
+	actual.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	actual.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	actual.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(actual)
+	return pill
+
+# A number with a 1px line drawn through it (Label + centred ColorRect), paper-coloured.
+func _make_struck_number(value: int, height: int) -> Control:
+	var box := Control.new()
+	box.custom_minimum_size = Vector2(str(value).length() * 9 + 4, height)
+	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var lbl := Label.new()
+	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lbl.text = str(value)
+	var lset := LabelSettings.new()
+	lset.font_color = DIAGRAM_PAPER
+	lset.font_size = FLOW_BADGE_TEXT_SIZE
+	lbl.label_settings = lset
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(lbl)
+	var line := ColorRect.new()
+	line.color = DIAGRAM_PAPER
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.anchor_left = 0.0
+	line.anchor_right = 1.0
+	line.anchor_top = 0.5
+	line.anchor_bottom = 0.5
+	line.offset_left = 1.0
+	line.offset_right = -1.0
+	line.offset_top = -1.0
+	line.offset_bottom = 0.0
+	box.add_child(line)
+	return box
 
 func _update_flow_power(recipe: Dictionary) -> void:
 	for child in flow_arrow.get_children():
 		child.queue_free()
 
-	var energy_req: int = recipe.get("energy_req", 0)
+	# Energy draw scales with the building's level (the base grows on upgrade, same as the
+	# grid draw in _effective_energy_req).
+	var lvl := int(_current_building.get("level", 1))
+	var energy_req: int = int(round(float(recipe.get("energy_req", 0)) * BuildingLevels.mult("energy", lvl)))
 	if energy_req <= 0:
 		return
 
@@ -1799,6 +1951,37 @@ func _build_status_icon_column() -> void:
 	_cost_wrapper.add_child(_cost_label)
 
 	rag_box.add_child(_cost_wrapper)
+
+	# 6th indicator: net production modifier — a signed %, coloured by band
+	# (white −1..1%, red <−1%, green >1%). All active output multipliers add
+	# together (−10% and +15% → +5%) before applying; hover lists each one.
+	_mod_wrapper = HBoxContainer.new()
+	_mod_wrapper.alignment = BoxContainer.ALIGNMENT_CENTER
+	_mod_wrapper.theme = _tooltip_theme
+	_mod_wrapper.mouse_filter = Control.MOUSE_FILTER_STOP
+	_mod_wrapper.add_theme_constant_override("separation", 2)
+	_mod_wrapper.custom_minimum_size = Vector2(STATUS_RAIL_WIDTH + 14.0, 0)
+
+	var mod_icon := Label.new()
+	mod_icon.text = "Δ"
+	mod_icon.custom_minimum_size = STATUS_ICON_SIZE
+	mod_icon.add_theme_font_size_override("font_size", 14)
+	mod_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mod_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	mod_icon.modulate = ICON_TINT
+	mod_icon.mouse_filter = Control.MOUSE_FILTER_STOP
+	mod_icon.theme = _tooltip_theme
+	_mod_wrapper.add_child(mod_icon)
+
+	_mod_label = Label.new()
+	_mod_label.add_theme_font_size_override("font_size", 12)
+	_mod_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_mod_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_mod_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	_mod_label.theme = _tooltip_theme
+	_mod_wrapper.add_child(_mod_label)
+
+	rag_box.add_child(_mod_wrapper)
 	_rag_panel = rag_panel
 
 	# Place the strip in the main column, directly BELOW the recipe (inputs/outputs)
@@ -1826,6 +2009,7 @@ func _update_status_icons(building: Dictionary, recipe: Dictionary, is_infrastru
 	_set_status_dot("duration", _transport_duration_status_color(building, recipe, is_infrastructure))
 	_set_status_dot("cost", _transport_cost_status_color(building, recipe, is_infrastructure))
 	_update_cost_label(building)
+	_update_mod_label(building, recipe)
 
 const _COST_RAG_LEGEND := "Green if cheaper than buying from the market, amber if even with market and red if more expensive than purchasing from the market"
 
@@ -1882,6 +2066,60 @@ func _on_costs_updated() -> void:
 	if _current_building.is_empty():
 		return
 	_update_cost_label(_current_building)
+
+const _MOD_RAG_LEGEND := "White means no net effect (−1% to +1%), green a net production boost above +1%, red a net penalty below −1%."
+
+# Net production-modifier indicator: every active recipe_output multiplier for this
+# building/recipe summed (−10% and +15% → +5%), coloured by band, with the
+# contributing multipliers listed on hover.
+func _update_mod_label(building: Dictionary, recipe: Dictionary) -> void:
+	if _mod_label == null:
+		return
+	var recipe_id: String = str(recipe.get("recipe_id", ""))
+	var ctx := {
+		"recipe_id": recipe_id,
+		"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
+		"building_id": str(building.get("building_id", "")),
+		"good_id": _primary_output_good_id(recipe),
+		"good_internal": _primary_output_internal(recipe),
+	}
+	var res: Dictionary = Modifiers.resolve_pct("recipe_output", recipe_id, ctx)
+	var net: float = float(res.get("net", 0.0))
+	var parts: Array = res.get("parts", [])
+
+	var color: Color
+	if net > 1.0:
+		color = STATUS_GREEN
+	elif net < -1.0:
+		color = STATUS_RED
+	else:
+		color = MOD_WHITE
+	var net_i: int = int(round(net))
+	_mod_label.text = "%s%d%%" % ["+" if net_i > 0 else "", net_i]
+	_mod_label.add_theme_color_override("font_color", color)
+
+	var tip: String
+	if parts.is_empty():
+		tip = "Production modifier: none active.\n%s" % _MOD_RAG_LEGEND
+	else:
+		var lines: PackedStringArray = ["Production modifiers (added together, then applied):"]
+		for p in parts:
+			var pv: float = float(p.get("pct", 0.0))
+			lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
+		lines.append("Net: %s%d%%" % ["+" if net_i > 0 else "", net_i])
+		lines.append(_MOD_RAG_LEGEND)
+		tip = "\n".join(lines)
+	_mod_label.tooltip_text = tip
+	if _mod_wrapper != null:
+		_mod_wrapper.tooltip_text = tip
+		var glyph := _mod_wrapper.get_child(0) as Label
+		if glyph != null:
+			glyph.tooltip_text = tip
+
+func _on_modifiers_changed() -> void:
+	if _current_building.is_empty() or _current_recipe.is_empty():
+		return
+	_update_mod_label(_current_building, _current_recipe)
 
 func _set_status_dot(key: String, color: Color) -> void:
 	if not _status_dots.has(key):
@@ -2175,6 +2413,18 @@ func _primary_output_good_id(recipe: Dictionary) -> String:
 		if internal_name != "":
 			var good: Dictionary = Catalog.get_good_by_internal_name(internal_name)
 			return good.get("id", "")
+	return ""
+
+# Primary output's internal_name — the key the deposit-penalty / mining-yield
+# modifiers match on (Modifiers target_match {good_internal: …}).
+func _primary_output_internal(recipe: Dictionary) -> String:
+	for output in _flow_output_items(recipe):
+		var internal_name: String = output.get("internal_name", "")
+		if internal_name != "":
+			return internal_name
+		var gid: String = output.get("good_id", "")
+		if gid != "":
+			return str(Catalog.get_good(gid).get("internal_name", ""))
 	return ""
 
 func _primary_output_qty(recipe: Dictionary) -> int:

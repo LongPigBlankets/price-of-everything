@@ -1,207 +1,192 @@
 category,prereq_1,prereq_2,prereq_3,prereq_othercategory,rank,Action,Object,Quantity,Unit,title,icon,description
-Mining and Surveying,,,,,I,Build,Mine,3,units,Improved Coal Mining,coal,Higher wall cuts and better sorting improve coal output.
-Mining and Surveying,,,,,I,Sell,Iron Ore,250,units,Beneficiated Iron Mining,iron,Basic washing and grading raise iron ore quality.
-Mining and Surveying,Improved Coal Mining,Beneficiated Iron Mining,,,II,Run,Mine,12,turns,Deep Seam Surveying,survey,Better bore data reveals richer seams and safer shafts.
-Mining and Surveying,Beneficiated Iron Mining,,,,II,Own,land,5,units,Copper Froth Flotation,copper,Froth cells lift copper recovery from marginal ore.
-Mining and Surveying,Deep Seam Surveying,Copper Froth Flotation,,,III,Run,Mine,15,turns,Automated Mine Dispatch,truck,Dispatch logic reduces idle haulage and loading delays.
-Petrochemistry,,,,,I,Build,Oil Refinery,3,units,Fractional Distillation,oil,Tall columns split crude into reliable process streams.
-Petrochemistry,Fractional Distillation,,,,I,Sell,Processed Oil,250,units,Catalytic Cracking,catalyst,Cracking units convert heavy fractions into useful inputs.
-Petrochemistry,Catalytic Cracking,,,,II,Run,Oil Refinery,12,turns,Polymer Feedstocks,poly,Olefin handling unlocks plastics and synthetic materials.
-Petrochemistry,Fractional Distillation,,,,II,Own,land,5,units,Solvent Recovery,solvent,Closed loops reclaim reagents from petrochemical lines.
-Petrochemistry,Polymer Feedstocks,Solvent Recovery,,,III,Run,Polymer Feedstocks,15,turns,Advanced Elastomers,rubber,Stable polymer blends improve seals belts and insulation.
-Metallurgy,,,,,I,Build,Furnace,3,units,Basic Blast Furnaces,furnace,Hotter burden control raises ingot consistency.
-Metallurgy,Basic Blast Furnaces,,,,I,Sell,Steel,250,units,Continuous Casting,cast,Continuous lines reduce waste and speed metal forming.
-Metallurgy,Continuous Casting,,,,II,Run,Steel Mill,12,turns,Alloy Heat Treatment,alloy,Controlled cycles strengthen common engineering alloys.
-Metallurgy,Alloy Heat Treatment,,,,II,Own,land,5,units,Electric Arc Refining,eaf,Arc furnaces recycle scrap into precise steel grades.
-Metallurgy,Electric Arc Refining,,,,III,Run,Glass,15,turns,High Strength Glassmaking,glass,Refined furnace linings support stronger industrial glass.
-Inorganic Chemistry,,,,,I,Build,Chemical Plant,3,units,Chlor Alkali Cells,cell,Electrolysis creates chlorine caustic soda and hydrogen.
-Inorganic Chemistry,Chlor Alkali Cells,,,,I,Sell,Chlorine,250,units,Acid Gas Scrubbing,scrub,Scrubbers clean acidic emissions for safer processing.
-Inorganic Chemistry,Acid Gas Scrubbing,,,,II,Run,Chemical Plant,12,turns,Industrial Salt Purification,salt,Purified salts improve chemical yields and reliability.
-Inorganic Chemistry,Chlor Alkali Cells,,,,II,Own,land,5,units,Ceramic Catalyst Supports,ceramic,Porous ceramics improve surface reactions in reactors.
-Inorganic Chemistry,Industrial Salt Purification,Ceramic Catalyst Supports,,,III,Run,Precision Reagent Handling,15,turns,Precision Reagent Handling,flask,Accurate dosing unlocks more demanding chemical chains.
-Biochemistry,,,,,I,Build,Farm,3,units,Sterile Fermentation,ferment,Clean fermenters convert biomass into controlled outputs.
-Biochemistry,Sterile Fermentation,,,,I,Sell,Bioplastics,250,units,Enzyme Screening,enzyme,Screening discovers faster catalysts for bio routes.
-Biochemistry,Enzyme Screening,,,,II,Run,Bioreactor,12,turns,Bioplastic Precursors,bio,Renewable precursors reduce dependence on oil inputs.
-Biochemistry,Sterile Fermentation,,,,II,Own,land,5,units,Wastewater Bioreactors,water,Microbial treatment recovers usable water from effluent.
-Biochemistry,Bioplastic Precursors,Wastewater Bioreactors,,,III,Run,Cell Culture Automation,15,turns,Cell Culture Automation,culture,Automated cultures raise repeatability in bio production.
-Manufacturing,,,,,I,Build,Factory,3,units,Interchangeable Tooling,tools,Standardized fixtures make factory changeovers faster.
-Manufacturing,Interchangeable Tooling,,,,I,Sell,Motors,250,units,Precision Assembly Lines,assembly,Guided stations reduce defects in complex goods.
-Manufacturing,Precision Assembly Lines,,,,II,Run,Factory,12,turns,Motor Winding Automation,motor,Automated winding improves motor throughput.
-Manufacturing,Interchangeable Tooling,,,,II,Own,land,5,units,Composite Panel Pressing,press,Panel presses unlock stronger lightweight components.
-Manufacturing,Motor Winding Automation,Composite Panel Pressing,,,III,Run,Modular Factory Cells,15,turns,Modular Factory Cells,cell,Flexible cells let factories swap recipes with less downtime.
-Hydrocarbon Power,,,,,I,Build,Coal Power Plant,3,units,Pulverized Coal Boilers,boiler,Finer coal preparation improves boiler efficiency.
-Hydrocarbon Power,Pulverized Coal Boilers,,,,I,Sell,Power,250,units,Steam Turbine Upgrades,turbine,Better blades convert heat into more power.
-Hydrocarbon Power,Steam Turbine Upgrades,,,,II,Run,Gas Plant,12,turns,Combined Cycle Gas,gas,Waste heat recovery raises gas plant performance.
-Hydrocarbon Power,Pulverized Coal Boilers,,,,II,Own,land,5,units,Flue Heat Recovery,heat,Heat exchangers reclaim energy from exhaust streams.
-Hydrocarbon Power,Combined Cycle Gas,Flue Heat Recovery,,,III,Run,Grid Synchronous Generation,15,turns,Grid Synchronous Generation,grid,Stable governors support larger shared power networks.
-Renewable Power,,,,,I,Build,Solar Farm,3,units,Utility Solar Arrays,solar,Panel fields provide scalable daytime power.
-Renewable Power,Utility Solar Arrays,,,,I,Sell,Power,250,units,Onshore Wind Control,wind,Pitch control raises output in variable winds.
-Renewable Power,Onshore Wind Control,,,,II,Run,Wind Farm,12,turns,Battery Balancing,battery,Cell balancing extends storage life and capacity.
-Renewable Power,Utility Solar Arrays,,,,II,Own,land,5,units,Hydro Intake Design,hydro,Improved intakes stabilize river power generation.
-Renewable Power,Battery Balancing,Hydro Intake Design,,,III,Run,Renewable Dispatch Forecasting,15,turns,Renewable Dispatch Forecasting,forecast,Forecasts combine storage and renewables with fewer shortages.
-Infrastructure,,,,,I,Build,Roads,3,units,Reinforced Roadbeds,road,Better foundations increase road throughput and durability.
-Infrastructure,Reinforced Roadbeds,,,,I,Sell,Concrete,250,units,Pipe Trench Standards,pipe,Standard trenches make long pipe networks cheaper.
-Infrastructure,Pipe Trench Standards,,,,II,Run,Pipe Network,12,turns,High Pressure Mains,main,Stronger mains move liquids with fewer leaks.
-Infrastructure,Reinforced Roadbeds,,,,II,Own,land,5,units,Substation Layouts,substation,Clean layouts reduce cable losses and outage risk.
-Infrastructure,High Pressure Mains,Substation Layouts,,,III,Run,Utility Corridor,15,turns,Integrated Utility Corridors,corridor,Shared corridors simplify roads cables and pipes.
-Logistics,,,,,I,Build,Port,3,units,Depot Scheduling,depot,Depot timing reduces queueing at busy producers.
-Logistics,Depot Scheduling,,,,I,Sell,Freight,250,units,Containerized Freight,container,Standard containers speed port and rail transfer.
-Logistics,Containerized Freight,,,,II,Run,Depot,12,turns,Route Optimization,route,Optimized routing cuts empty trips across the network.
-Logistics,Depot Scheduling,,,,II,Own,land,5,units,Cold Chain Handling,cold,Temperature controls preserve sensitive goods in transit.
-Logistics,Route Optimization,Cold Chain Handling,,,III,Run,Dispatch Room,15,turns,Autonomous Dispatch Rooms,dispatch,Central dispatch coordinates fleets across regions.
-Markets and Operations,,,,,I,Build,Market Office,3,units,Spot Price Reporting,price,Frequent reporting makes market swings easier to read.
-Markets and Operations,Spot Price Reporting,,,,I,Sell,Steel,250,units,Forward Contracts,contract,Forward deals smooth revenue and input costs.
-Markets and Operations,Forward Contracts,,,,II,Run,Operations Desk,12,turns,Risk Desk Procedures,risk,Risk desks expose dangerous concentration before shocks.
-Markets and Operations,Spot Price Reporting,,,,II,Own,land,5,units,Maintenance Budgeting,budget,Budget cycles make upkeep costs more predictable.
-Markets and Operations,Risk Desk Procedures,Maintenance Budgeting,,,III,Run,Operations Planning,15,turns,Integrated Operations Planning,ops,Shared plans coordinate production finance and maintenance.
-People Management,,,,,I,Build,Training Office,3,units,Shift Supervisors,shift,Supervisors reduce downtime and improve site discipline.
-People Management,Shift Supervisors,,,,I,Sell,Labour,250,units,Safety Training,safety,Training lowers incidents in mines factories and plants.
-People Management,Safety Training,,,,II,Run,Factory,12,turns,Specialist Apprenticeships,apprentice,Apprenticeships grow skilled labor for advanced sites.
-People Management,Shift Supervisors,,,,II,Own,land,5,units,Union Liaison Offices,union,Liaison offices reduce disruption during expansion.
-People Management,Specialist Apprenticeships,Union Liaison Offices,,,III,Run,Continuous Improvement Team,15,turns,Continuous Improvement Teams,team,Small teams identify bottlenecks across operations.
-Mining and Surveying,"","","","",I,Build,Mine,2,units,Overburden Mapping,om,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
-Mining and Surveying,"","","","",I,Own,Mine,4,units,Shaft Ventilation Teams,svt,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
-Mining and Surveying,"","","","",I,Operate,Staple Ore Mines,6,ores,Mining Mastery,+5%,"Operate a mine for each of the six staple ores (coal, iron, copper, salt, limestone, bauxite) at once to gain +5% extraction output for 30 turns."
-Mining and Surveying,"","","","",I,Buy,Mine,120,units,Blast Pattern Drilling,bpd,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
-Mining and Surveying,"","","","",I,Sell,Mine,160,units,Tailings Reclaim Pads,trp,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
-Mining and Surveying,"","","","",I,Run,Mine,85,percentage,Remote Pump Monitoring,rpm,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
-Mining and Surveying,"","","","",II,Build,Mine,2,units,Selective Ore Blending,sob,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
-Mining and Surveying,"","","","",II,Own,Mine,4,units,Pit Wall Stabilisation,pws,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
-Mining and Surveying,"","","","",II,Run,Mine,8,turns,Mine Fleet Telemetry,mft,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
-Mining and Surveying,"","","","",III,Buy,Mine,120,units,Autonomous Drill Rooms,adr,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
-Mining and Surveying,"","","","",III,Sell,Mine,160,units,Rare Vein Prospecting,rvp,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
-Mining and Surveying,"","","","",III,Run,Mine,85,percentage,Deep Mine Resilience,dmr,"Operational practice that improves mining reliability, throughput, and control across repeated production cycles."
-Petrochemistry,"","","","",I,Build,Oil Refinery,2,units,Crude Assay Logging,cal,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
-Petrochemistry,"","","","",I,Own,Oil Refinery,4,units,Tank Farm Gauging,tfg,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
-Petrochemistry,"","","","",I,Run,Oil Refinery,8,turns,Heat Exchanger Cleaning,hec,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
-Petrochemistry,"","","","",I,Buy,Oil Refinery,120,units,Light Ends Recovery,ler,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
-Petrochemistry,"","","","",I,Sell,Oil Refinery,160,units,Catalyst Storekeeping,cs,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
-Petrochemistry,"","","","",I,Run,Oil Refinery,85,percentage,Solvent Loss Audits,sla,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
-Petrochemistry,"","","","",II,Build,Oil Refinery,2,units,Polymer Quality Loops,pql,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
-Petrochemistry,"","","","",II,Own,Oil Refinery,4,units,Refinery Energy Balance,reb,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
-Petrochemistry,"","","","",II,Run,Oil Refinery,8,turns,Sulphur Handling Units,shu,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
-Petrochemistry,"","","","",III,Buy,Oil Refinery,120,units,Olefin Scheduling,os,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
-Petrochemistry,"","","","",III,Sell,Oil Refinery,160,units,Advanced Process Control,apc,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
-Petrochemistry,"","","","",III,Run,Oil Refinery,85,percentage,Closed Carbon Loops,ccl,"Operational practice that improves petrochemistry reliability, throughput, and control across repeated production cycles."
-Metallurgy,"","","","",I,Build,Steel Mill,2,units,Charge Basket Prep,cbp,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
-Metallurgy,"","","","",I,Own,Steel Mill,4,units,Slag Granulation,sg,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
-Metallurgy,"","","","",I,Run,Steel Mill,8,turns,Ladle Preheating,lp,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
-Metallurgy,"","","","",I,Buy,Steel Mill,120,units,Billet Inspection,bi,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
-Metallurgy,"","","","",I,Sell,Steel Mill,160,units,Scrap Yard Sorting,sys,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
-Metallurgy,"","","","",I,Run,Steel Mill,85,percentage,Refractory Patch Teams,rpt,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
-Metallurgy,"","","","",II,Build,Steel Mill,2,units,Vacuum Degassing,vd,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
-Metallurgy,"","","","",II,Own,Steel Mill,4,units,Rolling Mill Tensioning,rmt,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
-Metallurgy,"","","","",II,Run,Steel Mill,8,turns,Foundry Yield Audits,fya,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
-Metallurgy,"","","","",III,Buy,Steel Mill,120,units,Alloy Recipe Libraries,arl,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
-Metallurgy,"","","","",III,Sell,Steel Mill,160,units,Continuous Furnace Tuning,cft,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
-Metallurgy,"","","","",III,Run,Steel Mill,85,percentage,Ultra Clean Steel Practice,ucsp,"Operational practice that improves metallurgy reliability, throughput, and control across repeated production cycles."
-Inorganic Chemistry,"","","","",I,Build,Chemical Plant,2,units,Brine Intake Tests,bit,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
-Inorganic Chemistry,"","","","",I,Own,Chemical Plant,4,units,Reagent Label Discipline,rld,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
-Inorganic Chemistry,"","","","",I,Run,Chemical Plant,8,turns,Filter Cake Drying,fcd,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
-Inorganic Chemistry,"","","","",I,Buy,Chemical Plant,120,units,Caustic Storage Rules,csr,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
-Inorganic Chemistry,"","","","",I,Sell,Chemical Plant,160,units,Lime Slurry Control,lsc,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
-Inorganic Chemistry,"","","","",I,Run,Chemical Plant,85,percentage,Scrubber Packing Checks,spc,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
-Inorganic Chemistry,"","","","",II,Build,Chemical Plant,2,units,Membrane Cell Balancing,mcb,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
-Inorganic Chemistry,"","","","",II,Own,Chemical Plant,4,units,Acid Plant Heat Recovery,aphr,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
-Inorganic Chemistry,"","","","",II,Run,Chemical Plant,8,turns,Bulk Salt Logistics,bsl,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
-Inorganic Chemistry,"","","","",III,Buy,Chemical Plant,120,units,High Purity Chlorine,hpc,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
-Inorganic Chemistry,"","","","",III,Sell,Chemical Plant,160,units,Ceramic Reactor Linings,crl,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
-Inorganic Chemistry,"","","","",III,Run,Chemical Plant,85,percentage,Automated Reagent Rooms,arr,"Operational practice that improves inorganic chemistry reliability, throughput, and control across repeated production cycles."
-Biochemistry,"","","","",I,Build,Bioreactor,2,units,Culture Media Prep,cmp,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
-Biochemistry,"","","","",I,Own,Bioreactor,4,units,Sterile Valve Checks,svc,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
-Biochemistry,"","","","",I,Run,Bioreactor,8,turns,Feedstock Pasteurisation,fp,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
-Biochemistry,"","","","",I,Buy,Bioreactor,120,units,Biofilter Maintenance,bm,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
-Biochemistry,"","","","",I,Sell,Bioreactor,160,units,Enzyme Batch Records,ebr,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
-Biochemistry,"","","","",I,Run,Bioreactor,85,percentage,Nutrient Recovery Tanks,nrt,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
-Biochemistry,"","","","",II,Build,Bioreactor,2,units,Fermenter Yield Audits,fya,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
-Biochemistry,"","","","",II,Own,Bioreactor,4,units,Strain Library Handling,slh,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
-Biochemistry,"","","","",II,Run,Bioreactor,8,turns,Effluent Biomass Capture,ebc,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
-Biochemistry,"","","","",III,Buy,Bioreactor,120,units,Continuous Fermentation,cf,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
-Biochemistry,"","","","",III,Sell,Bioreactor,160,units,Precision Culture Rooms,pcr,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
-Biochemistry,"","","","",III,Run,Bioreactor,85,percentage,Bio Route Integration,bri,"Operational practice that improves biochemistry reliability, throughput, and control across repeated production cycles."
-Manufacturing,"","","","",I,Build,Factory,2,units,Jig Calibration,jc,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
-Manufacturing,"","","","",I,Own,Factory,4,units,Tool Crib Audits,tca,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
-Manufacturing,"","","","",I,Run,Factory,8,turns,Line Balance Boards,lbb,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
-Manufacturing,"","","","",I,Buy,Factory,120,units,Fixture Changeover,fc,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
-Manufacturing,"","","","",I,Sell,Factory,160,units,Defect Tagging,dt,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
-Manufacturing,"","","","",I,Run,Factory,85,percentage,Parts Bin Kanban,pbk,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
-Manufacturing,"","","","",II,Build,Factory,2,units,Servo Press Tuning,spt,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
-Manufacturing,"","","","",II,Own,Factory,4,units,Assembly Cell Audits,aca,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
-Manufacturing,"","","","",II,Run,Factory,8,turns,Motor Test Benches,mtb,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
-Manufacturing,"","","","",III,Buy,Factory,120,units,Flexible Tool Libraries,ftl,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
-Manufacturing,"","","","",III,Sell,Factory,160,units,Lights Out Inspection,loi,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
-Manufacturing,"","","","",III,Run,Factory,85,percentage,Factory Level Two,flt,"Operational practice that improves manufacturing reliability, throughput, and control across repeated production cycles."
-Hydrocarbon Power,"","","","",I,Build,Power Plant,2,units,Coal Yard Moisture Tests,cymt,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
-Hydrocarbon Power,"","","","",I,Own,Power Plant,4,units,Boiler Tube Walkdowns,btw,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
-Hydrocarbon Power,"","","","",I,Run,Power Plant,8,turns,Ash Handling Routes,ahr,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
-Hydrocarbon Power,"","","","",I,Buy,Power Plant,120,units,Turbine Lube Checks,tlc,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
-Hydrocarbon Power,"","","","",I,Sell,Power Plant,160,units,Fuel Stock Forecasting,fsf,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
-Hydrocarbon Power,"","","","",I,Run,Power Plant,85,percentage,Stack Monitoring,sm,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
-Hydrocarbon Power,"","","","",II,Build,Power Plant,2,units,Heat Rate Audits,hra,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
-Hydrocarbon Power,"","","","",II,Own,Power Plant,4,units,Turbine Outage Planning,top,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
-Hydrocarbon Power,"","","","",II,Run,Power Plant,8,turns,Gas Peaker Dispatch,gpd,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
-Hydrocarbon Power,"","","","",III,Buy,Power Plant,120,units,Sootblower Automation,sa,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
-Hydrocarbon Power,"","","","",III,Sell,Power Plant,160,units,Integrated Fuel Control,ifc,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
-Hydrocarbon Power,"","","","",III,Run,Power Plant,85,percentage,High Reliability Thermal Fleet,hrtf,"Operational practice that improves hydrocarbon power reliability, throughput, and control across repeated production cycles."
-Renewable Power,"","","","",I,Build,Renewable Site,2,units,Panel Cleaning Routes,pcr,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
-Renewable Power,"","","","",I,Own,Renewable Site,4,units,Wind Mast Surveys,wms,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
-Renewable Power,"","","","",I,Run,Renewable Site,8,turns,Inverter Spares,is,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
-Renewable Power,"","","","",I,Buy,Renewable Site,120,units,Hydro Trash Rack Checks,htrc,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
-Renewable Power,"","","","",I,Sell,Renewable Site,160,units,Battery Room Rounds,brr,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
-Renewable Power,"","","","",I,Run,Renewable Site,85,percentage,Weather Data Logging,wdl,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
-Renewable Power,"","","","",II,Build,Renewable Site,2,units,Array Curtailment Rules,acr,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
-Renewable Power,"","","","",II,Own,Renewable Site,4,units,Turbine Wake Mapping,twm,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
-Renewable Power,"","","","",II,Run,Renewable Site,8,turns,Storage Cycle Audits,sca,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
-Renewable Power,"","","","",III,Buy,Renewable Site,120,units,Hybrid Dispatch Desk,hdd,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
-Renewable Power,"","","","",III,Sell,Renewable Site,160,units,Long Duration Storage,lds,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
-Renewable Power,"","","","",III,Run,Renewable Site,85,percentage,Renewable Control Center,rcc,"Operational practice that improves renewable power reliability, throughput, and control across repeated production cycles."
-Infrastructure,"","","","",I,Build,Infrastructure,2,units,Road Crew Scheduling,rcs,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
-Infrastructure,"","","","",I,Own,Infrastructure,4,units,Cable Trench Marking,ctm,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
-Infrastructure,"","","","",I,Run,Infrastructure,8,turns,Pipe Bedding Checks,pbc,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
-Infrastructure,"","","","",I,Buy,Infrastructure,120,units,Bridge Load Posting,blp,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
-Infrastructure,"","","","",I,Sell,Infrastructure,160,units,Drainage Ditch Clearing,ddc,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
-Infrastructure,"","","","",I,Run,Infrastructure,85,percentage,Substation Spares,ss,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
-Infrastructure,"","","","",II,Build,Infrastructure,2,units,Utility Easement Mapping,uem,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
-Infrastructure,"","","","",II,Own,Infrastructure,4,units,Road Surface Renewal,rsr,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
-Infrastructure,"","","","",II,Run,Infrastructure,8,turns,Pressure Zone Audits,pza,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
-Infrastructure,"","","","",III,Buy,Infrastructure,120,units,Smart Corridor Sensors,scs,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
-Infrastructure,"","","","",III,Sell,Infrastructure,160,units,Redundant Grid Loops,rgl,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
-Infrastructure,"","","","",III,Run,Infrastructure,85,percentage,Regional Utility Spine,rus,"Operational practice that improves infrastructure reliability, throughput, and control across repeated production cycles."
-Logistics,"","","","",I,Build,Depot,2,units,Loading Bay Marking,lbm,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
-Logistics,"","","","",I,Own,Depot,4,units,Truck Slot Booking,tsb,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
-Logistics,"","","","",I,Run,Depot,8,turns,Pallet Standardisation,ps,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
-Logistics,"","","","",I,Buy,Depot,120,units,Rail Siding Checks,rsc,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
-Logistics,"","","","",I,Sell,Depot,160,units,Port Crane Rosters,pcr,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
-Logistics,"","","","",I,Run,Depot,85,percentage,Depot Fuel Logs,dfl,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
-Logistics,"","","","",II,Build,Depot,2,units,Backhaul Matching,bm,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
-Logistics,"","","","",II,Own,Depot,4,units,Warehouse Cross Docking,wcd,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
-Logistics,"","","","",II,Run,Depot,8,turns,Fleet Maintenance Windows,fmw,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
-Logistics,"","","","",III,Buy,Depot,120,units,Regional Control Tower,rct,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
-Logistics,"","","","",III,Sell,Depot,160,units,Autonomous Yard Moves,aym,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
-Logistics,"","","","",III,Run,Depot,85,percentage,Multi Modal Dispatch,mmd,"Operational practice that improves logistics reliability, throughput, and control across repeated production cycles."
-Markets and Operations,"","","","",I,Build,Operations Desk,2,units,Daily Price Ledger,dpl,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
-Markets and Operations,"","","","",I,Own,Operations Desk,4,units,Input Cost Alerts,ica,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
-Markets and Operations,"","","","",I,Run,Operations Desk,8,turns,Contract Filing,cf,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
-Markets and Operations,"","","","",I,Buy,Operations Desk,120,units,Maintenance Backlog Review,mbr,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
-Markets and Operations,"","","","",I,Sell,Operations Desk,160,units,Working Capital Checks,wcc,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
-Markets and Operations,"","","","",I,Run,Operations Desk,85,percentage,Sales Mix Reports,smr,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
-Markets and Operations,"","","","",II,Build,Operations Desk,2,units,Margin Review Boards,mrb,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
-Markets and Operations,"","","","",II,Own,Operations Desk,4,units,Forward Sales Windows,fsw,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
-Markets and Operations,"","","","",II,Run,Operations Desk,8,turns,Reliability Accounting,ra,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
-Markets and Operations,"","","","",III,Buy,Operations Desk,120,units,Scenario Planning Desk,spd,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
-Markets and Operations,"","","","",III,Sell,Operations Desk,160,units,Portfolio Risk Signals,prs,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
-Markets and Operations,"","","","",III,Run,Operations Desk,85,percentage,Integrated Enterprise Planning,iep,"Operational practice that improves markets and operations reliability, throughput, and control across repeated production cycles."
-People Management,"","","","",I,Build,Workforce,2,units,Crew Briefing Boards,cbb,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
-People Management,"","","","",I,Own,Workforce,4,units,Safety Walkarounds,sw,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
-People Management,"","","","",I,Run,Workforce,8,turns,Shift Handover Notes,shn,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
-People Management,"","","","",I,Buy,Workforce,120,units,Absence Cover Pool,acp,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
-People Management,"","","","",I,Sell,Workforce,160,units,Skills Matrix,sm,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
-People Management,"","","","",I,Run,Workforce,85,percentage,Supervisor Rounds,sr,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
-People Management,"","","","",II,Build,Workforce,2,units,Apprentice Rotations,ar,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
-People Management,"","","","",II,Own,Workforce,4,units,Incident Review Panels,irp,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
-People Management,"","","","",II,Run,Workforce,8,turns,Retention Interviews,ri,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
-People Management,"","","","",III,Buy,Workforce,120,units,Continuous Training Cells,ctc,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
-People Management,"","","","",III,Sell,Workforce,160,units,Leadership Bench Planning,lbp,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
-People Management,"","","","",III,Run,Workforce,85,percentage,High Trust Operating Model,htom,"Operational practice that improves people management reliability, throughput, and control across repeated production cycles."
+Mining and Surveying,,,,,I,Produce,coal,500,units,Improved Coal Mining,coal,Increases coal mining output by 20% permanently.
+Mining and Surveying,,,,,I,Produce,iron_ore,500,units,Beneficiated Iron Mining,iron,Increases iron ore mining output by 20% permanently.
+Mining and Surveying,Improved Coal Mining,Beneficiated Iron Mining,,,II,Produce,limestone,500,units,Deep Seam Surveying,survey,"Increases limestone, sand and salt mining output by 20% permanently."
+Mining and Surveying,Beneficiated Iron Mining,,,,II,Own,land,5,units,Copper Froth Flotation,copper,Unlocks new recipe: Flash Copper Smelting (36 Copper Ingots); +20% copper ore mining output permanently.
+Mining and Surveying,Deep Seam Surveying,Copper Froth Flotation,,,III,Run,Mine,15,turns,Automated Mine Dispatch,truck,Increases Mine output by 10% permanently.
+Petrochemistry,,,,,I,Build,Oil Refinery,3,units,Fractional Distillation,oil,Increases Petrochemical Refinery output by 5% permanently.
+Petrochemistry,Fractional Distillation,,,,I,Sell,Processed Oil,250,units,Catalytic Cracking,catalyst,Reduces Petrochemical Refinery power consumption by 5% permanently.
+Petrochemistry,Catalytic Cracking,,,,II,Run,Oil Refinery,12,turns,Polymer Feedstocks,poly,Increases Polymerisation Refinery output by 5% permanently.
+Petrochemistry,Fractional Distillation,,,,II,Own,land,5,units,Solvent Recovery,solvent,Reduces Petrochemical Refinery maintenance by 10% for 20 turns.
+Petrochemistry,Polymer Feedstocks,Solvent Recovery,,,III,Run,Polymer Feedstocks,15,turns,Advanced Elastomers,rubber,Increases the sale price of rubber by 5% for 20 turns.
+Metallurgy,,,,,I,Build,Furnace,3,units,Basic Blast Furnaces,furnace,Increases Furnace output by 5% permanently.
+Metallurgy,Basic Blast Furnaces,,,,I,Sell,Steel,250,units,Continuous Casting,cast,Unlocks new recipe: Basic Oxygen Steelmaking (24 Steel).
+Metallurgy,Continuous Casting,,,,II,Run,Steel Mill,12,turns,Alloy Heat Treatment,alloy,Unlocks new recipe: HIsarna Steel Making (24 Steel).
+Metallurgy,Alloy Heat Treatment,,,,II,Own,land,5,units,Electric Arc Refining,eaf,Unlocks new recipe: Electric Arc Steelmaking (22 Steel).
+Metallurgy,Electric Arc Refining,,,,III,Run,Glass,15,turns,High Strength Glassmaking,glass,Unlocks new recipe: High Strength Glassmaking (28 Glass).
+Inorganic Chemistry,,,,,I,Build,Chemical Plant,3,units,Chlor Alkali Cells,cell,Increases Electrolyser output by 5% permanently.
+Inorganic Chemistry,Chlor Alkali Cells,,,,I,Sell,Chlorine,250,units,Acid Gas Scrubbing,scrub,Reduces Chemical Plant labour by 5% permanently.
+Inorganic Chemistry,Acid Gas Scrubbing,,,,II,Run,Chemical Plant,12,turns,Industrial Salt Purification,salt,Increases Chemical Plant output by 25% for 20 turns.
+Inorganic Chemistry,Chlor Alkali Cells,,,,II,Own,land,5,units,Ceramic Catalyst Supports,ceramic,Reduces Chemical Plant power consumption by 5% permanently.
+Inorganic Chemistry,Industrial Salt Purification,Ceramic Catalyst Supports,,,III,Run,Precision Reagent Handling,15,turns,Precision Reagent Handling,flask,Reduces Chemical Plant maintenance by 10% for 20 turns.
+Biochemistry,,,,,I,Build,Farm,3,units,Sterile Fermentation,ferment,Increases Farm output by 5% permanently.
+Biochemistry,Sterile Fermentation,,,,I,Sell,Bioplastics,250,units,Enzyme Screening,enzyme,Increases the sale price of plastics by 5% for 20 turns.
+Biochemistry,Enzyme Screening,,,,II,Run,Bioreactor,12,turns,Bioplastic Precursors,bio,Reduces Farm maintenance by 10% for 20 turns.
+Biochemistry,Sterile Fermentation,,,,II,Own,land,5,units,Wastewater Bioreactors,water,Unlocks new recipe: Water Treatment (28 Pure Water).
+Biochemistry,Bioplastic Precursors,Wastewater Bioreactors,,,III,Run,Cell Culture Automation,15,turns,Cell Culture Automation,culture,Reduces Farm labour by 5% permanently.
+Manufacturing,,,,,I,Build,Factory,3,units,Interchangeable Tooling,tools,Reduces Assembly Plant labour by 5% permanently.
+Manufacturing,Interchangeable Tooling,,,,I,Sell,Motors,250,units,Precision Assembly Lines,assembly,Unlocks new recipes: V8 Engine Manufacturing (6 Engine); Hybrid Engine Manufacturing (12 Engine).
+Manufacturing,Precision Assembly Lines,,,,II,Run,Factory,12,turns,Motor Winding Automation,motor,Unlocks new recipes: SynRM Magnetless Motors (15 Motor); Axial Flux Motors (15 Motor); Hairpin Stator Motors (18 Motor); Heavy Electric Motor (6 Large Engine).
+Manufacturing,Interchangeable Tooling,,,,II,Own,land,5,units,Composite Panel Pressing,press,Unlocks new recipe: Lightweight Car Bodies (10 Car Body).
+Manufacturing,Motor Winding Automation,Composite Panel Pressing,,,III,Run,Modular Factory Cells,15,turns,Modular Factory Cells,cell,Unlocks new recipes: Automated ICE Car Assembly (6 Diesel Car); Heavy Vehicles Automated Manufacturing (6 Heavy Vehicle); Electric Heavy Vehicles Manufacturing (5 Heavy Vehicle).
+Hydrocarbon Power,,,,,I,Build,Coal Power Plant,3,units,Pulverized Coal Boilers,boiler,Increases Coal Power Plant output by 5% permanently.
+Hydrocarbon Power,Pulverized Coal Boilers,,,,I,Sell,Power,250,units,Steam Turbine Upgrades,turbine,Increases Coal Power Plant output by 25% for 25 turns.
+Hydrocarbon Power,Steam Turbine Upgrades,,,,II,Run,Gas Plant,12,turns,Combined Cycle Gas,gas,Increases Gas Plant output by 10% permanently.
+Hydrocarbon Power,Pulverized Coal Boilers,,,,II,Own,land,5,units,Flue Heat Recovery,heat,Reduces Coal Power Plant power consumption by 10% permanently.
+Hydrocarbon Power,Combined Cycle Gas,Flue Heat Recovery,,,III,Run,Grid Synchronous Generation,15,turns,Grid Synchronous Generation,grid,Reduces all power plants maintenance by 8% for 20 turns.
+Renewable Power,,,,,I,Build,Solar Farm,3,units,Utility Solar Arrays,solar,Increases Solar Farm output by 5% permanently.
+Renewable Power,Utility Solar Arrays,,,,I,Sell,Power,250,units,Onshore Wind Control,wind,Increases Onshore Wind Farm output by 5% permanently.
+Renewable Power,Onshore Wind Control,,,,II,Run,Wind Farm,12,turns,Battery Balancing,battery,Increases Battery Electric Storage output by 10% permanently.
+Renewable Power,Utility Solar Arrays,,,,II,Own,land,5,units,Hydro Intake Design,hydro,Increases Hydroelectric Dam output by 10% permanently.
+Renewable Power,Battery Balancing,Hydro Intake Design,,,III,Run,Renewable Dispatch Forecasting,15,turns,Renewable Dispatch Forecasting,forecast,Increases all renewable power plant output by 25% for 15 turns.
+Infrastructure,,,,,I,Build,Roads,3,units,Reinforced Roadbeds,road,Increases road throughput by 5% permanently.
+Infrastructure,Reinforced Roadbeds,,,,I,Sell,Concrete,250,units,Pipe Trench Standards,pipe,Reduces Pipeworks maintenance by 10% for 20 turns.
+Infrastructure,Pipe Trench Standards,,,,II,Run,Pipe Network,12,turns,High Pressure Mains,main,Increases pipe throughput by 5% permanently.
+Infrastructure,Reinforced Roadbeds,,,,II,Own,land,5,units,Substation Layouts,substation,Increases cable throughput by 5% permanently.
+Infrastructure,High Pressure Mains,Substation Layouts,,,III,Run,Utility Corridor,15,turns,Integrated Utility Corridors,corridor,Reduces all buildings' maintenance by 5% for 20 turns.
+Logistics,,,,,I,Build,Port,3,units,Depot Scheduling,depot,Increases Port output by 5% permanently.
+Logistics,Depot Scheduling,,,,I,Sell,Freight,250,units,Containerized Freight,container,Increases railway throughput by 10% permanently.
+Logistics,Containerized Freight,,,,II,Run,Depot,12,turns,Route Optimization,route,Reduces transport cost by 10% for 20 turns.
+Logistics,Depot Scheduling,,,,II,Own,land,5,units,Cold Chain Handling,cold,Reduces transport cost by 5% for 20 turns.
+Logistics,Route Optimization,Cold Chain Handling,,,III,Run,Dispatch Room,15,turns,Autonomous Dispatch Rooms,dispatch,Increases railway throughput by 5% permanently.
+Markets and Operations,,,,,I,Build,Market Office,3,units,Spot Price Reporting,price,Increases the sale price of all goods by 5% for 20 turns.
+Markets and Operations,Spot Price Reporting,,,,I,Sell,Steel,250,units,Forward Contracts,contract,Increases the sale price of steel by 5% for 20 turns.
+Markets and Operations,Forward Contracts,,,,II,Run,Operations Desk,12,turns,Risk Desk Procedures,risk,Increases the sale price of all goods by 5% for 15 turns.
+Markets and Operations,Spot Price Reporting,,,,II,Own,land,5,units,Maintenance Budgeting,budget,Reduces all buildings maintenance by 10% for 20 turns.
+Markets and Operations,Risk Desk Procedures,Maintenance Budgeting,,,III,Run,Operations Planning,15,turns,Integrated Operations Planning,ops,Increases output of all buildings by 5% permanently.
+People Management,,,,,I,Build,Training Office,3,units,Shift Supervisors,shift,Reduces Mine labour by 5% permanently.
+People Management,Shift Supervisors,,,,I,Sell,Labour,250,units,Safety Training,safety,Reduces all buildings labour by 5% permanently.
+People Management,Safety Training,,,,II,Run,Factory,12,turns,Specialist Apprenticeships,apprentice,Increases Assembly Plant output by 5% permanently.
+People Management,Shift Supervisors,,,,II,Own,land,5,units,Union Liaison Offices,union,Reduces all buildings maintenance by 10% for 20 turns.
+People Management,Specialist Apprenticeships,Union Liaison Offices,,,III,Run,Continuous Improvement Team,15,turns,Continuous Improvement Teams,team,Reduces High Tech Manufactory and Assembly Plant labour by 10% permanently.
+Mining and Surveying,,,,,I,Run Profitable,mine,3,buildings,Mining Mastery,+5%,Increases output of all mines by 5% for 30 turns.
+Mining and Surveying,Copper Froth Flotation,,,,II,Produce,ree_ore,500,units,Rare Vein Prospecting,rare,Increases rare earth and alloy ore mining output by 20% permanently.
+Manufacturing,Modular Factory Cells,,,,III,Run L1,industrial_factory,3,20 turns,Conveyor Mass Assembly,level2,Unlocks upgrading Industrial Goods Factory to Level 2 for more output.
+Renewable Power,Battery Balancing,,,,III,Run,Battery,15,turns,Long Duration Storage,storage,Reduces building maintenance by 15% for 30 turns.
 Mining and Surveying,,,,,I,Survey,deposits,2,deposits,Spectral Crystallography,survey,+1 adjacent tile revealed when surveying
 Mining and Surveying,Spectral Crystallography,,,,II,Survey,tiles,5,tiles,Computer Assisted Geoscanning,svt,+1 Survey range (2 to 3)
+Petrochemistry,Catalytic Cracking,,,,II,Sell,Crude Oil,250,units,Hydraulic Fracturing,frack,Unlocks new recipe: Shale Oil Fracking (12 Crude Oil).
+Petrochemistry,Fractional Distillation,,,,II,Own,land,8,units,Offshore Drilling Platforms,rig,Unlocks new recipe: Offshore Oil Extraction (10 Crude Oil).
+Petrochemistry,Offshore Drilling Platforms,,,,III,Run,Offshore Platform,15,turns,Deepwater Drilling,deepsea,Unlocks new recipe: Deepwater Oil Extraction (12 Crude Oil).
+Petrochemistry,Offshore Drilling Platforms,,,,III,Sell,Crude Oil,500,units,Subsea Tieback Systems,manifold,Unlocks new recipe: Subsea Manifold Extraction (14 Crude Oil).
+Petrochemistry,Hydraulic Fracturing,,,,II,Run Profitable,oil_well,3,buildings,Horizontal Drilling,horizontal,Increases Oil Wells output by 5% permanently.
+Petrochemistry,Horizontal Drilling,,,,III,Produce,crude_oil,1000,units,Reservoir Stimulation,stim,Increases Oil Wells output by 20% for 30 turns.
+Petrochemistry,Offshore Drilling Platforms,,,,III,Run Profitable,offshore_oil_platform,3,buildings,Multiphase Subsea Boosting,pump,Increases Offshore Oil Platform output by 10% permanently.
+Petrochemistry,Horizontal Drilling,Multiphase Subsea Boosting,,,III,Produce,crude_oil,1000,units,Enhanced Oil Recovery,eor,Increases all oil extraction output by 20% for 30 turns.
+Petrochemistry,Offshore Drilling Platforms,,,,III,Run,Offshore Platform,12,turns,Remote Platform Operations,remote,Reduces oil extraction labour by 30% permanently.
+Metallurgy,Electric Arc Refining,,,,III,Run,Electrolyser,15,turns,Hydrogen Direct Reduction,h2steel,Unlocks new recipe: Direct Reduced Iron Smelting (32 Iron Ingots).
+Mining and Surveying,Rare Vein Prospecting,,,,II,Produce,bauxite_ore,500,units,Composite Drill Bits,drill,"Increases rare earth, alloy, sulphur and bauxite mining output by 20% permanently."
+Biochemistry,Wastewater Bioreactors,,,,II,Run,Forest,12,turns,Sustainable Forestry,forest,Unlocks new recipe: Sustainable Forestry - Biomass (24 Biomass).
+Manufacturing,Precision Assembly Lines,,,,II,Sell,Copper Pipe,250,units,Precision Tube Drawing,tube,Unlocks new recipes: Copper Pipe Moulding (22 Copper Pipe); Copper Pipe Manufacturing (24 Copper Pipe).
+Mining and Surveying,Automated Mine Dispatch,,,,III,Run L1,mine,3,20 turns,In-Pit Crushing,level2,Unlocks upgrading Mine to Level 2 for more output.
+Mining and Surveying,In-Pit Crushing,,,,III,Run Profitable L2,mine,3,buildings,Autonomous Haul Systems,level3,Unlocks upgrading Mine to Level 3 for more output.
+Metallurgy,Continuous Casting,,,,III,Run L1,furnace,3,20 turns,Hot Blast Stoves,level2,Unlocks upgrading Furnace to Level 2 for more output.
+Metallurgy,Hot Blast Stoves,,,,III,Run Profitable L2,furnace,3,buildings,Top-Pressure Recovery Turbines,level3,Unlocks upgrading Furnace to Level 3 for more output.
+Metallurgy,Electric Arc Refining,,,,III,Run L1,eaf,3,20 turns,Ultra-High-Power Arcs,level2,Unlocks upgrading Electric Arc Furnace to Level 2 for more output.
+Metallurgy,Ultra-High-Power Arcs,,,,III,Run Profitable L2,eaf,3,buildings,Consteel Continuous Charging,level3,Unlocks upgrading Electric Arc Furnace to Level 3 for more output.
+Manufacturing,Conveyor Mass Assembly,,,,III,Run Profitable L2,industrial_factory,3,buildings,Robotic Assembly Islands,level3,Unlocks upgrading Industrial Goods Factory to Level 3 for more output.
+Manufacturing,Precision Assembly Lines,,,,III,Run L1,assembly_plant,3,20 turns,Moving Assembly Lines,level2,Unlocks upgrading Assembly Plant to Level 2 for more output.
+Manufacturing,Moving Assembly Lines,,,,III,Run Profitable L2,assembly_plant,3,buildings,Mixed-Model Synchronous Lines,level3,Unlocks upgrading Assembly Plant to Level 3 for more output.
+Manufacturing,Modular Factory Cells,,,,III,Run L1,high_tech_manufactory,3,20 turns,300mm Wafer Lines,level2,Unlocks upgrading High Tech Manufactory to Level 2 for more output.
+Manufacturing,300mm Wafer Lines,,,,III,Run Profitable L2,high_tech_manufactory,3,buildings,EUV Lithography,level3,Unlocks upgrading High Tech Manufactory to Level 3 for more output.
+Inorganic Chemistry,Precision Reagent Handling,,,,III,Run L1,chem_plant,3,20 turns,Larger Reactor Trains,level2,Unlocks upgrading Chemical Plant to Level 2 for more output.
+Inorganic Chemistry,Larger Reactor Trains,,,,III,Run Profitable L2,chem_plant,3,buildings,Integrated Chemical Complexes,level3,Unlocks upgrading Chemical Plant to Level 3 for more output.
+Inorganic Chemistry,Chlor Alkali Cells,,,,III,Run L1,electrolyser,3,20 turns,Membrane Electrolysers,level2,Unlocks upgrading Electrolyser to Level 2 for more output.
+Inorganic Chemistry,Membrane Electrolysers,,,,III,Run Profitable L2,electrolyser,3,buildings,Solid-Oxide Electrolysis,level3,Unlocks upgrading Electrolyser to Level 3 for more output.
+Petrochemistry,Catalytic Cracking,,,,III,Run L1,petro_refinery,3,20 turns,Fluid Catalytic Cracking,level2,Unlocks upgrading Petrochemical Refinery to Level 2 for more output.
+Petrochemistry,Fluid Catalytic Cracking,,,,III,Run Profitable L2,petro_refinery,3,buildings,Deep Conversion Units,level3,Unlocks upgrading Petrochemical Refinery to Level 3 for more output.
+Mining and Surveying,,,,,I,Placeholder,,,,Bench Blasting Expansion,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Mining and Surveying,,,,,I,Placeholder,,,,Bulk Haulage Fleets,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Mining and Surveying,,,,,I,Placeholder,,,,Continuous Surface Miners,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Mining and Surveying,,,,,I,Placeholder,,,,Block Caving,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Metallurgy,Alloy Heat Treatment,,,,III,Run,Steel Mill,15,turns,Pulverised Carbon Injection,pci,Reduces Furnace power consumption by 20% permanently.
+Metallurgy,,,,,I,Placeholder,,,,Oxygen-Enriched Blast,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Metallurgy,,,,,I,Placeholder,,,,Twin-Bell Charging,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Metallurgy,Electric Arc Refining,,,,III,Run,Steel Mill,15,turns,Scrap Preheating Towers,preheat,Reduces Electric Arc Furnace power consumption by 20% permanently.
+Metallurgy,,,,,I,Placeholder,,,,Foamy Slag Practice,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Metallurgy,,,,,I,Placeholder,,,,Twin-Shell Furnaces,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Metallurgy,,,,,I,Placeholder,,,,DC Arc Conversion,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Manufacturing,,,,,I,Placeholder,,,,High-Volume Press Lines,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Manufacturing,,,,,I,Placeholder,,,,Multi-Shift Production,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Manufacturing,Modular Factory Cells,,,,III,Run,Factory,15,turns,Lights-Out Automation,labour,Reduces High Tech Manufactory and Assembly Plant labour by 20% permanently.
+Manufacturing,,,,,I,Placeholder,,,,Flexible Manufacturing Cells,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Manufacturing,,,,,I,Placeholder,,,,Just-in-Time Sequencing,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Manufacturing,,,,,I,Placeholder,,,,Modular Sub-Assembly,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Manufacturing,,,,,I,Placeholder,,,,Robotic Final Assembly,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Manufacturing,,,,,I,Placeholder,,,,Automated Guided Assembly,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Manufacturing,,,,,I,Placeholder,,,,Class-100 Cleanrooms,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Manufacturing,,,,,I,Placeholder,,,,Advanced Photolithography,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Manufacturing,Modular Factory Cells,,,,III,Run Profitable,high_tech_manufactory,3,buildings,Atomic Layer Deposition,ald,Increases High Tech Manufactory output by 5% permanently.
+Manufacturing,,,,,I,Placeholder,,,,Fully-Automated Fabs,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Inorganic Chemistry,Precision Reagent Handling,,,,III,Run Profitable,chem_plant,3,buildings,Continuous-Flow Reactors,cfr,Increases Chemical Plant output by 5% permanently.
+Inorganic Chemistry,,,,,I,Placeholder,,,,Process Intensification,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Inorganic Chemistry,,,,,I,Placeholder,,,,Deep Catalytic Optimisation,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Inorganic Chemistry,,,,,I,Placeholder,,,,High-Current Cell Stacks,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Inorganic Chemistry,,,,,I,Placeholder,,,,Bipolar Cell Arrays,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Petrochemistry,,,,,I,Placeholder,,,,Heat-Integrated Trains,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Petrochemistry,Catalytic Cracking,,,,III,Run Profitable,petro_refinery,3,buildings,Continuous Catalyst Regeneration,ccr,Increases Petrochemical Refinery output by 5% permanently.
+Hydrocarbon Power,Steam Turbine Upgrades,,,,III,Run L1,coal_power,5,20 turns,Supercritical Boilers,level2,Unlocks upgrading Coal Power Plant to Level 2 for more output.
+Hydrocarbon Power,Supercritical Boilers,,,,III,Run Profitable L2,coal_power,5,buildings,Ultra-Supercritical Units,level3,Unlocks upgrading Coal Power Plant to Level 3 for more output.
+Renewable Power,Onshore Wind Control,,,,III,Run L1,onshore_wind_farm,5,20 turns,Larger Rotor Diameters,level2,Unlocks upgrading Onshore Wind Farm to Level 2 for more output.
+Renewable Power,Larger Rotor Diameters,,,,III,Run Profitable L2,onshore_wind_farm,5,buildings,Direct-Drive Megaturbines,level3,Unlocks upgrading Onshore Wind Farm to Level 3 for more output.
+Renewable Power,Utility Solar Arrays,,,,III,Run L1,solar_farm,5,20 turns,Single-Axis Trackers,level2,Unlocks upgrading Solar Farm to Level 2 for more output.
+Renewable Power,Single-Axis Trackers,,,,III,Run Profitable L2,solar_farm,5,buildings,Self-Adjusting Panel Network,level3,Unlocks upgrading Solar Farm to Level 3 for more output.
+Renewable Power,Battery Balancing,,,,III,Run L1,battery,3,20 turns,Liquid-Cooled Packs,level2,Unlocks upgrading Battery Electric Storage to Level 2 for more output.
+Renewable Power,Liquid-Cooled Packs,,,,III,Run Profitable L2,battery,2,buildings,Flow Battery Arrays,level3,Unlocks upgrading Battery Electric Storage to Level 3 for more output.
+Inorganic Chemistry,Chlor Alkali Cells,,,,III,Run L1,desal,3,20 turns,Reverse Osmosis Trains,level2,Unlocks upgrading Desalination Plant to Level 2 for more output.
+Inorganic Chemistry,Reverse Osmosis Trains,,,,III,Run Profitable L2,desal,2,buildings,Seawater RO Megaplants,level3,Unlocks upgrading Desalination Plant to Level 3 for more output.
+Inorganic Chemistry,Chlor Alkali Cells,,,,III,Run Profitable L2,water_pump,2,buildings,Extensive Drainage Systems,level3,Unlocks upgrading Water Pump to Level 3 for more output.
+Recycling,,,,,II,Run L1,water_recycling,3,20 turns,Membrane Bioreactors,level2,Unlocks upgrading Water Recyling Plant to Level 2 for more output.
+Recycling,Membrane Bioreactors,,,,III,Run Profitable L2,water_recycling,2,buildings,Closed-Loop Reclaim,level3,Unlocks upgrading Water Recyling Plant to Level 3 for more output.
+Biochemistry,Wastewater Bioreactors,,,,III,Run Profitable L2,farm,3,buildings,Controlled-Environment Farming,level3,Unlocks upgrading Farm to Level 3 for more output.
+Infrastructure,Reinforced Roadbeds,,,,III,Run L1,roads,5,20 turns,Multi-Lane Widening,level2,Unlocks upgrading Roads to Level 2 for more output.
+Infrastructure,Multi-Lane Widening,,,,III,Run Profitable L2,roads,5,buildings,Grade-Separated Interchanges,level3,Unlocks upgrading Roads to Level 3 for more output.
+Infrastructure,Reinforced Roadbeds,,,,III,Run L1,rails,5,20 turns,Longer Freight Consists,level2,Unlocks upgrading Railways to Level 2 for more output.
+Infrastructure,Longer Freight Consists,,,,III,Run Profitable L2,rails,5,buildings,Standardised Wagon Gantry Cranes,level3,Unlocks upgrading Railways to Level 3 for more output.
+Infrastructure,Pipe Trench Standards,,,,III,Run L1,pipes,5,20 turns,Automated Pressure Management System,level2,Unlocks upgrading Pipeworks to Level 2 for more output.
+Infrastructure,Automated Pressure Management System,,,,III,Run Profitable L2,pipes,5,buildings,Looped Distribution Grids,level3,Unlocks upgrading Pipeworks to Level 3 for more output.
+Infrastructure,High Pressure Mains,,,,III,Run L1,reinf_pipes,3,20 turns,High-Pressure Manifolds,level2,Unlocks upgrading Reinforced Pipeworks to Level 2 for more output.
+Infrastructure,High-Pressure Manifolds,,,,III,Run Profitable L2,reinf_pipes,2,buildings,Cryogenic Transfer Lines,level3,Unlocks upgrading Reinforced Pipeworks to Level 3 for more output.
+Infrastructure,Substation Layouts,,,,III,Run L1,cables,5,20 turns,Reconductoring,level2,Unlocks upgrading Cables to Level 2 for more output.
+Infrastructure,Reconductoring,,,,III,Run Profitable L2,cables,5,buildings,Smart Grid Control,level3,Unlocks upgrading Cables to Level 3 for more output.
+Renewable Power,Direct-Drive Megaturbines,,,,III,Run,Wind Farm,12,turns,Floating Offshore Wind Farms,floatwind,Unlocks new recipe: Floating Offshore Wind Power (90 Power).
+Renewable Power,Battery Balancing,,,,II,Run,Battery,12,turns,Fast Response Storage,fastbat,Reduces power consumption for buildings sharing the tile by 5% permanently.
+Infrastructure,Substation Layouts,,,,II,Build,Cables,5,units,High Voltage Cabling,hvdc1,Unlocks HVDC long-distance power transmission.
+Infrastructure,High Voltage Cabling,,,,III,Run,Cables,12,turns,Undersea Current Doublers,hvdc2,Unlocks higher-capacity undersea HVDC power links.
+Infrastructure,Undersea Current Doublers,,,,III,Own,Cables,6,units,SF6-free Switchgear,hvdc3,Unlocks high-capacity HVDC switchgear for power links.
+Hydrocarbon Power,,,,,I,Placeholder,,,,Reheat Turbine Cycles,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Hydrocarbon Power,Flue Heat Recovery,,,,III,Run,Power Plant,15,turns,Combined Heat & Power,chp,Reduces maintenance for all buildings by 5% permanently.
+Renewable Power,,,,,I,Placeholder,,,,Taller Turbine Towers,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Renewable Power,,,,,I,Placeholder,,,,Variable-Pitch Control,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Renewable Power,Utility Solar Arrays,,,,II,Run,Solar Farm,12,turns,Bifacial Panel Arrays,bifacial,Increases solar potential on all tiles by 10% permanently.
+Renewable Power,,,,,I,Placeholder,,,,Utility-Scale Inverters,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Renewable Power,,,,,I,Placeholder,,,,Dual-Axis Tracking Farms,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Renewable Power,,,,,I,Placeholder,,,,Perovskite Tandem Arrays,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Renewable Power,,,,,I,Placeholder,,,,Containerised Battery Racks,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Inorganic Chemistry,,,,,I,Placeholder,,,,Multi-Stage Flash Desal,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Inorganic Chemistry,Reverse Osmosis Trains,,,,III,Run,Desalination Plant,15,turns,Energy-Recovery Devices,erd,Reduces Desalination Plant power consumption by 50% permanently.
+Inorganic Chemistry,,,,,I,Placeholder,,,,Zero-Liquid Discharge,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Recycling,,,,,I,Placeholder,,,,Tertiary Filtration,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Recycling,,,,,I,Placeholder,,,,Advanced Oxidation Loops,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Recycling,,,,,I,Placeholder,,,,Zero-Discharge Water,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Biochemistry,,,,,I,Placeholder,,,,Automated Harvest Fleets,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Infrastructure,,,,,I,Placeholder,,,,Heavy Freight Corridors,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Infrastructure,Reinforced Roadbeds,,,,III,Run,Roads,15,turns,Smart Traffic Control,traffic,Increases road throughput by 25% permanently.
+Infrastructure,,,,,I,Placeholder,,,,Double-Track Sidings,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Infrastructure,,,,,I,Placeholder,,,,Heavy-Haul Bogies,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Infrastructure,Longer Freight Consists,,,,III,Run,Railways,15,turns,Electrified Rolling Stock,erail,Increases rail throughput by 25% permanently.
+Infrastructure,,,,,I,Placeholder,,,,Automated Rail Yards,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Infrastructure,,,,,I,Placeholder,,,,Distributed-Power Trains,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Infrastructure,,,,,I,Placeholder,,,,Large-Diameter Mains,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Infrastructure,,,,,I,Placeholder,,,,Booster Pumping Stations,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Infrastructure,,,,,I,Placeholder,,,,Trunk Pipeline Networks,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Infrastructure,,,,,I,Placeholder,,,,Smart Flow Control,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Infrastructure,,,,,I,Placeholder,,,,Double-Walled Pipelines,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Infrastructure,,,,,I,Placeholder,,,,Corrosion-Resistant Linings,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Infrastructure,High Pressure Mains,,,,III,Run,Pipe Network,15,turns,Leak-Detection Networks,leak,Increases pipe throughput by 25% permanently.
+Infrastructure,,,,,I,Placeholder,,,,Ultra-High-Pressure Mains,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+Manufacturing,Precision Assembly Lines,,,,III,Run Profitable,assembly_plant,3,buildings,Coordinated Robot Handoff,handoff,Increases Assembly Plant output by 5% permanently.
+Infrastructure,Reinforced Roadbeds,,,,III,Own,Roads,6,units,Electrified Road Haul,eroad,Increases road throughput by 25% permanently.
+Renewable Power,Bifacial Panel Arrays,,,,II,Sell,Power,250,units,Anti-Reflective Coatings,arc,Increases solar potential on all tiles by 10% permanently.
+Renewable Power,Onshore Wind Control,,,,II,Run,Wind Farm,12,turns,Tall-Tower Wind Capture,onwind,Increases onshore wind potential by 10% permanently.
+Renewable Power,Onshore Wind Control,,,,II,Own,land,5,units,Marine Wind Profiling,offwind,Increases offshore wind potential by 10% permanently.

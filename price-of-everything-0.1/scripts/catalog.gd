@@ -672,6 +672,7 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 		"output_qty": outputs[0].qty,
 		"energy_req": int(raw.get("energy_req", "0")),
 		"requirements": _parse_requirements(raw.get("requirements", "")),
+		"required_research": raw.get("required_research", ""),
 	}
 
 # Parses the requirements string into a list of typed entries.
@@ -716,7 +717,14 @@ func get_recipe(recipe_id: String) -> Dictionary:
 	return _recipes_by_id.get(recipe_id, {})
 
 func get_recipes_for_building(building_id: String) -> Array:
-	return _recipes_by_building.get(building_id, [])
+	# Feature 1: hide recipes gated behind un-researched tech (required_research
+	# column). Base recipes (empty column) are always available.
+	var out: Array = []
+	for r in _recipes_by_building.get(building_id, []):
+		var req: String = str(r.get("required_research", ""))
+		if req == "" or MatchState.is_unlocked(req):
+			out.append(r)
+	return out
 
 func recipe_produces(recipe: Dictionary, good_id: String) -> bool:
 	if str(recipe.get("output_good_id", "")) == good_id:
@@ -774,7 +782,7 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 		raw[key] = val
 	
 	var materials: Array = []
-	for n in range(1, 6):
+	for n in range(1, 8):   # up to 7 build materials (was 5)
 		var mat_name: String = raw.get("build_material_%d" % n, "")
 		var mat_qty_str: String = raw.get("build_qty_%d" % n, "")
 		if mat_name != "" and mat_qty_str != "":
@@ -786,6 +794,7 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 		"display_name": raw.get("display_name", raw.get("internal_name", "")),
 		"category": raw.get("building_category", "production").to_lower(),
 		"building_type": _split_types(raw.get("building_type", "")),
+		"required_research": raw.get("required_research", ""),
 		"materials": materials,
 		"base_price": float(raw.get("build_cost_money", "0")),
 		"tile_size_used": 1 if raw.get("tile_size_used", "") == "" else int(raw.get("tile_size_used", "1")),

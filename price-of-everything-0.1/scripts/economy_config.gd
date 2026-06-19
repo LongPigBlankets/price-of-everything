@@ -96,13 +96,23 @@ const TRANSPORT_MODE_COST_MULT := {
 	"reinf_pipes": 1.0,
 	"nothing": 1.0,
 }
-# Per-turn throughput a single link can carry by mode (goods/turn). NOTE: not yet
-# enforced — a per-link flow-accounting pass is needed (see infrastructure.csv's
-# max_goods_carried / soft_capacity columns). Kept here as the agreed values.
+# Per-turn throughput one tile-link can carry by mode (goods/turn), at infra Level 1.
+# ENFORCED via a soft cap: when a tile's in-transit flow on a mode exceeds this
+# (× the tile's infra-level multiplier × throughput research), the overflow incurs a
+# per-turn congestion surcharge (MatchState.charge_transport_congestion). Goods still
+# move — it's a cost, not a gate. Modes not listed are uncapped (cables=power, overland).
 const TRANSPORT_LINK_CAP_BY_MODE := {
 	"roads": 200,
 	"rail": 400,
+	"pipes": 200,
+	"reinf_pipes": 350,
 }
+# Infra level multiplies a link's capacity: L2 doubles it, L3 ×3.5.
+const TRANSPORT_CAP_LEVEL_MULT := {1: 1.0, 2: 2.0, 3: 3.5}
+# Cables HARD-cap a tile's power per turn by cable level — separately for production
+# (export) and draw (import). A tile can both produce AND draw up to this. Power above
+# the cap simply doesn't generate / isn't supplied.
+const CABLE_POWER_CAP := {1: 200, 2: 400, 3: 700}
 
 # --- Loans ---
 # Capacity is no longer a flat ceiling. It STARTS at the base below and scales with

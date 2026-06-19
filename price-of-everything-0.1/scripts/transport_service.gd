@@ -58,7 +58,14 @@ func transport_cost(good_id: String, qty: int, transport_turns: int, mode_mult: 
 
 
 func transport_cost_for_route(good_id: String, qty: int, route_data: Dictionary, surcharge: float = 1.0) -> float:
-	return EconomyConfig.transport_cost_for_route(good_id, qty, route_data) * surcharge
+	var cost: float = EconomyConfig.transport_cost_for_route(good_id, qty, route_data) * surcharge
+	# transport_cost modifiers (research like Route Optimization) trim haulage cost.
+	cost = Modifiers.apply("transport_cost", good_id, cost, {"good_id": good_id})
+	# Throughput congestion: +100% over a link's capacity, +200% over capacity + L1 cap.
+	match MatchState.route_congestion_tier(route_data):
+		1: cost *= 2.0
+		2: cost *= 3.0
+	return cost
 
 
 func quote_manifest(source_tile: String, destination_tile: String, goods_qtys: Dictionary, options: Dictionary = {}) -> Dictionary:
