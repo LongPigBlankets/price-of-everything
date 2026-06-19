@@ -34,7 +34,7 @@ BUILDING_ALIAS = {
 
 # --- cost-model parameters (not in CSVs; edit here to retune) ---
 SELL      = 0.95
-WAGE      = {"u": 0.02, "s": 0.05, "h": 0.10}
+WAGE      = {"u": 0.002, "s": 0.006, "h": 0.010}   # engine rates (economy_config.gd)
 TRANSPORT = {"heavy": 0.20, "liquid": 0.10, "gas": 0.20, "power": 0.0}
 SELFPOWER = 0.30
 
@@ -78,7 +78,7 @@ with open(BUILDINGS_CSV) as f:
         u = int(row["labour_unskilled_required"] or 0)
         s = int(row["labour_skilled_required"] or 0)
         h = int(row["labour_h_skilled_required"] or 0)
-        BLD[key] = m + u*WAGE["u"] + s*WAGE["s"] + h*WAGE["h"]
+        BLD[key] = 2.0*m + u*WAGE["u"] + s*WAGE["s"] + h*WAGE["h"]   # maint x2 (catalog MAINTENANCE_MULTIPLIER)
 
 # --- load recipes (input_1..6, output_1..5) ---
 def parse_recipe(row):

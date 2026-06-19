@@ -782,9 +782,9 @@ const INFRA_SLOTS := [
 	{"key": "rails", "label": "Rail"},
 	{"key": "reinf_pipes", "label": "Reinf. pipes"},
 ]
-# Only these modes currently have a throughput cap (see EconomyConfig). Everything
-# else renders an always-green ring until per-link flow accounting lands.
-const CAPPED_MODES := {"roads": "roads", "rails": "rail"}
+# Goods-transport slots that carry a throughput cap (slot key -> routing mode). Cables
+# are power, not goods, so they stay uncapped here.
+const CAPPED_MODES := {"roads": "roads", "rails": "rail", "pipes": "pipes", "reinf_pipes": "reinf_pipes"}
 
 static func infrastructure_summary(tile_id: String, tile_data: Dictionary) -> Array:
 	# 1) Resolve each slot's state + building data.
@@ -806,37 +806,54 @@ static func infrastructure_summary(tile_id: String, tile_data: Dictionary) -> Ar
 		if state == "exists" and CAPPED_MODES.has(key):
 			existing_capped.append(key)
 
-	# 2) Distribute this tile's through-traffic across present capped modes,
-	#    weighted by capacity. PLACEHOLDER until per-link flow accounting exists.
-	var through := _through_units(tile_id)
-	var total_cap := 0
-	for key in existing_capped:
-		total_cap += int(EconomyConfig.TRANSPORT_LINK_CAP_BY_MODE.get(CAPPED_MODES[key], 0))
-
-	# 3) Attach transit/dial info to each slot.
+	# 2) Attach real transit vs capacity to each slot. Capacity is the live cap —
+	# base mode cap × infra level (L1×1 / L2×2 / L3×3.5) × throughput research — and
+	# transit is the actual per-tile-link flow this turn.
 	for slot in slots:
 		var key: String = slot.key
 		var state: String = slot.state
 		var capped: bool = CAPPED_MODES.has(key)
 		slot["capped"] = capped
-		slot["cap"] = int(EconomyConfig.TRANSPORT_LINK_CAP_BY_MODE.get(CAPPED_MODES.get(key, ""), 0)) if capped else 0
+		slot["cap"] = 0
 		if state != "exists":
 			slot["transit"] = {"dial": "track", "tooltip": "Not built"}
+			continue
+		# Cables carry POWER, hard-capped per tile by cable level (produce + draw each).
+		if key == "cables":
+			var pcap := Power.tile_power_cap(tile_id)
+			var produced := int(Power.tile_produced.get(tile_id, 0))
+			var drawn := int(Power.tile_drawn.get(tile_id, 0))
+			var worst := maxi(produced, drawn)
+			slot["capped"] = pcap > 0
+			slot["cap"] = pcap
+			slot["transit"] = {
+				"dial": "fill" if pcap > 0 else "full_green",
+				"pct": (float(worst) / float(pcap)) if pcap > 0 else 0.0,
+				"used": worst,
+				"cap": pcap,
+				"tooltip": "Power: produce %d / %d, draw %d / %d per turn" % [produced, pcap, drawn, pcap],
+			}
 			continue
 		if not capped:
 			slot["transit"] = {"dial": "full_green", "tooltip": "%s · no transit cap" % slot.label}
 			continue
-		var cap := int(EconomyConfig.TRANSPORT_LINK_CAP_BY_MODE.get(CAPPED_MODES[key], 0))
-		var used := 0
-		if total_cap > 0 and cap > 0:
-			used = int(round(float(through) * float(cap) / float(total_cap)))
+		var mode: String = CAPPED_MODES[key]
+		var level := int(tile_data.get("infrastructure_levels", {}).get(key, 1))
+		var cap := int(round(MatchState.tile_mode_capacity(mode, level)))
+		var used := MatchState.tile_mode_flow(tile_id, mode)
 		var pct := (float(used) / float(cap)) if cap > 0 else 0.0
+		slot["cap"] = cap
+		var tip := "%s: %d / %d per turn  (Level %d)" % [slot.label, used, cap, level]
+		if cap > 0 and used > cap:
+			var l1 := float(EconomyConfig.TRANSPORT_LINK_CAP_BY_MODE.get(mode, 0))
+			var over := "+200% over cap" if float(used) > float(cap) + l1 else "+100% over cap"
+			tip += "\nCongestion: %s transport cost" % over
 		slot["transit"] = {
 			"dial": "fill",
 			"pct": pct,
 			"used": used,
 			"cap": cap,
-			"tooltip": "%s transit: %d/%d units" % [slot.label, used, cap],
+			"tooltip": tip,
 		}
 	return slots
 

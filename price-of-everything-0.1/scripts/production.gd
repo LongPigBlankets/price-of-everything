@@ -1,4 +1,5 @@
 extends Node
+const BuildingLevels := preload("res://scripts/building_levels.gd")
 
 const MAX_PRODUCTION_PASSES := 30
 
@@ -114,6 +115,10 @@ func _process_production() -> void:
 	Construction.tick_turn()
 	Construction.claim_materials()
 	Construction.reorder_market_materials()  # re-buy any still-missing build materials
+	# In-progress upgrades advance here too: awaiting projects claim freshly-arrived materials
+	# off the tile (before production can consume them) and ticked-down ones promote to the
+	# new level, so an upgrade that completes this turn produces at its new level immediately.
+	MatchState.tick_upgrades()
 	TurnProfiler.section_end("construction")
 
 	# Only the player's buildings are simulated each turn. The pre-existing NPC
@@ -150,19 +155,21 @@ func _process_production() -> void:
 			# Building can run — execute it
 			_consume_inputs(building, recipe, summary)
 			
-			# Register power demand if any
-			var energy_req: int = recipe.get("energy_req", 0)
+			# Register power demand if any (power-consumption modifiers shrink it). The
+			# tile's cable level already cleared this draw in _can_run_recipe; record it
+			# per-tile so it counts toward the cap + grid.
+			var energy_req: int = _effective_energy_req(building, recipe)
 			if energy_req > 0:
-				Power.add_demand(energy_req)
+				Power.record_drawn(str(building.get("tile_id", "")), energy_req)
 				summary.consumed["power"] = summary.consumed.get("power", 0) + energy_req
 				if MatchState.is_player_owned(building):
 					_accumulate_by_type(summary.power_demand_by_type, str(building.get("building_id", "")), float(energy_req))
-			
-			# Route output: power goes to Power supply, everything else to Stockpile
+
+			# Route output: power goes to Power supply (per-tile, capped), else Stockpile
 			var output_name: String = recipe.get("output_name", "")
 			if output_name == "power":
-				var output_qty: int = recipe.get("output_qty", 0)
-				Power.add_supply(output_qty)
+				var output_qty: int = _effective_power_output(building, recipe)
+				Power.record_produced(str(building.get("tile_id", "")), output_qty)
 				summary.produced["power"] = summary.produced.get("power", 0) + output_qty
 				_record_building_output(instance_id, "power", output_qty)
 				print("[Production] Building %s produced %d Power" % [instance_id, output_qty])
@@ -437,13 +444,17 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		# Modifier hook: advisor bonuses, "Mining Mastery" research, carbon-tax
 		# productivity hits etc. all land here. With no active modifiers this is
 		# one dict-emptiness check.
+		# The deposit penalty + mining-yield research are recipe_output modifiers
+		# matched by good_internal, so they land here too (no separate multiply).
 		var mod_ctx := {
 			"recipe_id": recipe_id,
 			"recipe_type": recipe_type,
 			"building_id": str(building.get("building_id", "")),
 			"good_id": str(good.id),
+			"good_internal": output_name,
 		}
 		output_qty = int(round(Modifiers.apply("recipe_output", recipe_id, float(output_qty), mod_ctx)))
+		output_qty = int(round(float(output_qty) * BuildingLevels.mult("output", int(building.get("level", 1)))))
 		if output_qty <= 0:
 			continue
 
@@ -465,6 +476,9 @@ func _recipe_deposit_token(recipe: Dictionary) -> String:
 	return ""
 
 func _process_transport_arrivals(summary: Dictionary) -> void:
+	# Snapshot this turn's in-transit per-link flow (before shipments advance) so the
+	# next turn's transport costs carry the right congestion penalty.
+	MatchState.update_transport_congestion()
 	# First, retry any shipments that arrived earlier at a then-full tile.
 	MatchState.retry_overflow_unload()
 	for shipment in MatchState.advance_transport_shipments():
@@ -694,26 +708,48 @@ func _record_building_output(instance_id: String, good_key: String, qty: int) ->
 	totals[good_key] = totals.get(good_key, 0) + qty
 	produced_by_building[instance_id] = totals
 
+## Lifetime units of a good produced across all buildings — feeds the "Produce N
+## units of X" research conditions. Outputs record under the catalog good_id, but
+## the research condition's Object is the good's internal_name (e.g. "coal"), so
+## resolve that to the id first. Accepts either form.
+func lifetime_total(good: String) -> int:
+	var gid := good
+	var g: Dictionary = Catalog.get_good_by_internal_name(good)
+	if not g.is_empty():
+		gid = str(g.get("id", good))
+	var total: int = 0
+	for inst_id in produced_by_building:
+		total += int((produced_by_building[inst_id] as Dictionary).get(gid, 0))
+	return total
+
 func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
+	# A levelled building consumes/produces scaled quantities (see _consume_inputs /
+	# _produce_outputs). The cost report MUST scale them the same way, or CostSolver divides
+	# the levelled power/labour/maintenance by the un-scaled output and reports an inflated
+	# unit cost after an upgrade.
+	var lvl := int(building.get("level", 1))
+	var imul := BuildingLevels.mult("input", lvl)
+	var omul := BuildingLevels.mult("output", lvl)
+
 	# Build inputs_consumed {good_id: qty} from recipe inputs
 	var inputs_consumed: Dictionary = {}
 	for input in recipe.get("inputs", []):
 		var gid: String = input.get("good_id", "")
 		if gid != "":
-			inputs_consumed[gid] = input.get("qty", 0)
+			inputs_consumed[gid] = int(round(float(input.get("qty", 0)) * imul))
 
 	# Build outputs_produced {good_id: qty} from recipe outputs (good_id already resolved)
 	var outputs_produced: Dictionary = {}
 	for output in _recipe_output_items(recipe):
 		var gid: String = output.get("good_id", "")
-		var qty: int    = output.get("qty", 0)
+		var qty: int    = int(round(float(output.get("qty", 0)) * omul))
 		if gid != "" and qty > 0:
 			outputs_produced[gid] = qty
 
 	if outputs_produced.is_empty():
 		return  # nothing to track (e.g. power recipe fell through)
 
-	var energy_req: int    = recipe.get("energy_req", 0)
+	var energy_req: int    = _effective_energy_req(building, recipe)
 	var power_cost: float  = float(energy_req) * EconomyConfig.GRID_BUY_PRICE
 
 	# Inbound transport: per-unit transport paid to land each input on this tile
@@ -768,6 +804,10 @@ func _calculate_labour_cost(building: Dictionary) -> float:
 		+ skilled    * _grown_labour_rate(EconomyConfig.LABOUR_SKILLED_RATE, EconomyConfig.LABOUR_SKILLED_GROWTH)
 		+ high_skilled * _grown_labour_rate(EconomyConfig.LABOUR_HIGH_SKILLED_RATE, EconomyConfig.LABOUR_HIGH_SKILLED_GROWTH)
 	)
+	# Labour-headcount modifiers (e.g. Lights-Out Automation) thin the crew.
+	var bid: String = str(building.get("building_id", ""))
+	base_cost = Modifiers.apply("labour_headcount", bid, base_cost, {"building_id": bid})
+	base_cost *= BuildingLevels.mult("labour", int(building.get("level", 1)))
 	return base_cost * MatchState.labour_multiplier
 
 func _grown_labour_rate(base_rate: float, growth: float) -> float:
@@ -779,7 +819,100 @@ func _grown_labour_rate(base_rate: float, growth: float) -> float:
 func _calculate_maintenance_cost(building: Dictionary) -> float:
 	var bdata: Dictionary = Catalog.get_building(building.get("building_id", ""))
 	var maint = bdata.get("maintenance_cost", null)
-	return EconomyConfig.MAINTENANCE_PER_BUILDING if maint == null else float(maint)
+	var maint_val: float = EconomyConfig.MAINTENANCE_PER_BUILDING if maint == null else float(maint)
+	# Maintenance modifiers (e.g. Combined Heat & Power thermal-battery retrofit).
+	var bid: String = str(building.get("building_id", ""))
+	var maint_cost := Modifiers.apply("maintenance", bid, maint_val, {"building_id": bid})
+	return maint_cost * BuildingLevels.mult("maint", int(building.get("level", 1)))
+
+# Power-consumption modifiers (Pulverised Carbon Injection, Scrap Preheating,
+# Energy-Recovery Devices) shrink the energy a building actually draws — applied
+# once here so grid demand and the £ power cost stay in lock-step.
+func _effective_energy_req(building: Dictionary, recipe: Dictionary) -> int:
+	var energy_req: int = recipe.get("energy_req", 0)
+	if energy_req <= 0:
+		return energy_req
+	var bid: String = str(building.get("building_id", ""))
+	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
+	return int(round(eff * BuildingLevels.mult("energy", int(building.get("level", 1)))))
+
+# Power generation after recipe_output modifiers (e.g. Pulverised Coal Boilers +5%,
+# Hydro Intake Design +10%). Power takes its own production branch that bypasses
+# _produce_outputs, so the modifier is applied here — used for BOTH the cable-cap
+# gate and the recorded supply so they always agree.
+func _effective_power_output(building: Dictionary, recipe: Dictionary) -> int:
+	var output_qty: int = recipe.get("output_qty", 0)
+	if output_qty <= 0:
+		return output_qty
+	var rid := str(recipe.get("recipe_id", ""))
+	var mod_ctx := {
+		"recipe_id": rid,
+		"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
+		"building_id": str(building.get("building_id", "")),
+		"good_id": "power",
+		"good_internal": "power",
+	}
+	var eff := Modifiers.apply("recipe_output", rid, float(output_qty), mod_ctx)
+	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1)))))
+
+## Per-turn stat snapshot for a building instance evaluated AS IF it were `level`. Used by the
+## upgrade dialog to show cur→new (energy / labour / maintenance / size / inputs / outputs) using
+## the very same formulas the engine runs, so the preview numbers match live production exactly.
+## Energy / labour / maintenance are kept as FLOATS (the panel allows non-integer costs); inputs,
+## outputs and tile size remain whole units. Returns
+## {energy:float, labour:float, maintenance:float, size:float, inputs:[{name,good_id,qty}], outputs:[{name,good_id,qty}]}.
+func stats_at_level(instance_id: String, level: int) -> Dictionary:
+	var inst: Dictionary = MatchState.buildings.get(instance_id, {})
+	if inst.is_empty():
+		return {}
+	# A throwaway copy at the hypothetical level — the private cost/output helpers read building.level.
+	var b: Dictionary = inst.duplicate(true)
+	b["level"] = level
+	var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+	var bdata: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
+	var out: Dictionary = {
+		"energy": _effective_energy_req_f(b, recipe),  # FLOAT (the grid still draws the int version)
+		"labour": _calculate_labour_cost(b),
+		"maintenance": _calculate_maintenance_cost(b),
+		"size": float(bdata.get("tile_size_used", 1.0)) * BuildingLevels.mult("size", level),
+		"inputs": [],
+		"outputs": [],
+	}
+	var imul := BuildingLevels.mult("input", level)
+	for input in recipe.get("inputs", []):
+		out.inputs.append({
+			"good_id": str(input.get("good_id", "")),
+			"name": Catalog.get_display_name(str(input.get("good_id", ""))),
+			"qty": int(round(float(input.get("qty", 0)) * imul)),
+		})
+	# Outputs: power takes its own branch; everything else mirrors _produce_outputs (modifier + level).
+	if str(recipe.get("output_name", "")) == "power":
+		out.outputs.append({"name": "Power", "good_id": "power", "qty": _effective_power_output(b, recipe)})
+	else:
+		var omul := BuildingLevels.mult("output", level)
+		var rid := str(recipe.get("recipe_id", ""))
+		for output in _recipe_output_items(recipe):
+			var oname := str(output.get("internal_name", ""))
+			var good: Dictionary = Catalog.get_good_by_internal_name(oname)
+			if good.is_empty():
+				continue
+			var ctx := {
+				"recipe_id": rid, "recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
+				"building_id": str(b.get("building_id", "")), "good_id": str(good.id), "good_internal": oname,
+			}
+			var q := int(round(Modifiers.apply("recipe_output", rid, float(output.get("qty", 0)), ctx)))
+			out.outputs.append({"name": str(good.get("display_name", oname)), "good_id": str(good.id), "qty": int(round(float(q) * omul))})
+	return out
+
+# Float energy draw (no whole-unit rounding) — for the upgrade panel's cost rows. The live grid
+# still uses the integer _effective_energy_req; this just lets the panel show the true value.
+func _effective_energy_req_f(building: Dictionary, recipe: Dictionary) -> float:
+	var energy_req: int = recipe.get("energy_req", 0)
+	if energy_req <= 0:
+		return float(energy_req)
+	var bid: String = str(building.get("building_id", ""))
+	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
+	return eff * BuildingLevels.mult("energy", int(building.get("level", 1)))
 
 func _accumulate_by_type(target: Dictionary, building_id: String, amount: float, count: int = 1) -> void:
 	# target maps building_id -> {"count": int, "amount": float} for money-panel tooltips.
@@ -815,18 +948,22 @@ func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
 			"have": 0,
 		})
 
-	# Cable check: required for power consumers AND power producers
-	var energy_req: int = recipe.get("energy_req", 0)
+	# Power: cables are required to draw OR produce, and the tile's cable level hard-
+	# caps how much it can draw (import) and produce (export) per turn — separately.
 	var produces_power: bool = recipe.get("output_name", "") == "power"
-	if energy_req > 0 or produces_power:
-		if not Power.is_supplied(tile_id, energy_req):
-			missing.append({
-				"good_id": "power",
-				"internal_name": "power",
-				"need": energy_req if energy_req > 0 else 1,
-				"have": 0,
-			})
-	
+	var draw: int = _effective_energy_req(building, recipe)
+	var power_out: int = _effective_power_output(building, recipe) if produces_power else 0
+	if draw > 0 or produces_power:
+		if not Power.is_supplied(tile_id, draw):
+			missing.append({"good_id": "power", "internal_name": "power",
+				"need": draw if draw > 0 else 1, "have": 0})
+		elif draw > 0 and not Power.can_draw(tile_id, draw):
+			missing.append({"good_id": "power", "internal_name": "power",
+				"need": draw, "have": Power.tile_power_cap(tile_id)})
+		elif produces_power and not Power.can_produce(tile_id, power_out):
+			missing.append({"good_id": "power", "internal_name": "power",
+				"need": power_out, "have": Power.tile_power_cap(tile_id)})
+
 	return {
 		"can_run": missing.is_empty(),
 		"missing": missing,
@@ -931,6 +1068,8 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictionary) -> void:
 	var inputs: Array = recipe.get("inputs", [])
 	var tile_id: String = building.get("tile_id", "")
+	var lvl_mult := BuildingLevels.mult("input", int(building.get("level", 1)))
 	for input in inputs:
-		Stockpile.consume(tile_id, input.good_id, input.qty)
-		summary.consumed[input.good_id] = summary.consumed.get(input.good_id, 0) + input.qty
+		var qty := int(round(float(input.qty) * lvl_mult))
+		Stockpile.consume(tile_id, input.good_id, qty)
+		summary.consumed[input.good_id] = summary.consumed.get(input.good_id, 0) + qty

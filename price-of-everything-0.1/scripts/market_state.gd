@@ -107,7 +107,11 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 		var sold: int = want if skip_consume else Stockpile.consume(source_tile, str(gid), want)
 		if sold <= 0:
 			continue
-		var revenue: float = float(sold) * get_price(str(gid))
+		# market_price modifiers (research like Forward Contracts) lift the SALE price
+		# only — applied here, not in get_price(), so buy prices are unaffected.
+		var unit_price: float = Modifiers.apply("market_price", str(gid), get_price(str(gid)),
+			{"good_id": str(gid), "good_internal": str(Catalog.get_good(str(gid)).get("internal_name", ""))})
+		var revenue: float = float(sold) * unit_price
 		items.append({"good_id": str(gid), "qty": sold, "revenue": revenue})
 		total_qty += sold
 		total_revenue += revenue

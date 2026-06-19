@@ -97,6 +97,12 @@ func _run_command(text: String) -> String:
 			var amount := int(parts[1])
 			MatchState.add_money(float(amount))
 			return "Added £%d  (balance now £%.2f)" % [amount, MatchState.money]
+		"unlock":
+			if parts.size() < 2:
+				return "usage: unlock <research title>  (e.g. 'unlock hydro')"
+			var title := " ".join(parts.slice(1))
+			MatchState.grant_unlock(title)
+			return "Unlocked '%s'." % title
 		"sellmode":
 			if parts.size() < 2:
 				return "usage: sellmode <stockpile|market|building>  (current: %s)" % _sell_mode_name()
@@ -185,7 +191,7 @@ func _run_command(text: String) -> String:
 				return "heightmap → %s" % ("on" if now_visible else "off (plain map + rivers)")
 			return "usage: toggle heightmap | roads | roadocc"
 		"help":
-			return "commands:  cash <int>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

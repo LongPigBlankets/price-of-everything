@@ -1,4 +1,5 @@
 extends Node
+const BuildingLevels := preload("res://scripts/building_levels.gd")
 
 # MatchState: the canonical store for everything that changes during a match.
 # Other systems read and write here; never store match data elsewhere.
@@ -46,6 +47,12 @@ var auto_sell_goods: Dictionary = {}                 # tile_id -> { good_id -> t
 const IMPACT_ANY := -1                               # auto-sell tolerance sentinel: no per-turn volume cap
 var auto_sell_impact: Dictionary = {}                # tile_id -> max price-impact % tolerated per turn (or IMPACT_ANY)
 var pending_transport_shipments: Array = []
+# In-progress building upgrades (mirrors Construction's project queue). Each entry is a
+# dict — see start_upgrade() for the shape. While an upgrade is pending it reserves its
+# extra footprint and the building keeps producing at its CURRENT level until promotion.
+var pending_upgrades: Array = []
+# Last turn's per-link flow ("tile|mode"->units) — drives this turn's congestion cost.
+var _last_link_flow: Dictionary = {}
 # Shipments that arrived at a destination tile whose stockpile was full and so
 # couldn't unload. They wait here and retry each turn until there's room.
 # Record: {source_tile, destination_tile, good_id, qty, turns_waiting, construction_instance_id}
@@ -116,6 +123,14 @@ var use_alt_bottom_menu: bool = true
 signal money_changed(new_amount: float) 
 signal building_added(instance: Dictionary)
 signal building_removed(instance_id: String)
+signal building_upgraded(instance_id: String, new_level: int)
+# An upgrade was just queued (materials committed); the level changes later via building_upgraded.
+signal building_upgrade_started(instance_id: String, target_level: int)
+# An in-progress upgrade advanced (claimed materials / ticked down) — UI can refresh its countdown.
+signal building_upgrade_progress(instance_id: String)
+# An in-progress upgrade was cancelled / abandoned (e.g. the building was removed). Banked
+# materials already on the tile are refunded; goods still in transit are not.
+signal building_upgrade_cancelled(instance_id: String)
 signal state_reset
 signal sell_mode_changed(new_mode: int)
 signal route_objective_changed(new_objective: int)
@@ -186,6 +201,10 @@ func _connect_turn_signals() -> void:
 func _on_survey_phase_started(phase: int) -> void:
 	if phase == TurnManager.Phase.PROCESS:
 		tick_surveys()
+	elif phase == TurnManager.Phase.NARRATIVE:
+		# Production, costs and run-streaks have settled for the turn — re-evaluate
+		# the live research conditions (Produce N / Run profitable / Run-for-N-turns).
+		_check_unlock_conditions()
 # --- Public API: money ---
 func add_money(delta: float) -> void:
 	money += delta
@@ -223,8 +242,9 @@ func add_building(
 		"recipe_id": recipe_id,
 		"tile_id": tile_id,
 		"owner": owner,
+		"level": 1,
 	}
-	
+
 	buildings[instance_id] = instance
 	
 	# Update tile index
@@ -238,10 +258,338 @@ func add_building(
 		_check_unlock_conditions()
 	return instance_id
 
+# Total materials needed to take `internal` to `target`, resolved to {good_id: qty}.
+func _upgrade_need_by_gid(internal: String, target: int) -> Dictionary:
+	var need_by_gid: Dictionary = {}
+	for gi in BuildingLevels.upgrade_materials(internal, target):
+		var gid := str(Catalog.get_good_by_internal_name(str(gi)).get("id", ""))
+		if gid != "":
+			need_by_gid[gid] = int(BuildingLevels.upgrade_materials(internal, target)[gi])
+	return need_by_gid
+
+# Extra tile footprint a building takes when it grows from `from_level` to `target`.
+func _upgrade_size_delta(building_id: String, from_level: int, target: int) -> float:
+	var base_size := float(Catalog.get_building(building_id).get("tile_size_used", 1.0))
+	return base_size * (BuildingLevels.mult("size", target) - BuildingLevels.mult("size", from_level))
+
+func is_upgrading(instance_id: String) -> bool:
+	for p in pending_upgrades:
+		if str(p.get("instance_id", "")) == instance_id:
+			return true
+	return false
+
+func pending_upgrade(instance_id: String) -> Dictionary:
+	for p in pending_upgrades:
+		if str(p.get("instance_id", "")) == instance_id:
+			return p
+	return {}
+
+# Footprint reserved on a tile by upgrades-in-progress (so a second build can't slip into
+# room the growing building is about to claim). Counted by get_tile_space_used.
+func reserved_upgrade_space_on_tile(tile_id: String) -> float:
+	var total := 0.0
+	for p in pending_upgrades:
+		if str(p.get("tile_id", "")) == tile_id:
+			total += float(p.get("size_delta", 0.0))
+	return total
+
+## Everything the upgrade dialog needs to render: cost (materials, sourcing, £), the
+## benefit/cost deltas (cur→new per aspect), the research gate, footprint fit and the
+## 3-turn duration. Read-only — commits nothing. Returns {ok:false, reason} when there's
+## no building or it's already maxed.
+func preview_upgrade(instance_id: String) -> Dictionary:
+	if not buildings.has(instance_id):
+		return {"ok": false, "reason": "No such building."}
+	var inst: Dictionary = buildings[instance_id]
+	var level := int(inst.get("level", 1))
+	var building_id := str(inst.get("building_id", ""))
+	var building_name := str(Catalog.get_building(building_id).get("display_name", building_id))
+	if level >= BuildingLevels.MAX_LEVEL:
+		return {"ok": true, "at_max": true, "building_name": building_name, "from_level": level}
+	var target := level + 1
+	var internal := str(Catalog.get_building(building_id).get("internal_name", ""))
+	var tile_id := str(inst.get("tile_id", ""))
+
+	# Materials — needed / on-tile / shortfall, and the £ to buy the shortfall.
+	var need_by_gid := _upgrade_need_by_gid(internal, target)
+	var materials: Array = []
+	var shortfall: Dictionary = {}
+	var market_cost := 0.0
+	var market_sourceable := true  # false if any shortfall good has no port route to this tile
+	for gid in need_by_gid:
+		var need := int(need_by_gid[gid])
+		var have := Stockpile.get_at_tile(tile_id, gid)
+		var short := maxi(0, need - have)
+		if short > 0:
+			shortfall[gid] = short
+			var quote: Dictionary = preview_buy(tile_id, gid, short)
+			if quote.is_empty():
+				market_sourceable = false
+			else:
+				market_cost += float(quote.get("cost", 0.0))
+		materials.append({
+			"good_id": gid, "name": Catalog.get_display_name(gid),
+			"need": need, "have": have, "short": short,
+		})
+	var all_on_tile := shortfall.is_empty()
+
+	# A single other tile that can cover the whole shortfall (powers the "use stockpile" CTA).
+	var source := Construction.find_source_tile(tile_id, shortfall) if not all_on_tile else {}
+
+	# Footprint check (the larger building must still fit, counting other pending upgrades).
+	var delta := _upgrade_size_delta(building_id, level, target)
+	var projected := get_tile_space_used(tile_id) + delta
+	var fits := projected <= float(MAX_TILE_LAND) and projected <= float(get_tile_land_owned(tile_id))
+
+	var gate := BuildingLevels.research_gate(internal, target)
+	var pend := pending_upgrade(instance_id)
+	return {
+		"ok": true,
+		"at_max": false,
+		"building_name": building_name,
+		"from_level": level,
+		"target_level": target,
+		"duration": BuildingLevels.UPGRADE_DURATION,
+		"research_gate": gate,
+		"research_locked": gate != "" and not is_unlocked(gate),
+		"materials": materials,
+		"all_on_tile": all_on_tile,
+		"market_sourceable": market_sourceable,
+		"source_tile": str(source.get("tile_id", "")),
+		"source_turns": int(source.get("turns", 0)),
+		"market_cost": market_cost,
+		"fits": fits,
+		"already_upgrading": not pend.is_empty(),
+		"pending_turns_left": int(pend.get("turns_remaining", 0)),
+		"pending_status": str(pend.get("status", "")),
+		"stats": _upgrade_stat_deltas(instance_id, level, target),
+		"unit_cost": _upgrade_cost_per_unit(instance_id, level, target),
+	}
+
+# cur→new for every aspect the dialog shows, computed via the live engine at each level.
+func _upgrade_stat_deltas(instance_id: String, level: int, target: int) -> Dictionary:
+	var cur: Dictionary = Production.stats_at_level(instance_id, level)
+	var new_s: Dictionary = Production.stats_at_level(instance_id, target)
+	return {"cur": cur, "new": new_s}
+
+## Production cost per unit of (primary) output at the current vs target level, matching the
+## live CostSolver model: gross = input materials + power + labour + maintenance + inbound transport,
+## per unit = allocated to the primary output. Components scale by their per-level multipliers
+## (inputs/transport ×input, power ×energy, labour ×labour, maintenance ×maint) while output ×output;
+## the market-value allocation fraction is level-independent so it cancels. Returns {cur,new} or {}.
+func _upgrade_cost_per_unit(instance_id: String, from_level: int, target: int) -> Dictionary:
+	if not buildings.has(instance_id):
+		return {}
+	var input_cost := 0.0
+	var power_cost := 0.0
+	var labour := 0.0
+	var maint := 0.0
+	var transport := 0.0
+	var primary_qty := 0.0
+	var unit_cur := -1.0
+	# Prefer the live CostSolver breakdown (real input prices, transport, modifiers).
+	var cs: Dictionary = (CostSolver.last_result.get("per_building", {}) as Dictionary).get(instance_id, {})
+	if not cs.is_empty():
+		input_cost = float(cs.get("input_material_cost", 0.0))
+		power_cost = float(cs.get("power_cost", 0.0))
+		labour = float(cs.get("labour_cost", 0.0))
+		maint = float(cs.get("maintenance_cost", 0.0))
+		transport = float(cs.get("inbound_transport", 0.0))
+		primary_qty = float(cs.get("output_qty", 0.0))
+		unit_cur = float(cs.get("unit_cost", -1.0))
+	else:
+		# Fallback (building hasn't produced yet): build it from the current-level stats.
+		var cur: Dictionary = Production.stats_at_level(instance_id, from_level)
+		if cur.is_empty():
+			return {}
+		for inp in cur.get("inputs", []):
+			input_cost += MarketState.get_price(str(inp.get("good_id", ""))) * float(inp.get("qty", 0))
+		power_cost = float(cur.get("energy", 0.0)) * EconomyConfig.GRID_BUY_PRICE
+		labour = float(cur.get("labour", 0.0))
+		maint = float(cur.get("maintenance", 0.0))
+		var outs: Array = cur.get("outputs", [])
+		primary_qty = float(outs[0].get("qty", 0)) if outs.size() > 0 else 0.0
+	var total_cur := input_cost + power_cost + labour + maint + transport
+	if primary_qty <= 0.0 or total_cur <= 0.0:
+		return {}
+	if unit_cur < 0.0:
+		unit_cur = total_cur / primary_qty
+	# Component ratios from the CURRENT level to the target level.
+	var ri := BuildingLevels.mult("input", target) / BuildingLevels.mult("input", from_level)
+	var re := BuildingLevels.mult("energy", target) / BuildingLevels.mult("energy", from_level)
+	var rl := BuildingLevels.mult("labour", target) / BuildingLevels.mult("labour", from_level)
+	var rm := BuildingLevels.mult("maint", target) / BuildingLevels.mult("maint", from_level)
+	var ro := BuildingLevels.mult("output", target) / BuildingLevels.mult("output", from_level)
+	var total_new := input_cost * ri + power_cost * re + labour * rl + maint * rm + transport * ri
+	var unit_new := unit_cur * (total_new / total_cur) / ro
+	return {"cur": unit_cur, "new": unit_new}
+
+const UPGRADE_STATUS_AWAITING := "awaiting_materials"
+const UPGRADE_STATUS_UPGRADING := "upgrading"
+
+## Begin a 3-turn upgrade. `mode` decides where the shortfall comes from:
+##   "tile"     — every material is already on the tile (consumed now, countdown starts).
+##   "market"   — buy the shortfall from the nearest port (cost charged now via queue_buy).
+##   "transfer" — move the shortfall in from another tile (source picked by find_source_tile).
+## The on-tile portion is always consumed immediately so production can't eat it; the
+## countdown only begins once every material has been claimed. Returns {ok, reason, status}.
+func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
+	if not buildings.has(instance_id):
+		return {"ok": false, "reason": "No such building."}
+	if is_upgrading(instance_id):
+		return {"ok": false, "reason": "An upgrade is already in progress."}
+	var inst: Dictionary = buildings[instance_id]
+	var level := int(inst.get("level", 1))
+	if level >= BuildingLevels.MAX_LEVEL:
+		return {"ok": false, "reason": "Already at the maximum level."}
+	var target := level + 1
+	var building_id := str(inst.get("building_id", ""))
+	var internal := str(Catalog.get_building(building_id).get("internal_name", ""))
+	var tile_id := str(inst.get("tile_id", ""))
+
+	var gate := BuildingLevels.research_gate(internal, target)
+	if gate != "" and not is_unlocked(gate):
+		return {"ok": false, "reason": "Requires research: %s" % gate, "research": gate}
+
+	# Footprint: the larger building must fit (counting other in-progress upgrades).
+	var size_delta := _upgrade_size_delta(building_id, level, target)
+	var projected := get_tile_space_used(tile_id) + size_delta
+	if projected > float(MAX_TILE_LAND) or projected > float(get_tile_land_owned(tile_id)):
+		return {"ok": false, "reason": "Not enough room on the tile for the larger building."}
+
+	# Split materials: what's on the tile vs the shortfall.
+	var need_by_gid := _upgrade_need_by_gid(internal, target)
+	var shortfall: Dictionary = {}
+	for gid in need_by_gid:
+		var short := int(need_by_gid[gid]) - Stockpile.get_at_tile(tile_id, gid)
+		if short > 0:
+			shortfall[gid] = short
+
+	# Validate the chosen sourcing BEFORE consuming anything — start_upgrade is atomic, so a
+	# broke wallet / no port / no spare tile fails cleanly with nothing taken off the tile.
+	var transfer_source: Dictionary = {}
+	if not shortfall.is_empty():
+		match mode:
+			"tile":
+				return {"ok": false, "reason": "Upgrade materials missing on the tile.", "missing": shortfall, "required": need_by_gid}
+			"market":
+				var total := 0.0
+				for gid in shortfall:
+					var quote: Dictionary = preview_buy(tile_id, str(gid), int(shortfall[gid]))
+					if quote.is_empty():
+						return {"ok": false, "reason": "No market route to deliver %s to this tile." % Catalog.get_display_name(str(gid))}
+					total += float(quote.get("cost", 0.0))
+				if total > money:
+					return {"ok": false, "reason": "Not enough money to order the missing materials (≈£%d)." % int(ceil(total))}
+			"transfer":
+				transfer_source = Construction.find_source_tile(tile_id, shortfall)
+				if transfer_source.is_empty():
+					return {"ok": false, "reason": "No single tile has the spare stock to transfer."}
+			_:
+				return {"ok": false, "reason": "Unknown sourcing mode."}
+
+	# Cleared to commit. Reserve the in-place portion now (mirrors construction): consume what
+	# we already have so co-located production can't claim it before the upgrade does.
+	for gid in need_by_gid:
+		var on_tile := int(need_by_gid[gid]) - int(shortfall.get(gid, 0))
+		if on_tile > 0:
+			Stockpile.consume(tile_id, gid, on_tile)
+
+	# Queue the shortfall (cost / freight is charged inside queue_buy / queue_move).
+	if not shortfall.is_empty():
+		if mode == "market":
+			for gid in shortfall:
+				queue_buy(tile_id, str(gid), int(shortfall[gid]), false, {"upgrade_instance_id": instance_id})
+		elif mode == "transfer":
+			queue_move(str(transfer_source.get("tile_id", "")), tile_id, shortfall, false, {"upgrade_instance_id": instance_id})
+
+	var status := UPGRADE_STATUS_UPGRADING if shortfall.is_empty() else UPGRADE_STATUS_AWAITING
+	pending_upgrades.append({
+		"instance_id": instance_id,
+		"building_id": building_id,
+		"tile_id": tile_id,
+		"from_level": level,
+		"target_level": target,
+		"status": status,
+		"materials": need_by_gid.duplicate(true),  # full kit — for refunding banked goods on cancel
+		"missing": shortfall.duplicate(true),
+		"turns_remaining": BuildingLevels.UPGRADE_DURATION,
+		"size_delta": size_delta,
+	})
+	building_upgrade_started.emit(instance_id, target)
+	return {"ok": true, "status": status, "target_level": target}
+
+## Advance every in-progress upgrade one turn. Awaiting projects claim any newly-arrived
+## materials off the tile (this runs before production consumes, so there's no race); once
+## fully stocked they start counting down, and at zero the building's level is bumped.
+## Returns the instance_ids that completed this turn. Called from Production each PROCESS.
+func tick_upgrades() -> Array:
+	var completed: Array = []
+	var remaining: Array = []
+	for p in pending_upgrades:
+		var instance_id := str(p.get("instance_id", ""))
+		# Drop upgrades whose building vanished (sold/removed mid-flight).
+		if not buildings.has(instance_id):
+			continue
+		if str(p.get("status", "")) == UPGRADE_STATUS_AWAITING:
+			var tile_id := str(p.get("tile_id", ""))
+			var missing: Dictionary = p.get("missing", {})
+			var still: Dictionary = {}
+			for gid in missing:
+				var want := int(missing[gid])
+				var got := Stockpile.consume(tile_id, str(gid), want)
+				if got < want:
+					still[gid] = want - got
+			p["missing"] = still
+			if still.is_empty():
+				p["status"] = UPGRADE_STATUS_UPGRADING
+			building_upgrade_progress.emit(instance_id)
+			remaining.append(p)
+			continue
+		# Under upgrade — count down, promote at zero.
+		p["turns_remaining"] = int(p.get("turns_remaining", 0)) - 1
+		if int(p["turns_remaining"]) <= 0:
+			var inst: Dictionary = buildings[instance_id]
+			inst["level"] = int(p.get("target_level", int(inst.get("level", 1)) + 1))
+			completed.append(instance_id)
+			building_upgraded.emit(instance_id, int(inst["level"]))
+		else:
+			building_upgrade_progress.emit(instance_id)
+			remaining.append(p)
+	pending_upgrades = remaining
+	return completed
+
+## Cancel an in-progress upgrade and hand the player back the materials it has already banked
+## on the tile (full kit minus whatever's still in transit). Goods still being shipped in keep
+## arriving and simply land in the tile stockpile. Returns true if an upgrade was cancelled.
+func cancel_upgrade(instance_id: String) -> bool:
+	var kept: Array = []
+	var cancelled := false
+	for p in pending_upgrades:
+		if str(p.get("instance_id", "")) != instance_id:
+			kept.append(p)
+			continue
+		cancelled = true
+		var tile_id := str(p.get("tile_id", ""))
+		var materials: Dictionary = p.get("materials", {})
+		var missing: Dictionary = p.get("missing", {})
+		# Banked = everything claimed so far (full kit minus what's still outstanding).
+		for gid in materials:
+			var banked := int(materials[gid]) - int(missing.get(gid, 0))
+			if banked > 0:
+				Stockpile.add(tile_id, str(gid), banked)
+	pending_upgrades = kept
+	if cancelled:
+		building_upgrade_cancelled.emit(instance_id)
+	return cancelled
+
 func remove_building(instance_id: String) -> bool:
 	if not buildings.has(instance_id):
 		return false
-	
+
+	# Refund any in-progress upgrade's banked materials before the building disappears.
+	cancel_upgrade(instance_id)
+
 	var instance: Dictionary = buildings[instance_id]
 	var tile_id: String = instance.tile_id
 	
@@ -272,9 +620,12 @@ func get_tile_space_used(tile_id: String) -> float:
 	for instance in get_buildings_on_tile(tile_id):
 		var building_id: String = instance.get("building_id", "")
 		var building_data := Catalog.get_building(building_id)
-		total += float(building_data.get("tile_size_used", 1.0))
+		# A levelled-up building takes more room (SIZE_MULT).
+		total += float(building_data.get("tile_size_used", 1.0)) * BuildingLevels.mult("size", int(instance.get("level", 1)))
 	# Pending construction projects reserve their footprint up front (Phase 1: none linger).
 	total += Construction.reserved_space_on_tile(tile_id)
+	# In-progress upgrades reserve the extra room the building is about to grow into.
+	total += reserved_upgrade_space_on_tile(tile_id)
 	return total
 
 # --- Public API: survey state ---
@@ -520,6 +871,7 @@ func _load_unlock_defs() -> void:
 			"action": _csv_at(row, idx, "Action"),
 			"object": _csv_at(row, idx, "Object"),
 			"qty": int(q) if q.is_valid_int() else 0,
+			"unit": _csv_at(row, idx, "Unit"),
 			"prereqs": prereqs,
 			"description": _csv_at(row, idx, "description"),
 		})
@@ -533,6 +885,12 @@ func _csv_at(row: PackedStringArray, idx: Dictionary, col: String) -> String:
 
 func is_unlocked(title: String) -> bool:
 	return unlocked_titles.has(title)
+
+# Deposit penalty + mining-yield research now live in the Modifiers system as
+# recipe_output tiles (Modifiers.EXTRACTION_PENALTY_PCT + the mining UNLOCK_MODIFIERS),
+# so they apply through the one production hook and surface in the recipe card's
+# net-modifier indicator. The old get_deposit_yield()/PENALISED_EXTRACTION/
+# RESEARCH_YIELD_BONUS triplet was removed.
 
 ## Grant an unlock. via_condition true => earned by its condition (drives the
 ## "Unlocked …" dialog); false => a free-chosen unlock (no dialog).
@@ -556,18 +914,13 @@ func record_unlock_progress(action: String, object: String, amount: int = 1) -> 
 	_unlock_progress[key] = int(_unlock_progress.get(key, 0)) + amount
 	_check_unlock_conditions()
 
-# Staple ores whose presence (one operating mine each) earns "Mining Mastery".
-const MINING_MASTERY_DEPOSITS := [
-	"coal", "iron_ore", "copper_ore",
-	"basic_salt", "limestone", "bauxite_ore",
-]
-
 func _check_unlock_conditions() -> void:
 	for d in _unlock_defs:
 		var title := str(d.title)
 		if title == "" or unlocked_titles.has(title) or int(d.qty) <= 0:
 			continue
-		if str(d.action) == "" or str(d.object) == "":
+		var action := str(d.action)
+		if action == "" or str(d.object) == "":
 			continue
 		var prereqs_met := true
 		for p in d.prereqs:
@@ -576,34 +929,90 @@ func _check_unlock_conditions() -> void:
 				break
 		if not prereqs_met:
 			continue
-		# Special conditions the flat action|object accumulator can't express are
-		# recognised by title and evaluated against live state.
-		if title == "Mining Mastery":
-			if has_mine_for_each_staple_ore():
-				grant_unlock(title, true)
+		# Live conditions evaluated against current state (production totals, owned
+		# buildings, profitability, run-streaks). The Object is an internal_name —
+		# a good_id for "Produce", a building internal_name for the "Run …" verbs.
+		# Level-filtered verbs ("Run L1", "Run Profitable L2") are forward-compatible:
+		# every building is Level 1 until the leveling mechanic ships, so L1 gates can
+		# already fire and L2 gates wait for it.
+		if _live_condition_met(d):
+			grant_unlock(title, true)
 			continue
-		var key := (str(d.action) + "|" + str(d.object)).to_lower()
+		# Legacy flat action|object accumulator (Survey progress, etc.).
+		var key := (action + "|" + str(d.object)).to_lower()
 		if int(_unlock_progress.get(key, 0)) >= int(d.qty):
 			grant_unlock(title, true)
 
-## True when the player operates at least one mine for every staple ore — i.e.
-## owns a live building whose recipe has a `deposit` requirement matching each
-## entry in MINING_MASTERY_DEPOSITS. Drives the "Mining Mastery" research unlock.
-func has_mine_for_each_staple_ore() -> bool:
-	var seen := {}
+# True when a research def's live condition is satisfied right now. Returns false
+# for any action this evaluator doesn't own (those fall back to the accumulator).
+func _live_condition_met(d: Dictionary) -> bool:
+	var action := str(d.action)
+	var obj := str(d.object)
+	var need := int(d.qty)
+	match action:
+		"Produce":
+			return Production.lifetime_total(obj) >= need
+		"Run Profitable":
+			return _count_buildings(obj, -1, true, 0) >= need
+		"Run L1":
+			# "Run N Level-1 buildings of this type for <Unit> turns."
+			var turns := _leading_int(str(d.get("unit", "")), 20)
+			return _count_buildings(obj, 1, false, turns) >= need
+		"Run Profitable L2":
+			return _count_buildings(obj, 2, true, 0) >= need
+	return false
+
+# Count player-owned buildings whose internal_name == `internal`, optionally
+# filtered by level (-1 = any), profitability, and a minimum consecutive run-streak.
+func _count_buildings(internal: String, level: int, require_profitable: bool, min_streak: int) -> int:
+	var n := 0
 	for inst in buildings.values():
 		if not is_player_owned(inst):
 			continue
-		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
-		if recipe.is_empty():
+		if _building_internal(inst) != internal:
 			continue
-		for req in recipe.get("requirements", []):
-			if str(req.get("type", "")) == "deposit":
-				seen[str(req.get("value", ""))] = true
-	for dep in MINING_MASTERY_DEPOSITS:
-		if not seen.has(str(dep)):
-			return false
-	return true
+		if level >= 0 and _building_level(inst) != level:
+			continue
+		if min_streak > 0 and int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < min_streak:
+			continue
+		if require_profitable and not _is_building_profitable(inst):
+			continue
+		n += 1
+	return n
+
+func _building_internal(inst: Dictionary) -> String:
+	return str(Catalog.get_building(str(inst.get("building_id", ""))).get("internal_name", ""))
+
+# Production buildings have no level field yet (leveling mechanic unbuilt), so this
+# reports Level 1 for everything — the forward-compatible default.
+func _building_level(inst: Dictionary) -> int:
+	return int(inst.get("level", 1))
+
+# Profitable = the building's modelled cost per unit is below the market price of
+# what it makes. Needs a fresh CostSolver pass; returns false if cost is unknown.
+func _is_building_profitable(inst: Dictionary) -> bool:
+	var iid := str(inst.get("instance_id", ""))
+	if iid == "":
+		return false
+	var uc: float = CostSolver.get_building_unit_cost(iid)
+	if uc < 0.0:
+		return false
+	var bd: Dictionary = CostSolver.last_result.get("per_building", {}).get(iid, {})
+	var good_id: String = str(bd.get("output_good_id", ""))
+	if good_id == "":
+		return false
+	var price: float = Catalog.get_base_price(good_id)
+	return price > 0.0 and uc < price
+
+# Leading integer of a string like "20 turns" -> 20; falls back to `default`.
+func _leading_int(s: String, default_val: int) -> int:
+	var digits := ""
+	for ch in s.strip_edges():
+		if ch >= "0" and ch <= "9":
+			digits += ch
+		elif digits != "":
+			break
+	return int(digits) if digits != "" else default_val
 
 # --- Public API: survey range ---
 func survey_range() -> int:
@@ -734,6 +1143,8 @@ func reset() -> void:
 	auto_sell_goods.clear()
 	auto_sell_impact.clear()
 	pending_transport_shipments.clear()
+	pending_upgrades.clear()
+	_last_link_flow.clear()
 	overflow_shipments.clear()
 	sales_by_tile.clear()
 	tile_land_owned.clear()
@@ -798,6 +1209,7 @@ func export_state() -> Dictionary:
 		"auto_sell_impact": auto_sell_impact.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": _shipments_for_save(),
+		"pending_upgrades": pending_upgrades.duplicate(true),
 		"overflow_shipments": overflow_shipments.duplicate(true),
 		"transaction_log": transaction_log.duplicate(true),
 		"move_log": move_log.duplicate(true),
@@ -838,6 +1250,7 @@ func import_state(d: Dictionary) -> void:
 	auto_sell_impact = (d.get("auto_sell_impact", {}) as Dictionary).duplicate(true)
 	queued_stockpile_market_sales = (d.get("queued_stockpile_market_sales", {}) as Dictionary).duplicate(true)
 	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
+	pending_upgrades = (d.get("pending_upgrades", []) as Array).duplicate(true)
 	overflow_shipments = (d.get("overflow_shipments", []) as Array).duplicate(true)
 	transaction_log = (d.get("transaction_log", []) as Array).duplicate(true)
 	move_log = (d.get("move_log", []) as Array).duplicate(true)
@@ -1510,6 +1923,161 @@ func advance_transport_shipments() -> Array:
 	if not arrived.is_empty():
 		transport_shipments_changed.emit()
 	return arrived
+
+# ── Transport throughput congestion (soft cap) ─────────────────────────────
+# A tile-link's per-turn flow on a mode = total units of in-transit shipments
+# crossing that tile on that mode (same convention as the infra hover readout).
+# When flow exceeds the link's capacity (base mode cap × infra level × throughput
+# research), goods still move but pay a transport-cost penalty: +100% over capacity,
+# +200% once over capacity plus the base L1 cap. Last turn's flow drives this turn's
+# costs (route_congestion_tier), so it's stable rather than self-referential.
+const _CAPPED_MODES := ["roads", "rail", "pipes", "reinf_pipes"]
+
+## "tile_id|mode" -> total units crossing it this turn (capped modes only).
+func transport_link_flow() -> Dictionary:
+	var flow: Dictionary = {}
+	for s in pending_transport_shipments:
+		var tiles: Array = s.get("tiles", [])
+		var legs: Array = s.get("legs", [])
+		if tiles.is_empty() or legs.is_empty():
+			continue
+		var qty := _shipment_total_units(s)
+		if qty <= 0:
+			continue
+		# Walk legs once; each leg owns the slice of `tiles` up to its `to` tile.
+		var idx := 0
+		for leg in legs:
+			var start := idx
+			while idx < tiles.size() - 1 and str(tiles[idx]) != str(leg.get("to", "")):
+				idx += 1
+			var mode := str(leg.get("mode", ""))
+			if mode in _CAPPED_MODES:
+				for i in range(start, idx + 1):
+					var key := "%s|%s" % [str(tiles[i]), mode]
+					flow[key] = int(flow.get(key, 0)) + qty
+	return flow
+
+func _shipment_total_units(s: Dictionary) -> int:
+	if bool(s.get("is_sale", false)):
+		var total := 0
+		for item in s.get("sale_record", {}).get("items", []):
+			total += int(item.get("qty", 0))
+		return total
+	return int(s.get("qty", 0))
+
+## Per-turn capacity of one tile-link: base mode cap × level multiplier × the
+## transport_throughput research multiplier. 0 means the mode is uncapped.
+func tile_mode_capacity(mode: String, level: int) -> float:
+	var base: float = float(EconomyConfig.TRANSPORT_LINK_CAP_BY_MODE.get(mode, 0))
+	if base <= 0.0:
+		return 0.0
+	var cap := base * float(EconomyConfig.TRANSPORT_CAP_LEVEL_MULT.get(level, 1.0))
+	return Modifiers.apply("transport_throughput", mode, cap, {"mode": mode})
+
+# A tile's installed infra level for a mode (from the HexMap terrain). Defaults to
+# Level 1 when there's no map (headless tests) or the tile lacks that infra. The
+# level dict is keyed by infra SLOT key, so the "rail" mode maps to slot "rails".
+func _tile_infra_level(tile_id: String, mode: String) -> int:
+	var tree := get_tree()
+	if tree == null:
+		return 1
+	var hm = tree.get_first_node_in_group("hex_map")
+	if hm == null:
+		return 1
+	var coord = hm.id_to_coord(tile_id)
+	if not hm.tiles.has(coord):
+		return 1
+	var slot_key := "rails" if mode == "rail" else mode
+	return int((hm.tiles[coord] as Dictionary).get("infrastructure_levels", {}).get(slot_key, 1))
+
+## Units of in-transit goods using one tile's infra of one mode this turn — what the
+## tile-view infra readout shows. Counts both pass-through on a networked leg AND goods
+## that originate/terminate on the tile (their first/last mile uses the tile's infra,
+## even when the long haul is overland), matched by the good's transport class.
+func tile_mode_flow(tile_id: String, mode: String) -> int:
+	var total := 0
+	var tolerated: Array = Catalog.infra(mode).get("good_types_tolerated", [])
+	for s in pending_transport_shipments:
+		var tiles: Array = s.get("tiles", [])
+		var legs: Array = s.get("legs", [])
+		if not tiles.is_empty() and not legs.is_empty():
+			# Networked route: count where it crosses this tile on a leg of `mode`.
+			var idx := 0
+			var hit := false
+			for leg in legs:
+				var start := idx
+				while idx < tiles.size() - 1 and str(tiles[idx]) != str(leg.get("to", "")):
+					idx += 1
+				if str(leg.get("mode", "")) == mode:
+					for i in range(start, idx + 1):
+						if str(tiles[i]) == tile_id:
+							hit = true
+							break
+				if hit:
+					break
+			if hit:
+				total += _shipment_total_units(s)
+			continue
+		# Overland (no leg data): goods still enter/leave via THIS tile's infra for
+		# their first/last mile — count those whose class this mode carries.
+		if str(s.get("source_tile", "")) == tile_id or str(s.get("destination_tile", "")) == tile_id:
+			var goods := _shipment_goods_dict(s)
+			for good_id in goods:
+				if tolerated.has(Catalog.get_transport_class(str(good_id))):
+					total += int(goods[good_id])
+	return total
+
+# {good_id: qty} a shipment carries (sale shipments may carry several goods).
+func _shipment_goods_dict(s: Dictionary) -> Dictionary:
+	var g: Dictionary = {}
+	if bool(s.get("is_sale", false)):
+		for item in s.get("sale_record", {}).get("items", []):
+			g[str(item.get("good_id", ""))] = int(item.get("qty", 0))
+	else:
+		var gid := str(s.get("good_id", ""))
+		if gid != "":
+			g[gid] = int(s.get("qty", 0))
+	return g
+
+## Snapshot this turn's per-link flow so next turn's transport costs can read it.
+## Called each PROCESS turn. The penalty itself is a transport-cost surcharge applied
+## in TransportService.transport_cost_for_route via route_congestion_tier().
+func update_transport_congestion() -> void:
+	_last_link_flow = transport_link_flow()
+
+## Congestion tier of a route, from last turn's flow on the links it crosses:
+##   0 = clear · 1 = any link over its capacity · 2 = any link over capacity PLUS its
+## base Level-1 cap (a fixed buffer, regardless of the tile's infra level). Drives the
+## +100% (tier 1) / +200% (tier 2) transport-cost penalty.
+func route_congestion_tier(route_data: Dictionary) -> int:
+	if _last_link_flow.is_empty():
+		return 0
+	var tiles: Array = route_data.get("tiles", [])
+	var legs: Array = route_data.get("legs", [])
+	if tiles.is_empty() or legs.is_empty():
+		return 0
+	var worst := 0
+	var idx := 0
+	for leg in legs:
+		var start := idx
+		while idx < tiles.size() - 1 and str(tiles[idx]) != str(leg.get("to", "")):
+			idx += 1
+		var mode := str(leg.get("mode", ""))
+		if mode in _CAPPED_MODES:
+			for i in range(start, idx + 1):
+				var tile_id := str(tiles[i])
+				var flow := float(_last_link_flow.get("%s|%s" % [tile_id, mode], 0))
+				if flow <= 0.0:
+					continue
+				var cap := tile_mode_capacity(mode, _tile_infra_level(tile_id, mode))
+				if cap <= 0.0:
+					continue
+				var l1_buffer := float(EconomyConfig.TRANSPORT_LINK_CAP_BY_MODE.get(mode, 0))
+				if flow > cap + l1_buffer:
+					worst = maxi(worst, 2)
+				elif flow > cap:
+					worst = maxi(worst, 1)
+	return worst
 
 func enable_sell_surplus(tile_id: String) -> void:
 	if tile_id == "" or sell_surplus_tiles.has(tile_id):

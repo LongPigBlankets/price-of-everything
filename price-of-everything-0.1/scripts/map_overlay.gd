@@ -466,12 +466,14 @@ func _infra_hover_lines(tile_id: String, infra_key: String) -> Array:
 			lines.append("Hazard liquids: %d" % int(t2.get("hazard_liquid", 0)))
 			lines.append("Gases: %d" % int(t2.get("gas", 0)))
 		_:
-			var total := 0
 			var mode: String = INFRA_ROUTE_MODES.get(infra_key, "")
-			if mode != "":
-				for v in _tile_mode_throughput(tile_id, mode).values():
-					total += int(v)
-			lines.append("Transit units: %d" % total)
+			# Same flow the tile-view uses: networked pass-through + first/last-mile.
+			var total := MatchState.tile_mode_flow(tile_id, mode) if mode != "" else 0
+			var cap: float = MatchState.tile_mode_capacity(mode, _infra_level(terrain_layer.id_to_coord(tile_id), infra_key))
+			if cap > 0.0:
+				lines.append("Transit units: %d / %d" % [total, int(round(cap))])
+			else:
+				lines.append("Transit units: %d" % total)
 	return lines
 
 func _infra_slot_label(infra_key: String) -> String:

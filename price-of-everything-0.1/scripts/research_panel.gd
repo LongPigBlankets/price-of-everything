@@ -295,9 +295,16 @@ func _draw_knowledge_panel() -> void:
 	if _free_unlocks > 0:
 		var button_rect := _choose_free_unlock_button_rect()
 		var hovered := button_rect.has_point(get_local_mouse_position())
-		var button_style := _make_stylebox(DS.PALETTE["ACCENT"].lightened(0.08) if hovered else DS.PALETTE["ACCENT"], DS.PALETTE["BORDER"], 8, 1)
+		# Two states: SELECTED (mid-choice) keeps the filled accent look — cream fill,
+		# navy text. DEFAULT is the reverse — navy fill with cream/off-white text.
+		var selected := _choosing_free_unlock
+		var fill_color: Color = DS.PALETTE["ACCENT"] if selected else DS.PALETTE["BG_PANEL"]
+		var text_color: Color = DS.PALETTE["BG_PANEL"] if selected else DS.PALETTE["ACCENT"]
+		if hovered:
+			fill_color = fill_color.lightened(0.08)
+		var button_style := _make_stylebox(fill_color, DS.PALETTE["BORDER"], 8, 1)
 		draw_style_box(button_style, button_rect)
-		_draw_text_fit(BODY_FONT, "Choose Free Unlocks", button_rect.grow(-7.0), KNOWLEDGE_PANEL_TEXT_SIZE, DS.PALETTE["BG_PANEL"], HORIZONTAL_ALIGNMENT_CENTER)
+		_draw_text_fit(BODY_FONT, "Choose Free Unlocks", button_rect.grow(-7.0), KNOWLEDGE_PANEL_TEXT_SIZE, text_color, HORIZONTAL_ALIGNMENT_CENTER)
 
 func _draw_panel_outline() -> void:
 	var style := StyleBoxFlat.new()
@@ -1488,6 +1495,9 @@ func _shade_color(color: Color, brightness: float) -> Color:
 
 func _condition_text(unlock: Dictionary) -> String:
 	var action := String(unlock.get("action", "")).strip_edges()
+	# Spare/unused nodes carry a "Placeholder" sentinel instead of a real condition.
+	if action == "Placeholder":
+		return "Placeholder"
 	var object_name := String(unlock.get("object", "")).strip_edges()
 	var quantity := String(unlock.get("quantity", "")).strip_edges()
 	var unit := String(unlock.get("unit", "")).strip_edges()
