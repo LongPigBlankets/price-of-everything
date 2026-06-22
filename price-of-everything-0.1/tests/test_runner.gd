@@ -132,6 +132,7 @@ func _ready() -> void:
 	await _test_farm_ring_bridge()
 	await _test_farm_ring_continuity()
 	await _test_farm_road_routing_bias()
+	_test_refund()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -4042,6 +4043,92 @@ func _test_owner_costs() -> void:
 	_check(MatchState.is_player_owned({}), "building with no owner defaults to player-owned")
 	_check(not MatchState.is_player_owned({"owner": "Three Diamonds Shipping Corporation"}),
 		"NPC-owned building is not player-owned (not charged maintenance)")
+
+# Demolish refund: build money + every consumed material kit (construction + each upgrade
+# level), scaled by the refund share; plus the stockpile-room/cash-overflow payout split.
+# Uses the Mine (b_001 / "mine"): build kit construction_equipment_ice×1, concrete×3,
+# rubber×5, plastics×5; upgrade extras L2 {large_engine:1}, L3 {large_engine:4, computer:2}
+# on top of the base kit {building_frame:2, construction_equipment_ice:1, concrete:10}.
+func _test_refund() -> void:
+	var ceq_id: String = str(Catalog.get_good_by_internal_name("construction_equipment_ice").get("id", ""))
+	var le_id: String = str(Catalog.get_good_by_internal_name("large_engine").get("id", ""))
+	var comp_id: String = str(Catalog.get_good_by_internal_name("computer").get("id", ""))
+	var frame_id: String = str(Catalog.get_good_by_internal_name("building_frame").get("id", ""))
+
+	EconomyConfig.demolish_refund_share = 1.0
+	var id: String = MatchState.add_building("b_001", "r_001", "tile_7_7", MatchState.LOCAL_PLAYER, "inst_refund_l1")
+	var inst: Dictionary = MatchState.buildings[id]
+	inst["build_cost"] = 100.0
+	inst["build_materials"] = Construction.requirements_for("b_001")
+
+	# Level 1: build money + build kit only, no upgrade-kit materials.
+	var r1: Dictionary = MatchState.refund_cost(id)
+	_check(is_equal_approx(float(r1.money), 100.0), "refund money == paid build cost at share 1.0 (%.1f)" % float(r1.money))
+	_check(int(r1.materials.get(ceq_id, 0)) == 1, "L1 refund returns the build kit (construction_equipment_ice ×1)")
+	_check(not r1.materials.has(le_id), "L1 refund has no upgrade-kit materials")
+
+	# Level 3: refund increments to include the L2 + L3 upgrade kits.
+	inst["level"] = 3
+	var r3: Dictionary = MatchState.refund_cost(id)
+	_check(int(r3.materials.get(le_id, 0)) == 5,
+		"L3 refund sums upgrade kits (large_engine L2 1 + L3 4 = 5, got %d)" % int(r3.materials.get(le_id, 0)))
+	_check(int(r3.materials.get(comp_id, 0)) == 2, "L3 refund includes the L3-only computer ×2")
+	_check(int(r3.materials.get(frame_id, 0)) == 4,
+		"L3 refund includes the base upgrade kit per level (building_frame 2+2 = 4, got %d)" % int(r3.materials.get(frame_id, 0)))
+
+	# Refund share scales money and (rounded) material quantities.
+	EconomyConfig.demolish_refund_share = 0.5
+	var rh: Dictionary = MatchState.refund_cost(id)
+	_check(is_equal_approx(float(rh.money), 50.0), "refund money halves at share 0.5 (%.1f)" % float(rh.money))
+	_check(int(rh.materials.get(le_id, 0)) == 3,
+		"material qty scales with share (large_engine 5×0.5 → 3, got %d)" % int(rh.materials.get(le_id, 0)))
+	EconomyConfig.demolish_refund_share = 1.0
+
+	# Fallback: a building with no stamped cost uses the Catalog build cost/materials.
+	var id2: String = MatchState.add_building("b_001", "r_001", "tile_8_8", MatchState.LOCAL_PLAYER, "inst_refund_fallback")
+	var r2: Dictionary = MatchState.refund_cost(id2)
+	_check(int(r2.materials.get(ceq_id, 0)) == 1
+		and is_equal_approx(float(r2.money), Catalog.get_building("b_001").base_price),
+		"refund falls back to Catalog build cost/materials when the instance has none")
+
+	# refund_plan: with a near-full tile, material overflow is offered as cash at market price.
+	var plan_tile: String = "tile_refund_plan"
+	var id3: String = MatchState.add_building("b_001", "r_001", plan_tile, MatchState.LOCAL_PLAYER, "inst_refund_plan")
+	var free_now: int = Stockpile.get_free_capacity(plan_tile)
+	var fill_amt: int = max(0, free_now - 3)
+	if fill_amt > 0:
+		Stockpile.add(plan_tile, "g_001", fill_amt)  # leave exactly 3 free units
+	MatchState.buildings[id3]["build_materials"] = {ceq_id: 10}  # 10 units, only 3 fit
+	var plan: Dictionary = MatchState.refund_plan(id3)
+	_check(int(plan.to_stockpile.get(ceq_id, 0)) == 3, "refund_plan fits only what the tile can hold (3 of 10)")
+	_check(not bool(plan.fits_fully) and float(plan.cash_overflow) > 0.0,
+		"refund_plan offers cash for the 7 overflow units (£%.1f)" % float(plan.cash_overflow))
+	_check(is_equal_approx(float(plan.cash_overflow), 7.0 * MarketState.get_price(ceq_id)),
+		"overflow cash == 7 × market price")
+
+	# Stamping: a promoted construction project carries build_cost + build_materials.
+	var proj_id: String = "inst_refund_promote"
+	Construction.construction_projects[proj_id] = {
+		"instance_id": proj_id, "building_id": "b_001", "recipe_id": "r_001",
+		"tile_id": "tile_6_6", "status": "under_construction",
+		"required_materials": Construction.requirements_for("b_001"),
+		"missing_materials": {}, "turns_remaining": 0, "construction_duration": 3,
+		"reserved_space": 1.0, "build_cost": 250.0,
+	}
+	Construction._promote(proj_id)
+	var pinst: Dictionary = MatchState.buildings.get(proj_id, {})
+	_check(is_equal_approx(float(pinst.get("build_cost", -1.0)), 250.0),
+		"promotion stamps build_cost onto the live instance")
+	_check(int((pinst.get("build_materials", {}) as Dictionary).get(ceq_id, 0)) == 1,
+		"promotion stamps build_materials onto the live instance")
+
+	# Cleanup so these synthetic buildings/stock don't leak into later tests.
+	if fill_amt > 0:
+		Stockpile.consume(plan_tile, "g_001", fill_amt)
+	MatchState.remove_building(id)
+	MatchState.remove_building(id2)
+	MatchState.remove_building(id3)
+	MatchState.remove_building(proj_id)
 
 func _test_recurring_sell_multitile() -> void:
 	# A recurring sell bound to an empty source tile should still sell the good

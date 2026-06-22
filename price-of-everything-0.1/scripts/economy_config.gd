@@ -6,6 +6,13 @@ extends Node
 # --- Player starting state ---
 const STARTING_MONEY: float = 200.0
 
+# --- Demolish / refund ---
+# Share of a demolished building's construction cost returned to the player: the build
+# money plus EVERY material kit consumed (the construction kit + each completed upgrade
+# level's kit). 1.0 = full refund. A `var` (not const) so it can be tuned live while
+# balancing demolish-and-rebuild churn. See MatchState.refund_cost / refund_plan.
+var demolish_refund_share: float = 1.0
+
 # --- Per-building per-turn costs ---
 const MAINTENANCE_PER_BUILDING: float = 1.0
 

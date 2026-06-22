@@ -365,6 +365,13 @@ func _promote(instance_id: String) -> void:
 		str(project.get("tile_id", "")),
 		instance_id,
 	)
+	# Carry the real paid build cost (money, density-aware) + the consumed material kit
+	# onto the live instance, so MatchState.refund_cost can give an exact demolish refund.
+	# These ride in MatchState.buildings, so save/load persists them for free.
+	var inst: Dictionary = MatchState.buildings.get(instance_id, {})
+	if not inst.is_empty():
+		inst["build_cost"] = float(project.get("build_cost", 0.0))
+		inst["build_materials"] = (project.get("required_materials", {}) as Dictionary).duplicate()
 	construction_completed.emit(instance_id, str(project.get("tile_id", "")))
 
 
