@@ -604,6 +604,96 @@ func remove_building(instance_id: String) -> bool:
 	building_removed.emit(instance_id)
 	return true
 
+# --- Demolish refund -------------------------------------------------------------------
+# What demolishing `instance_id` would return: the build money plus EVERY material kit
+# consumed over the building's life — the construction kit AND each completed upgrade
+# level's kit (2..level) — scaled by EconomyConfig.demolish_refund_share. Pure: no state
+# change. `materials` is good_id -> qty; `materials_value` is their worth at current market
+# price; `total` is the all-cash-equivalent headline (money + materials_value).
+# NOTE: this only COMPUTES the refund. Applying it (crediting money/materials, then
+# remove_building) is the demolish action, handled later — see refund_plan for the payout split.
+func refund_cost(instance_id: String) -> Dictionary:
+	var empty := {"money": 0.0, "materials": {}, "materials_value": 0.0, "total": 0.0}
+	var inst: Dictionary = buildings.get(instance_id, {})
+	if inst.is_empty():
+		return empty
+
+	var share: float = EconomyConfig.demolish_refund_share
+	var building_id: String = str(inst.get("building_id", ""))
+	var building: Dictionary = Catalog.get_building(building_id)
+
+	# Money leg: the real paid cost if it was stamped at promotion, else build_cost_money.
+	var money_paid: float = float(inst.get("build_cost", building.get("base_price", 0.0)))
+
+	# Material leg: the construction kit (good_id -> qty), stored at promotion or recomputed.
+	var mats: Dictionary = {}
+	var build_kit: Dictionary = inst.get("build_materials", {})
+	if build_kit.is_empty():
+		build_kit = Construction.requirements_for(building_id)
+	for gid in build_kit:
+		mats[gid] = int(mats.get(gid, 0)) + int(build_kit[gid])
+
+	# ...plus every completed upgrade level's kit (keyed by internal_name -> good_id).
+	var internal: String = str(building.get("internal_name", ""))
+	var level: int = int(inst.get("level", 1))
+	for lvl in range(2, level + 1):
+		var kit: Dictionary = BuildingLevels.upgrade_materials(internal, lvl)
+		for iname in kit:
+			var gid: String = str(Catalog.get_good_by_internal_name(str(iname)).get("id", ""))
+			if gid == "":
+				continue
+			mats[gid] = int(mats.get(gid, 0)) + int(kit[iname])
+
+	# Apply the refund share to money and (rounded) material quantities; value at market.
+	var out_mats: Dictionary = {}
+	var mats_value: float = 0.0
+	for gid in mats:
+		var qty: int = int(round(float(mats[gid]) * share))
+		if qty <= 0:
+			continue
+		out_mats[gid] = qty
+		mats_value += float(qty) * MarketState.get_price(gid)
+
+	var money: float = money_paid * share
+	return {
+		"money": money,
+		"materials": out_mats,
+		"materials_value": mats_value,
+		"total": money + mats_value,
+	}
+
+# How a demolish refund would actually be paid out given the building tile's storage room.
+# Materials are returned to the tile stockpile up to its free capacity; any overflow that
+# won't fit is offered as cash at current market price. The demolish dialog pops the
+# cash-offer when `fits_fully` is false. Pure: reads capacity/prices, mutates nothing.
+func refund_plan(instance_id: String) -> Dictionary:
+	var refund: Dictionary = refund_cost(instance_id)
+	var inst: Dictionary = buildings.get(instance_id, {})
+	var tile_id: String = str(inst.get("tile_id", ""))
+	var room: int = Stockpile.get_free_capacity(tile_id) if tile_id != "" else 0
+
+	var to_stockpile: Dictionary = {}
+	var cash_overflow: float = 0.0
+	for gid in refund.materials:
+		var qty: int = int(refund.materials[gid])
+		var fit: int = clampi(qty, 0, room)
+		if fit > 0:
+			to_stockpile[gid] = fit
+			room -= fit
+		var overflow: int = qty - fit
+		if overflow > 0:
+			cash_overflow += float(overflow) * MarketState.get_price(gid)
+
+	return {
+		"money": refund.money,                # always paid as cash
+		"to_stockpile": to_stockpile,         # good_id -> qty that fits in the tile
+		"cash_overflow": cash_overflow,       # market value of what didn't fit
+		"fits_fully": cash_overflow == 0.0,   # false -> pop the cash-offer dialog
+		"materials": refund.materials,
+		"materials_value": refund.materials_value,
+		"total_if_cash": refund.total,        # money + all materials valued as cash
+	}
+
 func get_buildings_on_tile(tile_id: String) -> Array:
 	# Returns an Array of building instance dicts on the given tile.
 	if not tile_buildings.has(tile_id):

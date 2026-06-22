@@ -1,5 +1,7 @@
 extends PanelContainer
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+# Shared status/cost helpers (one source of truth with the Building Ledger).
+const BuildingStatus := preload("res://scripts/building_status.gd")
 
 @onready var title_label: Label = $MarginContainer/VBoxContainer/HeaderRow/TitleLabel
 @onready var close_button: Button = $MarginContainer/VBoxContainer/HeaderRow/CloseButton
@@ -1566,18 +1568,7 @@ func _recipe_deposit_items(recipe: Dictionary) -> Array:
 # True when the building's tile has mined out a deposit the recipe needs.
 # Pure water never depletes, so it never counts as exhausted.
 func _recipe_deposit_exhausted(building: Dictionary, recipe: Dictionary) -> bool:
-	var tile_id := str(building.get("tile_id", ""))
-	if tile_id == "":
-		return false
-	for req in recipe.get("requirements", []):
-		if str(req.get("type", "")) != "deposit":
-			continue
-		var token := str(req.get("value", ""))
-		if token == "" or token == "water":
-			continue
-		if MatchState.deposit_remaining_for(tile_id, token) == 0:
-			return true
-	return false
+	return BuildingStatus.recipe_deposit_exhausted(building, recipe)
 
 # Whether a flow good_item is a deposit cell whose deposit is mined out.
 func _flow_item_exhausted(good_item: Dictionary) -> bool:
@@ -1856,19 +1847,7 @@ func _badge_quantity(good_item: Dictionary) -> int:
 	return 0
 
 func _flow_output_items(recipe: Dictionary) -> Array:
-	if recipe.has("outputs"):
-		var outputs: Array = recipe.get("outputs", [])
-		return outputs
-
-	var output_name: String = recipe.get("output_name", "")
-	var output_qty: int = recipe.get("output_qty", 0)
-	if output_name == "" or output_qty <= 0:
-		return []
-	return [{
-		"good_id": recipe.get("output_good_id", ""),
-		"internal_name": output_name,
-		"qty": output_qty,
-	}]
+	return BuildingStatus.flow_output_items(recipe)
 
 func _build_status_icon_column() -> void:
 	for child in status_icon_column.get_children():
@@ -2030,13 +2009,7 @@ func _update_cost_label(building: Dictionary) -> void:
 		var bd: Dictionary = CostSolver.last_result.get("per_building", {}).get(instance_id, {})
 		var output_good_id: String = bd.get("output_good_id", "")
 		var base_price: float = Catalog.get_base_price(output_good_id) if output_good_id != "" else 0.0
-		var pct: float = (uc / base_price * 100.0) if base_price > 0.0 else 0.0
-		if pct < 90.0:
-			color = STATUS_GREEN
-		elif pct <= 110.0:
-			color = STATUS_YELLOW
-		else:
-			color = STATUS_RED
+		color = BuildingStatus.cost_rag_color(uc, base_price)
 		var output_costs: Dictionary = bd.get("output_costs", {})
 		if output_costs.size() > 1:
 			# Multi-output: list the allocated cost basis for each product
@@ -2144,35 +2117,10 @@ func _make_tooltip_theme() -> Theme:
 	return theme
 
 func _power_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
-	if is_infrastructure:
-		return STATUS_GREY
-	var energy_req: int = recipe.get("energy_req", 0)
-	var produces_power: bool = recipe.get("output_name", "") == "power"
-	if energy_req <= 0 and not produces_power:
-		return STATUS_GREY
-	if not Power.is_supplied(building.get("tile_id", ""), energy_req):
-		return STATUS_RED
-	return STATUS_GREEN if _power_supply(building) == "Owned Supply" else STATUS_YELLOW
+	return BuildingStatus.power_status_color(building, recipe, is_infrastructure)
 
 func _input_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
-	if is_infrastructure:
-		return STATUS_GREY
-	# An extraction building whose deposit is mined out can no longer produce.
-	if _recipe_deposit_exhausted(building, recipe):
-		return STATUS_RED
-	var instance_id: String = building.get("instance_id", "")
-	if instance_id != "" and Production.last_turn_run.has(instance_id):
-		return STATUS_GREEN
-	if instance_id != "" and Production.missing_by_building.has(instance_id):
-		return STATUS_RED
-	var inputs: Array = recipe.get("inputs", [])
-	if inputs.is_empty():
-		return STATUS_GREEN
-	var tile_id: String = building.get("tile_id", "")
-	for input in inputs:
-		if Stockpile.get_at_tile(tile_id, input.get("good_id", "")) < input.get("qty", 0):
-			return STATUS_RED
-	return STATUS_YELLOW
+	return BuildingStatus.input_status_color(building, recipe, is_infrastructure)
 
 func _transport_duration_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
 	if is_infrastructure:
@@ -2242,30 +2190,10 @@ func _tile_column_row(building: Dictionary) -> Vector2i:
 	return Vector2i(int(parts[1]), int(parts[2]))
 
 func _power_supply(building: Dictionary) -> String:
-	var power_state := _tile_power_state(building.get("tile_id", ""))
-	if not power_state.get("connected", false):
-		return "Not connected"
-	if not power_state.get("has_power_plant", false) or power_state.get("supply", 0) < power_state.get("demand", 0):
-		return "Grid"
-	return "Owned Supply"
+	return BuildingStatus.power_supply(building)
 
 func _tile_power_state(tile_id: String) -> Dictionary:
-	var connected := Power.is_supplied(tile_id, 1)
-	var supply := 0
-	var demand := 0
-	var has_power_plant := false
-	for building in MatchState.get_buildings_on_tile(tile_id):
-		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
-		if recipe.get("output_name", "") == "power":
-			has_power_plant = true
-			supply += recipe.get("output_qty", 0)
-		demand += recipe.get("energy_req", 0)
-	return {
-		"connected": connected,
-		"supply": supply,
-		"demand": demand,
-		"has_power_plant": has_power_plant,
-	}
+	return BuildingStatus.tile_power_state(tile_id)
 
 func _input_lines(building_data: Dictionary, recipe: Dictionary) -> Array:
 	var inputs: Array = recipe.get("inputs", [])
@@ -2291,40 +2219,19 @@ func _output_lines(recipe: Dictionary) -> Array:
 	return ["%d %s" % [output_qty, _good_display_from_internal(output_name)]]
 
 func _produced_since_construction(building: Dictionary, recipe: Dictionary) -> String:
-	var instance_id: String = building.get("instance_id", "")
-	var totals: Dictionary = Production.produced_by_building.get(instance_id, {}) as Dictionary
-	if totals.is_empty():
-		return "0"
-
-	var parts: Array = []
-	for good_key in totals.keys():
-		parts.append("%d %s" % [int(totals[good_key]), _produced_good_display_name(str(good_key), recipe)])
-	return ", ".join(parts)
+	return BuildingStatus.produced_since_construction(building, recipe)
 
 func _produced_good_display_name(good_key: String, recipe: Dictionary) -> String:
-	if good_key == "power":
-		return "Power"
-	var good: Dictionary = Catalog.get_good(good_key)
-	if not good.is_empty():
-		return good.get("display_name", good_key)
-	for output in _flow_output_items(recipe):
-		if output.get("internal_name", "") == good_key:
-			return _good_display_from_internal(good_key)
-	return good_key
+	return BuildingStatus.produced_good_display_name(good_key, recipe)
 
 func _full_output_streak(building: Dictionary) -> int:
-	var instance_id: String = building.get("instance_id", "")
-	return int(Production.full_output_streak_by_building.get(instance_id, 0))
+	return BuildingStatus.full_output_streak(building)
 
 func _primary_output_display_name(recipe: Dictionary) -> String:
-	var output_name: String = recipe.get("output_name", "")
-	if output_name == "":
-		return ""
-	return _good_display_from_internal(output_name)
+	return BuildingStatus.primary_output_display_name(recipe)
 
 func _good_display_from_internal(internal_name: String) -> String:
-	var good: Dictionary = Catalog.get_good_by_internal_name(internal_name)
-	return good.get("display_name", internal_name)
+	return BuildingStatus.good_display_from_internal(internal_name)
 
 func _building_letter_for_tile(building: Dictionary) -> String:
 	var tile_id: String = building.get("tile_id", "")
@@ -2343,10 +2250,7 @@ func _letter_from_index(index: int) -> String:
 	return alphabet.substr(first_index, 1) + alphabet.substr(index % alphabet.length(), 1)
 
 func _maintenance_cost(building_data: Dictionary) -> float:
-	var value = building_data.get("maintenance_cost", 0.0)
-	if value == null:
-		return 0.0
-	return float(value)
+	return BuildingStatus.maintenance_cost(building_data)
 
 func _labour_cost(building_data: Dictionary) -> float:
 	var base_cost: float = (
@@ -2405,32 +2309,15 @@ func _output_route_summary() -> Dictionary:
 	return {"destination": destination, "cost": route.cost, "turns": route.turns, "target": target}
 
 func _primary_output_good_id(recipe: Dictionary) -> String:
-	for output in _flow_output_items(recipe):
-		var output_good_id: String = output.get("good_id", "")
-		if output_good_id != "":
-			return output_good_id
-		var internal_name: String = output.get("internal_name", "")
-		if internal_name != "":
-			var good: Dictionary = Catalog.get_good_by_internal_name(internal_name)
-			return good.get("id", "")
-	return ""
+	return BuildingStatus.primary_output_good_id(recipe)
 
 # Primary output's internal_name — the key the deposit-penalty / mining-yield
 # modifiers match on (Modifiers target_match {good_internal: …}).
 func _primary_output_internal(recipe: Dictionary) -> String:
-	for output in _flow_output_items(recipe):
-		var internal_name: String = output.get("internal_name", "")
-		if internal_name != "":
-			return internal_name
-		var gid: String = output.get("good_id", "")
-		if gid != "":
-			return str(Catalog.get_good(gid).get("internal_name", ""))
-	return ""
+	return BuildingStatus.primary_output_internal(recipe)
 
 func _primary_output_qty(recipe: Dictionary) -> int:
-	for output in _flow_output_items(recipe):
-		return int(output.get("qty", 0))
-	return 0
+	return BuildingStatus.primary_output_qty(recipe)
 
 func _route_summary_for_good(source_tile: String, destination_tile: String, good_id: String, qty: int) -> Dictionary:
 	var r := TransportService.route(source_tile, destination_tile, good_id)
