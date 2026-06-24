@@ -276,14 +276,20 @@ func _count_widest_tiles() -> int:
 	return tiles.size()
 
 # {total, green, share} for the current cached power summary (spec §5.5).
+# Prefers the typed power-quality split (green = intermittent + steady, so hydro/biomass
+# count too); falls back to the building-id heuristic for summaries predating the split.
 func _greenest_stats() -> Dictionary:
 	var total_power := int(_last_summary.get("power_supply", 0))
-	if _green_ids.is_empty():
-		_resolve_green_ids()
-	var by_type: Dictionary = _last_summary.get("power_supply_by_type", {})
 	var green := 0.0
-	for bid in _green_ids:
-		green += float((by_type.get(bid, {}) as Dictionary).get("amount", 0.0))
+	var by_quality: Dictionary = _last_summary.get("power_supply_by_quality", {})
+	if not by_quality.is_empty():
+		green = float(by_quality.get("green_intermittent", 0)) + float(by_quality.get("green_steady", 0))
+	else:
+		if _green_ids.is_empty():
+			_resolve_green_ids()
+		var by_type: Dictionary = _last_summary.get("power_supply_by_type", {})
+		for bid in _green_ids:
+			green += float((by_type.get(bid, {}) as Dictionary).get("amount", 0.0))
 	var share := green / float(maxi(1, total_power))
 	return {"total": total_power, "green": green, "share": share}
 

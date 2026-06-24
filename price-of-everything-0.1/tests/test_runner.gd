@@ -143,6 +143,10 @@ func _ready() -> void:
 	_test_victory_total_and_win()
 	_test_victory_tick_scores_resolved_turn()
 	_test_victory_save_load()
+	_test_power_quality()
+	_test_power_instance_age()
+	_test_power_intermittency_alloc()
+	_test_greenest_reads_quality()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -3788,6 +3792,76 @@ func _test_victory_save_load() -> void:
 		and int(VictoryState.purchases_lifetime["building"]) == 2,
 		"victory save/load: export -> reset -> import round-trips every field")
 	VictoryState.reset()
+
+# ── Power intermittency (green/grey quality flags; scripts/production.gd) ───────
+
+func _test_power_quality() -> void:
+	var p := {"output_name": "power", "inputs": []}
+	_check(Production._power_quality({"building_id": "b_024"}, p) == "green_intermittent",
+		"power quality: solar farm = green_intermittent")
+	_check(Production._power_quality({"building_id": "b_025"}, p) == "green_intermittent",
+		"power quality: onshore wind = green_intermittent")
+	_check(Production._power_quality({"building_id": "b_027"}, p) == "green_steady",
+		"power quality: hydro = green_steady")
+	_check(Production._power_quality({"building_id": "b_003"}, {"output_name": "power", "inputs": [{"internal_name": "coal"}]}) == "grey",
+		"power quality: coal-fuelled = grey")
+	_check(Production._power_quality({"building_id": "b_003"}, {"output_name": "power", "inputs": [{"internal_name": "compressed_biomass"}]}) == "green_steady",
+		"power quality: biomass-fuelled = green_steady")
+
+func _test_power_instance_age() -> void:
+	_check(Production._instance_age("inst_b_007_00001a") == 26, "instance age: parses trailing hex (1a = 26)")
+	_check(Production._instance_age("inst_b_001_000001") < Production._instance_age("inst_b_001_000002"),
+		"instance age: lower counter is older")
+
+func _test_power_intermittency_alloc() -> void:
+	# Full unfirmed intermittent green -> 0.4 derate (produce 60%).
+	var d := Production._allocate_power_derates(
+		{"tile_1_1": {"int": 100, "steady": 0}},
+		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 0})
+	_check(absf(float(d.get("c1", 0.0)) - 0.4) < 0.001, "intermittency: full unfirmed intermittent green -> 0.4 derate")
+	# Storage on the tile firms it -> no derate.
+	d = Production._allocate_power_derates(
+		{"tile_1_1": {"int": 100, "steady": 0}},
+		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 100})
+	_check(not d.has("c1"), "intermittency: on-tile storage firms intermittent -> no derate")
+	# Steady green never derates.
+	d = Production._allocate_power_derates(
+		{"tile_1_1": {"int": 0, "steady": 100}},
+		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 0})
+	_check(not d.has("c1"), "intermittency: steady green -> no derate")
+	# Half intermittent / half steady -> 0.2 derate (0.4 * 0.5 share).
+	d = Production._allocate_power_derates(
+		{"tile_1_1": {"int": 50, "steady": 50}},
+		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 0})
+	_check(absf(float(d.get("c1", 0.0)) - 0.2) < 0.001, "intermittency: 50% intermittent share -> 0.2 derate")
+	# Priority: scarce green (100) goes to the higher-level consumer first.
+	d = Production._allocate_power_derates(
+		{"tile_5_5": {"int": 100, "steady": 0}},
+		[{"iid": "hi", "tile": "tile_5_5", "demand": 100.0, "level": 3, "profit": 0.0, "age": 2},
+		 {"iid": "lo", "tile": "tile_5_5", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_5_5": 0})
+	_check(absf(float(d.get("hi", 0.0)) - 0.4) < 0.001 and not d.has("lo"),
+		"intermittency: scarce green prioritises the higher-level consumer")
+	# Tiebreak: same level/profit -> oldest (lowest age) wins the scarce green.
+	d = Production._allocate_power_derates(
+		{"tile_5_5": {"int": 100, "steady": 0}},
+		[{"iid": "new", "tile": "tile_5_5", "demand": 100.0, "level": 1, "profit": 0.0, "age": 9},
+		 {"iid": "old", "tile": "tile_5_5", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_5_5": 0})
+	_check(absf(float(d.get("old", 0.0)) - 0.4) < 0.001 and not d.has("new"),
+		"intermittency: tie broken by oldest instance (age) first")
+
+func _test_greenest_reads_quality() -> void:
+	VictoryState.reset()
+	# green = intermittent 300 + steady 300 = 600 of 1000 -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
+	VictoryState._last_summary = {"power_supply": 1000,
+		"power_supply_by_quality": {"green_intermittent": 300, "green_steady": 300, "grey": 400}}
+	_check(absf(VictoryState._live_progress("greenest") - 0.5) < 0.001,
+		"greenest: reads power_supply_by_quality (steady + intermittent count green)")
 
 func _check(ok: bool, name: String) -> void:
 	if ok:

@@ -75,6 +75,21 @@ const SEAPORT_RANGE_TILES: int = 10
 const GRID_BUY_PRICE: float = 1.0    # £/unit when buying from grid (shortfall)
 const GRID_SELL_PRICE: float = 0.6   # £/unit when selling surplus to grid
 
+# --- Power intermittency (green/grey quality, layered ON TOP of the single `power` good) ---
+# Solar/wind are intermittent green: a recipe relying on UNFIRMED intermittent power
+# produces less. output *= 1 - INTERMITTENCY_DERATE * unfirmed_intermittent_share, so a
+# building running entirely on unfirmed intermittent green makes (1 - 0.4) = 60% of output.
+const INTERMITTENCY_DERATE: float = 0.4
+# Abstracted per-tile firming capacity (power units) by battery building level — storage on
+# a tile converts up to this much intermittent green to steady (producer- or consumer-side).
+# Not a charge/discharge sim; just a cap check. (Batteries give 0 storage_boost otherwise.)
+const BATTERY_STORAGE_CAP := {1: 100, 2: 200, 3: 320}
+# Power-quality classification by producing building internal_name (default = grey/firm).
+const POWER_INTERMITTENT_BUILDINGS := ["solar_farm", "onshore_wind_farm", "offshore_wind_farm"]
+const POWER_STEADY_BUILDINGS := ["hydro_power_plant"]
+# Generic power_plant recipes whose fuel is biomass/waste count as steady green.
+const POWER_STEADY_FUELS := ["compressed_biomass", "bio_waste", "carbonised_biomass"]
+
 # --- Transport ---
 const TRANSPORT_MAX_TILES_PER_TURN: int = 2
 # Liquids & gases move by pipe ONLY (1 tile/turn — see infrastructure.csv pipe range)

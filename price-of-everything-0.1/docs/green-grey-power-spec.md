@@ -1,124 +1,83 @@
-# Green / Grey Power — Intermittent vs Steady Electricity (design spec)
+# Green / Grey Power — Intermittency, layered on the single `power` good
 
-Status: **design complete — ready to implement on sign-off.** This branch currently holds
-only the icons (`g_077_green_power`, `g_078_grey_power`) + the bake tool; no engine changes
-yet.
+Status: **IMPLEMENTED** (branch `power-allocation`). The single `power` good and the
+`output_name == "power"` discriminator are **untouched**; green/grey + intermittent/steady
+are tracked as **quality flags on top** of the existing grid. No good split, no save
+migration, no ~70-site refactor.
 
-Split electricity into **`green_power`** (solar / wind / hydro / waste-biomass) and
-**`grey_power`** (coal / gas), and **retire the single `g_010 power` good** (migrate away).
-The split drives two mechanics:
-
-1. **Intermittency** — intermittent green (solar / wind) derates the output of recipes that
-   rely on it; steady green and grey do not. **Storage removes it, per tile.**
+Two mechanics:
+1. **Intermittency** — solar/wind produce *intermittent* green; a recipe running on
+   **unfirmed** intermittent power produces less. Grey and steady green never derate.
+   **Storage firms intermittent → steady, per tile.**
 2. **Greenest victory track** — all green (intermittent + steady) counts; grey does not.
 
-Power carries **no carbon tax** — carbon cost stays upstream on coal/crude purchase &
-production (coal is slated to be banned outright later).
+Power carries **no carbon tax** (carbon stays upstream on coal/crude; coal ban later).
 
 ---
 
-## 1. Per-tile power qualities
+## How it works (as built)
 
-| quality | sources | derates output? | Greenest? |
-|---|---|---|---|
-| `grey_power` | coal_power `b_003`, gas, **grid imports** | no | no |
-| green **steady** | hydro `b_027`, waste/biomass (`r_109`), **+ storage-firmed intermittent** | no | yes |
-| green **intermittent** | solar `b_024`, onshore `b_025`, offshore `b_026` | **yes (0.4)** | yes |
+**Quality classification** (`production._power_quality`, lists in `economy_config.gd`):
+- `green_intermittent`: solar_farm, onshore_wind_farm, offshore_wind_farm.
+- `green_steady`: hydro_power_plant; a generic power_plant burning a `POWER_STEADY_FUELS`
+  fuel (compressed_biomass / bio_waste / carbonised_biomass).
+- `grey`: coal/gas/everything else (firm default).
 
-Track `green_power_intermittent` and `green_power_steady` per tile so the engine knows which
-consumed power triggers the derate. (Hydro is steady for now; a later free update may make it
-drought-sensitive — out of scope.)
+**Per-turn flow** (all in `production.gd`, power is grid-settled and never cascades):
+1. Pre-cascade, `_compute_power_intermittency(all_buildings)` gathers green supply per
+   producing tile (plants that can run), the power consumers, and each tile's firming cap,
+   then calls the pure `_allocate_power_derates(...)`.
+2. `_allocate_power_derates` (no scene deps — hex distance is string arithmetic):
+   - **Producer-side firming**: a battery on a generating tile converts intermittent → steady,
+     up to `BATTERY_STORAGE_CAP[level]` (L1/L2/L3 = 100/200/320 — abstracted cap, not a
+     charge/discharge sim).
+   - **Allocation**: each green source pushes to consumers **nearest-first**, then **L3 > L2 >
+     L1**, then **most profitable** (last turn's `(price − unit_cost) × qty`, snapped to 2dp),
+     then **oldest instance** (parsed from `inst_<id>_<hex>`). A consumer receives the source's
+     int/steady mix proportionally. Deterministic total order (age is unique). Grid import is
+     grey and fills the remainder (never derates).
+   - **Consumer-side firming**: a battery on a consuming tile firms the intermittent it drew.
+   - **Derate**: `derate = INTERMITTENCY_DERATE(0.4) × unfirmed_intermittent_share`, stored
+     per instance_id.
+3. The cascade's power branch tags **actual** generation into `summary.power_supply_by_quality`
+   `{green_intermittent, green_steady, grey}`.
+4. `_produce_outputs` multiplies each output by `1 − derate` (0 for grey/steady/no-power).
+5. `victory_state` Greenest reads `power_supply_by_quality` (green = intermittent + steady;
+   hydro/biomass now count), falling back to the building-id heuristic for old summaries.
 
----
-
-## 2. Intermittency derate (deterministic — rule #3)
-
-`INTERMITTENCY_DERATE = 0.4`. Per consuming building, per turn:
-
-```
-unfirmed_share = (unfirmed intermittent green it consumed) / (total power it consumed)
-output *= 1 - 0.4 * unfirmed_share          # all unfirmed intermittent -> 60% output
-```
-
-Applied as a `recipe_output` modifier in `production.gd` (composes with existing modifiers,
-shows in the cost / RAG indicator). Grey- or steady-green-powered building → no change.
-
----
-
-## 3. Storage — abstracted per-tile firming cap
-
-Storage is **not** charge/discharge — it's a per-tile cap that firms intermittent → steady:
-
-```
-tile_cap   = sum of battery caps on the tile   (L1 = 100, L2 = 200, L3 = 320 power)
-firmed     = min(tile_cap, intermittent green on the tile)
-```
-
-- **Producer-side**: a battery on a generating tile firms up to `tile_cap` of the green it
-  *produces*, so that power leaves as steady.
-- **Consumer-side**: a battery on a consuming tile firms up to `tile_cap` of the intermittent
-  green its *recipes draw*, so those recipes escape the derate.
-
-(`100 / 200 / 320` are balance constants in `economy_config.gd`.)
+Profitability uses last turn's `CostSolver.last_result` (no circularity); turn-1 / post-load
+fall back to the instance-age tiebreak.
 
 ---
 
-## 4. Cross-tile allocation (who gets your green)
+## Performance
 
-Each turn the `Power` autoload matches generation to demand, then the leftover demand is grid
-(grey) import:
-
-1. **Producer-side firming** first: on each generating tile, convert up to `tile_cap`
-   intermittent → steady.
-2. **Allocate own generation, nearest-first.** Consumers pull power from the **closest**
-   generating tiles first: own tile (distance 0) → next ring out → outward. Within the same
-   distance, priority is **building level L3 → L2 → L1**, ties broken by **most profitable
-   first**. A consumer takes whatever quality reaches it (steady or intermittent green).
-3. **Grid fills the rest as grey** — any demand not met by your own generation imports grey
-   power (always counts grey, never derates).
-4. **Consumer-side firming**: on each consuming tile, firm up to `tile_cap` of the intermittent
-   green it ended up drawing.
-5. **Derate** each consumer per §2 on its remaining unfirmed-intermittent share.
-
-> Open implementation detail (not a design blocker): exact contention handling when several
-> equal-priority consumers compete for the same nearby generation — settle during build
-> (consumer-pull in global priority order is the working model).
+Wrapped in a `TurnProfiler` section `power_alloc`. The e2e (`e2e_stoneshore`) is **coal-only**,
+so green supply is empty there → the pass is ≈0 ms and the change is inert (433/87 unchanged).
+Before/after benchmark: **perf-neutral** — the baseline's own runs swing p95 98.8–125.9 ms
+(mean 49–50), and the after sits inside that band (mean 50.0, p95 125.8). The green path is
+**not e2e-stressed** (no green plants in the scenario); it is unit-tested for correctness, the
+allocation is bounded by construction (few green sources × the small player set), and the
+`power_alloc` profiler section will surface any cost if a green-heavy late game emerges.
 
 ---
 
-## 5. Greenest interaction
+## Tests (tests/test_runner.gd)
 
-Greenest counts **all green generated** (steady + intermittent); the derate hits the
-consumer's output, not the green credit. `victory_state.gd` reads the typed green pool instead
-of the building-id heuristic (behaviour-preserving + a parity test).
-
----
-
-## 6. Goods & migration (locked)
-
-- Add `green_power` (`g_077`) + `grey_power` (`g_078`), `good_type=power`,
-  `transport_class=electricity`, `is_fossil_fuel=no`, `co2_tax_multiplier=0`,
-  `green_sales_premium=0`. Icons already baked.
-- **Retire `g_010 power`**: route plant outputs + `energy_req` accounting to green/grey;
-  save migration maps old `power` state → grey (firm) and bumps `SAVE_VERSION`.
+`_test_power_quality` (classification), `_test_power_instance_age` (hex parse + ordering),
+`_test_power_intermittency_alloc` (full-unfirmed → 0.4, storage firms → 0, steady → 0, 50%
+share → 0.2, level priority, oldest tiebreak), `_test_greenest_reads_quality`. Suite 766/0.
 
 ---
 
-## 7. Implementation phasing (after go-ahead)
+## Locked decisions
 
-1. Goods rows `g_077`/`g_078`; retire `g_010` + save migration; classify plants
-   intermittent-green / steady-green / grey.
-2. `Power` autoload: per-tile supply by quality; producer + consumer storage firming
-   (caps 100/200/320); nearest-first allocation with the L3→L2→L1 / profit priority; expose
-   each consumer's unfirmed-intermittent share.
-3. `production.gd`: route plant output to the right quality; apply the 0.4 derate modifier.
-4. `victory_state.gd`: Greenest reads the typed green pool (+ parity test).
-5. Tests: per-tile quality accounting, storage firming caps, derate math (60% unfirmed),
-   allocation priority, Greenest parity, save-migration round-trip. Then an e2e balance pass.
+Derate 0.4 · storage cap 100/200/320 (abstracted) · firms at producer or consumer per tile ·
+grid = grey · nearest → L3>L2>L1 → profit(2dp) → oldest · hydro + waste/biomass = steady green ·
+no carbon tax on power · single `power` good kept (flags on top).
 
----
+## Future / not in scope
 
-## 8. Done in this branch
-
-`g_077_green_power` + `g_078_grey_power` icons (medium + small) via `tools/bake_power_icons.gd`
-(blue-chroma strip + connected-component recolour). **Icons only — no engine changes.**
+Hydro drought sensitivity (later free update); a green-plant e2e scenario to stress the
+allocation perf; the `g_077_green_power` / `g_078_grey_power` icons (committed earlier) are
+available for power-quality UI but are not goods.
