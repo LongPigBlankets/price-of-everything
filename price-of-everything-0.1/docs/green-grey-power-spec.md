@@ -24,24 +24,29 @@ Power carries **no carbon tax** (carbon stays upstream on coal/crude; coal ban l
 - `grey`: coal/gas/everything else (firm default).
 
 **Per-turn flow** (all in `production.gd`, power is grid-settled and never cascades):
-1. Pre-cascade, `_compute_power_intermittency(all_buildings)` gathers green supply per
-   producing tile (plants that can run), the power consumers, and each tile's firming cap,
-   then calls the pure `_allocate_power_derates(...)`.
-2. `_allocate_power_derates` (no scene deps — hex distance is string arithmetic):
+1. During the cascade, the power branch records **actual** (already cable-capped) generation
+   per tile by quality into `_green_supply_by_tile` and `summary.power_supply_by_quality`.
+2. **After** the cascade, `_compute_power_intermittency()` recomputes the derate from this
+   turn's ACTUALS — the buildings that actually ran (`last_turn_run`) and the green actually
+   generated per tile — and stores `_power_derate_by_building` **for next turn**. Using
+   actuals (not a pre-cascade estimate) is what keeps it exact: no phantom/starved consumers
+   soaking up green, no over-counting green on tiles that exceed the cable export cap. The
+   1-turn lag is the same tradeoff as using last turn's profitability for the priority.
+3. `_allocate_power_derates` (pure; deep-copies inputs; hex distance is string arithmetic):
    - **Producer-side firming**: a battery on a generating tile converts intermittent → steady,
      up to `BATTERY_STORAGE_CAP[level]` (L1/L2/L3 = 100/200/320 — abstracted cap, not a
-     charge/discharge sim).
+     charge/discharge sim). Caps are tracked as floats and decremented exactly.
    - **Allocation**: each green source pushes to consumers **nearest-first**, then **L3 > L2 >
-     L1**, then **most profitable** (last turn's `(price − unit_cost) × qty`, snapped to 2dp),
-     then **oldest instance** (parsed from `inst_<id>_<hex>`). A consumer receives the source's
-     int/steady mix proportionally. Deterministic total order (age is unique). Grid import is
-     grey and fills the remainder (never derates).
-   - **Consumer-side firming**: a battery on a consuming tile firms the intermittent it drew.
+     L1**, then **most profitable** (last turn's `(price − unit_cost) × qty`, snapped to 2dp,
+     compared exactly), then **oldest instance** (parsed from `inst_<id>_<hex>`). A consumer
+     receives the source's int/steady mix proportionally. Deterministic total order (age is
+     unique). Grid import is grey and fills the remainder (never derates).
+   - **Consumer-side firming**: a battery on a consuming tile firms the intermittent it drew,
+     highest-priority same-tile consumer first.
    - **Derate**: `derate = INTERMITTENCY_DERATE(0.4) × unfirmed_intermittent_share`, stored
      per instance_id.
-3. The cascade's power branch tags **actual** generation into `summary.power_supply_by_quality`
-   `{green_intermittent, green_steady, grey}`.
-4. `_produce_outputs` multiplies each output by `1 − derate` (0 for grey/steady/no-power).
+4. The following turn, `_produce_outputs` multiplies each output by `1 − derate`
+   (0 for grey/steady/no-power).
 5. `victory_state` Greenest reads `power_supply_by_quality` (green = intermittent + steady;
    hydro/biomass now count), falling back to the building-id heuristic for old summaries.
 

@@ -3801,11 +3801,13 @@ func _test_power_quality() -> void:
 		"power quality: solar farm = green_intermittent")
 	_check(Production._power_quality({"building_id": "b_025"}, p) == "green_intermittent",
 		"power quality: onshore wind = green_intermittent")
+	_check(Production._power_quality({"building_id": "b_026"}, p) == "green_intermittent",
+		"power quality: offshore wind = green_intermittent")
 	_check(Production._power_quality({"building_id": "b_027"}, p) == "green_steady",
 		"power quality: hydro = green_steady")
 	_check(Production._power_quality({"building_id": "b_003"}, {"output_name": "power", "inputs": [{"internal_name": "coal"}]}) == "grey",
 		"power quality: coal-fuelled = grey")
-	_check(Production._power_quality({"building_id": "b_003"}, {"output_name": "power", "inputs": [{"internal_name": "compressed_biomass"}]}) == "green_steady",
+	_check(Production._power_quality({"building_id": "b_003"}, {"output_name": "power", "inputs": [{"internal_name": "biomass"}]}) == "green_steady",
 		"power quality: biomass-fuelled = green_steady")
 
 func _test_power_instance_age() -> void:
@@ -3854,6 +3856,15 @@ func _test_power_intermittency_alloc() -> void:
 		{"tile_5_5": 0})
 	_check(absf(float(d.get("old", 0.0)) - 0.4) < 0.001 and not d.has("new"),
 		"intermittency: tie broken by oldest instance (age) first")
+	# Producer firming + proportional mix: int 50/steady 50, tile cap 30 firms 30 int ->
+	# 20 int/80 steady; consumer (same tile, cap now 0) draws 20 unfirmed int of 100 ->
+	# derate 0.4 * 0.2 = 0.08 (exact-float firming, no ceil over-charge).
+	d = Production._allocate_power_derates(
+		{"tile_1_1": {"int": 50, "steady": 50}},
+		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 30})
+	_check(absf(float(d.get("c1", 0.0)) - 0.08) < 0.001,
+		"intermittency: producer firming + proportional mix -> 0.08 derate")
 
 func _test_greenest_reads_quality() -> void:
 	VictoryState.reset()

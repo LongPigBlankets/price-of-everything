@@ -88,7 +88,8 @@ const BATTERY_STORAGE_CAP := {1: 100, 2: 200, 3: 320}
 const POWER_INTERMITTENT_BUILDINGS := ["solar_farm", "onshore_wind_farm", "offshore_wind_farm"]
 const POWER_STEADY_BUILDINGS := ["hydro_power_plant"]
 # Generic power_plant recipes whose fuel is biomass/waste count as steady green.
-const POWER_STEADY_FUELS := ["compressed_biomass", "bio_waste", "carbonised_biomass"]
+# (MVP good internal_names: biomass g_062, bio_waste g_073, carbonised_biomass g_076.)
+const POWER_STEADY_FUELS := ["biomass", "bio_waste", "carbonised_biomass"]
 
 # --- Transport ---
 const TRANSPORT_MAX_TILES_PER_TURN: int = 2
