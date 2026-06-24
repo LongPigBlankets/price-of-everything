@@ -146,6 +146,7 @@ func _ready() -> void:
 	_test_power_quality()
 	_test_power_instance_age()
 	_test_power_intermittency_alloc()
+	_test_intermittency_tile_aggregate()
 	_test_greenest_reads_quality()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -3816,37 +3817,49 @@ func _test_power_instance_age() -> void:
 		"instance age: lower counter is older")
 
 func _test_power_intermittency_alloc() -> void:
-	# Full unfirmed intermittent green -> 0.4 derate (produce 60%).
+	# Result is keyed by iid -> {derate, green_consumed, unfirmed_intermittent, steady_consumed, demand}.
+	var derate := func(dd, k): return float((dd.get(k, {}) as Dictionary).get("derate", 0.0))
+	# Full unfirmed intermittent green -> 0.4 derate (produce 60%); richer fields populated.
 	var d := Production._allocate_power_derates(
 		{"tile_1_1": {"int": 100, "steady": 0}},
 		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
 		{"tile_1_1": 0})
-	_check(absf(float(d.get("c1", 0.0)) - 0.4) < 0.001, "intermittency: full unfirmed intermittent green -> 0.4 derate")
-	# Storage on the tile firms it -> no derate.
+	_check(absf(derate.call(d, "c1") - 0.4) < 0.001, "intermittency: full unfirmed intermittent green -> 0.4 derate")
+	_check(int(d["c1"]["green_consumed"]) == 100 and int(d["c1"]["unfirmed_intermittent"]) == 100
+		and int(d["c1"]["steady_consumed"]) == 0, "intermittency: result carries green/unfirmed/steady consumed")
+	# Storage on the tile firms it -> no derate, but it still consumed (now steady) green.
 	d = Production._allocate_power_derates(
 		{"tile_1_1": {"int": 100, "steady": 0}},
 		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
 		{"tile_1_1": 100})
-	_check(not d.has("c1"), "intermittency: on-tile storage firms intermittent -> no derate")
-	# Steady green never derates.
+	_check(absf(derate.call(d, "c1")) < 0.001 and int(d["c1"]["steady_consumed"]) == 100,
+		"intermittency: on-tile storage firms intermittent -> no derate (counts as steady)")
+	# Steady green never derates (consumes steady green).
 	d = Production._allocate_power_derates(
 		{"tile_1_1": {"int": 0, "steady": 100}},
 		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
 		{"tile_1_1": 0})
-	_check(not d.has("c1"), "intermittency: steady green -> no derate")
+	_check(absf(derate.call(d, "c1")) < 0.001 and int(d["c1"]["steady_consumed"]) == 100,
+		"intermittency: steady green -> no derate")
+	# A consumer that draws NO green is absent from the result entirely.
+	d = Production._allocate_power_derates(
+		{},
+		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 0})
+	_check(not d.has("c1"), "intermittency: consumer with no green is omitted")
 	# Half intermittent / half steady -> 0.2 derate (0.4 * 0.5 share).
 	d = Production._allocate_power_derates(
 		{"tile_1_1": {"int": 50, "steady": 50}},
 		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
 		{"tile_1_1": 0})
-	_check(absf(float(d.get("c1", 0.0)) - 0.2) < 0.001, "intermittency: 50% intermittent share -> 0.2 derate")
+	_check(absf(derate.call(d, "c1") - 0.2) < 0.001, "intermittency: 50% intermittent share -> 0.2 derate")
 	# Priority: scarce green (100) goes to the higher-level consumer first.
 	d = Production._allocate_power_derates(
 		{"tile_5_5": {"int": 100, "steady": 0}},
 		[{"iid": "hi", "tile": "tile_5_5", "demand": 100.0, "level": 3, "profit": 0.0, "age": 2},
 		 {"iid": "lo", "tile": "tile_5_5", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
 		{"tile_5_5": 0})
-	_check(absf(float(d.get("hi", 0.0)) - 0.4) < 0.001 and not d.has("lo"),
+	_check(absf(derate.call(d, "hi") - 0.4) < 0.001 and not d.has("lo"),
 		"intermittency: scarce green prioritises the higher-level consumer")
 	# Tiebreak: same level/profit -> oldest (lowest age) wins the scarce green.
 	d = Production._allocate_power_derates(
@@ -3854,7 +3867,7 @@ func _test_power_intermittency_alloc() -> void:
 		[{"iid": "new", "tile": "tile_5_5", "demand": 100.0, "level": 1, "profit": 0.0, "age": 9},
 		 {"iid": "old", "tile": "tile_5_5", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
 		{"tile_5_5": 0})
-	_check(absf(float(d.get("old", 0.0)) - 0.4) < 0.001 and not d.has("new"),
+	_check(absf(derate.call(d, "old") - 0.4) < 0.001 and not d.has("new"),
 		"intermittency: tie broken by oldest instance (age) first")
 	# Producer firming + proportional mix: int 50/steady 50, tile cap 30 firms 30 int ->
 	# 20 int/80 steady; consumer (same tile, cap now 0) draws 20 unfirmed int of 100 ->
@@ -3863,8 +3876,35 @@ func _test_power_intermittency_alloc() -> void:
 		{"tile_1_1": {"int": 50, "steady": 50}},
 		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
 		{"tile_1_1": 30})
-	_check(absf(float(d.get("c1", 0.0)) - 0.08) < 0.001,
+	_check(absf(derate.call(d, "c1") - 0.08) < 0.001,
 		"intermittency: producer firming + proportional mix -> 0.08 derate")
+
+func _test_intermittency_tile_aggregate() -> void:
+	# Roll the per-building result + per-tile green supply up into the tile-view aggregate.
+	var saved_green := Production._green_supply_by_tile
+	var saved_im := Production._intermittency_by_building
+	var saved_prod := Power.tile_produced
+	Production._green_supply_by_tile = {"tile_2_2": {"int": 100, "steady": 0}}
+	Production._intermittency_by_building = {
+		"a": {"derate": 0.4, "green_consumed": 100.0, "unfirmed_intermittent": 100.0, "steady_consumed": 0.0, "demand": 100.0},
+		"b": {"derate": 0.0, "green_consumed": 50.0, "unfirmed_intermittent": 0.0, "steady_consumed": 50.0, "demand": 50.0},
+	}
+	Power.tile_produced = {"tile_2_2": 100}
+	var consumers := [
+		{"iid": "a", "tile": "tile_2_2", "demand": 100.0, "building_id": "b_017"},
+		{"iid": "b", "tile": "tile_2_2", "demand": 50.0, "building_id": "b_018"},
+	]
+	var agg := Production._aggregate_tile_intermittency(consumers)
+	var t: Dictionary = agg["tile_2_2"]
+	_check(int(t["green_produced"]) == 100 and int(t["green_intermittent_produced"]) == 100 and int(t["total_produced"]) == 100,
+		"tile intermittency: green/total produced rolled up")
+	_check(int(t["total_consumed"]) == 150 and absf(float(t["unfirmed_consumed"]) - 100.0) < 0.001
+		and absf(float(t["green_consumed"]) - 150.0) < 0.001, "tile intermittency: consumed totals rolled up")
+	_check((t["affected"] as Array).size() == 1 and str((t["affected"][0])["iid"]) == "a",
+		"tile intermittency: only derated buildings are listed as affected")
+	Production._green_supply_by_tile = saved_green
+	Production._intermittency_by_building = saved_im
+	Power.tile_produced = saved_prod
 
 func _test_greenest_reads_quality() -> void:
 	VictoryState.reset()

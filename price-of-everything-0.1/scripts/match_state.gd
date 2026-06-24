@@ -157,6 +157,9 @@ signal transfer_for_good_requested(good_id: String)
 signal purchase_for_good_requested(good_id: String)
 ## A UI element asked to open an Encyclopedia entry (e.g. a "More info" link).
 signal encyclopedia_entry_requested(entry_id: String)
+## A UI element (e.g. the tile-view intermittency "see more" link) asked to open the
+## building ledger pre-filtered to a single filter key (e.g. "green_intermittent").
+signal building_ledger_filter_requested(filter_key: String)
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)

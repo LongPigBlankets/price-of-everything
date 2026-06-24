@@ -53,6 +53,7 @@ var _f := {
 	"running": false, "starved": false, "unpowered": false, "loss": false,
 	"profitable": false, "upgradable": false,
 	"cat_production": false, "cat_power": false, "cat_infrastructure": false,
+	"green_intermittent": false, "green_steady": false,
 }
 
 # Sort.
@@ -171,7 +172,8 @@ func _build_filters() -> VBoxContainer:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	r2.add_child(spacer)
 	for spec in [["profitable", "Profitable"], ["cat_production", "Production"],
-			["cat_power", "Power"], ["cat_infrastructure", "Infrastructure"]]:
+			["cat_power", "Power"], ["cat_infrastructure", "Infrastructure"],
+			["green_intermittent", "Intermittent green power"], ["green_steady", "Steady green power"]]:
 		var chip := _make_chip(str(spec[1]), str(spec[0]))
 		_chips[str(spec[0])] = chip
 		r2.add_child(chip)
@@ -225,6 +227,20 @@ func _on_chip(key: String, pressed: bool) -> void:
 		_f["profitable"] = false
 	_render()
 
+# Public: open the ledger showing ONLY the given filter (used by deep-links such as the
+# tile-view intermittency "see more"). Clears the other chips so the view is unambiguous.
+func set_filter_preset(key: String) -> void:
+	if not _f.has(key):
+		return
+	for k in _f.keys():
+		_f[k] = false
+		if _chips.has(k):
+			_chips[k].set_pressed_no_signal(false)
+	_f[key] = true
+	if _chips.has(key):
+		_chips[key].set_pressed_no_signal(true)
+	_rebuild()
+
 func _passes_filters(vm: Dictionary) -> bool:
 	if _search_text != "" and not (str(vm.name_l).contains(_search_text) or str(vm.output_l).contains(_search_text)):
 		return false
@@ -239,6 +255,12 @@ func _passes_filters(vm: Dictionary) -> bool:
 	if _f["profitable"] and not vm.profit:
 		return false
 	if _f["upgradable"] and not vm.upgradable:
+		return false
+	# Green-power chips: building must consume green power of that quality. Intermittent =
+	# drew unfirmed intermittent green (i.e. it is taking an intermittency hit).
+	if _f["green_intermittent"] and not vm.green_intermittent:
+		return false
+	if _f["green_steady"] and not vm.green_steady:
 		return false
 	# Category chips act as an OR-group: if any is on, the building must match one of them.
 	if _f["cat_production"] or _f["cat_power"] or _f["cat_infrastructure"]:
@@ -420,6 +442,9 @@ func _row_vm(b: Dictionary) -> Dictionary:
 		net_color = BuildingStatus.STATUS_GREEN if net > 0.0 else (BuildingStatus.STATUS_RED if net < 0.0 else DS.PALETTE.TEXT)
 		net_text = "%s£%.0f" % ["+" if net >= 0.0 else "−", absf(net)]
 
+	# Intermittency: did this building draw unfirmed intermittent (taking a hit) / steady green?
+	var im: Dictionary = Production.get_building_intermittency(instance_id)
+
 	return {
 		"instance_id": instance_id,
 		"building_id": building_id, "binternal": str(bdata.get("internal_name", "")),
@@ -442,6 +467,8 @@ func _row_vm(b: Dictionary) -> Dictionary:
 		"loss": cost_color == BuildingStatus.STATUS_RED,
 		"profit": cost_color == BuildingStatus.STATUS_GREEN,
 		"upgradable": (not is_infra) and level < BuildingLevels.MAX_LEVEL,
+		"green_intermittent": float(im.get("unfirmed_intermittent", 0.0)) > 0.0,
+		"green_steady": float(im.get("steady_consumed", 0.0)) > 0.0,
 		"sort_cost": uc if uc >= 0.0 else 1.0e18,  # unknown costs sink to the bottom ascending
 		"sort_power": int(power.value),
 		"sort_status": _status_rank(str(status.text)),

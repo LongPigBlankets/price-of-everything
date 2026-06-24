@@ -691,6 +691,8 @@ func _build_power_pane(pane: VBoxContainer) -> void:
 		net_text += "  from grid" if net < 0 else "  to grid"
 	pane.add_child(_make_power_stat("Net power", net_text, _status_color(power.status)))
 
+	_build_intermittency_rows(pane)
+
 	pane.add_child(HSeparator.new())
 
 	# Grid row: name on the left, a "Go To" link (opens the Power map mode) right.
@@ -735,6 +737,88 @@ func _make_power_stat(label_text: String, value_text: String, color: Color) -> H
 	v.add_theme_color_override("font_color", color)
 	v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(v)
+	return row
+
+# Green-power + intermittency rows for this tile (data from the post-cascade allocation).
+# Shown only when the tile actually touches green power.
+func _build_intermittency_rows(pane: VBoxContainer) -> void:
+	var im: Dictionary = Production.get_tile_intermittency(_current_tile_id)
+	if im.is_empty():
+		return
+	var green_prod := int(im.get("green_produced", 0))
+	var green_cons := int(round(float(im.get("green_consumed", 0.0))))
+	var battery_cap := int(im.get("battery_cap", 0))
+	var affected: Array = im.get("affected", [])
+	if green_prod <= 0 and green_cons <= 0 and battery_cap <= 0 and affected.is_empty():
+		return
+
+	pane.add_child(HSeparator.new())
+	pane.add_child(_make_section_header("Green power & intermittency", "", "ok"))
+
+	# Row 1: green power produced | consumed.
+	pane.add_child(_make_power_stat("Green produced | consumed", "%d | %d ⚡" % [green_prod, green_cons], DS.PALETTE.OK))
+
+	# Row 2: buildings affected by intermittency + indented detail.
+	pane.add_child(_make_power_stat("Buildings affected by intermittency", "%d" % affected.size(),
+		DS.PALETTE.DANGER if affected.size() > 0 else DS.PALETTE.TEXT_DIM))
+	var total_cons := int(im.get("total_consumed", 0))
+	var total_prod := int(im.get("total_produced", 0))
+	var unfirmed_cons := float(im.get("unfirmed_consumed", 0.0))
+	var green_int_prod := int(im.get("green_intermittent_produced", 0))
+	var pct_cons := int(round(100.0 * unfirmed_cons / float(total_cons))) if total_cons > 0 else 0
+	var pct_prod := int(round(100.0 * float(green_int_prod) / float(total_prod))) if total_prod > 0 else 0
+	pane.add_child(_make_power_subrow("%d%% of power consumed affected" % pct_cons, ""))
+	pane.add_child(_make_power_subrow("%d%% of power produced affected" % pct_prod, ""))
+	for i in mini(3, affected.size()):
+		var a: Dictionary = affected[i]
+		var bname := str(Catalog.get_building(str(a.get("building_id", ""))).get("display_name", a.get("building_id", "")))
+		pane.add_child(_make_power_subrow("• %s" % bname, "%d ⚡" % int(a.get("power", 0))))
+	if affected.size() > 0:
+		pane.add_child(_make_power_see_more("see more →", "green_intermittent"))
+
+	# Row 3: battery storage (green produced | consumed | capacity on tile).
+	pane.add_child(_make_power_stat("Battery storage", "%d | %d | %d ⚡" % [green_prod, green_cons, battery_cap], DS.PALETTE.ACCENT))
+
+# Indented caption sub-row (optional right-aligned numeric value).
+func _make_power_subrow(label_text: String, value_text: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.custom_minimum_size = Vector2(0, 20)
+	var indent := Control.new()
+	indent.custom_minimum_size = Vector2(16, 0)
+	row.add_child(indent)
+	var l := Label.new()
+	l.text = label_text
+	l.theme_type_variation = &"Caption"
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(l)
+	if value_text != "":
+		var v := Label.new()
+		v.text = value_text
+		v.theme_type_variation = &"Numeric"
+		v.add_theme_font_size_override("font_size", 12)
+		v.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		row.add_child(v)
+	return row
+
+# Indented underlined-style "link" (flat ACCENT button) → opens the building ledger
+# pre-filtered to buildings affected by intermittency.
+func _make_power_see_more(text: String, filter_key: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	var indent := Control.new()
+	indent.custom_minimum_size = Vector2(16, 0)
+	row.add_child(indent)
+	var link := Button.new()
+	link.text = text
+	link.focus_mode = Control.FOCUS_NONE
+	link.flat = true
+	link.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
+	link.add_theme_color_override("font_hover_color", DS.PALETTE.ACCENT)
+	link.add_theme_font_size_override("font_size", 12)
+	link.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	link.pressed.connect(func(): MatchState.building_ledger_filter_requested.emit(filter_key))
+	row.add_child(link)
 	return row
 
 func _make_power_build_item(spec: Array) -> VBoxContainer:
