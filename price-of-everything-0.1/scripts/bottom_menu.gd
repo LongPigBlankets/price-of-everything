@@ -100,6 +100,9 @@ func _ready() -> void:
 	money_panel.hide()
 	top_bar.victory_widget_clicked.connect(_on_victory_widget_clicked)
 	victory_panel.hide()
+	# Victory moment (spec §6): the HUD owns the auto-open so it can clear whatever
+	# panel is showing first (the panel can't hide its own siblings).
+	VictoryState.victory_achieved.connect(_on_victory_achieved)
 
 	# A button rises while its panel is open and drops when it closes. Buttons
 	# with no panel (Politics/People) and disabled buttons never rise.
@@ -377,6 +380,13 @@ func _on_victory_widget_clicked() -> void:
 	else:
 		_hide_all_panels()
 		_set_panel_visible(victory_panel, true)
+
+func _on_victory_achieved(total: int, turn: int) -> void:
+	# Auto-open the Victory panel over whatever is showing, plus a toast. The game
+	# is not force-ended — the player may keep pushing their score.
+	_hide_all_panels()
+	_set_panel_visible(victory_panel, true)
+	MatchState.request_toast("VICTORY — score %d on turn %d!" % [total, turn], "success")
 
 func _on_loan_confirmed(amount: float) -> void:
 	var ok: bool = LoanState.take_loan(amount)

@@ -23,8 +23,9 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_build()
 	VictoryState.score_changed.connect(_on_score_changed)
-	VictoryState.victory_achieved.connect(_on_victory_achieved)
 	visibility_changed.connect(_on_visibility_changed)
+	# The victory-moment auto-open (spec §6) is driven by bottom_menu, which can hide
+	# the other HUD panels first; the won banner appears here via _populate() on show.
 	if visible:
 		_populate()
 
@@ -284,15 +285,6 @@ func _on_score_changed(_total: int, _breakdown: Dictionary) -> void:
 func _on_visibility_changed() -> void:
 	if visible:
 		_populate()
-
-func _on_victory_achieved(total: int, turn: int) -> void:
-	# The victory moment: auto-open the panel + toast; the game is not force-ended.
-	if not visible:
-		PanelStack.push(self)
-		show()
-	else:
-		_populate()
-	MatchState.request_toast("VICTORY — scored %s on turn %d!" % [_commas(total), turn], "success")
 
 func _close() -> void:
 	PanelStack.remove(self)

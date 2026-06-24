@@ -136,8 +136,14 @@ Emit it once per movement at the chokepoints, **for every movement including 0-t
     `{"buy_kind":"input"}`; recurring buys also `"input"`)
   - else → `"other"` (manual/direct buys from world_map)
 - `queue_move(...)` — `emit("move", "", turns)`.
-- `MarketState.execute_sale(...)` — `emit("sale", "", turns)` (every sale path —
-  manual/bulk/recurring/production-output — funnels through `execute_sale`).
+- Sales emit from **two** chokepoints (not all sales funnel through `execute_sale`):
+  - `MarketState.execute_sale(...)` — `emit("sale", "", turns)` — covers production-output
+    dispatch and the player/UI `queue_sell` / bulk `sell_all_to_market`.
+  - `Production._sell_stockpile_totals(...)` — `emit("sale", "", ship_turns)` — the PROCESS
+    `sell_phase` stockpile path (auto-sell standing orders, bulk SELL_ALL, queued
+    stockpile sales) sells directly without `execute_sale`, so it emits its own event.
+    Guard on `sale_record.total_qty > 0`; the two paths never cover the same sale, so no
+    double-count.
 
 Caller changes required so categories are accurate:
 - `Production._buy_market_inputs` passes `{"buy_kind":"input"}` into its `queue_buy` calls

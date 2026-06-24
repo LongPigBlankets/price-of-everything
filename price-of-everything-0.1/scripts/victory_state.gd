@@ -79,6 +79,8 @@ var purchases_lifetime: Dictionary = {}  # category -> cumulative count
 
 # ── Transient (not saved) ──────────────────────────────────────────────────
 var _last_summary: Dictionary = {}       # cached from Production.turn_processed
+var _scored_turn: int = 1                # the turn _last_summary belongs to (captured
+                                         # during PROCESS, before TurnManager increments)
 var _last_breakdown: Dictionary = {}     # what get_breakdown() serves between ticks
 var _green_ids: Array = []               # building_ids resolved from GREEN_BUILDINGS
 
@@ -159,7 +161,8 @@ func import_state(d: Dictionary) -> void:
 	for k in TRACK_ORDER:
 		track_best[k] = clampf(float(tb.get(k, 0.0)), 0.0, 1.0)
 	for snap in (d.get("score_history", []) as Array):
-		score_history.append((snap as Dictionary).duplicate(true))
+		if snap is Dictionary:  # tolerate a corrupted/hand-edited save without crashing
+			score_history.append((snap as Dictionary).duplicate(true))
 	while score_history.size() > TREND_LEN:
 		score_history.pop_front()
 	won = bool(d.get("won", false))
@@ -175,6 +178,11 @@ func import_state(d: Dictionary) -> void:
 # ── Signal handlers ─────────────────────────────────────────────────────────
 
 func _on_turn_processed(summary: Dictionary) -> void:
+	# Fires during PROCESS, while TurnManager.current_turn still equals the turn
+	# being resolved (it increments only after all phases). Capture it now so the
+	# scoring tick (on turn_resolution_completed, after the increment) scores the
+	# turn whose economics this summary describes.
+	_scored_turn = TurnManager.current_turn
 	_last_summary = summary
 
 func _on_turn_resolution_completed() -> void:
@@ -186,7 +194,9 @@ func _on_goods_movement_recorded(kind: String, category: String, transport_turns
 # ── The per-turn scoring tick ───────────────────────────────────────────────
 
 func _tick() -> void:
-	var turn: int = TurnManager.current_turn
+	# Score the turn just resolved (NOT TurnManager.current_turn, which has already
+	# ticked to the next turn by the time turn_resolution_completed fires).
+	var turn: int = _scored_turn
 	# Autarkic: any market buy this turn (any category) resets the streak.
 	var bought_any := false
 	for c in PURCHASE_CATEGORIES:
@@ -250,16 +260,17 @@ func _richest_metric() -> float:
 		sum += float(v)
 	return sum / float(richest_window.size())
 
-# Distinct player-owned tiles holding a non-infrastructure building (spec §5.4).
-# NOTE: `category` on the building dict is a numeric code, not the word
-# "infrastructure" — the reliable discriminator is the `building_type` array.
+# Distinct player-owned tiles holding a non-infrastructure building (spec §5.4):
+# Catalog.get_building(id).category != "infrastructure". The category field is the
+# lowercased building_category string ("production"/"infrastructure"/"power"/...), so
+# roads/rail/pipes/cables/ports drop out while power, battery and landfill all count.
 func _count_widest_tiles() -> int:
 	var tiles := {}
 	for inst in MatchState.buildings.values():
 		if not MatchState.is_player_owned(inst):
 			continue
 		var static_b: Dictionary = Catalog.get_building(str(inst.get("building_id", "")))
-		if "infrastructure" in (static_b.get("building_type", []) as Array):
+		if str(static_b.get("category", "")) == "infrastructure":
 			continue
 		tiles[str(inst.get("tile_id", ""))] = true
 	return tiles.size()
@@ -369,6 +380,7 @@ func _reset_fields() -> void:
 	purchases_this_turn = _zero_categories()
 	purchases_lifetime = _zero_categories()
 	_last_summary = {}
+	_scored_turn = TurnManager.current_turn
 
 func _zero_categories() -> Dictionary:
 	var d := {}
@@ -377,8 +389,10 @@ func _zero_categories() -> Dictionary:
 	return d
 
 func _refresh_breakdown() -> void:
-	var turn: int = TurnManager.current_turn
-	_last_breakdown = _build_breakdown(turn, total_for_turn(turn))
+	# Between ticks the displayed score reflects the last-scored turn (base is
+	# constant until the next resolution), so the UI stays consistent with the
+	# last emitted total.
+	_last_breakdown = _build_breakdown(_scored_turn, total_for_turn(_scored_turn))
 
 func _emit_refresh() -> void:
 	_refresh_breakdown()

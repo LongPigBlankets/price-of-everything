@@ -690,6 +690,11 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		})
 	elif emit_toast and float(sale_record.total_revenue) > 0.0:
 		MatchState.emit_stockpile_market_sale_completed(sale_record)
+	# Victory feed: this bulk / auto-sell / queued-stockpile market sale is one goods
+	# movement for the Logistics track. The production-OUTPUT sell path emits
+	# separately (via MarketState.execute_sale), so the two never double-count.
+	if int(sale_record.total_qty) > 0:
+		MatchState.goods_movement_recorded.emit("sale", "", ship_turns)
 	return sale_record
 
 func _add_summary_sale(summary: Dictionary, good_id: String, qty: int, revenue: float) -> void:

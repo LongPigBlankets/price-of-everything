@@ -50,6 +50,7 @@ func _seed_victory() -> void:
 			},
 		})
 	TurnManager.current_turn = 210                          # base 1350; total ~3882 / 4000 (in progress)
+	v._scored_turn = 210                                    # the turn the seeded score reflects
 	v._emit_refresh()
 
 func _shot(path: String) -> void:

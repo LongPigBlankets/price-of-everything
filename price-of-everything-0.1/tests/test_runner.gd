@@ -141,6 +141,7 @@ func _ready() -> void:
 	_test_victory_widest()
 	_test_victory_greenest()
 	_test_victory_total_and_win()
+	_test_victory_tick_scores_resolved_turn()
 	_test_victory_save_load()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -3672,10 +3673,10 @@ func _test_victory_richest() -> void:
 	# Best-ever capture: a great turn lifts best; a bad turn cannot claw it back.
 	VictoryState.reset()
 	TurnManager.current_turn = 50
-	VictoryState._last_summary = {"money_in": 12000.0, "money_out": 0.0}
+	VictoryState._on_turn_processed({"money_in": 12000.0, "money_out": 0.0})
 	VictoryState._tick()
 	var best_after_good := float(VictoryState.track_best["richest"])
-	VictoryState._last_summary = {"money_in": 0.0, "money_out": 0.0}
+	VictoryState._on_turn_processed({"money_in": 0.0, "money_out": 0.0})
 	VictoryState._tick()
 	_check(best_after_good > 0.0 and float(VictoryState.track_best["richest"]) >= best_after_good,
 		"victory richest: best-ever does not regress after a bad turn")
@@ -3689,8 +3690,10 @@ func _test_victory_widest() -> void:
 	MatchState.buildings["w2"] = {"building_id": "b_001", "tile_id": "t2", "owner": "player_1"}
 	MatchState.buildings["w3"] = {"building_id": "b_004", "tile_id": "t3", "owner": "player_1"}
 	MatchState.buildings["w4"] = {"building_id": "b_001", "tile_id": "t4", "owner": "ai_corp"}
-	_check(VictoryState._count_widest_tiles() == 2,
-		"victory widest: counts distinct player non-infra tiles (excludes port + NPC)")
+	# Landfill is category=production (building_type=infrastructure) -> counts per spec §5.4.
+	MatchState.buildings["w5"] = {"building_id": "b_023", "tile_id": "t5", "owner": "player_1"}
+	_check(VictoryState._count_widest_tiles() == 3,
+		"victory widest: counts player non-infra tiles incl. landfill (excludes port + NPC)")
 	# 80 distinct player tiles -> (80-30)/200 = 0.25.
 	MatchState.reset()
 	VictoryState.reset()
@@ -3725,17 +3728,34 @@ func _test_victory_total_and_win() -> void:
 	# One maxed track at turn 100: base 3000 + 1000 = 4000 -> win latches.
 	VictoryState.track_best["richest"] = 1.0
 	TurnManager.current_turn = 100
-	VictoryState._last_summary = {"money_in": 0.0, "money_out": 0.0}
+	VictoryState._on_turn_processed({"money_in": 0.0, "money_out": 0.0})
 	VictoryState._tick()
 	_check(VictoryState.won and VictoryState.won_turn == 100 and fired[0] == 1,
 		"victory win: crossing 4000 latches the win and fires victory_achieved once")
 	# Base decays to 0 by turn 300: total drops below 4000 but the win stays latched.
 	TurnManager.current_turn = 300
+	VictoryState._on_turn_processed({"money_in": 0.0, "money_out": 0.0})
 	VictoryState._tick()
 	_check(VictoryState.total_for_turn(300) < VictoryState.WIN_THRESHOLD
 		and VictoryState.won and fired[0] == 1,
 		"victory win: stays latched through base decay, with no second emit")
 	VictoryState.victory_achieved.disconnect(on_win)
+
+func _test_victory_tick_scores_resolved_turn() -> void:
+	# Regression: TurnManager increments current_turn BEFORE emitting
+	# turn_resolution_completed, so the tick must score the turn just resolved
+	# (captured at turn_processed time), not the already-incremented current_turn.
+	MatchState.reset()
+	VictoryState.reset()
+	TurnManager.current_turn = 100
+	VictoryState._on_turn_processed({"money_in": 0.0, "money_out": 0.0})  # summary belongs to turn 100
+	VictoryState.track_best["richest"] = 1.0
+	TurnManager.current_turn = 101  # the increment that lands before completion fires
+	VictoryState._on_turn_resolution_completed()
+	var b := VictoryState.get_breakdown()
+	_check(int(b["turn"]) == 100 and int(b["base"]) == 3000
+		and VictoryState.won and VictoryState.won_turn == 100,
+		"victory tick: scores resolved turn 100 (base 3000, won_turn 100), not turn 101")
 
 func _test_victory_save_load() -> void:
 	VictoryState.reset()

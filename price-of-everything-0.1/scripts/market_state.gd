@@ -118,9 +118,10 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 	if items.is_empty():
 		return {}
 
-	# Victory feed: every real sale (any path — manual/bulk/recurring/production
-	# output funnels through here) is one efficient-or-not goods movement. Sales
-	# never break the Autarkic streak (you may export freely).
+	# Victory feed: one goods movement per sale routed through execute_sale —
+	# production-output dispatch + the player/UI queue_sell & bulk sell_all_to_market.
+	# (The PROCESS sell_phase's stockpile auto-sell, production.gd _sell_stockpile_totals,
+	# is a separate path that emits its own "sale" event.) Sales never break Autarky.
 	MatchState.goods_movement_recorded.emit("sale", "", turns)
 
 	var transport_cost := 0.0
