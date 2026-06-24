@@ -92,6 +92,11 @@ func _process_production() -> void:
 	"goods_purchased_by_type": {},
 	"power_purchase_by_type": {},
 	"power_demand_by_type": {},
+	# Power produced this turn, split by generating building type (building_id ->
+	# {count, amount}). Drives the Greenest victory track (green share of the grid).
+	# Ungated by ownership so it stays on the same scope as the all-owner
+	# `power_supply` aggregate below (green / total must share a denominator).
+	"power_supply_by_type": {},
 	# Aggregates (preserved for compatibility)
 	"money_in": 0.0,
 	"money_out": 0.0,
@@ -171,6 +176,11 @@ func _process_production() -> void:
 				var output_qty: int = _effective_power_output(building, recipe)
 				Power.record_produced(str(building.get("tile_id", "")), output_qty)
 				summary.produced["power"] = summary.produced.get("power", 0) + output_qty
+				# Greenest victory track: attribute generation to its building type
+				# (mirrors the power_demand_by_type accumulation above, but ungated by
+				# ownership to match the all-owner `summary.power_supply` denominator).
+				if output_qty > 0:
+					_accumulate_by_type(summary.power_supply_by_type, str(building.get("building_id", "")), float(output_qty))
 				_record_building_output(instance_id, "power", output_qty)
 				print("[Production] Building %s produced %d Power" % [instance_id, output_qty])
 			else:
@@ -1045,7 +1055,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 			var target := need_per_turn * (lead + 1)
 			var order := target - Stockpile.get_at_tile(tile_id, good_id) - _inbound_qty(tile_id, good_id)
 			if order > 0:
-				var bought: Dictionary = MatchState.queue_buy(tile_id, good_id, order)
+				var bought: Dictionary = MatchState.queue_buy(tile_id, good_id, order, true, {"buy_kind": "input"})
 				if not bought.is_empty():
 					summary.goods_purchased_cost += float(bought.get("goods_cost", 0.0))
 					summary.transport_paid += float(bought.get("transport_cost", 0.0))
@@ -1056,7 +1066,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 	# Player-set recurring market purchases (Purchases tab), delivered to the chosen tile.
 	for rb in MatchState.recurring_buys:
 		var rgood := str(rb.get("good", ""))
-		var rbought: Dictionary = MatchState.queue_buy(str(rb.get("dest", "")), rgood, int(rb.get("qty", 0)), false)
+		var rbought: Dictionary = MatchState.queue_buy(str(rb.get("dest", "")), rgood, int(rb.get("qty", 0)), false, {"buy_kind": "input"})
 		if not rbought.is_empty():
 			summary.goods_purchased_cost += float(rbought.get("goods_cost", 0.0))
 			summary.transport_paid += float(rbought.get("transport_cost", 0.0))

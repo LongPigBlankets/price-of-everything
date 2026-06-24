@@ -132,6 +132,12 @@ signal building_upgrade_progress(instance_id: String)
 # materials already on the tile are refunded; goods still in transit are not.
 signal building_upgrade_cancelled(instance_id: String)
 signal state_reset
+## A goods movement was committed this turn (Victory-track feed). `kind` is
+## "buy" | "move" | "sale"; `category` is the buy bucket ("input" | "building" |
+## "upgrade" | "other"; "" for moves/sales); `transport_turns` is the delivery
+## delay (0 = instant). Fires once per queue_buy / queue_move / MarketState.execute_sale,
+## including 0-turn instant deliveries. Drives Logistics efficiency + Autarkic streak.
+signal goods_movement_recorded(kind: String, category: String, transport_turns: int)
 signal sell_mode_changed(new_mode: int)
 signal route_objective_changed(new_objective: int)
 signal labour_multiplier_changed(new_value: float)
@@ -1576,6 +1582,9 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, 
 	if log_oneoff:
 		for it in items:
 			log_move_shipment(source_tile, dest_tile, str(it.good_id), int(it.qty), turns)
+	# Victory feed: a tile-to-tile move is one goods movement (manifest counts once).
+	# Moves never break the Autarkic streak (you may relocate your own goods freely).
+	goods_movement_recorded.emit("move", "", turns)
 	return {"items": items, "total_qty": total_qty, "turns": turns,
 		"cost": total_cost, "source": source_tile, "dest": dest_tile, "surcharged": surcharge > 1.0}
 
@@ -1798,6 +1807,17 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 		queue_transport_shipment(shipment)
 	else:
 		Stockpile.add(dest_tile, good_id, qty)
+	# Victory feed: every successful buy (including 0-turn instant deliveries) is a
+	# goods movement. Category is derived from the optional tags so the Autarkic
+	# track can show what broke the streak (input / building / upgrade / other).
+	var buy_category := "other"
+	if extra.has("construction_instance_id"):
+		buy_category = "building"
+	elif extra.has("upgrade_instance_id"):
+		buy_category = "upgrade"
+	elif str(extra.get("buy_kind", "")) != "":
+		buy_category = str(extra.get("buy_kind", ""))
+	goods_movement_recorded.emit("buy", buy_category, turns)
 	return {"qty": qty, "turns": turns, "cost": total,
 		"goods_cost": float(qty) * unit_price, "transport_cost": transport, "port": port}
 

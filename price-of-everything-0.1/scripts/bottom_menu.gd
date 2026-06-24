@@ -62,6 +62,7 @@ var _hovered := {}        # button -> true while the mouse is over it
 @onready var mapmodes_button: Button = %MapmodesButton
 @onready var mapmodes_panel: PanelContainer = %MapModesPanel
 @onready var research_panel: Control = %ResearchPanel
+@onready var victory_panel: Control = %VictoryPanel
 @onready var top_bar: PanelContainer = %TopBar
 @onready var money_panel: PanelContainer = %MoneyPanel
 @onready var take_loan_dialog: PanelContainer = %TakeLoanDialog
@@ -97,6 +98,8 @@ func _ready() -> void:
 	mapmodes_panel.hide()
 	top_bar.money_widget_clicked.connect(_on_money_widget_clicked)
 	money_panel.hide()
+	top_bar.victory_widget_clicked.connect(_on_victory_widget_clicked)
+	victory_panel.hide()
 
 	# A button rises while its panel is open and drops when it closes. Buttons
 	# with no panel (Politics/People) and disabled buttons never rise.
@@ -230,6 +233,7 @@ func _hide_all_panels() -> void:
 	_set_panel_visible(mapmodes_panel, false)
 	_set_panel_visible(money_panel, false)
 	_set_panel_visible(research_panel, false)
+	_set_panel_visible(victory_panel, false)
 	# The mapmode good-select side panel follows the mapmodes panel.
 	var good_panel := get_node_or_null("%GoodSelectPanel")
 	if good_panel != null:
@@ -364,6 +368,15 @@ func _on_people_pressed() -> void:
 func _on_money_widget_clicked() -> void:
 	_hide_all_panels()
 	_set_panel_visible(money_panel, true)
+
+func _on_victory_widget_clicked() -> void:
+	# Toggle: clicking the top-bar score widget opens the Victory panel, or closes
+	# it if it is already the open panel.
+	if victory_panel.visible:
+		_set_panel_visible(victory_panel, false)
+	else:
+		_hide_all_panels()
+		_set_panel_visible(victory_panel, true)
 
 func _on_loan_confirmed(amount: float) -> void:
 	var ok: bool = LoanState.take_loan(amount)

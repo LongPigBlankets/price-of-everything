@@ -68,6 +68,7 @@ func export_snapshot() -> Dictionary:
 		"production": Production.export_state(),
 		"events": EventScheduler.export_state(),
 		"modifiers": Modifiers.export_state(),
+		"victory": VictoryState.export_state(),
 		"infrastructure": _collect_infrastructure(),
 		"roads": {
 			"network": RoadNetwork.instance().export_state(),
@@ -89,6 +90,8 @@ func import_snapshot(snap: Dictionary) -> void:
 	Production.import_state(snap.get("production", {}))
 	EventScheduler.import_state(snap.get("events", {}))
 	Modifiers.import_state(snap.get("modifiers", {}))
+	# Missing "victory" key (old saves) -> import_state({}) leaves a fresh zero state.
+	VictoryState.import_state(snap.get("victory", {}))
 	# roads-v2: BUILT geometry restores verbatim; planning orders resume
 	# deterministically; mid-reveal orders restart their reveal (cosmetic).
 	# Old saves carry no "roads" key — the network stays empty here and

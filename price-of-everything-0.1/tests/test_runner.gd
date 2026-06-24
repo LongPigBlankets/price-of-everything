@@ -133,6 +133,15 @@ func _ready() -> void:
 	await _test_farm_ring_continuity()
 	await _test_farm_road_routing_bias()
 	_test_refund()
+	_test_victory_base_curve()
+	_test_victory_win_curve()
+	_test_victory_autarkic()
+	_test_victory_logistics()
+	_test_victory_richest()
+	_test_victory_widest()
+	_test_victory_greenest()
+	_test_victory_total_and_win()
+	_test_victory_save_load()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -3579,6 +3588,186 @@ func _test_building_category_key() -> void:
 			"layout edge rule: b_036 recycling_plant matches 'recycl'")
 		_check(TileViewData.category_key(prec) == "manufacturing",
 			"layout category_key: b_036 -> manufacturing")
+
+# ── Victory system (scripts/victory_state.gd; docs/victory-system-spec.md §12) ──
+
+func _test_victory_base_curve() -> void:
+	VictoryState.reset()
+	_check(VictoryState.base_for_turn(1) == 3000, "victory base: turn 1 = 3000")
+	_check(VictoryState.base_for_turn(100) == 3000, "victory base: turn 100 = 3000 (flat through 100)")
+	_check(VictoryState.base_for_turn(200) == 1500, "victory base: turn 200 = 1500")
+	_check(VictoryState.base_for_turn(300) == 0, "victory base: turn 300 = 0")
+	_check(VictoryState.base_for_turn(350) == 0, "victory base: turn 350 = 0 (clamped)")
+
+func _test_victory_win_curve() -> void:
+	VictoryState.reset()
+	_check(VictoryState.base_for_turn(100) + 1000 >= VictoryState.WIN_THRESHOLD,
+		"victory curve: 1 track clears 4000 at turn 100")
+	_check(VictoryState.base_for_turn(300) + 3000 < VictoryState.WIN_THRESHOLD,
+		"victory curve: 3 tracks fall short at turn 300")
+	_check(VictoryState.base_for_turn(300) + 4000 >= VictoryState.WIN_THRESHOLD,
+		"victory curve: 4 tracks win at turn 300")
+
+func _test_victory_autarkic() -> void:
+	MatchState.reset()
+	VictoryState.reset()
+	# A buy of each category increments that category's tally (this turn + lifetime).
+	VictoryState.record_movement("buy", "input", 0)
+	VictoryState.record_movement("buy", "building", 2)
+	VictoryState.record_movement("buy", "upgrade", 0)
+	VictoryState.record_movement("buy", "other", 1)
+	_check(int(VictoryState.purchases_this_turn["input"]) == 1
+		and int(VictoryState.purchases_this_turn["building"]) == 1
+		and int(VictoryState.purchases_this_turn["upgrade"]) == 1
+		and int(VictoryState.purchases_this_turn["other"]) == 1,
+		"victory autarkic: a buy of each category increments purchases_this_turn")
+	_check(int(VictoryState.purchases_lifetime["input"]) == 1
+		and int(VictoryState.purchases_lifetime["other"]) == 1,
+		"victory autarkic: lifetime tally accumulates")
+	# A turn with any purchase resets the streak.
+	TurnManager.current_turn = 5
+	VictoryState.autarkic_streak = 9
+	VictoryState._tick()
+	_check(VictoryState.autarkic_streak == 0, "victory autarkic: a turn with any buy resets the streak")
+	# A turn with only a move or sale does NOT reset.
+	VictoryState.record_movement("move", "", 0)
+	VictoryState.record_movement("sale", "", 3)
+	VictoryState.autarkic_streak = 4
+	VictoryState._tick()
+	_check(VictoryState.autarkic_streak == 5, "victory autarkic: a move/sale-only turn keeps the streak (4 -> 5)")
+	# Progress ramps from streak 10 to 30.
+	VictoryState.autarkic_streak = 10
+	_check(absf(VictoryState._live_progress("autarkic")) < 0.001, "victory autarkic: progress 0 at streak 10")
+	VictoryState.autarkic_streak = 20
+	_check(absf(VictoryState._live_progress("autarkic") - 0.5) < 0.001, "victory autarkic: progress 0.5 at streak 20")
+	VictoryState.autarkic_streak = 30
+	_check(absf(VictoryState._live_progress("autarkic") - 1.0) < 0.001, "victory autarkic: progress caps at streak 30")
+	VictoryState.autarkic_streak = 40
+	_check(absf(VictoryState._live_progress("autarkic") - 1.0) < 0.001, "victory autarkic: progress stays capped above 30")
+
+func _test_victory_logistics() -> void:
+	VictoryState.reset()
+	# 50 efficient movements is below the 100-move gate -> progress 0.
+	for _i in range(50):
+		VictoryState.record_movement("move", "", 0)
+	_check(absf(VictoryState._live_progress("logistics")) < 0.001, "victory logistics: 0 below 100 moves")
+	# Top up to 100 total: 25 inefficient (3 turns) + 25 efficient (1 turn) -> 75/100.
+	for _i in range(25):
+		VictoryState.record_movement("buy", "input", 3)
+	for _i in range(25):
+		VictoryState.record_movement("sale", "", 1)
+	_check(VictoryState.logistics_total == 100 and VictoryState.logistics_efficient == 75,
+		"victory logistics: counts total + efficient (0/1-turn movements count as efficient)")
+	# eff 0.75 -> (0.75-0.25)/0.75 = 0.667.
+	_check(absf(VictoryState._live_progress("logistics") - (0.5 / 0.75)) < 0.001,
+		"victory logistics: 75% efficiency maps to ~0.667 progress")
+
+func _test_victory_richest() -> void:
+	MatchState.reset()
+	VictoryState.reset()
+	# Smoothed metric of a flat £7k/turn window -> (7000-2000)/10000 = 0.5.
+	VictoryState.richest_window = [7000.0, 7000.0, 7000.0, 7000.0, 7000.0]
+	_check(absf(VictoryState._live_progress("richest") - 0.5) < 0.001,
+		"victory richest: 5-turn avg of £7k maps to 0.5")
+	# Best-ever capture: a great turn lifts best; a bad turn cannot claw it back.
+	VictoryState.reset()
+	TurnManager.current_turn = 50
+	VictoryState._last_summary = {"money_in": 12000.0, "money_out": 0.0}
+	VictoryState._tick()
+	var best_after_good := float(VictoryState.track_best["richest"])
+	VictoryState._last_summary = {"money_in": 0.0, "money_out": 0.0}
+	VictoryState._tick()
+	_check(best_after_good > 0.0 and float(VictoryState.track_best["richest"]) >= best_after_good,
+		"victory richest: best-ever does not regress after a bad turn")
+
+func _test_victory_widest() -> void:
+	MatchState.reset()
+	VictoryState.reset()
+	# Two player non-infra tiles (mine), one player INFRA tile (port, excluded),
+	# one NPC tile (excluded by ownership).
+	MatchState.buildings["w1"] = {"building_id": "b_001", "tile_id": "t1", "owner": "player_1"}
+	MatchState.buildings["w2"] = {"building_id": "b_001", "tile_id": "t2", "owner": "player_1"}
+	MatchState.buildings["w3"] = {"building_id": "b_004", "tile_id": "t3", "owner": "player_1"}
+	MatchState.buildings["w4"] = {"building_id": "b_001", "tile_id": "t4", "owner": "ai_corp"}
+	_check(VictoryState._count_widest_tiles() == 2,
+		"victory widest: counts distinct player non-infra tiles (excludes port + NPC)")
+	# 80 distinct player tiles -> (80-30)/200 = 0.25.
+	MatchState.reset()
+	VictoryState.reset()
+	for i in range(80):
+		MatchState.buildings["wt%d" % i] = {"building_id": "b_001", "tile_id": "wtile%d" % i, "owner": "player_1"}
+	_check(absf(VictoryState._live_progress("widest") - 0.25) < 0.001,
+		"victory widest: 80 tiles maps to 0.25 on the [30,230] ramp")
+	MatchState.reset()
+
+func _test_victory_greenest() -> void:
+	VictoryState.reset()
+	VictoryState._resolve_green_ids()
+	# 600 MW solar of 1000 MW total -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
+	VictoryState._last_summary = {"power_supply": 1000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 600.0}}}
+	_check(absf(VictoryState._live_progress("greenest") - 0.5) < 0.001,
+		"victory greenest: 60% green share maps to 0.5")
+	# Below the 500 MW power gate -> 0.
+	VictoryState._last_summary = {"power_supply": 400, "power_supply_by_type": {"b_024": {"count": 1, "amount": 400.0}}}
+	_check(absf(VictoryState._live_progress("greenest")) < 0.001,
+		"victory greenest: under 500 MW total is gated to 0")
+	# Above the power gate but below 20% green share -> 0.
+	VictoryState._last_summary = {"power_supply": 1000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 100.0}}}
+	_check(absf(VictoryState._live_progress("greenest")) < 0.001,
+		"victory greenest: under 20% green share is gated to 0")
+
+func _test_victory_total_and_win() -> void:
+	MatchState.reset()
+	VictoryState.reset()
+	var fired := [0]
+	var on_win := func(_total: int, _turn: int) -> void: fired[0] += 1
+	VictoryState.victory_achieved.connect(on_win)
+	# One maxed track at turn 100: base 3000 + 1000 = 4000 -> win latches.
+	VictoryState.track_best["richest"] = 1.0
+	TurnManager.current_turn = 100
+	VictoryState._last_summary = {"money_in": 0.0, "money_out": 0.0}
+	VictoryState._tick()
+	_check(VictoryState.won and VictoryState.won_turn == 100 and fired[0] == 1,
+		"victory win: crossing 4000 latches the win and fires victory_achieved once")
+	# Base decays to 0 by turn 300: total drops below 4000 but the win stays latched.
+	TurnManager.current_turn = 300
+	VictoryState._tick()
+	_check(VictoryState.total_for_turn(300) < VictoryState.WIN_THRESHOLD
+		and VictoryState.won and fired[0] == 1,
+		"victory win: stays latched through base decay, with no second emit")
+	VictoryState.victory_achieved.disconnect(on_win)
+
+func _test_victory_save_load() -> void:
+	VictoryState.reset()
+	VictoryState.autarkic_streak = 15
+	VictoryState.logistics_total = 120
+	VictoryState.logistics_efficient = 90
+	VictoryState.richest_window = [5000.0, 6000.0]
+	VictoryState.track_best["richest"] = 0.5
+	VictoryState.track_best["widest"] = 0.25
+	VictoryState.score_history = [{"turn": 10, "total": 3100, "base": 3000, "tracks": {"richest": 0.1}}]
+	VictoryState.won = true
+	VictoryState.won_turn = 42
+	VictoryState.purchases_this_turn["input"] = 3
+	VictoryState.purchases_lifetime["input"] = 9
+	VictoryState.purchases_lifetime["building"] = 2
+	var snap := VictoryState.export_state()
+	VictoryState.reset()
+	_check(VictoryState.autarkic_streak == 0 and not VictoryState.won, "victory save/load: reset clears state")
+	VictoryState.import_state(snap)
+	_check(VictoryState.autarkic_streak == 15
+		and VictoryState.logistics_total == 120
+		and VictoryState.logistics_efficient == 90
+		and VictoryState.richest_window.size() == 2
+		and absf(float(VictoryState.track_best["richest"]) - 0.5) < 0.001
+		and absf(float(VictoryState.track_best["widest"]) - 0.25) < 0.001
+		and VictoryState.score_history.size() == 1
+		and VictoryState.won and VictoryState.won_turn == 42
+		and int(VictoryState.purchases_this_turn["input"]) == 3
+		and int(VictoryState.purchases_lifetime["input"]) == 9
+		and int(VictoryState.purchases_lifetime["building"]) == 2,
+		"victory save/load: export -> reset -> import round-trips every field")
+	VictoryState.reset()
 
 func _check(ok: bool, name: String) -> void:
 	if ok:
