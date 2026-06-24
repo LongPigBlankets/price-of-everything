@@ -44,6 +44,7 @@
 [ext_resource type="Script" path="res://scripts/good_select_panel.gd" id="34_goodsel"]
 [ext_resource type="Script" path="res://scripts/search_overlay.gd" id="29_search"]
 [ext_resource type="Script" path="res://scripts/research_panel.gd" id="30_research"]
+[ext_resource type="Script" path="res://scripts/victory_panel.gd" id="35_victory"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom_button_normal"]
 content_margin_left = 1.5
@@ -666,6 +667,22 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 0
 script = ExtResource("30_research")
+
+[node name="VictoryPanel" type="Control" parent="UILayer/HUD/HUDContent"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 32.0
+offset_right = -10.0
+offset_bottom = -130.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+script = ExtResource("35_victory")
 
 [node name="TopBar" type="PanelContainer" parent="UILayer/HUD" unique_id=683907918]
 unique_name_in_owner = true
