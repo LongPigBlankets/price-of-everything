@@ -293,10 +293,8 @@ func _rebuild_fields(building: Dictionary) -> void:
 	var category: String = building_data.get("category", "")
 	var is_infrastructure: bool = category == "infrastructure"
 
-	var owner_id := str(building.get("owner", ""))
-	if owner_id == "" and str(building.get("instance_id", "")) != "":
-		owner_id = str(MatchState.get_building(str(building.get("instance_id", ""))).get("owner", ""))
-	if owner_id != "" and owner_id != "player_1" and owner_id != "tile_data":
+	var owner_id := _resolve_owner_id(building)
+	if owner_id != MatchState.LOCAL_PLAYER and owner_id != "tile_data":
 		_apply_npc_mode(true)
 		if _npc_label != null:
 			var is_ruins := str(building.get("building_id", "")) == "b_031"
@@ -356,6 +354,17 @@ func _rebuild_fields(building: Dictionary) -> void:
 	_add_labour_table(building_data)
 	_add_separator()
 	_add_operation_table(building, recipe)
+
+# Authoritative ownership: re-read the live owner from MatchState by instance_id rather than
+# trusting a possibly stale/cross-wired `owner` on the passed-in dict, so this panel can never
+# disagree with the tile view (MatchState.is_player_owned). Missing owner defaults to the local
+# player (matching is_player_owned), so a not-yet-promoted construction stub — which isn't in
+# MatchState.buildings and carries no owner — resolves to the player and falls through to
+# construction mode rather than NPC-frosting.
+func _resolve_owner_id(building: Dictionary) -> String:
+	var iid := str(building.get("instance_id", ""))
+	var live: Dictionary = MatchState.get_building(iid) if iid != "" else {}
+	return str(live.get("owner", building.get("owner", MatchState.LOCAL_PLAYER)))
 
 func _build_npc_panel() -> void:
 	if _npc_panel != null:

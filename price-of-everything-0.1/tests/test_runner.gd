@@ -147,6 +147,7 @@ func _ready() -> void:
 	_test_power_instance_age()
 	_test_power_intermittency_alloc()
 	_test_intermittency_tile_aggregate()
+	_test_detail_panel_owner_resolution()
 	_test_greenest_reads_quality()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -3905,6 +3906,28 @@ func _test_intermittency_tile_aggregate() -> void:
 	Production._green_supply_by_tile = saved_green
 	Production._intermittency_by_building = saved_im
 	Power.tile_produced = saved_prod
+
+func _test_detail_panel_owner_resolution() -> void:
+	# Regression: a player building handed a stale/cross-wired owner on the passed dict must
+	# still resolve to the player (re-read from the live store), so it never renders in the
+	# NPC frosted/blurred mode. A co-located NPC building of the same type must still resolve
+	# to the NPC. (Mirrors tools/repro_npc_blur.gd, headless.)
+	var npc_iid: String = MatchState.add_building("b_002", "r_003", "tile_5_10", "Stoneshore Ironworks")
+	var player_iid: String = MatchState.add_building("b_002", "r_003", "tile_5_10", MatchState.LOCAL_PLAYER)
+	var panel = load("res://scripts/building_detail_panel.gd").new()
+	_check(panel._resolve_owner_id(MatchState.get_building(player_iid)) == MatchState.LOCAL_PLAYER,
+		"detail owner: canonical player dict -> player")
+	var poisoned: Dictionary = MatchState.get_building(player_iid).duplicate()
+	poisoned["owner"] = "Stoneshore Ironworks"
+	_check(panel._resolve_owner_id(poisoned) == MatchState.LOCAL_PLAYER,
+		"detail owner: stale-owner player dict re-resolves to player (no NPC frost)")
+	_check(panel._resolve_owner_id(MatchState.get_building(npc_iid)) == "Stoneshore Ironworks",
+		"detail owner: NPC building -> NPC owner (frost preserved)")
+	_check(panel._resolve_owner_id({"instance_id": "stub_x", "building_id": "b_002"}) == MatchState.LOCAL_PLAYER,
+		"detail owner: construction stub (not in store, no owner) -> player")
+	panel.free()
+	MatchState.buildings.erase(npc_iid)
+	MatchState.buildings.erase(player_iid)
 
 func _test_greenest_reads_quality() -> void:
 	VictoryState.reset()
