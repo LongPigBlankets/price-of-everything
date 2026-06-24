@@ -111,8 +111,8 @@ def parse_master(path):
                 if not g or g == "co2":  # strip co2 byproducts
                     continue
                 outputs.append((fix(g), q))
-            if not outputs:              # incomplete master row
-                continue
+            if not outputs and not inputs:   # truly empty master row (input-only is allowed:
+                continue                     # e.g. a battery that consumes a good but produces none)
             out.append(make_row(
                 raw["recipe_id"].strip(),
                 (raw.get("display_name") or "").strip(),

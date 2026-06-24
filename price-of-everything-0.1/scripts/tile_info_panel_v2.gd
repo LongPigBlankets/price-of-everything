@@ -22,6 +22,7 @@ const LAND_BAR := preload("res://scripts/land_bar.gd")
 const LAND_CHART := preload("res://scripts/land_chart.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIFonts := preload("res://scripts/ui_fonts.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 const GOODS_FRAME := preload("res://assets/ui/goods_frame.tres")
 const PLUS_ICON_PATH := "res://assets/icons/ui_icons/plus_off_white.png"
 # Classic TileInfoPanel footprint is 760×630; this is 120px narrower, 100px taller.
@@ -771,35 +772,64 @@ func _build_intermittency_rows(pane: VBoxContainer) -> void:
 	pane.add_child(_make_power_subrow("%d%% of power produced affected" % pct_prod, ""))
 	for i in mini(3, affected.size()):
 		var a: Dictionary = affected[i]
-		var bname := str(Catalog.get_building(str(a.get("building_id", ""))).get("display_name", a.get("building_id", "")))
-		pane.add_child(_make_power_subrow("• %s" % bname, "%d ⚡" % int(a.get("power", 0))))
+		var iid := str(a.get("iid", ""))
+		var live: Dictionary = MatchState.get_building(iid)
+		var full_name := BuildingNaming.label_for_tile(_current_tile_id, iid, str(a.get("building_id", "")), str(live.get("recipe_id", "")))
+		pane.add_child(_make_power_affected_row(full_name, iid))
 	if affected.size() > 0:
 		pane.add_child(_make_power_see_more("see more →", "green_intermittent"))
 
 	# Row 3: battery storage (green produced | consumed | capacity on tile).
 	pane.add_child(_make_power_stat("Battery storage", "%d | %d | %d ⚡" % [green_prod, green_cons, battery_cap], DS.PALETTE.ACCENT))
 
-# Indented caption sub-row (optional right-aligned numeric value).
+# Indented sub-row in normal off-white body text (matches the other power rows), with an
+# optional right-aligned numeric value.
 func _make_power_subrow(label_text: String, value_text: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
-	row.custom_minimum_size = Vector2(0, 20)
+	row.custom_minimum_size = Vector2(0, 22)
 	var indent := Control.new()
 	indent.custom_minimum_size = Vector2(16, 0)
 	row.add_child(indent)
 	var l := Label.new()
 	l.text = label_text
-	l.theme_type_variation = &"Caption"
-	l.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	l.theme_type_variation = &"Body"
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(l)
 	if value_text != "":
 		var v := Label.new()
 		v.text = value_text
 		v.theme_type_variation = &"Numeric"
-		v.add_theme_font_size_override("font_size", 12)
-		v.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+		v.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		row.add_child(v)
+	return row
+
+# Indented affected-building row: full building name (off-white body text) + a right-anchored
+# "Go to" link that opens that building's detail panel.
+func _make_power_affected_row(name_text: String, instance_id: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.custom_minimum_size = Vector2(0, 22)
+	var indent := Control.new()
+	indent.custom_minimum_size = Vector2(16, 0)
+	row.add_child(indent)
+	var l := Label.new()
+	l.text = name_text
+	l.theme_type_variation = &"Body"
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	row.add_child(l)
+	var link := Button.new()
+	link.text = "Go to →"
+	link.focus_mode = Control.FOCUS_NONE
+	link.flat = true
+	link.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
+	link.add_theme_color_override("font_hover_color", DS.PALETTE.ACCENT)
+	link.add_theme_font_size_override("font_size", 12)
+	link.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	link.pressed.connect(func(): MatchState.focus_building_requested.emit(instance_id))
+	row.add_child(link)
 	return row
 
 # Indented underlined-style "link" (flat ACCENT button) → opens the building ledger

@@ -9,7 +9,9 @@ const LEGEND_HEIGHT := 190.0
 # Power state legend rows. Fixed colours + labels for power balance mode.
 const POWER_LEGEND_ROWS: Array = [
 	{"color": Color(0.2, 0.8, 0.2), "text": "+N  Surplus (exporting)"},
-	{"color": Color(0.8, 0.2, 0.2), "text": "-N  Deficit (importing)"},
+	{"color": Color(0.95, 0.65, 0.10), "text": "-N  Deficit, self-supplied"},
+	{"color": Color(0.8, 0.2, 0.2), "text": "-N  Deficit, from national grid"},
+	{"color": Color(0.95, 0.65, 0.10), "hatch": Color(0.8, 0.2, 0.2), "text": "-N  Deficit, partly grid"},
 	{"color": Color(0.05, 0.05, 0.05), "text": "(-N)  Cables required"},
 	{"color": Color(0.5, 0.5, 0.5), "text": "Cables unused"},
 ]

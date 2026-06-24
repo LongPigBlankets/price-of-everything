@@ -148,6 +148,7 @@ func _ready() -> void:
 	_test_power_intermittency_alloc()
 	_test_intermittency_tile_aggregate()
 	_test_detail_panel_owner_resolution()
+	_test_battery_buildable()
 	_test_greenest_reads_quality()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -3906,6 +3907,22 @@ func _test_intermittency_tile_aggregate() -> void:
 	Production._green_supply_by_tile = saved_green
 	Production._intermittency_by_building = saved_im
 	Power.tile_produced = saved_prod
+
+func _test_battery_buildable() -> void:
+	# The electric battery used to be recipe-less (dropped from build panels). It now has an
+	# input-only recipe (1 lithium_battery/turn) so it resolves + appears as a buildable option.
+	var recs: Array = Catalog.get_recipes_for_building("b_028")  # recipes key by resolved building_id
+	_check(recs.size() >= 1, "battery: has a buildable recipe (was recipe-less)")
+	if recs.size() >= 1:
+		var r: Dictionary = recs[0]
+		_check(str(r.get("output_name", "")) == "", "battery: recipe is input-only (no goods output)")
+		var inputs: Array = r.get("inputs", [])
+		_check(inputs.size() == 1 and str(inputs[0].get("internal_name", "")) == "lithium_battery"
+			and str(inputs[0].get("good_id", "")) != "",
+			"battery: consumes 1 lithium_battery per turn (real good)")
+	var tvd = load("res://scripts/tile_view_data.gd")
+	var opt: Dictionary = tvd.power_build_option("battery", "", "tile_5_10", {})
+	_check(str(opt.get("recipe_id", "")) != "", "battery: build option resolves a recipe (no longer 'not available')")
 
 func _test_detail_panel_owner_resolution() -> void:
 	# Regression: a player building handed a stale/cross-wired owner on the passed dict must

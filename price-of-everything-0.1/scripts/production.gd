@@ -31,6 +31,10 @@ var _intermittency_by_tile: Dictionary = {}
 # Accumulated in the cascade power branch (already cable-capped); consumed by the
 # post-cascade intermittency allocation. Reset each turn.
 var _green_supply_by_tile: Dictionary = {}
+# Every power producer this turn per tile: {tile -> [{iid, building_id, qty, quality}]}.
+# Used by get_power_sources() to attribute a consumer's draw to specific source buildings
+# (on demand, when the building detail panel opens — not in the per-turn hot path). Reset each turn.
+var _power_sources_by_tile: Dictionary = {}
 var summary := {
 	# ... existing fields ...
 	"interest_paid": 0.0,
@@ -76,6 +80,7 @@ func _process_production() -> void:
 	_inbound_delivery_this_turn.clear()
 	_output_buffer.clear()
 	_green_supply_by_tile.clear()  # _intermittency_by_* persist (they are last turn's)
+	_power_sources_by_tile.clear()
 	MatchState.reset_tile_sales_for_turn()  # per-turn sales figure, not accumulated
 	TurnProfiler.section_begin("power_reset")
 	Power.reset_for_turn()
@@ -203,6 +208,12 @@ func _process_production() -> void:
 					# Tag the actual (already cable-capped) generation by quality.
 					var pq: String = _power_quality(building, recipe)
 					summary.power_supply_by_quality[pq] = int(summary.power_supply_by_quality.get(pq, 0)) + output_qty
+					# Per-tile producer list (with building ids) for the on-demand "Power
+					# Source(s)" attribution shown in the building detail panel.
+					var st_src: String = str(building.get("tile_id", ""))
+					var srcs: Array = _power_sources_by_tile.get(st_src, [])
+					srcs.append({"iid": instance_id, "building_id": str(building.get("building_id", "")), "qty": output_qty, "quality": pq})
+					_power_sources_by_tile[st_src] = srcs
 					if pq != "grey":
 						var gt: String = str(building.get("tile_id", ""))
 						var ge: Dictionary = _green_supply_by_tile.get(gt, {"int": 0, "steady": 0})
@@ -1203,6 +1214,67 @@ func get_building_intermittency(instance_id: String) -> Dictionary:
 
 func get_tile_intermittency(tile_id: String) -> Dictionary:
 	return _intermittency_by_tile.get(tile_id, {})
+
+# On-demand power-source attribution for ONE consumer (called when the building detail panel
+# opens — NOT in the per-turn hot path). Attributes the building's draw to the NEAREST source
+# buildings: its green draw (from the intermittency result) to green plants, the remainder to
+# grey plants, then the leftover to the national grid. Returns
+# {green_from:{iid->qty}, grey_from:{iid->qty}, grid:float}, or {} for non-consumers. This is
+# a per-building illustrative attribution (the grid is a single settled pool), not metered flow.
+func get_power_sources(instance_id: String) -> Dictionary:
+	var b: Dictionary = MatchState.buildings.get(instance_id, {})
+	if b.is_empty():
+		return {}
+	var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+	if str(recipe.get("output_name", "")) == "power":
+		return {}
+	var demand := _effective_energy_req(b, recipe)
+	if demand <= 0:
+		return {}
+	var tile := str(b.get("tile_id", ""))
+	var green_need: float = minf(float(demand),
+		float((_intermittency_by_building.get(instance_id, {}) as Dictionary).get("green_consumed", 0.0)))
+	var green_srcs := []
+	var grey_srcs := []
+	for t in _power_sources_by_tile.keys():
+		for s in _power_sources_by_tile[t]:
+			var e := {"iid": str(s["iid"]), "tile": str(t), "qty": float(s["qty"])}
+			if str(s["quality"]) == "grey":
+				grey_srcs.append(e)
+			else:
+				green_srcs.append(e)
+	var green_from := _pull_nearest(green_srcs, tile, green_need)
+	var non_green: float = maxf(0.0, float(demand) - green_need)
+	var grey_from := _pull_nearest(grey_srcs, tile, non_green)
+	var grey_total := 0.0
+	for k in grey_from.keys():
+		grey_total += float(grey_from[k])
+	return {"green_from": green_from, "grey_from": grey_from, "grid": maxf(0.0, non_green - grey_total)}
+
+# Pull `amount` from the source buildings nearest `tile` (hex distance, then stable tile/iid
+# order), capped by each source's recorded output. Returns {iid -> qty}. Pure read.
+func _pull_nearest(srcs: Array, tile: String, amount: float) -> Dictionary:
+	var out := {}
+	if amount <= 0.0 or srcs.is_empty():
+		return out
+	srcs.sort_custom(func(a, c):
+		var da := Catalog.tile_hex_distance(tile, str(a["tile"]))
+		var dc := Catalog.tile_hex_distance(tile, str(c["tile"]))
+		if da != dc:
+			return da < dc
+		if str(a["tile"]) != str(c["tile"]):
+			return str(a["tile"]) < str(c["tile"])
+		return str(a["iid"]) < str(c["iid"]))
+	var need := amount
+	for s in srcs:
+		if need <= 0.0:
+			break
+		var take: float = minf(float(s["qty"]), need)
+		if take <= 0.0:
+			continue
+		out[str(s["iid"])] = float(out.get(s["iid"], 0.0)) + take
+		need -= take
+	return out
 
 
 func _accumulate_by_type(target: Dictionary, building_id: String, amount: float, count: int = 1) -> void:

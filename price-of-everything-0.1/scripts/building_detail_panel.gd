@@ -339,6 +339,7 @@ func _rebuild_fields(building: Dictionary) -> void:
 
 
 	_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data) * BuildingLevels.mult("maint", lvl)))
+	_add_power_sources_section(building)
 
 	if not is_infrastructure and recipe.get("output_name", "") != "power":
 		var route_info := _output_route_summary()
@@ -630,6 +631,44 @@ func _add_section_label(text: String) -> void:
 	label.text = text
 	label.modulate = Color(0.7, 0.85, 1.0)
 	fields_vbox.add_child(label)
+
+# "Power Source(s): x Green from A, B; y Grey from C; z Grey from Grid" — where this
+# building's power came from (on-demand attribution to the nearest source buildings).
+func _add_power_sources_section(building: Dictionary) -> void:
+	var src: Dictionary = Production.get_power_sources(str(building.get("instance_id", "")))
+	if src.is_empty():
+		return
+	var clauses: Array = []
+	var green_clause := _power_source_clause(src.get("green_from", {}), "Green")
+	if green_clause != "":
+		clauses.append(green_clause)
+	var grey_clause := _power_source_clause(src.get("grey_from", {}), "Grey")
+	if grey_clause != "":
+		clauses.append(grey_clause)
+	var grid: int = int(round(float(src.get("grid", 0.0))))
+	if grid > 0:
+		clauses.append("%d Grey from Grid" % grid)
+	if clauses.is_empty():
+		return
+	_add_field("Power Source(s)", "; ".join(clauses))
+
+func _power_source_clause(from: Dictionary, quality_label: String) -> String:
+	var qty := 0
+	var names: Array = []
+	for iid in from.keys():
+		qty += int(round(float(from[iid])))
+		names.append(_source_building_name(str(iid)))
+	if qty <= 0:
+		return ""
+	return "%d %s from %s" % [qty, quality_label, ", ".join(names)]
+
+func _source_building_name(instance_id: String) -> String:
+	var b: Dictionary = MatchState.get_building(instance_id)
+	if b.is_empty():
+		return instance_id
+	return BuildingNaming.label_for_tile(
+		str(b.get("tile_id", "")), instance_id,
+		str(b.get("building_id", "")), str(b.get("recipe_id", "")))
 
 func _add_inbound_inputs_section(building: Dictionary, recipe: Dictionary) -> void:
 	var inputs: Array = recipe.get("inputs", [])
@@ -2069,26 +2108,34 @@ func _update_mod_label(building: Dictionary, recipe: Dictionary) -> void:
 	var net: float = float(res.get("net", 0.0))
 	var parts: Array = res.get("parts", [])
 
+	# Intermittency derate (multiplicative, applied AFTER the additive modifier channel in
+	# _produce_outputs). Fold it into the headline so the pill reflects the true output change.
+	var iid: String = str(building.get("instance_id", ""))
+	var derate: float = float((Production.get_building_intermittency(iid) as Dictionary).get("derate", 0.0))
+	var eff: float = ((1.0 + net / 100.0) * (1.0 - derate) - 1.0) * 100.0
+
 	var color: Color
-	if net > 1.0:
+	if eff > 1.0:
 		color = STATUS_GREEN
-	elif net < -1.0:
+	elif eff < -1.0:
 		color = STATUS_RED
 	else:
 		color = MOD_WHITE
-	var net_i: int = int(round(net))
-	_mod_label.text = "%s%d%%" % ["+" if net_i > 0 else "", net_i]
+	var eff_i: int = int(round(eff))
+	_mod_label.text = "%s%d%%" % ["+" if eff_i > 0 else "", eff_i]
 	_mod_label.add_theme_color_override("font_color", color)
 
 	var tip: String
-	if parts.is_empty():
+	if parts.is_empty() and derate <= 0.0:
 		tip = "Production modifier: none active.\n%s" % _MOD_RAG_LEGEND
 	else:
 		var lines: PackedStringArray = ["Production modifiers (added together, then applied):"]
 		for p in parts:
 			var pv: float = float(p.get("pct", 0.0))
 			lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
-		lines.append("Net: %s%d%%" % ["+" if net_i > 0 else "", net_i])
+		if derate > 0.0:
+			lines.append("  -%d%%  Intermittency impact (multiplicative, applied after)" % int(round(derate * 100.0)))
+		lines.append("Net: %s%d%%" % ["+" if eff_i > 0 else "", eff_i])
 		lines.append(_MOD_RAG_LEGEND)
 		tip = "\n".join(lines)
 	_mod_label.tooltip_text = tip
