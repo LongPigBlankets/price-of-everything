@@ -154,6 +154,7 @@ var _storage_diagram: HBoxContainer = null  # battery "In use for storage" diagr
 var _sd_produced: Label = null
 var _sd_consumed: Label = null
 var _sd_maxcap: Label = null
+var _sd_icon_row: HBoxContainer = null  # loaded battery-type icon(s) inside the storage box
 const DASHED_BOX := preload("res://scripts/dashed_box.gd")
 var _fill_expanded: bool = false       # battery "Fill Storage" section open?
 var _fill_type: String = ""            # selected battery good internal_name
@@ -190,6 +191,10 @@ func _ready() -> void:
 	# status and recipe diagram (it stops being able to produce).
 	if not MatchState.deposits_changed.is_connected(_on_deposit_changed):
 		MatchState.deposits_changed.connect(_on_deposit_changed)
+	# Battery cells loading/unloading/installing on the shown tile must refresh the storage
+	# diagram (so the loaded-type icon appears the turn the cells arrive in the building).
+	if not MatchState.battery_cells_changed.is_connected(_on_battery_cells_changed):
+		MatchState.battery_cells_changed.connect(_on_battery_cells_changed)
 	# Keep a shown construction site's countdowns/ETAs live, and cross-fade to the running
 	# building when it completes.
 	if not Production.turn_processed.is_connected(_on_turn_processed_construction):
@@ -552,6 +557,14 @@ func _on_cancel_construction_pressed(instance_id: String) -> void:
 
 func _on_turn_processed_construction(_summary: Dictionary) -> void:
 	_refresh_if_showing_construction()
+
+func _on_battery_cells_changed(tile_id: String) -> void:
+	# Re-render a shown battery building when its tile's cells change (load/unload/install).
+	if not visible or _current_building.is_empty() or _showing_construction_instance != "":
+		return
+	if str(_current_building.get("tile_id", "")) == tile_id \
+			and str(Catalog.get_building(str(_current_building.get("building_id", ""))).get("category", "")) == "battery":
+		_rebuild_fields(_current_building)
 
 func _on_deposit_changed(tile_id: String) -> void:
 	# Recompute the whole panel when this building's own deposit changes.
@@ -1525,6 +1538,17 @@ func _show_storage_diagram(building: Dictionary) -> void:
 	_sd_produced.text = "%d ⚡ steadied (produced)" % int(im.get("green_produced", 0))
 	_sd_consumed.text = "%d ⚡ steadied (consumed)" % int(round(float(im.get("green_consumed", 0.0))))
 	_sd_maxcap.text = "Max capacity: %d ⚡" % MatchState.tile_battery_slots(tile_id)
+	# Show the icon of each battery type actually IN the building (not in-flight fills — those
+	# aren't in tile_battery_cells until they install, so the icon appears the turn they arrive).
+	for c in _sd_icon_row.get_children():
+		c.queue_free()
+	for gid in MatchState.get_tile_battery_cells(tile_id):
+		var icon := TextureRect.new()
+		icon.texture = GoodIcons.texture_for(str(gid), str(Catalog.get_good(str(gid)).get("internal_name", "")), true)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.custom_minimum_size = Vector2(40, 40)
+		_sd_icon_row.add_child(icon)
 
 func _build_storage_diagram() -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -1537,10 +1561,20 @@ func _build_storage_diagram() -> HBoxContainer:
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var box_vb := VBoxContainer.new()
+	box_vb.alignment = BoxContainer.ALIGNMENT_CENTER
+	box_vb.add_theme_constant_override("separation", 6)
+	# Icon(s) of the battery type(s) actually loaded in the building (populated in _show_storage_diagram).
+	_sd_icon_row = HBoxContainer.new()
+	_sd_icon_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_sd_icon_row.add_theme_constant_override("separation", 6)
+	box_vb.add_child(_sd_icon_row)
 	var box_lbl := Label.new()
 	box_lbl.text = "In use for storage"
 	box_lbl.add_theme_color_override("font_color", DIAGRAM_NAVY)
-	center.add_child(box_lbl)
+	box_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box_vb.add_child(box_lbl)
+	center.add_child(box_vb)
 	box.add_child(center)
 	row.add_child(box)
 	# Middle: a thin navy vertical line.
