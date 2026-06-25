@@ -2226,7 +2226,7 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	header.add_child(icon_holder)
 
 	# Outputs goods frame (same outer size as the icon), 5px to its right.
-	header.add_child(_make_output_goods_frame(recipe))
+	header.add_child(_make_output_goods_frame(recipe, building_id))
 
 	# Recipe name (offset 20px from the top) + cost basis (offset 20px from the bottom).
 	var info_margin := MarginContainer.new()
@@ -2355,7 +2355,7 @@ func _make_count_badge(count: int) -> Control:
 # Outputs of the recipe in a frame that is pixel-identical in size/shape to the
 # building icon (the ornate goods-frame art is a non-square 330×293 texture that
 # distorted when squashed into a square box, so the two read as different sizes).
-func _make_output_goods_frame(recipe: Dictionary) -> Control:
+func _make_output_goods_frame(recipe: Dictionary, building_id: String = "") -> Control:
 	var frame := PanelContainer.new()
 	frame.custom_minimum_size = Vector2(GROUP_TILE, GROUP_TILE)
 	frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -2369,6 +2369,17 @@ func _make_output_goods_frame(recipe: Dictionary) -> Control:
 	frame.add_theme_stylebox_override("panel", s)
 	var center := CenterContainer.new()
 	frame.add_child(center)
+	# Battery storage: show the loaded chemistry (good icon + qty pill) instead of a recipe output.
+	if str(Catalog.get_building(building_id).get("category", "")) == "battery":
+		var chem := _primary_battery_chem(_current_tile_id)
+		if chem.is_empty():
+			var e := Label.new()
+			e.text = "—"
+			e.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+			center.add_child(e)
+		else:
+			center.add_child(_output_cell({"good_id": chem.good_id, "qty": chem.qty}, GROUP_TILE - 24))
+		return frame
 	var outs := _recipe_card_outputs(recipe)
 	if outs.is_empty():
 		var l := Label.new()
@@ -2387,6 +2398,17 @@ func _make_output_goods_frame(recipe: Dictionary) -> Control:
 	for outp in outs:
 		grid.add_child(_output_cell(outp, int((GROUP_TILE - 24 - 6) / 2.0)))
 	return frame
+
+# The dominant battery chemistry loaded on a tile {good_id, qty} (or {} if none).
+func _primary_battery_chem(tile_id: String) -> Dictionary:
+	var cells: Dictionary = MatchState.get_tile_battery_cells(tile_id)
+	var best_gid := ""
+	var best_qty := 0
+	for gid in cells:
+		if int(cells[gid]) > best_qty:
+			best_qty = int(cells[gid])
+			best_gid = str(gid)
+	return {} if best_gid == "" else {"good_id": best_gid, "qty": best_qty}
 
 func _output_cell(outp: Dictionary, size: int) -> Control:
 	var ogid := str(outp.good_id)

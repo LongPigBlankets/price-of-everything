@@ -1543,13 +1543,18 @@ func _show_storage_diagram(building: Dictionary) -> void:
 	# aren't in tile_battery_cells until they install, so the icon appears the turn they arrive).
 	for c in _sd_icon_row.get_children():
 		c.queue_free()
-	for gid in MatchState.get_tile_battery_cells(tile_id):
+	var cells: Dictionary = MatchState.get_tile_battery_cells(tile_id)
+	for gid in cells:
+		var holder := Control.new()
+		holder.custom_minimum_size = FLOW_SINGLE_CELL_SIZE  # regular recipe-cell size (~110px)
 		var icon := TextureRect.new()
 		icon.texture = GoodIcons.texture_for(str(gid), str(Catalog.get_good(str(gid)).get("internal_name", "")), true)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.custom_minimum_size = FLOW_SINGLE_CELL_SIZE  # regular recipe-cell size (~110px)
-		_sd_icon_row.add_child(icon)
+		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+		holder.add_child(icon)
+		holder.add_child(_make_cell_qty_pill(int(cells[gid])))  # qty of cells in use
+		_sd_icon_row.add_child(holder)
 
 func _build_storage_diagram() -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -1618,6 +1623,30 @@ func _build_storage_diagram() -> HBoxContainer:
 	right.add_child(rows)
 	row.add_child(right)
 	return row
+
+# A small qty pill anchored to the bottom-right of a cell (cells in use).
+func _make_cell_qty_pill(qty: int) -> PanelContainer:
+	var pill := PanelContainer.new()
+	pill.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	pill.offset_left = -4
+	pill.offset_top = -4
+	pill.offset_right = -4
+	pill.offset_bottom = -4
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.0, 0.04, 0.09, 0.92)
+	style.set_corner_radius_all(10)
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	style.content_margin_top = 2
+	style.content_margin_bottom = 2
+	pill.add_theme_stylebox_override("panel", style)
+	var lbl := Label.new()
+	lbl.text = str(qty)
+	lbl.theme_type_variation = &"Numeric"
+	lbl.add_theme_color_override("font_color", Color.WHITE)
+	lbl.add_theme_font_size_override("font_size", 13)
+	pill.add_child(lbl)
+	return pill
 
 func _storage_diagram_label() -> Label:
 	var l := Label.new()
