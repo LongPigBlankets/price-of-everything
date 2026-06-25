@@ -2,9 +2,10 @@ extends Control
 
 ## The off-white goods board on the main menu. An 8x8 grid of good icons sits behind a
 ## window zoomed to its bottom-right 5x5: 5x5 is visible while 3 extra cells per row and
-## column wait off the top/left edges. Goods are shuffled in with a light touch so the same
-## good / category doesn't sit beside itself; the deck reshuffles to fill all cells from the
-## goods that have art.
+## column wait off the top/left edges. The 7x7 of cells that aren't the buffer-most row/
+## column hold UNIQUE goods (no icon repeats); repeats are only allowed on the "8th" cell
+## of each row and column - the top row and left column, which are the last cells to scroll
+## into view. Neighbours still avoid sharing a good/category where possible.
 ##
 ## Every CYCLE_INTERVAL seconds one visible line shifts by a cell, Rubik's-cube style,
 ## walking columns/rows 3..7: column 3 (down), row 3 (right), column 4, row 4, ... back to 3.
@@ -23,6 +24,11 @@ const OFFSET := COLS - VISIBLE  # 3 buffer cells held off the top/left edges, so
 								# column cycles all 8 goods (3 extras) before it repeats
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
 const CELL_PADDING := 0.08     # share of each cell kept as margin (small = big icons)
+# The buffer-most row/column: the last cells to scroll into the viewport (the buffer sits
+# off the top/left), so any goods that must repeat (more cells than goods with art) are
+# parked here. The remaining 7x7 holds only unique goods.
+const REPEAT_ROW := 0
+const REPEAT_COL := 0
 
 const CYCLE_INTERVAL := 3.0    # seconds between slides
 const SLIDE_DURATION := 1.63   # matches the slide cue length
@@ -60,26 +66,56 @@ func _draw() -> void:
 
 func _arrange_cells() -> void:
 	_layout.resize(COLS * ROWS)
+	_layout.fill(null)
 	var goods := _goods_with_icons()
 	if goods.is_empty():
-		_layout.fill(null)
 		return
-	var deck: Array = []
+	# A single shuffled deck of distinct goods. Pass 1 draws from it (removing each
+	# pick) so the 7x7 block is all-unique; pass 2 keeps drawing the leftovers, then
+	# recycles a fresh shuffled deck once they run out (the only place goods repeat).
+	var deck := goods.duplicate()
+	deck.shuffle()
+
+	# Pass 1 - the unique 7x7: every non-edge cell gets a distinct good, preferring
+	# one that doesn't sit beside the same good/category.
 	for i in COLS * ROWS:
+		if _is_repeat_cell(i):
+			continue
 		if deck.is_empty():
-			deck = goods.duplicate()
-			deck.shuffle()
-		var col := i % COLS
-		var row := i / COLS
-		var left = _layout[i - 1] if col > 0 else null
-		var up = _layout[i - COLS] if row > 0 else null
-		var pick := 0
-		for j in deck.size():
-			if not _similar(deck[j], left) and not _similar(deck[j], up):
-				pick = j
-				break
-		_layout[i] = deck[pick]
-		deck.remove_at(pick)
+			break  # fewer than 49 goods with art - leave the rest null
+		_layout[i] = deck.pop_at(_pick(deck, i))
+
+	# Pass 2 - the buffer-most row 0 and column 0: prefer any still-unused goods,
+	# then recycle the full set. These cells are last into view, so repeats hide here.
+	var recycle: Array = []
+	for i in COLS * ROWS:
+		if not _is_repeat_cell(i):
+			continue
+		if deck.is_empty():
+			if recycle.is_empty():
+				recycle = goods.duplicate()
+				recycle.shuffle()
+			_layout[i] = recycle.pop_at(_pick(recycle, i))
+		else:
+			_layout[i] = deck.pop_at(_pick(deck, i))
+
+
+func _is_repeat_cell(i: int) -> bool:
+	return (i / COLS) == REPEAT_ROW or (i % COLS) == REPEAT_COL
+
+
+# Index in `pool` of a good that doesn't sit beside the same good/category (left/up
+# neighbours already placed), or the first entry if none avoid a clash. `pool` is
+# assumed non-empty.
+func _pick(pool: Array, i: int) -> int:
+	var col := i % COLS
+	var row := i / COLS
+	var left = _layout[i - 1] if col > 0 else null
+	var up = _layout[i - COLS] if row > 0 else null
+	for j in pool.size():
+		if not _similar(pool[j], left) and not _similar(pool[j], up):
+			return j
+	return 0
 
 
 func _goods_with_icons() -> Array:

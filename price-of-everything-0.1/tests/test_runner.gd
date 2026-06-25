@@ -153,6 +153,7 @@ func _ready() -> void:
 	_test_battery_fill_pending()
 	_test_sea_land_building_rule()
 	_test_greenest_reads_quality()
+	_test_main_menu_grid_unique()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -4033,6 +4034,32 @@ func _test_greenest_reads_quality() -> void:
 		"power_supply_by_quality": {"green_intermittent": 300, "green_steady": 300, "grey": 400}}
 	_check(absf(VictoryState._live_progress("greenest") - 0.5) < 0.001,
 		"greenest: reads power_supply_by_quality (steady + intermittent count green)")
+
+# The main-menu goods board fills its 7x7 (everything but the buffer-most row 0 +
+# column 0) with UNIQUE goods; repeats are only allowed on that last-into-view edge.
+func _test_main_menu_grid_unique() -> void:
+	var grid = load("res://scripts/goods_grid.gd").new()
+	grid._arrange_cells()
+	var cols: int = grid.COLS
+	var n_goods: int = grid._goods_with_icons().size()
+	var ids := {}
+	var dup := false
+	var filled := 0
+	for i in grid._layout.size():
+		if (i / cols) == grid.REPEAT_ROW or (i % cols) == grid.REPEAT_COL:
+			continue  # the "8th" cells (top row + left column) may repeat
+		var good = grid._layout[i]
+		if good == null:
+			continue
+		filled += 1
+		var gid := str(good.get("id", ""))
+		if ids.has(gid):
+			dup = true
+		ids[gid] = true
+	_check(not dup, "main menu grid: the 7x7 block has no repeated goods")
+	_check(filled == mini((cols - 1) * (grid.ROWS - 1), n_goods),
+		"main menu grid: 7x7 filled with unique goods (%d cells, %d goods with art)" % [filled, n_goods])
+	grid.free()
 
 func _check(ok: bool, name: String) -> void:
 	if ok:
