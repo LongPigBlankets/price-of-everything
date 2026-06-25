@@ -2086,7 +2086,15 @@ func _update_cost_label(building: Dictionary) -> void:
 func _on_costs_updated() -> void:
 	if _current_building.is_empty():
 		return
-	_update_cost_label(_current_building)
+	# costs_updated fires after grid_settlement + cost_solve each turn, so this is where the
+	# RAG dots should refresh: the power/input dots reflect the just-settled power + run state
+	# and would otherwise stay stale across turns while the panel is open. (A construction site
+	# has its own refresh and no live dots, so only update its cost label.)
+	if _showing_construction_instance != "" or _current_recipe.is_empty():
+		_update_cost_label(_current_building)
+		return
+	var is_infra := str(Catalog.get_building(str(_current_building.get("building_id", ""))).get("category", "")) == "infrastructure"
+	_update_status_icons(_current_building, _current_recipe, is_infra)
 
 const _MOD_RAG_LEGEND := "White means no net effect (−1% to +1%), green a net production boost above +1%, red a net penalty below −1%."
 

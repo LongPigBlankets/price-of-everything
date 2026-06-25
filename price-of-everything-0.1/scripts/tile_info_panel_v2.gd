@@ -759,28 +759,57 @@ func _build_intermittency_rows(pane: VBoxContainer) -> void:
 	# Row 1: green power produced | consumed.
 	pane.add_child(_make_power_stat("Green produced | consumed", "%d | %d ⚡" % [green_prod, green_cons], DS.PALETTE.OK))
 
-	# Row 2: buildings affected by intermittency + indented detail.
-	pane.add_child(_make_power_stat("Buildings affected by intermittency", "%d" % affected.size(),
-		DS.PALETTE.DANGER if affected.size() > 0 else DS.PALETTE.TEXT_DIM))
-	var total_cons := int(im.get("total_consumed", 0))
-	var total_prod := int(im.get("total_produced", 0))
-	var unfirmed_cons := float(im.get("unfirmed_consumed", 0.0))
+	# Row 2: buildings affected by intermittency.
 	var green_int_prod := int(im.get("green_intermittent_produced", 0))
-	var pct_cons := int(round(100.0 * unfirmed_cons / float(total_cons))) if total_cons > 0 else 0
-	var pct_prod := int(round(100.0 * float(green_int_prod) / float(total_prod))) if total_prod > 0 else 0
-	pane.add_child(_make_power_subrow("%d%% of power consumed affected" % pct_cons, ""))
-	pane.add_child(_make_power_subrow("%d%% of power produced affected" % pct_prod, ""))
-	for i in mini(3, affected.size()):
-		var a: Dictionary = affected[i]
-		var iid := str(a.get("iid", ""))
-		var live: Dictionary = MatchState.get_building(iid)
-		var full_name := BuildingNaming.label_for_tile(_current_tile_id, iid, str(a.get("building_id", "")), str(live.get("recipe_id", "")))
-		pane.add_child(_make_power_affected_row(full_name, iid))
 	if affected.size() > 0:
+		pane.add_child(_make_power_stat("Buildings affected by intermittency", "%d" % affected.size(), DS.PALETTE.DANGER))
+		var total_cons := int(im.get("total_consumed", 0))
+		var total_prod := int(im.get("total_produced", 0))
+		var unfirmed_cons := float(im.get("unfirmed_consumed", 0.0))
+		var pct_cons := int(round(100.0 * unfirmed_cons / float(total_cons))) if total_cons > 0 else 0
+		var pct_prod := int(round(100.0 * float(green_int_prod) / float(total_prod))) if total_prod > 0 else 0
+		pane.add_child(_make_power_subrow("%d%% of power consumed affected" % pct_cons, ""))
+		pane.add_child(_make_power_subrow("%d%% of power produced affected" % pct_prod, ""))
+		for i in mini(3, affected.size()):
+			var a: Dictionary = affected[i]
+			var iid := str(a.get("iid", ""))
+			var live: Dictionary = MatchState.get_building(iid)
+			var full_name := BuildingNaming.label_for_tile(_current_tile_id, iid, str(a.get("building_id", "")), str(live.get("recipe_id", "")))
+			pane.add_child(_make_power_affected_row(full_name, iid))
 		pane.add_child(_make_power_see_more("see more →", "green_intermittent"))
+	elif battery_cap > 0 and green_int_prod > 0:
+		# Intermittent green is present but fully firmed by the tile's batteries.
+		var solved := _make_power_subrow("ALL GREEN POWER COVERED BY BATTERIES. NO INTERMITTENCY.", "")
+		(solved.get_child(1) as Label).add_theme_color_override("font_color", DS.PALETTE.OK)
+		pane.add_child(solved)
+	else:
+		pane.add_child(_make_power_stat("Buildings affected by intermittency", "0", DS.PALETTE.TEXT_DIM))
 
-	# Row 3: battery storage (green produced | consumed | capacity on tile).
-	pane.add_child(_make_power_stat("Battery storage", "%d | %d | %d ⚡" % [green_prod, green_cons, battery_cap], DS.PALETTE.ACCENT))
+	# Row 3: battery storage as a Prod / Cons / Max Storage table.
+	pane.add_child(_make_battery_table(green_prod, green_cons, battery_cap))
+
+# Battery storage shown as a small 3-column table: headers Prod / Cons / Max Storage, values below.
+func _make_battery_table(prod: int, cons: int, max_storage: int) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.add_child(_make_section_header("Battery storage", "", "ok"))
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 24)
+	for h in ["Prod", "Cons", "Max Storage"]:
+		var hl := Label.new()
+		hl.text = h
+		hl.theme_type_variation = &"Caption"
+		hl.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+		grid.add_child(hl)
+	for v in [prod, cons, max_storage]:
+		var vl := Label.new()
+		vl.text = "%d ⚡" % int(v)
+		vl.theme_type_variation = &"Numeric"
+		vl.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+		grid.add_child(vl)
+	box.add_child(grid)
+	return box
 
 # Indented sub-row in normal off-white body text (matches the other power rows), with an
 # optional right-aligned numeric value.

@@ -90,6 +90,11 @@ static func power_build_option(internal: String, hint: String, tile_id: String, 
 				break
 	if rid == "":
 		return {"enabled": false, "building_id": bid, "recipe_id": "", "reason": "This power source isn't available yet"}
+	# Terrain rule: offshore-only on sea/deep_sea, land-only otherwise.
+	if not Catalog.is_building_allowed_on_tile_type(bid, str(_tile_data.get("type", ""))):
+		var sea := str(_tile_data.get("type", "")) in ["sea", "deep_sea"]
+		return {"enabled": false, "building_id": bid, "recipe_id": rid,
+			"reason": "Can't build at sea" if sea else "Offshore only — needs a sea tile"}
 	# Land / money checks (mirrors world_map._space_check_for_build).
 	var footprint := maxf(0.0, float(bd.get("tile_size_used", 1)))
 	var used := MatchState.get_tile_space_used(tile_id)

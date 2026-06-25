@@ -90,6 +90,10 @@ const POWER_STEADY_BUILDINGS := ["hydro_power_plant"]
 # Generic power_plant recipes whose fuel is biomass/waste count as steady green.
 # (MVP good internal_names: biomass g_062, bio_waste g_073, carbonised_biomass g_076.)
 const POWER_STEADY_FUELS := ["biomass", "bio_waste", "carbonised_biomass"]
+# The ONLY buildings that may be placed on sea / deep_sea tiles. Every other building is
+# land-only, and these two are conversely water-only (cannot be placed on land). By
+# building internal_name. (offshore_wind_farm b_026, offshore_oil_platform b_033.)
+const SEA_ONLY_BUILDINGS := ["offshore_wind_farm", "offshore_oil_platform"]
 
 # --- Transport ---
 const TRANSPORT_MAX_TILES_PER_TURN: int = 2

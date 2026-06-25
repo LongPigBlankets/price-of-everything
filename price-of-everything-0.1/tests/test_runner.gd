@@ -149,6 +149,7 @@ func _ready() -> void:
 	_test_intermittency_tile_aggregate()
 	_test_detail_panel_owner_resolution()
 	_test_battery_buildable()
+	_test_sea_land_building_rule()
 	_test_greenest_reads_quality()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -3923,6 +3924,18 @@ func _test_battery_buildable() -> void:
 	var tvd = load("res://scripts/tile_view_data.gd")
 	var opt: Dictionary = tvd.power_build_option("battery", "", "tile_5_10", {})
 	_check(str(opt.get("recipe_id", "")) != "", "battery: build option resolves a recipe (no longer 'not available')")
+
+func _test_sea_land_building_rule() -> void:
+	# Only offshore wind (b_026) + offshore oil (b_033) on sea/deep_sea; those two can't go on
+	# land; every other building is land-only.
+	_check(Catalog.is_building_allowed_on_tile_type("b_026", "sea"), "sea rule: offshore wind on sea")
+	_check(Catalog.is_building_allowed_on_tile_type("b_033", "deep_sea"), "sea rule: offshore oil on deep sea")
+	_check(not Catalog.is_building_allowed_on_tile_type("b_026", "land"), "sea rule: offshore wind NOT on land")
+	_check(not Catalog.is_building_allowed_on_tile_type("b_028", "sea"), "sea rule: battery NOT on sea")
+	_check(not Catalog.is_building_allowed_on_tile_type("b_024", "deep_sea"), "sea rule: solar NOT on deep sea")
+	_check(not Catalog.is_building_allowed_on_tile_type("b_025", "sea"), "sea rule: onshore wind NOT on sea")
+	_check(Catalog.is_building_allowed_on_tile_type("b_024", "land"), "sea rule: solar on land")
+	_check(Catalog.is_building_allowed_on_tile_type("b_028", "urban"), "sea rule: battery on urban land")
 
 func _test_detail_panel_owner_resolution() -> void:
 	# Regression: a player building handed a stale/cross-wired owner on the passed dict must

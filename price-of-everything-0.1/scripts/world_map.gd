@@ -1175,6 +1175,15 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 		print("[Build] WARNING: terrain_layer.tiles has no entry for coord %s (skipping requirement check)" % str(coord))
 	else:
 		var tile_data: Dictionary = terrain_layer.tiles[coord]
+		# Terrain rule: only offshore wind / offshore oil on sea/deep_sea; everything else is
+		# land-only (and those two cannot be placed on land).
+		var tile_type := str(tile_data.get("type", ""))
+		if not Catalog.is_building_allowed_on_tile_type(building_id, tile_type):
+			var is_sea := tile_type == "sea" or tile_type == "deep_sea"
+			MatchState.request_toast(
+				"That can't be built at sea — only offshore wind and oil platforms can." if is_sea
+				else "Offshore buildings can only be built on sea or deep-sea tiles.", "warning")
+			return
 		# Deposit recipes: block on a KNOWN-bad tile (toast), but let the player build
 		# blind on an unsurveyed tile — the outcome is revealed when it finishes.
 		var req_block := _recipe_requirement_block(tile_data, recipe, tile_id)

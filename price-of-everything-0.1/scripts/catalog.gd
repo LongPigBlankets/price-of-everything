@@ -822,6 +822,15 @@ func get_building_display_name(building_id: String) -> String:
 	var b: Dictionary = _buildings_by_id.get(building_id, {})
 	return b.get("display_name", building_id)
 
+# Terrain-placement rule: sea / deep_sea tiles accept ONLY the sea-only buildings
+# (offshore wind / offshore oil); every other building is land-only and the sea-only
+# buildings conversely cannot be placed on land. tile_type is the tile's "type" field.
+func is_building_allowed_on_tile_type(building_id: String, tile_type: String) -> bool:
+	var internal: String = str(get_building(building_id).get("internal_name", ""))
+	var is_sea: bool = tile_type == "sea" or tile_type == "deep_sea"
+	var is_sea_only: bool = internal in EconomyConfig.SEA_ONLY_BUILDINGS
+	return is_sea_only if is_sea else not is_sea_only
+
 # Resolve a recipe's building reference (internal_name, possibly aliased) to a b_id.
 func _resolve_building_id(building_field: String) -> String:
 	if building_field == "":
