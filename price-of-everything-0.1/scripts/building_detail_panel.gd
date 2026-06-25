@@ -1596,6 +1596,11 @@ func _add_fill_storage_section(building: Dictionary) -> void:
 	fields_vbox.add_child(fill_btn)
 	if not _fill_expanded:
 		return
+	# A fill is in flight — show the countdown instead of the source picker.
+	var remaining := MatchState.battery_fill_turns_remaining(tile_id)
+	if remaining > 0:
+		_add_text("⏳ Battery operational in %d turn%s." % [remaining, "" if remaining == 1 else "s"])
+		return
 	var type_row := HBoxContainer.new()
 	type_row.add_theme_constant_override("separation", 8)
 	for internal in ["lithium_battery", "sodium_battery", "iron_battery"]:
@@ -1690,8 +1695,13 @@ func _confirm_battery_market_buy(tile_id: String, gid: String, need: int, gname:
 	dlg.title = "Buy battery cells"
 	dlg.dialog_text = "Buy %d %s from the market and ship them to this tile for about £%.0f?" % [need, gname, cost]
 	dlg.confirmed.connect(func() -> void:
-		MatchState.queue_buy(tile_id, gid, need)
-		MatchState.request_toast("Ordered %d %s cells for delivery to this tile." % [need, gname], "info")
+		var res := MatchState.order_battery_fill_market(tile_id, gid, need)
+		if bool(res.get("ok", false)):
+			var t := int(res.get("turns", 1))
+			MatchState.request_toast("Ordered %d %s cells — operational in %d turn%s." % [need, gname, t, "" if t == 1 else "s"], "info")
+			_rebuild_fields(_current_building)
+		else:
+			MatchState.request_toast("Couldn't order — not enough money or no route.", "caution")
 		dlg.queue_free())
 	dlg.canceled.connect(func() -> void: dlg.queue_free())
 	add_child(dlg)

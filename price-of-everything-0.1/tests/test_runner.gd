@@ -150,6 +150,7 @@ func _ready() -> void:
 	_test_detail_panel_owner_resolution()
 	_test_battery_buildable()
 	_test_battery_deposit()
+	_test_battery_fill_pending()
 	_test_sea_land_building_rule()
 	_test_greenest_reads_quality()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
@@ -3968,6 +3969,28 @@ func _test_battery_deposit() -> void:
 	MatchState.tile_battery_cells.erase(tile)
 	Stockpile.consume(tile, lgid, Stockpile.get_at_tile(tile, lgid))
 	Stockpile.consume(tile, sgid, Stockpile.get_at_tile(tile, sgid))
+
+func _test_battery_fill_pending() -> void:
+	# An in-flight fill counts down and installs the cells (no stockpile) when it arrives.
+	var tile := "tile_9_8"
+	MatchState.tile_battery_cells.erase(tile)
+	MatchState.pending_battery_fills.clear()
+	var lgid := str(Catalog.get_good_by_internal_name("lithium_battery").get("id", ""))
+	Stockpile.consume(tile, lgid, Stockpile.get_at_tile(tile, lgid))
+	var bid: String = MatchState.add_building("b_028", "r_225", tile, MatchState.LOCAL_PLAYER)
+	MatchState.pending_battery_fills.append({"tile_id": tile, "good_id": lgid, "qty": 18, "turns_left": 2})
+	_check(MatchState.battery_fill_turns_remaining(tile) == 2, "fill: 2 turns remaining")
+	_check(MatchState.tile_firming_cap(tile) == 0, "fill: nothing installed yet")
+	MatchState.tick_battery_fills()
+	_check(MatchState.battery_fill_turns_remaining(tile) == 1, "fill: ticks down to 1")
+	_check(MatchState.tile_firming_cap(tile) == 0, "fill: still in transit")
+	MatchState.tick_battery_fills()
+	_check(MatchState.battery_fill_turns_remaining(tile) == 0, "fill: countdown complete")
+	_check(MatchState.tile_firming_cap(tile) == 100, "fill: 18 cells installed → 100 ⚡ (no stockpile draw)")
+	MatchState.remove_building(bid)
+	MatchState.tile_battery_cells.erase(tile)
+	MatchState.pending_battery_fills.clear()
+	Stockpile.consume(tile, lgid, Stockpile.get_at_tile(tile, lgid))
 
 func _test_sea_land_building_rule() -> void:
 	# Only offshore wind (b_026) + offshore oil (b_033) on sea/deep_sea; those two can't go on
