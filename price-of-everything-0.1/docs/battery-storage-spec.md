@@ -19,8 +19,15 @@ This replaces the current category+level firming (`_tile_storage_cap` =
 `BATTERY_STORAGE_CAP[level]`). The level now sets a **cell-slot capacity**; firming comes from
 the cells loaded into those slots.
 
-- Housing slot capacity by level: **L1 = 100, L2 = 200, L3 = 320 slots** (reuse the existing
-  `BATTERY_STORAGE_CAP` numbers as *slot counts*).
+- Housing firming capacity by level: **L1 = 18 ⚡, L2 = 36, L3 = 54** (`BATTERY_STORAGE_CAP`).
+  Benchmark: filling a L1 building = N turns of the matching battery factory's output (6/turn) —
+  3 turns lithium, 4 sodium, 10 iron-air — so **density** (firming/cell) = lithium **1.0**,
+  sodium **0.75**, iron-air **0.3**. Lithium is densest (fewest, priciest cells); iron-air
+  bulkiest (most, cheapest). Loading is capped by firming headroom, not cell count.
+- Building data: **no power draw**, maintenance **£6/turn** (CSV 3 × the global 2× multiplier),
+  labour ~**£1.5/turn** (100 skilled + 90 high-skilled). The detail panel shows a bespoke
+  "In use for storage" diagram (dashed box → vertical line → produced/consumed steadied + max
+  capacity), not a recipe flow.
 - Tile firming capacity = `Σ (loaded cells of type × CELL_DENSITY[type])`, capped by the tile's
   total housing slots. **CELL_DENSITY starts uniform at 1.0** (1 cell = 1 firming, so a full L1
   housing = 100 firming — matches today's behaviour). Density is a future differentiation lever

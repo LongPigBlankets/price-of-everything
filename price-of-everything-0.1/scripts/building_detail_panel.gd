@@ -150,6 +150,11 @@ var _npc_label: Label = null
 var _construction_overlay: Control = null  # blur + "Under Construction" pill over the diagram
 var _npc_blur_rect: ColorRect = null  # frost over an NPC building's info fields (top_level, rect-synced)
 var _showing_construction_instance: String = ""  # instance_id while rendering construction mode
+var _storage_diagram: HBoxContainer = null  # battery "In use for storage" diagram (replaces FlowRow)
+var _sd_produced: Label = null
+var _sd_consumed: Label = null
+var _sd_maxcap: Label = null
+const DASHED_BOX := preload("res://scripts/dashed_box.gd")
 
 func _ready() -> void:
 	_is_secondary_panel = bool(get_meta("is_secondary_building_panel", false))
@@ -320,6 +325,22 @@ func _rebuild_fields(building: Dictionary) -> void:
 	var project: Dictionary = Construction.construction_projects.get(str(building.get("instance_id", "")), {})
 	if not project.is_empty():
 		_render_construction_mode(building, building_data, recipe, project)
+		return
+
+	# Battery storage: no recipe processing — show the bespoke "In use for storage" diagram
+	# (not a recipe flow), no power/route/operation rows. Just value, maintenance, labour.
+	if category == "battery":
+		_apply_npc_mode(false)
+		change_recipe_button.visible = false
+		title_label.text = _building_display_name(building, building_data, recipe) + _tile_title_suffix(building)
+		title_label.tooltip_text = _tile_title_tooltip(building)
+		location_label.visible = false
+		_show_storage_diagram(building)
+		var blvl := int(building.get("level", 1))
+		_add_field("Value", _money_text(building_data.get("base_price", 0.0)))
+		_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data) * BuildingLevels.mult("maint", blvl)))
+		_add_separator()
+		_add_labour_table(building_data)
 		return
 
 	_update_change_recipe_button(building, is_infrastructure)
@@ -1484,7 +1505,81 @@ func _style_flow_summary() -> void:
 	flow_arrow.stretch_mode = TextureRect.STRETCH_SCALE
 	flow_arrow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
+# Battery storage diagram (in place of the recipe flow): a navy dashed "In use for storage" box,
+# a vertical line, then three rows — produced steadied, consumed steadied, and max capacity.
+func _show_storage_diagram(building: Dictionary) -> void:
+	input_preview.visible = false
+	flow_arrow.visible = false
+	output_preview.visible = false
+	if _storage_diagram == null or not is_instance_valid(_storage_diagram):
+		_storage_diagram = _build_storage_diagram()
+		flow_row.add_child(_storage_diagram)
+	_storage_diagram.visible = true
+	var tile_id := str(building.get("tile_id", ""))
+	var im: Dictionary = Production.get_tile_intermittency(tile_id)
+	_sd_produced.text = "%d ⚡ steadied (produced)" % int(im.get("green_produced", 0))
+	_sd_consumed.text = "%d ⚡ steadied (consumed)" % int(round(float(im.get("green_consumed", 0.0))))
+	_sd_maxcap.text = "Max capacity: %d ⚡" % MatchState.tile_battery_slots(tile_id)
+
+func _build_storage_diagram() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# Left: dashed navy box with centred "In use for storage".
+	var box := DASHED_BOX.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var box_lbl := Label.new()
+	box_lbl.text = "In use for storage"
+	box_lbl.add_theme_color_override("font_color", DIAGRAM_NAVY)
+	center.add_child(box_lbl)
+	box.add_child(center)
+	row.add_child(box)
+	# Middle: a thin navy vertical line.
+	var line := ColorRect.new()
+	line.color = DIAGRAM_NAVY
+	line.custom_minimum_size = Vector2(2, 0)
+	line.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.add_child(line)
+	# Right: three rows — produced steadied, consumed steadied, and max capacity at the bottom.
+	var right := HBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var pad := Control.new()
+	pad.custom_minimum_size = Vector2(12, 0)
+	right.add_child(pad)
+	var rows := VBoxContainer.new()
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_sd_produced = _storage_diagram_label()
+	_sd_consumed = _storage_diagram_label()
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_sd_maxcap = _storage_diagram_label()
+	rows.add_child(_sd_produced)
+	rows.add_child(_sd_consumed)
+	rows.add_child(spacer)
+	rows.add_child(_sd_maxcap)
+	right.add_child(rows)
+	row.add_child(right)
+	return row
+
+func _storage_diagram_label() -> Label:
+	var l := Label.new()
+	l.theme_type_variation = &"Body"
+	l.add_theme_color_override("font_color", DIAGRAM_NAVY)
+	return l
+
 func _update_flow_summary(recipe: Dictionary) -> void:
+	# Restore the normal recipe flow content if the previous render was a battery storage diagram.
+	if _storage_diagram != null and is_instance_valid(_storage_diagram):
+		_storage_diagram.visible = false
+	input_preview.visible = true
+	flow_arrow.visible = true
+	output_preview.visible = true
 	var inputs: Array = (recipe.get("inputs", []) as Array).duplicate()
 	# Deposit requirements (mines etc.) show as an input cell — greyed "EXHAUSTED"
 	# once the tile's deposit runs out.

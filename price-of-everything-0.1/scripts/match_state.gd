@@ -1230,17 +1230,25 @@ func tile_battery_cells_loaded(tile_id: String) -> int:
 		n += int(q)
 	return n
 
-# Firming capacity a tile's loaded cells provide: min(slots, Σ cells × density).
+# Firming ⚡ the tile's loaded cells provide right now: Σ cells × density.
+func tile_loaded_firming(tile_id: String) -> float:
+	var f := 0.0
+	var cells := get_tile_battery_cells(tile_id)
+	for gid in cells:
+		var internal := str(Catalog.get_good(str(gid)).get("internal_name", ""))
+		f += float(cells[gid]) * float(EconomyConfig.BATTERY_CELL_DENSITY.get(internal, 0.0))
+	return f
+
+# Firming capacity a tile provides: loaded firming, capped at the housing's ⚡ capacity.
 func tile_firming_cap(tile_id: String) -> int:
 	var slots := tile_battery_slots(tile_id)
 	if slots <= 0:
 		return 0
-	var loaded := 0.0
-	var cells := get_tile_battery_cells(tile_id)
-	for gid in cells:
-		var internal := str(Catalog.get_good(str(gid)).get("internal_name", ""))
-		loaded += float(cells[gid]) * float(EconomyConfig.BATTERY_CELL_DENSITY.get(internal, 0.0))
-	return int(min(float(slots), loaded))
+	return int(min(float(slots), tile_loaded_firming(tile_id)))
+
+func _battery_density(good_id: String) -> float:
+	return float(EconomyConfig.BATTERY_CELL_DENSITY.get(
+		str(Catalog.get_good(good_id).get("internal_name", "")), 0.0))
 
 # A battery good is loadable only once its tech tier is unlocked.
 func battery_type_loadable(good_id: String) -> bool:
@@ -1250,13 +1258,18 @@ func battery_type_loadable(good_id: String) -> bool:
 	return is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK[internal]))
 
 # Load up to `qty` battery cells of `good_id` from the tile's stockpile into its housing
-# (locked capital). Capped by free slots, available stock and tech unlock. Returns loaded count.
+# (locked capital). Capped by the housing's free FIRMING headroom (cells × density must fit the
+# ⚡ capacity), available stock, and tech unlock. Returns loaded count.
 func load_battery_cells(tile_id: String, good_id: String, qty: int) -> int:
 	if qty <= 0 or not battery_type_loadable(good_id):
 		return 0
-	var free := tile_battery_slots(tile_id) - tile_battery_cells_loaded(tile_id)
+	var density := _battery_density(good_id)
+	if density <= 0.0:
+		return 0
+	var free_firming := float(tile_battery_slots(tile_id)) - tile_loaded_firming(tile_id)
+	var max_by_firming := int(floor(free_firming / density))
 	var avail := Stockpile.get_at_tile(tile_id, good_id)
-	var take := mini(mini(qty, free), avail)
+	var take := mini(mini(qty, max_by_firming), avail)
 	if take <= 0:
 		return 0
 	Stockpile.consume(tile_id, good_id, take)
@@ -1286,22 +1299,25 @@ func unload_battery_cells(tile_id: String, good_id: String, qty: int) -> int:
 	battery_cells_changed.emit(tile_id)
 	return give
 
-# When housing shrinks (battery demolished / downgraded) and loaded cells exceed the remaining
-# slots, refund the excess to the stockpile (newest types first, stable order).
+# When housing shrinks (battery demolished / downgraded) and loaded firming exceeds the remaining
+# ⚡ capacity, refund just enough cells to fit (stable type order).
 func refund_battery_cells_over_slots(tile_id: String) -> void:
-	var over := tile_battery_cells_loaded(tile_id) - tile_battery_slots(tile_id)
-	if over <= 0:
+	var over_firming := tile_loaded_firming(tile_id) - float(tile_battery_slots(tile_id))
+	if over_firming <= 0.0:
 		return
 	var cells: Dictionary = tile_battery_cells.get(tile_id, {})
 	var gids: Array = cells.keys()
 	gids.sort()
 	for gid in gids:
-		if over <= 0:
+		if over_firming <= 0.0:
 			break
-		var give := mini(over, int(cells.get(gid, 0)))
+		var density := _battery_density(str(gid))
+		if density <= 0.0:
+			continue
+		var give := mini(int(cells.get(gid, 0)), int(ceil(over_firming / density)))
 		if give > 0:
 			unload_battery_cells(tile_id, str(gid), give)
-			over -= give
+			over_firming -= float(give) * density
 
 func get_tile_land_patches_available(tile_id: String) -> int:
 	var remaining := MAX_TILE_LAND - get_tile_land_owned(tile_id)

@@ -83,7 +83,10 @@ const INTERMITTENCY_DERATE: float = 0.4
 # Abstracted per-tile firming capacity (power units) by battery building level — storage on
 # a tile converts up to this much intermittent green to steady (producer- or consumer-side).
 # Not a charge/discharge sim; just a cap check. (Batteries give 0 storage_boost otherwise.)
-const BATTERY_STORAGE_CAP := {1: 100, 2: 200, 3: 320}
+# Firming CAPACITY (⚡) of one battery housing by level. Benchmark: filling a L1 building =
+# 3 turns of a L1 lithium-battery factory's output (6/turn) → 18 cells × density 1.0 = 18 ⚡.
+# L2 doubles, L3 triples. (Balance data — rule #7.)
+const BATTERY_STORAGE_CAP := {1: 18, 2: 36, 3: 54}
 # Power-quality classification by producing building internal_name (default = grey/firm).
 const POWER_INTERMITTENT_BUILDINGS := ["solar_farm", "onshore_wind_farm", "offshore_wind_farm"]
 const POWER_STEADY_BUILDINGS := ["hydro_power_plant"]
@@ -98,10 +101,13 @@ const SEA_ONLY_BUILDINGS := ["offshore_wind_farm", "offshore_oil_platform"]
 # with BATTERY_STORAGE_CAP[level] CELL SLOTS; the player loads battery goods (locked, refundable
 # capital) into those slots and a tile's firming = min(slots, Σ loaded cells × density).
 # Density is per battery-good internal_name (uniform for now; future differentiation lever).
+# Firming ⚡ per loaded cell, by battery good. Calibrated so filling a building takes
+# 3 / 4 / 10 turns of factory output (6/turn) for lithium / sodium / iron-air — i.e. lithium is
+# the densest (fewest, priciest cells), iron-air the bulkiest (most, cheapest cells).
 const BATTERY_CELL_DENSITY := {
 	"lithium_battery": 1.0,
-	"sodium_battery": 1.0,
-	"iron_battery": 1.0,
+	"sodium_battery": 0.75,
+	"iron_battery": 0.3,
 }
 # Tech gate: battery good internal_name -> the research title that unlocks loading it.
 const BATTERY_TYPE_UNLOCK := {

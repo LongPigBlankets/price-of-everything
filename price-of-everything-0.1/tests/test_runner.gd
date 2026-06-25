@@ -3926,36 +3926,47 @@ func _test_battery_buildable() -> void:
 	_check(str(opt.get("recipe_id", "")) != "", "battery: build option resolves a recipe (no longer 'not available')")
 
 func _test_battery_deposit() -> void:
-	# Deposit model: housing = cell slots; firming = loaded cells (locked, refundable); loading
-	# is tech-gated; slots + stock cap the load; demolish refunds the cells.
+	# Deposit model: housing = 18 ⚡ firming capacity at L1; firming = Σ cells × density; loading
+	# is tech-gated and capped by firming headroom; density differs per type (lithium 1.0 →
+	# 18 cells fill, sodium 0.75 → 24 cells fill); demolish refunds the cells.
 	var tile := "tile_9_9"
 	MatchState.tile_battery_cells.erase(tile)
-	var gid := str(Catalog.get_good_by_internal_name("lithium_battery").get("id", ""))
-	Stockpile.consume(tile, gid, Stockpile.get_at_tile(tile, gid))  # clean stock
+	var lgid := str(Catalog.get_good_by_internal_name("lithium_battery").get("id", ""))
+	var sgid := str(Catalog.get_good_by_internal_name("sodium_battery").get("id", ""))
+	Stockpile.consume(tile, lgid, Stockpile.get_at_tile(tile, lgid))
+	Stockpile.consume(tile, sgid, Stockpile.get_at_tile(tile, sgid))
 	var bid: String = MatchState.add_building("b_028", "r_225", tile, MatchState.LOCAL_PLAYER)
-	_check(MatchState.tile_battery_slots(tile) == 100, "battery deposit: L1 housing = 100 cell slots")
+	_check(MatchState.tile_battery_slots(tile) == 18, "battery deposit: L1 housing = 18 firming capacity")
 	_check(Production._tile_storage_cap(tile) == 0, "battery deposit: empty housing firms nothing")
-	# Tech gate: locked type can't be loaded.
-	var had := MatchState.is_unlocked("Lithium Battery Storage")
+	var hadL := MatchState.is_unlocked("Lithium Battery Storage")
+	var hadS := MatchState.is_unlocked("Sodium Battery Storage")
 	MatchState.unlocked_titles.erase("Lithium Battery Storage")
-	Stockpile.add(tile, gid, 200)
-	_check(MatchState.load_battery_cells(tile, gid, 40) == 0, "battery deposit: locked type cannot be loaded")
+	MatchState.unlocked_titles.erase("Sodium Battery Storage")
+	Stockpile.add(tile, lgid, 200)
+	_check(MatchState.load_battery_cells(tile, lgid, 5) == 0, "battery deposit: locked type cannot be loaded")
 	MatchState.grant_unlock("Lithium Battery Storage")
-	_check(MatchState.load_battery_cells(tile, gid, 40) == 40, "battery deposit: loads 40 cells once unlocked")
-	_check(Stockpile.get_at_tile(tile, gid) == 160, "battery deposit: cells consumed from stock")
-	_check(MatchState.tile_firming_cap(tile) == 40, "battery deposit: firming = loaded cells")
-	_check(MatchState.load_battery_cells(tile, gid, 999) == 60, "battery deposit: load capped by free slots")
-	_check(MatchState.tile_firming_cap(tile) == 100, "battery deposit: full housing firms 100")
-	_check(MatchState.unload_battery_cells(tile, gid, 30) == 30, "battery deposit: unload 30")
-	_check(Stockpile.get_at_tile(tile, gid) == 130 and MatchState.tile_firming_cap(tile) == 70,
+	_check(MatchState.load_battery_cells(tile, lgid, 10) == 10, "battery deposit: loads 10 lithium cells")
+	_check(MatchState.tile_firming_cap(tile) == 10, "battery deposit: lithium density 1.0 → firming = cells")
+	_check(MatchState.load_battery_cells(tile, lgid, 999) == 8, "battery deposit: load capped by firming headroom (18)")
+	_check(MatchState.tile_firming_cap(tile) == 18, "battery deposit: full housing firms 18")
+	_check(MatchState.unload_battery_cells(tile, lgid, 5) == 5, "battery deposit: unload 5")
+	_check(MatchState.tile_firming_cap(tile) == 13 and Stockpile.get_at_tile(tile, lgid) == 187,
 		"battery deposit: unload refunds to stock + lowers firming")
+	MatchState.unload_battery_cells(tile, lgid, 13)  # clear for the density check
+	MatchState.grant_unlock("Sodium Battery Storage")
+	Stockpile.add(tile, sgid, 200)
+	_check(MatchState.load_battery_cells(tile, sgid, 999) == 24, "battery deposit: sodium density 0.75 → 24 cells fill 18 ⚡")
+	_check(MatchState.tile_firming_cap(tile) == 18, "battery deposit: full sodium also firms 18")
 	MatchState.remove_building(bid)
-	_check(MatchState.tile_firming_cap(tile) == 0 and Stockpile.get_at_tile(tile, gid) == 200,
+	_check(MatchState.tile_firming_cap(tile) == 0 and Stockpile.get_at_tile(tile, sgid) == 200,
 		"battery deposit: demolishing housing refunds all remaining cells")
-	if not had:
+	if not hadL:
 		MatchState.unlocked_titles.erase("Lithium Battery Storage")
+	if not hadS:
+		MatchState.unlocked_titles.erase("Sodium Battery Storage")
 	MatchState.tile_battery_cells.erase(tile)
-	Stockpile.consume(tile, gid, Stockpile.get_at_tile(tile, gid))
+	Stockpile.consume(tile, lgid, Stockpile.get_at_tile(tile, lgid))
+	Stockpile.consume(tile, sgid, Stockpile.get_at_tile(tile, sgid))
 
 func _test_sea_land_building_rule() -> void:
 	# Only offshore wind (b_026) + offshore oil (b_033) on sea/deep_sea; those two can't go on

@@ -795,7 +795,6 @@ func _make_battery_table(tile_id: String, prod: int, cons: int) -> VBoxContainer
 	box.add_theme_constant_override("separation", 2)
 	box.add_child(_make_section_header("Battery storage", "", "ok"))
 	var slots := MatchState.tile_battery_slots(tile_id)
-	var loaded := MatchState.tile_battery_cells_loaded(tile_id)
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 24)
@@ -813,7 +812,7 @@ func _make_battery_table(tile_id: String, prod: int, cons: int) -> VBoxContainer
 		grid.add_child(vl)
 	box.add_child(grid)
 	if slots > 0:
-		box.add_child(_make_power_subrow("Cells loaded: %d / %d slots" % [loaded, slots], ""))
+		box.add_child(_make_power_subrow("Storage in use: %d / %d ⚡" % [int(MatchState.tile_loaded_firming(tile_id)), slots], ""))
 		for internal in ["lithium_battery", "sodium_battery", "iron_battery"]:
 			box.add_child(_make_battery_load_row(tile_id, internal))
 	return box
@@ -837,15 +836,16 @@ func _make_battery_load_row(tile_id: String, internal: String) -> HBoxContainer:
 		return row
 	var loaded := int(MatchState.get_tile_battery_cells(tile_id).get(gid, 0))
 	var stock := Stockpile.get_at_tile(tile_id, gid)
-	var free := MatchState.tile_battery_slots(tile_id) - MatchState.tile_battery_cells_loaded(tile_id)
+	var free_firming := float(MatchState.tile_battery_slots(tile_id)) - MatchState.tile_loaded_firming(tile_id)
 	lbl.text = "%s: %d loaded · %d in stock" % [gname, loaded, stock]
 	lbl.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	row.add_child(lbl)
-	var can_load := stock > 0 and free > 0
+	# load_battery_cells caps by firming headroom + stock; offer the button when either could add.
+	var can_load := stock > 0 and free_firming > 0.0
 	var load_btn := _make_inline_link("Load", DS.PALETTE.ACCENT if can_load else DS.PALETTE.TEXT_DIM)
 	if can_load:
 		load_btn.pressed.connect(func() -> void:
-			MatchState.load_battery_cells(tile_id, gid, mini(stock, free))
+			MatchState.load_battery_cells(tile_id, gid, stock)
 			_refresh_pane("power"))
 	row.add_child(load_btn)
 	var unload_btn := _make_inline_link("Unload", DS.PALETTE.ACCENT if loaded > 0 else DS.PALETTE.TEXT_DIM)
