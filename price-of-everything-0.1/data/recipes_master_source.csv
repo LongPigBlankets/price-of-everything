@@ -200,4 +200,4 @@ r_198,Intensive Oil Crops Farming,farm,fertilisers,2,pure_water,4,,,,,,,,,3,oil_
 r_199,Pharmaceutical Precuror Production,bio_chem_plant,methanol,2,,,,,,,,,,,3,api,2,,,,,,,,,,,,,
 r_200,Specialty Microbe Production,bio_chem_plant,biomass,2,ethanol,1,,,,,,,,,4,spec_microbes,2,,,,,,,,,,,,,
 r_201,Methanol Production,petro_refinery,methane,2,hydrogen,1,oxygen,1,,,,,,,6,methanol,3,,,,,,,,,,,,,
-r_225,Battery Storage,battery,lithium_battery,1,,,,,,,,,,,0,,,,,,,,,,,,,,Battery,
+r_225,Battery Storage,battery,,,,,,,,,,,,,0,,,,,,,,,,,,,,Battery,

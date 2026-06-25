@@ -1,7 +1,12 @@
 # Battery Storage — design spec (decided)
 
-Status: **DESIGN AGREED, not yet implemented.** Supersedes the interim "battery consumes
-1 lithium battery/turn" recipe (r_225) added to make the building buildable.
+Status: **IMPLEMENTED.** The interim "battery consumes 1 lithium battery/turn" recipe (r_225)
+is now a no-op (the housing is buildable but processes nothing; firming comes from loaded cells).
+
+Resolved decisions: Iron Air stays **buy-only** (no production recipe). **No save migration** —
+no batteries exist on current maps; `tile_battery_cells` simply serializes going forward. Tech
+triggers: **T1** Produce 30 `lithium_battery`; **T2** Produce 50 `sodium_battery` (prereq T1);
+**T3** Build 10 battery buildings (prereq Battery Balancing).
 
 ## Concept — deposit / locked capital
 

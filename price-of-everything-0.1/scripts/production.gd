@@ -997,14 +997,9 @@ func _power_quality(building: Dictionary, recipe: Dictionary) -> String:
 
 # A tile's abstracted firming capacity = sum of its player battery buildings' caps by level.
 func _tile_storage_cap(tile_id: String) -> int:
-	var cap := 0
-	for inst in MatchState.get_buildings_on_tile(tile_id):
-		if not MatchState.is_player_owned(inst):
-			continue
-		if str(Catalog.get_building(str(inst.get("building_id", ""))).get("category", "")) != "battery":
-			continue
-		cap += int(EconomyConfig.BATTERY_STORAGE_CAP.get(int(inst.get("level", 1)), 0))
-	return cap
+	# Deposit model: firming comes from the battery CELLS loaded into the tile's housing, not
+	# the housing alone (docs/battery-storage-spec.md). MatchState owns the slot + cell math.
+	return MatchState.tile_firming_cap(tile_id)
 
 # Last turn's profit margin for a consumer, snapped to 2dp (deterministic tiebreak):
 # (price - unit_cost) * output_qty from the previous CostSolver solve. 0.0 when unsolved

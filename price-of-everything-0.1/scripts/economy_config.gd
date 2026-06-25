@@ -94,6 +94,21 @@ const POWER_STEADY_FUELS := ["biomass", "bio_waste", "carbonised_biomass"]
 # land-only, and these two are conversely water-only (cannot be placed on land). By
 # building internal_name. (offshore_wind_farm b_026, offshore_oil_platform b_033.)
 const SEA_ONLY_BUILDINGS := ["offshore_wind_farm", "offshore_oil_platform"]
+# Battery storage = deposit model (docs/battery-storage-spec.md). A battery building is housing
+# with BATTERY_STORAGE_CAP[level] CELL SLOTS; the player loads battery goods (locked, refundable
+# capital) into those slots and a tile's firming = min(slots, Σ loaded cells × density).
+# Density is per battery-good internal_name (uniform for now; future differentiation lever).
+const BATTERY_CELL_DENSITY := {
+	"lithium_battery": 1.0,
+	"sodium_battery": 1.0,
+	"iron_battery": 1.0,
+}
+# Tech gate: battery good internal_name -> the research title that unlocks loading it.
+const BATTERY_TYPE_UNLOCK := {
+	"lithium_battery": "Lithium Battery Storage",
+	"sodium_battery": "Sodium Battery Storage",
+	"iron_battery": "Iron Air Long Duration Storage",
+}
 
 # --- Transport ---
 const TRANSPORT_MAX_TILES_PER_TURN: int = 2

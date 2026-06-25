@@ -648,11 +648,15 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 		})
 
 	# --- Promotion gate ---
-	# Active only if the building resolves, there's at least one input OR output, and EVERY
-	# input + output is an existing good. Output-less recipes are allowed (a storage/consumer
-	# building such as a battery consumes a good per turn but produces none). Otherwise dormant.
+	# Active only if the building resolves and EVERY input + output is an existing good. A recipe
+	# normally needs at least one input or output, EXCEPT storage (battery) buildings: their
+	# housing exists to be built and loaded with battery cells (see docs/battery-storage-spec.md),
+	# not to process goods, so a no-op recipe is allowed for them. Otherwise the recipe is dormant.
 	var resolved_building_id := _resolve_building_id(raw.get("building_id", ""))
-	if resolved_building_id == "" or (outputs.is_empty() and inputs.is_empty()):
+	if resolved_building_id == "":
+		return {}
+	if outputs.is_empty() and inputs.is_empty() \
+			and str(_buildings_by_id.get(resolved_building_id, {}).get("category", "")) != "battery":
 		return {}
 	for inp in inputs:
 		if inp.good_id == "":

@@ -785,14 +785,17 @@ func _build_intermittency_rows(pane: VBoxContainer) -> void:
 	else:
 		pane.add_child(_make_power_stat("Buildings affected by intermittency", "0", DS.PALETTE.TEXT_DIM))
 
-	# Row 3: battery storage as a Prod / Cons / Max Storage table.
-	pane.add_child(_make_battery_table(green_prod, green_cons, battery_cap))
+	# Row 3: battery storage table + per-type cell load/unload (deposit model).
+	pane.add_child(_make_battery_table(_current_tile_id, green_prod, green_cons))
 
-# Battery storage shown as a small 3-column table: headers Prod / Cons / Max Storage, values below.
-func _make_battery_table(prod: int, cons: int, max_storage: int) -> VBoxContainer:
+# Battery storage: Prod / Cons / Max Storage table (Max Storage = the tile's live firming
+# capacity), then per-type cell load/unload controls when there is battery housing here.
+func _make_battery_table(tile_id: String, prod: int, cons: int) -> VBoxContainer:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	box.add_child(_make_section_header("Battery storage", "", "ok"))
+	var slots := MatchState.tile_battery_slots(tile_id)
+	var loaded := MatchState.tile_battery_cells_loaded(tile_id)
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 24)
@@ -802,14 +805,68 @@ func _make_battery_table(prod: int, cons: int, max_storage: int) -> VBoxContaine
 		hl.theme_type_variation = &"Caption"
 		hl.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
 		grid.add_child(hl)
-	for v in [prod, cons, max_storage]:
+	for v in [prod, cons, MatchState.tile_firming_cap(tile_id)]:
 		var vl := Label.new()
 		vl.text = "%d ⚡" % int(v)
 		vl.theme_type_variation = &"Numeric"
 		vl.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 		grid.add_child(vl)
 	box.add_child(grid)
+	if slots > 0:
+		box.add_child(_make_power_subrow("Cells loaded: %d / %d slots" % [loaded, slots], ""))
+		for internal in ["lithium_battery", "sodium_battery", "iron_battery"]:
+			box.add_child(_make_battery_load_row(tile_id, internal))
 	return box
+
+# One battery-type row: name + loaded/in-stock, with Load / Unload links (or a locked hint).
+func _make_battery_load_row(tile_id: String, internal: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.custom_minimum_size = Vector2(0, 22)
+	var indent := Control.new()
+	indent.custom_minimum_size = Vector2(16, 0)
+	row.add_child(indent)
+	var gid := str(Catalog.get_good_by_internal_name(internal).get("id", ""))
+	var gname := str(Catalog.get_good(gid).get("display_name", internal))
+	var lbl := Label.new()
+	lbl.theme_type_variation = &"Body"
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if not MatchState.is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(internal, ""))):
+		lbl.text = "🔒 %s — %s" % [gname, str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(internal, "locked"))]
+		lbl.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+		row.add_child(lbl)
+		return row
+	var loaded := int(MatchState.get_tile_battery_cells(tile_id).get(gid, 0))
+	var stock := Stockpile.get_at_tile(tile_id, gid)
+	var free := MatchState.tile_battery_slots(tile_id) - MatchState.tile_battery_cells_loaded(tile_id)
+	lbl.text = "%s: %d loaded · %d in stock" % [gname, loaded, stock]
+	lbl.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	row.add_child(lbl)
+	var can_load := stock > 0 and free > 0
+	var load_btn := _make_inline_link("Load", DS.PALETTE.ACCENT if can_load else DS.PALETTE.TEXT_DIM)
+	if can_load:
+		load_btn.pressed.connect(func() -> void:
+			MatchState.load_battery_cells(tile_id, gid, mini(stock, free))
+			_refresh_pane("power"))
+	row.add_child(load_btn)
+	var unload_btn := _make_inline_link("Unload", DS.PALETTE.ACCENT if loaded > 0 else DS.PALETTE.TEXT_DIM)
+	if loaded > 0:
+		unload_btn.pressed.connect(func() -> void:
+			MatchState.unload_battery_cells(tile_id, gid, loaded)
+			_refresh_pane("power"))
+	row.add_child(unload_btn)
+	return row
+
+# Small flat text-link button.
+func _make_inline_link(text: String, color: Color) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.flat = true
+	b.add_theme_color_override("font_color", color)
+	b.add_theme_color_override("font_hover_color", color)
+	b.add_theme_font_size_override("font_size", 12)
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	return b
 
 # Indented sub-row in normal off-white body text (matches the other power rows), with an
 # optional right-aligned numeric value.
