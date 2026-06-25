@@ -16,6 +16,25 @@ var _inbound_delivery_this_turn: Dictionary = {}
 # This turn's same-tile (0-turn) outputs, merged into stockpiles AFTER production
 # so a good produced this turn can't be consumed by another building the same turn.
 var _output_buffer: Array = []
+# Per-building intermittency result, instance_id -> {derate (0..1), green_consumed,
+# unfirmed_intermittent, steady_consumed, demand}. Computed AFTER the cascade from this
+# turn's actuals (which buildings ran + green actually generated); the derate is applied
+# NEXT turn in _produce_outputs — a 1-turn lag that keeps it exact (no phantom/starved
+# consumers, no over-cap green estimate). Persists across turns; read by the UI via
+# get_building_intermittency() (ledger green-power filters) + get_tile_intermittency().
+var _intermittency_by_building: Dictionary = {}
+# Per-tile intermittency aggregate, tile_id -> {green_produced, green_intermittent_produced,
+# total_produced, green_consumed, total_consumed, unfirmed_consumed, battery_cap, affected:
+# [{iid, building_id, power}]}. Derived alongside _intermittency_by_building for the tile view.
+var _intermittency_by_tile: Dictionary = {}
+# Green power actually generated this turn per tile, by quality {tile -> {int, steady}}.
+# Accumulated in the cascade power branch (already cable-capped); consumed by the
+# post-cascade intermittency allocation. Reset each turn.
+var _green_supply_by_tile: Dictionary = {}
+# Every power producer this turn per tile: {tile -> [{iid, building_id, qty, quality}]}.
+# Used by get_power_sources() to attribute a consumer's draw to specific source buildings
+# (on demand, when the building detail panel opens — not in the per-turn hot path). Reset each turn.
+var _power_sources_by_tile: Dictionary = {}
 var summary := {
 	# ... existing fields ...
 	"interest_paid": 0.0,
@@ -60,6 +79,8 @@ func _process_production() -> void:
 	_building_turn_reports.clear()
 	_inbound_delivery_this_turn.clear()
 	_output_buffer.clear()
+	_green_supply_by_tile.clear()  # _intermittency_by_* persist (they are last turn's)
+	_power_sources_by_tile.clear()
 	MatchState.reset_tile_sales_for_turn()  # per-turn sales figure, not accumulated
 	TurnProfiler.section_begin("power_reset")
 	Power.reset_for_turn()
@@ -92,10 +113,13 @@ func _process_production() -> void:
 	"goods_purchased_by_type": {},
 	"power_purchase_by_type": {},
 	"power_demand_by_type": {},
+	# Power generated this turn split by QUALITY (the green/grey + intermittent/steady
+	# flags layered on top of `power`). Drives Greenest + the intermittency UI.
+	"power_supply_by_quality": {"green_intermittent": 0, "green_steady": 0, "grey": 0},
 	# Power produced this turn, split by generating building type (building_id ->
 	# {count, amount}). Drives the Greenest victory track (green share of the grid).
-	# Ungated by ownership so it stays on the same scope as the all-owner
-	# `power_supply` aggregate below (green / total must share a denominator).
+	# Accumulated in the player-only cascade loop, the same scope as the `power_supply`
+	# aggregate below (green / total must share a denominator).
 	"power_supply_by_type": {},
 	# Aggregates (preserved for compatibility)
 	"money_in": 0.0,
@@ -176,11 +200,28 @@ func _process_production() -> void:
 				var output_qty: int = _effective_power_output(building, recipe)
 				Power.record_produced(str(building.get("tile_id", "")), output_qty)
 				summary.produced["power"] = summary.produced.get("power", 0) + output_qty
-				# Greenest victory track: attribute generation to its building type
-				# (mirrors the power_demand_by_type accumulation above, but ungated by
-				# ownership to match the all-owner `summary.power_supply` denominator).
+				# Greenest victory track: attribute generation to its building type. The
+				# enclosing cascade loop is already player-only, so this shares the
+				# player-only scope of summary.power_supply (the green/total denominator).
 				if output_qty > 0:
 					_accumulate_by_type(summary.power_supply_by_type, str(building.get("building_id", "")), float(output_qty))
+					# Tag the actual (already cable-capped) generation by quality.
+					var pq: String = _power_quality(building, recipe)
+					summary.power_supply_by_quality[pq] = int(summary.power_supply_by_quality.get(pq, 0)) + output_qty
+					# Per-tile producer list (with building ids) for the on-demand "Power
+					# Source(s)" attribution shown in the building detail panel.
+					var st_src: String = str(building.get("tile_id", ""))
+					var srcs: Array = _power_sources_by_tile.get(st_src, [])
+					srcs.append({"iid": instance_id, "building_id": str(building.get("building_id", "")), "qty": output_qty, "quality": pq})
+					_power_sources_by_tile[st_src] = srcs
+					if pq != "grey":
+						var gt: String = str(building.get("tile_id", ""))
+						var ge: Dictionary = _green_supply_by_tile.get(gt, {"int": 0, "steady": 0})
+						if pq == "green_intermittent":
+							ge["int"] = int(ge["int"]) + output_qty
+						else:
+							ge["steady"] = int(ge["steady"]) + output_qty
+						_green_supply_by_tile[gt] = ge
 				_record_building_output(instance_id, "power", output_qty)
 				print("[Production] Building %s produced %d Power" % [instance_id, output_qty])
 			else:
@@ -227,6 +268,11 @@ func _process_production() -> void:
 				building.instance_id, missing_msg
 			])
 	TurnProfiler.section_end("starvation_report")
+
+	# === POWER INTERMITTENCY (recompute the derate for NEXT turn from this turn's actuals) ===
+	TurnProfiler.section_begin("power_alloc")
+	_compute_power_intermittency()
+	TurnProfiler.section_end("power_alloc")
 
 	# === GRID SETTLEMENT ===
 	TurnProfiler.section_begin("grid_settlement")
@@ -465,6 +511,11 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		}
 		output_qty = int(round(Modifiers.apply("recipe_output", recipe_id, float(output_qty), mod_ctx)))
 		output_qty = int(round(float(output_qty) * BuildingLevels.mult("output", int(building.get("level", 1)))))
+		# Intermittency: derate output that relies on unfirmed intermittent green power
+		# (0 for grey/steady/no-power buildings; set by _compute_power_intermittency).
+		var power_derate: float = float((_intermittency_by_building.get(building.instance_id, {}) as Dictionary).get("derate", 0.0))
+		if power_derate > 0.0:
+			output_qty = int(round(float(output_qty) * (1.0 - power_derate)))
 		if output_qty <= 0:
 			continue
 
@@ -928,6 +979,298 @@ func _effective_energy_req_f(building: Dictionary, recipe: Dictionary) -> float:
 	var bid: String = str(building.get("building_id", ""))
 	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
 	return eff * BuildingLevels.mult("energy", int(building.get("level", 1)))
+
+# ── Power intermittency (green/grey quality flags layered on top of `power`) ────
+
+# Classify a power-producing building's output quality: "green_intermittent" (solar/wind),
+# "green_steady" (hydro, or a generic power_plant burning biomass/waste), else "grey" (firm).
+func _power_quality(building: Dictionary, recipe: Dictionary) -> String:
+	var internal := str(Catalog.get_building(str(building.get("building_id", ""))).get("internal_name", ""))
+	if internal in EconomyConfig.POWER_INTERMITTENT_BUILDINGS:
+		return "green_intermittent"
+	if internal in EconomyConfig.POWER_STEADY_BUILDINGS:
+		return "green_steady"
+	for inp in recipe.get("inputs", []):
+		if str(inp.get("internal_name", "")) in EconomyConfig.POWER_STEADY_FUELS:
+			return "green_steady"
+	return "grey"
+
+# A tile's abstracted firming capacity = sum of its player battery buildings' caps by level.
+func _tile_storage_cap(tile_id: String) -> int:
+	# Deposit model: firming comes from the battery CELLS loaded into the tile's housing, not
+	# the housing alone (docs/battery-storage-spec.md). MatchState owns the slot + cell math.
+	return MatchState.tile_firming_cap(tile_id)
+
+# Last turn's profit margin for a consumer, snapped to 2dp (deterministic tiebreak):
+# (price - unit_cost) * output_qty from the previous CostSolver solve. 0.0 when unsolved
+# (turn 1 / post-load) — those fall through to the instance-age tiebreak.
+func _consumer_profit_key(iid: String) -> float:
+	var bd: Dictionary = CostSolver.last_result.get("per_building", {}).get(iid, {})
+	if bd.is_empty():
+		return 0.0
+	var gid := str(bd.get("output_good_id", ""))
+	if gid == "":
+		return 0.0
+	var price := float(MarketState.get_price(gid))
+	if price <= 0.0:
+		price = float(Catalog.get_base_price(gid))
+	return snappedf((price - float(bd.get("unit_cost", 0.0))) * float(bd.get("output_qty", 0)), 0.01)
+
+# Instance creation order from "inst_<building_id>_<hex>" — lower = older (highest priority).
+func _instance_age(iid: String) -> int:
+	var parts := iid.split("_")
+	if parts.is_empty():
+		return 0
+	return parts[parts.size() - 1].hex_to_int()
+
+# Post-cascade: recompute the per-building intermittency derate from THIS turn's actuals —
+# the buildings that actually RAN (last_turn_run) and the green actually generated per tile
+# (_green_supply_by_tile, already cable-capped). Stored for NEXT turn (read in _produce_outputs).
+# Using actuals (not a pre-cascade estimate) avoids phantom/starved consumers soaking up green
+# and avoids over-counting green on tiles whose plants exceed the cable export cap.
+func _compute_power_intermittency() -> void:
+	var green_sources := {}  # tile -> {"int": units, "steady": units}
+	for tile in _green_supply_by_tile.keys():
+		green_sources[tile] = (_green_supply_by_tile[tile] as Dictionary).duplicate()
+	var consumers := []
+	for iid in last_turn_run.keys():
+		var b: Dictionary = MatchState.buildings.get(iid, {})
+		if b.is_empty():
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		if str(recipe.get("output_name", "")) == "power":
+			continue
+		var demand := _effective_energy_req(b, recipe)
+		if demand <= 0:
+			continue
+		consumers.append({
+			"iid": str(iid), "tile": str(b.get("tile_id", "")), "demand": float(demand),
+			"building_id": str(b.get("building_id", "")),
+			"level": int(b.get("level", 1)), "profit": _consumer_profit_key(str(iid)),
+			"age": _instance_age(str(iid)),
+		})
+	var tile_caps := {}
+	for tile in green_sources.keys():
+		tile_caps[tile] = _tile_storage_cap(tile)
+	for cons in consumers:
+		var ct := str(cons["tile"])
+		if not tile_caps.has(ct):
+			tile_caps[ct] = _tile_storage_cap(ct)
+	_intermittency_by_building = _allocate_power_derates(green_sources, consumers, tile_caps)
+	_intermittency_by_tile = _aggregate_tile_intermittency(consumers)
+
+# Pure allocator (deep-copies its inputs; hex distance is string arithmetic — no scene deps).
+# Firms intermittent green per tile, pushes each source's green to consumers nearest-first by
+# priority (proportional int/steady mix), firms the received intermittent per consuming tile
+# (highest-priority consumer first), and returns, for each consumer that drew any green,
+# {iid -> {derate, green_consumed, unfirmed_intermittent, steady_consumed, demand}}.
+# green_sources: tile -> {int, steady}. consumers: {iid, tile, demand, level, profit, age}.
+# tile_caps: tile -> firming capacity.
+func _allocate_power_derates(green_sources: Dictionary, consumers: Array, tile_caps: Dictionary) -> Dictionary:
+	if consumers.is_empty():
+		return {}
+	var sources: Dictionary = green_sources.duplicate(true)  # don't mutate the caller's dicts
+	var cap_left := {}  # tile -> remaining firming cap (float, for fractional consumer firming)
+	for t in tile_caps.keys():
+		cap_left[t] = float(tile_caps[t])
+	# Producer-side firming: intermittent -> steady, up to the tile's cap (green is integer).
+	for tile in sources.keys():
+		var e: Dictionary = sources[tile]
+		var firm: int = mini(int(cap_left.get(tile, 0.0)), int(e["int"]))
+		if firm > 0:
+			e["int"] = int(e["int"]) - firm
+			e["steady"] = int(e["steady"]) + firm
+			cap_left[tile] = float(cap_left[tile]) - float(firm)
+	# Per-consumer running totals of green / intermittent received.
+	var recv := {}
+	for cons in consumers:
+		recv[str(cons["iid"])] = {"green": 0.0, "int": 0.0}
+	# Push each source's green to consumers nearest-first, then L3>L2>L1, then most
+	# profitable (2dp), then oldest. Sources in stable tile order for determinism.
+	var src_tiles: Array = sources.keys()
+	src_tiles.sort()
+	for src in src_tiles:
+		var e: Dictionary = sources[src]
+		var i_pool := float(e["int"])
+		var s_pool := float(e["steady"])
+		if i_pool + s_pool <= 0.0:
+			continue
+		var order: Array = consumers.duplicate()
+		order.sort_custom(func(a, c): return _consumer_less(src, a, c))
+		for cons in order:
+			var g_left := i_pool + s_pool
+			if g_left <= 0.0:
+				break
+			var r: Dictionary = recv[str(cons["iid"])]
+			var room := float(cons["demand"]) - float(r["green"])
+			if room <= 0.0:
+				continue
+			var give: float = minf(room, g_left)
+			var int_give: float = give * (i_pool / g_left)
+			r["green"] = float(r["green"]) + give
+			r["int"] = float(r["int"]) + int_give
+			i_pool -= int_give
+			s_pool -= (give - int_give)
+	# Consumer-side firming + final derate, in priority order so the highest-priority
+	# same-tile consumer escapes the derate first when storage is scarce.
+	var firm_order: Array = consumers.duplicate()
+	firm_order.sort_custom(_firming_less)
+	var result := {}
+	for cons in firm_order:
+		var iid := str(cons["iid"])
+		var green: float = float(recv[iid]["green"])
+		if green <= 0.0:
+			continue  # drew no green at all — not relevant to intermittency or the filters
+		var unfirmed: float = float(recv[iid]["int"])
+		var tile := str(cons["tile"])
+		var cap := float(cap_left.get(tile, 0.0))
+		if cap > 0.0 and unfirmed > 0.0:
+			var firm := minf(cap, unfirmed)
+			unfirmed -= firm
+			cap_left[tile] = cap - firm  # exact decrement (no ceil over-charge)
+		var demand: float = float(cons["demand"])
+		var derate: float = 0.0
+		if demand > 0.0:
+			derate = EconomyConfig.INTERMITTENCY_DERATE * clampf(unfirmed / demand, 0.0, 1.0)
+		result[iid] = {
+			"derate": derate,
+			"green_consumed": green,
+			"unfirmed_intermittent": unfirmed,
+			"steady_consumed": green - unfirmed,
+			"demand": demand,
+		}
+	return result
+
+# Consumer ordering for a source tile: nearest, then the tile-agnostic priority below.
+func _consumer_less(src: String, a: Dictionary, c: Dictionary) -> bool:
+	var da := Catalog.tile_hex_distance(src, str(a["tile"]))
+	var dc := Catalog.tile_hex_distance(src, str(c["tile"]))
+	if da != dc:
+		return da < dc
+	return _firming_less(a, c)
+
+# Tile-agnostic priority: highest level, then most profitable (exact compare on the
+# 2dp-snapped value), then oldest instance — a total order (age is unique per building).
+func _firming_less(a: Dictionary, c: Dictionary) -> bool:
+	if int(a["level"]) != int(c["level"]):
+		return int(a["level"]) > int(c["level"])
+	if float(a["profit"]) != float(c["profit"]):
+		return float(a["profit"]) > float(c["profit"])
+	return int(a["age"]) < int(c["age"])
+
+# Roll the per-building result up per tile for the tile-view Power section: green produced
+# (and the intermittent share), total produced (from the cascade), green/total consumed,
+# unfirmed-intermittent consumed, battery cap, and the list of affected buildings.
+func _aggregate_tile_intermittency(consumers: Array) -> Dictionary:
+	var by_tile := {}
+	# Seed every producing tile with its green generation + total produced this turn.
+	for tile in _green_supply_by_tile.keys():
+		var e: Dictionary = _green_supply_by_tile[tile]
+		var t: Dictionary = _new_tile_intermittency(str(tile))
+		t["green_intermittent_produced"] = int(e.get("int", 0))
+		t["green_produced"] = int(e.get("int", 0)) + int(e.get("steady", 0))
+		t["total_produced"] = int(Power.tile_produced.get(tile, 0))
+		by_tile[tile] = t
+	# Fold each consumer's green draw / unfirmed share into its tile.
+	for cons in consumers:
+		var tile := str(cons["tile"])
+		if not by_tile.has(tile):
+			var nt: Dictionary = _new_tile_intermittency(tile)
+			nt["total_produced"] = int(Power.tile_produced.get(tile, 0))
+			by_tile[tile] = nt
+		var agg: Dictionary = by_tile[tile]
+		agg["total_consumed"] = int(agg["total_consumed"]) + int(round(float(cons["demand"])))
+		var r: Dictionary = _intermittency_by_building.get(str(cons["iid"]), {})
+		if r.is_empty():
+			continue
+		agg["green_consumed"] = float(agg["green_consumed"]) + float(r.get("green_consumed", 0.0))
+		agg["unfirmed_consumed"] = float(agg["unfirmed_consumed"]) + float(r.get("unfirmed_intermittent", 0.0))
+		if float(r.get("derate", 0.0)) > 0.0:
+			(agg["affected"] as Array).append({
+				"iid": str(cons["iid"]), "building_id": str(cons["building_id"]),
+				"power": int(round(float(cons["demand"]))),
+			})
+	# Affected buildings sorted by power consumed, highest first.
+	for tile in by_tile.keys():
+		(by_tile[tile]["affected"] as Array).sort_custom(func(a, b): return int(a["power"]) > int(b["power"]))
+	return by_tile
+
+func _new_tile_intermittency(tile_id: String) -> Dictionary:
+	return {
+		"green_produced": 0, "green_intermittent_produced": 0, "total_produced": 0,
+		"green_consumed": 0.0, "total_consumed": 0, "unfirmed_consumed": 0.0,
+		"battery_cap": _tile_storage_cap(tile_id), "affected": [],
+	}
+
+# Read-only accessors for the UI (tile view + building ledger filters). Reflect the most
+# recently resolved turn (the intermittency is computed post-cascade, applied next turn).
+func get_building_intermittency(instance_id: String) -> Dictionary:
+	return _intermittency_by_building.get(instance_id, {})
+
+func get_tile_intermittency(tile_id: String) -> Dictionary:
+	return _intermittency_by_tile.get(tile_id, {})
+
+# On-demand power-source attribution for ONE consumer (called when the building detail panel
+# opens — NOT in the per-turn hot path). Attributes the building's draw to the NEAREST source
+# buildings: its green draw (from the intermittency result) to green plants, the remainder to
+# grey plants, then the leftover to the national grid. Returns
+# {green_from:{iid->qty}, grey_from:{iid->qty}, grid:float}, or {} for non-consumers. This is
+# a per-building illustrative attribution (the grid is a single settled pool), not metered flow.
+func get_power_sources(instance_id: String) -> Dictionary:
+	var b: Dictionary = MatchState.buildings.get(instance_id, {})
+	if b.is_empty():
+		return {}
+	var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+	if str(recipe.get("output_name", "")) == "power":
+		return {}
+	var demand := _effective_energy_req(b, recipe)
+	if demand <= 0:
+		return {}
+	var tile := str(b.get("tile_id", ""))
+	var green_need: float = minf(float(demand),
+		float((_intermittency_by_building.get(instance_id, {}) as Dictionary).get("green_consumed", 0.0)))
+	var green_srcs := []
+	var grey_srcs := []
+	for t in _power_sources_by_tile.keys():
+		for s in _power_sources_by_tile[t]:
+			var e := {"iid": str(s["iid"]), "tile": str(t), "qty": float(s["qty"])}
+			if str(s["quality"]) == "grey":
+				grey_srcs.append(e)
+			else:
+				green_srcs.append(e)
+	var green_from := _pull_nearest(green_srcs, tile, green_need)
+	var non_green: float = maxf(0.0, float(demand) - green_need)
+	var grey_from := _pull_nearest(grey_srcs, tile, non_green)
+	var grey_total := 0.0
+	for k in grey_from.keys():
+		grey_total += float(grey_from[k])
+	return {"green_from": green_from, "grey_from": grey_from, "grid": maxf(0.0, non_green - grey_total)}
+
+# Pull `amount` from the source buildings nearest `tile` (hex distance, then stable tile/iid
+# order), capped by each source's recorded output. Returns {iid -> qty}. Pure read.
+func _pull_nearest(srcs: Array, tile: String, amount: float) -> Dictionary:
+	var out := {}
+	if amount <= 0.0 or srcs.is_empty():
+		return out
+	srcs.sort_custom(func(a, c):
+		var da := Catalog.tile_hex_distance(tile, str(a["tile"]))
+		var dc := Catalog.tile_hex_distance(tile, str(c["tile"]))
+		if da != dc:
+			return da < dc
+		if str(a["tile"]) != str(c["tile"]):
+			return str(a["tile"]) < str(c["tile"])
+		return str(a["iid"]) < str(c["iid"]))
+	var need := amount
+	for s in srcs:
+		if need <= 0.0:
+			break
+		var take: float = minf(float(s["qty"]), need)
+		if take <= 0.0:
+			continue
+		out[str(s["iid"])] = float(out.get(s["iid"], 0.0)) + take
+		need -= take
+	return out
+
 
 func _accumulate_by_type(target: Dictionary, building_id: String, amount: float, count: int = 1) -> void:
 	# target maps building_id -> {"count": int, "amount": float} for money-panel tooltips.

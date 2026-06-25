@@ -76,6 +76,13 @@ const LEDGER_MAX := 500  # keep the newest N entries so the logs stay bounded
 const LARGE_SHIPMENT_THRESHOLD := 500
 const LARGE_SHIPMENT_SURCHARGE := 2.0   # >500 units in one move costs 2x transport (tunable)
 var tile_land_owned: Dictionary = {}
+# Battery cells loaded into a tile's battery housing (deposit model — locked, refundable capital,
+# NOT consumed). {tile_id -> {good_id -> qty}}. Firming = min(housing slots, Σ cells × density).
+var tile_battery_cells: Dictionary = {}
+# In-flight battery fills awaiting delivery: [{tile_id, good_id, qty, turns_left}]. Paid/reserved
+# at order time; the cells install into the housing when turns_left hits 0 (the "operational"
+# countdown). Ticked once per turn at PROCESS start.
+var pending_battery_fills: Array = []
 
 # Survey state: the set of tiles the player has surveyed (tile_id -> true).
 # Dynamic; seeded with the port tiles at match start (see seed_surveyed_ports).
@@ -157,6 +164,9 @@ signal transfer_for_good_requested(good_id: String)
 signal purchase_for_good_requested(good_id: String)
 ## A UI element asked to open an Encyclopedia entry (e.g. a "More info" link).
 signal encyclopedia_entry_requested(entry_id: String)
+## A UI element (e.g. the tile-view intermittency "see more" link) asked to open the
+## building ledger pre-filtered to a single filter key (e.g. "green_intermittent").
+signal building_ledger_filter_requested(filter_key: String)
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)
@@ -165,6 +175,8 @@ signal stockpile_market_sale_completed(sale_record: Dictionary)
 signal sell_surplus_changed(tile_id: String)
 signal transport_shipments_changed
 signal tile_land_owned_changed(tile_id: String)
+## Battery cells loaded/unloaded on a tile changed (drives the tile-view power section + firming).
+signal battery_cells_changed(tile_id: String)
 ## The set of surveyed tiles changed (drives the Surveying mapmode + tile panel).
 signal surveyed_tiles_changed
 ## A tile's in-progress survey changed (started / ticked down / finished).
@@ -207,6 +219,7 @@ func _connect_turn_signals() -> void:
 func _on_survey_phase_started(phase: int) -> void:
 	if phase == TurnManager.Phase.PROCESS:
 		tick_surveys()
+		tick_battery_fills()
 	elif phase == TurnManager.Phase.NARRATIVE:
 		# Production, costs and run-streaks have settled for the turn — re-evaluate
 		# the live research conditions (Produce N / Run profitable / Run-for-N-turns).
@@ -607,6 +620,9 @@ func remove_building(instance_id: String) -> bool:
 	
 	buildings.erase(instance_id)
 	output_stockpile_destinations.erase(instance_id)
+	# Removing battery housing shrinks the tile's cell slots — refund any now-excess loaded cells.
+	if str(Catalog.get_building(str(instance.get("building_id", ""))).get("category", "")) == "battery":
+		refund_battery_cells_over_slots(tile_id)
 	building_removed.emit(instance_id)
 	return true
 
@@ -1048,6 +1064,9 @@ func _live_condition_met(d: Dictionary) -> bool:
 	match action:
 		"Produce":
 			return Production.lifetime_total(obj) >= need
+		"Build":
+			# "Own N player-built buildings of this internal_name" (any level/run state).
+			return _count_buildings(obj, -1, false, 0) >= need
 		"Run Profitable":
 			return _count_buildings(obj, -1, true, 0) >= need
 		"Run L1":
@@ -1193,6 +1212,195 @@ func cheat_partial_all() -> void:
 func get_tile_land_owned(tile_id: String) -> int:
 	return int(tile_land_owned.get(tile_id, DEFAULT_TILE_LAND_OWNED))
 
+# --- Battery storage (deposit model — docs/battery-storage-spec.md) ---
+
+func get_tile_battery_cells(tile_id: String) -> Dictionary:
+	return tile_battery_cells.get(tile_id, {})
+
+# Total cell SLOTS the tile's player-owned battery housing provides (Σ cap by level).
+func tile_battery_slots(tile_id: String) -> int:
+	var slots := 0
+	for inst in get_buildings_on_tile(tile_id):
+		if not is_player_owned(inst):
+			continue
+		if str(Catalog.get_building(str(inst.get("building_id", ""))).get("category", "")) != "battery":
+			continue
+		slots += int(EconomyConfig.BATTERY_STORAGE_CAP.get(int(inst.get("level", 1)), 0))
+	return slots
+
+# Total cells loaded on the tile (across all battery types).
+func tile_battery_cells_loaded(tile_id: String) -> int:
+	var n := 0
+	for q in get_tile_battery_cells(tile_id).values():
+		n += int(q)
+	return n
+
+# Firming ⚡ the tile's loaded cells provide right now: Σ cells × density.
+func tile_loaded_firming(tile_id: String) -> float:
+	var f := 0.0
+	var cells := get_tile_battery_cells(tile_id)
+	for gid in cells:
+		var internal := str(Catalog.get_good(str(gid)).get("internal_name", ""))
+		f += float(cells[gid]) * float(EconomyConfig.BATTERY_CELL_DENSITY.get(internal, 0.0))
+	return f
+
+# Firming capacity a tile provides: loaded firming, capped at the housing's ⚡ capacity.
+# (round, not floor — density is fractional, so e.g. 18 lithium cells = exactly 100 ⚡.)
+func tile_firming_cap(tile_id: String) -> int:
+	var slots := tile_battery_slots(tile_id)
+	if slots <= 0:
+		return 0
+	return int(round(min(float(slots), tile_loaded_firming(tile_id))))
+
+# Cells of `good_id` still needed to FILL the tile's remaining firming headroom.
+func battery_cells_to_fill(tile_id: String, good_id: String) -> int:
+	var density := _battery_density(good_id)
+	if density <= 0.0:
+		return 0
+	var free_firming := float(tile_battery_slots(tile_id)) - tile_loaded_firming(tile_id)
+	return maxi(0, int(floor(free_firming / density + 0.0001)))
+
+func _battery_density(good_id: String) -> float:
+	return float(EconomyConfig.BATTERY_CELL_DENSITY.get(
+		str(Catalog.get_good(good_id).get("internal_name", "")), 0.0))
+
+# A battery good is loadable only once its tech tier is unlocked.
+func battery_type_loadable(good_id: String) -> bool:
+	var internal := str(Catalog.get_good(good_id).get("internal_name", ""))
+	if not EconomyConfig.BATTERY_TYPE_UNLOCK.has(internal):
+		return false
+	return is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK[internal]))
+
+# Load up to `qty` battery cells of `good_id` from the tile's stockpile into its housing
+# (locked capital). Capped by the housing's free FIRMING headroom (cells × density must fit the
+# ⚡ capacity), available stock, and tech unlock. Returns loaded count.
+func load_battery_cells(tile_id: String, good_id: String, qty: int) -> int:
+	if qty <= 0 or not battery_type_loadable(good_id):
+		return 0
+	var density := _battery_density(good_id)
+	if density <= 0.0:
+		return 0
+	var free_firming := float(tile_battery_slots(tile_id)) - tile_loaded_firming(tile_id)
+	var max_by_firming := int(floor(free_firming / density + 0.0001))  # epsilon: fractional density
+	var avail := Stockpile.get_at_tile(tile_id, good_id)
+	var take := mini(mini(qty, max_by_firming), avail)
+	if take <= 0:
+		return 0
+	Stockpile.consume(tile_id, good_id, take)
+	var cells: Dictionary = tile_battery_cells.get(tile_id, {})
+	cells[good_id] = int(cells.get(good_id, 0)) + take
+	tile_battery_cells[tile_id] = cells
+	battery_cells_changed.emit(tile_id)
+	return take
+
+# Unload up to `qty` cells of `good_id` back to the tile stockpile (refund). Returns count.
+func unload_battery_cells(tile_id: String, good_id: String, qty: int) -> int:
+	if qty <= 0:
+		return 0
+	var cells: Dictionary = tile_battery_cells.get(tile_id, {})
+	var have := int(cells.get(good_id, 0))
+	var give := mini(qty, have)
+	if give <= 0:
+		return 0
+	cells[good_id] = have - give
+	if int(cells[good_id]) <= 0:
+		cells.erase(good_id)
+	if cells.is_empty():
+		tile_battery_cells.erase(tile_id)
+	else:
+		tile_battery_cells[tile_id] = cells
+	Stockpile.add(tile_id, good_id, give)
+	battery_cells_changed.emit(tile_id)
+	return give
+
+# When housing shrinks (battery demolished / downgraded) and loaded firming exceeds the remaining
+# ⚡ capacity, refund just enough cells to fit (stable type order).
+func refund_battery_cells_over_slots(tile_id: String) -> void:
+	var over_firming := tile_loaded_firming(tile_id) - float(tile_battery_slots(tile_id))
+	if over_firming <= 0.0:
+		return
+	var cells: Dictionary = tile_battery_cells.get(tile_id, {})
+	var gids: Array = cells.keys()
+	gids.sort()
+	for gid in gids:
+		if over_firming <= 0.0:
+			break
+		var density := _battery_density(str(gid))
+		if density <= 0.0:
+			continue
+		var give := mini(int(cells.get(gid, 0)), int(ceil(over_firming / density)))
+		if give > 0:
+			unload_battery_cells(tile_id, str(gid), give)
+			over_firming -= float(give) * density
+
+# Turns until the tile's in-flight fill completes (0 if none).
+func battery_fill_turns_remaining(tile_id: String) -> int:
+	var t := 0
+	for f in pending_battery_fills:
+		if str(f.get("tile_id", "")) == tile_id:
+			t = maxi(t, int(f.get("turns_left", 0)))
+	return t
+
+# Order a fill from the MARKET: pay now; the cells install after the delivery lead. Returns
+# {ok, turns, cost} (ok=false if not loadable / no route / can't afford).
+func order_battery_fill_market(tile_id: String, good_id: String, qty: int) -> Dictionary:
+	if qty <= 0 or not battery_type_loadable(good_id):
+		return {"ok": false}
+	var quote := TransportService.quote_market_buy(tile_id, good_id, qty, seaport_would_cover(good_id))
+	if quote.is_empty():
+		return {"ok": false}
+	var cost := float(quote.get("cost", 0.0))
+	if not deduct_money(cost):
+		return {"ok": false, "reason": "funds", "cost": cost}
+	var turns: int = maxi(1, int(quote.get("turns", 1)))
+	pending_battery_fills.append({"tile_id": tile_id, "good_id": good_id, "qty": qty, "turns_left": turns})
+	battery_cells_changed.emit(tile_id)
+	return {"ok": true, "turns": turns, "cost": cost}
+
+# Order a fill from ANOTHER TILE's stockpile: reserve the cells now; they install after the route
+# time. Returns {ok, turns}.
+func order_battery_fill_from_tile(tile_id: String, good_id: String, qty: int, source_tile: String) -> Dictionary:
+	if qty <= 0 or not battery_type_loadable(good_id) or source_tile == "":
+		return {"ok": false}
+	if Stockpile.get_at_tile(source_tile, good_id) < qty:
+		return {"ok": false, "reason": "stock"}
+	var rt := TransportService.route(source_tile, tile_id, good_id)
+	var turns: int = maxi(1, int(rt.get("turns", 1)))
+	Stockpile.consume(source_tile, good_id, qty)  # reserve the cells for the journey
+	pending_battery_fills.append({"tile_id": tile_id, "good_id": good_id, "qty": qty, "turns_left": turns})
+	battery_cells_changed.emit(tile_id)
+	return {"ok": true, "turns": turns}
+
+# Tick all in-flight fills down a turn; install any that have arrived. (PROCESS start, so the
+# new firming applies the same turn.)
+func tick_battery_fills() -> void:
+	if pending_battery_fills.is_empty():
+		return
+	var still: Array = []
+	for f in pending_battery_fills:
+		f["turns_left"] = int(f.get("turns_left", 0)) - 1
+		if int(f["turns_left"]) > 0:
+			still.append(f)
+		else:
+			_install_battery_cells(str(f.get("tile_id", "")), str(f.get("good_id", "")), int(f.get("qty", 0)))
+	pending_battery_fills = still
+
+# Install delivered cells straight into the housing (already paid/reserved — not from stockpile).
+# Any that no longer fit (housing shrank in transit) fall back to the tile stockpile.
+func _install_battery_cells(tile_id: String, good_id: String, qty: int) -> void:
+	var density := _battery_density(good_id)
+	if density <= 0.0 or qty <= 0:
+		return
+	var free_firming := float(tile_battery_slots(tile_id)) - tile_loaded_firming(tile_id)
+	var take := mini(qty, maxi(0, int(floor(free_firming / density + 0.0001))))
+	if take > 0:
+		var cells: Dictionary = tile_battery_cells.get(tile_id, {})
+		cells[good_id] = int(cells.get(good_id, 0)) + take
+		tile_battery_cells[tile_id] = cells
+	if qty - take > 0:
+		Stockpile.add(tile_id, good_id, qty - take)
+	battery_cells_changed.emit(tile_id)
+
 func get_tile_land_patches_available(tile_id: String) -> int:
 	var remaining := MAX_TILE_LAND - get_tile_land_owned(tile_id)
 	return maxi(0, int(floor(float(remaining) / float(LAND_PATCH_SIZE))))
@@ -1244,6 +1452,8 @@ func reset() -> void:
 	overflow_shipments.clear()
 	sales_by_tile.clear()
 	tile_land_owned.clear()
+	tile_battery_cells.clear()
+	pending_battery_fills.clear()
 	recurring_moves.clear()
 	scheduled_moves.clear()
 	recurring_sells.clear()
@@ -1290,6 +1500,8 @@ func export_state() -> Dictionary:
 		"shipment_id_counter": _shipment_id_counter,
 		"buildings": buildings.duplicate(true),
 		"tile_land_owned": tile_land_owned.duplicate(true),
+		"tile_battery_cells": tile_battery_cells.duplicate(true),
+		"pending_battery_fills": pending_battery_fills.duplicate(true),
 		"labour_multiplier": labour_multiplier,
 		"sell_mode": sell_mode,
 		"route_objective": route_objective,
@@ -1331,6 +1543,8 @@ func import_state(d: Dictionary) -> void:
 	_shipment_id_counter = int(d.get("shipment_id_counter", 0))
 	buildings = (d.get("buildings", {}) as Dictionary).duplicate(true)
 	tile_land_owned = (d.get("tile_land_owned", {}) as Dictionary).duplicate(true)
+	tile_battery_cells = (d.get("tile_battery_cells", {}) as Dictionary).duplicate(true)
+	pending_battery_fills = (d.get("pending_battery_fills", []) as Array).duplicate(true)
 	labour_multiplier = float(d.get("labour_multiplier", EconomyConfig.LABOUR_MULTIPLIER_DEFAULT))
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))

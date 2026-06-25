@@ -150,6 +150,14 @@ var _npc_label: Label = null
 var _construction_overlay: Control = null  # blur + "Under Construction" pill over the diagram
 var _npc_blur_rect: ColorRect = null  # frost over an NPC building's info fields (top_level, rect-synced)
 var _showing_construction_instance: String = ""  # instance_id while rendering construction mode
+var _storage_diagram: HBoxContainer = null  # battery "In use for storage" diagram (replaces FlowRow)
+var _sd_produced: Label = null
+var _sd_consumed: Label = null
+var _sd_maxcap: Label = null
+var _sd_icon_row: HBoxContainer = null  # loaded battery-type icon(s) inside the storage box
+const DASHED_BOX := preload("res://scripts/dashed_box.gd")
+var _fill_expanded: bool = false       # battery "Fill Storage" section open?
+var _fill_type: String = ""            # selected battery good internal_name
 
 func _ready() -> void:
 	_is_secondary_panel = bool(get_meta("is_secondary_building_panel", false))
@@ -183,6 +191,10 @@ func _ready() -> void:
 	# status and recipe diagram (it stops being able to produce).
 	if not MatchState.deposits_changed.is_connected(_on_deposit_changed):
 		MatchState.deposits_changed.connect(_on_deposit_changed)
+	# Battery cells loading/unloading/installing on the shown tile must refresh the storage
+	# diagram (so the loaded-type icon appears the turn the cells arrive in the building).
+	if not MatchState.battery_cells_changed.is_connected(_on_battery_cells_changed):
+		MatchState.battery_cells_changed.connect(_on_battery_cells_changed)
 	# Keep a shown construction site's countdowns/ETAs live, and cross-fade to the running
 	# building when it completes.
 	if not Production.turn_processed.is_connected(_on_turn_processed_construction):
@@ -293,10 +305,8 @@ func _rebuild_fields(building: Dictionary) -> void:
 	var category: String = building_data.get("category", "")
 	var is_infrastructure: bool = category == "infrastructure"
 
-	var owner_id := str(building.get("owner", ""))
-	if owner_id == "" and str(building.get("instance_id", "")) != "":
-		owner_id = str(MatchState.get_building(str(building.get("instance_id", ""))).get("owner", ""))
-	if owner_id != "" and owner_id != "player_1" and owner_id != "tile_data":
+	var owner_id := _resolve_owner_id(building)
+	if owner_id != MatchState.LOCAL_PLAYER and owner_id != "tile_data":
 		_apply_npc_mode(true)
 		if _npc_label != null:
 			var is_ruins := str(building.get("building_id", "")) == "b_031"
@@ -324,6 +334,25 @@ func _rebuild_fields(building: Dictionary) -> void:
 		_render_construction_mode(building, building_data, recipe, project)
 		return
 
+	# Battery storage: no recipe processing — show the bespoke "In use for storage" diagram
+	# (not a recipe flow), no power/route/operation rows. Just value, maintenance, labour.
+	if category == "battery":
+		_apply_npc_mode(false)
+		change_recipe_button.visible = false
+		if _route_row != null:
+			_route_row.visible = false  # no Inputs/Outputs routing for storage
+		title_label.text = _building_display_name(building, building_data, recipe) + _tile_title_suffix(building)
+		title_label.tooltip_text = _tile_title_tooltip(building)
+		location_label.visible = false
+		_show_storage_diagram(building)
+		_add_fill_storage_section(building)
+		var blvl := int(building.get("level", 1))
+		_add_field("Value", _money_text(building_data.get("base_price", 0.0)))
+		_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data) * BuildingLevels.mult("maint", blvl)))
+		_add_separator()
+		_add_labour_table(building_data)
+		return
+
 	_update_change_recipe_button(building, is_infrastructure)
 	title_label.text = _building_display_name(building, building_data, recipe) + _tile_title_suffix(building)
 	title_label.tooltip_text = _tile_title_tooltip(building)
@@ -341,6 +370,7 @@ func _rebuild_fields(building: Dictionary) -> void:
 
 
 	_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data) * BuildingLevels.mult("maint", lvl)))
+	_add_power_sources_section(building)
 
 	if not is_infrastructure and recipe.get("output_name", "") != "power":
 		var route_info := _output_route_summary()
@@ -356,6 +386,17 @@ func _rebuild_fields(building: Dictionary) -> void:
 	_add_labour_table(building_data)
 	_add_separator()
 	_add_operation_table(building, recipe)
+
+# Authoritative ownership: re-read the live owner from MatchState by instance_id rather than
+# trusting a possibly stale/cross-wired `owner` on the passed-in dict, so this panel can never
+# disagree with the tile view (MatchState.is_player_owned). Missing owner defaults to the local
+# player (matching is_player_owned), so a not-yet-promoted construction stub — which isn't in
+# MatchState.buildings and carries no owner — resolves to the player and falls through to
+# construction mode rather than NPC-frosting.
+func _resolve_owner_id(building: Dictionary) -> String:
+	var iid := str(building.get("instance_id", ""))
+	var live: Dictionary = MatchState.get_building(iid) if iid != "" else {}
+	return str(live.get("owner", building.get("owner", MatchState.LOCAL_PLAYER)))
 
 func _build_npc_panel() -> void:
 	if _npc_panel != null:
@@ -496,12 +537,17 @@ func _apply_npc_field_blur() -> void:
 	_npc_blur_rect = blur
 
 func _clear_npc_field_blur() -> void:
+	if _npc_blur_rect != null and is_instance_valid(_npc_blur_rect):
+		_npc_blur_rect.queue_free()
 	_npc_blur_rect = null
 	if fields_host == null:
 		return
-	var existing := fields_host.get_node_or_null("NPCFieldBlur")
-	if existing != null:
-		existing.queue_free()
+	# Remove EVERY frost overlay, not just one matched by exact name: a same-frame re-render can
+	# rename a second blur to "@NPCFieldBlur@2", which a name lookup misses — leaving it frosting
+	# the next building. The frost is the only ColorRect parented to fields_host, so sweep them.
+	for child in fields_host.get_children():
+		if child is ColorRect:
+			child.queue_free()
 
 func _add_cancel_construction_button(instance_id: String) -> void:
 	var btn := Button.new()
@@ -516,6 +562,14 @@ func _on_cancel_construction_pressed(instance_id: String) -> void:
 
 func _on_turn_processed_construction(_summary: Dictionary) -> void:
 	_refresh_if_showing_construction()
+
+func _on_battery_cells_changed(tile_id: String) -> void:
+	# Re-render a shown battery building when its tile's cells change (load/unload/install).
+	if not visible or _current_building.is_empty() or _showing_construction_instance != "":
+		return
+	if str(_current_building.get("tile_id", "")) == tile_id \
+			and str(Catalog.get_building(str(_current_building.get("building_id", ""))).get("category", "")) == "battery":
+		_rebuild_fields(_current_building)
 
 func _on_deposit_changed(tile_id: String) -> void:
 	# Recompute the whole panel when this building's own deposit changes.
@@ -621,6 +675,44 @@ func _add_section_label(text: String) -> void:
 	label.text = text
 	label.modulate = Color(0.7, 0.85, 1.0)
 	fields_vbox.add_child(label)
+
+# "Power Source(s): x Green from A, B; y Grey from C; z Grey from Grid" — where this
+# building's power came from (on-demand attribution to the nearest source buildings).
+func _add_power_sources_section(building: Dictionary) -> void:
+	var src: Dictionary = Production.get_power_sources(str(building.get("instance_id", "")))
+	if src.is_empty():
+		return
+	var clauses: Array = []
+	var green_clause := _power_source_clause(src.get("green_from", {}), "Green")
+	if green_clause != "":
+		clauses.append(green_clause)
+	var grey_clause := _power_source_clause(src.get("grey_from", {}), "Grey")
+	if grey_clause != "":
+		clauses.append(grey_clause)
+	var grid: int = int(round(float(src.get("grid", 0.0))))
+	if grid > 0:
+		clauses.append("%d Grey from Grid" % grid)
+	if clauses.is_empty():
+		return
+	_add_field("Power Source(s)", "; ".join(clauses))
+
+func _power_source_clause(from: Dictionary, quality_label: String) -> String:
+	var qty := 0
+	var names: Array = []
+	for iid in from.keys():
+		qty += int(round(float(from[iid])))
+		names.append(_source_building_name(str(iid)))
+	if qty <= 0:
+		return ""
+	return "%d %s from %s" % [qty, quality_label, ", ".join(names)]
+
+func _source_building_name(instance_id: String) -> String:
+	var b: Dictionary = MatchState.get_building(instance_id)
+	if b.is_empty():
+		return instance_id
+	return BuildingNaming.label_for_tile(
+		str(b.get("tile_id", "")), instance_id,
+		str(b.get("building_id", "")), str(b.get("recipe_id", "")))
 
 func _add_inbound_inputs_section(building: Dictionary, recipe: Dictionary) -> void:
 	var inputs: Array = recipe.get("inputs", [])
@@ -1436,7 +1528,273 @@ func _style_flow_summary() -> void:
 	flow_arrow.stretch_mode = TextureRect.STRETCH_SCALE
 	flow_arrow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
+# Battery storage diagram (in place of the recipe flow): a navy dashed "In use for storage" box,
+# a vertical line, then three rows — produced steadied, consumed steadied, and max capacity.
+func _show_storage_diagram(building: Dictionary) -> void:
+	input_preview.visible = false
+	flow_arrow.visible = false
+	output_preview.visible = false
+	if _storage_diagram == null or not is_instance_valid(_storage_diagram):
+		_storage_diagram = _build_storage_diagram()
+		flow_row.add_child(_storage_diagram)
+	_storage_diagram.visible = true
+	flow_summary.custom_minimum_size = Vector2(0, 168)  # room for the full-size battery icon
+	var tile_id := str(building.get("tile_id", ""))
+	var im: Dictionary = Production.get_tile_intermittency(tile_id)
+	_sd_produced.text = "%d ⚡ steadied (produced)" % int(im.get("green_produced", 0))
+	_sd_consumed.text = "%d ⚡ steadied (consumed)" % int(round(float(im.get("green_consumed", 0.0))))
+	_sd_maxcap.text = "Max capacity: %d ⚡" % MatchState.tile_battery_slots(tile_id)
+	# Show the icon of each battery type actually IN the building (not in-flight fills — those
+	# aren't in tile_battery_cells until they install, so the icon appears the turn they arrive).
+	for c in _sd_icon_row.get_children():
+		c.queue_free()
+	var cells: Dictionary = MatchState.get_tile_battery_cells(tile_id)
+	for gid in cells:
+		var holder := Control.new()
+		holder.custom_minimum_size = FLOW_SINGLE_CELL_SIZE  # regular recipe-cell size (~110px)
+		var icon := TextureRect.new()
+		icon.texture = GoodIcons.texture_for(str(gid), str(Catalog.get_good(str(gid)).get("internal_name", "")), true)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+		holder.add_child(icon)
+		holder.add_child(_make_cell_qty_pill(int(cells[gid])))  # qty of cells in use
+		_sd_icon_row.add_child(holder)
+
+func _build_storage_diagram() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# Left: dashed navy box — the loaded battery-type icon(s) up top, "In use for storage" lower.
+	var box := DASHED_BOX.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var box_vb := VBoxContainer.new()
+	box_vb.set_anchors_preset(Control.PRESET_FULL_RECT)
+	box_vb.add_theme_constant_override("separation", 4)
+	box_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Icon(s) of the battery type(s) actually loaded (populated in _show_storage_diagram).
+	_sd_icon_row = HBoxContainer.new()
+	_sd_icon_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_sd_icon_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sd_icon_row.add_theme_constant_override("separation", 6)
+	box_vb.add_child(_sd_icon_row)
+	var gap := Control.new()  # pushes the label toward the bottom of the box
+	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box_vb.add_child(gap)
+	var box_lbl := Label.new()
+	box_lbl.text = "In use for storage"
+	box_lbl.add_theme_color_override("font_color", DIAGRAM_NAVY)
+	box_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box_vb.add_child(box_lbl)
+	var bot := Control.new()
+	bot.custom_minimum_size = Vector2(0, 10)
+	box_vb.add_child(bot)
+	box.add_child(box_vb)
+	row.add_child(box)
+	# Middle: a thin navy vertical line, inset so it doesn't touch the top/bottom of the card.
+	var mid := VBoxContainer.new()
+	var mtop := Control.new()
+	mtop.custom_minimum_size = Vector2(2, 14)
+	var line := ColorRect.new()
+	line.color = DIAGRAM_NAVY
+	line.custom_minimum_size = Vector2(2, 0)
+	line.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var mbot := Control.new()
+	mbot.custom_minimum_size = Vector2(2, 14)
+	mid.add_child(mtop)
+	mid.add_child(line)
+	mid.add_child(mbot)
+	row.add_child(mid)
+	# Right: three rows — produced steadied, consumed steadied, and max capacity at the bottom.
+	var right := HBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var pad := Control.new()
+	pad.custom_minimum_size = Vector2(12, 0)
+	right.add_child(pad)
+	var rows := VBoxContainer.new()
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_sd_produced = _storage_diagram_label()
+	_sd_consumed = _storage_diagram_label()
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_sd_maxcap = _storage_diagram_label()
+	rows.add_child(_sd_produced)
+	rows.add_child(_sd_consumed)
+	rows.add_child(spacer)
+	rows.add_child(_sd_maxcap)
+	right.add_child(rows)
+	row.add_child(right)
+	return row
+
+# A small qty pill anchored to the bottom-right of a cell (cells in use).
+func _make_cell_qty_pill(qty: int) -> PanelContainer:
+	var pill := PanelContainer.new()
+	pill.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	pill.offset_left = -4
+	pill.offset_top = -4
+	pill.offset_right = -4
+	pill.offset_bottom = -4
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.0, 0.04, 0.09, 0.92)
+	style.set_corner_radius_all(10)
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	style.content_margin_top = 2
+	style.content_margin_bottom = 2
+	pill.add_theme_stylebox_override("panel", style)
+	var lbl := Label.new()
+	lbl.text = str(qty)
+	lbl.theme_type_variation = &"Numeric"
+	lbl.add_theme_color_override("font_color", Color.WHITE)
+	lbl.add_theme_font_size_override("font_size", 13)
+	pill.add_child(lbl)
+	return pill
+
+func _storage_diagram_label() -> Label:
+	var l := Label.new()
+	l.theme_type_variation = &"Body"
+	l.add_theme_color_override("font_color", DIAGRAM_NAVY)
+	return l
+
+# --- Battery "Fill Storage" flow ----------------------------------------------------------
+# Replaces the Inputs/Outputs route controls. A wide button opens: choose a battery type (3
+# cards; locked types greyed "NOT AVAILABLE", quantity pill hidden), then a source — Buy from
+# Market (cost confirm + order), This tile's stockpile (instant load), or Other tile (routing,
+# next update).
+func _add_fill_storage_section(building: Dictionary) -> void:
+	var tile_id := str(building.get("tile_id", ""))
+	_add_separator()
+	var fill_btn := Button.new()
+	fill_btn.text = ("▴  " if _fill_expanded else "▾  ") + "Fill Storage"
+	fill_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fill_btn.custom_minimum_size = Vector2(0, 40)
+	fill_btn.pressed.connect(func() -> void:
+		_fill_expanded = not _fill_expanded
+		_rebuild_fields(_current_building))
+	fields_vbox.add_child(fill_btn)
+	if not _fill_expanded:
+		return
+	# A fill is in flight — show the countdown instead of the source picker.
+	var remaining := MatchState.battery_fill_turns_remaining(tile_id)
+	if remaining > 0:
+		_add_text("⏳ Battery operational in %d turn%s." % [remaining, "" if remaining == 1 else "s"])
+		return
+	var type_row := HBoxContainer.new()
+	type_row.add_theme_constant_override("separation", 8)
+	for internal in ["lithium_battery", "sodium_battery", "iron_battery"]:
+		type_row.add_child(_make_battery_type_card(tile_id, internal))
+	fields_vbox.add_child(type_row)
+	if _fill_type == "" or not MatchState.is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(_fill_type, ""))):
+		return
+	var gid := str(Catalog.get_good_by_internal_name(_fill_type).get("id", ""))
+	var need := MatchState.battery_cells_to_fill(tile_id, gid)
+	var gname := str(Catalog.get_good(gid).get("display_name", _fill_type))
+	if need <= 0:
+		_add_text("Storage is full for %s." % gname)
+		return
+	_add_text("Needs %d %s cells to fill." % [need, gname])
+	var stock := Stockpile.get_at_tile(tile_id, gid)
+	var src_row := HBoxContainer.new()
+	src_row.add_theme_constant_override("separation", 8)
+	var mkt := _make_source_button("Buy from Market", true)
+	mkt.pressed.connect(func() -> void: _confirm_battery_market_buy(tile_id, gid, need, gname))
+	src_row.add_child(mkt)
+	var this_btn := _make_source_button("This tile's stockpile", stock >= need)
+	if stock >= need:
+		this_btn.pressed.connect(func() -> void:
+			MatchState.load_battery_cells(tile_id, gid, need)
+			_rebuild_fields(_current_building))
+	src_row.add_child(this_btn)
+	var other := _make_source_button("Other tile", true)
+	other.pressed.connect(func() -> void:
+		MatchState.request_toast("Routing cells from another tile is coming in the next update.", "caution"))
+	src_row.add_child(other)
+	fields_vbox.add_child(src_row)
+
+func _make_source_button(text: String, enabled: bool) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.custom_minimum_size = Vector2(0, 34)
+	b.disabled = not enabled
+	return b
+
+func _make_battery_type_card(tile_id: String, internal: String) -> PanelContainer:
+	var gid := str(Catalog.get_good_by_internal_name(internal).get("id", ""))
+	var unlocked := MatchState.is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(internal, "")))
+	var selected := _fill_type == internal and unlocked
+	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size = Vector2(0, 88)
+	var style := StyleBoxFlat.new()
+	style.bg_color = DIAGRAM_PAPER  # off-white
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(6)
+	style.set_border_width_all(2)
+	style.border_color = DS.PALETTE.ACCENT if selected else Color(0, 0, 0, 0)
+	card.add_theme_stylebox_override("panel", style)
+	var vb := VBoxContainer.new()
+	vb.alignment = BoxContainer.ALIGNMENT_CENTER
+	vb.add_theme_constant_override("separation", 2)
+	var icon := TextureRect.new()
+	icon.texture = GoodIcons.texture_for(gid, internal, true)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.custom_minimum_size = Vector2(0, 44)
+	if not unlocked:
+		icon.modulate = Color(0.5, 0.5, 0.5, 0.5)
+	vb.add_child(icon)
+	if unlocked:
+		var pill := Label.new()
+		pill.text = "%d" % Stockpile.get_at_tile(tile_id, gid)
+		pill.theme_type_variation = &"Numeric"
+		pill.add_theme_color_override("font_color", DIAGRAM_NAVY)
+		pill.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vb.add_child(pill)
+		card.mouse_filter = Control.MOUSE_FILTER_STOP
+		card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		card.gui_input.connect(func(e: InputEvent) -> void:
+			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+				_fill_type = internal
+				_rebuild_fields(_current_building))
+	else:
+		var na := Label.new()
+		na.text = "NOT AVAILABLE"
+		na.add_theme_color_override("font_color", STATUS_RED)
+		na.add_theme_font_size_override("font_size", 10)
+		na.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vb.add_child(na)
+	card.add_child(vb)
+	return card
+
+func _confirm_battery_market_buy(tile_id: String, gid: String, need: int, gname: String) -> void:
+	var cost := float(need) * MarketState.get_price(gid)
+	var dlg := ConfirmationDialog.new()
+	dlg.title = "Buy battery cells"
+	dlg.dialog_text = "Buy %d %s from the market and ship them to this tile for about £%.0f?" % [need, gname, cost]
+	dlg.confirmed.connect(func() -> void:
+		var res := MatchState.order_battery_fill_market(tile_id, gid, need)
+		if bool(res.get("ok", false)):
+			var t := int(res.get("turns", 1))
+			MatchState.request_toast("Ordered %d %s cells — operational in %d turn%s." % [need, gname, t, "" if t == 1 else "s"], "info")
+			_rebuild_fields(_current_building)
+		else:
+			MatchState.request_toast("Couldn't order — not enough money or no route.", "caution")
+		dlg.queue_free())
+	dlg.canceled.connect(func() -> void: dlg.queue_free())
+	add_child(dlg)
+	dlg.popup_centered()
+
 func _update_flow_summary(recipe: Dictionary) -> void:
+	# Restore the normal recipe flow content if the previous render was a battery storage diagram.
+	if _storage_diagram != null and is_instance_valid(_storage_diagram):
+		_storage_diagram.visible = false
+	input_preview.visible = true
+	flow_arrow.visible = true
+	output_preview.visible = true
 	var inputs: Array = (recipe.get("inputs", []) as Array).duplicate()
 	# Deposit requirements (mines etc.) show as an input cell — greyed "EXHAUSTED"
 	# once the tile's deposit runs out.
@@ -2038,7 +2396,15 @@ func _update_cost_label(building: Dictionary) -> void:
 func _on_costs_updated() -> void:
 	if _current_building.is_empty():
 		return
-	_update_cost_label(_current_building)
+	# costs_updated fires after grid_settlement + cost_solve each turn, so this is where the
+	# RAG dots should refresh: the power/input dots reflect the just-settled power + run state
+	# and would otherwise stay stale across turns while the panel is open. (A construction site
+	# has its own refresh and no live dots, so only update its cost label.)
+	if _showing_construction_instance != "" or _current_recipe.is_empty():
+		_update_cost_label(_current_building)
+		return
+	var is_infra := str(Catalog.get_building(str(_current_building.get("building_id", ""))).get("category", "")) == "infrastructure"
+	_update_status_icons(_current_building, _current_recipe, is_infra)
 
 const _MOD_RAG_LEGEND := "White means no net effect (−1% to +1%), green a net production boost above +1%, red a net penalty below −1%."
 
@@ -2060,26 +2426,34 @@ func _update_mod_label(building: Dictionary, recipe: Dictionary) -> void:
 	var net: float = float(res.get("net", 0.0))
 	var parts: Array = res.get("parts", [])
 
+	# Intermittency derate (multiplicative, applied AFTER the additive modifier channel in
+	# _produce_outputs). Fold it into the headline so the pill reflects the true output change.
+	var iid: String = str(building.get("instance_id", ""))
+	var derate: float = float((Production.get_building_intermittency(iid) as Dictionary).get("derate", 0.0))
+	var eff: float = ((1.0 + net / 100.0) * (1.0 - derate) - 1.0) * 100.0
+
 	var color: Color
-	if net > 1.0:
+	if eff > 1.0:
 		color = STATUS_GREEN
-	elif net < -1.0:
+	elif eff < -1.0:
 		color = STATUS_RED
 	else:
 		color = MOD_WHITE
-	var net_i: int = int(round(net))
-	_mod_label.text = "%s%d%%" % ["+" if net_i > 0 else "", net_i]
+	var eff_i: int = int(round(eff))
+	_mod_label.text = "%s%d%%" % ["+" if eff_i > 0 else "", eff_i]
 	_mod_label.add_theme_color_override("font_color", color)
 
 	var tip: String
-	if parts.is_empty():
+	if parts.is_empty() and derate <= 0.0:
 		tip = "Production modifier: none active.\n%s" % _MOD_RAG_LEGEND
 	else:
 		var lines: PackedStringArray = ["Production modifiers (added together, then applied):"]
 		for p in parts:
 			var pv: float = float(p.get("pct", 0.0))
 			lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
-		lines.append("Net: %s%d%%" % ["+" if net_i > 0 else "", net_i])
+		if derate > 0.0:
+			lines.append("  -%d%%  Intermittency impact (multiplicative, applied after)" % int(round(derate * 100.0)))
+		lines.append("Net: %s%d%%" % ["+" if eff_i > 0 else "", eff_i])
 		lines.append(_MOD_RAG_LEGEND)
 		tip = "\n".join(lines)
 	_mod_label.tooltip_text = tip

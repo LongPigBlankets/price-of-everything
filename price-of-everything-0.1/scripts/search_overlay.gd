@@ -36,6 +36,7 @@ const BUILD_BUTTON_HOVER_BLUE := Color(0.250980, 0.529412, 0.749020, 1.0)
 # Encyclopedia "Mechanics" entries (content-light for now; bodies built in _mechanic_body).
 const MECHANIC_ENTRIES := [
 	{"id": "market_price_mechanics", "title": "Market price mechanics"},
+	{"id": "intermittency", "title": "Power intermittency"},
 ]
 
 var _search_stack: VBoxContainer = null
@@ -107,6 +108,13 @@ func _mechanic_body(entry_id: String) -> String:
 			+ "Dumping a large stockpile all at once can crash the price temporarily; it recovers over the following turns.\n\n"
 			+ "The per-tile auto-sell control lets you cap this: pick how much price impact you'll tolerate each turn and it ships only enough to stay within that band, keeping the rest stockpiled for later.\n\n"
 			+ "(Detailed numbers and worked examples will live here in a later content pass.)") % [glut, glut, maxp]
+	if entry_id == "intermittency":
+		var derate_pct: int = int(round(EconomyConfig.INTERMITTENCY_DERATE * 100.0))
+		return ("Solar and wind power are GREEN but INTERMITTENT — the sun and wind aren't always there. "
+			+ "A building relying on unfirmed intermittent power loses up to %d%% of its output that turn.\n\n"
+			+ "Hydro and biomass/waste power are green but STEADY, and never take this penalty. Fossil and national-grid power are grey and steady.\n\n"
+			+ "Batteries 'firm' intermittent power on a tile: up to their storage capacity, intermittent green is treated as steady and the penalty disappears. Build storage where you generate or draw intermittent green to cancel the intermittency.\n\n"
+			+ "(This is an early stub — worked numbers, the per-tile allocation order, and storage scaling will be detailed here in a later content pass.)") % [derate_pct]
 	return ""
 
 func close_search() -> void:

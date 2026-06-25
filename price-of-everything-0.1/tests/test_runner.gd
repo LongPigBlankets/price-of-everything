@@ -143,6 +143,16 @@ func _ready() -> void:
 	_test_victory_total_and_win()
 	_test_victory_tick_scores_resolved_turn()
 	_test_victory_save_load()
+	_test_power_quality()
+	_test_power_instance_age()
+	_test_power_intermittency_alloc()
+	_test_intermittency_tile_aggregate()
+	_test_detail_panel_owner_resolution()
+	_test_battery_buildable()
+	_test_battery_deposit()
+	_test_battery_fill_pending()
+	_test_sea_land_building_rule()
+	_test_greenest_reads_quality()
 	_test_main_menu_grid_unique()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -3789,6 +3799,241 @@ func _test_victory_save_load() -> void:
 		and int(VictoryState.purchases_lifetime["building"]) == 2,
 		"victory save/load: export -> reset -> import round-trips every field")
 	VictoryState.reset()
+
+# ── Power intermittency (green/grey quality flags; scripts/production.gd) ───────
+
+func _test_power_quality() -> void:
+	var p := {"output_name": "power", "inputs": []}
+	_check(Production._power_quality({"building_id": "b_024"}, p) == "green_intermittent",
+		"power quality: solar farm = green_intermittent")
+	_check(Production._power_quality({"building_id": "b_025"}, p) == "green_intermittent",
+		"power quality: onshore wind = green_intermittent")
+	_check(Production._power_quality({"building_id": "b_026"}, p) == "green_intermittent",
+		"power quality: offshore wind = green_intermittent")
+	_check(Production._power_quality({"building_id": "b_027"}, p) == "green_steady",
+		"power quality: hydro = green_steady")
+	_check(Production._power_quality({"building_id": "b_003"}, {"output_name": "power", "inputs": [{"internal_name": "coal"}]}) == "grey",
+		"power quality: coal-fuelled = grey")
+	_check(Production._power_quality({"building_id": "b_003"}, {"output_name": "power", "inputs": [{"internal_name": "biomass"}]}) == "green_steady",
+		"power quality: biomass-fuelled = green_steady")
+
+func _test_power_instance_age() -> void:
+	_check(Production._instance_age("inst_b_007_00001a") == 26, "instance age: parses trailing hex (1a = 26)")
+	_check(Production._instance_age("inst_b_001_000001") < Production._instance_age("inst_b_001_000002"),
+		"instance age: lower counter is older")
+
+func _test_power_intermittency_alloc() -> void:
+	# Result is keyed by iid -> {derate, green_consumed, unfirmed_intermittent, steady_consumed, demand}.
+	var derate := func(dd, k): return float((dd.get(k, {}) as Dictionary).get("derate", 0.0))
+	# Full unfirmed intermittent green -> 0.4 derate (produce 60%); richer fields populated.
+	var d := Production._allocate_power_derates(
+		{"tile_1_1": {"int": 100, "steady": 0}},
+		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 0})
+	_check(absf(derate.call(d, "c1") - 0.4) < 0.001, "intermittency: full unfirmed intermittent green -> 0.4 derate")
+	_check(int(d["c1"]["green_consumed"]) == 100 and int(d["c1"]["unfirmed_intermittent"]) == 100
+		and int(d["c1"]["steady_consumed"]) == 0, "intermittency: result carries green/unfirmed/steady consumed")
+	# Storage on the tile firms it -> no derate, but it still consumed (now steady) green.
+	d = Production._allocate_power_derates(
+		{"tile_1_1": {"int": 100, "steady": 0}},
+		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 100})
+	_check(absf(derate.call(d, "c1")) < 0.001 and int(d["c1"]["steady_consumed"]) == 100,
+		"intermittency: on-tile storage firms intermittent -> no derate (counts as steady)")
+	# Steady green never derates (consumes steady green).
+	d = Production._allocate_power_derates(
+		{"tile_1_1": {"int": 0, "steady": 100}},
+		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 0})
+	_check(absf(derate.call(d, "c1")) < 0.001 and int(d["c1"]["steady_consumed"]) == 100,
+		"intermittency: steady green -> no derate")
+	# A consumer that draws NO green is absent from the result entirely.
+	d = Production._allocate_power_derates(
+		{},
+		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 0})
+	_check(not d.has("c1"), "intermittency: consumer with no green is omitted")
+	# Half intermittent / half steady -> 0.2 derate (0.4 * 0.5 share).
+	d = Production._allocate_power_derates(
+		{"tile_1_1": {"int": 50, "steady": 50}},
+		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 0})
+	_check(absf(derate.call(d, "c1") - 0.2) < 0.001, "intermittency: 50% intermittent share -> 0.2 derate")
+	# Priority: scarce green (100) goes to the higher-level consumer first.
+	d = Production._allocate_power_derates(
+		{"tile_5_5": {"int": 100, "steady": 0}},
+		[{"iid": "hi", "tile": "tile_5_5", "demand": 100.0, "level": 3, "profit": 0.0, "age": 2},
+		 {"iid": "lo", "tile": "tile_5_5", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_5_5": 0})
+	_check(absf(derate.call(d, "hi") - 0.4) < 0.001 and not d.has("lo"),
+		"intermittency: scarce green prioritises the higher-level consumer")
+	# Tiebreak: same level/profit -> oldest (lowest age) wins the scarce green.
+	d = Production._allocate_power_derates(
+		{"tile_5_5": {"int": 100, "steady": 0}},
+		[{"iid": "new", "tile": "tile_5_5", "demand": 100.0, "level": 1, "profit": 0.0, "age": 9},
+		 {"iid": "old", "tile": "tile_5_5", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_5_5": 0})
+	_check(absf(derate.call(d, "old") - 0.4) < 0.001 and not d.has("new"),
+		"intermittency: tie broken by oldest instance (age) first")
+	# Producer firming + proportional mix: int 50/steady 50, tile cap 30 firms 30 int ->
+	# 20 int/80 steady; consumer (same tile, cap now 0) draws 20 unfirmed int of 100 ->
+	# derate 0.4 * 0.2 = 0.08 (exact-float firming, no ceil over-charge).
+	d = Production._allocate_power_derates(
+		{"tile_1_1": {"int": 50, "steady": 50}},
+		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 30})
+	_check(absf(derate.call(d, "c1") - 0.08) < 0.001,
+		"intermittency: producer firming + proportional mix -> 0.08 derate")
+
+func _test_intermittency_tile_aggregate() -> void:
+	# Roll the per-building result + per-tile green supply up into the tile-view aggregate.
+	var saved_green := Production._green_supply_by_tile
+	var saved_im := Production._intermittency_by_building
+	var saved_prod := Power.tile_produced
+	Production._green_supply_by_tile = {"tile_2_2": {"int": 100, "steady": 0}}
+	Production._intermittency_by_building = {
+		"a": {"derate": 0.4, "green_consumed": 100.0, "unfirmed_intermittent": 100.0, "steady_consumed": 0.0, "demand": 100.0},
+		"b": {"derate": 0.0, "green_consumed": 50.0, "unfirmed_intermittent": 0.0, "steady_consumed": 50.0, "demand": 50.0},
+	}
+	Power.tile_produced = {"tile_2_2": 100}
+	var consumers := [
+		{"iid": "a", "tile": "tile_2_2", "demand": 100.0, "building_id": "b_017"},
+		{"iid": "b", "tile": "tile_2_2", "demand": 50.0, "building_id": "b_018"},
+	]
+	var agg := Production._aggregate_tile_intermittency(consumers)
+	var t: Dictionary = agg["tile_2_2"]
+	_check(int(t["green_produced"]) == 100 and int(t["green_intermittent_produced"]) == 100 and int(t["total_produced"]) == 100,
+		"tile intermittency: green/total produced rolled up")
+	_check(int(t["total_consumed"]) == 150 and absf(float(t["unfirmed_consumed"]) - 100.0) < 0.001
+		and absf(float(t["green_consumed"]) - 150.0) < 0.001, "tile intermittency: consumed totals rolled up")
+	_check((t["affected"] as Array).size() == 1 and str((t["affected"][0])["iid"]) == "a",
+		"tile intermittency: only derated buildings are listed as affected")
+	Production._green_supply_by_tile = saved_green
+	Production._intermittency_by_building = saved_im
+	Power.tile_produced = saved_prod
+
+func _test_battery_buildable() -> void:
+	# The electric battery used to be recipe-less (dropped from build panels). It now has an
+	# input-only recipe (1 lithium_battery/turn) so it resolves + appears as a buildable option.
+	var recs: Array = Catalog.get_recipes_for_building("b_028")  # recipes key by resolved building_id
+	_check(recs.size() >= 1, "battery: has a buildable recipe (was recipe-less)")
+	if recs.size() >= 1:
+		var r: Dictionary = recs[0]
+		# Deposit model: the housing has a no-op recipe (no per-turn consumption); firming
+		# comes from loaded cells, not the recipe.
+		_check(str(r.get("output_name", "")) == "" and (r.get("inputs", []) as Array).is_empty(),
+			"battery: housing recipe is a no-op (no inputs/outputs)")
+	var tvd = load("res://scripts/tile_view_data.gd")
+	var opt: Dictionary = tvd.power_build_option("battery", "", "tile_5_10", {})
+	_check(str(opt.get("recipe_id", "")) != "", "battery: build option resolves a recipe (no longer 'not available')")
+
+func _test_battery_deposit() -> void:
+	# Deposit model: housing = 100 ⚡ capacity at L1; firming = Σ cells × density, capped by
+	# headroom; loading is tech-gated; density differs per type so 18 lithium / 24 sodium cells
+	# fill 100 ⚡; demolish refunds the cells.
+	var tile := "tile_9_9"
+	MatchState.tile_battery_cells.erase(tile)
+	var lgid := str(Catalog.get_good_by_internal_name("lithium_battery").get("id", ""))
+	var sgid := str(Catalog.get_good_by_internal_name("sodium_battery").get("id", ""))
+	Stockpile.consume(tile, lgid, Stockpile.get_at_tile(tile, lgid))
+	Stockpile.consume(tile, sgid, Stockpile.get_at_tile(tile, sgid))
+	var bid: String = MatchState.add_building("b_028", "r_225", tile, MatchState.LOCAL_PLAYER)
+	_check(MatchState.tile_battery_slots(tile) == 100, "battery deposit: L1 housing = 100 firming capacity")
+	_check(Production._tile_storage_cap(tile) == 0, "battery deposit: empty housing firms nothing")
+	var hadL := MatchState.is_unlocked("Lithium Battery Storage")
+	var hadS := MatchState.is_unlocked("Sodium Battery Storage")
+	MatchState.unlocked_titles.erase("Lithium Battery Storage")
+	MatchState.unlocked_titles.erase("Sodium Battery Storage")
+	Stockpile.add(tile, lgid, 50)
+	_check(MatchState.load_battery_cells(tile, lgid, 5) == 0, "battery deposit: locked type cannot be loaded")
+	MatchState.grant_unlock("Lithium Battery Storage")
+	_check(MatchState.battery_cells_to_fill(tile, lgid) == 18, "battery deposit: 18 lithium cells fill a 100 ⚡ L1")
+	_check(MatchState.load_battery_cells(tile, lgid, 999) == 18, "battery deposit: loads 18 lithium cells (capped by firming)")
+	_check(MatchState.tile_firming_cap(tile) == 100, "battery deposit: full lithium housing firms 100")
+	_check(MatchState.load_battery_cells(tile, lgid, 5) == 0, "battery deposit: no headroom when full")
+	_check(MatchState.unload_battery_cells(tile, lgid, 9) == 9, "battery deposit: unload 9")
+	_check(MatchState.tile_firming_cap(tile) == 50 and Stockpile.get_at_tile(tile, lgid) == 41,
+		"battery deposit: unload refunds to stock + halves firming")
+	MatchState.unload_battery_cells(tile, lgid, 9)  # clear for the density check
+	MatchState.grant_unlock("Sodium Battery Storage")
+	Stockpile.add(tile, sgid, 50)
+	_check(MatchState.battery_cells_to_fill(tile, sgid) == 24, "battery deposit: sodium needs 24 cells (density 0.75×)")
+	_check(MatchState.load_battery_cells(tile, sgid, 999) == 24, "battery deposit: loads 24 sodium cells to fill 100 ⚡")
+	_check(MatchState.tile_firming_cap(tile) == 100, "battery deposit: full sodium also firms 100")
+	MatchState.remove_building(bid)
+	_check(MatchState.tile_firming_cap(tile) == 0 and Stockpile.get_at_tile(tile, sgid) == 50,
+		"battery deposit: demolishing housing refunds all remaining cells")
+	if not hadL:
+		MatchState.unlocked_titles.erase("Lithium Battery Storage")
+	if not hadS:
+		MatchState.unlocked_titles.erase("Sodium Battery Storage")
+	MatchState.tile_battery_cells.erase(tile)
+	Stockpile.consume(tile, lgid, Stockpile.get_at_tile(tile, lgid))
+	Stockpile.consume(tile, sgid, Stockpile.get_at_tile(tile, sgid))
+
+func _test_battery_fill_pending() -> void:
+	# An in-flight fill counts down and installs the cells (no stockpile) when it arrives.
+	var tile := "tile_9_8"
+	MatchState.tile_battery_cells.erase(tile)
+	MatchState.pending_battery_fills.clear()
+	var lgid := str(Catalog.get_good_by_internal_name("lithium_battery").get("id", ""))
+	Stockpile.consume(tile, lgid, Stockpile.get_at_tile(tile, lgid))
+	var bid: String = MatchState.add_building("b_028", "r_225", tile, MatchState.LOCAL_PLAYER)
+	MatchState.pending_battery_fills.append({"tile_id": tile, "good_id": lgid, "qty": 18, "turns_left": 2})
+	_check(MatchState.battery_fill_turns_remaining(tile) == 2, "fill: 2 turns remaining")
+	_check(MatchState.tile_firming_cap(tile) == 0, "fill: nothing installed yet")
+	MatchState.tick_battery_fills()
+	_check(MatchState.battery_fill_turns_remaining(tile) == 1, "fill: ticks down to 1")
+	_check(MatchState.tile_firming_cap(tile) == 0, "fill: still in transit")
+	MatchState.tick_battery_fills()
+	_check(MatchState.battery_fill_turns_remaining(tile) == 0, "fill: countdown complete")
+	_check(MatchState.tile_firming_cap(tile) == 100, "fill: 18 cells installed → 100 ⚡ (no stockpile draw)")
+	MatchState.remove_building(bid)
+	MatchState.tile_battery_cells.erase(tile)
+	MatchState.pending_battery_fills.clear()
+	Stockpile.consume(tile, lgid, Stockpile.get_at_tile(tile, lgid))
+
+func _test_sea_land_building_rule() -> void:
+	# Only offshore wind (b_026) + offshore oil (b_033) on sea/deep_sea; those two can't go on
+	# land; every other building is land-only.
+	_check(Catalog.is_building_allowed_on_tile_type("b_026", "sea"), "sea rule: offshore wind on sea")
+	_check(Catalog.is_building_allowed_on_tile_type("b_033", "deep_sea"), "sea rule: offshore oil on deep sea")
+	_check(not Catalog.is_building_allowed_on_tile_type("b_026", "land"), "sea rule: offshore wind NOT on land")
+	_check(not Catalog.is_building_allowed_on_tile_type("b_028", "sea"), "sea rule: battery NOT on sea")
+	_check(not Catalog.is_building_allowed_on_tile_type("b_024", "deep_sea"), "sea rule: solar NOT on deep sea")
+	_check(not Catalog.is_building_allowed_on_tile_type("b_025", "sea"), "sea rule: onshore wind NOT on sea")
+	_check(Catalog.is_building_allowed_on_tile_type("b_024", "land"), "sea rule: solar on land")
+	_check(Catalog.is_building_allowed_on_tile_type("b_028", "urban"), "sea rule: battery on urban land")
+
+func _test_detail_panel_owner_resolution() -> void:
+	# Regression: a player building handed a stale/cross-wired owner on the passed dict must
+	# still resolve to the player (re-read from the live store), so it never renders in the
+	# NPC frosted/blurred mode. A co-located NPC building of the same type must still resolve
+	# to the NPC. (Mirrors tools/repro_npc_blur.gd, headless.)
+	var npc_iid: String = MatchState.add_building("b_002", "r_003", "tile_5_10", "Stoneshore Ironworks")
+	var player_iid: String = MatchState.add_building("b_002", "r_003", "tile_5_10", MatchState.LOCAL_PLAYER)
+	var panel = load("res://scripts/building_detail_panel.gd").new()
+	_check(panel._resolve_owner_id(MatchState.get_building(player_iid)) == MatchState.LOCAL_PLAYER,
+		"detail owner: canonical player dict -> player")
+	var poisoned: Dictionary = MatchState.get_building(player_iid).duplicate()
+	poisoned["owner"] = "Stoneshore Ironworks"
+	_check(panel._resolve_owner_id(poisoned) == MatchState.LOCAL_PLAYER,
+		"detail owner: stale-owner player dict re-resolves to player (no NPC frost)")
+	_check(panel._resolve_owner_id(MatchState.get_building(npc_iid)) == "Stoneshore Ironworks",
+		"detail owner: NPC building -> NPC owner (frost preserved)")
+	_check(panel._resolve_owner_id({"instance_id": "stub_x", "building_id": "b_002"}) == MatchState.LOCAL_PLAYER,
+		"detail owner: construction stub (not in store, no owner) -> player")
+	panel.free()
+	MatchState.buildings.erase(npc_iid)
+	MatchState.buildings.erase(player_iid)
+
+func _test_greenest_reads_quality() -> void:
+	VictoryState.reset()
+	# green = intermittent 300 + steady 300 = 600 of 1000 -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
+	VictoryState._last_summary = {"power_supply": 1000,
+		"power_supply_by_quality": {"green_intermittent": 300, "green_steady": 300, "grey": 400}}
+	_check(absf(VictoryState._live_progress("greenest") - 0.5) < 0.001,
+		"greenest: reads power_supply_by_quality (steady + intermittent count green)")
 
 # The main-menu goods board fills its 7x7 (everything but the buffer-most row 0 +
 # column 0) with UNIQUE goods; repeats are only allowed on that last-into-view edge.

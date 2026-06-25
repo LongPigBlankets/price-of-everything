@@ -648,10 +648,15 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 		})
 
 	# --- Promotion gate ---
-	# Active only if the building resolves, there's at least one output, and EVERY
-	# input + output is an existing good. Otherwise the recipe stays dormant.
+	# Active only if the building resolves and EVERY input + output is an existing good. A recipe
+	# normally needs at least one input or output, EXCEPT storage (battery) buildings: their
+	# housing exists to be built and loaded with battery cells (see docs/battery-storage-spec.md),
+	# not to process goods, so a no-op recipe is allowed for them. Otherwise the recipe is dormant.
 	var resolved_building_id := _resolve_building_id(raw.get("building_id", ""))
-	if resolved_building_id == "" or outputs.is_empty():
+	if resolved_building_id == "":
+		return {}
+	if outputs.is_empty() and inputs.is_empty() \
+			and str(_buildings_by_id.get(resolved_building_id, {}).get("category", "")) != "battery":
 		return {}
 	for inp in inputs:
 		if inp.good_id == "":
@@ -667,9 +672,9 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 		"recipe_type": raw.get("category", ""),
 		"inputs": inputs,
 		"outputs": outputs,
-		"output_name": outputs[0].internal_name,
-		"output_good_id": outputs[0].good_id,
-		"output_qty": outputs[0].qty,
+		"output_name": outputs[0].internal_name if not outputs.is_empty() else "",
+		"output_good_id": outputs[0].good_id if not outputs.is_empty() else "",
+		"output_qty": outputs[0].qty if not outputs.is_empty() else 0,
 		"energy_req": int(raw.get("energy_req", "0")),
 		"requirements": _parse_requirements(raw.get("requirements", "")),
 		"required_research": raw.get("required_research", ""),
@@ -820,6 +825,15 @@ func get_building_by_internal_name(internal_name: String) -> Dictionary:
 func get_building_display_name(building_id: String) -> String:
 	var b: Dictionary = _buildings_by_id.get(building_id, {})
 	return b.get("display_name", building_id)
+
+# Terrain-placement rule: sea / deep_sea tiles accept ONLY the sea-only buildings
+# (offshore wind / offshore oil); every other building is land-only and the sea-only
+# buildings conversely cannot be placed on land. tile_type is the tile's "type" field.
+func is_building_allowed_on_tile_type(building_id: String, tile_type: String) -> bool:
+	var internal: String = str(get_building(building_id).get("internal_name", ""))
+	var is_sea: bool = tile_type == "sea" or tile_type == "deep_sea"
+	var is_sea_only: bool = internal in EconomyConfig.SEA_ONLY_BUILDINGS
+	return is_sea_only if is_sea else not is_sea_only
 
 # Resolve a recipe's building reference (internal_name, possibly aliased) to a b_id.
 func _resolve_building_id(building_field: String) -> String:

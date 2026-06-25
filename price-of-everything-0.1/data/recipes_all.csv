@@ -196,3 +196,4 @@ r_221,Deepwater Oil Extraction,offshore_oil_platform,,,,,,,,,,,,,3,crude_oil,12,
 r_222,Subsea Manifold Extraction,offshore_oil_platform,,,,,,,,,,,,,3,crude_oil,14,,,,,,,,,deposit:crude_oil,,,Extraction,,Subsea Tieback Systems
 r_223,Floating Offshore Wind Power,offshore_wind_farm,,,,,,,,,,,,,0,power,90,,,,,,,,,deep_sea,,,power,,Floating Offshore Wind Farms
 r_224,Hydroelectric Power,hydro_power_plant,,,,,,,,,,,,,0,power,100,,,,,,,,,river,,,power,,hydro
+r_225,Battery Storage,battery,,,,,,,,,,,,,0,,,,,,,,,,,,,,Battery,,

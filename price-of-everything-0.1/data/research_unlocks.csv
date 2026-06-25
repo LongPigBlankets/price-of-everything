@@ -190,3 +190,6 @@ Infrastructure,Reinforced Roadbeds,,,,III,Own,Roads,6,units,Electrified Road Hau
 Renewable Power,Bifacial Panel Arrays,,,,II,Sell,Power,250,units,Anti-Reflective Coatings,arc,Increases solar potential on all tiles by 10% permanently.
 Renewable Power,Onshore Wind Control,,,,II,Run,Wind Farm,12,turns,Tall-Tower Wind Capture,onwind,Increases onshore wind potential by 10% permanently.
 Renewable Power,Onshore Wind Control,,,,II,Own,land,5,units,Marine Wind Profiling,offwind,Increases offshore wind potential by 10% permanently.
+Renewable Power,,,,,I,Produce,lithium_battery,30,units,Lithium Battery Storage,battery,Unlocks loading Lithium Ion Battery cells into battery storage (the all-round storage medium).
+Renewable Power,Lithium Battery Storage,,,,II,Produce,sodium_battery,50,units,Sodium Battery Storage,battery,Unlocks loading Sodium Ion Battery cells — cheaper storage that avoids lithium/rare earths.
+Renewable Power,Battery Balancing,,,,III,Build,battery,10,buildings,Iron Air Long Duration Storage,storage,"Unlocks loading Iron Air Battery cells — the cheapest, long-duration bulk storage medium."

@@ -388,6 +388,11 @@ func _on_recipe_selected(building_id: String, recipe_id: String) -> void:
 
 ## A recipe is valid for a tile when its deposit / potential requirements are met.
 func _recipe_valid_for_tile(recipe: Dictionary, tile_data: Dictionary) -> bool:
+	# Terrain rule: sea/deep_sea accept only offshore buildings; offshore buildings can't go
+	# on land. (Applied only when filtering for a specific tile — empty type = no filter.)
+	var tile_type := str(tile_data.get("type", ""))
+	if tile_type != "" and not Catalog.is_building_allowed_on_tile_type(str(recipe.get("building_id", "")), tile_type):
+		return false
 	for req in recipe.get("requirements", []):
 		var rtype := str(req.get("type", "")).to_lower()
 		var rval := str(req.get("value", "")).strip_edges().to_lower()

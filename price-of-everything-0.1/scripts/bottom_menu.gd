@@ -81,6 +81,7 @@ func _ready() -> void:
 	%ConstructButton.pressed.connect(_on_construct_pressed)
 	%ResourcesButton.pressed.connect(_on_resources_pressed)
 	%BuildingsButton.pressed.connect(_on_buildings_pressed)
+	MatchState.building_ledger_filter_requested.connect(_on_building_ledger_filter_requested)
 	%MarketButton.pressed.connect(_on_market_pressed)
 	%PoliticsButton.pressed.connect(_on_politics_pressed)
 	%TechButton.pressed.connect(_on_research_pressed)
@@ -346,6 +347,10 @@ func _on_market_pressed() -> void:
 	_set_panel_visible(market_panel, true)
 
 func _on_buildings_pressed() -> void:
+	_show_building_ledger()
+
+# Lazy-create (no main.tscn edit needed) + show the building ledger.
+func _show_building_ledger() -> void:
 	_hide_all_panels()
 	if not is_instance_valid(building_ledger_panel):
 		building_ledger_panel = BUILDING_LEDGER_PANEL_SCENE.instantiate()
@@ -357,6 +362,14 @@ func _on_buildings_pressed() -> void:
 		)
 		_link_rise(building_ledger_panel, %BuildingsButton)
 	_set_panel_visible(building_ledger_panel, true)
+
+# Deep-link: open the ledger pre-filtered to a single filter key (e.g. the tile-view
+# intermittency "see more" → "green_intermittent"). _ready() ran on instantiate, so the
+# chips exist by the time we set the preset.
+func _on_building_ledger_filter_requested(filter_key: String) -> void:
+	_show_building_ledger()
+	if is_instance_valid(building_ledger_panel) and building_ledger_panel.has_method("set_filter_preset"):
+		building_ledger_panel.set_filter_preset(filter_key)
 
 func _on_politics_pressed() -> void:
 	print("Politics panel not yet implemented")

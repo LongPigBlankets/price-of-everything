@@ -75,6 +75,46 @@ const SEAPORT_RANGE_TILES: int = 10
 const GRID_BUY_PRICE: float = 1.0    # £/unit when buying from grid (shortfall)
 const GRID_SELL_PRICE: float = 0.6   # £/unit when selling surplus to grid
 
+# --- Power intermittency (green/grey quality, layered ON TOP of the single `power` good) ---
+# Solar/wind are intermittent green: a recipe relying on UNFIRMED intermittent power
+# produces less. output *= 1 - INTERMITTENCY_DERATE * unfirmed_intermittent_share, so a
+# building running entirely on unfirmed intermittent green makes (1 - 0.4) = 60% of output.
+const INTERMITTENCY_DERATE: float = 0.4
+# Abstracted per-tile firming capacity (power units) by battery building level — storage on
+# a tile converts up to this much intermittent green to steady (producer- or consumer-side).
+# Not a charge/discharge sim; just a cap check. (Batteries give 0 storage_boost otherwise.)
+# Firming CAPACITY (⚡) of one battery housing by level — L1 100, L2 doubles, L3 triples.
+# (Balance data — rule #7.)
+const BATTERY_STORAGE_CAP := {1: 100, 2: 200, 3: 300}
+# Power-quality classification by producing building internal_name (default = grey/firm).
+const POWER_INTERMITTENT_BUILDINGS := ["solar_farm", "onshore_wind_farm", "offshore_wind_farm"]
+const POWER_STEADY_BUILDINGS := ["hydro_power_plant"]
+# Generic power_plant recipes whose fuel is biomass/waste count as steady green.
+# (MVP good internal_names: biomass g_062, bio_waste g_073, carbonised_biomass g_076.)
+const POWER_STEADY_FUELS := ["biomass", "bio_waste", "carbonised_biomass"]
+# The ONLY buildings that may be placed on sea / deep_sea tiles. Every other building is
+# land-only, and these two are conversely water-only (cannot be placed on land). By
+# building internal_name. (offshore_wind_farm b_026, offshore_oil_platform b_033.)
+const SEA_ONLY_BUILDINGS := ["offshore_wind_farm", "offshore_oil_platform"]
+# Battery storage = deposit model (docs/battery-storage-spec.md). A battery building is housing
+# with BATTERY_STORAGE_CAP[level] CELL SLOTS; the player loads battery goods (locked, refundable
+# capital) into those slots and a tile's firming = min(slots, Σ loaded cells × density).
+# Density is per battery-good internal_name (uniform for now; future differentiation lever).
+# Firming ⚡ per loaded cell, by battery good. Calibrated against the L1 cap (100 ⚡) so filling a
+# building takes 3 / 4 / 10 turns of factory output (6/turn) — i.e. 18 / 24 / 60 cells fill 100 ⚡.
+# Lithium is densest (fewest, priciest cells), iron-air bulkiest (most, cheapest cells).
+const BATTERY_CELL_DENSITY := {
+	"lithium_battery": 100.0 / 18.0,   # 18 cells fill 100 ⚡ (3 factory-turns)
+	"sodium_battery": 100.0 / 24.0,    # 24 cells (4 turns)
+	"iron_battery": 100.0 / 60.0,      # 60 cells (10 turns)
+}
+# Tech gate: battery good internal_name -> the research title that unlocks loading it.
+const BATTERY_TYPE_UNLOCK := {
+	"lithium_battery": "Lithium Battery Storage",
+	"sodium_battery": "Sodium Battery Storage",
+	"iron_battery": "Iron Air Long Duration Storage",
+}
+
 # --- Transport ---
 const TRANSPORT_MAX_TILES_PER_TURN: int = 2
 # Liquids & gases move by pipe ONLY (1 tile/turn — see infrastructure.csv pipe range)

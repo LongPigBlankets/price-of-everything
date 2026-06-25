@@ -31,7 +31,9 @@ const RESOURCE_CLUSTER_SCALE := {
 
 const POWER_COLORS: Dictionary = {
 	"surplus": Color(0.2, 0.8, 0.2),         # green
-	"deficit": Color(0.8, 0.2, 0.2),         # red
+	"self_supplied": Color(0.95, 0.65, 0.10),# amber — deficit covered 100% by your own production
+	"national": Color(0.8, 0.2, 0.2),        # red — drawn from the national grid
+	"deficit": Color(0.8, 0.2, 0.2),         # red (legacy fallback)
 	"balanced": Color(0.2, 0.8, 0.2),        # green (same as surplus)
 	"cables_missing": Color(0.05, 0.05, 0.05),  # near-black
 	"cables_unused": Color(0.5, 0.5, 0.5),   # grey
@@ -718,14 +720,22 @@ func _draw_power_marker(world_pos: Vector2, status: Dictionary) -> void:
 	add_child(marker)
 	current_overlays.append(marker)
 
-	var color: Color = POWER_COLORS.get(status.state, Color.MAGENTA)
 	var tile := _tile_size()
 
 	# Transparent hex the size of the tile (was a small circle).
 	var hex := Node2D.new()
 	hex.set_script(load("res://scripts/power_hex_overlay.gd"))
 	hex.set("tile_size", tile)
-	hex.set("color", Color(color.r, color.g, color.b, TILE_MASK_ALPHA))
+	if status.state == "partial":
+		# Some consumption self-supplied, some from the national grid -> amber base + red bars.
+		var amber: Color = POWER_COLORS["self_supplied"]
+		var red: Color = POWER_COLORS["national"]
+		hex.set("color", Color(amber.r, amber.g, amber.b, TILE_MASK_ALPHA))
+		hex.set("hatch", true)
+		hex.set("hatch_color", Color(red.r, red.g, red.b, TILE_MASK_ALPHA))
+	else:
+		var color: Color = POWER_COLORS.get(status.state, Color.MAGENTA)
+		hex.set("color", Color(color.r, color.g, color.b, TILE_MASK_ALPHA))
 	marker.add_child(hex)
 
 	# Label (if state has a number) — outlined so it stays legible over the tile.
@@ -748,7 +758,7 @@ func _format_power_label(status: Dictionary) -> String:
 	match status.state:
 		"surplus":
 			return "+%d" % status.net
-		"deficit":
+		"deficit", "self_supplied", "national", "partial":
 			return "%d" % status.net  # already negative, "-N"
 		"balanced":
 			return "0"
@@ -828,10 +838,25 @@ func _get_power_status_for_tile(tile_data: Dictionary) -> Dictionary:
 		if net > 0:
 			return {"state": "surplus", "net": net}
 		elif net < 0:
-			return {"state": "deficit", "net": net}
+			return _classify_power_draw(net)
 		else:
 			return {"state": "balanced", "net": 0}
 	elif has_cables:
 		return {"state": "cables_unused"}
 	else:
 		return {"state": "none"}
+
+# A consuming (deficit) tile draws its shortfall from the single shared grid pool. There's no
+# per-tile metering of self vs national-grid, so classify by the ECONOMY-WIDE self-supply
+# fraction (your production / total demand this turn): fully self-supplied -> amber, fully from
+# the national grid -> red, in between -> hatched partial.
+func _classify_power_draw(net: int) -> Dictionary:
+	var supply: int = Power.supply_this_turn
+	var demand: int = Power.demand_this_turn
+	var frac: float = 1.0 if demand <= supply else float(supply) / float(maxi(demand, 1))
+	if frac >= 0.999:
+		return {"state": "self_supplied", "net": net}
+	elif frac <= 0.001:
+		return {"state": "national", "net": net}
+	else:
+		return {"state": "partial", "net": net, "self_frac": frac}

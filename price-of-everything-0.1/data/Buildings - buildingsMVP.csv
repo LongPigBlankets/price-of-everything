@@ -26,8 +26,8 @@ b_024,solar_farm,Solar Farm,1,10000,10,10,concrete,2,electrical_components,4,con
 b_025,onshore_wind_farm,Onshore Wind Farm,1,10000,10,10,steel,4,concrete,2,construction_equipment_ice,1,rubber,5,plastics,5,2,10,power,standard,10000,,,,,2,50,100,150,power,0,,,,,
 b_026,offshore_wind_farm,Offshore Wind Farm,1,10000,10,10,steel,6,concrete,3,construction_equipment_ice,2,rubber,5,plastics,5,2,10,power,standard,10000,,,,,3,50,120,180,power,0,,,,,
 b_027,hydro_power_plant,Hydroelectric Dam,1,10000,10,10,concrete,6,construction_equipment_ice,2,rubber,5,plastics,5,,,2,10,power,standard,10000,,,,,3,50,150,200,power,0,,,,,hydro
-b_028,battery,Battery Electric Storage,1,10000,10,10,concrete,2,electrical_components,4,construction_equipment_ice,1,rubber,5,plastics,5,2,10,battery,standard,10000,,,,,2,100,150,150,power,0,,,,,
-b_029,heat_battery,Thermal Battery Storage,1,10000,10,10,concrete,2,construction_equipment_ice,1,rubber,5,plastics,5,,,2,10,battery,standard,10000,,,,,2,100,150,150,power,0,,,,,
+b_028,battery,Battery Electric Storage,0,10000,10,10,concrete,2,electrical_components,4,construction_equipment_ice,1,rubber,5,plastics,5,2,10,battery,standard,10000,,,,,3,0,100,90,power,0,,,,,
+b_029,heat_battery,Thermal Battery Storage,0,10000,10,10,concrete,2,construction_equipment_ice,1,rubber,5,plastics,5,,,2,10,battery,standard,10000,,,,,3,0,100,90,power,0,,,,,
 b_030,consumer_factory,Consumer Goods Factory,1,10000,10,10,concrete,3,building_frame,3,construction_equipment_ice,1,rubber,5,plastics,5,2,10,production,standard,10000,,,,,2,500,350,250,manufacturing,0,,,,,
 b_031,ruins,Disused Buildings,1,10000,1,1,,,,,,,,,,,2,10,production,standard,10000,,,,,2,100,50,30,,0,,,,,
 b_032,oil_well,Oil Wells,1,10000,10,10,concrete,3,construction_equipment_ice,1,rubber,5,plastics,5,,,2,10,production,standard,10000,,,,,1,300,150,100,extraction,0,,,,,

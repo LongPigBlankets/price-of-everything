@@ -22,6 +22,7 @@ const LAND_BAR := preload("res://scripts/land_bar.gd")
 const LAND_CHART := preload("res://scripts/land_chart.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIFonts := preload("res://scripts/ui_fonts.gd")
+const BuildingNaming := preload("res://scripts/building_naming.gd")
 const GOODS_FRAME := preload("res://assets/ui/goods_frame.tres")
 const PLUS_ICON_PATH := "res://assets/icons/ui_icons/plus_off_white.png"
 # Classic TileInfoPanel footprint is 760×630; this is 120px narrower, 100px taller.
@@ -691,6 +692,8 @@ func _build_power_pane(pane: VBoxContainer) -> void:
 		net_text += "  from grid" if net < 0 else "  to grid"
 	pane.add_child(_make_power_stat("Net power", net_text, _status_color(power.status)))
 
+	_build_intermittency_rows(pane)
+
 	pane.add_child(HSeparator.new())
 
 	# Grid row: name on the left, a "Go To" link (opens the Power map mode) right.
@@ -735,6 +738,203 @@ func _make_power_stat(label_text: String, value_text: String, color: Color) -> H
 	v.add_theme_color_override("font_color", color)
 	v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(v)
+	return row
+
+# Green-power + intermittency rows for this tile (data from the post-cascade allocation).
+# Shown only when the tile actually touches green power.
+func _build_intermittency_rows(pane: VBoxContainer) -> void:
+	var im: Dictionary = Production.get_tile_intermittency(_current_tile_id)
+	if im.is_empty():
+		return
+	var green_prod := int(im.get("green_produced", 0))
+	var green_cons := int(round(float(im.get("green_consumed", 0.0))))
+	var battery_cap := int(im.get("battery_cap", 0))
+	var affected: Array = im.get("affected", [])
+	if green_prod <= 0 and green_cons <= 0 and battery_cap <= 0 and affected.is_empty():
+		return
+
+	pane.add_child(HSeparator.new())
+	pane.add_child(_make_section_header("Green power & intermittency", "", "ok"))
+
+	# Row 1: green power produced | consumed.
+	pane.add_child(_make_power_stat("Green produced | consumed", "%d | %d ⚡" % [green_prod, green_cons], DS.PALETTE.OK))
+
+	# Row 2: buildings affected by intermittency.
+	var green_int_prod := int(im.get("green_intermittent_produced", 0))
+	if affected.size() > 0:
+		pane.add_child(_make_power_stat("Buildings affected by intermittency", "%d" % affected.size(), DS.PALETTE.DANGER))
+		var total_cons := int(im.get("total_consumed", 0))
+		var total_prod := int(im.get("total_produced", 0))
+		var unfirmed_cons := float(im.get("unfirmed_consumed", 0.0))
+		var pct_cons := int(round(100.0 * unfirmed_cons / float(total_cons))) if total_cons > 0 else 0
+		var pct_prod := int(round(100.0 * float(green_int_prod) / float(total_prod))) if total_prod > 0 else 0
+		pane.add_child(_make_power_subrow("%d%% of power consumed affected" % pct_cons, ""))
+		pane.add_child(_make_power_subrow("%d%% of power produced affected" % pct_prod, ""))
+		for i in mini(3, affected.size()):
+			var a: Dictionary = affected[i]
+			var iid := str(a.get("iid", ""))
+			var live: Dictionary = MatchState.get_building(iid)
+			var full_name := BuildingNaming.label_for_tile(_current_tile_id, iid, str(a.get("building_id", "")), str(live.get("recipe_id", "")))
+			pane.add_child(_make_power_affected_row(full_name, iid))
+		pane.add_child(_make_power_see_more("see more →", "green_intermittent"))
+	elif battery_cap > 0 and green_int_prod > 0:
+		# Intermittent green is present but fully firmed by the tile's batteries.
+		var solved := _make_power_subrow("ALL GREEN POWER COVERED BY BATTERIES. NO INTERMITTENCY.", "")
+		(solved.get_child(1) as Label).add_theme_color_override("font_color", DS.PALETTE.OK)
+		pane.add_child(solved)
+	else:
+		pane.add_child(_make_power_stat("Buildings affected by intermittency", "0", DS.PALETTE.TEXT_DIM))
+
+	# Row 3: battery storage table + per-type cell load/unload (deposit model).
+	pane.add_child(_make_battery_table(_current_tile_id, green_prod, green_cons))
+
+# Battery storage: Prod / Cons / Max Storage table (Max Storage = the tile's live firming
+# capacity), then per-type cell load/unload controls when there is battery housing here.
+func _make_battery_table(tile_id: String, prod: int, cons: int) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.add_child(_make_section_header("Battery storage", "", "ok"))
+	var slots := MatchState.tile_battery_slots(tile_id)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 24)
+	for h in ["Prod", "Cons", "Max Storage"]:
+		var hl := Label.new()
+		hl.text = h
+		hl.theme_type_variation = &"Caption"
+		hl.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+		grid.add_child(hl)
+	for v in [prod, cons, MatchState.tile_firming_cap(tile_id)]:
+		var vl := Label.new()
+		vl.text = "%d ⚡" % int(v)
+		vl.theme_type_variation = &"Numeric"
+		vl.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+		grid.add_child(vl)
+	box.add_child(grid)
+	if slots > 0:
+		box.add_child(_make_power_subrow("Storage in use: %d / %d ⚡" % [int(MatchState.tile_loaded_firming(tile_id)), slots], ""))
+		for internal in ["lithium_battery", "sodium_battery", "iron_battery"]:
+			box.add_child(_make_battery_load_row(tile_id, internal))
+	return box
+
+# One battery-type row: name + loaded/in-stock, with Load / Unload links (or a locked hint).
+func _make_battery_load_row(tile_id: String, internal: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.custom_minimum_size = Vector2(0, 22)
+	var indent := Control.new()
+	indent.custom_minimum_size = Vector2(16, 0)
+	row.add_child(indent)
+	var gid := str(Catalog.get_good_by_internal_name(internal).get("id", ""))
+	var gname := str(Catalog.get_good(gid).get("display_name", internal))
+	var lbl := Label.new()
+	lbl.theme_type_variation = &"Body"
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if not MatchState.is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(internal, ""))):
+		lbl.text = "🔒 %s — %s" % [gname, str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(internal, "locked"))]
+		lbl.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+		row.add_child(lbl)
+		return row
+	var loaded := int(MatchState.get_tile_battery_cells(tile_id).get(gid, 0))
+	var stock := Stockpile.get_at_tile(tile_id, gid)
+	var free_firming := float(MatchState.tile_battery_slots(tile_id)) - MatchState.tile_loaded_firming(tile_id)
+	lbl.text = "%s: %d loaded · %d in stock" % [gname, loaded, stock]
+	lbl.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	row.add_child(lbl)
+	# load_battery_cells caps by firming headroom + stock; offer the button when either could add.
+	var can_load := stock > 0 and free_firming > 0.0
+	var load_btn := _make_inline_link("Load", DS.PALETTE.ACCENT if can_load else DS.PALETTE.TEXT_DIM)
+	if can_load:
+		load_btn.pressed.connect(func() -> void:
+			MatchState.load_battery_cells(tile_id, gid, stock)
+			_refresh_pane("power"))
+	row.add_child(load_btn)
+	var unload_btn := _make_inline_link("Unload", DS.PALETTE.ACCENT if loaded > 0 else DS.PALETTE.TEXT_DIM)
+	if loaded > 0:
+		unload_btn.pressed.connect(func() -> void:
+			MatchState.unload_battery_cells(tile_id, gid, loaded)
+			_refresh_pane("power"))
+	row.add_child(unload_btn)
+	return row
+
+# Small flat text-link button.
+func _make_inline_link(text: String, color: Color) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.flat = true
+	b.add_theme_color_override("font_color", color)
+	b.add_theme_color_override("font_hover_color", color)
+	b.add_theme_font_size_override("font_size", 12)
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	return b
+
+# Indented sub-row in normal off-white body text (matches the other power rows), with an
+# optional right-aligned numeric value.
+func _make_power_subrow(label_text: String, value_text: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.custom_minimum_size = Vector2(0, 22)
+	var indent := Control.new()
+	indent.custom_minimum_size = Vector2(16, 0)
+	row.add_child(indent)
+	var l := Label.new()
+	l.text = label_text
+	l.theme_type_variation = &"Body"
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(l)
+	if value_text != "":
+		var v := Label.new()
+		v.text = value_text
+		v.theme_type_variation = &"Numeric"
+		v.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		row.add_child(v)
+	return row
+
+# Indented affected-building row: full building name (off-white body text) + a right-anchored
+# "Go to" link that opens that building's detail panel.
+func _make_power_affected_row(name_text: String, instance_id: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.custom_minimum_size = Vector2(0, 22)
+	var indent := Control.new()
+	indent.custom_minimum_size = Vector2(16, 0)
+	row.add_child(indent)
+	var l := Label.new()
+	l.text = name_text
+	l.theme_type_variation = &"Body"
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	row.add_child(l)
+	var link := Button.new()
+	link.text = "Go to →"
+	link.focus_mode = Control.FOCUS_NONE
+	link.flat = true
+	link.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
+	link.add_theme_color_override("font_hover_color", DS.PALETTE.ACCENT)
+	link.add_theme_font_size_override("font_size", 12)
+	link.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	link.pressed.connect(func(): MatchState.focus_building_requested.emit(instance_id))
+	row.add_child(link)
+	return row
+
+# Indented underlined-style "link" (flat ACCENT button) → opens the building ledger
+# pre-filtered to buildings affected by intermittency.
+func _make_power_see_more(text: String, filter_key: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	var indent := Control.new()
+	indent.custom_minimum_size = Vector2(16, 0)
+	row.add_child(indent)
+	var link := Button.new()
+	link.text = text
+	link.focus_mode = Control.FOCUS_NONE
+	link.flat = true
+	link.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
+	link.add_theme_color_override("font_hover_color", DS.PALETTE.ACCENT)
+	link.add_theme_font_size_override("font_size", 12)
+	link.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	link.pressed.connect(func(): MatchState.building_ledger_filter_requested.emit(filter_key))
+	row.add_child(link)
 	return row
 
 func _make_power_build_item(spec: Array) -> VBoxContainer:
@@ -2026,7 +2226,7 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	header.add_child(icon_holder)
 
 	# Outputs goods frame (same outer size as the icon), 5px to its right.
-	header.add_child(_make_output_goods_frame(recipe))
+	header.add_child(_make_output_goods_frame(recipe, building_id))
 
 	# Recipe name (offset 20px from the top) + cost basis (offset 20px from the bottom).
 	var info_margin := MarginContainer.new()
@@ -2155,7 +2355,7 @@ func _make_count_badge(count: int) -> Control:
 # Outputs of the recipe in a frame that is pixel-identical in size/shape to the
 # building icon (the ornate goods-frame art is a non-square 330×293 texture that
 # distorted when squashed into a square box, so the two read as different sizes).
-func _make_output_goods_frame(recipe: Dictionary) -> Control:
+func _make_output_goods_frame(recipe: Dictionary, building_id: String = "") -> Control:
 	var frame := PanelContainer.new()
 	frame.custom_minimum_size = Vector2(GROUP_TILE, GROUP_TILE)
 	frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -2169,6 +2369,17 @@ func _make_output_goods_frame(recipe: Dictionary) -> Control:
 	frame.add_theme_stylebox_override("panel", s)
 	var center := CenterContainer.new()
 	frame.add_child(center)
+	# Battery storage: show the loaded chemistry (good icon + qty pill) instead of a recipe output.
+	if str(Catalog.get_building(building_id).get("category", "")) == "battery":
+		var chem := _primary_battery_chem(_current_tile_id)
+		if chem.is_empty():
+			var e := Label.new()
+			e.text = "—"
+			e.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+			center.add_child(e)
+		else:
+			center.add_child(_output_cell({"good_id": chem.good_id, "qty": chem.qty}, GROUP_TILE - 24))
+		return frame
 	var outs := _recipe_card_outputs(recipe)
 	if outs.is_empty():
 		var l := Label.new()
@@ -2187,6 +2398,17 @@ func _make_output_goods_frame(recipe: Dictionary) -> Control:
 	for outp in outs:
 		grid.add_child(_output_cell(outp, int((GROUP_TILE - 24 - 6) / 2.0)))
 	return frame
+
+# The dominant battery chemistry loaded on a tile {good_id, qty} (or {} if none).
+func _primary_battery_chem(tile_id: String) -> Dictionary:
+	var cells: Dictionary = MatchState.get_tile_battery_cells(tile_id)
+	var best_gid := ""
+	var best_qty := 0
+	for gid in cells:
+		if int(cells[gid]) > best_qty:
+			best_qty = int(cells[gid])
+			best_gid = str(gid)
+	return {} if best_gid == "" else {"good_id": best_gid, "qty": best_qty}
 
 func _output_cell(outp: Dictionary, size: int) -> Control:
 	var ogid := str(outp.good_id)
