@@ -1240,11 +1240,20 @@ func tile_loaded_firming(tile_id: String) -> float:
 	return f
 
 # Firming capacity a tile provides: loaded firming, capped at the housing's ⚡ capacity.
+# (round, not floor — density is fractional, so e.g. 18 lithium cells = exactly 100 ⚡.)
 func tile_firming_cap(tile_id: String) -> int:
 	var slots := tile_battery_slots(tile_id)
 	if slots <= 0:
 		return 0
-	return int(min(float(slots), tile_loaded_firming(tile_id)))
+	return int(round(min(float(slots), tile_loaded_firming(tile_id))))
+
+# Cells of `good_id` still needed to FILL the tile's remaining firming headroom.
+func battery_cells_to_fill(tile_id: String, good_id: String) -> int:
+	var density := _battery_density(good_id)
+	if density <= 0.0:
+		return 0
+	var free_firming := float(tile_battery_slots(tile_id)) - tile_loaded_firming(tile_id)
+	return maxi(0, int(floor(free_firming / density + 0.0001)))
 
 func _battery_density(good_id: String) -> float:
 	return float(EconomyConfig.BATTERY_CELL_DENSITY.get(
@@ -1267,7 +1276,7 @@ func load_battery_cells(tile_id: String, good_id: String, qty: int) -> int:
 	if density <= 0.0:
 		return 0
 	var free_firming := float(tile_battery_slots(tile_id)) - tile_loaded_firming(tile_id)
-	var max_by_firming := int(floor(free_firming / density))
+	var max_by_firming := int(floor(free_firming / density + 0.0001))  # epsilon: fractional density
 	var avail := Stockpile.get_at_tile(tile_id, good_id)
 	var take := mini(mini(qty, max_by_firming), avail)
 	if take <= 0:
