@@ -537,12 +537,17 @@ func _apply_npc_field_blur() -> void:
 	_npc_blur_rect = blur
 
 func _clear_npc_field_blur() -> void:
+	if _npc_blur_rect != null and is_instance_valid(_npc_blur_rect):
+		_npc_blur_rect.queue_free()
 	_npc_blur_rect = null
 	if fields_host == null:
 		return
-	var existing := fields_host.get_node_or_null("NPCFieldBlur")
-	if existing != null:
-		existing.queue_free()
+	# Remove EVERY frost overlay, not just one matched by exact name: a same-frame re-render can
+	# rename a second blur to "@NPCFieldBlur@2", which a name lookup misses — leaving it frosting
+	# the next building. The frost is the only ColorRect parented to fields_host, so sweep them.
+	for child in fields_host.get_children():
+		if child is ColorRect:
+			child.queue_free()
 
 func _add_cancel_construction_button(instance_id: String) -> void:
 	var btn := Button.new()
