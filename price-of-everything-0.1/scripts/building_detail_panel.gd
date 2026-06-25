@@ -1533,6 +1533,7 @@ func _show_storage_diagram(building: Dictionary) -> void:
 		_storage_diagram = _build_storage_diagram()
 		flow_row.add_child(_storage_diagram)
 	_storage_diagram.visible = true
+	flow_summary.custom_minimum_size = Vector2(0, 168)  # room for the full-size battery icon
 	var tile_id := str(building.get("tile_id", ""))
 	var im: Dictionary = Production.get_tile_intermittency(tile_id)
 	_sd_produced.text = "%d ⚡ steadied (produced)" % int(im.get("green_produced", 0))
@@ -1547,42 +1548,54 @@ func _show_storage_diagram(building: Dictionary) -> void:
 		icon.texture = GoodIcons.texture_for(str(gid), str(Catalog.get_good(str(gid)).get("internal_name", "")), true)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.custom_minimum_size = Vector2(40, 40)
+		icon.custom_minimum_size = FLOW_SINGLE_CELL_SIZE  # regular recipe-cell size (~110px)
 		_sd_icon_row.add_child(icon)
 
 func _build_storage_diagram() -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	# Left: dashed navy box with centred "In use for storage".
+	# Left: dashed navy box — the loaded battery-type icon(s) up top, "In use for storage" lower.
 	var box := DASHED_BOX.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var box_vb := VBoxContainer.new()
-	box_vb.alignment = BoxContainer.ALIGNMENT_CENTER
-	box_vb.add_theme_constant_override("separation", 6)
-	# Icon(s) of the battery type(s) actually loaded in the building (populated in _show_storage_diagram).
+	box_vb.set_anchors_preset(Control.PRESET_FULL_RECT)
+	box_vb.add_theme_constant_override("separation", 4)
+	box_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Icon(s) of the battery type(s) actually loaded (populated in _show_storage_diagram).
 	_sd_icon_row = HBoxContainer.new()
 	_sd_icon_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_sd_icon_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_sd_icon_row.add_theme_constant_override("separation", 6)
 	box_vb.add_child(_sd_icon_row)
+	var gap := Control.new()  # pushes the label toward the bottom of the box
+	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box_vb.add_child(gap)
 	var box_lbl := Label.new()
 	box_lbl.text = "In use for storage"
 	box_lbl.add_theme_color_override("font_color", DIAGRAM_NAVY)
 	box_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box_vb.add_child(box_lbl)
-	center.add_child(box_vb)
-	box.add_child(center)
+	var bot := Control.new()
+	bot.custom_minimum_size = Vector2(0, 10)
+	box_vb.add_child(bot)
+	box.add_child(box_vb)
 	row.add_child(box)
-	# Middle: a thin navy vertical line.
+	# Middle: a thin navy vertical line, inset so it doesn't touch the top/bottom of the card.
+	var mid := VBoxContainer.new()
+	var mtop := Control.new()
+	mtop.custom_minimum_size = Vector2(2, 14)
 	var line := ColorRect.new()
 	line.color = DIAGRAM_NAVY
 	line.custom_minimum_size = Vector2(2, 0)
 	line.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	row.add_child(line)
+	var mbot := Control.new()
+	mbot.custom_minimum_size = Vector2(2, 14)
+	mid.add_child(mtop)
+	mid.add_child(line)
+	mid.add_child(mbot)
+	row.add_child(mid)
 	# Right: three rows — produced steadied, consumed steadied, and max capacity at the bottom.
 	var right := HBoxContainer.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
