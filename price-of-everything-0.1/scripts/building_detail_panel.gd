@@ -155,6 +155,8 @@ var _sd_produced: Label = null
 var _sd_consumed: Label = null
 var _sd_maxcap: Label = null
 const DASHED_BOX := preload("res://scripts/dashed_box.gd")
+var _fill_expanded: bool = false       # battery "Fill Storage" section open?
+var _fill_type: String = ""            # selected battery good internal_name
 
 func _ready() -> void:
 	_is_secondary_panel = bool(get_meta("is_secondary_building_panel", false))
@@ -332,10 +334,13 @@ func _rebuild_fields(building: Dictionary) -> void:
 	if category == "battery":
 		_apply_npc_mode(false)
 		change_recipe_button.visible = false
+		if _route_row != null:
+			_route_row.visible = false  # no Inputs/Outputs routing for storage
 		title_label.text = _building_display_name(building, building_data, recipe) + _tile_title_suffix(building)
 		title_label.tooltip_text = _tile_title_tooltip(building)
 		location_label.visible = false
 		_show_storage_diagram(building)
+		_add_fill_storage_section(building)
 		var blvl := int(building.get("level", 1))
 		_add_field("Value", _money_text(building_data.get("base_price", 0.0)))
 		_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data) * BuildingLevels.mult("maint", blvl)))
@@ -1572,6 +1577,125 @@ func _storage_diagram_label() -> Label:
 	l.theme_type_variation = &"Body"
 	l.add_theme_color_override("font_color", DIAGRAM_NAVY)
 	return l
+
+# --- Battery "Fill Storage" flow ----------------------------------------------------------
+# Replaces the Inputs/Outputs route controls. A wide button opens: choose a battery type (3
+# cards; locked types greyed "NOT AVAILABLE", quantity pill hidden), then a source — Buy from
+# Market (cost confirm + order), This tile's stockpile (instant load), or Other tile (routing,
+# next update).
+func _add_fill_storage_section(building: Dictionary) -> void:
+	var tile_id := str(building.get("tile_id", ""))
+	_add_separator()
+	var fill_btn := Button.new()
+	fill_btn.text = ("▴  " if _fill_expanded else "▾  ") + "Fill Storage"
+	fill_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fill_btn.custom_minimum_size = Vector2(0, 40)
+	fill_btn.pressed.connect(func() -> void:
+		_fill_expanded = not _fill_expanded
+		_rebuild_fields(_current_building))
+	fields_vbox.add_child(fill_btn)
+	if not _fill_expanded:
+		return
+	var type_row := HBoxContainer.new()
+	type_row.add_theme_constant_override("separation", 8)
+	for internal in ["lithium_battery", "sodium_battery", "iron_battery"]:
+		type_row.add_child(_make_battery_type_card(tile_id, internal))
+	fields_vbox.add_child(type_row)
+	if _fill_type == "" or not MatchState.is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(_fill_type, ""))):
+		return
+	var gid := str(Catalog.get_good_by_internal_name(_fill_type).get("id", ""))
+	var need := MatchState.battery_cells_to_fill(tile_id, gid)
+	var gname := str(Catalog.get_good(gid).get("display_name", _fill_type))
+	if need <= 0:
+		_add_text("Storage is full for %s." % gname)
+		return
+	_add_text("Needs %d %s cells to fill." % [need, gname])
+	var stock := Stockpile.get_at_tile(tile_id, gid)
+	var src_row := HBoxContainer.new()
+	src_row.add_theme_constant_override("separation", 8)
+	var mkt := _make_source_button("Buy from Market", true)
+	mkt.pressed.connect(func() -> void: _confirm_battery_market_buy(tile_id, gid, need, gname))
+	src_row.add_child(mkt)
+	var this_btn := _make_source_button("This tile's stockpile", stock >= need)
+	if stock >= need:
+		this_btn.pressed.connect(func() -> void:
+			MatchState.load_battery_cells(tile_id, gid, need)
+			_rebuild_fields(_current_building))
+	src_row.add_child(this_btn)
+	var other := _make_source_button("Other tile", true)
+	other.pressed.connect(func() -> void:
+		MatchState.request_toast("Routing cells from another tile is coming in the next update.", "caution"))
+	src_row.add_child(other)
+	fields_vbox.add_child(src_row)
+
+func _make_source_button(text: String, enabled: bool) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.custom_minimum_size = Vector2(0, 34)
+	b.disabled = not enabled
+	return b
+
+func _make_battery_type_card(tile_id: String, internal: String) -> PanelContainer:
+	var gid := str(Catalog.get_good_by_internal_name(internal).get("id", ""))
+	var unlocked := MatchState.is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(internal, "")))
+	var selected := _fill_type == internal and unlocked
+	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size = Vector2(0, 88)
+	var style := StyleBoxFlat.new()
+	style.bg_color = DIAGRAM_PAPER  # off-white
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(6)
+	style.set_border_width_all(2)
+	style.border_color = DS.PALETTE.ACCENT if selected else Color(0, 0, 0, 0)
+	card.add_theme_stylebox_override("panel", style)
+	var vb := VBoxContainer.new()
+	vb.alignment = BoxContainer.ALIGNMENT_CENTER
+	vb.add_theme_constant_override("separation", 2)
+	var icon := TextureRect.new()
+	icon.texture = GoodIcons.texture_for(gid, internal, true)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.custom_minimum_size = Vector2(0, 44)
+	if not unlocked:
+		icon.modulate = Color(0.5, 0.5, 0.5, 0.5)
+	vb.add_child(icon)
+	if unlocked:
+		var pill := Label.new()
+		pill.text = "%d" % Stockpile.get_at_tile(tile_id, gid)
+		pill.theme_type_variation = &"Numeric"
+		pill.add_theme_color_override("font_color", DIAGRAM_NAVY)
+		pill.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vb.add_child(pill)
+		card.mouse_filter = Control.MOUSE_FILTER_STOP
+		card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		card.gui_input.connect(func(e: InputEvent) -> void:
+			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+				_fill_type = internal
+				_rebuild_fields(_current_building))
+	else:
+		var na := Label.new()
+		na.text = "NOT AVAILABLE"
+		na.add_theme_color_override("font_color", STATUS_RED)
+		na.add_theme_font_size_override("font_size", 10)
+		na.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vb.add_child(na)
+	card.add_child(vb)
+	return card
+
+func _confirm_battery_market_buy(tile_id: String, gid: String, need: int, gname: String) -> void:
+	var cost := float(need) * MarketState.get_price(gid)
+	var dlg := ConfirmationDialog.new()
+	dlg.title = "Buy battery cells"
+	dlg.dialog_text = "Buy %d %s from the market and ship them to this tile for about £%.0f?" % [need, gname, cost]
+	dlg.confirmed.connect(func() -> void:
+		MatchState.queue_buy(tile_id, gid, need)
+		MatchState.request_toast("Ordered %d %s cells for delivery to this tile." % [need, gname], "info")
+		dlg.queue_free())
+	dlg.canceled.connect(func() -> void: dlg.queue_free())
+	add_child(dlg)
+	dlg.popup_centered()
 
 func _update_flow_summary(recipe: Dictionary) -> void:
 	# Restore the normal recipe flow content if the previous render was a battery storage diagram.
