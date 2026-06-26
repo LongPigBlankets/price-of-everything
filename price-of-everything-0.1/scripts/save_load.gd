@@ -210,7 +210,10 @@ func _merge_npc_buildings(snap: Dictionary) -> void:
 # A "start" is a small, hand-authorable JSON expanded into a full snapshot, so New
 # Game, Load Game and scenarios all flow through the same apply path.
 
-func start_new_game(start_path: String = DEFAULT_START) -> String:
+## Build the pending start snapshot WITHOUT changing scene, so the caller can drive
+## a non-blocking (threaded) transition to MAIN_SCENE itself and keep a loading
+## screen animating during the heavy scene load. See LoadingScreen.begin_load.
+func prepare_new_game(start_path: String = DEFAULT_START) -> void:
 	var cfg := _read_json_file(start_path)
 	if cfg.is_empty():
 		# No/corrupt start file: a plain fresh match (today's behaviour).
@@ -218,6 +221,10 @@ func start_new_game(start_path: String = DEFAULT_START) -> String:
 		_pending_snapshot = {}
 	else:
 		_pending_snapshot = expand_start_config(cfg)
+
+
+func start_new_game(start_path: String = DEFAULT_START) -> String:
+	prepare_new_game(start_path)
 	var err := get_tree().change_scene_to_file(MAIN_SCENE)
 	if err != OK:
 		_pending_snapshot = {}

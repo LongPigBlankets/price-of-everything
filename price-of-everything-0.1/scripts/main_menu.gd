@@ -33,8 +33,12 @@ func _ready() -> void:
 func _on_new_game_pressed() -> void:
 	# New Game flows through the same snapshot pipeline as Load Game: the default
 	# start config expands to a pending snapshot and applies once the map is ready.
-	LoadingScreen.show_global(get_tree())
-	SaveLoad.start_new_game()
+	# We prepare the snapshot, raise the loading screen, then let IT drive a threaded
+	# load of the map scene — so the posters + tip animate during the heavy load
+	# instead of the menu freezing until the map is ready.
+	SaveLoad.prepare_new_game()
+	var screen := LoadingScreen.show_global(get_tree())
+	screen.begin_load(SaveLoad.MAIN_SCENE)
 
 
 func _on_load_game_pressed() -> void:

@@ -14,12 +14,36 @@ extends Camera2D
 @export var zoomed_in_tile_count: float = 2.5
 
 var _target_zoom: Vector2
+var _intro_tween: Tween
 
 func _ready() -> void:
+	add_to_group("camera")   # lets the loading screen find us for the intro zoom
 	make_current()
 	_configure_for_map()
 	_target_zoom = zoom
 	call_deferred("_configure_for_map_after_scene_ready")
+
+
+## Gentle one-shot "establishing" zoom played when the player leaves the loading
+## screen: ease from the full-map view (effective zoom-out) to `frac` of the way
+## toward the closest zoom, over `dur` seconds, slowing into the end. Both `zoom`
+## and `_target_zoom` are driven together so the per-frame smoothing never fights
+## the tween.
+func start_intro_zoom(frac: float, dur: float) -> void:
+	var start_z := _effective_zoom_min()
+	var end_z := lerpf(start_z, zoom_max, clampf(frac, 0.0, 1.0))
+	if _intro_tween != null and _intro_tween.is_valid():
+		_intro_tween.kill()
+	zoom = Vector2.ONE * start_z
+	_target_zoom = zoom
+	_intro_tween = create_tween()
+	_intro_tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_intro_tween.tween_method(_apply_intro_zoom, start_z, end_z, dur)
+
+
+func _apply_intro_zoom(z: float) -> void:
+	zoom = Vector2.ONE * z
+	_target_zoom = zoom
 
 func _configure_for_map_after_scene_ready() -> void:
 	_configure_for_map()

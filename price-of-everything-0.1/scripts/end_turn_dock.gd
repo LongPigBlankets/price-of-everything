@@ -89,6 +89,7 @@ var _have_summary := false
 var _collapse_timer: SceneTreeTimer = null
 var _slide_t := 0.0           # 0 = collapsed, 1 = expanded (animated)
 var _slide_target := 0.0
+var _hud_sibling_index := -1  # our HUDContent child index, saved while raised to the front
 
 var _net := 0.0
 var _starved := 0
@@ -394,6 +395,7 @@ func _expand() -> void:
 	_suppress_chk.visible = true
 	_go_btn.visible = _starved > 0
 	z_index = 10                # rise above sibling panels while open
+	_raise_for_input()          # …and win mouse input over them (see below)
 	_cancel_collapse_timer()
 	_update_layout()            # move the header hit up into the ledger
 	set_process(true)
@@ -405,9 +407,31 @@ func _collapse() -> void:
 	_suppress_chk.visible = false
 	_go_btn.visible = false
 	z_index = 0                 # back under the bottom menu at rest
+	_restore_input_order()
 	_cancel_collapse_timer()
 	_update_layout()            # move the header hit back to the summary plate
 	set_process(true)
+
+
+# z_index lifts the DRAW order, but Control mouse-picking follows TREE order — so on
+# its own the open ledger draws over the tech/research panel yet lets clicks fall
+# THROUGH to it (you couldn't close the summary with that panel open). Moving to the
+# front of our siblings while open makes the ledger consume those clicks; we restore
+# the original order on collapse so the dock sits back under the other panels at rest.
+func _raise_for_input() -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	if _hud_sibling_index < 0:
+		_hud_sibling_index = get_index()
+	parent.move_child(self, parent.get_child_count() - 1)
+
+
+func _restore_input_order() -> void:
+	var parent := get_parent()
+	if parent != null and _hud_sibling_index >= 0:
+		parent.move_child(self, clampi(_hud_sibling_index, 0, parent.get_child_count() - 1))
+	_hud_sibling_index = -1
 
 
 func _start_collapse_timer() -> void:

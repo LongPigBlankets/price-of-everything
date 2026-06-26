@@ -76,6 +76,12 @@ var _buy_modal_label: Label = null
 var _construction_dialog: PanelContainer = null
 var _deposit_dialog: Control = null  # reused "no deposit" / "deposit exhausted" modal
 
+## False until _ready has finished building the world. On a fresh start the heavy
+## building-visual placement is spread across frames (so the loading screen can keep
+## animating its slideshow), so "the scene exists" is NOT the same as "the world is
+## ready" — the loading screen waits on this flag before offering "Begin".
+var build_complete := false
+
 func _ready() -> void:
 	# DS assigns its Theme to the root Window, but Controls do not inherit a
 	# Window's theme — so apply it to the HUD Control subtree (where every panel
@@ -210,23 +216,44 @@ func _ready() -> void:
 	# centre-to-centre connector lines), and inland tiles like Arin dock now enclose. seed_urban_enclosures
 	# lays a short INVISIBLE frontage anchor where there's no real road, then derives + draws the ring and
 	# flags the tile "roads". Fresh start only; a loaded save carries the rings in its network snapshot.
+	# When a loading screen is up, place the start buildings ONE PER FRAME so its
+	# slideshow keeps animating through the ~7 s of per-building visual layout instead
+	# of the whole window freezing. Without a loading screen (tests, e2e, load-game)
+	# `animate` is false and placement runs synchronously, exactly as before.
+	var animate := _loading_screen_active()
 	if not loaded_pending or pending_start:
 		RoadWorks.seed_urban_enclosures(terrain_layer)
 		# BUILDINGS now — after roads + enclosures — so they drop into the ready chunk grid and FILL the
 		# blocks they land in (NPC ports, the ruins, the start companies, + any future player start builds).
-		_place_npc_ports()
-		_place_ruins("tile_23_16")
-		_place_start_buildings()
+		await _place_npc_ports(animate)
+		await _place_ruins("tile_23_16", animate)
+		await _place_start_buildings(animate)
 	RoadWorks.rebuild_occupancy()   # no-op until OCCUPANCY_ROADS_ENABLED
 
 	# Re-gravitate every building once (deterministic, idempotent): a loaded save re-emitted its buildings
 	# before its imported road network was in hand, and this also re-fills the enclosure chunk grids now that
 	# the templates + rings all exist. Fresh-start buildings were already laid out against roads above.
-	if building_visuals.has_method("relayout"):
+	# A fresh start (pending_start) already laid its buildings out against the finished
+	# roads + rings above, so relayout() would just redo identical work (~7 s of
+	# layout). Only a genuine LOADED save needs it — its buildings were re-emitted by
+	# _rebuild_after_load before the imported road network was in hand, so they must be
+	# re-packed against it now.
+	if loaded_pending and not pending_start and building_visuals.has_method("relayout"):
 		building_visuals.relayout()
 
+	build_complete = true   # the loading screen may now offer "Begin"
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
+
+
+## A loading screen (parented to the tree root, surviving the scene change) is up
+## iff one of the root's children is a LoadingScreen — only then do we spread the
+## build across frames.
+func _loading_screen_active() -> bool:
+	for c in get_tree().root.get_children():
+		if c is LoadingScreen:
+			return true
+	return false
 
 func _rebuild_after_load() -> void:
 	# Redraw per-building visuals from the imported state: clear everything placed
@@ -1286,7 +1313,7 @@ func _on_construction_cancelled(instance_id: String, _tile_id: String) -> void:
 func _get_building_display_name(building_id: String) -> String:
 	return Catalog.get_building_display_name(building_id)
 
-func _place_npc_ports() -> void:
+func _place_npc_ports(animate: bool = false) -> void:
 	# Each port from ports.csv is a Port building (b_004) owned by an NPC. Placing it
 	# as a real instance makes it render, appear in the tile chart, raise the tile's
 	# storage capacity (+500), and become clickable.
@@ -1306,8 +1333,10 @@ func _place_npc_ports() -> void:
 			continue
 		var instance_id := MatchState.add_building("b_004", "", tile_id, "Three Diamonds Shipping Corporation")
 		building_placed.emit(tile_id, "b_004", "", instance_id, coord)
+		if animate:
+			await get_tree().process_frame   # let the loading screen animate between buildings
 
-func _place_ruins(tile_id: String) -> void:
+func _place_ruins(tile_id: String, animate: bool = false) -> void:
 	# A pre-placed disused/ruins building (b_031), NPC-owned to start with.
 	var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1):
@@ -1317,6 +1346,8 @@ func _place_ruins(tile_id: String) -> void:
 			return
 	var instance_id := MatchState.add_building("b_031", "", tile_id, "Abandoned Holdings")
 	building_placed.emit(tile_id, "b_031", "", instance_id, coord)
+	if animate:
+		await get_tree().process_frame
 
 func _place_northern_old_growth_forests() -> void:
 	for coord_key in terrain_layer.tiles:
@@ -1345,7 +1376,7 @@ func _place_northern_old_growth_forests() -> void:
 		)
 		building_placed.emit(tile_id, OLD_GROWTH_FOREST_BUILDING_ID, "", instance_id, coord)
 
-func _place_start_buildings() -> void:
+func _place_start_buildings(animate: bool = false) -> void:
 	# The pre-existing NPC building pool (data/start_buildings.json): one themed
 	# company per road region, real recipes, market phase tags for the later
 	# purchase rotation. Deterministic instance ids — the roads-v2 bake seeds the
@@ -1362,6 +1393,8 @@ func _place_start_buildings() -> void:
 			str(entry.building), str(entry.recipe), tile_id,
 			str(entry.owner), instance_id, false)
 		building_placed.emit(tile_id, str(entry.building), str(entry.recipe), instance_id, coord)
+		if animate:
+			await get_tree().process_frame   # one building per frame keeps the slideshow moving
 
 func _tile_has_building(tile_id: String, building_id: String) -> bool:
 	for iid in MatchState.tile_buildings.get(tile_id, []):
