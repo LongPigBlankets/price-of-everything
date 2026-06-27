@@ -9,6 +9,7 @@ extends PanelContainer
 
 const MarketRowScene: PackedScene = preload("res://scenes/market_row.tscn")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
+const BuildingMarketTab := preload("res://scripts/building_market_panel.gd")  # NPC buildings-for-sale tab
 const HEADER_HEIGHT := 40.0
 
 var rows: Array = []
@@ -129,6 +130,11 @@ func _build_tabs() -> void:
 	sales_tab.add_theme_constant_override("separation", 6)
 	_build_bulk_sell_section(sales_tab)
 	tabs.add_child(sales_tab)
+
+	# NPC buildings for sale — one long, searchable list (built lazily on first show).
+	var buildings_tab := BuildingMarketTab.new()
+	buildings_tab.name = "Buildings"
+	tabs.add_child(buildings_tab)
 
 	tabs.add_child(_build_ledger_tab("Transactions",
 		MatchState.get_recurring_transaction_rows, MatchState.get_oneoff_transaction_rows))
