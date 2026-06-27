@@ -427,10 +427,16 @@ func _on_dialog_confirmed(dont_ask_again: bool) -> void:
 func _do_buy(instance_id: String, building_name: String) -> void:
 	if instance_id == "" or not MatchState.buildings.has(instance_id):
 		return
+	# Pay for it. deduct_money is atomic — false means the player can't afford it, so reuse the
+	# same insufficient-money toast as building (now on the left), with buy-specific text.
+	if not MatchState.deduct_money(PLACEHOLDER_PRICE):
+		MatchState.build_rejected_no_funds.emit("Not enough money to buy %s — need £%d, you have £%.0f" % [
+			building_name, PLACEHOLDER_PRICE, MatchState.money])
+		return
 	# Ownership transfer is immediate; production picks it up next turn. building_owner_changed
 	# drives the ledger refresh + drops this row from the for-sale list (_on_owner_changed).
 	MatchState.set_building_owner(instance_id, MatchState.LOCAL_PLAYER)
-	MatchState.request_toast("Purchased %s" % building_name, "success")
+	MatchState.request_toast("Purchased %s for £%d" % [building_name, PLACEHOLDER_PRICE], "success")
 
 # A building changed owner — if it's now the player's, drop it from the for-sale list at once.
 func _on_owner_changed(instance_id: String) -> void:

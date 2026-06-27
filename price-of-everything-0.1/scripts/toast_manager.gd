@@ -16,9 +16,9 @@ const SUCCESS_LEFT_MARGIN := 20.0
 const SUCCESS_BOTTOM_OFFSET := -140.0
 # Bottom-centre stack for warnings.
 const WARNING_BOTTOM_OFFSET := -140.0
-# Bottom-right stack for errors (e.g. can't afford a build).
-const ERROR_RIGHT_MARGIN := 20.0
-const ERROR_BOTTOM_OFFSET := -140.0
+# Left-edge stack for insufficient-money errors (can't afford a build OR a building purchase),
+# vertically centred so it reads clearly on the left side of the screen.
+const ERROR_LEFT_MARGIN := 20.0
 
 const SUCCESS_BG := Color(0.05, 0.18, 0.32, 0.94)
 const SUCCESS_BORDER := Color(0.4, 0.85, 0.4, 0.9)
@@ -101,16 +101,16 @@ func _build_stacks() -> void:
 	_error_stack.name = "ErrorStack"
 	_error_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_error_stack.add_theme_constant_override("separation", 6)
-	_error_stack.alignment = BoxContainer.ALIGNMENT_END
-	_error_stack.anchor_left = 1.0
-	_error_stack.anchor_right = 1.0
-	_error_stack.anchor_top = 1.0
-	_error_stack.anchor_bottom = 1.0
-	_error_stack.offset_left = -ERROR_RIGHT_MARGIN - TOAST_WIDTH
-	_error_stack.offset_right = -ERROR_RIGHT_MARGIN
-	_error_stack.offset_top = ERROR_BOTTOM_OFFSET
-	_error_stack.offset_bottom = ERROR_BOTTOM_OFFSET
-	_error_stack.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_error_stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	_error_stack.anchor_left = 0.0
+	_error_stack.anchor_right = 0.0
+	_error_stack.anchor_top = 0.5
+	_error_stack.anchor_bottom = 0.5
+	_error_stack.offset_left = ERROR_LEFT_MARGIN
+	_error_stack.offset_right = ERROR_LEFT_MARGIN + TOAST_WIDTH
+	_error_stack.offset_top = 0.0
+	_error_stack.offset_bottom = 0.0
+	_error_stack.grow_vertical = Control.GROW_DIRECTION_BOTH
 	add_child(_error_stack)
 
 func _on_building_added(instance: Dictionary) -> void:
