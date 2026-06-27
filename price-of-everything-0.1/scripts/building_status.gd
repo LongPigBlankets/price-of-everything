@@ -17,6 +17,7 @@ const STATUS_GREEN := Color("#5BD180")   # DS PALETTE OK
 const STATUS_RED := Color("#E66060")     # DS PALETTE DANGER
 const STATUS_GREY := Color(0.45, 0.48, 0.52)
 const STATUS_YELLOW := Color("#E6B85C")  # DS PALETTE WARN
+const MOD_NEUTRAL := Color(0.93, 0.94, 0.96)  # net-modifier ~0% band (matches detail panel MOD_WHITE)
 
 # --- Recipe / output introspection ---------------------------------------------------------
 
@@ -248,3 +249,145 @@ static func maintenance_cost(building_data: Dictionary) -> float:
 	if value == null:
 		return 0.0
 	return float(value)
+
+# --- Output transport (the building's selected output route) --------------------------------
+
+static func route_summary(source_tile: String, destination_tile: String, good_id: String, qty: int) -> Dictionary:
+	var r := TransportService.route(source_tile, destination_tile, good_id)
+	return {
+		"distance": int(r.get("tile_distance", 0)),
+		"turns": int(r.get("turns", 0)),
+		"cost": TransportService.transport_cost_for_route(good_id, qty, r),
+	}
+
+static func selected_output_route(building: Dictionary, recipe: Dictionary) -> Dictionary:
+	var instance_id: String = str(building.get("instance_id", ""))
+	var good_id := primary_output_good_id(recipe)
+	var destination_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
+	if destination_tile == "":
+		return {}
+	return route_summary(str(building.get("tile_id", "")), destination_tile, good_id, primary_output_qty(recipe))
+
+static func transport_duration_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
+	if is_infrastructure:
+		return STATUS_GREY
+	if not Production.last_turn_run.has(str(building.get("instance_id", ""))) or recipe_deposit_exhausted(building, recipe):
+		return STATUS_GREY
+	var route := selected_output_route(building, recipe)
+	if route.is_empty():
+		return STATUS_GREEN
+	return STATUS_YELLOW if int(route.turns) > 1 else STATUS_GREEN
+
+static func transport_cost_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
+	if is_infrastructure:
+		return STATUS_GREY
+	if not Production.last_turn_run.has(str(building.get("instance_id", ""))) or recipe_deposit_exhausted(building, recipe):
+		return STATUS_GREY
+	var route := selected_output_route(building, recipe)
+	if route.is_empty():
+		return STATUS_GREEN
+	return STATUS_YELLOW if float(route.cost) > 0.0 else STATUS_GREEN
+
+# --- Cost-to-produce RAG (CostSolver unit cost vs market base price) ------------------------
+
+static func produce_cost_status(building: Dictionary) -> Dictionary:
+	var iid := str(building.get("instance_id", ""))
+	var recipe := Catalog.get_recipe(str(building.get("recipe_id", "")))
+	var uc: float = CostSolver.get_building_unit_cost(iid)
+	if recipe_deposit_exhausted(building, recipe):
+		uc = -1.0
+	if uc < 0.0:
+		return {"color": STATUS_GREY, "unit_cost": -1.0, "base_price": 0.0}
+	var bd: Dictionary = (CostSolver.last_result.get("per_building", {}) as Dictionary).get(iid, {})
+	var output_good_id: String = str(bd.get("output_good_id", ""))
+	var base_price: float = Catalog.get_base_price(output_good_id) if output_good_id != "" else 0.0
+	return {"color": cost_rag_color(uc, base_price), "unit_cost": uc, "base_price": base_price}
+
+# --- Net output modifier (additive recipe_output modifiers + multiplicative intermittency) --
+# Returns the signed net percent and its colour band (white -1..1%, green >1%, red <-1%), plus the
+# component parts and intermittency derate so a UI can build a breakdown tooltip without recomputing.
+static func net_output_modifier(building: Dictionary, recipe: Dictionary) -> Dictionary:
+	var recipe_id: String = str(recipe.get("recipe_id", ""))
+	var ctx := {
+		"recipe_id": recipe_id,
+		"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
+		"building_id": str(building.get("building_id", "")),
+		"good_id": primary_output_good_id(recipe),
+		"good_internal": primary_output_internal(recipe),
+	}
+	var res: Dictionary = Modifiers.resolve_pct("recipe_output", recipe_id, ctx)
+	var net: float = float(res.get("net", 0.0))
+	var derate: float = float((Production.get_building_intermittency(str(building.get("instance_id", ""))) as Dictionary).get("derate", 0.0))
+	var eff: float = ((1.0 + net / 100.0) * (1.0 - derate) - 1.0) * 100.0
+	var color: Color
+	if eff > 1.0:
+		color = STATUS_GREEN
+	elif eff < -1.0:
+		color = STATUS_RED
+	else:
+		color = MOD_NEUTRAL
+	var eff_i: int = int(round(eff))
+	return {
+		"pct": eff_i,
+		"pct_f": eff,
+		"color": color,
+		"parts": res.get("parts", []),
+		"derate": derate,
+		"text": "%s%d%%" % ["+" if eff_i > 0 else "", eff_i],
+	}
+
+# --- The six RAG indicators as DATA (single source for every UI that shows them) -------------
+# Each entry: { key, label, color, text, tooltip }. The 4 status ones have text==""; the 5th shows
+# the cost-to-produce as a £ number (up to 2dp) and the 6th the net modifier as a Δ…% number. The
+# tooltips are the SAME text the detail panel hover shows, so both UIs share one source. Order matches
+# the detail panel.
+const _COST_RAG_LEGEND := "Green if cheaper than buying from the market, amber if even with market and red if more expensive than purchasing from the market"
+const _MOD_RAG_LEGEND := "White means no net effect (−1% to +1%), green a net production boost above +1%, red a net penalty below −1%."
+const _TIP_POWER := "Power status\nGreen: powered by your own supply · Amber: powered via the grid · Red: not powered · Grey: no power needed"
+const _TIP_INPUT := "Input status\nGreen: ran with inputs available · Amber: inputs present but idle · Red: missing inputs · Grey: not applicable"
+const _TIP_DURATION := "Output transport duration\nGreen: arrives same turn · Amber: multi-turn shipment · Grey: building didn't run this turn"
+const _TIP_TRANSPORT := "Cost of transport\nGreen: no shipping cost · Amber: paying to ship output · Grey: building didn't run this turn"
+
+static func rag_indicators(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Array:
+	var pc := produce_cost_status(building)
+	var uc: float = float(pc.unit_cost)
+	var pc_text := "£–" if uc < 0.0 else "£" + _fmt_upto2(uc)
+	var pc_tip := ("Production cost per unit: --" if uc < 0.0 else "Production cost per unit: £" + _fmt_upto2(uc)) + "\n" + _COST_RAG_LEGEND
+	var mod := net_output_modifier(building, recipe)
+	var mpf: float = float(mod.get("pct_f", 0.0))
+	var mod_text := "Δ" + ("+" if mpf > 0.0 else "") + _fmt_upto2(mpf) + "%"
+	return [
+		{"key": "power", "label": "Power", "color": power_status_color(building, recipe, is_infrastructure), "text": "", "tooltip": _TIP_POWER},
+		{"key": "input", "label": "Inputs", "color": input_status_color(building, recipe, is_infrastructure), "text": "", "tooltip": _TIP_INPUT},
+		{"key": "duration", "label": "Transport duration", "color": transport_duration_status_color(building, recipe, is_infrastructure), "text": "", "tooltip": _TIP_DURATION},
+		{"key": "cost", "label": "Transport cost", "color": transport_cost_status_color(building, recipe, is_infrastructure), "text": "", "tooltip": _TIP_TRANSPORT},
+		{"key": "produce_cost", "label": "Cost to produce", "color": pc.color, "text": pc_text, "tooltip": pc_tip},
+		{"key": "modifier", "label": "Net output modifier", "color": mod.color, "text": mod_text, "tooltip": _modifier_tooltip(mod)},
+	]
+
+
+## Format a float to at most 2 decimal places, trimming trailing zeros (12.50 -> "12.5", 12.0 -> "12").
+static func _fmt_upto2(v: float) -> String:
+	var s := "%.2f" % v
+	while s.ends_with("0"):
+		s = s.substr(0, s.length() - 1)
+	if s.ends_with("."):
+		s = s.substr(0, s.length() - 1)
+	return s
+
+
+## The net-modifier hover tooltip — same breakdown the detail panel builds (parts + derate + legend).
+static func _modifier_tooltip(mod: Dictionary) -> String:
+	var parts: Array = mod.get("parts", [])
+	var derate: float = float(mod.get("derate", 0.0))
+	if parts.is_empty() and derate <= 0.0:
+		return "Production modifier: none active.\n" + _MOD_RAG_LEGEND
+	var lines: PackedStringArray = ["Production modifiers (added together, then applied):"]
+	for p in parts:
+		var pv: float = float(p.get("pct", 0.0))
+		lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
+	if derate > 0.0:
+		lines.append("  -%d%%  Intermittency impact (multiplicative, applied after)" % int(round(derate * 100.0)))
+	lines.append("Net: " + str(mod.get("text", "")))
+	lines.append(_MOD_RAG_LEGEND)
+	return "\n".join(lines)

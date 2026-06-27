@@ -21,6 +21,13 @@ var _v2_picking_dest: bool = false
 @onready var _toast_layer: Control = $UILayer/HUD/ToastLayer
 @onready var forest_visuals: Node2D = %ForestVisuals
 
+# Empire view — full-screen node-graph alternative to the map (Tab to toggle).
+# Created in code in _ready() and parented under HUDContent. See scripts/empire_view.gd.
+# Typed via a preload const (not a class_name) to avoid global-class registration-order
+# parse errors when this script is reloaded by the test harness.
+const EmpireViewScript := preload("res://scripts/empire_view.gd")
+var empire_view: EmpireViewScript
+
 const DENSITY_SOFT_CAPACITY := 100.0
 const InfraIcons := preload("res://scripts/infra_icons.gd")
 const OLD_GROWTH_FOREST_BUILDING_ID := "b_016"
@@ -120,6 +127,12 @@ func _ready() -> void:
 	# Infrastructure mapmode panel: shows/hides itself with the mapmode.
 	hud_content.add_child(load("res://scripts/infrastructure_panel.gd").new())
 	_apply_demo_infra_levels()
+
+	# Empire view: full-screen node-graph alternative to the map (Tab to toggle).
+	empire_view = EmpireViewScript.new()
+	empire_view.name = "EmpireView"
+	empire_view.visible = false
+	hud_content.add_child(empire_view)
 
 	# Wire visuals to react to building placements
 	building_placed.connect(building_visuals.on_building_placed)
@@ -1751,6 +1764,16 @@ func _show_stockpile_select_prompt(selection: Dictionary) -> void:
 func _hide_stockpile_select_prompt() -> void:
 	if _stockpile_select_prompt != null:
 		_stockpile_select_prompt.visible = false
+
+# Handled in _input (before GUI focus navigation) so Tab toggles the Empire view
+# reliably even when a button/panel holds focus. Skipped while typing so Tab still
+# works inside text fields (e.g. the search overlay).
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_empire_view") and not _is_text_entry_focused():
+		if empire_view != null:
+			empire_view.toggle()
+		get_viewport().set_input_as_handled()
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not event is InputEventKey or not event.pressed:

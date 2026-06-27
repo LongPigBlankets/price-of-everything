@@ -154,6 +154,10 @@ func _ready() -> void:
 	_test_sea_land_building_rule()
 	_test_greenest_reads_quality()
 	_test_main_menu_grid_unique()
+	_test_empire_layout()
+	_test_empire_layered()
+	_test_empire_ports()
+	_test_empire_rag()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -4068,6 +4072,86 @@ func _check(ok: bool, name: String) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  ", name)
+
+# Empire view node packing (scripts/empire_layout.gd): the >=30px gap holds, packing is
+# deterministic, coincident seeds (same tile) fan out, and all nodes survive.
+func _test_empire_layout() -> void:
+	var EL := load("res://scripts/empire_layout.gd")
+	var make := func(iid: String, seed_pos: Vector2, lvl: int) -> Dictionary:
+		return {"iid": iid, "seed": seed_pos, "half": Vector2(80, 46) * EL.level_scale(lvl), "level": lvl}
+	var spec := [
+		["a", Vector2(0, 0), 1], ["b", Vector2(0, 0), 2],        # b coincident with a
+		["c", Vector2(10, 5), 3], ["d", Vector2(400, 0), 1],
+		["e", Vector2(420, 20), 1], ["f", Vector2(-300, 200), 1],
+	]
+	var build_nodes := func() -> Array:
+		var arr: Array = []
+		for s in spec:
+			arr.append(make.call(s[0], s[1], s[2]))
+		return arr
+
+	var nodes: Array = build_nodes.call()
+	EL.relax(nodes)
+	_check(nodes.size() == 6, "empire layout: all nodes retained (%d)" % nodes.size())
+	_check(EL.gap_satisfied(nodes), "empire layout: every pair keeps the >=30px gap")
+
+	# Coincident seeds a & b must have separated.
+	var pos := {}
+	for n in nodes:
+		pos[n["iid"]] = n["pos"]
+	_check((pos["a"] as Vector2).distance_to(pos["b"]) > 30.0, "empire layout: coincident seeds fan out")
+
+	# Determinism: a fresh run yields identical positions.
+	var nodes2: Array = build_nodes.call()
+	EL.relax(nodes2)
+	var same := true
+	for n in nodes2:
+		if (pos[n["iid"]] as Vector2).distance_to(n["pos"]) > 0.0001:
+			same = false
+	_check(same, "empire layout: deterministic (same input -> same output)")
+
+# Layered supply-chain layout (scripts/empire_layout.gd solve): a producer feeding a consumer is
+# placed in an earlier column (input sources sit left of their consumers), and the gap still holds.
+func _test_empire_layered() -> void:
+	var EL := load("res://scripts/empire_layout.gd")
+	var mk := func(iid: String) -> Dictionary:
+		return {"iid": iid, "seed": Vector2.ZERO, "half": Vector2(80, 46), "level": 1}
+	var nodes: Array = [mk.call("a"), mk.call("b"), mk.call("c"), mk.call("iso")]
+	var edges: Array = [{"from": "a", "to": "b"}, {"from": "b", "to": "c"}]   # a -> b -> c chain
+	EL.solve(nodes, edges)
+	var px := {}
+	for n in nodes:
+		px[n["iid"]] = (n["pos"] as Vector2).x
+	_check(px["a"] < px["b"] and px["b"] < px["c"], "empire layered: input sources sit left of their consumers")
+	_check(EL.gap_satisfied(nodes), "empire layered: >=30px gap held after layered solve")
+	_check(nodes.size() == 4, "empire layered: isolated node retained alongside the chain")
+
+# Ports always read left -> right as Stoneshore, Arin, Vandel, Capital (scripts/empire_graph.gd).
+func _test_empire_ports() -> void:
+	var EG := load("res://scripts/empire_graph.gd")
+	_check(EG._port_order("Stoneshore Docks") == 0, "empire ports: Stoneshore is leftmost")
+	_check(EG._port_order("Arin Estuary Docks") == 1, "empire ports: Arin is second")
+	_check(EG._port_order("Vandel's Skip") == 2, "empire ports: Vandel is third")
+	_check(EG._port_order("Capital Port") == 3, "empire ports: Capital is last of the four")
+	_check(EG._port_order("Mystery Harbour") == 4, "empire ports: unknown ports sort after the known four")
+
+# The 6 RAG indicators come from ONE shared function (building_status.gd), used by both the detail
+# panel and the Empire view — this locks its contract (count, order, Color-typed) against drift.
+func _test_empire_rag() -> void:
+	var BS := load("res://scripts/building_status.gd")
+	var recs: Array = Catalog.get_recipes_for_building("b_001")
+	var recipe: Dictionary = recs[0] if recs.size() > 0 else {"recipe_id": "", "inputs": [], "outputs": []}
+	var building := {"instance_id": "rag_probe", "building_id": "b_001", "recipe_id": str(recipe.get("recipe_id", "")), "tile_id": "tile_0_0", "level": 1}
+	var rag: Array = BS.rag_indicators(building, recipe, false)
+	_check(rag.size() == 6, "empire rag: six indicators returned (%d)" % rag.size())
+	var keys: Array = []
+	var all_colors := true
+	for r in rag:
+		keys.append(str(r.get("key", "")))
+		if not (r.get("color") is Color):
+			all_colors = false
+	_check(keys == ["power", "input", "duration", "cost", "produce_cost", "modifier"], "empire rag: keys in detail-panel order")
+	_check(all_colors, "empire rag: every indicator carries a Color")
 
 func _replace_dict(target: Dictionary, source: Dictionary) -> void:
 	target.clear()
