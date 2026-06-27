@@ -48,9 +48,17 @@ var _search_text := ""
 var _header_wrap: MarginContainer = null
 var _scroll: ScrollContainer = null
 var _body: VBoxContainer = null
-var _rows: Array = []   # [{control: PanelContainer, blob: String}] — blob is the lowercased search haystack
+var _rows: Array = []   # [{control, blob, instance_id}] — blob is the lowercased search haystack
 var _built := false
 var _dirty := false
+
+# Buy-confirmation dialog (lazily built on a high CanvasLayer, like the ledger's upgrade dialog).
+const BuyDialog := preload("res://scripts/buy_building_dialog.gd")
+static var _skip_confirm := false   # "Do not show again" — persists for the session
+var _dialog: Control = null
+var _dialog_layer: CanvasLayer = null
+var _pending_instance_id := ""
+var _pending_name := ""
 
 func _ready() -> void:
 	name = "Buildings"
@@ -59,6 +67,7 @@ func _ready() -> void:
 	# NPC buildings change rarely; rebuild lazily on next show after a structural change.
 	MatchState.building_added.connect(func(_i: Dictionary) -> void: _mark_dirty())
 	MatchState.building_removed.connect(func(_i: String) -> void: _mark_dirty())
+	MatchState.building_owner_changed.connect(_on_owner_changed)
 	visibility_changed.connect(_on_visibility_changed)
 
 func _on_visibility_changed() -> void:
@@ -172,7 +181,7 @@ func _rebuild() -> void:
 	for vm in _collect_npc_buildings():
 		var row := _build_row(vm)
 		_body.add_child(row)
-		_rows.append({"control": row, "blob": str(vm.blob)})
+		_rows.append({"control": row, "blob": str(vm.blob), "instance_id": str(vm.instance_id)})
 	_apply_search()
 	call_deferred("_sync_header_gutter")  # after layout: the scrollbar may have appeared/vanished
 
@@ -273,7 +282,7 @@ func _build_row(vm: Dictionary) -> Control:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hbox.add_child(spacer)
-	hbox.add_child(_price_button())
+	hbox.add_child(_price_button(vm))
 	hbox.add_child(_gap(BUTTON_EDGE_GAP))
 	return row
 
@@ -378,15 +387,62 @@ func _qty_pill(qty: int) -> Control:
 	return lbl
 
 # Right-anchored "£<price>" buy button. Established DS Button style → hover/pressed visuals come
-# from the theme for free. No purchase behaviour wired yet (Feature 5, step 7).
-func _price_button() -> Button:
+# from the theme for free. Clicking confirms (unless suppressed) and transfers ownership.
+func _price_button(vm: Dictionary) -> Button:
 	var btn := Button.new()
 	btn.text = "£%d" % PLACEHOLDER_PRICE
 	btn.focus_mode = Control.FOCUS_NONE
 	btn.custom_minimum_size = Vector2(PRICE_COL_W, 0)
 	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	btn.tooltip_text = "Buy this building (coming soon)"
+	btn.tooltip_text = "Buy this building"
+	btn.pressed.connect(_on_buy_pressed.bind(str(vm.instance_id), str(vm.name)))
 	return btn
+
+# ── Buy flow ─────────────────────────────────────────────────────────────────────────────────
+func _on_buy_pressed(instance_id: String, building_name: String) -> void:
+	if _skip_confirm:
+		_do_buy(instance_id, building_name)
+		return
+	_pending_instance_id = instance_id
+	_pending_name = building_name
+	_ensure_dialog()
+	_dialog.open(building_name, PLACEHOLDER_PRICE)
+
+func _ensure_dialog() -> void:
+	if _dialog != null and is_instance_valid(_dialog):
+		return
+	if _dialog_layer == null or not is_instance_valid(_dialog_layer):
+		_dialog_layer = CanvasLayer.new()
+		_dialog_layer.layer = 130  # above the market panel + HUD
+		get_tree().root.add_child(_dialog_layer)
+	_dialog = BuyDialog.new()
+	_dialog_layer.add_child(_dialog)
+	_dialog.confirmed.connect(_on_dialog_confirmed)
+
+func _on_dialog_confirmed(dont_ask_again: bool) -> void:
+	if dont_ask_again:
+		_skip_confirm = true
+	_do_buy(_pending_instance_id, _pending_name)
+
+func _do_buy(instance_id: String, building_name: String) -> void:
+	if instance_id == "" or not MatchState.buildings.has(instance_id):
+		return
+	# Ownership transfer is immediate; production picks it up next turn. building_owner_changed
+	# drives the ledger refresh + drops this row from the for-sale list (_on_owner_changed).
+	MatchState.set_building_owner(instance_id, MatchState.LOCAL_PLAYER)
+	MatchState.request_toast("Purchased %s" % building_name, "success")
+
+# A building changed owner — if it's now the player's, drop it from the for-sale list at once.
+func _on_owner_changed(instance_id: String) -> void:
+	if not MatchState.buildings.has(instance_id):
+		return
+	if not MatchState.is_player_owned(MatchState.buildings[instance_id]):
+		return  # transferred to another NPC (not via the market) → keep it listed
+	for i in range(_rows.size() - 1, -1, -1):
+		if str(_rows[i].get("instance_id", "")) == instance_id:
+			(_rows[i].control as Control).queue_free()
+			_rows.remove_at(i)
+	_apply_search()  # refresh the count + visibility
 
 # ── Helpers ────────────────────────────────────────────────────────────────────────────────
 func _row_style(hover: bool) -> StyleBox:

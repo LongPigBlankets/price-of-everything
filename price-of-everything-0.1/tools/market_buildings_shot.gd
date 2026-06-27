@@ -60,25 +60,43 @@ func _ready() -> void:
 		await _settle(10)
 		_shot("/tmp/poe_market_buildings_search.png")
 
-	# Functional check: synthetic click on the first row should open the building detail panel
-	# and hide the Market panel (mirrors the Building Ledger row click).
 	if le != null:
 		le.text = ""
 		le.text_changed.emit("")
 		await _settle(6)
-	var body2: Control = null
-	for sc in tab.find_children("*", "ScrollContainer", true, false):
-		body2 = sc.get_child(0); break
-	if body2 != null and body2.get_child_count() > 0:
-		var row: Control = body2.get_child(0)
-		var ev := InputEventMouseButton.new()
-		ev.button_index = MOUSE_BUTTON_LEFT
-		ev.pressed = true
-		row.gui_input.emit(ev)
-		await _settle(10)
-		var detail: Control = game.get_node_or_null("UILayer/HUD/HUDContent/BuildingDetailPanel")
-		print("CLICK TEST: market.visible=%s detail.visible=%s" % [market.visible, detail != null and detail.visible])
-		_shot("/tmp/poe_market_buildings_click.png")
+
+	# Buy flow: press the first row's £ button → confirm dialog → ownership transfers + row drops.
+	var first_iid: String = str(tab._rows[0]["instance_id"]) if tab._rows.size() > 0 else ""
+	var rows_before: int = tab._rows.size()
+	var before_owned: bool = first_iid != "" and MatchState.is_player_owned(MatchState.buildings[first_iid])
+	var row0: Control = tab._rows[0]["control"]
+	var buy_btn: Button = null
+	for b in row0.find_children("*", "Button", true, false):
+		buy_btn = b; break
+	if buy_btn != null:
+		buy_btn.pressed.emit()
+		await _settle(8)
+		_shot("/tmp/poe_buy_dialog.png")
+		var confirm_btn: Button = null
+		for b in tab._dialog.find_children("*", "Button", true, false):
+			if str(b.text).begins_with("Buy for"):
+				confirm_btn = b; break
+		if confirm_btn != null:
+			confirm_btn.pressed.emit()
+			await _settle(10)
+		var now_owned: bool = MatchState.is_player_owned(MatchState.buildings[first_iid])
+		print("BUY TEST: before_owned=%s now_owned=%s rows %d→%d" % [before_owned, now_owned, rows_before, tab._rows.size()])
+
+	# Reactivity: open the building ledger; the just-bought building should be listed (player-owned).
+	var ledger: Control = (load("res://scenes/building_ledger_panel.tscn") as PackedScene).instantiate()
+	game.get_node("UILayer/HUD").add_child(ledger)
+	await _settle(12)
+	var found_in_ledger := false
+	for entry in ledger._all_vms:
+		if str(entry.get("instance_id", "")) == first_iid:
+			found_in_ledger = true; break
+	print("LEDGER TEST: bought building in player ledger = %s" % found_in_ledger)
+	_shot("/tmp/poe_buy_ledger.png")
 
 	get_tree().quit(0)
 

@@ -83,6 +83,8 @@ func _ready() -> void:
 	# the power column is rechecked every turn against the latest production/cabling state.
 	MatchState.building_added.connect(func(_i: Dictionary) -> void: _request_refresh())
 	MatchState.building_removed.connect(func(_i: String) -> void: _request_refresh())
+	# A bought NPC building becomes player-owned → it should appear in the ledger right away.
+	MatchState.building_owner_changed.connect(func(_i: String) -> void: _request_refresh())
 	MatchState.building_upgraded.connect(func(_i: String, _l: int) -> void: _request_refresh())
 	MatchState.building_upgrade_started.connect(func(_i: String, _l: int) -> void: _request_refresh())
 	MatchState.building_upgrade_progress.connect(func(_i: String) -> void: _request_refresh())

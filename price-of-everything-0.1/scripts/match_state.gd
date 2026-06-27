@@ -130,6 +130,9 @@ var use_alt_bottom_menu: bool = true
 signal money_changed(new_amount: float) 
 signal building_added(instance: Dictionary)
 signal building_removed(instance_id: String)
+# A building's owner changed (e.g. the player bought an NPC building from the market). UI that
+# filters by ownership (the ledger, the buildings-for-sale tab) listens to refresh live.
+signal building_owner_changed(instance_id: String)
 signal building_upgraded(instance_id: String, new_level: int)
 # An upgrade was just queued (materials committed); the level changes later via building_upgraded.
 signal building_upgrade_started(instance_id: String, target_level: int)
@@ -276,6 +279,20 @@ func add_building(
 		# Building-driven research conditions (e.g. Mining Mastery) re-evaluate here.
 		_check_unlock_conditions()
 	return instance_id
+
+# Transfer ownership of an existing building (e.g. the player buys an NPC building from the
+# market). Changing the owner is all that's needed for the building to become the player's: the
+# production pass rebuilds its player-owned set each turn, so a bought building runs from next
+# turn. Emits building_owner_changed so ownership-filtered UI refreshes immediately.
+func set_building_owner(instance_id: String, owner: String) -> void:
+	if not buildings.has(instance_id):
+		return
+	if str(buildings[instance_id].get("owner", LOCAL_PLAYER)) == owner:
+		return
+	buildings[instance_id]["owner"] = owner
+	building_owner_changed.emit(instance_id)
+	# A newly player-owned building may satisfy build-count / ownership unlock conditions.
+	_check_unlock_conditions()
 
 # Total materials needed to take `internal` to `target`, resolved to {good_id: qty}.
 func _upgrade_need_by_gid(internal: String, target: int) -> Dictionary:
