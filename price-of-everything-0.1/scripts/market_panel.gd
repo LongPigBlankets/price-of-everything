@@ -9,6 +9,7 @@ extends PanelContainer
 
 const MarketRowScene: PackedScene = preload("res://scenes/market_row.tscn")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
+const BuildingMarketTab := preload("res://scripts/building_market_panel.gd")  # NPC buildings-for-sale tab
 const HEADER_HEIGHT := 40.0
 
 var rows: Array = []
@@ -85,18 +86,27 @@ func _header_spacer(width: float) -> Control:
 func _on_show_construct_for_good(_good_id: String) -> void:
 	hide()  # close the market panel; the construct panel opens itself filtered
 
+func _on_building_for_sale_selected(instance_id: String) -> void:
+	# Open the building detail panel (world_map pans + shows it), then close this panel so it
+	# isn't left covering the focused building — mirrors the Building Ledger's row click.
+	MatchState.focus_building_requested.emit(instance_id)
+	hide()
+
 func _centre_and_resize() -> void:
 	# Wide enough to show every column without sideways scrolling, centred on
 	# screen (capped to the viewport on narrow displays).
 	var vp := get_viewport_rect().size
 	var w := minf(1220.0, vp.x - 60.0)
 	var base_h := minf(640.0, vp.y - 80.0)
-	var h := base_h + 40.0  # 40px taller…
+	# 30% taller than the old (base_h + 40) panel, with ALL the extra height added
+	# upward — the bottom edge stays put and the top grows up — so the rows get more room.
+	var h := (base_h + 40.0) * 1.30
 	var centred_top := maxf(40.0, (vp.y - base_h) / 2.0)
+	var bottom := centred_top + base_h  # where the old panel's bottom sat — keep it fixed
 	offset_left = maxf(0.0, (vp.x - w) / 2.0)
-	offset_top = maxf(0.0, centred_top - 40.0)  # …with the extra height added at the top
+	offset_top = maxf(8.0, bottom - h)  # grow upward; clamp to the top of the screen
 	offset_right = offset_left + w
-	offset_bottom = offset_top + h
+	offset_bottom = bottom
 
 func _on_panel_visibility_changed() -> void:
 	if not visible:
@@ -129,6 +139,12 @@ func _build_tabs() -> void:
 	sales_tab.add_theme_constant_override("separation", 6)
 	_build_bulk_sell_section(sales_tab)
 	tabs.add_child(sales_tab)
+
+	# NPC buildings for sale — one long, searchable list (built lazily on first show).
+	var buildings_tab := BuildingMarketTab.new()
+	buildings_tab.name = "Buildings"
+	buildings_tab.building_selected.connect(_on_building_for_sale_selected)
+	tabs.add_child(buildings_tab)
 
 	tabs.add_child(_build_ledger_tab("Transactions",
 		MatchState.get_recurring_transaction_rows, MatchState.get_oneoff_transaction_rows))

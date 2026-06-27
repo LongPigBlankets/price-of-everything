@@ -83,6 +83,8 @@ func _ready() -> void:
 	# the power column is rechecked every turn against the latest production/cabling state.
 	MatchState.building_added.connect(func(_i: Dictionary) -> void: _request_refresh())
 	MatchState.building_removed.connect(func(_i: String) -> void: _request_refresh())
+	# A bought NPC building becomes player-owned → it should appear in the ledger right away.
+	MatchState.building_owner_changed.connect(func(_i: String) -> void: _request_refresh())
 	MatchState.building_upgraded.connect(func(_i: String, _l: int) -> void: _request_refresh())
 	MatchState.building_upgrade_started.connect(func(_i: String, _l: int) -> void: _request_refresh())
 	MatchState.building_upgrade_progress.connect(func(_i: String) -> void: _request_refresh())
@@ -378,7 +380,11 @@ func _rebuild() -> void:
 func _render() -> void:
 	if _body == null:
 		return
+	# remove_child BEFORE queue_free: queue_free is deferred to end-of-frame, so freeing alone
+	# leaves the old rows in the tree for one frame while the new rows are added — the buildings
+	# would visibly double for a frame (e.g. after turn resolution). Detaching is synchronous.
 	for c in _body.get_children():
+		_body.remove_child(c)
 		c.queue_free()
 	var shown: Array = _all_vms.filter(_passes_filters)
 	shown.sort_custom(_compare)
