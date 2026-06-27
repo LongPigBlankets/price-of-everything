@@ -30,6 +30,7 @@ func _ready() -> void:
 	_test_menu_icons()
 	_test_bottom_menu_default()
 	_test_ports()
+	_test_building_price()
 	_test_transport_service()
 	_test_transport_boundaries()
 	_test_build_mode_overlay_survey_visibility()
@@ -4885,6 +4886,46 @@ func _test_ports() -> void:
 	_check(Catalog.tile_neighbours("tile_12_2").size() == 6, "interior tile has 6 hex neighbours")
 	_check(int(TransportService.route("tile_12_2", "tile_12_2").get("turns", -1)) == 0, "route same-tile = 0 turns")
 	_check(int(TransportService.route("tile_12_2", "tile_13_2").get("turns", -1)) == 1, "route to adjacent tile = 1 turn")
+
+func _test_building_price() -> void:
+	var BuildingPrice := preload("res://scripts/building_price.gd")
+	var bid := "b_007"  # Industrial Goods Factory — has a real build-material kit
+	var far := {"instance_id": "bp_far", "building_id": bid, "tile_id": "tile_12_2", "level": 1}
+	var base: float = BuildingPrice.base_cost(far)
+	_check(base > 0.0, "building price: base cost is positive")
+	_check(BuildingPrice.sale_price(far) == BuildingPrice.sale_price(far), "building price: deterministic")
+
+	# Variation multiplier is one of 0.70..1.00 in 5% steps.
+	var m: float = BuildingPrice.variation_multiplier("bp_far")
+	var step_ok := false
+	for k in range(BuildingPrice.VARIATION_STEPS):
+		if absf(m - (BuildingPrice.VARIATION_MIN + BuildingPrice.VARIATION_STEP * k)) < 0.0001:
+			step_ok = true
+	_check(step_ok, "building price: variation is a 5% step within 70-100%")
+
+	# Different buildings of the same type can be priced differently.
+	var distinct := {}
+	for i in range(24):
+		distinct[BuildingPrice.variation_multiplier("bp_inst_%d" % i)] = true
+	_check(distinct.size() > 1, "building price: varies across buildings of the same type")
+
+	# Off-port price stays within the 70-100% band; a port tile adds the +10% premium.
+	if not BuildingPrice.is_near_port("tile_12_2"):
+		var ratio: float = float(BuildingPrice.sale_price(far)) / base
+		_check(ratio >= BuildingPrice.VARIATION_MIN - 0.01 and ratio <= 1.0 + 0.01,
+			"building price: off-port price within 70-100%")
+		var ports := Catalog.all_ports()
+		if ports.size() > 0:
+			var port_tile := str(ports[0].get("tile_id", ""))
+			var off := {"instance_id": "bp_pp", "building_id": bid, "tile_id": "tile_12_2", "level": 1}
+			var on := {"instance_id": "bp_pp", "building_id": bid, "tile_id": port_tile, "level": 1}
+			_check(BuildingPrice.sale_price(on) > BuildingPrice.sale_price(off),
+				"building price: port proximity adds a premium")
+
+	# An L2 building costs more than L1 (extra upgrade kit + larger footprint).
+	var l1 := {"instance_id": "bp_lvl", "building_id": bid, "tile_id": "tile_12_2", "level": 1}
+	var l2 := {"instance_id": "bp_lvl", "building_id": bid, "tile_id": "tile_12_2", "level": 2}
+	_check(BuildingPrice.base_cost(l2) > BuildingPrice.base_cost(l1), "building price: L2 base cost exceeds L1")
 
 func _test_transport_service() -> void:
 	var route: Dictionary = TransportService.route("tile_12_2", "tile_13_2", "g_001")

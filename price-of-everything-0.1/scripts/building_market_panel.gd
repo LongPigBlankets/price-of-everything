@@ -20,11 +20,10 @@ const BuildingStatus := preload("res://scripts/building_status.gd")
 const BuildingIcon := preload("res://scripts/building_icon.gd")      # navy-keyed, square-cropped building icons
 const LedgerRowStyle := preload("res://scripts/ledger_row_style.gd") # metallic, top-left-lit row plate
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
+const BuildingPrice := preload("res://scripts/building_price.gd")  # per-building deterministic sale price
 
 ## Emitted when a row is clicked — the Market panel opens the building detail panel for it.
 signal building_selected(instance_id: String)
-
-const PLACEHOLDER_PRICE := 1000  # flat buy price for every building until Feature 5 pricing lands
 
 const ICON_SIZE := 76            # framed output-good icon (drives the row height) — same as the ledger
 const BICON_SIZE := 56           # building-type icon in the leading column
@@ -59,6 +58,7 @@ var _dialog: Control = null
 var _dialog_layer: CanvasLayer = null
 var _pending_instance_id := ""
 var _pending_name := ""
+var _pending_price := 0
 
 func _ready() -> void:
 	name = "Buildings"
@@ -183,7 +183,7 @@ func _rebuild() -> void:
 	for vm in _collect_npc_buildings():
 		var row := _build_row(vm)
 		_body.add_child(row)
-		_rows.append({"control": row, "blob": str(vm.blob), "instance_id": str(vm.instance_id)})
+		_rows.append({"control": row, "blob": str(vm.blob), "instance_id": str(vm.instance_id), "price": int(vm.price)})
 	_apply_search()
 	call_deferred("_sync_header_gutter")  # after layout: the scrollbar may have appeared/vanished
 
@@ -232,11 +232,14 @@ func _row_vm(b: Dictionary) -> Dictionary:
 	var blob := (name_str + " " + out_name + " " + str(recipe.get("display_name", "")) \
 		+ " " + tile_id + " " + tile_name + " " + owner).to_lower()
 
+	# Price is computed once here so the £ on the button is exactly what gets charged on buy,
+	# even if the market ticks while the panel is open.
 	return {
 		"instance_id": instance_id,
 		"building_id": building_id, "binternal": str(bdata.get("internal_name", "")),
 		"name": name_str, "tile": tile_text, "owner": owner,
 		"out_good_id": out_gid, "out_internal": out_internal, "out_qty": out_qty,
+		"price": BuildingPrice.sale_price(b),
 		"blob": blob,
 	}
 
@@ -392,23 +395,24 @@ func _qty_pill(qty: int) -> Control:
 # from the theme for free. Clicking confirms (unless suppressed) and transfers ownership.
 func _price_button(vm: Dictionary) -> Button:
 	var btn := Button.new()
-	btn.text = "£%d" % PLACEHOLDER_PRICE
+	btn.text = "£%d" % int(vm.price)
 	btn.focus_mode = Control.FOCUS_NONE
 	btn.custom_minimum_size = Vector2(PRICE_COL_W, 0)
 	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	btn.tooltip_text = "Buy this building"
-	btn.pressed.connect(_on_buy_pressed.bind(str(vm.instance_id), str(vm.name)))
+	btn.pressed.connect(_on_buy_pressed.bind(str(vm.instance_id), str(vm.name), int(vm.price)))
 	return btn
 
 # ── Buy flow ─────────────────────────────────────────────────────────────────────────────────
-func _on_buy_pressed(instance_id: String, building_name: String) -> void:
+func _on_buy_pressed(instance_id: String, building_name: String, price: int) -> void:
 	if _skip_confirm:
-		_do_buy(instance_id, building_name)
+		_do_buy(instance_id, building_name, price)
 		return
 	_pending_instance_id = instance_id
 	_pending_name = building_name
+	_pending_price = price
 	_ensure_dialog()
-	_dialog.open(building_name, PLACEHOLDER_PRICE)
+	_dialog.open(building_name, price)
 
 func _ensure_dialog() -> void:
 	if _dialog != null and is_instance_valid(_dialog):
@@ -424,21 +428,21 @@ func _ensure_dialog() -> void:
 func _on_dialog_confirmed(dont_ask_again: bool) -> void:
 	if dont_ask_again:
 		_skip_confirm = true
-	_do_buy(_pending_instance_id, _pending_name)
+	_do_buy(_pending_instance_id, _pending_name, _pending_price)
 
-func _do_buy(instance_id: String, building_name: String) -> void:
+func _do_buy(instance_id: String, building_name: String, price: int) -> void:
 	if instance_id == "" or not MatchState.buildings.has(instance_id):
 		return
 	# Pay for it. deduct_money is atomic — false means the player can't afford it, so reuse the
 	# same insufficient-money toast as building (now on the left), with buy-specific text.
-	if not MatchState.deduct_money(PLACEHOLDER_PRICE):
+	if not MatchState.deduct_money(float(price)):
 		MatchState.build_rejected_no_funds.emit("Not enough money to buy %s — need £%d, you have £%.0f" % [
-			building_name, PLACEHOLDER_PRICE, MatchState.money])
+			building_name, price, MatchState.money])
 		return
 	# Ownership transfer is immediate; production picks it up next turn. building_owner_changed
 	# drives the ledger refresh + drops this row from the for-sale list (_on_owner_changed).
 	MatchState.set_building_owner(instance_id, MatchState.LOCAL_PLAYER)
-	MatchState.request_toast("Purchased %s for £%d" % [building_name, PLACEHOLDER_PRICE], "success")
+	MatchState.request_toast("Purchased %s for £%d" % [building_name, price], "success")
 
 # A building changed owner — if it's now the player's, drop it from the for-sale list at once.
 func _on_owner_changed(instance_id: String) -> void:

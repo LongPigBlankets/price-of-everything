@@ -65,10 +65,16 @@ func _ready() -> void:
 		le.text_changed.emit("")
 		await _settle(6)
 
+	# Sample a few computed prices to eyeball magnitude / variation / port premium.
+	for i in range(mini(6, tab._rows.size())):
+		var vm: Dictionary = tab._rows[i]
+		print("PRICE[%d]: £%d  %s" % [i, int(vm["price"]), str(vm["instance_id"])])
+
 	# Buy flow: press the first row's £ button → confirm dialog → ownership transfers + row drops.
 	MatchState.money = 50000.0  # ensure affordable for the success case
 	var money_before: float = MatchState.money
 	var first_iid: String = str(tab._rows[0]["instance_id"]) if tab._rows.size() > 0 else ""
+	var first_price: int = int(tab._rows[0]["price"]) if tab._rows.size() > 0 else 0
 	var rows_before: int = tab._rows.size()
 	var before_owned: bool = first_iid != "" and MatchState.is_player_owned(MatchState.buildings[first_iid])
 	var row0: Control = tab._rows[0]["control"]
@@ -84,13 +90,15 @@ func _ready() -> void:
 			confirm_btn.pressed.emit()
 			await _settle(10)
 		var now_owned: bool = MatchState.is_player_owned(MatchState.buildings[first_iid])
-		print("BUY TEST: before_owned=%s now_owned=%s rows %d→%d money %.0f→%.0f" % [
-			before_owned, now_owned, rows_before, tab._rows.size(), money_before, MatchState.money])
+		var charged: float = money_before - MatchState.money
+		print("BUY TEST: before_owned=%s now_owned=%s rows %d→%d price=£%d charged=£%.0f" % [
+			before_owned, now_owned, rows_before, tab._rows.size(), first_price, charged])
 
-	# Insufficient-funds: drop money below the price, try to buy → no transfer + red toast on the left.
-	MatchState.money = 100.0
+	# Insufficient-funds: drop money below THIS building's price, try to buy → no transfer + red toast.
 	if tab._rows.size() > 0:
 		var poor_iid: String = str(tab._rows[0]["instance_id"])
+		var poor_price: int = int(tab._rows[0]["price"])
+		MatchState.money = maxf(0.0, float(poor_price) - 1.0)  # one short of the price
 		var poor_btn: Button = null
 		for b in (tab._rows[0]["control"] as Control).find_children("*", "Button", true, false):
 			poor_btn = b; break
