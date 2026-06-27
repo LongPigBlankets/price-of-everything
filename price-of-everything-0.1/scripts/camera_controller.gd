@@ -16,6 +16,10 @@ extends Camera2D
 var _target_zoom: Vector2
 var _intro_tween: Tween
 
+## Set true by the Empire view while it owns the full screen, so map pan/zoom go quiet
+## and the (hidden) map camera does not drift behind the overlay. See empire_view.gd.
+var input_blocked: bool = false
+
 func _ready() -> void:
 	add_to_group("camera")   # lets the loading screen find us for the intro zoom
 	make_current()
@@ -69,13 +73,16 @@ func _configure_for_map() -> void:
 	zoom = Vector2.ONE * zoom_min
 
 func _process(delta: float) -> void:
-	_handle_keyboard_pan(delta)
-	if edge_pan_enabled:
-		_handle_edge_pan(delta)
+	if not input_blocked:
+		_handle_keyboard_pan(delta)
+		if edge_pan_enabled:
+			_handle_edge_pan(delta)
 	_apply_zoom_smoothing(delta)
 	_clamp_to_bounds()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if input_blocked:
+		return
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_adjust_zoom(_scroll_factor(event))

@@ -190,8 +190,16 @@ func _run_command(text: String) -> String:
 					now_visible = layer.visible
 				return "heightmap → %s" % ("on" if now_visible else "off (plain map + rivers)")
 			return "usage: toggle heightmap | roads | roadocc"
+		"anim":
+			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
+			var bg := get_tree().get_first_node_in_group("empire_hex_bg")
+			if bg == null:
+				return "empire view not open (press Tab first)"
+			if parts.size() >= 2 and parts[1].is_valid_int():
+				return "empire animation → %s" % bg.call("set_animation", int(parts[1]))
+			return "empire animation → %s" % bg.call("cycle_animation")
 		"help":
-			return "commands:  cash <int>   |   unlock <title>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

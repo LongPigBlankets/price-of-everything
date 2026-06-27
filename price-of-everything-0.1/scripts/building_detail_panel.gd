@@ -2414,34 +2414,14 @@ const _MOD_RAG_LEGEND := "White means no net effect (−1% to +1%), green a net 
 func _update_mod_label(building: Dictionary, recipe: Dictionary) -> void:
 	if _mod_label == null:
 		return
-	var recipe_id: String = str(recipe.get("recipe_id", ""))
-	var ctx := {
-		"recipe_id": recipe_id,
-		"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
-		"building_id": str(building.get("building_id", "")),
-		"good_id": _primary_output_good_id(recipe),
-		"good_internal": _primary_output_internal(recipe),
-	}
-	var res: Dictionary = Modifiers.resolve_pct("recipe_output", recipe_id, ctx)
-	var net: float = float(res.get("net", 0.0))
-	var parts: Array = res.get("parts", [])
-
-	# Intermittency derate (multiplicative, applied AFTER the additive modifier channel in
-	# _produce_outputs). Fold it into the headline so the pill reflects the true output change.
-	var iid: String = str(building.get("instance_id", ""))
-	var derate: float = float((Production.get_building_intermittency(iid) as Dictionary).get("derate", 0.0))
-	var eff: float = ((1.0 + net / 100.0) * (1.0 - derate) - 1.0) * 100.0
-
-	var color: Color
-	if eff > 1.0:
-		color = STATUS_GREEN
-	elif eff < -1.0:
-		color = STATUS_RED
-	else:
-		color = MOD_WHITE
-	var eff_i: int = int(round(eff))
-	_mod_label.text = "%s%d%%" % ["+" if eff_i > 0 else "", eff_i]
-	_mod_label.add_theme_color_override("font_color", color)
+	# Single source of truth for the net-modifier %, its colour band, the component parts and the
+	# intermittency derate — shared with the Empire view (scripts/building_status.gd).
+	var mod := BuildingStatus.net_output_modifier(building, recipe)
+	var parts: Array = mod.parts
+	var derate: float = float(mod.derate)
+	var eff_i: int = int(mod.pct)
+	_mod_label.text = str(mod.text)
+	_mod_label.add_theme_color_override("font_color", mod.color as Color)
 
 	var tip: String
 	if parts.is_empty() and derate <= 0.0:
@@ -2497,38 +2477,13 @@ func _input_status_color(building: Dictionary, recipe: Dictionary, is_infrastruc
 	return BuildingStatus.input_status_color(building, recipe, is_infrastructure)
 
 func _transport_duration_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
-	if is_infrastructure:
-		return STATUS_GREY
-	# No output to transport when the building isn't running (or its deposit ran out).
-	if not Production.last_turn_run.has(str(building.get("instance_id", ""))) or _recipe_deposit_exhausted(building, recipe):
-		return STATUS_GREY
-	var route := _selected_output_route(building, recipe)
-	if route.is_empty():
-		return STATUS_GREEN
-	return STATUS_YELLOW if int(route.turns) > 1 else STATUS_GREEN
+	return BuildingStatus.transport_duration_status_color(building, recipe, is_infrastructure)
 
 func _transport_cost_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
-	if is_infrastructure:
-		return STATUS_GREY
-	if not Production.last_turn_run.has(str(building.get("instance_id", ""))) or _recipe_deposit_exhausted(building, recipe):
-		return STATUS_GREY
-	var route := _selected_output_route(building, recipe)
-	if route.is_empty():
-		return STATUS_GREEN
-	return STATUS_YELLOW if float(route.cost) > 0.0 else STATUS_GREEN
+	return BuildingStatus.transport_cost_status_color(building, recipe, is_infrastructure)
 
 func _selected_output_route(building: Dictionary, recipe: Dictionary) -> Dictionary:
-	var instance_id: String = building.get("instance_id", "")
-	var good_id := _primary_output_good_id(recipe)
-	var destination_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
-	if destination_tile == "":
-		return {}
-	return _route_summary_for_good(
-		building.get("tile_id", ""),
-		destination_tile,
-		good_id,
-		_primary_output_qty(recipe)
-	)
+	return BuildingStatus.selected_output_route(building, recipe)
 
 func _building_display_name(building: Dictionary, building_data: Dictionary, recipe: Dictionary) -> String:
 	# Codified naming: "<Type> - <Output> - <Letter>" (see building_naming.gd).
@@ -2694,14 +2649,7 @@ func _primary_output_qty(recipe: Dictionary) -> int:
 	return BuildingStatus.primary_output_qty(recipe)
 
 func _route_summary_for_good(source_tile: String, destination_tile: String, good_id: String, qty: int) -> Dictionary:
-	var r := TransportService.route(source_tile, destination_tile, good_id)
-	var turns: int = int(r.get("turns", 0))
-	var cost := TransportService.transport_cost_for_route(good_id, qty, r)
-	return {
-		"distance": int(r.get("tile_distance", 0)),
-		"turns": turns,
-		"cost": cost,
-	}
+	return BuildingStatus.route_summary(source_tile, destination_tile, good_id, qty)
 
 func _format_money(value: float) -> String:
 	var text := "%.2f" % value
