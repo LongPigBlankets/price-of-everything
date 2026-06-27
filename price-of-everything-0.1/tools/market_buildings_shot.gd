@@ -102,10 +102,16 @@ func _ready() -> void:
 				cb.pressed.emit()
 				await _settle(8)
 			var still_npc: bool = not MatchState.is_player_owned(MatchState.buildings[poor_iid])
-			var err_stack: Control = game.get_node_or_null("UILayer/HUD/ToastLayer/ErrorStack")
-			var err_x: float = err_stack.global_position.x if err_stack != null else -1.0
-			var err_count: int = err_stack.get_child_count() if err_stack != null else -1
-			print("POOR TEST: still_npc=%s error_stack_x=%.0f error_toasts=%d" % [still_npc, err_x, err_count])
+			# Red insufficient-money toast now lives in the bottom-left success stack with the others.
+			var stack: Control = game.get_node_or_null("UILayer/HUD/ToastLayer/SuccessStack")
+			var stack_x: float = stack.global_position.x if stack != null else -1.0
+			var red_toast := false
+			if stack != null:
+				for t in stack.get_children():
+					for lbl in t.find_children("*", "Label", true, false):
+						if str(lbl.text).begins_with("Not enough money to buy"):
+							red_toast = true
+			print("POOR TEST: still_npc=%s left_stack_x=%.0f red_toast_present=%s" % [still_npc, stack_x, red_toast])
 			_shot("/tmp/poe_buy_insufficient.png")
 
 	# Reactivity: open the building ledger; the just-bought building should be listed (player-owned).
@@ -118,6 +124,15 @@ func _ready() -> void:
 			found_in_ledger = true; break
 	print("LEDGER TEST: bought building in player ledger = %s" % found_in_ledger)
 	_shot("/tmp/poe_buy_ledger.png")
+
+	# No-double check: right after a re-render, the body must hold exactly one row per shown
+	# building (the old rows are detached synchronously, not left lingering for a frame).
+	var expected := 0
+	for entry in ledger._all_vms:
+		if ledger._passes_filters(entry):
+			expected += 1
+	ledger._render()
+	print("DOUBLE TEST: body_rows=%d expected=%d" % [ledger._body.get_child_count(), expected])
 
 	get_tree().quit(0)
 

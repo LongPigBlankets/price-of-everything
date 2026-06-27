@@ -175,7 +175,9 @@ func _rebuild() -> void:
 		return
 	_built = true
 	_dirty = false
+	# remove_child before queue_free (deferred) so old rows don't linger a frame over the new ones.
 	for c in _body.get_children():
+		_body.remove_child(c)
 		c.queue_free()
 	_rows.clear()
 	for vm in _collect_npc_buildings():

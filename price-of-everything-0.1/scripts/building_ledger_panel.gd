@@ -380,7 +380,11 @@ func _rebuild() -> void:
 func _render() -> void:
 	if _body == null:
 		return
+	# remove_child BEFORE queue_free: queue_free is deferred to end-of-frame, so freeing alone
+	# leaves the old rows in the tree for one frame while the new rows are added — the buildings
+	# would visibly double for a frame (e.g. after turn resolution). Detaching is synchronous.
 	for c in _body.get_children():
+		_body.remove_child(c)
 		c.queue_free()
 	var shown: Array = _all_vms.filter(_passes_filters)
 	shown.sort_custom(_compare)
