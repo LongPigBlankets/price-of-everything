@@ -8,7 +8,7 @@ extends Node
 func _ready() -> void:
 	var game: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(game)
-	get_window().size = Vector2i(1320, 880)   # wide enough for every column without scrolling
+	get_window().size = Vector2i(1320, 1040)   # tall + wide enough to see the full panel
 	await _settle(50)   # let the world boot + NPC start buildings seed synchronously
 
 	var npc := 0

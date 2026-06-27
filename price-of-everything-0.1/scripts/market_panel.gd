@@ -92,12 +92,15 @@ func _centre_and_resize() -> void:
 	var vp := get_viewport_rect().size
 	var w := minf(1220.0, vp.x - 60.0)
 	var base_h := minf(640.0, vp.y - 80.0)
-	var h := base_h + 40.0  # 40px taller…
+	# 30% taller than the old (base_h + 40) panel, with ALL the extra height added
+	# upward — the bottom edge stays put and the top grows up — so the rows get more room.
+	var h := (base_h + 40.0) * 1.30
 	var centred_top := maxf(40.0, (vp.y - base_h) / 2.0)
+	var bottom := centred_top + base_h  # where the old panel's bottom sat — keep it fixed
 	offset_left = maxf(0.0, (vp.x - w) / 2.0)
-	offset_top = maxf(0.0, centred_top - 40.0)  # …with the extra height added at the top
+	offset_top = maxf(8.0, bottom - h)  # grow upward; clamp to the top of the screen
 	offset_right = offset_left + w
-	offset_bottom = offset_top + h
+	offset_bottom = bottom
 
 func _on_panel_visibility_changed() -> void:
 	if not visible:
