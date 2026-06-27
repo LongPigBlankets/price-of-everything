@@ -47,9 +47,18 @@ var _search_text := ""
 var _header_wrap: MarginContainer = null
 var _scroll: ScrollContainer = null
 var _body: VBoxContainer = null
-var _rows: Array = []   # [{control, blob, instance_id}] — blob is the lowercased search haystack
+var _rows: Array = []   # [{control, blob, instance_id, price, category, powered, unconnected, level, near_port}]
 var _built := false
 var _dirty := false
+
+# Filter chips (two rows under the search bar). Category + level are OR-groups; the rest are AND.
+var _chips := {}
+var _f := {
+	"cat_production": false, "cat_power": false,
+	"powered": false, "unconnected": false,
+	"lvl1": false, "lvl2": false, "lvl3": false,
+	"near_port": false,
+}
 
 # Buy-confirmation dialog (lazily built on a high CanvasLayer, like the ledger's upgrade dialog).
 const BuyDialog := preload("res://scripts/buy_building_dialog.gd")
@@ -93,12 +102,19 @@ func _build_chrome() -> void:
 	_search.custom_minimum_size = Vector2(220, 0)
 	_search.text_changed.connect(func(t: String) -> void:
 		_search_text = t.strip_edges().to_lower()
-		_apply_search())
+		_apply_filters())
 	add_child(_search)
 
-	# Rows 2 & 3: reserved (empty) space for the future filter chips — no filters yet.
-	add_child(_reserved_filter_row())
-	add_child(_reserved_filter_row())
+	# Rows 2 & 3: filter chips. Row 1 = category + power; row 2 = level + port.
+	var r1 := _chip_row()
+	for spec in [["cat_production", "Production"], ["cat_power", "Power"],
+			["powered", "Powered"], ["unconnected", "Unconnected to grid"]]:
+		r1.add_child(_make_chip(str(spec[1]), str(spec[0])))
+	add_child(r1)
+	var r2 := _chip_row()
+	for spec in [["lvl1", "Lvl 1"], ["lvl2", "Lvl 2"], ["lvl3", "Lvl 3"], ["near_port", "Close to port"]]:
+		r2.add_child(_make_chip(str(spec[1]), str(spec[0])))
+	add_child(r2)
 
 	# Column headers. The metallic row plates render their content flush to the plate edge,
 	# so the header takes NO left inset; its right inset tracks the live scrollbar width so the
@@ -122,13 +138,44 @@ func _build_chrome() -> void:
 	_scroll.get_v_scroll_bar().visibility_changed.connect(_sync_header_gutter)
 	_scroll.resized.connect(_sync_header_gutter)
 
-# An empty placeholder row reserving the vertical space where a row of filter chips will go.
-func _reserved_filter_row() -> Control:
+# ── Filter chips ───────────────────────────────────────────────────────────────────────────
+func _chip_row() -> HBoxContainer:
 	var row := HBoxContainer.new()
-	row.name = "ReservedFilterRow"
 	row.add_theme_constant_override("separation", 8)
-	row.custom_minimum_size = Vector2(0, 30)  # ≈ chip height, so two future rows slot in cleanly
 	return row
+
+# Toggle chip, styled from DS palette to match the Building Ledger's filter chips.
+func _make_chip(text: String, key: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.toggle_mode = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	b.add_theme_stylebox_override("normal", _chip_box(DS.PALETTE.BG_INSET, DS.PALETTE.BORDER_SOFT))
+	b.add_theme_stylebox_override("hover", _chip_box(DS.PALETTE.BG_HIGHLIGHT, DS.PALETTE.ACCENT))
+	b.add_theme_stylebox_override("pressed", _chip_box(DS.PALETTE.ACCENT, DS.PALETTE.ACCENT))
+	b.add_theme_stylebox_override("hover_pressed", _chip_box(DS.PALETTE.ACCENT, DS.PALETTE.ACCENT))
+	b.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+	b.add_theme_color_override("font_hover_color", DS.PALETTE.TEXT)
+	b.add_theme_color_override("font_pressed_color", Color.WHITE)
+	b.add_theme_color_override("font_hover_pressed_color", Color.WHITE)
+	b.toggled.connect(func(pressed: bool) -> void:
+		_f[key] = pressed
+		_apply_filters())
+	_chips[key] = b
+	return b
+
+func _chip_box(bg: Color, border: Color) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = bg
+	s.border_color = border
+	s.set_border_width_all(1)
+	s.set_corner_radius_all(6)
+	s.content_margin_left = 10
+	s.content_margin_right = 10
+	s.content_margin_top = 5
+	s.content_margin_bottom = 5
+	return s
 
 func _build_header_row() -> HBoxContainer:
 	# Plain Labels (not Buttons) so their geometry matches the data cells and the columns align.
@@ -183,8 +230,12 @@ func _rebuild() -> void:
 	for vm in _collect_npc_buildings():
 		var row := _build_row(vm)
 		_body.add_child(row)
-		_rows.append({"control": row, "blob": str(vm.blob), "instance_id": str(vm.instance_id), "price": int(vm.price)})
-	_apply_search()
+		_rows.append({
+			"control": row, "blob": str(vm.blob), "instance_id": str(vm.instance_id), "price": int(vm.price),
+			"category": str(vm.category), "level": int(vm.level),
+			"powered": bool(vm.powered), "unconnected": bool(vm.unconnected), "near_port": bool(vm.near_port),
+		})
+	_apply_filters()
 	call_deferred("_sync_header_gutter")  # after layout: the scrollbar may have appeared/vanished
 
 func _collect_npc_buildings() -> Array:
@@ -240,6 +291,12 @@ func _row_vm(b: Dictionary) -> Dictionary:
 		"name": name_str, "tile": tile_text, "owner": owner,
 		"out_good_id": out_gid, "out_internal": out_internal, "out_qty": out_qty,
 		"price": BuildingPrice.sale_price(b),
+		# Filter fields.
+		"category": str(bdata.get("category", "production")),
+		"level": int(b.get("level", 1)),
+		"powered": int(recipe.get("energy_req", 0)) > 0,          # consumes power
+		"unconnected": not Power.is_supplied(tile_id),            # tile has no power cables
+		"near_port": BuildingPrice.is_near_port(tile_id),
 		"blob": blob,
 	}
 
@@ -247,15 +304,35 @@ func _is_infrastructure(b: Dictionary) -> bool:
 	var bdata: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
 	return str(bdata.get("category", "production")) == "infrastructure"
 
-func _apply_search() -> void:
-	var q := _search_text
+func _apply_filters() -> void:
 	var shown := 0
 	for r in _rows:
-		var vis: bool = q == "" or str(r.blob).contains(q)
+		var vis := _passes(r)
 		r.control.visible = vis
 		if vis:
 			shown += 1
 	_update_count(shown)
+
+func _passes(r: Dictionary) -> bool:
+	if _search_text != "" and not str(r.blob).contains(_search_text):
+		return false
+	# Category chips act as an OR-group: if any is on, the building must match one of them.
+	if _f.cat_production or _f.cat_power:
+		var c: String = str(r.category)
+		if not ((_f.cat_production and c == "production") or (_f.cat_power and c == "power")):
+			return false
+	if _f.powered and not bool(r.powered):
+		return false
+	if _f.unconnected and not bool(r.unconnected):
+		return false
+	# Level chips are likewise an OR-group.
+	if _f.lvl1 or _f.lvl2 or _f.lvl3:
+		var lv: int = int(r.level)
+		if not ((_f.lvl1 and lv == 1) or (_f.lvl2 and lv == 2) or (_f.lvl3 and lv == 3)):
+			return false
+	if _f.near_port and not bool(r.near_port):
+		return false
+	return true
 
 func _update_count(shown: int = -1) -> void:
 	if _count_label == null:
@@ -454,7 +531,7 @@ func _on_owner_changed(instance_id: String) -> void:
 		if str(_rows[i].get("instance_id", "")) == instance_id:
 			(_rows[i].control as Control).queue_free()
 			_rows.remove_at(i)
-	_apply_search()  # refresh the count + visibility
+	_apply_filters()  # refresh the count + visibility
 
 # ── Helpers ────────────────────────────────────────────────────────────────────────────────
 func _row_style(hover: bool) -> StyleBox:

@@ -70,6 +70,21 @@ func _ready() -> void:
 		var vm: Dictionary = tab._rows[i]
 		print("PRICE[%d]: £%d  %s" % [i, int(vm["price"]), str(vm["instance_id"])])
 
+	# Filter check: toggle "Close to port" → only port-adjacent buildings should remain visible.
+	tab._chips["near_port"].button_pressed = true
+	await _settle(4)
+	var near_expected := 0
+	var near_visible := 0
+	for r in tab._rows:
+		if bool(r["near_port"]):
+			near_expected += 1
+		if (r["control"] as Control).visible:
+			near_visible += 1
+	print("FILTER TEST: near_port visible=%d expected=%d total=%d" % [near_visible, near_expected, tab._rows.size()])
+	_shot("/tmp/poe_filters.png")
+	tab._chips["near_port"].button_pressed = false
+	await _settle(3)
+
 	# Buy flow: press the first row's £ button → confirm dialog → ownership transfers + row drops.
 	MatchState.money = 50000.0  # ensure affordable for the success case
 	var money_before: float = MatchState.money
@@ -77,6 +92,9 @@ func _ready() -> void:
 	var first_price: int = int(tab._rows[0]["price"]) if tab._rows.size() > 0 else 0
 	var rows_before: int = tab._rows.size()
 	var before_owned: bool = first_iid != "" and MatchState.is_player_owned(MatchState.buildings[first_iid])
+	# Land grant: record the bought building's tile owned-land before/after.
+	var buy_tile: String = str(MatchState.buildings[first_iid].get("tile_id", "")) if first_iid != "" else ""
+	var land_before: int = MatchState.get_tile_land_owned(buy_tile) if buy_tile != "" else 0
 	var row0: Control = tab._rows[0]["control"]
 	var buy_btn: Button = null
 	for b in row0.find_children("*", "Button", true, false):
@@ -93,6 +111,15 @@ func _ready() -> void:
 		var charged: float = money_before - MatchState.money
 		print("BUY TEST: before_owned=%s now_owned=%s rows %d→%d price=£%d charged=£%.0f" % [
 			before_owned, now_owned, rows_before, tab._rows.size(), first_price, charged])
+		# Land grant under the building (footprint added once, capped at the tile max).
+		var bd: Dictionary = Catalog.get_building(str(MatchState.buildings[first_iid].get("building_id", "")))
+		var foot: int = int(ceil(float(bd.get("tile_size_used", 1))))  # L1 footprint
+		var land_after: int = MatchState.get_tile_land_owned(buy_tile)
+		# A second set_owner to the player must NOT grant again (no double count).
+		MatchState.set_building_owner(first_iid, MatchState.LOCAL_PLAYER)
+		var land_after2: int = MatchState.get_tile_land_owned(buy_tile)
+		print("LAND TEST: tile=%s owned %d→%d (footprint=%d) no_double=%s" % [
+			buy_tile, land_before, land_after, foot, land_after2 == land_after])
 
 	# Insufficient-funds: drop money below THIS building's price, try to buy → no transfer + red toast.
 	if tab._rows.size() > 0:

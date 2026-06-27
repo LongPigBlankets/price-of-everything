@@ -31,6 +31,7 @@ func _ready() -> void:
 	_test_bottom_menu_default()
 	_test_ports()
 	_test_building_price()
+	_test_buy_grants_land()
 	_test_transport_service()
 	_test_transport_boundaries()
 	_test_build_mode_overlay_survey_visibility()
@@ -4926,6 +4927,22 @@ func _test_building_price() -> void:
 	var l1 := {"instance_id": "bp_lvl", "building_id": bid, "tile_id": "tile_12_2", "level": 1}
 	var l2 := {"instance_id": "bp_lvl", "building_id": bid, "tile_id": "tile_12_2", "level": 2}
 	_check(BuildingPrice.base_cost(l2) > BuildingPrice.base_cost(l1), "building price: L2 base cost exceeds L1")
+
+func _test_buy_grants_land() -> void:
+	# Buying an NPC building grants its footprint as owned land on the tile, exactly once.
+	var tile := "bp_land_tile"
+	MatchState.tile_land_owned.erase(tile)  # start from the default for this synthetic tile
+	var iid: String = MatchState.add_building("b_007", "", tile, "Test NPC Co", "", false)
+	var owned_before: int = MatchState.get_tile_land_owned(tile)  # default 100
+	var footprint: int = int(Catalog.get_building("b_007").get("tile_size_used", 1))  # 10 at L1
+	MatchState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
+	var owned_after: int = MatchState.get_tile_land_owned(tile)
+	_check(owned_after == mini(MatchState.MAX_TILE_LAND, owned_before + footprint),
+		"buy grants the building footprint as owned land")
+	MatchState.set_building_owner(iid, MatchState.LOCAL_PLAYER)  # already owned
+	_check(MatchState.get_tile_land_owned(tile) == owned_after, "buying again does not double-grant land")
+	MatchState.remove_building(iid)
+	MatchState.tile_land_owned.erase(tile)
 
 func _test_transport_service() -> void:
 	var route: Dictionary = TransportService.route("tile_12_2", "tile_13_2", "g_001")
