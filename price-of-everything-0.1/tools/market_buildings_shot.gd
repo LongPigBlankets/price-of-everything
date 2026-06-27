@@ -60,6 +60,26 @@ func _ready() -> void:
 		await _settle(10)
 		_shot("/tmp/poe_market_buildings_search.png")
 
+	# Functional check: synthetic click on the first row should open the building detail panel
+	# and hide the Market panel (mirrors the Building Ledger row click).
+	if le != null:
+		le.text = ""
+		le.text_changed.emit("")
+		await _settle(6)
+	var body2: Control = null
+	for sc in tab.find_children("*", "ScrollContainer", true, false):
+		body2 = sc.get_child(0); break
+	if body2 != null and body2.get_child_count() > 0:
+		var row: Control = body2.get_child(0)
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = true
+		row.gui_input.emit(ev)
+		await _settle(10)
+		var detail: Control = game.get_node_or_null("UILayer/HUD/HUDContent/BuildingDetailPanel")
+		print("CLICK TEST: market.visible=%s detail.visible=%s" % [market.visible, detail != null and detail.visible])
+		_shot("/tmp/poe_market_buildings_click.png")
+
 	get_tree().quit(0)
 
 func _shot(path: String) -> void:

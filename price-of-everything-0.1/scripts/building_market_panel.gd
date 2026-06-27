@@ -21,19 +21,22 @@ const BuildingIcon := preload("res://scripts/building_icon.gd")      # navy-keye
 const LedgerRowStyle := preload("res://scripts/ledger_row_style.gd") # metallic, top-left-lit row plate
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 
+## Emitted when a row is clicked — the Market panel opens the building detail panel for it.
+signal building_selected(instance_id: String)
+
 const PLACEHOLDER_PRICE := 1000  # flat buy price for every building until Feature 5 pricing lands
 
-const ROW_INSET := 12            # LedgerRowStyle BORDER(4) + PAD_H(8); header inset matches it so columns line up
 const ICON_SIZE := 76            # framed output-good icon (drives the row height) — same as the ledger
 const BICON_SIZE := 56           # building-type icon in the leading column
 const BICON_CELL_W := BICON_SIZE + 30  # icon centred in a wider cell → ~15px padding each side
 const PRICE_COL_W := 104.0       # width of the right-anchored price button / its header
+const BUTTON_EDGE_GAP := 20.0    # space between the price button and the row's right edge
 
 # Fixed-width cells, in order. bicon + output are drawn (icon) cells; the rest are text.
 # The price button is appended after an expanding spacer so it anchors to the right.
 const COLUMNS := [
 	{"key": "bicon",  "label": "",         "w": float(BICON_CELL_W), "align": HORIZONTAL_ALIGNMENT_CENTER},
-	{"key": "name",   "label": "Building", "w": 200.0,               "align": HORIZONTAL_ALIGNMENT_LEFT},
+	{"key": "name",   "label": "Building", "w": 300.0,               "align": HORIZONTAL_ALIGNMENT_LEFT},
 	{"key": "tile",   "label": "Tile",     "w": 120.0,               "align": HORIZONTAL_ALIGNMENT_LEFT},
 	{"key": "output", "label": "Output",   "w": float(ICON_SIZE),    "align": HORIZONTAL_ALIGNMENT_CENTER},
 	{"key": "owner",  "label": "Owner",    "w": 220.0,               "align": HORIZONTAL_ALIGNMENT_LEFT},
@@ -42,6 +45,8 @@ const COLUMNS := [
 var _count_label: Label = null
 var _search: LineEdit = null
 var _search_text := ""
+var _header_wrap: MarginContainer = null
+var _scroll: ScrollContainer = null
 var _body: VBoxContainer = null
 var _rows: Array = []   # [{control: PanelContainer, blob: String}] — blob is the lowercased search haystack
 var _built := false
@@ -86,22 +91,27 @@ func _build_chrome() -> void:
 	add_child(_reserved_filter_row())
 	add_child(_reserved_filter_row())
 
-	# Column headers, inset to sit exactly over the row cells. No click-to-sort yet.
-	var header_wrap := MarginContainer.new()
-	header_wrap.add_theme_constant_override("margin_left", ROW_INSET)
-	header_wrap.add_theme_constant_override("margin_right", ROW_INSET)
-	header_wrap.add_child(_build_header_row())
-	add_child(header_wrap)
+	# Column headers. The metallic row plates render their content flush to the plate edge,
+	# so the header takes NO left inset; its right inset tracks the live scrollbar width so the
+	# "Price" header stays exactly over the buy buttons. No click-to-sort yet.
+	_header_wrap = MarginContainer.new()
+	_header_wrap.add_theme_constant_override("margin_left", 0)
+	_header_wrap.add_theme_constant_override("margin_right", 0)
+	_header_wrap.add_child(_build_header_row())
+	add_child(_header_wrap)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll = ScrollContainer.new()
+	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_body = VBoxContainer.new()
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_body.add_theme_constant_override("separation", 7)  # gap between row plates, as in the ledger
-	scroll.add_child(_body)
-	add_child(scroll)
+	_scroll.add_child(_body)
+	add_child(_scroll)
+	# Keep the header's right gutter synced to the scrollbar so the columns stay aligned.
+	_scroll.get_v_scroll_bar().visibility_changed.connect(_sync_header_gutter)
+	_scroll.resized.connect(_sync_header_gutter)
 
 # An empty placeholder row reserving the vertical space where a row of filter chips will go.
 func _reserved_filter_row() -> Control:
@@ -122,7 +132,23 @@ func _build_header_row() -> HBoxContainer:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spacer)
 	row.add_child(_header_label("Price", PRICE_COL_W, HORIZONTAL_ALIGNMENT_CENTER))
+	row.add_child(_gap(BUTTON_EDGE_GAP))  # matches the row's trailing gap so Price sits over the button
 	return row
+
+# Right gutter for the header = the scrollbar width when shown (0 otherwise), so the header's
+# usable width matches the scrolling rows and every column lines up.
+func _sync_header_gutter() -> void:
+	if _scroll == null or _header_wrap == null:
+		return
+	var vbar := _scroll.get_v_scroll_bar()
+	var gutter: int = int(vbar.size.x) if (vbar != null and vbar.visible) else 0
+	_header_wrap.add_theme_constant_override("margin_right", gutter)
+
+func _gap(w: float) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(w, 0)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return c
 
 func _header_label(text: String, w: float, align: int) -> Label:
 	var l := Label.new()
@@ -148,6 +174,7 @@ func _rebuild() -> void:
 		_body.add_child(row)
 		_rows.append({"control": row, "blob": str(vm.blob)})
 	_apply_search()
+	call_deferred("_sync_header_gutter")  # after layout: the scrollbar may have appeared/vanished
 
 func _collect_npc_buildings() -> Array:
 	var out: Array = []
@@ -155,6 +182,8 @@ func _collect_npc_buildings() -> Array:
 		var b: Dictionary = MatchState.buildings[instance_id]
 		if MatchState.is_player_owned(b):
 			continue
+		if _is_infrastructure(b):
+			continue  # ports / airports etc. aren't productive buildings for sale
 		out.append(_row_vm(b))
 	# Group by owner, then by building name — a stable, readable order for one long list.
 	out.sort_custom(func(x: Dictionary, y: Dictionary) -> bool:
@@ -193,11 +222,16 @@ func _row_vm(b: Dictionary) -> Dictionary:
 		+ " " + tile_id + " " + tile_name + " " + owner).to_lower()
 
 	return {
+		"instance_id": instance_id,
 		"building_id": building_id, "binternal": str(bdata.get("internal_name", "")),
 		"name": name_str, "tile": tile_text, "owner": owner,
 		"out_good_id": out_gid, "out_internal": out_internal, "out_qty": out_qty,
 		"blob": blob,
 	}
+
+func _is_infrastructure(b: Dictionary) -> bool:
+	var bdata: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
+	return str(bdata.get("category", "production")) == "infrastructure"
 
 func _apply_search() -> void:
 	var q := _search_text
@@ -221,10 +255,12 @@ func _update_count(shown: int = -1) -> void:
 # ── Row widgets (mirror the Building-Ledger row theme) ─────────────────────────────────────
 func _build_row(vm: Dictionary) -> Control:
 	var row := PanelContainer.new()
-	row.mouse_filter = Control.MOUSE_FILTER_STOP  # capture hover to brighten the plate
+	row.mouse_filter = Control.MOUSE_FILTER_STOP  # capture hover to brighten the plate + click to open detail
+	row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	row.add_theme_stylebox_override("panel", _row_style(false))
 	row.mouse_entered.connect(func() -> void: row.add_theme_stylebox_override("panel", _row_style(true)))
 	row.mouse_exited.connect(func() -> void: row.add_theme_stylebox_override("panel", _row_style(false)))
+	row.gui_input.connect(_on_row_gui_input.bind(str(vm.instance_id)))
 
 	var hbox := HBoxContainer.new()
 	hbox.add_theme_constant_override("separation", 8)
@@ -232,13 +268,20 @@ func _build_row(vm: Dictionary) -> Control:
 	row.add_child(hbox)
 	for col in COLUMNS:
 		hbox.add_child(_build_cell(col, vm))
-	# Expanding spacer → right-anchored £ price button.
+	# Expanding spacer → right-anchored £ price button, then a gap to the row's right edge.
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hbox.add_child(spacer)
 	hbox.add_child(_price_button())
+	hbox.add_child(_gap(BUTTON_EDGE_GAP))
 	return row
+
+# Clicking anywhere on the row (except the price button, which consumes its own clicks) opens
+# the building detail panel for that building — the Market panel handles the rest.
+func _on_row_gui_input(event: InputEvent, instance_id: String) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		building_selected.emit(instance_id)
 
 func _build_cell(col: Dictionary, vm: Dictionary) -> Control:
 	var key := str(col.key)

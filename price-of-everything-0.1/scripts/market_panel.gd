@@ -86,6 +86,12 @@ func _header_spacer(width: float) -> Control:
 func _on_show_construct_for_good(_good_id: String) -> void:
 	hide()  # close the market panel; the construct panel opens itself filtered
 
+func _on_building_for_sale_selected(instance_id: String) -> void:
+	# Open the building detail panel (world_map pans + shows it), then close this panel so it
+	# isn't left covering the focused building — mirrors the Building Ledger's row click.
+	MatchState.focus_building_requested.emit(instance_id)
+	hide()
+
 func _centre_and_resize() -> void:
 	# Wide enough to show every column without sideways scrolling, centred on
 	# screen (capped to the viewport on narrow displays).
@@ -137,6 +143,7 @@ func _build_tabs() -> void:
 	# NPC buildings for sale — one long, searchable list (built lazily on first show).
 	var buildings_tab := BuildingMarketTab.new()
 	buildings_tab.name = "Buildings"
+	buildings_tab.building_selected.connect(_on_building_for_sale_selected)
 	tabs.add_child(buildings_tab)
 
 	tabs.add_child(_build_ledger_tab("Transactions",
