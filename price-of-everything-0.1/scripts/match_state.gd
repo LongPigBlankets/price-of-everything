@@ -1228,6 +1228,17 @@ func cheat_survey_all() -> void:
 	for tid in _all_tile_ids():
 		_cheat_reveal(tid)
 
+## Cheat: unlock every research node. Skips the deliberately-dangling gates like
+## 'hydro'/'consumer' (no node exists, so that content stays locked). Returns count.
+func cheat_unlock_all_research() -> int:
+	var n := 0
+	for d in _unlock_defs:
+		var t := str(d.get("title", ""))
+		if t != "" and not unlocked_titles.has(t):
+			grant_unlock(t, false)
+			n += 1
+	return n
+
 ## Survey one tile and play its reveal animation (but no per-tile toast).
 func _cheat_reveal(tile_id: String) -> void:
 	if surveyed_tiles.has(tile_id):

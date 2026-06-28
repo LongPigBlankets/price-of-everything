@@ -57,7 +57,7 @@ const _INFRA := {
 const _RESEARCH_GATE := {
 	"mine":                  {2: "In-Pit Crushing", 3: "Autonomous Haul Systems"},
 	"furnace":               {2: "Hot Blast Stoves", 3: "Top-Pressure Recovery Turbines"},
-	"eaf":                   {2: "Ultra-High-Power Arcs", 3: "Consteel Continuous Charging"},
+	"eaf":                   {2: "Twin-Shell Furnaces", 3: "Consteel Continuous Charging"},
 	"industrial_factory":    {2: "Conveyor Mass Assembly", 3: "Robotic Assembly Islands"},
 	"assembly_plant":        {2: "Moving Assembly Lines", 3: "Mixed-Model Synchronous Lines"},
 	"high_tech_manufactory": {2: "300mm Wafer Lines", 3: "EUV Lithography"},

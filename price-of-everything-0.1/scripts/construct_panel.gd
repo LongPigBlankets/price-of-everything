@@ -160,6 +160,9 @@ func _load_data() -> void:
 		var building_id: String = recipe.get("building_id", "")
 		if building_id == "":
 			continue
+		var rec_req: String = str(recipe.get("required_research", ""))
+		if rec_req != "" and not MatchState.is_unlocked(rec_req):
+			continue  # research/cheat-gated recipe — hidden until its tech is unlocked
 		if not recipes_by_building.has(building_id):
 			recipes_by_building[building_id] = []
 		recipes_by_building[building_id].append(recipe)
@@ -216,6 +219,9 @@ func _build_panel_content() -> void:
 			var bid := str(r.get("building_id", ""))
 			if bid == "":
 				continue
+			var rec_req2: String = str(r.get("required_research", ""))
+			if rec_req2 != "" and not MatchState.is_unlocked(rec_req2):
+				continue  # research/cheat-gated recipe
 			if not by_building.has(bid):
 				by_building[bid] = []
 			by_building[bid].append(r)

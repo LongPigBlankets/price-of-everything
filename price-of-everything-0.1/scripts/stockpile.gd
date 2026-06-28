@@ -39,7 +39,8 @@ func get_at_tile(coord, good_id: String) -> int:
 func get_capacity(coord) -> int:
 	if coord == null:
 		return 999999
-	return TILE_CAPACITY + _storage_boost_for(coord)
+	# tile_storage research (warehouse upgrades) scales the per-tile capacity.
+	return int(round(Modifiers.apply("tile_storage", "", float(TILE_CAPACITY + _storage_boost_for(coord)), {})))
 
 func _storage_boost_for(coord) -> int:
 	var tile_id := str(coord)
