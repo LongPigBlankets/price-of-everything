@@ -160,8 +160,40 @@ func _ready() -> void:
 	_test_empire_layered()
 	_test_empire_ports()
 	_test_empire_rag()
+	_test_audio_service()
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
+
+# The Audio autoload (presentation-layer SFX service). Headless uses the Dummy
+# audio driver, so we assert wiring/state rather than actual playback: the click
+# stream imports, the voice pool is built, and click() runs without erroring.
+func _test_audio_service() -> void:
+	for cue in ["CLICK", "CLICK_MENU", "CLICK_PRIMARY", "HOVER", "HAMMER", "RUBBLE", "SIGNATURE", "CASH_REGISTER", "TECH_UNLOCK", "SLOT_LEVER"]:
+		_check(Audio.get(cue) != null, "audio: %s cue imports and loads" % cue)
+	# Each channel built its own independent voice pool (clicks can't steal build voices).
+	var channels_ok: bool = Audio._channels.size() == Audio.CHANNELS.size()
+	for ch in Audio.CHANNELS:
+		if not (Audio._channels.has(ch) and Audio._channels[ch].size() == int(Audio.CHANNELS[ch])):
+			channels_ok = false
+	_check(channels_ok, "audio: per-track voice channels built")
+	_check(Audio._music != null, "audio: dedicated music player built")
+	var music_ok: bool = Audio.MUSIC_TRACKS.size() == 5
+	for t in Audio.MUSIC_TRACKS:
+		if t == null:
+			music_ok = false
+	_check(music_ok, "audio: music playlist has 5 loaded tracks")
+	for verb in ["click", "click_menu", "click_primary", "hover", "building_placed", "demolished",
+			"transaction", "tech_unlocked", "turn_ready", "swap_song", "play_music", "stop_music", "fade_music"]:
+		_check(Audio.has_method(verb), "audio: %s() verb exists" % verb)
+	Audio.click()             # must not error under the dummy driver
+	Audio.click_primary()
+	Audio.hover()
+	Audio.building_placed()
+	Audio.demolished()
+	Audio.transaction()
+	Audio.tech_unlocked()
+	Audio.turn_ready()
+	_check(true, "audio: cue verbs run without error")
 
 # Baked hills are the canonical hand-painted shape: the file must exist, match
 # the current CSVs/generator (else someone forgot to re-bake), and only ever

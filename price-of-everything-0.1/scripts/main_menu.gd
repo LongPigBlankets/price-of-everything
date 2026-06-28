@@ -28,6 +28,7 @@ const PLATE_BOTTOM := 206.0
 
 func _ready() -> void:
 	_build_menu()
+	Audio.play_music()   # looping main-menu theme (placeholder track)
 
 
 func _on_new_game_pressed() -> void:

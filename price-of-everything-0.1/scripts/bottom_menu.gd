@@ -86,6 +86,8 @@ func _ready() -> void:
 	%PoliticsButton.pressed.connect(_on_politics_pressed)
 	%TechButton.pressed.connect(_on_research_pressed)
 	%PeopleButton.pressed.connect(_on_people_pressed)
+	# (Bottom-menu click cues are auto-wired by Audio, which gives %BottomMenu
+	# children the menu cue — see Audio._sound_for_button.)
 	money_panel.take_loan_dialog = take_loan_dialog
 	take_loan_dialog.loan_confirmed.connect(_on_loan_confirmed)
 	take_loan_dialog.hide()

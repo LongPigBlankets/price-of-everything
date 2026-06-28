@@ -7,6 +7,7 @@ extends CanvasLayer
 ##   sellmode <stockpile|market|building>  set the global production sell mode
 ##   swap tvp                         toggle between the classic and alternate Tile View Panel
 ##   swap bottom menu                 toggle between the current and alternate bottom-menu icons
+##   swap song                       advance to the next music track
 ##   help                             list commands
 
 const TOGGLE_KEY := KEY_QUOTELEFT  # the ` / ~ key
@@ -123,7 +124,9 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 3 and parts[1].to_lower() == "bottom" and parts[2].to_lower() == "menu":
 				MatchState.toggle_use_alt_bottom_menu()
 				return "Bottom menu icons → %s" % _bottom_menu_name()
-			return "usage: swap bottom menu  (current: %s)" % _bottom_menu_name()
+			if parts.size() >= 2 and parts[1].to_lower() == "song":
+				return "Now playing: %s" % Audio.swap_song()
+			return "usage: swap bottom menu  |  swap song"
 		"survey":
 			if parts.size() >= 2 and parts[1].to_lower() == "limit":
 				MatchState.cheat_survey_within_limits()
@@ -202,7 +205,7 @@ func _run_command(text: String) -> String:
 				return "empire animation → %s" % bg.call("set_animation", int(parts[1]))
 			return "empire animation → %s" % bg.call("cycle_animation")
 		"help":
-			return "commands:  cash <int>   |   unlock <title>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   swap song   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

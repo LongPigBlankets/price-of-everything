@@ -18,6 +18,7 @@ config/icon="res://scenes/icon.svg"
 [autoload]
 
 DS="*res://scripts/ds.gd"
+Audio="*res://scripts/audio.gd"
 Catalog="*uid://dknl8ax7uvew7"
 MarketState="*uid://p821obaxl80d"
 Stockpile="*uid://c5n4ujnawka3c"

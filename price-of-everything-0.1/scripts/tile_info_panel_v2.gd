@@ -1429,7 +1429,8 @@ func _on_buy_land_pressed(anchor: Control) -> void:
 func _buy_land_amount(land_amount: int) -> void:
 	var patches := int(land_amount / MatchState.LAND_PATCH_SIZE)
 	if patches > 0:
-		MatchState.purchase_tile_land(_current_tile_id, patches)
+		if MatchState.purchase_tile_land(_current_tile_id, patches):
+			Audio.transaction()
 
 func _on_bl_build_pressed() -> void:
 	# Open the construct panel filtered to this tile's valid buildings/recipes;
@@ -1514,6 +1515,7 @@ func _make_infra_button(icon: Texture2D, _unused, bg: Color, hover_bg: Color, to
 	button.add_theme_stylebox_override("hover", _infra_btn_style(hover_bg))  # lighter on hover
 	button.add_theme_stylebox_override("pressed", _infra_btn_style(hover_bg))
 	button.add_theme_stylebox_override("disabled", _infra_btn_style(bg))
+	button.mouse_entered.connect(Audio.hover)   # custom-styled, so wire the hover cue here
 	if on_press.is_valid():
 		button.pressed.connect(func(): on_press.call(button))
 	return button
