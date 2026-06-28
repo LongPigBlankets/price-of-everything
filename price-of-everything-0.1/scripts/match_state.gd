@@ -161,6 +161,8 @@ signal buy_tile_pick_requested()
 signal buy_tile_picked(tile_id: String)  # tile_id == "" means cancelled
 ## Market row "Expand" — open the construct panel filtered to producers of this good.
 signal show_construct_for_good(good_id: String)
+## Tile-view "Buy Buildings" — open the Market on the Buildings tab, filtered to this tile.
+signal buildings_market_for_tile_requested(tile_id: String)
 ## Market row "Move" — start the on-map transfer flow for this good.
 signal transfer_for_good_requested(good_id: String)
 ## Market-row "Purchase" asked to open the per-good buy flow.

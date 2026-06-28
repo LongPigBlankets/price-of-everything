@@ -60,6 +60,11 @@ var _f := {
 	"near_port": false,
 }
 
+# Temporary "this tile only" filter, set by the tile view's Buy Buildings button. Empty = off.
+var _tile_filter := ""
+var _tile_filter_bar: HBoxContainer = null
+var _tile_filter_label: Label = null
+
 # Buy-confirmation dialog (lazily built on a high CanvasLayer, like the ledger's upgrade dialog).
 const BuyDialog := preload("res://scripts/buy_building_dialog.gd")
 static var _skip_confirm := false   # "Do not show again" — persists for the session
@@ -93,6 +98,27 @@ func _build_chrome() -> void:
 	_count_label = Label.new()
 	_count_label.theme_type_variation = "Caption"
 	add_child(_count_label)
+
+	# Temporary "this tile only" filter banner (hidden unless set via the tile view).
+	_tile_filter_bar = HBoxContainer.new()
+	_tile_filter_bar.visible = false
+	_tile_filter_bar.add_theme_constant_override("separation", 8)
+	_tile_filter_label = Label.new()
+	_tile_filter_label.theme_type_variation = "Caption"
+	_tile_filter_label.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
+	_tile_filter_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_tile_filter_bar.add_child(_tile_filter_label)
+	var clear_btn := Button.new()
+	clear_btn.text = "✕ Clear"
+	clear_btn.focus_mode = Control.FOCUS_NONE
+	clear_btn.add_theme_stylebox_override("normal", _chip_box(DS.PALETTE.BG_INSET, DS.PALETTE.BORDER_SOFT))
+	clear_btn.add_theme_stylebox_override("hover", _chip_box(DS.PALETTE.BG_HIGHLIGHT, DS.PALETTE.ACCENT))
+	clear_btn.add_theme_stylebox_override("pressed", _chip_box(DS.PALETTE.ACCENT, DS.PALETTE.ACCENT))
+	clear_btn.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+	clear_btn.add_theme_color_override("font_hover_color", DS.PALETTE.TEXT)
+	clear_btn.pressed.connect(clear_tile_filter)
+	_tile_filter_bar.add_child(clear_btn)
+	add_child(_tile_filter_bar)
 
 	# Row 1: the search bar (matches building name / output / tile / recipe / owner).
 	_search = LineEdit.new()
@@ -232,7 +258,7 @@ func _rebuild() -> void:
 		_body.add_child(row)
 		_rows.append({
 			"control": row, "blob": str(vm.blob), "instance_id": str(vm.instance_id), "price": int(vm.price),
-			"category": str(vm.category), "level": int(vm.level),
+			"category": str(vm.category), "level": int(vm.level), "tile_id": str(vm.tile_id),
 			"powered": bool(vm.powered), "unconnected": bool(vm.unconnected), "near_port": bool(vm.near_port),
 		})
 	_apply_filters()
@@ -288,7 +314,7 @@ func _row_vm(b: Dictionary) -> Dictionary:
 	return {
 		"instance_id": instance_id,
 		"building_id": building_id, "binternal": str(bdata.get("internal_name", "")),
-		"name": name_str, "tile": tile_text, "owner": owner,
+		"name": name_str, "tile": tile_text, "tile_id": tile_id, "owner": owner,
 		"out_good_id": out_gid, "out_internal": out_internal, "out_qty": out_qty,
 		"price": BuildingPrice.sale_price(b),
 		# Filter fields.
@@ -314,6 +340,8 @@ func _apply_filters() -> void:
 	_update_count(shown)
 
 func _passes(r: Dictionary) -> bool:
+	if _tile_filter != "" and str(r.get("tile_id", "")) != _tile_filter:
+		return false
 	if _search_text != "" and not str(r.blob).contains(_search_text):
 		return false
 	# Category chips act as an OR-group: if any is on, the building must match one of them.
@@ -342,6 +370,25 @@ func _update_count(shown: int = -1) -> void:
 		_count_label.text = "%d building%s for sale" % [total, "" if total == 1 else "s"]
 	else:
 		_count_label.text = "%d of %d buildings" % [shown, total]
+
+# ── Temporary per-tile filter (set from the tile view's "Buy Buildings" button) ─────────────
+func set_tile_filter(tile_id: String) -> void:
+	_tile_filter = tile_id
+	if not _built:
+		_rebuild()  # ensure rows exist for the filter to act on
+	if _tile_filter_bar != null:
+		var tname := Catalog.tile_name(tile_id)
+		_tile_filter_label.text = "Showing buildings on tile: %s" % (tname if tname != "" else _short_tile(tile_id))
+		_tile_filter_bar.visible = true
+	_apply_filters()
+
+func clear_tile_filter() -> void:
+	if _tile_filter == "" and (_tile_filter_bar == null or not _tile_filter_bar.visible):
+		return
+	_tile_filter = ""
+	if _tile_filter_bar != null:
+		_tile_filter_bar.visible = false
+	_apply_filters()
 
 # ── Row widgets (mirror the Building-Ledger row theme) ─────────────────────────────────────
 func _build_row(vm: Dictionary) -> Control:

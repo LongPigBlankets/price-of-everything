@@ -2774,15 +2774,15 @@ func _test_modifiers_production_recipe_output() -> void:
 	var base_produced: int = int(summary.produced.get("g_001", 0))
 	_check(base_produced == 20, "baseline: coal recipe produces 20 (got %d)" % base_produced)
 
-	# Now with the Mining Mastery modifier active: extraction recipes +5%.
+	# Now with the Mining Mastery modifier active: mining recipes +5%.
 	Stockpile.clear_all()
 	Modifiers.add({"id": "mining_mastery_bonus", "domain": "recipe_output",
-		"target_match": {"recipe_type": "extraction"}, "mult": 1.05})
+		"target_match": {"recipe_type": "mineral mining"}, "mult": 1.05})
 	summary = _fresh_production_summary()
 	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
 	Production._flush_output_buffer()
 	var boosted_produced: int = int(summary.produced.get("g_001", 0))
-	_check(boosted_produced == 21, "with +5%% extraction modifier: 20 → 21 (got %d)" % boosted_produced)
+	_check(boosted_produced == 21, "with +5%% mining modifier: 20 → 21 (got %d)" % boosted_produced)
 	_check(Stockpile.get_at_tile(tile, "g_001") == 21,
 		"the boosted output lands in the tile stockpile (got %d)" % Stockpile.get_at_tile(tile, "g_001"))
 	Modifiers.reset()
@@ -5213,7 +5213,7 @@ func _test_recipe_requirements() -> void:
 		and reqs[0].get("type", "") == "deposit" \
 		and reqs[0].get("value", "") == "coal"
 	_check(ok, "r_001 (Coal Mining) requires deposit:coal")
-	_check(recipe.get("recipe_type", "") == "extraction", "r_001 recipe_type is extraction")
+	_check(recipe.get("recipe_type", "") == "Mineral Mining", "r_001 recipe_type is Mineral Mining")
 	# Promotion gate: every active recipe's inputs + outputs resolve to real goods.
 	var no_phantom := true
 	for r in Catalog.all_recipes():

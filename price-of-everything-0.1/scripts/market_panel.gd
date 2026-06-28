@@ -13,6 +13,8 @@ const BuildingMarketTab := preload("res://scripts/building_market_panel.gd")  # 
 const HEADER_HEIGHT := 40.0
 
 var rows: Array = []
+var _tabs: TabContainer = null
+var _buildings_tab: Control = null   # the BuildingMarketTab (NPC buildings for sale)
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 var _good_option: OptionButton = null
@@ -110,6 +112,10 @@ func _centre_and_resize() -> void:
 
 func _on_panel_visibility_changed() -> void:
 	if not visible:
+		# The tile filter is temporary — drop it when the Market closes so a normal reopen
+		# (via the Market button) shows every building again.
+		if _buildings_tab != null:
+			_buildings_tab.clear_tile_filter()
 		return
 	_centre_and_resize()
 	_refresh_ledgers()
@@ -134,24 +140,33 @@ func _build_tabs() -> void:
 	prices_tab.add_child(scroll)
 	tabs.add_child(prices_tab)
 
+	# NPC buildings for sale — the 2nd tab (built lazily on first show).
+	_buildings_tab = BuildingMarketTab.new()
+	_buildings_tab.name = "Buildings"
+	_buildings_tab.building_selected.connect(_on_building_for_sale_selected)
+	tabs.add_child(_buildings_tab)
+
 	var sales_tab := VBoxContainer.new()
 	sales_tab.name = "Sales"
 	sales_tab.add_theme_constant_override("separation", 6)
 	_build_bulk_sell_section(sales_tab)
 	tabs.add_child(sales_tab)
 
-	# NPC buildings for sale — one long, searchable list (built lazily on first show).
-	var buildings_tab := BuildingMarketTab.new()
-	buildings_tab.name = "Buildings"
-	buildings_tab.building_selected.connect(_on_building_for_sale_selected)
-	tabs.add_child(buildings_tab)
-
 	tabs.add_child(_build_ledger_tab("Transactions",
 		MatchState.get_recurring_transaction_rows, MatchState.get_oneoff_transaction_rows))
 	tabs.add_child(_build_ledger_tab("Movements",
 		MatchState.get_recurring_move_rows, MatchState.get_oneoff_move_rows))
 
+	_tabs = tabs
 	main_vbox.add_child(tabs)
+
+# Open the Market on the Buildings tab, filtered to a single tile's buildings (a temporary
+# filter that the player can clear). Called from the tile view's "Buy Buildings" button.
+func open_buildings_for_tile(tile_id: String) -> void:
+	if _tabs == null or _buildings_tab == null:
+		return
+	_tabs.current_tab = _tabs.get_tab_idx_from_control(_buildings_tab)
+	_buildings_tab.set_tile_filter(tile_id)
 
 func _build_ledger_tab(title: String, recurring_getter: Callable, oneoff_getter: Callable) -> VBoxContainer:
 	# View-only ledger: a "Recurring" accordion + a "One-off" accordion, each a small table.

@@ -43,9 +43,9 @@ const UNLOCK_MODIFIERS := {
 	# ── recipe output (production quantity) ──────────────────────────────
 	"Mining Mastery": {
 		"id": "mining_mastery_bonus", "domain": "recipe_output",
-		"target_match": {"recipe_type": "extraction"}, "pct": 5.0,
+		"target_match": {"recipe_type": "mineral mining"}, "pct": 5.0,
 		"duration_turns": 30,
-		"label": "Mining Mastery: +5% extraction output",
+		"label": "Mining Mastery: +5% mining output",
 		"source": "research:mining_mastery",
 	},
 	"Continuous-Flow Reactors": {

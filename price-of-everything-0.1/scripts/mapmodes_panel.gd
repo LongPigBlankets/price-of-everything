@@ -2,10 +2,12 @@ extends PanelContainer
 
 @onready var title_label: Label = $MarginContainer/ModalLayout/HeaderRow/TitleLabel
 @onready var close_button: Button = $MarginContainer/ModalLayout/HeaderRow/CloseButton
+@onready var scroll: ScrollContainer = $MarginContainer/ModalLayout/ScrollContainer
 @onready var content_vbox: VBoxContainer = $MarginContainer/ModalLayout/ScrollContainer/ContentVBox
 
 const HEADER_HEIGHT := 40.0
 const ROW_HEIGHT := 36
+const MENU_GAP := 12.0   # gap kept between the panel's bottom and the bottom menu's top
 
 # kind: "picker" = opens the good-select panel; "sentinel" = whole-map toggle;
 # "none" = not yet implemented.
@@ -31,6 +33,33 @@ func _ready() -> void:
 	_build_content()
 	MapMode.selections_changed.connect(func(_m, _s) -> void: _sync_states())
 	MapMode.mode_cleared.connect(_sync_states)
+	visibility_changed.connect(func() -> void:
+		if visible:
+			call_deferred("_resize_to_content"))
+	get_viewport().size_changed.connect(_resize_to_content)
+	call_deferred("_resize_to_content")
+
+# Size the panel to exactly fit its buttons + padding (no scrolling) and grow downward as map
+# modes are added, capping at the bottom menu's top so it never overlaps it (scrolls only then).
+func _resize_to_content() -> void:
+	if scroll == null:
+		return
+	scroll.custom_minimum_size.y = 0.0
+	var chrome_h := get_combined_minimum_size().y          # header + separators + margins (empty scroll)
+	var content_h := content_vbox.get_combined_minimum_size().y
+	var room := maxf(0.0, _max_panel_height() - chrome_h)
+	var scroll_h := clampf(content_h, 0.0, room)
+	scroll.custom_minimum_size.y = scroll_h
+	offset_bottom = offset_top + chrome_h + scroll_h
+
+func _max_panel_height() -> float:
+	var cap_y := get_viewport_rect().size.y - 100.0       # fallback: bottom-menu buttons' top
+	var parent := get_parent()
+	if parent != null:
+		var bm: Node = parent.get_node_or_null("BottomMenu")
+		if bm is Control:
+			cap_y = (bm as Control).global_position.y
+	return maxf(140.0, cap_y - global_position.y - MENU_GAP)
 
 func _build_content() -> void:
 	for child in content_vbox.get_children():
