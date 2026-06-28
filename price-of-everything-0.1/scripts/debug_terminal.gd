@@ -99,7 +99,10 @@ func _run_command(text: String) -> String:
 			return "Added £%d  (balance now £%.2f)" % [amount, MatchState.money]
 		"unlock":
 			if parts.size() < 2:
-				return "usage: unlock <research title>  (e.g. 'unlock hydro')"
+				return "usage: unlock <research title>  (e.g. 'unlock hydro')  |  unlock all"
+			if parts[1].to_lower() == "all":
+				var unlocked_count: int = MatchState.cheat_unlock_all_research()
+				return "Unlocked ALL research (%d nodes)." % unlocked_count
 			var title := " ".join(parts.slice(1))
 			MatchState.grant_unlock(title)
 			return "Unlocked '%s'." % title

@@ -3068,10 +3068,10 @@ func _test_cable_power_cap() -> void:
 		"a tile can produce 400 AND draw 400 with an L2 cable")
 	_check(not Power.can_produce("t2", 1), "at the production cap, no further power generates")
 	_check(not Power.can_draw("t2", 1), "at the draw cap, no further power is supplied")
-	# Substation Layouts research raises the cap: +5% → 420.
+	# Substation Layouts research raises the cap: +25% → 500 (one of two +25% cable throughput unlocks).
 	MatchState.grant_unlock("Substation Layouts")
-	_check(Power.tile_power_cap("t2") == 420,
-		"Substation Layouts raises the L2 cap 400 → 420 (got %d)" % Power.tile_power_cap("t2"))
+	_check(Power.tile_power_cap("t2") == 500,
+		"Substation Layouts raises the L2 cap 400 → 500 (got %d)" % Power.tile_power_cap("t2"))
 
 	get_tree().root.remove_child(fake)
 	fake.free()
@@ -3089,10 +3089,10 @@ func _test_transport_congestion() -> void:
 	_check(absf(MatchState.tile_mode_capacity("roads", 2) - 400.0) < 0.001, "roads L2 capacity = 400 (×2)")
 	_check(absf(MatchState.tile_mode_capacity("rail", 3) - 1400.0) < 0.001, "rail L3 capacity = 1400 (400×3.5)")
 	_check(absf(MatchState.tile_mode_capacity("cables", 1)) < 0.001, "an uncapped mode (cables) reports 0")
-	# Throughput research raises capacity: Containerized Freight +10% rail.
-	MatchState.grant_unlock("Containerized Freight")
-	_check(absf(MatchState.tile_mode_capacity("rail", 1) - 440.0) < 0.001,
-		"Containerized Freight raises rail L1 capacity 400 → 440")
+	# Throughput research raises capacity: Heavy Freight Corridors +25% rail.
+	MatchState.grant_unlock("Heavy Freight Corridors")
+	_check(absf(MatchState.tile_mode_capacity("rail", 1) - 500.0) < 0.001,
+		"Heavy Freight Corridors raises rail L1 capacity 400 → 500")
 
 	var route := {"tiles": ["tile_a", "tile_b"],
 		"legs": [{"mode": "roads", "from": "tile_a", "to": "tile_b"}]}
@@ -5199,9 +5199,11 @@ func _test_catalog_loaded() -> void:
 	var farm_recipe_ids: Array = []
 	for r in Catalog.get_recipes_for_building(farm_id):
 		farm_recipe_ids.append(str(r.get("recipe_id", "")))
-	var has_all_biomass: bool = farm_recipe_ids.has("r_208") and farm_recipe_ids.has("r_209") \
+	# r_208 (Sustainable Biomass Production) is now tech-gated behind "Energy Crop Cultivation",
+	# so it is intentionally absent from the start-active set; the base biomass recipes remain.
+	var has_all_biomass: bool = farm_recipe_ids.has("r_209") \
 		and farm_recipe_ids.has("r_211") and farm_recipe_ids.has("r_212")
-	_check(has_all_biomass, "farm has its 4 biomass recipes (buildable, not recipe-less): %s" % str(farm_recipe_ids))
+	_check(has_all_biomass, "farm has its base biomass recipes (buildable, not recipe-less): %s" % str(farm_recipe_ids))
 	_check(int(Catalog.get_building_by_internal_name("farm").get("tile_size_used", 0)) == 15, "farm building is tile_size_used 15")
 
 # Logic: recipe requirements parse correctly (guards the build-mode path that

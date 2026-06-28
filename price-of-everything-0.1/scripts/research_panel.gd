@@ -75,6 +75,7 @@ const CATEGORIES := [
 	"Manufacturing",
 	"Hydrocarbon Power",
 	"Renewable Power",
+	"Recycling",
 	"Infrastructure",
 	"Logistics",
 	"Markets and Operations",
