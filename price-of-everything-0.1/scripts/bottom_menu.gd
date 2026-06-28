@@ -104,6 +104,8 @@ func _ready() -> void:
 	# Victory moment (spec §6): the HUD owns the auto-open so it can clear whatever
 	# panel is showing first (the panel can't hide its own siblings).
 	VictoryState.victory_achieved.connect(_on_victory_achieved)
+	# Tile-view "Buy Buildings" → open the Market on the Buildings tab, filtered to that tile.
+	MatchState.buildings_market_for_tile_requested.connect(_on_buildings_market_for_tile)
 
 	# A button rises while its panel is open and drops when it closes. Buttons
 	# with no panel (Politics/People) and disabled buttons never rise.
@@ -345,6 +347,12 @@ func _on_mapmodes_pressed() -> void:
 func _on_market_pressed() -> void:
 	_hide_all_panels()
 	_set_panel_visible(market_panel, true)
+
+func _on_buildings_market_for_tile(tile_id: String) -> void:
+	_hide_all_panels()
+	_set_panel_visible(market_panel, true)
+	if market_panel.has_method("open_buildings_for_tile"):
+		market_panel.open_buildings_for_tile(tile_id)
 
 func _on_buildings_pressed() -> void:
 	_show_building_ledger()

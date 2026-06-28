@@ -108,7 +108,7 @@ func _apply_anchors() -> void:
 	offset_left = -(panel_w + 30.0) + _drag_delta.x
 	offset_top = 30.0 + _drag_delta.y
 	offset_right = -30.0 + _drag_delta.x
-	offset_bottom = 760.0 + _drag_delta.y
+	offset_bottom = 900.0 + _drag_delta.y  # taller panel (top pinned near the screen top, so it grows down)
 	grow_horizontal = Control.GROW_DIRECTION_BEGIN
 
 const TILE_MODAL_FRAME_PATH := "res://assets/ui/tile_modal_pipe_frame.png"
@@ -1343,7 +1343,7 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 	actions.add_child(build_btn)
 	var buy_buildings := _make_action_button("Buy Buildings")
 	buy_buildings.add_theme_font_size_override("font_size", 14)  # one size up
-	buy_buildings.pressed.connect(func(): MatchState.request_toast("Buying buildings is coming soon", "caution"))
+	buy_buildings.pressed.connect(func(): MatchState.buildings_market_for_tile_requested.emit(_current_tile_id))
 	actions.add_child(buy_buildings)
 	pane.add_child(actions)
 
