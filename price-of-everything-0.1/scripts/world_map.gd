@@ -1262,6 +1262,7 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 	print("Built %s (instance %s, recipe %s) on %s — cost £%.2f" % [building_id, instance_id, recipe_id, tile_id, cost])
 
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
+	Audio.building_placed()
 
 func _show_construction_missing_dialog(building_id: String, recipe_id: String, tile_id: String, missing: Dictionary) -> void:
 	# Lazily build one reusable dialog on the HUD. Phase 1 only wires Cancel (close); the
@@ -1292,6 +1293,7 @@ func _on_construction_buy_requested(building_id: String, recipe_id: String, tile
 		return
 	var instance_id := Construction.start_awaiting_market(building_id, recipe_id, tile_id, cost)
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
+	Audio.building_placed()
 
 func _on_construction_use_stockpile_requested(building_id: String, recipe_id: String, tile_id: String) -> void:
 	# Source the missing materials from another tile's spare stock: charge the build cost +
@@ -1316,6 +1318,7 @@ func _on_construction_use_stockpile_requested(building_id: String, recipe_id: St
 		return
 	var instance_id := Construction.start_awaiting_from_tile(building_id, recipe_id, tile_id, str(source.get("tile_id", "")), cost)
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
+	Audio.building_placed()
 
 func _on_construction_cancelled(instance_id: String, _tile_id: String) -> void:
 	if building_visuals.has_method("remove_instance"):

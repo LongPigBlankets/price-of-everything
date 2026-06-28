@@ -384,6 +384,7 @@ func _update_section_header(category: String) -> void:
 	_section_toggle_buttons[category].text = marker
 
 func _on_recipe_selected(building_id: String, recipe_id: String) -> void:
+	Audio.click_primary()   # recipe row isn't a Button (gui_input) — click it explicitly
 	if _tile_filter != "":
 		# Opened from the TVP "Build": build directly on the known tile, no map-mode.
 		BuildMode.attempt_direct_build(building_id, recipe_id, _tile_filter)

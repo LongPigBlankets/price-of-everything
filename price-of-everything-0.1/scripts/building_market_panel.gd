@@ -567,6 +567,7 @@ func _do_buy(instance_id: String, building_name: String, price: int) -> void:
 	# drives the ledger refresh + drops this row from the for-sale list (_on_owner_changed).
 	MatchState.set_building_owner(instance_id, MatchState.LOCAL_PLAYER)
 	MatchState.request_toast("Purchased %s for £%d" % [building_name, price], "success")
+	Audio.transaction()
 
 # A building changed owner — if it's now the player's, drop it from the for-sale list at once.
 func _on_owner_changed(instance_id: String) -> void:

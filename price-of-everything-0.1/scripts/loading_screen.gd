@@ -276,6 +276,7 @@ func _on_begin_pressed() -> void:
 	if _exiting:
 		return
 	_exiting = true
+	Audio.fade_music(2.0)   # fade the theme as the game begins (it played through loading)
 	_begin.disabled = true
 	_start_camera_intro()
 	var tw := create_tween()
