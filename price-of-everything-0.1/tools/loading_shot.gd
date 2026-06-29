@@ -11,7 +11,7 @@ func _ready() -> void:
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 	await _settle(4)
-	for t in [4.0, 9.0, 12.0, 16.0, 22.0, 28.0]:
+	for t in [6.0, 11.0, 15.0, 20.0, 25.0, 30.0]:
 		bg.call("seek", float(t))
 		await _settle(2)
 		var out := "/tmp/poe_loading_%02d.png" % int(t)

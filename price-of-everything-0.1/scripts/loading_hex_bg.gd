@@ -1,18 +1,19 @@
 extends Control
 ## Loading-screen hex intro (reuses the empire-view hex field — regular outer hexes in
 ## an offset lattice, each holding 3 nested inner hexes built as an anchored inward
-## offset). The lines rest light grey and light to gold. Driven by `_t` (seconds shown):
+## offset). Driven by `_t` (seconds shown):
 ##   0–10 s   the grey lattice DRAWS IN — a soft diagonal wipe from top-left to
 ##            bottom-right, with a bright "pen" glow at the leading edge so it reads as
 ##            the hexes being drawn. Outer AND inner hexes draw in together.
-##   10 s on  a GOLD wavefront sweeps the whole lattice (outer + inner): a very wavy
-##            (sine-modulated) band travelling a corner path bottom-right → top-left →
-##            top-right → bottom-right, looping every SWEEP_SECS until the load finishes.
+##   10–30 s  once the grey is in place, the hexes FILL GOLD one by one along a corner
+##            path — bottom-left → top-left → top-right → bottom-right — over GOLD_FILL_SECS.
+##            Each hex (outer or inner) ramps grey→gold over GOLD_FILL_PER_HEX, and the
+##            moving front keeps several mid-fill at once.
 ##
-## Each hex edge is subdivided to ~SEG_LEN and every sample is coloured individually
-## (the draw-in + gold are evaluated per point), so the gold reads as a moving band along
-## the geometry, not a per-hex flat fill. Animates in `_process`; if the main thread blocks
-## during the heavy world build the clock pauses and resumes (the frame-yield fix is later).
+## Each hex edge is subdivided to ~SEG_LEN, but the gold is decided PER HEX (from the
+## hex centroid's position along the path), so a hex fills as a unit; the grey draw-in
+## stays per point. Animates in `_process`; if the main thread blocks during the heavy
+## world build the clock pauses and resumes (the frame-yield fix is later).
 
 const SQRT3 := 1.7320508
 const HEX_HW := 92.0             # cell half-width (regular hex: half-height = HW * 2/sqrt3)
@@ -25,16 +26,13 @@ const SEG_LEN := 18.0            # px between coloured samples along each edge
 const NAVY := Color(0.015, 0.058, 0.105, 1.0)
 const GREY := Color(0.62, 0.64, 0.67, 0.40)   # resting line colour
 const PEN := Color(0.86, 0.90, 0.96, 0.90)    # bright leading edge while drawing in
-const GOLD := Color(0.93, 0.69, 0.33, 0.95)   # lit wavefront
+const GOLD := Color(0.93, 0.69, 0.33, 0.95)   # filled hex
 
 const DRAW_IN_SECS := 10.0       # grey lattice wipes in over this
 const DRAW_IN_EDGE := 0.18       # softness of the wipe front (fraction of the diagonal coord)
 const PEN_TRAIL := 0.06          # how far behind the front the pen glow lingers (diag coord)
-const SWEEP_SECS := 20.0         # one full corner-path gold sweep (then loops)
-const BAND := 0.12               # gold band half-width as a fraction of the screen diagonal
-const WAVE_AMP := 0.08           # sine waviness of the wavefront (fraction of the diagonal)
-const WAVE_FREQ := 6.0           # sine humps across the perpendicular extent
-const WAVE_SPEED := 1.1          # how fast the waviness ripples
+const GOLD_FILL_SECS := 20.0     # the gold front travels the whole corner path in this time
+const GOLD_FILL_PER_HEX := 0.5   # each hex ramps grey→gold over this
 
 var _t := 0.0
 
@@ -71,16 +69,14 @@ func _draw() -> void:
 			_draw_cell(center, hw, ht, sh, posmod(c, 3), rsz)
 
 
-# Draw the regular outer hex, then INNER nested hexes built as an anchored inward offset
-# (two anchored edges stay flush; every other edge is pushed inward by k*gap, angles
-# preserved). Three variants cycle along the row. Every loop is drawn grey→gold per point.
+# Draw the regular outer hex, then INNER nested hexes (anchored inward offset). Each loop
+# fills gold as a unit (per its centroid's path position); the grey draw-in is per point.
 func _draw_cell(center: Vector2, hw: float, ht: float, sh: float, variant: int, rsz: Vector2) -> void:
 	var verts := _hex_verts(center, hw, ht, sh)
 	var outer := PackedVector2Array(verts)
 	outer.append(verts[0])
-	_glow_loop(outer, rsz)
+	_glow_loop(outer, rsz, _hex_gold(center, rsz))
 
-	# The two consecutive edges (edge i runs verts[i]→verts[(i+1)%6]) the inner hexes hug.
 	var ea0 := 2     # straight-up: anchor = bottom peak, sides 3 & 4
 	var ea1 := 3
 	if variant == 0:     # lean-left: bottom-left shoulder, sides 4 & 5
@@ -108,18 +104,23 @@ func _draw_cell(center: Vector2, hw: float, ht: float, sh: float, variant: int, 
 		if float(k) * gap >= hw * 0.95:
 			break
 		var pts := PackedVector2Array()
+		var sum := Vector2.ZERO
 		for j in range(6):
 			var i0 := (j + 5) % 6
 			var i1 := j
 			var b0: float = base[i0] + (0.0 if (i0 == ea0 or i0 == ea1) else float(k) * gap)
 			var b1: float = base[i1] + (0.0 if (i1 == ea0 or i1 == ea1) else float(k) * gap)
-			pts.append(_intersect_lines(nrm[i0], b0, nrm[i1], b1))
+			var v := _intersect_lines(nrm[i0], b0, nrm[i1], b1)
+			pts.append(v)
+			sum += v
+		var ic := sum / 6.0   # inner-hex centroid drives its own fill timing
 		pts.append(pts[0])
-		_glow_loop(pts, rsz)
+		_glow_loop(pts, rsz, _hex_gold(ic, rsz))
 
 
-# Subdivide a closed loop to ~SEG_LEN and colour each sample via _color_at.
-func _glow_loop(corners: PackedVector2Array, rsz: Vector2) -> void:
+# Subdivide a closed loop to ~SEG_LEN. Each sample's colour is the per-point grey draw-in
+# lerped toward GOLD by the per-hex `gold` value.
+func _glow_loop(corners: PackedVector2Array, rsz: Vector2, gold: float) -> void:
 	if corners.size() < 2:
 		return
 	var pts := PackedVector2Array()
@@ -132,13 +133,13 @@ func _glow_loop(corners: PackedVector2Array, rsz: Vector2) -> void:
 		for s in range(segs):
 			var p := a.lerp(b, float(s) / float(segs))
 			pts.append(p)
-			cols.append(_color_at(p, rsz))
+			cols.append(_color_at(p, rsz, gold))
 	pts.append(corners[n])
-	cols.append(_color_at(corners[n], rsz))
+	cols.append(_color_at(corners[n], rsz, gold))
 	draw_polyline_colors(pts, cols, LINE_W, true)
 
 
-func _color_at(p: Vector2, rsz: Vector2) -> Color:
+func _color_at(p: Vector2, rsz: Vector2, gold: float) -> Color:
 	# Draw-in: a soft diagonal wipe (top-left → bottom-right) over DRAW_IN_SECS.
 	var diag := (p.x / rsz.x + p.y / rsz.y) * 0.5     # 0 at top-left, 1 at bottom-right
 	var wipe := clampf(_t / DRAW_IN_SECS, 0.0, 1.0)
@@ -152,45 +153,50 @@ func _color_at(p: Vector2, rsz: Vector2) -> Color:
 		var pen := exp(-pow(since / PEN_TRAIL, 2.0))
 		col = GREY.lerp(PEN, pen)
 	col.a *= appear
-	# Gold wavefront sweeps the drawn lattice after the draw-in.
-	if _t > DRAW_IN_SECS:
-		var g := _gold_at(p, rsz)
-		col = col.lerp(Color(GOLD.r, GOLD.g, GOLD.b, GOLD.a * appear), g)
+	if gold > 0.0:
+		col = col.lerp(Color(GOLD.r, GOLD.g, GOLD.b, GOLD.a * appear), gold)
 	return col
 
 
-# Gold wavefront brightness at p (0..1): a wavy gaussian band travelling the corner path
-# BR → TL → TR → BR, looping. The band is displaced by a sine of the coordinate
-# perpendicular to its travel, so the front is "very wavy".
-func _gold_at(p: Vector2, rsz: Vector2) -> float:
-	var phase := _t - DRAW_IN_SECS
-	if phase < 0.0:
+# Per-hex gold fill (0..1) for a hex at `center`. After the draw-in, a front travels the
+# corner path BL → TL → TR → BR over GOLD_FILL_SECS; a hex begins filling when the front
+# reaches its path position and ramps to full over GOLD_FILL_PER_HEX (so several fill at once).
+func _hex_gold(center: Vector2, rsz: Vector2) -> float:
+	if _t <= DRAW_IN_SECS:
 		return 0.0
-	var cycle := fmod(phase, SWEEP_SECS)
-	var leg_dur := SWEEP_SECS / 3.0
-	var leg := int(cycle / leg_dur)
-	var lp := (cycle - float(leg) * leg_dur) / leg_dur   # 0..1 within the leg
-	var start := Vector2(rsz.x, rsz.y)   # leg 0: BR → TL
-	var goal := Vector2(0.0, 0.0)
-	if leg == 1:                          # TL → TR
-		start = Vector2(0.0, 0.0)
-		goal = Vector2(rsz.x, 0.0)
-	elif leg >= 2:                        # TR → BR
-		start = Vector2(rsz.x, 0.0)
-		goal = Vector2(rsz.x, rsz.y)
-	var seg := goal - start
-	var seg_len := seg.length()
-	if seg_len < 1.0:
+	var t_gold := _t - DRAW_IN_SECS
+	var started := _path_s(center, rsz) * (GOLD_FILL_SECS - GOLD_FILL_PER_HEX)
+	return clampf((t_gold - started) / GOLD_FILL_PER_HEX, 0.0, 1.0)
+
+
+# Normalised arc-length (0..1) of p's nearest point on the path BL → TL → TR → BR (the
+# left, top and right edges). 0 at bottom-left, 1 at bottom-right.
+func _path_s(p: Vector2, rsz: Vector2) -> float:
+	var total := 2.0 * rsz.y + rsz.x
+	if total < 1.0:
 		return 0.0
-	var dir := seg / seg_len
-	var perp := Vector2(-dir.y, dir.x)
-	var diag := rsz.length()
-	var along := (p - start).dot(dir)
-	var perpc := (p - start).dot(perp)
-	var front := lp * seg_len
-	var wavy := front + WAVE_AMP * diag * sin(perpc / diag * WAVE_FREQ * TAU + phase * WAVE_SPEED)
-	var dd := (along - wavy) / (BAND * diag)
-	return exp(-dd * dd)
+	var legs := [
+		[Vector2(0.0, rsz.y), Vector2(0.0, 0.0), rsz.y],     # BL → TL
+		[Vector2(0.0, 0.0), Vector2(rsz.x, 0.0), rsz.x],     # TL → TR
+		[Vector2(rsz.x, 0.0), Vector2(rsz.x, rsz.y), rsz.y], # TR → BR
+	]
+	var best_d := INF
+	var best_arc := 0.0
+	var cum := 0.0
+	for leg in legs:
+		var a: Vector2 = leg[0]
+		var b: Vector2 = leg[1]
+		var leg_len: float = leg[2]
+		var ab := b - a
+		var l2 := ab.length_squared()
+		var tt := clampf((p - a).dot(ab) / l2, 0.0, 1.0) if l2 > 0.0 else 0.0
+		var cp := a + ab * tt
+		var d := p.distance_squared_to(cp)
+		if d < best_d:
+			best_d = d
+			best_arc = cum + tt * leg_len
+		cum += leg_len
+	return best_arc / total
 
 
 func _intersect_lines(n0: Vector2, b0: float, n1: Vector2, b1: float) -> Vector2:
