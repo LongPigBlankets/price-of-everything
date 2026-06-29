@@ -98,7 +98,7 @@ func _ready() -> void:
 	# build (prewarm / loading) the bake — a big one-frame GPU render of every hill — is deferred
 	# to the first LIVE frame (see _process) so it lands behind the loading screen, not the menu.
 	if DisplayServer.get_name() != "headless":
-		if MapPrewarm.is_background_build():
+		if LoadPacing.is_background_build():
 			_bake_deferred = true
 		else:
 			_bake_to_texture()
@@ -254,19 +254,19 @@ func _warm_all_meshes() -> void:
 			_build_fill_mesh("s%d" % i, _sea[i].p)
 		n += 1
 		if n % 12 == 0:
-			await MapPrewarm.bg_yield()
+			await LoadPacing.bg_yield()
 	for i in _polys.size():
 		if (_polys[i].p as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("p%d" % i, _polys[i].p)
 		n += 1
 		if n % 12 == 0:
-			await MapPrewarm.bg_yield()
+			await LoadPacing.bg_yield()
 	for i in _lakes.size():
 		if (_lakes[i] as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("l%d" % i, _lakes[i])
 		n += 1
 		if n % 12 == 0:
-			await MapPrewarm.bg_yield()
+			await LoadPacing.bg_yield()
 
 func _draw_fill(key: String, pts: PackedVector2Array, color: Color, white: Texture2D) -> void:
 	var mesh: Mesh = _mesh_cache.get(key, null) if _mesh_cache.has(key) else _build_fill_mesh(key, pts)

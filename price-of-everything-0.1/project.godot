@@ -42,7 +42,7 @@ EventScheduler="*res://scripts/event_scheduler.gd"
 Modifiers="*res://scripts/modifier_state.gd"
 SaveLoad="*res://scripts/save_load.gd"
 PlayerProfile="*res://scripts/player_profile.gd"
-MapPrewarm="*res://scripts/map_prewarm.gd"
+LoadPacing="*res://scripts/load_pacing.gd"
 
 [display]
 

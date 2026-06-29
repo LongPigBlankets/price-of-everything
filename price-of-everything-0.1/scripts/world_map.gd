@@ -89,27 +89,16 @@ var _deposit_dialog: Control = null  # reused "no deposit" / "deposit exhausted"
 ## ready" — the loading screen waits on this flag before offering "Begin".
 var build_complete := false
 
-# Prewarm: set true (before the node enters the tree) by MapPrewarm so _ready builds only the
-# config-independent base — panels, terrain, first render to compile shaders / upload textures —
-# then stops and emits base_ready. The reveal claims the warm instance and runs finish_build().
-var prewarm_mode := false
-signal base_ready
-
-
 func _ready() -> void:
 	await _build_base()
-	if prewarm_mode:
-		base_ready.emit()
-		return   # finish_build() comes later, from the reveal, with the chosen start
-	# A fresh new game with a loading screen up animates its build; tests / e2e / load-game
-	# (no loading screen) build synchronously. The prewarm-reveal path calls finish_build()
-	# itself with animate=true, having already run _build_base() ahead of time.
+	# A fresh new game with a loading screen up animates its build (it yields between steps to keep
+	# the loading animation live); tests / e2e / load-game (no loading screen) build synchronously.
 	await finish_build(_loading_screen_active())
 
 
-# Build the config-INDEPENDENT visual scaffold: theme, signal wiring, the HUD panels, the
-# terrain + visual layers. Runs no simulation and mutates no MatchState, so it can be built
-# ahead of time (prewarmed) for ANY start; the per-start sim + buildings come in finish_build().
+# Build the config-independent visual scaffold: theme, signal wiring, the HUD panels, the terrain
+# + visual layers — no simulation, no MatchState mutation. The per-start sim + buildings come in
+# finish_build(). Split out so the two phases read clearly and each can yield to the loading screen.
 func _build_base() -> void:
 	# DS assigns its Theme to the root Window, but Controls do not inherit a
 	# Window's theme — so apply it to the HUD Control subtree (where every panel
@@ -218,9 +207,9 @@ func _build_base() -> void:
 	await _build_yield()
 
 
-# Apply this start's (or a loaded save's) simulation and place its buildings on top of the
-# base scaffold. Split out of _ready so a prewarmed base can be revealed instantly and then
-# "finished" with the chosen start. `animate` spreads building placement one-per-frame.
+# Apply this start's (or a loaded save's) simulation and place its buildings on top of the base
+# scaffold. `animate` (true when a loading screen is up) spreads building placement one-per-frame
+# so the loading animation keeps running; false builds synchronously (tests / e2e / load-game).
 func finish_build(animate: bool) -> void:
 	# The port tiles start surveyed (the Surveying mapmode reveals them on turn 1).
 	MatchState.seed_surveyed_ports()
@@ -305,7 +294,7 @@ func _loading_screen_active() -> bool:
 # window stays responsive between heavy steps. No-op (synchronous) when no loading screen is
 # up — tests, the e2e harness and Load Game build the world in one pass, exactly as before.
 func _build_yield() -> void:
-	if prewarm_mode or _loading_screen_active():
+	if _loading_screen_active():
 		await get_tree().process_frame
 
 func _rebuild_after_load() -> void:

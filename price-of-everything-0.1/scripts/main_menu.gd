@@ -48,9 +48,6 @@ func _ready() -> void:
 # whose Start New Game button drives the load (see _on_start_requested).
 func _on_new_game_pressed() -> void:
 	_show_new_game_panel()
-	# Warm the map in a hidden viewport while the player configures the start, so hitting Start
-	# reveals an already-built scene instead of freezing on instantiation + first render.
-	MapPrewarm.start_prewarm()
 
 
 # Start New Game pressed in the settings panel. New Game flows through the same
@@ -60,15 +57,14 @@ func _on_new_game_pressed() -> void:
 # visuals animate during the heavy load instead of the menu freezing. (overrides —
 # difficulty/victory/tutorial — are consumed by prepare_new_game in Phase 2.)
 func _on_start_requested(start_path: String, _overrides: Dictionary) -> void:
-	# Raise the loading screen FIRST (it captures the menu as its "from" scene), then either
-	# reveal the prewarmed base behind it (no freeze — the heavy work happened on the menu) or,
-	# if the prewarm didn't finish in time, fall back to the original threaded load.
+	# Prepare the snapshot, raise the loading screen, and let IT drive a threaded load of the map
+	# scene. The heavy instantiation + first render happen behind the animated loading screen; the
+	# HUD panels build lazily (on first open) and the hill work spreads via the loading-screen
+	# pacing gate, so the freeze is far smaller than it was. (overrides — difficulty/victory/
+	# tutorial — are consumed by prepare_new_game in Phase 2.)
+	SaveLoad.prepare_new_game(start_path)
 	var screen := LoadingScreen.show_global(get_tree())
-	if MapPrewarm.is_warm():
-		MapPrewarm.reveal_and_finish(start_path, true)
-	else:
-		SaveLoad.prepare_new_game(start_path)
-		screen.begin_load(SaveLoad.MAIN_SCENE)
+	screen.begin_load(SaveLoad.MAIN_SCENE)
 
 
 func _on_back_requested() -> void:
@@ -121,7 +117,6 @@ func _hide_new_game_panel() -> void:
 
 
 func _on_load_game_pressed() -> void:
-	MapPrewarm.discard()   # not starting a new game — drop any warm prewarm so it doesn't linger
 	SaveLoadScreen.open(self, SaveLoadScreen.Mode.LOAD)
 
 
