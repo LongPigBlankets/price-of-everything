@@ -89,7 +89,7 @@ func _ready() -> void:
 	_sea_bb = _bboxes(_sea, true)
 	_lake_bb = _bboxes(_lakes, false)
 	_bake_rect = _compute_bounds()
-	_warm_all_meshes()   # triangulate every contour ONCE now, never during a pan
+	await _warm_all_meshes()   # triangulate every contour ONCE (spread across frames during a bg build)
 	queue_redraw()
 	# Headless (tests) has no GPU to render the SubViewport into — fall back to
 	# direct polygon drawing (harmless, nothing is displayed there anyway).
@@ -234,15 +234,28 @@ func _draw_culled_meshes(cull: Rect2) -> void:
 func _warm_all_meshes() -> void:
 	if DisplayServer.get_name() == "headless":
 		return   # tests never render the vector LOD; skip the triangulation cost
+	# Triangulating every contour is ~2 s of synchronous work. During a background build (prewarm
+	# / loading screen) hand a frame back every few contours so it spreads instead of blocking the
+	# menu — and the SubViewport then renders incrementally, spreading the first-frame GPU cost too.
+	var n := 0
 	for i in _sea.size():
 		if (_sea[i].p as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("s%d" % i, _sea[i].p)
+		n += 1
+		if n % 12 == 0:
+			await MapPrewarm.bg_yield()
 	for i in _polys.size():
 		if (_polys[i].p as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("p%d" % i, _polys[i].p)
+		n += 1
+		if n % 12 == 0:
+			await MapPrewarm.bg_yield()
 	for i in _lakes.size():
 		if (_lakes[i] as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("l%d" % i, _lakes[i])
+		n += 1
+		if n % 12 == 0:
+			await MapPrewarm.bg_yield()
 
 func _draw_fill(key: String, pts: PackedVector2Array, color: Color, white: Texture2D) -> void:
 	var mesh: Mesh = _mesh_cache.get(key, null) if _mesh_cache.has(key) else _build_fill_mesh(key, pts)

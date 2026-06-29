@@ -15,12 +15,34 @@ const MAIN_SCENE := "res://scenes/main.tscn"
 var _vp: SubViewport
 var _inst: Node           # the prewarmed world_map (root of main.tscn), or null
 var _warm := false
+var _prewarming := false  # true while the base is building, so heavy panels/layers spread (bg_yield)
 
 signal warmed
 
 
 func is_warm() -> bool:
 	return _warm and is_instance_valid(_inst)
+
+
+## True while a build that should spread across frames is in progress: either this prewarm is
+## building its base, or a loading screen is up (the normal new-game / load path). Heavy node
+## _ready code (hill triangulation, panel rows) calls bg_yield() against this so it never blocks
+## the menu or freezes the loading animation; in tests (neither condition) it stays synchronous.
+func is_background_build() -> bool:
+	return _prewarming or _loading_up()
+
+
+func _loading_up() -> bool:
+	for c in get_tree().root.get_children():
+		if c is LoadingScreen:
+			return true
+	return false
+
+
+## Hand a frame back mid-build when (and only when) a background build is active.
+func bg_yield() -> void:
+	if is_background_build():
+		await get_tree().process_frame
 
 
 ## Kick off a background prewarm (idempotent + safe to call repeatedly). Async: it awaits the
@@ -44,11 +66,13 @@ func start_prewarm() -> void:
 	_inst = packed.instantiate()
 	_inst.set("prewarm_mode", true)
 	_inst.connect("base_ready", _on_base_ready)   # connect BEFORE add_child (can fire synchronously)
+	_prewarming = true   # heavy node _ready code now spreads via bg_yield() instead of blocking
 	_vp.add_child(_inst)
 
 
 func _on_base_ready() -> void:
 	_warm = true
+	_prewarming = false
 	warmed.emit()
 	# A few more rendered frames compile any remaining shader variants and finish texture
 	# uploads, then stop rendering the hidden viewport — the warmth is global and persists, so
