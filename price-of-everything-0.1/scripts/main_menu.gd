@@ -37,6 +37,11 @@ func _ready() -> void:
 	_build_menu()
 	_build_new_game_panel()
 	Audio.play_music()   # looping main-menu theme (placeholder track)
+	# Warm the map scene off-thread while the player is on the menu: this pulls main.tscn and
+	# all its textures off disk into RAM on a worker thread (no main-thread cost, no frame drop),
+	# so the loading screen's threaded load returns instantly instead of spending ~1.8 s on I/O.
+	# Does NOT touch the Start-time freeze (that's main-thread instantiation + first-frame GPU).
+	ResourceLoader.load_threaded_request(MAP_SCENE)
 
 
 # Clicking New Game no longer launches immediately — it opens the settings panel,
