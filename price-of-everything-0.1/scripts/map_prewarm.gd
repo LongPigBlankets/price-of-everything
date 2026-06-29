@@ -61,7 +61,11 @@ func start_prewarm() -> void:
 		return   # load failed, or a concurrent call won the race
 	_vp = SubViewport.new()
 	_vp.size = DisplayServer.window_get_size()
-	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS   # render → compile shaders, upload textures
+	# Hold the pre-instantiated base WITHOUT rendering it: the build is CPU-only on the menu
+	# (instantiate panels + terrain tree + chunked hill triangulation), so the menu stays smooth.
+	# The GPU first-render (shader compile + texture upload) is deliberately left for the reveal,
+	# behind the loading screen — see reveal_and_finish().
+	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	add_child(_vp)
 	_inst = packed.instantiate()
 	_inst.set("prewarm_mode", true)
@@ -71,17 +75,10 @@ func start_prewarm() -> void:
 
 
 func _on_base_ready() -> void:
+	# Base scaffold (CPU) is built and parked in the non-rendering viewport, ready to reveal.
 	_warm = true
 	_prewarming = false
 	warmed.emit()
-	# A few more rendered frames compile any remaining shader variants and finish texture
-	# uploads, then stop rendering the hidden viewport — the warmth is global and persists, so
-	# there's no need to keep burning GPU on it behind the menu.
-	for _i in range(5):
-		await get_tree().process_frame
-		if _vp == null or not is_instance_valid(_vp):
-			return   # already revealed
-	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 
 
 ## Reveal the warm base as the live scene and finish it for `start_path`. Returns the world_map

@@ -77,6 +77,8 @@ func _white_texture() -> Texture2D:
 		_white_tex = ImageTexture.create_from_image(img)
 	return _white_tex
 
+var _bake_deferred := false   # bake the hill texture at the first LIVE frame, not during a bg build
+
 func _enter_tree() -> void:
 	# the 'toggle heightmap' debug cheat flips visibility on this group
 	add_to_group("hill_visuals")
@@ -92,9 +94,14 @@ func _ready() -> void:
 	await _warm_all_meshes()   # triangulate every contour ONCE (spread across frames during a bg build)
 	queue_redraw()
 	# Headless (tests) has no GPU to render the SubViewport into — fall back to
-	# direct polygon drawing (harmless, nothing is displayed there anyway).
+	# direct polygon drawing (harmless, nothing is displayed there anyway). During a background
+	# build (prewarm / loading) the bake — a big one-frame GPU render of every hill — is deferred
+	# to the first LIVE frame (see _process) so it lands behind the loading screen, not the menu.
 	if DisplayServer.get_name() != "headless":
-		_bake_to_texture()
+		if MapPrewarm.is_background_build():
+			_bake_deferred = true
+		else:
+			_bake_to_texture()
 
 func _bboxes(coll: Array, has_p_key: bool) -> Array:
 	var out: Array = []
@@ -111,6 +118,10 @@ func _bboxes(coll: Array, has_p_key: bool) -> Array:
 ## Pick the LOD each frame: count on-screen contour polygons; below the cap draw
 ## crisp vectors (and redraw as the camera moves), above it the baked texture.
 func _process(_delta: float) -> void:
+	if _bake_deferred and is_visible_in_tree():
+		_bake_deferred = false
+		_bake_to_texture()   # deferred one-frame GPU bake, now that the map is live (behind the loading screen)
+		return
 	if not visible or _baked_tex == null:
 		return
 	var view := _visible_world_rect()

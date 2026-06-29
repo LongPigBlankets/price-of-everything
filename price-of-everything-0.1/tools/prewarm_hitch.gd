@@ -23,5 +23,8 @@ func _process(_d: float) -> void:
 	if not _on:
 		return
 	var now := Time.get_ticks_msec()
-	_maxgap = maxi(_maxgap, now - _last)
+	var gap := now - _last
+	if gap > 300:
+		print("  GAP %4d ms  at t+%d ms" % [gap, now - _t0])
+	_maxgap = maxi(_maxgap, gap)
 	_last = now
