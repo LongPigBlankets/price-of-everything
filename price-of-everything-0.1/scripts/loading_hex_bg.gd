@@ -33,6 +33,8 @@ const DRAW_IN_EDGE := 0.18       # softness of the wipe front (fraction of the d
 const PEN_TRAIL := 0.06          # how far behind the front the pen glow lingers (diag coord)
 const GOLD_FILL_SECS := 20.0     # the gold front travels the whole corner path in this time
 const GOLD_FILL_PER_HEX := 0.5   # each hex ramps grey→gold over this
+const SPILL_MAX := 0.42          # partial gold an unfilled hex catches from lit neighbours
+const SPILL_LEAD := 1.6          # how far ahead (in fill-time seconds) the spill reaches
 
 var _t := 0.0
 
@@ -166,7 +168,12 @@ func _hex_gold(center: Vector2, rsz: Vector2) -> float:
 		return 0.0
 	var t_gold := _t - DRAW_IN_SECS
 	var started := _path_s(center, rsz) * (GOLD_FILL_SECS - GOLD_FILL_PER_HEX)
-	return clampf((t_gold - started) / GOLD_FILL_PER_HEX, 0.0, 1.0)
+	var own := clampf((t_gold - started) / GOLD_FILL_PER_HEX, 0.0, 1.0)
+	# Light spilling over the edges from already-lit neighbours: an unfilled hex catches a
+	# partial glow as the front nears (it begins filling at `started`), fading out ahead.
+	var ahead := started - t_gold
+	var spill := SPILL_MAX * exp(-pow(maxf(ahead, 0.0) / SPILL_LEAD, 2.0))
+	return maxf(own, spill)
 
 
 # Normalised arc-length (0..1) of p's nearest point on the path BL → TL → TR → BR (the
