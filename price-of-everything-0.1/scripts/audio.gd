@@ -148,7 +148,7 @@ func tech_unlocked() -> void:
 
 ## Turn resolved and control returns to the player (DECIDE) — a slot-machine lever pull.
 func turn_ready() -> void:
-	_play(SLOT_LEVER, &"turn")
+	_play(SLOT_LEVER, &"turn", -10.0)   # the end-turn lever sits 10 dB under the other cues
 
 
 # --- Music (playlist) --------------------------------------------------------
@@ -171,17 +171,31 @@ func stop_music() -> void:
 	_music.stop()
 
 
-## Fade the music out over `duration`s, then stop it — and halt the playlist (no
-## auto-advance after the gap). Used when the player begins the game.
-func fade_music(duration: float = 2.0) -> void:
+## Fade the music out over `duration`s, then stop it. If `resume_after` >= 0, the
+## playlist resumes with the NEXT track that many seconds after this call (so the menu
+## theme fades as the game begins, then gameplay music returns); pass -1 to leave the
+## playlist halted. Used when the player begins the game.
+func fade_music(duration: float = 2.0, resume_after: float = -1.0) -> void:
 	_music_gen += 1
-	if _music == null or not _music.playing:
+	var gen := _music_gen
+	if _music != null and _music.playing:
+		var tw := create_tween()
+		tw.tween_property(_music, "volume_db", MUSIC_FADE_DB, duration)
+		tw.tween_callback(func() -> void:
+			_music.stop()
+			_music.volume_db = 0.0)
+	if resume_after >= 0.0:
+		_resume_music_after(gen, resume_after)
+
+
+# Resume the playlist (next track) after `delay`s, unless a swap/stop/another fade
+# changed the music in the meantime (then `gen` no longer matches and we bail).
+func _resume_music_after(gen: int, delay: float) -> void:
+	await get_tree().create_timer(delay).timeout
+	if gen != _music_gen:
 		return
-	var tw := create_tween()
-	tw.tween_property(_music, "volume_db", MUSIC_FADE_DB, duration)
-	tw.tween_callback(func() -> void:
-		_music.stop()
-		_music.volume_db = 0.0)
+	_track_idx = (_track_idx + 1) % MUSIC_TRACKS.size()
+	_play_track()
 
 
 func _play_track() -> void:
@@ -266,7 +280,7 @@ func _play_click(stream: AudioStream) -> void:
 	_play(stream, &"ui")
 
 
-func _play(stream: AudioStream, channel: StringName) -> void:
+func _play(stream: AudioStream, channel: StringName, vol_db: float = 0.0) -> void:
 	if stream == null:
 		return
 	var pool: Array = _channels.get(channel, [])
@@ -274,6 +288,7 @@ func _play(stream: AudioStream, channel: StringName) -> void:
 		return
 	var player: AudioStreamPlayer = _free_in(pool, channel)
 	player.stream = stream
+	player.volume_db = vol_db
 	player.play()
 
 

@@ -2420,8 +2420,20 @@ func _test_start_config_expansion() -> void:
 # the scene-seeded NPC buildings (ports/ruins), seeds debt WITHOUT cash, and
 # leaves the CSV deposit yields intact (the config carries no deposit data).
 func _test_start_config_applies_on_scene_ready() -> void:
-	var cfg: Dictionary = SaveLoad._read_json_file("res://data/starts/coal_baron.json")
-	_check(not cfg.is_empty(), "coal_baron.json parses")
+	# Inline fixture (NOT the live coal_baron.json) so gameplay-content edits to the
+	# shipped starts can't break this pipeline test. Mirrors a rich start: cash kept
+	# separate from loan principal, a player mine on a CSV coal tile (tile_6_8), a
+	# seeded stockpile and a recurring sell.
+	var cfg: Dictionary = {
+		"start": true, "name": "test_fixture", "ruleset": "standard",
+		"money": 350,
+		"loans": [ {"principal": 150} ],
+		"buildings": [ {"building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_6_8"} ],
+		"stockpile": { "tile_6_8": {"g_001": 50} },
+		"land": { "tile_6_8": 120 },
+		"recurring": { "sells": [ {"source": "tile_6_8", "goods": {"g_001": 10}} ] },
+	}
+	_check(not cfg.is_empty(), "fixture start config built")
 	SaveLoad._pending_snapshot = SaveLoad.expand_start_config(cfg)
 	var inst: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(inst)

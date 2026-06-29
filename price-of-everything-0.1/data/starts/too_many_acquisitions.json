@@ -1,0 +1,24 @@
+{
+	"save_version": 2,
+	"start": true,
+	"name": "too_many_acquisitions",
+	"ruleset": "standard",
+	"money": 0,
+	"loans": [ { "principal": 1000 } ],
+	"buildings": [
+		{ "building_id": "b_020", "recipe_id": "r_079", "tile_id": "tile_5_9" },
+		{ "building_id": "b_020", "recipe_id": "r_041", "tile_id": "tile_23_16" },
+		{ "building_id": "b_007", "recipe_id": "r_009", "tile_id": "tile_11_9" },
+		{ "building_id": "b_007", "recipe_id": "r_055", "tile_id": "tile_14_8" },
+		{ "building_id": "b_007", "recipe_id": "r_120", "tile_id": "tile_13_11" },
+		{ "building_id": "b_001", "recipe_id": "r_015", "tile_id": "tile_18_2" }
+	],
+	"land": {
+		"tile_5_9": 120,
+		"tile_23_16": 120,
+		"tile_11_9": 120,
+		"tile_14_8": 120,
+		"tile_13_11": 120,
+		"tile_18_2": 120
+	}
+}

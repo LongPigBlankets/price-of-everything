@@ -1,0 +1,18 @@
+{
+	"save_version": 2,
+	"start": true,
+	"name": "glass_merchant",
+	"ruleset": "standard",
+	"money": 0,
+	"loans": [ { "principal": 250 } ],
+	"buildings": [
+		{ "building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_22_15" },
+		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_22_16" },
+		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_22_16" },
+		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_22_16" }
+	],
+	"land": {
+		"tile_22_15": 120,
+		"tile_22_16": 150
+	}
+}

@@ -13,6 +13,7 @@ const SAVE_DIR := "user://saves"
 const SAVE_VERSION := 2
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
+const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
 # Start-config instance ids count from here so they can never collide with the
 # ids the fresh scene hands to NPC buildings (ports/ruins) before the start applies.
 const START_COUNTER_BASE := 1000
@@ -258,6 +259,8 @@ func expand_start_config(cfg: Dictionary) -> Dictionary:
 			"recipe_id": str(entry.get("recipe_id", "")),
 			"tile_id": tile_id,
 			"owner": str(entry.get("owner", MatchState.LOCAL_PLAYER)),
+			# Optional starting upgrade level (1..3); production reads building.level.
+			"level": clampi(int(entry.get("level", 1)), 1, BuildingLevels.MAX_LEVEL),
 		}
 		surveyed[tile_id] = true
 	for tile in cfg.get("surveyed_tiles", []):

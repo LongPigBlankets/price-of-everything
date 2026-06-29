@@ -41,6 +41,7 @@ RunMetrics="*res://scripts/run_metrics.gd"
 EventScheduler="*res://scripts/event_scheduler.gd"
 Modifiers="*res://scripts/modifier_state.gd"
 SaveLoad="*res://scripts/save_load.gd"
+PlayerProfile="*res://scripts/player_profile.gd"
 
 [display]
 

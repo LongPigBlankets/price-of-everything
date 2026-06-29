@@ -2,8 +2,9 @@ extends CanvasLayer
 class_name LoadingScreen
 ## Loading screen shown while a New Game / Load spins up. Parented to the tree
 ## ROOT (not the current scene) so it survives the change_scene_to_file that the
-## load performs. It cycles a set of full-bleed posters with a slow crossfade and
-## shows a metallic octagonal "Loading…" plate carrying a gameplay tip. Once the
+## load performs. It shows an animated hex-field background (the grey lattice draws
+## in, then a wavy gold wavefront sweeps a corner path) behind a metallic octagonal
+## "Loading…" plate carrying a gameplay tip. Once the
 ## map scene is up and any pending snapshot has applied, the plate morphs (1 s
 ## crossfade) into a steel "Begin your industrial legacy" button. Clicking it
 ## fades the whole screen out over 1 s while the map camera eases from the full-
@@ -11,15 +12,13 @@ class_name LoadingScreen
 
 const SAFETY_TIMEOUT := 60.0   # last-resort: offer Begin even if build_complete never arrives
 const DOT_PERIOD := 0.45       # seconds per "Loading…" dot step
-const BG_HOLD := 4.0           # seconds each poster is held before the next fades in
-const BG_FADE := 1.0           # crossfade duration between posters
 const MORPH_SECS := 1.0        # plate → Begin button crossfade
 const EXIT_SECS := 1.0         # fade-out + camera zoom on Begin
 const ZOOM_FRAC := 0.5         # how far between full-out and full-in the intro zoom lands
-const IMG_COUNT := 5
 
 const TIP := "Tip: Some goods are interchangeable in recipes, like coal, petroleum needle coke and carbonised biomass. Change which one you use in recipes from the Construct menu."
 const HEAD_FONT := preload("res://assets/fonts/BebasNeue-Regular.ttf")
+const LoadingHexBg := preload("res://scripts/loading_hex_bg.gd")
 
 # Plate / button geometry. Both sit bottom-centred, BOTTOM_MARGIN px above the
 # screen bottom; the button is centred on the plate's footprint so the morph is a
@@ -32,18 +31,12 @@ const BOTTOM_MARGIN := 40.0
 
 var _from_scene: Node
 var _elapsed := 0.0
-var _frames := 0
-var _rest_loaded := false
 var _scene_changed := false
 var _morphed := false
 var _exiting := false
 
 var _root: Control            # holds everything; its modulate is faded on exit
-var _imgs: Array = []
-var _bg_front: TextureRect    # base poster layer (the current poster)
-var _bg_back: TextureRect     # overlay layer (the next poster), crossfaded in over the front
-var _bg_idx := 0
-var _bg_start_ms := 0
+var _hex_bg: Control          # animated hex-field background (draw-in + gold sweep)
 
 var _plate: LoadingPlate
 var _begin: Button
@@ -98,7 +91,6 @@ func _ready() -> void:
 		_root.theme = DS.theme
 	add_child(_root)
 
-	_load_images()
 	_build_backgrounds()
 	_build_plate()
 	_build_begin_button()
@@ -106,62 +98,14 @@ func _ready() -> void:
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
-func _load_images() -> void:
-	# Only the first poster is loaded up front so the screen can paint immediately;
-	# posters 2..N stream in after the first frame (see _process), well before the
-	# 4 s rotation needs them. Loading all five here would block the first paint.
-	_load_image(1)
-
-
-func _load_image(i: int) -> void:
-	var path := "res://assets/loading/loading_screen_%d.png" % i
-	if ResourceLoader.exists(path):
-		var tex: Texture2D = load(path)
-		if tex != null:
-			_imgs.append(tex)
-
-
-func _load_rest_images() -> void:
-	for i in range(2, IMG_COUNT + 1):
-		_load_image(i)
-
-
 func _build_backgrounds() -> void:
-	# Navy base shows through if the posters are missing.
-	var base := ColorRect.new()
-	base.color = Color(0, 0.07, 0.14)
-	base.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	base.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(base)
-
-	_bg_front = _make_bg_layer()
-	_bg_back = _make_bg_layer()
-	_root.add_child(_bg_front)
-	_root.add_child(_bg_back)
-	if _imgs.size() > 0:
-		_bg_front.texture = _imgs[0]
-	_bg_front.modulate.a = 1.0
-	_bg_front.z_index = 0
-	_bg_back.modulate.a = 0.0
-	_bg_back.z_index = 1   # the next poster always crossfades in ABOVE the current one
-	_bg_start_ms = Time.get_ticks_msec()
-
-	# Dark scrim so the metallic plate + tip stay legible over bright posters.
-	var scrim := ColorRect.new()
-	scrim.color = Color(0, 0, 0, 0.30)
-	scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	scrim.z_index = 5
-	_root.add_child(scrim)
-
-
-func _make_bg_layer() -> TextureRect:
-	var tr := TextureRect.new()
-	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return tr
+	# Animated hex-field background (its own navy fill + grey→gold lines), full-bleed
+	# behind the metallic "Loading…" plate. z 0 so the plate (z 10) sits over it.
+	_hex_bg = LoadingHexBg.new()
+	_hex_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_hex_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hex_bg.z_index = 0
+	_root.add_child(_hex_bg)
 
 
 func _build_plate() -> void:
@@ -204,16 +148,10 @@ func _bottom_box(c: Control, w: float, h: float, bottom_margin: float) -> void:
 
 func _process(delta: float) -> void:
 	_elapsed += delta
-	_frames += 1
-	# Stream in the remaining posters once the first frame has painted.
-	if not _rest_loaded and _frames >= 2:
-		_rest_loaded = true
-		_load_rest_images()
 	if not _morphed:
 		_plate.set_header("Loading" + ".".repeat(1 + int(_elapsed / DOT_PERIOD) % 3))
 		if _ready_to_begin():
 			_show_begin()
-	_tick_backgrounds(delta)
 
 
 func _ready_to_begin() -> bool:
@@ -227,34 +165,13 @@ func _ready_to_begin() -> bool:
 	if SaveLoad.has_pending():
 		return false
 	# The map scene builds its visuals progressively across frames (so this screen can
-	# keep animating its slideshow), so "scene exists" ≠ "world ready" — wait for the
+	# keep animating its background), so "scene exists" ≠ "world ready" — wait for the
 	# map's build_complete flag if it exposes one.
 	if current != null:
 		var bc: Variant = current.get("build_complete")
 		if bc != null:
 			return bool(bc)
 	return true
-
-
-func _tick_backgrounds(_delta: float) -> void:
-	# Wall-clock-driven crossfade slideshow. Each poster holds for BG_HOLD then fades
-	# to the next over BG_FADE. Driving it off elapsed time (not accumulated frame
-	# delta) keeps an even pace even when the map build hitches the main thread between
-	# frames — a frozen 0.5 s frame just resumes at the right place rather than flipping
-	# several posters at once.
-	if _imgs.size() < 2 or _exiting:
-		return
-	var n := _imgs.size()
-	var cycle := BG_HOLD + BG_FADE
-	var elapsed := float(Time.get_ticks_msec() - _bg_start_ms) / 1000.0
-	var idx := int(elapsed / cycle) % n
-	var nxt := (idx + 1) % n
-	var phase := fmod(elapsed, cycle)
-	_bg_idx = idx
-	_bg_front.texture = _imgs[idx]
-	_bg_front.modulate.a = 1.0
-	_bg_back.texture = _imgs[nxt]
-	_bg_back.modulate.a = 0.0 if phase <= BG_HOLD else clampf((phase - BG_HOLD) / BG_FADE, 0.0, 1.0)
 
 
 # ── Morph + exit ──────────────────────────────────────────────────────────────
@@ -276,7 +193,9 @@ func _on_begin_pressed() -> void:
 	if _exiting:
 		return
 	_exiting = true
-	Audio.fade_music(2.0)   # fade the theme as the game begins (it played through loading)
+	# Fade the theme as the game begins (it played through loading), then bring the
+	# playlist back ~3 s later so gameplay isn't left silent.
+	Audio.fade_music(2.0, 5.0)
 	_begin.disabled = true
 	_start_camera_intro()
 	var tw := create_tween()

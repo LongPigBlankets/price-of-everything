@@ -9,6 +9,9 @@ const MAP_SCENE := "res://scenes/main.tscn"
 const NAVY := Color(0, 0.07, 0.14)            # established theme background navy
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
 const TITLE_PLATE: Texture2D = preload("res://assets/ui/title_plate.png")
+# Preload (not a class_name) keeps the New Game panel out of the headless class cache.
+const NewGamePanelScene := preload("res://scripts/new_game_panel.gd")
+const NEW_GAME_BOTTOM_GAP := 220.0   # panel stops this far above the screen bottom (board peeks beneath)
 
 const PANEL_INSET := 24.0   # frame inset from the screen edges
 const SIDE_PAD := 30        # left/right padding inside the frame
@@ -25,21 +28,82 @@ const PLATE_B := 42
 const PLATE_TOP := -16.0
 const PLATE_BOTTOM := 206.0
 
+# The New Game settings panel and the goods board it slides in over.
+var _new_game_panel: Control
+var _goods_grid: Control
+
 
 func _ready() -> void:
 	_build_menu()
+	_build_new_game_panel()
 	Audio.play_music()   # looping main-menu theme (placeholder track)
 
 
+# Clicking New Game no longer launches immediately — it opens the settings panel,
+# whose Start New Game button drives the load (see _on_start_requested).
 func _on_new_game_pressed() -> void:
-	# New Game flows through the same snapshot pipeline as Load Game: the default
-	# start config expands to a pending snapshot and applies once the map is ready.
-	# We prepare the snapshot, raise the loading screen, then let IT drive a threaded
-	# load of the map scene — so the posters + tip animate during the heavy load
-	# instead of the menu freezing until the map is ready.
-	SaveLoad.prepare_new_game()
+	_show_new_game_panel()
+
+
+# Start New Game pressed in the settings panel. New Game flows through the same
+# snapshot pipeline as Load Game: the chosen start config expands to a pending
+# snapshot and applies once the map is ready. We prepare the snapshot, raise the
+# loading screen, then let IT drive a threaded load of the map scene — so the loading
+# visuals animate during the heavy load instead of the menu freezing. (overrides —
+# difficulty/victory/tutorial — are consumed by prepare_new_game in Phase 2.)
+func _on_start_requested(start_path: String, _overrides: Dictionary) -> void:
+	SaveLoad.prepare_new_game(start_path)
 	var screen := LoadingScreen.show_global(get_tree())
 	screen.begin_load(SaveLoad.MAIN_SCENE)
+
+
+func _on_back_requested() -> void:
+	_hide_new_game_panel()
+
+
+# ── New Game settings panel ─────────────────────────────────────────────────────
+
+func _build_new_game_panel() -> void:
+	_goods_grid = get_node_or_null("GoodsGrid")
+	_new_game_panel = NewGamePanelScene.new()
+	# Occupy the right region (where the goods board is), matching the left frame inset.
+	_new_game_panel.anchor_left = 0.25
+	_new_game_panel.anchor_top = 0.0
+	_new_game_panel.anchor_right = 1.0
+	_new_game_panel.anchor_bottom = 1.0
+	_new_game_panel.offset_left = PANEL_INSET
+	_new_game_panel.offset_top = PANEL_INSET
+	_new_game_panel.offset_right = -PANEL_INSET
+	_new_game_panel.offset_bottom = -NEW_GAME_BOTTOM_GAP   # leave room so the goods board shows beneath
+	_new_game_panel.visible = false
+	_new_game_panel.modulate.a = 0.0
+	_new_game_panel.z_index = 100   # above the goods board (its icons render at a raised z)
+	_new_game_panel.start_requested.connect(_on_start_requested)
+	_new_game_panel.back_requested.connect(_on_back_requested)
+	add_child(_new_game_panel)
+
+
+func _show_new_game_panel() -> void:
+	if _new_game_panel == null or _new_game_panel.visible:
+		return
+	# Keep the goods board visible (it shows in the gap below the panel) but freeze it
+	# so its periodic slide cue doesn't play while the settings screen is up.
+	if _goods_grid != null:
+		_goods_grid.set_process(false)
+	_new_game_panel.visible = true
+	_new_game_panel.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(_new_game_panel, "modulate:a", 1.0, 0.22)
+
+
+func _hide_new_game_panel() -> void:
+	if _new_game_panel == null or not _new_game_panel.visible:
+		return
+	if _goods_grid != null:
+		_goods_grid.set_process(true)   # resume the board
+	var tw := create_tween()
+	tw.tween_property(_new_game_panel, "modulate:a", 0.0, 0.18)
+	tw.tween_callback(func() -> void: _new_game_panel.visible = false)
 
 
 func _on_load_game_pressed() -> void:
