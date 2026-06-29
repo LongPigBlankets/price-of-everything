@@ -1,0 +1,14 @@
+{
+	"save_version": 2,
+	"start": true,
+	"name": "semiconductor_turnaround",
+	"ruleset": "standard",
+	"money": 100,
+	"loans": [ { "principal": 1000 } ],
+	"buildings": [
+		{ "building_id": "b_010", "recipe_id": "r_123", "tile_id": "tile_23_8", "level": 2 }
+	],
+	"land": {
+		"tile_23_8": 120
+	}
+}

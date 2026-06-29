@@ -1,0 +1,20 @@
+{
+	"save_version": 2,
+	"start": true,
+	"name": "troubled_carmaker",
+	"ruleset": "standard",
+	"money": 0,
+	"loans": [ { "principal": 500 } ],
+	"buildings": [
+		{ "building_id": "b_009", "recipe_id": "r_118", "tile_id": "tile_23_6" },
+		{ "building_id": "b_009", "recipe_id": "r_118", "tile_id": "tile_24_8" },
+		{ "building_id": "b_007", "recipe_id": "r_071", "tile_id": "tile_23_8" },
+		{ "building_id": "b_012", "recipe_id": "r_067", "tile_id": "tile_25_6" }
+	],
+	"land": {
+		"tile_23_6": 120,
+		"tile_24_8": 120,
+		"tile_23_8": 120,
+		"tile_25_6": 120
+	}
+}
