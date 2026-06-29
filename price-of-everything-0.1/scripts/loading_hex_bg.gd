@@ -7,13 +7,14 @@ extends Control
 ##            the hexes being drawn. Outer AND inner hexes draw in together.
 ##   10–30 s  once the grey is in place, the hexes FILL GOLD one by one along a corner
 ##            path — bottom-left → top-left → top-right → bottom-right — over GOLD_FILL_SECS.
-##            Each hex (outer or inner) ramps grey→gold over GOLD_FILL_PER_HEX, and the
-##            moving front keeps several mid-fill at once.
+##            Each hex (outer or inner) ramps grey→gold over GOLD_FILL_PER_HEX. Ahead of
+##            the lit region the light SPILLS over the edges as a smooth gradient that
+##            falls off over ~half a hex, so the front reads as a soft luminous band.
 ##
-## Each hex edge is subdivided to ~SEG_LEN, but the gold is decided PER HEX (from the
-## hex centroid's position along the path), so a hex fills as a unit; the grey draw-in
-## stays per point. Animates in `_process`; if the main thread blocks during the heavy
-## world build the clock pauses and resumes (the frame-yield fix is later).
+## Each hex edge is subdivided to ~SEG_LEN. The per-hex fill comes from the hex centroid's
+## position along the path; the spill gradient is evaluated PER POINT (so it's smooth), but
+## only for hexes near the front (`near`) to keep the per-point path projection cheap.
+## Animates in `_process`; if the main thread blocks during the world build the clock pauses.
 
 const SQRT3 := 1.7320508
 const HEX_HW := 92.0             # cell half-width (regular hex: half-height = HW * 2/sqrt3)
@@ -33,8 +34,9 @@ const DRAW_IN_EDGE := 0.18       # softness of the wipe front (fraction of the d
 const PEN_TRAIL := 0.06          # how far behind the front the pen glow lingers (diag coord)
 const GOLD_FILL_SECS := 20.0     # the gold front travels the whole corner path in this time
 const GOLD_FILL_PER_HEX := 0.5   # each hex ramps grey→gold over this
-const SPILL_MAX := 0.42          # partial gold an unfilled hex catches from lit neighbours
-const SPILL_LEAD := 1.6          # how far ahead (in fill-time seconds) the spill reaches
+const SPILL_MAX := 0.55          # gold a point catches from lit neighbours, right at the front
+const SPILL_FALLOFF := HEX_HW    # the spill glow fades to 0 over this distance ahead (~half a hex)
+const SPILL_GATE := HEX_HW * 2.0 # only evaluate per-point spill for hexes within this of the front
 
 var _t := 0.0
 
@@ -71,13 +73,13 @@ func _draw() -> void:
 			_draw_cell(center, hw, ht, sh, posmod(c, 3), rsz)
 
 
-# Draw the regular outer hex, then INNER nested hexes (anchored inward offset). Each loop
-# fills gold as a unit (per its centroid's path position); the grey draw-in is per point.
+# Draw the regular outer hex, then INNER nested hexes (anchored inward offset). Each loop's
+# fill comes from its centroid's path position; the grey draw-in and the spill are per point.
 func _draw_cell(center: Vector2, hw: float, ht: float, sh: float, variant: int, rsz: Vector2) -> void:
 	var verts := _hex_verts(center, hw, ht, sh)
 	var outer := PackedVector2Array(verts)
 	outer.append(verts[0])
-	_glow_loop(outer, rsz, _hex_gold(center, rsz))
+	_glow_loop(outer, rsz, _path_s(center, rsz))
 
 	var ea0 := 2     # straight-up: anchor = bottom peak, sides 3 & 4
 	var ea1 := 3
@@ -115,16 +117,19 @@ func _draw_cell(center: Vector2, hw: float, ht: float, sh: float, variant: int, 
 			var v := _intersect_lines(nrm[i0], b0, nrm[i1], b1)
 			pts.append(v)
 			sum += v
-		var ic := sum / 6.0   # inner-hex centroid drives its own fill timing
+		var ic := sum / 6.0
 		pts.append(pts[0])
-		_glow_loop(pts, rsz, _hex_gold(ic, rsz))
+		_glow_loop(pts, rsz, _path_s(ic, rsz))
 
 
-# Subdivide a closed loop to ~SEG_LEN. Each sample's colour is the per-point grey draw-in
-# lerped toward GOLD by the per-hex `gold` value.
-func _glow_loop(corners: PackedVector2Array, rsz: Vector2, gold: float) -> void:
+# Subdivide a closed loop to ~SEG_LEN and colour each sample. `s_hex` is the hex centroid's
+# path position. `own` (per-hex fill) is uniform; the spill is evaluated per point but only
+# when the hex is near the front (so most hexes skip the per-point path projection).
+func _glow_loop(corners: PackedVector2Array, rsz: Vector2, s_hex: float) -> void:
 	if corners.size() < 2:
 		return
+	var own := _own_fill(s_hex)
+	var near := _near_front(s_hex, own, rsz)
 	var pts := PackedVector2Array()
 	var cols := PackedColorArray()
 	var n := corners.size() - 1
@@ -135,13 +140,13 @@ func _glow_loop(corners: PackedVector2Array, rsz: Vector2, gold: float) -> void:
 		for s in range(segs):
 			var p := a.lerp(b, float(s) / float(segs))
 			pts.append(p)
-			cols.append(_color_at(p, rsz, gold))
+			cols.append(_color_at(p, rsz, own, near))
 	pts.append(corners[n])
-	cols.append(_color_at(corners[n], rsz, gold))
+	cols.append(_color_at(corners[n], rsz, own, near))
 	draw_polyline_colors(pts, cols, LINE_W, true)
 
 
-func _color_at(p: Vector2, rsz: Vector2, gold: float) -> Color:
+func _color_at(p: Vector2, rsz: Vector2, own: float, near: bool) -> Color:
 	# Draw-in: a soft diagonal wipe (top-left → bottom-right) over DRAW_IN_SECS.
 	var diag := (p.x / rsz.x + p.y / rsz.y) * 0.5     # 0 at top-left, 1 at bottom-right
 	var wipe := clampf(_t / DRAW_IN_SECS, 0.0, 1.0)
@@ -155,25 +160,37 @@ func _color_at(p: Vector2, rsz: Vector2, gold: float) -> Color:
 		var pen := exp(-pow(since / PEN_TRAIL, 2.0))
 		col = GREY.lerp(PEN, pen)
 	col.a *= appear
+	var gold := own
+	# Spill: light bleeding over the edges from the lit region into this point, a smooth
+	# gradient that falls to 0 over SPILL_FALLOFF (~half a hex) ahead of the fill front.
+	if near and own < 1.0:
+		var t_gold := _t - DRAW_IN_SECS
+		var s_front := t_gold / (GOLD_FILL_SECS - GOLD_FILL_PER_HEX)
+		var ahead := (_path_s(p, rsz) - s_front) * (2.0 * rsz.y + rsz.x)
+		gold = maxf(gold, SPILL_MAX * (1.0 - smoothstep(0.0, SPILL_FALLOFF, maxf(ahead, 0.0))))
 	if gold > 0.0:
 		col = col.lerp(Color(GOLD.r, GOLD.g, GOLD.b, GOLD.a * appear), gold)
 	return col
 
 
-# Per-hex gold fill (0..1) for a hex at `center`. After the draw-in, a front travels the
-# corner path BL → TL → TR → BR over GOLD_FILL_SECS; a hex begins filling when the front
-# reaches its path position and ramps to full over GOLD_FILL_PER_HEX (so several fill at once).
-func _hex_gold(center: Vector2, rsz: Vector2) -> float:
+# Per-hex fill (0..1): a hex begins filling when the front (travelling BL→TL→TR→BR over
+# GOLD_FILL_SECS) reaches its path position `s`, then ramps over GOLD_FILL_PER_HEX.
+func _own_fill(s: float) -> float:
 	if _t <= DRAW_IN_SECS:
 		return 0.0
-	var t_gold := _t - DRAW_IN_SECS
-	var started := _path_s(center, rsz) * (GOLD_FILL_SECS - GOLD_FILL_PER_HEX)
-	var own := clampf((t_gold - started) / GOLD_FILL_PER_HEX, 0.0, 1.0)
-	# Light spilling over the edges from already-lit neighbours: an unfilled hex catches a
-	# partial glow as the front nears (it begins filling at `started`), fading out ahead.
-	var ahead := started - t_gold
-	var spill := SPILL_MAX * exp(-pow(maxf(ahead, 0.0) / SPILL_LEAD, 2.0))
-	return maxf(own, spill)
+	var started := s * (GOLD_FILL_SECS - GOLD_FILL_PER_HEX)
+	return clampf((_t - DRAW_IN_SECS - started) / GOLD_FILL_PER_HEX, 0.0, 1.0)
+
+
+# A hex is "near the front" (so its points evaluate the per-point spill) if it's mid-fill,
+# or unfilled but within SPILL_GATE arc-distance ahead of the fill front.
+func _near_front(s_hex: float, own: float, rsz: Vector2) -> bool:
+	if _t <= DRAW_IN_SECS or own >= 1.0:
+		return false
+	if own > 0.0:
+		return true
+	var s_front := (_t - DRAW_IN_SECS) / (GOLD_FILL_SECS - GOLD_FILL_PER_HEX)
+	return (s_hex - s_front) * (2.0 * rsz.y + rsz.x) < SPILL_GATE
 
 
 # Normalised arc-length (0..1) of p's nearest point on the path BL → TL → TR → BR (the
