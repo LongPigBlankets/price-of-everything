@@ -37,6 +37,11 @@ func _ready() -> void:
 	_build_menu()
 	_build_new_game_panel()
 	Audio.play_music()   # looping main-menu theme (placeholder track)
+	# Warm the map scene off-thread while the player is on the menu: this pulls main.tscn and
+	# all its textures off disk into RAM on a worker thread (no main-thread cost, no frame drop),
+	# so the loading screen's threaded load returns instantly instead of spending ~1.8 s on I/O.
+	# Does NOT touch the Start-time freeze (that's main-thread instantiation + first-frame GPU).
+	ResourceLoader.load_threaded_request(MAP_SCENE)
 
 
 # Clicking New Game no longer launches immediately — it opens the settings panel,
@@ -52,6 +57,11 @@ func _on_new_game_pressed() -> void:
 # visuals animate during the heavy load instead of the menu freezing. (overrides —
 # difficulty/victory/tutorial — are consumed by prepare_new_game in Phase 2.)
 func _on_start_requested(start_path: String, _overrides: Dictionary) -> void:
+	# Prepare the snapshot, raise the loading screen, and let IT drive a threaded load of the map
+	# scene. The heavy instantiation + first render happen behind the animated loading screen; the
+	# HUD panels build lazily (on first open) and the hill work spreads via the loading-screen
+	# pacing gate, so the freeze is far smaller than it was. (overrides — difficulty/victory/
+	# tutorial — are consumed by prepare_new_game in Phase 2.)
 	SaveLoad.prepare_new_game(start_path)
 	var screen := LoadingScreen.show_global(get_tree())
 	screen.begin_load(SaveLoad.MAIN_SCENE)

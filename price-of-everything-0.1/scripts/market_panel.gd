@@ -33,12 +33,24 @@ var _filter_produce := false
 var _filter_profitable := false
 var _filter_unprofitable := false
 
-func _ready() -> void:
-	title_label.text = "Market"
-	close_button.pressed.connect(hide)
+var _built := false   # heavy content (a row per good + tabs) is built on first open, not at _ready
+
+
+## Build the market's rows + tabs the first time it's opened. Eager-building them at instantiation
+## cost ~3 s of the map load; every refresh handler already no-ops until this runs (guarded on
+## visibility / null filter button / empty rows), so deferring is safe.
+func _ensure_built() -> void:
+	if _built:
+		return
+	_built = true
 	_build_content()
 	_rebuild_header()
 	_build_tabs()
+
+
+func _ready() -> void:
+	title_label.text = "Market"
+	close_button.pressed.connect(hide)
 	MarketState.prices_updated.connect(_on_prices_updated)
 	MatchState.show_construct_for_good.connect(_on_show_construct_for_good)
 	MatchState.transfer_for_good_requested.connect(func(_g: String) -> void: hide())
@@ -117,6 +129,7 @@ func _on_panel_visibility_changed() -> void:
 		if _buildings_tab != null:
 			_buildings_tab.clear_tile_filter()
 		return
+	_ensure_built()   # first open builds the rows + tabs
 	_centre_and_resize()
 	_refresh_ledgers()
 	_update_filter_availability()
@@ -163,6 +176,7 @@ func _build_tabs() -> void:
 # Open the Market on the Buildings tab, filtered to a single tile's buildings (a temporary
 # filter that the player can clear). Called from the tile view's "Buy Buildings" button.
 func open_buildings_for_tile(tile_id: String) -> void:
+	_ensure_built()   # may be opened before the market was ever shown
 	if _tabs == null or _buildings_tab == null:
 		return
 	_tabs.current_tab = _tabs.get_tab_idx_from_control(_buildings_tab)
@@ -458,10 +472,7 @@ func _build_content() -> void:
 	rows.clear()
 	
 	var all_goods = Catalog.all_goods()
-	print("MarketPanel building rows for %d goods" % all_goods.size())
-	
 	for good_data in all_goods:
-		print("  Adding row: ", good_data.id, " / ", good_data.display_name)
 		var row := MarketRowScene.instantiate()
 		content_vbox.add_child(row)
 		row.setup(good_data)

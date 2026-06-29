@@ -90,6 +90,16 @@ var _deposit_dialog: Control = null  # reused "no deposit" / "deposit exhausted"
 var build_complete := false
 
 func _ready() -> void:
+	await _build_base()
+	# A fresh new game with a loading screen up animates its build (it yields between steps to keep
+	# the loading animation live); tests / e2e / load-game (no loading screen) build synchronously.
+	await finish_build(_loading_screen_active())
+
+
+# Build the config-independent visual scaffold: theme, signal wiring, the HUD panels, the terrain
+# + visual layers — no simulation, no MatchState mutation. The per-start sim + buildings come in
+# finish_build(). Split out so the two phases read clearly and each can yield to the loading screen.
+func _build_base() -> void:
 	# DS assigns its Theme to the root Window, but Controls do not inherit a
 	# Window's theme — so apply it to the HUD Control subtree (where every panel
 	# lives) for DS fonts / type variations / button styles to actually resolve.
@@ -123,6 +133,10 @@ func _ready() -> void:
 	_build_stockpile_select_prompt()
 	_build_dim_overlay()
 	_build_stockpile_legend()
+	# Hand a frame to the loading screen here (right after the scene instantiated) so its
+	# animation + the OS window stay live while the rest of the world builds. No-op without
+	# a loading screen (tests / e2e / load-game run the build synchronously, as before).
+	await _build_yield()
 
 	# Infrastructure mapmode panel: shows/hides itself with the mapmode.
 	hud_content.add_child(load("res://scripts/infrastructure_panel.gd").new())
@@ -190,7 +204,13 @@ func _ready() -> void:
 	_survey_fx.name = "SurveyEffects"
 	_survey_fx.terrain_layer = terrain_layer
 	add_child(_survey_fx)
+	await _build_yield()
 
+
+# Apply this start's (or a loaded save's) simulation and place its buildings on top of the base
+# scaffold. `animate` (true when a loading screen is up) spreads building placement one-per-frame
+# so the loading animation keeps running; false builds synchronously (tests / e2e / load-game).
+func finish_build(animate: bool) -> void:
 	# The port tiles start surveyed (the Surveying mapmode reveals them on turn 1).
 	MatchState.seed_surveyed_ports()
 	# Track depletable-deposit yields so mining can run them down over time.
@@ -205,6 +225,7 @@ func _ready() -> void:
 	var loaded_pending := SaveLoad.apply_pending()
 	if loaded_pending:
 		_rebuild_after_load()
+	await _build_yield()
 	# Forests are a TERRAIN feature (the land mask + block templates read them), so they come before roads
 	# and enclosures. The buildings that used to follow here are deferred until after the blocks exist.
 	if not loaded_pending or pending_start:
@@ -233,9 +254,9 @@ func _ready() -> void:
 	# slideshow keeps animating through the ~7 s of per-building visual layout instead
 	# of the whole window freezing. Without a loading screen (tests, e2e, load-game)
 	# `animate` is false and placement runs synchronously, exactly as before.
-	var animate := _loading_screen_active()
 	if not loaded_pending or pending_start:
-		RoadWorks.seed_urban_enclosures(terrain_layer)
+		await RoadWorks.seed_urban_enclosures(terrain_layer)
+		await _build_yield()
 		# BUILDINGS now — after roads + enclosures — so they drop into the ready chunk grid and FILL the
 		# blocks they land in (NPC ports, the ruins, the start companies, + any future player start builds).
 		await _place_npc_ports(animate)
@@ -267,6 +288,14 @@ func _loading_screen_active() -> bool:
 		if c is LoadingScreen:
 			return true
 	return false
+
+
+# Yield a frame during the new-game build so the loading screen keeps animating and the OS
+# window stays responsive between heavy steps. No-op (synchronous) when no loading screen is
+# up — tests, the e2e harness and Load Game build the world in one pass, exactly as before.
+func _build_yield() -> void:
+	if _loading_screen_active():
+		await get_tree().process_frame
 
 func _rebuild_after_load() -> void:
 	# Redraw per-building visuals from the imported state: clear everything placed

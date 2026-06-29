@@ -248,6 +248,9 @@ func seed_urban_enclosures(terrain) -> void:
 	var net := RoadNetwork.instance()
 	if net == null:
 		return
+	# Deriving + drawing each urban tile's enclosure ring is ~0.9 s total; during a load hand a
+	# frame back every ~30 ms so it spreads instead of freezing the loading animation.
+	var t_last := Time.get_ticks_msec()
 	for coord in terrain.tiles:
 		var td: Dictionary = terrain.tiles[coord]
 		if str(td.get("type", "")).to_lower() != "urban":
@@ -283,6 +286,9 @@ func seed_urban_enclosures(terrain) -> void:
 				infra.append("roads")
 				td["infrastructure_present"] = infra
 				Catalog.add_tile_infrastructure(tile_id, "roads")
+		if Time.get_ticks_msec() - t_last > 30:
+			await LoadPacing.bg_yield()
+			t_last = Time.get_ticks_msec()
 
 ## Add a short "encl:"-tagged connector from the ring to a pre-snapshotted road attachment, so the block
 ## joins the street network (it would otherwise be a floating loop). No-op when the ring already touches the
