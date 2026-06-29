@@ -11,7 +11,7 @@ func _process(_d: float) -> void:
 	var now := Time.get_ticks_msec()
 	var gap := now - _last
 	if gap > 250:
-		print("  LOAD GAP %4d ms  at t+%d ms" % [gap, now - _t0])
+		print("  LOAD GAP %4d ms  ended-at %d  (t+%d ms)" % [gap, now, now - _t0])
 	_max = maxi(_max, gap)
 	_last = now
 	var cur := get_tree().current_scene

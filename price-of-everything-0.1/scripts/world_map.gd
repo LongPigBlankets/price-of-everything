@@ -255,7 +255,7 @@ func finish_build(animate: bool) -> void:
 	# of the whole window freezing. Without a loading screen (tests, e2e, load-game)
 	# `animate` is false and placement runs synchronously, exactly as before.
 	if not loaded_pending or pending_start:
-		RoadWorks.seed_urban_enclosures(terrain_layer)
+		await RoadWorks.seed_urban_enclosures(terrain_layer)
 		await _build_yield()
 		# BUILDINGS now — after roads + enclosures — so they drop into the ready chunk grid and FILL the
 		# blocks they land in (NPC ports, the ruins, the start companies, + any future player start builds).

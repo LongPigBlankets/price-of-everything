@@ -77,7 +77,8 @@ func _white_texture() -> Texture2D:
 		_white_tex = ImageTexture.create_from_image(img)
 	return _white_tex
 
-var _bake_deferred := false   # bake the hill texture at the first LIVE frame, not during a bg build
+var _bake_deferred := false   # the far-zoom texture bake is pending; built lazily on first need
+var _meshes_warm := false     # _warm_all_meshes() done → the cached-mesh vector LOD is usable
 
 func _enter_tree() -> void:
 	# the 'toggle heightmap' debug cheat flips visibility on this group
@@ -92,16 +93,13 @@ func _ready() -> void:
 	_lake_bb = _bboxes(_lakes, false)
 	_bake_rect = _compute_bounds()
 	await _warm_all_meshes()   # triangulate every contour ONCE (spread across frames during a bg build)
+	_meshes_warm = true        # the vector LOD can now draw cached meshes (no bake needed for it)
 	queue_redraw()
-	# Headless (tests) has no GPU to render the SubViewport into — fall back to
-	# direct polygon drawing (harmless, nothing is displayed there anyway). During a background
-	# build (prewarm / loading) the bake — a big one-frame GPU render of every hill — is deferred
-	# to the first LIVE frame (see _process) so it lands behind the loading screen, not the menu.
+	# The far-zoom texture LOD's bake is a big one-frame GPU render of every hill. Build it LAZILY
+	# the first time a zoomed-out view actually needs it (see _process), never during the load — so
+	# it can't freeze the loading screen. Headless has no GPU; it draws polys directly.
 	if DisplayServer.get_name() != "headless":
-		if LoadPacing.is_background_build():
-			_bake_deferred = true
-		else:
-			_bake_to_texture()
+		_bake_deferred = true
 
 func _bboxes(coll: Array, has_p_key: bool) -> Array:
 	var out: Array = []
@@ -118,15 +116,18 @@ func _bboxes(coll: Array, has_p_key: bool) -> Array:
 ## Pick the LOD each frame: count on-screen contour polygons; below the cap draw
 ## crisp vectors (and redraw as the camera moves), above it the baked texture.
 func _process(_delta: float) -> void:
-	if _bake_deferred and is_visible_in_tree():
-		_bake_deferred = false
-		_bake_to_texture()   # deferred one-frame GPU bake, now that the map is live (behind the loading screen)
-		return
-	if not visible or _baked_tex == null:
+	if not visible or not _meshes_warm:
 		return
 	var view := _visible_world_rect()
 	var visible_polys := _count_visible(_poly_bb, view) + _count_visible(_sea_bb, view) + _count_visible(_lake_bb, view)
 	var want := MODE_VECTOR if visible_polys <= VECTOR_CAP else MODE_TEXTURE
+	if want == MODE_TEXTURE and _baked_tex == null:
+		# First zoomed-out view: build the texture LOD now (it wasn't baked during the load). Keep
+		# drawing the cached vector meshes until it lands a couple of frames later.
+		if _bake_deferred:
+			_bake_deferred = false
+			_bake_to_texture()
+		want = MODE_VECTOR
 	if want != _mode:
 		_mode = want
 		_view_rect = view
@@ -136,13 +137,13 @@ func _process(_delta: float) -> void:
 		queue_redraw()
 
 func _draw() -> void:
-	if _baked_tex == null:
-		_draw_polys_direct()   # fallback until the bake lands (and in headless)
+	if not _meshes_warm:
+		_draw_polys_direct()   # headless, or before the cached meshes finish building (covered by the loading screen)
 		return
-	if _mode == MODE_TEXTURE:
+	if _mode == MODE_TEXTURE and _baked_tex != null:
 		draw_texture_rect(_baked_tex, _bake_rect, false)
 	else:
-		_draw_culled_meshes(_view_rect)
+		_draw_culled_meshes(_view_rect)   # cached vector meshes — works without the bake
 
 func _visible_world_rect() -> Rect2:
 	var vp := get_viewport()
@@ -194,7 +195,8 @@ func _bake_to_texture() -> void:
 	add_child(vp)
 	var painter := HillPainter.new()
 	painter.configure(_sea, _polys, _lakes, _bake_rect.position, scale,
-		SEA_COLORS, BAND_COLORS, WATER_COLOR, OUTLINE_DARKEN, OUTLINE_WIDTH)
+		SEA_COLORS, BAND_COLORS, WATER_COLOR, OUTLINE_DARKEN, OUTLINE_WIDTH,
+		_mesh_cache, _white_texture())
 	vp.add_child(painter)
 	# Let the viewport render its single frame, then grab the pixels.
 	await get_tree().process_frame
@@ -245,28 +247,29 @@ func _draw_culled_meshes(cull: Rect2) -> void:
 func _warm_all_meshes() -> void:
 	if DisplayServer.get_name() == "headless":
 		return   # tests never render the vector LOD; skip the triangulation cost
-	# Triangulating every contour is ~2 s of synchronous work. During a background build (prewarm
-	# / loading screen) hand a frame back every few contours so it spreads instead of blocking the
-	# menu — and the SubViewport then renders incrementally, spreading the first-frame GPU cost too.
-	var n := 0
+	# Triangulating every contour is ~2 s of work, and a fixed contour-count batch is uneven (a few
+	# huge contours dominate, giving a ~2 s frame). During a background build (loading screen up)
+	# hand a frame back whenever ~35 ms have accumulated, so it spreads into smooth ~35 ms slices.
+	# (Time only paces the yields; the meshes built are identical/deterministic.)
+	var t_last := Time.get_ticks_msec()
 	for i in _sea.size():
 		if (_sea[i].p as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("s%d" % i, _sea[i].p)
-		n += 1
-		if n % 12 == 0:
+		if Time.get_ticks_msec() - t_last > 35:
 			await LoadPacing.bg_yield()
+			t_last = Time.get_ticks_msec()
 	for i in _polys.size():
 		if (_polys[i].p as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("p%d" % i, _polys[i].p)
-		n += 1
-		if n % 12 == 0:
+		if Time.get_ticks_msec() - t_last > 35:
 			await LoadPacing.bg_yield()
+			t_last = Time.get_ticks_msec()
 	for i in _lakes.size():
 		if (_lakes[i] as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("l%d" % i, _lakes[i])
-		n += 1
-		if n % 12 == 0:
+		if Time.get_ticks_msec() - t_last > 35:
 			await LoadPacing.bg_yield()
+			t_last = Time.get_ticks_msec()
 
 func _draw_fill(key: String, pts: PackedVector2Array, color: Color, white: Texture2D) -> void:
 	var mesh: Mesh = _mesh_cache.get(key, null) if _mesh_cache.has(key) else _build_fill_mesh(key, pts)
@@ -343,9 +346,12 @@ class HillPainter:
 	var _water: Color
 	var _outline_darken: float
 	var _outline_width: float
+	var _meshes: Dictionary       # pre-triangulated fill meshes (keyed s%d/p%d/l%d) so the bake
+	var _white: Texture2D         # draws cached meshes instead of re-triangulating every contour
 
 	func configure(sea: Array, polys: Array, lakes: Array, origin: Vector2, scale: float,
-			sea_colors: Array, band_colors: Array, water: Color, outline_darken: float, outline_width: float) -> void:
+			sea_colors: Array, band_colors: Array, water: Color, outline_darken: float, outline_width: float,
+			meshes: Dictionary, white: Texture2D) -> void:
 		_sea = sea
 		_polys = polys
 		_lakes = lakes
@@ -356,6 +362,8 @@ class HillPainter:
 		_water = water
 		_outline_darken = outline_darken
 		_outline_width = outline_width
+		_meshes = meshes
+		_white = white
 
 	func _to_tex(pts: PackedVector2Array) -> PackedVector2Array:
 		var out := PackedVector2Array()
@@ -365,29 +373,35 @@ class HillPainter:
 		return out
 
 	func _draw() -> void:
-		for entry in _sea:
-			var spts: PackedVector2Array = entry.p
+		# Draw the already-triangulated cached meshes (transformed world→texture) instead of
+		# draw_colored_polygon, which re-triangulates every contour (~2 s for the whole map).
+		var xform := Transform2D(Vector2(_scale, 0.0), Vector2(0.0, _scale), -_origin * _scale)
+		for i in _sea.size():
+			var spts: PackedVector2Array = _sea[i].p
 			if spts.size() < 3:
 				continue
-			var sband: int = clampi(entry.b, 0, _sea_colors.size() - 1)
-			draw_colored_polygon(_to_tex(spts), _sea_colors[sband])
-		for entry in _polys:
-			var pts: PackedVector2Array = entry.p
+			_fill("s%d" % i, spts, _sea_colors[clampi(_sea[i].b, 0, _sea_colors.size() - 1)], xform)
+		for i in _polys.size():
+			var pts: PackedVector2Array = _polys[i].p
 			if pts.size() < 3:
 				continue
-			var band: int = clampi(entry.b, 0, _band_colors.size() - 1)
-			var color: Color = _band_colors[band]
-			var tp := _to_tex(pts)
-			draw_colored_polygon(tp, color)
-			var outline := tp.duplicate()
-			outline.append(tp[0])
+			var color: Color = _band_colors[clampi(_polys[i].b, 0, _band_colors.size() - 1)]
+			_fill("p%d" % i, pts, color, xform)
+			var outline := _to_tex(pts)
+			outline.append(outline[0])
 			draw_polyline(outline, color.darkened(_outline_darken), _outline_width, true)
-		for lake_entry in _lakes:
-			var lake_pts: PackedVector2Array = lake_entry
+		for i in _lakes.size():
+			var lake_pts: PackedVector2Array = _lakes[i]
 			if lake_pts.size() < 3:
 				continue
-			var tl := _to_tex(lake_pts)
-			draw_colored_polygon(tl, _water)
-			var shore := tl.duplicate()
-			shore.append(tl[0])
+			_fill("l%d" % i, lake_pts, _water, xform)
+			var shore := _to_tex(lake_pts)
+			shore.append(shore[0])
 			draw_polyline(shore, _water.darkened(0.25), 2.0, true)
+
+	func _fill(key: String, pts: PackedVector2Array, color: Color, xform: Transform2D) -> void:
+		var mesh: Mesh = _meshes.get(key, null)
+		if mesh != null:
+			draw_mesh(mesh, _white, xform, color)
+		else:
+			draw_colored_polygon(_to_tex(pts), color)   # mesh missing (rare) — fall back
