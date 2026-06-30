@@ -1119,12 +1119,15 @@ func _live_condition_met(d: Dictionary) -> bool:
 
 # Count player-owned buildings whose internal_name == `internal`, optionally
 # filtered by level (-1 = any), profitability, and a minimum consecutive run-streak.
+# `internal` == "any" (or "") matches every building type — used by scale-based
+# unlocks that gate on total buildings owned rather than a specific type.
 func _count_buildings(internal: String, level: int, require_profitable: bool, min_streak: int) -> int:
+	var match_any: bool = internal == "any" or internal == ""
 	var n := 0
 	for inst in buildings.values():
 		if not is_player_owned(inst):
 			continue
-		if _building_internal(inst) != internal:
+		if not match_any and _building_internal(inst) != internal:
 			continue
 		if level >= 0 and _building_level(inst) != level:
 			continue
