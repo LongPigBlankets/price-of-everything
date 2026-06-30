@@ -8,7 +8,7 @@
 			"tier": "green",
 			"good_id": "g_062", "good_internal": "biomass",
 			"blurb": "A clean slate with a healthy float.",
-			"description": "£400 and nothing else. Survey the map, read the markets, and build exactly the supply chain you want from the ground up. The purest test of an industrialist.",
+			"description": "£600 and nothing else. Survey the map, read the markets, and build exactly the supply chain you want from the ground up. The purest test of an industrialist.",
 			"recommended": true
 		},
 		{
@@ -18,7 +18,7 @@
 			"tier": "green",
 			"good_id": "g_038", "good_internal": "glass",
 			"blurb": "Sand into glass, on Vandel's doorstep.",
-			"description": "Three glass furnaces and a sand pit clustered on Vandel's Skip, fed straight from the quarry — but no cash and a £250 debt. Turn sand into glass and glass into a fortune before the interest bites."
+			"description": "Three glass furnaces and a sand pit clustered on Vandel's Skip, fed straight from the quarry — plus £200 cash and a £250 debt. Turn sand into glass and glass into a fortune before the interest bites."
 		},
 		{
 			"id": "coal_baron",
@@ -27,7 +27,7 @@
 			"tier": "amber",
 			"good_id": "g_001", "good_internal": "coal",
 			"blurb": "Four mines, the dirtiest fuel in the land.",
-			"description": "Four coal mines clustered around Stoneshore — one already upgraded — shipping the dirtiest fuel there is. Just £20 in the till and £100 owed: cash-thin, and badly exposed when the carbon squeeze lands."
+			"description": "Four coal mines clustered around Stoneshore — one already upgraded — shipping the dirtiest fuel there is. £200 in the till and £100 owed: cash-thin, and badly exposed when the carbon squeeze lands."
 		},
 		{
 			"id": "troubled_carmaker",
@@ -36,7 +36,7 @@
 			"tier": "amber",
 			"good_id": "g_056", "good_internal": "ice_car",
 			"blurb": "An over-extended auto empire.",
-			"description": "An auto business sprawled around Capital Port: two car plants, an engine works and a tyre line — and £500 of debt with not a penny of cash. Streamline the supply chain or sink under the financing."
+			"description": "An auto business sprawled around Capital Port: two car plants, an engine works, a tyre line, £200 cash, and £500 of debt. Streamline the supply chain or sink under the financing."
 		},
 		{
 			"id": "semiconductor_turnaround",
@@ -45,7 +45,7 @@
 			"tier": "amber",
 			"good_id": "g_041", "good_internal": "cpu",
 			"blurb": "One chip fab, one crushing loan.",
-			"description": "A single upgraded chip fab, £100 in cash, and a brutal £1,000 loan. A high-stakes turnaround: ride the value of silicon and outrun the interest, or be buried by it."
+			"description": "A single upgraded chip fab, £200 in cash, and a brutal £1,000 loan. A high-stakes turnaround: ride the value of silicon and outrun the interest, or be buried by it."
 		},
 		{
 			"id": "too_many_acquisitions",
@@ -54,7 +54,7 @@
 			"tier": "red",
 			"good_id": "g_043", "good_internal": "circuit_board",
 			"blurb": "A grab-bag bought on debt.",
-			"description": "Unrelated plants scattered across the whole map — electrolysers, car lines, circuit boards, windows, a bauxite mine — bought on £1,000 of debt with no cash and no plan. Find the focus your predecessor never did."
+			"description": "Unrelated plants scattered across the whole map — electrolysers, car lines, circuit boards, windows, a bauxite mine — bought on £1,000 of debt with £200 cash and no plan. Find the focus your predecessor never did."
 		},
 		{
 			"id": "ambitious_start",
@@ -62,8 +62,8 @@
 			"title": "Ambitious Start",
 			"tier": "red",
 			"good_id": "g_057", "good_internal": "ev_car",
-			"blurb": "£100 and a dream.",
-			"description": "The leanest possible beginning: a hundred pounds and nothing else. Every single decision counts from turn one. For players who want the game on hard mode before the difficulty is even set."
+			"blurb": "£300 and a dream.",
+			"description": "The leanest possible beginning: £300 and nothing else. Every single decision counts from turn one. For players who want the game on hard mode before the difficulty is even set."
 		}
 	]
 }

@@ -15,6 +15,9 @@ const HEADER_HEIGHT := 40.0
 var rows: Array = []
 var _tabs: TabContainer = null
 var _buildings_tab: Control = null   # the BuildingMarketTab (NPC buildings for sale)
+var _special_orders_tab: VBoxContainer = null
+var _special_orders_count_label: Label = null
+var _special_orders_body: VBoxContainer = null
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 var _good_option: OptionButton = null
@@ -55,6 +58,7 @@ func _ready() -> void:
 	MatchState.show_construct_for_good.connect(_on_show_construct_for_good)
 	MatchState.transfer_for_good_requested.connect(func(_g: String) -> void: hide())
 	MatchState.purchase_for_good_requested.connect(func(_g: String) -> void: hide())
+	SpecialOrderState.orders_changed.connect(_refresh_special_orders)
 	visibility_changed.connect(_on_panel_visibility_changed)
 	Production.turn_processed.connect(_refresh_ledgers)
 	Production.turn_processed.connect(func(_s: Dictionary = {}) -> void: _update_filter_availability())
@@ -77,6 +81,22 @@ func _rebuild_header() -> void:
 
 const SALE_TINT := Color(0.82, 0.85, 0.90, 0.10)
 const BUY_TINT := Color(0.50, 0.53, 0.58, 0.22)
+const SPECIAL_ORDER_ICON_SIZE := 98
+const SPECIAL_ORDER_PRODUCT_W := 240.0
+const SPECIAL_ORDER_NAME_BOUND := "Electrical Components"
+const SPECIAL_ORDER_NAME_RIGHT_PAD := 20.0
+const SPECIAL_ORDER_NAME_FS_MAX := 30
+const SPECIAL_ORDER_NAME_FS_MIN := 14
+const SPECIAL_ORDER_FIELD_FS := 19
+const SPECIAL_ORDER_COLUMNS := [
+	{"key": "target", "label": "Target", "w": 80.0, "align": HORIZONTAL_ALIGNMENT_CENTER},
+	{"key": "committed", "label": "Committed", "w": 90.0, "align": HORIZONTAL_ALIGNMENT_CENTER},
+	{"key": "delivered", "label": "Delivered", "w": 100.0, "align": HORIZONTAL_ALIGNMENT_CENTER},
+	{"key": "due", "label": "Due", "w": 90.0, "align": HORIZONTAL_ALIGNMENT_CENTER},
+	{"key": "premium", "label": "Premium", "w": 80.0, "align": HORIZONTAL_ALIGNMENT_CENTER},
+	{"key": "bonus", "label": "Bonus", "w": 100.0, "align": HORIZONTAL_ALIGNMENT_CENTER},
+	{"key": "producer", "label": "Producer", "w": 180.0, "align": HORIZONTAL_ALIGNMENT_LEFT},
+]
 
 func _header_label(text: String, width: float, tint: Color = Color(0, 0, 0, 0), center: bool = true) -> Label:
 	var l := Label.new()
@@ -132,6 +152,7 @@ func _on_panel_visibility_changed() -> void:
 	_ensure_built()   # first open builds the rows + tabs
 	_centre_and_resize()
 	_refresh_ledgers()
+	_refresh_special_orders()
 	_update_filter_availability()
 	# Fresh open: clear the stale "recurring" choice on the Sales tab.
 	if _recurring_check != null:
@@ -159,6 +180,9 @@ func _build_tabs() -> void:
 	_buildings_tab.building_selected.connect(_on_building_for_sale_selected)
 	tabs.add_child(_buildings_tab)
 
+	_special_orders_tab = _build_special_orders_tab()
+	tabs.add_child(_special_orders_tab)
+
 	var sales_tab := VBoxContainer.new()
 	sales_tab.name = "Sales"
 	sales_tab.add_theme_constant_override("separation", 6)
@@ -172,6 +196,7 @@ func _build_tabs() -> void:
 
 	_tabs = tabs
 	main_vbox.add_child(tabs)
+	_refresh_special_orders()
 
 # Open the Market on the Buildings tab, filtered to a single tile's buildings (a temporary
 # filter that the player can clear). Called from the tile view's "Buy Buildings" button.
@@ -339,6 +364,235 @@ func _on_bulk_sell_pressed() -> void:
 	if _recurring_check != null and _recurring_check.button_pressed:
 		MatchState.add_recurring_bulk_sell(params)
 
+# ── Special Orders tab ───────────────────────────────────────────────────────
+func _build_special_orders_tab() -> VBoxContainer:
+	var tab := VBoxContainer.new()
+	tab.name = "Special Orders"
+	tab.add_theme_constant_override("separation", 8)
+
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 8)
+	_special_orders_count_label = Label.new()
+	_special_orders_count_label.theme_type_variation = "Body"
+	_special_orders_count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(_special_orders_count_label)
+	tab.add_child(top)
+
+	var header_wrap := MarginContainer.new()
+	header_wrap.add_theme_constant_override("margin_left", 8)
+	header_wrap.add_theme_constant_override("margin_right", 8)
+	header_wrap.add_child(_build_special_orders_header_row())
+	tab.add_child(header_wrap)
+
+	var scroll_orders := ScrollContainer.new()
+	scroll_orders.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll_orders.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_special_orders_body = VBoxContainer.new()
+	_special_orders_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_special_orders_body.add_theme_constant_override("separation", 6)
+	scroll_orders.add_child(_special_orders_body)
+	tab.add_child(scroll_orders)
+	return tab
+
+func _build_special_orders_header_row() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.add_child(_header_spacer(SPECIAL_ORDER_ICON_SIZE))
+	row.add_child(_header_label("Product", SPECIAL_ORDER_PRODUCT_W, Color(0, 0, 0, 0), false))
+	for col in SPECIAL_ORDER_COLUMNS:
+		row.add_child(_special_orders_header_label(str(col.label), float(col.w), int(col.align)))
+	return row
+
+func _special_orders_header_label(text: String, w: float, align: int) -> Label:
+	var lbl := _header_label(text, w, Color(0, 0, 0, 0), align == HORIZONTAL_ALIGNMENT_CENTER)
+	lbl.horizontal_alignment = align
+	lbl.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return lbl
+
+func _refresh_special_orders() -> void:
+	if _special_orders_body == null:
+		return
+	for child in _special_orders_body.get_children():
+		_special_orders_body.remove_child(child)
+		child.queue_free()
+	var orders: Array = SpecialOrderState.get_active_orders()
+	orders.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_expires := int(a.get("expires_turn", 0))
+		var b_expires := int(b.get("expires_turn", 0))
+		if a_expires != b_expires:
+			return a_expires < b_expires
+		return str(a.get("good_internal", "")).naturalnocasecmp_to(str(b.get("good_internal", ""))) < 0
+	)
+	if _special_orders_count_label != null:
+		_special_orders_count_label.text = "Active special orders: %d" % orders.size()
+	if orders.is_empty():
+		_special_orders_body.add_child(_special_orders_empty_state())
+		return
+	for order in orders:
+		_special_orders_body.add_child(_build_special_order_row(order as Dictionary))
+
+func _special_orders_empty_state() -> Label:
+	var empty := Label.new()
+	empty.text = "No active special orders"
+	empty.theme_type_variation = "Body"
+	empty.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	empty.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	empty.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	empty.custom_minimum_size = Vector2(0, SPECIAL_ORDER_ICON_SIZE)
+	return empty
+
+func _build_special_order_row(order: Dictionary) -> Control:
+	var row := VBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.tooltip_text = _special_order_tooltip(order)
+
+	var hbox := HBoxContainer.new()
+	hbox.custom_minimum_size = Vector2(0, SPECIAL_ORDER_ICON_SIZE)
+	hbox.add_theme_constant_override("separation", 10)
+	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(hbox)
+	hbox.add_child(UIHelpers.make_framed_good_icon(
+		str(order.get("good_id", "")),
+		str(order.get("good_internal", "")),
+		SPECIAL_ORDER_ICON_SIZE,
+		false
+	))
+	hbox.add_child(_special_order_product_button(order))
+	for col in SPECIAL_ORDER_COLUMNS:
+		hbox.add_child(_build_special_order_cell(col as Dictionary, order))
+	return row
+
+func _build_special_order_cell(col: Dictionary, order: Dictionary) -> Control:
+	var key := str(col.get("key", ""))
+	var w := float(col.get("w", 80.0))
+	var align := int(col.get("align", HORIZONTAL_ALIGNMENT_LEFT))
+	match key:
+		"target":
+			return _special_order_text_cell(str(int(order.get("qty_required", 0))), w, align)
+		"committed":
+			return _special_order_text_cell(str(int(order.get("qty_committed", 0))), w, align, _commitment_color(order))
+		"delivered":
+			return _special_order_text_cell("%d / %d" % [
+				int(order.get("qty_delivered", 0)),
+				int(order.get("qty_required", 0)),
+			], w, align)
+		"due":
+			return _special_order_text_cell(_special_order_due_text(order), w, align, _deadline_color(order))
+		"premium":
+			return _special_order_text_cell("+%d%%" % int(round(float(order.get("premium_pct", 0.0)) * 100.0)), w, align)
+		"bonus":
+			return _special_order_text_cell(_money_text(_special_order_bonus_estimate(order)), w, align)
+		"producer":
+			return _special_order_text_cell(_special_order_producer_text(order), w, align)
+	return _special_order_text_cell("", w, align)
+
+func _special_order_product_button(order: Dictionary) -> Button:
+	var btn := Button.new()
+	btn.text = _special_order_good_name(order)
+	btn.clip_text = true
+	btn.custom_minimum_size = Vector2(SPECIAL_ORDER_PRODUCT_W, SPECIAL_ORDER_ICON_SIZE)
+	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.tooltip_text = "Created T%d, expires T%d" % [
+		int(order.get("created_turn", 0)),
+		int(order.get("expires_turn", 0)),
+	]
+	btn.add_theme_font_size_override("font_size", _fit_special_order_name_font_size(btn))
+	return btn
+
+func _fit_special_order_name_font_size(btn: Button) -> int:
+	var font := btn.get_theme_font("font")
+	if font == null:
+		return SPECIAL_ORDER_NAME_FS_MAX
+	var left_margin := 8.0
+	var sb := btn.get_theme_stylebox("normal")
+	if sb != null:
+		left_margin = maxf(0.0, sb.get_margin(SIDE_LEFT))
+	var avail := SPECIAL_ORDER_PRODUCT_W - left_margin - SPECIAL_ORDER_NAME_RIGHT_PAD
+	var fs := SPECIAL_ORDER_NAME_FS_MAX
+	while fs > SPECIAL_ORDER_NAME_FS_MIN:
+		if font.get_string_size(SPECIAL_ORDER_NAME_BOUND, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x <= avail:
+			break
+		fs -= 1
+	return fs
+
+func _special_order_text_cell(text: String, w: float, align: int, color: Color = Color.TRANSPARENT) -> Label:
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.custom_minimum_size = Vector2(w, SPECIAL_ORDER_ICON_SIZE)
+	lbl.horizontal_alignment = align
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.theme_type_variation = "Body"
+	lbl.clip_text = true
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.add_theme_font_size_override("font_size", SPECIAL_ORDER_FIELD_FS)
+	lbl.add_theme_color_override("font_color", DS.PALETTE.TEXT if color.a == 0.0 else color)
+	return lbl
+
+func _special_order_good_name(order: Dictionary) -> String:
+	var display := str(order.get("display_name", ""))
+	if display != "":
+		return display
+	var gid := str(order.get("good_id", ""))
+	return Catalog.get_display_name(gid)
+
+func _special_order_due_text(order: Dictionary) -> String:
+	var expires := int(order.get("expires_turn", 0))
+	var left := expires - int(TurnManager.current_turn)
+	if left < 0:
+		return "Expired"
+	if left == 0:
+		return "T%d now" % expires
+	return "T%d (%dt)" % [expires, left]
+
+func _deadline_color(order: Dictionary) -> Color:
+	var left := int(order.get("expires_turn", 0)) - int(TurnManager.current_turn)
+	if left <= 2:
+		return Color(0.95, 0.72, 0.22)
+	return Color.TRANSPARENT
+
+func _commitment_color(order: Dictionary) -> Color:
+	if int(order.get("qty_committed", 0)) <= 0:
+		return DS.PALETTE.TEXT_DIM
+	return Color.TRANSPARENT
+
+func _special_order_bonus_estimate(order: Dictionary) -> float:
+	var gid := str(order.get("good_id", ""))
+	if gid == "":
+		return 0.0
+	var internal := str(order.get("good_internal", ""))
+	var unit_price := MarketState.get_price(gid)
+	unit_price = Modifiers.apply("market_price", gid, unit_price, {
+		"good_id": gid,
+		"good_internal": internal,
+	})
+	return float(order.get("qty_required", 0)) * unit_price * float(order.get("premium_pct", 0.0))
+
+func _special_order_producer_text(order: Dictionary) -> String:
+	var building_id := str(order.get("baseline_building_id", ""))
+	var building := Catalog.get_building(building_id)
+	var name := str(building.get("display_name", ""))
+	if name == "":
+		name = str(building.get("internal_name", ""))
+	var turns := int(order.get("target_production_turns", 0))
+	if name == "":
+		return "%dt" % turns
+	return "%s, %dt" % [name, turns]
+
+func _special_order_tooltip(order: Dictionary) -> String:
+	return "%s: %d required, %d committed, %d delivered" % [
+		_special_order_good_name(order),
+		int(order.get("qty_required", 0)),
+		int(order.get("qty_committed", 0)),
+		int(order.get("qty_delivered", 0)),
+	]
+
+func _money_text(value: float) -> String:
+	return "£%.0f" % value
+
 # ── Filter bar ───────────────────────────────────────────────────────────────
 func _build_filter_row() -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -484,6 +738,7 @@ func _on_prices_updated() -> void:
 		if is_instance_valid(row) and row.has_method("_refresh"):
 			row._refresh()
 	_update_filter_availability()
+	_refresh_special_orders()
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:

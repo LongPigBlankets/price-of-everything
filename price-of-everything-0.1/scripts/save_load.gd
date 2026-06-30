@@ -9,8 +9,9 @@ extends Node
 
 const SAVE_DIR := "user://saves"
 # Version history (migrations in _migrate): 1 = initial format; 2 = adds `ruleset`
-# (match.ruleset + meta.ruleset) so future rule variants can key off saves.
-const SAVE_VERSION := 2
+# (match.ruleset + meta.ruleset) so future rule variants can key off saves;
+# 3 = adds special order state.
+const SAVE_VERSION := 3
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -66,6 +67,7 @@ func export_snapshot() -> Dictionary:
 		"loans": LoanState.export_state(),
 		"construction": Construction.export_state(),
 		"market": MarketState.export_state(),
+		"special_orders": SpecialOrderState.export_state(),
 		"production": Production.export_state(),
 		"events": EventScheduler.export_state(),
 		"modifiers": Modifiers.export_state(),
@@ -88,6 +90,7 @@ func import_snapshot(snap: Dictionary) -> void:
 	LoanState.import_state(snap.get("loans", {}))
 	Construction.import_state(snap.get("construction", {}))
 	MarketState.import_state(snap.get("market", {}))
+	SpecialOrderState.import_state(snap.get("special_orders", {}))
 	Production.import_state(snap.get("production", {}))
 	EventScheduler.import_state(snap.get("events", {}))
 	Modifiers.import_state(snap.get("modifiers", {}))
@@ -440,6 +443,8 @@ func _migrate(snap: Dictionary) -> Dictionary:
 		match version:
 			1:
 				snap = _migrate_v1_to_v2(snap)
+			2:
+				snap = _migrate_v2_to_v3(snap)
 			_:
 				break
 		version += 1
@@ -456,6 +461,12 @@ func _migrate_v1_to_v2(snap: Dictionary) -> Dictionary:
 	if not meta.has("ruleset"):
 		meta["ruleset"] = str(match_d["ruleset"].get("name", "standard"))
 	snap["meta"] = meta
+	return snap
+
+func _migrate_v2_to_v3(snap: Dictionary) -> Dictionary:
+	# v3 adds special orders. Old saves simply start with no active orders.
+	if not snap.has("special_orders"):
+		snap["special_orders"] = {}
 	return snap
 
 # --- JSON helpers ---

@@ -3,7 +3,7 @@
 	"start": true,
 	"name": "too_many_acquisitions",
 	"ruleset": "standard",
-	"money": 0,
+	"money": 200,
 	"loans": [ { "principal": 1000 } ],
 	"buildings": [
 		{ "building_id": "b_020", "recipe_id": "r_079", "tile_id": "tile_5_9" },

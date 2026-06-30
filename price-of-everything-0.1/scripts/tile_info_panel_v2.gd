@@ -42,9 +42,10 @@ var _plus_icon: Texture2D = null
 
 # Stockpile "Move or Sell" contextual menu state (persists across pane rebuilds).
 const MARKET_DEST := "__market__"
+const SPECIAL_ORDER_DEST := "__special_order__"
 var _stock_sel: Dictionary = {}   # {good_id, name, qty} of the selected good, or {}
 var _stock_qty: int = 0
-var _stock_dest: String = ""      # "" = none, MARKET_DEST, or a tile_id
+var _stock_dest: String = ""      # "" = none, MARKET_DEST, SPECIAL_ORDER_DEST, or a tile_id
 var _stock_recurring: bool = false
 
 var _current_tile_data: Dictionary = {}
@@ -83,6 +84,7 @@ func _ready() -> void:
 	MatchState.tile_land_owned_changed.connect(func(_t): _refresh_if_visible())
 	Stockpile.stockpile_changed.connect(_refresh_if_visible)
 	Production.turn_processed.connect(func(_summary): _refresh_if_visible())
+	SpecialOrderState.orders_changed.connect(func(): _refresh_if_visible())
 	Construction.construction_started.connect(func(_a = null, _b = null): _refresh_if_visible())
 	Construction.construction_completed.connect(func(_a = null, _b = null): _refresh_if_visible())
 	Construction.construction_cancelled.connect(func(_a = null, _b = null): _refresh_if_visible())
@@ -1747,7 +1749,14 @@ func _make_stock_context_menu() -> PanelContainer:
 	vbox.add_theme_constant_override("separation", 9)
 	card.add_child(vbox)
 
-	var max_qty := int(_stock_sel.get("qty", 0))
+	var selected_good_id := str(_stock_sel.get("good_id", ""))
+	var active_order: Dictionary = SpecialOrderState.get_active_order_for_good(selected_good_id)
+	if _stock_dest == SPECIAL_ORDER_DEST and active_order.is_empty():
+		_stock_dest = ""
+	var available_qty := int(_stock_sel.get("qty", 0))
+	var max_qty := available_qty
+	if _stock_dest == SPECIAL_ORDER_DEST:
+		max_qty = mini(available_qty, SpecialOrderState.remaining_uncommitted(active_order))
 	var title := Label.new()
 	title.text = "Move or Sell %s" % str(_stock_sel.get("name", ""))
 	title.theme_type_variation = &"Section"
@@ -1766,7 +1775,8 @@ func _make_stock_context_menu() -> PanelContainer:
 	spin.min_value = 1
 	spin.max_value = maxi(1, max_qty)
 	spin.step = 1
-	spin.value = clampi(_stock_qty, 1, maxi(1, max_qty))
+	_stock_qty = clampi(_stock_qty, 1, maxi(1, max_qty))
+	spin.value = _stock_qty
 	spin.custom_minimum_size = Vector2(110, 0)
 	spin.value_changed.connect(func(v): _stock_qty = int(v))
 	qty_row.add_child(spin)
@@ -1775,7 +1785,7 @@ func _make_stock_context_menu() -> PanelContainer:
 	all_btn.custom_minimum_size = Vector2(56, 0)
 	all_btn.pressed.connect(func():
 		_stock_qty = max_qty
-		spin.value = max_qty)
+		spin.value = maxi(1, max_qty))
 	qty_row.add_child(all_btn)
 	vbox.add_child(qty_row)
 
@@ -1791,7 +1801,19 @@ func _make_stock_context_menu() -> PanelContainer:
 	dest_row.add_child(_make_toggle_button("Market", _stock_dest == MARKET_DEST, func():
 		_stock_dest = MARKET_DEST
 		_refresh_pane("stock")))
-	dest_row.add_child(_make_toggle_button("Tile", _stock_dest != "" and _stock_dest != MARKET_DEST, func():
+	if not active_order.is_empty():
+		var special_btn := _make_toggle_button("Special Order", _stock_dest == SPECIAL_ORDER_DEST, func():
+			_stock_dest = SPECIAL_ORDER_DEST
+			_stock_recurring = false
+			var remaining := SpecialOrderState.remaining_uncommitted(SpecialOrderState.get_active_order_for_good(selected_good_id))
+			if remaining > 0:
+				_stock_qty = mini(_stock_qty, remaining)
+			_refresh_pane("stock"))
+		if SpecialOrderState.remaining_uncommitted(active_order) <= 0:
+			special_btn.disabled = true
+			special_btn.tooltip_text = "This special order is already fully committed."
+		dest_row.add_child(special_btn)
+	dest_row.add_child(_make_toggle_button("Tile", _stock_dest != "" and _stock_dest != MARKET_DEST and _stock_dest != SPECIAL_ORDER_DEST, func():
 		pick_destination_requested.emit()
 		MatchState.request_toast("Pick a destination tile on the map", "caution")))
 	var dest_value := Label.new()
@@ -1806,6 +1828,10 @@ func _make_stock_context_menu() -> PanelContainer:
 	# --- Make recurring ---
 	var recurring := CheckBox.new()
 	recurring.text = "Make recurring"
+	if _stock_dest == SPECIAL_ORDER_DEST:
+		_stock_recurring = false
+		recurring.disabled = true
+		recurring.tooltip_text = "Special orders are one-off commitments."
 	recurring.button_pressed = _stock_recurring
 	recurring.toggled.connect(func(v): _stock_recurring = v)
 	vbox.add_child(recurring)
@@ -1815,7 +1841,7 @@ func _make_stock_context_menu() -> PanelContainer:
 	confirm.add_theme_font_size_override("font_size", 14)  # one size up
 	confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	confirm.custom_minimum_size = Vector2(0, 34)
-	confirm.disabled = _stock_dest == ""
+	confirm.disabled = _stock_dest == "" or (_stock_dest == SPECIAL_ORDER_DEST and (active_order.is_empty() or SpecialOrderState.remaining_uncommitted(active_order) <= 0))
 	confirm.pressed.connect(_confirm_stock_action)
 	vbox.add_child(confirm)
 	return card
@@ -1823,6 +1849,11 @@ func _make_stock_context_menu() -> PanelContainer:
 func _stock_dest_text() -> String:
 	if _stock_dest == MARKET_DEST:
 		return "Market"
+	if _stock_dest == SPECIAL_ORDER_DEST:
+		var order := SpecialOrderState.get_active_order_for_good(str(_stock_sel.get("good_id", "")))
+		if not order.is_empty():
+			return "Special Order: %s" % str(order.get("display_name", Catalog.get_display_name(str(_stock_sel.get("good_id", "")))))
+		return "Special Order"
 	if _stock_dest != "":
 		return Catalog.tile_label(_stock_dest)
 	return "— none —"
@@ -1855,6 +1886,15 @@ func _confirm_stock_action() -> void:
 		if recurring:
 			MatchState.add_recurring_sell(_current_tile_id, goods)
 		MatchState.request_toast("%s %d %s to market" % ["Recurring sell of" if recurring else "Selling", qty, good_name], "success")
+	elif _stock_dest == SPECIAL_ORDER_DEST:
+		var order := SpecialOrderState.get_active_order_for_good(gid)
+		var order_id := str(order.get("id", ""))
+		qty = mini(qty, SpecialOrderState.remaining_uncommitted(order))
+		var result := SpecialOrderState.queue_from_tile(_current_tile_id, order_id, gid, qty)
+		if result.is_empty():
+			MatchState.request_toast("No active special order can take %s" % good_name, "warning")
+			return
+		MatchState.request_toast("Sending %d %s to special order" % [int(result.get("total_qty", qty)), good_name], "success")
 	else:
 		MatchState.queue_move(_current_tile_id, _stock_dest, goods)
 		if recurring:

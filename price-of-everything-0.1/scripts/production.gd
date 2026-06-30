@@ -568,21 +568,81 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 func _credit_arrived_sale(shipment: Dictionary, summary: Dictionary) -> void:
 	# A sale shipment reached its port this turn — pay out the locked-in revenue.
 	var sale_record: Dictionary = shipment.get("sale_record", {})
+	var special_order_id := str(shipment.get("special_order_id", ""))
+	var paid_sale_record := {
+		"tile_id": str(sale_record.get("tile_id", "")),
+		"items": [],
+		"total_qty": 0,
+		"total_revenue": 0.0,
+	}
 	for item in sale_record.get("items", []):
 		var gid := str(item.get("good_id", ""))
 		var qty := int(item.get("qty", 0))
 		var rev := float(item.get("revenue", 0.0))
-		if rev > 0.0:
-			MatchState.add_money(rev)
-			_add_summary_sale(summary, gid, qty, rev)
-	if float(sale_record.get("total_revenue", 0.0)) > 0.0:
-		MatchState.record_tile_sale(str(sale_record.get("tile_id", "")), int(sale_record.get("total_qty", 0)), float(sale_record.get("total_revenue", 0.0)))
-		MatchState.emit_stockpile_market_sale_completed(sale_record)
+		if special_order_id == "":
+			if rev > 0.0:
+				MatchState.add_money(rev)
+				_add_summary_sale(summary, gid, qty, rev)
+				_add_paid_sale_item(paid_sale_record, gid, qty, rev)
+			continue
+
+		var order_before := SpecialOrderState.get_order(special_order_id)
+		var unit_revenue := rev / float(maxi(qty, 1))
+		if order_before.is_empty():
+			_offer_special_order_overflow(shipment, sale_record, gid, qty, unit_revenue)
+			continue
+		if str(order_before.get("good_id", "")) != gid:
+			if rev > 0.0:
+				MatchState.add_money(rev)
+				_add_summary_sale(summary, gid, qty, rev)
+				_add_paid_sale_item(paid_sale_record, gid, qty, rev)
+			continue
+
+		var remaining := maxi(0, int(order_before.get("qty_required", 0)) - int(order_before.get("qty_delivered", 0)))
+		var paid_qty := mini(qty, remaining)
+		var overflow_qty := maxi(0, qty - paid_qty)
+		var paid_revenue := unit_revenue * float(paid_qty)
+		if paid_revenue > 0.0:
+			MatchState.add_money(paid_revenue)
+			_add_summary_sale(summary, gid, paid_qty, paid_revenue)
+			_add_paid_sale_item(paid_sale_record, gid, paid_qty, paid_revenue)
+		var settlement := SpecialOrderState.settle_delivery(special_order_id, gid, qty, rev)
+		var premium_bonus := float(settlement.get("premium_bonus", 0.0))
+		if premium_bonus > 0.0:
+			_add_summary_sale(summary, gid, 0, premium_bonus)
+		if overflow_qty > 0:
+			_offer_special_order_overflow(shipment, sale_record, gid, overflow_qty, unit_revenue)
+	if float(paid_sale_record.get("total_revenue", 0.0)) > 0.0:
+		MatchState.record_tile_sale(str(paid_sale_record.get("tile_id", "")), int(paid_sale_record.get("total_qty", 0)), float(paid_sale_record.get("total_revenue", 0.0)))
+		MatchState.emit_stockpile_market_sale_completed(paid_sale_record)
 		var port_tile := str(shipment.get("destination_tile", ""))
 		if port_tile != "":
-			MatchState.market_sale_arrived_at_port.emit(port_tile, float(sale_record.get("total_revenue", 0.0)))
+			MatchState.market_sale_arrived_at_port.emit(port_tile, float(paid_sale_record.get("total_revenue", 0.0)))
 
-func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, summary: Dictionary) -> void:
+func _add_paid_sale_item(sale_record: Dictionary, good_id: String, qty: int, revenue: float) -> void:
+	if good_id == "" or qty <= 0 or revenue <= 0.0:
+		return
+	sale_record.items.append({"good_id": good_id, "qty": qty, "revenue": revenue})
+	sale_record.total_qty = int(sale_record.get("total_qty", 0)) + qty
+	sale_record.total_revenue = float(sale_record.get("total_revenue", 0.0)) + revenue
+
+func _offer_special_order_overflow(shipment: Dictionary, sale_record: Dictionary, good_id: String, qty: int, unit_revenue: float) -> void:
+	if good_id == "" or qty <= 0:
+		return
+	MatchState.offer_special_order_overflow({
+		"order_id": str(shipment.get("special_order_id", "")),
+		"source_mode": str(shipment.get("special_order_source_mode", "")),
+		"source_tile": str(sale_record.get("tile_id", shipment.get("source_tile", ""))),
+		"port_tile": str(shipment.get("destination_tile", "")),
+		"good_id": good_id,
+		"good_display": Catalog.get_display_name(good_id),
+		"qty": qty,
+		"unit_revenue": unit_revenue,
+		"total_revenue": unit_revenue * float(qty),
+		"shipment_id": int(shipment.get("id", 0)),
+	})
+
+func _sell_output_to_market(building: Dictionary, good: Dictionary, qty: int, summary: Dictionary) -> void:
 	# Output destined for the market goes through MarketState.execute_sale:
 	#   - skip_consume: the goods never landed in the stockpile — they're being
 	#     dispatched straight from production output,
@@ -591,11 +651,18 @@ func _sell_output_to_market(source_tile: String, good: Dictionary, qty: int, sum
 	#   - good_id_hint: enables type-aware port selection.
 	# This function still owns Production's per-turn summary bookkeeping — that's
 	# the part that's genuinely Production's concern, not the market's.
-	var result := MarketState.execute_sale(source_tile, {good.id: qty}, {
+	var source_tile := str(building.get("tile_id", ""))
+	var good_id := str(good.get("id", ""))
+	var opts := {
 		"skip_consume": true,
 		"pay_transport_from_seller": true,
-		"good_id_hint": str(good.id),
-	})
+		"good_id_hint": good_id,
+	}
+	var special_order_id := MatchState.get_output_special_order_id(str(building.get("instance_id", "")), good_id)
+	if special_order_id != "" and not SpecialOrderState.get_order(special_order_id).is_empty():
+		opts["special_order_id"] = special_order_id
+		opts["special_order_source_mode"] = "building_detail"
+	var result := MarketState.execute_sale(source_tile, {good_id: qty}, opts)
 	if result.is_empty():
 		return
 	var transport_cost: float = float(result.get("transport_cost", 0.0))
@@ -612,7 +679,7 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 	var stockpile_coord = _output_stockpile_coord(building, good.id)
 	if stockpile_coord == null:
 		# Market-bound output (no stockpile destination): sell it via the nearest port.
-		_sell_output_to_market(str(building.get("tile_id", "")), good, qty, summary)
+		_sell_output_to_market(building, good, qty, summary)
 		return
 	var route := _transport_route(building.get("tile_id", ""), stockpile_coord, good.id)
 	var transport_cost: float = TransportService.transport_cost_for_route(good.id, qty, route)
