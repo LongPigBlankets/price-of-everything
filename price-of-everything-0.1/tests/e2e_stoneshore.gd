@@ -7,11 +7,21 @@ extends Node
 ## and output-destination tile picks. Direct state calls are kept to deterministic
 ## harness setup (debug cash) and routing toggles that do not yet have a stable
 ## headless click target.
+##
+## Phase 1 refactor: the scenario is now DATA-DRIVEN. The hardcoded "optimized
+## Capital motor chain" lives in res://tests/scenarios/open_field_1.json. Pick a
+## scenario by name with the first user arg:
+##     -- open_field_1 60     run scenario "open_field_1" to turn 60
+##     -- 100                 (back-compat) run "open_field_1" to turn 100
+## If the first user arg parses as an int it is treated as the turn and the
+## scenario name defaults to "open_field_1".
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const BASELINE_PATH := "res://tests/snapshots/e2e_benchmark_baseline.json"
 const LATEST_PATH := "user://e2e_stoneshore_latest.json"
 const TURN_PROFILE_PATH := "user://turn_profile.csv"
+const SCENARIOS_DIR := "res://tests/scenarios/"
+const DEFAULT_SCENARIO := "open_field_1"
 const DEFAULT_TARGET_TURN := 100
 const CASH_RUNWAY := 25000
 const COAL_RUNWAY_TURNS := 8
@@ -34,6 +44,11 @@ var _goods := {}
 var _buildings := {}
 var _recipes := {}
 var _built := {}
+# Logical scenario building id (from JSON "id") -> Array of engine instance ids.
+# A single config entry with count>1 maps to several instance ids.
+var _built_by_id := {}
+var _scenario := {}
+var _scenario_name := DEFAULT_SCENARIO
 var _scenario_note := ""
 var _target_turn := DEFAULT_TARGET_TURN
 var _revenue_history: Array[float] = []
@@ -47,9 +62,9 @@ var _coal_backed_loan_amount := 0.0
 
 
 func _ready() -> void:
-	_target_turn = _requested_target_turn()
-	print("\n==== price-of-everything E2E: Stoneshore ====")
-	print("[E2E] target_turn=%d" % _target_turn)
+	_parse_cmdline_args()
+	print("\n==== price-of-everything E2E: %s ====" % _scenario_name)
+	print("[E2E] scenario=%s target_turn=%d" % [_scenario_name, _target_turn])
 	await _run()
 	_check(_passed >= 80, "E2E scenario produced at least 80 assertions")
 	_write_latest_metrics()
@@ -60,6 +75,7 @@ func _ready() -> void:
 func _run() -> void:
 	_reset_autoloads()
 	_resolve_catalog_ids()
+	_load_scenario()
 	await _load_main_scene()
 	_check_ui_loaded()
 	_check_stoneshore_fixture()
@@ -67,12 +83,12 @@ func _run() -> void:
 	await _take_loan_via_ui(50.0, "initial working-capital loan")
 	await _add_cash_through_terminal(CASH_RUNWAY)
 	await _open_construct_panel_via_bottom_menu()
-	_buy_land_for_optimized_chain()
-	await _build_coal_runway()
+	_buy_land_from_config()
+	await _build_coal_runway_from_config()
 	await _take_coal_backed_loan_if_capacity_allows()
 
 	var before_route := TransportService.route("tile_22_3", "tile_26_5", _goods.coal)
-	await _build_transport_spine()
+	await _build_transport_spine_from_config()
 	await _advance_turns(2, "complete road/rail/cable construction")
 	var after_route := TransportService.route("tile_22_3", "tile_26_5", _goods.coal)
 	_check(int(after_route.get("turns", 999)) <= int(before_route.get("turns", 999)),
@@ -81,10 +97,10 @@ func _run() -> void:
 	_check(int(TransportService.route("tile_21_10", "tile_25_6", _goods.copper_wiring).get("turns", 999)) < (1 << 30),
 		"copper-to-motor rail route is reachable")
 
-	await _build_supply_chain()
-	_configure_output_routes()
-	_configure_surplus_sales()
-	_configure_tile_only_inputs()
+	await _build_supply_chain_from_config()
+	_configure_output_routes_from_config()
+	_configure_surplus_sales_from_config()
+	_configure_tile_only_inputs_from_config()
 	await _advance_until_no_construction(14)
 	_check(Construction.construction_projects.is_empty(), "all scenario construction projects completed")
 	_check(MatchState.buildings.size() >= 24, "scenario has a live multi-building industrial base")
@@ -96,28 +112,257 @@ func _run() -> void:
 	_check_benchmark_baseline()
 
 
-func _buy_land_for_optimized_chain() -> void:
-	var purchases := {
-		"tile_22_3": 3,
-		"tile_26_5": 8,
-		"tile_21_10": 6,
-	}
-	for tile_id in purchases.keys():
-		var before_owned := MatchState.get_tile_land_owned(str(tile_id))
-		var before_money := MatchState.money
-		var ok := MatchState.purchase_tile_land(str(tile_id), int(purchases[tile_id]))
-		_check(ok, "land purchased for optimized chain on %s" % str(tile_id))
-		_check(MatchState.get_tile_land_owned(str(tile_id)) > before_owned,
-			"land ownership increased on %s" % str(tile_id))
-		_check(MatchState.money < before_money, "land purchase charged cash on %s" % str(tile_id))
+# ─────────────────────────────────────────────────────────────────────────────
+# Command-line + scenario loading (Phase 1 data-driven entry points)
+# ─────────────────────────────────────────────────────────────────────────────
 
-
-func _requested_target_turn() -> int:
+func _parse_cmdline_args() -> void:
+	# Accepted forms:
+	#   <name> <turn>   e.g. open_field_1 60
+	#   <name>          scenario name, default turn
+	#   <turn>          (back-compat) turn only, default scenario
 	var args := OS.get_cmdline_user_args()
-	if args.size() > 0 and str(args[0]).is_valid_int():
-		return maxi(1, int(args[0]))
-	return DEFAULT_TARGET_TURN
+	_scenario_name = DEFAULT_SCENARIO
+	_target_turn = DEFAULT_TARGET_TURN
+	if args.is_empty():
+		return
+	var first := str(args[0])
+	if first.is_valid_int():
+		# Back-compat `-- 100`: first arg is the turn, scenario stays default.
+		_target_turn = maxi(1, int(first))
+		return
+	_scenario_name = first
+	if args.size() > 1 and str(args[1]).is_valid_int():
+		_target_turn = maxi(1, int(args[1]))
 
+
+func _load_scenario() -> void:
+	var path := SCENARIOS_DIR + _scenario_name + ".json"
+	_check(FileAccess.file_exists(path), "scenario file exists: %s" % path)
+	var f := FileAccess.open(path, FileAccess.READ)
+	_check(f != null, "scenario file opened: %s" % path)
+	if f == null:
+		_scenario = {}
+		return
+	var parsed = JSON.parse_string(f.get_as_text())
+	f.close()
+	_check(typeof(parsed) == TYPE_DICTIONARY, "scenario JSON parsed to a dictionary: %s" % _scenario_name)
+	_scenario = parsed if typeof(parsed) == TYPE_DICTIONARY else {}
+	_scenario_note = str(_scenario.get("note", ""))
+	_check(not _scenario.has("buildings") or typeof(_scenario.get("buildings")) == TYPE_ARRAY,
+		"scenario buildings is an array")
+
+
+# Resolve a scenario building entry's recipe: prefer an explicit recipe_key into
+# the pre-resolved _recipes map; otherwise fall back to _recipe_for() via the
+# internal_name + recipe_output (+ optional recipe_display) fields.
+func _scenario_recipe_id(entry: Dictionary) -> String:
+	var key := str(entry.get("recipe_key", ""))
+	if key != "":
+		var resolved := str(_recipes.get(key, ""))
+		_check(resolved != "", "scenario recipe_key resolved: %s" % key)
+		return resolved
+	var internal := str(entry.get("internal_name", ""))
+	var output := str(entry.get("recipe_output", ""))
+	var display := str(entry.get("recipe_display", ""))
+	return _recipe_for(internal, output, display)
+
+
+# Build every entry in a scenario building list, recording one or more instance
+# ids per logical id. count defaults to 1; allow_market_materials defaults to true
+# (the turn-1 rebalance left no pre-placed build materials on these tiles, so a
+# direct tile-materials build would silently no-op — see open_field_1.json note).
+func _build_buildings_from_list(entries: Array) -> void:
+	for entry in entries:
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var logical_id := str(entry.get("id", ""))
+		var internal := str(entry.get("internal_name", ""))
+		var building_id := str(_buildings.get(internal, ""))
+		_check(building_id != "", "scenario building internal_name resolved: %s" % internal)
+		var recipe_id := _scenario_recipe_id(entry)
+		_check(recipe_id != "", "scenario building recipe resolved for %s" % logical_id)
+		var tile_id := str(entry.get("tile", ""))
+		var count := maxi(1, int(entry.get("count", 1)))
+		var allow_market: bool = bool(entry.get("allow_market_materials", true))
+		for i in range(count):
+			var instance_id := await _build_building_via_build_mode(building_id, recipe_id, tile_id, allow_market)
+			_register_built(logical_id, instance_id)
+			var level := int(entry.get("level", 1))
+			if level > 1 and instance_id != "":
+				_apply_level(instance_id, level)
+
+
+# Map a logical scenario id to its instance id(s). The first instance also lands
+# in _built[logical_id] so legacy-style single references keep working.
+func _register_built(logical_id: String, instance_id: String) -> void:
+	if logical_id == "":
+		return
+	var list: Array = _built_by_id.get(logical_id, [])
+	list.append(instance_id)
+	_built_by_id[logical_id] = list
+	if not _built.has(logical_id):
+		_built[logical_id] = instance_id
+
+
+func _instances_for(logical_id: String) -> Array:
+	return _built_by_id.get(logical_id, [])
+
+
+func _first_instance(logical_id: String) -> String:
+	var list: Array = _built_by_id.get(logical_id, [])
+	return str(list[0]) if not list.is_empty() else ""
+
+
+# Best-effort level-up of a freshly built/awaiting building, mirroring the level
+# field on a scenario building entry. Tolerant of either a live building or a
+# project still under construction.
+func _apply_level(instance_id: String, level: int) -> void:
+	if MatchState.buildings.has(instance_id):
+		var b: Dictionary = MatchState.buildings[instance_id]
+		b["level"] = level
+		MatchState.buildings[instance_id] = b
+	elif Construction.construction_projects.has(instance_id):
+		var p: Dictionary = Construction.construction_projects[instance_id]
+		p["target_level"] = level
+		Construction.construction_projects[instance_id] = p
+
+
+func _buy_land_from_config() -> void:
+	var purchases: Array = _scenario.get("land_purchases", [])
+	for purchase in purchases:
+		if typeof(purchase) != TYPE_DICTIONARY:
+			continue
+		var tile_id := str(purchase.get("tile", ""))
+		var amount := int(purchase.get("amount", 0))
+		var before_owned := MatchState.get_tile_land_owned(tile_id)
+		var before_money := MatchState.money
+		var ok := MatchState.purchase_tile_land(tile_id, amount)
+		_check(ok, "land purchased for scenario on %s" % tile_id)
+		_check(MatchState.get_tile_land_owned(tile_id) > before_owned,
+			"land ownership increased on %s" % tile_id)
+		_check(MatchState.money < before_money, "land purchase charged cash on %s" % tile_id)
+
+
+func _build_coal_runway_from_config() -> void:
+	var runway: Dictionary = _scenario.get("coal_runway", {})
+	if runway.is_empty():
+		_cash_after_coal_runway = MatchState.money
+		return
+	var runway_turns := int(runway.get("turns", COAL_RUNWAY_TURNS))
+	# Mines bought their build materials from the market, so they sit in
+	# awaiting_materials for the transport lead before the 2-turn build counts down.
+	var construction_window := int(runway.get("construction_window", 8))
+	await _build_buildings_from_list(runway.get("buildings", []))
+	for route in runway.get("route_to_market", []):
+		if typeof(route) != TYPE_DICTIONARY:
+			continue
+		var good_id := str(_goods.get(str(route.get("good", "")), ""))
+		for instance_id in _instances_for(str(route.get("id", ""))):
+			var iid := str(instance_id)
+			MatchState.route_output_to_market(iid, good_id)
+			_check(MatchState.is_output_market(iid, good_id),
+				"coal runway mine routes directly to market: %s" % iid)
+	for tile_id in runway.get("surplus_sales", []):
+		MatchState.set_auto_sell_impact(str(tile_id), MatchState.IMPACT_ANY)
+		MatchState.enable_sell_surplus(str(tile_id))
+	await _advance_until_no_construction(construction_window)
+	await _advance_turns(runway_turns, "coal runway market sales")
+	_cash_after_coal_runway = MatchState.money
+	_check(_sold_qty(_goods.coal) > 0, "coal runway sold coal to market before the motor buildout")
+	_check(_recent_run_metric("profit_post_tax", mini(3, runway_turns)) > 0.0,
+		"coal runway is recently post-tax profitable before expansion")
+
+
+func _build_transport_spine_from_config() -> void:
+	var spine: Dictionary = _scenario.get("transport_spine", {})
+	if spine.is_empty():
+		return
+	var corridors: Array = spine.get("corridors", [])
+	# Resolve corridors to concrete adjacent land paths and validate adjacency.
+	var resolved_corridors: Array = []
+	for corridor in corridors:
+		if typeof(corridor) != TYPE_ARRAY or corridor.size() < 2:
+			continue
+		var path := _land_path(str(corridor[0]), str(corridor[corridor.size() - 1]))
+		_check(path.size() >= 2, "optimized transport corridor has at least two tiles")
+		for i in range(path.size() - 1):
+			_check(Catalog.tile_neighbours(str(path[i])).has(str(path[i + 1])),
+				"optimized corridor has adjacent step %s -> %s" % [str(path[i]), str(path[i + 1])])
+		resolved_corridors.append(path)
+
+	for tile_id in spine.get("roads", []):
+		await _build_infra_via_build_mode("roads", str(tile_id))
+
+	# rails: either an explicit tile list, or the literal "corridors" to mean "every
+	# tile touched by the resolved corridors" (faithful to the original behaviour).
+	var rails_spec = spine.get("rails", [])
+	var rail_tiles: Array = []
+	if typeof(rails_spec) == TYPE_STRING and str(rails_spec) == "corridors":
+		var corridor_tiles := {}
+		for path in resolved_corridors:
+			for tile_id in path:
+				corridor_tiles[str(tile_id)] = true
+		rail_tiles = corridor_tiles.keys()
+		rail_tiles.sort()
+	elif typeof(rails_spec) == TYPE_ARRAY:
+		for tile_id in rails_spec:
+			rail_tiles.append(str(tile_id))
+	for tile_id in rail_tiles:
+		await _build_infra_via_build_mode("rails", str(tile_id))
+
+	for tile_id in spine.get("cables", []):
+		await _build_infra_via_build_mode("cables", str(tile_id))
+
+
+func _build_supply_chain_from_config() -> void:
+	await _build_buildings_from_list(_scenario.get("buildings", []))
+	for key in _built.keys():
+		_check(str(_built[key]) != "", "build helper returned instance id for %s" % str(key))
+
+
+func _configure_output_routes_from_config() -> void:
+	for route in _scenario.get("output_routes", []):
+		if typeof(route) != TYPE_DICTIONARY:
+			continue
+		var logical_id := str(route.get("id", ""))
+		var good_id := str(_goods.get(str(route.get("good", "")), ""))
+		var dest := str(route.get("dest", ""))
+		for instance_id in _instances_for(logical_id):
+			var iid := str(instance_id)
+			if dest == "market":
+				MatchState.route_output_to_market(iid, good_id)
+				_check(MatchState.is_output_market(iid, good_id),
+					"output routed to market: %s %s" % [iid, good_id])
+			else:
+				_select_output_destination(iid, good_id, dest)
+
+
+func _configure_surplus_sales_from_config() -> void:
+	for tile_id in _scenario.get("surplus_sales", []):
+		MatchState.set_auto_sell_impact(str(tile_id), MatchState.IMPACT_ANY)
+		_check(MatchState.get_auto_sell_impact(str(tile_id)) == MatchState.IMPACT_ANY,
+			"surplus sale impact set to any for %s" % str(tile_id))
+		MatchState.enable_sell_surplus(str(tile_id))
+		_check(MatchState.is_sell_surplus_enabled(str(tile_id)),
+			"master surplus auto-sell armed for %s" % str(tile_id))
+
+
+func _configure_tile_only_inputs_from_config() -> void:
+	for entry in _scenario.get("tile_only_inputs", []):
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var logical_id := str(entry.get("id", ""))
+		var good_ids: Array = []
+		for g in entry.get("goods", []):
+			good_ids.append(str(_goods.get(str(g), "")))
+		for instance_id in _instances_for(logical_id):
+			_set_tile_only(str(instance_id), good_ids)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Preserved helpers (verbatim from the original linear scenario)
+# ─────────────────────────────────────────────────────────────────────────────
 
 func _reset_autoloads() -> void:
 	var run_metrics := get_tree().root.get_node_or_null("RunMetrics")
@@ -367,7 +612,6 @@ func _add_cash_through_terminal(amount: int) -> void:
 	_check(result.find("Added") >= 0, "debug terminal accepted cash command")
 	_check(MatchState.money >= before + float(amount), "debug terminal cash applied")
 	_cash_after_runway = MatchState.money
-	_scenario_note = "Cash runway added through debug terminal so the scenario can build the full chain deterministically."
 
 
 func _open_construct_panel_via_bottom_menu() -> void:
@@ -377,52 +621,6 @@ func _open_construct_panel_via_bottom_menu() -> void:
 		button.pressed.emit()
 	await get_tree().process_frame
 	_check(_construct_panel.visible, "construct panel opened from bottom menu")
-
-
-func _build_transport_spine() -> void:
-	var corridors := [
-		_land_path("tile_22_3", "tile_26_5"),
-		_land_path("tile_22_3", "tile_20_9"),
-		_land_path("tile_26_5", "tile_25_6"),
-		_land_path("tile_21_10", "tile_25_6"),
-		_land_path("tile_25_6", "tile_24_7"),
-	]
-	var corridor_tiles := {}
-	for path in corridors:
-		_check(path.size() >= 2, "optimized transport corridor has at least two tiles")
-		for i in range(path.size() - 1):
-			_check(Catalog.tile_neighbours(str(path[i])).has(str(path[i + 1])),
-				"optimized corridor has adjacent step %s -> %s" % [str(path[i]), str(path[i + 1])])
-		for tile_id in path:
-			corridor_tiles[str(tile_id)] = true
-	var ordered_tiles := corridor_tiles.keys()
-	ordered_tiles.sort()
-	for tile_id in ["tile_22_3", "tile_20_9", "tile_26_5", "tile_21_10", "tile_25_6", "tile_24_7"]:
-		await _build_infra_via_build_mode("roads", tile_id)
-	for tile_id in ordered_tiles:
-		await _build_infra_via_build_mode("rails", str(tile_id))
-	for tile_id in ["tile_22_3", "tile_20_9", "tile_26_5", "tile_21_10", "tile_25_6"]:
-		await _build_infra_via_build_mode("cables", tile_id)
-
-
-func _build_coal_runway() -> void:
-	await _build_infra_via_build_mode("cables", "tile_22_3")
-	_built.coal_mine_a = await _build_building_via_build_mode(_buildings.mine, _recipes.coal_mining, "tile_22_3", false)
-	_built.coal_mine_b = await _build_building_via_build_mode(_buildings.mine, _recipes.coal_mining, "tile_22_3", false)
-	_built.coal_mine_c = await _build_building_via_build_mode(_buildings.mine, _recipes.coal_mining, "tile_22_3", false)
-	_built.coal_mine_d = await _build_building_via_build_mode(_buildings.mine, _recipes.coal_mining, "tile_22_3", false)
-	for instance_id in [str(_built.coal_mine_a), str(_built.coal_mine_b), str(_built.coal_mine_c), str(_built.coal_mine_d)]:
-		MatchState.route_output_to_market(instance_id, str(_goods.coal))
-		_check(MatchState.is_output_market(instance_id, str(_goods.coal)),
-			"coal runway mine routes directly to market: %s" % instance_id)
-	MatchState.set_auto_sell_impact("tile_22_3", MatchState.IMPACT_ANY)
-	MatchState.enable_sell_surplus("tile_22_3")
-	await _advance_until_no_construction(8)
-	await _advance_turns(COAL_RUNWAY_TURNS, "coal runway market sales")
-	_cash_after_coal_runway = MatchState.money
-	_check(_sold_qty(_goods.coal) > 0, "coal runway sold coal to market before the motor buildout")
-	_check(_recent_run_metric("profit_post_tax", mini(3, COAL_RUNWAY_TURNS)) > 0.0,
-		"coal runway is recently post-tax profitable before expansion")
 
 
 func _land_path(source_tile: String, dest_tile: String) -> Array:
@@ -477,39 +675,6 @@ func _build_infra_via_build_mode(infra_type: String, tile_id: String) -> void:
 	_check(started, "infrastructure project queued: %s on %s" % [infra_type, tile_id])
 
 
-func _build_supply_chain() -> void:
-	if str(_built.get("coal_mine_a", "")) == "":
-		_built.coal_mine_a = await _build_building_via_build_mode(_buildings.mine, _recipes.coal_mining, "tile_22_3", false)
-	if str(_built.get("coal_mine_b", "")) == "":
-		_built.coal_mine_b = await _build_building_via_build_mode(_buildings.mine, _recipes.coal_mining, "tile_22_3", false)
-	if str(_built.get("coal_mine_c", "")) == "":
-		_built.coal_mine_c = await _build_building_via_build_mode(_buildings.mine, _recipes.coal_mining, "tile_22_3", false)
-	if str(_built.get("coal_mine_d", "")) == "":
-		_built.coal_mine_d = await _build_building_via_build_mode(_buildings.mine, _recipes.coal_mining, "tile_22_3", false)
-	_built.iron_mine_a = await _build_building_via_build_mode(_buildings.mine, _recipes.iron_mining, "tile_26_5", false)
-	_built.iron_mine_b = await _build_building_via_build_mode(_buildings.mine, _recipes.iron_mining, "tile_26_5", false)
-	_built.iron_mine_c = await _build_building_via_build_mode(_buildings.mine, _recipes.iron_mining, "tile_26_5", false)
-	_built.copper_mine_a = await _build_building_via_build_mode(_buildings.mine, _recipes.copper_mining, "tile_21_10", false)
-	_built.copper_mine_b = await _build_building_via_build_mode(_buildings.mine, _recipes.copper_mining, "tile_21_10", false)
-	_built.copper_mine_c = await _build_building_via_build_mode(_buildings.mine, _recipes.copper_mining, "tile_21_10", false)
-	_built.pig_iron_a = await _build_building_via_build_mode(_buildings.furnace, _recipes.pig_iron, "tile_26_5", true)
-	_built.pig_iron_b = await _build_building_via_build_mode(_buildings.furnace, _recipes.pig_iron, "tile_26_5", true)
-	_built.steel_a = await _build_building_via_build_mode(_buildings.furnace, _recipes.steel, "tile_26_5", true)
-	_built.steel_b = await _build_building_via_build_mode(_buildings.furnace, _recipes.steel, "tile_26_5", true)
-	_built.copper_ingots_a = await _build_building_via_build_mode(_buildings.furnace, _recipes.copper_ingots, "tile_21_10", true)
-	_built.copper_ingots_b = await _build_building_via_build_mode(_buildings.furnace, _recipes.copper_ingots, "tile_21_10", true)
-	_built.copper_wiring_a = await _build_building_via_build_mode(_buildings.industrial_factory, _recipes.copper_wiring, "tile_21_10", true)
-	_built.copper_wiring_b = await _build_building_via_build_mode(_buildings.industrial_factory, _recipes.copper_wiring, "tile_21_10", true)
-	_built.motor_a = await _build_building_via_build_mode(_buildings.industrial_factory, _recipes.motor, "tile_25_6", true)
-	_built.motor_b = await _build_building_via_build_mode(_buildings.industrial_factory, _recipes.motor, "tile_25_6", true)
-	_built.motor_c = await _build_building_via_build_mode(_buildings.industrial_factory, _recipes.motor, "tile_25_6", true)
-	_built.water_pump = await _build_building_via_build_mode(_buildings.water_pump, _recipes.water_pumping, "tile_20_9", false)
-	_built.power = await _build_building_via_build_mode(_buildings.coal_power, _recipes.power, "tile_20_9", true)
-	_built.power_b = await _build_building_via_build_mode(_buildings.coal_power, _recipes.power, "tile_20_9", true)
-	for key in _built.keys():
-		_check(str(_built[key]) != "", "build helper returned instance id for %s" % str(key))
-
-
 func _build_building_via_build_mode(building_id: String, recipe_id: String, tile_id: String, allow_market_materials: bool) -> String:
 	var before_projects := _keys_dict(Construction.construction_projects)
 	var before_buildings := _keys_dict(MatchState.buildings)
@@ -556,40 +721,6 @@ func _find_new_project_or_building(before_projects: Dictionary, before_buildings
 	return ""
 
 
-func _configure_output_routes() -> void:
-	_select_output_destination(str(_built.coal_mine_a), _goods.coal, "tile_26_5")
-	_select_output_destination(str(_built.coal_mine_b), _goods.coal, "tile_26_5")
-	_select_output_destination(str(_built.coal_mine_c), _goods.coal, "tile_20_9")
-	_select_output_destination(str(_built.coal_mine_d), _goods.coal, "tile_20_9")
-	for instance_id in [str(_built.steel_a), str(_built.steel_b)]:
-		_select_output_destination(instance_id, _goods.steel, "tile_25_6")
-	for instance_id in [str(_built.copper_wiring_a), str(_built.copper_wiring_b)]:
-		_select_output_destination(instance_id, _goods.copper_wiring, "tile_25_6")
-	for instance_id in [str(_built.motor_a), str(_built.motor_b), str(_built.motor_c)]:
-		MatchState.route_output_to_market(instance_id, str(_goods.motor))
-		_check(MatchState.is_output_market(instance_id, str(_goods.motor)), "motor output routed to market: %s" % instance_id)
-	_check(MatchState.get_output_stockpile_destination(str(_built.coal_mine_a), str(_goods.coal)) == "tile_26_5",
-		"coal output routed to iron/steel tile")
-	_check(MatchState.get_output_stockpile_destination(str(_built.coal_mine_c), str(_goods.coal)) == "tile_20_9",
-		"coal output routed to power tile")
-	_check(MatchState.get_output_stockpile_destination(str(_built.coal_mine_d), str(_goods.coal)) == "tile_20_9",
-		"second coal output routed to power tile")
-	_check(MatchState.get_output_stockpile_destination(str(_built.steel_a), str(_goods.steel)) == "tile_25_6",
-		"steel output routed to motor tile")
-	_check(MatchState.get_output_stockpile_destination(str(_built.copper_wiring_a), str(_goods.copper_wiring)) == "tile_25_6",
-		"copper wiring output routed to motor tile")
-
-
-func _configure_surplus_sales() -> void:
-	for tile_id in ["tile_22_3", "tile_20_9", "tile_26_5", "tile_21_10", "tile_25_6"]:
-		MatchState.set_auto_sell_impact(str(tile_id), MatchState.IMPACT_ANY)
-		_check(MatchState.get_auto_sell_impact(str(tile_id)) == MatchState.IMPACT_ANY,
-			"surplus sale impact set to any for %s" % str(tile_id))
-		MatchState.enable_sell_surplus(str(tile_id))
-		_check(MatchState.is_sell_surplus_enabled(str(tile_id)),
-			"master surplus auto-sell armed for %s" % str(tile_id))
-
-
 func _select_output_destination(instance_id: String, good_id: String, tile_id: String) -> void:
 	MatchState.begin_output_stockpile_selection(instance_id, good_id)
 	_check(not MatchState.pending_output_stockpile_selection.is_empty(),
@@ -597,21 +728,6 @@ func _select_output_destination(instance_id: String, good_id: String, tile_id: S
 	_terrain.stockpile_destination_selected.emit(_tile(tile_id))
 	_check(MatchState.get_output_stockpile_destination(instance_id, good_id) == tile_id,
 		"output destination selected: %s -> %s" % [good_id, tile_id])
-
-
-func _configure_tile_only_inputs() -> void:
-	for instance_id in [str(_built.pig_iron_a), str(_built.pig_iron_b)]:
-		_set_tile_only(instance_id, [_goods.iron_ore, _goods.coal])
-	for instance_id in [str(_built.steel_a), str(_built.steel_b)]:
-		_set_tile_only(instance_id, [_goods.iron_ingots, _goods.coal])
-	for instance_id in [str(_built.copper_ingots_a), str(_built.copper_ingots_b)]:
-		_set_tile_only(instance_id, [_goods.copper_ore])
-	for instance_id in [str(_built.copper_wiring_a), str(_built.copper_wiring_b)]:
-		_set_tile_only(instance_id, [_goods.copper_ingots])
-	for instance_id in [str(_built.motor_a), str(_built.motor_b), str(_built.motor_c)]:
-		_set_tile_only(instance_id, [_goods.steel, _goods.copper_wiring])
-	_set_tile_only(str(_built.power), [_goods.coal, _goods.pure_water])
-	_set_tile_only(str(_built.power_b), [_goods.coal, _goods.pure_water])
 
 
 func _set_tile_only(instance_id: String, good_ids: Array) -> void:
@@ -675,6 +791,13 @@ func _check_economy_end_state() -> void:
 	var cumulative_profit := _cumulative_run_metric("profit_post_tax")
 	var cumulative_revenue := _cumulative_run_metric("revenue")
 	var recent_profit := _recent_run_metric("profit_post_tax", 10)
+	var motor_ids := _instances_for("motor_a") + _instances_for("motor_b") + _instances_for("motor_c")
+	var wiring_ids := _instances_for("copper_wiring_a") + _instances_for("copper_wiring_b")
+	var coal_mine_a := _first_instance("coal_mine_a")
+	var coal_mine_c := _first_instance("coal_mine_c")
+	var coal_mine_d := _first_instance("coal_mine_d")
+	var steel_a := _first_instance("steel_a")
+	var wiring_a := _first_instance("copper_wiring_a")
 	_check(not summary.is_empty(), "production summary exists after E2E run")
 	_check(int(summary.get("power_demand", 0)) > 0, "power demand was transmitted through cabled tiles")
 	_check(int(summary.get("grid_bought", 0)) >= 0, "power grid settlement ran")
@@ -685,9 +808,9 @@ func _check_economy_end_state() -> void:
 	_check(float(summary.get("transport_paid", 0.0)) >= 0.0, "transport costs were tracked")
 	_check(totals.get(_goods.motor, 0) > 0 or _sold_qty(_goods.motor) > 0,
 		"motor supply chain produced or sold motors")
-	_check(_produced_total_by([str(_built.motor_a), str(_built.motor_b), str(_built.motor_c)], _goods.motor) > 0,
+	_check(_produced_total_by(motor_ids, _goods.motor) > 0,
 		"motor factories produced motors")
-	_check(_produced_total_by([str(_built.copper_wiring_a), str(_built.copper_wiring_b)], _goods.copper_wiring) > 0,
+	_check(_produced_total_by(wiring_ids, _goods.copper_wiring) > 0,
 		"wiring factories produced copper wiring")
 	_check(_sold_qty(_goods.motor) > 0, "motor sale was logged")
 	_check(_sold_revenue(_goods.motor) > 0.0, "motor sale produced market revenue")
@@ -706,7 +829,24 @@ func _check_economy_end_state() -> void:
 		"wiring route between industrial tiles resolves")
 	_check(TransportService.route_to_nearest_port("tile_25_6", _goods.motor).get("port", "") == "tile_24_7",
 		"motor market route uses Capital")
-	_scenario_note = "optimized Capital motor chain: coal-first runway on tile_22_3, dual coal power on tile_20_9, iron+steel tile_26_5, copper+wiring tile_21_10, assembly tile_25_6, 24 production buildings"
+	# Output-route destinations resolved on representative chain links.
+	if coal_mine_a != "":
+		_check(MatchState.get_output_stockpile_destination(coal_mine_a, str(_goods.coal)) == "tile_26_5",
+			"coal output routed to iron/steel tile")
+	if coal_mine_c != "":
+		_check(MatchState.get_output_stockpile_destination(coal_mine_c, str(_goods.coal)) == "tile_20_9",
+			"coal output routed to power tile")
+	if coal_mine_d != "":
+		_check(MatchState.get_output_stockpile_destination(coal_mine_d, str(_goods.coal)) == "tile_20_9",
+			"second coal output routed to power tile")
+	if steel_a != "":
+		_check(MatchState.get_output_stockpile_destination(steel_a, str(_goods.steel)) == "tile_25_6",
+			"steel output routed to motor tile")
+	if wiring_a != "":
+		_check(MatchState.get_output_stockpile_destination(wiring_a, str(_goods.copper_wiring)) == "tile_25_6",
+			"copper wiring output routed to motor tile")
+	if _scenario_note == "":
+		_scenario_note = "scenario %s completed to turn %d" % [_scenario_name, _target_turn]
 
 
 func _check_benchmark_baseline() -> void:
@@ -746,7 +886,7 @@ func _write_latest_metrics() -> void:
 	var recent_profit := _recent_run_metric("profit_post_tax", 10)
 	var slow_turns := _slow_turn_records(SLOW_TURN_THRESHOLD_MS)
 	var latest := {
-		"scenario": "e2e_stoneshore",
+		"scenario": _scenario_name,
 		"target_turn": _target_turn,
 		"assertions_passed": _passed,
 		"assertions_failed": _failed,

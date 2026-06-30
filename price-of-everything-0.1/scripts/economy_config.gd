@@ -17,10 +17,12 @@ var demolish_refund_share: float = 1.0
 const MAINTENANCE_PER_BUILDING: float = 1.0
 
 # --- Labour rates (cost per worker per turn) ---
-# Doubled from the original 0.001/0.003/0.005 — a higher starting wage bill.
-const LABOUR_UNSKILLED_RATE: float = 0.002
-const LABOUR_SKILLED_RATE: float = 0.006
-const LABOUR_HIGH_SKILLED_RATE: float = 0.010
+# Rebalance: unskilled:skilled:h_skilled = 1:3:10 (a highly-skilled worker costs 10x an unskilled
+# one). Rates raised so per-building head-counts read in the ~1000-10000 range at the back-solved
+# wage bills; head-counts were rescaled in lock-step so each building's total wage bill is unchanged.
+const LABOUR_UNSKILLED_RATE: float = 0.0032
+const LABOUR_SKILLED_RATE: float = 0.0096
+const LABOUR_HIGH_SKILLED_RATE: float = 0.032
 
 # --- Labour wage growth (compounding per turn) ---
 # Wages drift upward every turn: the effective rate at turn t is

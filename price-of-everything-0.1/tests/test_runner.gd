@@ -2809,14 +2809,14 @@ func _test_modifiers_production_recipe_output() -> void:
 	MatchState.deposit_remaining[tile] = {"coal": 999}
 	# Coal carries a standing −50% deposit-penalty modifier (re-seeded by the reset
 	# above); drop it so this test isolates the +5% extraction modifier on a clean
-	# 20-unit baseline.
+	# 60-unit baseline.
 	Modifiers.remove("deposit_penalty_coal")
 
 	var summary := _fresh_production_summary()
 	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
 	Production._flush_output_buffer()
 	var base_produced: int = int(summary.produced.get("g_001", 0))
-	_check(base_produced == 20, "baseline: coal recipe produces 20 (got %d)" % base_produced)
+	_check(base_produced == 60, "baseline: coal recipe produces 60 (got %d)" % base_produced)
 
 	# Now with the Mining Mastery modifier active: mining recipes +5%.
 	Stockpile.clear_all()
@@ -2826,8 +2826,8 @@ func _test_modifiers_production_recipe_output() -> void:
 	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
 	Production._flush_output_buffer()
 	var boosted_produced: int = int(summary.produced.get("g_001", 0))
-	_check(boosted_produced == 21, "with +5%% mining modifier: 20 → 21 (got %d)" % boosted_produced)
-	_check(Stockpile.get_at_tile(tile, "g_001") == 21,
+	_check(boosted_produced == 63, "with +5%% mining modifier: 60 → 63 (got %d)" % boosted_produced)
+	_check(Stockpile.get_at_tile(tile, "g_001") == 63,
 		"the boosted output lands in the tile stockpile (got %d)" % Stockpile.get_at_tile(tile, "g_001"))
 	Modifiers.reset()
 	MatchState.remove_building(inst)
@@ -2872,7 +2872,7 @@ func _test_deposit_penalty_modifier() -> void:
 		"Improved Coal Mining: −50%% + 20%% = net −30%% (got %s)" % float(r2.get("net", 0.0)))
 	_check((r2.get("parts", []) as Array).size() == 2,
 		"breakdown shows both the penalty tile and the research tile")
-	# End to end: a coal mine produces round(20 * 0.70) = 14.
+	# End to end: a coal mine produces round(60 * 0.70) = 42.
 	var tile := "tile_6_8"
 	var inst: String = MatchState.add_building("b_001", "r_001", tile)
 	MatchState.reveal_deposit(tile, "coal")
@@ -2880,8 +2880,8 @@ func _test_deposit_penalty_modifier() -> void:
 	var summary := _fresh_production_summary()
 	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
 	Production._flush_output_buffer()
-	_check(int(summary.produced.get("g_001", 0)) == 14,
-		"coal output reflects net −30%% (20 → 14, got %d)" % int(summary.produced.get("g_001", 0)))
+	_check(int(summary.produced.get("g_001", 0)) == 42,
+		"coal output reflects net −30%% (60 → 42, got %d)" % int(summary.produced.get("g_001", 0)))
 	# Exempt goods (not in EXTRACTION_PENALTY_PCT) carry no penalty tile.
 	var ro: Dictionary = Modifiers.resolve_pct("recipe_output", "rX", {"good_internal": "crude_oil"})
 	_check(absf(float(ro.get("net", 0.0))) < 0.001,
