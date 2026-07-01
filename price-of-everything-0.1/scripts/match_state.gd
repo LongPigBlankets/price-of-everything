@@ -38,6 +38,7 @@ var labour_multiplier: float = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
 
 # --- Output routing ---
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
+var output_special_order_destinations: Dictionary = {}  # instance_id -> {good_id -> special_order_id}
 const MARKET_DESTINATION := "__market__"  # sentinel tile_id: route this building's output to market
 var input_tile_only: Dictionary = {}  # "instance_id|good_id" -> true (tile stockpile ONLY; default buys from market)
 var pending_output_stockpile_selection: Dictionary = {}
@@ -198,6 +199,9 @@ signal unlock_granted(title: String, description: String, via_condition: bool)
 signal tile_survey_completed(tile_id: String, deposit_goods: Array)
 ## A shipment arrived at a full tile and is now waiting to unload.
 signal overflow_shipment_held(record: Dictionary)
+## A special-order delivery reached port with units beyond the completed order's
+## demand. The UI must ask whether to sell those units or stockpile them at port.
+signal special_order_overflow_ready(record: Dictionary)
 ## Debug cheat `swap bottom menu` flipped which bottom-menu icon set is active.
 signal alt_bottom_menu_changed(enabled: bool)
 ## A UI surface (notification deep-link, etc.) asks the map to focus a tile:
@@ -660,6 +664,7 @@ func remove_building(instance_id: String) -> bool:
 	
 	buildings.erase(instance_id)
 	output_stockpile_destinations.erase(instance_id)
+	output_special_order_destinations.erase(instance_id)
 	# Removing battery housing shrinks the tile's cell slots — refund any now-excess loaded cells.
 	if str(Catalog.get_building(str(instance.get("building_id", ""))).get("category", "")) == "battery":
 		refund_battery_cells_over_slots(tile_id)
@@ -1495,6 +1500,7 @@ func reset() -> void:
 	buildings.clear()
 	tile_buildings.clear()
 	output_stockpile_destinations.clear()
+	output_special_order_destinations.clear()
 	pending_output_stockpile_selection.clear()
 	queued_stockpile_market_sales.clear()
 	sell_surplus_tiles.clear()
@@ -1533,6 +1539,7 @@ func debug_dump() -> Dictionary:
 		"buildings": buildings.duplicate(true),
 		"tile_buildings": tile_buildings.duplicate(true),
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
+		"output_special_order_destinations": output_special_order_destinations.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": pending_transport_shipments.duplicate(true),
 		"tile_land_owned": tile_land_owned.duplicate(true),
@@ -1560,6 +1567,7 @@ func export_state() -> Dictionary:
 		"sell_mode": sell_mode,
 		"route_objective": route_objective,
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
+		"output_special_order_destinations": output_special_order_destinations.duplicate(true),
 		"input_tile_only": input_tile_only.duplicate(true),
 		"recurring_moves": recurring_moves.duplicate(true),
 		"scheduled_moves": scheduled_moves.duplicate(true),
@@ -1603,6 +1611,7 @@ func import_state(d: Dictionary) -> void:
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
+	output_special_order_destinations = (d.get("output_special_order_destinations", {}) as Dictionary).duplicate(true)
 	input_tile_only = (d.get("input_tile_only", {}) as Dictionary).duplicate(true)
 	recurring_moves = (d.get("recurring_moves", []) as Array).duplicate(true)
 	scheduled_moves = (d.get("scheduled_moves", []) as Array).duplicate(true)
@@ -1715,6 +1724,7 @@ func set_output_stockpile_destination(instance_id: String, tile_id: String, good
 	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
 	per_good[good_id] = tile_id
 	output_stockpile_destinations[instance_id] = per_good
+	_clear_output_special_order_tag(instance_id, good_id)
 	pending_output_stockpile_selection.clear()
 	output_stockpile_destination_changed.emit(instance_id, tile_id, good_id)
 
@@ -1723,6 +1733,7 @@ func clear_output_stockpile_destination(instance_id: String, good_id: String = "
 		return
 	if good_id == "":
 		output_stockpile_destinations.erase(instance_id)  # clear the whole building
+		output_special_order_destinations.erase(instance_id)
 		return
 	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
 	per_good.erase(good_id)
@@ -1730,6 +1741,7 @@ func clear_output_stockpile_destination(instance_id: String, good_id: String = "
 		output_stockpile_destinations.erase(instance_id)
 	else:
 		output_stockpile_destinations[instance_id] = per_good
+	_clear_output_special_order_tag(instance_id, good_id)
 
 func get_output_stockpile_destination(instance_id: String, good_id: String = "") -> String:
 	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
@@ -1751,6 +1763,22 @@ func route_output_to_market(instance_id: String, good_id: String) -> void:
 	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
 	per_good[good_id] = MARKET_DESTINATION
 	output_stockpile_destinations[instance_id] = per_good
+	_clear_output_special_order_tag(instance_id, good_id)
+	pending_output_stockpile_selection.clear()
+	output_stockpile_destination_changed.emit(instance_id, MARKET_DESTINATION, good_id)
+
+func route_output_to_special_order(instance_id: String, good_id: String, special_order_id: String) -> void:
+	if instance_id == "" or good_id == "" or special_order_id == "":
+		return
+	var order := SpecialOrderState.get_order(special_order_id)
+	if order.is_empty() or str(order.get("good_id", "")) != good_id:
+		return
+	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
+	per_good[good_id] = MARKET_DESTINATION
+	output_stockpile_destinations[instance_id] = per_good
+	var per_order: Dictionary = output_special_order_destinations.get(instance_id, {})
+	per_order[good_id] = special_order_id
+	output_special_order_destinations[instance_id] = per_order
 	pending_output_stockpile_selection.clear()
 	output_stockpile_destination_changed.emit(instance_id, MARKET_DESTINATION, good_id)
 
@@ -1764,6 +1792,34 @@ func is_output_market(instance_id: String, good_id: String = "") -> bool:
 		if str(v) == MARKET_DESTINATION:
 			return true
 	return false
+
+func get_output_special_order_id(instance_id: String, good_id: String = "") -> String:
+	var per_good: Dictionary = output_special_order_destinations.get(instance_id, {})
+	if per_good.is_empty():
+		return ""
+	if good_id != "":
+		return str(per_good.get(good_id, ""))
+	if per_good.size() == 1:
+		return str(per_good.values()[0])
+	return ""
+
+func is_output_special_order(instance_id: String, good_id: String = "") -> bool:
+	return get_output_special_order_id(instance_id, good_id) != ""
+
+func _clear_output_special_order_tag(instance_id: String, good_id: String = "") -> void:
+	if instance_id == "":
+		return
+	if good_id == "":
+		output_special_order_destinations.erase(instance_id)
+		return
+	var per_order: Dictionary = output_special_order_destinations.get(instance_id, {})
+	if per_order.is_empty():
+		return
+	per_order.erase(good_id)
+	if per_order.is_empty():
+		output_special_order_destinations.erase(instance_id)
+	else:
+		output_special_order_destinations[instance_id] = per_order
 
 func queue_stockpile_market_sale(tile_id: String) -> void:
 	if tile_id == "":
@@ -2271,6 +2327,154 @@ func get_tile_sales(tile_id: String) -> Dictionary:
 func get_pending_transport_shipments() -> Array:
 	return pending_transport_shipments.duplicate(true)
 
+func offer_special_order_overflow(record: Dictionary) -> void:
+	var rec := record.duplicate(true)
+	if int(rec.get("qty", 0)) <= 0:
+		return
+	special_order_overflow_ready.emit(rec)
+
+func special_order_overflow_can_stockpile(record: Dictionary) -> bool:
+	var port_tile := str(record.get("port_tile", record.get("destination_tile", "")))
+	var qty := int(record.get("qty", 0))
+	if port_tile == "" or qty <= 0:
+		return false
+	return Stockpile.get_free_capacity(port_tile) >= qty
+
+func sell_special_order_overflow(record: Dictionary) -> Dictionary:
+	var good_id := str(record.get("good_id", ""))
+	var qty := int(record.get("qty", 0))
+	var revenue := float(record.get("total_revenue", 0.0))
+	if good_id == "" or qty <= 0:
+		return {}
+	var source_tile := str(record.get("source_tile", record.get("tile_id", "")))
+	var port_tile := str(record.get("port_tile", record.get("destination_tile", "")))
+	var sale_record := {
+		"tile_id": source_tile,
+		"items": [{"good_id": good_id, "qty": qty, "revenue": revenue}],
+		"total_qty": qty,
+		"total_revenue": revenue,
+	}
+	if revenue > 0.0:
+		add_money(revenue)
+		record_tile_sale(source_tile, qty, revenue)
+		emit_stockpile_market_sale_completed(sale_record)
+		if port_tile != "":
+			market_sale_arrived_at_port.emit(port_tile, revenue)
+	return sale_record
+
+func stockpile_special_order_overflow(record: Dictionary) -> bool:
+	if not special_order_overflow_can_stockpile(record):
+		return false
+	var port_tile := str(record.get("port_tile", record.get("destination_tile", "")))
+	var good_id := str(record.get("good_id", ""))
+	var qty := int(record.get("qty", 0))
+	return Stockpile.add(port_tile, good_id, qty) == qty
+
+func take_pending_special_order_shipments(order_id: String) -> Array:
+	if order_id == "":
+		return []
+	var taken: Array = []
+	var remaining: Array = []
+	for shipment in pending_transport_shipments:
+		var s: Dictionary = shipment
+		if bool(s.get("is_sale", false)) and str(s.get("special_order_id", "")) == order_id:
+			taken.append(s.duplicate(true))
+		else:
+			remaining.append(s)
+	if taken.is_empty():
+		return []
+	pending_transport_shipments = remaining
+	transport_shipments_changed.emit()
+	return taken
+
+func special_order_shipments_manifest(shipments: Array) -> Dictionary:
+	var manifest: Dictionary = {}
+	for shipment in shipments:
+		for item in _shipment_sale_items(shipment as Dictionary):
+			var good_id := str(item.get("good_id", ""))
+			var qty := int(item.get("qty", 0))
+			if good_id != "" and qty > 0:
+				manifest[good_id] = int(manifest.get(good_id, 0)) + qty
+	return manifest
+
+func can_store_special_order_shipments_at_ports(shipments: Array) -> bool:
+	var required_by_port: Dictionary = {}
+	for shipment in shipments:
+		var s: Dictionary = shipment
+		var port_tile := str(s.get("destination_tile", ""))
+		if port_tile == "":
+			return false
+		var total := 0
+		for item in _shipment_sale_items(s):
+			total += int(item.get("qty", 0))
+		required_by_port[port_tile] = int(required_by_port.get(port_tile, 0)) + total
+	for port in required_by_port.keys():
+		if Stockpile.get_free_capacity(str(port)) < int(required_by_port[port]):
+			return false
+	return true
+
+func resolve_special_order_shipments(shipments: Array, action: String, destination_tile: String = "") -> Dictionary:
+	var resolved: Array = []
+	var total_qty := 0
+	var total_revenue := 0.0
+	match action:
+		"sell":
+			for shipment in shipments:
+				var sell_shipment: Dictionary = (shipment as Dictionary).duplicate(true)
+				sell_shipment.erase("special_order_id")
+				sell_shipment.erase("special_order_source_mode")
+				queue_transport_shipment(sell_shipment)
+				resolved.append(sell_shipment)
+				total_qty += _shipment_total_units(sell_shipment)
+				total_revenue += float(sell_shipment.get("sale_record", {}).get("total_revenue", 0.0))
+		"stockpile_port":
+			if not can_store_special_order_shipments_at_ports(shipments):
+				return {"ok": false, "reason": "port_capacity"}
+			for shipment in shipments:
+				var s: Dictionary = shipment
+				var port_tile := str(s.get("destination_tile", ""))
+				for item in _shipment_sale_items(s):
+					var stock_shipment := _stockpile_shipment_from_sale_item(s, port_tile, item as Dictionary)
+					_queue_or_store_resolved_shipment(stock_shipment)
+					resolved.append(stock_shipment)
+					total_qty += int(stock_shipment.get("qty", 0))
+		"reroute":
+			if destination_tile == "":
+				return {"ok": false, "reason": "missing_destination"}
+			for shipment in shipments:
+				var s: Dictionary = shipment
+				var source_tile := str(s.get("source_tile", ""))
+				var manifest := _shipment_sale_manifest(s)
+				if manifest.is_empty():
+					continue
+				var route_good_id := ""
+				for good_key in manifest.keys():
+					route_good_id = str(good_key)
+					break
+				var quote := TransportService.quote_manifest(source_tile, destination_tile, manifest, {"route_good_id": route_good_id})
+				var route: Dictionary = quote.get("route", {})
+				var turns := int(quote.get("turns", 0))
+				for item in quote.get("items", []):
+					var stock_shipment := {
+						"source_tile": source_tile,
+						"destination_tile": destination_tile,
+						"good_id": str(item.get("good_id", "")),
+						"qty": int(item.get("qty", 0)),
+						"transport_cost": 0.0,
+						"tile_distance": int(route.get("tile_distance", 0)),
+						"transport_turns": turns,
+						"turns_remaining": turns,
+						"tiles": route.get("tiles", []),
+						"path": route.get("path", []),
+						"legs": route.get("legs", []),
+					}
+					_queue_or_store_resolved_shipment(stock_shipment)
+					resolved.append(stock_shipment)
+					total_qty += int(stock_shipment.get("qty", 0))
+		_:
+			return {"ok": false, "reason": "unknown_action"}
+	return {"ok": true, "action": action, "shipments": resolved, "total_qty": total_qty, "total_revenue": total_revenue}
+
 func get_inbound_transport_shipments(destination_tile: String, good_id: String = "") -> Array:
 	var result: Array = []
 	for shipment in pending_transport_shipments:
@@ -2416,6 +2620,46 @@ func _shipment_goods_dict(s: Dictionary) -> Dictionary:
 		if gid != "":
 			g[gid] = int(s.get("qty", 0))
 	return g
+
+func _shipment_sale_items(s: Dictionary) -> Array:
+	if not bool(s.get("is_sale", false)):
+		return []
+	return (s.get("sale_record", {}).get("items", []) as Array)
+
+func _shipment_sale_manifest(s: Dictionary) -> Dictionary:
+	var manifest: Dictionary = {}
+	for item in _shipment_sale_items(s):
+		var good_id := str(item.get("good_id", ""))
+		var qty := int(item.get("qty", 0))
+		if good_id != "" and qty > 0:
+			manifest[good_id] = int(manifest.get(good_id, 0)) + qty
+	return manifest
+
+func _stockpile_shipment_from_sale_item(s: Dictionary, destination_tile: String, item: Dictionary) -> Dictionary:
+	return {
+		"source_tile": str(s.get("source_tile", "")),
+		"destination_tile": destination_tile,
+		"good_id": str(item.get("good_id", "")),
+		"qty": int(item.get("qty", 0)),
+		"transport_cost": 0.0,
+		"tile_distance": int(s.get("tile_distance", 0)),
+		"transport_turns": int(s.get("transport_turns", 0)),
+		"turns_remaining": int(s.get("turns_remaining", 0)),
+		"tiles": s.get("tiles", []),
+		"path": s.get("path", []),
+		"legs": s.get("legs", []),
+	}
+
+func _queue_or_store_resolved_shipment(shipment: Dictionary) -> void:
+	var dest := str(shipment.get("destination_tile", ""))
+	var good_id := str(shipment.get("good_id", ""))
+	var qty := int(shipment.get("qty", 0))
+	if dest == "" or good_id == "" or qty <= 0:
+		return
+	if int(shipment.get("turns_remaining", 0)) >= 1:
+		queue_transport_shipment(shipment)
+	else:
+		Stockpile.add(dest, good_id, qty)
 
 ## Snapshot this turn's per-link flow so next turn's transport costs can read it.
 ## Called each PROCESS turn. The penalty itself is a transport-cost surcharge applied

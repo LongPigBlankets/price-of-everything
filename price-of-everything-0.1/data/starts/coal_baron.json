@@ -3,7 +3,7 @@
 	"start": true,
 	"name": "coal_baron",
 	"ruleset": "standard",
-	"money": 20,
+	"money": 200,
 	"loans": [ { "principal": 100 } ],
 	"buildings": [
 		{ "building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_6_8", "level": 2 },

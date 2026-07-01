@@ -4,7 +4,7 @@ extends Node
 # this is the only file you need to edit.
 
 # --- Player starting state ---
-const STARTING_MONEY: float = 200.0
+const STARTING_MONEY: float = 600.0
 
 # --- Demolish / refund ---
 # Share of a demolished building's construction cost returned to the player: the build

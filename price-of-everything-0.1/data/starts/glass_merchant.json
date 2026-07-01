@@ -3,7 +3,7 @@
 	"start": true,
 	"name": "glass_merchant",
 	"ruleset": "standard",
-	"money": 0,
+	"money": 200,
 	"loans": [ { "principal": 250 } ],
 	"buildings": [
 		{ "building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_22_15" },

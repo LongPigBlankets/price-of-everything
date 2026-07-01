@@ -57,9 +57,10 @@ loss-making company before the chain closes:
 - The apex-first orders (build the motor factory first, buy everything at market) bleed even
   harder — they run loss-making finished-goods buildings with no upstream to feed them.
 
-Result, at the **£200 default start** (`EconomyConfig.STARTING_MONEY`): **no viable order.**
-£200 + initial loan capacity funds ~2 buildings, which isn't enough to close *any* loop before
-bleeding out. Every order bankrupts between turns 9–17.
+Result, at the old **£200 clean-slate start**: **no viable order.** £200 + initial loan
+capacity funds ~2 buildings, which isn't enough to close *any* loop before bleeding out. Every
+order bankrupts between turns 9–17. The clean-slate/default start now uses
+`EconomyConfig.STARTING_MONEY = 600`; authored challenge starts carry explicit cash values.
 
 This is the same signal as the `e2e_stoneshore` net-negative buildout: the rebalance left the
 economy *correct per-recipe* but *unforgiving at the company level*.
@@ -149,8 +150,7 @@ Unit suite green (860/860).
 ## Designed but **not** in this PR (the remaining viability work)
 
 1. **Special orders** — the player-only demand-spike feature from lever (b). Highest-leverage new
-   mechanic for the cold start; needs design + implementation (market hook, UI, the
-   service-and-reward loop).
+   mechanic for the cold start; design plan now lives in [`special-orders-plan.md`](special-orders-plan.md).
 2. **Power-shift (5% of labour → power consumption)** — small integration sweetener (+~£2/turn on
    the complete chain), rewards owning your power because power *is* internalisable. Deferred: it's
    a per-recipe `energy_req` data pass for a +3% effect and would move power-dependent test numbers.
@@ -162,9 +162,9 @@ Unit suite green (860/860).
    Until the glut exists, the **mine-and-sell trader order out-earns the full chain** (£549 vs the
    chain's slow build) — refining doesn't yet clearly beat dumping raws. (Carry-over from the
    goods-balancing pending list.)
-4. **Lower the starting cash question** — either raise `STARTING_MONEY` toward ~£500–600, or keep
-   £200 and rely on special orders + an early market-buy warm-up to bridge the gap. This is a
-   design call, not just a number.
+4. **Starting cash split** — decided: clean-slate/default starts get £600; themed starts get £200;
+   Ambitious Start gets £300 and no buildings. Special orders still matter as the early bootstrap
+   bridge for cash-thin/challenge starts.
 
 ---
 

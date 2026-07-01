@@ -3,7 +3,7 @@
 	"start": true,
 	"name": "troubled_carmaker",
 	"ruleset": "standard",
-	"money": 0,
+	"money": 200,
 	"loans": [ { "principal": 500 } ],
 	"buildings": [
 		{ "building_id": "b_009", "recipe_id": "r_118", "tile_id": "tile_23_6" },

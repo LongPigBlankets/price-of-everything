@@ -1160,7 +1160,11 @@ func _make_output_route_row(instance_id: String, source_tile: String, good_id: S
 	btns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(btns)
 
-	var is_market := MatchState.is_output_market(instance_id, good_id)
+	var active_order: Dictionary = SpecialOrderState.get_active_order_for_good(good_id)
+	var special_order_id := str(active_order.get("id", ""))
+	var routed_order_id := MatchState.get_output_special_order_id(instance_id, good_id)
+	var is_special_order := special_order_id != "" and routed_order_id == special_order_id
+	var is_market := MatchState.is_output_market(instance_id, good_id) and not is_special_order
 	var dest := MatchState.get_output_stockpile_destination(instance_id, good_id)
 	var on_tile := dest != "" and dest == source_tile
 	var other_tile := dest != "" and dest != source_tile
@@ -1173,6 +1177,20 @@ func _make_output_route_row(instance_id: String, source_tile: String, good_id: S
 		_output_route_detail.visible = true
 	)
 	btns.add_child(market_btn)
+
+	if not active_order.is_empty():
+		var special_btn := _make_route_choice_button("Special Order", is_special_order)
+		special_btn.tooltip_text = "%d required, %d committed, %d delivered" % [
+			int(active_order.get("qty_required", 0)),
+			int(active_order.get("qty_committed", 0)),
+			int(active_order.get("qty_delivered", 0)),
+		]
+		special_btn.pressed.connect(func() -> void:
+			MatchState.route_output_to_special_order(instance_id, good_id, special_order_id)
+			_refresh_route_controls(_current_building, _current_recipe)
+			_output_route_detail.visible = true
+		)
+		btns.add_child(special_btn)
 
 	# "Store on tile" records this tile as the destination directly (no map mode).
 	var store_btn := _make_route_choice_button("Store on tile", on_tile)
@@ -2592,6 +2610,11 @@ func _labour_cost(building_data: Dictionary) -> float:
 func _output_destination() -> String:
 	var instance_id: String = _current_building.get("instance_id", "")
 	var good_id := _primary_output_good_id(_current_recipe)
+	var special_order_id := MatchState.get_output_special_order_id(instance_id, good_id)
+	if special_order_id != "":
+		var order := SpecialOrderState.get_order(special_order_id)
+		if not order.is_empty():
+			return "Special Order: %s" % str(order.get("display_name", Catalog.get_display_name(good_id)))
 	if MatchState.is_output_market(instance_id, good_id):
 		return "Market"
 	var destination_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
@@ -2625,7 +2648,14 @@ func _output_route_summary() -> Dictionary:
 	var dest_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
 	var target := ""
 	var destination := ""
-	if dest_tile != "":
+	if MatchState.is_output_market(instance_id, good_id):
+		target = TransportService.nearest_port_tile(source_tile)
+		var special_order_id := MatchState.get_output_special_order_id(instance_id, good_id)
+		if special_order_id != "" and not SpecialOrderState.get_order(special_order_id).is_empty():
+			destination = ("Special Order (via %s)" % Catalog.tile_label(target)) if target != "" else "Special Order"
+		else:
+			destination = ("Market (via %s)" % Catalog.tile_label(target)) if target != "" else "Market"
+	elif dest_tile != "":
 		target = dest_tile
 		destination = Catalog.tile_label(dest_tile)
 	elif MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL:
