@@ -39,6 +39,8 @@ signal building_placed(tile_id: String, building_id: String, recipe_id: String, 
 
 var _survey_dialog: PanelContainer = null
 var _unlock_dialog: PanelContainer = null
+var _pending_condition_unlocks: Array = []
+var _unlock_flush_deferred: bool = false
 var _special_order_resolution_dialog: Control = null
 var _stockpile_select_prompt: PanelContainer = null
 var _pending_stockpile_selection: Dictionary = {}
@@ -352,8 +354,28 @@ func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
 	_survey_dialog.open_for(tile_id, tile_name, status == "partial")
 
 func _on_unlock_granted(title: String, description: String, via_condition: bool) -> void:
-	if via_condition:
-		_unlock_dialog.show_unlock(title, description)
+	if not via_condition:
+		return
+	_pending_condition_unlocks.append({"title": title, "description": description})
+	if TurnManager.is_resolving:
+		return
+	if not _unlock_flush_deferred:
+		_unlock_flush_deferred = true
+		call_deferred("_flush_pending_unlocks")
+
+func _flush_pending_unlocks() -> void:
+	_unlock_flush_deferred = false
+	if _pending_condition_unlocks.is_empty() or _unlock_dialog == null:
+		return
+	var unlocks := _pending_condition_unlocks.duplicate(true)
+	_pending_condition_unlocks.clear()
+	if unlocks.size() == 1:
+		var unlock: Dictionary = {}
+		if unlocks[0] is Dictionary:
+			unlock = unlocks[0]
+		_unlock_dialog.show_unlock(str(unlock.get("title", "")), str(unlock.get("description", "")))
+	else:
+		_unlock_dialog.show_unlocks(unlocks)
 
 func _on_v2_building_clicked(building: Dictionary) -> void:
 	# v2 is added to HUDContent after the building panel, so it would otherwise draw
@@ -1770,6 +1792,7 @@ func _on_resolution_started() -> void:
 
 func _on_resolution_completed() -> void:
 	end_turn_button.disabled = false
+	_flush_pending_unlocks()
 
 func _update_turn_counter(turn: int) -> void:
 	turn_counter.text = "Turn %d / %d" % [turn, TurnManager.MAX_TURNS]
