@@ -1,6 +1,7 @@
 extends Control
 
 const BUILDING_LEDGER_PANEL_SCENE := preload("res://scenes/building_ledger_panel.tscn")
+const PeoplePanel := preload("res://scripts/people_panel.gd")
 
 # Bottom-menu buttons that have multi-resolution circular art in
 # assets/icons/ui_icons/{100,200,400}/.
@@ -69,6 +70,7 @@ var _hovered := {}        # button -> true while the mouse is over it
 
 # Building ledger is instantiated lazily on first open (no main.tscn edit needed).
 var building_ledger_panel: PanelContainer = null
+var people_panel: PanelContainer = null
 
 func _ready() -> void:
 	# Capture the shared button styleboxes before any alt override so we can
@@ -248,6 +250,8 @@ func _hide_all_panels() -> void:
 		good_panel.hide()
 	if is_instance_valid(building_ledger_panel):
 		_set_panel_visible(building_ledger_panel, false)
+	if is_instance_valid(people_panel):
+		_set_panel_visible(people_panel, false)
 
 func _set_panel_visible(panel: Control, show_it: bool) -> void:
 	if show_it:
@@ -389,7 +393,16 @@ func _on_research_pressed() -> void:
 	_set_panel_visible(research_panel, true)
 
 func _on_people_pressed() -> void:
-	print("People panel not yet implemented")
+	_hide_all_panels()
+	if not is_instance_valid(people_panel):
+		people_panel = PeoplePanel.new()
+		construct_panel.get_parent().add_child(people_panel)
+		people_panel.hide()
+		people_panel.close_requested.connect(
+			func(): _set_panel_visible(people_panel, false)
+		)
+		_link_rise(people_panel, %PeopleButton)
+	_set_panel_visible(people_panel, true)
 
 func _on_money_widget_clicked() -> void:
 	_hide_all_panels()

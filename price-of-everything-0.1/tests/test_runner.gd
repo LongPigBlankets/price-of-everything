@@ -1,5 +1,6 @@
 extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const BuildingStatus := preload("res://scripts/building_status.gd")
 ## Minimal, zero-dependency headless test runner for price-of-everything.
 ##
 ## Fast path (one command; exit code 0 = all pass, 1 = a failure):
@@ -14,6 +15,7 @@ const BuildingLevels := preload("res://scripts/building_levels.gd")
 
 var _passed := 0
 var _failed := 0
+var _failed_names: Array[String] = []
 
 const RoadRegionsLoader := preload("res://scripts/road_regions.gd")
 
@@ -22,6 +24,7 @@ func _ready() -> void:
 	_test_scripts_parse()
 	_test_widgets_instantiate()
 	_test_recipe_row_instantiates()
+	await _test_unlock_dialog_groups_multiple_unlocks()
 	await _test_stockpile_legend_label_visible()
 	_test_scene_loads()
 	await _test_main_scene_instantiates()
@@ -37,6 +40,9 @@ func _ready() -> void:
 	_test_transport_boundaries()
 	_test_build_mode_overlay_survey_visibility()
 	_test_direct_build_skips_build_overlay()
+	_test_advisor_payroll_cost()
+	await _test_research_unlock_promotes_construct_panel_recipes()
+	_test_tile_deposit_build_options_respect_research_unlocks()
 	await _test_building_ledger()
 	await _test_debug_terminal()
 	_test_building_shapes()
@@ -45,6 +51,7 @@ func _ready() -> void:
 	_test_move_extras()
 	_test_storage_boost()
 	_test_queue_sell()
+	_test_queue_sell_immediate_updates_turn_summary()
 	_test_market_execute_sale()
 	_test_market_execute_sale_skip_consume()
 	_test_market_execute_sale_pay_transport()
@@ -55,6 +62,7 @@ func _ready() -> void:
 	_test_market_buy()
 	_test_tax_dividend_caps()
 	_test_purchases()
+	_test_exhausted_input_source_falls_back_to_market()
 	_test_recipes_producing()
 	_test_transfer_helpers()
 	_test_output_conservation()
@@ -105,6 +113,7 @@ func _ready() -> void:
 	await _test_modifiers_roundtrip()
 	_test_live_unlock_conditions()
 	_test_deposit_penalty_modifier()
+	_test_workforce_output_modifier_surfaces_in_building_status()
 	_test_flavor_nodes_wired()
 	_test_transport_congestion()
 	_test_tile_mode_flow_endpoints()
@@ -171,6 +180,10 @@ func _ready() -> void:
 	_test_empire_ports()
 	_test_empire_rag()
 	_test_audio_service()
+	if not _failed_names.is_empty():
+		print("FAILED TESTS:")
+		for failed_name in _failed_names:
+			print("  - ", failed_name)
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -3018,7 +3031,7 @@ func _test_start_config_applies_on_scene_ready() -> void:
 	_check(npc >= 5, "start: scene-seeded NPC ports/ruins survive the start import")
 	_check(Stockpile.get_at_tile("tile_6_8", "g_001") == 50, "start: stockpile seeded")
 	_check(MatchState.recurring_sells.size() == 1, "start: recurring sell order live")
-	_check(MatchState.deposit_remaining_for("tile_6_8", "coal") == 1000,
+	_check(MatchState.deposit_remaining_for("tile_6_8", "coal") == 2000,
 		"start: CSV deposit yields survive (no deposit data in the config)")
 	inst.queue_free()
 	await get_tree().process_frame
@@ -3460,6 +3473,38 @@ func _test_deposit_penalty_modifier() -> void:
 	_check(absf(float(rload.get("net", 0.0)) - (-50.0)) < 0.001,
 		"a load with no saved penalties re-seeds the coal penalty (got %s)" % float(rload.get("net", 0.0)))
 	MatchState.remove_building(inst)
+	Modifiers.reset()
+	MatchState.reset()
+
+func _test_workforce_output_modifier_surfaces_in_building_status() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	var old_turn: int = int(TurnManager.current_turn)
+	TurnManager.current_turn = 1
+	var building := {
+		"instance_id": "inst_status_workforce",
+		"building_id": "b_007",
+		"tile_id": "tile_5_10",
+		"recipe_id": "r_009",
+		"level": 1,
+	}
+	var recipe: Dictionary = Catalog.get_recipe("r_009")
+	_check(BuildingStatus.effective_output_qty(building, recipe) == 20,
+		"building status baseline output excludes inactive workforce policies")
+	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
+	var mod: Dictionary = BuildingStatus.net_output_modifier(building, recipe)
+	var workforce_parts: Array = mod.get("workforce_parts", [])
+	_check(BuildingStatus.effective_output_qty(building, recipe) == 22,
+		"building status output includes annual profit-share workforce multiplier")
+	_check(absf(float(mod.get("pct_f", 0.0)) - 10.0) < 0.001,
+		"building status net output modifier includes annual profit share")
+	var first_workforce_part: Dictionary = workforce_parts[0] if not workforce_parts.is_empty() else {}
+	_check(workforce_parts.size() == 1 and str(first_workforce_part.get("label", "")) == "Annual Profit Share",
+		"building status modifier breakdown lists annual profit share")
+	_check(BuildingStatus._modifier_tooltip(mod).find("Annual Profit Share") >= 0,
+		"building status tooltip includes annual profit share")
+	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, false)
+	TurnManager.current_turn = old_turn
 	Modifiers.reset()
 	MatchState.reset()
 
@@ -4684,6 +4729,7 @@ func _check(ok: bool, name: String) -> void:
 		print("  PASS  ", name)
 	else:
 		_failed += 1
+		_failed_names.append(name)
 		printerr("  FAIL  ", name)
 
 # Empire view node packing (scripts/empire_layout.gd): the >=30px gap holds, packing is
@@ -4825,6 +4871,21 @@ func _test_tax_dividend_caps() -> void:
 		and is_equal_approx(float(profit_summary.get("money_in", 0.0)) - float(profit_summary.get("money_out", 0.0)), 6.4),
 		"tax is capped to profit and dividends are calculated after tax")
 
+	var profit_share_summary := {
+		"money_in": 100.0,
+		"money_out": 90.0,
+		"taxes_paid": 0.0,
+		"dividends_paid": 0.0,
+		"profit_sharing_paid": 0.0,
+	}
+	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
+	var share_pretax: float = Production._apply_tax_and_dividends(profit_share_summary)
+	Production._apply_profit_sharing(profit_share_summary, share_pretax)
+	_check(is_equal_approx(float(profit_share_summary.get("profit_sharing_paid", 0.0)), 0.32)
+		and is_equal_approx(float(profit_share_summary.get("money_in", 0.0)) - float(profit_share_summary.get("money_out", 0.0)), 6.08),
+		"profit sharing is paid from post-tax, post-dividend profit")
+	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, false)
+
 func _test_output_conservation() -> void:
 	# Default (STOCKPILE_ALL): a building's output should land in its own tile's stockpile.
 	MatchState.reset()
@@ -4892,6 +4953,40 @@ func _test_market_buy() -> void:
 	var partial: Dictionary = MatchState.queue_buy("tile_3_8", "g_002", 1000)
 	_check(not partial.is_empty() and int(partial.get("qty", 0)) > 0 and int(partial.get("qty", 0)) < 1000,
 		"queue_buy buys a partial amount when cash is short")
+
+func _test_exhausted_input_source_falls_back_to_market() -> void:
+	MatchState.reset()
+	Stockpile.clear_all()
+	Power.reset_for_turn()
+	var fake := Node.new()
+	var src := GDScript.new()
+	src.source_code = "extends Node\nvar tiles := {}\nfunc id_to_coord(t):\n\treturn Vector2i(5, 10) if t == \"tile_5_10\" else Vector2i(-1, -1)\n"
+	src.reload()
+	fake.set_script(src)
+	fake.set("tiles", {Vector2i(5, 10): {"infrastructure_present": ["cables"], "infrastructure_levels": {"cables": 1}}})
+	fake.add_to_group("hex_map")
+	get_tree().root.add_child(fake)
+	MatchState.money = 100000.0
+	var source_iid := MatchState.add_building("b_001", "r_001", "tile_6_8", MatchState.LOCAL_PLAYER, "test_exhausted_coal_source")
+	var consumer_iid := MatchState.add_building("b_003", "r_004", "tile_5_10", MatchState.LOCAL_PLAYER, "test_exhausted_coal_consumer")
+	MatchState.set_output_stockpile_destination(source_iid, "tile_5_10", "g_001")
+	MatchState.set_input_tile_only(consumer_iid, "g_001", true)
+	MatchState.deposit_remaining["tile_6_8"] = {"coal": 0}
+	var summary := {
+		"purchased": {},
+		"purchased_cost": {},
+		"goods_purchased_cost": 0.0,
+		"transport_paid": 0.0,
+		"money_out": 0.0,
+		"goods_purchased_by_type": {},
+	}
+	Production._buy_market_inputs([MatchState.buildings[source_iid], MatchState.buildings[consumer_iid]], summary)
+	_check(not MatchState.is_input_tile_only(consumer_iid, "g_001"),
+		"exhausted routed input source switches the consumer back to market fallback")
+	_check(int(summary.get("purchased", {}).get("g_001", 0)) > 0,
+		"market fallback queues a replacement buy for the exhausted input")
+	get_tree().root.remove_child(fake)
+	fake.free()
 
 func _test_auto_sell_goods() -> void:
 	var t := "tile_4_4"
@@ -5395,6 +5490,27 @@ func _test_queue_sell() -> void:
 	_check(str(summary.get("port", "")) != "" and MatchState.get_pending_transport_shipments().size() > before,
 		"queue_sell ships to a port")
 
+func _test_queue_sell_immediate_updates_turn_summary() -> void:
+	Stockpile.clear_all()
+	Stockpile.add("tile_5_10", "g_001", 6)
+	Production._pending_external_sales.clear()
+	Production.last_turn_summary = {"goods_sales_revenue": 0.0, "money_in": 0.0, "sold": {}}
+	var result: Dictionary = MatchState.queue_sell("tile_5_10", {"g_001": 6}, false)
+	var sold: Dictionary = Production.last_turn_summary.get("sold", {})
+	var coal: Dictionary = sold.get("g_001", {})
+	_check(not result.is_empty() and not bool(result.get("deferred", true)),
+		"queue_sell can settle immediately from a port tile")
+	_check(int(coal.get("qty", 0)) == 6
+		and float(Production.last_turn_summary.get("goods_sales_revenue", 0.0)) > 0.0,
+		"immediate tile-view sales update goods sold in the turn summary")
+	var next_summary := {"goods_sales_revenue": 0.0, "money_in": 0.0, "sold": {}}
+	Production._merge_pending_external_sales(next_summary)
+	var next_sold: Dictionary = next_summary.get("sold", {})
+	var next_coal: Dictionary = next_sold.get("g_001", {})
+	_check(int(next_coal.get("qty", 0)) == 6
+		and float(next_summary.get("goods_sales_revenue", 0.0)) > 0.0,
+		"immediate tile-view sales carry into the next turn summary")
+
 # MarketState.execute_sale is the unified low-level sell primitive. The three tests
 # below pin the three axes the option dict toggles, so any drift in queue_sell's or
 # Production's wrapper is caught by something tighter than the E2E suite.
@@ -5669,6 +5785,90 @@ func _test_direct_build_skips_build_overlay() -> void:
 	BuildMode.current_infrastructure_type = saved_infra
 	BuildMode._last_attempt_ms = saved_last_attempt
 
+func _test_advisor_payroll_cost() -> void:
+	var saved_ids := MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_money := MatchState.money
+	MatchState.permanent_advisor_ids = ["natasha", "dan"]
+	MatchState.money = 100.0
+	var summary := {"advisor_paid": 0.0, "money_out": 0.0}
+	var paid: float = Production._apply_advisor_costs(summary)
+	_check(is_equal_approx(paid, 4.0)
+		and is_equal_approx(float(summary.get("advisor_paid", 0.0)), 4.0)
+		and is_equal_approx(float(summary.get("money_out", 0.0)), 4.0)
+		and is_equal_approx(MatchState.money, 96.0),
+		"advisor payroll costs £2 per permanent advisor per turn")
+	MatchState.permanent_advisor_ids = saved_ids
+	MatchState.money = saved_money
+	MatchState.money_changed.emit(MatchState.money)
+	MatchState.advisors_changed.emit()
+
+func _test_research_unlock_promotes_construct_panel_recipes() -> void:
+	var recipe := Catalog.get_recipe("r_020")
+	var building_id := str(recipe.get("building_id", ""))
+	var saved_unlocks := MatchState.unlocked_titles.duplicate(true)
+	MatchState.unlocked_titles.erase("Electric Arc Refining")
+	var packed: PackedScene = load("res://scenes/construct_panel.tscn")
+	if packed == null or recipe.is_empty() or building_id == "":
+		_check(false, "research unlock: construct panel fixture resolves")
+		_replace_dict(MatchState.unlocked_titles, saved_unlocks)
+		return
+	var panel: Control = packed.instantiate() as Control
+	if panel == null:
+		_check(false, "research unlock: construct panel instantiates as Control")
+		_replace_dict(MatchState.unlocked_titles, saved_unlocks)
+		return
+	add_child(panel)
+	await get_tree().process_frame
+
+	panel.show()
+	await get_tree().process_frame
+	_check(not _construct_panel_has_recipe(panel, building_id, "r_020"),
+		"construct panel hides recipe-gated research before unlock")
+	MatchState.grant_unlock("Electric Arc Refining")
+	await get_tree().process_frame
+	_check(_construct_panel_has_recipe(panel, building_id, "r_020"),
+		"construct panel promotes recipe when research unlocks")
+
+	MatchState.unlocked_titles.erase("Electric Arc Refining")
+	panel.call("open_for_tile", "tile_test_research_unlock", {})
+	await get_tree().process_frame
+	_check(not _construct_panel_has_recipe(panel, building_id, "r_020"),
+		"tile build panel hides recipe-gated research before unlock")
+	MatchState.grant_unlock("Electric Arc Refining")
+	await get_tree().process_frame
+	_check(_construct_panel_has_recipe(panel, building_id, "r_020"),
+		"tile build panel promotes recipe when research unlocks")
+
+	panel.queue_free()
+	await get_tree().process_frame
+	_replace_dict(MatchState.unlocked_titles, saved_unlocks)
+
+func _construct_panel_has_recipe(panel: Node, building_id: String, recipe_id: String) -> bool:
+	var by_building: Dictionary = panel.get("recipes_by_building")
+	for recipe in by_building.get(building_id, []):
+		if str(recipe.get("recipe_id", "")) == recipe_id:
+			return true
+	return false
+
+func _test_tile_deposit_build_options_respect_research_unlocks() -> void:
+	var saved_unlocks := MatchState.unlocked_titles.duplicate(true)
+	MatchState.unlocked_titles.erase("Subsea Production Systems")
+	var tvd = load("res://scripts/tile_view_data.gd")
+	var locked_options: Array = tvd.deposit_build_options("crude_oil")
+	_check(not _build_options_have_recipe(locked_options, "r_222"),
+		"tile deposit build options hide recipe-gated research before unlock")
+	MatchState.grant_unlock("Subsea Production Systems")
+	var unlocked_options: Array = tvd.deposit_build_options("crude_oil")
+	_check(_build_options_have_recipe(unlocked_options, "r_222"),
+		"tile deposit build options promote recipe when research unlocks")
+	_replace_dict(MatchState.unlocked_titles, saved_unlocks)
+
+func _build_options_have_recipe(options: Array, recipe_id: String) -> bool:
+	for option in options:
+		if str(option.get("recipe_id", "")) == recipe_id:
+			return true
+	return false
+
 # Smoke: every script we touch must still parse. load() returns null on a parse
 # error — this is the check that catches the bug class we couldn't verify by hand.
 func _test_scripts_parse() -> void:
@@ -5709,6 +5909,8 @@ func _test_scripts_parse() -> void:
 		"res://scripts/road_regions.gd",
 		"res://scripts/special_order_state.gd",
 		"res://scripts/special_order_resolution_dialog.gd",
+		"res://scripts/unlock_dialog.gd",
+		"res://scripts/people_panel.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 
@@ -5729,6 +5931,95 @@ func _test_widgets_instantiate() -> void:
 	}])
 	_check(ig.get_child_count() == 1, "InfraGrid renders one slot")
 	ig.queue_free()
+
+	var saved_advisors := MatchState.permanent_advisor_ids.duplicate(true)
+	MatchState.permanent_advisor_ids.clear()
+	MatchState.advisors_changed.emit()
+	var pp: Node = load("res://scripts/people_panel.gd").new()
+	add_child(pp)
+	_check(
+		_tree_has_label_text(pp, "Labour") and _tree_has_label_text(pp, "Advisors")
+		and _tree_has_label_text(pp, "0.8x") and _tree_has_label_text(pp, "Workforce Policies"),
+		"PeoplePanel builds Labour and Advisors tabs")
+	_check(
+		_tree_has_label_text(pp, "Advisor payroll") and _tree_has_label_text(pp, "0 x £2 = £0.00/turn"),
+		"PeoplePanel shows advisor payroll at the top")
+	_check(MatchState.available_advisors().size() == MatchState.advisor_pool().size()
+		and MatchState.permanent_advisors().is_empty(),
+		"PeoplePanel starts with all advisors available and none permanent")
+	var add_event := InputEventMouseButton.new()
+	add_event.button_index = MOUSE_BUTTON_LEFT
+	add_event.pressed = true
+	pp.call("_on_permanent_add_slot_input", add_event)
+	var available_section: Control = pp.get("_available_advisors_section")
+	_check(is_instance_valid(available_section) and available_section.visible
+		and _tree_has_label_text(pp, "Natasha L.") and _tree_has_label_text(pp, "Your Uncle"),
+		"PeoplePanel plus slot opens the available advisor pool")
+	var first_advisor: Dictionary = MatchState.available_advisors()[0]
+	var hire_event := InputEventMouseButton.new()
+	hire_event.button_index = MOUSE_BUTTON_LEFT
+	hire_event.pressed = true
+	pp.call("_on_available_advisor_card_input", hire_event, first_advisor)
+	_check(MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", "")))
+		and _tree_has_label_text(pp, "1 x £2 = £2.00/turn"),
+		"PeoplePanel selecting from the pool hires a permanent advisor and updates payroll")
+	var permanent: Array = pp.get("_permanent_advisors")
+	var card: Control = pp.call("_advisor_card", permanent[0], true, false) as Control
+	var portrait: Control = card.find_child("AdvisorPortrait", true, false) as Control
+	_check(card.mouse_filter == Control.MOUSE_FILTER_STOP and portrait != null
+		and portrait.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"PeoplePanel advisor card click surface includes the portrait")
+	card.free()
+	if not permanent.is_empty():
+		pp.call("_open_advisor_detail", permanent[0])
+	var detail: Node = pp.get("_advisor_detail_panel")
+	_check(
+		detail != null and detail.visible
+		and _tree_has_label_text(detail, "Agenda") and _tree_has_label_text(detail, "Missions"),
+		"PeoplePanel opens advisor detail shell")
+	pp.call("_close_advisor_detail")
+	if detail != null:
+		detail.queue_free()
+	pp.queue_free()
+	MatchState.permanent_advisor_ids = saved_advisors
+	MatchState.advisors_changed.emit()
+
+func _tree_has_label_text(node: Node, needle: String) -> bool:
+	if needle in node.name:
+		return true
+	if node is Label and needle in (node as Label).text:
+		return true
+	if node is Button and needle in (node as Button).text:
+		return true
+	for child in node.get_children():
+		if _tree_has_label_text(child, needle):
+			return true
+	return false
+
+func _test_unlock_dialog_groups_multiple_unlocks() -> void:
+	var dlg: Control = load("res://scripts/unlock_dialog.gd").new()
+	add_child(dlg)
+	dlg.call("show_unlocks", [
+		{"title": "Improved Coal Mining", "description": "Coal mines output more."},
+		{"title": "Copper Recovery", "description": "Copper chain improves."},
+	])
+	_check(dlg.visible
+		and _tree_has_label_text(dlg, "2 unlocks")
+		and _tree_has_label_text(dlg, "Improved Coal Mining")
+		and _tree_has_label_text(dlg, "Copper Recovery"),
+		"unlock dialog groups multiple unlocks in one panel")
+	var unlock_list: Node = dlg.find_child("UnlockList", true, false)
+	_check(unlock_list != null and unlock_list.get_child_count() == 2,
+		"unlock dialog renders one box per unlock")
+	await get_tree().process_frame
+	var scroll: Control = dlg.find_child("UnlockScroll", true, false) as Control
+	var first_card: Control = unlock_list.get_child(0) as Control if unlock_list != null and unlock_list.get_child_count() > 0 else null
+	_check(scroll != null and scroll.size.y >= 180.0 and first_card != null and first_card.size.y >= 80.0,
+		"unlock dialog reserves visible space for grouped unlock boxes")
+	dlg.call("_close")
+	_check(not dlg.visible, "unlock dialog closes")
+	PanelStack.remove(dlg)
+	dlg.queue_free()
 
 # Regression: recipe_row.tscn must instantiate + setup (catches script/root type
 # mismatches — recipe rows are only built on expand, so the main-scene test misses them).

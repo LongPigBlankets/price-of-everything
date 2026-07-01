@@ -187,6 +187,8 @@ func _ready() -> void:
 	# A research unlock (or any modifier change) can flip the net-modifier indicator.
 	if not Modifiers.modifiers_changed.is_connected(_on_modifiers_changed):
 		Modifiers.modifiers_changed.connect(_on_modifiers_changed)
+	if not MatchState.workforce_policies_changed.is_connected(_on_workforce_policies_changed):
+		MatchState.workforce_policies_changed.connect(_on_workforce_policies_changed)
 	# A deposit running out must refresh the shown building's RAG dots, production
 	# status and recipe diagram (it stops being able to produce).
 	if not MatchState.deposits_changed.is_connected(_on_deposit_changed):
@@ -2046,8 +2048,8 @@ func _add_flow_quantity_badge(cell: Panel, good_item: Dictionary, cell_size: Vec
 	pill.offset_bottom = overlap
 	cell.add_child(pill)
 
-# The output a recipe's good would actually produce after all recipe_output
-# modifiers (deposit penalty, mining/building research) — the production result.
+# The output a recipe's good would actually produce after recipe_output modifiers
+# and workforce output policies — the production result shown in the diagram.
 func _modified_output_qty(good_item: Dictionary, default_qty: int) -> int:
 	if _current_recipe.is_empty():
 		return default_qty
@@ -2063,7 +2065,9 @@ func _modified_output_qty(good_item: Dictionary, default_qty: int) -> int:
 		"good_id": good_id,
 		"good_internal": good_internal,
 	}
-	return int(round(Modifiers.apply("recipe_output", recipe_id, float(default_qty), ctx)))
+	var modified := Modifiers.apply("recipe_output", recipe_id, float(default_qty), ctx)
+	modified *= MatchState.workforce_output_multiplier()
+	return int(round(modified))
 
 # The dual recipe-diagram quantity pill: struck default on the LEFT and the actual
 # on the RIGHT (red if the output dropped, green if it rose, each 1px white-outlined),
@@ -2435,20 +2439,28 @@ func _update_mod_label(building: Dictionary, recipe: Dictionary) -> void:
 	# Single source of truth for the net-modifier %, its colour band, the component parts and the
 	# intermittency derate — shared with the Empire view (scripts/building_status.gd).
 	var mod := BuildingStatus.net_output_modifier(building, recipe)
-	var parts: Array = mod.parts
+	var parts: Array = mod.get("parts", [])
+	var workforce_parts: Array = mod.get("workforce_parts", [])
 	var derate: float = float(mod.derate)
 	var eff_i: int = int(mod.pct)
 	_mod_label.text = str(mod.text)
 	_mod_label.add_theme_color_override("font_color", mod.color as Color)
 
 	var tip: String
-	if parts.is_empty() and derate <= 0.0:
+	if parts.is_empty() and workforce_parts.is_empty() and derate <= 0.0:
 		tip = "Production modifier: none active.\n%s" % _MOD_RAG_LEGEND
 	else:
-		var lines: PackedStringArray = ["Production modifiers (added together, then applied):"]
-		for p in parts:
-			var pv: float = float(p.get("pct", 0.0))
-			lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
+		var lines: PackedStringArray = ["Production modifiers:"]
+		if not parts.is_empty():
+			lines.append("Recipe modifiers (added together):")
+			for p in parts:
+				var pv: float = float(p.get("pct", 0.0))
+				lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
+		if not workforce_parts.is_empty():
+			lines.append("Workforce policies (multiplicative):")
+			for p in workforce_parts:
+				var pv: float = float(p.get("pct", 0.0))
+				lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
 		if derate > 0.0:
 			lines.append("  -%d%%  Intermittency impact (multiplicative, applied after)" % int(round(derate * 100.0)))
 		lines.append("Net: %s%d%%" % ["+" if eff_i > 0 else "", eff_i])
@@ -2465,6 +2477,13 @@ func _on_modifiers_changed() -> void:
 	if _current_building.is_empty() or _current_recipe.is_empty():
 		return
 	_update_mod_label(_current_building, _current_recipe)
+	_update_flow_summary(_current_recipe)
+
+func _on_workforce_policies_changed() -> void:
+	if _current_building.is_empty() or _current_recipe.is_empty():
+		return
+	_update_mod_label(_current_building, _current_recipe)
+	_update_flow_summary(_current_recipe)
 
 func _set_status_dot(key: String, color: Color) -> void:
 	if not _status_dots.has(key):
