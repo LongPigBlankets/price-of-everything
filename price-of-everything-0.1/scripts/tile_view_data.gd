@@ -754,15 +754,26 @@ static func deposit_build_options(deposit_token: String) -> Array:
 	tokens[t.replace("_", " ")] = true
 	var opts: Array = []
 	for recipe in Catalog.all_recipes():
+		var rec_req := str(recipe.get("required_research", ""))
+		if rec_req != "" and not MatchState.is_unlocked(rec_req):
+			continue
+		var bid := str(recipe.get("building_id", ""))
+		if bid == "":
+			continue
+		var building := Catalog.get_building(bid)
+		if building.is_empty():
+			continue
+		var bld_req := str(building.get("required_research", ""))
+		if bld_req != "" and not MatchState.is_unlocked(bld_req):
+			continue
 		for req in recipe.get("requirements", []):
 			if str(req.get("type", "")).to_lower() != "deposit":
 				continue
 			if tokens.has(str(req.get("value", "")).strip_edges().to_lower()):
-				var bid := str(recipe.get("building_id", ""))
 				opts.append({
 					"building_id": bid,
 					"recipe_id": str(recipe.get("recipe_id", recipe.get("id", ""))),
-					"building_name": str(Catalog.get_building(bid).get("display_name", bid)),
+					"building_name": str(building.get("display_name", bid)),
 					"recipe_name": str(recipe.get("display_name", "")),
 				})
 				break
