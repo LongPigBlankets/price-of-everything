@@ -93,7 +93,7 @@ func _render_summary(summary: Dictionary) -> void:
 	goods_sales_label.text = "  Goods sold: +£%.2f" % summary.goods_sales_revenue
 	power_sales_label.text = "  Power sold: +£%.2f" % summary.power_sales_revenue
 	power_purchase_label.text = "  Power bought: -£%.2f" % summary.power_purchase_cost
-	var total_costs: float = summary.maintenance_paid + summary.labour_paid
+	var total_costs: float = summary.maintenance_paid + summary.labour_paid + float(summary.get("advisor_paid", 0.0))
 	costs_label.text = "  Costs: -£%.2f" % total_costs
 	if _transport_cost_label != null:
 		_transport_cost_label.text = "  Transport costs: -£%.2f" % summary.get("transport_paid", 0.0)

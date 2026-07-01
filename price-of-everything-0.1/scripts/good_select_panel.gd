@@ -101,7 +101,7 @@ func open_for(kind: String) -> void:
 	offset_bottom = _base_offset_bottom + (DEPOSITS_EXTRA_HEIGHT if _kind == "deposits" else 0)
 	_sync()
 	show()
-	move_to_front()
+	PanelStack.push(self)
 
 func _build_rows() -> void:
 	for c in _content.get_children():
@@ -181,6 +181,8 @@ func _sync() -> void:
 # A single-row, content-width panel 150px above the screen bottom. Shows while the
 # picker list is open or a producing/consuming selection is active.
 func _on_visibility_changed() -> void:
+	if not visible:
+		PanelStack.remove(self)
 	_update_hint()
 
 func _update_hint() -> void:

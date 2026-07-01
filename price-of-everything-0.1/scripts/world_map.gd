@@ -39,11 +39,15 @@ signal building_placed(tile_id: String, building_id: String, recipe_id: String, 
 
 var _survey_dialog: PanelContainer = null
 var _unlock_dialog: PanelContainer = null
+var _pending_condition_unlocks: Array = []
+var _unlock_flush_deferred: bool = false
+var _special_order_resolution_dialog: Control = null
 var _stockpile_select_prompt: PanelContainer = null
 var _pending_stockpile_selection: Dictionary = {}
 var _dim_overlay: ColorRect = null
 var _stockpile_legend: PanelContainer = null
 var _picking_buy_tile := false  # true while picking a Purchases-tab delivery tile
+var _special_order_reroute_picking := false
 # --- Market "Move" transfer flow ---
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const _TR_LIGHT_GREEN := Color(0.50, 0.90, 0.50)
@@ -172,6 +176,12 @@ func _build_base() -> void:
 	var overflow_dialog: Node = load("res://scripts/overflow_dialog.gd").new()
 	_hud.add_child(overflow_dialog)
 	overflow_dialog.go_to_stockpile_requested.connect(_on_go_to_tile_stockpile)
+
+	# Special-order closure dialog: handles over-delivery and tagged shipments that
+	# remain in flight after the premium order is gone.
+	_special_order_resolution_dialog = load("res://scripts/special_order_resolution_dialog.gd").new()
+	_hud.add_child(_special_order_resolution_dialog)
+	_special_order_resolution_dialog.reroute_requested.connect(_on_special_order_reroute_requested)
 
 	# Survey dialog: opened by clicking a tile in the Surveying mapmode.
 	_survey_dialog = load("res://scripts/survey_dialog.gd").new()
@@ -344,8 +354,28 @@ func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
 	_survey_dialog.open_for(tile_id, tile_name, status == "partial")
 
 func _on_unlock_granted(title: String, description: String, via_condition: bool) -> void:
-	if via_condition:
-		_unlock_dialog.show_unlock(title, description)
+	if not via_condition:
+		return
+	_pending_condition_unlocks.append({"title": title, "description": description})
+	if TurnManager.is_resolving:
+		return
+	if not _unlock_flush_deferred:
+		_unlock_flush_deferred = true
+		call_deferred("_flush_pending_unlocks")
+
+func _flush_pending_unlocks() -> void:
+	_unlock_flush_deferred = false
+	if _pending_condition_unlocks.is_empty() or _unlock_dialog == null:
+		return
+	var unlocks := _pending_condition_unlocks.duplicate(true)
+	_pending_condition_unlocks.clear()
+	if unlocks.size() == 1:
+		var unlock: Dictionary = {}
+		if unlocks[0] is Dictionary:
+			unlock = unlocks[0]
+		_unlock_dialog.show_unlock(str(unlock.get("title", "")), str(unlock.get("description", "")))
+	else:
+		_unlock_dialog.show_unlocks(unlocks)
 
 func _on_v2_building_clicked(building: Dictionary) -> void:
 	# v2 is added to HUDContent after the building panel, so it would otherwise draw
@@ -1074,11 +1104,24 @@ func _on_v2_pick_destination() -> void:
 	_v2_picking_dest = true
 	terrain_layer.begin_stockpile_destination_selection("")
 
+func _on_special_order_reroute_requested() -> void:
+	_special_order_reroute_picking = true
+	terrain_layer.begin_stockpile_destination_selection("")
+	_enter_stockpile_ui_mode()
+	MatchState.request_toast("Pick a destination tile for the remaining special-order shipments", "info")
+
 func _on_stockpile_destination_selected(tile_data: Dictionary) -> void:
 	if _v2_picking_dest:
 		_v2_picking_dest = false
 		terrain_layer.end_stockpile_destination_selection()
 		info_panel.on_destination_picked(str(tile_data.get("id", "")))
+		return
+	if _special_order_reroute_picking:
+		_special_order_reroute_picking = false
+		terrain_layer.end_stockpile_destination_selection()
+		_exit_stockpile_ui_mode()
+		if _special_order_resolution_dialog != null:
+			_special_order_resolution_dialog.call("reroute_current_to", str(tile_data.get("id", "")))
 		return
 	if not _buy.is_empty():
 		_on_buy_tile_picked(tile_data)
@@ -1101,6 +1144,15 @@ func _on_stockpile_destination_selected(tile_data: Dictionary) -> void:
 	_pending_stockpile_selection.clear()
 	_hide_stockpile_select_prompt()
 	_exit_stockpile_ui_mode()
+
+func _cancel_special_order_reroute_pick() -> void:
+	if not _special_order_reroute_picking:
+		return
+	_special_order_reroute_picking = false
+	terrain_layer.end_stockpile_destination_selection()
+	_exit_stockpile_ui_mode()
+	if _special_order_resolution_dialog != null:
+		_special_order_resolution_dialog.call("cancel_reroute")
 
 # ----- Stockpile selection UI mode -----
 
@@ -1740,6 +1792,7 @@ func _on_resolution_started() -> void:
 
 func _on_resolution_completed() -> void:
 	end_turn_button.disabled = false
+	_flush_pending_unlocks()
 
 func _update_turn_counter(turn: int) -> void:
 	turn_counter.text = "Turn %d / %d" % [turn, TurnManager.MAX_TURNS]
@@ -1823,7 +1876,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	match event.keycode:
 		KEY_ESCAPE:
-			if not _pending_stockpile_selection.is_empty():
+			if _special_order_reroute_picking:
+				_cancel_special_order_reroute_pick()
+			elif not _pending_stockpile_selection.is_empty():
 				MatchState.cancel_output_stockpile_selection()
 			elif not PanelStack.close_top():
 				# Nothing left to close: Esc opens the in-game menu.
@@ -1834,6 +1889,8 @@ func _should_open_search(event: InputEventKey) -> bool:
 	if search_overlay == null or search_overlay.visible:
 		return false
 	if event.echo or event.ctrl_pressed or event.alt_pressed or event.meta_pressed:
+		return false
+	if _special_order_reroute_picking:
 		return false
 	if not _pending_stockpile_selection.is_empty():
 		return false

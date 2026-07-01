@@ -4,7 +4,7 @@ extends Node
 # this is the only file you need to edit.
 
 # --- Player starting state ---
-const STARTING_MONEY: float = 200.0
+const STARTING_MONEY: float = 600.0
 
 # --- Demolish / refund ---
 # Share of a demolished building's construction cost returned to the player: the build
@@ -181,9 +181,9 @@ const TAX_RATE: float = 0.20
 const DIVIDEND_RATE: float = 0.20
 
 # --- Labour multiplier ---
-const LABOUR_MULTIPLIER_MIN: float = 0.75
+const LABOUR_MULTIPLIER_MIN: float = 0.8
 const LABOUR_MULTIPLIER_DEFAULT: float = 1.0
-const LABOUR_MULTIPLIER_MAX: float = 1.25
+const LABOUR_MULTIPLIER_MAX: float = 1.2
 
 func transport_turns_for_tile_distance(tile_distance: int) -> int:
 	if tile_distance <= 0:

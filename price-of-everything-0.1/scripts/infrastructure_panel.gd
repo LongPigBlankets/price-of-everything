@@ -162,7 +162,9 @@ func _on_mode_changed(mode: int, _selections: Array) -> void:
 	visible = active
 	if active:
 		_sync_selection()
-		move_to_front()
+		PanelStack.push(self)
+	else:
+		PanelStack.remove(self)
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:

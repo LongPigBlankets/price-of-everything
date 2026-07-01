@@ -189,6 +189,11 @@ const UNLOCK_MODIFIERS := {
 	"Integrated Operations Planning": {"id": "rn_integrated_operations_planning", "domain": "recipe_output", "pct": 5.0, "label": "Integrated Operations Planning", "source": "research_node"},
 	"Shift Supervisors": {"id": "rn_shift_supervisors", "domain": "labour_headcount", "target_match": {"building_id": "b_001"}, "pct": -5.0, "label": "Shift Supervisors", "source": "research_node"},
 	"Safety Training": {"id": "rn_safety_training", "domain": "labour_headcount", "pct": -5.0, "label": "Safety Training", "source": "research_node"},
+	# People-management track: global head-count trims earned purely by scale (total
+	# buildings owned), not by a specific building type. -5% at 3 buildings, another
+	# -5% at 12 — see docs/economy-bootstrap-findings.md.
+	"Operational Team Managers": {"id": "rn_operational_team_managers", "domain": "labour_headcount", "pct": -5.0, "label": "Operational Team Managers", "source": "research_node"},
+	"Shift Handover Documentation": {"id": "rn_shift_handover_documentation", "domain": "labour_headcount", "pct": -5.0, "label": "Shift Handover Documentation", "source": "research_node"},
 	"Specialist Apprenticeships": {"id": "rn_specialist_apprenticeships", "domain": "recipe_output", "target_match": {"building_id": "b_009"}, "pct": 5.0, "label": "Specialist Apprenticeships", "source": "research_node"},
 	"Union Liaison Offices": {"id": "rn_union_liaison_offices", "domain": "maintenance", "pct": -10.0, "duration_turns": 20, "label": "Union Liaison Offices", "source": "research_node"},
 	"Continuous Improvement Teams": [

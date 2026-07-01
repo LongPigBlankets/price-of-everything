@@ -89,6 +89,7 @@ func _ready() -> void:
 	MatchState.building_upgrade_started.connect(func(_i: String, _l: int) -> void: _request_refresh())
 	MatchState.building_upgrade_progress.connect(func(_i: String) -> void: _request_refresh())
 	MatchState.building_upgrade_cancelled.connect(func(_i: String) -> void: _request_refresh())
+	MatchState.workforce_policies_changed.connect(_request_refresh)
 	TurnManager.turn_resolution_completed.connect(_request_refresh)
 	Construction.construction_completed.connect(func(_i: String, _t: String) -> void: _request_refresh())
 	Construction.construction_cancelled.connect(func(_i: String, _t: String) -> void: _request_refresh())

@@ -36,6 +36,7 @@ const COST_SERIES := [
 	{"key": "labour",       "label": "Labour",             "color": Color(0.96, 0.55, 0.78)},   # pink
 	{"key": "taxes",        "label": "Taxes",              "color": Color(0.78, 0.78, 0.78)},   # light grey
 	{"key": "dividends",    "label": "Dividends",          "color": Color(0.36, 0.36, 0.38)},   # dark grey
+	{"key": "profit_sharing","label": "Profit sharing",     "color": Color(0.62, 0.72, 0.95)},   # slate blue
 	{"key": "interest",     "label": "Interest",           "color": Color(0.92, 0.85, 0.20), "hatch": NAVY},  # yellow hatched navy
 ]
 

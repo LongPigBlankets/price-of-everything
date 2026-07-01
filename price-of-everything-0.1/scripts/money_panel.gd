@@ -52,6 +52,8 @@ var _transport_value: Label
 var _proj_transport_value: Label
 var _goods_purchased_value: Label
 var _proj_goods_purchased_value: Label
+var _profit_sharing_value: Label
+var _proj_profit_sharing_value: Label
 @onready var proj_total_costs_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_TotalCostsRow/TotalCostsValue
 @onready var proj_operating_profit_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_OperatingProfitRow/OperatingProfitValue
 @onready var proj_interest_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_InterestRow/InterestValue
@@ -97,11 +99,34 @@ func _insert_cost_row(section: VBoxContainer, after_node_name: String, label_tex
 		section.move_child(row, after.get_index() + 1)
 	return value_label
 
+func _insert_finance_row(section: VBoxContainer, after_node_name: String, label_text: String, default_text: String) -> Label:
+	var row := HBoxContainer.new()
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 8)
+	var name_label := Label.new()
+	name_label.custom_minimum_size = Vector2(80, 0)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text = label_text
+	row.add_child(name_label)
+	var value_label := Label.new()
+	value_label.custom_minimum_size = Vector2(80, 0)
+	value_label.text = default_text
+	row.add_child(value_label)
+	section.add_child(row)
+	var after := section.get_node_or_null(after_node_name)
+	if after != null:
+		section.move_child(row, after.get_index() + 1)
+	return value_label
+
 func _ready() -> void:
 	_transport_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Transport")
 	_proj_transport_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Transport")
 	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
 	_proj_goods_purchased_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Goods purchased")
+	var balance_content := $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent as VBoxContainer
+	var projection_content := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent as VBoxContainer
+	_profit_sharing_value = _insert_finance_row(balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
+	_proj_profit_sharing_value = _insert_finance_row(projection_content, "Proj_DividendsRow", "Profit Sharing", "-£0.00")
 	close_button.pressed.connect(hide)
 	title_label.text = "Money & Budget"
 	
@@ -113,12 +138,13 @@ func _ready() -> void:
 	
 	_refresh()
 	Production.turn_processed.connect(_on_turn_processed)
-	labour_low_button.pressed.connect(_on_labour_pressed.bind(0.75))
+	labour_low_button.pressed.connect(_on_labour_pressed.bind(0.8))
 	labour_normal_button.pressed.connect(_on_labour_pressed.bind(1.00))
-	labour_high_button.pressed.connect(_on_labour_pressed.bind(1.25))
+	labour_high_button.pressed.connect(_on_labour_pressed.bind(1.2))
 	_refresh_labour_buttons()
 	
 	MatchState.labour_multiplier_changed.connect(_on_labour_multiplier_changed)
+	MatchState.workforce_policies_changed.connect(_refresh_projection)
 	MarketState.prices_updated.connect(_refresh_projection)
 	LoanState.loans_updated.connect(_refresh_projection)
 	_refresh_balance_sheet()
@@ -210,6 +236,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	var interest: float = summary.get("interest_paid", 0.0)
 	var tax: float = summary.get("taxes_paid", 0.0)
 	var dividends: float = summary.get("dividends_paid", 0.0)
+	var profit_sharing: float = summary.get("profit_sharing_paid", 0.0)
 
 	# Compute derived
 	var total_revenue: float = goods_revenue + power_revenue
@@ -217,7 +244,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	var operating_profit: float = total_revenue - total_costs
 	var pretax: float = operating_profit - interest
 	var posttax: float = pretax - tax
-	var net_cashflow: float = posttax - dividends
+	var net_cashflow: float = posttax - dividends - profit_sharing
 	
 	# Render
 	goods_value.text = "+£%.2f" % goods_revenue
@@ -245,6 +272,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	_color_for_value(posttax_value, posttax)
 	
 	dividends_value.text = "-£%.2f" % dividends
+	_profit_sharing_value.text = "-£%.2f" % profit_sharing
 	
 	net_cashflow_value.text = _format_signed(net_cashflow)
 	_color_for_value(net_cashflow_value, net_cashflow)
@@ -314,9 +342,9 @@ func _on_labour_multiplier_changed(_value: float) -> void:
 func _refresh_labour_buttons() -> void:
 	# Set the button toggle state to match current labour_multiplier
 	var v: float = MatchState.labour_multiplier
-	labour_low_button.button_pressed = (v == 0.75)
+	labour_low_button.button_pressed = absf(v - 0.8) < 0.001
 	labour_normal_button.button_pressed = (v == 1.00)
-	labour_high_button.button_pressed = (v == 1.25)
+	labour_high_button.button_pressed = absf(v - 1.2) < 0.001
 
 func _refresh_projection() -> void:
 	var proj: Dictionary = _project_next_turn()
@@ -348,6 +376,7 @@ func _render_projection(proj: Dictionary) -> void:
 	_color_for_value(proj_posttax_value, proj.posttax)
 	
 	proj_dividends_value.text = "-£%.2f" % proj.dividends
+	_proj_profit_sharing_value.text = "-£%.2f" % proj.profit_sharing
 	
 	proj_net_cashflow_value.text = _format_signed(proj.net_cashflow)
 	_color_for_value(proj_net_cashflow_value, proj.net_cashflow)
@@ -384,7 +413,7 @@ func _project_next_turn() -> Dictionary:
 		
 		# Output revenue
 		var output_name: String = recipe.get("output_name", "")
-		var output_qty: int = recipe.get("output_qty", 0)
+		var output_qty: int = int(round(float(recipe.get("output_qty", 0)) * MatchState.workforce_output_multiplier()))
 		if output_name == "power":
 			power_supply += output_qty
 		elif output_name != "":
@@ -430,7 +459,10 @@ func _project_next_turn() -> Dictionary:
 	var posttax: float = pretax - tax
 	var dividend_base := maxf(posttax, 0.0)
 	var dividends: float = minf(dividend_base, dividend_base * EconomyConfig.DIVIDEND_RATE)
-	var net_cashflow: float = posttax - dividends
+	var profit_sharing := 0.0
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
+		profit_sharing = maxf(0.0, posttax - dividends) * 0.05
+	var net_cashflow: float = posttax - dividends - profit_sharing
 	
 	return {
 		"goods_revenue": goods_revenue,
@@ -448,6 +480,7 @@ func _project_next_turn() -> Dictionary:
 		"tax": tax,
 		"posttax": posttax,
 		"dividends": dividends,
+		"profit_sharing": profit_sharing,
 		"net_cashflow": net_cashflow,
 	}
 
@@ -461,7 +494,7 @@ func _calculate_projected_labour_cost(_building: Dictionary) -> float:
 		+ skilled * EconomyConfig.LABOUR_SKILLED_RATE
 		+ high_skilled * EconomyConfig.LABOUR_HIGH_SKILLED_RATE
 	)
-	return base_cost * MatchState.labour_multiplier
+	return base_cost * MatchState.labour_multiplier * MatchState.workforce_labour_cost_multiplier()
 
 func _projected_transport_cost(building: Dictionary, recipe: Dictionary) -> float:
 	var instance_id: String = building.get("instance_id", "")
@@ -552,6 +585,7 @@ func _record_chart_history(summary: Dictionary) -> void:
 	costs["labour"] = float(summary.get("labour_paid", 0.0))
 	costs["taxes"] = float(summary.get("taxes_paid", 0.0))
 	costs["dividends"] = float(summary.get("dividends_paid", 0.0))
+	costs["profit_sharing"] = float(summary.get("profit_sharing_paid", 0.0))
 	costs["interest"] = float(summary.get("interest_paid", 0.0))
 
 	_chart_history.append({

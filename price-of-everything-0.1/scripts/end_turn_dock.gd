@@ -340,12 +340,14 @@ func _render_summary(s: Dictionary) -> void:
 	var power: float = float(s.get("power_purchase_cost", 0.0))
 	var transport: float = float(s.get("transport_paid", 0.0))
 	var bought: float = float(s.get("goods_purchased_cost", 0.0))
+	var profit_sharing: float = float(s.get("profit_sharing_paid", 0.0))
 	_fin = [
 		{"k": "Sold", "v": sold},
 		{"k": "Costs", "v": -costs},
 		{"k": "Power", "v": -power},
 		{"k": "Transport", "v": -transport},
 		{"k": "Bought", "v": -bought},
+		{"k": "Profit Sharing", "v": -profit_sharing},
 	]
 	_net = float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
 

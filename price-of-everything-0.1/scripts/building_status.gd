@@ -61,7 +61,8 @@ static func primary_output_qty(recipe: Dictionary) -> int:
 	return 0
 
 # Post-modifier output qty of the building's PRIMARY good this turn — mirrors
-# production.gd._produce_outputs: recipe_output modifiers, then the level OUTPUT_MULT.
+# production.gd._produce_outputs: recipe_output modifiers, level OUTPUT_MULT, then
+# the workforce output multiplier.
 # Returns the per-turn output capacity (0 for power/infra or unknown goods).
 static func effective_output_qty(building: Dictionary, recipe: Dictionary) -> int:
 	for output in flow_output_items(recipe):
@@ -82,6 +83,7 @@ static func effective_output_qty(building: Dictionary, recipe: Dictionary) -> in
 		}
 		var q: int = int(round(Modifiers.apply("recipe_output", recipe_id, float(base_qty), ctx)))
 		q = int(round(float(q) * BuildingLevels.mult("output", int(building.get("level", 1)))))
+		q = int(round(float(q) * MatchState.workforce_output_multiplier()))
 		return maxi(0, q)
 	return 0
 
@@ -95,8 +97,9 @@ static func effective_energy_req(building: Dictionary, recipe: Dictionary) -> in
 	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
 	return int(round(eff * BuildingLevels.mult("energy", int(building.get("level", 1)))))
 
-# Power GENERATION this turn (post recipe_output modifiers × level OUTPUT_MULT) — mirrors
-# production.gd._effective_power_output. 0 when the recipe produces no power.
+# Power GENERATION this turn (post recipe_output modifiers × level OUTPUT_MULT × workforce
+# output multiplier) — mirrors production.gd._effective_power_output. 0 when the recipe
+# produces no power.
 static func effective_power_output(building: Dictionary, recipe: Dictionary) -> int:
 	var output_qty: int = int(recipe.get("output_qty", 0))
 	if output_qty <= 0 or str(recipe.get("output_name", "")) != "power":
@@ -110,7 +113,7 @@ static func effective_power_output(building: Dictionary, recipe: Dictionary) -> 
 		"good_internal": "power",
 	}
 	var eff := Modifiers.apply("recipe_output", rid, float(output_qty), ctx)
-	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1)))))
+	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * MatchState.workforce_output_multiplier()))
 
 static func good_display_from_internal(internal_name: String) -> String:
 	return str(Catalog.get_good_by_internal_name(internal_name).get("display_name", internal_name))
@@ -303,9 +306,33 @@ static func produce_cost_status(building: Dictionary) -> Dictionary:
 	var base_price: float = Catalog.get_base_price(output_good_id) if output_good_id != "" else 0.0
 	return {"color": cost_rag_color(uc, base_price), "unit_cost": uc, "base_price": base_price}
 
-# --- Net output modifier (additive recipe_output modifiers + multiplicative intermittency) --
+# --- Net output modifier (additive recipe_output modifiers + workforce + intermittency) ----
 # Returns the signed net percent and its colour band (white -1..1%, green >1%, red <-1%), plus the
-# component parts and intermittency derate so a UI can build a breakdown tooltip without recomputing.
+# component parts so a UI can build a breakdown tooltip without recomputing.
+static func workforce_output_modifier_parts(turn_number: int = -1) -> Array:
+	var turn := int(TurnManager.current_turn) if turn_number < 0 else turn_number
+	var parts: Array = []
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_GENEROUS_PENSIONS):
+		var pensions: Dictionary = MatchState.workforce_policy_effects.get(MatchState.WORKFORCE_POLICY_GENEROUS_PENSIONS, {})
+		var pension_pct := float(pensions.get("output_pct", 0.0)) * 100.0
+		if absf(pension_pct) > 0.001:
+			parts.append({"pct": pension_pct, "label": "Generous Pensions"})
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE) and turn % 10 == 0:
+		parts.append({"pct": -5.0, "label": "Extended Annual Leave"})
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE):
+		var ten_turn_block := int(floor(float(maxi(turn, 1) - 1) / 10.0))
+		if ten_turn_block % 2 == 0:
+			parts.append({"pct": -5.0, "label": "Generous Parental Leave"})
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_STRICT_SAFETY):
+		parts.append({"pct": -10.0, "label": "Strict Safety Procedures"})
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_LAX_SAFETY):
+		parts.append({"pct": 10.0, "label": "Lax Safety Procedures"})
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_BONUS) and turn % 10 == 0:
+		parts.append({"pct": 20.0, "label": "Annual Bonus"})
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
+		parts.append({"pct": 10.0, "label": "Annual Profit Share"})
+	return parts
+
 static func net_output_modifier(building: Dictionary, recipe: Dictionary) -> Dictionary:
 	var recipe_id: String = str(recipe.get("recipe_id", ""))
 	var ctx := {
@@ -317,8 +344,10 @@ static func net_output_modifier(building: Dictionary, recipe: Dictionary) -> Dic
 	}
 	var res: Dictionary = Modifiers.resolve_pct("recipe_output", recipe_id, ctx)
 	var net: float = float(res.get("net", 0.0))
+	var workforce_mult: float = MatchState.workforce_output_multiplier()
+	var workforce_parts := workforce_output_modifier_parts()
 	var derate: float = float((Production.get_building_intermittency(str(building.get("instance_id", ""))) as Dictionary).get("derate", 0.0))
-	var eff: float = ((1.0 + net / 100.0) * (1.0 - derate) - 1.0) * 100.0
+	var eff: float = ((1.0 + net / 100.0) * workforce_mult * (1.0 - derate) - 1.0) * 100.0
 	var color: Color
 	if eff > 1.0:
 		color = STATUS_GREEN
@@ -332,6 +361,8 @@ static func net_output_modifier(building: Dictionary, recipe: Dictionary) -> Dic
 		"pct_f": eff,
 		"color": color,
 		"parts": res.get("parts", []),
+		"workforce_parts": workforce_parts,
+		"workforce_multiplier": workforce_mult,
 		"derate": derate,
 		"text": "%s%d%%" % ["+" if eff_i > 0 else "", eff_i],
 	}
@@ -379,13 +410,21 @@ static func _fmt_upto2(v: float) -> String:
 ## The net-modifier hover tooltip — same breakdown the detail panel builds (parts + derate + legend).
 static func _modifier_tooltip(mod: Dictionary) -> String:
 	var parts: Array = mod.get("parts", [])
+	var workforce_parts: Array = mod.get("workforce_parts", [])
 	var derate: float = float(mod.get("derate", 0.0))
-	if parts.is_empty() and derate <= 0.0:
+	if parts.is_empty() and workforce_parts.is_empty() and derate <= 0.0:
 		return "Production modifier: none active.\n" + _MOD_RAG_LEGEND
-	var lines: PackedStringArray = ["Production modifiers (added together, then applied):"]
-	for p in parts:
-		var pv: float = float(p.get("pct", 0.0))
-		lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
+	var lines: PackedStringArray = ["Production modifiers:"]
+	if not parts.is_empty():
+		lines.append("Recipe modifiers (added together):")
+		for p in parts:
+			var pv: float = float(p.get("pct", 0.0))
+			lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
+	if not workforce_parts.is_empty():
+		lines.append("Workforce policies (multiplicative):")
+		for p in workforce_parts:
+			var pv: float = float(p.get("pct", 0.0))
+			lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
 	if derate > 0.0:
 		lines.append("  -%d%%  Intermittency impact (multiplicative, applied after)" % int(round(derate * 100.0)))
 	lines.append("Net: " + str(mod.get("text", "")))

@@ -1,5 +1,6 @@
 extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const BuildingStatus := preload("res://scripts/building_status.gd")
 ## Minimal, zero-dependency headless test runner for price-of-everything.
 ##
 ## Fast path (one command; exit code 0 = all pass, 1 = a failure):
@@ -14,6 +15,7 @@ const BuildingLevels := preload("res://scripts/building_levels.gd")
 
 var _passed := 0
 var _failed := 0
+var _failed_names: Array[String] = []
 
 const RoadRegionsLoader := preload("res://scripts/road_regions.gd")
 
@@ -22,6 +24,7 @@ func _ready() -> void:
 	_test_scripts_parse()
 	_test_widgets_instantiate()
 	_test_recipe_row_instantiates()
+	await _test_unlock_dialog_groups_multiple_unlocks()
 	await _test_stockpile_legend_label_visible()
 	_test_scene_loads()
 	await _test_main_scene_instantiates()
@@ -29,6 +32,7 @@ func _ready() -> void:
 	_test_recipe_requirements()
 	_test_menu_icons()
 	_test_bottom_menu_default()
+	_test_panel_stack_focus()
 	_test_ports()
 	_test_building_price()
 	_test_buy_grants_land()
@@ -36,6 +40,9 @@ func _ready() -> void:
 	_test_transport_boundaries()
 	_test_build_mode_overlay_survey_visibility()
 	_test_direct_build_skips_build_overlay()
+	_test_advisor_payroll_cost()
+	await _test_research_unlock_promotes_construct_panel_recipes()
+	_test_tile_deposit_build_options_respect_research_unlocks()
 	await _test_building_ledger()
 	await _test_debug_terminal()
 	_test_building_shapes()
@@ -44,6 +51,7 @@ func _ready() -> void:
 	_test_move_extras()
 	_test_storage_boost()
 	_test_queue_sell()
+	_test_queue_sell_immediate_updates_turn_summary()
 	_test_market_execute_sale()
 	_test_market_execute_sale_skip_consume()
 	_test_market_execute_sale_pay_transport()
@@ -54,6 +62,7 @@ func _ready() -> void:
 	_test_market_buy()
 	_test_tax_dividend_caps()
 	_test_purchases()
+	_test_exhausted_input_source_falls_back_to_market()
 	_test_recipes_producing()
 	_test_transfer_helpers()
 	_test_output_conservation()
@@ -69,6 +78,15 @@ func _ready() -> void:
 	_test_construction_sourcing()
 	_test_construction_cancel()
 	await _test_construction_detail_panel()
+	_test_special_order_state_model()
+	_test_special_order_generation()
+	_test_special_order_settlement()
+	_test_output_special_order_route()
+	_test_tile_view_special_order_route()
+	_test_special_order_overflow_resolution()
+	_test_pending_special_order_shipment_resolution()
+	await _test_special_order_resolution_dialog()
+	_test_market_special_orders_tab()
 	_test_save_load_roundtrip()
 	await _test_pending_load_applies_on_scene_ready()
 	_test_start_config_expansion()
@@ -95,6 +113,7 @@ func _ready() -> void:
 	await _test_modifiers_roundtrip()
 	_test_live_unlock_conditions()
 	_test_deposit_penalty_modifier()
+	_test_workforce_output_modifier_surfaces_in_building_status()
 	_test_flavor_nodes_wired()
 	_test_transport_congestion()
 	_test_tile_mode_flow_endpoints()
@@ -161,6 +180,10 @@ func _ready() -> void:
 	_test_empire_ports()
 	_test_empire_rag()
 	_test_audio_service()
+	if not _failed_names.is_empty():
+		print("FAILED TESTS:")
+		for failed_name in _failed_names:
+			print("  - ", failed_name)
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -2333,6 +2356,559 @@ func _tile_types_from_csv() -> Dictionary:
 	file.close()
 	return out
 
+func _test_special_order_state_model() -> void:
+	var saved_turn: int = TurnManager.current_turn
+	TurnManager.current_turn = 5
+	SpecialOrderState.reset()
+
+	var templates: Array = SpecialOrderState.all_order_templates()
+	_check(templates.size() == SpecialOrderState.SPECIAL_ORDER_GOOD_INTERNALS.size(),
+		"special orders: every cycle good resolves to a template")
+	var coal_template: Dictionary = SpecialOrderState.template_for_good("coal")
+	_check(str(coal_template.get("good_id", "")) == "g_001"
+		and int(coal_template.get("baseline_output_qty", 0)) == 60,
+		"special orders: coal template resolves catalog good + one-producer output")
+	var glass_template: Dictionary = SpecialOrderState.template_for_good("glass")
+	_check(str(glass_template.get("baseline_recipe_id", "")) != ""
+		and int(glass_template.get("baseline_output_qty", 0)) > 0,
+		"special orders: glass template finds a baseline producer")
+	var car_template: Dictionary = SpecialOrderState.template_for_good("cars")
+	_check(str(car_template.get("good_internal", "")) == "ice_car",
+		"special orders: cars alias resolves to ICE car good")
+
+	var coal: Dictionary = SpecialOrderState.create_order("coal", 5, 5)
+	_check(not coal.is_empty() and int(coal.get("qty_required", 0)) == 300
+		and int(coal.get("expires_turn", 0)) == 20,
+		"special orders: created order uses output x target turns + buffer")
+	_check(SpecialOrderState.create_order("g_001", 5, 5).is_empty(),
+		"special orders: a good cannot have two active orders")
+	_check(str(SpecialOrderState.get_active_order_for_good("coal").get("id", "")) == str(coal.get("id", "")),
+		"special orders: active order can be queried by good")
+
+	var committed: Dictionary = SpecialOrderState.commit_units(str(coal.get("id", "")), 12, "tile_view")
+	var counts: Dictionary = committed.get("source_mode_counts", {})
+	_check(int(committed.get("qty_committed", 0)) == 12 and int(counts.get("tile_view", 0)) == 12,
+		"special orders: commitments track qty and source mode")
+	var partial: Dictionary = SpecialOrderState.deliver_units(str(coal.get("id", "")), 20)
+	_check(str(partial.get("status", "")) == SpecialOrderState.STATUS_AVAILABLE
+		and int(partial.get("qty_delivered", 0)) == 20,
+		"special orders: partial delivery updates without closing")
+	var fulfilled: Dictionary = SpecialOrderState.deliver_units(str(coal.get("id", "")), 300)
+	_check(str(fulfilled.get("status", "")) == SpecialOrderState.STATUS_FULFILLED
+		and SpecialOrderState.fulfilled_count == 1,
+		"special orders: full delivery closes as fulfilled")
+	_check(not SpecialOrderState.can_good_enter_cycle("coal"),
+		"special orders: fulfilled good waits for two other fulfilments before re-entry")
+
+	var iron: Dictionary = SpecialOrderState.create_order("iron_ore", 6, 5, 1)
+	var glass: Dictionary = SpecialOrderState.create_order("glass", 6, 5, 1)
+	SpecialOrderState.deliver_units(str(iron.get("id", "")), 1)
+	SpecialOrderState.deliver_units(str(glass.get("id", "")), 1)
+	_check(SpecialOrderState.fulfilled_count == 3 and SpecialOrderState.can_good_enter_cycle("coal"),
+		"special orders: good re-enters after two other fulfilled orders")
+	var coal_again: Dictionary = SpecialOrderState.create_order("coal", 7, 5, 60)
+	_check(not coal_again.is_empty(), "special orders: re-entered good can create a new order")
+
+	var snap: Dictionary = SpecialOrderState.export_state()
+	SpecialOrderState.reset()
+	SpecialOrderState.import_state(snap)
+	_check(SpecialOrderState.get_active_orders().size() == 1
+		and SpecialOrderState.fulfilled_count == 3
+		and str(SpecialOrderState.get_active_orders()[0].get("good_internal", "")) == "coal",
+		"special orders: state round-trips active orders and fulfilment counters")
+
+	SpecialOrderState.reset()
+	TurnManager.current_turn = saved_turn
+
+func _test_special_order_generation() -> void:
+	var saved_turn: int = TurnManager.current_turn
+	SpecialOrderState.reset()
+	SpecialOrderState.set_rng_seed(12345)
+
+	_check(SpecialOrderState.spawn_orders_for_turn(4).is_empty()
+		and SpecialOrderState.get_active_orders().is_empty(),
+		"special orders: generation waits until turn 5")
+
+	var turn5: Array = SpecialOrderState.spawn_orders_for_turn(5)
+	_check(turn5.size() == 4, "special orders: turn 5 creates four tutorial orders")
+	_check(_special_order_goods(SpecialOrderState.get_active_orders()) == ["coal", "iron_ore", "glass", "ice_car"],
+		"special orders: turn 5 goods are deterministic")
+	_check(SpecialOrderState.spawn_orders_for_turn(5).is_empty()
+		and SpecialOrderState.get_active_orders().size() == 4,
+		"special orders: a spawn turn is idempotent")
+
+	var turn10: Array = SpecialOrderState.spawn_orders_for_turn(10)
+	var active_after_10 := SpecialOrderState.get_active_orders()
+	_check(turn10.size() >= 2 and turn10.size() <= 3,
+		"special orders: later spawn turns add 2-3 orders")
+	_check(_special_order_goods(active_after_10).size() == _unique_strings(_special_order_goods(active_after_10)).size(),
+		"special orders: active goods stay unique after random spawn")
+	for order in turn10:
+		var turns := int((order as Dictionary).get("target_production_turns", 0))
+		_check(turns >= SpecialOrderState.MIN_TARGET_TURNS and turns <= SpecialOrderState.MAX_TARGET_TURNS,
+			"special orders: random order duration uses 5-10 production turns")
+
+	var turn21: Dictionary = SpecialOrderState.advance_turn(21)
+	_check((turn21.get("closed", []) as Array).size() == 4,
+		"special orders: expired turn-5 orders close after their expiry turn")
+	_check(SpecialOrderState.get_active_order_for_good("coal").is_empty()
+		and not SpecialOrderState.can_good_enter_cycle("coal"),
+		"special orders: expired goods leave active list but stay re-entry gated")
+	_check(SpecialOrderState.spawn_orders_for_turn(55).is_empty(),
+		"special orders: generation stops after turn 50")
+
+	var first_run: Array = _special_order_goods(active_after_10)
+	SpecialOrderState.reset()
+	SpecialOrderState.set_rng_seed(12345)
+	SpecialOrderState.spawn_orders_for_turn(5)
+	SpecialOrderState.spawn_orders_for_turn(10)
+	_check(_special_order_goods(SpecialOrderState.get_active_orders()) == first_run,
+		"special orders: saved RNG seed makes random generation repeatable")
+
+	SpecialOrderState.reset()
+	TurnManager.current_turn = saved_turn
+
+func _test_special_order_settlement() -> void:
+	var saved_turn: int = TurnManager.current_turn
+	var saved_money: float = MatchState.money
+	EventScheduler.reset()
+	SpecialOrderState.reset()
+	TurnManager.current_turn = 8
+	MatchState.money = 1000.0
+
+	var coal: Dictionary = SpecialOrderState.create_order("coal", 5, 5, 10, 0.5)
+	var coal_id := str(coal.get("id", ""))
+	var committed: Dictionary = SpecialOrderState.commit_units(coal_id, 5, "tile_view", "g_001")
+	_check(int(committed.get("qty_committed", 0)) == 5,
+		"special orders: commitments can be tied to a matching good id")
+	TurnManager.current_turn = 18
+	var warned: Array = SpecialOrderState.warn_orders_for_turn(18)
+	_check(warned.size() == 1
+		and EventScheduler._active.has("special_order_warning:%s" % coal_id),
+		"special orders: committed orders warn with two turns left")
+
+	var partial: Dictionary = SpecialOrderState.settle_delivery(coal_id, "g_001", 5, 10.0)
+	_check(not bool(partial.get("fulfilled", false))
+		and absf(float(partial.get("premium_bonus", 0.0))) < 0.001,
+		"special orders: partial settlement pays no premium")
+	var money_before_bonus: float = MatchState.money
+	var finished: Dictionary = SpecialOrderState.settle_delivery(coal_id, "g_001", 6, 12.0)
+	_check(bool(finished.get("fulfilled", false))
+		and absf(float(finished.get("premium_bonus", 0.0)) - 10.0) < 0.001,
+		"special orders: fulfilment premium is based only on required units")
+	_check(absf(MatchState.money - (money_before_bonus + 10.0)) < 0.001,
+		"special orders: fulfilment premium is paid to cash")
+	_check(SpecialOrderState.get_order(coal_id).is_empty()
+		and EventScheduler._active.has("special_order_fulfilled:%s" % coal_id),
+		"special orders: fulfilled order closes and raises a notification")
+
+	EventScheduler.reset()
+	SpecialOrderState.reset()
+	TurnManager.current_turn = 5
+	var expiring: Dictionary = SpecialOrderState.create_order("coal", 5, 5, 10, 0.5)
+	var expiring_id := str(expiring.get("id", ""))
+	SpecialOrderState.commit_units(expiring_id, 1, "building_detail", "g_001")
+	var turn21: Dictionary = SpecialOrderState.advance_turn(21)
+	_check((turn21.get("closed", []) as Array).size() == 1
+		and EventScheduler._active.has("special_order_expired:%s" % expiring_id),
+		"special orders: committed expired orders raise a notification")
+
+	EventScheduler.reset()
+	SpecialOrderState.reset()
+	TurnManager.current_turn = 10
+	MatchState.money = 500.0
+	var market_order: Dictionary = SpecialOrderState.create_order("coal", 10, 5, 4, 0.25)
+	var market_order_id := str(market_order.get("id", ""))
+	Stockpile.consume("tile_5_10", "g_001", 1 << 30)
+	Stockpile.add("tile_5_10", "g_001", 4)
+	var market_money_before: float = MatchState.money
+	var sale: Dictionary = MarketState.execute_sale("tile_5_10", {"g_001": 4}, {
+		"special_order_id": market_order_id,
+		"special_order_source_mode": "tile_view",
+		"log_oneoff": false,
+	})
+	var expected_bonus := float(sale.get("total_revenue", 0.0)) * 0.25
+	_check(not sale.is_empty()
+		and not bool(sale.get("deferred", false))
+		and bool(sale.get("special_order_committed", false)),
+		"special orders: market sales can commit to an active order")
+	_check(SpecialOrderState.get_order(market_order_id).is_empty()
+		and EventScheduler._active.has("special_order_fulfilled:%s" % market_order_id),
+		"special orders: immediate market sales settle and close orders")
+	_check(absf(MatchState.money - (market_money_before + float(sale.get("total_revenue", 0.0)) + expected_bonus)) < 0.01,
+		"special orders: immediate market sale pays normal revenue plus premium")
+
+	EventScheduler.reset()
+	SpecialOrderState.reset()
+	TurnManager.current_turn = saved_turn
+	MatchState.money = saved_money
+
+func _test_output_special_order_route() -> void:
+	var saved_turn: int = TurnManager.current_turn
+	var saved_money: float = MatchState.money
+	MatchState.reset()
+	Stockpile.clear_all()
+	EventScheduler.reset()
+	SpecialOrderState.reset()
+	TurnManager.current_turn = 10
+	MatchState.money = 500.0
+
+	var order: Dictionary = SpecialOrderState.create_order("coal", 10, 5, 4, 0.25)
+	var order_id := str(order.get("id", ""))
+	MatchState.route_output_to_special_order("inst_so_prod", "g_001", order_id)
+	_check(MatchState.is_output_market("inst_so_prod", "g_001")
+		and MatchState.get_output_special_order_id("inst_so_prod", "g_001") == order_id,
+		"special orders: output routes can target an active matching order")
+
+	var summary := _fresh_production_summary()
+	Production._dispatch_output_to_stockpile({
+		"instance_id": "inst_so_prod",
+		"tile_id": "tile_5_10",
+	}, Catalog.get_good("g_001"), 4, summary)
+	_check(SpecialOrderState.get_order(order_id).is_empty()
+		and EventScheduler._active.has("special_order_fulfilled:%s" % order_id),
+		"special orders: market-routed production output fulfils the order")
+	_check(MatchState.money > 500.0
+		and float(summary.get("goods_sales_revenue", 0.0)) > 0.0,
+		"special orders: market-routed production pays revenue and premium")
+
+	EventScheduler.reset()
+	SpecialOrderState.reset()
+	TurnManager.current_turn = saved_turn
+	MatchState.reset()
+	Stockpile.clear_all()
+	MatchState.money = saved_money
+
+func _test_tile_view_special_order_route() -> void:
+	var saved_turn: int = TurnManager.current_turn
+	var saved_money: float = MatchState.money
+	MatchState.reset()
+	Stockpile.clear_all()
+	EventScheduler.reset()
+	SpecialOrderState.reset()
+	TurnManager.current_turn = 10
+	MatchState.money = 500.0
+
+	var order: Dictionary = SpecialOrderState.create_order("coal", 10, 5, 4, 0.25)
+	var order_id := str(order.get("id", ""))
+	var panel: Control = load("res://scripts/tile_info_panel_v2.gd").new()
+	add_child(panel)
+	panel.set("_current_tile_id", "tile_3_8")
+	panel.set("_active_tab", "stock")
+	panel.set("_stock_sel", {"good_id": "g_001", "name": "Coal", "qty": 6})
+	panel.set("_stock_qty", 6)
+	var menu: Control = panel.call("_make_stock_context_menu")
+	_check(_node_tree_contains_text(menu, "Special Order"),
+		"tile view: matching active order shows Special Order destination")
+	menu.queue_free()
+	panel.set("_stock_sel", {"good_id": "g_002", "name": "Iron Ore", "qty": 6})
+	var other_menu: Control = panel.call("_make_stock_context_menu")
+	_check(not _node_tree_contains_text(other_menu, "Special Order"),
+		"tile view: non-matching goods do not show Special Order destination")
+	other_menu.queue_free()
+	panel.queue_free()
+
+	Stockpile.add("tile_3_8", "g_001", 6)
+	var ships_before := MatchState.get_pending_transport_shipments().size()
+	var result: Dictionary = SpecialOrderState.queue_from_tile("tile_3_8", order_id, "g_001", 6, false)
+	_check(not result.is_empty()
+		and bool(result.get("special_order_committed", false))
+		and int(result.get("total_qty", 0)) == 4
+		and Stockpile.get_at_tile("tile_3_8", "g_001") == 2,
+		"tile view: special-order sale clamps to remaining demand and consumes stock")
+	var tagged := false
+	for shipment in MatchState.get_pending_transport_shipments():
+		var s: Dictionary = shipment
+		if str(s.get("special_order_id", "")) == order_id and str(s.get("special_order_source_mode", "")) == "tile_view":
+			tagged = true
+	_check(MatchState.get_pending_transport_shipments().size() > ships_before and tagged,
+		"tile view: special-order sale queues a tagged market shipment")
+
+	var summary := _fresh_production_summary()
+	for _i in range(25):
+		Production._process_transport_arrivals(summary)
+		if SpecialOrderState.get_order(order_id).is_empty():
+			break
+	_check(SpecialOrderState.get_order(order_id).is_empty()
+		and EventScheduler._active.has("special_order_fulfilled:%s" % order_id),
+		"tile view: tagged shipment fulfils the special order on arrival")
+
+	EventScheduler.reset()
+	SpecialOrderState.reset()
+	TurnManager.current_turn = saved_turn
+	MatchState.reset()
+	Stockpile.clear_all()
+	MatchState.money = saved_money
+
+func _test_special_order_overflow_resolution() -> void:
+	var saved_turn: int = TurnManager.current_turn
+	var saved_money: float = MatchState.money
+	MatchState.reset()
+	Stockpile.clear_all()
+	EventScheduler.reset()
+	SpecialOrderState.reset()
+	TurnManager.current_turn = 10
+	MatchState.money = 500.0
+
+	var overflow_records: Array = []
+	var capture := func(record: Dictionary) -> void:
+		overflow_records.append(record.duplicate(true))
+	MatchState.special_order_overflow_ready.connect(capture)
+
+	var order: Dictionary = SpecialOrderState.create_order("coal", 10, 5, 4, 0.25)
+	var order_id := str(order.get("id", ""))
+	var summary := _fresh_production_summary()
+	Production._credit_arrived_sale({
+		"id": 77,
+		"is_sale": true,
+		"source_tile": "tile_3_8",
+		"destination_tile": "tile_5_10",
+		"special_order_id": order_id,
+		"special_order_source_mode": "building_detail",
+		"sale_record": {
+			"tile_id": "tile_3_8",
+			"items": [{"good_id": "g_001", "qty": 6, "revenue": 60.0}],
+			"total_qty": 6,
+			"total_revenue": 60.0,
+		},
+	}, summary)
+
+	_check(SpecialOrderState.get_order(order_id).is_empty()
+		and overflow_records.size() == 1
+		and int((overflow_records[0] as Dictionary).get("qty", 0)) == 2,
+		"special orders: over-delivery fulfils order and raises overflow decision")
+	_check(absf(MatchState.money - 550.0) < 0.001
+		and absf(float(summary.get("goods_sales_revenue", 0.0)) - 50.0) < 0.001,
+		"special orders: over-delivery pays counted units plus premium, not overflow")
+
+	var record: Dictionary = overflow_records[0]
+	var before_sell := MatchState.money
+	var sold := MatchState.sell_special_order_overflow(record)
+	_check(not sold.is_empty()
+		and absf(MatchState.money - (before_sell + 20.0)) < 0.001,
+		"special orders: overflow can be sold at normal market value")
+
+	var stock_record := record.duplicate(true)
+	stock_record["qty"] = 2
+	stock_record["total_revenue"] = 20.0
+	_check(MatchState.special_order_overflow_can_stockpile(stock_record)
+		and MatchState.stockpile_special_order_overflow(stock_record)
+		and Stockpile.get_at_tile("tile_5_10", "g_001") == 2,
+		"special orders: overflow can be stockpiled at port when the whole shipment fits")
+
+	MatchState.reset()
+	Stockpile.clear_all()
+	EventScheduler.reset()
+	SpecialOrderState.reset()
+	TurnManager.current_turn = 10
+	MatchState.money = 500.0
+	overflow_records.clear()
+	var instant_order: Dictionary = SpecialOrderState.create_order("coal", 10, 5, 4, 0.25)
+	Stockpile.add("tile_5_10", "g_001", 6)
+	var instant_result := MarketState.execute_sale("tile_5_10", {"g_001": 6}, {
+		"special_order_id": str(instant_order.get("id", "")),
+		"special_order_source_mode": "tile_view",
+		"log_oneoff": false,
+	})
+	_check(not bool(instant_result.get("deferred", true))
+		and int(instant_result.get("total_qty", 0)) == 4
+		and float(instant_result.get("total_revenue", 0.0)) > 0.0
+		and overflow_records.size() == 1,
+		"special orders: immediate over-delivery reports only credited sale units")
+
+	if MatchState.special_order_overflow_ready.is_connected(capture):
+		MatchState.special_order_overflow_ready.disconnect(capture)
+	EventScheduler.reset()
+	SpecialOrderState.reset()
+	TurnManager.current_turn = saved_turn
+	MatchState.reset()
+	Stockpile.clear_all()
+	MatchState.money = saved_money
+
+func _test_pending_special_order_shipment_resolution() -> void:
+	var saved_money: float = MatchState.money
+	MatchState.reset()
+	Stockpile.clear_all()
+
+	var order_id := "so_test_pending"
+	MatchState.queue_transport_shipment(_fake_special_order_sale_shipment(order_id, 4, 40.0))
+	var taken := MatchState.take_pending_special_order_shipments(order_id)
+	var sell_result := MatchState.resolve_special_order_shipments(taken, "sell")
+	var pending := MatchState.get_pending_transport_shipments()
+	_check(taken.size() == 1
+		and bool(sell_result.get("ok", false))
+		and pending.size() == 1
+		and bool((pending[0] as Dictionary).get("is_sale", false))
+		and str((pending[0] as Dictionary).get("special_order_id", "")) == "",
+		"special orders: pending tagged shipments can be converted to normal market sales")
+
+	MatchState.reset()
+	Stockpile.clear_all()
+	MatchState.queue_transport_shipment(_fake_special_order_sale_shipment(order_id, 4, 40.0))
+	taken = MatchState.take_pending_special_order_shipments(order_id)
+	var stockpile_result := MatchState.resolve_special_order_shipments(taken, "stockpile_port")
+	pending = MatchState.get_pending_transport_shipments()
+	_check(bool(stockpile_result.get("ok", false))
+		and pending.size() == 1
+		and not bool((pending[0] as Dictionary).get("is_sale", false))
+		and str((pending[0] as Dictionary).get("destination_tile", "")) == "tile_5_10"
+		and str((pending[0] as Dictionary).get("good_id", "")) == "g_001",
+		"special orders: pending tagged shipments can be converted to port stockpile deliveries")
+
+	MatchState.reset()
+	Stockpile.clear_all()
+	MatchState.queue_transport_shipment(_fake_special_order_sale_shipment(order_id, 4, 40.0))
+	taken = MatchState.take_pending_special_order_shipments(order_id)
+	var reroute_result := MatchState.resolve_special_order_shipments(taken, "reroute", "tile_12_4")
+	pending = MatchState.get_pending_transport_shipments()
+	_check(bool(reroute_result.get("ok", false))
+		and pending.size() == 1
+		and not bool((pending[0] as Dictionary).get("is_sale", false))
+		and str((pending[0] as Dictionary).get("destination_tile", "")) == "tile_12_4",
+		"special orders: pending tagged shipments can be rerouted to another tile stockpile")
+
+	MatchState.reset()
+	Stockpile.clear_all()
+	MatchState.money = saved_money
+
+func _test_special_order_resolution_dialog() -> void:
+	var saved_money: float = MatchState.money
+	MatchState.reset()
+	Stockpile.clear_all()
+	MatchState.money = 100.0
+
+	var dialog: Control = load("res://scripts/special_order_resolution_dialog.gd").new()
+	add_child(dialog)
+	await get_tree().process_frame
+	dialog.call("_on_overflow_ready", {
+		"order_id": "so_dialog",
+		"source_tile": "tile_3_8",
+		"port_tile": "tile_5_10",
+		"good_id": "g_001",
+		"good_display": "Coal",
+		"qty": 2,
+		"unit_revenue": 10.0,
+		"total_revenue": 20.0,
+	})
+	_check(dialog.visible
+		and _node_tree_contains_text(dialog, "Special order overflow")
+		and _node_tree_contains_text(dialog, "Stockpile at port"),
+		"special orders: resolution dialog opens for overflow decisions")
+	dialog.call("_on_sell_pressed")
+	await get_tree().process_frame
+	_check(not dialog.visible
+		and absf(MatchState.money - 120.0) < 0.001,
+		"special orders: resolution dialog sell action resolves and closes")
+	PanelStack.remove(dialog)
+	dialog.queue_free()
+	MatchState.reset()
+	Stockpile.clear_all()
+	MatchState.money = saved_money
+
+func _fake_special_order_sale_shipment(order_id: String, qty: int, revenue: float) -> Dictionary:
+	return {
+		"id": 9001,
+		"is_sale": true,
+		"source_tile": "tile_3_8",
+		"destination_tile": "tile_5_10",
+		"special_order_id": order_id,
+		"special_order_source_mode": "tile_view",
+		"sale_record": {
+			"tile_id": "tile_3_8",
+			"items": [{"good_id": "g_001", "qty": qty, "revenue": revenue}],
+			"total_qty": qty,
+			"total_revenue": revenue,
+		},
+		"tile_distance": 4,
+		"transport_turns": 3,
+		"turns_remaining": 3,
+		"path": [],
+		"legs": [],
+		"tiles": [],
+	}
+
+func _test_market_special_orders_tab() -> void:
+	var saved_turn: int = TurnManager.current_turn
+	SpecialOrderState.reset()
+	TurnManager.current_turn = 5
+	var order: Dictionary = SpecialOrderState.create_order("coal", 5, 5, 10, 0.4)
+	SpecialOrderState.commit_units(str(order.get("id", "")), 3, "tile_view", "g_001")
+
+	var panel: Control = load("res://scenes/market_panel.tscn").instantiate()
+	add_child(panel)
+	panel.call("_ensure_built")
+	var tabs: TabContainer = panel.get("_tabs")
+	_check(tabs != null
+		and tabs.get_child_count() >= 3
+		and tabs.get_tab_title(2) == "Special Orders",
+		"market panel: Special Orders is the third tab")
+	var count_label: Label = panel.get("_special_orders_count_label")
+	var body: VBoxContainer = panel.get("_special_orders_body")
+	_check(count_label != null
+		and count_label.text == "Active special orders: 1"
+		and body != null
+		and body.get_child_count() == 1,
+		"market panel: Special Orders tab renders active order rows")
+	_check(_node_tree_contains_text(body, "Coal")
+		and _node_tree_contains_text(body, "3")
+		and _node_tree_contains_text(body, "+40%"),
+		"market panel: active special order row exposes good, committed qty and premium")
+	var row := body.get_child(0)
+	var row_main := row.get_child(0) as HBoxContainer
+	var product_button: Button = null
+	var target_cell: Label = null
+	if row_main != null and row_main.get_child_count() > 2:
+		product_button = row_main.get_child(1) as Button
+		target_cell = row_main.get_child(2) as Label
+	_check(row_main != null
+		and int(row_main.custom_minimum_size.y) == 98
+		and product_button != null
+		and int(product_button.custom_minimum_size.x) == 240
+		and int(product_button.custom_minimum_size.y) == 98
+		and target_cell != null
+		and int(target_cell.custom_minimum_size.y) == 98
+		and target_cell.horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER,
+		"market panel: Special Orders rows match goods row height and centered column cells")
+
+	SpecialOrderState.reset()
+	panel.call("_refresh_special_orders")
+	_check(count_label.text == "Active special orders: 0"
+		and _node_tree_contains_text(body, "No active special orders"),
+		"market panel: Special Orders tab renders the empty state")
+
+	panel.queue_free()
+	SpecialOrderState.reset()
+	TurnManager.current_turn = saved_turn
+
+func _special_order_goods(orders: Array) -> Array:
+	var out: Array = []
+	for order in orders:
+		out.append(str((order as Dictionary).get("good_internal", "")))
+	return out
+
+func _node_tree_contains_text(root: Node, needle: String) -> bool:
+	if root == null:
+		return false
+	if root is Label and str((root as Label).text).contains(needle):
+		return true
+	if root is Button and str((root as Button).text).contains(needle):
+		return true
+	for child in root.get_children():
+		if _node_tree_contains_text(child, needle):
+			return true
+	return false
+
+func _unique_strings(values: Array) -> Array:
+	var seen: Dictionary = {}
+	var out: Array = []
+	for value in values:
+		var key := str(value)
+		if seen.has(key):
+			continue
+		seen[key] = true
+		out.append(key)
+	return out
+
 # Save/load round-trip: populate every save-relevant system, export → JSON → import
 # into the reset systems → export again; the two snapshots must agree section by
 # section. Catches any state field a later change forgets to serialize.
@@ -2347,6 +2923,8 @@ func _test_save_load_roundtrip() -> void:
 	MatchState.add_recurring_bulk_sell({"good_id": "", "finished_only": true, "per_tile_keep": 2})
 	MatchState.queue_move("tile_12_4", "tile_3_8", {"g_001": 5})  # an in-flight shipment
 	_check(LoanState.take_loan(30.0), "roundtrip: loan taken for debt state")
+	var special_order: Dictionary = SpecialOrderState.create_order("coal", TurnManager.current_turn, 5, 25)
+	SpecialOrderState.commit_units(str(special_order.get("id", "")), 4, "tile_view")
 
 	var snap1: Dictionary = SaveLoad.export_snapshot()
 	# Real file round-trip via the slot API (covers JSON I/O + slot listing too).
@@ -2360,7 +2938,7 @@ func _test_save_load_roundtrip() -> void:
 	# full game scene; the visual rebuild is exercised manually / by scene tests).
 	_check(SaveLoad.load_slot("__test_roundtrip", false) == "", "load_slot applies without error")
 	var snap2: Dictionary = SaveLoad.export_snapshot()
-	for section in ["turn", "match", "stockpile", "loans", "construction", "market", "production", "events", "modifiers", "infrastructure"]:
+	for section in ["turn", "match", "stockpile", "loans", "construction", "market", "special_orders", "production", "events", "modifiers", "infrastructure"]:
 		_check(_canonical_json(snap1[section]) == _canonical_json(snap2[section]),
 			"round-trip preserves '%s'" % section)
 
@@ -2453,7 +3031,7 @@ func _test_start_config_applies_on_scene_ready() -> void:
 	_check(npc >= 5, "start: scene-seeded NPC ports/ruins survive the start import")
 	_check(Stockpile.get_at_tile("tile_6_8", "g_001") == 50, "start: stockpile seeded")
 	_check(MatchState.recurring_sells.size() == 1, "start: recurring sell order live")
-	_check(MatchState.deposit_remaining_for("tile_6_8", "coal") == 1000,
+	_check(MatchState.deposit_remaining_for("tile_6_8", "coal") == 2000,
 		"start: CSV deposit yields survive (no deposit data in the config)")
 	inst.queue_free()
 	await get_tree().process_frame
@@ -2475,6 +3053,8 @@ func _test_save_version_migration() -> void:
 		"v1 -> v2 migration fills in the standard ruleset")
 	_check(str(SaveLoad.export_snapshot().get("meta", {}).get("ruleset", "")) == "standard",
 		"migrated save re-exports with meta.ruleset")
+	_check(SpecialOrderState.get_active_orders().is_empty(),
+		"v1 -> v3 migration starts with no active special orders")
 	DirAccess.remove_absolute("user://saves/__test_v1.json")
 
 # Phase 4: a finished game stays finished across save/load.
@@ -2893,6 +3473,38 @@ func _test_deposit_penalty_modifier() -> void:
 	_check(absf(float(rload.get("net", 0.0)) - (-50.0)) < 0.001,
 		"a load with no saved penalties re-seeds the coal penalty (got %s)" % float(rload.get("net", 0.0)))
 	MatchState.remove_building(inst)
+	Modifiers.reset()
+	MatchState.reset()
+
+func _test_workforce_output_modifier_surfaces_in_building_status() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	var old_turn: int = int(TurnManager.current_turn)
+	TurnManager.current_turn = 1
+	var building := {
+		"instance_id": "inst_status_workforce",
+		"building_id": "b_007",
+		"tile_id": "tile_5_10",
+		"recipe_id": "r_009",
+		"level": 1,
+	}
+	var recipe: Dictionary = Catalog.get_recipe("r_009")
+	_check(BuildingStatus.effective_output_qty(building, recipe) == 20,
+		"building status baseline output excludes inactive workforce policies")
+	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
+	var mod: Dictionary = BuildingStatus.net_output_modifier(building, recipe)
+	var workforce_parts: Array = mod.get("workforce_parts", [])
+	_check(BuildingStatus.effective_output_qty(building, recipe) == 22,
+		"building status output includes annual profit-share workforce multiplier")
+	_check(absf(float(mod.get("pct_f", 0.0)) - 10.0) < 0.001,
+		"building status net output modifier includes annual profit share")
+	var first_workforce_part: Dictionary = workforce_parts[0] if not workforce_parts.is_empty() else {}
+	_check(workforce_parts.size() == 1 and str(first_workforce_part.get("label", "")) == "Annual Profit Share",
+		"building status modifier breakdown lists annual profit share")
+	_check(BuildingStatus._modifier_tooltip(mod).find("Annual Profit Share") >= 0,
+		"building status tooltip includes annual profit share")
+	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, false)
+	TurnManager.current_turn = old_turn
 	Modifiers.reset()
 	MatchState.reset()
 
@@ -4117,6 +4729,7 @@ func _check(ok: bool, name: String) -> void:
 		print("  PASS  ", name)
 	else:
 		_failed += 1
+		_failed_names.append(name)
 		printerr("  FAIL  ", name)
 
 # Empire view node packing (scripts/empire_layout.gd): the >=30px gap holds, packing is
@@ -4217,7 +4830,10 @@ func _test_market_sale_credits() -> void:
 	MatchState.money = 0.0
 	var summary := {"transport_paid": 0.0, "money_out": 0.0, "money_in": 0.0,
 		"goods_sales_revenue": 0.0, "sold": {}}
-	Production._sell_output_to_market("tile_3_8", Catalog.get_good("g_001"), 20, summary)
+	Production._sell_output_to_market({
+		"instance_id": "inst_market_credit",
+		"tile_id": "tile_3_8",
+	}, Catalog.get_good("g_001"), 20, summary)
 	# Drive arrivals for a few turns; a deferred sale should eventually credit.
 	for _i in range(25):
 		Production._process_transport_arrivals(summary)
@@ -4254,6 +4870,21 @@ func _test_tax_dividend_caps() -> void:
 		and is_equal_approx(float(profit_summary.get("dividends_paid", 0.0)), 1.6)
 		and is_equal_approx(float(profit_summary.get("money_in", 0.0)) - float(profit_summary.get("money_out", 0.0)), 6.4),
 		"tax is capped to profit and dividends are calculated after tax")
+
+	var profit_share_summary := {
+		"money_in": 100.0,
+		"money_out": 90.0,
+		"taxes_paid": 0.0,
+		"dividends_paid": 0.0,
+		"profit_sharing_paid": 0.0,
+	}
+	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
+	var share_pretax: float = Production._apply_tax_and_dividends(profit_share_summary)
+	Production._apply_profit_sharing(profit_share_summary, share_pretax)
+	_check(is_equal_approx(float(profit_share_summary.get("profit_sharing_paid", 0.0)), 0.32)
+		and is_equal_approx(float(profit_share_summary.get("money_in", 0.0)) - float(profit_share_summary.get("money_out", 0.0)), 6.08),
+		"profit sharing is paid from post-tax, post-dividend profit")
+	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, false)
 
 func _test_output_conservation() -> void:
 	# Default (STOCKPILE_ALL): a building's output should land in its own tile's stockpile.
@@ -4322,6 +4953,40 @@ func _test_market_buy() -> void:
 	var partial: Dictionary = MatchState.queue_buy("tile_3_8", "g_002", 1000)
 	_check(not partial.is_empty() and int(partial.get("qty", 0)) > 0 and int(partial.get("qty", 0)) < 1000,
 		"queue_buy buys a partial amount when cash is short")
+
+func _test_exhausted_input_source_falls_back_to_market() -> void:
+	MatchState.reset()
+	Stockpile.clear_all()
+	Power.reset_for_turn()
+	var fake := Node.new()
+	var src := GDScript.new()
+	src.source_code = "extends Node\nvar tiles := {}\nfunc id_to_coord(t):\n\treturn Vector2i(5, 10) if t == \"tile_5_10\" else Vector2i(-1, -1)\n"
+	src.reload()
+	fake.set_script(src)
+	fake.set("tiles", {Vector2i(5, 10): {"infrastructure_present": ["cables"], "infrastructure_levels": {"cables": 1}}})
+	fake.add_to_group("hex_map")
+	get_tree().root.add_child(fake)
+	MatchState.money = 100000.0
+	var source_iid := MatchState.add_building("b_001", "r_001", "tile_6_8", MatchState.LOCAL_PLAYER, "test_exhausted_coal_source")
+	var consumer_iid := MatchState.add_building("b_003", "r_004", "tile_5_10", MatchState.LOCAL_PLAYER, "test_exhausted_coal_consumer")
+	MatchState.set_output_stockpile_destination(source_iid, "tile_5_10", "g_001")
+	MatchState.set_input_tile_only(consumer_iid, "g_001", true)
+	MatchState.deposit_remaining["tile_6_8"] = {"coal": 0}
+	var summary := {
+		"purchased": {},
+		"purchased_cost": {},
+		"goods_purchased_cost": 0.0,
+		"transport_paid": 0.0,
+		"money_out": 0.0,
+		"goods_purchased_by_type": {},
+	}
+	Production._buy_market_inputs([MatchState.buildings[source_iid], MatchState.buildings[consumer_iid]], summary)
+	_check(not MatchState.is_input_tile_only(consumer_iid, "g_001"),
+		"exhausted routed input source switches the consumer back to market fallback")
+	_check(int(summary.get("purchased", {}).get("g_001", 0)) > 0,
+		"market fallback queues a replacement buy for the exhausted input")
+	get_tree().root.remove_child(fake)
+	fake.free()
 
 func _test_auto_sell_goods() -> void:
 	var t := "tile_4_4"
@@ -4780,6 +5445,7 @@ func _test_transaction_ledger() -> void:
 
 func _test_output_market_route() -> void:
 	var mode_before: int = MatchState.sell_mode
+	SpecialOrderState.reset()
 	MatchState.route_output_to_market("inst_test_market", "g_001")
 	_check(MatchState.is_output_market("inst_test_market", "g_001"),
 		"route_output_to_market marks the building for market")
@@ -4787,6 +5453,16 @@ func _test_output_market_route() -> void:
 		"a market route reads as no stockpile tile")
 	_check(MatchState.sell_mode == mode_before,
 		"per-building market route leaves the global sell mode unchanged")
+	var order: Dictionary = SpecialOrderState.create_order("coal", TurnManager.current_turn, 5, 4, 0.25)
+	var order_id := str(order.get("id", ""))
+	MatchState.route_output_to_special_order("inst_test_market", "g_001", order_id)
+	_check(MatchState.get_output_special_order_id("inst_test_market", "g_001") == order_id
+		and MatchState.is_output_market("inst_test_market", "g_001"),
+		"route_output_to_special_order marks output as market-bound with an order tag")
+	MatchState.route_output_to_market("inst_test_market", "g_001")
+	_check(MatchState.get_output_special_order_id("inst_test_market", "g_001") == "",
+		"route_output_to_market clears the special-order tag")
+	SpecialOrderState.reset()
 
 func _test_bulk_sell() -> void:
 	Stockpile.add("tile_3_8", "g_001", 30)
@@ -4813,6 +5489,27 @@ func _test_queue_sell() -> void:
 	_check(Stockpile.get_at_tile("tile_3_8", "g_001") == 0, "queue_sell consumes from source")
 	_check(str(summary.get("port", "")) != "" and MatchState.get_pending_transport_shipments().size() > before,
 		"queue_sell ships to a port")
+
+func _test_queue_sell_immediate_updates_turn_summary() -> void:
+	Stockpile.clear_all()
+	Stockpile.add("tile_5_10", "g_001", 6)
+	Production._pending_external_sales.clear()
+	Production.last_turn_summary = {"goods_sales_revenue": 0.0, "money_in": 0.0, "sold": {}}
+	var result: Dictionary = MatchState.queue_sell("tile_5_10", {"g_001": 6}, false)
+	var sold: Dictionary = Production.last_turn_summary.get("sold", {})
+	var coal: Dictionary = sold.get("g_001", {})
+	_check(not result.is_empty() and not bool(result.get("deferred", true)),
+		"queue_sell can settle immediately from a port tile")
+	_check(int(coal.get("qty", 0)) == 6
+		and float(Production.last_turn_summary.get("goods_sales_revenue", 0.0)) > 0.0,
+		"immediate tile-view sales update goods sold in the turn summary")
+	var next_summary := {"goods_sales_revenue": 0.0, "money_in": 0.0, "sold": {}}
+	Production._merge_pending_external_sales(next_summary)
+	var next_sold: Dictionary = next_summary.get("sold", {})
+	var next_coal: Dictionary = next_sold.get("g_001", {})
+	_check(int(next_coal.get("qty", 0)) == 6
+		and float(next_summary.get("goods_sales_revenue", 0.0)) > 0.0,
+		"immediate tile-view sales carry into the next turn summary")
 
 # MarketState.execute_sale is the unified low-level sell primitive. The three tests
 # below pin the three axes the option dict toggles, so any drift in queue_sell's or
@@ -5088,6 +5785,90 @@ func _test_direct_build_skips_build_overlay() -> void:
 	BuildMode.current_infrastructure_type = saved_infra
 	BuildMode._last_attempt_ms = saved_last_attempt
 
+func _test_advisor_payroll_cost() -> void:
+	var saved_ids := MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_money := MatchState.money
+	MatchState.permanent_advisor_ids = ["natasha", "dan"]
+	MatchState.money = 100.0
+	var summary := {"advisor_paid": 0.0, "money_out": 0.0}
+	var paid: float = Production._apply_advisor_costs(summary)
+	_check(is_equal_approx(paid, 4.0)
+		and is_equal_approx(float(summary.get("advisor_paid", 0.0)), 4.0)
+		and is_equal_approx(float(summary.get("money_out", 0.0)), 4.0)
+		and is_equal_approx(MatchState.money, 96.0),
+		"advisor payroll costs £2 per permanent advisor per turn")
+	MatchState.permanent_advisor_ids = saved_ids
+	MatchState.money = saved_money
+	MatchState.money_changed.emit(MatchState.money)
+	MatchState.advisors_changed.emit()
+
+func _test_research_unlock_promotes_construct_panel_recipes() -> void:
+	var recipe := Catalog.get_recipe("r_020")
+	var building_id := str(recipe.get("building_id", ""))
+	var saved_unlocks := MatchState.unlocked_titles.duplicate(true)
+	MatchState.unlocked_titles.erase("Electric Arc Refining")
+	var packed: PackedScene = load("res://scenes/construct_panel.tscn")
+	if packed == null or recipe.is_empty() or building_id == "":
+		_check(false, "research unlock: construct panel fixture resolves")
+		_replace_dict(MatchState.unlocked_titles, saved_unlocks)
+		return
+	var panel: Control = packed.instantiate() as Control
+	if panel == null:
+		_check(false, "research unlock: construct panel instantiates as Control")
+		_replace_dict(MatchState.unlocked_titles, saved_unlocks)
+		return
+	add_child(panel)
+	await get_tree().process_frame
+
+	panel.show()
+	await get_tree().process_frame
+	_check(not _construct_panel_has_recipe(panel, building_id, "r_020"),
+		"construct panel hides recipe-gated research before unlock")
+	MatchState.grant_unlock("Electric Arc Refining")
+	await get_tree().process_frame
+	_check(_construct_panel_has_recipe(panel, building_id, "r_020"),
+		"construct panel promotes recipe when research unlocks")
+
+	MatchState.unlocked_titles.erase("Electric Arc Refining")
+	panel.call("open_for_tile", "tile_test_research_unlock", {})
+	await get_tree().process_frame
+	_check(not _construct_panel_has_recipe(panel, building_id, "r_020"),
+		"tile build panel hides recipe-gated research before unlock")
+	MatchState.grant_unlock("Electric Arc Refining")
+	await get_tree().process_frame
+	_check(_construct_panel_has_recipe(panel, building_id, "r_020"),
+		"tile build panel promotes recipe when research unlocks")
+
+	panel.queue_free()
+	await get_tree().process_frame
+	_replace_dict(MatchState.unlocked_titles, saved_unlocks)
+
+func _construct_panel_has_recipe(panel: Node, building_id: String, recipe_id: String) -> bool:
+	var by_building: Dictionary = panel.get("recipes_by_building")
+	for recipe in by_building.get(building_id, []):
+		if str(recipe.get("recipe_id", "")) == recipe_id:
+			return true
+	return false
+
+func _test_tile_deposit_build_options_respect_research_unlocks() -> void:
+	var saved_unlocks := MatchState.unlocked_titles.duplicate(true)
+	MatchState.unlocked_titles.erase("Subsea Production Systems")
+	var tvd = load("res://scripts/tile_view_data.gd")
+	var locked_options: Array = tvd.deposit_build_options("crude_oil")
+	_check(not _build_options_have_recipe(locked_options, "r_222"),
+		"tile deposit build options hide recipe-gated research before unlock")
+	MatchState.grant_unlock("Subsea Production Systems")
+	var unlocked_options: Array = tvd.deposit_build_options("crude_oil")
+	_check(_build_options_have_recipe(unlocked_options, "r_222"),
+		"tile deposit build options promote recipe when research unlocks")
+	_replace_dict(MatchState.unlocked_titles, saved_unlocks)
+
+func _build_options_have_recipe(options: Array, recipe_id: String) -> bool:
+	for option in options:
+		if str(option.get("recipe_id", "")) == recipe_id:
+			return true
+	return false
+
 # Smoke: every script we touch must still parse. load() returns null on a parse
 # error — this is the check that catches the bug class we couldn't verify by hand.
 func _test_scripts_parse() -> void:
@@ -5126,6 +5907,10 @@ func _test_scripts_parse() -> void:
 		"res://scripts/modifier_state.gd",
 		"res://scripts/notification_bell.gd",
 		"res://scripts/road_regions.gd",
+		"res://scripts/special_order_state.gd",
+		"res://scripts/special_order_resolution_dialog.gd",
+		"res://scripts/unlock_dialog.gd",
+		"res://scripts/people_panel.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 
@@ -5146,6 +5931,95 @@ func _test_widgets_instantiate() -> void:
 	}])
 	_check(ig.get_child_count() == 1, "InfraGrid renders one slot")
 	ig.queue_free()
+
+	var saved_advisors := MatchState.permanent_advisor_ids.duplicate(true)
+	MatchState.permanent_advisor_ids.clear()
+	MatchState.advisors_changed.emit()
+	var pp: Node = load("res://scripts/people_panel.gd").new()
+	add_child(pp)
+	_check(
+		_tree_has_label_text(pp, "Labour") and _tree_has_label_text(pp, "Advisors")
+		and _tree_has_label_text(pp, "0.8x") and _tree_has_label_text(pp, "Workforce Policies"),
+		"PeoplePanel builds Labour and Advisors tabs")
+	_check(
+		_tree_has_label_text(pp, "Advisor payroll") and _tree_has_label_text(pp, "0 x £2 = £0.00/turn"),
+		"PeoplePanel shows advisor payroll at the top")
+	_check(MatchState.available_advisors().size() == MatchState.advisor_pool().size()
+		and MatchState.permanent_advisors().is_empty(),
+		"PeoplePanel starts with all advisors available and none permanent")
+	var add_event := InputEventMouseButton.new()
+	add_event.button_index = MOUSE_BUTTON_LEFT
+	add_event.pressed = true
+	pp.call("_on_permanent_add_slot_input", add_event)
+	var available_section: Control = pp.get("_available_advisors_section")
+	_check(is_instance_valid(available_section) and available_section.visible
+		and _tree_has_label_text(pp, "Natasha L.") and _tree_has_label_text(pp, "Your Uncle"),
+		"PeoplePanel plus slot opens the available advisor pool")
+	var first_advisor: Dictionary = MatchState.available_advisors()[0]
+	var hire_event := InputEventMouseButton.new()
+	hire_event.button_index = MOUSE_BUTTON_LEFT
+	hire_event.pressed = true
+	pp.call("_on_available_advisor_card_input", hire_event, first_advisor)
+	_check(MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", "")))
+		and _tree_has_label_text(pp, "1 x £2 = £2.00/turn"),
+		"PeoplePanel selecting from the pool hires a permanent advisor and updates payroll")
+	var permanent: Array = pp.get("_permanent_advisors")
+	var card: Control = pp.call("_advisor_card", permanent[0], true, false) as Control
+	var portrait: Control = card.find_child("AdvisorPortrait", true, false) as Control
+	_check(card.mouse_filter == Control.MOUSE_FILTER_STOP and portrait != null
+		and portrait.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"PeoplePanel advisor card click surface includes the portrait")
+	card.free()
+	if not permanent.is_empty():
+		pp.call("_open_advisor_detail", permanent[0])
+	var detail: Node = pp.get("_advisor_detail_panel")
+	_check(
+		detail != null and detail.visible
+		and _tree_has_label_text(detail, "Agenda") and _tree_has_label_text(detail, "Missions"),
+		"PeoplePanel opens advisor detail shell")
+	pp.call("_close_advisor_detail")
+	if detail != null:
+		detail.queue_free()
+	pp.queue_free()
+	MatchState.permanent_advisor_ids = saved_advisors
+	MatchState.advisors_changed.emit()
+
+func _tree_has_label_text(node: Node, needle: String) -> bool:
+	if needle in node.name:
+		return true
+	if node is Label and needle in (node as Label).text:
+		return true
+	if node is Button and needle in (node as Button).text:
+		return true
+	for child in node.get_children():
+		if _tree_has_label_text(child, needle):
+			return true
+	return false
+
+func _test_unlock_dialog_groups_multiple_unlocks() -> void:
+	var dlg: Control = load("res://scripts/unlock_dialog.gd").new()
+	add_child(dlg)
+	dlg.call("show_unlocks", [
+		{"title": "Improved Coal Mining", "description": "Coal mines output more."},
+		{"title": "Copper Recovery", "description": "Copper chain improves."},
+	])
+	_check(dlg.visible
+		and _tree_has_label_text(dlg, "2 unlocks")
+		and _tree_has_label_text(dlg, "Improved Coal Mining")
+		and _tree_has_label_text(dlg, "Copper Recovery"),
+		"unlock dialog groups multiple unlocks in one panel")
+	var unlock_list: Node = dlg.find_child("UnlockList", true, false)
+	_check(unlock_list != null and unlock_list.get_child_count() == 2,
+		"unlock dialog renders one box per unlock")
+	await get_tree().process_frame
+	var scroll: Control = dlg.find_child("UnlockScroll", true, false) as Control
+	var first_card: Control = unlock_list.get_child(0) as Control if unlock_list != null and unlock_list.get_child_count() > 0 else null
+	_check(scroll != null and scroll.size.y >= 180.0 and first_card != null and first_card.size.y >= 80.0,
+		"unlock dialog reserves visible space for grouped unlock boxes")
+	dlg.call("_close")
+	_check(not dlg.visible, "unlock dialog closes")
+	PanelStack.remove(dlg)
+	dlg.queue_free()
 
 # Regression: recipe_row.tscn must instantiate + setup (catches script/root type
 # mismatches — recipe rows are only built on expand, so the main-scene test misses them).
@@ -5290,3 +6164,30 @@ func _test_bottom_menu_default() -> void:
 		if not (ResourceLoader.exists(path) and load(path) is Texture2D):
 			all_ok = false
 	_check(all_ok, "white-rimmed bottom-menu icons import and load")
+
+func _test_panel_stack_focus() -> void:
+	var holder := Control.new()
+	add_child(holder)
+	var a := PanelContainer.new()
+	var b := PanelContainer.new()
+	var child := Button.new()
+	a.name = "FocusA"
+	b.name = "FocusB"
+	a.add_child(child)
+	holder.add_child(a)
+	holder.add_child(b)
+	PanelStack.push(a)
+	PanelStack.push(b)
+	_check(PanelStack.top() == b, "panel stack: last pushed panel is top")
+	_check(holder.get_child(holder.get_child_count() - 1) == b,
+		"panel stack: last pushed panel is front sibling")
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	child.emit_signal("gui_input", click)
+	_check(PanelStack.top() == a, "panel stack: clicking inside a panel focuses it")
+	_check(holder.get_child(holder.get_child_count() - 1) == a,
+		"panel stack: focused panel moves to front sibling")
+	_check(PanelStack.close_top() and not a.visible, "panel stack: close_top hides focused panel")
+	PanelStack.remove(b)
+	holder.queue_free()

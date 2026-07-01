@@ -187,6 +187,8 @@ func _ready() -> void:
 	# A research unlock (or any modifier change) can flip the net-modifier indicator.
 	if not Modifiers.modifiers_changed.is_connected(_on_modifiers_changed):
 		Modifiers.modifiers_changed.connect(_on_modifiers_changed)
+	if not MatchState.workforce_policies_changed.is_connected(_on_workforce_policies_changed):
+		MatchState.workforce_policies_changed.connect(_on_workforce_policies_changed)
 	# A deposit running out must refresh the shown building's RAG dots, production
 	# status and recipe diagram (it stops being able to produce).
 	if not MatchState.deposits_changed.is_connected(_on_deposit_changed):
@@ -1160,7 +1162,11 @@ func _make_output_route_row(instance_id: String, source_tile: String, good_id: S
 	btns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(btns)
 
-	var is_market := MatchState.is_output_market(instance_id, good_id)
+	var active_order: Dictionary = SpecialOrderState.get_active_order_for_good(good_id)
+	var special_order_id := str(active_order.get("id", ""))
+	var routed_order_id := MatchState.get_output_special_order_id(instance_id, good_id)
+	var is_special_order := special_order_id != "" and routed_order_id == special_order_id
+	var is_market := MatchState.is_output_market(instance_id, good_id) and not is_special_order
 	var dest := MatchState.get_output_stockpile_destination(instance_id, good_id)
 	var on_tile := dest != "" and dest == source_tile
 	var other_tile := dest != "" and dest != source_tile
@@ -1173,6 +1179,20 @@ func _make_output_route_row(instance_id: String, source_tile: String, good_id: S
 		_output_route_detail.visible = true
 	)
 	btns.add_child(market_btn)
+
+	if not active_order.is_empty():
+		var special_btn := _make_route_choice_button("Special Order", is_special_order)
+		special_btn.tooltip_text = "%d required, %d committed, %d delivered" % [
+			int(active_order.get("qty_required", 0)),
+			int(active_order.get("qty_committed", 0)),
+			int(active_order.get("qty_delivered", 0)),
+		]
+		special_btn.pressed.connect(func() -> void:
+			MatchState.route_output_to_special_order(instance_id, good_id, special_order_id)
+			_refresh_route_controls(_current_building, _current_recipe)
+			_output_route_detail.visible = true
+		)
+		btns.add_child(special_btn)
 
 	# "Store on tile" records this tile as the destination directly (no map mode).
 	var store_btn := _make_route_choice_button("Store on tile", on_tile)
@@ -2028,8 +2048,8 @@ func _add_flow_quantity_badge(cell: Panel, good_item: Dictionary, cell_size: Vec
 	pill.offset_bottom = overlap
 	cell.add_child(pill)
 
-# The output a recipe's good would actually produce after all recipe_output
-# modifiers (deposit penalty, mining/building research) — the production result.
+# The output a recipe's good would actually produce after recipe_output modifiers
+# and workforce output policies — the production result shown in the diagram.
 func _modified_output_qty(good_item: Dictionary, default_qty: int) -> int:
 	if _current_recipe.is_empty():
 		return default_qty
@@ -2045,7 +2065,9 @@ func _modified_output_qty(good_item: Dictionary, default_qty: int) -> int:
 		"good_id": good_id,
 		"good_internal": good_internal,
 	}
-	return int(round(Modifiers.apply("recipe_output", recipe_id, float(default_qty), ctx)))
+	var modified := Modifiers.apply("recipe_output", recipe_id, float(default_qty), ctx)
+	modified *= MatchState.workforce_output_multiplier()
+	return int(round(modified))
 
 # The dual recipe-diagram quantity pill: struck default on the LEFT and the actual
 # on the RIGHT (red if the output dropped, green if it rose, each 1px white-outlined),
@@ -2417,20 +2439,28 @@ func _update_mod_label(building: Dictionary, recipe: Dictionary) -> void:
 	# Single source of truth for the net-modifier %, its colour band, the component parts and the
 	# intermittency derate — shared with the Empire view (scripts/building_status.gd).
 	var mod := BuildingStatus.net_output_modifier(building, recipe)
-	var parts: Array = mod.parts
+	var parts: Array = mod.get("parts", [])
+	var workforce_parts: Array = mod.get("workforce_parts", [])
 	var derate: float = float(mod.derate)
 	var eff_i: int = int(mod.pct)
 	_mod_label.text = str(mod.text)
 	_mod_label.add_theme_color_override("font_color", mod.color as Color)
 
 	var tip: String
-	if parts.is_empty() and derate <= 0.0:
+	if parts.is_empty() and workforce_parts.is_empty() and derate <= 0.0:
 		tip = "Production modifier: none active.\n%s" % _MOD_RAG_LEGEND
 	else:
-		var lines: PackedStringArray = ["Production modifiers (added together, then applied):"]
-		for p in parts:
-			var pv: float = float(p.get("pct", 0.0))
-			lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
+		var lines: PackedStringArray = ["Production modifiers:"]
+		if not parts.is_empty():
+			lines.append("Recipe modifiers (added together):")
+			for p in parts:
+				var pv: float = float(p.get("pct", 0.0))
+				lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
+		if not workforce_parts.is_empty():
+			lines.append("Workforce policies (multiplicative):")
+			for p in workforce_parts:
+				var pv: float = float(p.get("pct", 0.0))
+				lines.append("  %s%d%%  %s" % ["+" if pv > 0.0 else "", int(round(pv)), str(p.get("label", ""))])
 		if derate > 0.0:
 			lines.append("  -%d%%  Intermittency impact (multiplicative, applied after)" % int(round(derate * 100.0)))
 		lines.append("Net: %s%d%%" % ["+" if eff_i > 0 else "", eff_i])
@@ -2447,6 +2477,13 @@ func _on_modifiers_changed() -> void:
 	if _current_building.is_empty() or _current_recipe.is_empty():
 		return
 	_update_mod_label(_current_building, _current_recipe)
+	_update_flow_summary(_current_recipe)
+
+func _on_workforce_policies_changed() -> void:
+	if _current_building.is_empty() or _current_recipe.is_empty():
+		return
+	_update_mod_label(_current_building, _current_recipe)
+	_update_flow_summary(_current_recipe)
 
 func _set_status_dot(key: String, color: Color) -> void:
 	if not _status_dots.has(key):
@@ -2592,6 +2629,11 @@ func _labour_cost(building_data: Dictionary) -> float:
 func _output_destination() -> String:
 	var instance_id: String = _current_building.get("instance_id", "")
 	var good_id := _primary_output_good_id(_current_recipe)
+	var special_order_id := MatchState.get_output_special_order_id(instance_id, good_id)
+	if special_order_id != "":
+		var order := SpecialOrderState.get_order(special_order_id)
+		if not order.is_empty():
+			return "Special Order: %s" % str(order.get("display_name", Catalog.get_display_name(good_id)))
 	if MatchState.is_output_market(instance_id, good_id):
 		return "Market"
 	var destination_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
@@ -2625,7 +2667,14 @@ func _output_route_summary() -> Dictionary:
 	var dest_tile := MatchState.get_output_stockpile_destination(instance_id, good_id)
 	var target := ""
 	var destination := ""
-	if dest_tile != "":
+	if MatchState.is_output_market(instance_id, good_id):
+		target = TransportService.nearest_port_tile(source_tile)
+		var special_order_id := MatchState.get_output_special_order_id(instance_id, good_id)
+		if special_order_id != "" and not SpecialOrderState.get_order(special_order_id).is_empty():
+			destination = ("Special Order (via %s)" % Catalog.tile_label(target)) if target != "" else "Special Order"
+		else:
+			destination = ("Market (via %s)" % Catalog.tile_label(target)) if target != "" else "Market"
+	elif dest_tile != "":
 		target = dest_tile
 		destination = Catalog.tile_label(dest_tile)
 	elif MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL:

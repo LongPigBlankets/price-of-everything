@@ -40,6 +40,7 @@ const COLUMNS: Array[String] = [
 	"cost_interest",
 	"cost_taxes",
 	"cost_dividends",
+	"cost_profit_sharing",
 	"cost_grid_power",
 	"cost_build_land",
 	"profit_pre_tax",
@@ -188,6 +189,7 @@ func _capture_row() -> void:
 	var cost_interest: float = float(summary.get("interest_paid", 0.0))
 	var cost_taxes: float = float(summary.get("taxes_paid", 0.0))
 	var cost_dividends: float = float(summary.get("dividends_paid", 0.0))
+	var cost_profit_sharing: float = float(summary.get("profit_sharing_paid", 0.0))
 	var cost_grid_power: float = float(summary.get("power_purchase_cost", 0.0))
 	# Build/land spend isn't broken out of the production summary; surface it as 0
 	# here (it is captured in cash directly) so the column stays stable for later.
@@ -197,8 +199,8 @@ func _capture_row() -> void:
 	# tax and dividends. This includes market input buys and any other summary outflows.
 	var money_in: float = float(summary.get("money_in", 0.0))
 	var money_out: float = float(summary.get("money_out", 0.0))
-	var profit_pre_tax: float = money_in - (money_out - cost_taxes - cost_dividends)
-	var profit_post_tax: float = profit_pre_tax - cost_taxes - cost_dividends
+	var profit_pre_tax: float = money_in - (money_out - cost_taxes - cost_dividends - cost_profit_sharing)
+	var profit_post_tax: float = profit_pre_tax - cost_taxes - cost_dividends - cost_profit_sharing
 
 	# --- Operational ---
 	var building_count: int = MatchState.buildings.size()
@@ -255,6 +257,7 @@ func _capture_row() -> void:
 		"cost_interest": cost_interest,
 		"cost_taxes": cost_taxes,
 		"cost_dividends": cost_dividends,
+		"cost_profit_sharing": cost_profit_sharing,
 		"cost_grid_power": cost_grid_power,
 		"cost_build_land": cost_build_land,
 		"profit_pre_tax": profit_pre_tax,

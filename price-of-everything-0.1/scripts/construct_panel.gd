@@ -58,6 +58,8 @@ func _ready() -> void:
 		BuildMode.mode_exited.connect(_on_build_mode_exited)
 	if not MatchState.money_changed.is_connected(_on_money_changed):
 		MatchState.money_changed.connect(_on_money_changed)
+	if not MatchState.unlock_granted.is_connected(_on_unlock_granted):
+		MatchState.unlock_granted.connect(_on_unlock_granted)
 	title_label.text = "Construct Building"
 	if not MatchState.show_construct_for_good.is_connected(open_for_output_good):
 		MatchState.show_construct_for_good.connect(open_for_output_good)
@@ -80,6 +82,7 @@ func open_for_tile(tile_id: String, tile_data: Dictionary) -> void:
 	_output_good_filter = ""
 	controls_vbox.visible = false
 	title_label.text = "Build on %s" % Catalog.tile_label(tile_id)
+	_load_data()
 	_build_panel_content()
 	show()
 	_opened_for_tile = false
@@ -91,6 +94,7 @@ func open_for_output_good(good_id: String) -> void:
 	_output_good_filter = good_id
 	controls_vbox.visible = false
 	title_label.text = "Produces %s" % Catalog.get_display_name(good_id)
+	_load_data()
 	_build_panel_content()
 	show()
 	_opened_for_good = false
@@ -126,6 +130,7 @@ func _on_visibility_changed() -> void:
 	search_input.release_focus()
 	# Always reopen at the anchored home position (undo any prior drag).
 	_reset_position.call_deferred()
+	_load_data()
 	var opened_special := _opened_for_good or _opened_for_tile
 	if not opened_special and (_output_good_filter != "" or _tile_filter != ""):
 		# Normal open after a filtered ("produces X" / tile) open: restore browser.
@@ -134,6 +139,11 @@ func _on_visibility_changed() -> void:
 		_tile_filter_data = {}
 		controls_vbox.visible = true
 		title_label.text = "Construct Building"
+	_build_panel_content()
+
+func _on_unlock_granted(_title: String, _description: String, _via_condition: bool) -> void:
+	_load_data()
+	if visible:
 		_build_panel_content()
 
 func _on_filter_toggled(pressed: bool, t: String) -> void:
