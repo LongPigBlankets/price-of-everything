@@ -8,7 +8,7 @@ g_006,steel,Steel,,solid_heavy,,,,intermediate,0.001,3.2,TRUE,TRUE,0,no,0
 g_007,copper_wiring,Copper Wiring,,solid_light,,,,intermediate,0.001,3.2,TRUE,TRUE,0,no,0
 g_008,motor,Motor,,solid_heavy,,,,intermediate,0.001,10.0,TRUE,TRUE,0,no,0
 g_009,pure_water,Pure Water,,safe_liquid,,,,raw,0.001,0.5,TRUE,TRUE,0,no,0
-g_010,power,Power,,electricity,,,,power,0,1,TRUE,TRUE,0,yes,0
+g_010,power,Power,,electricity,,,,power,0,0.1,TRUE,TRUE,0,yes,0
 g_011,oxygen,Oxygen,,hazard_liquid,,,,intermediate,0.001,4,TRUE,TRUE,0,no,0
 g_012,chlorine,Chlorine,,hazard_liquid,,,,intermediate,0.001,0.72,TRUE,TRUE,0,no,0
 g_013,sodium_hydroxide,Sodium Hydroxide,,hazard_liquid,,,,intermediate,0.001,0.8,TRUE,TRUE,0,no,0

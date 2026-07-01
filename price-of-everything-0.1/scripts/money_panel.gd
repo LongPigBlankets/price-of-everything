@@ -494,7 +494,9 @@ func _calculate_projected_labour_cost(_building: Dictionary) -> float:
 		+ skilled * EconomyConfig.LABOUR_SKILLED_RATE
 		+ high_skilled * EconomyConfig.LABOUR_HIGH_SKILLED_RATE
 	)
-	return base_cost * MatchState.labour_multiplier * MatchState.workforce_labour_cost_multiplier()
+	# Labour slider + workforce policies apply additively to the 100% base (matches
+	# Production._calculate_labour_cost; no compounding).
+	return base_cost * MatchState.labour_policy_factor()
 
 func _projected_transport_cost(building: Dictionary, recipe: Dictionary) -> float:
 	var instance_id: String = building.get("instance_id", "")

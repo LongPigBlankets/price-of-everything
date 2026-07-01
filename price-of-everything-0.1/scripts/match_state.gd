@@ -2867,40 +2867,46 @@ func tick_workforce_policies() -> void:
 		var policy_id := str(raw_id)
 		var active := is_workforce_policy_enabled(policy_id)
 		var effect: Dictionary = workforce_policy_effects.get(policy_id, {})
-		effect["active_turns"] = int(effect.get("active_turns", 0)) + (1 if active else 0)
-		var output_pct := float(effect.get("output_pct", 0.0))
-		var labour_pct := float(effect.get("labour_pct", 0.0))
-
-		match policy_id:
-			WORKFORCE_POLICY_GENEROUS_PENSIONS:
-				if active:
-					output_pct = minf(0.05, output_pct + 0.0005)
-					labour_pct += _pension_labour_step(int(effect.get("active_turns", 0)))
-				else:
-					output_pct = maxf(0.0, output_pct - 0.001)
-					labour_pct = 0.0
-			WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE, WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE:
-				if active:
-					labour_pct = maxf(-0.05, labour_pct - 0.001)
-				else:
-					labour_pct = minf(0.0, labour_pct + 0.0025)
-			WORKFORCE_POLICY_STRICT_SAFETY:
-				if active:
-					labour_pct = maxf(-0.15, labour_pct - 0.005)
-				else:
-					labour_pct = minf(0.0, labour_pct + 0.0025)
-			WORKFORCE_POLICY_LAX_SAFETY:
-				if active:
-					labour_pct = minf(0.15, labour_pct + 0.005)
-				else:
-					labour_pct = maxf(0.0, labour_pct - 0.0025)
-
-		if not active and absf(output_pct) < 0.00001 and absf(labour_pct) < 0.00001:
+		_advance_workforce_effect(policy_id, effect, active)
+		if not active and absf(float(effect.get("output_pct", 0.0))) < 0.00001 and absf(float(effect.get("labour_pct", 0.0))) < 0.00001:
 			workforce_policy_effects.erase(policy_id)
 		else:
-			effect["output_pct"] = output_pct
-			effect["labour_pct"] = labour_pct
 			workforce_policy_effects[policy_id] = effect
+
+# Advance one policy's accrued effect by a single turn (mutates `effect` in place).
+# Shared by the live tick and the forward projection the Labour panel uses for its
+# 10-turn estimate, so both stay in lockstep.
+func _advance_workforce_effect(policy_id: String, effect: Dictionary, active: bool) -> void:
+	effect["active_turns"] = int(effect.get("active_turns", 0)) + (1 if active else 0)
+	var output_pct := float(effect.get("output_pct", 0.0))
+	var labour_pct := float(effect.get("labour_pct", 0.0))
+
+	match policy_id:
+		WORKFORCE_POLICY_GENEROUS_PENSIONS:
+			if active:
+				output_pct = minf(0.05, output_pct + 0.0005)
+				labour_pct += _pension_labour_step(int(effect.get("active_turns", 0)))
+			else:
+				output_pct = maxf(0.0, output_pct - 0.001)
+				labour_pct = 0.0
+		WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE, WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE:
+			if active:
+				labour_pct = maxf(-0.05, labour_pct - 0.001)
+			else:
+				labour_pct = minf(0.0, labour_pct + 0.0025)
+		WORKFORCE_POLICY_STRICT_SAFETY:
+			if active:
+				labour_pct = maxf(-0.15, labour_pct - 0.005)
+			else:
+				labour_pct = minf(0.0, labour_pct + 0.0025)
+		WORKFORCE_POLICY_LAX_SAFETY:
+			if active:
+				labour_pct = minf(0.15, labour_pct + 0.005)
+			else:
+				labour_pct = maxf(0.0, labour_pct - 0.0025)
+
+	effect["output_pct"] = output_pct
+	effect["labour_pct"] = labour_pct
 
 func _pension_labour_step(active_turns: int) -> float:
 	var third := workforce_policy_game_third_turns()
@@ -2932,14 +2938,56 @@ func workforce_output_multiplier(turn_number: int = -1) -> float:
 		multiplier *= 1.10
 	return multiplier
 
-func workforce_labour_cost_multiplier() -> float:
+# Summed workforce-policy labour delta (a fraction, e.g. -0.10 for -10%). Policies
+# combine ADDITIVELY here; callers apply this to the 100% base alongside the labour
+# slider and research trims rather than compounding it on top of them.
+func workforce_labour_cost_delta() -> float:
 	var delta := 0.0
 	for effect in workforce_policy_effects.values():
 		if effect is Dictionary:
 			delta += float(effect.get("labour_pct", 0.0))
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS):
 		delta += 0.05
-	return maxf(0.0, 1.0 + delta)
+	return delta
+
+func workforce_labour_cost_multiplier() -> float:
+	return maxf(0.0, 1.0 + workforce_labour_cost_delta())
+
+# Project the summed workforce-policy labour delta `turns_ahead` turns forward,
+# assuming the currently-enabled policies stay enabled. Runs the same per-turn
+# accrual as tick_workforce_policies on a throwaway copy (no live state touched),
+# so the Labour panel's 10-turn estimate matches what the sim will actually charge.
+func projected_workforce_labour_delta(turns_ahead: int) -> float:
+	if turns_ahead <= 0:
+		return workforce_labour_cost_delta()
+	var effects: Dictionary = {}
+	for k in workforce_policy_effects.keys():
+		var e = workforce_policy_effects[k]
+		effects[str(k)] = (e as Dictionary).duplicate(true) if e is Dictionary else {}
+	var ids: Array = effects.keys()
+	for policy_id in workforce_policies.keys():
+		if not ids.has(str(policy_id)):
+			ids.append(str(policy_id))
+	for _turn in range(turns_ahead):
+		for raw_id in ids:
+			var policy_id := str(raw_id)
+			var effect: Dictionary = effects.get(policy_id, {})
+			_advance_workforce_effect(policy_id, effect, is_workforce_policy_enabled(policy_id))
+			effects[policy_id] = effect
+	var delta := 0.0
+	for effect in effects.values():
+		if effect is Dictionary:
+			delta += float(effect.get("labour_pct", 0.0))
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS):
+		delta += 0.05
+	return delta
+
+# Combined labour multiplier from the slider + workforce policies, applied
+# ADDITIVELY to the 100% base (no compounding). Per-building research head-count
+# trims add on top of this in Production.labour_cost_factor. Display sites that lack
+# a specific building (money projection, per-tier rows) use this global factor.
+func labour_policy_factor() -> float:
+	return maxf(0.0, 1.0 + (labour_multiplier - 1.0) + workforce_labour_cost_delta())
 
 func advisor_pool() -> Array:
 	var out: Array = []

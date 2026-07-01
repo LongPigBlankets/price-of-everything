@@ -74,8 +74,8 @@ const SEAPORT_SUBSCRIPTION_COST_PER_GOOD: float = 1.0
 const SEAPORT_RANGE_TILES: int = 10
 
 # --- Power grid pricing ---
-const GRID_BUY_PRICE: float = 1.0    # £/unit when buying from grid (shortfall)
-const GRID_SELL_PRICE: float = 0.6   # £/unit when selling surplus to grid
+const GRID_BUY_PRICE: float = 0.1    # £/unit when buying from grid (shortfall)
+const GRID_SELL_PRICE: float = 0.06  # £/unit when selling surplus to grid
 
 # --- Power intermittency (green/grey quality, layered ON TOP of the single `power` good) ---
 # Solar/wind are intermittent green: a recipe relying on UNFIRMED intermittent power
@@ -87,7 +87,7 @@ const INTERMITTENCY_DERATE: float = 0.4
 # Not a charge/discharge sim; just a cap check. (Batteries give 0 storage_boost otherwise.)
 # Firming CAPACITY (⚡) of one battery housing by level — L1 100, L2 doubles, L3 triples.
 # (Balance data — rule #7.)
-const BATTERY_STORAGE_CAP := {1: 100, 2: 200, 3: 300}
+const BATTERY_STORAGE_CAP := {1: 1000, 2: 2000, 3: 3000}
 # Power-quality classification by producing building internal_name (default = grey/firm).
 const POWER_INTERMITTENT_BUILDINGS := ["solar_farm", "onshore_wind_farm", "offshore_wind_farm"]
 const POWER_STEADY_BUILDINGS := ["hydro_power_plant"]
@@ -102,13 +102,14 @@ const SEA_ONLY_BUILDINGS := ["offshore_wind_farm", "offshore_oil_platform"]
 # with BATTERY_STORAGE_CAP[level] CELL SLOTS; the player loads battery goods (locked, refundable
 # capital) into those slots and a tile's firming = min(slots, Σ loaded cells × density).
 # Density is per battery-good internal_name (uniform for now; future differentiation lever).
-# Firming ⚡ per loaded cell, by battery good. Calibrated against the L1 cap (100 ⚡) so filling a
-# building takes 3 / 4 / 10 turns of factory output (6/turn) — i.e. 18 / 24 / 60 cells fill 100 ⚡.
+# Firming ⚡ per loaded cell, by battery good. Calibrated against the L1 cap (1000 ⚡) so filling a
+# building takes 3 / 4 / 10 turns of factory output (6/turn) — i.e. 18 / 24 / 60 cells fill 1000 ⚡.
+# Scaled x10 alongside BATTERY_STORAGE_CAP in the power rescale, so cell COUNTS are unchanged.
 # Lithium is densest (fewest, priciest cells), iron-air bulkiest (most, cheapest cells).
 const BATTERY_CELL_DENSITY := {
-	"lithium_battery": 100.0 / 18.0,   # 18 cells fill 100 ⚡ (3 factory-turns)
-	"sodium_battery": 100.0 / 24.0,    # 24 cells (4 turns)
-	"iron_battery": 100.0 / 60.0,      # 60 cells (10 turns)
+	"lithium_battery": 1000.0 / 18.0,   # 18 cells fill 1000 ⚡ (3 factory-turns)
+	"sodium_battery": 1000.0 / 24.0,    # 24 cells (4 turns)
+	"iron_battery": 1000.0 / 60.0,      # 60 cells (10 turns)
 }
 # Tech gate: battery good internal_name -> the research title that unlocks loading it.
 const BATTERY_TYPE_UNLOCK := {
@@ -161,7 +162,14 @@ const TRANSPORT_CAP_LEVEL_MULT := {1: 1.0, 2: 2.0, 3: 3.5}
 # Cables HARD-cap a tile's power per turn by cable level — separately for production
 # (export) and draw (import). A tile can both produce AND draw up to this. Power above
 # the cap simply doesn't generate / isn't supplied.
-const CABLE_POWER_CAP := {1: 200, 2: 400, 3: 700}
+const CABLE_POWER_CAP := {1: 2000, 2: 4000, 3: 7000}
+
+# --- Warehouse (per-tile storage) ---
+# A tile's storage capacity by "warehouse level". Level = 1 + the number of storage
+# research upgrades unlocked (WAREHOUSE_UPGRADE_RESEARCH): no research = 800, one = 1600,
+# both = 2500. A building's storage_boost (a Port adds +600) is added on top. Rule #7.
+const WAREHOUSE_STORAGE_CAP := {1: 800, 2: 1600, 3: 2500}
+const WAREHOUSE_UPGRADE_RESEARCH := ["Pallet Racking Systems", "Automated Storage & Retrieval"]
 
 # --- Loans ---
 # Capacity is no longer a flat ceiling. It STARTS at the base below and scales with

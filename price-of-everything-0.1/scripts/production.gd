@@ -946,12 +946,31 @@ func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
 		if gid != "":
 			inputs_consumed[gid] = int(round(float(input.get("qty", 0)) * imul))
 
-	# Build outputs_produced {good_id: qty} from recipe outputs (good_id already resolved)
+	# Build outputs_produced {good_id: qty}. Scale each output the SAME way _produce_outputs
+	# does — recipe_output modifiers (the "Δ +%" shown on the recipe) × level output mult ×
+	# workforce multiplier — so CostSolver divides the run's fixed costs by what the building
+	# actually makes, not the un-modified recipe base. (Intermittency derate is excluded, as
+	# before: the cost basis reflects structural efficiency, not per-turn power weather.)
+	var recipe_id: String = str(recipe.get("recipe_id", ""))
+	var recipe_type: String = str(recipe.get("recipe_type", "")).to_lower()
+	var out_bid: String = str(building.get("building_id", ""))
+	var workforce_out_mult: float = MatchState.workforce_output_multiplier()
 	var outputs_produced: Dictionary = {}
 	for output in _recipe_output_items(recipe):
 		var gid: String = output.get("good_id", "")
-		var qty: int    = int(round(float(output.get("qty", 0)) * omul))
-		if gid != "" and qty > 0:
+		if gid == "":
+			continue
+		var mod_ctx := {
+			"recipe_id": recipe_id,
+			"recipe_type": recipe_type,
+			"building_id": out_bid,
+			"good_id": gid,
+			"good_internal": str(output.get("internal_name", "")),
+		}
+		var qty: int = int(round(Modifiers.apply("recipe_output", recipe_id, float(output.get("qty", 0)), mod_ctx)))
+		qty = int(round(float(qty) * omul))
+		qty = int(round(float(qty) * workforce_out_mult))
+		if qty > 0:
 			outputs_produced[gid] = qty
 
 	if outputs_produced.is_empty():
@@ -1001,6 +1020,12 @@ func _inbound_transport_per_unit(tile_id: String, good_id: String) -> float:
 	return float(rec.get("cost", 0.0)) / qty
 
 func _calculate_labour_cost(building: Dictionary) -> float:
+	return _base_labour_cost(building) * labour_cost_factor(building)
+
+# Raw per-turn staffing cost for a building BEFORE any percentage labour modifiers:
+# grown wage rates x headcount x the level labour multiplier. This is the "100% base"
+# that every discount/surcharge is measured against.
+func _base_labour_cost(building: Dictionary) -> float:
 	var bdata: Dictionary = Catalog.get_building(building.get("building_id", ""))
 	var unskilled: int   = bdata.get("labour_unskilled_required", EconomyConfig.STUB_UNSKILLED_PER_BUILDING)
 	var skilled: int     = bdata.get("labour_skilled_required",   EconomyConfig.STUB_SKILLED_PER_BUILDING)
@@ -1012,11 +1037,54 @@ func _calculate_labour_cost(building: Dictionary) -> float:
 		+ skilled    * _grown_labour_rate(EconomyConfig.LABOUR_SKILLED_RATE, EconomyConfig.LABOUR_SKILLED_GROWTH)
 		+ high_skilled * _grown_labour_rate(EconomyConfig.LABOUR_HIGH_SKILLED_RATE, EconomyConfig.LABOUR_HIGH_SKILLED_GROWTH)
 	)
-	# Labour-headcount modifiers (e.g. Lights-Out Automation) thin the crew.
+	return base_cost * BuildingLevels.mult("labour", int(building.get("level", 1)))
+
+# Every percentage labour modifier applies ADDITIVELY to the 100% base — they no
+# longer compound. Research head-count trims (e.g. Lights-Out Automation, the
+# people-management unlocks), the labour slider, and workforce policies all sum as
+# deltas off 1.0, clamped so labour never goes negative. `policy_delta_override`
+# lets the Labour panel reuse this with a projected workforce delta.
+func labour_cost_factor(building: Dictionary, policy_delta_override: float = INF) -> float:
 	var bid: String = str(building.get("building_id", ""))
-	base_cost = Modifiers.apply("labour_headcount", bid, base_cost, {"building_id": bid})
-	base_cost *= BuildingLevels.mult("labour", int(building.get("level", 1)))
-	return base_cost * MatchState.labour_multiplier * MatchState.workforce_labour_cost_multiplier()
+	var headcount_delta: float = float(Modifiers.resolve_pct("labour_headcount", bid, {"building_id": bid}).get("net", 0.0)) / 100.0
+	var slider_delta: float = MatchState.labour_multiplier - 1.0
+	var policy_delta: float = MatchState.workforce_labour_cost_delta() if is_inf(policy_delta_override) else policy_delta_override
+	return maxf(0.0, 1.0 + headcount_delta + slider_delta + policy_delta)
+
+# Aggregate labour snapshot for the People panel's Labour indicator: current £/turn,
+# the effective % of base, the next-turn direction (from workforce-policy accrual),
+# and the 10-turn estimate. Buildings are held constant; only the workforce-policy
+# labour delta is projected forward.
+func labour_overview() -> Dictionary:
+	var base_total := 0.0
+	var current := 0.0
+	var next_turn := 0.0
+	var est_ten := 0.0
+	var slider_delta: float = MatchState.labour_multiplier - 1.0
+	var policy_now: float = MatchState.workforce_labour_cost_delta()
+	var policy_next: float = MatchState.projected_workforce_labour_delta(1)
+	var policy_ten: float = MatchState.projected_workforce_labour_delta(10)
+	for building in MatchState.buildings.values():
+		if not MatchState.is_player_owned(building):
+			continue
+		var b_base: float = _base_labour_cost(building)
+		if b_base <= 0.0:
+			continue
+		var bid: String = str(building.get("building_id", ""))
+		var hc: float = float(Modifiers.resolve_pct("labour_headcount", bid, {"building_id": bid}).get("net", 0.0)) / 100.0
+		base_total += b_base
+		current   += b_base * maxf(0.0, 1.0 + hc + slider_delta + policy_now)
+		next_turn += b_base * maxf(0.0, 1.0 + hc + slider_delta + policy_next)
+		est_ten   += b_base * maxf(0.0, 1.0 + hc + slider_delta + policy_ten)
+	var factor_pct: float = (current / base_total * 100.0) if base_total > 0.0 else 100.0
+	return {
+		"base": base_total,
+		"current": current,
+		"next_turn": next_turn,
+		"est_10_turns": est_ten,
+		"factor_pct": factor_pct,
+		"has_buildings": base_total > 0.0,
+	}
 
 func _grown_labour_rate(base_rate: float, growth: float) -> float:
 	# Compounded wage at the current turn: base * (1 + growth) ^ (turn - 1).

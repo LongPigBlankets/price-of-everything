@@ -190,10 +190,10 @@ const UNLOCK_MODIFIERS := {
 	"Shift Supervisors": {"id": "rn_shift_supervisors", "domain": "labour_headcount", "target_match": {"building_id": "b_001"}, "pct": -5.0, "label": "Shift Supervisors", "source": "research_node"},
 	"Safety Training": {"id": "rn_safety_training", "domain": "labour_headcount", "pct": -5.0, "label": "Safety Training", "source": "research_node"},
 	# People-management track: global head-count trims earned purely by scale (total
-	# buildings owned), not by a specific building type. -5% at 3 buildings, another
-	# -5% at 12 — see docs/economy-bootstrap-findings.md.
-	"Operational Team Managers": {"id": "rn_operational_team_managers", "domain": "labour_headcount", "pct": -5.0, "label": "Operational Team Managers", "source": "research_node"},
-	"Shift Handover Documentation": {"id": "rn_shift_handover_documentation", "domain": "labour_headcount", "pct": -5.0, "label": "Shift Handover Documentation", "source": "research_node"},
+	# buildings owned), not by a specific building type. -10% at 3 buildings, another
+	# -10% at 12 — see docs/economy-bootstrap-findings.md.
+	"Operational Team Managers": {"id": "rn_operational_team_managers", "domain": "labour_headcount", "pct": -10.0, "label": "Operational Team Managers", "source": "research_node"},
+	"Shift Handover Documentation": {"id": "rn_shift_handover_documentation", "domain": "labour_headcount", "pct": -10.0, "label": "Shift Handover Documentation", "source": "research_node"},
 	"Specialist Apprenticeships": {"id": "rn_specialist_apprenticeships", "domain": "recipe_output", "target_match": {"building_id": "b_009"}, "pct": 5.0, "label": "Specialist Apprenticeships", "source": "research_node"},
 	"Union Liaison Offices": {"id": "rn_union_liaison_offices", "domain": "maintenance", "pct": -10.0, "duration_turns": 20, "label": "Union Liaison Offices", "source": "research_node"},
 	"Continuous Improvement Teams": [
@@ -206,8 +206,9 @@ const UNLOCK_MODIFIERS := {
 	"Containerized Freight": {"id": "rn_containerized_freight", "domain": "transport_cost", "pct": -5.0, "label": "Containerized Freight", "source": "research_node"},
 	"Autonomous Dispatch Rooms": [{"id": "rn_autonomous_dispatch_roads", "domain": "labour_headcount", "target_match": {"building_id": "b_005"}, "pct": -10.0, "label": "Autonomous Dispatch Rooms", "source": "research_node"}, {"id": "rn_autonomous_dispatch_rail", "domain": "labour_headcount", "target_match": {"building_id": "b_019"}, "pct": -10.0, "label": "Autonomous Dispatch Rooms", "source": "research_node"}],
 	# Logistics warehouse capacity (tile storage)
-	"Pallet Racking Systems": {"id": "rn_pallet_racking", "domain": "tile_storage", "pct": 10.0, "label": "Pallet Racking Systems", "source": "research_node"},
-	"Automated Storage & Retrieval": {"id": "rn_asrs", "domain": "tile_storage", "pct": 15.0, "label": "Automated Storage & Retrieval", "source": "research_node"},
+	# Pallet Racking Systems / Automated Storage & Retrieval no longer grant a tile_storage
+	# modifier — they now raise the tile's WAREHOUSE LEVEL directly (see Stockpile.get_capacity
+	# / EconomyConfig.WAREHOUSE_STORAGE_CAP), so no standing modifier is registered here.
 	"Substation Layouts": {"id": "rn_substation_layouts", "domain": "transport_throughput", "target_match": {"mode": "cables"}, "pct": 25.0, "label": "Substation Layouts", "source": "research_node"},
 	"Smart Traffic Control": {"id": "rn_smart_traffic_control", "domain": "transport_throughput", "target_match": {"mode": "roads"}, "pct": 25.0, "label": "Smart Traffic Control", "source": "research_node"},
 	"Electrified Rolling Stock": {"id": "rn_electrified_rolling_stock", "domain": "transport_throughput", "target_match": {"mode": "rail"}, "pct": 25.0, "label": "Electrified Rolling Stock", "source": "research_node"},
