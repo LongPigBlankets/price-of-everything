@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://bhrmrwp3rw0oh"]
+
+[ext_resource type="Script" path="res://tools/people_shot.gd" id="1"]
+
+[node name="PeopleShot" type="Node2D"]
+script = ExtResource("1")
