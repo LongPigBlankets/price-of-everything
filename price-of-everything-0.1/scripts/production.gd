@@ -35,11 +35,14 @@ var _green_supply_by_tile: Dictionary = {}
 # Used by get_power_sources() to attribute a consumer's draw to specific source buildings
 # (on demand, when the building detail panel opens — not in the per-turn hot path). Reset each turn.
 var _power_sources_by_tile: Dictionary = {}
+var _active_turn_summary: Dictionary = {}
+var _pending_external_sales: Array = []
 var summary := {
 	# ... existing fields ...
 	"interest_paid": 0.0,
 	"taxes_paid": 0.0,
 	"dividends_paid": 0.0,
+	"profit_sharing_paid": 0.0,
 	# ... existing fields ...
 }
 
@@ -59,6 +62,7 @@ func import_state(d: Dictionary) -> void:
 	produced_by_building = (d.get("produced_by_building", {}) as Dictionary).duplicate(true)
 	full_output_streak_by_building = (d.get("full_output_streak_by_building", {}) as Dictionary).duplicate(true)
 	last_turn_summary.clear()
+	_pending_external_sales.clear()
 	missing_by_building.clear()
 	last_turn_run.clear()
 
@@ -85,6 +89,7 @@ func _process_production() -> void:
 	TurnProfiler.section_begin("power_reset")
 	Power.reset_for_turn()
 	TurnProfiler.section_end("power_reset")
+	MatchState.tick_workforce_policies()
 
 	var summary := {
 	"produced": {},
@@ -103,8 +108,10 @@ func _process_production() -> void:
 	"purchased_cost": {},
 	"maintenance_paid": 0.0,
 	"labour_paid": 0.0,
+	"advisor_paid": 0.0,
 	"taxes_paid": 0.0,
 	"dividends_paid": 0.0,
+	"profit_sharing_paid": 0.0,
 	"interest_paid": 0.0,
 	# Per-building-type cost breakdowns for money-panel tooltips.
 	# Each maps building_id -> {"count": int, "amount": float}.
@@ -130,6 +137,8 @@ func _process_production() -> void:
 	"grid_bought": 0,
 	"grid_sold": 0,
 }
+	_active_turn_summary = summary
+	_merge_pending_external_sales(summary)
 
 	TurnProfiler.section_begin("transport_arrivals")
 	_process_transport_arrivals(summary)
@@ -369,6 +378,7 @@ func _process_production() -> void:
 	if seaport_fee > 0.0:
 		MatchState.add_money(-seaport_fee)
 		summary.money_out += seaport_fee
+	_apply_advisor_costs(summary)
 	TurnProfiler.section_end("maintenance_labour")
 
 	TurnProfiler.section_begin("loan_payments")
@@ -381,12 +391,13 @@ func _process_production() -> void:
 	TurnProfiler.section_begin("tax_dividends")
 	var revenue: float = summary.goods_sales_revenue + summary.power_sales_revenue
 	var pre_tax_profit: float = _apply_tax_and_dividends(summary)
+	var profit_sharing: float = _apply_profit_sharing(summary, pre_tax_profit)
 	TurnProfiler.section_end("tax_dividends")
 
 	# Feed this turn's retained net profit + gross revenue to the loan facility so
 	# borrowing capacity scales with the business. taxes_paid/dividends_paid are 0
 	# when the turn was a loss, so retained then equals the (negative) pre-tax profit.
-	var retained_profit: float = pre_tax_profit - summary.taxes_paid - summary.dividends_paid
+	var retained_profit: float = pre_tax_profit - summary.taxes_paid - summary.dividends_paid - profit_sharing
 	LoanState.record_turn_economics(retained_profit, revenue)
 
 	TurnProfiler.section_begin("cost_solve")
@@ -395,6 +406,7 @@ func _process_production() -> void:
 
 	TurnProfiler.section_begin("emit_summary")
 	last_turn_summary = summary
+	_active_turn_summary = {}
 	turn_processed.emit(summary)
 	TurnProfiler.section_end("emit_summary")
 
@@ -409,15 +421,16 @@ func _process_production() -> void:
 		summary.produced, summary.consumed, summary.sold, summary.starved.size(),
 		summary.money_in - summary.money_out, pass_count
 	])
-	print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f interest=£%.2f tax=£%.2f div=£%.2f net=£%.2f" % [
+	print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f interest=£%.2f tax=£%.2f div=£%.2f profit_share=£%.2f net=£%.2f" % [
 	summary.goods_sales_revenue,
 	summary.power_sales_revenue,
 	summary.power_purchase_cost,
-	summary.maintenance_paid + summary.labour_paid + summary.transport_paid,
+	summary.maintenance_paid + summary.labour_paid + summary.advisor_paid + summary.transport_paid,
 	summary.goods_purchased_cost,
 	summary.interest_paid,
 	summary.taxes_paid,
 	summary.dividends_paid,
+	summary.profit_sharing_paid,
 	summary.money_in - summary.money_out
 ])
 	# Diagnostic: goods sitting in pending shipments (sales + moves). If a produced good
@@ -439,6 +452,16 @@ func _process_production() -> void:
 	
 
 # --- Helpers ---
+
+func _apply_advisor_costs(summary: Dictionary) -> float:
+	var payroll := MatchState.advisor_payroll_per_turn()
+	if payroll <= 0.0:
+		summary.advisor_paid = 0.0
+		return 0.0
+	MatchState.add_money(-payroll)
+	summary.advisor_paid = payroll
+	summary.money_out += payroll
+	return payroll
 
 func _apply_tax_and_dividends(summary: Dictionary) -> float:
 	# Use actual pre-tax cashflow, not just sales minus a narrow operating-cost
@@ -464,6 +487,22 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 		summary.dividends_paid = dividends
 		summary.money_out += dividends
 	return pre_tax_profit
+
+func _apply_profit_sharing(summary: Dictionary, pre_tax_profit: float) -> float:
+	summary.profit_sharing_paid = 0.0
+	if not MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
+		return 0.0
+	var post_dividend_profit := maxf(
+		0.0,
+		pre_tax_profit - float(summary.get("taxes_paid", 0.0)) - float(summary.get("dividends_paid", 0.0))
+	)
+	if post_dividend_profit <= 0.0:
+		return 0.0
+	var profit_sharing := post_dividend_profit * 0.05
+	MatchState.add_money(-profit_sharing)
+	summary.profit_sharing_paid = profit_sharing
+	summary.money_out += profit_sharing
+	return profit_sharing
 
 func _get_recipe(recipe_id: String) -> Dictionary:
 	if recipe_id == "":
@@ -511,6 +550,7 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		}
 		output_qty = int(round(Modifiers.apply("recipe_output", recipe_id, float(output_qty), mod_ctx)))
 		output_qty = int(round(float(output_qty) * BuildingLevels.mult("output", int(building.get("level", 1)))))
+		output_qty = int(round(float(output_qty) * MatchState.workforce_output_multiplier()))
 		# Intermittency: derate output that relies on unfirmed intermittent green power
 		# (0 for grey/steady/no-power buildings; set by _compute_power_intermittency).
 		var power_derate: float = float((_intermittency_by_building.get(building.instance_id, {}) as Dictionary).get("derate", 0.0))
@@ -816,12 +856,47 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 	return sale_record
 
 func _add_summary_sale(summary: Dictionary, good_id: String, qty: int, revenue: float) -> void:
-	var existing: Dictionary = summary.sold.get(good_id, {"qty": 0, "revenue": 0.0})
+	if not summary.has("sold"):
+		summary["sold"] = {}
+	var sold: Dictionary = summary.get("sold", {})
+	var existing: Dictionary = sold.get(good_id, {"qty": 0, "revenue": 0.0})
 	existing.qty = int(existing.get("qty", 0)) + qty
 	existing.revenue = float(existing.get("revenue", 0.0)) + revenue
-	summary.sold[good_id] = existing
-	summary.goods_sales_revenue += revenue
-	summary.money_in += revenue
+	sold[good_id] = existing
+	summary["sold"] = sold
+	summary["goods_sales_revenue"] = float(summary.get("goods_sales_revenue", 0.0)) + revenue
+	summary["money_in"] = float(summary.get("money_in", 0.0)) + revenue
+
+func record_external_goods_sale(sale_record: Dictionary) -> void:
+	if sale_record.is_empty():
+		return
+	if not _active_turn_summary.is_empty():
+		_apply_sale_record_to_summary(_active_turn_summary, sale_record)
+		return
+	_pending_external_sales.append(sale_record.duplicate(true))
+	if not last_turn_summary.is_empty() and _apply_sale_record_to_summary(last_turn_summary, sale_record):
+		turn_processed.emit(last_turn_summary)
+
+func _merge_pending_external_sales(summary: Dictionary) -> void:
+	if _pending_external_sales.is_empty():
+		return
+	for sale_record in _pending_external_sales:
+		_apply_sale_record_to_summary(summary, sale_record)
+	_pending_external_sales.clear()
+
+func _apply_sale_record_to_summary(summary: Dictionary, sale_record: Dictionary) -> bool:
+	if summary.is_empty() or sale_record.is_empty():
+		return false
+	var changed := false
+	for item in sale_record.get("items", []):
+		var gid := str(item.get("good_id", ""))
+		var qty := int(item.get("qty", 0))
+		var revenue := float(item.get("revenue", 0.0))
+		if gid == "" or (qty <= 0 and revenue <= 0.0):
+			continue
+		_add_summary_sale(summary, gid, qty, revenue)
+		changed = true
+	return changed
 
 func _recipe_output_items(recipe: Dictionary) -> Array:
 	if recipe.has("outputs"):
@@ -941,7 +1016,7 @@ func _calculate_labour_cost(building: Dictionary) -> float:
 	var bid: String = str(building.get("building_id", ""))
 	base_cost = Modifiers.apply("labour_headcount", bid, base_cost, {"building_id": bid})
 	base_cost *= BuildingLevels.mult("labour", int(building.get("level", 1)))
-	return base_cost * MatchState.labour_multiplier
+	return base_cost * MatchState.labour_multiplier * MatchState.workforce_labour_cost_multiplier()
 
 func _grown_labour_rate(base_rate: float, growth: float) -> float:
 	# Compounded wage at the current turn: base * (1 + growth) ^ (turn - 1).
@@ -986,7 +1061,7 @@ func _effective_power_output(building: Dictionary, recipe: Dictionary) -> int:
 		"good_internal": "power",
 	}
 	var eff := Modifiers.apply("recipe_output", rid, float(output_qty), mod_ctx)
-	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1)))))
+	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * MatchState.workforce_output_multiplier()))
 
 ## Per-turn stat snapshot for a building instance evaluated AS IF it were `level`. Used by the
 ## upgrade dialog to show cur→new (energy / labour / maintenance / size / inputs / outputs) using
@@ -1034,7 +1109,7 @@ func stats_at_level(instance_id: String, level: int) -> Dictionary:
 				"building_id": str(b.get("building_id", "")), "good_id": str(good.id), "good_internal": oname,
 			}
 			var q := int(round(Modifiers.apply("recipe_output", rid, float(output.get("qty", 0)), ctx)))
-			out.outputs.append({"name": str(good.get("display_name", oname)), "good_id": str(good.id), "qty": int(round(float(q) * omul))})
+			out.outputs.append({"name": str(good.get("display_name", oname)), "good_id": str(good.id), "qty": int(round(float(q) * omul * MatchState.workforce_output_multiplier()))})
 	return out
 
 # Float energy draw (no whole-unit rounding) — for the upgrade panel's cost rows. The live grid
@@ -1442,7 +1517,10 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		for input in inputs:
 			var good_id := str(input.good_id)
 			if MatchState.is_input_tile_only(instance_id, good_id):
-				continue  # player opted this input out of market top-up
+				if _input_source_exhausted_for(building, input):
+					MatchState.set_input_tile_only(instance_id, good_id, false)
+				else:
+					continue  # player opted this input out of market top-up
 			var need_per_turn := int(input.qty)
 			if need_per_turn <= 0:
 				continue
@@ -1489,6 +1567,48 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 			summary.purchased[rgood] = int(summary.purchased.get(rgood, 0)) + int(rbought.get("qty", 0))
 			summary.purchased_cost[rgood] = float(summary.purchased_cost.get(rgood, 0.0)) + float(rbought.get("goods_cost", 0.0))
 			_accumulate_by_type(summary.goods_purchased_by_type, "", float(rbought.get("goods_cost", 0.0)), 0)
+
+func _input_source_exhausted_for(building: Dictionary, input: Dictionary) -> bool:
+	var target_tile := str(building.get("tile_id", ""))
+	var current_instance_id := str(building.get("instance_id", ""))
+	var input_good_id := str(input.get("good_id", ""))
+	var input_internal := str(input.get("internal_name", ""))
+	if target_tile == "" or (input_good_id == "" and input_internal == ""):
+		return false
+	var saw_exhausted_source := false
+	var saw_live_source := false
+	for producer in MatchState.buildings.values():
+		if str(producer.get("instance_id", "")) == current_instance_id:
+			continue
+		if not MatchState.is_player_owned(producer):
+			continue
+		var producer_recipe: Dictionary = Catalog.get_recipe(str(producer.get("recipe_id", "")))
+		if producer_recipe.is_empty():
+			continue
+		var output_good_id := _recipe_output_good_matching_input(producer_recipe, input_good_id, input_internal)
+		if output_good_id == "":
+			continue
+		var destination = _output_stockpile_coord(producer, output_good_id)
+		if destination == null or str(destination) != target_tile:
+			continue
+		var dep_token := _recipe_deposit_token(producer_recipe)
+		if dep_token != "" and MatchState.deposit_depleted(str(producer.get("tile_id", "")), dep_token):
+			saw_exhausted_source = true
+		else:
+			saw_live_source = true
+	return saw_exhausted_source and not saw_live_source
+
+func _recipe_output_good_matching_input(recipe: Dictionary, input_good_id: String, input_internal: String) -> String:
+	for output in _recipe_output_items(recipe):
+		var output_internal := str(output.get("internal_name", ""))
+		var output_good_id := ""
+		if output_internal != "":
+			output_good_id = str(Catalog.get_good_by_internal_name(output_internal).get("id", ""))
+		if input_good_id != "" and output_good_id == input_good_id:
+			return output_good_id
+		if input_internal != "" and output_internal == input_internal:
+			return output_good_id
+	return ""
 
 func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictionary) -> void:
 	var inputs: Array = recipe.get("inputs", [])

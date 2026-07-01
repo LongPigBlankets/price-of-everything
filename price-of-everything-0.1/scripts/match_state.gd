@@ -35,6 +35,24 @@ var _next_instance_counter: int = 0
 
 # --- Labour Slider ---
 var labour_multiplier: float = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
+const WORKFORCE_POLICY_GENEROUS_PENSIONS := "generous_pensions"
+const WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE := "extended_annual_leave"
+const WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE := "generous_parental_leave"
+const WORKFORCE_POLICY_STRICT_SAFETY := "strict_safety_procedures"
+const WORKFORCE_POLICY_STANDARD_SAFETY := "standard_safety_procedures"
+const WORKFORCE_POLICY_LAX_SAFETY := "lax_safety_procedures"
+const WORKFORCE_POLICY_ANNUAL_BONUS := "annual_bonus"
+const WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE := "annual_profit_share"
+const WORKFORCE_POLICY_GAME_LENGTH_TURNS := 300
+const WORKFORCE_SAFETY_POLICIES := [
+	WORKFORCE_POLICY_STRICT_SAFETY,
+	WORKFORCE_POLICY_STANDARD_SAFETY,
+	WORKFORCE_POLICY_LAX_SAFETY,
+]
+var workforce_policies: Dictionary = {}
+var workforce_policy_effects: Dictionary = {}
+const ADVISOR_COST_PER_TURN := 2.0
+var permanent_advisor_ids: Array = []
 
 # --- Output routing ---
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
@@ -152,6 +170,8 @@ signal goods_movement_recorded(kind: String, category: String, transport_turns: 
 signal sell_mode_changed(new_mode: int)
 signal route_objective_changed(new_objective: int)
 signal labour_multiplier_changed(new_value: float)
+signal workforce_policies_changed
+signal advisors_changed
 signal toast_requested(message: String, toast_type: String)
 ## A market sale was finalised at a port this turn (drives the £-rise effect).
 signal market_sale_arrived_at_port(port_tile_id: String, revenue: float)
@@ -892,6 +912,7 @@ func seed_deposits(terrain) -> void:
 		for dep in td.get("deposits", []):
 			var token := _deposit_token_of(str(dep))
 			var qty := _deposit_qty_of(str(dep))
+			qty = _normalized_deposit_qty(token, qty)
 			if token == "" or token == "water" or qty <= 0:
 				continue
 			if not deposit_remaining.has(tid):
@@ -951,6 +972,17 @@ func _deposit_qty_of(raw: String) -> int:
 				digits += ch
 		if digits != "":
 			return int(digits)
+	return -1
+
+func _normalized_deposit_qty(token: String, qty: int) -> int:
+	if token != "coal" and token != "iron_ore":
+		return qty
+	if qty <= 0:
+		return qty
+	if qty <= 2000:
+		return 2000
+	if qty <= 4000:
+		return 4000
 	return -1
 
 ## The non-water deposits on a tile as [{good_id, internal_name}]. Pure water is
@@ -1514,6 +1546,9 @@ func reset() -> void:
 	tile_land_owned.clear()
 	tile_battery_cells.clear()
 	pending_battery_fills.clear()
+	workforce_policies.clear()
+	workforce_policy_effects.clear()
+	permanent_advisor_ids.clear()
 	recurring_moves.clear()
 	scheduled_moves.clear()
 	recurring_sells.clear()
@@ -1530,6 +1565,7 @@ func reset() -> void:
 	_next_instance_counter = 0
 	ruleset = DEFAULT_RULESET.duplicate(true)
 	state_reset.emit()
+	advisors_changed.emit()
 
 # --- Debug ---
 func debug_dump() -> Dictionary:
@@ -1564,6 +1600,9 @@ func export_state() -> Dictionary:
 		"tile_battery_cells": tile_battery_cells.duplicate(true),
 		"pending_battery_fills": pending_battery_fills.duplicate(true),
 		"labour_multiplier": labour_multiplier,
+		"workforce_policies": workforce_policies.duplicate(true),
+		"workforce_policy_effects": workforce_policy_effects.duplicate(true),
+		"permanent_advisor_ids": permanent_advisor_ids.duplicate(true),
 		"sell_mode": sell_mode,
 		"route_objective": route_objective,
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
@@ -1608,6 +1647,9 @@ func import_state(d: Dictionary) -> void:
 	tile_battery_cells = (d.get("tile_battery_cells", {}) as Dictionary).duplicate(true)
 	pending_battery_fills = (d.get("pending_battery_fills", []) as Array).duplicate(true)
 	labour_multiplier = float(d.get("labour_multiplier", EconomyConfig.LABOUR_MULTIPLIER_DEFAULT))
+	workforce_policies = (d.get("workforce_policies", {}) as Dictionary).duplicate(true)
+	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
+	permanent_advisor_ids = _sanitize_advisor_ids(d.get("permanent_advisor_ids", []))
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
@@ -2264,12 +2306,17 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = 
 	var result := MarketState.execute_sale(source_tile, goods_qtys, {"log_oneoff": log_oneoff})
 	if result.is_empty():
 		return {}
+	if not bool(result.get("deferred", false)):
+		var sale_record: Dictionary = result.get("sale_record", {})
+		record_tile_sale(source_tile, int(result.get("total_qty", 0)), float(result.get("total_revenue", 0.0)))
+		Production.record_external_goods_sale(sale_record)
 	return {
 		"items": result.items,
 		"total_qty": result.total_qty,
 		"revenue": result.total_revenue,
 		"turns": result.turns,
 		"port": result.port,
+		"deferred": result.deferred,
 	}
 
 ## A shipment couldn't fully unload at a full tile — hold the remainder so the
@@ -2785,3 +2832,353 @@ func set_labour_multiplier(value: float) -> void:
 	labour_multiplier = value
 	labour_multiplier_changed.emit(value)
 	print("[MatchState] Labour multiplier set to: %.2fx" % value)
+
+func set_workforce_policy_enabled(policy_id: String, enabled: bool) -> void:
+	if policy_id == "":
+		return
+	var was_enabled := bool(workforce_policies.get(policy_id, false))
+	if was_enabled == enabled:
+		return
+	if enabled:
+		if WORKFORCE_SAFETY_POLICIES.has(policy_id):
+			for safety_id in WORKFORCE_SAFETY_POLICIES:
+				if str(safety_id) != policy_id:
+					workforce_policies.erase(str(safety_id))
+		workforce_policies[policy_id] = true
+		if not workforce_policy_effects.has(policy_id):
+			workforce_policy_effects[policy_id] = {}
+	else:
+		workforce_policies.erase(policy_id)
+	workforce_policies_changed.emit()
+
+func is_workforce_policy_enabled(policy_id: String) -> bool:
+	return bool(workforce_policies.get(policy_id, false))
+
+func workforce_policy_game_third_turns() -> int:
+	return maxi(10, int(round(float(WORKFORCE_POLICY_GAME_LENGTH_TURNS) / 30.0)) * 10)
+
+func tick_workforce_policies() -> void:
+	var ids: Array = workforce_policy_effects.keys()
+	for policy_id in workforce_policies.keys():
+		if not ids.has(policy_id):
+			ids.append(policy_id)
+
+	for raw_id in ids:
+		var policy_id := str(raw_id)
+		var active := is_workforce_policy_enabled(policy_id)
+		var effect: Dictionary = workforce_policy_effects.get(policy_id, {})
+		effect["active_turns"] = int(effect.get("active_turns", 0)) + (1 if active else 0)
+		var output_pct := float(effect.get("output_pct", 0.0))
+		var labour_pct := float(effect.get("labour_pct", 0.0))
+
+		match policy_id:
+			WORKFORCE_POLICY_GENEROUS_PENSIONS:
+				if active:
+					output_pct = minf(0.05, output_pct + 0.0005)
+					labour_pct += _pension_labour_step(int(effect.get("active_turns", 0)))
+				else:
+					output_pct = maxf(0.0, output_pct - 0.001)
+					labour_pct = 0.0
+			WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE, WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE:
+				if active:
+					labour_pct = maxf(-0.05, labour_pct - 0.001)
+				else:
+					labour_pct = minf(0.0, labour_pct + 0.0025)
+			WORKFORCE_POLICY_STRICT_SAFETY:
+				if active:
+					labour_pct = maxf(-0.15, labour_pct - 0.005)
+				else:
+					labour_pct = minf(0.0, labour_pct + 0.0025)
+			WORKFORCE_POLICY_LAX_SAFETY:
+				if active:
+					labour_pct = minf(0.15, labour_pct + 0.005)
+				else:
+					labour_pct = maxf(0.0, labour_pct - 0.0025)
+
+		if not active and absf(output_pct) < 0.00001 and absf(labour_pct) < 0.00001:
+			workforce_policy_effects.erase(policy_id)
+		else:
+			effect["output_pct"] = output_pct
+			effect["labour_pct"] = labour_pct
+			workforce_policy_effects[policy_id] = effect
+
+func _pension_labour_step(active_turns: int) -> float:
+	var third := workforce_policy_game_third_turns()
+	if active_turns <= third:
+		return 0.001
+	if active_turns <= third * 2:
+		return 0.0025
+	return 0.004
+
+func workforce_output_multiplier(turn_number: int = -1) -> float:
+	var turn := int(TurnManager.current_turn) if turn_number < 0 else turn_number
+	var multiplier := 1.0
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_GENEROUS_PENSIONS):
+		var pensions: Dictionary = workforce_policy_effects.get(WORKFORCE_POLICY_GENEROUS_PENSIONS, {})
+		multiplier *= 1.0 + float(pensions.get("output_pct", 0.0))
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE) and turn % 10 == 0:
+		multiplier *= 0.95
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE):
+		var ten_turn_block := int(floor(float(maxi(turn, 1) - 1) / 10.0))
+		if ten_turn_block % 2 == 0:
+			multiplier *= 0.95
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_STRICT_SAFETY):
+		multiplier *= 0.90
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_LAX_SAFETY):
+		multiplier *= 1.10
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS) and turn % 10 == 0:
+		multiplier *= 1.20
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
+		multiplier *= 1.10
+	return multiplier
+
+func workforce_labour_cost_multiplier() -> float:
+	var delta := 0.0
+	for effect in workforce_policy_effects.values():
+		if effect is Dictionary:
+			delta += float(effect.get("labour_pct", 0.0))
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS):
+		delta += 0.05
+	return maxf(0.0, 1.0 + delta)
+
+func advisor_pool() -> Array:
+	var out: Array = []
+	for advisor in _advisor_definitions():
+		if advisor is Dictionary:
+			out.append((advisor as Dictionary).duplicate(true))
+	return out
+
+func get_advisor(advisor_id: String) -> Dictionary:
+	for advisor in _advisor_definitions():
+		if advisor is Dictionary and str(advisor.get("id", "")) == advisor_id:
+			return (advisor as Dictionary).duplicate(true)
+	return {}
+
+func permanent_advisors() -> Array:
+	var out: Array = []
+	for advisor_id in permanent_advisor_ids:
+		var advisor := get_advisor(str(advisor_id))
+		if not advisor.is_empty():
+			out.append(advisor)
+	return out
+
+func available_advisors() -> Array:
+	var hired := {}
+	for advisor_id in permanent_advisor_ids:
+		hired[str(advisor_id)] = true
+	var out: Array = []
+	for advisor in _advisor_definitions():
+		if not (advisor is Dictionary):
+			continue
+		if hired.has(str(advisor.get("id", ""))):
+			continue
+		out.append((advisor as Dictionary).duplicate(true))
+	return out
+
+func hire_advisor(advisor_id: String) -> bool:
+	if advisor_id == "" or permanent_advisor_ids.has(advisor_id) or get_advisor(advisor_id).is_empty():
+		return false
+	permanent_advisor_ids.append(advisor_id)
+	advisors_changed.emit()
+	return true
+
+func advisor_payroll_per_turn() -> float:
+	return float(permanent_advisor_ids.size()) * ADVISOR_COST_PER_TURN
+
+func _sanitize_advisor_ids(ids: Variant) -> Array:
+	var valid := {}
+	for advisor in _advisor_definitions():
+		if advisor is Dictionary:
+			valid[str(advisor.get("id", ""))] = true
+	var out: Array = []
+	if not (ids is Array):
+		return out
+	for raw_id in ids:
+		var advisor_id := str(raw_id)
+		if valid.has(advisor_id) and not out.has(advisor_id):
+			out.append(advisor_id)
+	return out
+
+func _advisor_definitions() -> Array:
+	return [
+		{
+			"id": "natasha",
+			"name": "Natasha L.",
+			"initials": "NL",
+			"role": "Chief Financial Officer",
+			"happiness": 4,
+			"portrait_path": "res://assets/advisors/natasha.png",
+			"portrait_color": Color("#7C5A80"),
+			"bonus": "-1% loan interest, +8% debt capacity",
+			"recommendation": "Borrow only where the new asset pays before the next repayment cycle tightens.",
+			"bio": "A polished finance operator who translates industrial mess into investor confidence. Calm in public, sharper in private, and very hard to surprise twice.",
+			"agenda": "Protect cash flow, keep lenders warm, and turn profitable growth into a credible financing story.",
+			"likes": ["Positive operating profit", "Debt-funded expansion", "Reliable dividends", "High-value orders"],
+			"dislikes": ["Idle cash", "Missed repayments", "Low-margin dumping", "Unclear production focus"],
+			"bonuses": ["-1% loan interest", "+8% loan capacity", "Reduced penalty from one missed dividend"],
+			"missions": [
+				{"roman": "I", "title": "Signal", "state": "completed", "color": Color("#7C5A80")},
+				{"roman": "II", "title": "Leverage", "state": "next", "color": Color("#536C92")},
+				{"roman": "III", "title": "Narrative", "state": "locked", "color": Color("#4F6B58")},
+				{"roman": "IV", "title": "Roadshow", "state": "locked", "color": Color("#765742")},
+				{"roman": "V", "title": "Mandate", "state": "locked", "color": Color("#6B6077")},
+			],
+		},
+		{
+			"id": "dan",
+			"name": "Dan S.",
+			"initials": "DS",
+			"role": "VP Logistics",
+			"happiness": -2,
+			"portrait_path": "res://assets/advisors/dan.png",
+			"portrait_color": Color("#455C78"),
+			"bonus": "-3% transport cost, +5% warehouse capacity",
+			"recommendation": "Shorten ore routes before adding more furnaces. Distance is already sending invoices.",
+			"bio": "A movement obsessive with a tolerance for ugly maps and a deep dislike of empty return journeys.",
+			"agenda": "Collapse long routes, fill vehicles both ways, and make ports boringly predictable.",
+			"likes": ["Short routes", "Rail upgrades", "Full shipments", "Port stockpiles"],
+			"dislikes": ["Long road hauls", "Idle warehouses", "Split shipments", "Emergency reroutes"],
+			"bonuses": ["-3% transport cost", "+5% warehouse capacity", "+1 logistics happiness from efficient deliveries"],
+			"missions": [
+				{"roman": "I", "title": "Measure", "state": "completed", "color": Color("#455C78")},
+				{"roman": "II", "title": "Route", "state": "next", "color": Color("#536C92")},
+				{"roman": "III", "title": "Consolidate", "state": "locked", "color": Color("#4F6B58")},
+				{"roman": "IV", "title": "Automate", "state": "locked", "color": Color("#765742")},
+				{"roman": "V", "title": "Network", "state": "locked", "color": Color("#6B6077")},
+			],
+		},
+		{
+			"id": "lance",
+			"name": "Lance C.",
+			"initials": "LC",
+			"role": "Technical Director - Metallurgy",
+			"happiness": 0,
+			"portrait_path": "res://assets/advisors/lance.png",
+			"portrait_color": Color("#66513B"),
+			"bonus": "+2% furnace output",
+			"recommendation": "Steel margins improve faster when the ore and coal both arrive predictably.",
+			"bio": "A plant-floor metallurgist who trusts output data, slag chemistry, and almost nothing said in meetings.",
+			"agenda": "Stabilise heat-intensive chains, improve furnace utilisation, and push alloy quality upward.",
+			"likes": ["Iron chains", "Steel orders", "Stable power", "Factory upgrades"],
+			"dislikes": ["Input starvation", "Underused furnaces", "Selling ore too early", "Power instability"],
+			"bonuses": ["+2% furnace output", "-2% furnace maintenance", "+1 happiness from steel-focused growth"],
+			"missions": [
+				{"roman": "I", "title": "Ore", "state": "completed", "color": Color("#66513B")},
+				{"roman": "II", "title": "Heat", "state": "next", "color": Color("#536C92")},
+				{"roman": "III", "title": "Flow", "state": "locked", "color": Color("#4F6B58")},
+				{"roman": "IV", "title": "Alloy", "state": "locked", "color": Color("#765742")},
+				{"roman": "V", "title": "Scale", "state": "locked", "color": Color("#6B6077")},
+			],
+		},
+		{
+			"id": "anita",
+			"name": "Anita D.",
+			"initials": "AD",
+			"role": "Chief Operating Officer",
+			"happiness": 0,
+			"portrait_path": "res://assets/advisors/anita.png",
+			"portrait_color": Color("#51707A"),
+			"bonus": "+2% building output",
+			"recommendation": "Stabilise the production chain before chasing a wider product slate.",
+			"bio": "A calm operator with a gift for finding the one process constraint everyone else has learned to ignore.",
+			"agenda": "Raise utilisation, reduce avoidable stoppages, and make the empire easier to run at speed.",
+			"likes": ["Stable throughput", "Balanced inputs", "Clear operating focus", "High utilisation"],
+			"dislikes": ["Starved buildings", "Unfinished loops", "Overbuilt capacity", "Last-minute pivots"],
+			"bonuses": ["+2% building output", "-1% maintenance when no owned building starves", "+1 happiness from three clean turns"],
+			"missions": [
+				{"roman": "I", "title": "Audit", "state": "next", "color": Color("#51707A")},
+				{"roman": "II", "title": "Balance", "state": "locked", "color": Color("#536C92")},
+				{"roman": "III", "title": "Cadence", "state": "locked", "color": Color("#4F6B58")},
+				{"roman": "IV", "title": "Scale", "state": "locked", "color": Color("#765742")},
+				{"roman": "V", "title": "Doctrine", "state": "locked", "color": Color("#6B6077")},
+			],
+		},
+		{
+			"id": "philip",
+			"name": "Philip W.",
+			"initials": "PW",
+			"role": "Markets and Sales Director",
+			"happiness": 0,
+			"portrait_color": Color("#5A6F4A"),
+			"bonus": "+3% special-order visibility",
+			"recommendation": "The market is paying for certainty. Commit only when the route is already boring.",
+			"bio": "A dealmaker who reads demand curves as social weather and prefers signed contracts to heroic production bets.",
+			"agenda": "Convert reliable surplus into better contracts, then keep those commitments painless.",
+			"likes": ["Special orders", "Stable sale routes", "High price impact discipline", "Port access"],
+			"dislikes": ["Missed contracts", "Fire-sale dumping", "Unsold surpluses", "Route uncertainty"],
+			"bonuses": ["+3% special-order visibility", "+2% premium on fulfilled special orders", "-1 happiness on missed commitments"],
+			"missions": [
+				{"roman": "I", "title": "Prospect", "state": "next", "color": Color("#5A6F4A")},
+				{"roman": "II", "title": "Commit", "state": "locked", "color": Color("#536C92")},
+				{"roman": "III", "title": "Premium", "state": "locked", "color": Color("#4F6B58")},
+				{"roman": "IV", "title": "Portfolio", "state": "locked", "color": Color("#765742")},
+				{"roman": "V", "title": "Franchise", "state": "locked", "color": Color("#6B6077")},
+			],
+		},
+		{
+			"id": "brother",
+			"name": "Your Brother",
+			"initials": "YB",
+			"role": "Investor Relations Specialist",
+			"happiness": 0,
+			"portrait_color": Color("#66513B"),
+			"bonus": "+4% debt capacity",
+			"recommendation": "You can absolutely borrow more. Whether you should is the funnier question.",
+			"bio": "A charming capital-market optimist with family access, fast patter, and a suspiciously high tolerance for leverage.",
+			"agenda": "Sell the growth story, expand borrowing room, and keep the share price feeling inevitable.",
+			"likes": ["New loans", "Revenue growth", "Investor-facing wins", "Big-ticket assets"],
+			"dislikes": ["Shrinking cash", "No-growth turns", "Tiny projects", "Cautious silence"],
+			"bonuses": ["+4% debt capacity", "+1 investor happiness after large expansions", "-1 happiness after idle high cash"],
+			"missions": [
+				{"roman": "I", "title": "Pitch", "state": "next", "color": Color("#66513B")},
+				{"roman": "II", "title": "Raise", "state": "locked", "color": Color("#536C92")},
+				{"roman": "III", "title": "Signal", "state": "locked", "color": Color("#4F6B58")},
+				{"roman": "IV", "title": "Syndicate", "state": "locked", "color": Color("#765742")},
+				{"roman": "V", "title": "Empire", "state": "locked", "color": Color("#6B6077")},
+			],
+		},
+		{
+			"id": "sister",
+			"name": "Your Sister",
+			"initials": "YS",
+			"role": "Technical Director - Organic Chemistry",
+			"happiness": 0,
+			"portrait_color": Color("#7C5A80"),
+			"bonus": "+2% refinery and polymer output",
+			"recommendation": "Crude chains reward patience. Build buffers before you build ambition.",
+			"bio": "A process chemist who can talk catalysts for an hour and still notice the one missing pipe on the diagram.",
+			"agenda": "Build deeper chemical chains, protect feedstock continuity, and improve high-value conversion.",
+			"likes": ["Refinery runs", "Polymer output", "Chemical buffers", "Catalyst upgrades"],
+			"dislikes": ["Crude starvation", "Half-built chains", "Selling feedstock early", "Dirty shutdowns"],
+			"bonuses": ["+2% refinery output", "+2% polymer output", "+1 happiness from profitable chemical chains"],
+			"missions": [
+				{"roman": "I", "title": "Feed", "state": "next", "color": Color("#7C5A80")},
+				{"roman": "II", "title": "React", "state": "locked", "color": Color("#536C92")},
+				{"roman": "III", "title": "Separate", "state": "locked", "color": Color("#4F6B58")},
+				{"roman": "IV", "title": "Polymerise", "state": "locked", "color": Color("#765742")},
+				{"roman": "V", "title": "Specialise", "state": "locked", "color": Color("#6B6077")},
+			],
+		},
+		{
+			"id": "uncle",
+			"name": "Your Uncle",
+			"initials": "YU",
+			"role": "Chief Risk Officer",
+			"happiness": 0,
+			"portrait_color": Color("#455C78"),
+			"bonus": "-5% event penalty severity",
+			"recommendation": "Every shortcut is a loan from the future, and the future has collectors.",
+			"bio": "A veteran operator with a memory for everything that once went wrong and an irritating habit of being right early.",
+			"agenda": "Reduce fragile dependencies, prepare for bad turns, and make disasters survivable.",
+			"likes": ["Cash buffers", "Redundant routes", "Safety policy", "Stable supply"],
+			"dislikes": ["Thin margins", "Overleverage", "Single points of failure", "Ignored warnings"],
+			"bonuses": ["-5% event penalty severity", "+1 risk happiness from cash reserves", "-1 happiness when debt service bites"],
+			"missions": [
+				{"roman": "I", "title": "Scan", "state": "next", "color": Color("#455C78")},
+				{"roman": "II", "title": "Buffer", "state": "locked", "color": Color("#536C92")},
+				{"roman": "III", "title": "Harden", "state": "locked", "color": Color("#4F6B58")},
+				{"roman": "IV", "title": "Insure", "state": "locked", "color": Color("#765742")},
+				{"roman": "V", "title": "Endure", "state": "locked", "color": Color("#6B6077")},
+			],
+		},
+	]
