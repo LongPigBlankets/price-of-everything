@@ -2,7 +2,10 @@ extends Node
 # Single source of truth for goods stockpiles.
 # Per-tile storage with aggregate helpers for panels that still show global totals.
 
-const TILE_CAPACITY := 500
+# Per-tile "warehouse" base capacity (level 1). Levels 2/3 (1600/2500) come from
+# EconomyConfig.WAREHOUSE_STORAGE_CAP, unlocked by storage research; kept here as the
+# level-1 value + fallback so existing references (and tests) still resolve.
+const TILE_CAPACITY := 800
 const LEGACY_TILE_KEY := "__legacy_global__"
 
 var _by_tile: Dictionary = {}  # tile_key -> good_id -> int
@@ -39,8 +42,22 @@ func get_at_tile(coord, good_id: String) -> int:
 func get_capacity(coord) -> int:
 	if coord == null:
 		return 999999
-	# tile_storage research (warehouse upgrades) scales the per-tile capacity.
-	return int(round(Modifiers.apply("tile_storage", "", float(TILE_CAPACITY + _storage_boost_for(coord)), {})))
+	# Per-tile "warehouse" capacity: a level table (L1/L2/L3 = 800/1600/2500) driven by
+	# storage-research upgrades, plus any building storage_boost on the tile (a Port adds
+	# +600 on top).
+	var level := _warehouse_level()
+	var base: int = int(EconomyConfig.WAREHOUSE_STORAGE_CAP.get(level, TILE_CAPACITY))
+	return base + _storage_boost_for(coord)
+
+# Warehouse level = 1 + the number of storage-research upgrades unlocked (empire-wide),
+# capped at the top table level. The two upgrades chain (Pallet Racking → Automated
+# Storage), so this rises 1 → 2 → 3 in order.
+func _warehouse_level() -> int:
+	var lvl := 1
+	for title in EconomyConfig.WAREHOUSE_UPGRADE_RESEARCH:
+		if MatchState.is_unlocked(str(title)):
+			lvl += 1
+	return mini(lvl, EconomyConfig.WAREHOUSE_STORAGE_CAP.size())
 
 func _storage_boost_for(coord) -> int:
 	var tile_id := str(coord)

@@ -813,7 +813,8 @@ func _add_labour_table(building_data: Dictionary) -> void:
 
 func _add_labour_row(table: GridContainer, label: String, count_value: Variant, rate: float) -> void:
 	var count := int(count_value)
-	var cost := float(count) * rate * MatchState.labour_multiplier
+	# Labour slider + workforce policies apply additively to the 100% base (no compounding).
+	var cost := float(count) * rate * MatchState.labour_policy_factor()
 	table.add_child(_make_table_cell(label, false, 120.0))
 	table.add_child(_make_table_cell(str(count), false, 52.0))
 	table.add_child(_make_table_cell("%.2f" % cost, false, 70.0))
@@ -2624,7 +2625,7 @@ func _labour_cost(building_data: Dictionary) -> float:
 		+ building_data.get("labour_skilled_required", 0) * EconomyConfig.LABOUR_SKILLED_RATE
 		+ building_data.get("labour_h_skilled_required", 0) * EconomyConfig.LABOUR_HIGH_SKILLED_RATE
 	)
-	return base_cost * MatchState.labour_multiplier
+	return base_cost * MatchState.labour_policy_factor()
 
 func _output_destination() -> String:
 	var instance_id: String = _current_building.get("instance_id", "")

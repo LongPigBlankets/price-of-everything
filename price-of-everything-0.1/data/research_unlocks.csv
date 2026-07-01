@@ -59,8 +59,8 @@ People Management,Shift Supervisors,,,,I,Sell,Labour,250,units,Safety Training,s
 People Management,Safety Training,,,,II,Run,Factory,12,turns,Specialist Apprenticeships,apprentice,Increases Assembly Plant output by 5% permanently.
 People Management,Shift Supervisors,,,,II,Own,land,5,units,Union Liaison Offices,union,Reduces all buildings maintenance by 10% for 20 turns.
 People Management,Specialist Apprenticeships,Union Liaison Offices,,,III,Run,Continuous Improvement Team,15,turns,Continuous Improvement Teams,team,Reduces High Tech Manufactory and Assembly Plant labour by 10% permanently.
-People Management,,,,,I,Build,any,3,units,Operational Team Managers,team,Reduces all buildings labour by 5% permanently.
-People Management,Operational Team Managers,,,,II,Build,any,12,units,Shift Handover Documentation,shift,Reduces all buildings labour by a further 5% permanently.
+People Management,,,,,I,Build,any,3,units,Operational Team Managers,team,Reduces all buildings labour by 10% permanently.
+People Management,Operational Team Managers,,,,II,Build,any,12,units,Shift Handover Documentation,shift,Reduces all buildings labour by a further 10% permanently.
 Mining and Surveying,,,,,I,Run Profitable,mine,3,buildings,Mining Mastery,+5%,Increases output of all mines by 5% for 30 turns.
 Mining and Surveying,Copper Froth Flotation,,,,II,Produce,ree_ore,500,units,Rare Vein Prospecting,rare,Increases rare earth and alloy ore mining output by 20% permanently.
 Manufacturing,Modular Factory Cells,,,,III,Run L1,industrial_factory,3,20 turns,Conveyor Mass Assembly,level2,Unlocks upgrading Industrial Goods Factory to Level 2 for more output.
@@ -225,5 +225,5 @@ Mining and Surveying,Dynamic-Positioning Drilling,,,,III,Produce,crude_oil,600,u
 Recycling,,,,,I,Produce,biomass,250,units,Biowaste Digestion,bio,Unlocks new recipe: Biowaste Recycling (24 Biomass).
 Hydrocarbon Power,,,,,I,Produce,power,250,units,Hydrogen Combustion Turbines,turbine,Unlocks new recipe: Hydrogen Power (100 Power).
 Infrastructure,Substation Layouts,,,,III,Run,Cables,12,turns,Dynamic Line Rating,hvdc1,Increases cable throughput by 25% permanently.
-Logistics,Depot Scheduling,,,,I,Build,port,3,units,Pallet Racking Systems,depot,Increases tile storage capacity by 10% permanently.
-Logistics,Pallet Racking Systems,,,,II,Build,port,3,units,Automated Storage & Retrieval,depot,Increases tile storage capacity by 15% permanently.
+Logistics,Depot Scheduling,,,,I,Build,port,3,units,Pallet Racking Systems,depot,Raises tile storage to 1600 (warehouse level 2).
+Logistics,Pallet Racking Systems,,,,II,Build,port,3,units,Automated Storage & Retrieval,depot,Raises tile storage to 2500 (warehouse level 3).

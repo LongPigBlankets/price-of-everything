@@ -16,6 +16,11 @@ const HEADER_HEIGHT := 56.0
 var _labour_buttons: Dictionary = {}
 var _policy_buttons: Dictionary = {}
 var _labour_effects: VBoxContainer
+var _labour_indicator: PanelContainer
+var _labour_pct_label: Label
+var _labour_trend_label: Label
+var _labour_amount_label: Label
+var _labour_est_label: Label
 var _advisors_root: VBoxContainer
 var _advisor_payroll_label: Label
 var _advisor_detail_panel: PanelContainer
@@ -38,6 +43,8 @@ func _ready() -> void:
 	_build_panel()
 	MatchState.labour_multiplier_changed.connect(func(_value: float): _refresh_labour())
 	MatchState.workforce_policies_changed.connect(_refresh_policy_buttons)
+	MatchState.workforce_policies_changed.connect(_refresh_labour_indicator)
+	TurnManager.turn_resolution_completed.connect(_refresh_labour_indicator)
 	if not MatchState.advisors_changed.is_connected(_on_advisors_changed):
 		MatchState.advisors_changed.connect(_on_advisors_changed)
 	visibility_changed.connect(_on_visibility_changed)
@@ -94,15 +101,31 @@ func _build_labour_tab() -> Control:
 	root.add_theme_constant_override("separation", 12)
 	margin.add_child(root)
 
-	root.add_child(_label("Labour Salaries", "Section"))
+	var top_row := HBoxContainer.new()
+	top_row.add_theme_constant_override("separation", 12)
+	root.add_child(top_row)
+
+	var salaries := VBoxContainer.new()
+	salaries.add_theme_constant_override("separation", 8)
+	salaries.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	salaries.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	top_row.add_child(salaries)
+
+	salaries.add_child(_label("Labour Salaries", "Section"))
 
 	var button_row := HBoxContainer.new()
-	button_row.add_theme_constant_override("separation", 10)
-	root.add_child(button_row)
+	button_row.add_theme_constant_override("separation", 8)
+	salaries.add_child(button_row)
 
 	_add_labour_button(button_row, 0.8, "0.8x")
 	_add_labour_button(button_row, 1.0, "1x")
 	_add_labour_button(button_row, 1.2, "1.2x")
+
+	# Big at-a-glance labour indicator, top-right beside the multiplier buttons.
+	_labour_indicator = _build_labour_indicator()
+	_labour_indicator.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_labour_indicator.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	top_row.add_child(_labour_indicator)
 
 	_labour_effects = VBoxContainer.new()
 	_labour_effects.add_theme_constant_override("separation", 6)
@@ -134,12 +157,83 @@ func _build_labour_tab() -> Control:
 	_refresh_policy_buttons()
 	return margin
 
+func _build_labour_indicator() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = &"Card"
+	panel.custom_minimum_size = Vector2(132, 0)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 2)
+	margin.add_child(vb)
+
+	vb.add_child(_label("Labour cost", "Caption"))
+
+	var headline := HBoxContainer.new()
+	headline.add_theme_constant_override("separation", 6)
+	vb.add_child(headline)
+	_labour_pct_label = _label("100%", "Title")
+	headline.add_child(_labour_pct_label)
+	_labour_trend_label = _label("–", "Title")
+	_labour_trend_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	headline.add_child(_labour_trend_label)
+
+	_labour_amount_label = _label("£0/turn", "Numeric")
+	vb.add_child(_labour_amount_label)
+
+	_labour_est_label = _label("10t ≈ £0", "Caption")
+	vb.add_child(_labour_est_label)
+
+	return panel
+
+# Refresh the labour indicator from the live aggregate: current % of base, raw
+# £/turn, a coloured up/down arrow (from next-turn workforce-policy accrual), and
+# the 10-turn estimate.
+func _refresh_labour_indicator() -> void:
+	if _labour_pct_label == null:
+		return
+	var ov: Dictionary = Production.labour_overview()
+	var has: bool = bool(ov.get("has_buildings", false))
+	var current: float = float(ov.get("current", 0.0))
+	var est: float = float(ov.get("est_10_turns", current))
+	_labour_pct_label.text = ("%d%%" % int(round(float(ov.get("factor_pct", 100.0))))) if has else "—"
+	_labour_amount_label.text = "£%s/turn" % _fmt_amount(current)
+	_labour_est_label.text = ("10t ≈ £%s" % _fmt_amount(est)) if has else "no buildings yet"
+
+	# Trend arrow follows the 10-turn direction (matches the estimate shown below),
+	# so slow workforce-policy drift still registers.
+	var eps := 0.005 * maxf(1.0, current)
+	if not has or absf(est - current) <= eps:
+		_labour_trend_label.text = "–"
+		_labour_trend_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	elif est > current:
+		# Labour trending up (more expensive) — red.
+		_labour_trend_label.text = "▲"
+		_labour_trend_label.add_theme_color_override("font_color", DS.PALETTE["DANGER"])
+	else:
+		# Labour trending down (cheaper) — green.
+		_labour_trend_label.text = "▼"
+		_labour_trend_label.add_theme_color_override("font_color", DS.PALETTE["OK"])
+
+func _fmt_amount(v: float) -> String:
+	if absf(v) >= 10000.0:
+		return "%.0fk" % (v / 1000.0)
+	if absf(v) >= 1000.0:
+		return "%.1fk" % (v / 1000.0)
+	return "%.0f" % v
+
 func _add_labour_button(parent: HBoxContainer, multiplier: float, text: String) -> void:
 	var button := Button.new()
 	button.text = text
 	button.toggle_mode = true
 	button.theme_type_variation = &"Build"
-	button.custom_minimum_size = Vector2(112, 40)
+	button.custom_minimum_size = Vector2(64, 40)
 	button.pressed.connect(_on_labour_button_pressed.bind(multiplier))
 	parent.add_child(button)
 	_labour_buttons[multiplier] = button
@@ -190,6 +284,8 @@ func _refresh_labour() -> void:
 			{"text": " per turn toward "},
 			{"text": "0%"},
 		]))
+
+	_refresh_labour_indicator()
 
 func _nearest_labour_choice(value: float) -> float:
 	var choices := [0.8, 1.0, 1.2]

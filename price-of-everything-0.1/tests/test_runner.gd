@@ -50,6 +50,7 @@ func _ready() -> void:
 	_test_queue_move()
 	_test_move_extras()
 	_test_storage_boost()
+	_test_warehouse_storage_levels()
 	_test_queue_sell()
 	_test_queue_sell_immediate_updates_turn_summary()
 	_test_market_execute_sale()
@@ -114,6 +115,8 @@ func _ready() -> void:
 	_test_live_unlock_conditions()
 	_test_deposit_penalty_modifier()
 	_test_workforce_output_modifier_surfaces_in_building_status()
+	_test_additive_labour_cost_model()
+	_test_cost_report_credits_output_modifiers()
 	_test_flavor_nodes_wired()
 	_test_transport_congestion()
 	_test_tile_mode_flow_endpoints()
@@ -3489,12 +3492,12 @@ func _test_workforce_output_modifier_surfaces_in_building_status() -> void:
 		"level": 1,
 	}
 	var recipe: Dictionary = Catalog.get_recipe("r_009")
-	_check(BuildingStatus.effective_output_qty(building, recipe) == 20,
+	_check(BuildingStatus.effective_output_qty(building, recipe) == 28,
 		"building status baseline output excludes inactive workforce policies")
 	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
 	var mod: Dictionary = BuildingStatus.net_output_modifier(building, recipe)
 	var workforce_parts: Array = mod.get("workforce_parts", [])
-	_check(BuildingStatus.effective_output_qty(building, recipe) == 22,
+	_check(BuildingStatus.effective_output_qty(building, recipe) == 31,
 		"building status output includes annual profit-share workforce multiplier")
 	_check(absf(float(mod.get("pct_f", 0.0)) - 10.0) < 0.001,
 		"building status net output modifier includes annual profit share")
@@ -3504,6 +3507,42 @@ func _test_workforce_output_modifier_surfaces_in_building_status() -> void:
 	_check(BuildingStatus._modifier_tooltip(mod).find("Annual Profit Share") >= 0,
 		"building status tooltip includes annual profit share")
 	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, false)
+	TurnManager.current_turn = old_turn
+	Modifiers.reset()
+	MatchState.reset()
+
+func _test_additive_labour_cost_model() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	var old_turn: int = int(TurnManager.current_turn)
+	TurnManager.current_turn = 1
+	# People-management unlocks now trim 10% each (was 5%).
+	var otm: Dictionary = Modifiers.UNLOCK_MODIFIERS.get("Operational Team Managers", {})
+	var shd: Dictionary = Modifiers.UNLOCK_MODIFIERS.get("Shift Handover Documentation", {})
+	_check(float(otm.get("pct", 0.0)) == -10.0 and float(shd.get("pct", 0.0)) == -10.0,
+		"labour unlocks: OTM and SHD each trim head-count by 10%")
+
+	var iid := MatchState.add_building("b_001", "r_001", "tile_6_8", MatchState.LOCAL_PLAYER, "test_additive_labour")
+	var building: Dictionary = MatchState.buildings[iid]
+	MatchState.set_labour_multiplier(1.0)
+	_check(is_equal_approx(Production.labour_cost_factor(building), 1.0),
+		"labour factor: 100% of base with no modifiers")
+
+	# Slider +20% and a -30% policy delta net to -10% off the 100% base (additive,
+	# not the old compounded 0.8 x 1.2 x ...).
+	MatchState.set_labour_multiplier(1.2)
+	MatchState.workforce_policy_effects["test_policy"] = {"labour_pct": -0.30, "output_pct": 0.0, "active_turns": 1}
+	_check(is_equal_approx(Production.labour_cost_factor(building), 0.90),
+		"labour factor: slider and policy deltas add to base 100% (no compounding)")
+	_check(is_equal_approx(Production._calculate_labour_cost(building), Production._base_labour_cost(building) * 0.90),
+		"labour cost: base x additive factor")
+
+	var ov: Dictionary = Production.labour_overview()
+	_check(ov.has("current") and ov.has("est_10_turns") and ov.has("factor_pct") and ov.has("next_turn"),
+		"labour overview: exposes current, next-turn, 10-turn estimate and factor %")
+
+	MatchState.workforce_policy_effects.clear()
+	MatchState.set_labour_multiplier(1.0)
 	TurnManager.current_turn = old_turn
 	Modifiers.reset()
 	MatchState.reset()
@@ -3658,6 +3697,38 @@ func _test_building_leveling() -> void:
 	MatchState.reset()
 	Stockpile.clear_all()
 
+func _test_cost_report_credits_output_modifiers() -> void:
+	# A recipe_output modifier (the "Δ +%" on a recipe) must be credited in the cost report's
+	# output quantity — not just the level multiplier — or CostSolver divides the run's fixed
+	# costs by too few units and overstates unit cost for every modified building.
+	Modifiers.reset()
+	MatchState.reset()
+	var recipe: Dictionary = Catalog.get_recipe("r_008")  # Copper Wire Drawing (single output)
+	var base_out := 0
+	for o in recipe.get("outputs", []):
+		base_out += int(o.get("qty", 0))
+	var base_in := 0
+	for inp in recipe.get("inputs", []):
+		base_in += int(inp.get("qty", 0))
+	Modifiers.add({"id": "test_cw_output_boost", "domain": "recipe_output",
+		"target_match": {"building_id": "b_007"}, "pct": 50.0, "label": "test", "source": "test"})
+	Production._building_turn_reports.clear()
+	Production._capture_turn_report({"instance_id": "rt_cw", "building_id": "b_007", "tile_id": "tT", "level": 1}, recipe)
+	var rep: Dictionary = Production._building_turn_reports[-1]
+	var rep_out := 0
+	for gid in (rep.get("outputs_produced", {}) as Dictionary):
+		rep_out += int(rep["outputs_produced"][gid])
+	var rep_in := 0
+	for gid in (rep.get("inputs_consumed", {}) as Dictionary):
+		rep_in += int(rep["inputs_consumed"][gid])
+	_check(base_out > 0 and rep_out == int(round(float(base_out) * 1.5)),
+		"cost report credits a +50%% recipe_output modifier in output qty (was: base only)")
+	_check(base_in > 0 and rep_in == base_in,
+		"cost report leaves inputs at base under a recipe_output modifier")
+	Production._building_turn_reports.clear()
+	Modifiers.reset()
+	MatchState.reset()
+
 func _test_power_output_modifier() -> void:
 	# Power generation now flows through recipe_output modifiers (it used to bypass them).
 	Modifiers.reset()
@@ -3697,9 +3768,9 @@ func _test_cable_power_cap() -> void:
 	# Cables hard-cap a tile's power per turn by cable level — produce + draw separately.
 	Modifiers.reset()
 	Power.reset_for_turn()
-	_check(int(EconomyConfig.CABLE_POWER_CAP[1]) == 200 and int(EconomyConfig.CABLE_POWER_CAP[2]) == 400
-			and int(EconomyConfig.CABLE_POWER_CAP[3]) == 700,
-		"cable power caps are 200 / 400 / 700 by level")
+	_check(int(EconomyConfig.CABLE_POWER_CAP[1]) == 2000 and int(EconomyConfig.CABLE_POWER_CAP[2]) == 4000
+			and int(EconomyConfig.CABLE_POWER_CAP[3]) == 7000,
+		"cable power caps are 2000 / 4000 / 7000 by level")
 	# No cables → 0 cap, nothing produces or draws.
 	_check(Power.tile_power_cap("tx") == 0, "a tile with no cables has a 0 power cap")
 	_check(not Power.can_produce("tx", 50) and not Power.can_draw("tx", 50),
@@ -3716,18 +3787,18 @@ func _test_cable_power_cap() -> void:
 	fake.add_to_group("hex_map")
 	get_tree().root.add_child(fake)
 
-	_check(Power.tile_power_cap("t2") == 400, "an L2-cable tile caps power at 400 (got %d)" % Power.tile_power_cap("t2"))
-	# Produce AND draw are independent caps — 400 each on the same L2 tile.
-	Power.record_produced("t2", 400)
-	Power.record_drawn("t2", 400)
-	_check(int(Power.tile_produced["t2"]) == 400 and int(Power.tile_drawn["t2"]) == 400,
-		"a tile can produce 400 AND draw 400 with an L2 cable")
+	_check(Power.tile_power_cap("t2") == 4000, "an L2-cable tile caps power at 4000 (got %d)" % Power.tile_power_cap("t2"))
+	# Produce AND draw are independent caps — 4000 each on the same L2 tile.
+	Power.record_produced("t2", 4000)
+	Power.record_drawn("t2", 4000)
+	_check(int(Power.tile_produced["t2"]) == 4000 and int(Power.tile_drawn["t2"]) == 4000,
+		"a tile can produce 4000 AND draw 4000 with an L2 cable")
 	_check(not Power.can_produce("t2", 1), "at the production cap, no further power generates")
 	_check(not Power.can_draw("t2", 1), "at the draw cap, no further power is supplied")
-	# Substation Layouts research raises the cap: +25% → 500 (one of two +25% cable throughput unlocks).
+	# Substation Layouts research raises the cap: +25% → 5000 (one of two +25% cable throughput unlocks).
 	MatchState.grant_unlock("Substation Layouts")
-	_check(Power.tile_power_cap("t2") == 500,
-		"Substation Layouts raises the L2 cap 400 → 500 (got %d)" % Power.tile_power_cap("t2"))
+	_check(Power.tile_power_cap("t2") == 5000,
+		"Substation Layouts raises the L2 cap 4000 → 5000 (got %d)" % Power.tile_power_cap("t2"))
 
 	get_tree().root.remove_child(fake)
 	fake.free()
@@ -4590,9 +4661,9 @@ func _test_battery_buildable() -> void:
 	_check(str(opt.get("recipe_id", "")) != "", "battery: build option resolves a recipe (no longer 'not available')")
 
 func _test_battery_deposit() -> void:
-	# Deposit model: housing = 100 ⚡ capacity at L1; firming = Σ cells × density, capped by
+	# Deposit model: housing = 1000 ⚡ capacity at L1; firming = Σ cells × density, capped by
 	# headroom; loading is tech-gated; density differs per type so 18 lithium / 24 sodium cells
-	# fill 100 ⚡; demolish refunds the cells.
+	# fill 1000 ⚡; demolish refunds the cells.
 	var tile := "tile_9_9"
 	MatchState.tile_battery_cells.erase(tile)
 	var lgid := str(Catalog.get_good_by_internal_name("lithium_battery").get("id", ""))
@@ -4600,7 +4671,7 @@ func _test_battery_deposit() -> void:
 	Stockpile.consume(tile, lgid, Stockpile.get_at_tile(tile, lgid))
 	Stockpile.consume(tile, sgid, Stockpile.get_at_tile(tile, sgid))
 	var bid: String = MatchState.add_building("b_028", "r_225", tile, MatchState.LOCAL_PLAYER)
-	_check(MatchState.tile_battery_slots(tile) == 100, "battery deposit: L1 housing = 100 firming capacity")
+	_check(MatchState.tile_battery_slots(tile) == 1000, "battery deposit: L1 housing = 1000 firming capacity")
 	_check(Production._tile_storage_cap(tile) == 0, "battery deposit: empty housing firms nothing")
 	var hadL := MatchState.is_unlocked("Lithium Battery Storage")
 	var hadS := MatchState.is_unlocked("Sodium Battery Storage")
@@ -4609,19 +4680,19 @@ func _test_battery_deposit() -> void:
 	Stockpile.add(tile, lgid, 50)
 	_check(MatchState.load_battery_cells(tile, lgid, 5) == 0, "battery deposit: locked type cannot be loaded")
 	MatchState.grant_unlock("Lithium Battery Storage")
-	_check(MatchState.battery_cells_to_fill(tile, lgid) == 18, "battery deposit: 18 lithium cells fill a 100 ⚡ L1")
+	_check(MatchState.battery_cells_to_fill(tile, lgid) == 18, "battery deposit: 18 lithium cells fill a 1000 ⚡ L1")
 	_check(MatchState.load_battery_cells(tile, lgid, 999) == 18, "battery deposit: loads 18 lithium cells (capped by firming)")
-	_check(MatchState.tile_firming_cap(tile) == 100, "battery deposit: full lithium housing firms 100")
+	_check(MatchState.tile_firming_cap(tile) == 1000, "battery deposit: full lithium housing firms 1000")
 	_check(MatchState.load_battery_cells(tile, lgid, 5) == 0, "battery deposit: no headroom when full")
 	_check(MatchState.unload_battery_cells(tile, lgid, 9) == 9, "battery deposit: unload 9")
-	_check(MatchState.tile_firming_cap(tile) == 50 and Stockpile.get_at_tile(tile, lgid) == 41,
+	_check(MatchState.tile_firming_cap(tile) == 500 and Stockpile.get_at_tile(tile, lgid) == 41,
 		"battery deposit: unload refunds to stock + halves firming")
 	MatchState.unload_battery_cells(tile, lgid, 9)  # clear for the density check
 	MatchState.grant_unlock("Sodium Battery Storage")
 	Stockpile.add(tile, sgid, 50)
 	_check(MatchState.battery_cells_to_fill(tile, sgid) == 24, "battery deposit: sodium needs 24 cells (density 0.75×)")
-	_check(MatchState.load_battery_cells(tile, sgid, 999) == 24, "battery deposit: loads 24 sodium cells to fill 100 ⚡")
-	_check(MatchState.tile_firming_cap(tile) == 100, "battery deposit: full sodium also firms 100")
+	_check(MatchState.load_battery_cells(tile, sgid, 999) == 24, "battery deposit: loads 24 sodium cells to fill 1000 ⚡")
+	_check(MatchState.tile_firming_cap(tile) == 1000, "battery deposit: full sodium also firms 1000")
 	MatchState.remove_building(bid)
 	_check(MatchState.tile_firming_cap(tile) == 0 and Stockpile.get_at_tile(tile, sgid) == 50,
 		"battery deposit: demolishing housing refunds all remaining cells")
@@ -4649,7 +4720,7 @@ func _test_battery_fill_pending() -> void:
 	_check(MatchState.tile_firming_cap(tile) == 0, "fill: still in transit")
 	MatchState.tick_battery_fills()
 	_check(MatchState.battery_fill_turns_remaining(tile) == 0, "fill: countdown complete")
-	_check(MatchState.tile_firming_cap(tile) == 100, "fill: 18 cells installed → 100 ⚡ (no stockpile draw)")
+	_check(MatchState.tile_firming_cap(tile) == 1000, "fill: 18 cells installed → 1000 ⚡ (no stockpile draw)")
 	MatchState.remove_building(bid)
 	MatchState.tile_battery_cells.erase(tile)
 	MatchState.pending_battery_fills.clear()
@@ -4819,8 +4890,30 @@ func _replace_dict(target: Dictionary, source: Dictionary) -> void:
 
 func _test_storage_boost() -> void:
 	MatchState.add_building("b_004", "", "tile_3_3", "Three Diamonds Shipping Corporation")
-	_check(Stockpile.get_capacity("tile_3_3") == Stockpile.TILE_CAPACITY + 500,
-		"storage_boost raises tile capacity (port = +500)")
+	_check(Stockpile.get_capacity("tile_3_3") == Stockpile.TILE_CAPACITY + 600,
+		"storage_boost raises tile capacity (port = +600)")
+
+func _test_warehouse_storage_levels() -> void:
+	# Per-tile storage is a warehouse level table (800/1600/2500) driven by the two storage
+	# research upgrades, plus +600 for a Port on the tile. Non-destructive (no MatchState.reset)
+	# so it doesn't disturb the NPC-port / scene state that later tests depend on.
+	var had_pallet := MatchState.is_unlocked("Pallet Racking Systems")
+	var had_asrs := MatchState.is_unlocked("Automated Storage & Retrieval")
+	MatchState.unlocked_titles.erase("Pallet Racking Systems")
+	MatchState.unlocked_titles.erase("Automated Storage & Retrieval")
+	var t := "tile_wh_test_only"  # fresh tile with no buildings
+	_check(Stockpile.get_capacity(t) == 800, "warehouse level 1 (no research) = 800")
+	MatchState.grant_unlock("Pallet Racking Systems")
+	_check(Stockpile.get_capacity(t) == 1600, "warehouse level 2 (Pallet Racking) = 1600")
+	MatchState.grant_unlock("Automated Storage & Retrieval")
+	_check(Stockpile.get_capacity(t) == 2500, "warehouse level 3 (Automated Storage) = 2500")
+	var pid := MatchState.add_building("b_004", "", t, MatchState.LOCAL_PLAYER, "wh_test_port")
+	_check(Stockpile.get_capacity(t) == 2500 + 600, "a Port adds +600 on top of the warehouse capacity")
+	MatchState.remove_building(pid)
+	if not had_pallet:
+		MatchState.unlocked_titles.erase("Pallet Racking Systems")
+	if not had_asrs:
+		MatchState.unlocked_titles.erase("Automated Storage & Retrieval")
 
 func _test_market_sale_credits() -> void:
 	# Output routed to market should be sold and its revenue credited on arrival,
@@ -5478,7 +5571,7 @@ func _test_npc_ports() -> void:
 		if str(inst.get("building_id", "")) == "b_004" and str(inst.get("owner", "")) == "Three Diamonds Shipping Corporation":
 			found_npc_port = true
 	_check(found_npc_port, "NPC port placed on a port tile (b_004, Three Diamonds)")
-	_check(Stockpile.get_capacity("tile_5_10") >= Stockpile.TILE_CAPACITY + 500,
+	_check(Stockpile.get_capacity("tile_5_10") >= Stockpile.TILE_CAPACITY + 600,
 		"port tile capacity raised by the port's storage_boost")
 
 func _test_queue_sell() -> void:
