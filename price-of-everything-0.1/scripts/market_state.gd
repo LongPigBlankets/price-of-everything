@@ -25,8 +25,10 @@ func get_price(good_id: String) -> float:
 
 func get_buy_price(good_id: String) -> float:
 	# The price you PAY to buy a unit from the market — the sale price plus the
-	# market spread (EconomyConfig.MARKET_BUY_MARKUP).
-	return get_price(good_id) * (1.0 + EconomyConfig.MARKET_BUY_MARKUP)
+	# market spread (EconomyConfig.MARKET_BUY_MARKUP), which a Chief Markets advisor
+	# can tighten via the "market_spread" modifier domain.
+	var spread_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("market_spread", "*", {}).get("net", 0.0)) / 100.0)
+	return get_price(good_id) * (1.0 + EconomyConfig.MARKET_BUY_MARKUP * spread_mult)
 
 func get_estimated_price_in_n_turns(good_id: String, n: int) -> float:
 	var current: float = prices.get(good_id, 1.0)

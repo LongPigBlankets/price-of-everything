@@ -3118,6 +3118,13 @@ const _SEAT_EFFECTS := {
 	"hr_director": [
 		{"domain": "labour_headcount", "base_pct": -10.0},
 	],
+	# Phase 2 SMALL-lever seats (isolated domains read at the tax / buy-price sites).
+	"government_affairs": [
+		{"domain": "tax_rate", "base_pct": -20.0},
+	],
+	"chief_markets": [
+		{"domain": "market_spread", "base_pct": -25.0},
+	],
 }
 # governing tier -> multiplier on base_pct. 3 = full, 2 = half, 1 = half malus.
 const _TIER_MULT := {3: 1.0, 2: 0.5, 1: -0.5, 0: 0.0}

@@ -49,6 +49,7 @@ func _ready() -> void:
 	_test_advisor_seat_tier_scaling()
 	_test_advisor_reconcile_idempotent()
 	_test_advisor_seat_effects()
+	_test_advisor_phase2_effects()
 	_test_advisor_seats_save_roundtrip()
 	_test_advisor_milestone_acquisition()
 	_test_advisor_slot_progression()
@@ -6018,6 +6019,25 @@ func _test_advisor_seat_effects() -> void:
 	MatchState.reconcile_advisor_modifiers()
 	_check(Modifiers.active_count() == 0, "effects: CFO (finance) emits no Phase-1 modifier")
 	MatchState.advisor_seats = saved_seats
+	Modifiers.reset()
+
+func _test_advisor_phase2_effects() -> void:
+	Modifiers.reset()
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	# Government Affairs: Hal (inf 3) -> tier 3 -> tax_rate -20%
+	MatchState.advisor_seats = {"government_affairs": "hal"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("tax_rate", "*", {}).get("net", 0.0)), -20.0),
+		"phase2: Government Affairs tier 3 -> tax_rate -20%")
+	# Chief Markets (flexible): Sloane best-of(inf 3, fin 2) = 3 -> market_spread -25%
+	MatchState.advisor_seats = {"chief_markets": "sloane"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("market_spread", "*", {}).get("net", 0.0)), -25.0),
+		"phase2: Chief Markets tier 3 -> market_spread -25%")
+	_check(MarketState.get_buy_price("g_001") < MarketState.get_price("g_001") * (1.0 + EconomyConfig.MARKET_BUY_MARKUP),
+		"phase2: market_spread modifier tightens the buy price")
+	MatchState.advisor_seats = saved_seats
+	MatchState.reconcile_advisor_modifiers()
 	Modifiers.reset()
 
 func _test_advisor_seats_save_roundtrip() -> void:

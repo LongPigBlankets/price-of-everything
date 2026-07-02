@@ -479,7 +479,9 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 		summary.dividends_paid = 0.0
 		return pre_tax_profit
 
-	var tax: float = minf(taxable_profit, taxable_profit * EconomyConfig.TAX_RATE)
+	# A Government Affairs advisor can cut the tax rate via the "tax_rate" domain.
+	var tax_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("tax_rate", "*", {}).get("net", 0.0)) / 100.0)
+	var tax: float = minf(taxable_profit, taxable_profit * EconomyConfig.TAX_RATE * tax_mult)
 	if tax > 0.0:
 		MatchState.add_money(-tax)
 		summary.taxes_paid = tax
