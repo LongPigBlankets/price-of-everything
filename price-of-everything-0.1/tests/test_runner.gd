@@ -6169,9 +6169,12 @@ func _test_people_panel_seat_ui() -> void:
 	var section: Control = pp.call("_seat_assignment_section", vera)
 	_check(section != null and str(section.name) == "SeatAssignmentSection",
 		"seat UI: seat-assignment section builds for a hired advisor")
-	var pent: Control = pp.call("_stat_pentagon", MatchState._roster_entry("vera"))
-	_check(pent != null and pent.find_child("StatPentagon", true, false) != null,
+	var pent: Control = pp.call("_stat_pentagon", MatchState.get_advisor("vera"))
+	_check(pent != null and str(pent.name) == "StatPentagon",
 		"seat UI: stat pentagon builds")
+	pp.call("_on_discipline_label", "fin", "vera")
+	_check(pp.get("_shown_discipline") == "fin",
+		"seat UI: tapping a discipline label opens its info section")
 	pp.queue_free()
 	MatchState.permanent_advisor_ids = saved_hired
 	MatchState.advisor_seats = saved_seats

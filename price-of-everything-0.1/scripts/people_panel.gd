@@ -25,6 +25,16 @@ var _labour_floor_label: Label
 var _advisors_root: VBoxContainer
 var _advisor_payroll_label: Label
 var _advisor_detail_panel: PanelContainer
+var _discipline_info_section: VBoxContainer
+var _shown_discipline: String = ""
+const _DISCIPLINE_NAMES := {"inf": "Influencing", "ops": "Operations", "lead": "Leadership", "inn": "Innovation", "fin": "Finance"}
+const _DISCIPLINE_GIVES := {
+	"inf": "Markets & government — sale-price boosts, tighter spread, forewarnings, green subsidy, tax relief.",
+	"ops": "The production machine — labour, maintenance, energy, transport, retrofits.",
+	"lead": "People & organisation — unique labour policies, morale, advisor retention.",
+	"inn": "Technology — recipe output by discipline, free tech unlocks, cheaper clean retrofits.",
+	"fin": "Capital & treasury — loan interest & term, dividends, tax, land & building purchase.",
+}
 var _advisor_detail_body: VBoxContainer
 var _available_advisors_section: Control
 var _available_pool_open := false
@@ -876,7 +886,7 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	top.add_child(portrait_col)
 	portrait_col.add_child(_portrait_panel(advisor, true, false, Vector2(180, 180)))
 	portrait_col.add_child(_recommendation_box(str(advisor.get("recommendation", ""))))
-	portrait_col.add_child(_stat_pentagon(MatchState._roster_entry(str(advisor.get("id", "")))))
+	portrait_col.add_child(_stat_pentagon(advisor))
 
 	var info := VBoxContainer.new()
 	info.add_theme_constant_override("separation", 10)
@@ -893,23 +903,48 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 
 	_advisor_detail_body.add_child(_quest_diagram(advisor.get("missions", advisor.get("quests", []))))
 
-func _stat_pentagon(stats: Dictionary) -> Control:
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	box.add_child(_label("Disciplines", "Caption"))
-	var p := Control.new()
-	p.name = "StatPentagon"
-	p.custom_minimum_size = Vector2(160, 152)
-	p.draw.connect(_draw_pentagon.bind(p, stats))
-	box.add_child(p)
-	return box
+func _stat_pentagon(advisor: Dictionary) -> Control:
+	var advisor_id := str(advisor.get("id", ""))
+	var stats := MatchState._roster_entry(advisor_id)
+	var col := VBoxContainer.new()
+	col.name = "StatPentagon"
+	col.add_theme_constant_override("separation", 4)
+	col.add_child(_label("Disciplines  (tap a label)", "Caption"))
+
+	var radar := Control.new()
+	radar.custom_minimum_size = Vector2(176, 168)
+	radar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	radar.draw.connect(_draw_pentagon.bind(radar, stats))
+	var keys := ["inf", "ops", "lead", "inn", "fin"]
+	var names := ["Inf", "Ops", "Lead", "Inn", "Fin"]
+	var center := Vector2(88.0, 84.0)
+	var label_r: float = minf(176.0, 168.0) * 0.32 + 13.0
+	for i in 5:
+		var ang := -PI / 2.0 + float(i) * TAU / 5.0
+		var btn := Button.new()
+		btn.flat = true
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.text = "%s %d" % [names[i], int(stats.get(keys[i], 1))]
+		btn.add_theme_font_size_override("font_size", 11)
+		btn.size = Vector2(42, 18)
+		btn.position = center + Vector2(cos(ang), sin(ang)) * label_r - Vector2(21, 9)
+		btn.pressed.connect(_on_discipline_label.bind(keys[i], advisor_id))
+		radar.add_child(btn)
+	col.add_child(radar)
+
+	_discipline_info_section = VBoxContainer.new()
+	_discipline_info_section.name = "DisciplineInfo"
+	_discipline_info_section.custom_minimum_size = Vector2(100, 0)
+	_discipline_info_section.add_theme_constant_override("separation", 3)
+	col.add_child(_discipline_info_section)
+	_shown_discipline = ""
+	return col
 
 func _draw_pentagon(node: Control, stats: Dictionary) -> void:
 	var keys := ["inf", "ops", "lead", "inn", "fin"]
-	var labels := ["Inf", "Ops", "Lead", "Inn", "Fin"]
 	var center: Vector2 = node.size * 0.5
-	var radius: float = minf(node.size.x, node.size.y) * 0.34
-	var grid := Color(1, 1, 1, 0.16)
+	var radius: float = minf(node.size.x, node.size.y) * 0.32
+	var grid := Color(1, 1, 1, 0.14)
 	for ring in [1.0 / 3.0, 2.0 / 3.0, 1.0]:
 		var ring_pts := PackedVector2Array()
 		for i in 5:
@@ -926,16 +961,47 @@ func _draw_pentagon(node: Control, stats: Dictionary) -> void:
 		var v: float = clampf(float(stats.get(keys[i], 1)) / 3.0, 0.0, 1.0)
 		poly.append(center + Vector2(cos(ang), sin(ang)) * radius * v)
 	var accent: Color = DS.PALETTE.get("ACCENT", Color(0.9, 0.85, 0.7))
-	node.draw_colored_polygon(poly, Color(accent.r, accent.g, accent.b, 0.30))
+	node.draw_colored_polygon(poly, Color(accent.r, accent.g, accent.b, 0.28))
 	var outline := poly.duplicate()
 	outline.append(poly[0])
-	node.draw_polyline(outline, Color(accent.r, accent.g, accent.b, 0.9), 2.0)
-	var font := node.get_theme_default_font()
-	if font != null:
-		for i in 5:
-			var ang := -PI / 2.0 + float(i) * TAU / 5.0
-			var lp: Vector2 = center + Vector2(cos(ang), sin(ang)) * (radius + 11.0)
-			node.draw_string(font, lp - Vector2(14, -4), "%s %d" % [labels[i], int(stats.get(keys[i], 1))], HORIZONTAL_ALIGNMENT_CENTER, 30, 10, Color(1, 1, 1, 0.85))
+	node.draw_polyline(outline, Color(accent.r, accent.g, accent.b, 0.95), 5.0)
+	for i in 5:
+		node.draw_circle(poly[i], 4.5, Color(accent.r, accent.g, accent.b, 1.0))
+
+# Tapping a discipline label expands a narrow multi-row info section: what the
+# discipline gives, how this advisor performs, the seats it governs, and bonuses.
+func _on_discipline_label(disc: String, advisor_id: String) -> void:
+	if not is_instance_valid(_discipline_info_section):
+		return
+	_clear_children(_discipline_info_section)
+	if _shown_discipline == disc:
+		_shown_discipline = ""   # tap again to collapse
+		return
+	_shown_discipline = disc
+	var a := MatchState._roster_entry(advisor_id)
+	var stat := int(a.get(disc, 1))
+	var tier_word: String = ["-", "malus", "modest", "strong"][clampi(stat, 0, 3)]
+	_discipline_info_section.add_child(_label(str(_DISCIPLINE_NAMES.get(disc, disc)), "Section"))
+	_discipline_info_section.add_child(_wrapped(str(_DISCIPLINE_GIVES.get(disc, "")), "Caption"))
+	_discipline_info_section.add_child(_wrapped("This advisor: %s  (%d / 3)" % [tier_word, stat], "Body"))
+	var seat_names: Array = []
+	for seat_id in MatchState.SEAT_DEFINITIONS:
+		var seat: Dictionary = MatchState.SEAT_DEFINITIONS[seat_id]
+		if str(seat.get("governs", "")) == disc or (seat.get("flexible", []) as Array).has(disc):
+			seat_names.append(str(seat.get("seat_name", seat_id)))
+	if not seat_names.is_empty():
+		_discipline_info_section.add_child(_wrapped("Seats: " + ", ".join(seat_names), "Caption"))
+	var bonuses: Array = MatchState.get_advisor(advisor_id).get("bonuses", [])
+	if not bonuses.is_empty():
+		_discipline_info_section.add_child(_label("Bonuses", "Caption"))
+		for b in bonuses:
+			_discipline_info_section.add_child(_wrapped("- " + str(b), "Caption"))
+
+func _wrapped(text: String, variation: String) -> Label:
+	var l := _label(text, variation)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(100, 0)
+	return l
 
 # Seat picker: one row per seat with this advisor's governing tier + assign/unassign.
 func _seat_assignment_section(advisor: Dictionary) -> Control:
