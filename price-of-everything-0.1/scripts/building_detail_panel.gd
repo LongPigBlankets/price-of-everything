@@ -166,6 +166,11 @@ func _ready() -> void:
 	if not _is_secondary_panel:
 		_prepare_building_panel_template()
 	close_button.pressed.connect(_hide_panel)
+	if not change_recipe_button.pressed.is_connected(_on_change_recipe_pressed):
+		change_recipe_button.pressed.connect(_on_change_recipe_pressed)
+	if not MatchState.building_retrofitted.is_connected(_on_retrofit_changed):
+		MatchState.building_retrofitted.connect(_on_retrofit_changed)
+		MatchState.building_retrofit_started.connect(_on_retrofit_changed)
 	_setup_building_banner()
 	_apply_goods_frame_border()
 	_tooltip_theme = _make_tooltip_theme()
@@ -1518,13 +1523,76 @@ func _update_change_recipe_button(building: Dictionary, is_infrastructure: bool)
 	if change_recipe_button == null:
 		return
 	change_recipe_button.visible = true  # restore it after a construction-mode render hid it
+	var instance_id: String = str(building.get("instance_id", ""))
+	# Retooling in progress: show the countdown, disabled.
+	if MatchState.is_retooling(instance_id):
+		var turns: int = MatchState.retrofit_turns_remaining(instance_id)
+		change_recipe_button.text = "Retooling — %d turn%s left" % [turns, "" if turns == 1 else "s"]
+		change_recipe_button.disabled = true
+		return
 	if is_infrastructure:
 		change_recipe_button.text = "Change Recipe (0 recipes)"
+		change_recipe_button.disabled = true
 		return
 	var building_id: String = building.get("building_id", "")
-	var recipe_count: int = Catalog.get_recipes_for_building(building_id).size()
-	var alternate_count: int = maxi(0, recipe_count - 1)
-	change_recipe_button.text = "Change Recipe (%d recipes)" % alternate_count
+	var alternate_count: int = maxi(0, Catalog.get_recipes_for_building(building_id).size() - 1)
+	change_recipe_button.text = "Change Recipe (%d)" % alternate_count
+	change_recipe_button.disabled = alternate_count == 0 or not MatchState.is_player_owned(building)
+
+# Open a picker of the building's other recipes; selecting one confirms the retrofit.
+func _on_change_recipe_pressed() -> void:
+	if _current_building.is_empty():
+		return
+	var instance_id: String = str(_current_building.get("instance_id", ""))
+	if MatchState.is_retooling(instance_id):
+		return
+	var current: String = str(_current_building.get("recipe_id", ""))
+	var alts: Array = []
+	for r in Catalog.get_recipes_for_building(str(_current_building.get("building_id", ""))):
+		if str(r.get("recipe_id", "")) != current:
+			alts.append(r)
+	if alts.is_empty():
+		return
+	var menu := PopupMenu.new()
+	if DS and DS.theme:
+		menu.theme = DS.theme
+	add_child(menu)
+	for i in alts.size():
+		menu.add_item(_recipe_menu_label(alts[i]), i)
+	menu.id_pressed.connect(func(idx: int) -> void: _confirm_retrofit(instance_id, alts[idx]))
+	menu.popup_hide.connect(func() -> void: menu.queue_free(), CONNECT_DEFERRED)
+	menu.position = Vector2i(change_recipe_button.get_screen_position())
+	menu.popup()
+
+func _recipe_menu_label(recipe: Dictionary) -> String:
+	var out_internal: String = str(recipe.get("output_name", ""))
+	var disp: String = Catalog.get_display_name(str(Catalog.get_good_by_internal_name(out_internal).get("id", "")))
+	if disp == "":
+		disp = str(recipe.get("recipe_id", "recipe"))
+	return "Make %s" % disp
+
+func _confirm_retrofit(instance_id: String, recipe: Dictionary) -> void:
+	var tier: Dictionary = MatchState.retrofit_cost_tier()
+	var dlg := ConfirmationDialog.new()
+	if DS and DS.theme:
+		dlg.theme = DS.theme
+	dlg.title = "Retool building"
+	dlg.dialog_text = "%s?\nOne-off fee £%d · %d turn%s retooling at %d%% labour.\nThe building produces nothing until it completes." % [
+		_recipe_menu_label(recipe), int(tier.get("fee", 0.0)), int(tier.get("turns", 2)),
+		"" if int(tier.get("turns", 2)) == 1 else "s", int(round(float(tier.get("labour", 0.5)) * 100.0))]
+	dlg.ok_button_text = "Retool"
+	add_child(dlg)
+	dlg.confirmed.connect(func() -> void:
+		var res: Dictionary = MatchState.start_retrofit(instance_id, str(recipe.get("recipe_id", "")))
+		if not bool(res.get("ok", false)):
+			MatchState.request_toast(str(res.get("reason", "Could not retool.")), "warning")
+		dlg.queue_free())
+	dlg.canceled.connect(func() -> void: dlg.queue_free())
+	dlg.popup_centered()
+
+func _on_retrofit_changed(instance_id: String, _recipe_id: String) -> void:
+	if visible and not _current_building.is_empty() and str(_current_building.get("instance_id", "")) == instance_id:
+		_rebuild_fields(_current_building)
 
 func _style_flow_summary() -> void:
 	var summary_style := StyleBoxFlat.new()

@@ -406,6 +406,12 @@ func is_retooling(instance_id: String) -> bool:
 			return true
 	return false
 
+func retrofit_turns_remaining(instance_id: String) -> int:
+	for p in pending_retrofits:
+		if str(p.get("instance_id", "")) == instance_id:
+			return int(p.get("turns_remaining", 0))
+	return 0
+
 # Per-turn labour fraction while a building is retooling (1.0 if it isn't).
 func retooling_labour_fraction(instance_id: String) -> float:
 	for p in pending_retrofits:
