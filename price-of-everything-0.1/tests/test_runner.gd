@@ -53,6 +53,7 @@ func _ready() -> void:
 	_test_hr_director_policies()
 	_test_retrofit_mechanic()
 	_test_advisor_loyalty()
+	_test_advisor_missions()
 	_test_advisor_seats_save_roundtrip()
 	_test_advisor_milestone_acquisition()
 	_test_advisor_slot_progression()
@@ -6130,11 +6131,15 @@ func _test_hr_director_policies() -> void:
 	MatchState.advisor_seats = {"hr_director": "priya"}
 	MatchState.reconcile_advisor_modifiers()
 	_check(MatchState.is_workforce_policy_available(LT) and not MatchState.is_workforce_policy_available(SO),
-		"HR: Long Tenure needs any HR Director; Stock Options needs Leadership 3")
-	# Vera (lead 3): both unlocked.
+		"HR: Long Tenure needs any HR Director; Stock Options stays locked until its mission")
+	# Vera seated: Long Tenure available, but Stock Options is now MISSION-gated (not seat).
 	MatchState.advisor_seats = {"hr_director": "vera"}
 	MatchState.reconcile_advisor_modifiers()
-	_check(MatchState.is_workforce_policy_available(SO), "HR: Leadership-3 HR Director unlocks Stock Options")
+	_check(MatchState.is_workforce_policy_available(LT) and not MatchState.is_workforce_policy_available(SO),
+		"HR: Stock Options no longer unlocks by seating alone (mission-gated)")
+	MatchState.advisor_mission_policies = [SO]   # an HR advisor's mission V grants it
+	_check(MatchState.is_workforce_policy_available(SO),
+		"HR: Stock Options unlocks once an HR advisor's mission grants it")
 
 	# Long Tenure accrues -0.1%/turn labour + a +10% spike every 10th turn.
 	MatchState.set_workforce_policy_enabled(LT, true)
@@ -6156,12 +6161,14 @@ func _test_hr_director_policies() -> void:
 		and is_equal_approx(MatchState.workforce_dividend_bonus(), float(so_eff.get("dividend_pct", 0.0))),
 		"HR: Stock Options accrues output + dividend bonus")
 
-	# Un-seating the HR Director revokes both enabled policies.
+	# Un-seating the HR Director revokes the seat-gated policy (Long Tenure); the
+	# mission-unlocked Stock Options is earned permanently and stays available.
 	MatchState.advisor_seats = {}
 	MatchState.reconcile_advisor_modifiers()
-	_check(not MatchState.is_workforce_policy_enabled(LT) and not MatchState.is_workforce_policy_enabled(SO),
-		"HR: un-seating the HR Director revokes its policies")
+	_check(not MatchState.is_workforce_policy_enabled(LT) and MatchState.is_workforce_policy_available(SO),
+		"HR: un-seating revokes Long Tenure but keeps the mission-earned Stock Options")
 
+	MatchState.advisor_mission_policies = []
 	MatchState.advisor_seats = saved_seats
 	MatchState.workforce_policies = saved_pol
 	MatchState.workforce_policy_effects = saved_eff
@@ -6291,6 +6298,58 @@ func _test_advisor_loyalty() -> void:
 	MatchState.fired_advisor_cooldowns = saved_fired
 	MatchState.advisor_seats = saved_seats
 	MatchState._agenda_flags = {}
+
+func _test_advisor_missions() -> void:
+	var saved_perm := MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_rec := MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_loyal := MatchState.advisor_loyalty.duplicate(true)
+	var saved_done := MatchState.advisor_missions_completed.duplicate(true)
+	var saved_pol := MatchState.advisor_mission_policies.duplicate(true)
+	var saved_unlocked := MatchState.unlocked_titles.duplicate(true)
+	Modifiers.reset()
+	MatchState.permanent_advisor_ids = ["vera", "eleanor"]
+	MatchState.recruited_advisor_ids = ["vera", "eleanor"]
+	MatchState.advisor_loyalty = {"vera": 0.0, "eleanor": 0.0}
+	MatchState.advisor_missions_completed = {}
+	MatchState.advisor_mission_policies = []
+
+	# Missions complete as loyalty crosses +2/+4/+6/+8/+10.
+	MatchState.advisor_loyalty["vera"] = 3.0
+	MatchState._check_mission_progress("vera")
+	_check(MatchState.advisor_missions_done("vera") == 1, "mission: M1 completes at loyalty >= +2")
+	# M1 grants a temporary specialty modifier (CFO loan interest).
+	_check(float(Modifiers.resolve_pct("loan_interest", "*", {}).get("net", 0.0)) < 0.0,
+		"mission: CFO M1 applies a temporary loan-interest bonus")
+
+	# Jump to full loyalty -> all 5 missions complete; M2/M4 leave PERMANENT slices.
+	MatchState.advisor_loyalty["vera"] = 10.0
+	MatchState._check_mission_progress("vera")
+	_check(MatchState.advisor_missions_done("vera") == 5, "mission: all 5 complete at loyalty +10")
+	var has_perm := false
+	for m in Modifiers.active():
+		if str(m.get("id", "")).begins_with("advisor_mission_perm_vera"):
+			has_perm = true
+	_check(has_perm, "mission: M2/M4/M5 leave permanent modifier slices")
+
+	# Eleanor (HR) mission V unlocks the Stock Options policy.
+	MatchState.advisor_loyalty["eleanor"] = 10.0
+	MatchState._check_mission_progress("eleanor")
+	_check(MatchState.advisor_mission_policies.has(MatchState.WORKFORCE_POLICY_STOCK_OPTIONS)
+		and MatchState.is_workforce_policy_available(MatchState.WORKFORCE_POLICY_STOCK_OPTIONS),
+		"mission: HR advisor mission V unlocks Stock Options")
+
+	# Reward labels are exposed for the UI plaques (5 of them).
+	_check((MatchState.advisor_mission_reward_labels("vera") as Array).size() == 5,
+		"mission: 5 reward labels exposed for the detail plaques")
+
+	Modifiers.reset()
+	MatchState.permanent_advisor_ids = saved_perm
+	MatchState.recruited_advisor_ids = saved_rec
+	MatchState.advisor_loyalty = saved_loyal
+	MatchState.advisor_missions_completed = saved_done
+	MatchState.advisor_mission_policies = saved_pol
+	MatchState.unlocked_titles = saved_unlocked
+	MatchState.reconcile_advisor_modifiers()
 
 func _test_advisor_seats_save_roundtrip() -> void:
 	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)

@@ -98,6 +98,9 @@ func import_snapshot(snap: Dictionary) -> void:
 	# Modifiers.import_state (which replaces the registry wholesale and would
 	# otherwise wipe an earlier reconcile). See advisor-system-spec.md §12.1.
 	MatchState.reconcile_advisor_modifiers()
+	# Permanent advisor-mission rewards (perm slices + capstones) are also derived from
+	# advisor_missions_completed, so re-apply them after the Modifiers registry reload.
+	MatchState.reapply_mission_modifiers()
 	# Missing "victory" key (old saves) -> import_state({}) leaves a fresh zero state.
 	VictoryState.import_state(snap.get("victory", {}))
 	# roads-v2: BUILT geometry restores verbatim; planning orders resume

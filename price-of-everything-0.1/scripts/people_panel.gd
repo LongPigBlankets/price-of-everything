@@ -1528,7 +1528,7 @@ func _quest_diagram(quests: Variant) -> Control:
 func _mission_plaque(quest: Dictionary) -> Control:
 	var state := str(quest.get("state", "locked"))
 	var plaque := PanelContainer.new()
-	plaque.custom_minimum_size = Vector2(104, 82)
+	plaque.custom_minimum_size = Vector2(120, 118)
 	plaque.add_theme_stylebox_override("panel", _mission_style(state, quest.get("color", Color("#56687C"))))
 
 	var margin := MarginContainer.new()
@@ -1551,6 +1551,23 @@ func _mission_plaque(quest: Dictionary) -> Control:
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
+
+	# Reward + the loyalty needed to reach it.
+	var reward_text := str(quest.get("reward", ""))
+	if reward_text != "":
+		var reward := _label(reward_text, "Caption")
+		reward.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		reward.add_theme_font_size_override("font_size", 10)
+		if state == "locked":
+			reward.modulate = Color(1, 1, 1, 0.7)
+		root.add_child(reward)
+	if quest.has("loyalty_req") and state != "completed":
+		var req := _label("at loyalty %d" % int(quest.get("loyalty_req", 0)), "Caption")
+		req.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		req.add_theme_font_size_override("font_size", 9)
+		req.modulate = Color(1, 1, 1, 0.6)
+		root.add_child(req)
 	return plaque
 
 func _mission_style(state: String, base_color: Variant) -> StyleBoxFlat:

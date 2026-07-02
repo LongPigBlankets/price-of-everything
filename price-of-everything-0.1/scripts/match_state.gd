@@ -115,6 +115,84 @@ const ADVISOR_AGENDAS := {
 	"idris": {"likes": [AGENDA_TECH_UNLOCK, AGENDA_FAST_SHIPMENT], "dislikes": [AGENDA_AUTARKIC, AGENDA_USED_STOCKPILE]},
 	"alexandra": {"likes": [AGENDA_MADE_PROFIT, AGENDA_TECH_UNLOCK], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_BOUGHT_GRID_POWER]},
 }
+# --- Advisor missions (loyalty-milestone chain; spec §7 C-layer specialties) ------
+# Each employed advisor has a 5-mission chain that completes as their LOYALTY crosses
+# thresholds. Rewards (per role): M1/M3 temporary specialty bonus (+ a 2nd temp for
+# COO/Sustainability/Govt Affairs), M3 a free research unlock in their category, M2/M4
+# a permanent slice of their seat effect, M5 the unique labour policy / a capstone.
+const MISSION_COUNT := 5
+const MISSION_LOYALTY_THRESHOLDS := [2.0, 4.0, 6.0, 8.0, 10.0]
+const MISSION_TEMPLATES := {
+	"cfo": {
+		"temp": {"domain": "loan_interest", "pct": -50.0, "turns": 20, "label": "loan interest halved (20t)"},
+		"perm1": {"domain": "loan_interest", "pct": -8.0, "label": "permanent -8% loan interest"},
+		"research_category": "Markets and Operations",
+		"perm2": {"domain": "dividend_rate", "pct": -12.0, "label": "permanent -12% dividends"},
+		"capstone": {"domain": "loan_interest", "pct": -15.0, "label": "permanent -15% loan interest"},
+	},
+	"coo": {
+		"temp": {"domain": "building_power", "pct": -20.0, "turns": 20, "label": "-20% building power (20t)"},
+		"perm1": {"domain": "building_power", "pct": -8.0, "label": "permanent -8% building power"},
+		"research_category": "Manufacturing",
+		"temp2": {"domain": "labour_headcount", "pct": -15.0, "turns": 20, "label": "-15% labour (20t)"},
+		"perm2": {"domain": "maintenance", "pct": -8.0, "label": "permanent -8% maintenance"},
+		"capstone": {"domain": "labour_headcount", "pct": -8.0, "label": "permanent -8% labour"},
+	},
+	"chief_markets": {
+		"temp": {"domain": "market_spread", "pct": -40.0, "turns": 10, "label": "-40% buy spread (10t)"},
+		"perm1": {"domain": "market_spread", "pct": -10.0, "label": "permanent -10% buy spread"},
+		"research_category": "Markets and Operations",
+		"perm2": {"domain": "market_price", "pct": 2.0, "label": "permanent +2% sale price"},
+		"capstone": {"domain": "market_price", "pct": 3.0, "label": "permanent +3% sale price"},
+	},
+	"chief_investment": {
+		"temp": {"domain": "purchase_cost", "pct": -20.0, "turns": 20, "label": "-20% land/building prices (20t)"},
+		"perm1": {"domain": "purchase_cost", "pct": -8.0, "label": "permanent -8% purchase cost"},
+		"research_category": "Markets and Operations",
+		"perm2": {"domain": "construction_rebate", "pct": 5.0, "label": "permanent +5% build rebate"},
+		"capstone": {"domain": "construction_rebate", "pct": 5.0, "label": "permanent +5% build rebate"},
+	},
+	"hr_director": {
+		"temp": {"domain": "labour_headcount", "pct": -15.0, "turns": 20, "label": "-15% labour (20t)"},
+		"perm1": {"domain": "labour_headcount", "pct": -6.0, "label": "permanent -6% labour"},
+		"research_category": "People Management",
+		"perm2": {"domain": "maintenance", "pct": -6.0, "label": "permanent -6% maintenance"},
+		"capstone": {"policy": "stock_options", "label": "unlocks the Stock Options policy"},
+	},
+	"technical_director": {
+		"temp": {"domain": "recipe_output", "pct": 15.0, "turns": 20, "label": "+15% output (20t)"},
+		"perm1": {"domain": "recipe_output", "pct": 5.0, "label": "permanent +5% output"},
+		"research_category": "Metallurgy",
+		"perm2": {"domain": "recipe_output", "pct": 5.0, "label": "permanent +5% output"},
+		"capstone": {"domain": "recipe_output", "pct": 8.0, "label": "permanent +8% output"},
+	},
+	"vp_logistics": {
+		"temp": {"domain": "transport_cost", "pct": -20.0, "turns": 20, "label": "-20% transport cost (20t)"},
+		"perm1": {"domain": "transport_cost", "pct": -8.0, "label": "permanent -8% transport cost"},
+		"research_category": "Logistics",
+		"perm2": {"domain": "transport_throughput", "pct": 8.0, "label": "permanent +8% throughput"},
+		"capstone": {"domain": "transport_throughput", "pct": 10.0, "label": "permanent +10% throughput"},
+	},
+	"government_affairs": {
+		"temp": {"domain": "tax_rate", "pct": -30.0, "turns": 20, "label": "-30% tax (20t)"},
+		"perm1": {"domain": "tax_rate", "pct": -8.0, "label": "permanent -8% tax"},
+		"research_category": "People Management",
+		"temp2": {"domain": "market_spread", "pct": -30.0, "turns": 20, "label": "-30% buy spread (20t)"},
+		"perm2": {"domain": "tax_rate", "pct": -8.0, "label": "permanent -8% tax"},
+		"capstone": {"domain": "tax_rate", "pct": -10.0, "label": "permanent -10% tax"},
+	},
+	"sustainability": {
+		"temp": {"domain": "recipe_output", "pct": 10.0, "turns": 20, "label": "+10% output (20t)"},
+		"perm1": {"domain": "recipe_output", "pct": 5.0, "label": "permanent +5% output"},
+		"research_category": "Renewable Power",
+		"temp2": {"domain": "market_price", "pct": 3.0, "turns": 20, "label": "+3% sale price (20t)"},
+		"perm2": {"domain": "market_price", "pct": 2.0, "label": "permanent +2% sale price"},
+		"capstone": {"domain": "market_price", "pct": 3.0, "label": "permanent +3% sale price"},
+	},
+}
+var advisor_missions_completed: Dictionary = {}    # advisor_id -> int (0..5)
+var advisor_mission_policies: Array = []           # workforce policies unlocked via missions
+signal advisor_mission_completed(advisor_id: String, mission_index: int, reward_label: String)
 var advisor_loyalty: Dictionary = {}               # advisor_id -> float [-10, 10] (employed only)
 var _advisor_walk_streak: Dictionary = {}          # advisor_id -> consecutive turns at/below walk threshold
 var _agenda_flags: Dictionary = {}                 # event_tag -> true; set during the turn, read+cleared each turn
@@ -1244,6 +1322,7 @@ func _load_unlock_defs() -> void:
 		var q := _csv_at(row, idx, "Quantity")
 		_unlock_defs.append({
 			"title": _csv_at(row, idx, "title"),
+			"category": _csv_at(row, idx, "category"),
 			"action": _csv_at(row, idx, "Action"),
 			"object": _csv_at(row, idx, "Object"),
 			"qty": int(q) if q.is_valid_int() else 0,
@@ -1261,6 +1340,17 @@ func _csv_at(row: PackedStringArray, idx: Dictionary, col: String) -> String:
 
 func is_unlocked(title: String) -> bool:
 	return unlocked_titles.has(title)
+
+# Grant the first not-yet-unlocked research node in a category (an advisor-mission
+# reward). Returns the granted title, or "" if the category is already fully unlocked.
+func grant_first_locked_in_category(category: String) -> String:
+	for d in _unlock_defs:
+		if str(d.get("category", "")) == category:
+			var title := str(d.get("title", ""))
+			if title != "" and not is_unlocked(title):
+				grant_unlock(title)
+				return title
+	return ""
 
 # Deposit penalty + mining-yield research now live in the Modifiers system as
 # recipe_output tiles (Modifiers.EXTRACTION_PENALTY_PCT + the mining UNLOCK_MODIFIERS),
@@ -1789,6 +1879,8 @@ func reset() -> void:
 	fired_advisor_cooldowns.clear()
 	advisor_loyalty.clear()
 	_advisor_walk_streak.clear()
+	advisor_missions_completed.clear()
+	advisor_mission_policies.clear()
 	_agenda_flags.clear()
 	_agenda_grid_sell_streak = 0
 	_agenda_no_buy_streak = 0
@@ -1863,6 +1955,8 @@ func export_state() -> Dictionary:
 		"fired_advisor_cooldowns": fired_advisor_cooldowns.duplicate(true),
 		"advisor_loyalty": advisor_loyalty.duplicate(true),
 		"advisor_walk_streak": _advisor_walk_streak.duplicate(true),
+		"advisor_missions_completed": advisor_missions_completed.duplicate(true),
+		"advisor_mission_policies": advisor_mission_policies.duplicate(true),
 		"agenda_last_build_turn": _agenda_last_build_turn,
 		"advisor_profit_streak": _advisor_profit_streak,
 		"advisor_slot_profit_unlocked": advisor_slot_profit_unlocked,
@@ -1917,6 +2011,8 @@ func import_state(d: Dictionary) -> void:
 	recruited_advisor_ids = _sanitize_advisor_ids(d.get("recruited_advisor_ids", STARTING_TRIO))
 	advisor_loyalty = (d.get("advisor_loyalty", {}) as Dictionary).duplicate(true)
 	_advisor_walk_streak = (d.get("advisor_walk_streak", {}) as Dictionary).duplicate(true)
+	advisor_missions_completed = (d.get("advisor_missions_completed", {}) as Dictionary).duplicate(true)
+	advisor_mission_policies = (d.get("advisor_mission_policies", []) as Array).duplicate(true)
 	_agenda_last_build_turn = int(d.get("agenda_last_build_turn", 0))
 	fired_advisor_cooldowns = {}
 	for fid in (d.get("fired_advisor_cooldowns", {}) as Dictionary):
@@ -3125,14 +3221,14 @@ func set_labour_multiplier(value: float) -> void:
 	labour_multiplier_changed.emit(value)
 	print("[MatchState] Labour multiplier set to: %.2fx" % value)
 
-# Whether a policy can currently be toggled on. Most are always available; the two
-# HR-Director policies require the seat (and Stock Options a Leadership-3 director).
+# Whether a policy can currently be toggled on. Long Tenure needs any seated HR
+# Director; Stock Options is the unique policy unlocked by an HR advisor's mission V.
 func is_workforce_policy_available(policy_id: String) -> bool:
 	match policy_id:
 		WORKFORCE_POLICY_LONG_TENURE:
 			return _hr_director_leadership() >= 0
 		WORKFORCE_POLICY_STOCK_OPTIONS:
-			return _hr_director_leadership() >= 3
+			return advisor_mission_policies.has(WORKFORCE_POLICY_STOCK_OPTIONS)
 		_:
 			return true
 
@@ -3771,6 +3867,7 @@ func _evaluate_agendas(summary: Dictionary, profit: float) -> void:
 			if events.has(tag):
 				v -= LOYALTY_STEP
 		advisor_loyalty[aid] = clampf(v, LOYALTY_MIN, LOYALTY_MAX)
+		_check_mission_progress(aid)
 		if advisor_loyalty[aid] <= LOYALTY_WALK_THRESHOLD:
 			_advisor_walk_streak[aid] = int(_advisor_walk_streak.get(aid, 0)) + 1
 		else:
@@ -3783,6 +3880,107 @@ func _evaluate_agendas(summary: Dictionary, profit: float) -> void:
 	for aid in walkers:
 		_advisor_walk(str(aid))
 	_agenda_flags.clear()
+
+# --- Advisor missions (rewards delivered as loyalty milestones are reached) --------
+
+func advisor_missions_done(advisor_id: String) -> int:
+	return int(advisor_missions_completed.get(advisor_id, 0))
+
+# Complete any missions whose loyalty threshold this advisor has now reached.
+func _check_mission_progress(advisor_id: String) -> void:
+	if MISSION_TEMPLATES.get(str(_roster_entry(advisor_id).get("role", "")), {}).is_empty():
+		return
+	var done := advisor_missions_done(advisor_id)
+	var loyalty := advisor_loyalty_value(advisor_id)
+	while done < MISSION_COUNT and loyalty >= float(MISSION_LOYALTY_THRESHOLDS[done]):
+		done += 1
+		advisor_missions_completed[advisor_id] = done
+		_grant_mission_reward(advisor_id, done)
+
+# Mission indices are 1-based (I..V). Mirrors the reward layout in MISSION_TEMPLATES.
+func _grant_mission_reward(advisor_id: String, mission_num: int) -> void:
+	var tmpl: Dictionary = MISSION_TEMPLATES.get(str(_roster_entry(advisor_id).get("role", "")), {})
+	if tmpl.is_empty():
+		return
+	var label := ""
+	match mission_num:
+		1:
+			label = _apply_mission_temp(advisor_id, 1, tmpl.get("temp", {}))
+		2:
+			label = _apply_mission_perm(advisor_id, 2, tmpl.get("perm1", {}))
+		3:
+			var parts: Array = []
+			var research_title := grant_first_locked_in_category(str(tmpl.get("research_category", "")))
+			if research_title != "":
+				parts.append("free research: %s" % research_title)
+			if tmpl.has("temp2"):
+				parts.append(_apply_mission_temp(advisor_id, 3, tmpl.get("temp2", {})))
+			label = " + ".join(parts) if not parts.is_empty() else "no new reward"
+		4:
+			label = _apply_mission_perm(advisor_id, 4, tmpl.get("perm2", {}))
+		5:
+			var cap: Dictionary = tmpl.get("capstone", {})
+			if cap.has("policy"):
+				label = _apply_mission_policy(str(cap.get("policy", "")), str(cap.get("label", "")))
+			else:
+				label = _apply_mission_perm(advisor_id, 5, cap)
+	advisor_mission_completed.emit(advisor_id, mission_num, label)
+	request_toast("%s reached mission %s — %s" % [str(get_advisor(advisor_id).get("name", advisor_id)), _roman(mission_num), label], "success")
+
+func _roman(n: int) -> String:
+	return ["", "I", "II", "III", "IV", "V"][clampi(n, 0, 5)]
+
+# A temporary specialty modifier (duration_turns). Distinct ids so a re-trigger refreshes.
+func _apply_mission_temp(advisor_id: String, mission_num: int, spec: Dictionary) -> String:
+	if spec.is_empty():
+		return ""
+	Modifiers.add({
+		"id": "advisor_mission_temp_%s_%d" % [advisor_id, mission_num],
+		"domain": str(spec.get("domain", "")),
+		"pct": float(spec.get("pct", 0.0)),
+		"label": "Mission (%s): %s" % [advisor_id, str(spec.get("label", ""))],
+		"source": "advisor_mission",
+		"duration_turns": int(spec.get("turns", 20)),
+	})
+	return str(spec.get("label", ""))
+
+# A permanent seat-effect slice that persists even when the advisor is unseated.
+func _apply_mission_perm(advisor_id: String, mission_num: int, spec: Dictionary) -> String:
+	if spec.is_empty():
+		return ""
+	Modifiers.add({
+		"id": "advisor_mission_perm_%s_%d" % [advisor_id, mission_num],
+		"domain": str(spec.get("domain", "")),
+		"pct": float(spec.get("pct", 0.0)),
+		"label": "Mission (%s): %s" % [advisor_id, str(spec.get("label", ""))],
+		"source": "advisor_mission",
+	})
+	return str(spec.get("label", ""))
+
+func _apply_mission_policy(policy_id: String, label: String) -> String:
+	if policy_id != "" and not advisor_mission_policies.has(policy_id):
+		advisor_mission_policies.append(policy_id)
+		workforce_policies_changed.emit()
+	return label
+
+# Re-apply the PERMANENT mission rewards (perm slices + the capstone) after a load,
+# based on how many missions each advisor has completed. Temp bonuses aren't restored.
+func reapply_mission_modifiers() -> void:
+	for advisor_id in advisor_missions_completed:
+		var tmpl: Dictionary = MISSION_TEMPLATES.get(str(_roster_entry(str(advisor_id)).get("role", "")), {})
+		if tmpl.is_empty():
+			continue
+		var done := int(advisor_missions_completed[advisor_id])
+		if done >= 2:
+			_apply_mission_perm(str(advisor_id), 2, tmpl.get("perm1", {}))
+		if done >= 4:
+			_apply_mission_perm(str(advisor_id), 4, tmpl.get("perm2", {}))
+		if done >= 5:
+			var cap: Dictionary = tmpl.get("capstone", {})
+			if cap.has("policy"):
+				_apply_mission_policy(str(cap.get("policy", "")), str(cap.get("label", "")))
+			else:
+				_apply_mission_perm(str(advisor_id), 5, cap)
 
 func _advisor_walk(advisor_id: String) -> void:
 	advisor_loyalty.erase(advisor_id)
@@ -3920,13 +4118,37 @@ func _seat_display_name(role_id: String) -> String:
 	var seat: Dictionary = SEAT_DEFINITIONS.get(role_id, {})
 	return str(seat.get("seat_name", role_id.capitalize()))
 
-func _advisor_missions(accent_hex: String) -> Array:
+func _advisor_missions(advisor_id: String, accent_hex: String) -> Array:
+	var titles := ["Onboard", "Prove", "Expand", "Master", "Legacy"]
+	var colours := [accent_hex, "#536C92", "#4F6B58", "#765742", "#6B6077"]
+	var rewards := advisor_mission_reward_labels(advisor_id)
+	var done := advisor_missions_done(advisor_id)
+	var out: Array = []
+	for i in 5:
+		out.append({
+			"roman": _roman(i + 1),
+			"title": titles[i],
+			"state": "completed" if i < done else ("next" if i == done else "locked"),
+			"color": Color(colours[i]),
+			"reward": str(rewards[i]),
+			"loyalty_req": float(MISSION_LOYALTY_THRESHOLDS[i]),
+		})
+	return out
+
+# Short reward descriptions for an advisor's 5 missions (for the detail-panel plaques).
+func advisor_mission_reward_labels(advisor_id: String) -> Array:
+	var tmpl: Dictionary = MISSION_TEMPLATES.get(str(_roster_entry(advisor_id).get("role", "")), {})
+	if tmpl.is_empty():
+		return ["—", "—", "—", "—", "—"]
+	var m3: String = "free research (%s)" % str(tmpl.get("research_category", ""))
+	if tmpl.has("temp2"):
+		m3 += " + %s" % str((tmpl.get("temp2", {}) as Dictionary).get("label", ""))
 	return [
-		{"roman": "I", "title": "Onboard", "state": "next", "color": Color(accent_hex)},
-		{"roman": "II", "title": "Prove", "state": "locked", "color": Color("#536C92")},
-		{"roman": "III", "title": "Expand", "state": "locked", "color": Color("#4F6B58")},
-		{"roman": "IV", "title": "Master", "state": "locked", "color": Color("#765742")},
-		{"roman": "V", "title": "Legacy", "state": "locked", "color": Color("#6B6077")},
+		str((tmpl.get("temp", {}) as Dictionary).get("label", "")),
+		str((tmpl.get("perm1", {}) as Dictionary).get("label", "")),
+		m3,
+		str((tmpl.get("perm2", {}) as Dictionary).get("label", "")),
+		str((tmpl.get("capstone", {}) as Dictionary).get("label", "")),
 	]
 
 # Display roster derived from the canonical ADVISOR_ROSTER + ADVISOR_DISPLAY. One
@@ -3952,6 +4174,6 @@ func _advisor_definitions() -> Array:
 			"likes": disp.get("likes", []),
 			"dislikes": disp.get("dislikes", []),
 			"bonuses": disp.get("bonuses", []),
-			"missions": _advisor_missions(accent),
+			"missions": _advisor_missions(id, accent),
 		})
 	return out
