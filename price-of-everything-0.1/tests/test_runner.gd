@@ -6014,10 +6014,12 @@ func _test_advisor_seat_effects() -> void:
 	MatchState.reconcile_advisor_modifiers()
 	_check(is_equal_approx(float(Modifiers.resolve_pct("labour_headcount", "b_001", {"building_id": "b_001"}).get("net", 0.0)), 5.0),
 		"effects: COO tier 1 (ops 1) -> labour malus +5%")
-	# a finance seat has no Phase-1 effect yet
+	# CFO (Marcus fin 3 -> tier 3) emits its Phase-2 finance levers
 	MatchState.advisor_seats = {"cfo": "marcus"}
 	MatchState.reconcile_advisor_modifiers()
-	_check(Modifiers.active_count() == 0, "effects: CFO (finance) emits no Phase-1 modifier")
+	_check(is_equal_approx(float(Modifiers.resolve_pct("loan_interest", "*", {}).get("net", 0.0)), -25.0)
+		and is_equal_approx(float(Modifiers.resolve_pct("dividend_rate", "*", {}).get("net", 0.0)), -50.0),
+		"effects: CFO tier 3 -> loan_interest -25% + dividend_rate -50%")
 	MatchState.advisor_seats = saved_seats
 	Modifiers.reset()
 
@@ -6036,6 +6038,13 @@ func _test_advisor_phase2_effects() -> void:
 		"phase2: Chief Markets tier 3 -> market_spread -25%")
 	_check(MarketState.get_buy_price("g_001") < MarketState.get_price("g_001") * (1.0 + EconomyConfig.MARKET_BUY_MARKUP),
 		"phase2: market_spread modifier tightens the buy price")
+	# CFO: Marcus (fin 3) -> loan interest cut + dividend holiday take effect at their sites
+	MatchState.advisor_seats = {"cfo": "marcus"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(LoanState.effective_loan_interest_rate(), EconomyConfig.LOAN_INTEREST_RATE * 0.75),
+		"phase2: CFO cuts the effective loan interest rate to 75%")
+	var div_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("dividend_rate", "*", {}).get("net", 0.0)) / 100.0)
+	_check(is_equal_approx(div_mult, 0.5), "phase2: CFO halves the dividend rate (partial holiday)")
 	MatchState.advisor_seats = saved_seats
 	MatchState.reconcile_advisor_modifiers()
 	Modifiers.reset()

@@ -3131,7 +3131,11 @@ const _SEAT_EFFECTS := {
 	"hr_director": [
 		{"domain": "labour_headcount", "base_pct": -10.0},
 	],
-	# Phase 2 SMALL-lever seats (isolated domains read at the tax / buy-price sites).
+	# Phase 2 SMALL-lever seats (isolated domains read at the tax / buy-price / loan sites).
+	"cfo": [
+		{"domain": "loan_interest", "base_pct": -25.0},
+		{"domain": "dividend_rate", "base_pct": -50.0},
+	],
 	"government_affairs": [
 		{"domain": "tax_rate", "base_pct": -20.0},
 	],

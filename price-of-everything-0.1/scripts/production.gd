@@ -488,7 +488,9 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 		summary.money_out += tax
 
 	var post_tax_profit := maxf(0.0, taxable_profit - tax)
-	var dividends: float = minf(post_tax_profit, post_tax_profit * EconomyConfig.DIVIDEND_RATE)
+	# A CFO advisor can grant a partial dividend holiday via the "dividend_rate" domain.
+	var div_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("dividend_rate", "*", {}).get("net", 0.0)) / 100.0)
+	var dividends: float = minf(post_tax_profit, post_tax_profit * EconomyConfig.DIVIDEND_RATE * div_mult)
 	if dividends > 0.0:
 		MatchState.add_money(-dividends)
 		summary.dividends_paid = dividends

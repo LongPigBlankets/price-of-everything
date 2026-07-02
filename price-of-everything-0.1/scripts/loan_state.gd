@@ -28,6 +28,11 @@ signal bankruptcy_warning(money: float, floor: float)
 
 # === Public API ===
 
+# The current borrowing rate, after any CFO "loan_interest" discount (clamped ≥ 0).
+func effective_loan_interest_rate() -> float:
+	var mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("loan_interest", "*", {}).get("net", 0.0)) / 100.0)
+	return EconomyConfig.LOAN_INTEREST_RATE * mult
+
 func take_loan(amount: float) -> bool:
 	# Returns true if loan was created, false otherwise.
 	if amount <= 0.0:
@@ -35,7 +40,9 @@ func take_loan(amount: float) -> bool:
 	if amount > available_capacity():
 		return false
 	
-	var total_repayment: float = amount * (1.0 + EconomyConfig.LOAN_INTEREST_RATE)
+	# A CFO advisor can cut borrowing costs via the "loan_interest" domain; the
+	# discounted rate is baked into this loan's amortisation at creation.
+	var total_repayment: float = amount * (1.0 + effective_loan_interest_rate())
 	var per_turn: float = total_repayment / float(EconomyConfig.LOAN_TERM_TURNS)
 	
 	var loan: Dictionary = {
