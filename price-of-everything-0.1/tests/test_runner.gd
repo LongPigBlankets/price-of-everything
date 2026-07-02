@@ -50,6 +50,7 @@ func _ready() -> void:
 	_test_advisor_reconcile_idempotent()
 	_test_advisor_seat_effects()
 	_test_advisor_phase2_effects()
+	_test_hr_director_policies()
 	_test_advisor_seats_save_roundtrip()
 	_test_advisor_milestone_acquisition()
 	_test_advisor_slot_progression()
@@ -6099,6 +6100,60 @@ func _test_advisor_phase2_effects() -> void:
 	MatchState.advisor_seats = saved_seats
 	MatchState.reconcile_advisor_modifiers()
 	Modifiers.reset()
+
+func _test_hr_director_policies() -> void:
+	var saved_seats := MatchState.advisor_seats.duplicate(true)
+	var saved_pol := MatchState.workforce_policies.duplicate(true)
+	var saved_eff := MatchState.workforce_policy_effects.duplicate(true)
+	MatchState.workforce_policies = {}
+	MatchState.workforce_policy_effects = {}
+	var LT: String = MatchState.WORKFORCE_POLICY_LONG_TENURE
+	var SO: String = MatchState.WORKFORCE_POLICY_STOCK_OPTIONS
+
+	MatchState.advisor_seats = {}
+	MatchState.reconcile_advisor_modifiers()
+	_check(not MatchState.is_workforce_policy_available(LT) and not MatchState.is_workforce_policy_available(SO),
+		"HR: both policies locked with no HR Director")
+	# Priya (lead 2): Long Tenure unlocked, Stock Options still locked.
+	MatchState.advisor_seats = {"hr_director": "priya"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(MatchState.is_workforce_policy_available(LT) and not MatchState.is_workforce_policy_available(SO),
+		"HR: Long Tenure needs any HR Director; Stock Options needs Leadership 3")
+	# Vera (lead 3): both unlocked.
+	MatchState.advisor_seats = {"hr_director": "vera"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(MatchState.is_workforce_policy_available(SO), "HR: Leadership-3 HR Director unlocks Stock Options")
+
+	# Long Tenure accrues -0.1%/turn labour + a +10% spike every 10th turn.
+	MatchState.set_workforce_policy_enabled(LT, true)
+	for _i in 5:
+		MatchState.tick_workforce_policies()
+	var lt_eff: Dictionary = MatchState.workforce_policy_effects.get(LT, {})
+	_check(is_equal_approx(float(lt_eff.get("labour_pct", 0.0)), -0.005),
+		"HR: Long Tenure accrues -0.1%/turn labour (-0.5% after 5 turns)")
+	_check(is_equal_approx(MatchState.workforce_labour_cost_delta(10) - MatchState.workforce_labour_cost_delta(11), 0.10),
+		"HR: Long Tenure adds a +10% labour spike every 10th turn")
+
+	# Stock Options accrues output + a dividend bonus (persisted in workforce_dividend_bonus).
+	MatchState.set_workforce_policy_enabled(SO, true)
+	for _j in 5:
+		MatchState.tick_workforce_policies()
+	var so_eff: Dictionary = MatchState.workforce_policy_effects.get(SO, {})
+	_check(float(so_eff.get("output_pct", 0.0)) > 0.0
+		and float(so_eff.get("dividend_pct", 0.0)) > 0.0
+		and is_equal_approx(MatchState.workforce_dividend_bonus(), float(so_eff.get("dividend_pct", 0.0))),
+		"HR: Stock Options accrues output + dividend bonus")
+
+	# Un-seating the HR Director revokes both enabled policies.
+	MatchState.advisor_seats = {}
+	MatchState.reconcile_advisor_modifiers()
+	_check(not MatchState.is_workforce_policy_enabled(LT) and not MatchState.is_workforce_policy_enabled(SO),
+		"HR: un-seating the HR Director revokes its policies")
+
+	MatchState.advisor_seats = saved_seats
+	MatchState.workforce_policies = saved_pol
+	MatchState.workforce_policy_effects = saved_eff
+	MatchState.reconcile_advisor_modifiers()
 
 func _test_advisor_seats_save_roundtrip() -> void:
 	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)

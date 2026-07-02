@@ -43,6 +43,10 @@ const WORKFORCE_POLICY_STANDARD_SAFETY := "standard_safety_procedures"
 const WORKFORCE_POLICY_LAX_SAFETY := "lax_safety_procedures"
 const WORKFORCE_POLICY_ANNUAL_BONUS := "annual_bonus"
 const WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE := "annual_profit_share"
+# HR Director unlocks: Long Tenure Awards (any HR Director) and Stock Options
+# (only a Leadership-3 HR Director).
+const WORKFORCE_POLICY_LONG_TENURE := "long_tenure_awards"
+const WORKFORCE_POLICY_STOCK_OPTIONS := "stock_options"
 const WORKFORCE_POLICY_GAME_LENGTH_TURNS := 300
 const WORKFORCE_SAFETY_POLICIES := [
 	WORKFORCE_POLICY_STRICT_SAFETY,
@@ -2954,9 +2958,27 @@ func set_labour_multiplier(value: float) -> void:
 	labour_multiplier_changed.emit(value)
 	print("[MatchState] Labour multiplier set to: %.2fx" % value)
 
+# Whether a policy can currently be toggled on. Most are always available; the two
+# HR-Director policies require the seat (and Stock Options a Leadership-3 director).
+func is_workforce_policy_available(policy_id: String) -> bool:
+	match policy_id:
+		WORKFORCE_POLICY_LONG_TENURE:
+			return _hr_director_leadership() >= 0
+		WORKFORCE_POLICY_STOCK_OPTIONS:
+			return _hr_director_leadership() >= 3
+		_:
+			return true
+
+# Leadership stat of the seated HR Director, or -1 if the seat is empty.
+func _hr_director_leadership() -> int:
+	var a: Dictionary = _roster_entry(str(advisor_seats.get("hr_director", "")))
+	return int(a.get("lead", 0)) if not a.is_empty() else -1
+
 func set_workforce_policy_enabled(policy_id: String, enabled: bool) -> void:
 	if policy_id == "":
 		return
+	if enabled and not is_workforce_policy_available(policy_id):
+		return   # locked (HR Director not seated / lacks the required leadership)
 	var was_enabled := bool(workforce_policies.get(policy_id, false))
 	if was_enabled == enabled:
 		return
@@ -2989,7 +3011,7 @@ func tick_workforce_policies() -> void:
 		var active := is_workforce_policy_enabled(policy_id)
 		var effect: Dictionary = workforce_policy_effects.get(policy_id, {})
 		_advance_workforce_effect(policy_id, effect, active)
-		if not active and absf(float(effect.get("output_pct", 0.0))) < 0.00001 and absf(float(effect.get("labour_pct", 0.0))) < 0.00001:
+		if not active and absf(float(effect.get("output_pct", 0.0))) < 0.00001 and absf(float(effect.get("labour_pct", 0.0))) < 0.00001 and absf(float(effect.get("dividend_pct", 0.0))) < 0.00001:
 			workforce_policy_effects.erase(policy_id)
 		else:
 			workforce_policy_effects[policy_id] = effect
@@ -3025,6 +3047,23 @@ func _advance_workforce_effect(policy_id: String, effect: Dictionary, active: bo
 				labour_pct = minf(0.15, labour_pct + 0.005)
 			else:
 				labour_pct = maxf(0.0, labour_pct - 0.0025)
+		WORKFORCE_POLICY_LONG_TENURE:
+			# Long-serving staff get cheaper over time (to -10%); a periodic awards
+			# payout (+10% one turn every 10th) is added in workforce_labour_cost_delta.
+			if active:
+				labour_pct = maxf(-0.10, labour_pct - 0.001)
+			else:
+				labour_pct = minf(0.0, labour_pct + 0.0025)
+		WORKFORCE_POLICY_STOCK_OPTIONS:
+			# Ownership stake lifts output (to +5%) and grows the dividend (to +10pp).
+			var div_pct := float(effect.get("dividend_pct", 0.0))
+			if active:
+				output_pct = minf(0.05, output_pct + 0.001)
+				div_pct = minf(0.10, div_pct + 0.0005)
+			else:
+				output_pct = maxf(0.0, output_pct - 0.001)
+				div_pct = maxf(0.0, div_pct - 0.001)
+			effect["dividend_pct"] = div_pct
 
 	effect["output_pct"] = output_pct
 	effect["labour_pct"] = labour_pct
@@ -3043,6 +3082,9 @@ func workforce_output_multiplier(turn_number: int = -1) -> float:
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_GENEROUS_PENSIONS):
 		var pensions: Dictionary = workforce_policy_effects.get(WORKFORCE_POLICY_GENEROUS_PENSIONS, {})
 		multiplier *= 1.0 + float(pensions.get("output_pct", 0.0))
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_STOCK_OPTIONS):
+		var stock: Dictionary = workforce_policy_effects.get(WORKFORCE_POLICY_STOCK_OPTIONS, {})
+		multiplier *= 1.0 + float(stock.get("output_pct", 0.0))
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE) and turn % 10 == 0:
 		multiplier *= 0.95
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE):
@@ -3062,14 +3104,24 @@ func workforce_output_multiplier(turn_number: int = -1) -> float:
 # Summed workforce-policy labour delta (a fraction, e.g. -0.10 for -10%). Policies
 # combine ADDITIVELY here; callers apply this to the 100% base alongside the labour
 # slider and research trims rather than compounding it on top of them.
-func workforce_labour_cost_delta() -> float:
+func workforce_labour_cost_delta(turn_number: int = -1) -> float:
+	var turn := int(TurnManager.current_turn) if turn_number < 0 else turn_number
 	var delta := 0.0
 	for effect in workforce_policy_effects.values():
 		if effect is Dictionary:
 			delta += float(effect.get("labour_pct", 0.0))
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS):
 		delta += 0.05
+	# Long Tenure Awards: a payout spike of +10% labour one turn every 10th turn.
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_LONG_TENURE) and turn > 0 and turn % 10 == 0:
+		delta += 0.10
 	return delta
+
+# Accrued Stock Options dividend bonus (0..0.10), added on top of the base dividend
+# rate at the payout site; persists (decaying) after the policy is switched off.
+func workforce_dividend_bonus() -> float:
+	var e = workforce_policy_effects.get(WORKFORCE_POLICY_STOCK_OPTIONS, {})
+	return float(e.get("dividend_pct", 0.0)) if e is Dictionary else 0.0
 
 func workforce_labour_cost_multiplier() -> float:
 	return maxf(0.0, 1.0 + workforce_labour_cost_delta())
@@ -3345,6 +3397,14 @@ func reconcile_advisor_modifiers() -> void:
 				"label": "%s: %s (tier %d)" % [seat_name, advisor_id, tier],
 				"source": "advisor_seat",
 			})
+	_revoke_unavailable_workforce_policies()
+
+# Switch off any HR-gated workforce policy whose advisor requirement is no longer met
+# (e.g. the HR Director was un-seated or fired) so the benefit can't outlive the seat.
+func _revoke_unavailable_workforce_policies() -> void:
+	for pid in [WORKFORCE_POLICY_LONG_TENURE, WORKFORCE_POLICY_STOCK_OPTIONS]:
+		if is_workforce_policy_enabled(pid) and not is_workforce_policy_available(pid):
+			set_workforce_policy_enabled(pid, false)
 
 func _match_rng_int(max_exclusive: int) -> int:
 	if max_exclusive <= 0:

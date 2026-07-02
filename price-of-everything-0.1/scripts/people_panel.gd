@@ -15,6 +15,7 @@ const HEADER_HEIGHT := 56.0
 
 var _labour_buttons: Dictionary = {}
 var _policy_buttons: Dictionary = {}
+var _policies_grid: GridContainer
 var _labour_effects: VBoxContainer
 var _labour_indicator: PanelContainer
 var _labour_pct_label: Label
@@ -55,6 +56,7 @@ func _ready() -> void:
 	MatchState.labour_multiplier_changed.connect(func(_value: float): _refresh_labour())
 	MatchState.workforce_policies_changed.connect(_refresh_policy_buttons)
 	MatchState.workforce_policies_changed.connect(_refresh_labour_indicator)
+	MatchState.advisors_changed.connect(_rebuild_policy_rows)   # re-gate HR-locked policies
 	TurnManager.turn_resolution_completed.connect(_refresh_labour_indicator)
 	TurnManager.turn_resolution_completed.connect(_refresh_advisors_tab)
 	if not MatchState.advisors_changed.is_connected(_on_advisors_changed):
@@ -149,13 +151,12 @@ func _build_labour_tab() -> Control:
 	root.add_child(separator)
 
 	root.add_child(_label("Workforce Policies", "Section"))
-	var policies := GridContainer.new()
-	policies.columns = 2
-	policies.add_theme_constant_override("h_separation", 10)
-	policies.add_theme_constant_override("v_separation", 8)
-	root.add_child(policies)
-	for policy in _policy_definitions():
-		policies.add_child(_policy_row(policy))
+	_policies_grid = GridContainer.new()
+	_policies_grid.columns = 2
+	_policies_grid.add_theme_constant_override("h_separation", 10)
+	_policies_grid.add_theme_constant_override("v_separation", 8)
+	root.add_child(_policies_grid)
+	_rebuild_policy_rows()
 
 	var total := HBoxContainer.new()
 	total.add_theme_constant_override("separation", 8)
@@ -390,18 +391,18 @@ func _policy_definitions() -> Array:
 			"benefit": "Output +10%.",
 		},
 		{
-			"id": "wellness_programme",
-			"name": "Wellness Programme",
-			"cost": "Placeholder.",
-			"benefit": "No impact yet.",
-			"placeholder": true,
+			"id": MatchState.WORKFORCE_POLICY_LONG_TENURE,
+			"name": "Long Tenure Awards",
+			"cost": "Labour costs +10% one turn every 10th turn (the awards payout).",
+			"benefit": "Labour costs -0.1%/turn while active, max -10%.",
+			"requires": "Requires an HR Director advisor.",
 		},
 		{
-			"id": "training_academy",
-			"name": "Training Academy",
-			"cost": "Placeholder.",
-			"benefit": "No impact yet.",
-			"placeholder": true,
+			"id": MatchState.WORKFORCE_POLICY_STOCK_OPTIONS,
+			"name": "Stock Options",
+			"cost": "Dividends grow +0.05%/turn, up to +10% (30% of profit max).",
+			"benefit": "Output +0.1%/turn while active, max +5%.",
+			"requires": "Requires a Leadership-3 HR Director advisor.",
 		},
 	]
 
@@ -434,20 +435,30 @@ func _policy_name_row(policy: Dictionary) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 
+	var policy_id := str(policy.get("id", ""))
+	var available: bool = MatchState.is_workforce_policy_available(policy_id)
+
 	var checkbox := UIHelpers.make_custom_checkbox()
-	checkbox.button_pressed = MatchState.is_workforce_policy_enabled(str(policy.get("id", "")))
-	checkbox.toggled.connect(_on_policy_toggled.bind(str(policy.get("id", ""))))
+	checkbox.button_pressed = MatchState.is_workforce_policy_enabled(policy_id)
+	checkbox.disabled = not available
+	checkbox.toggled.connect(_on_policy_toggled.bind(policy_id))
 	row.add_child(checkbox)
-	_policy_buttons[str(policy.get("id", ""))] = checkbox
+	_policy_buttons[policy_id] = checkbox
 
 	var row_label := _label("Name", "Caption")
 	row_label.custom_minimum_size = Vector2(46, 0)
 	row_label.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
 	row.add_child(row_label)
 
-	var name := _label(str(policy.get("name", "")), "BuildingName")
+	# Locked HR policies show a padlocked title + the unlock requirement.
+	var name_text := str(policy.get("name", ""))
+	if not available and policy.has("requires"):
+		name_text = "🔒 %s — %s" % [name_text, str(policy.get("requires", ""))]
+	var name := _label(name_text, "BuildingName")
 	name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if not available:
+		name.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
 	row.add_child(name)
 	return row
 
@@ -472,6 +483,17 @@ func _policy_text_row(row_name: String, text: String, accent: Color) -> Control:
 
 func _on_policy_toggled(pressed: bool, policy_id: String) -> void:
 	MatchState.set_workforce_policy_enabled(policy_id, pressed)
+
+# Rebuild every policy row (called on advisor seat changes so HR-gated policies
+# lock/unlock live).
+func _rebuild_policy_rows() -> void:
+	if not is_instance_valid(_policies_grid):
+		return
+	_policy_buttons.clear()
+	for child in _policies_grid.get_children():
+		child.queue_free()
+	for policy in _policy_definitions():
+		_policies_grid.add_child(_policy_row(policy))
 
 func _refresh_policy_buttons() -> void:
 	for policy_id in _policy_buttons:

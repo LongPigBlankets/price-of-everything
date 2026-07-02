@@ -488,9 +488,11 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 		summary.money_out += tax
 
 	var post_tax_profit := maxf(0.0, taxable_profit - tax)
-	# A CFO advisor can grant a partial dividend holiday via the "dividend_rate" domain.
+	# A CFO advisor can grant a partial dividend holiday via the "dividend_rate" domain;
+	# the Stock Options workforce policy adds to the base rate (both capped at 30% total).
 	var div_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("dividend_rate", "*", {}).get("net", 0.0)) / 100.0)
-	var dividends: float = minf(post_tax_profit, post_tax_profit * EconomyConfig.DIVIDEND_RATE * div_mult)
+	var div_rate: float = minf(0.30, EconomyConfig.DIVIDEND_RATE * div_mult + MatchState.workforce_dividend_bonus())
+	var dividends: float = minf(post_tax_profit, post_tax_profit * div_rate)
 	if dividends > 0.0:
 		MatchState.add_money(-dividends)
 		summary.dividends_paid = dividends
