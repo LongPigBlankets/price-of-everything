@@ -51,7 +51,7 @@ func _ready() -> void:
 	name = "PeoplePanel"
 	custom_minimum_size = MARKET_FALLBACK_SIZE
 	size = MARKET_FALLBACK_SIZE
-	_apply_market_window(self)
+	_apply_research_window(self)
 	theme_type_variation = &"PanelContainer"
 	_build_panel()
 	MatchState.labour_multiplier_changed.connect(func(_value: float): _refresh_labour())
@@ -108,14 +108,24 @@ func _build_panel() -> void:
 	tabs.add_child(advisors)
 
 func _build_labour_tab() -> Control:
+	var outer_scroll := ScrollContainer.new()
+	outer_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	outer_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	outer_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+
 	var margin := MarginContainer.new()
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_theme_constant_override("margin_left", 4)
 	margin.add_theme_constant_override("margin_top", 8)
 	margin.add_theme_constant_override("margin_right", 4)
 	margin.add_theme_constant_override("margin_bottom", 4)
+	outer_scroll.add_child(margin)
 
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 12)
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	margin.add_child(root)
 
 	var top_row := HBoxContainer.new()
@@ -171,7 +181,7 @@ func _build_labour_tab() -> Control:
 
 	_refresh_labour()
 	_refresh_policy_buttons()
-	return margin
+	return outer_scroll
 
 func _build_labour_indicator() -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -1624,7 +1634,7 @@ func _close_advisor_detail() -> void:
 
 func _on_visibility_changed() -> void:
 	if visible:
-		_apply_market_window(self)
+		_apply_research_window(self)
 		_refresh_advisors_tab()
 	else:
 		_close_advisor_detail()
@@ -1690,6 +1700,20 @@ func _clear_children(node: Node) -> void:
 	for child in node.get_children():
 		node.remove_child(child)
 		child.queue_free()
+
+# Cap the main People panel to the ResearchPanel's vertical band (top 32, bottom
+# viewport-130), centred horizontally. Tab contents scroll within this fixed height.
+func _apply_research_window(control: Control) -> void:
+	var vp := get_viewport_rect().size
+	var w := minf(1220.0, vp.x - 60.0)
+	control.anchor_left = 0.0
+	control.anchor_top = 0.0
+	control.anchor_right = 0.0
+	control.anchor_bottom = 0.0
+	control.offset_left = maxf(0.0, (vp.x - w) / 2.0)
+	control.offset_right = control.offset_left + w
+	control.offset_top = 32.0
+	control.offset_bottom = maxf(232.0, vp.y - 130.0)
 
 func _apply_market_window(control: Control) -> void:
 	var vp := get_viewport_rect().size
