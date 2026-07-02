@@ -131,6 +131,7 @@ func _process_production() -> void:
 	# Aggregates (preserved for compatibility)
 	"money_in": 0.0,
 	"money_out": 0.0,
+	"fake_money": 0.0,   # cheat-added cash, reported as its own category
 	# Power-specific
 	"power_supply": 0,
 	"power_demand": 0,
@@ -405,6 +406,10 @@ func _process_production() -> void:
 	TurnProfiler.section_end("cost_solve")
 
 	TurnProfiler.section_begin("emit_summary")
+	# Cheat-added cash this turn, surfaced as its own "fake money" category. Kept out
+	# of money_in so it doesn't count toward advisor profit unlocks (it's a cheat).
+	summary["fake_money"] = MatchState.fake_money_this_turn
+	MatchState.fake_money_this_turn = 0.0
 	last_turn_summary = summary
 	_active_turn_summary = {}
 	turn_processed.emit(summary)

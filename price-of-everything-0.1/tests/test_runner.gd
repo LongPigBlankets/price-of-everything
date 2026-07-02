@@ -52,6 +52,7 @@ func _ready() -> void:
 	_test_advisor_seats_save_roundtrip()
 	_test_advisor_milestone_acquisition()
 	_test_advisor_slot_progression()
+	_test_advisor_fake_money_and_track()
 	_test_advisor_slot_unlock()
 	_test_advisor_acquisition_save_roundtrip()
 	await _test_research_unlock_promotes_construct_panel_recipes()
@@ -6097,14 +6098,36 @@ func _test_advisor_slot_progression() -> void:
 	MatchState._update_advisor_slots(1000.0)
 	MatchState._update_advisor_slots(1000.0)
 	_check(not MatchState.advisor_slot_profit_unlocked, "slot progression: 2 turns at 1000 is not yet the streak")
+	var had_fifth: bool = MatchState.is_unlocked("Fifth Advisor Seat")
 	MatchState._update_advisor_slots(1000.0)
 	_check(MatchState.advisor_slot_profit_unlocked and MatchState.max_advisor_slots == 3,
 		"slot progression: 1000 profit x3 unlocks a slot (2 -> 3)")
+	_check(MatchState.is_unlocked("Fifth Advisor Seat"),
+		"slot progression: 5th-seat unlock granted (shows under People Management)")
 	MatchState._update_advisor_slots(0.0)
 	_check(MatchState.max_advisor_slots == 3, "slot progression: a dip does not revoke the earned slot")
 	MatchState.max_advisor_slots = saved_slots
 	MatchState._advisor_profit_streak = saved_streak
 	MatchState.advisor_slot_profit_unlocked = saved_pu
+	if not had_fifth:
+		MatchState.unlocked_titles.erase("Fifth Advisor Seat")
+
+func _test_advisor_fake_money_and_track() -> void:
+	var saved_money := MatchState.money
+	var saved_fake := MatchState.fake_money_this_turn
+	var saved_crossed := MatchState.crossed_milestones.duplicate(true)
+	MatchState.fake_money_this_turn = 0.0
+	MatchState.cheat_add_cash(500.0)
+	_check(is_equal_approx(MatchState.fake_money_this_turn, 500.0) and is_equal_approx(MatchState.money, saved_money + 500.0),
+		"fake money: cheat_add_cash tracks fake money + raises the balance")
+	MatchState.crossed_milestones = [50, 100]
+	_check(MatchState.next_advisor_milestone() == 150, "advisor track: next milestone is the first un-crossed (150)")
+	MatchState.crossed_milestones = [50, 100, 150, 200, 300, 400, 500, 750, 1000]
+	_check(MatchState.next_advisor_milestone() == 0, "advisor track: all milestones crossed -> 0")
+	MatchState.money = saved_money
+	MatchState.fake_money_this_turn = saved_fake
+	MatchState.crossed_milestones = saved_crossed
+	MatchState.money_changed.emit(MatchState.money)
 
 func _test_advisor_slot_unlock() -> void:
 	var saved: int = MatchState.max_advisor_slots

@@ -74,6 +74,8 @@ const ADVISOR_SLOT_PROFIT_5 := 1000.0
 const ADVISOR_SLOT_PROFIT_STREAK := 3
 var _advisor_profit_streak: int = 0
 var advisor_slot_profit_unlocked: bool = false
+var fake_money_this_turn: float = 0.0              # cheat-added cash this turn ("fake money")
+var peak_profit_per_turn: float = 0.0              # best profit/turn reached (advisor-track highpoint)
 
 # --- Output routing ---
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
@@ -1592,6 +1594,8 @@ func reset() -> void:
 	recruited_advisor_ids.clear()
 	_advisor_profit_streak = 0
 	advisor_slot_profit_unlocked = false
+	fake_money_this_turn = 0.0
+	peak_profit_per_turn = 0.0
 	match_rng_seed = DEFAULT_MATCH_RNG_SEED
 	_match_rng.seed = match_rng_seed
 	reconcile_advisor_modifiers()
@@ -1657,6 +1661,7 @@ func export_state() -> Dictionary:
 		"recruited_advisor_ids": recruited_advisor_ids.duplicate(true),
 		"advisor_profit_streak": _advisor_profit_streak,
 		"advisor_slot_profit_unlocked": advisor_slot_profit_unlocked,
+		"advisor_peak_profit": peak_profit_per_turn,
 		"sell_mode": sell_mode,
 		"route_objective": route_objective,
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
@@ -1717,6 +1722,7 @@ func import_state(d: Dictionary) -> void:
 	crossed_milestones = (d.get("advisor_crossed_milestones", []) as Array).duplicate(true)
 	_advisor_profit_streak = int(d.get("advisor_profit_streak", 0))
 	advisor_slot_profit_unlocked = bool(d.get("advisor_slot_profit_unlocked", false))
+	peak_profit_per_turn = float(d.get("advisor_peak_profit", 0.0))
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
@@ -3297,6 +3303,18 @@ func draw_advisor_from_pool() -> String:
 	advisors_changed.emit()
 	return picked
 
+# Debug cheat: add cash, tracked as "fake money" for the turn summary.
+func cheat_add_cash(amount: float) -> void:
+	add_money(amount)
+	fake_money_this_turn += amount
+
+# The next un-crossed profit milestone (advisor recruit), or 0 if all crossed.
+func next_advisor_milestone() -> int:
+	for m in PROFIT_MILESTONES:
+		if not crossed_milestones.has(m):
+			return int(m)
+	return 0
+
 # Award one advisor on the first crossing of each profit-per-turn milestone (latched).
 func check_profit_milestones(profit_per_turn: float) -> void:
 	for m in PROFIT_MILESTONES:
@@ -3327,10 +3345,13 @@ func _update_advisor_slots(profit_per_turn: float) -> void:
 	var target := MAX_ADVISOR_SLOTS_DEFAULT
 	if bldgs >= ADVISOR_SLOT_BUILDINGS_3:
 		target += 1
+		grant_unlock("Third Advisor Seat")
 	if bldgs >= ADVISOR_SLOT_BUILDINGS_4:
 		target += 1
+		grant_unlock("Fourth Advisor Seat")
 	if advisor_slot_profit_unlocked:
 		target += 1
+		grant_unlock("Fifth Advisor Seat")
 	var new_cap: int = mini(maxi(max_advisor_slots, target), MAX_ADVISOR_SLOTS_CAP)
 	if new_cap != max_advisor_slots:
 		max_advisor_slots = new_cap
@@ -3338,6 +3359,7 @@ func _update_advisor_slots(profit_per_turn: float) -> void:
 
 func _on_turn_processed_advisors(summary: Dictionary) -> void:
 	var profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
+	peak_profit_per_turn = maxf(peak_profit_per_turn, profit)
 	_update_advisor_slots(profit)
 	check_profit_milestones(profit)
 

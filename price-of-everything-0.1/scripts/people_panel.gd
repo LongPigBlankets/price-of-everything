@@ -46,6 +46,7 @@ func _ready() -> void:
 	MatchState.workforce_policies_changed.connect(_refresh_policy_buttons)
 	MatchState.workforce_policies_changed.connect(_refresh_labour_indicator)
 	TurnManager.turn_resolution_completed.connect(_refresh_labour_indicator)
+	TurnManager.turn_resolution_completed.connect(_refresh_advisors_tab)
 	if not MatchState.advisors_changed.is_connected(_on_advisors_changed):
 		MatchState.advisors_changed.connect(_on_advisors_changed)
 	if not MatchState.advisor_acquired.is_connected(_on_advisor_acquired):
@@ -507,10 +508,55 @@ func _refresh_advisors_tab() -> void:
 		return
 	_sync_advisor_lists()
 	_clear_children(_advisors_root)
+	_advisors_root.add_child(_advisor_profit_track())
 	_advisors_root.add_child(_advisor_payroll_summary())
 	_add_advisor_section(_advisors_root, "Permanent Advisors", _permanent_advisors, true)
 	_available_advisors_section = _add_advisor_section(_advisors_root, "Available Advisors", _available_advisors, false)
 	_available_advisors_section.visible = _available_pool_open
+
+# Progress track at the top of the Advisors tab: peak profit/turn + next advisor unlock.
+func _advisor_profit_track() -> Control:
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = &"Inset"
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(m, 8)
+	panel.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 4)
+	margin.add_child(root)
+
+	var peak: float = MatchState.peak_profit_per_turn
+	var next_m: int = MatchState.next_advisor_milestone()
+
+	var header := HBoxContainer.new()
+	root.add_child(header)
+	var title := _label("Profit / turn — peak", "Section")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	header.add_child(_label("£%s" % _fmt_amount(peak), "Numeric"))
+
+	var bar := ProgressBar.new()
+	bar.custom_minimum_size = Vector2(0, 12)
+	bar.show_percentage = false
+	if next_m > 0:
+		var prev := 0
+		for mm in MatchState.PROFIT_MILESTONES:
+			if int(mm) < next_m:
+				prev = int(mm)
+		bar.min_value = float(prev)
+		bar.max_value = float(next_m)
+		bar.value = clampf(peak, float(prev), float(next_m))
+	else:
+		bar.min_value = 0.0
+		bar.max_value = 1.0
+		bar.value = 1.0
+	root.add_child(bar)
+
+	var caption := ("Next advisor at £%d / turn" % next_m) if next_m > 0 else "All advisors recruited"
+	root.add_child(_label(caption, "Caption"))
+	return panel
 
 func _advisor_payroll_summary() -> Control:
 	var panel := PanelContainer.new()

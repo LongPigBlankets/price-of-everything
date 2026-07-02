@@ -96,7 +96,7 @@ func _run_command(text: String) -> String:
 			if parts.size() < 2 or not parts[1].is_valid_int():
 				return "usage: cash <integer>"
 			var amount := int(parts[1])
-			MatchState.add_money(float(amount))
+			MatchState.cheat_add_cash(float(amount))
 			return "Added £%d  (balance now £%.2f)" % [amount, MatchState.money]
 		"unlock":
 			if parts.size() < 2:
