@@ -49,12 +49,12 @@ Stats in **Inf / Ops / Lead / Inn / Fin** order. Stars derived via §2.2.
 | 2 | **Alexandra Reyes** *(rival, late)* | 3 | 3 | 3 | 3 | 2 | 14 | 5★ | anywhere | *Prima Donna* — superb everywhere; **high salary + walk-risk if benched/under-slotted**. |
 | 3 | **Gerald Vance** | 2 | 3 | 3 | 2 | 2 | 12 | 4★ | COO | *Dinosaur* — top operator; **brakes clean-recipe adoption / carbon transition** *(carbon-dependent — later phase)*. |
 | 4 | **Eleanor Shaw** | 3 | 2 | 3 | 1 | 3 | 12 | 4★ | HR / COO / Chief Markets | *Beloved* — labour cost via HR + **slows advisor churn (retention)**. Fin 3 body. |
-| 5 | **Tom Bracken** *(foreman, starts)* | 1 | 3 | 3 | 1 | 2 | 10 | 3★ | COO / VP Logistics | *Shop-Floor Respect* — extra labour reduction in an Ops seat. |
-| 6 | **Sloane Vane** | 3 | 3 | 1 | 1 | 2 | 10 | 3★ | Chief Markets | *Slick* — extra temporary sale-price boost in a markets seat. |
-| 7 | **Priya Anand** | 3 | 1 | 2 | 3 | 1 | 10 | 3★ | Sustainability / Research | *Idealist* — amplifies green (subsidy/greenest); **raises short-term spend** *(green-dependent — later phase)*. |
-| 8 | **Hitomi Sato** | 1 | 3 | 1 | 3 | 2 | 10 | 3★ | VP Logistics / TD: Mfg | *Flow State* — logistics/mfg optimisation; **extra malus in Inf/Lead seats** (socially inept). |
-| 9 | **Marcus Thorne** | 2 | 1 | 2 | 1 | 3 | 9 | 2★ | CFO / Chief Investment | *Leverage* — cheap capital + discounted acquisitions; **debt-risk exposure when reserves run low**. |
-| 10 | **Hal Rooker** | 3 | 1 | 2 | 1 | 2 | 9 | 2★ | Government Affairs | *Backroom Deals* — regulatory relief (tax cut; carbon relief when it exists). |
+| 5 | **Sloane Vane** | 3 | 3 | 1 | 1 | 2 | 10 | 3★ | Chief Markets | *Slick* — extra temporary sale-price boost in a markets seat. |
+| 6 | **Priya Anand** | 3 | 1 | 2 | 3 | 1 | 10 | 3★ | Sustainability / Research | *Idealist* — amplifies green (subsidy/greenest); **raises short-term spend** *(green-dependent — later phase)*. |
+| 7 | **Hitomi Sato** | 1 | 3 | 1 | 3 | 2 | 10 | 3★ | VP Logistics / TD: Mfg | *Flow State* — logistics/mfg optimisation; **extra malus in Inf/Lead seats** (socially inept). |
+| 8 | **Hal Rooker** | 3 | 1 | 3 | 1 | 2 | 10 | 3★ | Government Affairs / HR | *Backroom Deals* — regulatory relief (tax cut; carbon relief when it exists). |
+| 9 | **Tom Bracken** *(foreman, starts)* | 1 | 3 | 2 | 1 | 2 | 9 | 2★ | COO / VP Logistics | *Shop-Floor Respect* — extra labour reduction in an Ops seat. |
+| 10 | **Marcus Thorne** | 2 | 1 | 2 | 1 | 3 | 9 | 2★ | CFO / Chief Investment | *Leverage* — cheap capital + discounted acquisitions; **debt-risk exposure when reserves run low**. |
 | 11 | **Idris Kohl** | 1 | 2 | 1 | 3 | 1 | 8 | 2★ | TD: Petrochem | *Insufferable Genius* — big recipe efficiency in TD; **empire-wide labour malus unless siloed in a TD seat**. |
 | 12 | **Rufus Ashby** *(cousin, starts)* | 3 | 1 | 1 | 1 | 1 | 7 | 1★ | Government Affairs (only) | *Silver Tongue, Empty Suit* — strong Influencing effect; a bad block everywhere else (his stat maluses are the cost). |
 
@@ -73,8 +73,9 @@ Stats in **Inf / Ops / Lead / Inn / Fin** order. Stars derived via §2.2.
 - You **assign an advisor to a role** per slot. A role has a governing discipline and a lever kit (§6). More roles exist than slots, so choosing *which* roles to run is part of the puzzle.
 
 ### 4.2 Starting three
-Fixed cast, always the same (also satisfies "first 3 draws are deterministic"): **Vera (5★), Tom (3★), Rufus (1★)** — 3 advisors, 2 seats, so you pick which two to seat from turn 1.
-> ⚠️ **Open flag:** this is **5★/3★/1★**, not the earlier "5★/2★/1★" — because Tom was promoted to 3★. Alternatives if the 2★ start is wanted: (a) leave Tom at 2★ (revert his Lead 2→3), or (b) swap the starting 2★ to Marcus/Hal/Idris and move Tom to the milestone pool. Currently specced as **5/3/1**.
+Fixed cast, always the same (also satisfies "first 3 draws are deterministic"): **Vera (5★), Tom (2★), Rufus (1★)** — the intended **5★/2★/1★** mix. 3 advisors, 2 seats, so you pick which two to seat from turn 1.
+
+To land 5/2/1 while keeping the family trio and the roster's four-3★ tier, two advisors were swapped in tier: **Tom reverted Lead 3→2 (→ 2★**, which also suits "the dependable old foreman, no frills") and **Hal promoted Lead 2→3 (→ 3★)**. Tom's Shop-Floor Respect is a FREE labour modifier, so the middle starter is fully covered by Phase 1 (§12.1) — unlike swapping in a finance/markets 2★, whose levers are Phase-2 seams.
 
 ### 4.3 Milestone acquisition
 On first crossing each **profit-per-turn** milestone, gain one advisor drawn from the pool:
@@ -243,7 +244,7 @@ Before committing a placement, show: **the pentagon (5-stat radar), the governin
 
 **Tier-A (ship first — real, fakes nothing):**
 1. **Seat framework** — seat map, seat→discipline table, 5 stat fields + specialties as static data, idempotent `reconcile_advisor_modifiers()`, `max_advisor_slots` + slot-unlock.
-2. **Labour hardening** — dual-source COO/HR labour, `LABOUR_FACTOR_MIN = 0.40`, the −60% debug cheat, the People-panel floor flag (§5). *(Independent of the rest — can land immediately on the live labour system.)*
+2. **Labour hardening** ✅ *(shipped — PR #62, commit 50bc2c7)* — `LABOUR_FACTOR_MIN = 0.40` clamp, the −60% debug cheat (`labour` terminal command), the People-panel floor flag (§5). The dual-source COO/HR advisor labour lands with the seat framework.
 3. **FREE-domain levers** — labour, maintenance, transport, recipe-output (TD), energy draw.
 4. **The one-line `market_price` activation** at the sell path → all temporary sale-price boosts.
 5. **Per-advisor salary.**
@@ -255,11 +256,25 @@ Before committing a placement, show: **the pentagon (5-stat radar), the governin
 
 **Deferred / gated:** green-energy subsidy + Sustainability seat (needs green tagging), churn/retention/walk (needs RNG + loyalty), the mission system, and **everything carbon-blocked** (Hal/Gerald/Priya signatures) until the carbon-tax/ratchet subsystem exists.
 
+### 12.1 Advisor rollout phasing (which advisors come online when)
+
+Advisors can't act until their levers exist, so they light up in waves. Each phase leaves the game playable with the advisors available so far.
+
+| Phase | Ships | Advisors that become playable |
+|---|---|---|
+| **0 — Framework** | seat map + stat blocks + B-scaling (3/2/1) + idempotent modifier reconciler + slot-unlock (2→5) + acquisition (seeded draw, milestones, fixed first 3) + pentagon/preview UI + `v3→v4` save. *(Labour hardening §5 already shipped as a precursor.)* | none yet — nothing works without this |
+| **1 — FREE-lever** | effects that route through live modifier domains (labour, maintenance, recipe_output, transport); conditional maluses via the seat-stat check | **Vera, Tom, Gerald, Hitomi, Idris, Eleanor** (6). Covers both starters that matter early (Vera + Tom). Gerald's Dinosaur, Eleanor's retention stubbed. |
+| **2 — SMALL-lever** | single-site seams: interest/loans/acquisition, purchase/construction/upgrade costs, market spread, the one-line `market_price` sale activation, grid pricing, forewarning peeks, per-advisor salary, tax cut | **Marcus, Rufus, Sloane, Hal (tax-cut half), Alexandra** (5). Rufus (a starter) gets his Influencing teeth here; before this he's the benched 1★ (intended). |
+| **3 — NEW mechanics** | retrofit/retooling (COO) + `build_duration 2→3`; unique-policy gating (HR); churn/retention/walk; the mission system (C-layer specialties) | deepens **Tom/Gerald/Eleanor** (ops/HR/retention), **Alexandra** (walk-risk); enables every advisor's mission-delivered specialty |
+| **4 — Carbon-gated** | after the carbon-tax/ratchet + clean/dirty tagging subsystem exists: green subsidy + Sustainability seat | **Priya** (1); plus the carbon signatures **Gerald (Dinosaur), Hal (Backroom Deals relief/forewarning), Priya (Idealist)** |
+
+**Roster coverage:** P1 = 6, P2 = +5 (→11), P4 = +Priya (→12). Alexandra is a late, earned hire regardless of phase. Every phase after 0 is a shippable increment; the carbon signatures are the only pieces hard-blocked on a separate subsystem.
+
 ---
 
 ## 13. Open questions to close before/at build
 1. **Multi-governed resolution** — best-of (specced) vs player-picks-discipline?
-2. **Starting trio** — accept 5★/3★/1★, or restore a 2★ start (revert Tom, or swap the starting 2★)?
+2. ~~**Starting trio**~~ **Resolved** — 5★/2★/1★ (Tom reverted to 2★, Hal promoted to 3★; see §4.2).
 3. **Sustainability seat** — keep as the flexible green-champion (specced), or fold its powers into Innovation + Influencing and drop the seat?
 4. **Retrofit discipline** — confirmed **Operations**; re-confirm it shouldn't also be a flexible best-of(Ops, Innovation) seat.
 5. **Mission cadence** — do the 10–15-turn missions gate specialty *unlocks*, recruitment, or both?
