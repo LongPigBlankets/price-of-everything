@@ -53,6 +53,12 @@ var workforce_policies: Dictionary = {}
 var workforce_policy_effects: Dictionary = {}
 const ADVISOR_COST_PER_TURN := 2.0
 var permanent_advisor_ids: Array = []
+# --- Advisor seats (seat framework, docs/advisor-system-spec.md §4-6) ---
+# advisor_seats is sparse: only occupied seats are keys, so .size() == seated count.
+var advisor_seats: Dictionary = {}          # seat_id -> advisor_id
+const MAX_ADVISOR_SLOTS_DEFAULT := 2
+const MAX_ADVISOR_SLOTS_CAP := 5            # spec §4.1 hard ceiling
+var max_advisor_slots: int = MAX_ADVISOR_SLOTS_DEFAULT
 
 # --- Output routing ---
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
@@ -1562,6 +1568,9 @@ func reset() -> void:
 	workforce_policies.clear()
 	workforce_policy_effects.clear()
 	permanent_advisor_ids.clear()
+	advisor_seats.clear()
+	max_advisor_slots = MAX_ADVISOR_SLOTS_DEFAULT
+	reconcile_advisor_modifiers()
 	recurring_moves.clear()
 	scheduled_moves.clear()
 	recurring_sells.clear()
@@ -1616,6 +1625,8 @@ func export_state() -> Dictionary:
 		"workforce_policies": workforce_policies.duplicate(true),
 		"workforce_policy_effects": workforce_policy_effects.duplicate(true),
 		"permanent_advisor_ids": permanent_advisor_ids.duplicate(true),
+		"advisor_seats": advisor_seats.duplicate(true),
+		"max_advisor_slots": max_advisor_slots,
 		"sell_mode": sell_mode,
 		"route_objective": route_objective,
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
@@ -1663,6 +1674,8 @@ func import_state(d: Dictionary) -> void:
 	workforce_policies = (d.get("workforce_policies", {}) as Dictionary).duplicate(true)
 	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
 	permanent_advisor_ids = _sanitize_advisor_ids(d.get("permanent_advisor_ids", []))
+	advisor_seats = _sanitize_advisor_seats(d.get("advisor_seats", {}))
+	max_advisor_slots = clampi(int(d.get("max_advisor_slots", MAX_ADVISOR_SLOTS_DEFAULT)), MAX_ADVISOR_SLOTS_DEFAULT, MAX_ADVISOR_SLOTS_CAP)
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
@@ -3001,6 +3014,192 @@ func projected_workforce_labour_delta(turns_ahead: int) -> float:
 # a specific building (money projection, per-tier rows) use this global factor.
 func labour_policy_factor() -> float:
 	return maxf(0.0, 1.0 + (labour_multiplier - 1.0) + workforce_labour_cost_delta())
+
+# ── Advisor seat framework (docs/advisor-system-spec.md §2-6) ──────────────
+# Phase 0 CORE: data model + scaling + idempotent modifier reconciler. The
+# effects are inert placeholders here (spec §12.1 Phase 0 = "nothing works yet");
+# real domain modifiers land in Phase 1. The display roster (_advisor_definitions)
+# is merged onto ADVISOR_ROSTER in a later increment.
+
+# seat_id -> {seat_name, governs (stat key), flexible (best-of stat keys; [] = rigid), lever_kit}
+const SEAT_DEFINITIONS := {
+	"cfo":                {"seat_name": "CFO",                  "governs": "fin",  "flexible": [],                  "lever_kit": ["loan interest", "loan duration", "dividend holiday"]},
+	"coo":                {"seat_name": "COO",                  "governs": "ops",  "flexible": [],                  "lever_kit": ["labour cost", "maintenance", "energy cost", "retrofit"]},
+	"vp_logistics":       {"seat_name": "VP Logistics",         "governs": "ops",  "flexible": [],                  "lever_kit": ["transport cost", "throughput", "distance per turn"]},
+	"hr_director":        {"seat_name": "HR Director",          "governs": "lead", "flexible": [],                  "lever_kit": ["labour policies", "retention", "labour cost"]},
+	"technical_director": {"seat_name": "Technical Director",   "governs": "inn",  "flexible": [],                  "lever_kit": ["recipe output (chosen category)", "free tech unlock"]},
+	"research_director":  {"seat_name": "Research Director",    "governs": "inn",  "flexible": [],                  "lever_kit": ["free tech unlocks"]},
+	"government_affairs": {"seat_name": "Government Affairs",    "governs": "inf",  "flexible": [],                  "lever_kit": ["tax reduction", "green subsidy", "carbon relief"]},
+	"chief_investment":   {"seat_name": "Chief Investment",     "governs": "fin",  "flexible": ["fin", "inn"],       "lever_kit": ["one-off cheap loan", "purchase value", "capex"]},
+	"chief_markets":      {"seat_name": "Chief Markets Officer","governs": "inf",  "flexible": ["inf", "fin"],       "lever_kit": ["market spread", "sale-price boosts", "forewarning"]},
+	"sustainability":     {"seat_name": "Sustainability Officer","governs": "inf", "flexible": ["inf", "ops", "lead"],"lever_kit": ["greenest push", "green premium", "clean-adoption discount"]},
+}
+
+# Canonical 12-advisor stat roster (spec §3). Stars are DERIVED (advisor_star),
+# never stored. salary is static (Phase-2 payroll); advisor_payroll_per_turn stays
+# flat for now. traits.specialty_domain is filled in Phase 1+ for effect routing.
+const ADVISOR_ROSTER := [
+	{"id": "vera",      "name": "Vera Ashby",      "role": "cfo",                "inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 3, "salary": 1.0, "traits": {"specialty_name": "Family Trust",         "specialty_description": "reduced salary, no malus anywhere",                 "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "alexandra", "name": "Alexandra Reyes", "role": "coo",                "inf": 3, "ops": 3, "lead": 3, "inn": 3, "fin": 2, "salary": 4.0, "traits": {"specialty_name": "Prima Donna",          "specialty_description": "superb everywhere; high salary + walk-risk if benched", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "gerald",    "name": "Gerald Vance",    "role": "coo",                "inf": 2, "ops": 3, "lead": 3, "inn": 2, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Dinosaur",             "specialty_description": "top operator; brakes clean-recipe adoption (carbon, later)", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "eleanor",   "name": "Eleanor Shaw",    "role": "hr_director",        "inf": 3, "ops": 2, "lead": 3, "inn": 1, "fin": 3, "salary": 2.0, "traits": {"specialty_name": "Beloved",              "specialty_description": "labour cost via HR + slows advisor churn",           "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "sloane",    "name": "Sloane Vane",     "role": "chief_markets",      "inf": 3, "ops": 3, "lead": 1, "inn": 1, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Slick",                "specialty_description": "extra temporary sale-price boost in a markets seat",  "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "priya",     "name": "Priya Anand",     "role": "sustainability",     "inf": 3, "ops": 1, "lead": 2, "inn": 3, "fin": 1, "salary": 2.0, "traits": {"specialty_name": "Idealist",             "specialty_description": "amplifies green; raises short-term spend (green, later)", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "hitomi",    "name": "Hitomi Sato",     "role": "vp_logistics",       "inf": 1, "ops": 3, "lead": 1, "inn": 3, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Flow State",           "specialty_description": "logistics/mfg optimisation; extra malus in Inf/Lead seats", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "hal",       "name": "Hal Rooker",      "role": "government_affairs", "inf": 3, "ops": 1, "lead": 3, "inn": 1, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Backroom Deals",       "specialty_description": "regulatory relief (tax cut; carbon relief when it exists)", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "tom",       "name": "Tom Bracken",     "role": "coo",                "inf": 1, "ops": 3, "lead": 2, "inn": 1, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Shop-Floor Respect",   "specialty_description": "extra labour reduction in an Ops seat",              "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "marcus",    "name": "Marcus Thorne",   "role": "chief_investment",   "inf": 2, "ops": 1, "lead": 2, "inn": 1, "fin": 3, "salary": 2.0, "traits": {"specialty_name": "Leverage",             "specialty_description": "cheap capital + discounted acquisitions; debt-risk exposure", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "idris",     "name": "Idris Kohl",      "role": "technical_director", "inf": 1, "ops": 2, "lead": 1, "inn": 3, "fin": 1, "salary": 2.0, "traits": {"specialty_name": "Insufferable Genius",  "specialty_description": "big recipe efficiency in TD; empire labour malus unless siloed", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "rufus",     "name": "Rufus Ashby",     "role": "government_affairs", "inf": 3, "ops": 1, "lead": 1, "inn": 1, "fin": 1, "salary": 2.0, "traits": {"specialty_name": "Silver Tongue, Empty Suit", "specialty_description": "strong Influencing effect; a bad block everywhere else", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+]
+
+func _roster_entry(advisor_id: String) -> Dictionary:
+	for a in ADVISOR_ROSTER:
+		if str(a.get("id", "")) == advisor_id:
+			return a
+	return {}
+
+# Derived star (spec §2.2 precedence): 4+ threes -> 5; else score>=12 -> 4;
+# >=10 -> 3; >=8 -> 2; else 1 (floor). Accepts a full advisor dict or a bare
+# {inf,ops,lead,inn,fin}. Never persisted.
+func advisor_star(stats: Dictionary) -> int:
+	var score := 0
+	var threes := 0
+	for key in ["inf", "ops", "lead", "inn", "fin"]:
+		var v := int(stats.get(key, 1))
+		score += v
+		if v >= 3:
+			threes += 1
+	if threes >= 4:
+		return 5
+	if score >= 12:
+		return 4
+	if score >= 10:
+		return 3
+	if score >= 8:
+		return 2
+	return 1
+
+func advisor_star_by_id(advisor_id: String) -> int:
+	var a := _roster_entry(advisor_id)
+	return advisor_star(a) if not a.is_empty() else 0
+
+# The 3/2/1 governing tier for an advisor in a seat (spec §2.3). Rigid seats read
+# the governing stat; flexible seats read the BEST of their eligible disciplines.
+# Returns 0 for an unknown advisor/seat.
+func advisor_seat_tier(advisor_id: String, seat_id: String) -> int:
+	var a := _roster_entry(advisor_id)
+	if a.is_empty() or not SEAT_DEFINITIONS.has(seat_id):
+		return 0
+	var seat: Dictionary = SEAT_DEFINITIONS[seat_id]
+	var flex: Array = seat.get("flexible", [])
+	if flex.is_empty():
+		return int(a.get(str(seat.get("governs", "")), 1))
+	var best := 1
+	for disc in flex:
+		best = maxi(best, int(a.get(str(disc), 1)))
+	return best
+
+# Which discipline governs a (possibly flexible) seat for this advisor — for the
+# UI preview (spec §11). For flexible seats returns the best-of winner.
+func advisor_seat_governing_discipline(advisor_id: String, seat_id: String) -> String:
+	var a := _roster_entry(advisor_id)
+	if not SEAT_DEFINITIONS.has(seat_id):
+		return ""
+	var seat: Dictionary = SEAT_DEFINITIONS[seat_id]
+	var flex: Array = seat.get("flexible", [])
+	if flex.is_empty() or a.is_empty():
+		return str(seat.get("governs", ""))
+	var best_disc := ""
+	var best := -1
+	for disc in flex:
+		var v := int(a.get(str(disc), 1))
+		if v > best:
+			best = v
+			best_disc = str(disc)
+	return best_disc
+
+# Assign a rostered advisor to a seat. Enforces the slot cap and one-seat-per-advisor.
+# (Phase 0 gates on roster membership; the hired-advisor gate is added when hiring
+# is merged onto ADVISOR_ROSTER.) Returns false if rejected.
+func assign_advisor_to_seat(seat_id: String, advisor_id: String) -> bool:
+	if not SEAT_DEFINITIONS.has(seat_id):
+		return false
+	if _roster_entry(advisor_id).is_empty():
+		return false
+	if not advisor_seats.has(seat_id) and advisor_seats.size() >= max_advisor_slots:
+		return false
+	# One seat per advisor: vacate any other seat this advisor currently holds.
+	for existing_seat in advisor_seats.keys():
+		if existing_seat != seat_id and str(advisor_seats[existing_seat]) == advisor_id:
+			advisor_seats.erase(existing_seat)
+	advisor_seats[seat_id] = advisor_id
+	reconcile_advisor_modifiers()
+	advisors_changed.emit()
+	return true
+
+func unassign_seat(seat_id: String) -> bool:
+	if not advisor_seats.has(seat_id):
+		return false
+	advisor_seats.erase(seat_id)
+	reconcile_advisor_modifiers()
+	advisors_changed.emit()
+	return true
+
+func get_advisor_in_seat(seat_id: String) -> String:
+	return str(advisor_seats.get(seat_id, ""))
+
+# People-management unlock primitive: raise the seat cap toward MAX_ADVISOR_SLOTS_CAP.
+# The build-count trigger that CALLS this is wired in the acquisition increment.
+func unlock_advisor_slot() -> void:
+	max_advisor_slots = mini(max_advisor_slots + 1, MAX_ADVISOR_SLOTS_CAP)
+	advisors_changed.emit()
+
+# Drop seats pointing at an unknown seat_id or an un-rostered advisor, and dedupe
+# so an advisor never holds two seats. Keeps valid entries (no silent emptying).
+func _sanitize_advisor_seats(raw: Variant) -> Dictionary:
+	var out: Dictionary = {}
+	if not (raw is Dictionary):
+		return out
+	var seen: Dictionary = {}
+	for seat_id in (raw as Dictionary).keys():
+		var sid := str(seat_id)
+		var aid := str((raw as Dictionary)[seat_id])
+		if not SEAT_DEFINITIONS.has(sid):
+			continue
+		if _roster_entry(aid).is_empty():
+			continue
+		if seen.has(aid):
+			continue
+		out[sid] = aid
+		seen[aid] = true
+	return out
+
+# Idempotent bridge to ModifierState. Removes ALL prior advisor-seat modifiers
+# (clearing stale/vacated seats) then re-adds one per occupied seat with a stable
+# id (advisor_seat_<seat_id>) so a re-run replaces rather than duplicates. Called
+# on seat change, reset, and load (the latter from save_load AFTER Modifiers import).
+# Phase 0 emits an inert "advisor_seat"-domain modifier (no apply() site reads it);
+# Phase 1 replaces the body with real labour/output/etc. domain modifiers by tier.
+func reconcile_advisor_modifiers() -> void:
+	for m in Modifiers.active():
+		var mid := str(m.get("id", ""))
+		if mid.begins_with("advisor_seat_"):
+			Modifiers.remove(mid)
+	for seat_id in advisor_seats.keys():
+		var advisor_id := str(advisor_seats[seat_id])
+		if _roster_entry(advisor_id).is_empty():
+			continue
+		var tier := advisor_seat_tier(advisor_id, str(seat_id))
+		var seat: Dictionary = SEAT_DEFINITIONS.get(seat_id, {})
+		Modifiers.add({
+			"id": "advisor_seat_%s" % seat_id,
+			"domain": "advisor_seat",
+			"target": advisor_id,
+			"pct": 0.0,
+			"label": "%s: %s (tier %d)" % [str(seat.get("seat_name", seat_id)), advisor_id, tier],
+			"source": "advisor_seat",
+		})
 
 func advisor_pool() -> Array:
 	var out: Array = []

@@ -41,6 +41,11 @@ func _ready() -> void:
 	_test_build_mode_overlay_survey_visibility()
 	_test_direct_build_skips_build_overlay()
 	_test_advisor_payroll_cost()
+	_test_advisor_star_derivation()
+	_test_advisor_seat_assign_and_slot_cap()
+	_test_advisor_seat_tier_scaling()
+	_test_advisor_reconcile_idempotent()
+	_test_advisor_seats_save_roundtrip()
 	await _test_research_unlock_promotes_construct_panel_recipes()
 	_test_tile_deposit_build_options_respect_research_unlocks()
 	await _test_building_ledger()
@@ -5902,6 +5907,97 @@ func _test_direct_build_skips_build_overlay() -> void:
 	BuildMode.current_recipe_id = saved_recipe
 	BuildMode.current_infrastructure_type = saved_infra
 	BuildMode._last_attempt_ms = saved_last_attempt
+
+func _test_advisor_star_derivation() -> void:
+	var expected := {"vera": 5, "alexandra": 5, "gerald": 4, "eleanor": 4, "sloane": 3, "priya": 3, "hitomi": 3, "hal": 3, "tom": 2, "marcus": 2, "idris": 2, "rufus": 1}
+	for aid in expected:
+		_check(MatchState.advisor_star_by_id(str(aid)) == int(expected[aid]),
+			"advisor star: %s -> %d" % [str(aid), int(expected[aid])])
+	# precedence edges (spec §2.2)
+	_check(MatchState.advisor_star({"inf": 3, "ops": 3, "lead": 3, "inn": 3, "fin": 1}) == 5,
+		"advisor star: four 3s -> 5 (beats the score band)")
+	_check(MatchState.advisor_star({"inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 1}) == 4,
+		"advisor star: score 12 with three 3s -> 4")
+	_check(MatchState.advisor_star({"inf": 1, "ops": 1, "lead": 1, "inn": 1, "fin": 1}) == 1,
+		"advisor star: all 1s -> 1 (floor)")
+
+func _test_advisor_seat_assign_and_slot_cap() -> void:
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	var saved_slots: int = MatchState.max_advisor_slots
+	MatchState.advisor_seats = {}
+	MatchState.max_advisor_slots = 2
+	_check(MatchState.assign_advisor_to_seat("cfo", "vera"), "seat: assign vera -> cfo")
+	_check(MatchState.assign_advisor_to_seat("coo", "tom"), "seat: assign tom -> coo")
+	_check(not MatchState.assign_advisor_to_seat("hr_director", "eleanor"), "seat: third assign blocked by slot cap (2)")
+	_check(not MatchState.assign_advisor_to_seat("cfo", "not_an_advisor"), "seat: unknown advisor rejected")
+	_check(not MatchState.assign_advisor_to_seat("bogus_seat", "vera"), "seat: unknown seat rejected")
+	_check(MatchState.get_advisor_in_seat("cfo") == "vera", "seat: cfo holds vera")
+	# re-assigning within an already-occupied seat consumes no new slot
+	_check(MatchState.assign_advisor_to_seat("cfo", "marcus"), "seat: re-assign within cfo (no new slot)")
+	_check(MatchState.get_advisor_in_seat("cfo") == "marcus", "seat: cfo now holds marcus")
+	# one seat per advisor: moving tom (in coo) to hr vacates coo
+	MatchState.max_advisor_slots = 3
+	_check(MatchState.assign_advisor_to_seat("hr_director", "tom"), "seat: move tom -> hr_director")
+	_check(MatchState.get_advisor_in_seat("coo") == "", "seat: one seat per advisor (coo vacated)")
+	_check(MatchState.unassign_seat("cfo"), "seat: unassign frees the seat")
+	_check(MatchState.get_advisor_in_seat("cfo") == "", "seat: cfo empty after unassign")
+	MatchState.advisor_seats = saved_seats
+	MatchState.max_advisor_slots = saved_slots
+
+func _test_advisor_seat_tier_scaling() -> void:
+	# rigid seats read the governing stat directly
+	_check(MatchState.advisor_seat_tier("vera", "cfo") == 3, "tier: vera fin 3 -> cfo tier 3")
+	_check(MatchState.advisor_seat_tier("rufus", "cfo") == 1, "tier: rufus fin 1 -> cfo tier 1 (malus)")
+	_check(MatchState.advisor_seat_tier("tom", "coo") == 3, "tier: tom ops 3 -> coo tier 3")
+	# flexible seats read the best of eligible disciplines
+	_check(MatchState.advisor_seat_tier("marcus", "chief_investment") == 3, "tier: marcus max(fin 3, inn 1) -> 3")
+	_check(MatchState.advisor_seat_tier("idris", "chief_investment") == 3, "tier: idris max(fin 1, inn 3) -> 3")
+	_check(MatchState.advisor_seat_tier("rufus", "chief_markets") == 3, "tier: rufus max(inf 3, fin 1) -> 3")
+	_check(MatchState.advisor_seat_tier("hitomi", "sustainability") == 3, "tier: hitomi max(inf 1, ops 3, lead 1) -> 3")
+	_check(MatchState.advisor_seat_governing_discipline("idris", "chief_investment") == "inn", "tier: flexible governing discipline reported (inn)")
+	_check(MatchState.advisor_seat_tier("vera", "bogus_seat") == 0, "tier: unknown seat -> 0")
+
+func _test_advisor_reconcile_idempotent() -> void:
+	Modifiers.reset()
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	MatchState.advisor_seats = {"cfo": "vera", "coo": "tom"}
+	# an unrelated modifier that must survive reconcile
+	Modifiers.add({"id": "unrelated_test_mod", "domain": "recipe_output", "pct": 5.0})
+	MatchState.reconcile_advisor_modifiers()
+	var count1: int = Modifiers.active_count()
+	MatchState.reconcile_advisor_modifiers()   # second run must not duplicate
+	_check(Modifiers.active_count() == count1, "reconcile: idempotent (no duplicate modifiers on re-run)")
+	_check(Modifiers.has("advisor_seat_cfo") and Modifiers.has("advisor_seat_coo"), "reconcile: one modifier per occupied seat")
+	_check(Modifiers.has("unrelated_test_mod"), "reconcile: leaves non-advisor modifiers untouched")
+	MatchState.advisor_seats = {"cfo": "vera"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(Modifiers.has("advisor_seat_cfo") and not Modifiers.has("advisor_seat_coo"), "reconcile: drops modifiers for vacated seats")
+	MatchState.advisor_seats = saved_seats
+	Modifiers.reset()
+
+func _test_advisor_seats_save_roundtrip() -> void:
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	var saved_slots: int = MatchState.max_advisor_slots
+	MatchState.advisor_seats = {"cfo": "vera", "coo": "tom"}
+	MatchState.max_advisor_slots = 3
+	var d: Dictionary = MatchState.export_state()
+	MatchState.advisor_seats = {}
+	MatchState.max_advisor_slots = 2
+	MatchState.import_state(d)
+	_check(MatchState.advisor_seats.get("cfo", "") == "vera" and MatchState.advisor_seats.get("coo", "") == "tom",
+		"save: advisor_seats round-trips")
+	_check(MatchState.max_advisor_slots == 3, "save: max_advisor_slots round-trips")
+	# backward-compat: a v3 save missing the keys defaults to empty seats + 2 slots
+	d.erase("advisor_seats")
+	d.erase("max_advisor_slots")
+	MatchState.import_state(d)
+	_check(MatchState.advisor_seats.is_empty() and MatchState.max_advisor_slots == MatchState.MAX_ADVISOR_SLOTS_DEFAULT,
+		"save: missing keys default (v3 back-compat)")
+	# sanitize drops a bogus seat_id + an un-rostered advisor, keeps valid entries
+	_check(MatchState._sanitize_advisor_seats({"cfo": "vera", "bogus_seat": "vera", "coo": "not_real"}) == {"cfo": "vera"},
+		"save: sanitize drops bad seat + un-rostered advisor")
+	MatchState.advisor_seats = saved_seats
+	MatchState.max_advisor_slots = saved_slots
 
 func _test_advisor_payroll_cost() -> void:
 	var saved_ids := MatchState.permanent_advisor_ids.duplicate(true)

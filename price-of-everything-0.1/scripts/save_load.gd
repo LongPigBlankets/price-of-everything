@@ -94,6 +94,10 @@ func import_snapshot(snap: Dictionary) -> void:
 	Production.import_state(snap.get("production", {}))
 	EventScheduler.import_state(snap.get("events", {}))
 	Modifiers.import_state(snap.get("modifiers", {}))
+	# Advisor-seat modifiers are derived, not saved: re-register them AFTER
+	# Modifiers.import_state (which replaces the registry wholesale and would
+	# otherwise wipe an earlier reconcile). See advisor-system-spec.md §12.1.
+	MatchState.reconcile_advisor_modifiers()
 	# Missing "victory" key (old saves) -> import_state({}) leaves a fresh zero state.
 	VictoryState.import_state(snap.get("victory", {}))
 	# roads-v2: BUILT geometry restores verbatim; planning orders resume
