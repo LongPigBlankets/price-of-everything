@@ -43,6 +43,7 @@ func _ready() -> void:
 	_test_advisor_payroll_cost()
 	_test_advisor_roster_merge()
 	_test_advisor_seat_requires_hire()
+	_test_people_panel_seat_ui()
 	_test_advisor_star_derivation()
 	_test_advisor_seat_assign_and_slot_cap()
 	_test_advisor_seat_tier_scaling()
@@ -6111,6 +6112,24 @@ func _test_advisor_acquisition_save_roundtrip() -> void:
 	_check(draw_a != "" and draw_a == draw_b, "acquisition save: rng state persists -> next draw reproducible")
 	MatchState.permanent_advisor_ids = saved_hired
 	MatchState.crossed_milestones = saved_crossed
+
+func _test_people_panel_seat_ui() -> void:
+	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	MatchState.permanent_advisor_ids = ["vera"]
+	MatchState.advisor_seats = {}
+	var pp: Node = load("res://scripts/people_panel.gd").new()
+	add_child(pp)
+	var vera: Dictionary = MatchState.get_advisor("vera")
+	var section: Control = pp.call("_seat_assignment_section", vera)
+	_check(section != null and str(section.name) == "SeatAssignmentSection",
+		"seat UI: seat-assignment section builds for a hired advisor")
+	var pent: Control = pp.call("_stat_pentagon", MatchState._roster_entry("vera"))
+	_check(pent != null and pent.find_child("StatPentagon", true, false) != null,
+		"seat UI: stat pentagon builds")
+	pp.queue_free()
+	MatchState.permanent_advisor_ids = saved_hired
+	MatchState.advisor_seats = saved_seats
 
 func _test_advisor_roster_merge() -> void:
 	var defs: Array = MatchState._advisor_definitions()

@@ -48,6 +48,8 @@ func _ready() -> void:
 	TurnManager.turn_resolution_completed.connect(_refresh_labour_indicator)
 	if not MatchState.advisors_changed.is_connected(_on_advisors_changed):
 		MatchState.advisors_changed.connect(_on_advisors_changed)
+	if not MatchState.advisor_acquired.is_connected(_on_advisor_acquired):
+		MatchState.advisor_acquired.connect(_on_advisor_acquired)
 	visibility_changed.connect(_on_visibility_changed)
 
 func _build_panel() -> void:
@@ -825,6 +827,7 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	top.add_child(portrait_col)
 	portrait_col.add_child(_portrait_panel(advisor, true, false, Vector2(180, 180)))
 	portrait_col.add_child(_recommendation_box(str(advisor.get("recommendation", ""))))
+	portrait_col.add_child(_stat_pentagon(MatchState._roster_entry(str(advisor.get("id", "")))))
 
 	var info := VBoxContainer.new()
 	info.add_theme_constant_override("separation", 10)
@@ -837,8 +840,123 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 
 	info.add_child(_detail_block("Agenda", _agenda_text(advisor)))
 	info.add_child(_detail_block("Bonuses", _list_text(advisor.get("bonuses", []))))
+	info.add_child(_seat_assignment_section(advisor))
 
 	_advisor_detail_body.add_child(_quest_diagram(advisor.get("missions", advisor.get("quests", []))))
+
+func _stat_pentagon(stats: Dictionary) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.add_child(_label("Disciplines", "Caption"))
+	var p := Control.new()
+	p.name = "StatPentagon"
+	p.custom_minimum_size = Vector2(160, 152)
+	p.draw.connect(_draw_pentagon.bind(p, stats))
+	box.add_child(p)
+	return box
+
+func _draw_pentagon(node: Control, stats: Dictionary) -> void:
+	var keys := ["inf", "ops", "lead", "inn", "fin"]
+	var labels := ["Inf", "Ops", "Lead", "Inn", "Fin"]
+	var center: Vector2 = node.size * 0.5
+	var radius: float = minf(node.size.x, node.size.y) * 0.34
+	var grid := Color(1, 1, 1, 0.16)
+	for ring in [1.0 / 3.0, 2.0 / 3.0, 1.0]:
+		var ring_pts := PackedVector2Array()
+		for i in 5:
+			var ang := -PI / 2.0 + float(i) * TAU / 5.0
+			ring_pts.append(center + Vector2(cos(ang), sin(ang)) * radius * float(ring))
+		ring_pts.append(ring_pts[0])
+		node.draw_polyline(ring_pts, grid, 1.0)
+	for i in 5:
+		var ang := -PI / 2.0 + float(i) * TAU / 5.0
+		node.draw_line(center, center + Vector2(cos(ang), sin(ang)) * radius, grid, 1.0)
+	var poly := PackedVector2Array()
+	for i in 5:
+		var ang := -PI / 2.0 + float(i) * TAU / 5.0
+		var v: float = clampf(float(stats.get(keys[i], 1)) / 3.0, 0.0, 1.0)
+		poly.append(center + Vector2(cos(ang), sin(ang)) * radius * v)
+	var accent: Color = DS.PALETTE.get("ACCENT", Color(0.9, 0.85, 0.7))
+	node.draw_colored_polygon(poly, Color(accent.r, accent.g, accent.b, 0.30))
+	var outline := poly.duplicate()
+	outline.append(poly[0])
+	node.draw_polyline(outline, Color(accent.r, accent.g, accent.b, 0.9), 2.0)
+	var font := node.get_theme_default_font()
+	if font != null:
+		for i in 5:
+			var ang := -PI / 2.0 + float(i) * TAU / 5.0
+			var lp: Vector2 = center + Vector2(cos(ang), sin(ang)) * (radius + 11.0)
+			node.draw_string(font, lp - Vector2(14, -4), "%s %d" % [labels[i], int(stats.get(keys[i], 1))], HORIZONTAL_ALIGNMENT_CENTER, 30, 10, Color(1, 1, 1, 0.85))
+
+# Seat picker: one row per seat with this advisor's governing tier + assign/unassign.
+func _seat_assignment_section(advisor: Dictionary) -> Control:
+	var advisor_id := str(advisor.get("id", ""))
+	var hired: bool = MatchState.permanent_advisor_ids.has(advisor_id)
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = &"Inset"
+	panel.name = "SeatAssignmentSection"
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(m, 8)
+	panel.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 4)
+	margin.add_child(root)
+	root.add_child(_label("Seats  (%d / %d filled)" % [MatchState.advisor_seats.size(), MatchState.max_advisor_slots], "Section"))
+	if not hired:
+		root.add_child(_label("Hire this advisor to assign a seat.", "Caption"))
+	for seat_id in MatchState.SEAT_DEFINITIONS:
+		root.add_child(_seat_row(str(seat_id), advisor_id, hired))
+	return panel
+
+func _seat_row(seat_id: String, advisor_id: String, hired: bool) -> Control:
+	var seat: Dictionary = MatchState.SEAT_DEFINITIONS[seat_id]
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var occupant := MatchState.get_advisor_in_seat(seat_id)
+	var here: bool = occupant == advisor_id
+	var tier: int = MatchState.advisor_seat_tier(advisor_id, seat_id)
+	var tier_word: String = ["-", "malus", "modest", "strong"][clampi(tier, 0, 3)]
+	var name_text := str(seat.get("seat_name", seat_id))
+	if occupant != "" and not here:
+		name_text += " · " + str(MatchState.get_advisor(occupant).get("name", occupant))
+	var name_lbl := _label(name_text, "Body")
+	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_lbl)
+	var disc := MatchState.advisor_seat_governing_discipline(advisor_id, seat_id)
+	var preview := _label("%s %s" % [disc.to_upper(), tier_word], "Caption")
+	preview.custom_minimum_size = Vector2(108, 0)
+	preview.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(preview)
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(84, 28)
+	if here:
+		btn.text = "Unassign"
+		btn.pressed.connect(_on_seat_unassign.bind(seat_id, advisor_id))
+	else:
+		btn.text = "Assign"
+		var slot_full: bool = not MatchState.advisor_seats.has(seat_id) and MatchState.advisor_seats.size() >= MatchState.max_advisor_slots
+		btn.disabled = (not hired) or slot_full
+		btn.pressed.connect(_on_seat_assign.bind(seat_id, advisor_id))
+	row.add_child(btn)
+	return row
+
+func _on_seat_assign(seat_id: String, advisor_id: String) -> void:
+	if MatchState.assign_advisor_to_seat(seat_id, advisor_id):
+		_reopen_advisor_detail(advisor_id)
+
+func _on_seat_unassign(seat_id: String, advisor_id: String) -> void:
+	if MatchState.unassign_seat(seat_id):
+		_reopen_advisor_detail(advisor_id)
+
+func _reopen_advisor_detail(advisor_id: String) -> void:
+	var a := MatchState.get_advisor(advisor_id)
+	if not a.is_empty() and is_instance_valid(_advisor_detail_panel):
+		_build_advisor_detail(a)
+
+func _on_advisor_acquired(advisor_id: String) -> void:
+	var a := MatchState.get_advisor(advisor_id)
+	MatchState.request_toast("New advisor: %s" % str(a.get("name", advisor_id)), "success")
 
 func _detail_block(title_text: String, body_text: String) -> Control:
 	var panel := PanelContainer.new()
