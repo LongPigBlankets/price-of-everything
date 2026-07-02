@@ -6038,6 +6038,12 @@ func _test_advisor_phase2_effects() -> void:
 		"phase2: Chief Markets tier 3 -> market_spread -25%")
 	_check(MarketState.get_buy_price("g_001") < MarketState.get_price("g_001") * (1.0 + EconomyConfig.MARKET_BUY_MARKUP),
 		"phase2: market_spread modifier tightens the buy price")
+	# Chief Markets also lifts the realised SALE price via the market_price domain (+6% tier 3)
+	var g := str(Catalog.all_goods()[0].get("id", "g_001"))
+	var boosted: float = Modifiers.apply("market_price", g, MarketState.get_price(g),
+		{"good_id": g, "good_internal": str(Catalog.get_good(g).get("internal_name", ""))})
+	_check(is_equal_approx(boosted, MarketState.get_price(g) * 1.06),
+		"phase2: Chief Markets tier 3 -> +6% realised sale price")
 	# CFO: Marcus (fin 3) -> loan interest cut + dividend holiday take effect at their sites
 	MatchState.advisor_seats = {"cfo": "marcus"}
 	MatchState.reconcile_advisor_modifiers()

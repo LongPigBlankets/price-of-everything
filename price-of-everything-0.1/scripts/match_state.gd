@@ -3141,6 +3141,9 @@ const _SEAT_EFFECTS := {
 	],
 	"chief_markets": [
 		{"domain": "market_spread", "base_pct": -25.0},
+		# Sale-price uplift applies to ALL market revenue (a broad base) — kept small
+		# on purpose; balance-volatile, harness-tunable. Stacks with research market_price.
+		{"domain": "market_price", "base_pct": 6.0},
 	],
 }
 # governing tier -> multiplier on base_pct. 3 = full, 2 = half, 1 = half malus.
