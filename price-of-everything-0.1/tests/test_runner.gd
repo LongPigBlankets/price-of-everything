@@ -45,6 +45,7 @@ func _ready() -> void:
 	_test_advisor_seat_assign_and_slot_cap()
 	_test_advisor_seat_tier_scaling()
 	_test_advisor_reconcile_idempotent()
+	_test_advisor_seat_effects()
 	_test_advisor_seats_save_roundtrip()
 	await _test_research_unlock_promotes_construct_panel_recipes()
 	_test_tile_deposit_build_options_respect_research_unlocks()
@@ -5960,18 +5961,51 @@ func _test_advisor_seat_tier_scaling() -> void:
 func _test_advisor_reconcile_idempotent() -> void:
 	Modifiers.reset()
 	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
-	MatchState.advisor_seats = {"cfo": "vera", "coo": "tom"}
+	MatchState.advisor_seats = {"coo": "tom", "hr_director": "eleanor"}
 	# an unrelated modifier that must survive reconcile
 	Modifiers.add({"id": "unrelated_test_mod", "domain": "recipe_output", "pct": 5.0})
 	MatchState.reconcile_advisor_modifiers()
 	var count1: int = Modifiers.active_count()
 	MatchState.reconcile_advisor_modifiers()   # second run must not duplicate
 	_check(Modifiers.active_count() == count1, "reconcile: idempotent (no duplicate modifiers on re-run)")
-	_check(Modifiers.has("advisor_seat_cfo") and Modifiers.has("advisor_seat_coo"), "reconcile: one modifier per occupied seat")
+	_check(Modifiers.has("advisor_seat_coo_labour_headcount") and Modifiers.has("advisor_seat_hr_director_labour_headcount"),
+		"reconcile: emits per-domain effect modifiers per occupied seat")
 	_check(Modifiers.has("unrelated_test_mod"), "reconcile: leaves non-advisor modifiers untouched")
-	MatchState.advisor_seats = {"cfo": "vera"}
+	MatchState.advisor_seats = {"coo": "tom"}
 	MatchState.reconcile_advisor_modifiers()
-	_check(Modifiers.has("advisor_seat_cfo") and not Modifiers.has("advisor_seat_coo"), "reconcile: drops modifiers for vacated seats")
+	_check(not Modifiers.has("advisor_seat_hr_director_labour_headcount"), "reconcile: drops modifiers for vacated seats")
+	MatchState.advisor_seats = saved_seats
+	Modifiers.reset()
+
+func _test_advisor_seat_effects() -> void:
+	Modifiers.reset()
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	# Tom (ops 3) in COO -> tier 3 -> full reductions
+	MatchState.advisor_seats = {"coo": "tom"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("labour_headcount", "b_001", {"building_id": "b_001"}).get("net", 0.0)), -10.0),
+		"effects: COO tier 3 -> labour_headcount -10%")
+	_check(is_equal_approx(float(Modifiers.resolve_pct("maintenance", "b_001", {"building_id": "b_001"}).get("net", 0.0)), -10.0),
+		"effects: COO tier 3 -> maintenance -10%")
+	# COO + HR (Eleanor lead 3) -> dual-source labour stacks additively to -20%
+	MatchState.advisor_seats = {"coo": "tom", "hr_director": "eleanor"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("labour_headcount", "b_001", {"building_id": "b_001"}).get("net", 0.0)), -20.0),
+		"effects: COO + HR labour stacks additively to -20%")
+	# VP Logistics (Hitomi ops 3) -> transport cost
+	MatchState.advisor_seats = {"vp_logistics": "hitomi"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("transport_cost", "*", {}).get("net", 0.0)), -10.0),
+		"effects: VP Logistics tier 3 -> transport_cost -10%")
+	# tier-1 malus: Rufus (ops 1) in COO -> labour reduction flips to a +5% penalty
+	MatchState.advisor_seats = {"coo": "rufus"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("labour_headcount", "b_001", {"building_id": "b_001"}).get("net", 0.0)), 5.0),
+		"effects: COO tier 1 (ops 1) -> labour malus +5%")
+	# a finance seat has no Phase-1 effect yet
+	MatchState.advisor_seats = {"cfo": "marcus"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(Modifiers.active_count() == 0, "effects: CFO (finance) emits no Phase-1 modifier")
 	MatchState.advisor_seats = saved_seats
 	Modifiers.reset()
 

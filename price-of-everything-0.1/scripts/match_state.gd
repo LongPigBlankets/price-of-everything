@@ -3053,6 +3053,28 @@ const ADVISOR_ROSTER := [
 	{"id": "rufus",     "name": "Rufus Ashby",     "role": "government_affairs", "inf": 3, "ops": 1, "lead": 1, "inn": 1, "fin": 1, "salary": 2.0, "traits": {"specialty_name": "Silver Tongue, Empty Suit", "specialty_description": "strong Influencing effect; a bad block everywhere else", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 ]
 
+# Phase-1 FREE-lever effects per seat: each emits domain modifiers scaled by the
+# governing tier. base_pct is the tier-3 magnitude; tier 2 = half, tier 1 = a
+# half-magnitude malus (sign flips). Numbers are illustrative (spec: tune in the
+# harness); labour -10% at tier 3 matches spec §5.1's COO/HR dual-source cap.
+# Finance/markets/gov seats have no entry — their levers are Phase 2+.
+const _SEAT_EFFECTS := {
+	"coo": [
+		{"domain": "labour_headcount", "base_pct": -10.0},
+		{"domain": "maintenance", "base_pct": -10.0},
+		{"domain": "building_power", "base_pct": -8.0},
+	],
+	"vp_logistics": [
+		{"domain": "transport_cost", "base_pct": -10.0},
+		{"domain": "transport_throughput", "base_pct": 10.0},
+	],
+	"hr_director": [
+		{"domain": "labour_headcount", "base_pct": -10.0},
+	],
+}
+# governing tier -> multiplier on base_pct. 3 = full, 2 = half, 1 = half malus.
+const _TIER_MULT := {3: 1.0, 2: 0.5, 1: -0.5, 0: 0.0}
+
 func _roster_entry(advisor_id: String) -> Dictionary:
 	for a in ADVISOR_ROSTER:
 		if str(a.get("id", "")) == advisor_id:
@@ -3179,8 +3201,8 @@ func _sanitize_advisor_seats(raw: Variant) -> Dictionary:
 # (clearing stale/vacated seats) then re-adds one per occupied seat with a stable
 # id (advisor_seat_<seat_id>) so a re-run replaces rather than duplicates. Called
 # on seat change, reset, and load (the latter from save_load AFTER Modifiers import).
-# Phase 0 emits an inert "advisor_seat"-domain modifier (no apply() site reads it);
-# Phase 1 replaces the body with real labour/output/etc. domain modifiers by tier.
+# Each seat's FREE-lever effects (_SEAT_EFFECTS) are emitted as domain modifiers
+# scaled by the governing tier; seats whose levers are Phase 2+ emit nothing yet.
 func reconcile_advisor_modifiers() -> void:
 	for m in Modifiers.active():
 		var mid := str(m.get("id", ""))
@@ -3190,16 +3212,22 @@ func reconcile_advisor_modifiers() -> void:
 		var advisor_id := str(advisor_seats[seat_id])
 		if _roster_entry(advisor_id).is_empty():
 			continue
-		var tier := advisor_seat_tier(advisor_id, str(seat_id))
-		var seat: Dictionary = SEAT_DEFINITIONS.get(seat_id, {})
-		Modifiers.add({
-			"id": "advisor_seat_%s" % seat_id,
-			"domain": "advisor_seat",
-			"target": advisor_id,
-			"pct": 0.0,
-			"label": "%s: %s (tier %d)" % [str(seat.get("seat_name", seat_id)), advisor_id, tier],
-			"source": "advisor_seat",
-		})
+		var tier: int = advisor_seat_tier(advisor_id, str(seat_id))
+		var tier_mult: float = float(_TIER_MULT.get(tier, 0.0))
+		if tier_mult == 0.0:
+			continue
+		var seat_name := str(SEAT_DEFINITIONS.get(seat_id, {}).get("seat_name", seat_id))
+		for eff in _SEAT_EFFECTS.get(seat_id, []):
+			var pct: float = float(eff.get("base_pct", 0.0)) * tier_mult
+			if pct == 0.0:
+				continue
+			Modifiers.add({
+				"id": "advisor_seat_%s_%s" % [seat_id, str(eff.get("domain", ""))],
+				"domain": str(eff.get("domain", "")),
+				"pct": pct,
+				"label": "%s: %s (tier %d)" % [seat_name, advisor_id, tier],
+				"source": "advisor_seat",
+			})
 
 func advisor_pool() -> Array:
 	var out: Array = []
