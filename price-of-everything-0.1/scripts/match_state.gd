@@ -115,6 +115,27 @@ const ADVISOR_AGENDAS := {
 	"idris": {"likes": [AGENDA_TECH_UNLOCK, AGENDA_FAST_SHIPMENT], "dislikes": [AGENDA_AUTARKIC, AGENDA_USED_STOCKPILE]},
 	"alexandra": {"likes": [AGENDA_MADE_PROFIT, AGENDA_TECH_UNLOCK], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_BOUGHT_GRID_POWER]},
 }
+# Per-event loyalty weight + display copy. "per_turn" events can be true every single
+# turn (profit, buying power, …) so they carry a HALF point — enough to beat the 0.1
+# decay but not spike loyalty; one-off actions (loans, tech, retrofits) are worth a
+# full point.
+const AGENDA_META := {
+	AGENDA_MADE_PROFIT: {"text": "End the turn in profit", "points": 0.5, "per_turn": true},
+	AGENDA_PAID_OFF_LOAN: {"text": "Pay off a loan", "points": 1.0, "per_turn": false},
+	AGENDA_EARLY_LOAN_PAYOFF: {"text": "Repay a loan early", "points": 1.0, "per_turn": false},
+	AGENDA_TOOK_LOAN: {"text": "Take out a loan", "points": 1.0, "per_turn": false},
+	AGENDA_BUILT_UNPROFITABLE: {"text": "Build while unprofitable", "points": 1.0, "per_turn": false},
+	AGENDA_IDLE_BUILDING: {"text": "Build nothing for 10+ turns", "points": 0.5, "per_turn": true},
+	AGENDA_BOUGHT_GRID_POWER: {"text": "Buy power from the grid", "points": 0.5, "per_turn": true},
+	AGENDA_SOLD_GRID_POWER: {"text": "Export power 5 turns running", "points": 0.5, "per_turn": true},
+	AGENDA_BOUGHT_MATERIALS: {"text": "Buy materials from the market", "points": 0.5, "per_turn": true},
+	AGENDA_USED_STOCKPILE: {"text": "Use stockpiled materials", "points": 0.5, "per_turn": true},
+	AGENDA_AUTARKIC: {"text": "Buy nothing 3 turns running", "points": 0.5, "per_turn": true},
+	AGENDA_FAST_SHIPMENT: {"text": "Deliver a shipment in under 2 turns", "points": 0.5, "per_turn": true},
+	AGENDA_LABOUR_POLICIES: {"text": "Run 2+ labour policies", "points": 0.5, "per_turn": true},
+	AGENDA_TECH_UNLOCK: {"text": "Unlock a research node", "points": 1.0, "per_turn": false},
+	AGENDA_CHANGED_RECIPE: {"text": "Change a building's recipe", "points": 1.0, "per_turn": false},
+}
 # --- Advisor missions (loyalty-milestone chain; spec §7 C-layer specialties) ------
 # Each employed advisor has a 5-mission chain that completes as their LOYALTY crosses
 # thresholds. Rewards (per role): M1/M3 temporary specialty bonus (+ a 2nd temp for
@@ -3825,6 +3846,22 @@ func _on_turn_processed_advisors(summary: Dictionary) -> void:
 func advisor_loyalty_value(advisor_id: String) -> float:
 	return float(advisor_loyalty.get(advisor_id, 0.0))
 
+func _agenda_points(tag: String) -> float:
+	return float((AGENDA_META.get(tag, {}) as Dictionary).get("points", LOYALTY_STEP))
+
+# The concrete loyalty drivers for an advisor's Agenda display: one row per like /
+# dislike with signed points, the plain-English action, and whether it applies each turn.
+func advisor_agenda_rows(advisor_id: String) -> Array:
+	var agenda: Dictionary = ADVISOR_AGENDAS.get(advisor_id, {})
+	var rows: Array = []
+	for tag in agenda.get("likes", []):
+		var meta: Dictionary = AGENDA_META.get(str(tag), {})
+		rows.append({"points": _agenda_points(str(tag)), "text": str(meta.get("text", tag)), "per_turn": bool(meta.get("per_turn", false)), "benefit": true})
+	for tag in agenda.get("dislikes", []):
+		var meta2: Dictionary = AGENDA_META.get(str(tag), {})
+		rows.append({"points": -_agenda_points(str(tag)), "text": str(meta2.get("text", tag)), "per_turn": bool(meta2.get("per_turn", false)), "benefit": false})
+	return rows
+
 # Called from hook sites during a turn to record that an agenda event happened.
 func flag_agenda_event(tag: String) -> void:
 	_agenda_flags[tag] = true
@@ -3889,10 +3926,10 @@ func _evaluate_agendas(summary: Dictionary, profit: float) -> void:
 			v = minf(0.0, v + LOYALTY_DECAY)
 		for tag in agenda.get("likes", []):
 			if events.has(tag):
-				v += LOYALTY_STEP
+				v += _agenda_points(str(tag))
 		for tag in agenda.get("dislikes", []):
 			if events.has(tag):
-				v -= LOYALTY_STEP
+				v -= _agenda_points(str(tag))
 		advisor_loyalty[aid] = clampf(v, LOYALTY_MIN, LOYALTY_MAX)
 		_check_mission_progress(aid)
 		if advisor_loyalty[aid] <= LOYALTY_WALK_THRESHOLD:

@@ -1172,7 +1172,7 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	info.add_child(bio)
 
 	# Collapsible sections — scroll down to reach Seats and Missions.
-	_advisor_detail_body.add_child(_collapsible("Agenda", _detail_block("", _agenda_text(advisor))))
+	_advisor_detail_body.add_child(_collapsible("Agenda", _agenda_block(advisor)))
 	_advisor_detail_body.add_child(_collapsible("Impact", _advisor_impact_block(advisor)))
 	_advisor_detail_body.add_child(_collapsible("Seats", _seat_assignment_section(advisor, false)))
 	_advisor_detail_body.add_child(_collapsible("Missions", _quest_diagram(advisor.get("missions", advisor.get("quests", [])), MatchState.advisor_loyalty_value(advisor_id)), false))
@@ -1436,6 +1436,54 @@ func _detail_block(title_text: String, body_text: String) -> Control:
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	root.add_child(body)
 	return panel
+
+# The Agenda section: flavour line + the concrete loyalty drivers (signed points,
+# per-turn or one-off) so it's clear exactly how to please/annoy this advisor.
+func _agenda_block(advisor: Dictionary) -> Control:
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = &"Inset"
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(m, 8)
+	panel.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 3)
+	margin.add_child(root)
+
+	var flavour := str(advisor.get("agenda", "")).strip_edges()
+	if flavour != "":
+		var fl := _wrapped(flavour, "Caption")
+		fl.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+		root.add_child(fl)
+
+	var rows: Array = MatchState.advisor_agenda_rows(str(advisor.get("id", "")))
+	var likes := rows.filter(func(r): return bool(r.get("benefit", false)))
+	var dislikes := rows.filter(func(r): return not bool(r.get("benefit", false)))
+	if not likes.is_empty():
+		root.add_child(_label("Raises loyalty", "Caption"))
+		for r in likes:
+			root.add_child(_agenda_row_label(r))
+	if not dislikes.is_empty():
+		root.add_child(_label("Lowers loyalty", "Caption"))
+		for r in dislikes:
+			root.add_child(_agenda_row_label(r))
+	var note := _label("Loyalty also drifts 0.1/turn back toward 0.", "Caption")
+	note.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	root.add_child(note)
+	return panel
+
+func _agenda_row_label(r: Dictionary) -> Label:
+	var pts: float = float(r.get("points", 0.0))
+	var mag: String = "%.1f" % absf(pts)
+	if mag.ends_with(".0"):
+		mag = mag.substr(0, mag.length() - 2)
+	var suffix: String = "/turn" if bool(r.get("per_turn", false)) else ""
+	var text: String = "%s%s%s   %s" % ["+" if pts >= 0.0 else "−", mag, suffix, str(r.get("text", ""))]
+	var lbl := _label(text, "Caption")
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.add_theme_color_override("font_color", DS.PALETTE["OK"] if bool(r.get("benefit", false)) else DS.PALETTE["DANGER"])
+	return lbl
 
 func _agenda_text(advisor: Dictionary) -> String:
 	var agenda := str(advisor.get("agenda", "")).strip_edges()

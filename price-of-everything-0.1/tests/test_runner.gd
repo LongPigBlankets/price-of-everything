@@ -6295,8 +6295,13 @@ func _test_advisor_loyalty() -> void:
 	MatchState.advisor_loyalty["vera"] = 0.0
 	MatchState._agenda_flags = {}
 	MatchState._evaluate_agendas({"money_in": 100.0, "money_out": 0.0}, 100.0)
-	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 1.0),
-		"loyalty: a liked agenda event (+profit) raises loyalty +1")
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 0.5),
+		"loyalty: a per-turn liked event (+profit) raises loyalty +0.5")
+	# Agenda rows expose signed points for the UI (2 likes + 2 dislikes for Vera).
+	var rows: Array = MatchState.advisor_agenda_rows("vera")
+	_check(rows.size() == 4 and is_equal_approx(float(rows[0].get("points", 0.0)), 0.5)
+		and bool(rows[0].get("per_turn", false)),
+		"loyalty: agenda rows expose per-event points (+0.5/turn profit)")
 
 	MatchState.advisor_loyalty["vera"] = 5.0
 	MatchState._agenda_flags = {}
