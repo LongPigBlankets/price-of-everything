@@ -49,6 +49,9 @@ func _ready() -> void:
 	_test_advisor_reconcile_idempotent()
 	_test_advisor_seat_effects()
 	_test_advisor_seats_save_roundtrip()
+	_test_advisor_milestone_acquisition()
+	_test_advisor_slot_unlock()
+	_test_advisor_acquisition_save_roundtrip()
 	await _test_research_unlock_promotes_construct_panel_recipes()
 	_test_tile_deposit_build_options_respect_research_unlocks()
 	await _test_building_ledger()
@@ -6054,6 +6057,60 @@ func _test_advisor_payroll_cost() -> void:
 	MatchState.money = saved_money
 	MatchState.money_changed.emit(MatchState.money)
 	MatchState.advisors_changed.emit()
+
+func _test_advisor_milestone_acquisition() -> void:
+	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_crossed: Array = MatchState.crossed_milestones.duplicate(true)
+	MatchState.permanent_advisor_ids = []
+	MatchState.crossed_milestones = []
+	MatchState._match_rng.seed = MatchState.DEFAULT_MATCH_RNG_SEED
+	MatchState.check_profit_milestones(40.0)
+	_check(MatchState.permanent_advisor_ids.is_empty(), "milestone: below 50 profit awards nothing")
+	MatchState.check_profit_milestones(60.0)
+	_check(MatchState.permanent_advisor_ids.size() == 1 and MatchState.crossed_milestones.has(50),
+		"milestone: crossing 50 awards one advisor")
+	var first_id := str(MatchState.permanent_advisor_ids[0])
+	MatchState.check_profit_milestones(60.0)
+	_check(MatchState.permanent_advisor_ids.size() == 1, "milestone: re-crossing 50 does not re-award (latched)")
+	MatchState.check_profit_milestones(220.0)
+	_check(MatchState.permanent_advisor_ids.size() == 4 and MatchState.crossed_milestones.has(200),
+		"milestone: a jump awards each newly-crossed milestone (100/150/200)")
+	# determinism: same seed reproduces the first draw
+	MatchState.permanent_advisor_ids = []
+	MatchState.crossed_milestones = []
+	MatchState._match_rng.seed = MatchState.DEFAULT_MATCH_RNG_SEED
+	MatchState.check_profit_milestones(60.0)
+	_check(str(MatchState.permanent_advisor_ids[0]) == first_id, "milestone: seeded draw is deterministic")
+	MatchState.permanent_advisor_ids = saved_hired
+	MatchState.crossed_milestones = saved_crossed
+
+func _test_advisor_slot_unlock() -> void:
+	var saved: int = MatchState.max_advisor_slots
+	MatchState.max_advisor_slots = 2
+	MatchState.unlock_advisor_slot()
+	_check(MatchState.max_advisor_slots == 3, "slot unlock: raises the cap by 1")
+	MatchState.unlock_advisor_slot()
+	MatchState.unlock_advisor_slot()
+	MatchState.unlock_advisor_slot()
+	_check(MatchState.max_advisor_slots == 5, "slot unlock: clamps at the cap (5)")
+	MatchState.max_advisor_slots = saved
+
+func _test_advisor_acquisition_save_roundtrip() -> void:
+	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_crossed: Array = MatchState.crossed_milestones.duplicate(true)
+	MatchState.permanent_advisor_ids = []
+	MatchState.crossed_milestones = []
+	MatchState._match_rng.seed = MatchState.DEFAULT_MATCH_RNG_SEED
+	MatchState.check_profit_milestones(60.0)   # cross 50, advance the rng past one draw
+	var d: Dictionary = MatchState.export_state()
+	MatchState.import_state(d)
+	_check(MatchState.crossed_milestones.has(50), "acquisition save: crossed_milestones round-trips")
+	var draw_a := MatchState.draw_advisor_from_pool()
+	MatchState.import_state(d)                  # restore -> rng state reset to the saved value
+	var draw_b := MatchState.draw_advisor_from_pool()
+	_check(draw_a != "" and draw_a == draw_b, "acquisition save: rng state persists -> next draw reproducible")
+	MatchState.permanent_advisor_ids = saved_hired
+	MatchState.crossed_milestones = saved_crossed
 
 func _test_advisor_roster_merge() -> void:
 	var defs: Array = MatchState._advisor_definitions()

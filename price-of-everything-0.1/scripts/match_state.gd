@@ -59,6 +59,13 @@ var advisor_seats: Dictionary = {}          # seat_id -> advisor_id
 const MAX_ADVISOR_SLOTS_DEFAULT := 2
 const MAX_ADVISOR_SLOTS_CAP := 5            # spec §4.1 hard ceiling
 var max_advisor_slots: int = MAX_ADVISOR_SLOTS_DEFAULT
+# --- Advisor acquisition (spec §4.2-4.4) ---
+const DEFAULT_MATCH_RNG_SEED := 5060301
+const PROFIT_MILESTONES := [50, 100, 150, 200, 300, 400, 500, 750, 1000]
+const STARTING_TRIO := ["vera", "tom", "rufus"]
+var _match_rng := RandomNumberGenerator.new()
+var match_rng_seed: int = DEFAULT_MATCH_RNG_SEED   # seeded match RNG (draws + tile reveal)
+var crossed_milestones: Array = []                 # latched profit thresholds
 
 # --- Output routing ---
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
@@ -178,6 +185,7 @@ signal route_objective_changed(new_objective: int)
 signal labour_multiplier_changed(new_value: float)
 signal workforce_policies_changed
 signal advisors_changed
+signal advisor_acquired(advisor_id: String)
 signal toast_requested(message: String, toast_type: String)
 ## A market sale was finalised at a port this turn (drives the £-rise effect).
 signal market_sale_arrived_at_port(port_tile_id: String, revenue: float)
@@ -250,6 +258,8 @@ func _ready() -> void:
 func _connect_turn_signals() -> void:
 	if TurnManager != null and not TurnManager.phase_started.is_connected(_on_survey_phase_started):
 		TurnManager.phase_started.connect(_on_survey_phase_started)
+	if Production != null and not Production.turn_processed.is_connected(_on_turn_processed_advisors):
+		Production.turn_processed.connect(_on_turn_processed_advisors)
 
 func _on_survey_phase_started(phase: int) -> void:
 	if phase == TurnManager.Phase.PROCESS:
@@ -904,7 +914,7 @@ func _complete_survey(tile_id: String, reveal_nearby: bool) -> void:
 				fresh.append(n)
 		if fresh.is_empty():
 			break
-		mark_tile_partial(str(fresh[randi() % fresh.size()]))
+		mark_tile_partial(str(fresh[_match_rng_int(fresh.size())]))
 
 # --- Public API: depletable deposits ---
 ## Seed each tile's depletable-deposit yields from its CSV deposits. Water is
@@ -1093,6 +1103,9 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 	if title == "" or unlocked_titles.has(title):
 		return
 	unlocked_titles[title] = true
+	# People-management unlocks also grant an advisor seat slot (spec §4.1).
+	if title == "Operational Team Managers" or title == "Shift Handover Documentation":
+		unlock_advisor_slot()
 	_surveyable_dirty = true  # e.g. Geoscanning changes survey range
 	var desc := ""
 	for d in _unlock_defs:
@@ -1570,6 +1583,9 @@ func reset() -> void:
 	permanent_advisor_ids.clear()
 	advisor_seats.clear()
 	max_advisor_slots = MAX_ADVISOR_SLOTS_DEFAULT
+	crossed_milestones.clear()
+	match_rng_seed = DEFAULT_MATCH_RNG_SEED
+	_match_rng.seed = match_rng_seed
 	reconcile_advisor_modifiers()
 	recurring_moves.clear()
 	scheduled_moves.clear()
@@ -1627,6 +1643,9 @@ func export_state() -> Dictionary:
 		"permanent_advisor_ids": permanent_advisor_ids.duplicate(true),
 		"advisor_seats": advisor_seats.duplicate(true),
 		"max_advisor_slots": max_advisor_slots,
+		"advisor_rng_seed": match_rng_seed,
+		"advisor_rng_state": _match_rng.state,
+		"advisor_crossed_milestones": crossed_milestones.duplicate(true),
 		"sell_mode": sell_mode,
 		"route_objective": route_objective,
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
@@ -1673,9 +1692,13 @@ func import_state(d: Dictionary) -> void:
 	labour_multiplier = float(d.get("labour_multiplier", EconomyConfig.LABOUR_MULTIPLIER_DEFAULT))
 	workforce_policies = (d.get("workforce_policies", {}) as Dictionary).duplicate(true)
 	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
-	permanent_advisor_ids = _sanitize_advisor_ids(d.get("permanent_advisor_ids", []))
+	permanent_advisor_ids = _sanitize_advisor_ids(d.get("permanent_advisor_ids", STARTING_TRIO))
 	advisor_seats = _sanitize_advisor_seats(d.get("advisor_seats", {}))
 	max_advisor_slots = clampi(int(d.get("max_advisor_slots", MAX_ADVISOR_SLOTS_DEFAULT)), MAX_ADVISOR_SLOTS_DEFAULT, MAX_ADVISOR_SLOTS_CAP)
+	match_rng_seed = int(d.get("advisor_rng_seed", DEFAULT_MATCH_RNG_SEED))
+	_match_rng.seed = match_rng_seed
+	_match_rng.state = int(d.get("advisor_rng_state", _match_rng.state))
+	crossed_milestones = (d.get("advisor_crossed_milestones", []) as Array).duplicate(true)
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
@@ -3229,6 +3252,42 @@ func reconcile_advisor_modifiers() -> void:
 				"label": "%s: %s (tier %d)" % [seat_name, advisor_id, tier],
 				"source": "advisor_seat",
 			})
+
+func _match_rng_int(max_exclusive: int) -> int:
+	if max_exclusive <= 0:
+		return 0
+	return _match_rng.randi_range(0, max_exclusive - 1)
+
+# Canonical ids not yet hired (draw-without-replacement, spec §4.3).
+func _advisor_draw_pool() -> Array:
+	var out: Array = []
+	for a in ADVISOR_ROSTER:
+		var id := str(a.get("id", ""))
+		if not permanent_advisor_ids.has(id):
+			out.append(id)
+	return out
+
+# Draw one random advisor from the pool into the hired roster (seeded; deterministic).
+func draw_advisor_from_pool() -> String:
+	var pool := _advisor_draw_pool()
+	if pool.is_empty():
+		return ""
+	var picked := str(pool[_match_rng_int(pool.size())])
+	if hire_advisor(picked):
+		advisor_acquired.emit(picked)
+	return picked
+
+# Award one advisor on the first crossing of each profit-per-turn milestone (latched).
+func check_profit_milestones(profit_per_turn: float) -> void:
+	for m in PROFIT_MILESTONES:
+		if crossed_milestones.has(m):
+			continue
+		if profit_per_turn >= float(m):
+			crossed_milestones.append(m)
+			draw_advisor_from_pool()
+
+func _on_turn_processed_advisors(summary: Dictionary) -> void:
+	check_profit_milestones(float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)))
 
 func advisor_pool() -> Array:
 	var out: Array = []
