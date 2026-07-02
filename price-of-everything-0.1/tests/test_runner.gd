@@ -6144,6 +6144,14 @@ func _test_advisor_fake_money_and_track() -> void:
 	_check(MatchState.next_advisor_milestone() == 150, "advisor track: next milestone is the first un-crossed (150)")
 	MatchState.crossed_milestones = [50, 100, 150, 200, 300, 400, 500, 750, 1000]
 	_check(MatchState.next_advisor_milestone() == 0, "advisor track: all milestones crossed -> 0")
+	# Cheat cash (fake money) must count toward the profit that drives advisor unlocks.
+	var saved_rec_fm: Array = MatchState.recruited_advisor_ids.duplicate(true)
+	MatchState.crossed_milestones = []
+	MatchState._on_turn_processed_advisors({"money_in": 0.0, "money_out": 0.0, "fake_money": 120.0})
+	_check(MatchState.crossed_milestones.has(50) and MatchState.crossed_milestones.has(100)
+		and not MatchState.crossed_milestones.has(150),
+		"fake money: cheat cash crosses profit milestones (drives advisor unlocks)")
+	MatchState.recruited_advisor_ids = saved_rec_fm
 	MatchState.money = saved_money
 	MatchState.fake_money_this_turn = saved_fake
 	MatchState.crossed_milestones = saved_crossed
@@ -6216,10 +6224,12 @@ func _test_advisor_seat_requires_hire() -> void:
 	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
 	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_rec: Array = MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_fired: Array = MatchState.fired_advisor_ids.duplicate(true)
 	var saved_slots: int = MatchState.max_advisor_slots
 	MatchState.advisor_seats = {}
 	MatchState.permanent_advisor_ids = []
 	MatchState.recruited_advisor_ids = ["vera"]
+	MatchState.fired_advisor_ids = []
 	MatchState.max_advisor_slots = 2
 	_check(not MatchState.assign_advisor_to_seat("cfo", "vera"), "hire gate: cannot seat an un-hired advisor")
 	MatchState.hire_advisor("vera")
@@ -6227,6 +6237,7 @@ func _test_advisor_seat_requires_hire() -> void:
 	MatchState.advisor_seats = saved_seats
 	MatchState.permanent_advisor_ids = saved_hired
 	MatchState.recruited_advisor_ids = saved_rec
+	MatchState.fired_advisor_ids = saved_fired
 	MatchState.max_advisor_slots = saved_slots
 
 func _test_research_unlock_promotes_construct_panel_recipes() -> void:
@@ -6361,6 +6372,8 @@ func _test_widgets_instantiate() -> void:
 
 	var saved_advisors := MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_recruited := MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_fired := MatchState.fired_advisor_ids.duplicate(true)
+	MatchState.fired_advisor_ids.clear()
 	MatchState.permanent_advisor_ids.clear()
 	var _all_ids: Array = []
 	for _a in MatchState.advisor_pool():
@@ -6392,9 +6405,25 @@ func _test_widgets_instantiate() -> void:
 	hire_event.button_index = MOUSE_BUTTON_LEFT
 	hire_event.pressed = true
 	pp.call("_on_available_advisor_card_input", hire_event, first_advisor)
+	var clicked_detail: Node = pp.get("_advisor_detail_panel")
+	_check(clicked_detail != null and clicked_detail.visible
+		and not MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", ""))),
+		"PeoplePanel clicking an available advisor opens the profile, not an instant hire")
+	pp.call("_on_confirm_hire_pressed", first_advisor)
 	_check(MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", "")))
 		and _tree_has_label_text(pp, "1 advisor (£1.00/turn)"),
-		"PeoplePanel selecting from the pool hires a permanent advisor and updates payroll")
+		"PeoplePanel Confirm Hire from the profile hires a permanent advisor and updates payroll")
+	# Fire flow: the profile footer for an employed advisor removes them for good.
+	pp.call("_open_advisor_detail", first_advisor)
+	var fire_footer: Control = pp.call("_advisor_detail_footer", first_advisor, true, false) as Control
+	_check(fire_footer is Button and (fire_footer as Button).text == "Fire Advisor",
+		"PeoplePanel employed-advisor footer offers Fire Advisor")
+	MatchState.fire_advisor(str(first_advisor.get("id", "")))
+	_check(not MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", "")))
+		and MatchState.is_fired(str(first_advisor.get("id", "")))
+		and not MatchState.hire_advisor(str(first_advisor.get("id", ""))),
+		"PeoplePanel firing removes the advisor for good and blocks re-hire")
+	pp.call("_close_advisor_detail")
 	var permanent: Array = pp.get("_permanent_advisors")
 	var card: Control = pp.call("_advisor_card", permanent[0], true, false) as Control
 	var portrait: Control = card.find_child("AdvisorPortrait", true, false) as Control
@@ -6415,6 +6444,7 @@ func _test_widgets_instantiate() -> void:
 	pp.queue_free()
 	MatchState.permanent_advisor_ids = saved_advisors
 	MatchState.recruited_advisor_ids = saved_recruited
+	MatchState.fired_advisor_ids = saved_fired
 	MatchState.advisors_changed.emit()
 
 func _tree_has_label_text(node: Node, needle: String) -> bool:

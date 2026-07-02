@@ -67,6 +67,7 @@ var _match_rng := RandomNumberGenerator.new()
 var match_rng_seed: int = DEFAULT_MATCH_RNG_SEED   # seeded match RNG (draws + tile reveal)
 var crossed_milestones: Array = []                 # latched profit thresholds
 var recruited_advisor_ids: Array = []              # unlocked pool (employ up to the cap)
+var fired_advisor_ids: Array = []                  # fired: gone for good, shown greyed, unhireable
 # Advisor slot (employ-cap) unlocks: 3rd @15 buildings, 4th @100, 5th @ sustained profit.
 const ADVISOR_SLOT_BUILDINGS_3 := 15
 const ADVISOR_SLOT_BUILDINGS_4 := 100
@@ -1592,6 +1593,7 @@ func reset() -> void:
 	max_advisor_slots = MAX_ADVISOR_SLOTS_DEFAULT
 	crossed_milestones.clear()
 	recruited_advisor_ids.clear()
+	fired_advisor_ids.clear()
 	_advisor_profit_streak = 0
 	advisor_slot_profit_unlocked = false
 	fake_money_this_turn = 0.0
@@ -1659,6 +1661,7 @@ func export_state() -> Dictionary:
 		"advisor_rng_state": _match_rng.state,
 		"advisor_crossed_milestones": crossed_milestones.duplicate(true),
 		"recruited_advisor_ids": recruited_advisor_ids.duplicate(true),
+		"fired_advisor_ids": fired_advisor_ids.duplicate(true),
 		"advisor_profit_streak": _advisor_profit_streak,
 		"advisor_slot_profit_unlocked": advisor_slot_profit_unlocked,
 		"advisor_peak_profit": peak_profit_per_turn,
@@ -1709,7 +1712,11 @@ func import_state(d: Dictionary) -> void:
 	workforce_policies = (d.get("workforce_policies", {}) as Dictionary).duplicate(true)
 	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
 	recruited_advisor_ids = _sanitize_advisor_ids(d.get("recruited_advisor_ids", STARTING_TRIO))
+	fired_advisor_ids = _sanitize_advisor_ids(d.get("fired_advisor_ids", []))
 	permanent_advisor_ids = _sanitize_advisor_ids(d.get("permanent_advisor_ids", []))
+	# A fired advisor can never be employed.
+	for fid in fired_advisor_ids:
+		permanent_advisor_ids.erase(fid)
 	# Employed must be a subset of recruited.
 	for pid in permanent_advisor_ids:
 		if not recruited_advisor_ids.has(pid):
@@ -3365,7 +3372,8 @@ func _update_advisor_slots(profit_per_turn: float) -> void:
 		advisors_changed.emit()
 
 func _on_turn_processed_advisors(summary: Dictionary) -> void:
-	var profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
+	# Include cheat "fake money" so the cash cheat can drive advisor unlocks in testing.
+	var profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) + float(summary.get("fake_money", 0.0))
 	peak_profit_per_turn = maxf(peak_profit_per_turn, profit)
 	_update_advisor_slots(profit)
 	check_profit_milestones(profit)
@@ -3408,9 +3416,29 @@ func hire_advisor(advisor_id: String) -> bool:
 		return false
 	if not recruited_advisor_ids.has(advisor_id):
 		return false
+	if fired_advisor_ids.has(advisor_id):
+		return false
 	if permanent_advisor_ids.size() >= max_advisor_slots:
 		return false
 	permanent_advisor_ids.append(advisor_id)
+	advisors_changed.emit()
+	return true
+
+func is_fired(advisor_id: String) -> bool:
+	return fired_advisor_ids.has(advisor_id)
+
+# Permanently dismiss an employed advisor: unseat them, free the slot, and mark
+# them fired (they show greyed among Available and can never be re-hired).
+func fire_advisor(advisor_id: String) -> bool:
+	if not permanent_advisor_ids.has(advisor_id):
+		return false
+	permanent_advisor_ids.erase(advisor_id)
+	for seat_id in advisor_seats.keys():
+		if str(advisor_seats[seat_id]) == advisor_id:
+			advisor_seats.erase(seat_id)
+	if not fired_advisor_ids.has(advisor_id):
+		fired_advisor_ids.append(advisor_id)
+	reconcile_advisor_modifiers()
 	advisors_changed.emit()
 	return true
 

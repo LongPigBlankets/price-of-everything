@@ -647,6 +647,8 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 	elif permanent and not add_slot:
 		card.gui_input.connect(_on_advisor_card_input.bind(advisor))
 	elif not add_slot:
+		if MatchState.is_fired(str(advisor.get("id", ""))):
+			card.modulate = Color(1, 1, 1, 0.45)   # dismissed: greyed, opens a read-only profile
 		card.gui_input.connect(_on_available_advisor_card_input.bind(advisor))
 
 	var root := VBoxContainer.new()
@@ -816,9 +818,7 @@ func _on_advisor_card_input(event: InputEvent, advisor: Dictionary) -> void:
 
 func _on_available_advisor_card_input(event: InputEvent, advisor: Dictionary) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if MatchState.hire_advisor(str(advisor.get("id", ""))):
-			_available_pool_open = true
-			_refresh_advisors_tab()
+		_open_advisor_detail(advisor)   # profile + Confirm Hire; hiring happens from the detail
 		accept_event()
 
 func _open_advisor_detail(advisor: Dictionary) -> void:
@@ -849,6 +849,9 @@ func _ensure_detail_panel() -> void:
 
 func _build_advisor_detail(advisor: Dictionary) -> void:
 	_clear_children(_advisor_detail_panel)
+	var advisor_id := str(advisor.get("id", ""))
+	var is_hired: bool = MatchState.permanent_advisor_ids.has(advisor_id)
+	var is_fired: bool = MatchState.is_fired(advisor_id)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 12)
@@ -857,14 +860,15 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	margin.add_theme_constant_override("margin_bottom", 12)
 	_advisor_detail_panel.add_child(margin)
 
-	_advisor_detail_body = VBoxContainer.new()
-	_advisor_detail_body.add_theme_constant_override("separation", 12)
-	margin.add_child(_advisor_detail_body)
+	# Outer column: fixed header, scrolling body (capped to the panel height), fixed footer CTA.
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 8)
+	margin.add_child(outer)
 
 	var header := HBoxContainer.new()
 	header.mouse_filter = Control.MOUSE_FILTER_STOP
 	header.gui_input.connect(_on_advisor_detail_header_input)
-	_advisor_detail_body.add_child(header)
+	outer.add_child(header)
 	var title := _label(str(advisor.get("role", "Advisor")), "Title")
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -875,9 +879,23 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	close_button.pressed.connect(_close_advisor_detail)
 	header.add_child(close_button)
 
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	outer.add_child(scroll)
+
+	_advisor_detail_body = VBoxContainer.new()
+	_advisor_detail_body.add_theme_constant_override("separation", 12)
+	_advisor_detail_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if is_fired:
+		_advisor_detail_body.modulate = Color(1, 1, 1, 0.55)   # dismissed profile reads greyed
+	scroll.add_child(_advisor_detail_body)
+
+	if is_fired:
+		_advisor_detail_body.add_child(_label("Dismissed — this advisor has been let go and cannot be re-hired.", "Caption"))
+
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 16)
-	top.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_advisor_detail_body.add_child(top)
 
 	var portrait_col := VBoxContainer.new()
@@ -897,11 +915,75 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	bio.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.add_child(bio)
 
-	info.add_child(_detail_block("Agenda", _agenda_text(advisor)))
-	info.add_child(_detail_block("Bonuses", _list_text(advisor.get("bonuses", []))))
-	info.add_child(_seat_assignment_section(advisor))
+	# Collapsible sections — scroll down to reach Seats and Missions.
+	_advisor_detail_body.add_child(_collapsible("Agenda", _detail_block("", _agenda_text(advisor))))
+	_advisor_detail_body.add_child(_collapsible("Bonuses", _detail_block("", _list_text(advisor.get("bonuses", [])))))
+	_advisor_detail_body.add_child(_collapsible("Seats", _seat_assignment_section(advisor, false)))
+	_advisor_detail_body.add_child(_collapsible("Missions", _quest_diagram(advisor.get("missions", advisor.get("quests", []))), false))
 
-	_advisor_detail_body.add_child(_quest_diagram(advisor.get("missions", advisor.get("quests", []))))
+	outer.add_child(_advisor_detail_footer(advisor, is_hired, is_fired))
+
+# A titled section that folds away when its header is tapped.
+func _collapsible(title_text: String, content: Control, start_open: bool = true) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	var head := Button.new()
+	head.flat = true
+	head.focus_mode = Control.FOCUS_NONE
+	head.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	head.toggle_mode = true
+	head.button_pressed = start_open
+	head.add_theme_font_size_override("font_size", 15)
+	head.text = ("▾  " if start_open else "▸  ") + title_text
+	content.visible = start_open
+	head.toggled.connect(func(on: bool) -> void:
+		content.visible = on
+		head.text = ("▾  " if on else "▸  ") + title_text)
+	box.add_child(head)
+	box.add_child(content)
+	return box
+
+# Bottom CTA: Confirm Hire for an available advisor, Fire Advisor for an employed
+# one, or a disabled "Dismissed" marker once fired.
+func _advisor_detail_footer(advisor: Dictionary, is_hired: bool, is_fired: bool) -> Control:
+	var btn := Button.new()
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.custom_minimum_size = Vector2(0, 40)
+	if is_fired:
+		btn.text = "Dismissed"
+		btn.disabled = true
+	elif is_hired:
+		btn.text = "Fire Advisor"
+		btn.add_theme_color_override("font_color", Color(0.86, 0.28, 0.24))
+		btn.pressed.connect(_on_fire_advisor_pressed.bind(advisor))
+	elif MatchState.permanent_advisor_ids.size() >= MatchState.max_advisor_slots:
+		btn.text = "No free advisor slot"
+		btn.disabled = true
+	else:
+		btn.text = "Confirm Hire"
+		btn.pressed.connect(_on_confirm_hire_pressed.bind(advisor))
+	return btn
+
+func _on_confirm_hire_pressed(advisor: Dictionary) -> void:
+	if MatchState.hire_advisor(str(advisor.get("id", ""))):
+		_close_advisor_detail()
+		_available_pool_open = true
+		_refresh_advisors_tab()
+
+func _on_fire_advisor_pressed(advisor: Dictionary) -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Fire Advisor"
+	dialog.dialog_text = "Permanently dismiss %s?\nThis frees their seat. They cannot be re-hired." % str(advisor.get("name", "this advisor"))
+	dialog.ok_button_text = "Fire"
+	add_child(dialog)
+	dialog.confirmed.connect(func() -> void:
+		MatchState.fire_advisor(str(advisor.get("id", "")))
+		dialog.queue_free()
+		if is_instance_valid(_advisor_detail_panel) and _advisor_detail_panel.visible:
+			_build_advisor_detail(advisor)   # re-render greyed, footer now "Dismissed"
+		_refresh_advisors_tab())
+	dialog.canceled.connect(func() -> void: dialog.queue_free())
+	dialog.popup_centered()
 
 func _stat_pentagon(advisor: Dictionary) -> Control:
 	var advisor_id := str(advisor.get("id", ""))
@@ -1004,7 +1086,7 @@ func _wrapped(text: String, variation: String) -> Label:
 	return l
 
 # Seat picker: one row per seat with this advisor's governing tier + assign/unassign.
-func _seat_assignment_section(advisor: Dictionary) -> Control:
+func _seat_assignment_section(advisor: Dictionary, with_header: bool = true) -> Control:
 	var advisor_id := str(advisor.get("id", ""))
 	var hired: bool = MatchState.permanent_advisor_ids.has(advisor_id)
 	var panel := PanelContainer.new()
@@ -1017,7 +1099,10 @@ func _seat_assignment_section(advisor: Dictionary) -> Control:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 4)
 	margin.add_child(root)
-	root.add_child(_label("Seats  (%d / %d filled)" % [MatchState.advisor_seats.size(), MatchState.max_advisor_slots], "Section"))
+	if with_header:
+		root.add_child(_label("Seats  (%d / %d filled)" % [MatchState.advisor_seats.size(), MatchState.max_advisor_slots], "Section"))
+	else:
+		root.add_child(_label("%d / %d seats filled" % [MatchState.advisor_seats.size(), MatchState.max_advisor_slots], "Caption"))
 	if not hired:
 		root.add_child(_label("Hire this advisor to assign a seat.", "Caption"))
 	for seat_id in MatchState.SEAT_DEFINITIONS:
@@ -1085,7 +1170,8 @@ func _detail_block(title_text: String, body_text: String) -> Control:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 5)
 	margin.add_child(root)
-	root.add_child(_label(title_text, "Section"))
+	if title_text != "":
+		root.add_child(_label(title_text, "Section"))
 	var body := _label(body_text, "Caption")
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	root.add_child(body)

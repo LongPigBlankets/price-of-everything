@@ -215,3 +215,8 @@ __marimo__/
 
 # macOS Finder metadata
 **/.DS_Store
+
+# Rendered screenshot outputs from tools/*_shot.tscn (dev-only artifacts)
+*_shot.png
+real_tile.png
+enclosure.png
