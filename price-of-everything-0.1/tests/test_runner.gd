@@ -6074,6 +6074,12 @@ func _test_advisor_phase2_effects() -> void:
 			mv += float(int(reqs[gid2])) * MarketState.get_price(str(gid2))
 		_check(mv > 0.0 and is_equal_approx(MatchState.construction_material_rebate(ci_bid), mv * 0.10),
 			"phase2: Chief Investment rebates 10% of build-materials market value")
+	# Land + NPC-building purchases discounted 10% at tier 3
+	_check(is_equal_approx(MatchState.purchase_cost_after_advisor(100.0), 90.0),
+		"phase2: Chief Investment tier 3 -> land/building purchase -10%")
+	# Upgrade kit is rebated the same way as a build (shares construction_rebate)
+	_check(is_equal_approx(MatchState._materials_rebate({str(g): 10}), 10.0 * MarketState.get_price(str(g)) * 0.10),
+		"phase2: Chief Investment rebates 10% of upgrade-kit materials value")
 	# Seated Chief Investment also unlocks build-on-credit (10-turn, 5% construction loan)
 	_check(MatchState.construction_credit_available(), "phase2: seated Chief Investment unlocks build-on-credit")
 	var money_b := MatchState.money

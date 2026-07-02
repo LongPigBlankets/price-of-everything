@@ -316,7 +316,7 @@ func _row_vm(b: Dictionary) -> Dictionary:
 		"building_id": building_id, "binternal": str(bdata.get("internal_name", "")),
 		"name": name_str, "tile": tile_text, "tile_id": tile_id, "owner": owner,
 		"out_good_id": out_gid, "out_internal": out_internal, "out_qty": out_qty,
-		"price": BuildingPrice.sale_price(b),
+		"price": int(round(MatchState.purchase_cost_after_advisor(float(BuildingPrice.sale_price(b))))),
 		# Filter fields.
 		"category": str(bdata.get("category", "production")),
 		"level": int(b.get("level", 1)),

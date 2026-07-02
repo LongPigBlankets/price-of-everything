@@ -627,6 +627,10 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 		"turns_remaining": BuildingLevels.UPGRADE_DURATION,
 		"size_delta": size_delta,
 	})
+	# Chief Investment rebates a fraction of the upgrade kit's market value (like a build).
+	var up_rebate := _materials_rebate(need_by_gid)
+	if up_rebate > 0.0:
+		add_money(up_rebate)
 	building_upgrade_started.emit(instance_id, target)
 	return {"ok": true, "status": status, "target_level": target}
 
@@ -1546,14 +1550,27 @@ func construction_credit_available() -> bool:
 	return not _roster_entry(str(advisor_seats.get("chief_investment", ""))).is_empty()
 
 func construction_material_rebate(building_id: String) -> float:
-	var frac: float = float(Modifiers.resolve_pct("construction_rebate", "*", {}).get("net", 0.0)) / 100.0
-	if frac == 0.0 or building_id == "":
+	if building_id == "":
 		return 0.0
-	var reqs: Dictionary = Construction.requirements_for(building_id)
+	return _materials_rebate(Construction.requirements_for(building_id))
+
+# Cash rebate = a fraction of the given materials' current market value, using the
+# Chief Investment "construction_rebate" tier fraction (tier3 +10% / tier2 +5% / tier1 -5%).
+# Shared by new builds and upgrades (the upgrade kit is valued the same way).
+func _materials_rebate(reqs: Dictionary) -> float:
+	var frac: float = float(Modifiers.resolve_pct("construction_rebate", "*", {}).get("net", 0.0)) / 100.0
+	if frac == 0.0:
+		return 0.0
 	var mat_value := 0.0
 	for good_id in reqs:
 		mat_value += float(int(reqs[good_id])) * MarketState.get_price(str(good_id))
 	return mat_value * frac
+
+# Land / NPC-building purchase cost after any Chief Investment "purchase_cost" discount
+# (tier3 -10% / tier2 -5% / tier1 +5% surcharge).
+func purchase_cost_after_advisor(base_cost: float) -> float:
+	var mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("purchase_cost", "*", {}).get("net", 0.0)) / 100.0)
+	return base_cost * mult
 
 func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
 	if tile_id == "":
@@ -1562,7 +1579,7 @@ func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
 	if available <= 0:
 		return false
 	var clamped_patches: int = clampi(patches, 1, available)
-	var cost := float(clamped_patches) * LAND_PATCH_COST
+	var cost := purchase_cost_after_advisor(float(clamped_patches) * LAND_PATCH_COST)
 	if not deduct_money(cost):
 		return false
 	var owned := get_tile_land_owned(tile_id)
@@ -3155,8 +3172,10 @@ const _SEAT_EFFECTS := {
 		{"domain": "dividend_rate", "base_pct": -40.0},   # tier3 -40% / tier2 -20% / tier1 +20%
 	],
 	"chief_investment": [
-		# Rebate a fraction of build-materials value: tier3 +10% / tier2 +5% / tier1 -5%.
+		# Rebate a fraction of build/upgrade-materials value: tier3 +10% / tier2 +5% / tier1 -5%.
 		{"domain": "construction_rebate", "base_pct": 10.0},
+		# Land + NPC-building purchases: tier3 -10% / tier2 -5% / tier1 +5%.
+		{"domain": "purchase_cost", "base_pct": -10.0},
 	],
 	"government_affairs": [
 		{"domain": "tax_rate", "base_pct": -20.0},
