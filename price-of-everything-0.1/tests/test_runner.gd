@@ -51,6 +51,7 @@ func _ready() -> void:
 	_test_advisor_seat_effects()
 	_test_advisor_seats_save_roundtrip()
 	_test_advisor_milestone_acquisition()
+	_test_advisor_slot_progression()
 	_test_advisor_slot_unlock()
 	_test_advisor_acquisition_save_roundtrip()
 	await _test_research_unlock_promotes_construct_panel_recipes()
@@ -6060,30 +6061,50 @@ func _test_advisor_payroll_cost() -> void:
 	MatchState.advisors_changed.emit()
 
 func _test_advisor_milestone_acquisition() -> void:
-	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_hired: Array = MatchState.recruited_advisor_ids.duplicate(true)
 	var saved_crossed: Array = MatchState.crossed_milestones.duplicate(true)
-	MatchState.permanent_advisor_ids = []
+	MatchState.recruited_advisor_ids = []
 	MatchState.crossed_milestones = []
 	MatchState._match_rng.seed = MatchState.DEFAULT_MATCH_RNG_SEED
 	MatchState.check_profit_milestones(40.0)
-	_check(MatchState.permanent_advisor_ids.is_empty(), "milestone: below 50 profit awards nothing")
+	_check(MatchState.recruited_advisor_ids.is_empty(), "milestone: below 50 profit recruits nothing")
 	MatchState.check_profit_milestones(60.0)
-	_check(MatchState.permanent_advisor_ids.size() == 1 and MatchState.crossed_milestones.has(50),
-		"milestone: crossing 50 awards one advisor")
-	var first_id := str(MatchState.permanent_advisor_ids[0])
+	_check(MatchState.recruited_advisor_ids.size() == 1 and MatchState.crossed_milestones.has(50),
+		"milestone: crossing 50 recruits one advisor")
+	var first_id := str(MatchState.recruited_advisor_ids[0])
 	MatchState.check_profit_milestones(60.0)
-	_check(MatchState.permanent_advisor_ids.size() == 1, "milestone: re-crossing 50 does not re-award (latched)")
+	_check(MatchState.recruited_advisor_ids.size() == 1, "milestone: re-crossing 50 does not re-recruit (latched)")
 	MatchState.check_profit_milestones(220.0)
-	_check(MatchState.permanent_advisor_ids.size() == 4 and MatchState.crossed_milestones.has(200),
-		"milestone: a jump awards each newly-crossed milestone (100/150/200)")
-	# determinism: same seed reproduces the first draw
-	MatchState.permanent_advisor_ids = []
+	_check(MatchState.recruited_advisor_ids.size() == 4 and MatchState.crossed_milestones.has(200),
+		"milestone: a jump recruits each newly-crossed milestone (100/150/200)")
+	MatchState.recruited_advisor_ids = []
 	MatchState.crossed_milestones = []
 	MatchState._match_rng.seed = MatchState.DEFAULT_MATCH_RNG_SEED
 	MatchState.check_profit_milestones(60.0)
-	_check(str(MatchState.permanent_advisor_ids[0]) == first_id, "milestone: seeded draw is deterministic")
-	MatchState.permanent_advisor_ids = saved_hired
+	_check(str(MatchState.recruited_advisor_ids[0]) == first_id, "milestone: seeded recruit is deterministic")
+	MatchState.recruited_advisor_ids = saved_hired
 	MatchState.crossed_milestones = saved_crossed
+
+func _test_advisor_slot_progression() -> void:
+	var saved_slots: int = MatchState.max_advisor_slots
+	var saved_streak: int = MatchState._advisor_profit_streak
+	var saved_pu: bool = MatchState.advisor_slot_profit_unlocked
+	MatchState.max_advisor_slots = 2
+	MatchState._advisor_profit_streak = 0
+	MatchState.advisor_slot_profit_unlocked = false
+	MatchState._update_advisor_slots(10.0)
+	_check(MatchState.max_advisor_slots == 2, "slot progression: low profit / few buildings keeps 2")
+	MatchState._update_advisor_slots(1000.0)
+	MatchState._update_advisor_slots(1000.0)
+	_check(not MatchState.advisor_slot_profit_unlocked, "slot progression: 2 turns at 1000 is not yet the streak")
+	MatchState._update_advisor_slots(1000.0)
+	_check(MatchState.advisor_slot_profit_unlocked and MatchState.max_advisor_slots == 3,
+		"slot progression: 1000 profit x3 unlocks a slot (2 -> 3)")
+	MatchState._update_advisor_slots(0.0)
+	_check(MatchState.max_advisor_slots == 3, "slot progression: a dip does not revoke the earned slot")
+	MatchState.max_advisor_slots = saved_slots
+	MatchState._advisor_profit_streak = saved_streak
+	MatchState.advisor_slot_profit_unlocked = saved_pu
 
 func _test_advisor_slot_unlock() -> void:
 	var saved: int = MatchState.max_advisor_slots
@@ -6097,20 +6118,21 @@ func _test_advisor_slot_unlock() -> void:
 	MatchState.max_advisor_slots = saved
 
 func _test_advisor_acquisition_save_roundtrip() -> void:
-	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_rec: Array = MatchState.recruited_advisor_ids.duplicate(true)
 	var saved_crossed: Array = MatchState.crossed_milestones.duplicate(true)
-	MatchState.permanent_advisor_ids = []
+	MatchState.recruited_advisor_ids = []
 	MatchState.crossed_milestones = []
 	MatchState._match_rng.seed = MatchState.DEFAULT_MATCH_RNG_SEED
-	MatchState.check_profit_milestones(60.0)   # cross 50, advance the rng past one draw
+	MatchState.check_profit_milestones(60.0)   # cross 50, advance the rng past one recruit
 	var d: Dictionary = MatchState.export_state()
 	MatchState.import_state(d)
-	_check(MatchState.crossed_milestones.has(50), "acquisition save: crossed_milestones round-trips")
+	_check(MatchState.crossed_milestones.has(50) and MatchState.recruited_advisor_ids.size() == 1,
+		"acquisition save: crossed_milestones + recruited round-trip")
 	var draw_a := MatchState.draw_advisor_from_pool()
 	MatchState.import_state(d)                  # restore -> rng state reset to the saved value
 	var draw_b := MatchState.draw_advisor_from_pool()
-	_check(draw_a != "" and draw_a == draw_b, "acquisition save: rng state persists -> next draw reproducible")
-	MatchState.permanent_advisor_ids = saved_hired
+	_check(draw_a != "" and draw_a == draw_b, "acquisition save: rng state persists -> next recruit reproducible")
+	MatchState.recruited_advisor_ids = saved_rec
 	MatchState.crossed_milestones = saved_crossed
 
 func _test_people_panel_seat_ui() -> void:
@@ -6147,13 +6169,19 @@ func _test_advisor_roster_merge() -> void:
 func _test_advisor_seat_requires_hire() -> void:
 	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
 	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_rec: Array = MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_slots: int = MatchState.max_advisor_slots
 	MatchState.advisor_seats = {}
 	MatchState.permanent_advisor_ids = []
+	MatchState.recruited_advisor_ids = ["vera"]
+	MatchState.max_advisor_slots = 2
 	_check(not MatchState.assign_advisor_to_seat("cfo", "vera"), "hire gate: cannot seat an un-hired advisor")
 	MatchState.hire_advisor("vera")
 	_check(MatchState.assign_advisor_to_seat("cfo", "vera"), "hire gate: can seat once hired")
 	MatchState.advisor_seats = saved_seats
 	MatchState.permanent_advisor_ids = saved_hired
+	MatchState.recruited_advisor_ids = saved_rec
+	MatchState.max_advisor_slots = saved_slots
 
 func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	var recipe := Catalog.get_recipe("r_020")
@@ -6286,7 +6314,12 @@ func _test_widgets_instantiate() -> void:
 	ig.queue_free()
 
 	var saved_advisors := MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_recruited := MatchState.recruited_advisor_ids.duplicate(true)
 	MatchState.permanent_advisor_ids.clear()
+	var _all_ids: Array = []
+	for _a in MatchState.advisor_pool():
+		_all_ids.append(str(_a.get("id", "")))
+	MatchState.recruited_advisor_ids = _all_ids
 	MatchState.advisors_changed.emit()
 	var pp: Node = load("res://scripts/people_panel.gd").new()
 	add_child(pp)
@@ -6335,6 +6368,7 @@ func _test_widgets_instantiate() -> void:
 		detail.queue_free()
 	pp.queue_free()
 	MatchState.permanent_advisor_ids = saved_advisors
+	MatchState.recruited_advisor_ids = saved_recruited
 	MatchState.advisors_changed.emit()
 
 func _tree_has_label_text(node: Node, needle: String) -> bool:

@@ -490,6 +490,8 @@ func _migrate_v3_to_v4(snap: Dictionary) -> Dictionary:
 		m["advisor_rng_seed"] = MatchState.DEFAULT_MATCH_RNG_SEED
 	if not m.has("advisor_crossed_milestones"):
 		m["advisor_crossed_milestones"] = []
+	if not m.has("recruited_advisor_ids"):
+		m["recruited_advisor_ids"] = []
 	snap["match"] = m
 	return snap
 

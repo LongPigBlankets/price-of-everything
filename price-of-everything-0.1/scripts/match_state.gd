@@ -66,6 +66,14 @@ const STARTING_TRIO := ["vera", "tom", "rufus"]
 var _match_rng := RandomNumberGenerator.new()
 var match_rng_seed: int = DEFAULT_MATCH_RNG_SEED   # seeded match RNG (draws + tile reveal)
 var crossed_milestones: Array = []                 # latched profit thresholds
+var recruited_advisor_ids: Array = []              # unlocked pool (employ up to the cap)
+# Advisor slot (employ-cap) unlocks: 3rd @15 buildings, 4th @100, 5th @ sustained profit.
+const ADVISOR_SLOT_BUILDINGS_3 := 15
+const ADVISOR_SLOT_BUILDINGS_4 := 100
+const ADVISOR_SLOT_PROFIT_5 := 1000.0
+const ADVISOR_SLOT_PROFIT_STREAK := 3
+var _advisor_profit_streak: int = 0
+var advisor_slot_profit_unlocked: bool = false
 
 # --- Output routing ---
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
@@ -1103,9 +1111,6 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 	if title == "" or unlocked_titles.has(title):
 		return
 	unlocked_titles[title] = true
-	# People-management unlocks also grant an advisor seat slot (spec §4.1).
-	if title == "Operational Team Managers" or title == "Shift Handover Documentation":
-		unlock_advisor_slot()
 	_surveyable_dirty = true  # e.g. Geoscanning changes survey range
 	var desc := ""
 	for d in _unlock_defs:
@@ -1584,6 +1589,9 @@ func reset() -> void:
 	advisor_seats.clear()
 	max_advisor_slots = MAX_ADVISOR_SLOTS_DEFAULT
 	crossed_milestones.clear()
+	recruited_advisor_ids.clear()
+	_advisor_profit_streak = 0
+	advisor_slot_profit_unlocked = false
 	match_rng_seed = DEFAULT_MATCH_RNG_SEED
 	_match_rng.seed = match_rng_seed
 	reconcile_advisor_modifiers()
@@ -1646,6 +1654,9 @@ func export_state() -> Dictionary:
 		"advisor_rng_seed": match_rng_seed,
 		"advisor_rng_state": _match_rng.state,
 		"advisor_crossed_milestones": crossed_milestones.duplicate(true),
+		"recruited_advisor_ids": recruited_advisor_ids.duplicate(true),
+		"advisor_profit_streak": _advisor_profit_streak,
+		"advisor_slot_profit_unlocked": advisor_slot_profit_unlocked,
 		"sell_mode": sell_mode,
 		"route_objective": route_objective,
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
@@ -1692,13 +1703,20 @@ func import_state(d: Dictionary) -> void:
 	labour_multiplier = float(d.get("labour_multiplier", EconomyConfig.LABOUR_MULTIPLIER_DEFAULT))
 	workforce_policies = (d.get("workforce_policies", {}) as Dictionary).duplicate(true)
 	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
-	permanent_advisor_ids = _sanitize_advisor_ids(d.get("permanent_advisor_ids", STARTING_TRIO))
+	recruited_advisor_ids = _sanitize_advisor_ids(d.get("recruited_advisor_ids", STARTING_TRIO))
+	permanent_advisor_ids = _sanitize_advisor_ids(d.get("permanent_advisor_ids", []))
+	# Employed must be a subset of recruited.
+	for pid in permanent_advisor_ids:
+		if not recruited_advisor_ids.has(pid):
+			recruited_advisor_ids.append(pid)
 	advisor_seats = _sanitize_advisor_seats(d.get("advisor_seats", {}))
 	max_advisor_slots = clampi(int(d.get("max_advisor_slots", MAX_ADVISOR_SLOTS_DEFAULT)), MAX_ADVISOR_SLOTS_DEFAULT, MAX_ADVISOR_SLOTS_CAP)
 	match_rng_seed = int(d.get("advisor_rng_seed", DEFAULT_MATCH_RNG_SEED))
 	_match_rng.seed = match_rng_seed
 	_match_rng.state = int(d.get("advisor_rng_state", _match_rng.state))
 	crossed_milestones = (d.get("advisor_crossed_milestones", []) as Array).duplicate(true)
+	_advisor_profit_streak = int(d.get("advisor_profit_streak", 0))
+	advisor_slot_profit_unlocked = bool(d.get("advisor_slot_profit_unlocked", false))
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
@@ -3258,23 +3276,25 @@ func _match_rng_int(max_exclusive: int) -> int:
 		return 0
 	return _match_rng.randi_range(0, max_exclusive - 1)
 
-# Canonical ids not yet hired (draw-without-replacement, spec §4.3).
+# Canonical ids not yet recruited (draw-without-replacement, spec §4.3).
 func _advisor_draw_pool() -> Array:
 	var out: Array = []
 	for a in ADVISOR_ROSTER:
 		var id := str(a.get("id", ""))
-		if not permanent_advisor_ids.has(id):
+		if not recruited_advisor_ids.has(id):
 			out.append(id)
 	return out
 
-# Draw one random advisor from the pool into the hired roster (seeded; deterministic).
+# Recruit one random advisor into the available pool (seeded; deterministic).
+# Recruiting UNLOCKS an advisor; you still employ up to max_advisor_slots.
 func draw_advisor_from_pool() -> String:
 	var pool := _advisor_draw_pool()
 	if pool.is_empty():
 		return ""
 	var picked := str(pool[_match_rng_int(pool.size())])
-	if hire_advisor(picked):
-		advisor_acquired.emit(picked)
+	recruited_advisor_ids.append(picked)
+	advisor_acquired.emit(picked)
+	advisors_changed.emit()
 	return picked
 
 # Award one advisor on the first crossing of each profit-per-turn milestone (latched).
@@ -3286,8 +3306,40 @@ func check_profit_milestones(profit_per_turn: float) -> void:
 			crossed_milestones.append(m)
 			draw_advisor_from_pool()
 
+func _player_building_count() -> int:
+	var n := 0
+	for b in buildings.values():
+		if b is Dictionary and is_player_owned(b):
+			n += 1
+	return n
+
+# Advisor employ-slots unlock monotonically: 3rd at ADVISOR_SLOT_BUILDINGS_3 buildings,
+# 4th at ADVISOR_SLOT_BUILDINGS_4, 5th after ADVISOR_SLOT_PROFIT_STREAK consecutive turns
+# at >= ADVISOR_SLOT_PROFIT_5 profit/turn. Once earned a slot is kept.
+func _update_advisor_slots(profit_per_turn: float) -> void:
+	if profit_per_turn >= ADVISOR_SLOT_PROFIT_5:
+		_advisor_profit_streak += 1
+	else:
+		_advisor_profit_streak = 0
+	if _advisor_profit_streak >= ADVISOR_SLOT_PROFIT_STREAK:
+		advisor_slot_profit_unlocked = true
+	var bldgs := _player_building_count()
+	var target := MAX_ADVISOR_SLOTS_DEFAULT
+	if bldgs >= ADVISOR_SLOT_BUILDINGS_3:
+		target += 1
+	if bldgs >= ADVISOR_SLOT_BUILDINGS_4:
+		target += 1
+	if advisor_slot_profit_unlocked:
+		target += 1
+	var new_cap: int = mini(maxi(max_advisor_slots, target), MAX_ADVISOR_SLOTS_CAP)
+	if new_cap != max_advisor_slots:
+		max_advisor_slots = new_cap
+		advisors_changed.emit()
+
 func _on_turn_processed_advisors(summary: Dictionary) -> void:
-	check_profit_milestones(float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)))
+	var profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
+	_update_advisor_slots(profit)
+	check_profit_milestones(profit)
 
 func advisor_pool() -> Array:
 	var out: Array = []
@@ -3311,20 +3363,23 @@ func permanent_advisors() -> Array:
 	return out
 
 func available_advisors() -> Array:
-	var hired := {}
-	for advisor_id in permanent_advisor_ids:
-		hired[str(advisor_id)] = true
+	# Recruited (unlocked) advisors you have not employed yet.
 	var out: Array = []
-	for advisor in _advisor_definitions():
-		if not (advisor is Dictionary):
+	for advisor_id in recruited_advisor_ids:
+		if permanent_advisor_ids.has(str(advisor_id)):
 			continue
-		if hired.has(str(advisor.get("id", ""))):
-			continue
-		out.append((advisor as Dictionary).duplicate(true))
+		var a := get_advisor(str(advisor_id))
+		if not a.is_empty():
+			out.append(a)
 	return out
 
+# Employ a recruited advisor. Capped at max_advisor_slots (spec §4.1).
 func hire_advisor(advisor_id: String) -> bool:
 	if advisor_id == "" or permanent_advisor_ids.has(advisor_id) or get_advisor(advisor_id).is_empty():
+		return false
+	if not recruited_advisor_ids.has(advisor_id):
+		return false
+	if permanent_advisor_ids.size() >= max_advisor_slots:
 		return false
 	permanent_advisor_ids.append(advisor_id)
 	advisors_changed.emit()

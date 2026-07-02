@@ -556,7 +556,10 @@ func _add_advisor_section(parent: VBoxContainer, title_text: String, advisors: A
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.custom_minimum_size = Vector2(0, _advisor_card_height(permanent) + 22.0)
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	section.add_child(_advisor_section_header(title_text, scroll))
+	var header_text := title_text
+	if permanent:
+		header_text = "%s  (%d / %d)" % [title_text, MatchState.permanent_advisor_ids.size(), MatchState.max_advisor_slots]
+	section.add_child(_advisor_section_header(header_text, scroll))
 	section.add_child(scroll)
 
 	var row := HBoxContainer.new()
@@ -569,9 +572,9 @@ func _add_advisor_section(parent: VBoxContainer, title_text: String, advisors: A
 		if advisor is Dictionary:
 			row.add_child(_advisor_card(advisor, permanent, false))
 			shown += 1
-	if permanent:
-		row.add_child(_advisor_card({}, true, true))
-	elif shown == 0:
+	if permanent and MatchState.permanent_advisor_ids.size() < MatchState.max_advisor_slots:
+		row.add_child(_advisor_card({}, true, true))   # "+" hidden once at the cap
+	elif not permanent and shown == 0:
 		row.add_child(_empty_advisor_pool_card())
 	return section
 
