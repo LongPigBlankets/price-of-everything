@@ -6512,7 +6512,7 @@ func _test_widgets_instantiate() -> void:
 		and _tree_has_label_text(pp, "0.8x") and _tree_has_label_text(pp, "Workforce Policies"),
 		"PeoplePanel builds Labour and Advisors tabs")
 	_check(
-		_tree_has_label_text(pp, "Advisor payroll") and _tree_has_label_text(pp, "0 advisors (£0.00/turn)"),
+		_tree_has_label_text(pp, "Advisor cost") and _tree_has_label_text(pp, "0 / 2 advisors · £0.00/turn"),
 		"PeoplePanel shows advisor payroll at the top")
 	_check(MatchState.available_advisors().size() == MatchState.advisor_pool().size()
 		and MatchState.permanent_advisors().is_empty(),
@@ -6536,7 +6536,7 @@ func _test_widgets_instantiate() -> void:
 		"PeoplePanel clicking an available advisor opens the profile, not an instant hire")
 	pp.call("_on_confirm_hire_pressed", first_advisor)
 	_check(MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", "")))
-		and _tree_has_label_text(pp, "1 advisor (£1.00/turn)"),
+		and _tree_has_label_text(pp, "1 / 2 advisor · £1.00/turn"),
 		"PeoplePanel Confirm Hire from the profile hires a permanent advisor and updates payroll")
 	# Fire flow: the profile footer for an employed advisor benches them.
 	pp.call("_open_advisor_detail", first_advisor)
@@ -6544,6 +6544,17 @@ func _test_widgets_instantiate() -> void:
 	_check(fire_footer is Button and (fire_footer as Button).text == "Fire Advisor",
 		"PeoplePanel employed-advisor footer offers Fire Advisor")
 	var fid := str(first_advisor.get("id", ""))
+	# Net-modifiers readout + the "See all advisor modifiers" DS panel.
+	MatchState.assign_advisor_to_seat("cfo", fid)
+	_check((pp.call("_advisor_net_modifiers") as Array).size() > 0,
+		"PeoplePanel net-modifiers aggregates seated advisor effects")
+	pp.call("_open_advisor_modifiers_panel")
+	var modpanel: Node = pp.get("_advisor_modifiers_panel")
+	_check(is_instance_valid(modpanel) and (modpanel as Control).visible,
+		"PeoplePanel See-all opens the DS modifiers panel")
+	if is_instance_valid(modpanel):
+		PanelStack.remove(modpanel)
+		modpanel.queue_free()
 	MatchState.fire_advisor(fid)
 	_check(not MatchState.permanent_advisor_ids.has(fid)
 		and MatchState.is_fired(fid)

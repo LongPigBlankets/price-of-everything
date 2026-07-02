@@ -26,6 +26,7 @@ var _labour_floor_label: Label
 var _advisors_root: VBoxContainer
 var _advisor_payroll_label: Label
 var _advisor_detail_panel: PanelContainer
+var _advisor_modifiers_panel: PanelContainer
 var _discipline_info_section: VBoxContainer
 var _shown_discipline: String = ""
 const _DISCIPLINE_NAMES := {"inf": "Influencing", "ops": "Operations", "lead": "Leadership", "inn": "Innovation", "fin": "Finance"}
@@ -622,22 +623,105 @@ func _advisor_payroll_summary() -> Control:
 	row.add_theme_constant_override("separation", 10)
 	margin.add_child(row)
 
-	var title := _label("Advisor payroll", "Section")
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(title)
-
+	# Compact cost readout (payroll + N/cap) on the left...
+	var cost_box := VBoxContainer.new()
+	cost_box.add_theme_constant_override("separation", 0)
+	cost_box.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var cost_title := _label("Advisor cost", "Caption")
+	cost_title.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+	cost_box.add_child(cost_title)
 	_advisor_payroll_label = _label("", "Numeric")
-	_advisor_payroll_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	row.add_child(_advisor_payroll_label)
+	cost_box.add_child(_advisor_payroll_label)
 	_refresh_advisor_payroll_label()
+	row.add_child(cost_box)
+
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(spacer)
+
+	# ...and a button to open the combined net-modifiers panel on the right.
+	var see_all := Button.new()
+	see_all.text = "See all advisor modifiers"
+	see_all.focus_mode = Control.FOCUS_NONE
+	see_all.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	see_all.pressed.connect(_open_advisor_modifiers_panel)
+	row.add_child(see_all)
 	return panel
+
+# Net effect of every seated advisor, aggregated per modifier domain.
+func _advisor_net_modifiers() -> Array:
+	var by_domain: Dictionary = {}
+	for m in Modifiers.active():
+		if str(m.get("source", "")) == "advisor_seat":
+			var d := str(m.get("domain", ""))
+			by_domain[d] = float(by_domain.get(d, 0.0)) + float(m.get("pct", 0.0))
+	var out: Array = []
+	for d in by_domain:
+		if absf(float(by_domain[d])) >= 0.001:
+			out.append({"domain": d, "pct": float(by_domain[d])})
+	return out
+
+# DS-style overlay listing all advisor modifiers together (net), closeable via the X.
+func _open_advisor_modifiers_panel() -> void:
+	if is_instance_valid(_advisor_modifiers_panel):
+		_advisor_modifiers_panel.queue_free()
+	_advisor_modifiers_panel = PanelContainer.new()
+	_advisor_modifiers_panel.name = "AdvisorModifiersPanel"
+	_advisor_modifiers_panel.custom_minimum_size = Vector2(360, 420)
+	_advisor_modifiers_panel.size = Vector2(360, 420)
+	_apply_market_window(_advisor_modifiers_panel)
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(m, 12)
+	_advisor_modifiers_panel.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 8)
+	margin.add_child(root)
+
+	var header := HBoxContainer.new()
+	root.add_child(header)
+	var title := _label("Advisor Modifiers (net)", "Title")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(32, 32)
+	close_btn.pressed.connect(func() -> void:
+		if is_instance_valid(_advisor_modifiers_panel):
+			PanelStack.remove(_advisor_modifiers_panel)
+			_advisor_modifiers_panel.queue_free())
+	header.add_child(close_btn)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	root.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 4)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+
+	var mods := _advisor_net_modifiers()
+	if mods.is_empty():
+		list.add_child(_label("No advisor modifiers active — seat some advisors to see their combined impact here.", "Caption"))
+	else:
+		for mod in mods:
+			list.add_child(_impact_row(str(mod["domain"]), float(mod["pct"])))
+
+	var host := get_parent()
+	if host == null:
+		add_child(_advisor_modifiers_panel)
+	else:
+		host.add_child(_advisor_modifiers_panel)
+	PanelStack.push(_advisor_modifiers_panel)
+	_advisor_modifiers_panel.move_to_front()
 
 func _refresh_advisor_payroll_label() -> void:
 	if not is_instance_valid(_advisor_payroll_label):
 		return
 	var count := MatchState.permanent_advisor_ids.size()
 	var payroll := MatchState.advisor_payroll_per_turn()
-	_advisor_payroll_label.text = "%d advisor%s (£%.2f/turn)" % [count, ("" if count == 1 else "s"), payroll]
+	_advisor_payroll_label.text = "%d / %d advisor%s · £%.2f/turn" % [count, MatchState.max_advisor_slots, ("" if count == 1 else "s"), payroll]
 
 func _add_advisor_section(parent: VBoxContainer, title_text: String, advisors: Array, permanent: bool) -> Control:
 	var section := VBoxContainer.new()
