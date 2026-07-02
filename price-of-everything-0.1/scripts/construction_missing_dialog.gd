@@ -20,11 +20,13 @@ const CELL_SIZE := 72.0
 signal cancelled
 signal buy_requested(building_id: String, recipe_id: String, tile_id: String)
 signal use_stockpile_requested(building_id: String, recipe_id: String, tile_id: String)
+signal credit_requested(building_id: String, recipe_id: String, tile_id: String)
 
 var _missing_grid: GridContainer
 var _eta_label: Label
 var _buy_button: Button
 var _use_button: Button
+var _credit_button: Button
 
 var _building_id: String = ""
 var _recipe_id: String = ""
@@ -45,6 +47,8 @@ func open(building_id: String, recipe_id: String, tile_id: String, missing: Dict
 	_populate_missing(missing)
 	_update_eta()
 	_update_use_button(missing)
+	# Chief Investment unlocks build-on-credit; hidden otherwise.
+	_credit_button.visible = MatchState.construction_credit_available()
 	visible = true
 	move_to_front()
 
@@ -65,7 +69,7 @@ func _update_eta() -> void:
 	var port: String = TransportService.nearest_port_tile(_tile_id)
 	if port != "":
 		lead = int(TransportService.route(port, _tile_id).get("turns", 0))
-	var duration: int = int(Catalog.get_building(_building_id).get("build_duration", 0))
+	var duration: int = MatchState.effective_build_duration(_building_id)
 	_eta_label.text = "Estimated delivery ~%d turn%s · build %d turn%s · ready in ~%d turns" % [
 		lead, "" if lead == 1 else "s", duration, "" if duration == 1 else "s", lead + duration
 	]
@@ -145,6 +149,11 @@ func _build_ui() -> void:
 	_buy_button = _make_button("Buy from market and construct", 1.5)
 	_buy_button.pressed.connect(_on_buy_pressed)
 	row.add_child(_buy_button)
+
+	_credit_button = _make_button("Build on credit (10 turns @ 5%)", 1.5)
+	_credit_button.visible = false
+	_credit_button.pressed.connect(_on_credit_pressed)
+	row.add_child(_credit_button)
 
 	var cancel_button := _make_button("Cancel construction", 1.0)
 	cancel_button.pressed.connect(_on_cancel_pressed)
@@ -238,3 +247,8 @@ func _on_buy_pressed() -> void:
 func _on_use_pressed() -> void:
 	visible = false
 	use_stockpile_requested.emit(_building_id, _recipe_id, _tile_id)
+
+
+func _on_credit_pressed() -> void:
+	visible = false
+	credit_requested.emit(_building_id, _recipe_id, _tile_id)

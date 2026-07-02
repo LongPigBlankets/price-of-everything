@@ -131,6 +131,7 @@ func _process_production() -> void:
 	# Aggregates (preserved for compatibility)
 	"money_in": 0.0,
 	"money_out": 0.0,
+	"fake_money": 0.0,   # cheat-added cash, reported as its own category
 	# Power-specific
 	"power_supply": 0,
 	"power_demand": 0,
@@ -157,6 +158,7 @@ func _process_production() -> void:
 	# off the tile (before production can consume them) and ticked-down ones promote to the
 	# new level, so an upgrade that completes this turn produces at its new level immediately.
 	MatchState.tick_upgrades()
+	MatchState.tick_retrofits()   # recipe changes complete + swap in the new recipe
 	TurnProfiler.section_end("construction")
 
 	# Only the player's buildings are simulated each turn. The pre-existing NPC
@@ -178,6 +180,11 @@ func _process_production() -> void:
 		for building in all_buildings:
 			var instance_id: String = building.instance_id
 			if has_run.get(instance_id, false):
+				continue
+
+			# A building being retooled produces nothing until the recipe change lands.
+			if MatchState.is_retooling(instance_id):
+				has_run[instance_id] = true
 				continue
 
 			var recipe: Dictionary = Catalog.get_recipe(building.recipe_id)
@@ -405,6 +412,10 @@ func _process_production() -> void:
 	TurnProfiler.section_end("cost_solve")
 
 	TurnProfiler.section_begin("emit_summary")
+	# Cheat-added cash this turn, surfaced as its own "fake money" category. Kept out
+	# of money_in so it doesn't count toward advisor profit unlocks (it's a cheat).
+	summary["fake_money"] = MatchState.fake_money_this_turn
+	MatchState.fake_money_this_turn = 0.0
 	last_turn_summary = summary
 	_active_turn_summary = {}
 	turn_processed.emit(summary)
@@ -474,14 +485,20 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 		summary.dividends_paid = 0.0
 		return pre_tax_profit
 
-	var tax: float = minf(taxable_profit, taxable_profit * EconomyConfig.TAX_RATE)
+	# A Government Affairs advisor can cut the tax rate via the "tax_rate" domain.
+	var tax_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("tax_rate", "*", {}).get("net", 0.0)) / 100.0)
+	var tax: float = minf(taxable_profit, taxable_profit * EconomyConfig.TAX_RATE * tax_mult)
 	if tax > 0.0:
 		MatchState.add_money(-tax)
 		summary.taxes_paid = tax
 		summary.money_out += tax
 
 	var post_tax_profit := maxf(0.0, taxable_profit - tax)
-	var dividends: float = minf(post_tax_profit, post_tax_profit * EconomyConfig.DIVIDEND_RATE)
+	# A CFO advisor can grant a partial dividend holiday via the "dividend_rate" domain;
+	# the Stock Options workforce policy adds to the base rate (both capped at 30% total).
+	var div_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("dividend_rate", "*", {}).get("net", 0.0)) / 100.0)
+	var div_rate: float = minf(0.30, EconomyConfig.DIVIDEND_RATE * div_mult + MatchState.workforce_dividend_bonus())
+	var dividends: float = minf(post_tax_profit, post_tax_profit * div_rate)
 	if dividends > 0.0:
 		MatchState.add_money(-dividends)
 		summary.dividends_paid = dividends
@@ -1020,6 +1037,11 @@ func _inbound_transport_per_unit(tile_id: String, good_id: String) -> float:
 	return float(rec.get("cost", 0.0)) / qty
 
 func _calculate_labour_cost(building: Dictionary) -> float:
+	# While retooling, a building pays only a reduced fraction of its base labour and
+	# skips the usual modifier factor (spec §7.3).
+	var instance_id: String = str(building.get("instance_id", ""))
+	if MatchState.is_retooling(instance_id):
+		return _base_labour_cost(building) * MatchState.retooling_labour_fraction(instance_id)
 	return _base_labour_cost(building) * labour_cost_factor(building)
 
 # Raw per-turn staffing cost for a building BEFORE any percentage labour modifiers:
@@ -1049,7 +1071,7 @@ func labour_cost_factor(building: Dictionary, policy_delta_override: float = INF
 	var headcount_delta: float = float(Modifiers.resolve_pct("labour_headcount", bid, {"building_id": bid}).get("net", 0.0)) / 100.0
 	var slider_delta: float = MatchState.labour_multiplier - 1.0
 	var policy_delta: float = MatchState.workforce_labour_cost_delta() if is_inf(policy_delta_override) else policy_delta_override
-	return maxf(0.0, 1.0 + headcount_delta + slider_delta + policy_delta)
+	return maxf(EconomyConfig.LABOUR_FACTOR_MIN, 1.0 + headcount_delta + slider_delta + policy_delta)
 
 # Aggregate labour snapshot for the People panel's Labour indicator: current £/turn,
 # the effective % of base, the next-turn direction (from workforce-policy accrual),
@@ -1060,6 +1082,7 @@ func labour_overview() -> Dictionary:
 	var current := 0.0
 	var next_turn := 0.0
 	var est_ten := 0.0
+	var at_floor := false
 	var slider_delta: float = MatchState.labour_multiplier - 1.0
 	var policy_now: float = MatchState.workforce_labour_cost_delta()
 	var policy_next: float = MatchState.projected_workforce_labour_delta(1)
@@ -1072,10 +1095,14 @@ func labour_overview() -> Dictionary:
 			continue
 		var bid: String = str(building.get("building_id", ""))
 		var hc: float = float(Modifiers.resolve_pct("labour_headcount", bid, {"building_id": bid}).get("net", 0.0)) / 100.0
+		var floor_min: float = EconomyConfig.LABOUR_FACTOR_MIN
+		var raw_now: float = 1.0 + hc + slider_delta + policy_now
+		if raw_now <= floor_min + 0.000001:
+			at_floor = true
 		base_total += b_base
-		current   += b_base * maxf(0.0, 1.0 + hc + slider_delta + policy_now)
-		next_turn += b_base * maxf(0.0, 1.0 + hc + slider_delta + policy_next)
-		est_ten   += b_base * maxf(0.0, 1.0 + hc + slider_delta + policy_ten)
+		current   += b_base * maxf(floor_min, raw_now)
+		next_turn += b_base * maxf(floor_min, 1.0 + hc + slider_delta + policy_next)
+		est_ten   += b_base * maxf(floor_min, 1.0 + hc + slider_delta + policy_ten)
 	var factor_pct: float = (current / base_total * 100.0) if base_total > 0.0 else 100.0
 	return {
 		"base": base_total,
@@ -1084,6 +1111,7 @@ func labour_overview() -> Dictionary:
 		"est_10_turns": est_ten,
 		"factor_pct": factor_pct,
 		"has_buildings": base_total > 0.0,
+		"at_floor": at_floor,
 	}
 
 func _grown_labour_rate(base_rate: float, growth: float) -> float:
@@ -1685,4 +1713,6 @@ func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictiona
 	for input in inputs:
 		var qty := int(round(float(input.qty) * lvl_mult))
 		Stockpile.consume(tile_id, input.good_id, qty)
+		if qty > 0:
+			MatchState.flag_agenda_event(MatchState.AGENDA_USED_STOCKPILE)
 		summary.consumed[input.good_id] = summary.consumed.get(input.good_id, 0) + qty

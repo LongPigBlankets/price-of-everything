@@ -236,7 +236,7 @@ func _update_layout() -> void:
 	# Expanded ledger: same width as the summary, aligned with it, emerging from
 	# the navy panel's top edge and growing up. It carries the summary content in
 	# its top header.
-	var slide_h := 294.0
+	var slide_h := 348.0   # +2 rows for the split labour/maintenance/tax/fake-money ledger
 	_r_slide = Rect2(_r_summary.position.x, navy_top - slide_h, SUMMARY_W, slide_h)
 
 	# Input layers.
@@ -326,30 +326,40 @@ func _render_empty() -> void:
 	_power_out = 0.0
 	_produced_text = ""
 	_fin = [
-		{"k": "Sold", "v": 0.0}, {"k": "Costs", "v": 0.0},
-		{"k": "Power", "v": 0.0}, {"k": "Transport", "v": 0.0},
-		{"k": "Bought", "v": 0.0},
+		{"k": "Sold", "v": 0.0}, {"k": "Fake Money", "v": 0.0},
+		{"k": "Labour", "v": 0.0}, {"k": "Maintenance", "v": 0.0},
+		{"k": "Tax & Div", "v": 0.0}, {"k": "Power", "v": 0.0},
+		{"k": "Transport", "v": 0.0}, {"k": "Bought", "v": 0.0},
+		{"k": "Interest", "v": 0.0}, {"k": "Profit Sharing", "v": 0.0},
 	]
 	queue_redraw()
 
 
 func _render_summary(s: Dictionary) -> void:
 	var sold: float = float(s.get("goods_sales_revenue", 0.0)) + float(s.get("power_sales_revenue", 0.0))
-	var costs: float = float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) \
-		+ float(s.get("taxes_paid", 0.0)) + float(s.get("dividends_paid", 0.0)) + float(s.get("interest_paid", 0.0))
+	var fake: float = float(s.get("fake_money", 0.0))
+	var labour: float = float(s.get("labour_paid", 0.0)) + float(s.get("advisor_paid", 0.0))
+	var maint: float = float(s.get("maintenance_paid", 0.0))
+	var tax_div: float = float(s.get("taxes_paid", 0.0)) + float(s.get("dividends_paid", 0.0))
 	var power: float = float(s.get("power_purchase_cost", 0.0))
 	var transport: float = float(s.get("transport_paid", 0.0))
 	var bought: float = float(s.get("goods_purchased_cost", 0.0))
+	var interest: float = float(s.get("interest_paid", 0.0))
 	var profit_sharing: float = float(s.get("profit_sharing_paid", 0.0))
 	_fin = [
 		{"k": "Sold", "v": sold},
-		{"k": "Costs", "v": -costs},
+		{"k": "Fake Money", "v": fake},
+		{"k": "Labour", "v": -labour},
+		{"k": "Maintenance", "v": -maint},
+		{"k": "Tax & Div", "v": -tax_div},
 		{"k": "Power", "v": -power},
 		{"k": "Transport", "v": -transport},
 		{"k": "Bought", "v": -bought},
+		{"k": "Interest", "v": -interest},
 		{"k": "Profit Sharing", "v": -profit_sharing},
 	]
-	_net = float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
+	# Fake money counts toward the reported total but not the sim's money_in.
+	_net = float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0)) + fake
 
 	var starved: Array = s.get("starved", [])
 	_starved = starved.size()

@@ -41,6 +41,26 @@ func _ready() -> void:
 	_test_build_mode_overlay_survey_visibility()
 	_test_direct_build_skips_build_overlay()
 	_test_advisor_payroll_cost()
+	_test_advisor_roster_merge()
+	_test_advisor_seat_requires_hire()
+	_test_people_panel_seat_ui()
+	_test_advisor_star_derivation()
+	_test_advisor_seat_assign_and_slot_cap()
+	_test_advisor_seat_tier_scaling()
+	_test_advisor_reconcile_idempotent()
+	_test_advisor_seat_effects()
+	_test_advisor_phase2_effects()
+	_test_hr_director_policies()
+	_test_retrofit_mechanic()
+	_test_advisor_loyalty()
+	_test_advisor_missions()
+	_test_build_duration()
+	_test_advisor_seats_save_roundtrip()
+	_test_advisor_milestone_acquisition()
+	_test_advisor_slot_progression()
+	_test_advisor_fake_money_and_track()
+	_test_advisor_slot_unlock()
+	_test_advisor_acquisition_save_roundtrip()
 	await _test_research_unlock_promotes_construct_panel_recipes()
 	_test_tile_deposit_build_options_respect_research_unlocks()
 	await _test_building_ledger()
@@ -116,6 +136,7 @@ func _ready() -> void:
 	_test_deposit_penalty_modifier()
 	_test_workforce_output_modifier_surfaces_in_building_status()
 	_test_additive_labour_cost_model()
+	_test_labour_factor_floor()
 	_test_cost_report_credits_output_modifiers()
 	_test_flavor_nodes_wired()
 	_test_transport_congestion()
@@ -3547,6 +3568,30 @@ func _test_additive_labour_cost_model() -> void:
 	Modifiers.reset()
 	MatchState.reset()
 
+func _test_labour_factor_floor() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	var old_turn: int = int(TurnManager.current_turn)
+	TurnManager.current_turn = 1
+	var iid := MatchState.add_building("b_001", "r_001", "tile_6_8", MatchState.LOCAL_PLAYER, "test_labour_floor")
+	var building: Dictionary = MatchState.buildings[iid]
+	MatchState.set_labour_multiplier(1.0)
+	# A -80% head-count reduction would drive the factor to 0.20; the floor clamps it.
+	Modifiers.add({"id": "test_labour_floor", "domain": "labour_headcount", "pct": -80.0})
+	_check(is_equal_approx(Production.labour_cost_factor(building), EconomyConfig.LABOUR_FACTOR_MIN),
+		"labour floor: factor clamps to LABOUR_FACTOR_MIN (0.40) when reductions exceed it")
+	_check(bool(Production.labour_overview().get("at_floor", false)),
+		"labour floor: overview flags at_floor once the cap is reached")
+	# The -60% debug cheat lands exactly on the floor (1 - 0.60 = 0.40).
+	Modifiers.remove("test_labour_floor")
+	Modifiers.add({"id": "cheat_labour_discount", "domain": "labour_headcount", "pct": -60.0})
+	_check(is_equal_approx(Production.labour_cost_factor(building), EconomyConfig.LABOUR_FACTOR_MIN),
+		"labour floor: -60% cheat lands exactly on the 40% floor")
+	MatchState.set_labour_multiplier(1.0)
+	TurnManager.current_turn = old_turn
+	Modifiers.reset()
+	MatchState.reset()
+
 func _test_building_leveling() -> void:
 	Modifiers.reset()
 	MatchState.reset()
@@ -5150,7 +5195,7 @@ func _test_construction() -> void:
 		if Stockpile.get_at_tile(tile, gid) != 0:
 			consumed_ok = false
 	_check(consumed_ok, "start_on_tile consumes the construction materials")
-	var duration: int = int(Catalog.get_building(bid).get("build_duration", 0))
+	var duration: int = MatchState.effective_build_duration(bid)
 	_check(duration >= 1, "building has a positive build_duration")
 	_check(not MatchState.buildings.has(iid) and Construction.construction_projects.has(iid),
 		"start_on_tile creates an under_construction project, not a live building")
@@ -5370,7 +5415,7 @@ func _test_construction_awaiting() -> void:
 		"awaiting project begins construction once materials are secured")
 
 	# Countdown then completes the build with the same id.
-	var duration: int = int(Catalog.get_building(bid).get("build_duration", 0))
+	var duration: int = MatchState.effective_build_duration(bid)
 	for _i in range(duration):
 		Construction.tick_turn()
 	_check(MatchState.buildings.has(iid) and not Construction.construction_projects.has(iid),
@@ -5878,22 +5923,690 @@ func _test_direct_build_skips_build_overlay() -> void:
 	BuildMode.current_infrastructure_type = saved_infra
 	BuildMode._last_attempt_ms = saved_last_attempt
 
+func _test_advisor_star_derivation() -> void:
+	var expected := {"vera": 5, "alexandra": 5, "gerald": 4, "eleanor": 4, "sloane": 3, "priya": 3, "hitomi": 3, "hal": 3, "tom": 2, "marcus": 2, "idris": 2, "rufus": 1}
+	for aid in expected:
+		_check(MatchState.advisor_star_by_id(str(aid)) == int(expected[aid]),
+			"advisor star: %s -> %d" % [str(aid), int(expected[aid])])
+	# precedence edges (spec §2.2)
+	_check(MatchState.advisor_star({"inf": 3, "ops": 3, "lead": 3, "inn": 3, "fin": 1}) == 5,
+		"advisor star: four 3s -> 5 (beats the score band)")
+	_check(MatchState.advisor_star({"inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 1}) == 4,
+		"advisor star: score 12 with three 3s -> 4")
+	_check(MatchState.advisor_star({"inf": 1, "ops": 1, "lead": 1, "inn": 1, "fin": 1}) == 1,
+		"advisor star: all 1s -> 1 (floor)")
+
+func _test_advisor_seat_assign_and_slot_cap() -> void:
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	var saved_slots: int = MatchState.max_advisor_slots
+	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	MatchState.permanent_advisor_ids = ["vera", "tom", "marcus", "eleanor"]
+	MatchState.advisor_seats = {}
+	MatchState.max_advisor_slots = 2
+	_check(MatchState.assign_advisor_to_seat("cfo", "vera"), "seat: assign vera -> cfo")
+	_check(MatchState.assign_advisor_to_seat("coo", "tom"), "seat: assign tom -> coo")
+	_check(not MatchState.assign_advisor_to_seat("hr_director", "eleanor"), "seat: third assign blocked by slot cap (2)")
+	_check(not MatchState.assign_advisor_to_seat("cfo", "not_an_advisor"), "seat: unknown advisor rejected")
+	_check(not MatchState.assign_advisor_to_seat("bogus_seat", "vera"), "seat: unknown seat rejected")
+	_check(MatchState.get_advisor_in_seat("cfo") == "vera", "seat: cfo holds vera")
+	# re-assigning within an already-occupied seat consumes no new slot
+	_check(MatchState.assign_advisor_to_seat("cfo", "marcus"), "seat: re-assign within cfo (no new slot)")
+	_check(MatchState.get_advisor_in_seat("cfo") == "marcus", "seat: cfo now holds marcus")
+	# one seat per advisor: moving tom (in coo) to hr vacates coo
+	MatchState.max_advisor_slots = 3
+	_check(MatchState.assign_advisor_to_seat("hr_director", "tom"), "seat: move tom -> hr_director")
+	_check(MatchState.get_advisor_in_seat("coo") == "", "seat: one seat per advisor (coo vacated)")
+	_check(MatchState.unassign_seat("cfo"), "seat: unassign frees the seat")
+	_check(MatchState.get_advisor_in_seat("cfo") == "", "seat: cfo empty after unassign")
+	MatchState.advisor_seats = saved_seats
+	MatchState.max_advisor_slots = saved_slots
+	MatchState.permanent_advisor_ids = saved_hired
+
+func _test_advisor_seat_tier_scaling() -> void:
+	# rigid seats read the governing stat directly
+	_check(MatchState.advisor_seat_tier("vera", "cfo") == 3, "tier: vera fin 3 -> cfo tier 3")
+	_check(MatchState.advisor_seat_tier("rufus", "cfo") == 1, "tier: rufus fin 1 -> cfo tier 1 (malus)")
+	_check(MatchState.advisor_seat_tier("tom", "coo") == 3, "tier: tom ops 3 -> coo tier 3")
+	# flexible seats read the best of eligible disciplines
+	_check(MatchState.advisor_seat_tier("marcus", "chief_investment") == 3, "tier: marcus max(fin 3, inn 1) -> 3")
+	_check(MatchState.advisor_seat_tier("idris", "chief_investment") == 3, "tier: idris max(fin 1, inn 3) -> 3")
+	_check(MatchState.advisor_seat_tier("rufus", "chief_markets") == 3, "tier: rufus max(inf 3, fin 1) -> 3")
+	_check(MatchState.advisor_seat_tier("hitomi", "sustainability") == 3, "tier: hitomi max(inf 1, ops 3, lead 1) -> 3")
+	_check(MatchState.advisor_seat_governing_discipline("idris", "chief_investment") == "inn", "tier: flexible governing discipline reported (inn)")
+	_check(MatchState.advisor_seat_tier("vera", "bogus_seat") == 0, "tier: unknown seat -> 0")
+
+func _test_advisor_reconcile_idempotent() -> void:
+	Modifiers.reset()
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	MatchState.advisor_seats = {"coo": "tom", "hr_director": "eleanor"}
+	# an unrelated modifier that must survive reconcile
+	Modifiers.add({"id": "unrelated_test_mod", "domain": "recipe_output", "pct": 5.0})
+	MatchState.reconcile_advisor_modifiers()
+	var count1: int = Modifiers.active_count()
+	MatchState.reconcile_advisor_modifiers()   # second run must not duplicate
+	_check(Modifiers.active_count() == count1, "reconcile: idempotent (no duplicate modifiers on re-run)")
+	_check(Modifiers.has("advisor_seat_coo_labour_headcount") and Modifiers.has("advisor_seat_hr_director_labour_headcount"),
+		"reconcile: emits per-domain effect modifiers per occupied seat")
+	_check(Modifiers.has("unrelated_test_mod"), "reconcile: leaves non-advisor modifiers untouched")
+	MatchState.advisor_seats = {"coo": "tom"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(not Modifiers.has("advisor_seat_hr_director_labour_headcount"), "reconcile: drops modifiers for vacated seats")
+	MatchState.advisor_seats = saved_seats
+	Modifiers.reset()
+
+func _test_advisor_seat_effects() -> void:
+	Modifiers.reset()
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	# Tom (ops 3) in COO -> tier 3 -> full reductions
+	MatchState.advisor_seats = {"coo": "tom"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("labour_headcount", "b_001", {"building_id": "b_001"}).get("net", 0.0)), -10.0),
+		"effects: COO tier 3 -> labour_headcount -10%")
+	_check(is_equal_approx(float(Modifiers.resolve_pct("maintenance", "b_001", {"building_id": "b_001"}).get("net", 0.0)), -10.0),
+		"effects: COO tier 3 -> maintenance -10%")
+	# COO + HR (Eleanor lead 3) -> dual-source labour stacks additively to -20%
+	MatchState.advisor_seats = {"coo": "tom", "hr_director": "eleanor"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("labour_headcount", "b_001", {"building_id": "b_001"}).get("net", 0.0)), -20.0),
+		"effects: COO + HR labour stacks additively to -20%")
+	# VP Logistics (Hitomi ops 3) -> transport cost
+	MatchState.advisor_seats = {"vp_logistics": "hitomi"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("transport_cost", "*", {}).get("net", 0.0)), -10.0),
+		"effects: VP Logistics tier 3 -> transport_cost -10%")
+	# tier-1 malus: Rufus (ops 1) in COO -> labour reduction flips to a +5% penalty
+	MatchState.advisor_seats = {"coo": "rufus"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("labour_headcount", "b_001", {"building_id": "b_001"}).get("net", 0.0)), 5.0),
+		"effects: COO tier 1 (ops 1) -> labour malus +5%")
+	# CFO (Marcus fin 3 -> tier 3) emits its Phase-2 finance levers
+	MatchState.advisor_seats = {"cfo": "marcus"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("loan_interest", "*", {}).get("net", 0.0)), -25.0)
+		and is_equal_approx(float(Modifiers.resolve_pct("dividend_rate", "*", {}).get("net", 0.0)), -40.0),
+		"effects: CFO tier 3 -> loan_interest -25% + dividend_rate -40%")
+	MatchState.advisor_seats = saved_seats
+	Modifiers.reset()
+
+func _test_advisor_phase2_effects() -> void:
+	Modifiers.reset()
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	# Government Affairs: Hal (inf 3) -> tier 3 -> tax_rate -20%
+	MatchState.advisor_seats = {"government_affairs": "hal"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("tax_rate", "*", {}).get("net", 0.0)), -20.0),
+		"phase2: Government Affairs tier 3 -> tax_rate -20%")
+	# Chief Markets (flexible): Sloane best-of(inf 3, fin 2) = 3 -> market_spread -25%
+	MatchState.advisor_seats = {"chief_markets": "sloane"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("market_spread", "*", {}).get("net", 0.0)), -25.0),
+		"phase2: Chief Markets tier 3 -> market_spread -25%")
+	_check(MarketState.get_buy_price("g_001") < MarketState.get_price("g_001") * (1.0 + EconomyConfig.MARKET_BUY_MARKUP),
+		"phase2: market_spread modifier tightens the buy price")
+	# Chief Markets also lifts the realised SALE price via the market_price domain (+6% tier 3)
+	var g := str(Catalog.all_goods()[0].get("id", "g_001"))
+	var boosted: float = Modifiers.apply("market_price", g, MarketState.get_price(g),
+		{"good_id": g, "good_internal": str(Catalog.get_good(g).get("internal_name", ""))})
+	_check(is_equal_approx(boosted, MarketState.get_price(g) * 1.02),
+		"phase2: Chief Markets tier 3 -> +2% realised sale price")
+	# Arbitrage guard: realised sale price is clamped to the buy price even with a big
+	# market_price uplift, so buy-then-resell can never turn a profit.
+	Modifiers.add({"id": "test_big_sale_lift", "domain": "market_price", "pct": 50.0, "label": "t", "source": "test"})
+	_check(MarketState.get_sale_price(g, {"good_id": g}) <= MarketState.get_buy_price(g) + 0.0001,
+		"phase2: sale price is clamped to buy price (no market arbitrage)")
+	Modifiers.remove("test_big_sale_lift")
+	# CFO: Marcus (fin 3) -> loan interest cut + dividend holiday take effect at their sites
+	MatchState.advisor_seats = {"cfo": "marcus"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(LoanState.effective_loan_interest_rate(), EconomyConfig.LOAN_INTEREST_RATE * 0.75),
+		"phase2: CFO cuts the effective loan interest rate to 75%")
+	var div_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("dividend_rate", "*", {}).get("net", 0.0)) / 100.0)
+	_check(is_equal_approx(div_mult, 0.6), "phase2: CFO cuts the dividend rate 40% (partial holiday)")
+	# Chief Investment (Alexandra inn 3 -> tier 3) rebates 10% of build-materials value
+	MatchState.advisor_seats = {"chief_investment": "alexandra"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("construction_rebate", "*", {}).get("net", 0.0)), 10.0),
+		"phase2: Chief Investment tier 3 -> construction_rebate +10%")
+	var ci_bid := ""
+	for b in Catalog.all_buildings():
+		if not Construction.requirements_for(str(b.get("id", ""))).is_empty():
+			ci_bid = str(b.get("id", ""))
+			break
+	if ci_bid != "":
+		var reqs: Dictionary = Construction.requirements_for(ci_bid)
+		var mv := 0.0
+		for gid2 in reqs:
+			mv += float(int(reqs[gid2])) * MarketState.get_price(str(gid2))
+		_check(mv > 0.0 and is_equal_approx(MatchState.construction_material_rebate(ci_bid), mv * 0.10),
+			"phase2: Chief Investment rebates 10% of build-materials market value")
+	# Land + NPC-building purchases discounted 10% at tier 3
+	_check(is_equal_approx(MatchState.purchase_cost_after_advisor(100.0), 90.0),
+		"phase2: Chief Investment tier 3 -> land/building purchase -10%")
+	# Upgrade kit is rebated the same way as a build (shares construction_rebate)
+	_check(is_equal_approx(MatchState._materials_rebate({str(g): 10}), 10.0 * MarketState.get_price(str(g)) * 0.10),
+		"phase2: Chief Investment rebates 10% of upgrade-kit materials value")
+	# Seated Chief Investment also unlocks build-on-credit (10-turn, 5% construction loan)
+	_check(MatchState.construction_credit_available(), "phase2: seated Chief Investment unlocks build-on-credit")
+	var money_b := MatchState.money
+	var loans_b := LoanState.loans.size()
+	var out_b := LoanState.total_outstanding()
+	if LoanState.take_construction_loan(20.0):
+		var new_loan: Dictionary = LoanState.loans[LoanState.loans.size() - 1]
+		_check(LoanState.loans.size() == loans_b + 1
+			and is_equal_approx(LoanState.total_outstanding() - out_b, 21.0)
+			and int(new_loan.get("turns_remaining", 0)) == LoanState.CONSTRUCTION_LOAN_TERM,
+			"phase2: construction loan owes principal + 5% over 10 turns")
+		LoanState.loans.remove_at(LoanState.loans.size() - 1)
+	MatchState.money = money_b
+	# COO negotiates grid tariffs: cheaper imports, better-paid exports (tier 3 -10% / +10%).
+	MatchState.advisor_seats = {"coo": "tom"}   # tom ops 3 -> COO tier 3
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("grid_buy_price", "*", {}).get("net", 0.0)), -10.0)
+		and is_equal_approx(float(Modifiers.resolve_pct("grid_sell_price", "*", {}).get("net", 0.0)), 10.0),
+		"phase2: COO tier 3 -> grid buy -10% / grid sell +10%")
+	# Impact readout derives tier-scaled, per-domain effects for a seat.
+	var gov_eff: Array = MatchState.advisor_seat_effect_list("hal", "government_affairs")
+	_check(gov_eff.size() == 1 and str(gov_eff[0]["domain"]) == "tax_rate" and is_equal_approx(float(gov_eff[0]["pct"]), -20.0),
+		"impact: advisor_seat_effect_list gives tier-scaled per-domain effects")
+	MatchState.advisor_seats = {}
+	MatchState.reconcile_advisor_modifiers()
+	_check(not MatchState.construction_credit_available(), "phase2: no Chief Investment -> build-on-credit locked")
+	MatchState.advisor_seats = saved_seats
+	MatchState.reconcile_advisor_modifiers()
+	Modifiers.reset()
+
+func _test_hr_director_policies() -> void:
+	var saved_seats := MatchState.advisor_seats.duplicate(true)
+	var saved_pol := MatchState.workforce_policies.duplicate(true)
+	var saved_eff := MatchState.workforce_policy_effects.duplicate(true)
+	MatchState.workforce_policies = {}
+	MatchState.workforce_policy_effects = {}
+	var LT: String = MatchState.WORKFORCE_POLICY_LONG_TENURE
+	var SO: String = MatchState.WORKFORCE_POLICY_STOCK_OPTIONS
+
+	MatchState.advisor_seats = {}
+	MatchState.reconcile_advisor_modifiers()
+	_check(not MatchState.is_workforce_policy_available(LT) and not MatchState.is_workforce_policy_available(SO),
+		"HR: both policies locked with no HR Director")
+	# Priya (lead 2): Long Tenure unlocked, Stock Options still locked.
+	MatchState.advisor_seats = {"hr_director": "priya"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(MatchState.is_workforce_policy_available(LT) and not MatchState.is_workforce_policy_available(SO),
+		"HR: Long Tenure needs any HR Director; Stock Options stays locked until its mission")
+	# Vera seated: Long Tenure available, but Stock Options is now MISSION-gated (not seat).
+	MatchState.advisor_seats = {"hr_director": "vera"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(MatchState.is_workforce_policy_available(LT) and not MatchState.is_workforce_policy_available(SO),
+		"HR: Stock Options no longer unlocks by seating alone (mission-gated)")
+	MatchState.advisor_mission_policies = [SO]   # an HR advisor's mission V grants it
+	_check(MatchState.is_workforce_policy_available(SO),
+		"HR: Stock Options unlocks once an HR advisor's mission grants it")
+
+	# Long Tenure accrues -0.1%/turn labour + a +10% spike every 10th turn.
+	MatchState.set_workforce_policy_enabled(LT, true)
+	for _i in 5:
+		MatchState.tick_workforce_policies()
+	var lt_eff: Dictionary = MatchState.workforce_policy_effects.get(LT, {})
+	_check(is_equal_approx(float(lt_eff.get("labour_pct", 0.0)), -0.005),
+		"HR: Long Tenure accrues -0.1%/turn labour (-0.5% after 5 turns)")
+	_check(is_equal_approx(MatchState.workforce_labour_cost_delta(10) - MatchState.workforce_labour_cost_delta(11), 0.10),
+		"HR: Long Tenure adds a +10% labour spike every 10th turn")
+
+	# Stock Options accrues output + a dividend bonus (persisted in workforce_dividend_bonus).
+	MatchState.set_workforce_policy_enabled(SO, true)
+	for _j in 5:
+		MatchState.tick_workforce_policies()
+	var so_eff: Dictionary = MatchState.workforce_policy_effects.get(SO, {})
+	_check(float(so_eff.get("output_pct", 0.0)) > 0.0
+		and float(so_eff.get("dividend_pct", 0.0)) > 0.0
+		and is_equal_approx(MatchState.workforce_dividend_bonus(), float(so_eff.get("dividend_pct", 0.0))),
+		"HR: Stock Options accrues output + dividend bonus")
+
+	# Un-seating the HR Director revokes the seat-gated policy (Long Tenure); the
+	# mission-unlocked Stock Options is earned permanently and stays available.
+	MatchState.advisor_seats = {}
+	MatchState.reconcile_advisor_modifiers()
+	_check(not MatchState.is_workforce_policy_enabled(LT) and MatchState.is_workforce_policy_available(SO),
+		"HR: un-seating revokes Long Tenure but keeps the mission-earned Stock Options")
+
+	MatchState.advisor_mission_policies = []
+	MatchState.advisor_seats = saved_seats
+	MatchState.workforce_policies = saved_pol
+	MatchState.workforce_policy_effects = saved_eff
+	MatchState.reconcile_advisor_modifiers()
+
+func _test_retrofit_mechanic() -> void:
+	# Find a building type with at least two recipes to retrofit between.
+	var by_b: Dictionary = {}
+	for r in Catalog.all_recipes():
+		var b := str(r.get("building_id", ""))
+		if b == "":
+			continue
+		if not by_b.has(b):
+			by_b[b] = []
+		(by_b[b] as Array).append(str(r.get("recipe_id", "")))
+	var bid := ""
+	var recs: Array = []
+	for b in by_b:
+		if (by_b[b] as Array).size() >= 2:
+			bid = str(b)
+			recs = by_b[b]
+			break
+	if bid == "":
+		_check(true, "retrofit: skipped (no multi-recipe building in catalog)")
+		return
+
+	var saved_seats := MatchState.advisor_seats.duplicate(true)
+	var saved_money := MatchState.money
+	var saved_buildings := MatchState.buildings.duplicate(true)
+	var saved_retro := MatchState.pending_retrofits.duplicate(true)
+	MatchState.advisor_seats = {}
+	MatchState.money = 1000.0
+	MatchState.pending_retrofits = []
+	var iid := "test_retrofit_1"
+	MatchState.buildings[iid] = {"instance_id": iid, "building_id": bid, "recipe_id": str(recs[0]), "tile_id": "tile_0_0", "level": 1}
+
+	var tier: Dictionary = MatchState.retrofit_cost_tier()
+	_check(is_equal_approx(float(tier["labour"]), 0.50) and int(tier["turns"]) == 2,
+		"retrofit: base tier (no COO) = 50% labour, 2 turns")
+
+	var before := MatchState.money
+	var res: Dictionary = MatchState.start_retrofit(iid, str(recs[1]))
+	_check(bool(res["ok"]) and MatchState.is_retooling(iid)
+		and is_equal_approx(MatchState.money, before - 25.0)
+		and is_equal_approx(MatchState.retooling_labour_fraction(iid), 0.50),
+		"retrofit: start charges the fee, marks retooling, applies reduced labour")
+	_check(not bool(MatchState.start_retrofit(iid, str(recs[0]))["ok"]),
+		"retrofit: blocked while already retooling")
+
+	MatchState.tick_retrofits()
+	_check(MatchState.is_retooling(iid), "retrofit: still retooling after 1 tick (base = 2 turns)")
+	MatchState.tick_retrofits()
+	_check(not MatchState.is_retooling(iid) and str(MatchState.buildings[iid]["recipe_id"]) == str(recs[1]),
+		"retrofit: completes after 2 turns and swaps in the new recipe")
+
+	MatchState.advisor_seats = {"coo": "tom"}   # Ops 3
+	var t3: Dictionary = MatchState.retrofit_cost_tier()
+	_check(int(t3["turns"]) == 1 and is_equal_approx(float(t3["labour"]), 0.30),
+		"retrofit: Ops-3 COO = 1 turn, 30% labour")
+	MatchState.advisor_seats = {"coo": "rufus"}   # Ops 1 malus
+	var t1: Dictionary = MatchState.retrofit_cost_tier()
+	_check(is_equal_approx(float(t1["labour"]), 0.75) and is_equal_approx(float(t1["fee"]), 40.0),
+		"retrofit: Ops-1 COO malus = 75% labour, £40 (worse than base)")
+
+	MatchState.advisor_seats = {}
+	MatchState.start_retrofit(iid, str(recs[0]))
+	_check((MatchState.export_state().get("pending_retrofits", []) as Array).size() >= 1,
+		"retrofit: pending_retrofits is written to the save state")
+
+	MatchState.advisor_seats = saved_seats
+	MatchState.money = saved_money
+	MatchState.buildings = saved_buildings
+	MatchState.pending_retrofits = saved_retro
+
+func _test_build_duration() -> void:
+	var saved_seats := MatchState.advisor_seats.duplicate(true)
+	# A building with a real (>0) build duration.
+	var bid := ""
+	var raw := 0
+	for b in Catalog.all_buildings():
+		var d := int(b.get("build_duration", 0))
+		if d > 0:
+			bid = str(b.get("id", ""))
+			raw = d
+			break
+	if bid == "":
+		_check(true, "build duration: skipped (no timed building)")
+		return
+	MatchState.advisor_seats = {}
+	_check(MatchState.effective_build_duration(bid) == raw + MatchState.BUILD_DURATION_BUMP,
+		"build duration: bumped by +1 over the raw CSV value")
+	# Master builder (Gerald as COO) shaves a turn off, clamped at the 1-turn minimum.
+	MatchState.advisor_seats = {"coo": MatchState.MASTER_BUILDER_ID}
+	_check(MatchState.effective_build_duration(bid) == maxi(1, raw + MatchState.BUILD_DURATION_BUMP - 1),
+		"build duration: master-builder COO reduces it by 1 (min 1)")
+	_check(MatchState.effective_build_duration(bid) >= MatchState.BUILD_DURATION_MIN,
+		"build duration: never below the 1-turn minimum")
+	MatchState.advisor_seats = saved_seats
+
+func _test_advisor_loyalty() -> void:
+	var saved_perm := MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_rec := MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_loyal := MatchState.advisor_loyalty.duplicate(true)
+	var saved_walk := MatchState._advisor_walk_streak.duplicate(true)
+	var saved_fired := MatchState.fired_advisor_cooldowns.duplicate(true)
+	var saved_seats := MatchState.advisor_seats.duplicate(true)
+	MatchState.permanent_advisor_ids = []
+	MatchState.recruited_advisor_ids = ["vera", "marcus"]
+	MatchState.advisor_seats = {}
+	MatchState.fired_advisor_cooldowns = {}
+	MatchState.advisor_loyalty = {}
+	MatchState._advisor_walk_streak = {}
+	MatchState._agenda_flags = {}
+
+	MatchState.hire_advisor("vera")
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 0.0), "loyalty: starts at 0 on hire")
+
+	MatchState.cheat_set_loyalty("vera", -50.0)
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), -10.0), "loyalty: cheat clamps at -10")
+	MatchState.cheat_set_loyalty("vera", 100.0)
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 10.0), "loyalty: cheat clamps at +10")
+
+	MatchState.advisor_loyalty["vera"] = 0.0
+	MatchState._agenda_flags = {}
+	MatchState._evaluate_agendas({"money_in": 100.0, "money_out": 0.0}, 100.0)
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 0.6),
+		"loyalty: a per-turn liked event (+profit) raises loyalty +0.6")
+	# Agenda rows: per-turn likes +0.6, per-turn dislikes -0.4, one-off actions ±1.
+	var rows: Array = MatchState.advisor_agenda_rows("vera")
+	_check(rows.size() == 4 and is_equal_approx(float(rows[0].get("points", 0.0)), 0.6)
+		and bool(rows[0].get("per_turn", false)),
+		"loyalty: agenda rows expose per-turn like at +0.6/turn")
+	# Eleanor dislikes buying grid power (a per-turn event) -> -0.4/turn.
+	var el_rows: Array = MatchState.advisor_agenda_rows("eleanor")
+	var found_grid := false
+	for r in el_rows:
+		if not bool(r.get("benefit", true)) and bool(r.get("per_turn", false)):
+			found_grid = found_grid or is_equal_approx(float(r.get("points", 0.0)), -0.4)
+	_check(found_grid, "loyalty: a per-turn dislike is -0.4/turn")
+
+	MatchState.advisor_loyalty["vera"] = 5.0
+	MatchState._agenda_flags = {}
+	MatchState.flag_agenda_event(MatchState.AGENDA_TOOK_LOAN)
+	MatchState._evaluate_agendas({"money_in": 0.0, "money_out": 0.0}, 0.0)
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 3.9),
+		"loyalty: a disliked event lowers loyalty (net of the 0.1 decay)")
+
+	MatchState.advisor_loyalty["vera"] = 1.0
+	MatchState._agenda_flags = {}
+	MatchState._evaluate_agendas({"money_in": 0.0, "money_out": 0.0}, 0.0)
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 0.9), "loyalty: decays 0.1/turn toward 0")
+
+	for _i in MatchState.LOYALTY_WALK_TURNS:
+		MatchState.advisor_loyalty["vera"] = -10.0
+		MatchState._agenda_flags = {}
+		MatchState._evaluate_agendas({"money_in": 0.0, "money_out": 0.0}, 0.0)
+	_check(not MatchState.permanent_advisor_ids.has("vera") and MatchState.is_fired("vera"),
+		"loyalty: walks after LOYALTY_WALK_TURNS turns at/below the threshold")
+
+	MatchState.permanent_advisor_ids = saved_perm
+	MatchState.recruited_advisor_ids = saved_rec
+	MatchState.advisor_loyalty = saved_loyal
+	MatchState._advisor_walk_streak = saved_walk
+	MatchState.fired_advisor_cooldowns = saved_fired
+	MatchState.advisor_seats = saved_seats
+	MatchState._agenda_flags = {}
+
+func _test_advisor_missions() -> void:
+	var saved_perm := MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_rec := MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_loyal := MatchState.advisor_loyalty.duplicate(true)
+	var saved_done := MatchState.advisor_missions_completed.duplicate(true)
+	var saved_streak := MatchState._advisor_mission5_streak.duplicate(true)
+	var saved_pol := MatchState.advisor_mission_policies.duplicate(true)
+	var saved_unlocked := MatchState.unlocked_titles.duplicate(true)
+	Modifiers.reset()
+	MatchState.permanent_advisor_ids = ["vera", "eleanor"]
+	MatchState.recruited_advisor_ids = ["vera", "eleanor"]
+	MatchState.advisor_loyalty = {"vera": 0.0, "eleanor": 0.0}
+	MatchState.advisor_missions_completed = {}
+	MatchState._advisor_mission5_streak = {}
+	MatchState.advisor_mission_policies = []
+
+	# Missions I-IV complete the first turn loyalty reaches 2 / 5 / 7 / 9.
+	MatchState.advisor_loyalty["vera"] = 3.0
+	MatchState._check_mission_progress("vera")
+	_check(MatchState.advisor_missions_done("vera") == 1, "mission: M1 completes at loyalty 2")
+	# M1 grants a temporary specialty modifier (CFO loan interest).
+	_check(float(Modifiers.resolve_pct("loan_interest", "*", {}).get("net", 0.0)) < 0.0,
+		"mission: CFO M1 applies a temporary loan-interest bonus")
+
+	# Reaching loyalty 9 completes I-IV, but NOT V (which needs a sustained streak).
+	MatchState.advisor_loyalty["vera"] = 9.0
+	MatchState._check_mission_progress("vera")
+	_check(MatchState.advisor_missions_done("vera") == 4,
+		"mission: loyalty 9 completes I-IV but V needs the streak")
+	# Hold at/above 9 for the full streak -> V completes.
+	for _i in MatchState.MISSION5_STREAK_TURNS:
+		MatchState._check_mission_progress("vera")
+	_check(MatchState.advisor_missions_done("vera") == 5,
+		"mission: V completes after MISSION5_STREAK_TURNS turns at loyalty 9+")
+	# Dropping below 9 before the streak fills resets it (eleanor).
+	MatchState.advisor_loyalty["eleanor"] = 9.0
+	for _j in 5:
+		MatchState._check_mission_progress("eleanor")
+	MatchState.advisor_loyalty["eleanor"] = 8.0   # slips below the streak floor
+	MatchState._check_mission_progress("eleanor")
+	_check(int(MatchState._advisor_mission5_streak.get("eleanor", -1)) == 0,
+		"mission: the V streak resets when loyalty drops below 9")
+
+	var has_perm := false
+	for m in Modifiers.active():
+		if str(m.get("id", "")).begins_with("advisor_mission_perm_vera"):
+			has_perm = true
+	_check(has_perm, "mission: M2/M4/M5 leave permanent modifier slices")
+
+	# Eleanor (HR) mission V unlocks the Stock Options policy once her streak fills.
+	MatchState.advisor_loyalty["eleanor"] = 9.0
+	for _k in MatchState.MISSION5_STREAK_TURNS + 1:
+		MatchState._check_mission_progress("eleanor")
+	_check(MatchState.advisor_mission_policies.has(MatchState.WORKFORCE_POLICY_STOCK_OPTIONS)
+		and MatchState.is_workforce_policy_available(MatchState.WORKFORCE_POLICY_STOCK_OPTIONS),
+		"mission: HR advisor mission V unlocks Stock Options")
+
+	# Reward labels are exposed for the UI plaques (5 of them).
+	_check((MatchState.advisor_mission_reward_labels("vera") as Array).size() == 5,
+		"mission: 5 reward labels exposed for the detail plaques")
+
+	Modifiers.reset()
+	MatchState.permanent_advisor_ids = saved_perm
+	MatchState.recruited_advisor_ids = saved_rec
+	MatchState.advisor_loyalty = saved_loyal
+	MatchState.advisor_missions_completed = saved_done
+	MatchState._advisor_mission5_streak = saved_streak
+	MatchState.advisor_mission_policies = saved_pol
+	MatchState.unlocked_titles = saved_unlocked
+	MatchState.reconcile_advisor_modifiers()
+
+func _test_advisor_seats_save_roundtrip() -> void:
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	var saved_slots: int = MatchState.max_advisor_slots
+	MatchState.advisor_seats = {"cfo": "vera", "coo": "tom"}
+	MatchState.max_advisor_slots = 3
+	var d: Dictionary = MatchState.export_state()
+	MatchState.advisor_seats = {}
+	MatchState.max_advisor_slots = 2
+	MatchState.import_state(d)
+	_check(MatchState.advisor_seats.get("cfo", "") == "vera" and MatchState.advisor_seats.get("coo", "") == "tom",
+		"save: advisor_seats round-trips")
+	_check(MatchState.max_advisor_slots == 3, "save: max_advisor_slots round-trips")
+	# backward-compat: a v3 save missing the keys defaults to empty seats + 2 slots
+	d.erase("advisor_seats")
+	d.erase("max_advisor_slots")
+	MatchState.import_state(d)
+	_check(MatchState.advisor_seats.is_empty() and MatchState.max_advisor_slots == MatchState.MAX_ADVISOR_SLOTS_DEFAULT,
+		"save: missing keys default (v3 back-compat)")
+	# sanitize drops a bogus seat_id + an un-rostered advisor, keeps valid entries
+	_check(MatchState._sanitize_advisor_seats({"cfo": "vera", "bogus_seat": "vera", "coo": "not_real"}) == {"cfo": "vera"},
+		"save: sanitize drops bad seat + un-rostered advisor")
+	MatchState.advisor_seats = saved_seats
+	MatchState.max_advisor_slots = saved_slots
+
 func _test_advisor_payroll_cost() -> void:
 	var saved_ids := MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_money := MatchState.money
-	MatchState.permanent_advisor_ids = ["natasha", "dan"]
+	MatchState.permanent_advisor_ids = ["vera", "alexandra"]   # salaries 1.0 + 4.0 = 5.0
 	MatchState.money = 100.0
 	var summary := {"advisor_paid": 0.0, "money_out": 0.0}
 	var paid: float = Production._apply_advisor_costs(summary)
-	_check(is_equal_approx(paid, 4.0)
-		and is_equal_approx(float(summary.get("advisor_paid", 0.0)), 4.0)
-		and is_equal_approx(float(summary.get("money_out", 0.0)), 4.0)
-		and is_equal_approx(MatchState.money, 96.0),
-		"advisor payroll costs £2 per permanent advisor per turn")
+	_check(is_equal_approx(paid, 5.0)
+		and is_equal_approx(float(summary.get("advisor_paid", 0.0)), 5.0)
+		and is_equal_approx(float(summary.get("money_out", 0.0)), 5.0)
+		and is_equal_approx(MatchState.money, 95.0),
+		"advisor payroll sums each advisor's salary")
 	MatchState.permanent_advisor_ids = saved_ids
 	MatchState.money = saved_money
 	MatchState.money_changed.emit(MatchState.money)
 	MatchState.advisors_changed.emit()
+
+func _test_advisor_milestone_acquisition() -> void:
+	var saved_hired: Array = MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_crossed: Array = MatchState.crossed_milestones.duplicate(true)
+	MatchState.recruited_advisor_ids = []
+	MatchState.crossed_milestones = []
+	MatchState._match_rng.seed = MatchState.DEFAULT_MATCH_RNG_SEED
+	MatchState.check_profit_milestones(40.0)
+	_check(MatchState.recruited_advisor_ids.is_empty(), "milestone: below 50 profit recruits nothing")
+	MatchState.check_profit_milestones(60.0)
+	_check(MatchState.recruited_advisor_ids.size() == 1 and MatchState.crossed_milestones.has(50),
+		"milestone: crossing 50 recruits one advisor")
+	var first_id := str(MatchState.recruited_advisor_ids[0])
+	MatchState.check_profit_milestones(60.0)
+	_check(MatchState.recruited_advisor_ids.size() == 1, "milestone: re-crossing 50 does not re-recruit (latched)")
+	MatchState.check_profit_milestones(220.0)
+	_check(MatchState.recruited_advisor_ids.size() == 4 and MatchState.crossed_milestones.has(200),
+		"milestone: a jump recruits each newly-crossed milestone (100/150/200)")
+	MatchState.recruited_advisor_ids = []
+	MatchState.crossed_milestones = []
+	MatchState._match_rng.seed = MatchState.DEFAULT_MATCH_RNG_SEED
+	MatchState.check_profit_milestones(60.0)
+	_check(str(MatchState.recruited_advisor_ids[0]) == first_id, "milestone: seeded recruit is deterministic")
+	MatchState.recruited_advisor_ids = saved_hired
+	MatchState.crossed_milestones = saved_crossed
+
+func _test_advisor_slot_progression() -> void:
+	var saved_slots: int = MatchState.max_advisor_slots
+	var saved_streak: int = MatchState._advisor_profit_streak
+	var saved_pu: bool = MatchState.advisor_slot_profit_unlocked
+	MatchState.max_advisor_slots = 2
+	MatchState._advisor_profit_streak = 0
+	MatchState.advisor_slot_profit_unlocked = false
+	MatchState._update_advisor_slots(10.0)
+	_check(MatchState.max_advisor_slots == 2, "slot progression: low profit / few buildings keeps 2")
+	MatchState._update_advisor_slots(1000.0)
+	MatchState._update_advisor_slots(1000.0)
+	_check(not MatchState.advisor_slot_profit_unlocked, "slot progression: 2 turns at 1000 is not yet the streak")
+	var had_fifth: bool = MatchState.is_unlocked("Fifth Advisor Seat")
+	MatchState._update_advisor_slots(1000.0)
+	_check(MatchState.advisor_slot_profit_unlocked and MatchState.max_advisor_slots == 3,
+		"slot progression: 1000 profit x3 unlocks a slot (2 -> 3)")
+	_check(MatchState.is_unlocked("Fifth Advisor Seat"),
+		"slot progression: 5th-seat unlock granted (shows under People Management)")
+	MatchState._update_advisor_slots(0.0)
+	_check(MatchState.max_advisor_slots == 3, "slot progression: a dip does not revoke the earned slot")
+	MatchState.max_advisor_slots = saved_slots
+	MatchState._advisor_profit_streak = saved_streak
+	MatchState.advisor_slot_profit_unlocked = saved_pu
+	if not had_fifth:
+		MatchState.unlocked_titles.erase("Fifth Advisor Seat")
+
+func _test_advisor_fake_money_and_track() -> void:
+	var saved_money := MatchState.money
+	var saved_fake := MatchState.fake_money_this_turn
+	var saved_crossed := MatchState.crossed_milestones.duplicate(true)
+	MatchState.fake_money_this_turn = 0.0
+	MatchState.cheat_add_cash(500.0)
+	_check(is_equal_approx(MatchState.fake_money_this_turn, 500.0) and is_equal_approx(MatchState.money, saved_money + 500.0),
+		"fake money: cheat_add_cash tracks fake money + raises the balance")
+	MatchState.crossed_milestones = [50, 100]
+	_check(MatchState.next_advisor_milestone() == 150, "advisor track: next milestone is the first un-crossed (150)")
+	MatchState.crossed_milestones = [50, 100, 150, 200, 300, 400, 500, 750, 1000]
+	_check(MatchState.next_advisor_milestone() == 0, "advisor track: all milestones crossed -> 0")
+	# Cheat cash (fake money) must count toward the profit that drives advisor unlocks.
+	var saved_rec_fm: Array = MatchState.recruited_advisor_ids.duplicate(true)
+	MatchState.crossed_milestones = []
+	MatchState._on_turn_processed_advisors({"money_in": 0.0, "money_out": 0.0, "fake_money": 120.0})
+	_check(MatchState.crossed_milestones.has(50) and MatchState.crossed_milestones.has(100)
+		and not MatchState.crossed_milestones.has(150),
+		"fake money: cheat cash crosses profit milestones (drives advisor unlocks)")
+	MatchState.recruited_advisor_ids = saved_rec_fm
+	MatchState.money = saved_money
+	MatchState.fake_money_this_turn = saved_fake
+	MatchState.crossed_milestones = saved_crossed
+	MatchState.money_changed.emit(MatchState.money)
+
+func _test_advisor_slot_unlock() -> void:
+	var saved: int = MatchState.max_advisor_slots
+	MatchState.max_advisor_slots = 2
+	MatchState.unlock_advisor_slot()
+	_check(MatchState.max_advisor_slots == 3, "slot unlock: raises the cap by 1")
+	MatchState.unlock_advisor_slot()
+	MatchState.unlock_advisor_slot()
+	MatchState.unlock_advisor_slot()
+	_check(MatchState.max_advisor_slots == 5, "slot unlock: clamps at the cap (5)")
+	MatchState.max_advisor_slots = saved
+
+func _test_advisor_acquisition_save_roundtrip() -> void:
+	var saved_rec: Array = MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_crossed: Array = MatchState.crossed_milestones.duplicate(true)
+	MatchState.recruited_advisor_ids = []
+	MatchState.crossed_milestones = []
+	MatchState._match_rng.seed = MatchState.DEFAULT_MATCH_RNG_SEED
+	MatchState.check_profit_milestones(60.0)   # cross 50, advance the rng past one recruit
+	var d: Dictionary = MatchState.export_state()
+	MatchState.import_state(d)
+	_check(MatchState.crossed_milestones.has(50) and MatchState.recruited_advisor_ids.size() == 1,
+		"acquisition save: crossed_milestones + recruited round-trip")
+	var draw_a := MatchState.draw_advisor_from_pool()
+	MatchState.import_state(d)                  # restore -> rng state reset to the saved value
+	var draw_b := MatchState.draw_advisor_from_pool()
+	_check(draw_a != "" and draw_a == draw_b, "acquisition save: rng state persists -> next recruit reproducible")
+	MatchState.recruited_advisor_ids = saved_rec
+	MatchState.crossed_milestones = saved_crossed
+
+func _test_people_panel_seat_ui() -> void:
+	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	MatchState.permanent_advisor_ids = ["vera"]
+	MatchState.advisor_seats = {}
+	var pp: Node = load("res://scripts/people_panel.gd").new()
+	add_child(pp)
+	var vera: Dictionary = MatchState.get_advisor("vera")
+	var section: Control = pp.call("_seat_assignment_section", vera)
+	_check(section != null and str(section.name) == "SeatAssignmentSection",
+		"seat UI: seat-assignment section builds for a hired advisor")
+	var pent: Control = pp.call("_stat_pentagon", MatchState.get_advisor("vera"))
+	_check(pent != null and str(pent.name) == "StatPentagon",
+		"seat UI: stat pentagon builds")
+	pp.call("_on_discipline_label", "fin", "vera")
+	_check(pp.get("_shown_discipline") == "fin",
+		"seat UI: tapping a discipline label opens its info section")
+	pp.queue_free()
+	MatchState.permanent_advisor_ids = saved_hired
+	MatchState.advisor_seats = saved_seats
+
+func _test_advisor_roster_merge() -> void:
+	var defs: Array = MatchState._advisor_definitions()
+	_check(defs.size() == 12, "roster merge: _advisor_definitions() has 12 advisors")
+	var required := ["id", "name", "role", "happiness", "portrait_color", "bonus", "recommendation", "bio", "agenda", "likes", "dislikes", "bonuses", "missions"]
+	var all_ok := true
+	for d in defs:
+		for key in required:
+			if not (d as Dictionary).has(key):
+				all_ok = false
+	_check(all_ok, "roster merge: every display advisor carries the required panel fields")
+	_check(str(MatchState.get_advisor("vera").get("name", "")) == "Vera Ashby", "roster merge: get_advisor resolves a canonical id")
+	_check(MatchState.get_advisor("natasha").is_empty(), "roster merge: legacy ids are retired")
+
+func _test_advisor_seat_requires_hire() -> void:
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_rec: Array = MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_fired: Dictionary = MatchState.fired_advisor_cooldowns.duplicate(true)
+	var saved_slots: int = MatchState.max_advisor_slots
+	MatchState.advisor_seats = {}
+	MatchState.permanent_advisor_ids = []
+	MatchState.recruited_advisor_ids = ["vera"]
+	MatchState.fired_advisor_cooldowns = {}
+	MatchState.max_advisor_slots = 2
+	_check(not MatchState.assign_advisor_to_seat("cfo", "vera"), "hire gate: cannot seat an un-hired advisor")
+	MatchState.hire_advisor("vera")
+	_check(MatchState.assign_advisor_to_seat("cfo", "vera"), "hire gate: can seat once hired")
+	MatchState.advisor_seats = saved_seats
+	MatchState.permanent_advisor_ids = saved_hired
+	MatchState.recruited_advisor_ids = saved_rec
+	MatchState.fired_advisor_cooldowns = saved_fired
+	MatchState.max_advisor_slots = saved_slots
 
 func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	var recipe := Catalog.get_recipe("r_020")
@@ -6026,7 +6739,14 @@ func _test_widgets_instantiate() -> void:
 	ig.queue_free()
 
 	var saved_advisors := MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_recruited := MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_fired := MatchState.fired_advisor_cooldowns.duplicate(true)
+	MatchState.fired_advisor_cooldowns.clear()
 	MatchState.permanent_advisor_ids.clear()
+	var _all_ids: Array = []
+	for _a in MatchState.advisor_pool():
+		_all_ids.append(str(_a.get("id", "")))
+	MatchState.recruited_advisor_ids = _all_ids
 	MatchState.advisors_changed.emit()
 	var pp: Node = load("res://scripts/people_panel.gd").new()
 	add_child(pp)
@@ -6035,7 +6755,7 @@ func _test_widgets_instantiate() -> void:
 		and _tree_has_label_text(pp, "0.8x") and _tree_has_label_text(pp, "Workforce Policies"),
 		"PeoplePanel builds Labour and Advisors tabs")
 	_check(
-		_tree_has_label_text(pp, "Advisor payroll") and _tree_has_label_text(pp, "0 x £2 = £0.00/turn"),
+		_tree_has_label_text(pp, "Advisor cost") and _tree_has_label_text(pp, "0 / 2 advisors · £0.00/turn"),
 		"PeoplePanel shows advisor payroll at the top")
 	_check(MatchState.available_advisors().size() == MatchState.advisor_pool().size()
 		and MatchState.permanent_advisors().is_empty(),
@@ -6046,16 +6766,50 @@ func _test_widgets_instantiate() -> void:
 	pp.call("_on_permanent_add_slot_input", add_event)
 	var available_section: Control = pp.get("_available_advisors_section")
 	_check(is_instance_valid(available_section) and available_section.visible
-		and _tree_has_label_text(pp, "Natasha L.") and _tree_has_label_text(pp, "Your Uncle"),
+		and _tree_has_label_text(pp, "Vera Ashby") and _tree_has_label_text(pp, "Rufus Ashby"),
 		"PeoplePanel plus slot opens the available advisor pool")
 	var first_advisor: Dictionary = MatchState.available_advisors()[0]
 	var hire_event := InputEventMouseButton.new()
 	hire_event.button_index = MOUSE_BUTTON_LEFT
 	hire_event.pressed = true
 	pp.call("_on_available_advisor_card_input", hire_event, first_advisor)
+	var clicked_detail: Node = pp.get("_advisor_detail_panel")
+	_check(clicked_detail != null and clicked_detail.visible
+		and not MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", ""))),
+		"PeoplePanel clicking an available advisor opens the profile, not an instant hire")
+	pp.call("_on_confirm_hire_pressed", first_advisor)
 	_check(MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", "")))
-		and _tree_has_label_text(pp, "1 x £2 = £2.00/turn"),
-		"PeoplePanel selecting from the pool hires a permanent advisor and updates payroll")
+		and _tree_has_label_text(pp, "1 / 2 advisor · £1.00/turn"),
+		"PeoplePanel Confirm Hire from the profile hires a permanent advisor and updates payroll")
+	# Fire flow: the profile footer for an employed advisor benches them.
+	pp.call("_open_advisor_detail", first_advisor)
+	var fire_footer: Control = pp.call("_advisor_detail_footer", first_advisor, true, false) as Control
+	_check(fire_footer is Button and (fire_footer as Button).text == "Fire Advisor",
+		"PeoplePanel employed-advisor footer offers Fire Advisor")
+	var fid := str(first_advisor.get("id", ""))
+	# Net-modifiers readout + the "See all advisor modifiers" DS panel.
+	MatchState.assign_advisor_to_seat("cfo", fid)
+	_check((pp.call("_advisor_net_modifiers") as Array).size() > 0,
+		"PeoplePanel net-modifiers aggregates seated advisor effects")
+	pp.call("_open_advisor_modifiers_panel")
+	var modpanel: Node = pp.get("_advisor_modifiers_panel")
+	_check(is_instance_valid(modpanel) and (modpanel as Control).visible,
+		"PeoplePanel See-all opens the DS modifiers panel")
+	if is_instance_valid(modpanel):
+		PanelStack.remove(modpanel)
+		modpanel.queue_free()
+	MatchState.fire_advisor(fid)
+	_check(not MatchState.permanent_advisor_ids.has(fid)
+		and MatchState.is_fired(fid)
+		and MatchState.fire_cooldown_remaining(fid) == MatchState.FIRE_COOLDOWN_TURNS
+		and not MatchState.hire_advisor(fid),
+		"PeoplePanel firing benches the advisor for the cooldown and blocks re-hire")
+	# Cooldown counts down each turn; the advisor returns to the pool at 0.
+	for _i in MatchState.FIRE_COOLDOWN_TURNS:
+		MatchState._tick_fire_cooldowns()
+	_check(not MatchState.is_fired(fid) and MatchState.hire_advisor(fid),
+		"PeoplePanel fired advisor returns to the pool after the cooldown and can be re-hired")
+	pp.call("_close_advisor_detail")
 	var permanent: Array = pp.get("_permanent_advisors")
 	var card: Control = pp.call("_advisor_card", permanent[0], true, false) as Control
 	var portrait: Control = card.find_child("AdvisorPortrait", true, false) as Control
@@ -6075,6 +6829,8 @@ func _test_widgets_instantiate() -> void:
 		detail.queue_free()
 	pp.queue_free()
 	MatchState.permanent_advisor_ids = saved_advisors
+	MatchState.recruited_advisor_ids = saved_recruited
+	MatchState.fired_advisor_cooldowns = saved_fired
 	MatchState.advisors_changed.emit()
 
 func _tree_has_label_text(node: Node, needle: String) -> bool:

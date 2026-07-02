@@ -43,6 +43,10 @@ const WORKFORCE_POLICY_STANDARD_SAFETY := "standard_safety_procedures"
 const WORKFORCE_POLICY_LAX_SAFETY := "lax_safety_procedures"
 const WORKFORCE_POLICY_ANNUAL_BONUS := "annual_bonus"
 const WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE := "annual_profit_share"
+# HR Director unlocks: Long Tenure Awards (any HR Director) and Stock Options
+# (only a Leadership-3 HR Director).
+const WORKFORCE_POLICY_LONG_TENURE := "long_tenure_awards"
+const WORKFORCE_POLICY_STOCK_OPTIONS := "stock_options"
 const WORKFORCE_POLICY_GAME_LENGTH_TURNS := 300
 const WORKFORCE_SAFETY_POLICIES := [
 	WORKFORCE_POLICY_STRICT_SAFETY,
@@ -53,6 +57,186 @@ var workforce_policies: Dictionary = {}
 var workforce_policy_effects: Dictionary = {}
 const ADVISOR_COST_PER_TURN := 2.0
 var permanent_advisor_ids: Array = []
+# --- Advisor seats (seat framework, docs/advisor-system-spec.md §4-6) ---
+# advisor_seats is sparse: only occupied seats are keys, so .size() == seated count.
+var advisor_seats: Dictionary = {}          # seat_id -> advisor_id
+const MAX_ADVISOR_SLOTS_DEFAULT := 2
+const MAX_ADVISOR_SLOTS_CAP := 5            # spec §4.1 hard ceiling
+var max_advisor_slots: int = MAX_ADVISOR_SLOTS_DEFAULT
+# --- Advisor acquisition (spec §4.2-4.4) ---
+const DEFAULT_MATCH_RNG_SEED := 5060301
+const PROFIT_MILESTONES := [50, 100, 150, 200, 300, 400, 500, 750, 1000]
+const STARTING_TRIO := ["vera", "tom", "rufus"]
+var _match_rng := RandomNumberGenerator.new()
+var match_rng_seed: int = DEFAULT_MATCH_RNG_SEED   # seeded match RNG (draws + tile reveal)
+var crossed_milestones: Array = []                 # latched profit thresholds
+var recruited_advisor_ids: Array = []              # unlocked pool (employ up to the cap)
+const FIRE_COOLDOWN_TURNS := 10                     # a fired advisor sits out this many turns
+var fired_advisor_cooldowns: Dictionary = {}       # advisor_id -> turns until re-hireable (greyed while > 0)
+
+# --- Advisor loyalty / churn (agendas) --------------------------------------
+# Each employed advisor holds a loyalty score in [-10, +10] that decays toward 0
+# each turn. Per-turn "agenda events" they like nudge it up, ones they dislike down.
+# Stay at or below WALK threshold for WALK_TURNS in a row and they walk (like fired).
+const LOYALTY_MIN := -10.0
+const LOYALTY_MAX := 10.0
+const LOYALTY_DECAY := 0.1
+const LOYALTY_STEP := 1.0
+const LOYALTY_WALK_THRESHOLD := -9.0
+const LOYALTY_WALK_TURNS := 11
+# Agenda event tags (detected per turn from the summary + flagged hooks + streaks).
+const AGENDA_TOOK_LOAN := "took_loan"
+const AGENDA_PAID_OFF_LOAN := "paid_off_loan"
+const AGENDA_EARLY_LOAN_PAYOFF := "early_loan_payoff"
+const AGENDA_MADE_PROFIT := "made_profit"
+const AGENDA_IDLE_BUILDING := "idle_building"                # >10 turns since last build
+const AGENDA_BUILT_UNPROFITABLE := "built_while_unprofitable"
+const AGENDA_BOUGHT_GRID_POWER := "bought_grid_power"
+const AGENDA_SOLD_GRID_POWER := "sold_grid_power_streak"     # 5 turns in a row
+const AGENDA_BOUGHT_MATERIALS := "bought_market_materials"
+const AGENDA_USED_STOCKPILE := "used_stockpile"
+const AGENDA_AUTARKIC := "autarkic_streak"                   # no market buys, 3 turns in a row
+const AGENDA_FAST_SHIPMENT := "fast_shipment"               # a shipment delivered in <2 turns
+const AGENDA_LABOUR_POLICIES := "labour_policies"           # >=2 workforce policies enabled
+const AGENDA_TECH_UNLOCK := "tech_unlocked"
+const AGENDA_CHANGED_RECIPE := "changed_recipe"
+# 2 likes + 2 dislikes per advisor.
+const ADVISOR_AGENDAS := {
+	"vera": {"likes": [AGENDA_MADE_PROFIT, AGENDA_PAID_OFF_LOAN], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
+	"tom": {"likes": [AGENDA_USED_STOCKPILE, AGENDA_CHANGED_RECIPE], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_TOOK_LOAN]},
+	"rufus": {"likes": [AGENDA_MADE_PROFIT, AGENDA_BOUGHT_MATERIALS], "dislikes": [AGENDA_CHANGED_RECIPE, AGENDA_TECH_UNLOCK]},
+	"gerald": {"likes": [AGENDA_USED_STOCKPILE, AGENDA_AUTARKIC], "dislikes": [AGENDA_TECH_UNLOCK, AGENDA_CHANGED_RECIPE]},
+	"eleanor": {"likes": [AGENDA_LABOUR_POLICIES, AGENDA_MADE_PROFIT], "dislikes": [AGENDA_BUILT_UNPROFITABLE, AGENDA_BOUGHT_GRID_POWER]},
+	"sloane": {"likes": [AGENDA_SOLD_GRID_POWER, AGENDA_MADE_PROFIT], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_AUTARKIC]},
+	"priya": {"likes": [AGENDA_TECH_UNLOCK, AGENDA_CHANGED_RECIPE], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_USED_STOCKPILE]},
+	"hitomi": {"likes": [AGENDA_FAST_SHIPMENT, AGENDA_MADE_PROFIT], "dislikes": [AGENDA_BOUGHT_GRID_POWER, AGENDA_IDLE_BUILDING]},
+	"hal": {"likes": [AGENDA_MADE_PROFIT, AGENDA_TECH_UNLOCK], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
+	"marcus": {"likes": [AGENDA_PAID_OFF_LOAN, AGENDA_EARLY_LOAN_PAYOFF], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
+	"idris": {"likes": [AGENDA_TECH_UNLOCK, AGENDA_FAST_SHIPMENT], "dislikes": [AGENDA_AUTARKIC, AGENDA_USED_STOCKPILE]},
+	"alexandra": {"likes": [AGENDA_MADE_PROFIT, AGENDA_TECH_UNLOCK], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_BOUGHT_GRID_POWER]},
+}
+# Loyalty weights. "per_turn" events can be true every single turn, so they're small:
+# a per-turn LIKE gives +0.6 and a per-turn DISLIKE −0.4 (both beat the 0.1 decay but
+# don't spike loyalty; gains outpace penalties). One-off actions are worth a full ±1.
+const AGENDA_LIKE_PER_TURN := 0.6
+const AGENDA_DISLIKE_PER_TURN := 0.4
+const AGENDA_ONE_OFF := 1.0
+const AGENDA_META := {
+	AGENDA_MADE_PROFIT: {"text": "End the turn in profit", "per_turn": true},
+	AGENDA_PAID_OFF_LOAN: {"text": "Pay off a loan", "per_turn": false},
+	AGENDA_EARLY_LOAN_PAYOFF: {"text": "Repay a loan early", "per_turn": false},
+	AGENDA_TOOK_LOAN: {"text": "Take out a loan", "per_turn": false},
+	AGENDA_BUILT_UNPROFITABLE: {"text": "Build while unprofitable", "per_turn": false},
+	AGENDA_IDLE_BUILDING: {"text": "Build nothing for 10+ turns", "per_turn": true},
+	AGENDA_BOUGHT_GRID_POWER: {"text": "Buy power from the grid", "per_turn": true},
+	AGENDA_SOLD_GRID_POWER: {"text": "Export power 5 turns running", "per_turn": true},
+	AGENDA_BOUGHT_MATERIALS: {"text": "Buy materials from the market", "per_turn": true},
+	AGENDA_USED_STOCKPILE: {"text": "Use stockpiled materials", "per_turn": true},
+	AGENDA_AUTARKIC: {"text": "Buy nothing 3 turns running", "per_turn": true},
+	AGENDA_FAST_SHIPMENT: {"text": "Deliver a shipment in under 2 turns", "per_turn": true},
+	AGENDA_LABOUR_POLICIES: {"text": "Run 2+ labour policies", "per_turn": true},
+	AGENDA_TECH_UNLOCK: {"text": "Unlock a research node", "per_turn": false},
+	AGENDA_CHANGED_RECIPE: {"text": "Change a building's recipe", "per_turn": false},
+}
+# --- Advisor missions (loyalty-milestone chain; spec §7 C-layer specialties) ------
+# Each employed advisor has a 5-mission chain that completes as their LOYALTY crosses
+# thresholds. Rewards (per role): M1/M3 temporary specialty bonus (+ a 2nd temp for
+# COO/Sustainability/Govt Affairs), M3 a free research unlock in their category, M2/M4
+# a permanent slice of their seat effect, M5 the unique labour policy / a capstone.
+const MISSION_COUNT := 5
+# Missions I–IV complete the first turn loyalty reaches these values. Mission V is a
+# capstone: loyalty must STAY at/above MISSION5_LOYALTY for MISSION5_STREAK_TURNS in a row.
+const MISSION_LOYALTY_THRESHOLDS := [2.0, 5.0, 7.0, 9.0]
+const MISSION5_LOYALTY := 9.0
+const MISSION5_STREAK_TURNS := 20
+const MISSION_TEMPLATES := {
+	"cfo": {
+		"temp": {"domain": "loan_interest", "pct": -50.0, "turns": 20, "label": "loan interest halved (20t)"},
+		"perm1": {"domain": "loan_interest", "pct": -8.0, "label": "permanent -8% loan interest"},
+		"research_category": "Markets and Operations",
+		"perm2": {"domain": "dividend_rate", "pct": -12.0, "label": "permanent -12% dividends"},
+		"capstone": {"domain": "loan_interest", "pct": -15.0, "label": "permanent -15% loan interest"},
+	},
+	"coo": {
+		"temp": {"domain": "building_power", "pct": -20.0, "turns": 20, "label": "-20% building power (20t)"},
+		"perm1": {"domain": "building_power", "pct": -8.0, "label": "permanent -8% building power"},
+		"research_category": "Manufacturing",
+		"temp2": {"domain": "labour_headcount", "pct": -15.0, "turns": 20, "label": "-15% labour (20t)"},
+		"perm2": {"domain": "maintenance", "pct": -8.0, "label": "permanent -8% maintenance"},
+		"capstone": {"domain": "labour_headcount", "pct": -8.0, "label": "permanent -8% labour"},
+	},
+	"chief_markets": {
+		"temp": {"domain": "market_spread", "pct": -40.0, "turns": 10, "label": "-40% buy spread (10t)"},
+		"perm1": {"domain": "market_spread", "pct": -10.0, "label": "permanent -10% buy spread"},
+		"research_category": "Markets and Operations",
+		"perm2": {"domain": "market_price", "pct": 2.0, "label": "permanent +2% sale price"},
+		"capstone": {"domain": "market_price", "pct": 3.0, "label": "permanent +3% sale price"},
+	},
+	"chief_investment": {
+		"temp": {"domain": "purchase_cost", "pct": -20.0, "turns": 20, "label": "-20% land/building prices (20t)"},
+		"perm1": {"domain": "purchase_cost", "pct": -8.0, "label": "permanent -8% purchase cost"},
+		"research_category": "Markets and Operations",
+		"perm2": {"domain": "construction_rebate", "pct": 5.0, "label": "permanent +5% build rebate"},
+		"capstone": {"domain": "construction_rebate", "pct": 5.0, "label": "permanent +5% build rebate"},
+	},
+	"hr_director": {
+		"temp": {"domain": "labour_headcount", "pct": -15.0, "turns": 20, "label": "-15% labour (20t)"},
+		"perm1": {"domain": "labour_headcount", "pct": -6.0, "label": "permanent -6% labour"},
+		"research_category": "People Management",
+		"perm2": {"domain": "maintenance", "pct": -6.0, "label": "permanent -6% maintenance"},
+		"capstone": {"policy": "stock_options", "label": "unlocks the Stock Options policy"},
+	},
+	"technical_director": {
+		"temp": {"domain": "recipe_output", "pct": 15.0, "turns": 20, "label": "+15% output (20t)"},
+		"perm1": {"domain": "recipe_output", "pct": 5.0, "label": "permanent +5% output"},
+		"research_category": "Metallurgy",
+		"perm2": {"domain": "recipe_output", "pct": 5.0, "label": "permanent +5% output"},
+		"capstone": {"domain": "recipe_output", "pct": 8.0, "label": "permanent +8% output"},
+	},
+	"vp_logistics": {
+		"temp": {"domain": "transport_cost", "pct": -20.0, "turns": 20, "label": "-20% transport cost (20t)"},
+		"perm1": {"domain": "transport_cost", "pct": -8.0, "label": "permanent -8% transport cost"},
+		"research_category": "Logistics",
+		"perm2": {"domain": "transport_throughput", "pct": 8.0, "label": "permanent +8% throughput"},
+		"capstone": {"domain": "transport_throughput", "pct": 10.0, "label": "permanent +10% throughput"},
+	},
+	"government_affairs": {
+		"temp": {"domain": "tax_rate", "pct": -30.0, "turns": 20, "label": "-30% tax (20t)"},
+		"perm1": {"domain": "tax_rate", "pct": -8.0, "label": "permanent -8% tax"},
+		"research_category": "People Management",
+		"temp2": {"domain": "market_spread", "pct": -30.0, "turns": 20, "label": "-30% buy spread (20t)"},
+		"perm2": {"domain": "tax_rate", "pct": -8.0, "label": "permanent -8% tax"},
+		"capstone": {"domain": "tax_rate", "pct": -10.0, "label": "permanent -10% tax"},
+	},
+	"sustainability": {
+		"temp": {"domain": "recipe_output", "pct": 10.0, "turns": 20, "label": "+10% output (20t)"},
+		"perm1": {"domain": "recipe_output", "pct": 5.0, "label": "permanent +5% output"},
+		"research_category": "Renewable Power",
+		"temp2": {"domain": "market_price", "pct": 3.0, "turns": 20, "label": "+3% sale price (20t)"},
+		"perm2": {"domain": "market_price", "pct": 2.0, "label": "permanent +2% sale price"},
+		"capstone": {"domain": "market_price", "pct": 3.0, "label": "permanent +3% sale price"},
+	},
+}
+var advisor_missions_completed: Dictionary = {}    # advisor_id -> int (0..5)
+var _advisor_mission5_streak: Dictionary = {}      # advisor_id -> consecutive turns at/above MISSION5_LOYALTY
+var advisor_mission_policies: Array = []           # workforce policies unlocked via missions
+signal advisor_mission_completed(advisor_id: String, mission_index: int, reward_label: String)
+var advisor_loyalty: Dictionary = {}               # advisor_id -> float [-10, 10] (employed only)
+var _advisor_walk_streak: Dictionary = {}          # advisor_id -> consecutive turns at/below walk threshold
+var _agenda_flags: Dictionary = {}                 # event_tag -> true; set during the turn, read+cleared each turn
+var _agenda_grid_sell_streak := 0
+var _agenda_no_buy_streak := 0
+var _agenda_last_build_turn := 0
+signal advisor_walked(advisor_id: String)
+# Advisor slot (employ-cap) unlocks: 3rd @15 buildings, 4th @100, 5th @ sustained profit.
+const ADVISOR_SLOT_BUILDINGS_3 := 15
+const ADVISOR_SLOT_BUILDINGS_4 := 100
+const ADVISOR_SLOT_PROFIT_5 := 1000.0
+const ADVISOR_SLOT_PROFIT_STREAK := 3
+var _advisor_profit_streak: int = 0
+var advisor_slot_profit_unlocked: bool = false
+var fake_money_this_turn: float = 0.0              # cheat-added cash this turn ("fake money")
+var peak_profit_per_turn: float = 0.0              # best profit/turn reached (advisor-track highpoint)
 
 # --- Output routing ---
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
@@ -70,6 +254,9 @@ var pending_transport_shipments: Array = []
 # dict — see start_upgrade() for the shape. While an upgrade is pending it reserves its
 # extra footprint and the building keeps producing at its CURRENT level until promotion.
 var pending_upgrades: Array = []
+# In-progress retrofits (recipe changes): {instance_id, from_recipe, to_recipe,
+# turns_remaining, labour_fraction}. The building produces nothing while retooling.
+var pending_retrofits: Array = []
 # Last turn's per-link flow ("tile|mode"->units) — drives this turn's congestion cost.
 var _last_link_flow: Dictionary = {}
 # Shipments that arrived at a destination tile whose stockpile was full and so
@@ -155,6 +342,8 @@ signal building_owner_changed(instance_id: String)
 signal building_upgraded(instance_id: String, new_level: int)
 # An upgrade was just queued (materials committed); the level changes later via building_upgraded.
 signal building_upgrade_started(instance_id: String, target_level: int)
+signal building_retrofit_started(instance_id: String, new_recipe_id: String)
+signal building_retrofitted(instance_id: String, new_recipe_id: String)
 # An in-progress upgrade advanced (claimed materials / ticked down) — UI can refresh its countdown.
 signal building_upgrade_progress(instance_id: String)
 # An in-progress upgrade was cancelled / abandoned (e.g. the building was removed). Banked
@@ -172,6 +361,7 @@ signal route_objective_changed(new_objective: int)
 signal labour_multiplier_changed(new_value: float)
 signal workforce_policies_changed
 signal advisors_changed
+signal advisor_acquired(advisor_id: String)
 signal toast_requested(message: String, toast_type: String)
 ## A market sale was finalised at a port this turn (drives the £-rise effect).
 signal market_sale_arrived_at_port(port_tile_id: String, revenue: float)
@@ -244,6 +434,15 @@ func _ready() -> void:
 func _connect_turn_signals() -> void:
 	if TurnManager != null and not TurnManager.phase_started.is_connected(_on_survey_phase_started):
 		TurnManager.phase_started.connect(_on_survey_phase_started)
+	if Production != null and not Production.turn_processed.is_connected(_on_turn_processed_advisors):
+		Production.turn_processed.connect(_on_turn_processed_advisors)
+	if not goods_movement_recorded.is_connected(_on_goods_movement_agenda):
+		goods_movement_recorded.connect(_on_goods_movement_agenda)
+
+# Fast-shipment agenda: a movement that lands in 1 turn (delivered in under 2).
+func _on_goods_movement_agenda(_kind: String, _category: String, transport_turns: int) -> void:
+	if transport_turns >= 1 and transport_turns < 2:
+		flag_agenda_event(AGENDA_FAST_SHIPMENT)
 
 func _on_survey_phase_started(phase: int) -> void:
 	if phase == TurnManager.Phase.PROCESS:
@@ -360,6 +559,96 @@ func is_upgrading(instance_id: String) -> bool:
 		if str(p.get("instance_id", "")) == instance_id:
 			return true
 	return false
+
+# --- Retrofit / retooling (advisor spec §7) ---------------------------------
+
+func is_retooling(instance_id: String) -> bool:
+	for p in pending_retrofits:
+		if str(p.get("instance_id", "")) == instance_id:
+			return true
+	return false
+
+func retrofit_turns_remaining(instance_id: String) -> int:
+	for p in pending_retrofits:
+		if str(p.get("instance_id", "")) == instance_id:
+			return int(p.get("turns_remaining", 0))
+	return 0
+
+# Per-turn labour fraction while a building is retooling (1.0 if it isn't).
+func retooling_labour_fraction(instance_id: String) -> float:
+	for p in pending_retrofits:
+		if str(p.get("instance_id", "")) == instance_id:
+			return float(p.get("labour_fraction", 1.0))
+	return 1.0
+
+# Retrofit cost/speed tier from the seated COO's Operations stat (base if no COO).
+func retrofit_cost_tier() -> Dictionary:
+	var a: Dictionary = _roster_entry(str(advisor_seats.get("coo", "")))
+	var key := "base"
+	if not a.is_empty():
+		key = "ops%d" % clampi(int(a.get("ops", 1)), 1, 3)
+	return EconomyConfig.RETROFIT_TIERS.get(key, EconomyConfig.RETROFIT_TIERS["base"])
+
+# Begin changing a built building's recipe. Charges the one-off fee up front; the
+# building produces nothing (reduced labour) until the countdown completes.
+func start_retrofit(instance_id: String, new_recipe_id: String) -> Dictionary:
+	if not buildings.has(instance_id):
+		return {"ok": false, "reason": "No such building."}
+	if is_retooling(instance_id):
+		return {"ok": false, "reason": "Already retooling."}
+	if is_upgrading(instance_id):
+		return {"ok": false, "reason": "An upgrade is in progress."}
+	var inst: Dictionary = buildings[instance_id]
+	var new_recipe: Dictionary = Catalog.get_recipe(new_recipe_id)
+	if new_recipe.is_empty() or str(new_recipe.get("building_id", "")) != str(inst.get("building_id", "")):
+		return {"ok": false, "reason": "That recipe can't run in this building."}
+	if new_recipe_id == str(inst.get("recipe_id", "")):
+		return {"ok": false, "reason": "Already running that recipe."}
+	var tier: Dictionary = retrofit_cost_tier()
+	if not deduct_money(float(tier.get("fee", 0.0))):
+		return {"ok": false, "reason": "Not enough money for the retooling fee."}
+	pending_retrofits.append({
+		"instance_id": instance_id,
+		"from_recipe": str(inst.get("recipe_id", "")),
+		"to_recipe": new_recipe_id,
+		"turns_remaining": int(tier.get("turns", 2)),
+		"labour_fraction": float(tier.get("labour", 0.5)),
+	})
+	flag_agenda_event(AGENDA_CHANGED_RECIPE)
+	building_retrofit_started.emit(instance_id, new_recipe_id)
+	return {"ok": true, "turns": int(tier.get("turns", 2)), "fee": float(tier.get("fee", 0.0))}
+
+# Advance every retrofit one turn; on completion swap the recipe. Returns completed ids.
+func tick_retrofits() -> Array:
+	var completed: Array = []
+	var remaining: Array = []
+	for p in pending_retrofits:
+		var iid := str(p.get("instance_id", ""))
+		if not buildings.has(iid):
+			continue   # building vanished mid-retool
+		p["turns_remaining"] = int(p.get("turns_remaining", 0)) - 1
+		if int(p["turns_remaining"]) <= 0:
+			buildings[iid]["recipe_id"] = str(p.get("to_recipe", ""))
+			completed.append(iid)
+			building_retrofitted.emit(iid, str(p.get("to_recipe", "")))
+		else:
+			remaining.append(p)
+	pending_retrofits = remaining
+	return completed
+
+# Abandon a retrofit; the building resumes its original recipe (fee not refunded).
+func cancel_retrofit(instance_id: String) -> bool:
+	var kept: Array = []
+	var found := false
+	for p in pending_retrofits:
+		if str(p.get("instance_id", "")) == instance_id:
+			found = true
+		else:
+			kept.append(p)
+	pending_retrofits = kept
+	if found:
+		building_retrofit_started.emit(instance_id, "")   # UI refresh
+	return found
 
 func pending_upgrade(instance_id: String) -> Dictionary:
 	for p in pending_upgrades:
@@ -599,6 +888,10 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 		"turns_remaining": BuildingLevels.UPGRADE_DURATION,
 		"size_delta": size_delta,
 	})
+	# Chief Investment rebates a fraction of the upgrade kit's market value (like a build).
+	var up_rebate := _materials_rebate(need_by_gid)
+	if up_rebate > 0.0:
+		add_money(up_rebate)
 	building_upgrade_started.emit(instance_id, target)
 	return {"ok": true, "status": status, "target_level": target}
 
@@ -898,7 +1191,7 @@ func _complete_survey(tile_id: String, reveal_nearby: bool) -> void:
 				fresh.append(n)
 		if fresh.is_empty():
 			break
-		mark_tile_partial(str(fresh[randi() % fresh.size()]))
+		mark_tile_partial(str(fresh[_match_rng_int(fresh.size())]))
 
 # --- Public API: depletable deposits ---
 ## Seed each tile's depletable-deposit yields from its CSV deposits. Water is
@@ -1057,6 +1350,7 @@ func _load_unlock_defs() -> void:
 		var q := _csv_at(row, idx, "Quantity")
 		_unlock_defs.append({
 			"title": _csv_at(row, idx, "title"),
+			"category": _csv_at(row, idx, "category"),
 			"action": _csv_at(row, idx, "Action"),
 			"object": _csv_at(row, idx, "Object"),
 			"qty": int(q) if q.is_valid_int() else 0,
@@ -1075,6 +1369,17 @@ func _csv_at(row: PackedStringArray, idx: Dictionary, col: String) -> String:
 func is_unlocked(title: String) -> bool:
 	return unlocked_titles.has(title)
 
+# Grant the first not-yet-unlocked research node in a category (an advisor-mission
+# reward). Returns the granted title, or "" if the category is already fully unlocked.
+func grant_first_locked_in_category(category: String) -> String:
+	for d in _unlock_defs:
+		if str(d.get("category", "")) == category:
+			var title := str(d.get("title", ""))
+			if title != "" and not is_unlocked(title):
+				grant_unlock(title)
+				return title
+	return ""
+
 # Deposit penalty + mining-yield research now live in the Modifiers system as
 # recipe_output tiles (Modifiers.EXTRACTION_PENALTY_PCT + the mining UNLOCK_MODIFIERS),
 # so they apply through the one production hook and surface in the recipe card's
@@ -1088,6 +1393,7 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 		return
 	unlocked_titles[title] = true
 	_surveyable_dirty = true  # e.g. Geoscanning changes survey range
+	flag_agenda_event(AGENDA_TECH_UNLOCK)
 	var desc := ""
 	for d in _unlock_defs:
 		if str(d.title) == title:
@@ -1300,6 +1606,19 @@ func cheat_partial_all() -> void:
 	for tid in _all_tile_ids():
 		mark_tile_partial(tid)
 
+## Cheat: apply a -60% labour-cost modifier for 10 turns. A single -60% lands
+## exactly on EconomyConfig.LABOUR_FACTOR_MIN (1 - 0.60 = 0.40), so it exercises
+## both the labour-floor clamp and the People-panel "max reduction" flag at once.
+func cheat_labour_discount() -> void:
+	Modifiers.add({
+		"id": "cheat_labour_discount",
+		"domain": "labour_headcount",
+		"pct": -60.0,
+		"duration_turns": 10,
+		"label": "Debug: labour -60%",
+		"source": "cheat",
+	})
+
 func get_tile_land_owned(tile_id: String) -> int:
 	return int(tile_land_owned.get(tile_id, DEFAULT_TILE_LAND_OWNED))
 
@@ -1496,6 +1815,56 @@ func get_tile_land_patches_available(tile_id: String) -> int:
 	var remaining := MAX_TILE_LAND - get_tile_land_owned(tile_id)
 	return maxi(0, int(floor(float(remaining) / float(LAND_PATCH_SIZE))))
 
+# Cash rebate a Chief Investment advisor gives toward a build: a fraction of the
+# required build materials' CURRENT market value (tier3 +10% / tier2 +5% / tier1 -5%
+# surcharge). Returned as a positive amount to subtract from the money cost.
+# A seated Chief Investment advisor unlocks paying for construction on credit
+# (LoanState.take_construction_loan — the 4th option on the missing-materials dialog).
+func construction_credit_available() -> bool:
+	return not _roster_entry(str(advisor_seats.get("chief_investment", ""))).is_empty()
+
+func construction_material_rebate(building_id: String) -> float:
+	if building_id == "":
+		return 0.0
+	return _materials_rebate(Construction.requirements_for(building_id))
+
+# Cash rebate = a fraction of the given materials' current market value, using the
+# Chief Investment "construction_rebate" tier fraction (tier3 +10% / tier2 +5% / tier1 -5%).
+# Shared by new builds and upgrades (the upgrade kit is valued the same way).
+func _materials_rebate(reqs: Dictionary) -> float:
+	var frac: float = float(Modifiers.resolve_pct("construction_rebate", "*", {}).get("net", 0.0)) / 100.0
+	if frac == 0.0:
+		return 0.0
+	var mat_value := 0.0
+	for good_id in reqs:
+		mat_value += float(int(reqs[good_id])) * MarketState.get_price(str(good_id))
+	return mat_value * frac
+
+# Land / NPC-building purchase cost after any Chief Investment "purchase_cost" discount
+# (tier3 -10% / tier2 -5% / tier1 +5% surcharge).
+func purchase_cost_after_advisor(base_cost: float) -> float:
+	var mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("purchase_cost", "*", {}).get("net", 0.0)) / 100.0)
+	return base_cost * mult
+
+# Construction takes one turn longer than the raw CSV value (BUILD_DURATION_BUMP).
+# The master-builder advisor (an Ops-3 veteran in the COO seat) shaves a turn off;
+# real builds never drop below BUILD_DURATION_MIN. Instant (0-turn) buildings stay instant.
+const BUILD_DURATION_BUMP := 1
+const BUILD_DURATION_MIN := 1
+const MASTER_BUILDER_ID := "gerald"   # Gerald Vance's specialty: -1 build turn while COO
+
+func is_master_builder_active() -> bool:
+	return str(advisor_seats.get("coo", "")) == MASTER_BUILDER_ID
+
+func effective_build_duration(building_id: String) -> int:
+	var base := int(Catalog.get_building(building_id).get("build_duration", 0))
+	if base <= 0:
+		return base   # instant buildings (infrastructure) stay instant
+	var dur := base + BUILD_DURATION_BUMP
+	if is_master_builder_active():
+		dur -= 1
+	return maxi(BUILD_DURATION_MIN, dur)
+
 func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
 	if tile_id == "":
 		return false
@@ -1503,7 +1872,7 @@ func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
 	if available <= 0:
 		return false
 	var clamped_patches: int = clampi(patches, 1, available)
-	var cost := float(clamped_patches) * LAND_PATCH_COST
+	var cost := purchase_cost_after_advisor(float(clamped_patches) * LAND_PATCH_COST)
 	if not deduct_money(cost):
 		return false
 	var owned := get_tile_land_owned(tile_id)
@@ -1540,6 +1909,7 @@ func reset() -> void:
 	auto_sell_impact.clear()
 	pending_transport_shipments.clear()
 	pending_upgrades.clear()
+	pending_retrofits.clear()
 	_last_link_flow.clear()
 	overflow_shipments.clear()
 	sales_by_tile.clear()
@@ -1549,6 +1919,27 @@ func reset() -> void:
 	workforce_policies.clear()
 	workforce_policy_effects.clear()
 	permanent_advisor_ids.clear()
+	advisor_seats.clear()
+	max_advisor_slots = MAX_ADVISOR_SLOTS_DEFAULT
+	crossed_milestones.clear()
+	recruited_advisor_ids.clear()
+	fired_advisor_cooldowns.clear()
+	advisor_loyalty.clear()
+	_advisor_walk_streak.clear()
+	advisor_missions_completed.clear()
+	_advisor_mission5_streak.clear()
+	advisor_mission_policies.clear()
+	_agenda_flags.clear()
+	_agenda_grid_sell_streak = 0
+	_agenda_no_buy_streak = 0
+	_agenda_last_build_turn = 0
+	_advisor_profit_streak = 0
+	advisor_slot_profit_unlocked = false
+	fake_money_this_turn = 0.0
+	peak_profit_per_turn = 0.0
+	match_rng_seed = DEFAULT_MATCH_RNG_SEED
+	_match_rng.seed = match_rng_seed
+	reconcile_advisor_modifiers()
 	recurring_moves.clear()
 	scheduled_moves.clear()
 	recurring_sells.clear()
@@ -1603,6 +1994,22 @@ func export_state() -> Dictionary:
 		"workforce_policies": workforce_policies.duplicate(true),
 		"workforce_policy_effects": workforce_policy_effects.duplicate(true),
 		"permanent_advisor_ids": permanent_advisor_ids.duplicate(true),
+		"advisor_seats": advisor_seats.duplicate(true),
+		"max_advisor_slots": max_advisor_slots,
+		"advisor_rng_seed": match_rng_seed,
+		"advisor_rng_state": _match_rng.state,
+		"advisor_crossed_milestones": crossed_milestones.duplicate(true),
+		"recruited_advisor_ids": recruited_advisor_ids.duplicate(true),
+		"fired_advisor_cooldowns": fired_advisor_cooldowns.duplicate(true),
+		"advisor_loyalty": advisor_loyalty.duplicate(true),
+		"advisor_walk_streak": _advisor_walk_streak.duplicate(true),
+		"advisor_missions_completed": advisor_missions_completed.duplicate(true),
+		"advisor_mission5_streak": _advisor_mission5_streak.duplicate(true),
+		"advisor_mission_policies": advisor_mission_policies.duplicate(true),
+		"agenda_last_build_turn": _agenda_last_build_turn,
+		"advisor_profit_streak": _advisor_profit_streak,
+		"advisor_slot_profit_unlocked": advisor_slot_profit_unlocked,
+		"advisor_peak_profit": peak_profit_per_turn,
 		"sell_mode": sell_mode,
 		"route_objective": route_objective,
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
@@ -1619,6 +2026,7 @@ func export_state() -> Dictionary:
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": _shipments_for_save(),
 		"pending_upgrades": pending_upgrades.duplicate(true),
+		"pending_retrofits": pending_retrofits.duplicate(true),
 		"overflow_shipments": overflow_shipments.duplicate(true),
 		"transaction_log": transaction_log.duplicate(true),
 		"move_log": move_log.duplicate(true),
@@ -1649,7 +2057,36 @@ func import_state(d: Dictionary) -> void:
 	labour_multiplier = float(d.get("labour_multiplier", EconomyConfig.LABOUR_MULTIPLIER_DEFAULT))
 	workforce_policies = (d.get("workforce_policies", {}) as Dictionary).duplicate(true)
 	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
+	recruited_advisor_ids = _sanitize_advisor_ids(d.get("recruited_advisor_ids", STARTING_TRIO))
+	advisor_loyalty = (d.get("advisor_loyalty", {}) as Dictionary).duplicate(true)
+	_advisor_walk_streak = (d.get("advisor_walk_streak", {}) as Dictionary).duplicate(true)
+	advisor_missions_completed = (d.get("advisor_missions_completed", {}) as Dictionary).duplicate(true)
+	_advisor_mission5_streak = (d.get("advisor_mission5_streak", {}) as Dictionary).duplicate(true)
+	advisor_mission_policies = (d.get("advisor_mission_policies", []) as Array).duplicate(true)
+	_agenda_last_build_turn = int(d.get("agenda_last_build_turn", 0))
+	fired_advisor_cooldowns = {}
+	for fid in (d.get("fired_advisor_cooldowns", {}) as Dictionary):
+		if not _roster_entry(str(fid)).is_empty():
+			var turns := int(d["fired_advisor_cooldowns"][fid])
+			if turns > 0:
+				fired_advisor_cooldowns[str(fid)] = mini(turns, FIRE_COOLDOWN_TURNS)
 	permanent_advisor_ids = _sanitize_advisor_ids(d.get("permanent_advisor_ids", []))
+	# A benched advisor can't also be employed.
+	for fid in fired_advisor_cooldowns.keys():
+		permanent_advisor_ids.erase(fid)
+	# Employed must be a subset of recruited.
+	for pid in permanent_advisor_ids:
+		if not recruited_advisor_ids.has(pid):
+			recruited_advisor_ids.append(pid)
+	advisor_seats = _sanitize_advisor_seats(d.get("advisor_seats", {}))
+	max_advisor_slots = clampi(int(d.get("max_advisor_slots", MAX_ADVISOR_SLOTS_DEFAULT)), MAX_ADVISOR_SLOTS_DEFAULT, MAX_ADVISOR_SLOTS_CAP)
+	match_rng_seed = int(d.get("advisor_rng_seed", DEFAULT_MATCH_RNG_SEED))
+	_match_rng.seed = match_rng_seed
+	_match_rng.state = int(d.get("advisor_rng_state", _match_rng.state))
+	crossed_milestones = (d.get("advisor_crossed_milestones", []) as Array).duplicate(true)
+	_advisor_profit_streak = int(d.get("advisor_profit_streak", 0))
+	advisor_slot_profit_unlocked = bool(d.get("advisor_slot_profit_unlocked", false))
+	peak_profit_per_turn = float(d.get("advisor_peak_profit", 0.0))
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
@@ -1666,6 +2103,7 @@ func import_state(d: Dictionary) -> void:
 	queued_stockpile_market_sales = (d.get("queued_stockpile_market_sales", {}) as Dictionary).duplicate(true)
 	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
 	pending_upgrades = (d.get("pending_upgrades", []) as Array).duplicate(true)
+	pending_retrofits = (d.get("pending_retrofits", []) as Array).duplicate(true)
 	overflow_shipments = (d.get("overflow_shipments", []) as Array).duplicate(true)
 	transaction_log = (d.get("transaction_log", []) as Array).duplicate(true)
 	move_log = (d.get("move_log", []) as Array).duplicate(true)
@@ -2833,9 +3271,27 @@ func set_labour_multiplier(value: float) -> void:
 	labour_multiplier_changed.emit(value)
 	print("[MatchState] Labour multiplier set to: %.2fx" % value)
 
+# Whether a policy can currently be toggled on. Long Tenure needs any seated HR
+# Director; Stock Options is the unique policy unlocked by an HR advisor's mission V.
+func is_workforce_policy_available(policy_id: String) -> bool:
+	match policy_id:
+		WORKFORCE_POLICY_LONG_TENURE:
+			return _hr_director_leadership() >= 0
+		WORKFORCE_POLICY_STOCK_OPTIONS:
+			return advisor_mission_policies.has(WORKFORCE_POLICY_STOCK_OPTIONS)
+		_:
+			return true
+
+# Leadership stat of the seated HR Director, or -1 if the seat is empty.
+func _hr_director_leadership() -> int:
+	var a: Dictionary = _roster_entry(str(advisor_seats.get("hr_director", "")))
+	return int(a.get("lead", 0)) if not a.is_empty() else -1
+
 func set_workforce_policy_enabled(policy_id: String, enabled: bool) -> void:
 	if policy_id == "":
 		return
+	if enabled and not is_workforce_policy_available(policy_id):
+		return   # locked (HR Director not seated / lacks the required leadership)
 	var was_enabled := bool(workforce_policies.get(policy_id, false))
 	if was_enabled == enabled:
 		return
@@ -2868,7 +3324,7 @@ func tick_workforce_policies() -> void:
 		var active := is_workforce_policy_enabled(policy_id)
 		var effect: Dictionary = workforce_policy_effects.get(policy_id, {})
 		_advance_workforce_effect(policy_id, effect, active)
-		if not active and absf(float(effect.get("output_pct", 0.0))) < 0.00001 and absf(float(effect.get("labour_pct", 0.0))) < 0.00001:
+		if not active and absf(float(effect.get("output_pct", 0.0))) < 0.00001 and absf(float(effect.get("labour_pct", 0.0))) < 0.00001 and absf(float(effect.get("dividend_pct", 0.0))) < 0.00001:
 			workforce_policy_effects.erase(policy_id)
 		else:
 			workforce_policy_effects[policy_id] = effect
@@ -2904,6 +3360,23 @@ func _advance_workforce_effect(policy_id: String, effect: Dictionary, active: bo
 				labour_pct = minf(0.15, labour_pct + 0.005)
 			else:
 				labour_pct = maxf(0.0, labour_pct - 0.0025)
+		WORKFORCE_POLICY_LONG_TENURE:
+			# Long-serving staff get cheaper over time (to -10%); a periodic awards
+			# payout (+10% one turn every 10th) is added in workforce_labour_cost_delta.
+			if active:
+				labour_pct = maxf(-0.10, labour_pct - 0.001)
+			else:
+				labour_pct = minf(0.0, labour_pct + 0.0025)
+		WORKFORCE_POLICY_STOCK_OPTIONS:
+			# Ownership stake lifts output (to +5%) and grows the dividend (to +10pp).
+			var div_pct := float(effect.get("dividend_pct", 0.0))
+			if active:
+				output_pct = minf(0.05, output_pct + 0.001)
+				div_pct = minf(0.10, div_pct + 0.0005)
+			else:
+				output_pct = maxf(0.0, output_pct - 0.001)
+				div_pct = maxf(0.0, div_pct - 0.001)
+			effect["dividend_pct"] = div_pct
 
 	effect["output_pct"] = output_pct
 	effect["labour_pct"] = labour_pct
@@ -2922,6 +3395,9 @@ func workforce_output_multiplier(turn_number: int = -1) -> float:
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_GENEROUS_PENSIONS):
 		var pensions: Dictionary = workforce_policy_effects.get(WORKFORCE_POLICY_GENEROUS_PENSIONS, {})
 		multiplier *= 1.0 + float(pensions.get("output_pct", 0.0))
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_STOCK_OPTIONS):
+		var stock: Dictionary = workforce_policy_effects.get(WORKFORCE_POLICY_STOCK_OPTIONS, {})
+		multiplier *= 1.0 + float(stock.get("output_pct", 0.0))
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE) and turn % 10 == 0:
 		multiplier *= 0.95
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE):
@@ -2941,14 +3417,24 @@ func workforce_output_multiplier(turn_number: int = -1) -> float:
 # Summed workforce-policy labour delta (a fraction, e.g. -0.10 for -10%). Policies
 # combine ADDITIVELY here; callers apply this to the 100% base alongside the labour
 # slider and research trims rather than compounding it on top of them.
-func workforce_labour_cost_delta() -> float:
+func workforce_labour_cost_delta(turn_number: int = -1) -> float:
+	var turn := int(TurnManager.current_turn) if turn_number < 0 else turn_number
 	var delta := 0.0
 	for effect in workforce_policy_effects.values():
 		if effect is Dictionary:
 			delta += float(effect.get("labour_pct", 0.0))
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS):
 		delta += 0.05
+	# Long Tenure Awards: a payout spike of +10% labour one turn every 10th turn.
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_LONG_TENURE) and turn > 0 and turn % 10 == 0:
+		delta += 0.10
 	return delta
+
+# Accrued Stock Options dividend bonus (0..0.10), added on top of the base dividend
+# rate at the payout site; persists (decaying) after the policy is switched off.
+func workforce_dividend_bonus() -> float:
+	var e = workforce_policy_effects.get(WORKFORCE_POLICY_STOCK_OPTIONS, {})
+	return float(e.get("dividend_pct", 0.0)) if e is Dictionary else 0.0
 
 func workforce_labour_cost_multiplier() -> float:
 	return maxf(0.0, 1.0 + workforce_labour_cost_delta())
@@ -2989,6 +3475,600 @@ func projected_workforce_labour_delta(turns_ahead: int) -> float:
 func labour_policy_factor() -> float:
 	return maxf(0.0, 1.0 + (labour_multiplier - 1.0) + workforce_labour_cost_delta())
 
+# ── Advisor seat framework (docs/advisor-system-spec.md §2-6) ──────────────
+# Phase 0 CORE: data model + scaling + idempotent modifier reconciler. The
+# effects are inert placeholders here (spec §12.1 Phase 0 = "nothing works yet");
+# real domain modifiers land in Phase 1. The display roster (_advisor_definitions)
+# is merged onto ADVISOR_ROSTER in a later increment.
+
+# seat_id -> {seat_name, governs (stat key), flexible (best-of stat keys; [] = rigid), lever_kit}
+const SEAT_DEFINITIONS := {
+	"cfo":                {"seat_name": "CFO",                  "governs": "fin",  "flexible": [],                  "lever_kit": ["loan interest", "loan duration", "dividend holiday"]},
+	"coo":                {"seat_name": "COO",                  "governs": "ops",  "flexible": [],                  "lever_kit": ["labour cost", "maintenance", "energy cost", "retrofit"]},
+	"vp_logistics":       {"seat_name": "VP Logistics",         "governs": "ops",  "flexible": [],                  "lever_kit": ["transport cost", "throughput", "distance per turn"]},
+	"hr_director":        {"seat_name": "HR Director",          "governs": "lead", "flexible": [],                  "lever_kit": ["labour policies", "retention", "labour cost"]},
+	"technical_director": {"seat_name": "Technical Director",   "governs": "inn",  "flexible": [],                  "lever_kit": ["recipe output (chosen category)", "free tech unlock"]},
+	"research_director":  {"seat_name": "Research Director",    "governs": "inn",  "flexible": [],                  "lever_kit": ["free tech unlocks"]},
+	"government_affairs": {"seat_name": "Government Affairs",    "governs": "inf",  "flexible": [],                  "lever_kit": ["tax reduction", "green subsidy", "carbon relief"]},
+	"chief_investment":   {"seat_name": "Chief Investment",     "governs": "fin",  "flexible": ["fin", "inn"],       "lever_kit": ["one-off cheap loan", "purchase value", "capex"]},
+	"chief_markets":      {"seat_name": "Chief Markets Officer","governs": "inf",  "flexible": ["inf", "fin"],       "lever_kit": ["market spread", "sale-price boosts", "forewarning"]},
+	"sustainability":     {"seat_name": "Sustainability Officer","governs": "inf", "flexible": ["inf", "ops", "lead"],"lever_kit": ["greenest push", "green premium", "clean-adoption discount"]},
+}
+
+# Canonical 12-advisor stat roster (spec §3). Stars are DERIVED (advisor_star),
+# never stored. salary is static (Phase-2 payroll); advisor_payroll_per_turn stays
+# flat for now. traits.specialty_domain is filled in Phase 1+ for effect routing.
+const ADVISOR_ROSTER := [
+	{"id": "vera",      "name": "Vera Ashby",      "role": "cfo",                "inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 3, "salary": 1.0, "traits": {"specialty_name": "Family Trust",         "specialty_description": "reduced salary, no malus anywhere",                 "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "alexandra", "name": "Alexandra Reyes", "role": "coo",                "inf": 3, "ops": 3, "lead": 3, "inn": 3, "fin": 2, "salary": 4.0, "traits": {"specialty_name": "Prima Donna",          "specialty_description": "superb everywhere; high salary + walk-risk if benched", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "gerald",    "name": "Gerald Vance",    "role": "coo",                "inf": 2, "ops": 3, "lead": 3, "inn": 2, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Dinosaur",             "specialty_description": "top operator; brakes clean-recipe adoption (carbon, later)", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "eleanor",   "name": "Eleanor Shaw",    "role": "hr_director",        "inf": 3, "ops": 2, "lead": 3, "inn": 1, "fin": 3, "salary": 2.0, "traits": {"specialty_name": "Beloved",              "specialty_description": "labour cost via HR + slows advisor churn",           "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "sloane",    "name": "Sloane Vane",     "role": "chief_markets",      "inf": 3, "ops": 3, "lead": 1, "inn": 1, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Slick",                "specialty_description": "extra temporary sale-price boost in a markets seat",  "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "priya",     "name": "Priya Anand",     "role": "sustainability",     "inf": 3, "ops": 1, "lead": 2, "inn": 3, "fin": 1, "salary": 2.0, "traits": {"specialty_name": "Idealist",             "specialty_description": "amplifies green; raises short-term spend (green, later)", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "hitomi",    "name": "Hitomi Sato",     "role": "vp_logistics",       "inf": 1, "ops": 3, "lead": 1, "inn": 3, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Flow State",           "specialty_description": "logistics/mfg optimisation; extra malus in Inf/Lead seats", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "hal",       "name": "Hal Rooker",      "role": "government_affairs", "inf": 3, "ops": 1, "lead": 3, "inn": 1, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Backroom Deals",       "specialty_description": "regulatory relief (tax cut; carbon relief when it exists)", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "tom",       "name": "Tom Bracken",     "role": "coo",                "inf": 1, "ops": 3, "lead": 2, "inn": 1, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Shop-Floor Respect",   "specialty_description": "extra labour reduction in an Ops seat",              "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "marcus",    "name": "Marcus Thorne",   "role": "chief_investment",   "inf": 2, "ops": 1, "lead": 2, "inn": 1, "fin": 3, "salary": 2.0, "traits": {"specialty_name": "Leverage",             "specialty_description": "cheap capital + discounted acquisitions; debt-risk exposure", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "idris",     "name": "Idris Kohl",      "role": "technical_director", "inf": 1, "ops": 2, "lead": 1, "inn": 3, "fin": 1, "salary": 2.0, "traits": {"specialty_name": "Insufferable Genius",  "specialty_description": "big recipe efficiency in TD; empire labour malus unless siloed", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+	{"id": "rufus",     "name": "Rufus Ashby",     "role": "government_affairs", "inf": 3, "ops": 1, "lead": 1, "inn": 1, "fin": 1, "salary": 2.0, "traits": {"specialty_name": "Silver Tongue, Empty Suit", "specialty_description": "strong Influencing effect; a bad block everywhere else", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
+]
+
+# Phase-1 FREE-lever effects per seat: each emits domain modifiers scaled by the
+# governing tier. base_pct is the tier-3 magnitude; tier 2 = half, tier 1 = a
+# half-magnitude malus (sign flips). Numbers are illustrative (spec: tune in the
+# harness); labour -10% at tier 3 matches spec §5.1's COO/HR dual-source cap.
+# Finance/markets/gov seats have no entry — their levers are Phase 2+.
+const _SEAT_EFFECTS := {
+	"coo": [
+		{"domain": "labour_headcount", "base_pct": -10.0},
+		{"domain": "maintenance", "base_pct": -10.0},
+		{"domain": "building_power", "base_pct": -8.0},
+		# Grid tariffs: cheaper imports, better-paid exports (tier3 -10% / +10%).
+		{"domain": "grid_buy_price", "base_pct": -10.0},
+		{"domain": "grid_sell_price", "base_pct": 10.0},
+	],
+	"vp_logistics": [
+		{"domain": "transport_cost", "base_pct": -10.0},
+		{"domain": "transport_throughput", "base_pct": 10.0},
+	],
+	"hr_director": [
+		{"domain": "labour_headcount", "base_pct": -10.0},
+	],
+	# Phase 2 SMALL-lever seats (isolated domains read at the tax / buy-price / loan sites).
+	"cfo": [
+		{"domain": "loan_interest", "base_pct": -25.0},
+		{"domain": "dividend_rate", "base_pct": -40.0},   # tier3 -40% / tier2 -20% / tier1 +20%
+	],
+	"chief_investment": [
+		# Rebate a fraction of build/upgrade-materials value: tier3 +10% / tier2 +5% / tier1 -5%.
+		{"domain": "construction_rebate", "base_pct": 10.0},
+		# Land + NPC-building purchases: tier3 -10% / tier2 -5% / tier1 +5%.
+		{"domain": "purchase_cost", "base_pct": -10.0},
+	],
+	"government_affairs": [
+		{"domain": "tax_rate", "base_pct": -20.0},
+	],
+	"chief_markets": [
+		{"domain": "market_spread", "base_pct": -25.0},
+		# Sale-price uplift applies to ALL market revenue (a broad base) so it is kept
+		# tiny: tier3 +2% / tier2 +1% / tier1 -1%. Stacks with research market_price, but
+		# the realised sale price is clamped to the buy price (MarketState.get_sale_price).
+		{"domain": "market_price", "base_pct": 2.0},
+	],
+}
+# governing tier -> multiplier on base_pct. 3 = full, 2 = half, 1 = half malus.
+const _TIER_MULT := {3: 1.0, 2: 0.5, 1: -0.5, 0: 0.0}
+
+func _roster_entry(advisor_id: String) -> Dictionary:
+	for a in ADVISOR_ROSTER:
+		if str(a.get("id", "")) == advisor_id:
+			return a
+	return {}
+
+# Derived star (spec §2.2 precedence): 4+ threes -> 5; else score>=12 -> 4;
+# >=10 -> 3; >=8 -> 2; else 1 (floor). Accepts a full advisor dict or a bare
+# {inf,ops,lead,inn,fin}. Never persisted.
+func advisor_star(stats: Dictionary) -> int:
+	var score := 0
+	var threes := 0
+	for key in ["inf", "ops", "lead", "inn", "fin"]:
+		var v := int(stats.get(key, 1))
+		score += v
+		if v >= 3:
+			threes += 1
+	if threes >= 4:
+		return 5
+	if score >= 12:
+		return 4
+	if score >= 10:
+		return 3
+	if score >= 8:
+		return 2
+	return 1
+
+func advisor_star_by_id(advisor_id: String) -> int:
+	var a := _roster_entry(advisor_id)
+	return advisor_star(a) if not a.is_empty() else 0
+
+# The 3/2/1 governing tier for an advisor in a seat (spec §2.3). Rigid seats read
+# the governing stat; flexible seats read the BEST of their eligible disciplines.
+# Returns 0 for an unknown advisor/seat.
+func advisor_seat_tier(advisor_id: String, seat_id: String) -> int:
+	var a := _roster_entry(advisor_id)
+	if a.is_empty() or not SEAT_DEFINITIONS.has(seat_id):
+		return 0
+	var seat: Dictionary = SEAT_DEFINITIONS[seat_id]
+	var flex: Array = seat.get("flexible", [])
+	if flex.is_empty():
+		return int(a.get(str(seat.get("governs", "")), 1))
+	var best := 1
+	for disc in flex:
+		best = maxi(best, int(a.get(str(disc), 1)))
+	return best
+
+# Which discipline governs a (possibly flexible) seat for this advisor — for the
+# UI preview (spec §11). For flexible seats returns the best-of winner.
+func advisor_seat_governing_discipline(advisor_id: String, seat_id: String) -> String:
+	var a := _roster_entry(advisor_id)
+	if not SEAT_DEFINITIONS.has(seat_id):
+		return ""
+	var seat: Dictionary = SEAT_DEFINITIONS[seat_id]
+	var flex: Array = seat.get("flexible", [])
+	if flex.is_empty() or a.is_empty():
+		return str(seat.get("governs", ""))
+	var best_disc := ""
+	var best := -1
+	for disc in flex:
+		var v := int(a.get(str(disc), 1))
+		if v > best:
+			best = v
+			best_disc = str(disc)
+	return best_disc
+
+# Assign a HIRED, rostered advisor to a seat. Enforces the slot cap and
+# one-seat-per-advisor. Returns false if rejected.
+func assign_advisor_to_seat(seat_id: String, advisor_id: String) -> bool:
+	if not SEAT_DEFINITIONS.has(seat_id):
+		return false
+	if _roster_entry(advisor_id).is_empty():
+		return false
+	if not permanent_advisor_ids.has(advisor_id):
+		return false
+	if not advisor_seats.has(seat_id) and advisor_seats.size() >= max_advisor_slots:
+		return false
+	# One seat per advisor: vacate any other seat this advisor currently holds.
+	for existing_seat in advisor_seats.keys():
+		if existing_seat != seat_id and str(advisor_seats[existing_seat]) == advisor_id:
+			advisor_seats.erase(existing_seat)
+	advisor_seats[seat_id] = advisor_id
+	reconcile_advisor_modifiers()
+	advisors_changed.emit()
+	return true
+
+func unassign_seat(seat_id: String) -> bool:
+	if not advisor_seats.has(seat_id):
+		return false
+	advisor_seats.erase(seat_id)
+	reconcile_advisor_modifiers()
+	advisors_changed.emit()
+	return true
+
+func get_advisor_in_seat(seat_id: String) -> String:
+	return str(advisor_seats.get(seat_id, ""))
+
+# People-management unlock primitive: raise the seat cap toward MAX_ADVISOR_SLOTS_CAP.
+# The build-count trigger that CALLS this is wired in the acquisition increment.
+func unlock_advisor_slot() -> void:
+	max_advisor_slots = mini(max_advisor_slots + 1, MAX_ADVISOR_SLOTS_CAP)
+	advisors_changed.emit()
+
+# Drop seats pointing at an unknown seat_id or an un-rostered advisor, and dedupe
+# so an advisor never holds two seats. Keeps valid entries (no silent emptying).
+func _sanitize_advisor_seats(raw: Variant) -> Dictionary:
+	var out: Dictionary = {}
+	if not (raw is Dictionary):
+		return out
+	var seen: Dictionary = {}
+	for seat_id in (raw as Dictionary).keys():
+		var sid := str(seat_id)
+		var aid := str((raw as Dictionary)[seat_id])
+		if not SEAT_DEFINITIONS.has(sid):
+			continue
+		if _roster_entry(aid).is_empty():
+			continue
+		if seen.has(aid):
+			continue
+		out[sid] = aid
+		seen[aid] = true
+	return out
+
+# Idempotent bridge to ModifierState. Removes ALL prior advisor-seat modifiers
+# (clearing stale/vacated seats) then re-adds one per occupied seat with a stable
+# id (advisor_seat_<seat_id>) so a re-run replaces rather than duplicates. Called
+# on seat change, reset, and load (the latter from save_load AFTER Modifiers import).
+# Each seat's FREE-lever effects (_SEAT_EFFECTS) are emitted as domain modifiers
+# scaled by the governing tier; seats whose levers are Phase 2+ emit nothing yet.
+# The concrete modifier effects an advisor would provide in a given seat, each as
+# {domain, pct} with pct already scaled by their governing tier (empty if the seat
+# has no effects or the advisor would be inert there).
+func advisor_seat_effect_list(advisor_id: String, seat_id: String) -> Array:
+	var mult: float = float(_TIER_MULT.get(advisor_seat_tier(advisor_id, seat_id), 0.0))
+	var out: Array = []
+	if mult == 0.0:
+		return out
+	for eff in _SEAT_EFFECTS.get(seat_id, []):
+		var pct: float = float(eff.get("base_pct", 0.0)) * mult
+		if pct != 0.0:
+			out.append({"domain": str(eff.get("domain", "")), "pct": pct})
+	return out
+
+# The seat this advisor best demonstrates: their assigned seat if seated, else the
+# highest-tier seat that actually carries effects (falls back to their top seat).
+func advisor_best_effect_seat(advisor_id: String) -> String:
+	for sid in advisor_seats:
+		if str(advisor_seats[sid]) == advisor_id:
+			return str(sid)
+	var best_seat := ""
+	var best_tier := -1
+	for sid in SEAT_DEFINITIONS:
+		var t: int = advisor_seat_tier(advisor_id, str(sid))
+		var has_fx: bool = not _SEAT_EFFECTS.get(str(sid), []).is_empty()
+		# Prefer seats that carry effects; among those, the highest tier.
+		var score: int = t + (100 if has_fx else 0)
+		if score > best_tier:
+			best_tier = score
+			best_seat = str(sid)
+	return best_seat
+
+func reconcile_advisor_modifiers() -> void:
+	for m in Modifiers.active():
+		var mid := str(m.get("id", ""))
+		if mid.begins_with("advisor_seat_"):
+			Modifiers.remove(mid)
+	for seat_id in advisor_seats.keys():
+		var advisor_id := str(advisor_seats[seat_id])
+		if _roster_entry(advisor_id).is_empty():
+			continue
+		var tier: int = advisor_seat_tier(advisor_id, str(seat_id))
+		var tier_mult: float = float(_TIER_MULT.get(tier, 0.0))
+		if tier_mult == 0.0:
+			continue
+		var seat_name := str(SEAT_DEFINITIONS.get(seat_id, {}).get("seat_name", seat_id))
+		for eff in _SEAT_EFFECTS.get(seat_id, []):
+			var pct: float = float(eff.get("base_pct", 0.0)) * tier_mult
+			if pct == 0.0:
+				continue
+			Modifiers.add({
+				"id": "advisor_seat_%s_%s" % [seat_id, str(eff.get("domain", ""))],
+				"domain": str(eff.get("domain", "")),
+				"pct": pct,
+				"label": "%s: %s (tier %d)" % [seat_name, advisor_id, tier],
+				"source": "advisor_seat",
+			})
+	_revoke_unavailable_workforce_policies()
+
+# Switch off any HR-gated workforce policy whose advisor requirement is no longer met
+# (e.g. the HR Director was un-seated or fired) so the benefit can't outlive the seat.
+func _revoke_unavailable_workforce_policies() -> void:
+	for pid in [WORKFORCE_POLICY_LONG_TENURE, WORKFORCE_POLICY_STOCK_OPTIONS]:
+		if is_workforce_policy_enabled(pid) and not is_workforce_policy_available(pid):
+			set_workforce_policy_enabled(pid, false)
+
+func _match_rng_int(max_exclusive: int) -> int:
+	if max_exclusive <= 0:
+		return 0
+	return _match_rng.randi_range(0, max_exclusive - 1)
+
+# Canonical ids not yet recruited (draw-without-replacement, spec §4.3).
+func _advisor_draw_pool() -> Array:
+	var out: Array = []
+	for a in ADVISOR_ROSTER:
+		var id := str(a.get("id", ""))
+		if not recruited_advisor_ids.has(id):
+			out.append(id)
+	return out
+
+# Recruit one random advisor into the available pool (seeded; deterministic).
+# Recruiting UNLOCKS an advisor; you still employ up to max_advisor_slots.
+func draw_advisor_from_pool() -> String:
+	var pool := _advisor_draw_pool()
+	if pool.is_empty():
+		return ""
+	var picked := str(pool[_match_rng_int(pool.size())])
+	recruited_advisor_ids.append(picked)
+	advisor_acquired.emit(picked)
+	advisors_changed.emit()
+	return picked
+
+# Debug cheat: add cash, tracked as "fake money" for the turn summary.
+func cheat_add_cash(amount: float) -> void:
+	add_money(amount)
+	fake_money_this_turn += amount
+
+# The next un-crossed profit milestone (advisor recruit), or 0 if all crossed.
+func next_advisor_milestone() -> int:
+	for m in PROFIT_MILESTONES:
+		if not crossed_milestones.has(m):
+			return int(m)
+	return 0
+
+# Award one advisor on the first crossing of each profit-per-turn milestone (latched).
+func check_profit_milestones(profit_per_turn: float) -> void:
+	for m in PROFIT_MILESTONES:
+		if crossed_milestones.has(m):
+			continue
+		if profit_per_turn >= float(m):
+			crossed_milestones.append(m)
+			draw_advisor_from_pool()
+
+func _player_building_count() -> int:
+	var n := 0
+	for b in buildings.values():
+		if b is Dictionary and is_player_owned(b):
+			n += 1
+	return n
+
+# Advisor employ-slots unlock monotonically: 3rd at ADVISOR_SLOT_BUILDINGS_3 buildings,
+# 4th at ADVISOR_SLOT_BUILDINGS_4, 5th after ADVISOR_SLOT_PROFIT_STREAK consecutive turns
+# at >= ADVISOR_SLOT_PROFIT_5 profit/turn. Once earned a slot is kept.
+func _update_advisor_slots(profit_per_turn: float) -> void:
+	if profit_per_turn >= ADVISOR_SLOT_PROFIT_5:
+		_advisor_profit_streak += 1
+	else:
+		_advisor_profit_streak = 0
+	if _advisor_profit_streak >= ADVISOR_SLOT_PROFIT_STREAK:
+		advisor_slot_profit_unlocked = true
+	var bldgs := _player_building_count()
+	var target := MAX_ADVISOR_SLOTS_DEFAULT
+	if bldgs >= ADVISOR_SLOT_BUILDINGS_3:
+		target += 1
+		grant_unlock("Third Advisor Seat")
+	if bldgs >= ADVISOR_SLOT_BUILDINGS_4:
+		target += 1
+		grant_unlock("Fourth Advisor Seat")
+	if advisor_slot_profit_unlocked:
+		target += 1
+		grant_unlock("Fifth Advisor Seat")
+	var new_cap: int = mini(maxi(max_advisor_slots, target), MAX_ADVISOR_SLOTS_CAP)
+	if new_cap != max_advisor_slots:
+		max_advisor_slots = new_cap
+		advisors_changed.emit()
+
+func _on_turn_processed_advisors(summary: Dictionary) -> void:
+	# Include cheat "fake money" so the cash cheat can drive advisor unlocks in testing.
+	var profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) + float(summary.get("fake_money", 0.0))
+	peak_profit_per_turn = maxf(peak_profit_per_turn, profit)
+	_tick_fire_cooldowns()
+	_evaluate_agendas(summary, profit)
+	_update_advisor_slots(profit)
+	check_profit_milestones(profit)
+
+# --- Advisor loyalty / churn ------------------------------------------------
+
+func advisor_loyalty_value(advisor_id: String) -> float:
+	return float(advisor_loyalty.get(advisor_id, 0.0))
+
+# Loyalty magnitude for an event, given whether it's a like or a dislike for the
+# advisor: per-turn likes +0.6 / dislikes 0.4; one-off actions a full 1.0.
+func _agenda_points(tag: String, benefit: bool) -> float:
+	if bool((AGENDA_META.get(tag, {}) as Dictionary).get("per_turn", false)):
+		return AGENDA_LIKE_PER_TURN if benefit else AGENDA_DISLIKE_PER_TURN
+	return AGENDA_ONE_OFF
+
+# The concrete loyalty drivers for an advisor's Agenda display: one row per like /
+# dislike with signed points, the plain-English action, and whether it applies each turn.
+func advisor_agenda_rows(advisor_id: String) -> Array:
+	var agenda: Dictionary = ADVISOR_AGENDAS.get(advisor_id, {})
+	var rows: Array = []
+	for tag in agenda.get("likes", []):
+		var meta: Dictionary = AGENDA_META.get(str(tag), {})
+		rows.append({"points": _agenda_points(str(tag), true), "text": str(meta.get("text", tag)), "per_turn": bool(meta.get("per_turn", false)), "benefit": true})
+	for tag in agenda.get("dislikes", []):
+		var meta2: Dictionary = AGENDA_META.get(str(tag), {})
+		rows.append({"points": -_agenda_points(str(tag), false), "text": str(meta2.get("text", tag)), "per_turn": bool(meta2.get("per_turn", false)), "benefit": false})
+	return rows
+
+# Called from hook sites during a turn to record that an agenda event happened.
+func flag_agenda_event(tag: String) -> void:
+	_agenda_flags[tag] = true
+
+# Record a build this turn (drives the idle-building + build-while-unprofitable agendas).
+func note_building_built() -> void:
+	_agenda_last_build_turn = int(TurnManager.current_turn)
+	_agenda_flags["_built"] = true
+
+# Debug cheat: nudge an advisor's loyalty by delta, clamped to [-10, 10].
+func cheat_set_loyalty(advisor_id: String, delta: float) -> void:
+	if _roster_entry(advisor_id).is_empty():
+		return
+	advisor_loyalty[advisor_id] = clampf(advisor_loyalty_value(advisor_id) + delta, LOYALTY_MIN, LOYALTY_MAX)
+	advisors_changed.emit()
+
+# Which agenda events fired this turn (flagged hooks + summary-derived + streaks).
+func _collect_agenda_events(summary: Dictionary, profit: float) -> Dictionary:
+	var ev: Dictionary = {}
+	for tag in _agenda_flags:
+		ev[tag] = true
+	if profit > 0.0:
+		ev[AGENDA_MADE_PROFIT] = true
+	if float(summary.get("power_purchase_cost", 0.0)) > 0.0:
+		ev[AGENDA_BOUGHT_GRID_POWER] = true
+	var bought_materials: bool = float(summary.get("goods_purchased_cost", 0.0)) > 0.0
+	if bought_materials:
+		ev[AGENDA_BOUGHT_MATERIALS] = true
+	# Grid-sell streak (5 consecutive turns exporting power).
+	_agenda_grid_sell_streak = _agenda_grid_sell_streak + 1 if float(summary.get("power_sales_revenue", 0.0)) > 0.0 else 0
+	if _agenda_grid_sell_streak >= 5:
+		ev[AGENDA_SOLD_GRID_POWER] = true
+	# Autarky streak (no market input buys, 3 turns in a row).
+	_agenda_no_buy_streak = 0 if bought_materials else _agenda_no_buy_streak + 1
+	if _agenda_no_buy_streak >= 3:
+		ev[AGENDA_AUTARKIC] = true
+	if _agenda_flags.has("_built") and profit < 0.0:
+		ev[AGENDA_BUILT_UNPROFITABLE] = true
+	if int(TurnManager.current_turn) - _agenda_last_build_turn > 10:
+		ev[AGENDA_IDLE_BUILDING] = true
+	if _count_enabled_workforce_policies() >= 2:
+		ev[AGENDA_LABOUR_POLICIES] = true
+	return ev
+
+func _count_enabled_workforce_policies() -> int:
+	var n := 0
+	for pid in workforce_policies:
+		if bool(workforce_policies[pid]):
+			n += 1
+	return n
+
+# Decay every employed advisor's loyalty toward 0, apply this turn's agenda events,
+# then walk anyone stuck at/below the threshold for LOYALTY_WALK_TURNS running turns.
+func _evaluate_agendas(summary: Dictionary, profit: float) -> void:
+	var events: Dictionary = _collect_agenda_events(summary, profit)
+	for aid in permanent_advisor_ids:
+		var agenda: Dictionary = ADVISOR_AGENDAS.get(aid, {})
+		var v: float = advisor_loyalty_value(aid)
+		if v > 0.0:
+			v = maxf(0.0, v - LOYALTY_DECAY)
+		elif v < 0.0:
+			v = minf(0.0, v + LOYALTY_DECAY)
+		for tag in agenda.get("likes", []):
+			if events.has(tag):
+				v += _agenda_points(str(tag), true)
+		for tag in agenda.get("dislikes", []):
+			if events.has(tag):
+				v -= _agenda_points(str(tag), false)
+		advisor_loyalty[aid] = clampf(v, LOYALTY_MIN, LOYALTY_MAX)
+		_check_mission_progress(aid)
+		if advisor_loyalty[aid] <= LOYALTY_WALK_THRESHOLD:
+			_advisor_walk_streak[aid] = int(_advisor_walk_streak.get(aid, 0)) + 1
+		else:
+			_advisor_walk_streak[aid] = 0
+	# Walk in a second pass (walking mutates permanent_advisor_ids).
+	var walkers: Array = []
+	for aid in permanent_advisor_ids:
+		if int(_advisor_walk_streak.get(aid, 0)) >= LOYALTY_WALK_TURNS:
+			walkers.append(aid)
+	for aid in walkers:
+		_advisor_walk(str(aid))
+	_agenda_flags.clear()
+
+# --- Advisor missions (rewards delivered as loyalty milestones are reached) --------
+
+func advisor_missions_done(advisor_id: String) -> int:
+	return int(advisor_missions_completed.get(advisor_id, 0))
+
+# Advance missions once per turn. I–IV complete the first turn loyalty reaches their
+# threshold; V requires loyalty to hold at/above MISSION5_LOYALTY for MISSION5_STREAK_TURNS.
+func _check_mission_progress(advisor_id: String) -> void:
+	if MISSION_TEMPLATES.get(str(_roster_entry(advisor_id).get("role", "")), {}).is_empty():
+		return
+	var done := advisor_missions_done(advisor_id)
+	var loyalty := advisor_loyalty_value(advisor_id)
+	# Missions I–IV: single-hit loyalty thresholds [2, 5, 7, 9].
+	while done < MISSION_LOYALTY_THRESHOLDS.size() and loyalty >= float(MISSION_LOYALTY_THRESHOLDS[done]):
+		done += 1
+		advisor_missions_completed[advisor_id] = done
+		_grant_mission_reward(advisor_id, done)
+	# Mission V: sustained high loyalty streak.
+	if loyalty >= MISSION5_LOYALTY:
+		_advisor_mission5_streak[advisor_id] = int(_advisor_mission5_streak.get(advisor_id, 0)) + 1
+	else:
+		_advisor_mission5_streak[advisor_id] = 0
+	if done == MISSION_LOYALTY_THRESHOLDS.size() and int(_advisor_mission5_streak.get(advisor_id, 0)) >= MISSION5_STREAK_TURNS:
+		advisor_missions_completed[advisor_id] = MISSION_COUNT
+		_grant_mission_reward(advisor_id, MISSION_COUNT)
+
+# Mission indices are 1-based (I..V). Mirrors the reward layout in MISSION_TEMPLATES.
+func _grant_mission_reward(advisor_id: String, mission_num: int) -> void:
+	var tmpl: Dictionary = MISSION_TEMPLATES.get(str(_roster_entry(advisor_id).get("role", "")), {})
+	if tmpl.is_empty():
+		return
+	var label := ""
+	match mission_num:
+		1:
+			label = _apply_mission_temp(advisor_id, 1, tmpl.get("temp", {}))
+		2:
+			label = _apply_mission_perm(advisor_id, 2, tmpl.get("perm1", {}))
+		3:
+			var parts: Array = []
+			var research_title := grant_first_locked_in_category(str(tmpl.get("research_category", "")))
+			if research_title != "":
+				parts.append("free research: %s" % research_title)
+			if tmpl.has("temp2"):
+				parts.append(_apply_mission_temp(advisor_id, 3, tmpl.get("temp2", {})))
+			label = " + ".join(parts) if not parts.is_empty() else "no new reward"
+		4:
+			label = _apply_mission_perm(advisor_id, 4, tmpl.get("perm2", {}))
+		5:
+			var cap: Dictionary = tmpl.get("capstone", {})
+			if cap.has("policy"):
+				label = _apply_mission_policy(str(cap.get("policy", "")), str(cap.get("label", "")))
+			else:
+				label = _apply_mission_perm(advisor_id, 5, cap)
+	advisor_mission_completed.emit(advisor_id, mission_num, label)
+	request_toast("%s reached mission %s — %s" % [str(get_advisor(advisor_id).get("name", advisor_id)), _roman(mission_num), label], "success")
+
+func _roman(n: int) -> String:
+	return ["", "I", "II", "III", "IV", "V"][clampi(n, 0, 5)]
+
+# A temporary specialty modifier (duration_turns). Distinct ids so a re-trigger refreshes.
+func _apply_mission_temp(advisor_id: String, mission_num: int, spec: Dictionary) -> String:
+	if spec.is_empty():
+		return ""
+	Modifiers.add({
+		"id": "advisor_mission_temp_%s_%d" % [advisor_id, mission_num],
+		"domain": str(spec.get("domain", "")),
+		"pct": float(spec.get("pct", 0.0)),
+		"label": "Mission (%s): %s" % [advisor_id, str(spec.get("label", ""))],
+		"source": "advisor_mission",
+		"duration_turns": int(spec.get("turns", 20)),
+	})
+	return str(spec.get("label", ""))
+
+# A permanent seat-effect slice that persists even when the advisor is unseated.
+func _apply_mission_perm(advisor_id: String, mission_num: int, spec: Dictionary) -> String:
+	if spec.is_empty():
+		return ""
+	Modifiers.add({
+		"id": "advisor_mission_perm_%s_%d" % [advisor_id, mission_num],
+		"domain": str(spec.get("domain", "")),
+		"pct": float(spec.get("pct", 0.0)),
+		"label": "Mission (%s): %s" % [advisor_id, str(spec.get("label", ""))],
+		"source": "advisor_mission",
+	})
+	return str(spec.get("label", ""))
+
+func _apply_mission_policy(policy_id: String, label: String) -> String:
+	if policy_id != "" and not advisor_mission_policies.has(policy_id):
+		advisor_mission_policies.append(policy_id)
+		workforce_policies_changed.emit()
+	return label
+
+# Re-apply the PERMANENT mission rewards (perm slices + the capstone) after a load,
+# based on how many missions each advisor has completed. Temp bonuses aren't restored.
+func reapply_mission_modifiers() -> void:
+	for advisor_id in advisor_missions_completed:
+		var tmpl: Dictionary = MISSION_TEMPLATES.get(str(_roster_entry(str(advisor_id)).get("role", "")), {})
+		if tmpl.is_empty():
+			continue
+		var done := int(advisor_missions_completed[advisor_id])
+		if done >= 2:
+			_apply_mission_perm(str(advisor_id), 2, tmpl.get("perm1", {}))
+		if done >= 4:
+			_apply_mission_perm(str(advisor_id), 4, tmpl.get("perm2", {}))
+		if done >= 5:
+			var cap: Dictionary = tmpl.get("capstone", {})
+			if cap.has("policy"):
+				_apply_mission_policy(str(cap.get("policy", "")), str(cap.get("label", "")))
+			else:
+				_apply_mission_perm(str(advisor_id), 5, cap)
+
+func _advisor_walk(advisor_id: String) -> void:
+	advisor_loyalty.erase(advisor_id)
+	_advisor_walk_streak.erase(advisor_id)
+	fire_advisor(advisor_id)          # unseat + bench (10-turn cooldown), like a firing
+	request_toast("%s has resigned — loyalty stayed critically low." % str(get_advisor(advisor_id).get("name", advisor_id)), "warning")
+	advisor_walked.emit(advisor_id)
+
 func advisor_pool() -> Array:
 	var out: Array = []
 	for advisor in _advisor_definitions():
@@ -3011,27 +4091,76 @@ func permanent_advisors() -> Array:
 	return out
 
 func available_advisors() -> Array:
-	var hired := {}
-	for advisor_id in permanent_advisor_ids:
-		hired[str(advisor_id)] = true
+	# Recruited (unlocked) advisors you have not employed yet.
 	var out: Array = []
-	for advisor in _advisor_definitions():
-		if not (advisor is Dictionary):
+	for advisor_id in recruited_advisor_ids:
+		if permanent_advisor_ids.has(str(advisor_id)):
 			continue
-		if hired.has(str(advisor.get("id", ""))):
-			continue
-		out.append((advisor as Dictionary).duplicate(true))
+		var a := get_advisor(str(advisor_id))
+		if not a.is_empty():
+			out.append(a)
 	return out
 
+# Employ a recruited advisor. Capped at max_advisor_slots (spec §4.1).
 func hire_advisor(advisor_id: String) -> bool:
 	if advisor_id == "" or permanent_advisor_ids.has(advisor_id) or get_advisor(advisor_id).is_empty():
 		return false
+	if not recruited_advisor_ids.has(advisor_id):
+		return false
+	if fired_advisor_cooldowns.has(advisor_id):
+		return false
+	if permanent_advisor_ids.size() >= max_advisor_slots:
+		return false
 	permanent_advisor_ids.append(advisor_id)
+	advisor_loyalty[advisor_id] = 0.0          # loyalty starts neutral on hire
+	_advisor_walk_streak.erase(advisor_id)
 	advisors_changed.emit()
 	return true
 
+func is_fired(advisor_id: String) -> bool:
+	return fired_advisor_cooldowns.has(advisor_id)
+
+# Turns until a fired advisor returns to the hireable pool (0 = not on cooldown).
+func fire_cooldown_remaining(advisor_id: String) -> int:
+	return int(fired_advisor_cooldowns.get(advisor_id, 0))
+
+# Dismiss an employed advisor: unseat them, free the slot, and bench them for
+# FIRE_COOLDOWN_TURNS turns (greyed + unhireable in the pool) before they return.
+func fire_advisor(advisor_id: String) -> bool:
+	if not permanent_advisor_ids.has(advisor_id):
+		return false
+	permanent_advisor_ids.erase(advisor_id)
+	advisor_loyalty.erase(advisor_id)
+	_advisor_walk_streak.erase(advisor_id)
+	for seat_id in advisor_seats.keys():
+		if str(advisor_seats[seat_id]) == advisor_id:
+			advisor_seats.erase(seat_id)
+	fired_advisor_cooldowns[advisor_id] = FIRE_COOLDOWN_TURNS
+	reconcile_advisor_modifiers()
+	advisors_changed.emit()
+	return true
+
+# Tick each turn: count down suspensions; advisors hitting 0 rejoin the pool.
+func _tick_fire_cooldowns() -> void:
+	if fired_advisor_cooldowns.is_empty():
+		return
+	var returned := false
+	for advisor_id in fired_advisor_cooldowns.keys():
+		var remaining := int(fired_advisor_cooldowns[advisor_id]) - 1
+		if remaining <= 0:
+			fired_advisor_cooldowns.erase(advisor_id)
+			returned = true
+		else:
+			fired_advisor_cooldowns[advisor_id] = remaining
+	if returned:
+		advisors_changed.emit()
+
 func advisor_payroll_per_turn() -> float:
-	return float(permanent_advisor_ids.size()) * ADVISOR_COST_PER_TURN
+	var total := 0.0
+	for advisor_id in permanent_advisor_ids:
+		var a := _roster_entry(str(advisor_id))
+		total += float(a.get("salary", ADVISOR_COST_PER_TURN)) if not a.is_empty() else ADVISOR_COST_PER_TURN
+	return total
 
 func _sanitize_advisor_ids(ids: Variant) -> Array:
 	var valid := {}
@@ -3047,186 +4176,90 @@ func _sanitize_advisor_ids(ids: Variant) -> Array:
 			out.append(advisor_id)
 	return out
 
-func _advisor_definitions() -> Array:
+# Display fields for the 12 canonical advisors (ADVISOR_ROSTER holds the stats).
+# accent is a hex string (const-safe; converted to Color at build time). Only 4
+# portrait PNGs exist (spec §11 stub art); the rest fall back to accent+initials.
+const ADVISOR_DISPLAY := {
+	"vera":      {"initials": "VA", "portrait_path": "res://assets/advisors/natasha.png", "accent": "#7C5A80", "bonus": "Family Trust: cheap, steady, strong almost anywhere", "recommendation": "Your reliable keystone — she holds any seat well.", "bio": "Your sister and the steady hand on the board: numerate, unflappable, and very hard to surprise twice.", "agenda": "Anchor the board and keep every seat competently filled.", "likes": ["Steady growth", "A balanced board"], "dislikes": ["Reckless bets", "Idle capital"], "bonuses": ["Reduced salary", "No weak seat"]},
+	"alexandra": {"initials": "AR", "portrait_path": "res://assets/advisors/alexandra.png", "accent": "#8A5A5A", "bonus": "Prima Donna: superb everywhere, high salary + walk-risk", "recommendation": "A top hire who forces a full board reshuffle when she arrives.", "bio": "A rival operator good enough at everything to make your whole board nervous — and she knows her price.", "agenda": "Be indispensable, be paid, and never be sidelined.", "likes": ["Being centrally slotted", "Ambitious plays"], "dislikes": ["Being benched", "Being under-slotted"], "bonuses": ["Strong in any seat", "Commands a high salary"]},
+	"gerald":    {"initials": "GV", "portrait_path": "res://assets/advisors/dan.png", "accent": "#455C78", "bonus": "Dinosaur: superb operator, brakes the green pivot", "recommendation": "Keep him for the throughput; the carbon squeeze makes him a dilemma.", "bio": "A superb pure operator who runs a plant beautifully and fights decarbonisation on instinct.", "agenda": "Maximise output and upkeep; resist the clean transition.", "likes": ["High utilisation", "Cheap fuel"], "dislikes": ["Clean retrofits", "Carbon rules"], "bonuses": ["Excellent COO", "Drags clean adoption"]},
+	"eleanor":   {"initials": "ES", "portrait_path": "res://assets/advisors/anita.png", "accent": "#51707A", "bonus": "Beloved: labour + morale, slows churn", "recommendation": "The glue that lets a flawed board function.", "bio": "The diplomat the crews trust — dampens labour spikes and keeps the board from walking.", "agenda": "Keep the workforce and the board loyal.", "likes": ["Fair policies", "A stable board"], "dislikes": ["Layoffs", "Churn"], "bonuses": ["Labour cost down", "Advisor retention"]},
+	"sloane":    {"initials": "SV", "portrait_path": "", "accent": "#6E5A86", "bonus": "Slick: best sale prices, quietly toxic", "recommendation": "Your best seller — pair with a strong IR to counter the fallout.", "bio": "The closer. Best sale prices in the business, and quietly toxic to everything that isn't a deal.", "agenda": "Push prices and volume; damn the standing.", "likes": ["Fat margins", "High volume"], "dislikes": ["Slow markets", "HR duty"], "bonuses": ["Better sell prices", "Weak with people"]},
+	"priya":     {"initials": "PA", "portrait_path": "", "accent": "#4F6B58", "bonus": "Idealist: amplifies green, dents near-term profit", "recommendation": "Superb if you're racing Greenest; a cash drain if you're not.", "bio": "A true believer who reaches for the clean option every time, whatever it costs this quarter.", "agenda": "Decarbonise, capture subsidy, win Greenest.", "likes": ["Clean recipes", "Green subsidy"], "dislikes": ["Dirty routes", "Short-termism"], "bonuses": ["Green amplified", "Raises short-term spend"]},
+	"hitomi":    {"initials": "HS", "portrait_path": "", "accent": "#7A6A45", "bonus": "Flow State: systems savant, socially inept", "recommendation": "Brilliant on logistics and the line; keep her from people seats.", "bio": "Brilliant with systems, hopeless with people — a logistics and manufacturing savant.", "agenda": "Optimise flow and throughput everywhere.", "likes": ["Tight networks", "Clean processes"], "dislikes": ["Meetings", "People seats"], "bonuses": ["Logistics/mfg boost", "Malus in people seats"]},
+	"hal":       {"initials": "HR", "portrait_path": "", "accent": "#5A6F4A", "bonus": "Backroom Deals: regulatory relief at a price", "recommendation": "A real lever if you're staying dirty into the squeeze.", "bio": "The fixer. Buys you time against the regulators, at an ethical price.", "agenda": "Soften the rules and the tax bill.", "likes": ["Loopholes", "Delay"], "dislikes": ["Scrutiny", "Clean mandates"], "bonuses": ["Tax + carbon relief", "Reputation cost"]},
+	"tom":       {"initials": "TB", "portrait_path": "res://assets/advisors/lance.png", "accent": "#66513B", "bonus": "Shop-Floor Respect: dependable operations", "recommendation": "Put him near the floor; he flounders near markets or the lab.", "bio": "The old foreman. Dependable operations, no frills, and the crews trust him.", "agenda": "Keep the line running cheaply.", "likes": ["A steady floor", "Trusted crews"], "dislikes": ["Market games", "Lab work"], "bonuses": ["Extra Ops labour cut", "Poor off the floor"]},
+	"marcus":    {"initials": "MT", "portrait_path": "", "accent": "#765742", "bonus": "Leverage: cheap capital, dangerous debt", "recommendation": "High-risk finance specialist; dangerous outside his lane.", "bio": "A financier who makes capital cheap and acquisitions cheaper — until the debt bites.", "agenda": "Borrow big, buy cheap, grow fast.", "likes": ["Cheap debt", "Acquisitions"], "dislikes": ["Thin reserves", "Operations duty"], "bonuses": ["Cheap capital", "Debt-risk exposure"]},
+	"idris":     {"initials": "IK", "portrait_path": "", "accent": "#536C92", "bonus": "Insufferable Genius: brilliant, unbearable", "recommendation": "Atrocious except in the lab — silo him in a TD seat.", "bio": "A brilliant process chemist nobody can stand to work near — keep him in the lab.", "agenda": "Perfect the process; ignore the room.", "likes": ["Hard problems", "Being left alone"], "dislikes": ["Management", "Small talk"], "bonuses": ["Big recipe efficiency", "Empire labour malus unless siloed"]},
+	"rufus":     {"initials": "RA", "portrait_path": "", "accent": "#6B6077", "bonus": "Silver Tongue, Empty Suit: one good seat", "recommendation": "Genuinely, and only, a lobbyist.", "bio": "Your cousin. Great in a room, useless everywhere else, riding the family name.", "agenda": "Talk his way through; do as little as possible.", "likes": ["A podium", "Family favour"], "dislikes": ["Real work", "Being found out"], "bonuses": ["Strong lobbyist", "A disaster elsewhere"]},
+}
+
+func _seat_display_name(role_id: String) -> String:
+	var seat: Dictionary = SEAT_DEFINITIONS.get(role_id, {})
+	return str(seat.get("seat_name", role_id.capitalize()))
+
+func _advisor_missions(advisor_id: String, accent_hex: String) -> Array:
+	var titles := ["Onboard", "Prove", "Expand", "Master", "Legacy"]
+	var colours := [accent_hex, "#536C92", "#4F6B58", "#765742", "#6B6077"]
+	var rewards := advisor_mission_reward_labels(advisor_id)
+	var done := advisor_missions_done(advisor_id)
+	var out: Array = []
+	for i in 5:
+		var req_text := ""
+		if i < MISSION_LOYALTY_THRESHOLDS.size():
+			req_text = "at loyalty %d" % int(MISSION_LOYALTY_THRESHOLDS[i])
+		else:
+			var streak: int = mini(int(_advisor_mission5_streak.get(advisor_id, 0)), MISSION5_STREAK_TURNS)
+			req_text = "loyalty %d+ for %d turns (%d/%d)" % [int(MISSION5_LOYALTY), MISSION5_STREAK_TURNS, streak, MISSION5_STREAK_TURNS]
+		out.append({
+			"roman": _roman(i + 1),
+			"title": titles[i],
+			"state": "completed" if i < done else ("next" if i == done else "locked"),
+			"color": Color(colours[i]),
+			"reward": str(rewards[i]),
+			"req_text": req_text,
+		})
+	return out
+
+# Short reward descriptions for an advisor's 5 missions (for the detail-panel plaques).
+func advisor_mission_reward_labels(advisor_id: String) -> Array:
+	var tmpl: Dictionary = MISSION_TEMPLATES.get(str(_roster_entry(advisor_id).get("role", "")), {})
+	if tmpl.is_empty():
+		return ["—", "—", "—", "—", "—"]
+	var m3: String = "free research (%s)" % str(tmpl.get("research_category", ""))
+	if tmpl.has("temp2"):
+		m3 += " + %s" % str((tmpl.get("temp2", {}) as Dictionary).get("label", ""))
 	return [
-		{
-			"id": "natasha",
-			"name": "Natasha L.",
-			"initials": "NL",
-			"role": "Chief Financial Officer",
-			"happiness": 4,
-			"portrait_path": "res://assets/advisors/natasha.png",
-			"portrait_color": Color("#7C5A80"),
-			"bonus": "-1% loan interest, +8% debt capacity",
-			"recommendation": "Borrow only where the new asset pays before the next repayment cycle tightens.",
-			"bio": "A polished finance operator who translates industrial mess into investor confidence. Calm in public, sharper in private, and very hard to surprise twice.",
-			"agenda": "Protect cash flow, keep lenders warm, and turn profitable growth into a credible financing story.",
-			"likes": ["Positive operating profit", "Debt-funded expansion", "Reliable dividends", "High-value orders"],
-			"dislikes": ["Idle cash", "Missed repayments", "Low-margin dumping", "Unclear production focus"],
-			"bonuses": ["-1% loan interest", "+8% loan capacity", "Reduced penalty from one missed dividend"],
-			"missions": [
-				{"roman": "I", "title": "Signal", "state": "completed", "color": Color("#7C5A80")},
-				{"roman": "II", "title": "Leverage", "state": "next", "color": Color("#536C92")},
-				{"roman": "III", "title": "Narrative", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Roadshow", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Mandate", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "dan",
-			"name": "Dan S.",
-			"initials": "DS",
-			"role": "VP Logistics",
-			"happiness": -2,
-			"portrait_path": "res://assets/advisors/dan.png",
-			"portrait_color": Color("#455C78"),
-			"bonus": "-3% transport cost, +5% warehouse capacity",
-			"recommendation": "Shorten ore routes before adding more furnaces. Distance is already sending invoices.",
-			"bio": "A movement obsessive with a tolerance for ugly maps and a deep dislike of empty return journeys.",
-			"agenda": "Collapse long routes, fill vehicles both ways, and make ports boringly predictable.",
-			"likes": ["Short routes", "Rail upgrades", "Full shipments", "Port stockpiles"],
-			"dislikes": ["Long road hauls", "Idle warehouses", "Split shipments", "Emergency reroutes"],
-			"bonuses": ["-3% transport cost", "+5% warehouse capacity", "+1 logistics happiness from efficient deliveries"],
-			"missions": [
-				{"roman": "I", "title": "Measure", "state": "completed", "color": Color("#455C78")},
-				{"roman": "II", "title": "Route", "state": "next", "color": Color("#536C92")},
-				{"roman": "III", "title": "Consolidate", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Automate", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Network", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "lance",
-			"name": "Lance C.",
-			"initials": "LC",
-			"role": "Technical Director - Metallurgy",
-			"happiness": 0,
-			"portrait_path": "res://assets/advisors/lance.png",
-			"portrait_color": Color("#66513B"),
-			"bonus": "+2% furnace output",
-			"recommendation": "Steel margins improve faster when the ore and coal both arrive predictably.",
-			"bio": "A plant-floor metallurgist who trusts output data, slag chemistry, and almost nothing said in meetings.",
-			"agenda": "Stabilise heat-intensive chains, improve furnace utilisation, and push alloy quality upward.",
-			"likes": ["Iron chains", "Steel orders", "Stable power", "Factory upgrades"],
-			"dislikes": ["Input starvation", "Underused furnaces", "Selling ore too early", "Power instability"],
-			"bonuses": ["+2% furnace output", "-2% furnace maintenance", "+1 happiness from steel-focused growth"],
-			"missions": [
-				{"roman": "I", "title": "Ore", "state": "completed", "color": Color("#66513B")},
-				{"roman": "II", "title": "Heat", "state": "next", "color": Color("#536C92")},
-				{"roman": "III", "title": "Flow", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Alloy", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Scale", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "anita",
-			"name": "Anita D.",
-			"initials": "AD",
-			"role": "Chief Operating Officer",
-			"happiness": 0,
-			"portrait_path": "res://assets/advisors/anita.png",
-			"portrait_color": Color("#51707A"),
-			"bonus": "+2% building output",
-			"recommendation": "Stabilise the production chain before chasing a wider product slate.",
-			"bio": "A calm operator with a gift for finding the one process constraint everyone else has learned to ignore.",
-			"agenda": "Raise utilisation, reduce avoidable stoppages, and make the empire easier to run at speed.",
-			"likes": ["Stable throughput", "Balanced inputs", "Clear operating focus", "High utilisation"],
-			"dislikes": ["Starved buildings", "Unfinished loops", "Overbuilt capacity", "Last-minute pivots"],
-			"bonuses": ["+2% building output", "-1% maintenance when no owned building starves", "+1 happiness from three clean turns"],
-			"missions": [
-				{"roman": "I", "title": "Audit", "state": "next", "color": Color("#51707A")},
-				{"roman": "II", "title": "Balance", "state": "locked", "color": Color("#536C92")},
-				{"roman": "III", "title": "Cadence", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Scale", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Doctrine", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "philip",
-			"name": "Philip W.",
-			"initials": "PW",
-			"role": "Markets and Sales Director",
-			"happiness": 0,
-			"portrait_color": Color("#5A6F4A"),
-			"bonus": "+3% special-order visibility",
-			"recommendation": "The market is paying for certainty. Commit only when the route is already boring.",
-			"bio": "A dealmaker who reads demand curves as social weather and prefers signed contracts to heroic production bets.",
-			"agenda": "Convert reliable surplus into better contracts, then keep those commitments painless.",
-			"likes": ["Special orders", "Stable sale routes", "High price impact discipline", "Port access"],
-			"dislikes": ["Missed contracts", "Fire-sale dumping", "Unsold surpluses", "Route uncertainty"],
-			"bonuses": ["+3% special-order visibility", "+2% premium on fulfilled special orders", "-1 happiness on missed commitments"],
-			"missions": [
-				{"roman": "I", "title": "Prospect", "state": "next", "color": Color("#5A6F4A")},
-				{"roman": "II", "title": "Commit", "state": "locked", "color": Color("#536C92")},
-				{"roman": "III", "title": "Premium", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Portfolio", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Franchise", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "brother",
-			"name": "Your Brother",
-			"initials": "YB",
-			"role": "Investor Relations Specialist",
-			"happiness": 0,
-			"portrait_color": Color("#66513B"),
-			"bonus": "+4% debt capacity",
-			"recommendation": "You can absolutely borrow more. Whether you should is the funnier question.",
-			"bio": "A charming capital-market optimist with family access, fast patter, and a suspiciously high tolerance for leverage.",
-			"agenda": "Sell the growth story, expand borrowing room, and keep the share price feeling inevitable.",
-			"likes": ["New loans", "Revenue growth", "Investor-facing wins", "Big-ticket assets"],
-			"dislikes": ["Shrinking cash", "No-growth turns", "Tiny projects", "Cautious silence"],
-			"bonuses": ["+4% debt capacity", "+1 investor happiness after large expansions", "-1 happiness after idle high cash"],
-			"missions": [
-				{"roman": "I", "title": "Pitch", "state": "next", "color": Color("#66513B")},
-				{"roman": "II", "title": "Raise", "state": "locked", "color": Color("#536C92")},
-				{"roman": "III", "title": "Signal", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Syndicate", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Empire", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "sister",
-			"name": "Your Sister",
-			"initials": "YS",
-			"role": "Technical Director - Organic Chemistry",
-			"happiness": 0,
-			"portrait_color": Color("#7C5A80"),
-			"bonus": "+2% refinery and polymer output",
-			"recommendation": "Crude chains reward patience. Build buffers before you build ambition.",
-			"bio": "A process chemist who can talk catalysts for an hour and still notice the one missing pipe on the diagram.",
-			"agenda": "Build deeper chemical chains, protect feedstock continuity, and improve high-value conversion.",
-			"likes": ["Refinery runs", "Polymer output", "Chemical buffers", "Catalyst upgrades"],
-			"dislikes": ["Crude starvation", "Half-built chains", "Selling feedstock early", "Dirty shutdowns"],
-			"bonuses": ["+2% refinery output", "+2% polymer output", "+1 happiness from profitable chemical chains"],
-			"missions": [
-				{"roman": "I", "title": "Feed", "state": "next", "color": Color("#7C5A80")},
-				{"roman": "II", "title": "React", "state": "locked", "color": Color("#536C92")},
-				{"roman": "III", "title": "Separate", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Polymerise", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Specialise", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "uncle",
-			"name": "Your Uncle",
-			"initials": "YU",
-			"role": "Chief Risk Officer",
-			"happiness": 0,
-			"portrait_color": Color("#455C78"),
-			"bonus": "-5% event penalty severity",
-			"recommendation": "Every shortcut is a loan from the future, and the future has collectors.",
-			"bio": "A veteran operator with a memory for everything that once went wrong and an irritating habit of being right early.",
-			"agenda": "Reduce fragile dependencies, prepare for bad turns, and make disasters survivable.",
-			"likes": ["Cash buffers", "Redundant routes", "Safety policy", "Stable supply"],
-			"dislikes": ["Thin margins", "Overleverage", "Single points of failure", "Ignored warnings"],
-			"bonuses": ["-5% event penalty severity", "+1 risk happiness from cash reserves", "-1 happiness when debt service bites"],
-			"missions": [
-				{"roman": "I", "title": "Scan", "state": "next", "color": Color("#455C78")},
-				{"roman": "II", "title": "Buffer", "state": "locked", "color": Color("#536C92")},
-				{"roman": "III", "title": "Harden", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Insure", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Endure", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
+		str((tmpl.get("temp", {}) as Dictionary).get("label", "")),
+		str((tmpl.get("perm1", {}) as Dictionary).get("label", "")),
+		m3,
+		str((tmpl.get("perm2", {}) as Dictionary).get("label", "")),
+		str((tmpl.get("capstone", {}) as Dictionary).get("label", "")),
 	]
+
+# Display roster derived from the canonical ADVISOR_ROSTER + ADVISOR_DISPLAY. One
+# roster now backs both the People panel and seating (spec §12.1 Phase-0 rest).
+func _advisor_definitions() -> Array:
+	var out: Array = []
+	for a in ADVISOR_ROSTER:
+		var id := str(a.get("id", ""))
+		var disp: Dictionary = ADVISOR_DISPLAY.get(id, {})
+		var accent := str(disp.get("accent", "#5A6070"))
+		out.append({
+			"id": id,
+			"name": str(a.get("name", id)),
+			"initials": str(disp.get("initials", "")),
+			"role": _seat_display_name(str(a.get("role", ""))),
+			"happiness": 0,
+			"portrait_path": str(disp.get("portrait_path", "")),
+			"portrait_color": Color(accent),
+			"bonus": str(disp.get("bonus", "")),
+			"recommendation": str(disp.get("recommendation", "")),
+			"bio": str(disp.get("bio", "")),
+			"agenda": str(disp.get("agenda", "")),
+			"likes": disp.get("likes", []),
+			"dislikes": disp.get("dislikes", []),
+			"bonuses": disp.get("bonuses", []),
+			"missions": _advisor_missions(id, accent),
+		})
+	return out

@@ -25,8 +25,19 @@ func get_price(good_id: String) -> float:
 
 func get_buy_price(good_id: String) -> float:
 	# The price you PAY to buy a unit from the market — the sale price plus the
-	# market spread (EconomyConfig.MARKET_BUY_MARKUP).
-	return get_price(good_id) * (1.0 + EconomyConfig.MARKET_BUY_MARKUP)
+	# market spread (EconomyConfig.MARKET_BUY_MARKUP), which a Chief Markets advisor
+	# can tighten via the "market_spread" modifier domain.
+	var spread_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("market_spread", "*", {}).get("net", 0.0)) / 100.0)
+	return get_price(good_id) * (1.0 + EconomyConfig.MARKET_BUY_MARKUP * spread_mult)
+
+# The realised market SALE price for one unit: get_price() plus any market_price
+# uplift (research / Chief Markets), CLAMPED so it can never exceed the buy price.
+# Game rule: sale price <= buy price, otherwise a player could buy from the market
+# and resell at a profit (arbitrage). Special-order deliveries are the sole exception
+# — their premium pays for fulfilment and is priced separately, so they bypass this.
+func get_sale_price(good_id: String, ctx: Dictionary = {}) -> float:
+	var lifted: float = Modifiers.apply("market_price", good_id, get_price(good_id), ctx)
+	return minf(lifted, get_buy_price(good_id))
 
 func get_estimated_price_in_n_turns(good_id: String, n: int) -> float:
 	var current: float = prices.get(good_id, 1.0)
@@ -114,10 +125,13 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 		var sold: int = want if skip_consume else Stockpile.consume(source_tile, str(gid), want)
 		if sold <= 0:
 			continue
-		# market_price modifiers (research like Forward Contracts) lift the SALE price
-		# only — applied here, not in get_price(), so buy prices are unaffected.
-		var unit_price: float = Modifiers.apply("market_price", str(gid), get_price(str(gid)),
-			{"good_id": str(gid), "good_internal": str(Catalog.get_good(str(gid)).get("internal_name", ""))})
+		# market_price modifiers (research like Forward Contracts, Chief Markets) lift the
+		# SALE price only — applied here, not in get_price(), so buy prices are unaffected.
+		# Ordinary market sales are clamped to the buy price (no arbitrage); special-order
+		# deliveries keep the raw uplifted price and add their premium downstream.
+		var _ctx := {"good_id": str(gid), "good_internal": str(Catalog.get_good(str(gid)).get("internal_name", ""))}
+		var unit_price: float = (Modifiers.apply("market_price", str(gid), get_price(str(gid)), _ctx)
+			if special_order_id != "" else get_sale_price(str(gid), _ctx))
 		var revenue: float = float(sold) * unit_price
 		items.append({"good_id": str(gid), "qty": sold, "revenue": revenue})
 		total_qty += sold

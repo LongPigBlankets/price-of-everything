@@ -90,7 +90,7 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 		Stockpile.consume(tile_id, good_id, int(reqs[good_id]))
 
 	var building: Dictionary = Catalog.get_building(building_id)
-	var duration: int = int(building.get("build_duration", 0))
+	var duration: int = MatchState.effective_build_duration(building_id)
 	var instance_id: String = MatchState.reserve_instance_id(building_id)
 
 	if duration <= 0:
@@ -138,7 +138,7 @@ func start_awaiting_market(building_id: String, recipe_id: String, tile_id: Stri
 	var reqs: Dictionary = requirements_for(building_id)
 	var missing: Dictionary = check_tile(tile_id, building_id).get("missing", {})
 	var building: Dictionary = Catalog.get_building(building_id)
-	var duration: int = int(building.get("build_duration", 0))
+	var duration: int = MatchState.effective_build_duration(building_id)
 	var instance_id: String = MatchState.reserve_instance_id(building_id)
 
 	# Reserve the in-place portion of every material RIGHT NOW, so co-located production
@@ -208,7 +208,7 @@ func start_awaiting_from_tile(building_id: String, recipe_id: String, dest_tile:
 	var reqs: Dictionary = requirements_for(building_id)
 	var missing: Dictionary = check_tile(dest_tile, building_id).get("missing", {})
 	var building: Dictionary = Catalog.get_building(building_id)
-	var duration: int = int(building.get("build_duration", 0))
+	var duration: int = MatchState.effective_build_duration(building_id)
 	var instance_id: String = MatchState.reserve_instance_id(building_id)
 
 	# Reserve the in-place portion now (see start_awaiting_market); only the shortfall is

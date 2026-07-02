@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://pdptu06g0076"]
+
+[ext_resource type="Script" path="res://tools/credit_dialog_shot.gd" id="1"]
+
+[node name="CreditDialogShot" type="Node2D"]
+script = ExtResource("1")

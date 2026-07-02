@@ -11,7 +11,7 @@ const SAVE_DIR := "user://saves"
 # Version history (migrations in _migrate): 1 = initial format; 2 = adds `ruleset`
 # (match.ruleset + meta.ruleset) so future rule variants can key off saves;
 # 3 = adds special order state.
-const SAVE_VERSION := 3
+const SAVE_VERSION := 4
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -94,6 +94,13 @@ func import_snapshot(snap: Dictionary) -> void:
 	Production.import_state(snap.get("production", {}))
 	EventScheduler.import_state(snap.get("events", {}))
 	Modifiers.import_state(snap.get("modifiers", {}))
+	# Advisor-seat modifiers are derived, not saved: re-register them AFTER
+	# Modifiers.import_state (which replaces the registry wholesale and would
+	# otherwise wipe an earlier reconcile). See advisor-system-spec.md §12.1.
+	MatchState.reconcile_advisor_modifiers()
+	# Permanent advisor-mission rewards (perm slices + capstones) are also derived from
+	# advisor_missions_completed, so re-apply them after the Modifiers registry reload.
+	MatchState.reapply_mission_modifiers()
 	# Missing "victory" key (old saves) -> import_state({}) leaves a fresh zero state.
 	VictoryState.import_state(snap.get("victory", {}))
 	# roads-v2: BUILT geometry restores verbatim; planning orders resume
@@ -445,6 +452,8 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				snap = _migrate_v1_to_v2(snap)
 			2:
 				snap = _migrate_v2_to_v3(snap)
+			3:
+				snap = _migrate_v3_to_v4(snap)
 			_:
 				break
 		version += 1
@@ -467,6 +476,26 @@ func _migrate_v2_to_v3(snap: Dictionary) -> Dictionary:
 	# v3 adds special orders. Old saves simply start with no active orders.
 	if not snap.has("special_orders"):
 		snap["special_orders"] = {}
+	return snap
+
+func _migrate_v3_to_v4(snap: Dictionary) -> Dictionary:
+	# v4 adds the advisor seat framework + acquisition (seats, slots, rng, milestones).
+	# Old saves default to empty seats / 2 slots / a fresh rng. Legacy advisor ids
+	# (natasha/dan/...) no longer exist in the roster, so clear the hired list
+	# (pre-release saves are disposable) rather than let _sanitize silently drop them.
+	var m: Dictionary = snap.get("match", {})
+	m["permanent_advisor_ids"] = []
+	if not m.has("advisor_seats"):
+		m["advisor_seats"] = {}
+	if not m.has("max_advisor_slots"):
+		m["max_advisor_slots"] = 2
+	if not m.has("advisor_rng_seed"):
+		m["advisor_rng_seed"] = MatchState.DEFAULT_MATCH_RNG_SEED
+	if not m.has("advisor_crossed_milestones"):
+		m["advisor_crossed_milestones"] = []
+	if not m.has("recruited_advisor_ids"):
+		m["recruited_advisor_ids"] = []
+	snap["match"] = m
 	return snap
 
 # --- JSON helpers ---

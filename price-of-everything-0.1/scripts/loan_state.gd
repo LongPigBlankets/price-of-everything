@@ -28,34 +28,50 @@ signal bankruptcy_warning(money: float, floor: float)
 
 # === Public API ===
 
+# The current borrowing rate, after any CFO "loan_interest" discount (clamped ≥ 0).
+func effective_loan_interest_rate() -> float:
+	var mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("loan_interest", "*", {}).get("net", 0.0)) / 100.0)
+	return EconomyConfig.LOAN_INTEREST_RATE * mult
+
+# Construction-on-credit (unlocked by a Chief Investment advisor): a fixed short-term,
+# low-interest loan financing a single build.
+const CONSTRUCTION_LOAN_TERM := 10
+const CONSTRUCTION_LOAN_RATE := 0.05
+
 func take_loan(amount: float) -> bool:
-	# Returns true if loan was created, false otherwise.
-	if amount <= 0.0:
+	# Standard 36-turn loan at the config rate (minus any CFO discount).
+	if amount <= 0.0 or amount > available_capacity():
 		return false
-	if amount > available_capacity():
+	return _create_loan(amount, effective_loan_interest_rate(), EconomyConfig.LOAN_TERM_TURNS)
+
+func take_construction_loan(amount: float) -> bool:
+	# 10-turn, 5% build loan. Respects the same borrowing capacity as any other loan.
+	if amount <= 0.0 or amount > available_capacity():
 		return false
-	
-	var total_repayment: float = amount * (1.0 + EconomyConfig.LOAN_INTEREST_RATE)
-	var per_turn: float = total_repayment / float(EconomyConfig.LOAN_TERM_TURNS)
-	
+	return _create_loan(amount, CONSTRUCTION_LOAN_RATE, CONSTRUCTION_LOAN_TERM)
+
+# Shared loan creation: bakes the (rate, term) into the amortisation and disburses
+# the principal. Per-loan rate/term are stored so processing stays accurate even when
+# multiple loans of different terms coexist.
+func _create_loan(amount: float, rate: float, term: int) -> bool:
+	var total_repayment: float = amount * (1.0 + rate)
+	var per_turn: float = total_repayment / float(term)
 	var loan: Dictionary = {
 		"id": _next_loan_id,
 		"principal_initial": amount,
 		"principal_remaining": total_repayment,
 		"payment_per_turn": per_turn,
-		"turns_remaining": EconomyConfig.LOAN_TERM_TURNS,
+		"turns_remaining": term,
 		"interest_paid": 0.0,
+		"interest_rate": rate,
 	}
 	_next_loan_id += 1
 	loans.append(loan)
-	
-	# Disburse principal to player
-	MatchState.add_money(amount)
-	
-	print("[LoanState] Loan #%d taken: £%.2f (£%.4f/turn for %d turns, total £%.2f)" % [
-		loan.id, amount, per_turn, EconomyConfig.LOAN_TERM_TURNS, total_repayment
+	MatchState.flag_agenda_event(MatchState.AGENDA_TOOK_LOAN)
+	MatchState.add_money(amount)   # disburse principal
+	print("[LoanState] Loan #%d taken: £%.2f (£%.4f/turn for %d turns @ %.1f%%, total £%.2f)" % [
+		loan.id, amount, per_turn, term, rate * 100.0, total_repayment
 	])
-	
 	loan_taken.emit(loan)
 	loans_updated.emit()
 	return true
@@ -74,6 +90,8 @@ func repay_loan(loan_id: int) -> bool:
 		return false
 	
 	loans.remove_at(idx)
+	MatchState.flag_agenda_event(MatchState.AGENDA_EARLY_LOAN_PAYOFF)
+	MatchState.flag_agenda_event(MatchState.AGENDA_PAID_OFF_LOAN)
 	print("[LoanState] Loan #%d repaid in full: £%.2f" % [loan_id, amount])
 	loan_repaid.emit(loan_id)
 	loans_updated.emit()
@@ -95,13 +113,15 @@ func process_payments() -> float:
 		MatchState.add_money(-pay)
 		loan.principal_remaining -= pay
 		# Track interest portion (approximate split; payment is fixed per turn)
-		var interest_portion: float = pay * (EconomyConfig.LOAN_INTEREST_RATE / (1.0 + EconomyConfig.LOAN_INTEREST_RATE))
+		var loan_rate: float = float(loan.get("interest_rate", EconomyConfig.LOAN_INTEREST_RATE))
+		var interest_portion: float = pay * (loan_rate / (1.0 + loan_rate))
 		loan.interest_paid += interest_portion
 		loan.turns_remaining -= 1
 		last_payment_total += pay
 		
 		if loan.principal_remaining <= 0.001 or loan.turns_remaining <= 0:
 			loans_to_remove.append(loan.id)
+			MatchState.flag_agenda_event(MatchState.AGENDA_PAID_OFF_LOAN)
 	
 	# Clean up paid-off loans
 	for loan_id in loans_to_remove:

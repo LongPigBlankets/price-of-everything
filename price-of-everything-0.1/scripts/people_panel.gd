@@ -6,7 +6,7 @@ const MARKET_FALLBACK_SIZE := Vector2(400, 500)
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 
 const ADVISOR_CARD_WIDTH := 260.0
-const ADVISOR_CARD_HEIGHT := 480.0
+const ADVISOR_CARD_HEIGHT := 460.0
 const ADVISOR_PORTRAIT_SIZE := ADVISOR_CARD_WIDTH
 const PERMANENT_ADVISOR_CARD_WIDTH := ADVISOR_CARD_WIDTH + 30.0
 const PERMANENT_ADVISOR_CARD_HEIGHT := ADVISOR_CARD_HEIGHT + 40.0
@@ -15,15 +15,28 @@ const HEADER_HEIGHT := 56.0
 
 var _labour_buttons: Dictionary = {}
 var _policy_buttons: Dictionary = {}
+var _policies_grid: GridContainer
 var _labour_effects: VBoxContainer
 var _labour_indicator: PanelContainer
 var _labour_pct_label: Label
 var _labour_trend_label: Label
 var _labour_amount_label: Label
 var _labour_est_label: Label
+var _labour_floor_label: Label
 var _advisors_root: VBoxContainer
 var _advisor_payroll_label: Label
 var _advisor_detail_panel: PanelContainer
+var _advisor_modifiers_panel: PanelContainer
+var _discipline_info_section: VBoxContainer
+var _shown_discipline: String = ""
+const _DISCIPLINE_NAMES := {"inf": "Influencing", "ops": "Operations", "lead": "Leadership", "inn": "Innovation", "fin": "Finance"}
+const _DISCIPLINE_GIVES := {
+	"inf": "Markets & government — sale-price boosts, tighter spread, forewarnings, green subsidy, tax relief.",
+	"ops": "The production machine — labour, maintenance, energy, transport, retrofits.",
+	"lead": "People & organisation — unique labour policies, morale, advisor retention.",
+	"inn": "Technology — recipe output by discipline, free tech unlocks, cheaper clean retrofits.",
+	"fin": "Capital & treasury — loan interest & term, dividends, tax, land & building purchase.",
+}
 var _advisor_detail_body: VBoxContainer
 var _available_advisors_section: Control
 var _available_pool_open := false
@@ -38,15 +51,19 @@ func _ready() -> void:
 	name = "PeoplePanel"
 	custom_minimum_size = MARKET_FALLBACK_SIZE
 	size = MARKET_FALLBACK_SIZE
-	_apply_market_window(self)
+	_apply_research_window(self)
 	theme_type_variation = &"PanelContainer"
 	_build_panel()
 	MatchState.labour_multiplier_changed.connect(func(_value: float): _refresh_labour())
 	MatchState.workforce_policies_changed.connect(_refresh_policy_buttons)
 	MatchState.workforce_policies_changed.connect(_refresh_labour_indicator)
+	MatchState.advisors_changed.connect(_rebuild_policy_rows)   # re-gate HR-locked policies
 	TurnManager.turn_resolution_completed.connect(_refresh_labour_indicator)
+	TurnManager.turn_resolution_completed.connect(_refresh_advisors_tab)
 	if not MatchState.advisors_changed.is_connected(_on_advisors_changed):
 		MatchState.advisors_changed.connect(_on_advisors_changed)
+	if not MatchState.advisor_acquired.is_connected(_on_advisor_acquired):
+		MatchState.advisor_acquired.connect(_on_advisor_acquired)
 	visibility_changed.connect(_on_visibility_changed)
 
 func _build_panel() -> void:
@@ -91,14 +108,24 @@ func _build_panel() -> void:
 	tabs.add_child(advisors)
 
 func _build_labour_tab() -> Control:
+	var outer_scroll := ScrollContainer.new()
+	outer_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	outer_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	outer_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+
 	var margin := MarginContainer.new()
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_theme_constant_override("margin_left", 4)
 	margin.add_theme_constant_override("margin_top", 8)
 	margin.add_theme_constant_override("margin_right", 4)
 	margin.add_theme_constant_override("margin_bottom", 4)
+	outer_scroll.add_child(margin)
 
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 12)
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	margin.add_child(root)
 
 	var top_row := HBoxContainer.new()
@@ -135,13 +162,12 @@ func _build_labour_tab() -> Control:
 	root.add_child(separator)
 
 	root.add_child(_label("Workforce Policies", "Section"))
-	var policies := GridContainer.new()
-	policies.columns = 2
-	policies.add_theme_constant_override("h_separation", 10)
-	policies.add_theme_constant_override("v_separation", 8)
-	root.add_child(policies)
-	for policy in _policy_definitions():
-		policies.add_child(_policy_row(policy))
+	_policies_grid = GridContainer.new()
+	_policies_grid.columns = 2
+	_policies_grid.add_theme_constant_override("h_separation", 10)
+	_policies_grid.add_theme_constant_override("v_separation", 8)
+	root.add_child(_policies_grid)
+	_rebuild_policy_rows()
 
 	var total := HBoxContainer.new()
 	total.add_theme_constant_override("separation", 8)
@@ -155,7 +181,7 @@ func _build_labour_tab() -> Control:
 
 	_refresh_labour()
 	_refresh_policy_buttons()
-	return margin
+	return outer_scroll
 
 func _build_labour_indicator() -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -190,6 +216,13 @@ func _build_labour_indicator() -> PanelContainer:
 	_labour_est_label = _label("10t ≈ £0", "Caption")
 	vb.add_child(_labour_est_label)
 
+	# Shown only when labour reductions bottom out at the LABOUR_FACTOR_MIN floor.
+	_labour_floor_label = _label("", "Caption")
+	_labour_floor_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_labour_floor_label.add_theme_color_override("font_color", DS.PALETTE["OK"])
+	_labour_floor_label.visible = false
+	vb.add_child(_labour_floor_label)
+
 	return panel
 
 # Refresh the labour indicator from the live aggregate: current % of base, raw
@@ -220,6 +253,13 @@ func _refresh_labour_indicator() -> void:
 		# Labour trending down (cheaper) — green.
 		_labour_trend_label.text = "▼"
 		_labour_trend_label.add_theme_color_override("font_color", DS.PALETTE["OK"])
+
+	# Cap notice: labour reductions have bottomed out at the 40% floor.
+	if _labour_floor_label != null:
+		var at_floor: bool = has and bool(ov.get("at_floor", false))
+		_labour_floor_label.visible = at_floor
+		if at_floor:
+			_labour_floor_label.text = "Maximum labour cost reduction achieved. Further bonuses will not stack below 40% of base cost."
 
 func _fmt_amount(v: float) -> String:
 	if absf(v) >= 10000.0:
@@ -362,18 +402,18 @@ func _policy_definitions() -> Array:
 			"benefit": "Output +10%.",
 		},
 		{
-			"id": "wellness_programme",
-			"name": "Wellness Programme",
-			"cost": "Placeholder.",
-			"benefit": "No impact yet.",
-			"placeholder": true,
+			"id": MatchState.WORKFORCE_POLICY_LONG_TENURE,
+			"name": "Long Tenure Awards",
+			"cost": "Labour costs +10% one turn every 10th turn (the awards payout).",
+			"benefit": "Labour costs -0.1%/turn while active, max -10%.",
+			"requires": "Requires an HR Director advisor.",
 		},
 		{
-			"id": "training_academy",
-			"name": "Training Academy",
-			"cost": "Placeholder.",
-			"benefit": "No impact yet.",
-			"placeholder": true,
+			"id": MatchState.WORKFORCE_POLICY_STOCK_OPTIONS,
+			"name": "Stock Options",
+			"cost": "Dividends grow +0.05%/turn, up to +10% (30% of profit max).",
+			"benefit": "Output +0.1%/turn while active, max +5%.",
+			"requires": "Requires a Leadership-3 HR Director advisor.",
 		},
 	]
 
@@ -406,20 +446,30 @@ func _policy_name_row(policy: Dictionary) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 
+	var policy_id := str(policy.get("id", ""))
+	var available: bool = MatchState.is_workforce_policy_available(policy_id)
+
 	var checkbox := UIHelpers.make_custom_checkbox()
-	checkbox.button_pressed = MatchState.is_workforce_policy_enabled(str(policy.get("id", "")))
-	checkbox.toggled.connect(_on_policy_toggled.bind(str(policy.get("id", ""))))
+	checkbox.button_pressed = MatchState.is_workforce_policy_enabled(policy_id)
+	checkbox.disabled = not available
+	checkbox.toggled.connect(_on_policy_toggled.bind(policy_id))
 	row.add_child(checkbox)
-	_policy_buttons[str(policy.get("id", ""))] = checkbox
+	_policy_buttons[policy_id] = checkbox
 
 	var row_label := _label("Name", "Caption")
 	row_label.custom_minimum_size = Vector2(46, 0)
 	row_label.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
 	row.add_child(row_label)
 
-	var name := _label(str(policy.get("name", "")), "BuildingName")
+	# Locked HR policies show a padlocked title + the unlock requirement.
+	var name_text := str(policy.get("name", ""))
+	if not available and policy.has("requires"):
+		name_text = "🔒 %s — %s" % [name_text, str(policy.get("requires", ""))]
+	var name := _label(name_text, "BuildingName")
 	name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if not available:
+		name.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
 	row.add_child(name)
 	return row
 
@@ -444,6 +494,17 @@ func _policy_text_row(row_name: String, text: String, accent: Color) -> Control:
 
 func _on_policy_toggled(pressed: bool, policy_id: String) -> void:
 	MatchState.set_workforce_policy_enabled(policy_id, pressed)
+
+# Rebuild every policy row (called on advisor seat changes so HR-gated policies
+# lock/unlock live).
+func _rebuild_policy_rows() -> void:
+	if not is_instance_valid(_policies_grid):
+		return
+	_policy_buttons.clear()
+	for child in _policies_grid.get_children():
+		child.queue_free()
+	for policy in _policy_definitions():
+		_policies_grid.add_child(_policy_row(policy))
 
 func _refresh_policy_buttons() -> void:
 	for policy_id in _policy_buttons:
@@ -490,10 +551,71 @@ func _refresh_advisors_tab() -> void:
 		return
 	_sync_advisor_lists()
 	_clear_children(_advisors_root)
+	_advisors_root.add_child(_advisor_profit_track())
 	_advisors_root.add_child(_advisor_payroll_summary())
-	_add_advisor_section(_advisors_root, "Permanent Advisors", _permanent_advisors, true)
-	_available_advisors_section = _add_advisor_section(_advisors_root, "Available Advisors", _available_advisors, false)
-	_available_advisors_section.visible = _available_pool_open
+	# The "+" open-slot swaps the permanent row for the available pool (shown in the
+	# same place, not stacked below), with a tertiary button to return.
+	if _available_pool_open:
+		_advisors_root.add_child(_back_to_permanent_button())
+		_available_advisors_section = _add_advisor_section(_advisors_root, "Available Advisors", _available_advisors, false)
+	else:
+		_available_advisors_section = null
+		_add_advisor_section(_advisors_root, "Permanent Advisors", _permanent_advisors, true)
+
+func _back_to_permanent_button() -> Control:
+	var btn := Button.new()
+	btn.flat = true
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.text = "← Back to permanent advisors"
+	btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	btn.pressed.connect(func() -> void:
+		_available_pool_open = false
+		_refresh_advisors_tab())
+	return btn
+
+# Progress track at the top of the Advisors tab: peak profit/turn + next advisor unlock.
+func _advisor_profit_track() -> Control:
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = &"Inset"
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(m, 8)
+	panel.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 4)
+	margin.add_child(root)
+
+	var peak: float = MatchState.peak_profit_per_turn
+	var next_m: int = MatchState.next_advisor_milestone()
+
+	var header := HBoxContainer.new()
+	root.add_child(header)
+	var title := _label("Profit / turn — peak", "Section")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	header.add_child(_label("£%s" % _fmt_amount(peak), "Numeric"))
+
+	var bar := ProgressBar.new()
+	bar.custom_minimum_size = Vector2(0, 12)
+	bar.show_percentage = false
+	if next_m > 0:
+		var prev := 0
+		for mm in MatchState.PROFIT_MILESTONES:
+			if int(mm) < next_m:
+				prev = int(mm)
+		bar.min_value = float(prev)
+		bar.max_value = float(next_m)
+		bar.value = clampf(peak, float(prev), float(next_m))
+	else:
+		bar.min_value = 0.0
+		bar.max_value = 1.0
+		bar.value = 1.0
+	root.add_child(bar)
+
+	var caption := ("Next advisor at £%d / turn" % next_m) if next_m > 0 else "All advisors recruited"
+	root.add_child(_label(caption, "Caption"))
+	return panel
 
 func _advisor_payroll_summary() -> Control:
 	var panel := PanelContainer.new()
@@ -511,22 +633,105 @@ func _advisor_payroll_summary() -> Control:
 	row.add_theme_constant_override("separation", 10)
 	margin.add_child(row)
 
-	var title := _label("Advisor payroll", "Section")
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(title)
-
+	# Compact cost readout (payroll + N/cap) on the left...
+	var cost_box := VBoxContainer.new()
+	cost_box.add_theme_constant_override("separation", 0)
+	cost_box.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var cost_title := _label("Advisor cost", "Caption")
+	cost_title.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+	cost_box.add_child(cost_title)
 	_advisor_payroll_label = _label("", "Numeric")
-	_advisor_payroll_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	row.add_child(_advisor_payroll_label)
+	cost_box.add_child(_advisor_payroll_label)
 	_refresh_advisor_payroll_label()
+	row.add_child(cost_box)
+
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(spacer)
+
+	# ...and a button to open the combined net-modifiers panel on the right.
+	var see_all := Button.new()
+	see_all.text = "See all advisor modifiers"
+	see_all.focus_mode = Control.FOCUS_NONE
+	see_all.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	see_all.pressed.connect(_open_advisor_modifiers_panel)
+	row.add_child(see_all)
 	return panel
+
+# Net effect of every seated advisor, aggregated per modifier domain.
+func _advisor_net_modifiers() -> Array:
+	var by_domain: Dictionary = {}
+	for m in Modifiers.active():
+		if str(m.get("source", "")) == "advisor_seat":
+			var d := str(m.get("domain", ""))
+			by_domain[d] = float(by_domain.get(d, 0.0)) + float(m.get("pct", 0.0))
+	var out: Array = []
+	for d in by_domain:
+		if absf(float(by_domain[d])) >= 0.001:
+			out.append({"domain": d, "pct": float(by_domain[d])})
+	return out
+
+# DS-style overlay listing all advisor modifiers together (net), closeable via the X.
+func _open_advisor_modifiers_panel() -> void:
+	if is_instance_valid(_advisor_modifiers_panel):
+		_advisor_modifiers_panel.queue_free()
+	_advisor_modifiers_panel = PanelContainer.new()
+	_advisor_modifiers_panel.name = "AdvisorModifiersPanel"
+	_advisor_modifiers_panel.custom_minimum_size = Vector2(360, 420)
+	_advisor_modifiers_panel.size = Vector2(360, 420)
+	_apply_market_window(_advisor_modifiers_panel)
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(m, 12)
+	_advisor_modifiers_panel.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 8)
+	margin.add_child(root)
+
+	var header := HBoxContainer.new()
+	root.add_child(header)
+	var title := _label("Advisor Modifiers (net)", "Title")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(32, 32)
+	close_btn.pressed.connect(func() -> void:
+		if is_instance_valid(_advisor_modifiers_panel):
+			PanelStack.remove(_advisor_modifiers_panel)
+			_advisor_modifiers_panel.queue_free())
+	header.add_child(close_btn)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	root.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 4)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+
+	var mods := _advisor_net_modifiers()
+	if mods.is_empty():
+		list.add_child(_label("No advisor modifiers active — seat some advisors to see their combined impact here.", "Caption"))
+	else:
+		for mod in mods:
+			list.add_child(_impact_row(str(mod["domain"]), float(mod["pct"])))
+
+	var host := get_parent()
+	if host == null:
+		add_child(_advisor_modifiers_panel)
+	else:
+		host.add_child(_advisor_modifiers_panel)
+	PanelStack.push(_advisor_modifiers_panel)
+	_advisor_modifiers_panel.move_to_front()
 
 func _refresh_advisor_payroll_label() -> void:
 	if not is_instance_valid(_advisor_payroll_label):
 		return
 	var count := MatchState.permanent_advisor_ids.size()
 	var payroll := MatchState.advisor_payroll_per_turn()
-	_advisor_payroll_label.text = "%d x £%.0f = £%.2f/turn" % [count, MatchState.ADVISOR_COST_PER_TURN, payroll]
+	_advisor_payroll_label.text = "%d / %d advisor%s · £%.2f/turn" % [count, MatchState.max_advisor_slots, ("" if count == 1 else "s"), payroll]
 
 func _add_advisor_section(parent: VBoxContainer, title_text: String, advisors: Array, permanent: bool) -> Control:
 	var section := VBoxContainer.new()
@@ -539,7 +744,10 @@ func _add_advisor_section(parent: VBoxContainer, title_text: String, advisors: A
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.custom_minimum_size = Vector2(0, _advisor_card_height(permanent) + 22.0)
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	section.add_child(_advisor_section_header(title_text, scroll))
+	var header_text := title_text
+	if permanent:
+		header_text = "%s  (%d / %d)" % [title_text, MatchState.permanent_advisor_ids.size(), MatchState.max_advisor_slots]
+	section.add_child(_advisor_section_header(header_text, scroll))
 	section.add_child(scroll)
 
 	var row := HBoxContainer.new()
@@ -552,9 +760,9 @@ func _add_advisor_section(parent: VBoxContainer, title_text: String, advisors: A
 		if advisor is Dictionary:
 			row.add_child(_advisor_card(advisor, permanent, false))
 			shown += 1
-	if permanent:
-		row.add_child(_advisor_card({}, true, true))
-	elif shown == 0:
+	if permanent and MatchState.permanent_advisor_ids.size() < MatchState.max_advisor_slots:
+		row.add_child(_advisor_card({}, true, true))   # "+" hidden once at the cap
+	elif not permanent and shown == 0:
 		row.add_child(_empty_advisor_pool_card())
 	return section
 
@@ -571,6 +779,8 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 	elif permanent and not add_slot:
 		card.gui_input.connect(_on_advisor_card_input.bind(advisor))
 	elif not add_slot:
+		if MatchState.is_fired(str(advisor.get("id", ""))):
+			card.modulate = Color(1, 1, 1, 0.45)   # dismissed: greyed, opens a read-only profile
 		card.gui_input.connect(_on_available_advisor_card_input.bind(advisor))
 
 	var root := VBoxContainer.new()
@@ -596,8 +806,32 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 	role.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.add_child(role)
 
+	# Available (unhired) cards drop loyalty + the black recommendation box in favour
+	# of a stat pentagon and Great-for / Bad-for role rows.
+	if not permanent and not add_slot:
+		root.add_child(_card_pentagon(advisor))
+		var aid := str(advisor.get("id", ""))
+		if MatchState.is_fired(aid):
+			var cd := _label(_fire_cooldown_text(aid), "Caption")
+			cd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			cd.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			cd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			root.add_child(cd)
+		else:
+			var fit := _advisor_role_fit(aid)
+			root.add_child(_role_fit_row("Great for", fit["great"], DS.PALETTE["OK"]))
+			if not (fit["bad"] as Array).is_empty():
+				root.add_child(_role_fit_row("Bad for", fit["bad"], DS.PALETTE["DANGER"]))
+		var av_spacer := Control.new()
+		av_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		root.add_child(av_spacer)
+		_make_click_through(root)
+		return card
+
 	if not add_slot:
-		root.add_child(_happiness_row(int(advisor.get("happiness", 0))))
+		# Hired advisors show live loyalty (-10..+10); the pool/detail use the static value.
+		var loyalty_val: int = int(round(MatchState.advisor_loyalty_value(str(advisor.get("id", ""))))) if permanent else int(advisor.get("happiness", 0))
+		root.add_child(_happiness_row(loyalty_val))
 
 	var bonus := _label("Open slot" if add_slot else str(advisor.get("bonus", "")), "Caption")
 	bonus.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -620,11 +854,110 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 	rec_margin.add_theme_constant_override("margin_right", 8)
 	rec_margin.add_theme_constant_override("margin_bottom", 8)
 	rec.add_child(rec_margin)
-	var rec_label := _label(_slot_recommendation(permanent) if add_slot else str(advisor.get("recommendation", "")), "Caption")
+	var rec_text := _slot_recommendation(permanent) if add_slot else str(advisor.get("recommendation", ""))
+	if not add_slot and MatchState.is_fired(str(advisor.get("id", ""))):
+		rec_text = _fire_cooldown_text(str(advisor.get("id", "")))
+	var rec_label := _label(rec_text, "Caption")
 	rec_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rec_margin.add_child(rec_label)
 	_make_click_through(root)
 	return card
+
+# Small unlabelled stat pentagon for an advisor card (reuses the detail-panel draw).
+func _card_pentagon(advisor: Dictionary) -> Control:
+	var stats := MatchState._roster_entry(str(advisor.get("id", "")))
+	var radar := Control.new()
+	radar.custom_minimum_size = Vector2(0, 104)
+	radar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	radar.draw.connect(_draw_pentagon.bind(radar, stats))
+	return radar
+
+# Best-fit / worst-fit seats for an unhired advisor: the 3 strongest seats (tier >= 2)
+# and any seats where they'd be a malus (tier 1). Bad is empty when every stat is >= 2.
+func _advisor_role_fit(advisor_id: String) -> Dictionary:
+	var rows: Array = []
+	for seat_id in MatchState.SEAT_DEFINITIONS:
+		var seat: Dictionary = MatchState.SEAT_DEFINITIONS[seat_id]
+		rows.append({"name": str(seat.get("seat_name", seat_id)), "tier": MatchState.advisor_seat_tier(advisor_id, str(seat_id))})
+	rows.sort_custom(func(a, b): return int(a["tier"]) > int(b["tier"]))
+	var great: Array = []
+	var bad: Array = []
+	for r in rows:
+		if int(r["tier"]) >= 2 and great.size() < 3:
+			great.append(str(r["name"]))
+		elif int(r["tier"]) <= 1 and bad.size() < 3:
+			bad.append(str(r["name"]))
+	return {"great": great, "bad": bad}
+
+# Human phrasing per modifier domain: {noun, good_down} — good_down means a DECREASE
+# is the benefit (a cost), so colour follows the sign accordingly.
+const _IMPACT_LABELS := {
+	"labour_headcount": {"noun": "labour cost", "good_down": true},
+	"maintenance": {"noun": "maintenance cost", "good_down": true},
+	"building_power": {"noun": "building power use", "good_down": true},
+	"transport_cost": {"noun": "transport cost", "good_down": true},
+	"transport_throughput": {"noun": "transport throughput", "good_down": false},
+	"tax_rate": {"noun": "tax", "good_down": true},
+	"market_spread": {"noun": "market buy spread", "good_down": true},
+	"market_price": {"noun": "sale prices", "good_down": false},
+	"loan_interest": {"noun": "loan interest", "good_down": true},
+	"dividend_rate": {"noun": "dividend payouts", "good_down": true},
+	"construction_rebate": {"noun": "build & upgrade materials rebate", "good_down": false},
+	"purchase_cost": {"noun": "land & building prices", "good_down": true},
+	"grid_buy_price": {"noun": "grid power cost", "good_down": true},
+	"grid_sell_price": {"noun": "grid power sales", "good_down": false},
+}
+
+# Concrete numeric impact of an advisor (bonuses + maluses), one per row, for the
+# seat they best demonstrate — plus their trait bonuses beneath.
+func _advisor_impact_block(advisor: Dictionary) -> Control:
+	var advisor_id := str(advisor.get("id", ""))
+	var seat_id := MatchState.advisor_best_effect_seat(advisor_id)
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = &"Inset"
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(m, 8)
+	panel.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 4)
+	margin.add_child(root)
+
+	var rows: Array = MatchState.advisor_seat_effect_list(advisor_id, seat_id)
+	if seat_id != "" and not rows.is_empty():
+		var seat_name := str(MatchState.SEAT_DEFINITIONS.get(seat_id, {}).get("seat_name", seat_id))
+		root.add_child(_label("As %s:" % seat_name, "Caption"))
+	for r in rows:
+		root.add_child(_impact_row(str(r["domain"]), float(r["pct"])))
+	if rows.is_empty():
+		root.add_child(_label("No direct modifiers in their best seat.", "Caption"))
+
+	var traits: Array = advisor.get("bonuses", [])
+	if not traits.is_empty():
+		for t in traits:
+			var tl := _label("• %s" % str(t), "Caption")
+			tl.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+			tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			root.add_child(tl)
+	return panel
+
+func _impact_row(domain: String, pct: float) -> Control:
+	var meta: Dictionary = _IMPACT_LABELS.get(domain, {"noun": domain, "good_down": true})
+	var word := "increase" if pct > 0.0 else "decrease"
+	var text := "%.0f%% %s in %s" % [absf(pct), word, str(meta["noun"])]
+	var benefit := (pct < 0.0) == bool(meta["good_down"])
+	var lbl := _label(text, "Caption")
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.add_theme_color_override("font_color", DS.PALETTE["OK"] if benefit else DS.PALETTE["DANGER"])
+	return lbl
+
+func _role_fit_row(prefix: String, roles: Array, color: Color) -> Control:
+	var lbl := _label("%s: %s" % [prefix, ", ".join(roles)], "Caption")
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.add_theme_color_override("font_color", color)
+	return lbl
 
 func _empty_advisor_pool_card() -> Control:
 	var card := PanelContainer.new()
@@ -740,9 +1073,7 @@ func _on_advisor_card_input(event: InputEvent, advisor: Dictionary) -> void:
 
 func _on_available_advisor_card_input(event: InputEvent, advisor: Dictionary) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if MatchState.hire_advisor(str(advisor.get("id", ""))):
-			_available_pool_open = true
-			_refresh_advisors_tab()
+		_open_advisor_detail(advisor)   # profile + Confirm Hire; hiring happens from the detail
 		accept_event()
 
 func _open_advisor_detail(advisor: Dictionary) -> void:
@@ -773,6 +1104,9 @@ func _ensure_detail_panel() -> void:
 
 func _build_advisor_detail(advisor: Dictionary) -> void:
 	_clear_children(_advisor_detail_panel)
+	var advisor_id := str(advisor.get("id", ""))
+	var is_hired: bool = MatchState.permanent_advisor_ids.has(advisor_id)
+	var is_fired: bool = MatchState.is_fired(advisor_id)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 12)
@@ -781,14 +1115,15 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	margin.add_theme_constant_override("margin_bottom", 12)
 	_advisor_detail_panel.add_child(margin)
 
-	_advisor_detail_body = VBoxContainer.new()
-	_advisor_detail_body.add_theme_constant_override("separation", 12)
-	margin.add_child(_advisor_detail_body)
+	# Outer column: fixed header, scrolling body (capped to the panel height), fixed footer CTA.
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 8)
+	margin.add_child(outer)
 
 	var header := HBoxContainer.new()
 	header.mouse_filter = Control.MOUSE_FILTER_STOP
 	header.gui_input.connect(_on_advisor_detail_header_input)
-	_advisor_detail_body.add_child(header)
+	outer.add_child(header)
 	var title := _label(str(advisor.get("role", "Advisor")), "Title")
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -799,9 +1134,24 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	close_button.pressed.connect(_close_advisor_detail)
 	header.add_child(close_button)
 
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	outer.add_child(scroll)
+
+	_advisor_detail_body = VBoxContainer.new()
+	_advisor_detail_body.add_theme_constant_override("separation", 12)
+	_advisor_detail_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if is_fired:
+		_advisor_detail_body.modulate = Color(1, 1, 1, 0.55)   # dismissed profile reads greyed
+	scroll.add_child(_advisor_detail_body)
+
+	if is_fired:
+		_advisor_detail_body.add_child(_label("On leave — dismissed advisor returns to the pool in %d turn%s." % [
+			MatchState.fire_cooldown_remaining(advisor_id), "" if MatchState.fire_cooldown_remaining(advisor_id) == 1 else "s"], "Caption"))
+
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 16)
-	top.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_advisor_detail_body.add_child(top)
 
 	var portrait_col := VBoxContainer.new()
@@ -810,6 +1160,7 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	top.add_child(portrait_col)
 	portrait_col.add_child(_portrait_panel(advisor, true, false, Vector2(180, 180)))
 	portrait_col.add_child(_recommendation_box(str(advisor.get("recommendation", ""))))
+	portrait_col.add_child(_stat_pentagon(advisor))
 
 	var info := VBoxContainer.new()
 	info.add_theme_constant_override("separation", 10)
@@ -820,10 +1171,252 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	bio.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.add_child(bio)
 
-	info.add_child(_detail_block("Agenda", _agenda_text(advisor)))
-	info.add_child(_detail_block("Bonuses", _list_text(advisor.get("bonuses", []))))
+	# Collapsible sections — scroll down to reach Seats and Missions.
+	_advisor_detail_body.add_child(_collapsible("Agenda", _agenda_block(advisor)))
+	_advisor_detail_body.add_child(_collapsible("Impact", _advisor_impact_block(advisor)))
+	_advisor_detail_body.add_child(_collapsible("Seats", _seat_assignment_section(advisor, false)))
+	_advisor_detail_body.add_child(_collapsible("Missions", _quest_diagram(advisor.get("missions", advisor.get("quests", [])), MatchState.advisor_loyalty_value(advisor_id)), false))
 
-	_advisor_detail_body.add_child(_quest_diagram(advisor.get("missions", advisor.get("quests", []))))
+	outer.add_child(_advisor_detail_footer(advisor, is_hired, is_fired))
+
+# A titled section that folds away when its header is tapped.
+func _collapsible(title_text: String, content: Control, start_open: bool = true) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	var head := Button.new()
+	head.flat = true
+	head.focus_mode = Control.FOCUS_NONE
+	head.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	head.toggle_mode = true
+	head.button_pressed = start_open
+	head.add_theme_font_size_override("font_size", 15)
+	head.text = ("▾  " if start_open else "▸  ") + title_text
+	content.visible = start_open
+	head.toggled.connect(func(on: bool) -> void:
+		content.visible = on
+		head.text = ("▾  " if on else "▸  ") + title_text)
+	box.add_child(head)
+	box.add_child(content)
+	return box
+
+func _fire_cooldown_text(advisor_id: String) -> String:
+	var n := MatchState.fire_cooldown_remaining(advisor_id)
+	return "Re-hireable in %d turn%s" % [n, "" if n == 1 else "s"]
+
+# Bottom CTA: Confirm Hire for an available advisor, Fire Advisor for an employed
+# one, or a disabled cooldown marker while a fired advisor is benched.
+func _advisor_detail_footer(advisor: Dictionary, is_hired: bool, is_fired: bool) -> Control:
+	var btn := Button.new()
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.custom_minimum_size = Vector2(0, 40)
+	if is_fired:
+		btn.text = _fire_cooldown_text(str(advisor.get("id", "")))
+		btn.disabled = true
+	elif is_hired:
+		btn.text = "Fire Advisor"
+		btn.add_theme_color_override("font_color", Color(0.86, 0.28, 0.24))
+		btn.pressed.connect(_on_fire_advisor_pressed.bind(advisor))
+	elif MatchState.permanent_advisor_ids.size() >= MatchState.max_advisor_slots:
+		btn.text = "No free advisor slot"
+		btn.disabled = true
+	else:
+		btn.text = "Confirm Hire"
+		btn.pressed.connect(_on_confirm_hire_pressed.bind(advisor))
+	return btn
+
+func _on_confirm_hire_pressed(advisor: Dictionary) -> void:
+	if MatchState.hire_advisor(str(advisor.get("id", ""))):
+		_close_advisor_detail()
+		_available_pool_open = true
+		_refresh_advisors_tab()
+
+func _on_fire_advisor_pressed(advisor: Dictionary) -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Fire Advisor"
+	dialog.dialog_text = "Dismiss %s?\nThis frees their seat. They will sit out %d turns before they can be re-hired." % [str(advisor.get("name", "this advisor")), MatchState.FIRE_COOLDOWN_TURNS]
+	dialog.ok_button_text = "Fire"
+	add_child(dialog)
+	dialog.confirmed.connect(func() -> void:
+		MatchState.fire_advisor(str(advisor.get("id", "")))
+		dialog.queue_free()
+		if is_instance_valid(_advisor_detail_panel) and _advisor_detail_panel.visible:
+			_build_advisor_detail(advisor)   # re-render greyed, footer now "Dismissed"
+		_refresh_advisors_tab())
+	dialog.canceled.connect(func() -> void: dialog.queue_free())
+	dialog.popup_centered()
+
+func _stat_pentagon(advisor: Dictionary) -> Control:
+	var advisor_id := str(advisor.get("id", ""))
+	var stats := MatchState._roster_entry(advisor_id)
+	var col := VBoxContainer.new()
+	col.name = "StatPentagon"
+	col.add_theme_constant_override("separation", 4)
+	col.add_child(_label("Disciplines  (tap a label)", "Caption"))
+
+	var radar := Control.new()
+	radar.custom_minimum_size = Vector2(176, 168)
+	radar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	radar.draw.connect(_draw_pentagon.bind(radar, stats))
+	var keys := ["inf", "ops", "lead", "inn", "fin"]
+	var names := ["Inf", "Ops", "Lead", "Inn", "Fin"]
+	var center := Vector2(88.0, 84.0)
+	var label_r: float = minf(176.0, 168.0) * 0.32 + 13.0
+	for i in 5:
+		var ang := -PI / 2.0 + float(i) * TAU / 5.0
+		var btn := Button.new()
+		btn.flat = true
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.text = "%s %d" % [names[i], int(stats.get(keys[i], 1))]
+		btn.add_theme_font_size_override("font_size", 11)
+		btn.size = Vector2(42, 18)
+		btn.position = center + Vector2(cos(ang), sin(ang)) * label_r - Vector2(21, 9)
+		btn.pressed.connect(_on_discipline_label.bind(keys[i], advisor_id))
+		radar.add_child(btn)
+	col.add_child(radar)
+
+	_discipline_info_section = VBoxContainer.new()
+	_discipline_info_section.name = "DisciplineInfo"
+	_discipline_info_section.custom_minimum_size = Vector2(100, 0)
+	_discipline_info_section.add_theme_constant_override("separation", 3)
+	col.add_child(_discipline_info_section)
+	_shown_discipline = ""
+	return col
+
+func _draw_pentagon(node: Control, stats: Dictionary) -> void:
+	var keys := ["inf", "ops", "lead", "inn", "fin"]
+	var center: Vector2 = node.size * 0.5
+	var radius: float = minf(node.size.x, node.size.y) * 0.32
+	var grid := Color(1, 1, 1, 0.14)
+	for ring in [1.0 / 3.0, 2.0 / 3.0, 1.0]:
+		var ring_pts := PackedVector2Array()
+		for i in 5:
+			var ang := -PI / 2.0 + float(i) * TAU / 5.0
+			ring_pts.append(center + Vector2(cos(ang), sin(ang)) * radius * float(ring))
+		ring_pts.append(ring_pts[0])
+		node.draw_polyline(ring_pts, grid, 1.0)
+	for i in 5:
+		var ang := -PI / 2.0 + float(i) * TAU / 5.0
+		node.draw_line(center, center + Vector2(cos(ang), sin(ang)) * radius, grid, 1.0)
+	var poly := PackedVector2Array()
+	for i in 5:
+		var ang := -PI / 2.0 + float(i) * TAU / 5.0
+		var v: float = clampf(float(stats.get(keys[i], 1)) / 3.0, 0.0, 1.0)
+		poly.append(center + Vector2(cos(ang), sin(ang)) * radius * v)
+	var accent: Color = DS.PALETTE.get("ACCENT", Color(0.9, 0.85, 0.7))
+	node.draw_colored_polygon(poly, Color(accent.r, accent.g, accent.b, 0.28))
+	var outline := poly.duplicate()
+	outline.append(poly[0])
+	node.draw_polyline(outline, Color(accent.r, accent.g, accent.b, 0.95), 5.0)
+	for i in 5:
+		node.draw_circle(poly[i], 4.5, Color(accent.r, accent.g, accent.b, 1.0))
+
+# Tapping a discipline label expands a narrow multi-row info section: what the
+# discipline gives, how this advisor performs, the seats it governs, and bonuses.
+func _on_discipline_label(disc: String, advisor_id: String) -> void:
+	if not is_instance_valid(_discipline_info_section):
+		return
+	_clear_children(_discipline_info_section)
+	if _shown_discipline == disc:
+		_shown_discipline = ""   # tap again to collapse
+		return
+	_shown_discipline = disc
+	var a := MatchState._roster_entry(advisor_id)
+	var stat := int(a.get(disc, 1))
+	var tier_word: String = ["-", "malus", "modest", "strong"][clampi(stat, 0, 3)]
+	_discipline_info_section.add_child(_label(str(_DISCIPLINE_NAMES.get(disc, disc)), "Section"))
+	_discipline_info_section.add_child(_wrapped(str(_DISCIPLINE_GIVES.get(disc, "")), "Caption"))
+	_discipline_info_section.add_child(_wrapped("This advisor: %s  (%d / 3)" % [tier_word, stat], "Body"))
+	var seat_names: Array = []
+	for seat_id in MatchState.SEAT_DEFINITIONS:
+		var seat: Dictionary = MatchState.SEAT_DEFINITIONS[seat_id]
+		if str(seat.get("governs", "")) == disc or (seat.get("flexible", []) as Array).has(disc):
+			seat_names.append(str(seat.get("seat_name", seat_id)))
+	if not seat_names.is_empty():
+		_discipline_info_section.add_child(_wrapped("Seats: " + ", ".join(seat_names), "Caption"))
+	var bonuses: Array = MatchState.get_advisor(advisor_id).get("bonuses", [])
+	if not bonuses.is_empty():
+		_discipline_info_section.add_child(_label("Bonuses", "Caption"))
+		for b in bonuses:
+			_discipline_info_section.add_child(_wrapped("- " + str(b), "Caption"))
+
+func _wrapped(text: String, variation: String) -> Label:
+	var l := _label(text, variation)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(100, 0)
+	return l
+
+# Seat picker: one row per seat with this advisor's governing tier + assign/unassign.
+func _seat_assignment_section(advisor: Dictionary, with_header: bool = true) -> Control:
+	var advisor_id := str(advisor.get("id", ""))
+	var hired: bool = MatchState.permanent_advisor_ids.has(advisor_id)
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = &"Inset"
+	panel.name = "SeatAssignmentSection"
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(m, 8)
+	panel.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 4)
+	margin.add_child(root)
+	if with_header:
+		root.add_child(_label("Seats  (%d / %d filled)" % [MatchState.advisor_seats.size(), MatchState.max_advisor_slots], "Section"))
+	else:
+		root.add_child(_label("%d / %d seats filled" % [MatchState.advisor_seats.size(), MatchState.max_advisor_slots], "Caption"))
+	if not hired:
+		root.add_child(_label("Hire this advisor to assign a seat.", "Caption"))
+	for seat_id in MatchState.SEAT_DEFINITIONS:
+		root.add_child(_seat_row(str(seat_id), advisor_id, hired))
+	return panel
+
+func _seat_row(seat_id: String, advisor_id: String, hired: bool) -> Control:
+	var seat: Dictionary = MatchState.SEAT_DEFINITIONS[seat_id]
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var occupant := MatchState.get_advisor_in_seat(seat_id)
+	var here: bool = occupant == advisor_id
+	var tier: int = MatchState.advisor_seat_tier(advisor_id, seat_id)
+	var tier_word: String = ["-", "malus", "modest", "strong"][clampi(tier, 0, 3)]
+	var name_text := str(seat.get("seat_name", seat_id))
+	if occupant != "" and not here:
+		name_text += " · " + str(MatchState.get_advisor(occupant).get("name", occupant))
+	var name_lbl := _label(name_text, "Body")
+	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_lbl)
+	var disc := MatchState.advisor_seat_governing_discipline(advisor_id, seat_id)
+	var preview := _label("%s %s" % [disc.to_upper(), tier_word], "Caption")
+	preview.custom_minimum_size = Vector2(108, 0)
+	preview.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(preview)
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(84, 28)
+	if here:
+		btn.text = "Unassign"
+		btn.pressed.connect(_on_seat_unassign.bind(seat_id, advisor_id))
+	else:
+		btn.text = "Assign"
+		var slot_full: bool = not MatchState.advisor_seats.has(seat_id) and MatchState.advisor_seats.size() >= MatchState.max_advisor_slots
+		btn.disabled = (not hired) or slot_full
+		btn.pressed.connect(_on_seat_assign.bind(seat_id, advisor_id))
+	row.add_child(btn)
+	return row
+
+func _on_seat_assign(seat_id: String, advisor_id: String) -> void:
+	if MatchState.assign_advisor_to_seat(seat_id, advisor_id):
+		_reopen_advisor_detail(advisor_id)
+
+func _on_seat_unassign(seat_id: String, advisor_id: String) -> void:
+	if MatchState.unassign_seat(seat_id):
+		_reopen_advisor_detail(advisor_id)
+
+func _reopen_advisor_detail(advisor_id: String) -> void:
+	var a := MatchState.get_advisor(advisor_id)
+	if not a.is_empty() and is_instance_valid(_advisor_detail_panel):
+		_build_advisor_detail(a)
+
+func _on_advisor_acquired(advisor_id: String) -> void:
+	var a := MatchState.get_advisor(advisor_id)
+	MatchState.request_toast("New advisor: %s" % str(a.get("name", advisor_id)), "success")
 
 func _detail_block(title_text: String, body_text: String) -> Control:
 	var panel := PanelContainer.new()
@@ -837,11 +1430,60 @@ func _detail_block(title_text: String, body_text: String) -> Control:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 5)
 	margin.add_child(root)
-	root.add_child(_label(title_text, "Section"))
+	if title_text != "":
+		root.add_child(_label(title_text, "Section"))
 	var body := _label(body_text, "Caption")
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	root.add_child(body)
 	return panel
+
+# The Agenda section: flavour line + the concrete loyalty drivers (signed points,
+# per-turn or one-off) so it's clear exactly how to please/annoy this advisor.
+func _agenda_block(advisor: Dictionary) -> Control:
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = &"Inset"
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(m, 8)
+	panel.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 3)
+	margin.add_child(root)
+
+	var flavour := str(advisor.get("agenda", "")).strip_edges()
+	if flavour != "":
+		var fl := _wrapped(flavour, "Caption")
+		fl.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+		root.add_child(fl)
+
+	var rows: Array = MatchState.advisor_agenda_rows(str(advisor.get("id", "")))
+	var likes := rows.filter(func(r): return bool(r.get("benefit", false)))
+	var dislikes := rows.filter(func(r): return not bool(r.get("benefit", false)))
+	if not likes.is_empty():
+		root.add_child(_label("Raises loyalty", "Caption"))
+		for r in likes:
+			root.add_child(_agenda_row_label(r))
+	if not dislikes.is_empty():
+		root.add_child(_label("Lowers loyalty", "Caption"))
+		for r in dislikes:
+			root.add_child(_agenda_row_label(r))
+	var note := _label("Loyalty also drifts 0.1/turn back toward 0.", "Caption")
+	note.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	root.add_child(note)
+	return panel
+
+func _agenda_row_label(r: Dictionary) -> Label:
+	var pts: float = float(r.get("points", 0.0))
+	var mag: String = "%.1f" % absf(pts)
+	if mag.ends_with(".0"):
+		mag = mag.substr(0, mag.length() - 2)
+	var suffix: String = "/turn" if bool(r.get("per_turn", false)) else ""
+	var text: String = "%s%s%s   %s" % ["+" if pts >= 0.0 else "−", mag, suffix, str(r.get("text", ""))]
+	var lbl := _label(text, "Caption")
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.add_theme_color_override("font_color", DS.PALETTE["OK"] if bool(r.get("benefit", false)) else DS.PALETTE["DANGER"])
+	return lbl
 
 func _agenda_text(advisor: Dictionary) -> String:
 	var agenda := str(advisor.get("agenda", "")).strip_edges()
@@ -873,16 +1515,18 @@ func _recommendation_box(text: String) -> Control:
 	margin.add_child(label)
 	return panel
 
-func _quest_diagram(quests: Variant) -> Control:
+func _quest_diagram(quests: Variant, current_loyalty: float = 0.0) -> Control:
 	var panel := PanelContainer.new()
 	panel.theme_type_variation = &"Card"
-	panel.custom_minimum_size = Vector2(0, 156)
+	# Tall enough for the full plaques (with their reward + requirement lines) plus the
+	# loyalty progress bar beneath, so nothing gets clipped.
+	panel.custom_minimum_size = Vector2(0, 280)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 14)
 	margin.add_theme_constant_override("margin_top", 12)
 	margin.add_theme_constant_override("margin_right", 14)
-	margin.add_theme_constant_override("margin_bottom", 12)
+	margin.add_theme_constant_override("margin_bottom", 14)
 	panel.add_child(margin)
 
 	var root := VBoxContainer.new()
@@ -891,7 +1535,7 @@ func _quest_diagram(quests: Variant) -> Control:
 	root.add_child(_label("Missions", "Section"))
 
 	var rail_area := Control.new()
-	rail_area.custom_minimum_size = Vector2(0, 104)
+	rail_area.custom_minimum_size = Vector2(0, 138)   # >= the 118px plaques + slack
 	rail_area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.add_child(rail_area)
 
@@ -929,12 +1573,84 @@ func _quest_diagram(quests: Variant) -> Control:
 		if i < quest_list.size() and quest_list[i] is Dictionary:
 			quest = quest_list[i]
 		wrapper.add_child(_mission_plaque(quest))
+
+	root.add_child(_loyalty_bar(current_loyalty))
 	return panel
+
+# A loyalty scale (0..10) with the current value filled, tick marks at the mission
+# thresholds (2 / 5 / 7 / 9) and a highlighted "hold ≥9" zone for mission V.
+func _loyalty_bar(current_loyalty: float) -> Control:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_child(_label("Loyalty  (now %+d)" % int(round(current_loyalty)), "Caption"))
+
+	var area := Control.new()
+	area.custom_minimum_size = Vector2(0, 42)
+	area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_child(area)
+
+	var track := ColorRect.new()
+	track.color = Color(1, 1, 1, 0.12)
+	track.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	track.offset_top = 4
+	track.offset_bottom = 13
+	area.add_child(track)
+
+	# Mission V "hold" zone: loyalty 9..10.
+	var accent: Color = DS.PALETTE.get("ACCENT", Color("#D9B35A"))
+	var zone := ColorRect.new()
+	zone.color = Color(accent.r, accent.g, accent.b, 0.28)
+	zone.anchor_left = 0.9
+	zone.anchor_right = 1.0
+	zone.offset_top = 4
+	zone.offset_bottom = 13
+	area.add_child(zone)
+
+	# Current loyalty fill (clamped into 0..10).
+	var frac: float = clampf(current_loyalty / 10.0, 0.0, 1.0)
+	var fill := ColorRect.new()
+	fill.color = DS.PALETTE.get("OK", Color(0.3, 0.7, 0.4))
+	fill.anchor_right = frac
+	fill.offset_top = 4
+	fill.offset_bottom = 13
+	area.add_child(fill)
+
+	# Threshold ticks + labels for missions I–IV.
+	var marks := [{"x": 0.2, "t": "I·2"}, {"x": 0.5, "t": "II·5"}, {"x": 0.7, "t": "III·7"}, {"x": 0.9, "t": "IV·9"}]
+	for mk in marks:
+		var x: float = float(mk["x"])
+		var tick := ColorRect.new()
+		tick.color = Color(1, 1, 1, 0.75)
+		tick.anchor_left = x
+		tick.anchor_right = x
+		tick.offset_left = -1
+		tick.offset_right = 1
+		tick.offset_top = 1
+		tick.offset_bottom = 16
+		area.add_child(tick)
+		var lbl := _label(str(mk["t"]), "Caption")
+		lbl.add_theme_font_size_override("font_size", 9)
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.anchor_left = x
+		lbl.anchor_right = x
+		lbl.offset_left = -22
+		lbl.offset_right = 22
+		lbl.offset_top = 20
+		lbl.offset_bottom = 38
+		area.add_child(lbl)
+
+	var v_note := _label("V — hold loyalty above 9 for 20 turns", "Caption")
+	v_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	v_note.add_theme_font_size_override("font_size", 10)
+	v_note.add_theme_color_override("font_color", accent)
+	col.add_child(v_note)
+	return col
 
 func _mission_plaque(quest: Dictionary) -> Control:
 	var state := str(quest.get("state", "locked"))
 	var plaque := PanelContainer.new()
-	plaque.custom_minimum_size = Vector2(104, 82)
+	plaque.custom_minimum_size = Vector2(120, 118)
 	plaque.add_theme_stylebox_override("panel", _mission_style(state, quest.get("color", Color("#56687C"))))
 
 	var margin := MarginContainer.new()
@@ -957,6 +1673,24 @@ func _mission_plaque(quest: Dictionary) -> Control:
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
+
+	# Reward + the loyalty needed to reach it.
+	var reward_text := str(quest.get("reward", ""))
+	if reward_text != "":
+		var reward := _label(reward_text, "Caption")
+		reward.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		reward.add_theme_font_size_override("font_size", 10)
+		if state == "locked":
+			reward.modulate = Color(1, 1, 1, 0.7)
+		root.add_child(reward)
+	if quest.has("req_text") and state != "completed":
+		var req := _label(str(quest.get("req_text", "")), "Caption")
+		req.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		req.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		req.add_theme_font_size_override("font_size", 9)
+		req.modulate = Color(1, 1, 1, 0.6)
+		root.add_child(req)
 	return plaque
 
 func _mission_style(state: String, base_color: Variant) -> StyleBoxFlat:
@@ -1042,7 +1776,7 @@ func _close_advisor_detail() -> void:
 
 func _on_visibility_changed() -> void:
 	if visible:
-		_apply_market_window(self)
+		_apply_research_window(self)
 		_refresh_advisors_tab()
 	else:
 		_close_advisor_detail()
@@ -1108,6 +1842,20 @@ func _clear_children(node: Node) -> void:
 	for child in node.get_children():
 		node.remove_child(child)
 		child.queue_free()
+
+# Cap the main People panel to the ResearchPanel's vertical band (top 32, bottom
+# viewport-130), centred horizontally. Tab contents scroll within this fixed height.
+func _apply_research_window(control: Control) -> void:
+	var vp := get_viewport_rect().size
+	var w := minf(1220.0, vp.x - 60.0)
+	control.anchor_left = 0.0
+	control.anchor_top = 0.0
+	control.anchor_right = 0.0
+	control.anchor_bottom = 0.0
+	control.offset_left = maxf(0.0, (vp.x - w) / 2.0)
+	control.offset_right = control.offset_left + w
+	control.offset_top = 32.0
+	control.offset_bottom = maxf(232.0, vp.y - 130.0)
 
 func _apply_market_window(control: Control) -> void:
 	var vp := get_viewport_rect().size
