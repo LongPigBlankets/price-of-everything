@@ -6094,6 +6094,16 @@ func _test_advisor_phase2_effects() -> void:
 			"phase2: construction loan owes principal + 5% over 10 turns")
 		LoanState.loans.remove_at(LoanState.loans.size() - 1)
 	MatchState.money = money_b
+	# COO negotiates grid tariffs: cheaper imports, better-paid exports (tier 3 -10% / +10%).
+	MatchState.advisor_seats = {"coo": "tom"}   # tom ops 3 -> COO tier 3
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(float(Modifiers.resolve_pct("grid_buy_price", "*", {}).get("net", 0.0)), -10.0)
+		and is_equal_approx(float(Modifiers.resolve_pct("grid_sell_price", "*", {}).get("net", 0.0)), 10.0),
+		"phase2: COO tier 3 -> grid buy -10% / grid sell +10%")
+	# Impact readout derives tier-scaled, per-domain effects for a seat.
+	var gov_eff: Array = MatchState.advisor_seat_effect_list("hal", "government_affairs")
+	_check(gov_eff.size() == 1 and str(gov_eff[0]["domain"]) == "tax_rate" and is_equal_approx(float(gov_eff[0]["pct"]), -20.0),
+		"impact: advisor_seat_effect_list gives tier-scaled per-domain effects")
 	MatchState.advisor_seats = {}
 	MatchState.reconcile_advisor_modifiers()
 	_check(not MatchState.construction_credit_available(), "phase2: no Chief Investment -> build-on-credit locked")

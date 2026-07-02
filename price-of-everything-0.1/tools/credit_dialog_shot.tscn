@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3 uid="uid://c8vx2q7credshot"]
+[gd_scene format=3 uid="uid://pdptu06g0076"]
 
 [ext_resource type="Script" path="res://tools/credit_dialog_shot.gd" id="1"]
 

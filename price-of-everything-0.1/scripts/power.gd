@@ -89,12 +89,16 @@ func settle_grid_transactions() -> Dictionary:
 	var grid_bought: int = 0
 	var grid_sold: int = 0
 	
+	# A COO advisor negotiates grid tariffs: cheaper imported power (grid_buy_price)
+	# and better-paid exports (grid_sell_price).
+	var buy_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_buy_price", "*", {}).get("net", 0.0)) / 100.0)
+	var sell_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_sell_price", "*", {}).get("net", 0.0)) / 100.0)
 	if net < 0:
 		grid_bought = -net
-		grid_buy_cost = grid_bought * EconomyConfig.GRID_BUY_PRICE
+		grid_buy_cost = grid_bought * EconomyConfig.GRID_BUY_PRICE * buy_mult
 	elif net > 0:
 		grid_sold = net
-		grid_sell_revenue = grid_sold * EconomyConfig.GRID_SELL_PRICE
+		grid_sell_revenue = grid_sold * EconomyConfig.GRID_SELL_PRICE * sell_mult
 	
 	return {
 		"supply": supply_this_turn,

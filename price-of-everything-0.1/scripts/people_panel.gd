@@ -793,6 +793,68 @@ func _advisor_role_fit(advisor_id: String) -> Dictionary:
 			bad.append(str(r["name"]))
 	return {"great": great, "bad": bad}
 
+# Human phrasing per modifier domain: {noun, good_down} — good_down means a DECREASE
+# is the benefit (a cost), so colour follows the sign accordingly.
+const _IMPACT_LABELS := {
+	"labour_headcount": {"noun": "labour cost", "good_down": true},
+	"maintenance": {"noun": "maintenance cost", "good_down": true},
+	"building_power": {"noun": "building power use", "good_down": true},
+	"transport_cost": {"noun": "transport cost", "good_down": true},
+	"transport_throughput": {"noun": "transport throughput", "good_down": false},
+	"tax_rate": {"noun": "tax", "good_down": true},
+	"market_spread": {"noun": "market buy spread", "good_down": true},
+	"market_price": {"noun": "sale prices", "good_down": false},
+	"loan_interest": {"noun": "loan interest", "good_down": true},
+	"dividend_rate": {"noun": "dividend payouts", "good_down": true},
+	"construction_rebate": {"noun": "build & upgrade materials rebate", "good_down": false},
+	"purchase_cost": {"noun": "land & building prices", "good_down": true},
+	"grid_buy_price": {"noun": "grid power cost", "good_down": true},
+	"grid_sell_price": {"noun": "grid power sales", "good_down": false},
+}
+
+# Concrete numeric impact of an advisor (bonuses + maluses), one per row, for the
+# seat they best demonstrate — plus their trait bonuses beneath.
+func _advisor_impact_block(advisor: Dictionary) -> Control:
+	var advisor_id := str(advisor.get("id", ""))
+	var seat_id := MatchState.advisor_best_effect_seat(advisor_id)
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = &"Inset"
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(m, 8)
+	panel.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 4)
+	margin.add_child(root)
+
+	var rows: Array = MatchState.advisor_seat_effect_list(advisor_id, seat_id)
+	if seat_id != "" and not rows.is_empty():
+		var seat_name := str(MatchState.SEAT_DEFINITIONS.get(seat_id, {}).get("seat_name", seat_id))
+		root.add_child(_label("As %s:" % seat_name, "Caption"))
+	for r in rows:
+		root.add_child(_impact_row(str(r["domain"]), float(r["pct"])))
+	if rows.is_empty():
+		root.add_child(_label("No direct modifiers in their best seat.", "Caption"))
+
+	var traits: Array = advisor.get("bonuses", [])
+	if not traits.is_empty():
+		for t in traits:
+			var tl := _label("• %s" % str(t), "Caption")
+			tl.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+			tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			root.add_child(tl)
+	return panel
+
+func _impact_row(domain: String, pct: float) -> Control:
+	var meta: Dictionary = _IMPACT_LABELS.get(domain, {"noun": domain, "good_down": true})
+	var word := "increase" if pct > 0.0 else "decrease"
+	var text := "%.0f%% %s in %s" % [absf(pct), word, str(meta["noun"])]
+	var benefit := (pct < 0.0) == bool(meta["good_down"])
+	var lbl := _label(text, "Caption")
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.add_theme_color_override("font_color", DS.PALETTE["OK"] if benefit else DS.PALETTE["DANGER"])
+	return lbl
+
 func _role_fit_row(prefix: String, roles: Array, color: Color) -> Control:
 	var lbl := _label("%s: %s" % [prefix, ", ".join(roles)], "Caption")
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1015,7 +1077,7 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 
 	# Collapsible sections — scroll down to reach Seats and Missions.
 	_advisor_detail_body.add_child(_collapsible("Agenda", _detail_block("", _agenda_text(advisor))))
-	_advisor_detail_body.add_child(_collapsible("Bonuses", _detail_block("", _list_text(advisor.get("bonuses", [])))))
+	_advisor_detail_body.add_child(_collapsible("Impact", _advisor_impact_block(advisor)))
 	_advisor_detail_body.add_child(_collapsible("Seats", _seat_assignment_section(advisor, false)))
 	_advisor_detail_body.add_child(_collapsible("Missions", _quest_diagram(advisor.get("missions", advisor.get("quests", []))), false))
 

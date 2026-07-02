@@ -3210,6 +3210,9 @@ const _SEAT_EFFECTS := {
 		{"domain": "labour_headcount", "base_pct": -10.0},
 		{"domain": "maintenance", "base_pct": -10.0},
 		{"domain": "building_power", "base_pct": -8.0},
+		# Grid tariffs: cheaper imports, better-paid exports (tier3 -10% / +10%).
+		{"domain": "grid_buy_price", "base_pct": -10.0},
+		{"domain": "grid_sell_price", "base_pct": 10.0},
 	],
 	"vp_logistics": [
 		{"domain": "transport_cost", "base_pct": -10.0},
@@ -3372,6 +3375,38 @@ func _sanitize_advisor_seats(raw: Variant) -> Dictionary:
 # on seat change, reset, and load (the latter from save_load AFTER Modifiers import).
 # Each seat's FREE-lever effects (_SEAT_EFFECTS) are emitted as domain modifiers
 # scaled by the governing tier; seats whose levers are Phase 2+ emit nothing yet.
+# The concrete modifier effects an advisor would provide in a given seat, each as
+# {domain, pct} with pct already scaled by their governing tier (empty if the seat
+# has no effects or the advisor would be inert there).
+func advisor_seat_effect_list(advisor_id: String, seat_id: String) -> Array:
+	var mult: float = float(_TIER_MULT.get(advisor_seat_tier(advisor_id, seat_id), 0.0))
+	var out: Array = []
+	if mult == 0.0:
+		return out
+	for eff in _SEAT_EFFECTS.get(seat_id, []):
+		var pct: float = float(eff.get("base_pct", 0.0)) * mult
+		if pct != 0.0:
+			out.append({"domain": str(eff.get("domain", "")), "pct": pct})
+	return out
+
+# The seat this advisor best demonstrates: their assigned seat if seated, else the
+# highest-tier seat that actually carries effects (falls back to their top seat).
+func advisor_best_effect_seat(advisor_id: String) -> String:
+	for sid in advisor_seats:
+		if str(advisor_seats[sid]) == advisor_id:
+			return str(sid)
+	var best_seat := ""
+	var best_tier := -1
+	for sid in SEAT_DEFINITIONS:
+		var t: int = advisor_seat_tier(advisor_id, str(sid))
+		var has_fx: bool = not _SEAT_EFFECTS.get(str(sid), []).is_empty()
+		# Prefer seats that carry effects; among those, the highest tier.
+		var score: int = t + (100 if has_fx else 0)
+		if score > best_tier:
+			best_tier = score
+			best_seat = str(sid)
+	return best_seat
+
 func reconcile_advisor_modifiers() -> void:
 	for m in Modifiers.active():
 		var mid := str(m.get("id", ""))
