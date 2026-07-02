@@ -3139,7 +3139,7 @@ const _SEAT_EFFECTS := {
 	# Phase 2 SMALL-lever seats (isolated domains read at the tax / buy-price / loan sites).
 	"cfo": [
 		{"domain": "loan_interest", "base_pct": -25.0},
-		{"domain": "dividend_rate", "base_pct": -50.0},
+		{"domain": "dividend_rate", "base_pct": -40.0},   # tier3 -40% / tier2 -20% / tier1 +20%
 	],
 	"chief_investment": [
 		{"domain": "construction_cost", "base_pct": -15.0},
@@ -3149,9 +3149,10 @@ const _SEAT_EFFECTS := {
 	],
 	"chief_markets": [
 		{"domain": "market_spread", "base_pct": -25.0},
-		# Sale-price uplift applies to ALL market revenue (a broad base) — kept small
-		# on purpose; balance-volatile, harness-tunable. Stacks with research market_price.
-		{"domain": "market_price", "base_pct": 6.0},
+		# Sale-price uplift applies to ALL market revenue (a broad base) so it is kept
+		# tiny: tier3 +2% / tier2 +1% / tier1 -1%. Stacks with research market_price, but
+		# the realised sale price is clamped to the buy price (MarketState.get_sale_price).
+		{"domain": "market_price", "base_pct": 2.0},
 	],
 }
 # governing tier -> multiplier on base_pct. 3 = full, 2 = half, 1 = half malus.
