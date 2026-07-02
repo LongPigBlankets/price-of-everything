@@ -1713,4 +1713,6 @@ func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictiona
 	for input in inputs:
 		var qty := int(round(float(input.qty) * lvl_mult))
 		Stockpile.consume(tile_id, input.good_id, qty)
+		if qty > 0:
+			MatchState.flag_agenda_event(MatchState.AGENDA_USED_STOCKPILE)
 		summary.consumed[input.good_id] = summary.consumed.get(input.good_id, 0) + qty

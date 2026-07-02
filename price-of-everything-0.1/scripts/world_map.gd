@@ -94,10 +94,30 @@ var _deposit_dialog: Control = null  # reused "no deposit" / "deposit exhausted"
 var build_complete := false
 
 func _ready() -> void:
+	# Advisor agenda: any building placement/completion counts as "a building built".
+	building_placed.connect(func(_t: String, _b: String, _r: String, _i: String, _c: Vector2i) -> void:
+		MatchState.note_building_built())
+	if not MatchState.advisor_walked.is_connected(_on_advisor_walked):
+		MatchState.advisor_walked.connect(_on_advisor_walked)
 	await _build_base()
 	# A fresh new game with a loading screen up animates its build (it yields between steps to keep
 	# the loading animation live); tests / e2e / load-game (no loading screen) build synchronously.
 	await finish_build(_loading_screen_active())
+
+# An advisor whose loyalty stayed critically low has resigned — surface a popup.
+func _on_advisor_walked(advisor_id: String) -> void:
+	if _hud == null:
+		return
+	var name_str := str(MatchState.get_advisor(advisor_id).get("name", advisor_id))
+	var dlg := AcceptDialog.new()
+	if DS and DS.theme:
+		dlg.theme = DS.theme
+	dlg.title = "Advisor Resigned"
+	dlg.dialog_text = "%s has resigned.\n\nTheir loyalty stayed critically low for too long, so they've walked. Their seat is now vacant and they will sit out before they can be re-hired." % name_str
+	_hud.add_child(dlg)
+	dlg.confirmed.connect(func() -> void: dlg.queue_free())
+	dlg.canceled.connect(func() -> void: dlg.queue_free())
+	dlg.popup_centered()
 
 
 # Build the config-independent visual scaffold: theme, signal wiring, the HUD panels, the terrain

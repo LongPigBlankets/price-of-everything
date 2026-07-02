@@ -52,6 +52,7 @@ func _ready() -> void:
 	_test_advisor_phase2_effects()
 	_test_hr_director_policies()
 	_test_retrofit_mechanic()
+	_test_advisor_loyalty()
 	_test_advisor_seats_save_roundtrip()
 	_test_advisor_milestone_acquisition()
 	_test_advisor_slot_progression()
@@ -6234,6 +6235,62 @@ func _test_retrofit_mechanic() -> void:
 	MatchState.money = saved_money
 	MatchState.buildings = saved_buildings
 	MatchState.pending_retrofits = saved_retro
+
+func _test_advisor_loyalty() -> void:
+	var saved_perm := MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_rec := MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_loyal := MatchState.advisor_loyalty.duplicate(true)
+	var saved_walk := MatchState._advisor_walk_streak.duplicate(true)
+	var saved_fired := MatchState.fired_advisor_cooldowns.duplicate(true)
+	var saved_seats := MatchState.advisor_seats.duplicate(true)
+	MatchState.permanent_advisor_ids = []
+	MatchState.recruited_advisor_ids = ["vera", "marcus"]
+	MatchState.advisor_seats = {}
+	MatchState.fired_advisor_cooldowns = {}
+	MatchState.advisor_loyalty = {}
+	MatchState._advisor_walk_streak = {}
+	MatchState._agenda_flags = {}
+
+	MatchState.hire_advisor("vera")
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 0.0), "loyalty: starts at 0 on hire")
+
+	MatchState.cheat_set_loyalty("vera", -50.0)
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), -10.0), "loyalty: cheat clamps at -10")
+	MatchState.cheat_set_loyalty("vera", 100.0)
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 10.0), "loyalty: cheat clamps at +10")
+
+	MatchState.advisor_loyalty["vera"] = 0.0
+	MatchState._agenda_flags = {}
+	MatchState._evaluate_agendas({"money_in": 100.0, "money_out": 0.0}, 100.0)
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 1.0),
+		"loyalty: a liked agenda event (+profit) raises loyalty +1")
+
+	MatchState.advisor_loyalty["vera"] = 5.0
+	MatchState._agenda_flags = {}
+	MatchState.flag_agenda_event(MatchState.AGENDA_TOOK_LOAN)
+	MatchState._evaluate_agendas({"money_in": 0.0, "money_out": 0.0}, 0.0)
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 3.9),
+		"loyalty: a disliked event lowers loyalty (net of the 0.1 decay)")
+
+	MatchState.advisor_loyalty["vera"] = 1.0
+	MatchState._agenda_flags = {}
+	MatchState._evaluate_agendas({"money_in": 0.0, "money_out": 0.0}, 0.0)
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 0.9), "loyalty: decays 0.1/turn toward 0")
+
+	for _i in MatchState.LOYALTY_WALK_TURNS:
+		MatchState.advisor_loyalty["vera"] = -10.0
+		MatchState._agenda_flags = {}
+		MatchState._evaluate_agendas({"money_in": 0.0, "money_out": 0.0}, 0.0)
+	_check(not MatchState.permanent_advisor_ids.has("vera") and MatchState.is_fired("vera"),
+		"loyalty: walks after LOYALTY_WALK_TURNS turns at/below the threshold")
+
+	MatchState.permanent_advisor_ids = saved_perm
+	MatchState.recruited_advisor_ids = saved_rec
+	MatchState.advisor_loyalty = saved_loyal
+	MatchState._advisor_walk_streak = saved_walk
+	MatchState.fired_advisor_cooldowns = saved_fired
+	MatchState.advisor_seats = saved_seats
+	MatchState._agenda_flags = {}
 
 func _test_advisor_seats_save_roundtrip() -> void:
 	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)

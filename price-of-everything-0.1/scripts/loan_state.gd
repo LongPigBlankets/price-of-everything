@@ -67,6 +67,7 @@ func _create_loan(amount: float, rate: float, term: int) -> bool:
 	}
 	_next_loan_id += 1
 	loans.append(loan)
+	MatchState.flag_agenda_event(MatchState.AGENDA_TOOK_LOAN)
 	MatchState.add_money(amount)   # disburse principal
 	print("[LoanState] Loan #%d taken: £%.2f (£%.4f/turn for %d turns @ %.1f%%, total £%.2f)" % [
 		loan.id, amount, per_turn, term, rate * 100.0, total_repayment
@@ -89,6 +90,8 @@ func repay_loan(loan_id: int) -> bool:
 		return false
 	
 	loans.remove_at(idx)
+	MatchState.flag_agenda_event(MatchState.AGENDA_EARLY_LOAN_PAYOFF)
+	MatchState.flag_agenda_event(MatchState.AGENDA_PAID_OFF_LOAN)
 	print("[LoanState] Loan #%d repaid in full: £%.2f" % [loan_id, amount])
 	loan_repaid.emit(loan_id)
 	loans_updated.emit()
@@ -118,6 +121,7 @@ func process_payments() -> float:
 		
 		if loan.principal_remaining <= 0.001 or loan.turns_remaining <= 0:
 			loans_to_remove.append(loan.id)
+			MatchState.flag_agenda_event(MatchState.AGENDA_PAID_OFF_LOAN)
 	
 	# Clean up paid-off loans
 	for loan_id in loans_to_remove:

@@ -73,6 +73,55 @@ var crossed_milestones: Array = []                 # latched profit thresholds
 var recruited_advisor_ids: Array = []              # unlocked pool (employ up to the cap)
 const FIRE_COOLDOWN_TURNS := 10                     # a fired advisor sits out this many turns
 var fired_advisor_cooldowns: Dictionary = {}       # advisor_id -> turns until re-hireable (greyed while > 0)
+
+# --- Advisor loyalty / churn (agendas) --------------------------------------
+# Each employed advisor holds a loyalty score in [-10, +10] that decays toward 0
+# each turn. Per-turn "agenda events" they like nudge it up, ones they dislike down.
+# Stay at or below WALK threshold for WALK_TURNS in a row and they walk (like fired).
+const LOYALTY_MIN := -10.0
+const LOYALTY_MAX := 10.0
+const LOYALTY_DECAY := 0.1
+const LOYALTY_STEP := 1.0
+const LOYALTY_WALK_THRESHOLD := -9.0
+const LOYALTY_WALK_TURNS := 11
+# Agenda event tags (detected per turn from the summary + flagged hooks + streaks).
+const AGENDA_TOOK_LOAN := "took_loan"
+const AGENDA_PAID_OFF_LOAN := "paid_off_loan"
+const AGENDA_EARLY_LOAN_PAYOFF := "early_loan_payoff"
+const AGENDA_MADE_PROFIT := "made_profit"
+const AGENDA_IDLE_BUILDING := "idle_building"                # >10 turns since last build
+const AGENDA_BUILT_UNPROFITABLE := "built_while_unprofitable"
+const AGENDA_BOUGHT_GRID_POWER := "bought_grid_power"
+const AGENDA_SOLD_GRID_POWER := "sold_grid_power_streak"     # 5 turns in a row
+const AGENDA_BOUGHT_MATERIALS := "bought_market_materials"
+const AGENDA_USED_STOCKPILE := "used_stockpile"
+const AGENDA_AUTARKIC := "autarkic_streak"                   # no market buys, 3 turns in a row
+const AGENDA_FAST_SHIPMENT := "fast_shipment"               # a shipment delivered in <2 turns
+const AGENDA_LABOUR_POLICIES := "labour_policies"           # >=2 workforce policies enabled
+const AGENDA_TECH_UNLOCK := "tech_unlocked"
+const AGENDA_CHANGED_RECIPE := "changed_recipe"
+# 2 likes + 2 dislikes per advisor.
+const ADVISOR_AGENDAS := {
+	"vera": {"likes": [AGENDA_MADE_PROFIT, AGENDA_PAID_OFF_LOAN], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
+	"tom": {"likes": [AGENDA_USED_STOCKPILE, AGENDA_CHANGED_RECIPE], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_TOOK_LOAN]},
+	"rufus": {"likes": [AGENDA_MADE_PROFIT, AGENDA_BOUGHT_MATERIALS], "dislikes": [AGENDA_CHANGED_RECIPE, AGENDA_TECH_UNLOCK]},
+	"gerald": {"likes": [AGENDA_USED_STOCKPILE, AGENDA_AUTARKIC], "dislikes": [AGENDA_TECH_UNLOCK, AGENDA_CHANGED_RECIPE]},
+	"eleanor": {"likes": [AGENDA_LABOUR_POLICIES, AGENDA_MADE_PROFIT], "dislikes": [AGENDA_BUILT_UNPROFITABLE, AGENDA_BOUGHT_GRID_POWER]},
+	"sloane": {"likes": [AGENDA_SOLD_GRID_POWER, AGENDA_MADE_PROFIT], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_AUTARKIC]},
+	"priya": {"likes": [AGENDA_TECH_UNLOCK, AGENDA_CHANGED_RECIPE], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_USED_STOCKPILE]},
+	"hitomi": {"likes": [AGENDA_FAST_SHIPMENT, AGENDA_MADE_PROFIT], "dislikes": [AGENDA_BOUGHT_GRID_POWER, AGENDA_IDLE_BUILDING]},
+	"hal": {"likes": [AGENDA_MADE_PROFIT, AGENDA_TECH_UNLOCK], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
+	"marcus": {"likes": [AGENDA_PAID_OFF_LOAN, AGENDA_EARLY_LOAN_PAYOFF], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
+	"idris": {"likes": [AGENDA_TECH_UNLOCK, AGENDA_FAST_SHIPMENT], "dislikes": [AGENDA_AUTARKIC, AGENDA_USED_STOCKPILE]},
+	"alexandra": {"likes": [AGENDA_MADE_PROFIT, AGENDA_TECH_UNLOCK], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_BOUGHT_GRID_POWER]},
+}
+var advisor_loyalty: Dictionary = {}               # advisor_id -> float [-10, 10] (employed only)
+var _advisor_walk_streak: Dictionary = {}          # advisor_id -> consecutive turns at/below walk threshold
+var _agenda_flags: Dictionary = {}                 # event_tag -> true; set during the turn, read+cleared each turn
+var _agenda_grid_sell_streak := 0
+var _agenda_no_buy_streak := 0
+var _agenda_last_build_turn := 0
+signal advisor_walked(advisor_id: String)
 # Advisor slot (employ-cap) unlocks: 3rd @15 buildings, 4th @100, 5th @ sustained profit.
 const ADVISOR_SLOT_BUILDINGS_3 := 15
 const ADVISOR_SLOT_BUILDINGS_4 := 100
@@ -281,6 +330,13 @@ func _connect_turn_signals() -> void:
 		TurnManager.phase_started.connect(_on_survey_phase_started)
 	if Production != null and not Production.turn_processed.is_connected(_on_turn_processed_advisors):
 		Production.turn_processed.connect(_on_turn_processed_advisors)
+	if not goods_movement_recorded.is_connected(_on_goods_movement_agenda):
+		goods_movement_recorded.connect(_on_goods_movement_agenda)
+
+# Fast-shipment agenda: a movement that lands in 1 turn (delivered in under 2).
+func _on_goods_movement_agenda(_kind: String, _category: String, transport_turns: int) -> void:
+	if transport_turns >= 1 and transport_turns < 2:
+		flag_agenda_event(AGENDA_FAST_SHIPMENT)
 
 func _on_survey_phase_started(phase: int) -> void:
 	if phase == TurnManager.Phase.PROCESS:
@@ -452,6 +508,7 @@ func start_retrofit(instance_id: String, new_recipe_id: String) -> Dictionary:
 		"turns_remaining": int(tier.get("turns", 2)),
 		"labour_fraction": float(tier.get("labour", 0.5)),
 	})
+	flag_agenda_event(AGENDA_CHANGED_RECIPE)
 	building_retrofit_started.emit(instance_id, new_recipe_id)
 	return {"ok": true, "turns": int(tier.get("turns", 2)), "fee": float(tier.get("fee", 0.0))}
 
@@ -1218,6 +1275,7 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 		return
 	unlocked_titles[title] = true
 	_surveyable_dirty = true  # e.g. Geoscanning changes survey range
+	flag_agenda_event(AGENDA_TECH_UNLOCK)
 	var desc := ""
 	for d in _unlock_defs:
 		if str(d.title) == title:
@@ -1729,6 +1787,12 @@ func reset() -> void:
 	crossed_milestones.clear()
 	recruited_advisor_ids.clear()
 	fired_advisor_cooldowns.clear()
+	advisor_loyalty.clear()
+	_advisor_walk_streak.clear()
+	_agenda_flags.clear()
+	_agenda_grid_sell_streak = 0
+	_agenda_no_buy_streak = 0
+	_agenda_last_build_turn = 0
 	_advisor_profit_streak = 0
 	advisor_slot_profit_unlocked = false
 	fake_money_this_turn = 0.0
@@ -1797,6 +1861,9 @@ func export_state() -> Dictionary:
 		"advisor_crossed_milestones": crossed_milestones.duplicate(true),
 		"recruited_advisor_ids": recruited_advisor_ids.duplicate(true),
 		"fired_advisor_cooldowns": fired_advisor_cooldowns.duplicate(true),
+		"advisor_loyalty": advisor_loyalty.duplicate(true),
+		"advisor_walk_streak": _advisor_walk_streak.duplicate(true),
+		"agenda_last_build_turn": _agenda_last_build_turn,
 		"advisor_profit_streak": _advisor_profit_streak,
 		"advisor_slot_profit_unlocked": advisor_slot_profit_unlocked,
 		"advisor_peak_profit": peak_profit_per_turn,
@@ -1848,6 +1915,9 @@ func import_state(d: Dictionary) -> void:
 	workforce_policies = (d.get("workforce_policies", {}) as Dictionary).duplicate(true)
 	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
 	recruited_advisor_ids = _sanitize_advisor_ids(d.get("recruited_advisor_ids", STARTING_TRIO))
+	advisor_loyalty = (d.get("advisor_loyalty", {}) as Dictionary).duplicate(true)
+	_advisor_walk_streak = (d.get("advisor_walk_streak", {}) as Dictionary).duplicate(true)
+	_agenda_last_build_turn = int(d.get("agenda_last_build_turn", 0))
 	fired_advisor_cooldowns = {}
 	for fid in (d.get("fired_advisor_cooldowns", {}) as Dictionary):
 		if not _roster_entry(str(fid)).is_empty():
@@ -3623,8 +3693,103 @@ func _on_turn_processed_advisors(summary: Dictionary) -> void:
 	var profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) + float(summary.get("fake_money", 0.0))
 	peak_profit_per_turn = maxf(peak_profit_per_turn, profit)
 	_tick_fire_cooldowns()
+	_evaluate_agendas(summary, profit)
 	_update_advisor_slots(profit)
 	check_profit_milestones(profit)
+
+# --- Advisor loyalty / churn ------------------------------------------------
+
+func advisor_loyalty_value(advisor_id: String) -> float:
+	return float(advisor_loyalty.get(advisor_id, 0.0))
+
+# Called from hook sites during a turn to record that an agenda event happened.
+func flag_agenda_event(tag: String) -> void:
+	_agenda_flags[tag] = true
+
+# Record a build this turn (drives the idle-building + build-while-unprofitable agendas).
+func note_building_built() -> void:
+	_agenda_last_build_turn = int(TurnManager.current_turn)
+	_agenda_flags["_built"] = true
+
+# Debug cheat: nudge an advisor's loyalty by delta, clamped to [-10, 10].
+func cheat_set_loyalty(advisor_id: String, delta: float) -> void:
+	if _roster_entry(advisor_id).is_empty():
+		return
+	advisor_loyalty[advisor_id] = clampf(advisor_loyalty_value(advisor_id) + delta, LOYALTY_MIN, LOYALTY_MAX)
+	advisors_changed.emit()
+
+# Which agenda events fired this turn (flagged hooks + summary-derived + streaks).
+func _collect_agenda_events(summary: Dictionary, profit: float) -> Dictionary:
+	var ev: Dictionary = {}
+	for tag in _agenda_flags:
+		ev[tag] = true
+	if profit > 0.0:
+		ev[AGENDA_MADE_PROFIT] = true
+	if float(summary.get("power_purchase_cost", 0.0)) > 0.0:
+		ev[AGENDA_BOUGHT_GRID_POWER] = true
+	var bought_materials: bool = float(summary.get("goods_purchased_cost", 0.0)) > 0.0
+	if bought_materials:
+		ev[AGENDA_BOUGHT_MATERIALS] = true
+	# Grid-sell streak (5 consecutive turns exporting power).
+	_agenda_grid_sell_streak = _agenda_grid_sell_streak + 1 if float(summary.get("power_sales_revenue", 0.0)) > 0.0 else 0
+	if _agenda_grid_sell_streak >= 5:
+		ev[AGENDA_SOLD_GRID_POWER] = true
+	# Autarky streak (no market input buys, 3 turns in a row).
+	_agenda_no_buy_streak = 0 if bought_materials else _agenda_no_buy_streak + 1
+	if _agenda_no_buy_streak >= 3:
+		ev[AGENDA_AUTARKIC] = true
+	if _agenda_flags.has("_built") and profit < 0.0:
+		ev[AGENDA_BUILT_UNPROFITABLE] = true
+	if int(TurnManager.current_turn) - _agenda_last_build_turn > 10:
+		ev[AGENDA_IDLE_BUILDING] = true
+	if _count_enabled_workforce_policies() >= 2:
+		ev[AGENDA_LABOUR_POLICIES] = true
+	return ev
+
+func _count_enabled_workforce_policies() -> int:
+	var n := 0
+	for pid in workforce_policies:
+		if bool(workforce_policies[pid]):
+			n += 1
+	return n
+
+# Decay every employed advisor's loyalty toward 0, apply this turn's agenda events,
+# then walk anyone stuck at/below the threshold for LOYALTY_WALK_TURNS running turns.
+func _evaluate_agendas(summary: Dictionary, profit: float) -> void:
+	var events: Dictionary = _collect_agenda_events(summary, profit)
+	for aid in permanent_advisor_ids:
+		var agenda: Dictionary = ADVISOR_AGENDAS.get(aid, {})
+		var v: float = advisor_loyalty_value(aid)
+		if v > 0.0:
+			v = maxf(0.0, v - LOYALTY_DECAY)
+		elif v < 0.0:
+			v = minf(0.0, v + LOYALTY_DECAY)
+		for tag in agenda.get("likes", []):
+			if events.has(tag):
+				v += LOYALTY_STEP
+		for tag in agenda.get("dislikes", []):
+			if events.has(tag):
+				v -= LOYALTY_STEP
+		advisor_loyalty[aid] = clampf(v, LOYALTY_MIN, LOYALTY_MAX)
+		if advisor_loyalty[aid] <= LOYALTY_WALK_THRESHOLD:
+			_advisor_walk_streak[aid] = int(_advisor_walk_streak.get(aid, 0)) + 1
+		else:
+			_advisor_walk_streak[aid] = 0
+	# Walk in a second pass (walking mutates permanent_advisor_ids).
+	var walkers: Array = []
+	for aid in permanent_advisor_ids:
+		if int(_advisor_walk_streak.get(aid, 0)) >= LOYALTY_WALK_TURNS:
+			walkers.append(aid)
+	for aid in walkers:
+		_advisor_walk(str(aid))
+	_agenda_flags.clear()
+
+func _advisor_walk(advisor_id: String) -> void:
+	advisor_loyalty.erase(advisor_id)
+	_advisor_walk_streak.erase(advisor_id)
+	fire_advisor(advisor_id)          # unseat + bench (10-turn cooldown), like a firing
+	request_toast("%s has resigned — loyalty stayed critically low." % str(get_advisor(advisor_id).get("name", advisor_id)), "warning")
+	advisor_walked.emit(advisor_id)
 
 func advisor_pool() -> Array:
 	var out: Array = []
@@ -3669,6 +3834,8 @@ func hire_advisor(advisor_id: String) -> bool:
 	if permanent_advisor_ids.size() >= max_advisor_slots:
 		return false
 	permanent_advisor_ids.append(advisor_id)
+	advisor_loyalty[advisor_id] = 0.0          # loyalty starts neutral on hire
+	_advisor_walk_streak.erase(advisor_id)
 	advisors_changed.emit()
 	return true
 
@@ -3685,6 +3852,8 @@ func fire_advisor(advisor_id: String) -> bool:
 	if not permanent_advisor_ids.has(advisor_id):
 		return false
 	permanent_advisor_ids.erase(advisor_id)
+	advisor_loyalty.erase(advisor_id)
+	_advisor_walk_streak.erase(advisor_id)
 	for seat_id in advisor_seats.keys():
 		if str(advisor_seats[seat_id]) == advisor_id:
 			advisor_seats.erase(seat_id)

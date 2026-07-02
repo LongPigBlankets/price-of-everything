@@ -207,6 +207,14 @@ func _run_command(text: String) -> String:
 		"labour":
 			MatchState.cheat_labour_discount()
 			return "Applied debug labour -60% for 10 turns (clamps at 40% of base cost)."
+		"loyalty":
+			if parts.size() < 3 or not parts[2].is_valid_float():
+				return "usage: loyalty <advisor_id> <delta>   (e.g. 'loyalty vera -10'; clamped -10..+10)"
+			var aid := parts[1].to_lower()
+			if MatchState._roster_entry(aid).is_empty():
+				return "unknown advisor '%s'" % aid
+			MatchState.cheat_set_loyalty(aid, float(parts[2]))
+			return "%s loyalty now %.1f" % [aid, MatchState.advisor_loyalty_value(aid)]
 		"help":
 			return "commands:  cash <int>   |   unlock <title>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   swap song   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:

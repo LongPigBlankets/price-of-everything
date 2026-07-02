@@ -829,7 +829,9 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 		return card
 
 	if not add_slot:
-		root.add_child(_happiness_row(int(advisor.get("happiness", 0))))
+		# Hired advisors show live loyalty (-10..+10); the pool/detail use the static value.
+		var loyalty_val: int = int(round(MatchState.advisor_loyalty_value(str(advisor.get("id", ""))))) if permanent else int(advisor.get("happiness", 0))
+		root.add_child(_happiness_row(loyalty_val))
 
 	var bonus := _label("Open slot" if add_slot else str(advisor.get("bonus", "")), "Caption")
 	bonus.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
