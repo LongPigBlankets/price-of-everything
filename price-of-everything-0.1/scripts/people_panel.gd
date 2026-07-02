@@ -1562,8 +1562,9 @@ func _mission_plaque(quest: Dictionary) -> Control:
 		if state == "locked":
 			reward.modulate = Color(1, 1, 1, 0.7)
 		root.add_child(reward)
-	if quest.has("loyalty_req") and state != "completed":
-		var req := _label("at loyalty %d" % int(quest.get("loyalty_req", 0)), "Caption")
+	if quest.has("req_text") and state != "completed":
+		var req := _label(str(quest.get("req_text", "")), "Caption")
+		req.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		req.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		req.add_theme_font_size_override("font_size", 9)
 		req.modulate = Color(1, 1, 1, 0.6)

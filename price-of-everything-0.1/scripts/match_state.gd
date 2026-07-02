@@ -121,7 +121,11 @@ const ADVISOR_AGENDAS := {
 # COO/Sustainability/Govt Affairs), M3 a free research unlock in their category, M2/M4
 # a permanent slice of their seat effect, M5 the unique labour policy / a capstone.
 const MISSION_COUNT := 5
-const MISSION_LOYALTY_THRESHOLDS := [2.0, 4.0, 6.0, 8.0, 10.0]
+# Missions I–IV complete the first turn loyalty reaches these values. Mission V is a
+# capstone: loyalty must STAY at/above MISSION5_LOYALTY for MISSION5_STREAK_TURNS in a row.
+const MISSION_LOYALTY_THRESHOLDS := [2.0, 5.0, 7.0, 9.0]
+const MISSION5_LOYALTY := 9.0
+const MISSION5_STREAK_TURNS := 20
 const MISSION_TEMPLATES := {
 	"cfo": {
 		"temp": {"domain": "loan_interest", "pct": -50.0, "turns": 20, "label": "loan interest halved (20t)"},
@@ -191,6 +195,7 @@ const MISSION_TEMPLATES := {
 	},
 }
 var advisor_missions_completed: Dictionary = {}    # advisor_id -> int (0..5)
+var _advisor_mission5_streak: Dictionary = {}      # advisor_id -> consecutive turns at/above MISSION5_LOYALTY
 var advisor_mission_policies: Array = []           # workforce policies unlocked via missions
 signal advisor_mission_completed(advisor_id: String, mission_index: int, reward_label: String)
 var advisor_loyalty: Dictionary = {}               # advisor_id -> float [-10, 10] (employed only)
@@ -1899,6 +1904,7 @@ func reset() -> void:
 	advisor_loyalty.clear()
 	_advisor_walk_streak.clear()
 	advisor_missions_completed.clear()
+	_advisor_mission5_streak.clear()
 	advisor_mission_policies.clear()
 	_agenda_flags.clear()
 	_agenda_grid_sell_streak = 0
@@ -1975,6 +1981,7 @@ func export_state() -> Dictionary:
 		"advisor_loyalty": advisor_loyalty.duplicate(true),
 		"advisor_walk_streak": _advisor_walk_streak.duplicate(true),
 		"advisor_missions_completed": advisor_missions_completed.duplicate(true),
+		"advisor_mission5_streak": _advisor_mission5_streak.duplicate(true),
 		"advisor_mission_policies": advisor_mission_policies.duplicate(true),
 		"agenda_last_build_turn": _agenda_last_build_turn,
 		"advisor_profit_streak": _advisor_profit_streak,
@@ -2031,6 +2038,7 @@ func import_state(d: Dictionary) -> void:
 	advisor_loyalty = (d.get("advisor_loyalty", {}) as Dictionary).duplicate(true)
 	_advisor_walk_streak = (d.get("advisor_walk_streak", {}) as Dictionary).duplicate(true)
 	advisor_missions_completed = (d.get("advisor_missions_completed", {}) as Dictionary).duplicate(true)
+	_advisor_mission5_streak = (d.get("advisor_mission5_streak", {}) as Dictionary).duplicate(true)
 	advisor_mission_policies = (d.get("advisor_mission_policies", []) as Array).duplicate(true)
 	_agenda_last_build_turn = int(d.get("agenda_last_build_turn", 0))
 	fired_advisor_cooldowns = {}
@@ -3905,16 +3913,26 @@ func _evaluate_agendas(summary: Dictionary, profit: float) -> void:
 func advisor_missions_done(advisor_id: String) -> int:
 	return int(advisor_missions_completed.get(advisor_id, 0))
 
-# Complete any missions whose loyalty threshold this advisor has now reached.
+# Advance missions once per turn. I–IV complete the first turn loyalty reaches their
+# threshold; V requires loyalty to hold at/above MISSION5_LOYALTY for MISSION5_STREAK_TURNS.
 func _check_mission_progress(advisor_id: String) -> void:
 	if MISSION_TEMPLATES.get(str(_roster_entry(advisor_id).get("role", "")), {}).is_empty():
 		return
 	var done := advisor_missions_done(advisor_id)
 	var loyalty := advisor_loyalty_value(advisor_id)
-	while done < MISSION_COUNT and loyalty >= float(MISSION_LOYALTY_THRESHOLDS[done]):
+	# Missions I–IV: single-hit loyalty thresholds [2, 5, 7, 9].
+	while done < MISSION_LOYALTY_THRESHOLDS.size() and loyalty >= float(MISSION_LOYALTY_THRESHOLDS[done]):
 		done += 1
 		advisor_missions_completed[advisor_id] = done
 		_grant_mission_reward(advisor_id, done)
+	# Mission V: sustained high loyalty streak.
+	if loyalty >= MISSION5_LOYALTY:
+		_advisor_mission5_streak[advisor_id] = int(_advisor_mission5_streak.get(advisor_id, 0)) + 1
+	else:
+		_advisor_mission5_streak[advisor_id] = 0
+	if done == MISSION_LOYALTY_THRESHOLDS.size() and int(_advisor_mission5_streak.get(advisor_id, 0)) >= MISSION5_STREAK_TURNS:
+		advisor_missions_completed[advisor_id] = MISSION_COUNT
+		_grant_mission_reward(advisor_id, MISSION_COUNT)
 
 # Mission indices are 1-based (I..V). Mirrors the reward layout in MISSION_TEMPLATES.
 func _grant_mission_reward(advisor_id: String, mission_num: int) -> void:
@@ -4144,13 +4162,19 @@ func _advisor_missions(advisor_id: String, accent_hex: String) -> Array:
 	var done := advisor_missions_done(advisor_id)
 	var out: Array = []
 	for i in 5:
+		var req_text := ""
+		if i < MISSION_LOYALTY_THRESHOLDS.size():
+			req_text = "at loyalty %d" % int(MISSION_LOYALTY_THRESHOLDS[i])
+		else:
+			var streak: int = mini(int(_advisor_mission5_streak.get(advisor_id, 0)), MISSION5_STREAK_TURNS)
+			req_text = "loyalty %d+ for %d turns (%d/%d)" % [int(MISSION5_LOYALTY), MISSION5_STREAK_TURNS, streak, MISSION5_STREAK_TURNS]
 		out.append({
 			"roman": _roman(i + 1),
 			"title": titles[i],
 			"state": "completed" if i < done else ("next" if i == done else "locked"),
 			"color": Color(colours[i]),
 			"reward": str(rewards[i]),
-			"loyalty_req": float(MISSION_LOYALTY_THRESHOLDS[i]),
+			"req_text": req_text,
 		})
 	return out
 
