@@ -99,6 +99,9 @@ var pending_transport_shipments: Array = []
 # dict — see start_upgrade() for the shape. While an upgrade is pending it reserves its
 # extra footprint and the building keeps producing at its CURRENT level until promotion.
 var pending_upgrades: Array = []
+# In-progress retrofits (recipe changes): {instance_id, from_recipe, to_recipe,
+# turns_remaining, labour_fraction}. The building produces nothing while retooling.
+var pending_retrofits: Array = []
 # Last turn's per-link flow ("tile|mode"->units) — drives this turn's congestion cost.
 var _last_link_flow: Dictionary = {}
 # Shipments that arrived at a destination tile whose stockpile was full and so
@@ -184,6 +187,8 @@ signal building_owner_changed(instance_id: String)
 signal building_upgraded(instance_id: String, new_level: int)
 # An upgrade was just queued (materials committed); the level changes later via building_upgraded.
 signal building_upgrade_started(instance_id: String, target_level: int)
+signal building_retrofit_started(instance_id: String, new_recipe_id: String)
+signal building_retrofitted(instance_id: String, new_recipe_id: String)
 # An in-progress upgrade advanced (claimed materials / ticked down) — UI can refresh its countdown.
 signal building_upgrade_progress(instance_id: String)
 # An in-progress upgrade was cancelled / abandoned (e.g. the building was removed). Banked
@@ -392,6 +397,89 @@ func is_upgrading(instance_id: String) -> bool:
 		if str(p.get("instance_id", "")) == instance_id:
 			return true
 	return false
+
+# --- Retrofit / retooling (advisor spec §7) ---------------------------------
+
+func is_retooling(instance_id: String) -> bool:
+	for p in pending_retrofits:
+		if str(p.get("instance_id", "")) == instance_id:
+			return true
+	return false
+
+# Per-turn labour fraction while a building is retooling (1.0 if it isn't).
+func retooling_labour_fraction(instance_id: String) -> float:
+	for p in pending_retrofits:
+		if str(p.get("instance_id", "")) == instance_id:
+			return float(p.get("labour_fraction", 1.0))
+	return 1.0
+
+# Retrofit cost/speed tier from the seated COO's Operations stat (base if no COO).
+func retrofit_cost_tier() -> Dictionary:
+	var a: Dictionary = _roster_entry(str(advisor_seats.get("coo", "")))
+	var key := "base"
+	if not a.is_empty():
+		key = "ops%d" % clampi(int(a.get("ops", 1)), 1, 3)
+	return EconomyConfig.RETROFIT_TIERS.get(key, EconomyConfig.RETROFIT_TIERS["base"])
+
+# Begin changing a built building's recipe. Charges the one-off fee up front; the
+# building produces nothing (reduced labour) until the countdown completes.
+func start_retrofit(instance_id: String, new_recipe_id: String) -> Dictionary:
+	if not buildings.has(instance_id):
+		return {"ok": false, "reason": "No such building."}
+	if is_retooling(instance_id):
+		return {"ok": false, "reason": "Already retooling."}
+	if is_upgrading(instance_id):
+		return {"ok": false, "reason": "An upgrade is in progress."}
+	var inst: Dictionary = buildings[instance_id]
+	var new_recipe: Dictionary = Catalog.get_recipe(new_recipe_id)
+	if new_recipe.is_empty() or str(new_recipe.get("building_id", "")) != str(inst.get("building_id", "")):
+		return {"ok": false, "reason": "That recipe can't run in this building."}
+	if new_recipe_id == str(inst.get("recipe_id", "")):
+		return {"ok": false, "reason": "Already running that recipe."}
+	var tier: Dictionary = retrofit_cost_tier()
+	if not deduct_money(float(tier.get("fee", 0.0))):
+		return {"ok": false, "reason": "Not enough money for the retooling fee."}
+	pending_retrofits.append({
+		"instance_id": instance_id,
+		"from_recipe": str(inst.get("recipe_id", "")),
+		"to_recipe": new_recipe_id,
+		"turns_remaining": int(tier.get("turns", 2)),
+		"labour_fraction": float(tier.get("labour", 0.5)),
+	})
+	building_retrofit_started.emit(instance_id, new_recipe_id)
+	return {"ok": true, "turns": int(tier.get("turns", 2)), "fee": float(tier.get("fee", 0.0))}
+
+# Advance every retrofit one turn; on completion swap the recipe. Returns completed ids.
+func tick_retrofits() -> Array:
+	var completed: Array = []
+	var remaining: Array = []
+	for p in pending_retrofits:
+		var iid := str(p.get("instance_id", ""))
+		if not buildings.has(iid):
+			continue   # building vanished mid-retool
+		p["turns_remaining"] = int(p.get("turns_remaining", 0)) - 1
+		if int(p["turns_remaining"]) <= 0:
+			buildings[iid]["recipe_id"] = str(p.get("to_recipe", ""))
+			completed.append(iid)
+			building_retrofitted.emit(iid, str(p.get("to_recipe", "")))
+		else:
+			remaining.append(p)
+	pending_retrofits = remaining
+	return completed
+
+# Abandon a retrofit; the building resumes its original recipe (fee not refunded).
+func cancel_retrofit(instance_id: String) -> bool:
+	var kept: Array = []
+	var found := false
+	for p in pending_retrofits:
+		if str(p.get("instance_id", "")) == instance_id:
+			found = true
+		else:
+			kept.append(p)
+	pending_retrofits = kept
+	if found:
+		building_retrofit_started.emit(instance_id, "")   # UI refresh
+	return found
 
 func pending_upgrade(instance_id: String) -> Dictionary:
 	for p in pending_upgrades:
@@ -1620,6 +1708,7 @@ func reset() -> void:
 	auto_sell_impact.clear()
 	pending_transport_shipments.clear()
 	pending_upgrades.clear()
+	pending_retrofits.clear()
 	_last_link_flow.clear()
 	overflow_shipments.clear()
 	sales_by_tile.clear()
@@ -1721,6 +1810,7 @@ func export_state() -> Dictionary:
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": _shipments_for_save(),
 		"pending_upgrades": pending_upgrades.duplicate(true),
+		"pending_retrofits": pending_retrofits.duplicate(true),
 		"overflow_shipments": overflow_shipments.duplicate(true),
 		"transaction_log": transaction_log.duplicate(true),
 		"move_log": move_log.duplicate(true),
@@ -1791,6 +1881,7 @@ func import_state(d: Dictionary) -> void:
 	queued_stockpile_market_sales = (d.get("queued_stockpile_market_sales", {}) as Dictionary).duplicate(true)
 	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
 	pending_upgrades = (d.get("pending_upgrades", []) as Array).duplicate(true)
+	pending_retrofits = (d.get("pending_retrofits", []) as Array).duplicate(true)
 	overflow_shipments = (d.get("overflow_shipments", []) as Array).duplicate(true)
 	transaction_log = (d.get("transaction_log", []) as Array).duplicate(true)
 	move_log = (d.get("move_log", []) as Array).duplicate(true)

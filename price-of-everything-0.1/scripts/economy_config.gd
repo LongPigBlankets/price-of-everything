@@ -188,6 +188,17 @@ const LOAN_REVENUE_BUFFER: float = 0.02    # Extra serviceable debt = this share
 const TAX_RATE: float = 0.20
 const DIVIDEND_RATE: float = 0.20
 
+# --- Retrofit / retooling (advisor spec §7) ---
+# Changing a built building's recipe. Labour is a per-turn fraction of base while
+# retooling (building produces nothing); the fee is a one-off. Tier keyed off the
+# seated COO's Operations stat (base = no COO). Balance-volatile (rule #7).
+const RETROFIT_TIERS := {
+	"base": {"labour": 0.50, "fee": 25.0, "turns": 2},   # no relevant advisor seated
+	"ops3": {"labour": 0.30, "fee": 15.0, "turns": 1},   # Ops 3 — cheap AND fast
+	"ops2": {"labour": 0.30, "fee": 15.0, "turns": 2},   # Ops 2 — cheap, normal speed
+	"ops1": {"labour": 0.75, "fee": 40.0, "turns": 2},   # Ops 1 malus — worse than base
+}
+
 # --- Labour multiplier ---
 const LABOUR_MULTIPLIER_MIN: float = 0.8
 const LABOUR_MULTIPLIER_DEFAULT: float = 1.0

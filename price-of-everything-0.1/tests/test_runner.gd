@@ -51,6 +51,7 @@ func _ready() -> void:
 	_test_advisor_seat_effects()
 	_test_advisor_phase2_effects()
 	_test_hr_director_policies()
+	_test_retrofit_mechanic()
 	_test_advisor_seats_save_roundtrip()
 	_test_advisor_milestone_acquisition()
 	_test_advisor_slot_progression()
@@ -6164,6 +6165,75 @@ func _test_hr_director_policies() -> void:
 	MatchState.workforce_policies = saved_pol
 	MatchState.workforce_policy_effects = saved_eff
 	MatchState.reconcile_advisor_modifiers()
+
+func _test_retrofit_mechanic() -> void:
+	# Find a building type with at least two recipes to retrofit between.
+	var by_b: Dictionary = {}
+	for r in Catalog.all_recipes():
+		var b := str(r.get("building_id", ""))
+		if b == "":
+			continue
+		if not by_b.has(b):
+			by_b[b] = []
+		(by_b[b] as Array).append(str(r.get("recipe_id", "")))
+	var bid := ""
+	var recs: Array = []
+	for b in by_b:
+		if (by_b[b] as Array).size() >= 2:
+			bid = str(b)
+			recs = by_b[b]
+			break
+	if bid == "":
+		_check(true, "retrofit: skipped (no multi-recipe building in catalog)")
+		return
+
+	var saved_seats := MatchState.advisor_seats.duplicate(true)
+	var saved_money := MatchState.money
+	var saved_buildings := MatchState.buildings.duplicate(true)
+	var saved_retro := MatchState.pending_retrofits.duplicate(true)
+	MatchState.advisor_seats = {}
+	MatchState.money = 1000.0
+	MatchState.pending_retrofits = []
+	var iid := "test_retrofit_1"
+	MatchState.buildings[iid] = {"instance_id": iid, "building_id": bid, "recipe_id": str(recs[0]), "tile_id": "tile_0_0", "level": 1}
+
+	var tier: Dictionary = MatchState.retrofit_cost_tier()
+	_check(is_equal_approx(float(tier["labour"]), 0.50) and int(tier["turns"]) == 2,
+		"retrofit: base tier (no COO) = 50% labour, 2 turns")
+
+	var before := MatchState.money
+	var res: Dictionary = MatchState.start_retrofit(iid, str(recs[1]))
+	_check(bool(res["ok"]) and MatchState.is_retooling(iid)
+		and is_equal_approx(MatchState.money, before - 25.0)
+		and is_equal_approx(MatchState.retooling_labour_fraction(iid), 0.50),
+		"retrofit: start charges the fee, marks retooling, applies reduced labour")
+	_check(not bool(MatchState.start_retrofit(iid, str(recs[0]))["ok"]),
+		"retrofit: blocked while already retooling")
+
+	MatchState.tick_retrofits()
+	_check(MatchState.is_retooling(iid), "retrofit: still retooling after 1 tick (base = 2 turns)")
+	MatchState.tick_retrofits()
+	_check(not MatchState.is_retooling(iid) and str(MatchState.buildings[iid]["recipe_id"]) == str(recs[1]),
+		"retrofit: completes after 2 turns and swaps in the new recipe")
+
+	MatchState.advisor_seats = {"coo": "tom"}   # Ops 3
+	var t3: Dictionary = MatchState.retrofit_cost_tier()
+	_check(int(t3["turns"]) == 1 and is_equal_approx(float(t3["labour"]), 0.30),
+		"retrofit: Ops-3 COO = 1 turn, 30% labour")
+	MatchState.advisor_seats = {"coo": "rufus"}   # Ops 1 malus
+	var t1: Dictionary = MatchState.retrofit_cost_tier()
+	_check(is_equal_approx(float(t1["labour"]), 0.75) and is_equal_approx(float(t1["fee"]), 40.0),
+		"retrofit: Ops-1 COO malus = 75% labour, £40 (worse than base)")
+
+	MatchState.advisor_seats = {}
+	MatchState.start_retrofit(iid, str(recs[0]))
+	_check((MatchState.export_state().get("pending_retrofits", []) as Array).size() >= 1,
+		"retrofit: pending_retrofits is written to the save state")
+
+	MatchState.advisor_seats = saved_seats
+	MatchState.money = saved_money
+	MatchState.buildings = saved_buildings
+	MatchState.pending_retrofits = saved_retro
 
 func _test_advisor_seats_save_roundtrip() -> void:
 	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)

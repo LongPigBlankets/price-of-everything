@@ -158,6 +158,7 @@ func _process_production() -> void:
 	# off the tile (before production can consume them) and ticked-down ones promote to the
 	# new level, so an upgrade that completes this turn produces at its new level immediately.
 	MatchState.tick_upgrades()
+	MatchState.tick_retrofits()   # recipe changes complete + swap in the new recipe
 	TurnProfiler.section_end("construction")
 
 	# Only the player's buildings are simulated each turn. The pre-existing NPC
@@ -179,6 +180,11 @@ func _process_production() -> void:
 		for building in all_buildings:
 			var instance_id: String = building.instance_id
 			if has_run.get(instance_id, false):
+				continue
+
+			# A building being retooled produces nothing until the recipe change lands.
+			if MatchState.is_retooling(instance_id):
+				has_run[instance_id] = true
 				continue
 
 			var recipe: Dictionary = Catalog.get_recipe(building.recipe_id)
@@ -1031,6 +1037,11 @@ func _inbound_transport_per_unit(tile_id: String, good_id: String) -> float:
 	return float(rec.get("cost", 0.0)) / qty
 
 func _calculate_labour_cost(building: Dictionary) -> float:
+	# While retooling, a building pays only a reduced fraction of its base labour and
+	# skips the usual modifier factor (spec §7.3).
+	var instance_id: String = str(building.get("instance_id", ""))
+	if MatchState.is_retooling(instance_id):
+		return _base_labour_cost(building) * MatchState.retooling_labour_fraction(instance_id)
 	return _base_labour_cost(building) * labour_cost_factor(building)
 
 # Raw per-turn staffing cost for a building BEFORE any percentage labour modifiers:
