@@ -1537,6 +1537,11 @@ func get_tile_land_patches_available(tile_id: String) -> int:
 	var remaining := MAX_TILE_LAND - get_tile_land_owned(tile_id)
 	return maxi(0, int(floor(float(remaining) / float(LAND_PATCH_SIZE))))
 
+# New-construction money cost after any Chief Investment "construction_cost" discount.
+func construction_cost_after_advisor(base_cost: float) -> float:
+	var mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("construction_cost", "*", {}).get("net", 0.0)) / 100.0)
+	return base_cost * mult
+
 func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
 	if tile_id == "":
 		return false
@@ -3135,6 +3140,9 @@ const _SEAT_EFFECTS := {
 	"cfo": [
 		{"domain": "loan_interest", "base_pct": -25.0},
 		{"domain": "dividend_rate", "base_pct": -50.0},
+	],
+	"chief_investment": [
+		{"domain": "construction_cost", "base_pct": -15.0},
 	],
 	"government_affairs": [
 		{"domain": "tax_rate", "base_pct": -20.0},

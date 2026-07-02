@@ -6051,6 +6051,11 @@ func _test_advisor_phase2_effects() -> void:
 		"phase2: CFO cuts the effective loan interest rate to 75%")
 	var div_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("dividend_rate", "*", {}).get("net", 0.0)) / 100.0)
 	_check(is_equal_approx(div_mult, 0.5), "phase2: CFO halves the dividend rate (partial holiday)")
+	# Chief Investment (Alexandra inn 3 -> tier 3) cuts new-construction money cost 15%
+	MatchState.advisor_seats = {"chief_investment": "alexandra"}
+	MatchState.reconcile_advisor_modifiers()
+	_check(is_equal_approx(MatchState.construction_cost_after_advisor(100.0), 85.0),
+		"phase2: Chief Investment tier 3 -> construction cost -15%")
 	MatchState.advisor_seats = saved_seats
 	MatchState.reconcile_advisor_modifiers()
 	Modifiers.reset()
