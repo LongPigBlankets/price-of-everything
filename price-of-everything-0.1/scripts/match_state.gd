@@ -1818,6 +1818,25 @@ func purchase_cost_after_advisor(base_cost: float) -> float:
 	var mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("purchase_cost", "*", {}).get("net", 0.0)) / 100.0)
 	return base_cost * mult
 
+# Construction takes one turn longer than the raw CSV value (BUILD_DURATION_BUMP).
+# The master-builder advisor (an Ops-3 veteran in the COO seat) shaves a turn off;
+# real builds never drop below BUILD_DURATION_MIN. Instant (0-turn) buildings stay instant.
+const BUILD_DURATION_BUMP := 1
+const BUILD_DURATION_MIN := 1
+const MASTER_BUILDER_ID := "gerald"   # Gerald Vance's specialty: -1 build turn while COO
+
+func is_master_builder_active() -> bool:
+	return str(advisor_seats.get("coo", "")) == MASTER_BUILDER_ID
+
+func effective_build_duration(building_id: String) -> int:
+	var base := int(Catalog.get_building(building_id).get("build_duration", 0))
+	if base <= 0:
+		return base   # instant buildings (infrastructure) stay instant
+	var dur := base + BUILD_DURATION_BUMP
+	if is_master_builder_active():
+		dur -= 1
+	return maxi(BUILD_DURATION_MIN, dur)
+
 func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
 	if tile_id == "":
 		return false

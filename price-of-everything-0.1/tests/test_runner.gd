@@ -54,6 +54,7 @@ func _ready() -> void:
 	_test_retrofit_mechanic()
 	_test_advisor_loyalty()
 	_test_advisor_missions()
+	_test_build_duration()
 	_test_advisor_seats_save_roundtrip()
 	_test_advisor_milestone_acquisition()
 	_test_advisor_slot_progression()
@@ -5194,7 +5195,7 @@ func _test_construction() -> void:
 		if Stockpile.get_at_tile(tile, gid) != 0:
 			consumed_ok = false
 	_check(consumed_ok, "start_on_tile consumes the construction materials")
-	var duration: int = int(Catalog.get_building(bid).get("build_duration", 0))
+	var duration: int = MatchState.effective_build_duration(bid)
 	_check(duration >= 1, "building has a positive build_duration")
 	_check(not MatchState.buildings.has(iid) and Construction.construction_projects.has(iid),
 		"start_on_tile creates an under_construction project, not a live building")
@@ -5414,7 +5415,7 @@ func _test_construction_awaiting() -> void:
 		"awaiting project begins construction once materials are secured")
 
 	# Countdown then completes the build with the same id.
-	var duration: int = int(Catalog.get_building(bid).get("build_duration", 0))
+	var duration: int = MatchState.effective_build_duration(bid)
 	for _i in range(duration):
 		Construction.tick_turn()
 	_check(MatchState.buildings.has(iid) and not Construction.construction_projects.has(iid),
@@ -6242,6 +6243,31 @@ func _test_retrofit_mechanic() -> void:
 	MatchState.money = saved_money
 	MatchState.buildings = saved_buildings
 	MatchState.pending_retrofits = saved_retro
+
+func _test_build_duration() -> void:
+	var saved_seats := MatchState.advisor_seats.duplicate(true)
+	# A building with a real (>0) build duration.
+	var bid := ""
+	var raw := 0
+	for b in Catalog.all_buildings():
+		var d := int(b.get("build_duration", 0))
+		if d > 0:
+			bid = str(b.get("id", ""))
+			raw = d
+			break
+	if bid == "":
+		_check(true, "build duration: skipped (no timed building)")
+		return
+	MatchState.advisor_seats = {}
+	_check(MatchState.effective_build_duration(bid) == raw + MatchState.BUILD_DURATION_BUMP,
+		"build duration: bumped by +1 over the raw CSV value")
+	# Master builder (Gerald as COO) shaves a turn off, clamped at the 1-turn minimum.
+	MatchState.advisor_seats = {"coo": MatchState.MASTER_BUILDER_ID}
+	_check(MatchState.effective_build_duration(bid) == maxi(1, raw + MatchState.BUILD_DURATION_BUMP - 1),
+		"build duration: master-builder COO reduces it by 1 (min 1)")
+	_check(MatchState.effective_build_duration(bid) >= MatchState.BUILD_DURATION_MIN,
+		"build duration: never below the 1-turn minimum")
+	MatchState.advisor_seats = saved_seats
 
 func _test_advisor_loyalty() -> void:
 	var saved_perm := MatchState.permanent_advisor_ids.duplicate(true)
