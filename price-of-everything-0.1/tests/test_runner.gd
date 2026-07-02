@@ -6074,6 +6074,22 @@ func _test_advisor_phase2_effects() -> void:
 			mv += float(int(reqs[gid2])) * MarketState.get_price(str(gid2))
 		_check(mv > 0.0 and is_equal_approx(MatchState.construction_material_rebate(ci_bid), mv * 0.10),
 			"phase2: Chief Investment rebates 10% of build-materials market value")
+	# Seated Chief Investment also unlocks build-on-credit (10-turn, 5% construction loan)
+	_check(MatchState.construction_credit_available(), "phase2: seated Chief Investment unlocks build-on-credit")
+	var money_b := MatchState.money
+	var loans_b := LoanState.loans.size()
+	var out_b := LoanState.total_outstanding()
+	if LoanState.take_construction_loan(20.0):
+		var new_loan: Dictionary = LoanState.loans[LoanState.loans.size() - 1]
+		_check(LoanState.loans.size() == loans_b + 1
+			and is_equal_approx(LoanState.total_outstanding() - out_b, 21.0)
+			and int(new_loan.get("turns_remaining", 0)) == LoanState.CONSTRUCTION_LOAN_TERM,
+			"phase2: construction loan owes principal + 5% over 10 turns")
+		LoanState.loans.remove_at(LoanState.loans.size() - 1)
+	MatchState.money = money_b
+	MatchState.advisor_seats = {}
+	MatchState.reconcile_advisor_modifiers()
+	_check(not MatchState.construction_credit_available(), "phase2: no Chief Investment -> build-on-credit locked")
 	MatchState.advisor_seats = saved_seats
 	MatchState.reconcile_advisor_modifiers()
 	Modifiers.reset()

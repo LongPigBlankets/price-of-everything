@@ -1540,6 +1540,11 @@ func get_tile_land_patches_available(tile_id: String) -> int:
 # Cash rebate a Chief Investment advisor gives toward a build: a fraction of the
 # required build materials' CURRENT market value (tier3 +10% / tier2 +5% / tier1 -5%
 # surcharge). Returned as a positive amount to subtract from the money cost.
+# A seated Chief Investment advisor unlocks paying for construction on credit
+# (LoanState.take_construction_loan — the 4th option on the missing-materials dialog).
+func construction_credit_available() -> bool:
+	return not _roster_entry(str(advisor_seats.get("chief_investment", ""))).is_empty()
+
 func construction_material_rebate(building_id: String) -> float:
 	var frac: float = float(Modifiers.resolve_pct("construction_rebate", "*", {}).get("net", 0.0)) / 100.0
 	if frac == 0.0 or building_id == "":

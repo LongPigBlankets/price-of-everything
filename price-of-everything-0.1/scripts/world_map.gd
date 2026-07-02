@@ -1353,6 +1353,7 @@ func _show_construction_missing_dialog(building_id: String, recipe_id: String, t
 		_hud.add_child(_construction_dialog)
 		_construction_dialog.buy_requested.connect(_on_construction_buy_requested)
 		_construction_dialog.use_stockpile_requested.connect(_on_construction_use_stockpile_requested)
+		_construction_dialog.credit_requested.connect(_on_construction_credit_requested)
 	_construction_dialog.open(building_id, recipe_id, tile_id, missing)
 
 func _on_construction_buy_requested(building_id: String, recipe_id: String, tile_id: String) -> void:
@@ -1369,6 +1370,29 @@ func _on_construction_buy_requested(building_id: String, recipe_id: String, tile
 	if MatchState.money < cost + material_cost:
 		MatchState.build_rejected_no_funds.emit(
 			"Not enough money — build £%.0f + materials £%.0f, you have £%.0f" % [cost, material_cost, MatchState.money])
+		return
+	if not MatchState.deduct_money(cost):
+		return
+	var instance_id := Construction.start_awaiting_market(building_id, recipe_id, tile_id, cost)
+	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
+	Audio.building_placed()
+
+func _on_construction_credit_requested(building_id: String, recipe_id: String, tile_id: String) -> void:
+	# Build-on-credit (Chief Investment): finance build cost + materials with a 10-turn,
+	# 5% construction loan instead of paying cash. The loan disburses the full amount, we
+	# pay the build cost now, and the awaiting-market order charges the materials as usual.
+	if not MatchState.construction_credit_available():
+		return
+	var coord := terrain_layer.id_to_coord(tile_id)
+	var building_data: Dictionary = Catalog.get_building(building_id)
+	var space_check := _space_check_for_build(tile_id, building_id)
+	if not bool(space_check.get("allowed", false)):
+		return
+	var cost: float = maxf(0.0, float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0)) - MatchState.construction_material_rebate(building_id))
+	var material_cost: float = Construction.estimate_market_cost(tile_id, building_id)
+	if not LoanState.take_construction_loan(cost + material_cost):
+		MatchState.build_rejected_no_funds.emit(
+			"Construction loan of £%.0f exceeds your borrowing capacity" % (cost + material_cost))
 		return
 	if not MatchState.deduct_money(cost):
 		return
