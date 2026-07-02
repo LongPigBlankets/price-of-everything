@@ -6295,13 +6295,20 @@ func _test_advisor_loyalty() -> void:
 	MatchState.advisor_loyalty["vera"] = 0.0
 	MatchState._agenda_flags = {}
 	MatchState._evaluate_agendas({"money_in": 100.0, "money_out": 0.0}, 100.0)
-	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 0.5),
-		"loyalty: a per-turn liked event (+profit) raises loyalty +0.5")
-	# Agenda rows expose signed points for the UI (2 likes + 2 dislikes for Vera).
+	_check(is_equal_approx(MatchState.advisor_loyalty_value("vera"), 0.6),
+		"loyalty: a per-turn liked event (+profit) raises loyalty +0.6")
+	# Agenda rows: per-turn likes +0.6, per-turn dislikes -0.4, one-off actions ±1.
 	var rows: Array = MatchState.advisor_agenda_rows("vera")
-	_check(rows.size() == 4 and is_equal_approx(float(rows[0].get("points", 0.0)), 0.5)
+	_check(rows.size() == 4 and is_equal_approx(float(rows[0].get("points", 0.0)), 0.6)
 		and bool(rows[0].get("per_turn", false)),
-		"loyalty: agenda rows expose per-event points (+0.5/turn profit)")
+		"loyalty: agenda rows expose per-turn like at +0.6/turn")
+	# Eleanor dislikes buying grid power (a per-turn event) -> -0.4/turn.
+	var el_rows: Array = MatchState.advisor_agenda_rows("eleanor")
+	var found_grid := false
+	for r in el_rows:
+		if not bool(r.get("benefit", true)) and bool(r.get("per_turn", false)):
+			found_grid = found_grid or is_equal_approx(float(r.get("points", 0.0)), -0.4)
+	_check(found_grid, "loyalty: a per-turn dislike is -0.4/turn")
 
 	MatchState.advisor_loyalty["vera"] = 5.0
 	MatchState._agenda_flags = {}
