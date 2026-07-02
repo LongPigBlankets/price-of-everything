@@ -6,7 +6,7 @@ const MARKET_FALLBACK_SIZE := Vector2(400, 500)
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 
 const ADVISOR_CARD_WIDTH := 260.0
-const ADVISOR_CARD_HEIGHT := 480.0
+const ADVISOR_CARD_HEIGHT := 460.0
 const ADVISOR_PORTRAIT_SIZE := ADVISOR_CARD_WIDTH
 const PERMANENT_ADVISOR_CARD_WIDTH := ADVISOR_CARD_WIDTH + 30.0
 const PERMANENT_ADVISOR_CARD_HEIGHT := ADVISOR_CARD_HEIGHT + 40.0
@@ -542,9 +542,25 @@ func _refresh_advisors_tab() -> void:
 	_clear_children(_advisors_root)
 	_advisors_root.add_child(_advisor_profit_track())
 	_advisors_root.add_child(_advisor_payroll_summary())
-	_add_advisor_section(_advisors_root, "Permanent Advisors", _permanent_advisors, true)
-	_available_advisors_section = _add_advisor_section(_advisors_root, "Available Advisors", _available_advisors, false)
-	_available_advisors_section.visible = _available_pool_open
+	# The "+" open-slot swaps the permanent row for the available pool (shown in the
+	# same place, not stacked below), with a tertiary button to return.
+	if _available_pool_open:
+		_advisors_root.add_child(_back_to_permanent_button())
+		_available_advisors_section = _add_advisor_section(_advisors_root, "Available Advisors", _available_advisors, false)
+	else:
+		_available_advisors_section = null
+		_add_advisor_section(_advisors_root, "Permanent Advisors", _permanent_advisors, true)
+
+func _back_to_permanent_button() -> Control:
+	var btn := Button.new()
+	btn.flat = true
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.text = "← Back to permanent advisors"
+	btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	btn.pressed.connect(func() -> void:
+		_available_pool_open = false
+		_refresh_advisors_tab())
+	return btn
 
 # Progress track at the top of the Advisors tab: peak profit/turn + next advisor unlock.
 func _advisor_profit_track() -> Control:
@@ -696,6 +712,28 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 	role.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.add_child(role)
 
+	# Available (unhired) cards drop loyalty + the black recommendation box in favour
+	# of a stat pentagon and Great-for / Bad-for role rows.
+	if not permanent and not add_slot:
+		root.add_child(_card_pentagon(advisor))
+		var aid := str(advisor.get("id", ""))
+		if MatchState.is_fired(aid):
+			var cd := _label(_fire_cooldown_text(aid), "Caption")
+			cd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			cd.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			cd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			root.add_child(cd)
+		else:
+			var fit := _advisor_role_fit(aid)
+			root.add_child(_role_fit_row("Great for", fit["great"], DS.PALETTE["OK"]))
+			if not (fit["bad"] as Array).is_empty():
+				root.add_child(_role_fit_row("Bad for", fit["bad"], DS.PALETTE["DANGER"]))
+		var av_spacer := Control.new()
+		av_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		root.add_child(av_spacer)
+		_make_click_through(root)
+		return card
+
 	if not add_slot:
 		root.add_child(_happiness_row(int(advisor.get("happiness", 0))))
 
@@ -728,6 +766,40 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 	rec_margin.add_child(rec_label)
 	_make_click_through(root)
 	return card
+
+# Small unlabelled stat pentagon for an advisor card (reuses the detail-panel draw).
+func _card_pentagon(advisor: Dictionary) -> Control:
+	var stats := MatchState._roster_entry(str(advisor.get("id", "")))
+	var radar := Control.new()
+	radar.custom_minimum_size = Vector2(0, 104)
+	radar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	radar.draw.connect(_draw_pentagon.bind(radar, stats))
+	return radar
+
+# Best-fit / worst-fit seats for an unhired advisor: the 3 strongest seats (tier >= 2)
+# and any seats where they'd be a malus (tier 1). Bad is empty when every stat is >= 2.
+func _advisor_role_fit(advisor_id: String) -> Dictionary:
+	var rows: Array = []
+	for seat_id in MatchState.SEAT_DEFINITIONS:
+		var seat: Dictionary = MatchState.SEAT_DEFINITIONS[seat_id]
+		rows.append({"name": str(seat.get("seat_name", seat_id)), "tier": MatchState.advisor_seat_tier(advisor_id, str(seat_id))})
+	rows.sort_custom(func(a, b): return int(a["tier"]) > int(b["tier"]))
+	var great: Array = []
+	var bad: Array = []
+	for r in rows:
+		if int(r["tier"]) >= 2 and great.size() < 3:
+			great.append(str(r["name"]))
+		elif int(r["tier"]) <= 1 and bad.size() < 3:
+			bad.append(str(r["name"]))
+	return {"great": great, "bad": bad}
+
+func _role_fit_row(prefix: String, roles: Array, color: Color) -> Control:
+	var lbl := _label("%s: %s" % [prefix, ", ".join(roles)], "Caption")
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.add_theme_color_override("font_color", color)
+	return lbl
 
 func _empty_advisor_pool_card() -> Control:
 	var card := PanelContainer.new()
