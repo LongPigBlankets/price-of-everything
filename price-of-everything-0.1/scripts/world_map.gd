@@ -1320,7 +1320,7 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 	var space_check := _space_check_for_build(tile_id, building_id)
 	if not bool(space_check.get("allowed", false)):
 		return
-	var cost: float = MatchState.construction_cost_after_advisor(float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0)))
+	var cost: float = maxf(0.0, float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0)) - MatchState.construction_material_rebate(building_id))
 
 	# Construction materials must be present on the tile. If any are missing, offer the
 	# order-or-cancel dialog and stop here — no money deducted, no tile space reserved.
@@ -1364,7 +1364,7 @@ func _on_construction_buy_requested(building_id: String, recipe_id: String, tile
 	var space_check := _space_check_for_build(tile_id, building_id)
 	if not bool(space_check.get("allowed", false)):
 		return
-	var cost: float = MatchState.construction_cost_after_advisor(float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0)))
+	var cost: float = maxf(0.0, float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0)) - MatchState.construction_material_rebate(building_id))
 	var material_cost: float = Construction.estimate_market_cost(tile_id, building_id)
 	if MatchState.money < cost + material_cost:
 		MatchState.build_rejected_no_funds.emit(
@@ -1384,7 +1384,7 @@ func _on_construction_use_stockpile_requested(building_id: String, recipe_id: St
 	var space_check := _space_check_for_build(tile_id, building_id)
 	if not bool(space_check.get("allowed", false)):
 		return
-	var cost: float = MatchState.construction_cost_after_advisor(float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0)))
+	var cost: float = maxf(0.0, float(building_data.get("base_price", 0.0)) * float(space_check.get("cost_multiplier", 1.0)) - MatchState.construction_material_rebate(building_id))
 	var missing: Dictionary = Construction.check_tile(tile_id, building_id).get("missing", {})
 	var source: Dictionary = Construction.find_source_tile(tile_id, missing)
 	if source.is_empty():
@@ -1640,7 +1640,7 @@ func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
 	# Lookup cost
 	var building_data: Dictionary = Catalog.get_building_by_internal_name(infra_type)
 	var infra_building_id: String = building_data.get("id", "")
-	var cost: float = MatchState.construction_cost_after_advisor(float(building_data.get("base_price", 0.0)))
+	var cost: float = maxf(0.0, float(building_data.get("base_price", 0.0)) - MatchState.construction_material_rebate(infra_building_id))
 	if infra_building_id != "":
 		# Already being built here — silently bail rather than charging twice.
 		for project in Construction.projects_on_tile(tile_id):

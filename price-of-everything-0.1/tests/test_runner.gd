@@ -6057,11 +6057,23 @@ func _test_advisor_phase2_effects() -> void:
 		"phase2: CFO cuts the effective loan interest rate to 75%")
 	var div_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("dividend_rate", "*", {}).get("net", 0.0)) / 100.0)
 	_check(is_equal_approx(div_mult, 0.6), "phase2: CFO cuts the dividend rate 40% (partial holiday)")
-	# Chief Investment (Alexandra inn 3 -> tier 3) cuts new-construction money cost 15%
+	# Chief Investment (Alexandra inn 3 -> tier 3) rebates 10% of build-materials value
 	MatchState.advisor_seats = {"chief_investment": "alexandra"}
 	MatchState.reconcile_advisor_modifiers()
-	_check(is_equal_approx(MatchState.construction_cost_after_advisor(100.0), 85.0),
-		"phase2: Chief Investment tier 3 -> construction cost -15%")
+	_check(is_equal_approx(float(Modifiers.resolve_pct("construction_rebate", "*", {}).get("net", 0.0)), 10.0),
+		"phase2: Chief Investment tier 3 -> construction_rebate +10%")
+	var ci_bid := ""
+	for b in Catalog.all_buildings():
+		if not Construction.requirements_for(str(b.get("id", ""))).is_empty():
+			ci_bid = str(b.get("id", ""))
+			break
+	if ci_bid != "":
+		var reqs: Dictionary = Construction.requirements_for(ci_bid)
+		var mv := 0.0
+		for gid2 in reqs:
+			mv += float(int(reqs[gid2])) * MarketState.get_price(str(gid2))
+		_check(mv > 0.0 and is_equal_approx(MatchState.construction_material_rebate(ci_bid), mv * 0.10),
+			"phase2: Chief Investment rebates 10% of build-materials market value")
 	MatchState.advisor_seats = saved_seats
 	MatchState.reconcile_advisor_modifiers()
 	Modifiers.reset()

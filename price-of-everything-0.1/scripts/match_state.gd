@@ -1537,10 +1537,18 @@ func get_tile_land_patches_available(tile_id: String) -> int:
 	var remaining := MAX_TILE_LAND - get_tile_land_owned(tile_id)
 	return maxi(0, int(floor(float(remaining) / float(LAND_PATCH_SIZE))))
 
-# New-construction money cost after any Chief Investment "construction_cost" discount.
-func construction_cost_after_advisor(base_cost: float) -> float:
-	var mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("construction_cost", "*", {}).get("net", 0.0)) / 100.0)
-	return base_cost * mult
+# Cash rebate a Chief Investment advisor gives toward a build: a fraction of the
+# required build materials' CURRENT market value (tier3 +10% / tier2 +5% / tier1 -5%
+# surcharge). Returned as a positive amount to subtract from the money cost.
+func construction_material_rebate(building_id: String) -> float:
+	var frac: float = float(Modifiers.resolve_pct("construction_rebate", "*", {}).get("net", 0.0)) / 100.0
+	if frac == 0.0 or building_id == "":
+		return 0.0
+	var reqs: Dictionary = Construction.requirements_for(building_id)
+	var mat_value := 0.0
+	for good_id in reqs:
+		mat_value += float(int(reqs[good_id])) * MarketState.get_price(str(good_id))
+	return mat_value * frac
 
 func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
 	if tile_id == "":
@@ -3142,7 +3150,8 @@ const _SEAT_EFFECTS := {
 		{"domain": "dividend_rate", "base_pct": -40.0},   # tier3 -40% / tier2 -20% / tier1 +20%
 	],
 	"chief_investment": [
-		{"domain": "construction_cost", "base_pct": -15.0},
+		# Rebate a fraction of build-materials value: tier3 +10% / tier2 +5% / tier1 -5%.
+		{"domain": "construction_rebate", "base_pct": 10.0},
 	],
 	"government_affairs": [
 		{"domain": "tax_rate", "base_pct": -20.0},
