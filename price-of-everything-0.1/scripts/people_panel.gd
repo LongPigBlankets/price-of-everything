@@ -1175,7 +1175,7 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	_advisor_detail_body.add_child(_collapsible("Agenda", _detail_block("", _agenda_text(advisor))))
 	_advisor_detail_body.add_child(_collapsible("Impact", _advisor_impact_block(advisor)))
 	_advisor_detail_body.add_child(_collapsible("Seats", _seat_assignment_section(advisor, false)))
-	_advisor_detail_body.add_child(_collapsible("Missions", _quest_diagram(advisor.get("missions", advisor.get("quests", []))), false))
+	_advisor_detail_body.add_child(_collapsible("Missions", _quest_diagram(advisor.get("missions", advisor.get("quests", [])), MatchState.advisor_loyalty_value(advisor_id)), false))
 
 	outer.add_child(_advisor_detail_footer(advisor, is_hired, is_fired))
 
@@ -1467,16 +1467,18 @@ func _recommendation_box(text: String) -> Control:
 	margin.add_child(label)
 	return panel
 
-func _quest_diagram(quests: Variant) -> Control:
+func _quest_diagram(quests: Variant, current_loyalty: float = 0.0) -> Control:
 	var panel := PanelContainer.new()
 	panel.theme_type_variation = &"Card"
-	panel.custom_minimum_size = Vector2(0, 156)
+	# Tall enough for the full plaques (with their reward + requirement lines) plus the
+	# loyalty progress bar beneath, so nothing gets clipped.
+	panel.custom_minimum_size = Vector2(0, 280)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 14)
 	margin.add_theme_constant_override("margin_top", 12)
 	margin.add_theme_constant_override("margin_right", 14)
-	margin.add_theme_constant_override("margin_bottom", 12)
+	margin.add_theme_constant_override("margin_bottom", 14)
 	panel.add_child(margin)
 
 	var root := VBoxContainer.new()
@@ -1485,7 +1487,7 @@ func _quest_diagram(quests: Variant) -> Control:
 	root.add_child(_label("Missions", "Section"))
 
 	var rail_area := Control.new()
-	rail_area.custom_minimum_size = Vector2(0, 104)
+	rail_area.custom_minimum_size = Vector2(0, 138)   # >= the 118px plaques + slack
 	rail_area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.add_child(rail_area)
 
@@ -1523,7 +1525,79 @@ func _quest_diagram(quests: Variant) -> Control:
 		if i < quest_list.size() and quest_list[i] is Dictionary:
 			quest = quest_list[i]
 		wrapper.add_child(_mission_plaque(quest))
+
+	root.add_child(_loyalty_bar(current_loyalty))
 	return panel
+
+# A loyalty scale (0..10) with the current value filled, tick marks at the mission
+# thresholds (2 / 5 / 7 / 9) and a highlighted "hold ≥9" zone for mission V.
+func _loyalty_bar(current_loyalty: float) -> Control:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_child(_label("Loyalty  (now %+d)" % int(round(current_loyalty)), "Caption"))
+
+	var area := Control.new()
+	area.custom_minimum_size = Vector2(0, 42)
+	area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_child(area)
+
+	var track := ColorRect.new()
+	track.color = Color(1, 1, 1, 0.12)
+	track.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	track.offset_top = 4
+	track.offset_bottom = 13
+	area.add_child(track)
+
+	# Mission V "hold" zone: loyalty 9..10.
+	var accent: Color = DS.PALETTE.get("ACCENT", Color("#D9B35A"))
+	var zone := ColorRect.new()
+	zone.color = Color(accent.r, accent.g, accent.b, 0.28)
+	zone.anchor_left = 0.9
+	zone.anchor_right = 1.0
+	zone.offset_top = 4
+	zone.offset_bottom = 13
+	area.add_child(zone)
+
+	# Current loyalty fill (clamped into 0..10).
+	var frac: float = clampf(current_loyalty / 10.0, 0.0, 1.0)
+	var fill := ColorRect.new()
+	fill.color = DS.PALETTE.get("OK", Color(0.3, 0.7, 0.4))
+	fill.anchor_right = frac
+	fill.offset_top = 4
+	fill.offset_bottom = 13
+	area.add_child(fill)
+
+	# Threshold ticks + labels for missions I–IV.
+	var marks := [{"x": 0.2, "t": "I·2"}, {"x": 0.5, "t": "II·5"}, {"x": 0.7, "t": "III·7"}, {"x": 0.9, "t": "IV·9"}]
+	for mk in marks:
+		var x: float = float(mk["x"])
+		var tick := ColorRect.new()
+		tick.color = Color(1, 1, 1, 0.75)
+		tick.anchor_left = x
+		tick.anchor_right = x
+		tick.offset_left = -1
+		tick.offset_right = 1
+		tick.offset_top = 1
+		tick.offset_bottom = 16
+		area.add_child(tick)
+		var lbl := _label(str(mk["t"]), "Caption")
+		lbl.add_theme_font_size_override("font_size", 9)
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.anchor_left = x
+		lbl.anchor_right = x
+		lbl.offset_left = -22
+		lbl.offset_right = 22
+		lbl.offset_top = 20
+		lbl.offset_bottom = 38
+		area.add_child(lbl)
+
+	var v_note := _label("V — hold loyalty above 9 for 20 turns", "Caption")
+	v_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	v_note.add_theme_font_size_override("font_size", 10)
+	v_note.add_theme_color_override("font_color", accent)
+	col.add_child(v_note)
+	return col
 
 func _mission_plaque(quest: Dictionary) -> Control:
 	var state := str(quest.get("state", "locked"))
