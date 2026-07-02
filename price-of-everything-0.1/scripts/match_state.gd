@@ -3141,13 +3141,14 @@ func advisor_seat_governing_discipline(advisor_id: String, seat_id: String) -> S
 			best_disc = str(disc)
 	return best_disc
 
-# Assign a rostered advisor to a seat. Enforces the slot cap and one-seat-per-advisor.
-# (Phase 0 gates on roster membership; the hired-advisor gate is added when hiring
-# is merged onto ADVISOR_ROSTER.) Returns false if rejected.
+# Assign a HIRED, rostered advisor to a seat. Enforces the slot cap and
+# one-seat-per-advisor. Returns false if rejected.
 func assign_advisor_to_seat(seat_id: String, advisor_id: String) -> bool:
 	if not SEAT_DEFINITIONS.has(seat_id):
 		return false
 	if _roster_entry(advisor_id).is_empty():
+		return false
+	if not permanent_advisor_ids.has(advisor_id):
 		return false
 	if not advisor_seats.has(seat_id) and advisor_seats.size() >= max_advisor_slots:
 		return false
@@ -3271,7 +3272,11 @@ func hire_advisor(advisor_id: String) -> bool:
 	return true
 
 func advisor_payroll_per_turn() -> float:
-	return float(permanent_advisor_ids.size()) * ADVISOR_COST_PER_TURN
+	var total := 0.0
+	for advisor_id in permanent_advisor_ids:
+		var a := _roster_entry(str(advisor_id))
+		total += float(a.get("salary", ADVISOR_COST_PER_TURN)) if not a.is_empty() else ADVISOR_COST_PER_TURN
+	return total
 
 func _sanitize_advisor_ids(ids: Variant) -> Array:
 	var valid := {}
@@ -3287,186 +3292,60 @@ func _sanitize_advisor_ids(ids: Variant) -> Array:
 			out.append(advisor_id)
 	return out
 
-func _advisor_definitions() -> Array:
+# Display fields for the 12 canonical advisors (ADVISOR_ROSTER holds the stats).
+# accent is a hex string (const-safe; converted to Color at build time). Only 4
+# portrait PNGs exist (spec §11 stub art); the rest fall back to accent+initials.
+const ADVISOR_DISPLAY := {
+	"vera":      {"initials": "VA", "portrait_path": "res://assets/advisors/natasha.png", "accent": "#7C5A80", "bonus": "Family Trust: cheap, steady, strong almost anywhere", "recommendation": "Your reliable keystone — she holds any seat well.", "bio": "Your sister and the steady hand on the board: numerate, unflappable, and very hard to surprise twice.", "agenda": "Anchor the board and keep every seat competently filled.", "likes": ["Steady growth", "A balanced board"], "dislikes": ["Reckless bets", "Idle capital"], "bonuses": ["Reduced salary", "No weak seat"]},
+	"alexandra": {"initials": "AR", "portrait_path": "", "accent": "#8A5A5A", "bonus": "Prima Donna: superb everywhere, high salary + walk-risk", "recommendation": "A top hire who forces a full board reshuffle when she arrives.", "bio": "A rival operator good enough at everything to make your whole board nervous — and she knows her price.", "agenda": "Be indispensable, be paid, and never be sidelined.", "likes": ["Being centrally slotted", "Ambitious plays"], "dislikes": ["Being benched", "Being under-slotted"], "bonuses": ["Strong in any seat", "Commands a high salary"]},
+	"gerald":    {"initials": "GV", "portrait_path": "res://assets/advisors/dan.png", "accent": "#455C78", "bonus": "Dinosaur: superb operator, brakes the green pivot", "recommendation": "Keep him for the throughput; the carbon squeeze makes him a dilemma.", "bio": "A superb pure operator who runs a plant beautifully and fights decarbonisation on instinct.", "agenda": "Maximise output and upkeep; resist the clean transition.", "likes": ["High utilisation", "Cheap fuel"], "dislikes": ["Clean retrofits", "Carbon rules"], "bonuses": ["Excellent COO", "Drags clean adoption"]},
+	"eleanor":   {"initials": "ES", "portrait_path": "res://assets/advisors/anita.png", "accent": "#51707A", "bonus": "Beloved: labour + morale, slows churn", "recommendation": "The glue that lets a flawed board function.", "bio": "The diplomat the crews trust — dampens labour spikes and keeps the board from walking.", "agenda": "Keep the workforce and the board loyal.", "likes": ["Fair policies", "A stable board"], "dislikes": ["Layoffs", "Churn"], "bonuses": ["Labour cost down", "Advisor retention"]},
+	"sloane":    {"initials": "SV", "portrait_path": "", "accent": "#6E5A86", "bonus": "Slick: best sale prices, quietly toxic", "recommendation": "Your best seller — pair with a strong IR to counter the fallout.", "bio": "The closer. Best sale prices in the business, and quietly toxic to everything that isn't a deal.", "agenda": "Push prices and volume; damn the standing.", "likes": ["Fat margins", "High volume"], "dislikes": ["Slow markets", "HR duty"], "bonuses": ["Better sell prices", "Weak with people"]},
+	"priya":     {"initials": "PA", "portrait_path": "", "accent": "#4F6B58", "bonus": "Idealist: amplifies green, dents near-term profit", "recommendation": "Superb if you're racing Greenest; a cash drain if you're not.", "bio": "A true believer who reaches for the clean option every time, whatever it costs this quarter.", "agenda": "Decarbonise, capture subsidy, win Greenest.", "likes": ["Clean recipes", "Green subsidy"], "dislikes": ["Dirty routes", "Short-termism"], "bonuses": ["Green amplified", "Raises short-term spend"]},
+	"hitomi":    {"initials": "HS", "portrait_path": "", "accent": "#7A6A45", "bonus": "Flow State: systems savant, socially inept", "recommendation": "Brilliant on logistics and the line; keep her from people seats.", "bio": "Brilliant with systems, hopeless with people — a logistics and manufacturing savant.", "agenda": "Optimise flow and throughput everywhere.", "likes": ["Tight networks", "Clean processes"], "dislikes": ["Meetings", "People seats"], "bonuses": ["Logistics/mfg boost", "Malus in people seats"]},
+	"hal":       {"initials": "HR", "portrait_path": "", "accent": "#5A6F4A", "bonus": "Backroom Deals: regulatory relief at a price", "recommendation": "A real lever if you're staying dirty into the squeeze.", "bio": "The fixer. Buys you time against the regulators, at an ethical price.", "agenda": "Soften the rules and the tax bill.", "likes": ["Loopholes", "Delay"], "dislikes": ["Scrutiny", "Clean mandates"], "bonuses": ["Tax + carbon relief", "Reputation cost"]},
+	"tom":       {"initials": "TB", "portrait_path": "res://assets/advisors/lance.png", "accent": "#66513B", "bonus": "Shop-Floor Respect: dependable operations", "recommendation": "Put him near the floor; he flounders near markets or the lab.", "bio": "The old foreman. Dependable operations, no frills, and the crews trust him.", "agenda": "Keep the line running cheaply.", "likes": ["A steady floor", "Trusted crews"], "dislikes": ["Market games", "Lab work"], "bonuses": ["Extra Ops labour cut", "Poor off the floor"]},
+	"marcus":    {"initials": "MT", "portrait_path": "", "accent": "#765742", "bonus": "Leverage: cheap capital, dangerous debt", "recommendation": "High-risk finance specialist; dangerous outside his lane.", "bio": "A financier who makes capital cheap and acquisitions cheaper — until the debt bites.", "agenda": "Borrow big, buy cheap, grow fast.", "likes": ["Cheap debt", "Acquisitions"], "dislikes": ["Thin reserves", "Operations duty"], "bonuses": ["Cheap capital", "Debt-risk exposure"]},
+	"idris":     {"initials": "IK", "portrait_path": "", "accent": "#536C92", "bonus": "Insufferable Genius: brilliant, unbearable", "recommendation": "Atrocious except in the lab — silo him in a TD seat.", "bio": "A brilliant process chemist nobody can stand to work near — keep him in the lab.", "agenda": "Perfect the process; ignore the room.", "likes": ["Hard problems", "Being left alone"], "dislikes": ["Management", "Small talk"], "bonuses": ["Big recipe efficiency", "Empire labour malus unless siloed"]},
+	"rufus":     {"initials": "RA", "portrait_path": "", "accent": "#6B6077", "bonus": "Silver Tongue, Empty Suit: one good seat", "recommendation": "Genuinely, and only, a lobbyist.", "bio": "Your cousin. Great in a room, useless everywhere else, riding the family name.", "agenda": "Talk his way through; do as little as possible.", "likes": ["A podium", "Family favour"], "dislikes": ["Real work", "Being found out"], "bonuses": ["Strong lobbyist", "A disaster elsewhere"]},
+}
+
+func _seat_display_name(role_id: String) -> String:
+	var seat: Dictionary = SEAT_DEFINITIONS.get(role_id, {})
+	return str(seat.get("seat_name", role_id.capitalize()))
+
+func _advisor_missions(accent_hex: String) -> Array:
 	return [
-		{
-			"id": "natasha",
-			"name": "Natasha L.",
-			"initials": "NL",
-			"role": "Chief Financial Officer",
-			"happiness": 4,
-			"portrait_path": "res://assets/advisors/natasha.png",
-			"portrait_color": Color("#7C5A80"),
-			"bonus": "-1% loan interest, +8% debt capacity",
-			"recommendation": "Borrow only where the new asset pays before the next repayment cycle tightens.",
-			"bio": "A polished finance operator who translates industrial mess into investor confidence. Calm in public, sharper in private, and very hard to surprise twice.",
-			"agenda": "Protect cash flow, keep lenders warm, and turn profitable growth into a credible financing story.",
-			"likes": ["Positive operating profit", "Debt-funded expansion", "Reliable dividends", "High-value orders"],
-			"dislikes": ["Idle cash", "Missed repayments", "Low-margin dumping", "Unclear production focus"],
-			"bonuses": ["-1% loan interest", "+8% loan capacity", "Reduced penalty from one missed dividend"],
-			"missions": [
-				{"roman": "I", "title": "Signal", "state": "completed", "color": Color("#7C5A80")},
-				{"roman": "II", "title": "Leverage", "state": "next", "color": Color("#536C92")},
-				{"roman": "III", "title": "Narrative", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Roadshow", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Mandate", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "dan",
-			"name": "Dan S.",
-			"initials": "DS",
-			"role": "VP Logistics",
-			"happiness": -2,
-			"portrait_path": "res://assets/advisors/dan.png",
-			"portrait_color": Color("#455C78"),
-			"bonus": "-3% transport cost, +5% warehouse capacity",
-			"recommendation": "Shorten ore routes before adding more furnaces. Distance is already sending invoices.",
-			"bio": "A movement obsessive with a tolerance for ugly maps and a deep dislike of empty return journeys.",
-			"agenda": "Collapse long routes, fill vehicles both ways, and make ports boringly predictable.",
-			"likes": ["Short routes", "Rail upgrades", "Full shipments", "Port stockpiles"],
-			"dislikes": ["Long road hauls", "Idle warehouses", "Split shipments", "Emergency reroutes"],
-			"bonuses": ["-3% transport cost", "+5% warehouse capacity", "+1 logistics happiness from efficient deliveries"],
-			"missions": [
-				{"roman": "I", "title": "Measure", "state": "completed", "color": Color("#455C78")},
-				{"roman": "II", "title": "Route", "state": "next", "color": Color("#536C92")},
-				{"roman": "III", "title": "Consolidate", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Automate", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Network", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "lance",
-			"name": "Lance C.",
-			"initials": "LC",
-			"role": "Technical Director - Metallurgy",
-			"happiness": 0,
-			"portrait_path": "res://assets/advisors/lance.png",
-			"portrait_color": Color("#66513B"),
-			"bonus": "+2% furnace output",
-			"recommendation": "Steel margins improve faster when the ore and coal both arrive predictably.",
-			"bio": "A plant-floor metallurgist who trusts output data, slag chemistry, and almost nothing said in meetings.",
-			"agenda": "Stabilise heat-intensive chains, improve furnace utilisation, and push alloy quality upward.",
-			"likes": ["Iron chains", "Steel orders", "Stable power", "Factory upgrades"],
-			"dislikes": ["Input starvation", "Underused furnaces", "Selling ore too early", "Power instability"],
-			"bonuses": ["+2% furnace output", "-2% furnace maintenance", "+1 happiness from steel-focused growth"],
-			"missions": [
-				{"roman": "I", "title": "Ore", "state": "completed", "color": Color("#66513B")},
-				{"roman": "II", "title": "Heat", "state": "next", "color": Color("#536C92")},
-				{"roman": "III", "title": "Flow", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Alloy", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Scale", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "anita",
-			"name": "Anita D.",
-			"initials": "AD",
-			"role": "Chief Operating Officer",
-			"happiness": 0,
-			"portrait_path": "res://assets/advisors/anita.png",
-			"portrait_color": Color("#51707A"),
-			"bonus": "+2% building output",
-			"recommendation": "Stabilise the production chain before chasing a wider product slate.",
-			"bio": "A calm operator with a gift for finding the one process constraint everyone else has learned to ignore.",
-			"agenda": "Raise utilisation, reduce avoidable stoppages, and make the empire easier to run at speed.",
-			"likes": ["Stable throughput", "Balanced inputs", "Clear operating focus", "High utilisation"],
-			"dislikes": ["Starved buildings", "Unfinished loops", "Overbuilt capacity", "Last-minute pivots"],
-			"bonuses": ["+2% building output", "-1% maintenance when no owned building starves", "+1 happiness from three clean turns"],
-			"missions": [
-				{"roman": "I", "title": "Audit", "state": "next", "color": Color("#51707A")},
-				{"roman": "II", "title": "Balance", "state": "locked", "color": Color("#536C92")},
-				{"roman": "III", "title": "Cadence", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Scale", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Doctrine", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "philip",
-			"name": "Philip W.",
-			"initials": "PW",
-			"role": "Markets and Sales Director",
-			"happiness": 0,
-			"portrait_color": Color("#5A6F4A"),
-			"bonus": "+3% special-order visibility",
-			"recommendation": "The market is paying for certainty. Commit only when the route is already boring.",
-			"bio": "A dealmaker who reads demand curves as social weather and prefers signed contracts to heroic production bets.",
-			"agenda": "Convert reliable surplus into better contracts, then keep those commitments painless.",
-			"likes": ["Special orders", "Stable sale routes", "High price impact discipline", "Port access"],
-			"dislikes": ["Missed contracts", "Fire-sale dumping", "Unsold surpluses", "Route uncertainty"],
-			"bonuses": ["+3% special-order visibility", "+2% premium on fulfilled special orders", "-1 happiness on missed commitments"],
-			"missions": [
-				{"roman": "I", "title": "Prospect", "state": "next", "color": Color("#5A6F4A")},
-				{"roman": "II", "title": "Commit", "state": "locked", "color": Color("#536C92")},
-				{"roman": "III", "title": "Premium", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Portfolio", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Franchise", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "brother",
-			"name": "Your Brother",
-			"initials": "YB",
-			"role": "Investor Relations Specialist",
-			"happiness": 0,
-			"portrait_color": Color("#66513B"),
-			"bonus": "+4% debt capacity",
-			"recommendation": "You can absolutely borrow more. Whether you should is the funnier question.",
-			"bio": "A charming capital-market optimist with family access, fast patter, and a suspiciously high tolerance for leverage.",
-			"agenda": "Sell the growth story, expand borrowing room, and keep the share price feeling inevitable.",
-			"likes": ["New loans", "Revenue growth", "Investor-facing wins", "Big-ticket assets"],
-			"dislikes": ["Shrinking cash", "No-growth turns", "Tiny projects", "Cautious silence"],
-			"bonuses": ["+4% debt capacity", "+1 investor happiness after large expansions", "-1 happiness after idle high cash"],
-			"missions": [
-				{"roman": "I", "title": "Pitch", "state": "next", "color": Color("#66513B")},
-				{"roman": "II", "title": "Raise", "state": "locked", "color": Color("#536C92")},
-				{"roman": "III", "title": "Signal", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Syndicate", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Empire", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "sister",
-			"name": "Your Sister",
-			"initials": "YS",
-			"role": "Technical Director - Organic Chemistry",
-			"happiness": 0,
-			"portrait_color": Color("#7C5A80"),
-			"bonus": "+2% refinery and polymer output",
-			"recommendation": "Crude chains reward patience. Build buffers before you build ambition.",
-			"bio": "A process chemist who can talk catalysts for an hour and still notice the one missing pipe on the diagram.",
-			"agenda": "Build deeper chemical chains, protect feedstock continuity, and improve high-value conversion.",
-			"likes": ["Refinery runs", "Polymer output", "Chemical buffers", "Catalyst upgrades"],
-			"dislikes": ["Crude starvation", "Half-built chains", "Selling feedstock early", "Dirty shutdowns"],
-			"bonuses": ["+2% refinery output", "+2% polymer output", "+1 happiness from profitable chemical chains"],
-			"missions": [
-				{"roman": "I", "title": "Feed", "state": "next", "color": Color("#7C5A80")},
-				{"roman": "II", "title": "React", "state": "locked", "color": Color("#536C92")},
-				{"roman": "III", "title": "Separate", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Polymerise", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Specialise", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
-		{
-			"id": "uncle",
-			"name": "Your Uncle",
-			"initials": "YU",
-			"role": "Chief Risk Officer",
-			"happiness": 0,
-			"portrait_color": Color("#455C78"),
-			"bonus": "-5% event penalty severity",
-			"recommendation": "Every shortcut is a loan from the future, and the future has collectors.",
-			"bio": "A veteran operator with a memory for everything that once went wrong and an irritating habit of being right early.",
-			"agenda": "Reduce fragile dependencies, prepare for bad turns, and make disasters survivable.",
-			"likes": ["Cash buffers", "Redundant routes", "Safety policy", "Stable supply"],
-			"dislikes": ["Thin margins", "Overleverage", "Single points of failure", "Ignored warnings"],
-			"bonuses": ["-5% event penalty severity", "+1 risk happiness from cash reserves", "-1 happiness when debt service bites"],
-			"missions": [
-				{"roman": "I", "title": "Scan", "state": "next", "color": Color("#455C78")},
-				{"roman": "II", "title": "Buffer", "state": "locked", "color": Color("#536C92")},
-				{"roman": "III", "title": "Harden", "state": "locked", "color": Color("#4F6B58")},
-				{"roman": "IV", "title": "Insure", "state": "locked", "color": Color("#765742")},
-				{"roman": "V", "title": "Endure", "state": "locked", "color": Color("#6B6077")},
-			],
-		},
+		{"roman": "I", "title": "Onboard", "state": "next", "color": Color(accent_hex)},
+		{"roman": "II", "title": "Prove", "state": "locked", "color": Color("#536C92")},
+		{"roman": "III", "title": "Expand", "state": "locked", "color": Color("#4F6B58")},
+		{"roman": "IV", "title": "Master", "state": "locked", "color": Color("#765742")},
+		{"roman": "V", "title": "Legacy", "state": "locked", "color": Color("#6B6077")},
 	]
+
+# Display roster derived from the canonical ADVISOR_ROSTER + ADVISOR_DISPLAY. One
+# roster now backs both the People panel and seating (spec §12.1 Phase-0 rest).
+func _advisor_definitions() -> Array:
+	var out: Array = []
+	for a in ADVISOR_ROSTER:
+		var id := str(a.get("id", ""))
+		var disp: Dictionary = ADVISOR_DISPLAY.get(id, {})
+		var accent := str(disp.get("accent", "#5A6070"))
+		out.append({
+			"id": id,
+			"name": str(a.get("name", id)),
+			"initials": str(disp.get("initials", "")),
+			"role": _seat_display_name(str(a.get("role", ""))),
+			"happiness": 0,
+			"portrait_path": str(disp.get("portrait_path", "")),
+			"portrait_color": Color(accent),
+			"bonus": str(disp.get("bonus", "")),
+			"recommendation": str(disp.get("recommendation", "")),
+			"bio": str(disp.get("bio", "")),
+			"agenda": str(disp.get("agenda", "")),
+			"likes": disp.get("likes", []),
+			"dislikes": disp.get("dislikes", []),
+			"bonuses": disp.get("bonuses", []),
+			"missions": _advisor_missions(accent),
+		})
+	return out

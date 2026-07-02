@@ -41,6 +41,8 @@ func _ready() -> void:
 	_test_build_mode_overlay_survey_visibility()
 	_test_direct_build_skips_build_overlay()
 	_test_advisor_payroll_cost()
+	_test_advisor_roster_merge()
+	_test_advisor_seat_requires_hire()
 	_test_advisor_star_derivation()
 	_test_advisor_seat_assign_and_slot_cap()
 	_test_advisor_seat_tier_scaling()
@@ -5925,6 +5927,8 @@ func _test_advisor_star_derivation() -> void:
 func _test_advisor_seat_assign_and_slot_cap() -> void:
 	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
 	var saved_slots: int = MatchState.max_advisor_slots
+	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	MatchState.permanent_advisor_ids = ["vera", "tom", "marcus", "eleanor"]
 	MatchState.advisor_seats = {}
 	MatchState.max_advisor_slots = 2
 	_check(MatchState.assign_advisor_to_seat("cfo", "vera"), "seat: assign vera -> cfo")
@@ -5944,6 +5948,7 @@ func _test_advisor_seat_assign_and_slot_cap() -> void:
 	_check(MatchState.get_advisor_in_seat("cfo") == "", "seat: cfo empty after unassign")
 	MatchState.advisor_seats = saved_seats
 	MatchState.max_advisor_slots = saved_slots
+	MatchState.permanent_advisor_ids = saved_hired
 
 func _test_advisor_seat_tier_scaling() -> void:
 	# rigid seats read the governing stat directly
@@ -6036,19 +6041,43 @@ func _test_advisor_seats_save_roundtrip() -> void:
 func _test_advisor_payroll_cost() -> void:
 	var saved_ids := MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_money := MatchState.money
-	MatchState.permanent_advisor_ids = ["natasha", "dan"]
+	MatchState.permanent_advisor_ids = ["vera", "alexandra"]   # salaries 1.0 + 4.0 = 5.0
 	MatchState.money = 100.0
 	var summary := {"advisor_paid": 0.0, "money_out": 0.0}
 	var paid: float = Production._apply_advisor_costs(summary)
-	_check(is_equal_approx(paid, 4.0)
-		and is_equal_approx(float(summary.get("advisor_paid", 0.0)), 4.0)
-		and is_equal_approx(float(summary.get("money_out", 0.0)), 4.0)
-		and is_equal_approx(MatchState.money, 96.0),
-		"advisor payroll costs £2 per permanent advisor per turn")
+	_check(is_equal_approx(paid, 5.0)
+		and is_equal_approx(float(summary.get("advisor_paid", 0.0)), 5.0)
+		and is_equal_approx(float(summary.get("money_out", 0.0)), 5.0)
+		and is_equal_approx(MatchState.money, 95.0),
+		"advisor payroll sums each advisor's salary")
 	MatchState.permanent_advisor_ids = saved_ids
 	MatchState.money = saved_money
 	MatchState.money_changed.emit(MatchState.money)
 	MatchState.advisors_changed.emit()
+
+func _test_advisor_roster_merge() -> void:
+	var defs: Array = MatchState._advisor_definitions()
+	_check(defs.size() == 12, "roster merge: _advisor_definitions() has 12 advisors")
+	var required := ["id", "name", "role", "happiness", "portrait_color", "bonus", "recommendation", "bio", "agenda", "likes", "dislikes", "bonuses", "missions"]
+	var all_ok := true
+	for d in defs:
+		for key in required:
+			if not (d as Dictionary).has(key):
+				all_ok = false
+	_check(all_ok, "roster merge: every display advisor carries the required panel fields")
+	_check(str(MatchState.get_advisor("vera").get("name", "")) == "Vera Ashby", "roster merge: get_advisor resolves a canonical id")
+	_check(MatchState.get_advisor("natasha").is_empty(), "roster merge: legacy ids are retired")
+
+func _test_advisor_seat_requires_hire() -> void:
+	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
+	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	MatchState.advisor_seats = {}
+	MatchState.permanent_advisor_ids = []
+	_check(not MatchState.assign_advisor_to_seat("cfo", "vera"), "hire gate: cannot seat an un-hired advisor")
+	MatchState.hire_advisor("vera")
+	_check(MatchState.assign_advisor_to_seat("cfo", "vera"), "hire gate: can seat once hired")
+	MatchState.advisor_seats = saved_seats
+	MatchState.permanent_advisor_ids = saved_hired
 
 func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	var recipe := Catalog.get_recipe("r_020")
@@ -6190,7 +6219,7 @@ func _test_widgets_instantiate() -> void:
 		and _tree_has_label_text(pp, "0.8x") and _tree_has_label_text(pp, "Workforce Policies"),
 		"PeoplePanel builds Labour and Advisors tabs")
 	_check(
-		_tree_has_label_text(pp, "Advisor payroll") and _tree_has_label_text(pp, "0 x £2 = £0.00/turn"),
+		_tree_has_label_text(pp, "Advisor payroll") and _tree_has_label_text(pp, "0 advisors (£0.00/turn)"),
 		"PeoplePanel shows advisor payroll at the top")
 	_check(MatchState.available_advisors().size() == MatchState.advisor_pool().size()
 		and MatchState.permanent_advisors().is_empty(),
@@ -6201,7 +6230,7 @@ func _test_widgets_instantiate() -> void:
 	pp.call("_on_permanent_add_slot_input", add_event)
 	var available_section: Control = pp.get("_available_advisors_section")
 	_check(is_instance_valid(available_section) and available_section.visible
-		and _tree_has_label_text(pp, "Natasha L.") and _tree_has_label_text(pp, "Your Uncle"),
+		and _tree_has_label_text(pp, "Vera Ashby") and _tree_has_label_text(pp, "Rufus Ashby"),
 		"PeoplePanel plus slot opens the available advisor pool")
 	var first_advisor: Dictionary = MatchState.available_advisors()[0]
 	var hire_event := InputEventMouseButton.new()
@@ -6209,7 +6238,7 @@ func _test_widgets_instantiate() -> void:
 	hire_event.pressed = true
 	pp.call("_on_available_advisor_card_input", hire_event, first_advisor)
 	_check(MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", "")))
-		and _tree_has_label_text(pp, "1 x £2 = £2.00/turn"),
+		and _tree_has_label_text(pp, "1 advisor (£1.00/turn)"),
 		"PeoplePanel selecting from the pool hires a permanent advisor and updates payroll")
 	var permanent: Array = pp.get("_permanent_advisors")
 	var card: Control = pp.call("_advisor_card", permanent[0], true, false) as Control

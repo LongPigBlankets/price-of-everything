@@ -541,7 +541,7 @@ func _refresh_advisor_payroll_label() -> void:
 		return
 	var count := MatchState.permanent_advisor_ids.size()
 	var payroll := MatchState.advisor_payroll_per_turn()
-	_advisor_payroll_label.text = "%d x £%.0f = £%.2f/turn" % [count, MatchState.ADVISOR_COST_PER_TURN, payroll]
+	_advisor_payroll_label.text = "%d advisor%s (£%.2f/turn)" % [count, ("" if count == 1 else "s"), payroll]
 
 func _add_advisor_section(parent: VBoxContainer, title_text: String, advisors: Array, permanent: bool) -> Control:
 	var section := VBoxContainer.new()
