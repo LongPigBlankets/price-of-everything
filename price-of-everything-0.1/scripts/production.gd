@@ -1049,7 +1049,7 @@ func labour_cost_factor(building: Dictionary, policy_delta_override: float = INF
 	var headcount_delta: float = float(Modifiers.resolve_pct("labour_headcount", bid, {"building_id": bid}).get("net", 0.0)) / 100.0
 	var slider_delta: float = MatchState.labour_multiplier - 1.0
 	var policy_delta: float = MatchState.workforce_labour_cost_delta() if is_inf(policy_delta_override) else policy_delta_override
-	return maxf(0.0, 1.0 + headcount_delta + slider_delta + policy_delta)
+	return maxf(EconomyConfig.LABOUR_FACTOR_MIN, 1.0 + headcount_delta + slider_delta + policy_delta)
 
 # Aggregate labour snapshot for the People panel's Labour indicator: current £/turn,
 # the effective % of base, the next-turn direction (from workforce-policy accrual),
@@ -1060,6 +1060,7 @@ func labour_overview() -> Dictionary:
 	var current := 0.0
 	var next_turn := 0.0
 	var est_ten := 0.0
+	var at_floor := false
 	var slider_delta: float = MatchState.labour_multiplier - 1.0
 	var policy_now: float = MatchState.workforce_labour_cost_delta()
 	var policy_next: float = MatchState.projected_workforce_labour_delta(1)
@@ -1072,10 +1073,14 @@ func labour_overview() -> Dictionary:
 			continue
 		var bid: String = str(building.get("building_id", ""))
 		var hc: float = float(Modifiers.resolve_pct("labour_headcount", bid, {"building_id": bid}).get("net", 0.0)) / 100.0
+		var floor_min: float = EconomyConfig.LABOUR_FACTOR_MIN
+		var raw_now: float = 1.0 + hc + slider_delta + policy_now
+		if raw_now <= floor_min + 0.000001:
+			at_floor = true
 		base_total += b_base
-		current   += b_base * maxf(0.0, 1.0 + hc + slider_delta + policy_now)
-		next_turn += b_base * maxf(0.0, 1.0 + hc + slider_delta + policy_next)
-		est_ten   += b_base * maxf(0.0, 1.0 + hc + slider_delta + policy_ten)
+		current   += b_base * maxf(floor_min, raw_now)
+		next_turn += b_base * maxf(floor_min, 1.0 + hc + slider_delta + policy_next)
+		est_ten   += b_base * maxf(floor_min, 1.0 + hc + slider_delta + policy_ten)
 	var factor_pct: float = (current / base_total * 100.0) if base_total > 0.0 else 100.0
 	return {
 		"base": base_total,
@@ -1084,6 +1089,7 @@ func labour_overview() -> Dictionary:
 		"est_10_turns": est_ten,
 		"factor_pct": factor_pct,
 		"has_buildings": base_total > 0.0,
+		"at_floor": at_floor,
 	}
 
 func _grown_labour_rate(base_rate: float, growth: float) -> float:

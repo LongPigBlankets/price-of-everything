@@ -192,6 +192,10 @@ const DIVIDEND_RATE: float = 0.20
 const LABOUR_MULTIPLIER_MIN: float = 0.8
 const LABOUR_MULTIPLIER_DEFAULT: float = 1.0
 const LABOUR_MULTIPLIER_MAX: float = 1.2
+# Hard floor on the final labour factor: no matter how many additive reductions
+# stack (advisors, people-management unlocks, workforce policies, the slider),
+# labour cost can never fall below this fraction of base. Prevents free labour.
+const LABOUR_FACTOR_MIN: float = 0.40
 
 func transport_turns_for_tile_distance(tile_distance: int) -> int:
 	if tile_distance <= 0:

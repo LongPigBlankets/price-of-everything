@@ -116,6 +116,7 @@ func _ready() -> void:
 	_test_deposit_penalty_modifier()
 	_test_workforce_output_modifier_surfaces_in_building_status()
 	_test_additive_labour_cost_model()
+	_test_labour_factor_floor()
 	_test_cost_report_credits_output_modifiers()
 	_test_flavor_nodes_wired()
 	_test_transport_congestion()
@@ -3542,6 +3543,30 @@ func _test_additive_labour_cost_model() -> void:
 		"labour overview: exposes current, next-turn, 10-turn estimate and factor %")
 
 	MatchState.workforce_policy_effects.clear()
+	MatchState.set_labour_multiplier(1.0)
+	TurnManager.current_turn = old_turn
+	Modifiers.reset()
+	MatchState.reset()
+
+func _test_labour_factor_floor() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	var old_turn: int = int(TurnManager.current_turn)
+	TurnManager.current_turn = 1
+	var iid := MatchState.add_building("b_001", "r_001", "tile_6_8", MatchState.LOCAL_PLAYER, "test_labour_floor")
+	var building: Dictionary = MatchState.buildings[iid]
+	MatchState.set_labour_multiplier(1.0)
+	# A -80% head-count reduction would drive the factor to 0.20; the floor clamps it.
+	Modifiers.add({"id": "test_labour_floor", "domain": "labour_headcount", "pct": -80.0})
+	_check(is_equal_approx(Production.labour_cost_factor(building), EconomyConfig.LABOUR_FACTOR_MIN),
+		"labour floor: factor clamps to LABOUR_FACTOR_MIN (0.40) when reductions exceed it")
+	_check(bool(Production.labour_overview().get("at_floor", false)),
+		"labour floor: overview flags at_floor once the cap is reached")
+	# The -60% debug cheat lands exactly on the floor (1 - 0.60 = 0.40).
+	Modifiers.remove("test_labour_floor")
+	Modifiers.add({"id": "cheat_labour_discount", "domain": "labour_headcount", "pct": -60.0})
+	_check(is_equal_approx(Production.labour_cost_factor(building), EconomyConfig.LABOUR_FACTOR_MIN),
+		"labour floor: -60% cheat lands exactly on the 40% floor")
 	MatchState.set_labour_multiplier(1.0)
 	TurnManager.current_turn = old_turn
 	Modifiers.reset()

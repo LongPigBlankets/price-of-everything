@@ -1300,6 +1300,19 @@ func cheat_partial_all() -> void:
 	for tid in _all_tile_ids():
 		mark_tile_partial(tid)
 
+## Cheat: apply a -60% labour-cost modifier for 10 turns. A single -60% lands
+## exactly on EconomyConfig.LABOUR_FACTOR_MIN (1 - 0.60 = 0.40), so it exercises
+## both the labour-floor clamp and the People-panel "max reduction" flag at once.
+func cheat_labour_discount() -> void:
+	Modifiers.add({
+		"id": "cheat_labour_discount",
+		"domain": "labour_headcount",
+		"pct": -60.0,
+		"duration_turns": 10,
+		"label": "Debug: labour -60%",
+		"source": "cheat",
+	})
+
 func get_tile_land_owned(tile_id: String) -> int:
 	return int(tile_land_owned.get(tile_id, DEFAULT_TILE_LAND_OWNED))
 

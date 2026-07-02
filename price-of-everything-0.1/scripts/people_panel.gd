@@ -21,6 +21,7 @@ var _labour_pct_label: Label
 var _labour_trend_label: Label
 var _labour_amount_label: Label
 var _labour_est_label: Label
+var _labour_floor_label: Label
 var _advisors_root: VBoxContainer
 var _advisor_payroll_label: Label
 var _advisor_detail_panel: PanelContainer
@@ -190,6 +191,13 @@ func _build_labour_indicator() -> PanelContainer:
 	_labour_est_label = _label("10t ≈ £0", "Caption")
 	vb.add_child(_labour_est_label)
 
+	# Shown only when labour reductions bottom out at the LABOUR_FACTOR_MIN floor.
+	_labour_floor_label = _label("", "Caption")
+	_labour_floor_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_labour_floor_label.add_theme_color_override("font_color", DS.PALETTE["OK"])
+	_labour_floor_label.visible = false
+	vb.add_child(_labour_floor_label)
+
 	return panel
 
 # Refresh the labour indicator from the live aggregate: current % of base, raw
@@ -220,6 +228,13 @@ func _refresh_labour_indicator() -> void:
 		# Labour trending down (cheaper) — green.
 		_labour_trend_label.text = "▼"
 		_labour_trend_label.add_theme_color_override("font_color", DS.PALETTE["OK"])
+
+	# Cap notice: labour reductions have bottomed out at the 40% floor.
+	if _labour_floor_label != null:
+		var at_floor: bool = has and bool(ov.get("at_floor", false))
+		_labour_floor_label.visible = at_floor
+		if at_floor:
+			_labour_floor_label.text = "Maximum labour cost reduction achieved. Further bonuses will not stack below 40% of base cost."
 
 func _fmt_amount(v: float) -> String:
 	if absf(v) >= 10000.0:

@@ -204,8 +204,11 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].is_valid_int():
 				return "empire animation → %s" % bg.call("set_animation", int(parts[1]))
 			return "empire animation → %s" % bg.call("cycle_animation")
+		"labour":
+			MatchState.cheat_labour_discount()
+			return "Applied debug labour -60% for 10 turns (clamps at 40% of base cost)."
 		"help":
-			return "commands:  cash <int>   |   unlock <title>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   swap song   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   swap song   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
