@@ -698,7 +698,10 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 	rec_margin.add_theme_constant_override("margin_right", 8)
 	rec_margin.add_theme_constant_override("margin_bottom", 8)
 	rec.add_child(rec_margin)
-	var rec_label := _label(_slot_recommendation(permanent) if add_slot else str(advisor.get("recommendation", "")), "Caption")
+	var rec_text := _slot_recommendation(permanent) if add_slot else str(advisor.get("recommendation", ""))
+	if not add_slot and MatchState.is_fired(str(advisor.get("id", ""))):
+		rec_text = _fire_cooldown_text(str(advisor.get("id", "")))
+	var rec_label := _label(rec_text, "Caption")
 	rec_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rec_margin.add_child(rec_label)
 	_make_click_through(root)
@@ -892,7 +895,8 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	scroll.add_child(_advisor_detail_body)
 
 	if is_fired:
-		_advisor_detail_body.add_child(_label("Dismissed — this advisor has been let go and cannot be re-hired.", "Caption"))
+		_advisor_detail_body.add_child(_label("On leave — dismissed advisor returns to the pool in %d turn%s." % [
+			MatchState.fire_cooldown_remaining(advisor_id), "" if MatchState.fire_cooldown_remaining(advisor_id) == 1 else "s"], "Caption"))
 
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 16)
@@ -943,14 +947,18 @@ func _collapsible(title_text: String, content: Control, start_open: bool = true)
 	box.add_child(content)
 	return box
 
+func _fire_cooldown_text(advisor_id: String) -> String:
+	var n := MatchState.fire_cooldown_remaining(advisor_id)
+	return "Re-hireable in %d turn%s" % [n, "" if n == 1 else "s"]
+
 # Bottom CTA: Confirm Hire for an available advisor, Fire Advisor for an employed
-# one, or a disabled "Dismissed" marker once fired.
+# one, or a disabled cooldown marker while a fired advisor is benched.
 func _advisor_detail_footer(advisor: Dictionary, is_hired: bool, is_fired: bool) -> Control:
 	var btn := Button.new()
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn.custom_minimum_size = Vector2(0, 40)
 	if is_fired:
-		btn.text = "Dismissed"
+		btn.text = _fire_cooldown_text(str(advisor.get("id", "")))
 		btn.disabled = true
 	elif is_hired:
 		btn.text = "Fire Advisor"
@@ -973,7 +981,7 @@ func _on_confirm_hire_pressed(advisor: Dictionary) -> void:
 func _on_fire_advisor_pressed(advisor: Dictionary) -> void:
 	var dialog := ConfirmationDialog.new()
 	dialog.title = "Fire Advisor"
-	dialog.dialog_text = "Permanently dismiss %s?\nThis frees their seat. They cannot be re-hired." % str(advisor.get("name", "this advisor"))
+	dialog.dialog_text = "Dismiss %s?\nThis frees their seat. They will sit out %d turns before they can be re-hired." % [str(advisor.get("name", "this advisor")), MatchState.FIRE_COOLDOWN_TURNS]
 	dialog.ok_button_text = "Fire"
 	add_child(dialog)
 	dialog.confirmed.connect(func() -> void:

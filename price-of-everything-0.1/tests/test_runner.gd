@@ -6224,12 +6224,12 @@ func _test_advisor_seat_requires_hire() -> void:
 	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
 	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_rec: Array = MatchState.recruited_advisor_ids.duplicate(true)
-	var saved_fired: Array = MatchState.fired_advisor_ids.duplicate(true)
+	var saved_fired: Dictionary = MatchState.fired_advisor_cooldowns.duplicate(true)
 	var saved_slots: int = MatchState.max_advisor_slots
 	MatchState.advisor_seats = {}
 	MatchState.permanent_advisor_ids = []
 	MatchState.recruited_advisor_ids = ["vera"]
-	MatchState.fired_advisor_ids = []
+	MatchState.fired_advisor_cooldowns = {}
 	MatchState.max_advisor_slots = 2
 	_check(not MatchState.assign_advisor_to_seat("cfo", "vera"), "hire gate: cannot seat an un-hired advisor")
 	MatchState.hire_advisor("vera")
@@ -6237,7 +6237,7 @@ func _test_advisor_seat_requires_hire() -> void:
 	MatchState.advisor_seats = saved_seats
 	MatchState.permanent_advisor_ids = saved_hired
 	MatchState.recruited_advisor_ids = saved_rec
-	MatchState.fired_advisor_ids = saved_fired
+	MatchState.fired_advisor_cooldowns = saved_fired
 	MatchState.max_advisor_slots = saved_slots
 
 func _test_research_unlock_promotes_construct_panel_recipes() -> void:
@@ -6372,8 +6372,8 @@ func _test_widgets_instantiate() -> void:
 
 	var saved_advisors := MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_recruited := MatchState.recruited_advisor_ids.duplicate(true)
-	var saved_fired := MatchState.fired_advisor_ids.duplicate(true)
-	MatchState.fired_advisor_ids.clear()
+	var saved_fired := MatchState.fired_advisor_cooldowns.duplicate(true)
+	MatchState.fired_advisor_cooldowns.clear()
 	MatchState.permanent_advisor_ids.clear()
 	var _all_ids: Array = []
 	for _a in MatchState.advisor_pool():
@@ -6413,16 +6413,23 @@ func _test_widgets_instantiate() -> void:
 	_check(MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", "")))
 		and _tree_has_label_text(pp, "1 advisor (£1.00/turn)"),
 		"PeoplePanel Confirm Hire from the profile hires a permanent advisor and updates payroll")
-	# Fire flow: the profile footer for an employed advisor removes them for good.
+	# Fire flow: the profile footer for an employed advisor benches them.
 	pp.call("_open_advisor_detail", first_advisor)
 	var fire_footer: Control = pp.call("_advisor_detail_footer", first_advisor, true, false) as Control
 	_check(fire_footer is Button and (fire_footer as Button).text == "Fire Advisor",
 		"PeoplePanel employed-advisor footer offers Fire Advisor")
-	MatchState.fire_advisor(str(first_advisor.get("id", "")))
-	_check(not MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", "")))
-		and MatchState.is_fired(str(first_advisor.get("id", "")))
-		and not MatchState.hire_advisor(str(first_advisor.get("id", ""))),
-		"PeoplePanel firing removes the advisor for good and blocks re-hire")
+	var fid := str(first_advisor.get("id", ""))
+	MatchState.fire_advisor(fid)
+	_check(not MatchState.permanent_advisor_ids.has(fid)
+		and MatchState.is_fired(fid)
+		and MatchState.fire_cooldown_remaining(fid) == MatchState.FIRE_COOLDOWN_TURNS
+		and not MatchState.hire_advisor(fid),
+		"PeoplePanel firing benches the advisor for the cooldown and blocks re-hire")
+	# Cooldown counts down each turn; the advisor returns to the pool at 0.
+	for _i in MatchState.FIRE_COOLDOWN_TURNS:
+		MatchState._tick_fire_cooldowns()
+	_check(not MatchState.is_fired(fid) and MatchState.hire_advisor(fid),
+		"PeoplePanel fired advisor returns to the pool after the cooldown and can be re-hired")
 	pp.call("_close_advisor_detail")
 	var permanent: Array = pp.get("_permanent_advisors")
 	var card: Control = pp.call("_advisor_card", permanent[0], true, false) as Control
@@ -6444,7 +6451,7 @@ func _test_widgets_instantiate() -> void:
 	pp.queue_free()
 	MatchState.permanent_advisor_ids = saved_advisors
 	MatchState.recruited_advisor_ids = saved_recruited
-	MatchState.fired_advisor_ids = saved_fired
+	MatchState.fired_advisor_cooldowns = saved_fired
 	MatchState.advisors_changed.emit()
 
 func _tree_has_label_text(node: Node, needle: String) -> bool:

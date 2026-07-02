@@ -67,7 +67,8 @@ var _match_rng := RandomNumberGenerator.new()
 var match_rng_seed: int = DEFAULT_MATCH_RNG_SEED   # seeded match RNG (draws + tile reveal)
 var crossed_milestones: Array = []                 # latched profit thresholds
 var recruited_advisor_ids: Array = []              # unlocked pool (employ up to the cap)
-var fired_advisor_ids: Array = []                  # fired: gone for good, shown greyed, unhireable
+const FIRE_COOLDOWN_TURNS := 10                     # a fired advisor sits out this many turns
+var fired_advisor_cooldowns: Dictionary = {}       # advisor_id -> turns until re-hireable (greyed while > 0)
 # Advisor slot (employ-cap) unlocks: 3rd @15 buildings, 4th @100, 5th @ sustained profit.
 const ADVISOR_SLOT_BUILDINGS_3 := 15
 const ADVISOR_SLOT_BUILDINGS_4 := 100
@@ -1593,7 +1594,7 @@ func reset() -> void:
 	max_advisor_slots = MAX_ADVISOR_SLOTS_DEFAULT
 	crossed_milestones.clear()
 	recruited_advisor_ids.clear()
-	fired_advisor_ids.clear()
+	fired_advisor_cooldowns.clear()
 	_advisor_profit_streak = 0
 	advisor_slot_profit_unlocked = false
 	fake_money_this_turn = 0.0
@@ -1661,7 +1662,7 @@ func export_state() -> Dictionary:
 		"advisor_rng_state": _match_rng.state,
 		"advisor_crossed_milestones": crossed_milestones.duplicate(true),
 		"recruited_advisor_ids": recruited_advisor_ids.duplicate(true),
-		"fired_advisor_ids": fired_advisor_ids.duplicate(true),
+		"fired_advisor_cooldowns": fired_advisor_cooldowns.duplicate(true),
 		"advisor_profit_streak": _advisor_profit_streak,
 		"advisor_slot_profit_unlocked": advisor_slot_profit_unlocked,
 		"advisor_peak_profit": peak_profit_per_turn,
@@ -1712,10 +1713,15 @@ func import_state(d: Dictionary) -> void:
 	workforce_policies = (d.get("workforce_policies", {}) as Dictionary).duplicate(true)
 	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
 	recruited_advisor_ids = _sanitize_advisor_ids(d.get("recruited_advisor_ids", STARTING_TRIO))
-	fired_advisor_ids = _sanitize_advisor_ids(d.get("fired_advisor_ids", []))
+	fired_advisor_cooldowns = {}
+	for fid in (d.get("fired_advisor_cooldowns", {}) as Dictionary):
+		if not _roster_entry(str(fid)).is_empty():
+			var turns := int(d["fired_advisor_cooldowns"][fid])
+			if turns > 0:
+				fired_advisor_cooldowns[str(fid)] = mini(turns, FIRE_COOLDOWN_TURNS)
 	permanent_advisor_ids = _sanitize_advisor_ids(d.get("permanent_advisor_ids", []))
-	# A fired advisor can never be employed.
-	for fid in fired_advisor_ids:
+	# A benched advisor can't also be employed.
+	for fid in fired_advisor_cooldowns.keys():
 		permanent_advisor_ids.erase(fid)
 	# Employed must be a subset of recruited.
 	for pid in permanent_advisor_ids:
@@ -3375,6 +3381,7 @@ func _on_turn_processed_advisors(summary: Dictionary) -> void:
 	# Include cheat "fake money" so the cash cheat can drive advisor unlocks in testing.
 	var profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) + float(summary.get("fake_money", 0.0))
 	peak_profit_per_turn = maxf(peak_profit_per_turn, profit)
+	_tick_fire_cooldowns()
 	_update_advisor_slots(profit)
 	check_profit_milestones(profit)
 
@@ -3416,7 +3423,7 @@ func hire_advisor(advisor_id: String) -> bool:
 		return false
 	if not recruited_advisor_ids.has(advisor_id):
 		return false
-	if fired_advisor_ids.has(advisor_id):
+	if fired_advisor_cooldowns.has(advisor_id):
 		return false
 	if permanent_advisor_ids.size() >= max_advisor_slots:
 		return false
@@ -3425,10 +3432,14 @@ func hire_advisor(advisor_id: String) -> bool:
 	return true
 
 func is_fired(advisor_id: String) -> bool:
-	return fired_advisor_ids.has(advisor_id)
+	return fired_advisor_cooldowns.has(advisor_id)
 
-# Permanently dismiss an employed advisor: unseat them, free the slot, and mark
-# them fired (they show greyed among Available and can never be re-hired).
+# Turns until a fired advisor returns to the hireable pool (0 = not on cooldown).
+func fire_cooldown_remaining(advisor_id: String) -> int:
+	return int(fired_advisor_cooldowns.get(advisor_id, 0))
+
+# Dismiss an employed advisor: unseat them, free the slot, and bench them for
+# FIRE_COOLDOWN_TURNS turns (greyed + unhireable in the pool) before they return.
 func fire_advisor(advisor_id: String) -> bool:
 	if not permanent_advisor_ids.has(advisor_id):
 		return false
@@ -3436,11 +3447,25 @@ func fire_advisor(advisor_id: String) -> bool:
 	for seat_id in advisor_seats.keys():
 		if str(advisor_seats[seat_id]) == advisor_id:
 			advisor_seats.erase(seat_id)
-	if not fired_advisor_ids.has(advisor_id):
-		fired_advisor_ids.append(advisor_id)
+	fired_advisor_cooldowns[advisor_id] = FIRE_COOLDOWN_TURNS
 	reconcile_advisor_modifiers()
 	advisors_changed.emit()
 	return true
+
+# Tick each turn: count down suspensions; advisors hitting 0 rejoin the pool.
+func _tick_fire_cooldowns() -> void:
+	if fired_advisor_cooldowns.is_empty():
+		return
+	var returned := false
+	for advisor_id in fired_advisor_cooldowns.keys():
+		var remaining := int(fired_advisor_cooldowns[advisor_id]) - 1
+		if remaining <= 0:
+			fired_advisor_cooldowns.erase(advisor_id)
+			returned = true
+		else:
+			fired_advisor_cooldowns[advisor_id] = remaining
+	if returned:
+		advisors_changed.emit()
 
 func advisor_payroll_per_turn() -> float:
 	var total := 0.0
