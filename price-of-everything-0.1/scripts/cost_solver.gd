@@ -9,6 +9,9 @@ signal costs_updated
 
 var last_result: Dictionary = {"per_building": {}, "per_good": {}}
 
+func _debug_logs_enabled() -> bool:
+	return bool(MatchState.debug_turn_logs_enabled)
+
 func get_building_unit_cost(instance_id: String) -> float:
 	var bd: Dictionary = last_result.get("per_building", {}).get(instance_id, {})
 	return bd.get("unit_cost", -1.0)
@@ -60,9 +63,10 @@ func solve(reports: Array) -> Dictionary:
 				continue
 			var mp: float = MarketState.get_price(gid)
 			priced_goods[gid] = mp
-			print("[CostSolver] External leaf: %s @ £%.4f (market price)" % [
-				Catalog.get_display_name(gid), mp
-			])
+			if _debug_logs_enabled():
+				print("[CostSolver] External leaf: %s @ £%.4f (market price)" % [
+					Catalog.get_display_name(gid), mp
+				])
 
 	# ── 4. Topological sweep ─────────────────────────────────────────────────
 	var per_building: Dictionary = {}
@@ -214,6 +218,8 @@ func _market_value(good_id: String) -> float:
 
 
 func _log_results(per_building: Dictionary, per_good: Dictionary) -> void:
+	if not _debug_logs_enabled():
+		return
 	print("[CostSolver] ── Per-building costs ────────────────────────────────")
 	for iid in per_building:
 		var b: Dictionary  = per_building[iid]

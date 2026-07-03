@@ -12,6 +12,12 @@ const PERMANENT_ADVISOR_CARD_WIDTH := ADVISOR_CARD_WIDTH + 30.0
 const PERMANENT_ADVISOR_CARD_HEIGHT := ADVISOR_CARD_HEIGHT + 40.0
 const PERMANENT_ADVISOR_PORTRAIT_SIZE := PERMANENT_ADVISOR_CARD_WIDTH
 const HEADER_HEIGHT := 56.0
+const MISSION_TRACK_POSITIONS := [0.10, 0.30, 0.50, 0.70, 0.90]
+const MISSION_TRACK_THRESHOLDS := [2.0, 5.0, 7.0, 9.0, 10.0]
+const MISSION_REWARD_CARD_WIDTH := 164.0
+const MISSION_REWARD_CARD_HEIGHT := 104.0
+const MISSION_REWARD_GAP := 20
+const MISSION_REWARD_EDGE_MARGIN := 10
 
 var _labour_buttons: Dictionary = {}
 var _policy_buttons: Dictionary = {}
@@ -38,6 +44,8 @@ const _DISCIPLINE_GIVES := {
 	"fin": "Capital & treasury — loan interest & term, dividends, tax, land & building purchase.",
 }
 var _advisor_detail_body: VBoxContainer
+var _advisor_detail_advisor_id := ""
+var _advisor_missions_content: VBoxContainer
 var _available_advisors_section: Control
 var _available_pool_open := false
 var _dragging := false
@@ -64,6 +72,10 @@ func _ready() -> void:
 		MatchState.advisors_changed.connect(_on_advisors_changed)
 	if not MatchState.advisor_acquired.is_connected(_on_advisor_acquired):
 		MatchState.advisor_acquired.connect(_on_advisor_acquired)
+	if not MatchState.advisor_loyalty_changed.is_connected(_on_advisor_loyalty_changed):
+		MatchState.advisor_loyalty_changed.connect(_on_advisor_loyalty_changed)
+	if not MatchState.advisor_mission_state_changed.is_connected(_on_advisor_mission_state_changed):
+		MatchState.advisor_mission_state_changed.connect(_on_advisor_mission_state_changed)
 	visibility_changed.connect(_on_visibility_changed)
 
 func _build_panel() -> void:
@@ -541,6 +553,18 @@ func _build_advisors_tab() -> Control:
 func _on_advisors_changed() -> void:
 	_sync_advisor_lists()
 	_refresh_advisors_tab()
+	if _advisor_detail_advisor_id != "":
+		_refresh_advisor_missions_detail(_advisor_detail_advisor_id)
+
+func _on_advisor_loyalty_changed(advisor_id: String, _loyalty: float) -> void:
+	_refresh_advisors_tab()
+	if advisor_id == _advisor_detail_advisor_id:
+		_refresh_advisor_missions_detail(advisor_id)
+
+func _on_advisor_mission_state_changed(advisor_id: String) -> void:
+	_refresh_advisors_tab()
+	if advisor_id == _advisor_detail_advisor_id:
+		_refresh_advisor_missions_detail(advisor_id)
 
 func _sync_advisor_lists() -> void:
 	_permanent_advisors = MatchState.permanent_advisors()
@@ -800,11 +824,14 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.add_child(name_label)
 
-	var role := _label(_slot_role_label(permanent) if add_slot else str(advisor.get("role", "")), "Caption")
-	role.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	role.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	role.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	root.add_child(role)
+	var role_text := "" if add_slot else _advisor_assigned_role_label(str(advisor.get("id", "")))
+	if role_text != "":
+		var role := _label(role_text, "Caption")
+		role.name = "AssignedAdvisorRole"
+		role.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		role.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		role.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		root.add_child(role)
 
 	# Available (unhired) cards drop loyalty + the black recommendation box in favour
 	# of a stat pentagon and Great-for / Bad-for role rows.
@@ -1005,13 +1032,19 @@ func _on_advisor_section_pressed(header: Button, content: Control, title_text: S
 func _section_title(expanded: bool, title_text: String) -> String:
 	return ("%s %s" % ["v" if expanded else ">", title_text])
 
-func _slot_role_label(permanent: bool) -> String:
-	return "Permanent Advisor" if permanent else "Available Advisor"
-
 func _slot_recommendation(permanent: bool) -> String:
 	if permanent:
 		return "Click to choose a permanent specialist from the advisor pool."
 	return "Click to add this advisor to the permanent team."
+
+func _advisor_assigned_role_label(advisor_id: String) -> String:
+	if advisor_id == "":
+		return ""
+	for seat_id in MatchState.advisor_seats.keys():
+		if str(MatchState.advisor_seats[seat_id]) == advisor_id:
+			var seat: Dictionary = MatchState.SEAT_DEFINITIONS.get(str(seat_id), {})
+			return str(seat.get("seat_name", seat_id))
+	return ""
 
 func _advisor_card_width(permanent: bool) -> float:
 	return PERMANENT_ADVISOR_CARD_WIDTH if permanent else ADVISOR_CARD_WIDTH
@@ -1105,6 +1138,8 @@ func _ensure_detail_panel() -> void:
 func _build_advisor_detail(advisor: Dictionary) -> void:
 	_clear_children(_advisor_detail_panel)
 	var advisor_id := str(advisor.get("id", ""))
+	_advisor_detail_advisor_id = advisor_id
+	_advisor_missions_content = null
 	var is_hired: bool = MatchState.permanent_advisor_ids.has(advisor_id)
 	var is_fired: bool = MatchState.is_fired(advisor_id)
 
@@ -1175,9 +1210,24 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	_advisor_detail_body.add_child(_collapsible("Agenda", _agenda_block(advisor)))
 	_advisor_detail_body.add_child(_collapsible("Impact", _advisor_impact_block(advisor)))
 	_advisor_detail_body.add_child(_collapsible("Seats", _seat_assignment_section(advisor, false)))
-	_advisor_detail_body.add_child(_collapsible("Missions", _quest_diagram(advisor.get("missions", advisor.get("quests", [])), MatchState.advisor_loyalty_value(advisor_id)), false))
+	_advisor_missions_content = VBoxContainer.new()
+	_advisor_missions_content.name = "AdvisorMissionsContent"
+	_advisor_missions_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_refresh_advisor_missions_detail(advisor_id)
+	_advisor_detail_body.add_child(_collapsible("Missions", _advisor_missions_content, false))
 
 	outer.add_child(_advisor_detail_footer(advisor, is_hired, is_fired))
+
+func _refresh_advisor_missions_detail(advisor_id: String) -> void:
+	if advisor_id == "" or not is_instance_valid(_advisor_missions_content):
+		return
+	_clear_children(_advisor_missions_content)
+	var fresh := MatchState.get_advisor(advisor_id)
+	if fresh.is_empty():
+		return
+	_advisor_missions_content.add_child(_quest_diagram(
+		fresh.get("missions", fresh.get("quests", [])),
+		MatchState.advisor_loyalty_value(advisor_id)))
 
 # A titled section that folds away when its header is tapped.
 func _collapsible(title_text: String, content: Control, start_open: bool = true) -> Control:
@@ -1518,9 +1568,7 @@ func _recommendation_box(text: String) -> Control:
 func _quest_diagram(quests: Variant, current_loyalty: float = 0.0) -> Control:
 	var panel := PanelContainer.new()
 	panel.theme_type_variation = &"Card"
-	# Tall enough for the full plaques (with their reward + requirement lines) plus the
-	# loyalty progress bar beneath, so nothing gets clipped.
-	panel.custom_minimum_size = Vector2(0, 280)
+	panel.custom_minimum_size = Vector2(0, 262)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 14)
@@ -1530,168 +1578,234 @@ func _quest_diagram(quests: Variant, current_loyalty: float = 0.0) -> Control:
 	panel.add_child(margin)
 
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 10)
+	root.add_theme_constant_override("separation", 8)
 	margin.add_child(root)
 	root.add_child(_label("Missions", "Section"))
 
-	var rail_area := Control.new()
-	rail_area.custom_minimum_size = Vector2(0, 138)   # >= the 118px plaques + slack
-	rail_area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	root.add_child(rail_area)
-
-	var rail_shadow := ColorRect.new()
-	rail_shadow.color = Color(0, 0, 0, 0.42)
-	rail_shadow.anchor_left = 0.06
-	rail_shadow.anchor_right = 0.94
-	rail_shadow.anchor_top = 0.5
-	rail_shadow.anchor_bottom = 0.5
-	rail_shadow.offset_top = -6
-	rail_shadow.offset_bottom = 18
-	rail_area.add_child(rail_shadow)
-
-	var rail := ColorRect.new()
-	rail.color = Color("#B68B3A")
-	rail.anchor_left = 0.06
-	rail.anchor_right = 0.94
-	rail.anchor_top = 0.5
-	rail.anchor_bottom = 0.5
-	rail.offset_top = -10
-	rail.offset_bottom = 10
-	rail_area.add_child(rail)
-
-	var row := HBoxContainer.new()
-	row.set_anchors_preset(Control.PRESET_FULL_RECT)
-	row.add_theme_constant_override("separation", 14)
-	rail_area.add_child(row)
-
 	var quest_list: Array = quests if quests is Array else []
+	root.add_child(_mission_plaque_row(quest_list))
+	root.add_child(_loyalty_bar(current_loyalty, quest_list))
+	root.add_child(_mission_rewards_row(quest_list))
+	return panel
+
+func _mission_plaque_row(quest_list: Array) -> Control:
+	var row := HBoxContainer.new()
+	row.name = "MissionPlaqueRow"
+	row.custom_minimum_size = Vector2(0, 58)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 0)
 	for i in range(5):
 		var wrapper := CenterContainer.new()
 		wrapper.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(wrapper)
-		var quest: Dictionary = {"roman": str(i + 1), "title": "Mission", "state": "locked", "color": Color("#56687C")}
-		if i < quest_list.size() and quest_list[i] is Dictionary:
-			quest = quest_list[i]
-		wrapper.add_child(_mission_plaque(quest))
+		wrapper.add_child(_mission_plaque(_mission_quest_at(quest_list, i)))
+	return row
 
-	root.add_child(_loyalty_bar(current_loyalty))
-	return panel
-
-# A loyalty scale (0..10) with the current value filled, tick marks at the mission
-# thresholds (2 / 5 / 7 / 9) and a highlighted "hold ≥9" zone for mission V.
-func _loyalty_bar(current_loyalty: float) -> Control:
+# A mission-progress loyalty track. Its milestone labels are centered under the five
+# mission slots, while the fill interpolates through the actual loyalty thresholds.
+func _loyalty_bar(current_loyalty: float, quests: Variant = []) -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 3)
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_child(_label("Loyalty  (now %+d)" % int(round(current_loyalty)), "Caption"))
 
 	var area := Control.new()
-	area.custom_minimum_size = Vector2(0, 42)
+	area.custom_minimum_size = Vector2(0, 54)
 	area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_child(area)
 
 	var track := ColorRect.new()
 	track.color = Color(1, 1, 1, 0.12)
 	track.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	track.offset_top = 4
-	track.offset_bottom = 13
+	track.offset_top = 7
+	track.offset_bottom = 16
 	area.add_child(track)
 
-	# Mission V "hold" zone: loyalty 9..10.
+	# Mission V hold zone: the span between mission IV and mission V markers.
 	var accent: Color = DS.PALETTE.get("ACCENT", Color("#D9B35A"))
 	var zone := ColorRect.new()
 	zone.color = Color(accent.r, accent.g, accent.b, 0.28)
-	zone.anchor_left = 0.9
-	zone.anchor_right = 1.0
-	zone.offset_top = 4
-	zone.offset_bottom = 13
+	zone.anchor_left = float(MISSION_TRACK_POSITIONS[3])
+	zone.anchor_right = float(MISSION_TRACK_POSITIONS[4])
+	zone.offset_top = 7
+	zone.offset_bottom = 16
 	area.add_child(zone)
 
-	# Current loyalty fill (clamped into 0..10).
-	var frac: float = clampf(current_loyalty / 10.0, 0.0, 1.0)
+	var frac: float = _loyalty_track_fraction(current_loyalty)
 	var fill := ColorRect.new()
 	fill.color = DS.PALETTE.get("OK", Color(0.3, 0.7, 0.4))
 	fill.anchor_right = frac
-	fill.offset_top = 4
-	fill.offset_bottom = 13
+	fill.offset_top = 7
+	fill.offset_bottom = 16
 	area.add_child(fill)
 
-	# Threshold ticks + labels for missions I–IV.
-	var marks := [{"x": 0.2, "t": "I·2"}, {"x": 0.5, "t": "II·5"}, {"x": 0.7, "t": "III·7"}, {"x": 0.9, "t": "IV·9"}]
-	for mk in marks:
-		var x: float = float(mk["x"])
+	var quest_list: Array = quests if quests is Array else []
+	for i in range(5):
+		var x: float = float(MISSION_TRACK_POSITIONS[i])
 		var tick := ColorRect.new()
 		tick.color = Color(1, 1, 1, 0.75)
 		tick.anchor_left = x
 		tick.anchor_right = x
 		tick.offset_left = -1
 		tick.offset_right = 1
-		tick.offset_top = 1
-		tick.offset_bottom = 16
+		tick.offset_top = 3
+		tick.offset_bottom = 20
 		area.add_child(tick)
-		var lbl := _label(str(mk["t"]), "Caption")
+		var lbl := _label(_mission_milestone_label(i, _mission_quest_at(quest_list, i)), "Caption")
 		lbl.add_theme_font_size_override("font_size", 9)
 		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lbl.anchor_left = x
 		lbl.anchor_right = x
-		lbl.offset_left = -22
-		lbl.offset_right = 22
-		lbl.offset_top = 20
-		lbl.offset_bottom = 38
+		lbl.offset_left = -34
+		lbl.offset_right = 34
+		lbl.offset_top = 23
+		lbl.offset_bottom = 52
 		area.add_child(lbl)
 
-	var v_note := _label("V — hold loyalty above 9 for 20 turns", "Caption")
+	var v_note := _label(_mission_v_requirement(quest_list), "Caption")
 	v_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	v_note.add_theme_font_size_override("font_size", 10)
 	v_note.add_theme_color_override("font_color", accent)
 	col.add_child(v_note)
 	return col
 
+func _mission_rewards_row(quest_list: Array) -> Control:
+	var scroll := ScrollContainer.new()
+	scroll.name = "MissionRewardsScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(0, MISSION_REWARD_CARD_HEIGHT + 12.0)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var margin := MarginContainer.new()
+	margin.name = "MissionRewardsMargin"
+	margin.add_theme_constant_override("margin_left", MISSION_REWARD_EDGE_MARGIN)
+	margin.add_theme_constant_override("margin_top", 0)
+	margin.add_theme_constant_override("margin_right", MISSION_REWARD_EDGE_MARGIN)
+	margin.add_theme_constant_override("margin_bottom", 2)
+	scroll.add_child(margin)
+
+	var row := HBoxContainer.new()
+	row.name = "MissionRewardsRow"
+	row.custom_minimum_size = Vector2(
+		MISSION_REWARD_CARD_WIDTH * 5.0 + float(MISSION_REWARD_GAP * 4),
+		MISSION_REWARD_CARD_HEIGHT)
+	row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	row.add_theme_constant_override("separation", MISSION_REWARD_GAP)
+	margin.add_child(row)
+	for i in range(5):
+		row.add_child(_mission_reward_card(_mission_quest_at(quest_list, i)))
+	return scroll
+
+func _mission_reward_card(quest: Dictionary) -> Control:
+	var state := str(quest.get("state", "locked"))
+	var panel := PanelContainer.new()
+	panel.name = "MissionReward_%s" % str(quest.get("roman", "I"))
+	panel.custom_minimum_size = Vector2(MISSION_REWARD_CARD_WIDTH, MISSION_REWARD_CARD_HEIGHT)
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var border := Color(1, 1, 1, 0.16)
+	if state == "completed":
+		border = DS.PALETTE.get("OK", Color("#66BA78"))
+	elif state == "next":
+		border = DS.PALETTE.get("ACCENT", Color("#D9B35A"))
+	panel.add_theme_stylebox_override("panel", _round_box(Color(0, 0, 0, 0.28), border, 6, 1, 6))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 5)
+	margin.add_theme_constant_override("margin_top", 4)
+	margin.add_theme_constant_override("margin_right", 5)
+	margin.add_theme_constant_override("margin_bottom", 4)
+	panel.add_child(margin)
+
+	var root := VBoxContainer.new()
+	root.alignment = BoxContainer.ALIGNMENT_BEGIN
+	root.add_theme_constant_override("separation", 3)
+	margin.add_child(root)
+
+	var caption := _label("Mission %s Reward" % str(quest.get("roman", "I")), "Caption")
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.add_theme_font_size_override("font_size", 9)
+	caption.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+	root.add_child(caption)
+
+	var reward := _label(str(quest.get("reward", "-")), "Caption")
+	reward.name = "MissionRewardText"
+	reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	reward.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	reward.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	reward.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reward.add_theme_font_size_override("font_size", 10)
+	if state == "locked":
+		reward.modulate = Color(1, 1, 1, 0.68)
+	root.add_child(reward)
+	return panel
+
 func _mission_plaque(quest: Dictionary) -> Control:
 	var state := str(quest.get("state", "locked"))
 	var plaque := PanelContainer.new()
-	plaque.custom_minimum_size = Vector2(120, 118)
+	plaque.name = "MissionPlaque_%s" % str(quest.get("roman", "I"))
+	plaque.custom_minimum_size = Vector2(58, 54)
 	plaque.add_theme_stylebox_override("panel", _mission_style(state, quest.get("color", Color("#56687C"))))
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 8)
-	margin.add_theme_constant_override("margin_top", 7)
-	margin.add_theme_constant_override("margin_right", 8)
-	margin.add_theme_constant_override("margin_bottom", 7)
+	margin.add_theme_constant_override("margin_left", 6)
+	margin.add_theme_constant_override("margin_top", 6)
+	margin.add_theme_constant_override("margin_right", 6)
+	margin.add_theme_constant_override("margin_bottom", 6)
 	plaque.add_child(margin)
 
 	var root := VBoxContainer.new()
 	root.alignment = BoxContainer.ALIGNMENT_CENTER
-	root.add_theme_constant_override("separation", 2)
 	margin.add_child(root)
 
 	var roman := _label(str(quest.get("roman", "I")), "Section")
 	roman.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	roman.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	roman.add_theme_font_size_override("font_size", 20)
 	root.add_child(roman)
-
-	var title := _label(str(quest.get("title", "Mission")), "Caption")
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	root.add_child(title)
-
-	# Reward + the loyalty needed to reach it.
-	var reward_text := str(quest.get("reward", ""))
-	if reward_text != "":
-		var reward := _label(reward_text, "Caption")
-		reward.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		reward.add_theme_font_size_override("font_size", 10)
-		if state == "locked":
-			reward.modulate = Color(1, 1, 1, 0.7)
-		root.add_child(reward)
-	if quest.has("req_text") and state != "completed":
-		var req := _label(str(quest.get("req_text", "")), "Caption")
-		req.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		req.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		req.add_theme_font_size_override("font_size", 9)
-		req.modulate = Color(1, 1, 1, 0.6)
-		root.add_child(req)
 	return plaque
+
+func _mission_quest_at(quest_list: Array, index: int) -> Dictionary:
+	if index >= 0 and index < quest_list.size() and quest_list[index] is Dictionary:
+		return quest_list[index]
+	return {
+		"roman": ["I", "II", "III", "IV", "V"][clampi(index, 0, 4)],
+		"title": "Mission",
+		"state": "locked",
+		"color": Color("#56687C"),
+		"reward": "-",
+		"req_text": "",
+	}
+
+func _loyalty_track_fraction(current_loyalty: float) -> float:
+	var value := clampf(current_loyalty, 0.0, 10.0)
+	var previous_threshold := 0.0
+	var previous_position := 0.0
+	for i in range(MISSION_TRACK_THRESHOLDS.size()):
+		var threshold := float(MISSION_TRACK_THRESHOLDS[i])
+		var position := float(MISSION_TRACK_POSITIONS[i])
+		if value <= threshold:
+			var span := threshold - previous_threshold
+			if is_equal_approx(span, 0.0):
+				return position
+			var t := clampf((value - previous_threshold) / span, 0.0, 1.0)
+			return lerpf(previous_position, position, t)
+		previous_threshold = threshold
+		previous_position = position
+	return 1.0
+
+func _mission_milestone_label(index: int, quest: Dictionary) -> String:
+	var roman := str(quest.get("roman", ["I", "II", "III", "IV", "V"][clampi(index, 0, 4)]))
+	if index < MISSION_TRACK_THRESHOLDS.size() - 1:
+		return "%s\n%d" % [roman, int(MISSION_TRACK_THRESHOLDS[index])]
+	return "%s\n%d+ %dt" % [roman, int(MatchState.MISSION5_LOYALTY), int(MatchState.MISSION5_STREAK_TURNS)]
+
+func _mission_v_requirement(quest_list: Array) -> String:
+	var quest := _mission_quest_at(quest_list, 4)
+	var req := str(quest.get("req_text", "")).strip_edges()
+	if req == "":
+		req = "loyalty %d+ for %d turns" % [int(MatchState.MISSION5_LOYALTY), int(MatchState.MISSION5_STREAK_TURNS)]
+	return "V: %s" % req
 
 func _mission_style(state: String, base_color: Variant) -> StyleBoxFlat:
 	var fill := Color("#56687C")
@@ -1772,6 +1886,8 @@ func _close_advisor_detail() -> void:
 	if is_instance_valid(_advisor_detail_panel):
 		PanelStack.remove(_advisor_detail_panel)
 		_advisor_detail_panel.hide()
+	_advisor_detail_advisor_id = ""
+	_advisor_missions_content = null
 	_advisor_detail_dragging = false
 
 func _on_visibility_changed() -> void:

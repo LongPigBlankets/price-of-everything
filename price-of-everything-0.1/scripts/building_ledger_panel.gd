@@ -619,7 +619,7 @@ func _output_cell(vm: Dictionary) -> Control:
 	var gid: String = str(vm.out_good_id)
 	if gid == "":
 		return holder
-	var icon := UIHelpers.make_framed_good_icon(gid, str(vm.out_internal), ICON_SIZE, false)
+	var icon := UIHelpers.make_framed_good_icon(gid, str(vm.out_internal), ICON_SIZE)
 	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	holder.add_child(icon)

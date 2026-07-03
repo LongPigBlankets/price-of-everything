@@ -11,6 +11,12 @@ const MarketRowScene: PackedScene = preload("res://scenes/market_row.tscn")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const BuildingMarketTab := preload("res://scripts/building_market_panel.gd")  # NPC buildings-for-sale tab
 const HEADER_HEIGHT := 40.0
+const TAB_PRICES := "prices"
+const TAB_BUILDINGS := "buildings"
+const TAB_SPECIAL_ORDERS := "special_orders"
+const TAB_SALES := "sales"
+const TAB_TRANSACTIONS := "transactions"
+const TAB_MOVEMENTS := "movements"
 
 var rows: Array = []
 var _tabs: TabContainer = null
@@ -36,18 +42,18 @@ var _filter_produce := false
 var _filter_profitable := false
 var _filter_unprofitable := false
 
-var _built := false   # heavy content (a row per good + tabs) is built on first open, not at _ready
+var _built := false   # lightweight tab shell exists; each tab's real controls build on first selection
+var _tab_roots: Dictionary = {}
+var _tab_built: Dictionary = {}
+var _pending_buildings_tile_filter := ""
 
 
-## Build the market's rows + tabs the first time it's opened. Eager-building them at instantiation
-## cost ~3 s of the map load; every refresh handler already no-ops until this runs (guarded on
-## visibility / null filter button / empty rows), so deferring is safe.
+## Build only the tab shell on first open. The old eager path built every Market tab
+## synchronously; the selected tab now pays only for its own controls.
 func _ensure_built() -> void:
 	if _built:
 		return
 	_built = true
-	_build_content()
-	_rebuild_header()
 	_build_tabs()
 
 
@@ -147,10 +153,11 @@ func _on_panel_visibility_changed() -> void:
 		# The tile filter is temporary — drop it when the Market closes so a normal reopen
 		# (via the Market button) shows every building again.
 		if _buildings_tab != null:
-			_buildings_tab.clear_tile_filter()
+			_buildings_tab.clear_tile_filter(false)
 		return
-	_ensure_built()   # first open builds the rows + tabs
+	_ensure_built()   # first open builds the cheap tab shell
 	_centre_and_resize()
+	_ensure_current_tab_built()
 	_refresh_ledgers()
 	_refresh_special_orders()
 	_update_filter_availability()
@@ -159,53 +166,142 @@ func _on_panel_visibility_changed() -> void:
 		_recurring_check.set_pressed_no_signal(false)
 
 func _build_tabs() -> void:
-	# Two tabs: the price table ("Good prices", default) and bulk selling ("Sales").
 	var tabs := TabContainer.new()
 	tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
-	var prices_tab := VBoxContainer.new()
-	prices_tab.name = "Good prices"
-	prices_tab.add_theme_constant_override("separation", 6)
-	main_vbox.remove_child(header_static)
-	main_vbox.remove_child(scroll)
-	prices_tab.add_child(_build_filter_row())  # search + filters, above the headers
-	prices_tab.add_child(header_static)  # table header sits above the rows
-	prices_tab.add_child(scroll)
-	tabs.add_child(prices_tab)
-
-	# NPC buildings for sale — the 2nd tab (built lazily on first show).
-	_buildings_tab = BuildingMarketTab.new()
-	_buildings_tab.name = "Buildings"
-	_buildings_tab.building_selected.connect(_on_building_for_sale_selected)
-	tabs.add_child(_buildings_tab)
-
-	_special_orders_tab = _build_special_orders_tab()
-	tabs.add_child(_special_orders_tab)
-
-	var sales_tab := VBoxContainer.new()
-	sales_tab.name = "Sales"
-	sales_tab.add_theme_constant_override("separation", 6)
-	_build_bulk_sell_section(sales_tab)
-	tabs.add_child(sales_tab)
-
-	tabs.add_child(_build_ledger_tab("Transactions",
-		MatchState.get_recurring_transaction_rows, MatchState.get_oneoff_transaction_rows))
-	tabs.add_child(_build_ledger_tab("Movements",
-		MatchState.get_recurring_move_rows, MatchState.get_oneoff_move_rows))
+	tabs.add_child(_make_lazy_tab(TAB_PRICES, "Good prices"))
+	tabs.add_child(_make_lazy_tab(TAB_BUILDINGS, "Buildings"))
+	tabs.add_child(_make_lazy_tab(TAB_SPECIAL_ORDERS, "Special Orders"))
+	tabs.add_child(_make_lazy_tab(TAB_SALES, "Sales"))
+	tabs.add_child(_make_lazy_tab(TAB_TRANSACTIONS, "Transactions"))
+	tabs.add_child(_make_lazy_tab(TAB_MOVEMENTS, "Movements"))
+	tabs.tab_changed.connect(_on_tab_changed)
 
 	_tabs = tabs
 	main_vbox.add_child(tabs)
+
+	# Keep the scene-authored price table controls owned by the Good Prices tab, but
+	# leave its rows/filter unbuilt until that tab is the first visible tab.
+	var prices_tab := _tab_roots.get(TAB_PRICES, null) as VBoxContainer
+	if prices_tab != null:
+		_detach(header_static)
+		_detach(scroll)
+		prices_tab.add_child(header_static)
+		prices_tab.add_child(scroll)
+
+func _make_lazy_tab(key: String, title: String) -> VBoxContainer:
+	var tab := VBoxContainer.new()
+	tab.name = title
+	tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tab.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tab.add_theme_constant_override("separation", 6)
+	tab.set_meta("market_tab_key", key)
+	_tab_roots[key] = tab
+	_tab_built[key] = false
+	return tab
+
+func _on_tab_changed(tab: int) -> void:
+	_ensure_tab_built(_tab_key_for_index(tab))
+
+func _ensure_current_tab_built() -> void:
+	if _tabs == null:
+		return
+	_ensure_tab_built(_tab_key_for_index(_tabs.current_tab))
+
+func _tab_key_for_index(tab: int) -> String:
+	if _tabs == null or tab < 0 or tab >= _tabs.get_child_count():
+		return ""
+	var control := _tabs.get_child(tab) as Control
+	if control == null:
+		return ""
+	return str(control.get_meta("market_tab_key", ""))
+
+func _ensure_tab_built(key: String) -> void:
+	if key == "" or bool(_tab_built.get(key, false)):
+		return
+	var root := _tab_roots.get(key, null) as VBoxContainer
+	if root == null:
+		return
+	match key:
+		TAB_PRICES:
+			_build_prices_tab(root)
+		TAB_BUILDINGS:
+			_build_buildings_tab(root)
+		TAB_SPECIAL_ORDERS:
+			_build_special_orders_lazy_tab(root)
+		TAB_SALES:
+			_build_sales_tab(root)
+		TAB_TRANSACTIONS:
+			_build_ledger_lazy_tab(root, "Transactions",
+				MatchState.get_recurring_transaction_rows, MatchState.get_oneoff_transaction_rows)
+		TAB_MOVEMENTS:
+			_build_ledger_lazy_tab(root, "Movements",
+				MatchState.get_recurring_move_rows, MatchState.get_oneoff_move_rows)
+	_tab_built[key] = true
+
+func _build_prices_tab(root: VBoxContainer) -> void:
+	for child in root.get_children():
+		if child != header_static and child != scroll:
+			child.queue_free()
+	_rebuild_header()
+	_build_content()
+	_detach(header_static)
+	_detach(scroll)
+	root.add_child(_build_filter_row())
+	root.add_child(header_static)
+	root.add_child(scroll)
+	_update_filter_availability()
+
+func _build_buildings_tab(root: VBoxContainer) -> void:
+	_buildings_tab = BuildingMarketTab.new()
+	_buildings_tab.name = "BuildingsContent"
+	_buildings_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_buildings_tab.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_buildings_tab.building_selected.connect(_on_building_for_sale_selected)
+	root.add_child(_buildings_tab)
+	if _pending_buildings_tile_filter != "":
+		_buildings_tab.set_tile_filter(_pending_buildings_tile_filter)
+		_pending_buildings_tile_filter = ""
+	elif _buildings_tab.has_method("ensure_built"):
+		_buildings_tab.ensure_built()
+
+func _build_special_orders_lazy_tab(root: VBoxContainer) -> void:
+	root.add_theme_constant_override("separation", 8)
+	_adopt_children(_build_special_orders_tab(), root)
 	_refresh_special_orders()
+
+func _build_sales_tab(root: VBoxContainer) -> void:
+	_build_bulk_sell_section(root)
+
+func _build_ledger_lazy_tab(root: VBoxContainer, title: String, recurring_getter: Callable, oneoff_getter: Callable) -> void:
+	_adopt_children(_build_ledger_tab(title, recurring_getter, oneoff_getter), root)
+
+func _adopt_children(source: Control, target: Control) -> void:
+	for child in source.get_children():
+		source.remove_child(child)
+		target.add_child(child)
+	source.queue_free()
+
+func _detach(node: Node) -> void:
+	var parent := node.get_parent()
+	if parent != null:
+		parent.remove_child(node)
 
 # Open the Market on the Buildings tab, filtered to a single tile's buildings (a temporary
 # filter that the player can clear). Called from the tile view's "Buy Buildings" button.
 func open_buildings_for_tile(tile_id: String) -> void:
+	_pending_buildings_tile_filter = tile_id
 	_ensure_built()   # may be opened before the market was ever shown
-	if _tabs == null or _buildings_tab == null:
+	if _tabs == null:
 		return
-	_tabs.current_tab = _tabs.get_tab_idx_from_control(_buildings_tab)
-	_buildings_tab.set_tile_filter(tile_id)
+	var buildings_root := _tab_roots.get(TAB_BUILDINGS, null) as Control
+	if buildings_root == null:
+		return
+	_tabs.current_tab = buildings_root.get_index()
+	_ensure_tab_built(TAB_BUILDINGS)
+	if _buildings_tab != null:
+		_buildings_tab.set_tile_filter(tile_id)
 
 func _build_ledger_tab(title: String, recurring_getter: Callable, oneoff_getter: Callable) -> VBoxContainer:
 	# View-only ledger: a "Recurring" accordion + a "One-off" accordion, each a small table.
@@ -456,8 +552,7 @@ func _build_special_order_row(order: Dictionary) -> Control:
 	hbox.add_child(UIHelpers.make_framed_good_icon(
 		str(order.get("good_id", "")),
 		str(order.get("good_internal", "")),
-		SPECIAL_ORDER_ICON_SIZE,
-		false
+		SPECIAL_ORDER_ICON_SIZE
 	))
 	hbox.add_child(_special_order_product_button(order))
 	for col in SPECIAL_ORDER_COLUMNS:

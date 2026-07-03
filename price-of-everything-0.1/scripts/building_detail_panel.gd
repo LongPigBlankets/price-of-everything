@@ -144,6 +144,12 @@ var _busy_screen_dialog: ConfirmationDialog = null
 var _too_many_dialog: AcceptDialog = null
 var _tile_only_dialog: AcceptDialog = null
 var _rag_panel: PanelContainer = null
+var _run_warning_button: Button = null
+var _run_warning_details: PanelContainer = null
+var _run_warning_details_label: Label = null
+var _run_warning_tween: Tween = null
+var _run_warning_expanded := false
+var _current_run_warning_message := ""
 var _action_button_row: HBoxContainer = null
 var _npc_panel: PanelContainer = null
 var _npc_label: Label = null
@@ -234,11 +240,13 @@ func show_building(building: Dictionary) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED and not visible:
+		_stop_run_warning_blink()
 		PanelStack.remove(self)
 		if not _is_secondary_panel:
 			building_connections_changed.emit("", [], [], false)
 
 func _hide_panel() -> void:
+	_stop_run_warning_blink()
 	hide()
 	if not _is_secondary_panel:
 		for panel in _building_panel_instances:
@@ -309,6 +317,7 @@ func _rebuild_fields(building: Dictionary) -> void:
 	_update_building_banner(building_data)
 	var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 	_current_recipe = recipe
+	_set_run_warning_message("")
 	var category: String = building_data.get("category", "")
 	var is_infrastructure: bool = category == "infrastructure"
 
@@ -358,6 +367,7 @@ func _rebuild_fields(building: Dictionary) -> void:
 		_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data) * BuildingLevels.mult("maint", blvl)))
 		_add_separator()
 		_add_labour_table(building_data)
+		_update_run_warning(building, recipe, false)
 		return
 
 	_update_change_recipe_button(building, is_infrastructure)
@@ -2304,7 +2314,7 @@ func _build_status_icon_column() -> void:
 			child.queue_free()
 	_status_dots.clear()
 
-	# Group the five RAG indicators in a rounded highlight tray (DS BG_HIGHLIGHT).
+	# Group the RAG indicators in a rounded highlight tray (DS BG_HIGHLIGHT).
 	var rag_panel := PanelContainer.new()
 	var rag_style := StyleBoxFlat.new()
 	rag_style.bg_color = DS.PALETTE["BG_HIGHLIGHT"]
@@ -2410,6 +2420,49 @@ func _build_status_icon_column() -> void:
 	_mod_wrapper.add_child(_mod_label)
 
 	rag_box.add_child(_mod_wrapper)
+
+	# 7th indicator: only visible after a failed run, with a click-to-expand reason.
+	_run_warning_button = Button.new()
+	_run_warning_button.text = "!"
+	_run_warning_button.visible = false
+	_run_warning_button.flat = false
+	_run_warning_button.focus_mode = Control.FOCUS_NONE
+	_run_warning_button.theme = _tooltip_theme
+	_run_warning_button.tooltip_text = "Production warning"
+	_run_warning_button.custom_minimum_size = Vector2(24, 24)
+	_run_warning_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_run_warning_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_run_warning_button.add_theme_font_size_override("font_size", 16)
+	_run_warning_button.add_theme_color_override("font_color", STATUS_RED)
+	_run_warning_button.add_theme_color_override("font_hover_color", STATUS_RED)
+	_run_warning_button.add_theme_color_override("font_pressed_color", STATUS_RED)
+	var warning_button_style := _make_run_warning_button_style()
+	_run_warning_button.add_theme_stylebox_override("normal", warning_button_style)
+	_run_warning_button.add_theme_stylebox_override("hover", warning_button_style)
+	_run_warning_button.add_theme_stylebox_override("pressed", warning_button_style)
+	_run_warning_button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	if not _run_warning_button.pressed.is_connected(_toggle_run_warning_details):
+		_run_warning_button.pressed.connect(_toggle_run_warning_details)
+	rag_box.add_child(_run_warning_button)
+
+	_run_warning_details = PanelContainer.new()
+	_run_warning_details.visible = false
+	_run_warning_details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_run_warning_details.custom_minimum_size = Vector2(0, 28)
+	var warning_style := StyleBoxFlat.new()
+	warning_style.bg_color = STATUS_RED
+	warning_style.set_corner_radius_all(7)
+	warning_style.set_content_margin(SIDE_LEFT, 10)
+	warning_style.set_content_margin(SIDE_RIGHT, 10)
+	warning_style.set_content_margin(SIDE_TOP, 4)
+	warning_style.set_content_margin(SIDE_BOTTOM, 4)
+	_run_warning_details.add_theme_stylebox_override("panel", warning_style)
+	_run_warning_details_label = Label.new()
+	_run_warning_details_label.add_theme_font_size_override("font_size", 12)
+	_run_warning_details_label.add_theme_color_override("font_color", Color.WHITE)
+	_run_warning_details_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_run_warning_details_label.clip_text = true
+	_run_warning_details.add_child(_run_warning_details_label)
 	_rag_panel = rag_panel
 
 	# Place the strip in the main column, directly BELOW the recipe (inputs/outputs)
@@ -2417,6 +2470,8 @@ func _build_status_icon_column() -> void:
 	# scroll fill the full width.
 	panel_vbox.add_child(rag_panel)
 	panel_vbox.move_child(rag_panel, flow_summary.get_index() + 1)
+	panel_vbox.add_child(_run_warning_details)
+	panel_vbox.move_child(_run_warning_details, rag_panel.get_index() + 1)
 	status_icon_column.visible = false
 	# The close (X) was reparented to the top of the rail; with the rail hidden it
 	# vanished with it. Return it to the header row so the panel keeps its X.
@@ -2438,6 +2493,70 @@ func _update_status_icons(building: Dictionary, recipe: Dictionary, is_infrastru
 	_set_status_dot("cost", _transport_cost_status_color(building, recipe, is_infrastructure))
 	_update_cost_label(building)
 	_update_mod_label(building, recipe)
+	_update_run_warning(building, recipe, is_infrastructure)
+
+func _make_run_warning_button_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0, 0, 0, 0)
+	style.border_color = STATUS_RED
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(12)
+	style.set_content_margin_all(0)
+	return style
+
+func _update_run_warning(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> void:
+	if is_infrastructure or building.is_empty() or not MatchState.is_player_owned(building):
+		_set_run_warning_message("")
+		return
+	var warning: Dictionary = Production.run_warning_for_building(building, recipe)
+	_set_run_warning_message(str(warning.get("message", "")))
+
+func _set_run_warning_message(message: String) -> void:
+	if _run_warning_button == null:
+		return
+	if message == "":
+		_current_run_warning_message = ""
+		_run_warning_expanded = false
+		_run_warning_button.visible = false
+		if _run_warning_details != null:
+			_run_warning_details.visible = false
+		_stop_run_warning_blink()
+		return
+	if message != _current_run_warning_message:
+		_run_warning_expanded = false
+	_current_run_warning_message = message
+	_run_warning_button.visible = true
+	_run_warning_button.tooltip_text = message
+	if _run_warning_details_label != null:
+		_run_warning_details_label.text = message
+	if _run_warning_details != null:
+		_run_warning_details.visible = _run_warning_expanded
+	_start_run_warning_blink()
+
+func _toggle_run_warning_details() -> void:
+	if _current_run_warning_message == "":
+		return
+	_run_warning_expanded = not _run_warning_expanded
+	if _run_warning_details != null:
+		_run_warning_details.visible = _run_warning_expanded
+
+func _start_run_warning_blink() -> void:
+	if _run_warning_button == null:
+		return
+	if _run_warning_tween != null and _run_warning_tween.is_running():
+		return
+	_run_warning_button.modulate = Color.WHITE
+	_run_warning_tween = create_tween()
+	_run_warning_tween.set_loops()
+	_run_warning_tween.tween_property(_run_warning_button, "modulate:a", 0.35, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_run_warning_tween.tween_property(_run_warning_button, "modulate:a", 1.0, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+func _stop_run_warning_blink() -> void:
+	if _run_warning_tween != null:
+		_run_warning_tween.kill()
+	_run_warning_tween = null
+	if _run_warning_button != null:
+		_run_warning_button.modulate = Color.WHITE
 
 const _COST_RAG_LEGEND := "Green if cheaper than buying from the market, amber if even with market and red if more expensive than purchasing from the market"
 

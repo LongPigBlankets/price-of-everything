@@ -111,8 +111,12 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 	var special_order_id: String = str(opts.get("special_order_id", ""))
 	var special_order_source_mode: String = str(opts.get("special_order_source_mode", ""))
 
+	if good_id_hint == "":
+		good_id_hint = TransportService.route_good_for_manifest(goods_qtys)
 	var route := TransportService.route_to_nearest_port(source_tile, good_id_hint)
 	var port := str(route.get("port", ""))
+	if port == "" or not TransportService.route_is_reachable(route):
+		return {}
 	var turns: int = int(route.get("turns", 0))
 
 	var items: Array = []
