@@ -332,6 +332,11 @@ var route_objective: int = RouteObjective.FASTEST
 # Session-only; never persisted. Defaults to the white-rimmed alternate buttons.
 var use_alt_bottom_menu: bool = true
 
+# Debug-only: verbose per-turn production / CostSolver logs. Off by default because
+# large empires can produce hundreds of console lines per turn in editor builds.
+# Toggled at runtime via the `logs` debug-terminal cheat. Session-only.
+var debug_turn_logs_enabled: bool = false
+
 # --- Signals ---
 signal money_changed(new_amount: float) 
 signal building_added(instance: Dictionary)
@@ -362,6 +367,8 @@ signal labour_multiplier_changed(new_value: float)
 signal workforce_policies_changed
 signal advisors_changed
 signal advisor_acquired(advisor_id: String)
+signal advisor_loyalty_changed(advisor_id: String, loyalty: float)
+signal advisor_mission_state_changed(advisor_id: String)
 signal toast_requested(message: String, toast_type: String)
 ## A market sale was finalised at a port this turn (drives the £-rise effect).
 signal market_sale_arrived_at_port(port_tile_id: String, revenue: float)
@@ -1963,7 +1970,7 @@ func debug_dump() -> Dictionary:
 	# Returns the full state as a dict, useful for save/load and debugging
 	return {
 		"money": money,
-		"buildings": buildings.duplicate(true),
+		"buildings": _buildings_for_save(),
 		"tile_buildings": tile_buildings.duplicate(true),
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
 		"output_special_order_destinations": output_special_order_destinations.duplicate(true),
@@ -1986,7 +1993,7 @@ func export_state() -> Dictionary:
 		"ruleset": ruleset.duplicate(true),
 		"next_instance_counter": _next_instance_counter,
 		"shipment_id_counter": _shipment_id_counter,
-		"buildings": buildings.duplicate(true),
+		"buildings": _buildings_for_save(),
 		"tile_land_owned": tile_land_owned.duplicate(true),
 		"tile_battery_cells": tile_battery_cells.duplicate(true),
 		"pending_battery_fills": pending_battery_fills.duplicate(true),
@@ -2050,7 +2057,7 @@ func import_state(d: Dictionary) -> void:
 	ruleset = (d.get("ruleset", DEFAULT_RULESET) as Dictionary).duplicate(true)
 	_next_instance_counter = int(d.get("next_instance_counter", 0))
 	_shipment_id_counter = int(d.get("shipment_id_counter", 0))
-	buildings = (d.get("buildings", {}) as Dictionary).duplicate(true)
+	buildings = _normalise_loaded_buildings(d.get("buildings", {}))
 	tile_land_owned = (d.get("tile_land_owned", {}) as Dictionary).duplicate(true)
 	tile_battery_cells = (d.get("tile_battery_cells", {}) as Dictionary).duplicate(true)
 	pending_battery_fills = (d.get("pending_battery_fills", []) as Array).duplicate(true)
@@ -2136,6 +2143,31 @@ func _shipments_for_save() -> Array:
 		out.append(s)
 	return out
 
+func _buildings_for_save() -> Dictionary:
+	var out: Dictionary = {}
+	for instance_id in buildings:
+		var value: Variant = buildings[instance_id]
+		if not (value is Dictionary):
+			continue
+		var inst: Dictionary = (value as Dictionary).duplicate(true)
+		inst["level"] = clampi(int(inst.get("level", 1)), 1, BuildingLevels.MAX_LEVEL)
+		out[instance_id] = inst
+	return out
+
+func _normalise_loaded_buildings(raw: Variant) -> Dictionary:
+	var out: Dictionary = {}
+	if not (raw is Dictionary):
+		return out
+	var raw_dict: Dictionary = raw as Dictionary
+	for instance_id in raw_dict:
+		var value: Variant = raw_dict[instance_id]
+		if not (value is Dictionary):
+			continue
+		var inst: Dictionary = (value as Dictionary).duplicate(true)
+		inst["level"] = clampi(int(inst.get("level", 1)), 1, BuildingLevels.MAX_LEVEL)
+		out[instance_id] = inst
+	return out
+
 func _rebuild_tile_index() -> void:
 	tile_buildings.clear()
 	for instance_id in buildings:
@@ -2173,6 +2205,12 @@ func set_use_alt_bottom_menu(enabled: bool) -> bool:
 
 func toggle_use_alt_bottom_menu() -> bool:
 	return set_use_alt_bottom_menu(not use_alt_bottom_menu)
+
+## Debug cheat: toggle verbose production / CostSolver console logs.
+## Returns the new state. Session-only, never persisted.
+func toggle_debug_turn_logs() -> bool:
+	debug_turn_logs_enabled = not debug_turn_logs_enabled
+	return debug_turn_logs_enabled
 
 func set_route_objective(objective: int) -> void:
 	if objective == route_objective:
@@ -2338,46 +2376,67 @@ func request_toast(message: String, toast_type: String = "success") -> void:
 	toast_requested.emit(message, toast_type)
 
 func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, log_oneoff: bool = true, extra: Dictionary = {}) -> Dictionary:
-	# Move goods from one tile to another: consume now, ship via the router, deliver
-	# to the destination stockpile on arrival. Returns a summary for the UI/toast.
+	# Move goods from one tile to another: quote first, then consume only goods with a
+	# legal route. Pipe-only goods must never vanish into an impossible fallback route.
 	if source_tile == "" or dest_tile == "" or source_tile == dest_tile:
 		return {}
-	var items: Array = []
 	var manifest: Dictionary = {}
-	var total_qty := 0
+	var requested_qty := 0
 	for good_id in goods_qtys.keys():
 		var want := int(goods_qtys[good_id])
 		if want <= 0:
 			continue
-		var moved := Stockpile.consume(source_tile, str(good_id), want)
+		var available := mini(want, Stockpile.get_at_tile(source_tile, str(good_id)))
+		if available <= 0:
+			continue
+		requested_qty += available
+		manifest[str(good_id)] = int(manifest.get(str(good_id), 0)) + available
+	if manifest.is_empty():
+		return {}
+	var surcharge := LARGE_SHIPMENT_SURCHARGE if requested_qty > LARGE_SHIPMENT_THRESHOLD else 1.0
+	var quote := TransportService.quote_manifest(source_tile, dest_tile, manifest, {"surcharge": surcharge})
+	if quote.is_empty():
+		return {}
+	var items: Array = []
+	var total_qty := 0
+	var total_cost := 0.0
+	var turns := 0
+	for quoted in quote.get("items", []):
+		var it: Dictionary = quoted
+		var good_key := str(it.get("good_id", ""))
+		var quoted_qty := int(it.get("qty", 0))
+		if good_key == "" or quoted_qty <= 0:
+			continue
+		var moved := Stockpile.consume(source_tile, good_key, quoted_qty)
 		if moved <= 0:
 			continue
+		var item := it.duplicate(true)
+		if moved != quoted_qty:
+			item["qty"] = moved
+			item["cost"] = float(it.get("cost", 0.0)) * (float(moved) / float(maxi(quoted_qty, 1)))
+		items.append(item)
 		total_qty += moved
-		items.append({"good_id": str(good_id), "qty": moved})
-		manifest[str(good_id)] = int(manifest.get(str(good_id), 0)) + moved
+		total_cost += float(item.get("cost", 0.0))
+		turns = maxi(turns, int(item.get("turns", quote.get("turns", 0))))
 	if items.is_empty():
 		return {}
-	var surcharge := LARGE_SHIPMENT_SURCHARGE if total_qty > LARGE_SHIPMENT_THRESHOLD else 1.0
-	var quote := TransportService.quote_manifest(source_tile, dest_tile, manifest, {"surcharge": surcharge})
-	var route: Dictionary = quote.get("route", {})
-	var turns: int = int(quote.get("turns", 0))
-	items = quote.get("items", [])
-	var total_cost := float(quote.get("cost", 0.0))
 	if total_cost > 0.0:
 		add_money(-total_cost)
 	for it in items:
-		if turns >= 1:
+		var item_route: Dictionary = it.get("route", quote.get("route", {}))
+		var item_turns := int(it.get("turns", turns))
+		if item_turns >= 1:
 			var shipment: Dictionary = {
 				"source_tile": source_tile,
 				"destination_tile": dest_tile,
 				"good_id": it.good_id,
 				"qty": it.qty,
-				"turns_remaining": turns,
-				"transport_turns": turns,
+				"turns_remaining": item_turns,
+				"transport_turns": item_turns,
 				"transport_cost": it.cost,
-				"tiles": route.get("tiles", []),
-				"path": route.get("path", []),
-				"legs": route.get("legs", []),
+				"tiles": item_route.get("tiles", []),
+				"path": item_route.get("path", []),
+				"legs": item_route.get("legs", []),
 			}
 			shipment.merge(extra, true)  # optional tags, e.g. construction_instance_id
 			queue_transport_shipment(shipment)
@@ -2403,9 +2462,11 @@ func preview_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary
 			total_qty += qty
 	var surcharge := LARGE_SHIPMENT_SURCHARGE if total_qty > LARGE_SHIPMENT_THRESHOLD else 1.0
 	var quote := TransportService.quote_manifest(source_tile, dest_tile, manifest, {"surcharge": surcharge})
+	if quote.is_empty():
+		return {"turns": 0, "cost": 0.0, "total_qty": 0, "per_turn": 0.0, "surcharged": surcharge > 1.0}
 	var turns: int = int(quote.get("turns", 0))
 	var total_cost := float(quote.get("cost", 0.0))
-	return {"turns": turns, "cost": total_cost, "total_qty": total_qty,
+	return {"turns": turns, "cost": total_cost, "total_qty": int(quote.get("total_qty", 0)),
 		"per_turn": total_cost / float(maxi(turns, 1)), "surcharged": surcharge > 1.0}
 
 func add_recurring_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> void:
@@ -2937,9 +2998,11 @@ func resolve_special_order_shipments(shipments: Array, action: String, destinati
 					route_good_id = str(good_key)
 					break
 				var quote := TransportService.quote_manifest(source_tile, destination_tile, manifest, {"route_good_id": route_good_id})
-				var route: Dictionary = quote.get("route", {})
-				var turns := int(quote.get("turns", 0))
+				if quote.is_empty():
+					continue
 				for item in quote.get("items", []):
+					var route: Dictionary = item.get("route", quote.get("route", {}))
+					var turns := int(item.get("turns", quote.get("turns", 0)))
 					var stock_shipment := {
 						"source_tile": source_tile,
 						"destination_tile": destination_tile,
@@ -3881,8 +3944,18 @@ func note_building_built() -> void:
 func cheat_set_loyalty(advisor_id: String, delta: float) -> void:
 	if _roster_entry(advisor_id).is_empty():
 		return
-	advisor_loyalty[advisor_id] = clampf(advisor_loyalty_value(advisor_id) + delta, LOYALTY_MIN, LOYALTY_MAX)
+	_set_advisor_loyalty(advisor_id, advisor_loyalty_value(advisor_id) + delta)
 	advisors_changed.emit()
+
+func _set_advisor_loyalty(advisor_id: String, value: float, check_missions: bool = true) -> bool:
+	var old_value := advisor_loyalty_value(advisor_id)
+	var next_value := clampf(value, LOYALTY_MIN, LOYALTY_MAX)
+	advisor_loyalty[advisor_id] = next_value
+	var loyalty_changed := not is_equal_approx(old_value, next_value)
+	var mission_changed := _check_mission_progress(advisor_id) if check_missions else false
+	if loyalty_changed:
+		advisor_loyalty_changed.emit(advisor_id, next_value)
+	return loyalty_changed or mission_changed
 
 # Which agenda events fired this turn (flagged hooks + summary-derived + streaks).
 func _collect_agenda_events(summary: Dictionary, profit: float) -> Dictionary:
@@ -3936,9 +4009,8 @@ func _evaluate_agendas(summary: Dictionary, profit: float) -> void:
 		for tag in agenda.get("dislikes", []):
 			if events.has(tag):
 				v -= _agenda_points(str(tag), false)
-		advisor_loyalty[aid] = clampf(v, LOYALTY_MIN, LOYALTY_MAX)
-		_check_mission_progress(aid)
-		if advisor_loyalty[aid] <= LOYALTY_WALK_THRESHOLD:
+		_set_advisor_loyalty(aid, v)
+		if advisor_loyalty_value(aid) <= LOYALTY_WALK_THRESHOLD:
 			_advisor_walk_streak[aid] = int(_advisor_walk_streak.get(aid, 0)) + 1
 		else:
 			_advisor_walk_streak[aid] = 0
@@ -3958,24 +4030,34 @@ func advisor_missions_done(advisor_id: String) -> int:
 
 # Advance missions once per turn. I–IV complete the first turn loyalty reaches their
 # threshold; V requires loyalty to hold at/above MISSION5_LOYALTY for MISSION5_STREAK_TURNS.
-func _check_mission_progress(advisor_id: String) -> void:
+func _check_mission_progress(advisor_id: String) -> bool:
 	if MISSION_TEMPLATES.get(str(_roster_entry(advisor_id).get("role", "")), {}).is_empty():
-		return
+		return false
 	var done := advisor_missions_done(advisor_id)
 	var loyalty := advisor_loyalty_value(advisor_id)
+	var changed := false
+	var old_streak := int(_advisor_mission5_streak.get(advisor_id, 0))
 	# Missions I–IV: single-hit loyalty thresholds [2, 5, 7, 9].
 	while done < MISSION_LOYALTY_THRESHOLDS.size() and loyalty >= float(MISSION_LOYALTY_THRESHOLDS[done]):
 		done += 1
 		advisor_missions_completed[advisor_id] = done
 		_grant_mission_reward(advisor_id, done)
+		changed = true
 	# Mission V: sustained high loyalty streak.
-	if loyalty >= MISSION5_LOYALTY:
-		_advisor_mission5_streak[advisor_id] = int(_advisor_mission5_streak.get(advisor_id, 0)) + 1
-	else:
-		_advisor_mission5_streak[advisor_id] = 0
+	if done < MISSION_COUNT:
+		if loyalty >= MISSION5_LOYALTY:
+			_advisor_mission5_streak[advisor_id] = int(_advisor_mission5_streak.get(advisor_id, 0)) + 1
+		else:
+			_advisor_mission5_streak[advisor_id] = 0
+		if int(_advisor_mission5_streak.get(advisor_id, 0)) != old_streak:
+			changed = true
 	if done == MISSION_LOYALTY_THRESHOLDS.size() and int(_advisor_mission5_streak.get(advisor_id, 0)) >= MISSION5_STREAK_TURNS:
 		advisor_missions_completed[advisor_id] = MISSION_COUNT
 		_grant_mission_reward(advisor_id, MISSION_COUNT)
+		changed = true
+	if changed:
+		advisor_mission_state_changed.emit(advisor_id)
+	return changed
 
 # Mission indices are 1-based (I..V). Mirrors the reward layout in MISSION_TEMPLATES.
 func _grant_mission_reward(advisor_id: String, mission_num: int) -> void:
@@ -4221,21 +4303,60 @@ func _advisor_missions(advisor_id: String, accent_hex: String) -> Array:
 		})
 	return out
 
-# Short reward descriptions for an advisor's 5 missions (for the detail-panel plaques).
+# Concise reward descriptions for an advisor's 5 missions.
 func advisor_mission_reward_labels(advisor_id: String) -> Array:
 	var tmpl: Dictionary = MISSION_TEMPLATES.get(str(_roster_entry(advisor_id).get("role", "")), {})
 	if tmpl.is_empty():
 		return ["—", "—", "—", "—", "—"]
-	var m3: String = "free research (%s)" % str(tmpl.get("research_category", ""))
+	var m3_parts: Array[String] = ["Free research in %s." % str(tmpl.get("research_category", ""))]
 	if tmpl.has("temp2"):
-		m3 += " + %s" % str((tmpl.get("temp2", {}) as Dictionary).get("label", ""))
+		m3_parts.append(_mission_reward_detail(tmpl.get("temp2", {})))
 	return [
-		str((tmpl.get("temp", {}) as Dictionary).get("label", "")),
-		str((tmpl.get("perm1", {}) as Dictionary).get("label", "")),
-		m3,
-		str((tmpl.get("perm2", {}) as Dictionary).get("label", "")),
-		str((tmpl.get("capstone", {}) as Dictionary).get("label", "")),
+		_mission_reward_detail(tmpl.get("temp", {})),
+		_mission_reward_detail(tmpl.get("perm1", {})),
+		" ".join(m3_parts),
+		_mission_reward_detail(tmpl.get("perm2", {})),
+		_mission_reward_detail(tmpl.get("capstone", {})),
 	]
+
+func _mission_reward_detail(spec_value: Variant) -> String:
+	if not (spec_value is Dictionary):
+		return "No extra reward."
+	var spec: Dictionary = spec_value
+	if spec.is_empty():
+		return "No extra reward."
+	var label := str(spec.get("label", "")).strip_edges()
+	if spec.has("policy"):
+		return "Unlocks workforce policy: %s." % label
+	var domain := _mission_domain_label(str(spec.get("domain", "")))
+	var pct := float(spec.get("pct", 0.0))
+	var pct_text := _signed_percent_text(pct)
+	if spec.has("turns"):
+		var turns := int(spec.get("turns", 0))
+		return "%s. Applies %s to %s for %d turns." % [label, pct_text, domain, turns]
+	return "%s. Permanent %s to %s." % [label, pct_text, domain]
+
+func _mission_domain_label(domain: String) -> String:
+	var names := {
+		"building_power": "building power use",
+		"construction_rebate": "build and upgrade rebates",
+		"dividend_rate": "dividend payouts",
+		"labour_headcount": "labour costs",
+		"loan_interest": "loan interest",
+		"market_price": "sale prices",
+		"market_spread": "market buy spread",
+		"maintenance": "maintenance costs",
+		"purchase_cost": "land and building prices",
+		"recipe_output": "recipe output",
+		"tax_rate": "tax",
+		"transport_cost": "transport cost",
+		"transport_throughput": "transport throughput",
+	}
+	return str(names.get(domain, domain.replace("_", " ")))
+
+func _signed_percent_text(value: float) -> String:
+	var sign := "+" if value > 0.0 else ""
+	return "%s%.0f%%" % [sign, value]
 
 # Display roster derived from the canonical ADVISOR_ROSTER + ADVISOR_DISPLAY. One
 # roster now backs both the People panel and seating (spec §12.1 Phase-0 rest).

@@ -12,11 +12,10 @@ const BAR_HEIGHT := 58.0
 const RESULT_HEIGHT := 58.0
 const DETAIL_IMAGE_SIZE := Vector2(216, 180)
 const ACCORDION_ICON_SIZE := Vector2(80, 80)
-const GOODS_ICON_DIR_MEDIUM := "res://assets/icons/goods/medium"
-const GOODS_ICON_DIR_SMALL := "res://assets/icons/goods/small"
 const BUILDING_ICON_DIR := "res://assets/icons/buildings"
 const HAMMER_ICON_PATH := "res://assets/icons/ui_icons/hammer_off_white.png"
 const BUILD_BUTTON_SIZE := Vector2(46, 46)
+const GoodIcons := preload("res://scripts/good_icons.gd")
 
 # Palette aligned to the DS navy theme (was bespoke pure-black). Dark surfaces use
 # DS navy (#040F1B) / highlight (#002E54); muted text uses DS TEXT_MUTED; the build
@@ -625,13 +624,13 @@ func _make_entry_image(result: Dictionary) -> PanelContainer:
 
 func _entry_texture(result: Dictionary) -> Texture2D:
 	if result.get("type", "") == "good":
-		return _load_good_texture(result.get("payload", {}))
+		return _load_good_texture(result.get("payload", {}), false)
 	if result.get("type", "") == "recipe":
 		var recipe: Dictionary = result.get("payload", {})
 		var outputs: Array = recipe.get("outputs", [])
 		if not outputs.is_empty():
 			var output_good: Dictionary = _good_from_recipe_item(outputs[0])
-			var output_texture: Texture2D = _load_good_texture(output_good)
+			var output_texture: Texture2D = _load_good_texture(output_good, false)
 			if output_texture != null:
 				return output_texture
 		return _load_building_texture(recipe.get("building_id", ""))
@@ -640,29 +639,16 @@ func _entry_texture(result: Dictionary) -> Texture2D:
 		return _load_building_texture(building.get("id", ""))
 	return null
 
-func _load_good_texture(good: Dictionary) -> Texture2D:
+func _load_good_texture(good: Dictionary, prefer_small := true) -> Texture2D:
 	var good_id: String = good.get("id", good.get("good_id", ""))
 	var internal_name: String = good.get("internal_name", "")
-	if good_id == "" or internal_name == "":
+	if good_id == "" and internal_name != "":
+		good_id = str(Catalog.get_good_by_internal_name(internal_name).get("id", ""))
+	if internal_name == "" and good_id != "":
+		internal_name = Catalog.get_internal_name(good_id)
+	if good_id == "":
 		return null
-	var paths: Array = [
-		"%s/%s_%s.svg" % [GOODS_ICON_DIR_MEDIUM, good_id, internal_name],
-		"%s/%s_%s.SVG" % [GOODS_ICON_DIR_MEDIUM, good_id, internal_name],
-		"%s/%s_%s.PNG" % [GOODS_ICON_DIR_MEDIUM, good_id, internal_name],
-		"%s/%s_%s.png" % [GOODS_ICON_DIR_MEDIUM, good_id, internal_name],
-		"%s/%s_%s.svg" % [GOODS_ICON_DIR_SMALL, good_id, internal_name],
-		"%s/%s_%s.SVG" % [GOODS_ICON_DIR_SMALL, good_id, internal_name],
-		"%s/%s_%s.PNG" % [GOODS_ICON_DIR_SMALL, good_id, internal_name],
-		"%s/%s_%s.png" % [GOODS_ICON_DIR_SMALL, good_id, internal_name],
-		"%s/%s.svg" % [GOODS_ICON_DIR_SMALL, good_id],
-		"%s/%s.SVG" % [GOODS_ICON_DIR_SMALL, good_id],
-		"%s/%s.PNG" % [GOODS_ICON_DIR_SMALL, good_id],
-		"%s/%s.png" % [GOODS_ICON_DIR_SMALL, good_id],
-	]
-	for path in paths:
-		if ResourceLoader.exists(path):
-			return load(path) as Texture2D
-	return null
+	return GoodIcons.texture_for(good_id, internal_name, prefer_small)
 
 func _load_building_texture(building_id: String) -> Texture2D:
 	var building: Dictionary = Catalog.get_building(building_id)
@@ -971,7 +957,7 @@ func _make_catalog_icon(result: Dictionary) -> Control:
 
 	var texture: Texture2D = null
 	if result.get("type", "") == "good":
-		texture = _load_good_texture(result.get("payload", {}))
+		texture = _load_good_texture(result.get("payload", {}), true)
 	elif result.get("type", "") == "building":
 		var building: Dictionary = result.get("payload", {})
 		texture = _load_building_texture(building.get("id", ""))

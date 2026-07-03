@@ -23,6 +23,7 @@ const LAND_CHART := preload("res://scripts/land_chart.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIFonts := preload("res://scripts/ui_fonts.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const GOODS_FRAME := preload("res://assets/ui/goods_frame.tres")
 const PLUS_ICON_PATH := "res://assets/icons/ui_icons/plus_off_white.png"
 # Classic TileInfoPanel footprint is 760×630; this is 120px narrower, 100px taller.
@@ -68,6 +69,8 @@ const RURAL_BANNER_PATH := "res://assets/tile_banners/rural_banner.jpg"
 var _tiles: Dictionary = {}        # tab_id -> {root, pip, metric, unit}
 var _panes: Dictionary = {}        # tab_id -> Control (body container)
 var _pane_host: VBoxContainer = null
+var _show_player_buildings_only := false
+var _player_only_checkbox: CheckBox = null
 
 func _enter_tree() -> void:
 	# the hex grid overlay mirrors this panel's tile as its brass selection
@@ -81,6 +84,7 @@ func _ready() -> void:
 	# Live data refresh while open.
 	MatchState.building_added.connect(func(_i): _refresh_if_visible())
 	MatchState.building_removed.connect(func(_i): _refresh_if_visible())
+	MatchState.building_owner_changed.connect(func(_i): _refresh_if_visible())
 	MatchState.tile_land_owned_changed.connect(func(_t): _refresh_if_visible())
 	Stockpile.stockpile_changed.connect(_refresh_if_visible)
 	Production.turn_processed.connect(func(_summary): _refresh_if_visible())
@@ -1354,7 +1358,9 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 	for b in bl.buildings:
 		if not bool(b.is_infra):
 			built_rows.append(b)
-	pane.add_child(_make_section_title("Production", "(%d)" % (built_rows.size() + projects.size()), "ok"))
+	if _show_player_buildings_only:
+		built_rows = _player_owned_building_rows(built_rows)
+	pane.add_child(_make_buildings_header("Production", "(%d)" % (built_rows.size() + projects.size())))
 	# Group buildings of the same type + recipe into one expandable group card.
 	var groups: Dictionary = {}
 	var order: Array = []
@@ -1369,11 +1375,62 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 	for project in projects:
 		pane.add_child(_make_construction_row(project))
 	if built_rows.is_empty() and projects.is_empty():
-		pane.add_child(_make_muted_label("No buildings on this tile"))
+		var empty_text := "No player-owned buildings on this tile" if _show_player_buildings_only else "No buildings on this tile"
+		pane.add_child(_make_muted_label(empty_text))
 
 	# Infrastructure gets its own section: a grid of dialled add/built slots.
 	pane.add_child(_make_section_title("Infrastructure", "transit / capacity", "ok"))
 	pane.add_child(_make_infra_grid())
+
+func _make_buildings_header(title: String, right_text: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.custom_minimum_size = Vector2(0, 30)
+	var title_label := Label.new()
+	title_label.text = title
+	title_label.theme_type_variation = &"BuildingName"
+	title_label.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
+	title_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(title_label)
+	if right_text != "":
+		var count := Label.new()
+		count.text = right_text
+		count.theme_type_variation = &"Caption"
+		count.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+		count.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(count)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(spacer)
+	var filter_label := Label.new()
+	filter_label.text = "Show your buildings only"
+	filter_label.theme_type_variation = &"Caption"
+	filter_label.add_theme_font_size_override("font_size", 11)
+	filter_label.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	filter_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(filter_label)
+	_player_only_checkbox = UIHelpers.make_custom_checkbox()
+	_player_only_checkbox.name = "PlayerBuildingsOnlyCheckbox"
+	_player_only_checkbox.custom_minimum_size = Vector2(24, 24)
+	_player_only_checkbox.tooltip_text = "Show only buildings you own on this tile"
+	_player_only_checkbox.set_pressed_no_signal(_show_player_buildings_only)
+	_player_only_checkbox.toggled.connect(_on_player_buildings_only_toggled)
+	row.add_child(_player_only_checkbox)
+	return row
+
+func _player_owned_building_rows(rows: Array) -> Array:
+	var filtered: Array = []
+	for row in rows:
+		var inst := MatchState.get_building(str((row as Dictionary).get("instance_id", "")))
+		if not inst.is_empty() and MatchState.is_player_owned(inst):
+			filtered.append(row)
+	return filtered
+
+func _on_player_buildings_only_toggled(pressed: bool) -> void:
+	if _show_player_buildings_only == pressed:
+		return
+	_show_player_buildings_only = pressed
+	_refresh_active_pane()
 
 ## Buy Land → a dropdown of fixed increments (10/20/30/40/50) up to the maximum,
 ## plus a "Buy maximum (N)" option. Increments above the max are omitted, so a

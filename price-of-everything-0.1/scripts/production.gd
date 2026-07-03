@@ -5,10 +5,13 @@ const MAX_PRODUCTION_PASSES := 30
 
 var last_turn_summary: Dictionary = {}
 var missing_by_building: Dictionary = {}  # instance_id -> Array of missing inputs
+var blocked_reason_by_building: Dictionary = {}  # instance_id -> {code, message}
 var last_turn_run: Dictionary = {}  # instance_id -> true (set of buildings that ran)
 var produced_by_building: Dictionary = {}  # instance_id -> good_id/internal_name -> lifetime qty
 var full_output_streak_by_building: Dictionary = {}  # instance_id -> consecutive turns at full output
 var _building_turn_reports: Array = []  # BuildingTurnReport dicts for CostSolver
+var _just_constructed_this_turn: Dictionary = {}  # instance_id -> true
+var _warning_buy_preview_cache: Dictionary = {}  # "tile|good|qty" -> preview_buy result
 # Per-turn record of goods delivered to each tile and the transport paid to get them there.
 # { tile_id -> { good_id -> {"cost": float, "qty": float} } }. Used to impute inbound
 # transport into the unit cost of buildings that consume those goods.
@@ -64,22 +67,33 @@ func import_state(d: Dictionary) -> void:
 	last_turn_summary.clear()
 	_pending_external_sales.clear()
 	missing_by_building.clear()
+	blocked_reason_by_building.clear()
 	last_turn_run.clear()
+	_just_constructed_this_turn.clear()
+	_warning_buy_preview_cache.clear()
+
+func _debug_logs_enabled() -> bool:
+	return bool(MatchState.debug_turn_logs_enabled)
 
 func _ready() -> void:
 	await get_tree().process_frame
 	if not TurnManager.phase_started.is_connected(_on_phase_started):
 		TurnManager.phase_started.connect(_on_phase_started)
-	print("[Production] ready and connected to TurnManager")
+	if _debug_logs_enabled():
+		print("[Production] ready and connected to TurnManager")
 
 func _on_phase_started(phase: int) -> void:
-	print("[Production] _on_phase_started fired, phase=", phase)
+	if _debug_logs_enabled():
+		print("[Production] _on_phase_started fired, phase=", phase)
 	if phase == TurnManager.Phase.PROCESS:
 		_process_production()
 
 func _process_production() -> void:
 	last_turn_run.clear()
 	missing_by_building.clear()
+	blocked_reason_by_building.clear()
+	_just_constructed_this_turn.clear()
+	_warning_buy_preview_cache.clear()
 	_building_turn_reports.clear()
 	_inbound_delivery_this_turn.clear()
 	_output_buffer.clear()
@@ -151,7 +165,9 @@ func _process_production() -> void:
 	# construction owns them ahead of production/sell/surplus. Order matters: tick before claim,
 	# so a project that becomes under_construction this turn isn't also ticked the same turn.
 	TurnProfiler.section_begin("construction")
-	Construction.tick_turn()
+	var completed_construction: Array = Construction.tick_turn()
+	for completed_instance_id in completed_construction:
+		_just_constructed_this_turn[str(completed_instance_id)] = true
 	Construction.claim_materials()
 	Construction.reorder_market_materials()  # re-buy any still-missing build materials
 	# In-progress upgrades advance here too: awaiting projects claim freshly-arrived materials
@@ -195,6 +211,11 @@ func _process_production() -> void:
 			var check: Dictionary = _can_run_recipe(building, recipe)
 			if not check.can_run:
 				missing_by_building[instance_id] = check.missing
+				var reason := _blocked_reason_for(building, recipe, check.missing)
+				if reason.is_empty():
+					blocked_reason_by_building.erase(instance_id)
+				else:
+					blocked_reason_by_building[instance_id] = reason
 				continue
 			
 			# Building can run — execute it
@@ -239,7 +260,8 @@ func _process_production() -> void:
 							ge["steady"] = int(ge["steady"]) + output_qty
 						_green_supply_by_tile[gt] = ge
 				_record_building_output(instance_id, "power", output_qty)
-				print("[Production] Building %s produced %d Power" % [instance_id, output_qty])
+				if _debug_logs_enabled():
+					print("[Production] Building %s produced %d Power" % [instance_id, output_qty])
 			else:
 				_produce_outputs(building, recipe, summary)
 				_capture_turn_report(building, recipe)
@@ -249,6 +271,7 @@ func _process_production() -> void:
 			full_output_streak_by_building[instance_id] = full_output_streak_by_building.get(instance_id, 0) + 1
 			progress_made = true
 			missing_by_building.erase(instance_id)
+			blocked_reason_by_building.erase(instance_id)
 		
 		if not progress_made:
 			break
@@ -274,15 +297,16 @@ func _process_production() -> void:
 			full_output_streak_by_building[building.instance_id] = 0
 			building_starved.emit(record)
 			
-			var missing_strs: Array = []
-			for m in missing:
-				missing_strs.append("%s (need %d, have %d)" % [
-					m.internal_name, m.need, m.have
+			if _debug_logs_enabled():
+				var missing_strs: Array = []
+				for m in missing:
+					missing_strs.append("%s (need %d, have %d)" % [
+						m.internal_name, m.need, m.have
+					])
+				var missing_msg: String = ", ".join(missing_strs) if not missing_strs.is_empty() else "no recipe inputs"
+				print("[Production] Building %s STARVED — missing: %s" % [
+					building.instance_id, missing_msg
 				])
-			var missing_msg: String = ", ".join(missing_strs) if not missing_strs.is_empty() else "no recipe inputs"
-			print("[Production] Building %s STARVED — missing: %s" % [
-				building.instance_id, missing_msg
-			])
 	TurnProfiler.section_end("starvation_report")
 
 	# === POWER INTERMITTENCY (recompute the derate for NEXT turn from this turn's actuals) ===
@@ -421,44 +445,44 @@ func _process_production() -> void:
 	turn_processed.emit(summary)
 	TurnProfiler.section_end("emit_summary")
 
-
-	print("[Production] Stockpile after turn: ", Stockpile.get_all_totals())
-	print("[Production] Power: supply=%d demand=%d net=%d (bought=%d sold=%d)" % [
-		summary.power_supply, summary.power_demand,
-		summary.power_supply - summary.power_demand,
-		summary.grid_bought, summary.grid_sold
-	])
-	print("[Production] Turn summary: produced=%s consumed=%s sold=%s starved=%d net=£%.2f passes=%d" % [
-		summary.produced, summary.consumed, summary.sold, summary.starved.size(),
-		summary.money_in - summary.money_out, pass_count
-	])
-	print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f interest=£%.2f tax=£%.2f div=£%.2f profit_share=£%.2f net=£%.2f" % [
-	summary.goods_sales_revenue,
-	summary.power_sales_revenue,
-	summary.power_purchase_cost,
-	summary.maintenance_paid + summary.labour_paid + summary.advisor_paid + summary.transport_paid,
-	summary.goods_purchased_cost,
-	summary.interest_paid,
-	summary.taxes_paid,
-	summary.dividends_paid,
-	summary.profit_sharing_paid,
-	summary.money_in - summary.money_out
-])
-	# Diagnostic: goods sitting in pending shipments (sales + moves). If a produced good
-	# is neither stockpiled nor sold, it should show here as in-transit; if not, it's lost.
-	var _in_transit_dbg: Dictionary = {}
-	# Read-only summation — iterate the live list directly rather than paying for a
-	# deep copy of every shipment (with its path/tiles arrays) just to tally quantities.
-	for s in MatchState.pending_transport_shipments:
-		if bool(s.get("is_sale", false)):
-			for it in s.get("sale_record", {}).get("items", []):
-				var sg := str(it.get("good_id", ""))
-				_in_transit_dbg[sg] = int(_in_transit_dbg.get(sg, 0)) + int(it.get("qty", 0))
-		else:
-			var mg := str(s.get("good_id", ""))
-			if mg != "":
-				_in_transit_dbg[mg] = int(_in_transit_dbg.get(mg, 0)) + int(s.get("qty", 0))
-	print("[Production] In transit (pending shipments): ", _in_transit_dbg)
+	if _debug_logs_enabled():
+		print("[Production] Stockpile after turn: ", Stockpile.get_all_totals())
+		print("[Production] Power: supply=%d demand=%d net=%d (bought=%d sold=%d)" % [
+			summary.power_supply, summary.power_demand,
+			summary.power_supply - summary.power_demand,
+			summary.grid_bought, summary.grid_sold
+		])
+		print("[Production] Turn summary: produced=%s consumed=%s sold=%s starved=%d net=£%.2f passes=%d" % [
+			summary.produced, summary.consumed, summary.sold, summary.starved.size(),
+			summary.money_in - summary.money_out, pass_count
+		])
+		print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f interest=£%.2f tax=£%.2f div=£%.2f profit_share=£%.2f net=£%.2f" % [
+			summary.goods_sales_revenue,
+			summary.power_sales_revenue,
+			summary.power_purchase_cost,
+			summary.maintenance_paid + summary.labour_paid + summary.advisor_paid + summary.transport_paid,
+			summary.goods_purchased_cost,
+			summary.interest_paid,
+			summary.taxes_paid,
+			summary.dividends_paid,
+			summary.profit_sharing_paid,
+			summary.money_in - summary.money_out
+		])
+		# Diagnostic: goods sitting in pending shipments (sales + moves). If a produced good
+		# is neither stockpiled nor sold, it should show here as in-transit; if not, it's lost.
+		var _in_transit_dbg: Dictionary = {}
+		# Read-only summation — iterate the live list directly rather than paying for a
+		# deep copy of every shipment (with its path/tiles arrays) just to tally quantities.
+		for s in MatchState.pending_transport_shipments:
+			if bool(s.get("is_sale", false)):
+				for it in s.get("sale_record", {}).get("items", []):
+					var sg := str(it.get("good_id", ""))
+					_in_transit_dbg[sg] = int(_in_transit_dbg.get(sg, 0)) + int(it.get("qty", 0))
+			else:
+				var mg := str(s.get("good_id", ""))
+				if mg != "":
+					_in_transit_dbg[mg] = int(_in_transit_dbg.get(mg, 0)) + int(s.get("qty", 0))
+		print("[Production] In transit (pending shipments): ", _in_transit_dbg)
 
 	
 
@@ -576,9 +600,10 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		if output_qty <= 0:
 			continue
 
-		print("[Production] Building %s produced %d %s" % [
-			building.instance_id, output_qty, good.display_name
-		])
+		if _debug_logs_enabled():
+			print("[Production] Building %s produced %d %s" % [
+				building.instance_id, output_qty, good.display_name
+			])
 
 		_dispatch_output_to_stockpile(building, good, output_qty, summary)
 		summary.produced[good.id] = summary.produced.get(good.id, 0) + output_qty
@@ -721,6 +746,11 @@ func _sell_output_to_market(building: Dictionary, good: Dictionary, qty: int, su
 		opts["special_order_source_mode"] = "building_detail"
 	var result := MarketState.execute_sale(source_tile, {good_id: qty}, opts)
 	if result.is_empty():
+		var stored := Stockpile.add(source_tile, good_id, qty)
+		if stored < qty:
+			push_warning("[Production] Could not route %s to market and stockpile stored %d/%d" % [
+				Catalog.get_display_name(good_id), stored, qty,
+			])
 		return
 	var transport_cost: float = float(result.get("transport_cost", 0.0))
 	if transport_cost > 0.0:
@@ -812,6 +842,8 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		if int(totals[gid]) > 0:
 			covered_goods[str(gid)] = MatchState.seaport_covers(str(gid))
 	var quote := TransportService.quote_market_sell(source_tile, totals, covered_goods)
+	if quote.is_empty():
+		return sale_record
 	var port_tile := str(quote.get("port", ""))
 	var route: Dictionary = quote.get("route", {})
 	# Seaport subscription: a port only services tiles within SEAPORT_RANGE_TILES. If in
@@ -1525,11 +1557,12 @@ func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
 	# Check inputs
 	for input in inputs:
 		var have: int = Stockpile.get_at_tile(tile_id, input.good_id)
-		if have < input.qty:
+		var need := _scaled_input_qty(input, building)
+		if have < need:
 			missing.append({
 				"good_id": input.good_id,
 				"internal_name": input.internal_name,
-				"need": input.qty,
+				"need": need,
 				"have": have,
 			})
 
@@ -1565,13 +1598,135 @@ func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
 		"missing": missing,
 	}
 
+func blocked_reason_for_building(instance_id: String) -> Dictionary:
+	return blocked_reason_by_building.get(instance_id, {})
+
+func run_warning_for_building(building: Dictionary, recipe: Dictionary) -> Dictionary:
+	var instance_id := str(building.get("instance_id", ""))
+	var reason: Dictionary = blocked_reason_for_building(instance_id)
+	if not reason.is_empty():
+		return reason
+	var storage_reason := _battery_storage_missing_reason(building)
+	if not storage_reason.is_empty():
+		return storage_reason
+	return {}
+
+func _blocked_reason_for(building: Dictionary, recipe: Dictionary, missing: Array) -> Dictionary:
+	var instance_id := str(building.get("instance_id", ""))
+	var tile_id := str(building.get("tile_id", ""))
+	if _has_waiting_overflow_input(tile_id, missing):
+		return _run_warning("shipment_overflow", "Shipments did not reach building. Tile stockpile full.")
+	var market_needed := _market_input_cash_needed(building, missing)
+	if market_needed > 0.0 and MatchState.money + 0.0001 < market_needed:
+		return _run_warning("market_input_cash", "Insufficient money to order inputs. Needed £%d." % int(ceil(market_needed)))
+	var grid_needed := _grid_power_cash_needed(building, recipe, missing)
+	if grid_needed > 0.0 and MatchState.money + 0.0001 < grid_needed:
+		return _run_warning("grid_power_cash", "Insufficient money to buy power from grid. Needed £%d." % int(ceil(grid_needed)))
+	if bool(_just_constructed_this_turn.get(instance_id, false)):
+		return _run_warning("just_constructed", "Building just constructed. Wait one turn.")
+	var storage_reason := _battery_storage_missing_reason(building)
+	if not storage_reason.is_empty():
+		return storage_reason
+	var tile_only_needed := _tile_only_input_needed(building, missing)
+	if tile_only_needed > 0:
+		return _run_warning("tile_stockpile_only", "Insufficient inputs in stockpile to run recipe. Needed %d." % tile_only_needed)
+	return {}
+
+func _run_warning(code: String, message: String) -> Dictionary:
+	return {"code": code, "message": message}
+
+func _has_waiting_overflow_input(tile_id: String, missing: Array) -> bool:
+	if tile_id == "" or missing.is_empty():
+		return false
+	var missing_goods := {}
+	for entry in missing:
+		var gid := str((entry as Dictionary).get("good_id", ""))
+		if gid != "" and gid != "power":
+			missing_goods[gid] = true
+	if missing_goods.is_empty():
+		return false
+	for shipment in MatchState.get_overflow_shipments_for_tile(tile_id):
+		var gid := str((shipment as Dictionary).get("good_id", ""))
+		if int((shipment as Dictionary).get("qty", 0)) > 0 and missing_goods.has(gid):
+			return true
+	return false
+
+func _market_input_cash_needed(building: Dictionary, missing: Array) -> float:
+	if missing.is_empty():
+		return 0.0
+	var instance_id := str(building.get("instance_id", ""))
+	var tile_id := str(building.get("tile_id", ""))
+	if tile_id == "":
+		return 0.0
+	var total := 0.0
+	for entry in missing:
+		var m: Dictionary = entry
+		var gid := str(m.get("good_id", ""))
+		if gid == "" or gid == "power" or MatchState.is_input_tile_only(instance_id, gid):
+			continue
+		if Catalog.get_good(gid).is_empty():
+			continue
+		var qty := maxi(0, int(m.get("need", 0)) - int(m.get("have", 0)))
+		if qty <= 0:
+			continue
+		var cache_key := "%s|%s|%d" % [tile_id, gid, qty]
+		var preview: Dictionary = _warning_buy_preview_cache.get(cache_key, {})
+		if not _warning_buy_preview_cache.has(cache_key):
+			preview = MatchState.preview_buy(tile_id, gid, qty)
+			_warning_buy_preview_cache[cache_key] = preview
+		if preview.is_empty():
+			continue
+		total += float(preview.get("cost", 0.0))
+	return total
+
+func _grid_power_cash_needed(building: Dictionary, recipe: Dictionary, missing: Array) -> float:
+	var has_power_missing := false
+	for entry in missing:
+		if str((entry as Dictionary).get("good_id", "")) == "power":
+			has_power_missing = true
+			break
+	if not has_power_missing:
+		return 0.0
+	var draw := _effective_energy_req(building, recipe)
+	if draw <= 0:
+		return 0.0
+	var tile_id := str(building.get("tile_id", ""))
+	if not Power.is_supplied(tile_id, draw):
+		return 0.0
+	if Power.tile_power_cap(tile_id) < draw:
+		return 0.0
+	return float(draw) * EconomyConfig.GRID_BUY_PRICE
+
+func _battery_storage_missing_reason(building: Dictionary) -> Dictionary:
+	var building_data := Catalog.get_building(str(building.get("building_id", "")))
+	if str(building_data.get("category", "")) != "battery":
+		return {}
+	var tile_id := str(building.get("tile_id", ""))
+	if tile_id == "" or MatchState.tile_battery_slots(tile_id) <= 0:
+		return {}
+	if MatchState.tile_battery_cells_loaded(tile_id) > 0:
+		return {}
+	return _run_warning("battery_storage_empty", "Batteries missing. Fill storage to run.")
+
+func _tile_only_input_needed(building: Dictionary, missing: Array) -> int:
+	var instance_id := str(building.get("instance_id", ""))
+	var needed := 0
+	for entry in missing:
+		var m: Dictionary = entry
+		var gid := str(m.get("good_id", ""))
+		if gid == "" or gid == "power":
+			continue
+		if MatchState.is_input_tile_only(instance_id, gid):
+			needed += maxi(0, int(m.get("need", 0)) - int(m.get("have", 0)))
+	return needed
+
 func compute_committed_for_tile(tile_id: String) -> Dictionary:
 	var committed: Dictionary = {}
 	for building in MatchState.get_buildings_on_tile(tile_id):
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		for input in recipe.get("inputs", []):
 			var good_id: String = input.get("good_id", "")
-			var qty: int = int(input.get("qty", 0))
+			var qty: int = _scaled_input_qty(input, building)
 			if good_id != "" and qty > 0:
 				committed[good_id] = committed.get(good_id, 0) + qty
 	return committed
@@ -1579,12 +1734,20 @@ func compute_committed_for_tile(tile_id: String) -> Dictionary:
 func _inbound_qty(tile_id: String, good_id: String) -> int:
 	var total := 0
 	for s in MatchState.get_inbound_transport_shipments(tile_id, good_id):
+		if _shipment_reserved_outside_input_pipeline(s):
+			continue
 		total += int(s.get("qty", 0))
 	return total
+
+func _shipment_reserved_outside_input_pipeline(shipment: Dictionary) -> bool:
+	return str(shipment.get("construction_instance_id", "")) != "" \
+		or str(shipment.get("upgrade_instance_id", "")) != ""
 
 func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 	# For every input a player has set to "Market", keep the pipeline topped up to
 	# (lead+1) turns of demand: order = target - on_tile - in_transit, shipped from the port.
+	# Construction/upgrade-tagged shipments are reserved freight and do not count as
+	# production pipeline stock; ordinary/manual/producer inbound goods still do.
 	# Memoise (port, lead) per tile+good for this turn. Lead can be good-specific
 	# because seaport coverage and infra eligibility affect the actual buy quote.
 	var market_lead_cache: Dictionary = {}
@@ -1617,7 +1780,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 					MatchState.set_input_tile_only(instance_id, good_id, false)
 				else:
 					continue  # player opted this input out of market top-up
-			var need_per_turn := int(input.qty)
+			var need_per_turn := _scaled_input_qty(input, building)
 			if need_per_turn <= 0:
 				continue
 			var entry: Dictionary = tile_demand.get(good_id, {"need": 0, "building_id": str(building.get("building_id", ""))})
@@ -1644,7 +1807,10 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 			var target := need_per_turn * (lead + 1)
 			var order := target - Stockpile.get_at_tile(tile_id, good_id) - _inbound_qty(tile_id, good_id)
 			if order > 0:
-				var bought: Dictionary = MatchState.queue_buy(tile_id, good_id, order, true, {"buy_kind": "input"})
+				var bought: Dictionary = MatchState.queue_buy(tile_id, good_id, order, true, {
+					"buy_kind": "input",
+					"auto_input_pipeline": true,
+				})
 				if not bought.is_empty():
 					summary.goods_purchased_cost += float(bought.get("goods_cost", 0.0))
 					summary.transport_paid += float(bought.get("transport_cost", 0.0))
@@ -1709,10 +1875,12 @@ func _recipe_output_good_matching_input(recipe: Dictionary, input_good_id: Strin
 func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictionary) -> void:
 	var inputs: Array = recipe.get("inputs", [])
 	var tile_id: String = building.get("tile_id", "")
-	var lvl_mult := BuildingLevels.mult("input", int(building.get("level", 1)))
 	for input in inputs:
-		var qty := int(round(float(input.qty) * lvl_mult))
+		var qty := _scaled_input_qty(input, building)
 		Stockpile.consume(tile_id, input.good_id, qty)
 		if qty > 0:
 			MatchState.flag_agenda_event(MatchState.AGENDA_USED_STOCKPILE)
 		summary.consumed[input.good_id] = summary.consumed.get(input.good_id, 0) + qty
+
+func _scaled_input_qty(input: Dictionary, building: Dictionary) -> int:
+	return int(round(float(input.get("qty", 0)) * BuildingLevels.mult("input", int(building.get("level", 1)))))

@@ -55,9 +55,8 @@ func setup(good_data: Dictionary) -> void:
 	add_child(main)
 
 	# Icon sits inside the off-white pipe-frame slot. Shared with the mapmode good
-	# picker (UIHelpers) so both stay identical. prefer_small=false keeps the
-	# higher-res texture the bigger market icon wants.
-	main.add_child(UIHelpers.make_framed_good_icon(good_id, internal_name, ICON_SIZE, false))
+	# picker (UIHelpers) so both stay identical. The 98px row uses the small art.
+	main.add_child(UIHelpers.make_framed_good_icon(good_id, internal_name, ICON_SIZE))
 
 	# Name button, truncated to NAME_MAX_CHARS so long names don't blow out the column.
 	var disp := str(good_data.get("display_name", good_id))

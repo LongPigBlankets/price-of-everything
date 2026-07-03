@@ -50,6 +50,7 @@ var _body: VBoxContainer = null
 var _rows: Array = []   # [{control, blob, instance_id, price, category, powered, unconnected, level, near_port}]
 var _built := false
 var _dirty := false
+var _built_tile_filter := ""
 
 # Filter chips (two rows under the search bar). Category + level are OR-groups; the rest are AND.
 var _chips := {}
@@ -86,6 +87,10 @@ func _ready() -> void:
 
 func _on_visibility_changed() -> void:
 	if is_visible_in_tree() and (not _built or _dirty):
+		_rebuild()
+
+func ensure_built() -> void:
+	if not _built or _dirty:
 		_rebuild()
 
 func _mark_dirty() -> void:
@@ -261,6 +266,7 @@ func _rebuild() -> void:
 			"category": str(vm.category), "level": int(vm.level), "tile_id": str(vm.tile_id),
 			"powered": bool(vm.powered), "unconnected": bool(vm.unconnected), "near_port": bool(vm.near_port),
 		})
+	_built_tile_filter = _tile_filter
 	_apply_filters()
 	call_deferred("_sync_header_gutter")  # after layout: the scrollbar may have appeared/vanished
 
@@ -268,6 +274,8 @@ func _collect_npc_buildings() -> Array:
 	var out: Array = []
 	for instance_id in MatchState.buildings:
 		var b: Dictionary = MatchState.buildings[instance_id]
+		if _tile_filter != "" and str(b.get("tile_id", "")) != _tile_filter:
+			continue
 		if MatchState.is_player_owned(b):
 			continue
 		if _is_infrastructure(b):
@@ -374,7 +382,7 @@ func _update_count(shown: int = -1) -> void:
 # ── Temporary per-tile filter (set from the tile view's "Buy Buildings" button) ─────────────
 func set_tile_filter(tile_id: String) -> void:
 	_tile_filter = tile_id
-	if not _built:
+	if not _built or (_built_tile_filter != "" and _built_tile_filter != _tile_filter):
 		_rebuild()  # ensure rows exist for the filter to act on
 	if _tile_filter_bar != null:
 		var tname := Catalog.tile_name(tile_id)
@@ -382,13 +390,22 @@ func set_tile_filter(tile_id: String) -> void:
 		_tile_filter_bar.visible = true
 	_apply_filters()
 
-func clear_tile_filter() -> void:
+func clear_tile_filter(rebuild_now: bool = true) -> void:
 	if _tile_filter == "" and (_tile_filter_bar == null or not _tile_filter_bar.visible):
 		return
+	var needs_full_rebuild := _built_tile_filter != ""
 	_tile_filter = ""
 	if _tile_filter_bar != null:
 		_tile_filter_bar.visible = false
-	_apply_filters()
+	if needs_full_rebuild:
+		if rebuild_now:
+			_rebuild()
+		else:
+			_built = false
+			_dirty = false
+			_built_tile_filter = ""
+	else:
+		_apply_filters()
 
 # ── Row widgets (mirror the Building-Ledger row theme) ─────────────────────────────────────
 func _build_row(vm: Dictionary) -> Control:
@@ -483,7 +500,7 @@ func _output_cell(vm: Dictionary) -> Control:
 	var gid: String = str(vm.out_good_id)
 	if gid == "":
 		return holder
-	var icon := UIHelpers.make_framed_good_icon(gid, str(vm.out_internal), ICON_SIZE, false)
+	var icon := UIHelpers.make_framed_good_icon(gid, str(vm.out_internal), ICON_SIZE)
 	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	holder.add_child(icon)

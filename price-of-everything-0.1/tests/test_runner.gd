@@ -54,6 +54,8 @@ func _ready() -> void:
 	_test_retrofit_mechanic()
 	_test_advisor_loyalty()
 	_test_advisor_missions()
+	_test_advisor_mission_update_signals()
+	_test_people_panel_mission_ui()
 	_test_build_duration()
 	_test_advisor_seats_save_roundtrip()
 	_test_advisor_milestone_acquisition()
@@ -81,6 +83,7 @@ func _ready() -> void:
 	_test_output_market_route()
 	_test_transaction_ledger()
 	_test_market_buy()
+	_test_market_input_pipeline_ignores_reserved_inbound()
 	_test_tax_dividend_caps()
 	_test_purchases()
 	_test_exhausted_input_source_falls_back_to_market()
@@ -144,6 +147,7 @@ func _ready() -> void:
 	_test_cable_power_cap()
 	_test_power_output_modifier()
 	_test_building_leveling()
+	_test_run_failure_warnings()
 	await _test_mining_mastery_free_unlock()
 	_test_modifiers_pct_additive_and_resolve()
 	_test_modifiers_new_domain_unlocks()
@@ -157,6 +161,7 @@ func _ready() -> void:
 	_test_hills_baked_fresh()
 	await _test_hill_field_determinism()
 	await _test_grid_selection_follows_panel()
+	await _test_tile_view_player_building_filter()
 	_test_start_buildings()
 	await _test_roads_v2()
 	await _test_road_attachment_projection()
@@ -406,6 +411,59 @@ func _test_grid_selection_follows_panel() -> void:
 	_check(overlay._selected == Vector2i(-999, -999), "grid: selection clears when the panel closes")
 	panel.queue_free()
 	overlay.queue_free()
+	terrain.queue_free()
+	await get_tree().process_frame
+
+func _test_tile_view_player_building_filter() -> void:
+	MatchState.reset()
+	Stockpile.clear_all()
+	var terrain := TileMapLayer.new()
+	terrain.name = "TerrainLayer"
+	terrain.unique_name_in_owner = false
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var panel: Control = load("res://scripts/tile_info_panel_v2.gd").new()
+	add_child(panel)
+	await get_tree().process_frame
+	var tile_id := "tile_5_7"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		_check(false, "tile view filter: fixture tile exists")
+		panel.queue_free()
+		terrain.queue_free()
+		await get_tree().process_frame
+		return
+	MatchState.add_building("b_001", "r_001", tile_id, MatchState.LOCAL_PLAYER, "tv_filter_player")
+	MatchState.add_building("b_001", "r_001", tile_id, "npc", "tv_filter_npc_1")
+	MatchState.add_building("b_001", "r_001", tile_id, "npc", "tv_filter_npc_2")
+	panel.show_tile(terrain.tiles[coord])
+	await get_tree().process_frame
+	var checkbox: CheckBox = panel.find_child("PlayerBuildingsOnlyCheckbox", true, false)
+	_check(checkbox != null and not checkbox.button_pressed,
+		"tile view filter: checkbox starts off")
+	_check(_node_tree_contains_text(panel, "Show your buildings only"),
+		"tile view filter: label is inline with the buildings header")
+	_check(_node_tree_contains_text(panel, "(3)") and _node_tree_contains_text(panel, "NPC"),
+		"tile view filter: off state shows mixed player/NPC group")
+	if checkbox != null:
+		checkbox.button_pressed = true
+		await get_tree().process_frame
+	_check(bool(panel.get("_show_player_buildings_only"))
+			and _node_tree_contains_text(panel, "(1)")
+			and not _node_tree_contains_text(panel, "NPC"),
+		"tile view filter: on state rebuilds mixed groups with player-owned buildings only")
+	var other_coord: Vector2i = terrain.id_to_coord("tile_5_8")
+	if terrain.tiles.has(other_coord):
+		panel.show_tile(terrain.tiles[other_coord])
+		await get_tree().process_frame
+		var persisted: CheckBox = panel.find_child("PlayerBuildingsOnlyCheckbox", true, false)
+		_check(persisted != null and persisted.button_pressed and bool(panel.get("_show_player_buildings_only")),
+			"tile view filter: choice persists when opening another tile")
+	MatchState.reset()
+	Stockpile.clear_all()
+	panel.queue_free()
 	terrain.queue_free()
 	await get_tree().process_frame
 
@@ -2866,6 +2924,8 @@ func _test_market_special_orders_tab() -> void:
 		and tabs.get_child_count() >= 3
 		and tabs.get_tab_title(2) == "Special Orders",
 		"market panel: Special Orders is the third tab")
+	tabs.current_tab = 2
+	panel.call("_ensure_current_tab_built")
 	var count_label: Label = panel.get("_special_orders_count_label")
 	var body: VBoxContainer = panel.get("_special_orders_body")
 	_check(count_label != null
@@ -2939,6 +2999,9 @@ func _unique_strings(values: Array) -> Array:
 func _test_save_load_roundtrip() -> void:
 	MatchState.add_money(123.0)
 	var inst: String = MatchState.add_building("b_001", "r_001", "tile_12_4")
+	var inst_data: Dictionary = MatchState.buildings[inst]
+	inst_data["level"] = 3
+	MatchState.buildings[inst] = inst_data
 	Stockpile.add("tile_12_4", "g_001", 25)
 	MatchState.mark_tile_surveyed("tile_12_4")
 	MatchState.add_recurring_move("tile_12_4", "tile_12_2", {"g_001": 5})
@@ -2949,6 +3012,20 @@ func _test_save_load_roundtrip() -> void:
 	_check(LoanState.take_loan(30.0), "roundtrip: loan taken for debt state")
 	var special_order: Dictionary = SpecialOrderState.create_order("coal", TurnManager.current_turn, 5, 25)
 	SpecialOrderState.commit_units(str(special_order.get("id", "")), 4, "tile_view")
+	var hm = get_tree().get_first_node_in_group("hex_map")
+	if hm != null:
+		var coord: Vector2i = hm.id_to_coord("tile_12_4")
+		if hm.tiles.has(coord):
+			var tile: Dictionary = hm.tiles[coord]
+			var infra: Array = tile.get("infrastructure_present", [])
+			if not infra.has("pipes"):
+				infra.append("pipes")
+			var levels: Dictionary = tile.get("infrastructure_levels", {})
+			levels["pipes"] = 2
+			tile["infrastructure_present"] = infra
+			tile["infrastructure_levels"] = levels
+			hm.tiles[coord] = tile
+			Catalog.add_tile_infrastructure("tile_12_4", "pipes")
 
 	var snap1: Dictionary = SaveLoad.export_snapshot()
 	# Real file round-trip via the slot API (covers JSON I/O + slot listing too).
@@ -2969,6 +3046,17 @@ func _test_save_load_roundtrip() -> void:
 	# Spot-check the loaded state is live, not just equal-on-paper.
 	_check(str(MatchState.get_building(inst).get("tile_id", "")) == "tile_12_4",
 		"loaded building is queryable")
+	_check(int(MatchState.get_building(inst).get("level", 0)) == 3,
+		"loaded building level survives the round-trip")
+	if hm != null:
+		var loaded_coord: Vector2i = hm.id_to_coord("tile_12_4")
+		var loaded_tile: Dictionary = hm.tiles.get(loaded_coord, {})
+		_check(int((loaded_tile.get("infrastructure_levels", {}) as Dictionary).get("pipes", 0)) == 2,
+			"loaded infrastructure level survives the round-trip")
+		var saved_infra: Dictionary = (snap2.get("infrastructure", {}) as Dictionary).get("tile_12_4", {})
+		_check((saved_infra.get("present", []) as Array).has("pipes")
+				and int((saved_infra.get("levels", {}) as Dictionary).get("pipes", 0)) == 2,
+			"infrastructure snapshot stores present types plus levels")
 	_check(Stockpile.get_at_tile("tile_12_4", "g_001") == 20, "loaded stockpile intact (25 - 5 moved)")
 	_check(LoanState.total_outstanding() > 0.0, "loaded debt outstanding")
 	_check(MatchState.recurring_moves.size() == 1 and MatchState.recurring_buys.size() == 1,
@@ -3067,6 +3155,14 @@ func _test_save_version_migration() -> void:
 	snap["save_version"] = 1
 	(snap.get("match", {}) as Dictionary).erase("ruleset")
 	(snap.get("meta", {}) as Dictionary).erase("ruleset")
+	var legacy_infra: Dictionary = (snap.get("infrastructure", {}) as Dictionary).duplicate(true)
+	legacy_infra["tile_12_4"] = ["pipes"]
+	snap["infrastructure"] = legacy_infra
+	var migrated_snap: Dictionary = SaveLoad._migrate(snap.duplicate(true))
+	var migrated_infra: Dictionary = (migrated_snap.get("infrastructure", {}) as Dictionary).get("tile_12_4", {})
+	_check((migrated_infra.get("present", []) as Array).has("pipes")
+			and migrated_infra.has("levels"),
+		"v1 -> v5 migration upgrades infrastructure arrays to structured entries")
 	DirAccess.make_dir_recursive_absolute("user://saves")
 	var f := FileAccess.open("user://saves/__test_v1.json", FileAccess.WRITE)
 	f.store_string(JSON.stringify(snap))
@@ -3738,9 +3834,93 @@ func _test_building_leveling() -> void:
 	Production._building_turn_reports.clear()
 	MatchState.remove_building(iid5)
 
+	# The live run gate and stock reservations must scale inputs too. Otherwise an L2/L3
+	# building can run with only its L1 recipe inputs on hand, and auto-sell can treat the
+	# extra upgraded demand as surplus.
+	var scaled_tile := "tile_scaled_inputs"
+	MatchState.tile_land_owned[scaled_tile] = 200
+	var scaled_iid := MatchState.add_building("b_012", "r_012", scaled_tile, MatchState.LOCAL_PLAYER, "inst_scaled_inputs")
+	var scaled_building: Dictionary = MatchState.buildings[scaled_iid]
+	scaled_building["level"] = 2
+	MatchState.buildings[scaled_iid] = scaled_building
+	var scaled_recipe: Dictionary = Catalog.get_recipe("r_012").duplicate(true)
+	scaled_recipe["energy_req"] = 0
+	var scaled_input: Dictionary = (scaled_recipe.get("inputs", []) as Array)[0]
+	scaled_recipe["inputs"] = [scaled_input]
+	var scaled_gid := str(scaled_input.get("good_id", ""))
+	var base_need := int(scaled_input.get("qty", 0))
+	var scaled_need := int(round(float(base_need) * BuildingLevels.mult("input", 2)))
+	Stockpile.add(scaled_tile, scaled_gid, base_need)
+	var scaled_check: Dictionary = Production._can_run_recipe(MatchState.buildings[scaled_iid], scaled_recipe)
+	var scaled_missing: Array = scaled_check.get("missing", [])
+	_check(not bool(scaled_check.get("can_run", false))
+			and not scaled_missing.is_empty()
+			and int((scaled_missing[0] as Dictionary).get("need", 0)) == scaled_need,
+		"L2 input gate requires scaled inputs (need %d, not L1's %d)" % [scaled_need, base_need])
+	Stockpile.add(scaled_tile, scaled_gid, scaled_need - base_need)
+	scaled_check = Production._can_run_recipe(MatchState.buildings[scaled_iid], scaled_recipe)
+	_check(bool(scaled_check.get("can_run", false)), "L2 input gate clears once scaled inputs are stocked")
+	var committed_scaled: Dictionary = Production.compute_committed_for_tile(scaled_tile)
+	_check(int(committed_scaled.get(scaled_gid, 0)) == scaled_need, "committed input reserve scales with building level")
+	var scaled_summary := {"consumed": {}}
+	Production._consume_inputs(MatchState.buildings[scaled_iid], scaled_recipe, scaled_summary)
+	_check(Stockpile.get_at_tile(scaled_tile, scaled_gid) == 0
+			and int((scaled_summary.get("consumed", {}) as Dictionary).get(scaled_gid, 0)) == scaled_need,
+		"L2 consume_inputs consumes the scaled input quantity")
+	MatchState.remove_building(scaled_iid)
+
 	Modifiers.reset()
 	MatchState.reset()
 	Stockpile.clear_all()
+
+func _test_run_failure_warnings() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+	Production.blocked_reason_by_building.clear()
+	Production._just_constructed_this_turn.clear()
+
+	var tile := "tile_3_8"
+	var iid := MatchState.add_building("b_012", "r_012", tile, MatchState.LOCAL_PLAYER, "inst_run_warning")
+	var building: Dictionary = MatchState.buildings[iid]
+	var recipe: Dictionary = Catalog.get_recipe("r_012").duplicate(true)
+	recipe["energy_req"] = 0
+	var input: Dictionary = (recipe.get("inputs", []) as Array)[0]
+	recipe["inputs"] = [input]
+	var gid := str(input.get("good_id", ""))
+	var need := int(input.get("qty", 0))
+	var check: Dictionary = Production._can_run_recipe(building, recipe)
+
+	MatchState.money = 0.0
+	var market_reason: Dictionary = Production._blocked_reason_for(building, recipe, check.get("missing", []))
+	_check(str(market_reason.get("message", "")).begins_with("Insufficient money to order inputs. Needed £"),
+		"run warning: market-sourced missing inputs report insufficient cash")
+
+	MatchState.money = 100000.0
+	MatchState.overflow_shipments.append({"destination_tile": tile, "good_id": gid, "qty": need})
+	var overflow_reason: Dictionary = Production._blocked_reason_for(building, recipe, check.get("missing", []))
+	_check(str(overflow_reason.get("message", "")) == "Shipments did not reach building. Tile stockpile full.",
+		"run warning: overflow shipment wins over generic missing input")
+	MatchState.overflow_shipments.clear()
+
+	MatchState.set_input_tile_only(iid, gid, true)
+	var tile_only_reason: Dictionary = Production._blocked_reason_for(building, recipe, check.get("missing", []))
+	_check(str(tile_only_reason.get("message", "")) == "Insufficient inputs in stockpile to run recipe. Needed %d." % need,
+		"run warning: tile-stockpile-only missing input reports shortfall")
+	MatchState.set_input_tile_only(iid, gid, false)
+
+	var battery_iid := MatchState.add_building("b_028", "r_225", tile, MatchState.LOCAL_PLAYER, "inst_run_warning_battery")
+	var battery_reason: Dictionary = Production.run_warning_for_building(MatchState.buildings[battery_iid], Catalog.get_recipe("r_225"))
+	_check(str(battery_reason.get("message", "")) == "Batteries missing. Fill storage to run.",
+		"run warning: empty battery storage asks for cells")
+
+	MatchState.remove_building(iid)
+	MatchState.remove_building(battery_iid)
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+	Production.blocked_reason_by_building.clear()
+	Production._just_constructed_this_turn.clear()
 
 func _test_cost_report_credits_output_modifiers() -> void:
 	# A recipe_output modifier (the "Δ +%" on a recipe) must be credited in the cost report's
@@ -5092,6 +5272,59 @@ func _test_market_buy() -> void:
 	_check(not partial.is_empty() and int(partial.get("qty", 0)) > 0 and int(partial.get("qty", 0)) < 1000,
 		"queue_buy buys a partial amount when cash is short")
 
+func _test_market_input_pipeline_ignores_reserved_inbound() -> void:
+	MatchState.reset()
+	Stockpile.clear_all()
+	Power.reset_for_turn()
+	MatchState.pending_transport_shipments.clear()
+	var fake := Node.new()
+	var src := GDScript.new()
+	src.source_code = "extends Node\nvar tiles := {}\nfunc id_to_coord(t):\n\treturn Vector2i(5, 10) if t == \"tile_5_10\" else Vector2i(-1, -1)\n"
+	src.reload()
+	fake.set_script(src)
+	fake.set("tiles", {Vector2i(5, 10): {"infrastructure_present": ["cables"], "infrastructure_levels": {"cables": 3}}})
+	fake.add_to_group("hex_map")
+	get_tree().root.add_child(fake)
+	MatchState.money = 100000.0
+	var tile := "tile_5_10"
+	var coal_gid := "g_001"
+	var iid := MatchState.add_building("b_003", "r_004", tile, MatchState.LOCAL_PLAYER, "test_pipeline_coal_plant")
+	MatchState.pending_transport_shipments.append({
+		"source_tile": "tile_build_site",
+		"destination_tile": tile,
+		"good_id": coal_gid,
+		"qty": 10000,
+		"turns_remaining": 1,
+		"construction_instance_id": "construction_reserved_coal",
+	})
+	MatchState.pending_transport_shipments.append({
+		"source_tile": "tile_manual",
+		"destination_tile": tile,
+		"good_id": coal_gid,
+		"qty": 3,
+		"turns_remaining": 1,
+	})
+	_check(Production._inbound_qty(tile, coal_gid) == 3,
+		"market input pipeline ignores construction-reserved inbound but counts ordinary inbound")
+	var summary := {
+		"purchased": {},
+		"purchased_cost": {},
+		"goods_purchased_cost": 0.0,
+		"transport_paid": 0.0,
+		"money_out": 0.0,
+		"goods_purchased_by_type": {},
+	}
+	Production._buy_market_inputs([MatchState.buildings[iid]], summary)
+	_check(int((summary.get("purchased", {}) as Dictionary).get(coal_gid, 0)) > 0,
+		"market input pipeline orders production inputs despite construction-reserved inbound")
+	MatchState.remove_building(iid)
+	MatchState.pending_transport_shipments.clear()
+	get_tree().root.remove_child(fake)
+	fake.free()
+	MatchState.reset()
+	Stockpile.clear_all()
+	Power.reset_for_turn()
+
 func _test_exhausted_input_source_falls_back_to_market() -> void:
 	MatchState.reset()
 	Stockpile.clear_all()
@@ -5839,6 +6072,54 @@ func _test_transport_service() -> void:
 	var covered_sell: Dictionary = TransportService.quote_market_sell("tile_3_8", {"g_001": 10}, {"g_001": true})
 	_check(int(covered_sell.get("turns", 0)) == 1 and float(covered_sell.get("transport_cost", -1.0)) == 0.0,
 		"TransportService applies covered seaport sell quotes")
+	var src := "tile_12_2"
+	var dst := "tile_13_2"
+	var safe_liquid := "g_009"
+	var hazard_liquid := "g_065"
+	var no_pipe_route := TransportService.route(src, dst, safe_liquid)
+	_check(not TransportService.route_is_reachable(no_pipe_route),
+		"safe liquid has no distance fallback when no pipeline exists")
+	_check(TransportService.quote_market_buy(dst, safe_liquid, 5, false).is_empty()
+			and TransportService.quote_market_buy(dst, safe_liquid, 5, true).is_empty(),
+		"market buys cannot bypass the pipeline requirement for safe liquids")
+	Stockpile.clear_all()
+	MatchState.pending_transport_shipments.clear()
+	Stockpile.add(src, safe_liquid, 5)
+	var blocked_move := MatchState.queue_move(src, dst, {safe_liquid: 5})
+	_check(blocked_move.is_empty()
+			and Stockpile.get_at_tile(src, safe_liquid) == 5
+			and MatchState.pending_transport_shipments.is_empty(),
+		"blocked liquid moves leave stock on the source tile")
+	var blocked_sale := MatchState.queue_sell(src, {safe_liquid: 2}, false)
+	_check(blocked_sale.is_empty() and Stockpile.get_at_tile(src, safe_liquid) == 5,
+		"blocked liquid market sales leave stock on the source tile")
+	Catalog.add_tile_infrastructure(src, "pipes")
+	Catalog.add_tile_infrastructure(dst, "pipes")
+	var safe_pipe_route := TransportService.route(src, dst, safe_liquid)
+	var safe_pipe_legs: Array = safe_pipe_route.get("legs", [])
+	var safe_pipe_mode := "" if safe_pipe_legs.is_empty() else str((safe_pipe_legs[0] as Dictionary).get("mode", ""))
+	_check(TransportService.route_is_reachable(safe_pipe_route)
+			and not safe_pipe_legs.is_empty()
+			and safe_pipe_mode == "pipes",
+		"safe liquid routes through ordinary pipework")
+	var hazard_plain_route := TransportService.route(src, dst, hazard_liquid)
+	_check(not TransportService.route_is_reachable(hazard_plain_route),
+		"hazard liquid refuses ordinary pipework")
+	Catalog.add_tile_infrastructure(src, "reinf_pipes")
+	Catalog.add_tile_infrastructure(dst, "reinf_pipes")
+	var hazard_reinf_route := TransportService.route(src, dst, hazard_liquid)
+	var hazard_reinf_legs: Array = hazard_reinf_route.get("legs", [])
+	var hazard_reinf_mode := "" if hazard_reinf_legs.is_empty() else str((hazard_reinf_legs[0] as Dictionary).get("mode", ""))
+	_check(TransportService.route_is_reachable(hazard_reinf_route)
+			and not hazard_reinf_legs.is_empty()
+			and hazard_reinf_mode == "reinf_pipes",
+		"hazard liquid routes through reinforced pipework")
+	Catalog.remove_tile_infrastructure(src, "pipes")
+	Catalog.remove_tile_infrastructure(dst, "pipes")
+	Catalog.remove_tile_infrastructure(src, "reinf_pipes")
+	Catalog.remove_tile_infrastructure(dst, "reinf_pipes")
+	Stockpile.clear_all()
+	MatchState.pending_transport_shipments.clear()
 
 func _test_transport_boundaries() -> void:
 	var offenders: Array[String] = []
@@ -6395,8 +6676,13 @@ func _test_advisor_missions() -> void:
 		"mission: HR advisor mission V unlocks Stock Options")
 
 	# Reward labels are exposed for the UI plaques (5 of them).
-	_check((MatchState.advisor_mission_reward_labels("vera") as Array).size() == 5,
+	var reward_labels: Array = MatchState.advisor_mission_reward_labels("vera")
+	_check(reward_labels.size() == 5,
 		"mission: 5 reward labels exposed for the detail plaques")
+	_check("Applies" in str(reward_labels[0])
+			and "Permanent" in str(reward_labels[1])
+			and "Free research" in str(reward_labels[2]),
+		"mission: reward labels describe the actual mission reward")
 
 	Modifiers.reset()
 	MatchState.permanent_advisor_ids = saved_perm
@@ -6407,6 +6693,84 @@ func _test_advisor_missions() -> void:
 	MatchState.advisor_mission_policies = saved_pol
 	MatchState.unlocked_titles = saved_unlocked
 	MatchState.reconcile_advisor_modifiers()
+
+func _test_advisor_mission_update_signals() -> void:
+	var saved_perm := MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_rec := MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_loyal := MatchState.advisor_loyalty.duplicate(true)
+	var saved_done := MatchState.advisor_missions_completed.duplicate(true)
+	var saved_streak := MatchState._advisor_mission5_streak.duplicate(true)
+	var loyalty_events: Array = []
+	var mission_events: Array = []
+	var on_loyalty := func(advisor_id: String, loyalty: float) -> void:
+		loyalty_events.append({"id": advisor_id, "loyalty": loyalty})
+	var on_mission := func(advisor_id: String) -> void:
+		mission_events.append(advisor_id)
+	MatchState.advisor_loyalty_changed.connect(on_loyalty)
+	MatchState.advisor_mission_state_changed.connect(on_mission)
+
+	Modifiers.reset()
+	MatchState.permanent_advisor_ids = ["vera"]
+	MatchState.recruited_advisor_ids = ["vera"]
+	MatchState.advisor_loyalty = {"vera": 0.0}
+	MatchState.advisor_missions_completed = {}
+	MatchState._advisor_mission5_streak = {}
+
+	MatchState.cheat_set_loyalty("vera", 2.0)
+	_check(MatchState.advisor_missions_done("vera") == 1
+		and not loyalty_events.is_empty()
+		and str(loyalty_events[0].get("id", "")) == "vera"
+		and mission_events.has("vera"),
+		"mission: loyalty changes advance missions and emit detail refresh signals")
+
+	if MatchState.advisor_loyalty_changed.is_connected(on_loyalty):
+		MatchState.advisor_loyalty_changed.disconnect(on_loyalty)
+	if MatchState.advisor_mission_state_changed.is_connected(on_mission):
+		MatchState.advisor_mission_state_changed.disconnect(on_mission)
+	Modifiers.reset()
+	MatchState.permanent_advisor_ids = saved_perm
+	MatchState.recruited_advisor_ids = saved_rec
+	MatchState.advisor_loyalty = saved_loyal
+	MatchState.advisor_missions_completed = saved_done
+	MatchState._advisor_mission5_streak = saved_streak
+	MatchState.reconcile_advisor_modifiers()
+
+func _test_people_panel_mission_ui() -> void:
+	var pp: Node = load("res://scripts/people_panel.gd").new()
+	var quests := [
+		{"roman": "I", "title": "Onboard", "state": "completed", "color": Color("#CDA349"), "reward": "First reward", "req_text": "at loyalty 2"},
+		{"roman": "II", "title": "Prove", "state": "next", "color": Color("#536C92"), "reward": "Second reward", "req_text": "at loyalty 5"},
+		{"roman": "III", "title": "Expand", "state": "locked", "color": Color("#4F6B58"), "reward": "Third reward", "req_text": "at loyalty 7"},
+		{"roman": "IV", "title": "Master", "state": "locked", "color": Color("#765742"), "reward": "Fourth reward", "req_text": "at loyalty 9"},
+		{"roman": "V", "title": "Legacy", "state": "locked", "color": Color("#6B6077"), "reward": "Legacy reward", "req_text": "loyalty 9+ for 20 turns (3/20)"},
+	]
+	var plaque: Control = pp.call("_mission_plaque", quests[1]) as Control
+	_check(_tree_has_label_text(plaque, "II")
+		and not _tree_has_label_text(plaque, "Prove")
+		and not _tree_has_label_text(plaque, "Second reward")
+		and not _tree_has_label_text(plaque, "at loyalty"),
+		"PeoplePanel missions: plaques show only the roman numeral")
+
+	var rewards: Control = pp.call("_mission_rewards_row", quests) as Control
+	_check(_tree_has_label_text(rewards, "Reward") and _tree_has_label_text(rewards, "Legacy reward"),
+		"PeoplePanel missions: rewards render in the separate row")
+	var rewards_margin: MarginContainer = rewards.find_child("MissionRewardsMargin", true, false) as MarginContainer
+	var rewards_row: HBoxContainer = rewards.find_child("MissionRewardsRow", true, false) as HBoxContainer
+	var first_reward: Control = rewards.find_child("MissionReward_I", true, false) as Control
+	_check(rewards is ScrollContainer
+			and rewards_margin != null
+			and rewards_row != null
+			and first_reward != null
+			and rewards_margin.get_theme_constant("margin_left") >= 10
+			and rewards_margin.get_theme_constant("margin_right") >= 10
+			and rewards_row.get_theme_constant("separation") >= 20
+			and first_reward.custom_minimum_size.x <= 164.0,
+		"PeoplePanel missions: reward cards keep max width, edge padding, and 20px gaps")
+
+	var bar: Control = pp.call("_loyalty_bar", 5.0, quests) as Control
+	_check(_tree_has_label_text(bar, "V: loyalty 9+ for 20 turns (3/20)")
+		and _tree_has_label_text(bar, "9+ 20t"),
+		"PeoplePanel missions: loyalty milestones live on the bar")
 
 func _test_advisor_seats_save_roundtrip() -> void:
 	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
@@ -6683,6 +7047,7 @@ func _test_scripts_parse() -> void:
 		"res://scripts/infra_grid.gd",
 		"res://scripts/tile_info_panel_v2.gd",
 		"res://scripts/building_detail_panel.gd",
+		"res://scripts/building_connection_visuals.gd",
 		"res://scripts/world_map.gd",
 		"res://scripts/map_overlay.gd",
 		"res://scripts/build_mode_hex_overlay.gd",
@@ -6741,8 +7106,10 @@ func _test_widgets_instantiate() -> void:
 	var saved_advisors := MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_recruited := MatchState.recruited_advisor_ids.duplicate(true)
 	var saved_fired := MatchState.fired_advisor_cooldowns.duplicate(true)
+	var saved_seats := MatchState.advisor_seats.duplicate(true)
 	MatchState.fired_advisor_cooldowns.clear()
 	MatchState.permanent_advisor_ids.clear()
+	MatchState.advisor_seats.clear()
 	var _all_ids: Array = []
 	for _a in MatchState.advisor_pool():
 		_all_ids.append(str(_a.get("id", "")))
@@ -6816,7 +7183,15 @@ func _test_widgets_instantiate() -> void:
 	_check(card.mouse_filter == Control.MOUSE_FILTER_STOP and portrait != null
 		and portrait.mouse_filter == Control.MOUSE_FILTER_IGNORE,
 		"PeoplePanel advisor card click surface includes the portrait")
+	_check(card.find_child("AssignedAdvisorRole", true, false) == null,
+		"PeoplePanel advisor card leaves role blank until the advisor is assigned")
 	card.free()
+	MatchState.assign_advisor_to_seat("cfo", str((permanent[0] as Dictionary).get("id", "")))
+	var assigned_card: Control = pp.call("_advisor_card", permanent[0], true, false) as Control
+	_check(_tree_has_label_text(assigned_card, "CFO")
+			and assigned_card.find_child("AssignedAdvisorRole", true, false) != null,
+		"PeoplePanel advisor card shows the assigned seat once assigned")
+	assigned_card.free()
 	if not permanent.is_empty():
 		pp.call("_open_advisor_detail", permanent[0])
 	var detail: Node = pp.get("_advisor_detail_panel")
@@ -6831,6 +7206,8 @@ func _test_widgets_instantiate() -> void:
 	MatchState.permanent_advisor_ids = saved_advisors
 	MatchState.recruited_advisor_ids = saved_recruited
 	MatchState.fired_advisor_cooldowns = saved_fired
+	MatchState.advisor_seats = saved_seats
+	MatchState.reconcile_advisor_modifiers()
 	MatchState.advisors_changed.emit()
 
 func _tree_has_label_text(node: Node, needle: String) -> bool:

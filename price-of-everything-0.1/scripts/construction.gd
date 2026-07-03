@@ -343,7 +343,9 @@ func materials_eta(project: Dictionary) -> int:
 # Advance every under-construction project by one turn; promote those that reach zero.
 # Called during PROCESS, after transport arrivals and BEFORE the production cascade, so a
 # building that completes this turn is active in time to produce this turn (spec turn order).
-func tick_turn() -> void:
+# Returns the instance_ids completed this turn so Production can annotate failures without
+# changing the turn order.
+func tick_turn() -> Array:
 	var completed: Array = []
 	for instance_id in construction_projects.keys():
 		var project: Dictionary = construction_projects[instance_id]
@@ -354,6 +356,7 @@ func tick_turn() -> void:
 			completed.append(instance_id)
 	for instance_id in completed:
 		_promote(instance_id)
+	return completed
 
 
 func _promote(instance_id: String) -> void:

@@ -5,6 +5,7 @@ extends CanvasLayer
 ## Commands:
 ##   cash <int>                       add that much cash (negative allowed)
 ##   sellmode <stockpile|market|building>  set the global production sell mode
+##   logs                             toggle verbose production / CostSolver logs
 ##   swap tvp                         toggle between the classic and alternate Tile View Panel
 ##   swap bottom menu                 toggle between the current and alternate bottom-menu icons
 ##   swap song                       advance to the next music track
@@ -120,6 +121,8 @@ func _run_command(text: String) -> String:
 				_:
 					return "usage: sellmode <stockpile|market|building>"
 			return "sell mode → %s" % _sell_mode_name()
+		"logs":
+			return _toggle_debug_logs()
 		"swap":
 			if parts.size() >= 3 and parts[1].to_lower() == "bottom" and parts[2].to_lower() == "menu":
 				MatchState.toggle_use_alt_bottom_menu()
@@ -177,6 +180,8 @@ func _run_command(text: String) -> String:
 				return "roadworks: could not queue %s (no map or empty network?)" % parts[2]
 			return "usage: roads route <tile_a> <tile_b> | roads connect <tile>"
 		"toggle":
+			if parts.size() >= 2 and parts[1].to_lower() == "logs":
+				return _toggle_debug_logs()
 			if parts.size() >= 2 and parts[1].to_lower() in ["roads", "roadsv2"]:
 				# Phase-5 cutover: roads-v2 is the only system. This just shows/hides
 				# the road VISUALS — the network/logic runs regardless.
@@ -195,7 +200,7 @@ func _run_command(text: String) -> String:
 					layer.visible = not layer.visible
 					now_visible = layer.visible
 				return "heightmap → %s" % ("on" if now_visible else "off (plain map + rivers)")
-			return "usage: toggle heightmap | roads | roadocc"
+			return "usage: toggle logs | heightmap | roads | roadocc"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")
@@ -216,7 +221,7 @@ func _run_command(text: String) -> String:
 			MatchState.cheat_set_loyalty(aid, float(parts[2]))
 			return "%s loyalty now %.1f" % [aid, MatchState.advisor_loyalty_value(aid)]
 		"help":
-			return "commands:  cash <int>   |   unlock <title>   |   sellmode <stockpile|market|building>   |   swap bottom menu   |   swap song   |   survey limit|all   |   p_survey limit|all   |   toggle heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
@@ -258,6 +263,10 @@ func _roads_route(tile_a: String, tile_b: String) -> String:
 
 func _bottom_menu_name() -> String:
 	return "alternate" if MatchState.use_alt_bottom_menu else "current"
+
+func _toggle_debug_logs() -> String:
+	var enabled: bool = MatchState.toggle_debug_turn_logs()
+	return "verbose turn logs → %s" % ("on" if enabled else "off")
 
 func _sell_mode_name() -> String:
 	match MatchState.sell_mode:

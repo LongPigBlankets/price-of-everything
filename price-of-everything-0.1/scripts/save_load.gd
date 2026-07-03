@@ -10,8 +10,9 @@ extends Node
 const SAVE_DIR := "user://saves"
 # Version history (migrations in _migrate): 1 = initial format; 2 = adds `ruleset`
 # (match.ruleset + meta.ruleset) so future rule variants can key off saves;
-# 3 = adds special order state.
-const SAVE_VERSION := 4
+# 3 = adds special order state; 4 = advisor seats/acquisition; 5 = structured
+# infrastructure snapshot with per-tile levels.
+const SAVE_VERSION := 5
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -84,6 +85,7 @@ func import_snapshot(snap: Dictionary) -> void:
 	# state (e.g. Construction clearing its projects) flush before new data lands.
 	MatchState.reset()
 	Stockpile.clear_all()
+	_restore_infrastructure_for_snapshot(snap)
 	TurnManager.import_state(snap.get("turn", {}))
 	MatchState.import_state(snap.get("match", {}))
 	Stockpile.import_state(snap.get("stockpile", {}))
@@ -192,13 +194,6 @@ func apply_pending() -> bool:
 		return false
 	var snap: Dictionary = _pending_snapshot
 	_pending_snapshot = {}
-	# Infrastructure first: drop runtime-built roads/cables left over from a previous
-	# match (the Catalog autoload survives scene changes), re-sync what the fresh
-	# scene placed on its tiles (CSV baseline + demo levels), re-apply the saved
-	# set, THEN import the match — so shipment route re-quoting sees the loaded network.
-	Catalog.reset_runtime_infrastructure()
-	_apply_infrastructure(_collect_infrastructure())
-	_apply_infrastructure(snap.get("infrastructure", {}))
 	if bool(snap.get("start", false)):
 		_merge_npc_buildings(snap)
 	import_snapshot(snap)
@@ -371,19 +366,36 @@ func _read_json_file(path: String) -> Dictionary:
 func _hex_map() -> Node:
 	return get_tree().get_first_node_in_group("hex_map")
 
+func _restore_infrastructure_for_snapshot(snap: Dictionary) -> void:
+	var has_infrastructure := snap.has("infrastructure")
+	if bool(snap.get("start", false)) or not has_infrastructure:
+		Catalog.reset_runtime_infrastructure()
+		_apply_infrastructure(_collect_infrastructure())
+		if has_infrastructure:
+			_apply_infrastructure(snap.get("infrastructure", {}))
+		return
+	Catalog.clear_tile_infrastructure()
+	_clear_scene_infrastructure()
+	_apply_infrastructure(snap.get("infrastructure", {}))
+
 func _collect_infrastructure() -> Dictionary:
-	# {tile_id: ["roads", ...]} for every tile with infrastructure (CSV-seeded or
-	# runtime-built; applying is idempotent so saving both is harmless).
+	# {tile_id: {present: ["roads", ...], levels: {"roads": 2}}} for every tile
+	# with infrastructure (CSV-seeded or runtime-built). The tile-facing keys are
+	# preserved as stored by HexMap/UI; Catalog normalises them when routes sync.
 	var out: Dictionary = {}
 	var hex_map := _hex_map()
 	if hex_map == null:
 		return out
 	for coord in hex_map.tiles:
 		var tile: Dictionary = hex_map.tiles[coord]
-		var infra: Array = tile.get("infrastructure_present", [])
+		var infra: Array = _string_array(tile.get("infrastructure_present", []))
+		var levels: Dictionary = _level_dict(tile.get("infrastructure_levels", {}))
+		for infra_key in levels.keys():
+			if not infra.has(str(infra_key)):
+				infra.append(str(infra_key))
 		var tile_id := str(tile.get("id", ""))
-		if tile_id != "" and not infra.is_empty():
-			out[tile_id] = infra.duplicate()
+		if tile_id != "" and (not infra.is_empty() or not levels.is_empty()):
+			out[tile_id] = {"present": infra, "levels": levels}
 	return out
 
 func _apply_infrastructure(infra_by_tile: Dictionary) -> void:
@@ -392,18 +404,84 @@ func _apply_infrastructure(infra_by_tile: Dictionary) -> void:
 	var hex_map := _hex_map()
 	if hex_map == null:
 		return
-	for tile_id in infra_by_tile:
+	var normalized := _normalize_infrastructure_snapshot(infra_by_tile)
+	for tile_id in normalized:
 		var coord: Vector2i = hex_map.id_to_coord(str(tile_id))
 		if not hex_map.tiles.has(coord):
 			continue
 		var tile: Dictionary = hex_map.tiles[coord]
-		var infra: Array = tile.get("infrastructure_present", [])
-		for infra_type in infra_by_tile[tile_id]:
+		var infra: Array = _string_array(tile.get("infrastructure_present", []))
+		var levels: Dictionary = _level_dict(tile.get("infrastructure_levels", {}))
+		var entry: Dictionary = normalized[tile_id]
+		for infra_type in entry.get("present", []):
 			if not infra.has(str(infra_type)):
 				infra.append(str(infra_type))
 			Catalog.add_tile_infrastructure(str(tile_id), str(infra_type))
+		var entry_levels: Dictionary = entry.get("levels", {})
+		for infra_type in entry_levels:
+			var key := str(infra_type)
+			if not infra.has(key):
+				infra.append(key)
+				Catalog.add_tile_infrastructure(str(tile_id), key)
+			levels[key] = clampi(int(entry_levels[infra_type]), 1, BuildingLevels.MAX_LEVEL)
 		tile["infrastructure_present"] = infra
+		tile["infrastructure_levels"] = levels
 		hex_map.tiles[coord] = tile
+
+func _clear_scene_infrastructure() -> void:
+	var hex_map := _hex_map()
+	if hex_map == null:
+		return
+	for coord in hex_map.tiles:
+		var tile: Dictionary = hex_map.tiles[coord]
+		tile["infrastructure_present"] = []
+		tile["infrastructure_levels"] = {}
+		hex_map.tiles[coord] = tile
+
+func _normalize_infrastructure_snapshot(raw: Variant) -> Dictionary:
+	var out: Dictionary = {}
+	if not (raw is Dictionary):
+		return out
+	var raw_dict: Dictionary = raw as Dictionary
+	for tile_key in raw_dict:
+		var tile_id := str(tile_key)
+		var entry: Variant = raw_dict[tile_key]
+		var present: Array = []
+		var levels: Dictionary = {}
+		if entry is Array:
+			present = _string_array(entry)
+		elif entry is Dictionary:
+			var d: Dictionary = entry as Dictionary
+			present = _string_array(d.get("present", d.get("infrastructure_present", [])))
+			levels = _level_dict(d.get("levels", d.get("infrastructure_levels", {})))
+		for infra_key in levels.keys():
+			if not present.has(str(infra_key)):
+				present.append(str(infra_key))
+		if tile_id != "" and (not present.is_empty() or not levels.is_empty()):
+			out[tile_id] = {"present": present, "levels": levels}
+	return out
+
+func _string_array(value: Variant) -> Array:
+	var out: Array = []
+	if not (value is Array):
+		return out
+	for item in (value as Array):
+		var key := str(item).strip_edges()
+		if key != "" and not out.has(key):
+			out.append(key)
+	return out
+
+func _level_dict(value: Variant) -> Dictionary:
+	var out: Dictionary = {}
+	if not (value is Dictionary):
+		return out
+	var dict: Dictionary = value as Dictionary
+	for key in dict:
+		var infra_key := str(key).strip_edges()
+		if infra_key == "":
+			continue
+		out[infra_key] = clampi(int(dict[key]), 1, BuildingLevels.MAX_LEVEL)
+	return out
 
 func list_slots() -> Array:
 	# [{slot, turn, money, timestamp}] sorted by name; meta read without full parse cost
@@ -454,6 +532,8 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				snap = _migrate_v2_to_v3(snap)
 			3:
 				snap = _migrate_v3_to_v4(snap)
+			4:
+				snap = _migrate_v4_to_v5(snap)
 			_:
 				break
 		version += 1
@@ -496,6 +576,11 @@ func _migrate_v3_to_v4(snap: Dictionary) -> Dictionary:
 	if not m.has("recruited_advisor_ids"):
 		m["recruited_advisor_ids"] = []
 	snap["match"] = m
+	return snap
+
+func _migrate_v4_to_v5(snap: Dictionary) -> Dictionary:
+	if snap.has("infrastructure"):
+		snap["infrastructure"] = _normalize_infrastructure_snapshot(snap.get("infrastructure", {}))
 	return snap
 
 # --- JSON helpers ---

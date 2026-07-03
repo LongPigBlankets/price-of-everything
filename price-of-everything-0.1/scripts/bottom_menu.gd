@@ -356,9 +356,9 @@ func _on_market_pressed() -> void:
 
 func _on_buildings_market_for_tile(tile_id: String) -> void:
 	_hide_all_panels()
-	_set_panel_visible(market_panel, true)
 	if market_panel.has_method("open_buildings_for_tile"):
 		market_panel.open_buildings_for_tile(tile_id)
+	_set_panel_visible(market_panel, true)
 
 func _on_buildings_pressed() -> void:
 	_show_building_ledger()

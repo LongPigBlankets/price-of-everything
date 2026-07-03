@@ -268,6 +268,13 @@ func reset_runtime_infrastructure() -> void:
 	_load_tile_names()
 	_route_cache.clear()
 
+func clear_tile_infrastructure() -> void:
+	# Full saves carry the complete tile-infra set, so restore that route graph from
+	# the save rather than from the current CSV/runtime scene. Tile names/land masks
+	# remain loaded reference data.
+	_tile_infra.clear()
+	_route_cache.clear()
+
 func remove_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 	var norm := _normalise_infra_id(infra_type.strip_edges().to_lower())
 	var list: Array = _tile_infra.get(tile_id, [])
@@ -574,6 +581,9 @@ func get_transport_class(good_id: String) -> String:
 	var g: Dictionary = _goods_by_id.get(good_id, {})
 	var weight_class: String = g.get("transport_class", "")
 	return EconomyConfig.DEFAULT_TRANSPORT_WEIGHT_CLASS if weight_class == "" else weight_class
+
+func requires_pipeline(good_id: String) -> bool:
+	return good_id != "" and FLUID_CLASSES.has(get_transport_class(good_id))
 
 func is_raw(good_id: String) -> bool:
 	var g: Dictionary = _goods_by_id.get(good_id, {})

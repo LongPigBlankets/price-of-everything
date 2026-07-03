@@ -59,7 +59,11 @@ func _on_tile_surveyed(tile_id: String, deposit_goods: Array) -> void:
 	# Resolve icons; lay them out side by side, centred on the tile.
 	var icons: Array = []
 	for d in deposit_goods:
-		var tex: Texture2D = GoodIcons.texture_for(str(d.get("good_id", "")), str(d.get("internal_name", "")))
+		var tex: Texture2D = GoodIcons.texture_for_size(
+			str(d.get("good_id", "")),
+			str(d.get("internal_name", "")),
+			icon_size
+		)
 		if tex != null:
 			icons.append({"tex": tex, "infinite": bool(d.get("infinite", false))})
 	var n := icons.size()
