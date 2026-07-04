@@ -95,6 +95,7 @@ func _ready() -> void:
 	_test_recurring_sell_multitile()
 	_test_auto_sell_goods()
 	_test_price_impact()
+	_test_price_impact_thresholds()
 	_test_buy_price()
 	_test_limestone_concrete()
 	_test_construction()
@@ -5696,6 +5697,72 @@ func _test_price_impact() -> void:
 	MatchState.set_auto_sell_impact("tile_4_5", MatchState.IMPACT_ANY)
 	_check(MatchState.auto_sell_unit_cap("tile_4_5") > 1000000, "tile ANY tolerance is effectively uncapped")
 	_check(MatchState.get_auto_sell_impact("tile_unset_99") == MatchState.IMPACT_ANY, "default tolerance is ANY")
+
+# The LIVE threshold model: net per-turn volume over 2x/3x/4x of a good's base
+# building output accrues 0.1/0.2/0.4 %/turn of glut (sell) or deficit (buy)
+# impact, capped at ±50%, recovering 0.1%/turn under the threshold. The impact
+# multiplies the decayed base price; `prices` stays the impact-free series.
+func _test_price_impact_thresholds() -> void:
+	# Rate banding off the base output (strictly-above thresholds).
+	_check(EconomyConfig.price_impact_rate(64, 32) == 0.0, "2x exactly is under the bite")
+	_check(EconomyConfig.price_impact_rate(65, 32) == 0.1, "just over 2x accrues 0.1%")
+	_check(EconomyConfig.price_impact_rate(96, 32) == 0.1, "3x exactly stays in the 2x band")
+	_check(EconomyConfig.price_impact_rate(97, 32) == 0.2, "over 3x accrues 0.2%")
+	_check(EconomyConfig.price_impact_rate(129, 32) == 0.4, "over 4x accrues 0.4%")
+	_check(EconomyConfig.price_impact_rate(-129, 32) == 0.4, "buying volume uses the same bands")
+	_check(EconomyConfig.price_impact_rate(1000, 0) == 0.0, "no base output -> no impact")
+
+	# Accrual, stacking on decay, recovery, and the cap — driven through the
+	# real per-turn pipeline on a scratch good id.
+	var gid := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	var coal_base: int = Catalog.base_output_for_good(gid)
+	_check(coal_base > 0, "coal has a base building output")
+	MarketState.impact_pct.erase(gid)
+	# tick_turn decays every good's base price — restore the table afterwards so
+	# later market tests see untouched prices.
+	var prices_snapshot: Dictionary = MarketState.prices.duplicate(true)
+	var base_before: float = MarketState.get_base_price_now(gid)
+	MarketState.record_market_sale_volume(gid, coal_base * 4 + 1)      # >4x sell
+	MarketState.tick_turn()
+	_check(absf(MarketState.get_impact_pct(gid) + 0.4) < 0.0001, "one >4x sell turn accrues -0.4%")
+	var decay: float = float(Catalog.get_good(gid).get("decay_rate", 0.0))
+	var expected: float = base_before * (1.0 - decay) * (1.0 - 0.004)
+	_check(absf(MarketState.get_price(gid) - expected) < 0.0001,
+		"impact multiplies the decayed base price (stacks on normal drift)")
+	MarketState.record_market_sale_volume(gid, coal_base * 3 + 1)      # >3x sell
+	MarketState.tick_turn()
+	_check(absf(MarketState.get_impact_pct(gid) + 0.6) < 0.0001, "a >3x turn adds -0.2%")
+	MarketState.tick_turn()                                            # quiet turn
+	_check(absf(MarketState.get_impact_pct(gid) + 0.5) < 0.0001, "quiet turn recovers +0.1%")
+	MarketState.record_market_buy_volume(gid, coal_base * 2 + 1)       # >2x BUY
+	MarketState.tick_turn()
+	_check(absf(MarketState.get_impact_pct(gid) + 0.4) < 0.0001, "net buying pushes impact up (+0.1%)")
+	# Netting: equal buys and sells cancel to a quiet (recovery) turn.
+	MarketState.record_market_sale_volume(gid, coal_base * 4)
+	MarketState.record_market_buy_volume(gid, coal_base * 4)
+	MarketState.tick_turn()
+	_check(absf(MarketState.get_impact_pct(gid) + 0.3) < 0.0001, "offsetting buy+sell nets to recovery")
+	# Cap at ±50%.
+	MarketState.impact_pct[gid] = -49.9
+	MarketState.record_market_sale_volume(gid, coal_base * 5)
+	MarketState.tick_turn()
+	_check(absf(MarketState.get_impact_pct(gid) + 50.0) < 0.0001, "impact caps at -50%")
+	# Save round-trip keeps the accumulated impact.
+	var snap: Dictionary = MarketState.export_state()
+	MarketState.impact_pct.clear()
+	MarketState.import_state(snap)
+	_check(absf(MarketState.get_impact_pct(gid) + 50.0) < 0.0001, "impact survives save/load")
+	# Recovery clears it fully given time (and erases the entry near zero).
+	MarketState.impact_pct[gid] = -0.05
+	MarketState.tick_turn()
+	_check(MarketState.get_impact_pct(gid) == 0.0, "recovery settles exactly to zero")
+	# UI helper: thresholds surface as 2x|3x|4x of the base output.
+	var th: PackedInt32Array = MarketState.impact_thresholds(gid)
+	_check(th.size() == 3 and th[0] == coal_base * 2 and th[2] == coal_base * 4,
+		"impact_thresholds returns 2x/3x/4x of base output")
+	MarketState.impact_pct.erase(gid)
+	MarketState.prices = prices_snapshot
+	MarketState.prices_updated.emit()
 
 func _test_owner_costs() -> void:
 	_check(MatchState.is_player_owned({"owner": "player_1"}), "player_1 building is player-owned")

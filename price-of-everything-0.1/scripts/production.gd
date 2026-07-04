@@ -861,6 +861,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		var sold_qty: int = Stockpile.consume(coord, good_key, qty)
 		if sold_qty <= 0:
 			continue
+		MarketState.record_market_sale_volume(good_key, sold_qty)
 		var sold_revenue: float = float(sold_qty) * price
 		if not (in_port_range and bool(covered_goods.get(good_key, false))):
 			transport_cost += TransportService.transport_cost_for_route(good_key, sold_qty, route)

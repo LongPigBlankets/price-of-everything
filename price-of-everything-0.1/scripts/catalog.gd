@@ -761,8 +761,23 @@ func recipe_output_qty(recipe: Dictionary, good_id: String) -> int:
 	if str(recipe.get("output_good_id", "")) == good_id:
 		return int(recipe.get("output_qty", 0))
 	return 0
-	
-	
+
+var _base_output_cache: Dictionary = {}  # good_id -> int (recipes are fixed at load)
+
+## One "base building's" per-turn output of a good: the largest output qty among
+## active recipes producing it (L1, unmodified). The price-impact thresholds are
+## multiples of this (see EconomyConfig.price_impact_rate). 0 = no active
+## producer, which means the good takes no price impact.
+func base_output_for_good(good_id: String) -> int:
+	if _base_output_cache.has(good_id):
+		return int(_base_output_cache[good_id])
+	var best := 0
+	for r in recipes_producing(good_id):
+		best = maxi(best, recipe_output_qty(r, good_id))
+	_base_output_cache[good_id] = best
+	return best
+
+
 # =========================================================================
 # BUILDINGS
 # =========================================================================

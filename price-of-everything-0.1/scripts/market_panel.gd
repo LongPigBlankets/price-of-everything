@@ -106,6 +106,7 @@ func _rebuild_header() -> void:
 	header_static.add_child(_header_label("Sale +10t", 80.0, SALE_TINT))
 	header_static.add_child(_header_label("Buy now", 70.0, BUY_TINT))
 	header_static.add_child(_header_label("Buy +10t", 80.0, BUY_TINT))
+	header_static.add_child(_header_label("Impact\nthresholds", 110.0))
 	header_static.add_child(_header_label("Sold", 60.0))
 	header_static.add_child(_header_label("Bought", 64.0))
 	header_static.add_child(_header_label("Cost/unit", 100.0))

@@ -43,11 +43,45 @@ const STUB_HIGH_SKILLED_PER_BUILDING: int = 50
 const BANKRUPTCY_FLOOR: float = -10.0
 
 # --- Market price impact (glut model) ---
-# Selling more than GLUT_UNITS of a single good in one turn starts to move its
-# price. Every further GLUT_UNITS over the threshold adds another 1% of downward
-# impact, capped at MAX_PRICE_IMPACT_PCT. (Placeholder model — tunable.)
+# LEGACY volume-cap knobs: only the auto-sell "impact tolerance" cap
+# (units_cap_for_impact) still reads these. The LIVE price-impact model is the
+# per-good threshold system below (price_impact_rate + MarketState.impact_pct).
 const GLUT_UNITS: int = 100
 const MAX_PRICE_IMPACT_PCT: int = 10
+
+# --- Price impact (glut / deficit) — the live model ---
+# A player's NET market volume in one good in one turn moves that good's price
+# once it crosses multiples of the good's BASE OUTPUT (the largest per-turn
+# output among active recipes producing it, L1 unmodified —
+# Catalog.base_output_for_good). E.g. copper wiring, base output 32:
+#   net volume > 2x (65+)  → 0.1 %/turn
+#   net volume > 3x (97+)  → 0.2 %/turn
+#   net volume > 4x (129+) → 0.4 %/turn
+# Net selling pushes the price DOWN (glut), net buying UP (deficit). The
+# accumulated impact is capped at ±PRICE_IMPACT_CAP_PCT and, while volume stays
+# at or under the 2x threshold, recovers toward 0 by PRICE_IMPACT_RECOVERY_PCT
+# per turn. The impact multiplies the good's decayed base price, so it stacks
+# on top of the normal per-turn drift. Thresholds are STATIC for now; later
+# they scale with expected output every 10 turns. Goods with no active
+# producing recipe have no base output and take no impact.
+const PRICE_IMPACT_RATE_2X: float = 0.1   # % per turn accrued in the >2x band
+const PRICE_IMPACT_RATE_3X: float = 0.2   # >3x band
+const PRICE_IMPACT_RATE_4X: float = 0.4   # >4x band
+const PRICE_IMPACT_CAP_PCT: float = 50.0
+const PRICE_IMPACT_RECOVERY_PCT: float = 0.1
+
+## %/turn accrual for one turn's net player market volume in one good.
+func price_impact_rate(net_volume: int, base_output: int) -> float:
+	if base_output <= 0:
+		return 0.0
+	var v := float(absi(net_volume))
+	if v > 4.0 * float(base_output):
+		return PRICE_IMPACT_RATE_4X
+	if v > 3.0 * float(base_output):
+		return PRICE_IMPACT_RATE_3X
+	if v > 2.0 * float(base_output):
+		return PRICE_IMPACT_RATE_2X
+	return 0.0
 
 # Market spread: buying a unit costs the sale price plus this markup.
 const MARKET_BUY_MARKUP: float = 0.05

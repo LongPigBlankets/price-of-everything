@@ -2680,6 +2680,9 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 		if total > money:
 			return {}
 	add_money(-total)
+	# Deficit feed: heavy player buying in one good pushes its price up (the
+	# mirror of the sell-side glut) — see MarketState._tick_impact.
+	MarketState.record_market_buy_volume(good_id, qty)
 	if log_oneoff:
 		var started := _ledger_turn()
 		_log_transaction({

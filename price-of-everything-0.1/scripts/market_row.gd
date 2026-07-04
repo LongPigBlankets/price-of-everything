@@ -15,6 +15,7 @@ const NAME_FS_MAX := 30
 const NAME_FS_MIN := 14
 const COL_PRICE := 70.0
 const COL_EST := 80.0
+const COL_IMPACT := 110.0
 const COL_SOLD := 60.0
 const COL_BOUGHT := 64.0
 const COL_COST := 100.0
@@ -38,6 +39,7 @@ var _price_label: Label = null
 var _est_label: Label = null
 var _buy_price_label: Label = null
 var _buy_est_label: Label = null
+var _impact_label: Label = null
 var _sold_label: Label = null
 var _bought_label: Label = null
 var _cost_label: Label = null
@@ -75,6 +77,7 @@ func setup(good_data: Dictionary) -> void:
 	_est_label = _make_col(COL_EST)
 	_buy_price_label = _make_col(COL_PRICE)
 	_buy_est_label = _make_col(COL_EST)
+	_impact_label = _make_col(COL_IMPACT)
 	_sold_label = _make_col(COL_SOLD)
 	_bought_label = _make_col(COL_BOUGHT)
 	_cost_label = _make_col(COL_COST)
@@ -84,7 +87,8 @@ func setup(good_data: Dictionary) -> void:
 	_tint_col(_est_label, SALE_TINT)
 	_tint_col(_buy_price_label, BUY_TINT)
 	_tint_col(_buy_est_label, BUY_TINT)
-	for l in [_price_label, _est_label, _buy_price_label, _buy_est_label, _sold_label, _bought_label, _cost_label, _profit_label]:
+	_setup_impact_column()
+	for l in [_price_label, _est_label, _buy_price_label, _buy_est_label, _impact_label, _sold_label, _bought_label, _cost_label, _profit_label]:
 		main.add_child(l)
 
 	_expand_section = VBoxContainer.new()
@@ -149,6 +153,22 @@ func _fit_name_font_size(btn: Button) -> int:
 	return fs
 
 
+## Static per-good column: the 2x|3x|4x per-turn volume thresholds past which
+## the player's net market volume starts moving this good's price. "—" for
+## goods no active recipe produces (they take no impact).
+func _setup_impact_column() -> void:
+	var thresholds: PackedInt32Array = MarketState.impact_thresholds(good_id)
+	if thresholds.is_empty():
+		_impact_label.text = "—"
+		_impact_label.tooltip_text = "No production recipe — this good's price takes no volume impact."
+		return
+	_impact_label.text = "%d|%d|%d" % [thresholds[0], thresholds[1], thresholds[2]]
+	_impact_label.tooltip_text = (
+		"Net selling (or buying) more than these units in one turn moves the price:\n" +
+		">%d: 0.1%%/turn · >%d: 0.2%%/turn · >%d: 0.4%%/turn (capped at ±50%%).\n" % [thresholds[0], thresholds[1], thresholds[2]] +
+		"Below the first threshold the impact recovers by 0.1%%/turn."
+	)
+
 func _make_col(width: float) -> Label:
 	var l := Label.new()
 	l.custom_minimum_size = Vector2(width, ICON_SIZE)
@@ -203,10 +223,19 @@ func _on_row_visibility_changed() -> void:
 func _refresh() -> void:
 	if _price_label == null:
 		return
-	_price_label.text = "£%.2f" % MarketState.get_price(good_id)
+	# When glut/deficit impact is active, show the actual price with the
+	# impact-free base price of the turn in brackets underneath.
+	var impact: float = MarketState.get_impact_pct(good_id)
+	var has_impact := absf(impact) > 0.0005
+	var impact_mult := 1.0 + impact / 100.0
+	var sale_now: float = MarketState.get_price(good_id)
+	_price_label.text = ("£%.2f\n(£%.2f)" % [sale_now, MarketState.get_base_price_now(good_id)]) if has_impact \
+		else "£%.2f" % sale_now
 	_est_label.text = "£%.2f" % MarketState.get_estimated_price_in_n_turns(good_id, FORECAST)
 	var markup: float = 1.0 + EconomyConfig.MARKET_BUY_MARKUP
-	_buy_price_label.text = "£%.2f" % MarketState.get_buy_price(good_id)
+	var buy_now: float = MarketState.get_buy_price(good_id)
+	_buy_price_label.text = ("£%.2f\n(£%.2f)" % [buy_now, buy_now / impact_mult]) if has_impact \
+		else "£%.2f" % buy_now
 	_buy_est_label.text = "£%.2f" % (MarketState.get_estimated_price_in_n_turns(good_id, FORECAST) * markup)
 
 	var summary: Dictionary = Production.last_turn_summary

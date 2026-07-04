@@ -2,7 +2,18 @@ extends Node
 
 const FORECAST_TURNS := 10
 
-var prices: Dictionary = {}  # good_id -> current price (float)
+var prices: Dictionary = {}  # good_id -> impact-FREE base price (float), drifts by decay_rate
+
+# --- Price impact (glut / deficit) ---
+# Accumulated impact in percent per good: negative = glut discount (net player
+# selling over threshold), positive = deficit premium (net buying). Capped at
+# ±EconomyConfig.PRICE_IMPACT_CAP_PCT; recovers by PRICE_IMPACT_RECOVERY_PCT per
+# turn while volume stays under the 2x threshold. `prices` stays the impact-free
+# base series; get_price() applies the impact multiplicatively, so the impact
+# stacks on top of the normal per-turn drift. Model spec in economy_config.gd.
+var impact_pct: Dictionary = {}   # good_id -> accumulated %
+var _turn_sold: Dictionary = {}   # good_id -> units the player sold to market this turn
+var _turn_bought: Dictionary = {} # good_id -> units the player bought this turn
 
 signal prices_updated()
 
@@ -20,8 +31,39 @@ func _init_prices_from_catalog() -> void:
 	prices_updated.emit()
 
 func get_price(good_id: String) -> float:
-	# The price you RECEIVE when selling a unit to the market.
+	# The price you RECEIVE when selling a unit to the market: the impact-free
+	# base price times the accumulated glut/deficit impact.
+	return get_base_price_now(good_id) * (1.0 + get_impact_pct(good_id) / 100.0)
+
+## This turn's impact-FREE price (what the price would be with zero glut/deficit
+## impact) — the bracketed number in the market tab.
+func get_base_price_now(good_id: String) -> float:
 	return prices.get(good_id, 1.0)
+
+func get_impact_pct(good_id: String) -> float:
+	return float(impact_pct.get(good_id, 0.0))
+
+## Player market volume this turn — every sell path (execute_sale, the PROCESS
+## stockpile auto-sell) and every buy path (queue_buy) reports here; tick_turn
+## folds the net into impact_pct. Special-order deliveries are contract-priced,
+## not market volume, so they do NOT report.
+func record_market_sale_volume(good_id: String, qty: int) -> void:
+	if good_id == "" or qty <= 0:
+		return
+	_turn_sold[good_id] = int(_turn_sold.get(good_id, 0)) + qty
+
+func record_market_buy_volume(good_id: String, qty: int) -> void:
+	if good_id == "" or qty <= 0:
+		return
+	_turn_bought[good_id] = int(_turn_bought.get(good_id, 0)) + qty
+
+## The 2x/3x/4x per-turn volume thresholds for a good, or [] when the good has
+## no active producing recipe (no base output → no impact).
+func impact_thresholds(good_id: String) -> PackedInt32Array:
+	var base_out := Catalog.base_output_for_good(good_id)
+	if base_out <= 0:
+		return PackedInt32Array()
+	return PackedInt32Array([base_out * 2, base_out * 3, base_out * 4])
 
 func get_buy_price(good_id: String) -> float:
 	# The price you PAY to buy a unit from the market — the sale price plus the
@@ -40,7 +82,9 @@ func get_sale_price(good_id: String, ctx: Dictionary = {}) -> float:
 	return minf(lifted, get_buy_price(good_id))
 
 func get_estimated_price_in_n_turns(good_id: String, n: int) -> float:
-	var current: float = prices.get(good_id, 1.0)
+	# Forecast off the EFFECTIVE price (impact held constant): base decay is the
+	# only component we can extrapolate.
+	var current: float = get_price(good_id)
 	var good: Dictionary = Catalog.get_good(good_id)
 	var decay: float = good.get("decay_rate", 0.0)
 	return current * pow(1.0 - decay, n)
@@ -48,7 +92,10 @@ func get_estimated_price_in_n_turns(good_id: String, n: int) -> float:
 # --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
 
 func export_state() -> Dictionary:
-	return {"prices": prices.duplicate(true)}
+	# Per-turn volume trackers are transient (consumed by tick_turn the same
+	# frame the turn resolves; saving is DECIDE-only), so only the accumulated
+	# impact needs to persist.
+	return {"prices": prices.duplicate(true), "impact_pct": impact_pct.duplicate(true)}
 
 func import_state(d: Dictionary) -> void:
 	# Re-seed from the catalog first so goods added since the save keep their base
@@ -59,13 +106,36 @@ func import_state(d: Dictionary) -> void:
 	var saved: Dictionary = d.get("prices", {})
 	for good_id in saved:
 		prices[good_id] = float(saved[good_id])
+	impact_pct = (d.get("impact_pct", {}) as Dictionary).duplicate(true)
+	_turn_sold.clear()
+	_turn_bought.clear()
 
 func tick_turn() -> void:
 	for good_id in prices.keys():
 		var good: Dictionary = Catalog.get_good(good_id)
 		var decay: float = good.get("decay_rate", 0.0)
 		prices[good_id] = prices[good_id] * (1.0 - decay)
+		_tick_impact(str(good_id))
+	_turn_sold.clear()
+	_turn_bought.clear()
 	prices_updated.emit()
+
+## Fold this turn's net player volume into the good's accumulated impact.
+## Over-threshold volume accrues at the band's rate (glut down / deficit up);
+## at-or-under-threshold turns recover toward 0. Cap ±PRICE_IMPACT_CAP_PCT.
+func _tick_impact(good_id: String) -> void:
+	var net: int = int(_turn_sold.get(good_id, 0)) - int(_turn_bought.get(good_id, 0))
+	var rate: float = EconomyConfig.price_impact_rate(net, Catalog.base_output_for_good(good_id))
+	var a := get_impact_pct(good_id)
+	if rate > 0.0:
+		a += -rate if net > 0 else rate
+	else:
+		a = move_toward(a, 0.0, EconomyConfig.PRICE_IMPACT_RECOVERY_PCT)
+	a = clampf(a, -EconomyConfig.PRICE_IMPACT_CAP_PCT, EconomyConfig.PRICE_IMPACT_CAP_PCT)
+	if absf(a) < 0.0001:
+		impact_pct.erase(good_id)
+	else:
+		impact_pct[good_id] = a
 
 # --- Unified sell primitive -------------------------------------------------
 # All four sell paths (the player-driven queue_sell, the bulk sell_all_to_market,
@@ -142,6 +212,12 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 		total_revenue += revenue
 	if items.is_empty():
 		return {}
+
+	# Glut feed: ordinary market sales move the price (special-order deliveries
+	# are contract-priced and don't).
+	if special_order_id == "":
+		for it in items:
+			record_market_sale_volume(str(it.good_id), int(it.qty))
 
 	# Victory feed: one goods movement per sale routed through execute_sale —
 	# production-output dispatch + the player/UI queue_sell & bulk sell_all_to_market.
