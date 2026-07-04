@@ -33,6 +33,11 @@ const LINE_W := 1.5
 # Animation rendering.
 const BAND := 0.46 * HEX_HW     # gaussian half-width of the lit band (~half a hex) — gradient falloff
 const SEG_LEN := 18.0           # px between sampled points along each edge (smaller = smoother gradient)
+# Anim 1 ripples out of at most this many building origins. The brightness field
+# is sampled ~18k times per frame, and every sample scans all origins — with an
+# uncapped late-game empire that's millions of distance checks per frame for a
+# background. Past the cap, an even subsample of buildings reads identically.
+const A1_MAX_ORIGINS := 24
 
 # Animation 1 — building-origin pulses (expanding gaussian rings).
 const A1_SPEED := 0.5           # rings move outward at A1_SPEED * A1_WAVELEN px/sec
@@ -62,6 +67,13 @@ var _next_count: int = 1                            # anim 4: 1,2,1,2,... explos
 var _noise: FastNoiseLite                           # anim 3
 var _rng := RandomNumberGenerator.new()             # deterministic (seeded), NOT global randf
 var _gw: Node = null                                # empire_graph_world, queried for building positions
+
+# Static geometry cache. The hex lattice is fixed for a given control size —
+# only the per-point COLOURS animate — yet the old _draw rebuilt every vertex,
+# inward offset, and edge subdivision for ~600 loops each frame. The subdivided
+# loops are now built once (and on resize); per frame only colours are computed.
+var _loops: Array[PackedVector2Array] = []
+var _geom_size := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -113,6 +125,13 @@ func _process(delta: float) -> void:
 	_t += delta
 	if empire_view_animation == 1 and _gw != null and _gw.has_method("building_screen_points"):
 		var pts: PackedVector2Array = _gw.call("building_screen_points")
+		if pts.size() > A1_MAX_ORIGINS:
+			# Even subsample so the ripple field stays spread across the empire.
+			var sampled := PackedVector2Array()
+			var step := float(pts.size()) / float(A1_MAX_ORIGINS)
+			for i in range(A1_MAX_ORIGINS):
+				sampled.append(pts[int(float(i) * step)])
+			pts = sampled
 		if pts.size() > 0:
 			_origins = pts
 	if empire_view_animation == 4:
@@ -125,7 +144,23 @@ func _draw() -> void:
 	if rsz.x <= 1.0 or rsz.y <= 1.0:
 		rsz = Vector2(1920, 1080)
 	draw_rect(Rect2(Vector2.ZERO, rsz), NAVY, true)
+	if _geom_size != rsz:
+		_rebuild_geometry(rsz)
+	# Per frame: colours only. Each loop's points are pre-subdivided; the lit
+	# region is a band along the line because brightness is sampled PER POINT.
+	for pts in _loops:
+		var cols := PackedColorArray()
+		cols.resize(pts.size())
+		for i in range(pts.size()):
+			cols[i] = GREY.lerp(GOLD, _brightness(pts[i], rsz))
+		draw_polyline_colors(pts, cols, LINE_W, true)
 
+
+## Build the static lattice: every cell's outer + nested loops, each subdivided
+## to ~SEG_LEN sample points, stored closed (last point == first).
+func _rebuild_geometry(rsz: Vector2) -> void:
+	_geom_size = rsz
+	_loops.clear()
 	var hw := HEX_HW
 	var ht := HEX_HW * 2.0 / SQRT3      # regular hexagon: all six sides equal
 	var sh := 0.5 * ht                  # side vertices at +/- 0.5*ht (regular)
@@ -138,30 +173,23 @@ func _draw() -> void:
 			var center := Vector2(float(c) * col_sp + float(posmod(rr, 2)) * hw, float(rr) * row_sp)
 			# Cycle the nested-hex lean along the row: lean-left, straight-up, lean-right, ...
 			var variant := posmod(c, 3)
-			_draw_cell(center, hw, ht, sh, variant, rsz)
+			_collect_cell(center, hw, ht, sh, variant)
 
 
-## Draw one closed hex loop, sampling brightness PER POINT: each edge is subdivided to ~SEG_LEN and every
-## sample coloured grey->gold by `_brightness` there, so the lit region is a band along the line, not a
-## whole-loop fill. `corners` is the closed loop (last point == first).
-func _draw_glow_loop(corners: PackedVector2Array, rsz: Vector2) -> void:
+## Subdivide one closed hex loop to ~SEG_LEN spacing and store it for per-frame colouring.
+func _collect_loop(corners: PackedVector2Array) -> void:
 	if corners.size() < 2:
 		return
 	var pts := PackedVector2Array()
-	var cols := PackedColorArray()
 	var n := corners.size() - 1
 	for i in range(n):
 		var a: Vector2 = corners[i]
 		var b: Vector2 = corners[i + 1]
 		var segs := maxi(1, int(a.distance_to(b) / SEG_LEN))
 		for s in range(segs):
-			var p := a.lerp(b, float(s) / float(segs))
-			pts.append(p)
-			cols.append(GREY.lerp(GOLD, _brightness(p, rsz)))
-	var last: Vector2 = corners[n]
-	pts.append(last)
-	cols.append(GREY.lerp(GOLD, _brightness(last, rsz)))
-	draw_polyline_colors(pts, cols, LINE_W, true)
+			pts.append(a.lerp(b, float(s) / float(segs)))
+	pts.append(corners[n])
+	_loops.append(pts)
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -254,19 +282,19 @@ func _random_cell_center() -> Vector2:
 
 
 # ---------------------------------------------------------------------------------------------------
-# Geometry (static) — see the anchored-inward-offset note on _draw_cell.
+# Geometry (static) — see the anchored-inward-offset note on _collect_cell.
 # ---------------------------------------------------------------------------------------------------
 
-## Draw a cell: the regular outer hex, then INNER hexes built as an ANCHORED INWARD OFFSET — the two
+## Collect a cell: the regular outer hex, then INNER hexes built as an ANCHORED INWARD OFFSET — the two
 ## anchored edges stay put (gap 0, overlapping the outer sides), every other edge is pushed inward by a
 ## constant k*gap (equal spacing), staying parallel to the outer edge (angles preserved). Three variants
 ## cycle along the row (edges numbered clockwise from the top peak): 0 lean-left anchors sides 4 & 5,
 ## 1 straight-up anchors sides 3 & 4, 2 lean-right anchors sides 2 & 3. Every loop is drawn glow-banded.
-func _draw_cell(center: Vector2, hw: float, ht: float, sh: float, variant: int, rsz: Vector2) -> void:
+func _collect_cell(center: Vector2, hw: float, ht: float, sh: float, variant: int) -> void:
 	var verts := _hex_verts(center, hw, ht, sh)
 	var outer := PackedVector2Array(verts)
 	outer.append(verts[0])
-	_draw_glow_loop(outer, rsz)
+	_collect_loop(outer)
 
 	# The two consecutive edges (edge i runs verts[i] -> verts[(i+1)%6]) the inner hexes stay flush to.
 	var ea0 := 2                                  # straight-up: anchor = bottom peak, sides 3 & 4
@@ -304,7 +332,7 @@ func _draw_cell(center: Vector2, hw: float, ht: float, sh: float, variant: int, 
 			var b1: float = base[i1] + (0.0 if (i1 == ea0 or i1 == ea1) else float(k) * gap)
 			pts.append(_intersect_lines(nrm[i0], b0, nrm[i1], b1))
 		pts.append(pts[0])
-		_draw_glow_loop(pts, rsz)
+		_collect_loop(pts)
 
 
 ## Intersection of the two lines n0.p = b0 and n1.p = b1. Adjacent hex edges are never parallel, so the

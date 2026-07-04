@@ -80,6 +80,14 @@ const CHART_PANEL_SIZE := Vector2(620, 600)
 var _chart_history: Array = []   # ring buffer of the last CHART_MAX_TURNS turn breakdowns
 var _chart_mode: String = "revenue"
 
+# Refreshes are coalesced (notification_bell pattern): money_changed alone fires
+# once per building payment during PROCESS, and each used to rebuild the whole
+# loans list — hundreds of teardown/instantiate cycles per turn, even hidden.
+# Signals now set a dirty flag and defer ONE full refresh; while hidden the
+# panel stays dirty and refreshes once on show.
+var _refresh_queued := false
+var _dirty := false
+
 func _insert_cost_row(section: VBoxContainer, after_node_name: String, label_text: String) -> Label:
 	var row := HBoxContainer.new()
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -133,25 +141,25 @@ func _ready() -> void:
 	take_loan_button.pressed.connect(_on_take_loan_pressed)
 	
 	MatchState.money_changed.connect(_on_money_changed)
-	LoanState.loans_updated.connect(_refresh)
+	LoanState.loans_updated.connect(_on_loans_updated)
 	LoanState.payment_made.connect(_on_payment_made)
-	
+
 	_refresh()
 	Production.turn_processed.connect(_on_turn_processed)
 	labour_low_button.pressed.connect(_on_labour_pressed.bind(0.8))
 	labour_normal_button.pressed.connect(_on_labour_pressed.bind(1.00))
 	labour_high_button.pressed.connect(_on_labour_pressed.bind(1.2))
 	_refresh_labour_buttons()
-	
+
 	MatchState.labour_multiplier_changed.connect(_on_labour_multiplier_changed)
-	MatchState.workforce_policies_changed.connect(_refresh_projection)
-	MarketState.prices_updated.connect(_refresh_projection)
-	LoanState.loans_updated.connect(_refresh_projection)
+	MatchState.workforce_policies_changed.connect(_queue_refresh)
+	MarketState.prices_updated.connect(_queue_refresh)
 	_refresh_balance_sheet()
 	_refresh_projection()
-	
+
 	MatchState.building_added.connect(_on_buildings_changed)
 	MatchState.building_removed.connect(_on_buildings_changed)
+	visibility_changed.connect(_on_panel_visibility_changed)
 
 	_chart_revenue_button.pressed.connect(_on_chart_mode_pressed.bind("revenue"))
 	_chart_costs_button.pressed.connect(_on_chart_mode_pressed.bind("costs"))
@@ -159,16 +167,41 @@ func _ready() -> void:
 	_apply_tab_size(_tab_container.current_tab)
 
 func _on_turn_processed(_summary: Dictionary) -> void:
-	_refresh_balance_sheet()
-	_refresh_projection()
+	# History capture must run even while hidden — it's data, not display.
 	_record_chart_history(_summary)
-	_refresh_chart()
+	_queue_refresh()
 
 func _on_money_changed(_amount: float) -> void:
-	_refresh()
+	_queue_refresh()
 
 func _on_payment_made(_total: float) -> void:
+	_queue_refresh()
+
+func _on_loans_updated() -> void:
+	_queue_refresh()
+
+func _queue_refresh(_arg: Variant = null) -> void:
+	_dirty = true
+	if _refresh_queued:
+		return
+	_refresh_queued = true
+	call_deferred("_apply_refresh")
+
+func _apply_refresh() -> void:
+	_refresh_queued = false
+	if not _dirty:
+		return
+	if not visible:
+		return  # stays dirty; _on_panel_visibility_changed refreshes on show
+	_dirty = false
 	_refresh()
+	_refresh_balance_sheet()
+	_refresh_projection()
+	_refresh_chart()
+
+func _on_panel_visibility_changed() -> void:
+	if visible and _dirty:
+		_queue_refresh()
 
 func _refresh() -> void:
 	# Stats

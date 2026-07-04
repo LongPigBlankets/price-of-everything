@@ -38,10 +38,29 @@ var _view_zoom: float = 1.0
 var _view_offset: Vector2 = Vector2.ZERO
 var _dragging: bool = false
 
+# Dynamic zoom-out cap: panels are drawn at CONSTANT pixel size, so past a
+# certain zoom-out the world positions compress under the fixed-size cards and
+# the separation pass just shoves identical cards around the viewport
+# ("jostling"). _compute_zoom_floor caps zoom-out at the point where typical
+# card spacing meets the card footprint, so that regime is unreachable.
+var _zoom_floor: float = _ZOOM_MIN
+# Reposition-on-change: panel positions depend only on (zoom, offset, size,
+# graph) — the old _process re-ran the O(n²) separation every frame regardless.
+var _last_zoom := -1.0
+var _last_offset := Vector2.INF
+var _last_size := Vector2.ZERO
+
 
 func _ready() -> void:
 	set_process(true)
-	resized.connect(func(): queue_redraw())
+	resized.connect(func() -> void: _mark_view_dirty())
+	# A drag interrupted by the view closing never receives its mouse-up; without
+	# this reset the next open pans on bare mouse motion.
+	visibility_changed.connect(func() -> void: _dragging = false)
+
+
+func _mark_view_dirty() -> void:
+	_last_zoom = -1.0
 
 
 func set_graph(nodes: Array, edges: Array, ports: Array, sell_edges: Array = []) -> void:
@@ -57,9 +76,38 @@ func set_graph(nodes: Array, edges: Array, ports: Array, sell_edges: Array = [])
 			_box_by_iid[n["iid"]] = n
 	_assign_lanes()
 	_rebuild_panels()
+	_zoom_floor = _compute_zoom_floor()
 	_reset_view()
+	_mark_view_dirty()
 	_reposition_panels()
 	queue_redraw()
+
+
+## The zoom below which the fixed-pixel-size cards can no longer sit at their
+## world positions: the median nearest-neighbour spacing (screen px at that
+## zoom) drops under the widest card + gap, and every card ends up at its
+## separation-forced position instead. Zoom-out is capped there.
+func _compute_zoom_floor() -> float:
+	if _nodes.size() < 2:
+		return _ZOOM_MIN
+	var dists: Array[float] = []
+	for i in range(_nodes.size()):
+		var best := INF
+		var pi: Vector2 = _nodes[i]["pos"] as Vector2
+		for j in range(_nodes.size()):
+			if i != j:
+				best = minf(best, pi.distance_to(_nodes[j]["pos"] as Vector2))
+		if best < INF:
+			dists.append(best)
+	dists.sort()
+	var median: float = dists[dists.size() / 2]
+	if median <= 1.0:
+		return _ZOOM_MIN
+	var need := 0.0
+	for n in _nodes:
+		need = maxf(need, (n["half"] as Vector2).x * 2.0)
+	need += _MIN_GAP
+	return clampf(need / median, _ZOOM_MIN, 1.0)
 
 
 ## Build one real Control panel per building node (ports stay as drawn hexagons). Rebuilt on open.
@@ -71,6 +119,9 @@ func _rebuild_panels() -> void:
 		var panel: Control = NodePanelScript.new()
 		add_child(panel)
 		panel.call("setup", n)
+		# Panel sizes settle a frame after creation; repositioning is gated on
+		# view change, so a late size change must re-mark the view dirty.
+		panel.resized.connect(_mark_view_dirty)
 		_panels.append({"ctrl": panel, "iid": str(n["iid"]), "pos": n["pos"]})
 
 
@@ -200,7 +251,7 @@ func _reset_view() -> void:
 		return
 	var pad := 140.0
 	var fit := minf((view.x - pad) / bb.size.x, (view.y - pad) / bb.size.y)
-	_view_zoom = clampf(fit, _ZOOM_MIN, 1.0)
+	_view_zoom = clampf(fit, _zoom_floor, 1.0)
 	_view_offset = view * 0.5 - bb.get_center() * _view_zoom
 
 
@@ -249,7 +300,7 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _zoom_at(screen_pos: Vector2, factor: float) -> void:
-	var new_zoom := clampf(_view_zoom * factor, _ZOOM_MIN, _ZOOM_MAX)
+	var new_zoom := clampf(_view_zoom * factor, _zoom_floor, _ZOOM_MAX)
 	if is_equal_approx(new_zoom, _view_zoom):
 		return
 	var f := new_zoom / _view_zoom
@@ -272,6 +323,13 @@ func _process(delta: float) -> void:
 		dir.y += 1.0
 	if dir != Vector2.ZERO:
 		_view_offset += dir.normalized() * _PAN_SPEED * delta
+	# Positions depend only on (zoom, offset, size, graph): skip the O(n²)
+	# separation pass and the full-graph redraw when none of them changed.
+	if _view_zoom == _last_zoom and _view_offset == _last_offset and size == _last_size:
+		return
+	_last_zoom = _view_zoom
+	_last_offset = _view_offset
+	_last_size = size
 	_reposition_panels()
 	queue_redraw()                                    # lines follow the separated panel positions
 

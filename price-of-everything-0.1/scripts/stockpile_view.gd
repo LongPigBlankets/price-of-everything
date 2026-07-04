@@ -96,7 +96,19 @@ func refresh() -> void:
 
 	_rebuild_visual()
 
+# Coalesced (notification_bell pattern): stockpile mutations come in bursts
+# during PROCESS; each used to rebuild one Control per capacity unit. One
+# deferred rebuild per frame instead.
+var _refresh_queued := false
+
 func _on_stockpile_changed() -> void:
+	if _refresh_queued or not is_visible_in_tree() or _tile_id == "":
+		return
+	_refresh_queued = true
+	call_deferred("_apply_queued_refresh")
+
+func _apply_queued_refresh() -> void:
+	_refresh_queued = false
 	if is_visible_in_tree() and _tile_id != "":
 		refresh()
 

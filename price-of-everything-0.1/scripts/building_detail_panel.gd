@@ -1081,7 +1081,19 @@ func _on_output_stockpile_destination_changed(instance_id: String, _tile_id: Str
 		return
 	_refresh_route_controls(_current_building, _current_recipe)
 
+# Coalesced (notification_bell pattern): stockpile_changed fires per add/consume
+# during PROCESS — with the panel open, a busy turn used to trigger hundreds of
+# complete _rebuild_fields passes. One deferred rebuild per frame instead.
+var _logistics_refresh_queued := false
+
 func _on_logistics_changed() -> void:
+	if not visible or _current_building.is_empty() or _logistics_refresh_queued:
+		return
+	_logistics_refresh_queued = true
+	call_deferred("_apply_logistics_refresh")
+
+func _apply_logistics_refresh() -> void:
+	_logistics_refresh_queued = false
 	if not visible or _current_building.is_empty():
 		return
 	_rebuild_fields(_current_building)

@@ -47,6 +47,14 @@ var _tab_roots: Dictionary = {}
 var _tab_built: Dictionary = {}
 var _pending_buildings_tile_filter := ""
 
+# Coalesced refresh (notification_bell pattern): prices_updated, orders_changed
+# and turn_processed each triggered their own full refresh — ~130 row updates
+# plus a complete special-orders rebuild, several times per turn, even while
+# the panel was hidden. Signals now set a dirty flag and defer ONE refresh; a
+# hidden panel stays dirty and repaints once on show.
+var _refresh_queued := false
+var _dirty := false
+
 
 ## Build only the tab shell on first open. The old eager path built every Market tab
 ## synchronously; the selected tab now pays only for its own controls.
@@ -60,14 +68,32 @@ func _ensure_built() -> void:
 func _ready() -> void:
 	title_label.text = "Market"
 	close_button.pressed.connect(hide)
-	MarketState.prices_updated.connect(_on_prices_updated)
+	MarketState.prices_updated.connect(_queue_refresh)
 	MatchState.show_construct_for_good.connect(_on_show_construct_for_good)
 	MatchState.transfer_for_good_requested.connect(func(_g: String) -> void: hide())
 	MatchState.purchase_for_good_requested.connect(func(_g: String) -> void: hide())
-	SpecialOrderState.orders_changed.connect(_refresh_special_orders)
+	SpecialOrderState.orders_changed.connect(_queue_refresh)
 	visibility_changed.connect(_on_panel_visibility_changed)
-	Production.turn_processed.connect(_refresh_ledgers)
-	Production.turn_processed.connect(func(_s: Dictionary = {}) -> void: _update_filter_availability())
+	Production.turn_processed.connect(_queue_refresh)
+
+func _queue_refresh(_a: Variant = null) -> void:
+	_dirty = true
+	if _refresh_queued:
+		return
+	_refresh_queued = true
+	call_deferred("_apply_queued_refresh")
+
+func _apply_queued_refresh() -> void:
+	_refresh_queued = false
+	if not _dirty or not visible:
+		return  # hidden panels stay dirty and repaint once on show
+	_dirty = false
+	for row in rows:
+		if is_instance_valid(row) and row.has_method("_refresh"):
+			row._refresh()
+	_update_filter_availability()
+	_refresh_special_orders()
+	_refresh_ledgers()
 
 func _rebuild_header() -> void:
 	for c in header_static.get_children():
@@ -157,6 +183,8 @@ func _on_panel_visibility_changed() -> void:
 		return
 	_ensure_built()   # first open builds the cheap tab shell
 	_centre_and_resize()
+	if _dirty:
+		_queue_refresh()  # catch up on turns that passed while hidden
 	_ensure_current_tab_built()
 	_refresh_ledgers()
 	_refresh_special_orders()
@@ -826,14 +854,6 @@ func _build_content() -> void:
 		content_vbox.add_child(row)
 		row.setup(good_data)
 		rows.append(row)
-
-func _on_prices_updated() -> void:
-	# Refresh visible prices/cols when decay ticks.
-	for row in rows:
-		if is_instance_valid(row) and row.has_method("_refresh"):
-			row._refresh()
-	_update_filter_availability()
-	_refresh_special_orders()
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:

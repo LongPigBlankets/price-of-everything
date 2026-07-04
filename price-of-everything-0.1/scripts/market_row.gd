@@ -106,10 +106,11 @@ func setup(good_data: Dictionary) -> void:
 		_expand_section.add_child(b)
 	add_child(_expand_section)
 
-	if not CostSolver.costs_updated.is_connected(_refresh):
-		CostSolver.costs_updated.connect(_refresh)
+	if not CostSolver.costs_updated.is_connected(_on_costs_updated):
+		CostSolver.costs_updated.connect(_on_costs_updated)
 	if not Production.turn_processed.is_connected(_on_turn_processed):
 		Production.turn_processed.connect(_on_turn_processed)
+	visibility_changed.connect(_on_row_visibility_changed)
 	_refresh()
 
 # ── Filter helpers (used by the market panel's filter bar) ───────────────────
@@ -176,8 +177,28 @@ func _on_move() -> void:
 func _on_purchase() -> void:
 	MatchState.purchase_for_good_requested.emit(good_id)
 
+# Off-screen rows don't repaint — once built, every row used to refresh twice
+# per turn (costs_updated + turn_processed) whether or not the Market panel was
+# even open. Off-screen rows now just mark themselves stale and catch up when
+# they actually become visible (panel opened / tab switched).
+var _stale := false
+
 func _on_turn_processed(_summary: Dictionary) -> void:
+	_queue_row_refresh()
+
+func _on_costs_updated() -> void:
+	_queue_row_refresh()
+
+func _queue_row_refresh() -> void:
+	if not is_visible_in_tree():
+		_stale = true
+		return
 	_refresh()
+
+func _on_row_visibility_changed() -> void:
+	if _stale and is_visible_in_tree():
+		_stale = false
+		_refresh()
 
 func _refresh() -> void:
 	if _price_label == null:
