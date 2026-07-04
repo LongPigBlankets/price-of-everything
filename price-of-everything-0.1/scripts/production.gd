@@ -76,11 +76,10 @@ func _debug_logs_enabled() -> bool:
 	return bool(MatchState.debug_turn_logs_enabled)
 
 func _ready() -> void:
-	await get_tree().process_frame
-	if not TurnManager.phase_started.is_connected(_on_phase_started):
-		TurnManager.phase_started.connect(_on_phase_started)
+	# _on_phase_started is wired centrally by TurnManager._wire_sim_listeners so
+	# the intra-phase order across sim systems is explicit, not autoload-order.
 	if _debug_logs_enabled():
-		print("[Production] ready and connected to TurnManager")
+		print("[Production] ready (phase hook wired by TurnManager)")
 
 func _on_phase_started(phase: int) -> void:
 	if _debug_logs_enabled():

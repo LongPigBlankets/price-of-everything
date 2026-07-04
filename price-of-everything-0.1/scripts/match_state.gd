@@ -35,6 +35,11 @@ var _next_instance_counter: int = 0
 
 # --- Labour Slider ---
 var labour_multiplier: float = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
+# Accumulated output response (in percent) to the labour effort setting —
+# negative = pressure from reduced effort, positive = overtime momentum.
+# Accrued once per PROCESS by tick_labour_output_pressure(), applied by
+# workforce_output_multiplier().
+var labour_output_pressure_pct: float = 0.0
 const WORKFORCE_POLICY_GENEROUS_PENSIONS := "generous_pensions"
 const WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE := "extended_annual_leave"
 const WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE := "generous_parental_leave"
@@ -439,8 +444,8 @@ func _ready() -> void:
 	call_deferred("_connect_turn_signals")
 
 func _connect_turn_signals() -> void:
-	if TurnManager != null and not TurnManager.phase_started.is_connected(_on_survey_phase_started):
-		TurnManager.phase_started.connect(_on_survey_phase_started)
+	# _on_survey_phase_started is wired centrally by TurnManager._wire_sim_listeners
+	# so the intra-phase order across sim systems is explicit, not autoload-order.
 	if Production != null and not Production.turn_processed.is_connected(_on_turn_processed_advisors):
 		Production.turn_processed.connect(_on_turn_processed_advisors)
 	if not goods_movement_recorded.is_connected(_on_goods_movement_agenda):
@@ -453,6 +458,7 @@ func _on_goods_movement_agenda(_kind: String, _category: String, transport_turns
 
 func _on_survey_phase_started(phase: int) -> void:
 	if phase == TurnManager.Phase.PROCESS:
+		tick_labour_output_pressure()
 		tick_surveys()
 		tick_battery_fills()
 	elif phase == TurnManager.Phase.NARRATIVE:
@@ -524,10 +530,27 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 	buildings[instance_id]["owner"] = owner
 	# Buying bundles the land under the building: grant its footprint as owned land on the tile.
 	if owner == LOCAL_PLAYER:
+		_stamp_purchase_build_value(instance_id)
 		_grant_building_land(instance_id)
 	building_owner_changed.emit(instance_id)
 	# A newly player-owned building may satisfy build-count / ownership unlock conditions.
 	_check_unlock_conditions()
+
+# A building acquired ready-made (NPC market purchase, scripted transfer) gets the
+# same cost basis a player-built copy would carry: the catalog base price as the
+# money leg and the standard construction kit as the material leg. Without the
+# stamp, refund_cost's fallback values it at base_price PLUS a freshly recomputed
+# full kit — more than any build ever cost — which arms a buy-cheap → demolish
+# money pump the day demolition ships. Player-built instances keep the exact
+# stamp Construction wrote at promotion.
+func _stamp_purchase_build_value(instance_id: String) -> void:
+	var inst: Dictionary = buildings.get(instance_id, {})
+	if inst.is_empty() or inst.has("build_cost"):
+		return
+	var building_id := str(inst.get("building_id", ""))
+	var building: Dictionary = Catalog.get_building(building_id)
+	inst["build_cost"] = float(building.get("base_price", 0.0))
+	inst["build_materials"] = Construction.requirements_for(building_id)
 
 # Grant the footprint directly under a building as owned land on its tile (once, capped at the tile
 # max). get_tile_space_used already counts the building, so we add ONLY this building's footprint —
@@ -1925,6 +1948,8 @@ func reset() -> void:
 	pending_battery_fills.clear()
 	workforce_policies.clear()
 	workforce_policy_effects.clear()
+	labour_multiplier = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
+	labour_output_pressure_pct = 0.0
 	permanent_advisor_ids.clear()
 	advisor_seats.clear()
 	max_advisor_slots = MAX_ADVISOR_SLOTS_DEFAULT
@@ -1998,6 +2023,7 @@ func export_state() -> Dictionary:
 		"tile_battery_cells": tile_battery_cells.duplicate(true),
 		"pending_battery_fills": pending_battery_fills.duplicate(true),
 		"labour_multiplier": labour_multiplier,
+		"labour_output_pressure_pct": labour_output_pressure_pct,
 		"workforce_policies": workforce_policies.duplicate(true),
 		"workforce_policy_effects": workforce_policy_effects.duplicate(true),
 		"permanent_advisor_ids": permanent_advisor_ids.duplicate(true),
@@ -2062,6 +2088,7 @@ func import_state(d: Dictionary) -> void:
 	tile_battery_cells = (d.get("tile_battery_cells", {}) as Dictionary).duplicate(true)
 	pending_battery_fills = (d.get("pending_battery_fills", []) as Array).duplicate(true)
 	labour_multiplier = float(d.get("labour_multiplier", EconomyConfig.LABOUR_MULTIPLIER_DEFAULT))
+	labour_output_pressure_pct = float(d.get("labour_output_pressure_pct", 0.0))
 	workforce_policies = (d.get("workforce_policies", {}) as Dictionary).duplicate(true)
 	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
 	recruited_advisor_ids = _sanitize_advisor_ids(d.get("recruited_advisor_ids", STARTING_TRIO))
@@ -3334,6 +3361,23 @@ func set_labour_multiplier(value: float) -> void:
 	labour_multiplier_changed.emit(value)
 	print("[MatchState] Labour multiplier set to: %.2fx" % value)
 
+## Per-PROCESS accrual of the labour setting's output response, exactly as the
+## People panel promises: 0.8× builds output pressure (−2%/turn, floor −30%),
+## 1.2× builds momentum (+1%/turn, cap +10%), 1.0× recovers 1%/turn toward 0.
+## Runs at the start of PROCESS (before the production cascade), so the setting
+## affects output from the first worked turn.
+func tick_labour_output_pressure() -> void:
+	var p := labour_output_pressure_pct
+	if labour_multiplier < 1.0 - 0.001:
+		p += EconomyConfig.LABOUR_OUTPUT_PRESSURE_PER_TURN
+	elif labour_multiplier > 1.0 + 0.001:
+		p += EconomyConfig.LABOUR_OUTPUT_MOMENTUM_PER_TURN
+	else:
+		p = move_toward(p, 0.0, EconomyConfig.LABOUR_OUTPUT_RECOVERY_PER_TURN)
+	labour_output_pressure_pct = clampf(p,
+		EconomyConfig.LABOUR_OUTPUT_PRESSURE_FLOOR,
+		EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP)
+
 # Whether a policy can currently be toggled on. Long Tenure needs any seated HR
 # Director; Stock Options is the unique policy unlocked by an HR advisor's mission V.
 func is_workforce_policy_available(policy_id: String) -> bool:
@@ -3454,7 +3498,8 @@ func _pension_labour_step(active_turns: int) -> float:
 
 func workforce_output_multiplier(turn_number: int = -1) -> float:
 	var turn := int(TurnManager.current_turn) if turn_number < 0 else turn_number
-	var multiplier := 1.0
+	# Labour-effort pressure/momentum accrued by tick_labour_output_pressure().
+	var multiplier := 1.0 + labour_output_pressure_pct / 100.0
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_GENEROUS_PENSIONS):
 		var pensions: Dictionary = workforce_policy_effects.get(WORKFORCE_POLICY_GENEROUS_PENSIONS, {})
 		multiplier *= 1.0 + float(pensions.get("output_pct", 0.0))

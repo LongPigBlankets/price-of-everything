@@ -3452,23 +3452,35 @@ func _test_modifiers_target_match() -> void:
 func _test_modifiers_expiry() -> void:
 	Modifiers.reset()
 	TurnManager.current_turn = 10
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
 	Modifiers.add({"id": "tempo", "domain": "recipe_output",
 		"target": "*", "mult": 2.0, "duration_turns": 5})
-	_check(int(Modifiers._modifiers["tempo"]["expires_turn"]) == 15,
+	# Added in DECIDE of turn 10 → it already applies to turn 10's PROCESS, so a
+	# 5-turn duration covers PROCESS 10..14 and expires at 10 + 5 - 1 = 14.
+	_check(int(Modifiers._modifiers["tempo"]["expires_turn"]) == 14,
 		"duration_turns is converted into an absolute expires_turn")
 	_check(absf(Modifiers.apply("recipe_output", "r_001", 10.0) - 20.0) < 0.001,
 		"modifier active before expiry")
 	# Tick NARRATIVE phases up to and past expiry.
-	TurnManager.current_turn = 14
+	TurnManager.current_turn = 13
 	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
 	await get_tree().process_frame
 	_check(Modifiers.has("tempo"), "still active one turn before expiry")
-	TurnManager.current_turn = 15
+	TurnManager.current_turn = 14
 	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
 	await get_tree().process_frame
 	_check(not Modifiers.has("tempo"), "pruned on the turn it expires")
 	_check(absf(Modifiers.apply("recipe_output", "r_001", 10.0) - 10.0) < 0.001,
 		"expired modifier no longer affects apply")
+	# NARRATIVE-granted (condition unlock): first application is NEXT turn's
+	# PROCESS, so the same 5-turn duration expires one turn later (11..15).
+	TurnManager.current_turn = 10
+	TurnManager.current_phase = TurnManager.Phase.NARRATIVE
+	Modifiers.add({"id": "tempo2", "domain": "recipe_output",
+		"target": "*", "mult": 2.0, "duration_turns": 5})
+	_check(int(Modifiers._modifiers["tempo2"]["expires_turn"]) == 15,
+		"NARRATIVE-granted duration expires one turn later")
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
 	Modifiers.reset()
 
 func _test_modifiers_event_payload() -> void:

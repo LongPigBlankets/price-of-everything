@@ -208,6 +208,16 @@ const LABOUR_MULTIPLIER_MAX: float = 1.2
 # labour cost can never fall below this fraction of base. Prevents free labour.
 const LABOUR_FACTOR_MIN: float = 0.40
 
+# Workforce effort ↔ output response (the People panel labour setting). Reduced
+# effort (0.8×) compounds output pressure each worked turn; overtime (1.2×)
+# builds a smaller momentum bonus; at 1.0× the accumulator recovers toward 0.
+# Percent per PROCESS phase; values match the People panel copy — keep in sync.
+const LABOUR_OUTPUT_PRESSURE_PER_TURN: float = -2.0  # accrual at 0.8×
+const LABOUR_OUTPUT_PRESSURE_FLOOR: float = -30.0
+const LABOUR_OUTPUT_MOMENTUM_PER_TURN: float = 1.0   # accrual at 1.2×
+const LABOUR_OUTPUT_MOMENTUM_CAP: float = 10.0
+const LABOUR_OUTPUT_RECOVERY_PER_TURN: float = 1.0   # toward 0 at 1.0×
+
 func transport_turns_for_tile_distance(tile_distance: int) -> int:
 	if tile_distance <= 0:
 		return 0
