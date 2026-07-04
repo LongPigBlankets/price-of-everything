@@ -38,7 +38,26 @@ func _ready() -> void:
 		tab.call("_set_view", {"mode": "picker", "hire_seat": "vp_logistics", "back": "roster"})
 		await _settle(10)
 		_shot("/tmp/poe_council_picker.png")
+
+	# Labour tab: enable a spread of policies so spectrums show mixed states.
+	MatchState.set_labour_multiplier(1.2)
+	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_STRICT_SAFETY, true)
+	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
+	var tabs: TabContainer = _find_tab_container(people)
+	if tabs != null:
+		tabs.current_tab = 1
+		await _settle(10)
+		_shot("/tmp/poe_labour_tab.png")
 	get_tree().quit(0)
+
+func _find_tab_container(root: Node) -> TabContainer:
+	if root is TabContainer:
+		return root
+	for c in root.get_children():
+		var hit := _find_tab_container(c)
+		if hit != null:
+			return hit
+	return null
 
 const CouncilTabScript := preload("res://scripts/advisor_council_tab.gd")
 

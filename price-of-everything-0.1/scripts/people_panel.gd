@@ -5,6 +5,7 @@ signal close_requested
 const MARKET_FALLBACK_SIZE := Vector2(400, 500)
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const AdvisorCouncilTabScript := preload("res://scripts/advisor_council_tab.gd")
+const LabourPolicyTabScript := preload("res://scripts/labour_policy_tab.gd")
 
 const ADVISOR_CARD_WIDTH := 260.0
 const ADVISOR_CARD_HEIGHT := 460.0
@@ -122,6 +123,17 @@ func _build_panel() -> void:
 	tabs.add_child(labour)
 
 func _build_labour_tab() -> Control:
+	# Spectrum-based policy levers (scripts/labour_policy_tab.gd): safety,
+	# pensions, bonus and profit share as 3-point spectrums, automation as a
+	# toggle. The legacy checkbox-grid machinery below is inert while its node
+	# refs stay null (every refresher guards on them) — scheduled for removal
+	# together with the legacy advisors code.
+	var tab: Control = LabourPolicyTabScript.new()
+	tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tab.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	return tab
+
+func _build_labour_tab_legacy() -> Control:
 	var outer_scroll := ScrollContainer.new()
 	outer_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	outer_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO

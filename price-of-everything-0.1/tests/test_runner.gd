@@ -7198,7 +7198,7 @@ func _test_widgets_instantiate() -> void:
 	add_child(pp)
 	_check(
 		_tree_has_label_text(pp, "Labour") and _tree_has_label_text(pp, "Advisors")
-		and _tree_has_label_text(pp, "0.8x") and _tree_has_label_text(pp, "Workforce Policies"),
+		and _tree_has_label_text(pp, "0.8x") and _tree_has_label_text(pp, "WORKFORCE POLICIES"),
 		"PeoplePanel builds Labour and Advisors tabs")
 	# The Advisors tab is now the ROLE-FIRST council view: one card per SEAT.
 	var council_tab: Node = _find_node_by_script(pp, "res://scripts/advisor_council_tab.gd")
