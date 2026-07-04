@@ -7,8 +7,11 @@ signal money_widget_clicked
 signal victory_widget_clicked
 
 const FLASH_RED := Color(0.9, 0.2, 0.2)
+const SAVE_TOOLTIP := "Save the game (quicksave slot)"
+const SAVE_LOCKED_TOOLTIP := "Please wait until the turn resolves"
 
 var _flashing := false
+var _save_button: Button
 
 func _ready() -> void:
 	money_widget.pressed.connect(_on_money_clicked)
@@ -41,9 +44,20 @@ func _add_save_button() -> void:
 	# SaveLoad returns the reason when it refuses and we toast it either way.
 	var save_button := Button.new()
 	save_button.text = "Save"
-	save_button.tooltip_text = "Save the game (quicksave slot)"
+	save_button.tooltip_text = SAVE_TOOLTIP
 	save_button.pressed.connect(_on_save_pressed)
 	money_widget.get_parent().add_child(save_button)
+	_save_button = save_button
+	# Saving is DECIDE-only; grey the button out during resolution instead of
+	# letting the click fail with a toast.
+	TurnManager.turn_resolution_started.connect(_refresh_save_lock)
+	TurnManager.turn_resolution_completed.connect(_refresh_save_lock)
+	_refresh_save_lock()
+
+func _refresh_save_lock() -> void:
+	var locked: bool = TurnManager.is_resolving
+	_save_button.disabled = locked
+	_save_button.tooltip_text = SAVE_LOCKED_TOOLTIP if locked else SAVE_TOOLTIP
 
 func _on_save_pressed() -> void:
 	var err: String = SaveLoad.save_slot("quicksave")

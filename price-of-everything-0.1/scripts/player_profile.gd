@@ -50,9 +50,14 @@ func _load() -> void:
 
 
 func _save() -> void:
-	var f := FileAccess.open(PATH, FileAccess.WRITE)
+	# Temp-file + rename so a crash mid-write can't corrupt the profile.
+	var tmp_path := PATH + ".tmp"
+	var f := FileAccess.open(tmp_path, FileAccess.WRITE)
 	if f == null:
-		push_warning("[PlayerProfile] could not write %s" % PATH)
+		push_warning("[PlayerProfile] could not write %s" % tmp_path)
 		return
 	f.store_string(JSON.stringify({"games_completed": games_completed}, "\t"))
 	f.close()
+	var err := DirAccess.rename_absolute(tmp_path, PATH)
+	if err != OK:
+		push_warning("[PlayerProfile] could not finalise %s (%s)" % [PATH, error_string(err)])
