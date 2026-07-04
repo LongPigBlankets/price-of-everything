@@ -2341,6 +2341,25 @@ func _build_status_icon_column() -> void:
 	rag_box.add_theme_constant_override("separation", 10)
 	rag_panel.add_child(rag_box)
 
+	# En-route inputs badge: flashes red while input shipments for this
+	# building's recipe are still on the road to its tile. Click = how many
+	# turns away the first one is.
+	_enroute_badge = Button.new()
+	_enroute_badge.text = "!"
+	_enroute_badge.visible = false
+	_enroute_badge.custom_minimum_size = Vector2(22, 22)
+	_enroute_badge.add_theme_font_size_override("font_size", 15)
+	var badge_style := StyleBoxFlat.new()
+	badge_style.bg_color = STATUS_RED
+	badge_style.set_corner_radius_all(11)
+	for st in ["normal", "hover", "pressed", "focus"]:
+		_enroute_badge.add_theme_stylebox_override(st, badge_style)
+	for cn in ["font_color", "font_pressed_color", "font_hover_color", "font_focus_color"]:
+		_enroute_badge.add_theme_color_override(cn, Color.WHITE)
+	_enroute_badge.tooltip_text = "Inputs are on their way — click for arrival time"
+	_enroute_badge.pressed.connect(_on_enroute_badge_pressed)
+	rag_box.add_child(_enroute_badge)
+
 	for config in STATUS_ICON_CONFIG:
 		var key: String = config.get("key", "")
 		var icon_path: String = config.get("path", "")
@@ -2506,6 +2525,68 @@ func _update_status_icons(building: Dictionary, recipe: Dictionary, is_infrastru
 	_update_cost_label(building)
 	_update_mod_label(building, recipe)
 	_update_run_warning(building, recipe, is_infrastructure)
+	_update_enroute_badge(building, recipe)
+
+# ── en-route inputs badge ────────────────────────────────────────────────────
+var _enroute_badge: Button
+var _enroute_flash: Tween
+var _enroute_min_turns: int = 0
+var _enroute_count: int = 0
+
+## Inbound (non-sale) shipments headed to this building's tile carrying one of
+## its recipe's input goods. Market buys and tile moves both carry good_id/qty.
+func _inbound_input_shipments(building: Dictionary, recipe: Dictionary) -> Array:
+	var tile_id := str(building.get("tile_id", ""))
+	if tile_id == "":
+		return []
+	var input_ids: Dictionary = {}
+	for input in recipe.get("inputs", []):
+		input_ids[str(input.get("good_id", ""))] = true
+	if input_ids.is_empty():
+		return []
+	var out: Array = []
+	for s in MatchState.pending_transport_shipments:
+		var sd: Dictionary = s
+		if bool(sd.get("is_sale", false)):
+			continue
+		if str(sd.get("destination_tile", "")) != tile_id:
+			continue
+		if input_ids.has(str(sd.get("good_id", ""))):
+			out.append(sd)
+	return out
+
+func _update_enroute_badge(building: Dictionary, recipe: Dictionary) -> void:
+	if _enroute_badge == null:
+		return
+	var shipments := _inbound_input_shipments(building, recipe)
+	if shipments.is_empty():
+		_enroute_badge.visible = false
+		if _enroute_flash != null and _enroute_flash.is_valid():
+			_enroute_flash.kill()
+			_enroute_badge.modulate.a = 1.0
+		return
+	var min_turns := 999
+	for s in shipments:
+		min_turns = mini(min_turns, int((s as Dictionary).get("turns_remaining", 0)))
+	var was_visible := _enroute_badge.visible
+	_enroute_min_turns = maxi(min_turns, 0)
+	_enroute_count = shipments.size()
+	_enroute_badge.visible = true
+	_enroute_badge.tooltip_text = ("%d input shipment%s en route — click for arrival time"
+		% [_enroute_count, "" if _enroute_count == 1 else "s"])
+	if not was_visible or _enroute_flash == null or not _enroute_flash.is_valid():
+		if _enroute_flash != null and _enroute_flash.is_valid():
+			_enroute_flash.kill()
+		_enroute_flash = create_tween().set_loops()
+		_enroute_flash.tween_property(_enroute_badge, "modulate:a", 0.35, 0.45)
+		_enroute_flash.tween_property(_enroute_badge, "modulate:a", 1.0, 0.45)
+
+func _on_enroute_badge_pressed() -> void:
+	if _enroute_min_turns <= 0:
+		MatchState.request_toast("Inputs arrive when this turn resolves.", "info")
+	else:
+		MatchState.request_toast("First input shipment arrives in %d turn%s (%d en route)."
+			% [_enroute_min_turns, "" if _enroute_min_turns == 1 else "s", _enroute_count], "info")
 
 func _make_run_warning_button_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
