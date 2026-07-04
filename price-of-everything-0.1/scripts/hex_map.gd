@@ -518,7 +518,33 @@ func tile_id_under_mouse() -> String:
 	return "tile_%d_%d" % [coord.x + 1, coord.y + 1]
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventMouseButton and event.pressed):
+	if not (event is InputEventMouseButton):
+		return
+
+	# LEFT actions fire on RELEASE: the camera's drag-to-pan consumes a drag's
+	# release (camera_controller._input runs before every _unhandled_input), so
+	# panning the map never doubles as a tile click. A clean press+release under
+	# the drag threshold still arrives here as an ordinary click.
+	if not event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			var map_pos := _tile_coord_under_mouse()
+
+			if not tiles.has(map_pos):
+				return
+
+			var tile_data: Dictionary = tiles[map_pos]
+
+			if _stockpile_destination_selection_active:
+				stockpile_destination_selected.emit(tile_data)
+				end_stockpile_destination_selection()
+				get_viewport().set_input_as_handled()
+			elif MapMode.current_mode == MapMode.Mode.SURVEYING:
+				survey_tile_clicked.emit(tile_data)
+				get_viewport().set_input_as_handled()
+			elif BuildMode.is_active:
+				BuildMode.attempt_build(tile_data.id)
+			else:
+				tile_selected.emit(tile_data)
 		return
 
 	if event.button_index == MOUSE_BUTTON_RIGHT:
@@ -536,27 +562,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		if handled:
 			get_viewport().set_input_as_handled()
 		return
-
-	# Left-click logic unchanged
-	if event.button_index == MOUSE_BUTTON_LEFT:
-		var map_pos := _tile_coord_under_mouse()
-
-		if not tiles.has(map_pos):
-			return
-
-		var tile_data: Dictionary = tiles[map_pos]
-
-		if _stockpile_destination_selection_active:
-			stockpile_destination_selected.emit(tile_data)
-			end_stockpile_destination_selection()
-			get_viewport().set_input_as_handled()
-		elif MapMode.current_mode == MapMode.Mode.SURVEYING:
-			survey_tile_clicked.emit(tile_data)
-			get_viewport().set_input_as_handled()
-		elif BuildMode.is_active:
-			BuildMode.attempt_build(tile_data.id)
-		else:
-			tile_selected.emit(tile_data)
 
 func _river_data_for_tile(tile_data: Dictionary) -> Dictionary:
 	if not tile_data.get("has_river", false):
