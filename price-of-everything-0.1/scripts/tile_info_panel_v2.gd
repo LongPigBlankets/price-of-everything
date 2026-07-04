@@ -1847,6 +1847,7 @@ func _make_stock_context_menu() -> PanelContainer:
 	spin.min_value = 1
 	spin.max_value = maxi(1, max_qty)
 	spin.step = 1
+	spin.update_on_text_changed = true   # typed numbers apply immediately, no Enter needed
 	_stock_qty = clampi(_stock_qty, 1, maxi(1, max_qty))
 	spin.value = _stock_qty
 	spin.custom_minimum_size = Vector2(110, 0)
@@ -1908,6 +1909,58 @@ func _make_stock_context_menu() -> PanelContainer:
 	recurring.toggled.connect(func(v): _stock_recurring = v)
 	vbox.add_child(recurring)
 
+	# --- Standing orders: whole-tile surplus + per-good "sell all except X" ---
+	vbox.add_child(HSeparator.new())
+	var tile_id_now := _current_tile_id
+	var surplus_toggle := CheckBox.new()
+	surplus_toggle.text = "Sell unused surplus every turn"
+	surplus_toggle.tooltip_text = ("Each turn, sells everything on this tile that its buildings don't claim as inputs.\n"
+		+ "Demand is re-checked every turn, so adding a consuming building automatically reduces the sales.")
+	surplus_toggle.button_pressed = MatchState.is_sell_surplus_enabled(tile_id_now)
+	surplus_toggle.toggled.connect(func(v: bool) -> void:
+		if v:
+			MatchState.enable_sell_surplus(tile_id_now)
+			MatchState.request_toast("Selling this tile's unused surplus every turn", "success")
+		else:
+			MatchState.disable_sell_surplus(tile_id_now))
+	vbox.add_child(surplus_toggle)
+
+	var keep_row := HBoxContainer.new()
+	keep_row.add_theme_constant_override("separation", 6)
+	var keep_toggle := CheckBox.new()
+	var good_display := str(_stock_sel.get("name", selected_good_id))
+	keep_toggle.text = "Sell all %s except" % good_display
+	keep_toggle.tooltip_text = ("A standing order: every turn, sell this good down to the amount on the right\n"
+		+ "(local buildings' input needs are always protected on top).")
+	keep_toggle.button_pressed = MatchState.is_auto_sell_good(tile_id_now, selected_good_id)
+	keep_row.add_child(keep_toggle)
+	var keep_spin := SpinBox.new()
+	keep_spin.min_value = 0
+	keep_spin.max_value = 999999
+	keep_spin.step = 1
+	keep_spin.update_on_text_changed = true
+	keep_spin.value = MatchState.auto_sell_keep_for(tile_id_now, selected_good_id)
+	keep_spin.custom_minimum_size = Vector2(86, 0)
+	keep_spin.editable = keep_toggle.button_pressed
+	keep_spin.value_changed.connect(func(v: float) -> void:
+		MatchState.set_auto_sell_keep(tile_id_now, selected_good_id, int(v)))
+	keep_row.add_child(keep_spin)
+	var keep_suffix := Label.new()
+	keep_suffix.text = "left on tile"
+	keep_suffix.theme_type_variation = &"Caption"
+	keep_suffix.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+	keep_row.add_child(keep_suffix)
+	keep_toggle.toggled.connect(func(v: bool) -> void:
+		keep_spin.editable = v
+		if v:
+			MatchState.enable_auto_sell_good(tile_id_now, selected_good_id)
+			MatchState.set_auto_sell_keep(tile_id_now, selected_good_id, int(keep_spin.value))
+			MatchState.request_toast("Selling all %s above %d every turn" % [good_display, int(keep_spin.value)], "success")
+		else:
+			MatchState.disable_auto_sell_good(tile_id_now, selected_good_id)
+			MatchState.set_auto_sell_keep(tile_id_now, selected_good_id, 0))
+	vbox.add_child(keep_row)
+
 	# --- Confirm ---
 	var confirm := _make_action_button("Confirm")
 	confirm.add_theme_font_size_override("font_size", 14)  # one size up
@@ -1953,6 +2006,17 @@ func _confirm_stock_action() -> void:
 	var qty := clampi(_stock_qty, 1, int(_stock_sel.get("qty", 1)))
 	var goods := {gid: qty}
 	var recurring := _stock_recurring
+	# Fluids move ONLY through pipelines: explain the blocked route instead of
+	# a silent failure (sells) or an optimistic success toast (moves).
+	if Catalog.requires_pipeline(gid):
+		var fluid_route := (TransportService.route_to_nearest_port(_current_tile_id, gid)
+			if (_stock_dest == MARKET_DEST or _stock_dest == SPECIAL_ORDER_DEST)
+			else TransportService.route(_current_tile_id, _stock_dest, gid))
+		if not TransportService.route_is_reachable(fluid_route):
+			MatchState.request_toast(
+				"%s can only move through pipelines or reinforced pipelines — connect this tile with pipes first." % good_name,
+				"warning")
+			return
 	if _stock_dest == MARKET_DEST:
 		MatchState.queue_sell(_current_tile_id, goods)
 		if recurring:
@@ -2591,9 +2655,9 @@ func _make_building_row(b: Dictionary) -> HBoxContainer:
 	if not inst.is_empty() and not MatchState.is_player_owned(inst):
 		var npc_tag := Label.new()
 		npc_tag.text = "NPC"
-		npc_tag.theme_type_variation = &"Caption"
-		npc_tag.add_theme_font_size_override("font_size", 10)
-		npc_tag.add_theme_color_override("font_color", DS.PALETTE.WARN)
+		npc_tag.theme_type_variation = &"BuildingName"
+		npc_tag.add_theme_font_size_override("font_size", 20)
+		npc_tag.add_theme_color_override("font_color", Color.WHITE)
 		npc_tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		npc_tag.tooltip_text = "Operated by %s" % str(inst.get("owner", "an independent operator"))
 		title_row.add_child(npc_tag)

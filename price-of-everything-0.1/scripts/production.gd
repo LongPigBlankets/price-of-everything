@@ -379,7 +379,10 @@ func _process_production() -> void:
 		for good_id in tile_totals:
 			if not MatchState.should_auto_sell_good(str(tile_id), str(good_id)):
 				continue
-			var surplus_qty: int = max(0, int(tile_totals[good_id]) - int(committed.get(good_id, 0)))
+			# Surplus = on-tile stock minus what local buildings claim as inputs,
+			# minus the player's "sell all except X" floor for this good.
+			var surplus_qty: int = max(0, int(tile_totals[good_id]) - int(committed.get(good_id, 0))
+				- MatchState.auto_sell_keep_for(str(tile_id), str(good_id)))
 			surplus_qty = mini(surplus_qty, unit_cap)
 			if surplus_qty > 0:
 				surplus[good_id] = surplus_qty
