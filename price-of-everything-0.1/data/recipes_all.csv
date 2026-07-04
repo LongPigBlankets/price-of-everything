@@ -13,7 +13,7 @@ r_011,Water Pumping,water_pump,,,,,,,,,,,,,20,pure_water,30,,,,,,,,,deposit:wate
 r_012,Chlor-Alkali Process,chem_plant,basic_salt,44,pure_water,44,,,,,,,,,200,chlorine,66,sodium_hydroxide,36,hydrogen,12,,,,,,,,Electrochemistry,,
 r_014,Oil Drilling,oil_well,,,,,,,,,,,,,30,crude_oil,12,,,,,,,,,deposit:crude_oil,,,Oil Extraction,,
 r_015,Bauxite Mining,mine,,,,,,,,,,,,,30,bauxite_ore,15,,,,,,,,,deposit:bauxite_ore,,,Mineral Mining,,
-r_016,Lithium Mining,mine,,,,,,,,,,,,,30,lithium_ore,6,,,,,,,,,,,,Mineral Mining,,
+r_016,Lithium Mining,mine,,,,,,,,,,,,,30,lithium_ore,6,,,,,,,,,deposit:lithium_ore,,,Mineral Mining,,
 r_017,Rare Earth Mining,mine,,,,,,,,,,,,,30,ree_ore,12,,,,,,,,,deposit:ree_ore,,,Mineral Mining,,
 r_018,Sand Excavation,mine,,,,,,,,,,,,,30,sand,45,,,,,,,,,deposit:sand,,,Mineral Mining,,
 r_019,Limestone Mining,mine,,,,,,,,,,,,,30,limestone,24,,,,,,,,,deposit:limestone,,,Mineral Mining,,

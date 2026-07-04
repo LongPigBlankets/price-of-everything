@@ -465,8 +465,26 @@ func _make_result_row(result: Dictionary) -> PanelContainer:
 	return panel
 
 func _result_has_build_action(result: Dictionary) -> bool:
+	# Mirror the construct panel's research gate (construct_panel._load_data):
+	# gated recipes/buildings stay searchable as encyclopedia entries, but only
+	# grow a Build button once their tech is unlocked. Without this, search was
+	# a research bypass — any gated recipe was buildable from turn 1.
 	var result_type: String = result.get("type", "")
-	return result_type == "recipe" or result_type == "building"
+	if result_type == "recipe":
+		return _recipe_buildable(result.get("payload", {}))
+	if result_type == "building":
+		var req := str((result.get("payload", {}) as Dictionary).get("required_research", ""))
+		return req == "" or MatchState.is_unlocked(req)
+	return false
+
+func _recipe_buildable(recipe: Dictionary) -> bool:
+	var rec_req := str(recipe.get("required_research", ""))
+	if rec_req != "" and not MatchState.is_unlocked(rec_req):
+		return false
+	# The recipe's building can be gated independently (e.g. hydro).
+	var building: Dictionary = Catalog.get_building(str(recipe.get("building_id", "")))
+	var bld_req := str(building.get("required_research", ""))
+	return bld_req == "" or MatchState.is_unlocked(bld_req)
 
 func _make_build_button(result: Dictionary) -> Button:
 	var button := Button.new()
@@ -492,6 +510,8 @@ func _start_recipe_build(recipe: Dictionary) -> void:
 	var recipe_id: String = recipe.get("recipe_id", "")
 	if building_id == "" or recipe_id == "":
 		return
+	if not _recipe_buildable(recipe):
+		return  # backstop: research-gated (button shouldn't exist, but stale rows happen)
 	recipe_build_requested.emit(building_id, recipe_id)
 	close_search()
 
@@ -1156,7 +1176,8 @@ func _make_mini_recipe_row(recipe: Dictionary) -> PanelContainer:
 	subtitle.add_theme_color_override("font_color", SUBTITLE_COLOR)
 	labels.add_child(subtitle)
 
-	row.add_child(_make_build_button(result))
+	if _result_has_build_action(result):
+		row.add_child(_make_build_button(result))
 	return panel
 
 func _set_result_row_hover(panel: PanelContainer, hovered: bool) -> void:
