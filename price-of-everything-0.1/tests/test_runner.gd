@@ -7200,32 +7200,29 @@ func _test_widgets_instantiate() -> void:
 		_tree_has_label_text(pp, "Labour") and _tree_has_label_text(pp, "Advisors")
 		and _tree_has_label_text(pp, "0.8x") and _tree_has_label_text(pp, "Workforce Policies"),
 		"PeoplePanel builds Labour and Advisors tabs")
-	_check(
-		_tree_has_label_text(pp, "Advisor cost") and _tree_has_label_text(pp, "0 / 2 advisors · £0.00/turn"),
+	# The Advisors tab is now the ROLE-FIRST council view: one card per SEAT.
+	var council_tab: Node = _find_node_by_script(pp, "res://scripts/advisor_council_tab.gd")
+	_check(council_tab != null and _tree_has_label_text(pp, "COUNCIL SEATS")
+		and _tree_has_label_text(pp, "CFO") and _tree_has_label_text(pp, "VP Logistics"),
 		"PeoplePanel shows advisor payroll at the top")
 	_check(MatchState.available_advisors().size() == MatchState.advisor_pool().size()
 		and MatchState.permanent_advisors().is_empty(),
 		"PeoplePanel starts with all advisors available and none permanent")
-	var add_event := InputEventMouseButton.new()
-	add_event.button_index = MOUSE_BUTTON_LEFT
-	add_event.pressed = true
-	pp.call("_on_permanent_add_slot_input", add_event)
-	var available_section: Control = pp.get("_available_advisors_section")
-	_check(is_instance_valid(available_section) and available_section.visible
-		and _tree_has_label_text(pp, "Vera Ashby") and _tree_has_label_text(pp, "Rufus Ashby"),
+	council_tab.call("_set_view", {"mode": "picker", "hire_seat": "cfo", "back": "roster"})
+	_check(_tree_has_label_text(pp, "Vera Ashby") and _tree_has_label_text(pp, "Rufus Ashby")
+		and _tree_has_label_text(pp, "Hiring for"),
 		"PeoplePanel plus slot opens the available advisor pool")
 	var first_advisor: Dictionary = MatchState.available_advisors()[0]
-	var hire_event := InputEventMouseButton.new()
-	hire_event.button_index = MOUSE_BUTTON_LEFT
-	hire_event.pressed = true
-	pp.call("_on_available_advisor_card_input", hire_event, first_advisor)
-	var clicked_detail: Node = pp.get("_advisor_detail_panel")
-	_check(clicked_detail != null and clicked_detail.visible
-		and not MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", ""))),
+	var first_id := str(first_advisor.get("id", ""))
+	council_tab.call("_set_view", {"mode": "detail", "sel_id": first_id, "hire_seat": "cfo", "back": "picker"})
+	_check(_tree_has_label_text(pp, str(first_advisor.get("name", "")))
+		and not MatchState.permanent_advisor_ids.has(first_id),
 		"PeoplePanel clicking an available advisor opens the profile, not an instant hire")
-	pp.call("_on_confirm_hire_pressed", first_advisor)
-	_check(MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", "")))
-		and _tree_has_label_text(pp, "1 / 2 advisor · £1.00/turn"),
+	# The Hire & assign confirm runs exactly this hire + seat-assign pair.
+	var hired_ok := MatchState.hire_advisor(first_id) and MatchState.assign_advisor_to_seat("cfo", first_id)
+	council_tab.call("_set_view", {"mode": "roster"})
+	_check(hired_ok and MatchState.permanent_advisor_ids.has(first_id)
+		and _tree_has_label_text(pp, str(first_advisor.get("name", ""))),
 		"PeoplePanel Confirm Hire from the profile hires a permanent advisor and updates payroll")
 	# Fire flow: the profile footer for an employed advisor benches them.
 	pp.call("_open_advisor_detail", first_advisor)
@@ -7288,6 +7285,16 @@ func _test_widgets_instantiate() -> void:
 	MatchState.advisor_seats = saved_seats
 	MatchState.reconcile_advisor_modifiers()
 	MatchState.advisors_changed.emit()
+
+func _find_node_by_script(node: Node, script_path: String) -> Node:
+	var s: Script = node.get_script() as Script
+	if s != null and s.resource_path == script_path:
+		return node
+	for child in node.get_children():
+		var hit := _find_node_by_script(child, script_path)
+		if hit != null:
+			return hit
+	return null
 
 func _tree_has_label_text(node: Node, needle: String) -> bool:
 	if needle in node.name:

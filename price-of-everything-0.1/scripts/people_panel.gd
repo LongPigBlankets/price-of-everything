@@ -4,6 +4,7 @@ signal close_requested
 
 const MARKET_FALLBACK_SIZE := Vector2(400, 500)
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
+const AdvisorCouncilTabScript := preload("res://scripts/advisor_council_tab.gd")
 
 const ADVISOR_CARD_WIDTH := 260.0
 const ADVISOR_CARD_HEIGHT := 460.0
@@ -111,13 +112,14 @@ func _build_panel() -> void:
 	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	layout.add_child(tabs)
 
-	var labour := _build_labour_tab()
-	labour.name = "Labour"
-	tabs.add_child(labour)
-
+	# Advisors first — the council is the panel's headline view (design: People Panel).
 	var advisors := _build_advisors_tab()
 	advisors.name = "Advisors"
 	tabs.add_child(advisors)
+
+	var labour := _build_labour_tab()
+	labour.name = "Labour"
+	tabs.add_child(labour)
 
 func _build_labour_tab() -> Control:
 	var outer_scroll := ScrollContainer.new()
@@ -525,30 +527,14 @@ func _refresh_policy_buttons() -> void:
 			checkbox.set_pressed_no_signal(MatchState.is_workforce_policy_enabled(str(policy_id)))
 
 func _build_advisors_tab() -> Control:
-	var outer_scroll := ScrollContainer.new()
-	outer_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	outer_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	outer_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	outer_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-
-	var margin := MarginContainer.new()
-	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	margin.add_theme_constant_override("margin_left", 4)
-	margin.add_theme_constant_override("margin_top", 8)
-	margin.add_theme_constant_override("margin_right", 4)
-	margin.add_theme_constant_override("margin_bottom", 4)
-	outer_scroll.add_child(margin)
-
-	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 16)
-	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	margin.add_child(root)
-	_advisors_root = root
-
-	_refresh_advisors_tab()
-	return outer_scroll
+	# Role-first council view (scripts/advisor_council_tab.gd): pick the seat,
+	# then pick the advisor into it. The legacy card-roster machinery below is
+	# inert while _advisors_root stays null (every refresher guards on it) —
+	# scheduled for removal once the new tab has survived a few sessions.
+	var tab: Control = AdvisorCouncilTabScript.new()
+	tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tab.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	return tab
 
 func _on_advisors_changed() -> void:
 	_sync_advisor_lists()
