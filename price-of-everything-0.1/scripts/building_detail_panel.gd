@@ -2629,6 +2629,18 @@ func _needs_reinforced(good_id: String) -> bool:
 
 ## A fluid input is procurable if it's already on the tile, inbound, produced by
 ## a co-located building, or the tile can be piped from the market port.
+##
+## EDGE CASE / known limitation: the last check treats the MARKET PORT as the
+## input's source (the default and the common case). It does NOT consult a
+## player-configured tile-to-tile input source. So a fluid input that is set to
+## be piped in from a specific neighbouring tile — but is currently empty, with
+## nothing inbound and not produced locally — will fall through to the
+## port-reachability test. If that pipe network also reaches the port the result
+## is right; if the configured source is piped but the port is not (or vice
+## versa) this can mis-report. To make it exact, resolve the good's configured
+## input source (as _can_ship_liquid_output does for outputs) and test the route
+## to THAT tile instead of the port. Left as port-only until per-good fluid input
+## sourcing is common enough to warrant it.
 func _can_procure_liquid_input(tile: String, good_id: String) -> bool:
 	if Stockpile.get_at_tile(tile, good_id) > 0:
 		return true
