@@ -2219,6 +2219,7 @@ func _make_stock_bar(name: String, good_id: String, qty: int, max_qty: int, colo
 	var tex: Texture2D = null
 	if good_id != "":
 		tex = GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id))
+		UIHelpers.attach_good_name_tooltip(icon_slot, good_id)  # hover shows the good's name
 	if tex != null:
 		var icon := TextureRect.new()
 		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
