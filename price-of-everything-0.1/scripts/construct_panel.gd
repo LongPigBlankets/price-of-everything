@@ -415,7 +415,7 @@ func _recipe_valid_for_tile(recipe: Dictionary, tile_data: Dictionary) -> bool:
 		var rval := str(req.get("value", "")).strip_edges().to_lower()
 		match rtype:
 			"deposit":
-				if not _tile_has_deposit(tile_data, rval):
+				if not _deposit_known_or_possible(tile_data, rval):
 					return false
 			"potential":
 				if rval == "wind" and int(tile_data.get("wind_potential", 0)) <= 0:
@@ -425,6 +425,19 @@ func _recipe_valid_for_tile(recipe: Dictionary, tile_data: Dictionary) -> bool:
 			_:
 				pass  # other requirement types don't gate tile validity here
 	return true
+
+## Deposit knowledge is survey-gated: on an unsurveyed tile the build menu must
+## NOT consult the map's hidden deposit list — offering/hiding mining recipes by
+## the true deposits would let players prospect for free from the build panel.
+## Unknown = offered: the blind-build flow (world_map) warns and reveals on
+## placement. Water is exempt — rivers/water are always visible on the map.
+func _deposit_known_or_possible(tile_data: Dictionary, token: String) -> bool:
+	if token == "water":
+		return _tile_has_deposit(tile_data, token)
+	var tile_id := _tile_filter if _tile_filter != "" else str(tile_data.get("id", ""))
+	if MatchState.survey_status(tile_id, str(tile_data.get("type", ""))) == "unsurveyed":
+		return true
+	return _tile_has_deposit(tile_data, token)
 
 func _tile_has_deposit(tile_data: Dictionary, name: String) -> bool:
 	for deposit in tile_data.get("deposits", []):
@@ -443,6 +456,11 @@ func _on_build_mode_exited() -> void:
 	_refresh_build_mode_selection()
 
 func _on_money_changed(_new_amount: float) -> void:
+	# money_changed fires per transaction during PROCESS; the O(rows × buildings)
+	# rescan only matters on screen. _on_visibility_changed fully rebuilds the
+	# panel on show, so hidden panels need no catch-up flag.
+	if not is_visible_in_tree():
+		return
 	_refresh_affordability()
 
 func _refresh_affordability() -> void:
@@ -467,7 +485,10 @@ func _refresh_build_mode_selection() -> void:
 		row.set_build_mode_selection(active_building_id, active_recipe_id, active_infrastructure_key)
 
 func _is_building_affordable(building_data: Dictionary) -> bool:
-	return float(building_data.get("cost", 0.0)) <= MatchState.money
+	# Catalog buildings carry "base_price" (building_row reads the same key);
+	# the old "cost" key never existed, so every building read as affordable
+	# and the red-flash/"Needs £X" gate was dead.
+	return float(building_data.get("base_price", 0.0)) <= MatchState.money
 
 
 

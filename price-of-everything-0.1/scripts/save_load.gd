@@ -144,11 +144,18 @@ func save_slot(slot: String) -> String:
 	if path == "":
 		return "invalid save name '%s'" % slot
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
-	var f := FileAccess.open(path, FileAccess.WRITE)
+	# Write to a temp file and rename over the slot so a crash/power loss
+	# mid-write can never destroy both the old and the new copy of the save.
+	var tmp_path := path + ".tmp"
+	var f := FileAccess.open(tmp_path, FileAccess.WRITE)
 	if f == null:
-		return "cannot write %s (%s)" % [path, error_string(FileAccess.get_open_error())]
+		return "cannot write %s (%s)" % [tmp_path, error_string(FileAccess.get_open_error())]
 	f.store_string(JSON.stringify(export_snapshot(), "\t"))
 	f.close()
+	var err := DirAccess.rename_absolute(tmp_path, path)
+	if err != OK:
+		DirAccess.remove_absolute(tmp_path)
+		return "cannot finalise %s (%s)" % [path, error_string(err)]
 	return ""
 
 func load_slot(slot: String, restart_scene: bool = true) -> String:
@@ -156,6 +163,12 @@ func load_slot(slot: String, restart_scene: bool = true) -> String:
 	# map exists (world_map calls apply_pending() at the end of its _ready) — this
 	# rebuilds terrain-coupled state and visuals cleanly from anywhere, including
 	# the main menu. restart_scene=false applies in place (tests; no visual rebuild).
+	if TurnManager.is_resolving:
+		# TurnManager is an autoload: its suspended resolution coroutine would
+		# survive the scene change and resume over the freshly imported snapshot,
+		# advancing a phantom turn. The save/load UI disables itself during
+		# resolution; this is the backstop for every other entry point.
+		return "cannot load while the turn is resolving"
 	var path := _slot_path(slot)
 	if path == "" or not FileAccess.file_exists(path):
 		return "no save called '%s'" % slot

@@ -26,13 +26,18 @@ func add_demand(amount: int) -> void:
 		demand_this_turn += amount
 
 # ── Per-tile cable power cap ────────────────────────────────────────────────
-## A tile's per-turn power cap: cable-level cap (L1 200 / L2 400 / L3 700) × cable
+## A tile's per-turn power cap: cable-level cap (EconomyConfig.CABLE_POWER_CAP) × cable
 ## throughput research. 0 means no cables → no power production or draw.
 func tile_power_cap(tile_id: String) -> int:
 	var level := _tile_cable_level(tile_id)
 	if level <= 0:
 		return 0
-	var cap := float(EconomyConfig.CABLE_POWER_CAP.get(level, 200))
+	var cap := float(EconomyConfig.CABLE_POWER_CAP.get(level, 0))
+	if cap <= 0.0:
+		# Cable level above the table (e.g. a future L4 before the config is
+		# extended): fall back to the highest defined cap, never a stale magic
+		# number that would silently throttle the tile.
+		cap = float(EconomyConfig.CABLE_POWER_CAP.values().max())
 	return int(round(Modifiers.apply("transport_throughput", "cables", cap, {"mode": "cables"})))
 
 ## True if the tile can still produce `amount` more power this turn (export cap).

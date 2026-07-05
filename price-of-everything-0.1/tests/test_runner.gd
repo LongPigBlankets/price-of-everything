@@ -95,6 +95,7 @@ func _ready() -> void:
 	_test_recurring_sell_multitile()
 	_test_auto_sell_goods()
 	_test_price_impact()
+	_test_price_impact_thresholds()
 	_test_buy_price()
 	_test_limestone_concrete()
 	_test_construction()
@@ -3452,23 +3453,35 @@ func _test_modifiers_target_match() -> void:
 func _test_modifiers_expiry() -> void:
 	Modifiers.reset()
 	TurnManager.current_turn = 10
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
 	Modifiers.add({"id": "tempo", "domain": "recipe_output",
 		"target": "*", "mult": 2.0, "duration_turns": 5})
-	_check(int(Modifiers._modifiers["tempo"]["expires_turn"]) == 15,
+	# Added in DECIDE of turn 10 → it already applies to turn 10's PROCESS, so a
+	# 5-turn duration covers PROCESS 10..14 and expires at 10 + 5 - 1 = 14.
+	_check(int(Modifiers._modifiers["tempo"]["expires_turn"]) == 14,
 		"duration_turns is converted into an absolute expires_turn")
 	_check(absf(Modifiers.apply("recipe_output", "r_001", 10.0) - 20.0) < 0.001,
 		"modifier active before expiry")
 	# Tick NARRATIVE phases up to and past expiry.
-	TurnManager.current_turn = 14
+	TurnManager.current_turn = 13
 	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
 	await get_tree().process_frame
 	_check(Modifiers.has("tempo"), "still active one turn before expiry")
-	TurnManager.current_turn = 15
+	TurnManager.current_turn = 14
 	TurnManager.phase_started.emit(TurnManager.Phase.NARRATIVE)
 	await get_tree().process_frame
 	_check(not Modifiers.has("tempo"), "pruned on the turn it expires")
 	_check(absf(Modifiers.apply("recipe_output", "r_001", 10.0) - 10.0) < 0.001,
 		"expired modifier no longer affects apply")
+	# NARRATIVE-granted (condition unlock): first application is NEXT turn's
+	# PROCESS, so the same 5-turn duration expires one turn later (11..15).
+	TurnManager.current_turn = 10
+	TurnManager.current_phase = TurnManager.Phase.NARRATIVE
+	Modifiers.add({"id": "tempo2", "domain": "recipe_output",
+		"target": "*", "mult": 2.0, "duration_turns": 5})
+	_check(int(Modifiers._modifiers["tempo2"]["expires_turn"]) == 15,
+		"NARRATIVE-granted duration expires one turn later")
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
 	Modifiers.reset()
 
 func _test_modifiers_event_payload() -> void:
@@ -5685,6 +5698,72 @@ func _test_price_impact() -> void:
 	_check(MatchState.auto_sell_unit_cap("tile_4_5") > 1000000, "tile ANY tolerance is effectively uncapped")
 	_check(MatchState.get_auto_sell_impact("tile_unset_99") == MatchState.IMPACT_ANY, "default tolerance is ANY")
 
+# The LIVE threshold model: net per-turn volume over 2x/3x/4x of a good's base
+# building output accrues 0.1/0.2/0.4 %/turn of glut (sell) or deficit (buy)
+# impact, capped at ±50%, recovering 0.1%/turn under the threshold. The impact
+# multiplies the decayed base price; `prices` stays the impact-free series.
+func _test_price_impact_thresholds() -> void:
+	# Rate banding off the base output (strictly-above thresholds).
+	_check(EconomyConfig.price_impact_rate(64, 32) == 0.0, "2x exactly is under the bite")
+	_check(EconomyConfig.price_impact_rate(65, 32) == 0.1, "just over 2x accrues 0.1%")
+	_check(EconomyConfig.price_impact_rate(96, 32) == 0.1, "3x exactly stays in the 2x band")
+	_check(EconomyConfig.price_impact_rate(97, 32) == 0.2, "over 3x accrues 0.2%")
+	_check(EconomyConfig.price_impact_rate(129, 32) == 0.4, "over 4x accrues 0.4%")
+	_check(EconomyConfig.price_impact_rate(-129, 32) == 0.4, "buying volume uses the same bands")
+	_check(EconomyConfig.price_impact_rate(1000, 0) == 0.0, "no base output -> no impact")
+
+	# Accrual, stacking on decay, recovery, and the cap — driven through the
+	# real per-turn pipeline on a scratch good id.
+	var gid := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	var coal_base: int = Catalog.base_output_for_good(gid)
+	_check(coal_base > 0, "coal has a base building output")
+	MarketState.impact_pct.erase(gid)
+	# tick_turn decays every good's base price — restore the table afterwards so
+	# later market tests see untouched prices.
+	var prices_snapshot: Dictionary = MarketState.prices.duplicate(true)
+	var base_before: float = MarketState.get_base_price_now(gid)
+	MarketState.record_market_sale_volume(gid, coal_base * 4 + 1)      # >4x sell
+	MarketState.tick_turn()
+	_check(absf(MarketState.get_impact_pct(gid) + 0.4) < 0.0001, "one >4x sell turn accrues -0.4%")
+	var decay: float = float(Catalog.get_good(gid).get("decay_rate", 0.0))
+	var expected: float = base_before * (1.0 - decay) * (1.0 - 0.004)
+	_check(absf(MarketState.get_price(gid) - expected) < 0.0001,
+		"impact multiplies the decayed base price (stacks on normal drift)")
+	MarketState.record_market_sale_volume(gid, coal_base * 3 + 1)      # >3x sell
+	MarketState.tick_turn()
+	_check(absf(MarketState.get_impact_pct(gid) + 0.6) < 0.0001, "a >3x turn adds -0.2%")
+	MarketState.tick_turn()                                            # quiet turn
+	_check(absf(MarketState.get_impact_pct(gid) + 0.5) < 0.0001, "quiet turn recovers +0.1%")
+	MarketState.record_market_buy_volume(gid, coal_base * 2 + 1)       # >2x BUY
+	MarketState.tick_turn()
+	_check(absf(MarketState.get_impact_pct(gid) + 0.4) < 0.0001, "net buying pushes impact up (+0.1%)")
+	# Netting: equal buys and sells cancel to a quiet (recovery) turn.
+	MarketState.record_market_sale_volume(gid, coal_base * 4)
+	MarketState.record_market_buy_volume(gid, coal_base * 4)
+	MarketState.tick_turn()
+	_check(absf(MarketState.get_impact_pct(gid) + 0.3) < 0.0001, "offsetting buy+sell nets to recovery")
+	# Cap at ±50%.
+	MarketState.impact_pct[gid] = -49.9
+	MarketState.record_market_sale_volume(gid, coal_base * 5)
+	MarketState.tick_turn()
+	_check(absf(MarketState.get_impact_pct(gid) + 50.0) < 0.0001, "impact caps at -50%")
+	# Save round-trip keeps the accumulated impact.
+	var snap: Dictionary = MarketState.export_state()
+	MarketState.impact_pct.clear()
+	MarketState.import_state(snap)
+	_check(absf(MarketState.get_impact_pct(gid) + 50.0) < 0.0001, "impact survives save/load")
+	# Recovery clears it fully given time (and erases the entry near zero).
+	MarketState.impact_pct[gid] = -0.05
+	MarketState.tick_turn()
+	_check(MarketState.get_impact_pct(gid) == 0.0, "recovery settles exactly to zero")
+	# UI helper: thresholds surface as 2x|3x|4x of the base output.
+	var th: PackedInt32Array = MarketState.impact_thresholds(gid)
+	_check(th.size() == 3 and th[0] == coal_base * 2 and th[2] == coal_base * 4,
+		"impact_thresholds returns 2x/3x/4x of base output")
+	MarketState.impact_pct.erase(gid)
+	MarketState.prices = prices_snapshot
+	MarketState.prices_updated.emit()
+
 func _test_owner_costs() -> void:
 	_check(MatchState.is_player_owned({"owner": "player_1"}), "player_1 building is player-owned")
 	_check(MatchState.is_player_owned({}), "building with no owner defaults to player-owned")
@@ -7119,34 +7198,31 @@ func _test_widgets_instantiate() -> void:
 	add_child(pp)
 	_check(
 		_tree_has_label_text(pp, "Labour") and _tree_has_label_text(pp, "Advisors")
-		and _tree_has_label_text(pp, "0.8x") and _tree_has_label_text(pp, "Workforce Policies"),
+		and _tree_has_label_text(pp, "0.8x") and _tree_has_label_text(pp, "WORKFORCE POLICIES"),
 		"PeoplePanel builds Labour and Advisors tabs")
-	_check(
-		_tree_has_label_text(pp, "Advisor cost") and _tree_has_label_text(pp, "0 / 2 advisors · £0.00/turn"),
+	# The Advisors tab is now the ROLE-FIRST council view: one card per SEAT.
+	var council_tab: Node = _find_node_by_script(pp, "res://scripts/advisor_council_tab.gd")
+	_check(council_tab != null and _tree_has_label_text(pp, "COUNCIL SEATS")
+		and _tree_has_label_text(pp, "CFO") and _tree_has_label_text(pp, "VP Logistics"),
 		"PeoplePanel shows advisor payroll at the top")
 	_check(MatchState.available_advisors().size() == MatchState.advisor_pool().size()
 		and MatchState.permanent_advisors().is_empty(),
 		"PeoplePanel starts with all advisors available and none permanent")
-	var add_event := InputEventMouseButton.new()
-	add_event.button_index = MOUSE_BUTTON_LEFT
-	add_event.pressed = true
-	pp.call("_on_permanent_add_slot_input", add_event)
-	var available_section: Control = pp.get("_available_advisors_section")
-	_check(is_instance_valid(available_section) and available_section.visible
-		and _tree_has_label_text(pp, "Vera Ashby") and _tree_has_label_text(pp, "Rufus Ashby"),
+	council_tab.call("_set_view", {"mode": "picker", "hire_seat": "cfo", "back": "roster"})
+	_check(_tree_has_label_text(pp, "Vera Ashby") and _tree_has_label_text(pp, "Rufus Ashby")
+		and _tree_has_label_text(pp, "Hiring for"),
 		"PeoplePanel plus slot opens the available advisor pool")
 	var first_advisor: Dictionary = MatchState.available_advisors()[0]
-	var hire_event := InputEventMouseButton.new()
-	hire_event.button_index = MOUSE_BUTTON_LEFT
-	hire_event.pressed = true
-	pp.call("_on_available_advisor_card_input", hire_event, first_advisor)
-	var clicked_detail: Node = pp.get("_advisor_detail_panel")
-	_check(clicked_detail != null and clicked_detail.visible
-		and not MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", ""))),
+	var first_id := str(first_advisor.get("id", ""))
+	council_tab.call("_set_view", {"mode": "detail", "sel_id": first_id, "hire_seat": "cfo", "back": "picker"})
+	_check(_tree_has_label_text(pp, str(first_advisor.get("name", "")))
+		and not MatchState.permanent_advisor_ids.has(first_id),
 		"PeoplePanel clicking an available advisor opens the profile, not an instant hire")
-	pp.call("_on_confirm_hire_pressed", first_advisor)
-	_check(MatchState.permanent_advisor_ids.has(str(first_advisor.get("id", "")))
-		and _tree_has_label_text(pp, "1 / 2 advisor · £1.00/turn"),
+	# The Hire & assign confirm runs exactly this hire + seat-assign pair.
+	var hired_ok := MatchState.hire_advisor(first_id) and MatchState.assign_advisor_to_seat("cfo", first_id)
+	council_tab.call("_set_view", {"mode": "roster"})
+	_check(hired_ok and MatchState.permanent_advisor_ids.has(first_id)
+		and _tree_has_label_text(pp, str(first_advisor.get("name", ""))),
 		"PeoplePanel Confirm Hire from the profile hires a permanent advisor and updates payroll")
 	# Fire flow: the profile footer for an employed advisor benches them.
 	pp.call("_open_advisor_detail", first_advisor)
@@ -7209,6 +7285,16 @@ func _test_widgets_instantiate() -> void:
 	MatchState.advisor_seats = saved_seats
 	MatchState.reconcile_advisor_modifiers()
 	MatchState.advisors_changed.emit()
+
+func _find_node_by_script(node: Node, script_path: String) -> Node:
+	var s: Script = node.get_script() as Script
+	if s != null and s.resource_path == script_path:
+		return node
+	for child in node.get_children():
+		var hit := _find_node_by_script(child, script_path)
+		if hit != null:
+			return hit
+	return null
 
 func _tree_has_label_text(node: Node, needle: String) -> bool:
 	if needle in node.name:

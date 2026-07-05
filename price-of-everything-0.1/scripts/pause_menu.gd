@@ -8,6 +8,10 @@ class_name PauseMenu
 const PANEL_BLACK := Color(0.03, 0.03, 0.045)
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
 const PANEL_SIZE := Vector2(420, 480)
+const RESOLVING_TOOLTIP := "Please wait until the turn resolves"
+
+var _save_btn: Button
+var _load_btn: Button
 
 
 static func open(parent: Node) -> PauseMenu:
@@ -60,8 +64,17 @@ func _ready() -> void:
 	vbox.add_child(title)
 
 	vbox.add_child(_make_button("Return to game", true, _on_return_pressed))
-	vbox.add_child(_make_button("Save Game", false, _on_save_pressed))
-	vbox.add_child(_make_button("Load Game", false, _on_load_pressed))
+	_save_btn = _make_button("Save Game", false, _on_save_pressed)
+	vbox.add_child(_save_btn)
+	_load_btn = _make_button("Load Game", false, _on_load_pressed)
+	vbox.add_child(_load_btn)
+	# Saving mid-resolution is refused by SaveLoad, and loading mid-resolution
+	# would let the suspended resolution coroutine resume over the loaded state —
+	# grey both out until the turn re-enters DECIDE. (The menu can be opened
+	# during resolution and outlive it, so track both edges.)
+	TurnManager.turn_resolution_started.connect(_refresh_locks)
+	TurnManager.turn_resolution_completed.connect(_refresh_locks)
+	_refresh_locks()
 	var settings := _make_button("Settings", false, Callable())
 	settings.disabled = true
 	settings.tooltip_text = "Coming soon"
@@ -84,6 +97,13 @@ func _make_button(text: String, primary: bool, handler: Callable) -> Button:
 	if not handler.is_null():
 		b.pressed.connect(handler)
 	return b
+
+
+func _refresh_locks() -> void:
+	var locked: bool = TurnManager.is_resolving
+	for b: Button in [_save_btn, _load_btn]:
+		b.disabled = locked
+		b.tooltip_text = RESOLVING_TOOLTIP if locked else ""
 
 
 func _on_return_pressed() -> void:

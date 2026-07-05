@@ -49,9 +49,33 @@ func _ready() -> void:
 	current_phase = Phase.DECIDE
 	is_resolving = false
 	game_ended = false
+	# Deferred so every autoload exists before wiring (see _wire_sim_listeners).
+	call_deferred("_wire_sim_listeners")
 	if auto_start_first_turn:
 		await get_tree().process_frame
 		phase_started.emit(Phase.DECIDE)
+
+## Sim systems' per-phase hooks run in the order they were CONNECTED to
+## phase_started. That order used to fall out of autoload registration plus each
+## system's own await/deferred connect — an implicit race where any autoload
+## reorder silently changed turn semantics. TurnManager owns the wiring instead,
+## so the intra-phase order is explicit:
+##   PROCESS:   MatchState (survey ticks + battery fills — battery firming
+##              capacity must exist before the production cascade's
+##              intermittency pass) → Production (the cascade).
+##   NARRATIVE: MatchState (unlock conditions over settled production)
+##              → EventScheduler (narrative events) → Modifiers (prune expired).
+## Never reorder this list without checking those dependencies.
+func _wire_sim_listeners() -> void:
+	var hooks: Array = [
+		Callable(MatchState, "_on_survey_phase_started"),
+		Callable(Production, "_on_phase_started"),
+		Callable(EventScheduler, "_on_phase_started"),
+		Callable(Modifiers, "_on_phase_started"),
+	]
+	for hook: Callable in hooks:
+		if not phase_started.is_connected(hook):
+			phase_started.connect(hook)
 
 func get_phase_name(phase: int) -> String:
 	match phase:

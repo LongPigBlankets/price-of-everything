@@ -105,6 +105,8 @@ func _ready() -> void:
 	money_panel.hide()
 	top_bar.victory_widget_clicked.connect(_on_victory_widget_clicked)
 	victory_panel.hide()
+	# The council loyalty surface opens the People panel (Advisors tab is first).
+	top_bar.council_widget_clicked.connect(_on_people_pressed)
 	# Victory moment (spec §6): the HUD owns the auto-open so it can clear whatever
 	# panel is showing first (the panel can't hide its own siblings).
 	VictoryState.victory_achieved.connect(_on_victory_achieved)

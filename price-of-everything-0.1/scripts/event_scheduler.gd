@@ -90,7 +90,8 @@ var _next_event_seq: int = 1
 
 func _ready() -> void:
 	await get_tree().process_frame
-	TurnManager.phase_started.connect(_on_phase_started)
+	# _on_phase_started is wired centrally by TurnManager._wire_sim_listeners so
+	# the intra-phase order across sim systems is explicit, not autoload-order.
 	# Subscribe to the existing emitters as a translator layer. The old signals
 	# stay in use (toasts, modals); this is an ADDITIONAL listener.
 	if Production.has_signal("building_starved"):

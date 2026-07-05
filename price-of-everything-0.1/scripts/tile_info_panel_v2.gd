@@ -487,12 +487,27 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED and not visible:
 		PanelStack.remove(self)
 
+# Coalesced (notification_bell pattern): money_changed/stockpile_changed fire
+# per transaction during PROCESS — dozens to hundreds of times in one burst —
+# and each used to tear down and rebuild the entire pane. Signals now defer ONE
+# rebuild per frame; deferring also means a rebuild can never free a row button
+# mid-`pressed` dispatch.
+var _refresh_queued := false
+
 func _refresh_if_visible(_a = null) -> void:
-	if visible and _current_tile_id != "":
-		_refresh_banner(_current_tile_data)  # keeps built|buyable|max + survey live
-		_refresh_land_rail()
-		_refresh_tiles()
-		_refresh_active_pane()
+	if not visible or _current_tile_id == "" or _refresh_queued:
+		return
+	_refresh_queued = true
+	call_deferred("_apply_refresh")
+
+func _apply_refresh() -> void:
+	_refresh_queued = false
+	if not visible or _current_tile_id == "":
+		return
+	_refresh_banner(_current_tile_data)  # keeps built|buyable|max + survey live
+	_refresh_land_rail()
+	_refresh_tiles()
+	_refresh_active_pane()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Banner

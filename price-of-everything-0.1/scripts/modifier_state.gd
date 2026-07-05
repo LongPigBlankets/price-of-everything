@@ -278,7 +278,8 @@ var _next_id: int = 1
 
 func _ready() -> void:
 	await get_tree().process_frame
-	TurnManager.phase_started.connect(_on_phase_started)
+	# _on_phase_started is wired centrally by TurnManager._wire_sim_listeners so
+	# the intra-phase order across sim systems is explicit, not autoload-order.
 	EventScheduler.event_fired.connect(_on_event_fired)
 	MatchState.unlock_granted.connect(_on_unlock_granted)
 	MatchState.state_reset.connect(_on_state_reset)
@@ -350,11 +351,17 @@ func add(modifier: Dictionary) -> String:
 	m["target"] = str(m.get("target", "*"))
 	if not m.has("target_match"):
 		m["target_match"] = {}
-	# duration_turns convenience.
+	# duration_turns convenience. A duration counts PROCESS phases the modifier
+	# actually applies to: one added in/before this turn's PROCESS (DECIDE picks)
+	# already applies this turn, so it expires one turn earlier than one granted
+	# after PROCESS (NARRATIVE condition unlocks), whose first application is next
+	# turn. Without the phase adjustment, DECIDE-granted timed modifiers lived
+	# dur+1 PROCESS phases while NARRATIVE-granted ones lived exactly dur.
 	if m.has("duration_turns") and not m.has("expires_turn"):
 		var dur := int(m.duration_turns)
 		if dur > 0:
-			m["expires_turn"] = int(TurnManager.current_turn) + dur
+			var applies_this_turn: bool = TurnManager.current_phase <= TurnManager.Phase.PROCESS
+			m["expires_turn"] = int(TurnManager.current_turn) + dur - (1 if applies_this_turn else 0)
 	if not m.has("expires_turn"):
 		m["expires_turn"] = 0
 	m["added_turn"] = int(TurnManager.current_turn)
