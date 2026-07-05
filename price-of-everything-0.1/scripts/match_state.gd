@@ -252,6 +252,7 @@ var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
 var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (master: auto-sell ALL surplus goods)
 var auto_sell_goods: Dictionary = {}                 # tile_id -> { good_id -> true } (per-good auto-sell overrides)
+var auto_sell_keep: Dictionary = {}                  # tile_id -> { good_id -> units always left on the tile ("sell all except X") }
 const IMPACT_ANY := -1                               # auto-sell tolerance sentinel: no per-turn volume cap
 var auto_sell_impact: Dictionary = {}                # tile_id -> max price-impact % tolerated per turn (or IMPACT_ANY)
 var pending_transport_shipments: Array = []
@@ -1936,6 +1937,7 @@ func reset() -> void:
 	queued_stockpile_market_sales.clear()
 	sell_surplus_tiles.clear()
 	auto_sell_goods.clear()
+	auto_sell_keep.clear()
 	auto_sell_impact.clear()
 	pending_transport_shipments.clear()
 	pending_upgrades.clear()
@@ -2055,6 +2057,7 @@ func export_state() -> Dictionary:
 		"recurring_buys": recurring_buys.duplicate(true),
 		"sell_surplus_tiles": sell_surplus_tiles.duplicate(true),
 		"auto_sell_goods": auto_sell_goods.duplicate(true),
+		"auto_sell_keep": auto_sell_keep.duplicate(true),
 		"auto_sell_impact": auto_sell_impact.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": _shipments_for_save(),
@@ -2133,6 +2136,7 @@ func import_state(d: Dictionary) -> void:
 	recurring_buys = (d.get("recurring_buys", []) as Array).duplicate(true)
 	sell_surplus_tiles = (d.get("sell_surplus_tiles", {}) as Dictionary).duplicate(true)
 	auto_sell_goods = (d.get("auto_sell_goods", {}) as Dictionary).duplicate(true)
+	auto_sell_keep = (d.get("auto_sell_keep", {}) as Dictionary).duplicate(true)
 	auto_sell_impact = (d.get("auto_sell_impact", {}) as Dictionary).duplicate(true)
 	queued_stockpile_market_sales = (d.get("queued_stockpile_market_sales", {}) as Dictionary).duplicate(true)
 	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
@@ -3319,6 +3323,25 @@ func disable_auto_sell_good(tile_id: String, good_id: String) -> void:
 
 func is_auto_sell_good(tile_id: String, good_id: String) -> bool:
 	return auto_sell_goods.get(tile_id, {}).has(good_id)
+
+# "Sell all except X": units of a good the auto-sell always leaves on the tile,
+# on top of whatever the tile's own buildings claim as inputs.
+func set_auto_sell_keep(tile_id: String, good_id: String, keep: int) -> void:
+	if tile_id == "" or good_id == "":
+		return
+	if keep <= 0:
+		if auto_sell_keep.has(tile_id):
+			(auto_sell_keep[tile_id] as Dictionary).erase(good_id)
+			if (auto_sell_keep[tile_id] as Dictionary).is_empty():
+				auto_sell_keep.erase(tile_id)
+	else:
+		if not auto_sell_keep.has(tile_id):
+			auto_sell_keep[tile_id] = {}
+		auto_sell_keep[tile_id][good_id] = keep
+	sell_surplus_changed.emit(tile_id)
+
+func auto_sell_keep_for(tile_id: String, good_id: String) -> int:
+	return int((auto_sell_keep.get(tile_id, {}) as Dictionary).get(good_id, 0))
 
 func get_auto_sell_good_tiles() -> Array:
 	return auto_sell_goods.keys()

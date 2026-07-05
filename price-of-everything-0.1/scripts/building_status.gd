@@ -257,10 +257,15 @@ static func maintenance_cost(building_data: Dictionary) -> float:
 
 static func route_summary(source_tile: String, destination_tile: String, good_id: String, qty: int) -> Dictionary:
 	var r := TransportService.route(source_tile, destination_tile, good_id)
+	var reachable := TransportService.route_is_reachable(r)
+	# When unreachable (e.g. a fluid with no pipe route) TransportService returns the
+	# INF_TURNS sentinel; report reachable=false and a 0 cost so callers never render
+	# the raw 2^30 turns / astronomical cost.
 	return {
 		"distance": int(r.get("tile_distance", 0)),
 		"turns": int(r.get("turns", 0)),
-		"cost": TransportService.transport_cost_for_route(good_id, qty, r),
+		"cost": TransportService.transport_cost_for_route(good_id, qty, r) if reachable else 0.0,
+		"reachable": reachable,
 	}
 
 static func selected_output_route(building: Dictionary, recipe: Dictionary) -> Dictionary:

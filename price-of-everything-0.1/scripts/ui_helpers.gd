@@ -11,11 +11,23 @@ const PILL_NAVY := Color(0.0, 0.119856, 0.243095, 1.0)
 const PILL_PAPER := Color(0.995234, 0.930806, 0.763265, 1.0)
 
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const GoodIconHover := preload("res://scripts/good_icon_hover.gd")
 const GOODS_FRAME_TEX := preload("res://assets/ui/goods_frame_plate_sm.png")
 const BevelEdge := preload("res://scripts/bevel_edge.gd")
 const ICON_FRAME_MARGIN := 12   # the goods plate's 9-slice (NinePatch) margin per side
 const ICON_INSET := 9           # icon sits this far in from the frame edge
 const ICON_ZOOM := 2            # icon overflows its slot by this many px each side (zoom)
+
+## Give a directly-rendered good icon (a plain TextureRect, not the framed
+## helper) the same hover behaviour: show the good's name, then any tooltip an
+## ancestor row would have shown. Use at the direct GoodIcons.texture_for sites
+## (recipe flow diagrams, stockpile bars) so every good icon names itself.
+static func attach_good_name_tooltip(ctrl: Control, good_id: String) -> void:
+	if ctrl == null or good_id == "":
+		return
+	if ctrl.mouse_filter == Control.MOUSE_FILTER_IGNORE:
+		ctrl.mouse_filter = Control.MOUSE_FILTER_PASS
+	ctrl.tooltip_text = Catalog.get_display_name(good_id)
 
 ## The single source of truth for the framed + bevelled goods icon. Layers, all
 ## full-rect so the icon inset and the bevel rim are positioned independently of
@@ -26,11 +38,14 @@ const ICON_ZOOM := 2            # icon overflows its slot by this many px each s
 ##   3. BevelEdge — the raised rim, BevelEdge.INSET px in from the frame edge.
 ## `frame_size` is the outer plate; `prefer_small` picks the small icon variant.
 static func make_framed_good_icon(good_id: String, internal_name: String, frame_size: int = 60, prefer_small: bool = true) -> Control:
-	var root := Control.new()
+	# GoodIconHover root: PASS lets clicks reach clickable parents while the icon
+	# still supplies a hover tooltip (good name + any ancestor tooltip).
+	var root := GoodIconHover.new()
+	root.good_id = good_id
 	root.custom_minimum_size = Vector2(frame_size, frame_size)
 	root.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	root.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.mouse_filter = Control.MOUSE_FILTER_PASS
 	# Plate (9-slice off-white frame) fills the whole node.
 	var plate := NinePatchRect.new()
 	plate.texture = GOODS_FRAME_TEX

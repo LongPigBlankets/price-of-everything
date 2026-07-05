@@ -100,6 +100,7 @@ func _ready() -> void:
 	_test_limestone_concrete()
 	_test_construction()
 	_test_construction_awaiting()
+	_test_construction_reorder_ignores_foreign_inbound()
 	_test_construction_sourcing()
 	_test_construction_cancel()
 	await _test_construction_detail_panel()
@@ -5667,6 +5668,73 @@ func _test_construction_awaiting() -> void:
 	_check(MatchState.buildings.has(iid) and not Construction.construction_projects.has(iid),
 		"awaiting project promotes after securing materials + countdown")
 	MatchState.remove_building(iid)
+
+# Regression: a build must order its OWN market freight for every missing
+# material even when a co-located consumer already has inbound shipments of the
+# same good. Before the fix, reorder_market_materials counted ANY inbound of the
+# good against its shortfall, so the build never ordered (nor received) its own
+# copy and hung in awaiting_materials forever.
+func _test_construction_reorder_ignores_foreign_inbound() -> void:
+	var bid := ""
+	var reqs := {}
+	for b in Catalog.all_buildings():
+		var r: Dictionary = Construction.requirements_for(str(b.get("id", "")))
+		if not r.is_empty():
+			bid = str(b.get("id", ""))
+			reqs = r
+			break
+	if bid == "":
+		return
+	var tile := "tile_13_2"   # inland but port-reachable, so buys become >=1-turn shipments
+	var mat := str(reqs.keys()[0])
+	for gid in reqs:
+		Stockpile.consume(tile, gid, 1 << 30)
+
+	# Start the build with an EMPTY tile — every material is a market shortfall.
+	MatchState.money = 1000000.0
+	var iid: String = Construction.start_awaiting_market(bid, "", tile)
+	var project: Dictionary = Construction.construction_projects[iid]
+	_check(str(project.get("status", "")) == Construction.STATUS_AWAITING_MATERIALS,
+		"reorder test: build starts awaiting materials")
+
+	# Simulate a co-located production building's inbound shipment of `mat`
+	# (a foreign, un-tagged purchase) landing next turn.
+	MatchState.pending_transport_shipments.append({
+		"source_tile": "tile_5_10", "destination_tile": tile,
+		"good_id": mat, "qty": int(reqs[mat]) * 5, "turns_remaining": 1, "is_purchase": true,
+	})
+	# Drop the build's OWN freight for `mat` so reorder is forced to re-order it;
+	# the foreign inbound above must NOT satisfy the shortfall.
+	for i in range(MatchState.pending_transport_shipments.size() - 1, -1, -1):
+		var s: Dictionary = MatchState.pending_transport_shipments[i]
+		if str(s.get("construction_instance_id", "")) == iid and str(s.get("good_id", "")) == mat:
+			MatchState.pending_transport_shipments.remove_at(i)
+
+	Construction.claim_materials()        # nothing on the tile yet
+	Construction.reorder_market_materials()
+	var own_inbound := 0
+	for s in MatchState.get_inbound_transport_shipments(tile, mat):
+		if str(s.get("construction_instance_id", "")) == iid:
+			own_inbound += int(s.get("qty", 0))
+	_check(own_inbound >= int(reqs[mat]),
+		"reorder re-orders the build's own freight despite a neighbour's inbound of the same good")
+
+	# The build converges: keep ticking the delivery+claim+reorder loop.
+	for _turn in range(12):
+		for s in MatchState.pending_transport_shipments:
+			(s as Dictionary)["turns_remaining"] = 0
+		for arrived in MatchState.advance_transport_shipments():
+			if not bool((arrived as Dictionary).get("is_sale", false)):
+				Stockpile.add(str(arrived.get("destination_tile", "")), str(arrived.get("good_id", "")), int(arrived.get("qty", 0)))
+		Construction.claim_materials()
+		Construction.reorder_market_materials()
+		if not Construction.construction_projects.has(iid) or str(Construction.construction_projects[iid].get("status", "")) == Construction.STATUS_UNDER_CONSTRUCTION:
+			break
+	_check(str(Construction.construction_projects.get(iid, {}).get("status", "")) == Construction.STATUS_UNDER_CONSTRUCTION,
+		"awaiting build reaches under_construction (no hang) with a neighbour importing the same good")
+	Construction.cancel(iid)
+	for gid in reqs:
+		Stockpile.consume(tile, gid, 1 << 30)
 
 func _test_buy_price() -> void:
 	var gid := "g_001"

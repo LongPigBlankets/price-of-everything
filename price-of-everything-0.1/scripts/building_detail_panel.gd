@@ -241,12 +241,21 @@ func show_building(building: Dictionary) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED and not visible:
 		_stop_run_warning_blink()
+		_stop_pipe_flash()
 		PanelStack.remove(self)
 		if not _is_secondary_panel:
 			building_connections_changed.emit("", [], [], false)
 
+func _stop_pipe_flash() -> void:
+	if _pipe_flash != null and _pipe_flash.is_valid():
+		_pipe_flash.kill()
+	_pipe_flash = null
+	if _pipe_badge != null:
+		_pipe_badge.modulate.a = 1.0
+
 func _hide_panel() -> void:
 	_stop_run_warning_blink()
+	_stop_pipe_flash()
 	hide()
 	if not _is_secondary_panel:
 		for panel in _building_panel_instances:
@@ -392,10 +401,16 @@ func _rebuild_fields(building: Dictionary) -> void:
 	if not is_infrastructure and recipe.get("output_name", "") != "power":
 		var route_info := _output_route_summary()
 		_add_field("Output destination", route_info.destination)
-		_add_field("Output transport cost", _format_money(route_info.cost))
-		_add_field("Duration to destination", "%d turn%s" % [
-			int(route_info.turns), "" if int(route_info.turns) == 1 else "s"
-		])
+		if bool(route_info.get("reachable", true)):
+			_add_field("Output transport cost", _money_text(route_info.cost))
+			_add_field("Duration to destination", "%d turn%s" % [
+				int(route_info.turns), "" if int(route_info.turns) == 1 else "s"
+			])
+		else:
+			# Fluid with no pipe route: the raw route is the INF sentinel — don't
+			# render 2^30 turns / an astronomical cost.
+			_add_field("Output transport cost", "— no route —")
+			_add_field("Duration to destination", "— no route —")
 
 	_add_separator()
 	_add_inbound_inputs_section(building, recipe)
@@ -1967,14 +1982,19 @@ func _make_flow_cell(good_item: Dictionary, cell_size: Vector2, prefer_small: bo
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(1.0, 1.0, 1.0, 0.0) if texture != null else FLOW_SQUARE_COLOR
-	# Supply source (your supply vs market) is kept as a hover tooltip only — the
-	# coloured border read as a stray dark-yellow square, so it's been removed.
-	if is_input:
-		var src_good_id := _flow_cell_good_id(good_item)
+	# Tooltip: the good's name first, then the supply source for inputs (your
+	# supply vs market). The coloured border read as a stray dark-yellow square,
+	# so the source is kept as hover text only.
+	var cell_good_id := _flow_cell_good_id(good_item)
+	var cell_tip := Catalog.get_display_name(cell_good_id) if cell_good_id != "" else ""
+	if is_input and cell_good_id != "":
 		var instance_id := str(_current_building.get("instance_id", ""))
-		if src_good_id != "" and instance_id != "":
-			var from_player := MatchState.is_input_tile_only(instance_id, src_good_id)
-			cell.tooltip_text = "Supplied by you" if from_player else "Supplied by the market"
+		if instance_id != "":
+			var from_player := MatchState.is_input_tile_only(instance_id, cell_good_id)
+			var supply := "Supplied by you" if from_player else "Supplied by the market"
+			cell_tip = "%s\n%s" % [cell_tip, supply] if cell_tip != "" else supply
+	if cell_tip != "":
+		cell.tooltip_text = cell_tip
 	cell.add_theme_stylebox_override("panel", style)
 
 	var exhausted := _flow_item_exhausted(good_item)
@@ -2341,6 +2361,44 @@ func _build_status_icon_column() -> void:
 	rag_box.add_theme_constant_override("separation", 10)
 	rag_panel.add_child(rag_box)
 
+	# En-route inputs badge: flashes red while input shipments for this
+	# building's recipe are still on the road to its tile. Click = how many
+	# turns away the first one is.
+	_enroute_badge = Button.new()
+	_enroute_badge.text = "!"
+	_enroute_badge.visible = false
+	_enroute_badge.custom_minimum_size = Vector2(22, 22)
+	_enroute_badge.add_theme_font_size_override("font_size", 15)
+	var badge_style := StyleBoxFlat.new()
+	badge_style.bg_color = STATUS_RED
+	badge_style.set_corner_radius_all(11)
+	for st in ["normal", "hover", "pressed", "focus"]:
+		_enroute_badge.add_theme_stylebox_override(st, badge_style)
+	for cn in ["font_color", "font_pressed_color", "font_hover_color", "font_focus_color"]:
+		_enroute_badge.add_theme_color_override(cn, Color.WHITE)
+	_enroute_badge.tooltip_text = "Inputs are on their way — click for arrival time"
+	_enroute_badge.pressed.connect(_on_enroute_badge_pressed)
+	rag_box.add_child(_enroute_badge)
+
+	# Pipeline-connectivity badge: flashes when a fluid building can't procure
+	# inputs or ship outputs for lack of pipes. Tooltip states which.
+	_pipe_badge = Button.new()
+	_pipe_badge.text = "!"
+	_pipe_badge.visible = false
+	_pipe_badge.focus_mode = Control.FOCUS_NONE
+	_pipe_badge.theme = _tooltip_theme
+	_pipe_badge.custom_minimum_size = Vector2(22, 22)
+	_pipe_badge.add_theme_font_size_override("font_size", 15)
+	var pipe_badge_style := StyleBoxFlat.new()
+	pipe_badge_style.bg_color = STATUS_RED
+	pipe_badge_style.set_corner_radius_all(11)
+	for st2 in ["normal", "hover", "pressed", "focus"]:
+		_pipe_badge.add_theme_stylebox_override(st2, pipe_badge_style)
+	for cn2 in ["font_color", "font_pressed_color", "font_hover_color", "font_focus_color"]:
+		_pipe_badge.add_theme_color_override(cn2, Color.WHITE)
+	_pipe_badge.tooltip_text = "Cannot procure inputs."
+	rag_box.add_child(_pipe_badge)
+
 	for config in STATUS_ICON_CONFIG:
 		var key: String = config.get("key", "")
 		var icon_path: String = config.get("path", "")
@@ -2484,6 +2542,28 @@ func _build_status_icon_column() -> void:
 	panel_vbox.move_child(rag_panel, flow_summary.get_index() + 1)
 	panel_vbox.add_child(_run_warning_details)
 	panel_vbox.move_child(_run_warning_details, rag_panel.get_index() + 1)
+
+	# Pipeline-connectivity red row (dark red, white text), directly under the RAG
+	# strip. Always visible while the problem exists — no click-to-expand.
+	_pipe_warning_row = PanelContainer.new()
+	_pipe_warning_row.visible = false
+	_pipe_warning_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var pipe_row_style := StyleBoxFlat.new()
+	pipe_row_style.bg_color = Color(0.42, 0.09, 0.09)   # dark red
+	pipe_row_style.set_corner_radius_all(7)
+	pipe_row_style.set_content_margin(SIDE_LEFT, 10)
+	pipe_row_style.set_content_margin(SIDE_RIGHT, 10)
+	pipe_row_style.set_content_margin(SIDE_TOP, 6)
+	pipe_row_style.set_content_margin(SIDE_BOTTOM, 6)
+	_pipe_warning_row.add_theme_stylebox_override("panel", pipe_row_style)
+	_pipe_warning_label = Label.new()
+	_pipe_warning_label.add_theme_font_size_override("font_size", 12)
+	_pipe_warning_label.add_theme_color_override("font_color", Color.WHITE)
+	_pipe_warning_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_pipe_warning_row.add_child(_pipe_warning_label)
+	panel_vbox.add_child(_pipe_warning_row)
+	panel_vbox.move_child(_pipe_warning_row, _run_warning_details.get_index() + 1)
+
 	status_icon_column.visible = false
 	# The close (X) was reparented to the top of the rail; with the rail hidden it
 	# vanished with it. Return it to the header row so the panel keeps its X.
@@ -2505,7 +2585,212 @@ func _update_status_icons(building: Dictionary, recipe: Dictionary, is_infrastru
 	_set_status_dot("cost", _transport_cost_status_color(building, recipe, is_infrastructure))
 	_update_cost_label(building)
 	_update_mod_label(building, recipe)
-	_update_run_warning(building, recipe, is_infrastructure)
+	# A pipeline-connectivity problem is the root cause and shows its own red row
+	# + flashing badge; it suppresses the generic run-warning "!" to avoid two
+	# flashing signs for the same underlying issue.
+	var pipe: Dictionary = _pipe_problem(building, recipe, is_infrastructure)
+	_update_pipe_warning(pipe)
+	if str(pipe.get("kind", "")) == "":
+		_update_run_warning(building, recipe, is_infrastructure)
+	else:
+		_set_run_warning_message("")
+	_update_enroute_badge(building, recipe)
+
+# ── pipeline connectivity warning ────────────────────────────────────────────
+var _pipe_badge: Button
+var _pipe_flash: Tween
+var _pipe_warning_row: PanelContainer
+var _pipe_warning_label: Label
+
+## Detect a fluid-connectivity problem for this building:
+##   {kind: "inputs"}  — a liquid/gas input can't be procured (no pipe path)
+##   {kind: "outputs"} — inputs are fine but a liquid/gas output can't be shipped
+##   {kind: ""}        — no problem
+## `reinforced` is true when the blocking good needs reinforced pipes (hazard).
+func _pipe_problem(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Dictionary:
+	if is_infrastructure or building.is_empty() or not MatchState.is_player_owned(building):
+		return {"kind": ""}
+	var tile := str(building.get("tile_id", ""))
+	var iid := str(building.get("instance_id", ""))
+	# Inputs first — a building that can't get its feedstock can't do anything.
+	for input in recipe.get("inputs", []):
+		var gid := str(input.get("good_id", ""))
+		if gid != "" and Catalog.requires_pipeline(gid) and not _can_procure_liquid_input(tile, gid):
+			return {"kind": "inputs", "reinforced": _needs_reinforced(gid)}
+	# Then outputs — inputs are procurable but a fluid output can't reach its destination.
+	for output in recipe.get("outputs", []):
+		var gid2 := str(output.get("good_id", ""))
+		if gid2 != "" and Catalog.requires_pipeline(gid2) and not _can_ship_liquid_output(tile, gid2, iid):
+			return {"kind": "outputs", "reinforced": _needs_reinforced(gid2)}
+	return {"kind": ""}
+
+func _needs_reinforced(good_id: String) -> bool:
+	return Catalog.get_transport_class(good_id) == "hazard_liquid"
+
+## A fluid input is procurable if it's already on the tile, inbound, produced by
+## a co-located building, or the tile can be piped from the market port.
+##
+## EDGE CASE / known limitation: the last check treats the MARKET PORT as the
+## input's source (the default and the common case). It does NOT consult a
+## player-configured tile-to-tile input source. So a fluid input that is set to
+## be piped in from a specific neighbouring tile — but is currently empty, with
+## nothing inbound and not produced locally — will fall through to the
+## port-reachability test. If that pipe network also reaches the port the result
+## is right; if the configured source is piped but the port is not (or vice
+## versa) this can mis-report. To make it exact, resolve the good's configured
+## input source (as _can_ship_liquid_output does for outputs) and test the route
+## to THAT tile instead of the port. Left as port-only until per-good fluid input
+## sourcing is common enough to warrant it.
+func _can_procure_liquid_input(tile: String, good_id: String) -> bool:
+	if Stockpile.get_at_tile(tile, good_id) > 0:
+		return true
+	for s in MatchState.get_inbound_transport_shipments(tile, good_id):
+		if int((s as Dictionary).get("qty", 0)) > 0:
+			return true
+	if _good_produced_on_tile(tile, good_id):
+		return true
+	var port := TransportService.nearest_port_tile(tile)
+	if port == "" or port == tile:
+		return true   # on/at a port: fluids handled at the dock, no piping needed
+	return TransportService.route_is_reachable(TransportService.route(tile, port, good_id))
+
+## A fluid output can ship if its destination is the same tile (no transport) or
+## the routed destination (market port / a tile) is reachable.
+func _can_ship_liquid_output(tile: String, good_id: String, instance_id: String) -> bool:
+	var dest := ""
+	if MatchState.is_output_market(instance_id, good_id):
+		dest = TransportService.nearest_port_tile(tile)
+	else:
+		var explicit := MatchState.get_output_stockpile_destination(instance_id, good_id)
+		if explicit == MatchState.MARKET_DESTINATION:
+			dest = TransportService.nearest_port_tile(tile)
+		elif explicit != "":
+			dest = explicit
+		elif MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL:
+			return true   # kept on this tile — no transport needed
+		else:
+			dest = TransportService.nearest_port_tile(tile)
+	if dest == "" or dest == tile:
+		return true
+	return TransportService.route_is_reachable(TransportService.route(tile, dest, good_id))
+
+func _good_produced_on_tile(tile: String, good_id: String) -> bool:
+	for b in MatchState.get_buildings_on_tile(tile):
+		var rec: Dictionary = Catalog.get_recipe(str((b as Dictionary).get("recipe_id", "")))
+		for o in rec.get("outputs", []):
+			if str(o.get("good_id", "")) == good_id:
+				return true
+	return false
+
+func _update_pipe_warning(pipe: Dictionary) -> void:
+	if _pipe_badge == null or _pipe_warning_row == null:
+		return
+	var kind := str(pipe.get("kind", ""))
+	if kind == "":
+		_pipe_badge.visible = false
+		_pipe_warning_row.visible = false
+		if _pipe_flash != null and _pipe_flash.is_valid():
+			_pipe_flash.kill()
+			_pipe_badge.modulate.a = 1.0
+		return
+	var pipe_word := "Reinforced Pipelines" if bool(pipe.get("reinforced", false)) else "Pipelines"
+	_pipe_warning_label.text = ("This building requires %s to transfer or sell its output. "
+		+ "Connect it to the input source and output destination to get inputs.") % pipe_word
+	_pipe_warning_row.visible = true
+	_pipe_badge.visible = true
+	_pipe_badge.tooltip_text = "Cannot procure inputs." if kind == "inputs" else "Cannot ship outputs."
+	if _pipe_flash == null or not _pipe_flash.is_valid():
+		_pipe_flash = create_tween().set_loops()
+		_pipe_flash.tween_property(_pipe_badge, "modulate:a", 0.35, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		_pipe_flash.tween_property(_pipe_badge, "modulate:a", 1.0, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+# ── en-route inputs badge ────────────────────────────────────────────────────
+var _enroute_badge: Button
+var _enroute_flash: Tween
+var _enroute_min_turns: int = 0
+var _enroute_count: int = 0
+
+## MARKET-ORDERED (is_purchase) shipments headed to this building's tile
+## carrying one of its recipe's input goods. Tile-to-tile moves don't count —
+## the badge is a "your market order is still far away" warning, not general
+## logistics noise.
+func _inbound_input_shipments(building: Dictionary, recipe: Dictionary) -> Array:
+	var tile_id := str(building.get("tile_id", ""))
+	if tile_id == "":
+		return []
+	var input_ids := _recipe_input_ids(recipe)
+	if input_ids.is_empty():
+		return []
+	var out: Array = []
+	for s in MatchState.pending_transport_shipments:
+		var sd: Dictionary = s
+		if not bool(sd.get("is_purchase", false)):
+			continue
+		if str(sd.get("destination_tile", "")) != tile_id:
+			continue
+		if input_ids.has(str(sd.get("good_id", ""))):
+			out.append(sd)
+	return out
+
+func _recipe_input_ids(recipe: Dictionary) -> Dictionary:
+	var input_ids: Dictionary = {}
+	for input in recipe.get("inputs", []):
+		input_ids[str(input.get("good_id", ""))] = true
+	return input_ids
+
+## True when a market buy of one of these inputs landed on the tile LAST turn
+## (ledger rows carry the planned arrival turn as turn_ended).
+func _received_input_last_turn(tile_id: String, input_ids: Dictionary) -> bool:
+	var last_turn := int(TurnManager.current_turn) - 1
+	for t in MatchState.transaction_log:
+		var td: Dictionary = t
+		if str(td.get("kind", "")) != "buy":
+			continue
+		if str(td.get("tile_to", "")) != tile_id:
+			continue
+		if int(td.get("turn_ended", -99)) != last_turn:
+			continue
+		if input_ids.has(str(td.get("good_id", ""))):
+			return true
+	return false
+
+func _update_enroute_badge(building: Dictionary, recipe: Dictionary) -> void:
+	if _enroute_badge == null:
+		return
+	var shipments := _inbound_input_shipments(building, recipe)
+	var min_turns := 999
+	for s in shipments:
+		min_turns = mini(min_turns, int((s as Dictionary).get("turns_remaining", 0)))
+	# Flash ONLY for a real supply gap: market orders exist, the nearest one is
+	# still more than a turn away, and nothing arrived last turn. Steady-state
+	# pipelines (something landing every turn) stay quiet.
+	var supply_gap := (not shipments.is_empty() and min_turns > 1
+		and not _received_input_last_turn(str(building.get("tile_id", "")), _recipe_input_ids(recipe)))
+	if not supply_gap:
+		_enroute_badge.visible = false
+		if _enroute_flash != null and _enroute_flash.is_valid():
+			_enroute_flash.kill()
+			_enroute_badge.modulate.a = 1.0
+		return
+	var was_visible := _enroute_badge.visible
+	_enroute_min_turns = maxi(min_turns, 0)
+	_enroute_count = shipments.size()
+	_enroute_badge.visible = true
+	_enroute_badge.tooltip_text = ("%d input shipment%s en route — click for arrival time"
+		% [_enroute_count, "" if _enroute_count == 1 else "s"])
+	if not was_visible or _enroute_flash == null or not _enroute_flash.is_valid():
+		if _enroute_flash != null and _enroute_flash.is_valid():
+			_enroute_flash.kill()
+		_enroute_flash = create_tween().set_loops()
+		_enroute_flash.tween_property(_enroute_badge, "modulate:a", 0.35, 0.45)
+		_enroute_flash.tween_property(_enroute_badge, "modulate:a", 1.0, 0.45)
+
+func _on_enroute_badge_pressed() -> void:
+	if _enroute_min_turns <= 0:
+		MatchState.request_toast("Inputs arrive when this turn resolves.", "info")
+	else:
+		MatchState.request_toast("First input shipment arrives in %d turn%s (%d en route)."
+			% [_enroute_min_turns, "" if _enroute_min_turns == 1 else "s", _enroute_count], "info")
 
 func _make_run_warning_button_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
@@ -2884,7 +3169,10 @@ func _output_route_summary() -> Dictionary:
 		target = TransportService.nearest_port_tile(source_tile)
 		destination = ("Market (via %s)" % Catalog.tile_label(target)) if target != "" else "Market"
 	var route := _route_summary_for_good(source_tile, target, good_id, qty)
-	return {"destination": destination, "cost": route.cost, "turns": route.turns, "target": target}
+	# Same-tile destinations never route (no transport); everything else inherits
+	# the route's reachability so unreachable fluids show "no route" not the sentinel.
+	var reachable: bool = (target == "" or target == source_tile) or bool(route.get("reachable", true))
+	return {"destination": destination, "cost": route.cost, "turns": route.turns, "target": target, "reachable": reachable}
 
 func _primary_output_good_id(recipe: Dictionary) -> String:
 	return BuildingStatus.primary_output_good_id(recipe)
@@ -2909,7 +3197,7 @@ func _format_money(value: float) -> String:
 	return text
 
 func _money_text(value: float) -> String:
-	return "Â£%s" % _format_money(value)
+	return "£%s" % _format_money(value)
 
 func _position_for_visible_panels() -> void:
 	if custom_minimum_size.x > 0.0 and custom_minimum_size.y > 0.0:

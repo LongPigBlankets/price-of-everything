@@ -163,6 +163,7 @@ func _ready() -> void:
 
 	_chart_revenue_button.pressed.connect(_on_chart_mode_pressed.bind("revenue"))
 	_chart_costs_button.pressed.connect(_on_chart_mode_pressed.bind("costs"))
+	_build_sales_tab()
 	_tab_container.tab_changed.connect(_on_tab_changed)
 	_apply_tab_size(_tab_container.current_tab)
 
@@ -198,6 +199,7 @@ func _apply_refresh() -> void:
 	_refresh_balance_sheet()
 	_refresh_projection()
 	_refresh_chart()
+	_refresh_sales()
 
 func _on_panel_visibility_changed() -> void:
 	if visible and _dirty:
@@ -584,7 +586,126 @@ func _refresh_chart() -> void:
 	if _chart != null and _chart.has_method("set_data"):
 		_chart.set_data(_chart_history, _chart_mode)
 
+# ── Sales tab: which goods (and power) made money from sales ────────────────
+var _sales_tab_root: VBoxContainer
+var _sales_history: Array = []   # last CHART_MAX_TURNS of {goods: sold-dict, power: float}
+
+func _build_sales_tab() -> void:
+	var scroll := ScrollContainer.new()
+	scroll.name = "Sales"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var margin := MarginContainer.new()
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 10)
+	scroll.add_child(margin)
+	_sales_tab_root = VBoxContainer.new()
+	_sales_tab_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sales_tab_root.add_theme_constant_override("separation", 8)
+	margin.add_child(_sales_tab_root)
+	_tab_container.add_child(scroll)
+
+func _refresh_sales() -> void:
+	if _sales_tab_root == null:
+		return
+	for c in _sales_tab_root.get_children():
+		c.queue_free()
+	if _sales_history.is_empty():
+		var empty := Label.new()
+		empty.text = "No sales yet — income by good appears here after your first turn."
+		empty.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+		_sales_tab_root.add_child(empty)
+		return
+	_add_sales_section("Last turn", [_sales_history.back()])
+	if _sales_history.size() > 1:
+		_add_sales_section("Last %d turns" % _sales_history.size(), _sales_history)
+
+func _add_sales_section(title: String, entries: Array) -> void:
+	# Aggregate per good across the given turns; power is its own row.
+	var by_good: Dictionary = {}
+	var power_total := 0.0
+	for e in entries:
+		var goods: Dictionary = (e as Dictionary).get("goods", {})
+		for gid in goods:
+			var rec: Dictionary = by_good.get(str(gid), {"qty": 0, "revenue": 0.0})
+			rec.qty = int(rec.qty) + int((goods[gid] as Dictionary).get("qty", 0))
+			rec.revenue = float(rec.revenue) + float((goods[gid] as Dictionary).get("revenue", 0.0))
+			by_good[str(gid)] = rec
+		power_total += float((e as Dictionary).get("power", 0.0))
+
+	var rows: Array = []
+	for gid in by_good:
+		rows.append({"label": Catalog.get_display_name(str(gid)),
+			"qty": int(by_good[gid].qty), "revenue": float(by_good[gid].revenue)})
+	if power_total > 0.0:
+		rows.append({"label": "Power (grid exports)", "qty": -1, "revenue": power_total})
+	rows = rows.filter(func(r: Dictionary) -> bool: return float(r.revenue) > 0.005)
+	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.revenue) > float(b.revenue))
+
+	var header := Label.new()
+	header.text = title
+	header.theme_type_variation = &"Section"
+	_sales_tab_root.add_child(header)
+	if rows.is_empty():
+		var none := Label.new()
+		none.text = "No sales income in this window."
+		none.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+		_sales_tab_root.add_child(none)
+		return
+	var total := 0.0
+	var max_rev := 0.0
+	for r in rows:
+		total += float(r.revenue)
+		max_rev = maxf(max_rev, float(r.revenue))
+	for r in rows:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		var name_l := Label.new()
+		name_l.text = str(r.label)
+		name_l.custom_minimum_size = Vector2(170, 0)
+		name_l.clip_text = true
+		row.add_child(name_l)
+		var qty_l := Label.new()
+		qty_l.text = ("×%d" % int(r.qty)) if int(r.qty) >= 0 else ""
+		qty_l.custom_minimum_size = Vector2(56, 0)
+		qty_l.add_theme_color_override("font_color", Color(0.65, 0.72, 0.8))
+		row.add_child(qty_l)
+		var bar := ProgressBar.new()
+		bar.min_value = 0.0
+		bar.max_value = 1.0
+		bar.value = float(r.revenue) / max_rev if max_rev > 0.0 else 0.0
+		bar.show_percentage = false
+		bar.custom_minimum_size = Vector2(0, 10)
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(bar)
+		var rev_l := Label.new()
+		rev_l.text = "£%.2f" % float(r.revenue)
+		rev_l.theme_type_variation = &"Numeric"
+		rev_l.custom_minimum_size = Vector2(92, 0)
+		rev_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		row.add_child(rev_l)
+		_sales_tab_root.add_child(row)
+	var total_row := HBoxContainer.new()
+	var total_name := Label.new()
+	total_name.text = "Total sales income"
+	total_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	total_row.add_child(total_name)
+	var total_val := Label.new()
+	total_val.text = "£%.2f" % total
+	total_val.theme_type_variation = &"Numeric"
+	total_row.add_child(total_val)
+	_sales_tab_root.add_child(total_row)
+
 func _record_chart_history(summary: Dictionary) -> void:
+	# Per-good sales history for the Sales tab (same 10-turn window as charts).
+	_sales_history.append({
+		"goods": (summary.get("sold", {}) as Dictionary).duplicate(true),
+		"power": float(summary.get("power_sales_revenue", 0.0)),
+	})
+	while _sales_history.size() > CHART_MAX_TURNS:
+		_sales_history.pop_front()
 	var revenue := {
 		"finished": 0.0, "intermediate": 0.0, "raw": 0.0, "construction": 0.0, "power": 0.0,
 	}

@@ -294,6 +294,14 @@ func finish_build(animate: bool) -> void:
 		await _place_start_buildings(animate)
 	RoadWorks.rebuild_occupancy()   # no-op until OCCUPANCY_ROADS_ENABLED
 
+	# Port dockhouses: white harbour slabs + pier fingers on the sea edge of
+	# every port tile (draws above the tilemap as a terrain_layer child).
+	var port_visuals: Node2D = load("res://scripts/port_visuals.gd").new()
+	port_visuals.name = "PortVisuals"
+	port_visuals.z_index = 60   # above hills/roads decoration, below UI
+	terrain_layer.add_child(port_visuals)
+	port_visuals.setup(terrain_layer)
+
 	# Re-gravitate every building once (deterministic, idempotent): a loaded save re-emitted its buildings
 	# before its imported road network was in hand, and this also re-fills the enclosure chunk grids now that
 	# the templates + rings all exist. Fresh-start buildings were already laid out against roads above.
@@ -1097,17 +1105,22 @@ func _on_focus_tile_requested(tile_id: String) -> void:
 	_last_selected_tile = td
 	info_panel.show_tile(td)
 
-## Deep-link target for a specific building (starvation notifications): centre on
-## its tile and open the building detail panel rather than the tile panel.
+## UI-driven building selection (ledger row, empire view node, starvation
+## notifications): pan to the tile and open BOTH the tile view panel and the
+## building detail panel on top of it.
 func _on_focus_building_requested(instance_id: String) -> void:
 	var building: Dictionary = MatchState.get_building(instance_id)
 	if building.is_empty():
 		return
-	_focus_camera_on_tile(str(building.get("tile_id", "")))
+	var td := _focus_camera_on_tile(str(building.get("tile_id", "")))
+	if not td.is_empty():
+		_last_selected_tile = td
+		info_panel.show_tile(td)
 	building_panel.move_to_front()
 	building_panel.show_building(building)
 
-## Centre the camera on a tile; returns its tile_data ({} if unknown).
+## Pan the camera to a tile over 0.3s (UI-driven selection only — clicking a
+## tile directly on the map never pans); returns its tile_data ({} if unknown).
 func _focus_camera_on_tile(tile_id: String) -> Dictionary:
 	var coord := terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1) or not terrain_layer.tiles.has(coord):
@@ -1115,7 +1128,11 @@ func _focus_camera_on_tile(tile_id: String) -> Dictionary:
 	var cam := get_viewport().get_camera_2d()
 	if cam != null:
 		var cell := terrain_layer.map_coord_for_tile_coord(coord)
-		cam.position = terrain_layer.to_global(terrain_layer.map_to_local(cell))
+		var target: Vector2 = terrain_layer.to_global(terrain_layer.map_to_local(cell))
+		if cam.has_method("pan_to_world"):
+			cam.pan_to_world(target, 0.3)
+		else:
+			cam.position = target
 	return terrain_layer.tiles[coord]
 
 func _on_v2_pick_destination() -> void:

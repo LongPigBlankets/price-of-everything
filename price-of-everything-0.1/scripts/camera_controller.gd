@@ -15,6 +15,17 @@ extends Camera2D
 
 var _target_zoom: Vector2
 var _intro_tween: Tween
+var _pan_tween: Tween
+
+# Drag-to-pan: armed by an unhandled left/middle press (so drags can never start
+# over UI), promoted to a real drag after DRAG_THRESHOLD px of motion. Motion and
+# the release are then consumed, so the map click that would have fired on
+# release never happens.
+const DRAG_THRESHOLD := 8.0
+var _drag_button: int = -1
+var _drag_armed := false
+var _dragging := false
+var _drag_accum := Vector2.ZERO
 
 ## Set true by the Empire view while it owns the full screen, so map pan/zoom go quiet
 ## and the (hidden) map camera does not drift behind the overlay. See empire_view.gd.
@@ -80,10 +91,59 @@ func _process(delta: float) -> void:
 	_apply_zoom_smoothing(delta)
 	_clamp_to_bounds()
 
+## Smoothly pan to a world position — the UI-driven focus move (ledger/panel
+## selection). Manual pans (keyboard, edge, drag) cancel it.
+func pan_to_world(target: Vector2, dur: float = 0.3) -> void:
+	_kill_pan_tween()
+	_pan_tween = create_tween()
+	_pan_tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_pan_tween.tween_property(self, "position", target, dur)
+
+## Pan to a tile by id ("tile_X_Y"). Used when a building or tile is selected
+## THROUGH UI (ledger, panels) — direct map clicks deliberately don't pan.
+func pan_to_tile(tile_id: String, dur: float = 0.3) -> void:
+	var hex_map := get_tree().get_first_node_in_group("hex_map")
+	if hex_map == null or not hex_map.has_method("id_to_coord"):
+		return
+	var coord: Vector2i = hex_map.id_to_coord(tile_id)
+	if coord == Vector2i(-1, -1):
+		return
+	var cell: Vector2i = hex_map.map_coord_for_tile_coord(coord)
+	pan_to_world(hex_map.to_global(hex_map.map_to_local(cell)), dur)
+
+func _kill_pan_tween() -> void:
+	if _pan_tween != null and _pan_tween.is_valid():
+		_pan_tween.kill()
+
+func _input(event: InputEvent) -> void:
+	# Drag promotion/consumption runs in _input so the consumed release is
+	# guaranteed to beat every _unhandled_input listener (hex_map's click).
+	if input_blocked or not _drag_armed:
+		return
+	if event is InputEventMouseMotion:
+		_drag_accum += event.relative
+		if not _dragging and _drag_accum.length() >= DRAG_THRESHOLD:
+			_dragging = true
+			_kill_pan_tween()
+		if _dragging:
+			position -= event.relative / zoom.x
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and not event.pressed and event.button_index == _drag_button:
+		if _dragging:
+			get_viewport().set_input_as_handled()
+		_drag_armed = false
+		_dragging = false
+		_drag_button = -1
+
 func _unhandled_input(event: InputEvent) -> void:
 	if input_blocked:
 		return
 	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_MIDDLE:
+			_drag_armed = true
+			_drag_button = event.button_index
+			_drag_accum = Vector2.ZERO
+			return   # not consumed: a clean click still selects on release
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_adjust_zoom(_scroll_factor(event))
 			get_viewport().set_input_as_handled()
@@ -128,6 +188,7 @@ func _handle_keyboard_pan(delta: float) -> void:
 		direction.y -= 1
 
 	if direction != Vector2.ZERO:
+		_kill_pan_tween()
 		# Pan speed scales inversely with zoom — feels right whether zoomed in or out
 		position += direction.normalized() * pan_speed * delta / zoom.x
 
@@ -148,6 +209,7 @@ func _handle_edge_pan(delta: float) -> void:
 		direction.y += 1
 
 	if direction != Vector2.ZERO:
+		_kill_pan_tween()
 		position += direction.normalized() * edge_pan_speed * delta / zoom.x
 
 func _apply_zoom_smoothing(delta: float) -> void:
