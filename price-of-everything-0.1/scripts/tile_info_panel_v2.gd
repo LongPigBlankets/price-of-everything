@@ -24,6 +24,7 @@ const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIFonts := preload("res://scripts/ui_fonts.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
+const SellSurplusDialog := preload("res://scripts/sell_surplus_dialog.gd")
 const GOODS_FRAME := preload("res://assets/ui/goods_frame.tres")
 const PLUS_ICON_PATH := "res://assets/icons/ui_icons/plus_off_white.png"
 # Classic TileInfoPanel footprint is 760×630; this is 120px narrower, 100px taller.
@@ -48,6 +49,14 @@ var _stock_sel: Dictionary = {}   # {good_id, name, qty} of the selected good, o
 var _stock_qty: int = 0
 var _stock_dest: String = ""      # "" = none, MARKET_DEST, SPECIAL_ORDER_DEST, or a tile_id
 var _stock_recurring: bool = false
+
+# "Sell all Surplus" confirmation. The suppress flag is session-wide (static) so
+# "Do not show again for other tiles" carries across every tile's panel.
+static var _skip_sell_surplus_confirm := false
+var _sell_surplus_layer: CanvasLayer = null
+var _sell_surplus_dialog = null
+var _pending_surplus_tile: String = ""
+var _pending_surplus_toggle: CheckBox = null
 
 var _current_tile_data: Dictionary = {}
 var _current_tile_id: String = ""
@@ -1769,6 +1778,10 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 	# The "Stockpile" heading now lives inside the chart's outline.
 	pane.add_child(_make_stock_chart(stock.goods, pct_text, str(stock.status)))
 
+	# Whole-tile "Sell all Surplus" — applies to every good, so it sits under the
+	# chart, outside the per-good "select a good" flow.
+	pane.add_child(_make_sell_surplus_toggle())
+
 	if _stock_sel.is_empty():
 		pane.add_child(_make_muted_label("Select a good above to move or sell it"))
 	else:
@@ -1780,6 +1793,62 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 		pane.add_child(_make_section_header("Overflow Shipments", "can't unload", "problem"))
 		for r in overflow:
 			pane.add_child(_make_overflow_row(r))
+
+# Whole-tile "Sell all Surplus" toggle. Enabling it (unless suppressed) opens a
+# confirmation dialog first; the box only commits once the player confirms.
+func _make_sell_surplus_toggle() -> CheckBox:
+	var tile_id_now := _current_tile_id
+	var toggle := CheckBox.new()
+	toggle.text = "Sell all Surplus every turn"
+	toggle.tooltip_text = ("Each turn, sells every good on this tile that its buildings don't reserve as inputs.\n"
+		+ "Demand is re-checked every turn, so adding a consuming building automatically reduces the sales.")
+	toggle.button_pressed = MatchState.is_sell_surplus_enabled(tile_id_now)
+	toggle.toggled.connect(func(v: bool) -> void: _on_sell_surplus_toggled(tile_id_now, toggle, v))
+	return toggle
+
+func _on_sell_surplus_toggled(tile_id: String, toggle: CheckBox, enabled: bool) -> void:
+	if not enabled:
+		MatchState.disable_sell_surplus(tile_id)
+		return
+	if _skip_sell_surplus_confirm:
+		_commit_sell_surplus(tile_id)
+		return
+	# Hold the enable until the player confirms; revert the box on cancel.
+	_ensure_sell_surplus_dialog()
+	_pending_surplus_tile = tile_id
+	_pending_surplus_toggle = toggle
+	_sell_surplus_dialog.open()
+
+func _ensure_sell_surplus_dialog() -> void:
+	if _sell_surplus_dialog != null and is_instance_valid(_sell_surplus_dialog):
+		return
+	if _sell_surplus_layer == null or not is_instance_valid(_sell_surplus_layer):
+		_sell_surplus_layer = CanvasLayer.new()
+		_sell_surplus_layer.layer = 130  # above the tile view panel + HUD
+		get_tree().root.add_child(_sell_surplus_layer)
+	_sell_surplus_dialog = SellSurplusDialog.new()
+	_sell_surplus_layer.add_child(_sell_surplus_dialog)
+	_sell_surplus_dialog.confirmed.connect(_on_sell_surplus_confirmed)
+	_sell_surplus_dialog.cancelled.connect(_on_sell_surplus_cancelled)
+
+func _on_sell_surplus_confirmed(dont_ask_again: bool) -> void:
+	if dont_ask_again:
+		_skip_sell_surplus_confirm = true
+	if _pending_surplus_tile != "":
+		_commit_sell_surplus(_pending_surplus_tile)
+	_pending_surplus_tile = ""
+	_pending_surplus_toggle = null
+
+func _on_sell_surplus_cancelled() -> void:
+	# Revert the checkbox — the enable was never committed.
+	if _pending_surplus_toggle != null and is_instance_valid(_pending_surplus_toggle):
+		_pending_surplus_toggle.set_pressed_no_signal(false)
+	_pending_surplus_tile = ""
+	_pending_surplus_toggle = null
+
+func _commit_sell_surplus(tile_id: String) -> void:
+	MatchState.enable_sell_surplus(tile_id)
+	MatchState.request_toast("Selling this tile's unused surplus every turn", "success")
 
 func _make_overflow_row(r: Dictionary) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -1909,22 +1978,10 @@ func _make_stock_context_menu() -> PanelContainer:
 	recurring.toggled.connect(func(v): _stock_recurring = v)
 	vbox.add_child(recurring)
 
-	# --- Standing orders: whole-tile surplus + per-good "sell all except X" ---
+	# --- Per-good standing order: "sell all except X" (whole-tile surplus lives
+	# under the chart in _build_stock_pane, since it doesn't need a selected good).
 	vbox.add_child(HSeparator.new())
 	var tile_id_now := _current_tile_id
-	var surplus_toggle := CheckBox.new()
-	surplus_toggle.text = "Sell unused surplus every turn"
-	surplus_toggle.tooltip_text = ("Each turn, sells everything on this tile that its buildings don't claim as inputs.\n"
-		+ "Demand is re-checked every turn, so adding a consuming building automatically reduces the sales.")
-	surplus_toggle.button_pressed = MatchState.is_sell_surplus_enabled(tile_id_now)
-	surplus_toggle.toggled.connect(func(v: bool) -> void:
-		if v:
-			MatchState.enable_sell_surplus(tile_id_now)
-			MatchState.request_toast("Selling this tile's unused surplus every turn", "success")
-		else:
-			MatchState.disable_sell_surplus(tile_id_now))
-	vbox.add_child(surplus_toggle)
-
 	var keep_row := HBoxContainer.new()
 	keep_row.add_theme_constant_override("separation", 6)
 	var keep_toggle := CheckBox.new()
