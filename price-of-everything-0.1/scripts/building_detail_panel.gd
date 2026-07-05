@@ -2533,21 +2533,21 @@ var _enroute_flash: Tween
 var _enroute_min_turns: int = 0
 var _enroute_count: int = 0
 
-## Inbound (non-sale) shipments headed to this building's tile carrying one of
-## its recipe's input goods. Market buys and tile moves both carry good_id/qty.
+## MARKET-ORDERED (is_purchase) shipments headed to this building's tile
+## carrying one of its recipe's input goods. Tile-to-tile moves don't count —
+## the badge is a "your market order is still far away" warning, not general
+## logistics noise.
 func _inbound_input_shipments(building: Dictionary, recipe: Dictionary) -> Array:
 	var tile_id := str(building.get("tile_id", ""))
 	if tile_id == "":
 		return []
-	var input_ids: Dictionary = {}
-	for input in recipe.get("inputs", []):
-		input_ids[str(input.get("good_id", ""))] = true
+	var input_ids := _recipe_input_ids(recipe)
 	if input_ids.is_empty():
 		return []
 	var out: Array = []
 	for s in MatchState.pending_transport_shipments:
 		var sd: Dictionary = s
-		if bool(sd.get("is_sale", false)):
+		if not bool(sd.get("is_purchase", false)):
 			continue
 		if str(sd.get("destination_tile", "")) != tile_id:
 			continue
@@ -2555,19 +2555,46 @@ func _inbound_input_shipments(building: Dictionary, recipe: Dictionary) -> Array
 			out.append(sd)
 	return out
 
+func _recipe_input_ids(recipe: Dictionary) -> Dictionary:
+	var input_ids: Dictionary = {}
+	for input in recipe.get("inputs", []):
+		input_ids[str(input.get("good_id", ""))] = true
+	return input_ids
+
+## True when a market buy of one of these inputs landed on the tile LAST turn
+## (ledger rows carry the planned arrival turn as turn_ended).
+func _received_input_last_turn(tile_id: String, input_ids: Dictionary) -> bool:
+	var last_turn := int(TurnManager.current_turn) - 1
+	for t in MatchState.transaction_log:
+		var td: Dictionary = t
+		if str(td.get("kind", "")) != "buy":
+			continue
+		if str(td.get("tile_to", "")) != tile_id:
+			continue
+		if int(td.get("turn_ended", -99)) != last_turn:
+			continue
+		if input_ids.has(str(td.get("good_id", ""))):
+			return true
+	return false
+
 func _update_enroute_badge(building: Dictionary, recipe: Dictionary) -> void:
 	if _enroute_badge == null:
 		return
 	var shipments := _inbound_input_shipments(building, recipe)
-	if shipments.is_empty():
+	var min_turns := 999
+	for s in shipments:
+		min_turns = mini(min_turns, int((s as Dictionary).get("turns_remaining", 0)))
+	# Flash ONLY for a real supply gap: market orders exist, the nearest one is
+	# still more than a turn away, and nothing arrived last turn. Steady-state
+	# pipelines (something landing every turn) stay quiet.
+	var supply_gap := (not shipments.is_empty() and min_turns > 1
+		and not _received_input_last_turn(str(building.get("tile_id", "")), _recipe_input_ids(recipe)))
+	if not supply_gap:
 		_enroute_badge.visible = false
 		if _enroute_flash != null and _enroute_flash.is_valid():
 			_enroute_flash.kill()
 			_enroute_badge.modulate.a = 1.0
 		return
-	var min_turns := 999
-	for s in shipments:
-		min_turns = mini(min_turns, int((s as Dictionary).get("turns_remaining", 0)))
 	var was_visible := _enroute_badge.visible
 	_enroute_min_turns = maxi(min_turns, 0)
 	_enroute_count = shipments.size()

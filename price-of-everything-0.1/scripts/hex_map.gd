@@ -517,16 +517,32 @@ func tile_id_under_mouse() -> String:
 		return ""
 	return "tile_%d_%d" % [coord.x + 1, coord.y + 1]
 
+# A tile click only counts when its PRESS also reached the map. UI consumes the
+# press of clicks on panels but often lets the RELEASE fall through to
+# _unhandled_input — without the arm, clicking a panel button would also select
+# the tile underneath it.
+var _click_armed := false
+
+func _input(event: InputEvent) -> void:
+	# Clear the arm AFTER every left-release finishes propagating (deferred),
+	# whether or not our _unhandled_input saw it — a drag's release is consumed
+	# by the camera and must not leave a stale arm behind.
+	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		set_deferred("_click_armed", false)
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton):
 		return
+
+	if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_click_armed = true   # press landed on the map, not on UI
 
 	# LEFT actions fire on RELEASE: the camera's drag-to-pan consumes a drag's
 	# release (camera_controller._input runs before every _unhandled_input), so
 	# panning the map never doubles as a tile click. A clean press+release under
 	# the drag threshold still arrives here as an ordinary click.
 	if not event.pressed:
-		if event.button_index == MOUSE_BUTTON_LEFT:
+		if event.button_index == MOUSE_BUTTON_LEFT and _click_armed:
 			var map_pos := _tile_coord_under_mouse()
 
 			if not tiles.has(map_pos):

@@ -256,11 +256,21 @@ func reorder_market_materials() -> void:
 		var tile_id: String = str(project.get("tile_id", ""))
 		for good_id in (project.get("missing_materials", {}) as Dictionary).keys():
 			var need: int = int(project["missing_materials"][good_id])
-			var on_tile: int = Stockpile.get_at_tile(tile_id, str(good_id))
+			# Count ONLY this project's own in-transit freight against the
+			# shortfall — NOT arbitrary inbound of the same good. A co-located
+			# production building's imports (or another project's) are earmarked
+			# for their own consumer: production already excludes our freight from
+			# its pipeline (production._shipment_reserved_outside_input_pipeline),
+			# so counting theirs here left builds permanently short whenever a
+			# neighbour imported the same good — they'd never order (nor receive)
+			# their own copy, and the countdown never started. On-tile stock is
+			# NOT pre-counted because claim_materials (which runs just before this)
+			# has already consumed everything available off the tile.
 			var inbound: int = 0
 			for shipment in MatchState.get_inbound_transport_shipments(tile_id, str(good_id)):
-				inbound += int(shipment.get("qty", 0))
-			var shortfall: int = need - on_tile - inbound
+				if str(shipment.get("construction_instance_id", "")) == instance_id:
+					inbound += int(shipment.get("qty", 0))
+			var shortfall: int = need - inbound
 			if shortfall > 0:
 				MatchState.queue_buy(tile_id, str(good_id), shortfall, false, {"construction_instance_id": instance_id})
 
