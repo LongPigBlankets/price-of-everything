@@ -57,8 +57,16 @@ headless balance harness (`tests/e2e_stoneshore.gd`).
   built-in `hash()` is not stable across engine versions and those seeds persist in saves.
 - **Failure prevented:** a single stray `randf()` makes save/reload diverge from
   continuous play, and makes every balance sweep unreproducible.
-- Audit check: `grep -rn "randi()\|randf()" price-of-everything-0.1/scripts/ | grep -v "_rng"`
-  — every hit must be in the visual whitelist above.
+- Audit check (sim core must have ZERO unseeded RNG — seeded `rng.randi()` calls are
+  fine and are filtered out):
+  ```bash
+  grep -rnE "\b(randi|randf|randi_range|randf_range)\(" \
+    price-of-everything-0.1/scripts/{match_state,production,market_state,cost_solver,modifier_state,special_order_state,turn_manager,power}.gd \
+    | grep -vE "rng\.(randi|randf)"
+  ```
+  Must return nothing. Bare-`grep randi()` over all of `scripts/` returns ~52 hits —
+  those are seeded `rng.randi()` method calls and the visual whitelist above, not
+  violations; the filtered sim-core check is the real gate.
 
 ### 4. Saves are custom, versioned dict/JSON — NEVER ResourceSaver or scene serialization
 `scripts/save_load.gd`: `SAVE_VERSION` (4 as of 2026-07-05), stepwise `_migrate_vN_to_vN+1`
@@ -128,6 +136,6 @@ silently depend on the broken behavior.
 Compiled 2026-07-05 from CLAUDE.md, the July 2026 mechanics audit, and direct code
 verification. Re-verify before trusting drift-prone facts:
 - Invariant 2 wiring: `grep -n "_wire_sim_listeners" price-of-everything-0.1/scripts/turn_manager.gd`
-- Invariant 3 whitelist: `grep -rn "randi()\|randf()" price-of-everything-0.1/scripts/ | grep -v _rng`
+- Invariant 3 sim-core RNG gate: the filtered command in §3 above (must be empty)
 - SAVE_VERSION: `grep -n "SAVE_VERSION" price-of-everything-0.1/scripts/save_load.gd`
 - Weak-point list: re-read `price-of-everything-0.1/docs/mechanics_audit_2026-07.md` §Cross-cutting.
