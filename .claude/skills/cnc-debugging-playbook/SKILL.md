@@ -26,7 +26,7 @@ inventing theories.
 | Panel shows stale data until reopened | does the panel implement the coalescing pattern? was `_dirty` set but visibility catch-up missing? | `cnc-ui-and-theming` refresh doctrine — check `_on_visibility_changed` re-queues |
 | Clicking a panel selects the tile under it | is the panel root `mouse_filter = STOP`? | press leaked through the panel (the release-side arm is global — `hex_map._click_armed`) |
 | Tests pass, game visibly broken | is it data? run the content survival check | data integrity is a suite blind spot (`cnc-validation-and-qa` §blind spots): promotion-gate drops, dead research conditions |
-| Same seed, different outcomes | `grep -rn "randi()\|randf()" price-of-everything-0.1/scripts/ | grep -v _rng` — any hit outside the visual whitelist? new dict-order dependence? frame-time dependence? | determinism break — treat as release-blocking (`cnc-architecture-contract` rule 3) |
+| Same seed, different outcomes | grep scripts/ for `randi()`/`randf()` and filter out `_rng` — any hit outside the visual whitelist? new dict-order dependence? frame-time dependence? | determinism break — treat as release-blocking (`cnc-architecture-contract` rule 3) |
 | Turn suddenly slow | read the newest rows of `user://turn_profile.csv` — which column jumped? | `cnc-performance-playbook` Phase 2 gates |
 | Research never unlocks | is the node's condition action one of the 5 handled ones, and its object an internal_name/good id? | 95/231 nodes have dead conditions (open) — `cnc-content-pipeline` §tech-gating |
 | Recipe/building absent from menus | promotion-gate survival check | `cnc-content-pipeline` |

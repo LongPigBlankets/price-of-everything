@@ -98,7 +98,8 @@ pollution_sensitivity, category, terminal_turns, required_research`
 - New good: id `g_0xx` (next free), `internal_name` snake_case unique, `transport_class`
   ∈ {solid_light, solid_heavy, ultra_heavy, safe_liquid, hazard_liquid, liquid, gas} —
   fluids move ONLY by pipes (reinforced for hazard_liquid); class rates live in
-  `economy_config.gd TRANSPORT_RATES`. `base_price`/`decay_rate` are balance columns →
+  `economy_config.gd TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS`.
+  `base_price`/`decay_rate` are balance columns →
   `cnc-balance-change-control`.
 - Icon: `assets/icons/goods/` — `{good_id}_{internal_name}.png` (+ medium/small
   variants; see the good-icon pipeline note in docs). Missing icon = blank slot +

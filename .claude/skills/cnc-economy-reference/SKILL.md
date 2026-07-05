@@ -110,7 +110,8 @@ still consumed in full — known sharp edge).
 
 ## 8. Transport
 
-Cost = per-class rate (`TRANSPORT_RATES`, e.g. solid_heavy vs safe_liquid) × qty ×
+Cost = per-class rate (`TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS`, e.g.
+solid_heavy 0.03 vs ultra_heavy 0.06) × qty ×
 route legs × mode multipliers, + congestion surcharge tiers (+100/+200%) fed by LAST
 turn's link flow (stable, not self-referential). Fluid classes (`safe_liquid`,
 `hazard_liquid`, `liquid`, `gas`) move ONLY by pipes — `reinf_pipes` required for
