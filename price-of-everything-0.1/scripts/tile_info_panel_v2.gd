@@ -494,6 +494,7 @@ func _select_tab(tab_id: String) -> void:
 func show_tile(tile_data: Dictionary) -> void:
 	_current_tile_data = tile_data
 	_current_tile_id = str(tile_data.get("id", ""))
+	Audio.tile_ambience(str(tile_data.get("type", "")))  # looping terrain ambience while this panel is open
 	_active_tab = "bl"  # always land on the Buildings tab when a new tile is selected
 	_refresh_banner(tile_data)
 	_refresh_land_rail()
@@ -504,6 +505,7 @@ func show_tile(tile_data: Dictionary) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED and not visible:
+		Audio.stop_tile_ambience()  # silence terrain ambience when the panel closes
 		PanelStack.remove(self)
 
 # Coalesced (notification_bell pattern): money_changed/stockpile_changed fire

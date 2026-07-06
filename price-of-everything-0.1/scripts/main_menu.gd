@@ -120,6 +120,10 @@ func _on_load_game_pressed() -> void:
 	SaveLoadScreen.open(self, SaveLoadScreen.Mode.LOAD)
 
 
+func _on_settings_pressed() -> void:
+	SettingsPanel.open(self)
+
+
 func _build_menu() -> void:
 	var panel := Panel.new()
 	panel.anchor_left = 0.0
@@ -159,6 +163,8 @@ func _build_menu() -> void:
 		var b := _make_button(label, false)
 		if label == "Load Game":
 			b.pressed.connect(_on_load_game_pressed)
+		elif label == "Settings":
+			b.pressed.connect(_on_settings_pressed)
 		vbox.add_child(b)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL

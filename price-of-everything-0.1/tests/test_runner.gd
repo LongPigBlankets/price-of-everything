@@ -225,7 +225,7 @@ func _ready() -> void:
 # audio driver, so we assert wiring/state rather than actual playback: the click
 # stream imports, the voice pool is built, and click() runs without erroring.
 func _test_audio_service() -> void:
-	for cue in ["CLICK", "CLICK_MENU", "CLICK_PRIMARY", "HOVER", "HAMMER", "RUBBLE", "SIGNATURE", "CASH_REGISTER", "TECH_UNLOCK", "SLOT_LEVER"]:
+	for cue in ["CLICK", "CLICK_MENU", "CLICK_PRIMARY", "HOVER", "HAMMER", "RUBBLE", "SIGNATURE", "CASH_REGISTER", "TECH_UNLOCK", "SLOT_LEVER", "HINT"]:
 		_check(Audio.get(cue) != null, "audio: %s cue imports and loads" % cue)
 	# Each channel built its own independent voice pool (clicks can't steal build voices).
 	var channels_ok: bool = Audio._channels.size() == Audio.CHANNELS.size()
@@ -239,8 +239,29 @@ func _test_audio_service() -> void:
 		if t == null:
 			music_ok = false
 	_check(music_ok, "audio: music playlist has 5 loaded tracks")
+	# Tile-view terrain ambience: six terrains, three looping slices each.
+	_check(Audio._ambient != null, "audio: dedicated ambience player built")
+	var ambience_ok: bool = Audio.AMBIENCE.size() == 6
+	for terrain in ["sea", "deep_sea", "urban", "rural", "hill", "mountain"]:
+		var clips: Array = Audio.AMBIENCE.get(terrain, [])
+		if clips.size() != 3:
+			ambience_ok = false
+		for clip in clips:
+			if clip == null or not clip.loop:   # loop=true is baked into the .import
+				ambience_ok = false
+	_check(ambience_ok, "audio: terrain ambience has 6×3 looping slices")
+	# Volume buses: Music + SFX exist (routed to Master), and 0–100% round-trips.
+	_check(AudioServer.get_bus_index(Audio.BUS_MUSIC) != -1, "audio: Music bus created")
+	_check(AudioServer.get_bus_index(Audio.BUS_SFX) != -1, "audio: SFX bus created")
+	Audio.set_bus_percent(Audio.BUS_MASTER, 50.0)
+	_check(absf(Audio.get_bus_percent(Audio.BUS_MASTER) - 50.0) < 1.0, "audio: bus volume round-trips (50%)")
+	Audio.set_bus_percent(Audio.BUS_MASTER, 0.0)
+	_check(Audio.get_bus_percent(Audio.BUS_MASTER) == 0.0, "audio: bus 0% reads as muted")
+	Audio.set_bus_percent(Audio.BUS_MASTER, 100.0)   # restore full so later cues aren't muted
+	_check(absf(Audio.get_bus_percent(Audio.BUS_MASTER) - 100.0) < 0.5, "audio: bus 100% = full")
 	for verb in ["click", "click_menu", "click_primary", "hover", "building_placed", "demolished",
-			"transaction", "tech_unlocked", "turn_ready", "swap_song", "play_music", "stop_music", "fade_music"]:
+			"transaction", "tech_unlocked", "turn_ready", "swap_song", "play_music", "stop_music", "fade_music",
+			"tile_ambience", "stop_tile_ambience", "hint", "set_bus_percent", "get_bus_percent"]:
 		_check(Audio.has_method(verb), "audio: %s() verb exists" % verb)
 	Audio.click()             # must not error under the dummy driver
 	Audio.click_primary()
@@ -250,6 +271,11 @@ func _test_audio_service() -> void:
 	Audio.transaction()
 	Audio.tech_unlocked()
 	Audio.turn_ready()
+	Audio.tile_ambience("sea")        # start ambience for a terrain that has it
+	Audio.tile_ambience("mountain")   # switch to another terrain that has ambience
+	Audio.tile_ambience("")           # unknown terrain → falls through to silence
+	Audio.stop_tile_ambience()
+	Audio.hint()
 	_check(true, "audio: cue verbs run without error")
 
 # Baked hills are the canonical hand-painted shape: the file must exist, match

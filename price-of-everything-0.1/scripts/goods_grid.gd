@@ -55,6 +55,7 @@ func _ready() -> void:
 	call_deferred("_relayout_icons")
 	_player = AudioStreamPlayer.new()
 	_player.stream = SLIDE_SOUND
+	_player.bus = Audio.BUS_SFX   # route through the SFX bus so the volume slider governs it
 	add_child(_player)
 
 
