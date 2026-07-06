@@ -1,6 +1,7 @@
 extends PanelContainer
 
 const LoanRowScene: PackedScene = preload("res://scenes/loan_row.tscn")
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const HEADER_HEIGHT := 40.0
 
 @onready var title_label: Label = $MarginContainer/ModalLayout/HeaderRow/TitleLabel
@@ -164,6 +165,7 @@ func _ready() -> void:
 	_chart_revenue_button.pressed.connect(_on_chart_mode_pressed.bind("revenue"))
 	_chart_costs_button.pressed.connect(_on_chart_mode_pressed.bind("costs"))
 	_build_sales_tab()
+	_build_purchases_tab()
 	_tab_container.tab_changed.connect(_on_tab_changed)
 	_apply_tab_size(_tab_container.current_tab)
 
@@ -200,6 +202,7 @@ func _apply_refresh() -> void:
 	_refresh_projection()
 	_refresh_chart()
 	_refresh_sales()
+	_refresh_purchases()
 
 func _on_panel_visibility_changed() -> void:
 	if visible and _dirty:
@@ -636,67 +639,137 @@ func _add_sales_section(title: String, entries: Array) -> void:
 
 	var rows: Array = []
 	for gid in by_good:
-		rows.append({"label": Catalog.get_display_name(str(gid)),
-			"qty": int(by_good[gid].qty), "revenue": float(by_good[gid].revenue)})
+		rows.append({"gid": str(gid), "label": Catalog.get_display_name(str(gid)),
+			"qty": int(by_good[gid].qty), "amount": float(by_good[gid].revenue)})
 	if power_total > 0.0:
-		rows.append({"label": "Power (grid exports)", "qty": -1, "revenue": power_total})
-	rows = rows.filter(func(r: Dictionary) -> bool: return float(r.revenue) > 0.005)
-	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.revenue) > float(b.revenue))
+		rows.append({"gid": "", "label": "Power (grid exports)", "qty": -1, "amount": power_total})
+	rows = rows.filter(func(r: Dictionary) -> bool: return float(r.amount) > 0.005)
+	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.amount) > float(b.amount))
+	_add_breakdown_section(_sales_tab_root, title, rows, "No sales income in this window.", "Total sales income")
 
+# A per-good breakdown section (icon · name · ×qty · bar · £amount) shared by Sales and Purchases.
+func _add_breakdown_section(root: VBoxContainer, title: String, rows: Array, empty_text: String, total_label: String) -> void:
 	var header := Label.new()
 	header.text = title
 	header.theme_type_variation = &"Section"
-	_sales_tab_root.add_child(header)
+	root.add_child(header)
 	if rows.is_empty():
 		var none := Label.new()
-		none.text = "No sales income in this window."
+		none.text = empty_text
 		none.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
-		_sales_tab_root.add_child(none)
+		root.add_child(none)
 		return
 	var total := 0.0
-	var max_rev := 0.0
+	var max_amt := 0.0
 	for r in rows:
-		total += float(r.revenue)
-		max_rev = maxf(max_rev, float(r.revenue))
+		total += float(r.amount)
+		max_amt = maxf(max_amt, float(r.amount))
 	for r in rows:
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 10)
-		var name_l := Label.new()
-		name_l.text = str(r.label)
-		name_l.custom_minimum_size = Vector2(170, 0)
-		name_l.clip_text = true
-		row.add_child(name_l)
-		var qty_l := Label.new()
-		qty_l.text = ("×%d" % int(r.qty)) if int(r.qty) >= 0 else ""
-		qty_l.custom_minimum_size = Vector2(56, 0)
-		qty_l.add_theme_color_override("font_color", Color(0.65, 0.72, 0.8))
-		row.add_child(qty_l)
-		var bar := ProgressBar.new()
-		bar.min_value = 0.0
-		bar.max_value = 1.0
-		bar.value = float(r.revenue) / max_rev if max_rev > 0.0 else 0.0
-		bar.show_percentage = false
-		bar.custom_minimum_size = Vector2(0, 10)
-		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(bar)
-		var rev_l := Label.new()
-		rev_l.text = "£%.2f" % float(r.revenue)
-		rev_l.theme_type_variation = &"Numeric"
-		rev_l.custom_minimum_size = Vector2(92, 0)
-		rev_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		row.add_child(rev_l)
-		_sales_tab_root.add_child(row)
+		root.add_child(_breakdown_row(str(r.get("gid", "")), str(r.label), int(r.qty), float(r.amount), max_amt))
 	var total_row := HBoxContainer.new()
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(30, 0)
+	total_row.add_child(spacer)
 	var total_name := Label.new()
-	total_name.text = "Total sales income"
+	total_name.text = total_label
 	total_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	total_row.add_child(total_name)
 	var total_val := Label.new()
 	total_val.text = "£%.2f" % total
 	total_val.theme_type_variation = &"Numeric"
 	total_row.add_child(total_val)
-	_sales_tab_root.add_child(total_row)
+	root.add_child(total_row)
+
+# One breakdown row: framed good icon (or spacer for power/no-good) · name · ×qty · bar · £amount.
+func _breakdown_row(gid: String, label: String, qty: int, amount: float, max_amount: float) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	if gid != "":
+		var icon := UIHelpers.make_framed_good_icon(gid, Catalog.get_internal_name(gid), 30)
+		icon.custom_minimum_size = Vector2(30, 30)
+		row.add_child(icon)
+	else:
+		var sp := Control.new()
+		sp.custom_minimum_size = Vector2(30, 0)
+		row.add_child(sp)
+	var name_l := Label.new()
+	name_l.text = label
+	name_l.custom_minimum_size = Vector2(150, 0)
+	name_l.clip_text = true
+	row.add_child(name_l)
+	var qty_l := Label.new()
+	qty_l.text = ("×%d" % qty) if qty >= 0 else ""
+	qty_l.custom_minimum_size = Vector2(54, 0)
+	qty_l.add_theme_color_override("font_color", Color(0.65, 0.72, 0.8))
+	row.add_child(qty_l)
+	var bar := ProgressBar.new()
+	bar.min_value = 0.0
+	bar.max_value = 1.0
+	bar.value = amount / max_amount if max_amount > 0.0 else 0.0
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 10)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(bar)
+	var amt_l := Label.new()
+	amt_l.text = "£%.2f" % amount
+	amt_l.theme_type_variation = &"Numeric"
+	amt_l.custom_minimum_size = Vector2(88, 0)
+	amt_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(amt_l)
+	return row
+
+# ── Purchases tab: what we PAID to buy each good (mirrors Sales) ─────────────
+var _purchases_tab_root: VBoxContainer
+var _purchases_history: Array = []   # last CHART_MAX_TURNS of {goods: {gid: {qty, cost}}}
+
+func _build_purchases_tab() -> void:
+	var scroll := ScrollContainer.new()
+	scroll.name = "Purchases"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var margin := MarginContainer.new()
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 10)
+	scroll.add_child(margin)
+	_purchases_tab_root = VBoxContainer.new()
+	_purchases_tab_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_purchases_tab_root.add_theme_constant_override("separation", 8)
+	margin.add_child(_purchases_tab_root)
+	_tab_container.add_child(scroll)
+
+func _refresh_purchases() -> void:
+	if _purchases_tab_root == null:
+		return
+	for c in _purchases_tab_root.get_children():
+		c.queue_free()
+	if _purchases_history.is_empty():
+		var empty := Label.new()
+		empty.text = "No purchases yet — spend by good (materials bought from the market) appears here after your first turn."
+		empty.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+		_purchases_tab_root.add_child(empty)
+		return
+	_add_purchases_section("Last turn", [_purchases_history.back()])
+	if _purchases_history.size() > 1:
+		_add_purchases_section("Last %d turns" % _purchases_history.size(), _purchases_history)
+
+func _add_purchases_section(title: String, entries: Array) -> void:
+	var by_good: Dictionary = {}
+	for e in entries:
+		var goods: Dictionary = (e as Dictionary).get("goods", {})
+		for gid in goods:
+			var rec: Dictionary = by_good.get(str(gid), {"qty": 0, "cost": 0.0})
+			rec.qty = int(rec.qty) + int((goods[gid] as Dictionary).get("qty", 0))
+			rec.cost = float(rec.cost) + float((goods[gid] as Dictionary).get("cost", 0.0))
+			by_good[str(gid)] = rec
+	var rows: Array = []
+	for gid in by_good:
+		rows.append({"gid": str(gid), "label": Catalog.get_display_name(str(gid)),
+			"qty": int(by_good[gid].qty), "amount": float(by_good[gid].cost)})
+	rows = rows.filter(func(r: Dictionary) -> bool: return float(r.amount) > 0.005)
+	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.amount) > float(b.amount))
+	_add_breakdown_section(_purchases_tab_root, title, rows, "No material purchases in this window.", "Total spent on purchases")
 
 func _record_chart_history(summary: Dictionary) -> void:
 	# Per-good sales history for the Sales tab (same 10-turn window as charts).
@@ -706,6 +779,15 @@ func _record_chart_history(summary: Dictionary) -> void:
 	})
 	while _sales_history.size() > CHART_MAX_TURNS:
 		_sales_history.pop_front()
+	# Per-good PURCHASE history for the Purchases tab (units bought + £ paid, market inputs).
+	var pq: Dictionary = summary.get("purchased", {})
+	var pc: Dictionary = summary.get("purchased_cost", {})
+	var pgoods: Dictionary = {}
+	for gid in pq:
+		pgoods[str(gid)] = {"qty": int(pq[gid]), "cost": float(pc.get(gid, 0.0))}
+	_purchases_history.append({"goods": pgoods})
+	while _purchases_history.size() > CHART_MAX_TURNS:
+		_purchases_history.pop_front()
 	var revenue := {
 		"finished": 0.0, "intermediate": 0.0, "raw": 0.0, "construction": 0.0, "power": 0.0,
 	}

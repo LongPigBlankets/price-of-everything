@@ -52,6 +52,7 @@ func _ready() -> void:
 	_test_advisor_phase2_effects()
 	_test_hr_director_policies()
 	_test_retrofit_mechanic()
+	_test_sell_and_demolish()
 	_test_advisor_loyalty()
 	_test_advisor_missions()
 	_test_advisor_mission_update_signals()
@@ -93,6 +94,7 @@ func _ready() -> void:
 	_test_market_sale_credits()
 	_test_owner_costs()
 	_test_recurring_sell_multitile()
+	_test_input_buy_nets_local_supply()
 	_test_auto_sell_goods()
 	_test_price_impact()
 	_test_price_impact_thresholds()
@@ -147,6 +149,7 @@ func _ready() -> void:
 	_test_transport_congestion()
 	_test_tile_mode_flow_endpoints()
 	_test_cable_power_cap()
+	_test_power_network_settlement()
 	_test_power_output_modifier()
 	_test_building_leveling()
 	_test_run_failure_warnings()
@@ -4044,6 +4047,71 @@ func _test_cable_power_cap() -> void:
 	Modifiers.reset()
 	Power.reset_for_turn()
 
+func _test_power_network_settlement() -> void:
+	# Physical cable networks: same-tile generation covers same-tile draw first, then the rest of
+	# the adjacent-cabled network, then only the network's residual net settles with the grid.
+	Modifiers.reset()
+	Power.reset_for_turn()
+	var cabled_ids := ["tile_2_2", "tile_2_3", "tile_9_9", "tile_12_12", "tile_15_15", "tile_15_16"]
+	var tiles := {}
+	for tid in cabled_ids:
+		var p: PackedStringArray = str(tid).split("_")
+		tiles[Vector2i(int(p[1]) - 1, int(p[2]) - 1)] = {"infrastructure_present": ["cables"], "infrastructure_levels": {"cables": 2}}
+	var fake := Node.new()
+	var src := GDScript.new()
+	src.source_code = "extends Node\nvar tiles := {}\n"
+	src.reload()
+	fake.set_script(src)
+	fake.set("tiles", tiles)
+	fake.add_to_group("hex_map")
+	get_tree().root.add_child(fake)
+
+	# Network A (adjacent pair): windmill on 2_2 feeds furnace on 2_3 → surplus 520 sold.
+	Power.record_produced("tile_2_2", 800)
+	Power.record_drawn("tile_2_3", 280)
+	# Network B (isolated, demand only): buys 500.
+	Power.record_drawn("tile_9_9", 500)
+	# Network C (same tile): windmill + furnace on 12_12 → self-supplied, surplus 520 sold.
+	Power.record_produced("tile_12_12", 800)
+	Power.record_drawn("tile_12_12", 280)
+	# Network D (partial): 15_15 self-covers 280; its residual 20 partly feeds 15_16 (needs 100),
+	# leaving an 80 deficit bought from the grid.
+	Power.record_produced("tile_15_15", 300)
+	Power.record_drawn("tile_15_15", 280)
+	Power.record_drawn("tile_15_16", 100)
+
+	var grid := Power.settle_grid_transactions()
+	_check(int(grid.grid_sold) == 1040, "per-network sells the surplus of self-sufficient networks (got %d, want 1040)" % int(grid.grid_sold))
+	_check(int(grid.grid_bought) == 580, "per-network buys the deficit of importing networks (got %d, want 580)" % int(grid.grid_bought))
+	_check(Power.is_self_supplied("tile_2_2") and Power.is_self_supplied("tile_2_3"),
+		"a cabled generator covers a same-network consumer on an adjacent tile (own supply)")
+	_check(Power.is_self_supplied("tile_12_12"), "same-tile generation covers same-tile draw (own supply)")
+	_check(not Power.is_self_supplied("tile_9_9"), "an isolated demand-only tile imports from the national grid")
+	_check(Power.is_self_supplied("tile_15_15") and not Power.is_self_supplied("tile_15_16"),
+		"same-tile draw is covered first; the network's residual shortfall falls on the far consumer")
+	_check(absf(float(grid.grid_sell_revenue) - 1040.0 * EconomyConfig.GRID_SELL_PRICE) < 0.001, "sell revenue priced at GRID_SELL_PRICE")
+	_check(absf(float(grid.grid_buy_cost) - 580.0 * EconomyConfig.GRID_BUY_PRICE) < 0.001, "buy cost priced at GRID_BUY_PRICE")
+
+	get_tree().root.remove_child(fake)
+	fake.free()
+	Modifiers.reset()
+	Power.reset_for_turn()
+
+func _test_input_buy_nets_local_supply() -> void:
+	# A good produced on the SAME tile tops up the shared stockpile every turn, so the market input
+	# pipeline must only buy the SHORTFALL after that local supply — not re-buy steel you smelt here.
+	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	_check(steel != "", "steel good resolves for the input-netting test")
+	Production._output_buffer = [{"coord": "tile_58_58", "good_id": steel, "qty": 30, "transport_cost": 0.0}]
+	Production._flush_output_buffer()
+	var rate := int((Production._same_tile_supply.get("tile_58_58", {}) as Dictionary).get(steel, 0))
+	_check(rate == 30, "_flush_output_buffer tallies same-tile production for the input pipeline (got %d)" % rate)
+	# A co-located 30/turn consumer is fully covered → 0 shortfall; a 45/turn one → only 15 bought.
+	_check(maxi(0, 30 - rate) == 0 and maxi(0, 45 - rate) == 15,
+		"market top-up buys only the shortfall after recurring same-tile supply")
+	Production._output_buffer.clear()
+	Production._same_tile_supply.clear()
+
 func _test_transport_congestion() -> void:
 	# Throughput soft cap: routes over a link's capacity pay a transport-cost penalty.
 	Modifiers.reset()
@@ -6671,6 +6739,49 @@ func _test_retrofit_mechanic() -> void:
 	MatchState.money = saved_money
 	MatchState.buildings = saved_buildings
 	MatchState.pending_retrofits = saved_retro
+
+func _test_sell_and_demolish() -> void:
+	var saved_money := MatchState.money
+	var saved_buildings := MatchState.buildings.duplicate(true)
+	var saved_queue := MatchState.demolish_queue.duplicate(true)
+	MatchState.money = 1000.0
+	MatchState.buildings = {}
+	MatchState.demolish_queue = {}
+
+	# Sell: credits the market value, flips owner to the NPC operator, building stays.
+	var sid := "test_sell_1"
+	MatchState.buildings[sid] = {"instance_id": sid, "building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_0_0", "level": 1, "owner": MatchState.LOCAL_PLAYER}
+	var before_money := MatchState.money
+	var sres: Dictionary = MatchState.sell_building(sid)
+	_check(bool(sres.get("ok", false)) and int(sres.get("price", -1)) >= 0, "sell: returns ok + a price")
+	_check(MatchState.buildings.has(sid) and str(MatchState.buildings[sid].get("owner", "")) == MatchState.SOLD_TO_OWNER,
+		"sell: building stays on the tile, owner → NPC operator")
+	_check(MatchState.money >= before_money, "sell: value credited to the player")
+	_check(not bool(MatchState.sell_building(sid).get("ok", false)), "sell: an NPC-owned building can't be player-sold again")
+
+	# Demolish: queued 1-turn job that removes the building on tick.
+	var did := "test_demo_1"
+	MatchState.buildings[did] = {"instance_id": did, "building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_0_0", "level": 1, "owner": MatchState.LOCAL_PLAYER}
+	var dres: Dictionary = MatchState.start_demolish(did)
+	_check(bool(dres.get("ok", false)) and MatchState.is_demolishing(did) and MatchState.demolish_turns_remaining(did) == 1,
+		"demolish: queued with a 1-turn countdown")
+	_check(not bool(MatchState.start_demolish(did).get("ok", false)), "demolish: can't double-queue")
+	MatchState.tick_demolish()
+	_check(not MatchState.buildings.has(did) and not MatchState.is_demolishing(did),
+		"demolish: tick removes the building and clears the queue")
+
+	# Demolish queue survives a save round-trip (additive field, tolerant reader — no version bump).
+	var qid := "test_demo_rt"
+	MatchState.buildings[qid] = {"instance_id": qid, "building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_0_0", "level": 1, "owner": MatchState.LOCAL_PLAYER}
+	MatchState.start_demolish(qid)
+	var snap: Dictionary = MatchState.export_state()
+	MatchState.demolish_queue = {}
+	MatchState.import_state(snap)
+	_check(MatchState.is_demolishing(qid), "demolish: queue survives export/import round-trip")
+
+	MatchState.money = saved_money
+	MatchState.buildings = saved_buildings
+	MatchState.demolish_queue = saved_queue
 
 func _test_build_duration() -> void:
 	var saved_seats := MatchState.advisor_seats.duplicate(true)

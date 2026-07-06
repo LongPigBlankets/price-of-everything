@@ -7,7 +7,7 @@
 [node name="MoneyPanel" type="PanelContainer" unique_id=1508307227]
 visible = false
 anchors_preset = -1
-offset_right = 560.0
+offset_right = 620.0
 offset_bottom = 620.0
 mouse_filter = 1
 theme_override_styles/panel = ExtResource("1_nyab5")

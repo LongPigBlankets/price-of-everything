@@ -22,9 +22,13 @@ const VARIATION_MIN := 0.70
 const VARIATION_STEP := 0.05
 const VARIATION_STEPS := 7    # 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.00
 const PORT_PREMIUM := 0.10    # +10% on, or within one hex of, a port
+const PORT_PRICE := 10000     # a seaport is a fixed-value asset — its build kit is near-empty, so the
+                             # materials+land valuation would otherwise misprice it (~£18).
 
 # Final buy price for a placed building instance dict ({instance_id, building_id, tile_id, level}).
 static func sale_price(building: Dictionary) -> int:
+	if str(Catalog.get_building(str(building.get("building_id", ""))).get("internal_name", "")) == "port":
+		return PORT_PRICE
 	var base := base_cost(building)
 	if base <= 0.0:
 		return 0

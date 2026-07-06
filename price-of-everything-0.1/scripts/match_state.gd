@@ -1,5 +1,10 @@
 extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const BuildingPrice := preload("res://scripts/building_price.gd")
+# When you SELL a building it transfers to this NPC operator (keeps standing, land occupied).
+const SOLD_TO_OWNER := "npc_market"
+# Demolish is a queued 1-turn job (mirrors upgrades/retrofits) before the building is removed.
+const DEMOLISH_TURNS := 1
 
 # MatchState: the canonical store for everything that changes during a match.
 # Other systems read and write here; never store match data elsewhere.
@@ -263,6 +268,9 @@ var pending_upgrades: Array = []
 # In-progress retrofits (recipe changes): {instance_id, from_recipe, to_recipe,
 # turns_remaining, labour_fraction}. The building produces nothing while retooling.
 var pending_retrofits: Array = []
+# In-progress demolitions: instance_id -> {turns_left, tile_id}. Completes in tick_demolish
+# (materials refund + remove_building). Additive save state (default {} — no version bump).
+var demolish_queue: Dictionary = {}
 # Last turn's per-link flow ("tile|mode"->units) — drives this turn's congestion cost.
 var _last_link_flow: Dictionary = {}
 # Shipments that arrived at a destination tile whose stockpile was full and so
@@ -343,6 +351,11 @@ var use_alt_bottom_menu: bool = true
 # Toggled at runtime via the `logs` debug-terminal cheat. Session-only.
 var debug_turn_logs_enabled: bool = false
 
+# When true (the default since Phase 3), building clicks open the redesigned Building Detail v2
+# panel. The classic v1 panel is kept as a fallback, reachable by toggling the `swap bdp` cheat.
+# Session-only; never persisted. See docs/building-detail-v2-plan.md.
+var use_bdp_v2: bool = true
+
 # --- Signals ---
 signal money_changed(new_amount: float) 
 signal building_added(instance: Dictionary)
@@ -355,6 +368,9 @@ signal building_upgraded(instance_id: String, new_level: int)
 signal building_upgrade_started(instance_id: String, target_level: int)
 signal building_retrofit_started(instance_id: String, new_recipe_id: String)
 signal building_retrofitted(instance_id: String, new_recipe_id: String)
+# Demolish queued (1-turn countdown starts) / completed (materials refunded, building removed).
+signal building_demolish_started(instance_id: String)
+signal building_demolished(instance_id: String)
 # An in-progress upgrade advanced (claimed materials / ticked down) — UI can refresh its countdown.
 signal building_upgrade_progress(instance_id: String)
 # An in-progress upgrade was cancelled / abandoned (e.g. the building was removed). Banked
@@ -427,6 +443,9 @@ signal overflow_shipment_held(record: Dictionary)
 signal special_order_overflow_ready(record: Dictionary)
 ## Debug cheat `swap bottom menu` flipped which bottom-menu icon set is active.
 signal alt_bottom_menu_changed(enabled: bool)
+# The Building Detail v2 dev-toggle flipped (`swap bdp` cheat); world_map re-renders the
+# active detail panel. Session-only.
+signal bdp_v2_changed(enabled: bool)
 ## A UI surface (notification deep-link, etc.) asks the map to focus a tile:
 ## centre the camera on it and open its tile panel. world_map handles it.
 signal focus_tile_requested(tile_id: String)
@@ -536,6 +555,20 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 	building_owner_changed.emit(instance_id)
 	# A newly player-owned building may satisfy build-count / ownership unlock conditions.
 	_check_unlock_conditions()
+
+# Sell a player-owned building to an NPC operator: credit its market value (what it would list
+# at), flip ownership to the NPC — the building keeps standing and its land stays occupied, but it
+# stops running for you (production rebuilds the player-owned set each turn). Instantaneous.
+func sell_building(instance_id: String) -> Dictionary:
+	if not buildings.has(instance_id):
+		return {"ok": false, "reason": "No such building."}
+	if not is_player_owned(buildings[instance_id]):
+		return {"ok": false, "reason": "You don't own this building."}
+	var price: int = int(round(float(BuildingPrice.sale_price(buildings[instance_id]))))
+	add_money(float(price))
+	set_building_owner(instance_id, SOLD_TO_OWNER)  # emits building_owner_changed → UI refresh
+	request_toast("Sold building for £%d" % price, "success")
+	return {"ok": true, "price": price}
 
 # A building acquired ready-made (NPC market purchase, scripted transfer) gets the
 # same cost basis a player-built copy would carry: the catalog base price as the
@@ -1104,6 +1137,56 @@ func refund_plan(instance_id: String) -> Dictionary:
 		"materials_value": refund.materials_value,
 		"total_if_cash": refund.total,        # money + all materials valued as cash
 	}
+
+# --- Demolish (queued 1-turn job) ------------------------------------------------------------
+func is_demolishing(instance_id: String) -> bool:
+	return demolish_queue.has(instance_id)
+
+func demolish_turns_remaining(instance_id: String) -> int:
+	return int((demolish_queue.get(instance_id, {}) as Dictionary).get("turns_left", 0))
+
+# Queue a player-owned building for demolition (completes in DEMOLISH_TURNS via tick_demolish).
+func start_demolish(instance_id: String) -> Dictionary:
+	if not buildings.has(instance_id):
+		return {"ok": false, "reason": "No such building."}
+	if not is_player_owned(buildings[instance_id]):
+		return {"ok": false, "reason": "You don't own this building."}
+	if demolish_queue.has(instance_id):
+		return {"ok": false, "reason": "Already demolishing."}
+	demolish_queue[instance_id] = {"turns_left": DEMOLISH_TURNS, "tile_id": str(buildings[instance_id].get("tile_id", ""))}
+	building_demolish_started.emit(instance_id)
+	return {"ok": true}
+
+func cancel_demolish(instance_id: String) -> bool:
+	if not demolish_queue.has(instance_id):
+		return false
+	demolish_queue.erase(instance_id)
+	building_demolish_started.emit(instance_id)
+	return true
+
+# Advance queued demolitions one turn; complete any that reach zero — refund half the material
+# kits to the tile stockpile (overflow → cash), then remove the building (frees its land). No
+# money is returned (that's Sell). Returns the instance_ids removed this turn.
+func tick_demolish() -> Array:
+	var completed: Array = []
+	for iid in demolish_queue.keys():
+		var job: Dictionary = demolish_queue[iid]
+		job["turns_left"] = int(job.get("turns_left", 0)) - 1
+		if int(job["turns_left"]) > 0:
+			continue
+		if buildings.has(iid):
+			var plan: Dictionary = refund_plan(iid)
+			var tile_id: String = str(buildings[iid].get("tile_id", ""))
+			for gid in (plan.get("to_stockpile", {}) as Dictionary):
+				Stockpile.add(tile_id, str(gid), int(plan["to_stockpile"][gid]))
+			var cash: float = float(plan.get("cash_overflow", 0.0))
+			if cash > 0.0:
+				add_money(cash)
+			remove_building(iid)
+		demolish_queue.erase(iid)
+		completed.append(iid)
+		building_demolished.emit(iid)
+	return completed
 
 func get_buildings_on_tile(tile_id: String) -> Array:
 	# Returns an Array of building instance dicts on the given tile.
@@ -1942,6 +2025,7 @@ func reset() -> void:
 	pending_transport_shipments.clear()
 	pending_upgrades.clear()
 	pending_retrofits.clear()
+	demolish_queue.clear()
 	_last_link_flow.clear()
 	overflow_shipments.clear()
 	sales_by_tile.clear()
@@ -2063,6 +2147,7 @@ func export_state() -> Dictionary:
 		"pending_transport_shipments": _shipments_for_save(),
 		"pending_upgrades": pending_upgrades.duplicate(true),
 		"pending_retrofits": pending_retrofits.duplicate(true),
+		"demolish_queue": demolish_queue.duplicate(true),
 		"overflow_shipments": overflow_shipments.duplicate(true),
 		"transaction_log": transaction_log.duplicate(true),
 		"move_log": move_log.duplicate(true),
@@ -2142,6 +2227,7 @@ func import_state(d: Dictionary) -> void:
 	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
 	pending_upgrades = (d.get("pending_upgrades", []) as Array).duplicate(true)
 	pending_retrofits = (d.get("pending_retrofits", []) as Array).duplicate(true)
+	demolish_queue = (d.get("demolish_queue", {}) as Dictionary).duplicate(true)
 	overflow_shipments = (d.get("overflow_shipments", []) as Array).duplicate(true)
 	transaction_log = (d.get("transaction_log", []) as Array).duplicate(true)
 	move_log = (d.get("move_log", []) as Array).duplicate(true)
@@ -2242,6 +2328,18 @@ func toggle_use_alt_bottom_menu() -> bool:
 func toggle_debug_turn_logs() -> bool:
 	debug_turn_logs_enabled = not debug_turn_logs_enabled
 	return debug_turn_logs_enabled
+
+## Debug cheat: switch between the classic and redesigned (v2) building-detail panel.
+## Returns the new state. Session-only, never persisted.
+func set_use_bdp_v2(enabled: bool) -> bool:
+	if enabled == use_bdp_v2:
+		return use_bdp_v2
+	use_bdp_v2 = enabled
+	bdp_v2_changed.emit(use_bdp_v2)
+	return use_bdp_v2
+
+func toggle_use_bdp_v2() -> bool:
+	return set_use_bdp_v2(not use_bdp_v2)
 
 func set_route_objective(objective: int) -> void:
 	if objective == route_objective:

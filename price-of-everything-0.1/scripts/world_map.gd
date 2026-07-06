@@ -2,6 +2,10 @@ extends Node2D
 
 @onready var terrain_layer: HexMap = %TerrainLayer
 @onready var building_panel: PanelContainer = %BuildingDetailPanel
+## Redesigned Building Detail v2 — code-instantiated in _build_base, toggled by `swap bdp`.
+var building_panel_v2: PanelContainer = null
+## The building most recently shown in the detail panel, kept so a live v1↔v2 swap re-renders it.
+var _last_detail_building: Dictionary = {}
 ## The tabbed Tile View Panel, instantiated in code in _ready.
 var info_panel: PanelContainer = null
 ## The most recently selected tile, kept so a live TVP swap can re-render it.
@@ -188,6 +192,18 @@ func _build_base() -> void:
 	building_panel.building_connections_changed.connect(
 		building_connection_visuals.on_building_connections_changed
 	)
+
+	# Building Detail v2 — the default panel since Phase 3 (MatchState.use_bdp_v2, default true).
+	# The classic v1 panel (%BuildingDetailPanel) stays as a fallback, reachable via `swap bdp`.
+	# See docs/building-detail-v2-plan.md.
+	building_panel_v2 = load("res://scripts/building_detail_panel_v2.gd").new()
+	building_panel_v2.name = "BuildingDetailPanelV2"
+	hud_content.add_child(building_panel_v2)
+	building_panel_v2.hide()
+	building_panel_v2.building_connections_changed.connect(
+		building_connection_visuals.on_building_connections_changed
+	)
+	MatchState.bdp_v2_changed.connect(_on_bdp_v2_changed)
 
 	# Capacity dialog: prompts the player when a tile first hits max storage.
 	_hud.add_child(load("res://scripts/capacity_dialog.gd").new())
@@ -406,12 +422,38 @@ func _flush_pending_unlocks() -> void:
 		_unlock_dialog.show_unlocks(unlocks)
 
 func _on_v2_building_clicked(building: Dictionary) -> void:
-	# v2 is added to HUDContent after the building panel, so it would otherwise draw
-	# on top. Raise the building panel FIRST (the re-sort re-asserts scene anchors),
-	# then show/position it — otherwise the first click positions then the re-sort
-	# undoes it, leaving an empty-looking panel until the next click.
-	building_panel.move_to_front()
-	building_panel.show_building(building)
+	_open_building_detail(building)
+
+## Open the building detail panel for `building`, routing to whichever panel the `swap bdp`
+## dev-toggle selects. Both panels sit in HUDContent after later-added siblings, so
+## move_to_front() must precede show — otherwise a re-sort undoes the positioning, leaving
+## an empty-looking panel until the next click.
+func _open_building_detail(building: Dictionary) -> void:
+	if building.is_empty():
+		return
+	_last_detail_building = building
+	var panel := _active_building_panel()
+	panel.move_to_front()
+	panel.show_building(building)
+
+## The building-detail panel currently selected by the `swap bdp` dev-toggle.
+func _active_building_panel() -> PanelContainer:
+	if MatchState.use_bdp_v2 and building_panel_v2 != null:
+		return building_panel_v2
+	return building_panel
+
+## Hide whichever detail panel(s) may be open (both, to survive a mid-open swap).
+func _hide_building_detail() -> void:
+	building_panel.hide()
+	if building_panel_v2 != null:
+		building_panel_v2.hide()
+
+## `swap bdp` flipped: drop both panels, re-render the last building in the now-active one.
+func _on_bdp_v2_changed(_enabled: bool) -> void:
+	var was_open := building_panel.visible or (building_panel_v2 != null and building_panel_v2.visible)
+	_hide_building_detail()
+	if was_open and not _last_detail_building.is_empty():
+		_open_building_detail(_last_detail_building)
 
 func _on_output_stockpile_selection_started(selection: Dictionary) -> void:
 	_pending_stockpile_selection = selection.duplicate()
@@ -592,7 +634,7 @@ func _close_transfer() -> void:
 
 func _enter_transfer_ui() -> void:
 	info_panel.hide()
-	building_panel.hide()
+	_hide_building_detail()
 	if _hud.has_method("hide_bottom_menu"):
 		_hud.hide_bottom_menu()
 
@@ -1116,8 +1158,7 @@ func _on_focus_building_requested(instance_id: String) -> void:
 	if not td.is_empty():
 		_last_selected_tile = td
 		info_panel.show_tile(td)
-	building_panel.move_to_front()
-	building_panel.show_building(building)
+	_open_building_detail(building)
 
 ## Pan the camera to a tile over 0.3s (UI-driven selection only — clicking a
 ## tile directly on the map never pans); returns its tile_data ({} if unknown).
@@ -1195,7 +1236,7 @@ func _cancel_special_order_reroute_pick() -> void:
 
 func _enter_stockpile_ui_mode() -> void:
 	info_panel.hide()
-	building_panel.hide()
+	_hide_building_detail()
 	if _hud.has_method("hide_bottom_menu"):
 		_hud.hide_bottom_menu()
 	if _dim_overlay != null:

@@ -162,16 +162,14 @@ static func tile_power_state(tile_id: String) -> Dictionary:
 
 # Returns one of the contract strings: "Owned Supply" / "Grid" / "Not connected".
 static func power_supply(building: Dictionary) -> String:
-	if not Power.is_supplied(str(building.get("tile_id", "")), 1):
+	var tile := str(building.get("tile_id", ""))
+	if not Power.is_supplied(tile, 1):
 		return "Not connected"
-	# Owned vs grid is an ECONOMY-WIDE question — there is one shared grid pool, not per-tile
-	# supply. If your own generation covered total demand this turn you imported nothing from the
-	# national grid, so this draw is your own supply even when the plant feeding it (a wind farm,
-	# say) sits on a different tile. Only when the economy had to buy from the national grid is any
-	# draw "Grid". (Mirrors the power map mode's self-supply test.)
-	if Power.demand_this_turn <= Power.supply_this_turn:
-		return "Owned Supply"
-	return "Grid"
+	# Own vs grid is a per-CABLE-NETWORK question: a draw is "own supply" when this tile's own
+	# generation (same-tile first) plus the rest of its physically cable-connected network covered
+	# it this turn; it is "Grid" when any of it was imported from the national grid. (Settled in
+	# Power.settle_grid_transactions; mirrors the power map mode's self-supply test.)
+	return "Owned Supply" if Power.is_self_supplied(tile) else "Grid"
 
 static func power_status_color(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Color:
 	if is_infrastructure:

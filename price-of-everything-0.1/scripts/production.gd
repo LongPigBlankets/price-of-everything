@@ -19,6 +19,10 @@ var _inbound_delivery_this_turn: Dictionary = {}
 # This turn's same-tile (0-turn) outputs, merged into stockpiles AFTER production
 # so a good produced this turn can't be consumed by another building the same turn.
 var _output_buffer: Array = []
+# Per-turn same-tile production landing in each tile's stockpile this turn: {tile_id -> {good_id -> qty}}.
+# Recorded during _flush_output_buffer, read by _buy_market_inputs so the market pipeline only tops up
+# the SHORTFALL after recurring local production (don't buy steel you smelt on the same tile).
+var _same_tile_supply: Dictionary = {}
 # Per-building intermittency result, instance_id -> {derate (0..1), green_consumed,
 # unfirmed_intermittent, steady_consumed, demand}. Computed AFTER the cascade from this
 # turn's actuals (which buildings ran + green actually generated); the derate is applied
@@ -174,6 +178,7 @@ func _process_production() -> void:
 	# new level, so an upgrade that completes this turn produces at its new level immediately.
 	MatchState.tick_upgrades()
 	MatchState.tick_retrofits()   # recipe changes complete + swap in the new recipe
+	MatchState.tick_demolish()    # queued demolitions complete: refund materials + remove
 	TurnProfiler.section_end("construction")
 
 	# Only the player's buildings are simulated each turn. The pre-existing NPC
@@ -804,11 +809,17 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 	})
 
 func _flush_output_buffer() -> void:
+	_same_tile_supply.clear()
 	for o in _output_buffer:
 		var added: int = Stockpile.add(o.coord, str(o.good_id), int(o.qty))
 		if o.coord != null and str(o.coord) != "":
 			var per_unit: float = (float(o.transport_cost) / float(o.qty)) if int(o.qty) > 0 else 0.0
 			_record_inbound_delivery(str(o.coord), str(o.good_id), added, per_unit)
+			# tally this turn's recurring same-tile supply so the market pipeline doesn't re-buy it
+			var t := str(o.coord)
+			var per_tile: Dictionary = _same_tile_supply.get(t, {})
+			per_tile[str(o.good_id)] = int(per_tile.get(str(o.good_id), 0)) + int(o.qty)
+			_same_tile_supply[t] = per_tile
 		if added < int(o.qty):
 			push_warning("[Production] Stockpile full for %s; stored %d/%d %s" % [
 				str(o.coord), added, int(o.qty), Catalog.get_display_name(str(o.good_id)),
@@ -1807,7 +1818,14 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 				continue
 			var lead: int = int(pl.get("lead", 1))
 			var need_per_turn: int = int(tile_demand[good_id].get("need", 0))
-			var target := need_per_turn * (lead + 1)
+			# Only top up the SHORTFALL after recurring same-tile production. A good smelted on this
+			# tile is replenished every turn, so the market pipeline should cover need − local_rate,
+			# not the full need (which double-buys what you already make locally).
+			# ROADMAP (docs/long-term-roadmap.md): extend this to cross-tile (1-turn+) linked producers
+			# too — needs a market-only inbound split + a ramp-up safety margin to avoid starvation.
+			var local_rate: int = int((_same_tile_supply.get(tile_id, {}) as Dictionary).get(good_id, 0))
+			var net_need: int = maxi(0, need_per_turn - local_rate)
+			var target := net_need * (lead + 1)
 			var order := target - Stockpile.get_at_tile(tile_id, good_id) - _inbound_qty(tile_id, good_id)
 			if order > 0:
 				var bought: Dictionary = MatchState.queue_buy(tile_id, good_id, order, true, {
