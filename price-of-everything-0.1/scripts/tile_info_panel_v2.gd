@@ -42,6 +42,16 @@ const STOCK_NAME_MAX_CHARS := 15
 
 var _plus_icon: Texture2D = null
 
+# Seaport special-building card (top of the Buildings tab) + its NPC buy-confirm dialog.
+const PORT_BUILDING_ID := "b_004"
+const BuyDialog := preload("res://scripts/buy_building_dialog.gd")
+const BuildingPrice := preload("res://scripts/building_price.gd")
+const BuildingReadout := preload("res://scripts/building_readout.gd")
+const BuildingStatus := preload("res://scripts/building_status.gd")
+var _port_buy_dialog: Node = null
+var _port_buy_layer: CanvasLayer = null
+var _pending_port_buy: Dictionary = {}
+
 # Stockpile "Move or Sell" contextual menu state (persists across pane rebuilds).
 const MARKET_DEST := "__market__"
 const SPECIAL_ORDER_DEST := "__special_order__"
@@ -1282,7 +1292,7 @@ func _make_potential_cell(value: String, size: int = RECIPE_CELL) -> Control:
 	slot.add_child(l)
 	return slot
 
-func _recipe_card_outputs(recipe: Dictionary) -> Array:
+func _recipe_card_outputs(recipe: Dictionary, building: Dictionary = {}) -> Array:
 	var out: Array = []
 	if recipe.has("outputs"):
 		for o in recipe.get("outputs", []):
@@ -1295,6 +1305,17 @@ func _recipe_card_outputs(recipe: Dictionary) -> Array:
 			var gid := str(Catalog.get_good_by_internal_name(name).get("id", ""))
 			if gid != "":
 				out.append({"good_id": gid, "qty": int(recipe.get("output_qty", 0))})
+	# For a PLACED building, show the REAL (post-modifier/level/workforce) output, not the recipe
+	# base. The net modifier scales every output, so the primary's effective/base ratio carries to
+	# any byproducts. (No building → catalog/preview → base qty, which is correct there.)
+	if not building.is_empty() and not out.is_empty():
+		var base_primary := int(out[0].qty)
+		var eff_primary := BuildingStatus.effective_output_qty(building, recipe)
+		if base_primary > 0 and eff_primary > 0 and eff_primary != base_primary:
+			var ratio := float(eff_primary) / float(base_primary)
+			out[0]["qty"] = eff_primary
+			for i in range(1, out.size()):
+				out[i]["qty"] = int(round(float(out[i].get("qty", 0)) * ratio))
 	return out
 
 func _recipe_good_id(item: Dictionary) -> String:
@@ -1362,6 +1383,7 @@ func _make_recipe_qty_badge(qty: int, cell_size: int = RECIPE_CELL) -> Control:
 
 # --- Buildings & Land pane --------------------------------------------------
 func _build_bl_pane(pane: VBoxContainer) -> void:
+	_maybe_add_port_card(pane)  # seaport special building, pinned at the top
 	var bl := TileViewData.buildings_land_summary(_current_tile_id, _current_tile_data)
 	# The land visualisation now lives in the left rail; this pane is buildings +
 	# infrastructure plus the Build / Buy Buildings actions.
@@ -1405,6 +1427,96 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 	# Infrastructure gets its own section: a grid of dialled add/built slots.
 	pane.add_child(_make_section_title("Infrastructure", "transit / capacity", "ok"))
 	pane.add_child(_make_infra_grid())
+
+# A seaport (b_004) on this tile is shown as a special building pinned to the top of the
+# Buildings tab: click it to open its detail panel; if an NPC owns it, a Buy button transfers
+# ownership (same flow as the Buildings market).
+func _maybe_add_port_card(pane: VBoxContainer) -> void:
+	var port_b: Dictionary = {}
+	for b in MatchState.get_buildings_on_tile(_current_tile_id):
+		if str(b.get("building_id", "")) == PORT_BUILDING_ID:
+			port_b = b
+			break
+	if port_b.is_empty():
+		return
+	var is_player := MatchState.is_player_owned(port_b)
+	var card := PanelContainer.new()
+	var st := StyleBoxFlat.new()
+	st.bg_color = DS.PALETTE["BG_HIGHLIGHT"]
+	st.border_color = DS.PALETTE["ACCENT"]
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(8)
+	st.set_content_margin_all(10)
+	card.add_theme_stylebox_override("panel", st)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	card.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			building_clicked.emit(port_b))
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	card.add_child(row)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 1)
+	row.add_child(col)
+	var kicker := Label.new()
+	kicker.theme_type_variation = "Caption"
+	kicker.text = "SEAPORT"
+	kicker.add_theme_color_override("font_color", DS.PALETTE["ACCENT"])
+	col.add_child(kicker)
+	var title := Label.new()
+	title.theme_type_variation = "BuildingName"
+	title.text = "Port"
+	col.add_child(title)
+	var owner := Label.new()
+	owner.theme_type_variation = "Caption"
+	owner.text = "Owned by you" if is_player else "Owned by %s" % BuildingReadout.company_name(str(port_b.get("owner", "")))
+	col.add_child(owner)
+
+	if not is_player:
+		var price := BuildingReadout.buy_price(port_b)
+		var buy := _make_action_button("Buy — £%s" % _port_fmt_int(price))
+		buy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		buy.pressed.connect(func() -> void: _open_port_buy(str(port_b.get("instance_id", "")), price))
+		row.add_child(buy)
+	pane.add_child(card)
+
+func _open_port_buy(iid: String, price: int) -> void:
+	if _port_buy_layer == null or not is_instance_valid(_port_buy_layer):
+		_port_buy_layer = CanvasLayer.new()
+		_port_buy_layer.layer = 130
+		get_tree().root.add_child(_port_buy_layer)
+	if _port_buy_dialog == null or not is_instance_valid(_port_buy_dialog):
+		_port_buy_dialog = BuyDialog.new()
+		_port_buy_layer.add_child(_port_buy_dialog)
+		_port_buy_dialog.connect("confirmed", _on_port_buy_confirmed)
+	_pending_port_buy = {"iid": iid, "price": price}
+	_port_buy_dialog.call("open", "Port", price)
+
+func _on_port_buy_confirmed(_dont_ask: bool) -> void:
+	var iid := str(_pending_port_buy.get("iid", ""))
+	var price := int(_pending_port_buy.get("price", 0))
+	if iid == "" or not MatchState.buildings.has(iid):
+		return
+	if not MatchState.deduct_money(float(price)):
+		MatchState.build_rejected_no_funds.emit("Not enough money to buy the Port — need £%d, you have £%.0f" % [price, MatchState.money])
+		return
+	MatchState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
+	MatchState.request_toast("Purchased the Port for £%d" % price, "success")
+	Audio.transaction()  # building_owner_changed → _refresh_if_visible re-renders the card as owned
+
+func _port_fmt_int(n: int) -> String:
+	var s := str(absi(n))
+	var out := ""
+	var c := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		c += 1
+		if c % 3 == 0 and i > 0:
+			out = "," + out
+	return ("-" if n < 0 else "") + out
 
 func _make_buildings_header(title: String, right_text: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -2461,8 +2573,9 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 		icon_holder.add_child(badge)
 	header.add_child(icon_holder)
 
-	# Outputs goods frame (same outer size as the icon), 5px to its right.
-	header.add_child(_make_output_goods_frame(recipe, building_id))
+	# Outputs goods frame (same outer size as the icon), 5px to its right. Pass the representative
+	# building so the pill shows its REAL (effective) output, not the recipe base.
+	header.add_child(_make_output_goods_frame(recipe, building_id, first))
 
 	# Recipe name (offset 20px from the top) + cost basis (offset 20px from the bottom).
 	var info_margin := MarginContainer.new()
@@ -2591,7 +2704,7 @@ func _make_count_badge(count: int) -> Control:
 # Outputs of the recipe in a frame that is pixel-identical in size/shape to the
 # building icon (the ornate goods-frame art is a non-square 330×293 texture that
 # distorted when squashed into a square box, so the two read as different sizes).
-func _make_output_goods_frame(recipe: Dictionary, building_id: String = "") -> Control:
+func _make_output_goods_frame(recipe: Dictionary, building_id: String = "", building: Dictionary = {}) -> Control:
 	var frame := PanelContainer.new()
 	frame.custom_minimum_size = Vector2(GROUP_TILE, GROUP_TILE)
 	frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -2616,7 +2729,7 @@ func _make_output_goods_frame(recipe: Dictionary, building_id: String = "") -> C
 		else:
 			center.add_child(_output_cell({"good_id": chem.good_id, "qty": chem.qty}, GROUP_TILE - 24))
 		return frame
-	var outs := _recipe_card_outputs(recipe)
+	var outs := _recipe_card_outputs(recipe, building)
 	if outs.is_empty():
 		var l := Label.new()
 		l.text = "—"

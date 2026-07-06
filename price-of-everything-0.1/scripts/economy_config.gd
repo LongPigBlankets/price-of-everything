@@ -7,11 +7,13 @@ extends Node
 const STARTING_MONEY: float = 600.0
 
 # --- Demolish / refund ---
-# Share of a demolished building's construction cost returned to the player: the build
-# money plus EVERY material kit consumed (the construction kit + each completed upgrade
-# level's kit). 1.0 = full refund. A `var` (not const) so it can be tuned live while
-# balancing demolish-and-rebuild churn. See MatchState.refund_cost / refund_plan.
-var demolish_refund_share: float = 1.0
+# Share of a demolished building's MATERIAL kits returned to the player on demolish (the
+# construction kit + each completed upgrade level's kit), rounded down; overflow that won't
+# fit the tile stockpile is paid as cash. NO build money is returned on demolish (that's what
+# Sell is for). 0.5 = half the materials back (owner spec 2026-07-05). This base is the lever a
+# future advisor modifies — read it through MatchState so an advisor bonus can stack on top.
+# A `var` (not const) so it can be tuned live. See MatchState.refund_cost / refund_plan / tick_demolish.
+var demolish_refund_share: float = 0.5
 
 # --- Per-building per-turn costs ---
 const MAINTENANCE_PER_BUILDING: float = 1.0

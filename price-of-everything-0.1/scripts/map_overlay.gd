@@ -838,7 +838,7 @@ func _get_power_status_for_tile(tile_data: Dictionary) -> Dictionary:
 		if net > 0:
 			return {"state": "surplus", "net": net}
 		elif net < 0:
-			return _classify_power_draw(net)
+			return _classify_power_draw(net, tile_id)
 		else:
 			return {"state": "balanced", "net": 0}
 	elif has_cables:
@@ -846,17 +846,10 @@ func _get_power_status_for_tile(tile_data: Dictionary) -> Dictionary:
 	else:
 		return {"state": "none"}
 
-# A consuming (deficit) tile draws its shortfall from the single shared grid pool. There's no
-# per-tile metering of self vs national-grid, so classify by the ECONOMY-WIDE self-supply
-# fraction (your production / total demand this turn): fully self-supplied -> amber, fully from
-# the national grid -> red, in between -> hatched partial.
-func _classify_power_draw(net: int) -> Dictionary:
-	var supply: int = Power.supply_this_turn
-	var demand: int = Power.demand_this_turn
-	var frac: float = 1.0 if demand <= supply else float(supply) / float(maxi(demand, 1))
-	if frac >= 0.999:
+# A consuming (deficit) tile draws its shortfall from its cable network, then the national grid.
+# Classify by the per-network self-supply settled this turn: the tile's draw was fully covered by
+# its own cable network's generation (amber) or it imported from the national grid (red).
+func _classify_power_draw(net: int, tile_id: String) -> Dictionary:
+	if Power.is_self_supplied(tile_id):
 		return {"state": "self_supplied", "net": net}
-	elif frac <= 0.001:
-		return {"state": "national", "net": net}
-	else:
-		return {"state": "partial", "net": net, "self_frac": frac}
+	return {"state": "national", "net": net}
