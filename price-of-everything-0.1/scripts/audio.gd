@@ -24,6 +24,59 @@ const CASH_REGISTER: AudioStream = preload("res://assets/audio/ui_sounds/cash_re
 const TECH_UNLOCK: AudioStream = preload("res://assets/audio/ui_sounds/tech_unlock.wav")      # tech unlocked (gears unlock mech)
 const SLOT_LEVER: AudioStream = preload("res://assets/audio/ui_sounds/slot_lever.wav")        # turn resolved → back to DECIDE
 
+# --- Tile-view terrain ambience ----------------------------------------------
+# Looping field recordings that play while a tile's info panel is open, keyed by
+# the tile's `type`. Three non-overlapping slices per terrain (one is picked at
+# random each time such a tile is opened, then loops until the panel closes or a
+# different terrain is selected). Urban blends three separate city recordings;
+# the rest are sliced from a single recording each. Terrains absent here (e.g.
+# mountain) simply play nothing.
+const AMBIENCE := {
+	"sea": [   # gentle shore waves
+		preload("res://assets/audio/ambient_sounds/sea_1.ogg"),
+		preload("res://assets/audio/ambient_sounds/sea_2.ogg"),
+		preload("res://assets/audio/ambient_sounds/sea_3.ogg"),
+	],
+	"deep_sea": [   # open-ocean swell
+		preload("res://assets/audio/ambient_sounds/deep_sea_1.ogg"),
+		preload("res://assets/audio/ambient_sounds/deep_sea_2.ogg"),
+		preload("res://assets/audio/ambient_sounds/deep_sea_3.ogg"),
+	],
+	"urban": [   # one slice from each of three city recordings
+		preload("res://assets/audio/ambient_sounds/urban_1.ogg"),
+		preload("res://assets/audio/ambient_sounds/urban_2.ogg"),
+		preload("res://assets/audio/ambient_sounds/urban_3.ogg"),
+	],
+	"rural": [   # bird chirps
+		preload("res://assets/audio/ambient_sounds/rural_1.ogg"),
+		preload("res://assets/audio/ambient_sounds/rural_2.ogg"),
+		preload("res://assets/audio/ambient_sounds/rural_3.ogg"),
+	],
+	"hill": [   # forest ambience
+		preload("res://assets/audio/ambient_sounds/hill_1.ogg"),
+		preload("res://assets/audio/ambient_sounds/hill_2.ogg"),
+		preload("res://assets/audio/ambient_sounds/hill_3.ogg"),
+	],
+	"mountain": [   # one slice from each of three wind recordings (sources short, so 5–14s)
+		preload("res://assets/audio/ambient_sounds/mountain_1.ogg"),
+		preload("res://assets/audio/ambient_sounds/mountain_2.ogg"),
+		preload("res://assets/audio/ambient_sounds/mountain_3.ogg"),
+	],
+}
+const AMBIENCE_DB := -6.0   # terrain ambience sits under the cues and music
+
+# Tutorial hint — a short glass/crystal ping (first 2s) to draw the eye. Not wired
+# to any trigger yet; tutorial steps will call Audio.hint().
+const HINT: AudioStream = preload("res://assets/audio/ui_sounds/hint.ogg")
+
+# --- Volume buses ------------------------------------------------------------
+# Two mixing buses fed into Master, created at startup if absent (there is no
+# default_bus_layout.tres). Music routes to MUSIC; every cue + terrain ambience
+# routes to SFX. The Settings panel drives all three via set_bus_percent().
+const BUS_MASTER := &"Master"
+const BUS_MUSIC := &"Music"
+const BUS_SFX := &"SFX"
+
 # Music playlist — five PLACEHOLDER tracks (stereo Ogg Vorbis; licensing pending,
 # see memory: music-licensing) that play in sequence with MUSIC_GAP seconds of
 # silence between them, looping. The `swap song` cheat jumps to the next.
@@ -53,11 +106,14 @@ const CHANNELS := {
 	&"hover": 2,   # button hover
 	&"unlock": 1,  # tech-unlock jingle (long; its own non-stealable lane)
 	&"turn": 1,    # end-turn → back-to-DECIDE lever
+	&"hint": 1,    # tutorial hint ping
 }
 
 var _channels: Dictionary = {}   # StringName -> Array[AudioStreamPlayer]
 var _next: Dictionary = {}       # StringName -> round-robin index
 var _music: AudioStreamPlayer    # dedicated player for the music playlist
+var _ambient: AudioStreamPlayer  # dedicated player for tile-view terrain ambience
+var _ambient_type := ""          # terrain currently sounding ("" = silent)
 var _track_idx := 0              # current track in MUSIC_TRACKS
 var _music_gen := 0              # bumped on every track change; invalidates a pending gap-advance
 var _duck_frame := -1            # frame a higher-priority cue ducked clicks on
@@ -65,17 +121,23 @@ var _last_hover_ms := -10000     # throttles hover when sweeping across buttons
 
 
 func _ready() -> void:
+	_ensure_buses()
 	for channel in CHANNELS:
 		var pool: Array[AudioStreamPlayer] = []
 		for i in int(CHANNELS[channel]):
 			var p := AudioStreamPlayer.new()
+			p.bus = BUS_SFX
 			add_child(p)
 			pool.append(p)
 		_channels[channel] = pool
 		_next[channel] = 0
 	_music = AudioStreamPlayer.new()
+	_music.bus = BUS_MUSIC
 	add_child(_music)
 	_music.finished.connect(_on_music_finished)
+	_ambient = AudioStreamPlayer.new()
+	_ambient.bus = BUS_SFX
+	add_child(_ambient)
 	# Auto-wire a click cue to every Button, now and as they appear.
 	get_tree().node_added.connect(_on_node_added)
 	await get_tree().process_frame   # let the first scene + the other autoloads come up
@@ -216,6 +278,41 @@ func _on_music_finished() -> void:
 	_play_track()
 
 
+# --- Tile-view ambience ------------------------------------------------------
+
+## Start (or switch to) the looping ambience for a tile panel showing `terrain`
+## (the tile's `type`: "sea", "deep_sea", "urban", "rural", "hill"). Picks one of
+## that terrain's slices at random and loops it until stopped. A no-op when the same
+## terrain is already sounding, so re-selecting same-type tiles doesn't restart the
+## loop; a terrain with no ambience (e.g. "mountain") falls through to silence.
+func tile_ambience(terrain: String) -> void:
+	var clips: Array = AMBIENCE.get(terrain, [])
+	if clips.is_empty():
+		stop_tile_ambience()
+		return
+	if terrain == _ambient_type and _ambient != null and _ambient.playing:
+		return
+	_ambient_type = terrain
+	_ambient.stream = clips[randi() % clips.size()]   # cosmetic pick — Audio is exempt from the determinism rule
+	_ambient.volume_db = AMBIENCE_DB
+	_ambient.play()
+
+
+## Silence the tile-view ambience (panel closed / selection cleared).
+func stop_tile_ambience() -> void:
+	_ambient_type = ""
+	if _ambient != null:
+		_ambient.stop()
+
+
+# --- Tutorial hint -----------------------------------------------------------
+
+## A short glass/crystal ping to draw the eye during tutorials. Not wired to any
+## trigger yet — tutorial steps will call this.
+func hint() -> void:
+	_play(HINT, &"hint")
+
+
 # --- Auto-wiring (clicks, by DS style) ---------------------------------------
 
 func _on_node_added(n: Node) -> void:
@@ -262,6 +359,40 @@ func _on_turn_processed(summary: Dictionary) -> void:
 
 func _on_unlock_granted(_title: String, _description: String, _via_condition: bool) -> void:
 	tech_unlocked()
+
+
+# --- Volume control ----------------------------------------------------------
+
+# Create the Music and SFX buses (routed to Master) if they don't already exist.
+func _ensure_buses() -> void:
+	for bus_name in [BUS_MUSIC, BUS_SFX]:
+		if AudioServer.get_bus_index(bus_name) == -1:
+			var idx := AudioServer.bus_count
+			AudioServer.add_bus(idx)
+			AudioServer.set_bus_name(idx, bus_name)
+			AudioServer.set_bus_send(idx, BUS_MASTER)
+
+
+## Set a bus's volume from a 0–100 percentage (linear). 0 mutes the bus. Used by
+## the Settings panel; `bus` is one of BUS_MASTER / BUS_MUSIC / BUS_SFX.
+func set_bus_percent(bus: StringName, percent: float) -> void:
+	var idx := AudioServer.get_bus_index(bus)
+	if idx == -1:
+		return
+	var frac := clampf(percent, 0.0, 100.0) / 100.0
+	AudioServer.set_bus_mute(idx, frac <= 0.0)
+	AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(frac, 0.0001)))
+
+
+## Current volume of a bus as a 0–100 percentage (0 if muted). The Settings panel
+## reads this to initialise its sliders to the live values.
+func get_bus_percent(bus: StringName) -> float:
+	var idx := AudioServer.get_bus_index(bus)
+	if idx == -1:
+		return 100.0
+	if AudioServer.is_bus_mute(idx):
+		return 0.0
+	return clampf(db_to_linear(AudioServer.get_bus_volume_db(idx)) * 100.0, 0.0, 100.0)
 
 
 # --- Internals ---------------------------------------------------------------

@@ -75,10 +75,7 @@ func _ready() -> void:
 	TurnManager.turn_resolution_started.connect(_refresh_locks)
 	TurnManager.turn_resolution_completed.connect(_refresh_locks)
 	_refresh_locks()
-	var settings := _make_button("Settings", false, Callable())
-	settings.disabled = true
-	settings.tooltip_text = "Coming soon"
-	vbox.add_child(settings)
+	vbox.add_child(_make_button("Settings", false, _on_settings_pressed))
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(spacer)
@@ -117,6 +114,11 @@ func _on_save_pressed() -> void:
 
 func _on_load_pressed() -> void:
 	SaveLoadScreen.open(get_parent(), SaveLoadScreen.Mode.LOAD)
+
+
+func _on_settings_pressed() -> void:
+	# Opened on our parent so it stacks above this menu (Esc/Back falls back here).
+	SettingsPanel.open(get_parent())
 
 
 func _on_quit_pressed() -> void:
