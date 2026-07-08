@@ -169,6 +169,38 @@ func _run_command(text: String) -> String:
 			for s in slots:
 				lines.append("%s — turn %d, £%.2f  (%s)" % [s.slot, int(s.turn), float(s.money), str(s.timestamp)])
 			return "\n".join(lines)
+		"bankrupt":
+			SolvencyState.force_bankruptcy()
+			return "Forced bankruptcy — game over."
+		"distressed":
+			if MatchState.get_advisor_in_seat("cfo") == "":
+				return "The distressed program needs a seated CFO."
+			DecisionState.enabled = true
+			var d_err: String = DecisionState.force_draw("distressed_asset")
+			return "Distressed Asset Program offered." if d_err == "" else d_err
+		"trigger":
+			# Alias for `decision fire` — draws the decision and presents it NOW.
+			if parts.size() < 2:
+				return "usage: trigger <decision_id>   (see: decision list)"
+			DecisionState.enabled = true
+			var trig_err: String = DecisionState.force_draw(parts[1])
+			return "drew '%s' — it presents now" % parts[1] if trig_err == "" else trig_err
+		"decision":
+			if parts.size() >= 2 and parts[1].to_lower() == "list":
+				var lines2: Array = []
+				for def_id in DecisionState.DECISION_DEFINITIONS:
+					lines2.append(str(def_id))
+				if DecisionState.has_pending():
+					lines2.append("pending: %s" % str(DecisionState.pending.get("def_id", "")))
+				return "\n".join(lines2)
+			if parts.size() >= 3 and parts[1].to_lower() == "fire":
+				DecisionState.enabled = true
+				var fire_err: String = DecisionState.force_draw(parts[2])
+				return "drew '%s' — it presents now" % parts[2] if fire_err == "" else fire_err
+			if parts.size() >= 3 and parts[1].to_lower() == "resolve":
+				var res_err: String = DecisionState.resolve(parts[2])
+				return "resolved → %s" % parts[2] if res_err == "" else res_err
+			return "usage: decision list | decision fire <id> | decision resolve <choice_id>"
 		"roads":
 			if parts.size() >= 4 and parts[1].to_lower() == "route":
 				return _roads_route(parts[2], parts[3])

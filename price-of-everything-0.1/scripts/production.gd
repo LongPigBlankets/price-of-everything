@@ -10,6 +10,17 @@ var last_turn_run: Dictionary = {}  # instance_id -> true (set of buildings that
 var produced_by_building: Dictionary = {}  # instance_id -> good_id/internal_name -> lifetime qty
 var full_output_streak_by_building: Dictionary = {}  # instance_id -> consecutive turns at full output
 var _building_turn_reports: Array = []  # BuildingTurnReport dicts for CostSolver
+
+# Read-only views for DecisionState (targets + revenue formulas). Reports are
+# cleared at the start of each PROCESS, so during DECIDE these are last turn's.
+func last_turn_reports() -> Array:
+	return _building_turn_reports
+
+func turn_report_for(instance_id: String) -> Dictionary:
+	for r in _building_turn_reports:
+		if str(r.get("instance_id", "")) == instance_id:
+			return r
+	return {}
 var _just_constructed_this_turn: Dictionary = {}  # instance_id -> true
 var _warning_buy_preview_cache: Dictionary = {}  # "tile|good|qty" -> preview_buy result
 # Per-turn record of goods delivered to each tile and the transport paid to get them there.
@@ -204,6 +215,12 @@ func _process_production() -> void:
 
 			# A building being retooled produces nothing until the recipe change lands.
 			if MatchState.is_retooling(instance_id):
+				has_run[instance_id] = true
+				continue
+
+			# A paused building (player-stopped, e.g. via the supply-chain panel) is idle:
+			# no inputs consumed, no outputs, no labour/power draw this turn.
+			if MatchState.is_building_paused(instance_id):
 				has_run[instance_id] = true
 				continue
 
@@ -402,7 +419,8 @@ func _process_production() -> void:
 	for building in all_buildings:
 		var btype: String = str(building.get("building_id", ""))
 		var maint: float = _calculate_maintenance_cost(building)
-		var labour: float = _calculate_labour_cost(building)
+		# A paused (mothballed) building keeps its upkeep but carries no workforce.
+		var labour: float = 0.0 if MatchState.is_building_paused(str(building.get("instance_id", ""))) else _calculate_labour_cost(building)
 		var total_cost: float = maint + labour
 		MatchState.add_money(-total_cost)
 		summary.maintenance_paid += maint
@@ -593,6 +611,7 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 			"recipe_id": recipe_id,
 			"recipe_type": recipe_type,
 			"building_id": str(building.get("building_id", "")),
+			"instance_id": str(building.get("instance_id", "")),
 			"good_id": str(good.id),
 			"good_internal": output_name,
 		}
@@ -1027,6 +1046,7 @@ func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
 			"recipe_id": recipe_id,
 			"recipe_type": recipe_type,
 			"building_id": out_bid,
+			"instance_id": str(building.get("instance_id", "")),
 			"good_id": gid,
 			"good_internal": str(output.get("internal_name", "")),
 		}
@@ -1114,7 +1134,7 @@ func _base_labour_cost(building: Dictionary) -> float:
 # lets the Labour panel reuse this with a projected workforce delta.
 func labour_cost_factor(building: Dictionary, policy_delta_override: float = INF) -> float:
 	var bid: String = str(building.get("building_id", ""))
-	var headcount_delta: float = float(Modifiers.resolve_pct("labour_headcount", bid, {"building_id": bid}).get("net", 0.0)) / 100.0
+	var headcount_delta: float = float(Modifiers.resolve_pct("labour_headcount", bid, {"building_id": bid, "instance_id": str(building.get("instance_id", ""))}).get("net", 0.0)) / 100.0
 	var slider_delta: float = MatchState.labour_multiplier - 1.0
 	var policy_delta: float = MatchState.workforce_labour_cost_delta() if is_inf(policy_delta_override) else policy_delta_override
 	return maxf(EconomyConfig.LABOUR_FACTOR_MIN, 1.0 + headcount_delta + slider_delta + policy_delta)
@@ -1172,7 +1192,7 @@ func _calculate_maintenance_cost(building: Dictionary) -> float:
 	var maint_val: float = EconomyConfig.MAINTENANCE_PER_BUILDING if maint == null else float(maint)
 	# Maintenance modifiers (e.g. Combined Heat & Power thermal-battery retrofit).
 	var bid: String = str(building.get("building_id", ""))
-	var maint_cost := Modifiers.apply("maintenance", bid, maint_val, {"building_id": bid})
+	var maint_cost := Modifiers.apply("maintenance", bid, maint_val, {"building_id": bid, "instance_id": str(building.get("instance_id", ""))})
 	return maint_cost * BuildingLevels.mult("maint", int(building.get("level", 1)))
 
 # Power-consumption modifiers (Pulverised Carbon Injection, Scrap Preheating,
@@ -1248,7 +1268,8 @@ func stats_at_level(instance_id: String, level: int) -> Dictionary:
 				continue
 			var ctx := {
 				"recipe_id": rid, "recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
-				"building_id": str(b.get("building_id", "")), "good_id": str(good.id), "good_internal": oname,
+				"building_id": str(b.get("building_id", "")), "instance_id": str(b.get("instance_id", "")),
+				"good_id": str(good.id), "good_internal": oname,
 			}
 			var q := int(round(Modifiers.apply("recipe_output", rid, float(output.get("qty", 0)), ctx)))
 			out.outputs.append({"name": str(good.get("display_name", oname)), "good_id": str(good.id), "qty": int(round(float(q) * omul * MatchState.workforce_output_multiplier()))})

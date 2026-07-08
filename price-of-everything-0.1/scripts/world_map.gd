@@ -90,6 +90,7 @@ var _buy_modal: PanelContainer = null
 var _buy_modal_label: Label = null
 var _construction_dialog: PanelContainer = null
 var _deposit_dialog: Control = null  # reused "no deposit" / "deposit exhausted" modal
+var _deposit_dialog_target: Dictionary = {}  # building the current deposit dialog acts on
 
 ## False until _ready has finished building the world. On a fresh start the heavy
 ## building-visual placement is spread across frames (so the loading screen can keep
@@ -1681,10 +1682,23 @@ func _on_construction_completed_deposit_check(instance_id: String, tile_id: Stri
 func _on_deposit_exhausted(tile_id: String, token: String) -> void:
 	if token == "water":
 		return
+	# Remember which building the exhausted deposit belongs to, so the dialog's
+	# Demolish / Change Recipe buttons can act on it.
+	_deposit_dialog_target = _building_with_deposit_token(tile_id, token)
 	_show_deposit_dialog(
 		"Deposit exhausted",
 		"The %s deposit here has run out — this building can no longer produce." % _good_display_for_deposit(token),
 		[{"id": "demolish", "label": "Demolish"}, {"id": "change", "label": "Change Recipe"}])
+
+# The player building on `tile_id` whose recipe draws on the given deposit token.
+func _building_with_deposit_token(tile_id: String, token: String) -> Dictionary:
+	for iid in MatchState.tile_buildings.get(tile_id, []):
+		var b: Dictionary = MatchState.get_building(str(iid))
+		if b.is_empty() or not MatchState.is_player_owned(b):
+			continue
+		if _recipe_nonwater_deposit_token(Catalog.get_recipe(str(b.get("recipe_id", "")))) == token:
+			return b
+	return {}
 
 func _show_deposit_dialog(title: String, body: String, buttons: Array) -> void:
 	if _deposit_dialog == null:
@@ -1693,8 +1707,31 @@ func _show_deposit_dialog(title: String, body: String, buttons: Array) -> void:
 		_deposit_dialog.action_chosen.connect(_on_deposit_dialog_action)
 	_deposit_dialog.open(title, body, buttons)
 
-func _on_deposit_dialog_action(_id: String) -> void:
-	pass  # Demolish / Change Recipe are no-ops for now; the dialog closes itself.
+func _on_deposit_dialog_action(id: String) -> void:
+	var building: Dictionary = _deposit_dialog_target
+	_deposit_dialog_target = {}
+	if building.is_empty():
+		return
+	match id:
+		"demolish":
+			# Route through the supply-chain review, same as the detail panel's Demolish.
+			_open_supply_chain_review(str(building.get("instance_id", "")), "demolish")
+		"change":
+			# Open the building so the player can pick a new recipe.
+			_open_building_detail(building)
+
+# Mount the supply-chain review panel (feeders → target → dependents, per-building
+# auto-fulfil/pause) for a sell or demolish. Same panel the building detail panel uses.
+func _open_supply_chain_review(instance_id: String, action: String) -> void:
+	if instance_id == "":
+		return
+	var layer := CanvasLayer.new()
+	layer.layer = 130
+	get_tree().root.add_child(layer)
+	var panel: Control = load("res://scripts/supply_chain_panel.gd").new()
+	layer.add_child(panel)
+	panel.finished.connect(func(_confirmed: bool) -> void: layer.queue_free())
+	panel.open(instance_id, action)
 
 func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
 	match req.get("type", ""):

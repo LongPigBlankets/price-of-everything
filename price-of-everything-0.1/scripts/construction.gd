@@ -369,6 +369,19 @@ func tick_turn() -> Array:
 	return completed
 
 
+# Decision-event hook: delay (+N) or accelerate (-N) an under-construction project.
+# Clamped to at least 1 remaining turn — completion still happens via tick_turn so
+# the promote-before-produce ordering is never bypassed.
+func adjust_remaining(instance_id: String, delta_turns: int) -> bool:
+	var project: Dictionary = construction_projects.get(instance_id, {})
+	if project.is_empty() or str(project.get("status", "")) != STATUS_UNDER_CONSTRUCTION:
+		return false
+	project["turns_remaining"] = maxi(1, int(project["turns_remaining"]) + delta_turns)
+	# Reuses the project-row refresh signal — panels re-read turns_remaining on it.
+	construction_materials_updated.emit(instance_id, str(project.get("tile_id", "")))
+	return true
+
+
 func _promote(instance_id: String) -> void:
 	var project: Dictionary = construction_projects[instance_id]
 	construction_projects.erase(instance_id)

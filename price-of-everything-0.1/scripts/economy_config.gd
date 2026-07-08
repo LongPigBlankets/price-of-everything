@@ -219,6 +219,14 @@ const LOAN_TERM_TURNS: int = 36            # How many turns to repay over
 const LOAN_INTEREST_RATE: float = 0.10     # 10% over total term (not per turn)
 const LOAN_PROFIT_WINDOW: int = 5          # Rolling window (turns) for the profit/revenue average
 const LOAN_REVENUE_BUFFER: float = 0.02    # Extra serviceable debt = this share of avg revenue
+# Asset-backed leg (2026-07-08): plant is collateral, so a loss-making trough never
+# zeroes the credit line — capacity = max(base, profit-scaled) + LTV x plant SALE value.
+# The basis is what the buildings would SELL for (BuildingPrice.sale_price — level-aware
+# via upgrade kits), so a levelled empire borrows against its real market worth.
+# Base LTV is 0.75; a seated CFO or Chief Investment (expansion/capex) advisor lifts it
+# to 1.0 (LOAN_COLLATERAL_LTV_MAX) — the two do NOT stack past the max.
+const LOAN_COLLATERAL_LTV_BASE: float = 0.75  # Borrowable share of player buildings' sale value
+const LOAN_COLLATERAL_LTV_MAX: float = 1.0    # With a seated CFO or Chief Investment advisor
 
 # --- Tax & Dividends ---
 const TAX_RATE: float = 0.20

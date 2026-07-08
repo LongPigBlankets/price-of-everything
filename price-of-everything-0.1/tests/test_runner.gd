@@ -218,6 +218,22 @@ func _ready() -> void:
 	_test_empire_rag()
 	_test_audio_service()
 	_test_tutorial_engine()
+	_test_decision_tenure_gate()
+	_test_decision_resolve_effects_and_loyalty()
+	_test_decision_company_scope_loyalty()
+	_test_decision_loan_fallback()
+	_test_loan_collateral_capacity()
+	_test_decision_commit_guard_and_auto_resolve()
+	_test_decision_roundtrip()
+	_test_building_pause()
+	_test_liquidate_all_buildings()
+	_test_grace_loan()
+	_test_distressed_program()
+	_test_solvency_bankruptcy()
+	_test_decision_story_not_random()
+	_test_decision_pulse_pipeline()
+	await _test_decision_view_never_empty()
+	_test_auto_bridge_loan()
 	if not _failed_names.is_empty():
 		print("FAILED TESTS:")
 		for failed_name in _failed_names:
@@ -7867,3 +7883,444 @@ func _test_panel_stack_focus() -> void:
 	_check(PanelStack.close_top() and not a.visible, "panel stack: close_top hides focused panel")
 	PanelStack.remove(b)
 	holder.queue_free()
+
+
+# --- Decision events (docs/decision-events-spec.md) --------------------------
+
+# Shared setup/teardown: decisions run against a clean DecisionState with the
+# advisor board and turn clock under test control; every helper restores what it
+# touches (the suite shares autoload state across tests).
+func _decision_board_snapshot() -> Dictionary:
+	return {
+		"permanent": MatchState.permanent_advisor_ids.duplicate(),
+		"recruited": MatchState.recruited_advisor_ids.duplicate(),
+		"seats": MatchState.advisor_seats.duplicate(true),
+		"hired": MatchState.advisor_hired_turn.duplicate(true),
+		"loyalty": MatchState.advisor_loyalty.duplicate(true),
+		"money": MatchState.money,
+		"turn": TurnManager.current_turn,
+		"phase": TurnManager.current_phase,
+	}
+
+func _decision_board_restore(snap: Dictionary) -> void:
+	MatchState.permanent_advisor_ids = snap.permanent
+	MatchState.recruited_advisor_ids = snap.recruited
+	MatchState.advisor_seats = snap.seats
+	MatchState.advisor_hired_turn = snap.hired
+	MatchState.advisor_loyalty = snap.loyalty
+	MatchState.money = snap.money
+	TurnManager.current_turn = snap.turn
+	TurnManager.current_phase = snap.phase
+	DecisionState.reset()
+	Modifiers.reset()
+	EventScheduler.reset()
+
+func _test_decision_tenure_gate() -> void:
+	var snap := _decision_board_snapshot()
+	TurnManager.current_turn = 20
+	if not MatchState.permanent_advisor_ids.has("vera"):
+		MatchState.permanent_advisor_ids.append("vera")
+	MatchState.advisor_hired_turn["vera"] = 20
+	_check(not MatchState.is_advisor_tenured("vera"),
+		"decision tenure: an advisor hired THIS turn does not count")
+	MatchState.advisor_hired_turn["vera"] = 19
+	_check(MatchState.is_advisor_tenured("vera"),
+		"decision tenure: hired on an earlier turn counts")
+	_check(not MatchState.is_advisor_tenured("nobody"),
+		"decision tenure: unknown/unemployed advisors never count")
+	# The gate as the dialog sees it: research choice locked until tenured.
+	MatchState.advisor_seats = {"research_director": "vera"}
+	MatchState.advisor_hired_turn["vera"] = 20
+	DecisionState.reset()
+	DecisionState.pending = {"uid": "t1", "def_id": "worker_innovation",
+		"target": {"scope": "building", "instance_id": "inst_x", "name": "Test Works"},
+		"turn_drawn": 20}
+	var view: Dictionary = DecisionState.pending_view()
+	var research_choice: Dictionary = {}
+	for c in view.choices:
+		if str(c.id) == "research":
+			research_choice = c
+	_check(not bool(research_choice.get("available", true)),
+		"decision gate: seat filled by an untenured hire stays locked")
+	_check(str(research_choice.get("lock_reason", "")) != "",
+		"decision gate: locked choices carry a requirement line")
+	MatchState.advisor_hired_turn["vera"] = 15
+	view = DecisionState.pending_view()
+	for c in view.choices:
+		if str(c.id) == "research":
+			research_choice = c
+	_check(bool(research_choice.get("available", false)),
+		"decision gate: a tenured seat unlocks the choice")
+	_decision_board_restore(snap)
+
+func _test_decision_resolve_effects_and_loyalty() -> void:
+	var snap := _decision_board_snapshot()
+	Modifiers.reset()
+	DecisionState.reset()
+	TurnManager.current_turn = 30
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
+	for aid in ["vera", "tom"]:
+		if not MatchState.permanent_advisor_ids.has(aid):
+			MatchState.permanent_advisor_ids.append(aid)
+		MatchState.advisor_hired_turn[aid] = 20
+		MatchState.advisor_loyalty[aid] = 0.0
+	# CFO advocates hold_line, COO advocates pay_rise (union_demands catalog entry).
+	MatchState.advisor_seats = {"cfo": "vera", "coo": "tom"}
+	DecisionState.pending = {"uid": "t2", "def_id": "union_demands",
+		"target": {"scope": "building_type", "building_id": "b_001", "name": "Coal Mine"},
+		"turn_drawn": 30}
+	var err: String = DecisionState.resolve("hold_line")
+	_check(err == "", "decision resolve: valid choice resolves without error (%s)" % err)
+	_check(not DecisionState.has_pending(), "decision resolve: pending clears")
+	_check(DecisionState.history().size() == 1, "decision resolve: history records the outcome")
+	var found := false
+	for m in Modifiers.active():
+		if str(m.domain) == "recipe_output" and float(m.get("pct", 0.0)) == -10.0 \
+				and str((m.get("target_match", {}) as Dictionary).get("building_id", "")) == "b_001":
+			found = true
+			_check(int(m.get("expires_turn", 0)) == 39,
+				"decision modifier: 10-turn DECIDE grant expires at turn 39")
+	_check(found, "decision resolve: the output-hit modifier lands, scoped to the building type")
+	_check(absf(MatchState.advisor_loyalty_value("vera") - 0.5) < 0.001,
+		"decision loyalty: followed advisor gains +0.5 on a local-scope decision")
+	_check(absf(MatchState.advisor_loyalty_value("tom") - (-0.5)) < 0.001,
+		"decision loyalty: ignored advocating advisor takes -0.5")
+	_decision_board_restore(snap)
+
+func _test_decision_company_scope_loyalty() -> void:
+	var snap := _decision_board_snapshot()
+	DecisionState.reset()
+	TurnManager.current_turn = 30
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
+	if not MatchState.permanent_advisor_ids.has("vera"):
+		MatchState.permanent_advisor_ids.append("vera")
+	MatchState.advisor_hired_turn["vera"] = 20
+	MatchState.advisor_loyalty["vera"] = 0.0
+	MatchState.advisor_seats = {"cfo": "vera"}
+	DecisionState.pending = {"uid": "t3", "def_id": "brokers_offer",
+		"target": {"scope": "company", "good_id": "g_001", "name": "Coal"},
+		"turn_drawn": 30}
+	var err: String = DecisionState.resolve("decline")
+	_check(err == "", "decision company scope: resolve ok (%s)" % err)
+	_check(absf(MatchState.advisor_loyalty_value("vera") - 2.0) < 0.001,
+		"decision loyalty: followed advisor gains +2.0 on a company-scope decision")
+	_decision_board_restore(snap)
+
+func _test_decision_loan_fallback() -> void:
+	var snap := _decision_board_snapshot()
+	var loans_before: Array = LoanState.loans.duplicate(true)
+	DecisionState.reset()
+	TurnManager.current_turn = 30
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
+	MatchState.advisor_seats = {}
+	MatchState.money = 10.0
+	DecisionState.pending = {"uid": "t4", "def_id": "planning_pushback",
+		"target": {"scope": "building", "instance_id": "no_such_project", "name": "Test Site"},
+		"turn_drawn": 30}
+	var err: String = DecisionState.resolve("accelerate")   # costs £50, we hold £10
+	_check(err == "", "decision loan: unaffordable cash choice still resolves (%s)" % err)
+	_check(LoanState.loans.size() == loans_before.size() + 1,
+		"decision loan: the shortfall arrives as a new loan")
+	if LoanState.loans.size() > loans_before.size():
+		var loan: Dictionary = LoanState.loans.back()
+		_check(absf(float(loan.principal_initial) - 40.0) < 0.001,
+			"decision loan: borrowed exactly the £40 shortfall")
+	_check(absf(MatchState.money) < 0.001,
+		"decision loan: cost paid in full after the loan lands (money at 0)")
+	# Already in the red: only the COST is financed — the pre-existing overdraft is
+	# NOT refinanced (regression: it used to reset any negative balance to £0).
+	MatchState.money = -100.0
+	DecisionState.pending = {"uid": "t4b", "def_id": "planning_pushback",
+		"target": {"scope": "building", "instance_id": "no_such_project", "name": "Test Site"},
+		"turn_drawn": 30}
+	var loans_mid: int = LoanState.loans.size()
+	err = DecisionState.resolve("accelerate")   # costs £50 at −£100
+	_check(err == "", "decision loan (in the red): resolves without error (%s)" % err)
+	_check(LoanState.loans.size() == loans_mid + 1
+		and absf(float(LoanState.loans.back().principal_initial) - 50.0) < 0.001,
+		"decision loan (in the red): borrows exactly the £50 cost, not the deficit")
+	_check(absf(MatchState.money - (-100.0)) < 0.001,
+		"decision loan (in the red): the overdraft is NOT refinanced back to £0")
+	LoanState.loans = loans_before
+	_decision_board_restore(snap)
+
+func _test_loan_collateral_capacity() -> void:
+	# A loss-making firm with plant keeps a credit line: capacity = base + LTV x
+	# building SALE value, even while the profit gate zeroes the cashflow leg. A
+	# seated CFO/Chief Investment lifts the LTV from 0.75 to 1.0.
+	var BP = load("res://scripts/building_price.gd")
+	var profit_before: Array = LoanState._profit_history.duplicate()
+	var revenue_before: Array = LoanState._revenue_history.duplicate()
+	var seats_before: Dictionary = MatchState.advisor_seats.duplicate(true)
+	MatchState.advisor_seats = {}                       # no CFO / Chief Investment → base LTV
+	LoanState._profit_history = [-10.0, -12.0, -8.0]
+	LoanState._revenue_history = [20.0, 20.0, 20.0]
+	var without_plant := LoanState.capacity_total()
+	var b := {"instance_id": "test_collateral_b1", "building_id": "b_001",
+		"recipe_id": "", "tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER, "level": 1}
+	var sale := float(BP.sale_price(b))
+	MatchState.buildings["test_collateral_b1"] = b
+	var with_plant := LoanState.capacity_total()
+	_check(sale > 0.0 and absf((with_plant - without_plant) - EconomyConfig.LOAN_COLLATERAL_LTV_BASE * sale) < 0.5,
+		"loan collateral: plant adds base-LTV (0.75) x its sale value while unprofitable")
+	MatchState.advisor_seats = {"cfo": "vera"}          # a seated CFO lifts LTV to 1.0
+	var with_cfo := LoanState.capacity_total()
+	_check(absf((with_cfo - without_plant) - EconomyConfig.LOAN_COLLATERAL_LTV_MAX * sale) < 0.5,
+		"loan collateral: a seated CFO/Chief Investment lifts LTV to the max (1.0)")
+	MatchState.buildings.erase("test_collateral_b1")
+	_check(without_plant >= EconomyConfig.LOAN_BASE_CAPACITY,
+		"loan collateral: the base floor still holds with no plant")
+	MatchState.advisor_seats = seats_before
+	LoanState._profit_history = profit_before
+	LoanState._revenue_history = revenue_before
+
+func _test_decision_commit_guard_and_auto_resolve() -> void:
+	var snap := _decision_board_snapshot()
+	DecisionState.reset()
+	MatchState.advisor_seats = {}
+	TurnManager.current_turn = 40
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
+	var was_resolving := TurnManager.is_resolving
+	DecisionState.auto_resolve = false
+	DecisionState.pending = {"uid": "t5", "def_id": "land_deal",
+		"target": {"scope": "tile", "tile_id": "tile_1_1", "name": "Test Tile"},
+		"turn_drawn": 40}
+	TurnManager.commit_turn()
+	_check(TurnManager.current_turn == 40 and not TurnManager.is_resolving,
+		"decision guard: commit_turn refuses while a decision is pending")
+	_check(DecisionState.has_pending(), "decision guard: the decision is still pending")
+	# Non-interactive path: the default choice resolves (loyalty rules included).
+	DecisionState.auto_resolve = true
+	DecisionState.auto_resolve_pending()
+	_check(not DecisionState.has_pending(), "decision auto-resolve: default choice clears pending")
+	_check(str(DecisionState.history().back().get("choice_id", "")) == "keep",
+		"decision auto-resolve: the definition's default_choice was picked")
+	DecisionState.auto_resolve = false
+	TurnManager.is_resolving = was_resolving
+	_decision_board_restore(snap)
+
+func _test_decision_roundtrip() -> void:
+	var snap := _decision_board_snapshot()
+	DecisionState.reset()
+	DecisionState.pending = {"uid": "t6", "def_id": "union_demands",
+		"target": {"scope": "building_type", "building_id": "b_002", "name": "Furnace"},
+		"turn_drawn": 12}
+	DecisionState.flags["env_exempt:inst_9"] = true
+	DecisionState.reserve(80, "environmental_inspection")
+	var exported: Dictionary = DecisionState.export_state()
+	DecisionState.reset()
+	_check(not DecisionState.has_pending(), "decision roundtrip: reset clears pending")
+	DecisionState.import_state(exported)
+	_check(str(DecisionState.pending.get("def_id", "")) == "union_demands",
+		"decision roundtrip: pending decision survives export/import")
+	_check(DecisionState.flags.has("env_exempt:inst_9"),
+		"decision roundtrip: flags survive export/import")
+	_check(str(DecisionState._reservations.get(80, "")) == "environmental_inspection",
+		"decision roundtrip: story reservations survive (int keys restored)")
+	_decision_board_restore(snap)
+
+
+# --- Demolition/pause, liquidation, grace loans, solvency (features 1/2/3/5/6) --------
+
+func _test_building_pause() -> void:
+	MatchState.buildings["test_pause_b"] = {"instance_id": "test_pause_b",
+		"building_id": "b_001", "recipe_id": "", "tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER}
+	_check(not MatchState.is_building_paused("test_pause_b"), "pause: buildings start unpaused")
+	MatchState.set_building_paused("test_pause_b", true)
+	_check(MatchState.is_building_paused("test_pause_b"), "pause: set_building_paused pauses it")
+	_check((MatchState.export_state().get("paused_buildings", {}) as Dictionary).has("test_pause_b"),
+		"pause: paused set is exported in the save state")
+	MatchState.remove_building("test_pause_b")
+	_check(not MatchState.paused_buildings.has("test_pause_b"),
+		"pause: pause flag is cleared when the building is removed")
+
+func _test_liquidate_all_buildings() -> void:
+	var money_before := MatchState.money
+	var BP = load("res://scripts/building_price.gd")
+	var b1 := {"instance_id": "test_liq_1", "building_id": "b_001", "recipe_id": "",
+		"tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER, "level": 1}
+	var b2 := {"instance_id": "test_liq_2", "building_id": "b_001", "recipe_id": "",
+		"tile_id": "tile_1_2", "owner": MatchState.LOCAL_PLAYER, "level": 1}
+	MatchState.buildings["test_liq_1"] = b1
+	MatchState.buildings["test_liq_2"] = b2
+	var expected := int(round(float(BP.sale_price(b1)) * 1.5)) + int(round(float(BP.sale_price(b2)) * 1.5))
+	var res: Dictionary = MatchState.liquidate_all_buildings(1.5)
+	_check(int(res.count) >= 2, "liquidate: sells every player building (>=2 here)")
+	_check(not MatchState.is_player_owned(MatchState.buildings["test_liq_1"])
+		and not MatchState.is_player_owned(MatchState.buildings["test_liq_2"]),
+		"liquidate: liquidated buildings flip to the NPC operator")
+	_check(MatchState.money >= money_before + float(expected) - 1.0,
+		"liquidate: player is paid 1.5x sale value for the buildings")
+	MatchState.buildings.erase("test_liq_1")
+	MatchState.buildings.erase("test_liq_2")
+	MatchState.money = money_before
+
+func _test_grace_loan() -> void:
+	var loans_before: Array = LoanState.loans.duplicate(true)
+	var money_before := MatchState.money
+	LoanState.loans = []
+	LoanState.take_grace_loan(500.0, 10)
+	var loan: Dictionary = LoanState.loans.back()
+	_check(absf(float(loan.principal_initial) - 500.0) < 0.001, "grace loan: £500 principal booked")
+	_check(int(loan.grace_remaining) == 10 and absf(float(loan.payment_per_turn)) < 0.001,
+		"grace loan: 10 interest-free turns, no payment scheduled")
+	var money_after_disburse := MatchState.money
+	_check(money_after_disburse >= money_before + 499.0, "grace loan: principal disbursed to the player")
+	for _i in 10:
+		LoanState.process_payments()
+	var loan2: Dictionary = LoanState.loans.back()
+	_check(absf(MatchState.money - money_after_disburse) < 0.001, "grace loan: no cash paid across the 10 grace turns")
+	_check(int(loan2.grace_remaining) == 0 and float(loan2.payment_per_turn) > 0.0,
+		"grace loan: converts to amortised payments once grace ends")
+	_check(absf(float(loan2.principal_remaining) - 500.0 * (1.0 + float(loan2.interest_rate))) < 1.0,
+		"grace loan: post-grace balance = principal x (1 + rate)")
+	LoanState.loans = loans_before
+	MatchState.money = money_before
+
+func _test_distressed_program() -> void:
+	var money_before := MatchState.money
+	var loans_before: Array = LoanState.loans.duplicate(true)
+	SolvencyState.reset()
+	MatchState.buildings["test_dist_1"] = {"instance_id": "test_dist_1", "building_id": "b_001",
+		"recipe_id": "", "tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER, "level": 1}
+	var loans_n := LoanState.loans.size()
+	var res: Dictionary = SolvencyState.accept_distressed_program()
+	_check(int(res.count) >= 1, "distressed: the program liquidates the player's buildings")
+	_check(not MatchState.is_player_owned(MatchState.buildings["test_dist_1"]),
+		"distressed: buildings are bought out")
+	_check(LoanState.loans.size() == loans_n + 1, "distressed: a £500 grace loan lands")
+	_check(int(LoanState.loans.back().grace_remaining) == SolvencyState.DISTRESSED_GRACE_TURNS,
+		"distressed: the rescue loan is interest-free for the grace period")
+	MatchState.buildings.erase("test_dist_1")
+	LoanState.loans = loans_before
+	MatchState.money = money_before
+	SolvencyState.reset()
+
+func _test_solvency_bankruptcy() -> void:
+	var ge_before := TurnManager.game_ended
+	var seats_before: Dictionary = MatchState.advisor_seats.duplicate(true)
+	SolvencyState.reset()
+	MatchState.advisor_seats = {}                         # no CFO → no distressed offer, straight path
+	for _i in 4:
+		SolvencyState._evaluate(-600.0, -10.0)            # at/below floor, unprofitable
+	_check(not SolvencyState.is_bankrupt(), "solvency: 4 floor+loss turns is not yet bankruptcy")
+	SolvencyState._evaluate(-600.0, 5.0)                  # a profitable turn resets the clock
+	_check(not SolvencyState.is_bankrupt(), "solvency: a profitable turn resets the bankruptcy clock")
+	for _i in 5:
+		SolvencyState._evaluate(-600.0, -10.0)
+	_check(SolvencyState.is_bankrupt(), "solvency: 5 consecutive floor+loss turns → bankruptcy")
+	_check(TurnManager.game_ended, "solvency: bankruptcy ends the game")
+	SolvencyState.reset()
+	TurnManager.game_ended = ge_before
+	MatchState.advisor_seats = seats_before
+
+
+func _test_decision_story_not_random() -> void:
+	# A story-priority decision (e.g. distressed_asset) must NEVER surface from the
+	# random scheduler — only reserve()/force_draw() may draw it.
+	var snap := _decision_board_snapshot()
+	DecisionState.reset()
+	for t in range(10, 400):
+		var picked: String = DecisionState._pick_random_definition(t)
+		if picked != "":
+			_check(int((DecisionState.DECISION_DEFINITIONS[picked] as Dictionary).get("priority", 2)) != 0,
+				"scheduler: random draw never returns a story-priority decision")
+			# advance recency so the loop keeps exploring different picks
+			DecisionState._recent_draws.append({"turn": t, "id": picked,
+				"category": str((DecisionState.DECISION_DEFINITIONS[picked] as Dictionary).get("category", ""))})
+	# And force_draw CAN still summon it directly.
+	DecisionState.reset()
+	_check(DecisionState.force_draw("distressed_asset") == "",
+		"scheduler: force_draw can still summon a story decision")
+	DecisionState.reset()
+	_decision_board_restore(snap)
+
+
+func _test_decision_pulse_pipeline() -> void:
+	# Pull now, reveal PULSE_LEAD_TURNS later; 20-turn per-category spacing; bounded cadence.
+	var snap := _decision_board_snapshot()
+	DecisionState.reset()
+	DecisionState.auto_resolve = false
+	TurnManager.current_turn = 30
+	_check(DecisionState._pull("distressed_asset", 30), "pulse: _pull schedules a decision")
+	_check(int(DecisionState._scheduled_pull.get("show_turn", 0)) == 30 + DecisionState.PULSE_LEAD_TURNS,
+		"pulse: reveal is scheduled PULSE_LEAD_TURNS after the pull")
+	_check(not DecisionState.has_pending(), "pulse: nothing is pending during the lead time")
+	DecisionState._promote_scheduled()
+	_check(DecisionState.has_pending() and DecisionState._scheduled_pull.is_empty(),
+		"pulse: promotion moves the scheduled pull into pending")
+
+	DecisionState.reset()
+	DecisionState._recent_draws = [{"turn": 30, "id": "union_demands", "category": "labour"}]
+	var elig_10: Array = DecisionState._eligible_ids(40)     # 10 turns after a labour event
+	var elig_20: Array = DecisionState._eligible_ids(50)     # 20 turns after
+	_check(not elig_10.has("union_demands") and not elig_10.has("headhunters"),
+		"pulse: the same event type (labour) is ineligible within 20 turns")
+	_check(elig_20.has("union_demands") or elig_20.has("headhunters"),
+		"pulse: the event type becomes eligible again after 20 turns")
+
+	for t in [12, 40, 120]:
+		var iv: int = DecisionState._pulse_interval(int(t))
+		_check(iv >= DecisionState.PULSE_MIN and iv <= DecisionState.PULSE_MAX,
+			"pulse: interval stays within [PULSE_MIN, PULSE_MAX]")
+	DecisionState.reset()
+	_decision_board_restore(snap)
+
+
+func _test_decision_view_never_empty() -> void:
+	# Every decision, with a STALE target (entity gone — the pulse 3-turn lead can
+	# leave targets stale), must still yield a non-empty view with choices, and the
+	# real dialog must build visible content. A soft-lock happens if the inescapable
+	# modal ever shows with no card.
+	var snap := _decision_board_snapshot()
+	var DialogScript = load("res://scripts/decision_dialog.gd")
+	var dlg = DialogScript.new()
+	add_child(dlg)
+	await get_tree().process_frame
+	for def_id in DecisionState.DECISION_DEFINITIONS.keys():
+		var def: Dictionary = DecisionState.DECISION_DEFINITIONS[def_id]
+		DecisionState.pending = {
+			"uid": "diag_%s" % def_id,
+			"def_id": str(def_id),
+			"target": {"scope": str(def.get("scope", "company")), "name": "Ghost Works",
+				"instance_id": "__gone__", "tile_id": "__gone__",
+				"building_id": "__gone__", "good_id": "__gone__"},
+			"turn_drawn": 30,
+		}
+		var view: Dictionary = DecisionState.pending_view()
+		_check(not view.is_empty() and (view.get("choices", []) as Array).size() > 0,
+			"decision '%s': pending_view yields choices even with a stale target" % def_id)
+		dlg._rebuild()
+		_check(dlg._content.get_child_count() > 0,
+			"decision '%s': dialog builds visible content (no empty scrim)" % def_id)
+	dlg.queue_free()
+	DecisionState.pending = {}
+	_decision_board_restore(snap)
+
+
+func _test_auto_bridge_loan() -> void:
+	# Negative cash auto-borrows up to available capacity to reach £0; capped when the
+	# gap exceeds capacity (then the balance stays red and bankruptcy looms).
+	var money_before := MatchState.money
+	var loans_before: Array = LoanState.loans.duplicate(true)
+	var profit_before: Array = LoanState._profit_history.duplicate()
+	LoanState.loans = []
+	LoanState._profit_history = []
+	MatchState.money = 50.0
+	_check(SolvencyState.auto_bridge_amount() == 0.0, "auto-bridge: solvent → borrows nothing")
+	MatchState.money = -30.0
+	_check(absf(SolvencyState.auto_bridge_amount() - minf(30.0, LoanState.available_capacity())) < 0.001,
+		"auto-bridge: borrows the gap when capacity allows")
+	MatchState.money = -1000000.0
+	_check(absf(SolvencyState.auto_bridge_amount() - LoanState.available_capacity()) < 0.001,
+		"auto-bridge: capped at available capacity when the gap is huge")
+	# Applying it takes a loan and lifts the balance back toward £0.
+	LoanState.loans = []
+	MatchState.money = -30.0
+	var n := LoanState.loans.size()
+	SolvencyState._auto_bridge_negative_cash()
+	_check(LoanState.loans.size() == n + 1, "auto-bridge: takes a loan when in the red")
+	_check(MatchState.money >= -0.001, "auto-bridge: lifts the balance to ~£0 when capacity covers it")
+	LoanState.loans = loans_before
+	LoanState._profit_history = profit_before
+	MatchState.money = money_before

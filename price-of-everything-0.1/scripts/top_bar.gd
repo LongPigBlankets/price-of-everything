@@ -11,9 +11,14 @@ signal council_widget_clicked
 const FLASH_RED := Color(0.9, 0.2, 0.2)
 const SAVE_TOOLTIP := "Save the game (quicksave slot)"
 const SAVE_LOCKED_TOOLTIP := "Please wait until the turn resolves"
+# Show the "Bankruptcy imminent" strip when total runway — cash plus remaining
+# borrowing room — drops below this. Once that's exhausted, a negative balance can no
+# longer be auto-bridged and the bankruptcy clock starts.
+const BANKRUPTCY_IMMINENT_RUNWAY := 100.0
 
 var _flashing := false
 var _save_button: Button
+var _bankruptcy_strip: PanelContainer
 
 func _ready() -> void:
 	money_widget.pressed.connect(_on_money_clicked)
@@ -24,6 +29,7 @@ func _ready() -> void:
 	_add_council_widget()
 	_add_save_button()
 	_add_notification_bell()
+	_add_bankruptcy_warning()
 
 func _add_victory_widget() -> void:
 	# The victory score widget sits next to MoneyWidget at the left of the top-bar
@@ -179,8 +185,50 @@ func _on_save_pressed() -> void:
 	else:
 		MatchState.request_toast("Could not save: %s" % err, "warning")
 
+# A red "Bankruptcy imminent" strip directly beneath the money widget, matching its
+# width: the money widget is re-parented into a VBox and the strip added below it.
+func _add_bankruptcy_warning() -> void:
+	var hbox := money_widget.get_parent()
+	var idx := money_widget.get_index()
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 2)
+	hbox.add_child(vbox)
+	hbox.move_child(vbox, idx)
+	money_widget.reparent(vbox)
+	money_widget.move_to_front()   # money on top, strip below
+
+	_bankruptcy_strip = PanelContainer.new()
+	_bankruptcy_strip.visible = false
+	_bankruptcy_strip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.62, 0.16, 0.14, 0.95)
+	sb.set_corner_radius_all(4)
+	sb.content_margin_top = 2
+	sb.content_margin_bottom = 2
+	_bankruptcy_strip.add_theme_stylebox_override("panel", sb)
+	var lbl := Label.new()
+	lbl.text = "Bankruptcy imminent"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.clip_text = true
+	lbl.custom_minimum_size = Vector2(0, 0)
+	lbl.add_theme_font_size_override("font_size", 11)
+	lbl.add_theme_color_override("font_color", Color(1, 1, 1))
+	_bankruptcy_strip.add_child(lbl)
+	vbox.add_child(_bankruptcy_strip)
+
+	LoanState.loans_updated.connect(_refresh_bankruptcy_warning)
+	TurnManager.turn_resolution_completed.connect(_refresh_bankruptcy_warning)
+	_refresh_bankruptcy_warning()
+
+func _refresh_bankruptcy_warning(_ignored: Variant = null) -> void:
+	if not is_instance_valid(_bankruptcy_strip):
+		return
+	var runway: float = MatchState.money + LoanState.available_capacity()
+	_bankruptcy_strip.visible = not TurnManager.game_ended and runway < BANKRUPTCY_IMMINENT_RUNWAY
+
 func _on_money_changed(new_amount: float) -> void:
 	_refresh_money_display(new_amount)
+	_refresh_bankruptcy_warning()
 
 func _on_build_rejected_no_funds(_message: String) -> void:
 	flash_red()

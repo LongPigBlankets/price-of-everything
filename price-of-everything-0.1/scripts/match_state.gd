@@ -110,17 +110,20 @@ const AGENDA_FAST_SHIPMENT := "fast_shipment"               # a shipment deliver
 const AGENDA_LABOUR_POLICIES := "labour_policies"           # >=2 workforce policies enabled
 const AGENDA_TECH_UNLOCK := "tech_unlocked"
 const AGENDA_CHANGED_RECIPE := "changed_recipe"
-# 2 likes + 2 dislikes per advisor.
+# Decision-event tags (flagged by decision choices — see decision_state.gd).
+const AGENDA_BACKROOM_DEAL := "backroom_deal"
+const AGENDA_CLEAN_COMMITMENT := "clean_commitment"
+# 2 likes + 2 dislikes per advisor (Hal/Priya/Gerald carry an extra decision tag).
 const ADVISOR_AGENDAS := {
 	"vera": {"likes": [AGENDA_MADE_PROFIT, AGENDA_PAID_OFF_LOAN], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
 	"tom": {"likes": [AGENDA_USED_STOCKPILE, AGENDA_CHANGED_RECIPE], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_TOOK_LOAN]},
 	"rufus": {"likes": [AGENDA_MADE_PROFIT, AGENDA_BOUGHT_MATERIALS], "dislikes": [AGENDA_CHANGED_RECIPE, AGENDA_TECH_UNLOCK]},
-	"gerald": {"likes": [AGENDA_USED_STOCKPILE, AGENDA_AUTARKIC], "dislikes": [AGENDA_TECH_UNLOCK, AGENDA_CHANGED_RECIPE]},
+	"gerald": {"likes": [AGENDA_USED_STOCKPILE, AGENDA_AUTARKIC], "dislikes": [AGENDA_TECH_UNLOCK, AGENDA_CHANGED_RECIPE, AGENDA_CLEAN_COMMITMENT]},
 	"eleanor": {"likes": [AGENDA_LABOUR_POLICIES, AGENDA_MADE_PROFIT], "dislikes": [AGENDA_BUILT_UNPROFITABLE, AGENDA_BOUGHT_GRID_POWER]},
 	"sloane": {"likes": [AGENDA_SOLD_GRID_POWER, AGENDA_MADE_PROFIT], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_AUTARKIC]},
-	"priya": {"likes": [AGENDA_TECH_UNLOCK, AGENDA_CHANGED_RECIPE], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_USED_STOCKPILE]},
+	"priya": {"likes": [AGENDA_TECH_UNLOCK, AGENDA_CHANGED_RECIPE, AGENDA_CLEAN_COMMITMENT], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_USED_STOCKPILE, AGENDA_BACKROOM_DEAL]},
 	"hitomi": {"likes": [AGENDA_FAST_SHIPMENT, AGENDA_MADE_PROFIT], "dislikes": [AGENDA_BOUGHT_GRID_POWER, AGENDA_IDLE_BUILDING]},
-	"hal": {"likes": [AGENDA_MADE_PROFIT, AGENDA_TECH_UNLOCK], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
+	"hal": {"likes": [AGENDA_MADE_PROFIT, AGENDA_TECH_UNLOCK, AGENDA_BACKROOM_DEAL], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
 	"marcus": {"likes": [AGENDA_PAID_OFF_LOAN, AGENDA_EARLY_LOAN_PAYOFF], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
 	"idris": {"likes": [AGENDA_TECH_UNLOCK, AGENDA_FAST_SHIPMENT], "dislikes": [AGENDA_AUTARKIC, AGENDA_USED_STOCKPILE]},
 	"alexandra": {"likes": [AGENDA_MADE_PROFIT, AGENDA_TECH_UNLOCK], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_BOUGHT_GRID_POWER]},
@@ -146,6 +149,8 @@ const AGENDA_META := {
 	AGENDA_FAST_SHIPMENT: {"text": "Deliver a shipment in under 2 turns", "per_turn": true},
 	AGENDA_LABOUR_POLICIES: {"text": "Run 2+ labour policies", "per_turn": true},
 	AGENDA_TECH_UNLOCK: {"text": "Unlock a research node", "per_turn": false},
+	AGENDA_BACKROOM_DEAL: {"text": "Cut a backroom deal", "per_turn": false},
+	AGENDA_CLEAN_COMMITMENT: {"text": "Make a public clean commitment", "per_turn": false},
 	AGENDA_CHANGED_RECIPE: {"text": "Change a building's recipe", "per_turn": false},
 }
 # --- Advisor missions (loyalty-milestone chain; spec §7 C-layer specialties) ------
@@ -232,6 +237,7 @@ var _advisor_mission5_streak: Dictionary = {}      # advisor_id -> consecutive t
 var advisor_mission_policies: Array = []           # workforce policies unlocked via missions
 signal advisor_mission_completed(advisor_id: String, mission_index: int, reward_label: String)
 var advisor_loyalty: Dictionary = {}               # advisor_id -> float [-10, 10] (employed only)
+var advisor_hired_turn: Dictionary = {}            # advisor_id -> turn hired (decision-gate tenure)
 var _advisor_walk_streak: Dictionary = {}          # advisor_id -> consecutive turns at/below walk threshold
 var _agenda_flags: Dictionary = {}                 # event_tag -> true; set during the turn, read+cleared each turn
 var _agenda_grid_sell_streak := 0
@@ -271,6 +277,9 @@ var pending_retrofits: Array = []
 # In-progress demolitions: instance_id -> {turns_left, tile_id}. Completes in tick_demolish
 # (materials refund + remove_building). Additive save state (default {} — no version bump).
 var demolish_queue: Dictionary = {}
+# Player-paused (mothballed) buildings: instance_id -> true. Skipped by production +
+# labour; additive save state (default {} — no version bump).
+var paused_buildings: Dictionary = {}
 # Last turn's per-link flow ("tile|mode"->units) — drives this turn's congestion cost.
 var _last_link_flow: Dictionary = {}
 # Shipments that arrived at a destination tile whose stockpile was full and so
@@ -371,6 +380,7 @@ signal building_retrofitted(instance_id: String, new_recipe_id: String)
 # Demolish queued (1-turn countdown starts) / completed (materials refunded, building removed).
 signal building_demolish_started(instance_id: String)
 signal building_demolished(instance_id: String)
+signal building_paused_changed(instance_id: String)
 # An in-progress upgrade advanced (claimed materials / ticked down) — UI can refresh its countdown.
 signal building_upgrade_progress(instance_id: String)
 # An in-progress upgrade was cancelled / abandoned (e.g. the building was removed). Banked
@@ -569,6 +579,25 @@ func sell_building(instance_id: String) -> Dictionary:
 	set_building_owner(instance_id, SOLD_TO_OWNER)  # emits building_owner_changed → UI refresh
 	request_toast("Sold building for £%d" % price, "success")
 	return {"ok": true, "price": price}
+
+# Sell EVERY player building at once for price_mult x sale value (the distressed-asset
+# bailout: investors buy the lot at 1.5x). Returns {total, count}. Buildings keep
+# standing under the NPC operator but stop running for the player.
+func liquidate_all_buildings(price_mult: float) -> Dictionary:
+	var total: int = 0
+	var count: int = 0
+	for instance_id in buildings.keys().duplicate():
+		var b: Dictionary = buildings[instance_id]
+		if not is_player_owned(b):
+			continue
+		var price: int = int(round(float(BuildingPrice.sale_price(b)) * price_mult))
+		add_money(float(price))
+		set_building_owner(str(instance_id), SOLD_TO_OWNER)
+		total += price
+		count += 1
+	if count > 0:
+		request_toast("Distressed sale: %d buildings for £%d" % [count, total], "warning")
+	return {"total": total, "count": count}
 
 # A building acquired ready-made (NPC market purchase, scripted transfer) gets the
 # same cost basis a player-built copy would carry: the catalog base price as the
@@ -1027,8 +1056,10 @@ func remove_building(instance_id: String) -> bool:
 	if not buildings.has(instance_id):
 		return false
 
-	# Refund any in-progress upgrade's banked materials before the building disappears.
+	# Refund any in-progress upgrade's banked materials before the building disappears,
+	# and drop any queued retrofit so it can't sit in limbo against a dead instance.
 	cancel_upgrade(instance_id)
+	cancel_retrofit(instance_id)
 
 	var instance: Dictionary = buildings[instance_id]
 	var tile_id: String = instance.tile_id
@@ -1040,6 +1071,7 @@ func remove_building(instance_id: String) -> bool:
 			tile_buildings.erase(tile_id)
 	
 	buildings.erase(instance_id)
+	paused_buildings.erase(instance_id)
 	output_stockpile_destinations.erase(instance_id)
 	output_special_order_destinations.erase(instance_id)
 	# Removing battery housing shrinks the tile's cell slots — refund any now-excess loaded cells.
@@ -1137,6 +1169,21 @@ func refund_plan(instance_id: String) -> Dictionary:
 		"materials_value": refund.materials_value,
 		"total_if_cash": refund.total,        # money + all materials valued as cash
 	}
+
+# --- Pause (mothball) ------------------------------------------------------------------------
+# A paused building produces nothing and draws no inputs/power/labour, but keeps its upkeep.
+# Used by the supply-chain panel when a sold/demolished building leaves a neighbour stranded.
+func is_building_paused(instance_id: String) -> bool:
+	return bool(paused_buildings.get(instance_id, false))
+
+func set_building_paused(instance_id: String, paused: bool) -> void:
+	if not buildings.has(instance_id):
+		return
+	if paused:
+		paused_buildings[instance_id] = true
+	else:
+		paused_buildings.erase(instance_id)
+	building_paused_changed.emit(instance_id)
 
 # --- Demolish (queued 1-turn job) ------------------------------------------------------------
 func is_demolishing(instance_id: String) -> bool:
@@ -1958,8 +2005,8 @@ func _materials_rebate(reqs: Dictionary) -> float:
 
 # Land / NPC-building purchase cost after any Chief Investment "purchase_cost" discount
 # (tier3 -10% / tier2 -5% / tier1 +5% surcharge).
-func purchase_cost_after_advisor(base_cost: float) -> float:
-	var mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("purchase_cost", "*", {}).get("net", 0.0)) / 100.0)
+func purchase_cost_after_advisor(base_cost: float, ctx: Dictionary = {}) -> float:
+	var mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("purchase_cost", "*", ctx).get("net", 0.0)) / 100.0)
 	return base_cost * mult
 
 # Construction takes one turn longer than the raw CSV value (BUILD_DURATION_BUMP).
@@ -1988,11 +2035,40 @@ func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
 	if available <= 0:
 		return false
 	var clamped_patches: int = clampi(patches, 1, available)
-	var cost := purchase_cost_after_advisor(float(clamped_patches) * LAND_PATCH_COST)
+	# ctx carries the tile so per-tile purchase_cost modifiers (e.g. the land-deal
+	# decision's "development premium" follow-up) can target it.
+	var cost := purchase_cost_after_advisor(float(clamped_patches) * LAND_PATCH_COST, {"tile_id": tile_id})
 	if not deduct_money(cost):
 		return false
 	var owned := get_tile_land_owned(tile_id)
 	tile_land_owned[tile_id] = mini(MAX_TILE_LAND, owned + clamped_patches * LAND_PATCH_SIZE)
+	tile_land_owned_changed.emit(tile_id)
+	return true
+
+# --- Land sales (decision events; decision-events-spec.md D8) -----------------
+# Only surplus above the universal default holding is sellable, and only on tiles
+# with no player buildings or construction projects, so a sale can never undercut
+# a building footprint (land gates placement at get_tile_land_owned).
+
+func sellable_land_patches(tile_id: String) -> int:
+	if tile_id == "":
+		return 0
+	for b in buildings.values():
+		if str(b.get("tile_id", "")) == tile_id:
+			return 0
+	for p in Construction.construction_projects.values():
+		if str(p.get("tile_id", "")) == tile_id:
+			return 0
+	var surplus := get_tile_land_owned(tile_id) - DEFAULT_TILE_LAND_OWNED
+	return maxi(0, int(floor(float(surplus) / float(LAND_PATCH_SIZE))))
+
+func sell_tile_land(tile_id: String, patches: int, price_per_patch: float) -> bool:
+	var sellable := sellable_land_patches(tile_id)
+	var clamped := clampi(patches, 0, sellable)
+	if clamped <= 0:
+		return false
+	tile_land_owned[tile_id] = get_tile_land_owned(tile_id) - clamped * LAND_PATCH_SIZE
+	add_money(float(clamped) * price_per_patch)
 	tile_land_owned_changed.emit(tile_id)
 	return true
 
@@ -2028,6 +2104,7 @@ func reset() -> void:
 	pending_upgrades.clear()
 	pending_retrofits.clear()
 	demolish_queue.clear()
+	paused_buildings.clear()
 	_last_link_flow.clear()
 	overflow_shipments.clear()
 	sales_by_tile.clear()
@@ -2045,6 +2122,7 @@ func reset() -> void:
 	recruited_advisor_ids.clear()
 	fired_advisor_cooldowns.clear()
 	advisor_loyalty.clear()
+	advisor_hired_turn.clear()
 	_advisor_walk_streak.clear()
 	advisor_missions_completed.clear()
 	_advisor_mission5_streak.clear()
@@ -2123,6 +2201,7 @@ func export_state() -> Dictionary:
 		"recruited_advisor_ids": recruited_advisor_ids.duplicate(true),
 		"fired_advisor_cooldowns": fired_advisor_cooldowns.duplicate(true),
 		"advisor_loyalty": advisor_loyalty.duplicate(true),
+		"advisor_hired_turn": advisor_hired_turn.duplicate(true),
 		"advisor_walk_streak": _advisor_walk_streak.duplicate(true),
 		"advisor_missions_completed": advisor_missions_completed.duplicate(true),
 		"advisor_mission5_streak": _advisor_mission5_streak.duplicate(true),
@@ -2150,6 +2229,7 @@ func export_state() -> Dictionary:
 		"pending_upgrades": pending_upgrades.duplicate(true),
 		"pending_retrofits": pending_retrofits.duplicate(true),
 		"demolish_queue": demolish_queue.duplicate(true),
+		"paused_buildings": paused_buildings.duplicate(true),
 		"overflow_shipments": overflow_shipments.duplicate(true),
 		"transaction_log": transaction_log.duplicate(true),
 		"move_log": move_log.duplicate(true),
@@ -2202,6 +2282,12 @@ func import_state(d: Dictionary) -> void:
 	for pid in permanent_advisor_ids:
 		if not recruited_advisor_ids.has(pid):
 			recruited_advisor_ids.append(pid)
+	# Decision-gate tenure (tolerant reader): pre-feature saves carry no hire turns,
+	# so existing councils default to "hired last turn" and count immediately.
+	advisor_hired_turn = {}
+	var raw_hired: Dictionary = d.get("advisor_hired_turn", {})
+	for pid in permanent_advisor_ids:
+		advisor_hired_turn[str(pid)] = int(raw_hired.get(str(pid), int(TurnManager.current_turn) - 1))
 	advisor_seats = _sanitize_advisor_seats(d.get("advisor_seats", {}))
 	max_advisor_slots = clampi(int(d.get("max_advisor_slots", MAX_ADVISOR_SLOTS_DEFAULT)), MAX_ADVISOR_SLOTS_DEFAULT, MAX_ADVISOR_SLOTS_CAP)
 	match_rng_seed = int(d.get("advisor_rng_seed", DEFAULT_MATCH_RNG_SEED))
@@ -2230,6 +2316,7 @@ func import_state(d: Dictionary) -> void:
 	pending_upgrades = (d.get("pending_upgrades", []) as Array).duplicate(true)
 	pending_retrofits = (d.get("pending_retrofits", []) as Array).duplicate(true)
 	demolish_queue = (d.get("demolish_queue", {}) as Dictionary).duplicate(true)
+	paused_buildings = (d.get("paused_buildings", {}) as Dictionary).duplicate(true)
 	overflow_shipments = (d.get("overflow_shipments", []) as Array).duplicate(true)
 	transaction_log = (d.get("transaction_log", []) as Array).duplicate(true)
 	move_log = (d.get("move_log", []) as Array).duplicate(true)
@@ -4111,6 +4198,17 @@ func note_building_built() -> void:
 	_agenda_last_build_turn = int(TurnManager.current_turn)
 	_agenda_flags["_built"] = true
 
+## Decision-event loyalty (decision-events-spec.md §6.2): +0.5 local / +2.0 company
+## for following an advocating advisor, −0.5 for ignoring one. Routed through
+## _set_advisor_loyalty with mission checks ON, so a big follow can complete a
+## mission milestone and serial snubs walk an advisor exactly like agenda decay.
+func apply_decision_loyalty(advisor_id: String, delta: float, decision_title: String) -> void:
+	if _roster_entry(advisor_id).is_empty() or not permanent_advisor_ids.has(advisor_id):
+		return
+	_set_advisor_loyalty(advisor_id, advisor_loyalty_value(advisor_id) + delta)
+	print("[Decisions] %s loyalty %+.1f (%s)" % [advisor_id, delta, decision_title])
+	advisors_changed.emit()
+
 # Debug cheat: nudge an advisor's loyalty by delta, clamped to [-10, 10].
 func cheat_set_loyalty(advisor_id: String, delta: float) -> void:
 	if _roster_entry(advisor_id).is_empty():
@@ -4366,9 +4464,19 @@ func hire_advisor(advisor_id: String) -> bool:
 		return false
 	permanent_advisor_ids.append(advisor_id)
 	advisor_loyalty[advisor_id] = 0.0          # loyalty starts neutral on hire
+	# Decision-gate tenure: a fresh hire counts only from the NEXT turn, so a live
+	# dilemma can't be unlocked by panic-hiring (decision-events-spec.md §5.1).
+	advisor_hired_turn[advisor_id] = int(TurnManager.current_turn)
 	_advisor_walk_streak.erase(advisor_id)
 	advisors_changed.emit()
 	return true
+
+## True when the advisor is employed AND was hired on an earlier turn than the
+## current one — the eligibility bar for decision gates and advocacy.
+func is_advisor_tenured(advisor_id: String) -> bool:
+	if not permanent_advisor_ids.has(advisor_id):
+		return false
+	return int(TurnManager.current_turn) > int(advisor_hired_turn.get(advisor_id, -1))
 
 func is_fired(advisor_id: String) -> bool:
 	return fired_advisor_cooldowns.has(advisor_id)
@@ -4384,6 +4492,7 @@ func fire_advisor(advisor_id: String) -> bool:
 		return false
 	permanent_advisor_ids.erase(advisor_id)
 	advisor_loyalty.erase(advisor_id)
+	advisor_hired_turn.erase(advisor_id)
 	_advisor_walk_streak.erase(advisor_id)
 	for seat_id in advisor_seats.keys():
 		if str(advisor_seats[seat_id]) == advisor_id:
