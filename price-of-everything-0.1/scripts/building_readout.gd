@@ -782,11 +782,40 @@ static func construction(building: Dictionary) -> Dictionary:
 		})
 	return {
 		"active": true,
+		"tile_id": tile_id,
 		"building_phase": status == Construction.STATUS_UNDER_CONSTRUCTION,
 		"turns_left": int(proj.get("turns_remaining", 0)),
 		"turns_after": int(proj.get("construction_duration", 0)),
 		"materials": mats,
 	}
+
+
+## Delivery blockers for a building UNDER CONSTRUCTION: a build material that must travel by
+## pipeline (a liquid/gas) can only reach the site if that tile carries a suitable pipe. If it
+## doesn't, the shipment can never be created and the build stalls forever — so surface it as a
+## diagnostics row (one per blocked material), mirroring the run-time "No input pipeline" rows.
+## Takes the `constr` dict from construction() (it carries tile_id + the materials list).
+static func construction_diagnostics(constr: Dictionary) -> Array:
+	var rows: Array = []
+	var tile := str(constr.get("tile_id", ""))
+	if tile == "":
+		return rows
+	for m in constr.get("materials", []):
+		if bool(m.get("secured", false)):
+			continue
+		var gid := str(m.get("good_id", ""))
+		if gid == "" or not Catalog.requires_pipeline(gid):
+			continue   # solids are trucked in — they don't need a pipe
+		if Catalog.tile_can_pipe_good(tile, gid):
+			continue   # the site already carries a pipe that can move this good
+		var nm := str(m.get("name", Catalog.get_display_name(gid)))
+		if Catalog.get_transport_class(gid) == "hazard_liquid":
+			rows.append(_row("bad", "pipe", "No reinforced pipeline to deliver %s" % nm,
+				"%s is a hazardous liquid — it can only reach this site by reinforced pipeline, and none is built here. Lay reinforced pipes (or build on a tile that has them) or the build can't finish." % nm))
+		else:
+			rows.append(_row("bad", "pipe", "No pipeline to deliver %s" % nm,
+				"%s is a liquid or gas — it can only reach this site by pipeline, and none is built here. Lay pipes (or build on a tile that has them) or the build can't finish." % nm))
+	return rows
 
 # --- Battery storage ------------------------------------------------------------------------
 static func battery(building: Dictionary) -> Dictionary:

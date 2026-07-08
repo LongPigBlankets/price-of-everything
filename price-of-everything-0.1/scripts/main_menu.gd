@@ -11,6 +11,8 @@ const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
 const TITLE_PLATE: Texture2D = preload("res://assets/ui/title_plate.png")
 # Preload (not a class_name) keeps the New Game panel out of the headless class cache.
 const NewGamePanelScene := preload("res://scripts/new_game_panel.gd")
+const TutorialPanelScene := preload("res://scripts/tutorial_intro_panel.gd")
+const TUTORIAL_START := "res://data/starts/tutorial.json"
 const NEW_GAME_BOTTOM_GAP := 220.0   # panel stops this far above the screen bottom (board peeks beneath)
 
 const PANEL_INSET := 24.0   # frame inset from the screen edges
@@ -30,12 +32,14 @@ const PLATE_BOTTOM := 206.0
 
 # The New Game settings panel and the goods board it slides in over.
 var _new_game_panel: Control
+var _tutorial_panel: Control
 var _goods_grid: Control
 
 
 func _ready() -> void:
 	_build_menu()
 	_build_new_game_panel()
+	_build_tutorial_panel()
 	Audio.play_music()   # looping main-menu theme (placeholder track)
 	# Warm the map scene off-thread while the player is on the menu: this pulls main.tscn and
 	# all its textures off disk into RAM on a worker thread (no main-thread cost, no frame drop),
@@ -116,6 +120,57 @@ func _hide_new_game_panel() -> void:
 	tw.tween_callback(func() -> void: _new_game_panel.visible = false)
 
 
+# ── Tutorial panel ──────────────────────────────────────────────────────────────
+
+func _build_tutorial_panel() -> void:
+	_tutorial_panel = TutorialPanelScene.new()
+	# Occupy the same right region the New Game panel uses.
+	_tutorial_panel.anchor_left = 0.25
+	_tutorial_panel.anchor_top = 0.0
+	_tutorial_panel.anchor_right = 1.0
+	_tutorial_panel.anchor_bottom = 1.0
+	_tutorial_panel.offset_left = PANEL_INSET
+	_tutorial_panel.offset_top = PANEL_INSET
+	_tutorial_panel.offset_right = -PANEL_INSET
+	_tutorial_panel.offset_bottom = -NEW_GAME_BOTTOM_GAP
+	_tutorial_panel.visible = false
+	_tutorial_panel.modulate.a = 0.0
+	_tutorial_panel.z_index = 100
+	_tutorial_panel.begin_requested.connect(_on_tutorial_begin)
+	_tutorial_panel.back_requested.connect(_on_tutorial_back)
+	add_child(_tutorial_panel)
+
+
+func _on_tutorial_pressed() -> void:
+	if _tutorial_panel == null or _tutorial_panel.visible:
+		return
+	if _goods_grid != null:
+		_goods_grid.set_process(false)
+	_tutorial_panel.visible = true
+	_tutorial_panel.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(_tutorial_panel, "modulate:a", 1.0, 0.22)
+
+
+func _on_tutorial_back() -> void:
+	if _tutorial_panel == null or not _tutorial_panel.visible:
+		return
+	if _goods_grid != null:
+		_goods_grid.set_process(true)
+	var tw := create_tween()
+	tw.tween_property(_tutorial_panel, "modulate:a", 0.0, 0.18)
+	tw.tween_callback(func() -> void: _tutorial_panel.visible = false)
+
+
+# Begin Tutorial boots the tutorial start config through the same snapshot + loading
+# pipeline as New Game; the tutorial_enabled flag rides tutorial.json's ruleset dict
+# into MatchState.ruleset, where the Tutorial autoload picks it up.
+func _on_tutorial_begin() -> void:
+	SaveLoad.prepare_new_game(TUTORIAL_START)
+	var screen := LoadingScreen.show_global(get_tree())
+	screen.begin_load(SaveLoad.MAIN_SCENE)
+
+
 func _on_load_game_pressed() -> void:
 	SaveLoadScreen.open(self, SaveLoadScreen.Mode.LOAD)
 
@@ -159,6 +214,9 @@ func _build_menu() -> void:
 	var new_game := _make_button("New Game", true)
 	new_game.pressed.connect(_on_new_game_pressed)
 	vbox.add_child(new_game)
+	var tutorial := _make_button("Tutorial", false)
+	tutorial.pressed.connect(_on_tutorial_pressed)
+	vbox.add_child(tutorial)
 	for label in ["Load Game", "Settings", "Credits", "Encyclopedia"]:
 		var b := _make_button(label, false)
 		if label == "Load Game":

@@ -80,7 +80,12 @@ func open_for_tile(tile_id: String, tile_data: Dictionary) -> void:
 	_tile_filter = tile_id
 	_tile_filter_data = tile_data
 	_output_good_filter = ""
-	controls_vbox.visible = false
+	# Show the search/filter/sort controls in tile-build mode too, so the player can
+	# search the tile's buildable list (they still only see buildings valid for the tile).
+	_search_query = ""
+	if search_input != null:
+		search_input.text = ""
+	controls_vbox.visible = true
 	title_label.text = "Build on %s" % Catalog.tile_label(tile_id)
 	_load_data()
 	_build_panel_content()
@@ -204,10 +209,13 @@ func _build_panel_content() -> void:
 
 	if _tile_filter != "":
 		# Only buildings with at least one recipe valid for this tile, showing only
-		# the valid recipes.
+		# the valid recipes — and honouring the search box, same as the flat list.
+		var has_tile_search: bool = _search_query.strip_edges() != ""
 		var any_tile := false
 		for category in buildings_by_category.keys():
 			for b in buildings_by_category[category]:
+				if has_tile_search and not _matches_search(b):
+					continue
 				var valid_recipes: Array = []
 				for r in recipes_by_building.get(b.id, []):
 					if _recipe_valid_for_tile(r, _tile_filter_data):
@@ -217,7 +225,7 @@ func _build_panel_content() -> void:
 					_add_building_row(b, content_vbox, true, valid_recipes)
 		if not any_tile:
 			var none := Label.new()
-			none.text = "No buildings can be built on this tile."
+			none.text = "No buildings match." if has_tile_search else "No buildings can be built on this tile."
 			none.theme_type_variation = &"Caption"
 			content_vbox.add_child(none)
 		_refresh_build_mode_selection()

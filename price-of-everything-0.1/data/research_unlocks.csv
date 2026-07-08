@@ -101,33 +101,33 @@ Inorganic Chemistry,Membrane Electrolysers,,,,III,Run Profitable L2,electrolyser
 Petrochemistry,Catalytic Cracking,,,,III,Run L1,petro_refinery,3,20 turns,Fluid Catalytic Cracking,level2,Unlocks upgrading Petrochemical Refinery to Level 2 for more output.
 Petrochemistry,Fluid Catalytic Cracking,,,,III,Run Profitable L2,petro_refinery,3,buildings,Deep Conversion Units,level3,Unlocks upgrading Petrochemical Refinery to Level 3 for more output.
 Mining and Surveying,,,,,I,Build,mine,3,units,Bench Blasting Expansion,blast,Increases Mine output by 20% for 20 turns.
-Mining and Surveying,,,,,I,Build,mine,3,units,Bulk Haulage Fleets,truck,Increases Mine output by 5% permanently.
-Mining and Surveying,,,,,I,Build,mine,3,units,Continuous Surface Miners,miner,Reduces Mine power consumption by 20% permanently.
-Mining and Surveying,,,,,I,Build,mine,3,units,Block Caving,cave,Reduces Mine maintenance by 20% permanently.
+Mining and Surveying,,,,,I,Build,mine,7,units,Bulk Haulage Fleets,truck,Increases Mine output by 5% permanently.
+Mining and Surveying,,,,,I,Build,mine,12,units,Continuous Surface Miners,miner,Reduces Mine power consumption by 20% permanently.
+Mining and Surveying,,,,,I,Build,mine,12,units,Block Caving,cave,Reduces Mine maintenance by 20% permanently.
 Metallurgy,Alloy Heat Treatment,,,,III,Run,Steel Mill,15,turns,Pulverised Carbon Injection,pci,Reduces Furnace power consumption by 20% permanently.
-Metallurgy,,,,,I,Build,furnace,3,units,Oxygen-Enriched Blast,furnace,Unlocks new recipe: Basic Oxygen Steelmaking (24 Steel).
+Metallurgy,,,,,I,Build,furnace,7,units,Oxygen-Enriched Blast,furnace,Unlocks new recipe: Basic Oxygen Steelmaking (24 Steel).
 Metallurgy,,,,,I,Placeholder,,,,Twin-Bell Charging,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
 Metallurgy,Electric Arc Refining,,,,III,Run,Steel Mill,15,turns,Scrap Preheating Towers,preheat,Reduces Electric Arc Furnace power consumption by 20% permanently.
 Metallurgy,,,,,I,Build,eaf,3,units,Foamy Slag Practice,slag,Increases Electric Arc Furnace output by 5% permanently.
 Metallurgy,Electric Arc Refining,,,,III,Run L1,eaf,3,20 turns,Twin-Shell Furnaces,level2,Unlocks upgrading Electric Arc Furnace to Level 2 for more output.
-Metallurgy,,,,,I,Build,eaf,3,units,DC Arc Conversion,eaf,Reduces Electric Arc Furnace power consumption by 5% permanently.
+Metallurgy,,,,,I,Build,eaf,7,units,DC Arc Conversion,eaf,Reduces Electric Arc Furnace power consumption by 5% permanently.
 Manufacturing,,,,,I,Build,industrial_factory,3,units,High-Volume Press Lines,press,Increases Industrial Goods Factory output by 5% permanently.
-Manufacturing,,,,,I,Build,industrial_factory,3,units,Multi-Shift Production,shift,Increases Industrial Goods Factory output by 5% permanently.
+Manufacturing,,,,,I,Build,industrial_factory,7,units,Multi-Shift Production,shift,Increases Industrial Goods Factory output by 5% permanently.
 Manufacturing,Modular Factory Cells,,,,III,Run,Factory,15,turns,Lights-Out Automation,labour,Reduces High Tech Manufactory and Assembly Plant labour by 20% permanently.
 Manufacturing,Precision Assembly Lines,,,,III,Build,high_tech_manufactory,3,units,Flexible Manufacturing Cells,fmc,"Reduces Industrial Goods Factory, Assembly Plant and High Tech Manufactory labour by 10% permanently."
 Manufacturing,,,,,I,Build,assembly_plant,3,units,Just-in-Time Sequencing,jit,"Reduces Industrial Goods Factory, Assembly Plant and High Tech Manufactory maintenance by 15% permanently."
 Manufacturing,Interchangeable Tooling,,,,II,Build,assembly_plant,3,units,Modular Sub-Assembly,module,Increases Assembly Plant output by 5% permanently.
-Manufacturing,,,,,I,Build,assembly_plant,3,units,Robotic Final Assembly,robot,Reduces Assembly Plant labour by 10% for 20 turns.
-Manufacturing,,,,,I,Build,industrial_factory,3,units,Automated Guided Assembly,agv,Reduces Industrial Goods Factory labour by 5% permanently.
+Manufacturing,,,,,I,Build,assembly_plant,7,units,Robotic Final Assembly,robot,Reduces Assembly Plant labour by 10% for 20 turns.
+Manufacturing,,,,,I,Build,industrial_factory,12,units,Automated Guided Assembly,agv,Reduces Industrial Goods Factory labour by 5% permanently.
 Manufacturing,,,,,I,Placeholder,,,,Class-100 Cleanrooms,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
 Manufacturing,Interchangeable Tooling,,,,II,Build,high_tech_manufactory,3,units,Advanced Photolithography,litho,Unlocks new recipe: Fabless Semiconductors (3 CPU).
 Manufacturing,Modular Factory Cells,,,,III,Run Profitable,high_tech_manufactory,3,buildings,Atomic Layer Deposition,ald,Increases High Tech Manufactory output by 5% permanently. Unlocks new recipe: Durable Perovskite Solar Panels.
 Manufacturing,,,,,I,Build,high_tech_manufactory,3,units,Fully-Automated Fabs,fab,Increases High Tech Manufactory output by 10% permanently.
 Inorganic Chemistry,Precision Reagent Handling,,,,III,Run Profitable,chem_plant,3,buildings,Continuous-Flow Reactors,cfr,Increases Chemical Plant output by 5% permanently.
 Inorganic Chemistry,,,,,I,Build,chem_plant,3,units,Process Intensification,flask,Unlocks new recipe: Nitrogen Air Separation (30 Nitrogen).
-Inorganic Chemistry,,,,,I,Build,chem_plant,3,units,Deep Catalytic Optimisation,catalyst,Reduces Chemical Plant power consumption by 10% permanently.
+Inorganic Chemistry,,,,,I,Build,chem_plant,7,units,Deep Catalytic Optimisation,catalyst,Reduces Chemical Plant power consumption by 10% permanently.
 Inorganic Chemistry,,,,,I,Build,electrolyser,3,units,High-Current Cell Stacks,stack,Reduces Electrolyser labour by 5% permanently.
-Inorganic Chemistry,,,,,I,Build,electrolyser,3,units,Bipolar Cell Arrays,cell,Reduces Electrolyser power consumption by 20% for 20 turns.
+Inorganic Chemistry,,,,,I,Build,electrolyser,7,units,Bipolar Cell Arrays,cell,Reduces Electrolyser power consumption by 20% for 20 turns.
 Petrochemistry,,,,,I,Build,poly_plant,3,units,Heat-Integrated Trains,heat,Reduces Polymerisation Refinery power consumption by 10% permanently.
 Petrochemistry,Catalytic Cracking,,,,III,Run Profitable,petro_refinery,3,buildings,Continuous Catalyst Regeneration,ccr,Increases Petrochemical Refinery output by 5% permanently.
 Hydrocarbon Power,Steam Turbine Upgrades,,,,III,Run L1,coal_power,5,20 turns,Supercritical Boilers,level2,Unlocks upgrading Coal Power Plant to Level 2 for more output.
@@ -162,10 +162,10 @@ Infrastructure,Undersea Current Doublers,,,,III,Own,Cables,6,units,SF6-free Swit
 Hydrocarbon Power,,,,,I,Build,coal_power,3,units,Reheat Turbine Cycles,turbine,Increases Coal Power Plant output by 10% permanently.
 Hydrocarbon Power,Flue Heat Recovery,,,,III,Run,Power Plant,15,turns,Combined Heat & Power,chp,Reduces maintenance for all buildings by 5% permanently.
 Renewable Power,,,,,I,Build,onshore_wind_farm,3,units,Taller Turbine Towers,onwind,Increases Onshore Wind Farm output by 10% permanently.
-Renewable Power,,,,,I,Build,onshore_wind_farm,3,units,Variable-Pitch Control,pitch,Reduces Onshore Wind Farm maintenance by 10% for 20 turns.
+Renewable Power,,,,,I,Build,onshore_wind_farm,7,units,Variable-Pitch Control,pitch,Reduces Onshore Wind Farm maintenance by 10% for 20 turns.
 Renewable Power,Utility Solar Arrays,,,,II,Run,Solar Farm,12,turns,Bifacial Panel Arrays,bifacial,Increases solar potential on all tiles by 10% permanently.
 Renewable Power,,,,,I,Build,solar_farm,3,units,Utility-Scale Inverters,inverter,Increases Solar Farm output by 10% permanently.
-Renewable Power,,,,,I,Build,solar_farm,3,units,Dual-Axis Tracking Farms,solar,Increases Solar Farm output by 10% permanently.
+Renewable Power,,,,,I,Build,solar_farm,7,units,Dual-Axis Tracking Farms,solar,Increases Solar Farm output by 10% permanently.
 Renewable Power,,,,,I,Placeholder,,,,Perovskite Tandem Arrays,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
 Renewable Power,,,,,I,Build,battery,3,units,Containerised Battery Racks,battery,Reduces Battery Electric Storage maintenance by 10% for 20 turns.
 Inorganic Chemistry,,,,,I,Build,desal,3,units,Multi-Stage Flash Desal,desal,Increases Desalination Plant output by 20% permanently.
@@ -173,21 +173,21 @@ Inorganic Chemistry,Reverse Osmosis Trains,,,,III,Run,Desalination Plant,15,turn
 Inorganic Chemistry,,,,,I,Placeholder,,,,Zero-Liquid Discharge,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
 Recycling,,,,,I,Build,water_recycling,3,units,Tertiary Filtration,filter,Increases Water Recycling Plant output by 15% permanently.
 Recycling,,,,,I,Build,recycling_plant,3,units,Advanced Oxidation Loops,scrub,Unlocks new recipe: E-Waste Recycling (3 Copper Wiring).
-Recycling,,,,,I,Build,water_recycling,3,units,Zero-Discharge Water,loop,Reduces Water Recycling Plant power consumption by 10% permanently.
+Recycling,,,,,I,Build,water_recycling,7,units,Zero-Discharge Water,loop,Reduces Water Recycling Plant power consumption by 10% permanently.
 Biochemistry,,,,,I,Build,new_forest,3,units,Automated Harvest Fleets,harvest,Reduces New Growth Forest and Old Growth Forest labour by 5% permanently.
 Infrastructure,,,,,I,Build,rails,3,units,Heavy Freight Corridors,rail,Increases rail throughput by 25% permanently.
 Infrastructure,Reinforced Roadbeds,,,,III,Run,Roads,15,turns,Smart Traffic Control,traffic,Increases road throughput by 25% permanently.
-Infrastructure,,,,,I,Build,rails,3,units,Double-Track Sidings,rail,Reduces Railways maintenance by 10% permanently.
+Infrastructure,,,,,I,Build,rails,7,units,Double-Track Sidings,rail,Reduces Railways maintenance by 10% permanently.
 Infrastructure,,,,,I,Placeholder,,,,Heavy-Haul Bogies,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
 Infrastructure,Longer Freight Consists,,,,III,Run,Railways,15,turns,Electrified Rolling Stock,erail,Increases rail throughput by 25% permanently.
-Infrastructure,,,,,I,Build,rails,3,units,Automated Rail Yards,rail,Reduces Railways maintenance by 10% permanently.
-Infrastructure,,,,,I,Build,rails,3,units,Distributed-Power Trains,rail,Reduces transport cost by 5% permanently.
+Infrastructure,,,,,I,Build,rails,12,units,Automated Rail Yards,rail,Reduces Railways maintenance by 10% permanently.
+Infrastructure,,,,,I,Build,rails,12,units,Distributed-Power Trains,rail,Reduces transport cost by 5% permanently.
 Infrastructure,,,,,I,Build,reinf_pipes,3,units,Large-Diameter Mains,pipe,Reduces Reinforced Pipeworks maintenance by 10% permanently.
 Infrastructure,,,,,I,Build,pipes,3,units,Booster Pumping Stations,pipe,Reduces Pipeworks maintenance by 10% permanently.
-Infrastructure,,,,,I,Build,pipes,3,units,Trunk Pipeline Networks,pipe,Reduces transport cost by 5% permanently.
+Infrastructure,,,,,I,Build,pipes,7,units,Trunk Pipeline Networks,pipe,Reduces transport cost by 5% permanently.
 Infrastructure,,,,,I,Placeholder,,,,Smart Flow Control,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
-Infrastructure,,,,,I,Build,reinf_pipes,3,units,Double-Walled Pipelines,pipe,Reduces Reinforced Pipeworks maintenance by 10% permanently.
-Infrastructure,,,,,I,Build,pipes,3,units,Corrosion-Resistant Linings,pipe,Reduces Pipeworks maintenance by 10% permanently.
+Infrastructure,,,,,I,Build,reinf_pipes,7,units,Double-Walled Pipelines,pipe,Reduces Reinforced Pipeworks maintenance by 10% permanently.
+Infrastructure,,,,,I,Build,pipes,12,units,Corrosion-Resistant Linings,pipe,Reduces Pipeworks maintenance by 10% permanently.
 Infrastructure,High Pressure Mains,,,,III,Run,Pipe Network,15,turns,Leak-Detection Networks,leak,Increases pipe throughput by 25% permanently.
 Infrastructure,,,,,I,Placeholder,,,,Ultra-High-Pressure Mains,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
 Manufacturing,Precision Assembly Lines,,,,III,Run Profitable,assembly_plant,3,buildings,Coordinated Robot Handoff,handoff,Increases Assembly Plant output by 5% permanently.
@@ -200,9 +200,9 @@ Renewable Power,Lithium Battery Storage,,,,II,Produce,sodium_battery,50,units,So
 Renewable Power,Battery Balancing,,,,III,Build,battery,10,buildings,Iron Air Long Duration Storage,storage,"Unlocks loading Iron Air Battery cells — the cheapest, long-duration bulk storage medium."
 Manufacturing,,,,,I,Produce,motor,250,units,Axial Flux Motor Lines,motor,Unlocks new recipe: Axial Flux Motors (15 Motor).
 Manufacturing,,,,,I,Produce,motor,250,units,Hairpin Stator Winding,motor,Unlocks new recipe: Hairpin Stator Motors (18 Motor).
-Manufacturing,,,,,I,Build,assembly_plant,3,units,Heavy Engine Casting,assembly,Unlocks new recipe: Large Vehicle Engine Manufacturing (5 Large Engine).
+Manufacturing,,,,,I,Build,assembly_plant,12,units,Heavy Engine Casting,assembly,Unlocks new recipe: Large Vehicle Engine Manufacturing (5 Large Engine).
 Manufacturing,,,,,I,Produce,engine,250,units,Hybrid Powertrain Integration,assembly,Unlocks new recipe: Hybrid Engine Manufacturing (12 Engine).
-Manufacturing,,,,,I,Build,assembly_plant,3,units,Electric Vehicle Assembly,assembly,Unlocks new recipe: EV Assembly (5 Ev Car).
+Manufacturing,,,,,I,Build,assembly_plant,12,units,Electric Vehicle Assembly,assembly,Unlocks new recipe: EV Assembly (5 Ev Car).
 Manufacturing,,,,,I,Produce,heavy_vehicle,250,units,Heavy Vehicle Assembly,assembly,Unlocks new recipe: Heavy Vehicles Automated Manufacturing (6 Heavy Vehicle).
 Manufacturing,Interchangeable Tooling,,,,II,Produce,ice_car,400,units,Automated Body-in-White Lines,press,Unlocks new recipe: Automated ICE Car Assembly (6 Ice Car).
 Manufacturing,Interchangeable Tooling,,,,II,Produce,heavy_vehicle,400,units,Electric Drivetrain Integration,motor,Unlocks new recipe: Electric Heavy Vehicles Manufacturing (5 Heavy Vehicle).

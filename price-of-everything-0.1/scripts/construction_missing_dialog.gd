@@ -23,6 +23,7 @@ signal use_stockpile_requested(building_id: String, recipe_id: String, tile_id: 
 signal credit_requested(building_id: String, recipe_id: String, tile_id: String)
 
 var _missing_grid: GridContainer
+var _market_total_label: Label
 var _eta_label: Label
 var _buy_button: Button
 var _use_button: Button
@@ -45,6 +46,7 @@ func open(building_id: String, recipe_id: String, tile_id: String, missing: Dict
 	_recipe_id = recipe_id
 	_tile_id = tile_id
 	_populate_missing(missing)
+	_update_market_total()
 	_update_eta()
 	_update_use_button(missing)
 	# Chief Investment unlocks build-on-credit; hidden otherwise.
@@ -62,6 +64,13 @@ func _update_use_button(missing: Dictionary) -> void:
 	else:
 		_use_button.disabled = false
 		_use_button.text = "Use spare stockpile from %s" % Catalog.tile_label(str(source.get("tile_id", "")))
+
+
+func _update_market_total() -> void:
+	if _market_total_label == null:
+		return
+	var cost: float = Construction.estimate_market_cost(_tile_id, _building_id)
+	_market_total_label.text = "Cost if bought from market: £%.2f" % cost
 
 
 func _update_eta() -> void:
@@ -122,6 +131,22 @@ func _build_ui() -> void:
 	_missing_grid.add_theme_constant_override("v_separation", 12)
 	frame.add_child(_missing_grid)
 
+	# Total market cost of the shortfall — navy ink on a cream card (this dialog is navy, so a
+	# small paper card is what lets navy text read). Filled in per-open by _update_market_total().
+	var total_card := PanelContainer.new()
+	total_card.name = "SourcingMarketCost"   # tutorial spotlight target (build-cost step)
+	total_card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var tsb := StyleBoxFlat.new()
+	tsb.bg_color = BADGE_PAPER
+	tsb.set_corner_radius_all(6)
+	tsb.set_content_margin_all(8)
+	total_card.add_theme_stylebox_override("panel", tsb)
+	vb.add_child(total_card)
+	_market_total_label = Label.new()
+	_market_total_label.add_theme_color_override("font_color", BADGE_NAVY)
+	_market_total_label.add_theme_font_size_override("font_size", 13)
+	total_card.add_child(_market_total_label)
+
 	# Delivery + build ETA, computed from the existing routing (nearest port -> tile).
 	_eta_label = Label.new()
 	_eta_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -147,6 +172,7 @@ func _build_ui() -> void:
 	row.add_child(_use_button)
 
 	_buy_button = _make_button("Buy from market and construct", 1.5)
+	_buy_button.name = "SourcingBuyButton"   # tutorial spotlight target
 	_buy_button.pressed.connect(_on_buy_pressed)
 	row.add_child(_buy_button)
 

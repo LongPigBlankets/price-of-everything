@@ -121,6 +121,42 @@ func _ready() -> void:
 	_link_rise(mapmodes_panel, %MapmodesButton)
 	_link_rise(research_panel, %TechButton)
 
+
+# Keyboard shortcuts for the bottom-menu tools. Emitting the button's own `pressed` keeps
+# behaviour identical to a click (panel toggle + rise tween + audio cue). Runs in
+# _unhandled_key_input so it fires only for keys not already consumed by a focused widget /
+# _input (Tab=empire) / _unhandled_input (X=encyclopedia), and it skips modified/repeat keys
+# and never fires while a text field (market/ledger search) has focus.
+const _MENU_SHORTCUTS := {
+	KEY_C: "ConstructButton",   # Construct
+	KEY_G: "ResourcesButton",   # Goods
+	KEY_M: "MarketButton",      # Markets
+	KEY_O: "MapmodesButton",    # Map Overlays
+	KEY_L: "BuildingsButton",   # Buildings ledger
+	KEY_P: "PoliticsButton",    # Politics
+	KEY_R: "TechButton",        # Research
+}
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	var k := event as InputEventKey
+	if k.ctrl_pressed or k.alt_pressed or k.meta_pressed or k.shift_pressed:
+		return
+	if not _MENU_SHORTCUTS.has(k.keycode):
+		return
+	if _is_text_entry_focused():
+		return
+	var button := get_node_or_null("%" + str(_MENU_SHORTCUTS[k.keycode])) as Button
+	if button == null or button.disabled or not button.visible:
+		return
+	button.pressed.emit()
+	get_viewport().set_input_as_handled()
+
+func _is_text_entry_focused() -> bool:
+	var fo := get_viewport().gui_get_focus_owner()
+	return fo is LineEdit or fo is TextEdit
+
 func _icon_tier() -> String:
 	# Pick icon resolution from window height: sub-1080p -> 100, 1080p -> 200,
 	# above 1080p -> 400. The buttons render small, so a larger source downscales
@@ -255,6 +291,17 @@ func _hide_all_panels() -> void:
 	if is_instance_valid(people_panel):
 		_set_panel_visible(people_panel, false)
 
+# Toggle a bottom-menu panel: if it's already open, close it; otherwise hide the siblings
+# and open it. Visibility is captured before _hide_all_panels() would clear it. Also drives
+# the keyboard shortcuts, which emit the button's pressed signal → these same handlers.
+func _toggle_panel(panel: Control) -> void:
+	if panel != null and panel.visible:
+		_set_panel_visible(panel, false)
+		return
+	_hide_all_panels()
+	if panel != null:
+		_set_panel_visible(panel, true)
+
 func _set_panel_visible(panel: Control, show_it: bool) -> void:
 	if show_it:
 		panel.show()
@@ -338,23 +385,25 @@ func _ensure_specular(button: Button) -> TextureRect:
 	return sp
 
 func _on_construct_pressed() -> void:
-	_hide_all_panels()
-	_set_panel_visible(construct_panel, true)
+	_toggle_panel(construct_panel)
 
 func _on_resources_pressed() -> void:
-	_hide_all_panels()
-	_set_panel_visible(resource_panel, true)
+	_toggle_panel(resource_panel)
 
 func _on_mapmodes_pressed() -> void:
-	# Closes the other menu modals (construct/resources/buildings ledger/market/
-	# money) but leaves building-detail and tile-view panels alone — those aren't
-	# in _hide_all_panels().
+	# Toggles the map-overlays panel. Closing it also dismisses the good-select side
+	# panel that follows it. Leaves building-detail / tile-view panels alone.
+	if mapmodes_panel.visible:
+		_set_panel_visible(mapmodes_panel, false)
+		var gp := get_node_or_null("%GoodSelectPanel")
+		if gp != null:
+			gp.hide()
+		return
 	_hide_all_panels()
 	_set_panel_visible(mapmodes_panel, true)
 
 func _on_market_pressed() -> void:
-	_hide_all_panels()
-	_set_panel_visible(market_panel, true)
+	_toggle_panel(market_panel)
 
 func _on_buildings_market_for_tile(tile_id: String) -> void:
 	_hide_all_panels()
@@ -365,8 +414,12 @@ func _on_buildings_market_for_tile(tile_id: String) -> void:
 func _on_buildings_pressed() -> void:
 	_show_building_ledger()
 
-# Lazy-create (no main.tscn edit needed) + show the building ledger.
-func _show_building_ledger() -> void:
+# Lazy-create (no main.tscn edit needed) + show the building ledger. `allow_toggle` closes it
+# when it's already open (button/shortcut); the filter deep-link passes false to always open.
+func _show_building_ledger(allow_toggle: bool = true) -> void:
+	if allow_toggle and is_instance_valid(building_ledger_panel) and building_ledger_panel.visible:
+		_set_panel_visible(building_ledger_panel, false)
+		return
 	_hide_all_panels()
 	if not is_instance_valid(building_ledger_panel):
 		building_ledger_panel = BUILDING_LEDGER_PANEL_SCENE.instantiate()
@@ -383,7 +436,7 @@ func _show_building_ledger() -> void:
 # intermittency "see more" → "green_intermittent"). _ready() ran on instantiate, so the
 # chips exist by the time we set the preset.
 func _on_building_ledger_filter_requested(filter_key: String) -> void:
-	_show_building_ledger()
+	_show_building_ledger(false)   # deep-link always opens (never toggles closed)
 	if is_instance_valid(building_ledger_panel) and building_ledger_panel.has_method("set_filter_preset"):
 		building_ledger_panel.set_filter_preset(filter_key)
 
@@ -391,10 +444,12 @@ func _on_politics_pressed() -> void:
 	print("Politics panel not yet implemented")
 
 func _on_research_pressed() -> void:
-	_hide_all_panels()
-	_set_panel_visible(research_panel, true)
+	_toggle_panel(research_panel)
 
 func _on_people_pressed() -> void:
+	if is_instance_valid(people_panel) and people_panel.visible:
+		_set_panel_visible(people_panel, false)
+		return
 	_hide_all_panels()
 	if not is_instance_valid(people_panel):
 		people_panel = PeoplePanel.new()

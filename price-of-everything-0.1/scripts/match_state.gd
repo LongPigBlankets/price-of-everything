@@ -1584,6 +1584,8 @@ func _count_buildings(internal: String, level: int, require_profitable: bool, mi
 	for inst in buildings.values():
 		if not is_player_owned(inst):
 			continue
+		if match_any and str(Catalog.get_building(str(inst.get("building_id", ""))).get("category", "")) == "infrastructure":
+			continue   # "build N buildings" (any-type scale unlocks) ignores infrastructure
 		if not match_any and _building_internal(inst) != internal:
 			continue
 		if level >= 0 and _building_level(inst) != level:

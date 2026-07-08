@@ -115,6 +115,7 @@ var _header_hit: Button
 var _slide_block: Control
 var _suppress_chk: Button
 var _go_btn: Button
+var _summary_marker: Control   # invisible, findable Control over the collapsed TURN SUMMARY plate (tutorial coach target)
 
 var _btn_hover := false
 var _btn_down := false
@@ -203,6 +204,14 @@ func _build_interactive_children() -> void:
 	_go_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_go_btn.visible = false
 
+	# Named, findable Control sized to the collapsed TURN SUMMARY plate — a spotlight/annotation
+	# target for the tutorial coach. Draws nothing (no children) and ignores the mouse so it never
+	# steals the header/chevron clicks beneath it. Kept in sync by _update_layout().
+	_summary_marker = Control.new()
+	_summary_marker.name = "TurnSummaryMarker"
+	_summary_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_summary_marker)
+
 
 func _make_hit() -> Button:
 	var b := Button.new()
@@ -227,6 +236,9 @@ func _update_layout() -> void:
 	_r_button = Rect2(rx - BTN_W + 10.0, row_top + (SUMMARY_H - BTN_H) * 0.5 - 5.0, BTN_W, BTN_H)
 	var sum_right := _r_button.position.x - GAP
 	_r_summary = Rect2(sum_right - SUMMARY_W, row_top, SUMMARY_W, SUMMARY_H)
+	if _summary_marker != null:
+		_summary_marker.position = _r_summary.position
+		_summary_marker.size = _r_summary.size
 
 	# Navy base: shorter, squarish-rounded, bleeds off bottom + right; right of menu.
 	var base_left := _r_summary.position.x - 24.0

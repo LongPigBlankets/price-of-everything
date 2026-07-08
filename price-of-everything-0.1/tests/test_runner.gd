@@ -18,6 +18,9 @@ var _failed := 0
 var _failed_names: Array[String] = []
 
 const RoadRegionsLoader := preload("res://scripts/road_regions.gd")
+const TutorialSteps := preload("res://scripts/tutorial/tutorial_steps.gd")
+const TutorialDetectors := preload("res://scripts/tutorial/tutorial_detectors.gd")
+const BuildingReadout := preload("res://scripts/building_readout.gd")
 
 func _ready() -> void:
 	print("\n==== price-of-everything tests ====")
@@ -214,12 +217,121 @@ func _ready() -> void:
 	_test_empire_ports()
 	_test_empire_rag()
 	_test_audio_service()
+	_test_tutorial_engine()
 	if not _failed_names.is_empty():
 		print("FAILED TESTS:")
 		for failed_name in _failed_names:
 			print("  - ", failed_name)
 	print("==== %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
+
+# Tutorial "Coach" engine (Wave 1). The engine itself is signal-driven and confined to
+# a live scene, so here we cover the two pure surfaces: the authored step list and the
+# state-verified detectors (the only logic that decides step completion).
+func _test_tutorial_engine() -> void:
+	var steps: Array = TutorialSteps.steps()
+	_check(not steps.is_empty(), "tutorial: steps() returns content")
+	_check(str((steps[0] as Dictionary).get("id", "")) == "welcome", "tutorial: first step is the welcome panel")
+	_check(str((steps[0] as Dictionary).get("mode", "")) == "welcome", "tutorial: first step uses welcome render mode")
+	_check(TutorialSteps.BOARD_TILES.has(TutorialSteps.WINDOW_TILE), "tutorial: board includes the factory tile")
+	_check(TutorialSteps.BOARD_TILES.has(TutorialSteps.STUB_TILE), "tutorial: board includes the coal stub")
+	_check(TutorialSteps.BOARD_TILES.has(TutorialSteps.GLASS_TILE), "tutorial: board includes the glass furnace tile (port-adjacent)")
+
+	# building_owned_on_tile detector: player-owned building on the tile -> true;
+	# NPC-owned -> false; unknown predicate kind -> false. Save/restore live buildings.
+	var saved: Dictionary = MatchState.buildings
+	MatchState.buildings = {
+		"inst_test": {
+			"instance_id": "inst_test", "building_id": "b_007",
+			"tile_id": TutorialSteps.WINDOW_TILE, "owner": MatchState.LOCAL_PLAYER,
+		}
+	}
+	var decide := {"kind": "building_owned_on_tile", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}
+	_check(TutorialDetectors.poll(decide) == true, "tutorial: detector true when player owns the factory")
+	# building_or_project_on_tile also matches the built (player-owned) building.
+	_check(TutorialDetectors.poll({"kind": "building_or_project_on_tile", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}) == true,
+		"tutorial: building_or_project detector matches a built building")
+	MatchState.buildings["inst_test"]["owner"] = "Vandel Glassworks"
+	_check(TutorialDetectors.poll(decide) == false, "tutorial: detector false while NPC-owned")
+	_check(TutorialDetectors.poll({"kind": "unknown_predicate"}) == false, "tutorial: unknown predicate never advances")
+	MatchState.buildings = saved
+	# infra detectors read Catalog state; with no cables built they must be false.
+	_check(TutorialDetectors.poll({"kind": "board_has_infra", "infra": "cables"}) == false,
+		"tutorial: board_has_infra false before any cable is laid")
+	_check(TutorialDetectors.poll({"kind": "tile_has_infra", "tile": TutorialSteps.WINDOW_TILE, "infra": "cables"}) == false,
+		"tutorial: tile_has_infra false before any cable is laid")
+	# The core + Integration sequence is authored end-to-end.
+	var ids: Array = []
+	var by_id: Dictionary = {}
+	for s in steps:
+		var sid := str((s as Dictionary).get("id", ""))
+		ids.append(sid)
+		by_id[sid] = s
+	for expected in ["welcome", "ui_primer", "goto_tile", "build_open", "build_pick_recipe", "build_cost", "build_close_buy", "buy_factory", "diagnose_factory", "lay_cable_factory", "run_until_running", "view_shipment", "analyse_supply", "explore_encyclopedia", "close_encyclopedia", "choose_integration", "build_glass_open", "build_glass_recipe", "build_glass_source", "glass_sell", "glass_wait_built", "glass_diagnose_pipe", "glass_lay_pipe", "glass_run", "glass_economics", "glass_better", "glass_research", "glass_upgrade", "build_alu_open", "sell_windows", "integration_done"]:
+		_check(expected in ids, "tutorial: step '%s' present" % expected)
+	_check(TutorialDetectors.poll({"kind": "node_hidden", "ref": "NoSuchNode_xyz"}) == true,
+		"tutorial: node_hidden true for a missing node")
+	# New detectors are wired and default false in a fresh scene.
+	_check(TutorialDetectors.poll({"kind": "building_running_on_tile", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}) == false,
+		"tutorial: building_running_on_tile false before the factory runs")
+	_check(TutorialDetectors.poll({"kind": "tile_cabled_or_ordered", "tile": TutorialSteps.WINDOW_TILE}) == false,
+		"tutorial: tile_cabled_or_ordered false before any cable")
+	_check(TutorialDetectors.poll({"kind": "tile_infra_or_ordered", "tile": TutorialSteps.GLASS_TILE, "infra": "reinf_pipes", "building_id": "b_018"}) == false,
+		"tutorial: tile_infra_or_ordered false before any reinforced pipe is laid")
+	_check(TutorialDetectors.poll({"kind": "tile_panel_open", "tile": TutorialSteps.WINDOW_TILE}) == false,
+		"tutorial: tile_panel_open false before the tile panel is opened")
+	# The UI-primer step annotates HUD nodes with labels + leader lines.
+	var primer: Dictionary = by_id.get("ui_primer", {})
+	_check(str(primer.get("mode", "")) == "annotate" and (primer.get("targets", []) as Array).size() >= 8,
+		"tutorial: ui_primer annotates the bottom-menu buttons and HUD")
+	_check(TutorialDetectors.poll({"kind": "in_mapmode", "mode": "logistics"}) == false,
+		"tutorial: in_mapmode false when not in logistics")
+	_check(TutorialDetectors.poll({"kind": "node_visible", "ref": "NoSuchNode_xyz"}) == false,
+		"tutorial: node_visible false for a missing node")
+	# The port is framed AND buildable now — the aluminium plant is built on the docks so its
+	# hazard-liquid build material (industrial_acids) can land at the seeded reinf-pipe terminal.
+	# Co-location: the port is framed but view-only again; the producers build on the factory tile.
+	_check(TutorialSteps.PORT_TILE in TutorialSteps.CAMERA_TILES and not (TutorialSteps.PORT_TILE in TutorialSteps.BOARD_TILES),
+		"tutorial: port tile is framed but not buildable (co-location moved producers off the docks)")
+	_check(TutorialSteps.GLASS_TILE == TutorialSteps.WINDOW_TILE and TutorialSteps.ALU_TILE == TutorialSteps.WINDOW_TILE,
+		"tutorial: glass + aluminium producers are co-located on the window factory tile")
+	# Branching: the choice offers glass (margin) vs aluminium (overflow revenue).
+	var choices: Array = (by_id.get("choose_integration", {}) as Dictionary).get("choices", [])
+	_check(choices.size() == 2, "tutorial: choose_integration offers two branches")
+	var gotos: Array = []
+	for c in choices:
+		gotos.append(str((c as Dictionary).get("goto", "")))
+	_check("build_glass_open" in gotos and "build_alu_open" in gotos, "tutorial: choice gotos target the two build flows")
+	# Glass branch now runs its own reinforced-pipe lesson (build furnace off-port -> diagnose the
+	# "No input Reinforced Pipeline" fault -> lay a reinf pipe -> run) before reconverging.
+	_check(str((by_id.get("build_glass_source", {}) as Dictionary).get("goto", "")) == "",
+		"tutorial: glass branch does not reconverge early (runs the pipe lesson)")
+	# Glass branch now ends with a research sub-flow (unlock High Strength Glassmaking -> retool to r_054).
+	_check(str((by_id.get("glass_run", {}) as Dictionary).get("goto", "")) == "",
+		"tutorial: glass_run flows into the research steps (no early reconverge)")
+	_check(str((by_id.get("glass_upgrade", {}) as Dictionary).get("goto", "")) == "integration_done",
+		"tutorial: glass branch reconverges to integration_done after the recipe upgrade")
+	var gr_done: Dictionary = (by_id.get("glass_research", {}) as Dictionary).get("done", {})
+	var gr_decide: Dictionary = gr_done.get("decide", {})
+	_check(str(gr_decide.get("kind", "")) == "research_unlocked",
+		"tutorial: glass_research gates on unlocking High Strength Glassmaking")
+	_check(TutorialDetectors.poll({"kind": "research_unlocked", "title": "High Strength Glassmaking"}) == false,
+		"tutorial: research_unlocked false before the node is unlocked")
+	_check(TutorialDetectors.poll({"kind": "building_recipe_on_tile", "tile": TutorialSteps.GLASS_TILE, "recipe_id": "r_054"}) == false,
+		"tutorial: building_recipe_on_tile false before the furnace is retooled")
+	var glass_lay: Dictionary = by_id.get("glass_lay_pipe", {})
+	_check(str((glass_lay.get("spotlight", {}) as Dictionary).get("ref", "")) == "InfraDial_reinf_pipes",
+		"tutorial: glass_lay_pipe spotlights the reinforced-pipe dial")
+	_check(TutorialDetectors.poll({"kind": "sell_surplus_on_tile", "tile": TutorialSteps.WINDOW_TILE}) == false,
+		"tutorial: sell_surplus_on_tile false before enabling it")
+	# Deeper-integration content (own power, survey/mine) authored + deferred.
+	var integ_ids: Array = []
+	for s in TutorialSteps._integration_steps():
+		integ_ids.append(str((s as Dictionary).get("id", "")))
+	_check("survey_stub" in integ_ids and "build_coal_mine" in integ_ids,
+		"tutorial: deeper-integration survey/mine steps authored + deferred")
+	_check("build_own_power" in integ_ids, "tutorial: own-power step deferred to deeper integration")
+
 
 # The Audio autoload (presentation-layer SFX service). Headless uses the Dummy
 # audio driver, so we assert wiring/state rather than actual playback: the click
@@ -6359,6 +6471,45 @@ func _test_transport_service() -> void:
 	Catalog.remove_tile_infrastructure(dst, "pipes")
 	Catalog.remove_tile_infrastructure(src, "reinf_pipes")
 	Catalog.remove_tile_infrastructure(dst, "reinf_pipes")
+	# A liquid/gas can only be BOUGHT onto a port tile that has the pipe for it — this closes
+	# the same-tile loophole where a building sits ON the port (it used to receive fluids with
+	# no pipe at all). Solids need no pipe; hazard liquids need reinf_pipes, not plain pipes.
+	var a_port := TransportService.nearest_port_tile(src)
+	if a_port != "" and not Catalog.tile_has_infrastructure(a_port, "pipes") and not Catalog.tile_has_infrastructure(a_port, "reinf_pipes"):
+		_check(not TransportService.quote_market_buy(a_port, "g_001", 3, false).is_empty(),
+			"solid market-buy to a port tile needs no pipe")
+		_check(TransportService.quote_market_buy(a_port, safe_liquid, 3, false).is_empty(),
+			"safe-liquid market-buy to an unpiped port tile is blocked")
+		_check(TransportService.quote_market_buy(a_port, hazard_liquid, 3, false).is_empty(),
+			"hazard-liquid market-buy to an unpiped port tile is blocked")
+		Catalog.add_tile_infrastructure(a_port, "pipes")
+		_check(not TransportService.quote_market_buy(a_port, safe_liquid, 3, false).is_empty(),
+			"safe-liquid market-buy succeeds once the port tile has pipes")
+		_check(TransportService.quote_market_buy(a_port, hazard_liquid, 3, false).is_empty(),
+			"ordinary pipes still don't land hazard liquid at the port")
+		Catalog.add_tile_infrastructure(a_port, "reinf_pipes")
+		_check(not TransportService.quote_market_buy(a_port, hazard_liquid, 3, false).is_empty(),
+			"hazard-liquid market-buy succeeds once the port tile has reinforced pipes")
+		Catalog.remove_tile_infrastructure(a_port, "pipes")
+		Catalog.remove_tile_infrastructure(a_port, "reinf_pipes")
+	# Construction-site delivery diagnostics: a build material that needs a pipeline the site
+	# lacks is flagged (so the player learns why the build is stalled). Solids and secured
+	# materials raise nothing, and laying the pipe clears it.
+	var cd_constr := {"tile_id": src, "materials": [
+		{"good_id": hazard_liquid, "name": "Industrial Acids", "secured": false},
+		{"good_id": "g_001", "name": "Coal", "secured": false},
+	]}
+	var cd_rows := BuildingReadout.construction_diagnostics(cd_constr)
+	_check(cd_rows.size() == 1 and str((cd_rows[0] as Dictionary).get("tone", "")) == "bad"
+			and "reinforced pipeline" in str((cd_rows[0] as Dictionary).get("label", "")).to_lower(),
+		"construction diagnostics: flags the undeliverable hazard-liquid material, not the solid")
+	var cd_secured := {"tile_id": src, "materials": [{"good_id": hazard_liquid, "name": "Industrial Acids", "secured": true}]}
+	_check(BuildingReadout.construction_diagnostics(cd_secured).is_empty(),
+		"construction diagnostics: a secured material raises no blocker")
+	Catalog.add_tile_infrastructure(src, "reinf_pipes")
+	_check(BuildingReadout.construction_diagnostics(cd_constr).is_empty(),
+		"construction diagnostics: a reinforced pipe on the site clears the blocker")
+	Catalog.remove_tile_infrastructure(src, "reinf_pipes")
 	Stockpile.clear_all()
 	MatchState.pending_transport_shipments.clear()
 
@@ -7366,6 +7517,14 @@ func _test_scripts_parse() -> void:
 		"res://scripts/special_order_resolution_dialog.gd",
 		"res://scripts/unlock_dialog.gd",
 		"res://scripts/people_panel.gd",
+		"res://scripts/main_menu.gd",
+		"res://scripts/new_game_panel.gd",
+		"res://scripts/tutorial_intro_panel.gd",
+		"res://scripts/camera_controller.gd",
+		"res://scripts/tutorial/tutorial_engine.gd",
+		"res://scripts/tutorial/coach_overlay.gd",
+		"res://scripts/tutorial/tutorial_steps.gd",
+		"res://scripts/tutorial/tutorial_detectors.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 

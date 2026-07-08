@@ -585,6 +585,19 @@ func get_transport_class(good_id: String) -> String:
 func requires_pipeline(good_id: String) -> bool:
 	return good_id != "" and FLUID_CLASSES.has(get_transport_class(good_id))
 
+## True when `tile_id` has a pipe that can carry `good_id`. Only meaningful for fluids/gases:
+## a liquid/gas can be handled at a tile only if that tile has a suitable pipe — this holds
+## even for a same-tile transfer at a port, so a building on a port can't receive or ship a
+## liquid/gas without the pipe. hazard_liquid needs reinf_pipes; other fluids accept pipes or
+## reinf_pipes (reuses _modes_for_good so it tracks infrastructure.csv). Non-fluids return true.
+func tile_can_pipe_good(tile_id: String, good_id: String) -> bool:
+	if not requires_pipeline(good_id):
+		return true
+	for m in _modes_for_good(good_id):
+		if m != ROUTE_MODE_NONE and _tile_supports_mode(tile_id, m):
+			return true
+	return false
+
 func is_raw(good_id: String) -> bool:
 	var g: Dictionary = _goods_by_id.get(good_id, {})
 	return g.get("good_type", "") == "raw"

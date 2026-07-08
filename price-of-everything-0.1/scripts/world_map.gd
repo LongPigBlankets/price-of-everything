@@ -266,6 +266,10 @@ func finish_build(animate: bool) -> void:
 	# grid and fill the blocks. See the "roads → enclosures → buildings" sequence below.
 
 	var pending_start := SaveLoad.pending_is_start()
+	# Captured BEFORE apply_pending() clears the snapshot: a tutorial match seeds none
+	# of the NPC start companies / ruins / old-growth forests (the player stays confined
+	# to the small board), keeping only the ports so the coast + docks still render.
+	var pending_tutorial := SaveLoad.pending_is_tutorial()
 	# A loaded save applies only now, once the terrain and default seeding exist;
 	# it overwrites the fresh-match state above (docs/save_load_spec.md).
 	var loaded_pending := SaveLoad.apply_pending()
@@ -274,7 +278,7 @@ func finish_build(animate: bool) -> void:
 	await _build_yield()
 	# Forests are a TERRAIN feature (the land mask + block templates read them), so they come before roads
 	# and enclosures. The buildings that used to follow here are deferred until after the blocks exist.
-	if not loaded_pending or pending_start:
+	if (not loaded_pending or pending_start) and not pending_tutorial:
 		_place_northern_old_growth_forests()
 
 	# roads-v2: the predetermined river crossings must exist before any runtime
@@ -306,8 +310,11 @@ func finish_build(animate: bool) -> void:
 		# BUILDINGS now — after roads + enclosures — so they drop into the ready chunk grid and FILL the
 		# blocks they land in (NPC ports, the ruins, the start companies, + any future player start builds).
 		await _place_npc_ports(animate)
-		await _place_ruins("tile_23_16", animate)
-		await _place_start_buildings(animate)
+		# Tutorial keeps the ports (coast/docks) but drops the ruins + NPC start
+		# companies so the board is a clean slate around the seeded window factory.
+		if not pending_tutorial:
+			await _place_ruins("tile_23_16", animate)
+			await _place_start_buildings(animate)
 	RoadWorks.rebuild_occupancy()   # no-op until OCCUPANCY_ROADS_ENABLED
 
 	# Port dockhouses: white harbour slabs + pier fingers on the sea edge of
@@ -377,10 +384,20 @@ func _on_tile_selected(tile_data: Dictionary) -> void:
 	_last_selected_tile = tile_data
 	info_panel.show_tile(tile_data)
 
+# While a tutorial is active, map interaction is confined to the board tiles. Returns
+# true (and nudges the player) when tile_id is off-board. A no-op in normal play.
+func _tutorial_blocks(tile_id: String) -> bool:
+	if not Tutorial.active or Tutorial.tile_allowed(tile_id):
+		return false
+	MatchState.request_toast("Let's stay on the tutorial area for now.", "info")
+	return true
+
 func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
 	# Clicking a tile in the Surveying mapmode opens its survey dialog. Fully
 	# surveyed tiles (and ones already being surveyed) trigger no dialog.
 	var tile_id := str(tile_data.get("id", ""))
+	if _tutorial_blocks(tile_id):
+		return
 	if MatchState.is_survey_in_progress(tile_id):
 		MatchState.request_toast("Survey already in progress (%d turns)." % MatchState.survey_turns_left(tile_id), "info")
 		return
@@ -1355,6 +1372,8 @@ func _on_search_recipe_build_requested(building_id: String, recipe_id: String) -
 
 func _on_build_attempted(building_id: String, tile_id: String) -> void:
 	print("[Build] attempt: building=%s tile=%s" % [building_id, tile_id])
+	if _tutorial_blocks(tile_id):
+		return
 	var coord := terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1):
 		print("[Build] FAILED: tile_id %s did not resolve to a coord (id_to_coord returned -1,-1)" % tile_id)
@@ -1428,6 +1447,7 @@ func _show_construction_missing_dialog(building_id: String, recipe_id: String, t
 	# Buy / Use-stockpile CTAs are disabled in the dialog and connected here for later phases.
 	if _construction_dialog == null:
 		_construction_dialog = load("res://scripts/construction_missing_dialog.gd").new()
+		_construction_dialog.name = "ConstructionMissingDialog"   # tutorial spotlight target
 		_hud.add_child(_construction_dialog)
 		_construction_dialog.buy_requested.connect(_on_construction_buy_requested)
 		_construction_dialog.use_stockpile_requested.connect(_on_construction_use_stockpile_requested)
@@ -1978,6 +1998,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	match event.keycode:
 		KEY_ESCAPE:
+			# A locked tutorial step keeps its panel open — swallow Esc so the player
+			# can't close the spotlit panel (or open the pause menu) and get stuck.
+			if Tutorial.active and Tutorial.hard_gate:
+				get_viewport().set_input_as_handled()
+				return
 			if _special_order_reroute_picking:
 				_cancel_special_order_reroute_pick()
 			elif not _pending_stockpile_selection.is_empty():

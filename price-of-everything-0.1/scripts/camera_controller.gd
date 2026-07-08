@@ -64,7 +64,34 @@ func _configure_for_map_after_scene_ready() -> void:
 	_configure_for_map()
 	_target_zoom = zoom
 
+## The tutorial confines the camera to a small board rect. While `_external_clamp` is
+## set, `_configure_for_map` must not stomp map_min/map_max back to the full map.
+var _external_clamp := false
+
+## Clamp the camera to an explicit world rect (tutorial board). Recenters on it and
+## widens the zoom-out so the whole rect fits.
+func set_bounds_rect(rect: Rect2) -> void:
+	if rect.size == Vector2.ZERO:
+		return
+	_external_clamp = true
+	map_min = rect.position
+	map_max = rect.end
+	position = rect.get_center()
+	var viewport_size := get_viewport_rect().size
+	if viewport_size.x > 0.0 and rect.size.x > 0.0 and rect.size.y > 0.0:
+		zoom_min = minf(viewport_size.x / rect.size.x, viewport_size.y / rect.size.y)
+	_target_zoom = Vector2.ONE * _effective_zoom_min()
+	zoom = _target_zoom
+
+## Release the tutorial clamp and restore the full-map bounds.
+func clear_bounds_rect() -> void:
+	_external_clamp = false
+	_configure_for_map()
+	_target_zoom = zoom
+
 func _configure_for_map() -> void:
+	if _external_clamp:
+		return
 	var hex_map := get_tree().get_first_node_in_group("hex_map")
 	if hex_map == null or not hex_map.has_method("map_world_rect"):
 		return

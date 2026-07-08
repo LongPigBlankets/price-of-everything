@@ -47,6 +47,7 @@ func _ready() -> void:
 func setup(recipe_data: Dictionary, parent_building_id: String) -> void:
 	building_id = parent_building_id
 	recipe_id = recipe_data.get("recipe_id", "")
+	name = "RecipeRow_%s" % str(recipe_id)   # tutorial spotlight target (e.g. RecipeRow_r_053)
 	name_label.text = recipe_data.get("display_name", "")
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	if not gui_input.is_connected(_on_row_gui_input):

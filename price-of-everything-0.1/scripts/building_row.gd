@@ -41,6 +41,7 @@ var _unaffordable_flash := false
 
 func setup(data: Dictionary, recipes: Array) -> void:
 	building_id = data.get("id", "")
+	name = "BuildingRow_%s" % str(building_id)   # stable node name for tutorial spotlight
 	is_infrastructure = data.get("category", "") == "infrastructure"
 	infrastructure_key = data.get("internal_name", "")
 	build_cost = float(data.get("base_price", data.get("cost", 0.0)))

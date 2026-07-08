@@ -199,6 +199,14 @@ func has_pending() -> bool:
 func pending_is_start() -> bool:
 	return bool(_pending_snapshot.get("start", false))
 
+## True when the pending snapshot is a tutorial match (its ruleset carries
+## tutorial_enabled). Read BEFORE apply_pending() clears the snapshot — world_map
+## captures it alongside pending_is_start() to suppress NPC/decoration seeding.
+func pending_is_tutorial() -> bool:
+	var m: Dictionary = _pending_snapshot.get("match", {})
+	var rs: Dictionary = m.get("ruleset", {})
+	return bool(rs.get("tutorial_enabled", false))
+
 ## Called by world_map at the very end of _ready, after the terrain is built and
 ## the default match seeding (NPC ports, deposits) ran. Returns true when a
 ## pending save was applied — the caller then rebuilds its visuals.

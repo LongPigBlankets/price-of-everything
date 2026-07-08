@@ -416,6 +416,14 @@ func _render_construction(building: Dictionary, recipe: Dictionary, constr: Dict
 			hb.add_child(st)
 		_body.add_child(mc)
 
+	# Delivery blockers: a build material that needs a pipeline the site doesn't have will
+	# never arrive and the build stalls forever. Surface it as a diagnostics card (same
+	# DiagnosticsCard node the run-time view uses, so the tutorial coach can spotlight it).
+	var cdiag: Array = BuildingReadout.construction_diagnostics(constr)
+	if not cdiag.is_empty():
+		_body.add_child(_make_section("Diagnostics", "delivery blocked"))
+		_body.add_child(_build_diagnostics(cdiag))
+
 	var cancel := Button.new()
 	cancel.text = "Cancel construction"
 	cancel.custom_minimum_size = Vector2(0, 44)
@@ -640,6 +648,7 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 	var alt_count := maxi(0, Catalog.get_recipes_for_building(str(building.get("building_id", ""))).size() - 1)
 	if alt_count > 0:
 		var rc := Button.new()
+		rc.name = "ChangeRecipeButton"   # stable target for the tutorial coach spotlight
 		rc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		rc.custom_minimum_size = Vector2(0, 40)
 		if MatchState.is_retooling(iid):
@@ -928,6 +937,8 @@ func _open_recipe_sheet(building: Dictionary) -> void:
 
 func _recipe_choice_row(iid: String, recipe: Dictionary, is_current: bool) -> Control:
 	var card := PanelContainer.new()
+	card.name = "RecipeChoice_%s" % str(recipe.get("recipe_id", ""))   # tutorial coach spotlight
+
 	var st := StyleBoxFlat.new()
 	st.bg_color = DS.PALETTE["BG_HIGHLIGHT"] if is_current else DS.PALETTE["BG_CARD"]
 	st.border_color = DS.PALETTE["ACCENT"] if is_current else DS.PALETTE["BORDER_SOFT"]
@@ -1351,6 +1362,7 @@ func _recipe_arrow(power_in: int) -> Control:
 
 func _build_diagnostics(rows: Array) -> PanelContainer:
 	var card := _make_card()
+	card.name = "DiagnosticsCard"   # stable target for the tutorial coach spotlight
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", 0)
 	for i in rows.size():
@@ -1447,6 +1459,7 @@ func _diag_row(r: Dictionary, top_border: bool) -> Control:
 
 func _build_cost_to_produce(rows: Array) -> PanelContainer:
 	var card := _make_card()
+	card.name = "CostToProduceCard"   # stable target for the tutorial coach spotlight
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", DS.SP["SM"])
 	for i in rows.size():
@@ -1491,8 +1504,6 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 func _build_economics(econ: Dictionary) -> PanelContainer:
 	var card := _make_card()
 	var vb := card.get_child(0) as VBoxContainer
-	vb.add_child(_metric("Building value", "£%.2f" % float(econ.get("value", 0.0)), DS.PALETTE["TEXT"], false))
-	vb.add_child(HSeparator.new())
 	# One "Output value" figure (market worth of the run), tagged (sold) when it actually reaches the
 	# market this turn or (if sold) otherwise, plus the freight to its set destination. Net folds both
 	# in. Skipped for generators / infra (no sellable good → units_out 0).

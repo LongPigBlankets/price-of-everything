@@ -1392,10 +1392,12 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 8)
 	var build_btn := _make_action_button("Build")
+	build_btn.name = "BLBuildButton"   # tutorial spotlight target
 	build_btn.add_theme_font_size_override("font_size", 14)  # one size up
 	build_btn.pressed.connect(_on_bl_build_pressed)
 	actions.add_child(build_btn)
 	var buy_buildings := _make_action_button("Buy Buildings")
+	buy_buildings.name = "BLBuyBuildingsButton"   # tutorial spotlight target
 	buy_buildings.add_theme_font_size_override("font_size", 14)  # one size up
 	buy_buildings.pressed.connect(func(): MatchState.buildings_market_for_tile_requested.emit(_current_tile_id))
 	actions.add_child(buy_buildings)
@@ -1648,10 +1650,12 @@ func _make_infra_grid() -> Control:
 
 func _make_infra_cell(slot: Dictionary) -> VBoxContainer:
 	var cell := VBoxContainer.new()
+	cell.name = "InfraCell_%s" % str(slot.get("key", ""))   # e.g. InfraCell_cables — tutorial spotlight target
 	cell.add_theme_constant_override("separation", 3)
 	cell.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 
 	var dial := INFRA_DIAL.new()
+	dial.name = "InfraDial_%s" % str(slot.get("key", ""))   # tight tutorial spotlight target (the "+" dial)
 	var transit: Dictionary = slot.get("transit", {})
 	match str(transit.get("dial", "track")):
 		"fill": dial.configure("fill", float(transit.get("pct", 0.0)))
@@ -1913,6 +1917,7 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 func _make_sell_surplus_toggle() -> CheckBox:
 	var tile_id_now := _current_tile_id
 	var toggle := CheckBox.new()
+	toggle.name = "SellSurplusToggle"   # tutorial spotlight target
 	toggle.text = "Sell all Surplus every turn"
 	toggle.tooltip_text = ("Each turn, sells every good on this tile that its buildings don't reserve as inputs.\n"
 		+ "Demand is re-checked every turn, so adding a consuming building automatically reduces the sales.")

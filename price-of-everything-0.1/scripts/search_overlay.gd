@@ -32,10 +32,11 @@ const MUTED_PANEL := Color(0.015686, 0.058824, 0.105882, 0.96)
 const BUILD_BUTTON_BLUE := Color(0.176471, 0.439216, 0.658824, 1.0)
 const BUILD_BUTTON_HOVER_BLUE := Color(0.250980, 0.529412, 0.749020, 1.0)
 
-# Encyclopedia "Mechanics" entries (content-light for now; bodies built in _mechanic_body).
+# Encyclopedia "Game mechanics" entries (content-light for now; bodies built in _mechanic_body).
 const MECHANIC_ENTRIES := [
 	{"id": "market_price_mechanics", "title": "Market price mechanics"},
 	{"id": "intermittency", "title": "Power intermittency"},
+	{"id": "building_economics", "title": "Building Economics"},
 ]
 
 var _search_stack: VBoxContainer = null
@@ -47,7 +48,7 @@ var _accordion_expanded: Dictionary = {
 	"Goods": true,
 	"Recipes": false,
 	"Buildings": false,
-	"Mechanics": false,
+	"Game mechanics": false,
 }
 
 func _ready() -> void:
@@ -114,6 +115,13 @@ func _mechanic_body(entry_id: String) -> String:
 			+ "Hydro and biomass/waste power are green but STEADY, and never take this penalty. Fossil and national-grid power are grey and steady.\n\n"
 			+ "Batteries 'firm' intermittent power on a tile: up to their storage capacity, intermittent green is treated as steady and the penalty disappears. Build storage where you generate or draw intermittent green to cancel the intermittency.\n\n"
 			+ "(This is an early stub — worked numbers, the per-tile allocation order, and storage scaling will be detailed here in a later content pass.)") % [derate_pct]
+	if entry_id == "building_economics":
+		var tax_pct: int = int(round(EconomyConfig.TAX_RATE * 100.0))
+		var div_pct: int = int(round(EconomyConfig.DIVIDEND_RATE * 100.0))
+		return ("Open any building and its economics show a per-turn NET: the market value of everything it makes, minus what it costs to run — inputs, power, labour, maintenance and transport.\n\n"
+			+ "Treat that net as a GUIDE, not cash in the bank. It values a building's whole output at the current market price whether or not you actually sell it — so a building that feeds another of yours looks like it 'earns' the market value of goods it never sells.\n\n"
+			+ "IMPORTANT: you CANNOT simply add up the net value-add of your buildings. When one building hands its output to another instead of selling it, it gives up a market sale — one building is quietly subsidising the next. The producer is credited the full market price; the consumer books that same input at its cheaper cost-to-make. The only honest total of what you're really earning is the profit shown in the Turn Summary and the Money panel.\n\n"
+			+ "A few things one building's net can't see, either: %d%% tax and a %d%% dividend come off your profit before it reaches your balance; selling a lot of one good in a single turn floods the market and lowers the price you actually get; and shipping goods between tiles costs freight. Chase the bottom line in the Turn Summary — not the sum of the parts.") % [tax_pct, div_pct]
 	return ""
 
 func close_search() -> void:
@@ -866,7 +874,7 @@ func _make_encyclopedia_landing() -> Control:
 	_add_accordion_section(sections, "Goods", Catalog.all_goods(), "good")
 	_add_accordion_section(sections, "Recipes", Catalog.all_recipes(), "recipe")
 	_add_accordion_section(sections, "Buildings", Catalog.all_buildings(), "building")
-	_add_accordion_section(sections, "Mechanics", MECHANIC_ENTRIES, "mechanic")
+	_add_accordion_section(sections, "Game mechanics", MECHANIC_ENTRIES, "mechanic")
 	return root
 
 func _add_accordion_section(parent: VBoxContainer, title: String, items: Array, result_type: String) -> void:
@@ -887,7 +895,7 @@ func _add_accordion_section(parent: VBoxContainer, title: String, items: Array, 
 
 	header.pressed.connect(func() -> void:
 		var next_expanded := not bool(_accordion_expanded.get(title, false))
-		for section_title in ["Goods", "Recipes", "Buildings", "Mechanics"]:
+		for section_title in ["Goods", "Recipes", "Buildings", "Game mechanics"]:
 			_accordion_expanded[section_title] = false
 		_accordion_expanded[title] = next_expanded
 		_show_encyclopedia_landing()

@@ -76,6 +76,7 @@ func _build_content() -> void:
 	for row in ROWS:
 		var button := Button.new()
 		button.text = row.label
+		button.name = "MapModeRow_%s" % str(row.id)   # e.g. MapModeRow_logistics — tutorial spotlight target
 		# Unimplemented rows stay plain so they don't latch pressed.
 		button.toggle_mode = row.kind != "none"
 		button.custom_minimum_size = Vector2(0, ROW_HEIGHT)

@@ -126,6 +126,11 @@ func _build_theme() -> Theme:
 	t.set_stylebox("panel", "Inset",
 		_stylebox(PALETTE["BG_INSET"], PALETTE["BORDER_SOFT"], 6, 1, 14, 10))
 
+	# Coach card: opaque navy + a solid cream (off-white) 2px outline — reads clearly over the dim.
+	t.set_type_variation("CoachCard", "PanelContainer")
+	t.set_stylebox("panel", "CoachCard",
+		_stylebox(PALETTE["BG_PANEL"], PALETTE["BORDER_STRONG"], 12, 2, 24, 20))
+
 	# ── Button base (secondary / steel blue) ──────────────────────────
 	# The generated texture adds a pale top glint and darker lower bevel so the
 	# buttons sit closer to the chunky upgrade-button reference.
@@ -176,6 +181,22 @@ func _build_theme() -> Theme:
 	t.set_color("font_hover_color", "Build", PALETTE["ACCENT"])
 	t.set_color("font_pressed_color", "Build", PALETTE["ACCENT"])
 	_apply_button_font(t, fonts, "Build")
+
+	# ── Silver metallic button (tutorial coach "Next" / "Begin" CTA) ────
+	# Reuses the same beveled-texture generator as the steel buttons, but with a
+	# bright-silver→grey fill and dark navy text, for a distinct polished-metal CTA.
+	t.set_type_variation("Silver", "Button")
+	t.set_stylebox("normal", "Silver",
+		_button_stylebox(Color("#E8ECEE"), Color("#9BA6AC"), Color("#39424A"), 8, 2, 21, 10, 0.55))
+	t.set_stylebox("hover", "Silver",
+		_button_stylebox(Color("#F2F5F6"), Color("#AEB9BF"), Color("#4A545B"), 8, 2, 21, 10, 0.62))
+	t.set_stylebox("pressed", "Silver",
+		_button_stylebox(Color("#AEB9BF"), Color("#828E94"), Color("#2A3236"), 8, 2, 21, 9, 0.25))
+	t.set_stylebox("focus", "Silver", t.get_stylebox("hover", "Silver"))
+	t.set_color("font_color", "Silver", PALETTE["BG_PANEL"])
+	t.set_color("font_hover_color", "Silver", PALETTE["BG_PANEL"])
+	t.set_color("font_pressed_color", "Silver", PALETTE["BG_PANEL"])
+	_apply_button_font(t, fonts, "Silver")
 
 	# ── Build icon button (square 40×40, steel blue, large off-white icon) ──
 	# Tight padding (6) so a 28px icon fills the small square; the text Build

@@ -36,7 +36,7 @@ g_034,alloy_ingots,Alloy Metals Ingots,metals,solid_heavy,1,1,vehicle,intermedia
 g_035,refined_ree,Refined Rare Earths,metals,solid_heavy,1,1,vehicle,intermediate,0.002,45.0,TRUE,TRUE,0,no,0
 g_036,electrical_components,Electrical Components,construction,solid_heavy,1,1,vehicle,intermediate,0.002,10.04,TRUE,TRUE,0,no,0
 g_037,alloy_ore,Alloy Metals Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,1,TRUE,TRUE,0,no,0
-g_038,glass,Glass,construction,solid_light,2,1,vehicle,finished,0.0005,2.5,TRUE,TRUE,0,no,0
+g_038,glass,Glass,construction,solid_light,2,1,vehicle,finished,0.0005,2.4,TRUE,TRUE,0,no,0
 g_039,windows,Windows,construction,solid_heavy,1,1,vehicle,intermediate,0.002,12.5,TRUE,TRUE,0,no,0
 g_040,sulphur,Sulphur,chems,solid_heavy,1,1,vehicle,raw,0.005,1,TRUE,TRUE,0,no,0
 g_041,cpu,CPU,construction,solid_light,1,1,vehicle,finished,0.0005,230.0,TRUE,TRUE,0,no,0
