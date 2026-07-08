@@ -36,7 +36,7 @@ func _ready() -> void:
 		"target": {"scope": "building_type", "building_id": "b_001", "name": "Coal Mine"},
 		"turn_drawn": int(TurnManager.current_turn),
 	}
-	DecisionState._maybe_present()
+	TurnBriefing.expand()   # the Briefing is the decision surface now
 	await _settle(20)
 
 	get_viewport().get_texture().get_image().save_png("/tmp/poe_decision_shot.png")

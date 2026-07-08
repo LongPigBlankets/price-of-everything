@@ -186,20 +186,18 @@ func _on_save_pressed() -> void:
 		MatchState.request_toast("Could not save: %s" % err, "warning")
 
 # A red "Bankruptcy imminent" strip directly beneath the money widget, matching its
-# width: the money widget is re-parented into a VBox and the strip added below it.
+# width. A top_level overlay (NOT a re-parent): the e2e harness drives the loan UI
+# through the MoneyWidget's node path, so the top-bar hierarchy must stay put.
 func _add_bankruptcy_warning() -> void:
-	var hbox := money_widget.get_parent()
-	var idx := money_widget.get_index()
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 2)
-	hbox.add_child(vbox)
-	hbox.move_child(vbox, idx)
-	money_widget.reparent(vbox)
-	money_widget.move_to_front()   # money on top, strip below
-
 	_bankruptcy_strip = PanelContainer.new()
 	_bankruptcy_strip.visible = false
-	_bankruptcy_strip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_bankruptcy_strip.top_level = true   # escapes the container layout; global coords
+	# Clicking the flag opens the Turn Briefing on the bankruptcy alert (spec §7).
+	_bankruptcy_strip.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_bankruptcy_strip.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_bankruptcy_strip.accept_event()
+			TurnBriefing.expand("alert:bankruptcy"))
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.62, 0.16, 0.14, 0.95)
 	sb.set_corner_radius_all(4)
@@ -210,14 +208,14 @@ func _add_bankruptcy_warning() -> void:
 	lbl.text = "Bankruptcy imminent"
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.clip_text = true
-	lbl.custom_minimum_size = Vector2(0, 0)
 	lbl.add_theme_font_size_override("font_size", 11)
 	lbl.add_theme_color_override("font_color", Color(1, 1, 1))
 	_bankruptcy_strip.add_child(lbl)
-	vbox.add_child(_bankruptcy_strip)
+	add_child(_bankruptcy_strip)
 
 	LoanState.loans_updated.connect(_refresh_bankruptcy_warning)
 	TurnManager.turn_resolution_completed.connect(_refresh_bankruptcy_warning)
+	money_widget.item_rect_changed.connect(_refresh_bankruptcy_warning)
 	_refresh_bankruptcy_warning()
 
 func _refresh_bankruptcy_warning(_ignored: Variant = null) -> void:
@@ -225,6 +223,11 @@ func _refresh_bankruptcy_warning(_ignored: Variant = null) -> void:
 		return
 	var runway: float = MatchState.money + LoanState.available_capacity()
 	_bankruptcy_strip.visible = not TurnManager.game_ended and runway < BANKRUPTCY_IMMINENT_RUNWAY
+	if _bankruptcy_strip.visible:
+		# Pin under the money widget, matching its width.
+		_bankruptcy_strip.global_position = money_widget.global_position + Vector2(0, money_widget.size.y + 2)
+		_bankruptcy_strip.custom_minimum_size = Vector2(money_widget.size.x, 0)
+		_bankruptcy_strip.size = Vector2(money_widget.size.x, _bankruptcy_strip.get_combined_minimum_size().y)
 
 func _on_money_changed(new_amount: float) -> void:
 	_refresh_money_display(new_amount)

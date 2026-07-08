@@ -6,7 +6,7 @@ extends Node
 ## following/ignoring them moves loyalty. Some choices are gated on a seat being
 ## filled by a TENURED advisor (hired on an earlier turn than the current one).
 ##
-## Sim-side only — the modal (decision_dialog.gd) is mounted lazily and calls
+## Sim-side only — the Turn Briefing (turn_briefing.gd) presents the queue and calls
 ## resolve(); all state mutations run through the sim APIs (Modifiers, MatchState,
 ## Construction, LoanState, EventScheduler).
 ##
@@ -19,7 +19,6 @@ extends Node
 ## (20). Story beats bypass the pulse: they arrive via reserve()/force_draw() and reveal
 ## at the next DECIDE. All scheduler state persists on a dedicated seeded RNG stream.
 
-const DecisionDialogScript := preload("res://scripts/decision_dialog.gd")
 
 # --- Pacing / balance knobs (balance-volatile: gameplay pacing, cash amounts in the
 # catalog below are placeholders per architecture rule 7 — tune via the harness). ---
@@ -61,7 +60,18 @@ var auto_resolve: bool = false
 
 var _rng := RandomNumberGenerator.new()
 var _rng_seed: int = 0
-var pending: Dictionary = {}          # {uid, def_id, target, turn_drawn}
+# The queue of decisions awaiting an answer (Turn Briefing shows all of them; each
+# entry: {uid, def_id, target, turn_drawn}). Capped; the pulse only pulls into an
+# empty queue, but story beats / forced draws can stack on top.
+const PENDING_QUEUE_CAP := 4
+var pending_queue: Array = []
+## Back-compat shim over the queue's head (tests + older callers read/assign a single
+## `pending`). Assigning a dict replaces the whole queue; assigning {} clears it.
+var pending: Dictionary:
+	get:
+		return pending_queue[0] if not pending_queue.is_empty() else {}
+	set(v):
+		pending_queue = [] if v.is_empty() else [v.duplicate(true)]
 var _cooldown_until: Dictionary = {}  # def_id -> earliest turn it may fire again
 var _fired_once: Dictionary = {}      # def_id -> true (once: definitions)
 var _recent_draws: Array = []         # ring buffer of {turn, id, category}
@@ -72,8 +82,6 @@ var _history: Array = []              # resolved decisions (politics-panel feed)
 var flags: Dictionary = {}            # e.g. "env_exempt:<instance_id>" -> true
 var _next_uid: int = 1
 
-var _dialog_layer: CanvasLayer = null
-var _dialog: Control = null
 
 
 # ---------------------------------------------------------------------------
@@ -309,8 +317,6 @@ func _ready() -> void:
 	_reseed(int(MatchState.match_rng_seed))
 	await get_tree().process_frame
 	MatchState.state_reset.connect(reset)
-	TurnManager.turn_advanced.connect(_on_turn_advanced)
-	SaveLoad.match_loaded.connect(_on_match_loaded)
 
 ## Wired centrally by TurnManager._wire_sim_listeners, AFTER Modifiers' pruning.
 func _on_phase_started(phase: int) -> void:
@@ -342,7 +348,6 @@ func reset() -> void:
 	_scheduled_pull = {}
 	_next_uid = 1
 	_reseed(int(MatchState.match_rng_seed))
-	_close_dialog()
 	pending_changed.emit()
 
 func _reseed(match_seed: int) -> void:
@@ -362,39 +367,35 @@ func _tick_narrative() -> void:
 	# Tutorial pocket: no decisions while the coach is running.
 	if Tutorial.active:
 		return
-	# A) Reveal a pulled decision whose lead time is up. Promoting to `pending` in
-	#    NARRATIVE of turn X opens the dialog at DECIDE of X+1 — so this fires when
-	#    X+1 == show_turn (== pull_turn + PULSE_LEAD_TURNS).
-	if not has_pending() and not _scheduled_pull.is_empty() \
+	# A) Reveal a pulled decision whose lead time is up. Promoting into the queue in
+	#    NARRATIVE of turn X surfaces it at DECIDE of X+1 — so this fires when
+	#    X+1 == show_turn (== pull_turn + PULSE_LEAD_TURNS). Decisions can stack (the
+	#    Briefing shows a queue), so a reveal is only held back by a full queue.
+	if not _scheduled_pull.is_empty() and pending_queue.size() < PENDING_QUEUE_CAP \
 			and turn + 1 >= int(_scheduled_pull.get("show_turn", 0)):
 		_promote_scheduled()
-		if auto_resolve:
-			auto_resolve_pending()
-		return
-	# Never pull while a decision is pending or already in flight.
-	if has_pending() or not _scheduled_pull.is_empty():
-		return
-	# B) Story reservation: fires immediately (no pulse lead); holds if one lands next turn.
-	if _reservations.has(turn):
+	# B) Story reservation: fires immediately (no pulse lead) and MAY stack on an
+	#    already-pending decision; holds only when the queue is full.
+	if _reservations.has(turn) and pending_queue.size() < PENDING_QUEUE_CAP:
 		var def_id := str(_reservations[turn])
 		_reservations.erase(turn)
-		if _draw(def_id) and auto_resolve:
-			auto_resolve_pending()
-		return
-	elif _reservations.has(turn + 1):
-		return
-	# C) Pulse: on a pulse turn, PULL an event now and reveal it PULSE_LEAD_TURNS later.
-	if turn >= FIRST_DECISION_TURN and turn >= _next_pulse_turn:
+		_draw(def_id)
+	# C) Pulse: only into a QUIET board — no pending decision, nothing in flight, and
+	#    no story beat landing next turn.
+	elif not has_pending() and _scheduled_pull.is_empty() \
+			and not _reservations.has(turn + 1) \
+			and turn >= FIRST_DECISION_TURN and turn >= _next_pulse_turn:
 		var picked := _pick_random_definition(turn)
 		if picked == "":
 			_next_pulse_turn = turn + 1          # nothing eligible; look again next turn
-			return
-		_pull(picked, turn)
-		_next_pulse_turn = turn + _pulse_interval(turn)
-		if auto_resolve:
-			# Headless/sweeps don't wait out the lead — reveal + resolve immediately.
-			_promote_scheduled()
-			auto_resolve_pending()
+		else:
+			_pull(picked, turn)
+			_next_pulse_turn = turn + _pulse_interval(turn)
+			if auto_resolve:
+				# Headless/sweeps don't wait out the lead — reveal immediately.
+				_promote_scheduled()
+	if auto_resolve:
+		auto_resolve_pending()
 
 # The gap to the next pulse, leaning deterministic: derived from how many events are
 # eligible right now (a fuller pool pulses sooner), plus one seeded turn of variation.
@@ -481,14 +482,16 @@ func _make_decision(def_id: String, turn: int) -> Dictionary:
 		_recent_draws.pop_front()
 	return d
 
-# Immediate draw (story reservations + force_draw/cheats): present at the next DECIDE,
-# no pulse lead.
+# Immediate draw (story reservations + force_draw/cheats): surfaces at the next DECIDE,
+# no pulse lead. Appends to the queue — decisions can stack up to PENDING_QUEUE_CAP.
 func _draw(def_id: String) -> bool:
+	if pending_queue.size() >= PENDING_QUEUE_CAP:
+		return false
 	var d := _make_decision(def_id, int(TurnManager.current_turn))
 	if d.is_empty():
 		return false
-	pending = d
-	decision_drawn.emit(pending)
+	pending_queue.append(d)
+	decision_drawn.emit(d)
 	pending_changed.emit()
 	return true
 
@@ -520,11 +523,12 @@ func _promote_scheduled() -> void:
 			pending_changed.emit()
 			return
 		_scheduled_pull["target"] = fresh
-	pending = _scheduled_pull.duplicate(true)
-	pending.erase("show_turn")
+	var d: Dictionary = _scheduled_pull.duplicate(true)
+	d.erase("show_turn")
 	_scheduled_pull = {}
-	print("[Decisions] presenting '%s' (turn %d)" % [str(pending.get("def_id", "")), int(TurnManager.current_turn)])
-	decision_drawn.emit(pending)
+	pending_queue.append(d)
+	print("[Decisions] presenting '%s' (turn %d)" % [str(d.get("def_id", "")), int(TurnManager.current_turn)])
+	decision_drawn.emit(d)
 	pending_changed.emit()
 
 # Is the drawn target still real? Instance/tile-scoped decisions need their entity to
@@ -540,10 +544,10 @@ func _target_still_valid(def: Dictionary, target: Dictionary) -> bool:
 		return MatchState.tile_buildings.has(tid) and not (MatchState.tile_buildings.get(tid, []) as Array).is_empty()
 	return true
 
-## Clear a pending/scheduled decision with no effects — the modal's safety valve when
-## it somehow has nothing to present, so the game can never soft-lock on it.
+## Clear every pending/scheduled decision with no effects — the presentation layer's
+## safety valve when it somehow has nothing to show, so the game can never soft-lock.
 func abort_pending() -> void:
-	pending = {}
+	pending_queue.clear()
 	_scheduled_pull = {}
 	pending_changed.emit()
 
@@ -562,17 +566,18 @@ func _emit_pulse_forewarn(turn: int) -> void:
 	})
 
 ## Debug/test hook: force a definition to draw now (respecting target selection).
+## Stacks onto the queue; only refuses when the queue is full.
 func force_draw(def_id: String) -> String:
 	if not DECISION_DEFINITIONS.has(def_id):
 		return "unknown decision '%s'" % def_id
-	if has_pending():
-		return "a decision is already pending (%s)" % str(pending.get("def_id", ""))
+	if pending_queue.size() >= PENDING_QUEUE_CAP:
+		return "decision queue is full (%d pending)" % pending_queue.size()
 	if not _draw(def_id):
 		return "no eligible target for '%s' right now" % def_id
 	if auto_resolve:
 		auto_resolve_pending()
-	else:
-		_maybe_present()   # cheat/test path: present immediately, not on turn_advanced
+	# Interactive path: decision_drawn/pending_changed reach the Turn Briefing, which
+	# auto-expands (a pending decision makes the turn critical).
 	return ""
 
 
@@ -727,14 +732,34 @@ func _building_label(instance_id: String) -> String:
 # Presentation view — everything the dialog needs, computed fresh each open.
 # ---------------------------------------------------------------------------
 
-## The pending decision expanded for display: definition text with the target
+# The queued decision with this uid ("" = the queue head).
+func _pending_by_uid(uid: String) -> Dictionary:
+	if uid == "":
+		return pending
+	for d in pending_queue:
+		if str(d.get("uid", "")) == uid:
+			return d
+	return {}
+
+## Every queued decision expanded for display (the Turn Briefing's decision items).
+func pending_views() -> Array:
+	var out: Array = []
+	for d in pending_queue:
+		var v := pending_view(str(d.get("uid", "")))
+		if not v.is_empty():
+			out.append(v)
+	return out
+
+## A pending decision expanded for display: definition text with the target
 ## substituted, per-choice availability/lock reasons, upfront cash costs and loan
 ## shortfalls, consequence lines, and eligible advocates with loyalty stakes.
-func pending_view() -> Dictionary:
-	if pending.is_empty():
+## uid "" = the queue head (back-compat with single-decision callers).
+func pending_view(uid: String = "") -> Dictionary:
+	var d := _pending_by_uid(uid)
+	if d.is_empty():
 		return {}
-	var def: Dictionary = DECISION_DEFINITIONS[str(pending.def_id)]
-	var target: Dictionary = pending.target
+	var def: Dictionary = DECISION_DEFINITIONS[str(d.def_id)]
+	var target: Dictionary = d.target
 	var scope := str(def.get("scope", "company"))
 	var follow_delta := LOYALTY_FOLLOW_COMPANY if scope == "company" else LOYALTY_FOLLOW_LOCAL
 	var choices: Array = []
@@ -758,7 +783,7 @@ func pending_view() -> Dictionary:
 			"advocate": _advocate_view(choice, follow_delta),
 		})
 	return {
-		"uid": str(pending.uid),
+		"uid": str(d.uid),
 		"title": str(def.get("title", "")),
 		"body": str(def.get("body", "")).replace("{target_name}", str(target.get("name", ""))),
 		"scope": scope,
@@ -816,23 +841,25 @@ func _upfront_cost(choice: Dictionary) -> float:
 # Resolution — the ONE mutation entry point the dialog calls.
 # ---------------------------------------------------------------------------
 
-func resolve(choice_id: String) -> String:
-	if pending.is_empty():
+## Resolve a queued decision by choice. uid "" = the queue head (back-compat).
+func resolve(choice_id: String, uid: String = "") -> String:
+	var d := _pending_by_uid(uid)
+	if d.is_empty():
 		return "no pending decision"
-	var def: Dictionary = DECISION_DEFINITIONS[str(pending.def_id)]
+	var def: Dictionary = DECISION_DEFINITIONS[str(d.def_id)]
 	var choice := _find_choice(def, choice_id)
 	if choice.is_empty():
 		return "unknown choice '%s'" % choice_id
 	var seat := str(choice.get("requires_seat", ""))
 	if seat != "" and not _seat_tenured(seat):
 		return "choice '%s' requires a seated, tenured %s" % [choice_id, _seat_name(seat)]
-	var target: Dictionary = pending.target
-	var view := pending_view()   # snapshot advocates BEFORE effects mutate state
+	var target: Dictionary = d.target
+	var view := pending_view(str(d.uid))   # snapshot advocates BEFORE effects mutate state
 	_execute_effects(choice.get("effects", []), target)
 	_apply_decision_loyalty(view, choice_id)
 	var record := {
-		"uid": str(pending.uid),
-		"def_id": str(pending.def_id),
+		"uid": str(d.uid),
+		"def_id": str(d.def_id),
 		"title": str(def.get("title", "")),
 		"choice_id": choice_id,
 		"choice_label": str(choice.get("label", "")),
@@ -842,8 +869,8 @@ func resolve(choice_id: String) -> String:
 	_history.append(record)
 	while _history.size() > HISTORY_CAP:
 		_history.pop_front()
-	var resolved := pending
-	pending = {}
+	var resolved := d.duplicate(true)
+	pending_queue.erase(d)
 	MatchState.request_toast("%s — %s" % [str(def.get("title", "")), str(choice.get("label", ""))], "info")
 	EventScheduler.emit_event({
 		"kind": "decision_resolved",
@@ -858,17 +885,19 @@ func resolve(choice_id: String) -> String:
 	pending_changed.emit()
 	return ""
 
-## Non-interactive path (tests, sweeps, skip tooling): resolve the definition's
-## default choice — loyalty deltas apply exactly as if the player picked it.
+## Non-interactive path (tests, sweeps, skip tooling): resolve EVERY queued decision's
+## default choice — loyalty deltas apply exactly as if the player picked them.
 func auto_resolve_pending() -> void:
-	if pending.is_empty():
-		return
-	var def: Dictionary = DECISION_DEFINITIONS[str(pending.def_id)]
-	var err := resolve(str(def.get("default_choice", "")))
-	if err != "":
-		push_warning("[DecisionState] auto-resolve failed: %s" % err)
-		pending = {}
-		pending_changed.emit()
+	var guard := 0
+	while not pending_queue.is_empty() and guard < PENDING_QUEUE_CAP + 1:
+		guard += 1
+		var d: Dictionary = pending_queue[0]
+		var def: Dictionary = DECISION_DEFINITIONS[str(d.def_id)]
+		var err := resolve(str(def.get("default_choice", "")), str(d.uid))
+		if err != "":
+			push_warning("[DecisionState] auto-resolve failed: %s" % err)
+			pending_queue.erase(d)
+			pending_changed.emit()
 
 func _find_choice(def: Dictionary, choice_id: String) -> Dictionary:
 	for choice: Dictionary in def.get("choices", []):
@@ -1097,34 +1126,11 @@ func _describe_effects(effects: Array, target: Dictionary) -> String:
 
 
 # ---------------------------------------------------------------------------
-# Dialog mounting (tutorial-engine precedent: an autoload lazily owns its UI;
-# the dialog itself is read-only and calls resolve()).
+# Presentation: owned by the Turn Briefing (turn_briefing.gd), which listens to
+# decision_drawn / pending_changed and auto-expands on critical turns. The old
+# standalone modal (decision_dialog.gd) is retired as a surface but kept on disk
+# for its view-robustness tests.
 # ---------------------------------------------------------------------------
-
-func _on_turn_advanced(_new_turn: int) -> void:
-	_maybe_present()
-
-func _on_match_loaded() -> void:
-	_maybe_present()
-
-func _maybe_present() -> void:
-	if not enabled or auto_resolve or pending.is_empty():
-		return
-	if DisplayServer.get_name() == "headless":
-		return
-	if _dialog_layer == null:
-		_dialog_layer = CanvasLayer.new()
-		_dialog_layer.layer = 130
-		add_child(_dialog_layer)
-	if _dialog == null:
-		_dialog = DecisionDialogScript.new()
-		_dialog_layer.add_child(_dialog)
-	print("[Decisions] present modal for '%s'" % str(pending.get("def_id", "")))
-	_dialog.open()
-
-func _close_dialog() -> void:
-	if _dialog != null and is_instance_valid(_dialog):
-		_dialog.hide()
 
 
 # ---------------------------------------------------------------------------
@@ -1136,7 +1142,7 @@ func export_state() -> Dictionary:
 	return {
 		"rng_seed": _rng_seed,
 		"rng_state": _rng.state,
-		"pending": pending.duplicate(true),
+		"pending_queue": pending_queue.duplicate(true),
 		"cooldown_until": _cooldown_until.duplicate(true),
 		"fired_once": _fired_once.duplicate(true),
 		"recent_draws": _recent_draws.duplicate(true),
@@ -1152,7 +1158,11 @@ func import_state(d: Dictionary) -> void:
 	_rng_seed = int(d.get("rng_seed", int(MatchState.match_rng_seed) ^ 0xDEC1DE5))
 	_rng.seed = _rng_seed
 	_rng.state = int(d.get("rng_state", _rng.state))
-	pending = (d.get("pending", {}) as Dictionary).duplicate(true)
+	pending_queue = (d.get("pending_queue", []) as Array).duplicate(true)
+	# Legacy saves carried a single "pending" dict — wrap it into the queue.
+	var legacy_pending: Dictionary = d.get("pending", {})
+	if pending_queue.is_empty() and not legacy_pending.is_empty():
+		pending_queue = [legacy_pending.duplicate(true)]
 	_cooldown_until = (d.get("cooldown_until", {}) as Dictionary).duplicate(true)
 	_fired_once = (d.get("fired_once", {}) as Dictionary).duplicate(true)
 	_recent_draws = (d.get("recent_draws", []) as Array).duplicate(true)

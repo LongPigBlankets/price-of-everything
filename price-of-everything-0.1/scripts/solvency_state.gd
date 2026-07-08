@@ -121,19 +121,20 @@ func _auto_bridge_negative_cash() -> void:
 		return
 	if not LoanState.take_loan(amount):
 		return
-	print("[Solvency] auto-bridge loan of £%.0f (capacity left £%.0f)" % [amount, LoanState.available_capacity()])
-	_show_bridge_popup(amount, LoanState.available_capacity())
-
-func _show_bridge_popup(amount: float, capacity_left: float) -> void:
-	if not enabled or DisplayServer.get_name() == "headless":
-		return
-	var layer := CanvasLayer.new()
-	layer.layer = 140
-	add_child(layer)
-	var popup: Control = load("res://scripts/bridge_loan_popup.gd").new()
-	layer.add_child(popup)
-	popup.continued.connect(func() -> void: layer.queue_free())
-	popup.open(amount, capacity_left)
+	var capacity_left: float = LoanState.available_capacity()
+	print("[Solvency] auto-bridge loan of £%.0f (capacity left £%.0f)" % [amount, capacity_left])
+	# Surfaces as a Turn Briefing info item (the standalone popup is retired) and in
+	# the bell — same event, one source of truth.
+	if enabled:
+		EventScheduler.emit_event({
+			"kind": "bridge_loan",
+			"severity": "info",
+			"title": "Bridge loan taken — £%.0f" % amount,
+			"body": "Your balance went into the red, so £%.0f was borrowed automatically to bridge you until next turn. Loan capacity left: £%.0f." % [amount, capacity_left],
+			"source": "solvency",
+			"persistent": false,
+			"auto_dismiss_turns": 3,
+		})
 
 
 # --- Distressed Asset Program (the DecisionState "accept" effect calls this) ----------

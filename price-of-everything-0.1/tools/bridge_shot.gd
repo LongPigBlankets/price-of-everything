@@ -13,17 +13,13 @@ func _ready() -> void:
 		cam.edge_pan_enabled = false
 
 	# Drive the runway (cash + borrowing room) under £100 so the strip shows.
+	# (The auto-bridge popup is retired — it now surfaces as a Turn Briefing info item;
+	# see tools/briefing_shot.tscn for that surface.)
 	MatchState.money = -40.0
 	MatchState.money_changed.emit(MatchState.money)
 	await _settle(6)
 	get_viewport().get_texture().get_image().save_png("/tmp/poe_bankruptcy_strip.png")
 	print("[bridge_shot] wrote /tmp/poe_bankruptcy_strip.png")
-
-	# The auto-bridge popup (representative numbers).
-	SolvencyState._show_bridge_popup(320.0, 60.0)
-	await _settle(12)
-	get_viewport().get_texture().get_image().save_png("/tmp/poe_bridge_popup.png")
-	print("[bridge_shot] wrote /tmp/poe_bridge_popup.png")
 	get_tree().quit(0)
 
 func _settle(n: int) -> void:

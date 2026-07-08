@@ -26,6 +26,9 @@ signal phase_started(phase: int)
 signal phase_completed(phase: int)
 signal turn_advanced(new_turn: int)
 signal game_ended_signal(reason: String)
+## The player tried to end the turn with unresolved decisions — the Turn Briefing
+## listens and expands to them (spec §4.3).
+signal commit_blocked_by_decisions
 
 # Per-phase human pacing delay. The whole-turn transition is this x the 5
 # resolution phases, so the default 0.1 gives a ~0.5s turn (compute is a flat
@@ -102,6 +105,7 @@ func commit_turn() -> void:
 		if DecisionState.auto_resolve:
 			DecisionState.auto_resolve_pending()
 		else:
+			commit_blocked_by_decisions.emit()
 			return
 	_run_resolution()
 

@@ -74,6 +74,7 @@ func export_snapshot() -> Dictionary:
 		"modifiers": Modifiers.export_state(),
 		"decisions": DecisionState.export_state(),
 		"solvency": SolvencyState.export_state(),
+		"briefing": TurnBriefing.export_state(),
 		"victory": VictoryState.export_state(),
 		"infrastructure": _collect_infrastructure(),
 		"roads": {
@@ -101,6 +102,7 @@ func import_snapshot(snap: Dictionary) -> void:
 	# Additive key (tolerant reader): pre-feature saves load a fresh decision state.
 	DecisionState.import_state(snap.get("decisions", {}))
 	SolvencyState.import_state(snap.get("solvency", {}))
+	TurnBriefing.import_state(snap.get("briefing", {}))
 	# Advisor-seat modifiers are derived, not saved: re-register them AFTER
 	# Modifiers.import_state (which replaces the registry wholesale and would
 	# otherwise wipe an earlier reconcile). See advisor-system-spec.md §12.1.

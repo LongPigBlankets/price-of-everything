@@ -232,6 +232,9 @@ func _ready() -> void:
 	_test_solvency_bankruptcy()
 	_test_decision_story_not_random()
 	_test_decision_pulse_pipeline()
+	_test_decision_queue_stacking()
+	_test_briefing_items_and_dismissal()
+	_test_briefing_event_mapping()
 	await _test_decision_view_never_empty()
 	_test_auto_bridge_loan()
 	if not _failed_names.is_empty():
@@ -8324,3 +8327,112 @@ func _test_auto_bridge_loan() -> void:
 	LoanState.loans = loans_before
 	LoanState._profit_history = profit_before
 	MatchState.money = money_before
+
+
+# --- Turn Briefing (docs/turn-briefing-panel-spec.md) -------------------------
+
+func _test_decision_queue_stacking() -> void:
+	# Several decisions can coexist (the Briefing's mini-menu case): stacking,
+	# uid-keyed resolve, the commit guard holding until the LAST one resolves, and
+	# auto_resolve clearing the whole queue.
+	var snap := _decision_board_snapshot()
+	DecisionState.reset()
+	MatchState.advisor_seats = {}
+	TurnManager.current_turn = 40
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
+	DecisionState.pending_queue = [
+		{"uid": "q1", "def_id": "brokers_offer",
+			"target": {"scope": "company", "good_id": "g_001", "name": "Coal"}, "turn_drawn": 40},
+		{"uid": "q2", "def_id": "land_deal",
+			"target": {"scope": "tile", "tile_id": "tile_1_1", "name": "Test Tile"}, "turn_drawn": 40},
+	]
+	_check(DecisionState.pending_views().size() == 2, "queue: two decisions expand to two views")
+	_check(str(DecisionState.pending_view("q2").get("uid", "")) == "q2",
+		"queue: pending_view resolves a specific uid")
+	# Resolving the SECOND leaves the first pending; commit stays guarded.
+	_check(DecisionState.resolve("keep", "q2") == "", "queue: uid-keyed resolve works")
+	_check(DecisionState.has_pending(), "queue: one decision still pending after resolving the other")
+	var turn_before := TurnManager.current_turn
+	TurnManager.commit_turn()
+	_check(TurnManager.current_turn == turn_before and not TurnManager.is_resolving,
+		"queue: commit_turn refuses while ANY decision is pending")
+	DecisionState.auto_resolve = true
+	DecisionState.auto_resolve_pending()
+	DecisionState.auto_resolve = false
+	_check(not DecisionState.has_pending(), "queue: auto_resolve clears the whole queue")
+	_decision_board_restore(snap)
+
+func _test_briefing_items_and_dismissal() -> void:
+	# The Briefing assembles decisions + live alerts, decisions are never dismissible,
+	# alerts dismiss quietly and re-surface only when the condition worsens.
+	var snap := _decision_board_snapshot()
+	var loans_before: Array = LoanState.loans.duplicate(true)
+	var profit_before: Array = LoanState._profit_history.duplicate()
+	var missing_before: Dictionary = Production.missing_by_building.duplicate(true)
+	DecisionState.reset()
+	TurnBriefing.reset()
+	TurnManager.current_turn = 40
+	# One pending decision + a bankruptcy-grade runway + one starved building.
+	DecisionState.pending_queue = [{"uid": "b1", "def_id": "brokers_offer",
+		"target": {"scope": "company", "good_id": "g_001", "name": "Coal"}, "turn_drawn": 40}]
+	LoanState.loans = []
+	LoanState._profit_history = [-10.0]
+	# Whatever collateral the shared test env carries, park cash so runway < £100.
+	MatchState.money = -(LoanState.available_capacity() + 50.0)
+	MatchState.buildings["tb_starved"] = {"instance_id": "tb_starved", "building_id": "b_001",
+		"recipe_id": "", "tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER}
+	Production.missing_by_building = {"tb_starved": [{"internal_name": "coal"}]}
+	TurnBriefing._rebuild_items()
+	var ids: Array = TurnBriefing.items().map(func(it) -> String: return str(it.id))
+	_check(ids.has("dec:b1"), "briefing: the pending decision becomes a decision item")
+	_check(ids.has("alert:bankruptcy"), "briefing: low runway raises the bankruptcy alert")
+	_check(ids.has("alert:starved"), "briefing: a starved building raises the starved alert")
+	_check(ids[0] == "dec:b1", "briefing: decisions sort first")
+	# Decisions are never dismissible; alerts are.
+	TurnBriefing.dismiss("dec:b1")
+	TurnBriefing._rebuild_items()
+	_check(TurnBriefing.items().any(func(it) -> bool: return str(it.id) == "dec:b1"),
+		"briefing: dismiss on a decision is a no-op (resolve-only)")
+	TurnBriefing.dismiss("alert:starved")
+	TurnBriefing._rebuild_items()
+	_check(not TurnBriefing.items().any(func(it) -> bool: return str(it.id) == "alert:starved"),
+		"briefing: a dismissed alert leaves the list")
+	# Same magnitude → stays quiet; worsened (another building starves) → re-surfaces.
+	MatchState.buildings["tb_starved2"] = {"instance_id": "tb_starved2", "building_id": "b_001",
+		"recipe_id": "", "tile_id": "tile_1_2", "owner": MatchState.LOCAL_PLAYER}
+	Production.missing_by_building["tb_starved2"] = [{"internal_name": "power"}]
+	TurnBriefing._rebuild_items()
+	_check(TurnBriefing.items().any(func(it) -> bool: return str(it.id) == "alert:starved"),
+		"briefing: the starved alert re-surfaces when the count worsens")
+	MatchState.buildings.erase("tb_starved")
+	MatchState.buildings.erase("tb_starved2")
+	Production.missing_by_building = missing_before
+	LoanState.loans = loans_before
+	LoanState._profit_history = profit_before
+	TurnBriefing.reset()
+	_decision_board_restore(snap)
+
+func _test_briefing_event_mapping() -> void:
+	# Bell events map into sections: research → info, unknown kinds → news; dismissing
+	# in the Briefing dismisses in the bell (one source of truth).
+	var snap := _decision_board_snapshot()
+	EventScheduler.reset()
+	TurnBriefing.reset()
+	EventScheduler.emit_event({"id": "tb_ev_res", "kind": "research_unlocked",
+		"title": "Unlocked: Test", "body": "x", "persistent": false})
+	EventScheduler.emit_event({"id": "tb_ev_news", "kind": "carbon_announcement",
+		"title": "Carbon tax announced", "body": "x", "severity": "warning", "persistent": true})
+	TurnBriefing._rebuild_items()
+	var by_id := {}
+	for it in TurnBriefing.items():
+		by_id[str(it.id)] = it
+	_check(by_id.has("ev:tb_ev_res") and str(by_id["ev:tb_ev_res"].section) == "info",
+		"briefing: research events land in the info section")
+	_check(by_id.has("ev:tb_ev_news") and str(by_id["ev:tb_ev_news"].section) == "news",
+		"briefing: unknown announcement kinds land in the news section")
+	TurnBriefing.dismiss("ev:tb_ev_news")
+	_check(not EventScheduler._active.has("tb_ev_news"),
+		"briefing: dismissing an event item dismisses it in the bell too")
+	EventScheduler.reset()
+	TurnBriefing.reset()
+	_decision_board_restore(snap)
