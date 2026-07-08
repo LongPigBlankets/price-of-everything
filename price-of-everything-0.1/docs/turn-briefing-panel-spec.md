@@ -1,6 +1,10 @@
 # Turn Briefing panel — design spec
 
-Status: DRAFT for owner review · 2026-07-08
+Status: BUILT 2026-07-08 (branch turn-briefing) from the approved React prototype
+("Turn Briefing (offline).html"). Engine: scripts/turn_briefing.gd (autoload) +
+turn_briefing_strip.gd + turn_briefing_panel.gd; DecisionState grew pending_queue
+(cap 4, uid-keyed resolve). Shot tool: tools/briefing_shot.tscn. The standalone
+decision modal + bridge popup are retired as surfaces.
 Related: `docs/decision-events-spec.md` (reworks its presentation surface, §7),
 `scripts/event_scheduler.gd`, `scripts/notification_bell.gd`, `scripts/decision_state.gd`,
 `scripts/solvency_state.gd`, `scripts/production.gd`
