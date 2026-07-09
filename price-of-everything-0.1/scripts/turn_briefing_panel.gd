@@ -491,12 +491,18 @@ func _choice_card(view: Dictionary, choice: Dictionary) -> Control:
 		lock.text = "🔒 %s" % str(choice.get("lock_reason", ""))
 		vb.add_child(lock)
 
+	# An expanding spacer eats the leftover height so the CTA anchors to the card
+	# bottom, regardless of how many text rows precede it (uniform across choices).
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	spacer.custom_minimum_size = Vector2(0, DS.SP["SM"])
+	vb.add_child(spacer)
+
 	var choose := Button.new()
 	choose.theme_type_variation = "Primary"
 	choose.focus_mode = Control.FOCUS_NONE
 	choose.text = "Choose"
 	choose.disabled = not available
-	choose.size_flags_vertical = Control.SIZE_SHRINK_END
 	choose.custom_minimum_size = Vector2(0, 32)
 	var uid := str(view.uid)
 	var cid := str(choice.id)
