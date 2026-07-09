@@ -178,6 +178,12 @@ func _close_panel() -> void:
 	_panel = null
 	_panel_layer = null
 
+## Called by the game-over panel's "Return to Main Menu": tear down the (autoload-
+## owned) game-over layer, then change scene, so the overlay doesn't survive.
+func return_to_main_menu(menu_scene: String) -> void:
+	_close_panel()
+	get_tree().change_scene_to_file(menu_scene)
+
 ## Debug/test entry: force the end-state now (the `bankrupt` cheat).
 func force_bankruptcy() -> void:
 	_declare_bankruptcy()

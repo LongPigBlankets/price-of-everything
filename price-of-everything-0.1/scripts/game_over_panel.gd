@@ -132,8 +132,10 @@ func _apply_series() -> void:
 	_chart.set_series(turns, values, str(meta.get("label", "")), bool(meta.get("signed", false)), col)
 
 func _on_return() -> void:
-	# Fresh scene — the main menu's New Game resets all sim autoloads.
-	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
+	# SolvencyState owns this panel's CanvasLayer (an autoload child that survives the
+	# scene change), so it must free it as it swaps scenes — otherwise the game-over
+	# screen lingers over the loaded main menu.
+	SolvencyState.return_to_main_menu(MAIN_MENU_SCENE)
 
 
 # A minimal line chart: axis frame, an optional zero baseline, the series polyline,

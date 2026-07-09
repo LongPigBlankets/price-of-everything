@@ -28,6 +28,16 @@ const CATEGORY_COLORS := {
 	"environment": Color("#5FBF6B"), "infrastructure": Color("#7FA8CC"),
 	"land": Color("#B08D57"), "tech": Color("#6BC7C7"), "story": Color("#CDB98A"),
 }
+# Off-white used for non-critical strip/menu icons (critical items keep their colour).
+const OFF_WHITE := Color("#DCE3EC")
+const CATEGORY_ICONS := {
+	"labour": "users", "market": "coin", "environment": "leaf",
+	"infrastructure": "gauge", "land": "box", "tech": "beaker", "story": "flag",
+}
+const ICON_GLYPHS := {
+	"warn": "⚠", "box": "▦", "beaker": "⚗", "coin": "£", "truck": "➤",
+	"flag": "⚑", "hammer": "⚒", "users": "☰", "leaf": "❧", "gauge": "◔", "scale": "⚖",
+}
 static func severity_color(severity: String) -> Color:
 	match severity:
 		"critical": return DS.PALETTE["DANGER"]
@@ -35,6 +45,23 @@ static func severity_color(severity: String) -> Color:
 		_: return DS.PALETTE["TEXT_MUTED"]
 static func category_color(category: String) -> Color:
 	return CATEGORY_COLORS.get(category, Color("#CDB98A"))
+
+# An item is "critical" (coloured icon) if it's a decision, a live alert, or a news
+# announcement; routine info (research, sales, completions) is off-white.
+static func item_is_critical(it: Dictionary) -> bool:
+	return str(it.get("kind", "")) == "decision" \
+		or str(it.get("section", "")) == "alerts" or str(it.get("section", "")) == "news"
+static func item_glyph(it: Dictionary) -> String:
+	var icon := str(it.get("icon", ""))
+	if icon == "" and str(it.get("kind", "")) == "decision":
+		icon = str(CATEGORY_ICONS.get(str(it.get("category", "")), "scale"))
+	return str(ICON_GLYPHS.get(icon, "◆"))
+static func item_display_color(it: Dictionary) -> Color:
+	if not item_is_critical(it):
+		return OFF_WHITE
+	if str(it.get("kind", "")) == "decision":
+		return category_color(str(it.get("category", "")))
+	return severity_color(str(it.get("severity", "info")))
 
 signal items_changed()
 signal expanded_changed(expanded: bool)
@@ -212,6 +239,18 @@ const _EVENT_SECTIONS := {
 	"bankruptcy_warning": "",     # superseded by the live runway alert
 	"building_starved": "",       # superseded by the aggregated live alert
 }
+# Kind → icon glyph key (see ICON_GLYPHS). Announcement kinds we don't know fall back
+# to the flag in _event_item.
+const _EVENT_ICONS := {
+	"research_unlocked": "beaker",
+	"sales_aggregate": "truck",
+	"construction_completed": "hammer",
+	"decision_resolved": "scale",
+	"decision_incoming": "scale",
+	"bridge_loan": "coin",
+	"deposit_exhausted": "warn",
+	"tile_at_capacity": "gauge",
+}
 
 func _event_item(ev: Dictionary) -> Dictionary:
 	var kind := str(ev.get("kind", ""))
@@ -222,6 +261,7 @@ func _event_item(ev: Dictionary) -> Dictionary:
 		"id": "ev:%s" % str(ev.id), "kind": "event", "section": section,
 		"severity": str(ev.get("severity", "info")),
 		"dismissible": true, "event_id": str(ev.id),
+		"icon": str(_EVENT_ICONS.get(kind, "flag")),
 		"title": str(ev.get("title", "")),
 		"body": str(ev.get("body", "")),
 		"deeplink": ev.get("deeplink", {}),

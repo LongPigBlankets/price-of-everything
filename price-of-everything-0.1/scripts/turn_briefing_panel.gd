@@ -7,13 +7,10 @@ extends Control
 
 const MENU_WIDTH := 224.0
 const CARD_MAX_W := 900.0
-const CARD_MAX_H := 620.0
+const CARD_MAX_H := 640.0
 const MARGIN := 64.0
-
-const _ICON_GLYPHS := {
-	"warn": "⚠", "box": "▦", "beaker": "⚗", "coin": "£", "truck": "➤",
-	"flag": "⚑", "hammer": "🔨", "users": "⚖", "leaf": "❧", "gauge": "◔",
-}
+const CHOICE_MIN_W := 190.0
+const CHOICE_MIN_H := 300.0   # taller decision cards
 
 var _card: PanelContainer
 var _menu_list: VBoxContainer
@@ -150,8 +147,10 @@ func _ready() -> void:
 	visibility_changed.connect(_on_visibility_changed)
 
 func open(select_id: String = "") -> void:
-	if select_id != "":
-		_sel = select_id
+	# On open, always land on the first outstanding decision unless the caller asked
+	# for a specific item (e.g. the bankruptcy strip). Clearing _sel makes
+	# _ensure_selection re-pick, and it prefers decisions first.
+	_sel = select_id
 	_ensure_selection()
 	_fit()
 	_rebuild()
@@ -294,7 +293,7 @@ func _menu_row(it: Dictionary) -> Control:
 
 	var tint := _item_color(it)
 	var chip := Label.new()
-	chip.text = str(_ICON_GLYPHS.get(str(it.get("icon", "")), "⚖" if str(it.kind) == "decision" else "◆"))
+	chip.text = TurnBriefing.item_glyph(it)
 	chip.custom_minimum_size = Vector2(20, 0)
 	chip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	chip.add_theme_color_override("font_color", tint)
@@ -348,7 +347,7 @@ func _detail_head(it: Dictionary, tag_text: String, tag_color: Color) -> Control
 	hb.add_theme_constant_override("separation", DS.SP["SM"])
 	var tint := _item_color(it)
 	var chip := Label.new()
-	chip.text = str(_ICON_GLYPHS.get(str(it.get("icon", "")), "⚖" if str(it.kind) == "decision" else "◆"))
+	chip.text = TurnBriefing.item_glyph(it)
 	chip.add_theme_font_size_override("font_size", 18)
 	chip.add_theme_color_override("font_color", tint)
 	hb.add_child(chip)
@@ -395,7 +394,7 @@ func _choice_card(view: Dictionary, choice: Dictionary) -> Control:
 	var card := PanelContainer.new()
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	card.custom_minimum_size = Vector2(170, 0)
+	card.custom_minimum_size = Vector2(CHOICE_MIN_W, CHOICE_MIN_H)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color("#0A1623")
 	sb.border_color = Color("#1C3149")
