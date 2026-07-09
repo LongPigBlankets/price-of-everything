@@ -529,14 +529,29 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 	# from paying tax or dividends.
 	var pre_tax_profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
 	var taxable_profit := maxf(0.0, pre_tax_profit)
+	var revenue := float(summary.get("goods_sales_revenue", 0.0)) + float(summary.get("power_sales_revenue", 0.0))
+	var cfo := MatchState.cfo_seated()
 	if taxable_profit <= 0.0:
 		summary.taxes_paid = 0.0
 		summary.dividends_paid = 0.0
+		# CFO tax-loss carry-forward: age the existing credit windows, then bank a fresh
+		# credit off this losing turn's revenue (banked after aging so it keeps 5 turns).
+		MatchState.cfo_age_tax_credits()
+		if cfo:
+			summary["tax_credit_banked"] = MatchState.cfo_bank_tax_credit(revenue)
 		return pre_tax_profit
 
 	# A Government Affairs advisor can cut the tax rate via the "tax_rate" domain.
 	var tax_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("tax_rate", "*", {}).get("net", 0.0)) / 100.0)
 	var tax: float = minf(taxable_profit, taxable_profit * EconomyConfig.TAX_RATE * tax_mult)
+	# CFO tax-loss carry-forward: spend banked credits to shave the bill, then tick the
+	# windows down. The player sees this as a simply lower tax amount.
+	if cfo:
+		var credit_applied := MatchState.cfo_apply_tax_credit(tax)
+		if credit_applied > 0.0:
+			tax = maxf(0.0, tax - credit_applied)
+			summary["tax_credit_applied"] = credit_applied
+	MatchState.cfo_age_tax_credits()
 	if tax > 0.0:
 		MatchState.add_money(-tax)
 		summary.taxes_paid = tax
@@ -1193,6 +1208,8 @@ func _calculate_maintenance_cost(building: Dictionary) -> float:
 	# Maintenance modifiers (e.g. Combined Heat & Power thermal-battery retrofit).
 	var bid: String = str(building.get("building_id", ""))
 	var maint_cost := Modifiers.apply("maintenance", bid, maint_val, {"building_id": bid, "instance_id": str(building.get("instance_id", ""))})
+	# Empire-wide workforce penalty (Lax Safety neglect ramps upkeep up to +100%).
+	maint_cost *= MatchState.workforce_maintenance_multiplier()
 	return maint_cost * BuildingLevels.mult("maint", int(building.get("level", 1)))
 
 # Power-consumption modifiers (Pulverised Carbon Injection, Scrap Preheating,

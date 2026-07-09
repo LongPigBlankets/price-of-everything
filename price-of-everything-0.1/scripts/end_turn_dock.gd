@@ -49,6 +49,7 @@ const RIM := Color("#f4e6c0")              # cream metallic rim
 const C_TITLE := Color("#dce7f2")
 const C_BODY := Color("#aebccd")
 const C_MUTED := Color("#8298ac")
+const C_FIN_LABEL := Color("#c8d6e6")       # budget line-item labels — off-white for contrast
 const C_DIVIDER := Color("#22384f")
 const C_LOSS := Color("#e6917f")
 const C_GAIN := Color("#7fc98a")
@@ -812,7 +813,7 @@ func _solid(n: int, col: Color) -> PackedColorArray:
 
 
 func _fin_line(x0: float, x1: float, y: float, k: String, v: float, fs := 12) -> void:
-	_text(F_BODY, Vector2(x0, y), k, fs, C_MUTED)
+	_text(F_BODY, Vector2(x0, y), k, fs, C_FIN_LABEL)
 	var col := C_ZERO if absf(v) < 0.005 else (C_LOSS if v < 0 else C_GAIN)
 	var s := _money(v)
 	_text(F_SEMI, Vector2(x1 - _measure(F_SEMI, s, fs), y), s, fs, col)

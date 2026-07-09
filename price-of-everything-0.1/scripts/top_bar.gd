@@ -20,16 +20,31 @@ var _flashing := false
 var _save_button: Button
 var _bankruptcy_strip: PanelContainer
 
+const CFOIntroPopup := preload("res://scripts/cfo_intro_popup.gd")
+const CFO_INTRO_BODY := "I saw we weren't being tax efficient so now I've filed for a tax credit based on our losses. I can only make it work for 5 turns at a time but it should mean we can reduce our tax bill based on recent losses. See, and you worried about keeping me around…"
+
 func _ready() -> void:
 	money_widget.pressed.connect(_on_money_clicked)
 	MatchState.money_changed.connect(_on_money_changed)
 	MatchState.build_rejected_no_funds.connect(_on_build_rejected_no_funds)
+	MatchState.cfo_tax_credit_filed.connect(_on_cfo_tax_credit_filed)
 	_refresh_money_display(MatchState.money)
 	_add_victory_widget()
 	_add_council_widget()
 	_add_save_button()
 	_add_notification_bell()
 	_add_bankruptcy_warning()
+
+# The first time the CFO files a tax-loss credit, show their one-time explainer in the
+# top-left. The CanvasLayer is a child of the top bar, so it's freed with the HUD.
+func _on_cfo_tax_credit_filed(_amount: float) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var cfo_id: String = MatchState.get_advisor_in_seat("cfo")
+	var cfo: Dictionary = MatchState.get_advisor(cfo_id) if cfo_id != "" else {}
+	var popup := CFOIntroPopup.new()
+	add_child(popup)
+	popup.show_for(cfo, CFO_INTRO_BODY)
 
 func _add_victory_widget() -> void:
 	# The victory score widget sits next to MoneyWidget at the left of the top-bar

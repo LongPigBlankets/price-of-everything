@@ -237,6 +237,7 @@ func _ready() -> void:
 	_test_briefing_event_mapping()
 	await _test_decision_view_never_empty()
 	_test_auto_bridge_loan()
+	_test_cfo_tax_credit()
 	if not _failed_names.is_empty():
 		print("FAILED TESTS:")
 		for failed_name in _failed_names:
@@ -4844,7 +4845,14 @@ func _test_victory_autarkic() -> void:
 	VictoryState.autarkic_streak = 4
 	VictoryState._tick()
 	_check(VictoryState.autarkic_streak == 5, "victory autarkic: a move/sale-only turn keeps the streak (4 -> 5)")
-	# Progress ramps from streak 10 to 30.
+	# Scale gate: the track scores 0 until lifetime production clears AUTARKIC_MIN_UNITS,
+	# even with a maxed streak.
+	VictoryState.autarkic_streak = 40
+	VictoryState.produced_units_lifetime = VictoryState.AUTARKIC_MIN_UNITS - 1
+	_check(absf(VictoryState._live_progress("autarkic")) < 0.001, "victory autarkic: gated to 0 below the 10k-unit floor despite a maxed streak")
+	VictoryState.produced_units_lifetime = VictoryState.AUTARKIC_MIN_UNITS
+	_check(absf(VictoryState._live_progress("autarkic") - 1.0) < 0.001, "victory autarkic: scores once the units floor is cleared")
+	# Progress ramps from streak 10 to 30 (units gate cleared above).
 	VictoryState.autarkic_streak = 10
 	_check(absf(VictoryState._live_progress("autarkic")) < 0.001, "victory autarkic: progress 0 at streak 10")
 	VictoryState.autarkic_streak = 20
@@ -4853,6 +4861,11 @@ func _test_victory_autarkic() -> void:
 	_check(absf(VictoryState._live_progress("autarkic") - 1.0) < 0.001, "victory autarkic: progress caps at streak 30")
 	VictoryState.autarkic_streak = 40
 	_check(absf(VictoryState._live_progress("autarkic") - 1.0) < 0.001, "victory autarkic: progress stays capped above 30")
+	# Accumulator sums this turn's produced units.
+	VictoryState.produced_units_lifetime = 0
+	VictoryState._last_summary = {"produced": {"coal": 30, "iron_ore": 20}}
+	VictoryState._tick()
+	_check(VictoryState.produced_units_lifetime == 50, "victory autarkic: _tick accumulates produced units (30+20)")
 
 func _test_victory_logistics() -> void:
 	VictoryState.reset()
@@ -8327,6 +8340,50 @@ func _test_auto_bridge_loan() -> void:
 	LoanState.loans = loans_before
 	LoanState._profit_history = profit_before
 	MatchState.money = money_before
+
+func _test_cfo_tax_credit() -> void:
+	# CFO tax-loss carry-forward: a losing turn banks 5% of revenue, usable oldest-first
+	# to shave the tax bill over the next 5 turns, then expiring.
+	var seats_before: Dictionary = MatchState.advisor_seats.duplicate(true)
+	MatchState.cfo_tax_credit_pool = []
+	MatchState.cfo_tax_credit_intro_shown = false
+	MatchState.advisor_seats = {"cfo": "vera"}
+	_check(MatchState.cfo_seated(), "cfo credit: a seated CFO is detected")
+
+	# Bank 5% of £1000 = £50; the one-time explainer fires exactly once.
+	var fires := [0]
+	var cb := func(_a: float) -> void: fires[0] += 1
+	MatchState.cfo_tax_credit_filed.connect(cb)
+	var banked := MatchState.cfo_bank_tax_credit(1000.0)
+	_check(absf(banked - 50.0) < 0.001, "cfo credit: banks 5% of revenue (£1000 → £50)")
+	_check(fires[0] == 1, "cfo credit: explainer fires on the first filing")
+	MatchState.cfo_bank_tax_credit(500.0)   # £25; a later filing does NOT re-fire the explainer
+	_check(fires[0] == 1, "cfo credit: explainer is one-time only")
+	MatchState.cfo_tax_credit_filed.disconnect(cb)
+
+	# Pool = £50 + £25 = £75. Apply against a £40 tax bill: spends £40 (oldest first).
+	_check(absf(MatchState.cfo_tax_credit_available() - 75.0) < 0.001, "cfo credit: pool totals both filings")
+	var applied := MatchState.cfo_apply_tax_credit(40.0)
+	_check(absf(applied - 40.0) < 0.001, "cfo credit: applies up to the tax owed")
+	_check(absf(MatchState.cfo_tax_credit_available() - 35.0) < 0.001, "cfo credit: pool drops by the amount spent")
+
+	# Asking for more than what's left returns only the remainder and empties the pool.
+	var rest := MatchState.cfo_apply_tax_credit(1000.0)
+	_check(absf(rest - 35.0) < 0.001, "cfo credit: caps at the remaining credit")
+	_check(MatchState.cfo_tax_credit_pool.is_empty(), "cfo credit: pool empties once fully spent")
+
+	# Expiry: a fresh credit survives 4 agings and expires on the 5th.
+	MatchState.cfo_tax_credit_pool = []
+	MatchState.cfo_bank_tax_credit(2000.0)   # £100, turns_left 5
+	for _i in range(4):
+		MatchState.cfo_age_tax_credits()
+	_check(MatchState.cfo_tax_credit_available() > 0.0, "cfo credit: survives 4 turns")
+	MatchState.cfo_age_tax_credits()
+	_check(MatchState.cfo_tax_credit_pool.is_empty(), "cfo credit: expires after the 5-turn window")
+
+	MatchState.cfo_tax_credit_pool = []
+	MatchState.cfo_tax_credit_intro_shown = false
+	MatchState.advisor_seats = seats_before
 
 
 # --- Turn Briefing (docs/turn-briefing-panel-spec.md) -------------------------

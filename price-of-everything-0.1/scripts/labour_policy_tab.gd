@@ -153,7 +153,7 @@ func _build_safety(parent: Control) -> void:
 	var group := [MatchState.WORKFORCE_POLICY_LAX_SAFETY, MatchState.WORKFORCE_POLICY_STANDARD_SAFETY, MatchState.WORKFORCE_POLICY_STRICT_SAFETY]
 	parent.add_child(_spectrum("Safety standards", [
 		{"key": "minimal", "label": "Minimal",
-			"caption": "Output +10% · labour costs creep +0.5%/turn while active, up to +15%.",
+			"caption": "Output +5% · labour +0.5%/turn (max +15%) · maintenance +5%/turn while active, up to +100%.",
 			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_LAX_SAFETY)},
 		{"key": "standard", "label": "Standard",
 			"caption": "Regulation compliance — no output or labour cost change.",

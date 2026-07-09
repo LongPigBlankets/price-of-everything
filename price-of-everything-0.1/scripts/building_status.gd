@@ -329,7 +329,7 @@ static func workforce_output_modifier_parts(turn_number: int = -1) -> Array:
 	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_STRICT_SAFETY):
 		parts.append({"pct": -10.0, "label": "Strict Safety Procedures"})
 	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_LAX_SAFETY):
-		parts.append({"pct": 10.0, "label": "Lax Safety Procedures"})
+		parts.append({"pct": 5.0, "label": "Lax Safety Procedures"})
 	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_BONUS) and turn % 10 == 0:
 		parts.append({"pct": 20.0, "label": "Annual Bonus"})
 	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):

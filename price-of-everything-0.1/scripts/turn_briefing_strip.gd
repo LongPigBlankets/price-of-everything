@@ -4,11 +4,17 @@ extends PanelContainer
 ## alerts, news), off-white when routine (research, sales, completions) — up to a cap,
 ## then a "+k", then a chevron. Clicking anywhere expands the panel. Hidden when empty.
 
-const STRIP_TOP := 58.0
-const MIN_W := 200.0
+# Nested INTO the top bar (which spans y=0..58): the strip's squared bottom edge sits
+# flush with the bar's bottom border so it reads as part of the bar, not a plate floating
+# below it.
+const STRIP_TOP := 8.0
+# Fixed footprint: the strip never resizes on refresh — it just swaps the icons —
+# so it can't flicker/expand for a frame while the turn resolves. Content is capped
+# to always fit within FIXED_W.
+const FIXED_W := 200.0
 const MIN_H := 50.0
-const CELL := 30.0
-const MAX_ICONS := 6
+const CELL := 26.0
+const MAX_ICONS := 4
 
 var _row: HBoxContainer
 var _pulse_tween: Tween = null
@@ -17,12 +23,18 @@ func _ready() -> void:
 	theme = DS.theme
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	custom_minimum_size = Vector2(MIN_W, MIN_H)
+	custom_minimum_size = Vector2(FIXED_W, MIN_H)
+	clip_contents = true   # never let a stray overflow grow the fixed footprint
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color("#0C1D30")
 	sb.border_color = Color(Color("#CDB98A"), 0.4)
 	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(10)
+	# Rounded top, squared (cut-off) bottom — matches the notched-plate aesthetic used on
+	# tabs/plates elsewhere, and makes the strip read as a tab hanging from the top bar.
+	sb.corner_radius_top_left = 10
+	sb.corner_radius_top_right = 10
+	sb.corner_radius_bottom_left = 0
+	sb.corner_radius_bottom_right = 0
 	sb.content_margin_left = 14
 	sb.content_margin_right = 12
 	sb.content_margin_top = 7
@@ -35,6 +47,7 @@ func _ready() -> void:
 	add_child(_row)
 	gui_input.connect(_on_input)
 	get_viewport().size_changed.connect(_reposition)
+	call_deferred("_reposition")   # position once; fixed width means it never moves on refresh
 
 func refresh() -> void:
 	for c in _row.get_children():
@@ -53,7 +66,7 @@ func refresh() -> void:
 	chevron.text = "▾"
 	chevron.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
 	_row.add_child(chevron)
-	call_deferred("_reposition")
+	# No reposition here: the width is fixed, so refresh only swaps icons in place.
 
 ## One-shot red glow when a new critical item arrives while collapsed.
 func pulse() -> void:
@@ -101,12 +114,13 @@ func _icon(it: Dictionary) -> Control:
 	return cell
 
 func _reposition() -> void:
+	# Constant footprint centred under the top bar — depends only on the viewport
+	# width, never on the item count, so it holds steady while items swap.
 	var vp := get_viewport()
 	if vp == null:
 		return
-	var w: float = maxf(MIN_W, get_combined_minimum_size().x)
-	size = Vector2(w, MIN_H)
-	position = Vector2((vp.get_visible_rect().size.x - w) / 2.0, STRIP_TOP)
+	size = Vector2(FIXED_W, MIN_H)
+	position = Vector2((vp.get_visible_rect().size.x - FIXED_W) / 2.0, STRIP_TOP)
 
 func _on_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:

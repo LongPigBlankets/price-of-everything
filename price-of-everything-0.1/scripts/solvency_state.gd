@@ -126,6 +126,11 @@ func _auto_bridge_negative_cash() -> void:
 	# Surfaces as a Turn Briefing info item (the standalone popup is retired) and in
 	# the bell — same event, one source of truth.
 	if enabled:
+		# Red toast in the bottom-centre warning stack — lands directly under the
+		# "Cash is in the red" toast that fired earlier this turn.
+		MatchState.request_toast(
+			"Loan taken to cover the deficit: £%.0f, £%.0f loan capacity left." % [amount, capacity_left],
+			"warning")
 		EventScheduler.emit_event({
 			"kind": "bridge_loan",
 			"severity": "info",

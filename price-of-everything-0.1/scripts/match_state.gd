@@ -238,6 +238,14 @@ var advisor_mission_policies: Array = []           # workforce policies unlocked
 signal advisor_mission_completed(advisor_id: String, mission_index: int, reward_label: String)
 var advisor_loyalty: Dictionary = {}               # advisor_id -> float [-10, 10] (employed only)
 var advisor_hired_turn: Dictionary = {}            # advisor_id -> turn hired (decision-gate tenure)
+# CFO tax-loss carry-forward: while a CFO is seated, a losing turn banks a credit worth
+# CFO_TAX_CREDIT_RATE of that turn's revenue, usable to reduce the tax bill over the next
+# CFO_TAX_CREDIT_TURNS turns. Each entry is {amount: float, turns_left: int}.
+const CFO_TAX_CREDIT_RATE := 0.05
+const CFO_TAX_CREDIT_TURNS := 5
+var cfo_tax_credit_pool: Array = []                # [{amount, turns_left}] oldest first
+var cfo_tax_credit_intro_shown: bool = false       # the one-time CFO explainer has fired
+signal cfo_tax_credit_filed(amount: float)         # fired once, when the FIRST credit is banked
 var _advisor_walk_streak: Dictionary = {}          # advisor_id -> consecutive turns at/below walk threshold
 var _agenda_flags: Dictionary = {}                 # event_tag -> true; set during the turn, read+cleared each turn
 var _agenda_grid_sell_streak := 0
@@ -428,6 +436,9 @@ signal output_stockpile_destination_changed(instance_id: String, tile_id: String
 signal stockpile_market_sale_queue_changed(tile_id: String)
 signal stockpile_market_sale_completed(sale_record: Dictionary)
 signal sell_surplus_changed(tile_id: String)
+## A standing recurring move / sell / bulk-sell was added or cancelled — the Market
+## panel's Movements/Sales lists refresh on this.
+signal recurring_orders_changed
 signal transport_shipments_changed
 signal tile_land_owned_changed(tile_id: String)
 ## Battery cells loaded/unloaded on a tile changed (drives the tile-view power section + firming).
@@ -2143,6 +2154,8 @@ func reset() -> void:
 	recurring_sells.clear()
 	recurring_bulk_sells.clear()
 	recurring_buys.clear()
+	cfo_tax_credit_pool.clear()
+	cfo_tax_credit_intro_shown = false
 	transaction_log.clear()
 	move_log.clear()
 	input_tile_only.clear()
@@ -2202,6 +2215,8 @@ func export_state() -> Dictionary:
 		"fired_advisor_cooldowns": fired_advisor_cooldowns.duplicate(true),
 		"advisor_loyalty": advisor_loyalty.duplicate(true),
 		"advisor_hired_turn": advisor_hired_turn.duplicate(true),
+		"cfo_tax_credit_pool": cfo_tax_credit_pool.duplicate(true),
+		"cfo_tax_credit_intro_shown": cfo_tax_credit_intro_shown,
 		"advisor_walk_streak": _advisor_walk_streak.duplicate(true),
 		"advisor_missions_completed": advisor_missions_completed.duplicate(true),
 		"advisor_mission5_streak": _advisor_mission5_streak.duplicate(true),
@@ -2263,6 +2278,8 @@ func import_state(d: Dictionary) -> void:
 	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
 	recruited_advisor_ids = _sanitize_advisor_ids(d.get("recruited_advisor_ids", STARTING_TRIO))
 	advisor_loyalty = (d.get("advisor_loyalty", {}) as Dictionary).duplicate(true)
+	cfo_tax_credit_pool = (d.get("cfo_tax_credit_pool", []) as Array).duplicate(true)
+	cfo_tax_credit_intro_shown = bool(d.get("cfo_tax_credit_intro_shown", false))
 	_advisor_walk_streak = (d.get("advisor_walk_streak", {}) as Dictionary).duplicate(true)
 	advisor_missions_completed = (d.get("advisor_missions_completed", {}) as Dictionary).duplicate(true)
 	_advisor_mission5_streak = (d.get("advisor_mission5_streak", {}) as Dictionary).duplicate(true)
@@ -2689,6 +2706,30 @@ func preview_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary
 
 func add_recurring_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> void:
 	recurring_moves.append({"source": source_tile, "dest": dest_tile, "goods": goods_qtys.duplicate(true), "turn_started": _ledger_turn()})
+	recurring_orders_changed.emit()
+
+# --- Cancel recurring orders (Market panel Movements/Sales tabs). Erase-by-value: the
+# UI holds the exact entry dict, so this removes that standing order. ------------------
+func remove_recurring_move(entry: Dictionary) -> bool:
+	if not recurring_moves.has(entry):
+		return false
+	recurring_moves.erase(entry)
+	recurring_orders_changed.emit()
+	return true
+
+func remove_recurring_sell(entry: Dictionary) -> bool:
+	if not recurring_sells.has(entry):
+		return false
+	recurring_sells.erase(entry)
+	recurring_orders_changed.emit()
+	return true
+
+func remove_recurring_bulk_sell(entry: Dictionary) -> bool:
+	if not recurring_bulk_sells.has(entry):
+		return false
+	recurring_bulk_sells.erase(entry)
+	recurring_orders_changed.emit()
+	return true
 
 func add_scheduled_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> void:
 	scheduled_moves.append({"source": source_tile, "dest": dest_tile, "goods": goods_qtys.duplicate(true)})
@@ -2739,9 +2780,11 @@ func _run_recurring_sell(entry: Dictionary) -> void:
 
 func add_recurring_sell(source_tile: String, goods_qtys: Dictionary) -> void:
 	recurring_sells.append({"source": source_tile, "goods": goods_qtys.duplicate(true), "turn_started": _ledger_turn()})
+	recurring_orders_changed.emit()
 
 func add_recurring_bulk_sell(params: Dictionary) -> void:
 	recurring_bulk_sells.append({"params": params.duplicate(true), "turn_started": _ledger_turn()})
+	recurring_orders_changed.emit()
 
 func add_recurring_buy(dest_tile: String, good_id: String, qty: int) -> void:
 	recurring_buys.append({"dest": dest_tile, "good": good_id, "qty": qty, "turn_started": _ledger_turn()})
@@ -3644,7 +3687,7 @@ func tick_workforce_policies() -> void:
 		var active := is_workforce_policy_enabled(policy_id)
 		var effect: Dictionary = workforce_policy_effects.get(policy_id, {})
 		_advance_workforce_effect(policy_id, effect, active)
-		if not active and absf(float(effect.get("output_pct", 0.0))) < 0.00001 and absf(float(effect.get("labour_pct", 0.0))) < 0.00001 and absf(float(effect.get("dividend_pct", 0.0))) < 0.00001:
+		if not active and absf(float(effect.get("output_pct", 0.0))) < 0.00001 and absf(float(effect.get("labour_pct", 0.0))) < 0.00001 and absf(float(effect.get("dividend_pct", 0.0))) < 0.00001 and absf(float(effect.get("maint_pct", 0.0))) < 0.00001:
 			workforce_policy_effects.erase(policy_id)
 		else:
 			workforce_policy_effects[policy_id] = effect
@@ -3676,10 +3719,17 @@ func _advance_workforce_effect(policy_id: String, effect: Dictionary, active: bo
 			else:
 				labour_pct = minf(0.0, labour_pct + 0.0025)
 		WORKFORCE_POLICY_LAX_SAFETY:
+			# Cutting corners lifts output a little but lets the plant rot: maintenance
+			# climbs +5% every turn the policy runs, up to +100% (2× upkeep), then eases
+			# back off when strict/standard safety is restored.
+			var maint_pct := float(effect.get("maint_pct", 0.0))
 			if active:
 				labour_pct = minf(0.15, labour_pct + 0.005)
+				maint_pct = minf(1.0, maint_pct + 0.05)
 			else:
 				labour_pct = maxf(0.0, labour_pct - 0.0025)
+				maint_pct = maxf(0.0, maint_pct - 0.05)
+			effect["maint_pct"] = maint_pct
 		WORKFORCE_POLICY_LONG_TENURE:
 			# Long-serving staff get cheaper over time (to -10%); a periodic awards
 			# payout (+10% one turn every 10th) is added in workforce_labour_cost_delta.
@@ -3728,12 +3778,70 @@ func workforce_output_multiplier(turn_number: int = -1) -> float:
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_STRICT_SAFETY):
 		multiplier *= 0.90
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_LAX_SAFETY):
-		multiplier *= 1.10
+		multiplier *= 1.05
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS) and turn % 10 == 0:
 		multiplier *= 1.20
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
 		multiplier *= 1.10
 	return multiplier
+
+# Empire-wide maintenance multiplier from workforce policy (currently only Lax Safety,
+# whose neglect penalty ramps +5%/turn to +100%). Applied per building in the
+# maintenance_labour phase. 1.0 = no change.
+func workforce_maintenance_multiplier() -> float:
+	var lax: Dictionary = workforce_policy_effects.get(WORKFORCE_POLICY_LAX_SAFETY, {})
+	return 1.0 + maxf(0.0, float(lax.get("maint_pct", 0.0)))
+
+# ── CFO tax-loss carry-forward ───────────────────────────────────────────────
+func cfo_seated() -> bool:
+	return get_advisor_in_seat("cfo") != ""
+
+# Bank a credit worth 5% of the turn's revenue on a losing turn. Fires the one-time
+# explainer signal the first time. Returns the amount banked.
+func cfo_bank_tax_credit(revenue: float) -> float:
+	var amount := maxf(0.0, revenue) * CFO_TAX_CREDIT_RATE
+	if amount < 0.01:
+		return 0.0
+	cfo_tax_credit_pool.append({"amount": amount, "turns_left": CFO_TAX_CREDIT_TURNS})
+	if not cfo_tax_credit_intro_shown:
+		cfo_tax_credit_intro_shown = true
+		cfo_tax_credit_filed.emit(amount)
+	return amount
+
+# Consume banked credits (oldest first) to offset a tax bill. Returns the amount applied.
+func cfo_apply_tax_credit(tax: float) -> float:
+	if tax <= 0.0 or cfo_tax_credit_pool.is_empty():
+		return 0.0
+	var remaining := tax
+	var applied := 0.0
+	for entry in cfo_tax_credit_pool:
+		if remaining <= 0.0:
+			break
+		var take := minf(float(entry.get("amount", 0.0)), remaining)
+		entry["amount"] = float(entry.get("amount", 0.0)) - take
+		applied += take
+		remaining -= take
+	_prune_tax_credits()
+	return applied
+
+# Tick every banked credit's 5-turn window down by one; drop the exhausted/expired.
+func cfo_age_tax_credits() -> void:
+	for entry in cfo_tax_credit_pool:
+		entry["turns_left"] = int(entry.get("turns_left", 0)) - 1
+	_prune_tax_credits()
+
+func cfo_tax_credit_available() -> float:
+	var total := 0.0
+	for entry in cfo_tax_credit_pool:
+		total += float(entry.get("amount", 0.0))
+	return total
+
+func _prune_tax_credits() -> void:
+	var kept: Array = []
+	for entry in cfo_tax_credit_pool:
+		if int(entry.get("turns_left", 0)) > 0 and float(entry.get("amount", 0.0)) > 0.005:
+			kept.append(entry)
+	cfo_tax_credit_pool = kept
 
 # Summed workforce-policy labour delta (a fraction, e.g. -0.10 for -10%). Policies
 # combine ADDITIVELY here; callers apply this to the 100% base alongside the labour

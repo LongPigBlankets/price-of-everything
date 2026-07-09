@@ -137,8 +137,14 @@ func _rebuild_items() -> void:
 	if not starved.is_empty():
 		out.append(starved)
 	# 3+4. Bell events mapped into alerts / news / info (single source of truth:
-	# dismissing here dismisses in the bell too).
+	# dismissing here dismisses in the bell too). Only the LATEST turn's events show —
+	# the briefing is a turn digest, not a running log (that's the bell's job).
+	# Resolution-phase events are stamped current_turn-1; post-resolution ones (bridge
+	# loan) the current turn — so the window is [current_turn-1, current_turn].
+	var min_turn: int = maxi(1, int(TurnManager.current_turn) - 1)
 	for ev: Dictionary in EventScheduler.active_events():
+		if int(ev.get("turn_fired", 0)) < min_turn:
+			continue
 		var item := _event_item(ev)
 		if not item.is_empty():
 			out.append(item)
@@ -227,15 +233,16 @@ func _starved_item() -> Dictionary:
 	}
 
 # Map a bell event into a briefing item. Kind → section; the bell stays the log.
+# "" = not shown in the briefing (still in the bell).
 const _EVENT_SECTIONS := {
 	"research_unlocked": "info",
-	"sales_aggregate": "info",
 	"construction_completed": "info",
 	"decision_resolved": "info",
 	"decision_incoming": "info",
 	"bridge_loan": "info",
 	"deposit_exhausted": "alerts",
 	"tile_at_capacity": "alerts",
+	"sales_aggregate": "",        # too noisy for the briefing — bell only
 	"bankruptcy_warning": "",     # superseded by the live runway alert
 	"building_starved": "",       # superseded by the aggregated live alert
 }
