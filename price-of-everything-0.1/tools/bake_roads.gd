@@ -72,6 +72,15 @@ const SPARSE_EDGE_INSET := 40.0
 const SPARSE_ROUTED_GATE := 2.5
 const SPARSE_MAX_SPURS := 2
 
+# ── Merge-before-crossing (owner round 6) ───────────────────────────────────
+# The realizer's gate whitelist lets a legal route cross the river anywhere
+# within ~GATE_RADIUS of the gate segment, so edges sharing one crossing each
+# cut their own line beside the deck — parallel strands, lens gaps, and
+# crossings that LOOK off-bridge (owner screenshot, tiles 18_16/18_18). The
+# funnel pass rewrites every wet span onto the canonical gate_a→gate_b line:
+# approaches merge at the gates, ONE segment crosses, the deck sits on it.
+const FUNNEL_R := 240.0   # a wet span snaps to a crossing within this of its midpoint (~half a tile)
+
 @onready var terrain: HexMap = %TerrainLayer
 
 func _ready() -> void:
@@ -181,6 +190,16 @@ func _ready() -> void:
 	# dead ends — they pick up terminus treatments at draw time).
 	var spurs := _densify_sparse_tiles(nav, network, realizer)
 	print("bake_roads: %d interior spurs added to road-sparse tiles" % spurs)
+	# Funnel LAST, once every edge exists: all river crossings collapse onto their
+	# bridge gates, so no strand ever crosses water beside the deck. Off-gate
+	# crossings (route smoothing cutting a meander) are re-routed legally; the
+	# second pass funnels any gate crossing the re-route introduced.
+	for funnel_pass in 4:
+		var funnel := _funnel_river_crossings(nav, network, realizer)
+		print("bake_roads: funnel pass %d — %d spans onto gates, %d re-routed, %d illegal left" % [
+			funnel_pass + 1, int(funnel.fixed), int(funnel.rerouted), int(funnel.illegal)])
+		if int(funnel.fixed) + int(funnel.rerouted) == 0:
+			break
 
 	var anchor_ids: Array = []
 	for a2 in anchors:
@@ -689,6 +708,231 @@ func _densify_sparse_tiles(nav, network: RoadNetwork, realizer: RoadRealizer) ->
 				tid, before * 100.0, float(after.covered) / maxf(1.0, float(after.total)) * 100.0,
 				tile_added, "" if tile_added == 1 else "s"])
 	return added
+
+## Rewrite every BUILT edge's river-crossing spans onto the canonical bridge
+## line of the nearest predetermined crossing (RoadCrossings gate_a→gate_b).
+## All edges sharing a crossing end up with the IDENTICAL wet segment — they
+## merge at the gates, one strand crosses, and the deck (drawn at the crossing
+## point) sits exactly on the road. Wet spans with no crossing within FUNNEL_R
+## are illegal by the design rules — logged loudly, left untouched.
+func _funnel_river_crossings(nav, network: RoadNetwork, realizer: RoadRealizer) -> Dictionary:
+	var fixed := 0
+	var rerouted := 0
+	var illegal := 0
+	var eids: Array = network.edges.keys()
+	eids.sort()
+	for eid in eids:
+		var e: Dictionary = network.edges[eid]
+		if str(e.state) != RoadNetwork.STATE_BUILT:
+			continue
+		var geo: PackedVector2Array = e.geometry
+		if geo.size() < 2:
+			continue
+		var out := PackedVector2Array()
+		var changed := false
+		var i := 0
+		while i < geo.size():
+			if not _in_river(nav, geo[i]):
+				out.append(geo[i])
+				i += 1
+				continue
+			# A run of wet vertices [i, j): find its midpoint and its crossing.
+			var j := i
+			var mid := Vector2.ZERO
+			while j < geo.size() and _in_river(nav, geo[j]):
+				mid += geo[j]
+				j += 1
+			mid /= float(maxi(j - i, 1))
+			var entry: Vector2 = out[out.size() - 1] if out.size() > 0 else geo[i]
+			var exit_p: Vector2 = geo[j] if j < geo.size() else geo[geo.size() - 1]
+			var crossing := _nearest_crossing(mid)
+			var genuine := _max_wet_chord(nav, entry, exit_p) >= 20.0
+			if not genuine:
+				# Bank graze (a road hugging the river clips wet cells without
+				# crossing) — harmless, keep the original points.
+				for kg in range(i, j):
+					out.append(geo[kg])
+				i = j
+				continue
+			# Genuine crossing: funnel it through a gate. Try the nearest few
+			# crossings, both gate orientations — the water itself validates
+			# (dry connectors outside the gate zone) instead of a bank sign test
+			# that meandering rivers routinely fool.
+			var funneled := PackedVector2Array()
+			for cand in _crossings_by_distance(mid, 800.0, 3):
+				funneled = _try_funnel(nav, entry, exit_p, cand)
+				if funneled.size() > 0:
+					break
+			if funneled.size() > 0:
+				for fp in funneled:
+					out.append(fp)
+				changed = true
+				fixed += 1
+				i = j
+				continue
+			# Same-bank meander cut: push the run's points onto the nearest land
+			# cells — a deterministic bank-hugging detour that cannot re-introduce
+			# a crossing via re-smoothing.
+			var pushed := _push_to_land(nav, geo.slice(i, j))
+			if pushed.size() > 0 and _polyline_wet_chord(nav, pushed) < 20.0:
+				for pp in pushed:
+					out.append(pp)
+				changed = true
+				rerouted += 1
+				i = j
+				continue
+			illegal += 1
+			print("bake_roads: ILLEGAL river crossing on edge %s near (%.0f, %.0f) — unfixable, left in place" % [
+				str(eid), mid.x, mid.y])
+			for k in range(i, j):
+				out.append(geo[k])
+			i = j
+		if changed and out.size() >= 2:
+			e["geometry"] = out
+			# Tiles: re-derive from the new line, UNION with the old set so pair
+			# registrations (stitch bookkeeping, corridor flags) never shrink.
+			var rtiles: Array = _route_tiles(out)
+			for told in e.tiles:
+				if not rtiles.has(told):
+					rtiles.append(told)
+			e["tiles"] = rtiles
+	return {"fixed": fixed, "rerouted": rerouted, "illegal": illegal}
+
+## Dry bank connector: the straight a→b line with every wet sample pushed onto
+## land. Wet samples inside the gate zone (36u of the ga→gb bridge segment) are
+## tolerated — that IS the crossing. Empty when it cannot be made dry.
+func _dry_connector(nav, a: Vector2, b: Vector2, ga: Vector2, gb: Vector2) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var steps := maxi(1, int(ceil(a.distance_to(b) / 12.0)))
+	for s in steps:
+		pts.append(a.lerp(b, float(s) / float(steps)))
+	var pushed := _push_to_land(nav, pts)
+	if pushed.size() == 0 or _wet_chord_off_gate(nav, pushed, ga, gb) >= 20.0:
+		return PackedVector2Array()
+	return pushed
+
+## Longest wet chord over a polyline, IGNORING water within 36u of the bridge
+## segment ga→gb (the gate zone is legal water for a road).
+func _wet_chord_off_gate(nav, pts: PackedVector2Array, ga: Vector2, gb: Vector2) -> float:
+	var worst := 0.0
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		var steps := maxi(2, int(ceil(a.distance_to(b) / 6.0)))
+		var run := 0
+		var best := 0
+		for s in steps + 1:
+			var p := a.lerp(b, float(s) / float(steps))
+			var wet := _in_river(nav, p) \
+				and p.distance_to(Geometry2D.get_closest_point_to_segment(p, ga, gb)) > 36.0
+			if wet:
+				run += 1
+				best = maxi(best, run)
+			else:
+				run = 0
+		worst = maxf(worst, float(best) * a.distance_to(b) / float(steps))
+	return worst
+
+## Push every point of a wet run onto its nearest land cell (outward ring search)
+## — the deterministic detour for meander cuts. Empty result = no land in reach.
+func _push_to_land(nav, pts: PackedVector2Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for p in pts:
+		var q := _nearest_land_point(nav, p, 6)
+		if q == Vector2.INF:
+			return PackedVector2Array()
+		if out.is_empty() or out[out.size() - 1].distance_to(q) > 2.0:
+			out.append(q)
+	return out
+
+func _nearest_land_point(nav, p: Vector2, max_ring: int) -> Vector2:
+	var c: Vector2i = nav.cell_of(p)
+	for r in range(0, max_ring + 1):
+		var best := Vector2.INF
+		var best_d := 1.0e30
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) != r:
+					continue
+				var x := c.x + dx
+				var y := c.y + dy
+				if x < 0 or y < 0 or x >= nav.gw or y >= nav.gh:
+					continue
+				if nav.water(x, y) != NavGrid.WATER_LAND:
+					continue
+				if nav.level(x, y) >= RoadRealizer.BAN_LEVEL:
+					continue
+				var w: Vector2 = nav.world_of(x, y)
+				var d := w.distance_squared_to(p)
+				if d < best_d:
+					best_d = d
+					best = w
+		if best != Vector2.INF:
+			return best
+	return Vector2.INF
+
+## Longest wet chord over a whole polyline (validates land-pushed detours).
+func _polyline_wet_chord(nav, pts: PackedVector2Array) -> float:
+	var worst := 0.0
+	for i in range(pts.size() - 1):
+		worst = maxf(worst, _max_wet_chord(nav, pts[i], pts[i + 1]))
+	return worst
+
+## Longest contiguous river chord along the straight a→b line (6u sampling) —
+## distinguishes a genuine bank-to-bank crossing from a corner graze.
+func _max_wet_chord(nav, a: Vector2, b: Vector2) -> float:
+	var steps := maxi(2, int(ceil(a.distance_to(b) / 6.0)))
+	var run := 0
+	var best := 0
+	for s in steps + 1:
+		if _in_river(nav, a.lerp(b, float(s) / float(steps))):
+			run += 1
+			best = maxi(best, run)
+		else:
+			run = 0
+	return float(best) * a.distance_to(b) / float(steps)
+
+func _in_river(nav, p: Vector2) -> bool:
+	var c: Vector2i = nav.cell_of(p)
+	if c.x < 0 or c.y < 0 or c.x >= nav.gw or c.y >= nav.gh:
+		return false
+	return nav.water(c.x, c.y) == NavGrid.WATER_RIVER
+
+func _nearest_crossing(p: Vector2, radius: float = 200.0) -> Dictionary:
+	var by_d := _crossings_by_distance(p, radius, 1)
+	return by_d[0] if not by_d.is_empty() else {}
+
+func _crossings_by_distance(p: Vector2, radius: float, count: int) -> Array:
+	var all: Array = []
+	for crossing in RoadCrossings.in_rect(Rect2(p - Vector2(radius, radius), Vector2(radius, radius) * 2.0)):
+		all.append(crossing)
+	all.sort_custom(func(a, b) -> bool:
+		return (a.point as Vector2).distance_squared_to(p) < (b.point as Vector2).distance_squared_to(p))
+	return all.slice(0, count)
+
+## Attempt one crossing, both gate orientations: returns the full replacement
+## span [conn_in..., g_in, g_out, conn_out...] or empty when neither works.
+func _try_funnel(nav, entry: Vector2, exit_p: Vector2, crossing: Dictionary) -> PackedVector2Array:
+	var ga: Vector2 = crossing.gate_a
+	var gb: Vector2 = crossing.gate_b
+	for orient in 2:
+		var g_in := ga if orient == 0 else gb
+		var g_out := gb if orient == 0 else ga
+		var conn_in := _dry_connector(nav, entry, g_in, ga, gb)
+		if conn_in.size() == 0:
+			continue
+		var conn_out := _dry_connector(nav, g_out, exit_p, ga, gb)
+		if conn_out.size() == 0:
+			continue
+		var span := PackedVector2Array()
+		for cp in conn_in:
+			span.append(cp)
+		span.append(g_in)
+		span.append(g_out)
+		for cp2 in conn_out:
+			span.append(cp2)
+		return span
+	return PackedVector2Array()
 
 ## Fraction of the tile's interior lattice within SPARSE_NEAR of a road segment.
 func _tile_road_coverage(center: Vector2, segs: Array) -> Dictionary:
