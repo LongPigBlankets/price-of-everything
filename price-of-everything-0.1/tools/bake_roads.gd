@@ -72,14 +72,14 @@ const SPARSE_EDGE_INSET := 40.0
 const SPARSE_ROUTED_GATE := 2.5
 const SPARSE_MAX_SPURS := 2
 
-# ── Merge-before-crossing (owner round 6) ───────────────────────────────────
+# ── Merge-before-crossing via bridge anchors (owner rounds 6-7) ─────────────
 # The realizer's gate whitelist lets a legal route cross the river anywhere
 # within ~GATE_RADIUS of the gate segment, so edges sharing one crossing each
-# cut their own line beside the deck — parallel strands, lens gaps, and
-# crossings that LOOK off-bridge (owner screenshot, tiles 18_16/18_18). The
-# funnel pass rewrites every wet span onto the canonical gate_a→gate_b line:
-# approaches merge at the gates, ONE segment crosses, the deck sits on it.
-const FUNNEL_R := 240.0   # a wet span snaps to a crossing within this of its midpoint (~half a tile)
+# cut their own line beside the deck — parallel strands, lens gaps, spike
+# artifacts (owner screenshots, tiles 18_16/18_18). Fix: gates become shared
+# NETWORK NODES with one canonical deck edge per crossing; crossing roads are
+# SPLIT at the gates; wet spans with no reachable gate are CUT at the banks.
+const FUNNEL_JOIN_MAX := 250.0   # max join distance from a wet span's ends to its gates
 
 @onready var terrain: HexMap = %TerrainLayer
 
@@ -190,16 +190,13 @@ func _ready() -> void:
 	# dead ends — they pick up terminus treatments at draw time).
 	var spurs := _densify_sparse_tiles(nav, network, realizer)
 	print("bake_roads: %d interior spurs added to road-sparse tiles" % spurs)
-	# Funnel LAST, once every edge exists: all river crossings collapse onto their
-	# bridge gates, so no strand ever crosses water beside the deck. Off-gate
-	# crossings (route smoothing cutting a meander) are re-routed legally; the
-	# second pass funnels any gate crossing the re-route introduced.
-	for funnel_pass in 4:
-		var funnel := _funnel_river_crossings(nav, network, realizer)
-		print("bake_roads: funnel pass %d — %d spans onto gates, %d re-routed, %d illegal left" % [
-			funnel_pass + 1, int(funnel.fixed), int(funnel.rerouted), int(funnel.illegal)])
-		if int(funnel.fixed) + int(funnel.rerouted) == 0:
-			break
+	# River discipline LAST, once every edge exists: crossings split onto shared
+	# bridge-anchor nodes (one canonical deck each); gateless wet spans are cut
+	# at the banks. No strand can cross water beside a deck by construction.
+	realizer.warm_forest_cache()
+	var funnel := _funnel_river_crossings(nav, network, realizer._forest_discs_cache)
+	print("bake_roads: river discipline — %d crossings anchored (%d decks), %d roads cut at banks, %d grazes kept" % [
+		int(funnel.bridged), int(funnel.decks), int(funnel.cuts), int(funnel.grazes)])
 
 	var anchor_ids: Array = []
 	for a2 in anchors:
@@ -709,107 +706,181 @@ func _densify_sparse_tiles(nav, network: RoadNetwork, realizer: RoadRealizer) ->
 				tile_added, "" if tile_added == 1 else "s"])
 	return added
 
-## Rewrite every BUILT edge's river-crossing spans onto the canonical bridge
-## line of the nearest predetermined crossing (RoadCrossings gate_a→gate_b).
-## All edges sharing a crossing end up with the IDENTICAL wet segment — they
-## merge at the gates, one strand crosses, and the deck (drawn at the crossing
-## point) sits exactly on the road. Wet spans with no crossing within FUNNEL_R
-## are illegal by the design rules — logged loudly, left untouched.
-func _funnel_river_crossings(nav, network: RoadNetwork, realizer: RoadRealizer) -> Dictionary:
-	var fixed := 0
-	var rerouted := 0
-	var illegal := 0
+## River discipline via BRIDGE ANCHOR NODES (owner ruling, round 7): every
+## crossing used by a road gets two shared gate NODES plus ONE canonical deck
+## edge between them; roads that cross are SPLIT at the gates, so no polyline
+## ever threads through a gate (that threading is what drew miter-spike
+## arrowheads and stacked strands). A genuine wet span with no reachable gate
+## is CUT at the banks — the owner's "no road within the river outside a
+## bridge" rule. Gameplay is untouched: routing runs on per-tile infra flags,
+## which the first split piece inherits as a superset.
+func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> Dictionary:
+	var bridged := 0
+	var cuts := 0
+	var grazes := 0
+	var bridge_edges: Dictionary = {}    # "na|nb" -> canonical edge id
+	var canonical_ids: Dictionary = {}   # edge ids the pass created (never re-cut)
 	var eids: Array = network.edges.keys()
 	eids.sort()
 	for eid in eids:
+		if canonical_ids.has(str(eid)):
+			continue
 		var e: Dictionary = network.edges[eid]
 		if str(e.state) != RoadNetwork.STATE_BUILT:
 			continue
 		var geo: PackedVector2Array = e.geometry
 		if geo.size() < 2:
 			continue
-		var out := PackedVector2Array()
-		var changed := false
+		# Slice the polyline into dry parts separated by GENUINE wet runs; bank
+		# grazes (wet cells without a bank-to-bank chord) stay inline.
+		var parts: Array = []     # Array[PackedVector2Array]
+		var joints: Array = []    # one per boundary: {crossing, g_in, g_out} or {} = cut
+		var current := PackedVector2Array()
 		var i := 0
+		var any := false
 		while i < geo.size():
 			if not _in_river(nav, geo[i]):
-				out.append(geo[i])
+				current.append(geo[i])
 				i += 1
 				continue
-			# A run of wet vertices [i, j): find its midpoint and its crossing.
 			var j := i
 			var mid := Vector2.ZERO
 			while j < geo.size() and _in_river(nav, geo[j]):
 				mid += geo[j]
 				j += 1
 			mid /= float(maxi(j - i, 1))
-			var entry: Vector2 = out[out.size() - 1] if out.size() > 0 else geo[i]
+			var entry: Vector2 = current[current.size() - 1] if current.size() > 0 else geo[i]
 			var exit_p: Vector2 = geo[j] if j < geo.size() else geo[geo.size() - 1]
-			var crossing := _nearest_crossing(mid)
-			var genuine := _max_wet_chord(nav, entry, exit_p) >= 20.0
-			if not genuine:
-				# Bank graze (a road hugging the river clips wet cells without
-				# crossing) — harmless, keep the original points.
-				for kg in range(i, j):
-					out.append(geo[kg])
+			if _max_wet_chord(nav, entry, exit_p) < 20.0:
+				grazes += 1
+				for k in range(i, j):
+					current.append(geo[k])
 				i = j
 				continue
-			# Genuine crossing: funnel it through a gate. Try the nearest few
-			# crossings, both gate orientations — the water itself validates
-			# (dry connectors outside the gate zone) instead of a bank sign test
-			# that meandering rivers routinely fool.
-			var funneled := PackedVector2Array()
+			any = true
+			var chosen: Dictionary = {}
 			for cand in _crossings_by_distance(mid, 800.0, 3):
-				funneled = _try_funnel(nav, entry, exit_p, cand)
-				if funneled.size() > 0:
-					break
-			if funneled.size() > 0:
-				for fp in funneled:
-					out.append(fp)
-				changed = true
-				fixed += 1
-				i = j
-				continue
-			# Same-bank meander cut: push the run's points onto the nearest land
-			# cells — a deterministic bank-hugging detour that cannot re-introduce
-			# a crossing via re-smoothing.
-			var pushed := _push_to_land(nav, geo.slice(i, j))
-			if pushed.size() > 0 and _polyline_wet_chord(nav, pushed) < 20.0:
-				for pp in pushed:
-					out.append(pp)
-				changed = true
-				rerouted += 1
-				i = j
-				continue
-			illegal += 1
-			print("bake_roads: ILLEGAL river crossing on edge %s near (%.0f, %.0f) — unfixable, left in place" % [
-				str(eid), mid.x, mid.y])
-			for k in range(i, j):
-				out.append(geo[k])
+				var ga: Vector2 = cand.gate_a
+				var gb: Vector2 = cand.gate_b
+				var g_in := ga if entry.distance_squared_to(ga) <= entry.distance_squared_to(gb) else gb
+				var g_out := gb if g_in == ga else ga
+				if entry.distance_to(g_in) > FUNNEL_JOIN_MAX or exit_p.distance_to(g_out) > FUNNEL_JOIN_MAX:
+					continue
+				# The short joins onto the anchors must be dry outside the gate
+				# zone (wet AT the bridge is the crossing itself)…
+				if _wet_chord_off_gate(nav, PackedVector2Array([entry, g_in]), ga, gb) >= 20.0:
+					continue
+				if _wet_chord_off_gate(nav, PackedVector2Array([g_out, exit_p]), ga, gb) >= 20.0:
+					continue
+				# …and must not carve through a start-forest canopy (rim contact
+				# near the bridge itself is the legitimate two-constraints case).
+				if not _join_clear_of_forests(entry, g_in, cand.point, forest_discs):
+					continue
+				if not _join_clear_of_forests(g_out, exit_p, cand.point, forest_discs):
+					continue
+				chosen = {"crossing": cand, "g_in": g_in, "g_out": g_out}
+				break
+			parts.append(current)
+			joints.append(chosen)
+			current = PackedVector2Array()
 			i = j
-		if changed and out.size() >= 2:
-			e["geometry"] = out
-			# Tiles: re-derive from the new line, UNION with the old set so pair
-			# registrations (stitch bookkeeping, corridor flags) never shrink.
-			var rtiles: Array = _route_tiles(out)
-			for told in e.tiles:
-				if not rtiles.has(told):
-					rtiles.append(told)
-			e["tiles"] = rtiles
-	return {"fixed": fixed, "rerouted": rerouted, "illegal": illegal}
+		parts.append(current)
+		if not any:
+			continue
+		# Rebuild: split pieces anchored on gate nodes (bridging) or bank nodes (cuts).
+		_remove_edge(network, str(eid))
+		var start_node := str(e.a)
+		var prepend := Vector2.INF     # gate to prepend to the next piece
+		var first_piece := true
+		for pi in parts.size():
+			var pts: PackedVector2Array = parts[pi]
+			if prepend != Vector2.INF:
+				var with_gate := PackedVector2Array([prepend])
+				with_gate.append_array(pts)
+				pts = with_gate
+				prepend = Vector2.INF
+			var is_last := pi == parts.size() - 1
+			var joint: Dictionary = {} if is_last else (joints[pi] as Dictionary)
+			var end_node := str(e.b)
+			if not is_last:
+				if not joint.is_empty():
+					var cr: Dictionary = joint.crossing
+					end_node = _gate_node(network, cr, joint.g_in)
+					pts.append(joint.g_in)
+					_ensure_bridge_edge(network, cr, str(e.tier), bridge_edges, canonical_ids)
+					prepend = joint.g_out
+					bridged += 1
+				else:
+					cuts += 1
+					if pts.size() > 0:
+						end_node = network.ensure_node("cut:%s:%d" % [str(eid), pi],
+							RoadNetwork.KIND_JUNCTION, pts[pts.size() - 1], _coord_at(pts[pts.size() - 1])).id
+			if pts.size() >= 2:
+				var ptiles: Array = _route_tiles(pts)
+				if first_piece:
+					for told in e.tiles:
+						if not ptiles.has(told):
+							ptiles.append(told)   # flags stay a superset — gameplay identical
+					first_piece = false
+				var sn := start_node
+				if pi > 0 and (joints[pi - 1] as Dictionary).is_empty():
+					sn = network.ensure_node("cut:%s:%d:b" % [str(eid), pi],
+						RoadNetwork.KIND_JUNCTION, pts[0], _coord_at(pts[0])).id
+				elif pi > 0:
+					sn = _gate_node(network, (joints[pi - 1] as Dictionary).crossing, (joints[pi - 1] as Dictionary).g_out)
+				network.add_edge(sn, end_node, str(e.tier), pts, ptiles, [], 0)
+			start_node = end_node
+	var decks := bridge_edges.size()
+	return {"bridged": bridged, "cuts": cuts, "decks": decks, "grazes": grazes}
 
-## Dry bank connector: the straight a→b line with every wet sample pushed onto
-## land. Wet samples inside the gate zone (36u of the ga→gb bridge segment) are
-## tolerated — that IS the crossing. Empty when it cannot be made dry.
-func _dry_connector(nav, a: Vector2, b: Vector2, ga: Vector2, gb: Vector2) -> PackedVector2Array:
-	var pts := PackedVector2Array()
-	var steps := maxi(1, int(ceil(a.distance_to(b) / 12.0)))
-	for s in steps:
-		pts.append(a.lerp(b, float(s) / float(steps)))
-	var pushed := _push_to_land(nav, pts)
-	if pushed.size() == 0 or _wet_chord_off_gate(nav, pushed, ga, gb) >= 20.0:
-		return PackedVector2Array()
-	return pushed
+## A gate join may shave a canopy rim right at the bridge (two hard constraints
+## meeting) but must not carve INTO a forest disc away from the crossing.
+func _join_clear_of_forests(a: Vector2, b: Vector2, crossing_point: Vector2, forest_discs: Array) -> bool:
+	var exempt := RoadCrossings.GATE_OFFSET + RoadRealizer.BRIDGE_BANK_STUB + 24.0
+	var steps := maxi(2, int(ceil(a.distance_to(b) / 8.0)))
+	for s in steps + 1:
+		var p := a.lerp(b, float(s) / float(steps))
+		if p.distance_to(crossing_point) <= exempt:
+			continue
+		for disc in forest_discs:
+			if p.distance_to(disc.center) < float(disc.radius) - 6.0:
+				return false
+	return true
+
+## Shared gate anchor node for one side of a crossing.
+func _gate_node(network: RoadNetwork, crossing: Dictionary, gate: Vector2) -> String:
+	var side := "a" if gate.distance_squared_to(crossing.gate_a) < gate.distance_squared_to(crossing.gate_b) else "b"
+	var nid := "bgate:%s:%d:%s" % [str(crossing.tile_id), int(crossing.arm), side]
+	return str(network.ensure_node(nid, RoadNetwork.KIND_JUNCTION, gate, _coord_at(gate)).id)
+
+## ONE canonical deck edge per crossing — it alone carries the bridge record.
+func _ensure_bridge_edge(network: RoadNetwork, crossing: Dictionary, tier: String, bridge_edges: Dictionary, canonical_ids: Dictionary) -> void:
+	var na := _gate_node(network, crossing, crossing.gate_a)
+	var nb := _gate_node(network, crossing, crossing.gate_b)
+	var key := "%s|%s" % [na, nb]
+	if bridge_edges.has(key):
+		return
+	var bgeo := PackedVector2Array([crossing.gate_a, crossing.gate_b])
+	var bedge := network.add_edge(na, nb, tier, bgeo, _route_tiles(bgeo), [{
+		"point": crossing.point, "tangent": crossing.bridge_tangent,
+		"gate_a": crossing.gate_a, "gate_b": crossing.gate_b,
+	}], 0)
+	bridge_edges[key] = str(bedge.id)
+	canonical_ids[str(bedge.id)] = true
+
+## Remove an edge from the live network (bake-side surgery; occupancy stamps
+## are inert once routing is done, so they can stay).
+func _remove_edge(network: RoadNetwork, eid: String) -> void:
+	var e: Dictionary = network.edges.get(eid, {})
+	if e.is_empty():
+		return
+	for t in e.tiles:
+		var lst: Array = network._edges_by_tile.get(t, [])
+		lst.erase(eid)
+	network.edges.erase(eid)
+
+func _coord_at(p: Vector2) -> Vector2i:
+	return terrain.tile_coord_for_map_coord(terrain.local_to_map(p))
 
 ## Longest wet chord over a polyline, IGNORING water within 36u of the bridge
 ## segment ga→gb (the gate zone is legal water for a road).
@@ -833,51 +904,6 @@ func _wet_chord_off_gate(nav, pts: PackedVector2Array, ga: Vector2, gb: Vector2)
 		worst = maxf(worst, float(best) * a.distance_to(b) / float(steps))
 	return worst
 
-## Push every point of a wet run onto its nearest land cell (outward ring search)
-## — the deterministic detour for meander cuts. Empty result = no land in reach.
-func _push_to_land(nav, pts: PackedVector2Array) -> PackedVector2Array:
-	var out := PackedVector2Array()
-	for p in pts:
-		var q := _nearest_land_point(nav, p, 6)
-		if q == Vector2.INF:
-			return PackedVector2Array()
-		if out.is_empty() or out[out.size() - 1].distance_to(q) > 2.0:
-			out.append(q)
-	return out
-
-func _nearest_land_point(nav, p: Vector2, max_ring: int) -> Vector2:
-	var c: Vector2i = nav.cell_of(p)
-	for r in range(0, max_ring + 1):
-		var best := Vector2.INF
-		var best_d := 1.0e30
-		for dy in range(-r, r + 1):
-			for dx in range(-r, r + 1):
-				if maxi(absi(dx), absi(dy)) != r:
-					continue
-				var x := c.x + dx
-				var y := c.y + dy
-				if x < 0 or y < 0 or x >= nav.gw or y >= nav.gh:
-					continue
-				if nav.water(x, y) != NavGrid.WATER_LAND:
-					continue
-				if nav.level(x, y) >= RoadRealizer.BAN_LEVEL:
-					continue
-				var w: Vector2 = nav.world_of(x, y)
-				var d := w.distance_squared_to(p)
-				if d < best_d:
-					best_d = d
-					best = w
-		if best != Vector2.INF:
-			return best
-	return Vector2.INF
-
-## Longest wet chord over a whole polyline (validates land-pushed detours).
-func _polyline_wet_chord(nav, pts: PackedVector2Array) -> float:
-	var worst := 0.0
-	for i in range(pts.size() - 1):
-		worst = maxf(worst, _max_wet_chord(nav, pts[i], pts[i + 1]))
-	return worst
-
 ## Longest contiguous river chord along the straight a→b line (6u sampling) —
 ## distinguishes a genuine bank-to-bank crossing from a corner graze.
 func _max_wet_chord(nav, a: Vector2, b: Vector2) -> float:
@@ -898,10 +924,6 @@ func _in_river(nav, p: Vector2) -> bool:
 		return false
 	return nav.water(c.x, c.y) == NavGrid.WATER_RIVER
 
-func _nearest_crossing(p: Vector2, radius: float = 200.0) -> Dictionary:
-	var by_d := _crossings_by_distance(p, radius, 1)
-	return by_d[0] if not by_d.is_empty() else {}
-
 func _crossings_by_distance(p: Vector2, radius: float, count: int) -> Array:
 	var all: Array = []
 	for crossing in RoadCrossings.in_rect(Rect2(p - Vector2(radius, radius), Vector2(radius, radius) * 2.0)):
@@ -909,30 +931,6 @@ func _crossings_by_distance(p: Vector2, radius: float, count: int) -> Array:
 	all.sort_custom(func(a, b) -> bool:
 		return (a.point as Vector2).distance_squared_to(p) < (b.point as Vector2).distance_squared_to(p))
 	return all.slice(0, count)
-
-## Attempt one crossing, both gate orientations: returns the full replacement
-## span [conn_in..., g_in, g_out, conn_out...] or empty when neither works.
-func _try_funnel(nav, entry: Vector2, exit_p: Vector2, crossing: Dictionary) -> PackedVector2Array:
-	var ga: Vector2 = crossing.gate_a
-	var gb: Vector2 = crossing.gate_b
-	for orient in 2:
-		var g_in := ga if orient == 0 else gb
-		var g_out := gb if orient == 0 else ga
-		var conn_in := _dry_connector(nav, entry, g_in, ga, gb)
-		if conn_in.size() == 0:
-			continue
-		var conn_out := _dry_connector(nav, g_out, exit_p, ga, gb)
-		if conn_out.size() == 0:
-			continue
-		var span := PackedVector2Array()
-		for cp in conn_in:
-			span.append(cp)
-		span.append(g_in)
-		span.append(g_out)
-		for cp2 in conn_out:
-			span.append(cp2)
-		return span
-	return PackedVector2Array()
 
 ## Fraction of the tile's interior lattice within SPARSE_NEAR of a road segment.
 func _tile_road_coverage(center: Vector2, segs: Array) -> Dictionary:

@@ -2090,6 +2090,9 @@ func _test_road_works() -> void:
 	_check(failed_orders <= 6, "B4: at most 6 unroutable orders (%d failed, %d built)" % [failed_orders, built_orders])
 	# Junction cap: even under a 100-tile mass build, no node carries more than a
 	# 5-way junction (excess connections merge into a road instead of the point).
+	# Bridge anchors (bgate:) are exempt BY DESIGN: the owner's merge-before-
+	# crossing ruling funnels every approach into the gate node, so a busy
+	# crossing legitimately concentrates more connections than a land junction.
 	var b4_max_deg := 0
 	var b4_deg: Dictionary = {}
 	for be in net2.edges:
@@ -2097,6 +2100,8 @@ func _test_road_works() -> void:
 		b4_deg[str(bed.a)] = int(b4_deg.get(str(bed.a), 0)) + 1
 		b4_deg[str(bed.b)] = int(b4_deg.get(str(bed.b), 0)) + 1
 	for bn in b4_deg:
+		if str(bn).begins_with("bgate:"):
+			continue
 		b4_max_deg = maxi(b4_max_deg, int(b4_deg[bn]))
 	_check(b4_max_deg <= 5, "B4: junctions stay <= 5-way (max degree %d)" % b4_max_deg)
 	print("  [B4] planned=%.1fs settled=%.1fs max_frame_plan=%.2fms built=%d failed=%d" % [
@@ -2203,14 +2208,22 @@ func _edges_clear_of_disc(net: RoadNetwork, disc: Dictionary) -> bool:
 	# hard constraints meeting — the road legitimately passes under the canopy rim.
 	# Everywhere else the realizer's _declamp_forests keeps geometry out of discs.
 	var bridge_exempt := RoadCrossings.GATE_OFFSET + RoadRealizer.BRIDGE_BANK_STUB + 30.0
+	# Bridge records live on the CANONICAL deck edges since the anchor-node
+	# funnel (2026-07-09); approach pieces carry none. The exemption is a
+	# property of the PLACE (near a crossing), so collect every bridge point
+	# network-wide before scanning.
+	var bridge_points: Array = []
+	for eid0 in net.edges:
+		for br0 in net.edges[eid0].bridges:
+			bridge_points.append(br0.point)
 	for eid in net.edges:
 		var edge: Dictionary = net.edges[eid]
 		for p in edge.geometry:
 			if (p as Vector2).distance_to(disc.center) >= float(disc.radius) - 6.0:
 				continue
 			var near_bridge := false
-			for br in edge.bridges:
-				if (p as Vector2).distance_to(br.point) <= bridge_exempt:
+			for bp in bridge_points:
+				if (p as Vector2).distance_to(bp) <= bridge_exempt:
 					near_bridge = true
 					break
 			if not near_bridge:
