@@ -324,6 +324,20 @@ func finish_build(animate: bool) -> void:
 	terrain_layer.add_child(port_visuals)
 	port_visuals.setup(terrain_layer)
 
+	# Parchment grain: one world-anchored multiply texture over the whole plate
+	# (terrain + roads + buildings; UI lives on CanvasLayers above and stays clean).
+	var parchment: Node2D = load("res://scripts/parchment_overlay.gd").new()
+	parchment.name = "ParchmentOverlay"
+	terrain_layer.add_child(parchment)
+	var pmin := Vector2(1e9, 1e9)
+	var pmax := Vector2(-1e9, -1e9)
+	for pcoord in terrain_layer.tiles:
+		var pc: Vector2 = terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(pcoord))
+		pmin = pmin.min(pc)
+		pmax = pmax.max(pc)
+	# Pad well past the tile grid so the open sea at minimum zoom sits in the same paper.
+	parchment.setup(Rect2(pmin - Vector2(2400, 2400), (pmax - pmin) + Vector2(4800, 4800)))
+
 	# Re-gravitate every building once (deterministic, idempotent): a loaded save re-emitted its buildings
 	# before its imported road network was in hand, and this also re-fills the enclosure chunk grids now that
 	# the templates + rings all exist. Fresh-start buildings were already laid out against roads above.

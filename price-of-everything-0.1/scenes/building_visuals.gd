@@ -81,11 +81,25 @@ const MIN_BUILD_LEVEL := 0           # NavGrid level below this (the shore fring
 									 # waterline) is non-buildable — keeps footprints out of the sea
 const W_AWAY := 1.5                  # edge-seekers: weight on distance-from-buildings vs from-centre
 
-const NPC_OUTLINE_W := 2.0                    # NPC footprints: thin white outline on the map polygon
-const PLAYER_OUTLINE := Color(0.5, 0.5, 0.5)  # player footprints: 1px medium-grey outline
+const NPC_OUTLINE_W := 2.0                    # farm fields: thin white outline (npc) — buildings use INK
+const PLAYER_OUTLINE := Color(0.5, 0.5, 0.5)  # farm fields: 1px medium-grey outline (player)
 const PLAYER_OUTLINE_W := 1.0
-const ROOF_MARK := Color(0.45, 0.45, 0.45, 0.6) # thin grey roof ridges on player buildings
-const ROOF_MARK_W := 1.0
+
+# ── "Ink & wash" plate look (docs/building-visuals-ink-spec.md, phase I1) ──────
+# One dark-sepia ink for EVERY building outline + interior motif; categories
+# differentiate by FILL only, inside a muted triad. All variation seeded via
+# RoadHash (deterministic across save/load). Farms keep their own field look.
+const INK := Color("#3a2c18")
+const INK_W := 1.3
+const WASH_GREY := Color("#8d8a80")           # heavy industry / power / process
+const WASH_RED := Color("#b0483a")            # urban production / manufacturing / default
+const WASH_MUSTARD := Color("#c9992e")        # storage / logistics / infrastructure
+const WASH_RUINS := Color("#7a5f43")
+const WASH_JITTER := 0.05                     # ±5% per-instance value jitter (seeded)
+const NPC_WASH_DESAT := 0.22                  # NPC buildings sit duller inside the same triad
+const SAWTOOTH_PITCH := 12.0                  # factory shed-roof line spacing (u)
+const TERRACE_PITCH := 14.0                   # urban party-wall slice spacing (u)
+const CHIMNEY_R := 2.2
 
 # Subcomponents (Sanborn industrial detail): each building gets at most one rect annex + one round
 # tank, placed in a SECOND pass after all buildings + roads exist, in spare buildable space beside
@@ -826,6 +840,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 				_subcomponents.append({
 					"tile_id": tile_id, "verts": wverts, "color": pcolor,
 					"kind": kind, "is_npc": is_npc, "bb": _verts_bb(wverts),
+					"cat": str(p.cat), "iid": iid,
 				})
 				break   # placed this kind; move to the next
 
@@ -2380,32 +2395,30 @@ func _draw() -> void:
 				hatch_src = _farm_render[fid].hatch
 		if verts.size() < 3:
 			continue
-		draw_colored_polygon(verts, FARM_FIELD_COLOR if is_farm else placement.color)
-		var loop := verts.duplicate()
-		loop.append(verts[0])
-		if bool(placement.is_npc):
-			draw_polyline(loop, Color.WHITE, NPC_OUTLINE_W, true)
-		else:
-			draw_polyline(loop, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
 		if is_farm:
+			draw_colored_polygon(verts, FARM_FIELD_COLOR)
+			var loop := verts.duplicate()
+			loop.append(verts[0])
+			if bool(placement.is_npc):
+				draw_polyline(loop, Color.WHITE, NPC_OUTLINE_W, true)
+			else:
+				draw_polyline(loop, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
 			# Dark-green diagonal hatch (baked + clipped to the field).
 			for seg in (hatch_src as Array):
 				var s: PackedVector2Array = seg
 				if s.size() >= 2:
 					draw_polyline(s, FARM_HATCH, FARM_HATCH_W)
-		elif not bool(placement.is_npc):
-			# Roof ridges: thin grey lines along the footprint's LONG axis, derived from the
-			# quad's own edges so they stay on the roof at any rotation. Square/rect (4-vert)
-			# only — L/C shapes (6/8 verts) are skipped so a ridge never spills off the polygon.
+		else:
+			# Ink & wash: muted triad fill (seeded value jitter, NPC duller), one
+			# sepia ink outline for everyone, category-flavoured roof motifs.
+			draw_colored_polygon(verts, _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
+			var loop2 := verts.duplicate()
+			loop2.append(verts[0])
+			draw_polyline(loop2, INK, INK_W, true)
+			# Quad footprints only — L/C shapes (6/8 verts) keep a clean roof so a
+			# motif never spills off the polygon (same guard the old ridges used).
 			if verts.size() == 4:
-				var ax: Vector2 = verts[1] - verts[0]
-				var bx: Vector2 = verts[3] - verts[0]
-				var lng: Vector2 = ax if ax.length() >= bx.length() else bx
-				var shr: Vector2 = bx if lng == ax else ax
-				var n := clampi(int(shr.length() / 14.0), 1, 4)
-				for k in range(1, n + 1):
-					var base: Vector2 = verts[0] + shr * (float(k) / float(n + 1))
-					draw_line(base + lng * 0.14, base + lng * 0.86, ROOF_MARK, ROOF_MARK_W)
+				_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts)
 	# Thin dirt tracks between adjacent farms (kept within FARM_LANE_REACH of the fields, routed around
 	# forests). A promoted tile's _farm_lanes already excludes the ring + trunk (now real yellow roads).
 	# A filled disc (radius = half the track width) at each segment end JOINS the corners + junctions so
@@ -2435,11 +2448,21 @@ func _draw() -> void:
 		if k == "tank" or k == "farm_barn" or k == "farm_silo":
 			_draw_subcomponent(sc)
 
-## Draw one ancillary (tank/annex) in the parent building's colour + matching outline.
+## Draw one ancillary (tank/annex) in the parent's wash + ink; farm outbuildings
+## keep their brown barn/silo look (farms are outside the plate restyle).
 func _draw_subcomponent(sc: Dictionary) -> void:
 	if _cull and not _view.intersects(sc.bb):
 		return
 	var sv: PackedVector2Array = sc.verts
+	var kind := str(sc.kind)
+	if kind == "annex" or kind == "tank":
+		draw_colored_polygon(sv, _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc)))
+		var si := sv.duplicate()
+		si.append(sv[0])
+		draw_polyline(si, INK, INK_W, true)
+		if kind == "tank":
+			draw_circle(_poly_centroid(sv), 1.4, INK)   # reference: tank = ink circle + centre dot
+		return
 	draw_colored_polygon(sv, sc.color)
 	var sl := sv.duplicate()
 	sl.append(sv[0])
@@ -2447,6 +2470,70 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		draw_polyline(sl, Color.WHITE, NPC_OUTLINE_W, true)
 	else:
 		draw_polyline(sl, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
+
+# ── Ink & wash helpers (phase I1) ──────────────────────────────────────────────
+
+## Triad family for a building category: heavy industry/process = grey, storage/
+## logistics = mustard, everything urban = red (the reference's split).
+func _wash_family(cat: String) -> String:
+	match cat:
+		"extraction", "metallurgy", "refinery", "power", "electrochemistry", "water":
+			return "grey"
+		"infrastructure":
+			return "mustard"
+		"ruins":
+			return "ruins"
+		_:
+			return "red"
+
+## Muted wash fill: triad base + seeded ±5% value jitter so repeated blocks don't
+## clone; NPC buildings sit duller INSIDE the same hue (ownership stays legible
+## without leaving the plate's palette).
+func _wash_for(cat: String, iid: String, is_npc: bool) -> Color:
+	var base: Color
+	match _wash_family(cat):
+		"grey":    base = WASH_GREY
+		"mustard": base = WASH_MUSTARD
+		"ruins":   base = WASH_RUINS
+		_:         base = WASH_RED
+	var jitter := (float(RoadHash.pick("ink|%s|val" % iid, 100)) / 100.0 - 0.5) * 2.0 * WASH_JITTER
+	var s := base.s * (0.78 if is_npc else 1.06)
+	var v := base.v * (1.0 + jitter) * (0.96 if is_npc else 1.0)
+	return Color.from_hsv(base.h, clampf(s, 0.0, 1.0), clampf(v, 0.0, 1.0))
+
+## Interior ink linework on a quad roof, derived from the footprint's own edges so
+## it stays on the roof at any rotation. Grey industry gets shed saw-tooth lines +
+## a chimney dot; red urban blocks get terrace party-walls + a ridge; mustard
+## logistics keeps longitudinal ridge lines.
+func _draw_roof_motifs(cat: String, iid: String, verts: PackedVector2Array) -> void:
+	var ax: Vector2 = verts[1] - verts[0]
+	var bx: Vector2 = verts[3] - verts[0]
+	var lng: Vector2 = ax if ax.length() >= bx.length() else bx
+	var shr: Vector2 = bx if lng == ax else ax
+	match _wash_family(cat):
+		"grey":
+			var n := clampi(int(lng.length() / SAWTOOTH_PITCH), 1, 12)
+			for k in range(1, n):
+				var base: Vector2 = verts[0] + lng * (float(k) / float(n))
+				draw_line(base + shr * 0.12, base + shr * 0.88, INK, 1.0)
+			var ci := RoadHash.pick("ink|%s|chimney" % iid, 4)
+			var corner: Vector2 = verts[ci]
+			var inward := (_poly_centroid(verts) - corner).normalized()
+			draw_circle(corner + inward * 5.0, CHIMNEY_R, INK)
+		"red":
+			var n2 := clampi(int(lng.length() / TERRACE_PITCH), 1, 10)
+			for k2 in range(1, n2):
+				var base2: Vector2 = verts[0] + lng * (float(k2) / float(n2))
+				draw_line(base2 + shr * 0.08, base2 + shr * 0.92, INK, 1.0)
+			var mid: Vector2 = verts[0] + shr * 0.5
+			draw_line(mid + lng * 0.06, mid + lng * 0.94, INK, 1.0)
+		"ruins":
+			pass   # ruins stay quiet — a broken outline reads better than fresh roof lines
+		_:
+			var n3 := clampi(int(shr.length() / 14.0), 1, 4)
+			for k3 in range(1, n3 + 1):
+				var b3: Vector2 = verts[0] + shr * (float(k3) / float(n3 + 1))
+				draw_line(b3 + lng * 0.14, b3 + lng * 0.86, INK, 1.0)
 
 func _tile_center_world_pos(coord: Vector2i) -> Vector2:
 	if terrain_layer != null:
