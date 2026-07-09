@@ -206,6 +206,29 @@ const CABLE_POWER_CAP := {1: 2000, 2: 4000, 3: 7000}
 # both = 2500. A building's storage_boost (a Port adds +600) is added on top. Rule #7.
 const WAREHOUSE_STORAGE_CAP := {1: 800, 2: 1600, 3: 2500}
 const WAREHOUSE_UPGRADE_RESEARCH := ["Pallet Racking Systems", "Automated Storage & Retrieval"]
+# Per-tile warehouse expansion, paid in MATERIALS (owner spec 2026-07-09): the target
+# level keys the bill. Materials come either from the market (charged at ask + freight
+# to the tile) or pulled from stock across the player's tiles.
+# g_023 building_frame · g_071 construction_equipment_ice · g_027 plastics ·
+# g_042 computer · g_036 electrical_components
+const WAREHOUSE_UPGRADE_COSTS := {
+	2: {"g_023": 5, "g_071": 2, "g_027": 10},
+	3: {"g_023": 5, "g_071": 2, "g_042": 2, "g_036": 5},
+}
+# Warehousing fee: per-turn storage cost per STOCKPILED unit, by transport class
+# (owner spec 2026-07-09, part of the recipes-vs-overheads rebalance). Solids rack
+# cheaply; liquids need tankage; hazardous liquids and gases need certified
+# pressure storage. Goods in transit, overflow-hold or JIT feed pay nothing.
+const WAREHOUSING_COST_PER_UNIT_BY_CLASS := {
+	"solid_light": 0.01, "solid_heavy": 0.01, "ultra_heavy": 0.01,
+	"safe_liquid": 0.03, "liquid": 0.03,
+	"hazard_liquid": 0.1, "gas": 0.1,
+}
+
+func warehousing_cost_per_unit(good_id: String) -> float:
+	return float(WAREHOUSING_COST_PER_UNIT_BY_CLASS.get(
+		Catalog.get_transport_class(good_id),
+		WAREHOUSING_COST_PER_UNIT_BY_CLASS["solid_light"]))
 
 # --- Loans ---
 # Capacity is no longer a flat ceiling. It STARTS at the base below and scales with

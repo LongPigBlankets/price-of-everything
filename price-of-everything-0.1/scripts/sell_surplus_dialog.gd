@@ -9,7 +9,7 @@ signal cancelled
 
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 
-const BODY_TEXT := "Enabling 'Sell all Surplus' will sell any units of all goods on this tile which are not reserved for recipes. This will self-adjust with every new building you add."
+const BODY_TEXT := "Enabling 'Sell all Surplus' will sell any units of all goods on this tile beyond your buildings' working stock — their recipe inputs for the full delivery lead time, so market-fed inputs are never sold and re-bought. This self-adjusts with every new building you add."
 
 var _dont_ask: CheckBox
 

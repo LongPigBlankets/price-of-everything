@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b1013arbvt66m"]
+
+[ext_resource type="Script" path="res://tools/diag_fluid_pipeline.gd" id="1"]
+
+[node name="DiagFluidPipeline" type="Node2D"]
+script = ExtResource("1")

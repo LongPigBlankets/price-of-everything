@@ -263,8 +263,8 @@ func finish_build(animate: bool) -> void:
 	# Track depletable-deposit yields so mining can run them down over time.
 	MatchState.seed_deposits(terrain_layer)
 	# NOTE: the game-start BUILDINGS (NPC ports, the ruins, the start companies — and any future player
-	# start buildings) are placed LATER, AFTER roads + enclosures exist, so they drop into the ready chunk
-	# grid and fill the blocks. See the "roads → enclosures → buildings" sequence below.
+	# start buildings) are placed LATER, AFTER the baked road network exists, so they lay out against
+	# real streets. See the "roads → buildings" sequence below.
 
 	var pending_start := SaveLoad.pending_is_start()
 	# Captured BEFORE apply_pending() clears the snapshot: a tutorial match seeds none
@@ -277,8 +277,8 @@ func finish_build(animate: bool) -> void:
 	if loaded_pending:
 		_rebuild_after_load()
 	await _build_yield()
-	# Forests are a TERRAIN feature (the land mask + block templates read them), so they come before roads
-	# and enclosures. The buildings that used to follow here are deferred until after the blocks exist.
+	# Forests are a TERRAIN feature (the land mask + block templates read them), so they come before
+	# roads. The buildings that used to follow here are deferred until after the roads exist.
 	if (not loaded_pending or pending_start) and not pending_tutorial:
 		_place_northern_old_growth_forests()
 
@@ -296,20 +296,18 @@ func finish_build(animate: bool) -> void:
 		RoadNetwork.reset()
 		RoadWorks.reset()
 	RoadNetwork.bootstrap_from_bake()
-	# Match-start ENCLOSURES on urban tiles (after the bake's roads exist, BEFORE any building): each urban
-	# tile gets a city block + organic enclosure RING — the ring is the tile's visible road (no straight
-	# centre-to-centre connector lines), and inland tiles like Arin dock now enclose. seed_urban_enclosures
-	# lays a short INVISIBLE frontage anchor where there's no real road, then derives + draws the ring and
-	# flags the tile "roads". Fresh start only; a loaded save carries the rings in its network snapshot.
+	# roads-v3: every tile the baked network crosses carries "roads" infrastructure
+	# from turn 0 (geometry == gameplay — anchors AND the corridor tiles a trunk
+	# passes through). Fresh start only; a loaded save restores its own flags.
 	# When a loading screen is up, place the start buildings ONE PER FRAME so its
 	# slideshow keeps animating through the ~7 s of per-building visual layout instead
 	# of the whole window freezing. Without a loading screen (tests, e2e, load-game)
 	# `animate` is false and placement runs synchronously, exactly as before.
 	if not loaded_pending or pending_start:
-		await RoadWorks.seed_urban_enclosures(terrain_layer)
+		_apply_baked_road_flags()
 		await _build_yield()
-		# BUILDINGS now — after roads + enclosures — so they drop into the ready chunk grid and FILL the
-		# blocks they land in (NPC ports, the ruins, the start companies, + any future player start builds).
+		# BUILDINGS now — after the baked road network — so they lay out against real
+		# streets (NPC ports, the ruins, the start companies, + future player start builds).
 		await _place_npc_ports(animate)
 		# Tutorial keeps the ports (coast/docks) but drops the ruins + NPC start
 		# companies so the board is a clean slate around the seeded window factory.
@@ -358,6 +356,25 @@ func _loading_screen_active() -> bool:
 func _build_yield() -> void:
 	if _loading_screen_active():
 		await get_tree().process_frame
+
+## roads-v3: apply "roads" infrastructure to every tile the baked starting
+## network crosses (anchors AND corridor tiles — the bake's flagged_tiles list),
+## mirroring what a settled player road does. Infrastructure is free: it never
+## counts against build capacity. Fresh start only; loads restore their own flags.
+func _apply_baked_road_flags() -> void:
+	for tid in RoadsBaked.flagged_tiles():
+		var tile_id := str(tid)
+		var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
+		if not terrain_layer.tiles.has(coord):
+			continue
+		var td: Dictionary = terrain_layer.tiles[coord]
+		var infra: Array = (td.get("infrastructure_present", []) as Array)
+		if infra.has("roads"):
+			continue
+		infra = infra.duplicate()
+		infra.append("roads")
+		td["infrastructure_present"] = infra
+		Catalog.add_tile_infrastructure(tile_id, "roads")
 
 func _rebuild_after_load() -> void:
 	# Redraw per-building visuals from the imported state: clear everything placed

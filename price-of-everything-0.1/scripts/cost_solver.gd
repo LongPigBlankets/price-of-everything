@@ -99,7 +99,9 @@ func solve(reports: Array) -> Dictionary:
 			var labour_cost: float    = report.get("labour_cost", 0.0)
 			var maint_cost: float     = report.get("maintenance_cost", 0.0)
 			var transport_cost: float = report.get("inbound_transport", 0.0)
-			var total_cost: float     = input_material_cost + power_cost + labour_cost + maint_cost + transport_cost
+			# Storage overhead: this building's share of its tile's warehousing fee.
+			var warehousing_cost: float = report.get("warehousing_cost", 0.0)
+			var total_cost: float     = input_material_cost + power_cost + labour_cost + maint_cost + transport_cost + warehousing_cost
 
 			# Market-value allocation across all outputs
 			var outputs: Dictionary = report.get("outputs_produced", {})
@@ -139,6 +141,7 @@ func solve(reports: Array) -> Dictionary:
 				"labour_cost":         labour_cost,
 				"maintenance_cost":    maint_cost,
 				"inbound_transport":   transport_cost,
+				"warehousing_cost":    warehousing_cost,
 				"output_qty":          primary_qty,
 				"output_count":        output_keys.size(),
 			}
@@ -227,9 +230,9 @@ func _log_results(per_building: Dictionary, per_good: Dictionary) -> void:
 		print("[CostSolver]  %s → %s: £%.4f/unit (primary of %d outputs)" % [
 			iid, gname, b.unit_cost, b.output_count
 		])
-		print("[CostSolver]    inputs £%.4f | power £%.4f | labour £%.4f | maint £%.4f | transport £%.4f  →  gross £%.4f" % [
+		print("[CostSolver]    inputs £%.4f | power £%.4f | labour £%.4f | maint £%.4f | transport £%.4f | warehousing £%.4f  →  gross £%.4f" % [
 			b.input_material_cost, b.power_cost, b.labour_cost,
-			b.maintenance_cost, b.inbound_transport, b.total_cost
+			b.maintenance_cost, b.inbound_transport, b.get("warehousing_cost", 0.0), b.total_cost
 		])
 		if b.output_count > 1:
 			for gid in b.output_costs:

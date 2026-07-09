@@ -136,6 +136,18 @@ func _rebuild_items() -> void:
 	var starved := _starved_item()
 	if not starved.is_empty():
 		out.append(starved)
+	var overflow := _storage_full_item()
+	if not overflow.is_empty():
+		out.append(overflow)
+	var undersized := _storage_undersized_item()
+	if not undersized.is_empty():
+		out.append(undersized)
+	var cash_short := _input_cash_short_item()
+	if not cash_short.is_empty():
+		out.append(cash_short)
+	var spliced := _input_splice_item()
+	if not spliced.is_empty():
+		out.append(spliced)
 	# 3+4. Bell events mapped into alerts / news / info (single source of truth:
 	# dismissing here dismisses in the bell too). Only the LATEST turn's events show —
 	# the briefing is a turn digest, not a running log (that's the bell's job).
@@ -230,6 +242,174 @@ func _starved_item() -> Dictionary:
 		],
 		"list": listed,
 		"list_more": maxi(0, total - listed.size()),
+	}
+
+## Tile storage full: arrived shipments waiting in overflow-hold (they retry each
+## turn but occupy no stockpile until space frees) and/or pipeline orders clipped
+## because the tile can't physically hold its input buffers. This was THE silent
+## deadlock diagnosed 2026-07-09: a jammed tile starves its buildings while goods
+## bounce outside. Fix: sell surplus, expand the warehouse, or spread buildings.
+func _storage_full_item() -> Dictionary:
+	var held_by_tile: Dictionary = {}   # tile_id -> units waiting
+	var held_total := 0
+	for r in MatchState.overflow_shipments:
+		var tile := str(r.get("destination_tile", ""))
+		var qty := int(r.get("qty", 0))
+		held_by_tile[tile] = int(held_by_tile.get(tile, 0)) + qty
+		held_total += qty
+	var capped: Array = Production.last_turn_summary.get("input_orders_capped", [])
+	var capped_units := 0
+	var capped_tiles: Dictionary = {}
+	for c in capped:
+		var d: Dictionary = c
+		capped_units += int(d.get("wanted", 0)) - int(d.get("placed", 0))
+		capped_tiles[str(d.get("tile_id", ""))] = true
+	if held_total == 0 and capped_units == 0:
+		_alert_dismissed.erase("alert:storage_full")
+		return {}
+	var magnitude := held_total + capped_units
+	if _alert_dismissed.has("alert:storage_full") and magnitude <= int(_alert_dismissed["alert:storage_full"]):
+		return {}
+	var listed: Array = []
+	for tile in held_by_tile:
+		if listed.size() >= STARVED_LIST_ROWS:
+			break
+		listed.append({
+			"instance_id": "", "tile_id": str(tile),
+			"why": "%d unit%s waiting to unload" % [int(held_by_tile[tile]), "" if int(held_by_tile[tile]) == 1 else "s"],
+		})
+	for tile2 in capped_tiles:
+		if listed.size() >= STARVED_LIST_ROWS or held_by_tile.has(tile2):
+			continue
+		listed.append({"instance_id": "", "tile_id": str(tile2), "why": "input orders reduced to fit storage"})
+	var tiles_affected: Dictionary = capped_tiles.duplicate()
+	for tile3 in held_by_tile:
+		tiles_affected[tile3] = true
+	return {
+		"id": "alert:storage_full", "kind": "critical", "section": "alerts",
+		"severity": "critical" if held_total > 0 else "warning",
+		"dismissible": true, "magnitude": magnitude, "icon": "gauge",
+		"title": "Storage full on %d tile%s" % [tiles_affected.size(), "" if tiles_affected.size() == 1 else "s"],
+		"body": "Deliveries can't unload into a full stockpile — they wait outside and retry each turn while buildings starve. Free space (sell surplus, move goods) or expand the warehouse from the tile's Stockpile tab.",
+		"rows": [
+			["Goods waiting to unload", "%d unit%s" % [held_total, "" if held_total == 1 else "s"], "bad" if held_total > 0 else ""],
+			["Orders reduced to fit storage", "%d unit%s" % [capped_units, "" if capped_units == 1 else "s"], "warn" if capped_units > 0 else ""],
+		],
+		"list": listed,
+		"list_more": maxi(0, tiles_affected.size() - listed.size()),
+	}
+
+## STRUCTURAL storage shortfall (Production.last_turn_summary.storage_overcommitted):
+## the tile's warehouse is smaller than its buildings' steady-state working set —
+## import buffers, locally-made intermediates and outputs together beat capacity, so
+## the tile will jam no matter how orders are throttled. Fires before the acute
+## "storage full" alert, so the player can expand ahead of the deadlock.
+func _storage_undersized_item() -> Dictionary:
+	var rows: Array = Production.last_turn_summary.get("storage_overcommitted", [])
+	if rows.is_empty():
+		_alert_dismissed.erase("alert:storage_undersized")
+		return {}
+	var shortfall := 0
+	var listed: Array = []
+	for r in rows:
+		var d: Dictionary = r
+		shortfall += maxi(0, int(d.get("required", 0)) - int(d.get("capacity", 0)))
+		if listed.size() < STARVED_LIST_ROWS:
+			listed.append({
+				"instance_id": "", "tile_id": str(d.get("tile_id", "")),
+				"why": "needs ≈%d, holds %d" % [int(d.get("required", 0)), int(d.get("capacity", 0))],
+			})
+	if _alert_dismissed.has("alert:storage_undersized") and shortfall <= int(_alert_dismissed["alert:storage_undersized"]):
+		return {}
+	var first_tile := str((rows[0] as Dictionary).get("tile_id", ""))
+	var title := "%s lacks stockpile for its buildings" % _tile_display(first_tile) if rows.size() == 1 \
+		else "%d tiles lack stockpile for their buildings" % rows.size()
+	var body := "%s lacks the stockpile to support all the inputs and outputs for its buildings." % _tile_display(first_tile) if rows.size() == 1 \
+		else "These tiles lack the stockpile to support all the inputs and outputs of their buildings."
+	return {
+		"id": "alert:storage_undersized", "kind": "critical", "section": "alerts",
+		"severity": "critical", "dismissible": true, "magnitude": shortfall, "icon": "box",
+		"title": title,
+		"body": body + " Input buffers, local intermediates and outputs need more room than the warehouse holds, so deliveries will jam. Expand the warehouse (Stockpile tab), enable Sell all Surplus, or split the chain across tiles.",
+		"rows": [
+			["Working set over capacity", "%d unit%s" % [shortfall, "" if shortfall == 1 else "s"], "bad"],
+			["Tiles affected", "%d" % rows.size(), ""],
+		],
+		"list": listed,
+		"list_more": maxi(0, rows.size() - listed.size()),
+	}
+
+func _tile_display(tile_id: String) -> String:
+	var label := str(Catalog.tile_name(tile_id))
+	return label if label != "" else tile_id
+
+## Input orders the market pipeline could not fully place for CASH last turn
+## (Production.last_turn_summary.input_orders_short). Silent before 2026-07-09:
+## a remote building's (lead+1)-turn pipeline order was clipped or skipped and
+## the player only saw the starvation days later.
+func _input_cash_short_item() -> Dictionary:
+	var short: Array = Production.last_turn_summary.get("input_orders_short", [])
+	if short.is_empty():
+		_alert_dismissed.erase("alert:input_cash")
+		return {}
+	var skipped := 0
+	var short_cost := 0.0
+	var listed: Array = []
+	for s in short:
+		var d: Dictionary = s
+		if int(d.get("bought", 0)) == 0:
+			skipped += 1
+		short_cost += float(d.get("short_cost", 0.0))
+		if listed.size() < STARVED_LIST_ROWS:
+			listed.append({
+				"instance_id": "", "tile_id": str(d.get("tile_id", "")),
+				"why": "%s ×%d of %d bought" % [Catalog.get_display_name(str(d.get("good_id", ""))),
+					int(d.get("bought", 0)), int(d.get("requested", 0))],
+			})
+	if _alert_dismissed.has("alert:input_cash") and short.size() <= int(_alert_dismissed["alert:input_cash"]):
+		return {}
+	return {
+		"id": "alert:input_cash", "kind": "critical", "section": "alerts",
+		"severity": "critical" if skipped > 0 else "warning",
+		"dismissible": true, "magnitude": short.size(), "icon": "coin",
+		"title": "%d input order%s short on cash" % [short.size(), "" if short.size() == 1 else "s"],
+		"body": "The market pipeline couldn't afford full input orders — remote tiles need (transport lead + 1) turns of inputs as working capital. Buildings will starve when the shortfall reaches them (≈£%d more needed)." % int(ceil(short_cost)),
+		"rows": [
+			["Orders skipped entirely", "%d" % skipped, "bad" if skipped > 0 else ""],
+			["Extra cash needed", "£%d" % int(ceil(short_cost)), "warn"],
+		],
+		"list": listed,
+		"list_more": maxi(0, short.size() - listed.size()),
+	}
+
+## Inputs fed from same-tile production AND market top-up at once
+## (Production.last_turn_summary.input_splices). Informational: if the local
+## producer dips, the market top-up lags by the transport lead before bigger
+## orders arrive — a hidden fragility worth knowing about.
+func _input_splice_item() -> Dictionary:
+	var splices: Array = Production.last_turn_summary.get("input_splices", [])
+	if splices.is_empty():
+		_alert_dismissed.erase("alert:input_splice")
+		return {}
+	if _alert_dismissed.has("alert:input_splice") and splices.size() <= int(_alert_dismissed["alert:input_splice"]):
+		return {}
+	var listed: Array = []
+	for s in splices.slice(0, STARVED_LIST_ROWS):
+		var d: Dictionary = s
+		listed.append({
+			"instance_id": "", "tile_id": str(d.get("tile_id", "")),
+			"why": "%s: %d/turn local + %d/turn market" % [Catalog.get_display_name(str(d.get("good_id", ""))),
+				int(d.get("local", 0)), int(d.get("market", 0))],
+		})
+	return {
+		"id": "alert:input_splice", "kind": "info", "section": "info",
+		"severity": "info",
+		"dismissible": true, "magnitude": splices.size(), "icon": "truck",
+		"title": "%d input%s spliced: local production + market" % [splices.size(), "" if splices.size() == 1 else "s"],
+		"body": "These inputs are partly covered by same-tile production, with the market topping up the rest. If local output dips, the top-up takes the full transport lead to catch up.",
+		"rows": [],
+		"list": listed,
+		"list_more": maxi(0, splices.size() - listed.size()),
 	}
 
 # Map a bell event into a briefing item. Kind → section; the bell stays the log.

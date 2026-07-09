@@ -10,6 +10,11 @@ const LEGACY_TILE_KEY := "__legacy_global__"
 
 var _by_tile: Dictionary = {}  # tile_key -> good_id -> int
 
+# Per-tile PURCHASED warehouse level (Expand Warehouse in the tile panel, paid in
+# materials). Effective level = max(purchased, empire-wide storage research), so
+# neither path downgrades the other. Only levels > 1 are stored.
+var _warehouse_levels: Dictionary = {}  # tile_key -> int (2 or 3)
+
 # --- Silent-leak metric: goods that couldn't be stored this turn because the tile
 # was at capacity. RunMetrics reads + resets this once per turn. Purely additive;
 # nothing in the game loop depends on it, so it can never change stockpile behaviour.
@@ -43,11 +48,26 @@ func get_capacity(coord) -> int:
 	if coord == null:
 		return 999999
 	# Per-tile "warehouse" capacity: a level table (L1/L2/L3 = 800/1600/2500) driven by
-	# storage-research upgrades, plus any building storage_boost on the tile (a Port adds
-	# +600 on top).
-	var level := _warehouse_level()
-	var base: int = int(EconomyConfig.WAREHOUSE_STORAGE_CAP.get(level, TILE_CAPACITY))
+	# storage-research upgrades OR a per-tile purchased expansion, plus any building
+	# storage_boost on the tile (a Port adds +600 on top).
+	var base: int = int(EconomyConfig.WAREHOUSE_STORAGE_CAP.get(get_warehouse_level(coord), TILE_CAPACITY))
 	return base + _storage_boost_for(coord)
+
+## Effective warehouse level for a tile: the better of the empire-wide research
+## level and this tile's purchased expansion.
+func get_warehouse_level(coord) -> int:
+	var purchased: int = int(_warehouse_levels.get(_tile_key(coord), 1))
+	return mini(maxi(_warehouse_level(), purchased), EconomyConfig.WAREHOUSE_STORAGE_CAP.size())
+
+func set_warehouse_level(coord, level: int) -> void:
+	var clamped: int = clampi(level, 1, EconomyConfig.WAREHOUSE_STORAGE_CAP.size())
+	var key := _tile_key(coord)
+	if clamped <= 1:
+		_warehouse_levels.erase(key)
+	else:
+		_warehouse_levels[key] = clamped
+	_at_capacity.erase(key)  # capacity changed: let the full-latch re-evaluate
+	stockpile_changed.emit()
 
 # Warehouse level = 1 + the number of storage-research upgrades unlocked (empire-wide),
 # capped at the top table level. The two upgrades chain (Pallet Racking → Automated
@@ -173,6 +193,7 @@ func consume_anywhere(good_id: String, qty: int) -> int:
 
 func clear_all() -> void:
 	_by_tile.clear()
+	_warehouse_levels.clear()
 	_at_capacity.clear()
 	_capacity_lost_this_turn = 0
 	stockpile_changed.emit()
@@ -180,11 +201,12 @@ func clear_all() -> void:
 # --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
 
 func export_state() -> Dictionary:
-	return {"by_tile": _by_tile.duplicate(true)}
+	return {"by_tile": _by_tile.duplicate(true), "warehouse_levels": _warehouse_levels.duplicate(true)}
 
 func import_state(d: Dictionary) -> void:
 	# Silent: SaveLoad emits stockpile_changed once after every system imports.
 	_by_tile = (d.get("by_tile", {}) as Dictionary).duplicate(true)
+	_warehouse_levels = (d.get("warehouse_levels", {}) as Dictionary).duplicate(true)
 	_at_capacity.clear()
 	_capacity_lost_this_turn = 0
 

@@ -249,7 +249,7 @@ func _update_layout() -> void:
 	# Expanded ledger: same width as the summary, aligned with it, emerging from
 	# the navy panel's top edge and growing up. It carries the summary content in
 	# its top header.
-	var slide_h := 348.0   # +2 rows for the split labour/maintenance/tax/fake-money ledger
+	var slide_h := 375.0   # +1 row for the Warehousing ledger line (owner: "a little taller to boot")
 	_r_slide = Rect2(_r_summary.position.x, navy_top - slide_h, SUMMARY_W, slide_h)
 
 	# Input layers.
@@ -344,6 +344,7 @@ func _render_empty() -> void:
 		{"k": "Tax & Div", "v": 0.0}, {"k": "Power", "v": 0.0},
 		{"k": "Transport", "v": 0.0}, {"k": "Bought", "v": 0.0},
 		{"k": "Interest", "v": 0.0}, {"k": "Profit Sharing", "v": 0.0},
+		{"k": "Warehousing", "v": 0.0},
 	]
 	queue_redraw()
 
@@ -359,6 +360,7 @@ func _render_summary(s: Dictionary) -> void:
 	var bought: float = float(s.get("goods_purchased_cost", 0.0))
 	var interest: float = float(s.get("interest_paid", 0.0))
 	var profit_sharing: float = float(s.get("profit_sharing_paid", 0.0))
+	var warehousing: float = float(s.get("warehousing_paid", 0.0))
 	_fin = [
 		{"k": "Sold", "v": sold},
 		{"k": "Fake Money", "v": fake},
@@ -370,6 +372,7 @@ func _render_summary(s: Dictionary) -> void:
 		{"k": "Bought", "v": -bought},
 		{"k": "Interest", "v": -interest},
 		{"k": "Profit Sharing", "v": -profit_sharing},
+		{"k": "Warehousing", "v": -warehousing},
 	]
 	# Fake money counts toward the reported total but not the sim's money_in.
 	_net = float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0)) + fake

@@ -5,6 +5,9 @@ const RUNWAY_THRESHOLD_TURNS := 5
 const AUTO_COLLAPSE_DELAY := 5.0
 const MAX_LIST_ITEMS := 3
 const COLLAPSED_HEIGHT := 56.0
+# Extra headroom added to the scene's expanded height for the warehousing row
+# (owner: "add a new row … and make it a little taller to boot").
+const EXPANDED_EXTRA_HEIGHT := 26.0
 
 @onready var header_row: HBoxContainer = $MarginContainer/VBoxContainer/HeaderRow
 @onready var expand_icon: Label = $MarginContainer/VBoxContainer/HeaderRow/ExpandIcon
@@ -38,9 +41,10 @@ var _buildings_added_this_turn: Array = []
 var _suppress_expand := false  # set by the "don't expand again" tickbox; resets each game
 var _transport_cost_label: Label = null
 var _goods_purchased_label: Label = null
+var _warehousing_label: Label = null
 
 func _ready() -> void:
-	_expanded_offset_top = offset_top
+	_expanded_offset_top = offset_top - EXPANDED_EXTRA_HEIGHT
 	_expanded_offset_bottom = offset_bottom
 	header_row.gui_input.connect(_on_header_clicked)
 	dismiss_button.pressed.connect(_collapse)
@@ -61,6 +65,9 @@ func _build_cost_breakdown_rows() -> void:
 	_goods_purchased_label = costs_label.duplicate()
 	parent.add_child(_goods_purchased_label)
 	parent.move_child(_goods_purchased_label, _transport_cost_label.get_index() + 1)
+	_warehousing_label = costs_label.duplicate()
+	parent.add_child(_warehousing_label)
+	parent.move_child(_warehousing_label, _goods_purchased_label.get_index() + 1)
 
 func _build_suppress_expand_checkbox() -> void:
 	var checkbox := UIHelpers.make_custom_checkbox()
@@ -99,6 +106,10 @@ func _render_summary(summary: Dictionary) -> void:
 		_transport_cost_label.text = "  Transport costs: -£%.2f" % summary.get("transport_paid", 0.0)
 	if _goods_purchased_label != null:
 		_goods_purchased_label.text = "  Goods purchased: -£%.2f" % summary.get("goods_purchased_cost", 0.0)
+	if _warehousing_label != null:
+		var wh: float = float(summary.get("warehousing_paid", 0.0))
+		_warehousing_label.text = "  Warehousing: -£%.2f" % wh
+		_warehousing_label.visible = wh > 0.0
 	var total_taxes: float = summary.taxes_paid + summary.dividends_paid
 	taxes_label.text = "  Taxes & dividends: -£%.2f" % total_taxes
 	

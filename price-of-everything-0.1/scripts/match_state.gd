@@ -343,6 +343,10 @@ var revealed_deposits: Dictionary = {}  # tile_id -> {token: true}
 # and progress toward the action+object+quantity conditions (e.g. "Survey|tiles").
 var unlocked_titles: Dictionary = {}
 var _unlock_progress: Dictionary = {}
+# Per-tile CONSECUTIVE-turn streak of "stockpile fed by 3+ distinct buildings this
+# turn" — the Just-in-Time Logistics unlock condition. Updated by Production at
+# output flush; tiles that miss the bar in a turn drop out (streak resets). Saved.
+var stockpile_feed_streaks: Dictionary = {}
 var _unlock_defs: Array = []   # [{title, action, object, qty, prereqs, description}]
 # Survey range: how many tiles out from a surveyed tile you may survey. The red
 # limit line and the click check both use it; +1 once Geoscanning is unlocked.
@@ -1574,6 +1578,24 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 	unlock_granted.emit(title, desc, via_condition)
 
 ## Record progress toward action+object conditions (e.g. record("Survey","tiles")).
+## Advance/reset the per-tile "stockpile fed by 7+ buildings" streaks from this
+## turn's flush: {tile_id -> distinct producing buildings}. Tiles at the bar
+## extend their streak; every other tile (including ones absent this turn) resets.
+const STOCKPILE_FEED_STREAK_BUILDINGS := 7  # owner raised from 3 (2026-07-09)
+
+func update_stockpile_feed_streaks(fed_counts: Dictionary) -> void:
+	var next: Dictionary = {}
+	for t in fed_counts:
+		if int(fed_counts[t]) >= STOCKPILE_FEED_STREAK_BUILDINGS:
+			next[t] = int(stockpile_feed_streaks.get(t, 0)) + 1
+	stockpile_feed_streaks = next
+
+func max_stockpile_feed_streak() -> int:
+	var best := 0
+	for t in stockpile_feed_streaks:
+		best = maxi(best, int(stockpile_feed_streaks[t]))
+	return best
+
 func record_unlock_progress(action: String, object: String, amount: int = 1) -> void:
 	if amount <= 0:
 		return
@@ -1630,6 +1652,10 @@ func _live_condition_met(d: Dictionary) -> bool:
 			return _count_buildings(obj, 1, false, turns) >= need
 		"Run Profitable L2":
 			return _count_buildings(obj, 2, true, 0) >= need
+		"Stockpile filled":
+			# Just-in-Time Logistics: some tile's stockpile received goods from 3+
+			# buildings for <qty> consecutive turns (streaks kept at output flush).
+			return max_stockpile_feed_streak() >= need
 	return false
 
 # Count player-owned buildings whose internal_name == `internal`, optionally
@@ -2164,6 +2190,7 @@ func reset() -> void:
 	# import_state, so this only bites the reset-without-import paths.)
 	unlocked_titles.clear()
 	_unlock_progress.clear()
+	stockpile_feed_streaks.clear()
 	_next_instance_counter = 0
 	ruleset = DEFAULT_RULESET.duplicate(true)
 	state_reset.emit()
@@ -2256,6 +2283,7 @@ func export_state() -> Dictionary:
 		"deposit_remaining": deposit_remaining.duplicate(true),
 		"unlocked_titles": unlocked_titles.duplicate(true),
 		"unlock_progress": _unlock_progress.duplicate(true),
+		"stockpile_feed_streaks": stockpile_feed_streaks.duplicate(true),
 		"seaport_auto_subscribe": seaport_auto_subscribe,
 		"seaport_subscribed": seaport_subscribed.duplicate(true),
 	}
@@ -2348,6 +2376,7 @@ func import_state(d: Dictionary) -> void:
 	deposit_remaining = (d.get("deposit_remaining", deposit_remaining) as Dictionary).duplicate(true)
 	unlocked_titles = (d.get("unlocked_titles", {}) as Dictionary).duplicate(true)
 	_unlock_progress = (d.get("unlock_progress", {}) as Dictionary).duplicate(true)
+	stockpile_feed_streaks = (d.get("stockpile_feed_streaks", {}) as Dictionary).duplicate(true)
 	seaport_auto_subscribe = bool(d.get("seaport_auto_subscribe", false))
 	seaport_subscribed = (d.get("seaport_subscribed", {}) as Dictionary).duplicate(true)
 	# Derived state: the tile index is rebuilt, never saved; caches invalidate.
@@ -2976,6 +3005,68 @@ func preview_buy(dest_tile: String, good_id: String, qty: int) -> Dictionary:
 	return {"cost": float(quote.get("cost", 0.0)), "goods_cost": float(quote.get("goods_cost", 0.0)),
 		"transport_cost": float(quote.get("transport_cost", 0.0)), "turns": int(quote.get("turns", 0)),
 		"port": str(quote.get("port", ""))}
+
+# --- Warehouse expansion (per-tile storage upgrade paid in materials) ---
+
+## Everything the tile panel needs to render the "Expand Warehouse" offer:
+## the next level's material bill with per-good empire stock vs market cost
+## (ask + freight to the tile), plus affordability flags.
+func warehouse_upgrade_quote(tile_id: String) -> Dictionary:
+	var level := Stockpile.get_warehouse_level(tile_id)
+	var next_level := level + 1
+	if tile_id == "" or not EconomyConfig.WAREHOUSE_UPGRADE_COSTS.has(next_level):
+		return {"maxed": true, "level": level}
+	var costs: Dictionary = EconomyConfig.WAREHOUSE_UPGRADE_COSTS[next_level]
+	var materials: Array = []
+	var market_total := 0.0
+	var empire_ok := true
+	for good_id in costs:
+		var qty := int(costs[good_id])
+		var have := Stockpile.get_total(str(good_id))
+		var quote := TransportService.quote_market_buy(tile_id, str(good_id), qty, seaport_would_cover(str(good_id)))
+		var cost := float(quote.get("cost", float(qty) * MarketState.get_buy_price(str(good_id))))
+		materials.append({"good_id": str(good_id), "qty": qty, "have_empire": have, "market_cost": cost})
+		market_total += cost
+		if have < qty:
+			empire_ok = false
+	return {
+		"maxed": false, "level": level, "next_level": next_level,
+		"current_cap": int(EconomyConfig.WAREHOUSE_STORAGE_CAP.get(level, Stockpile.TILE_CAPACITY)),
+		"next_cap": int(EconomyConfig.WAREHOUSE_STORAGE_CAP.get(next_level, Stockpile.TILE_CAPACITY)),
+		"materials": materials, "market_total": market_total,
+		"empire_ok": empire_ok, "money_ok": market_total <= money,
+	}
+
+## Commit the expansion. source = "market" (pay cash at ask + freight; the materials
+## are consumed by the works, nothing ships) or "empire" (pull the bill from stock
+## across the player's tiles). Applies immediately, like road/rail infra purchases.
+func upgrade_warehouse(tile_id: String, source: String) -> Dictionary:
+	var q := warehouse_upgrade_quote(tile_id)
+	if bool(q.get("maxed", false)):
+		return {"ok": false, "reason": "maxed"}
+	var next_level := int(q.get("next_level", 0))
+	var materials: Array = q.get("materials", [])
+	match source:
+		"market":
+			var total := float(q.get("market_total", 0.0))
+			if total > money:
+				return {"ok": false, "reason": "money"}
+			add_money(-total)
+			for m in materials:
+				# Deficit feed: these are real market purchases (price impact applies).
+				MarketState.record_market_buy_volume(str(m.good_id), int(m.qty))
+			goods_movement_recorded.emit("buy", "upgrade", 0)
+		"empire":
+			for m in materials:
+				if Stockpile.get_total(str(m.good_id)) < int(m.qty):
+					return {"ok": false, "reason": "materials"}
+			for m in materials:
+				Stockpile.consume_anywhere(str(m.good_id), int(m.qty))
+		_:
+			return {"ok": false, "reason": "unknown_source"}
+	Stockpile.set_warehouse_level(tile_id, next_level)
+	request_toast("Warehouse expanded to level %d — %d storage" % [next_level, int(q.get("next_cap", 0))], "success")
+	return {"ok": true, "level": next_level, "capacity": int(q.get("next_cap", 0))}
 
 func get_oneoff_transaction_rows() -> Array:
 	var rows: Array = []
