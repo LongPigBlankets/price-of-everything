@@ -196,8 +196,8 @@ func _ready() -> void:
 	realizer.warm_forest_cache()
 	var funnel := _funnel_river_crossings(nav, network, realizer._forest_discs_cache)
 	var approaches := _merge_gate_approaches(network)
-	print("bake_roads: river discipline — %d crossings anchored (%d decks), %d roads cut at banks, %d grazes bank-hugged, %d approaches overlaid" % [
-		int(funnel.bridged), int(funnel.decks), int(funnel.cuts), int(funnel.grazes), approaches])
+	print("bake_roads: river discipline — %d crossings anchored (%d decks), %d cut at banks, %d grazes hugged, %d meanders detoured, %d approaches overlaid" % [
+		int(funnel.bridged), int(funnel.decks), int(funnel.cuts), int(funnel.grazes), int(funnel.detours), approaches])
 
 	var anchor_ids: Array = []
 	for a2 in anchors:
@@ -719,6 +719,7 @@ func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> 
 	var bridged := 0
 	var cuts := 0
 	var grazes := 0
+	var detours := 0
 	var bridge_edges: Dictionary = {}    # "na|nb" -> canonical edge id
 	var canonical_ids: Dictionary = {}   # edge ids the pass created (never re-cut)
 	var eids: Array = network.edges.keys()
@@ -729,9 +730,14 @@ func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> 
 		var e: Dictionary = network.edges[eid]
 		if str(e.state) != RoadNetwork.STATE_BUILT:
 			continue
-		var geo: PackedVector2Array = e.geometry
-		if geo.size() < 2:
+		var geo_src: PackedVector2Array = e.geometry
+		if geo_src.size() < 2:
 			continue
+		# Densify FIRST: a segment can straddle the channel with both endpoints
+		# dry (vertex spacing > river width), which the vertex-based run
+		# detector cannot see — e:57 crossed twice hairpin-style with zero wet
+		# vertices and kept a stale realizer bridge record (phantom deck bar).
+		var geo := _densify_polyline(geo_src, 10.0)
 		# Slice the polyline into dry parts separated by GENUINE wet runs; bank
 		# grazes (wet cells without a bank-to-bank chord) stay inline.
 		var parts: Array = []     # Array[PackedVector2Array]
@@ -739,6 +745,7 @@ func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> 
 		var current := PackedVector2Array()
 		var i := 0
 		var any := false
+		var touched := false
 		while i < geo.size():
 			if not _in_river(nav, geo[i]):
 				current.append(geo[i])
@@ -762,11 +769,14 @@ func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> 
 					for k0 in range(i, j):
 						current.append(geo[k0])
 				else:
-					# Mid-run bank graze: keep the run but push its points onto
-					# land so no road ever DRAWS in the water (owner round 8:
-					# orange trunks riding the channel).
-					var hug := _push_to_land(nav, geo.slice(i, j))
+					# Mid-run bank graze: hug the bank via the validated detour
+					# (smoothed, dry-hop checked — an unvalidated push once sent
+					# a mid-channel point to the OPPOSITE bank, drawing a
+					# hairpin across the river at 18_18). Original points if the
+					# detour fails — never an unvalidated push.
+					var hug := _bank_detour(nav, entry, geo.slice(i, j), exit_p, forest_discs)
 					if hug.size() > 0:
+						touched = true
 						for hp in hug:
 							current.append(hp)
 					else:
@@ -774,6 +784,49 @@ func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> 
 							current.append(geo[k])
 				i = j
 				continue
+			# Same-bank meander wander (round 6 lesson, relearned round 9 at
+			# 19_11/18_18): the entry->exit CHORD can be wet >=20u while both
+			# ends sit on the SAME bank — route smoothing cut across a bend.
+			# Detour FIRST: push the run onto the bank (with a margin cell so
+			# the road has room to follow the river); only a run that cannot
+			# be walked dry along one bank is a real crossing.
+			if not at_end:
+				var detour := _bank_detour(nav, entry, geo.slice(i, j), exit_p, forest_discs)
+				if detour.size() > 0:
+					detours += 1
+					touched = true
+					for dp in detour:
+						current.append(dp)
+					i = j
+					continue
+			else:
+				# End-of-polyline run: extend along the bank from the dry side
+				# (a leading run once bridged via the gate-zone waiver and left
+				# an ORPHAN deck — its other piece was empty). Push seeded from
+				# the dry neighbour; reverse for leading runs.
+				var run_pts := geo.slice(i, j)
+				var lead := current.size() == 0 and i == 0
+				if lead and j < geo.size():
+					var rev := PackedVector2Array()
+					for ri in range(run_pts.size() - 1, -1, -1):
+						rev.append(run_pts[ri])
+					var pushed_r := _bank_detour(nav, exit_p, rev, exit_p, forest_discs)
+					if pushed_r.size() > 0:
+						detours += 1
+						touched = true
+						for ri2 in range(pushed_r.size() - 1, -1, -1):
+							current.append(pushed_r[ri2])
+						i = j
+						continue
+				elif not lead:
+					var pushed_t := _bank_detour(nav, entry, run_pts, entry, forest_discs)
+					if pushed_t.size() > 0:
+						detours += 1
+						touched = true
+						for tp in pushed_t:
+							current.append(tp)
+						i = j
+						continue
 			any = true
 			var chosen: Dictionary = {}
 			for cand in _crossings_by_distance(mid, 800.0, 3):
@@ -811,6 +864,14 @@ func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> 
 			i = j
 		parts.append(current)
 		if not any:
+			# No genuine crossing left on this edge. Apply the hug/detour
+			# geometry (it used to be computed then DISCARDED here) and strip
+			# any realizer-era bridge record — canonical decks are the only
+			# legitimate carriers now, anything else draws a bridge to nowhere.
+			if touched and parts.size() == 1 and (parts[0] as PackedVector2Array).size() >= 2:
+				e["geometry"] = parts[0]
+			if (e.get("bridges", []) as Array).size() > 0:
+				e["bridges"] = []
 			continue
 		# Rebuild: split pieces anchored on gate nodes (bridging) or bank nodes (cuts).
 		_remove_edge(network, str(eid))
@@ -865,7 +926,7 @@ func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> 
 				network.add_edge(sn, end_node, str(e.tier), pts, ptiles, [], 0)
 			start_node = end_node
 	var decks := bridge_edges.size()
-	return {"bridged": bridged, "cuts": cuts, "decks": decks, "grazes": grazes}
+	return {"bridged": bridged, "cuts": cuts, "decks": decks, "grazes": grazes, "detours": detours}
 
 ## Un-bend the V-notch a gate join creates when the approach overshoots the
 ## gate: drop end points while a direct line to the gate is meaningfully
@@ -886,17 +947,55 @@ func _unbend_to_gate(nav, pts: PackedVector2Array, gate: Vector2, ga: Vector2, g
 
 ## Push every point of a wet run onto its nearest land cell (outward ring
 ## search) — bank grazes then hug the bank instead of riding the channel.
-func _push_to_land(nav, pts: PackedVector2Array) -> PackedVector2Array:
+func _push_to_land(nav, pts: PackedVector2Array, seed_prev: Vector2 = Vector2.INF, discs: Array = []) -> PackedVector2Array:
 	var out := PackedVector2Array()
+	var prev := seed_prev
 	for p in pts:
-		var q := _nearest_land_point(nav, p, 6)
+		var q := _nearest_land_point(nav, p, 6, prev, discs)
 		if q == Vector2.INF:
 			return PackedVector2Array()
+		prev = q
 		if out.is_empty() or out[out.size() - 1].distance_to(q) > 2.0:
 			out.append(q)
 	return out
 
-func _nearest_land_point(nav, p: Vector2, max_ring: int) -> Vector2:
+## Try to walk a wet run dry along ONE bank: push its points to land (seeded
+## from the last dry point for bank continuity), then require every hop of
+## entry -> pushed... -> exit to be dry. Fails on a genuine bank-to-bank
+## crossing — some hop must still jump the channel.
+func _bank_detour(nav, entry: Vector2, run: PackedVector2Array, exit_p: Vector2, discs: Array = []) -> PackedVector2Array:
+	var pushed := _push_to_land(nav, run, entry, discs)
+	if pushed.is_empty():
+		return PackedVector2Array()
+	var smoothed := _smooth_run(pushed)
+	for cand2 in [smoothed, pushed]:
+		var seq := PackedVector2Array([entry])
+		seq.append_array(cand2)
+		seq.append(exit_p)
+		var dry := true
+		for si in range(seq.size() - 1):
+			if _max_wet_chord(nav, seq[si], seq[si + 1]) >= 20.0:
+				dry = false
+				break
+		if dry:
+			return cand2
+	return PackedVector2Array()
+
+## One relaxation pass over interior points (softens the 12u cell staircase);
+## the caller re-validates dryness and falls back to the raw push if needed.
+func _smooth_run(pts: PackedVector2Array) -> PackedVector2Array:
+	if pts.size() < 3:
+		return pts
+	var out := pts.duplicate()
+	for k in range(1, pts.size() - 1):
+		out[k] = (pts[k - 1] + pts[k] * 2.0 + pts[k + 1]) / 4.0
+	return out
+
+## Nearest usable land cell. Preferences: cells whose 4-neighbours are all land
+## (one cell in from the bank — the road needs room beside the river, owner
+## round 9) and, when `prev` is given, continuity with the previous pushed
+## point so a mid-channel run stays on ONE bank instead of zigzagging.
+func _nearest_land_point(nav, p: Vector2, max_ring: int, prev: Vector2 = Vector2.INF, discs: Array = []) -> Vector2:
 	var c: Vector2i = nav.cell_of(p)
 	for r in range(0, max_ring + 1):
 		var best := Vector2.INF
@@ -914,13 +1013,32 @@ func _nearest_land_point(nav, p: Vector2, max_ring: int) -> Vector2:
 				if nav.level(x, y) >= RoadRealizer.BAN_LEVEL:
 					continue
 				var w: Vector2 = nav.world_of(x, y)
+				var in_disc := false
+				for disc in discs:
+					if w.distance_to(disc.center) < float(disc.radius) + 2.0:
+						in_disc = true
+						break
+				if in_disc:
+					continue
 				var d := w.distance_squared_to(p)
+				if not _cell_interior(nav, x, y):
+					d *= 5.0
+				if prev != Vector2.INF:
+					d += 0.8 * w.distance_squared_to(prev)
 				if d < best_d:
 					best_d = d
 					best = w
 		if best != Vector2.INF:
 			return best
 	return Vector2.INF
+
+func _cell_interior(nav, x: int, y: int) -> bool:
+	for n in [Vector2i(x + 1, y), Vector2i(x - 1, y), Vector2i(x, y + 1), Vector2i(x, y - 1)]:
+		if n.x < 0 or n.y < 0 or n.x >= nav.gw or n.y >= nav.gh:
+			return false
+		if nav.water(n.x, n.y) != NavGrid.WATER_LAND:
+			return false
+	return true
 
 ## Post-funnel visual consolidation at the bridges (owner round 8):
 ## 1. degenerate decks (both ends the same gate node) are dropped;
@@ -948,6 +1066,39 @@ func _merge_gate_approaches(network: RoadNetwork) -> int:
 		var e0: Dictionary = network.edges[eid0]
 		if str(e0.a) == str(e0.b) and str(e0.a).begins_with("bgate:"):
 			_remove_edge(network, str(eid0))
+	# Orphan decks: a deck whose gate has NO land road within reach draws a
+	# bridge to nowhere (a run that bridged while its far piece came out
+	# empty). Attachment is judged by POSITION — approaches often end on the
+	# gate point under a different node id.
+	eids = network.edges.keys()
+	eids.sort()
+	for eidd in eids:
+		var ed: Dictionary = network.edges.get(eidd, {})
+		if ed.is_empty() or not (str(ed.a).begins_with("bgate:") and str(ed.b).begins_with("bgate:")):
+			continue
+		var dgeo: PackedVector2Array = ed.geometry
+		if dgeo.size() < 2:
+			continue
+		var attached_a := false
+		var attached_b := false
+		for eid2 in eids:
+			if eid2 == eidd:
+				continue
+			var e2: Dictionary = network.edges.get(eid2, {})
+			if e2.is_empty():
+				continue
+			var g2: PackedVector2Array = e2.geometry
+			if g2.size() < 2:
+				continue
+			for ep in [g2[0], g2[g2.size() - 1]]:
+				if ep.distance_to(dgeo[0]) <= 2.0:
+					attached_a = true
+				if ep.distance_to(dgeo[dgeo.size() - 1]) <= 2.0:
+					attached_b = true
+			if attached_a and attached_b:
+				break
+		if not (attached_a and attached_b):
+			_remove_edge(network, str(eidd))
 	eids = network.edges.keys()
 	eids.sort()
 	for eid1 in eids:
@@ -1048,6 +1199,19 @@ func _pos_near_crossing(p: Vector2, radius: float) -> bool:
 			if p.distance_to((cr as Dictionary).point) <= radius:
 				return true
 	return false
+
+func _densify_polyline(pts: PackedVector2Array, step: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		out.append(a)
+		var n := int(a.distance_to(b) / step)
+		for s in range(1, n):
+			out.append(a.lerp(b, float(s) / float(n)))
+	if pts.size() > 0:
+		out.append(pts[pts.size() - 1])
+	return out
 
 func _polyline_arc(poly: PackedVector2Array) -> float:
 	var arc := 0.0
