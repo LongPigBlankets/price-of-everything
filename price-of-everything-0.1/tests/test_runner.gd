@@ -4823,6 +4823,16 @@ func _test_victory_logistics() -> void:
 	# eff 0.75 -> (0.75-0.25)/0.75 = 0.667.
 	_check(absf(VictoryState._live_progress("logistics") - (0.5 / 0.75)) < 0.001,
 		"victory logistics: 75% efficiency maps to ~0.667 progress")
+	# Per-turn track: the tick latches the best, then resets the movement counters,
+	# so next turn starts from zero (no cumulative credit since game start).
+	TurnManager.current_turn = 50
+	VictoryState._on_turn_processed({"money_in": 0.0, "money_out": 0.0})
+	VictoryState._tick()
+	_check(VictoryState.logistics_total == 0 and VictoryState.logistics_efficient == 0
+		and absf(float(VictoryState.track_best["logistics"]) - (0.5 / 0.75)) < 0.001,
+		"victory logistics: tick latches best then resets per-turn counters")
+	_check(absf(VictoryState._live_progress("logistics")) < 0.001,
+		"victory logistics: live progress is 0 again after the per-turn reset")
 
 func _test_victory_richest() -> void:
 	MatchState.reset()
@@ -4867,16 +4877,16 @@ func _test_victory_widest() -> void:
 func _test_victory_greenest() -> void:
 	VictoryState.reset()
 	VictoryState._resolve_green_ids()
-	# 600 MW solar of 1000 MW total -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
-	VictoryState._last_summary = {"power_supply": 1000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 600.0}}}
+	# 6000 MW solar of 10000 MW total -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
+	VictoryState._last_summary = {"power_supply": 10000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 6000.0}}}
 	_check(absf(VictoryState._live_progress("greenest") - 0.5) < 0.001,
 		"victory greenest: 60% green share maps to 0.5")
-	# Below the 500 MW power gate -> 0.
-	VictoryState._last_summary = {"power_supply": 400, "power_supply_by_type": {"b_024": {"count": 1, "amount": 400.0}}}
+	# Below the 5000 MW power gate -> 0 (even fully green).
+	VictoryState._last_summary = {"power_supply": 4000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 4000.0}}}
 	_check(absf(VictoryState._live_progress("greenest")) < 0.001,
-		"victory greenest: under 500 MW total is gated to 0")
+		"victory greenest: under 5000 MW total is gated to 0")
 	# Above the power gate but below 20% green share -> 0.
-	VictoryState._last_summary = {"power_supply": 1000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 100.0}}}
+	VictoryState._last_summary = {"power_supply": 10000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 1000.0}}}
 	_check(absf(VictoryState._live_progress("greenest")) < 0.001,
 		"victory greenest: under 20% green share is gated to 0")
 
@@ -5179,9 +5189,9 @@ func _test_detail_panel_owner_resolution() -> void:
 
 func _test_greenest_reads_quality() -> void:
 	VictoryState.reset()
-	# green = intermittent 300 + steady 300 = 600 of 1000 -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
-	VictoryState._last_summary = {"power_supply": 1000,
-		"power_supply_by_quality": {"green_intermittent": 300, "green_steady": 300, "grey": 400}}
+	# green = intermittent 3000 + steady 3000 = 6000 of 10000 -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
+	VictoryState._last_summary = {"power_supply": 10000,
+		"power_supply_by_quality": {"green_intermittent": 3000, "green_steady": 3000, "grey": 4000}}
 	_check(absf(VictoryState._live_progress("greenest") - 0.5) < 0.001,
 		"greenest: reads power_supply_by_quality (steady + intermittent count green)")
 

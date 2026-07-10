@@ -37,7 +37,7 @@ const AUTARKIC_CAP := 30
 # volume — a real, buy-nothing economy, not an idle one that trivially "buys nothing". Until
 # the player has produced this many units in total, the track contributes 0.
 const AUTARKIC_MIN_UNITS := 10000
-const LOGI_MIN_MOVES := 100
+const LOGI_MIN_MOVES := 100  # moves THIS TURN before the track scores (per-turn, owner 2026-07-10)
 const LOGI_EFF_TURNS := 1
 const LOGI_FLOOR := 0.25
 const RICHEST_WINDOW := 5
@@ -45,7 +45,7 @@ const RICHEST_LO := 2000.0
 const RICHEST_HI := 12000.0
 const WIDEST_LO := 30
 const WIDEST_HI := 230
-const GREEN_MIN_POWER := 500
+const GREEN_MIN_POWER := 5000
 const GREEN_FLOOR := 0.20
 const GREEN_BUILDINGS: Array = ["solar_farm", "onshore_wind_farm", "offshore_wind_farm"]
 const PURCHASE_CATEGORIES: Array = ["input", "building", "upgrade", "other"]
@@ -63,7 +63,7 @@ const TRACK_COLOR_KEYS := {
 }
 const TRACK_EXPLAIN := {
 	"autarkic": "Consecutive turns buying nothing from the market — source every input, build & upgrade material yourself.",
-	"logistics": "Share of goods movements that arrive in 1 turn or less — extend rail/pipe so deliveries are instant.",
+	"logistics": "Share of this turn's goods movements arriving in 1 turn or less — extend rail/pipe so deliveries are instant.",
 	"richest": "Sustained post-tax profit, smoothed over recent turns — keep margins high turn after turn.",
 	"widest": "Distinct tiles holding one of your (non-infrastructure) buildings — spread out across the map.",
 	"greenest": "Green share of the power you generate — replace fossil plants with solar & wind.",
@@ -72,8 +72,8 @@ const TRACK_EXPLAIN := {
 # ── Saved state (round-trips via export/import — spec §3) ──────────────────
 var autarkic_streak: int = 0
 var produced_units_lifetime: int = 0     # cumulative units produced (Autarkic scale gate)
-var logistics_total: int = 0
-var logistics_efficient: int = 0
+var logistics_total: int = 0             # movements THIS TURN (reset each tick — per-turn track)
+var logistics_efficient: int = 0         # ...of which arrived in <= LOGI_EFF_TURNS
 var richest_window: Array = []           # trailing retained-profit buffer (<= RICHEST_WINDOW)
 var track_best: Dictionary = {}          # track key -> best-ever progress (0..1)
 var score_history: Array = []            # last TREND_LEN snapshots {turn,total,base,tracks{}}
@@ -122,7 +122,8 @@ func total_for_turn(turn: int) -> int:
 	return total
 
 # Logistics + Autarky live feed (spec §4.2 / §5.1 / §5.2). Called by the
-# goods_movement_recorded signal handler, and directly by tests.
+# goods_movement_recorded signal handler, and directly by tests. Logistics
+# counters are per-turn: they accumulate during the turn and reset at the tick.
 func record_movement(kind: String, category: String, transport_turns: int) -> void:
 	logistics_total += 1
 	if transport_turns <= LOGI_EFF_TURNS:
@@ -233,10 +234,14 @@ func _tick() -> void:
 		won_turn = turn
 		victory_achieved.emit(total, turn)
 	_push_history(turn, total, live)
-	# Build the breakdown (captures this turn's purchase tally) BEFORE clearing it.
+	# Build the breakdown (captures this turn's purchase + movement tallies) BEFORE
+	# clearing them.
 	_last_breakdown = _build_breakdown(turn, total)
 	for c in PURCHASE_CATEGORIES:
 		purchases_this_turn[c] = 0
+	# Logistics is a per-turn track: next turn's movements start from zero.
+	logistics_total = 0
+	logistics_efficient = 0
 	score_changed.emit(total, _last_breakdown)
 
 # ── Per-track live progress (spec §5.1–§5.5) ────────────────────────────────
@@ -357,11 +362,11 @@ func _metric_text(key: String) -> String:
 			return "Streak %d / %d turns (scores from %d)" % [autarkic_streak, AUTARKIC_CAP, AUTARKIC_START]
 		"logistics":
 			if logistics_total == 0:
-				return "No movements yet (need %d, then 25%%→100%% efficient)" % LOGI_MIN_MOVES
+				return "No movements this turn (need %d / turn, then 25%%→100%% efficient)" % LOGI_MIN_MOVES
 			var eff := int(round(100.0 * float(logistics_efficient) / float(maxi(1, logistics_total))))
 			if logistics_total < LOGI_MIN_MOVES:
-				return "Efficiency %d%% over %d moves (need %d)" % [eff, logistics_total, LOGI_MIN_MOVES]
-			return "Efficiency %d%% over %d moves" % [eff, logistics_total]
+				return "Efficiency %d%% over %d moves this turn (need %d)" % [eff, logistics_total, LOGI_MIN_MOVES]
+			return "Efficiency %d%% over %d moves this turn" % [eff, logistics_total]
 		"richest":
 			return "Avg profit £%.1fk / turn (£%dk → £%dk)" % [_richest_metric() / 1000.0, int(RICHEST_LO / 1000.0), int(RICHEST_HI / 1000.0)]
 		"widest":
