@@ -75,6 +75,9 @@ var _acked: Dictionary = {}            # event id -> true (session-scoped ack fo
 var _last_alert_ids: Dictionary = {}   # alert ids present last evaluation (new-alert detect)
 var _layer: CanvasLayer = null
 var _strip: Control = null
+## Top Bar v2 replaces the collapsed strip with its Briefing module; the bar
+## sets this false at ready so the strip never mounts alongside it.
+var strip_enabled := true
 var _panel: Control = null
 var _refresh_queued := false
 var _select_on_expand := ""
@@ -580,7 +583,7 @@ func _sync_ui() -> void:
 		_layer.add_child(_panel)
 	if _items.is_empty():
 		expanded = false
-	_strip.visible = not expanded and not _items.is_empty()
+	_strip.visible = strip_enabled and not expanded and not _items.is_empty()
 	if _strip.visible:
 		_strip.refresh()
 	if expanded and not _items.is_empty():

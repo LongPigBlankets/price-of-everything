@@ -1,42 +1,1045 @@
 extends PanelContainer
+## Top Bar v2 — implemented from the owner's React prototype "Top Bar (offline).html".
+## Modules left→right:
+##   Treasury (cash + net/turn + runway) · Power net · Victory (5 track meters + score)
+##   · [flex] · Briefing (merged bell: decisions + updates) · [flex]
+##   · Council (seated portraits w/ loyalty rings) · Encyclopedia · | · Turn/date · Menu.
+## Treasury / Victory / Council open quick-glance FLYOUTS anchored under the bar whose
+## buttons deep-link into the full panels (Money / Victory / People); the Briefing
+## module expands the Turn Briefing hub directly.
+##
+## External contracts kept: the MoneyWidget Button's node path (e2e drives it),
+## %EncyclopediaButton + %TurnCounter unique names (world_map + tutorial spotlights),
+## the three *_clicked signals (bottom_menu routing), the bankruptcy strip and the
+## CFO intro popup.
 
 @onready var money_widget: Button = $MarginContainer/HBoxContainer/MoneyWidget
 
 signal money_widget_clicked
-## The top-bar victory score widget was clicked (opens the Victory panel).
+## The victory flyout's "Full breakdown" was clicked (opens the Victory panel).
 signal victory_widget_clicked
-## The council loyalty surface was clicked (opens the People panel).
+## A council flyout row was clicked (opens the People panel).
 signal council_widget_clicked
 
 const FLASH_RED := Color(0.9, 0.2, 0.2)
-const SAVE_TOOLTIP := "Save the game (quicksave slot)"
-const SAVE_LOCKED_TOOLTIP := "Please wait until the turn resolves"
 # Show the "Bankruptcy imminent" strip when total runway — cash plus remaining
-# borrowing room — drops below this. Once that's exhausted, a negative balance can no
-# longer be auto-bridged and the bankruptcy clock starts.
+# borrowing room — drops below this.
 const BANKRUPTCY_IMMINENT_RUNWAY := 100.0
 
-var _flashing := false
-var _save_button: Button
-var _bankruptcy_strip: PanelContainer
+# ── Prototype palette (top-bar local; the DS navy family, tuned per the design) ──
+const BAR_H := 66.0
+const MOD_H := 44.0
+const C_BAR_BG := Color("#0c1c2e")
+const C_BAR_EDGE := Color("#1c3149")
+const C_MOD_BG := Color(0.055, 0.125, 0.204, 0.85)     # rgba(14,32,52,.85)
+const C_MOD_BORDER := Color("#22384f")
+const C_ACTIVE_BG := Color("#15304a")
+const C_ACTIVE_BORDER := Color("#2f5578")
+const C_WARN_BORDER := Color(0.886, 0.376, 0.29, 0.55) # rgba(226,96,74,.55)
+const C_MUTED := Color("#62788f")
+const C_TEXT := Color("#cdd9e6")
+const C_BRIGHT := Color("#f3f8fd")
+const C_GOOD := Color("#7ec98a")
+const C_BAD := Color("#e6917f")
+const C_RED := Color("#e2604a")
+const C_AMBER := Color("#e6b34a")
+const C_CREAM := Color("#f2e6c8")
+const C_TRACK_BG := Color("#0a1623")
+const C_TRACK_EDGE := Color("#1c3149")
+
+const _COUNCIL_GOOD := Color("#5FBF6B")
+const _COUNCIL_WARN := Color("#E6B34A")
+const _COUNCIL_BAD := Color("#E2604A")
+const DISLOYAL_BELOW := -3.4   # loyalty (−10..+10) under this = disloyal
 
 const CFOIntroPopup := preload("res://scripts/cfo_intro_popup.gd")
 const CFO_INTRO_BODY := "I saw we weren't being tax efficient so now I've filed for a tax credit based on our losses. I can only make it work for 5 turns at a time but it should mean we can reduce our tax bill based on recent losses. See, and you worried about keeping me around…"
 
+var _flashing := false
+var _bankruptcy_strip: PanelContainer
+
+# Treasury module labels (inside the MoneyWidget Button)
+var _cash_label: Label
+var _net_label: Label
+var _runway_label: Label
+var _money_inner: HBoxContainer
+
+# Power module
+var _power_btn: Control
+var _power_glyph: Label
+var _power_head: Label
+var _power_sub: Label
+
+# Victory module
+var _victory_btn: Control
+var _victory_meters: HBoxContainer
+var _victory_score: Label
+
+# Briefing module
+var _briefing_btn: Control
+var _briefing_glyph: Label
+var _briefing_head: Label
+var _briefing_sub: Label
+var _briefing_dot: Panel
+
+# Council module
+var _council_btn: Control
+var _council_status: Label
+var _council_stack: HBoxContainer
+
+# Turn/date
+var _date_label: Label
+
+# Flyout layer
+var _fly_layer: CanvasLayer
+var _fly_scrim: Control
+var _fly_panel: PanelContainer
+var _fly_open_id := ""
+
+# Coalesced refresh (notification-bell doctrine): sim signals mark dirty; ONE
+# deferred refresh per frame updates every module label.
+var _refresh_queued := false
+
+
 func _ready() -> void:
-	money_widget.pressed.connect(_on_money_clicked)
+	_style_bar()
+	_build_treasury()
+	_build_power()
+	_build_victory()
+	_build_briefing()
+	_build_council()
+	_adopt_encyclopedia_and_turn()
+	_build_menu()
+	_build_fly_layer()
+	_add_bankruptcy_warning()
+
 	MatchState.money_changed.connect(_on_money_changed)
 	MatchState.build_rejected_no_funds.connect(_on_build_rejected_no_funds)
 	MatchState.cfo_tax_credit_filed.connect(_on_cfo_tax_credit_filed)
-	_refresh_money_display(MatchState.money)
-	_add_victory_widget()
-	_add_council_widget()
-	_add_save_button()
-	_add_notification_bell()
-	_add_bankruptcy_warning()
+	MatchState.advisors_changed.connect(_queue_refresh)
+	MatchState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
+	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
+	TurnManager.turn_advanced.connect(func(_t: int) -> void: _queue_refresh())
+	LoanState.loans_updated.connect(_queue_refresh)
+	VictoryState.score_changed.connect(func(_t: int, _b: Dictionary) -> void: _queue_refresh())
+	TurnBriefing.items_changed.connect(_queue_refresh)
+	TurnBriefing.expanded_changed.connect(func(_e: bool) -> void: _queue_refresh())
+	# The v2 briefing module replaces the collapsed strip.
+	TurnBriefing.strip_enabled = false
+	_queue_refresh()
 
-# The first time the CFO files a tax-loss credit, show their one-time explainer in the
-# top-left. The CanvasLayer is a child of the top bar, so it's freed with the HUD.
+
+# ── Bar chrome ────────────────────────────────────────────────────────────────
+
+func _style_bar() -> void:
+	custom_minimum_size = Vector2(0, BAR_H)
+	offset_bottom = BAR_H
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = C_BAR_BG
+	sb.border_width_bottom = 1
+	sb.border_color = C_BAR_EDGE
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 11
+	sb.content_margin_bottom = 11
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = 8
+	sb.shadow_offset = Vector2(0, 4)
+	add_theme_stylebox_override("panel", sb)
+	var hbox := money_widget.get_parent() as HBoxContainer
+	hbox.add_theme_constant_override("separation", 8)
+
+func _module_box(active: bool, warn: bool) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = C_ACTIVE_BG if active else C_MOD_BG
+	sb.border_color = C_ACTIVE_BORDER if active else (C_WARN_BORDER if warn else C_MOD_BORDER)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(9)
+	sb.content_margin_left = 11
+	sb.content_margin_right = 11
+	sb.content_margin_top = 5
+	sb.content_margin_bottom = 5
+	return sb
+
+## Small uppercase module tag ("COUNCIL").
+func _tag(text: String) -> Label:
+	var l := Label.new()
+	l.text = text.to_upper()
+	l.add_theme_font_size_override("font_size", 9)
+	l.add_theme_color_override("font_color", C_MUTED)
+	return l
+
+func _mini(text: String, color: Color, size: int = 10) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	return l
+
+## Clickable bar module: PanelContainer (sizes to children, unlike Button) that
+## emits "pressed" and swaps active/warn chrome. Buttons can't hold containers.
+class _ModuleBtn extends PanelContainer:
+	signal pressed
+	var warn := false:
+		set(v):
+			warn = v
+			_restyle()
+	var active := false:
+		set(v):
+			active = v
+			_restyle()
+	var _hover := false
+	var _bar: Node
+	func _init(bar: Node) -> void:
+		_bar = bar
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		_restyle()
+		mouse_entered.connect(func() -> void: _hover = true; _restyle())
+		mouse_exited.connect(func() -> void: _hover = false; _restyle())
+	func _restyle() -> void:
+		var sb: StyleBoxFlat = _bar._module_box(active or _hover, warn)
+		add_theme_stylebox_override("panel", sb)
+	func _gui_input(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			pressed.emit()
+
+func _module_row(mod: Control) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 9)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mod.add_child(row)
+	return row
+
+func _divider() -> Control:
+	var d := Panel.new()
+	d.custom_minimum_size = Vector2(1, MOD_H - 10)
+	d.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = C_TRACK_EDGE
+	d.add_theme_stylebox_override("panel", sb)
+	d.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return d
+
+func _flex() -> Control:
+	var s := Control.new()
+	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	s.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return s
+
+func _hbox() -> HBoxContainer:
+	return money_widget.get_parent() as HBoxContainer
+
+
+# ── 1 · Treasury (the MoneyWidget Button, restyled — node path is an e2e contract) ──
+
+func _build_treasury() -> void:
+	money_widget.text = ""
+	money_widget.tooltip_text = "Treasury — money & loans"
+	money_widget.focus_mode = Control.FOCUS_NONE
+	money_widget.custom_minimum_size = Vector2(0, MOD_H)
+	for state in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+		money_widget.add_theme_stylebox_override(state, _module_box(state != "normal", false))
+	# Buttons don't size to child containers: full-rect inner row + manual min width.
+	_money_inner = HBoxContainer.new()
+	_money_inner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_money_inner.offset_left = 12
+	_money_inner.offset_right = -12
+	_money_inner.alignment = BoxContainer.ALIGNMENT_CENTER
+	_money_inner.add_theme_constant_override("separation", 9)
+	_money_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	money_widget.add_child(_money_inner)
+	var coin := _mini("£", C_AMBER, 17)
+	_money_inner.add_child(coin)
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 1)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_money_inner.add_child(col)
+	_cash_label = Label.new()
+	_cash_label.theme_type_variation = "Numeric"
+	_cash_label.add_theme_font_size_override("font_size", 16)
+	_cash_label.add_theme_color_override("font_color", C_BRIGHT)
+	col.add_child(_cash_label)
+	var sub := HBoxContainer.new()
+	sub.add_theme_constant_override("separation", 6)
+	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(sub)
+	_net_label = _mini("", C_GOOD, 11)
+	sub.add_child(_net_label)
+	_runway_label = _mini("", C_RED, 9)
+	sub.add_child(_runway_label)
+	money_widget.pressed.connect(func() -> void: _toggle_fly("treasury"))
+
+func _money_text(n: float) -> String:
+	# £ with thousands separators, no decimals in the bar (the flyout has exact rows).
+	var v := int(round(absf(n)))
+	var s := str(v)
+	var out := ""
+	var c := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		c += 1
+		if c % 3 == 0 and i > 0:
+			out = "," + out
+	return ("−£" if n < 0 else "£") + out
+
+
+# ── 2 · Power: status-first (green self-sufficient / amber grid / red unpowered) ──
+
+func _build_power() -> void:
+	var mod := _ModuleBtn.new(self)
+	mod.name = "PowerModule"
+	mod.custom_minimum_size = Vector2(0, MOD_H)
+	mod.mouse_default_cursor_shape = Control.CURSOR_ARROW
+	var row := _module_row(mod)
+	_power_glyph = _mini("⚡", C_GOOD, 15)
+	row.add_child(_power_glyph)
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(col)
+	_power_head = _mini("Powered", C_GOOD, 12)
+	col.add_child(_power_head)
+	_power_sub = _mini("self-sufficient", C_MUTED, 10)
+	col.add_child(_power_sub)
+	_hbox().add_child(mod)
+	_power_btn = mod
+
+func _power_stats() -> Dictionary:
+	var s: Dictionary = Production.last_turn_summary
+	var unpowered := 0
+	for iid in Production.missing_by_building:
+		var b: Dictionary = MatchState.buildings.get(iid, {})
+		if b.is_empty() or not MatchState.is_player_owned(b):
+			continue
+		var recipe := Catalog.get_recipe(str(b.get("recipe_id", "")))
+		if str(recipe.get("output_name", "")) == "power":
+			continue   # a producer's "power" entry is the cable-cap marker, not starvation
+		for m in (Production.missing_by_building[iid] as Array):
+			if str(m.get("good_id", "")) == "power":
+				unpowered += 1
+				break
+	return {
+		"self_gen": int(s.get("power_supply", 0)),
+		"grid_draw": int(s.get("grid_bought", 0)),
+		"unpowered": unpowered,
+	}
+
+
+# ── 3 · Victory: five mini track meters + score ─────────────────────────────────
+
+func _build_victory() -> void:
+	var mod := _ModuleBtn.new(self)
+	mod.name = "VictoryModule"
+	mod.tooltip_text = "Victory tracks"
+	mod.custom_minimum_size = Vector2(0, MOD_H)
+	var row := _module_row(mod)
+	row.add_child(_mini("★", C_CREAM.darkened(0.15), 13))
+	_victory_meters = HBoxContainer.new()
+	_victory_meters.add_theme_constant_override("separation", 5)
+	_victory_meters.alignment = BoxContainer.ALIGNMENT_END
+	_victory_meters.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(_victory_meters)
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(col)
+	_victory_score = Label.new()
+	_victory_score.theme_type_variation = "Numeric"
+	_victory_score.add_theme_font_size_override("font_size", 14)
+	_victory_score.add_theme_color_override("font_color", C_CREAM)
+	col.add_child(_victory_score)
+	col.add_child(_mini("/ 4,000", C_MUTED, 9))
+	mod.pressed.connect(func() -> void: _toggle_fly("victory"))
+	_hbox().add_child(mod)
+	_victory_btn = mod
+
+func _track_color(entry: Dictionary) -> Color:
+	return DS.PALETTE.get(str(entry.get("color_key", "")), C_CREAM)
+
+func _refresh_victory() -> void:
+	var bd: Dictionary = VictoryState.get_breakdown()
+	for c in _victory_meters.get_children():
+		c.queue_free()
+	for t in (bd.get("tracks", []) as Array):
+		var cell := VBoxContainer.new()
+		cell.add_theme_constant_override("separation", 2)
+		cell.alignment = BoxContainer.ALIGNMENT_END
+		cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cell.tooltip_text = "%s — %d%%" % [str(t.get("name", "")), int(round(float(t.get("progress", 0.0)) * 100.0))]
+		var meter := Panel.new()
+		meter.custom_minimum_size = Vector2(12, 24)
+		var msb := StyleBoxFlat.new()
+		msb.bg_color = C_TRACK_BG
+		msb.border_color = C_TRACK_EDGE
+		msb.set_border_width_all(1)
+		msb.set_corner_radius_all(3)
+		meter.add_theme_stylebox_override("panel", msb)
+		var fill := Panel.new()
+		var fsb := StyleBoxFlat.new()
+		fsb.bg_color = _track_color(t)
+		fsb.set_corner_radius_all(2)
+		fill.add_theme_stylebox_override("panel", fsb)
+		fill.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+		var frac: float = clampf(float(t.get("progress", 0.0)), 0.0, 1.0)
+		fill.offset_top = -22.0 * frac
+		fill.offset_bottom = -1
+		fill.offset_left = 1
+		fill.offset_right = -1
+		meter.add_child(fill)
+		cell.add_child(meter)
+		var letter := _mini(str(t.get("name", "?")).substr(0, 1), C_MUTED, 8)
+		letter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		letter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cell.add_child(letter)
+		_victory_meters.add_child(cell)
+	_victory_score.text = _thousands(int(bd.get("total", 0)))
+
+func _thousands(n: int) -> String:
+	var s := str(absi(n))
+	var out := ""
+	var c := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		c += 1
+		if c % 3 == 0 and i > 0:
+			out = "," + out
+	return ("-" if n < 0 else "") + out
+
+
+# ── 4 · Briefing (merged bell): decisions + updates → expands the hub ───────────
+
+func _build_briefing() -> void:
+	_hbox().add_child(_flex())
+	var mod := _ModuleBtn.new(self)
+	mod.name = "BriefingModule"
+	mod.tooltip_text = "Turn briefing"
+	mod.custom_minimum_size = Vector2(0, MOD_H)
+	var row := _module_row(mod)
+	var glyph_holder := Control.new()
+	glyph_holder.custom_minimum_size = Vector2(18, 18)
+	glyph_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_briefing_glyph = _mini("🕭", C_TEXT, 15)
+	_briefing_glyph.position = Vector2(0, -1)
+	glyph_holder.add_child(_briefing_glyph)
+	_briefing_dot = Panel.new()
+	_briefing_dot.custom_minimum_size = Vector2(7, 7)
+	_briefing_dot.position = Vector2(13, 0)
+	var dsb := StyleBoxFlat.new()
+	dsb.bg_color = C_RED
+	dsb.set_corner_radius_all(4)
+	_briefing_dot.add_theme_stylebox_override("panel", dsb)
+	_briefing_dot.visible = false
+	glyph_holder.add_child(_briefing_dot)
+	row.add_child(glyph_holder)
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(col)
+	_briefing_head = _mini("Briefing", C_TEXT, 12)
+	col.add_child(_briefing_head)
+	_briefing_sub = _mini("0 updates", C_MUTED, 10)
+	col.add_child(_briefing_sub)
+	mod.pressed.connect(func() -> void:
+		_close_fly()
+		if TurnBriefing.expanded:
+			TurnBriefing.collapse()
+		else:
+			TurnBriefing.expand())
+	_hbox().add_child(mod)
+	_hbox().add_child(_flex())
+	_briefing_btn = mod
+
+func _refresh_briefing() -> void:
+	var decisions := 0
+	var updates := 0
+	for it in TurnBriefing.items():
+		if str(it.get("kind", "")) == "decision":
+			decisions += 1
+		else:
+			updates += 1
+	var hot := decisions > 0
+	(_briefing_btn as _ModuleBtn).warn = hot
+	(_briefing_btn as _ModuleBtn).active = TurnBriefing.expanded
+	_briefing_glyph.add_theme_color_override("font_color", C_RED if hot else C_TEXT)
+	_briefing_head.text = ("%d decision%s" % [decisions, "" if decisions == 1 else "s"]) if hot else "Briefing"
+	_briefing_head.add_theme_color_override("font_color", Color("#f0a496") if hot else C_TEXT)
+	_briefing_sub.text = "%d update%s" % [updates, "" if updates == 1 else "s"]
+	_briefing_dot.visible = decisions + updates > 0
+	var dsb := _briefing_dot.get_theme_stylebox("panel") as StyleBoxFlat
+	if dsb != null:
+		dsb.bg_color = C_RED if hot else C_AMBER
+
+
+# ── 5 · Council: seated portraits with loyalty rings + number chips ─────────────
+
+func _build_council() -> void:
+	var mod := _ModuleBtn.new(self)
+	mod.name = "CouncilModule"
+	mod.tooltip_text = "Council — advisor loyalty"
+	mod.custom_minimum_size = Vector2(0, MOD_H)
+	var row := _module_row(mod)
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 3)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(col)
+	col.add_child(_tag("Council"))
+	_council_status = _mini("", C_MUTED, 10)
+	col.add_child(_council_status)
+	_council_stack = HBoxContainer.new()
+	_council_stack.add_theme_constant_override("separation", 6)
+	_council_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(_council_stack)
+	mod.pressed.connect(func() -> void: _toggle_fly("council"))
+	_hbox().add_child(mod)
+	_council_btn = mod
+
+func _loyalty_tone(v: float) -> Color:
+	if v >= 3.4:
+		return _COUNCIL_GOOD
+	if v > DISLOYAL_BELOW:
+		return _COUNCIL_WARN
+	return _COUNCIL_BAD
+
+func _refresh_council() -> void:
+	var seated: Array = MatchState.advisor_seats.values()
+	var disloyal := 0
+	for aid in seated:
+		if MatchState.advisor_loyalty_value(str(aid)) <= DISLOYAL_BELOW:
+			disloyal += 1
+	(_council_btn as _ModuleBtn).warn = disloyal > 0
+	if seated.is_empty():
+		_council_status.text = "no seats filled"
+		_council_status.add_theme_color_override("font_color", C_MUTED)
+	elif disloyal > 0:
+		_council_status.text = "%d DISLOYAL" % disloyal
+		_council_status.add_theme_color_override("font_color", C_RED)
+	else:
+		_council_status.text = "%d seated" % seated.size()
+		_council_status.add_theme_color_override("font_color", C_MUTED)
+	for c in _council_stack.get_children():
+		c.queue_free()
+	for aid in seated:
+		_council_stack.add_child(_portrait_chip(str(aid), 28))
+
+## Portrait in a loyalty-toned ring with a number chip bottom-right.
+func _portrait_chip(aid: String, size: float) -> Control:
+	var v := MatchState.advisor_loyalty_value(aid)
+	var tone := _loyalty_tone(v)
+	var adv: Dictionary = MatchState.get_advisor(aid)
+	var holder := Control.new()
+	holder.custom_minimum_size = Vector2(size + 4, size + 4)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.tooltip_text = "%s — %+.1f loyalty" % [str(adv.get("name", aid)), v]
+	var ring := PanelContainer.new()
+	ring.custom_minimum_size = Vector2(size, size)
+	ring.size = Vector2(size, size)
+	ring.clip_contents = true
+	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = C_TRACK_BG
+	sb.border_color = tone
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(int(size / 2.0))
+	ring.add_theme_stylebox_override("panel", sb)
+	var path := str(adv.get("portrait_path", ""))
+	if path != "" and ResourceLoader.exists(path):
+		var img := TextureRect.new()
+		img.texture = load(path) as Texture2D
+		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ring.add_child(img)
+	else:
+		var initials := Label.new()
+		initials.text = str(adv.get("initials", "?"))
+		initials.add_theme_font_size_override("font_size", int(size * 0.38))
+		initials.add_theme_color_override("font_color", adv.get("portrait_color", C_TEXT))
+		initials.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		initials.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		ring.add_child(initials)
+	holder.add_child(ring)
+	var chip := Label.new()
+	chip.text = "%+d" % int(round(v))
+	chip.add_theme_font_size_override("font_size", 8)
+	chip.add_theme_color_override("font_color", tone)
+	var csb := StyleBoxFlat.new()
+	csb.bg_color = Color("#0a1521")
+	csb.border_color = tone
+	csb.set_border_width_all(1)
+	csb.set_corner_radius_all(6)
+	csb.content_margin_left = 3
+	csb.content_margin_right = 3
+	var chip_holder := PanelContainer.new()
+	chip_holder.add_theme_stylebox_override("panel", csb)
+	chip_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip_holder.add_child(chip)
+	chip_holder.position = Vector2(size - 12, size - 8)
+	holder.add_child(chip_holder)
+	return holder
+
+
+# ── 6/7/8 · Encyclopedia (adopted) · Turn/date · Menu ───────────────────────────
+
+func _adopt_encyclopedia_and_turn() -> void:
+	# The scene-authored EncyclopediaButton + TurnCounter live in a right-anchored
+	# overlay; adopt them into the module row (scene-unique %names survive reparent,
+	# which world_map's @onready refs and the tutorial spotlights rely on).
+	var hitbox := get_node_or_null("EncyclopediaHitBox")
+	var enc := get_node_or_null("EncyclopediaHitBox/EncyclopediaButton") as Button
+	var turn := get_node_or_null("EncyclopediaHitBox/TurnCounter") as Label
+	if enc != null:
+		enc.reparent(_hbox())
+		enc.custom_minimum_size = Vector2(0, MOD_H)
+		enc.focus_mode = Control.FOCUS_NONE
+		enc.tooltip_text = "Encyclopedia (X)"
+		enc.add_theme_font_size_override("font_size", 11)
+		enc.add_theme_color_override("font_color", Color("#8ea3ba"))
+		enc.add_theme_color_override("font_hover_color", C_BRIGHT)
+		for state in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+			enc.add_theme_stylebox_override(state, _module_box(state != "normal", false))
+	_hbox().add_child(_divider())
+	if turn != null:
+		var col := VBoxContainer.new()
+		col.alignment = BoxContainer.ALIGNMENT_CENTER
+		col.add_theme_constant_override("separation", 2)
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hbox().add_child(col)
+		turn.reparent(col)
+		turn.custom_minimum_size = Vector2(0, 0)
+		turn.theme_type_variation = "Numeric"
+		turn.add_theme_font_size_override("font_size", 13)
+		turn.add_theme_color_override("font_color", C_TEXT)
+		turn.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_date_label = _mini("", C_MUTED, 10)
+		_date_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_date_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.add_child(_date_label)
+	if hitbox != null:
+		hitbox.visible = false
+
+## Turn → season + year (4 turns per year, campaign starts Spring 1890).
+func _turn_date(turn: int) -> String:
+	var seasons := ["Spring", "Summer", "Autumn", "Winter"]
+	return "%s %d" % [seasons[(turn - 1) % 4], 1890 + (turn - 1) / 4]
+
+func _build_menu() -> void:
+	var mod := _ModuleBtn.new(self)
+	mod.name = "MenuModule"
+	mod.tooltip_text = "Main menu — save, settings, quit"
+	mod.custom_minimum_size = Vector2(0, MOD_H)
+	var row := _module_row(mod)
+	row.add_child(_mini("☰", Color("#8ea3ba"), 15))
+	mod.pressed.connect(func() -> void:
+		_close_fly()
+		PauseMenu.open(get_parent()))
+	_hbox().add_child(mod)
+
+
+# ── Flyouts (Treasury · Council · Victory), anchored under their modules ────────
+
+func _build_fly_layer() -> void:
+	_fly_layer = CanvasLayer.new()
+	_fly_layer.layer = 110   # under the Turn Briefing hub (120)
+	add_child(_fly_layer)
+	_fly_scrim = Control.new()
+	_fly_scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fly_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_fly_scrim.visible = false
+	_fly_scrim.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed:
+			_fly_scrim.accept_event()
+			_close_fly())
+	_fly_layer.add_child(_fly_scrim)
+
+func _toggle_fly(id: String) -> void:
+	if _fly_open_id == id:
+		_close_fly()
+	else:
+		_open_fly(id)
+
+func _close_fly() -> void:
+	_fly_open_id = ""
+	_fly_scrim.visible = false
+	if _fly_panel != null and is_instance_valid(_fly_panel):
+		_fly_panel.queue_free()
+	_fly_panel = null
+	if _victory_btn != null:
+		(_victory_btn as _ModuleBtn).active = false
+	if _council_btn != null:
+		(_council_btn as _ModuleBtn).active = false
+
+func _open_fly(id: String) -> void:
+	_close_fly()
+	if TurnBriefing.expanded:
+		TurnBriefing.collapse()
+	_fly_open_id = id
+	# Size the scrim to the viewport (Controls under a CanvasLayer get nothing free).
+	var vp := get_viewport()
+	if vp != null:
+		_fly_scrim.size = vp.get_visible_rect().size
+		_fly_scrim.position = Vector2.ZERO
+	_fly_scrim.visible = true
+	_fly_panel = PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color("#0d1e31")
+	sb.border_color = C_ACTIVE_BORDER
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(12)
+	sb.shadow_color = Color(0, 0, 0, 0.55)
+	sb.shadow_size = 18
+	_fly_panel.add_theme_stylebox_override("panel", sb)
+	_fly_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 0)
+	_fly_panel.add_child(vb)
+	var anchor: Control = money_widget
+	match id:
+		"treasury":
+			_fly_panel.custom_minimum_size = Vector2(330, 0)
+			vb.add_child(_fly_head("Treasury"))
+			_fly_treasury(vb)
+			anchor = money_widget
+		"victory":
+			_fly_panel.custom_minimum_size = Vector2(330, 0)
+			vb.add_child(_fly_head("Victory"))
+			_fly_victory(vb)
+			anchor = _victory_btn
+			(_victory_btn as _ModuleBtn).active = true
+		"council":
+			_fly_panel.custom_minimum_size = Vector2(352, 0)
+			vb.add_child(_fly_head("Council"))
+			_fly_council(vb)
+			anchor = _council_btn
+			(_council_btn as _ModuleBtn).active = true
+	_fly_layer.add_child(_fly_panel)
+	# Position after layout: left-align to the module, clamped to the viewport.
+	var place := func() -> void:
+		if _fly_panel == null or not is_instance_valid(_fly_panel):
+			return
+		var vw := get_viewport().get_visible_rect().size.x
+		var x := anchor.global_position.x
+		x = clampf(x, 8.0, vw - _fly_panel.size.x - 8.0)
+		_fly_panel.global_position = Vector2(x, BAR_H + 8.0)
+	place.call_deferred()
+
+func _fly_head(title: String) -> Control:
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 14)
+	pad.add_theme_constant_override("margin_right", 10)
+	pad.add_theme_constant_override("margin_top", 10)
+	pad.add_theme_constant_override("margin_bottom", 8)
+	var t := Label.new()
+	t.theme_type_variation = "Section"
+	t.text = title
+	head.add_child(t)
+	head.add_child(_flex())
+	var x := Button.new()
+	x.text = "✕"
+	x.focus_mode = Control.FOCUS_NONE
+	x.add_theme_font_size_override("font_size", 11)
+	x.pressed.connect(_close_fly)
+	head.add_child(x)
+	pad.add_child(head)
+	var wrap := VBoxContainer.new()
+	wrap.add_child(pad)
+	var line := Panel.new()
+	line.custom_minimum_size = Vector2(0, 1)
+	var lsb := StyleBoxFlat.new()
+	lsb.bg_color = C_TRACK_EDGE
+	line.add_theme_stylebox_override("panel", lsb)
+	wrap.add_child(line)
+	return wrap
+
+func _fly_pad(vb: VBoxContainer, sep: int = 7) -> VBoxContainer:
+	var pad := MarginContainer.new()
+	for m in ["margin_left", "margin_right"]:
+		pad.add_theme_constant_override(m, 14)
+	pad.add_theme_constant_override("margin_top", 12)
+	pad.add_theme_constant_override("margin_bottom", 12)
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", sep)
+	pad.add_child(inner)
+	vb.add_child(pad)
+	return inner
+
+func _fly_row(label: String, value: String, tone: Color = C_TEXT) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	var l := _mini(label, Color("#8ea3ba"), 12)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(l)
+	var v := Label.new()
+	v.theme_type_variation = "Numeric"
+	v.text = value
+	v.add_theme_font_size_override("font_size", 12)
+	v.add_theme_color_override("font_color", tone)
+	row.add_child(v)
+	return row
+
+func _fly_sep() -> Control:
+	var line := Panel.new()
+	line.custom_minimum_size = Vector2(0, 1)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = C_TRACK_EDGE
+	line.add_theme_stylebox_override("panel", sb)
+	return line
+
+func _fly_btn(text: String, primary: bool) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.custom_minimum_size = Vector2(0, 30)
+	if primary:
+		b.theme_type_variation = "Primary"
+	return b
+
+# Treasury: cash / net / runway, last turn's ledger, loans + capacity, deep-links.
+func _fly_treasury(vb: VBoxContainer) -> void:
+	var inner := _fly_pad(vb)
+	var s: Dictionary = Production.last_turn_summary
+	var net := float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
+	inner.add_child(_fly_row("Cash on hand", _money_text(MatchState.money)))
+	inner.add_child(_fly_row("Net last turn", ("+" if net >= 0.0 else "−") + _money_text(absf(net)).trim_prefix("£").insert(0, "£"), C_GOOD if net >= 0.0 else C_BAD))
+	var runway := _runway_turns()
+	if runway > 0:
+		inner.add_child(_fly_row("Runway at current burn", "≈ %d turns" % runway, C_BAD))
+	inner.add_child(_fly_sep())
+	var income := [
+		["Goods sold", float(s.get("goods_sales_revenue", 0.0))],
+		["Power sold", float(s.get("power_sales_revenue", 0.0))],
+		["Green subsidy", float(s.get("green_subsidy_received", 0.0))],
+	]
+	for e in income:
+		if float(e[1]) > 0.005:
+			inner.add_child(_fly_row(str(e[0]), "+" + _money_text(float(e[1])), C_GOOD))
+	var expenses := [
+		["Wages", float(s.get("labour_paid", 0.0))],
+		["Maintenance", float(s.get("maintenance_paid", 0.0))],
+		["Goods bought", float(s.get("goods_purchased_cost", 0.0))],
+		["Transport", float(s.get("transport_paid", 0.0))],
+		["Interest", float(s.get("interest_paid", 0.0))],
+		["Carbon tax", float(s.get("carbon_tax_paid", 0.0))],
+	]
+	for e in expenses:
+		if float(e[1]) > 0.005:
+			inner.add_child(_fly_row(str(e[0]), "−" + _money_text(float(e[1])), C_BAD))
+	vb.add_child(_fly_sep())
+	var loans := _fly_pad(vb, 8)
+	var tag := _tag("Loans")
+	loans.add_child(tag)
+	for l in LoanState.loans:
+		var card := PanelContainer.new()
+		var csb := StyleBoxFlat.new()
+		csb.bg_color = Color(0.902, 0.702, 0.29, 0.07)
+		csb.border_color = Color(0.902, 0.702, 0.29, 0.3)
+		csb.set_border_width_all(1)
+		csb.set_corner_radius_all(8)
+		csb.content_margin_left = 10
+		csb.content_margin_right = 10
+		csb.content_margin_top = 6
+		csb.content_margin_bottom = 6
+		card.add_theme_stylebox_override("panel", csb)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var nm := _mini("Loan #%d" % int(l.get("id", 0)), Color("#e6c987"), 12)
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(nm)
+		row.add_child(_mini("%s @ %.0f%%" % [_money_text(float(l.get("principal_remaining", 0.0))), float(l.get("interest_rate", 0.0)) * 100.0], C_TEXT, 12))
+		card.add_child(row)
+		loans.add_child(card)
+	if LoanState.loans.is_empty():
+		loans.add_child(_mini("No loans outstanding.", C_MUTED, 11))
+	loans.add_child(_fly_row("Borrowing capacity left", _money_text(LoanState.available_capacity())))
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 8)
+	var take := _fly_btn("Take loan", true)
+	take.name = "FlyTakeLoanButton"   # stable target: the e2e loan flow presses this
+	take.pressed.connect(func() -> void:
+		_close_fly()
+		money_widget_clicked.emit())
+	actions.add_child(take)
+	var manage := _fly_btn("Money & loans", false)
+	manage.pressed.connect(func() -> void:
+		_close_fly()
+		money_widget_clicked.emit())
+	actions.add_child(manage)
+	loans.add_child(actions)
+
+func _runway_turns() -> int:
+	var s: Dictionary = Production.last_turn_summary
+	var net := float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
+	if net >= 0.0 or s.is_empty():
+		return 0
+	var turns := int(floor((MatchState.money + LoanState.available_capacity()) / -net))
+	return turns if turns <= 12 else 0   # only surface when it's actually alarming
+
+# Victory: five labelled progress bars + total, deep-link to the full panel.
+func _fly_victory(vb: VBoxContainer) -> void:
+	var inner := _fly_pad(vb, 10)
+	var bd: Dictionary = VictoryState.get_breakdown()
+	for t in (bd.get("tracks", []) as Array):
+		var block := VBoxContainer.new()
+		block.add_theme_constant_override("separation", 4)
+		var head := HBoxContainer.new()
+		var nm := _mini(str(t.get("name", "")), C_TEXT, 12)
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.add_child(nm)
+		head.add_child(_mini("%d / %d" % [int(t.get("contribution", 0)), int(t.get("max_score", 1000))], _track_color(t), 11))
+		block.add_child(head)
+		var meter := Panel.new()
+		meter.custom_minimum_size = Vector2(0, 8)
+		var msb := StyleBoxFlat.new()
+		msb.bg_color = C_TRACK_BG
+		msb.border_color = Color("#16273a")
+		msb.set_border_width_all(1)
+		msb.set_corner_radius_all(4)
+		meter.add_theme_stylebox_override("panel", msb)
+		var fill := Panel.new()
+		var fsb := StyleBoxFlat.new()
+		fsb.bg_color = _track_color(t)
+		fsb.set_corner_radius_all(3)
+		fill.add_theme_stylebox_override("panel", fsb)
+		fill.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+		fill.offset_top = 1
+		fill.offset_bottom = -1
+		fill.offset_left = 1
+		meter.add_child(fill)
+		meter.resized.connect(func() -> void:
+			fill.offset_right = -1.0 - (1.0 - clampf(float(t.get("progress", 0.0)), 0.0, 1.0)) * (meter.size.x - 2.0))
+		block.add_child(meter)
+		inner.add_child(block)
+	vb.add_child(_fly_sep())
+	var foot := _fly_pad(vb)
+	var frow := HBoxContainer.new()
+	frow.add_theme_constant_override("separation", 8)
+	var total := _mini("Total %s / %s to win" % [_thousands(int(bd.get("total", 0))), _thousands(int(bd.get("win_threshold", 4000)))], C_MUTED, 11)
+	total.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	frow.add_child(total)
+	var full := _fly_btn("Full breakdown", true)
+	full.size_flags_horizontal = Control.SIZE_SHRINK_END
+	full.pressed.connect(func() -> void:
+		_close_fly()
+		victory_widget_clicked.emit())
+	frow.add_child(full)
+	foot.add_child(frow)
+
+# Council: one row per seated advisor (portrait · name/seat · loyalty bar · value).
+func _fly_council(vb: VBoxContainer) -> void:
+	var inner := _fly_pad(vb, 3)
+	var seats: Dictionary = MatchState.advisor_seats
+	if seats.is_empty():
+		inner.add_child(_mini("No advisors seated — open People to hire.", C_MUTED, 11))
+	for seat_id in seats:
+		var aid := str(seats[seat_id])
+		var v := MatchState.advisor_loyalty_value(aid)
+		var tone := _loyalty_tone(v)
+		var adv: Dictionary = MatchState.get_advisor(aid)
+		var row_btn := _ModuleBtn.new(self)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row_btn.add_child(row)
+		row.add_child(_portrait_chip(aid, 30))
+		var col := VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.alignment = BoxContainer.ALIGNMENT_CENTER
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(col)
+		col.add_child(_mini(str(adv.get("name", aid)), Color("#eef4fb"), 12))
+		col.add_child(_mini(MatchState._seat_display_name(str(seat_id)), C_MUTED, 10))
+		var meter := Panel.new()
+		meter.custom_minimum_size = Vector2(58, 5)
+		meter.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var msb := StyleBoxFlat.new()
+		msb.bg_color = C_TRACK_BG
+		msb.border_color = Color("#16273a")
+		msb.set_border_width_all(1)
+		msb.set_corner_radius_all(3)
+		meter.add_theme_stylebox_override("panel", msb)
+		var fill := Panel.new()
+		var fsb := StyleBoxFlat.new()
+		fsb.bg_color = tone
+		fill.add_theme_stylebox_override("panel", fsb)
+		fill.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+		var frac := clampf((v + 10.0) / 20.0, 0.0, 1.0)
+		fill.offset_left = 1
+		fill.offset_top = 1
+		fill.offset_bottom = -1
+		fill.offset_right = -57.0 + 56.0 * frac
+		meter.add_child(fill)
+		row.add_child(meter)
+		var val := _mini("%+.1f" % v, tone, 11)
+		row.add_child(val)
+		row_btn.pressed.connect(func() -> void:
+			_close_fly()
+			council_widget_clicked.emit())
+		inner.add_child(row_btn)
+
+
+# ── Coalesced refresh ─────────────────────────────────────────────────────────
+
+func _queue_refresh(_a: Variant = null) -> void:
+	if _refresh_queued:
+		return
+	_refresh_queued = true
+	call_deferred("_apply_refresh")
+
+func _apply_refresh() -> void:
+	_refresh_queued = false
+	if not is_inside_tree():
+		return
+	_refresh_treasury()
+	_refresh_power()
+	_refresh_victory()
+	_refresh_briefing()
+	_refresh_council()
+	if _date_label != null:
+		_date_label.text = _turn_date(int(TurnManager.current_turn))
+	_refresh_bankruptcy_warning()
+
+func _refresh_treasury() -> void:
+	_cash_label.text = _money_text(MatchState.money)
+	if not _flashing:
+		_cash_label.add_theme_color_override("font_color", _base_money_color())
+	var s: Dictionary = Production.last_turn_summary
+	var net := float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
+	_net_label.text = ("+" if net >= 0.0 else "−") + _money_text(absf(net)) + " / turn"
+	_net_label.add_theme_color_override("font_color", C_GOOD if net >= 0.0 else C_BAD)
+	var runway := _runway_turns()
+	_runway_label.visible = runway > 0
+	if runway > 0:
+		_runway_label.text = "≈%d TURNS" % runway
+	# Buttons don't size to non-container children: min width = inner row + padding.
+	money_widget.custom_minimum_size = Vector2(_money_inner.get_combined_minimum_size().x + 26.0, MOD_H)
+
+func _refresh_power() -> void:
+	var p := _power_stats()
+	var starved: bool = int(p.unpowered) > 0
+	var gridding: bool = not starved and int(p.grid_draw) > 0
+	var c := C_RED if starved else (C_AMBER if gridding else C_GOOD)
+	(_power_btn as _ModuleBtn).warn = starved
+	_power_glyph.add_theme_color_override("font_color", c)
+	_power_head.add_theme_color_override("font_color", c)
+	_power_head.text = ("%d unpowered" % int(p.unpowered)) if starved else (("Grid −%d" % int(p.grid_draw)) if gridding else "Powered")
+	_power_sub.text = "buildings lack power" if starved else ("all buildings powered" if gridding else "self-sufficient")
+	_power_btn.tooltip_text = "Power — %d self-generated%s%s" % [int(p.self_gen),
+		(" · %d drawn from grid" % int(p.grid_draw)) if int(p.grid_draw) > 0 else "",
+		(" · %d buildings unpowered" % int(p.unpowered)) if starved else ""]
+
+
+# ── Shared bits kept from v1 (CFO popup · bankruptcy strip · money flash) ───────
+
 func _on_cfo_tax_credit_filed(_amount: float) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
@@ -46,168 +1049,13 @@ func _on_cfo_tax_credit_filed(_amount: float) -> void:
 	add_child(popup)
 	popup.show_for(cfo, CFO_INTRO_BODY)
 
-func _add_victory_widget() -> void:
-	# The victory score widget sits next to MoneyWidget at the left of the top-bar
-	# HBox (peer to the Save button + NotificationBell). Click opens the Victory panel.
-	var widget: Control = load("res://scripts/victory_widget.gd").new()
-	widget.name = "VictoryWidget"
-	widget.clicked.connect(func() -> void: victory_widget_clicked.emit())
-	money_widget.get_parent().add_child(widget)
-
-func _add_notification_bell() -> void:
-	# The bell sits at the right end of the top-bar HBox, just inside the money
-	# row's container — it's a peer to MoneyWidget and the (programmatic) Save
-	# button. EventScheduler signals drive its colour, badge and dropdown.
-	var bell: Control = load("res://scripts/notification_bell.gd").new()
-	bell.name = "NotificationBell"
-	money_widget.get_parent().add_child(bell)
-
-# ── Council loyalty surface (design: People Panel top bar) ──────────────────
-# Average council loyalty (tone-coloured) plus an overlapping stack of seated
-# advisor portraits, with hollow slots for unfilled seat capacity. Click opens
-# the People panel's Advisors tab.
-const _COUNCIL_GOOD := Color("#5FBF6B")
-const _COUNCIL_WARN := Color("#E6B34A")
-const _COUNCIL_BAD := Color("#E2604A")
-
-var _council_button: Button
-var _council_mood_label: Label
-var _council_stack: HBoxContainer
-var _council_refresh_queued := false
-
-func _add_council_widget() -> void:
-	_council_button = Button.new()
-	_council_button.tooltip_text = "Council loyalty — open People"
-	_council_button.pressed.connect(func() -> void: council_widget_clicked.emit())
-	# Buttons don't size to child containers: anchor the row full-rect with
-	# padding and set the button's min width from the slot count on refresh.
-	var row := HBoxContainer.new()
-	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	row.offset_left = 9
-	row.offset_right = -9
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 8)
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_council_button.add_child(row)
-	_council_mood_label = Label.new()
-	_council_mood_label.add_theme_font_size_override("font_size", 13)
-	row.add_child(_council_mood_label)
-	_council_stack = HBoxContainer.new()
-	_council_stack.add_theme_constant_override("separation", -7)
-	_council_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(_council_stack)
-	money_widget.get_parent().add_child(_council_button)
-	MatchState.advisors_changed.connect(_queue_council_refresh)
-	MatchState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_council_refresh())
-	_refresh_council_widget()
-
-func _queue_council_refresh() -> void:
-	if _council_refresh_queued:
-		return
-	_council_refresh_queued = true
-	call_deferred("_refresh_council_widget")
-
-func _refresh_council_widget() -> void:
-	_council_refresh_queued = false
-	if not is_instance_valid(_council_button):
-		return
-	var seated: Array = MatchState.advisor_seats.values()
-	var slots: int = MatchState.max_advisor_slots
-	var avg := 0.0
-	for aid in seated:
-		avg += MatchState.advisor_loyalty_value(str(aid))
-	avg = avg / float(seated.size()) if seated.size() > 0 else 0.0
-	var tone := _COUNCIL_WARN
-	if seated.size() > 0:
-		tone = _COUNCIL_GOOD if avg >= 3.4 else (_COUNCIL_WARN if avg > -3.4 else _COUNCIL_BAD)
-	_council_mood_label.text = ("%+.1f" % avg) if seated.size() > 0 else "—"
-	_council_mood_label.add_theme_color_override("font_color", tone if seated.size() > 0 else Color("#8298AC"))
-	for c in _council_stack.get_children():
-		_council_stack.remove_child(c)
-		c.queue_free()
-	for aid in seated:
-		_council_stack.add_child(_council_mini_portrait(MatchState.get_advisor(str(aid))))
-	for _i in range(maxi(0, slots - seated.size())):
-		_council_stack.add_child(_council_empty_slot())
-	# Buttons don't size to non-container children: width = padding + label + stack.
-	var label_w := 34.0 if seated.size() > 0 else 16.0
-	var stack_w := 22.0 + float(maxi(0, slots - 1)) * 15.0
-	_council_button.custom_minimum_size = Vector2(26.0 + label_w + stack_w, 32)
-
-func _council_mini_portrait(adv: Dictionary) -> Control:
-	var holder := PanelContainer.new()
-	holder.custom_minimum_size = Vector2(22, 22)
-	holder.clip_contents = true
-	var accent: Color = adv.get("portrait_color", Color("#53687A"))
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = accent.darkened(0.45)
-	sb.border_color = accent
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(11)
-	holder.add_theme_stylebox_override("panel", sb)
-	var path := str(adv.get("portrait_path", ""))
-	if path != "" and ResourceLoader.exists(path):
-		var img := TextureRect.new()
-		img.texture = load(path) as Texture2D
-		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		holder.add_child(img)
-	else:
-		var initials := Label.new()
-		initials.text = str(adv.get("initials", "?")).substr(0, 1)
-		initials.add_theme_font_size_override("font_size", 10)
-		initials.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		initials.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		holder.add_child(initials)
-	return holder
-
-func _council_empty_slot() -> Control:
-	var holder := PanelContainer.new()
-	holder.custom_minimum_size = Vector2(22, 22)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color("#0A1220")
-	sb.border_color = Color("#D96AA0", 0.4)   # People pink, hollow
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(11)
-	holder.add_theme_stylebox_override("panel", sb)
-	return holder
-
-func _add_save_button() -> void:
-	# Quicksave to the "quicksave" slot (named saves via the debug terminal /
-	# the main menu's Load Game lists both). Saving is DECIDE-phase-only;
-	# SaveLoad returns the reason when it refuses and we toast it either way.
-	var save_button := Button.new()
-	save_button.text = "Save"
-	save_button.tooltip_text = SAVE_TOOLTIP
-	save_button.pressed.connect(_on_save_pressed)
-	money_widget.get_parent().add_child(save_button)
-	_save_button = save_button
-	# Saving is DECIDE-only; grey the button out during resolution instead of
-	# letting the click fail with a toast.
-	TurnManager.turn_resolution_started.connect(_refresh_save_lock)
-	TurnManager.turn_resolution_completed.connect(_refresh_save_lock)
-	_refresh_save_lock()
-
-func _refresh_save_lock() -> void:
-	var locked: bool = TurnManager.is_resolving
-	_save_button.disabled = locked
-	_save_button.tooltip_text = SAVE_LOCKED_TOOLTIP if locked else SAVE_TOOLTIP
-
-func _on_save_pressed() -> void:
-	var err: String = SaveLoad.save_slot("quicksave")
-	if err == "":
-		MatchState.request_toast("Game saved (quicksave).", "success")
-	else:
-		MatchState.request_toast("Could not save: %s" % err, "warning")
-
 # A red "Bankruptcy imminent" strip directly beneath the money widget, matching its
 # width. A top_level overlay (NOT a re-parent): the e2e harness drives the loan UI
 # through the MoneyWidget's node path, so the top-bar hierarchy must stay put.
 func _add_bankruptcy_warning() -> void:
 	_bankruptcy_strip = PanelContainer.new()
 	_bankruptcy_strip.visible = false
-	_bankruptcy_strip.top_level = true   # escapes the container layout; global coords
-	# Clicking the flag opens the Turn Briefing on the bankruptcy alert (spec §7).
+	_bankruptcy_strip.top_level = true
 	_bankruptcy_strip.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_bankruptcy_strip.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
@@ -227,11 +1075,7 @@ func _add_bankruptcy_warning() -> void:
 	lbl.add_theme_color_override("font_color", Color(1, 1, 1))
 	_bankruptcy_strip.add_child(lbl)
 	add_child(_bankruptcy_strip)
-
-	LoanState.loans_updated.connect(_refresh_bankruptcy_warning)
-	TurnManager.turn_resolution_completed.connect(_refresh_bankruptcy_warning)
 	money_widget.item_rect_changed.connect(_refresh_bankruptcy_warning)
-	_refresh_bankruptcy_warning()
 
 func _refresh_bankruptcy_warning(_ignored: Variant = null) -> void:
 	if not is_instance_valid(_bankruptcy_strip):
@@ -239,14 +1083,12 @@ func _refresh_bankruptcy_warning(_ignored: Variant = null) -> void:
 	var runway: float = MatchState.money + LoanState.available_capacity()
 	_bankruptcy_strip.visible = not TurnManager.game_ended and runway < BANKRUPTCY_IMMINENT_RUNWAY
 	if _bankruptcy_strip.visible:
-		# Pin under the money widget, matching its width.
 		_bankruptcy_strip.global_position = money_widget.global_position + Vector2(0, money_widget.size.y + 2)
 		_bankruptcy_strip.custom_minimum_size = Vector2(money_widget.size.x, 0)
 		_bankruptcy_strip.size = Vector2(money_widget.size.x, _bankruptcy_strip.get_combined_minimum_size().y)
 
-func _on_money_changed(new_amount: float) -> void:
-	_refresh_money_display(new_amount)
-	_refresh_bankruptcy_warning()
+func _on_money_changed(_new_amount: float) -> void:
+	_queue_refresh()
 
 func _on_build_rejected_no_funds(_message: String) -> void:
 	flash_red()
@@ -257,19 +1099,12 @@ func _base_money_color() -> Color:
 		return FLASH_RED
 	elif amount < 10:
 		return Color(1.0, 0.6, 0.2)
-	return Color(0.995234, 0.930806, 0.763265)
-
-func _refresh_money_display(amount: float) -> void:
-	money_widget.text = " £%.2f" % amount
-	if not _flashing:
-		money_widget.add_theme_color_override("font_color", _base_money_color())
+	return C_BRIGHT
 
 func _set_money_color(c: Color) -> void:
-	money_widget.add_theme_color_override("font_color", c)
+	_cash_label.add_theme_color_override("font_color", c)
 
 func flash_red() -> void:
-	# Flash twice: base→red→base→red→base, 0.2s each leg. Re-triggering while
-	# flashing is ignored (the sequence completes once and does not loop).
 	if _flashing:
 		return
 	_flashing = true
@@ -283,6 +1118,3 @@ func flash_red() -> void:
 		_flashing = false
 		_set_money_color(_base_money_color())
 	)
-
-func _on_money_clicked() -> void:
-	money_widget_clicked.emit()
