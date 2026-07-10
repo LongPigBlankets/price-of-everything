@@ -441,6 +441,7 @@ const _EVENT_ICONS := {
 	"tile_at_capacity": "gauge",
 	"policy_enacted": "scale",
 	"forewarn": "flag",
+	"advisor_tip": "users",
 }
 
 func _event_item(ev: Dictionary) -> Dictionary:

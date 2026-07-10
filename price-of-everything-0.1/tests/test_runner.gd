@@ -244,6 +244,7 @@ func _ready() -> void:
 	_test_auto_bridge_loan()
 	_test_cfo_tax_credit()
 	_test_policy_state()
+	_test_insider_tip()
 	_test_infra_upgrade()
 	if not _failed_names.is_empty():
 		print("FAILED TESTS:")
@@ -8415,6 +8416,59 @@ func _test_policy_state() -> void:
 				"research: Biomass Cracking unlocks by producing biomass (fireable condition)")
 	_check(found_node, "research: Biomass Cracking node exists")
 
+
+func _test_insider_tip() -> void:
+	# Government Affairs insider leak (turns 86..89): fires only with a 3/3-Influencing
+	# officer in the seat, once per match; dismissible-critical news, not a decision.
+	var seats_before: Dictionary = MatchState.advisor_seats.duplicate(true)
+	var turn_before: int = TurnManager.current_turn
+	PolicyState._insider_tip_fired = false
+
+	# No officer → nothing, even inside the window.
+	MatchState.advisor_seats = {}
+	TurnManager.current_turn = 86
+	PolicyState._maybe_fire_insider_tip()
+	_check(not PolicyState._insider_tip_fired, "insider tip: silent with no Government Affairs officer")
+
+	# A low-Influencing officer (Tom, inf 1) doesn't leak.
+	MatchState.advisor_seats = {"government_affairs": "tom"}
+	_check(PolicyState.get_insider_tip_officer() == "", "insider tip: inf < 3 officer doesn't qualify")
+	PolicyState._maybe_fire_insider_tip()
+	_check(not PolicyState._insider_tip_fired, "insider tip: silent with a low-Influencing officer")
+
+	# Rufus (Silver Tongue, inf 3/3) leaks — but only inside the window.
+	MatchState.advisor_seats = {"government_affairs": "rufus"}
+	_check(PolicyState.get_insider_tip_officer() == "rufus", "insider tip: 3/3 officer qualifies")
+	TurnManager.current_turn = 85
+	PolicyState._maybe_fire_insider_tip()
+	_check(not PolicyState._insider_tip_fired, "insider tip: not before turn 86")
+	TurnManager.current_turn = 90
+	PolicyState._maybe_fire_insider_tip()
+	_check(not PolicyState._insider_tip_fired, "insider tip: not from turn 90 (official notice imminent)")
+	TurnManager.current_turn = 87
+	PolicyState._maybe_fire_insider_tip()
+	_check(PolicyState._insider_tip_fired, "insider tip: fires in the window with a 3/3 officer")
+	var found := false
+	var tip_id := ""
+	for ev in EventScheduler.active_events():
+		if str(ev.get("kind", "")) == "advisor_tip":
+			found = true
+			tip_id = str(ev.get("id", ""))
+			_check(str(ev.get("severity", "")) == "critical", "insider tip: critical severity")
+			_check(str(ev.get("title", "")).begins_with("Rufus Ashby"), "insider tip: names the officer")
+	_check(found, "insider tip: lands as an active (dismissible) event")
+
+	# Once per match: a second window turn doesn't re-fire.
+	var count_before: int = EventScheduler.active_events().size()
+	TurnManager.current_turn = 88
+	PolicyState._maybe_fire_insider_tip()
+	_check(EventScheduler.active_events().size() == count_before, "insider tip: never fires twice")
+
+	if tip_id != "":
+		EventScheduler.dismiss(tip_id)
+	PolicyState._insider_tip_fired = false
+	MatchState.advisor_seats = seats_before
+	TurnManager.current_turn = turn_before
 
 func _test_infra_upgrade() -> void:
 	# Cash-only infrastructure upgrades (owner ruling: L2 £150, L3 £350). The pending

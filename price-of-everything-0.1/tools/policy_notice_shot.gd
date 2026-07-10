@@ -14,6 +14,34 @@ func _ready() -> void:
 
 	TurnManager.fast_mode = true
 
+	# 0a. Election news at turn 84, then the insider tip at 86 (Rufus, 3/3 Influencing,
+	# seated in Government Affairs).
+	MatchState.advisor_seats["government_affairs"] = "rufus"
+	TurnManager.current_turn = 83
+	TurnManager.commit_turn()
+	if TurnManager.is_resolving:
+		await TurnManager.turn_resolution_completed
+	await _settle(20)
+	TurnBriefing.expand()
+	await _settle(16)
+	print("[notice_shot] election: turn=%d" % TurnManager.current_turn)
+	await _shot("/tmp/poe_policy_election.png")
+	TurnBriefing.collapse()
+	await _settle(6)
+
+	# 0b. Two more turns → the tip fires when turn 86 opens.
+	for _i in 2:
+		TurnManager.commit_turn()
+		if TurnManager.is_resolving:
+			await TurnManager.turn_resolution_completed
+	await _settle(20)
+	TurnBriefing.expand()
+	await _settle(16)
+	print("[notice_shot] tip: turn=%d fired=%s" % [TurnManager.current_turn, str(PolicyState._insider_tip_fired)])
+	await _shot("/tmp/poe_policy_insider_tip.png")
+	TurnBriefing.collapse()
+	await _settle(6)
+
 	# 1. Carbon levy notice at turn 90 (reserved for turn 89's NARRATIVE).
 	TurnManager.current_turn = 89
 	PolicyState._arm_notices()

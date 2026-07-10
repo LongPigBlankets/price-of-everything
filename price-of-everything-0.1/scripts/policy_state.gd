@@ -32,6 +32,17 @@ const NOTICES: Array = [
 const CO2_RAMP_FIRST_TURN := 91
 const CO2_P1_TURN := 101
 
+# The election that sets the whole arc in motion (news item, dismissible).
+const ELECTION_NEWS_TURN := 84
+# Government Affairs insider tip: if a maxed-Influencing (3/3) officer holds the seat on
+# any turn in this window, they leak the coming carbon tax as a critical (dismissible)
+# update. No qualifying officer → no update. The window closes before the official
+# notice at turn 90 makes the rumour redundant.
+const INSIDER_TIP_FIRST_TURN := 86
+const INSIDER_TIP_LAST_TURN := 89
+const INSIDER_TIP_SEAT := "government_affairs"
+const INSIDER_TIP_MIN_INF := 3
+
 # Green subsidy window (owner ruling): full rate from t105 through t180, then a linear
 # wind-down of 10% per turn across 181..190 (t181 pays 90%, t190 pays 10%), ended
 # completely at t191.
@@ -40,12 +51,17 @@ const GREEN_SUBSIDY_WIND_DOWN_PER_TURN := 0.10
 const GREEN_SUBSIDY_END_TURN := 191
 
 var _seeded: bool = false
+var _insider_tip_fired: bool = false
 
 func _ready() -> void:
 	MatchState.state_reset.connect(_on_state_reset)
+	TurnManager.turn_resolution_completed.connect(_on_turn_resolution_completed)
 	# A brand-new session (no save loaded, no reset yet) still needs the schedule:
 	# seed after the autoload settles unless a load beat us to it.
 	call_deferred("_seed_if_needed")
+
+func _on_turn_resolution_completed() -> void:
+	_maybe_fire_insider_tip()
 
 # --- Live levels (pure functions of the turn) ---------------------------------------
 
@@ -102,6 +118,7 @@ func _on_state_reset() -> void:
 	# New game (or pre-load reset): re-arm. If a load follows, import_state overwrites
 	# _seeded and EventScheduler restores its own scheduled events.
 	_seeded = false
+	_insider_tip_fired = false
 	call_deferred("_seed_if_needed")
 
 func _seed_if_needed() -> void:
@@ -111,6 +128,20 @@ func _seed_if_needed() -> void:
 	if _seeded:
 		return
 	_seeded = true
+	# The election that opens the arc: a dismissible news item READ on turn 84.
+	# Scheduled events fire during their turn's NARRATIVE (mid-resolution), surfacing on
+	# the NEXT turn's DECIDE — so fire it one turn early to land on 84 itself.
+	EventScheduler.schedule(ELECTION_NEWS_TURN - 1, {
+		"id": "policy:election_markets_party",
+		"kind": "policy_enacted",
+		"severity": "warning",
+		"title": "Markets Party wins the election",
+		"body": "After a long rule by the State Party, the Markets Party has won the election — and is expected to make sweeping changes.",
+		"forewarn_turns": 0,
+		"source": "policy",
+		"persistent": true,
+		"auto_dismiss_turns": 6,
+	})
 	# The subsidy's end news at t191 (the wind-down's zero turn). The advance warning is
 	# the blocking green_subsidy_end_notice at t180, so no passive forewarn here.
 	EventScheduler.schedule(GREEN_SUBSIDY_END_TURN, {
@@ -163,14 +194,49 @@ func _notice_seen(def_id: String) -> bool:
 			return true
 	return false
 
+# Government Affairs insider leak: a 3/3-Influencing officer seated during turns 86..89
+# tips the player off that a coal/oil consumption tax is coming (critical, dismissible
+# news). Fires at most once per match; no qualifying officer → nothing.
+func _maybe_fire_insider_tip() -> void:
+	if _insider_tip_fired:
+		return
+	var turn := int(TurnManager.current_turn)
+	if turn < INSIDER_TIP_FIRST_TURN or turn > INSIDER_TIP_LAST_TURN:
+		return
+	var aid := get_insider_tip_officer()
+	if aid == "":
+		return
+	_insider_tip_fired = true
+	var officer_name := str(MatchState.get_advisor(aid).get("name", "Your Government Affairs officer"))
+	EventScheduler.emit_event({
+		"kind": "advisor_tip",
+		"severity": "critical",
+		"title": "%s: a carbon tax is coming" % officer_name,
+		"body": "%s thinks a tax on consuming coal and oil is coming — or at least that's what they've heard from their contacts in government. Nothing is official yet, but it may be wise to start preparing." % officer_name,
+		"source": "policy",
+		"persistent": true,
+		"auto_dismiss_turns": 5,
+	})
+
+## The seated Government Affairs advisor id, if their Influencing is maxed (3/3); else "".
+## Raw discipline stats live on ADVISOR_ROSTER (the display dicts don't carry them).
+func get_insider_tip_officer() -> String:
+	var aid := MatchState.get_advisor_in_seat(INSIDER_TIP_SEAT)
+	if aid == "":
+		return ""
+	if int(MatchState._roster_entry(aid).get("inf", 0)) < INSIDER_TIP_MIN_INF:
+		return ""
+	return aid
+
 # --- Save / load (additive key; tolerant reader, no version bump) ---------------------
 
 func export_state() -> Dictionary:
-	return {"seeded": _seeded}
+	return {"seeded": _seeded, "insider_tip_fired": _insider_tip_fired}
 
 func import_state(d: Dictionary) -> void:
 	# Old saves (no "policy" key) arrive as {} → seeded=false → the schedule seeds on
 	# this load; beats already past their turn simply won't re-fire (their turn is gone)
 	# while the LEVELS are pure functions of the turn and are always correct.
 	_seeded = bool(d.get("seeded", false))
+	_insider_tip_fired = bool(d.get("insider_tip_fired", false))
 	call_deferred("_seed_if_needed")
