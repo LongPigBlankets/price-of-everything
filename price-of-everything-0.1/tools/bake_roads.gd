@@ -195,8 +195,9 @@ func _ready() -> void:
 	# at the banks. No strand can cross water beside a deck by construction.
 	realizer.warm_forest_cache()
 	var funnel := _funnel_river_crossings(nav, network, realizer._forest_discs_cache)
-	print("bake_roads: river discipline — %d crossings anchored (%d decks), %d roads cut at banks, %d grazes kept" % [
-		int(funnel.bridged), int(funnel.decks), int(funnel.cuts), int(funnel.grazes)])
+	var approaches := _merge_gate_approaches(network)
+	print("bake_roads: river discipline — %d crossings anchored (%d decks), %d roads cut at banks, %d grazes bank-hugged, %d approaches overlaid" % [
+		int(funnel.bridged), int(funnel.decks), int(funnel.cuts), int(funnel.grazes), approaches])
 
 	var anchor_ids: Array = []
 	for a2 in anchors:
@@ -751,10 +752,26 @@ func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> 
 			mid /= float(maxi(j - i, 1))
 			var entry: Vector2 = current[current.size() - 1] if current.size() > 0 else geo[i]
 			var exit_p: Vector2 = geo[j] if j < geo.size() else geo[geo.size() - 1]
+			var at_end := (j >= geo.size()) or (current.size() == 0 and i == 0)
 			if _max_wet_chord(nav, entry, exit_p) < 20.0:
 				grazes += 1
-				for k in range(i, j):
-					current.append(geo[k])
+				if at_end:
+					# Endpoint graze: the polyline's end vertex clips a river
+					# cell. Shared junction nodes sit exactly there — leave the
+					# points untouched or the edge detaches from its node.
+					for k0 in range(i, j):
+						current.append(geo[k0])
+				else:
+					# Mid-run bank graze: keep the run but push its points onto
+					# land so no road ever DRAWS in the water (owner round 8:
+					# orange trunks riding the channel).
+					var hug := _push_to_land(nav, geo.slice(i, j))
+					if hug.size() > 0:
+						for hp in hug:
+							current.append(hp)
+					else:
+						for k in range(i, j):
+							current.append(geo[k])
 				i = j
 				continue
 			any = true
@@ -762,7 +779,15 @@ func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> 
 			for cand in _crossings_by_distance(mid, 800.0, 3):
 				var ga: Vector2 = cand.gate_a
 				var gb: Vector2 = cand.gate_b
-				var g_in := ga if entry.distance_squared_to(ga) <= entry.distance_squared_to(gb) else gb
+				# Join each end to the gate on ITS OWN bank: nearest-gate can
+				# pick across the channel, and the gate-zone waiver below then
+				# lets the join cross the water beside the deck (owner round 8
+				# lens at 18_16). Raw wet exposure, no waiver, decides.
+				var wet_ab := _max_wet_chord(nav, entry, ga) + _max_wet_chord(nav, gb, exit_p)
+				var wet_ba := _max_wet_chord(nav, entry, gb) + _max_wet_chord(nav, ga, exit_p)
+				var g_in := ga
+				if wet_ba < wet_ab or (wet_ba == wet_ab and entry.distance_squared_to(gb) < entry.distance_squared_to(ga)):
+					g_in = gb
 				var g_out := gb if g_in == ga else ga
 				if entry.distance_to(g_in) > FUNNEL_JOIN_MAX or exit_p.distance_to(g_out) > FUNNEL_JOIN_MAX:
 					continue
@@ -795,8 +820,16 @@ func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> 
 		for pi in parts.size():
 			var pts: PackedVector2Array = parts[pi]
 			if prepend != Vector2.INF:
+				# Mirror of the tail un-bend: drop leading points that double
+				# back toward the gate before prepending it.
+				var rev := PackedVector2Array()
+				for ri in range(pts.size() - 1, -1, -1):
+					rev.append(pts[ri])
+				var pj: Dictionary = joints[pi - 1]
+				rev = _unbend_to_gate(nav, rev, prepend, (pj.crossing as Dictionary).gate_a, (pj.crossing as Dictionary).gate_b)
 				var with_gate := PackedVector2Array([prepend])
-				with_gate.append_array(pts)
+				for ri2 in range(rev.size() - 1, -1, -1):
+					with_gate.append(rev[ri2])
 				pts = with_gate
 				prepend = Vector2.INF
 			var is_last := pi == parts.size() - 1
@@ -806,6 +839,7 @@ func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> 
 				if not joint.is_empty():
 					var cr: Dictionary = joint.crossing
 					end_node = _gate_node(network, cr, joint.g_in)
+					pts = _unbend_to_gate(nav, pts, joint.g_in, cr.gate_a, cr.gate_b)
 					pts.append(joint.g_in)
 					_ensure_bridge_edge(network, cr, str(e.tier), bridge_edges, canonical_ids)
 					prepend = joint.g_out
@@ -832,6 +866,249 @@ func _funnel_river_crossings(nav, network: RoadNetwork, forest_discs: Array) -> 
 			start_node = end_node
 	var decks := bridge_edges.size()
 	return {"bridged": bridged, "cuts": cuts, "decks": decks, "grazes": grazes}
+
+## Un-bend the V-notch a gate join creates when the approach overshoots the
+## gate: drop end points while a direct line to the gate is meaningfully
+## shorter and stays dry outside the gate zone (max 8 points).
+func _unbend_to_gate(nav, pts: PackedVector2Array, gate: Vector2, ga: Vector2, gb: Vector2) -> PackedVector2Array:
+	var out := pts.duplicate()
+	var dropped := 0
+	while out.size() >= 2 and dropped < 8:
+		var last := out[out.size() - 1]
+		var prev := out[out.size() - 2]
+		if (prev.distance_to(last) + last.distance_to(gate)) - prev.distance_to(gate) < 6.0:
+			break
+		if _wet_chord_off_gate(nav, PackedVector2Array([prev, gate]), ga, gb) >= 20.0:
+			break
+		out.remove_at(out.size() - 1)
+		dropped += 1
+	return out
+
+## Push every point of a wet run onto its nearest land cell (outward ring
+## search) — bank grazes then hug the bank instead of riding the channel.
+func _push_to_land(nav, pts: PackedVector2Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for p in pts:
+		var q := _nearest_land_point(nav, p, 6)
+		if q == Vector2.INF:
+			return PackedVector2Array()
+		if out.is_empty() or out[out.size() - 1].distance_to(q) > 2.0:
+			out.append(q)
+	return out
+
+func _nearest_land_point(nav, p: Vector2, max_ring: int) -> Vector2:
+	var c: Vector2i = nav.cell_of(p)
+	for r in range(0, max_ring + 1):
+		var best := Vector2.INF
+		var best_d := 1.0e30
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) != r:
+					continue
+				var x := c.x + dx
+				var y := c.y + dy
+				if x < 0 or y < 0 or x >= nav.gw or y >= nav.gh:
+					continue
+				if nav.water(x, y) != NavGrid.WATER_LAND:
+					continue
+				if nav.level(x, y) >= RoadRealizer.BAN_LEVEL:
+					continue
+				var w: Vector2 = nav.world_of(x, y)
+				var d := w.distance_squared_to(p)
+				if d < best_d:
+					best_d = d
+					best = w
+		if best != Vector2.INF:
+			return best
+	return Vector2.INF
+
+## Post-funnel visual consolidation at the bridges (owner round 8):
+## 1. degenerate decks (both ends the same gate node) are dropped;
+## 2. loose endpoints (stitch/tip/jn connectors) whose drawn end lands within
+##    SNAP_R of a gate snap exactly onto it — near-miss endpoints beside a deck
+##    read as darts and lens gaps;
+## 3. edges leaving the same POSITION (the gates, and the multi-id junctions
+##    routing piles up beside them) ADOPT the longest edge\'s geometry while
+##    they track it within MERGE_R, so overlapping approaches render as ONE
+##    strand. Grouping is by quantized position, not node id — routing leaves
+##    many distinct node ids on the same point.
+func _merge_gate_approaches(network: RoadNetwork) -> int:
+	const MERGE_R := 16.0
+	const MERGE_REACH := 420.0
+	const SNAP_R := 14.0
+	var node_ids: Array = network.nodes.keys()
+	node_ids.sort()
+	var gate_pos: Array = []
+	for nid in node_ids:
+		if str(nid).begins_with("bgate:"):
+			gate_pos.append((network.nodes[nid] as Dictionary).pos)
+	var eids: Array = network.edges.keys()
+	eids.sort()
+	for eid0 in eids:
+		var e0: Dictionary = network.edges[eid0]
+		if str(e0.a) == str(e0.b) and str(e0.a).begins_with("bgate:"):
+			_remove_edge(network, str(eid0))
+	eids = network.edges.keys()
+	eids.sort()
+	for eid1 in eids:
+		var e1: Dictionary = network.edges[eid1]
+		if str(e1.a).begins_with("bgate:") and str(e1.b).begins_with("bgate:"):
+			continue
+		var geo1: PackedVector2Array = e1.geometry
+		if geo1.size() < 2:
+			continue
+		var snapped := false
+		for endi in [0, geo1.size() - 1]:
+			var p1: Vector2 = geo1[endi]
+			for gp in gate_pos:
+				var d1: float = p1.distance_to(gp)
+				if d1 > 0.01 and d1 <= SNAP_R:
+					geo1[endi] = gp
+					snapped = true
+					break
+		if snapped:
+			e1["geometry"] = geo1
+	# Adoption groups: every non-deck edge END near a crossing, keyed by its
+	# quantized position.
+	var merged := 0
+	var groups: Dictionary = {}
+	for eid in eids:
+		var e: Dictionary = network.edges[eid]
+		if str(e.a).begins_with("bgate:") and str(e.b).begins_with("bgate:"):
+			continue
+		var geo: PackedVector2Array = e.geometry
+		if geo.size() < 2:
+			continue
+		for side in ["a", "b"]:
+			var p: Vector2 = geo[0] if side == "a" else geo[geo.size() - 1]
+			if not _pos_near_crossing(p, 160.0):
+				continue
+			var key := "%d|%d" % [int(roundf(p.x / 2.0)), int(roundf(p.y / 2.0))]
+			var lst: Array = groups.get(key, [])
+			lst.append({"eid": str(eid), "side": side})
+			groups[key] = lst
+	var keys: Array = groups.keys()
+	keys.sort()
+	for k in keys:
+		var lst2: Array = groups[k]
+		if lst2.size() < 2:
+			continue
+		# Primary = the LONGEST edge here (most likely the real trunk); the
+		# others adopt its points up to their divergence arc. The walk is by
+		# ARC-LENGTH SAMPLES, not vertices — long straight strands have no
+		# interior vertices, and vertex tests leave leave-and-return lenses.
+		lst2.sort_custom(func(x, y) -> bool:
+			var lx := _polyline_arc((network.edges[x.eid] as Dictionary).geometry)
+			var ly := _polyline_arc((network.edges[y.eid] as Dictionary).geometry)
+			if absf(lx - ly) > 0.01:
+				return lx > ly
+			return str(x.eid) < str(y.eid))
+		for li in range(1, lst2.size()):
+			var rec: Dictionary = lst2[li]
+			var e2: Dictionary = network.edges[rec.eid]
+			var from_end: bool = str(rec.side) == "b"
+			var seq := _oriented_from_gate(e2.geometry, from_end)
+			var total := _polyline_arc(seq)
+			# Try every LONGER member (not just the group primary): a short
+			# connector can shadow the second-longest strand while sitting
+			# nowhere near the longest one.
+			for ci in range(li):
+				var cand: Dictionary = lst2[ci]
+				var prim_geo := _oriented_from_gate(network.edges[cand.eid].geometry, str(cand.side) == "b")
+				const SAMPLE_STEP := 12.0
+				var limit := minf(minf(total - 20.0, MERGE_REACH), _polyline_arc(prim_geo) - 8.0)
+				var s := SAMPLE_STEP
+				var shared := 0.0
+				var t_prim := 0.0
+				while s <= limit:
+					var p2 := _point_at_arc(seq, s)
+					var pr := _project_onto_polyline(prim_geo, p2)
+					if pr.x > MERGE_R:
+						break
+					shared = s
+					t_prim = pr.y
+					s += SAMPLE_STEP
+				if shared < minf(40.0, total * 0.5):
+					continue
+				var rebuilt := _polyline_prefix(prim_geo, t_prim)
+				var arc2 := 0.0
+				for k2 in range(seq.size()):
+					if k2 > 0:
+						arc2 += seq[k2 - 1].distance_to(seq[k2])
+					if arc2 > shared:
+						rebuilt.append(seq[k2])
+				e2["geometry"] = _oriented_from_gate(rebuilt, from_end)
+				merged += 1
+				break
+	return merged
+
+func _pos_near_crossing(p: Vector2, radius: float) -> bool:
+	for tid in RoadCrossings._by_tile:
+		for cr in RoadCrossings._by_tile[tid]:
+			if p.distance_to((cr as Dictionary).point) <= radius:
+				return true
+	return false
+
+func _polyline_arc(poly: PackedVector2Array) -> float:
+	var arc := 0.0
+	for i in range(poly.size() - 1):
+		arc += poly[i].distance_to(poly[i + 1])
+	return arc
+
+func _point_at_arc(poly: PackedVector2Array, t: float) -> Vector2:
+	var arc := 0.0
+	for i in range(poly.size() - 1):
+		var seg := poly[i].distance_to(poly[i + 1])
+		if seg <= 0.0:
+			continue
+		if arc + seg >= t:
+			return poly[i].lerp(poly[i + 1], clampf((t - arc) / seg, 0.0, 1.0))
+		arc += seg
+	return poly[poly.size() - 1] if poly.size() > 0 else Vector2.INF
+
+func _oriented_from_gate(geo: PackedVector2Array, from_end: bool) -> PackedVector2Array:
+	if not from_end:
+		return geo.duplicate()
+	var out := PackedVector2Array()
+	for i in range(geo.size() - 1, -1, -1):
+		out.append(geo[i])
+	return out
+
+## Closest approach of p to the polyline: returns Vector2(distance, arc-length
+## of the projection along the polyline from its first point).
+func _project_onto_polyline(poly: PackedVector2Array, p: Vector2) -> Vector2:
+	var best_d := 1.0e30
+	var best_arc := 0.0
+	var arc := 0.0
+	for si in range(poly.size() - 1):
+		var q := Geometry2D.get_closest_point_to_segment(p, poly[si], poly[si + 1])
+		var d := p.distance_squared_to(q)
+		if d < best_d:
+			best_d = d
+			best_arc = arc + poly[si].distance_to(q)
+		arc += poly[si].distance_to(poly[si + 1])
+	return Vector2(sqrt(best_d), best_arc)
+
+## The polyline's points from its start up to arc-length t (end point included
+## at exactly t).
+func _polyline_prefix(poly: PackedVector2Array, t: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if poly.is_empty():
+		return out
+	out.append(poly[0])
+	var arc := 0.0
+	for si in range(poly.size() - 1):
+		var seg := poly[si].distance_to(poly[si + 1])
+		if seg <= 0.0:
+			continue
+		if arc + seg >= t:
+			var cut := poly[si].lerp(poly[si + 1], clampf((t - arc) / seg, 0.0, 1.0))
+			if out[out.size() - 1].distance_to(cut) > 0.5:
+				out.append(cut)
+			return out
+		arc += seg
+		out.append(poly[si + 1])
+	return out
 
 ## A gate join may shave a canopy rim right at the bridge (two hard constraints
 ## meeting) but must not carve INTO a forest disc away from the crossing.
