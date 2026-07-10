@@ -291,6 +291,23 @@ const DECISION_DEFINITIONS := {
 	# Story one-shot: SolvencyState force-draws this the first time cash hits −£500 with
 	# a CFO seated. The CFO proposes it, so accepting follows them (+2.0 company scope),
 	# refusing snubs them (−0.5).
+	# The carbon levy's advance notice (decarbonisation squeeze): PolicyState reserves
+	# this for turn 90 — a critical, non-dismissible government notice the player must
+	# read and acknowledge before the turn can end. Single choice, no effects; the levy
+	# itself lands at turn 101 regardless.
+	"carbon_tax_notice": {
+		"title": "Government Notice: Carbon Levy",
+		# LOREM — owner lore pending (the mechanical facts live in the choice describe).
+		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt. Nuntius gravis a ministerio venit: vectigal carbonis rei publicae imponetur.",
+		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
+		"target_selector": "company",
+		"once": true, "cooldown_turns": 9999, "weight": 1.0, "default_choice": "understood",
+		"choices": [
+			{"id": "understood", "label": "Understood",
+				"effects": [{"kind": "none",
+					"describe": "From turn 101, every unit of coal, processed oil or ethylene your buildings consume is taxed — and the levy escalates in later phases. Clean routes and green power are exempt."}]},
+		],
+	},
 	"distressed_asset": {
 		"title": "Distressed Asset Program",
 		"body": "It's not pretty and we don't have many other options — but I spoke to some outside investors. They'll buy our buildings to clear the debts and float us a rescue loan.",

@@ -8349,9 +8349,25 @@ func _test_policy_state() -> void:
 	_check(PolicyState.co2_tax_level(164) == 1, "policy: still phase 1 at turn 164")
 	_check(PolicyState.co2_tax_level(165) == 2, "policy: phase 2 at turn 165")
 	_check(PolicyState.co2_tax_level(230) == 3, "policy: phase 3 at turn 230")
-	_check(PolicyState.green_subsidy_rate(19) == 0.0, "policy: no subsidy before turn 20")
-	_check(absf(PolicyState.green_subsidy_rate(20) - EconomyConfig.GREEN_SUBSIDY_RATE) < 0.0001,
-		"policy: subsidy rate live from turn 20")
+	_check(PolicyState.green_subsidy_rate(104) == 0.0, "policy: no subsidy before turn 105")
+	_check(absf(PolicyState.green_subsidy_rate(105) - EconomyConfig.GREEN_SUBSIDY_RATE) < 0.0001,
+		"policy: subsidy rate live from turn 105")
+	# The window runs through at least 185 and lapses on a seed-picked turn in [186,191].
+	var sub_last: int = PolicyState.green_subsidy_last_turn()
+	_check(sub_last >= 185 and sub_last <= 190, "policy: subsidy last turn in [185,190] (lapse in [186,191])")
+	_check(PolicyState.green_subsidy_rate(185) > 0.0, "policy: subsidy still paying at turn 185")
+	_check(PolicyState.green_subsidy_rate(sub_last) > 0.0, "policy: subsidy pays through its last turn")
+	_check(PolicyState.green_subsidy_rate(sub_last + 1) == 0.0, "policy: subsidy lapses after its last turn")
+	_check(PolicyState.green_subsidy_rate(191) == 0.0, "policy: subsidy always gone by turn 191")
+	# The blocking "Understood" notice: a story-priority decision (never randomly
+	# pulled) with a single acknowledge choice, reserved by PolicyState for turn 90.
+	var notice: Dictionary = DecisionState.DECISION_DEFINITIONS.get("carbon_tax_notice", {})
+	_check(not notice.is_empty(), "policy: carbon_tax_notice decision exists")
+	_check(int(notice.get("priority", 99)) == DecisionState.PRIORITY_STORY,
+		"policy: notice is story-priority (reserve-only, never randomly pulled)")
+	_check((notice.get("choices", []) as Array).size() == 1
+		and str((notice.get("choices", [])[0] as Dictionary).get("id", "")) == "understood",
+		"policy: notice has the single Understood choice")
 	# Catalog now parses the multiplier column (was dormant).
 	var coal: Dictionary = Catalog.get_good_by_internal_name("coal")
 	_check(absf(float(coal.get("co2_tax_multiplier", 0.0)) - 0.5) < 0.0001, "catalog: coal carbon intensity 0.5")

@@ -9,10 +9,11 @@ extends RefCounted
 ## Turns and levels are balance-volatile (rule #7): tune on the e2e harness.
 
 const SCHEDULE: Array = [
-	# --- Green Energy Subsidy (the carrot, early) ---
+	# --- Green Energy Subsidy (a mid-game window: live t105, runs through at least
+	# t185, lapses on a seed-picked turn in 186..191 — see PolicyState) ---
 	{
 		"id": "green_subsidy_p1", "policy": "green_subsidy", "level": 1,
-		"effective_turn": 20, "forewarn_turns": 5, "severity": "warning",
+		"effective_turn": 105, "forewarn_turns": 5, "severity": "warning",
 		"title": "Green Energy Subsidy",
 		# LOREM — replace with lore (shown in the forewarning news item).
 		"forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesentium subsidium energiae viridis in paucis conversionibus incipiet — qui sol et ventus colunt, remunerabuntur.",
@@ -22,9 +23,12 @@ const SCHEDULE: Array = [
 
 	# --- CO2 Tax / Carbon Levy (the stick, escalating) ---
 	{
-		# Owner ruling: announced at turn 91, in force at turn 101.
+		# Owner ruling: in force at turn 101. The advance notice is NOT a passive
+		# forewarn news item — it's the blocking "Understood" story decision
+		# (carbon_tax_notice) that PolicyState reserves for turn 90, so forewarn_turns
+		# stays 0 here to avoid a duplicate announcement.
 		"id": "co2_tax_p1", "policy": "co2_tax", "level": 1,
-		"effective_turn": 101, "forewarn_turns": 10, "severity": "warning",
+		"effective_turn": 101, "forewarn_turns": 0, "severity": "warning",
 		"title": "Carbon Levy — Phase 1",
 		# LOREM
 		"forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vectigal carbonis mox imponetur in carbonem, oleum confectum et aethylenum — parate rationes vestras.",

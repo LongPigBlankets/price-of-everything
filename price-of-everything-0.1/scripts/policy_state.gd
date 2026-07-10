@@ -16,6 +16,19 @@ extends Node
 
 const Schedule := preload("res://scripts/policy_schedule.gd")
 
+# The carbon levy's advance notice: a blocking "Understood" story decision reserved for
+# turn NOTICE_PRESENT_TURN's DECIDE (reservations fire in the PREVIOUS turn's NARRATIVE).
+const CO2_NOTICE_DEF := "carbon_tax_notice"
+const CO2_NOTICE_PRESENT_TURN := 90
+const CO2_P1_TURN := 101
+
+# Green subsidy window: live from the schedule's effective turn (105), guaranteed
+# through GREEN_SUBSIDY_MIN_LAST_TURN, then lapses on a seed-picked turn so each match
+# ends the programme somewhere in [186, 191]. Derived arithmetically from the match
+# seed (no RNG stream consumed, stable across engine versions).
+const GREEN_SUBSIDY_MIN_LAST_TURN := 185
+const GREEN_SUBSIDY_END_SPREAD := 6
+
 var _seeded: bool = false
 
 func _ready() -> void:
@@ -34,8 +47,16 @@ func co2_tax_level(turn: int) -> int:
 			lvl = maxi(lvl, int(e.level))
 	return lvl
 
-## £ per green MW generated at `turn` (0.0 before the subsidy is announced).
+## The last turn the subsidy pays out: at least 185, stretching 0..5 further by match
+## seed — so the programme lapses (first unpaid turn) somewhere in [186, 191].
+func green_subsidy_last_turn() -> int:
+	return GREEN_SUBSIDY_MIN_LAST_TURN + posmod(int(MatchState.match_rng_seed), GREEN_SUBSIDY_END_SPREAD)
+
+## £ per green MW generated at `turn` (0.0 before the subsidy window opens or after
+## the programme lapses).
 func green_subsidy_rate(turn: int) -> float:
+	if turn > green_subsidy_last_turn():
+		return 0.0
 	var lvl := 0
 	for e in Schedule.SCHEDULE:
 		if str(e.policy) == "green_subsidy" and turn >= int(e.effective_turn):
@@ -68,9 +89,29 @@ func _on_state_reset() -> void:
 	call_deferred("_seed_if_needed")
 
 func _seed_if_needed() -> void:
+	# The notice reservation lives in DecisionState state that is NOT saved, so it is
+	# re-armed on every seed AND every load (guarded against double-fires inside).
+	_arm_carbon_notice()
 	if _seeded:
 		return
 	_seeded = true
+	# The subsidy's lapse announcement isn't in the const table (its turn is per-match,
+	# seed-derived): first unpaid turn ∈ [186, 191], forewarned 5 turns ahead.
+	EventScheduler.schedule(green_subsidy_last_turn() + 1, {
+		"id": "policy:green_subsidy_end",
+		"kind": "policy_enacted",
+		"severity": "warning",
+		"title": "Green Energy Subsidy — programme ended",
+		# LOREM — owner lore pending.
+		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Subsidium energiae viridis finitum est; merces pro megawatt iam non solvitur.",
+		"forewarn_turns": 5,
+		# LOREM — owner lore pending.
+		"forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Subsidium viridis mox exspirabit.",
+		"source": "policy",
+		"deeplink": {"panel": "money"},
+		"persistent": true,
+		"auto_dismiss_turns": 6,
+	})
 	for e in Schedule.SCHEDULE:
 		EventScheduler.schedule(int(e.effective_turn), {
 			"id": "policy:%s" % str(e.id),
@@ -85,6 +126,24 @@ func _seed_if_needed() -> void:
 			"persistent": true,
 			"auto_dismiss_turns": 6,
 		})
+
+# Reserve the blocking "Understood" notice so it presents on turn 90's DECIDE
+# (reservations fire in the previous turn's NARRATIVE). Re-armed on every seed/load
+# because DecisionState reservations don't persist in saves; guarded so a notice the
+# player already answered (history) or has pending never re-fires, and skipped
+# entirely once the levy itself is in force.
+func _arm_carbon_notice() -> void:
+	var turn := int(TurnManager.current_turn)
+	if turn >= CO2_P1_TURN:
+		return
+	for rec in DecisionState.history():
+		if str(rec.get("def_id", "")) == CO2_NOTICE_DEF:
+			return
+	for d in DecisionState.pending_queue:
+		if str(d.get("def_id", "")) == CO2_NOTICE_DEF:
+			return
+	# Late loads (turn 90..100 without the notice answered) still get it next turn.
+	DecisionState.reserve(maxi(CO2_NOTICE_PRESENT_TURN - 1, turn), CO2_NOTICE_DEF)
 
 # --- Save / load (additive key; tolerant reader, no version bump) ---------------------
 

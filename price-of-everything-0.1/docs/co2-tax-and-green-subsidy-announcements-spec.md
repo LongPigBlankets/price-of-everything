@@ -13,10 +13,17 @@
 > Forestry); `r_155 Micro Algae Digestion` was restored to its original dormant-pool form —
 > at base prices r_228 runs −£0.20/run unintegrated (£6.67/u) vs taxed oil-route ethylene
 > £7.00/u (P1) / £9.25/u (P2); (6) a `skip <n>` debug-terminal cheat was added for
-> fast-forwarding to policy turns; (7) owner timeline: the levy is ANNOUNCED at turn 91 and
-> IN FORCE at turn 101 (forewarn_turns 10), P2 t165, P3 t230. Verified: unit suite green
-> (1 standing bake fail); e2e t100 failure set unchanged vs parent; drag −£54.9/turn once
-> the levy is live, revenue identical; tools/policy_shot.tscn renders all four surfaces.
+> fast-forwarding to policy turns; (7) owner timeline: the levy's advance notice is a
+> BLOCKING story decision ("Government Notice: Carbon Levy", single "Understood" choice,
+> reserved by PolicyState via DecisionState.reserve so it presents on turn 90's DECIDE and
+> blocks End Turn until acknowledged — replaces the passive forewarn news for P1), the levy
+> is IN FORCE at turn 101, P2 t165, P3 t230; (8) the subsidy is a WINDOW: live t105
+> (forewarned t100), paying through at least t185, lapsing on a seed-derived turn so the
+> first unpaid turn lands in [186, 191] (PolicyState.green_subsidy_last_turn =
+> 185 + seed % 6; a lapse announcement event is scheduled per-match, forewarned 5 turns).
+> Verified: unit suite green (1 standing bake fail); e2e t100 failure set + metrics
+> unchanged vs parent; tools/policy_shot.tscn (four surfaces) +
+> tools/policy_notice_shot.tscn (blocking notice at t90, resolve unblocks).
 >
 > **Body/explanation text for every announcement is placeholder Lorem Ipsum below; the owner
 > will replace it with lore.** Search this doc and `scripts/policy_schedule.gd` for
@@ -151,10 +158,11 @@ Proposed timeline summary (tunable):
 
 | Turn | Event |
 |---|---|
-| 15 | Forewarn: Green Subsidy incoming |
-| 20 | **Green Subsidy live** |
-| 91 | Forewarn: Carbon Levy P1 incoming (owner: announced t91) |
+| 90 | **Blocking notice**: "Government Notice: Carbon Levy" — must click Understood |
+| 100 | Forewarn: Green Energy Subsidy incoming |
 | 101 | **Carbon Levy P1 live** (scale ×1) |
+| 105 | **Green Subsidy live** (window) |
+| 185+ | Subsidy pays through ≥185; lapses seed-picked in 186–191 (forewarned 5 turns) |
 | 157 | Forewarn: Carbon Levy P2 incoming |
 | 165 | **Carbon Levy P2 live** (scale ×2) |
 | 222 | Forewarn: Carbon Levy P3 incoming |
