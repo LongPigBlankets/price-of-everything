@@ -9,6 +9,7 @@ extends CanvasLayer
 ##   swap tvp                         toggle between the classic and alternate Tile View Panel
 ##   swap bottom menu                 toggle between the current and alternate bottom-menu icons
 ##   swap bdp                         toggle to the classic v1 building-detail panel (v2 is default)
+##   research all                     unlock every research node (alias of `unlock all`)
 ##   swap song                       advance to the next music track
 ##   help                             list commands
 
@@ -100,6 +101,10 @@ func _run_command(text: String) -> String:
 			var amount := int(parts[1])
 			MatchState.cheat_add_cash(float(amount))
 			return "Added £%d  (balance now £%.2f)" % [amount, MatchState.money]
+		"research":
+			# Alias for `unlock all` (testing muscle memory: `research all`).
+			var count: int = MatchState.cheat_unlock_all_research()
+			return "Unlocked ALL research (%d nodes)." % count
 		"unlock":
 			if parts.size() < 2:
 				return "usage: unlock <research title>  (e.g. 'unlock hydro')  |  unlock all"
@@ -169,6 +174,38 @@ func _run_command(text: String) -> String:
 			for s in slots:
 				lines.append("%s — turn %d, £%.2f  (%s)" % [s.slot, int(s.turn), float(s.money), str(s.timestamp)])
 			return "\n".join(lines)
+		"bankrupt":
+			SolvencyState.force_bankruptcy()
+			return "Forced bankruptcy — game over."
+		"distressed":
+			if MatchState.get_advisor_in_seat("cfo") == "":
+				return "The distressed program needs a seated CFO."
+			DecisionState.enabled = true
+			var d_err: String = DecisionState.force_draw("distressed_asset")
+			return "Distressed Asset Program offered." if d_err == "" else d_err
+		"trigger":
+			# Alias for `decision fire` — draws the decision and presents it NOW.
+			if parts.size() < 2:
+				return "usage: trigger <decision_id>   (see: decision list)"
+			DecisionState.enabled = true
+			var trig_err: String = DecisionState.force_draw(parts[1])
+			return "drew '%s' — it presents now" % parts[1] if trig_err == "" else trig_err
+		"decision":
+			if parts.size() >= 2 and parts[1].to_lower() == "list":
+				var lines2: Array = []
+				for def_id in DecisionState.DECISION_DEFINITIONS:
+					lines2.append(str(def_id))
+				if DecisionState.has_pending():
+					lines2.append("pending: %s" % str(DecisionState.pending.get("def_id", "")))
+				return "\n".join(lines2)
+			if parts.size() >= 3 and parts[1].to_lower() == "fire":
+				DecisionState.enabled = true
+				var fire_err: String = DecisionState.force_draw(parts[2])
+				return "drew '%s' — it presents now" % parts[2] if fire_err == "" else fire_err
+			if parts.size() >= 3 and parts[1].to_lower() == "resolve":
+				var res_err: String = DecisionState.resolve(parts[2])
+				return "resolved → %s" % parts[2] if res_err == "" else res_err
+			return "usage: decision list | decision fire <id> | decision resolve <choice_id>"
 		"roads":
 			if parts.size() >= 4 and parts[1].to_lower() == "route":
 				return _roads_route(parts[2], parts[3])
@@ -225,7 +262,7 @@ func _run_command(text: String) -> String:
 			MatchState.cheat_set_loyalty(aid, float(parts[2]))
 			return "%s loyalty now %.1f" % [aid, MatchState.advisor_loyalty_value(aid)]
 		"help":
-			return "commands:  cash <int>   |   unlock <title>   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   swap bdp   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all   |   research all   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   swap bdp   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

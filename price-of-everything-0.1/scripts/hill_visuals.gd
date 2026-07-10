@@ -6,21 +6,23 @@ extends Node2D
 ## calls + 1.8M primitives per frame into one textured quad. Sits between
 ## TerrainLayer and RiverLayer; rivers always draw over the hills.
 
-## band = level + 1: [0] = lv -1 sub-sea depressions (deep green);
-## [1] = lv 0 coastal cream; [2..6] = lv 1-5 vibrant green -> pastel yellow;
-## [7..10] = lv 6-9 golds into dark umber; [11] = lv 10 DS off-white snow.
+## band = level + 1: [0] = lv -1 sub-sea depressions (muted deep green);
+## [1] = lv 0 coastal sand; [2..6] = lv 1-5 muted grass-green -> khaki;
+## [7..10] = lv 6-9 tan into warm brown; [11] = lv 10 snow-white peaks.
+## Muted hypsometric relief ramp (physical-atlas look): desaturated earth
+## tones, less vivid than the old lime/gold scheme; peaks stay white.
 const BAND_COLORS: Array[Color] = [
-	Color("194008"),
-	Color("ffeeb8"),
-	Color("4cbb17"),
-	Color("79ca34"),
-	Color("a6d951"),
-	Color("d2e86d"),
-	Color("fff78a"),
-	Color("ffd95c"),
-	Color("d1a000"),
-	Color("755a00"),
-	Color("473700"),
+	Color("28401f"),
+	Color("d9cda2"),
+	Color("5e7d44"),
+	Color("6c874d"),
+	Color("7e955c"),
+	Color("9aa771"),
+	Color("bebd8b"),
+	Color("c9b384"),
+	Color("bd9c69"),
+	Color("a17e50"),
+	Color("7d5c3a"),
 	Color(1.0, 1.0, 1.0),
 ]
 const OUTLINE_DARKEN := 0.22
@@ -29,14 +31,15 @@ const OUTLINE_WIDTH := 1.5
 ## as river water.
 const WATER_COLOR := Color(0.17647059, 0.40784314, 0.76862745, 1.0)
 ## Sea band fills, indexed by the baked sea band: lv -6 (DS navy BG_PANEL)
-## up to the shelf, then the beige land base the terrain bands sit on.
+## up to the shelf, then the sandy land base the terrain bands sit on (matches
+## the lv-0 coastal band so gaps/coastlines don't flash bright cream).
 const SEA_COLORS: Array[Color] = [
 	Color("000d94"),
 	Color("000dc2"),
 	Color("194ba9"),
 	Color("24549e"),
 	Color(0.17647059, 0.40784314, 0.76862745),
-	Color("ffeeb8"),
+	Color("d9cda2"),
 ]
 ## Longest side of the baked terrain texture, in pixels. The map is ~12,950 ×
 ## 10,500 world units; 4096 keeps it crisp at the default view, for ~54 MB of

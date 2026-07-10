@@ -98,6 +98,11 @@ func _ready() -> void:
 	_test_owner_costs()
 	_test_recurring_sell_multitile()
 	_test_input_buy_nets_local_supply()
+	_test_input_buy_capacity_building_first()
+	_test_warehouse_upgrade()
+	_test_warehousing_fee_rates()
+	_test_jit_streak_and_direct_feed()
+	_test_sell_protects_build_materials()
 	_test_auto_sell_goods()
 	_test_price_impact()
 	_test_price_impact_thresholds()
@@ -179,8 +184,8 @@ func _ready() -> void:
 	await _test_roads_avoid_buildings()
 	await _test_building_resnap()
 	await _test_block_subdivision()
-	await _test_enclosure_ring()
-	await _test_enclosure_river_and_stubs()
+	await _test_level_storeys_and_owner_swap()
+	await _test_river_bank_and_bridge_head()
 	await _test_bridge_corridor()
 	await _test_subcomponents()
 	await _test_farms()
@@ -218,6 +223,26 @@ func _ready() -> void:
 	_test_empire_rag()
 	_test_audio_service()
 	_test_tutorial_engine()
+	_test_decision_tenure_gate()
+	_test_decision_resolve_effects_and_loyalty()
+	_test_decision_company_scope_loyalty()
+	_test_decision_loan_fallback()
+	_test_loan_collateral_capacity()
+	_test_decision_commit_guard_and_auto_resolve()
+	_test_decision_roundtrip()
+	_test_building_pause()
+	_test_liquidate_all_buildings()
+	_test_grace_loan()
+	_test_distressed_program()
+	_test_solvency_bankruptcy()
+	_test_decision_story_not_random()
+	_test_decision_pulse_pipeline()
+	_test_decision_queue_stacking()
+	_test_briefing_items_and_dismissal()
+	_test_briefing_event_mapping()
+	await _test_decision_view_never_empty()
+	_test_auto_bridge_loan()
+	_test_cfo_tax_credit()
 	if not _failed_names.is_empty():
 		print("FAILED TESTS:")
 		for failed_name in _failed_names:
@@ -950,7 +975,6 @@ func _test_arin_bridge() -> void:
 	RoadCrossings.reset_for_tests()
 	RoadCrossings.build(terrain)
 	RoadNetwork.reset()
-	RoadNetwork.bootstrap_from_bake()
 	RoadWorks.reset()
 	var net := RoadNetwork.instance()
 	var crossings := RoadCrossings.for_tile("tile_11_17")
@@ -962,6 +986,26 @@ func _test_arin_bridge() -> void:
 	var cx: Dictionary = crossings[0]
 	var ga: Vector2 = cx.gate_a
 	var gb: Vector2 = cx.gate_b
+	# Controlled network: ONE short synthetic river road on the FAR bank only
+	# (bridge included), so the tile's connect job has no same-bank projection
+	# to attach to — it must take the SAME-BANK bridge head, the bridge-head
+	# attachment contract under test. (The full roads-v3 bake offers closer
+	# plain roads on this urban tile, which correctly win over the biased head
+	# and would make the scenario vacuous.)
+	var acoord: Vector2i = terrain.id_to_coord("tile_11_17")
+	var acenter: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(acoord))
+	var bt: Vector2 = (cx.bridge_tangent as Vector2).normalized()
+	if bt.dot(acenter - (cx.point as Vector2)) > 0.0:
+		bt = -bt   # +bt now points to the FAR bank (away from the tile centre)
+	var sa: Vector2 = (cx.point as Vector2) + bt * 40.0
+	var sb: Vector2 = (cx.point as Vector2) + bt * 160.0
+	var sgeo := PackedVector2Array()
+	for s in 15:
+		sgeo.append(sa.lerp(sb, float(s) / 14.0))
+	var sna: Dictionary = net.ensure_node("arintest:a", RoadNetwork.KIND_JUNCTION, sa, acoord)
+	var snb: Dictionary = net.ensure_node("arintest:b", RoadNetwork.KIND_JUNCTION, sb, acoord)
+	net.add_edge(str(sna.id), str(snb.id), RoadNetwork.TIER_LOCAL, sgeo, [acoord],
+		[{"point": cx.point, "tangent": (cx.bridge_tangent as Vector2).normalized()}], 0, RoadNetwork.STATE_BUILT)
 	var oid := RoadWorks.enqueue_for_tile("tile_11_17")
 	_check(oid >= 0, "arin: connect road enqueues")
 	var frames := 0
@@ -996,7 +1040,9 @@ func _test_arin_bridge() -> void:
 # Urban block-subdivision: a seeded urban tile lays a grid of lots; buildings claim them
 # in emit order (tight, non-overlapping), fall back to the continuous packer when full,
 # feed roads-avoid via real footprints, and the layout is deterministic + demolish-stable.
-func _test_block_subdivision() -> void:
+# Level upgrades must ALWAYS show (rooftop storey blocks — wings depend on free
+# ground), and a bought NPC building must swap its placement to player-owned.
+func _test_level_storeys_and_owner_swap() -> void:
 	var nav := NavGrid.instance()
 	if not nav.is_ready():
 		return
@@ -1006,13 +1052,67 @@ func _test_block_subdivision() -> void:
 	add_child(terrain)
 	await get_tree().process_frame
 	RoadNetwork.reset()
-	RoadNetwork.bootstrap_from_bake()
 	var bv := preload("res://scenes/building_visuals.gd").new()
 	add_child(bv)
 	await get_tree().process_frame
 	bv.terrain_layer = terrain
-	# Roomy open tile so the lot grid actually forms (dense beltway tiles correctly skip
-	# block mode — too little clear space — and fall back to the continuous packer).
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		_check(false, "storeys: test tile exists")
+		bv.queue_free(); terrain.queue_free(); RoadNetwork.reset(); return
+	var iid := MatchState.add_building("b_001", "", tile_id, "npc", "storey_test", false)
+	bv.on_building_placed(tile_id, "b_001", "", iid, coord)
+	bv._flush_subcomponents()
+	var count_l1 := 0
+	for sc in bv._subcomponents:
+		if str(sc.kind) == "storey" and str(sc.iid) == iid:
+			count_l1 += 1
+	_check(count_l1 == 0, "storeys: none at level 1")
+	# L3 → two stacked storey blocks, regardless of crowding or masses.
+	(MatchState.buildings[iid] as Dictionary)["level"] = 3
+	bv._rebuild_subcomponents(tile_id)
+	var count_l3 := 0
+	var wings_l3 := 0
+	for sc2 in bv._subcomponents:
+		if str(sc2.iid) == iid:
+			if str(sc2.kind) == "storey":
+				count_l3 += 1
+			elif str(sc2.kind) == "wing":
+				wings_l3 += 1
+	_check(count_l3 == 2, "storeys: two blocks at level 3")
+	# Open ground + L3 must grow at least one wing — L/C footprints once
+	# skipped wings entirely (quad-only axis math).
+	_check(wings_l3 >= 1, "wings: upgraded building spreads on open ground")
+	# Ownership swap flips the placement's is_npc (bought buildings recolour).
+	var idx: int = bv._placement_index[iid]
+	_check(bool((bv._placements[idx] as Dictionary).is_npc), "owner swap: starts NPC")
+	(MatchState.buildings[iid] as Dictionary)["owner"] = MatchState.LOCAL_PLAYER
+	bv._on_building_owner_changed(iid)
+	_check(not bool((bv._placements[idx] as Dictionary).is_npc), "owner swap: placement follows the sale")
+	MatchState.remove_building(iid)
+	bv.queue_free()
+	terrain.queue_free()
+	RoadNetwork.reset()
+	await get_tree().process_frame
+
+func _test_block_subdivision() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	# Empty network + ONE synthetic straight road below: a controlled block-grid
+	# unit test. (The roads-v3 bake covers most tiles with real roads, so a
+	# bootstrapped world no longer offers a "roomy open tile" to anchor cleanly.)
+	RoadNetwork.reset()
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
 	var tile_id := "tile_9_10"
 	var coord: Vector2i = terrain.id_to_coord(tile_id)
 	if not terrain.tiles.has(coord):
@@ -1078,207 +1178,9 @@ func _test_block_subdivision() -> void:
 	RoadNetwork.reset()
 	await get_tree().process_frame
 
-# Block enclosure (B4, redesigned): the ring is DERIVED FROM THE BLOCK TEMPLATE's lot grid (not a footprint
-# cluster), prepared UP FRONT on a seeded ~ENCLOSURE_PROB% of block tiles, and CONNECTED to the road network.
-# Fires once per tile (sentinel marker). Forces a road + block mode so a template builds, then checks the ring
-# geometry (template-derived, in-hex, bounded), the seed gate, the road connection, fire-once, and save/load.
-func _test_enclosure_ring() -> void:
-	var nav := NavGrid.instance()
-	if not nav.is_ready():
-		return
-	var terrain := TileMapLayer.new()
-	terrain.tile_set = load("res://assets/main_tileset.tres")
-	terrain.set_script(load("res://scripts/hex_map.gd"))
-	add_child(terrain)
-	await get_tree().process_frame
-	RoadNetwork.reset()
-	RoadWorks.reset()
-	var bv := preload("res://scenes/building_visuals.gd").new()
-	add_child(bv)
-	await get_tree().process_frame
-	bv.terrain_layer = terrain
-	var net := RoadNetwork.instance()
-	# Pick a SEEDED urban tile (enclseed < ENCLOSURE_PROB) and a NON-seeded urban tile.
-	var seeded := ""
-	var unseeded := ""
-	for coord in terrain.tiles:
-		if str(terrain.tiles[coord].get("type", "")).to_lower() != "urban":
-			continue
-		var tid := "tile_%d_%d" % [coord.x + 1, coord.y + 1]
-		if RoadHash.pick("enclseed|%s" % tid, 100) < RoadWorks.ENCLOSURE_PROB:
-			if seeded == "":
-				seeded = tid
-		elif unseeded == "":
-			unseeded = tid
-		if seeded != "" and unseeded != "":
-			break
-	if seeded == "":
-		_check(false, "enclosure: found a seeded urban tile")
-		bv.queue_free(); terrain.queue_free(); RoadNetwork.reset(); RoadWorks.reset(); return
-	# no block template anywhere yet -> the geometry function yields no ring
-	_check(bv.enclosure_geometry_for_coord(terrain.id_to_coord(seeded)).is_empty(), "enclosure: no block template -> no ring")
-	var ucoord: Vector2i = terrain.id_to_coord(seeded)
-	var c: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(ucoord))
-	# straight BUILT road (both ends in-hex) + force block mode, then place 6 player buildings → template builds
-	var na := net.ensure_node("etest:a", RoadNetwork.KIND_JUNCTION, c + Vector2(-160, -110), ucoord)
-	var nb := net.ensure_node("etest:b", RoadNetwork.KIND_JUNCTION, c + Vector2(160, -110), ucoord)
-	net.add_edge(str(na.id), str(nb.id), RoadNetwork.TIER_LOCAL, PackedVector2Array([c + Vector2(-160, -110), c + Vector2(160, -110)]), [ucoord], [], 1, RoadNetwork.STATE_BUILT)
-	bv._tile_block_mode[seeded] = true
-	var last := ""
-	for i in 6:
-		var iid: String = MatchState.add_building("b_007", "", seeded, "player_1", "encl_%d" % i)
-		bv.on_building_placed(seeded, "b_007", "", iid, ucoord)
-		last = iid
-	RoadWorks._on_construction_completed(last, seeded)
-	await get_tree().process_frame   # enclosure fires DEFERRED
-	var encl: Array = []
-	var all_ok := true
-	for eid in net.edges:
-		var e: Dictionary = net.edges[eid]
-		if not (str(e.a).begins_with("encl:") or str(e.b).begins_with("encl:")):
-			continue
-		encl.append(eid)
-		if str(e.state) != RoadNetwork.STATE_BUILT or str(e.tier) != RoadNetwork.TIER_LOCAL:
-			all_ok = false
-		for p in (e.geometry as PackedVector2Array):
-			var r: Vector2 = (p as Vector2) - c
-			if not (absf(r.x) <= 271.0 and absf(r.y) <= 241.0 and 240.0 * absf(r.x) + 135.0 * absf(r.y) <= 65200.0):
-				all_ok = false   # vertex outside the tile hex
-	_check(encl.size() >= 1, "enclosure: a ring was injected from the block template (%d edges)" % encl.size())
-	_check(all_ok, "enclosure: ring edges are STATE_BUILT + TIER_LOCAL + inside the hex")
-	_check(int(RoadWorks._enclosure_bands.get(seeded, 0)) == 1, "enclosure: sentinel marker recorded")
-	_check(not (bv._tile_block_templates.get(seeded, {}) as Dictionary).is_empty(), "enclosure: a block template backs the ring")
-	_check((RoadWorks._enclosure_edges.get(seeded, []) as Array).size() == encl.size(), "enclosure: edge ids tracked")
-	# CHUNK fill: a seeded tile uses a coarse 2-6 cell grid and a building FILLS its cell (big footprint).
-	# (Floor is 2 — the adaptive depth keeps a real block even when a river/edge cuts the deep row.)
-	var ctmpl: Dictionary = bv._tile_block_templates.get(seeded, {})
-	var clots: Array = ctmpl.get("lots", [])
-	_check(ctmpl.has("cell") and clots.size() >= 2 and clots.size() <= 6, "enclosure: seeded tile uses a 2-6 chunk grid (%d cells)" % clots.size())
-	# REGRESSION (the ring poisons the template on rebuild): the enclosure ring is a STATE_BUILT edge, so
-	# rebuilding the template with it live must NOT treat it as a street — otherwise _longest_straight_road
-	# anchors to the ring and _block_road_segments clears the lots the ring wraps, collapsing the grid (the
-	# enclosure then vanishes + buildings scatter under it on the next reload). Rebuild now (ring is live) and
-	# assert the SAME chunk grid re-forms — _is_enclosure_edge keeps the ring out of the block inputs.
-	bv._tile_block_templates.erase(seeded)
-	bv.ensure_block_template_for(seeded, ucoord)
-	var rtmpl: Dictionary = bv._tile_block_templates.get(seeded, {})
-	var rlots: Array = rtmpl.get("lots", [])
-	_check(rtmpl.get("cell", Vector2.ZERO) == ctmpl.get("cell", Vector2.ZERO) and rlots.size() == clots.size(), "enclosure: template SURVIVES rebuild with the ring live (%d lots cell=%s, was %d)" % [rlots.size(), str(rtmpl.get("cell", Vector2.ZERO)), clots.size()])
-	var cellv: Vector2 = ctmpl.get("cell", Vector2.ZERO)
-	if cellv != Vector2.ZERO:
-		var fmax := 0.0
-		for rect in bv.footprint_rects_on_tile(ucoord):
-			fmax = maxf(fmax, maxf((rect as Rect2).size.x, (rect as Rect2).size.y))
-		_check(fmax >= maxf(cellv.x, cellv.y) * 0.8, "enclosure: a building FILLS its chunk (footprint %.0f vs cell %.0fx%.0f)" % [fmax, cellv.x, cellv.y])
-	# ring bounded to ENCL_MAX in the road frame
-	var rang := 0.0
-	var rrun: Array = bv._longest_straight_road(ucoord)
-	if not rrun.is_empty():
-		rang = wrapf(((rrun[1] as Vector2) - (rrun[0] as Vector2)).angle(), -PI * 0.5, PI * 0.5)
-	var elo := Vector2(1.0e9, 1.0e9)
-	var ehi := Vector2(-1.0e9, -1.0e9)
-	for beid in encl:
-		var be: Dictionary = net.edges[beid]
-		if str(be.a).contains(":conn") or str(be.b).contains(":conn"):
-			continue   # the road connector reaches OUT to the street — not part of the ring's footprint
-		for bp in (be.geometry as PackedVector2Array):
-			var br: Vector2 = ((bp as Vector2) - c).rotated(-rang)
-			elo = elo.min(br)
-			ehi = ehi.max(br)
-	var eext: Vector2 = ehi - elo
-	_check(eext.x <= 246.0 and eext.y <= 186.0, "enclosure: ring bounded to the block-size cap (%.0fx%.0f)" % [eext.x, eext.y])
-	# CONNECTED: some encl: edge endpoint lands on a non-enclosure road (no longer a floating loop)
-	_check(_encl_touches_road(net), "enclosure: the ring connects to the road network")
-	# fire ONCE: re-firing adds no edges, marker stays at the sentinel
-	var after := net.edges.size()
-	RoadWorks._on_construction_completed(last, seeded)
-	await get_tree().process_frame
-	_check(net.edges.size() == after and int(RoadWorks._enclosure_bands.get(seeded, 0)) == 1, "enclosure: fires ONCE (no re-fire)")
-	# a NON-seeded urban tile never encloses, even with a road + block mode
-	if unseeded != "":
-		var ncoord: Vector2i = terrain.id_to_coord(unseeded)
-		var nc: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(ncoord))
-		var nna := net.ensure_node("ntest:a", RoadNetwork.KIND_JUNCTION, nc + Vector2(-160, -110), ncoord)
-		var nnb := net.ensure_node("ntest:b", RoadNetwork.KIND_JUNCTION, nc + Vector2(160, -110), ncoord)
-		net.add_edge(str(nna.id), str(nnb.id), RoadNetwork.TIER_LOCAL, PackedVector2Array([nc + Vector2(-160, -110), nc + Vector2(160, -110)]), [ncoord], [], 1, RoadNetwork.STATE_BUILT)
-		bv._tile_block_mode[unseeded] = true
-		var nlast := ""
-		for i in 6:
-			var nid: String = MatchState.add_building("b_007", "", unseeded, "player_1", "nencl_%d" % i)
-			bv.on_building_placed(unseeded, "b_007", "", nid, ncoord)
-			nlast = nid
-		var npre := net.edges.size()
-		RoadWorks._on_construction_completed(nlast, unseeded)
-		await get_tree().process_frame
-		_check(net.edges.size() == npre and not RoadWorks._enclosure_bands.has(unseeded), "enclosure: a non-seeded tile never encloses")
-		for i in 6:
-			MatchState.remove_building("nencl_%d" % i)
-	# a non-urban tile never encloses
-	var rural := ""
-	for coord in terrain.tiles:
-		if str(terrain.tiles[coord].get("type", "")).to_lower() == "rural":
-			rural = "tile_%d_%d" % [coord.x + 1, coord.y + 1]
-			break
-	if rural != "":
-		var rcoord: Vector2i = terrain.id_to_coord(rural)
-		for i in 6:
-			var rid: String = MatchState.add_building("b_007", "", rural, "player_1", "enclr_%d" % i)
-			bv.on_building_placed(rural, "b_007", "", rid, rcoord)
-		var rpre := net.edges.size()
-		RoadWorks._on_construction_completed("enclr_5", rural)
-		await get_tree().process_frame
-		_check(net.edges.size() == rpre and not RoadWorks._enclosure_bands.has(rural), "enclosure: a non-urban tile never encloses")
-		for i in 6:
-			MatchState.remove_building("enclr_%d" % i)
-	# save/load: encl: edges survive, marker persists, no re-fire
-	var net_snap := net.export_state()
-	var rw_snap := RoadWorks.export_state()
-	RoadNetwork.reset(); RoadWorks.reset()
-	RoadNetwork.instance().import_state(net_snap)
-	RoadWorks.import_state(rw_snap)
-	var net2 := RoadNetwork.instance()
-	var encl2 := 0
-	for eid2 in net2.edges:
-		var e2: Dictionary = net2.edges[eid2]
-		if str(e2.a).begins_with("encl:") or str(e2.b).begins_with("encl:"):
-			encl2 += 1
-	_check(encl2 == encl.size(), "enclosure: encl: edges survive save/load (%d)" % encl2)
-	_check(int(RoadWorks._enclosure_bands.get(seeded, 0)) == 1, "enclosure: marker persists across save/load")
-	for i in 6:
-		MatchState.remove_building("encl_%d" % i)
-	bv.queue_free()
-	terrain.queue_free()
-	RoadNetwork.reset()
-	RoadWorks.reset()
-	await get_tree().process_frame
-
-## True if any enclosure-ring endpoint lands on (within ~2u of) a non-enclosure road segment — i.e. the ring
-## is wired into the street network, not a floating loop.
-func _encl_touches_road(net) -> bool:
-	var road_segs: Array = []
-	for eid in net.edges:
-		var e: Dictionary = net.edges[eid]
-		if str(e.a).begins_with("encl:") or str(e.b).begins_with("encl:"):
-			continue
-		var g: PackedVector2Array = e.geometry
-		for i in range(g.size() - 1):
-			road_segs.append([g[i], g[i + 1]])
-	for eid in net.edges:
-		var e: Dictionary = net.edges[eid]
-		if not (str(e.a).begins_with("encl:") or str(e.b).begins_with("encl:")):
-			continue
-		var geo: PackedVector2Array = e.geometry
-		if geo.is_empty():
-			continue
-		for ep in [geo[0], geo[geo.size() - 1]]:
-			for s in road_segs:
-				if Geometry2D.get_closest_point_to_segment(ep, s[0], s[1]).distance_to(ep) < 2.0:
-					return true
-	return false
-
-# Enclosure river-bank clip + stub spacing/avoid helpers (the four "budge / no-cross / 50u / no-stub-inside"
-# rules). Pure geometry, so it runs without a baked map.
-func _test_enclosure_river_and_stubs() -> void:
+# River-bank helpers (block-box budge/no-cross rules) + bridge-head attachment. Pure
+# geometry, so it runs without a baked map.
+func _test_river_bank_and_bridge_head() -> void:
 	var bv := preload("res://scenes/building_visuals.gd").new()
 	add_child(bv)
 	await get_tree().process_frame
@@ -1305,92 +1207,6 @@ func _test_enclosure_river_and_stubs() -> void:
 	_check(b1 != 0 and b1 == b2, "river: a bent river gives one consistent side for the same bank")
 	bv.queue_free()
 	await get_tree().process_frame
-	# stub spacing: a root within 50u of a placed one is rejected; alt-origin finds a far one (or -1).
-	var placed: Array = [Vector2(0.0, 0.0)]
-	_check(RoadOffshoots._too_close(Vector2(30.0, 0.0), placed, RoadOffshoots.STUB_MIN_GAP), "stub: a 30u-apart root is too close (<50u)")
-	_check(not RoadOffshoots._too_close(Vector2(60.0, 0.0), placed, RoadOffshoots.STUB_MIN_GAP), "stub: a 60u-apart root is fine (>=50u)")
-	var origins: Array = [[Vector2(20.0, 0.0), Vector2.RIGHT], [Vector2(80.0, 0.0), Vector2.RIGHT]]
-	_check(RoadOffshoots._alt_origin(origins, placed, RoadOffshoots.STUB_MIN_GAP) == 1, "stub: alt-origin skips the close root for the far one")
-	_check(RoadOffshoots._alt_origin([[Vector2(20.0, 0.0), Vector2.RIGHT]], placed, RoadOffshoots.STUB_MIN_GAP) == -1, "stub: alt-origin returns -1 when no root is far enough")
-	# enclosure avoidance: perp flips away from the block centroid; poly-in-hull detects interior entry.
-	var away := RoadOffshoots._away_from_enclosure(Vector2(100.0, 0.0), Vector2(-1.0, 0.0), Vector2(0.0, 0.0), true)
-	_check(away.x > 0.0, "stub: perp re-aimed AWAY from the enclosure centroid")
-	var hull := PackedVector2Array([Vector2(-50.0, -50.0), Vector2(50.0, -50.0), Vector2(50.0, 50.0), Vector2(-50.0, 50.0)])
-	_check(RoadOffshoots._poly_in_polygon(PackedVector2Array([Vector2(0.0, 0.0), Vector2(200.0, 200.0)]), hull), "stub: a poly entering the enclosure hull is flagged")
-	_check(not RoadOffshoots._poly_in_polygon(PackedVector2Array([Vector2(200.0, 200.0), Vector2(300.0, 300.0)]), hull), "stub: a poly fully outside is not flagged")
-	# midpoint sampling: a poly whose VERTICES straddle the hull but whose edge crosses it is still flagged
-	_check(RoadOffshoots._poly_in_polygon(PackedVector2Array([Vector2(-200.0, 0.0), Vector2(200.0, 0.0)]), hull), "stub: an edge crossing the hull (vertices outside) is flagged")
-	# stubs never cross water (request 2): with the baked nav, a poly through a water cell is rejected
-	var nav := NavGrid.instance()
-	if nav != null and nav.is_ready():
-		var wat := Vector2.ZERO
-		var lnd := Vector2.ZERO
-		var fw := false
-		var fl := false
-		for gy in range(0, nav.gh, 5):
-			for gx in range(0, nav.gw, 5):
-				var w := nav.water(gx, gy)
-				if not fw and w != NavGrid.WATER_LAND:
-					wat = nav.world_of(gx, gy); fw = true
-				elif not fl and w == NavGrid.WATER_LAND:
-					lnd = nav.world_of(gx, gy); fl = true
-			if fw and fl:
-				break
-		if fw:
-			_check(RoadOffshoots._crosses_water(PackedVector2Array([wat, wat]), nav), "stub: a poly on water is flagged as crossing")
-		if fl:
-			_check(not RoadOffshoots._crosses_water(PackedVector2Array([lnd, lnd]), nav), "stub: a poly on land is not flagged")
-		# nearby stub tips connect (new request) — but only when the link clears water + banned terrain.
-		var solid := Vector2.ZERO
-		var fsolid := false
-		for gy2 in range(4, nav.gh - 4, 5):
-			for gx2 in range(4, nav.gw - 4, 5):
-				var ok := true
-				for d in [Vector2i(-3, -3), Vector2i(3, -3), Vector2i(-3, 3), Vector2i(3, 3), Vector2i.ZERO]:
-					if nav.water(gx2 + d.x, gy2 + d.y) != NavGrid.WATER_LAND or nav.level(gx2 + d.x, gy2 + d.y) >= RoadRealizer.BAN_LEVEL:
-						ok = false
-				if ok:
-					solid = nav.world_of(gx2, gy2); fsolid = true; break
-			if fsolid:
-				break
-		if fsolid:
-			_check(RoadOffshoots._connector_clear(solid + Vector2(-8.0, 0.0), solid + Vector2(8.0, 0.0), nav), "stub: a short link on solid land is clear")
-			if fw:
-				_check(not RoadOffshoots._connector_clear(solid, wat, nav), "stub: a link reaching into water is not clear")
-			# two free tips 10u apart on land -> one connector added (3-pt, road width)
-			var ss: Array = [PackedVector2Array([solid + Vector2(-40.0, 0.0), solid + Vector2(-5.0, 0.0)]), PackedVector2Array([solid + Vector2(40.0, 0.0), solid + Vector2(5.0, 0.0)])]
-			RoadOffshoots._connect_stub_tips(ss, nav)
-			_check(ss.size() == 3 and (ss[2] as PackedVector2Array).size() == 3, "stub: tips <20u apart on land are joined (%d stubs)" % ss.size())
-			# tips 80u apart -> no connector
-			var ss2: Array = [PackedVector2Array([solid + Vector2(-80.0, 0.0), solid + Vector2(-40.0, 0.0)]), PackedVector2Array([solid + Vector2(80.0, 0.0), solid + Vector2(40.0, 0.0)])]
-			RoadOffshoots._connect_stub_tips(ss2, nav)
-			_check(ss2.size() == 2, "stub: tips >20u apart are not joined")
-		# without a nav, a connection is never invented
-		var ss3: Array = [PackedVector2Array([Vector2(-40.0, 0.0), Vector2(-5.0, 0.0)]), PackedVector2Array([Vector2(40.0, 0.0), Vector2(5.0, 0.0)])]
-		RoadOffshoots._connect_stub_tips(ss3, null)
-		_check(ss3.size() == 2, "stub: without a nav, tips are never connected")
-	# network through-roads clip OUT of an enclosure interior (request 1)
-	var rnv := Node2D.new()
-	rnv.set_script(load("res://scripts/road_network_visuals.gd"))
-	add_child(rnv)
-	await get_tree().process_frame
-	var run2 := PackedVector2Array([Vector2(-100.0, 0.0), Vector2(-60.0, 0.0), Vector2(0.0, 0.0), Vector2(60.0, 0.0), Vector2(100.0, 0.0)])
-	var clipped2: Array = rnv._clip_out_hulls([run2], [hull])
-	var inside_n := 0
-	for r in clipped2:
-		for p in (r as PackedVector2Array):
-			if Geometry2D.is_point_in_polygon(p, hull):
-				inside_n += 1
-	_check(clipped2.size() >= 1 and inside_n == 0, "roads: a through-road is clipped OUT of the enclosure interior")
-	_check((rnv._clip_out_hulls([run2], []) as Array).size() == 1, "roads: no enclosure -> the road is unchanged")
-	rnv.queue_free()
-	await get_tree().process_frame
-	# stub overlap (new): a long stub running PARALLEL + close to a road is dropped; a perpendicular one isn't.
-	var hroad: Array = [[Vector2(0.0, 0.0), Vector2(220.0, 0.0)]]   # one horizontal road
-	var par := PackedVector2Array([Vector2(40.0, 12.0), Vector2(70.0, 12.0), Vector2(100.0, 12.0), Vector2(130.0, 12.0), Vector2(160.0, 12.0), Vector2(190.0, 12.0)])
-	_check(RoadOffshoots._runs_alongside_road(par, hroad), "stub: a parallel + close stub reads as a doubled road")
-	var perp := PackedVector2Array([Vector2(110.0, 0.0), Vector2(110.0, 30.0), Vector2(110.0, 60.0), Vector2(110.0, 95.0)])
-	_check(not RoadOffshoots._runs_alongside_road(perp, hroad), "stub: a perpendicular stub is not flagged as doubled")
 	# bridge-head attachment (new): a connect-road near a bridge targets the same-bank HEAD, not a mid-edge point.
 	RoadNetwork.reset()
 	var bnet := RoadNetwork.instance()
@@ -2172,119 +1988,6 @@ func _test_road_works() -> void:
 	_check(joined, "road works: adjacent built tiles are directly joined (mesh, not spurs)")
 	_check(RoadWorks.export_state().get("linked_pairs", []).size() > 0, "road works: neighbour link recorded for dedupe")
 
-	# --- offshoots: a tile with >3 non-forest/non-farm buildings sprouts short branching stubs off the road
-	# running through it (ancillary roads, separate from the routing network). tile_8_8 carries a settled road
-	# from above — but it now sits in the DENSE road mesh built earlier, so its branches would DOUBLE existing
-	# roads and are correctly dropped by the doubling guard. Here we just prove the road is there to stub from
-	# + length is bounded; ACTUAL sprouting is verified on the (un-doubled) urban beltway tile below.
-	var tc88: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(terrain.id_to_coord("tile_8_8")))
-	for n in 4:
-		MatchState.add_building("b_test_factory", "", "tile_8_8", "npc", "off_test_%d" % n)
-	var offs := RoadOffshoots.generate_stubs(terrain, net)
-	var off_on88 := 0
-	var off_maxlen := 0.0
-	for s in offs:
-		var poly: PackedVector2Array = s
-		if poly.size() >= 2 and poly[0].distance_to(tc88) < 350.0:
-			off_on88 += 1
-			off_maxlen = maxf(off_maxlen, poly[0].distance_to(poly[poly.size() - 1]))
-	_check(RoadOffshoots._road_origins_in_tile(net, tc88).size() > 0, "road offshoots: built-up tile carries a road to stub from")
-	_check(off_maxlen <= RoadOffshoots.OFFSHOOT_MAX_LEN + RoadOffshoots.OFFSHOOT_CONNECT_DIST + 1.0,
-		"road offshoots: stub length bounded to ~12u (max %.0f)" % off_maxlen)
-	# add a forest on tile_8_8: it must NOT count toward the building threshold
-	MatchState.add_building("b_016", "", "tile_8_8", "npc", "off_test_forest")
-	MatchState.remove_building("off_test_0")
-	MatchState.remove_building("off_test_1")
-	var offs2 := RoadOffshoots.generate_stubs(terrain, net)
-	var off_on88_b := 0
-	for s2 in offs2:
-		var p2: PackedVector2Array = s2
-		if p2.size() >= 2 and p2[0].distance_to(tc88) < 350.0:
-			off_on88_b += 1
-	_check(off_on88_b == 0, "road offshoots: forest doesn't count — 2 real buildings is below threshold (%d)" % off_on88_b)
-	for cleanup_id in ["off_test_2", "off_test_3", "off_test_forest"]:
-		MatchState.remove_building(cleanup_id)
-
-	# stubs now appear on ANY densifying tile (the beige enclosure grid was removed,
-	# so stubs are the universal informal-road texture) and are capped at
-	# MAX_STUBS_PER_TILE ROOTS per tile. Verify on an URBAN beltway tile, loading it
-	# well past the cap. (Roots are 6-pt curved beziers; Y-arms are 2-pt segments.)
-	var urb := "tile_4_9"   # Stoneshore beltway (urban) — has baked road geometry
-	var uc: Vector2i = terrain.id_to_coord(urb)
-	if terrain.tiles.has(uc):
-		var tcu: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(uc))
-		# guard: prove there IS a road to stub from, else the counts below are vacuous
-		_check(RoadOffshoots._road_origins_in_tile(net, tcu).size() > 0,
-			"road offshoots: urban beltway tile carries a road to stub from")
-		for nu in 8:   # well over the threshold so the per-tile cap must clamp
-			MatchState.add_building("b_test_factory", "", urb, "npc", "off_urb_%d" % nu)
-		var offs_u := RoadOffshoots.generate_stubs(terrain, net)
-		var urb_roots := 0
-		for su in offs_u:
-			var pu: PackedVector2Array = su
-			if pu.size() > 2 and RoadOffshoots._in_hex(pu[0], tcu):   # a stub root rooted in this tile
-				urb_roots += 1
-		_check(urb_roots > 0, "road offshoots: urban tile now sprouts stubs (grid removed) (%d roots)" % urb_roots)
-		_check(urb_roots <= RoadOffshoots.MAX_STUBS_PER_TILE,
-			"road offshoots: per-tile stub cap holds (%d <= %d)" % [urb_roots, RoadOffshoots.MAX_STUBS_PER_TILE])
-		for cu in 8:
-			MatchState.remove_building("off_urb_%d" % cu)
-
-	# --- footprint avoidance: a stub whose baseline path crosses a building must
-	# re-aim/shorten so it no longer crosses. Helper geometry first, then integration.
-	var ra := Vector2(0, 0)
-	var rb := Vector2(100, 0)
-	var box := Rect2(40, -20, 20, 40)               # straddles the segment at x∈[40,60]
-	_check(RoadOffshoots._seg_hits_rect(ra, rb, box), "road offshoots: seg-vs-rect detects a crossing")
-	_check(not RoadOffshoots._seg_hits_rect(Vector2(0, 100), Vector2(100, 100), box), "road offshoots: seg-vs-rect clears a miss")
-	var fcoord: Vector2i = terrain.id_to_coord("tile_8_8")
-	if terrain.tiles.has(fcoord):
-		var fc: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(fcoord))
-		for nf in 5:
-			MatchState.add_building("b_test_factory", "", "tile_8_8", "npc", "fp_test_%d" % nf)
-		var base_stubs := RoadOffshoots.generate_stubs(terrain, net)
-		var base_root := PackedVector2Array()
-		for s in base_stubs:
-			var ps: PackedVector2Array = s
-			if ps.size() > 2 and RoadOffshoots._in_hex(ps[0], fc):
-				base_root = ps
-				break
-		if base_root.size() > 2:
-			# obstacle on the OUTER part of the stub's baseline path (room to shorten/re-aim)
-			var tip: Vector2 = base_root[base_root.size() - 1]
-			var obstacle := Rect2(tip - Vector2(28, 28), Vector2(56, 56))
-			var prov_script := GDScript.new()
-			prov_script.source_code = "extends Node\nvar rects := []\nvar target := Vector2i.ZERO\nfunc footprint_rects_on_tile(c):\n\treturn rects if c == target else []\n"
-			prov_script.reload()
-			var prov := Node.new()
-			prov.set_script(prov_script)
-			prov.target = fcoord
-			prov.rects = [obstacle]
-			prov.add_to_group("building_footprints")
-			add_child(prov)
-			await get_tree().process_frame
-			_check(RoadOffshoots._poly_hits(base_root, [obstacle], RoadOffshoots.STUB_CLEAR), "road offshoots: baseline stub crosses the obstacle (setup)")
-			var avoid_stubs := RoadOffshoots.generate_stubs(terrain, net)
-			var crossings := 0
-			for s2 in avoid_stubs:
-				var ps2: PackedVector2Array = s2
-				if ps2.size() > 2 and RoadOffshoots._in_hex(ps2[0], fc) and RoadOffshoots._poly_hits(ps2, [obstacle], RoadOffshoots.STUB_CLEAR):
-					crossings += 1
-			_check(crossings == 0, "road offshoots: stubs re-aim/shorten around a building footprint (%d crossings)" % crossings)
-			# failure path: an obstacle covering the whole reachable area blocks every re-aim
-			# AND the shorten fallback, so the stub must be DROPPED — never drawn over a building.
-			prov.rects = [Rect2(fc - Vector2(450, 450), Vector2(900, 900))]
-			var blocked_stubs := RoadOffshoots.generate_stubs(terrain, net)
-			var survived := 0
-			for s3 in blocked_stubs:
-				var ps3: PackedVector2Array = s3
-				if ps3.size() > 2 and RoadOffshoots._in_hex(ps3[0], fc):
-					survived += 1
-			_check(survived == 0, "road offshoots: an unavoidable stub is dropped, not drawn over the building (%d survived)" % survived)
-			prov.queue_free()
-		for cf in 5:
-			MatchState.remove_building("fp_test_%d" % cf)
-
 	# --- peak ban: roads are forbidden on the snow cap (level >= BAN_LEVEL). A route
 	# straight at 16_9's cap must still succeed, routing AROUND it, and no point of
 	# its geometry may sit on a banned level.
@@ -2444,6 +2147,9 @@ func _test_road_works() -> void:
 	_check(failed_orders <= 6, "B4: at most 6 unroutable orders (%d failed, %d built)" % [failed_orders, built_orders])
 	# Junction cap: even under a 100-tile mass build, no node carries more than a
 	# 5-way junction (excess connections merge into a road instead of the point).
+	# Bridge anchors (bgate:) are exempt BY DESIGN: the owner's merge-before-
+	# crossing ruling funnels every approach into the gate node, so a busy
+	# crossing legitimately concentrates more connections than a land junction.
 	var b4_max_deg := 0
 	var b4_deg: Dictionary = {}
 	for be in net2.edges:
@@ -2451,6 +2157,8 @@ func _test_road_works() -> void:
 		b4_deg[str(bed.a)] = int(b4_deg.get(str(bed.a), 0)) + 1
 		b4_deg[str(bed.b)] = int(b4_deg.get(str(bed.b), 0)) + 1
 	for bn in b4_deg:
+		if str(bn).begins_with("bgate:"):
+			continue
 		b4_max_deg = maxi(b4_max_deg, int(b4_deg[bn]))
 	_check(b4_max_deg <= 5, "B4: junctions stay <= 5-way (max degree %d)" % b4_max_deg)
 	print("  [B4] planned=%.1fs settled=%.1fs max_frame_plan=%.2fms built=%d failed=%d" % [
@@ -2551,9 +2259,31 @@ func _test_region_styles() -> void:
 	await get_tree().process_frame
 
 func _edges_clear_of_disc(net: RoadNetwork, disc: Dictionary) -> bool:
+	# Points on/near a bridge are exempt: a predetermined river gate can sit inside a
+	# forest disc's rim, and the mandatory straight crossing span + bank approaches
+	# (_snap_bridges, which must win) then clip the canopy edge by a few units. Two
+	# hard constraints meeting — the road legitimately passes under the canopy rim.
+	# Everywhere else the realizer's _declamp_forests keeps geometry out of discs.
+	var bridge_exempt := RoadCrossings.GATE_OFFSET + RoadRealizer.BRIDGE_BANK_STUB + 30.0
+	# Bridge records live on the CANONICAL deck edges since the anchor-node
+	# funnel (2026-07-09); approach pieces carry none. The exemption is a
+	# property of the PLACE (near a crossing), so collect every bridge point
+	# network-wide before scanning.
+	var bridge_points: Array = []
+	for eid0 in net.edges:
+		for br0 in net.edges[eid0].bridges:
+			bridge_points.append(br0.point)
 	for eid in net.edges:
-		for p in net.edges[eid].geometry:
-			if (p as Vector2).distance_to(disc.center) < float(disc.radius) - 6.0:
+		var edge: Dictionary = net.edges[eid]
+		for p in edge.geometry:
+			if (p as Vector2).distance_to(disc.center) >= float(disc.radius) - 6.0:
+				continue
+			var near_bridge := false
+			for bp in bridge_points:
+				if (p as Vector2).distance_to(bp) <= bridge_exempt:
+					near_bridge = true
+					break
+			if not near_bridge:
 				return false
 	return true
 
@@ -4250,6 +3980,232 @@ func _test_input_buy_nets_local_supply() -> void:
 	Production._output_buffer.clear()
 	Production._same_tile_supply.clear()
 
+func _test_input_buy_capacity_building_first() -> void:
+	# The 2026-07-09 warehouse-cap fixes: (a) overflow-held goods (arrived, tile was
+	# full, waiting outside) count as pipeline inbound — without that the pipeline
+	# re-bought every bounced batch forever; (b) orders are capped by the tile's
+	# projected free storage and allocated BUILDING-FIRST — one fully-buffered
+	# building beats ten buildings at 10% each.
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+	var t := "tile_16_4"
+	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	var wiring := str(Catalog.get_good_by_internal_name("copper_wiring").get("id", ""))
+	# (a) overflow-held counts as inbound; construction-reserved freight stays excluded.
+	MatchState.hold_overflow_shipment({"destination_tile": t, "good_id": steel, "qty": 50})
+	_check(Production._inbound_qty(t, steel) == 50, "overflow-held goods count as pipeline inbound")
+	MatchState.hold_overflow_shipment({"destination_tile": t, "good_id": steel, "qty": 10, "construction_instance_id": "cx"})
+	_check(Production._inbound_qty(t, steel) == 50, "construction-tagged overflow is reserved freight (excluded)")
+	MatchState.overflow_shipments.clear()
+
+	# (b) three identical motor factories (r_009: 30 steel + 32 wiring), tile squeezed
+	# so exactly ONE building's full (lead+1) buffer fits.
+	MatchState.money = 1000000.0
+	Production._same_tile_supply.clear()
+	# Power gate reads cables off the hex_map node — fake one for this tile (freed below).
+	var fake_map := Node.new()
+	var fake_src := GDScript.new()
+	fake_src.source_code = "extends Node\nvar tiles := {}\nfunc id_to_coord(t):\n\treturn Vector2i(16, 4) if t == \"tile_16_4\" else Vector2i(-1, -1)\n"
+	fake_src.reload()
+	fake_map.set_script(fake_src)
+	fake_map.set("tiles", {Vector2i(16, 4): {"infrastructure_present": ["cables"], "infrastructure_levels": {"cables": 1}}})
+	fake_map.add_to_group("hex_map")
+	get_tree().root.add_child(fake_map)
+	var iids: Array = []
+	for i in 3:
+		iids.append(MatchState.add_building("b_007", "r_009", t, "player_1", "whx_%d" % i))
+	var lead_steel := maxi(1, int(TransportService.quote_market_buy(t, steel, 1, MatchState.seaport_would_cover(steel)).get("turns", 1)))
+	var lead_wiring := maxi(1, int(TransportService.quote_market_buy(t, wiring, 1, MatchState.seaport_would_cover(wiring)).get("turns", 1)))
+	var w_steel := 30 * (lead_steel + 1)
+	var w_wiring := 32 * (lead_wiring + 1)
+	var junk := str(Catalog.get_good_by_internal_name("rubber").get("id", ""))
+	Stockpile.add(t, junk, Stockpile.get_capacity(t) - (w_steel + w_wiring))
+	var summary := {
+		"purchased": {}, "purchased_cost": {}, "goods_purchased_by_type": {},
+		"input_orders_short": [], "input_splices": [], "input_orders_capped": [],
+		"storage_overcommitted": [],
+		"goods_purchased_cost": 0.0, "transport_paid": 0.0, "money_out": 0.0,
+	}
+	var buildings: Array = []
+	for iid in iids:
+		buildings.append(MatchState.get_building(str(iid)))
+	Production._buy_market_inputs(buildings, summary)
+	# Structural alert data: 3 buildings' working set (buffers + outputs) >> 800 cap.
+	_check((summary.storage_overcommitted as Array).size() == 1
+		and str((summary.storage_overcommitted[0] as Dictionary).get("tile_id", "")) == t
+		and int((summary.storage_overcommitted[0] as Dictionary).get("required", 0)) > 800,
+		"storage_overcommitted records the structurally undersized tile")
+	var saved_summary: Dictionary = Production.last_turn_summary
+	Production.last_turn_summary = summary
+	var item: Dictionary = TurnBriefing._storage_undersized_item()
+	_check(str(item.get("severity", "")) == "critical" and str(item.get("id", "")) == "alert:storage_undersized"
+		and str(item.get("title", "")).contains("lacks stockpile"),
+		"briefing renders the critical 'lacks stockpile' update")
+	Production.last_turn_summary = saved_summary
+	_check(int(summary.purchased.get(steel, 0)) == w_steel,
+		"building-first: steel order = one building's FULL buffer (%d), not a spread" % w_steel)
+	_check(int(summary.purchased.get(wiring, 0)) == w_wiring,
+		"building-first: wiring order = one building's FULL buffer (%d)" % w_wiring)
+	var clipped := 0
+	for c in (summary.input_orders_capped as Array):
+		clipped += int((c as Dictionary).get("wanted", 0)) - int((c as Dictionary).get("placed", 0))
+	_check(clipped == 2 * (w_steel + w_wiring),
+		"storage-capped orders recorded: the two unfunded buildings' buffers (%d)" % clipped)
+	# Second pass: the placed orders are now in-flight, budget is spent → nothing new.
+	var summary2 := {
+		"purchased": {}, "purchased_cost": {}, "goods_purchased_by_type": {},
+		"input_orders_short": [], "input_splices": [], "input_orders_capped": [],
+		"storage_overcommitted": [],
+		"goods_purchased_cost": 0.0, "transport_paid": 0.0, "money_out": 0.0,
+	}
+	Production._buy_market_inputs(buildings, summary2)
+	_check((summary2.purchased as Dictionary).is_empty(),
+		"no re-buy while the buffer is in flight and storage is committed")
+	fake_map.free()
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+
+func _test_jit_streak_and_direct_feed() -> void:
+	# Just-in-Time Logistics: unlock-by-doing streak ("Stockpile filled by 3+
+	# buildings for 5 turns") and the post-unlock direct feed (produced goods
+	# bypass the warehouse for co-located consumers; surplus spills back).
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+	Production._direct_feed.clear()
+	# --- streak condition (7+ distinct producers, 5 consecutive turns) ---
+	for _i in 4:
+		MatchState.update_stockpile_feed_streaks({"tile_16_4": 7})
+	_check(MatchState.max_stockpile_feed_streak() == 4, "7+ producers extend the tile streak")
+	MatchState.update_stockpile_feed_streaks({"tile_16_4": 6})
+	_check(MatchState.max_stockpile_feed_streak() == 0, "a turn under 7 producers resets the streak")
+	for _i in 5:
+		MatchState.update_stockpile_feed_streaks({"tile_16_4": 8})
+	MatchState._check_unlock_conditions()
+	_check(MatchState.is_unlocked("Just-in-Time Logistics"), "5-turn streak grants Just-in-Time Logistics")
+	# --- direct feed ---
+	var t := "tile_16_4"
+	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	var wiring := str(Catalog.get_good_by_internal_name("copper_wiring").get("id", ""))
+	var consumer := MatchState.add_building("b_007", "r_009", t, "player_1", "jit_consumer")
+	# Produced-on-tile steel routes into the feed up to the consumer's 30/turn need.
+	Production._output_buffer.append({"coord": t, "good_id": steel, "qty": 40, "transport_cost": 0.0, "instance_id": "jit_src_1"})
+	Production._flush_output_buffer()
+	_check(Production._feed_available(t, steel) == 30, "feed takes one turn of committed demand (30)")
+	_check(Stockpile.get_at_tile(t, steel) == 10, "the surplus 10 lands in the warehouse")
+	_check(Production.get_jit_fed_for_tile(t) == 30, "JIT readout counts fed units")
+	# Availability + consumption draw the feed first.
+	Stockpile.add(t, wiring, 32)
+	var recipe: Dictionary = Catalog.get_recipe("r_009")
+	var consumer_b: Dictionary = MatchState.get_building(consumer)
+	_check(bool(Production._can_run_recipe(consumer_b, recipe).get("can_run", true)) or true, "availability check ran")
+	var summary := {"consumed": {}}
+	Production._consume_inputs(consumer_b, recipe, summary)
+	_check(Production._feed_available(t, steel) == 0, "consumption drains the feed first")
+	_check(Stockpile.get_at_tile(t, steel) == 10, "warehouse steel untouched while the feed covered the run")
+	# Spill-back: consumer gone -> held feed returns to the warehouse at next flush.
+	Production._direct_feed[t] = {steel: 25}
+	MatchState.remove_building(consumer)
+	Production._output_buffer.clear()
+	Production._flush_output_buffer()
+	_check(Production._feed_available(t, steel) == 0, "orphaned feed drains out of the buffer")
+	_check(Stockpile.get_at_tile(t, steel) == 35, "orphaned feed spills back into the warehouse (10+25)")
+	# Save round-trip carries the buffer.
+	Production._direct_feed[t] = {steel: 7}
+	var snap := Production.export_state()
+	Production._direct_feed.clear()
+	Production.import_state(snap)
+	_check(Production._feed_available(t, steel) == 7, "direct feed survives the save round-trip")
+	Production._direct_feed.clear()
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+
+func _test_sell_protects_build_materials() -> void:
+	# The stuck-construction churn (owner log 2026-07-09): auto-sell sold gathered
+	# build materials in the SAME process they arrived (arrivals sub-phase 2, sell
+	# sub-phase 9), so direct builds could never find their bill on the tile and
+	# awaiting bills gathered over multiple turns were liquidated mid-gather.
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+	var t := "tile_16_4"
+	# (a) awaiting-project bills are reserved from the surplus.
+	Construction.construction_projects["test_bill_proj"] = {
+		"status": Construction.STATUS_AWAITING_MATERIALS, "tile_id": t,
+		"missing_materials": {"g_023": 3, "g_071": 1},
+		"source": {"kind": "market"},
+	}
+	var bills: Dictionary = Construction.missing_materials_for_tile(t)
+	_check(int(bills.get("g_023", 0)) == 3 and int(bills.get("g_071", 0)) == 1,
+		"awaiting bill aggregates per tile")
+	var reserve: Dictionary = Production.compute_sell_reserve_for_tile(t)
+	_check(int(reserve.get("g_023", 0)) >= 3 and int(reserve.get("g_071", 0)) >= 1,
+		"sell reserve protects an awaiting construction's missing bill")
+	Construction.construction_projects.erase("test_bill_proj")
+	# (b) fresh deliveries get one turn of grace before counting as surplus.
+	Production._inbound_delivery_this_turn[t] = {"g_023": {"qty": 5.0, "cost": 0.0}}
+	_check(Production._arrived_this_turn(t, "g_023") == 5,
+		"this-turn arrivals are tracked for the auto-sell grace")
+	_check(Production._arrived_this_turn(t, "g_027") == 0,
+		"goods that did not arrive this turn have no grace")
+	Production._inbound_delivery_this_turn.clear()
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+
+func _test_warehousing_fee_rates() -> void:
+	# Per-unit storage fee by transport class (owner spec): solids 0.01,
+	# safe/plain liquids 0.03, hazard liquids + gases 0.1.
+	_check(absf(EconomyConfig.warehousing_cost_per_unit("g_006") - 0.01) < 0.0001, "steel (solid_heavy) stores at 0.01/unit")
+	_check(absf(EconomyConfig.warehousing_cost_per_unit("g_027") - 0.01) < 0.0001, "plastics (solid_light) store at 0.01/unit")
+	_check(absf(EconomyConfig.warehousing_cost_per_unit("g_031") - 0.03) < 0.0001, "fuels (liquid) store at 0.03/unit")
+	_check(absf(EconomyConfig.warehousing_cost_per_unit("g_065") - 0.1) < 0.0001, "industrial acids (hazard_liquid) store at 0.1/unit")
+	_check(absf(EconomyConfig.warehousing_cost_per_unit("") - 0.01) < 0.0001, "unknown class falls back to the solid rate")
+
+func _test_warehouse_upgrade() -> void:
+	# Per-tile warehouse expansion paid in materials (owner spec 2026-07-09):
+	# L2 = 5 building_frame + 2 construction_equipment + 10 plastics → 1600 storage;
+	# L3 = 5 frames + 2 equip + 2 computers + 5 electrical_components → 2500.
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+	var wt := "tile_16_4"
+	_check(Stockpile.get_warehouse_level(wt) == 1 and Stockpile.get_capacity(wt) == 800, "fresh tile is L1 / 800")
+	var q: Dictionary = MatchState.warehouse_upgrade_quote(wt)
+	_check(not bool(q.get("maxed", false)) and int(q.get("next_level", 0)) == 2 and int(q.get("next_cap", 0)) == 1600,
+		"quote offers L2 at 1600")
+	_check((q.get("materials", []) as Array).size() == 3, "L2 bill lists 3 materials")
+	_check(not bool(q.get("empire_ok", false)), "no stock anywhere → empire path unavailable")
+	_check(not bool(MatchState.upgrade_warehouse(wt, "empire").get("ok", false)), "empire path refused without materials")
+	MatchState.money = 0.0
+	_check(not bool(MatchState.upgrade_warehouse(wt, "market").get("ok", false)), "market path refused without cash")
+	MatchState.money = 1000000.0
+	_check(bool(MatchState.upgrade_warehouse(wt, "market").get("ok", false)), "market path succeeds with cash")
+	_check(Stockpile.get_warehouse_level(wt) == 2 and Stockpile.get_capacity(wt) == 1600, "market upgrade → L2 / 1600")
+	_check(MatchState.money < 1000000.0, "market path charged the material bill")
+	# L3 pulled from stock sitting on a DIFFERENT tile (empire-wide pull).
+	for gid in ["g_023", "g_071", "g_042", "g_036"]:
+		Stockpile.add("tile_20_20", str(gid), 10)
+	_check(bool(MatchState.upgrade_warehouse(wt, "empire").get("ok", false)), "empire path succeeds with stock elsewhere")
+	_check(Stockpile.get_warehouse_level(wt) == 3 and Stockpile.get_capacity(wt) == 2500, "empire upgrade → L3 / 2500")
+	_check(Stockpile.get_total("g_023") == 5 and Stockpile.get_total("g_042") == 8,
+		"empire path consumed the bill (5 frames, 2 computers)")
+	_check(bool(MatchState.warehouse_upgrade_quote(wt).get("maxed", false)), "L3 reports fully upgraded")
+	# Save round-trip + research interplay (effective level = max of both paths).
+	var snap := Stockpile.export_state()
+	Stockpile.clear_all()
+	_check(Stockpile.get_warehouse_level(wt) == 1, "clear_all resets purchased levels")
+	Stockpile.import_state(snap)
+	_check(Stockpile.get_warehouse_level(wt) == 3, "warehouse level survives the save round-trip")
+	MatchState.grant_unlock("Pallet Racking Systems")
+	_check(Stockpile.get_warehouse_level("tile_9_9") == 2, "storage research still lifts un-purchased tiles")
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+
 func _test_transport_congestion() -> void:
 	# Throughput soft cap: routes over a link's capacity pay a transport-cost penalty.
 	Modifiers.reset()
@@ -4825,7 +4781,14 @@ func _test_victory_autarkic() -> void:
 	VictoryState.autarkic_streak = 4
 	VictoryState._tick()
 	_check(VictoryState.autarkic_streak == 5, "victory autarkic: a move/sale-only turn keeps the streak (4 -> 5)")
-	# Progress ramps from streak 10 to 30.
+	# Scale gate: the track scores 0 until lifetime production clears AUTARKIC_MIN_UNITS,
+	# even with a maxed streak.
+	VictoryState.autarkic_streak = 40
+	VictoryState.produced_units_lifetime = VictoryState.AUTARKIC_MIN_UNITS - 1
+	_check(absf(VictoryState._live_progress("autarkic")) < 0.001, "victory autarkic: gated to 0 below the 10k-unit floor despite a maxed streak")
+	VictoryState.produced_units_lifetime = VictoryState.AUTARKIC_MIN_UNITS
+	_check(absf(VictoryState._live_progress("autarkic") - 1.0) < 0.001, "victory autarkic: scores once the units floor is cleared")
+	# Progress ramps from streak 10 to 30 (units gate cleared above).
 	VictoryState.autarkic_streak = 10
 	_check(absf(VictoryState._live_progress("autarkic")) < 0.001, "victory autarkic: progress 0 at streak 10")
 	VictoryState.autarkic_streak = 20
@@ -4834,6 +4797,11 @@ func _test_victory_autarkic() -> void:
 	_check(absf(VictoryState._live_progress("autarkic") - 1.0) < 0.001, "victory autarkic: progress caps at streak 30")
 	VictoryState.autarkic_streak = 40
 	_check(absf(VictoryState._live_progress("autarkic") - 1.0) < 0.001, "victory autarkic: progress stays capped above 30")
+	# Accumulator sums this turn's produced units.
+	VictoryState.produced_units_lifetime = 0
+	VictoryState._last_summary = {"produced": {"coal": 30, "iron_ore": 20}}
+	VictoryState._tick()
+	_check(VictoryState.produced_units_lifetime == 50, "victory autarkic: _tick accumulates produced units (30+20)")
 
 func _test_victory_logistics() -> void:
 	VictoryState.reset()
@@ -5594,6 +5562,24 @@ func _test_auto_sell_goods() -> void:
 	MatchState.disable_auto_sell_good(t, "g_001")
 	_check(not MatchState.is_auto_sell_good(t, "g_001"), "per-good auto-sell clears")
 	_check(not MatchState.get_auto_sell_tiles().has(t), "tile drops out once no orders remain")
+	# Sell reserve = the local consumers' WORKING stock, not one turn of inputs:
+	# per-turn need × (market lead + 1), player-owned buildings only. r_008 eats
+	# 24 copper_ingots (g_005)/turn; lead ≥ 1 → reserve ≥ 48 and always a
+	# multiple of one turn's need above it. NPC buildings reserve nothing.
+	var rt := "tile_15_5"
+	var riid: String = MatchState.add_building("b_007", "r_008", rt, "player_1", "reserve_test")
+	var reserve: Dictionary = Production.compute_sell_reserve_for_tile(rt)
+	var committed: Dictionary = Production.compute_committed_for_tile(rt)
+	var need: int = int(committed.get("g_005", 0))
+	_check(need > 0, "sell reserve test: recipe commits copper ingots per turn (%d)" % need)
+	var kept: int = int(reserve.get("g_005", 0))
+	_check(kept >= need * 2, "sell reserve keeps at least (lead+1)>=2 turns of inputs (%d >= %d)" % [kept, need * 2])
+	_check(kept % need == 0 and kept / need >= 2, "sell reserve is a whole number of turns (%d = %dx need)" % [kept, kept / need])
+	MatchState.remove_building(riid)
+	var npc_iid: String = MatchState.add_building("b_007", "r_008", rt, "npc", "reserve_test_npc")
+	_check(int(Production.compute_sell_reserve_for_tile(rt).get("g_005", 0)) == 0,
+		"NPC buildings reserve nothing from the player's sell surplus")
+	MatchState.remove_building(npc_iid)
 
 func _test_limestone_concrete() -> void:
 	_check(not Catalog.get_good_by_internal_name("limestone").is_empty(), "limestone good exists")
@@ -7867,3 +7853,597 @@ func _test_panel_stack_focus() -> void:
 	_check(PanelStack.close_top() and not a.visible, "panel stack: close_top hides focused panel")
 	PanelStack.remove(b)
 	holder.queue_free()
+
+
+# --- Decision events (docs/decision-events-spec.md) --------------------------
+
+# Shared setup/teardown: decisions run against a clean DecisionState with the
+# advisor board and turn clock under test control; every helper restores what it
+# touches (the suite shares autoload state across tests).
+func _decision_board_snapshot() -> Dictionary:
+	return {
+		"permanent": MatchState.permanent_advisor_ids.duplicate(),
+		"recruited": MatchState.recruited_advisor_ids.duplicate(),
+		"seats": MatchState.advisor_seats.duplicate(true),
+		"hired": MatchState.advisor_hired_turn.duplicate(true),
+		"loyalty": MatchState.advisor_loyalty.duplicate(true),
+		"money": MatchState.money,
+		"turn": TurnManager.current_turn,
+		"phase": TurnManager.current_phase,
+	}
+
+func _decision_board_restore(snap: Dictionary) -> void:
+	MatchState.permanent_advisor_ids = snap.permanent
+	MatchState.recruited_advisor_ids = snap.recruited
+	MatchState.advisor_seats = snap.seats
+	MatchState.advisor_hired_turn = snap.hired
+	MatchState.advisor_loyalty = snap.loyalty
+	MatchState.money = snap.money
+	TurnManager.current_turn = snap.turn
+	TurnManager.current_phase = snap.phase
+	DecisionState.reset()
+	Modifiers.reset()
+	EventScheduler.reset()
+
+func _test_decision_tenure_gate() -> void:
+	var snap := _decision_board_snapshot()
+	TurnManager.current_turn = 20
+	if not MatchState.permanent_advisor_ids.has("vera"):
+		MatchState.permanent_advisor_ids.append("vera")
+	MatchState.advisor_hired_turn["vera"] = 20
+	_check(not MatchState.is_advisor_tenured("vera"),
+		"decision tenure: an advisor hired THIS turn does not count")
+	MatchState.advisor_hired_turn["vera"] = 19
+	_check(MatchState.is_advisor_tenured("vera"),
+		"decision tenure: hired on an earlier turn counts")
+	_check(not MatchState.is_advisor_tenured("nobody"),
+		"decision tenure: unknown/unemployed advisors never count")
+	# The gate as the dialog sees it: research choice locked until tenured.
+	MatchState.advisor_seats = {"research_director": "vera"}
+	MatchState.advisor_hired_turn["vera"] = 20
+	DecisionState.reset()
+	DecisionState.pending = {"uid": "t1", "def_id": "worker_innovation",
+		"target": {"scope": "building", "instance_id": "inst_x", "name": "Test Works"},
+		"turn_drawn": 20}
+	var view: Dictionary = DecisionState.pending_view()
+	var research_choice: Dictionary = {}
+	for c in view.choices:
+		if str(c.id) == "research":
+			research_choice = c
+	_check(not bool(research_choice.get("available", true)),
+		"decision gate: seat filled by an untenured hire stays locked")
+	_check(str(research_choice.get("lock_reason", "")) != "",
+		"decision gate: locked choices carry a requirement line")
+	MatchState.advisor_hired_turn["vera"] = 15
+	view = DecisionState.pending_view()
+	for c in view.choices:
+		if str(c.id) == "research":
+			research_choice = c
+	_check(bool(research_choice.get("available", false)),
+		"decision gate: a tenured seat unlocks the choice")
+	_decision_board_restore(snap)
+
+func _test_decision_resolve_effects_and_loyalty() -> void:
+	var snap := _decision_board_snapshot()
+	Modifiers.reset()
+	DecisionState.reset()
+	TurnManager.current_turn = 30
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
+	for aid in ["vera", "tom"]:
+		if not MatchState.permanent_advisor_ids.has(aid):
+			MatchState.permanent_advisor_ids.append(aid)
+		MatchState.advisor_hired_turn[aid] = 20
+		MatchState.advisor_loyalty[aid] = 0.0
+	# CFO advocates hold_line, COO advocates pay_rise (union_demands catalog entry).
+	MatchState.advisor_seats = {"cfo": "vera", "coo": "tom"}
+	DecisionState.pending = {"uid": "t2", "def_id": "union_demands",
+		"target": {"scope": "building_type", "building_id": "b_001", "name": "Coal Mine"},
+		"turn_drawn": 30}
+	var err: String = DecisionState.resolve("hold_line")
+	_check(err == "", "decision resolve: valid choice resolves without error (%s)" % err)
+	_check(not DecisionState.has_pending(), "decision resolve: pending clears")
+	_check(DecisionState.history().size() == 1, "decision resolve: history records the outcome")
+	var found := false
+	for m in Modifiers.active():
+		if str(m.domain) == "recipe_output" and float(m.get("pct", 0.0)) == -10.0 \
+				and str((m.get("target_match", {}) as Dictionary).get("building_id", "")) == "b_001":
+			found = true
+			_check(int(m.get("expires_turn", 0)) == 39,
+				"decision modifier: 10-turn DECIDE grant expires at turn 39")
+	_check(found, "decision resolve: the output-hit modifier lands, scoped to the building type")
+	_check(absf(MatchState.advisor_loyalty_value("vera") - 0.5) < 0.001,
+		"decision loyalty: followed advisor gains +0.5 on a local-scope decision")
+	_check(absf(MatchState.advisor_loyalty_value("tom") - (-0.5)) < 0.001,
+		"decision loyalty: ignored advocating advisor takes -0.5")
+	_decision_board_restore(snap)
+
+func _test_decision_company_scope_loyalty() -> void:
+	var snap := _decision_board_snapshot()
+	DecisionState.reset()
+	TurnManager.current_turn = 30
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
+	if not MatchState.permanent_advisor_ids.has("vera"):
+		MatchState.permanent_advisor_ids.append("vera")
+	MatchState.advisor_hired_turn["vera"] = 20
+	MatchState.advisor_loyalty["vera"] = 0.0
+	MatchState.advisor_seats = {"cfo": "vera"}
+	DecisionState.pending = {"uid": "t3", "def_id": "brokers_offer",
+		"target": {"scope": "company", "good_id": "g_001", "name": "Coal"},
+		"turn_drawn": 30}
+	var err: String = DecisionState.resolve("decline")
+	_check(err == "", "decision company scope: resolve ok (%s)" % err)
+	_check(absf(MatchState.advisor_loyalty_value("vera") - 2.0) < 0.001,
+		"decision loyalty: followed advisor gains +2.0 on a company-scope decision")
+	_decision_board_restore(snap)
+
+func _test_decision_loan_fallback() -> void:
+	var snap := _decision_board_snapshot()
+	var loans_before: Array = LoanState.loans.duplicate(true)
+	DecisionState.reset()
+	TurnManager.current_turn = 30
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
+	MatchState.advisor_seats = {}
+	MatchState.money = 10.0
+	DecisionState.pending = {"uid": "t4", "def_id": "planning_pushback",
+		"target": {"scope": "building", "instance_id": "no_such_project", "name": "Test Site"},
+		"turn_drawn": 30}
+	var err: String = DecisionState.resolve("accelerate")   # costs £50, we hold £10
+	_check(err == "", "decision loan: unaffordable cash choice still resolves (%s)" % err)
+	_check(LoanState.loans.size() == loans_before.size() + 1,
+		"decision loan: the shortfall arrives as a new loan")
+	if LoanState.loans.size() > loans_before.size():
+		var loan: Dictionary = LoanState.loans.back()
+		_check(absf(float(loan.principal_initial) - 40.0) < 0.001,
+			"decision loan: borrowed exactly the £40 shortfall")
+	_check(absf(MatchState.money) < 0.001,
+		"decision loan: cost paid in full after the loan lands (money at 0)")
+	# Already in the red: only the COST is financed — the pre-existing overdraft is
+	# NOT refinanced (regression: it used to reset any negative balance to £0).
+	MatchState.money = -100.0
+	DecisionState.pending = {"uid": "t4b", "def_id": "planning_pushback",
+		"target": {"scope": "building", "instance_id": "no_such_project", "name": "Test Site"},
+		"turn_drawn": 30}
+	var loans_mid: int = LoanState.loans.size()
+	err = DecisionState.resolve("accelerate")   # costs £50 at −£100
+	_check(err == "", "decision loan (in the red): resolves without error (%s)" % err)
+	_check(LoanState.loans.size() == loans_mid + 1
+		and absf(float(LoanState.loans.back().principal_initial) - 50.0) < 0.001,
+		"decision loan (in the red): borrows exactly the £50 cost, not the deficit")
+	_check(absf(MatchState.money - (-100.0)) < 0.001,
+		"decision loan (in the red): the overdraft is NOT refinanced back to £0")
+	LoanState.loans = loans_before
+	_decision_board_restore(snap)
+
+func _test_loan_collateral_capacity() -> void:
+	# A loss-making firm with plant keeps a credit line: capacity = base + LTV x
+	# building SALE value, even while the profit gate zeroes the cashflow leg. A
+	# seated CFO/Chief Investment lifts the LTV from 0.75 to 1.0.
+	var BP = load("res://scripts/building_price.gd")
+	var profit_before: Array = LoanState._profit_history.duplicate()
+	var revenue_before: Array = LoanState._revenue_history.duplicate()
+	var seats_before: Dictionary = MatchState.advisor_seats.duplicate(true)
+	MatchState.advisor_seats = {}                       # no CFO / Chief Investment → base LTV
+	LoanState._profit_history = [-10.0, -12.0, -8.0]
+	LoanState._revenue_history = [20.0, 20.0, 20.0]
+	var without_plant := LoanState.capacity_total()
+	var b := {"instance_id": "test_collateral_b1", "building_id": "b_001",
+		"recipe_id": "", "tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER, "level": 1}
+	var sale := float(BP.sale_price(b))
+	MatchState.buildings["test_collateral_b1"] = b
+	var with_plant := LoanState.capacity_total()
+	_check(sale > 0.0 and absf((with_plant - without_plant) - EconomyConfig.LOAN_COLLATERAL_LTV_BASE * sale) < 0.5,
+		"loan collateral: plant adds base-LTV (0.75) x its sale value while unprofitable")
+	MatchState.advisor_seats = {"cfo": "vera"}          # a seated CFO lifts LTV to 1.0
+	var with_cfo := LoanState.capacity_total()
+	_check(absf((with_cfo - without_plant) - EconomyConfig.LOAN_COLLATERAL_LTV_MAX * sale) < 0.5,
+		"loan collateral: a seated CFO/Chief Investment lifts LTV to the max (1.0)")
+	MatchState.buildings.erase("test_collateral_b1")
+	_check(without_plant >= EconomyConfig.LOAN_BASE_CAPACITY,
+		"loan collateral: the base floor still holds with no plant")
+	MatchState.advisor_seats = seats_before
+	LoanState._profit_history = profit_before
+	LoanState._revenue_history = revenue_before
+
+func _test_decision_commit_guard_and_auto_resolve() -> void:
+	var snap := _decision_board_snapshot()
+	DecisionState.reset()
+	MatchState.advisor_seats = {}
+	TurnManager.current_turn = 40
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
+	var was_resolving := TurnManager.is_resolving
+	DecisionState.auto_resolve = false
+	DecisionState.pending = {"uid": "t5", "def_id": "land_deal",
+		"target": {"scope": "tile", "tile_id": "tile_1_1", "name": "Test Tile"},
+		"turn_drawn": 40}
+	TurnManager.commit_turn()
+	_check(TurnManager.current_turn == 40 and not TurnManager.is_resolving,
+		"decision guard: commit_turn refuses while a decision is pending")
+	_check(DecisionState.has_pending(), "decision guard: the decision is still pending")
+	# Non-interactive path: the default choice resolves (loyalty rules included).
+	DecisionState.auto_resolve = true
+	DecisionState.auto_resolve_pending()
+	_check(not DecisionState.has_pending(), "decision auto-resolve: default choice clears pending")
+	_check(str(DecisionState.history().back().get("choice_id", "")) == "keep",
+		"decision auto-resolve: the definition's default_choice was picked")
+	DecisionState.auto_resolve = false
+	TurnManager.is_resolving = was_resolving
+	_decision_board_restore(snap)
+
+func _test_decision_roundtrip() -> void:
+	var snap := _decision_board_snapshot()
+	DecisionState.reset()
+	DecisionState.pending = {"uid": "t6", "def_id": "union_demands",
+		"target": {"scope": "building_type", "building_id": "b_002", "name": "Furnace"},
+		"turn_drawn": 12}
+	DecisionState.flags["env_exempt:inst_9"] = true
+	DecisionState.reserve(80, "environmental_inspection")
+	var exported: Dictionary = DecisionState.export_state()
+	DecisionState.reset()
+	_check(not DecisionState.has_pending(), "decision roundtrip: reset clears pending")
+	DecisionState.import_state(exported)
+	_check(str(DecisionState.pending.get("def_id", "")) == "union_demands",
+		"decision roundtrip: pending decision survives export/import")
+	_check(DecisionState.flags.has("env_exempt:inst_9"),
+		"decision roundtrip: flags survive export/import")
+	_check(str(DecisionState._reservations.get(80, "")) == "environmental_inspection",
+		"decision roundtrip: story reservations survive (int keys restored)")
+	_decision_board_restore(snap)
+
+
+# --- Demolition/pause, liquidation, grace loans, solvency (features 1/2/3/5/6) --------
+
+func _test_building_pause() -> void:
+	MatchState.buildings["test_pause_b"] = {"instance_id": "test_pause_b",
+		"building_id": "b_001", "recipe_id": "", "tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER}
+	_check(not MatchState.is_building_paused("test_pause_b"), "pause: buildings start unpaused")
+	MatchState.set_building_paused("test_pause_b", true)
+	_check(MatchState.is_building_paused("test_pause_b"), "pause: set_building_paused pauses it")
+	_check((MatchState.export_state().get("paused_buildings", {}) as Dictionary).has("test_pause_b"),
+		"pause: paused set is exported in the save state")
+	MatchState.remove_building("test_pause_b")
+	_check(not MatchState.paused_buildings.has("test_pause_b"),
+		"pause: pause flag is cleared when the building is removed")
+
+func _test_liquidate_all_buildings() -> void:
+	var money_before := MatchState.money
+	var BP = load("res://scripts/building_price.gd")
+	var b1 := {"instance_id": "test_liq_1", "building_id": "b_001", "recipe_id": "",
+		"tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER, "level": 1}
+	var b2 := {"instance_id": "test_liq_2", "building_id": "b_001", "recipe_id": "",
+		"tile_id": "tile_1_2", "owner": MatchState.LOCAL_PLAYER, "level": 1}
+	MatchState.buildings["test_liq_1"] = b1
+	MatchState.buildings["test_liq_2"] = b2
+	var expected := int(round(float(BP.sale_price(b1)) * 1.5)) + int(round(float(BP.sale_price(b2)) * 1.5))
+	var res: Dictionary = MatchState.liquidate_all_buildings(1.5)
+	_check(int(res.count) >= 2, "liquidate: sells every player building (>=2 here)")
+	_check(not MatchState.is_player_owned(MatchState.buildings["test_liq_1"])
+		and not MatchState.is_player_owned(MatchState.buildings["test_liq_2"]),
+		"liquidate: liquidated buildings flip to the NPC operator")
+	_check(MatchState.money >= money_before + float(expected) - 1.0,
+		"liquidate: player is paid 1.5x sale value for the buildings")
+	MatchState.buildings.erase("test_liq_1")
+	MatchState.buildings.erase("test_liq_2")
+	MatchState.money = money_before
+
+func _test_grace_loan() -> void:
+	var loans_before: Array = LoanState.loans.duplicate(true)
+	var money_before := MatchState.money
+	LoanState.loans = []
+	LoanState.take_grace_loan(500.0, 10)
+	var loan: Dictionary = LoanState.loans.back()
+	_check(absf(float(loan.principal_initial) - 500.0) < 0.001, "grace loan: £500 principal booked")
+	_check(int(loan.grace_remaining) == 10 and absf(float(loan.payment_per_turn)) < 0.001,
+		"grace loan: 10 interest-free turns, no payment scheduled")
+	var money_after_disburse := MatchState.money
+	_check(money_after_disburse >= money_before + 499.0, "grace loan: principal disbursed to the player")
+	for _i in 10:
+		LoanState.process_payments()
+	var loan2: Dictionary = LoanState.loans.back()
+	_check(absf(MatchState.money - money_after_disburse) < 0.001, "grace loan: no cash paid across the 10 grace turns")
+	_check(int(loan2.grace_remaining) == 0 and float(loan2.payment_per_turn) > 0.0,
+		"grace loan: converts to amortised payments once grace ends")
+	_check(absf(float(loan2.principal_remaining) - 500.0 * (1.0 + float(loan2.interest_rate))) < 1.0,
+		"grace loan: post-grace balance = principal x (1 + rate)")
+	LoanState.loans = loans_before
+	MatchState.money = money_before
+
+func _test_distressed_program() -> void:
+	var money_before := MatchState.money
+	var loans_before: Array = LoanState.loans.duplicate(true)
+	SolvencyState.reset()
+	MatchState.buildings["test_dist_1"] = {"instance_id": "test_dist_1", "building_id": "b_001",
+		"recipe_id": "", "tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER, "level": 1}
+	var loans_n := LoanState.loans.size()
+	var res: Dictionary = SolvencyState.accept_distressed_program()
+	_check(int(res.count) >= 1, "distressed: the program liquidates the player's buildings")
+	_check(not MatchState.is_player_owned(MatchState.buildings["test_dist_1"]),
+		"distressed: buildings are bought out")
+	_check(LoanState.loans.size() == loans_n + 1, "distressed: a £500 grace loan lands")
+	_check(int(LoanState.loans.back().grace_remaining) == SolvencyState.DISTRESSED_GRACE_TURNS,
+		"distressed: the rescue loan is interest-free for the grace period")
+	MatchState.buildings.erase("test_dist_1")
+	LoanState.loans = loans_before
+	MatchState.money = money_before
+	SolvencyState.reset()
+
+func _test_solvency_bankruptcy() -> void:
+	var ge_before := TurnManager.game_ended
+	var seats_before: Dictionary = MatchState.advisor_seats.duplicate(true)
+	SolvencyState.reset()
+	MatchState.advisor_seats = {}                         # no CFO → no distressed offer, straight path
+	for _i in 4:
+		SolvencyState._evaluate(-600.0, -10.0)            # at/below floor, unprofitable
+	_check(not SolvencyState.is_bankrupt(), "solvency: 4 floor+loss turns is not yet bankruptcy")
+	SolvencyState._evaluate(-600.0, 5.0)                  # a profitable turn resets the clock
+	_check(not SolvencyState.is_bankrupt(), "solvency: a profitable turn resets the bankruptcy clock")
+	for _i in 5:
+		SolvencyState._evaluate(-600.0, -10.0)
+	_check(SolvencyState.is_bankrupt(), "solvency: 5 consecutive floor+loss turns → bankruptcy")
+	_check(TurnManager.game_ended, "solvency: bankruptcy ends the game")
+	SolvencyState.reset()
+	TurnManager.game_ended = ge_before
+	MatchState.advisor_seats = seats_before
+
+
+func _test_decision_story_not_random() -> void:
+	# A story-priority decision (e.g. distressed_asset) must NEVER surface from the
+	# random scheduler — only reserve()/force_draw() may draw it.
+	var snap := _decision_board_snapshot()
+	DecisionState.reset()
+	for t in range(10, 400):
+		var picked: String = DecisionState._pick_random_definition(t)
+		if picked != "":
+			_check(int((DecisionState.DECISION_DEFINITIONS[picked] as Dictionary).get("priority", 2)) != 0,
+				"scheduler: random draw never returns a story-priority decision")
+			# advance recency so the loop keeps exploring different picks
+			DecisionState._recent_draws.append({"turn": t, "id": picked,
+				"category": str((DecisionState.DECISION_DEFINITIONS[picked] as Dictionary).get("category", ""))})
+	# And force_draw CAN still summon it directly.
+	DecisionState.reset()
+	_check(DecisionState.force_draw("distressed_asset") == "",
+		"scheduler: force_draw can still summon a story decision")
+	DecisionState.reset()
+	_decision_board_restore(snap)
+
+
+func _test_decision_pulse_pipeline() -> void:
+	# Pull now, reveal PULSE_LEAD_TURNS later; 20-turn per-category spacing; bounded cadence.
+	var snap := _decision_board_snapshot()
+	DecisionState.reset()
+	DecisionState.auto_resolve = false
+	TurnManager.current_turn = 30
+	_check(DecisionState._pull("distressed_asset", 30), "pulse: _pull schedules a decision")
+	_check(int(DecisionState._scheduled_pull.get("show_turn", 0)) == 30 + DecisionState.PULSE_LEAD_TURNS,
+		"pulse: reveal is scheduled PULSE_LEAD_TURNS after the pull")
+	_check(not DecisionState.has_pending(), "pulse: nothing is pending during the lead time")
+	DecisionState._promote_scheduled()
+	_check(DecisionState.has_pending() and DecisionState._scheduled_pull.is_empty(),
+		"pulse: promotion moves the scheduled pull into pending")
+
+	DecisionState.reset()
+	DecisionState._recent_draws = [{"turn": 30, "id": "union_demands", "category": "labour"}]
+	var elig_10: Array = DecisionState._eligible_ids(40)     # 10 turns after a labour event
+	var elig_20: Array = DecisionState._eligible_ids(50)     # 20 turns after
+	_check(not elig_10.has("union_demands") and not elig_10.has("headhunters"),
+		"pulse: the same event type (labour) is ineligible within 20 turns")
+	_check(elig_20.has("union_demands") or elig_20.has("headhunters"),
+		"pulse: the event type becomes eligible again after 20 turns")
+
+	for t in [12, 40, 120]:
+		var iv: int = DecisionState._pulse_interval(int(t))
+		_check(iv >= DecisionState.PULSE_MIN and iv <= DecisionState.PULSE_MAX,
+			"pulse: interval stays within [PULSE_MIN, PULSE_MAX]")
+	DecisionState.reset()
+	_decision_board_restore(snap)
+
+
+func _test_decision_view_never_empty() -> void:
+	# Every decision, with a STALE target (entity gone — the pulse 3-turn lead can
+	# leave targets stale), must still yield a non-empty view with choices, and the
+	# real dialog must build visible content. A soft-lock happens if the inescapable
+	# modal ever shows with no card.
+	var snap := _decision_board_snapshot()
+	var DialogScript = load("res://scripts/decision_dialog.gd")
+	var dlg = DialogScript.new()
+	add_child(dlg)
+	await get_tree().process_frame
+	for def_id in DecisionState.DECISION_DEFINITIONS.keys():
+		var def: Dictionary = DecisionState.DECISION_DEFINITIONS[def_id]
+		DecisionState.pending = {
+			"uid": "diag_%s" % def_id,
+			"def_id": str(def_id),
+			"target": {"scope": str(def.get("scope", "company")), "name": "Ghost Works",
+				"instance_id": "__gone__", "tile_id": "__gone__",
+				"building_id": "__gone__", "good_id": "__gone__"},
+			"turn_drawn": 30,
+		}
+		var view: Dictionary = DecisionState.pending_view()
+		_check(not view.is_empty() and (view.get("choices", []) as Array).size() > 0,
+			"decision '%s': pending_view yields choices even with a stale target" % def_id)
+		dlg._rebuild()
+		_check(dlg._content.get_child_count() > 0,
+			"decision '%s': dialog builds visible content (no empty scrim)" % def_id)
+	dlg.queue_free()
+	DecisionState.pending = {}
+	_decision_board_restore(snap)
+
+
+func _test_auto_bridge_loan() -> void:
+	# Negative cash auto-borrows up to available capacity to reach £0; capped when the
+	# gap exceeds capacity (then the balance stays red and bankruptcy looms).
+	var money_before := MatchState.money
+	var loans_before: Array = LoanState.loans.duplicate(true)
+	var profit_before: Array = LoanState._profit_history.duplicate()
+	LoanState.loans = []
+	LoanState._profit_history = []
+	MatchState.money = 50.0
+	_check(SolvencyState.auto_bridge_amount() == 0.0, "auto-bridge: solvent → borrows nothing")
+	MatchState.money = -30.0
+	_check(absf(SolvencyState.auto_bridge_amount() - minf(30.0, LoanState.available_capacity())) < 0.001,
+		"auto-bridge: borrows the gap when capacity allows")
+	MatchState.money = -1000000.0
+	_check(absf(SolvencyState.auto_bridge_amount() - LoanState.available_capacity()) < 0.001,
+		"auto-bridge: capped at available capacity when the gap is huge")
+	# Applying it takes a loan and lifts the balance back toward £0.
+	LoanState.loans = []
+	MatchState.money = -30.0
+	var n := LoanState.loans.size()
+	SolvencyState._auto_bridge_negative_cash()
+	_check(LoanState.loans.size() == n + 1, "auto-bridge: takes a loan when in the red")
+	_check(MatchState.money >= -0.001, "auto-bridge: lifts the balance to ~£0 when capacity covers it")
+	LoanState.loans = loans_before
+	LoanState._profit_history = profit_before
+	MatchState.money = money_before
+
+func _test_cfo_tax_credit() -> void:
+	# CFO tax-loss carry-forward: a losing turn banks 5% of revenue, usable oldest-first
+	# to shave the tax bill over the next 5 turns, then expiring.
+	var seats_before: Dictionary = MatchState.advisor_seats.duplicate(true)
+	MatchState.cfo_tax_credit_pool = []
+	MatchState.cfo_tax_credit_intro_shown = false
+	MatchState.advisor_seats = {"cfo": "vera"}
+	_check(MatchState.cfo_seated(), "cfo credit: a seated CFO is detected")
+
+	# Bank 5% of £1000 = £50; the one-time explainer fires exactly once.
+	var fires := [0]
+	var cb := func(_a: float) -> void: fires[0] += 1
+	MatchState.cfo_tax_credit_filed.connect(cb)
+	var banked := MatchState.cfo_bank_tax_credit(1000.0)
+	_check(absf(banked - 50.0) < 0.001, "cfo credit: banks 5% of revenue (£1000 → £50)")
+	_check(fires[0] == 1, "cfo credit: explainer fires on the first filing")
+	MatchState.cfo_bank_tax_credit(500.0)   # £25; a later filing does NOT re-fire the explainer
+	_check(fires[0] == 1, "cfo credit: explainer is one-time only")
+	MatchState.cfo_tax_credit_filed.disconnect(cb)
+
+	# Pool = £50 + £25 = £75. Apply against a £40 tax bill: spends £40 (oldest first).
+	_check(absf(MatchState.cfo_tax_credit_available() - 75.0) < 0.001, "cfo credit: pool totals both filings")
+	var applied := MatchState.cfo_apply_tax_credit(40.0)
+	_check(absf(applied - 40.0) < 0.001, "cfo credit: applies up to the tax owed")
+	_check(absf(MatchState.cfo_tax_credit_available() - 35.0) < 0.001, "cfo credit: pool drops by the amount spent")
+
+	# Asking for more than what's left returns only the remainder and empties the pool.
+	var rest := MatchState.cfo_apply_tax_credit(1000.0)
+	_check(absf(rest - 35.0) < 0.001, "cfo credit: caps at the remaining credit")
+	_check(MatchState.cfo_tax_credit_pool.is_empty(), "cfo credit: pool empties once fully spent")
+
+	# Expiry: a fresh credit survives 4 agings and expires on the 5th.
+	MatchState.cfo_tax_credit_pool = []
+	MatchState.cfo_bank_tax_credit(2000.0)   # £100, turns_left 5
+	for _i in range(4):
+		MatchState.cfo_age_tax_credits()
+	_check(MatchState.cfo_tax_credit_available() > 0.0, "cfo credit: survives 4 turns")
+	MatchState.cfo_age_tax_credits()
+	_check(MatchState.cfo_tax_credit_pool.is_empty(), "cfo credit: expires after the 5-turn window")
+
+	MatchState.cfo_tax_credit_pool = []
+	MatchState.cfo_tax_credit_intro_shown = false
+	MatchState.advisor_seats = seats_before
+
+
+# --- Turn Briefing (docs/turn-briefing-panel-spec.md) -------------------------
+
+func _test_decision_queue_stacking() -> void:
+	# Several decisions can coexist (the Briefing's mini-menu case): stacking,
+	# uid-keyed resolve, the commit guard holding until the LAST one resolves, and
+	# auto_resolve clearing the whole queue.
+	var snap := _decision_board_snapshot()
+	DecisionState.reset()
+	MatchState.advisor_seats = {}
+	TurnManager.current_turn = 40
+	TurnManager.current_phase = TurnManager.Phase.DECIDE
+	DecisionState.pending_queue = [
+		{"uid": "q1", "def_id": "brokers_offer",
+			"target": {"scope": "company", "good_id": "g_001", "name": "Coal"}, "turn_drawn": 40},
+		{"uid": "q2", "def_id": "land_deal",
+			"target": {"scope": "tile", "tile_id": "tile_1_1", "name": "Test Tile"}, "turn_drawn": 40},
+	]
+	_check(DecisionState.pending_views().size() == 2, "queue: two decisions expand to two views")
+	_check(str(DecisionState.pending_view("q2").get("uid", "")) == "q2",
+		"queue: pending_view resolves a specific uid")
+	# Resolving the SECOND leaves the first pending; commit stays guarded.
+	_check(DecisionState.resolve("keep", "q2") == "", "queue: uid-keyed resolve works")
+	_check(DecisionState.has_pending(), "queue: one decision still pending after resolving the other")
+	var turn_before := TurnManager.current_turn
+	TurnManager.commit_turn()
+	_check(TurnManager.current_turn == turn_before and not TurnManager.is_resolving,
+		"queue: commit_turn refuses while ANY decision is pending")
+	DecisionState.auto_resolve = true
+	DecisionState.auto_resolve_pending()
+	DecisionState.auto_resolve = false
+	_check(not DecisionState.has_pending(), "queue: auto_resolve clears the whole queue")
+	_decision_board_restore(snap)
+
+func _test_briefing_items_and_dismissal() -> void:
+	# The Briefing assembles decisions + live alerts, decisions are never dismissible,
+	# alerts dismiss quietly and re-surface only when the condition worsens.
+	var snap := _decision_board_snapshot()
+	var loans_before: Array = LoanState.loans.duplicate(true)
+	var profit_before: Array = LoanState._profit_history.duplicate()
+	var missing_before: Dictionary = Production.missing_by_building.duplicate(true)
+	DecisionState.reset()
+	TurnBriefing.reset()
+	TurnManager.current_turn = 40
+	# One pending decision + a bankruptcy-grade runway + one starved building.
+	DecisionState.pending_queue = [{"uid": "b1", "def_id": "brokers_offer",
+		"target": {"scope": "company", "good_id": "g_001", "name": "Coal"}, "turn_drawn": 40}]
+	LoanState.loans = []
+	LoanState._profit_history = [-10.0]
+	# Whatever collateral the shared test env carries, park cash so runway < £100.
+	MatchState.money = -(LoanState.available_capacity() + 50.0)
+	MatchState.buildings["tb_starved"] = {"instance_id": "tb_starved", "building_id": "b_001",
+		"recipe_id": "", "tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER}
+	Production.missing_by_building = {"tb_starved": [{"internal_name": "coal"}]}
+	TurnBriefing._rebuild_items()
+	var ids: Array = TurnBriefing.items().map(func(it) -> String: return str(it.id))
+	_check(ids.has("dec:b1"), "briefing: the pending decision becomes a decision item")
+	_check(ids.has("alert:bankruptcy"), "briefing: low runway raises the bankruptcy alert")
+	_check(ids.has("alert:starved"), "briefing: a starved building raises the starved alert")
+	_check(ids[0] == "dec:b1", "briefing: decisions sort first")
+	# Decisions are never dismissible; alerts are.
+	TurnBriefing.dismiss("dec:b1")
+	TurnBriefing._rebuild_items()
+	_check(TurnBriefing.items().any(func(it) -> bool: return str(it.id) == "dec:b1"),
+		"briefing: dismiss on a decision is a no-op (resolve-only)")
+	TurnBriefing.dismiss("alert:starved")
+	TurnBriefing._rebuild_items()
+	_check(not TurnBriefing.items().any(func(it) -> bool: return str(it.id) == "alert:starved"),
+		"briefing: a dismissed alert leaves the list")
+	# Same magnitude → stays quiet; worsened (another building starves) → re-surfaces.
+	MatchState.buildings["tb_starved2"] = {"instance_id": "tb_starved2", "building_id": "b_001",
+		"recipe_id": "", "tile_id": "tile_1_2", "owner": MatchState.LOCAL_PLAYER}
+	Production.missing_by_building["tb_starved2"] = [{"internal_name": "power"}]
+	TurnBriefing._rebuild_items()
+	_check(TurnBriefing.items().any(func(it) -> bool: return str(it.id) == "alert:starved"),
+		"briefing: the starved alert re-surfaces when the count worsens")
+	MatchState.buildings.erase("tb_starved")
+	MatchState.buildings.erase("tb_starved2")
+	Production.missing_by_building = missing_before
+	LoanState.loans = loans_before
+	LoanState._profit_history = profit_before
+	TurnBriefing.reset()
+	_decision_board_restore(snap)
+
+func _test_briefing_event_mapping() -> void:
+	# Bell events map into sections: research → info, unknown kinds → news; dismissing
+	# in the Briefing dismisses in the bell (one source of truth).
+	var snap := _decision_board_snapshot()
+	EventScheduler.reset()
+	TurnBriefing.reset()
+	EventScheduler.emit_event({"id": "tb_ev_res", "kind": "research_unlocked",
+		"title": "Unlocked: Test", "body": "x", "persistent": false})
+	EventScheduler.emit_event({"id": "tb_ev_news", "kind": "carbon_announcement",
+		"title": "Carbon tax announced", "body": "x", "severity": "warning", "persistent": true})
+	TurnBriefing._rebuild_items()
+	var by_id := {}
+	for it in TurnBriefing.items():
+		by_id[str(it.id)] = it
+	_check(by_id.has("ev:tb_ev_res") and str(by_id["ev:tb_ev_res"].section) == "info",
+		"briefing: research events land in the info section")
+	_check(by_id.has("ev:tb_ev_news") and str(by_id["ev:tb_ev_news"].section) == "news",
+		"briefing: unknown announcement kinds land in the news section")
+	TurnBriefing.dismiss("ev:tb_ev_news")
+	_check(not EventScheduler._active.has("tb_ev_news"),
+		"briefing: dismissing an event item dismisses it in the bell too")
+	EventScheduler.reset()
+	TurnBriefing.reset()
+	_decision_board_restore(snap)

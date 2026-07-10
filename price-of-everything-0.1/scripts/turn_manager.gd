@@ -26,6 +26,9 @@ signal phase_started(phase: int)
 signal phase_completed(phase: int)
 signal turn_advanced(new_turn: int)
 signal game_ended_signal(reason: String)
+## The player tried to end the turn with unresolved decisions — the Turn Briefing
+## listens and expands to them (spec §4.3).
+signal commit_blocked_by_decisions
 
 # Per-phase human pacing delay. The whole-turn transition is this x the 5
 # resolution phases, so the default 0.1 gives a ~0.5s turn (compute is a flat
@@ -64,7 +67,9 @@ func _ready() -> void:
 ##              capacity must exist before the production cascade's
 ##              intermittency pass) → Production (the cascade).
 ##   NARRATIVE: MatchState (unlock conditions over settled production)
-##              → EventScheduler (narrative events) → Modifiers (prune expired).
+##              → EventScheduler (narrative events) → Modifiers (prune expired)
+##              → DecisionState (draw the next decision AFTER pruning, so a fresh
+##                decision's modifiers can't be pruned in the same phase).
 ## Never reorder this list without checking those dependencies.
 func _wire_sim_listeners() -> void:
 	var hooks: Array = [
@@ -72,6 +77,7 @@ func _wire_sim_listeners() -> void:
 		Callable(Production, "_on_phase_started"),
 		Callable(EventScheduler, "_on_phase_started"),
 		Callable(Modifiers, "_on_phase_started"),
+		Callable(DecisionState, "_on_phase_started"),
 	]
 	for hook: Callable in hooks:
 		if not phase_started.is_connected(hook):
@@ -92,6 +98,15 @@ func commit_turn() -> void:
 		return
 	if current_phase != Phase.DECIDE:
 		return
+	# A pending decision must be answered before the turn commits (the modal has no
+	# dismiss; this is the belt-and-braces guard behind it). Non-interactive runs
+	# resolve the default instead of blocking.
+	if DecisionState.has_pending():
+		if DecisionState.auto_resolve:
+			DecisionState.auto_resolve_pending()
+		else:
+			commit_blocked_by_decisions.emit()
+			return
 	_run_resolution()
 
 # --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---

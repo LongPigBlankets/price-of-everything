@@ -311,7 +311,7 @@ func _advance(job: Dictionary) -> void:
 					return
 			job.stage = "finish_smooth"
 		"finish_smooth":
-			job.smoothed = _snap_bridges(_declamp_water(_smooth(_thin(job.full_points, 30.0), 1), job.nav), job.bridges)
+			job.smoothed = _snap_bridges(_declamp_forests(_declamp_water(_smooth(_thin(job.full_points, 30.0), 1), job.nav)), job.bridges)
 			job.stage = "finish"
 		"finish":
 			var smoothed: PackedVector2Array = job.smoothed
@@ -1411,6 +1411,30 @@ func _declamp_water(points: PackedVector2Array, nav: NavGrid) -> PackedVector2Ar
 			out.append(land if land != Vector2.INF else p)
 		else:
 			out.append(p)
+	return out
+
+## Pull any point that landed inside a forest footprint disc back to the disc edge (+1u). The 12u
+## lattice lets a route's cell centres clear a blocked disc while the polyline (and its Chaikin
+## smoothing) cuts the disc's rim by a few units; anchor endpoints on forested tiles can also start
+## marginally inside. Like _declamp_water, a correct road never has a forest point, so this is a
+## no-op except on the artifacts it repairs. Discs never overlap rivers (footprints are
+## water-cleared), so bridge snapping after this stays valid.
+func _declamp_forests(points: PackedVector2Array) -> PackedVector2Array:
+	var terrain := _terrain()
+	if terrain != null:
+		_ensure_forest_discs(terrain)
+	if _forest_discs_cache.is_empty():
+		return points
+	var out := PackedVector2Array()
+	for p in points:
+		var q := p
+		for disc in _forest_discs_cache:
+			var r := float(disc.radius)
+			var to_p: Vector2 = q - (disc.center as Vector2)
+			var d := to_p.length()
+			if d < r:
+				q = (disc.center as Vector2) + (to_p / maxf(d, 0.001)) * (r + 1.0)
+		out.append(q)
 	return out
 
 ## Nearest WATER_LAND cell centre to grid cell `c`, by expanding ring search (deterministic). INF if

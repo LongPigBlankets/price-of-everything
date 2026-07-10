@@ -7,7 +7,6 @@
 [ext_resource type="Script" path="res://scripts/hill_visuals.gd" id="3_hills"]
 [ext_resource type="Script" path="res://scripts/forest_visuals.gd" id="3_forest"]
 [ext_resource type="Script" path="res://scripts/hex_grid_overlay.gd" id="3_hexgrid"]
-[ext_resource type="Script" path="res://scripts/road_offshoots.gd" id="3_roadoff"]
 [ext_resource type="Script" path="res://scripts/road_network_visuals.gd" id="3_roadsv2"]
 [ext_resource type="Script" uid="uid://dpj2cadgfaauj" path="res://scenes/building_visuals.gd" id="4_choun"]
 [ext_resource type="Script" uid="uid://bt2kwldefvxx1" path="res://scripts/camera_controller.gd" id="5_tbgi4"]
@@ -161,9 +160,6 @@ tile_set = ExtResource("1_o5qli")
 
 [node name="RiverVisuals" type="Node2D" parent="." unique_id=-688946726]
 script = ExtResource("3_river")
-
-[node name="RoadOffshoots" type="Node2D" parent="." unique_id=1474032120]
-script = ExtResource("3_roadoff")
 
 [node name="BuildingVisuals" type="Node2D" parent="." unique_id=1233661023]
 unique_name_in_owner = true

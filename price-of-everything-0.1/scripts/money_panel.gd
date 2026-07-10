@@ -53,6 +53,8 @@ var _transport_value: Label
 var _proj_transport_value: Label
 var _goods_purchased_value: Label
 var _proj_goods_purchased_value: Label
+var _warehousing_value: Label
+var _proj_warehousing_value: Label
 var _profit_sharing_value: Label
 var _proj_profit_sharing_value: Label
 @onready var proj_total_costs_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_TotalCostsRow/TotalCostsValue
@@ -132,6 +134,8 @@ func _ready() -> void:
 	_proj_transport_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Transport")
 	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
 	_proj_goods_purchased_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Goods purchased")
+	_warehousing_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Warehousing")
+	_proj_warehousing_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Warehousing")
 	var balance_content := $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent as VBoxContainer
 	var projection_content := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent as VBoxContainer
 	_profit_sharing_value = _insert_finance_row(balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
@@ -271,6 +275,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	var transport: float = summary.get("transport_paid", 0.0)
 	var power_purchase: float = summary.get("power_purchase_cost", 0.0)
 	var goods_purchased: float = summary.get("goods_purchased_cost", 0.0)
+	var warehousing: float = summary.get("warehousing_paid", 0.0)
 	var interest: float = summary.get("interest_paid", 0.0)
 	var tax: float = summary.get("taxes_paid", 0.0)
 	var dividends: float = summary.get("dividends_paid", 0.0)
@@ -278,7 +283,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 
 	# Compute derived
 	var total_revenue: float = goods_revenue + power_revenue
-	var total_costs: float = maintenance + labour + transport + power_purchase + goods_purchased
+	var total_costs: float = maintenance + labour + transport + power_purchase + goods_purchased + warehousing
 	var operating_profit: float = total_revenue - total_costs
 	var pretax: float = operating_profit - interest
 	var posttax: float = pretax - tax
@@ -294,6 +299,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	power_purchase_value.text = "-£%.2f" % power_purchase
 	_transport_value.text = "-£%.2f" % transport
 	_goods_purchased_value.text = "-£%.2f" % goods_purchased
+	_warehousing_value.text = "-£%.2f" % warehousing
 	total_costs_value.text = "-£%.2f" % total_costs
 	
 	operating_profit_value.text = _format_signed(operating_profit)
@@ -398,6 +404,7 @@ func _render_projection(proj: Dictionary) -> void:
 	proj_power_purchase_value.text = "-£%.2f" % proj.power_purchase
 	_proj_transport_value.text = "-£%.2f" % proj.transport
 	_proj_goods_purchased_value.text = "-£%.2f" % proj.goods_purchased
+	_proj_warehousing_value.text = "-£%.2f" % proj.get("warehousing", 0.0)
 	proj_total_costs_value.text = "-£%.2f" % proj.total_costs
 	
 	proj_operating_profit_value.text = _format_signed(proj.operating_profit)
@@ -486,10 +493,19 @@ func _project_next_turn() -> Dictionary:
 	
 	# Loan interest (known exactly)
 	var interest: float = LoanState.total_per_turn_payment()
-	
+
+	# Warehousing on what's stored right now (per unit × transport-class rate).
+	var warehousing: float = 0.0
+	for wt in Stockpile.tiles_with_stock():
+		if not str(wt).begins_with("tile_"):
+			continue
+		var wtot: Dictionary = Stockpile.get_tile_totals(wt)
+		for wg in wtot:
+			warehousing += float(wtot[wg]) * EconomyConfig.warehousing_cost_per_unit(str(wg))
+
 	# Compute the chain
 	var total_revenue: float = goods_revenue + power_revenue
-	var total_costs: float = maintenance + labour + transport + power_purchase + goods_purchased
+	var total_costs: float = maintenance + labour + transport + power_purchase + goods_purchased + warehousing
 	var operating_profit: float = total_revenue - total_costs
 	var pretax: float = operating_profit - interest
 	var taxable_profit := maxf(pretax, 0.0)
@@ -511,6 +527,7 @@ func _project_next_turn() -> Dictionary:
 		"transport": transport,
 		"power_purchase": power_purchase,
 		"goods_purchased": goods_purchased,
+		"warehousing": warehousing,
 		"total_costs": total_costs,
 		"operating_profit": operating_profit,
 		"interest": interest,

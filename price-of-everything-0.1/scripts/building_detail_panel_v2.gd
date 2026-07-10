@@ -1018,76 +1018,31 @@ func _build_sell_demolish_row(building: Dictionary, building_data: Dictionary) -
 	sell.text = "Sell building"
 	sell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sell.custom_minimum_size = Vector2(0, 40)
-	sell.pressed.connect(func() -> void: _open_sell_sheet(building, building_data))
+	sell.pressed.connect(func() -> void: _open_supply_chain(building, "sell"))
 	row.add_child(sell)
 	var demo := Button.new()
 	demo.text = "Demolish"
 	demo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	demo.custom_minimum_size = Vector2(0, 40)
-	demo.pressed.connect(func() -> void: _open_demolish_sheet(building, building_data))
+	demo.pressed.connect(func() -> void: _open_supply_chain(building, "demolish"))
 	row.add_child(demo)
 	return row
 
-func _open_sell_sheet(building: Dictionary, _building_data: Dictionary) -> void:
+# Sell/demolish route through the supply-chain review panel: the player decides what
+# happens to feeding/dependent buildings (auto-fulfill vs pause) before it commits.
+func _open_supply_chain(building: Dictionary, action: String) -> void:
 	var iid := str(building.get("instance_id", ""))
-	_open_sheet("Sell building", func(vb: VBoxContainer) -> void:
-		var value := BuildingReadout.sell_value(building)
-		var big := Label.new()
-		big.theme_type_variation = "Numeric"
-		big.add_theme_font_size_override("font_size", 30)
-		big.add_theme_color_override("font_color", DS.PALETTE["OK"])
-		big.text = "£%s" % _fmt_int(value)
-		big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		vb.add_child(big)
-		var cap := Label.new()
-		cap.theme_type_variation = "Caption"
-		cap.text = "recovered on sale"
-		cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		vb.add_child(cap)
-		var note := Label.new()
-		note.theme_type_variation = "Body"
-		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		note.text = "Selling transfers the building to an NPC operator — you receive its market value now, and it keeps standing with its land occupied, but it stops running for you. Instant."
-		vb.add_child(note)
-		vb.add_child(_sheet_apply("Sell for £%s" % _fmt_int(value), false, func() -> void:
-			MatchState.sell_building(iid)
-			_close_sheet()))
-	)
-
-func _open_demolish_sheet(building: Dictionary, _building_data: Dictionary) -> void:
-	var iid := str(building.get("instance_id", ""))
-	_open_sheet("Demolish building", func(vb: VBoxContainer) -> void:
-		var warn := Label.new()
-		warn.theme_type_variation = "Body"
-		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		warn.text = "Demolishing removes the building over 1 turn and frees its land. You get back half the materials used to build it (overflow paid as cash); no money is returned. Stockpiled goods on the tile are kept."
-		vb.add_child(warn)
-		var refund: Dictionary = MatchState.refund_cost(iid)
-		var mats: Dictionary = refund.get("materials", {})
-		if not mats.is_empty():
-			var sec := Label.new()
-			sec.theme_type_variation = "Section"
-			sec.text = "MATERIALS RETURNED  (~£%s)" % _fmt_int(int(round(float(refund.get("materials_value", 0.0)))))
-			vb.add_child(sec)
-			var card := _make_card()
-			var cvb := card.get_child(0) as VBoxContainer
-			cvb.add_theme_constant_override("separation", DS.SP["SM"])
-			for gid in mats:
-				var hb := HBoxContainer.new()
-				hb.add_theme_constant_override("separation", DS.SP["SM"])
-				cvb.add_child(hb)
-				hb.add_child(_flat_good_cell(str(gid), str(Catalog.get_good(str(gid)).get("internal_name", "")), int(mats[gid]), 26))
-				var nm := Label.new()
-				nm.theme_type_variation = "Body"
-				nm.text = Catalog.get_display_name(str(gid))
-				nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				hb.add_child(nm)
-			vb.add_child(card)
-		vb.add_child(_sheet_apply("Demolish (1 turn)", true, func() -> void:
-			MatchState.start_demolish(iid)
-			_close_sheet()
-			_queue_refresh()))
-	)
+	if iid == "":
+		return
+	var layer := CanvasLayer.new()
+	layer.layer = 130
+	get_tree().root.add_child(layer)
+	var panel: Control = load("res://scripts/supply_chain_panel.gd").new()
+	layer.add_child(panel)
+	panel.finished.connect(func(_confirmed: bool) -> void:
+		layer.queue_free()
+		_queue_refresh())
+	panel.open(iid, action)
 
 func _sheet_apply(text: String, danger: bool, on_press: Callable) -> Button:
 	var btn := Button.new()
@@ -1521,6 +1476,9 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	var power_cost := float(econ.get("power_cost", 0.0))
 	if power_cost > 0.0:
 		vb.add_child(_metric("Power / turn", "−£%.2f" % power_cost, DS.PALETTE["DANGER"], false))
+	var warehousing := float(econ.get("warehousing_cost", 0.0))
+	if warehousing > 0.0:
+		vb.add_child(_metric("Warehousing / turn", "−£%.2f" % warehousing, DS.PALETTE["DANGER"], false))
 	vb.add_child(HSeparator.new())
 	var net := float(econ.get("net", 0.0))
 	vb.add_child(_metric("Net / turn", "%s£%.2f" % ["+" if net >= 0.0 else "−", absf(net)], DS.PALETTE["OK"] if net >= 0.0 else DS.PALETTE["DANGER"], true))

@@ -110,17 +110,20 @@ const AGENDA_FAST_SHIPMENT := "fast_shipment"               # a shipment deliver
 const AGENDA_LABOUR_POLICIES := "labour_policies"           # >=2 workforce policies enabled
 const AGENDA_TECH_UNLOCK := "tech_unlocked"
 const AGENDA_CHANGED_RECIPE := "changed_recipe"
-# 2 likes + 2 dislikes per advisor.
+# Decision-event tags (flagged by decision choices — see decision_state.gd).
+const AGENDA_BACKROOM_DEAL := "backroom_deal"
+const AGENDA_CLEAN_COMMITMENT := "clean_commitment"
+# 2 likes + 2 dislikes per advisor (Hal/Priya/Gerald carry an extra decision tag).
 const ADVISOR_AGENDAS := {
 	"vera": {"likes": [AGENDA_MADE_PROFIT, AGENDA_PAID_OFF_LOAN], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
 	"tom": {"likes": [AGENDA_USED_STOCKPILE, AGENDA_CHANGED_RECIPE], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_TOOK_LOAN]},
 	"rufus": {"likes": [AGENDA_MADE_PROFIT, AGENDA_BOUGHT_MATERIALS], "dislikes": [AGENDA_CHANGED_RECIPE, AGENDA_TECH_UNLOCK]},
-	"gerald": {"likes": [AGENDA_USED_STOCKPILE, AGENDA_AUTARKIC], "dislikes": [AGENDA_TECH_UNLOCK, AGENDA_CHANGED_RECIPE]},
+	"gerald": {"likes": [AGENDA_USED_STOCKPILE, AGENDA_AUTARKIC], "dislikes": [AGENDA_TECH_UNLOCK, AGENDA_CHANGED_RECIPE, AGENDA_CLEAN_COMMITMENT]},
 	"eleanor": {"likes": [AGENDA_LABOUR_POLICIES, AGENDA_MADE_PROFIT], "dislikes": [AGENDA_BUILT_UNPROFITABLE, AGENDA_BOUGHT_GRID_POWER]},
 	"sloane": {"likes": [AGENDA_SOLD_GRID_POWER, AGENDA_MADE_PROFIT], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_AUTARKIC]},
-	"priya": {"likes": [AGENDA_TECH_UNLOCK, AGENDA_CHANGED_RECIPE], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_USED_STOCKPILE]},
+	"priya": {"likes": [AGENDA_TECH_UNLOCK, AGENDA_CHANGED_RECIPE, AGENDA_CLEAN_COMMITMENT], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_USED_STOCKPILE, AGENDA_BACKROOM_DEAL]},
 	"hitomi": {"likes": [AGENDA_FAST_SHIPMENT, AGENDA_MADE_PROFIT], "dislikes": [AGENDA_BOUGHT_GRID_POWER, AGENDA_IDLE_BUILDING]},
-	"hal": {"likes": [AGENDA_MADE_PROFIT, AGENDA_TECH_UNLOCK], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
+	"hal": {"likes": [AGENDA_MADE_PROFIT, AGENDA_TECH_UNLOCK, AGENDA_BACKROOM_DEAL], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
 	"marcus": {"likes": [AGENDA_PAID_OFF_LOAN, AGENDA_EARLY_LOAN_PAYOFF], "dislikes": [AGENDA_TOOK_LOAN, AGENDA_BUILT_UNPROFITABLE]},
 	"idris": {"likes": [AGENDA_TECH_UNLOCK, AGENDA_FAST_SHIPMENT], "dislikes": [AGENDA_AUTARKIC, AGENDA_USED_STOCKPILE]},
 	"alexandra": {"likes": [AGENDA_MADE_PROFIT, AGENDA_TECH_UNLOCK], "dislikes": [AGENDA_IDLE_BUILDING, AGENDA_BOUGHT_GRID_POWER]},
@@ -146,6 +149,8 @@ const AGENDA_META := {
 	AGENDA_FAST_SHIPMENT: {"text": "Deliver a shipment in under 2 turns", "per_turn": true},
 	AGENDA_LABOUR_POLICIES: {"text": "Run 2+ labour policies", "per_turn": true},
 	AGENDA_TECH_UNLOCK: {"text": "Unlock a research node", "per_turn": false},
+	AGENDA_BACKROOM_DEAL: {"text": "Cut a backroom deal", "per_turn": false},
+	AGENDA_CLEAN_COMMITMENT: {"text": "Make a public clean commitment", "per_turn": false},
 	AGENDA_CHANGED_RECIPE: {"text": "Change a building's recipe", "per_turn": false},
 }
 # --- Advisor missions (loyalty-milestone chain; spec §7 C-layer specialties) ------
@@ -232,6 +237,15 @@ var _advisor_mission5_streak: Dictionary = {}      # advisor_id -> consecutive t
 var advisor_mission_policies: Array = []           # workforce policies unlocked via missions
 signal advisor_mission_completed(advisor_id: String, mission_index: int, reward_label: String)
 var advisor_loyalty: Dictionary = {}               # advisor_id -> float [-10, 10] (employed only)
+var advisor_hired_turn: Dictionary = {}            # advisor_id -> turn hired (decision-gate tenure)
+# CFO tax-loss carry-forward: while a CFO is seated, a losing turn banks a credit worth
+# CFO_TAX_CREDIT_RATE of that turn's revenue, usable to reduce the tax bill over the next
+# CFO_TAX_CREDIT_TURNS turns. Each entry is {amount: float, turns_left: int}.
+const CFO_TAX_CREDIT_RATE := 0.05
+const CFO_TAX_CREDIT_TURNS := 5
+var cfo_tax_credit_pool: Array = []                # [{amount, turns_left}] oldest first
+var cfo_tax_credit_intro_shown: bool = false       # the one-time CFO explainer has fired
+signal cfo_tax_credit_filed(amount: float)         # fired once, when the FIRST credit is banked
 var _advisor_walk_streak: Dictionary = {}          # advisor_id -> consecutive turns at/below walk threshold
 var _agenda_flags: Dictionary = {}                 # event_tag -> true; set during the turn, read+cleared each turn
 var _agenda_grid_sell_streak := 0
@@ -271,6 +285,9 @@ var pending_retrofits: Array = []
 # In-progress demolitions: instance_id -> {turns_left, tile_id}. Completes in tick_demolish
 # (materials refund + remove_building). Additive save state (default {} — no version bump).
 var demolish_queue: Dictionary = {}
+# Player-paused (mothballed) buildings: instance_id -> true. Skipped by production +
+# labour; additive save state (default {} — no version bump).
+var paused_buildings: Dictionary = {}
 # Last turn's per-link flow ("tile|mode"->units) — drives this turn's congestion cost.
 var _last_link_flow: Dictionary = {}
 # Shipments that arrived at a destination tile whose stockpile was full and so
@@ -326,6 +343,10 @@ var revealed_deposits: Dictionary = {}  # tile_id -> {token: true}
 # and progress toward the action+object+quantity conditions (e.g. "Survey|tiles").
 var unlocked_titles: Dictionary = {}
 var _unlock_progress: Dictionary = {}
+# Per-tile CONSECUTIVE-turn streak of "stockpile fed by 3+ distinct buildings this
+# turn" — the Just-in-Time Logistics unlock condition. Updated by Production at
+# output flush; tiles that miss the bar in a turn drop out (streak resets). Saved.
+var stockpile_feed_streaks: Dictionary = {}
 var _unlock_defs: Array = []   # [{title, action, object, qty, prereqs, description}]
 # Survey range: how many tiles out from a surveyed tile you may survey. The red
 # limit line and the click check both use it; +1 once Geoscanning is unlocked.
@@ -371,6 +392,7 @@ signal building_retrofitted(instance_id: String, new_recipe_id: String)
 # Demolish queued (1-turn countdown starts) / completed (materials refunded, building removed).
 signal building_demolish_started(instance_id: String)
 signal building_demolished(instance_id: String)
+signal building_paused_changed(instance_id: String)
 # An in-progress upgrade advanced (claimed materials / ticked down) — UI can refresh its countdown.
 signal building_upgrade_progress(instance_id: String)
 # An in-progress upgrade was cancelled / abandoned (e.g. the building was removed). Banked
@@ -418,6 +440,9 @@ signal output_stockpile_destination_changed(instance_id: String, tile_id: String
 signal stockpile_market_sale_queue_changed(tile_id: String)
 signal stockpile_market_sale_completed(sale_record: Dictionary)
 signal sell_surplus_changed(tile_id: String)
+## A standing recurring move / sell / bulk-sell was added or cancelled — the Market
+## panel's Movements/Sales lists refresh on this.
+signal recurring_orders_changed
 signal transport_shipments_changed
 signal tile_land_owned_changed(tile_id: String)
 ## Battery cells loaded/unloaded on a tile changed (drives the tile-view power section + firming).
@@ -569,6 +594,25 @@ func sell_building(instance_id: String) -> Dictionary:
 	set_building_owner(instance_id, SOLD_TO_OWNER)  # emits building_owner_changed → UI refresh
 	request_toast("Sold building for £%d" % price, "success")
 	return {"ok": true, "price": price}
+
+# Sell EVERY player building at once for price_mult x sale value (the distressed-asset
+# bailout: investors buy the lot at 1.5x). Returns {total, count}. Buildings keep
+# standing under the NPC operator but stop running for the player.
+func liquidate_all_buildings(price_mult: float) -> Dictionary:
+	var total: int = 0
+	var count: int = 0
+	for instance_id in buildings.keys().duplicate():
+		var b: Dictionary = buildings[instance_id]
+		if not is_player_owned(b):
+			continue
+		var price: int = int(round(float(BuildingPrice.sale_price(b)) * price_mult))
+		add_money(float(price))
+		set_building_owner(str(instance_id), SOLD_TO_OWNER)
+		total += price
+		count += 1
+	if count > 0:
+		request_toast("Distressed sale: %d buildings for £%d" % [count, total], "warning")
+	return {"total": total, "count": count}
 
 # A building acquired ready-made (NPC market purchase, scripted transfer) gets the
 # same cost basis a player-built copy would carry: the catalog base price as the
@@ -1027,8 +1071,10 @@ func remove_building(instance_id: String) -> bool:
 	if not buildings.has(instance_id):
 		return false
 
-	# Refund any in-progress upgrade's banked materials before the building disappears.
+	# Refund any in-progress upgrade's banked materials before the building disappears,
+	# and drop any queued retrofit so it can't sit in limbo against a dead instance.
 	cancel_upgrade(instance_id)
+	cancel_retrofit(instance_id)
 
 	var instance: Dictionary = buildings[instance_id]
 	var tile_id: String = instance.tile_id
@@ -1040,6 +1086,7 @@ func remove_building(instance_id: String) -> bool:
 			tile_buildings.erase(tile_id)
 	
 	buildings.erase(instance_id)
+	paused_buildings.erase(instance_id)
 	output_stockpile_destinations.erase(instance_id)
 	output_special_order_destinations.erase(instance_id)
 	# Removing battery housing shrinks the tile's cell slots — refund any now-excess loaded cells.
@@ -1137,6 +1184,21 @@ func refund_plan(instance_id: String) -> Dictionary:
 		"materials_value": refund.materials_value,
 		"total_if_cash": refund.total,        # money + all materials valued as cash
 	}
+
+# --- Pause (mothball) ------------------------------------------------------------------------
+# A paused building produces nothing and draws no inputs/power/labour, but keeps its upkeep.
+# Used by the supply-chain panel when a sold/demolished building leaves a neighbour stranded.
+func is_building_paused(instance_id: String) -> bool:
+	return bool(paused_buildings.get(instance_id, false))
+
+func set_building_paused(instance_id: String, paused: bool) -> void:
+	if not buildings.has(instance_id):
+		return
+	if paused:
+		paused_buildings[instance_id] = true
+	else:
+		paused_buildings.erase(instance_id)
+	building_paused_changed.emit(instance_id)
 
 # --- Demolish (queued 1-turn job) ------------------------------------------------------------
 func is_demolishing(instance_id: String) -> bool:
@@ -1516,6 +1578,24 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 	unlock_granted.emit(title, desc, via_condition)
 
 ## Record progress toward action+object conditions (e.g. record("Survey","tiles")).
+## Advance/reset the per-tile "stockpile fed by 7+ buildings" streaks from this
+## turn's flush: {tile_id -> distinct producing buildings}. Tiles at the bar
+## extend their streak; every other tile (including ones absent this turn) resets.
+const STOCKPILE_FEED_STREAK_BUILDINGS := 7  # owner raised from 3 (2026-07-09)
+
+func update_stockpile_feed_streaks(fed_counts: Dictionary) -> void:
+	var next: Dictionary = {}
+	for t in fed_counts:
+		if int(fed_counts[t]) >= STOCKPILE_FEED_STREAK_BUILDINGS:
+			next[t] = int(stockpile_feed_streaks.get(t, 0)) + 1
+	stockpile_feed_streaks = next
+
+func max_stockpile_feed_streak() -> int:
+	var best := 0
+	for t in stockpile_feed_streaks:
+		best = maxi(best, int(stockpile_feed_streaks[t]))
+	return best
+
 func record_unlock_progress(action: String, object: String, amount: int = 1) -> void:
 	if amount <= 0:
 		return
@@ -1572,6 +1652,10 @@ func _live_condition_met(d: Dictionary) -> bool:
 			return _count_buildings(obj, 1, false, turns) >= need
 		"Run Profitable L2":
 			return _count_buildings(obj, 2, true, 0) >= need
+		"Stockpile filled":
+			# Just-in-Time Logistics: some tile's stockpile received goods from 3+
+			# buildings for <qty> consecutive turns (streaks kept at output flush).
+			return max_stockpile_feed_streak() >= need
 	return false
 
 # Count player-owned buildings whose internal_name == `internal`, optionally
@@ -1958,8 +2042,8 @@ func _materials_rebate(reqs: Dictionary) -> float:
 
 # Land / NPC-building purchase cost after any Chief Investment "purchase_cost" discount
 # (tier3 -10% / tier2 -5% / tier1 +5% surcharge).
-func purchase_cost_after_advisor(base_cost: float) -> float:
-	var mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("purchase_cost", "*", {}).get("net", 0.0)) / 100.0)
+func purchase_cost_after_advisor(base_cost: float, ctx: Dictionary = {}) -> float:
+	var mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("purchase_cost", "*", ctx).get("net", 0.0)) / 100.0)
 	return base_cost * mult
 
 # Construction takes one turn longer than the raw CSV value (BUILD_DURATION_BUMP).
@@ -1988,11 +2072,40 @@ func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
 	if available <= 0:
 		return false
 	var clamped_patches: int = clampi(patches, 1, available)
-	var cost := purchase_cost_after_advisor(float(clamped_patches) * LAND_PATCH_COST)
+	# ctx carries the tile so per-tile purchase_cost modifiers (e.g. the land-deal
+	# decision's "development premium" follow-up) can target it.
+	var cost := purchase_cost_after_advisor(float(clamped_patches) * LAND_PATCH_COST, {"tile_id": tile_id})
 	if not deduct_money(cost):
 		return false
 	var owned := get_tile_land_owned(tile_id)
 	tile_land_owned[tile_id] = mini(MAX_TILE_LAND, owned + clamped_patches * LAND_PATCH_SIZE)
+	tile_land_owned_changed.emit(tile_id)
+	return true
+
+# --- Land sales (decision events; decision-events-spec.md D8) -----------------
+# Only surplus above the universal default holding is sellable, and only on tiles
+# with no player buildings or construction projects, so a sale can never undercut
+# a building footprint (land gates placement at get_tile_land_owned).
+
+func sellable_land_patches(tile_id: String) -> int:
+	if tile_id == "":
+		return 0
+	for b in buildings.values():
+		if str(b.get("tile_id", "")) == tile_id:
+			return 0
+	for p in Construction.construction_projects.values():
+		if str(p.get("tile_id", "")) == tile_id:
+			return 0
+	var surplus := get_tile_land_owned(tile_id) - DEFAULT_TILE_LAND_OWNED
+	return maxi(0, int(floor(float(surplus) / float(LAND_PATCH_SIZE))))
+
+func sell_tile_land(tile_id: String, patches: int, price_per_patch: float) -> bool:
+	var sellable := sellable_land_patches(tile_id)
+	var clamped := clampi(patches, 0, sellable)
+	if clamped <= 0:
+		return false
+	tile_land_owned[tile_id] = get_tile_land_owned(tile_id) - clamped * LAND_PATCH_SIZE
+	add_money(float(clamped) * price_per_patch)
 	tile_land_owned_changed.emit(tile_id)
 	return true
 
@@ -2028,6 +2141,7 @@ func reset() -> void:
 	pending_upgrades.clear()
 	pending_retrofits.clear()
 	demolish_queue.clear()
+	paused_buildings.clear()
 	_last_link_flow.clear()
 	overflow_shipments.clear()
 	sales_by_tile.clear()
@@ -2045,6 +2159,7 @@ func reset() -> void:
 	recruited_advisor_ids.clear()
 	fired_advisor_cooldowns.clear()
 	advisor_loyalty.clear()
+	advisor_hired_turn.clear()
 	_advisor_walk_streak.clear()
 	advisor_missions_completed.clear()
 	_advisor_mission5_streak.clear()
@@ -2065,6 +2180,8 @@ func reset() -> void:
 	recurring_sells.clear()
 	recurring_bulk_sells.clear()
 	recurring_buys.clear()
+	cfo_tax_credit_pool.clear()
+	cfo_tax_credit_intro_shown = false
 	transaction_log.clear()
 	move_log.clear()
 	input_tile_only.clear()
@@ -2073,6 +2190,7 @@ func reset() -> void:
 	# import_state, so this only bites the reset-without-import paths.)
 	unlocked_titles.clear()
 	_unlock_progress.clear()
+	stockpile_feed_streaks.clear()
 	_next_instance_counter = 0
 	ruleset = DEFAULT_RULESET.duplicate(true)
 	state_reset.emit()
@@ -2123,6 +2241,9 @@ func export_state() -> Dictionary:
 		"recruited_advisor_ids": recruited_advisor_ids.duplicate(true),
 		"fired_advisor_cooldowns": fired_advisor_cooldowns.duplicate(true),
 		"advisor_loyalty": advisor_loyalty.duplicate(true),
+		"advisor_hired_turn": advisor_hired_turn.duplicate(true),
+		"cfo_tax_credit_pool": cfo_tax_credit_pool.duplicate(true),
+		"cfo_tax_credit_intro_shown": cfo_tax_credit_intro_shown,
 		"advisor_walk_streak": _advisor_walk_streak.duplicate(true),
 		"advisor_missions_completed": advisor_missions_completed.duplicate(true),
 		"advisor_mission5_streak": _advisor_mission5_streak.duplicate(true),
@@ -2150,6 +2271,7 @@ func export_state() -> Dictionary:
 		"pending_upgrades": pending_upgrades.duplicate(true),
 		"pending_retrofits": pending_retrofits.duplicate(true),
 		"demolish_queue": demolish_queue.duplicate(true),
+		"paused_buildings": paused_buildings.duplicate(true),
 		"overflow_shipments": overflow_shipments.duplicate(true),
 		"transaction_log": transaction_log.duplicate(true),
 		"move_log": move_log.duplicate(true),
@@ -2161,6 +2283,7 @@ func export_state() -> Dictionary:
 		"deposit_remaining": deposit_remaining.duplicate(true),
 		"unlocked_titles": unlocked_titles.duplicate(true),
 		"unlock_progress": _unlock_progress.duplicate(true),
+		"stockpile_feed_streaks": stockpile_feed_streaks.duplicate(true),
 		"seaport_auto_subscribe": seaport_auto_subscribe,
 		"seaport_subscribed": seaport_subscribed.duplicate(true),
 	}
@@ -2183,6 +2306,8 @@ func import_state(d: Dictionary) -> void:
 	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
 	recruited_advisor_ids = _sanitize_advisor_ids(d.get("recruited_advisor_ids", STARTING_TRIO))
 	advisor_loyalty = (d.get("advisor_loyalty", {}) as Dictionary).duplicate(true)
+	cfo_tax_credit_pool = (d.get("cfo_tax_credit_pool", []) as Array).duplicate(true)
+	cfo_tax_credit_intro_shown = bool(d.get("cfo_tax_credit_intro_shown", false))
 	_advisor_walk_streak = (d.get("advisor_walk_streak", {}) as Dictionary).duplicate(true)
 	advisor_missions_completed = (d.get("advisor_missions_completed", {}) as Dictionary).duplicate(true)
 	_advisor_mission5_streak = (d.get("advisor_mission5_streak", {}) as Dictionary).duplicate(true)
@@ -2202,6 +2327,12 @@ func import_state(d: Dictionary) -> void:
 	for pid in permanent_advisor_ids:
 		if not recruited_advisor_ids.has(pid):
 			recruited_advisor_ids.append(pid)
+	# Decision-gate tenure (tolerant reader): pre-feature saves carry no hire turns,
+	# so existing councils default to "hired last turn" and count immediately.
+	advisor_hired_turn = {}
+	var raw_hired: Dictionary = d.get("advisor_hired_turn", {})
+	for pid in permanent_advisor_ids:
+		advisor_hired_turn[str(pid)] = int(raw_hired.get(str(pid), int(TurnManager.current_turn) - 1))
 	advisor_seats = _sanitize_advisor_seats(d.get("advisor_seats", {}))
 	max_advisor_slots = clampi(int(d.get("max_advisor_slots", MAX_ADVISOR_SLOTS_DEFAULT)), MAX_ADVISOR_SLOTS_DEFAULT, MAX_ADVISOR_SLOTS_CAP)
 	match_rng_seed = int(d.get("advisor_rng_seed", DEFAULT_MATCH_RNG_SEED))
@@ -2230,6 +2361,7 @@ func import_state(d: Dictionary) -> void:
 	pending_upgrades = (d.get("pending_upgrades", []) as Array).duplicate(true)
 	pending_retrofits = (d.get("pending_retrofits", []) as Array).duplicate(true)
 	demolish_queue = (d.get("demolish_queue", {}) as Dictionary).duplicate(true)
+	paused_buildings = (d.get("paused_buildings", {}) as Dictionary).duplicate(true)
 	overflow_shipments = (d.get("overflow_shipments", []) as Array).duplicate(true)
 	transaction_log = (d.get("transaction_log", []) as Array).duplicate(true)
 	move_log = (d.get("move_log", []) as Array).duplicate(true)
@@ -2244,6 +2376,7 @@ func import_state(d: Dictionary) -> void:
 	deposit_remaining = (d.get("deposit_remaining", deposit_remaining) as Dictionary).duplicate(true)
 	unlocked_titles = (d.get("unlocked_titles", {}) as Dictionary).duplicate(true)
 	_unlock_progress = (d.get("unlock_progress", {}) as Dictionary).duplicate(true)
+	stockpile_feed_streaks = (d.get("stockpile_feed_streaks", {}) as Dictionary).duplicate(true)
 	seaport_auto_subscribe = bool(d.get("seaport_auto_subscribe", false))
 	seaport_subscribed = (d.get("seaport_subscribed", {}) as Dictionary).duplicate(true)
 	# Derived state: the tile index is rebuilt, never saved; caches invalidate.
@@ -2602,6 +2735,30 @@ func preview_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary
 
 func add_recurring_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> void:
 	recurring_moves.append({"source": source_tile, "dest": dest_tile, "goods": goods_qtys.duplicate(true), "turn_started": _ledger_turn()})
+	recurring_orders_changed.emit()
+
+# --- Cancel recurring orders (Market panel Movements/Sales tabs). Erase-by-value: the
+# UI holds the exact entry dict, so this removes that standing order. ------------------
+func remove_recurring_move(entry: Dictionary) -> bool:
+	if not recurring_moves.has(entry):
+		return false
+	recurring_moves.erase(entry)
+	recurring_orders_changed.emit()
+	return true
+
+func remove_recurring_sell(entry: Dictionary) -> bool:
+	if not recurring_sells.has(entry):
+		return false
+	recurring_sells.erase(entry)
+	recurring_orders_changed.emit()
+	return true
+
+func remove_recurring_bulk_sell(entry: Dictionary) -> bool:
+	if not recurring_bulk_sells.has(entry):
+		return false
+	recurring_bulk_sells.erase(entry)
+	recurring_orders_changed.emit()
+	return true
 
 func add_scheduled_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> void:
 	scheduled_moves.append({"source": source_tile, "dest": dest_tile, "goods": goods_qtys.duplicate(true)})
@@ -2652,9 +2809,11 @@ func _run_recurring_sell(entry: Dictionary) -> void:
 
 func add_recurring_sell(source_tile: String, goods_qtys: Dictionary) -> void:
 	recurring_sells.append({"source": source_tile, "goods": goods_qtys.duplicate(true), "turn_started": _ledger_turn()})
+	recurring_orders_changed.emit()
 
 func add_recurring_bulk_sell(params: Dictionary) -> void:
 	recurring_bulk_sells.append({"params": params.duplicate(true), "turn_started": _ledger_turn()})
+	recurring_orders_changed.emit()
 
 func add_recurring_buy(dest_tile: String, good_id: String, qty: int) -> void:
 	recurring_buys.append({"dest": dest_tile, "good": good_id, "qty": qty, "turn_started": _ledger_turn()})
@@ -2846,6 +3005,68 @@ func preview_buy(dest_tile: String, good_id: String, qty: int) -> Dictionary:
 	return {"cost": float(quote.get("cost", 0.0)), "goods_cost": float(quote.get("goods_cost", 0.0)),
 		"transport_cost": float(quote.get("transport_cost", 0.0)), "turns": int(quote.get("turns", 0)),
 		"port": str(quote.get("port", ""))}
+
+# --- Warehouse expansion (per-tile storage upgrade paid in materials) ---
+
+## Everything the tile panel needs to render the "Expand Warehouse" offer:
+## the next level's material bill with per-good empire stock vs market cost
+## (ask + freight to the tile), plus affordability flags.
+func warehouse_upgrade_quote(tile_id: String) -> Dictionary:
+	var level := Stockpile.get_warehouse_level(tile_id)
+	var next_level := level + 1
+	if tile_id == "" or not EconomyConfig.WAREHOUSE_UPGRADE_COSTS.has(next_level):
+		return {"maxed": true, "level": level}
+	var costs: Dictionary = EconomyConfig.WAREHOUSE_UPGRADE_COSTS[next_level]
+	var materials: Array = []
+	var market_total := 0.0
+	var empire_ok := true
+	for good_id in costs:
+		var qty := int(costs[good_id])
+		var have := Stockpile.get_total(str(good_id))
+		var quote := TransportService.quote_market_buy(tile_id, str(good_id), qty, seaport_would_cover(str(good_id)))
+		var cost := float(quote.get("cost", float(qty) * MarketState.get_buy_price(str(good_id))))
+		materials.append({"good_id": str(good_id), "qty": qty, "have_empire": have, "market_cost": cost})
+		market_total += cost
+		if have < qty:
+			empire_ok = false
+	return {
+		"maxed": false, "level": level, "next_level": next_level,
+		"current_cap": int(EconomyConfig.WAREHOUSE_STORAGE_CAP.get(level, Stockpile.TILE_CAPACITY)),
+		"next_cap": int(EconomyConfig.WAREHOUSE_STORAGE_CAP.get(next_level, Stockpile.TILE_CAPACITY)),
+		"materials": materials, "market_total": market_total,
+		"empire_ok": empire_ok, "money_ok": market_total <= money,
+	}
+
+## Commit the expansion. source = "market" (pay cash at ask + freight; the materials
+## are consumed by the works, nothing ships) or "empire" (pull the bill from stock
+## across the player's tiles). Applies immediately, like road/rail infra purchases.
+func upgrade_warehouse(tile_id: String, source: String) -> Dictionary:
+	var q := warehouse_upgrade_quote(tile_id)
+	if bool(q.get("maxed", false)):
+		return {"ok": false, "reason": "maxed"}
+	var next_level := int(q.get("next_level", 0))
+	var materials: Array = q.get("materials", [])
+	match source:
+		"market":
+			var total := float(q.get("market_total", 0.0))
+			if total > money:
+				return {"ok": false, "reason": "money"}
+			add_money(-total)
+			for m in materials:
+				# Deficit feed: these are real market purchases (price impact applies).
+				MarketState.record_market_buy_volume(str(m.good_id), int(m.qty))
+			goods_movement_recorded.emit("buy", "upgrade", 0)
+		"empire":
+			for m in materials:
+				if Stockpile.get_total(str(m.good_id)) < int(m.qty):
+					return {"ok": false, "reason": "materials"}
+			for m in materials:
+				Stockpile.consume_anywhere(str(m.good_id), int(m.qty))
+		_:
+			return {"ok": false, "reason": "unknown_source"}
+	Stockpile.set_warehouse_level(tile_id, next_level)
+	request_toast("Warehouse expanded to level %d — %d storage" % [next_level, int(q.get("next_cap", 0))], "success")
+	return {"ok": true, "level": next_level, "capacity": int(q.get("next_cap", 0))}
 
 func get_oneoff_transaction_rows() -> Array:
 	var rows: Array = []
@@ -3557,7 +3778,7 @@ func tick_workforce_policies() -> void:
 		var active := is_workforce_policy_enabled(policy_id)
 		var effect: Dictionary = workforce_policy_effects.get(policy_id, {})
 		_advance_workforce_effect(policy_id, effect, active)
-		if not active and absf(float(effect.get("output_pct", 0.0))) < 0.00001 and absf(float(effect.get("labour_pct", 0.0))) < 0.00001 and absf(float(effect.get("dividend_pct", 0.0))) < 0.00001:
+		if not active and absf(float(effect.get("output_pct", 0.0))) < 0.00001 and absf(float(effect.get("labour_pct", 0.0))) < 0.00001 and absf(float(effect.get("dividend_pct", 0.0))) < 0.00001 and absf(float(effect.get("maint_pct", 0.0))) < 0.00001:
 			workforce_policy_effects.erase(policy_id)
 		else:
 			workforce_policy_effects[policy_id] = effect
@@ -3589,10 +3810,17 @@ func _advance_workforce_effect(policy_id: String, effect: Dictionary, active: bo
 			else:
 				labour_pct = minf(0.0, labour_pct + 0.0025)
 		WORKFORCE_POLICY_LAX_SAFETY:
+			# Cutting corners lifts output a little but lets the plant rot: maintenance
+			# climbs +5% every turn the policy runs, up to +100% (2× upkeep), then eases
+			# back off when strict/standard safety is restored.
+			var maint_pct := float(effect.get("maint_pct", 0.0))
 			if active:
 				labour_pct = minf(0.15, labour_pct + 0.005)
+				maint_pct = minf(1.0, maint_pct + 0.05)
 			else:
 				labour_pct = maxf(0.0, labour_pct - 0.0025)
+				maint_pct = maxf(0.0, maint_pct - 0.05)
+			effect["maint_pct"] = maint_pct
 		WORKFORCE_POLICY_LONG_TENURE:
 			# Long-serving staff get cheaper over time (to -10%); a periodic awards
 			# payout (+10% one turn every 10th) is added in workforce_labour_cost_delta.
@@ -3641,12 +3869,70 @@ func workforce_output_multiplier(turn_number: int = -1) -> float:
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_STRICT_SAFETY):
 		multiplier *= 0.90
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_LAX_SAFETY):
-		multiplier *= 1.10
+		multiplier *= 1.05
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS) and turn % 10 == 0:
 		multiplier *= 1.20
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
 		multiplier *= 1.10
 	return multiplier
+
+# Empire-wide maintenance multiplier from workforce policy (currently only Lax Safety,
+# whose neglect penalty ramps +5%/turn to +100%). Applied per building in the
+# maintenance_labour phase. 1.0 = no change.
+func workforce_maintenance_multiplier() -> float:
+	var lax: Dictionary = workforce_policy_effects.get(WORKFORCE_POLICY_LAX_SAFETY, {})
+	return 1.0 + maxf(0.0, float(lax.get("maint_pct", 0.0)))
+
+# ── CFO tax-loss carry-forward ───────────────────────────────────────────────
+func cfo_seated() -> bool:
+	return get_advisor_in_seat("cfo") != ""
+
+# Bank a credit worth 5% of the turn's revenue on a losing turn. Fires the one-time
+# explainer signal the first time. Returns the amount banked.
+func cfo_bank_tax_credit(revenue: float) -> float:
+	var amount := maxf(0.0, revenue) * CFO_TAX_CREDIT_RATE
+	if amount < 0.01:
+		return 0.0
+	cfo_tax_credit_pool.append({"amount": amount, "turns_left": CFO_TAX_CREDIT_TURNS})
+	if not cfo_tax_credit_intro_shown:
+		cfo_tax_credit_intro_shown = true
+		cfo_tax_credit_filed.emit(amount)
+	return amount
+
+# Consume banked credits (oldest first) to offset a tax bill. Returns the amount applied.
+func cfo_apply_tax_credit(tax: float) -> float:
+	if tax <= 0.0 or cfo_tax_credit_pool.is_empty():
+		return 0.0
+	var remaining := tax
+	var applied := 0.0
+	for entry in cfo_tax_credit_pool:
+		if remaining <= 0.0:
+			break
+		var take := minf(float(entry.get("amount", 0.0)), remaining)
+		entry["amount"] = float(entry.get("amount", 0.0)) - take
+		applied += take
+		remaining -= take
+	_prune_tax_credits()
+	return applied
+
+# Tick every banked credit's 5-turn window down by one; drop the exhausted/expired.
+func cfo_age_tax_credits() -> void:
+	for entry in cfo_tax_credit_pool:
+		entry["turns_left"] = int(entry.get("turns_left", 0)) - 1
+	_prune_tax_credits()
+
+func cfo_tax_credit_available() -> float:
+	var total := 0.0
+	for entry in cfo_tax_credit_pool:
+		total += float(entry.get("amount", 0.0))
+	return total
+
+func _prune_tax_credits() -> void:
+	var kept: Array = []
+	for entry in cfo_tax_credit_pool:
+		if int(entry.get("turns_left", 0)) > 0 and float(entry.get("amount", 0.0)) > 0.005:
+			kept.append(entry)
+	cfo_tax_credit_pool = kept
 
 # Summed workforce-policy labour delta (a fraction, e.g. -0.10 for -10%). Policies
 # combine ADDITIVELY here; callers apply this to the 100% base alongside the labour
@@ -4111,6 +4397,17 @@ func note_building_built() -> void:
 	_agenda_last_build_turn = int(TurnManager.current_turn)
 	_agenda_flags["_built"] = true
 
+## Decision-event loyalty (decision-events-spec.md §6.2): +0.5 local / +2.0 company
+## for following an advocating advisor, −0.5 for ignoring one. Routed through
+## _set_advisor_loyalty with mission checks ON, so a big follow can complete a
+## mission milestone and serial snubs walk an advisor exactly like agenda decay.
+func apply_decision_loyalty(advisor_id: String, delta: float, decision_title: String) -> void:
+	if _roster_entry(advisor_id).is_empty() or not permanent_advisor_ids.has(advisor_id):
+		return
+	_set_advisor_loyalty(advisor_id, advisor_loyalty_value(advisor_id) + delta)
+	print("[Decisions] %s loyalty %+.1f (%s)" % [advisor_id, delta, decision_title])
+	advisors_changed.emit()
+
 # Debug cheat: nudge an advisor's loyalty by delta, clamped to [-10, 10].
 func cheat_set_loyalty(advisor_id: String, delta: float) -> void:
 	if _roster_entry(advisor_id).is_empty():
@@ -4366,9 +4663,19 @@ func hire_advisor(advisor_id: String) -> bool:
 		return false
 	permanent_advisor_ids.append(advisor_id)
 	advisor_loyalty[advisor_id] = 0.0          # loyalty starts neutral on hire
+	# Decision-gate tenure: a fresh hire counts only from the NEXT turn, so a live
+	# dilemma can't be unlocked by panic-hiring (decision-events-spec.md §5.1).
+	advisor_hired_turn[advisor_id] = int(TurnManager.current_turn)
 	_advisor_walk_streak.erase(advisor_id)
 	advisors_changed.emit()
 	return true
+
+## True when the advisor is employed AND was hired on an earlier turn than the
+## current one — the eligibility bar for decision gates and advocacy.
+func is_advisor_tenured(advisor_id: String) -> bool:
+	if not permanent_advisor_ids.has(advisor_id):
+		return false
+	return int(TurnManager.current_turn) > int(advisor_hired_turn.get(advisor_id, -1))
 
 func is_fired(advisor_id: String) -> bool:
 	return fired_advisor_cooldowns.has(advisor_id)
@@ -4384,6 +4691,7 @@ func fire_advisor(advisor_id: String) -> bool:
 		return false
 	permanent_advisor_ids.erase(advisor_id)
 	advisor_loyalty.erase(advisor_id)
+	advisor_hired_turn.erase(advisor_id)
 	_advisor_walk_streak.erase(advisor_id)
 	for seat_id in advisor_seats.keys():
 		if str(advisor_seats[seat_id]) == advisor_id:

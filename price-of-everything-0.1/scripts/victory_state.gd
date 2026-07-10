@@ -33,6 +33,10 @@ const TRACK_ORDER: Array = ["autarkic", "logistics", "richest", "widest", "green
 
 const AUTARKIC_START := 10
 const AUTARKIC_CAP := 30
+# Minimum-scale gate: the Autarkic track only scores once you've actually self-supplied at
+# volume — a real, buy-nothing economy, not an idle one that trivially "buys nothing". Until
+# the player has produced this many units in total, the track contributes 0.
+const AUTARKIC_MIN_UNITS := 10000
 const LOGI_MIN_MOVES := 100
 const LOGI_EFF_TURNS := 1
 const LOGI_FLOOR := 0.25
@@ -67,6 +71,7 @@ const TRACK_EXPLAIN := {
 
 # ── Saved state (round-trips via export/import — spec §3) ──────────────────
 var autarkic_streak: int = 0
+var produced_units_lifetime: int = 0     # cumulative units produced (Autarkic scale gate)
 var logistics_total: int = 0
 var logistics_efficient: int = 0
 var richest_window: Array = []           # trailing retained-profit buffer (<= RICHEST_WINDOW)
@@ -137,6 +142,7 @@ func reset() -> void:
 func export_state() -> Dictionary:
 	return {
 		"autarkic_streak": autarkic_streak,
+		"produced_units_lifetime": produced_units_lifetime,
 		"logistics_total": logistics_total,
 		"logistics_efficient": logistics_efficient,
 		"richest_window": richest_window.duplicate(),
@@ -151,6 +157,7 @@ func export_state() -> Dictionary:
 func import_state(d: Dictionary) -> void:
 	_reset_fields()
 	autarkic_streak = int(d.get("autarkic_streak", 0))
+	produced_units_lifetime = int(d.get("produced_units_lifetime", 0))
 	logistics_total = int(d.get("logistics_total", 0))
 	logistics_efficient = int(d.get("logistics_efficient", 0))
 	for v in (d.get("richest_window", []) as Array):
@@ -204,6 +211,10 @@ func _tick() -> void:
 			bought_any = true
 			break
 	autarkic_streak = 0 if bought_any else autarkic_streak + 1
+	# Autarkic scale gate: accumulate this turn's produced units (the streak only starts
+	# scoring once lifetime production clears AUTARKIC_MIN_UNITS).
+	for qty in (_last_summary.get("produced", {}) as Dictionary).values():
+		produced_units_lifetime += int(qty)
 	# Richest: push this turn's retained (post-tax, post-dividend) profit and smooth.
 	var rp := float(_last_summary.get("money_in", 0.0)) - float(_last_summary.get("money_out", 0.0))
 	richest_window.append(rp)
@@ -233,6 +244,8 @@ func _tick() -> void:
 func _live_progress(key: String) -> float:
 	match key:
 		"autarkic":
+			if produced_units_lifetime < AUTARKIC_MIN_UNITS:
+				return 0.0
 			return clampf(float(autarkic_streak - AUTARKIC_START) / float(AUTARKIC_CAP - AUTARKIC_START), 0.0, 1.0)
 		"logistics":
 			if logistics_total < LOGI_MIN_MOVES:
@@ -338,6 +351,9 @@ func _build_breakdown(turn: int, total: int) -> Dictionary:
 func _metric_text(key: String) -> String:
 	match key:
 		"autarkic":
+			if produced_units_lifetime < AUTARKIC_MIN_UNITS:
+				return "Produce %s / %s units to unlock (self-supply at scale first)" % [
+					_thousands(produced_units_lifetime), _thousands(AUTARKIC_MIN_UNITS)]
 			return "Streak %d / %d turns (scores from %d)" % [autarkic_streak, AUTARKIC_CAP, AUTARKIC_START]
 		"logistics":
 			if logistics_total == 0:
@@ -355,6 +371,17 @@ func _metric_text(key: String) -> String:
 			var share_pct := int(round(100.0 * float(g.share)))
 			return "Green %d%% of %d MW (need %d MW & 20%%)" % [share_pct, int(g.total), GREEN_MIN_POWER]
 	return ""
+
+func _thousands(n: int) -> String:
+	var s := str(absi(n))
+	var out := ""
+	var c := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		c += 1
+		if c % 3 == 0 and i > 0:
+			out = "," + out
+	return ("-" if n < 0 else "") + out
 
 func _trend_for(key: String) -> Array:
 	var out: Array = []
@@ -374,6 +401,7 @@ func _push_history(turn: int, total: int, live: Dictionary) -> void:
 
 func _reset_fields() -> void:
 	autarkic_streak = 0
+	produced_units_lifetime = 0
 	logistics_total = 0
 	logistics_efficient = 0
 	richest_window = []

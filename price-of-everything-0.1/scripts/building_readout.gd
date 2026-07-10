@@ -166,7 +166,12 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 	var transport_cost := 0.0
 	if units_out > 0 and target != "" and target != own_tile and bool(route.get("reachable", true)):
 		transport_cost = float(BuildingStatus.route_summary(own_tile, target, out_gid, units_out).get("cost", 0.0))
-	var running := maint + float(lab.get("cost", 0.0)) + power_cost + input_cost + transport_cost
+	# Storage overhead: this building's attributed share of its tile's actual
+	# warehousing fee last turn (CostSolver splits each tile's charge across the
+	# buildings that ran there). 0 until the first solve or when nothing is stored.
+	var wh_bd: Dictionary = CostSolver.last_result.get("per_building", {}).get(str(building.get("instance_id", "")), {})
+	var warehousing := float(wh_bd.get("warehousing_cost", 0.0))
+	var running := maint + float(lab.get("cost", 0.0)) + power_cost + input_cost + transport_cost + warehousing
 	var pc := BuildingStatus.produce_cost_status(building)
 	return {
 		"value": float(building_data.get("base_price", 0.0)),   # asset value (build/buy price), not per-turn
@@ -179,6 +184,7 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 		"maintenance": maint,
 		"labour_cost": float(lab.get("cost", 0.0)),
 		"power_cost": power_cost,
+		"warehousing_cost": warehousing,
 		"running_cost": running,
 		"net": output_value - running,
 		"unit_cost": float(pc.get("unit_cost", -1.0)),

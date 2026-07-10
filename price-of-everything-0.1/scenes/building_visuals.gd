@@ -63,11 +63,12 @@ const BLOCK_FILL_MAX := 0.9          # largest (lots validated at this size)
 const BLOCK_MIN_LOTS := 3            # fewer usable lots than this -> skip block mode
 const BLOCK_ASPECT := 0.62           # block building depth as a fraction of its width — LONG side faces the road
 const BLOCK_SQUARE_PCT := 25         # % of block buildings kept square (seeded) for variety
-# Enclosure-seeded tiles fill the block with a FEW BIG CHUNKS (3-6) instead of the fine lot grid — each
-# building fills its chunk for a dense, fully-built interior (visual size decoupled from tile_size).
+# ~CHUNK_PROB% of block tiles (seeded) fill the block with a FEW BIG CHUNKS (3-6) instead of the fine
+# lot grid — each building fills its chunk for a dense interior (visual size decoupled from tile_size).
+const CHUNK_PROB := 40               # % of block tiles using chunk fill (was the enclosure-seed rate)
 const CHUNK_COLS_TARGET := 80.0      # chunk width target along the road → 2-3 columns by run length
-const CHUNK_DEPTH := 88.0            # chunk depth (perpendicular) → 1-2 rows deep within ENCL_MAX_V
-const CHUNK_GAP := 4.0               # gap between filled chunks (and to the ring)
+const CHUNK_DEPTH := 88.0            # chunk depth (perpendicular) → 1-2 rows deep
+const CHUNK_GAP := 4.0               # gap between filled chunks
 const BLOCK_DEBUG := false           # set true to log per-tile block decisions to the console ([BLOCKDBG])
 
 const ROAD_CLEAR := 18.0             # no footprint edge may come within this of a road centreline
@@ -80,11 +81,50 @@ const MIN_BUILD_LEVEL := 0           # NavGrid level below this (the shore fring
 									 # waterline) is non-buildable — keeps footprints out of the sea
 const W_AWAY := 1.5                  # edge-seekers: weight on distance-from-buildings vs from-centre
 
-const NPC_OUTLINE_W := 2.0                    # NPC footprints: thin white outline on the map polygon
-const PLAYER_OUTLINE := Color(0.5, 0.5, 0.5)  # player footprints: 1px medium-grey outline
+const NPC_OUTLINE_W := 2.0                    # farm fields: thin white outline (npc) — buildings use INK
+const PLAYER_OUTLINE := Color(0.5, 0.5, 0.5)  # farm fields: 1px medium-grey outline (player)
 const PLAYER_OUTLINE_W := 1.0
-const ROOF_MARK := Color(0.45, 0.45, 0.45, 0.6) # thin grey roof ridges on player buildings
-const ROOF_MARK_W := 1.0
+
+# ── "Ink & wash" plate look (docs/building-visuals-ink-spec.md, phase I1) ──────
+# One dark-sepia ink for EVERY building outline + interior motif; categories
+# differentiate by FILL only, inside a muted triad. All variation seeded via
+# RoadHash (deterministic across save/load). Farms keep their own field look.
+const INK := Color("#3a2c18")
+const INK_W := 1.3
+const WASH_GREY := Color("#8d8a80")           # extraction / power / electrochemistry
+const WASH_RED := Color("#b0483a")            # urban production / default
+const WASH_MUSTARD := Color("#c9992e")        # storage / logistics / infrastructure
+const WASH_RUINS := Color("#7a5f43")
+# Owner 2026-07-10: restore the pre-ink colour FAMILIES in muted plate shades.
+const WASH_NAVY := Color("#5d7285")           # metallurgy (furnaces) — washed steel navy (was #4A7A9B)
+const WASH_BLUE := Color("#7ba7bc")           # water — lighter powder blue (was #3A7BD5)
+const WASH_PINK := Color("#b57f97")           # refinery — dusty plum-pink (was purple #8E5BC0)
+const WASH_ORANGE := Color("#c9803d")         # manufacturing — muted terracotta (was #E08A3C)
+const WASH_LIME := Color("#9fae5a")           # electrochemistry (chem plants) — olive lime (was #A6E22E)
+const WASH_JITTER := 0.05                     # ±5% per-instance value jitter (seeded)
+const NPC_WHITE := Color("#efe9db")           # NPC fill: warm paper white (sits in the parchment)
+const SAWTOOTH_PITCH := 12.0                  # factory shed-roof line spacing (u)
+const TERRACE_PITCH := 14.0                   # urban party-wall slice spacing (u)
+const CHIMNEY_R := 2.2
+# Ink & wash phase I2+I4 (spec §2.2/§2.4): compound massing wings + hand-drawn wobble.
+const WING_MIN_PARENT_AREA := 140.0           # only halls this big grow wings (u²)
+const WING_AREA_MIN := 0.20                   # wing area as a fraction of the parent
+const WING_AREA_SPAN := 0.20                  #   … + seeded 0-0.20
+const WOBBLE_STEP := 16.0                     # subdivide footprint edges every ~16 u at DRAW time
+const WOBBLE_AMP := 1.1                       # perpendicular jitter (u); logic polygon never wobbles
+const WOBBLE_MIN_PERIM := 36.0                # tiny shapes stay crisp (jitter reads as noise)
+const OFFSHORE_MIN_SEP := 120.0               # sea structures spread at a uniform distance
+# Courtyard block-masses (owner rules 2026-07-10): bunches of 5+ adjacent
+# same-owner buildings draw as ONE mass; deep masses get an inner courtyard.
+# Urban tiles always mass; rural/hill a seeded third; mountains never.
+const COURT_MIN_BUNCH := 5
+const COURT_ADJ := 10.0            # max footprint gap that still counts as one bunch
+const COURT_GROW := 3.5            # inflate-merge-deflate weld margin
+const COURT_INSET := 28.0          # courtyard sits this deep inside the mass (needs 2+ rows)
+const COURT_MIN_YARD := 400.0      # min courtyard area (u²) — thin L-masses get none
+const COURTYARD_FILL := Color("#cfc3a2")   # inner yard ground
+const TERRACE_SHADE := 0.05                   # per-strip value overlay so terraces read as houses
+const VENT_SIZE := Vector2(4.5, 2.8)          # factory rooftop vent/clerestory rect (u)
 
 # Subcomponents (Sanborn industrial detail): each building gets at most one rect annex + one round
 # tank, placed in a SECOND pass after all buildings + roads exist, in spare buildable space beside
@@ -151,6 +191,8 @@ var _tile_block_templates: Dictionary = {} # tile_id -> {angle, lots:Array[Vecto
 
 # Ancillary tanks/annexes (second pass, re-derived; never persisted). Each: {tile_id, verts (world), color, bb}.
 var _subcomponents: Array = []
+var _block_masses: Dictionary = {}     # tile_id -> Array[{poly, holes, color, bb, key}]
+var _massed_by_tile: Dictionary = {}   # tile_id -> {instance_id: true} — members drawn as ink divisions
 var _subcomp_dirty: Dictionary = {}   # tile_id -> true, tiles needing a subcomponent rebuild
 var _subcomp_queued := false
 # Farm layout (re-derived with subcomponents; never persisted). A field's render shape depends on its
@@ -183,6 +225,12 @@ func _ready() -> void:
 	# tile so its existing buildings snap to the carriageway. Without this they
 	# keep the roadless fallback layout and never visibly align to the new road.
 	RoadWorks.order_settled.connect(_on_road_settled)
+	# An upgraded building grows annex wings (level-driven compound massing) —
+	# re-derive its tile's subcomponents when the new level lands.
+	MatchState.building_upgraded.connect(_on_building_upgraded)
+	# A bought NPC building swaps to the player's wash (and leaves any NPC
+	# block-mass it sat in) the moment ownership changes.
+	MatchState.building_owner_changed.connect(_on_building_owner_changed)
 	# When RoadWorks promotes a farm tile's outer ring + one path to real roads, stop drawing those
 	# brown tracks (the yellow road now represents them).
 	if RoadWorks.has_signal("farm_roads_promoted"):
@@ -234,6 +282,7 @@ func all_farm_cluster_rings() -> Array:
 			out.append(ring)
 	return out
 
+
 func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, instance_id: String, coord: Vector2i) -> void:
 	if NON_FOOTPRINT_IDS.has(building_id) or FOREST_BUILDING_IDS.has(building_id):
 		return  # roads/cables are networks; forests are drawn by ForestVisuals
@@ -247,6 +296,7 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 
 ## Lay out one building: size it, pick a shape, and place it (frontage row, else abut a
 ## neighbour, else low ground). Appends a placement (or nothing if the tile is full).
+
 func _place_building(instance_id: String, building_id: String, tile_id: String, coord: Vector2i) -> void:
 	_ensure_tile(tile_id, coord)
 	var bd := Catalog.get_building(building_id)
@@ -268,11 +318,17 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# (mines/recycling) skip the central block and keep their far-corner behaviour; farms
 	# never block-lot either — they own a polygonal field placed by _search's farm branch.
 	var placed := {}
-	if not is_edge and cat != "farm" and _use_block_mode(tile_id, coord):
+	# Offshore structures (wind farm, oil platform) sit ON WATER — the land
+	# mask can't place them at all. Uniform spread, no roads/frontage rules
+	# (owner 2026-07-10: sea buildings keep a uniform distance apart).
+	var offshore := str(bd.get("internal_name", "")).to_lower().begins_with("offshore")
+	if offshore:
+		placed = _place_offshore(coord, area, placed_here)
+	elif not is_edge and cat != "farm" and _use_block_mode(tile_id, coord):
 		var tmpl := _ensure_block_template(tile_id, coord)
 		if not tmpl.is_empty():
 			placed = _claim_slot(tmpl, size_units, coord, tile_id, placed_here)
-	if placed.is_empty():
+	if placed.is_empty() and not offshore:
 		placed = _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here)
 	if placed.is_empty():
 		return  # tile too crowded to fit it — not drawn rather than overlapping
@@ -293,6 +349,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		"center_rel": placed.center_rel,
 		"half": placed.half,
 		"hatch": hatch,
+		"offshore": bool(placed.get("offshore", false)),
 	}
 	if instance_id != "":
 		_placement_index[instance_id] = _placements.size()
@@ -320,8 +377,8 @@ func _ensure_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	return tmpl
 
 ## Public: build/cache this tile's block template if a road run + room exist; true when a real grid formed.
-## RoadWorks calls this before enclosing (the ring is derived from the template's lots). Ensures the tile's
-## land mask first so the template can validate lots.
+## Ensures the tile's land mask first so the template can validate lots. (Used by tests; gameplay builds
+## the template lazily via _ensure_tile.)
 func ensure_block_template_for(tile_id: String, coord: Vector2i) -> bool:
 	_ensure_tile(tile_id, coord)
 	return not _ensure_block_template(tile_id, coord).is_empty()
@@ -343,6 +400,16 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 		return {}
 	var segs: Array = _block_road_segments(coord)   # ungated: any road crossing the tile (validation + adjacency)
 	var rivers: Array = _tile_rivers.get(tile_id, [])
+	# Road-ENCLOSED pockets get first claim (owner 2026-07-10): when the
+	# streets already bound an interior area, the lot grid anchors INSIDE it,
+	# so the tile's buildings fill the block the roads drew — without touching
+	# the roads (lots keep the same clearance validation as everywhere else).
+	var pocket := _enclosed_pocket(tile_id, coord, segs)
+	if not pocket.is_empty():
+		var ptmpl := _pocket_template(pocket, land, segs, rivers)
+		if not ptmpl.is_empty():
+			if BLOCK_DEBUG: print("[BLOCKDBG] %s: POCKET block — %d lots inside a road-enclosed area" % [tile_id, (ptmpl.lots as Array).size()])
+			return ptmpl
 	# anchor on the longest near-STRAIGHT RUN of road (a single polyline segment is tiny).
 	var anchor := _longest_straight_road(coord)
 	if anchor.is_empty():
@@ -366,9 +433,10 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	var mid := (ra + rb) * 0.5
 	if not _valid(mid + normal * frontage, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
 		normal = -normal
-	# Enclosure-seeded tiles fill the block with a few BIG chunks (one building per chunk) for a dense
-	# interior. Same template shape + a `cell` field; falls through to the fine grid if too cramped.
-	if RoadHash.pick("enclseed|%s" % tile_id, 100) < RoadWorks.ENCLOSURE_PROB:
+	# ~CHUNK_PROB% of block tiles (seeded) fill the block with a few BIG chunks (one building per
+	# chunk) for a dense interior. Same template shape + a `cell` field; fine grid if too cramped.
+	# (Seed key kept from the retired enclosure system so tile picks stay stable.)
+	if RoadHash.pick("enclseed|%s" % tile_id, 100) < CHUNK_PROB:
 		var chunk := _chunk_template(best_len, mid, tangent, normal, angle, land, segs, rivers)
 		if not chunk.is_empty():
 			return chunk
@@ -473,6 +541,146 @@ func _largest_valid_rect(valid: Array, cols: int, rows: int) -> Array:
 ## start). A city block anchors to ANY road the player sees crossing the tile (baked spine,
 ## NPC connects, player roads), so blocks form wherever there's a street, not just on the
 ## handful of tiles where the "roads" infrastructure was explicitly built.
+## The largest road-enclosed interior region of the tile: flood the cell grid
+## from the hex rim with road-clearance cells blocking; buildable cells the
+## flood never reaches are enclosed by roads on all sides. Returns
+## {cells: Array[Vector2 rel], center: Vector2} or {} (none big enough).
+func _enclosed_pocket(tile_id: String, _coord: Vector2i, segs: Array) -> Dictionary:
+	var land: PackedByteArray = _tile_land.get(tile_id, PackedByteArray())
+	if land.is_empty():
+		return {}
+	var road_block := _rasterize_seg_clearance(segs, ROAD_CLEAR)
+	var n := GRID_COLS * GRID_ROWS
+	var in_hex := PackedByteArray()
+	in_hex.resize(n)
+	for row in GRID_ROWS:
+		for col in GRID_COLS:
+			var rel := Vector2((col + 0.5) * CELL, (row + 0.5) * CELL) - TILE_CENTER
+			if absf(rel.x) > 270.0 or absf(rel.y) > 240.0 or 240.0 * absf(rel.x) + 135.0 * absf(rel.y) > 64800.0:
+				continue
+			in_hex[row * GRID_COLS + col] = 1
+	# BFS from every rim cell (an in-hex cell with an out-of-hex neighbour).
+	var reached := PackedByteArray()
+	reached.resize(n)
+	var queue: Array[int] = []
+	for row2 in GRID_ROWS:
+		for col2 in GRID_COLS:
+			var key := row2 * GRID_COLS + col2
+			if in_hex[key] == 0 or road_block[key] == 1:
+				continue
+			var rim := row2 == 0 or row2 == GRID_ROWS - 1 or col2 == 0 or col2 == GRID_COLS - 1
+			if not rim:
+				for nb in [key - 1, key + 1, key - GRID_COLS, key + GRID_COLS]:
+					if in_hex[nb] == 0:
+						rim = true
+						break
+			if rim and reached[key] == 0:
+				reached[key] = 1
+				queue.append(key)
+	var qi := 0
+	while qi < queue.size():
+		var k := queue[qi]
+		qi += 1
+		for nb2 in [k - 1, k + 1, k - GRID_COLS, k + GRID_COLS]:
+			if nb2 < 0 or nb2 >= n:
+				continue
+			if absi((nb2 % GRID_COLS) - (k % GRID_COLS)) > 1:
+				continue   # row wrap
+			if in_hex[nb2] == 0 or road_block[nb2] == 1 or reached[nb2] == 1:
+				continue
+			reached[nb2] = 1
+			queue.append(nb2)
+	# Enclosed BUILDABLE cells, grouped into components; take the largest.
+	var comp := PackedInt32Array()
+	comp.resize(n)
+	for ci in n:
+		comp[ci] = -1
+	var comps: Array = []
+	for key3 in n:
+		if in_hex[key3] == 0 or road_block[key3] == 1 or reached[key3] == 1 or land[key3] == 0 or comp[key3] != -1:
+			continue
+		var cells: Array = []
+		var q2: Array[int] = [key3]
+		comp[key3] = comps.size()
+		while not q2.is_empty():
+			var k2: int = q2.pop_back()
+			cells.append(k2)
+			for nb3 in [k2 - 1, k2 + 1, k2 - GRID_COLS, k2 + GRID_COLS]:
+				if nb3 < 0 or nb3 >= n or comp[nb3] != -1:
+					continue
+				if absi((nb3 % GRID_COLS) - (k2 % GRID_COLS)) > 1:
+					continue
+				if in_hex[nb3] == 0 or road_block[nb3] == 1 or reached[nb3] == 1 or land[nb3] == 0:
+					continue
+				comp[nb3] = comps.size()
+				q2.append(nb3)
+		comps.append(cells)
+	var best: Array = []
+	for c in comps:
+		if (c as Array).size() > best.size():
+			best = c
+	if best.size() < 6:   # under ~2400 u² there is no block to fill
+		return {}
+	var rels: Array = []
+	var centroid := Vector2.ZERO
+	for key4 in best:
+		var rel4 := Vector2(((int(key4) % GRID_COLS) + 0.5) * CELL, ((int(key4) / GRID_COLS) + 0.5) * CELL) - TILE_CENTER
+		rels.append(rel4)
+		centroid += rel4
+	centroid /= float(rels.size())
+	return {"cells": rels, "center": centroid}
+
+## Lot grid over an enclosed pocket, aligned to the street nearest its centre.
+func _pocket_template(pocket: Dictionary, land: PackedByteArray, segs: Array, rivers: Array) -> Dictionary:
+	var centroid: Vector2 = pocket.center
+	var best_d := 1.0e30
+	var angle := 0.0
+	for s in segs:
+		var a: Vector2 = s[0]
+		var b: Vector2 = s[1]
+		var d := _pt_seg_dist(centroid, a, b)
+		if d < best_d:
+			best_d = d
+			angle = wrapf((b - a).angle(), -PI * 0.5, PI * 0.5)
+	var tangent := Vector2.RIGHT.rotated(angle)
+	var normal := Vector2(-tangent.y, tangent.x)
+	var tmin := 1.0e30
+	var tmax := -1.0e30
+	var nmin := 1.0e30
+	var nmax := -1.0e30
+	for rel in (pocket.cells as Array):
+		var t := (rel as Vector2).dot(tangent)
+		var nn := (rel as Vector2).dot(normal)
+		tmin = minf(tmin, t)
+		tmax = maxf(tmax, t)
+		nmin = minf(nmin, nn)
+		nmax = maxf(nmax, nn)
+	var vfull := BLOCK_LOT * BLOCK_FILL_MAX
+	var vrect: PackedVector2Array = _rotate(BuildingShapes.make_rect(vfull, vfull).verts, angle)
+	var vhalf: Vector2 = _aabb_half(vrect)
+	var cols := clampi(int((tmax - tmin) / BLOCK_LOT) + 1, 1, 6)
+	var rows := clampi(int((nmax - nmin) / BLOCK_LOT) + 1, 1, 6)
+	var lots: Array = []
+	for r in rows:
+		for c in cols:
+			var ctr := tangent * (tmin + (float(c) + 0.5) * BLOCK_LOT) + normal * (nmin + (float(r) + 0.5) * BLOCK_LOT)
+			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
+				continue
+			# The lot must genuinely sit in the pocket (not spill past its rim).
+			var near_cell := false
+			for rel2 in (pocket.cells as Array):
+				if ctr.distance_to(rel2) <= CELL * 1.2:
+					near_cell = true
+					break
+			if near_cell:
+				lots.append(ctr)
+	if lots.size() < BLOCK_MIN_LOTS:
+		return {}
+	var claimed: Array = []
+	for _i in lots.size():
+		claimed.append(false)
+	return {"angle": angle, "lots": lots, "claimed": claimed, "segs": segs}
+
 func _block_road_segments(coord: Vector2i) -> Array:
 	var out: Array = []
 	var net := RoadNetwork.instance()
@@ -485,8 +693,6 @@ func _block_road_segments(coord: Vector2i) -> Array:
 		var edge: Dictionary = net.edges.get(edge_id, {})
 		if str(edge.get("state", "")) != RoadNetwork.STATE_BUILT:
 			continue
-		if _is_enclosure_edge(edge):
-			continue   # a block's OWN enclosure ring/connector is not a street — see _is_enclosure_edge
 		var geo: PackedVector2Array = edge.get("geometry", PackedVector2Array())
 		for i in range(geo.size() - 1):
 			var a := geo[i] - center
@@ -495,15 +701,6 @@ func _block_road_segments(coord: Vector2i) -> Array:
 				continue
 			out.append([a, b])
 	return out
-
-## True if this edge is a block-enclosure ring/connector ("encl:"-tagged on its endpoint nodes) rather than a
-## real street. The block template + lot validation MUST ignore these: the ring is derived FROM the lots, so
-## treating it as a road would (a) hijack the block anchor in _longest_straight_road (the ring's long straight
-## side out-measures the actual road) and (b) clear via BLOCK_ROAD_PAD the very lots the ring is meant to wrap —
-## which left enclosed tiles unable to fill their chunks (buildings scattered under the ring) and, on a relayout
-## that rebuilt the template with the ring already present, dropped the grid entirely (the enclosure vanished).
-func _is_enclosure_edge(edge: Dictionary) -> bool:
-	return str(edge.get("a", "")).begins_with("encl:") or str(edge.get("b", "")).begins_with("encl:")
 
 func _in_tile_hex(p: Vector2, center: Vector2) -> bool:
 	var r := p - center
@@ -525,8 +722,6 @@ func _longest_straight_road(coord: Vector2i) -> Array:
 		var edge: Dictionary = net.edges.get(edge_id, {})
 		if str(edge.get("state", "")) != RoadNetwork.STATE_BUILT:
 			continue
-		if _is_enclosure_edge(edge):
-			continue   # never anchor a block to its own enclosure ring (it would out-measure the real road)
 		var geo: PackedVector2Array = edge.get("geometry", PackedVector2Array())
 		var i := 0
 		while i < geo.size() - 1:
@@ -731,6 +926,19 @@ func _flush_resnap() -> void:
 
 ## Mark a tile for a subcomponent rebuild (coalesced into one deferred pass), so tanks/annexes
 ## are re-derived once the tile's buildings + roads have settled for this frame.
+func _on_building_owner_changed(instance_id: String) -> void:
+	if not _placement_index.has(instance_id):
+		return
+	var p: Dictionary = _placements[_placement_index[instance_id]]
+	p["is_npc"] = not MatchState.is_player_owned(MatchState.get_building(instance_id))
+	_mark_subcomp_dirty(str(p.tile_id))
+	queue_redraw()
+
+func _on_building_upgraded(instance_id: String, _new_level: int) -> void:
+	var tid := str(MatchState.get_building(instance_id).get("tile_id", ""))
+	if tid != "":
+		_mark_subcomp_dirty(tid)
+
 func _mark_subcomp_dirty(tile_id: String) -> void:
 	_subcomp_dirty[tile_id] = true
 	if not _subcomp_queued:
@@ -759,6 +967,8 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 	_farm_bridges.erase(tile_id)
 	_farm_promote.erase(tile_id)
 	_farm_cluster_rings.erase(tile_id)
+	_block_masses.erase(tile_id)
+	_massed_by_tile.erase(tile_id)
 	var blds: Array = []
 	for p in _placements:
 		if str(p.tile_id) == tile_id:
@@ -786,6 +996,8 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 		farm_snap = (_farm_lanes.get(tile_id, []) as Array).duplicate()
 		for s in segs:   # _block_road_segments → centre-relative; to world
 			farm_snap.append([center + (s[0] as Vector2), center + (s[1] as Vector2)])
+	_build_block_masses(tile_id, coord, blds)
+	var wdiscs := _forest_discs(coord, center)   # precise wing validation (mask-free)
 	var dirs := [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP,
 		Vector2(0.7071, 0.7071), Vector2(-0.7071, 0.7071), Vector2(0.7071, -0.7071), Vector2(-0.7071, -0.7071)]
 	# running occupancy: every main footprint, then each ancillary as it lands
@@ -810,10 +1022,205 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 			var rverts: PackedVector2Array = _farm_render[iid].verts if _farm_render.has(iid) else (p.verts as PackedVector2Array)
 			_place_farm_outbuildings(tile_id, iid, rverts, is_npc, farm_snap)
 			continue
+		if bool(p.get("offshore", false)):
+			continue   # platforms at sea carry no annexes/wings/tanks
+		var lvl := clampi(int(MatchState.get_building(iid).get("level", 1)), 1, 3)
+		# Levels ALWAYS show: L2/L3 stack rooftop storey blocks on the parent
+		# (wings depend on free ground and are skipped inside block-masses —
+		# a storey needs neither). Drawn on top, slightly toward a seeded
+		# corner, one per level above 1, stepped smaller.
+		if lvl >= 2 and (p.verts as PackedVector2Array).size() >= 3:
+			var pv: PackedVector2Array = p.verts
+			var pc := _poly_centroid(pv)
+			var anchor_i := RoadHash.pick("storey|%s" % iid, pv.size())
+			var nudge := (pv[anchor_i] - pc) * 0.16
+			for si in range(lvl - 1):
+				var f := 0.62 - 0.20 * float(si)
+				var sverts := PackedVector2Array()
+				for v2 in pv:
+					sverts.append(pc + (v2 - pc) * f + nudge * (1.0 + 0.6 * float(si)))
+				_subcomponents.append({
+					"tile_id": tile_id, "verts": sverts, "color": p.color,
+					"kind": "storey", "is_npc": is_npc, "bb": _verts_bb(sverts),
+					"cat": str(p.cat), "iid": iid,
+				})
+		if (_massed_by_tile.get(tile_id, {}) as Dictionary).has(iid):
+			continue   # inside a block-mass — the mass is the compound
 		var pcolor: Color = p.color
+		# Compound massing (ink spec I2): big industrial halls grow 1-2 seeded
+		# WINGS — same-wash rects at 20-40% of the parent's area, tucked flush so
+		# the pair reads as one compound (wings draw UNDER, like annexes). Draw
+		# representation only: placement data, occupancy and discs are untouched.
+		var fam := _wash_family(str(p.cat))
+		var parent_area := 4.0 * bhalf.x * bhalf.y
+		var pverts: PackedVector2Array = p.verts
+		# Wing count: big grey/mustard halls start with 1-2 seeded wings; every
+		# level above 1 adds one more, ANY family (owner 2026-07-10: buildings
+		# visibly expand with annexes when they upgrade to L2/L3).
+		var base_wings := 0
+		if (fam == "grey" or fam == "navy" or fam == "lime" or fam == "mustard") and parent_area >= WING_MIN_PARENT_AREA:
+			base_wings = 1 + RoadHash.pick("wing|%s|n" % iid, 2)
+		var wing_total := mini(base_wings + (lvl - 1), 4)
+		if wing_total > 0 and pverts.size() >= 3:
+			# Axes from the footprint's LONGEST edge, extents by projection —
+			# works for quads AND the L/C shapes, which previously never grew
+			# wings at all (owner 2026-07-10: an upgraded building must expand
+			# even if only a bit). World-axis offsets on rotated halls would
+			# corner-touch and draw a bowtie.
+			var longest := Vector2.RIGHT
+			var best_l := 0.0
+			for ei in pverts.size():
+				var ev := pverts[(ei + 1) % pverts.size()] - pverts[ei]
+				if ev.length() > best_l:
+					best_l = ev.length()
+					longest = ev
+			var ua := longest.normalized()
+			var ub := Vector2(-ua.y, ua.x)
+			var pang := ua.angle()
+			var wc := center + bpos
+			var tmin := 1.0e9
+			var tmax := -1.0e9
+			var nmin := 1.0e9
+			var nmax := -1.0e9
+			for pv2 in pverts:
+				var dt := (pv2 - wc).dot(ua)
+				var dn := (pv2 - wc).dot(ub)
+				tmin = minf(tmin, dt)
+				tmax = maxf(tmax, dt)
+				nmin = minf(nmin, dn)
+				nmax = maxf(nmax, dn)
+			var wdirs: Array = [ua, -ua, ub, -ub]
+			var wexts: Array = [tmax, -tmin, nmax, -nmin]
+			for wi in wing_total:
+				var frac := WING_AREA_MIN + float(RoadHash.pick("wing|%s|%d|a" % [iid, wi], 100)) / 100.0 * WING_AREA_SPAN
+				var aspect := 0.5 + float(RoadHash.pick("wing|%s|%d|s" % [iid, wi], 31)) / 100.0
+				var ww := sqrt(parent_area * frac / aspect)
+				var whh := ww * aspect
+				var wshape: Dictionary = BuildingShapes.make_rect(ww, whh)
+				var wverts_l := _rotate(wshape.verts, pang)
+				var wh := _aabb_half(wverts_l)
+				var wrot := RoadHash.pick("wing|%s|%d|rot" % [iid, wi], wdirs.size())
+				var wing_done := false
+				for j0 in wdirs.size():
+					var di := (j0 + wrot) % wdirs.size()
+					var wdir: Vector2 = wdirs[di]
+					# Wing half-extent along the offset axis (its own w or h).
+					var wing_ext: float = ww * 0.5 if di < 2 else whh * 0.5
+					var wctr: Vector2 = bpos + wdir * (float(wexts[di]) + SUBCOMP_ANNEX_OVERLAP + wing_ext)
+					# Seeded slide along the perpendicular edge so wings sit off-centre
+					# (reference compounds are asymmetric), clamped to keep the overlap.
+					var perp: Vector2 = wdirs[(di + 2) % 4] if di < 2 else wdirs[di - 2]
+					var pext: float = minf(float(wexts[2]), float(wexts[3])) if di < 2 else minf(float(wexts[0]), float(wexts[1]))
+					var wing_pext: float = whh * 0.5 if di < 2 else ww * 0.5
+					var slide_max: float = maxf(pext - wing_pext, 0.0)
+					var slide := (float(RoadHash.pick("wing|%s|%d|sl" % [iid, wi], 100)) / 100.0 - 0.5) * 2.0 * slide_max
+					wctr += perp * slide
+					if not _wing_valid(wctr, wverts_l, wh, others, segs, rivers, wdiscs, center):
+						continue
+					var wentry := {"pos": wctr, "half": wh}
+					placed.append(wentry)
+					others.append(wentry)
+					var www := PackedVector2Array()
+					for wv in wverts_l:
+						www.append(center + wctr + wv)
+					_subcomponents.append({
+						"tile_id": tile_id, "verts": www, "color": pcolor,
+						"kind": "wing", "is_npc": is_npc, "bb": _verts_bb(www),
+						"cat": str(p.cat), "iid": iid,
+					})
+					wing_done = true
+					break
+				if not wing_done and lvl >= 2:
+					# Hemmed in on every side? UPGRADED buildings expand ACROSS
+					# the road (owner trigger rule 2026-07-10: no space around
+					# + space across + upgraded): the wing lands on the far
+					# side of the carriageway, tethered back by a narrow
+					# covered corridor drawn over the road (5-10u wide).
+					for j1 in wdirs.size():
+						if wing_done:
+							break
+						var di2 := (j1 + wrot) % wdirs.size()
+						var wdir2: Vector2 = wdirs[di2]
+						var wing_ext2: float = ww * 0.5 if di2 < 2 else whh * 0.5
+						for step in [34.0, 42.0, 50.0, 58.0]:
+							var wctr2: Vector2 = bpos + wdir2 * (float(wexts[di2]) + step + wing_ext2)
+							if not _wing_valid(wctr2, wverts_l, wh, others, segs, rivers, wdiscs, center):
+								continue
+							var pa: Vector2 = bpos + wdir2 * float(wexts[di2])
+							var pb: Vector2 = wctr2 - wdir2 * wing_ext2
+							# Only worth it when the corridor genuinely SPANS a
+							# road (else the normal flush attempt would have
+							# worked); rivers stay uncrossed.
+							if not _seg_hits_any(pa, pb, segs) or _seg_hits_any(pa, pb, rivers):
+								continue
+							var wentry2 := {"pos": wctr2, "half": wh}
+							placed.append(wentry2)
+							others.append(wentry2)
+							var www2 := PackedVector2Array()
+							for wv2 in wverts_l:
+								www2.append(center + wctr2 + wv2)
+							_subcomponents.append({
+								"tile_id": tile_id, "verts": www2, "color": pcolor,
+								"kind": "wing", "is_npc": is_npc, "bb": _verts_bb(www2),
+								"cat": str(p.cat), "iid": iid,
+							})
+							var cw := (5.0 + float(RoadHash.pick("wing|%s|%d|cw" % [iid, wi], 6))) * 0.5
+							var co := Vector2(-wdir2.y, wdir2.x) * cw
+							var cverts := PackedVector2Array([
+								center + pa - co, center + pb - co,
+								center + pb + co, center + pa + co,
+							])
+							_subcomponents.append({
+								"tile_id": tile_id, "verts": cverts, "color": pcolor,
+								"kind": "corridor", "is_npc": is_npc, "bb": _verts_bb(cverts),
+								"cat": str(p.cat), "iid": iid,
+							})
+							wing_done = true
+							break
+		# Tank farm (owner 2026-07-10): chemical works (chem plants lime,
+		# petro/poly refineries pink) carry their cylinders OUTSIDE the hall
+		# as ONE battery block — 2 side by side, 3 in a triangle, 4 in a grid.
+		if fam == "lime" or fam == "pink":
+			var tn := 2 + RoadHash.pick("tf|%s|n" % iid, 3)
+			var tr := SUBCOMP_TANK_R
+			var pitch := tr * 2.0 + 1.5
+			var offs: Array = []
+			match tn:
+				2: offs = [Vector2(-pitch * 0.5, 0), Vector2(pitch * 0.5, 0)]
+				3: offs = [Vector2(-pitch * 0.5, pitch * 0.433), Vector2(pitch * 0.5, pitch * 0.433), Vector2(0, -pitch * 0.433)]
+				_: offs = [Vector2(-pitch * 0.5, -pitch * 0.5), Vector2(pitch * 0.5, -pitch * 0.5), Vector2(-pitch * 0.5, pitch * 0.5), Vector2(pitch * 0.5, pitch * 0.5)]
+			var tbh := Vector2.ZERO
+			for o in offs:
+				tbh.x = maxf(tbh.x, absf((o as Vector2).x) + tr)
+				tbh.y = maxf(tbh.y, absf((o as Vector2).y) + tr)
+			var tblock: PackedVector2Array = BuildingShapes.make_rect(tbh.x * 2.0, tbh.y * 2.0).verts
+			var trot := RoadHash.pick("tf|%s|rot" % iid, dirs.size())
+			for j2 in dirs.size():
+				var tdir: Vector2 = dirs[(j2 + trot) % dirs.size()]
+				var text: float = absf(tdir.x) * bhalf.x + absf(tdir.y) * bhalf.y
+				var tctr: Vector2 = bpos + tdir * (text + SUBCOMP_GAP + maxf(tbh.x, tbh.y))
+				if not _valid(tctr, tblock, tbh, placed, land, segs, rivers):
+					continue
+				var tentry := {"pos": tctr, "half": tbh}
+				placed.append(tentry)
+				others.append(tentry)
+				var tanks: Array = []
+				for o2 in offs:
+					tanks.append(center + tctr + (o2 as Vector2))
+				var tbverts := PackedVector2Array()
+				for tbv in tblock:
+					tbverts.append(center + tctr + tbv)
+				_subcomponents.append({
+					"tile_id": tile_id, "verts": tbverts, "color": pcolor,
+					"kind": "tankfarm", "is_npc": is_npc, "bb": _verts_bb(tbverts),
+					"cat": str(p.cat), "iid": iid, "tanks": tanks, "r": tr,
+				})
+				break
 		# at most ONE annex (touches/merges) + ONE round tank (small gap), both parent colour.
 		for kind in ["annex", "tank"]:
 			var is_tank: bool = (kind == "tank")
+			if is_tank and (fam == "lime" or fam == "pink"):
+				continue   # the tank-farm battery IS their tankage
 			var shape: Dictionary = BuildingShapes.circle(SUBCOMP_TANK_R) if is_tank else BuildingShapes.make_rect(SUBCOMP_ANNEX.x, SUBCOMP_ANNEX.y)
 			var verts: PackedVector2Array = shape.verts
 			var sh: Vector2 = shape.half
@@ -835,8 +1242,155 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 				_subcomponents.append({
 					"tile_id": tile_id, "verts": wverts, "color": pcolor,
 					"kind": kind, "is_npc": is_npc, "bb": _verts_bb(wverts),
+					"cat": str(p.cat), "iid": iid,
 				})
 				break   # placed this kind; move to the next
+
+func _tile_type(coord: Vector2i) -> String:
+	if terrain_layer == null:
+		return ""
+	return str((terrain_layer.tiles.get(coord, {}) as Dictionary).get("type", ""))
+
+## Courtyard block-masses (ink spec I2 + owner rules 2026-07-10): bunches of
+## COURT_MIN_BUNCH+ adjacent same-owner quad buildings draw as ONE merged mass
+## (inflate-merge-deflate closes the terrace gaps; L-shapes emerge naturally
+## from the union). Masses deep enough get an inner COURTYARD (inset hole).
+## Members keep ink outlines + roof motifs as party-wall divisions, so clicks
+## and identity stay per-building. Urban tiles always mass; rural/hill a
+## seeded third; mountains never; farms and offshore never cluster.
+func _build_block_masses(tile_id: String, coord: Vector2i, blds: Array) -> void:
+	var ttype := _tile_type(coord)
+	var eligible: bool = ttype == "urban" \
+		or ((ttype == "rural" or ttype == "grass" or ttype == "hill") and RoadHash.pick("court|%s" % tile_id, 3) == 0)
+	if not eligible:
+		return
+	var cands: Array = []
+	for p in blds:
+		if str(p.cat) == "farm" or bool(p.get("offshore", false)):
+			continue
+		if (p.verts as PackedVector2Array).size() != 4:
+			continue
+		cands.append(p)
+	if cands.size() < COURT_MIN_BUNCH:
+		return
+	cands.sort_custom(func(a, b) -> bool: return str(a.instance_id) < str(b.instance_id))
+	# Union-find over footprint adjacency (same owner, AABBs within COURT_ADJ).
+	var n := cands.size()
+	var parent := PackedInt32Array()
+	parent.resize(n)
+	for i in n:
+		parent[i] = i
+	for i in n:
+		for j in range(i + 1, n):
+			var a: Dictionary = cands[i]
+			var b: Dictionary = cands[j]
+			if bool(a.is_npc) != bool(b.is_npc):
+				continue
+			if not (a.bb as Rect2).grow(COURT_ADJ * 0.5).intersects((b.bb as Rect2).grow(COURT_ADJ * 0.5)):
+				continue
+			var ri := _mass_find(parent, i)
+			var rj := _mass_find(parent, j)
+			if ri != rj:
+				parent[ri] = rj
+	var groups: Dictionary = {}
+	for i2 in n:
+		var r := _mass_find(parent, i2)
+		var lst: Array = groups.get(r, [])
+		lst.append(i2)
+		groups[r] = lst
+	var roots: Array = groups.keys()
+	roots.sort()
+	var masses: Array = []
+	var member_ids: Dictionary = {}
+	var gi := 0
+	for root in roots:
+		var arr: Array = groups[root]
+		if arr.size() < COURT_MIN_BUNCH:
+			continue
+		# Inflate each footprint, merge pairwise, deflate — one welded mass.
+		var acc := _offset_ccw((cands[arr[0]] as Dictionary).verts, COURT_GROW)
+		if acc.is_empty():
+			continue
+		for mi in range(1, arr.size()):
+			var nxt := _offset_ccw((cands[arr[mi]] as Dictionary).verts, COURT_GROW)
+			if nxt.is_empty():
+				continue
+			var merged := Geometry2D.merge_polygons(acc, nxt)
+			var best := PackedVector2Array()
+			var best_a := 0.0
+			for part in merged:
+				if Geometry2D.is_polygon_clockwise(part):
+					continue   # hole — courtyards come from the inset below
+				var pa := absf(_poly_area(part))
+				if pa > best_a:
+					best_a = pa
+					best = part
+			if best.size() >= 3:
+				acc = best
+		var mass := _offset_ccw(acc, -COURT_GROW)
+		if mass.size() < 3:
+			continue
+		# Courtyard: the mass inset COURT_INSET deep. Single-row masses vanish
+		# under the inset (correct — a yard needs enclosure on all sides).
+		var holes: Array = []
+		for hole in Geometry2D.offset_polygon(mass, -COURT_INSET):
+			if absf(_poly_area(hole)) >= COURT_MIN_YARD:
+				holes.append(hole)
+		holes.sort_custom(func(x, y) -> bool: return absf(_poly_area(x)) > absf(_poly_area(y)))
+		if holes.size() > 2:
+			holes = holes.slice(0, 2)
+		# Majority family sets the wash (NPC bunches come out paper white).
+		var fam_count: Dictionary = {}
+		for mi2 in arr:
+			var c := str((cands[mi2] as Dictionary).cat)
+			fam_count[c] = int(fam_count.get(c, 0)) + 1
+		var major := ""
+		var major_n := 0
+		for c2 in fam_count:
+			if int(fam_count[c2]) > major_n:
+				major_n = int(fam_count[c2])
+				major = str(c2)
+		var is_npc := bool((cands[arr[0]] as Dictionary).is_npc)
+		masses.append({
+			"poly": mass, "holes": holes,
+			"color": _wash_for(major, "mass|%s|%d" % [tile_id, gi], is_npc),
+			"bb": _verts_bb(mass), "key": "mass|%s|%d" % [tile_id, gi],
+		})
+		for mi3 in arr:
+			member_ids[str((cands[mi3] as Dictionary).instance_id)] = true
+		gi += 1
+	if not masses.is_empty():
+		_block_masses[tile_id] = masses
+		_massed_by_tile[tile_id] = member_ids
+
+func _mass_find(parent: PackedInt32Array, i: int) -> int:
+	var r := i
+	while parent[r] != r:
+		r = parent[r]
+	return r
+
+func _poly_area(pts: PackedVector2Array) -> float:
+	var area := 0.0
+	for i in pts.size():
+		var p := pts[i]
+		var q := pts[(i + 1) % pts.size()]
+		area += p.x * q.y - q.x * p.y
+	return area * 0.5
+
+## Offset with normalised winding (Clipper shrinks a clockwise polygon on a
+## positive delta); returns the largest resulting part.
+func _offset_ccw(poly: PackedVector2Array, delta: float) -> PackedVector2Array:
+	var src := poly.duplicate()
+	if Geometry2D.is_polygon_clockwise(src):
+		src.reverse()
+	var out := PackedVector2Array()
+	var best_a := 0.0
+	for part in Geometry2D.offset_polygon(src, delta, Geometry2D.JOIN_MITER):
+		var pa := absf(_poly_area(part))
+		if pa > best_a:
+			best_a = pa
+			out = part
+	return out
 
 ## A farm's outbuildings (brown barn + silo) snap to the plot's ROAD EDGE — the field-boundary point
 ## nearest any track/road in `snap_segs` — and sit just inside the field there (farmstead by the road).
@@ -1593,6 +2147,11 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 	var rivers := _tile_river_segments(coord, center)
 	var reserved := _bridge_approach_segments(tile_id, center)   # bridge-approach corridors
 	var lake := _tile_lake(coord, center)
+	# Road clearance, rasterized: stamp each segment's grown bbox instead of
+	# scanning every seg per cell. The roads-v3 start network puts finely-sampled
+	# (~12u) polylines on most tiles, so the old 648-cells × all-segs scan was
+	# ~150k _pt_seg_dist calls per tile (~25 s of world build across the map).
+	var road_block := _rasterize_seg_clearance(segs, ROAD_CLEAR)
 	var keys := PackedInt32Array()
 	var farm_keys := PackedInt32Array()
 	for row in GRID_ROWS:
@@ -1601,17 +2160,14 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 			if absf(rel.x) > 270.0 or absf(rel.y) > 240.0 or 240.0 * absf(rel.x) + 135.0 * absf(rel.y) > 64800.0:
 				continue   # outside the flat-top hex
 			var key := row * GRID_COLS + col
+			if road_block[key] == 1:
+				continue   # too close to a road carriageway
 			if nav_ok:
 				var c := nav.cell_of(center + rel)
 				if nav.water(c.x, c.y) != 0:
 					continue   # water (sea/lake/river) — not buildable
 				if nav.level(c.x, c.y) < MIN_BUILD_LEVEL:
 					continue   # at/below the waterline — no buildings (same rule roads should use)
-			var rd := 1.0e9
-			for s in segs:
-				rd = minf(rd, _pt_seg_dist(rel, s[0], s[1]))
-			if rd < ROAD_CLEAR:
-				continue   # too close to a road carriageway
 			# Reserved road corridor: a band along the river (room for a bank road) + a stub
 			# straight out from each bridge (clean approach), so the road never has to run
 			# over riverside buildings. Buildings keep RIVER_ROAD_PAD off both.
@@ -1649,6 +2205,30 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 	_tile_segs[tile_id] = segs
 	_tile_rivers[tile_id] = rivers
 
+## Cells of the tile grid within `pad` of any segment, as a 1-bit mask. Each
+## segment only visits its own grown bbox (a few cells for the ~12u-sampled road
+## polylines), with the exact point-segment distance test inside — same result
+## as the brute-force per-cell scan at a fraction of the cost.
+func _rasterize_seg_clearance(segs: Array, pad: float) -> PackedByteArray:
+	var mask := PackedByteArray()
+	mask.resize(GRID_COLS * GRID_ROWS)
+	for s in segs:
+		var a: Vector2 = (s[0] as Vector2) + TILE_CENTER
+		var b: Vector2 = (s[1] as Vector2) + TILE_CENTER
+		var min_col := clampi(int(floorf((minf(a.x, b.x) - pad) / CELL - 0.5)), 0, GRID_COLS - 1)
+		var max_col := clampi(int(ceilf((maxf(a.x, b.x) + pad) / CELL - 0.5)), 0, GRID_COLS - 1)
+		var min_row := clampi(int(floorf((minf(a.y, b.y) - pad) / CELL - 0.5)), 0, GRID_ROWS - 1)
+		var max_row := clampi(int(ceilf((maxf(a.y, b.y) + pad) / CELL - 0.5)), 0, GRID_ROWS - 1)
+		for row in range(min_row, max_row + 1):
+			for col in range(min_col, max_col + 1):
+				var key := row * GRID_COLS + col
+				if mask[key] == 1:
+					continue
+				var rel := Vector2((col + 0.5) * CELL, (row + 0.5) * CELL) - TILE_CENTER
+				if _pt_seg_dist(rel, s[0], s[1]) < pad:
+					mask[key] = 1
+	return mask
+
 ## Place one building. Returns {verts (world), center_rel, half}; {} if nothing fits.
 func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array) -> Dictionary:
 	if not _tile_land.has(tile_id):
@@ -1670,6 +2250,40 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 	if is_edge:
 		return _place_edge(tile_id, coord, base_verts, placed_here, land)
 	return _place_frontage(tile_id, coord, base_verts, cat, placed_here, land)
+
+## Offshore placement: pick the WATER cell that maximises distance to the
+## buildings already on the tile (capped so ties break toward the tile centre)
+## — platforms and wind farms spread out at a uniform distance, clear of the
+## hex rim. No roads, rivers or land rules apply out at sea.
+func _place_offshore(coord: Vector2i, area: float, placed_here: Array) -> Dictionary:
+	var center := _tile_center_world_pos(coord)
+	var nav := NavGrid.instance()
+	if nav == null or not nav.is_ready():
+		return {}
+	var side := sqrt(maxf(area, BUILDABLE_MIN_AREA))
+	var verts: PackedVector2Array = BuildingShapes.make_rect(side * 1.25, side * 0.8).verts
+	var half := _aabb_half(verts)
+	var best := Vector2.INF
+	var best_score := -INF
+	for row in GRID_ROWS:
+		for col in GRID_COLS:
+			var rel := Vector2((col + 0.5) * CELL, (row + 0.5) * CELL) - TILE_CENTER
+			if absf(rel.x) > 240.0 or absf(rel.y) > 210.0 or 240.0 * absf(rel.x) + 135.0 * absf(rel.y) > 57000.0:
+				continue   # inset hex — keep platforms off the tile border
+			var c := nav.cell_of(center + rel)
+			if nav.water(c.x, c.y) == 0:
+				continue   # land — offshore structures sit on water
+			if _overlaps(rel, half, placed_here):
+				continue
+			var score := minf(_nearest_building_dist(rel, placed_here), OFFSHORE_MIN_SEP * 2.0) - rel.length() * 0.05
+			if score > best_score:
+				best_score = score
+				best = rel
+	if best == Vector2.INF:
+		return {}
+	var p := _finalize(coord, best, verts, half)
+	p["offshore"] = true
+	return p
 
 ## Tight row along a road frontage: orient the long axis along the road, snap flush to the
 ## carriageway clearance, and take the first free slot (which abuts the prior building with
@@ -1807,11 +2421,15 @@ func _place_farm(tile_id: String, coord: Vector2i, base_verts: PackedVector2Arra
 	var has_nbr := nbr_pts.size() > 0
 	var tile_origin := _tile_center_world_pos(coord)
 	var best_center := Vector2.INF
-	var best_score := INF
+	# Score every candidate cell first (cheap), then validate lazily in best-first
+	# order and take the first valid one. Identical outcome to validate-then-min
+	# (strict < keeps the earlier grid key on ties), but the expensive footprint
+	# validation (10 verts × every road/river segment) runs on a handful of cells
+	# instead of all ~500 — placing the 119 start farms cost ~18 s before this.
+	var cands: Array = []   # [score, original_order, rel]
+	var order := 0
 	for key in (_farm_landkeys.get(tile_id, _tile_landkeys.get(tile_id, PackedInt32Array())) as PackedInt32Array):
 		var rel := Vector2(((key % GRID_COLS) + 0.5) * CELL, ((key / GRID_COLS) + 0.5) * CELL) - TILE_CENTER
-		if not _farm_valid(rel, base_verts, half, placed_here, land, segs, rivers):
-			continue
 		var score: float
 		if has_nbr:
 			var world := tile_origin + rel
@@ -1821,11 +2439,14 @@ func _place_farm(tile_id: String, coord: Vector2i, base_verts: PackedVector2Arra
 			score = nd                                  # minimise distance to nearest neighbour-tile farm
 		else:
 			score = _dist_to_rivers(rel, rivers) if toward_river else -rel.length()
-		if score < best_score:
-			best_score = score
-			best_center = rel
-	if best_center != Vector2.INF:
-		return _finalize(coord, best_center, base_verts, half)
+		cands.append([score, order, rel])
+		order += 1
+	cands.sort_custom(func(a, b) -> bool:
+		return float(a[0]) < float(b[0]) or (float(a[0]) == float(b[0]) and int(a[1]) < int(b[1])))
+	for c in cands:
+		best_center = c[2] as Vector2
+		if _farm_valid(best_center, base_verts, half, placed_here, land, segs, rivers):
+			return _finalize(coord, best_center, base_verts, half)
 	var nb := _nearest_placed(placed_here)   # fallback: abut a neighbour
 	if not nb.is_empty():
 		for dir in [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP]:
@@ -2002,6 +2623,33 @@ func _valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, pla
 		and _footprint_clears(center, local_verts, segs, road_clear) \
 		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR)
 
+## PRECISE wing validation (owner 2026-07-10: the buildable mask is 20u-cell
+## chunky and reserves the 28u river bank corridor — a cosmetic wing only
+## needs the real clearances). Checks hex, water, elevation and forest discs
+## point-wise, exact 18u road / 16u river distances, and building overlaps.
+func _wing_valid(wctr: Vector2, local_verts: PackedVector2Array, half: Vector2, others: Array, segs: Array, rivers: Array, discs: Array, center: Vector2) -> bool:
+	if _overlaps(wctr, half, others):
+		return false
+	var nav := NavGrid.instance()
+	var nav_ok := nav != null and nav.is_ready()
+	var probes := PackedVector2Array([wctr])
+	for v in local_verts:
+		probes.append(wctr + v)
+	for pr in probes:
+		if not _in_hex_rel(pr):
+			return false
+		if nav_ok:
+			var c := nav.cell_of(center + pr)
+			if nav.water(c.x, c.y) != 0:
+				return false
+			if nav.level(c.x, c.y) < MIN_BUILD_LEVEL:
+				return false
+		for d in discs:
+			if pr.distance_to(d.c) < float(d.r):
+				return false
+	return _footprint_clears(wctr, local_verts, segs, ROAD_CLEAR) \
+		and _footprint_clears(wctr, local_verts, rivers, RIVER_CLEAR)
+
 ## Relaxed validation for a big CHUNK (it fills its cell): only the CENTRE must be buildable land (the chunk
 ## may overlap a forest edge or the road-clearance band — the building just draws over it), but it must stay
 ## IN-HEX (no corner outside the tile) and keep BLOCK_ROAD_PAD / RIVER_CLEAR off road + river centrelines.
@@ -2020,16 +2668,39 @@ func _chunk_valid(center: Vector2, local_verts: PackedVector2Array, land: Packed
 func _footprint_clears(center: Vector2, local_verts: PackedVector2Array, segs: Array, clearance: float) -> bool:
 	if segs.is_empty():
 		return true
+	# AABB prefilter: obstacle polylines are finely sampled (~12u segments, hundreds
+	# per roaded tile since roads-v3), so skip every segment whose bbox misses the
+	# footprint's clearance-grown bbox before paying for exact seg-seg distances.
 	var n := local_verts.size()
+	var world := PackedVector2Array()
+	world.resize(n)
+	var lo := Vector2(1.0e9, 1.0e9)
+	var hi := Vector2(-1.0e9, -1.0e9)
 	for i in n:
-		var e1 := center + local_verts[i]
-		var e2 := center + local_verts[(i + 1) % n]
-		for s in segs:
-			if _seg_seg_dist(e1, e2, s[0], s[1]) < clearance:
+		var w := center + local_verts[i]
+		world[i] = w
+		lo = lo.min(w)
+		hi = hi.max(w)
+	lo -= Vector2(clearance, clearance)
+	hi += Vector2(clearance, clearance)
+	for s in segs:
+		var sa: Vector2 = s[0]
+		var sb: Vector2 = s[1]
+		if maxf(sa.x, sb.x) < lo.x or minf(sa.x, sb.x) > hi.x \
+			or maxf(sa.y, sb.y) < lo.y or minf(sa.y, sb.y) > hi.y:
+			continue
+		for i2 in n:
+			if _seg_seg_dist(world[i2], world[(i2 + 1) % n], sa, sb) < clearance:
 				return false
 	return true
 
 ## Minimum distance between segments p1p2 and p3p4 (0 if they cross).
+func _seg_hits_any(a: Vector2, b: Vector2, segs: Array) -> bool:
+	for s in segs:
+		if _segs_cross(a, b, s[0], s[1]):
+			return true
+	return false
+
 func _seg_seg_dist(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2) -> float:
 	if _segs_cross(p1, p2, p3, p4):
 		return 0.0
@@ -2085,8 +2756,6 @@ func _tile_road_segments(coord: Vector2i, center: Vector2) -> Array:
 		var edge: Dictionary = net.edges.get(edge_id, {})
 		if str(edge.get("state", "")) != RoadNetwork.STATE_BUILT:
 			continue
-		if _is_enclosure_edge(edge):
-			continue   # the enclosure ring is not a road corridor — don't carve it out of buildable land
 		var geo: PackedVector2Array = edge.get("geometry", PackedVector2Array())
 		for i in range(geo.size() - 1):
 			var a := geo[i] - center
@@ -2205,31 +2874,8 @@ func _clear_tile_caches() -> void:
 	_farm_promote.clear()
 	_farm_cluster_rings.clear()
 
-## Tile-local (relative to TILE_CENTER) bounding box of all footprints on a tile, for the
-## enclosure-roads layer to wrap with a road ring. Empty Rect2 (zero area) if none.
-func tile_footprint_bounds_local(coord: Vector2i) -> Rect2:
-	var has := false
-	var lo := Vector2.ZERO
-	var hi := Vector2.ZERO
-	for p in _placements:
-		if p.coord != coord:
-			continue
-		var c: Vector2 = p.center_rel
-		var h: Vector2 = p.half
-		if not has:
-			lo = c - h
-			hi = c + h
-			has = true
-		else:
-			lo = Vector2(minf(lo.x, c.x - h.x), minf(lo.y, c.y - h.y))
-			hi = Vector2(maxf(hi.x, c.x + h.x), maxf(hi.y, c.y + h.y))
-	if not has:
-		return Rect2()
-	return Rect2(lo, hi - lo)
-
-## World-space AABB (one Rect2 per footprint) of the buildings on a tile, for the enclosure
-## layer to prune grid lanes that would cross a building. Uses the raw vert bbox (NOT the
-## NPC-outline-grown bb) so the prune is tight to the footprint.
+## World-space AABB (one Rect2 per footprint) of the buildings on a tile. Uses the raw vert
+## bbox (NOT the NPC-outline-grown bb) so consumers stay tight to the footprint.
 func footprint_rects_on_tile(coord: Vector2i) -> Array:
 	var out: Array = []
 	for p in _placements:
@@ -2237,90 +2883,12 @@ func footprint_rects_on_tile(coord: Vector2i) -> Array:
 			out.append(_verts_bb(p.verts))
 	return out
 
-## Enclosure (B4) ring shape — kept TIGHT to the footprints (small clearance), with ROUNDED corners and
-## a seeded chance of an IRREGULAR (jittered) outline, so blocks read organic and varied, not as identical
-## boxes. Tune these to taste.
-const ENCL_CLEAR := 3.0            # clearance from the lot grid to the ring (tight — the grid reads busy)
-const ENCL_ROUND_FRAC := 0.24      # corner-rounding radius as a fraction of the shorter box side, ...
-const ENCL_ROUND_MAX := 30.0       # ... capped here (u)
-const ENCL_ROUND_SEGS := 3         # points per rounded corner (quadratic bezier)
-const ENCL_IRREGULAR_PCT := 25     # % of tiles (seeded) whose ring is jittered into an irregular quad
-const ENCL_JITTER_FRAC := 0.03     # max OUTWARD corner jitter, as a fraction of the box diagonal (small — neat grid reads crisp)
-# One enclosure wraps a single CITY BLOCK near the triggering building — the cluster of nearby footprints
-# that fits in a box this size (road frame: U = along the road, V = perpendicular), NOT the whole tile.
-const ENCL_MIN_U := 150.0          # smallest block along the road (a small lot grid isn't inflated past its size)
-const ENCL_MIN_V := 100.0          # smallest block depth (perpendicular)
-const ENCL_MAX_U := 240.0          # largest block along the road — footprints past this stay OUTSIDE the ring
+# Block-box size band (road frame: U = along the road, V = perpendicular) — sizes the
+# chunk template's coarse cells (_chunk_template). Named for the retired enclosure ring
+# that first used them; the chunk grid still fills the same city-block box.
+const ENCL_MIN_U := 150.0          # smallest block along the road
+const ENCL_MAX_U := 240.0          # largest block along the road
 const ENCL_MAX_V := 180.0          # largest block depth (perpendicular)
-
-## World-space perimeter ring wrapping the tile's CITY BLOCK (block enclosure, B4): the oriented bounding
-## box of the block TEMPLATE's lot grid (road frame, so it runs along the street and matches the road-aligned
-## buildings), grown to cover the building in each lot + ENCL_CLEAR, clamped to [ENCL_MIN, ENCL_MAX], seeded
-## jitter, corners rounded, river-clipped to the near bank, hex-clipped, chained. Returns [] when the tile has
-## no block template — so a ring NEVER wraps fallback-scattered buildings, and since it follows the FIXED lots,
-## no building inside the grid is ever excluded. RoadWorks fires this once per tile, dedups against existing
-## roads, and connects it to the network. anchor_instance_id is unused here (kept for the call signature).
-## Deterministic off the template (angle + lots) + the coord seed (reload-reproducible).
-func enclosure_geometry_for_coord(coord: Vector2i, _anchor_instance_id: String = "") -> Array:
-	var tid := "tile_%d_%d" % [coord.x + 1, coord.y + 1]
-	var tmpl: Dictionary = _tile_block_templates.get(tid, {})
-	var lots: Array = tmpl.get("lots", [])
-	if lots.is_empty():
-		return []   # no neat block grid on this tile — no ring
-	var center := _tile_center_world_pos(coord)
-	var angle: float = float(tmpl.get("angle", 0.0))
-	var rivers: Array = _tile_rivers.get(tid, [])   # [a, b] segments, REL to the tile centre
-	# Oriented bbox of the lot grid in the road frame; grow to cover the building in each lot + clearance.
-	# Lots are already REL to the tile centre (the same frame as the ring we build below).
-	var lo := Vector2(1.0e9, 1.0e9)
-	var hi := Vector2(-1.0e9, -1.0e9)
-	var csum := Vector2.ZERO
-	for lot in lots:
-		var rc: Vector2 = lot
-		lo = lo.min(rc.rotated(-angle))
-		hi = hi.max(rc.rotated(-angle))
-		csum += rc
-	# Grow the lot-centre bbox by HALF a cell (chunk tiles store `cell`; fine tiles use the lot footprint) +
-	# clearance, so the ring hugs the filled chunks / lots. grow_individual in the road frame (x = along road).
-	var cellh: Vector2 = (tmpl.get("cell", Vector2(BLOCK_LOT * BLOCK_FILL_MAX, BLOCK_LOT * BLOCK_FILL_MAX)) as Vector2) * 0.5 + Vector2(ENCL_CLEAR, ENCL_CLEAR)
-	var box := Rect2(lo, hi - lo).grow_individual(cellh.x, cellh.y, cellh.x, cellh.y)
-	# Clamp to the size band [MIN, MAX] about the box centre (the grid normally sits under MAX).
-	var bc := box.get_center()
-	var bw := clampf(box.size.x, ENCL_MIN_U, ENCL_MAX_U)
-	var bh := clampf(box.size.y, ENCL_MIN_V, ENCL_MAX_V)
-	box = Rect2(bc - Vector2(bw, bh) * 0.5, Vector2(bw, bh))
-	# Bank reference: the grid is frontage-anchored on ONE bank (lots are pre-validated off rivers), so its
-	# centroid is a stable off-river reference — the clip then only budges an already-on-bank ring.
-	var bank_ref := csum / float(lots.size())
-	var aside := _river_side(bank_ref, rivers)
-	# Corners in the ROAD frame. Jitter (seeded, outward) then HARD-CLAMP to the MAX box, so the ring —
-	# jitter and inward rounding included — never exceeds the ENCL_MAX size cap. Then rotate to tile-local.
-	var q: Array = [box.position, Vector2(box.end.x, box.position.y), box.end, Vector2(box.position.x, box.end.y)]
-	var key := "encl|%d_%d" % [coord.x, coord.y]
-	if RoadHash.pick(key + "|irr", 100) < ENCL_IRREGULAR_PCT:
-		var jmax := box.size.length() * ENCL_JITTER_FRAC
-		var hm := Vector2(ENCL_MAX_U, ENCL_MAX_V) * 0.5
-		for i in 4:
-			var outd: Vector2 = ((q[i] as Vector2) - bc).normalized()
-			var jp: Vector2 = (q[i] as Vector2) + outd * (float(RoadHash.pick(key + "|j%d" % i, 1000)) / 1000.0 * jmax)
-			q[i] = Vector2(clampf(jp.x, bc.x - hm.x, bc.x + hm.x), clampf(jp.y, bc.y - hm.y, bc.y + hm.y))
-	for i in 4:
-		q[i] = (q[i] as Vector2).rotated(angle)   # back to tile-local — the OBB at the road angle
-	# If the block meets the river, budge its river-side edge back to the near bank (no crossing).
-	q = _clip_to_river_bank(q, rivers, bank_ref, aside)
-	if q.size() < 3:
-		return []
-	var radius := minf(minf(box.size.x, box.size.y) * ENCL_ROUND_FRAC, ENCL_ROUND_MAX)
-	var ring := _rounded_quad(q, radius, ENCL_ROUND_SEGS)
-	var hex := _hex_world(coord)
-	var pieces: Array = []
-	for i in ring.size():
-		var a: Vector2 = center + (ring[i] as Vector2)
-		var b: Vector2 = center + (ring[(i + 1) % ring.size()] as Vector2)
-		var seg := _clip_seg_to_convex(a, b, hex)
-		if seg.size() >= 2:
-			pieces.append(PackedVector2Array([seg[0], seg[1]]))
-	return _chain_segments(pieces)
 
 ## Which bank of the river point `p` sits on: sign of the cross product against the NEAREST river
 ## segment (+1 / -1), or 0 when there is no river. `p` and `rivers` are both rel-to-tile-centre.
@@ -2377,25 +2945,6 @@ func _clip_to_river_bank(quad: Array, rivers: Array, anchor: Vector2, aside: int
 		out.append(p)
 	return out
 
-## A closed rounded polyline through `c`'s corners: each corner becomes a quadratic-bezier fillet of
-## `radius` (clamped to the shorter incident edge), `segs` points each. Used for the enclosure ring.
-func _rounded_quad(c: Array, radius: float, segs: int) -> PackedVector2Array:
-	var out := PackedVector2Array()
-	var n := c.size()
-	for i in n:
-		var prev: Vector2 = c[(i - 1 + n) % n]
-		var cur: Vector2 = c[i]
-		var nxt: Vector2 = c[(i + 1) % n]
-		var din: Vector2 = cur - prev
-		var dout: Vector2 = nxt - cur
-		var r: float = minf(radius, minf(din.length(), dout.length()) * 0.49)
-		var a: Vector2 = cur - din.normalized() * r
-		var b: Vector2 = cur + dout.normalized() * r
-		for s in range(segs + 1):   # quadratic bezier a -> cur -> b
-			var t := float(s) / float(segs)
-			out.append(a.lerp(cur, t).lerp(cur.lerp(b, t), t))
-	return out
-
 ## World-space avoidance discs (one bounding circle per footprint) for the road
 ## realizer, so roads built after buildings route around them instead of over them.
 func footprint_discs() -> Array:
@@ -2412,6 +2961,8 @@ func clear_all() -> void:
 	_clear_tile_caches()
 	_subcomponents.clear()
 	_subcomp_dirty.clear()
+	_block_masses.clear()
+	_massed_by_tile.clear()
 	_farm_render.clear()
 	_farm_lanes.clear()
 	_farm_bridges.clear()
@@ -2443,10 +2994,28 @@ func remove_instance(instance_id: String) -> void:
 		queue_redraw()
 
 func _draw() -> void:
-	# Annexes draw UNDER buildings so a same-colour annex merges as a seamless extension.
+	# Annexes + wings draw UNDER buildings so a same-colour extension merges seamlessly.
 	for sc in _subcomponents:
-		if str(sc.kind) == "annex":
+		var uk := str(sc.kind)
+		if uk == "annex" or uk == "wing" or uk == "corridor":
 			_draw_subcomponent(sc)
+	# Courtyard block-masses draw under their members: one welded mass + inner
+	# yard; the members then contribute ink outlines only (party-wall slices).
+	for tid_m in _block_masses:
+		for m in (_block_masses[tid_m] as Array):
+			if _cull and not _view.intersects(m.bb):
+				continue
+			var mw := _wobble_poly(str(m.key), m.poly)
+			draw_colored_polygon(mw, m.color)
+			var ml := mw.duplicate()
+			ml.append(mw[0])
+			draw_polyline(ml, INK, INK_W, true)
+			for h in (m.holes as Array):
+				var hw := _wobble_poly(str(m.key) + "|yard", h)
+				draw_colored_polygon(hw, COURTYARD_FILL)
+				var hl := hw.duplicate()
+				hl.append(hw[0])
+				draw_polyline(hl, INK, 1.0, true)
 	for placement in _placements:
 		if _cull and not _view.intersects(placement.bb):
 			continue
@@ -2461,32 +3030,39 @@ func _draw() -> void:
 				hatch_src = _farm_render[fid].hatch
 		if verts.size() < 3:
 			continue
-		draw_colored_polygon(verts, FARM_FIELD_COLOR if is_farm else placement.color)
-		var loop := verts.duplicate()
-		loop.append(verts[0])
-		if bool(placement.is_npc):
-			draw_polyline(loop, Color.WHITE, NPC_OUTLINE_W, true)
-		else:
-			draw_polyline(loop, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
 		if is_farm:
+			draw_colored_polygon(verts, FARM_FIELD_COLOR)
+			var loop := verts.duplicate()
+			loop.append(verts[0])
+			if bool(placement.is_npc):
+				draw_polyline(loop, Color.WHITE, NPC_OUTLINE_W, true)
+			else:
+				draw_polyline(loop, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
 			# Dark-green diagonal hatch (baked + clipped to the field).
 			for seg in (hatch_src as Array):
 				var s: PackedVector2Array = seg
 				if s.size() >= 2:
 					draw_polyline(s, FARM_HATCH, FARM_HATCH_W)
-		elif not bool(placement.is_npc):
-			# Roof ridges: thin grey lines along the footprint's LONG axis, derived from the
-			# quad's own edges so they stay on the roof at any rotation. Square/rect (4-vert)
-			# only — L/C shapes (6/8 verts) are skipped so a ridge never spills off the polygon.
-			if verts.size() == 4:
-				var ax: Vector2 = verts[1] - verts[0]
-				var bx: Vector2 = verts[3] - verts[0]
-				var lng: Vector2 = ax if ax.length() >= bx.length() else bx
-				var shr: Vector2 = bx if lng == ax else ax
-				var n := clampi(int(shr.length() / 14.0), 1, 4)
-				for k in range(1, n + 1):
-					var base: Vector2 = verts[0] + shr * (float(k) / float(n + 1))
-					draw_line(base + lng * 0.14, base + lng * 0.86, ROOF_MARK, ROOF_MARK_W)
+		else:
+			# Ink & wash: wash fill + one sepia ink outline + category-flavoured
+			# roof motifs. The DRAWN polygon gets a hand-wobble (ink spec I4);
+			# the placement polygon stays clean for occupancy/click logic.
+			# Members of a courtyard mass skip their fill — the mass carries it —
+			# and their outline thins into a party-wall division.
+			var in_mass: bool = (_massed_by_tile.get(str(placement.tile_id), {}) as Dictionary).has(str(placement.instance_id))
+			var wob := _wobble_poly(str(placement.instance_id), verts)
+			if not in_mass:
+				draw_colored_polygon(wob, _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
+			var loop2 := wob.duplicate()
+			loop2.append(wob[0])
+			draw_polyline(loop2, INK, 1.0 if in_mass else INK_W, true)
+			# Quad footprints only — L/C shapes (6/8 verts) keep a clean roof so a
+			# motif never spills off the polygon (same guard the old ridges used).
+			# Offshore platforms stay plain (a helipad dot instead of shed roofs).
+			if bool(placement.get("offshore", false)):
+				draw_circle(_poly_centroid(verts), 2.4, INK)
+			elif verts.size() == 4:
+				_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts, bool(placement.is_npc))
 	# Thin dirt tracks between adjacent farms (kept within FARM_LANE_REACH of the fields, routed around
 	# forests). A promoted tile's _farm_lanes already excludes the ring + trunk (now real yellow roads).
 	# A filled disc (radius = half the track width) at each segment end JOINS the corners + junctions so
@@ -2513,14 +3089,41 @@ func _draw() -> void:
 	# Round tanks + farm barns/silos on top (tanks sit off their building; farm outbuildings sit ON the field).
 	for sc in _subcomponents:
 		var k := str(sc.kind)
-		if k == "tank" or k == "farm_barn" or k == "farm_silo":
+		if k == "tank" or k == "tankfarm" or k == "farm_barn" or k == "farm_silo" or k == "storey":
 			_draw_subcomponent(sc)
 
-## Draw one ancillary (tank/annex) in the parent building's colour + matching outline.
+## Draw one ancillary (tank/annex) in the parent's wash + ink; farm outbuildings
+## keep their brown barn/silo look (farms are outside the plate restyle).
 func _draw_subcomponent(sc: Dictionary) -> void:
 	if _cull and not _view.intersects(sc.bb):
 		return
 	var sv: PackedVector2Array = sc.verts
+	var kind := str(sc.kind)
+	if kind == "tankfarm":
+		var twash := _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc))
+		for tc in (sc.tanks as Array):
+			draw_circle(tc as Vector2, float(sc.r), twash)
+			draw_arc(tc as Vector2, float(sc.r), 0.0, TAU, 24, INK, INK_W, true)
+			draw_circle(tc as Vector2, 1.2, INK)
+		return
+	if kind == "corridor":
+		draw_colored_polygon(sv, _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc)))
+		draw_line(sv[0], sv[1], INK, 1.0)
+		draw_line(sv[2], sv[3], INK, 1.0)
+		return
+	if kind == "annex" or kind == "tank" or kind == "wing" or kind == "storey":
+		if kind != "tank" and kind != "storey":
+			sv = _wobble_poly("%s|%s" % [str(sc.get("iid", "")), kind], sv)
+		var wash := _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc))
+		if kind == "storey":
+			wash = Color.from_hsv(wash.h, wash.s, clampf(wash.v * 0.92, 0.0, 1.0))
+		draw_colored_polygon(sv, wash)
+		var si := sv.duplicate()
+		si.append(sv[0])
+		draw_polyline(si, INK, 1.0 if kind == "storey" else INK_W, true)
+		if kind == "tank":
+			draw_circle(_poly_centroid(sv), 1.4, INK)   # reference: tank = ink circle + centre dot
+		return
 	draw_colored_polygon(sv, sc.color)
 	var sl := sv.duplicate()
 	sl.append(sv[0])
@@ -2528,6 +3131,153 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		draw_polyline(sl, Color.WHITE, NPC_OUTLINE_W, true)
 	else:
 		draw_polyline(sl, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
+
+# ── Ink & wash helpers (phase I1) ──────────────────────────────────────────────
+
+## Hand-drawn wobble (ink spec I4), DRAW time only: subdivide each edge every
+## ~WOBBLE_STEP and jitter the interior points perpendicular ±WOBBLE_AMP, seeded
+## per instance. Corners stay EXACT so adjacent shapes keep their gaps and the
+## logic polygon (occupancy, clicks, tests) is never touched.
+func _wobble_poly(seed_key: String, verts: PackedVector2Array) -> PackedVector2Array:
+	var n := verts.size()
+	if n < 3:
+		return verts
+	var perim := 0.0
+	for i in n:
+		perim += verts[i].distance_to(verts[(i + 1) % n])
+	if perim < WOBBLE_MIN_PERIM:
+		return verts
+	var out := PackedVector2Array()
+	for i in n:
+		var a := verts[i]
+		var b := verts[(i + 1) % n]
+		out.append(a)
+		var steps := int(a.distance_to(b) / WOBBLE_STEP)
+		if steps < 2:
+			continue
+		var dv := (b - a) / float(steps)
+		var nrm := Vector2(-dv.y, dv.x).normalized()
+		for s in range(1, steps):
+			var off := (float(RoadHash.pick("wob|%s|%d|%d" % [seed_key, i, s], 100)) / 100.0 - 0.5) * 2.0 * WOBBLE_AMP
+			out.append(a + dv * float(s) + nrm * off)
+	return out
+
+## Wash family for a building category. The pre-ink scheme's colour families
+## survive in muted plate shades (owner 2026-07-10): furnaces keep their blue,
+## refineries their purple-turned-pink, manufacturing its orange.
+func _wash_family(cat: String) -> String:
+	match cat:
+		"extraction", "power":
+			return "grey"
+		"electrochemistry":
+			return "lime"
+		"metallurgy":
+			return "navy"
+		"water":
+			return "blue"
+		"refinery":
+			return "pink"
+		"manufacturing":
+			return "orange"
+		"infrastructure":
+			return "mustard"
+		"ruins":
+			return "ruins"
+		_:
+			return "red"
+
+## Wash fill: PLAYER buildings carry the muted triad (+seeded ±5% value jitter
+## so repeated blocks don't clone); NPC buildings are PAPER WHITE with ink
+## outlines (owner ruling 2026-07-10) — ownership reads instantly, like the
+## uncoloured lots on a vintage plate. Ruins keep their brown either way
+## (decay, not ownership).
+func _wash_for(cat: String, iid: String, is_npc: bool) -> Color:
+	var fam := _wash_family(cat)
+	var jitter := (float(RoadHash.pick("ink|%s|val" % iid, 100)) / 100.0 - 0.5) * 2.0 * WASH_JITTER
+	if is_npc and fam != "ruins":
+		var wv := NPC_WHITE.v * (1.0 + jitter * 0.6)
+		return Color.from_hsv(NPC_WHITE.h, NPC_WHITE.s, clampf(wv, 0.0, 1.0))
+	var base: Color
+	match fam:
+		"grey":    base = WASH_GREY
+		"lime":    base = WASH_LIME
+		"navy":    base = WASH_NAVY
+		"blue":    base = WASH_BLUE
+		"pink":    base = WASH_PINK
+		"orange":  base = WASH_ORANGE
+		"mustard": base = WASH_MUSTARD
+		"ruins":   base = WASH_RUINS
+		_:         base = WASH_RED
+	var s := base.s * (0.78 if is_npc else 1.06)
+	var v := base.v * (1.0 + jitter) * (0.96 if is_npc else 1.0)
+	return Color.from_hsv(base.h, clampf(s, 0.0, 1.0), clampf(v, 0.0, 1.0))
+
+## Interior ink linework on a quad roof, derived from the footprint's own edges so
+## it stays on the roof at any rotation. Grey industry gets shed saw-tooth lines +
+## a chimney dot; red urban blocks get terrace party-walls + a ridge; mustard
+## logistics keeps longitudinal ridge lines.
+func _draw_roof_motifs(cat: String, iid: String, verts: PackedVector2Array, is_npc: bool) -> void:
+	var ax: Vector2 = verts[1] - verts[0]
+	var bx: Vector2 = verts[3] - verts[0]
+	var lng: Vector2 = ax if ax.length() >= bx.length() else bx
+	var shr: Vector2 = bx if lng == ax else ax
+	match _wash_family(cat):
+		"grey", "navy", "orange":
+			var n := clampi(int(lng.length() / SAWTOOTH_PITCH), 1, 12)
+			for k in range(1, n):
+				var base: Vector2 = verts[0] + lng * (float(k) / float(n))
+				draw_line(base + shr * 0.12, base + shr * 0.88, INK, 1.0)
+			var ci := RoadHash.pick("ink|%s|chimney" % iid, 4)
+			var corner: Vector2 = verts[ci]
+			var inward := (_poly_centroid(verts) - corner).normalized()
+			draw_circle(corner + inward * 5.0, CHIMNEY_R, INK)
+			# Rooftop vent/clerestory (ink spec I4): 1-2 small ink rects along the
+			# ridge on halls long enough to carry them.
+			if lng.length() >= 30.0:
+				var vents := 1 + RoadHash.pick("ink|%s|vents" % iid, 2)
+				var lu := lng.normalized()
+				var su := shr.normalized()
+				for vi in vents:
+					var t := 0.25 + 0.5 * float(RoadHash.pick("ink|%s|vent|%d" % [iid, vi], 100)) / 100.0
+					var vc: Vector2 = verts[0] + lng * t + shr * (0.32 + 0.36 * float(vi))
+					var vh := lu * (VENT_SIZE.x * 0.5)
+					var vv := su * (VENT_SIZE.y * 0.5)
+					var vr := PackedVector2Array([vc - vh - vv, vc + vh - vv, vc + vh + vv, vc - vh + vv, vc - vh - vv])
+					draw_polyline(vr, INK, 1.0, true)
+		"red":
+			var n2 := clampi(int(lng.length() / TERRACE_PITCH), 1, 10)
+			# Per-strip value shading first (ink spec I2): alternate terraces get a
+			# faint seeded light/dark overlay so the row reads as separate houses.
+			for s2 in range(n2):
+				var t0 := float(s2) / float(n2)
+				var t1 := float(s2 + 1) / float(n2)
+				var shade := (float(RoadHash.pick("ink|%s|strip|%d" % [iid, s2], 100)) / 100.0 - 0.5) * 2.0 * TERRACE_SHADE
+				if absf(shade) < 0.012:
+					continue
+				var quad := PackedVector2Array([
+					verts[0] + lng * t0, verts[0] + lng * t1,
+					verts[0] + lng * t1 + shr, verts[0] + lng * t0 + shr,
+				])
+				var overlay := Color(1, 1, 1, shade) if shade > 0.0 else Color(0, 0, 0, -shade)
+				draw_colored_polygon(quad, overlay)
+			for k2 in range(1, n2):
+				var base2: Vector2 = verts[0] + lng * (float(k2) / float(n2))
+				draw_line(base2 + shr * 0.08, base2 + shr * 0.92, INK, 1.0)
+			var mid: Vector2 = verts[0] + shr * 0.5
+			draw_line(mid + lng * 0.06, mid + lng * 0.94, INK, 1.0)
+			# Player rows carry seeded chimney dots on the ridge (ownership cue
+			# beyond saturation, spec open-decision 3 leaning roof-marker).
+			if not is_npc and lng.length() >= 24.0:
+				for c2 in range(1, n2):
+					if RoadHash.pick("ink|%s|rchim|%d" % [iid, c2], 3) == 0:
+						draw_circle(verts[0] + lng * ((float(c2) - 0.5) / float(n2)) + shr * 0.5, 1.1, INK)
+		"ruins":
+			pass   # ruins stay quiet — a broken outline reads better than fresh roof lines
+		_:
+			var n3 := clampi(int(shr.length() / 14.0), 1, 4)
+			for k3 in range(1, n3 + 1):
+				var b3: Vector2 = verts[0] + shr * (float(k3) / float(n3 + 1))
+				draw_line(b3 + lng * 0.14, b3 + lng * 0.86, INK, 1.0)
 
 func _tile_center_world_pos(coord: Vector2i) -> Vector2:
 	if terrain_layer != null:

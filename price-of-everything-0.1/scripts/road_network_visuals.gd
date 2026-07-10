@@ -19,6 +19,11 @@ const BRIDGE_COLOR := Color(0.32, 0.2, 0.08)
 
 var _drawn_edges := -1
 var _drawn_previews := -1
+var _drawn_fp_version := -1   # terminus glyphs depend on building footprints
+## Frames between building-footprint version polls (a redraw per placement
+## during one-per-frame match-start seeding froze loading).
+const FP_POLL_FRAMES := 30
+var _fp_poll_cooldown := 0
 var _active_layer: Node2D = null
 
 func _ready() -> void:
@@ -39,6 +44,18 @@ func _process(_delta: float) -> void:
 	var network := RoadNetwork.instance()
 	var want := _built_count(network)
 	var previews := RoadWorks.preview_bridges().size()
+	# Terminus glyphs suppress beside buildings, so a footprint change (new
+	# building landing by a dead end) also refreshes the static layer — but only
+	# every FP_POLL_FRAMES: match start seeds one building PER FRAME, and a full
+	# static redraw per placement froze the loading flow for ~a minute.
+	_fp_poll_cooldown -= 1
+	if _fp_poll_cooldown <= 0:
+		_fp_poll_cooldown = FP_POLL_FRAMES
+		var bv := _building_visuals()
+		var fp_version: int = int(bv.footprint_version) if bv != null and "footprint_version" in bv else -1
+		if fp_version != _drawn_fp_version:
+			_drawn_fp_version = fp_version
+			queue_redraw()
 	if want != _drawn_edges or previews != _drawn_previews:
 		_drawn_edges = want
 		_drawn_previews = previews
@@ -62,35 +79,26 @@ func _draw() -> void:
 	var terrain := _terrain()
 	var flagged := _flagged_tiles(terrain)
 	# Roads show ONLY where roads are built: clip every edge to tiles whose
-	# infrastructure carries "roads", dropping spans over roadless tiles (the
-	# baked region-web spill, a long connect across empty terrain, etc.).
-	# Through-roads also never DRAW inside a block enclosure — they clip to the ring, which is the block's
-	# access. (Keeps roads out of the enclosed courtyard; the ring itself draws in full below.)
-	var encl_hulls := _enclosure_hulls(network)
+	# infrastructure carries "roads", dropping spans over roadless tiles. Since
+	# roads-v3 the bake flags every tile its network crosses, so for baked
+	# geometry this clip is a no-op safety net (geometry == gameplay).
 	var runs_by_edge: Dictionary = {}
 	for edge_id in network.edges:
 		var edge: Dictionary = network.edges[edge_id]
 		if str(edge.state) != RoadNetwork.STATE_BUILT:
 			continue
-		# Enclosure roads (encl:-tagged) draw regardless of the tile's "roads" flag — they are real
-		# drawn edges WITHOUT the economy/routing meaning that flag carries. Normal edges still clip
-		# to roads-flagged tiles, so an already-flagged coastal / river-corridor tile shows its real
-		# roads as before, while an inland enclosure-only tile shows just its enclosure ring.
-		if _is_seeded_street(edge):
-			continue   # match-start block-frontage anchor (urbanr:) is INVISIBLE — it only orients the block;
-			# the organic enclosure RING is the tile's visible road, so urban tiles never show straight lines.
-		if _is_enclosure_edge(edge):
-			# Enclosure rings/connectors draw regardless of the tile's "roads" flag (real drawn edges WITHOUT
-			# the economy/routing meaning the flag carries). The ring IS its own hull, so it is NOT self-clipped.
+		# Fast path: when every tile the edge crosses is flagged (true for all
+		# baked geometry — the bake flags its corridor), skip the point-wise clip.
+		# 728 baked edges × ~60 pts of tile lookups per redraw was a real cost.
+		if _all_tiles_flagged(edge.tiles, flagged):
 			runs_by_edge[edge_id] = [edge.geometry]
 		else:
-			# Normal edges clip to roads-flagged tiles (and out of enclosure interiors), so a flagged tile
-			# shows its real roads as before while never drawing a through-road inside a block courtyard.
-			runs_by_edge[edge_id] = _clip_out_hulls(_clip_to_built(edge.geometry, terrain, flagged), encl_hulls)
+			runs_by_edge[edge_id] = _clip_to_built(edge.geometry, terrain, flagged)
 	for pass_i in 2:   # casing under colour
 		for edge_id4 in runs_by_edge:
 			for run in runs_by_edge[edge_id4]:
 				_draw_edge_polyline(self, run, str(network.edges[edge_id4].tier), pass_i)
+	_draw_terminus_glyphs(network, terrain, flagged)
 	for edge_id2 in network.edges:
 		var edge2: Dictionary = network.edges[edge_id2]
 		if str(edge2.state) != RoadNetwork.STATE_BUILT:
@@ -112,7 +120,6 @@ func _draw_active() -> void:
 	var network := RoadNetwork.instance()
 	var terrain := _terrain()
 	var flagged := _flagged_tiles(terrain)
-	var encl_hulls := _enclosure_hulls(network)   # a revealing road also clips out of enclosures (no flicker)
 	for edge_id in network.edges:
 		var edge: Dictionary = network.edges[edge_id]
 		if str(edge.state) != RoadNetwork.STATE_BUILDING:
@@ -121,7 +128,7 @@ func _draw_active() -> void:
 		var revealed := _suffix_by_fraction(edge.geometry, frac)
 		if revealed.size() < 2:
 			continue
-		for run in _clip_out_hulls(_clip_to_built(revealed, terrain, flagged), encl_hulls):
+		for run in _clip_to_built(revealed, terrain, flagged):
 			for pass_i in 2:
 				_draw_edge_polyline(_active_layer, run, str(edge.tier), pass_i)
 
@@ -129,57 +136,148 @@ func _terrain() -> HexMap:
 	var found := get_tree().get_nodes_in_group("hex_map")
 	return found[0] as HexMap if not found.is_empty() else null
 
-## An enclosure edge (block-enclosure ring/lane) — tagged via its endpoint node ids ("encl:...").
-func _is_enclosure_edge(edge: Dictionary) -> bool:
-	return str(edge.a).begins_with("encl:") or str(edge.b).begins_with("encl:")
+## A dead end within this of a building footprint draws NO glyph — the road
+## visibly ends AT the building (serving it), which is a complete terminus.
+const TERMINUS_BUILDING_CLEAR := 40.0
+## Dead-end treatments (designer ruling: NO circles): a short T-crossbar or a
+## Y-fork, seeded per node, else a plain cut end. Arms are 20-30u; the bar/fork
+## must stay at least TERMINUS_EDGE_INSET inside the tile's hex or the end
+## stays plain (an arm poking over the tile seam reads as a phantom road).
+const TERMINUS_ARM_MIN := 20.0
+const TERMINUS_ARM_MAX := 30.0
+const TERMINUS_EDGE_INSET := 30.0
+const TERMINUS_Y_SPREAD_DEG := 35.0
 
-## A cosmetic match-start urban street (urbanr:-tagged), seeded so every urban tile can anchor a block.
-## Draws like a road but carries no "roads" infrastructure (no build-capacity / routing cost).
-func _is_seeded_street(edge: Dictionary) -> bool:
-	return str(edge.a).begins_with("urbanr:") or str(edge.b).begins_with("urbanr:")
+## A tip within this of ANOTHER edge's geometry is a junction/merge, not a dead
+## end — no glyph. Graph degree alone is NOT enough: baked edges meet
+## geometrically (reuse-discount merges) without sharing node ids, so a pure
+## degree-1 test decorated every visual junction with (often overlapping) rings.
+const TERMINUS_MERGE_CLEAR := 14.0
+## Two (or more) dead-end tips within this range of each other are a CONVERGENCE
+## (e.g. the stitched fan at a busy bridge gate), not isolated terminuses — arms
+## reach up to TERMINUS_ARM_MAX, so nearby tips would draw overlapping bars
+## (owner screenshot 2026-07-09). The whole cluster stays plain cut ends.
+const TERMINUS_CLUSTER_CLEAR := 60.0
 
-## Per-tile keep-out polygons: the convex hull of each enclosed tile's encl: ring points. Through-roads
-## are clipped OUT of these so they never draw inside a block (the ring is the block's access).
-func _enclosure_hulls(network: RoadNetwork) -> Array:
-	var pts_by_tile: Dictionary = {}
+## Dead-end treatment (roads-v3, replaces the deleted Y-stubs): a road tip that
+## is genuinely alone — degree-1 JUNCTION node AND clear of every other edge's
+## geometry — gets a small turning-loop glyph, purely draw-time (no edges, no
+## saved state). The moment a later road reaches it the glyph vanishes by
+## construction. Gateways/crossings are skipped, as are tips beside a building.
+func _draw_terminus_glyphs(network: RoadNetwork, terrain: HexMap, flagged: Dictionary) -> void:
+	var degree: Dictionary = {}
+	var tip_edge: Dictionary = {}   # node_id -> the one BUILT edge touching it
+	var edge_bbox: Dictionary = {}  # edge_id -> Rect2 over its geometry
 	for edge_id in network.edges:
 		var edge: Dictionary = network.edges[edge_id]
-		if str(edge.state) != RoadNetwork.STATE_BUILT or not _is_enclosure_edge(edge):
+		if str(edge.state) != RoadNetwork.STATE_BUILT:
 			continue
-		for tc in (edge.tiles as Array):
-			var arr: PackedVector2Array = pts_by_tile.get(tc, PackedVector2Array())
-			arr.append_array(edge.geometry as PackedVector2Array)
-			pts_by_tile[tc] = arr
-	var hulls: Array = []
-	for tc in pts_by_tile:
-		var h := Geometry2D.convex_hull(pts_by_tile[tc] as PackedVector2Array)
-		if h.size() >= 3:
-			hulls.append(h)
-	return hulls
+		var geo0: PackedVector2Array = edge.geometry
+		if geo0.size() >= 2:
+			var bb := Rect2(geo0[0], Vector2.ZERO)
+			for p0 in geo0:
+				bb = bb.expand(p0)
+			edge_bbox[edge_id] = bb.grow(TERMINUS_MERGE_CLEAR)
+		for nid in [str(edge.a), str(edge.b)]:
+			degree[nid] = int(degree.get(nid, 0)) + 1
+			tip_edge[nid] = edge
+	var bv := _building_visuals()
+	# All dead-end tip positions first: a tip with ANOTHER dead-end tip nearby is
+	# part of a convergence cluster and must not draw a bar (they'd overlap).
+	var tip_pos: Dictionary = {}   # node_id -> Vector2
+	for nid0 in degree:
+		if int(degree[nid0]) != 1:
+			continue
+		var node0: Dictionary = network.nodes.get(nid0, {})
+		if not node0.is_empty() and str(node0.kind) == RoadNetwork.KIND_JUNCTION:
+			tip_pos[nid0] = node0.pos
+	for nid2 in tip_pos:
+		var pos: Vector2 = tip_pos[nid2]
+		if not _point_built(terrain, flagged, pos):
+			continue   # the road there is hidden — so is its terminus
+		if bv != null and _near_building(bv, pos):
+			continue   # ends at a building frontage — that IS the terminus
+		var edge2: Dictionary = tip_edge[nid2]
+		if _near_other_edge(network, edge_bbox, str(edge2.id), pos):
+			continue   # the tip lands on/joins another road — a junction, not a dead end
+		var clustered := false
+		for other_nid in tip_pos:
+			if str(other_nid) != str(nid2) \
+					and pos.distance_squared_to(tip_pos[other_nid]) <= TERMINUS_CLUSTER_CLEAR * TERMINUS_CLUSTER_CLEAR:
+				clustered = true
+				break
+		if clustered:
+			continue   # convergence fan (bridge gates etc.) — plain ends, no bars
+		var geo: PackedVector2Array = edge2.geometry
+		if geo.size() < 2:
+			continue
+		var tip: Vector2 = geo[0] if geo[0].distance_squared_to(pos) < geo[geo.size() - 1].distance_squared_to(pos) else geo[geo.size() - 1]
+		var prev: Vector2 = geo[1] if tip == geo[0] else geo[geo.size() - 2]
+		var dir := (tip - prev).normalized()
+		# Treatment seeded per node: 0 = T-crossbar, 1 = Y-fork, 2 = plain cut end.
+		var pick := RoadHash.pick("terminus|%s" % nid2, 3)
+		if pick == 2:
+			continue   # plain dead end — the road just stops
+		var arm := TERMINUS_ARM_MIN + float(RoadHash.pick("terminus|%s|arm" % nid2, 100)) / 100.0 * (TERMINUS_ARM_MAX - TERMINUS_ARM_MIN)
+		var arms: Array = []
+		if pick == 0:
+			var perp := Vector2(-dir.y, dir.x)
+			arms = [tip + perp * arm, tip - perp * arm]
+		else:
+			var spread := deg_to_rad(TERMINUS_Y_SPREAD_DEG)
+			arms = [tip + dir.rotated(spread) * arm, tip + dir.rotated(-spread) * arm]
+		if terrain != null and not _arms_inside_tile(terrain, tip, arms):
+			continue   # too close to the tile seam — stay a plain dead end
+		var tier := str(edge2.tier)
+		var core: Color = TRUNK_COLOR if tier == RoadNetwork.TIER_TRUNK else LOCAL_COLOR
+		var w: float = TRUNK_WIDTH if tier == RoadNetwork.TIER_TRUNK else LOCAL_WIDTH
+		for a in arms:
+			draw_line(tip, a, CASING, w + 2.5, true)
+		for a2 in arms:
+			draw_line(tip, a2, core, w, true)
 
-## Drop the portions of each run that fall inside any enclosure hull, splitting a run that passes through
-## into the segments on either side (point-membership, like _clip_to_built).
-func _clip_out_hulls(runs: Array, hulls: Array) -> Array:
-	if hulls.is_empty():
-		return runs
-	var out: Array = []
-	for run in runs:
-		var cur := PackedVector2Array()
-		for p in (run as PackedVector2Array):
-			var inside := false
-			for h in hulls:
-				if Geometry2D.is_point_in_polygon(p, h):
-					inside = true
-					break
-			if inside:
-				if cur.size() >= 2:
-					out.append(cur)
-				cur = PackedVector2Array()
-			else:
-				cur.append(p)
-		if cur.size() >= 2:
-			out.append(cur)
-	return out
+## Every arm endpoint must sit at least TERMINUS_EDGE_INSET inside the hex of
+## the tile that owns the TIP, so a terminus bar never dangles over a tile seam.
+func _arms_inside_tile(terrain: HexMap, tip: Vector2, arms: Array) -> bool:
+	var center: Vector2 = terrain.map_to_local(terrain.local_to_map(tip))
+	var inset := TERMINUS_EDGE_INSET
+	# corner inequality inset: 240|x| + 135|y| <= 64800 shrunk by inset * |(240,135)|
+	var corner_max := 64800.0 - inset * Vector2(240.0, 135.0).length()
+	for a in arms:
+		var rel: Vector2 = (a as Vector2) - center
+		if absf(rel.x) > 270.0 - inset or absf(rel.y) > 240.0 - inset:
+			return false
+		if 240.0 * absf(rel.x) + 135.0 * absf(rel.y) > corner_max:
+			return false
+	return true
+
+## True when `pos` sits within TERMINUS_MERGE_CLEAR of any OTHER built edge's
+## geometry. Per-edge bbox prefilter first; exact segment distance only on the
+## few edges whose grown bbox contains the tip.
+func _near_other_edge(network: RoadNetwork, edge_bbox: Dictionary, own_id: String, pos: Vector2) -> bool:
+	for edge_id in edge_bbox:
+		if str(edge_id) == own_id:
+			continue
+		if not (edge_bbox[edge_id] as Rect2).has_point(pos):
+			continue
+		var geo: PackedVector2Array = network.edges[edge_id].geometry
+		for i in range(geo.size() - 1):
+			if pos.distance_squared_to(Geometry2D.get_closest_point_to_segment(pos, geo[i], geo[i + 1])) \
+				<= TERMINUS_MERGE_CLEAR * TERMINUS_MERGE_CLEAR:
+				return true
+	return false
+
+func _building_visuals() -> Node:
+	var found := get_tree().get_nodes_in_group("building_footprints")
+	return found[0] if not found.is_empty() else null
+
+func _near_building(bv: Node, pos: Vector2) -> bool:
+	if not bv.has_method("footprint_discs"):
+		return false
+	for disc in bv.footprint_discs():
+		if pos.distance_to(disc.center) <= float(disc.radius) + TERMINUS_BUILDING_CLEAR:
+			return true
+	return false
 
 ## Set of tile coords whose infrastructure carries "roads" (built or seeded).
 func _flagged_tiles(terrain: HexMap) -> Dictionary:
@@ -195,6 +293,12 @@ func _point_built(terrain: HexMap, flagged: Dictionary, p: Vector2) -> bool:
 	if terrain == null:
 		return true   # no terrain (headless) — don't clip
 	return flagged.has(terrain.tile_coord_for_map_coord(terrain.local_to_map(p)))
+
+func _all_tiles_flagged(tiles: Array, flagged: Dictionary) -> bool:
+	for t in tiles:
+		if not flagged.has(t):
+			return false
+	return true
 
 ## Split a polyline into the runs that lie on road-built tiles; spans over
 ## roadless tiles are dropped. Returns the whole polyline when there's no terrain.

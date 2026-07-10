@@ -265,8 +265,7 @@ func _ensure_tab_built(key: String) -> void:
 			_build_ledger_lazy_tab(root, "Transactions",
 				MatchState.get_recurring_transaction_rows, MatchState.get_oneoff_transaction_rows)
 		TAB_MOVEMENTS:
-			_build_ledger_lazy_tab(root, "Movements",
-				MatchState.get_recurring_move_rows, MatchState.get_oneoff_move_rows)
+			_build_movements_tab(root)
 	_tab_built[key] = true
 
 func _build_prices_tab(root: VBoxContainer) -> void:
@@ -301,7 +300,29 @@ func _build_special_orders_lazy_tab(root: VBoxContainer) -> void:
 	_refresh_special_orders()
 
 func _build_sales_tab(root: VBoxContainer) -> void:
+	root.add_theme_constant_override("separation", 12)
+	root.add_child(_build_recurring_orders_section("sells"))
+	var sep := HSeparator.new()
+	root.add_child(sep)
 	_build_bulk_sell_section(root)
+
+func _build_movements_tab(root: VBoxContainer) -> void:
+	root.add_theme_constant_override("separation", 12)
+	root.add_child(_build_recurring_orders_section("moves"))
+	# One-off moves remain a view-only accordion (they can't be "cancelled" — they fire once).
+	# Wrapped in its own scroll so a turn with many one-offs fills the remaining space and
+	# scrolls internally rather than clipping under the fixed panel height.
+	var oneoff_scroll := ScrollContainer.new()
+	oneoff_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	oneoff_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	oneoff_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var oneoff := _make_accordion()
+	oneoff_scroll.add_child(oneoff.root)
+	root.add_child(oneoff_scroll)
+	var refresh := func() -> void:
+		_populate_accordion(oneoff, "One-off", MatchState.get_oneoff_move_rows())
+	_ledger_refreshers.append(refresh)
+	refresh.call()
 
 func _build_ledger_lazy_tab(root: VBoxContainer, title: String, recurring_getter: Callable, oneoff_getter: Callable) -> void:
 	_adopt_children(_build_ledger_tab(title, recurring_getter, oneoff_getter), root)
@@ -488,6 +509,254 @@ func _on_bulk_sell_pressed() -> void:
 		MatchState.request_toast("Nothing to sell with those filters", "warning")
 	if _recurring_check != null and _recurring_check.button_pressed:
 		MatchState.add_recurring_bulk_sell(params)
+
+# ── Recurring orders list (Movements + Sales tabs) ───────────────────────────
+# A searchable, filterable list of standing orders — one card per recurring move /
+# sell / bulk-sell — each with a double-width good-icon slot (up to two icons) and a
+# Cancel button. `kind` is "moves" (recurring_moves) or "sells" (recurring_sells +
+# recurring_bulk_sells). Refreshes on recurring_orders_changed and every turn.
+const REC_ROW_H := 56.0
+const REC_ICON := 40            # frame_size is int (UIHelpers.make_framed_good_icon)
+const REC_ICON_SLOT_W := 92.0   # double-width: fits two REC_ICON frames + gap
+
+func _build_recurring_orders_section(kind: String) -> Control:
+	var section := VBoxContainer.new()
+	section.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	section.add_theme_constant_override("separation", 6)
+
+	var title := Label.new()
+	title.text = "Recurring moves" if kind == "moves" else "Recurring sales"
+	title.add_theme_font_size_override("font_size", 16)
+	section.add_child(title)
+
+	# Per-section filter state, shared (by reference) between the widgets and the
+	# refresh closure so edits are visible to the rebuild.
+	var state := {"q": "", "good": ""}
+
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 8)
+	var search := LineEdit.new()
+	search.placeholder_text = "Search good or tile…"
+	search.clear_button_enabled = true
+	search.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	search.custom_minimum_size = Vector2(180, 0)
+	bar.add_child(search)
+	var good_opt := OptionButton.new()
+	good_opt.custom_minimum_size = Vector2(150, 0)
+	bar.add_child(good_opt)
+	section.add_child(bar)
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 210)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 4)
+	scroll.add_child(list)
+	section.add_child(scroll)
+
+	var refresh := func() -> void:
+		_refresh_recurring_list(kind, list, good_opt, state)
+	search.text_changed.connect(func(t: String) -> void:
+		state["q"] = t.strip_edges().to_lower()
+		refresh.call())
+	good_opt.item_selected.connect(func(i: int) -> void:
+		state["good"] = str(good_opt.get_item_metadata(i))
+		refresh.call())
+	_ledger_refreshers.append(refresh)
+	if not MatchState.recurring_orders_changed.is_connected(refresh):
+		MatchState.recurring_orders_changed.connect(refresh)
+	refresh.call()
+	return section
+
+func _refresh_recurring_list(kind: String, list: VBoxContainer, good_opt: OptionButton, state: Dictionary) -> void:
+	var entries := _recurring_entries(kind)
+	_sync_recurring_good_filter(good_opt, entries, state)
+	for c in list.get_children():
+		c.queue_free()
+	var shown := 0
+	for item in entries:
+		if not _recurring_matches(item, state):
+			continue
+		list.add_child(_recurring_row(item))
+		shown += 1
+	if shown == 0:
+		var empty := Label.new()
+		var noun := "moves" if kind == "moves" else "sales"
+		var filtered: bool = str(state.get("q", "")) != "" or str(state.get("good", "")) != ""
+		empty.text = "  No recurring %s%s" % [noun, " match your search" if filtered else " yet"]
+		empty.add_theme_font_size_override("font_size", 12)
+		empty.modulate = Color(0.7, 0.7, 0.7)
+		list.add_child(empty)
+
+# Flatten the raw recurring arrays into uniform view items:
+#   {entry, sub: "move"|"sell"|"bulk", source, dest, goods: {good_id:qty}, params?}
+# `entry` is the exact dict held by MatchState, so Cancel can erase-by-value.
+func _recurring_entries(kind: String) -> Array:
+	var out: Array = []
+	if kind == "moves":
+		for m in MatchState.recurring_moves:
+			out.append({"entry": m, "sub": "move",
+				"source": str(m.get("source", "")), "dest": str(m.get("dest", "")),
+				"goods": m.get("goods", {})})
+	else:
+		for s in MatchState.recurring_sells:
+			out.append({"entry": s, "sub": "sell",
+				"source": str(s.get("source", "")), "dest": "",
+				"goods": s.get("goods", {})})
+		for b in MatchState.recurring_bulk_sells:
+			var p: Dictionary = b.get("params", {})
+			var gid := str(p.get("good_id", ""))
+			out.append({"entry": b, "sub": "bulk", "source": "", "dest": "",
+				"goods": ({gid: 0} if gid != "" else {}), "params": p})
+	return out
+
+# Rebuild the good dropdown from the goods present in the current orders, preserving
+# the selection where possible (and clearing it if that good is gone).
+func _sync_recurring_good_filter(good_opt: OptionButton, entries: Array, state: Dictionary) -> void:
+	var goods := {}
+	for item in entries:
+		for gid in (item.get("goods", {}) as Dictionary).keys():
+			if str(gid) != "":
+				goods[str(gid)] = true
+	var keys := goods.keys()
+	keys.sort()
+	good_opt.clear()
+	good_opt.add_item("All goods")
+	good_opt.set_item_metadata(0, "")
+	var sel := 0
+	for gid in keys:
+		good_opt.add_item(Catalog.get_display_name(str(gid)))
+		good_opt.set_item_metadata(good_opt.item_count - 1, str(gid))
+		if str(gid) == str(state.get("good", "")):
+			sel = good_opt.item_count - 1
+	if str(state.get("good", "")) != "" and sel == 0:
+		state["good"] = ""   # the filtered good no longer has a standing order
+	good_opt.select(sel)
+
+func _recurring_matches(item: Dictionary, state: Dictionary) -> bool:
+	var good_filter := str(state.get("good", ""))
+	var goods: Dictionary = item.get("goods", {})
+	if good_filter != "" and not goods.has(good_filter):
+		return false
+	var q := str(state.get("q", ""))
+	if q == "":
+		return true
+	var blob := ""
+	for gid in goods.keys():
+		blob += Catalog.get_display_name(str(gid)).to_lower() + " "
+	if str(item.get("source", "")) != "":
+		blob += Catalog.tile_label(str(item.source)).to_lower() + " "
+	if str(item.get("dest", "")) != "":
+		blob += Catalog.tile_label(str(item.dest)).to_lower() + " "
+	if str(item.get("sub", "")) == "bulk":
+		blob += "bulk all goods every tile"
+	return blob.contains(q)
+
+func _recurring_row(item: Dictionary) -> Control:
+	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = DS.PALETTE.BG_INSET
+	sb.border_color = DS.PALETTE.BORDER_SOFT
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(8)
+	sb.content_margin_left = 10
+	sb.content_margin_right = 10
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
+	card.add_theme_stylebox_override("panel", sb)
+
+	var hb := HBoxContainer.new()
+	hb.custom_minimum_size = Vector2(0, REC_ROW_H)
+	hb.add_theme_constant_override("separation", 10)
+	card.add_child(hb)
+
+	# Double-width icon slot: up to two good icons, then a "+N" if more.
+	var slot := HBoxContainer.new()
+	slot.custom_minimum_size = Vector2(REC_ICON_SLOT_W, 0)
+	slot.add_theme_constant_override("separation", 4)
+	slot.alignment = BoxContainer.ALIGNMENT_BEGIN
+	var gids: Array = (item.get("goods", {}) as Dictionary).keys()
+	for i in mini(2, gids.size()):
+		var gid := str(gids[i])
+		slot.add_child(UIHelpers.make_framed_good_icon(gid, Catalog.get_internal_name(gid), REC_ICON))
+	if gids.size() > 2:
+		var more := Label.new()
+		more.text = "+%d" % (gids.size() - 2)
+		more.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		more.add_theme_font_size_override("font_size", 12)
+		more.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+		slot.add_child(more)
+	hb.add_child(slot)
+
+	# Two-line description: route/target on top, goods summary below.
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 1)
+	var line1 := Label.new()
+	line1.text = _recurring_title(item)
+	line1.add_theme_font_size_override("font_size", 14)
+	line1.clip_text = true
+	col.add_child(line1)
+	var line2 := Label.new()
+	line2.text = _recurring_goods_summary(item)
+	line2.theme_type_variation = "Caption"
+	line2.add_theme_font_size_override("font_size", 11)
+	line2.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+	line2.clip_text = true
+	col.add_child(line2)
+	hb.add_child(col)
+
+	var cancel := Button.new()
+	cancel.text = "Cancel"
+	cancel.focus_mode = Control.FOCUS_NONE
+	cancel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cancel.tooltip_text = "Stop this recurring order"
+	var entry: Dictionary = item.get("entry", {})
+	var sub := str(item.get("sub", ""))
+	cancel.pressed.connect(func() -> void: _cancel_recurring(sub, entry))
+	hb.add_child(cancel)
+	return card
+
+func _cancel_recurring(sub: String, entry: Dictionary) -> void:
+	var ok := false
+	match sub:
+		"move":
+			ok = MatchState.remove_recurring_move(entry)
+		"sell":
+			ok = MatchState.remove_recurring_sell(entry)
+		"bulk":
+			ok = MatchState.remove_recurring_bulk_sell(entry)
+	if ok:
+		MatchState.request_toast("Recurring order cancelled", "success")
+
+func _recurring_title(item: Dictionary) -> String:
+	match str(item.get("sub", "")):
+		"move":
+			return "%s  →  %s" % [Catalog.tile_label(str(item.source)), Catalog.tile_label(str(item.dest))]
+		"sell":
+			return "Sell from %s" % Catalog.tile_label(str(item.source))
+		"bulk":
+			var gid := str((item.get("params", {}) as Dictionary).get("good_id", ""))
+			return "Bulk sell: %s" % ("all goods" if gid == "" else Catalog.get_display_name(gid))
+	return ""
+
+func _recurring_goods_summary(item: Dictionary) -> String:
+	if str(item.get("sub", "")) == "bulk":
+		var p: Dictionary = item.get("params", {})
+		var extra := " · finished only" if bool(p.get("finished_only", false)) else ""
+		return "keep %d per tile%s · every turn" % [int(p.get("per_tile_keep", 0)), extra]
+	var parts: Array = []
+	var goods: Dictionary = item.get("goods", {})
+	for gid in goods.keys():
+		parts.append("%s ×%d" % [Catalog.get_display_name(str(gid)), int(goods[gid])])
+	if parts.is_empty():
+		return "every turn"
+	return ", ".join(parts) + " · every turn"
 
 # ── Special Orders tab ───────────────────────────────────────────────────────
 func _build_special_orders_tab() -> VBoxContainer:

@@ -11,19 +11,40 @@ signal council_widget_clicked
 const FLASH_RED := Color(0.9, 0.2, 0.2)
 const SAVE_TOOLTIP := "Save the game (quicksave slot)"
 const SAVE_LOCKED_TOOLTIP := "Please wait until the turn resolves"
+# Show the "Bankruptcy imminent" strip when total runway — cash plus remaining
+# borrowing room — drops below this. Once that's exhausted, a negative balance can no
+# longer be auto-bridged and the bankruptcy clock starts.
+const BANKRUPTCY_IMMINENT_RUNWAY := 100.0
 
 var _flashing := false
 var _save_button: Button
+var _bankruptcy_strip: PanelContainer
+
+const CFOIntroPopup := preload("res://scripts/cfo_intro_popup.gd")
+const CFO_INTRO_BODY := "I saw we weren't being tax efficient so now I've filed for a tax credit based on our losses. I can only make it work for 5 turns at a time but it should mean we can reduce our tax bill based on recent losses. See, and you worried about keeping me around…"
 
 func _ready() -> void:
 	money_widget.pressed.connect(_on_money_clicked)
 	MatchState.money_changed.connect(_on_money_changed)
 	MatchState.build_rejected_no_funds.connect(_on_build_rejected_no_funds)
+	MatchState.cfo_tax_credit_filed.connect(_on_cfo_tax_credit_filed)
 	_refresh_money_display(MatchState.money)
 	_add_victory_widget()
 	_add_council_widget()
 	_add_save_button()
 	_add_notification_bell()
+	_add_bankruptcy_warning()
+
+# The first time the CFO files a tax-loss credit, show their one-time explainer in the
+# top-left. The CanvasLayer is a child of the top bar, so it's freed with the HUD.
+func _on_cfo_tax_credit_filed(_amount: float) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var cfo_id: String = MatchState.get_advisor_in_seat("cfo")
+	var cfo: Dictionary = MatchState.get_advisor(cfo_id) if cfo_id != "" else {}
+	var popup := CFOIntroPopup.new()
+	add_child(popup)
+	popup.show_for(cfo, CFO_INTRO_BODY)
 
 func _add_victory_widget() -> void:
 	# The victory score widget sits next to MoneyWidget at the left of the top-bar
@@ -179,8 +200,53 @@ func _on_save_pressed() -> void:
 	else:
 		MatchState.request_toast("Could not save: %s" % err, "warning")
 
+# A red "Bankruptcy imminent" strip directly beneath the money widget, matching its
+# width. A top_level overlay (NOT a re-parent): the e2e harness drives the loan UI
+# through the MoneyWidget's node path, so the top-bar hierarchy must stay put.
+func _add_bankruptcy_warning() -> void:
+	_bankruptcy_strip = PanelContainer.new()
+	_bankruptcy_strip.visible = false
+	_bankruptcy_strip.top_level = true   # escapes the container layout; global coords
+	# Clicking the flag opens the Turn Briefing on the bankruptcy alert (spec §7).
+	_bankruptcy_strip.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_bankruptcy_strip.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_bankruptcy_strip.accept_event()
+			TurnBriefing.expand("alert:bankruptcy"))
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.62, 0.16, 0.14, 0.95)
+	sb.set_corner_radius_all(4)
+	sb.content_margin_top = 2
+	sb.content_margin_bottom = 2
+	_bankruptcy_strip.add_theme_stylebox_override("panel", sb)
+	var lbl := Label.new()
+	lbl.text = "Bankruptcy imminent"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.clip_text = true
+	lbl.add_theme_font_size_override("font_size", 11)
+	lbl.add_theme_color_override("font_color", Color(1, 1, 1))
+	_bankruptcy_strip.add_child(lbl)
+	add_child(_bankruptcy_strip)
+
+	LoanState.loans_updated.connect(_refresh_bankruptcy_warning)
+	TurnManager.turn_resolution_completed.connect(_refresh_bankruptcy_warning)
+	money_widget.item_rect_changed.connect(_refresh_bankruptcy_warning)
+	_refresh_bankruptcy_warning()
+
+func _refresh_bankruptcy_warning(_ignored: Variant = null) -> void:
+	if not is_instance_valid(_bankruptcy_strip):
+		return
+	var runway: float = MatchState.money + LoanState.available_capacity()
+	_bankruptcy_strip.visible = not TurnManager.game_ended and runway < BANKRUPTCY_IMMINENT_RUNWAY
+	if _bankruptcy_strip.visible:
+		# Pin under the money widget, matching its width.
+		_bankruptcy_strip.global_position = money_widget.global_position + Vector2(0, money_widget.size.y + 2)
+		_bankruptcy_strip.custom_minimum_size = Vector2(money_widget.size.x, 0)
+		_bankruptcy_strip.size = Vector2(money_widget.size.x, _bankruptcy_strip.get_combined_minimum_size().y)
+
 func _on_money_changed(new_amount: float) -> void:
 	_refresh_money_display(new_amount)
+	_refresh_bankruptcy_warning()
 
 func _on_build_rejected_no_funds(_message: String) -> void:
 	flash_red()

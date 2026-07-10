@@ -11,8 +11,10 @@ const SAVE_DIR := "user://saves"
 # Version history (migrations in _migrate): 1 = initial format; 2 = adds `ruleset`
 # (match.ruleset + meta.ruleset) so future rule variants can key off saves;
 # 3 = adds special order state; 4 = advisor seats/acquisition; 5 = structured
-# infrastructure snapshot with per-tile levels.
-const SAVE_VERSION := 5
+# infrastructure snapshot with per-tile levels; 6 = roads-v3 — strips the retired
+# enclosure rings + urban anchor streets (encl:/urbanr: nodes and edges) from the
+# saved road network (RoadWorks' enclosure keys are simply ignored on import).
+const SAVE_VERSION := 6
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -72,6 +74,9 @@ func export_snapshot() -> Dictionary:
 		"production": Production.export_state(),
 		"events": EventScheduler.export_state(),
 		"modifiers": Modifiers.export_state(),
+		"decisions": DecisionState.export_state(),
+		"solvency": SolvencyState.export_state(),
+		"briefing": TurnBriefing.export_state(),
 		"victory": VictoryState.export_state(),
 		"infrastructure": _collect_infrastructure(),
 		"roads": {
@@ -96,6 +101,10 @@ func import_snapshot(snap: Dictionary) -> void:
 	Production.import_state(snap.get("production", {}))
 	EventScheduler.import_state(snap.get("events", {}))
 	Modifiers.import_state(snap.get("modifiers", {}))
+	# Additive key (tolerant reader): pre-feature saves load a fresh decision state.
+	DecisionState.import_state(snap.get("decisions", {}))
+	SolvencyState.import_state(snap.get("solvency", {}))
+	TurnBriefing.import_state(snap.get("briefing", {}))
 	# Advisor-seat modifiers are derived, not saved: re-register them AFTER
 	# Modifiers.import_state (which replaces the registry wholesale and would
 	# otherwise wipe an earlier reconcile). See advisor-system-spec.md §12.1.
@@ -555,6 +564,8 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				snap = _migrate_v3_to_v4(snap)
 			4:
 				snap = _migrate_v4_to_v5(snap)
+			5:
+				snap = _migrate_v5_to_v6(snap)
 			_:
 				break
 		version += 1
@@ -602,6 +613,34 @@ func _migrate_v3_to_v4(snap: Dictionary) -> Dictionary:
 func _migrate_v4_to_v5(snap: Dictionary) -> Dictionary:
 	if snap.has("infrastructure"):
 		snap["infrastructure"] = _normalize_infrastructure_snapshot(snap.get("infrastructure", {}))
+	return snap
+
+func _migrate_v5_to_v6(snap: Dictionary) -> Dictionary:
+	# roads-v3 removed enclosure rings and the invisible urban anchor streets. Strip
+	# their nodes/edges from the saved network so old saves don't resurrect them.
+	# (RoadWorks' old "enclosure_bands"/"enclosure_edges" keys are ignored on import.)
+	# NOTE: urban tiles in pre-v6 saves keep their "roads" flag but lose the ring —
+	# their visible streets thin out until the tile is reached by new roads. Accepted
+	# for pre-release saves.
+	var roads: Dictionary = snap.get("roads", {})
+	var network: Dictionary = roads.get("network", {})
+	if network.is_empty():
+		return snap
+	var is_retired := func(id: String) -> bool:
+		return id.begins_with("encl:") or id.begins_with("urbanr:")
+	var nodes: Dictionary = network.get("nodes", {})
+	for node_id in nodes.keys():
+		if is_retired.call(str(node_id)):
+			nodes.erase(node_id)
+	var edges: Dictionary = network.get("edges", {})
+	for edge_id in edges.keys():
+		var e: Dictionary = edges[edge_id]
+		if is_retired.call(str(e.get("a", ""))) or is_retired.call(str(e.get("b", ""))):
+			edges.erase(edge_id)
+	network["nodes"] = nodes
+	network["edges"] = edges
+	roads["network"] = network
+	snap["roads"] = roads
 	return snap
 
 # --- JSON helpers ---

@@ -59,6 +59,9 @@ var _stock_sel: Dictionary = {}   # {good_id, name, qty} of the selected good, o
 var _stock_qty: int = 0
 var _stock_dest: String = ""      # "" = none, MARKET_DEST, SPECIAL_ORDER_DEST, or a tile_id
 var _stock_recurring: bool = false
+# Warehouse-expansion inline confirmation open? (Persists across pane rebuilds,
+# resets when a different tile is shown.)
+var _warehouse_expand: bool = false
 
 # "Sell all Surplus" confirmation. The suppress flag is session-wide (static) so
 # "Do not show again for other tiles" carries across every tile's panel.
@@ -496,6 +499,7 @@ func show_tile(tile_data: Dictionary) -> void:
 	_current_tile_id = str(tile_data.get("id", ""))
 	Audio.tile_ambience(str(tile_data.get("type", "")))  # looping terrain ambience while this panel is open
 	_active_tab = "bl"  # always land on the Buildings tab when a new tile is selected
+	_warehouse_expand = false
 	_refresh_banner(tile_data)
 	_refresh_land_rail()
 	_refresh_tiles()
@@ -1891,6 +1895,18 @@ func _go_to_building(instance_id: String) -> void:
 
 # --- Stockpile pane (vertical bar chart) ------------------------------------
 func _build_stock_pane(pane: VBoxContainer) -> void:
+	# Warehouse level + expansion offer — first thing under the tab row, so a full
+	# tile's fix is right where the player is looking (owner spec 2026-07-09).
+	pane.add_child(_make_warehouse_section())
+	# Just-in-Time Logistics readout: goods routed producer→consumer without
+	# touching the warehouse this turn (only shown once the unlock is doing work).
+	var jit_fed := Production.get_jit_fed_for_tile(_current_tile_id)
+	if jit_fed > 0:
+		var jit_line := Label.new()
+		jit_line.text = "JIT: %d units fed building-to-building this turn — no warehouse space used" % jit_fed
+		jit_line.theme_type_variation = &"Caption"
+		jit_line.add_theme_color_override("font_color", DS.PALETTE.OK)
+		pane.add_child(jit_line)
 	var stock := TileViewData.stockpile_summary(_current_tile_id)
 	var pct_text := "FULL · %d/%d" % [stock.used, stock.capacity] if stock.is_full else "%d/%d · %d%%" % [stock.used, stock.capacity, roundi(float(stock.pct) * 100.0)]
 	# The "Stockpile" heading now lives inside the chart's outline.
@@ -1911,6 +1927,118 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 		pane.add_child(_make_section_header("Overflow Shipments", "can't unload", "problem"))
 		for r in overflow:
 			pane.add_child(_make_overflow_row(r))
+
+# --- Warehouse expansion (per-tile storage upgrade, paid in materials) -------
+# Collapsed: one row with the current level/capacity + an Expand button. Clicking
+# expands an inline confirmation card (no modal) listing the material bill with
+# empire stock vs market cost, and the two ways to pay.
+func _make_warehouse_section() -> Control:
+	var quote := MatchState.warehouse_upgrade_quote(_current_tile_id)
+	if bool(quote.get("maxed", false)):
+		var done := Label.new()
+		done.text = "Warehouse L%d — fully upgraded" % int(quote.get("level", 1))
+		done.theme_type_variation = &"Caption"
+		done.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+		return done
+	if not _warehouse_expand:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var lvl := Label.new()
+		lvl.text = "Warehouse L%d · %d storage" % [int(quote.get("level", 1)), int(quote.get("current_cap", 0))]
+		lvl.theme_type_variation = &"Body"
+		lvl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(lvl)
+		var expand_btn := _make_action_button("Expand to L%d (%d)" % [int(quote.get("next_level", 2)), int(quote.get("next_cap", 0))])
+		expand_btn.pressed.connect(func() -> void:
+			_warehouse_expand = true
+			_refresh_pane("stock"))
+		row.add_child(expand_btn)
+		return row
+
+	var card := PanelContainer.new()
+	var cs := StyleBoxFlat.new()
+	cs.bg_color = DS.PALETTE.BG_CARD
+	cs.border_color = DS.PALETTE.BORDER_SOFT
+	cs.set_border_width_all(1)
+	cs.set_corner_radius_all(6)
+	cs.set_content_margin_all(DS.SP.SM)
+	card.add_theme_stylebox_override("panel", cs)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	card.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "Expand Warehouse — L%d → L%d" % [int(quote.get("level", 1)), int(quote.get("next_level", 2))]
+	title.theme_type_variation = &"Section"
+	vbox.add_child(title)
+	var cap_line := Label.new()
+	cap_line.text = "Storage %d → %d. Materials are consumed by the works:" % [int(quote.get("current_cap", 0)), int(quote.get("next_cap", 0))]
+	cap_line.theme_type_variation = &"Caption"
+	cap_line.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+	vbox.add_child(cap_line)
+
+	for m in (quote.get("materials", []) as Array):
+		var good_id := str(m.get("good_id", ""))
+		var mat_row := HBoxContainer.new()
+		mat_row.add_theme_constant_override("separation", 8)
+		mat_row.add_child(UIHelpers.make_framed_good_icon(good_id, Catalog.get_internal_name(good_id), 26))
+		var name_lbl := Label.new()
+		name_lbl.text = "%s ×%d" % [Catalog.get_display_name(good_id), int(m.get("qty", 0))]
+		name_lbl.theme_type_variation = &"Body"
+		name_lbl.add_theme_font_size_override("font_size", 12)
+		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mat_row.add_child(name_lbl)
+		var have_lbl := Label.new()
+		var have := int(m.get("have_empire", 0))
+		have_lbl.text = "have %d" % have
+		have_lbl.theme_type_variation = &"Caption"
+		have_lbl.add_theme_color_override("font_color",
+			DS.PALETTE.OK if have >= int(m.get("qty", 0)) else DS.PALETTE.DANGER)
+		mat_row.add_child(have_lbl)
+		var cost_lbl := Label.new()
+		cost_lbl.text = "£%.0f" % float(m.get("market_cost", 0.0))
+		cost_lbl.theme_type_variation = &"Numeric"
+		cost_lbl.add_theme_font_size_override("font_size", 12)
+		cost_lbl.custom_minimum_size = Vector2(64, 0)
+		cost_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		mat_row.add_child(cost_lbl)
+		vbox.add_child(mat_row)
+
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 8)
+	var market_btn := _make_action_button("Buy from market · £%.0f" % float(quote.get("market_total", 0.0)))
+	market_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if not bool(quote.get("money_ok", false)):
+		market_btn.disabled = true
+		market_btn.tooltip_text = "Not enough cash (£%.0f needed)." % float(quote.get("market_total", 0.0))
+	else:
+		market_btn.tooltip_text = "Materials bought at market ask + freight to this tile."
+	market_btn.pressed.connect(func() -> void: _commit_warehouse_upgrade("market"))
+	buttons.add_child(market_btn)
+	var empire_btn := _make_action_button("Use empire stock")
+	empire_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if not bool(quote.get("empire_ok", false)):
+		empire_btn.disabled = true
+		empire_btn.tooltip_text = "Not enough of these materials across your tiles."
+	else:
+		empire_btn.tooltip_text = "Pulls the bill from goods already sitting on your tiles."
+	empire_btn.pressed.connect(func() -> void: _commit_warehouse_upgrade("empire"))
+	buttons.add_child(empire_btn)
+	var cancel_btn := _make_action_button("Cancel")
+	cancel_btn.pressed.connect(func() -> void:
+		_warehouse_expand = false
+		_refresh_pane("stock"))
+	buttons.add_child(cancel_btn)
+	vbox.add_child(buttons)
+	return card
+
+func _commit_warehouse_upgrade(source: String) -> void:
+	var res := MatchState.upgrade_warehouse(_current_tile_id, source)
+	if bool(res.get("ok", false)):
+		_warehouse_expand = false
+	else:
+		MatchState.request_toast("Warehouse expansion failed: %s" % str(res.get("reason", "unknown")), "warning")
+	_refresh_pane("stock")
 
 # Whole-tile "Sell all Surplus" toggle. Enabling it (unless suppressed) opens a
 # confirmation dialog first; the box only commits once the player confirms.

@@ -270,9 +270,30 @@ func reorder_market_materials() -> void:
 			for shipment in MatchState.get_inbound_transport_shipments(tile_id, str(good_id)):
 				if str(shipment.get("construction_instance_id", "")) == instance_id:
 					inbound += int(shipment.get("qty", 0))
+			# Our freight that arrived at a full tile waits in overflow-hold — it is
+			# still ours and still coming; without counting it, a jammed tile makes
+			# this loop re-buy the same materials every lead-cycle.
+			for held in MatchState.get_overflow_shipments_for_tile(tile_id):
+				if str(held.get("construction_instance_id", "")) == instance_id \
+						and str(held.get("good_id", "")) == str(good_id):
+					inbound += int(held.get("qty", 0))
 			var shortfall: int = need - inbound
 			if shortfall > 0:
 				MatchState.queue_buy(tile_id, str(good_id), shortfall, false, {"construction_instance_id": instance_id})
+
+## Union of the still-missing material bills of every AWAITING project on a tile.
+## The sell-surplus reserve protects these, so a bill gathered over several turns
+## survives on the tile until claim_materials takes it.
+func missing_materials_for_tile(tile_id: String) -> Dictionary:
+	var out: Dictionary = {}
+	for instance_id in construction_projects:
+		var project: Dictionary = construction_projects[instance_id]
+		if str(project.get("status", "")) != STATUS_AWAITING_MATERIALS \
+				or str(project.get("tile_id", "")) != tile_id:
+			continue
+		for good_id in project.get("missing_materials", {}):
+			out[good_id] = int(out.get(good_id, 0)) + int(project["missing_materials"][good_id])
+	return out
 
 func claim_materials() -> void:
 	for instance_id in construction_projects.keys():
@@ -367,6 +388,19 @@ func tick_turn() -> Array:
 	for instance_id in completed:
 		_promote(instance_id)
 	return completed
+
+
+# Decision-event hook: delay (+N) or accelerate (-N) an under-construction project.
+# Clamped to at least 1 remaining turn — completion still happens via tick_turn so
+# the promote-before-produce ordering is never bypassed.
+func adjust_remaining(instance_id: String, delta_turns: int) -> bool:
+	var project: Dictionary = construction_projects.get(instance_id, {})
+	if project.is_empty() or str(project.get("status", "")) != STATUS_UNDER_CONSTRUCTION:
+		return false
+	project["turns_remaining"] = maxi(1, int(project["turns_remaining"]) + delta_turns)
+	# Reuses the project-row refresh signal — panels re-read turns_remaining on it.
+	construction_materials_updated.emit(instance_id, str(project.get("tile_id", "")))
+	return true
 
 
 func _promote(instance_id: String) -> void:

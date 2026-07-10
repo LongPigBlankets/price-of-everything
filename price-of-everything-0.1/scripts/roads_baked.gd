@@ -36,6 +36,11 @@ static func network_state() -> Dictionary:
 static func anchors() -> Array:
 	return data().get("anchors", [])
 
+## roads-v3: every tile the baked network crosses (anchors + corridor tiles).
+## A fresh match applies "roads" infrastructure to all of these.
+static func flagged_tiles() -> Array:
+	return data().get("flagged_tiles", [])
+
 static func reset_for_tests() -> void:
 	_cache = {}
 	_loaded = false

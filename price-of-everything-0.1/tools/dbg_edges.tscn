@@ -1,0 +1,13 @@
+[gd_scene load_steps=4 format=4]
+
+[ext_resource type="Script" path="res://tools/dbg_edges.gd" id="1_dbg"]
+[ext_resource type="TileSet" uid="uid://cdbno8hcn1m5e" path="res://assets/main_tileset.tres" id="2_tileset"]
+[ext_resource type="Script" uid="uid://dg8tjsup0xurr" path="res://scripts/hex_map.gd" id="3_hex_map"]
+
+[node name="DbgEdges" type="Node2D"]
+script = ExtResource("1_dbg")
+
+[node name="TerrainLayer" type="TileMapLayer" parent="."]
+unique_name_in_owner = true
+tile_set = ExtResource("2_tileset")
+script = ExtResource("3_hex_map")

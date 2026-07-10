@@ -90,6 +90,7 @@ var _buy_modal: PanelContainer = null
 var _buy_modal_label: Label = null
 var _construction_dialog: PanelContainer = null
 var _deposit_dialog: Control = null  # reused "no deposit" / "deposit exhausted" modal
+var _deposit_dialog_target: Dictionary = {}  # building the current deposit dialog acts on
 
 ## False until _ready has finished building the world. On a fresh start the heavy
 ## building-visual placement is spread across frames (so the loading screen can keep
@@ -262,8 +263,8 @@ func finish_build(animate: bool) -> void:
 	# Track depletable-deposit yields so mining can run them down over time.
 	MatchState.seed_deposits(terrain_layer)
 	# NOTE: the game-start BUILDINGS (NPC ports, the ruins, the start companies — and any future player
-	# start buildings) are placed LATER, AFTER roads + enclosures exist, so they drop into the ready chunk
-	# grid and fill the blocks. See the "roads → enclosures → buildings" sequence below.
+	# start buildings) are placed LATER, AFTER the baked road network exists, so they lay out against
+	# real streets. See the "roads → buildings" sequence below.
 
 	var pending_start := SaveLoad.pending_is_start()
 	# Captured BEFORE apply_pending() clears the snapshot: a tutorial match seeds none
@@ -276,8 +277,8 @@ func finish_build(animate: bool) -> void:
 	if loaded_pending:
 		_rebuild_after_load()
 	await _build_yield()
-	# Forests are a TERRAIN feature (the land mask + block templates read them), so they come before roads
-	# and enclosures. The buildings that used to follow here are deferred until after the blocks exist.
+	# Forests are a TERRAIN feature (the land mask + block templates read them), so they come before
+	# roads. The buildings that used to follow here are deferred until after the roads exist.
 	if (not loaded_pending or pending_start) and not pending_tutorial:
 		_place_northern_old_growth_forests()
 
@@ -295,20 +296,18 @@ func finish_build(animate: bool) -> void:
 		RoadNetwork.reset()
 		RoadWorks.reset()
 	RoadNetwork.bootstrap_from_bake()
-	# Match-start ENCLOSURES on urban tiles (after the bake's roads exist, BEFORE any building): each urban
-	# tile gets a city block + organic enclosure RING — the ring is the tile's visible road (no straight
-	# centre-to-centre connector lines), and inland tiles like Arin dock now enclose. seed_urban_enclosures
-	# lays a short INVISIBLE frontage anchor where there's no real road, then derives + draws the ring and
-	# flags the tile "roads". Fresh start only; a loaded save carries the rings in its network snapshot.
+	# roads-v3: every tile the baked network crosses carries "roads" infrastructure
+	# from turn 0 (geometry == gameplay — anchors AND the corridor tiles a trunk
+	# passes through). Fresh start only; a loaded save restores its own flags.
 	# When a loading screen is up, place the start buildings ONE PER FRAME so its
 	# slideshow keeps animating through the ~7 s of per-building visual layout instead
 	# of the whole window freezing. Without a loading screen (tests, e2e, load-game)
 	# `animate` is false and placement runs synchronously, exactly as before.
 	if not loaded_pending or pending_start:
-		await RoadWorks.seed_urban_enclosures(terrain_layer)
+		_apply_baked_road_flags()
 		await _build_yield()
-		# BUILDINGS now — after roads + enclosures — so they drop into the ready chunk grid and FILL the
-		# blocks they land in (NPC ports, the ruins, the start companies, + any future player start builds).
+		# BUILDINGS now — after the baked road network — so they lay out against real
+		# streets (NPC ports, the ruins, the start companies, + future player start builds).
 		await _place_npc_ports(animate)
 		# Tutorial keeps the ports (coast/docks) but drops the ruins + NPC start
 		# companies so the board is a clean slate around the seeded window factory.
@@ -324,6 +323,20 @@ func finish_build(animate: bool) -> void:
 	port_visuals.z_index = 60   # above hills/roads decoration, below UI
 	terrain_layer.add_child(port_visuals)
 	port_visuals.setup(terrain_layer)
+
+	# Parchment grain: one world-anchored multiply texture over the whole plate
+	# (terrain + roads + buildings; UI lives on CanvasLayers above and stays clean).
+	var parchment: Node2D = load("res://scripts/parchment_overlay.gd").new()
+	parchment.name = "ParchmentOverlay"
+	terrain_layer.add_child(parchment)
+	var pmin := Vector2(1e9, 1e9)
+	var pmax := Vector2(-1e9, -1e9)
+	for pcoord in terrain_layer.tiles:
+		var pc: Vector2 = terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(pcoord))
+		pmin = pmin.min(pc)
+		pmax = pmax.max(pc)
+	# Pad well past the tile grid so the open sea at minimum zoom sits in the same paper.
+	parchment.setup(Rect2(pmin - Vector2(2400, 2400), (pmax - pmin) + Vector2(4800, 4800)))
 
 	# Re-gravitate every building once (deterministic, idempotent): a loaded save re-emitted its buildings
 	# before its imported road network was in hand, and this also re-fills the enclosure chunk grids now that
@@ -357,6 +370,25 @@ func _loading_screen_active() -> bool:
 func _build_yield() -> void:
 	if _loading_screen_active():
 		await get_tree().process_frame
+
+## roads-v3: apply "roads" infrastructure to every tile the baked starting
+## network crosses (anchors AND corridor tiles — the bake's flagged_tiles list),
+## mirroring what a settled player road does. Infrastructure is free: it never
+## counts against build capacity. Fresh start only; loads restore their own flags.
+func _apply_baked_road_flags() -> void:
+	for tid in RoadsBaked.flagged_tiles():
+		var tile_id := str(tid)
+		var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
+		if not terrain_layer.tiles.has(coord):
+			continue
+		var td: Dictionary = terrain_layer.tiles[coord]
+		var infra: Array = (td.get("infrastructure_present", []) as Array)
+		if infra.has("roads"):
+			continue
+		infra = infra.duplicate()
+		infra.append("roads")
+		td["infrastructure_present"] = infra
+		Catalog.add_tile_infrastructure(tile_id, "roads")
 
 func _rebuild_after_load() -> void:
 	# Redraw per-building visuals from the imported state: clear everything placed
@@ -1681,10 +1713,23 @@ func _on_construction_completed_deposit_check(instance_id: String, tile_id: Stri
 func _on_deposit_exhausted(tile_id: String, token: String) -> void:
 	if token == "water":
 		return
+	# Remember which building the exhausted deposit belongs to, so the dialog's
+	# Demolish / Change Recipe buttons can act on it.
+	_deposit_dialog_target = _building_with_deposit_token(tile_id, token)
 	_show_deposit_dialog(
 		"Deposit exhausted",
 		"The %s deposit here has run out — this building can no longer produce." % _good_display_for_deposit(token),
 		[{"id": "demolish", "label": "Demolish"}, {"id": "change", "label": "Change Recipe"}])
+
+# The player building on `tile_id` whose recipe draws on the given deposit token.
+func _building_with_deposit_token(tile_id: String, token: String) -> Dictionary:
+	for iid in MatchState.tile_buildings.get(tile_id, []):
+		var b: Dictionary = MatchState.get_building(str(iid))
+		if b.is_empty() or not MatchState.is_player_owned(b):
+			continue
+		if _recipe_nonwater_deposit_token(Catalog.get_recipe(str(b.get("recipe_id", "")))) == token:
+			return b
+	return {}
 
 func _show_deposit_dialog(title: String, body: String, buttons: Array) -> void:
 	if _deposit_dialog == null:
@@ -1693,8 +1738,31 @@ func _show_deposit_dialog(title: String, body: String, buttons: Array) -> void:
 		_deposit_dialog.action_chosen.connect(_on_deposit_dialog_action)
 	_deposit_dialog.open(title, body, buttons)
 
-func _on_deposit_dialog_action(_id: String) -> void:
-	pass  # Demolish / Change Recipe are no-ops for now; the dialog closes itself.
+func _on_deposit_dialog_action(id: String) -> void:
+	var building: Dictionary = _deposit_dialog_target
+	_deposit_dialog_target = {}
+	if building.is_empty():
+		return
+	match id:
+		"demolish":
+			# Route through the supply-chain review, same as the detail panel's Demolish.
+			_open_supply_chain_review(str(building.get("instance_id", "")), "demolish")
+		"change":
+			# Open the building so the player can pick a new recipe.
+			_open_building_detail(building)
+
+# Mount the supply-chain review panel (feeders → target → dependents, per-building
+# auto-fulfil/pause) for a sell or demolish. Same panel the building detail panel uses.
+func _open_supply_chain_review(instance_id: String, action: String) -> void:
+	if instance_id == "":
+		return
+	var layer := CanvasLayer.new()
+	layer.layer = 130
+	get_tree().root.add_child(layer)
+	var panel: Control = load("res://scripts/supply_chain_panel.gd").new()
+	layer.add_child(panel)
+	panel.finished.connect(func(_confirmed: bool) -> void: layer.queue_free())
+	panel.open(instance_id, action)
 
 func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
 	match req.get("type", ""):

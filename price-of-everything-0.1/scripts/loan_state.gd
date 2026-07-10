@@ -44,11 +44,47 @@ func take_loan(amount: float) -> bool:
 		return false
 	return _create_loan(amount, effective_loan_interest_rate(), EconomyConfig.LOAN_TERM_TURNS)
 
+# Distress loan (decision events, spec §12.1): standard rate/term but BYPASSES the
+# profit-gated borrowing capacity — an unaffordable decision choice must always be
+# payable, so the shortfall is forced onto the books instead of blocking the choice.
+func take_distress_loan(amount: float) -> bool:
+	if amount <= 0.0:
+		return false
+	return _create_loan(amount, effective_loan_interest_rate(), EconomyConfig.LOAN_TERM_TURNS)
+
 func take_construction_loan(amount: float) -> bool:
 	# 10-turn, 5% build loan. Respects the same borrowing capacity as any other loan.
 	if amount <= 0.0 or amount > available_capacity():
 		return false
 	return _create_loan(amount, CONSTRUCTION_LOAN_RATE, CONSTRUCTION_LOAN_TERM)
+
+# Grace loan (distressed-asset bailout): `amount` disbursed now, then `grace_turns`
+# with NO payments and NO interest, after which it converts to a normal amortised
+# loan at the standard rate over LOAN_TERM_TURNS. Bypasses borrowing capacity (it's a
+# rescue). Grace bookkeeping lives on the loan dict and is handled in process_payments.
+func take_grace_loan(amount: float, grace_turns: int) -> bool:
+	if amount <= 0.0:
+		return false
+	var rate: float = effective_loan_interest_rate()
+	var loan: Dictionary = {
+		"id": _next_loan_id,
+		"principal_initial": amount,
+		"principal_remaining": amount,          # no interest during grace
+		"payment_per_turn": 0.0,                # no payments during grace
+		"turns_remaining": grace_turns + EconomyConfig.LOAN_TERM_TURNS,
+		"interest_paid": 0.0,
+		"interest_rate": rate,
+		"grace_remaining": grace_turns,
+	}
+	_next_loan_id += 1
+	loans.append(loan)
+	MatchState.flag_agenda_event(MatchState.AGENDA_TOOK_LOAN)
+	MatchState.add_money(amount)
+	print("[LoanState] Grace loan #%d: £%.2f, %d interest-free turns then %.1f%% over %d" % [
+		loan.id, amount, grace_turns, rate * 100.0, EconomyConfig.LOAN_TERM_TURNS])
+	loan_taken.emit(loan)
+	loans_updated.emit()
+	return true
 
 # Shared loan creation: bakes the (rate, term) into the amortisation and disburses
 # the principal. Per-loan rate/term are stored so processing stays accurate even when
@@ -109,6 +145,17 @@ func process_payments() -> float:
 	var loans_to_remove: Array = []
 	
 	for loan in loans:
+		# Grace loans: interest-free, no payments, until grace expires — then convert
+		# to a normal amortised loan (principal + interest over LOAN_TERM_TURNS).
+		if int(loan.get("grace_remaining", 0)) > 0:
+			loan.grace_remaining = int(loan.grace_remaining) - 1
+			loan.turns_remaining = int(loan.turns_remaining) - 1
+			if int(loan.grace_remaining) == 0:
+				var g_rate: float = float(loan.get("interest_rate", EconomyConfig.LOAN_INTEREST_RATE))
+				loan.principal_remaining = float(loan.principal_initial) * (1.0 + g_rate)
+				loan.payment_per_turn = float(loan.principal_remaining) / float(EconomyConfig.LOAN_TERM_TURNS)
+				loan.turns_remaining = EconomyConfig.LOAN_TERM_TURNS
+			continue
 		var pay: float = min(loan.payment_per_turn, loan.principal_remaining)
 		MatchState.add_money(-pay)
 		loan.principal_remaining -= pay
@@ -172,35 +219,56 @@ func record_turn_economics(net_profit: float, revenue: float) -> void:
 	while _revenue_history.size() > window:
 		_revenue_history.pop_front()
 
+const BuildingPrice := preload("res://scripts/building_price.gd")
+
+# Collateral: what the player's plant is worth to a lender = the SALE value of every
+# player building (BuildingPrice.sale_price — the same deterministic, level-aware
+# valuation the building market lists at), summed.
+func collateral_value() -> float:
+	var total: float = 0.0
+	for b in MatchState.buildings.values():
+		if not MatchState.is_player_owned(b):
+			continue
+		total += float(BuildingPrice.sale_price(b))
+	return total
+
+# Loan-to-value on that collateral: 0.75, lifted to 1.0 by a seated CFO or Chief
+# Investment (the expansion/capex seat). The two don't stack — either presence maxes it.
+func collateral_ltv() -> float:
+	var has_expander := MatchState.get_advisor_in_seat("cfo") != "" \
+		or MatchState.get_advisor_in_seat("chief_investment") != ""
+	return EconomyConfig.LOAN_COLLATERAL_LTV_MAX if has_expander else EconomyConfig.LOAN_COLLATERAL_LTV_BASE
+
 func capacity_total() -> float:
-	# Total borrowing capacity (initial principal you may have outstanding at once).
-	# Starts at LOAN_BASE_CAPACITY and grows so the per-turn loan repayment of a
-	# fully-drawn facility stays within recent profit plus a slice of revenue:
+	# Total borrowing capacity (initial principal you may have outstanding at once) =
+	# CASHFLOW leg + COLLATERAL leg.
+	#
+	# Cashflow leg: starts at LOAN_BASE_CAPACITY and grows so the per-turn loan
+	# repayment of a fully-drawn facility stays within recent profit plus a slice of
+	# revenue:
 	#   serviceable/turn = max(0, avg_profit_5) + REVENUE_BUFFER * avg_revenue_5
 	#   per-turn payment per £1 borrowed = (1 + INTEREST) / TERM   (amortised)
 	#   capacity = serviceable / payment_rate
 	# The amortised payment (not bare interest) is the bar, so the "paid off in
 	# ~40 turns" affordance is baked in: debt service can exceed pure interest while
 	# the principal is whittled down over the term.
+	#
+	# Collateral leg (2026-07-08, owner-requested forgiveness): LTV x plant sale value.
+	# The PROFIT GATE below still zeroes the cashflow leg for a loss-making firm —
+	# revenue alone must never unlock credit — but a firm with real assets can now
+	# borrow against them through a trough instead of spiralling on £0 headroom.
 	var base: float = EconomyConfig.LOAN_BASE_CAPACITY
+	var collateral: float = collateral_ltv() * collateral_value()
 	if _profit_history.is_empty():
-		return base
-	# PROFIT GATE: until the company is actually making money on a rolling basis,
-	# borrowing is limited to the base floor. Revenue alone must not unlock credit —
-	# a loss-making firm with strong turnover is still a bad lend, and without this
-	# gate "10% of revenue" amplified over the loan term hands a brand-new, still
-	# unprofitable business a four-figure credit line.
+		return base + collateral
 	var avg_profit: float = _avg(_profit_history)
 	if avg_profit <= 0.0:
-		return base
-	# Serviceable debt service = genuinely-available rolling profit + a small slice of
-	# revenue (LOAN_REVENUE_BUFFER). The profit gate above keeps revenue from unlocking
-	# credit on its own, so the slice is a modest top-up, not the driver.
+		return base + collateral
 	var avg_revenue: float = _avg(_revenue_history)
 	var serviceable: float = avg_profit + EconomyConfig.LOAN_REVENUE_BUFFER * maxf(0.0, avg_revenue)
 	var payment_rate: float = (1.0 + EconomyConfig.LOAN_INTEREST_RATE) / float(EconomyConfig.LOAN_TERM_TURNS)
 	var scaled: float = serviceable / payment_rate
-	return maxf(base, scaled)
+	return maxf(base, scaled) + collateral
 
 func available_capacity() -> float:
 	# Headroom = dynamic total capacity minus initial principal of active loans.

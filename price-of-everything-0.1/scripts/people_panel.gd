@@ -412,8 +412,8 @@ func _policy_definitions() -> Array:
 		{
 			"id": MatchState.WORKFORCE_POLICY_LAX_SAFETY,
 			"name": "Lax Safety Procedures",
-			"cost": "Labour costs +0.5%/turn while active, max +15%.",
-			"benefit": "Output +10%.",
+			"cost": "Labour +0.5%/turn (max +15%) and maintenance +5%/turn while active, up to +100%.",
+			"benefit": "Output +5%.",
 		},
 		{
 			"id": MatchState.WORKFORCE_POLICY_ANNUAL_BONUS,
