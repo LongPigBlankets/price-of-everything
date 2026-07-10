@@ -9,6 +9,7 @@ extends CanvasLayer
 ##   swap tvp                         toggle between the classic and alternate Tile View Panel
 ##   swap bottom menu                 toggle between the current and alternate bottom-menu icons
 ##   swap bdp                         toggle to the classic v1 building-detail panel (v2 is default)
+##   research all                     unlock every research node (alias of `unlock all`)
 ##   swap song                       advance to the next music track
 ##   help                             list commands
 
@@ -100,6 +101,10 @@ func _run_command(text: String) -> String:
 			var amount := int(parts[1])
 			MatchState.cheat_add_cash(float(amount))
 			return "Added £%d  (balance now £%.2f)" % [amount, MatchState.money]
+		"research":
+			# Alias for `unlock all` (testing muscle memory: `research all`).
+			var count: int = MatchState.cheat_unlock_all_research()
+			return "Unlocked ALL research (%d nodes)." % count
 		"unlock":
 			if parts.size() < 2:
 				return "usage: unlock <research title>  (e.g. 'unlock hydro')  |  unlock all"
@@ -257,7 +262,7 @@ func _run_command(text: String) -> String:
 			MatchState.cheat_set_loyalty(aid, float(parts[2]))
 			return "%s loyalty now %.1f" % [aid, MatchState.advisor_loyalty_value(aid)]
 		"help":
-			return "commands:  cash <int>   |   unlock <title>   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   swap bdp   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all   |   research all   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   swap bdp   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
