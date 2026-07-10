@@ -1079,6 +1079,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 				var wverts_l := _rotate(wshape.verts, pang)
 				var wh := _aabb_half(wverts_l)
 				var wrot := RoadHash.pick("wing|%s|%d|rot" % [iid, wi], wdirs.size())
+				var wing_done := false
 				for j0 in wdirs.size():
 					var di := (j0 + wrot) % wdirs.size()
 					var wdir: Vector2 = wdirs[di]
@@ -1106,7 +1107,54 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 						"kind": "wing", "is_npc": is_npc, "bb": _verts_bb(www),
 						"cat": str(p.cat), "iid": iid,
 					})
+					wing_done = true
 					break
+				if not wing_done:
+					# Hemmed in on every side? Expand ACROSS the road (owner
+					# 2026-07-10): place the wing on the far side of the
+					# carriageway and tether it back with a narrow covered
+					# corridor drawn over the road (5-10u wide).
+					for j1 in wdirs.size():
+						if wing_done:
+							break
+						var di2 := (j1 + wrot) % wdirs.size()
+						var wdir2: Vector2 = wdirs[di2]
+						var wing_ext2: float = ww * 0.5 if di2 < 2 else whh * 0.5
+						for step in [34.0, 42.0, 50.0, 58.0]:
+							var wctr2: Vector2 = bpos + wdir2 * (float(wexts[di2]) + step + wing_ext2)
+							if not _valid(wctr2, wverts_l, wh, others, land, segs, rivers):
+								continue
+							var pa: Vector2 = bpos + wdir2 * float(wexts[di2])
+							var pb: Vector2 = wctr2 - wdir2 * wing_ext2
+							# Only worth it when the corridor genuinely SPANS a
+							# road (else the normal flush attempt would have
+							# worked); rivers stay uncrossed.
+							if not _seg_hits_any(pa, pb, segs) or _seg_hits_any(pa, pb, rivers):
+								continue
+							var wentry2 := {"pos": wctr2, "half": wh}
+							placed.append(wentry2)
+							others.append(wentry2)
+							var www2 := PackedVector2Array()
+							for wv2 in wverts_l:
+								www2.append(center + wctr2 + wv2)
+							_subcomponents.append({
+								"tile_id": tile_id, "verts": www2, "color": pcolor,
+								"kind": "wing", "is_npc": is_npc, "bb": _verts_bb(www2),
+								"cat": str(p.cat), "iid": iid,
+							})
+							var cw := (5.0 + float(RoadHash.pick("wing|%s|%d|cw" % [iid, wi], 6))) * 0.5
+							var co := Vector2(-wdir2.y, wdir2.x) * cw
+							var cverts := PackedVector2Array([
+								center + pa - co, center + pb - co,
+								center + pb + co, center + pa + co,
+							])
+							_subcomponents.append({
+								"tile_id": tile_id, "verts": cverts, "color": pcolor,
+								"kind": "corridor", "is_npc": is_npc, "bb": _verts_bb(cverts),
+								"cat": str(p.cat), "iid": iid,
+							})
+							wing_done = true
+							break
 		# at most ONE annex (touches/merges) + ONE round tank (small gap), both parent colour.
 		for kind in ["annex", "tank"]:
 			var is_tank: bool = (kind == "tank")
@@ -2557,6 +2605,12 @@ func _footprint_clears(center: Vector2, local_verts: PackedVector2Array, segs: A
 	return true
 
 ## Minimum distance between segments p1p2 and p3p4 (0 if they cross).
+func _seg_hits_any(a: Vector2, b: Vector2, segs: Array) -> bool:
+	for s in segs:
+		if _segs_cross(a, b, s[0], s[1]):
+			return true
+	return false
+
 func _seg_seg_dist(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2) -> float:
 	if _segs_cross(p1, p2, p3, p4):
 		return 0.0
@@ -2852,7 +2906,8 @@ func remove_instance(instance_id: String) -> void:
 func _draw() -> void:
 	# Annexes + wings draw UNDER buildings so a same-colour extension merges seamlessly.
 	for sc in _subcomponents:
-		if str(sc.kind) == "annex" or str(sc.kind) == "wing":
+		var uk := str(sc.kind)
+		if uk == "annex" or uk == "wing" or uk == "corridor":
 			_draw_subcomponent(sc)
 	# Courtyard block-masses draw under their members: one welded mass + inner
 	# yard; the members then contribute ink outlines only (party-wall slices).
@@ -2954,6 +3009,11 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		return
 	var sv: PackedVector2Array = sc.verts
 	var kind := str(sc.kind)
+	if kind == "corridor":
+		draw_colored_polygon(sv, _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc)))
+		draw_line(sv[0], sv[1], INK, 1.0)
+		draw_line(sv[2], sv[3], INK, 1.0)
+		return
 	if kind == "annex" or kind == "tank" or kind == "wing" or kind == "storey":
 		if kind != "tank" and kind != "storey":
 			sv = _wobble_poly("%s|%s" % [str(sc.get("iid", "")), kind], sv)
