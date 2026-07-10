@@ -245,6 +245,7 @@ func _ready() -> void:
 	_test_cfo_tax_credit()
 	_test_policy_state()
 	_test_insider_tip()
+	_test_building_diagnostics()
 	_test_infra_upgrade()
 	if not _failed_names.is_empty():
 		print("FAILED TESTS:")
@@ -8469,6 +8470,48 @@ func _test_insider_tip() -> void:
 	PolicyState._insider_tip_fired = false
 	MatchState.advisor_seats = seats_before
 	TurnManager.current_turn = turn_before
+
+func _test_building_diagnostics() -> void:
+	# New BDP diagnostics: cable-overload for power producers, stockpile-over-utilised
+	# for non-power producers (docs/co2-tax spec follow-ups).
+	var readout = load("res://scripts/building_readout.gd")
+
+	# Power producer crowded out by the cable export cap: _can_run_recipe records a
+	# "power" missing entry → "Cannot push power" fault + "Cables overloaded" row.
+	var plant := {"instance_id": "diag_plant", "tile_id": "tile_9_9", "building_id": "b_003", "recipe_id": "r_004", "level": 1, "owner": "player_1"}
+	Production.missing_by_building["diag_plant"] = [{"good_id": "power", "internal_name": "power", "need": 1000, "have": 2000}]
+	var rows: Array = readout.diagnostics(plant, Catalog.get_recipe("r_004"), Catalog.get_building("b_003"), false)
+	var titles: Array = []
+	for r in rows:
+		titles.append(str(r.get("label", "")))
+	_check(titles.has("Cannot push power"), "diagnostics: grid-blocked plant shows 'Cannot push power' fault")
+	_check(titles.has("Cables overloaded"), "diagnostics: grid-blocked plant shows the cables-overloaded row")
+	_check(not titles.has("Generating power"), "diagnostics: blocked plant doesn't claim to be generating")
+	Production.missing_by_building.erase("diag_plant")
+	rows = readout.diagnostics(plant, Catalog.get_recipe("r_004"), Catalog.get_building("b_003"), false)
+	titles = []
+	for r in rows:
+		titles.append(str(r.get("label", "")))
+	_check(not titles.has("Cables overloaded"), "diagnostics: unblocked plant has no cables row")
+
+	# Non-power producer on a FULL tile warehouse → stockpile over-utilised row.
+	var mill := {"instance_id": "diag_mill", "tile_id": "tile_8_8", "building_id": "b_002", "recipe_id": "r_002", "level": 1, "owner": "player_1"}
+	var mill_recipe: Dictionary = Catalog.get_recipe(str(Catalog.get_recipes_for_building("b_002")[0].get("recipe_id", "")))
+	var coal_id := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	var cap: int = Stockpile.get_capacity("tile_8_8")
+	var before: int = Stockpile.get_used_capacity("tile_8_8")
+	Stockpile.add("tile_8_8", coal_id, cap - before)   # fill to the brim
+	rows = readout.diagnostics(mill, mill_recipe, Catalog.get_building("b_002"), false)
+	titles = []
+	for r in rows:
+		titles.append(str(r.get("label", "")))
+	_check(titles.has("Stockpile over-utilised"), "diagnostics: full warehouse shows the over-utilised row")
+	Stockpile.consume("tile_8_8", coal_id, cap - before)
+	rows = readout.diagnostics(mill, mill_recipe, Catalog.get_building("b_002"), false)
+	titles = []
+	for r in rows:
+		titles.append(str(r.get("label", "")))
+	_check(not titles.has("Stockpile over-utilised"), "diagnostics: cleared warehouse drops the row")
 
 func _test_infra_upgrade() -> void:
 	# Cash-only infrastructure upgrades (owner ruling: L2 £150, L3 £350). The pending

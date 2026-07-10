@@ -280,6 +280,14 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	var needs_power := BuildingStatus.effective_energy_req(building, recipe) > 0
 	var has_inputs := not (recipe.get("inputs", []) as Array).is_empty()
 	var rs := run_state(building, recipe, is_infrastructure)
+	var tile_id := str(building.get("tile_id", ""))
+	# A power PRODUCER whose "missing" entry is power = the cable export cap blocked its
+	# dispatch (production._can_run_recipe's can_produce branch) — not an input problem.
+	var grid_blocked := false
+	if produces_power and iid != "":
+		for m in (Production.missing_by_building.get(iid, []) as Array):
+			if str(m.get("good_id", "")) == "power":
+				grid_blocked = true
 
 	# 1) critical fault / restarting / all-clear
 	if exhausted:
@@ -288,6 +296,8 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		rows.append(_row("warn", "clock", "Starting", "All inputs received and powered — production begins next turn."))
 	elif needs_power and power_c == BuildingStatus.STATUS_RED:
 		rows.append(_row("bad", "warn", "Critical fault", "No power reaching this building — the recipe halts."))
+	elif grid_blocked:
+		rows.append(_row("bad", "warn", "Cannot push power", "The tile's cables are at capacity — this plant's output can't reach the network."))
 	elif has_inputs and input_c == BuildingStatus.STATUS_RED:
 		rows.append(_row("bad", "warn", "Cannot run", "Not enough inputs to run the recipe this turn."))
 	elif missing:
@@ -297,7 +307,14 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 
 	# 2) power
 	if produces_power:
-		rows.append(_row("ok", "bolt", "Generating power", "%d kW / turn" % BuildingStatus.effective_power_output(building, recipe)))
+		if grid_blocked:
+			var cap := Power.tile_power_cap(tile_id)
+			var on_wire := int(Power.tile_produced.get(tile_id, 0))
+			rows.append(_row("bad", "bolt", "Cables overloaded",
+				"%d of %d kW already on this tile's cables — the %d kW from this plant can't be pushed to the network. Upgrade the cables or reduce generation here." % [
+					on_wire, cap, BuildingStatus.effective_power_output(building, recipe)]))
+		else:
+			rows.append(_row("ok", "bolt", "Generating power", "%d kW / turn" % BuildingStatus.effective_power_output(building, recipe)))
 	elif needs_power:
 		var pw := power(building, recipe)
 		var st := str(pw.get("state", "none"))
@@ -329,6 +346,23 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		var src_row := _input_sourcing_row(building, recipe, ran, input_c, rs)
 		if str(src_row.get("detail", "")) != "":
 			rows.append(_row(str(src_row.get("tone", "info")), "src", "Input sourcing", str(src_row.get("detail", ""))))
+
+		# 3c) stockpile over-utilised (non-power producers): the tile warehouse is full,
+		# so arriving inputs bounce and the recipe can't restock. Critical when the
+		# building is actually starved; a warning while it still has stock to burn.
+		if not produces_power:
+			var wh_cap := Stockpile.get_capacity(tile_id)
+			var wh_used := Stockpile.get_used_capacity(tile_id)
+			if wh_cap > 0 and wh_used >= wh_cap:
+				var inbound := 0
+				for s in MatchState.get_inbound_transport_shipments(tile_id):
+					inbound += int(s.get("qty", 0))
+				var detail := "The tile's warehouse is full (%d/%d) — arriving inputs can't unload." % [wh_used, wh_cap]
+				if inbound > 0:
+					detail += " %d unit%s in transit are waiting." % [inbound, "" if inbound == 1 else "s"]
+				detail += " Expand the warehouse (Stockpile tab) or clear stock."
+				rows.append(_row("bad" if input_c == BuildingStatus.STATUS_RED else "warn", "box",
+					"Stockpile over-utilised", detail))
 		# 3c) a fluid/gas input with no pipeline built to its source can never be delivered
 		var pipe := _pipe_problem(building, recipe)
 		if not pipe.is_empty():
