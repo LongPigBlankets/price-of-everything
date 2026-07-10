@@ -8344,11 +8344,11 @@ func _test_policy_state() -> void:
 	# Decarbonisation squeeze (docs/co2-tax-and-green-subsidy-announcements-spec.md):
 	# phase levels are pure functions of the turn; the carbon charge reads the dormant
 	# co2_tax_multiplier column (now parsed); the biomass ethylene route is tech-gated.
-	_check(PolicyState.co2_tax_level(54) == 0, "policy: CO2 tax not in force before turn 55")
-	_check(PolicyState.co2_tax_level(55) == 1, "policy: CO2 tax phase 1 at turn 55")
-	_check(PolicyState.co2_tax_level(119) == 1, "policy: still phase 1 at turn 119")
-	_check(PolicyState.co2_tax_level(120) == 2, "policy: phase 2 at turn 120")
-	_check(PolicyState.co2_tax_level(200) == 3, "policy: phase 3 at turn 200")
+	_check(PolicyState.co2_tax_level(100) == 0, "policy: CO2 tax not in force before turn 101")
+	_check(PolicyState.co2_tax_level(101) == 1, "policy: CO2 tax phase 1 at turn 101 (announced t91)")
+	_check(PolicyState.co2_tax_level(164) == 1, "policy: still phase 1 at turn 164")
+	_check(PolicyState.co2_tax_level(165) == 2, "policy: phase 2 at turn 165")
+	_check(PolicyState.co2_tax_level(230) == 3, "policy: phase 3 at turn 230")
 	_check(PolicyState.green_subsidy_rate(19) == 0.0, "policy: no subsidy before turn 20")
 	_check(absf(PolicyState.green_subsidy_rate(20) - EconomyConfig.GREEN_SUBSIDY_RATE) < 0.0001,
 		"policy: subsidy rate live from turn 20")
@@ -8359,23 +8359,25 @@ func _test_policy_state() -> void:
 	_check(absf(float(eth.get("co2_tax_multiplier", 0.0)) - 1.0) < 0.0001, "catalog: ethylene carbon intensity 1.0")
 	# Charge math: 20 coal at P1 = 20 × 0.5 × 1.0 × 1.0 = £10; ×2 at P2; 0 before P1.
 	var coal_id := str(coal.get("id", ""))
-	_check(absf(PolicyState.carbon_charge(coal_id, 20, 55) - 10.0) < 0.001, "policy: 20 coal at P1 charges £10")
-	_check(absf(PolicyState.carbon_charge(coal_id, 20, 120) - 20.0) < 0.001, "policy: 20 coal at P2 charges £20")
+	_check(absf(PolicyState.carbon_charge(coal_id, 20, 101) - 10.0) < 0.001, "policy: 20 coal at P1 charges £10")
+	_check(absf(PolicyState.carbon_charge(coal_id, 20, 165) - 20.0) < 0.001, "policy: 20 coal at P2 charges £20")
 	_check(PolicyState.carbon_charge(coal_id, 20, 10) == 0.0, "policy: no charge before the levy")
 	var biomass_id := str(Catalog.get_good_by_internal_name("biomass").get("id", ""))
-	_check(PolicyState.carbon_charge(biomass_id, 100, 200) == 0.0, "policy: biomass is untaxed even at P3")
-	# The biomass→ethylene escape route: r_155 promotes (real goods + chem_plant) and is
-	# gated behind the new Algal Bioreactors node.
-	var r155: Dictionary = Catalog.get_recipe("r_155")
-	_check(not r155.is_empty(), "recipe: r_155 (Micro Algae Digestion) promotes")
-	_check(str(r155.get("required_research", "")) == "Algal Bioreactors", "recipe: r_155 gated behind Algal Bioreactors")
+	_check(PolicyState.carbon_charge(biomass_id, 100, 230) == 0.0, "policy: biomass is untaxed even at P3")
+	# The biomass→ethylene escape route: r_228 Bio Ethylene (chem_plant, biomass direct)
+	# promotes and is gated behind the new Biomass Cracking node. r_155 stays in the
+	# dormant pool (bio_chem_plant / spec_microbes don't exist — original state).
+	var r228: Dictionary = Catalog.get_recipe("r_228")
+	_check(not r228.is_empty(), "recipe: r_228 (Bio Ethylene) promotes")
+	_check(str(r228.get("required_research", "")) == "Biomass Cracking", "recipe: r_228 gated behind Biomass Cracking")
+	_check(Catalog.get_recipe("r_155").is_empty(), "recipe: r_155 stays dormant (original pool state)")
 	var found_node := false
 	for d in MatchState._unlock_defs:
-		if str(d.get("title", "")) == "Algal Bioreactors":
+		if str(d.get("title", "")) == "Biomass Cracking":
 			found_node = true
 			_check(str(d.get("action", "")) == "Produce" and str(d.get("object", "")) == "biomass",
-				"research: Algal Bioreactors unlocks by producing biomass (fireable condition)")
-	_check(found_node, "research: Algal Bioreactors node exists")
+				"research: Biomass Cracking unlocks by producing biomass (fireable condition)")
+	_check(found_node, "research: Biomass Cracking node exists")
 
 
 # --- Turn Briefing (docs/turn-briefing-panel-spec.md) -------------------------

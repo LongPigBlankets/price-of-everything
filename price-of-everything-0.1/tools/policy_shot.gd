@@ -16,7 +16,7 @@ func _ready() -> void:
 	if cam != null:
 		cam.edge_pan_enabled = false
 
-	TurnManager.current_turn = 60   # Carbon Levy Phase 1 in force (t55+)
+	TurnManager.current_turn = 110   # Carbon Levy Phase 1 in force (t101+)
 
 	# 1. BDP v2: a coal plant (b_003/r_004 burns 20 coal → £10 levy at P1) shows the line.
 	var wm: Node = game

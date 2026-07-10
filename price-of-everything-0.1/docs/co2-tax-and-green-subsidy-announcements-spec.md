@@ -7,14 +7,16 @@
 > (3) per-building attribution (`Production.carbon_tax_by_building`) + a "Carbon tax / turn"
 > line in the Building Detail economics card (owner addition); (4) Money panel Balance /
 > Budget-projection / Charts rows + Turn-Summary dock lines ("Carbon Tax", "Subsidy");
-> (5) the biomass escape route is `r_155 Micro Algae Digestion` (chem_plant: 12 biomass +
-> 4 pure_water + 65 energy → 3 ethylene), revived from dormancy and tech-gated behind the
-> new **Algal Bioreactors** node (Biochemistry III, Produce 300 biomass, prereq Sustainable
-> Forestry) — at base prices it runs −£0.70/run unintegrated vs taxed oil-route ethylene
-> £7.00/u (P1) / £9.25/u (P2) against bio £6.83/u; (6) a `skip <n>` debug-terminal cheat was
-> added for fast-forwarding to policy turns. Verified: unit 1420/1 standing; e2e failure set
-> unchanged vs parent (601/6), squeeze drag −£54.9/turn from t55 on the coal-heavy scenario
-> with revenue identical; tools/policy_shot.tscn renders all four surfaces.
+> (5) the biomass escape route is the NEW `r_228 Bio Ethylene` (chem_plant: 10 biomass +
+> 100 energy → 3 ethylene — owner: biomass direct, medium-high power), tech-gated behind the
+> new **Biomass Cracking** node (Biochemistry III, Produce 300 biomass, prereq Sustainable
+> Forestry); `r_155 Micro Algae Digestion` was restored to its original dormant-pool form —
+> at base prices r_228 runs −£0.20/run unintegrated (£6.67/u) vs taxed oil-route ethylene
+> £7.00/u (P1) / £9.25/u (P2); (6) a `skip <n>` debug-terminal cheat was added for
+> fast-forwarding to policy turns; (7) owner timeline: the levy is ANNOUNCED at turn 91 and
+> IN FORCE at turn 101 (forewarn_turns 10), P2 t165, P3 t230. Verified: unit suite green
+> (1 standing bake fail); e2e t100 failure set unchanged vs parent; drag −£54.9/turn once
+> the levy is live, revenue identical; tools/policy_shot.tscn renders all four surfaces.
 >
 > **Body/explanation text for every announcement is placeholder Lorem Ipsum below; the owner
 > will replace it with lore.** Search this doc and `scripts/policy_schedule.gd` for
@@ -118,7 +120,7 @@ const SCHEDULE: Array = [
     # --- CO2 Tax (stick, escalating) ---
     {
         "id": "co2_tax_p1", "policy": "co2_tax", "level": 1,
-        "effective_turn": 55, "forewarn_turns": 8, "severity": "warning",
+        "effective_turn": 101, "forewarn_turns": 10, "severity": "warning",
         "title": "Carbon Levy — Phase 1",
         "forewarn_title": "Carbon Levy — Phase 1 (incoming)",
         # LOREM
@@ -128,7 +130,7 @@ const SCHEDULE: Array = [
     },
     {
         "id": "co2_tax_p2", "policy": "co2_tax", "level": 2,
-        "effective_turn": 120, "forewarn_turns": 8, "severity": "warning",
+        "effective_turn": 165, "forewarn_turns": 8, "severity": "warning",
         "title": "Carbon Levy — Phase 2",
         "forewarn_title": "Carbon Levy — Phase 2 (incoming)",
         "forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vectigal duplicabitur.",   # LOREM
@@ -136,7 +138,7 @@ const SCHEDULE: Array = [
     },
     {
         "id": "co2_tax_p3", "policy": "co2_tax", "level": 3,
-        "effective_turn": 200, "forewarn_turns": 8, "severity": "warning",
+        "effective_turn": 230, "forewarn_turns": 8, "severity": "warning",
         "title": "Carbon Levy — Phase 3",
         "forewarn_title": "Carbon Levy — Phase 3 (incoming)",
         "forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ultimum incrementum vectigalis.",  # LOREM
@@ -151,12 +153,12 @@ Proposed timeline summary (tunable):
 |---|---|
 | 15 | Forewarn: Green Subsidy incoming |
 | 20 | **Green Subsidy live** |
-| 47 | Forewarn: Carbon Levy P1 incoming |
-| 55 | **Carbon Levy P1 live** (scale ×1) |
-| 112 | Forewarn: Carbon Levy P2 incoming |
-| 120 | **Carbon Levy P2 live** (scale ×2) |
-| 192 | Forewarn: Carbon Levy P3 incoming |
-| 200 | **Carbon Levy P3 live** (scale ×3.5) |
+| 91 | Forewarn: Carbon Levy P1 incoming (owner: announced t91) |
+| 101 | **Carbon Levy P1 live** (scale ×1) |
+| 157 | Forewarn: Carbon Levy P2 incoming |
+| 165 | **Carbon Levy P2 live** (scale ×2) |
+| 222 | Forewarn: Carbon Levy P3 incoming |
+| 230 | **Carbon Levy P3 live** (scale ×3.5) |
 
 > Difficulty/start hooks: the `new-game-screen-v2` ruleset seam can later scale
 > `effective_turn`s or the rates per difficulty. For v1, one fixed schedule for all starts.

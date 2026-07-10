@@ -148,7 +148,7 @@ r_151,Petroleum Needle Coke Power,petro_refinery,pet_coke,8,,,,,,,,,,,0,power,12
 r_152,Alcohol to Jet SAF,chem_plant,ethanol,6,hydrogen,3,,,,,,,,,70,SAF,6,pure_water,3,,,,,,,,,,Chemistry,,
 r_153,Biomass Gassification,bio_chem_plant,biomass,6,pure_water,4,,,,,,,,,70,fuels,4,,,,,,,,,,,,Biofuels,,
 r_154,Coal Liquefaction,chem_plant,coal,10,hydrogen,2,,,,,,,,,70,fuels,12,,,,,,,,,,,,Chemistry,,Fischer-Tropsch Synthesis
-r_155,Micro Algae Digestion,chem_plant,biomass,12,pure_water,4,,,,,,,,,65,ethylene,3,,,,,,,,,,,,Biofuels,,Algal Bioreactors
+r_155,Micro Algae Digestion,bio_chem_plant,biomass,4,spec_microbes,2,pure_water,2,,,,,,,70,ethylene,2,,,,,,,,,,,,Biofuels,,
 r_156,Medical Goods Production,high_tech_manufactory,plastics,10,oxygen,4,refined_ree,2,rubber,10,aluminium,2,glass,2,20,medical_components,4,,,,,,,,,,,,Manufacturing,,
 r_157,Thermo Mechanical Pulping,timber_paper_factory,wood,5,pure_water,4,,,,,,,,,70,wood_pulp,5,,,,,,,,,,,,,,
 r_158,Chemical Wood Bleaching,timber_paper_factory,wood,5,sodium_hydroxide,2,,,,,,,,,20,wood_pulp,5,,,,,,,,,,1,,,,
@@ -198,3 +198,4 @@ r_224,Hydroelectric Power,hydro_power_plant,,,,,,,,,,,,,0,power,1000,,,,,,,,,riv
 r_225,Battery Storage,battery,,,,,,,,,,,,,20,,,,,,,,,,,,,,Batteries,,
 r_226,Magnetic Separation Electrolysis,electrolyser,ree_ore,10,pure_water,4,,,,,,,,,240,refined_ree,10,,,,,,,,,,,,Electrochemistry,,Molten Salt Alloy Electrolysis
 r_227,Rudimentary Lithium Refinement,furnace,lithium_ore,8,industrial_acids,3,,,,,,,,,100,lithium_carbonate,1,,,,,,,,,,,,Electrochemistry,,
+r_228,Bio Ethylene,chem_plant,biomass,10,,,,,,,,,,,100,ethylene,3,,,,,,,,,,,,Biofuels,,Biomass Cracking

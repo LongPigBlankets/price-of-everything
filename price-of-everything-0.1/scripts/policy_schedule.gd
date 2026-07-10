@@ -22,8 +22,9 @@ const SCHEDULE: Array = [
 
 	# --- CO2 Tax / Carbon Levy (the stick, escalating) ---
 	{
+		# Owner ruling: announced at turn 91, in force at turn 101.
 		"id": "co2_tax_p1", "policy": "co2_tax", "level": 1,
-		"effective_turn": 55, "forewarn_turns": 8, "severity": "warning",
+		"effective_turn": 101, "forewarn_turns": 10, "severity": "warning",
 		"title": "Carbon Levy — Phase 1",
 		# LOREM
 		"forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vectigal carbonis mox imponetur in carbonem, oleum confectum et aethylenum — parate rationes vestras.",
@@ -32,7 +33,7 @@ const SCHEDULE: Array = [
 	},
 	{
 		"id": "co2_tax_p2", "policy": "co2_tax", "level": 2,
-		"effective_turn": 120, "forewarn_turns": 8, "severity": "warning",
+		"effective_turn": 165, "forewarn_turns": 8, "severity": "warning",
 		"title": "Carbon Levy — Phase 2",
 		# LOREM
 		"forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vectigal carbonis mox duplicabitur; tempus est vias mundiores quaerere.",
@@ -41,7 +42,7 @@ const SCHEDULE: Array = [
 	},
 	{
 		"id": "co2_tax_p3", "policy": "co2_tax", "level": 3,
-		"effective_turn": 200, "forewarn_turns": 8, "severity": "warning",
+		"effective_turn": 230, "forewarn_turns": 8, "severity": "warning",
 		"title": "Carbon Levy — Phase 3",
 		# LOREM
 		"forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ultimum incrementum vectigalis appropinquat; aetas carbonis finitur.",
