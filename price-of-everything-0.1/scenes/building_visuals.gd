@@ -997,6 +997,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 		for s in segs:   # _block_road_segments → centre-relative; to world
 			farm_snap.append([center + (s[0] as Vector2), center + (s[1] as Vector2)])
 	_build_block_masses(tile_id, coord, blds)
+	var wdiscs := _forest_discs(coord, center)   # precise wing validation (mask-free)
 	var dirs := [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP,
 		Vector2(0.7071, 0.7071), Vector2(-0.7071, 0.7071), Vector2(0.7071, -0.7071), Vector2(-0.7071, -0.7071)]
 	# running occupancy: every main footprint, then each ancillary as it lands
@@ -1094,7 +1095,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 					var slide_max: float = maxf(pext - wing_pext, 0.0)
 					var slide := (float(RoadHash.pick("wing|%s|%d|sl" % [iid, wi], 100)) / 100.0 - 0.5) * 2.0 * slide_max
 					wctr += perp * slide
-					if not _valid(wctr, wverts_l, wh, others, land, segs, rivers):
+					if not _wing_valid(wctr, wverts_l, wh, others, segs, rivers, wdiscs, center):
 						continue
 					var wentry := {"pos": wctr, "half": wh}
 					placed.append(wentry)
@@ -1109,11 +1110,12 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 					})
 					wing_done = true
 					break
-				if not wing_done:
-					# Hemmed in on every side? Expand ACROSS the road (owner
-					# 2026-07-10): place the wing on the far side of the
-					# carriageway and tether it back with a narrow covered
-					# corridor drawn over the road (5-10u wide).
+				if not wing_done and lvl >= 2:
+					# Hemmed in on every side? UPGRADED buildings expand ACROSS
+					# the road (owner trigger rule 2026-07-10: no space around
+					# + space across + upgraded): the wing lands on the far
+					# side of the carriageway, tethered back by a narrow
+					# covered corridor drawn over the road (5-10u wide).
 					for j1 in wdirs.size():
 						if wing_done:
 							break
@@ -1122,7 +1124,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 						var wing_ext2: float = ww * 0.5 if di2 < 2 else whh * 0.5
 						for step in [34.0, 42.0, 50.0, 58.0]:
 							var wctr2: Vector2 = bpos + wdir2 * (float(wexts[di2]) + step + wing_ext2)
-							if not _valid(wctr2, wverts_l, wh, others, land, segs, rivers):
+							if not _wing_valid(wctr2, wverts_l, wh, others, segs, rivers, wdiscs, center):
 								continue
 							var pa: Vector2 = bpos + wdir2 * float(wexts[di2])
 							var pb: Vector2 = wctr2 - wdir2 * wing_ext2
@@ -2559,6 +2561,33 @@ func _valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, pla
 		and not _overlaps(center, half, placed_here) \
 		and _footprint_clears(center, local_verts, segs, road_clear) \
 		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR)
+
+## PRECISE wing validation (owner 2026-07-10: the buildable mask is 20u-cell
+## chunky and reserves the 28u river bank corridor — a cosmetic wing only
+## needs the real clearances). Checks hex, water, elevation and forest discs
+## point-wise, exact 18u road / 16u river distances, and building overlaps.
+func _wing_valid(wctr: Vector2, local_verts: PackedVector2Array, half: Vector2, others: Array, segs: Array, rivers: Array, discs: Array, center: Vector2) -> bool:
+	if _overlaps(wctr, half, others):
+		return false
+	var nav := NavGrid.instance()
+	var nav_ok := nav != null and nav.is_ready()
+	var probes := PackedVector2Array([wctr])
+	for v in local_verts:
+		probes.append(wctr + v)
+	for pr in probes:
+		if not _in_hex_rel(pr):
+			return false
+		if nav_ok:
+			var c := nav.cell_of(center + pr)
+			if nav.water(c.x, c.y) != 0:
+				return false
+			if nav.level(c.x, c.y) < MIN_BUILD_LEVEL:
+				return false
+		for d in discs:
+			if pr.distance_to(d.c) < float(d.r):
+				return false
+	return _footprint_clears(wctr, local_verts, segs, ROAD_CLEAR) \
+		and _footprint_clears(wctr, local_verts, rivers, RIVER_CLEAR)
 
 ## Relaxed validation for a big CHUNK (it fills its cell): only the CENTRE must be buildable land (the chunk
 ## may overlap a forest edge or the road-clearance band — the building just draws over it), but it must stay
