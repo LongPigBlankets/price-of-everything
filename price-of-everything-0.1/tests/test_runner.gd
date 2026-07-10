@@ -184,6 +184,7 @@ func _ready() -> void:
 	await _test_roads_avoid_buildings()
 	await _test_building_resnap()
 	await _test_block_subdivision()
+	await _test_level_storeys_and_owner_swap()
 	await _test_river_bank_and_bridge_head()
 	await _test_bridge_corridor()
 	await _test_subcomponents()
@@ -1039,6 +1040,55 @@ func _test_arin_bridge() -> void:
 # Urban block-subdivision: a seeded urban tile lays a grid of lots; buildings claim them
 # in emit order (tight, non-overlapping), fall back to the continuous packer when full,
 # feed roads-avoid via real footprints, and the layout is deterministic + demolish-stable.
+# Level upgrades must ALWAYS show (rooftop storey blocks — wings depend on free
+# ground), and a bought NPC building must swap its placement to player-owned.
+func _test_level_storeys_and_owner_swap() -> void:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		_check(false, "storeys: test tile exists")
+		bv.queue_free(); terrain.queue_free(); RoadNetwork.reset(); return
+	var iid := MatchState.add_building("b_001", "", tile_id, "npc", "storey_test", false)
+	bv.on_building_placed(tile_id, "b_001", "", iid, coord)
+	bv._flush_subcomponents()
+	var count_l1 := 0
+	for sc in bv._subcomponents:
+		if str(sc.kind) == "storey" and str(sc.iid) == iid:
+			count_l1 += 1
+	_check(count_l1 == 0, "storeys: none at level 1")
+	# L3 → two stacked storey blocks, regardless of crowding or masses.
+	(MatchState.buildings[iid] as Dictionary)["level"] = 3
+	bv._rebuild_subcomponents(tile_id)
+	var count_l3 := 0
+	for sc2 in bv._subcomponents:
+		if str(sc2.kind) == "storey" and str(sc2.iid) == iid:
+			count_l3 += 1
+	_check(count_l3 == 2, "storeys: two blocks at level 3")
+	# Ownership swap flips the placement's is_npc (bought buildings recolour).
+	var idx: int = bv._placement_index[iid]
+	_check(bool((bv._placements[idx] as Dictionary).is_npc), "owner swap: starts NPC")
+	(MatchState.buildings[iid] as Dictionary)["owner"] = MatchState.LOCAL_PLAYER
+	bv._on_building_owner_changed(iid)
+	_check(not bool((bv._placements[idx] as Dictionary).is_npc), "owner swap: placement follows the sale")
+	MatchState.remove_building(iid)
+	bv.queue_free()
+	terrain.queue_free()
+	RoadNetwork.reset()
+	await get_tree().process_frame
+
 func _test_block_subdivision() -> void:
 	var nav := NavGrid.instance()
 	if not nav.is_ready():

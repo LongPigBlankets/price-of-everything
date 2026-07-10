@@ -100,6 +100,7 @@ const WASH_NAVY := Color("#5d7285")           # metallurgy (furnaces) — washed
 const WASH_BLUE := Color("#7ba7bc")           # water — lighter powder blue (was #3A7BD5)
 const WASH_PINK := Color("#b57f97")           # refinery — dusty plum-pink (was purple #8E5BC0)
 const WASH_ORANGE := Color("#c9803d")         # manufacturing — muted terracotta (was #E08A3C)
+const WASH_LIME := Color("#9fae5a")           # electrochemistry (chem plants) — olive lime (was #A6E22E)
 const WASH_JITTER := 0.05                     # ±5% per-instance value jitter (seeded)
 const NPC_WHITE := Color("#efe9db")           # NPC fill: warm paper white (sits in the parchment)
 const SAWTOOTH_PITCH := 12.0                  # factory shed-roof line spacing (u)
@@ -227,6 +228,9 @@ func _ready() -> void:
 	# An upgraded building grows annex wings (level-driven compound massing) —
 	# re-derive its tile's subcomponents when the new level lands.
 	MatchState.building_upgraded.connect(_on_building_upgraded)
+	# A bought NPC building swaps to the player's wash (and leaves any NPC
+	# block-mass it sat in) the moment ownership changes.
+	MatchState.building_owner_changed.connect(_on_building_owner_changed)
 	# When RoadWorks promotes a farm tile's outer ring + one path to real roads, stop drawing those
 	# brown tracks (the yellow road now represents them).
 	if RoadWorks.has_signal("farm_roads_promoted"):
@@ -922,6 +926,14 @@ func _flush_resnap() -> void:
 
 ## Mark a tile for a subcomponent rebuild (coalesced into one deferred pass), so tanks/annexes
 ## are re-derived once the tile's buildings + roads have settled for this frame.
+func _on_building_owner_changed(instance_id: String) -> void:
+	if not _placement_index.has(instance_id):
+		return
+	var p: Dictionary = _placements[_placement_index[instance_id]]
+	p["is_npc"] = not MatchState.is_player_owned(MatchState.get_building(instance_id))
+	_mark_subcomp_dirty(str(p.tile_id))
+	queue_redraw()
+
 func _on_building_upgraded(instance_id: String, _new_level: int) -> void:
 	var tid := str(MatchState.get_building(instance_id).get("tile_id", ""))
 	if tid != "":
@@ -1011,6 +1023,26 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 			continue
 		if bool(p.get("offshore", false)):
 			continue   # platforms at sea carry no annexes/wings/tanks
+		var lvl := clampi(int(MatchState.get_building(iid).get("level", 1)), 1, 3)
+		# Levels ALWAYS show: L2/L3 stack rooftop storey blocks on the parent
+		# (wings depend on free ground and are skipped inside block-masses —
+		# a storey needs neither). Drawn on top, slightly toward a seeded
+		# corner, one per level above 1, stepped smaller.
+		if lvl >= 2 and (p.verts as PackedVector2Array).size() >= 3:
+			var pv: PackedVector2Array = p.verts
+			var pc := _poly_centroid(pv)
+			var anchor_i := RoadHash.pick("storey|%s" % iid, pv.size())
+			var nudge := (pv[anchor_i] - pc) * 0.16
+			for si in range(lvl - 1):
+				var f := 0.62 - 0.20 * float(si)
+				var sverts := PackedVector2Array()
+				for v2 in pv:
+					sverts.append(pc + (v2 - pc) * f + nudge * (1.0 + 0.6 * float(si)))
+				_subcomponents.append({
+					"tile_id": tile_id, "verts": sverts, "color": p.color,
+					"kind": "storey", "is_npc": is_npc, "bb": _verts_bb(sverts),
+					"cat": str(p.cat), "iid": iid,
+				})
 		if (_massed_by_tile.get(tile_id, {}) as Dictionary).has(iid):
 			continue   # inside a block-mass — the mass is the compound
 		var pcolor: Color = p.color
@@ -1024,9 +1056,8 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 		# Wing count: big grey/mustard halls start with 1-2 seeded wings; every
 		# level above 1 adds one more, ANY family (owner 2026-07-10: buildings
 		# visibly expand with annexes when they upgrade to L2/L3).
-		var lvl := clampi(int(MatchState.get_building(iid).get("level", 1)), 1, 3)
 		var base_wings := 0
-		if (fam == "grey" or fam == "navy" or fam == "mustard") and parent_area >= WING_MIN_PARENT_AREA:
+		if (fam == "grey" or fam == "navy" or fam == "lime" or fam == "mustard") and parent_area >= WING_MIN_PARENT_AREA:
 			base_wings = 1 + RoadHash.pick("wing|%s|n" % iid, 2)
 		var wing_total := mini(base_wings + (lvl - 1), 4)
 		if wing_total > 0 and pverts.size() == 4:
@@ -2913,7 +2944,7 @@ func _draw() -> void:
 	# Round tanks + farm barns/silos on top (tanks sit off their building; farm outbuildings sit ON the field).
 	for sc in _subcomponents:
 		var k := str(sc.kind)
-		if k == "tank" or k == "farm_barn" or k == "farm_silo":
+		if k == "tank" or k == "farm_barn" or k == "farm_silo" or k == "storey":
 			_draw_subcomponent(sc)
 
 ## Draw one ancillary (tank/annex) in the parent's wash + ink; farm outbuildings
@@ -2923,13 +2954,16 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		return
 	var sv: PackedVector2Array = sc.verts
 	var kind := str(sc.kind)
-	if kind == "annex" or kind == "tank" or kind == "wing":
-		if kind != "tank":
+	if kind == "annex" or kind == "tank" or kind == "wing" or kind == "storey":
+		if kind != "tank" and kind != "storey":
 			sv = _wobble_poly("%s|%s" % [str(sc.get("iid", "")), kind], sv)
-		draw_colored_polygon(sv, _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc)))
+		var wash := _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc))
+		if kind == "storey":
+			wash = Color.from_hsv(wash.h, wash.s, clampf(wash.v * 0.92, 0.0, 1.0))
+		draw_colored_polygon(sv, wash)
 		var si := sv.duplicate()
 		si.append(sv[0])
-		draw_polyline(si, INK, INK_W, true)
+		draw_polyline(si, INK, 1.0 if kind == "storey" else INK_W, true)
 		if kind == "tank":
 			draw_circle(_poly_centroid(sv), 1.4, INK)   # reference: tank = ink circle + centre dot
 		return
@@ -2976,8 +3010,10 @@ func _wobble_poly(seed_key: String, verts: PackedVector2Array) -> PackedVector2A
 ## refineries their purple-turned-pink, manufacturing its orange.
 func _wash_family(cat: String) -> String:
 	match cat:
-		"extraction", "power", "electrochemistry":
+		"extraction", "power":
 			return "grey"
+		"electrochemistry":
+			return "lime"
 		"metallurgy":
 			return "navy"
 		"water":
@@ -3007,6 +3043,7 @@ func _wash_for(cat: String, iid: String, is_npc: bool) -> Color:
 	var base: Color
 	match fam:
 		"grey":    base = WASH_GREY
+		"lime":    base = WASH_LIME
 		"navy":    base = WASH_NAVY
 		"blue":    base = WASH_BLUE
 		"pink":    base = WASH_PINK
@@ -3028,7 +3065,7 @@ func _draw_roof_motifs(cat: String, iid: String, verts: PackedVector2Array, is_n
 	var lng: Vector2 = ax if ax.length() >= bx.length() else bx
 	var shr: Vector2 = bx if lng == ax else ax
 	match _wash_family(cat):
-		"grey", "navy", "orange":
+		"grey", "navy", "orange", "lime":
 			var n := clampi(int(lng.length() / SAWTOOTH_PITCH), 1, 12)
 			for k in range(1, n):
 				var base: Vector2 = verts[0] + lng * (float(k) / float(n))
