@@ -1479,6 +1479,10 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	var warehousing := float(econ.get("warehousing_cost", 0.0))
 	if warehousing > 0.0:
 		vb.add_child(_metric("Warehousing / turn", "−£%.2f" % warehousing, DS.PALETTE["DANGER"], false))
+	# Carbon levy on this recipe's taxed inputs (only shown once the policy is in force).
+	var carbon_tax := float(econ.get("carbon_tax", 0.0))
+	if carbon_tax > 0.0:
+		vb.add_child(_metric("Carbon tax / turn", "−£%.2f" % carbon_tax, DS.PALETTE["DANGER"], false))
 	vb.add_child(HSeparator.new())
 	var net := float(econ.get("net", 0.0))
 	vb.add_child(_metric("Net / turn", "%s£%.2f" % ["+" if net >= 0.0 else "−", absf(net)], DS.PALETTE["OK"] if net >= 0.0 else DS.PALETTE["DANGER"], true))

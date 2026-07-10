@@ -57,6 +57,10 @@ var _warehousing_value: Label
 var _proj_warehousing_value: Label
 var _profit_sharing_value: Label
 var _proj_profit_sharing_value: Label
+var _carbon_tax_value: Label
+var _proj_carbon_tax_value: Label
+var _green_subsidy_value: Label
+var _proj_green_subsidy_value: Label
 @onready var proj_total_costs_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_TotalCostsRow/TotalCostsValue
 @onready var proj_operating_profit_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_OperatingProfitRow/OperatingProfitValue
 @onready var proj_interest_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_InterestRow/InterestValue
@@ -136,6 +140,13 @@ func _ready() -> void:
 	_proj_goods_purchased_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Goods purchased")
 	_warehousing_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Warehousing")
 	_proj_warehousing_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Warehousing")
+	_carbon_tax_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Carbon tax")
+	_proj_carbon_tax_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Carbon tax")
+	# Green subsidy is INCOME: insert into the revenue sections after the power-sales row.
+	var revenue_section := $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection as VBoxContainer
+	var proj_revenue_section := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_RevenueSection as VBoxContainer
+	_green_subsidy_value = _insert_finance_row(revenue_section, "PowerSalesRow", "Green subsidy", "+£0.00")
+	_proj_green_subsidy_value = _insert_finance_row(proj_revenue_section, "Proj_PowerSalesRow", "Green subsidy", "+£0.00")
 	var balance_content := $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent as VBoxContainer
 	var projection_content := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent as VBoxContainer
 	_profit_sharing_value = _insert_finance_row(balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
@@ -280,10 +291,12 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	var tax: float = summary.get("taxes_paid", 0.0)
 	var dividends: float = summary.get("dividends_paid", 0.0)
 	var profit_sharing: float = summary.get("profit_sharing_paid", 0.0)
+	var carbon_tax: float = summary.get("carbon_tax_paid", 0.0)
+	var green_subsidy: float = summary.get("green_subsidy_received", 0.0)
 
 	# Compute derived
-	var total_revenue: float = goods_revenue + power_revenue
-	var total_costs: float = maintenance + labour + transport + power_purchase + goods_purchased + warehousing
+	var total_revenue: float = goods_revenue + power_revenue + green_subsidy
+	var total_costs: float = maintenance + labour + transport + power_purchase + goods_purchased + warehousing + carbon_tax
 	var operating_profit: float = total_revenue - total_costs
 	var pretax: float = operating_profit - interest
 	var posttax: float = pretax - tax
@@ -300,6 +313,8 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	_transport_value.text = "-£%.2f" % transport
 	_goods_purchased_value.text = "-£%.2f" % goods_purchased
 	_warehousing_value.text = "-£%.2f" % warehousing
+	_carbon_tax_value.text = "-£%.2f" % carbon_tax
+	_green_subsidy_value.text = "+£%.2f" % green_subsidy
 	total_costs_value.text = "-£%.2f" % total_costs
 	
 	operating_profit_value.text = _format_signed(operating_profit)
@@ -405,6 +420,8 @@ func _render_projection(proj: Dictionary) -> void:
 	_proj_transport_value.text = "-£%.2f" % proj.transport
 	_proj_goods_purchased_value.text = "-£%.2f" % proj.goods_purchased
 	_proj_warehousing_value.text = "-£%.2f" % proj.get("warehousing", 0.0)
+	_proj_carbon_tax_value.text = "-£%.2f" % proj.get("carbon_tax", 0.0)
+	_proj_green_subsidy_value.text = "+£%.2f" % proj.get("green_subsidy", 0.0)
 	proj_total_costs_value.text = "-£%.2f" % proj.total_costs
 	
 	proj_operating_profit_value.text = _format_signed(proj.operating_profit)
@@ -437,6 +454,9 @@ func _project_next_turn() -> Dictionary:
 	var labour: float = 0.0
 	var transport: float = 0.0
 	var goods_purchased: float = 0.0
+	var carbon_tax: float = 0.0
+	var green_mw: float = 0.0
+	var proj_turn: int = int(TurnManager.current_turn)
 
 	# Use last_turn_run if available; else iterate all buildings
 	var building_ids_to_consider: Array
@@ -461,6 +481,15 @@ func _project_next_turn() -> Dictionary:
 		var output_qty: int = int(round(float(recipe.get("output_qty", 0)) * MatchState.workforce_output_multiplier()))
 		if output_name == "power":
 			power_supply += output_qty
+			# Green generation qualifies for the subsidy (mirrors Production._power_quality).
+			var internal := str(Catalog.get_building(str(building.get("building_id", ""))).get("internal_name", ""))
+			if internal in EconomyConfig.POWER_INTERMITTENT_BUILDINGS or internal in EconomyConfig.POWER_STEADY_BUILDINGS:
+				green_mw += float(output_qty)
+			else:
+				for inp in recipe.get("inputs", []):
+					if str(inp.get("internal_name", "")) in EconomyConfig.POWER_STEADY_FUELS:
+						green_mw += float(output_qty)
+						break
 		elif output_name != "":
 			var good: Dictionary = Catalog.get_good_by_internal_name(output_name)
 			if not good.is_empty():
@@ -478,7 +507,11 @@ func _project_next_turn() -> Dictionary:
 		# Market-sourced inputs (upper bound: full per-turn demand at the buy price)
 		for input in recipe.get("inputs", []):
 			var in_gid: String = str(input.get("good_id", ""))
-			if in_gid == "" or MatchState.is_input_tile_only(inst_id, in_gid):
+			if in_gid == "":
+				continue
+			# Carbon levy on taxed inputs (charged regardless of sourcing).
+			carbon_tax += PolicyState.carbon_charge(in_gid, int(input.get("qty", 0)), proj_turn)
+			if MatchState.is_input_tile_only(inst_id, in_gid):
 				continue
 			goods_purchased += int(input.get("qty", 0)) * MarketState.get_buy_price(in_gid)
 	
@@ -503,9 +536,12 @@ func _project_next_turn() -> Dictionary:
 		for wg in wtot:
 			warehousing += float(wtot[wg]) * EconomyConfig.warehousing_cost_per_unit(str(wg))
 
+	# Green subsidy on projected green generation.
+	var green_subsidy: float = green_mw * PolicyState.green_subsidy_rate(proj_turn)
+
 	# Compute the chain
-	var total_revenue: float = goods_revenue + power_revenue
-	var total_costs: float = maintenance + labour + transport + power_purchase + goods_purchased + warehousing
+	var total_revenue: float = goods_revenue + power_revenue + green_subsidy
+	var total_costs: float = maintenance + labour + transport + power_purchase + goods_purchased + warehousing + carbon_tax
 	var operating_profit: float = total_revenue - total_costs
 	var pretax: float = operating_profit - interest
 	var taxable_profit := maxf(pretax, 0.0)
@@ -528,6 +564,8 @@ func _project_next_turn() -> Dictionary:
 		"power_purchase": power_purchase,
 		"goods_purchased": goods_purchased,
 		"warehousing": warehousing,
+		"carbon_tax": carbon_tax,
+		"green_subsidy": green_subsidy,
 		"total_costs": total_costs,
 		"operating_profit": operating_profit,
 		"interest": interest,
@@ -824,6 +862,7 @@ func _record_chart_history(summary: Dictionary) -> void:
 			_:
 				revenue["intermediate"] += rev  # mixed/waste fall back to intermediate
 	revenue["power"] = float(summary.get("power_sales_revenue", 0.0))
+	revenue["green_subsidy"] = float(summary.get("green_subsidy_received", 0.0))
 
 	# Goods purchased, split by tier (goods value only — transport is excluded).
 	var purchased: Dictionary = summary.get("purchased_cost", {})
@@ -838,6 +877,7 @@ func _record_chart_history(summary: Dictionary) -> void:
 	costs["power"] = float(summary.get("power_purchase_cost", 0.0))
 	costs["maintenance"] = float(summary.get("maintenance_paid", 0.0))
 	costs["labour"] = float(summary.get("labour_paid", 0.0))
+	costs["carbon_tax"] = float(summary.get("carbon_tax_paid", 0.0))
 	costs["taxes"] = float(summary.get("taxes_paid", 0.0))
 	costs["dividends"] = float(summary.get("dividends_paid", 0.0))
 	costs["profit_sharing"] = float(summary.get("profit_sharing_paid", 0.0))

@@ -1,16 +1,23 @@
 # Spec — CO2 Tax & Green Energy Subsidy Announcements
 
-> **STATUS: PROPOSED / NOT IMPLEMENTED (2026-07-09).** This is the design for the game's
-> scheduled *decarbonisation squeeze*: a government **green-energy subsidy** (the carrot,
-> announced early) and an escalating **CO2 tax** (the stick, announced ahead and ratcheting
-> over the game). Both are surfaced as **forewarned announcements** in the Turn Briefing and
-> then take economic effect. All the plumbing already exists — `EventScheduler.schedule()`
-> with `forewarn_turns`, the `power_supply_by_quality` split, and the dormant
-> `co2_tax_multiplier` good column — so this is mostly *switching authored data on* plus one
-> small state holder.
+> **STATUS: BUILT (2026-07-10, branch `co2-tax-narrative`).** Implemented as specced with
+> owner rulings + deviations: (1) taxed goods are **coal 0.5 / processed_oil 2.7 /
+> ethylene 1.0** (crude_oil keeps its authored 0.1) on the **consumed** base, confirmed by
+> the owner; (2) `CO2_TAX_RATE = 1.0` so the multiplier column IS the £/unit at scale 1;
+> (3) per-building attribution (`Production.carbon_tax_by_building`) + a "Carbon tax / turn"
+> line in the Building Detail economics card (owner addition); (4) Money panel Balance /
+> Budget-projection / Charts rows + Turn-Summary dock lines ("Carbon Tax", "Subsidy");
+> (5) the biomass escape route is `r_155 Micro Algae Digestion` (chem_plant: 12 biomass +
+> 4 pure_water + 65 energy → 3 ethylene), revived from dormancy and tech-gated behind the
+> new **Algal Bioreactors** node (Biochemistry III, Produce 300 biomass, prereq Sustainable
+> Forestry) — at base prices it runs −£0.70/run unintegrated vs taxed oil-route ethylene
+> £7.00/u (P1) / £9.25/u (P2) against bio £6.83/u; (6) a `skip <n>` debug-terminal cheat was
+> added for fast-forwarding to policy turns. Verified: unit 1420/1 standing; e2e failure set
+> unchanged vs parent (601/6), squeeze drag −£54.9/turn from t55 on the coal-heavy scenario
+> with revenue identical; tools/policy_shot.tscn renders all four surfaces.
 >
 > **Body/explanation text for every announcement is placeholder Lorem Ipsum below; the owner
-> will replace it with lore.** Search this doc (and, once built, `policy_schedule.gd`) for
+> will replace it with lore.** Search this doc and `scripts/policy_schedule.gd` for
 > `LOREM` to find every spot.
 
 ---

@@ -253,6 +253,16 @@ func _run_command(text: String) -> String:
 		"labour":
 			MatchState.cheat_labour_discount()
 			return "Applied debug labour -60% for 10 turns (clamps at 40% of base cost)."
+		"skip":
+			# QOL fast-forward: resolve N turns back-to-back (fast_mode, decisions
+			# auto-resolved to their default so the loop never blocks).
+			var n := 10
+			if parts.size() >= 2:
+				if not parts[1].is_valid_int() or int(parts[1]) < 1:
+					return "usage: skip <turns>   (e.g. 'skip 10'; default 10, max 50)"
+				n = clampi(int(parts[1]), 1, 50)
+			_skip_turns(n)
+			return "Skipping %d turn%s…" % [n, "" if n == 1 else "s"]
 		"loyalty":
 			if parts.size() < 3 or not parts[2].is_valid_float():
 				return "usage: loyalty <advisor_id> <delta>   (e.g. 'loyalty vera -10'; clamped -10..+10)"
@@ -262,9 +272,28 @@ func _run_command(text: String) -> String:
 			MatchState.cheat_set_loyalty(aid, float(parts[2]))
 			return "%s loyalty now %.1f" % [aid, MatchState.advisor_loyalty_value(aid)]
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all   |   research all   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   swap bdp   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all   |   research all   |   skip <turns>   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   swap bdp   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
+
+# Fast-forward N turns (the `skip` cheat). Runs as an async fire-and-forget loop:
+# fast_mode drops the inter-phase pacing, decisions auto-resolve to their default so the
+# commit never blocks, and each turn awaits full resolution before the next commits.
+func _skip_turns(n: int) -> void:
+	var was_fast := TurnManager.fast_mode
+	var was_auto := DecisionState.auto_resolve
+	TurnManager.fast_mode = true
+	DecisionState.auto_resolve = true
+	for i in n:
+		if TurnManager.game_ended:
+			_print_line("skip: game over — stopped after %d turn%s." % [i, "" if i == 1 else "s"])
+			break
+		TurnManager.commit_turn()
+		if TurnManager.is_resolving:
+			await TurnManager.turn_resolution_completed
+	TurnManager.fast_mode = was_fast
+	DecisionState.auto_resolve = was_auto
+	_print_line("skip: done — now on turn %d." % TurnManager.current_turn)
 
 func _roads_route(tile_a: String, tile_b: String) -> String:
 	var maps := get_tree().get_nodes_in_group("hex_map")

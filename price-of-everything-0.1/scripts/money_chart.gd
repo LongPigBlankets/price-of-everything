@@ -26,6 +26,7 @@ const REVENUE_SERIES := [
 	{"key": "raw",          "label": "Raw goods",          "color": Color(0.55, 0.95, 0.78)},   # mint green
 	{"key": "construction", "label": "Construction goods", "color": Color(0.95, 0.88, 0.25)},   # yellow
 	{"key": "power",        "label": "Power sold",         "color": Color(0.55, 0.80, 0.95)},   # light blue
+	{"key": "green_subsidy","label": "Green subsidy",      "color": Color(0.35, 0.75, 0.40)},   # subsidy green
 ]
 const COST_SERIES := [
 	{"key": "raw",          "label": "Raw goods bought",   "color": Color(0.55, 0.08, 0.08)},   # dark red
@@ -34,6 +35,7 @@ const COST_SERIES := [
 	{"key": "power",        "label": "Power bought",       "color": Color(0.95, 0.60, 0.15)},   # orange
 	{"key": "maintenance",  "label": "Maintenance",        "color": Color(0.60, 0.30, 0.72)},   # purple
 	{"key": "labour",       "label": "Labour",             "color": Color(0.96, 0.55, 0.78)},   # pink
+	{"key": "carbon_tax",   "label": "Carbon tax",         "color": Color(0.25, 0.25, 0.28), "hatch": NAVY},  # soot, hatched
 	{"key": "taxes",        "label": "Taxes",              "color": Color(0.78, 0.78, 0.78)},   # light grey
 	{"key": "dividends",    "label": "Dividends",          "color": Color(0.36, 0.36, 0.38)},   # dark grey
 	{"key": "profit_sharing","label": "Profit sharing",     "color": Color(0.62, 0.72, 0.95)},   # slate blue

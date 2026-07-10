@@ -78,6 +78,7 @@ func export_snapshot() -> Dictionary:
 		"solvency": SolvencyState.export_state(),
 		"briefing": TurnBriefing.export_state(),
 		"victory": VictoryState.export_state(),
+		"policy": PolicyState.export_state(),
 		"infrastructure": _collect_infrastructure(),
 		"roads": {
 			"network": RoadNetwork.instance().export_state(),
@@ -114,6 +115,8 @@ func import_snapshot(snap: Dictionary) -> void:
 	MatchState.reapply_mission_modifiers()
 	# Missing "victory" key (old saves) -> import_state({}) leaves a fresh zero state.
 	VictoryState.import_state(snap.get("victory", {}))
+	# Additive key (tolerant reader): pre-feature saves seed the policy schedule fresh.
+	PolicyState.import_state(snap.get("policy", {}))
 	# roads-v2: BUILT geometry restores verbatim; planning orders resume
 	# deterministically; mid-reveal orders restart their reveal (cosmetic).
 	# Old saves carry no "roads" key — the network stays empty here and

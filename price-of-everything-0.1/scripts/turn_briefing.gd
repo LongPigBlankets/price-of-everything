@@ -425,6 +425,8 @@ const _EVENT_SECTIONS := {
 	"sales_aggregate": "",        # too noisy for the briefing — bell only
 	"bankruptcy_warning": "",     # superseded by the live runway alert
 	"building_starved": "",       # superseded by the aggregated live alert
+	"policy_enacted": "news",     # CO2 tax / green subsidy now in effect (PolicyState)
+	"forewarn": "news",           # "coming in N turns" advance notice of a scheduled event
 }
 # Kind → icon glyph key (see ICON_GLYPHS). Announcement kinds we don't know fall back
 # to the flag in _event_item.
@@ -437,6 +439,8 @@ const _EVENT_ICONS := {
 	"bridge_loan": "coin",
 	"deposit_exhausted": "warn",
 	"tile_at_capacity": "gauge",
+	"policy_enacted": "scale",
+	"forewarn": "flag",
 }
 
 func _event_item(ev: Dictionary) -> Dictionary:

@@ -541,6 +541,8 @@ func _parse_good_row(headers: PackedStringArray, line: PackedStringArray) -> Dic
 		"is_buyable": raw.get("is_buyable", "").to_upper() == "TRUE",
 		"is_sellable": raw.get("is_sellable", "").to_upper() == "TRUE",
 		"is_fossil_fuel": raw.get("is_fossil_fuel", "").to_lower() == "yes",
+		# Carbon intensity (£ per unit consumed at CO2-tax scale 1). 0 = untaxed.
+		"co2_tax_multiplier": float(raw.get("co2_tax_multiplier", "0")),
 	}
 
 # Public API: goods

@@ -171,7 +171,14 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 	# buildings that ran there). 0 until the first solve or when nothing is stored.
 	var wh_bd: Dictionary = CostSolver.last_result.get("per_building", {}).get(str(building.get("instance_id", "")), {})
 	var warehousing := float(wh_bd.get("warehousing_cost", 0.0))
-	var running := maint + float(lab.get("cost", 0.0)) + power_cost + input_cost + transport_cost + warehousing
+	# Carbon levy (live estimate at the CURRENT policy phase): the charge for this run's
+	# taxed inputs (coal / processed oil / ethylene …). 0 before the levy is in force.
+	var carbon_tax := 0.0
+	var levy_turn := int(TurnManager.current_turn)
+	for inp in recipe.get("inputs", []):
+		carbon_tax += PolicyState.carbon_charge(str(inp.get("good_id", "")),
+			int(round(float(inp.get("qty", 0)) * BuildingLevels.mult("input", lvl))), levy_turn)
+	var running := maint + float(lab.get("cost", 0.0)) + power_cost + input_cost + transport_cost + warehousing + carbon_tax
 	var pc := BuildingStatus.produce_cost_status(building)
 	return {
 		"value": float(building_data.get("base_price", 0.0)),   # asset value (build/buy price), not per-turn
@@ -185,6 +192,7 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 		"labour_cost": float(lab.get("cost", 0.0)),
 		"power_cost": power_cost,
 		"warehousing_cost": warehousing,
+		"carbon_tax": carbon_tax,
 		"running_cost": running,
 		"net": output_value - running,
 		"unit_cost": float(pc.get("unit_cost", -1.0)),

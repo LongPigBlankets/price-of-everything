@@ -10,6 +10,11 @@ var last_turn_run: Dictionary = {}  # instance_id -> true (set of buildings that
 var produced_by_building: Dictionary = {}  # instance_id -> good_id/internal_name -> lifetime qty
 var full_output_streak_by_building: Dictionary = {}  # instance_id -> consecutive turns at full output
 var _building_turn_reports: Array = []  # BuildingTurnReport dicts for CostSolver
+# Decarbonisation squeeze: taxed-good consumption accumulated during the production pass
+# (player buildings only), charged in the carbon_tax step after tax_dividends. The charge
+# breakdown persists until next turn so the Building Detail panel can show actuals.
+var _carbon_consumed_by_building: Dictionary = {}  # instance_id -> {good_id: qty}
+var carbon_tax_by_building: Dictionary = {}        # instance_id -> £ charged last turn
 
 # Read-only views for DecisionState (targets + revenue formulas). Reports are
 # cleared at the start of each PROCESS, so during DECIDE these are last turn's.
@@ -124,6 +129,7 @@ func _process_production() -> void:
 	_just_constructed_this_turn.clear()
 	_warning_buy_preview_cache.clear()
 	_building_turn_reports.clear()
+	_carbon_consumed_by_building.clear()
 	_inbound_delivery_this_turn.clear()
 	_output_buffer.clear()
 	_green_supply_by_tile.clear()  # _intermittency_by_* persist (they are last turn's)
@@ -173,6 +179,10 @@ func _process_production() -> void:
 	"dividends_paid": 0.0,
 	"profit_sharing_paid": 0.0,
 	"interest_paid": 0.0,
+	# Decarbonisation squeeze (PolicyState phases): the carbon levy charged on taxed
+	# goods consumed by player buildings, and the per-green-MW subsidy received.
+	"carbon_tax_paid": 0.0,
+	"green_subsidy_received": 0.0,
 	# Per-building-type cost breakdowns for money-panel tooltips.
 	# Each maps building_id -> {"count": int, "amount": float}.
 	"maintenance_by_type": {},
@@ -392,6 +402,17 @@ func _process_production() -> void:
 		MatchState.add_money(grid.grid_sell_revenue)
 		summary.power_sales_revenue = grid.grid_sell_revenue
 		summary.money_in += grid.grid_sell_revenue
+	# Green-energy subsidy (PolicyState schedule): £ per green MW GENERATED this turn
+	# (intermittent + steady — the same "green" the Greenest victory track counts).
+	var subsidy_rate: float = PolicyState.green_subsidy_rate(int(TurnManager.current_turn))
+	if subsidy_rate > 0.0:
+		var q: Dictionary = summary.power_supply_by_quality
+		var green_mw: float = float(q.get("green_intermittent", 0)) + float(q.get("green_steady", 0))
+		var subsidy: float = green_mw * subsidy_rate
+		if subsidy > 0.0:
+			MatchState.add_money(subsidy)
+			summary.green_subsidy_received = subsidy
+			summary.money_in += subsidy
 	TurnProfiler.section_end("grid_settlement")
 
 	# Merge this turn's same-tile outputs into stockpiles now — after all production
@@ -509,6 +530,13 @@ func _process_production() -> void:
 	var profit_sharing: float = _apply_profit_sharing(summary, pre_tax_profit)
 	TurnProfiler.section_end("tax_dividends")
 
+	# Carbon levy (PolicyState phases): charge taxed-good consumption accrued during the
+	# production pass. NOT profit-gated — burning carbon costs money even on a loss turn;
+	# that is the squeeze. Added after tax_dividends as its own government charge.
+	TurnProfiler.section_begin("carbon_tax")
+	_apply_carbon_tax(summary)
+	TurnProfiler.section_end("carbon_tax")
+
 	# Feed this turn's retained net profit + gross revenue to the loan facility so
 	# borrowing capacity scales with the business. taxes_paid/dividends_paid are 0
 	# when the turn was a loss, so retained then equals the (negative) pre-tax profit.
@@ -592,6 +620,28 @@ func _apply_advisor_costs(summary: Dictionary) -> float:
 	summary.advisor_paid = payroll
 	summary.money_out += payroll
 	return payroll
+
+# Decarbonisation squeeze: charge the carbon levy on this turn's accrued taxed-good
+# consumption (player buildings only, accumulated in _consume_inputs). Fills the
+# per-building breakdown the Building Detail panel shows as last-turn actuals.
+func _apply_carbon_tax(summary: Dictionary) -> void:
+	carbon_tax_by_building.clear()
+	var turn: int = int(TurnManager.current_turn)
+	if PolicyState.co2_tax_level(turn) <= 0:
+		return
+	var total: float = 0.0
+	for iid in _carbon_consumed_by_building:
+		var charge: float = 0.0
+		var per: Dictionary = _carbon_consumed_by_building[iid]
+		for gid in per:
+			charge += PolicyState.carbon_charge(str(gid), int(per[gid]), turn)
+		if charge > 0.0:
+			carbon_tax_by_building[iid] = charge
+			total += charge
+	if total > 0.0:
+		MatchState.add_money(-total)
+		summary.carbon_tax_paid = total
+		summary.money_out += total
 
 func _apply_tax_and_dividends(summary: Dictionary) -> float:
 	# Use actual pre-tax cashflow, not just sales minus a narrow operating-cost
@@ -2268,6 +2318,8 @@ func _recipe_output_good_matching_input(recipe: Dictionary, input_good_id: Strin
 func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictionary) -> void:
 	var inputs: Array = recipe.get("inputs", [])
 	var tile_id: String = building.get("tile_id", "")
+	var player_owned := MatchState.is_player_owned(building)
+	var iid: String = str(building.get("instance_id", ""))
 	for input in inputs:
 		var qty := _scaled_input_qty(input, building)
 		# JIT feed first (goods staged building-to-building), warehouse for the rest.
@@ -2277,6 +2329,12 @@ func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictiona
 		if qty > 0:
 			MatchState.flag_agenda_event(MatchState.AGENDA_USED_STOCKPILE)
 		summary.consumed[input.good_id] = summary.consumed.get(input.good_id, 0) + qty
+		# Carbon levy accrual: taxed goods burned by PLAYER buildings this turn.
+		# Charged in one lump in the carbon_tax step (after tax_dividends).
+		if player_owned and qty > 0 and float(Catalog.get_good(str(input.good_id)).get("co2_tax_multiplier", 0.0)) > 0.0:
+			var per: Dictionary = _carbon_consumed_by_building.get(iid, {})
+			per[str(input.good_id)] = int(per.get(str(input.good_id), 0)) + qty
+			_carbon_consumed_by_building[iid] = per
 
 func _scaled_input_qty(input: Dictionary, building: Dictionary) -> int:
 	return int(round(float(input.get("qty", 0)) * BuildingLevels.mult("input", int(building.get("level", 1)))))

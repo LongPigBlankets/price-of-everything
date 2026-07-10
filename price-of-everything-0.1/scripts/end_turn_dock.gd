@@ -344,7 +344,8 @@ func _render_empty() -> void:
 		{"k": "Tax & Div", "v": 0.0}, {"k": "Power", "v": 0.0},
 		{"k": "Transport", "v": 0.0}, {"k": "Bought", "v": 0.0},
 		{"k": "Interest", "v": 0.0}, {"k": "Profit Sharing", "v": 0.0},
-		{"k": "Warehousing", "v": 0.0},
+		{"k": "Warehousing", "v": 0.0}, {"k": "Carbon Tax", "v": 0.0},
+		{"k": "Subsidy", "v": 0.0},
 	]
 	queue_redraw()
 
@@ -361,6 +362,8 @@ func _render_summary(s: Dictionary) -> void:
 	var interest: float = float(s.get("interest_paid", 0.0))
 	var profit_sharing: float = float(s.get("profit_sharing_paid", 0.0))
 	var warehousing: float = float(s.get("warehousing_paid", 0.0))
+	var carbon_tax: float = float(s.get("carbon_tax_paid", 0.0))
+	var green_subsidy: float = float(s.get("green_subsidy_received", 0.0))
 	_fin = [
 		{"k": "Sold", "v": sold},
 		{"k": "Fake Money", "v": fake},
@@ -373,6 +376,8 @@ func _render_summary(s: Dictionary) -> void:
 		{"k": "Interest", "v": -interest},
 		{"k": "Profit Sharing", "v": -profit_sharing},
 		{"k": "Warehousing", "v": -warehousing},
+		{"k": "Carbon Tax", "v": -carbon_tax},
+		{"k": "Subsidy", "v": green_subsidy},
 	]
 	# Fake money counts toward the reported total but not the sim's money_in.
 	_net = float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0)) + fake
