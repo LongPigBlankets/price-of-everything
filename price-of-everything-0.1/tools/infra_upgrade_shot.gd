@@ -29,17 +29,39 @@ func _ready() -> void:
 	MatchState.money = 1000.0
 	print("[infra_shot] cap before: %d  money: £%.0f" % [Power.tile_power_cap(tile_id), MatchState.money])
 
-	# Open the BDP on the cables and its upgrade sheet.
+	# Open the BDP on the cables — the panel body itself must show the Upgrade button
+	# (regression: the infra layout branch used to skip the actions row entirely).
 	game._open_building_detail(MatchState.buildings[iid])
 	await _settle(16)
 	var v2p: Control = game.building_panel_v2
-	v2p._open_upgrade_sheet(MatchState.buildings[iid])
+	var up_btn: Button = null
+	for btn in _find_buttons(v2p):
+		if btn.text.begins_with("Upgrade to Lv"):
+			up_btn = btn
+			break
+	print("[infra_shot] Upgrade button in panel body: %s" % ("FOUND ('%s')" % up_btn.text if up_btn != null else "MISSING"))
+	await _shot("/tmp/poe_infra_bdp.png")
+	if up_btn == null:
+		get_tree().quit(1)
+		return
+	# Press it — the real player path — and screenshot the sheet it opens.
+	up_btn.pressed.emit()
 	await _settle(16)
 	await _shot("/tmp/poe_infra_upgrade_sheet.png")
 
-	# Commit and run the countdown.
-	var res: Dictionary = MatchState.start_upgrade(iid)
-	print("[infra_shot] start: ok=%s money after: £%.0f" % [str(res.get("ok")), MatchState.money])
+	# Commit via the sheet's pay button (the real player path) and run the countdown.
+	var pay_btn: Button = null
+	for btn in _find_buttons(v2p):
+		if btn.text.contains("— £"):
+			pay_btn = btn
+			break
+	print("[infra_shot] pay button: %s" % ("FOUND ('%s')" % pay_btn.text if pay_btn != null else "MISSING"))
+	if pay_btn == null:
+		get_tree().quit(1)
+		return
+	pay_btn.pressed.emit()
+	await _settle(10)
+	print("[infra_shot] money after pay: £%.0f  pending=%s" % [MatchState.money, str(not MatchState.pending_upgrade(iid).is_empty())])
 	TurnManager.fast_mode = true
 	game._hide_building_detail()
 	for _i in 3:
@@ -50,6 +72,14 @@ func _ready() -> void:
 	print("[infra_shot] cap after 3 turns: %d (expect 4000)  instance level: %d" % [
 		Power.tile_power_cap(tile_id), int(MatchState.buildings[iid].get("level", 1))])
 	get_tree().quit(0)
+
+func _find_buttons(node: Node) -> Array:
+	var out: Array = []
+	if node is Button:
+		out.append(node)
+	for c in node.get_children():
+		out.append_array(_find_buttons(c))
+	return out
 
 func _shot(path: String) -> void:
 	await RenderingServer.frame_post_draw

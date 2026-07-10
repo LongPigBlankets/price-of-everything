@@ -217,6 +217,10 @@ func _rebuild(building: Dictionary) -> void:
 		_body.add_child(_build_port_card())
 	elif is_infra:
 		_body.add_child(_build_infra_card())
+		# Levellable infra (roads/rails/pipes/reinf_pipes/cables) gets the same Upgrade
+		# button as production buildings — it opens the cash-only upgrade sheet.
+		if MatchState.INFRA_UPGRADABLE.has(str(building_data.get("internal_name", ""))):
+			_body.add_child(_build_primary_actions(building, building_data))
 	elif BuildingReadout.is_recipe_kind(kind) and (not (fl.get("output", {}) as Dictionary).is_empty() or not (fl.get("inputs", []) as Array).is_empty()):
 		_body.add_child(_build_recipe_strip(fl))
 
