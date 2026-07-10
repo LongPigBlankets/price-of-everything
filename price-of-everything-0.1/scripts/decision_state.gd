@@ -605,7 +605,13 @@ func abort_pending() -> void:
 	pending_changed.emit()
 
 # A quiet, generic heads-up so the lead time is legible without spoiling the specifics.
-func _emit_pulse_forewarn(turn: int) -> void:
+# DISABLED (owner 2026-07-10): the "decision is reaching your desk" update is reserved
+# for a later feature — flip the const back on when that lands.
+const PULSE_FOREWARN_ENABLED := false
+
+func _emit_pulse_forewarn(_turn: int) -> void:
+	if not PULSE_FOREWARN_ENABLED:
+		return
 	if auto_resolve:
 		return
 	EventScheduler.emit_event({

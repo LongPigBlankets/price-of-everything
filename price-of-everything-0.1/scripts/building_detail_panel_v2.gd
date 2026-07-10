@@ -240,6 +240,11 @@ func _rebuild(building: Dictionary) -> void:
 			_body.add_child(_make_section("Cost to produce"))
 			_body.add_child(_build_cost_to_produce(cost_rows))
 
+	# Modifiers (owner 2026-07-10): everything currently bending this building's
+	# numbers, in an accordion whose chevroned section header expands on click.
+	if not is_infra and kind != "battery":
+		_add_modifiers_accordion(building, recipe)
+
 	_body.add_child(_make_section("Economics · per turn"))
 	_body.add_child(_build_economics(BuildingReadout.economics(building, recipe, building_data)))
 
@@ -1488,6 +1493,90 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 		unit.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		line.add_child(unit)
 	return card
+
+# --- modifiers (accordion above economics) --------------------------------------------------
+
+## Everything currently bending this building's numbers — recipe-output modifiers,
+## workforce output effects, and power-draw modifiers — behind a chevroned section
+## header that expands on click (collapsed by default).
+func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
+	var rows: Array = []
+	var mod: Dictionary = BuildingStatus.net_output_modifier(building, recipe)
+	for p in (mod.get("parts", []) as Array):
+		rows.append({"cat": "Output", "label": str(p.get("label", "")), "pct": float(p.get("pct", 0.0))})
+	for p in (mod.get("workforce_parts", []) as Array):
+		rows.append({"cat": "Workforce", "label": str(p.get("label", "")), "pct": float(p.get("pct", 0.0))})
+	var bid := str(building.get("building_id", ""))
+	var pw: Dictionary = Modifiers.resolve_pct("building_power", bid, {"building_id": bid})
+	for p in (pw.get("parts", []) as Array):
+		rows.append({"cat": "Power draw", "label": str(p.get("label", "")), "pct": float(p.get("pct", 0.0))})
+
+	# Section header doubling as the accordion trigger ("Section" is a Label
+	# variation, so a chevron Label + section Label in a clickable row).
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	header.mouse_filter = Control.MOUSE_FILTER_STOP
+	header.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var chevron := Label.new()
+	chevron.theme_type_variation = "Section"
+	chevron.text = "▸"
+	header.add_child(chevron)
+	var title := Label.new()
+	title.theme_type_variation = "Section"
+	title.text = "Modifiers"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(title)
+	var count_tag := ("%d active" % rows.size()) if not rows.is_empty() else "none"
+	var right := Label.new()
+	right.theme_type_variation = "Caption"
+	right.text = count_tag
+	right.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(right)
+	_body.add_child(header)
+
+	var card := _make_card()
+	card.visible = false
+	var vb := card.get_child(0) as VBoxContainer
+	vb.add_theme_constant_override("separation", 3)
+	if rows.is_empty():
+		var none := Label.new()
+		none.theme_type_variation = "Caption"
+		none.text = "No active modifiers on this building."
+		none.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+		vb.add_child(none)
+	for r in rows:
+		var pct := float(r.get("pct", 0.0))
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", DS.SP["SM"])
+		var cat := Label.new()
+		cat.theme_type_variation = "Caption"
+		cat.text = str(r.get("cat", ""))
+		cat.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+		cat.custom_minimum_size = Vector2(84, 0)
+		line.add_child(cat)
+		var lbl := Label.new()
+		lbl.theme_type_variation = "Body"
+		lbl.text = str(r.get("label", ""))
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lbl.custom_minimum_size = Vector2(PANEL_WIDTH - 220.0, 0)
+		line.add_child(lbl)
+		var val := Label.new()
+		val.theme_type_variation = "Numeric"
+		val.text = "%s%d%%" % ["+" if pct >= 0.0 else "−", absi(int(round(pct)))]
+		val.add_theme_color_override("font_color", DS.PALETTE["OK"] if pct >= 0.0 else DS.PALETTE["DANGER"])
+		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		line.add_child(val)
+		vb.add_child(line)
+	_body.add_child(card)
+
+	header.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			header.accept_event()
+			card.visible = not card.visible
+			chevron.text = "▾" if card.visible else "▸")
 
 # --- economics -----------------------------------------------------------------------------
 

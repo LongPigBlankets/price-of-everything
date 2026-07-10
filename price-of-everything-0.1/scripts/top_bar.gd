@@ -33,8 +33,8 @@ const MOD_H := 54.0
 const NOTCH_H := 102.0
 const NOTCH_MIN_W := 300.0
 const NOTCH_RADIUS := 16.0
-# Metallic bottom edge (the end-turn dock's machined-silver family), lit from the left.
-const EDGE_H := 5.0
+# Metallic bottom bezel (the end-turn dock's machined-silver family), lit from the left.
+const EDGE_H := 7.0
 const SILVER_LT := Color("#b3bcc6")
 const SILVER_MD := Color("#8b95a1")
 const SILVER_DK := Color("#5b636e")
@@ -169,18 +169,25 @@ func _silver_at(canvas_x: float) -> Color:
 	return SILVER_LT.lerp(SILVER_DK, clampf(canvas_x / vw, 0.0, 1.0))
 
 func _draw() -> void:
-	# Machined metallic bottom edge (end-turn dock silver), lit left → right.
+	# Machined metallic BEZEL along the bar's bottom (end-turn dock silver):
+	# lit left → right along its length, and bevelled through its depth — dark
+	# seam against the navy, bright top lip, mid body, shadowed lower return.
 	var w := size.x
 	var y1 := size.y
 	var y0 := y1 - EDGE_H
+	draw_line(Vector2(0, y0 - 0.5), Vector2(w, y0 - 0.5), EDGE_SEAM, 1.0)
 	draw_polygon(
 		PackedVector2Array([Vector2(0, y0), Vector2(w, y0), Vector2(w, y1), Vector2(0, y1)]),
 		PackedColorArray([SILVER_LT, SILVER_DK, SILVER_DK, SILVER_LT]))
-	# Dark seam against the navy above, specular highlight along the strip's top.
-	draw_line(Vector2(0, y0 + 0.5), Vector2(w, y0 + 0.5), EDGE_SEAM, 1.0)
+	# Top lip highlight, fading down (the raised face of the bezel).
 	draw_polygon(
-		PackedVector2Array([Vector2(0, y0 + 1), Vector2(w, y0 + 1), Vector2(w, y0 + 2.5), Vector2(0, y0 + 2.5)]),
-		PackedColorArray([Color(1, 1, 1, 0.45), Color(1, 1, 1, 0.08), Color(1, 1, 1, 0.08), Color(1, 1, 1, 0.45)]))
+		PackedVector2Array([Vector2(0, y0), Vector2(w, y0), Vector2(w, y0 + 2.8), Vector2(0, y0 + 2.8)]),
+		PackedColorArray([Color(1, 1, 1, 0.55), Color(1, 1, 1, 0.16), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0)]))
+	# Lower return falling into shadow + crisp dark base line.
+	draw_polygon(
+		PackedVector2Array([Vector2(0, y1 - 3.0), Vector2(w, y1 - 3.0), Vector2(w, y1), Vector2(0, y1)]),
+		PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.45), Color(0, 0, 0, 0.38)]))
+	draw_line(Vector2(0, y1 - 0.5), Vector2(w, y1 - 0.5), Color(0.05, 0.07, 0.10, 0.9), 1.0)
 
 func _module_box(active: bool, warn: bool) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
@@ -823,10 +830,13 @@ func _adopt_encyclopedia_and_turn() -> void:
 	if hitbox != null:
 		hitbox.visible = false
 
-## Turn → season + year (4 turns per year, campaign starts Spring 1890).
+## Turn → month + year (owner 2026-07-10: months not seasons, campaign starts
+## January 2015; one month per turn — 300 turns run 2015 → 2039).
+const _MONTHS: Array[String] = ["January", "February", "March", "April", "May", "June",
+	"July", "August", "September", "October", "November", "December"]
+
 func _turn_date(turn: int) -> String:
-	var seasons := ["Spring", "Summer", "Autumn", "Winter"]
-	return "%s %d" % [seasons[(turn - 1) % 4], 1890 + (turn - 1) / 4]
+	return "%s %d" % [_MONTHS[(turn - 1) % 12], 2015 + (turn - 1) / 12]
 
 func _build_menu() -> void:
 	var mod := _ModuleBtn.new(self)

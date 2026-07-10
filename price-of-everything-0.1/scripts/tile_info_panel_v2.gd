@@ -1416,15 +1416,20 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 		built_rows = _player_owned_building_rows(built_rows)
 	pane.add_child(_make_buildings_header("Production", "(%d)" % (built_rows.size() + projects.size())))
 	# Group buildings of the same type + recipe into one expandable group card.
+	# Ownership splits the group (owner 2026-07-10: never mix NPC and player
+	# buildings in one card), and every NPC card sinks to the bottom of the list.
 	var groups: Dictionary = {}
 	var order: Array = []
+	var npc_order: Array = []
 	for b in built_rows:
-		var key := "%s|%s" % [str(b.building_id), str(b.get("recipe_id", ""))]
+		var inst := MatchState.get_building(str(b.get("instance_id", "")))
+		var is_npc := not inst.is_empty() and not MatchState.is_player_owned(inst)
+		var key := "%s|%s|%s" % [str(b.building_id), str(b.get("recipe_id", "")), "npc" if is_npc else "you"]
 		if not groups.has(key):
 			groups[key] = []
-			order.append(key)
+			(npc_order if is_npc else order).append(key)
 		(groups[key] as Array).append(b)
-	for key in order:
+	for key in order + npc_order:
 		pane.add_child(_make_building_group_card(groups[key]))
 	for project in projects:
 		pane.add_child(_make_construction_row(project))
@@ -3046,13 +3051,20 @@ class _BrushedCard extends PanelContainer:
 		var r := Rect2(Vector2.ZERO, size).grow(-1.0)
 		var pts := _rounded_points(r, radius)
 		var diag := maxf(1.0, size.x + size.y)
-		# Navy plate, lit from the top-left.
-		var cols := PackedColorArray()
-		for p in pts:
-			var t := clampf((p.x + p.y) / diag, 0.0, 1.0)
-			var c := NAVY_TL.lerp(NAVY_BR, t)
-			cols.append(c.lightened(0.07) if hovered else c)
-		draw_polygon(pts, cols)
+		# Navy plate: solid mid fill, then 4-vertex gradient quads for the
+		# top-left light and bottom-right shade. (Per-vertex colours on the
+		# 28-point rounded polygon interpolate as fan artifacts — the left
+		# edge rendered nearly black — so gradients go on simple quads.)
+		var mid := NAVY_TL.lerp(NAVY_BR, 0.45)
+		draw_colored_polygon(pts, mid.lightened(0.08) if hovered else mid)
+		var q := PackedVector2Array([
+			r.position + Vector2(1.5, 1.5), Vector2(r.end.x - 1.5, r.position.y + 1.5),
+			r.end - Vector2(1.5, 1.5), Vector2(r.position.x + 1.5, r.end.y - 1.5)])
+		var lt := NAVY_TL.lightened(0.16)
+		draw_polygon(q, PackedColorArray([
+			Color(lt, 0.9), Color(lt, 0.15), Color(lt, 0.0), Color(lt, 0.35)]))
+		draw_polygon(q, PackedColorArray([
+			Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.12), Color(0, 0, 0, 0.30), Color(0, 0, 0, 0.08)]))
 		# Brushed streaks — fine horizontal grain, deterministic alpha pattern.
 		var y := r.position.y + 4.0
 		var i := 0
@@ -3077,21 +3089,22 @@ class _BrushedCard extends PanelContainer:
 # ── Status pills: Running/Stalled/Starting + power source (owner 2026-07-10,
 # replacing the 5-dot RAG strip on building cards) ──────────────────────────────
 
-## Small vector plug (two prongs, body, cable) for the power pill.
+## Vector plug (two prongs, body, cable) for the power pill.
 class _PlugIcon extends Control:
 	var color := Color.WHITE
 	func _init(c: Color) -> void:
 		color = c
-		custom_minimum_size = Vector2(12, 14)
+		custom_minimum_size = Vector2(16, 19)
 		size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 	func _draw() -> void:
 		var w := size.x
-		draw_line(Vector2(w * 0.34, 0.5), Vector2(w * 0.34, 4.0), color, 1.7, true)
-		draw_line(Vector2(w * 0.66, 0.5), Vector2(w * 0.66, 4.0), color, 1.7, true)
-		draw_rect(Rect2(w * 0.15, 4.0, w * 0.70, 5.0), color)
-		draw_line(Vector2(w * 0.5, 9.0), Vector2(w * 0.5, 11.5), color, 1.7, true)
-		draw_line(Vector2(w * 0.5, 11.5), Vector2(w * 0.18, 13.2), color, 1.7, true)
+		var h := size.y
+		draw_line(Vector2(w * 0.34, 0.5), Vector2(w * 0.34, h * 0.29), color, 2.2, true)
+		draw_line(Vector2(w * 0.66, 0.5), Vector2(w * 0.66, h * 0.29), color, 2.2, true)
+		draw_rect(Rect2(w * 0.15, h * 0.29, w * 0.70, h * 0.37), color)
+		draw_line(Vector2(w * 0.5, h * 0.66), Vector2(w * 0.5, h * 0.85), color, 2.2, true)
+		draw_line(Vector2(w * 0.5, h * 0.85), Vector2(w * 0.18, h * 0.97), color, 2.2, true)
 
 func _pill(tint: Color, tip: String) -> PanelContainer:
 	var p := PanelContainer.new()
@@ -3121,10 +3134,14 @@ func _pill_label(text: String, tint: Color) -> Label:
 
 ## The two-pill status row: Running/Stalled/Starting + how the building is
 ## powered (green ⚡ own network / amber plug grid / red plug unpowered).
+## NPC-owned buildings get no pills — a rival's operations aren't yours to read.
 func _make_status_pills(b: Dictionary) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var inst := MatchState.get_building(str(b.get("instance_id", "")))
+	if not inst.is_empty() and not MatchState.is_player_owned(inst):
+		return row
 	var act := str(b.get("activity", ""))
 	if act != "":
 		var spec: Array = {
@@ -3294,10 +3311,64 @@ func _make_construction_row(project: Dictionary) -> HBoxContainer:
 	row.add_child(cancel)
 	return row
 
-# Building icon, embossed into the card's metal (owner 2026-07-10): no plate,
-# no outline — a dark cast to the bottom-right, an additive light catch to the
-# top-left (bottom-menu lighting: light from the top-left), art on top, and a
-# faint specular sheen so the icon reads as pressed metal.
+# ── Keyed building glyphs: the icon PNGs are cream art on a navy tile; key the
+# navy background out (cached per building) so only the off-white glyph remains.
+# Any residual fringe is navy — invisible on the navy metal cards.
+var _keyed_icon_cache: Dictionary = {}   # building_id -> ImageTexture (null = no art)
+const _ICON_KEY_MAX := 200               # downsample before keying — cards render ≤90px
+
+func _keyed_building_texture(bd: Dictionary) -> Texture2D:
+	var building_id := str(bd.get("id", ""))
+	if _keyed_icon_cache.has(building_id):
+		return _keyed_icon_cache[building_id]
+	var tex := _building_texture(bd)
+	if tex == null:
+		_keyed_icon_cache[building_id] = null
+		return null
+	var img: Image = tex.get_image().duplicate()
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGBA8)
+	if img.get_width() > _ICON_KEY_MAX:
+		img.resize(_ICON_KEY_MAX,
+			int(round(img.get_height() * float(_ICON_KEY_MAX) / float(img.get_width()))),
+			Image.INTERPOLATE_LANCZOS)
+	var bg := img.get_pixel(2, 2)
+	for y in img.get_height():
+		for x in img.get_width():
+			var c := img.get_pixel(x, y)
+			var d := absf(c.r - bg.r) + absf(c.g - bg.g) + absf(c.b - bg.b)
+			var a := clampf((d - 0.28) / 0.45, 0.0, 1.0) * c.a
+			if a < c.a:
+				img.set_pixel(x, y, Color(c.r, c.g, c.b, a))
+	# Bake the raised-emboss lighting INTO the texture (shadow silhouette to the
+	# bottom-right, light catch to the top-left, glyph on top) so the card needs
+	# ONE plain TextureRect. Layered rects + an additive material tripped a GL-
+	# compat blend quirk that rendered the keyed alpha as opaque navy.
+	var w := img.get_width()
+	var h := img.get_height()
+	var pad := 8
+	var shadow := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	var catch := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	for y in h:
+		for x in w:
+			var a := img.get_pixel(x, y).a
+			if a > 0.01:
+				shadow.set_pixel(x, y, Color(0.0, 0.0, 0.0, a * 0.5))
+				catch.set_pixel(x, y, Color(0.88, 0.93, 1.0, a * 0.85))
+	var canvas := Image.create(w + pad * 2, h + pad * 2, false, Image.FORMAT_RGBA8)
+	var full := Rect2i(0, 0, w, h)
+	canvas.blend_rect(shadow, full, Vector2i(pad + 4, pad + 5))
+	canvas.blend_rect(catch, full, Vector2i(pad - 2, pad - 2))
+	canvas.blend_rect(img, full, Vector2i(pad, pad))
+	var out := ImageTexture.create_from_image(canvas)
+	_keyed_icon_cache[building_id] = out
+	return out
+
+# Building icon, embossed / raised off the card's metal (owner 2026-07-10): the
+# keyed off-white glyph only (no navy tile), with a shadow cast to the right and
+# bottom and a light catch on the top-left — light from the top-left. All the
+# lighting is pre-baked into the cached texture (see _keyed_building_texture).
 func _make_building_icon(building_id: String, alpha: float, size: int = 80) -> Control:
 	var holder := Control.new()
 	holder.custom_minimum_size = Vector2(size, size)
@@ -3305,43 +3376,16 @@ func _make_building_icon(building_id: String, alpha: float, size: int = 80) -> C
 	# Let clicks fall through to the row so the icon is part of the clickable area.
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var bd: Dictionary = Catalog.get_building(building_id)
-	var tex := _building_texture(bd)
+	var tex := _keyed_building_texture(bd)
 	if tex != null:
-		var make_rect := func(offset: Vector2) -> TextureRect:
-			var r := TextureRect.new()
-			r.texture = tex
-			r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			r.set_anchors_preset(Control.PRESET_FULL_RECT)
-			r.offset_left = 4 + offset.x
-			r.offset_top = 4 + offset.y
-			r.offset_right = -4 + offset.x
-			r.offset_bottom = -4 + offset.y
-			holder.add_child(r)
-			return r
-		var shadow: TextureRect = make_rect.call(Vector2(2.0, 2.5))
-		shadow.modulate = Color(0, 0, 0, 0.5 * alpha)
-		var catch: TextureRect = make_rect.call(Vector2(-1.5, -1.5))
-		catch.modulate = Color(0.55, 0.62, 0.70, alpha)
-		var add_mat := CanvasItemMaterial.new()
-		add_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-		catch.material = add_mat
-		var art: TextureRect = make_rect.call(Vector2.ZERO)
+		var art := TextureRect.new()
+		art.texture = tex
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		art.set_anchors_preset(Control.PRESET_FULL_RECT)
 		art.modulate = Color(1, 1, 1, alpha)
-		var spec_path := "res://assets/icons/ui_icons/alt/_specular.png"
-		if ResourceLoader.exists(spec_path):
-			var sheen := TextureRect.new()
-			sheen.texture = load(spec_path)
-			sheen.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			sheen.stretch_mode = TextureRect.STRETCH_SCALE
-			sheen.set_anchors_preset(Control.PRESET_FULL_RECT)
-			sheen.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			sheen.modulate = Color(1, 1, 1, 0.16 * alpha)
-			var sheen_mat := CanvasItemMaterial.new()
-			sheen_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-			sheen.material = sheen_mat
-			holder.add_child(sheen)
+		holder.add_child(art)
 	else:
 		var fallback := Label.new()
 		fallback.text = str(bd.get("display_name", "?")).substr(0, 3).to_upper()
