@@ -27,8 +27,18 @@ const FLASH_RED := Color(0.9, 0.2, 0.2)
 const BANKRUPTCY_IMMINENT_RUNWAY := 100.0
 
 # ── Prototype palette (top-bar local; the DS navy family, tuned per the design) ──
-const BAR_H := 66.0
-const MOD_H := 44.0
+const BAR_H := 78.0
+const MOD_H := 54.0
+# Briefing notch: taller than the bar, hangs below it as a two-row centre notch.
+const NOTCH_H := 102.0
+const NOTCH_MIN_W := 300.0
+const NOTCH_RADIUS := 16.0
+# Metallic bottom edge (the end-turn dock's machined-silver family), lit from the left.
+const EDGE_H := 5.0
+const SILVER_LT := Color("#b3bcc6")
+const SILVER_MD := Color("#8b95a1")
+const SILVER_DK := Color("#5b636e")
+const EDGE_SEAM := Color("#3a4048")
 const C_BAR_BG := Color("#0c1c2e")
 const C_BAR_EDGE := Color("#1c3149")
 const C_MOD_BG := Color(0.055, 0.125, 0.204, 0.85)     # rgba(14,32,52,.85)
@@ -75,9 +85,9 @@ var _victory_btn: Control
 var _victory_meters: HBoxContainer
 var _victory_score: Label
 
-# Briefing module
+# Briefing notch (top_level: centred on the viewport, hangs below the bar)
 var _briefing_btn: Control
-var _briefing_glyph: Label
+var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyph)
 var _briefing_head: Label
 var _briefing_sub: Label
 var _briefing_dot: Panel
@@ -124,8 +134,10 @@ func _ready() -> void:
 	VictoryState.score_changed.connect(func(_t: int, _b: Dictionary) -> void: _queue_refresh())
 	TurnBriefing.items_changed.connect(_queue_refresh)
 	TurnBriefing.expanded_changed.connect(func(_e: bool) -> void: _queue_refresh())
-	# The v2 briefing module replaces the collapsed strip.
+	# The v2 briefing notch replaces the collapsed strip.
 	TurnBriefing.strip_enabled = false
+	get_viewport().size_changed.connect(_recenter_notch)
+	resized.connect(queue_redraw)   # the metallic edge spans the live width
 	_queue_refresh()
 
 
@@ -136,36 +148,57 @@ func _style_bar() -> void:
 	offset_bottom = BAR_H
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = C_BAR_BG
-	sb.border_width_bottom = 1
-	sb.border_color = C_BAR_EDGE
 	sb.content_margin_left = 12
 	sb.content_margin_right = 12
-	sb.content_margin_top = 11
-	sb.content_margin_bottom = 11
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10 + EDGE_H   # keep modules off the metallic rim
 	sb.shadow_color = Color(0, 0, 0, 0.35)
 	sb.shadow_size = 8
 	sb.shadow_offset = Vector2(0, 4)
 	add_theme_stylebox_override("panel", sb)
+	# The scene's MarginContainer reserves 276px on the right for the OLD
+	# encyclopedia overlay — kill it so the module row spans the full bar.
+	var margin := money_widget.get_parent().get_parent() as MarginContainer
+	margin.add_theme_constant_override("margin_right", 0)
 	var hbox := money_widget.get_parent() as HBoxContainer
-	hbox.add_theme_constant_override("separation", 8)
+	hbox.add_theme_constant_override("separation", 10)
+
+## Sample the bar's left→right metal lighting at canvas x (0 = lit, right = shadowed).
+func _silver_at(canvas_x: float) -> Color:
+	var vw := maxf(1.0, get_viewport_rect().size.x)
+	return SILVER_LT.lerp(SILVER_DK, clampf(canvas_x / vw, 0.0, 1.0))
+
+func _draw() -> void:
+	# Machined metallic bottom edge (end-turn dock silver), lit left → right.
+	var w := size.x
+	var y1 := size.y
+	var y0 := y1 - EDGE_H
+	draw_polygon(
+		PackedVector2Array([Vector2(0, y0), Vector2(w, y0), Vector2(w, y1), Vector2(0, y1)]),
+		PackedColorArray([SILVER_LT, SILVER_DK, SILVER_DK, SILVER_LT]))
+	# Dark seam against the navy above, specular highlight along the strip's top.
+	draw_line(Vector2(0, y0 + 0.5), Vector2(w, y0 + 0.5), EDGE_SEAM, 1.0)
+	draw_polygon(
+		PackedVector2Array([Vector2(0, y0 + 1), Vector2(w, y0 + 1), Vector2(w, y0 + 2.5), Vector2(0, y0 + 2.5)]),
+		PackedColorArray([Color(1, 1, 1, 0.45), Color(1, 1, 1, 0.08), Color(1, 1, 1, 0.08), Color(1, 1, 1, 0.45)]))
 
 func _module_box(active: bool, warn: bool) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = C_ACTIVE_BG if active else C_MOD_BG
 	sb.border_color = C_ACTIVE_BORDER if active else (C_WARN_BORDER if warn else C_MOD_BORDER)
 	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(9)
-	sb.content_margin_left = 11
-	sb.content_margin_right = 11
-	sb.content_margin_top = 5
-	sb.content_margin_bottom = 5
+	sb.set_corner_radius_all(10)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 14
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
 	return sb
 
 ## Small uppercase module tag ("COUNCIL").
 func _tag(text: String) -> Label:
 	var l := Label.new()
 	l.text = text.to_upper()
-	l.add_theme_font_size_override("font_size", 9)
+	l.add_theme_font_size_override("font_size", 10)
 	l.add_theme_color_override("font_color", C_MUTED)
 	return l
 
@@ -248,10 +281,10 @@ func _build_treasury() -> void:
 	_money_inner.offset_left = 12
 	_money_inner.offset_right = -12
 	_money_inner.alignment = BoxContainer.ALIGNMENT_CENTER
-	_money_inner.add_theme_constant_override("separation", 9)
+	_money_inner.add_theme_constant_override("separation", 10)
 	_money_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	money_widget.add_child(_money_inner)
-	var coin := _mini("£", C_AMBER, 17)
+	var coin := _mini("£", C_AMBER, 21)
 	_money_inner.add_child(coin)
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -260,16 +293,16 @@ func _build_treasury() -> void:
 	_money_inner.add_child(col)
 	_cash_label = Label.new()
 	_cash_label.theme_type_variation = "Numeric"
-	_cash_label.add_theme_font_size_override("font_size", 16)
+	_cash_label.add_theme_font_size_override("font_size", 20)
 	_cash_label.add_theme_color_override("font_color", C_BRIGHT)
 	col.add_child(_cash_label)
 	var sub := HBoxContainer.new()
 	sub.add_theme_constant_override("separation", 6)
 	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(sub)
-	_net_label = _mini("", C_GOOD, 11)
+	_net_label = _mini("", C_GOOD, 13)
 	sub.add_child(_net_label)
-	_runway_label = _mini("", C_RED, 9)
+	_runway_label = _mini("", C_RED, 11)
 	sub.add_child(_runway_label)
 	money_widget.pressed.connect(func() -> void: _toggle_fly("treasury"))
 
@@ -295,16 +328,16 @@ func _build_power() -> void:
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	mod.mouse_default_cursor_shape = Control.CURSOR_ARROW
 	var row := _module_row(mod)
-	_power_glyph = _mini("⚡", C_GOOD, 15)
+	_power_glyph = _mini("⚡", C_GOOD, 19)
 	row.add_child(_power_glyph)
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_theme_constant_override("separation", 2)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(col)
-	_power_head = _mini("Powered", C_GOOD, 12)
+	_power_head = _mini("Powered", C_GOOD, 15)
 	col.add_child(_power_head)
-	_power_sub = _mini("self-sufficient", C_MUTED, 10)
+	_power_sub = _mini("self-sufficient", C_MUTED, 12)
 	col.add_child(_power_sub)
 	_hbox().add_child(mod)
 	_power_btn = mod
@@ -338,9 +371,9 @@ func _build_victory() -> void:
 	mod.tooltip_text = "Victory tracks"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	row.add_child(_mini("★", C_CREAM.darkened(0.15), 13))
+	row.add_child(_mini("★", C_CREAM.darkened(0.15), 16))
 	_victory_meters = HBoxContainer.new()
-	_victory_meters.add_theme_constant_override("separation", 5)
+	_victory_meters.add_theme_constant_override("separation", 6)
 	_victory_meters.alignment = BoxContainer.ALIGNMENT_END
 	_victory_meters.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(_victory_meters)
@@ -351,10 +384,10 @@ func _build_victory() -> void:
 	row.add_child(col)
 	_victory_score = Label.new()
 	_victory_score.theme_type_variation = "Numeric"
-	_victory_score.add_theme_font_size_override("font_size", 14)
+	_victory_score.add_theme_font_size_override("font_size", 18)
 	_victory_score.add_theme_color_override("font_color", C_CREAM)
 	col.add_child(_victory_score)
-	col.add_child(_mini("/ 4,000", C_MUTED, 9))
+	col.add_child(_mini("/ 4,000", C_MUTED, 11))
 	mod.pressed.connect(func() -> void: _toggle_fly("victory"))
 	_hbox().add_child(mod)
 	_victory_btn = mod
@@ -373,7 +406,7 @@ func _refresh_victory() -> void:
 		cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cell.tooltip_text = "%s — %d%%" % [str(t.get("name", "")), int(round(float(t.get("progress", 0.0)) * 100.0))]
 		var meter := Panel.new()
-		meter.custom_minimum_size = Vector2(12, 24)
+		meter.custom_minimum_size = Vector2(15, 30)
 		var msb := StyleBoxFlat.new()
 		msb.bg_color = C_TRACK_BG
 		msb.border_color = C_TRACK_EDGE
@@ -387,13 +420,13 @@ func _refresh_victory() -> void:
 		fill.add_theme_stylebox_override("panel", fsb)
 		fill.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 		var frac: float = clampf(float(t.get("progress", 0.0)), 0.0, 1.0)
-		fill.offset_top = -22.0 * frac
+		fill.offset_top = -28.0 * frac
 		fill.offset_bottom = -1
 		fill.offset_left = 1
 		fill.offset_right = -1
 		meter.add_child(fill)
 		cell.add_child(meter)
-		var letter := _mini(str(t.get("name", "?")).substr(0, 1), C_MUTED, 8)
+		var letter := _mini(str(t.get("name", "?")).substr(0, 1), C_MUTED, 9)
 		letter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		letter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cell.add_child(letter)
@@ -412,49 +445,157 @@ func _thousands(n: int) -> String:
 	return ("-" if n < 0 else "") + out
 
 
-# ── 4 · Briefing (merged bell): decisions + updates → expands the hub ───────────
+# ── 4 · Briefing NOTCH: a two-row centre notch taller than the bar itself ──────
+# top_level (containers skip it — same trick as the bankruptcy strip), centred on
+# the viewport, hanging NOTCH_H − BAR_H below the bar. Click toggles the hub.
+
+## Vector bell (dome, flared skirt, clapper, crown loop — notification_bell's
+## fallback shape; the bundled font renders the bell codepoint as tofu).
+class _BellIcon extends Control:
+	var color := Color("#cdd9e6")
+	func _init() -> void:
+		custom_minimum_size = Vector2(24, 26)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func set_color(c: Color) -> void:
+		color = c
+		queue_redraw()
+	func _draw() -> void:
+		var centre := size * 0.5
+		var w := size.x * 0.78
+		var h := size.y * 0.78
+		var cx := centre.x
+		var top := centre.y - h * 0.5
+		var bot := centre.y + h * 0.36
+		var body := PackedVector2Array([
+			Vector2(cx - w * 0.20, top), Vector2(cx + w * 0.20, top),
+			Vector2(cx + w * 0.42, top + h * 0.45), Vector2(cx + w * 0.55, bot),
+			Vector2(cx - w * 0.55, bot), Vector2(cx - w * 0.42, top + h * 0.45),
+		])
+		draw_colored_polygon(body, color)
+		draw_rect(Rect2(Vector2(cx - w * 0.55, bot), Vector2(w * 1.10, 1.8)), color)
+		draw_circle(Vector2(cx, bot + 3.6), 2.1, color)
+		draw_arc(Vector2(cx, top - 1.8), 2.0, 0.0, TAU, 12, color, 1.6, true)
+
+class _NotchBtn extends PanelContainer:
+	signal pressed
+	var warn := false:
+		set(v):
+			warn = v
+			_restyle()
+	var active := false:
+		set(v):
+			active = v
+			_restyle()
+	var _hover := false
+	var _bar: Node
+	func _init(bar: Node) -> void:
+		_bar = bar
+		top_level = true
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		mouse_entered.connect(func() -> void: _hover = true; _restyle())
+		mouse_exited.connect(func() -> void: _hover = false; _restyle())
+		resized.connect(queue_redraw)
+		_restyle()
+	func _restyle() -> void:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = _bar.C_ACTIVE_BG if (active or _hover) else _bar.C_BAR_BG
+		if warn:
+			sb.bg_color = (sb.bg_color as Color).lerp(Color(0.32, 0.07, 0.05), 0.30)
+		sb.corner_radius_bottom_left = int(_bar.NOTCH_RADIUS)
+		sb.corner_radius_bottom_right = int(_bar.NOTCH_RADIUS)
+		sb.content_margin_left = 26
+		sb.content_margin_right = 26
+		sb.content_margin_top = 12
+		sb.content_margin_bottom = 14
+		sb.shadow_color = Color(0, 0, 0, 0.35)
+		sb.shadow_size = 8
+		sb.shadow_offset = Vector2(0, 4)
+		add_theme_stylebox_override("panel", sb)
+		queue_redraw()
+	func _gui_input(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			pressed.emit()
+	func _draw() -> void:
+		# Metallic rim wrapping the notch's left/bottom/right — continues the bar's
+		# silver bottom edge, sampling the same left→right lighting at each point.
+		var r: float = _bar.NOTCH_RADIUS
+		var w := size.x
+		var h := size.y - 1.0
+		var pts := PackedVector2Array()
+		pts.append(Vector2(1.0, 0.0))
+		pts.append(Vector2(1.0, h - r))
+		for i in range(1, 7):
+			var a := PI - (PI * 0.5) * float(i) / 6.0    # left → bottom
+			pts.append(Vector2(r, h - r) + Vector2(cos(a), sin(a)) * (r - 1.0))
+		pts.append(Vector2(w - r, h))
+		for i in range(1, 7):
+			var a := PI * 0.5 - (PI * 0.5) * float(i) / 6.0   # bottom → right
+			pts.append(Vector2(w - r, h - r) + Vector2(cos(a), sin(a)) * (r - 1.0))
+		pts.append(Vector2(w - 1.0, 0.0))
+		var cols := PackedColorArray()
+		var warn_tint := Color("#b0574a")
+		for p in pts:
+			var c: Color = _bar._silver_at(global_position.x + p.x)
+			cols.append(c.lerp(warn_tint, 0.55) if warn else c)
+		draw_polyline_colors(pts, cols, 2.5, true)
 
 func _build_briefing() -> void:
-	_hbox().add_child(_flex())
-	var mod := _ModuleBtn.new(self)
-	mod.name = "BriefingModule"
-	mod.tooltip_text = "Turn briefing"
-	mod.custom_minimum_size = Vector2(0, MOD_H)
-	var row := _module_row(mod)
+	var notch := _NotchBtn.new(self)
+	notch.name = "BriefingModule"
+	notch.tooltip_text = "Turn briefing"
+	notch.custom_minimum_size = Vector2(NOTCH_MIN_W, NOTCH_H)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	notch.add_child(row)
 	var glyph_holder := Control.new()
-	glyph_holder.custom_minimum_size = Vector2(18, 18)
+	glyph_holder.custom_minimum_size = Vector2(28, 28)
+	glyph_holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	glyph_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_briefing_glyph = _mini("🕭", C_TEXT, 15)
-	_briefing_glyph.position = Vector2(0, -1)
+	_briefing_glyph = _BellIcon.new()
+	_briefing_glyph.position = Vector2(1, 1)
+	_briefing_glyph.size = Vector2(24, 26)
 	glyph_holder.add_child(_briefing_glyph)
 	_briefing_dot = Panel.new()
-	_briefing_dot.custom_minimum_size = Vector2(7, 7)
-	_briefing_dot.position = Vector2(13, 0)
+	_briefing_dot.custom_minimum_size = Vector2(9, 9)
+	_briefing_dot.position = Vector2(21, 0)
 	var dsb := StyleBoxFlat.new()
 	dsb.bg_color = C_RED
-	dsb.set_corner_radius_all(4)
+	dsb.set_corner_radius_all(5)
 	_briefing_dot.add_theme_stylebox_override("panel", dsb)
 	_briefing_dot.visible = false
 	glyph_holder.add_child(_briefing_dot)
 	row.add_child(glyph_holder)
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 2)
+	col.add_theme_constant_override("separation", 3)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(col)
-	_briefing_head = _mini("Briefing", C_TEXT, 12)
+	_briefing_head = _mini("Briefing", C_BRIGHT, 18)
 	col.add_child(_briefing_head)
-	_briefing_sub = _mini("0 updates", C_MUTED, 10)
+	_briefing_sub = _mini("0 updates", C_MUTED, 14)
 	col.add_child(_briefing_sub)
-	mod.pressed.connect(func() -> void:
+	notch.pressed.connect(func() -> void:
 		_close_fly()
 		if TurnBriefing.expanded:
 			TurnBriefing.collapse()
 		else:
 			TurnBriefing.expand())
-	_hbox().add_child(mod)
-	_hbox().add_child(_flex())
-	_briefing_btn = mod
+	add_child(notch)
+	_briefing_btn = notch
+
+func _recenter_notch() -> void:
+	if _briefing_btn == null or not is_instance_valid(_briefing_btn):
+		return
+	var vw := get_viewport_rect().size.x
+	var min_size := _briefing_btn.get_combined_minimum_size()
+	_briefing_btn.size = Vector2(maxf(min_size.x, NOTCH_MIN_W), NOTCH_H)
+	_briefing_btn.position = Vector2(roundf((vw - _briefing_btn.size.x) * 0.5), 0.0)
+	queue_redraw()
 
 func _refresh_briefing() -> void:
 	var decisions := 0
@@ -465,21 +606,26 @@ func _refresh_briefing() -> void:
 		else:
 			updates += 1
 	var hot := decisions > 0
-	(_briefing_btn as _ModuleBtn).warn = hot
-	(_briefing_btn as _ModuleBtn).active = TurnBriefing.expanded
-	_briefing_glyph.add_theme_color_override("font_color", C_RED if hot else C_TEXT)
-	_briefing_head.text = ("%d decision%s" % [decisions, "" if decisions == 1 else "s"]) if hot else "Briefing"
-	_briefing_head.add_theme_color_override("font_color", Color("#f0a496") if hot else C_TEXT)
+	(_briefing_btn as _NotchBtn).warn = hot
+	(_briefing_btn as _NotchBtn).active = TurnBriefing.expanded
+	(_briefing_glyph as _BellIcon).set_color(C_RED if hot else C_TEXT)
+	_briefing_head.text = ("%d decision%s to make" % [decisions, "" if decisions == 1 else "s"]) if hot else "Briefing"
+	_briefing_head.add_theme_color_override("font_color", Color("#f0a496") if hot else C_BRIGHT)
 	_briefing_sub.text = "%d update%s" % [updates, "" if updates == 1 else "s"]
+	_briefing_sub.add_theme_color_override("font_color", C_TEXT if updates > 0 else C_MUTED)
 	_briefing_dot.visible = decisions + updates > 0
 	var dsb := _briefing_dot.get_theme_stylebox("panel") as StyleBoxFlat
 	if dsb != null:
 		dsb.bg_color = C_RED if hot else C_AMBER
+	call_deferred("_recenter_notch")
 
 
 # ── 5 · Council: seated portraits with loyalty rings + number chips ─────────────
 
 func _build_council() -> void:
+	# Everything from Council rightwards is anchored to the far right edge (the
+	# briefing notch is out of the flow, so this is the row's only expander).
+	_hbox().add_child(_flex())
 	var mod := _ModuleBtn.new(self)
 	mod.name = "CouncilModule"
 	mod.tooltip_text = "Council — advisor loyalty"
@@ -491,7 +637,7 @@ func _build_council() -> void:
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(col)
 	col.add_child(_tag("Council"))
-	_council_status = _mini("", C_MUTED, 10)
+	_council_status = _mini("", C_MUTED, 12)
 	col.add_child(_council_status)
 	_council_stack = HBoxContainer.new()
 	_council_stack.add_theme_constant_override("separation", 6)
@@ -527,7 +673,7 @@ func _refresh_council() -> void:
 	for c in _council_stack.get_children():
 		c.queue_free()
 	for aid in seated:
-		_council_stack.add_child(_portrait_chip(str(aid), 28))
+		_council_stack.add_child(_portrait_chip(str(aid), 36))
 
 ## Portrait in a loyalty-toned ring with a number chip bottom-right.
 func _portrait_chip(aid: String, size: float) -> Control:
@@ -568,7 +714,7 @@ func _portrait_chip(aid: String, size: float) -> Control:
 	holder.add_child(ring)
 	var chip := Label.new()
 	chip.text = "%+d" % int(round(v))
-	chip.add_theme_font_size_override("font_size", 8)
+	chip.add_theme_font_size_override("font_size", 9)
 	chip.add_theme_color_override("font_color", tone)
 	var csb := StyleBoxFlat.new()
 	csb.bg_color = Color("#0a1521")
@@ -588,6 +734,40 @@ func _portrait_chip(aid: String, size: float) -> Control:
 
 # ── 6/7/8 · Encyclopedia (adopted) · Turn/date · Menu ───────────────────────────
 
+## Small open-book vector icon (drawn — the bundled font has no book glyph).
+class _BookIcon extends Control:
+	var color := Color("#8ea3ba")
+	func _init(c: Color) -> void:
+		color = c
+		custom_minimum_size = Vector2(19, 16)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func set_color(c: Color) -> void:
+		color = c
+		queue_redraw()
+	func _draw() -> void:
+		var w := size.x
+		var h := size.y
+		var cx := w * 0.5
+		# Two open pages meeting at a spine, covers dipping at the outer edges.
+		var left := PackedVector2Array([
+			Vector2(1, 2.5), Vector2(cx - 1, 4.5), Vector2(cx - 1, h - 1.5), Vector2(1, h - 3.5)])
+		var right := PackedVector2Array([
+			Vector2(w - 1, 2.5), Vector2(cx + 1, 4.5), Vector2(cx + 1, h - 1.5), Vector2(w - 1, h - 3.5)])
+		draw_colored_polygon(left, Color(color, 0.20))
+		draw_colored_polygon(right, Color(color, 0.20))
+		for page: PackedVector2Array in [left, right]:
+			var outline: PackedVector2Array = page.duplicate()
+			outline.append(page[0])
+			draw_polyline(outline, color, 1.2, true)
+		draw_line(Vector2(cx, 4.5), Vector2(cx, h - 1.0), color, 1.2, true)
+		# A text line on each page.
+		draw_line(Vector2(3.5, h * 0.42), Vector2(cx - 3.5, h * 0.5), Color(color, 0.7), 1.0, true)
+		draw_line(Vector2(cx + 3.5, h * 0.5), Vector2(w - 3.5, h * 0.42), Color(color, 0.7), 1.0, true)
+
+var _enc_inner: HBoxContainer
+var _enc_button: Button
+
 func _adopt_encyclopedia_and_turn() -> void:
 	# The scene-authored EncyclopediaButton + TurnCounter live in a right-anchored
 	# overlay; adopt them into the module row (scene-unique %names survive reparent,
@@ -600,11 +780,29 @@ func _adopt_encyclopedia_and_turn() -> void:
 		enc.custom_minimum_size = Vector2(0, MOD_H)
 		enc.focus_mode = Control.FOCUS_NONE
 		enc.tooltip_text = "Encyclopedia (X)"
-		enc.add_theme_font_size_override("font_size", 11)
-		enc.add_theme_color_override("font_color", Color("#8ea3ba"))
-		enc.add_theme_color_override("font_hover_color", C_BRIGHT)
 		for state in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
 			enc.add_theme_stylebox_override(state, _module_box(state != "normal", false))
+		# Book icon + label inside the button (Buttons don't size to child
+		# containers — min width is synced in _refresh_treasury's sibling below).
+		enc.text = ""
+		_enc_inner = HBoxContainer.new()
+		_enc_inner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_enc_inner.alignment = BoxContainer.ALIGNMENT_CENTER
+		_enc_inner.add_theme_constant_override("separation", 8)
+		_enc_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		enc.add_child(_enc_inner)
+		var book := _BookIcon.new(Color("#8ea3ba"))
+		_enc_inner.add_child(book)
+		var lbl := _mini("ENCYCLOPEDIA", Color("#8ea3ba"), 13)
+		lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		_enc_inner.add_child(lbl)
+		enc.mouse_entered.connect(func() -> void:
+			book.set_color(C_BRIGHT)
+			lbl.add_theme_color_override("font_color", C_BRIGHT))
+		enc.mouse_exited.connect(func() -> void:
+			book.set_color(Color("#8ea3ba"))
+			lbl.add_theme_color_override("font_color", Color("#8ea3ba")))
+		_enc_button = enc
 	_hbox().add_child(_divider())
 	if turn != null:
 		var col := VBoxContainer.new()
@@ -615,10 +813,10 @@ func _adopt_encyclopedia_and_turn() -> void:
 		turn.reparent(col)
 		turn.custom_minimum_size = Vector2(0, 0)
 		turn.theme_type_variation = "Numeric"
-		turn.add_theme_font_size_override("font_size", 13)
+		turn.add_theme_font_size_override("font_size", 16)
 		turn.add_theme_color_override("font_color", C_TEXT)
 		turn.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		_date_label = _mini("", C_MUTED, 10)
+		_date_label = _mini("", C_MUTED, 12)
 		_date_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		_date_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		col.add_child(_date_label)
@@ -636,7 +834,7 @@ func _build_menu() -> void:
 	mod.tooltip_text = "Main menu — save, settings, quit"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	row.add_child(_mini("☰", Color("#8ea3ba"), 15))
+	row.add_child(_mini("☰", Color("#8ea3ba"), 19))
 	mod.pressed.connect(func() -> void:
 		_close_fly()
 		PauseMenu.open(get_parent()))
@@ -1006,6 +1204,8 @@ func _apply_refresh() -> void:
 	_refresh_council()
 	if _date_label != null:
 		_date_label.text = _turn_date(int(TurnManager.current_turn))
+	if _enc_button != null and _enc_inner != null:
+		_enc_button.custom_minimum_size = Vector2(_enc_inner.get_combined_minimum_size().x + 28.0, MOD_H)
 	_refresh_bankruptcy_warning()
 
 func _refresh_treasury() -> void:
