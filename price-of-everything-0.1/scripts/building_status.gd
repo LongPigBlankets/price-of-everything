@@ -294,7 +294,16 @@ static func transport_cost_status_color(building: Dictionary, recipe: Dictionary
 		return STATUS_GREEN
 	return STATUS_YELLOW if float(route.cost) > 0.0 else STATUS_GREEN
 
-# --- Cost-to-produce RAG (CostSolver unit cost vs market base price) ------------------------
+# --- Cost-to-produce RAG (CostSolver unit cost vs the LIVE market price) --------------------
+
+## The output's live market price (decay + glut/deficit impact), falling back to the
+## static base price before the market has a quote. This is what "vs market" means in
+## the Building Detail economics — the comparison moves as the price moves.
+static func live_output_price(good_id: String) -> float:
+	if good_id == "":
+		return 0.0
+	var p: float = MarketState.get_price(good_id)
+	return p if p > 0.0 else Catalog.get_base_price(good_id)
 
 static func produce_cost_status(building: Dictionary) -> Dictionary:
 	var iid := str(building.get("instance_id", ""))
@@ -306,8 +315,8 @@ static func produce_cost_status(building: Dictionary) -> Dictionary:
 		return {"color": STATUS_GREY, "unit_cost": -1.0, "base_price": 0.0}
 	var bd: Dictionary = (CostSolver.last_result.get("per_building", {}) as Dictionary).get(iid, {})
 	var output_good_id: String = str(bd.get("output_good_id", ""))
-	var base_price: float = Catalog.get_base_price(output_good_id) if output_good_id != "" else 0.0
-	return {"color": cost_rag_color(uc, base_price), "unit_cost": uc, "base_price": base_price}
+	var price := live_output_price(output_good_id)
+	return {"color": cost_rag_color(uc, price), "unit_cost": uc, "base_price": price}
 
 # --- Net output modifier (additive recipe_output modifiers + workforce + intermittency) ----
 # Returns the signed net percent and its colour band (white -1..1%, green >1%, red <-1%), plus the

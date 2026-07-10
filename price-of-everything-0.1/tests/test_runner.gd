@@ -8353,13 +8353,14 @@ func _test_policy_state() -> void:
 	_check(PolicyState.green_subsidy_rate(104) == 0.0, "policy: no subsidy before turn 105")
 	_check(absf(PolicyState.green_subsidy_rate(105) - EconomyConfig.GREEN_SUBSIDY_RATE) < 0.0001,
 		"policy: subsidy rate live from turn 105")
-	# The window runs through at least 185 and lapses on a seed-picked turn in [186,191].
-	var sub_last: int = PolicyState.green_subsidy_last_turn()
-	_check(sub_last >= 185 and sub_last <= 190, "policy: subsidy last turn in [185,190] (lapse in [186,191])")
-	_check(PolicyState.green_subsidy_rate(185) > 0.0, "policy: subsidy still paying at turn 185")
-	_check(PolicyState.green_subsidy_rate(sub_last) > 0.0, "policy: subsidy pays through its last turn")
-	_check(PolicyState.green_subsidy_rate(sub_last + 1) == 0.0, "policy: subsidy lapses after its last turn")
-	_check(PolicyState.green_subsidy_rate(191) == 0.0, "policy: subsidy always gone by turn 191")
+	# Wind-down: full through 180, −10%/turn across 181..190, gone at 191.
+	var full_rate: float = PolicyState.green_subsidy_rate(180)
+	_check(absf(full_rate - EconomyConfig.GREEN_SUBSIDY_RATE) < 0.0001, "policy: subsidy at full rate through turn 180")
+	_check(absf(PolicyState.green_subsidy_rate(181) - full_rate * 0.9) < 0.0001, "policy: subsidy 90% at turn 181")
+	_check(absf(PolicyState.green_subsidy_rate(186) - full_rate * 0.4) < 0.0001, "policy: subsidy 40% at turn 186")
+	_check(absf(PolicyState.green_subsidy_rate(189) - full_rate * 0.1) < 0.0001, "policy: subsidy 10% at turn 189 (last paying turn)")
+	_check(PolicyState.green_subsidy_rate(190) == 0.0, "policy: subsidy reaches zero at turn 190")
+	_check(PolicyState.green_subsidy_rate(191) == 0.0, "policy: subsidy gone at turn 191 (end announcement)")
 	# The blocking "Understood" notice: a story-priority decision (never randomly
 	# pulled) with a single acknowledge choice, reserved by PolicyState for turn 90.
 	var notice: Dictionary = DecisionState.DECISION_DEFINITIONS.get("carbon_tax_notice", {})
@@ -8378,6 +8379,10 @@ func _test_policy_state() -> void:
 		and str((sub_notice.get("choices", [])[0] as Dictionary).get("id", "")) == "understood",
 		"policy: subsidy notice has the single Understood choice")
 	_check(str(sub_notice.get("headline", "")).begins_with("The government wants"), "policy: subsidy notice carries the owner headline")
+	var end_notice: Dictionary = DecisionState.DECISION_DEFINITIONS.get("green_subsidy_end_notice", {})
+	_check(not end_notice.is_empty() and int(end_notice.get("priority", 99)) == DecisionState.PRIORITY_STORY
+		and (end_notice.get("choices", []) as Array).size() == 1,
+		"policy: subsidy end notice exists (story-priority, single Understood)")
 	# Catalog now parses the multiplier column (was dormant).
 	var coal: Dictionary = Catalog.get_good_by_internal_name("coal")
 	_check(absf(float(coal.get("co2_tax_multiplier", 0.0)) - 0.5) < 0.0001, "catalog: coal carbon intensity 0.5")

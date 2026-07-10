@@ -23,6 +23,7 @@ const Schedule := preload("res://scripts/policy_schedule.gd")
 const NOTICES: Array = [
 	{"def": "carbon_tax_notice", "present_turn": 90, "until_turn": 101},
 	{"def": "green_subsidy_notice", "present_turn": 100, "until_turn": 105},
+	{"def": "green_subsidy_end_notice", "present_turn": 180, "until_turn": 191},
 ]
 
 # The levy ramps in (owner: "ramps up from turn 91 to turn 101"): the per-unit charge
@@ -31,12 +32,12 @@ const NOTICES: Array = [
 const CO2_RAMP_FIRST_TURN := 91
 const CO2_P1_TURN := 101
 
-# Green subsidy window: live from the schedule's effective turn (105), guaranteed
-# through GREEN_SUBSIDY_MIN_LAST_TURN, then lapses on a seed-picked turn so each match
-# ends the programme somewhere in [186, 191]. Derived arithmetically from the match
-# seed (no RNG stream consumed, stable across engine versions).
-const GREEN_SUBSIDY_MIN_LAST_TURN := 185
-const GREEN_SUBSIDY_END_SPREAD := 6
+# Green subsidy window (owner ruling): full rate from t105 through t180, then a linear
+# wind-down of 10% per turn across 181..190 (t181 pays 90%, t190 pays 10%), ended
+# completely at t191.
+const GREEN_SUBSIDY_FULL_LAST_TURN := 180
+const GREEN_SUBSIDY_WIND_DOWN_PER_TURN := 0.10
+const GREEN_SUBSIDY_END_TURN := 191
 
 var _seeded: bool = false
 
@@ -56,15 +57,17 @@ func co2_tax_level(turn: int) -> int:
 			lvl = maxi(lvl, int(e.level))
 	return lvl
 
-## The last turn the subsidy pays out: at least 185, stretching 0..5 further by match
-## seed — so the programme lapses (first unpaid turn) somewhere in [186, 191].
-func green_subsidy_last_turn() -> int:
-	return GREEN_SUBSIDY_MIN_LAST_TURN + posmod(int(MatchState.match_rng_seed), GREEN_SUBSIDY_END_SPREAD)
+## The wind-down factor: 1.0 through t180, −10% per turn across 181..190, 0.0 from 191.
+func green_subsidy_wind_down(turn: int) -> float:
+	if turn <= GREEN_SUBSIDY_FULL_LAST_TURN:
+		return 1.0
+	return maxf(0.0, 1.0 - GREEN_SUBSIDY_WIND_DOWN_PER_TURN * float(turn - GREEN_SUBSIDY_FULL_LAST_TURN))
 
-## £ per green MW generated at `turn` (0.0 before the subsidy window opens or after
-## the programme lapses).
+## £ per green MW generated at `turn` (0.0 before the subsidy window opens; ramps
+## down 10%/turn across 181..190; gone at 191).
 func green_subsidy_rate(turn: int) -> float:
-	if turn > green_subsidy_last_turn():
+	var wind := green_subsidy_wind_down(turn)
+	if wind <= 0.0:
 		return 0.0
 	var lvl := 0
 	for e in Schedule.SCHEDULE:
@@ -72,7 +75,7 @@ func green_subsidy_rate(turn: int) -> float:
 			lvl = maxi(lvl, int(e.level))
 	if lvl <= 0 or lvl >= EconomyConfig.GREEN_SUBSIDY_PHASE_SCALE.size():
 		lvl = mini(lvl, EconomyConfig.GREEN_SUBSIDY_PHASE_SCALE.size() - 1)
-	return EconomyConfig.GREEN_SUBSIDY_RATE * float(EconomyConfig.GREEN_SUBSIDY_PHASE_SCALE[lvl])
+	return EconomyConfig.GREEN_SUBSIDY_RATE * float(EconomyConfig.GREEN_SUBSIDY_PHASE_SCALE[lvl]) * wind
 
 ## The scale factor for the carbon charge at `turn`: 0 before the ramp, a linear
 ## ramp-in across turns 91..100 ((turn-90)/11 of P1), then the phase table from 101.
@@ -108,18 +111,16 @@ func _seed_if_needed() -> void:
 	if _seeded:
 		return
 	_seeded = true
-	# The subsidy's lapse announcement isn't in the const table (its turn is per-match,
-	# seed-derived): first unpaid turn ∈ [186, 191], forewarned 5 turns ahead.
-	EventScheduler.schedule(green_subsidy_last_turn() + 1, {
+	# The subsidy's end news at t191 (the wind-down's zero turn). The advance warning is
+	# the blocking green_subsidy_end_notice at t180, so no passive forewarn here.
+	EventScheduler.schedule(GREEN_SUBSIDY_END_TURN, {
 		"id": "policy:green_subsidy_end",
 		"kind": "policy_enacted",
 		"severity": "warning",
 		"title": "Green Energy Subsidy — programme ended",
 		# LOREM — owner lore pending.
 		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Subsidium energiae viridis finitum est; merces pro megawatt iam non solvitur.",
-		"forewarn_turns": 5,
-		# LOREM — owner lore pending.
-		"forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Subsidium viridis mox exspirabit.",
+		"forewarn_turns": 0,
 		"source": "policy",
 		"deeplink": {"panel": "money"},
 		"persistent": true,

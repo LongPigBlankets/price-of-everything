@@ -446,11 +446,15 @@ func _choice_card(view: Dictionary, choice: Dictionary) -> Control:
 		stance.text = "“%s”" % str(advocate.stance)
 		vb.add_child(stance)
 
-	var label := Label.new()
-	label.theme_type_variation = "BuildingName"
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.text = str(choice.get("label", ""))
-	vb.add_child(label)
+	# Single-choice narrative updates (government notices): the choice label moves onto
+	# the CTA button itself, so no header label here.
+	var single_choice := (view.get("choices", []) as Array).size() == 1
+	if not single_choice:
+		var label := Label.new()
+		label.theme_type_variation = "BuildingName"
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.text = str(choice.get("label", ""))
+		vb.add_child(label)
 
 	# Consequence lines with tone dots (split from the honest one-liner).
 	for line: String in _consequence_lines(str(choice.get("consequence", ""))):
@@ -509,7 +513,7 @@ func _choice_card(view: Dictionary, choice: Dictionary) -> Control:
 	var choose := Button.new()
 	choose.theme_type_variation = "Primary"
 	choose.focus_mode = Control.FOCUS_NONE
-	choose.text = "Choose"
+	choose.text = str(choice.get("label", "Choose")) if single_choice else "Choose"
 	choose.disabled = not available
 	choose.custom_minimum_size = Vector2(0, 32)
 	var uid := str(view.uid)

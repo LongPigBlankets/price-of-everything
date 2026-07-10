@@ -327,6 +327,23 @@ const DECISION_DEFINITIONS := {
 					"describe": "From turn 105 every MW of green power you generate (solar, wind, hydro, biomass-fired) earns a government subsidy. The programme runs for roughly 80 turns before it lapses."}]},
 		],
 	},
+	# The subsidy's wind-down warning — blocking, reserved by PolicyState to present on
+	# turn 180's DECIDE (payments start shrinking at 181, gone at 191).
+	"green_subsidy_end_notice": {
+		"title": "Government Notice: Subsidy Winding Down",
+		# Owner-directed copy — shown big + bold above the body.
+		"headline": "The green power subsidy is ending. Starting next turn, payments will fall by 10% each turn until they stop completely at turn 191.",
+		# LOREM — owner lore pending.
+		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aerarium subsidii viridis exhauritur; merces paulatim minuentur donec cessent.",
+		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
+		"target_selector": "company",
+		"once": true, "cooldown_turns": 9999, "weight": 1.0, "default_choice": "understood",
+		"choices": [
+			{"id": "understood", "label": "Understood",
+				"effects": [{"kind": "none",
+					"describe": "Green power still earns the subsidy through the wind-down — 90% next turn, shrinking 10% per turn, ending at turn 191."}]},
+		],
+	},
 	"distressed_asset": {
 		"title": "Distressed Asset Program",
 		"body": "It's not pretty and we don't have many other options — but I spoke to some outside investors. They'll buy our buildings to clear the debts and float us a rescue loan.",

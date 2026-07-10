@@ -566,7 +566,9 @@ static func cost_to_produce(building: Dictionary) -> Array:
 	var rows: Array = []
 	for gid in output_costs:
 		var uc := float(output_costs[gid])
-		var mp := Catalog.get_base_price(str(gid))
+		# LIVE market price (decay + glut impact), not the static base — the RAG and
+		# the % move as the output's price moves.
+		var mp := BuildingStatus.live_output_price(str(gid))
 		if uc < 0.0 or mp <= 0.0:
 			continue  # unsolved, or a good with no market price (e.g. power)
 		rows.append({
