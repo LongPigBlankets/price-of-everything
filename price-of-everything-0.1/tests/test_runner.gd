@@ -244,6 +244,7 @@ func _ready() -> void:
 	_test_auto_bridge_loan()
 	_test_cfo_tax_credit()
 	_test_policy_state()
+	_test_infra_upgrade()
 	if not _failed_names.is_empty():
 		print("FAILED TESTS:")
 		for failed_name in _failed_names:
@@ -8409,6 +8410,64 @@ func _test_policy_state() -> void:
 				"research: Biomass Cracking unlocks by producing biomass (fireable condition)")
 	_check(found_node, "research: Biomass Cracking node exists")
 
+
+func _test_infra_upgrade() -> void:
+	# Cash-only infrastructure upgrades (owner ruling: L2 £150, L3 £350). The pending
+	# machinery is shared with buildings; the level is written to the TILE at completion
+	# (headless has no map, so the tile write no-ops — covered by the shot tool).
+	var money_before := MatchState.money
+	var pend_before: Array = MatchState.pending_upgrades.duplicate(true)
+	MatchState.pending_upgrades = []
+	MatchState.money = 1000.0
+	var iid: String = MatchState.add_building("b_006", "", "tile_9_9", "player_1", "test_infra_cables")
+	_check(iid != "", "infra upgrade: cables instance placed")
+
+	var pv: Dictionary = MatchState.preview_upgrade(iid)
+	_check(bool(pv.get("infra", false)), "infra upgrade: preview flags infra")
+	_check(absf(float(pv.get("cash_cost", 0.0)) - 150.0) < 0.001, "infra upgrade: L2 quote is £150")
+	_check((pv.get("materials", []) as Array).is_empty(), "infra upgrade: no material kit")
+	_check(str(pv.get("research_gate", "x")) == "", "infra upgrade: no research gate")
+	var cap: Dictionary = pv.get("capacity", {})
+	_check(absf(float(cap.get("cur", 0.0)) - 2000.0) < 0.001 and absf(float(cap.get("new", 0.0)) - 4000.0) < 0.001,
+		"infra upgrade: cables capacity delta 2000 → 4000")
+
+	var res: Dictionary = MatchState.start_upgrade(iid)
+	_check(bool(res.get("ok", false)), "infra upgrade: start succeeds")
+	_check(absf(MatchState.money - 850.0) < 0.001, "infra upgrade: £150 charged up front")
+	_check(not MatchState.pending_upgrade(iid).is_empty(), "infra upgrade: pending after start")
+
+	# Cancel refunds the cash in full (no start/cancel pump: net zero).
+	MatchState.cancel_upgrade(iid)
+	_check(absf(MatchState.money - 1000.0) < 0.001, "infra upgrade: cancel refunds the cash")
+
+	# Run it to completion: 3 ticks → instance level bumps (tile write no-ops headless).
+	MatchState.start_upgrade(iid)
+	var done: Array = []
+	for _i in range(3):
+		done = MatchState.tick_upgrades()
+	_check(done.has(iid), "infra upgrade: completes after 3 turns")
+	_check(int((MatchState.buildings[iid] as Dictionary).get("level", 1)) == 2, "infra upgrade: instance level is 2")
+
+	# Broke wallet: clean atomic failure.
+	MatchState.money = 10.0
+	var res2: Dictionary = MatchState.start_upgrade(iid)
+	_check(not bool(res2.get("ok", true)), "infra upgrade: refused when broke")
+	_check(absf(MatchState.money - 10.0) < 0.001, "infra upgrade: nothing charged on refusal")
+
+	MatchState.remove_building(iid)
+
+	# Rails exercise the slot→mode mapping ("rails" slot ↔ "rail" transport mode).
+	MatchState.money = 1000.0
+	var rid: String = MatchState.add_building("b_019", "", "tile_9_9", "player_1", "test_infra_rails")
+	var rpv: Dictionary = MatchState.preview_upgrade(rid)
+	var rcap: Dictionary = rpv.get("capacity", {})
+	_check(bool(rpv.get("infra", false)) and absf(float(rcap.get("cur", 0.0)) - 400.0) < 0.001
+		and absf(float(rcap.get("new", 0.0)) - 800.0) < 0.001,
+		"infra upgrade: rails capacity delta 400 → 800 (rail mode mapping)")
+	MatchState.remove_building(rid)
+
+	MatchState.pending_upgrades = pend_before
+	MatchState.money = money_before
 
 # --- Turn Briefing (docs/turn-briefing-panel-spec.md) -------------------------
 

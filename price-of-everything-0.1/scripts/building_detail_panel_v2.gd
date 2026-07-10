@@ -629,6 +629,10 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 	row.add_theme_constant_override("separation", DS.SP["SM"])
 	var iid := str(building.get("instance_id", ""))
 	var lvl := int(building.get("level", 1))
+	# Infra levels live on the TILE (the instance copy can lag) — label from the truth.
+	var b_internal := str(Catalog.get_building(str(building.get("building_id", ""))).get("internal_name", ""))
+	if MatchState.INFRA_UPGRADABLE.has(b_internal):
+		lvl = MatchState.infra_tile_level(building)
 
 	var up := Button.new()
 	up.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -697,15 +701,42 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 			note.add_theme_color_override("font_color", DS.PALETTE["OK"])
 			note.text = ("Waiting on materials, then %d turn%s to upgrade." % [left, "" if left == 1 else "s"]) if awaiting else ("Upgrade in progress — %d turn%s left." % [left, "" if left == 1 else "s"])
 			vb.add_child(note)
+			var is_infra_pending := bool(pv.get("infra", false))
 			var cancel := Button.new()
 			cancel.text = "Cancel upgrade"
 			cancel.custom_minimum_size = Vector2(0, 40)
 			cancel.pressed.connect(func() -> void:
 				MatchState.cancel_upgrade(iid)
-				MatchState.request_toast("Upgrade cancelled — materials returned to the tile.", "caution")
+				MatchState.request_toast("Upgrade cancelled — %s." % ("cash refunded" if is_infra_pending else "materials returned to the tile"), "caution")
 				_close_sheet()
 				_queue_refresh())
 			vb.add_child(cancel)
+			return
+		# Levellable infrastructure: cash-only — capacity delta + one pay-and-go CTA.
+		if bool(pv.get("infra", false)):
+			var cap: Dictionary = pv.get("capacity", {})
+			if not cap.is_empty():
+				vb.add_child(_make_section("Capacity at level %d" % target))
+				vb.add_child(_upgrade_delta_row("%s (%s)" % [str(cap.get("label", "Capacity")), str(cap.get("unit", ""))],
+					float(cap.get("cur", 0.0)), float(cap.get("new", 0.0)), DS.PALETTE["OK"], 0, ""))
+			var cost := float(pv.get("cash_cost", 0.0))
+			var pay := Button.new()
+			pay.custom_minimum_size = Vector2(0, 44)
+			if bool(pv.get("affordable", false)):
+				pay.theme_type_variation = "Primary"
+				pay.text = "Upgrade to Lv %d — £%d" % [target, int(cost)]
+			else:
+				pay.text = "Upgrade to Lv %d — £%d (not enough money)" % [target, int(cost)]
+				pay.disabled = true
+			pay.pressed.connect(func() -> void:
+				var res := MatchState.start_upgrade(iid)
+				if bool(res.get("ok", false)):
+					MatchState.request_toast("Upgrade started — level %d in %d turns" % [target, duration], "success")
+					_close_sheet()
+					_queue_refresh()
+				else:
+					MatchState.request_toast(str(res.get("reason", "Upgrade failed.")), "error"))
+			vb.add_child(pay)
 			return
 		# Materials
 		var materials: Array = pv.get("materials", [])

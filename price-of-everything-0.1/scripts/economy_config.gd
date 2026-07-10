@@ -212,6 +212,11 @@ const TRANSPORT_CAP_LEVEL_MULT := {1: 1.0, 2: 2.0, 3: 3.5}
 # (export) and draw (import). A tile can both produce AND draw up to this. Power above
 # the cap simply doesn't generate / isn't supplied.
 const CABLE_POWER_CAP := {1: 2000, 2: 4000, 3: 7000}
+# Infrastructure upgrades (roads/rails/pipes/reinf_pipes/cables) are CASH-ONLY for now
+# (owner ruling 2026-07-10): a flat £ price per target level, no material kit, no
+# research gate. Capacity still scales by TRANSPORT_CAP_LEVEL_MULT / CABLE_POWER_CAP.
+# (Balance data — rule #7.)
+const INFRA_UPGRADE_CASH_COST := {2: 150.0, 3: 350.0}
 
 # --- Warehouse (per-tile storage) ---
 # A tile's storage capacity by "warehouse level". Level = 1 + the number of storage
