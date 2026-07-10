@@ -100,6 +100,15 @@ const NPC_WASH_DESAT := 0.22                  # NPC buildings sit duller inside 
 const SAWTOOTH_PITCH := 12.0                  # factory shed-roof line spacing (u)
 const TERRACE_PITCH := 14.0                   # urban party-wall slice spacing (u)
 const CHIMNEY_R := 2.2
+# Ink & wash phase I2+I4 (spec §2.2/§2.4): compound massing wings + hand-drawn wobble.
+const WING_MIN_PARENT_AREA := 140.0           # only halls this big grow wings (u²)
+const WING_AREA_MIN := 0.20                   # wing area as a fraction of the parent
+const WING_AREA_SPAN := 0.20                  #   … + seeded 0-0.20
+const WOBBLE_STEP := 16.0                     # subdivide footprint edges every ~16 u at DRAW time
+const WOBBLE_AMP := 1.1                       # perpendicular jitter (u); logic polygon never wobbles
+const WOBBLE_MIN_PERIM := 36.0                # tiny shapes stay crisp (jitter reads as noise)
+const TERRACE_SHADE := 0.05                   # per-strip value overlay so terraces read as houses
+const VENT_SIZE := Vector2(4.5, 2.8)          # factory rooftop vent/clerestory rect (u)
 
 # Subcomponents (Sanborn industrial detail): each building gets at most one rect annex + one round
 # tank, placed in a SECOND pass after all buildings + roads exist, in spare buildable space beside
@@ -816,6 +825,61 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 			_place_farm_outbuildings(tile_id, iid, rverts, is_npc, farm_snap)
 			continue
 		var pcolor: Color = p.color
+		# Compound massing (ink spec I2): big industrial halls grow 1-2 seeded
+		# WINGS — same-wash rects at 20-40% of the parent's area, tucked flush so
+		# the pair reads as one compound (wings draw UNDER, like annexes). Draw
+		# representation only: placement data, occupancy and discs are untouched.
+		var fam := _wash_family(str(p.cat))
+		var parent_area := 4.0 * bhalf.x * bhalf.y
+		var pverts: PackedVector2Array = p.verts
+		if (fam == "grey" or fam == "mustard") and parent_area >= WING_MIN_PARENT_AREA and pverts.size() == 4:
+			# Offsets and the wing rect itself follow the PARENT QUAD's own axes —
+			# world-axis offsets on a rotated hall corner-touch and draw a bowtie.
+			var ea: Vector2 = pverts[1] - pverts[0]
+			var eb: Vector2 = pverts[3] - pverts[0]
+			var ua := ea.normalized()
+			var ub := eb.normalized()
+			var pang := ua.angle()
+			var wdirs: Array = [ua, -ua, ub, -ub]
+			var wexts: Array = [ea.length() * 0.5, ea.length() * 0.5, eb.length() * 0.5, eb.length() * 0.5]
+			var wing_n := 1 + RoadHash.pick("wing|%s|n" % iid, 2)
+			for wi in wing_n:
+				var frac := WING_AREA_MIN + float(RoadHash.pick("wing|%s|%d|a" % [iid, wi], 100)) / 100.0 * WING_AREA_SPAN
+				var aspect := 0.5 + float(RoadHash.pick("wing|%s|%d|s" % [iid, wi], 31)) / 100.0
+				var ww := sqrt(parent_area * frac / aspect)
+				var whh := ww * aspect
+				var wshape: Dictionary = BuildingShapes.make_rect(ww, whh)
+				var wverts_l := _rotate(wshape.verts, pang)
+				var wh := _aabb_half(wverts_l)
+				var wrot := RoadHash.pick("wing|%s|%d|rot" % [iid, wi], wdirs.size())
+				for j0 in wdirs.size():
+					var di := (j0 + wrot) % wdirs.size()
+					var wdir: Vector2 = wdirs[di]
+					# Wing half-extent along the offset axis (its own w or h).
+					var wing_ext: float = ww * 0.5 if di < 2 else whh * 0.5
+					var wctr: Vector2 = bpos + wdir * (float(wexts[di]) + SUBCOMP_ANNEX_OVERLAP + wing_ext)
+					# Seeded slide along the perpendicular edge so wings sit off-centre
+					# (reference compounds are asymmetric), clamped to keep the overlap.
+					var perp: Vector2 = wdirs[(di + 2) % 4] if di < 2 else wdirs[di - 2]
+					var pext: float = float(wexts[2]) if di < 2 else float(wexts[0])
+					var wing_pext: float = whh * 0.5 if di < 2 else ww * 0.5
+					var slide_max: float = maxf(pext - wing_pext, 0.0)
+					var slide := (float(RoadHash.pick("wing|%s|%d|sl" % [iid, wi], 100)) / 100.0 - 0.5) * 2.0 * slide_max
+					wctr += perp * slide
+					if not _valid(wctr, wverts_l, wh, others, land, segs, rivers):
+						continue
+					var wentry := {"pos": wctr, "half": wh}
+					placed.append(wentry)
+					others.append(wentry)
+					var www := PackedVector2Array()
+					for wv in wverts_l:
+						www.append(center + wctr + wv)
+					_subcomponents.append({
+						"tile_id": tile_id, "verts": www, "color": pcolor,
+						"kind": "wing", "is_npc": is_npc, "bb": _verts_bb(www),
+						"cat": str(p.cat), "iid": iid,
+					})
+					break
 		# at most ONE annex (touches/merges) + ONE round tank (small gap), both parent colour.
 		for kind in ["annex", "tank"]:
 			var is_tank: bool = (kind == "tank")
@@ -2377,9 +2441,9 @@ func remove_instance(instance_id: String) -> void:
 		queue_redraw()
 
 func _draw() -> void:
-	# Annexes draw UNDER buildings so a same-colour annex merges as a seamless extension.
+	# Annexes + wings draw UNDER buildings so a same-colour extension merges seamlessly.
 	for sc in _subcomponents:
-		if str(sc.kind) == "annex":
+		if str(sc.kind) == "annex" or str(sc.kind) == "wing":
 			_draw_subcomponent(sc)
 	for placement in _placements:
 		if _cull and not _view.intersects(placement.bb):
@@ -2411,14 +2475,17 @@ func _draw() -> void:
 		else:
 			# Ink & wash: muted triad fill (seeded value jitter, NPC duller), one
 			# sepia ink outline for everyone, category-flavoured roof motifs.
-			draw_colored_polygon(verts, _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
-			var loop2 := verts.duplicate()
-			loop2.append(verts[0])
+			# The DRAWN polygon gets a hand-wobble (ink spec I4); the placement
+			# polygon stays clean for occupancy/click logic.
+			var wob := _wobble_poly(str(placement.instance_id), verts)
+			draw_colored_polygon(wob, _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
+			var loop2 := wob.duplicate()
+			loop2.append(wob[0])
 			draw_polyline(loop2, INK, INK_W, true)
 			# Quad footprints only — L/C shapes (6/8 verts) keep a clean roof so a
 			# motif never spills off the polygon (same guard the old ridges used).
 			if verts.size() == 4:
-				_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts)
+				_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts, bool(placement.is_npc))
 	# Thin dirt tracks between adjacent farms (kept within FARM_LANE_REACH of the fields, routed around
 	# forests). A promoted tile's _farm_lanes already excludes the ring + trunk (now real yellow roads).
 	# A filled disc (radius = half the track width) at each segment end JOINS the corners + junctions so
@@ -2455,7 +2522,9 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		return
 	var sv: PackedVector2Array = sc.verts
 	var kind := str(sc.kind)
-	if kind == "annex" or kind == "tank":
+	if kind == "annex" or kind == "tank" or kind == "wing":
+		if kind != "tank":
+			sv = _wobble_poly("%s|%s" % [str(sc.get("iid", "")), kind], sv)
 		draw_colored_polygon(sv, _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc)))
 		var si := sv.duplicate()
 		si.append(sv[0])
@@ -2472,6 +2541,34 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		draw_polyline(sl, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
 
 # ── Ink & wash helpers (phase I1) ──────────────────────────────────────────────
+
+## Hand-drawn wobble (ink spec I4), DRAW time only: subdivide each edge every
+## ~WOBBLE_STEP and jitter the interior points perpendicular ±WOBBLE_AMP, seeded
+## per instance. Corners stay EXACT so adjacent shapes keep their gaps and the
+## logic polygon (occupancy, clicks, tests) is never touched.
+func _wobble_poly(seed_key: String, verts: PackedVector2Array) -> PackedVector2Array:
+	var n := verts.size()
+	if n < 3:
+		return verts
+	var perim := 0.0
+	for i in n:
+		perim += verts[i].distance_to(verts[(i + 1) % n])
+	if perim < WOBBLE_MIN_PERIM:
+		return verts
+	var out := PackedVector2Array()
+	for i in n:
+		var a := verts[i]
+		var b := verts[(i + 1) % n]
+		out.append(a)
+		var steps := int(a.distance_to(b) / WOBBLE_STEP)
+		if steps < 2:
+			continue
+		var dv := (b - a) / float(steps)
+		var nrm := Vector2(-dv.y, dv.x).normalized()
+		for s in range(1, steps):
+			var off := (float(RoadHash.pick("wob|%s|%d|%d" % [seed_key, i, s], 100)) / 100.0 - 0.5) * 2.0 * WOBBLE_AMP
+			out.append(a + dv * float(s) + nrm * off)
+	return out
 
 ## Triad family for a building category: heavy industry/process = grey, storage/
 ## logistics = mustard, everything urban = red (the reference's split).
@@ -2505,7 +2602,7 @@ func _wash_for(cat: String, iid: String, is_npc: bool) -> Color:
 ## it stays on the roof at any rotation. Grey industry gets shed saw-tooth lines +
 ## a chimney dot; red urban blocks get terrace party-walls + a ridge; mustard
 ## logistics keeps longitudinal ridge lines.
-func _draw_roof_motifs(cat: String, iid: String, verts: PackedVector2Array) -> void:
+func _draw_roof_motifs(cat: String, iid: String, verts: PackedVector2Array, is_npc: bool) -> void:
 	var ax: Vector2 = verts[1] - verts[0]
 	var bx: Vector2 = verts[3] - verts[0]
 	var lng: Vector2 = ax if ax.length() >= bx.length() else bx
@@ -2520,13 +2617,46 @@ func _draw_roof_motifs(cat: String, iid: String, verts: PackedVector2Array) -> v
 			var corner: Vector2 = verts[ci]
 			var inward := (_poly_centroid(verts) - corner).normalized()
 			draw_circle(corner + inward * 5.0, CHIMNEY_R, INK)
+			# Rooftop vent/clerestory (ink spec I4): 1-2 small ink rects along the
+			# ridge on halls long enough to carry them.
+			if lng.length() >= 30.0:
+				var vents := 1 + RoadHash.pick("ink|%s|vents" % iid, 2)
+				var lu := lng.normalized()
+				var su := shr.normalized()
+				for vi in vents:
+					var t := 0.25 + 0.5 * float(RoadHash.pick("ink|%s|vent|%d" % [iid, vi], 100)) / 100.0
+					var vc: Vector2 = verts[0] + lng * t + shr * (0.32 + 0.36 * float(vi))
+					var vh := lu * (VENT_SIZE.x * 0.5)
+					var vv := su * (VENT_SIZE.y * 0.5)
+					var vr := PackedVector2Array([vc - vh - vv, vc + vh - vv, vc + vh + vv, vc - vh + vv, vc - vh - vv])
+					draw_polyline(vr, INK, 1.0, true)
 		"red":
 			var n2 := clampi(int(lng.length() / TERRACE_PITCH), 1, 10)
+			# Per-strip value shading first (ink spec I2): alternate terraces get a
+			# faint seeded light/dark overlay so the row reads as separate houses.
+			for s2 in range(n2):
+				var t0 := float(s2) / float(n2)
+				var t1 := float(s2 + 1) / float(n2)
+				var shade := (float(RoadHash.pick("ink|%s|strip|%d" % [iid, s2], 100)) / 100.0 - 0.5) * 2.0 * TERRACE_SHADE
+				if absf(shade) < 0.012:
+					continue
+				var quad := PackedVector2Array([
+					verts[0] + lng * t0, verts[0] + lng * t1,
+					verts[0] + lng * t1 + shr, verts[0] + lng * t0 + shr,
+				])
+				var overlay := Color(1, 1, 1, shade) if shade > 0.0 else Color(0, 0, 0, -shade)
+				draw_colored_polygon(quad, overlay)
 			for k2 in range(1, n2):
 				var base2: Vector2 = verts[0] + lng * (float(k2) / float(n2))
 				draw_line(base2 + shr * 0.08, base2 + shr * 0.92, INK, 1.0)
 			var mid: Vector2 = verts[0] + shr * 0.5
 			draw_line(mid + lng * 0.06, mid + lng * 0.94, INK, 1.0)
+			# Player rows carry seeded chimney dots on the ridge (ownership cue
+			# beyond saturation, spec open-decision 3 leaning roof-marker).
+			if not is_npc and lng.length() >= 24.0:
+				for c2 in range(1, n2):
+					if RoadHash.pick("ink|%s|rchim|%d" % [iid, c2], 3) == 0:
+						draw_circle(verts[0] + lng * ((float(c2) - 0.5) / float(n2)) + shr * 0.5, 1.1, INK)
 		"ruins":
 			pass   # ruins stay quiet — a broken outline reads better than fresh roof lines
 		_:
