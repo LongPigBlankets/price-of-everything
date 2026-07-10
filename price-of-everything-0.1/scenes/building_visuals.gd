@@ -3065,7 +3065,18 @@ func _draw_roof_motifs(cat: String, iid: String, verts: PackedVector2Array, is_n
 	var lng: Vector2 = ax if ax.length() >= bx.length() else bx
 	var shr: Vector2 = bx if lng == ax else ax
 	match _wash_family(cat):
-		"grey", "navy", "orange", "lime":
+		"lime", "pink":
+			# Chemical works (chem plants, petro refineries) read as tank
+			# farms: 2-4 cylinders seen from the top instead of shed roofs
+			# (owner 2026-07-10).
+			var r := clampf(shr.length() * 0.22, 2.5, 6.0)
+			var n_cyl := 2 + RoadHash.pick("ink|%s|cyl" % iid, 3)
+			n_cyl = clampi(mini(n_cyl, int(lng.length() / (r * 2.8))), 2, 4)
+			for k in n_cyl:
+				var cc: Vector2 = verts[0] + lng * ((float(k) + 0.5) / float(n_cyl)) + shr * 0.5
+				draw_arc(cc, r, 0.0, TAU, 24, INK, 1.0, true)
+				draw_circle(cc, 1.2, INK)
+		"grey", "navy", "orange":
 			var n := clampi(int(lng.length() / SAWTOOTH_PITCH), 1, 12)
 			for k in range(1, n):
 				var base: Vector2 = verts[0] + lng * (float(k) / float(n))
