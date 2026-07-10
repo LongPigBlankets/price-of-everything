@@ -10,10 +10,12 @@ extends RefCounted
 
 const SCHEDULE: Array = [
 	# --- Green Energy Subsidy (a mid-game window: live t105, runs through at least
-	# t185, lapses on a seed-picked turn in 186..191 — see PolicyState) ---
+	# t185, lapses on a seed-picked turn in 186..191 — see PolicyState). Its advance
+	# notice is the blocking green_subsidy_notice decision at turn 100, so no passive
+	# forewarn news here. ---
 	{
 		"id": "green_subsidy_p1", "policy": "green_subsidy", "level": 1,
-		"effective_turn": 105, "forewarn_turns": 5, "severity": "warning",
+		"effective_turn": 105, "forewarn_turns": 0, "severity": "warning",
 		"title": "Green Energy Subsidy",
 		# LOREM — replace with lore (shown in the forewarning news item).
 		"forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesentium subsidium energiae viridis in paucis conversionibus incipiet — qui sol et ventus colunt, remunerabuntur.",

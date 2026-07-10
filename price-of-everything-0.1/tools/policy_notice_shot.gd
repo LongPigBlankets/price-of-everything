@@ -12,25 +12,36 @@ func _ready() -> void:
 	if cam != null:
 		cam.edge_pan_enabled = false
 
-	TurnManager.current_turn = 89
-	PolicyState._arm_carbon_notice()   # re-arm for the jumped turn (reservation at 89)
 	TurnManager.fast_mode = true
+
+	# 1. Carbon levy notice at turn 90 (reserved for turn 89's NARRATIVE).
+	TurnManager.current_turn = 89
+	PolicyState._arm_notices()
 	TurnManager.commit_turn()
 	if TurnManager.is_resolving:
 		await TurnManager.turn_resolution_completed
 	await _settle(30)
-
-	print("[notice_shot] turn=%d pending=%s blocked=%s" % [
-		TurnManager.current_turn,
-		str(DecisionState.has_pending()),
-		str(DecisionState.has_pending())])
+	print("[notice_shot] carbon: turn=%d pending=%s" % [TurnManager.current_turn, str(DecisionState.has_pending())])
 	await _shot("/tmp/poe_policy_notice.png")
-
-	# Prove the "Understood" click unblocks the turn.
 	if not DecisionState.pending_queue.is_empty():
 		var uid := str((DecisionState.pending_queue[0] as Dictionary).get("uid", ""))
 		var err: String = DecisionState.resolve("understood", uid)
-		print("[notice_shot] resolve('understood') -> '%s' pending_after=%s" % [err, str(DecisionState.has_pending())])
+		print("[notice_shot] carbon resolve -> '%s' pending_after=%s" % [err, str(DecisionState.has_pending())])
+	await _settle(10)
+
+	# 2. Green subsidy notice at turn 100 (reserved for turn 99's NARRATIVE).
+	TurnManager.current_turn = 99
+	PolicyState._arm_notices()
+	TurnManager.commit_turn()
+	if TurnManager.is_resolving:
+		await TurnManager.turn_resolution_completed
+	await _settle(30)
+	print("[notice_shot] subsidy: turn=%d pending=%s" % [TurnManager.current_turn, str(DecisionState.has_pending())])
+	await _shot("/tmp/poe_policy_subsidy_notice.png")
+	if not DecisionState.pending_queue.is_empty():
+		var uid2 := str((DecisionState.pending_queue[0] as Dictionary).get("uid", ""))
+		var err2: String = DecisionState.resolve("understood", uid2)
+		print("[notice_shot] subsidy resolve -> '%s' pending_after=%s" % [err2, str(DecisionState.has_pending())])
 	get_tree().quit(0)
 
 func _shot(path: String) -> void:

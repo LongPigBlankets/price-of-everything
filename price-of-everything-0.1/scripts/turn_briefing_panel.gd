@@ -371,6 +371,14 @@ func _build_decision_detail(it: Dictionary) -> void:
 	var view: Dictionary = it.view
 	var tint := _item_color(it)
 	_detail.add_child(_detail_head(it, "must be answered", tint))
+	# Optional big-bold headline (government notices) above the flavour body.
+	var headline_text := str(view.get("headline", ""))
+	if headline_text != "":
+		var headline := Label.new()
+		headline.theme_type_variation = "Section"
+		headline.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		headline.text = headline_text
+		_detail.add_child(headline)
 	var prompt := Label.new()
 	prompt.theme_type_variation = "Body"
 	prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

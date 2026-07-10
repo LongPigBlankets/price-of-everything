@@ -13,14 +13,19 @@
 > Forestry); `r_155 Micro Algae Digestion` was restored to its original dormant-pool form —
 > at base prices r_228 runs −£0.20/run unintegrated (£6.67/u) vs taxed oil-route ethylene
 > £7.00/u (P1) / £9.25/u (P2); (6) a `skip <n>` debug-terminal cheat was added for
-> fast-forwarding to policy turns; (7) owner timeline: the levy's advance notice is a
-> BLOCKING story decision ("Government Notice: Carbon Levy", single "Understood" choice,
-> reserved by PolicyState via DecisionState.reserve so it presents on turn 90's DECIDE and
-> blocks End Turn until acknowledged — replaces the passive forewarn news for P1), the levy
-> is IN FORCE at turn 101, P2 t165, P3 t230; (8) the subsidy is a WINDOW: live t105
-> (forewarned t100), paying through at least t185, lapsing on a seed-derived turn so the
-> first unpaid turn lands in [186, 191] (PolicyState.green_subsidy_last_turn =
-> 185 + seed % 6; a lapse announcement event is scheduled per-match, forewarned 5 turns).
+> fast-forwarding to policy turns; (7) owner timeline: BOTH policies announce via
+> BLOCKING story decisions with a big-bold owner-authored `headline` above the Lorem body
+> (defs carbon_tax_notice / green_subsidy_notice; single "Understood" choice; reserved by
+> PolicyState via DecisionState.reserve to present on turn 90 / turn 100's DECIDE and
+> block End Turn until acknowledged — no passive forewarn news for either), the levy
+> RAMPS IN linearly across turns 91..100 ((turn−90)/11 of P1, per the owner's "ramp up
+> from turn 91 to turn 101"), is at full P1 from turn 101, P2 t165, P3 t230; (8) the
+> subsidy is a WINDOW: live t105, paying through at least t185, lapsing on a seed-derived
+> turn so the first unpaid turn lands in [186, 191] (green_subsidy_last_turn =
+> 185 + seed % 6; a per-match lapse announcement is scheduled, forewarned 5 turns).
+> NOTE the carbon headline copy says "100% of market price" and names crude oil — the
+> LIVE rates are coal 0.5 (125% of base), processed_oil 2.7 (54%), ethylene 1.0 (15%),
+> crude 0.1 — flagged to the owner for either copy or multiplier reconciliation.
 > Verified: unit suite green (1 standing bake fail); e2e t100 failure set + metrics
 > unchanged vs parent; tools/policy_shot.tscn (four surfaces) +
 > tools/policy_notice_shot.tscn (blocking notice at t90, resolve unblocks).

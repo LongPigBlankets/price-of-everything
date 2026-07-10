@@ -627,7 +627,8 @@ func _apply_advisor_costs(summary: Dictionary) -> float:
 func _apply_carbon_tax(summary: Dictionary) -> void:
 	carbon_tax_by_building.clear()
 	var turn: int = int(TurnManager.current_turn)
-	if PolicyState.co2_tax_level(turn) <= 0:
+	# Scale, not level: the levy ramps in across turns 91..100 before phase 1 lands.
+	if PolicyState.co2_tax_scale(turn) <= 0.0:
 		return
 	var total: float = 0.0
 	for iid in _carbon_consumed_by_building:

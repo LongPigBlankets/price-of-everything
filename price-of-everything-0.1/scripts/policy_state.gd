@@ -16,10 +16,19 @@ extends Node
 
 const Schedule := preload("res://scripts/policy_schedule.gd")
 
-# The carbon levy's advance notice: a blocking "Understood" story decision reserved for
-# turn NOTICE_PRESENT_TURN's DECIDE (reservations fire in the PREVIOUS turn's NARRATIVE).
-const CO2_NOTICE_DEF := "carbon_tax_notice"
-const CO2_NOTICE_PRESENT_TURN := 90
+# Blocking "Understood" story notices, reserved so they present on `present_turn`'s
+# DECIDE (reservations fire in the PREVIOUS turn's NARRATIVE). Re-armed on every
+# seed/load (DecisionState reservations don't persist); `until_turn` stops arming once
+# the policy itself is in force.
+const NOTICES: Array = [
+	{"def": "carbon_tax_notice", "present_turn": 90, "until_turn": 101},
+	{"def": "green_subsidy_notice", "present_turn": 100, "until_turn": 105},
+]
+
+# The levy ramps in (owner: "ramps up from turn 91 to turn 101"): the per-unit charge
+# scales linearly from 1/11 of P1 at turn 91 to full P1 at turn 101, then follows the
+# phase table (P2/P3).
+const CO2_RAMP_FIRST_TURN := 91
 const CO2_P1_TURN := 101
 
 # Green subsidy window: live from the schedule's effective turn (105), guaranteed
@@ -65,10 +74,14 @@ func green_subsidy_rate(turn: int) -> float:
 		lvl = mini(lvl, EconomyConfig.GREEN_SUBSIDY_PHASE_SCALE.size() - 1)
 	return EconomyConfig.GREEN_SUBSIDY_RATE * float(EconomyConfig.GREEN_SUBSIDY_PHASE_SCALE[lvl])
 
-## The scale factor for the current CO2 phase (0.0 when not in force).
+## The scale factor for the carbon charge at `turn`: 0 before the ramp, a linear
+## ramp-in across turns 91..100 ((turn-90)/11 of P1), then the phase table from 101.
 func co2_tax_scale(turn: int) -> float:
-	var lvl := co2_tax_level(turn)
-	lvl = clampi(lvl, 0, EconomyConfig.CO2_TAX_PHASE_SCALE.size() - 1)
+	if turn < CO2_RAMP_FIRST_TURN:
+		return 0.0
+	if turn < CO2_P1_TURN:
+		return float(turn - (CO2_RAMP_FIRST_TURN - 1)) / float(CO2_P1_TURN - (CO2_RAMP_FIRST_TURN - 1))
+	var lvl := clampi(co2_tax_level(turn), 0, EconomyConfig.CO2_TAX_PHASE_SCALE.size() - 1)
 	return float(EconomyConfig.CO2_TAX_PHASE_SCALE[lvl])
 
 ## £ carbon levy for consuming `qty` units of the good at `turn` (0 for untaxed goods).
@@ -89,9 +102,9 @@ func _on_state_reset() -> void:
 	call_deferred("_seed_if_needed")
 
 func _seed_if_needed() -> void:
-	# The notice reservation lives in DecisionState state that is NOT saved, so it is
+	# Notice reservations live in DecisionState state that is NOT saved, so they are
 	# re-armed on every seed AND every load (guarded against double-fires inside).
-	_arm_carbon_notice()
+	_arm_notices()
 	if _seeded:
 		return
 	_seeded = true
@@ -127,23 +140,27 @@ func _seed_if_needed() -> void:
 			"auto_dismiss_turns": 6,
 		})
 
-# Reserve the blocking "Understood" notice so it presents on turn 90's DECIDE
-# (reservations fire in the previous turn's NARRATIVE). Re-armed on every seed/load
-# because DecisionState reservations don't persist in saves; guarded so a notice the
-# player already answered (history) or has pending never re-fires, and skipped
-# entirely once the levy itself is in force.
-func _arm_carbon_notice() -> void:
+# Reserve the blocking "Understood" notices (see NOTICES). Guarded so a notice the
+# player already answered (history) or has pending never re-fires; late loads inside
+# the window still get theirs on the next turn.
+func _arm_notices() -> void:
 	var turn := int(TurnManager.current_turn)
-	if turn >= CO2_P1_TURN:
-		return
+	for n in NOTICES:
+		var def_id := str(n.def)
+		if turn >= int(n.until_turn):
+			continue
+		if _notice_seen(def_id):
+			continue
+		DecisionState.reserve(maxi(int(n.present_turn) - 1, turn), def_id)
+
+func _notice_seen(def_id: String) -> bool:
 	for rec in DecisionState.history():
-		if str(rec.get("def_id", "")) == CO2_NOTICE_DEF:
-			return
+		if str(rec.get("def_id", "")) == def_id:
+			return true
 	for d in DecisionState.pending_queue:
-		if str(d.get("def_id", "")) == CO2_NOTICE_DEF:
-			return
-	# Late loads (turn 90..100 without the notice answered) still get it next turn.
-	DecisionState.reserve(maxi(CO2_NOTICE_PRESENT_TURN - 1, turn), CO2_NOTICE_DEF)
+		if str(d.get("def_id", "")) == def_id:
+			return true
+	return false
 
 # --- Save / load (additive key; tolerant reader, no version bump) ---------------------
 

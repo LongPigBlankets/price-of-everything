@@ -8368,16 +8368,30 @@ func _test_policy_state() -> void:
 	_check((notice.get("choices", []) as Array).size() == 1
 		and str((notice.get("choices", [])[0] as Dictionary).get("id", "")) == "understood",
 		"policy: notice has the single Understood choice")
+	_check(str(notice.get("headline", "")).begins_with("The new government"), "policy: carbon notice carries the owner headline")
+	var sub_notice: Dictionary = DecisionState.DECISION_DEFINITIONS.get("green_subsidy_notice", {})
+	_check(not sub_notice.is_empty(), "policy: green_subsidy_notice decision exists")
+	_check(int(sub_notice.get("priority", 99)) == DecisionState.PRIORITY_STORY,
+		"policy: subsidy notice is story-priority (reserve-only)")
+	_check((sub_notice.get("choices", []) as Array).size() == 1
+		and str((sub_notice.get("choices", [])[0] as Dictionary).get("id", "")) == "understood",
+		"policy: subsidy notice has the single Understood choice")
+	_check(str(sub_notice.get("headline", "")).begins_with("The government wants"), "policy: subsidy notice carries the owner headline")
 	# Catalog now parses the multiplier column (was dormant).
 	var coal: Dictionary = Catalog.get_good_by_internal_name("coal")
 	_check(absf(float(coal.get("co2_tax_multiplier", 0.0)) - 0.5) < 0.0001, "catalog: coal carbon intensity 0.5")
 	var eth: Dictionary = Catalog.get_good_by_internal_name("ethylene")
 	_check(absf(float(eth.get("co2_tax_multiplier", 0.0)) - 1.0) < 0.0001, "catalog: ethylene carbon intensity 1.0")
-	# Charge math: 20 coal at P1 = 20 × 0.5 × 1.0 × 1.0 = £10; ×2 at P2; 0 before P1.
+	# Charge math: 20 coal at P1 = 20 × 0.5 × 1.0 × 1.0 = £10; ×2 at P2; 0 before the
+	# ramp; a linear ramp-in across 91..100 ((turn−90)/11 of P1).
 	var coal_id := str(coal.get("id", ""))
 	_check(absf(PolicyState.carbon_charge(coal_id, 20, 101) - 10.0) < 0.001, "policy: 20 coal at P1 charges £10")
 	_check(absf(PolicyState.carbon_charge(coal_id, 20, 165) - 20.0) < 0.001, "policy: 20 coal at P2 charges £20")
 	_check(PolicyState.carbon_charge(coal_id, 20, 10) == 0.0, "policy: no charge before the levy")
+	_check(PolicyState.carbon_charge(coal_id, 20, 90) == 0.0, "policy: no charge at turn 90 (notice turn)")
+	_check(absf(PolicyState.carbon_charge(coal_id, 20, 91) - 10.0 / 11.0) < 0.001, "policy: ramp begins at turn 91 (1/11 of P1)")
+	_check(absf(PolicyState.carbon_charge(coal_id, 20, 96) - 10.0 * 6.0 / 11.0) < 0.001, "policy: mid-ramp at turn 96 (6/11 of P1)")
+	_check(PolicyState.carbon_charge(coal_id, 20, 100) < 10.0, "policy: still below full P1 at turn 100")
 	var biomass_id := str(Catalog.get_good_by_internal_name("biomass").get("id", ""))
 	_check(PolicyState.carbon_charge(biomass_id, 100, 230) == 0.0, "policy: biomass is untaxed even at P3")
 	# The biomass→ethylene escape route: r_228 Bio Ethylene (chem_plant, biomass direct)

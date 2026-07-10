@@ -297,7 +297,9 @@ const DECISION_DEFINITIONS := {
 	# itself lands at turn 101 regardless.
 	"carbon_tax_notice": {
 		"title": "Government Notice: Carbon Levy",
-		# LOREM — owner lore pending (the mechanical facts live in the choice describe).
+		# Owner copy — shown big + bold above the body.
+		"headline": "The new government is implementing a carbon tax of 100% of market price on anything that consumes coal, crude oil or processed oil. Many buildings will be affected. This will ramp up from turn 91 to turn 101. Our input costs will increase dramatically. We should look into some alternatives.",
+		# LOREM — owner lore pending.
 		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt. Nuntius gravis a ministerio venit: vectigal carbonis rei publicae imponetur.",
 		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
 		"target_selector": "company",
@@ -305,7 +307,24 @@ const DECISION_DEFINITIONS := {
 		"choices": [
 			{"id": "understood", "label": "Understood",
 				"effects": [{"kind": "none",
-					"describe": "From turn 101, every unit of coal, processed oil or ethylene your buildings consume is taxed — and the levy escalates in later phases. Clean routes and green power are exempt."}]},
+					"describe": "The levy ramps up between turns 91 and 101, then escalates further in later phases. Clean routes and green power are exempt."}]},
+		],
+	},
+	# The green subsidy's announcement — same blocking pattern, reserved by PolicyState
+	# to present on turn 100's DECIDE (the subsidy itself starts at turn 105).
+	"green_subsidy_notice": {
+		"title": "Government Notice: Green Energy Subsidy",
+		# Owner copy — shown big + bold above the body.
+		"headline": "The government wants to speed up the transition away from hydrocarbon power. They will subsidise green power production starting with turn 105.",
+		# LOREM — owner lore pending.
+		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesentium subsidium energiae viridis nuntiatur; qui sol, ventus et aqua colunt, remunerabuntur.",
+		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
+		"target_selector": "company",
+		"once": true, "cooldown_turns": 9999, "weight": 1.0, "default_choice": "understood",
+		"choices": [
+			{"id": "understood", "label": "Understood",
+				"effects": [{"kind": "none",
+					"describe": "From turn 105 every MW of green power you generate (solar, wind, hydro, biomass-fired) earns a government subsidy. The programme runs for roughly 80 turns before it lapses."}]},
 		],
 	},
 	"distressed_asset": {
@@ -802,6 +821,7 @@ func pending_view(uid: String = "") -> Dictionary:
 	return {
 		"uid": str(d.uid),
 		"title": str(def.get("title", "")),
+		"headline": str(def.get("headline", "")),
 		"body": str(def.get("body", "")).replace("{target_name}", str(target.get("name", ""))),
 		"scope": scope,
 		"target": target,
