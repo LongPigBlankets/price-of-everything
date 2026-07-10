@@ -96,7 +96,7 @@ const WASH_RED := Color("#b0483a")            # urban production / manufacturing
 const WASH_MUSTARD := Color("#c9992e")        # storage / logistics / infrastructure
 const WASH_RUINS := Color("#7a5f43")
 const WASH_JITTER := 0.05                     # ±5% per-instance value jitter (seeded)
-const NPC_WASH_DESAT := 0.22                  # NPC buildings sit duller inside the same triad
+const NPC_WHITE := Color("#efe9db")           # NPC fill: warm paper white (sits in the parchment)
 const SAWTOOTH_PITCH := 12.0                  # factory shed-roof line spacing (u)
 const TERRACE_PITCH := 14.0                   # urban party-wall slice spacing (u)
 const CHIMNEY_R := 2.2
@@ -207,6 +207,9 @@ func _ready() -> void:
 	# tile so its existing buildings snap to the carriageway. Without this they
 	# keep the roadless fallback layout and never visibly align to the new road.
 	RoadWorks.order_settled.connect(_on_road_settled)
+	# An upgraded building grows annex wings (level-driven compound massing) —
+	# re-derive its tile's subcomponents when the new level lands.
+	MatchState.building_upgraded.connect(_on_building_upgraded)
 	# When RoadWorks promotes a farm tile's outer ring + one path to real roads, stop drawing those
 	# brown tracks (the yellow road now represents them).
 	if RoadWorks.has_signal("farm_roads_promoted"):
@@ -745,6 +748,11 @@ func _flush_resnap() -> void:
 
 ## Mark a tile for a subcomponent rebuild (coalesced into one deferred pass), so tanks/annexes
 ## are re-derived once the tile's buildings + roads have settled for this frame.
+func _on_building_upgraded(instance_id: String, _new_level: int) -> void:
+	var tid := str(MatchState.get_building(instance_id).get("tile_id", ""))
+	if tid != "":
+		_mark_subcomp_dirty(tid)
+
 func _mark_subcomp_dirty(tile_id: String) -> void:
 	_subcomp_dirty[tile_id] = true
 	if not _subcomp_queued:
@@ -832,7 +840,15 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 		var fam := _wash_family(str(p.cat))
 		var parent_area := 4.0 * bhalf.x * bhalf.y
 		var pverts: PackedVector2Array = p.verts
-		if (fam == "grey" or fam == "mustard") and parent_area >= WING_MIN_PARENT_AREA and pverts.size() == 4:
+		# Wing count: big grey/mustard halls start with 1-2 seeded wings; every
+		# level above 1 adds one more, ANY family (owner 2026-07-10: buildings
+		# visibly expand with annexes when they upgrade to L2/L3).
+		var lvl := clampi(int(MatchState.get_building(iid).get("level", 1)), 1, 3)
+		var base_wings := 0
+		if (fam == "grey" or fam == "mustard") and parent_area >= WING_MIN_PARENT_AREA:
+			base_wings = 1 + RoadHash.pick("wing|%s|n" % iid, 2)
+		var wing_total := mini(base_wings + (lvl - 1), 4)
+		if wing_total > 0 and pverts.size() == 4:
 			# Offsets and the wing rect itself follow the PARENT QUAD's own axes —
 			# world-axis offsets on a rotated hall corner-touch and draw a bowtie.
 			var ea: Vector2 = pverts[1] - pverts[0]
@@ -842,8 +858,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 			var pang := ua.angle()
 			var wdirs: Array = [ua, -ua, ub, -ub]
 			var wexts: Array = [ea.length() * 0.5, ea.length() * 0.5, eb.length() * 0.5, eb.length() * 0.5]
-			var wing_n := 1 + RoadHash.pick("wing|%s|n" % iid, 2)
-			for wi in wing_n:
+			for wi in wing_total:
 				var frac := WING_AREA_MIN + float(RoadHash.pick("wing|%s|%d|a" % [iid, wi], 100)) / 100.0 * WING_AREA_SPAN
 				var aspect := 0.5 + float(RoadHash.pick("wing|%s|%d|s" % [iid, wi], 31)) / 100.0
 				var ww := sqrt(parent_area * frac / aspect)
@@ -2583,17 +2598,23 @@ func _wash_family(cat: String) -> String:
 		_:
 			return "red"
 
-## Muted wash fill: triad base + seeded ±5% value jitter so repeated blocks don't
-## clone; NPC buildings sit duller INSIDE the same hue (ownership stays legible
-## without leaving the plate's palette).
+## Wash fill: PLAYER buildings carry the muted triad (+seeded ±5% value jitter
+## so repeated blocks don't clone); NPC buildings are PAPER WHITE with ink
+## outlines (owner ruling 2026-07-10) — ownership reads instantly, like the
+## uncoloured lots on a vintage plate. Ruins keep their brown either way
+## (decay, not ownership).
 func _wash_for(cat: String, iid: String, is_npc: bool) -> Color:
+	var fam := _wash_family(cat)
+	var jitter := (float(RoadHash.pick("ink|%s|val" % iid, 100)) / 100.0 - 0.5) * 2.0 * WASH_JITTER
+	if is_npc and fam != "ruins":
+		var wv := NPC_WHITE.v * (1.0 + jitter * 0.6)
+		return Color.from_hsv(NPC_WHITE.h, NPC_WHITE.s, clampf(wv, 0.0, 1.0))
 	var base: Color
-	match _wash_family(cat):
+	match fam:
 		"grey":    base = WASH_GREY
 		"mustard": base = WASH_MUSTARD
 		"ruins":   base = WASH_RUINS
 		_:         base = WASH_RED
-	var jitter := (float(RoadHash.pick("ink|%s|val" % iid, 100)) / 100.0 - 0.5) * 2.0 * WASH_JITTER
 	var s := base.s * (0.78 if is_npc else 1.06)
 	var v := base.v * (1.0 + jitter) * (0.96 if is_npc else 1.0)
 	return Color.from_hsv(base.h, clampf(s, 0.0, 1.0), clampf(v, 0.0, 1.0))
