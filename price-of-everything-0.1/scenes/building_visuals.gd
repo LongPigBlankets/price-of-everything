@@ -1177,9 +1177,50 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 							})
 							wing_done = true
 							break
+		# Tank farm (owner 2026-07-10): chemical works (chem plants lime,
+		# petro/poly refineries pink) carry their cylinders OUTSIDE the hall
+		# as ONE battery block — 2 side by side, 3 in a triangle, 4 in a grid.
+		if fam == "lime" or fam == "pink":
+			var tn := 2 + RoadHash.pick("tf|%s|n" % iid, 3)
+			var tr := SUBCOMP_TANK_R
+			var pitch := tr * 2.0 + 1.5
+			var offs: Array = []
+			match tn:
+				2: offs = [Vector2(-pitch * 0.5, 0), Vector2(pitch * 0.5, 0)]
+				3: offs = [Vector2(-pitch * 0.5, pitch * 0.433), Vector2(pitch * 0.5, pitch * 0.433), Vector2(0, -pitch * 0.433)]
+				_: offs = [Vector2(-pitch * 0.5, -pitch * 0.5), Vector2(pitch * 0.5, -pitch * 0.5), Vector2(-pitch * 0.5, pitch * 0.5), Vector2(pitch * 0.5, pitch * 0.5)]
+			var tbh := Vector2.ZERO
+			for o in offs:
+				tbh.x = maxf(tbh.x, absf((o as Vector2).x) + tr)
+				tbh.y = maxf(tbh.y, absf((o as Vector2).y) + tr)
+			var tblock: PackedVector2Array = BuildingShapes.make_rect(tbh.x * 2.0, tbh.y * 2.0).verts
+			var trot := RoadHash.pick("tf|%s|rot" % iid, dirs.size())
+			for j2 in dirs.size():
+				var tdir: Vector2 = dirs[(j2 + trot) % dirs.size()]
+				var text: float = absf(tdir.x) * bhalf.x + absf(tdir.y) * bhalf.y
+				var tctr: Vector2 = bpos + tdir * (text + SUBCOMP_GAP + maxf(tbh.x, tbh.y))
+				if not _valid(tctr, tblock, tbh, placed, land, segs, rivers):
+					continue
+				var tentry := {"pos": tctr, "half": tbh}
+				placed.append(tentry)
+				others.append(tentry)
+				var tanks: Array = []
+				for o2 in offs:
+					tanks.append(center + tctr + (o2 as Vector2))
+				var tbverts := PackedVector2Array()
+				for tbv in tblock:
+					tbverts.append(center + tctr + tbv)
+				_subcomponents.append({
+					"tile_id": tile_id, "verts": tbverts, "color": pcolor,
+					"kind": "tankfarm", "is_npc": is_npc, "bb": _verts_bb(tbverts),
+					"cat": str(p.cat), "iid": iid, "tanks": tanks, "r": tr,
+				})
+				break
 		# at most ONE annex (touches/merges) + ONE round tank (small gap), both parent colour.
 		for kind in ["annex", "tank"]:
 			var is_tank: bool = (kind == "tank")
+			if is_tank and (fam == "lime" or fam == "pink"):
+				continue   # the tank-farm battery IS their tankage
 			var shape: Dictionary = BuildingShapes.circle(SUBCOMP_TANK_R) if is_tank else BuildingShapes.make_rect(SUBCOMP_ANNEX.x, SUBCOMP_ANNEX.y)
 			var verts: PackedVector2Array = shape.verts
 			var sh: Vector2 = shape.half
@@ -3048,7 +3089,7 @@ func _draw() -> void:
 	# Round tanks + farm barns/silos on top (tanks sit off their building; farm outbuildings sit ON the field).
 	for sc in _subcomponents:
 		var k := str(sc.kind)
-		if k == "tank" or k == "farm_barn" or k == "farm_silo" or k == "storey":
+		if k == "tank" or k == "tankfarm" or k == "farm_barn" or k == "farm_silo" or k == "storey":
 			_draw_subcomponent(sc)
 
 ## Draw one ancillary (tank/annex) in the parent's wash + ink; farm outbuildings
@@ -3058,6 +3099,13 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		return
 	var sv: PackedVector2Array = sc.verts
 	var kind := str(sc.kind)
+	if kind == "tankfarm":
+		var twash := _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc))
+		for tc in (sc.tanks as Array):
+			draw_circle(tc as Vector2, float(sc.r), twash)
+			draw_arc(tc as Vector2, float(sc.r), 0.0, TAU, 24, INK, INK_W, true)
+			draw_circle(tc as Vector2, 1.2, INK)
+		return
 	if kind == "corridor":
 		draw_colored_polygon(sv, _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc)))
 		draw_line(sv[0], sv[1], INK, 1.0)
@@ -3174,17 +3222,6 @@ func _draw_roof_motifs(cat: String, iid: String, verts: PackedVector2Array, is_n
 	var lng: Vector2 = ax if ax.length() >= bx.length() else bx
 	var shr: Vector2 = bx if lng == ax else ax
 	match _wash_family(cat):
-		"lime", "pink":
-			# Chemical works (chem plants, petro refineries) read as tank
-			# farms: 2-4 cylinders seen from the top instead of shed roofs
-			# (owner 2026-07-10).
-			var r := clampf(shr.length() * 0.22, 2.5, 6.0)
-			var n_cyl := 2 + RoadHash.pick("ink|%s|cyl" % iid, 3)
-			n_cyl = clampi(mini(n_cyl, int(lng.length() / (r * 2.8))), 2, 4)
-			for k in n_cyl:
-				var cc: Vector2 = verts[0] + lng * ((float(k) + 0.5) / float(n_cyl)) + shr * 0.5
-				draw_arc(cc, r, 0.0, TAU, 24, INK, 1.0, true)
-				draw_circle(cc, 1.2, INK)
 		"grey", "navy", "orange":
 			var n := clampi(int(lng.length() / SAWTOOTH_PITCH), 1, 12)
 			for k in range(1, n):
