@@ -2670,15 +2670,8 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	var card := VBoxContainer.new()
 	card.add_theme_constant_override("separation", 4)
 
-	# ── Header row (clickable), in a differentiated card with an off-white outline ─
-	var header_panel := PanelContainer.new()
-	var hp_style := StyleBoxFlat.new()
-	hp_style.bg_color = DS.PALETTE.BG_HIGHLIGHT
-	hp_style.border_color = DS.PALETTE.ACCENT  # off-white outline
-	hp_style.set_border_width_all(1)
-	hp_style.set_corner_radius_all(10)
-	hp_style.set_content_margin_all(5)
-	header_panel.add_theme_stylebox_override("panel", hp_style)
+	# ── Header row (clickable), on a brushed navy metal plate w/ silver edge ─────
+	var header_panel := _BrushedCard.new(5, 5, 10)
 	card.add_child(header_panel)
 
 	var header := HBoxContainer.new()
@@ -2716,7 +2709,7 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	var info_margin := MarginContainer.new()
 	info_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var v_inset := 8 if solo else 20  # solo also shows a RAG strip, so less inset
+	var v_inset := 8 if solo else 20  # solo also shows the status-pill row, so less inset
 	info_margin.add_theme_constant_override("margin_top", v_inset)
 	info_margin.add_theme_constant_override("margin_bottom", v_inset)
 	info_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2733,8 +2726,6 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	name_label.theme_type_variation = &"BuildingName"  # next size up (Barlow Semi 22)
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # spills onto next row
 	info.add_child(name_label)
-	if solo:  # at-a-glance status for the single building
-		info.add_child(_make_building_rag_strip(first))
 	var pusher := Control.new()
 	pusher.size_flags_vertical = Control.SIZE_EXPAND_FILL  # pushes cost basis to the bottom
 	pusher.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2745,18 +2736,29 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	cost_header.add_theme_font_size_override("font_size", 13)
 	cost_header.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
 	info.add_child(cost_header)
+	# Bottom row: cost per unit, with the two status pills to its right (solo only —
+	# a group aggregates buildings whose statuses can differ).
+	var bottom_row := HBoxContainer.new()
+	bottom_row.add_theme_constant_override("separation", 8)
+	bottom_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var cost_values := Label.new()
 	cost_values.text = str(first.get("production_cost", "—"))
 	cost_values.theme_type_variation = &"Numeric"
 	cost_values.add_theme_font_size_override("font_size", 14)
-	info.add_child(cost_values)
+	cost_values.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bottom_row.add_child(cost_values)
+	if solo:
+		var pills := _make_status_pills(first)
+		pills.size_flags_horizontal = Control.SIZE_SHRINK_END
+		bottom_row.add_child(pills)
+	info.add_child(bottom_row)
 	header.add_child(info_margin)
 
 	# ── SOLO: clickable straight through to the building detail panel ────────────
 	if solo:
 		var iid := str(first.get("instance_id", ""))
-		header_panel.mouse_entered.connect(func(): hp_style.border_color = DS.PALETTE.OK; header_panel.queue_redraw())
-		header_panel.mouse_exited.connect(func(): hp_style.border_color = DS.PALETTE.ACCENT; header_panel.queue_redraw())
+		header_panel.mouse_entered.connect(func(): header_panel.hovered = true)
+		header_panel.mouse_exited.connect(func(): header_panel.hovered = false)
 		header.gui_input.connect(func(e):
 			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 				_open_building_or_construction(iid)
@@ -2929,16 +2931,14 @@ func _make_building_row(b: Dictionary) -> HBoxContainer:
 	stub.add_child(bar)
 	row.add_child(stub)
 
-	# The card itself (hover state, clickable).
-	var card := PanelContainer.new()
+	# The card itself (hover state, clickable) — brushed navy metal, silver edge.
+	var card := _BrushedCard.new(12, 8, 8)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.custom_minimum_size = Vector2(0, 84)
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	var base_style := _building_card_style(false)
-	card.add_theme_stylebox_override("panel", base_style)
-	card.mouse_entered.connect(func(): card.add_theme_stylebox_override("panel", _building_card_style(true)))
-	card.mouse_exited.connect(func(): card.add_theme_stylebox_override("panel", _building_card_style(false)))
+	card.mouse_entered.connect(func(): card.hovered = true)
+	card.mouse_exited.connect(func(): card.hovered = false)
 	card.gui_input.connect(func(e): _on_building_row_input(e, b))
 
 	var info := VBoxContainer.new()
@@ -2983,77 +2983,175 @@ func _make_building_row(b: Dictionary) -> HBoxContainer:
 	sub.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
 	info.add_child(sub)
 
-	# RAG strip + land size (capitalised) on the same row.
-	var rag_row := HBoxContainer.new()
-	rag_row.add_theme_constant_override("separation", 8)
-	var strip := _make_building_rag_strip(b)
-	rag_row.add_child(strip)
-	var rag_spacer := Control.new()
-	rag_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rag_row.add_child(rag_spacer)
+	# Status pills + land size (capitalised) on the same bottom row.
+	var pill_row := HBoxContainer.new()
+	pill_row.add_theme_constant_override("separation", 8)
+	pill_row.add_child(_make_status_pills(b))
+	var pill_spacer := Control.new()
+	pill_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pill_row.add_child(pill_spacer)
 	var land := Label.new()
 	land.text = ("%s LAND" % _fmt_size(float(b.land)))
 	land.theme_type_variation = &"Caption"
 	land.add_theme_font_size_override("font_size", 11)
 	land.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
-	rag_row.add_child(land)
-	info.add_child(rag_row)
+	pill_row.add_child(land)
+	info.add_child(pill_row)
 	row.add_child(card)
 	return row
 
-func _building_card_style(hovered: bool) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	s.bg_color = DS.PALETTE.BG_HIGHLIGHT if hovered else DS.PALETTE.BG_CARD
-	s.border_color = DS.PALETTE.ACCENT if hovered else DS.PALETTE.BORDER_SOFT
-	s.set_border_width_all(1)
-	s.set_corner_radius_all(8)
-	s.content_margin_left = 12
-	s.content_margin_right = 12
-	s.content_margin_top = 8
-	s.content_margin_bottom = 8
-	return s
+# ── Building-card chrome: brushed navy metal plate with a machined silver edge ──
+# (owner 2026-07-10 — replaces the flat BG_CARD/ACCENT-outline styleboxes).
 
-const _RAG_STRIP := [
-	["power", "Power"],
-	["inputs_status", "Inputs"],
-	["duration_status", "Transport duration"],
-	["transport_cost_status", "Transport cost"],
-	["produce_cost_status", "Cost to produce"],
-]
+## PanelContainer that paints its own plate: diagonal navy gradient (light
+## top-left), fine brushed streaks, and a silver rim lit top-left → shadowed
+## bottom-right (the end-turn dock's machined-metal family).
+class _BrushedCard extends PanelContainer:
+	const NAVY_TL := Color(0.05, 0.205, 0.365)
+	const NAVY_BR := Color(0.0, 0.075, 0.155)
+	const SILVER_LT := Color("#b3bcc6")
+	const SILVER_DK := Color("#5b636e")
+	const SILVER_HOVER := Color("#dbe2ea")
+	var radius := 9.0
+	var hovered := false:
+		set(v):
+			hovered = v
+			queue_redraw()
+	func _init(margin_h: int = 12, margin_v: int = 8, r: float = 9.0) -> void:
+		radius = r
+		var sb := StyleBoxEmpty.new()
+		sb.content_margin_left = margin_h
+		sb.content_margin_right = margin_h
+		sb.content_margin_top = margin_v
+		sb.content_margin_bottom = margin_v
+		add_theme_stylebox_override("panel", sb)
+		resized.connect(queue_redraw)
+	func _rounded_points(r: Rect2, rad: float) -> PackedVector2Array:
+		var pts := PackedVector2Array()
+		var centres: Array[Vector2] = [
+			Vector2(r.position.x + rad, r.position.y + rad),
+			Vector2(r.end.x - rad, r.position.y + rad),
+			Vector2(r.end.x - rad, r.end.y - rad),
+			Vector2(r.position.x + rad, r.end.y - rad),
+		]
+		var starts: Array[float] = [PI, PI * 1.5, 0.0, PI * 0.5]
+		for c in 4:
+			for i in 7:
+				var a: float = starts[c] + (PI * 0.5) * float(i) / 6.0
+				pts.append(centres[c] + Vector2(cos(a), sin(a)) * rad)
+		return pts
+	func _draw() -> void:
+		if size.x < 4.0 or size.y < 4.0:
+			return
+		var r := Rect2(Vector2.ZERO, size).grow(-1.0)
+		var pts := _rounded_points(r, radius)
+		var diag := maxf(1.0, size.x + size.y)
+		# Navy plate, lit from the top-left.
+		var cols := PackedColorArray()
+		for p in pts:
+			var t := clampf((p.x + p.y) / diag, 0.0, 1.0)
+			var c := NAVY_TL.lerp(NAVY_BR, t)
+			cols.append(c.lightened(0.07) if hovered else c)
+		draw_polygon(pts, cols)
+		# Brushed streaks — fine horizontal grain, deterministic alpha pattern.
+		var y := r.position.y + 4.0
+		var i := 0
+		while y < r.end.y - 3.0:
+			var a := 0.022 + 0.02 * absf(sin(float(i) * 12.9898))
+			draw_line(Vector2(r.position.x + 3.0, y), Vector2(r.end.x - 3.0, y), Color(1, 1, 1, a), 1.0)
+			y += 3.0
+			i += 1
+		# Machined silver rim (closed), lighter where the light lands.
+		var rim := PackedColorArray()
+		for p in pts:
+			var t := clampf((p.x + p.y) / diag, 0.0, 1.0)
+			rim.append((SILVER_HOVER if hovered else SILVER_LT).lerp(SILVER_DK, t))
+		var closed := pts.duplicate()
+		closed.append(pts[0])
+		rim.append(rim[0])
+		draw_polyline_colors(closed, rim, 1.5, true)
+		# Bevel highlight just inside the top edge.
+		draw_line(Vector2(r.position.x + radius, r.position.y + 2.2),
+			Vector2(r.end.x - radius, r.position.y + 2.2), Color(1, 1, 1, 0.10), 1.0)
 
-func _make_building_rag_strip(b: Dictionary) -> HBoxContainer:
-	var strip := HBoxContainer.new()
-	strip.add_theme_constant_override("separation", 4)
-	strip.custom_minimum_size = Vector2(0, 14)
-	strip.mouse_filter = Control.MOUSE_FILTER_STOP
-	var tip_lines: Array[String] = []
-	for entry in _RAG_STRIP:
-		var key: String = entry[0]
-		var label_text: String = entry[1]
-		var status := str(b.get("power_status" if key == "power" else key, "muted"))
-		var rect := ColorRect.new()
-		rect.custom_minimum_size = Vector2(20, 10)
-		rect.color = _status_color(status)
-		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		strip.add_child(rect)
-		tip_lines.append("%s — %s" % [label_text, _rag_desc(label_text, status)])
-	strip.tooltip_text = "\n".join(tip_lines)
-	return strip
+# ── Status pills: Running/Stalled/Starting + power source (owner 2026-07-10,
+# replacing the 5-dot RAG strip on building cards) ──────────────────────────────
 
-func _rag_desc(label_text: String, status: String) -> String:
-	match label_text:
-		"Power":
-			return {"ok": "self supplied", "warn": "via grid", "problem": "not powered", "muted": "no power needed"}.get(status, status)
-		"Inputs":
-			return {"ok": "from your supply", "warn": "from market", "problem": "missing", "muted": "no inputs"}.get(status, status)
-		"Transport duration":
-			return {"ok": "arrives same turn", "warn": "multi-turn shipment", "problem": "—", "muted": "didn't run"}.get(status, status)
-		"Transport cost":
-			return {"ok": "no shipping cost", "warn": "paying to ship", "problem": "—", "muted": "didn't run"}.get(status, status)
-		"Cost to produce":
-			return {"ok": "cheaper than market", "warn": "even with market", "problem": "dearer than market", "muted": "unknown"}.get(status, status)
-		_:
-			return status
+## Small vector plug (two prongs, body, cable) for the power pill.
+class _PlugIcon extends Control:
+	var color := Color.WHITE
+	func _init(c: Color) -> void:
+		color = c
+		custom_minimum_size = Vector2(12, 14)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		var w := size.x
+		draw_line(Vector2(w * 0.34, 0.5), Vector2(w * 0.34, 4.0), color, 1.7, true)
+		draw_line(Vector2(w * 0.66, 0.5), Vector2(w * 0.66, 4.0), color, 1.7, true)
+		draw_rect(Rect2(w * 0.15, 4.0, w * 0.70, 5.0), color)
+		draw_line(Vector2(w * 0.5, 9.0), Vector2(w * 0.5, 11.5), color, 1.7, true)
+		draw_line(Vector2(w * 0.5, 11.5), Vector2(w * 0.18, 13.2), color, 1.7, true)
+
+func _pill(tint: Color, tip: String) -> PanelContainer:
+	var p := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(tint, 0.13)
+	sb.border_color = Color(tint, 0.55)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
+	sb.content_margin_left = 9
+	sb.content_margin_right = 9
+	sb.content_margin_top = 2
+	sb.content_margin_bottom = 2
+	p.add_theme_stylebox_override("panel", sb)
+	p.tooltip_text = tip
+	# PASS: hover tooltips work while clicks still reach the card underneath.
+	p.mouse_filter = Control.MOUSE_FILTER_PASS
+	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return p
+
+func _pill_label(text: String, tint: Color) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 11)
+	l.add_theme_color_override("font_color", tint)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+## The two-pill status row: Running/Stalled/Starting + how the building is
+## powered (green ⚡ own network / amber plug grid / red plug unpowered).
+func _make_status_pills(b: Dictionary) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var act := str(b.get("activity", ""))
+	if act != "":
+		var spec: Array = {
+			"running": [DS.PALETTE.OK, "Running", "Produced last turn"],
+			"stalled": [DS.PALETTE.DANGER, "Stalled", "Didn't run — starved, paused or mined out"],
+			"starting": [DS.PALETTE.WARN, "Starting", "No production yet — first run pending"],
+		}.get(act, [])
+		if not spec.is_empty():
+			var pill := _pill(spec[0], str(spec[2]))
+			pill.add_child(_pill_label(str(spec[1]), spec[0]))
+			row.add_child(pill)
+	match str(b.get("power_status", "muted")):
+		"ok":
+			var pill := _pill(DS.PALETTE.OK, "Powered by your own network")
+			var bolt := _pill_label("⚡", DS.PALETTE.OK)
+			bolt.add_theme_font_size_override("font_size", 12)
+			pill.add_child(bolt)
+			row.add_child(pill)
+		"warn":
+			var pill := _pill(DS.PALETTE.WARN, "Powered from the grid")
+			pill.add_child(_PlugIcon.new(DS.PALETTE.WARN))
+			row.add_child(pill)
+		"problem":
+			var pill := _pill(DS.PALETTE.DANGER, "Unpowered")
+			pill.add_child(_PlugIcon.new(DS.PALETTE.DANGER))
+			row.add_child(pill)
+	return row
 
 func _make_metric_line(label_text: String, value: String, value_color: Color) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -3196,29 +3294,54 @@ func _make_construction_row(project: Dictionary) -> HBoxContainer:
 	row.add_child(cancel)
 	return row
 
+# Building icon, embossed into the card's metal (owner 2026-07-10): no plate,
+# no outline — a dark cast to the bottom-right, an additive light catch to the
+# top-left (bottom-menu lighting: light from the top-left), art on top, and a
+# faint specular sheen so the icon reads as pressed metal.
 func _make_building_icon(building_id: String, alpha: float, size: int = 80) -> Control:
-	var holder := PanelContainer.new()
+	var holder := Control.new()
 	holder.custom_minimum_size = Vector2(size, size)
 	holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	# Let clicks fall through to the row so the icon is part of the clickable area.
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var s := StyleBoxFlat.new()
-	s.bg_color = DS.PALETTE.BG_INSET
-	s.border_color = DS.PALETTE.BORDER_SOFT
-	s.set_border_width_all(1)
-	s.set_corner_radius_all(8)
-	s.set_content_margin_all(6)
-	holder.add_theme_stylebox_override("panel", s)
 	var bd: Dictionary = Catalog.get_building(building_id)
 	var tex := _building_texture(bd)
 	if tex != null:
-		var rect := TextureRect.new()
-		rect.texture = tex
-		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		rect.modulate = Color(1, 1, 1, alpha)
-		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		holder.add_child(rect)
+		var make_rect := func(offset: Vector2) -> TextureRect:
+			var r := TextureRect.new()
+			r.texture = tex
+			r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			r.set_anchors_preset(Control.PRESET_FULL_RECT)
+			r.offset_left = 4 + offset.x
+			r.offset_top = 4 + offset.y
+			r.offset_right = -4 + offset.x
+			r.offset_bottom = -4 + offset.y
+			holder.add_child(r)
+			return r
+		var shadow: TextureRect = make_rect.call(Vector2(2.0, 2.5))
+		shadow.modulate = Color(0, 0, 0, 0.5 * alpha)
+		var catch: TextureRect = make_rect.call(Vector2(-1.5, -1.5))
+		catch.modulate = Color(0.55, 0.62, 0.70, alpha)
+		var add_mat := CanvasItemMaterial.new()
+		add_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		catch.material = add_mat
+		var art: TextureRect = make_rect.call(Vector2.ZERO)
+		art.modulate = Color(1, 1, 1, alpha)
+		var spec_path := "res://assets/icons/ui_icons/alt/_specular.png"
+		if ResourceLoader.exists(spec_path):
+			var sheen := TextureRect.new()
+			sheen.texture = load(spec_path)
+			sheen.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			sheen.stretch_mode = TextureRect.STRETCH_SCALE
+			sheen.set_anchors_preset(Control.PRESET_FULL_RECT)
+			sheen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			sheen.modulate = Color(1, 1, 1, 0.16 * alpha)
+			var sheen_mat := CanvasItemMaterial.new()
+			sheen_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+			sheen.material = sheen_mat
+			holder.add_child(sheen)
 	else:
 		var fallback := Label.new()
 		fallback.text = str(bd.get("display_name", "?")).substr(0, 3).to_upper()
@@ -3227,6 +3350,7 @@ func _make_building_icon(building_id: String, alpha: float, size: int = 80) -> C
 		fallback.theme_type_variation = &"Numeric"
 		fallback.modulate = Color(1, 1, 1, alpha)
 		fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		fallback.set_anchors_preset(Control.PRESET_FULL_RECT)
 		holder.add_child(fallback)
 	return holder
 
