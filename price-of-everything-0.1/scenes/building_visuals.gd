@@ -1061,16 +1061,36 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 		if (fam == "grey" or fam == "navy" or fam == "lime" or fam == "mustard") and parent_area >= WING_MIN_PARENT_AREA:
 			base_wings = 1 + RoadHash.pick("wing|%s|n" % iid, 2)
 		var wing_total := mini(base_wings + (lvl - 1), 4)
-		if wing_total > 0 and pverts.size() == 4:
-			# Offsets and the wing rect itself follow the PARENT QUAD's own axes —
-			# world-axis offsets on a rotated hall corner-touch and draw a bowtie.
-			var ea: Vector2 = pverts[1] - pverts[0]
-			var eb: Vector2 = pverts[3] - pverts[0]
-			var ua := ea.normalized()
-			var ub := eb.normalized()
+		if wing_total > 0 and pverts.size() >= 3:
+			# Axes from the footprint's LONGEST edge, extents by projection —
+			# works for quads AND the L/C shapes, which previously never grew
+			# wings at all (owner 2026-07-10: an upgraded building must expand
+			# even if only a bit). World-axis offsets on rotated halls would
+			# corner-touch and draw a bowtie.
+			var longest := Vector2.RIGHT
+			var best_l := 0.0
+			for ei in pverts.size():
+				var ev := pverts[(ei + 1) % pverts.size()] - pverts[ei]
+				if ev.length() > best_l:
+					best_l = ev.length()
+					longest = ev
+			var ua := longest.normalized()
+			var ub := Vector2(-ua.y, ua.x)
 			var pang := ua.angle()
+			var wc := center + bpos
+			var tmin := 1.0e9
+			var tmax := -1.0e9
+			var nmin := 1.0e9
+			var nmax := -1.0e9
+			for pv2 in pverts:
+				var dt := (pv2 - wc).dot(ua)
+				var dn := (pv2 - wc).dot(ub)
+				tmin = minf(tmin, dt)
+				tmax = maxf(tmax, dt)
+				nmin = minf(nmin, dn)
+				nmax = maxf(nmax, dn)
 			var wdirs: Array = [ua, -ua, ub, -ub]
-			var wexts: Array = [ea.length() * 0.5, ea.length() * 0.5, eb.length() * 0.5, eb.length() * 0.5]
+			var wexts: Array = [tmax, -tmin, nmax, -nmin]
 			for wi in wing_total:
 				var frac := WING_AREA_MIN + float(RoadHash.pick("wing|%s|%d|a" % [iid, wi], 100)) / 100.0 * WING_AREA_SPAN
 				var aspect := 0.5 + float(RoadHash.pick("wing|%s|%d|s" % [iid, wi], 31)) / 100.0
@@ -1090,7 +1110,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 					# Seeded slide along the perpendicular edge so wings sit off-centre
 					# (reference compounds are asymmetric), clamped to keep the overlap.
 					var perp: Vector2 = wdirs[(di + 2) % 4] if di < 2 else wdirs[di - 2]
-					var pext: float = float(wexts[2]) if di < 2 else float(wexts[0])
+					var pext: float = minf(float(wexts[2]), float(wexts[3])) if di < 2 else minf(float(wexts[0]), float(wexts[1]))
 					var wing_pext: float = whh * 0.5 if di < 2 else ww * 0.5
 					var slide_max: float = maxf(pext - wing_pext, 0.0)
 					var slide := (float(RoadHash.pick("wing|%s|%d|sl" % [iid, wi], 100)) / 100.0 - 0.5) * 2.0 * slide_max

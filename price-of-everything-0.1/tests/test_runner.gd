@@ -1073,10 +1073,17 @@ func _test_level_storeys_and_owner_swap() -> void:
 	(MatchState.buildings[iid] as Dictionary)["level"] = 3
 	bv._rebuild_subcomponents(tile_id)
 	var count_l3 := 0
+	var wings_l3 := 0
 	for sc2 in bv._subcomponents:
-		if str(sc2.kind) == "storey" and str(sc2.iid) == iid:
-			count_l3 += 1
+		if str(sc2.iid) == iid:
+			if str(sc2.kind) == "storey":
+				count_l3 += 1
+			elif str(sc2.kind) == "wing":
+				wings_l3 += 1
 	_check(count_l3 == 2, "storeys: two blocks at level 3")
+	# Open ground + L3 must grow at least one wing — L/C footprints once
+	# skipped wings entirely (quad-only axis math).
+	_check(wings_l3 >= 1, "wings: upgraded building spreads on open ground")
 	# Ownership swap flips the placement's is_npc (bought buildings recolour).
 	var idx: int = bv._placement_index[iid]
 	_check(bool((bv._placements[idx] as Dictionary).is_npc), "owner swap: starts NPC")
