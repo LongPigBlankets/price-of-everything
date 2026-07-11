@@ -484,20 +484,29 @@ func _on_victory_widget_clicked() -> void:
 		_set_panel_visible(victory_panel, true)
 
 func _on_victory_achieved(total: int, turn: int) -> void:
-	# Auto-open the Victory panel over whatever is showing, plus a toast. The game
-	# is not force-ended — the player may keep pushing their score.
-	_hide_all_panels()
-	_set_panel_visible(victory_panel, true)
+	# Crossing the win threshold at ANY turn ends the game with the Victory screen
+	# (owner 2026-07-11 — previously the game kept going and only auto-opened the tracks
+	# panel). Headless balance runs are exempt so a mid-run win never cuts them short.
+	if DisplayServer.get_name() == "headless":
+		return
 	MatchState.request_toast("VICTORY — score %d on turn %d!" % [total, turn], "success")
+	TurnManager.game_ended = true
+	_show_end_screen()
 
-# Turn cap reached → the full end-of-game Victory / Defeat screen. game_ended_signal
-# fires just BEFORE turn_resolution_completed (which ticks VictoryState for the final
-# turn), so wait for that tick before gathering the result.
+# Reached the turn cap without a win → Defeat. game_ended_signal fires just BEFORE
+# turn_resolution_completed (the final VictoryState tick), so wait for that tick; if a
+# win latched on the final turn its Victory screen has already been shown.
 func _on_game_ended_signal(reason: String) -> void:
-	if reason != "turn_cap_reached" or _end_screen != null:
+	if reason != "turn_cap_reached" or _end_screen != null or DisplayServer.get_name() == "headless":
 		return
 	await TurnManager.turn_resolution_completed
 	await get_tree().process_frame   # let VictoryState._tick finish for the final turn
+	if VictoryState.won:
+		return
+	_show_end_screen()
+
+# Build + present the full end-of-game screen from the live result. Idempotent.
+func _show_end_screen() -> void:
 	if _end_screen != null:
 		return
 	_hide_all_panels()
