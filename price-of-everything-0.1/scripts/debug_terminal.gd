@@ -271,8 +271,14 @@ func _run_command(text: String) -> String:
 				return "unknown advisor '%s'" % aid
 			MatchState.cheat_set_loyalty(aid, float(parts[2]))
 			return "%s loyalty now %.1f" % [aid, MatchState.advisor_loyalty_value(aid)]
+		"win":
+			# Grant a full victory track (1000 pts / secured). One of:
+			# greenest / logistics / richest / autarkic / widest, or 'all'.
+			if parts.size() < 2:
+				return "usage: win <greenest|logistics|richest|autarkic|widest|all>"
+			return _cheat_win_track(parts[1].to_lower())
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all   |   research all   |   skip <turns>   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   swap bdp   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   swap bdp   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
@@ -294,6 +300,29 @@ func _skip_turns(n: int) -> void:
 	TurnManager.fast_mode = was_fast
 	DecisionState.auto_resolve = was_auto
 	_print_line("skip: done — now on turn %d." % TurnManager.current_turn)
+
+# `win <track>|all` cheat: fully secure a victory track (best progress → 1.0, +1000
+# points) and record the turn it was secured, then latch the overall win if the
+# turn's rising threshold is now cleared. Republishes the score to every panel.
+func _cheat_win_track(track: String) -> String:
+	var keys: Array = VictoryState.TRACK_ORDER
+	if track != "all" and not (track in keys):
+		return "unknown track '%s'  (greenest|logistics|richest|autarkic|widest|all)" % track
+	var targets: Array = keys if track == "all" else [track]
+	var turn := int(TurnManager.current_turn)
+	for k in targets:
+		VictoryState.track_best[k] = 1.0
+		if not VictoryState.track_secured_turn.has(k):
+			VictoryState.track_secured_turn[k] = turn
+	var total := VictoryState.total_for_turn(turn)
+	var thr := VictoryState.win_threshold_for_turn(turn)
+	if not VictoryState.won and total >= thr:
+		VictoryState.won = true
+		VictoryState.won_turn = turn
+		VictoryState.victory_achieved.emit(total, turn)
+	VictoryState._emit_refresh()
+	var what := "ALL tracks" if track == "all" else "'%s' (+1000)" % track
+	return "Secured %s — score %d / %d (%s)." % [what, total, thr, "WON" if VictoryState.won else "not yet won"]
 
 func _roads_route(tile_a: String, tile_b: String) -> String:
 	var maps := get_tree().get_nodes_in_group("hex_map")
