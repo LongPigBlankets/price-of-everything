@@ -1707,6 +1707,18 @@ func _output_summary(building: Dictionary, recipe: Dictionary) -> String:
 	var dest := str(route.get("destination", "—"))
 	if not bool(route.get("reachable", true)):
 		dest += " · no route"
+	# Quantity-capped tile route (CTRL+click flow): show the split — what ships out
+	# and what stays behind, each on its own line (the card grows to fit).
+	var iid := str(building.get("instance_id", ""))
+	var gid := BuildingStatus.primary_output_good_id(recipe)
+	var cap := MatchState.get_output_ship_quantity(iid, gid)
+	if cap > 0 and not bool(route.get("has_market", false)):
+		var produced := BuildingStatus.primary_output_qty(recipe)
+		var lines := "Sending %d to %s" % [mini(cap, produced), dest]
+		var rest := maxi(0, produced - cap)
+		if rest > 0:
+			lines += "\nSending %d to tile stockpile" % rest
+		return lines
 	return dest
 
 # A clickable routing card (LABEL kicker + value + chevron) → opens a sheet. A PanelContainer,

@@ -6287,6 +6287,34 @@ func _test_output_market_route() -> void:
 		"route_output_to_market clears the special-order tag")
 	SpecialOrderState.reset()
 
+	# Per-good shipping cap (the CTRL+click "send a specific amount every turn" flow).
+	MatchState.set_output_stockpile_destination("inst_test_market", "tile_3_9", "g_001")
+	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 10)
+	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 10,
+		"ship quantity cap set and read back")
+	MatchState.set_output_stockpile_destination("inst_test_market", "tile_3_8", "g_001")
+	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0,
+		"a plain re-route clears the cap (plain click ships everything)")
+	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 7)
+	MatchState.route_output_to_market("inst_test_market", "g_001")
+	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0,
+		"routing back to market clears the cap")
+	MatchState.set_output_stockpile_destination("inst_test_market", "tile_3_9", "g_001")
+	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 5)
+	var routed_state: Dictionary = MatchState.export_state()
+	_check((routed_state.get("output_ship_quantities", {}) as Dictionary).has("inst_test_market"),
+		"ship quantity caps ride the save export")
+	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 0)
+	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0
+		and not MatchState.output_ship_quantities.has("inst_test_market"),
+		"clearing the cap removes the empty per-building entry")
+	MatchState.import_state(routed_state)
+	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 5,
+		"ship quantity caps survive a save round-trip")
+	MatchState.clear_output_stockpile_destination("inst_test_market", "g_001")
+	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0,
+		"clearing the route clears the cap too")
+
 func _test_bulk_sell() -> void:
 	Stockpile.add("tile_3_8", "g_001", 30)
 	var result: Dictionary = MatchState.sell_all_to_market({"good_id": "", "finished_only": false, "per_tile_keep": 10})

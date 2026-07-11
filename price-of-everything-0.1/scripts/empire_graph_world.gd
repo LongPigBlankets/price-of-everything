@@ -351,7 +351,12 @@ func _draw() -> void:
 		var path := _route_sell(_box_by_iid[e["from"]], _box_by_iid[e["to"]],
 			int(e.get("bus", 0)), int(e.get("bus_n", 1)),
 			int(e.get("slot", 0)), int(e.get("slot_n", 1)), ports_top)
-		draw_polyline(_chamfer(path, _CHAMFER), _SELL, _SELL_WIDTH, true)
+		if bool(e.get("actual", true)):
+			draw_polyline(_chamfer(path, _CHAMFER), _SELL, _SELL_WIDTH, true)
+		else:
+			# Standing default, nothing actually shipping yet: dashed — "this is
+			# where sales WOULD leave" (goods are pooling in the tile stockpile).
+			_draw_dashed_polyline(_chamfer(path, _CHAMFER), Color(_SELL, 0.8), _SELL_WIDTH)
 
 	# Input lines (thin amber) routed left-to-right between columns.
 	for e in _edges:
@@ -400,6 +405,30 @@ func _route_sell(a: Dictionary, b: Dictionary, bus: int, bus_n: int, slot: int, 
 	var bus_y := ports_top - 40.0 - float(bus_n - 1 - bus) * 26.0
 	bus_y = maxf(bus_y, start.y + 28.0)
 	return PackedVector2Array([start, Vector2(start.x, bus_y), Vector2(entry_x, bus_y), entry])
+
+
+## Draw a polyline as dashes (12px on / 9px off), continuous across corners.
+func _draw_dashed_polyline(pts: PackedVector2Array, color: Color, width: float) -> void:
+	const DASH := 12.0
+	const GAP := 9.0
+	var carry := 0.0   # distance into the current dash/gap cycle, carried across segments
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		var seg_len := a.distance_to(b)
+		if seg_len <= 0.001:
+			continue
+		var dir := (b - a) / seg_len
+		var t := 0.0
+		while t < seg_len:
+			var cycle_pos := fmod(carry + t, DASH + GAP)
+			if cycle_pos < DASH:
+				var run := minf(DASH - cycle_pos, seg_len - t)
+				draw_line(a + dir * t, a + dir * (t + run), color, width, true)
+				t += run
+			else:
+				t += minf((DASH + GAP) - cycle_pos, seg_len - t)
+		carry = fmod(carry + seg_len, DASH + GAP)
 
 
 ## Replace each interior corner of an orthogonal polyline with a 45deg chamfer.

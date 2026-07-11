@@ -931,6 +931,15 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 		# Market-bound output (no stockpile destination): sell it via the nearest port.
 		_sell_output_to_market(building, good, qty, summary)
 		return
+	# Per-good shipping cap on an explicit OTHER-tile route (the CTRL+click "send a
+	# specific amount every turn" flow): min(cap, produced) travels; the remainder
+	# stays in the origin tile's stockpile and keeps accumulating there.
+	var origin_tile := str(building.get("tile_id", ""))
+	if str(stockpile_coord) != origin_tile:
+		var cap := MatchState.get_output_ship_quantity(str(building.get("instance_id", "")), good.id)
+		if cap > 0 and qty > cap:
+			Stockpile.add(origin_tile, good.id, qty - cap)
+			qty = cap
 	var route := _transport_route(building.get("tile_id", ""), stockpile_coord, good.id)
 	# Unreachable destination (e.g. a fluid with no pipe / reinforced-pipe network to
 	# the target): do NOT attempt delivery and charge NOTHING — the output stays in

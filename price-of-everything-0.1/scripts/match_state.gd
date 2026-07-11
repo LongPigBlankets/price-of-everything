@@ -266,6 +266,10 @@ var peak_profit_per_turn: float = 0.0              # best profit/turn reached (a
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
 var output_special_order_destinations: Dictionary = {}  # instance_id -> {good_id -> special_order_id}
 const MARKET_DESTINATION := "__market__"  # sentinel tile_id: route this building's output to market
+# Per-good SHIPPING CAP for an explicit tile route (the CTRL+click "send a specific
+# amount every turn" flow): only min(cap, produced) ships to the destination each
+# turn; the remainder stays in the origin tile's stockpile. 0 / absent = ship all.
+var output_ship_quantities: Dictionary = {}  # instance_id -> {good_id -> int}
 var input_tile_only: Dictionary = {}  # "instance_id|good_id" -> true (tile stockpile ONLY; default buys from market)
 var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
@@ -2281,6 +2285,7 @@ func reset() -> void:
 	tile_buildings.clear()
 	output_stockpile_destinations.clear()
 	output_special_order_destinations.clear()
+	output_ship_quantities.clear()
 	pending_output_stockpile_selection.clear()
 	queued_stockpile_market_sales.clear()
 	sell_surplus_tiles.clear()
@@ -2355,6 +2360,7 @@ func debug_dump() -> Dictionary:
 		"tile_buildings": tile_buildings.duplicate(true),
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
 		"output_special_order_destinations": output_special_order_destinations.duplicate(true),
+		"output_ship_quantities": output_ship_quantities.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": pending_transport_shipments.duplicate(true),
 		"tile_land_owned": tile_land_owned.duplicate(true),
@@ -2406,6 +2412,7 @@ func export_state() -> Dictionary:
 		"route_objective": route_objective,
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
 		"output_special_order_destinations": output_special_order_destinations.duplicate(true),
+		"output_ship_quantities": output_ship_quantities.duplicate(true),
 		"input_tile_only": input_tile_only.duplicate(true),
 		"recurring_moves": recurring_moves.duplicate(true),
 		"scheduled_moves": scheduled_moves.duplicate(true),
@@ -2496,6 +2503,7 @@ func import_state(d: Dictionary) -> void:
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
 	output_special_order_destinations = (d.get("output_special_order_destinations", {}) as Dictionary).duplicate(true)
+	output_ship_quantities = (d.get("output_ship_quantities", {}) as Dictionary).duplicate(true)
 	input_tile_only = (d.get("input_tile_only", {}) as Dictionary).duplicate(true)
 	recurring_moves = (d.get("recurring_moves", []) as Array).duplicate(true)
 	scheduled_moves = (d.get("scheduled_moves", []) as Array).duplicate(true)
@@ -2657,8 +2665,27 @@ func set_output_stockpile_destination(instance_id: String, tile_id: String, good
 	per_good[good_id] = tile_id
 	output_stockpile_destinations[instance_id] = per_good
 	_clear_output_special_order_tag(instance_id, good_id)
+	set_output_ship_quantity(instance_id, good_id, 0)  # plain routing ships ALL; a cap is set explicitly after
 	pending_output_stockpile_selection.clear()
 	output_stockpile_destination_changed.emit(instance_id, tile_id, good_id)
+
+# Cap how much of `good_id` ships to the explicit destination each turn (the CTRL+click
+# "send a specific amount" flow). qty <= 0 clears the cap (ship everything).
+func set_output_ship_quantity(instance_id: String, good_id: String, qty: int) -> void:
+	if instance_id == "" or good_id == "":
+		return
+	var per_good: Dictionary = output_ship_quantities.get(instance_id, {})
+	if qty <= 0:
+		per_good.erase(good_id)
+	else:
+		per_good[good_id] = qty
+	if per_good.is_empty():
+		output_ship_quantities.erase(instance_id)
+	else:
+		output_ship_quantities[instance_id] = per_good
+
+func get_output_ship_quantity(instance_id: String, good_id: String) -> int:
+	return int((output_ship_quantities.get(instance_id, {}) as Dictionary).get(good_id, 0))
 
 func clear_output_stockpile_destination(instance_id: String, good_id: String = "") -> void:
 	if instance_id == "":
@@ -2666,6 +2693,7 @@ func clear_output_stockpile_destination(instance_id: String, good_id: String = "
 	if good_id == "":
 		output_stockpile_destinations.erase(instance_id)  # clear the whole building
 		output_special_order_destinations.erase(instance_id)
+		output_ship_quantities.erase(instance_id)
 		return
 	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
 	per_good.erase(good_id)
@@ -2673,6 +2701,7 @@ func clear_output_stockpile_destination(instance_id: String, good_id: String = "
 		output_stockpile_destinations.erase(instance_id)
 	else:
 		output_stockpile_destinations[instance_id] = per_good
+	set_output_ship_quantity(instance_id, good_id, 0)
 	_clear_output_special_order_tag(instance_id, good_id)
 
 func get_output_stockpile_destination(instance_id: String, good_id: String = "") -> String:
@@ -2695,6 +2724,7 @@ func route_output_to_market(instance_id: String, good_id: String) -> void:
 	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
 	per_good[good_id] = MARKET_DESTINATION
 	output_stockpile_destinations[instance_id] = per_good
+	set_output_ship_quantity(instance_id, good_id, 0)
 	_clear_output_special_order_tag(instance_id, good_id)
 	pending_output_stockpile_selection.clear()
 	output_stockpile_destination_changed.emit(instance_id, MARKET_DESTINATION, good_id)

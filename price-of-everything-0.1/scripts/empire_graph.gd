@@ -127,9 +127,13 @@ static func build(terrain: Object) -> Dictionary:
 	}
 
 
-## Market-sale edges: a building whose output good is NOT consumed by any player building sells it to
-## market, exported via the nearest port. Drawn as a thick gold line. (Heuristic — the sim pools/sells
-## per turn without recording the exact export port, so we use the geographically nearest one.)
+## Market-sale edges: a building whose output good is NOT consumed by any player building is
+## attached to its nearest export port. Drawn SOLID when the output actually ships to market
+## (explicit market route, global sell-all, or the tile's sell-surplus toggle) and DASHED when
+## it is only the standing default — "this is where sales would leave" (goods are in fact
+## pooling in the tile stockpile). A building explicitly routed to another tile gets no port
+## edge at all: the player gave a different directive. (Nearest port is a heuristic — the sim
+## pools/sells per turn without recording the exact export port.)
 static func _build_sell_edges(nodes: Array, ports: Array, consumers: Dictionary) -> Array:
 	var port_by_tile: Dictionary = {}
 	for p in ports:
@@ -143,9 +147,16 @@ static func _build_sell_edges(nodes: Array, ports: Array, consumers: Dictionary)
 			continue                                  # consumed internally -> not a market sale
 		if not Catalog.has_method("nearest_port_tile"):
 			continue
-		var ptile := str(Catalog.nearest_port_tile(str(n["tile_id"])))
+		var iid := str(n["iid"])
+		var tile := str(n["tile_id"])
+		if MatchState.get_output_stockpile_destination(iid, og) != "":
+			continue                                  # explicitly routed to a tile -> no port edge
+		var actual := MatchState.is_output_market(iid, og) \
+			or MatchState.sell_mode == MatchState.SellMode.SELL_ALL \
+			or MatchState.is_sell_surplus_enabled(tile)
+		var ptile := str(Catalog.nearest_port_tile(tile))
 		if ptile != "" and port_by_tile.has(ptile):
-			sell.append({"from": str(n["iid"]), "to": port_by_tile[ptile], "good": og})
+			sell.append({"from": iid, "to": port_by_tile[ptile], "good": og, "actual": actual})
 	return sell
 
 
