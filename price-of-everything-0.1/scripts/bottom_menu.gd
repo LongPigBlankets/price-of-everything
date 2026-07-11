@@ -142,6 +142,7 @@ const _MENU_SHORTCUTS := {
 	KEY_M: "MarketButton",      # Markets
 	KEY_O: "MapmodesButton",    # Map Overlays
 	KEY_L: "BuildingsButton",   # Buildings ledger
+	KEY_N: "PoliticsButton",    # Narrative and Politics
 	KEY_P: "PeopleButton",      # People (labour/advisors)
 	KEY_R: "TechButton",        # Research
 }

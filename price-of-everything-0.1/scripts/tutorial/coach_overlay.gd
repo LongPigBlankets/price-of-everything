@@ -588,6 +588,7 @@ func _build_annotations(step: Dictionary) -> void:
 		_annot_items.append({
 			"ref": str((t as Dictionary).get("ref", "")),
 			"side": str((t as Dictionary).get("side", "above")),
+			"lift": int((t as Dictionary).get("lift", 0)),
 			"label": lbl, "trect": Rect2(),
 		})
 	for h in step.get("hints", []):
@@ -617,15 +618,18 @@ func _position_annotations() -> void:
 		var ls := lbl.get_combined_minimum_size()
 		var gap := 12.0
 		var pos := Vector2.ZERO
+		# "lift" staggers a label N extra rows away from its target so long labels
+		# on adjacent buttons (bottom bar) don't run into their neighbours.
+		var lift := float(int(it.get("lift", 0))) * (ls.y + 6.0)
 		match str(it["side"]):
 			"below":
-				pos = Vector2(r.get_center().x - ls.x * 0.5, r.end.y + gap)
+				pos = Vector2(r.get_center().x - ls.x * 0.5, r.end.y + gap + lift)
 			"left":
 				pos = Vector2(r.position.x - gap - ls.x, r.get_center().y - ls.y * 0.5)
 			"right":
 				pos = Vector2(r.end.x + gap, r.get_center().y - ls.y * 0.5)
 			_:  # "above"
-				pos = Vector2(r.get_center().x - ls.x * 0.5, r.position.y - gap - ls.y)
+				pos = Vector2(r.get_center().x - ls.x * 0.5, r.position.y - gap - ls.y - lift)
 		pos.x = clampf(pos.x, 4.0, maxf(size.x - ls.x - 4.0, 4.0))
 		pos.y = clampf(pos.y, 4.0, maxf(size.y - ls.y - 4.0, 4.0))
 		lbl.position = pos - global_position

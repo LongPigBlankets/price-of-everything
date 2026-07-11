@@ -44,6 +44,11 @@ const STUB_TILE := "tile_6_8"     # hill, unsurveyed coal deposit (deeper integr
 #   research-gated, no NaOH), AND r_050 aluminium Hall-Heroult (alumina+graphite+chem_salts -> 20 aluminium)
 #   b_018 reinf_pipes (£50, 1 turn — the only mode that carries NaOH) · b_003/r_004 coal power plant (deferred)
 
+## Balance-sensitive numbers in the copy (kit costs, market prices, recipe
+## quantities, land targets) are COMPUTED from the live Catalog/EconomyConfig at
+## steps() time, so a rebalance never leaves the tutorial quoting stale figures.
+## steps() runs at tutorial start (and in tests) — the autoloads are loaded by then.
+
 ## A step Dictionary:
 ##   id/chapter/title/body — identity + coach card copy
 ##   setup     : ordered driver actions run on entry
@@ -84,7 +89,7 @@ static func steps() -> Array:
 				{ "ref": "BuildingsButton", "label": "Buildings (L)", "side": "above" },
 				{ "ref": "MapmodesButton", "label": "Overlays (O)", "side": "above" },
 				{ "ref": "MarketButton", "label": "Markets (M)", "side": "above" },
-				{ "ref": "PoliticsButton", "label": "Politics", "side": "above" },
+				{ "ref": "PoliticsButton", "label": "Narrative & Politics (N)", "side": "above", "lift": 1 },
 				{ "ref": "TechButton", "label": "Research (R)", "side": "above" },
 				{ "ref": "PeopleButton", "label": "People (P)", "side": "above" },
 				{ "ref": "MoneyWidget", "label": "Budgets, charts & loans", "side": "below" },
@@ -108,8 +113,8 @@ static func steps() -> Array:
 		{
 			"id": "goto_tile",
 			"chapter": "First Factory",
-			"title": "Find the factory on the coast",
-			"body": "Let's begin with your first building. Pan (drag) and zoom (scroll) around the coast a little to find it — look for the orange building; orange means a factory. Click it (the Industrial Goods Factory, the one Vandel Glassworks is selling) to open its tile.",
+			"title": "Find the factory inland",
+			"body": "Let's begin with your first building. Pan (drag) and zoom (scroll) inland a little to find it — look for the white building; white means an NPC owns it, and this one is up for sale. Click it (the Industrial Goods Factory, the one Vandel Glassworks is selling) to open its tile.",
 			"setup": [],
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,
@@ -149,7 +154,7 @@ static func steps() -> Array:
 			"id": "build_cost",
 			"chapter": "First Factory",
 			"title": "Building costs more than buying — for now",
-			"body": "Here's the build bill. Constructing this factory from scratch needs roughly £180 of materials — read 'Cost if bought from market'. Buying the one Vandel already built is cheaper today, so we'll do that instead. (Later, once you make these materials yourself, building your own can win.) Press Next — don't buy the materials.",
+			"body": "Here's the build bill. Constructing this factory from scratch needs roughly £%d of materials — read 'Cost if bought from market'. Buying the one Vandel already built is cheaper today, so we'll do that instead. (Later, once you make these materials yourself, building your own can win.) Press Next — don't buy the materials." % _build_kit_cost("b_007"),
 			"setup": [],
 			"spotlight": { "kind": "node_name", "ref": "SourcingMarketCost" },
 			"done": { "wake": [], "decide": {} },
@@ -337,7 +342,7 @@ static func steps() -> Array:
 			"id": "margin_motivation",
 			"chapter": "Integration",
 			"title": "A wafer-thin margin",
-			"body": "Open Cost to Produce. Making windows from bought-in glass and aluminium costs you just under the £12.50 the market pays — a wafer-thin margin, about as good as if you'd simply bought the finished windows instead. That won't outrun the loan sharks. Integration — making your own inputs so your cost per window drops well BELOW £12.50 — is how you turn that sliver into a real profit and expand.",
+			"body": "Open Cost to Produce. Making windows from bought-in glass and aluminium costs you close to the £%s the market pays per window — a wafer-thin margin, about as good as if you'd simply bought the finished windows instead. That won't outrun the loan sharks. Integration — making your own inputs so your cost per window drops well BELOW £%s — is how you turn that sliver into a real profit and expand." % [_good_price_text("windows"), _good_price_text("windows")],
 			"setup": [
 				{ "action": "clear_mapmode" },
 				{ "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" },
@@ -398,7 +403,8 @@ static func steps() -> Array:
 			"id": "buy_land",
 			"chapter": "Integration",
 			"title": "Buy the land to build on",
-			"body": "One more thing before you build: every building needs land YOU own. Your factory came with its own plot, but a furnace or smelter needs room of its own. On the factory tile's land rail, click Buy Land and buy at least 10 — land is cheap (£10 per 10 units), and the bracket on the size chart shows what you own.",
+			"body": "One more thing before you build: every building needs land YOU own. Your factory came with its own plot, but a furnace or smelter needs room of its own. On the factory tile's land rail, click Buy Land and buy at least %d — land is cheap (£%d per %d units), and the bracket on the size chart shows what you own." % [
+				_land_lesson_shortfall(), int(MatchState.LAND_PATCH_COST), MatchState.LAND_PATCH_SIZE],
 			"setup": [
 				{ "action": "close_building_detail" },
 				{ "action": "focus_tile", "tile": WINDOW_TILE },
@@ -407,7 +413,7 @@ static func steps() -> Array:
 			"lock_panel": true,
 			"done": {
 				"wake": [],
-				"decide": { "kind": "tile_land_at_least", "tile": WINDOW_TILE, "amount": 40 },
+				"decide": { "kind": "tile_land_at_least", "tile": WINDOW_TILE, "amount": _land_lesson_target() },
 			},
 			"advance": "auto",
 		},
@@ -415,7 +421,7 @@ static func steps() -> Array:
 			"id": "choose_integration",
 			"chapter": "Integration",
 			"title": "Two ways integration pays",
-			"body": "Pick one to make yourself. GLASS is your biggest input — 28 units per window run — and cheaper to make than to buy, so integrating it flips you into profit. That's the play, and research can push it further. Or ALUMINIUM, the smaller input: a smelter makes more than you need and the surplus sells each turn — a taste of a new revenue line, though glass is where the real money is.",
+			"body": "Pick one to make yourself. GLASS is your biggest input — %d units per window run — and cheaper to make than to buy, so integrating it flips you into profit. That's the play, and research can push it further. Or ALUMINIUM, the smaller input: a smelter makes more than you need and the surplus sells each turn — a taste of a new revenue line, though glass is where the real money is." % _recipe_input_qty("r_056", "glass"),
 			"setup": [ { "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" } ],
 			"spotlight": { "kind": "none", "ref": "" },
 			"choices": [
@@ -585,7 +591,11 @@ static func steps() -> Array:
 			"id": "build_alu_open",
 			"chapter": "Integration · Revenue",
 			"title": "Build an aluminium smelter",
-			"body": "A smelter makes 20 aluminium a turn — your factory needs 10, and the surplus 10 sells each turn. Build it right here on your factory's tile: co-located, its output feeds the factory on-site with no shipping. All its inputs are solids, so no pipe is needed. Open the build tile and click Build.",
+			"body": "A smelter makes %d aluminium a turn — your factory needs %d, and the surplus %d sells each turn. Build it right here on your factory's tile: co-located, its output feeds the factory on-site with no shipping. All its inputs are solids, so no pipe is needed. Open the build tile and click Build." % [
+				_recipe_output_qty("r_050"),
+				_recipe_input_qty("r_056", "aluminium"),
+				maxi(0, _recipe_output_qty("r_050") - _recipe_input_qty("r_056", "aluminium")),
+			],
 			"setup": [
 				{ "action": "close_building_detail" },
 				{ "action": "focus_tile", "tile": ALU_TILE },
@@ -648,6 +658,67 @@ static func steps() -> Array:
 			"advance": "next",
 		},
 	]
+
+
+# ── Live-value helpers (balance-proof copy) ──────────────────────────────────────
+# The tutorial quotes prices/quantities from the SAME data the sim runs on, so a
+# rebalance updates the copy automatically. All read the Catalog autoload.
+
+## Market value of a building's construction kit at base prices ("roughly £N").
+static func _build_kit_cost(building_id: String) -> int:
+	var total := 0.0
+	for mat in Catalog.get_building(building_id).get("materials", []):
+		var good: Dictionary = Catalog.get_good_by_internal_name(str(mat.get("name", "")))
+		total += float(good.get("base_price", 0.0)) * float(mat.get("qty", 0))
+	return int(round(total))
+
+## Base market price of a good, trimmed for prose ("10.22", "12.5", "8").
+static func _good_price_text(internal: String) -> String:
+	var price := float(Catalog.get_good_by_internal_name(internal).get("base_price", 0.0))
+	var text := "%.2f" % price
+	while text.ends_with("0"):
+		text = text.substr(0, text.length() - 1)
+	if text.ends_with("."):
+		text = text.substr(0, text.length() - 1)
+	return text
+
+## Input quantity of `internal` in a recipe (0 if the recipe doesn't use it).
+static func _recipe_input_qty(recipe_id: String, internal: String) -> int:
+	for inp in Catalog.get_recipe(recipe_id).get("inputs", []):
+		var gid := str(inp.get("good_id", ""))
+		var name := str(inp.get("internal_name", Catalog.get_internal_name(gid)))
+		if name == internal:
+			return int(inp.get("qty", 0))
+	return 0
+
+## Primary output quantity of a recipe.
+static func _recipe_output_qty(recipe_id: String) -> int:
+	return int(Catalog.get_recipe(recipe_id).get("output_qty", 0))
+
+## Land footprint of a building (level 1).
+static func _footprint(building_id: String) -> int:
+	return int(round(maxf(0.0, float(Catalog.get_building(building_id).get("tile_size_used", 1.0)))))
+
+## The buy_land step's owned-land target: everything the tutorial ever puts on the
+## factory tile (window factory + cable + furnace/smelter + reinforced pipe),
+## rounded up to whole patches. Footprint rebalances move the wall automatically.
+static func _land_lesson_target() -> int:
+	var patch := MatchState.LAND_PATCH_SIZE
+	var needed := _footprint("b_007") + _footprint("b_006") + _footprint("b_002") + _footprint("b_018")
+	return ceili(float(needed) / float(patch)) * patch
+
+## How much the player still has to buy at the buy_land step: the target minus the
+## seeded plot (data/starts/tutorial.json) minus the factory footprint granted by
+## the purchase — rounded up to a whole patch (the shop sells in patches).
+static func _land_lesson_shortfall() -> int:
+	var patch := MatchState.LAND_PATCH_SIZE
+	var owned_by_then := TUTORIAL_SEED_LAND + _footprint("b_007")
+	var shortfall := maxi(0, _land_lesson_target() - owned_by_then)
+	return maxi(patch, ceili(float(shortfall) / float(patch)) * patch)
+
+# Must match data/starts/tutorial.json "land" for the factory tile (JSON can't
+# compute; keep the two in sync — the unit test cross-checks them).
+const TUTORIAL_SEED_LAND := 20
 
 
 ## DEEPER INTEGRATION — deferred. Mining your own coal + pumping your own water to feed

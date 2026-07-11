@@ -361,23 +361,52 @@ func _test_tutorial_engine() -> void:
 		"tutorial: deeper-integration survey/mine steps authored + deferred")
 	_check("build_own_power" in integ_ids, "tutorial: own-power step deferred to deeper integration")
 
-	# Buy Land lesson: tiles start unowned, the tutorial seeds only the factory plot (20),
-	# and the buy_land step gates the furnace build on owning at least 40 on that tile.
+	# Buy Land lesson: tiles start unowned, the tutorial seeds only the factory plot,
+	# and the buy_land step gates the furnace build on the COMPUTED land target
+	# (footprints of everything the tutorial puts on the tile, in whole patches).
 	for expected2 in ["buy_land", "transport_ports", "transport_redirect_open", "transport_redirect_pick", "transport_pentagon_revert"]:
 		_check(expected2 in ids, "tutorial: step '%s' present" % expected2)
 	_check(ids.find("buy_land") < ids.find("choose_integration"),
 		"tutorial: buy_land runs before the integration branch (both builds need the land)")
+	var land_target: int = TutorialSteps._land_lesson_target()
 	var bl_decide: Dictionary = ((by_id.get("buy_land", {}) as Dictionary).get("done", {}) as Dictionary).get("decide", {})
-	_check(str(bl_decide.get("kind", "")) == "tile_land_at_least" and int(bl_decide.get("amount", 0)) == 40,
-		"tutorial: buy_land gates on owning 40 land on the factory tile")
+	_check(str(bl_decide.get("kind", "")) == "tile_land_at_least" and int(bl_decide.get("amount", 0)) == land_target,
+		"tutorial: buy_land gates on the computed land target (%d)" % land_target)
+	_check(land_target % MatchState.LAND_PATCH_SIZE == 0 and land_target > 0,
+		"tutorial: land target is a whole number of patches")
+	# The seeded plot must cover pricing up the factory (step 5) but NOT the furnace:
+	# the wall has to appear exactly at the buy_land step.
+	var seed_land: int = TutorialSteps.TUTORIAL_SEED_LAND
+	var start_cfg: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/tutorial.json"))
+	_check(start_cfg is Dictionary and int(((start_cfg as Dictionary).get("land", {}) as Dictionary).get(TutorialSteps.WINDOW_TILE, -1)) == seed_land,
+		"tutorial: TUTORIAL_SEED_LAND matches the start config's factory-tile seed")
+	var fp_factory := int(round(float(Catalog.get_building("b_007").get("tile_size_used", 1.0))))
+	var fp_cable := int(round(float(Catalog.get_building("b_006").get("tile_size_used", 1.0))))
+	var fp_furnace := int(round(float(Catalog.get_building("b_002").get("tile_size_used", 1.0))))
+	_check(fp_factory <= seed_land, "tutorial: the seeded plot covers pricing up the factory (step 5)")
+	_check(fp_factory + fp_cable + fp_furnace > seed_land + fp_factory,
+		"tutorial: the furnace does NOT fit before buy_land (the lesson's wall exists)")
 	var land_saved: Dictionary = MatchState.tile_land_owned.duplicate(true)
 	MatchState.tile_land_owned.clear()
-	_check(TutorialDetectors.poll({"kind": "tile_land_at_least", "tile": TutorialSteps.WINDOW_TILE, "amount": 40}) == false,
+	_check(TutorialDetectors.poll({"kind": "tile_land_at_least", "tile": TutorialSteps.WINDOW_TILE, "amount": land_target}) == false,
 		"tutorial: tile_land_at_least false with no land owned")
-	MatchState.tile_land_owned[TutorialSteps.WINDOW_TILE] = 40
-	_check(TutorialDetectors.poll({"kind": "tile_land_at_least", "tile": TutorialSteps.WINDOW_TILE, "amount": 40}) == true,
+	MatchState.tile_land_owned[TutorialSteps.WINDOW_TILE] = land_target
+	_check(TutorialDetectors.poll({"kind": "tile_land_at_least", "tile": TutorialSteps.WINDOW_TILE, "amount": land_target}) == true,
 		"tutorial: tile_land_at_least true at exactly the target amount")
 	MatchState.tile_land_owned = land_saved
+	# Live-value copy: the numbers quoted in the step bodies come from the catalog.
+	var kit_cost: int = TutorialSteps._build_kit_cost("b_007")
+	_check(kit_cost > 0 and str((by_id.get("build_cost", {}) as Dictionary).get("body", "")).contains("£%d" % kit_cost),
+		"tutorial: build_cost quotes the live factory kit cost (£%d)" % kit_cost)
+	var win_price: String = TutorialSteps._good_price_text("windows")
+	_check(str((by_id.get("margin_motivation", {}) as Dictionary).get("body", "")).contains("£%s" % win_price),
+		"tutorial: margin_motivation quotes the live window price (£%s)" % win_price)
+	var glass_qty: int = TutorialSteps._recipe_input_qty("r_056", "glass")
+	_check(glass_qty > 0 and str((by_id.get("choose_integration", {}) as Dictionary).get("body", "")).contains("%d units" % glass_qty),
+		"tutorial: choose_integration quotes the live glass quantity (%d)" % glass_qty)
+	var alu_out: int = TutorialSteps._recipe_output_qty("r_050")
+	_check(alu_out > 0 and str((by_id.get("build_alu_open", {}) as Dictionary).get("body", "")).contains("%d aluminium" % alu_out),
+		"tutorial: build_alu_open quotes the live smelter output (%d)" % alu_out)
 
 	# Transport arc: output-route detectors read the explicit per-good destinations.
 	var saved2: Dictionary = MatchState.buildings
