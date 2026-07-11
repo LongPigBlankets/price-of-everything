@@ -69,8 +69,8 @@ const TRACK_COLOR_KEYS := {
 	"widest": "ACTION_BLUE_TOP", "greenest": "OK",
 }
 const TRACK_EXPLAIN := {
-	"autarkic": "Consecutive turns buying nothing from the market — source every input, build & upgrade material yourself.",
-	"logistics": "Share of this turn's goods movements arriving in 1 turn or less — extend rail/pipe so deliveries are instant.",
+	"autarkic": "Consecutive turns buying nothing from the market — source every input, build & upgrade material yourself. Power is exempt: draw from the grid freely, and generated MW don't count toward the unlock.",
+	"logistics": "Share of this turn's goods movements arriving in 1 turn or less — extend rail/pipe so deliveries are instant. Power isn't shipped, so electricity never counts.",
 	"richest": "Sustained post-tax profit, smoothed over recent turns — keep margins high turn after turn.",
 	"widest": "Distinct tiles holding one of your (non-infrastructure) buildings — spread out across the map.",
 	"greenest": "Green share of the power you generate — replace fossil plants with solar & wind. Counts once your network generates 5,000 MW and draws 1,000 MW per turn.",
@@ -223,10 +223,16 @@ func _tick() -> void:
 			bought_any = true
 			break
 	autarkic_streak = 0 if bought_any else autarkic_streak + 1
-	# Autarkic scale gate: accumulate this turn's produced units (the streak only starts
-	# scoring once lifetime production clears AUTARKIC_MIN_UNITS).
-	for qty in (_last_summary.get("produced", {}) as Dictionary).values():
-		produced_units_lifetime += int(qty)
+	# Autarkic scale gate: accumulate this turn's produced GOODS units (the streak only
+	# starts scoring once lifetime production clears AUTARKIC_MIN_UNITS). POWER is ignored
+	# — the Autarkic track doesn't care about electricity, so generating MW never inflates
+	# the gate and drawing from the grid never breaks the streak (grid draws aren't market
+	# buys, so they're already exempt above).
+	var produced: Dictionary = _last_summary.get("produced", {})
+	for good_id in produced:
+		if str(good_id) == "power":
+			continue
+		produced_units_lifetime += int(produced[good_id])
 	# Richest: push this turn's retained (post-tax, post-dividend) profit and smooth.
 	var rp := float(_last_summary.get("money_in", 0.0)) - float(_last_summary.get("money_out", 0.0))
 	richest_window.append(rp)
