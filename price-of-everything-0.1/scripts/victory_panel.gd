@@ -109,8 +109,6 @@ func _populate() -> void:
 		return
 	var total := int(b.get("total", 0))
 	var threshold := int(b.get("win_threshold", 4000))
-	var base := int(b.get("base", 0))
-	var track_total := int(b.get("track_total", total - base))
 	var turn := int(b.get("turn", 0))
 	var max_turns := int(b.get("max_turns", 300))
 	var won := bool(b.get("won", false))
@@ -120,10 +118,10 @@ func _populate() -> void:
 	var total_col: Color = DS.PALETTE["OK"] if won else (DS.PALETTE["TEXT"] as Color).lerp(DS.PALETTE["OK"], ratio)
 	_total_label.add_theme_color_override("font_color", total_col)
 
-	_base_label.text = "Base time score %s / %s  (turn %d of %d)   ·   track score %s   ·   win at %s" % [
-		_commas(base), _commas(VictoryState.BASE_MAX), turn, max_turns, _commas(track_total), _commas(threshold)]
-	_hint_label.text = "The base decays after turn %d — win curve: 1 track at turn 100  →  4 tracks at turn %d." % [
-		VictoryState.BASE_FREE, max_turns]
+	_base_label.text = "Score %s  (turn %d of %d)   ·   need %s to win now" % [
+		_commas(total), turn, max_turns, _commas(threshold)]
+	_hint_label.text = "You start at 0 and the bar rises: win with 1 track at turn %d, 2 at %d, 3 at %d, 4 at %d." % [
+		VictoryState.WIN_START_TURN, VictoryState.WIN_START_TURN + VictoryState.WIN_STEP_TURNS, VictoryState.WIN_START_TURN + 2 * VictoryState.WIN_STEP_TURNS, max_turns]
 
 	if won:
 		_banner.text = "✓ VICTORY — scored %s on turn %d. Keep playing to push your score." % [
