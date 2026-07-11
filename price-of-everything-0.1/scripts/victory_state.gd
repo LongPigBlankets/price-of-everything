@@ -88,6 +88,13 @@ var won: bool = false
 var won_turn: int = 0
 var purchases_this_turn: Dictionary = {} # category -> count (reset each turn)
 var purchases_lifetime: Dictionary = {}  # category -> cumulative count
+# End-of-game history for the Victory / Defeat screen (per-turn series + lifetime
+# per-good production + the turn each track was first secured). Bounded to MAX_TURNS.
+var history_revenue: Array = []          # per-turn goods+power sales revenue (£)
+var history_output: Array = []           # per-turn produced GOODS units (power excluded)
+var history_buildings: Array = []        # per-turn standing player building count
+var produced_by_good: Dictionary = {}    # good_id -> lifetime units produced (power excluded)
+var track_secured_turn: Dictionary = {}  # track key -> turn its best first hit 1.0
 
 # ── Transient (not saved) ──────────────────────────────────────────────────
 var _last_summary: Dictionary = {}       # cached from Production.turn_processed
@@ -164,6 +171,11 @@ func export_state() -> Dictionary:
 		"won_turn": won_turn,
 		"purchases_this_turn": purchases_this_turn.duplicate(),
 		"purchases_lifetime": purchases_lifetime.duplicate(),
+		"history_revenue": history_revenue.duplicate(),
+		"history_output": history_output.duplicate(),
+		"history_buildings": history_buildings.duplicate(),
+		"produced_by_good": produced_by_good.duplicate(),
+		"track_secured_turn": track_secured_turn.duplicate(),
 	}
 
 func import_state(d: Dictionary) -> void:
@@ -191,6 +203,18 @@ func import_state(d: Dictionary) -> void:
 	for c in PURCHASE_CATEGORIES:
 		purchases_this_turn[c] = int(pt.get(c, 0))
 		purchases_lifetime[c] = int(pl.get(c, 0))
+	for v in (d.get("history_revenue", []) as Array):
+		history_revenue.append(float(v))
+	for v in (d.get("history_output", []) as Array):
+		history_output.append(int(v))
+	for v in (d.get("history_buildings", []) as Array):
+		history_buildings.append(int(v))
+	var pbg: Dictionary = d.get("produced_by_good", {})
+	for g in pbg:
+		produced_by_good[str(g)] = int(pbg[g])
+	var tst: Dictionary = d.get("track_secured_turn", {})
+	for k in tst:
+		track_secured_turn[str(k)] = int(tst[k])
 	# Don't re-fire victory_achieved on load (spec §6 edge); just publish the state.
 	_emit_refresh()
 
@@ -229,10 +253,20 @@ func _tick() -> void:
 	# the gate and drawing from the grid never breaks the streak (grid draws aren't market
 	# buys, so they're already exempt above).
 	var produced: Dictionary = _last_summary.get("produced", {})
+	var turn_output := 0
 	for good_id in produced:
 		if str(good_id) == "power":
 			continue
-		produced_units_lifetime += int(produced[good_id])
+		var q := int(produced[good_id])
+		produced_units_lifetime += q
+		turn_output += q
+		# Lifetime per-good production feeds the end screen's "biggest outputs" chart.
+		produced_by_good[str(good_id)] = int(produced_by_good.get(str(good_id), 0)) + q
+	# End-of-game per-turn series (bounded to MAX_TURNS).
+	if turn <= MAX_TURNS:
+		history_revenue.append(float(_last_summary.get("goods_sales_revenue", 0.0)) + float(_last_summary.get("power_sales_revenue", 0.0)))
+		history_output.append(turn_output)
+		history_buildings.append(_count_player_buildings())
 	# Richest: push this turn's retained (post-tax, post-dividend) profit and smooth.
 	var rp := float(_last_summary.get("money_in", 0.0)) - float(_last_summary.get("money_out", 0.0))
 	richest_window.append(rp)
@@ -244,6 +278,9 @@ func _tick() -> void:
 		var lv := _live_progress(key)
 		live[key] = lv
 		track_best[key] = maxf(float(track_best.get(key, 0.0)), lv)
+		# Record the turn a track is first fully secured (for the end screen's pennants).
+		if float(track_best.get(key, 0.0)) >= 1.0 and not track_secured_turn.has(key):
+			track_secured_turn[key] = turn
 	# Recompute total + latch the win against the turn's (rising) threshold.
 	var total := total_for_turn(turn)
 	if not won and total >= win_threshold_for_turn(turn):
@@ -439,8 +476,21 @@ func _reset_fields() -> void:
 	won_turn = 0
 	purchases_this_turn = _zero_categories()
 	purchases_lifetime = _zero_categories()
+	history_revenue = []
+	history_output = []
+	history_buildings = []
+	produced_by_good = {}
+	track_secured_turn = {}
 	_last_summary = {}
 	_scored_turn = TurnManager.current_turn
+
+# Standing player-owned buildings (all categories) — the end screen's "buildings" series.
+func _count_player_buildings() -> int:
+	var n := 0
+	for inst in MatchState.buildings.values():
+		if MatchState.is_player_owned(inst):
+			n += 1
+	return n
 
 func _zero_categories() -> Dictionary:
 	var d := {}
