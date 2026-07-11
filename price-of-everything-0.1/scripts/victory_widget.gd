@@ -33,12 +33,11 @@ func _on_score_changed(_total: int, breakdown: Dictionary) -> void:
 
 func _refresh() -> void:
 	var total := int(_breakdown.get("total", 0))
-	var base := int(_breakdown.get("base", 0))
 	var threshold := int(_breakdown.get("win_threshold", 4000))
 	var won := bool(_breakdown.get("won", false))
 	var win_state := "✓ Won on turn %d" % int(_breakdown.get("won_turn", 0)) if won else "Win at %s" % _commas(threshold)
-	tooltip_text = "Victory %s / %s  (base %s)\n%s — click for details" % [
-		_commas(total), _commas(threshold), _commas(base), win_state]
+	tooltip_text = "Victory %s / %s\n%s — click for details" % [
+		_commas(total), _commas(threshold), win_state]
 	# Size to fit the bar cluster + the score readout.
 	var tracks: Array = _breakdown.get("tracks", [])
 	var cluster_w := _cluster_width(tracks.size())
@@ -67,12 +66,6 @@ func _draw() -> void:
 			var col: Color = DS.PALETTE.get(String((t as Dictionary).get("color_key", "ACCENT")), DS.PALETTE["ACCENT"])
 			draw_rect(Rect2(x, BAR_TOP + bar_h - fh, BAR_W, fh), col, true)
 		x += BAR_W + BAR_GAP
-	# Faint base-score underline: the filled fraction = base / BASE_MAX (decays with turns).
-	var uy := BAR_TOP + bar_h + UNDERLINE_GAP * 0.5
-	var base_frac := clampf(float(int(_breakdown.get("base", 0))) / float(VictoryState.BASE_MAX), 0.0, 1.0)
-	draw_line(Vector2(0, uy), Vector2(cluster_w, uy), Color(DS.PALETTE["TEXT_DIM"], 0.45), 2.0)
-	if base_frac > 0.0:
-		draw_line(Vector2(0, uy), Vector2(cluster_w * base_frac, uy), Color(DS.PALETTE["ACCENT"], 0.55), 2.0)
 	# Score readout, tinted toward OK (green) as it approaches / passes the win.
 	var font := _numeric_font()
 	if font == null:

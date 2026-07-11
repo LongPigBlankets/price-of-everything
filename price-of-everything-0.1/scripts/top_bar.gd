@@ -84,6 +84,7 @@ var _power_sub: Label
 var _victory_btn: Control
 var _victory_meters: HBoxContainer
 var _victory_score: Label
+var _victory_target: Label   # "/ N" — the rising win threshold for the current turn
 
 # Briefing notch (top_level: centred on the viewport, hangs below the bar)
 var _briefing_btn: Control
@@ -426,7 +427,9 @@ func _build_victory() -> void:
 	_victory_score.add_theme_font_size_override("font_size", 18)
 	_victory_score.add_theme_color_override("font_color", C_CREAM)
 	col.add_child(_victory_score)
-	col.add_child(_mini("/ 4,000", C_MUTED, 11))
+	_victory_target = _mini("/ 4,000", C_MUTED, 11)   # updated to the rising threshold each refresh
+	_victory_target.tooltip_text = "Points needed to win rise over the game — 1 track from turn 105 up to 4 tracks by turn 300."
+	col.add_child(_victory_target)
 	mod.pressed.connect(func() -> void: _toggle_fly("victory"))
 	_hbox().add_child(mod)
 	_victory_btn = mod
@@ -471,6 +474,8 @@ func _refresh_victory() -> void:
 		cell.add_child(letter)
 		_victory_meters.add_child(cell)
 	_victory_score.text = _thousands(int(bd.get("total", 0)))
+	if _victory_target != null:
+		_victory_target.text = "/ %s" % _thousands(int(bd.get("win_threshold", 4000)))
 
 func _thousands(n: int) -> String:
 	var s := str(absi(n))

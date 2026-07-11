@@ -2,12 +2,13 @@ extends Node
 
 # VictoryState (autoload) — the single source of truth for the victory score.
 #
-# Score = a decaying base TIME score + five independent TRACK scores
-# (Autarkic, Logistics, Richest, Widest, Greenest). It recomputes once per turn
-# and latches a win the first turn `total >= WIN_THRESHOLD`. Track contributions
-# are stored best-ever (monotonic — bars only fill up); the base decays with the
-# turn count, which IS the intended time pressure (a fast finish needs fewer
-# tracks). See docs/victory-system-spec.md for the full design.
+# Score = five independent TRACK scores (Autarkic, Logistics, Richest, Widest,
+# Greenest), each 0..1000, stored best-ever (monotonic — bars only fill up). You
+# START AT 0. The RISING WIN BAR is the time pressure: the points needed to win
+# climb from 1 maxed track at turn 105 to 4 maxed tracks by turn 300 (one extra
+# track per 65 turns), so a fast finish needs fewer tracks. It recomputes once per
+# turn and latches a win the first turn `total >= win_threshold_for_turn(turn)`.
+# See docs/victory-system-spec.md for the full design.
 #
 # Wiring (all reads, never writes sim state — UI is read-only, rule #5):
 #   Production.turn_processed(summary)            -> cache the turn's economics
@@ -18,11 +19,16 @@ extends Node
 # Saves round-trip via export_state()/import_state(); SaveLoad owns the snapshot.
 
 # ── Tunables — all victory balance lives here (spec §10) ───────────────────
-const WIN_THRESHOLD := 4000
-const BASE_MAX := 3000      # base = max(0, BASE_MAX - max(0, turn-BASE_FREE)*BASE_DECAY)
-const BASE_FREE := 100      # full base through turn 100
-const BASE_DECAY := 15      # = BASE_MAX/(BASE_ZERO-BASE_FREE); base reaches 0 at turn 300
-const BASE_ZERO := 300      # == TurnManager.MAX_TURNS (documentary; decay derived from it)
+# The RISING WIN BAR (owner 2026-07-11): you start at 0 points and the points needed
+# to win climb from WIN_MIN_THRESHOLD (1 maxed track) at WIN_START_TURN to
+# WIN_MAX_THRESHOLD (4 maxed tracks) at MAX_TURNS — one extra required track per
+# WIN_STEP_TURNS. Milestones: turn 105 → 1 track, 170 → 2, 235 → 3, 300 → 4.
+const WIN_MIN_THRESHOLD := 1000   # 1 maxed track — winnable from turn 105 (flat before)
+const WIN_MAX_THRESHOLD := 4000   # 4 maxed tracks — required by turn 300
+const WIN_START_TURN := 105       # the bar is flat at 1 track until here, then rises
+const WIN_STEP_TURNS := 65        # turns per additional required track (105→170→235→300)
+const WIN_STEP_POINTS := 1000     # points per additional required track
+const MAX_TURNS := 300            # campaign length (== TurnManager.MAX_TURNS); UI progress
 
 const TRACK_MAX := {
 	"autarkic": 1000, "logistics": 1000, "richest": 1000,
@@ -45,7 +51,8 @@ const RICHEST_LO := 2000.0
 const RICHEST_HI := 12000.0
 const WIDEST_LO := 30
 const WIDEST_HI := 230
-const GREEN_MIN_POWER := 5000
+const GREEN_MIN_POWER := 5000      # MW your network must GENERATE/turn before the % counts
+const GREEN_MIN_CONSUMED := 1000   # MW your network must CONSUME/turn before the % counts
 const GREEN_FLOOR := 0.20
 const GREEN_BUILDINGS: Array = ["solar_farm", "onshore_wind_farm", "offshore_wind_farm"]
 const PURCHASE_CATEGORIES: Array = ["input", "building", "upgrade", "other"]
@@ -66,7 +73,7 @@ const TRACK_EXPLAIN := {
 	"logistics": "Share of this turn's goods movements arriving in 1 turn or less — extend rail/pipe so deliveries are instant.",
 	"richest": "Sustained post-tax profit, smoothed over recent turns — keep margins high turn after turn.",
 	"widest": "Distinct tiles holding one of your (non-infrastructure) buildings — spread out across the map.",
-	"greenest": "Green share of the power you generate — replace fossil plants with solar & wind.",
+	"greenest": "Green share of the power you generate — replace fossil plants with solar & wind. Counts once your network generates 5,000 MW and draws 1,000 MW per turn.",
 }
 
 # ── Saved state (round-trips via export/import — spec §3) ──────────────────
@@ -110,13 +117,17 @@ func get_breakdown() -> Dictionary:
 		_refresh_breakdown()
 	return _last_breakdown
 
-# The decaying base time score for a given turn (spec §5.0). Public for tests.
-func base_for_turn(turn: int) -> int:
-	return int(maxf(0.0, float(BASE_MAX) - maxf(0.0, float(turn - BASE_FREE)) * float(BASE_DECAY)))
+# Points needed to win at a given turn — the RISING BAR (owner 2026-07-11). Flat at
+# WIN_MIN_THRESHOLD until WIN_START_TURN, then +WIN_STEP_POINTS per WIN_STEP_TURNS,
+# capped at WIN_MAX_THRESHOLD. Public for tests.
+func win_threshold_for_turn(turn: int) -> int:
+	var steps := float(maxi(0, turn - WIN_START_TURN)) / float(WIN_STEP_TURNS)
+	return int(clampf(float(WIN_MIN_THRESHOLD) + steps * float(WIN_STEP_POINTS),
+		float(WIN_MIN_THRESHOLD), float(WIN_MAX_THRESHOLD)))
 
-# total = base + Σ round(best_progress * TRACK_MAX). Public for tests.
-func total_for_turn(turn: int) -> int:
-	var total := base_for_turn(turn)
+# total = Σ round(best_progress * TRACK_MAX). You start at 0 — no base. Public for tests.
+func total_for_turn(_turn: int = 0) -> int:
+	var total := 0
 	for key in TRACK_ORDER:
 		total += int(round(float(track_best.get(key, 0.0)) * float(TRACK_MAX[key])))
 	return total
@@ -227,9 +238,9 @@ func _tick() -> void:
 		var lv := _live_progress(key)
 		live[key] = lv
 		track_best[key] = maxf(float(track_best.get(key, 0.0)), lv)
-	# Recompute total + latch the win.
+	# Recompute total + latch the win against the turn's (rising) threshold.
 	var total := total_for_turn(turn)
-	if not won and total >= WIN_THRESHOLD:
+	if not won and total >= win_threshold_for_turn(turn):
 		won = true
 		won_turn = turn
 		victory_achieved.emit(total, turn)
@@ -265,7 +276,9 @@ func _live_progress(key: String) -> float:
 			return clampf(float(tiles - WIDEST_LO) / float(WIDEST_HI - WIDEST_LO), 0.0, 1.0)
 		"greenest":
 			var g := _greenest_stats()
-			if int(g.total) < GREEN_MIN_POWER or float(g.share) < GREEN_FLOOR:
+			# Gate: generate >= 5000 MW AND your network consumes >= 1000 MW/turn, then
+			# score the green share above the 20% floor.
+			if int(g.total) < GREEN_MIN_POWER or int(g.consumed) < GREEN_MIN_CONSUMED or float(g.share) < GREEN_FLOOR:
 				return 0.0
 			return clampf((float(g.share) - GREEN_FLOOR) / (1.0 - GREEN_FLOOR), 0.0, 1.0)
 	return 0.0
@@ -298,6 +311,7 @@ func _count_widest_tiles() -> int:
 # count too); falls back to the building-id heuristic for summaries predating the split.
 func _greenest_stats() -> Dictionary:
 	var total_power := int(_last_summary.get("power_supply", 0))
+	var consumed := int(_last_summary.get("power_demand", 0))   # MW your network drew this turn
 	var green := 0.0
 	var by_quality: Dictionary = _last_summary.get("power_supply_by_quality", {})
 	if not by_quality.is_empty():
@@ -309,7 +323,7 @@ func _greenest_stats() -> Dictionary:
 		for bid in _green_ids:
 			green += float((by_type.get(bid, {}) as Dictionary).get("amount", 0.0))
 	var share := green / float(maxi(1, total_power))
-	return {"total": total_power, "green": green, "share": share}
+	return {"total": total_power, "green": green, "share": share, "consumed": consumed}
 
 func _resolve_green_ids() -> void:
 	_green_ids = []
@@ -321,7 +335,6 @@ func _resolve_green_ids() -> void:
 # ── Breakdown / trend assembly ──────────────────────────────────────────────
 
 func _build_breakdown(turn: int, total: int) -> Dictionary:
-	var base := base_for_turn(turn)
 	var tracks: Array = []
 	for key in TRACK_ORDER:
 		var best := float(track_best.get(key, 0.0))
@@ -343,13 +356,14 @@ func _build_breakdown(turn: int, total: int) -> Dictionary:
 		tracks.append(entry)
 	return {
 		"total": total,
-		"base": base,
-		"track_total": total - base,
-		"win_threshold": WIN_THRESHOLD,
+		"base": 0,                                        # no base score — you start at 0
+		"track_total": total,
+		"win_threshold": win_threshold_for_turn(turn),    # the rising bar for THIS turn
+		"win_threshold_max": WIN_MAX_THRESHOLD,           # the eventual (turn-300) requirement
 		"won": won,
 		"won_turn": won_turn,
 		"turn": turn,
-		"max_turns": BASE_ZERO,
+		"max_turns": MAX_TURNS,
 		"tracks": tracks,
 	}
 
@@ -374,7 +388,8 @@ func _metric_text(key: String) -> String:
 		"greenest":
 			var g := _greenest_stats()
 			var share_pct := int(round(100.0 * float(g.share)))
-			return "Green %d%% of %d MW (need %d MW & 20%%)" % [share_pct, int(g.total), GREEN_MIN_POWER]
+			return "Green %d%% · %d MW made, %d MW used (need %d made · %d used · 20%%)" % [
+				share_pct, int(g.total), int(g.consumed), GREEN_MIN_POWER, GREEN_MIN_CONSUMED]
 	return ""
 
 func _thousands(n: int) -> String:
@@ -395,7 +410,7 @@ func _trend_for(key: String) -> Array:
 	return out
 
 func _push_history(turn: int, total: int, live: Dictionary) -> void:
-	var snap := {"turn": turn, "total": total, "base": base_for_turn(turn), "tracks": {}}
+	var snap := {"turn": turn, "total": total, "base": 0, "tracks": {}}
 	for key in TRACK_ORDER:
 		snap.tracks[key] = float(live.get(key, 0.0))
 	score_history.append(snap)

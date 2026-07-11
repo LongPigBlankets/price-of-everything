@@ -4746,21 +4746,23 @@ func _test_building_category_key() -> void:
 # ── Victory system (scripts/victory_state.gd; docs/victory-system-spec.md §12) ──
 
 func _test_victory_base_curve() -> void:
+	# No base score any more — you start at 0. The rising WIN BAR is the time pressure.
 	VictoryState.reset()
-	_check(VictoryState.base_for_turn(1) == 3000, "victory base: turn 1 = 3000")
-	_check(VictoryState.base_for_turn(100) == 3000, "victory base: turn 100 = 3000 (flat through 100)")
-	_check(VictoryState.base_for_turn(200) == 1500, "victory base: turn 200 = 1500")
-	_check(VictoryState.base_for_turn(300) == 0, "victory base: turn 300 = 0")
-	_check(VictoryState.base_for_turn(350) == 0, "victory base: turn 350 = 0 (clamped)")
+	_check(VictoryState.total_for_turn() == 0, "victory: start at 0 (no base score)")
+	_check(VictoryState.win_threshold_for_turn(1) == 1000, "victory bar: turn 1 = 1000 (flat before 105)")
+	_check(VictoryState.win_threshold_for_turn(105) == 1000, "victory bar: turn 105 = 1000 (1 track)")
+	_check(VictoryState.win_threshold_for_turn(170) == 2000, "victory bar: turn 170 = 2000 (2 tracks)")
+	_check(VictoryState.win_threshold_for_turn(235) == 3000, "victory bar: turn 235 = 3000 (3 tracks)")
+	_check(VictoryState.win_threshold_for_turn(300) == 4000, "victory bar: turn 300 = 4000 (4 tracks)")
+	_check(VictoryState.win_threshold_for_turn(350) == 4000, "victory bar: turn 350 = 4000 (clamped)")
 
 func _test_victory_win_curve() -> void:
 	VictoryState.reset()
-	_check(VictoryState.base_for_turn(100) + 1000 >= VictoryState.WIN_THRESHOLD,
-		"victory curve: 1 track clears 4000 at turn 100")
-	_check(VictoryState.base_for_turn(300) + 3000 < VictoryState.WIN_THRESHOLD,
-		"victory curve: 3 tracks fall short at turn 300")
-	_check(VictoryState.base_for_turn(300) + 4000 >= VictoryState.WIN_THRESHOLD,
-		"victory curve: 4 tracks win at turn 300")
+	# 1 maxed track (1000) wins at turn 105 but not once the bar has risen past it.
+	_check(1000 >= VictoryState.win_threshold_for_turn(105), "victory curve: 1 track wins at turn 105")
+	_check(1000 < VictoryState.win_threshold_for_turn(170), "victory curve: 1 track falls short at turn 170")
+	_check(3000 < VictoryState.win_threshold_for_turn(300), "victory curve: 3 tracks fall short at turn 300")
+	_check(4000 >= VictoryState.win_threshold_for_turn(300), "victory curve: 4 tracks win at turn 300")
 
 func _test_victory_autarkic() -> void:
 	MatchState.reset()
@@ -4881,16 +4883,20 @@ func _test_victory_widest() -> void:
 func _test_victory_greenest() -> void:
 	VictoryState.reset()
 	VictoryState._resolve_green_ids()
-	# 6000 MW solar of 10000 MW total -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
-	VictoryState._last_summary = {"power_supply": 10000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 6000.0}}}
+	# 6000 MW solar of 10000 MW made, 2000 MW used -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
+	VictoryState._last_summary = {"power_supply": 10000, "power_demand": 2000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 6000.0}}}
 	_check(absf(VictoryState._live_progress("greenest") - 0.5) < 0.001,
 		"victory greenest: 60% green share maps to 0.5")
-	# Below the 5000 MW power gate -> 0 (even fully green).
-	VictoryState._last_summary = {"power_supply": 4000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 4000.0}}}
+	# Below the 5000 MW GENERATED gate -> 0 (even fully green, plenty consumed).
+	VictoryState._last_summary = {"power_supply": 4000, "power_demand": 3000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 4000.0}}}
 	_check(absf(VictoryState._live_progress("greenest")) < 0.001,
-		"victory greenest: under 5000 MW total is gated to 0")
-	# Above the power gate but below 20% green share -> 0.
-	VictoryState._last_summary = {"power_supply": 10000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 1000.0}}}
+		"victory greenest: under 5000 MW generated is gated to 0")
+	# Enough generated + green share, but network CONSUMES under 1000 MW -> 0.
+	VictoryState._last_summary = {"power_supply": 10000, "power_demand": 500, "power_supply_by_type": {"b_024": {"count": 1, "amount": 6000.0}}}
+	_check(absf(VictoryState._live_progress("greenest")) < 0.001,
+		"victory greenest: under 1000 MW consumed is gated to 0")
+	# Above both gates but below 20% green share -> 0.
+	VictoryState._last_summary = {"power_supply": 10000, "power_demand": 2000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 1000.0}}}
 	_check(absf(VictoryState._live_progress("greenest")) < 0.001,
 		"victory greenest: under 20% green share is gated to 0")
 
@@ -4900,20 +4906,21 @@ func _test_victory_total_and_win() -> void:
 	var fired := [0]
 	var on_win := func(_total: int, _turn: int) -> void: fired[0] += 1
 	VictoryState.victory_achieved.connect(on_win)
-	# One maxed track at turn 100: base 3000 + 1000 = 4000 -> win latches.
+	# One maxed track at turn 105: total 1000 >= the turn-105 bar (1000) -> win latches.
 	VictoryState.track_best["richest"] = 1.0
-	TurnManager.current_turn = 100
+	TurnManager.current_turn = 105
 	VictoryState._on_turn_processed({"money_in": 0.0, "money_out": 0.0})
 	VictoryState._tick()
-	_check(VictoryState.won and VictoryState.won_turn == 100 and fired[0] == 1,
-		"victory win: crossing 4000 latches the win and fires victory_achieved once")
-	# Base decays to 0 by turn 300: total drops below 4000 but the win stays latched.
+	_check(VictoryState.won and VictoryState.won_turn == 105 and fired[0] == 1,
+		"victory win: reaching the turn-105 bar (1 track) latches the win, fires once")
+	# By turn 300 the bar has risen to 4000; the 1-track total (1000) no longer clears
+	# it, but the win stays latched with no second emit.
 	TurnManager.current_turn = 300
 	VictoryState._on_turn_processed({"money_in": 0.0, "money_out": 0.0})
 	VictoryState._tick()
-	_check(VictoryState.total_for_turn(300) < VictoryState.WIN_THRESHOLD
+	_check(VictoryState.total_for_turn(300) < VictoryState.win_threshold_for_turn(300)
 		and VictoryState.won and fired[0] == 1,
-		"victory win: stays latched through base decay, with no second emit")
+		"victory win: stays latched as the bar rises, with no second emit")
 	VictoryState.victory_achieved.disconnect(on_win)
 
 func _test_victory_tick_scores_resolved_turn() -> void:
@@ -4928,9 +4935,10 @@ func _test_victory_tick_scores_resolved_turn() -> void:
 	TurnManager.current_turn = 101  # the increment that lands before completion fires
 	VictoryState._on_turn_resolution_completed()
 	var b := VictoryState.get_breakdown()
-	_check(int(b["turn"]) == 100 and int(b["base"]) == 3000
+	# At turn 100 the bar is still 1000 (flat before 105); 1 maxed track (1000) wins.
+	_check(int(b["turn"]) == 100 and int(b["win_threshold"]) == 1000
 		and VictoryState.won and VictoryState.won_turn == 100,
-		"victory tick: scores resolved turn 100 (base 3000, won_turn 100), not turn 101")
+		"victory tick: scores resolved turn 100 (bar 1000, won_turn 100), not turn 101")
 
 func _test_victory_save_load() -> void:
 	VictoryState.reset()
@@ -5193,8 +5201,8 @@ func _test_detail_panel_owner_resolution() -> void:
 
 func _test_greenest_reads_quality() -> void:
 	VictoryState.reset()
-	# green = intermittent 3000 + steady 3000 = 6000 of 10000 -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
-	VictoryState._last_summary = {"power_supply": 10000,
+	# green = intermittent 3000 + steady 3000 = 6000 of 10000 made, 2000 used -> share 0.6.
+	VictoryState._last_summary = {"power_supply": 10000, "power_demand": 2000,
 		"power_supply_by_quality": {"green_intermittent": 3000, "green_steady": 3000, "grey": 4000}}
 	_check(absf(VictoryState._live_progress("greenest") - 0.5) < 0.001,
 		"greenest: reads power_supply_by_quality (steady + intermittent count green)")
