@@ -171,7 +171,8 @@ func _centre_and_resize() -> void:
 	var centred_top := maxf(40.0, (vp.y - base_h) / 2.0)
 	var bottom := centred_top + base_h  # where the old panel's bottom sat — keep it fixed
 	offset_left = maxf(0.0, (vp.x - w) / 2.0)
-	offset_top = maxf(8.0, bottom - h)  # grow upward; clamp to the top of the screen
+	# grow upward, but never above the top bar (owner 2026-07-11: was clamped to 8).
+	offset_top = maxf(86.0, bottom - h)
 	offset_right = offset_left + w
 	offset_bottom = bottom
 

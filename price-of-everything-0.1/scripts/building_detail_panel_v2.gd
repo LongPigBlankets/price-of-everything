@@ -17,7 +17,7 @@ const BuildingLevels := preload("res://scripts/building_levels.gd")
 
 const HEADER_HEIGHT := 44.0
 const PANEL_EDGE_MARGIN := 20.0
-const TOP_BAR_CLEARANCE := 56.0
+const TOP_BAR_CLEARANCE := 86.0   # clears the taller top bar (owner 2026-07-11)
 const BOTTOM_CLEARANCE := 110.0  # fallback: keep clear of the bottom menu when no tile panel to match
 const PANEL_WIDTH := 460.0
 const MARKET_ICON := 98  # framed good-icon size, matching the market panel's goods rows
