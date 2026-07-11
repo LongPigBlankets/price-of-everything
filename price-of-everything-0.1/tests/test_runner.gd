@@ -33,6 +33,7 @@ func _ready() -> void:
 	await _test_main_scene_instantiates()
 	_test_catalog_loaded()
 	_test_recipe_requirements()
+	_test_research_recipe_and_level_tiers()
 	_test_menu_icons()
 	_test_bottom_menu_default()
 	_test_panel_stack_focus()
@@ -150,6 +151,7 @@ func _ready() -> void:
 	_test_live_unlock_conditions()
 	_test_deposit_penalty_modifier()
 	_test_workforce_output_modifier_surfaces_in_building_status()
+	_test_recipe_labour_owns_cost()
 	_test_additive_labour_cost_model()
 	_test_labour_factor_floor()
 	_test_cost_report_credits_output_modifiers()
@@ -3630,6 +3632,29 @@ func _test_additive_labour_cost_model() -> void:
 	Modifiers.reset()
 	MatchState.reset()
 
+func _test_recipe_labour_owns_cost() -> void:
+	var old_turn: int = int(TurnManager.current_turn)
+	TurnManager.current_turn = 1
+	var recipe: Dictionary = Catalog.get_recipe("r_039")
+	var building_data: Dictionary = Catalog.get_building_by_internal_name("electrolyser")
+	var building := {
+		"building_id": building_data.get("id", ""),
+		"recipe_id": "r_039",
+		"level": 1,
+	}
+	var expected := (
+		float(recipe.get("labour_unskilled_required", 0)) * EconomyConfig.LABOUR_UNSKILLED_RATE
+		+ float(recipe.get("labour_skilled_required", 0)) * EconomyConfig.LABOUR_SKILLED_RATE
+		+ float(recipe.get("labour_h_skilled_required", 0)) * EconomyConfig.LABOUR_HIGH_SKILLED_RATE
+	)
+	_check(int(recipe.get("labour_unskilled_required", 0)) >= 500
+		and int(recipe.get("labour_skilled_required", 0)) >= 100
+		and int(recipe.get("labour_h_skilled_required", 0)) >= 50,
+		"recipe labour: migrated rows retain the minimum crew")
+	_check(is_equal_approx(Production._base_labour_cost(building, recipe), expected),
+		"recipe labour: production cost uses the selected recipe, not the building default")
+	TurnManager.current_turn = old_turn
+
 func _test_labour_factor_floor() -> void:
 	Modifiers.reset()
 	MatchState.reset()
@@ -5182,6 +5207,12 @@ func _test_battery_buildable() -> void:
 		# comes from loaded cells, not the recipe.
 		_check(str(r.get("output_name", "")) == "" and (r.get("inputs", []) as Array).is_empty(),
 			"battery: housing recipe is a no-op (no inputs/outputs)")
+		var catalysts: Array = r.get("catalysts", []) as Array
+		_check(catalysts.size() == 3
+			and str(catalysts[0].get("internal_name", "")) == "lithium_battery"
+			and str(catalysts[1].get("internal_name", "")) == "sodium_battery"
+			and str(catalysts[2].get("internal_name", "")) == "iron_battery",
+			"battery: allowed cell chemistries come from recipe catalysts")
 	var tvd = load("res://scripts/tile_view_data.gd")
 	var opt: Dictionary = tvd.power_build_option("battery", "", "tile_5_10", {})
 	_check(str(opt.get("recipe_id", "")) != "", "battery: build option resolves a recipe (no longer 'not available')")
@@ -7954,6 +7985,43 @@ func _test_recipe_requirements() -> void:
 	_check(no_phantom, "promotion gate: active recipes only reference real goods")
 	var mine_b: Dictionary = Catalog.get_building("b_001")
 	_check("extraction" in mine_b.get("building_type", []), "Mine building_type contains extraction")
+
+func _test_research_recipe_and_level_tiers() -> void:
+	var graphitisation: Dictionary = Catalog.get_recipe("r_042")
+	_check(str(graphitisation.get("required_research", "")) == "Biomass Cracking",
+		"bio-graphitisation is gated by Biochemistry's Biomass Cracking")
+	var has_biomass_node := false
+	for unlock in MatchState._unlock_defs:
+		if str(unlock.get("title", "")) == "Biomass Cracking":
+			has_biomass_node = str(unlock.get("category", "")) == "Biochemistry"
+	_check(has_biomass_node, "Biomass Cracking belongs to the Biochemistry tree")
+
+	var file := FileAccess.open("res://data/research_unlocks.csv", FileAccess.READ)
+	var level2_ok := file != null
+	var level2_count := 0
+	var warehouse_level2_ok := true
+	if file != null:
+		var header := file.get_csv_line()
+		var indices := {}
+		for index in header.size():
+			indices[header[index]] = index
+		while not file.eof_reached():
+			var row := file.get_csv_line()
+			if row.is_empty() or row[0].strip_edges() == "":
+				continue
+			var icon_index: int = int(indices.get("icon", -1))
+			var rank_index: int = int(indices.get("rank", -1))
+			if icon_index >= 0 and rank_index >= 0 and icon_index < row.size() and row[icon_index] == "level2":
+				level2_count += 1
+				if rank_index >= row.size() or row[rank_index] != "II":
+					level2_ok = false
+			var title_index: int = int(indices.get("title", -1))
+			var description_index: int = int(indices.get("description", -1))
+			if title_index >= 0 and description_index >= 0 and title_index < row.size() and description_index < row.size() and row[title_index] == "Pallet Racking Systems" and "warehouse level 2" in row[description_index] and (rank_index < 0 or rank_index >= row.size() or row[rank_index] != "II"):
+				warehouse_level2_ok = false
+		file.close()
+	_check(level2_ok and level2_count == 21, "all 21 Level 2 building unlocks are Tier II")
+	_check(warehouse_level2_ok, "warehouse Level 2 unlock is Tier II")
 
 # Logic: the regenerated bottom-menu icons import and load as textures.
 func _test_menu_icons() -> void:

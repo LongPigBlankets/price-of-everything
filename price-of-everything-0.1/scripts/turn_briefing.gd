@@ -120,6 +120,12 @@ func critical_alerts() -> Array:
 	return _items.filter(func(it) -> bool:
 		return str(it.section) == "alerts" and str(it.severity) == "critical")
 
+## True while a tutorial match is running. Defensive lookup: the Tutorial autoload
+## is always present, but treat a missing/renamed singleton as "not active".
+func _tutorial_active() -> bool:
+	var t := get_node_or_null("/root/Tutorial")
+	return t != null and bool(t.get("active"))
+
 func _rebuild_items() -> void:
 	var out: Array = []
 	# 1. Decisions — queue order; blocking; never dismissible (owner ruling).
@@ -132,6 +138,13 @@ func _rebuild_items() -> void:
 			"category": str(def.get("category", "")),
 			"view": view,
 		})
+	# During the tutorial, show ONLY decisions — the live-state updates (a factory
+	# starved until it's powered, an empty stockpile) fire mid-lesson and confuse
+	# players before they've learned what they mean. The Diagnostics card on the
+	# building still surfaces the same faults where the tutorial points them out.
+	if _tutorial_active():
+		_items = out
+		return
 	# 2. Live critical states (self-clearing; dismiss = quiet until worsened).
 	var bankruptcy := _bankruptcy_item()
 	if not bankruptcy.is_empty():

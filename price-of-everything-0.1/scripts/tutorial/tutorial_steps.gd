@@ -301,7 +301,10 @@ static func steps() -> Array:
 			"chapter": "Transport",
 			"title": "You choose where output goes",
 			"body": "Selling to the market is only the default. A building can ship its output anywhere you own a stockpile — that's how you'll feed factories from your own mines later. Open your factory's Output destination.",
-			"setup": [ { "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" } ],
+			"setup": [
+				{ "action": "close_empire_view" },
+				{ "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" },
+			],
 			"spotlight": { "kind": "node_name", "ref": "OutputDestCard" },
 			"lock_panel": true,
 			"done": {

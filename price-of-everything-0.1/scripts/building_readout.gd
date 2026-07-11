@@ -225,10 +225,11 @@ static func _output_disposition(building: Dictionary, recipe: Dictionary) -> Dic
 
 # --- Labour split -------------------------------------------------------------------------
 
-static func labour(building_data: Dictionary) -> Dictionary:
-	var unskilled := int(building_data.get("labour_unskilled_required", 0))
-	var skilled := int(building_data.get("labour_skilled_required", 0))
-	var highly := int(building_data.get("labour_h_skilled_required", 0))
+static func labour(building_data: Dictionary, recipe: Dictionary = {}) -> Dictionary:
+	var source: Dictionary = recipe if int(recipe.get("labour_unskilled_required", -1)) >= 0 else building_data
+	var unskilled := int(source.get("labour_unskilled_required", 0))
+	var skilled := int(source.get("labour_skilled_required", 0))
+	var highly := int(source.get("labour_h_skilled_required", 0))
 	var factor := MatchState.labour_policy_factor()
 	var cost := (float(unskilled) * EconomyConfig.LABOUR_UNSKILLED_RATE
 		+ float(skilled) * EconomyConfig.LABOUR_SKILLED_RATE
