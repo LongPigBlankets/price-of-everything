@@ -2,6 +2,11 @@ extends Control
 
 const BUILDING_LEDGER_PANEL_SCENE := preload("res://scenes/building_ledger_panel.tscn")
 const PeoplePanel := preload("res://scripts/people_panel.gd")
+const VictoryEndScreen := preload("res://scripts/victory_end_screen.gd")
+const EndGameData := preload("res://scripts/end_game_data.gd")
+const MAIN_MENU_SCENE := "res://scenes/main_menu.tscn"
+
+var _end_screen: CanvasLayer = null
 
 # Bottom-menu buttons that have multi-resolution circular art in
 # assets/icons/ui_icons/{100,200,400}/.
@@ -110,6 +115,10 @@ func _ready() -> void:
 	# Victory moment (spec §6): the HUD owns the auto-open so it can clear whatever
 	# panel is showing first (the panel can't hide its own siblings).
 	VictoryState.victory_achieved.connect(_on_victory_achieved)
+	# End of game at the turn cap: the full Victory / Defeat end screen (bankruptcy has
+	# its own game-over panel via SolvencyState, so we ignore that reason here).
+	if TurnManager.has_signal("game_ended_signal"):
+		TurnManager.game_ended_signal.connect(_on_game_ended_signal)
 	# Tile-view "Buy Buildings" → open the Market on the Buildings tab, filtered to that tile.
 	MatchState.buildings_market_for_tile_requested.connect(_on_buildings_market_for_tile)
 
@@ -480,6 +489,25 @@ func _on_victory_achieved(total: int, turn: int) -> void:
 	_hide_all_panels()
 	_set_panel_visible(victory_panel, true)
 	MatchState.request_toast("VICTORY — score %d on turn %d!" % [total, turn], "success")
+
+# Turn cap reached → the full end-of-game Victory / Defeat screen. game_ended_signal
+# fires just BEFORE turn_resolution_completed (which ticks VictoryState for the final
+# turn), so wait for that tick before gathering the result.
+func _on_game_ended_signal(reason: String) -> void:
+	if reason != "turn_cap_reached" or _end_screen != null:
+		return
+	await TurnManager.turn_resolution_completed
+	await get_tree().process_frame   # let VictoryState._tick finish for the final turn
+	if _end_screen != null:
+		return
+	_hide_all_panels()
+	_end_screen = VictoryEndScreen.new()
+	add_child(_end_screen)
+	_end_screen.back_to_menu_pressed.connect(_on_end_screen_back)
+	_end_screen.show_end(EndGameData.gather())
+
+func _on_end_screen_back() -> void:
+	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
 
 func _on_loan_confirmed(amount: float) -> void:
 	var ok: bool = LoanState.take_loan(amount)

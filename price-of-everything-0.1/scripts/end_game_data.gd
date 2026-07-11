@@ -227,7 +227,7 @@ static func _empire() -> Dictionary:
 			furn_b += 1
 		elif types.has("manufacturing"):
 			factories += 1
-		if cat == "port" or types.has("port") or str(bd.get("internal_name", "")) == "seaport":
+		if cat == "port" or types.has("port") or str(bd.get("internal_name", "")) in ["port", "seaport"]:
 			port_tiles[str(inst.get("tile_id", ""))] = Catalog.tile_label(str(inst.get("tile_id", "")))
 	var ports: Array = port_tiles.values()
 	if ports.is_empty():
