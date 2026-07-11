@@ -106,23 +106,46 @@ static func _track_sub(key: String, done: bool) -> String:
 	return ""
 
 # ── Narrative title / epithet / copy (generated from the actual result) ─────────
-# Single-track wins are NAMED FOR THE WINNING TRACK (owner's victory types:
-# greenest / logistics / richest / autarkic / widest — richest keeps the design's
-# "Cash is King"); multi-track wins keep the design's count titles.
+# Victory names (owner 2026-07-11):
+#   5 tracks → The Full Ledger
+#   4 tracks → named by the one that got away (see _FOUR_TRACK_TITLES)
+#   3 tracks → The Magnate · 2 tracks → Visionary Industrialist
+#   1 track  → named for the winning track (see _SINGLE_TRACK_TITLES)
 const _SINGLE_TRACK_TITLES := {
-	"autarkic": "Autarkic", "logistics": "Logistics", "richest": "Cash is King",
-	"widest": "Widest", "greenest": "Greenest",
+	"greenest": "Green and Keen",
+	"logistics": "I am Speed",
+	"richest": "Cash is King",
+	"widest": "Big Bang",
+	"autarkic": "Independent and Proud",
+}
+const _FOUR_TRACK_TITLES := {   # keyed by the MISSING track
+	"greenest": "Titan of Industry",
+	"autarkic": "Green Titan",
+	"widest": "Closed Shop",
+	"richest": "First and Last Mile",
+	"logistics": "Beyond all Limits",
 }
 
 static func _title(result: String, secured: int, tracks: Array) -> String:
 	if result == "defeat":
 		return "Receivership"
-	if secured <= 1:
-		for t in tracks:
-			if bool(t.done):
-				return str(_SINGLE_TRACK_TITLES.get(str(t.key), str(t.name)))
-		return "Victory"   # threshold crossed on banked partials — no single champion track
-	return ["", "", "Visionary Industrialist", "The Magnate", "Titan of Industry", "The Full Ledger"][clampi(secured, 2, 5)]
+	match secured:
+		5:
+			return "The Full Ledger"
+		4:
+			for t in tracks:
+				if not bool(t.done):
+					return str(_FOUR_TRACK_TITLES.get(str(t.key), "Titan of Industry"))
+			return "Titan of Industry"
+		3:
+			return "The Magnate"
+		2:
+			return "Visionary Industrialist"
+		1:
+			for t in tracks:
+				if bool(t.done):
+					return str(_SINGLE_TRACK_TITLES.get(str(t.key), str(t.name)))
+	return "Victory"   # threshold crossed on banked partials — no champion track
 
 static func _epithet(result: String, secured: int, turn: int) -> String:
 	if result == "defeat":
