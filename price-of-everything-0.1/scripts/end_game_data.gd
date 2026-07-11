@@ -45,7 +45,7 @@ static func gather() -> Dictionary:
 		"threshold": threshold,
 		"secured_count": secured,
 		"tracks": tracks,
-		"title": _title(result, secured),
+		"title": _title(result, secured, tracks),
 		"epithet": _epithet(result, secured, turn),
 		"copy": _copy(result, secured, turn, tracks),
 		"statline": _statline(),
@@ -106,10 +106,46 @@ static func _track_sub(key: String, done: bool) -> String:
 	return ""
 
 # ── Narrative title / epithet / copy (generated from the actual result) ─────────
-static func _title(result: String, secured: int) -> String:
+# Victory names (owner 2026-07-11):
+#   5 tracks → The Full Ledger
+#   4 tracks → named by the one that got away (see _FOUR_TRACK_TITLES)
+#   3 tracks → The Magnate · 2 tracks → Visionary Industrialist
+#   1 track  → named for the winning track (see _SINGLE_TRACK_TITLES)
+const _SINGLE_TRACK_TITLES := {
+	"greenest": "Green and Keen",
+	"logistics": "I am Speed",
+	"richest": "Cash is King",
+	"widest": "Big Bang",
+	"autarkic": "Independent and Proud",
+}
+const _FOUR_TRACK_TITLES := {   # keyed by the MISSING track
+	"greenest": "Titan of Industry",
+	"autarkic": "Green Titan",
+	"widest": "Closed Shop",
+	"richest": "First and Last Mile",
+	"logistics": "Beyond all Limits",
+}
+
+static func _title(result: String, secured: int, tracks: Array) -> String:
 	if result == "defeat":
 		return "Receivership"
-	return ["Cash is King", "Cash is King", "Visionary Industrialist", "The Magnate", "Titan of Industry", "The Full Ledger"][clampi(secured, 0, 5)]
+	match secured:
+		5:
+			return "The Full Ledger"
+		4:
+			for t in tracks:
+				if not bool(t.done):
+					return str(_FOUR_TRACK_TITLES.get(str(t.key), "Titan of Industry"))
+			return "Titan of Industry"
+		3:
+			return "The Magnate"
+		2:
+			return "Visionary Industrialist"
+		1:
+			for t in tracks:
+				if bool(t.done):
+					return str(_SINGLE_TRACK_TITLES.get(str(t.key), str(t.name)))
+	return "Victory"   # threshold crossed on banked partials — no champion track
 
 static func _epithet(result: String, secured: int, turn: int) -> String:
 	if result == "defeat":
@@ -227,7 +263,7 @@ static func _empire() -> Dictionary:
 			furn_b += 1
 		elif types.has("manufacturing"):
 			factories += 1
-		if cat == "port" or types.has("port") or str(bd.get("internal_name", "")) == "seaport":
+		if cat == "port" or types.has("port") or str(bd.get("internal_name", "")) in ["port", "seaport"]:
 			port_tiles[str(inst.get("tile_id", ""))] = Catalog.tile_label(str(inst.get("tile_id", "")))
 	var ports: Array = port_tiles.values()
 	if ports.is_empty():

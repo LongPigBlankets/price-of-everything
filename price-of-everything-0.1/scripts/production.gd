@@ -932,6 +932,17 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 		_sell_output_to_market(building, good, qty, summary)
 		return
 	var route := _transport_route(building.get("tile_id", ""), stockpile_coord, good.id)
+	# Unreachable destination (e.g. a fluid with no pipe / reinforced-pipe network to
+	# the target): do NOT attempt delivery and charge NOTHING — the output stays in
+	# the source tile's stockpile until the player fixes the connection. The BDP
+	# diagnostics call this out ("Outputs cannot reach destination…").
+	if not TransportService.route_is_reachable(route):
+		var kept := Stockpile.add(str(building.get("tile_id", "")), good.id, qty)
+		if kept < qty:
+			push_warning("[Production] %s output unroutable to %s and source stockpile kept %d/%d" % [
+				Catalog.get_display_name(good.id), str(stockpile_coord), kept, qty,
+			])
+		return
 	var transport_cost: float = TransportService.transport_cost_for_route(good.id, qty, route)
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)

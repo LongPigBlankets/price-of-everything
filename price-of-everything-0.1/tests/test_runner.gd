@@ -6458,6 +6458,11 @@ func _test_transport_service() -> void:
 	var no_pipe_route := TransportService.route(src, dst, safe_liquid)
 	_check(not TransportService.route_is_reachable(no_pipe_route),
 		"safe liquid has no distance fallback when no pipeline exists")
+	# BUG FIX (owner 2026-07-11): an unreachable route must cost NOTHING — the
+	# INF_TURNS sentinel used to explode fluid output transport into the billions
+	# while never delivering.
+	_check(TransportService.transport_cost_for_route(safe_liquid, 100, no_pipe_route) == 0.0,
+		"unreachable routes are never charged for transport")
 	_check(TransportService.quote_market_buy(dst, safe_liquid, 5, false).is_empty()
 			and TransportService.quote_market_buy(dst, safe_liquid, 5, true).is_empty(),
 		"market buys cannot bypass the pipeline requirement for safe liquids")

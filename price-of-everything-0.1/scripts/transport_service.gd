@@ -70,6 +70,11 @@ func transport_cost(good_id: String, qty: int, transport_turns: int, mode_mult: 
 
 
 func transport_cost_for_route(good_id: String, qty: int, route_data: Dictionary, surcharge: float = 1.0) -> float:
+	# A route that can't be travelled costs nothing — the INF_TURNS sentinel would
+	# otherwise explode the per-turn cost into the billions (fluids with no pipe
+	# network to their destination were charged ~£1e9 and never delivered).
+	if not route_is_reachable(route_data):
+		return 0.0
 	var cost: float = EconomyConfig.transport_cost_for_route(good_id, qty, route_data) * surcharge
 	# transport_cost modifiers (research like Route Optimization) trim haulage cost.
 	cost = Modifiers.apply("transport_cost", good_id, cost, {"good_id": good_id})

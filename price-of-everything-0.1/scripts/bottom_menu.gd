@@ -2,6 +2,11 @@ extends Control
 
 const BUILDING_LEDGER_PANEL_SCENE := preload("res://scenes/building_ledger_panel.tscn")
 const PeoplePanel := preload("res://scripts/people_panel.gd")
+const VictoryEndScreen := preload("res://scripts/victory_end_screen.gd")
+const EndGameData := preload("res://scripts/end_game_data.gd")
+const MAIN_MENU_SCENE := "res://scenes/main_menu.tscn"
+
+var _end_screen: CanvasLayer = null
 
 # Bottom-menu buttons that have multi-resolution circular art in
 # assets/icons/ui_icons/{100,200,400}/.
@@ -110,6 +115,10 @@ func _ready() -> void:
 	# Victory moment (spec §6): the HUD owns the auto-open so it can clear whatever
 	# panel is showing first (the panel can't hide its own siblings).
 	VictoryState.victory_achieved.connect(_on_victory_achieved)
+	# End of game at the turn cap: the full Victory / Defeat end screen (bankruptcy has
+	# its own game-over panel via SolvencyState, so we ignore that reason here).
+	if TurnManager.has_signal("game_ended_signal"):
+		TurnManager.game_ended_signal.connect(_on_game_ended_signal)
 	# Tile-view "Buy Buildings" → open the Market on the Buildings tab, filtered to that tile.
 	MatchState.buildings_market_for_tile_requested.connect(_on_buildings_market_for_tile)
 
@@ -475,11 +484,39 @@ func _on_victory_widget_clicked() -> void:
 		_set_panel_visible(victory_panel, true)
 
 func _on_victory_achieved(total: int, turn: int) -> void:
-	# Auto-open the Victory panel over whatever is showing, plus a toast. The game
-	# is not force-ended — the player may keep pushing their score.
-	_hide_all_panels()
-	_set_panel_visible(victory_panel, true)
+	# Crossing the win threshold at ANY turn ends the game with the Victory screen
+	# (owner 2026-07-11 — previously the game kept going and only auto-opened the tracks
+	# panel). Headless balance runs are exempt so a mid-run win never cuts them short.
+	if DisplayServer.get_name() == "headless":
+		return
 	MatchState.request_toast("VICTORY — score %d on turn %d!" % [total, turn], "success")
+	TurnManager.game_ended = true
+	_show_end_screen()
+
+# Reached the turn cap without a win → Defeat. game_ended_signal fires just BEFORE
+# turn_resolution_completed (the final VictoryState tick), so wait for that tick; if a
+# win latched on the final turn its Victory screen has already been shown.
+func _on_game_ended_signal(reason: String) -> void:
+	if reason != "turn_cap_reached" or _end_screen != null or DisplayServer.get_name() == "headless":
+		return
+	await TurnManager.turn_resolution_completed
+	await get_tree().process_frame   # let VictoryState._tick finish for the final turn
+	if VictoryState.won:
+		return
+	_show_end_screen()
+
+# Build + present the full end-of-game screen from the live result. Idempotent.
+func _show_end_screen() -> void:
+	if _end_screen != null:
+		return
+	_hide_all_panels()
+	_end_screen = VictoryEndScreen.new()
+	add_child(_end_screen)
+	_end_screen.back_to_menu_pressed.connect(_on_end_screen_back)
+	_end_screen.show_end(EndGameData.gather())
+
+func _on_end_screen_back() -> void:
+	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
 
 func _on_loan_confirmed(amount: float) -> void:
 	var ok: bool = LoanState.take_loan(amount)
