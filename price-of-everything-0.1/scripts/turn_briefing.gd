@@ -75,6 +75,9 @@ var _acked: Dictionary = {}            # event id -> true (session-scoped ack fo
 var _last_alert_ids: Dictionary = {}   # alert ids present last evaluation (new-alert detect)
 var _layer: CanvasLayer = null
 var _strip: Control = null
+## Top Bar v2 replaces the collapsed strip with its Briefing module; the bar
+## sets this false at ready so the strip never mounts alongside it.
+var strip_enabled := true
 var _panel: Control = null
 var _refresh_queued := false
 var _select_on_expand := ""
@@ -425,6 +428,8 @@ const _EVENT_SECTIONS := {
 	"sales_aggregate": "",        # too noisy for the briefing — bell only
 	"bankruptcy_warning": "",     # superseded by the live runway alert
 	"building_starved": "",       # superseded by the aggregated live alert
+	"policy_enacted": "news",     # CO2 tax / green subsidy now in effect (PolicyState)
+	"forewarn": "news",           # "coming in N turns" advance notice of a scheduled event
 }
 # Kind → icon glyph key (see ICON_GLYPHS). Announcement kinds we don't know fall back
 # to the flag in _event_item.
@@ -437,6 +442,9 @@ const _EVENT_ICONS := {
 	"bridge_loan": "coin",
 	"deposit_exhausted": "warn",
 	"tile_at_capacity": "gauge",
+	"policy_enacted": "scale",
+	"forewarn": "flag",
+	"advisor_tip": "users",
 }
 
 func _event_item(ev: Dictionary) -> Dictionary:
@@ -575,7 +583,7 @@ func _sync_ui() -> void:
 		_layer.add_child(_panel)
 	if _items.is_empty():
 		expanded = false
-	_strip.visible = not expanded and not _items.is_empty()
+	_strip.visible = strip_enabled and not expanded and not _items.is_empty()
 	if _strip.visible:
 		_strip.refresh()
 	if expanded and not _items.is_empty():

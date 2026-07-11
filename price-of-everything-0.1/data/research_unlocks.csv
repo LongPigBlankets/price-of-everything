@@ -231,3 +231,4 @@ Infrastructure,Substation Layouts,,,,III,Run,Cables,12,turns,Dynamic Line Rating
 Logistics,Depot Scheduling,,,,I,Build,port,3,units,Pallet Racking Systems,depot,Raises tile storage to 1600 (warehouse level 2).
 Logistics,Pallet Racking Systems,,,,II,Build,port,3,units,Automated Storage & Retrieval,depot,Raises tile storage to 2500 (warehouse level 3).
 Logistics,,,,,I,Stockpile filled,by 7+ buildings,5,turns,Just-in-Time Logistics,depot,Unlock JIT delivery from building producing a good to building consuming a good within the same tile. Reduces strain on warehouses.
+Biochemistry,Sustainable Forestry,,,,III,Produce,biomass,300,units,Biomass Cracking,bio,Unlocks new recipe: Bio Ethylene (3 Ethylene directly from biomass).

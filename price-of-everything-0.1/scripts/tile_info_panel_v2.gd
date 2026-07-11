@@ -134,9 +134,9 @@ func _apply_anchors() -> void:
 	anchor_left = 1.0
 	anchor_right = 1.0
 	offset_left = -(panel_w + 30.0) + _drag_delta.x
-	offset_top = 30.0 + _drag_delta.y
+	offset_top = 50.0 + _drag_delta.y   # cleared the taller top bar (owner 2026-07-11)
 	offset_right = -30.0 + _drag_delta.x
-	offset_bottom = 900.0 + _drag_delta.y  # taller panel (top pinned near the screen top, so it grows down)
+	offset_bottom = 920.0 + _drag_delta.y  # taller panel (top pinned near the screen top, so it grows down)
 	grow_horizontal = Control.GROW_DIRECTION_BEGIN
 
 const TILE_MODAL_FRAME_PATH := "res://assets/ui/tile_modal_pipe_frame.png"
@@ -1412,25 +1412,29 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 	for b in bl.buildings:
 		if not bool(b.is_infra):
 			built_rows.append(b)
-	if _show_player_buildings_only:
-		built_rows = _player_owned_building_rows(built_rows)
-	pane.add_child(_make_buildings_header("Production", "(%d)" % (built_rows.size() + projects.size())))
-	# Group buildings of the same type + recipe into one expandable group card.
-	var groups: Dictionary = {}
-	var order: Array = []
+	# Split by ownership (owner 2026-07-11): your buildings and NPC buildings each
+	# get their own subheader + card list, never mixed in a group card.
+	var player_rows: Array = []
+	var npc_rows: Array = []
 	for b in built_rows:
-		var key := "%s|%s" % [str(b.building_id), str(b.get("recipe_id", ""))]
-		if not groups.has(key):
-			groups[key] = []
-			order.append(key)
-		(groups[key] as Array).append(b)
-	for key in order:
-		pane.add_child(_make_building_group_card(groups[key]))
+		var inst := MatchState.get_building(str(b.get("instance_id", "")))
+		if not inst.is_empty() and not MatchState.is_player_owned(inst):
+			npc_rows.append(b)
+		else:
+			player_rows.append(b)
+
+	# ── Your Buildings — grouped cards + any construction projects ───────────────
+	pane.add_child(_make_buildings_header("Your Buildings", "(%d)" % (player_rows.size() + projects.size())))
+	_add_grouped_building_cards(pane, player_rows)
 	for project in projects:
 		pane.add_child(_make_construction_row(project))
-	if built_rows.is_empty() and projects.is_empty():
-		var empty_text := "No player-owned buildings on this tile" if _show_player_buildings_only else "No buildings on this tile"
-		pane.add_child(_make_muted_label(empty_text))
+	if player_rows.is_empty() and projects.is_empty():
+		pane.add_child(_make_muted_label("No buildings you own on this tile"))
+
+	# ── NPC Buildings — hidden when the "your buildings only" filter is on ───────
+	if not _show_player_buildings_only and not npc_rows.is_empty():
+		pane.add_child(_make_buildings_header("NPC Buildings", "(%d)" % npc_rows.size(), false))
+		_add_grouped_building_cards(pane, npc_rows)
 
 	# Infrastructure gets its own section: a grid of dialled add/built slots.
 	pane.add_child(_make_section_title("Infrastructure", "transit / capacity", "ok"))
@@ -1526,7 +1530,7 @@ func _port_fmt_int(n: int) -> String:
 			out = "," + out
 	return ("-" if n < 0 else "") + out
 
-func _make_buildings_header(title: String, right_text: String) -> HBoxContainer:
+func _make_buildings_header(title: String, right_text: String, with_filter: bool = true) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	row.custom_minimum_size = Vector2(0, 30)
@@ -1543,6 +1547,9 @@ func _make_buildings_header(title: String, right_text: String) -> HBoxContainer:
 		count.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
 		count.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(count)
+	# The "NPC Buildings" subheader carries no filter toggle (only "Your Buildings").
+	if not with_filter:
+		return row
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spacer)
@@ -2654,6 +2661,52 @@ func _make_line_row(left: String, right: String, right_color: Color) -> HBoxCont
 const GROUP_TILE := 90   # shared outer size for the icon AND the goods frame (max 90×90)
 const GROUP_CARD_H := 100 # group-card header height
 
+# Group a (single-ownership) list of building rows by type + recipe and add one
+# group card per group to the pane, preserving first-seen order.
+func _add_grouped_building_cards(pane: VBoxContainer, rows: Array) -> void:
+	var groups: Dictionary = {}
+	var order: Array = []
+	for b in rows:
+		var key := "%s|%s" % [str(b.building_id), str(b.get("recipe_id", ""))]
+		if not groups.has(key):
+			groups[key] = []
+			order.append(key)
+		(groups[key] as Array).append(b)
+	for key in order:
+		pane.add_child(_make_building_group_card(groups[key]))
+
+# "Owned by <company>" plate — navy text on an off-white rounded rectangle, hugging
+# the card's bottom-right and standing 30px tall. On group cards it stops short of
+# the expand arrow on the right.
+func _make_owned_by_banner(company: String, solo: bool) -> Control:
+	var row := HBoxContainer.new()
+	row.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	row.offset_top = -34
+	row.offset_bottom = -4
+	row.offset_left = 8
+	row.offset_right = -8 if solo else -56   # clear the group's 44px expand arrow
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var plate := PanelContainer.new()
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.custom_minimum_size = Vector2(0, 30)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = DS.PALETTE.ACCENT   # off-white
+	sb.set_corner_radius_all(9)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 14
+	plate.add_theme_stylebox_override("panel", sb)
+	var lbl := Label.new()
+	lbl.text = "Owned by %s" % company
+	lbl.theme_type_variation = &"BuildingName"   # large, matching the card name
+	lbl.add_theme_font_size_override("font_size", 18)
+	lbl.add_theme_color_override("font_color", DS.PALETTE.BG_PANEL)   # navy
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.add_child(lbl)
+	row.add_child(plate)
+	return row
+
 # A group card aggregates all buildings of the same type + recipe. Click the row or
 # the ▶ button to expand into the individual building rows. When the "group" holds a
 # single building it renders as a SOLO card instead: no count badge, no expand arrow,
@@ -2666,27 +2719,29 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	var bd: Dictionary = Catalog.get_building(building_id)
 	var count := members.size()
 	var solo := count == 1
+	var inst := MatchState.get_building(str(first.get("instance_id", "")))
+	var is_npc := not inst.is_empty() and not MatchState.is_player_owned(inst)
 
 	var card := VBoxContainer.new()
 	card.add_theme_constant_override("separation", 4)
 
-	# ── Header row (clickable), in a differentiated card with an off-white outline ─
-	var header_panel := PanelContainer.new()
-	var hp_style := StyleBoxFlat.new()
-	hp_style.bg_color = DS.PALETTE.BG_HIGHLIGHT
-	hp_style.border_color = DS.PALETTE.ACCENT  # off-white outline
-	hp_style.set_border_width_all(1)
-	hp_style.set_corner_radius_all(10)
-	hp_style.set_content_margin_all(5)
-	header_panel.add_theme_stylebox_override("panel", hp_style)
+	# ── Header row (clickable), on a brushed navy metal plate w/ silver edge ─────
+	var header_panel := _BrushedCard.new(5, 5, 10)
 	card.add_child(header_panel)
 
+	# A plain Control wrapper (PanelContainer would stretch every child to fill,
+	# fighting the floating NPC banner) — the header fills it, the banner floats.
+	var overlay := Control.new()
+	overlay.custom_minimum_size = Vector2(0, GROUP_CARD_H - 10)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header_panel.add_child(overlay)
+
 	var header := HBoxContainer.new()
+	header.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	header.add_theme_constant_override("separation", 5)
-	header.custom_minimum_size = Vector2(0, GROUP_CARD_H - 10)
 	header.mouse_filter = Control.MOUSE_FILTER_STOP
 	header.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	header_panel.add_child(header)
+	overlay.add_child(header)
 
 	# Small left gutter so the count badge's overhang isn't clipped.
 	var gutter := Control.new()
@@ -2716,7 +2771,9 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	var info_margin := MarginContainer.new()
 	info_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var v_inset := 8 if solo else 20  # solo also shows a RAG strip, so less inset
+	# NPC cards keep the name near the top (the banner owns the bottom); player solo
+	# cards show the pill row, so both use the smaller inset.
+	var v_inset := 8 if (solo or is_npc) else 20
 	info_margin.add_theme_constant_override("margin_top", v_inset)
 	info_margin.add_theme_constant_override("margin_bottom", v_inset)
 	info_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2733,30 +2790,48 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	name_label.theme_type_variation = &"BuildingName"  # next size up (Barlow Semi 22)
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # spills onto next row
 	info.add_child(name_label)
-	if solo:  # at-a-glance status for the single building
-		info.add_child(_make_building_rag_strip(first))
 	var pusher := Control.new()
 	pusher.size_flags_vertical = Control.SIZE_EXPAND_FILL  # pushes cost basis to the bottom
 	pusher.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info.add_child(pusher)
-	var cost_header := Label.new()
-	cost_header.text = "Cost Basis"
-	cost_header.theme_type_variation = &"Body"  # same face/size as the Rural/Urban chips
-	cost_header.add_theme_font_size_override("font_size", 13)
-	cost_header.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
-	info.add_child(cost_header)
-	var cost_values := Label.new()
-	cost_values.text = str(first.get("production_cost", "—"))
-	cost_values.theme_type_variation = &"Numeric"
-	cost_values.add_theme_font_size_override("font_size", 14)
-	info.add_child(cost_values)
+	# NPC buildings show no cost per unit — their internals aren't yours to read.
+	# A large "Owned by <company>" banner (below) marks them instead.
+	if not is_npc:
+		var cost_header := Label.new()
+		cost_header.text = "Cost Basis"
+		cost_header.theme_type_variation = &"Body"  # same face/size as the Rural/Urban chips
+		cost_header.add_theme_font_size_override("font_size", 13)
+		cost_header.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+		info.add_child(cost_header)
+		# Bottom row: cost per unit, with the two status pills to its right (solo only —
+		# a group aggregates buildings whose statuses can differ).
+		var bottom_row := HBoxContainer.new()
+		bottom_row.add_theme_constant_override("separation", 8)
+		bottom_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var cost_values := Label.new()
+		cost_values.text = str(first.get("production_cost", "—"))
+		cost_values.theme_type_variation = &"Numeric"
+		cost_values.add_theme_font_size_override("font_size", 14)
+		cost_values.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bottom_row.add_child(cost_values)
+		if solo:
+			var pills := _make_status_pills(first)
+			pills.size_flags_horizontal = Control.SIZE_SHRINK_END
+			bottom_row.add_child(pills)
+		info.add_child(bottom_row)
 	header.add_child(info_margin)
+
+	# NPC ownership banner: navy "Owned by <company>" on an off-white rounded plate
+	# hugging the card's bottom-right, 30px tall (kept clear of the group arrow).
+	if is_npc:
+		var company := BuildingReadout.company_name(str(inst.get("owner", "")))
+		overlay.add_child(_make_owned_by_banner(company, solo))
 
 	# ── SOLO: clickable straight through to the building detail panel ────────────
 	if solo:
 		var iid := str(first.get("instance_id", ""))
-		header_panel.mouse_entered.connect(func(): hp_style.border_color = DS.PALETTE.OK; header_panel.queue_redraw())
-		header_panel.mouse_exited.connect(func(): hp_style.border_color = DS.PALETTE.ACCENT; header_panel.queue_redraw())
+		header_panel.mouse_entered.connect(func(): header_panel.hovered = true)
+		header_panel.mouse_exited.connect(func(): header_panel.hovered = false)
 		header.gui_input.connect(func(e):
 			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 				_open_building_or_construction(iid)
@@ -2929,16 +3004,14 @@ func _make_building_row(b: Dictionary) -> HBoxContainer:
 	stub.add_child(bar)
 	row.add_child(stub)
 
-	# The card itself (hover state, clickable).
-	var card := PanelContainer.new()
+	# The card itself (hover state, clickable) — brushed navy metal, silver edge.
+	var card := _BrushedCard.new(12, 8, 8)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.custom_minimum_size = Vector2(0, 84)
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	var base_style := _building_card_style(false)
-	card.add_theme_stylebox_override("panel", base_style)
-	card.mouse_entered.connect(func(): card.add_theme_stylebox_override("panel", _building_card_style(true)))
-	card.mouse_exited.connect(func(): card.add_theme_stylebox_override("panel", _building_card_style(false)))
+	card.mouse_entered.connect(func(): card.hovered = true)
+	card.mouse_exited.connect(func(): card.hovered = false)
 	card.gui_input.connect(func(e): _on_building_row_input(e, b))
 
 	var info := VBoxContainer.new()
@@ -2983,77 +3056,187 @@ func _make_building_row(b: Dictionary) -> HBoxContainer:
 	sub.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
 	info.add_child(sub)
 
-	# RAG strip + land size (capitalised) on the same row.
-	var rag_row := HBoxContainer.new()
-	rag_row.add_theme_constant_override("separation", 8)
-	var strip := _make_building_rag_strip(b)
-	rag_row.add_child(strip)
-	var rag_spacer := Control.new()
-	rag_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rag_row.add_child(rag_spacer)
+	# Status pills + land size (capitalised) on the same bottom row.
+	var pill_row := HBoxContainer.new()
+	pill_row.add_theme_constant_override("separation", 8)
+	pill_row.add_child(_make_status_pills(b))
+	var pill_spacer := Control.new()
+	pill_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pill_row.add_child(pill_spacer)
 	var land := Label.new()
 	land.text = ("%s LAND" % _fmt_size(float(b.land)))
 	land.theme_type_variation = &"Caption"
 	land.add_theme_font_size_override("font_size", 11)
 	land.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
-	rag_row.add_child(land)
-	info.add_child(rag_row)
+	pill_row.add_child(land)
+	info.add_child(pill_row)
 	row.add_child(card)
 	return row
 
-func _building_card_style(hovered: bool) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	s.bg_color = DS.PALETTE.BG_HIGHLIGHT if hovered else DS.PALETTE.BG_CARD
-	s.border_color = DS.PALETTE.ACCENT if hovered else DS.PALETTE.BORDER_SOFT
-	s.set_border_width_all(1)
-	s.set_corner_radius_all(8)
-	s.content_margin_left = 12
-	s.content_margin_right = 12
-	s.content_margin_top = 8
-	s.content_margin_bottom = 8
-	return s
+# ── Building-card chrome: brushed navy metal plate with a machined silver edge ──
+# (owner 2026-07-10 — replaces the flat BG_CARD/ACCENT-outline styleboxes).
 
-const _RAG_STRIP := [
-	["power", "Power"],
-	["inputs_status", "Inputs"],
-	["duration_status", "Transport duration"],
-	["transport_cost_status", "Transport cost"],
-	["produce_cost_status", "Cost to produce"],
-]
+## PanelContainer that paints its own plate: diagonal navy gradient (light
+## top-left), fine brushed streaks, and a silver rim lit top-left → shadowed
+## bottom-right (the end-turn dock's machined-metal family).
+class _BrushedCard extends PanelContainer:
+	const NAVY_TL := Color(0.05, 0.205, 0.365)
+	const NAVY_BR := Color(0.0, 0.075, 0.155)
+	const SILVER_LT := Color("#b3bcc6")
+	const SILVER_DK := Color("#5b636e")
+	const SILVER_HOVER := Color("#dbe2ea")
+	var radius := 9.0
+	var hovered := false:
+		set(v):
+			hovered = v
+			queue_redraw()
+	func _init(margin_h: int = 12, margin_v: int = 8, r: float = 9.0) -> void:
+		radius = r
+		var sb := StyleBoxEmpty.new()
+		sb.content_margin_left = margin_h
+		sb.content_margin_right = margin_h
+		sb.content_margin_top = margin_v
+		sb.content_margin_bottom = margin_v
+		add_theme_stylebox_override("panel", sb)
+		resized.connect(queue_redraw)
+	func _rounded_points(r: Rect2, rad: float) -> PackedVector2Array:
+		var pts := PackedVector2Array()
+		var centres: Array[Vector2] = [
+			Vector2(r.position.x + rad, r.position.y + rad),
+			Vector2(r.end.x - rad, r.position.y + rad),
+			Vector2(r.end.x - rad, r.end.y - rad),
+			Vector2(r.position.x + rad, r.end.y - rad),
+		]
+		var starts: Array[float] = [PI, PI * 1.5, 0.0, PI * 0.5]
+		for c in 4:
+			for i in 7:
+				var a: float = starts[c] + (PI * 0.5) * float(i) / 6.0
+				pts.append(centres[c] + Vector2(cos(a), sin(a)) * rad)
+		return pts
+	func _draw() -> void:
+		if size.x < 4.0 or size.y < 4.0:
+			return
+		var r := Rect2(Vector2.ZERO, size).grow(-1.0)
+		var pts := _rounded_points(r, radius)
+		var diag := maxf(1.0, size.x + size.y)
+		# Navy plate: solid mid fill, then 4-vertex gradient quads for the
+		# top-left light and bottom-right shade. (Per-vertex colours on the
+		# 28-point rounded polygon interpolate as fan artifacts — the left
+		# edge rendered nearly black — so gradients go on simple quads.)
+		var mid := NAVY_TL.lerp(NAVY_BR, 0.45)
+		draw_colored_polygon(pts, mid.lightened(0.08) if hovered else mid)
+		var q := PackedVector2Array([
+			r.position + Vector2(1.5, 1.5), Vector2(r.end.x - 1.5, r.position.y + 1.5),
+			r.end - Vector2(1.5, 1.5), Vector2(r.position.x + 1.5, r.end.y - 1.5)])
+		var lt := NAVY_TL.lightened(0.16)
+		draw_polygon(q, PackedColorArray([
+			Color(lt, 0.9), Color(lt, 0.15), Color(lt, 0.0), Color(lt, 0.35)]))
+		draw_polygon(q, PackedColorArray([
+			Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.12), Color(0, 0, 0, 0.30), Color(0, 0, 0, 0.08)]))
+		# Brushed streaks — fine horizontal grain, deterministic alpha pattern.
+		var y := r.position.y + 4.0
+		var i := 0
+		while y < r.end.y - 3.0:
+			var a := 0.022 + 0.02 * absf(sin(float(i) * 12.9898))
+			draw_line(Vector2(r.position.x + 3.0, y), Vector2(r.end.x - 3.0, y), Color(1, 1, 1, a), 1.0)
+			y += 3.0
+			i += 1
+		# Machined silver rim (closed), lighter where the light lands.
+		var rim := PackedColorArray()
+		for p in pts:
+			var t := clampf((p.x + p.y) / diag, 0.0, 1.0)
+			rim.append((SILVER_HOVER if hovered else SILVER_LT).lerp(SILVER_DK, t))
+		var closed := pts.duplicate()
+		closed.append(pts[0])
+		rim.append(rim[0])
+		draw_polyline_colors(closed, rim, 1.5, true)
+		# Bevel highlight just inside the top edge.
+		draw_line(Vector2(r.position.x + radius, r.position.y + 2.2),
+			Vector2(r.end.x - radius, r.position.y + 2.2), Color(1, 1, 1, 0.10), 1.0)
 
-func _make_building_rag_strip(b: Dictionary) -> HBoxContainer:
-	var strip := HBoxContainer.new()
-	strip.add_theme_constant_override("separation", 4)
-	strip.custom_minimum_size = Vector2(0, 14)
-	strip.mouse_filter = Control.MOUSE_FILTER_STOP
-	var tip_lines: Array[String] = []
-	for entry in _RAG_STRIP:
-		var key: String = entry[0]
-		var label_text: String = entry[1]
-		var status := str(b.get("power_status" if key == "power" else key, "muted"))
-		var rect := ColorRect.new()
-		rect.custom_minimum_size = Vector2(20, 10)
-		rect.color = _status_color(status)
-		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		strip.add_child(rect)
-		tip_lines.append("%s — %s" % [label_text, _rag_desc(label_text, status)])
-	strip.tooltip_text = "\n".join(tip_lines)
-	return strip
+# ── Status pills: Running/Stalled/Starting + power source (owner 2026-07-10,
+# replacing the 5-dot RAG strip on building cards) ──────────────────────────────
 
-func _rag_desc(label_text: String, status: String) -> String:
-	match label_text:
-		"Power":
-			return {"ok": "self supplied", "warn": "via grid", "problem": "not powered", "muted": "no power needed"}.get(status, status)
-		"Inputs":
-			return {"ok": "from your supply", "warn": "from market", "problem": "missing", "muted": "no inputs"}.get(status, status)
-		"Transport duration":
-			return {"ok": "arrives same turn", "warn": "multi-turn shipment", "problem": "—", "muted": "didn't run"}.get(status, status)
-		"Transport cost":
-			return {"ok": "no shipping cost", "warn": "paying to ship", "problem": "—", "muted": "didn't run"}.get(status, status)
-		"Cost to produce":
-			return {"ok": "cheaper than market", "warn": "even with market", "problem": "dearer than market", "muted": "unknown"}.get(status, status)
-		_:
-			return status
+## Vector plug (two prongs, body, cable) for the power pill.
+class _PlugIcon extends Control:
+	var color := Color.WHITE
+	func _init(c: Color) -> void:
+		color = c
+		custom_minimum_size = Vector2(16, 19)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		var w := size.x
+		var h := size.y
+		draw_line(Vector2(w * 0.34, 0.5), Vector2(w * 0.34, h * 0.29), color, 2.2, true)
+		draw_line(Vector2(w * 0.66, 0.5), Vector2(w * 0.66, h * 0.29), color, 2.2, true)
+		draw_rect(Rect2(w * 0.15, h * 0.29, w * 0.70, h * 0.37), color)
+		draw_line(Vector2(w * 0.5, h * 0.66), Vector2(w * 0.5, h * 0.85), color, 2.2, true)
+		draw_line(Vector2(w * 0.5, h * 0.85), Vector2(w * 0.18, h * 0.97), color, 2.2, true)
+
+func _pill(tint: Color, tip: String) -> PanelContainer:
+	var p := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(tint, 0.13)
+	sb.border_color = Color(tint, 0.55)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
+	sb.content_margin_left = 9
+	sb.content_margin_right = 9
+	sb.content_margin_top = 2
+	sb.content_margin_bottom = 2
+	p.add_theme_stylebox_override("panel", sb)
+	p.tooltip_text = tip
+	# PASS: hover tooltips work while clicks still reach the card underneath.
+	p.mouse_filter = Control.MOUSE_FILTER_PASS
+	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return p
+
+func _pill_label(text: String, tint: Color) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 11)
+	l.add_theme_color_override("font_color", tint)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+## The two-pill status row: Running/Stalled/Starting + how the building is
+## powered (green ⚡ own network / amber plug grid / red plug unpowered).
+## NPC-owned buildings get no pills — a rival's operations aren't yours to read.
+func _make_status_pills(b: Dictionary) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var inst := MatchState.get_building(str(b.get("instance_id", "")))
+	if not inst.is_empty() and not MatchState.is_player_owned(inst):
+		return row
+	var act := str(b.get("activity", ""))
+	if act != "":
+		var spec: Array = {
+			"running": [DS.PALETTE.OK, "Running", "Produced last turn"],
+			"stalled": [DS.PALETTE.DANGER, "Stalled", "Didn't run — starved, paused or mined out"],
+			"starting": [DS.PALETTE.WARN, "Starting", "No production yet — first run pending"],
+		}.get(act, [])
+		if not spec.is_empty():
+			var pill := _pill(spec[0], str(spec[2]))
+			pill.add_child(_pill_label(str(spec[1]), spec[0]))
+			row.add_child(pill)
+	match str(b.get("power_status", "muted")):
+		"ok":
+			var pill := _pill(DS.PALETTE.OK, "Powered by your own network")
+			var bolt := _pill_label("⚡", DS.PALETTE.OK)
+			bolt.add_theme_font_size_override("font_size", 12)
+			pill.add_child(bolt)
+			row.add_child(pill)
+		"warn":
+			var pill := _pill(DS.PALETTE.WARN, "Powered from the grid")
+			pill.add_child(_PlugIcon.new(DS.PALETTE.WARN))
+			row.add_child(pill)
+		"problem":
+			var pill := _pill(DS.PALETTE.DANGER, "Unpowered")
+			pill.add_child(_PlugIcon.new(DS.PALETTE.DANGER))
+			row.add_child(pill)
+	return row
 
 func _make_metric_line(label_text: String, value: String, value_color: Color) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -3196,29 +3379,81 @@ func _make_construction_row(project: Dictionary) -> HBoxContainer:
 	row.add_child(cancel)
 	return row
 
+# ── Keyed building glyphs: the icon PNGs are cream art on a navy tile; key the
+# navy background out (cached per building) so only the off-white glyph remains.
+# Any residual fringe is navy — invisible on the navy metal cards.
+var _keyed_icon_cache: Dictionary = {}   # building_id -> ImageTexture (null = no art)
+const _ICON_KEY_MAX := 200               # downsample before keying — cards render ≤90px
+
+func _keyed_building_texture(bd: Dictionary) -> Texture2D:
+	var building_id := str(bd.get("id", ""))
+	if _keyed_icon_cache.has(building_id):
+		return _keyed_icon_cache[building_id]
+	var tex := _building_texture(bd)
+	if tex == null:
+		_keyed_icon_cache[building_id] = null
+		return null
+	var img: Image = tex.get_image().duplicate()
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGBA8)
+	if img.get_width() > _ICON_KEY_MAX:
+		img.resize(_ICON_KEY_MAX,
+			int(round(img.get_height() * float(_ICON_KEY_MAX) / float(img.get_width()))),
+			Image.INTERPOLATE_LANCZOS)
+	var bg := img.get_pixel(2, 2)
+	for y in img.get_height():
+		for x in img.get_width():
+			var c := img.get_pixel(x, y)
+			var d := absf(c.r - bg.r) + absf(c.g - bg.g) + absf(c.b - bg.b)
+			var a := clampf((d - 0.28) / 0.45, 0.0, 1.0) * c.a
+			if a < c.a:
+				img.set_pixel(x, y, Color(c.r, c.g, c.b, a))
+	# Bake the raised-emboss lighting INTO the texture (shadow silhouette to the
+	# bottom-right, light catch to the top-left, glyph on top) so the card needs
+	# ONE plain TextureRect. Layered rects + an additive material tripped a GL-
+	# compat blend quirk that rendered the keyed alpha as opaque navy.
+	var w := img.get_width()
+	var h := img.get_height()
+	var pad := 8
+	var shadow := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	var catch := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	for y in h:
+		for x in w:
+			var a := img.get_pixel(x, y).a
+			if a > 0.01:
+				shadow.set_pixel(x, y, Color(0.0, 0.0, 0.0, a * 0.5))
+				catch.set_pixel(x, y, Color(0.88, 0.93, 1.0, a * 0.85))
+	var canvas := Image.create(w + pad * 2, h + pad * 2, false, Image.FORMAT_RGBA8)
+	var full := Rect2i(0, 0, w, h)
+	canvas.blend_rect(shadow, full, Vector2i(pad + 4, pad + 5))
+	canvas.blend_rect(catch, full, Vector2i(pad - 2, pad - 2))
+	canvas.blend_rect(img, full, Vector2i(pad, pad))
+	var out := ImageTexture.create_from_image(canvas)
+	_keyed_icon_cache[building_id] = out
+	return out
+
+# Building icon, embossed / raised off the card's metal (owner 2026-07-10): the
+# keyed off-white glyph only (no navy tile), with a shadow cast to the right and
+# bottom and a light catch on the top-left — light from the top-left. All the
+# lighting is pre-baked into the cached texture (see _keyed_building_texture).
 func _make_building_icon(building_id: String, alpha: float, size: int = 80) -> Control:
-	var holder := PanelContainer.new()
+	var holder := Control.new()
 	holder.custom_minimum_size = Vector2(size, size)
 	holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	# Let clicks fall through to the row so the icon is part of the clickable area.
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var s := StyleBoxFlat.new()
-	s.bg_color = DS.PALETTE.BG_INSET
-	s.border_color = DS.PALETTE.BORDER_SOFT
-	s.set_border_width_all(1)
-	s.set_corner_radius_all(8)
-	s.set_content_margin_all(6)
-	holder.add_theme_stylebox_override("panel", s)
 	var bd: Dictionary = Catalog.get_building(building_id)
-	var tex := _building_texture(bd)
+	var tex := _keyed_building_texture(bd)
 	if tex != null:
-		var rect := TextureRect.new()
-		rect.texture = tex
-		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		rect.modulate = Color(1, 1, 1, alpha)
-		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		holder.add_child(rect)
+		var art := TextureRect.new()
+		art.texture = tex
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		art.set_anchors_preset(Control.PRESET_FULL_RECT)
+		art.modulate = Color(1, 1, 1, alpha)
+		holder.add_child(art)
 	else:
 		var fallback := Label.new()
 		fallback.text = str(bd.get("display_name", "?")).substr(0, 3).to_upper()
@@ -3227,6 +3462,7 @@ func _make_building_icon(building_id: String, alpha: float, size: int = 80) -> C
 		fallback.theme_type_variation = &"Numeric"
 		fallback.modulate = Color(1, 1, 1, alpha)
 		fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		fallback.set_anchors_preset(Control.PRESET_FULL_RECT)
 		holder.add_child(fallback)
 	return holder
 

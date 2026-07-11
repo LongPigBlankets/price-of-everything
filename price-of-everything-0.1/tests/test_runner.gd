@@ -243,6 +243,10 @@ func _ready() -> void:
 	await _test_decision_view_never_empty()
 	_test_auto_bridge_loan()
 	_test_cfo_tax_credit()
+	_test_policy_state()
+	_test_insider_tip()
+	_test_building_diagnostics()
+	_test_infra_upgrade()
 	if not _failed_names.is_empty():
 		print("FAILED TESTS:")
 		for failed_name in _failed_names:
@@ -613,15 +617,19 @@ func _test_tile_view_player_building_filter() -> void:
 		"tile view filter: checkbox starts off")
 	_check(_node_tree_contains_text(panel, "Show your buildings only"),
 		"tile view filter: label is inline with the buildings header")
-	_check(_node_tree_contains_text(panel, "(3)") and _node_tree_contains_text(panel, "NPC"),
-		"tile view filter: off state shows mixed player/NPC group")
+	_check(_node_tree_contains_text(panel, "Your Buildings")
+			and _node_tree_contains_text(panel, "NPC Buildings")
+			and _node_tree_contains_text(panel, "(1)") and _node_tree_contains_text(panel, "(2)")
+			and _node_tree_contains_text(panel, "Owned by"),
+		"tile view filter: off state splits into Your Buildings (1) + NPC Buildings (2)")
 	if checkbox != null:
 		checkbox.button_pressed = true
 		await get_tree().process_frame
 	_check(bool(panel.get("_show_player_buildings_only"))
 			and _node_tree_contains_text(panel, "(1)")
-			and not _node_tree_contains_text(panel, "NPC"),
-		"tile view filter: on state rebuilds mixed groups with player-owned buildings only")
+			and not _node_tree_contains_text(panel, "NPC Buildings")
+			and not _node_tree_contains_text(panel, "Owned by"),
+		"tile view filter: on state hides the NPC Buildings section")
 	var other_coord: Vector2i = terrain.id_to_coord("tile_5_8")
 	if terrain.tiles.has(other_coord):
 		panel.show_tile(terrain.tiles[other_coord])
@@ -4819,6 +4827,16 @@ func _test_victory_logistics() -> void:
 	# eff 0.75 -> (0.75-0.25)/0.75 = 0.667.
 	_check(absf(VictoryState._live_progress("logistics") - (0.5 / 0.75)) < 0.001,
 		"victory logistics: 75% efficiency maps to ~0.667 progress")
+	# Per-turn track: the tick latches the best, then resets the movement counters,
+	# so next turn starts from zero (no cumulative credit since game start).
+	TurnManager.current_turn = 50
+	VictoryState._on_turn_processed({"money_in": 0.0, "money_out": 0.0})
+	VictoryState._tick()
+	_check(VictoryState.logistics_total == 0 and VictoryState.logistics_efficient == 0
+		and absf(float(VictoryState.track_best["logistics"]) - (0.5 / 0.75)) < 0.001,
+		"victory logistics: tick latches best then resets per-turn counters")
+	_check(absf(VictoryState._live_progress("logistics")) < 0.001,
+		"victory logistics: live progress is 0 again after the per-turn reset")
 
 func _test_victory_richest() -> void:
 	MatchState.reset()
@@ -4863,16 +4881,16 @@ func _test_victory_widest() -> void:
 func _test_victory_greenest() -> void:
 	VictoryState.reset()
 	VictoryState._resolve_green_ids()
-	# 600 MW solar of 1000 MW total -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
-	VictoryState._last_summary = {"power_supply": 1000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 600.0}}}
+	# 6000 MW solar of 10000 MW total -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
+	VictoryState._last_summary = {"power_supply": 10000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 6000.0}}}
 	_check(absf(VictoryState._live_progress("greenest") - 0.5) < 0.001,
 		"victory greenest: 60% green share maps to 0.5")
-	# Below the 500 MW power gate -> 0.
-	VictoryState._last_summary = {"power_supply": 400, "power_supply_by_type": {"b_024": {"count": 1, "amount": 400.0}}}
+	# Below the 5000 MW power gate -> 0 (even fully green).
+	VictoryState._last_summary = {"power_supply": 4000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 4000.0}}}
 	_check(absf(VictoryState._live_progress("greenest")) < 0.001,
-		"victory greenest: under 500 MW total is gated to 0")
+		"victory greenest: under 5000 MW total is gated to 0")
 	# Above the power gate but below 20% green share -> 0.
-	VictoryState._last_summary = {"power_supply": 1000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 100.0}}}
+	VictoryState._last_summary = {"power_supply": 10000, "power_supply_by_type": {"b_024": {"count": 1, "amount": 1000.0}}}
 	_check(absf(VictoryState._live_progress("greenest")) < 0.001,
 		"victory greenest: under 20% green share is gated to 0")
 
@@ -5175,9 +5193,9 @@ func _test_detail_panel_owner_resolution() -> void:
 
 func _test_greenest_reads_quality() -> void:
 	VictoryState.reset()
-	# green = intermittent 300 + steady 300 = 600 of 1000 -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
-	VictoryState._last_summary = {"power_supply": 1000,
-		"power_supply_by_quality": {"green_intermittent": 300, "green_steady": 300, "grey": 400}}
+	# green = intermittent 3000 + steady 3000 = 6000 of 10000 -> share 0.6 -> (0.6-0.2)/0.8 = 0.5.
+	VictoryState._last_summary = {"power_supply": 10000,
+		"power_supply_by_quality": {"green_intermittent": 3000, "green_steady": 3000, "grey": 4000}}
 	_check(absf(VictoryState._live_progress("greenest") - 0.5) < 0.001,
 		"greenest: reads power_supply_by_quality (steady + intermittent count green)")
 
@@ -8339,6 +8357,233 @@ func _test_cfo_tax_credit() -> void:
 	MatchState.cfo_tax_credit_intro_shown = false
 	MatchState.advisor_seats = seats_before
 
+func _test_policy_state() -> void:
+	# Decarbonisation squeeze (docs/co2-tax-and-green-subsidy-announcements-spec.md):
+	# phase levels are pure functions of the turn; the carbon charge reads the dormant
+	# co2_tax_multiplier column (now parsed); the biomass ethylene route is tech-gated.
+	_check(PolicyState.co2_tax_level(100) == 0, "policy: CO2 tax not in force before turn 101")
+	_check(PolicyState.co2_tax_level(101) == 1, "policy: CO2 tax phase 1 at turn 101 (announced t91)")
+	_check(PolicyState.co2_tax_level(164) == 1, "policy: still phase 1 at turn 164")
+	_check(PolicyState.co2_tax_level(165) == 2, "policy: phase 2 at turn 165")
+	_check(PolicyState.co2_tax_level(230) == 3, "policy: phase 3 at turn 230")
+	_check(PolicyState.green_subsidy_rate(104) == 0.0, "policy: no subsidy before turn 105")
+	_check(absf(PolicyState.green_subsidy_rate(105) - EconomyConfig.GREEN_SUBSIDY_RATE) < 0.0001,
+		"policy: subsidy rate live from turn 105")
+	# Wind-down: full through 180, −10%/turn across 181..190, gone at 191.
+	var full_rate: float = PolicyState.green_subsidy_rate(180)
+	_check(absf(full_rate - EconomyConfig.GREEN_SUBSIDY_RATE) < 0.0001, "policy: subsidy at full rate through turn 180")
+	_check(absf(PolicyState.green_subsidy_rate(181) - full_rate * 0.9) < 0.0001, "policy: subsidy 90% at turn 181")
+	_check(absf(PolicyState.green_subsidy_rate(186) - full_rate * 0.4) < 0.0001, "policy: subsidy 40% at turn 186")
+	_check(absf(PolicyState.green_subsidy_rate(189) - full_rate * 0.1) < 0.0001, "policy: subsidy 10% at turn 189 (last paying turn)")
+	_check(PolicyState.green_subsidy_rate(190) == 0.0, "policy: subsidy reaches zero at turn 190")
+	_check(PolicyState.green_subsidy_rate(191) == 0.0, "policy: subsidy gone at turn 191 (end announcement)")
+	# The blocking "Understood" notice: a story-priority decision (never randomly
+	# pulled) with a single acknowledge choice, reserved by PolicyState for turn 90.
+	var notice: Dictionary = DecisionState.DECISION_DEFINITIONS.get("carbon_tax_notice", {})
+	_check(not notice.is_empty(), "policy: carbon_tax_notice decision exists")
+	_check(int(notice.get("priority", 99)) == DecisionState.PRIORITY_STORY,
+		"policy: notice is story-priority (reserve-only, never randomly pulled)")
+	_check((notice.get("choices", []) as Array).size() == 1
+		and str((notice.get("choices", [])[0] as Dictionary).get("id", "")) == "understood",
+		"policy: notice has the single Understood choice")
+	_check(str(notice.get("headline", "")).begins_with("The new government"), "policy: carbon notice carries the owner headline")
+	var sub_notice: Dictionary = DecisionState.DECISION_DEFINITIONS.get("green_subsidy_notice", {})
+	_check(not sub_notice.is_empty(), "policy: green_subsidy_notice decision exists")
+	_check(int(sub_notice.get("priority", 99)) == DecisionState.PRIORITY_STORY,
+		"policy: subsidy notice is story-priority (reserve-only)")
+	_check((sub_notice.get("choices", []) as Array).size() == 1
+		and str((sub_notice.get("choices", [])[0] as Dictionary).get("id", "")) == "understood",
+		"policy: subsidy notice has the single Understood choice")
+	_check(str(sub_notice.get("headline", "")).begins_with("The government wants"), "policy: subsidy notice carries the owner headline")
+	var end_notice: Dictionary = DecisionState.DECISION_DEFINITIONS.get("green_subsidy_end_notice", {})
+	_check(not end_notice.is_empty() and int(end_notice.get("priority", 99)) == DecisionState.PRIORITY_STORY
+		and (end_notice.get("choices", []) as Array).size() == 1,
+		"policy: subsidy end notice exists (story-priority, single Understood)")
+	# Catalog now parses the multiplier column (was dormant).
+	var coal: Dictionary = Catalog.get_good_by_internal_name("coal")
+	_check(absf(float(coal.get("co2_tax_multiplier", 0.0)) - 0.5) < 0.0001, "catalog: coal carbon intensity 0.5")
+	var eth: Dictionary = Catalog.get_good_by_internal_name("ethylene")
+	_check(absf(float(eth.get("co2_tax_multiplier", 0.0)) - 1.0) < 0.0001, "catalog: ethylene carbon intensity 1.0")
+	# Charge math: 20 coal at P1 = 20 × 0.5 × 1.0 × 1.0 = £10; ×2 at P2; 0 before the
+	# ramp; a linear ramp-in across 91..100 ((turn−90)/11 of P1).
+	var coal_id := str(coal.get("id", ""))
+	_check(absf(PolicyState.carbon_charge(coal_id, 20, 101) - 10.0) < 0.001, "policy: 20 coal at P1 charges £10")
+	_check(absf(PolicyState.carbon_charge(coal_id, 20, 165) - 20.0) < 0.001, "policy: 20 coal at P2 charges £20")
+	_check(PolicyState.carbon_charge(coal_id, 20, 10) == 0.0, "policy: no charge before the levy")
+	_check(PolicyState.carbon_charge(coal_id, 20, 90) == 0.0, "policy: no charge at turn 90 (notice turn)")
+	_check(absf(PolicyState.carbon_charge(coal_id, 20, 91) - 10.0 / 11.0) < 0.001, "policy: ramp begins at turn 91 (1/11 of P1)")
+	_check(absf(PolicyState.carbon_charge(coal_id, 20, 96) - 10.0 * 6.0 / 11.0) < 0.001, "policy: mid-ramp at turn 96 (6/11 of P1)")
+	_check(PolicyState.carbon_charge(coal_id, 20, 100) < 10.0, "policy: still below full P1 at turn 100")
+	var biomass_id := str(Catalog.get_good_by_internal_name("biomass").get("id", ""))
+	_check(PolicyState.carbon_charge(biomass_id, 100, 230) == 0.0, "policy: biomass is untaxed even at P3")
+	# The biomass→ethylene escape route: r_228 Bio Ethylene (chem_plant, biomass direct)
+	# promotes and is gated behind the new Biomass Cracking node. r_155 stays in the
+	# dormant pool (bio_chem_plant / spec_microbes don't exist — original state).
+	var r228: Dictionary = Catalog.get_recipe("r_228")
+	_check(not r228.is_empty(), "recipe: r_228 (Bio Ethylene) promotes")
+	_check(str(r228.get("required_research", "")) == "Biomass Cracking", "recipe: r_228 gated behind Biomass Cracking")
+	_check(Catalog.get_recipe("r_155").is_empty(), "recipe: r_155 stays dormant (original pool state)")
+	var found_node := false
+	for d in MatchState._unlock_defs:
+		if str(d.get("title", "")) == "Biomass Cracking":
+			found_node = true
+			_check(str(d.get("action", "")) == "Produce" and str(d.get("object", "")) == "biomass",
+				"research: Biomass Cracking unlocks by producing biomass (fireable condition)")
+	_check(found_node, "research: Biomass Cracking node exists")
+
+
+func _test_insider_tip() -> void:
+	# Government Affairs insider leak (turns 86..89): fires only with a 3/3-Influencing
+	# officer in the seat, once per match; dismissible-critical news, not a decision.
+	var seats_before: Dictionary = MatchState.advisor_seats.duplicate(true)
+	var turn_before: int = TurnManager.current_turn
+	PolicyState._insider_tip_fired = false
+
+	# No officer → nothing, even inside the window.
+	MatchState.advisor_seats = {}
+	TurnManager.current_turn = 86
+	PolicyState._maybe_fire_insider_tip()
+	_check(not PolicyState._insider_tip_fired, "insider tip: silent with no Government Affairs officer")
+
+	# A low-Influencing officer (Tom, inf 1) doesn't leak.
+	MatchState.advisor_seats = {"government_affairs": "tom"}
+	_check(PolicyState.get_insider_tip_officer() == "", "insider tip: inf < 3 officer doesn't qualify")
+	PolicyState._maybe_fire_insider_tip()
+	_check(not PolicyState._insider_tip_fired, "insider tip: silent with a low-Influencing officer")
+
+	# Rufus (Silver Tongue, inf 3/3) leaks — but only inside the window.
+	MatchState.advisor_seats = {"government_affairs": "rufus"}
+	_check(PolicyState.get_insider_tip_officer() == "rufus", "insider tip: 3/3 officer qualifies")
+	TurnManager.current_turn = 85
+	PolicyState._maybe_fire_insider_tip()
+	_check(not PolicyState._insider_tip_fired, "insider tip: not before turn 86")
+	TurnManager.current_turn = 90
+	PolicyState._maybe_fire_insider_tip()
+	_check(not PolicyState._insider_tip_fired, "insider tip: not from turn 90 (official notice imminent)")
+	TurnManager.current_turn = 87
+	PolicyState._maybe_fire_insider_tip()
+	_check(PolicyState._insider_tip_fired, "insider tip: fires in the window with a 3/3 officer")
+	var found := false
+	var tip_id := ""
+	for ev in EventScheduler.active_events():
+		if str(ev.get("kind", "")) == "advisor_tip":
+			found = true
+			tip_id = str(ev.get("id", ""))
+			_check(str(ev.get("severity", "")) == "critical", "insider tip: critical severity")
+			_check(str(ev.get("title", "")).begins_with("Rufus Ashby"), "insider tip: names the officer")
+	_check(found, "insider tip: lands as an active (dismissible) event")
+
+	# Once per match: a second window turn doesn't re-fire.
+	var count_before: int = EventScheduler.active_events().size()
+	TurnManager.current_turn = 88
+	PolicyState._maybe_fire_insider_tip()
+	_check(EventScheduler.active_events().size() == count_before, "insider tip: never fires twice")
+
+	if tip_id != "":
+		EventScheduler.dismiss(tip_id)
+	PolicyState._insider_tip_fired = false
+	MatchState.advisor_seats = seats_before
+	TurnManager.current_turn = turn_before
+
+func _test_building_diagnostics() -> void:
+	# New BDP diagnostics: cable-overload for power producers, stockpile-over-utilised
+	# for non-power producers (docs/co2-tax spec follow-ups).
+	var readout = load("res://scripts/building_readout.gd")
+
+	# Power producer crowded out by the cable export cap: _can_run_recipe records a
+	# "power" missing entry → "Cannot push power" fault + "Cables overloaded" row.
+	var plant := {"instance_id": "diag_plant", "tile_id": "tile_9_9", "building_id": "b_003", "recipe_id": "r_004", "level": 1, "owner": "player_1"}
+	Production.missing_by_building["diag_plant"] = [{"good_id": "power", "internal_name": "power", "need": 1000, "have": 2000}]
+	var rows: Array = readout.diagnostics(plant, Catalog.get_recipe("r_004"), Catalog.get_building("b_003"), false)
+	var titles: Array = []
+	for r in rows:
+		titles.append(str(r.get("label", "")))
+	_check(titles.has("Cannot push power"), "diagnostics: grid-blocked plant shows 'Cannot push power' fault")
+	_check(titles.has("Cables overloaded"), "diagnostics: grid-blocked plant shows the cables-overloaded row")
+	_check(not titles.has("Generating power"), "diagnostics: blocked plant doesn't claim to be generating")
+	Production.missing_by_building.erase("diag_plant")
+	rows = readout.diagnostics(plant, Catalog.get_recipe("r_004"), Catalog.get_building("b_003"), false)
+	titles = []
+	for r in rows:
+		titles.append(str(r.get("label", "")))
+	_check(not titles.has("Cables overloaded"), "diagnostics: unblocked plant has no cables row")
+
+	# Non-power producer on a FULL tile warehouse → stockpile over-utilised row.
+	var mill := {"instance_id": "diag_mill", "tile_id": "tile_8_8", "building_id": "b_002", "recipe_id": "r_002", "level": 1, "owner": "player_1"}
+	var mill_recipe: Dictionary = Catalog.get_recipe(str(Catalog.get_recipes_for_building("b_002")[0].get("recipe_id", "")))
+	var coal_id := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	var cap: int = Stockpile.get_capacity("tile_8_8")
+	var before: int = Stockpile.get_used_capacity("tile_8_8")
+	Stockpile.add("tile_8_8", coal_id, cap - before)   # fill to the brim
+	rows = readout.diagnostics(mill, mill_recipe, Catalog.get_building("b_002"), false)
+	titles = []
+	for r in rows:
+		titles.append(str(r.get("label", "")))
+	_check(titles.has("Stockpile over-utilised"), "diagnostics: full warehouse shows the over-utilised row")
+	Stockpile.consume("tile_8_8", coal_id, cap - before)
+	rows = readout.diagnostics(mill, mill_recipe, Catalog.get_building("b_002"), false)
+	titles = []
+	for r in rows:
+		titles.append(str(r.get("label", "")))
+	_check(not titles.has("Stockpile over-utilised"), "diagnostics: cleared warehouse drops the row")
+
+func _test_infra_upgrade() -> void:
+	# Cash-only infrastructure upgrades (owner ruling: L2 £150, L3 £350). The pending
+	# machinery is shared with buildings; the level is written to the TILE at completion
+	# (headless has no map, so the tile write no-ops — covered by the shot tool).
+	var money_before := MatchState.money
+	var pend_before: Array = MatchState.pending_upgrades.duplicate(true)
+	MatchState.pending_upgrades = []
+	MatchState.money = 1000.0
+	var iid: String = MatchState.add_building("b_006", "", "tile_9_9", "player_1", "test_infra_cables")
+	_check(iid != "", "infra upgrade: cables instance placed")
+
+	var pv: Dictionary = MatchState.preview_upgrade(iid)
+	_check(bool(pv.get("infra", false)), "infra upgrade: preview flags infra")
+	_check(absf(float(pv.get("cash_cost", 0.0)) - 150.0) < 0.001, "infra upgrade: L2 quote is £150")
+	_check((pv.get("materials", []) as Array).is_empty(), "infra upgrade: no material kit")
+	_check(str(pv.get("research_gate", "x")) == "", "infra upgrade: no research gate")
+	var cap: Dictionary = pv.get("capacity", {})
+	_check(absf(float(cap.get("cur", 0.0)) - 2000.0) < 0.001 and absf(float(cap.get("new", 0.0)) - 4000.0) < 0.001,
+		"infra upgrade: cables capacity delta 2000 → 4000")
+
+	var res: Dictionary = MatchState.start_upgrade(iid)
+	_check(bool(res.get("ok", false)), "infra upgrade: start succeeds")
+	_check(absf(MatchState.money - 850.0) < 0.001, "infra upgrade: £150 charged up front")
+	_check(not MatchState.pending_upgrade(iid).is_empty(), "infra upgrade: pending after start")
+
+	# Cancel refunds the cash in full (no start/cancel pump: net zero).
+	MatchState.cancel_upgrade(iid)
+	_check(absf(MatchState.money - 1000.0) < 0.001, "infra upgrade: cancel refunds the cash")
+
+	# Run it to completion: 3 ticks → instance level bumps (tile write no-ops headless).
+	MatchState.start_upgrade(iid)
+	var done: Array = []
+	for _i in range(3):
+		done = MatchState.tick_upgrades()
+	_check(done.has(iid), "infra upgrade: completes after 3 turns")
+	_check(int((MatchState.buildings[iid] as Dictionary).get("level", 1)) == 2, "infra upgrade: instance level is 2")
+
+	# Broke wallet: clean atomic failure.
+	MatchState.money = 10.0
+	var res2: Dictionary = MatchState.start_upgrade(iid)
+	_check(not bool(res2.get("ok", true)), "infra upgrade: refused when broke")
+	_check(absf(MatchState.money - 10.0) < 0.001, "infra upgrade: nothing charged on refusal")
+
+	MatchState.remove_building(iid)
+
+	# Rails exercise the slot→mode mapping ("rails" slot ↔ "rail" transport mode).
+	MatchState.money = 1000.0
+	var rid: String = MatchState.add_building("b_019", "", "tile_9_9", "player_1", "test_infra_rails")
+	var rpv: Dictionary = MatchState.preview_upgrade(rid)
+	var rcap: Dictionary = rpv.get("capacity", {})
+	_check(bool(rpv.get("infra", false)) and absf(float(rcap.get("cur", 0.0)) - 400.0) < 0.001
+		and absf(float(rcap.get("new", 0.0)) - 800.0) < 0.001,
+		"infra upgrade: rails capacity delta 400 → 800 (rail mode mapping)")
+	MatchState.remove_building(rid)
+
+	MatchState.pending_upgrades = pend_before
+	MatchState.money = money_before
 
 # --- Turn Briefing (docs/turn-briefing-panel-spec.md) -------------------------
 

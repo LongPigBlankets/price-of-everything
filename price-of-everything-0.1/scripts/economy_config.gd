@@ -113,6 +113,19 @@ const SEAPORT_RANGE_TILES: int = 10
 const GRID_BUY_PRICE: float = 0.1    # £/unit when buying from grid (shortfall)
 const GRID_SELL_PRICE: float = 0.06  # £/unit when selling surplus to grid
 
+# --- Decarbonisation squeeze: CO2 tax + green subsidy (PolicyState schedules the phases) ---
+# Carbon levy per unit of a taxed good CONSUMED by a player building:
+#   charge = qty × good.co2_tax_multiplier × CO2_TAX_RATE × CO2_TAX_PHASE_SCALE[level]
+# The per-good co2_tax_multiplier column (Goods CSV) carries the carbon intensity in £ at
+# scale 1; this rate is the global knob. (Balance data — rule #7.)
+const CO2_TAX_RATE: float = 1.0
+# Phase escalation, indexed by PolicyState.co2_tax_level (0 = not yet in force).
+const CO2_TAX_PHASE_SCALE: Array = [0.0, 1.0, 2.0, 3.5]
+# Green-energy subsidy: £ per green MW GENERATED (intermittent + steady, matching the
+# Greenest victory track), paid at grid settlement once the subsidy is announced.
+const GREEN_SUBSIDY_RATE: float = 0.03
+const GREEN_SUBSIDY_PHASE_SCALE: Array = [0.0, 1.0]
+
 # --- Power intermittency (green/grey quality, layered ON TOP of the single `power` good) ---
 # Solar/wind are intermittent green: a recipe relying on UNFIRMED intermittent power
 # produces less. output *= 1 - INTERMITTENCY_DERATE * unfirmed_intermittent_share, so a
@@ -199,6 +212,11 @@ const TRANSPORT_CAP_LEVEL_MULT := {1: 1.0, 2: 2.0, 3: 3.5}
 # (export) and draw (import). A tile can both produce AND draw up to this. Power above
 # the cap simply doesn't generate / isn't supplied.
 const CABLE_POWER_CAP := {1: 2000, 2: 4000, 3: 7000}
+# Infrastructure upgrades (roads/rails/pipes/reinf_pipes/cables) are CASH-ONLY for now
+# (owner ruling 2026-07-10): a flat £ price per target level, no material kit, no
+# research gate. Capacity still scales by TRANSPORT_CAP_LEVEL_MULT / CABLE_POWER_CAP.
+# (Balance data — rule #7.)
+const INFRA_UPGRADE_CASH_COST := {2: 150.0, 3: 350.0}
 
 # --- Warehouse (per-tile storage) ---
 # A tile's storage capacity by "warehouse level". Level = 1 + the number of storage

@@ -1,16 +1,37 @@
 # Spec — CO2 Tax & Green Energy Subsidy Announcements
 
-> **STATUS: PROPOSED / NOT IMPLEMENTED (2026-07-09).** This is the design for the game's
-> scheduled *decarbonisation squeeze*: a government **green-energy subsidy** (the carrot,
-> announced early) and an escalating **CO2 tax** (the stick, announced ahead and ratcheting
-> over the game). Both are surfaced as **forewarned announcements** in the Turn Briefing and
-> then take economic effect. All the plumbing already exists — `EventScheduler.schedule()`
-> with `forewarn_turns`, the `power_supply_by_quality` split, and the dormant
-> `co2_tax_multiplier` good column — so this is mostly *switching authored data on* plus one
-> small state holder.
+> **STATUS: BUILT (2026-07-10, branch `co2-tax-narrative`).** Implemented as specced with
+> owner rulings + deviations: (1) taxed goods are **coal 0.5 / processed_oil 2.7 /
+> ethylene 1.0** (crude_oil keeps its authored 0.1) on the **consumed** base, confirmed by
+> the owner; (2) `CO2_TAX_RATE = 1.0` so the multiplier column IS the £/unit at scale 1;
+> (3) per-building attribution (`Production.carbon_tax_by_building`) + a "Carbon tax / turn"
+> line in the Building Detail economics card (owner addition); (4) Money panel Balance /
+> Budget-projection / Charts rows + Turn-Summary dock lines ("Carbon Tax", "Subsidy");
+> (5) the biomass escape route is the NEW `r_228 Bio Ethylene` (chem_plant: 10 biomass +
+> 100 energy → 3 ethylene — owner: biomass direct, medium-high power), tech-gated behind the
+> new **Biomass Cracking** node (Biochemistry III, Produce 300 biomass, prereq Sustainable
+> Forestry); `r_155 Micro Algae Digestion` was restored to its original dormant-pool form —
+> at base prices r_228 runs −£0.20/run unintegrated (£6.67/u) vs taxed oil-route ethylene
+> £7.00/u (P1) / £9.25/u (P2); (6) a `skip <n>` debug-terminal cheat was added for
+> fast-forwarding to policy turns; (7) owner timeline: BOTH policies announce via
+> BLOCKING story decisions with a big-bold owner-authored `headline` above the Lorem body
+> (defs carbon_tax_notice / green_subsidy_notice; single "Understood" choice; reserved by
+> PolicyState via DecisionState.reserve to present on turn 90 / turn 100's DECIDE and
+> block End Turn until acknowledged — no passive forewarn news for either), the levy
+> RAMPS IN linearly across turns 91..100 ((turn−90)/11 of P1, per the owner's "ramp up
+> from turn 91 to turn 101"), is at full P1 from turn 101, P2 t165, P3 t230; (8) the
+> subsidy is a WINDOW: live t105, paying through at least t185, lapsing on a seed-derived
+> turn so the first unpaid turn lands in [186, 191] (green_subsidy_last_turn =
+> 185 + seed % 6; a per-match lapse announcement is scheduled, forewarned 5 turns).
+> NOTE the carbon headline copy says "100% of market price" and names crude oil — the
+> LIVE rates are coal 0.5 (125% of base), processed_oil 2.7 (54%), ethylene 1.0 (15%),
+> crude 0.1 — flagged to the owner for either copy or multiplier reconciliation.
+> Verified: unit suite green (1 standing bake fail); e2e t100 failure set + metrics
+> unchanged vs parent; tools/policy_shot.tscn (four surfaces) +
+> tools/policy_notice_shot.tscn (blocking notice at t90, resolve unblocks).
 >
 > **Body/explanation text for every announcement is placeholder Lorem Ipsum below; the owner
-> will replace it with lore.** Search this doc (and, once built, `policy_schedule.gd`) for
+> will replace it with lore.** Search this doc and `scripts/policy_schedule.gd` for
 > `LOREM` to find every spot.
 
 ---
@@ -111,7 +132,7 @@ const SCHEDULE: Array = [
     # --- CO2 Tax (stick, escalating) ---
     {
         "id": "co2_tax_p1", "policy": "co2_tax", "level": 1,
-        "effective_turn": 55, "forewarn_turns": 8, "severity": "warning",
+        "effective_turn": 101, "forewarn_turns": 10, "severity": "warning",
         "title": "Carbon Levy — Phase 1",
         "forewarn_title": "Carbon Levy — Phase 1 (incoming)",
         # LOREM
@@ -121,7 +142,7 @@ const SCHEDULE: Array = [
     },
     {
         "id": "co2_tax_p2", "policy": "co2_tax", "level": 2,
-        "effective_turn": 120, "forewarn_turns": 8, "severity": "warning",
+        "effective_turn": 165, "forewarn_turns": 8, "severity": "warning",
         "title": "Carbon Levy — Phase 2",
         "forewarn_title": "Carbon Levy — Phase 2 (incoming)",
         "forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vectigal duplicabitur.",   # LOREM
@@ -129,7 +150,7 @@ const SCHEDULE: Array = [
     },
     {
         "id": "co2_tax_p3", "policy": "co2_tax", "level": 3,
-        "effective_turn": 200, "forewarn_turns": 8, "severity": "warning",
+        "effective_turn": 230, "forewarn_turns": 8, "severity": "warning",
         "title": "Carbon Levy — Phase 3",
         "forewarn_title": "Carbon Levy — Phase 3 (incoming)",
         "forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ultimum incrementum vectigalis.",  # LOREM
@@ -142,14 +163,15 @@ Proposed timeline summary (tunable):
 
 | Turn | Event |
 |---|---|
-| 15 | Forewarn: Green Subsidy incoming |
-| 20 | **Green Subsidy live** |
-| 47 | Forewarn: Carbon Levy P1 incoming |
-| 55 | **Carbon Levy P1 live** (scale ×1) |
-| 112 | Forewarn: Carbon Levy P2 incoming |
-| 120 | **Carbon Levy P2 live** (scale ×2) |
-| 192 | Forewarn: Carbon Levy P3 incoming |
-| 200 | **Carbon Levy P3 live** (scale ×3.5) |
+| 90 | **Blocking notice**: "Government Notice: Carbon Levy" — must click Understood |
+| 100 | Forewarn: Green Energy Subsidy incoming |
+| 101 | **Carbon Levy P1 live** (scale ×1) |
+| 105 | **Green Subsidy live** (window) |
+| 185+ | Subsidy pays through ≥185; lapses seed-picked in 186–191 (forewarned 5 turns) |
+| 157 | Forewarn: Carbon Levy P2 incoming |
+| 165 | **Carbon Levy P2 live** (scale ×2) |
+| 222 | Forewarn: Carbon Levy P3 incoming |
+| 230 | **Carbon Levy P3 live** (scale ×3.5) |
 
 > Difficulty/start hooks: the `new-game-screen-v2` ruleset seam can later scale
 > `effective_turn`s or the rates per difficulty. For v1, one fixed schedule for all starts.

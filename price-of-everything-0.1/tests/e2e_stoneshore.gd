@@ -552,10 +552,18 @@ func _survey_tile_via_ui(tile_id: String) -> void:
 
 
 func _take_loan_via_ui(amount: float, label: String) -> void:
+	# Top Bar v2: pressing the treasury module opens a quick-glance flyout; its
+	# "Take loan" button (stable name FlyTakeLoanButton) deep-links to the money panel.
 	var money_widget := _main.get_node("%TopBar/MarginContainer/HBoxContainer/MoneyWidget") as Button
 	_check(money_widget != null, "money widget exists for loan UI")
 	if money_widget != null:
 		money_widget.pressed.emit()
+	await get_tree().process_frame
+	var top_bar := _main.get_node("%TopBar")
+	var fly_take := top_bar.find_child("FlyTakeLoanButton", true, false) as Button
+	_check(fly_take != null, "treasury flyout opened with its Take loan button for %s" % label)
+	if fly_take != null:
+		fly_take.pressed.emit()
 	await get_tree().process_frame
 	_check(_money_panel.visible, "money panel opened for %s" % label)
 	var take_button := _money_panel.get_node("MarginContainer/ModalLayout/TabContainer/Loans/MarginContainer/ContentVBox/ActionsRow/TakeLoanButton") as Button

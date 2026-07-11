@@ -291,6 +291,59 @@ const DECISION_DEFINITIONS := {
 	# Story one-shot: SolvencyState force-draws this the first time cash hits −£500 with
 	# a CFO seated. The CFO proposes it, so accepting follows them (+2.0 company scope),
 	# refusing snubs them (−0.5).
+	# The carbon levy's advance notice (decarbonisation squeeze): PolicyState reserves
+	# this for turn 90 — a critical, non-dismissible government notice the player must
+	# read and acknowledge before the turn can end. Single choice, no effects; the levy
+	# itself lands at turn 101 regardless.
+	"carbon_tax_notice": {
+		"title": "Government Notice: Carbon Levy",
+		# Owner copy — shown big + bold above the body.
+		"headline": "The new government is implementing a carbon tax of 100% of market price on anything that consumes coal, crude oil or processed oil. Many buildings will be affected. This will ramp up from turn 91 to turn 101. Our input costs will increase dramatically. We should look into some alternatives.",
+		# LOREM — owner lore pending.
+		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt. Nuntius gravis a ministerio venit: vectigal carbonis rei publicae imponetur.",
+		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
+		"target_selector": "company",
+		"once": true, "cooldown_turns": 9999, "weight": 1.0, "default_choice": "understood",
+		"choices": [
+			{"id": "understood", "label": "Understood",
+				"effects": [{"kind": "none",
+					"describe": "The levy ramps up between turns 91 and 101, then escalates further in later phases. Clean routes and green power are exempt."}]},
+		],
+	},
+	# The green subsidy's announcement — same blocking pattern, reserved by PolicyState
+	# to present on turn 100's DECIDE (the subsidy itself starts at turn 105).
+	"green_subsidy_notice": {
+		"title": "Government Notice: Green Energy Subsidy",
+		# Owner copy — shown big + bold above the body.
+		"headline": "The government wants to speed up the transition away from hydrocarbon power. They will subsidise green power production starting with turn 105.",
+		# LOREM — owner lore pending.
+		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesentium subsidium energiae viridis nuntiatur; qui sol, ventus et aqua colunt, remunerabuntur.",
+		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
+		"target_selector": "company",
+		"once": true, "cooldown_turns": 9999, "weight": 1.0, "default_choice": "understood",
+		"choices": [
+			{"id": "understood", "label": "Understood",
+				"effects": [{"kind": "none",
+					"describe": "From turn 105 every MW of green power you generate (solar, wind, hydro, biomass-fired) earns a government subsidy. The programme runs for roughly 80 turns before it lapses."}]},
+		],
+	},
+	# The subsidy's wind-down warning — blocking, reserved by PolicyState to present on
+	# turn 180's DECIDE (payments start shrinking at 181, gone at 191).
+	"green_subsidy_end_notice": {
+		"title": "Government Notice: Subsidy Winding Down",
+		# Owner-directed copy — shown big + bold above the body.
+		"headline": "The green power subsidy is ending. Starting next turn, payments will fall by 10% each turn until they stop completely at turn 191.",
+		# LOREM — owner lore pending.
+		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aerarium subsidii viridis exhauritur; merces paulatim minuentur donec cessent.",
+		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
+		"target_selector": "company",
+		"once": true, "cooldown_turns": 9999, "weight": 1.0, "default_choice": "understood",
+		"choices": [
+			{"id": "understood", "label": "Understood",
+				"effects": [{"kind": "none",
+					"describe": "Green power still earns the subsidy through the wind-down — 90% next turn, shrinking 10% per turn, ending at turn 191."}]},
+		],
+	},
 	"distressed_asset": {
 		"title": "Distressed Asset Program",
 		"body": "It's not pretty and we don't have many other options — but I spoke to some outside investors. They'll buy our buildings to clear the debts and float us a rescue loan.",
@@ -552,7 +605,13 @@ func abort_pending() -> void:
 	pending_changed.emit()
 
 # A quiet, generic heads-up so the lead time is legible without spoiling the specifics.
-func _emit_pulse_forewarn(turn: int) -> void:
+# DISABLED (owner 2026-07-10): the "decision is reaching your desk" update is reserved
+# for a later feature — flip the const back on when that lands.
+const PULSE_FOREWARN_ENABLED := false
+
+func _emit_pulse_forewarn(_turn: int) -> void:
+	if not PULSE_FOREWARN_ENABLED:
+		return
 	if auto_resolve:
 		return
 	EventScheduler.emit_event({
@@ -785,6 +844,7 @@ func pending_view(uid: String = "") -> Dictionary:
 	return {
 		"uid": str(d.uid),
 		"title": str(def.get("title", "")),
+		"headline": str(def.get("headline", "")),
 		"body": str(def.get("body", "")).replace("{target_name}", str(target.get("name", ""))),
 		"scope": scope,
 		"target": target,

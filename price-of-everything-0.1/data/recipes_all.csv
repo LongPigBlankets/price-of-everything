@@ -198,3 +198,4 @@ r_224,Hydroelectric Power,hydro_power_plant,,,,,,,,,,,,,0,power,1000,,,,,,,,,riv
 r_225,Battery Storage,battery,,,,,,,,,,,,,20,,,,,,,,,,,,,,Batteries,,
 r_226,Magnetic Separation Electrolysis,electrolyser,ree_ore,10,pure_water,4,,,,,,,,,240,refined_ree,10,,,,,,,,,,,,Electrochemistry,,Molten Salt Alloy Electrolysis
 r_227,Rudimentary Lithium Refinement,furnace,lithium_ore,8,industrial_acids,3,,,,,,,,,100,lithium_carbonate,1,,,,,,,,,,,,Electrochemistry,,
+r_228,Bio Ethylene,chem_plant,biomass,10,,,,,,,,,,,100,ethylene,3,,,,,,,,,,,,Biofuels,,Biomass Cracking

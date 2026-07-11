@@ -777,6 +777,71 @@ func reserved_upgrade_space_on_tile(tile_id: String) -> float:
 ## benefit/cost deltas (cur→new per aspect), the research gate, footprint fit and the
 ## 3-turn duration. Read-only — commits nothing. Returns {ok:false, reason} when there's
 ## no building or it's already maxed.
+## Infrastructure whose per-tile level can be upgraded for cash (slot key == building
+## internal_name for all five). Port/airport are not levellable.
+const INFRA_UPGRADABLE: Array = ["roads", "rails", "pipes", "reinf_pipes", "cables"]
+
+## The tile-level a levellable infra instance sits at (the TILE dict is the gameplay
+## source of truth — power caps and transport capacity read it, not the instance).
+func infra_tile_level(inst: Dictionary) -> int:
+	var internal := str(Catalog.get_building(str(inst.get("building_id", ""))).get("internal_name", ""))
+	return _tile_infra_level(str(inst.get("tile_id", "")), "rail" if internal == "rails" else internal)
+
+## Write an infra slot's level on the HexMap tile (persisted via the save's structured
+## infrastructure snapshot). No-ops headless (no map), like the reads.
+func set_tile_infra_level(tile_id: String, slot_key: String, level: int) -> void:
+	var tree := get_tree()
+	if tree == null:
+		return
+	var hm = tree.get_first_node_in_group("hex_map")
+	if hm == null:
+		return
+	var coord = hm.id_to_coord(tile_id)
+	if not hm.tiles.has(coord):
+		return
+	var tile: Dictionary = hm.tiles[coord]
+	var levels: Dictionary = tile.get("infrastructure_levels", {})
+	levels[slot_key] = level
+	tile["infrastructure_levels"] = levels
+	hm.tiles[coord] = tile
+
+# Cash-only infra upgrade quote (owner ruling: £150 → L2, £350 → L3; no materials, no
+# research). Capacity deltas come from the live cap tables so the sheet shows the truth.
+func _preview_infra_upgrade(inst: Dictionary, internal: String) -> Dictionary:
+	var instance_id := str(inst.get("instance_id", ""))
+	var building_name := str(Catalog.get_building(str(inst.get("building_id", ""))).get("display_name", internal))
+	var level := infra_tile_level(inst)
+	if level >= BuildingLevels.MAX_LEVEL:
+		return {"ok": true, "at_max": true, "infra": true, "building_name": building_name, "from_level": level}
+	var target := level + 1
+	var cost := float(EconomyConfig.INFRA_UPGRADE_CASH_COST.get(target, 0.0))
+	var pend := pending_upgrade(instance_id)
+	return {
+		"ok": true, "at_max": false, "infra": true,
+		"building_name": building_name,
+		"from_level": level, "target_level": target,
+		"duration": BuildingLevels.UPGRADE_DURATION,
+		"cash_cost": cost, "affordable": money >= cost,
+		"capacity": _infra_capacity_delta(internal, level, target),
+		"research_gate": "", "research_locked": false,
+		"materials": [], "all_on_tile": true, "market_sourceable": true,
+		"source_tile": "", "source_turns": 0, "market_cost": 0.0, "fits": true,
+		"already_upgrading": not pend.is_empty(),
+		"pending_turns_left": int(pend.get("turns_remaining", 0)),
+		"pending_status": str(pend.get("status", "")),
+		"stats": {}, "unit_cost": {},
+	}
+
+func _infra_capacity_delta(internal: String, level: int, target: int) -> Dictionary:
+	if internal == "cables":
+		return {"label": "Power capacity", "unit": "power/turn",
+			"cur": float(EconomyConfig.CABLE_POWER_CAP.get(level, 0)),
+			"new": float(EconomyConfig.CABLE_POWER_CAP.get(target, 0))}
+	var mode := "rail" if internal == "rails" else internal
+	return {"label": "Transport capacity", "unit": "units/turn",
+		"cur": tile_mode_capacity(mode, level),
+		"new": tile_mode_capacity(mode, target)}
+
 func preview_upgrade(instance_id: String) -> Dictionary:
 	if not buildings.has(instance_id):
 		return {"ok": false, "reason": "No such building."}
@@ -784,6 +849,9 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 	var level := int(inst.get("level", 1))
 	var building_id := str(inst.get("building_id", ""))
 	var building_name := str(Catalog.get_building(building_id).get("display_name", building_id))
+	var infra_internal := str(Catalog.get_building(building_id).get("internal_name", ""))
+	if INFRA_UPGRADABLE.has(infra_internal):
+		return _preview_infra_upgrade(inst, infra_internal)
 	if level >= BuildingLevels.MAX_LEVEL:
 		return {"ok": true, "at_max": true, "building_name": building_name, "from_level": level}
 	var target := level + 1
@@ -919,6 +987,11 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	if is_upgrading(instance_id):
 		return {"ok": false, "reason": "An upgrade is already in progress."}
 	var inst: Dictionary = buildings[instance_id]
+	# Levellable infrastructure: cash-only, no materials/research, level read from and
+	# (at completion) written back to the TILE — the gameplay source of truth.
+	var infra_internal := str(Catalog.get_building(str(inst.get("building_id", ""))).get("internal_name", ""))
+	if INFRA_UPGRADABLE.has(infra_internal):
+		return _start_infra_upgrade(instance_id, inst, infra_internal)
 	var level := int(inst.get("level", 1))
 	if level >= BuildingLevels.MAX_LEVEL:
 		return {"ok": false, "reason": "Already at the maximum level."}
@@ -1003,6 +1076,37 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	building_upgrade_started.emit(instance_id, target)
 	return {"ok": true, "status": status, "target_level": target}
 
+# Cash-only infra upgrade: charge up front, run the same 3-turn countdown, and let
+# tick_upgrades write the new level onto the tile. No kit → no Chief-Investment rebate
+# (deliberately: cash isn't a material kit, and it closes the start/cancel rebate pump
+# for this path).
+func _start_infra_upgrade(instance_id: String, inst: Dictionary, internal: String) -> Dictionary:
+	var level := infra_tile_level(inst)
+	if level >= BuildingLevels.MAX_LEVEL:
+		return {"ok": false, "reason": "Already at the maximum level."}
+	var target := level + 1
+	var cost := float(EconomyConfig.INFRA_UPGRADE_CASH_COST.get(target, 0.0))
+	if money < cost:
+		return {"ok": false, "reason": "Not enough money — the upgrade costs £%d." % int(cost)}
+	add_money(-cost)
+	pending_upgrades.append({
+		"instance_id": instance_id,
+		"building_id": str(inst.get("building_id", "")),
+		"tile_id": str(inst.get("tile_id", "")),
+		"from_level": level,
+		"target_level": target,
+		"status": UPGRADE_STATUS_UPGRADING,
+		"materials": {},
+		"missing": {},
+		"turns_remaining": BuildingLevels.UPGRADE_DURATION,
+		"size_delta": 0.0,
+		"infra": true,
+		"infra_slot": internal,     # slot key == building internal for all five
+		"cash_paid": cost,
+	})
+	building_upgrade_started.emit(instance_id, target)
+	return {"ok": true, "status": UPGRADE_STATUS_UPGRADING, "target_level": target}
+
 ## Advance every in-progress upgrade one turn. Awaiting projects claim any newly-arrived
 ## materials off the tile (this runs before production consumes, so there's no race); once
 ## fully stocked they start counting down, and at zero the building's level is bumped.
@@ -1035,6 +1139,10 @@ func tick_upgrades() -> Array:
 		if int(p["turns_remaining"]) <= 0:
 			var inst: Dictionary = buildings[instance_id]
 			inst["level"] = int(p.get("target_level", int(inst.get("level", 1)) + 1))
+			# Infra: the TILE dict is what power caps / transport capacity read — write
+			# it there too (the instance level is display-only for infra).
+			if bool(p.get("infra", false)):
+				set_tile_infra_level(str(p.get("tile_id", "")), str(p.get("infra_slot", "")), int(inst["level"]))
 			completed.append(instance_id)
 			building_upgraded.emit(instance_id, int(inst["level"]))
 		else:
@@ -1062,6 +1170,11 @@ func cancel_upgrade(instance_id: String) -> bool:
 			var banked := int(materials[gid]) - int(missing.get(gid, 0))
 			if banked > 0:
 				Stockpile.add(tile_id, str(gid), banked)
+		# Infra upgrades are paid in cash up front — refund it in full (net zero, so
+		# there's no start/cancel pump on this path).
+		var cash_paid := float(p.get("cash_paid", 0.0))
+		if cash_paid > 0.0:
+			add_money(cash_paid)
 	pending_upgrades = kept
 	if cancelled:
 		building_upgrade_cancelled.emit(instance_id)

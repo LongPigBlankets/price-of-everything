@@ -17,7 +17,7 @@ const BuildingLevels := preload("res://scripts/building_levels.gd")
 
 const HEADER_HEIGHT := 44.0
 const PANEL_EDGE_MARGIN := 20.0
-const TOP_BAR_CLEARANCE := 56.0
+const TOP_BAR_CLEARANCE := 86.0   # clears the taller top bar (owner 2026-07-11)
 const BOTTOM_CLEARANCE := 110.0  # fallback: keep clear of the bottom menu when no tile panel to match
 const PANEL_WIDTH := 460.0
 const MARKET_ICON := 98  # framed good-icon size, matching the market panel's goods rows
@@ -217,6 +217,10 @@ func _rebuild(building: Dictionary) -> void:
 		_body.add_child(_build_port_card())
 	elif is_infra:
 		_body.add_child(_build_infra_card())
+		# Levellable infra (roads/rails/pipes/reinf_pipes/cables) gets the same Upgrade
+		# button as production buildings — it opens the cash-only upgrade sheet.
+		if MatchState.INFRA_UPGRADABLE.has(str(building_data.get("internal_name", ""))):
+			_body.add_child(_build_primary_actions(building, building_data))
 	elif BuildingReadout.is_recipe_kind(kind) and (not (fl.get("output", {}) as Dictionary).is_empty() or not (fl.get("inputs", []) as Array).is_empty()):
 		_body.add_child(_build_recipe_strip(fl))
 
@@ -235,6 +239,11 @@ func _rebuild(building: Dictionary) -> void:
 		if not cost_rows.is_empty():
 			_body.add_child(_make_section("Cost to produce"))
 			_body.add_child(_build_cost_to_produce(cost_rows))
+
+	# Modifiers (owner 2026-07-10): everything currently bending this building's
+	# numbers, in an accordion whose chevroned section header expands on click.
+	if not is_infra and kind != "battery":
+		_add_modifiers_accordion(building, recipe)
 
 	_body.add_child(_make_section("Economics · per turn"))
 	_body.add_child(_build_economics(BuildingReadout.economics(building, recipe, building_data)))
@@ -629,6 +638,10 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 	row.add_theme_constant_override("separation", DS.SP["SM"])
 	var iid := str(building.get("instance_id", ""))
 	var lvl := int(building.get("level", 1))
+	# Infra levels live on the TILE (the instance copy can lag) — label from the truth.
+	var b_internal := str(Catalog.get_building(str(building.get("building_id", ""))).get("internal_name", ""))
+	if MatchState.INFRA_UPGRADABLE.has(b_internal):
+		lvl = MatchState.infra_tile_level(building)
 
 	var up := Button.new()
 	up.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -697,15 +710,42 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 			note.add_theme_color_override("font_color", DS.PALETTE["OK"])
 			note.text = ("Waiting on materials, then %d turn%s to upgrade." % [left, "" if left == 1 else "s"]) if awaiting else ("Upgrade in progress — %d turn%s left." % [left, "" if left == 1 else "s"])
 			vb.add_child(note)
+			var is_infra_pending := bool(pv.get("infra", false))
 			var cancel := Button.new()
 			cancel.text = "Cancel upgrade"
 			cancel.custom_minimum_size = Vector2(0, 40)
 			cancel.pressed.connect(func() -> void:
 				MatchState.cancel_upgrade(iid)
-				MatchState.request_toast("Upgrade cancelled — materials returned to the tile.", "caution")
+				MatchState.request_toast("Upgrade cancelled — %s." % ("cash refunded" if is_infra_pending else "materials returned to the tile"), "caution")
 				_close_sheet()
 				_queue_refresh())
 			vb.add_child(cancel)
+			return
+		# Levellable infrastructure: cash-only — capacity delta + one pay-and-go CTA.
+		if bool(pv.get("infra", false)):
+			var cap: Dictionary = pv.get("capacity", {})
+			if not cap.is_empty():
+				vb.add_child(_make_section("Capacity at level %d" % target))
+				vb.add_child(_upgrade_delta_row("%s (%s)" % [str(cap.get("label", "Capacity")), str(cap.get("unit", ""))],
+					float(cap.get("cur", 0.0)), float(cap.get("new", 0.0)), DS.PALETTE["OK"], 0, ""))
+			var cost := float(pv.get("cash_cost", 0.0))
+			var pay := Button.new()
+			pay.custom_minimum_size = Vector2(0, 44)
+			if bool(pv.get("affordable", false)):
+				pay.theme_type_variation = "Primary"
+				pay.text = "Upgrade to Lv %d — £%d" % [target, int(cost)]
+			else:
+				pay.text = "Upgrade to Lv %d — £%d (not enough money)" % [target, int(cost)]
+				pay.disabled = true
+			pay.pressed.connect(func() -> void:
+				var res := MatchState.start_upgrade(iid)
+				if bool(res.get("ok", false)):
+					MatchState.request_toast("Upgrade started — level %d in %d turns" % [target, duration], "success")
+					_close_sheet()
+					_queue_refresh()
+				else:
+					MatchState.request_toast(str(res.get("reason", "Upgrade failed.")), "error"))
+			vb.add_child(pay)
 			return
 		# Materials
 		var materials: Array = pv.get("materials", [])
@@ -1454,6 +1494,90 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 		line.add_child(unit)
 	return card
 
+# --- modifiers (accordion above economics) --------------------------------------------------
+
+## Everything currently bending this building's numbers — recipe-output modifiers,
+## workforce output effects, and power-draw modifiers — behind a chevroned section
+## header that expands on click (collapsed by default).
+func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
+	var rows: Array = []
+	var mod: Dictionary = BuildingStatus.net_output_modifier(building, recipe)
+	for p in (mod.get("parts", []) as Array):
+		rows.append({"cat": "Output", "label": str(p.get("label", "")), "pct": float(p.get("pct", 0.0))})
+	for p in (mod.get("workforce_parts", []) as Array):
+		rows.append({"cat": "Workforce", "label": str(p.get("label", "")), "pct": float(p.get("pct", 0.0))})
+	var bid := str(building.get("building_id", ""))
+	var pw: Dictionary = Modifiers.resolve_pct("building_power", bid, {"building_id": bid})
+	for p in (pw.get("parts", []) as Array):
+		rows.append({"cat": "Power draw", "label": str(p.get("label", "")), "pct": float(p.get("pct", 0.0))})
+
+	# Section header doubling as the accordion trigger ("Section" is a Label
+	# variation, so a chevron Label + section Label in a clickable row).
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	header.mouse_filter = Control.MOUSE_FILTER_STOP
+	header.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var chevron := Label.new()
+	chevron.theme_type_variation = "Section"
+	chevron.text = "▸"
+	header.add_child(chevron)
+	var title := Label.new()
+	title.theme_type_variation = "Section"
+	title.text = "Modifiers"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(title)
+	var count_tag := ("%d active" % rows.size()) if not rows.is_empty() else "none"
+	var right := Label.new()
+	right.theme_type_variation = "Caption"
+	right.text = count_tag
+	right.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(right)
+	_body.add_child(header)
+
+	var card := _make_card()
+	card.visible = false
+	var vb := card.get_child(0) as VBoxContainer
+	vb.add_theme_constant_override("separation", 3)
+	if rows.is_empty():
+		var none := Label.new()
+		none.theme_type_variation = "Caption"
+		none.text = "No active modifiers on this building."
+		none.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+		vb.add_child(none)
+	for r in rows:
+		var pct := float(r.get("pct", 0.0))
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", DS.SP["SM"])
+		var cat := Label.new()
+		cat.theme_type_variation = "Caption"
+		cat.text = str(r.get("cat", ""))
+		cat.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+		cat.custom_minimum_size = Vector2(84, 0)
+		line.add_child(cat)
+		var lbl := Label.new()
+		lbl.theme_type_variation = "Body"
+		lbl.text = str(r.get("label", ""))
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lbl.custom_minimum_size = Vector2(PANEL_WIDTH - 220.0, 0)
+		line.add_child(lbl)
+		var val := Label.new()
+		val.theme_type_variation = "Numeric"
+		val.text = "%s%d%%" % ["+" if pct >= 0.0 else "−", absi(int(round(pct)))]
+		val.add_theme_color_override("font_color", DS.PALETTE["OK"] if pct >= 0.0 else DS.PALETTE["DANGER"])
+		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		line.add_child(val)
+		vb.add_child(line)
+	_body.add_child(card)
+
+	header.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			header.accept_event()
+			card.visible = not card.visible
+			chevron.text = "▾" if card.visible else "▸")
+
 # --- economics -----------------------------------------------------------------------------
 
 func _build_economics(econ: Dictionary) -> PanelContainer:
@@ -1479,6 +1603,10 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	var warehousing := float(econ.get("warehousing_cost", 0.0))
 	if warehousing > 0.0:
 		vb.add_child(_metric("Warehousing / turn", "−£%.2f" % warehousing, DS.PALETTE["DANGER"], false))
+	# Carbon levy on this recipe's taxed inputs (only shown once the policy is in force).
+	var carbon_tax := float(econ.get("carbon_tax", 0.0))
+	if carbon_tax > 0.0:
+		vb.add_child(_metric("Carbon tax / turn", "−£%.2f" % carbon_tax, DS.PALETTE["DANGER"], false))
 	vb.add_child(HSeparator.new())
 	var net := float(econ.get("net", 0.0))
 	vb.add_child(_metric("Net / turn", "%s£%.2f" % ["+" if net >= 0.0 else "−", absf(net)], DS.PALETTE["OK"] if net >= 0.0 else DS.PALETTE["DANGER"], true))

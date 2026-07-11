@@ -151,6 +151,7 @@ static func buildings_land_summary(tile_id: String, tile_data: Dictionary) -> Di
 			"is_infra": is_infra,
 			"production_cost": _production_cost_text(instance_id, recipe),
 			"transport_cost": _inbound_transport(instance_id),
+			"activity": _activity_for(instance_id, tile_id, recipe, is_infra),
 			"power_status": _power_status_for(tile_id, recipe, is_infra, int(power.get("produced", 0)), int(power.get("consumed", 0))),
 			"inputs_status": _inputs_status_for(instance_id, tile_id, recipe, is_infra),
 			"duration_status": _transport_duration_status_for(instance_id, tile_id, recipe, is_infra),
@@ -502,6 +503,21 @@ static func _production_cost_text(instance_id: String, recipe: Dictionary) -> St
 static func _inbound_transport(instance_id: String) -> float:
 	var bd: Dictionary = CostSolver.last_result.get("per_building", {}).get(instance_id, {})
 	return float(bd.get("inbound_transport", -1.0))
+
+# Coarse activity for the TVP status pill: "running" if it produced last turn,
+# "stalled" if it tried and failed (starved / mined-out deposit / player-paused),
+# "starting" if there's no run record yet (just built — first pass pending).
+# Infrastructure gets "" (no pill).
+static func _activity_for(instance_id: String, tile_id: String, recipe: Dictionary, is_infra: bool) -> String:
+	if is_infra or recipe.is_empty():
+		return ""
+	if MatchState.paused_buildings.has(instance_id):
+		return "stalled"
+	if Production.last_turn_run.has(instance_id):
+		return "running"
+	if Production.missing_by_building.has(instance_id) or deposit_exhausted_for(tile_id, recipe):
+		return "stalled"
+	return "starting"
 
 # RAG for power — mirrors building_detail_panel._power_status_color: grey if no
 # power need; RED only when the tile is NOT connected to the grid (no cables);
