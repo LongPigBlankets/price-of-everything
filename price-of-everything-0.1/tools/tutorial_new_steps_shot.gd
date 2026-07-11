@@ -53,6 +53,15 @@ func _run() -> void:
 	MatchState.add_building("b_006", "", TILE)
 	print("[SHOT] owned: ", MatchState.get_tile_land_owned(TILE))
 
+	# Let the tutorial's own boot (deferred; can re-enter the welcome step a frame
+	# after `active` flips true) fully land before jumping around the steps.
+	await _settle()
+	await _settle()
+
+	Tutorial._jump_to("ui_primer")
+	await _settle()
+	_capture("tutorial_ui_primer.png")
+
 	Tutorial._jump_to("buy_land")
 	await _settle()
 	_capture("tutorial_buy_land.png")
