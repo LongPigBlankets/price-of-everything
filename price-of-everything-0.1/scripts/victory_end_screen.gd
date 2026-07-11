@@ -5,7 +5,8 @@ extends CanvasLayer
 ## and show_end() below for the contract. UI is read-only against the sim (rule #5):
 ## nothing here mutates state; only the footer button emits back_to_menu_pressed.
 ##
-## Structure: dim scrim → vertically-scrolling ScrollContainer → a 1560px-wide silver
+## Structure: dim scrim → vertically-scrolling ScrollContainer (inset 20px from every
+## screen edge, almost full screen) → a width-filling silver
 ## metal bezel → navy panel with five stacked sections (header+score bar, banner of
 ## five pennants, copy+statline, charts+empire, footer). Rounded fills use StyleBoxFlat
 ## (repo convention); graphics (score bar, charts, crests, empire map) are custom _draw
@@ -15,7 +16,8 @@ extends CanvasLayer
 signal back_to_menu_pressed
 
 # ── Design geometry ────────────────────────────────────────────────────────────
-const PANEL_W := 1560
+const MARGIN := 20        # inset from every screen edge (almost full screen)
+const PANEL_W := 1560     # min plate width; the plate expands to fill the wider screen
 const BEZEL_PAD := 8
 const SEC_PAD_H := 44
 
@@ -97,22 +99,18 @@ func show_end(data: Dictionary) -> void:
 	scrim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(scrim)
 
-	# Vertically-scrolling viewport for the tall panel.
+	# Vertically-scrolling viewport, inset MARGIN px from every screen edge (almost
+	# full screen). The panel fills the width; the tall content scrolls within.
 	var scroll := ScrollContainer.new()
-	scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, MARGIN)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	scroll.name = "Scroll"
 	add_child(scroll)
 
-	# Centering row: spacer | plate | spacer (plate is fixed 1560 wide).
-	var row := HBoxContainer.new()
-	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(row)
-	row.add_child(_grow())
-	var bezel := _build_bezel(data)
-	row.add_child(bezel)
-	row.add_child(_grow())
+	# The plate fills the scroll's width (ScrollContainer fits its single child to its
+	# own width when horizontal scrolling is off).
+	scroll.add_child(_build_bezel(data))
 
 
 func _grow() -> Control:
@@ -128,7 +126,7 @@ func _build_bezel(data: Dictionary) -> Control:
 	# diagonal sheen overlay, and four corner rivets. 8px pad → navy panel inside.
 	var bezel := PanelContainer.new()
 	bezel.custom_minimum_size = Vector2(PANEL_W, 0)
-	bezel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	bezel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bezel.add_theme_stylebox_override("panel", _sb(C_BEZEL_MD, C_BEZEL_DK, 1, 18, BEZEL_PAD))
 
 	# Diagonal sheen + rivets, drawn over the plate (mouse-ignore).
