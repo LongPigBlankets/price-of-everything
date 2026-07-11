@@ -4807,11 +4807,18 @@ func _test_victory_autarkic() -> void:
 	_check(absf(VictoryState._live_progress("autarkic") - 1.0) < 0.001, "victory autarkic: progress caps at streak 30")
 	VictoryState.autarkic_streak = 40
 	_check(absf(VictoryState._live_progress("autarkic") - 1.0) < 0.001, "victory autarkic: progress stays capped above 30")
-	# Accumulator sums this turn's produced units.
+	# Accumulator sums this turn's produced GOODS units — POWER is ignored (owner 2026-07-11:
+	# Autarkic ignores electricity), so 30 coal + 20 iron_ore = 50, the 9000 MW doesn't count.
 	VictoryState.produced_units_lifetime = 0
-	VictoryState._last_summary = {"produced": {"coal": 30, "iron_ore": 20}}
+	VictoryState._last_summary = {"produced": {"coal": 30, "iron_ore": 20, "power": 9000}}
 	VictoryState._tick()
-	_check(VictoryState.produced_units_lifetime == 50, "victory autarkic: _tick accumulates produced units (30+20)")
+	_check(VictoryState.produced_units_lifetime == 50, "victory autarkic: _tick sums produced goods, ignores power (30+20)")
+	# Drawing from the grid (grid_bought) with NO market buys must NOT break the streak.
+	VictoryState.reset()
+	VictoryState.autarkic_streak = 12
+	VictoryState._last_summary = {"produced": {"steel": 40}, "grid_bought": 800}
+	VictoryState._tick()
+	_check(VictoryState.autarkic_streak == 13, "victory autarkic: drawing grid power doesn't break the streak")
 
 func _test_victory_logistics() -> void:
 	VictoryState.reset()
@@ -4839,6 +4846,13 @@ func _test_victory_logistics() -> void:
 		"victory logistics: tick latches best then resets per-turn counters")
 	_check(absf(VictoryState._live_progress("logistics")) < 0.001,
 		"victory logistics: live progress is 0 again after the per-turn reset")
+	# Power is grid-settled, never shipped — generating/consuming it emits no goods
+	# movement, so a turn of pure power activity adds nothing to the logistics tally.
+	VictoryState.reset()
+	VictoryState._last_summary = {"produced": {"power": 9000}, "grid_bought": 500, "grid_sold": 1200}
+	VictoryState._tick()
+	_check(VictoryState.logistics_total == 0,
+		"victory logistics: power generation/grid trade counts no movements")
 
 func _test_victory_richest() -> void:
 	MatchState.reset()
