@@ -67,6 +67,10 @@ const _UIFonts := preload("res://scripts/ui_fonts.gd")
 const _UIHelpers := preload("res://scripts/ui_helpers.gd")
 const _BEBAS := preload("res://assets/fonts/BebasNeue-Regular.ttf")
 const _BARLOW := preload("res://assets/fonts/BarlowCondensed-SemiBold.ttf")
+# The REAL empire node-graph (the Tab empire view's data + layout + drawing layer).
+const _EmpireGraph := preload("res://scripts/empire_graph.gd")
+const _EmpireLayout := preload("res://scripts/empire_layout.gd")
+const _GraphWorld := preload("res://scripts/empire_graph_world.gd")
 
 var _accent: Color = C_ACCENT_WIN
 var _tracked: FontVariation
@@ -667,12 +671,50 @@ func _build_empire(empire: Dictionary) -> Control:
 	expand.pressed.connect(_open_expand)
 	head.add_child(expand)
 
-	var map := _EmpireMap.new()
-	map.data = empire
-	map.custom_minimum_size = Vector2(0, 260)
-	map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	v.add_child(map)
+	# The REAL empire network, snapshotted from the live sim at game end. Static
+	# inline (no input); the Expand overlay gets the interactive pan/zoom version.
+	# Falls back to the stylised design map when there is no graph to show.
+	var graph := _make_empire_graph(false)
+	if graph != null:
+		graph.custom_minimum_size = Vector2(0, 380)
+		graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		v.add_child(graph)
+	else:
+		var map := _EmpireMap.new()
+		map.data = empire
+		map.custom_minimum_size = Vector2(0, 260)
+		map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		v.add_child(map)
 	return pc
+
+
+## Build the live empire node-graph exactly the way the Tab empire view does
+## (EmpireGraph.build → EmpireLayout.solve/place_ports → GraphWorld.set_graph),
+## capturing the network as it stands at the moment the game ended. Returns null
+## when there's nothing to draw. `interactive` keeps GraphWorld's pan/zoom; the
+## node cards' click-through (focus a building) is always disabled — game over.
+func _make_empire_graph(interactive: bool) -> Control:
+	var terrain: Node = get_tree().get_first_node_in_group("hex_map")
+	var g: Dictionary = _EmpireGraph.build(terrain)
+	if (g.get("nodes", []) as Array).is_empty():
+		return null
+	_EmpireLayout.solve(g["nodes"], g["edges"])
+	_EmpireLayout.place_ports(g["ports"], _EmpireLayout.bbox_of(g["nodes"]))
+	var world: Control = _GraphWorld.new()
+	world.clip_contents = true
+	world.mouse_filter = Control.MOUSE_FILTER_STOP if interactive else Control.MOUSE_FILTER_IGNORE
+	# set_graph fits the view to the control's size, which is 0 until layout runs —
+	# apply it once the graph has a real rect (first resize with width; applied once).
+	var applied := [false]
+	world.resized.connect(func() -> void:
+		if applied[0] or world.size.x <= 1.0:
+			return
+		applied[0] = true
+		world.set_graph(g["nodes"], g["edges"], g["ports"], g["sell_edges"])
+		for c in world.get_children():
+			if c is Control:
+				(c as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE)
+	return world
 
 
 # ── Section 5: FOOTER ────────────────────────────────────────────────────────
@@ -718,7 +760,7 @@ func _open_expand() -> void:
 	var host: Node = scroll if scroll != null else self
 	var overlay := PanelContainer.new()
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	overlay.add_theme_stylebox_override("panel", _sb(Color(0.02, 0.05, 0.09, 0.97), _accent, 2, 0, 0))
+	overlay.add_theme_stylebox_override("panel", _sb(Color(0.02, 0.05, 0.09, 1.0), _accent, 2, 0, 0))
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(overlay)
 	_expand_overlay = overlay
@@ -745,12 +787,19 @@ func _open_expand() -> void:
 	close.pressed.connect(_close_expand)
 	head.add_child(close)
 
-	var map := _EmpireMap.new()
-	map.data = _empire_data
-	map.big = true
-	map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	map.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	v.add_child(map)
+	# The real network, interactive: drag to pan, scroll to zoom (node clicks stay off).
+	var graph := _make_empire_graph(true)
+	if graph != null:
+		graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		graph.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		v.add_child(graph)
+	else:
+		var map := _EmpireMap.new()
+		map.data = _empire_data
+		map.big = true
+		map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		map.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		v.add_child(map)
 
 
 func _close_expand() -> void:
@@ -1005,6 +1054,14 @@ class _ScoreBar extends Control:
 
 # The gold crest hexagon + a minimal track glyph.
 class _Crest extends Control:
+	# Owner-supplied track icons (white silhouettes, tinted at draw time).
+	const _ICONS := {
+		"autarkic": preload("res://assets/icons/victory/autarkic.png"),
+		"logistics": preload("res://assets/icons/victory/logistics.png"),
+		"richest": preload("res://assets/icons/victory/richest.png"),
+		"widest": preload("res://assets/icons/victory/widest.png"),
+		"greenest": preload("res://assets/icons/victory/greenest.png"),
+	}
 	var done: bool = false
 	var color: Color = Color.WHITE
 	var glyph: String = ""
@@ -1027,49 +1084,16 @@ class _Crest extends Control:
 				Color("#0a1623"), Color("#0a1623"), Color("#0a1623"),
 				Color("#0a1623"), Color("#0a1623"), Color("#0a1623")]))
 			draw_polyline(_closed(hex), Color("#22384f"), 1.5, true)
-		_draw_glyph(cx, cy, 20.0, Color("#141d29") if done else Color("#31465c"))
+		var tex: Texture2D = _ICONS.get(glyph)
+		if tex != null:
+			var s := 46.0
+			var tint := Color("#141d29") if done else Color("#31465c")
+			draw_texture_rect(tex, Rect2(cx - s * 0.5, cy - s * 0.5, s, s), false, tint)
 
 	func _closed(pts: PackedVector2Array) -> PackedVector2Array:
 		var c := pts.duplicate()
 		c.append(pts[0])
 		return c
-
-	func _draw_glyph(cx: float, cy: float, s: float, col: Color) -> void:
-		match glyph:
-			"autarkic":  # shield + check
-				var sh := PackedVector2Array([
-					Vector2(cx - s * 0.7, cy - s * 0.8), Vector2(cx + s * 0.7, cy - s * 0.8),
-					Vector2(cx + s * 0.7, cy), Vector2(cx, cy + s * 0.95), Vector2(cx - s * 0.7, cy)])
-				draw_polyline(_closed(sh), col, 2.0, true)
-				draw_polyline(PackedVector2Array([
-					Vector2(cx - s * 0.32, cy - s * 0.05), Vector2(cx - s * 0.05, cy + s * 0.28),
-					Vector2(cx + s * 0.42, cy - s * 0.35)]), col, 2.2, true)
-			"logistics":  # truck
-				draw_rect(Rect2(Vector2(cx - s * 0.9, cy - s * 0.45), Vector2(s * 1.0, s * 0.8)), col, false, 2.0)
-				var cab := PackedVector2Array([
-					Vector2(cx + s * 0.1, cy - s * 0.15), Vector2(cx + s * 0.55, cy - s * 0.15),
-					Vector2(cx + s * 0.85, cy + s * 0.15), Vector2(cx + s * 0.85, cy + s * 0.35),
-					Vector2(cx + s * 0.1, cy + s * 0.35)])
-				draw_polyline(_closed(cab), col, 2.0, true)
-				draw_circle(Vector2(cx - s * 0.45, cy + s * 0.5), s * 0.2, col)
-				draw_circle(Vector2(cx + s * 0.55, cy + s * 0.5), s * 0.2, col)
-			"richest":  # coin + £
-				draw_arc(Vector2(cx, cy), s * 0.85, 0, TAU, 28, col, 2.0, true)
-				draw_polyline(PackedVector2Array([
-					Vector2(cx + s * 0.28, cy - s * 0.4), Vector2(cx - s * 0.12, cy - s * 0.4),
-					Vector2(cx - s * 0.12, cy + s * 0.42), Vector2(cx + s * 0.32, cy + s * 0.42)]), col, 2.0, true)
-				draw_line(Vector2(cx - s * 0.32, cy + s * 0.05), Vector2(cx + s * 0.18, cy + s * 0.05), col, 2.0, true)
-			"widest":  # globe
-				draw_arc(Vector2(cx, cy), s * 0.85, 0, TAU, 28, col, 2.0, true)
-				draw_line(Vector2(cx - s * 0.85, cy), Vector2(cx + s * 0.85, cy), col, 1.6, true)
-				draw_arc(Vector2(cx, cy), s * 0.85, -PI * 0.5, PI * 0.5, 20, col, 1.4, true)
-				draw_line(Vector2(cx, cy - s * 0.85), Vector2(cx, cy + s * 0.85), col, 1.4, true)
-			"greenest":  # leaf
-				var leaf := PackedVector2Array([
-					Vector2(cx - s * 0.6, cy + s * 0.6), Vector2(cx - s * 0.2, cy - s * 0.5),
-					Vector2(cx + s * 0.6, cy - s * 0.6), Vector2(cx + s * 0.2, cy + s * 0.5)])
-				draw_polyline(_closed(leaf), col, 2.0, true)
-				draw_line(Vector2(cx - s * 0.55, cy + s * 0.55), Vector2(cx + s * 0.55, cy - s * 0.55), col, 1.6, true)
 
 
 # Filled area line chart.
