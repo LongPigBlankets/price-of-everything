@@ -134,9 +134,11 @@ func _apply_anchors() -> void:
 	anchor_left = 1.0
 	anchor_right = 1.0
 	offset_left = -(panel_w + 30.0) + _drag_delta.x
-	offset_top = 50.0 + _drag_delta.y   # cleared the taller top bar (owner 2026-07-11)
+	# Clears the top bar AND the briefing notch's downward hang + shadow (~114px);
+	# aligns with the left-slot panels (owner 2026-07-11).
+	offset_top = 78.0 + _drag_delta.y
 	offset_right = -30.0 + _drag_delta.x
-	offset_bottom = 920.0 + _drag_delta.y  # taller panel (top pinned near the screen top, so it grows down)
+	offset_bottom = 948.0 + _drag_delta.y  # taller panel (top pinned near the screen top, so it grows down)
 	grow_horizontal = Control.GROW_DIRECTION_BEGIN
 
 const TILE_MODAL_FRAME_PATH := "res://assets/ui/tile_modal_pipe_frame.png"
