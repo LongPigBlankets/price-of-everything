@@ -27,8 +27,8 @@ const FLASH_RED := Color(0.9, 0.2, 0.2)
 const BANKRUPTCY_IMMINENT_RUNWAY := 100.0
 
 # ── Prototype palette (top-bar local; the DS navy family, tuned per the design) ──
-const BAR_H := 78.0
-const MOD_H := 54.0
+const BAR_H := 69.0
+const MOD_H := 48.0
 # Briefing notch: taller than the bar, hangs below it as a two-row centre notch.
 const NOTCH_H := 102.0
 const NOTCH_MIN_W := 300.0
@@ -150,8 +150,8 @@ func _style_bar() -> void:
 	sb.bg_color = C_BAR_BG
 	sb.content_margin_left = 12
 	sb.content_margin_right = 12
-	sb.content_margin_top = 10
-	sb.content_margin_bottom = 10 + EDGE_H   # keep modules off the metallic rim
+	sb.content_margin_top = 6   # trimmed padding — remove unused space, don't shrink modules
+	sb.content_margin_bottom = 6 + EDGE_H   # keep modules off the metallic rim
 	sb.shadow_color = Color(0, 0, 0, 0.35)
 	sb.shadow_size = 8
 	sb.shadow_offset = Vector2(0, 4)
@@ -169,12 +169,21 @@ func _silver_at(canvas_x: float) -> Color:
 	return SILVER_LT.lerp(SILVER_DK, clampf(canvas_x / vw, 0.0, 1.0))
 
 func _draw() -> void:
-	# Machined metallic BEZEL along the bar's bottom (end-turn dock silver):
-	# lit left → right along its length, and bevelled through its depth — dark
-	# seam against the navy, bright top lip, mid body, shadowed lower return.
 	var w := size.x
 	var y1 := size.y
 	var y0 := y1 - EDGE_H
+	# Ambient light sweeping LEFT → RIGHT across the whole bar (owner 2026-07-11:
+	# the bar read top-lit; this gives it a horizontal light instead). Brightest at
+	# the left, fading to nothing by mid-bar; a matching shade deepens the right end.
+	draw_polygon(
+		PackedVector2Array([Vector2(0, 0), Vector2(w, 0), Vector2(w, y0), Vector2(0, y0)]),
+		PackedColorArray([Color(1, 1, 1, 0.055), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.05)]))
+	draw_polygon(
+		PackedVector2Array([Vector2(0, 0), Vector2(w, 0), Vector2(w, y0), Vector2(0, y0)]),
+		PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.10), Color(0, 0, 0, 0.09), Color(0, 0, 0, 0.0)]))
+	# Machined metallic BEZEL along the bar's bottom (end-turn dock silver):
+	# lit left → right along its length, and bevelled through its depth — dark
+	# seam against the navy, bright top lip, mid body, shadowed lower return.
 	draw_line(Vector2(0, y0 - 0.5), Vector2(w, y0 - 0.5), EDGE_SEAM, 1.0)
 	draw_polygon(
 		PackedVector2Array([Vector2(0, y0), Vector2(w, y0), Vector2(w, y1), Vector2(0, y1)]),
@@ -197,8 +206,8 @@ func _module_box(active: bool, warn: bool) -> StyleBoxFlat:
 	sb.set_corner_radius_all(10)
 	sb.content_margin_left = 14
 	sb.content_margin_right = 14
-	sb.content_margin_top = 6
-	sb.content_margin_bottom = 6
+	sb.content_margin_top = 5
+	sb.content_margin_bottom = 5
 	return sb
 
 ## Small uppercase module tag ("COUNCIL").
@@ -240,10 +249,32 @@ class _ModuleBtn extends PanelContainer:
 	func _restyle() -> void:
 		var sb: StyleBoxFlat = _bar._module_box(active or _hover, warn)
 		add_theme_stylebox_override("panel", sb)
+		queue_redraw()
+	func _draw() -> void:
+		# Left → right light sheen over the module (drawn on top of the panel
+		# stylebox), so modules read as lit from the left rather than top-down.
+		var r := Rect2(Vector2.ZERO, size).grow(-2.0)
+		draw_polygon(
+			PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
+			PackedColorArray([Color(1, 1, 1, 0.07), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.055)]))
 	func _gui_input(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			accept_event()
 			pressed.emit()
+
+## Full-rect left→right light sheen, mounted on the Button-based modules (Treasury,
+## Encyclopedia) that can't override _draw the way _ModuleBtn does — keeps the
+## whole bar's lighting horizontal and consistent.
+class _Sheen extends Control:
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+		resized.connect(queue_redraw)
+	func _draw() -> void:
+		var r := Rect2(Vector2.ZERO, size).grow(-2.0)
+		draw_polygon(
+			PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
+			PackedColorArray([Color(1, 1, 1, 0.07), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.055)]))
 
 func _module_row(mod: Control) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -311,6 +342,7 @@ func _build_treasury() -> void:
 	sub.add_child(_net_label)
 	_runway_label = _mini("", C_RED, 11)
 	sub.add_child(_runway_label)
+	money_widget.add_child(_Sheen.new())   # left→right light, matching the modules
 	money_widget.pressed.connect(func() -> void: _toggle_fly("treasury"))
 
 func _money_text(n: float) -> String:
@@ -809,6 +841,7 @@ func _adopt_encyclopedia_and_turn() -> void:
 		enc.mouse_exited.connect(func() -> void:
 			book.set_color(Color("#8ea3ba"))
 			lbl.add_theme_color_override("font_color", Color("#8ea3ba")))
+		enc.add_child(_Sheen.new())   # left→right light, matching the modules
 		_enc_button = enc
 	_hbox().add_child(_divider())
 	if turn != null:

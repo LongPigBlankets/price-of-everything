@@ -26,6 +26,9 @@ func _ready() -> void:
 	MatchState.add_building("b_007", "r_009", best, "player_1", "tvpshot_m2")
 	MatchState.add_building("b_007", "r_003", best, "player_1", "tvpshot_s1")
 	MatchState.add_building("b_025", "r_037", best, "player_1", "tvpshot_w1")
+	# NPC-owned buildings on the same tile → the "NPC Buildings" section + banner.
+	MatchState.add_building("b_002", "r_003", best, "npc_glass", "tvpshot_npc1")
+	MatchState.add_building("b_007", "r_009", best, "npc_glass", "tvpshot_npc2")
 	Stockpile.add(best, steel_id, 40)      # enough for ONE motor run — the other starves
 	Stockpile.add(best, wiring_id, 40)
 

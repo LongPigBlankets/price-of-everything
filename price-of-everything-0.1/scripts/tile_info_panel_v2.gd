@@ -1412,30 +1412,29 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 	for b in bl.buildings:
 		if not bool(b.is_infra):
 			built_rows.append(b)
-	if _show_player_buildings_only:
-		built_rows = _player_owned_building_rows(built_rows)
-	pane.add_child(_make_buildings_header("Production", "(%d)" % (built_rows.size() + projects.size())))
-	# Group buildings of the same type + recipe into one expandable group card.
-	# Ownership splits the group (owner 2026-07-10: never mix NPC and player
-	# buildings in one card), and every NPC card sinks to the bottom of the list.
-	var groups: Dictionary = {}
-	var order: Array = []
-	var npc_order: Array = []
+	# Split by ownership (owner 2026-07-11): your buildings and NPC buildings each
+	# get their own subheader + card list, never mixed in a group card.
+	var player_rows: Array = []
+	var npc_rows: Array = []
 	for b in built_rows:
 		var inst := MatchState.get_building(str(b.get("instance_id", "")))
-		var is_npc := not inst.is_empty() and not MatchState.is_player_owned(inst)
-		var key := "%s|%s|%s" % [str(b.building_id), str(b.get("recipe_id", "")), "npc" if is_npc else "you"]
-		if not groups.has(key):
-			groups[key] = []
-			(npc_order if is_npc else order).append(key)
-		(groups[key] as Array).append(b)
-	for key in order + npc_order:
-		pane.add_child(_make_building_group_card(groups[key]))
+		if not inst.is_empty() and not MatchState.is_player_owned(inst):
+			npc_rows.append(b)
+		else:
+			player_rows.append(b)
+
+	# ── Your Buildings — grouped cards + any construction projects ───────────────
+	pane.add_child(_make_buildings_header("Your Buildings", "(%d)" % (player_rows.size() + projects.size())))
+	_add_grouped_building_cards(pane, player_rows)
 	for project in projects:
 		pane.add_child(_make_construction_row(project))
-	if built_rows.is_empty() and projects.is_empty():
-		var empty_text := "No player-owned buildings on this tile" if _show_player_buildings_only else "No buildings on this tile"
-		pane.add_child(_make_muted_label(empty_text))
+	if player_rows.is_empty() and projects.is_empty():
+		pane.add_child(_make_muted_label("No buildings you own on this tile"))
+
+	# ── NPC Buildings — hidden when the "your buildings only" filter is on ───────
+	if not _show_player_buildings_only and not npc_rows.is_empty():
+		pane.add_child(_make_buildings_header("NPC Buildings", "(%d)" % npc_rows.size(), false))
+		_add_grouped_building_cards(pane, npc_rows)
 
 	# Infrastructure gets its own section: a grid of dialled add/built slots.
 	pane.add_child(_make_section_title("Infrastructure", "transit / capacity", "ok"))
@@ -1531,7 +1530,7 @@ func _port_fmt_int(n: int) -> String:
 			out = "," + out
 	return ("-" if n < 0 else "") + out
 
-func _make_buildings_header(title: String, right_text: String) -> HBoxContainer:
+func _make_buildings_header(title: String, right_text: String, with_filter: bool = true) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	row.custom_minimum_size = Vector2(0, 30)
@@ -1548,6 +1547,9 @@ func _make_buildings_header(title: String, right_text: String) -> HBoxContainer:
 		count.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
 		count.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(count)
+	# The "NPC Buildings" subheader carries no filter toggle (only "Your Buildings").
+	if not with_filter:
+		return row
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spacer)
@@ -2659,6 +2661,52 @@ func _make_line_row(left: String, right: String, right_color: Color) -> HBoxCont
 const GROUP_TILE := 90   # shared outer size for the icon AND the goods frame (max 90×90)
 const GROUP_CARD_H := 100 # group-card header height
 
+# Group a (single-ownership) list of building rows by type + recipe and add one
+# group card per group to the pane, preserving first-seen order.
+func _add_grouped_building_cards(pane: VBoxContainer, rows: Array) -> void:
+	var groups: Dictionary = {}
+	var order: Array = []
+	for b in rows:
+		var key := "%s|%s" % [str(b.building_id), str(b.get("recipe_id", ""))]
+		if not groups.has(key):
+			groups[key] = []
+			order.append(key)
+		(groups[key] as Array).append(b)
+	for key in order:
+		pane.add_child(_make_building_group_card(groups[key]))
+
+# "Owned by <company>" plate — navy text on an off-white rounded rectangle, hugging
+# the card's bottom-right and standing 30px tall. On group cards it stops short of
+# the expand arrow on the right.
+func _make_owned_by_banner(company: String, solo: bool) -> Control:
+	var row := HBoxContainer.new()
+	row.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	row.offset_top = -34
+	row.offset_bottom = -4
+	row.offset_left = 8
+	row.offset_right = -8 if solo else -56   # clear the group's 44px expand arrow
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var plate := PanelContainer.new()
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.custom_minimum_size = Vector2(0, 30)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = DS.PALETTE.ACCENT   # off-white
+	sb.set_corner_radius_all(9)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 14
+	plate.add_theme_stylebox_override("panel", sb)
+	var lbl := Label.new()
+	lbl.text = "Owned by %s" % company
+	lbl.theme_type_variation = &"BuildingName"   # large, matching the card name
+	lbl.add_theme_font_size_override("font_size", 18)
+	lbl.add_theme_color_override("font_color", DS.PALETTE.BG_PANEL)   # navy
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.add_child(lbl)
+	row.add_child(plate)
+	return row
+
 # A group card aggregates all buildings of the same type + recipe. Click the row or
 # the ▶ button to expand into the individual building rows. When the "group" holds a
 # single building it renders as a SOLO card instead: no count badge, no expand arrow,
@@ -2671,6 +2719,8 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	var bd: Dictionary = Catalog.get_building(building_id)
 	var count := members.size()
 	var solo := count == 1
+	var inst := MatchState.get_building(str(first.get("instance_id", "")))
+	var is_npc := not inst.is_empty() and not MatchState.is_player_owned(inst)
 
 	var card := VBoxContainer.new()
 	card.add_theme_constant_override("separation", 4)
@@ -2679,12 +2729,19 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	var header_panel := _BrushedCard.new(5, 5, 10)
 	card.add_child(header_panel)
 
+	# A plain Control wrapper (PanelContainer would stretch every child to fill,
+	# fighting the floating NPC banner) — the header fills it, the banner floats.
+	var overlay := Control.new()
+	overlay.custom_minimum_size = Vector2(0, GROUP_CARD_H - 10)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header_panel.add_child(overlay)
+
 	var header := HBoxContainer.new()
+	header.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	header.add_theme_constant_override("separation", 5)
-	header.custom_minimum_size = Vector2(0, GROUP_CARD_H - 10)
 	header.mouse_filter = Control.MOUSE_FILTER_STOP
 	header.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	header_panel.add_child(header)
+	overlay.add_child(header)
 
 	# Small left gutter so the count badge's overhang isn't clipped.
 	var gutter := Control.new()
@@ -2714,7 +2771,9 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	var info_margin := MarginContainer.new()
 	info_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var v_inset := 8 if solo else 20  # solo also shows the status-pill row, so less inset
+	# NPC cards keep the name near the top (the banner owns the bottom); player solo
+	# cards show the pill row, so both use the smaller inset.
+	var v_inset := 8 if (solo or is_npc) else 20
 	info_margin.add_theme_constant_override("margin_top", v_inset)
 	info_margin.add_theme_constant_override("margin_bottom", v_inset)
 	info_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2735,29 +2794,38 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	pusher.size_flags_vertical = Control.SIZE_EXPAND_FILL  # pushes cost basis to the bottom
 	pusher.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info.add_child(pusher)
-	var cost_header := Label.new()
-	cost_header.text = "Cost Basis"
-	cost_header.theme_type_variation = &"Body"  # same face/size as the Rural/Urban chips
-	cost_header.add_theme_font_size_override("font_size", 13)
-	cost_header.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
-	info.add_child(cost_header)
-	# Bottom row: cost per unit, with the two status pills to its right (solo only —
-	# a group aggregates buildings whose statuses can differ).
-	var bottom_row := HBoxContainer.new()
-	bottom_row.add_theme_constant_override("separation", 8)
-	bottom_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var cost_values := Label.new()
-	cost_values.text = str(first.get("production_cost", "—"))
-	cost_values.theme_type_variation = &"Numeric"
-	cost_values.add_theme_font_size_override("font_size", 14)
-	cost_values.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bottom_row.add_child(cost_values)
-	if solo:
-		var pills := _make_status_pills(first)
-		pills.size_flags_horizontal = Control.SIZE_SHRINK_END
-		bottom_row.add_child(pills)
-	info.add_child(bottom_row)
+	# NPC buildings show no cost per unit — their internals aren't yours to read.
+	# A large "Owned by <company>" banner (below) marks them instead.
+	if not is_npc:
+		var cost_header := Label.new()
+		cost_header.text = "Cost Basis"
+		cost_header.theme_type_variation = &"Body"  # same face/size as the Rural/Urban chips
+		cost_header.add_theme_font_size_override("font_size", 13)
+		cost_header.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
+		info.add_child(cost_header)
+		# Bottom row: cost per unit, with the two status pills to its right (solo only —
+		# a group aggregates buildings whose statuses can differ).
+		var bottom_row := HBoxContainer.new()
+		bottom_row.add_theme_constant_override("separation", 8)
+		bottom_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var cost_values := Label.new()
+		cost_values.text = str(first.get("production_cost", "—"))
+		cost_values.theme_type_variation = &"Numeric"
+		cost_values.add_theme_font_size_override("font_size", 14)
+		cost_values.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bottom_row.add_child(cost_values)
+		if solo:
+			var pills := _make_status_pills(first)
+			pills.size_flags_horizontal = Control.SIZE_SHRINK_END
+			bottom_row.add_child(pills)
+		info.add_child(bottom_row)
 	header.add_child(info_margin)
+
+	# NPC ownership banner: navy "Owned by <company>" on an off-white rounded plate
+	# hugging the card's bottom-right, 30px tall (kept clear of the group arrow).
+	if is_npc:
+		var company := BuildingReadout.company_name(str(inst.get("owner", "")))
+		overlay.add_child(_make_owned_by_banner(company, solo))
 
 	# ── SOLO: clickable straight through to the building detail panel ────────────
 	if solo:

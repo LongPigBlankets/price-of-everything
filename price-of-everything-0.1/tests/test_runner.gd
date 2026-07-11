@@ -617,15 +617,19 @@ func _test_tile_view_player_building_filter() -> void:
 		"tile view filter: checkbox starts off")
 	_check(_node_tree_contains_text(panel, "Show your buildings only"),
 		"tile view filter: label is inline with the buildings header")
-	_check(_node_tree_contains_text(panel, "(3)") and _node_tree_contains_text(panel, "NPC"),
-		"tile view filter: off state shows mixed player/NPC group")
+	_check(_node_tree_contains_text(panel, "Your Buildings")
+			and _node_tree_contains_text(panel, "NPC Buildings")
+			and _node_tree_contains_text(panel, "(1)") and _node_tree_contains_text(panel, "(2)")
+			and _node_tree_contains_text(panel, "Owned by"),
+		"tile view filter: off state splits into Your Buildings (1) + NPC Buildings (2)")
 	if checkbox != null:
 		checkbox.button_pressed = true
 		await get_tree().process_frame
 	_check(bool(panel.get("_show_player_buildings_only"))
 			and _node_tree_contains_text(panel, "(1)")
-			and not _node_tree_contains_text(panel, "NPC"),
-		"tile view filter: on state rebuilds mixed groups with player-owned buildings only")
+			and not _node_tree_contains_text(panel, "NPC Buildings")
+			and not _node_tree_contains_text(panel, "Owned by"),
+		"tile view filter: on state hides the NPC Buildings section")
 	var other_coord: Vector2i = terrain.id_to_coord("tile_5_8")
 	if terrain.tiles.has(other_coord):
 		panel.show_tile(terrain.tiles[other_coord])
