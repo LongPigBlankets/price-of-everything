@@ -16,10 +16,14 @@ const UIFonts := preload("res://scripts/ui_fonts.gd")
 const SOFT_CAP := 100.0
 const NAVY := Color("#13294B")
 const RED := Color("#E0524A")
+const OFF_WHITE := Color("#F2EEE3")
 const TOP_RESERVED := 14.0
 const BOTTOM_RESERVED := 5.0
 const DARK_ROW := Color(0, 0.08, 0.16)
 const SCALE_W := 22.0  # left label gutter — wide enough for 3 digits ("250")
+const BRACKET_MIN_OWNED := 10       # below one patch there is nothing to bracket
+const BRACKET_TICK := 5.0
+const BRACKET_W := 2.0
 
 var _segments: Array = []
 var _axis_max: float = 1.0
@@ -27,6 +31,7 @@ var _max_label: int = 0
 var _detailed := false
 var _owned := 0
 var _buyable := 0
+var _npc := 0                        # NPC footprint at the bottom of the pile
 var _hit_rects: Array = []   # [{rect, tooltip}] for hover tooltips
 
 func _get_tooltip(at_position: Vector2) -> String:
@@ -48,13 +53,14 @@ func _init() -> void:
 	custom_minimum_size = Vector2(60, 0)
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 
-func configure(segments: Array, axis_max: float, max_label: int, detailed: bool = false, owned: int = 0, buyable: int = 0) -> void:
+func configure(segments: Array, axis_max: float, max_label: int, detailed: bool = false, owned: int = 0, buyable: int = 0, npc: int = 0) -> void:
 	_segments = segments
 	_axis_max = maxf(1.0, axis_max)
 	_max_label = max_label
 	_detailed = detailed
 	_owned = owned
 	_buyable = buyable
+	_npc = npc
 	custom_minimum_size.x = 190 if detailed else 60  # 10px wider (eats rail padding)
 	queue_redraw()
 
@@ -105,6 +111,7 @@ func _draw_compact() -> void:
 	if SOFT_CAP < _axis_max:
 		_dashed_h(0.0, w, bottom - SOFT_CAP * unit, DS.PALETTE.ACCENT)
 	draw_string(UIFonts.mono(), Vector2(0.0, 11.0), str(_max_label), HORIZONTAL_ALIGNMENT_CENTER, w, 10, DS.PALETTE.TEXT_MUTED)
+	_draw_owned_bracket(w, bottom, unit)
 
 # ── Detailed (expanded) ──────────────────────────────────────────────────────
 func _draw_detailed() -> void:
@@ -166,12 +173,10 @@ func _draw_detailed() -> void:
 		_hit_rects.append({"rect": rect, "tooltip": seg.get("tooltip", ""), "instance_id": seg.get("instance_id", "")})
 		cur -= sh
 
-	# Owned dashed line + label (the buyable figure now lives below the chart).
-	var owned_y := cbot - float(_owned) * unit
-	_dashed_h(bx, bx + bw, owned_y, DS.PALETTE.ACCENT)
-	_shadowed(num, Vector2(bx, owned_y + 11.0), "OWNED %d" % _owned, HORIZONTAL_ALIGNMENT_RIGHT, bw - 2.0, 10, DS.PALETTE.ACCENT)
-
 	draw_rect(Rect2(bx, ctop, bw, ch), DS.PALETTE.BORDER_SOFT, false, 1.0)
+	# The right-edge square bracket replaces the old dashed OWNED line: it spans
+	# exactly the player-owned land (NPC pile below it, unowned land above it).
+	_draw_owned_bracket(w, cbot, unit)
 
 # Truncate text to fit max_width, appending an ellipsis when it doesn't.
 func _fit_ellipsis(font: Font, text: String, max_width: float, fsize: int) -> String:
@@ -190,6 +195,27 @@ func _fit_ellipsis(font: Font, text: String, max_width: float, fsize: int) -> St
 func _shadowed(font: Font, pos: Vector2, text: String, align: int, width: float, fsize: int, color: Color) -> void:
 	draw_string(font, pos + Vector2(1, 1), text, align, width, fsize, Color(0, 0, 0, 0.8))
 	draw_string(font, pos, text, align, width, fsize, color)
+
+# Right-edge square bracket over the player-owned land: it starts above the NPC
+# pile (their land isn't yours) and ends at owned units — unowned land above it
+# stays outside. Hidden below one patch (10) of owned land.
+func _draw_owned_bracket(right_x: float, bottom_y: float, unit: float) -> void:
+	if _owned < BRACKET_MIN_OWNED:
+		return
+	var x := right_x - BRACKET_W * 0.5
+	var y_bottom := bottom_y - float(_npc) * unit
+	var y_top := bottom_y - float(_npc + _owned) * unit
+	draw_line(Vector2(x, y_top), Vector2(x, y_bottom), OFF_WHITE, BRACKET_W)
+	draw_line(Vector2(x - BRACKET_TICK, y_top), Vector2(x, y_top), OFF_WHITE, BRACKET_W)
+	draw_line(Vector2(x - BRACKET_TICK, y_bottom), Vector2(x, y_bottom), OFF_WHITE, BRACKET_W)
+	# "Owned" runs along the bracket (rotated), only when the span can fit it.
+	var span := y_bottom - y_top
+	if span >= 34.0:
+		var num := UIFonts.mono()
+		var mid := (y_top + y_bottom) * 0.5
+		draw_set_transform(Vector2(x - 4.0, mid + 17.0), -PI * 0.5, Vector2.ONE)
+		draw_string(num, Vector2.ZERO, "Owned", HORIZONTAL_ALIGNMENT_CENTER, 34.0, 9, OFF_WHITE)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 # ── Shared drawing helpers ───────────────────────────────────────────────────
 func _dashed_h(x0: float, x1: float, y: float, color: Color) -> void:

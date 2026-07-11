@@ -263,9 +263,9 @@ func _spectrum(title: String, options: Array, selected_key: String) -> Control:
 	var cap := Label.new()
 	cap.text = caption
 	cap.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	cap.add_theme_font_size_override("font_size", 11)
+	cap.add_theme_font_size_override("font_size", 12)
 	cap.add_theme_color_override("font_color",
-		_WARN if caption == NO_EFFECT else _TEXT_DIM)
+		_WARN if caption == NO_EFFECT else DS.PALETTE.TEXT)
 	box.add_child(cap)
 	return box
 

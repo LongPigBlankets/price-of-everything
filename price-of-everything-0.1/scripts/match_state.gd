@@ -20,7 +20,7 @@ var money: float = 1000.0  # was: int = 1000
 const DEFAULT_RULESET := {"name": "standard"}
 var ruleset: Dictionary = DEFAULT_RULESET.duplicate(true)
 
-const DEFAULT_TILE_LAND_OWNED := 100
+const DEFAULT_TILE_LAND_OWNED := 0
 const LAND_PATCH_SIZE := 10
 const LAND_PATCH_COST := 10.0
 const MAX_TILE_LAND := 200
@@ -577,6 +577,8 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 	if owner == LOCAL_PLAYER:
 		_stamp_purchase_build_value(instance_id)
 		_grant_building_land(instance_id)
+		# The tile size chart stacks buildings bought off an NPC at the top of the pile.
+		buildings[instance_id]["acquired_from_npc"] = true
 	building_owner_changed.emit(instance_id)
 	# A newly player-owned building may satisfy build-count / ownership unlock conditions.
 	_check_unlock_conditions()
@@ -885,9 +887,12 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 	var source := Construction.find_source_tile(tile_id, shortfall) if not all_on_tile else {}
 
 	# Footprint check (the larger building must still fit, counting other pending upgrades).
+	# Physical room uses everything on the tile; the owned-land gate only counts the
+	# player's own estate (NPC buildings sit on their own land).
 	var delta := _upgrade_size_delta(building_id, level, target)
 	var projected := get_tile_space_used(tile_id) + delta
-	var fits := projected <= float(MAX_TILE_LAND) and projected <= float(get_tile_land_owned(tile_id))
+	var projected_player := get_tile_player_space_used(tile_id) + delta
+	var fits := projected <= float(MAX_TILE_LAND) and projected_player <= float(get_tile_land_owned(tile_id))
 
 	var gate := BuildingLevels.research_gate(internal, target)
 	var pend := pending_upgrade(instance_id)
@@ -1005,9 +1010,11 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 		return {"ok": false, "reason": "Requires research: %s" % gate, "research": gate}
 
 	# Footprint: the larger building must fit (counting other in-progress upgrades).
+	# Physical room counts everything; the owned-land gate only the player's estate.
 	var size_delta := _upgrade_size_delta(building_id, level, target)
 	var projected := get_tile_space_used(tile_id) + size_delta
-	if projected > float(MAX_TILE_LAND) or projected > float(get_tile_land_owned(tile_id)):
+	var projected_player := get_tile_player_space_used(tile_id) + size_delta
+	if projected > float(MAX_TILE_LAND) or projected_player > float(get_tile_land_owned(tile_id)):
 		return {"ok": false, "reason": "Not enough room on the tile for the larger building."}
 
 	# Split materials: what's on the tile vs the shortfall.
@@ -1386,6 +1393,24 @@ func get_tile_space_used(tile_id: String) -> float:
 	# In-progress upgrades reserve the extra room the building is about to grow into.
 	total += reserved_upgrade_space_on_tile(tile_id)
 	return total
+
+# Footprint of buildings the player does NOT own on the tile. NPC buildings sit on
+# their own (unpurchasable) land, so they never count against the player's owned
+# land — buying the building converts that footprint to owned via _grant_building_land.
+func get_tile_npc_footprint(tile_id: String) -> float:
+	var total := 0.0
+	for instance in get_buildings_on_tile(tile_id):
+		if is_player_owned(instance):
+			continue
+		var building_data := Catalog.get_building(str(instance.get("building_id", "")))
+		total += float(building_data.get("tile_size_used", 1.0)) * BuildingLevels.mult("size", int(instance.get("level", 1)))
+	return total
+
+# Space the PLAYER's estate takes on the tile: owned buildings plus construction /
+# upgrade reservations (only the player builds). This — not the physical total —
+# is what the owned-land gate compares against.
+func get_tile_player_space_used(tile_id: String) -> float:
+	return maxf(0.0, get_tile_space_used(tile_id) - get_tile_npc_footprint(tile_id))
 
 # --- Public API: survey state ---
 ## Seed the surveyed set with the NPC port tiles (called once at match start).
@@ -2124,9 +2149,19 @@ func _install_battery_cells(tile_id: String, good_id: String, qty: int) -> void:
 		Stockpile.add(tile_id, good_id, qty - take)
 	battery_cells_changed.emit(tile_id)
 
-func get_tile_land_patches_available(tile_id: String) -> int:
-	var remaining := MAX_TILE_LAND - get_tile_land_owned(tile_id)
-	return maxi(0, int(floor(float(remaining) / float(LAND_PATCH_SIZE))))
+# Patches still purchasable: the tile cap minus the land under NPC buildings (not
+# for sale — buy the building instead) minus what the player already owns. `cap`
+# lets the UI pass the terrain-adjusted tile capacity; it never exceeds MAX_TILE_LAND.
+# The FINAL patch may be a clipped sliver (ceil): NPC footprints rarely align to the
+# 10-unit patch grid, and flooring would leave the last few land units of a tile
+# permanently unbuyable and unbuildable.
+func get_tile_land_patches_available(tile_id: String, cap: int = MAX_TILE_LAND) -> int:
+	return maxi(0, int(ceil(float(get_tile_land_units_available(tile_id, cap)) / float(LAND_PATCH_SIZE))))
+
+# Exact land units still purchasable on the tile (not rounded to patches).
+func get_tile_land_units_available(tile_id: String, cap: int = MAX_TILE_LAND) -> int:
+	var effective_cap := mini(cap, MAX_TILE_LAND)
+	return maxi(0, effective_cap - int(round(get_tile_npc_footprint(tile_id))) - get_tile_land_owned(tile_id))
 
 # Cash rebate a Chief Investment advisor gives toward a build: a fraction of the
 # required build materials' CURRENT market value (tier3 +10% / tier2 +5% / tier1 -5%
@@ -2178,10 +2213,10 @@ func effective_build_duration(building_id: String) -> int:
 		dur -= 1
 	return maxi(BUILD_DURATION_MIN, dur)
 
-func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
+func purchase_tile_land(tile_id: String, patches: int = 1, cap: int = MAX_TILE_LAND) -> bool:
 	if tile_id == "":
 		return false
-	var available := get_tile_land_patches_available(tile_id)
+	var available := get_tile_land_patches_available(tile_id, cap)
 	if available <= 0:
 		return false
 	var clamped_patches: int = clampi(patches, 1, available)
@@ -2191,7 +2226,9 @@ func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
 	if not deduct_money(cost):
 		return false
 	var owned := get_tile_land_owned(tile_id)
-	tile_land_owned[tile_id] = mini(MAX_TILE_LAND, owned + clamped_patches * LAND_PATCH_SIZE)
+	# The last patch can be a clipped sliver — never grant past the NPC-adjusted cap.
+	var granted := mini(clamped_patches * LAND_PATCH_SIZE, get_tile_land_units_available(tile_id, cap))
+	tile_land_owned[tile_id] = mini(MAX_TILE_LAND, owned + granted)
 	tile_land_owned_changed.emit(tile_id)
 	return true
 

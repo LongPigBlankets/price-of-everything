@@ -671,6 +671,7 @@ func _build_infra_via_build_mode(infra_type: String, tile_id: String) -> void:
 	if existing.has(infra_type):
 		_check(true, "%s already present on %s" % [infra_type, tile_id])
 		return
+	_ensure_land_for_build(str(_buildings.get(infra_type, "")), tile_id)
 	var before_projects := Construction.construction_projects.size()
 	BuildMode.enter_infrastructure_mode(infra_type)
 	_check(BuildMode.is_active and BuildMode.kind == BuildMode.Kind.INFRASTRUCTURE,
@@ -684,6 +685,7 @@ func _build_infra_via_build_mode(infra_type: String, tile_id: String) -> void:
 
 
 func _build_building_via_build_mode(building_id: String, recipe_id: String, tile_id: String, allow_market_materials: bool) -> String:
+	_ensure_land_for_build(building_id, tile_id)
 	var before_projects := _keys_dict(Construction.construction_projects)
 	var before_buildings := _keys_dict(MatchState.buildings)
 	var money_before := MatchState.money
@@ -706,6 +708,18 @@ func _build_building_via_build_mode(building_id: String, recipe_id: String, tile
 		_check(instance_id != "", "direct construction project created for %s on %s" % [building_id, tile_id])
 	_check(MatchState.money < money_before, "building attempt charged money for %s on %s" % [building_id, tile_id])
 	return instance_id
+
+
+# Tiles start with ZERO owned land (owner 2026-07-11): before each scenario build,
+# buy the patches the footprint needs — exactly what a player does from the TVP.
+func _ensure_land_for_build(building_id: String, tile_id: String) -> void:
+	var footprint := maxf(0.0, float(Catalog.get_building(building_id).get("tile_size_used", 1.0)))
+	var needed := MatchState.get_tile_player_space_used(tile_id) + footprint
+	var shortfall := needed - float(MatchState.get_tile_land_owned(tile_id))
+	if shortfall <= 0.0:
+		return
+	var patches := ceili(shortfall / float(MatchState.LAND_PATCH_SIZE))
+	MatchState.purchase_tile_land(tile_id, patches)
 
 
 func _find_new_project_or_building(before_projects: Dictionary, before_buildings: Dictionary,

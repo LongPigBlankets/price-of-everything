@@ -1910,9 +1910,12 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 		print("[Build] FAILED: tile %s is full (need %s, max %s)" % [tile_id, str(projected_space), str(MatchState.MAX_TILE_LAND)])
 		_show_tile_space_error("There is no more room on that tile. Demolish buildings to make room.")
 		return {"allowed": false, "cost_multiplier": 1.0}
+	# The owned-land gate only counts the player's estate — NPC buildings sit on
+	# their own land and must not eat the land the player has bought.
+	var projected_player := MatchState.get_tile_player_space_used(tile_id) + added_space
 	var land_owned := MatchState.get_tile_land_owned(tile_id)
-	if projected_space > float(land_owned):
-		print("[Build] FAILED: insufficient land on tile %s (need %s, own %s)" % [tile_id, str(projected_space), str(land_owned)])
+	if projected_player > float(land_owned):
+		print("[Build] FAILED: insufficient land on tile %s (need %s, own %s)" % [tile_id, str(projected_player), str(land_owned)])
 		_show_tile_space_error("You cannot build that. You do not own sufficient land on tile %s" % tile_id)
 		return {"allowed": false, "cost_multiplier": 1.0}
 	var cost_multiplier := 1.0

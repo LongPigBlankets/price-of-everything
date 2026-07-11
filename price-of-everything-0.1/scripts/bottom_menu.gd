@@ -510,10 +510,20 @@ func _show_end_screen() -> void:
 	if _end_screen != null:
 		return
 	_hide_all_panels()
+	var data: Dictionary = EndGameData.gather()
+	if str(data.get("result", "")) == "victory":
+		# Hall of Records: victories only — defeats leave no trace.
+		PlayerProfile.record_win({
+			"date": Time.get_date_string_from_system(),
+			"title": str(data.get("title", "Victory")),
+			"turn": int(data.get("turn", 0)),
+			"secured": int(data.get("secured_count", 0)),
+			"epithet": str(data.get("epithet", "")),
+		})
 	_end_screen = VictoryEndScreen.new()
 	add_child(_end_screen)
 	_end_screen.back_to_menu_pressed.connect(_on_end_screen_back)
-	_end_screen.show_end(EndGameData.gather())
+	_end_screen.show_end(data)
 
 func _on_end_screen_back() -> void:
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE)

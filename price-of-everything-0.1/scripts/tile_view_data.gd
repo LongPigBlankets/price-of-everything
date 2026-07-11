@@ -95,13 +95,14 @@ static func power_build_option(internal: String, hint: String, tile_id: String, 
 		var sea := str(_tile_data.get("type", "")) in ["sea", "deep_sea"]
 		return {"enabled": false, "building_id": bid, "recipe_id": rid,
 			"reason": "Can't build at sea" if sea else "Offshore only — needs a sea tile"}
-	# Land / money checks (mirrors world_map._space_check_for_build).
+	# Land / money checks (mirrors world_map._space_check_for_build): physical room
+	# counts every building; the owned-land gate only the player's estate.
 	var footprint := maxf(0.0, float(bd.get("tile_size_used", 1)))
-	var used := MatchState.get_tile_space_used(tile_id)
-	var projected := used + footprint
+	var projected := MatchState.get_tile_space_used(tile_id) + footprint
+	var player_used := MatchState.get_tile_player_space_used(tile_id)
 	var owned := MatchState.get_tile_land_owned(tile_id)
-	if projected > float(MatchState.MAX_TILE_LAND) or projected > float(owned):
-		var free := maxi(0, owned - int(round(used)))
+	if projected > float(MatchState.MAX_TILE_LAND) or player_used + footprint > float(owned):
+		var free := maxi(0, owned - int(round(player_used)))
 		return {"enabled": false, "building_id": bid, "recipe_id": rid, "reason": "Not enough land on this tile — needs %d, %d free" % [int(round(footprint)), free]}
 	var mult := 1.5 if projected > 100.0 else 1.0
 	var cost := float(bd.get("base_price", 0.0)) * mult
@@ -118,13 +119,18 @@ static func buildings_land_summary(tile_id: String, tile_data: Dictionary) -> Di
 	var rows: Array = []
 	var built_size := 0.0
 	var infra_size := 0.0
+	var npc_size := 0.0
 	var stalled := 0
 	var problems := 0
 	for building in MatchState.get_buildings_on_tile(tile_id):
 		var bd: Dictionary = Catalog.get_building(building.get("building_id", ""))
 		var is_infra := str(bd.get("category", "")) == "infrastructure"
 		var size := maxf(0.0, float(bd.get("tile_size_used", 1)))
-		if is_infra:
+		# NPC buildings sit on their own land — kept out of the player's built/used
+		# figures so the land readouts track what the player actually owns.
+		if not MatchState.is_player_owned(building):
+			npc_size += size
+		elif is_infra:
 			infra_size += size
 		else:
 			built_size += size
@@ -160,7 +166,7 @@ static func buildings_land_summary(tile_id: String, tile_data: Dictionary) -> Di
 			"route_label": _output_route_label(instance_id, tile_id, recipe, is_infra),
 		})
 	var owned := MatchState.get_tile_land_owned(tile_id)
-	var max_land := _tile_max_capacity(tile_data)
+	var max_land := int(maxf(1.0, float(_tile_max_capacity(tile_data)) - npc_size))
 	var total_used := built_size + infra_size
 	var tile_status := "ok"
 	if problems > 0 or total_used > float(owned):
@@ -172,6 +178,7 @@ static func buildings_land_summary(tile_id: String, tile_data: Dictionary) -> Di
 		"buildings": rows,
 		"built_size": built_size,
 		"infra_size": infra_size,
+		"npc_size": npc_size,
 		"used_size": total_used,
 		"owned": owned,
 		"max": max_land,
@@ -199,6 +206,7 @@ const CAT_DEFAULT := Color("#6B7682")
 static func land_chart_data(tile_id: String, tile_data: Dictionary) -> Dictionary:
 	var other_segments: Array = []   # not-for-sale (other player) → bottom
 	var player_segments: Array = []
+	var bought_segments: Array = []  # ex-NPC purchases → top of the pile
 	var other_footprint := 0.0
 	var built := 0.0   # player-owned building footprint
 	for building in MatchState.get_buildings_on_tile(tile_id):
@@ -221,6 +229,9 @@ static func land_chart_data(tile_id: String, tile_data: Dictionary) -> Dictionar
 		if is_other:
 			other_footprint += size
 			other_segments.append(seg)
+		elif bool(building.get("acquired_from_npc", false)):
+			built += size
+			bought_segments.append(seg)
 		else:
 			built += size
 			player_segments.append(seg)
@@ -241,12 +252,13 @@ static func land_chart_data(tile_id: String, tile_data: Dictionary) -> Dictionar
 		})
 
 	var owned := MatchState.get_tile_land_owned(tile_id)
-	var axis_max := float(MatchState.MAX_TILE_LAND)
-	# Land under not-for-sale (other-player) buildings can't be purchased.
-	var max_possible := int(maxf(1.0, axis_max - other_footprint))
 	var type_cap := _tile_max_capacity(tile_data)
+	# One axis for both chart modes: the terrain-adjusted cap the game actually
+	# enforces. Land under not-for-sale (other-player) buildings can't be purchased.
+	var axis_max := float(type_cap)
+	var max_possible := int(maxf(1.0, axis_max - other_footprint))
 	return {
-		"segments": other_segments + player_segments,
+		"segments": other_segments + player_segments + bought_segments,
 		"owned": owned,
 		"max_possible": max_possible,
 		"axis_max": axis_max,
@@ -344,6 +356,9 @@ static func _category_color(bd: Dictionary) -> Color:
 # mountain −25, urban 0). Mirrors the classic tile-size chart.
 const BASE_TILE_CAPACITY := 200
 static func _tile_max_capacity(tile_data: Dictionary) -> int:
+	# Clamped to MAX_TILE_LAND: every purchase/placement rule caps there, so a
+	# bigger displayed capacity would promise land the game never sells (the old
+	# rural 250 made built|buyable|max drift once the player bought land).
 	var impact := 0
 	match str(tile_data.get("type", "")).strip_edges().to_lower():
 		"rural", "grass": impact = 50
@@ -351,7 +366,11 @@ static func _tile_max_capacity(tile_data: Dictionary) -> int:
 		"mountain": impact = -25
 		"urban": impact = 0
 		_: impact = 0
-	return maxi(1, BASE_TILE_CAPACITY + impact)
+	return clampi(BASE_TILE_CAPACITY + impact, 1, MatchState.MAX_TILE_LAND)
+
+## Public wrapper so panels can hand the terrain-adjusted cap to MatchState land calls.
+static func tile_max_capacity(tile_data: Dictionary) -> int:
+	return _tile_max_capacity(tile_data)
 
 # "20 land · → market, 3 turns" — footprint + where the primary output goes and
 # how long it takes to get there.

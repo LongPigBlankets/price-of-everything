@@ -214,10 +214,9 @@ func _build_panel_content() -> void:
 		var any_tile := false
 		for category in buildings_by_category.keys():
 			for b in buildings_by_category[category]:
-				if has_tile_search and not _matches_search(b):
-					continue
+				var searched: Array = _recipes_matching_search(b) if has_tile_search else recipes_by_building.get(b.id, [])
 				var valid_recipes: Array = []
-				for r in recipes_by_building.get(b.id, []):
+				for r in searched:
 					if _recipe_valid_for_tile(r, _tile_filter_data):
 						valid_recipes.append(r)
 				if not valid_recipes.is_empty():
@@ -286,7 +285,11 @@ func _build_panel_content() -> void:
 			empty.theme_type_variation = &"Caption"
 			content_vbox.add_child(empty)
 		for building_data in candidates:
-			_add_building_row(building_data, content_vbox, has_search)
+			# Under a search, list only the recipes that matched — a building whose
+			# name matched keeps all its recipes, but a recipe-level hit must not
+			# drag its siblings into the results.
+			var shown: Array = _recipes_matching_search(building_data) if has_search else []
+			_add_building_row(building_data, content_vbox, has_search, shown)
 
 	_refresh_build_mode_selection()
 
@@ -317,16 +320,34 @@ func _matches_search(b: Dictionary) -> bool:
 	if b.get("display_name", "").to_lower().contains(q):
 		return true
 	for recipe in recipes_by_building.get(b.get("id", ""), []):
-		if recipe.get("display_name", "").to_lower().contains(q):
+		if _recipe_matches_query(recipe, q):
 			return true
-		var out_id: String = recipe.get("output_good_id", "")
-		if out_id != "" and Catalog.get_display_name(out_id).to_lower().contains(q):
-			return true
-		for inp in recipe.get("inputs", []):
-			var gid: String = inp.get("good_id", "")
-			if gid != "" and Catalog.get_display_name(gid).to_lower().contains(q):
-				return true
 	return false
+
+func _recipe_matches_query(recipe: Dictionary, q: String) -> bool:
+	if recipe.get("display_name", "").to_lower().contains(q):
+		return true
+	var out_id: String = recipe.get("output_good_id", "")
+	if out_id != "" and Catalog.get_display_name(out_id).to_lower().contains(q):
+		return true
+	for inp in recipe.get("inputs", []):
+		var gid: String = inp.get("good_id", "")
+		if gid != "" and Catalog.get_display_name(gid).to_lower().contains(q):
+			return true
+	return false
+
+## The recipes a building should list under the active search: all of them when the
+## building itself (by name) matched, otherwise only the recipes that matched.
+func _recipes_matching_search(b: Dictionary) -> Array:
+	var all: Array = recipes_by_building.get(b.get("id", ""), [])
+	var q: String = _search_query.strip_edges().to_lower()
+	if q == "" or b.get("display_name", "").to_lower().contains(q):
+		return all
+	var matched: Array = []
+	for recipe in all:
+		if _recipe_matches_query(recipe, q):
+			matched.append(recipe)
+	return matched
 
 func _sorted(buildings: Array) -> Array:
 	var arr: Array = buildings.duplicate()

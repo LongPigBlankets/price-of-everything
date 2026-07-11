@@ -12,6 +12,7 @@ const TITLE_PLATE: Texture2D = preload("res://assets/ui/title_plate.png")
 # Preload (not a class_name) keeps the New Game panel out of the headless class cache.
 const NewGamePanelScene := preload("res://scripts/new_game_panel.gd")
 const TutorialPanelScene := preload("res://scripts/tutorial_intro_panel.gd")
+const HallOfRecordsPanelScene := preload("res://scripts/hall_of_records_panel.gd")
 const TUTORIAL_START := "res://data/starts/tutorial.json"
 const NEW_GAME_BOTTOM_GAP := 220.0   # panel stops this far above the screen bottom (board peeks beneath)
 
@@ -33,6 +34,7 @@ const PLATE_BOTTOM := 206.0
 # The New Game settings panel and the goods board it slides in over.
 var _new_game_panel: Control
 var _tutorial_panel: Control
+var _hall_of_records_panel: Control
 var _goods_grid: Control
 
 
@@ -40,6 +42,7 @@ func _ready() -> void:
 	_build_menu()
 	_build_new_game_panel()
 	_build_tutorial_panel()
+	_build_hall_of_records_panel()
 	Audio.play_music()   # looping main-menu theme (placeholder track)
 	# Warm the map scene off-thread while the player is on the menu: this pulls main.tscn and
 	# all its textures off disk into RAM on a worker thread (no main-thread cost, no frame drop),
@@ -100,6 +103,7 @@ func _build_new_game_panel() -> void:
 func _show_new_game_panel() -> void:
 	if _new_game_panel == null or _new_game_panel.visible:
 		return
+	_close_side_panels(_new_game_panel)
 	# Keep the goods board visible (it shows in the gap below the panel) but freeze it
 	# so its periodic slide cue doesn't play while the settings screen is up.
 	if _goods_grid != null:
@@ -108,6 +112,17 @@ func _show_new_game_panel() -> void:
 	_new_game_panel.modulate.a = 0.0
 	var tw := create_tween()
 	tw.tween_property(_new_game_panel, "modulate:a", 1.0, 0.22)
+
+
+# Menu buttons are mutually exclusive: opening any panel closes the other side
+# panels first (New Game then Settings must not leave New Game up underneath).
+func _close_side_panels(except: Control = null) -> void:
+	if _new_game_panel != null and _new_game_panel != except:
+		_hide_new_game_panel()
+	if _tutorial_panel != null and _tutorial_panel != except:
+		_on_tutorial_back()
+	if _hall_of_records_panel != null and _hall_of_records_panel != except:
+		_on_hall_of_records_back()
 
 
 func _hide_new_game_panel() -> void:
@@ -144,6 +159,7 @@ func _build_tutorial_panel() -> void:
 func _on_tutorial_pressed() -> void:
 	if _tutorial_panel == null or _tutorial_panel.visible:
 		return
+	_close_side_panels(_tutorial_panel)
 	if _goods_grid != null:
 		_goods_grid.set_process(false)
 	_tutorial_panel.visible = true
@@ -162,6 +178,49 @@ func _on_tutorial_back() -> void:
 	tw.tween_callback(func() -> void: _tutorial_panel.visible = false)
 
 
+# ── Hall of Records panel ───────────────────────────────────────────────────────
+
+func _build_hall_of_records_panel() -> void:
+	_hall_of_records_panel = HallOfRecordsPanelScene.new()
+	# Occupy the same right region the New Game panel uses.
+	_hall_of_records_panel.anchor_left = 0.25
+	_hall_of_records_panel.anchor_top = 0.0
+	_hall_of_records_panel.anchor_right = 1.0
+	_hall_of_records_panel.anchor_bottom = 1.0
+	_hall_of_records_panel.offset_left = PANEL_INSET
+	_hall_of_records_panel.offset_top = PANEL_INSET
+	_hall_of_records_panel.offset_right = -PANEL_INSET
+	_hall_of_records_panel.offset_bottom = -NEW_GAME_BOTTOM_GAP
+	_hall_of_records_panel.visible = false
+	_hall_of_records_panel.modulate.a = 0.0
+	_hall_of_records_panel.z_index = 100
+	_hall_of_records_panel.back_requested.connect(_on_hall_of_records_back)
+	add_child(_hall_of_records_panel)
+
+
+func _on_hall_of_records_pressed() -> void:
+	if _hall_of_records_panel == null or _hall_of_records_panel.visible:
+		return
+	_close_side_panels(_hall_of_records_panel)
+	if _goods_grid != null:
+		_goods_grid.set_process(false)
+	_hall_of_records_panel.refresh()
+	_hall_of_records_panel.visible = true
+	_hall_of_records_panel.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(_hall_of_records_panel, "modulate:a", 1.0, 0.22)
+
+
+func _on_hall_of_records_back() -> void:
+	if _hall_of_records_panel == null or not _hall_of_records_panel.visible:
+		return
+	if _goods_grid != null:
+		_goods_grid.set_process(true)
+	var tw := create_tween()
+	tw.tween_property(_hall_of_records_panel, "modulate:a", 0.0, 0.18)
+	tw.tween_callback(func() -> void: _hall_of_records_panel.visible = false)
+
+
 # Begin Tutorial boots the tutorial start config through the same snapshot + loading
 # pipeline as New Game; the tutorial_enabled flag rides tutorial.json's ruleset dict
 # into MatchState.ruleset, where the Tutorial autoload picks it up.
@@ -172,10 +231,12 @@ func _on_tutorial_begin() -> void:
 
 
 func _on_load_game_pressed() -> void:
+	_close_side_panels()
 	SaveLoadScreen.open(self, SaveLoadScreen.Mode.LOAD)
 
 
 func _on_settings_pressed() -> void:
+	_close_side_panels()
 	SettingsPanel.open(self)
 
 
@@ -217,10 +278,12 @@ func _build_menu() -> void:
 	var tutorial := _make_button("Tutorial", false)
 	tutorial.pressed.connect(_on_tutorial_pressed)
 	vbox.add_child(tutorial)
-	for label in ["Load Game", "Settings", "Credits", "Encyclopedia"]:
+	for label in ["Load Game", "Hall of Records", "Settings", "Credits", "Encyclopedia"]:
 		var b := _make_button(label, false)
 		if label == "Load Game":
 			b.pressed.connect(_on_load_game_pressed)
+		elif label == "Hall of Records":
+			b.pressed.connect(_on_hall_of_records_pressed)
 		elif label == "Settings":
 			b.pressed.connect(_on_settings_pressed)
 		vbox.add_child(b)
