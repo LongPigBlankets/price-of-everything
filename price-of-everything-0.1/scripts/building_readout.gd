@@ -385,7 +385,8 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		var qty := maxi(1, BuildingStatus.primary_output_qty(recipe))
 		var dest_name := str(route.get("destination", "the destination"))
 		if not bool(route.get("reachable", true)):
-			rows.append(_row("bad", "truck", "Output destination cannot be reached", "No route to %s — a fluid needs a pipeline, or the tiles aren't connected." % dest_name))
+			rows.append(_row("bad", "truck", "Outputs cannot reach destination",
+				"Check infrastructure and connection to %s. Nothing ships (and no transport is charged) until the route exists — fluids need a pipe or reinforced-pipe network." % dest_name))
 		else:
 			var reach := "easily reached" if turns <= 1 else ("moderate to reach" if turns <= 4 else "hard to reach")
 			var reach_tone := "ok" if turns <= 1 else ("warn" if turns <= 4 else "bad")

@@ -45,7 +45,7 @@ static func gather() -> Dictionary:
 		"threshold": threshold,
 		"secured_count": secured,
 		"tracks": tracks,
-		"title": _title(result, secured),
+		"title": _title(result, secured, tracks),
 		"epithet": _epithet(result, secured, turn),
 		"copy": _copy(result, secured, turn, tracks),
 		"statline": _statline(),
@@ -106,10 +106,23 @@ static func _track_sub(key: String, done: bool) -> String:
 	return ""
 
 # ── Narrative title / epithet / copy (generated from the actual result) ─────────
-static func _title(result: String, secured: int) -> String:
+# Single-track wins are NAMED FOR THE WINNING TRACK (owner's victory types:
+# greenest / logistics / richest / autarkic / widest — richest keeps the design's
+# "Cash is King"); multi-track wins keep the design's count titles.
+const _SINGLE_TRACK_TITLES := {
+	"autarkic": "Autarkic", "logistics": "Logistics", "richest": "Cash is King",
+	"widest": "Widest", "greenest": "Greenest",
+}
+
+static func _title(result: String, secured: int, tracks: Array) -> String:
 	if result == "defeat":
 		return "Receivership"
-	return ["Cash is King", "Cash is King", "Visionary Industrialist", "The Magnate", "Titan of Industry", "The Full Ledger"][clampi(secured, 0, 5)]
+	if secured <= 1:
+		for t in tracks:
+			if bool(t.done):
+				return str(_SINGLE_TRACK_TITLES.get(str(t.key), str(t.name)))
+		return "Victory"   # threshold crossed on banked partials — no single champion track
+	return ["", "", "Visionary Industrialist", "The Magnate", "Titan of Industry", "The Full Ledger"][clampi(secured, 2, 5)]
 
 static func _epithet(result: String, secured: int, turn: int) -> String:
 	if result == "defeat":
