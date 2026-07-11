@@ -66,6 +66,17 @@ static func poll(decide: Dictionary) -> bool:
 			return not _node_visible(str(decide.get("ref", "")))
 		"sell_surplus_on_tile":
 			return MatchState.is_sell_surplus_enabled(str(decide.get("tile", "")))
+		"tile_land_at_least":
+			# True once the player owns at least `amount` land on the tile — the Buy Land
+			# lesson (poll-driven; land purchases apply instantly on the popup click).
+			return MatchState.get_tile_land_owned(str(decide.get("tile", ""))) >= int(decide.get("amount", 0))
+		"output_routed_offtile":
+			# True once the player's building on the tile has an output explicitly routed
+			# to ANOTHER tile's stockpile — the transport-cost redirect lesson.
+			return _output_route_state(str(decide.get("tile", "")), str(decide.get("building_id", ""))).offtile
+		"output_routed_market":
+			# True once an output is explicitly routed back to the global market.
+			return _output_route_state(str(decide.get("tile", "")), str(decide.get("building_id", ""))).market
 		_:
 			return false
 
@@ -182,6 +193,33 @@ static func _board_has_infra(infra: String) -> bool:
 		if Catalog.tile_has_infrastructure(str(tile_id), infra):
 			return true
 	return false
+
+
+## Explicit output routing set on the player's `building_id` on `tile_id`:
+## market = any output good explicitly routed to the global market sentinel;
+## offtile = any output good explicitly routed to a DIFFERENT tile's stockpile.
+## Reads MatchState.output_stockpile_destinations (instance_id -> {good_id -> dest});
+## buildings with no explicit route report neither (the sell_mode fallback isn't a route).
+static func _output_route_state(tile_id: String, building_id: String) -> Dictionary:
+	var state := {"market": false, "offtile": false}
+	if tile_id == "":
+		return state
+	for iid in MatchState.buildings:
+		var inst: Dictionary = MatchState.buildings[iid]
+		if str(inst.get("tile_id", "")) != tile_id:
+			continue
+		if building_id != "" and str(inst.get("building_id", "")) != building_id:
+			continue
+		if not MatchState.is_player_owned(inst):
+			continue
+		var per_good: Dictionary = MatchState.output_stockpile_destinations.get(str(iid), {})
+		for gid in per_good:
+			var dest := str(per_good[gid])
+			if dest == MatchState.MARKET_DESTINATION:
+				state.market = true
+			elif dest != tile_id:
+				state.offtile = true
+	return state
 
 
 ## True when the local player owns a building of `building_id` sitting on `tile_id`.

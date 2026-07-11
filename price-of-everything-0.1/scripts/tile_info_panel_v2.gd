@@ -298,6 +298,7 @@ func _populate_land_rail() -> void:
 		_land_rail.add_child(legend)
 
 	var buy := _make_action_button("Buy Land")
+	buy.name = "BLBuyLandButton"   # tutorial spotlight target
 	buy.add_theme_font_size_override("font_size", 14)  # one size up
 	buy.pressed.connect(func(): _on_buy_land_pressed(buy))
 	_land_rail.add_child(buy)

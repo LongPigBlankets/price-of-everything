@@ -1689,7 +1689,9 @@ func _build_routing_buttons(building: Dictionary, recipe: Dictionary) -> HBoxCon
 	row.add_theme_constant_override("separation", DS.SP["SM"])
 	if not (recipe.get("inputs", []) as Array).is_empty():
 		row.add_child(_route_card("Input sources", _input_summary(building, recipe), func() -> void: _open_input_sources_sheet(building, recipe)))
-	row.add_child(_route_card("Output destination", _output_summary(building, recipe), func() -> void: _open_output_sheet(building, recipe)))
+	var out_card := _route_card("Output destination", _output_summary(building, recipe), func() -> void: _open_output_sheet(building, recipe))
+	out_card.name = "OutputDestCard"   # tutorial spotlight target
+	row.add_child(out_card)
 	return row
 
 func _input_summary(building: Dictionary, recipe: Dictionary) -> String:

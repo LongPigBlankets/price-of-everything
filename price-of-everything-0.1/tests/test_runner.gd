@@ -361,6 +361,50 @@ func _test_tutorial_engine() -> void:
 		"tutorial: deeper-integration survey/mine steps authored + deferred")
 	_check("build_own_power" in integ_ids, "tutorial: own-power step deferred to deeper integration")
 
+	# Buy Land lesson: tiles start unowned, the tutorial seeds only the factory plot (20),
+	# and the buy_land step gates the furnace build on owning at least 40 on that tile.
+	for expected2 in ["buy_land", "transport_ports", "transport_redirect_open", "transport_redirect_pick", "transport_pentagon_revert"]:
+		_check(expected2 in ids, "tutorial: step '%s' present" % expected2)
+	_check(ids.find("buy_land") < ids.find("choose_integration"),
+		"tutorial: buy_land runs before the integration branch (both builds need the land)")
+	var bl_decide: Dictionary = ((by_id.get("buy_land", {}) as Dictionary).get("done", {}) as Dictionary).get("decide", {})
+	_check(str(bl_decide.get("kind", "")) == "tile_land_at_least" and int(bl_decide.get("amount", 0)) == 40,
+		"tutorial: buy_land gates on owning 40 land on the factory tile")
+	var land_saved: Dictionary = MatchState.tile_land_owned.duplicate(true)
+	MatchState.tile_land_owned.clear()
+	_check(TutorialDetectors.poll({"kind": "tile_land_at_least", "tile": TutorialSteps.WINDOW_TILE, "amount": 40}) == false,
+		"tutorial: tile_land_at_least false with no land owned")
+	MatchState.tile_land_owned[TutorialSteps.WINDOW_TILE] = 40
+	_check(TutorialDetectors.poll({"kind": "tile_land_at_least", "tile": TutorialSteps.WINDOW_TILE, "amount": 40}) == true,
+		"tutorial: tile_land_at_least true at exactly the target amount")
+	MatchState.tile_land_owned = land_saved
+
+	# Transport arc: output-route detectors read the explicit per-good destinations.
+	var saved2: Dictionary = MatchState.buildings
+	var saved_routes: Dictionary = MatchState.output_stockpile_destinations.duplicate(true)
+	MatchState.buildings = {
+		"inst_route": {
+			"instance_id": "inst_route", "building_id": "b_007",
+			"tile_id": TutorialSteps.WINDOW_TILE, "owner": MatchState.LOCAL_PLAYER,
+		}
+	}
+	MatchState.output_stockpile_destinations.clear()
+	_check(TutorialDetectors.poll({"kind": "output_routed_offtile", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}) == false,
+		"tutorial: output_routed_offtile false with no explicit route")
+	_check(TutorialDetectors.poll({"kind": "output_routed_market", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}) == false,
+		"tutorial: output_routed_market false with no explicit route (sell_mode fallback is not a route)")
+	MatchState.output_stockpile_destinations["inst_route"] = {"g_test": TutorialSteps.INPUT_TILE}
+	_check(TutorialDetectors.poll({"kind": "output_routed_offtile", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}) == true,
+		"tutorial: output_routed_offtile true once routed to another tile")
+	MatchState.output_stockpile_destinations["inst_route"] = {"g_test": TutorialSteps.WINDOW_TILE}
+	_check(TutorialDetectors.poll({"kind": "output_routed_offtile", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}) == false,
+		"tutorial: output_routed_offtile false for a same-tile stockpile route")
+	MatchState.output_stockpile_destinations["inst_route"] = {"g_test": MatchState.MARKET_DESTINATION}
+	_check(TutorialDetectors.poll({"kind": "output_routed_market", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}) == true,
+		"tutorial: output_routed_market true once explicitly routed back to market")
+	MatchState.output_stockpile_destinations = saved_routes
+	MatchState.buildings = saved2
+
 
 # The Audio autoload (presentation-layer SFX service). Headless uses the Dummy
 # audio driver, so we assert wiring/state rather than actual playback: the click
