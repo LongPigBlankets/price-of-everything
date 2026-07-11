@@ -2843,6 +2843,17 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	name_label.theme_type_variation = &"BuildingName"  # next size up (Barlow Semi 22)
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # spills onto next row
 	info.add_child(name_label)
+	# The header is ANCHORED inside a fixed-height Control (so the NPC banner can
+	# float), which means a wrapped 2-line name doesn't grow the plate — it spills
+	# out of the card bottom. Measure the real line count once laid out and grow
+	# the plate by the extra rows.
+	name_label.ready.connect(func() -> void:
+		await name_label.get_tree().process_frame
+		if not is_instance_valid(name_label) or not is_instance_valid(overlay):
+			return
+		var extra_lines := name_label.get_line_count() - 1
+		if extra_lines > 0:
+			overlay.custom_minimum_size.y = (GROUP_CARD_H - 10) + float(extra_lines) * name_label.get_line_height())
 	var pusher := Control.new()
 	pusher.size_flags_vertical = Control.SIZE_EXPAND_FILL  # pushes cost basis to the bottom
 	pusher.mouse_filter = Control.MOUSE_FILTER_IGNORE
