@@ -8,21 +8,9 @@ const MAIN_MENU_SCENE := "res://scenes/main_menu.tscn"
 
 var _end_screen: CanvasLayer = null
 
-# Bottom-menu buttons that have multi-resolution circular art in
-# assets/icons/ui_icons/{100,200,400}/.
-const MENU_ICONS := {
-	"ConstructButton": "construct",
-	"ResourcesButton": "resources",
-	"BuildingsButton": "buildings",
-	"MapmodesButton": "map_overlays",
-	"MarketButton": "markets",
-	"PoliticsButton": "politics",
-	"TechButton": "tech",
-	"PeopleButton": "",  # empty slot in the current set (no icon)
-}
-
-# Alternate icon set — single-resolution PNGs under assets/icons/ui_icons/alt/.
-# Toggled at runtime by the `swap bottom menu` cheat (MatchState.use_alt_bottom_menu).
+# Bottom-menu icons — single-resolution object PNGs under
+# assets/icons/ui_icons/alt/, each button recoloured to its own scheme (see
+# ALT_COLORS) and set into a drilled socket on the metal tray.
 const ALT_MENU_ICONS := {
 	"ConstructButton": "construct",
 	"ResourcesButton": "goods",
@@ -47,10 +35,6 @@ const ALT_COLORS := {
 	"TechButton":      ["#1e5e63", "#ddefec"],
 	"PeopleButton":    ["#a8466b", "#f6dfe7"],
 }
-
-# Original (shared) button styleboxes captured at _ready, re-applied when the
-# alt menu is toggled back off.
-var _orig_button_styles := {}
 
 # Selected button rises while its panel is open, then drops when it closes.
 const RISE_PX := 25.0
@@ -83,13 +67,7 @@ func _ready() -> void:
 	construct_panel.get_parent().add_child(construct_panel_v2)
 	construct_panel_v2.hide()
 	MatchState.construct_panel_v2_changed.connect(_on_construct_panel_v2_changed)
-	# Capture the shared button styleboxes before any alt override so we can
-	# restore them when the alt menu is toggled off.
-	for s in ["normal", "hover", "pressed", "focus"]:
-		_orig_button_styles[s] = %ConstructButton.get_theme_stylebox(s)
 	_apply_menu_icons()
-	# `swap bottom menu` cheat flips the icon set live.
-	MatchState.alt_bottom_menu_changed.connect(func(_enabled): _apply_menu_icons())
 	%ConstructButton.pressed.connect(_on_construct_pressed)
 	%ResourcesButton.pressed.connect(_on_resources_pressed)
 	%BuildingsButton.pressed.connect(_on_buildings_pressed)
@@ -175,43 +153,18 @@ func _is_text_entry_focused() -> bool:
 	var fo := get_viewport().gui_get_focus_owner()
 	return fo is LineEdit or fo is TextEdit
 
-func _icon_tier() -> String:
-	# Pick icon resolution from window height: sub-1080p -> 100, 1080p -> 200,
-	# above 1080p -> 400. The buttons render small, so a larger source downscales
-	# crisply (with the BottomMenu's Linear texture filter).
-	var h := DisplayServer.window_get_size().y
-	if h >= 1440:
-		return "400"
-	if h >= 1080:
-		return "200"
-	return "100"
-
 func _apply_menu_icons() -> void:
-	# Swapping menus re-applies resting styleboxes, so drop any lifted tracking.
+	# Re-applying styles drops any lifted tracking; reset the per-button Specular.
 	_lifted.clear()
 	_rest_styles.clear()
-	for bn in MENU_ICONS:
-		var b := get_node_or_null("%" + bn) as Button
+	for button_name in ALT_MENU_ICONS:
+		var b := get_node_or_null("%" + button_name) as Button
 		if b != null:
 			var sp := b.get_node_or_null("Specular")
 			if sp != null:
 				sp.visible = false
-	# Alternate set: single-resolution PNGs in assets/icons/ui_icons/alt/, each
-	# button recoloured to its own scheme (background fill + object/ring colour).
-	if MatchState.use_alt_bottom_menu:
-		for button_name in ALT_MENU_ICONS:
-			_set_button_icon(button_name, "res://assets/icons/ui_icons/alt/%s.png" % ALT_MENU_ICONS[button_name])
-			_apply_alt_button_style(button_name)
-		return
-	# Current set: multi-resolution circular art picked by window height.
-	var tier := _icon_tier()
-	for button_name in MENU_ICONS:
-		_restore_button_style(button_name)
-		var icon_name: String = MENU_ICONS[button_name]
-		if icon_name == "":
-			_set_button_icon(button_name, "")  # empty slot → clear any icon
-		else:
-			_set_button_icon(button_name, "res://assets/icons/ui_icons/%s/%s.png" % [tier, icon_name])
+		_set_button_icon(button_name, "res://assets/icons/ui_icons/alt/%s.png" % ALT_MENU_ICONS[button_name])
+		_apply_alt_button_style(button_name)
 
 func _make_alt_button_style(fg: Color, fill: Color) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
@@ -268,18 +221,7 @@ func _ensure_alt_glow(button: Button, glow_color: Color, tex_path: String) -> vo
 func _update_glow(button: Button) -> void:
 	var glow := button.get_node_or_null("AltGlow")
 	if glow != null:
-		glow.visible = MatchState.use_alt_bottom_menu and (_hovered.get(button, false) or _lifted.get(button, false))
-
-func _restore_button_style(button_name: String) -> void:
-	var button := get_node_or_null("%" + button_name) as Button
-	if button == null:
-		return
-	for s in ["normal", "hover", "pressed", "focus"]:
-		if _orig_button_styles.has(s) and _orig_button_styles[s] != null:
-			button.add_theme_stylebox_override(s, _orig_button_styles[s])
-	var glow := button.get_node_or_null("AltGlow")
-	if glow != null:
-		glow.visible = false
+		glow.visible = _hovered.get(button, false) or _lifted.get(button, false)
 
 func _set_button_icon(button_name: String, path: String) -> void:
 	var button := get_node_or_null("%" + button_name) as Button

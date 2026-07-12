@@ -371,11 +371,6 @@ enum RouteObjective { FASTEST, CHEAPEST, BLENDED }
 var route_objective: int = RouteObjective.FASTEST
 
 
-# Debug-only: when true the bottom menu shows the alternate icon set instead of
-# the old circular icon set. Toggled at runtime via the `swap bottom menu` cheat.
-# Session-only; never persisted. Defaults to the white-rimmed alternate buttons.
-var use_alt_bottom_menu: bool = true
-
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
 # large empires can produce hundreds of console lines per turn in editor builds.
 # Toggled at runtime via the `logs` debug-terminal cheat. Session-only.
@@ -494,8 +489,6 @@ signal overflow_shipment_held(record: Dictionary)
 ## A special-order delivery reached port with units beyond the completed order's
 ## demand. The UI must ask whether to sell those units or stockpile them at port.
 signal special_order_overflow_ready(record: Dictionary)
-## Debug cheat `swap bottom menu` flipped which bottom-menu icon set is active.
-signal alt_bottom_menu_changed(enabled: bool)
 # The Building Detail v2 dev-toggle flipped (`swap bdp` cheat); world_map re-renders the
 # active detail panel. Session-only.
 signal bdp_v2_changed(enabled: bool)
@@ -2672,18 +2665,6 @@ func _requote_shipment_routes() -> void:
 func set_sell_mode(mode: int) -> void:
 	sell_mode = mode
 	sell_mode_changed.emit(mode)
-
-## Debug cheat: switch between the current and alternate bottom-menu icon sets.
-## Returns the new state. Session-only, never persisted.
-func set_use_alt_bottom_menu(enabled: bool) -> bool:
-	if enabled == use_alt_bottom_menu:
-		return use_alt_bottom_menu
-	use_alt_bottom_menu = enabled
-	alt_bottom_menu_changed.emit(use_alt_bottom_menu)
-	return use_alt_bottom_menu
-
-func toggle_use_alt_bottom_menu() -> bool:
-	return set_use_alt_bottom_menu(not use_alt_bottom_menu)
 
 ## Debug cheat: toggle verbose production / CostSolver console logs.
 ## Returns the new state. Session-only, never persisted.

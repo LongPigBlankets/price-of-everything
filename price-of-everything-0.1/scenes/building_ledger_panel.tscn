@@ -1,7 +1,7 @@
 [gd_scene format=4]
 
 [ext_resource type="Script" path="res://scripts/building_ledger_panel.gd" id="1"]
-[ext_resource type="Texture2D" uid="uid://c671aqoqp78tq" path="res://assets/icons/ui_icons/200/buildings.png" id="2"]
+[ext_resource type="Texture2D" uid="uid://crxtm6pik44sq" path="res://assets/icons/ui_icons/alt/building_ledger.png" id="2"]
 
 [node name="BuildingLedgerPanel" type="PanelContainer"]
 custom_minimum_size = Vector2(1140, 860)

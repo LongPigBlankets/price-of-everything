@@ -34,7 +34,6 @@ func _ready() -> void:
 	_test_catalog_loaded()
 	_test_recipe_requirements()
 	_test_research_recipe_and_level_tiers()
-	_test_menu_icons()
 	_test_bottom_menu_default()
 	_test_panel_stack_focus()
 	_test_ports()
@@ -8112,17 +8111,7 @@ func _test_research_recipe_and_level_tiers() -> void:
 	_check(level2_ok and level2_count == 21, "all 21 Level 2 building unlocks are Tier II")
 	_check(warehouse_level2_ok, "warehouse Level 2 unlock is Tier II")
 
-# Logic: the regenerated bottom-menu icons import and load as textures.
-func _test_menu_icons() -> void:
-	var all_ok := true
-	for key in ["resources", "buildings", "map_overlays", "markets", "politics", "construct", "tech"]:
-		var path := "res://assets/icons/ui_icons/200/%s.png" % key
-		if not (ResourceLoader.exists(path) and load(path) is Texture2D):
-			all_ok = false
-	_check(all_ok, "bottom-menu icons (200px tier) import and load")
-
 func _test_bottom_menu_default() -> void:
-	_check(MatchState.use_alt_bottom_menu, "white-rimmed bottom menu is the default")
 	var all_ok := true
 	for key in ["construct", "goods", "building_ledger", "mapmodes", "market", "politics", "research", "people"]:
 		var path := "res://assets/icons/ui_icons/alt/%s.png" % key

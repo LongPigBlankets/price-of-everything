@@ -469,7 +469,6 @@ func _load_main_scene() -> void:
 
 
 func _check_ui_loaded() -> void:
-	_check(MatchState.use_alt_bottom_menu, "white-rimmed bottom menu is active in E2E")
 	_check((_main.get_node("%BottomMenu") as Control).visible, "bottom menu starts visible")
 	_check(not _construct_panel.visible, "construct panel starts hidden")
 	_check(not _money_panel.visible, "money panel starts hidden")

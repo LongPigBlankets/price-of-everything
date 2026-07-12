@@ -12,12 +12,9 @@ func _ready() -> void:
 	var menu := get_node_or_null("%BottomMenu")
 	if menu != null:
 		menu.sort_children.connect(queue_redraw)
-	MatchState.alt_bottom_menu_changed.connect(func(_e): queue_redraw())
 	call_deferred("queue_redraw")
 
 func _draw() -> void:
-	if not MatchState.use_alt_bottom_menu:
-		return  # sockets are part of the alt metal-panel look only
 	var menu := get_node_or_null("%BottomMenu")
 	if menu == null:
 		return
