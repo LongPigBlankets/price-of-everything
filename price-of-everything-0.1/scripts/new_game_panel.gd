@@ -17,11 +17,21 @@ signal back_requested
 const STARTS_INDEX := "res://data/starts/index.json"
 const DEFAULT_START := "res://data/starts/default.json"
 
+# Demo build: only Coal Baron, Normal difficulty and the 300-turn length are
+# playable; everything else is greyed with a "Locked in the Demo" tooltip. Flip
+# DEMO_LOCK to false to restore the full menu after the demo.
+const DEMO_LOCK := true
+const DEMO_START_ID := "metal_magnate"
+const DEMO_DIFFICULTY_ID := "normal"
+const DEMO_SPEED_ID := "300"
+const DEMO_LOCK_TIP := "Locked in the Demo"
+
 const ICON := 120.0                                  # start-card icon size
 const CARD_PAD := 12                                 # fixed card content margin (constant across states)
 const DESC_INSET := 200                              # description inset from each container edge
 const BevelEdge := preload("res://scripts/bevel_edge.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const GOLD := Color(0.90, 0.72, 0.36, 1.0)
 
 # Tier -> hex fill colour + difficulty badge.
@@ -52,15 +62,23 @@ const SPEEDS: Array = [
 ]
 const SPEED_DEFAULT := 1
 
-const TUTORIALS: Array = [ {"id": "on", "label": "On"}, {"id": "off", "label": "Off"} ]
-const TUTORIAL_DEFAULT := 0
+# Advanced Settings tickboxes (the "Tutorial" column was replaced by these). Only
+# the first is wired today; 2 & 3 are placeholders for future toggles.
+const ADVANCED_SETTINGS: Array = [
+	{"id": "survey_all", "label": "All tiles surveyed at game start"},
+	{"id": "setting_2", "label": "Setting 2"},
+	{"id": "setting_3", "label": "Setting 3"},
+]
 
 var _starts: Array = []
 var _start_id := ""
 var _start_path := DEFAULT_START
 var _difficulty_id := "normal"
 var _speed_turns := 300
-var _tutorial_on := true
+# New Game never launches the tutorial coach (that's what the Tutorial menu is for).
+var _tutorial_on := false
+var _survey_all := false
+var _advanced: Dictionary = {}   # setting id -> bool
 
 var _card_buttons: Array = []
 var _detail_desc: Label
@@ -197,6 +215,13 @@ func _start_card(start: Dictionary, group: ButtonGroup) -> Control:
 	for s in ["normal", "hover", "pressed", "focus", "disabled"]:
 		btn.add_theme_stylebox_override(s, StyleBoxEmpty.new())
 	card.add_child(btn)
+	# Demo lock: every start except Coal Baron is greyed + unclickable.
+	if DEMO_LOCK and String(start.get("id", "")) != DEMO_START_ID:
+		btn.disabled = true
+		btn.tooltip_text = DEMO_LOCK_TIP
+		card.modulate = Color(1, 1, 1, 0.35)
+		_card_buttons.append(btn)
+		return card
 	var st := start
 	btn.toggled.connect(func(on: bool) -> void:
 		card.add_theme_stylebox_override("panel", _card_box(on))
@@ -323,6 +348,12 @@ func _build_settings_columns(parent: Node) -> void:
 		var odesc := String(opt["desc"])
 		var olabel := String(opt["label"])
 		var b := _stacked_button(dcol, olabel, dgroup)
+		# Demo lock: only Normal is playable. (Otherwise the finish-a-game lock on
+		# Very Hard / God of Industry still applies.)
+		if DEMO_LOCK and oid != DEMO_DIFFICULTY_ID:
+			b.disabled = true
+			b.tooltip_text = DEMO_LOCK_TIP
+			continue
 		if bool(opt.get("locked", false)) and not unlocked:
 			b.disabled = true
 			b.tooltip_text = "This difficulty is unlocked once you finish one game"
@@ -339,6 +370,11 @@ func _build_settings_columns(parent: Node) -> void:
 	for opt in SPEEDS:
 		var turns := int(opt["turns"])
 		var b := _stacked_button(scol, String(opt["label"]), sgroup)
+		# Demo lock: only the 300-turn length is playable.
+		if DEMO_LOCK and String(opt["id"]) != DEMO_SPEED_ID:
+			b.disabled = true
+			b.tooltip_text = DEMO_LOCK_TIP
+			continue
 		b.toggled.connect(func(on: bool) -> void:
 			if on:
 				_speed_turns = turns)
@@ -349,16 +385,27 @@ func _build_settings_columns(parent: Node) -> void:
 	scol.add_child(note)
 	_press_in_group(scol, SPEED_DEFAULT)
 
-	# Tutorial column.
-	var tcol := _settings_column(cols, "Tutorial")
-	var tgroup := ButtonGroup.new()
-	for opt in TUTORIALS:
-		var on_id := String(opt["id"])
-		var b := _stacked_button(tcol, String(opt["label"]), tgroup)
-		b.toggled.connect(func(on: bool) -> void:
-			if on:
-				_tutorial_on = (on_id == "on"))
-	_press_in_group(tcol, TUTORIAL_DEFAULT)
+	# Advanced Settings column: three tickboxes (replaces the old Tutorial toggle).
+	# The DS theme doesn't style CheckBox, so use UIHelpers' drawn box icons for a
+	# legible tick against the navy plate.
+	var acol := _settings_column(cols, "Advanced Settings")
+	for opt in ADVANCED_SETTINGS:
+		var sid := String(opt["id"])
+		_advanced[sid] = false
+		var cb := CheckBox.new()
+		cb.text = "  " + String(opt["label"])
+		cb.size_flags_horizontal = Control.SIZE_FILL
+		cb.custom_minimum_size = Vector2(0, 34)
+		cb.add_theme_icon_override("unchecked", UIHelpers.checkbox_icon(false))
+		cb.add_theme_icon_override("checked", UIHelpers.checkbox_icon(true))
+		cb.add_theme_icon_override("unchecked_disabled", UIHelpers.checkbox_icon(false))
+		cb.add_theme_icon_override("checked_disabled", UIHelpers.checkbox_icon(true))
+		cb.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+		cb.toggled.connect(func(on: bool) -> void:
+			_advanced[sid] = on
+			if sid == "survey_all":
+				_survey_all = on)
+		acol.add_child(cb)
 
 	parent.add_child(_difficulty_caption)
 
@@ -397,11 +444,27 @@ func _select_start(start: Dictionary) -> void:
 
 
 func _select_default_start() -> void:
-	var idx := 0
+	# Under the demo lock the only playable start is Coal Baron; otherwise the
+	# recommended card.
+	var idx := -1
 	for i in _starts.size():
-		if bool((_starts[i] as Dictionary).get("recommended", false)):
+		var st := _starts[i] as Dictionary
+		if DEMO_LOCK:
+			if String(st.get("id", "")) == DEMO_START_ID:
+				idx = i
+				break
+		elif bool(st.get("recommended", false)):
 			idx = i
 			break
+	# Fall back to the first ENABLED card if the preferred one is missing or locked
+	# (e.g. the start data was edited to drop Coal Baron): never leave New Game with
+	# no start selected — pressing a disabled card would silently keep DEFAULT_START.
+	if idx < 0 or idx >= _card_buttons.size() or (_card_buttons[idx] as Button).disabled:
+		idx = -1
+		for i in _card_buttons.size():
+			if not (_card_buttons[i] as Button).disabled:
+				idx = i
+				break
 	if idx >= 0 and idx < _card_buttons.size():
 		(_card_buttons[idx] as Button).button_pressed = true
 
@@ -509,6 +572,9 @@ func _on_start_pressed() -> void:
 			"difficulty": _difficulty_id,
 			"speed_turns": _speed_turns,
 			"tutorial_enabled": _tutorial_on,
+			# Advanced Settings: force every land tile surveyed at game start (this
+			# overrides whatever the difficulty's survey config would otherwise do).
+			"survey_all_tiles": _survey_all,
 		},
 	}
 	start_requested.emit(_start_path, overrides)

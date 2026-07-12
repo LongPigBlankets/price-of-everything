@@ -276,6 +276,15 @@ func finish_build(animate: bool) -> void:
 	var loaded_pending := SaveLoad.apply_pending()
 	if loaded_pending:
 		_rebuild_after_load()
+	# Advanced Setting "All tiles surveyed at game start": reveal every tile now that
+	# the terrain (and any pending ruleset) exists.
+	if bool(MatchState.ruleset.get("survey_all_tiles", false)):
+		var all_ids: Array = []
+		for coord in terrain_layer.tiles:
+			var tid := str((terrain_layer.tiles[coord] as Dictionary).get("id", ""))
+			if tid != "":
+				all_ids.append(tid)
+		MatchState.mark_tiles_surveyed(all_ids)
 	await _build_yield()
 	# Forests are a TERRAIN feature (the land mask + block templates read them), so they come before
 	# roads. The buildings that used to follow here are deferred until after the roads exist.

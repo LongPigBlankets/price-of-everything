@@ -1,0 +1,35 @@
+{
+	"save_version": 2,
+	"start": true,
+	"name": "metal_magnate",
+	"ruleset": "standard",
+	"money": 300,
+	"buildings": [
+		{ "building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_6_8", "output_to": "tile_6_9" },
+		{ "building_id": "b_001", "recipe_id": "r_002", "tile_id": "tile_7_10", "output_to": "tile_6_9" },
+		{ "building_id": "b_002", "recipe_id": "r_005", "tile_id": "tile_6_9", "output_to": "market" },
+		{ "building_id": "b_003", "recipe_id": "r_004", "tile_id": "tile_6_9" }
+	],
+	"land": {
+		"tile_6_8": 120,
+		"tile_7_10": 120,
+		"tile_6_9": 120
+	},
+	"infrastructure": {
+		"tile_6_8": { "present": [ "cables" ], "levels": { "cables": 1 } },
+		"tile_7_10": { "present": [ "cables" ], "levels": { "cables": 1 } },
+		"tile_6_9": { "present": [ "pipes" ], "levels": { "pipes": 1 } },
+		"tile_5_10": { "present": [ "pipes" ], "levels": { "pipes": 1 } }
+	},
+	"modifiers": [
+		{
+			"id": "start_metals_magnate_iron",
+			"domain": "recipe_output",
+			"target": "*",
+			"target_match": { "good_internal": "iron_ingots" },
+			"pct": 10.0,
+			"label": "Metals Magnate Start",
+			"source": "start:metals_magnate"
+		}
+	]
+}

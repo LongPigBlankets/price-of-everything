@@ -77,6 +77,10 @@ func _enter(i: int) -> void:
 		return
 	_entry_turn = TurnManager.current_turn
 	var step: Dictionary = _steps[_index]
+	# Reaching the terminal step = the player genuinely finished the tutorial (an early
+	# Skip goes straight to _finish and never enters this step, so it doesn't count).
+	if str(step.get("id", "")) == "integration_done":
+		PlayerProfile.mark_tutorial_completed()
 	hard_gate = bool(step.get("lock_panel", false))   # swallow Esc while this step's panel is up
 	_run_setup(step.get("setup", []))
 	_apply_step_camera(step)
