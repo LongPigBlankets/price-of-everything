@@ -295,6 +295,11 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 	_mark_subcomp_dirty(tile_id)
 	queue_redraw()
 
+## True once this instance has a drawn footprint — lets the start-building pass skip
+## NPC buildings other passes already laid out (ports/ruins/companies).
+func has_placement(instance_id: String) -> bool:
+	return _placement_index.has(instance_id)
+
 ## Lay out one building: size it, pick a shape, and place it (frontage row, else abut a
 ## neighbour, else low ground). Appends a placement (or nothing if the tile is full).
 

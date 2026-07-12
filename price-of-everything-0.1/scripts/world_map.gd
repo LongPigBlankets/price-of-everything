@@ -1725,7 +1725,11 @@ func _place_start_buildings(animate: bool = false) -> void:
 func _place_pending_start_buildings(animate: bool = false) -> void:
 	for instance_id in MatchState.buildings:
 		var inst: Dictionary = MatchState.buildings[instance_id]
-		if not MatchState.is_player_owned(inst):
+		# Player buildings always (re)lay out here. NPC buildings only if no earlier
+		# pass drew them: ports/ruins/companies already have footprints, but a snapshot-
+		# seeded NPC building (e.g. the tutorial's Vandel window factory) does not and
+		# would otherwise never render.
+		if not MatchState.is_player_owned(inst) and building_visuals.has_placement(str(instance_id)):
 			continue
 		var tile_id := str(inst.get("tile_id", ""))
 		var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
