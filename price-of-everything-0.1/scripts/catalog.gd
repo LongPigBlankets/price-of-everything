@@ -672,6 +672,20 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 			"qty": parsed_output_qty,
 		})
 
+	# Catalysts are durable goods held by the building rather than consumed by a
+	# run. The semicolon-separated CSV field is an allowed set: a battery housing,
+	# for example, can be loaded with any listed battery chemistry.
+	var catalysts: Array = []
+	for catalyst_name in str(raw.get("catalysts", "")).replace("|", ";").split(";", false):
+		var internal_name := catalyst_name.strip_edges()
+		if internal_name == "":
+			continue
+		var catalyst_good := get_good_by_internal_name(internal_name)
+		catalysts.append({
+			"good_id": catalyst_good.get("id", ""),
+			"internal_name": internal_name,
+		})
+
 	# --- Promotion gate ---
 	# Active only if the building resolves and EVERY input + output is an existing good. A recipe
 	# normally needs at least one input or output, EXCEPT storage (battery) buildings: their
@@ -689,6 +703,9 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 	for outp in outputs:
 		if outp.good_id == "":
 			return {}
+	for catalyst in catalysts:
+		if catalyst.good_id == "":
+			return {}
 
 	return {
 		"recipe_id": raw.get("recipe_id", ""),
@@ -697,10 +714,16 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 		"recipe_type": raw.get("category", ""),
 		"inputs": inputs,
 		"outputs": outputs,
+		"catalysts": catalysts,
 		"output_name": outputs[0].internal_name if not outputs.is_empty() else "",
 		"output_good_id": outputs[0].good_id if not outputs.is_empty() else "",
 		"output_qty": outputs[0].qty if not outputs.is_empty() else 0,
 		"energy_req": int(raw.get("energy_req", "0")),
+		# Recipe staffing takes precedence over the building default when present.
+		# -1 preserves compatibility with legacy recipe rows during the migration.
+		"labour_unskilled_required": int(raw.get("labour_unskilled_required", "-1")) if str(raw.get("labour_unskilled_required", "-1")).is_valid_int() else -1,
+		"labour_skilled_required": int(raw.get("labour_skilled_required", "-1")) if str(raw.get("labour_skilled_required", "-1")).is_valid_int() else -1,
+		"labour_h_skilled_required": int(raw.get("labour_h_skilled_required", "-1")) if str(raw.get("labour_h_skilled_required", "-1")).is_valid_int() else -1,
 		"requirements": _parse_requirements(raw.get("requirements", "")),
 		"required_research": raw.get("required_research", ""),
 	}

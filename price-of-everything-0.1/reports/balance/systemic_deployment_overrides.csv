@@ -1,0 +1,10 @@
+recipe_id,recipe,deployment_rule,base_recipe_id,deployed_output_qty,base_output_qty,deployed_labour_unskilled,deployed_labour_skilled,deployed_labour_h_skilled,target_policy,target_profit,target_min,target_max,deployed_production_margin,in_target_band
+r_039,Lithium Electrolysis,matches base output; specialist labour target,r_227,9,9,654,1176,1895,lithium electrolysis remains a modest advanced route,20.0,15.0,25.0,20.019,True
+r_066,Axial Flux Motors,matches base output; specialist labour target,r_009,28,28,2073,3639,2802,rank I default,15.0,5.0,30.0,15.017,True
+r_072,V8 Engine Manufacturing,matches base output; specialist labour target,r_071,6,6,2968,3273,1460,rank I default,15.0,5.0,30.0,15.02,True
+r_123,Fabless Semiconductors,matches base output; specialist labour target,r_122,5,5,786,1529,4052,unlocked CPU/computer recipes can carry larger base profit,65.0,30.0,100.0,70.003,True
+r_124,Semiconductor 3D Printing,matches base output; specialist labour target,r_122,5,5,844,1818,4860,3D semiconductor printing has a controlled advanced margin,60.0,40.0,80.0,70.006,True
+r_203,Hairpin Stator Motors,matches base output; specialist labour target,r_009,28,28,2091,3679,2833,rank I default,15.0,5.0,30.0,15.028,True
+r_204,Heavy Vehicles Assembly,specialist labour target,,5,,14732,9157,2637,base heavy vehicles should stay slightly profitable,15.0,0.0,30.0,15.026,True
+r_205,Heavy Vehicles Automated Manufacturing,matches base output; specialist labour target,r_204,5,5,2657,4953,3825,automated heavy vehicles should have a controlled advanced margin,50.0,30.0,70.0,50.008,True
+r_206,Electric Heavy Vehicles Manufacturing,matches base output; specialist labour target,r_204,5,5,1911,4334,3814,electric heavy vehicles should lead the heavy vehicle tier without breaching the integration cap,60.0,60.0,90.0,60.005,True

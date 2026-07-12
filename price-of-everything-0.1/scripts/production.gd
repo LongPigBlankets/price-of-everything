@@ -480,8 +480,9 @@ func _process_production() -> void:
 	for building in all_buildings:
 		var btype: String = str(building.get("building_id", ""))
 		var maint: float = _calculate_maintenance_cost(building)
+		var active_recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
 		# A paused (mothballed) building keeps its upkeep but carries no workforce.
-		var labour: float = 0.0 if MatchState.is_building_paused(str(building.get("instance_id", ""))) else _calculate_labour_cost(building)
+		var labour: float = 0.0 if MatchState.is_building_paused(str(building.get("instance_id", ""))) else _calculate_labour_cost(building, active_recipe)
 		var total_cost: float = maint + labour
 		MatchState.add_money(-total_cost)
 		summary.maintenance_paid += maint
@@ -1331,7 +1332,7 @@ func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
 		"inputs_consumed":  inputs_consumed,
 		"outputs_produced": outputs_produced,
 		"power_cost":       power_cost,
-		"labour_cost":      _calculate_labour_cost(building),
+		"labour_cost":      _calculate_labour_cost(building, recipe),
 		"maintenance_cost": _calculate_maintenance_cost(building),
 		"inbound_transport": inbound_transport,
 	})
@@ -1356,22 +1357,26 @@ func _inbound_transport_per_unit(tile_id: String, good_id: String) -> float:
 		return 0.0
 	return float(rec.get("cost", 0.0)) / qty
 
-func _calculate_labour_cost(building: Dictionary) -> float:
+func _calculate_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> float:
 	# While retooling, a building pays only a reduced fraction of its base labour and
 	# skips the usual modifier factor (spec §7.3).
 	var instance_id: String = str(building.get("instance_id", ""))
 	if MatchState.is_retooling(instance_id):
-		return _base_labour_cost(building) * MatchState.retooling_labour_fraction(instance_id)
-	return _base_labour_cost(building) * labour_cost_factor(building)
+		return _base_labour_cost(building, recipe) * MatchState.retooling_labour_fraction(instance_id)
+	return _base_labour_cost(building, recipe) * labour_cost_factor(building)
 
 # Raw per-turn staffing cost for a building BEFORE any percentage labour modifiers:
 # grown wage rates x headcount x the level labour multiplier. This is the "100% base"
 # that every discount/surcharge is measured against.
-func _base_labour_cost(building: Dictionary) -> float:
+func _base_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> float:
 	var bdata: Dictionary = Catalog.get_building(building.get("building_id", ""))
-	var unskilled: int   = bdata.get("labour_unskilled_required", EconomyConfig.STUB_UNSKILLED_PER_BUILDING)
-	var skilled: int     = bdata.get("labour_skilled_required",   EconomyConfig.STUB_SKILLED_PER_BUILDING)
-	var high_skilled: int = bdata.get("labour_h_skilled_required", EconomyConfig.STUB_HIGH_SKILLED_PER_BUILDING)
+	var rdata: Dictionary = recipe if not recipe.is_empty() else Catalog.get_recipe(str(building.get("recipe_id", "")))
+	var recipe_unskilled: int = int(rdata.get("labour_unskilled_required", -1))
+	var recipe_skilled: int = int(rdata.get("labour_skilled_required", -1))
+	var recipe_high_skilled: int = int(rdata.get("labour_h_skilled_required", -1))
+	var unskilled: int = recipe_unskilled if recipe_unskilled >= 0 else int(bdata.get("labour_unskilled_required", EconomyConfig.STUB_UNSKILLED_PER_BUILDING))
+	var skilled: int = recipe_skilled if recipe_skilled >= 0 else int(bdata.get("labour_skilled_required", EconomyConfig.STUB_SKILLED_PER_BUILDING))
+	var high_skilled: int = recipe_high_skilled if recipe_high_skilled >= 0 else int(bdata.get("labour_h_skilled_required", EconomyConfig.STUB_HIGH_SKILLED_PER_BUILDING))
 	# Wage rates compound every turn (EconomyConfig.LABOUR_*_GROWTH), so the same
 	# building costs more to staff as the game goes on.
 	var base_cost: float = (
@@ -1410,7 +1415,8 @@ func labour_overview() -> Dictionary:
 	for building in MatchState.buildings.values():
 		if not MatchState.is_player_owned(building):
 			continue
-		var b_base: float = _base_labour_cost(building)
+		var active_recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
+		var b_base: float = _base_labour_cost(building, active_recipe)
 		if b_base <= 0.0:
 			continue
 		var bid: String = str(building.get("building_id", ""))
@@ -1498,7 +1504,7 @@ func stats_at_level(instance_id: String, level: int) -> Dictionary:
 	var bdata: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
 	var out: Dictionary = {
 		"energy": _effective_energy_req_f(b, recipe),  # FLOAT (the grid still draws the int version)
-		"labour": _calculate_labour_cost(b),
+		"labour": _calculate_labour_cost(b, recipe),
 		"maintenance": _calculate_maintenance_cost(b),
 		"size": float(bdata.get("tile_size_used", 1.0)) * BuildingLevels.mult("size", level),
 		"inputs": [],
@@ -1897,7 +1903,7 @@ func run_warning_for_building(building: Dictionary, recipe: Dictionary) -> Dicti
 	var reason: Dictionary = blocked_reason_for_building(instance_id)
 	if not reason.is_empty():
 		return reason
-	var storage_reason := _battery_storage_missing_reason(building)
+	var storage_reason := _battery_storage_missing_reason(building, recipe)
 	if not storage_reason.is_empty():
 		return storage_reason
 	return {}
@@ -1915,7 +1921,7 @@ func _blocked_reason_for(building: Dictionary, recipe: Dictionary, missing: Arra
 		return _run_warning("grid_power_cash", "Insufficient money to buy power from grid. Needed £%d." % int(ceil(grid_needed)))
 	if bool(_just_constructed_this_turn.get(instance_id, false)):
 		return _run_warning("just_constructed", "Building just constructed. Wait one turn.")
-	var storage_reason := _battery_storage_missing_reason(building)
+	var storage_reason := _battery_storage_missing_reason(building, recipe)
 	if not storage_reason.is_empty():
 		return storage_reason
 	var tile_only_needed := _tile_only_input_needed(building, missing)
@@ -1988,15 +1994,23 @@ func _grid_power_cash_needed(building: Dictionary, recipe: Dictionary, missing: 
 		return 0.0
 	return float(draw) * EconomyConfig.GRID_BUY_PRICE
 
-func _battery_storage_missing_reason(building: Dictionary) -> Dictionary:
+func _battery_storage_missing_reason(building: Dictionary, recipe: Dictionary = {}) -> Dictionary:
 	var building_data := Catalog.get_building(str(building.get("building_id", "")))
 	if str(building_data.get("category", "")) != "battery":
 		return {}
 	var tile_id := str(building.get("tile_id", ""))
 	if tile_id == "" or MatchState.tile_battery_slots(tile_id) <= 0:
 		return {}
-	if MatchState.tile_battery_cells_loaded(tile_id) > 0:
-		return {}
+	var catalysts: Array = recipe.get("catalysts", []) as Array
+	if catalysts.is_empty():
+		# Legacy battery recipes accepted any loaded battery cell.
+		if MatchState.tile_battery_cells_loaded(tile_id) > 0:
+			return {}
+	else:
+		var cells: Dictionary = MatchState.get_tile_battery_cells(tile_id)
+		for catalyst in catalysts:
+			if int(cells.get(str(catalyst.get("good_id", "")), 0)) > 0:
+				return {}
 	return _run_warning("battery_storage_empty", "Batteries missing. Fill storage to run.")
 
 func _tile_only_input_needed(building: Dictionary, missing: Array) -> int:

@@ -66,7 +66,7 @@ People Management,,,,,III,Build,any,100,units,Fourth Advisor Seat,team,Unlocks a
 People Management,,,,,III,Sustain,1000+ profit/turn,3,turns,Fifth Advisor Seat,team,Unlocks a 5th advisor seat after 3 turns above 1000 profit/turn.
 Mining and Surveying,,,,,I,Run Profitable,mine,3,buildings,Mining Mastery,+5%,Increases output of all mines by 5% for 30 turns.
 Mining and Surveying,Copper Froth Flotation,,,,II,Produce,ree_ore,500,units,Rare Vein Prospecting,rare,Increases rare earth and alloy ore mining output by 20% permanently.
-Manufacturing,Modular Factory Cells,,,,III,Run L1,industrial_factory,3,20 turns,Conveyor Mass Assembly,level2,Unlocks upgrading Industrial Goods Factory to Level 2 for more output.
+Manufacturing,Modular Factory Cells,,,,II,Run L1,industrial_factory,3,20 turns,Conveyor Mass Assembly,level2,Unlocks upgrading Industrial Goods Factory to Level 2 for more output.
 Renewable Power,Battery Balancing,,,,III,Run,Battery,15,turns,Long Duration Storage,storage,Reduces building maintenance by 15% for 30 turns.
 Mining and Surveying,,,,,I,Survey,deposits,2,deposits,Spectral Crystallography,survey,+1 adjacent tile revealed when surveying
 Mining and Surveying,Spectral Crystallography,,,,II,Survey,tiles,5,tiles,Computer Assisted Geoscanning,svt,+1 Survey range (2 to 3)
@@ -83,22 +83,22 @@ Metallurgy,Electric Arc Refining,,,,III,Run,Electrolyser,15,turns,Hydrogen Direc
 Mining and Surveying,Rare Vein Prospecting,,,,II,Produce,bauxite_ore,500,units,Composite Drill Bits,drill,"Increases rare earth, alloy, sulphur and bauxite mining output by 20% permanently."
 Biochemistry,Wastewater Bioreactors,,,,II,Run,Forest,12,turns,Sustainable Forestry,forest,Unlocks new recipe: Sustainable Forestry - Biomass (24 Biomass).
 Manufacturing,Precision Assembly Lines,,,,II,Sell,Copper Pipe,250,units,Precision Tube Drawing,tube,Unlocks new recipe: Copper Pipe Manufacturing (24 Copper Pipe).
-Mining and Surveying,Automated Mine Dispatch,,,,III,Run L1,mine,3,20 turns,In-Pit Crushing,level2,Unlocks upgrading Mine to Level 2 for more output.
+Mining and Surveying,Automated Mine Dispatch,,,,II,Run L1,mine,3,20 turns,In-Pit Crushing,level2,Unlocks upgrading Mine to Level 2 for more output.
 Mining and Surveying,In-Pit Crushing,,,,III,Run Profitable L2,mine,3,buildings,Autonomous Haul Systems,level3,Unlocks upgrading Mine to Level 3 for more output.
-Metallurgy,Continuous Casting,,,,III,Run L1,furnace,3,20 turns,Hot Blast Stoves,level2,Unlocks upgrading Furnace to Level 2 for more output.
+Metallurgy,Continuous Casting,,,,II,Run L1,furnace,3,20 turns,Hot Blast Stoves,level2,Unlocks upgrading Furnace to Level 2 for more output.
 Metallurgy,Hot Blast Stoves,,,,III,Run Profitable L2,furnace,3,buildings,Top-Pressure Recovery Turbines,level3,Unlocks upgrading Furnace to Level 3 for more output.
-Metallurgy,Electric Arc Refining,,,,III,Run L1,eaf,3,20 turns,Ultra-High-Power Arcs,level2,Increases Electric Arc Furnace output by 10% permanently. Unlocks new recipe: Aluminium Direct Carbothermic Electrolysis.
+Metallurgy,Electric Arc Refining,,,,II,Run L1,eaf,3,20 turns,Ultra-High-Power Arcs,level2,Increases Electric Arc Furnace output by 10% permanently. Unlocks new recipe: Aluminium Direct Carbothermic Electrolysis.
 Metallurgy,Twin-Shell Furnaces,,,,III,Run Profitable L2,eaf,3,buildings,Consteel Continuous Charging,level3,Unlocks upgrading Electric Arc Furnace to Level 3 for more output.
 Manufacturing,Conveyor Mass Assembly,,,,III,Run Profitable L2,industrial_factory,3,buildings,Robotic Assembly Islands,level3,Unlocks upgrading Industrial Goods Factory to Level 3 for more output.
-Manufacturing,Precision Assembly Lines,,,,III,Run L1,assembly_plant,3,20 turns,Moving Assembly Lines,level2,Unlocks upgrading Assembly Plant to Level 2 for more output.
+Manufacturing,Precision Assembly Lines,,,,II,Run L1,assembly_plant,3,20 turns,Moving Assembly Lines,level2,Unlocks upgrading Assembly Plant to Level 2 for more output.
 Manufacturing,Moving Assembly Lines,,,,III,Run Profitable L2,assembly_plant,3,buildings,Mixed-Model Synchronous Lines,level3,Unlocks upgrading Assembly Plant to Level 3 for more output.
-Manufacturing,Modular Factory Cells,,,,III,Run L1,high_tech_manufactory,3,20 turns,300mm Wafer Lines,level2,Unlocks upgrading High Tech Manufactory to Level 2 for more output. Unlocks new recipe: Circuit Printing.
+Manufacturing,Modular Factory Cells,,,,II,Run L1,high_tech_manufactory,3,20 turns,300mm Wafer Lines,level2,Unlocks upgrading High Tech Manufactory to Level 2 for more output. Unlocks new recipe: Circuit Printing.
 Manufacturing,300mm Wafer Lines,,,,III,Run Profitable L2,high_tech_manufactory,3,buildings,EUV Lithography,level3,Unlocks upgrading High Tech Manufactory to Level 3 for more output.
-Inorganic Chemistry,Precision Reagent Handling,,,,III,Run L1,chem_plant,3,20 turns,Larger Reactor Trains,level2,Unlocks upgrading Chemical Plant to Level 2 for more output.
+Inorganic Chemistry,Precision Reagent Handling,,,,II,Run L1,chem_plant,3,20 turns,Larger Reactor Trains,level2,Unlocks upgrading Chemical Plant to Level 2 for more output.
 Inorganic Chemistry,Larger Reactor Trains,,,,III,Run Profitable L2,chem_plant,3,buildings,Integrated Chemical Complexes,level3,Unlocks upgrading Chemical Plant to Level 3 for more output.
-Inorganic Chemistry,Chlor Alkali Cells,,,,III,Run L1,electrolyser,3,20 turns,Membrane Electrolysers,level2,Unlocks upgrading Electrolyser to Level 2 for more output.
+Inorganic Chemistry,Chlor Alkali Cells,,,,II,Run L1,electrolyser,3,20 turns,Membrane Electrolysers,level2,Unlocks upgrading Electrolyser to Level 2 for more output.
 Inorganic Chemistry,Membrane Electrolysers,,,,III,Run Profitable L2,electrolyser,3,buildings,Solid-Oxide Electrolysis,level3,Unlocks upgrading Electrolyser to Level 3 for more output.
-Petrochemistry,Catalytic Cracking,,,,III,Run L1,petro_refinery,3,20 turns,Fluid Catalytic Cracking,level2,Unlocks upgrading Petrochemical Refinery to Level 2 for more output.
+Petrochemistry,Catalytic Cracking,,,,II,Run L1,petro_refinery,3,20 turns,Fluid Catalytic Cracking,level2,Unlocks upgrading Petrochemical Refinery to Level 2 for more output.
 Petrochemistry,Fluid Catalytic Cracking,,,,III,Run Profitable L2,petro_refinery,3,buildings,Deep Conversion Units,level3,Unlocks upgrading Petrochemical Refinery to Level 3 for more output.
 Mining and Surveying,,,,,I,Build,mine,3,units,Bench Blasting Expansion,blast,Increases Mine output by 20% for 20 turns.
 Mining and Surveying,,,,,I,Build,mine,7,units,Bulk Haulage Fleets,truck,Increases Mine output by 5% permanently.
@@ -109,7 +109,7 @@ Metallurgy,,,,,I,Build,furnace,7,units,Oxygen-Enriched Blast,furnace,Unlocks new
 Metallurgy,,,,,I,Placeholder,,,,Twin-Bell Charging,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
 Metallurgy,Electric Arc Refining,,,,III,Run,Steel Mill,15,turns,Scrap Preheating Towers,preheat,Reduces Electric Arc Furnace power consumption by 20% permanently.
 Metallurgy,,,,,I,Build,eaf,3,units,Foamy Slag Practice,slag,Increases Electric Arc Furnace output by 5% permanently.
-Metallurgy,Electric Arc Refining,,,,III,Run L1,eaf,3,20 turns,Twin-Shell Furnaces,level2,Unlocks upgrading Electric Arc Furnace to Level 2 for more output.
+Metallurgy,Electric Arc Refining,,,,II,Run L1,eaf,3,20 turns,Twin-Shell Furnaces,level2,Unlocks upgrading Electric Arc Furnace to Level 2 for more output.
 Metallurgy,,,,,I,Build,eaf,7,units,DC Arc Conversion,eaf,Reduces Electric Arc Furnace power consumption by 5% permanently.
 Manufacturing,,,,,I,Build,industrial_factory,3,units,High-Volume Press Lines,press,Increases Industrial Goods Factory output by 5% permanently.
 Manufacturing,,,,,I,Build,industrial_factory,7,units,Multi-Shift Production,shift,Increases Industrial Goods Factory output by 5% permanently.
@@ -130,29 +130,29 @@ Inorganic Chemistry,,,,,I,Build,electrolyser,3,units,High-Current Cell Stacks,st
 Inorganic Chemistry,,,,,I,Build,electrolyser,7,units,Bipolar Cell Arrays,cell,Reduces Electrolyser power consumption by 20% for 20 turns.
 Petrochemistry,,,,,I,Build,poly_plant,3,units,Heat-Integrated Trains,heat,Reduces Polymerisation Refinery power consumption by 10% permanently.
 Petrochemistry,Catalytic Cracking,,,,III,Run Profitable,petro_refinery,3,buildings,Continuous Catalyst Regeneration,ccr,Increases Petrochemical Refinery output by 5% permanently.
-Hydrocarbon Power,Steam Turbine Upgrades,,,,III,Run L1,coal_power,5,20 turns,Supercritical Boilers,level2,Unlocks upgrading Coal Power Plant to Level 2 for more output.
+Hydrocarbon Power,Steam Turbine Upgrades,,,,II,Run L1,coal_power,5,20 turns,Supercritical Boilers,level2,Unlocks upgrading Coal Power Plant to Level 2 for more output.
 Hydrocarbon Power,Supercritical Boilers,,,,III,Run Profitable L2,coal_power,5,buildings,Ultra-Supercritical Units,level3,Unlocks upgrading Coal Power Plant to Level 3 for more output.
-Renewable Power,Onshore Wind Control,,,,III,Run L1,onshore_wind_farm,5,20 turns,Larger Rotor Diameters,level2,Unlocks upgrading Onshore Wind Farm to Level 2 for more output.
+Renewable Power,Onshore Wind Control,,,,II,Run L1,onshore_wind_farm,5,20 turns,Larger Rotor Diameters,level2,Unlocks upgrading Onshore Wind Farm to Level 2 for more output.
 Renewable Power,Larger Rotor Diameters,,,,III,Run Profitable L2,onshore_wind_farm,5,buildings,Direct-Drive Megaturbines,level3,Unlocks upgrading Onshore Wind Farm to Level 3 for more output.
-Renewable Power,Utility Solar Arrays,,,,III,Run L1,solar_farm,5,20 turns,Single-Axis Trackers,level2,Unlocks upgrading Solar Farm to Level 2 for more output.
+Renewable Power,Utility Solar Arrays,,,,II,Run L1,solar_farm,5,20 turns,Single-Axis Trackers,level2,Unlocks upgrading Solar Farm to Level 2 for more output.
 Renewable Power,Single-Axis Trackers,,,,III,Run Profitable L2,solar_farm,5,buildings,Self-Adjusting Panel Network,level3,Unlocks upgrading Solar Farm to Level 3 for more output.
-Renewable Power,Battery Balancing,,,,III,Run L1,battery,3,20 turns,Liquid-Cooled Packs,level2,Unlocks upgrading Battery Electric Storage to Level 2 for more output.
+Renewable Power,Battery Balancing,,,,II,Run L1,battery,3,20 turns,Liquid-Cooled Packs,level2,Unlocks upgrading Battery Electric Storage to Level 2 for more output.
 Renewable Power,Liquid-Cooled Packs,,,,III,Run Profitable L2,battery,2,buildings,Flow Battery Arrays,level3,Unlocks upgrading Battery Electric Storage to Level 3 for more output.
-Inorganic Chemistry,Chlor Alkali Cells,,,,III,Run L1,desal,3,20 turns,Reverse Osmosis Trains,level2,Unlocks upgrading Desalination Plant to Level 2 for more output.
+Inorganic Chemistry,Chlor Alkali Cells,,,,II,Run L1,desal,3,20 turns,Reverse Osmosis Trains,level2,Unlocks upgrading Desalination Plant to Level 2 for more output.
 Inorganic Chemistry,Reverse Osmosis Trains,,,,III,Run Profitable L2,desal,2,buildings,Seawater RO Megaplants,level3,Unlocks upgrading Desalination Plant to Level 3 for more output.
 Inorganic Chemistry,Chlor Alkali Cells,,,,III,Run Profitable L2,water_pump,2,buildings,Extensive Drainage Systems,level3,Unlocks upgrading Water Pump to Level 3 for more output.
 Recycling,,,,,II,Run L1,water_recycling,3,20 turns,Membrane Bioreactors,level2,Unlocks upgrading Water Recyling Plant to Level 2 for more output.
 Recycling,Membrane Bioreactors,,,,III,Run Profitable L2,water_recycling,2,buildings,Closed-Loop Reclaim,level3,Unlocks upgrading Water Recyling Plant to Level 3 for more output.
 Biochemistry,Wastewater Bioreactors,,,,III,Run Profitable L2,farm,3,buildings,Controlled-Environment Farming,level3,Unlocks upgrading Farm to Level 3 for more output.
-Infrastructure,Reinforced Roadbeds,,,,III,Run L1,roads,5,20 turns,Multi-Lane Widening,level2,Unlocks upgrading Roads to Level 2 for more output.
+Infrastructure,Reinforced Roadbeds,,,,II,Run L1,roads,5,20 turns,Multi-Lane Widening,level2,Unlocks upgrading Roads to Level 2 for more output.
 Infrastructure,Multi-Lane Widening,,,,III,Run Profitable L2,roads,5,buildings,Grade-Separated Interchanges,level3,Unlocks upgrading Roads to Level 3 for more output.
-Infrastructure,Reinforced Roadbeds,,,,III,Run L1,rails,5,20 turns,Longer Freight Consists,level2,Unlocks upgrading Railways to Level 2 for more output.
+Infrastructure,Reinforced Roadbeds,,,,II,Run L1,rails,5,20 turns,Longer Freight Consists,level2,Unlocks upgrading Railways to Level 2 for more output.
 Infrastructure,Longer Freight Consists,,,,III,Run Profitable L2,rails,5,buildings,Standardised Wagon Gantry Cranes,level3,Unlocks upgrading Railways to Level 3 for more output.
-Infrastructure,Pipe Trench Standards,,,,III,Run L1,pipes,5,20 turns,Automated Pressure Management System,level2,Unlocks upgrading Pipeworks to Level 2 for more output.
+Infrastructure,Pipe Trench Standards,,,,II,Run L1,pipes,5,20 turns,Automated Pressure Management System,level2,Unlocks upgrading Pipeworks to Level 2 for more output.
 Infrastructure,Automated Pressure Management System,,,,III,Run Profitable L2,pipes,5,buildings,Looped Distribution Grids,level3,Unlocks upgrading Pipeworks to Level 3 for more output.
-Infrastructure,High Pressure Mains,,,,III,Run L1,reinf_pipes,3,20 turns,High-Pressure Manifolds,level2,Unlocks upgrading Reinforced Pipeworks to Level 2 for more output.
+Infrastructure,High Pressure Mains,,,,II,Run L1,reinf_pipes,3,20 turns,High-Pressure Manifolds,level2,Unlocks upgrading Reinforced Pipeworks to Level 2 for more output.
 Infrastructure,High-Pressure Manifolds,,,,III,Run Profitable L2,reinf_pipes,2,buildings,Cryogenic Transfer Lines,level3,Unlocks upgrading Reinforced Pipeworks to Level 3 for more output.
-Infrastructure,Substation Layouts,,,,III,Run L1,cables,5,20 turns,Reconductoring,level2,Unlocks upgrading Cables to Level 2 for more output.
+Infrastructure,Substation Layouts,,,,II,Run L1,cables,5,20 turns,Reconductoring,level2,Unlocks upgrading Cables to Level 2 for more output.
 Infrastructure,Reconductoring,,,,III,Run Profitable L2,cables,5,buildings,Smart Grid Control,level3,Unlocks upgrading Cables to Level 3 for more output.
 Renewable Power,Direct-Drive Megaturbines,,,,III,Run,Wind Farm,12,turns,Floating Offshore Wind Farms,floatwind,Unlocks new recipe: Floating Offshore Wind Power (90 Power).
 Renewable Power,Battery Balancing,,,,II,Run,Battery,12,turns,Fast Response Storage,fastbat,Reduces power consumption for buildings sharing the tile by 5% permanently.
@@ -228,7 +228,7 @@ Mining and Surveying,Dynamic-Positioning Drilling,,,,III,Produce,crude_oil,600,u
 Recycling,,,,,I,Produce,biomass,250,units,Biowaste Digestion,bio,Unlocks new recipe: Biowaste Recycling (24 Biomass).
 Hydrocarbon Power,,,,,I,Produce,power,250,units,Hydrogen Combustion Turbines,turbine,Unlocks new recipe: Hydrogen Power (100 Power).
 Infrastructure,Substation Layouts,,,,III,Run,Cables,12,turns,Dynamic Line Rating,hvdc1,Increases cable throughput by 25% permanently.
-Logistics,Depot Scheduling,,,,I,Build,port,3,units,Pallet Racking Systems,depot,Raises tile storage to 1600 (warehouse level 2).
+Logistics,Depot Scheduling,,,,II,Build,port,3,units,Pallet Racking Systems,depot,Raises tile storage to 1600 (warehouse level 2).
 Logistics,Pallet Racking Systems,,,,II,Build,port,3,units,Automated Storage & Retrieval,depot,Raises tile storage to 2500 (warehouse level 3).
 Logistics,,,,,I,Stockpile filled,by 7+ buildings,5,turns,Just-in-Time Logistics,depot,Unlock JIT delivery from building producing a good to building consuming a good within the same tile. Reduces strain on warehouses.
-Biochemistry,Sustainable Forestry,,,,III,Produce,biomass,300,units,Biomass Cracking,bio,Unlocks new recipe: Bio Ethylene (3 Ethylene directly from biomass).
+Biochemistry,Sustainable Forestry,,,,III,Produce,biomass,300,units,Biomass Cracking,bio,Unlocks new recipes: Bio Ethylene (3 Ethylene directly from biomass) and Bio-Graphitisation.

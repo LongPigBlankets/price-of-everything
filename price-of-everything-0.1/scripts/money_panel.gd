@@ -577,11 +577,15 @@ func _project_next_turn() -> Dictionary:
 		"net_cashflow": net_cashflow,
 	}
 
-func _calculate_projected_labour_cost(_building: Dictionary) -> float:
-	# Mirrors Production._calculate_labour_cost so projection matches reality
-	var unskilled := 100
-	var skilled := 50
-	var high_skilled := 50
+func _calculate_projected_labour_cost(building: Dictionary) -> float:
+	# Mirrors Production._calculate_labour_cost so projection matches reality.
+	# Recipe-owned workforce takes precedence once the labour migration is present.
+	var building_data: Dictionary = Catalog.get_building(building.get("building_id", ""))
+	var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
+	var source: Dictionary = recipe if int(recipe.get("labour_unskilled_required", -1)) >= 0 else building_data
+	var unskilled := int(source.get("labour_unskilled_required", EconomyConfig.STUB_UNSKILLED_PER_BUILDING))
+	var skilled := int(source.get("labour_skilled_required", EconomyConfig.STUB_SKILLED_PER_BUILDING))
+	var high_skilled := int(source.get("labour_h_skilled_required", EconomyConfig.STUB_HIGH_SKILLED_PER_BUILDING))
 	var base_cost: float = (
 		unskilled * EconomyConfig.LABOUR_UNSKILLED_RATE
 		+ skilled * EconomyConfig.LABOUR_SKILLED_RATE
