@@ -714,7 +714,7 @@ func _refresh_pane(tab_id: String) -> void:
 		"stock": _build_stock_pane(pane)
 
 const POWER_BUILDS := [
-	["Power Plant (Coal)", "coal_power", "coal"],
+	["Power plant", "coal_power", "coal"],
 	["Power Plant (Processed Oil)", "coal_power", "processed_oil"],
 	["Power Plant (Biomass)", "coal_power", "biomass"],
 	["Solar Farm", "solar_farm", ""],
@@ -770,6 +770,9 @@ func _build_power_pane(pane: VBoxContainer) -> void:
 	if TileViewData.grid_has_intermittent():
 		pane.add_child(_make_section_title("Reduce intermittency", "", "ok"))
 		for spec in POWER_INTERMITTENCY:
+			var battery := Catalog.get_building_by_internal_name(str(spec[1]))
+			if not MatchState.is_building_available(str(battery.get("id", ""))):
+				continue
 			pane.add_child(_make_power_build_item(spec))
 
 func _make_power_stat(label_text: String, value_text: String, color: Color) -> HBoxContainer:

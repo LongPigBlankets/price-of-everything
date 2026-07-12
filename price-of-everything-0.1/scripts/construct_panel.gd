@@ -168,6 +168,8 @@ func _load_data() -> void:
 	buildings_by_category.clear()
 	recipes_by_building.clear()
 	for building in Catalog.all_buildings():
+		if not MatchState.is_building_available(str(building.get("id", ""))):
+			continue
 		var bld_req: String = str(building.get("required_research", ""))
 		if bld_req != "" and not MatchState.is_unlocked(bld_req):
 			continue  # research/cheat-gated building (e.g. hydro via 'unlock hydro')

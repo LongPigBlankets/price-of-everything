@@ -77,7 +77,7 @@ var _difficulty_id := "normal"
 var _speed_turns := 300
 # New Game never launches the tutorial coach (that's what the Tutorial menu is for).
 var _tutorial_on := false
-var _survey_all := false
+var _survey_all := true
 var _advanced: Dictionary = {}   # setting id -> bool
 
 var _card_buttons: Array = []
@@ -391,7 +391,8 @@ func _build_settings_columns(parent: Node) -> void:
 	var acol := _settings_column(cols, "Advanced Settings")
 	for opt in ADVANCED_SETTINGS:
 		var sid := String(opt["id"])
-		_advanced[sid] = false
+		var locked_value := sid == "survey_all"
+		_advanced[sid] = locked_value
 		var cb := CheckBox.new()
 		cb.text = "  " + String(opt["label"])
 		cb.size_flags_horizontal = Control.SIZE_FILL
@@ -401,10 +402,8 @@ func _build_settings_columns(parent: Node) -> void:
 		cb.add_theme_icon_override("unchecked_disabled", UIHelpers.checkbox_icon(false))
 		cb.add_theme_icon_override("checked_disabled", UIHelpers.checkbox_icon(true))
 		cb.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
-		cb.toggled.connect(func(on: bool) -> void:
-			_advanced[sid] = on
-			if sid == "survey_all":
-				_survey_all = on)
+		cb.button_pressed = locked_value
+		cb.disabled = true
 		acol.add_child(cb)
 
 	parent.add_child(_difficulty_caption)

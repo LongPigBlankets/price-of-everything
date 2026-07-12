@@ -124,6 +124,10 @@ func _clear_overlays() -> void:
 
 func _on_build_mode_entered(_building_id: String, recipe_id: String) -> void:
 	_clear_build_overlays()
+	if BuildMode.kind == BuildMode.Kind.INFRASTRUCTURE:
+		_show_build_legend(BuildMode.current_infrastructure_type)
+		_render_infrastructure_build_overlay(BuildMode.current_infrastructure_type)
+		return
 	var recipe: Dictionary = Catalog.get_recipe(recipe_id) if recipe_id != "" else {}
 	_show_build_legend()
 	if recipe.is_empty():
@@ -293,21 +297,22 @@ func _tile_produces_good(tile_data: Dictionary, internal_name: String) -> bool:
 				return true
 	return false
 
-func _show_build_legend() -> void:
+func _show_build_legend(infrastructure_type: String = "") -> void:
 	if build_legend != null and is_instance_valid(build_legend):
 		build_legend.queue_free()
-	build_legend = _make_build_legend()
+	build_legend = _make_build_legend(infrastructure_type)
 	build_legend.show()
 
 func _hide_build_legend() -> void:
 	if build_legend != null:
 		build_legend.hide()
 
-func _make_build_legend() -> PanelContainer:
+func _make_build_legend(infrastructure_type: String = "") -> PanelContainer:
 	var parent_control := get_parent().get_node_or_null("UILayer/HUD/HUDContent") as Control
 	var panel := PanelContainer.new()
 	panel.name = "BuildModeLegend"
-	var height := 146
+	var is_infrastructure := infrastructure_type != ""
+	var height := 118 if is_infrastructure else 146
 	panel.custom_minimum_size = Vector2(230, height)
 	panel.anchor_left = 0.0
 	panel.anchor_top = 1.0
@@ -334,15 +339,76 @@ func _make_build_legend() -> PanelContainer:
 	box.add_theme_constant_override("separation", 6)
 	panel.add_child(box)
 	var title := Label.new()
-	title.text = "Build viability"
+	title.text = "Build %s" % _infrastructure_label(infrastructure_type) if is_infrastructure else "Build viability"
 	title.add_theme_font_size_override("font_size", 14)
 	box.add_child(title)
-	_add_build_legend_row(box, BUILD_RED, "Cannot build")
-	_add_build_legend_row(box, BUILD_DARK_GREEN, "1 input present")
-	_add_build_legend_row(box, BUILD_LIGHT_GREEN, "2+ / all met")
+	if is_infrastructure:
+		_add_build_legend_row(box, BUILD_DARK_GREEN, "No %s on tile" % _infrastructure_label(infrastructure_type))
+		if _infrastructure_can_be_needed(infrastructure_type):
+			_add_build_legend_row(box, BUILD_LIGHT_GREEN, "Needed by a building here")
+	else:
+		_add_build_legend_row(box, BUILD_RED, "Cannot build")
+		_add_build_legend_row(box, BUILD_DARK_GREEN, "1 input present")
+		_add_build_legend_row(box, BUILD_LIGHT_GREEN, "2+ / all met")
 	_add_build_legend_note(box, "Unsurveyed tiles are hidden")
 	_add_build_legend_note(box, "Partial surveys can match")
 	return panel
+
+func _render_infrastructure_build_overlay(infra_type: String) -> void:
+	var infra_key := InfraIcons.normalise(infra_type)
+	if infra_key == "":
+		return
+	_add_build_backdrop()
+	for coord in terrain_layer.tiles:
+		var tile_data: Dictionary = terrain_layer.tiles[coord]
+		var tile_id := str(tile_data.get("id", ""))
+		if MatchState.survey_status(tile_id, str(tile_data.get("type", ""))) == "unsurveyed":
+			continue
+		if _tile_has_infrastructure(tile_data, infra_key):
+			continue
+		var state := "recommended" if _tile_needs_infrastructure(tile_id, infra_key) else "viable"
+		var marker := _make_build_hex_marker(state)
+		marker.position = _tile_world_pos(coord) + BUILD_TILE_VERTICAL_OFFSET
+		add_child(marker)
+		build_overlays.append(marker)
+
+func _infrastructure_can_be_needed(infra_key: String) -> bool:
+	return InfraIcons.normalise(infra_key) in ["cables", "pipes", "reinf_pipes"]
+
+func _infrastructure_label(infra_key: String) -> String:
+	for slot in InfraIcons.SLOTS:
+		if str(slot.get("key", "")) == InfraIcons.normalise(infra_key):
+			return str(slot.get("label", infra_key)).to_lower()
+	return infra_key.replace("_", " ")
+
+func _tile_needs_infrastructure(tile_id: String, infra_key: String) -> bool:
+	if not _infrastructure_can_be_needed(infra_key):
+		return false
+	for instance_id in MatchState.tile_buildings.get(tile_id, []):
+		var building: Dictionary = MatchState.get_building(str(instance_id))
+		if building.is_empty() or not MatchState.is_player_owned(building):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
+		if recipe.is_empty():
+			continue
+		if infra_key == "cables" and int(recipe.get("energy_req", 0)) > 0:
+			return true
+		if infra_key == "cables" and str(recipe.get("output_good_id", "")) == "g_010":
+			return true
+		if infra_key == "pipes" and _recipe_uses_transport_class(recipe, ["safe_liquid", "liquid"]):
+			return true
+		if infra_key == "reinf_pipes" and _recipe_uses_transport_class(recipe, ["hazard_liquid", "gas"]):
+			return true
+	return false
+
+func _recipe_uses_transport_class(recipe: Dictionary, classes: Array[String]) -> bool:
+	for input in recipe.get("inputs", []):
+		if Catalog.get_transport_class(str(input.get("good_id", ""))) in classes:
+			return true
+	for output in recipe.get("outputs", []):
+		if Catalog.get_transport_class(str(output.get("good_id", ""))) in classes:
+			return true
+	return false
 
 func _add_build_legend_row(parent: VBoxContainer, color: Color, text: String) -> void:
 	var row := HBoxContainer.new()

@@ -11,6 +11,7 @@ extends CanvasLayer
 ##   swap bdp                         toggle to the classic v1 building-detail panel (v2 is default)
 ##   swap construct_panel             toggle the construct-panel redesign
 ##   research all                     unlock every research node (alias of `unlock all`)
+##   unlock hidden_buildings          enable the three hidden prototype buildings
 ##   swap song                       advance to the next music track
 ##   help                             list commands
 
@@ -108,10 +109,13 @@ func _run_command(text: String) -> String:
 			return "Unlocked ALL research (%d nodes)." % count
 		"unlock":
 			if parts.size() < 2:
-				return "usage: unlock <research title>  (e.g. 'unlock hydro')  |  unlock all"
+				return "usage: unlock <research title>  (e.g. 'unlock hydro')  |  unlock all | hidden_buildings"
 			if parts[1].to_lower() == "all":
 				var unlocked_count: int = MatchState.cheat_unlock_all_research()
 				return "Unlocked ALL research (%d nodes)." % unlocked_count
+			if parts[1].to_lower() == "hidden_buildings":
+				MatchState.cheat_unlock_hidden_buildings()
+				return "Hidden buildings enabled for this match."
 			var title := " ".join(parts.slice(1))
 			MatchState.grant_unlock(title)
 			return "Unlocked '%s'." % title
@@ -282,7 +286,7 @@ func _run_command(text: String) -> String:
 				return "usage: win <greenest|logistics|richest|autarkic|widest|all>"
 			return _cheat_win_track(parts[1].to_lower())
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   swap bdp   |   swap construct_panel   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   swap bdp   |   swap construct_panel   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

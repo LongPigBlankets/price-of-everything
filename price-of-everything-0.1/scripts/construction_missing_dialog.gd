@@ -70,7 +70,9 @@ func _update_market_total() -> void:
 	if _market_total_label == null:
 		return
 	var cost: float = Construction.estimate_market_cost(_tile_id, _building_id)
-	_market_total_label.text = "Cost if bought from market: £%.2f" % cost
+	var building := Catalog.get_building(_building_id)
+	var build_cost := maxf(0.0, float(building.get("base_price", 0.0)) - MatchState.construction_material_rebate(_building_id))
+	_market_total_label.text = "Materials £%.2f  ·  Build £%.2f  ·  Total £%.2f" % [cost, build_cost, cost + build_cost]
 
 
 func _update_eta() -> void:

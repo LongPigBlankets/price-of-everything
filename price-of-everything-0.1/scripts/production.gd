@@ -331,6 +331,9 @@ func _process_production() -> void:
 
 			has_run[instance_id] = true
 			last_turn_run[instance_id] = true
+			# A new building stays in its selected half-capacity start until it has
+			# actually completed one operating turn; starvation does not consume it.
+			MatchState.consume_startup_capacity(instance_id)
 			full_output_streak_by_building[instance_id] = full_output_streak_by_building.get(instance_id, 0) + 1
 			progress_made = true
 			missing_by_building.erase(instance_id)
@@ -450,23 +453,24 @@ func _process_production() -> void:
 		# turn of inputs: (lead+1) turns per good, mirroring the input pipeline.
 		var reserved: Dictionary = compute_sell_reserve_for_tile(str(tile_id))
 		var tile_totals: Dictionary = Stockpile.get_tile_totals(str(tile_id))
-		# Per-turn, per-good volume cap from the tile's price-impact tolerance.
+		# The master Sell all Surplus order means exactly that: it clears every unit
+		# above the protected production/construction reserve, including old stock
+		# accumulated before a consumer was built. Only the optional per-good order
+		# honours a price-impact cap.
+		var master_order := MatchState.is_sell_surplus_enabled(str(tile_id))
 		var unit_cap: int = MatchState.auto_sell_unit_cap(str(tile_id))
 		var surplus: Dictionary = {}
 		for good_id in tile_totals:
 			if not MatchState.should_auto_sell_good(str(tile_id), str(good_id)):
 				continue
 			# Surplus = on-tile stock minus the local consumers' working stock,
-			# minus the player's "sell all except X" floor for this good, minus
-			# anything that ARRIVED THIS TURN. The grace turn matters: arrivals
-			# land in sub-phase 2 and this sell runs in sub-phase 9 of the SAME
-			# process, so without it a manually-bought construction bill was sold
-			# before the player's next click could ever use it (owner's stuck
-			# motor-factory/computer-plant churn, 2026-07-09).
+			# minus the player's "sell all except X" floor for this good. Construction
+			# materials and the full lead-time production reserve are already included
+			# above, so no unrelated old stock is grandfathered.
 			var surplus_qty: int = max(0, int(tile_totals[good_id]) - int(reserved.get(good_id, 0))
-				- MatchState.auto_sell_keep_for(str(tile_id), str(good_id))
-				- _arrived_this_turn(str(tile_id), str(good_id)))
-			surplus_qty = mini(surplus_qty, unit_cap)
+				- MatchState.auto_sell_keep_for(str(tile_id), str(good_id)))
+			if not master_order:
+				surplus_qty = mini(surplus_qty, unit_cap)
 			if surplus_qty > 0:
 				surplus[good_id] = surplus_qty
 		if not surplus.is_empty():
@@ -755,6 +759,7 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		output_qty = int(round(Modifiers.apply("recipe_output", recipe_id, float(output_qty), mod_ctx)))
 		output_qty = int(round(float(output_qty) * BuildingLevels.mult("output", int(building.get("level", 1)))))
 		output_qty = int(round(float(output_qty) * MatchState.workforce_output_multiplier()))
+		output_qty = int(round(float(output_qty) * MatchState.startup_capacity_multiplier(building)))
 		# Intermittency: derate output that relies on unfirmed intermittent green power
 		# (0 for grey/steady/no-power buildings; set by _compute_power_intermittency).
 		var power_derate: float = float((_intermittency_by_building.get(building.instance_id, {}) as Dictionary).get("derate", 0.0))
@@ -1275,13 +1280,15 @@ func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
 	var lvl := int(building.get("level", 1))
 	var imul := BuildingLevels.mult("input", lvl)
 	var omul := BuildingLevels.mult("output", lvl)
+	var startup_mult := MatchState.startup_capacity_multiplier(building)
 
 	# Build inputs_consumed {good_id: qty} from recipe inputs
 	var inputs_consumed: Dictionary = {}
 	for input in recipe.get("inputs", []):
 		var gid: String = input.get("good_id", "")
 		if gid != "":
-			inputs_consumed[gid] = int(round(float(input.get("qty", 0)) * imul))
+			var scaled_input := float(input.get("qty", 0)) * imul * startup_mult
+			inputs_consumed[gid] = int(ceil(scaled_input)) if startup_mult < 1.0 and scaled_input > 0.0 else int(round(scaled_input))
 
 	# Build outputs_produced {good_id: qty}. Scale each output the SAME way _produce_outputs
 	# does — recipe_output modifiers (the "Δ +%" shown on the recipe) × level output mult ×
@@ -1307,7 +1314,7 @@ func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
 		}
 		var qty: int = int(round(Modifiers.apply("recipe_output", recipe_id, float(output.get("qty", 0)), mod_ctx)))
 		qty = int(round(float(qty) * omul))
-		qty = int(round(float(qty) * workforce_out_mult))
+		qty = int(round(float(qty) * workforce_out_mult * startup_mult))
 		if qty > 0:
 			outputs_produced[gid] = qty
 
@@ -1466,7 +1473,9 @@ func _effective_energy_req(building: Dictionary, recipe: Dictionary) -> int:
 		return energy_req
 	var bid: String = str(building.get("building_id", ""))
 	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
-	return int(round(eff * BuildingLevels.mult("energy", int(building.get("level", 1)))))
+	var capacity_mult := MatchState.startup_capacity_multiplier(building)
+	var scaled := eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * capacity_mult
+	return int(ceil(scaled)) if capacity_mult < 1.0 and scaled > 0.0 else int(round(scaled))
 
 # Power generation after recipe_output modifiers (e.g. Pulverised Coal Boilers +5%,
 # Hydro Intake Design +10%). Power takes its own production branch that bypasses
@@ -1485,7 +1494,7 @@ func _effective_power_output(building: Dictionary, recipe: Dictionary) -> int:
 		"good_internal": "power",
 	}
 	var eff := Modifiers.apply("recipe_output", rid, float(output_qty), mod_ctx)
-	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * MatchState.workforce_output_multiplier()))
+	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * MatchState.workforce_output_multiplier() * MatchState.startup_capacity_multiplier(building)))
 
 ## Per-turn stat snapshot for a building instance evaluated AS IF it were `level`. Used by the
 ## upgrade dialog to show cur→new (energy / labour / maintenance / size / inputs / outputs) using
@@ -1510,7 +1519,7 @@ func stats_at_level(instance_id: String, level: int) -> Dictionary:
 		"inputs": [],
 		"outputs": [],
 	}
-	var imul := BuildingLevels.mult("input", level)
+	var imul := BuildingLevels.mult("input", level) * MatchState.startup_capacity_multiplier(b)
 	for input in recipe.get("inputs", []):
 		out.inputs.append({
 			"good_id": str(input.get("good_id", "")),
@@ -1521,7 +1530,7 @@ func stats_at_level(instance_id: String, level: int) -> Dictionary:
 	if str(recipe.get("output_name", "")) == "power":
 		out.outputs.append({"name": "Power", "good_id": "power", "qty": _effective_power_output(b, recipe)})
 	else:
-		var omul := BuildingLevels.mult("output", level)
+		var omul := BuildingLevels.mult("output", level) * MatchState.startup_capacity_multiplier(b)
 		var rid := str(recipe.get("recipe_id", ""))
 		for output in _recipe_output_items(recipe):
 			var oname := str(output.get("internal_name", ""))
@@ -1545,7 +1554,7 @@ func _effective_energy_req_f(building: Dictionary, recipe: Dictionary) -> float:
 		return float(energy_req)
 	var bid: String = str(building.get("building_id", ""))
 	var eff := Modifiers.apply("building_power", bid, float(energy_req), {"building_id": bid})
-	return eff * BuildingLevels.mult("energy", int(building.get("level", 1)))
+	return eff * BuildingLevels.mult("energy", int(building.get("level", 1))) * MatchState.startup_capacity_multiplier(building)
 
 # ── Power intermittency (green/grey quality flags layered on top of `power`) ────
 
@@ -2372,4 +2381,6 @@ func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictiona
 			_carbon_consumed_by_building[iid] = per
 
 func _scaled_input_qty(input: Dictionary, building: Dictionary) -> int:
-	return int(round(float(input.get("qty", 0)) * BuildingLevels.mult("input", int(building.get("level", 1)))))
+	var capacity_mult := MatchState.startup_capacity_multiplier(building)
+	var scaled := float(input.get("qty", 0)) * BuildingLevels.mult("input", int(building.get("level", 1))) * capacity_mult
+	return int(ceil(scaled)) if capacity_mult < 1.0 and scaled > 0.0 else int(round(scaled))

@@ -4333,6 +4333,9 @@ func _test_sell_protects_build_materials() -> void:
 	var steel_furnace := MatchState.add_building("b_002", "r_003", iron_tile, "player_1")
 	Stockpile.add(iron_tile, iron_id, 600)
 	MatchState.enable_sell_surplus(iron_tile)
+	# The master order must still clear accumulated stock if a previous per-good
+	# order left a restrictive price-impact tolerance on this tile.
+	MatchState.set_auto_sell_impact(iron_tile, 0)
 	var iron_reserve: Dictionary = Production.compute_sell_reserve_for_tile(iron_tile)
 	var iron_before := Stockpile.get_at_tile(iron_tile, iron_id)
 	Production._process_production()
@@ -7742,6 +7745,9 @@ func _test_scripts_parse() -> void:
 		"res://scripts/good_icons.gd",
 		"res://scripts/catalog.gd",
 		"res://scripts/construct_panel.gd",
+		"res://scripts/construct_panel_v2.gd",
+		"res://scripts/building_detail_panel_v2.gd",
+		"res://scripts/infrastructure_info.gd",
 		"res://scripts/build_mode.gd",
 		"res://scripts/building_row.gd",
 		"res://scripts/recipe_row.gd",
