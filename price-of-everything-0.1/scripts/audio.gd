@@ -349,9 +349,9 @@ func _button_category(b: Button) -> StringName:
 # --- Turn-end ----------------------------------------------------------------
 
 func _on_turn_processed(summary: Dictionary) -> void:
-	# Profitable turn = the EXACT figure the turn summary shows green (turn_summary.gd:119:
-	# money_in - money_out). Using the raw balance delta instead would also count delayed
-	# sale arrivals from past turns, firing the register on operationally-unprofitable turns.
+	# Profitable turn = the EXACT figure the turn digest shows green (money_in -
+	# money_out). Using the raw balance delta instead would also count delayed sale
+	# arrivals from past turns, firing the register on operationally-unprofitable turns.
 	var net := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
 	if net > 0.005:
 		_play(CASH_REGISTER, &"money")

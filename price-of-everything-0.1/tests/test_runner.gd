@@ -7758,7 +7758,6 @@ func _test_scripts_parse() -> void:
 		"res://scripts/sale_effects.gd",
 		"res://scripts/ui_helpers.gd",
 		"res://scripts/market_panel.gd",
-		"res://scripts/turn_summary.gd",
 		"res://scripts/construction.gd",
 		"res://scripts/construction_missing_dialog.gd",
 		"res://scripts/transport_service.gd",
