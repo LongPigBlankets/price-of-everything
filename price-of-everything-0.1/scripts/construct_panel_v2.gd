@@ -249,6 +249,12 @@ var _expanded_building_id := ""
 var _selected_building: Dictionary = {}
 var _selected_recipe: Dictionary = {}
 var _output_good_filter := ""
+# When opened from a tile's "Build" button, the flow LOCKS to that tile: the list
+# shows only buildings/recipes the terrain (and deposits/potential) permit, and
+# Confirm builds directly there — no map pick. Empty = the tile-independent flow
+# (confirm first, then choose a site on the map).
+var _locked_tile_id := ""
+var _locked_tile_data: Dictionary = {}
 
 
 func _ready() -> void:
@@ -299,14 +305,16 @@ func open_browser() -> void:
 	show()
 
 
-## Kept as a compatible entry point for the Tile View Panel. The V2 flow does
-## not retain this tile: the player still confirms the build first, then chooses
-## a site on the map.
-func open_for_tile(_tile_id: String, _tile_data: Dictionary) -> void:
+## Opened from the Tile View Panel "Build" button. The flow LOCKS to this tile:
+## the catalogue is filtered to what the tile's terrain/deposits/potential allow,
+## and Confirm builds directly here — no map pick.
+func open_for_tile(tile_id: String, tile_data: Dictionary) -> void:
 	if not MatchState.use_construct_panel_v2:
 		return
 	_output_good_filter = ""
 	_reset_to_browse()
+	_locked_tile_id = tile_id
+	_locked_tile_data = tile_data
 	_load_data()
 	_render()
 	show()
@@ -318,6 +326,8 @@ func _reset_to_browse() -> void:
 	_expanded_building_id = ""
 	_selected_building = {}
 	_selected_recipe = {}
+	_locked_tile_id = ""
+	_locked_tile_data = {}
 	_view = View.BROWSE
 	if _search_input != null:
 		_search_input.text = ""
@@ -503,6 +513,9 @@ func _load_data() -> void:
 		var recipe_req := str(recipe.get("required_research", ""))
 		if recipe_req != "" and not MatchState.is_unlocked(recipe_req):
 			continue
+		# Tile-locked: drop recipes the terrain/deposits/potential forbid here.
+		if _locked_tile_id != "" and not _recipe_valid_for_tile(recipe, _locked_tile_data):
+			continue
 		var building_id := str(recipe.get("building_id", ""))
 		if building_id == "":
 			continue
@@ -515,11 +528,58 @@ func _load_data() -> void:
 		var building_req := str(building.get("required_research", ""))
 		if building_req != "" and not MatchState.is_unlocked(building_req):
 			continue
-		# Keep non-producers visible as disabled cards, so the catalogue stays
-		# complete without allowing a build flow that has no recipe to select.
+		# Tile-locked: hide any building left with no tile-permitted recipe (this
+		# also drops infrastructure, which has no recipes) so only actually-buildable
+		# options show. Otherwise keep non-producers as disabled cards.
+		if _locked_tile_id != "" and _recipes_by_building.get(str(building.get("id", "")), []).is_empty():
+			continue
 		_buildings.append(building)
 	_buildings.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return str(a.get("display_name", "")).naturalnocasecmp_to(str(b.get("display_name", ""))) < 0)
+
+
+## Tile-validity gate for the locked flow (lifted from construct_panel.gd v1).
+## Terrain rule: sea/deep_sea accept only offshore buildings and vice versa; then
+## per-recipe deposit/potential requirements against this tile.
+func _recipe_valid_for_tile(recipe: Dictionary, tile_data: Dictionary) -> bool:
+	var tile_type := str(tile_data.get("type", ""))
+	if tile_type != "" and not Catalog.is_building_allowed_on_tile_type(str(recipe.get("building_id", "")), tile_type):
+		return false
+	for req in recipe.get("requirements", []):
+		var rtype := str(req.get("type", "")).to_lower()
+		var rval := str(req.get("value", "")).strip_edges().to_lower()
+		match rtype:
+			"deposit":
+				if not _deposit_known_or_possible(tile_data, rval):
+					return false
+			"potential":
+				if rval == "wind" and int(tile_data.get("wind_potential", 0)) <= 0:
+					return false
+				if rval == "solar" and int(tile_data.get("solar_potential", 0)) <= 0:
+					return false
+			_:
+				pass  # other requirement types don't gate tile validity here
+	return true
+
+
+## Deposit knowledge is survey-gated: an unsurveyed tile must NOT consult the map's
+## hidden deposit list (that would let players prospect for free from the panel).
+## Unknown = offered; the placement flow warns/reveals. Water is always visible.
+func _deposit_known_or_possible(tile_data: Dictionary, token: String) -> bool:
+	if token == "water":
+		return _tile_has_deposit(tile_data, token)
+	var tile_id := _locked_tile_id if _locked_tile_id != "" else str(tile_data.get("id", ""))
+	if MatchState.survey_status(tile_id, str(tile_data.get("type", ""))) == "unsurveyed":
+		return true
+	return _tile_has_deposit(tile_data, token)
+
+
+func _tile_has_deposit(tile_data: Dictionary, name: String) -> bool:
+	for deposit in tile_data.get("deposits", []):
+		var bare := str(deposit).split("(")[0].strip_edges().to_lower()
+		if bare == name or bare.replace(" ", "_") == name or bare.replace("_", " ") == name:
+			return true
+	return false
 
 
 func _render() -> void:
@@ -694,8 +754,12 @@ func _on_start_capacity_toggled(enabled: bool) -> void:
 
 
 func _render_browse() -> void:
-	_header_title.text = "CONSTRUCT"
-	_header_subtitle.text = "Choose a building, then a recipe"
+	if _locked_tile_id != "":
+		_header_title.text = "BUILD ON %s" % Catalog.tile_label(_locked_tile_id).to_upper()
+		_header_subtitle.text = "Only what this tile allows — choose a building and recipe"
+	else:
+		_header_title.text = "CONSTRUCT"
+		_header_subtitle.text = "Choose a building, then a recipe"
 	_settings_button.visible = true
 	_mode_toggle.visible = true
 	_search_input.visible = true
@@ -705,7 +769,10 @@ func _render_browse() -> void:
 	var shown := _filtered_buildings()
 	if shown.is_empty():
 		var empty := Label.new()
-		empty.text = "No buildings match your search."
+		if _locked_tile_id != "" and _search_query.strip_edges() == "" and _active_filters.is_empty():
+			empty.text = "Nothing can be built on this tile."
+		else:
+			empty.text = "No buildings match your search."
 		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		empty.add_theme_color_override("font_color", MUTED)
 		empty.add_theme_font_size_override("font_size", 13)
@@ -1017,7 +1084,10 @@ func _render_confirm() -> void:
 	value_row.add_child(value)
 
 	var placement_note := Label.new()
-	placement_note.text = "Confirming does not place the building. You will choose a tile on the map next."
+	if _locked_tile_id != "":
+		placement_note.text = "Confirm to build on %s." % Catalog.tile_label(_locked_tile_id)
+	else:
+		placement_note.text = "Confirming does not place the building. You will choose a tile on the map next."
 	placement_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	placement_note.add_theme_font_size_override("font_size", 11)
 	placement_note.add_theme_color_override("font_color", GREEN)
@@ -1032,7 +1102,7 @@ func _render_confirm() -> void:
 	total.add_theme_color_override("font_color", TEXT)
 	_footer.add_child(total)
 	var confirm := Button.new()
-	confirm.text = "Confirm · select tile"
+	confirm.text = "Confirm" if _locked_tile_id != "" else "Confirm · select tile"
 	confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	confirm.theme_type_variation = "Primary"
 	confirm.focus_mode = Control.FOCUS_NONE
@@ -1478,6 +1548,16 @@ func _on_confirm_pressed() -> void:
 	if not _is_building_affordable(building_id):
 		_show_insufficient_funds(building_id)
 		return
+	if _locked_tile_id != "":
+		# Tile-locked (opened from a tile's Build): build directly here, no map pick.
+		# Only recipe-based buildings reach this flow — infrastructure has no recipes
+		# and is filtered out of the locked list — but guard defensively anyway.
+		if _selected_recipe.is_empty():
+			return
+		BuildMode.attempt_direct_build(building_id, str(_selected_recipe.get("recipe_id", "")), _locked_tile_id)
+		MatchState.request_toast("Building %s on %s." % [str(_selected_building.get("display_name", "this building")), Catalog.tile_label(_locked_tile_id)], "info")
+		hide()
+		return
 	if _selected_recipe.is_empty():
 		BuildMode.enter_infrastructure_mode(str(_selected_building.get("internal_name", "")), true)
 	else:
@@ -1499,15 +1579,18 @@ func _construction_display_cost(building_id: String) -> float:
 
 
 func _material_source_note() -> String:
+	# In the tile-locked flow the site is already known, so name it instead of
+	# "the tile you select next".
+	var where := Catalog.tile_label(_locked_tile_id) if _locked_tile_id != "" else "the tile you select next"
 	match MatchState.construct_material_source:
 		"market":
-			return "Materials will be bought from the market when needed at the tile you select next."
+			return "Materials will be bought from the market when needed at %s." % where
 		"same_tile":
 			return "The selected tile must already hold every required construction material."
 		"any_tile":
 			return "Materials will be pulled from a tile with surplus when one is available."
 		_:
-			return "These resources are required at the tile you select next."
+			return "These resources are required at %s." % where
 
 
 func _format_number(value: float) -> String:

@@ -1652,8 +1652,8 @@ func _buy_land_amount(land_amount: int) -> void:
 			Audio.transaction()
 
 func _on_bl_build_pressed() -> void:
-	# The V2 flow deliberately selects its site after a building and recipe are
-	# confirmed, so it does not retain the tile used to open this panel.
+	# Both panels lock to this tile: the catalogue is filtered to what the terrain
+	# allows and Confirm builds directly here (no map pick).
 	var cp_name := "ConstructPanelV2" if MatchState.use_construct_panel_v2 else "ConstructPanel"
 	var cp := get_tree().root.find_child(cp_name, true, false)
 	if cp != null and cp.has_method("open_for_tile"):
