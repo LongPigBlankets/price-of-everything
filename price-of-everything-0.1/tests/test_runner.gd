@@ -33,6 +33,7 @@ func _ready() -> void:
 	await _test_main_scene_instantiates()
 	_test_catalog_loaded()
 	_test_recipe_requirements()
+	_test_research_recipe_and_level_tiers()
 	_test_menu_icons()
 	_test_bottom_menu_default()
 	_test_panel_stack_focus()
@@ -150,6 +151,7 @@ func _ready() -> void:
 	_test_live_unlock_conditions()
 	_test_deposit_penalty_modifier()
 	_test_workforce_output_modifier_surfaces_in_building_status()
+	_test_recipe_labour_owns_cost()
 	_test_additive_labour_cost_model()
 	_test_labour_factor_floor()
 	_test_cost_report_credits_output_modifiers()
@@ -360,6 +362,79 @@ func _test_tutorial_engine() -> void:
 	_check("survey_stub" in integ_ids and "build_coal_mine" in integ_ids,
 		"tutorial: deeper-integration survey/mine steps authored + deferred")
 	_check("build_own_power" in integ_ids, "tutorial: own-power step deferred to deeper integration")
+
+	# Buy Land lesson: tiles start unowned, the tutorial seeds only the factory plot,
+	# and the buy_land step gates the furnace build on the COMPUTED land target
+	# (footprints of everything the tutorial puts on the tile, in whole patches).
+	for expected2 in ["buy_land", "transport_ports", "transport_redirect_open", "transport_redirect_pick", "transport_pentagon_revert"]:
+		_check(expected2 in ids, "tutorial: step '%s' present" % expected2)
+	_check(ids.find("buy_land") < ids.find("choose_integration"),
+		"tutorial: buy_land runs before the integration branch (both builds need the land)")
+	var land_target: int = TutorialSteps._land_lesson_target()
+	var bl_decide: Dictionary = ((by_id.get("buy_land", {}) as Dictionary).get("done", {}) as Dictionary).get("decide", {})
+	_check(str(bl_decide.get("kind", "")) == "tile_land_at_least" and int(bl_decide.get("amount", 0)) == land_target,
+		"tutorial: buy_land gates on the computed land target (%d)" % land_target)
+	_check(land_target % MatchState.LAND_PATCH_SIZE == 0 and land_target > 0,
+		"tutorial: land target is a whole number of patches")
+	# The seeded plot must cover pricing up the factory (step 5) but NOT the furnace:
+	# the wall has to appear exactly at the buy_land step.
+	var seed_land: int = TutorialSteps.TUTORIAL_SEED_LAND
+	var start_cfg: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/tutorial.json"))
+	_check(start_cfg is Dictionary and int(((start_cfg as Dictionary).get("land", {}) as Dictionary).get(TutorialSteps.WINDOW_TILE, -1)) == seed_land,
+		"tutorial: TUTORIAL_SEED_LAND matches the start config's factory-tile seed")
+	var fp_factory := int(round(float(Catalog.get_building("b_007").get("tile_size_used", 1.0))))
+	var fp_cable := int(round(float(Catalog.get_building("b_006").get("tile_size_used", 1.0))))
+	var fp_furnace := int(round(float(Catalog.get_building("b_002").get("tile_size_used", 1.0))))
+	_check(fp_factory <= seed_land, "tutorial: the seeded plot covers pricing up the factory (step 5)")
+	_check(fp_factory + fp_cable + fp_furnace > seed_land + fp_factory,
+		"tutorial: the furnace does NOT fit before buy_land (the lesson's wall exists)")
+	var land_saved: Dictionary = MatchState.tile_land_owned.duplicate(true)
+	MatchState.tile_land_owned.clear()
+	_check(TutorialDetectors.poll({"kind": "tile_land_at_least", "tile": TutorialSteps.WINDOW_TILE, "amount": land_target}) == false,
+		"tutorial: tile_land_at_least false with no land owned")
+	MatchState.tile_land_owned[TutorialSteps.WINDOW_TILE] = land_target
+	_check(TutorialDetectors.poll({"kind": "tile_land_at_least", "tile": TutorialSteps.WINDOW_TILE, "amount": land_target}) == true,
+		"tutorial: tile_land_at_least true at exactly the target amount")
+	MatchState.tile_land_owned = land_saved
+	# Live-value copy: the numbers quoted in the step bodies come from the catalog.
+	var kit_cost: int = TutorialSteps._build_kit_cost("b_007")
+	_check(kit_cost > 0 and str((by_id.get("build_cost", {}) as Dictionary).get("body", "")).contains("£%d" % kit_cost),
+		"tutorial: build_cost quotes the live factory kit cost (£%d)" % kit_cost)
+	var win_price: String = TutorialSteps._good_price_text("windows")
+	_check(str((by_id.get("margin_motivation", {}) as Dictionary).get("body", "")).contains("£%s" % win_price),
+		"tutorial: margin_motivation quotes the live window price (£%s)" % win_price)
+	var glass_qty: int = TutorialSteps._recipe_input_qty("r_056", "glass")
+	_check(glass_qty > 0 and str((by_id.get("choose_integration", {}) as Dictionary).get("body", "")).contains("%d units" % glass_qty),
+		"tutorial: choose_integration quotes the live glass quantity (%d)" % glass_qty)
+	var alu_out: int = TutorialSteps._recipe_output_qty("r_050")
+	_check(alu_out > 0 and str((by_id.get("build_alu_open", {}) as Dictionary).get("body", "")).contains("%d aluminium" % alu_out),
+		"tutorial: build_alu_open quotes the live smelter output (%d)" % alu_out)
+
+	# Transport arc: output-route detectors read the explicit per-good destinations.
+	var saved2: Dictionary = MatchState.buildings
+	var saved_routes: Dictionary = MatchState.output_stockpile_destinations.duplicate(true)
+	MatchState.buildings = {
+		"inst_route": {
+			"instance_id": "inst_route", "building_id": "b_007",
+			"tile_id": TutorialSteps.WINDOW_TILE, "owner": MatchState.LOCAL_PLAYER,
+		}
+	}
+	MatchState.output_stockpile_destinations.clear()
+	_check(TutorialDetectors.poll({"kind": "output_routed_offtile", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}) == false,
+		"tutorial: output_routed_offtile false with no explicit route")
+	_check(TutorialDetectors.poll({"kind": "output_routed_market", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}) == false,
+		"tutorial: output_routed_market false with no explicit route (sell_mode fallback is not a route)")
+	MatchState.output_stockpile_destinations["inst_route"] = {"g_test": TutorialSteps.INPUT_TILE}
+	_check(TutorialDetectors.poll({"kind": "output_routed_offtile", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}) == true,
+		"tutorial: output_routed_offtile true once routed to another tile")
+	MatchState.output_stockpile_destinations["inst_route"] = {"g_test": TutorialSteps.WINDOW_TILE}
+	_check(TutorialDetectors.poll({"kind": "output_routed_offtile", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}) == false,
+		"tutorial: output_routed_offtile false for a same-tile stockpile route")
+	MatchState.output_stockpile_destinations["inst_route"] = {"g_test": MatchState.MARKET_DESTINATION}
+	_check(TutorialDetectors.poll({"kind": "output_routed_market", "tile": TutorialSteps.WINDOW_TILE, "building_id": "b_007"}) == true,
+		"tutorial: output_routed_market true once explicitly routed back to market")
+	MatchState.output_stockpile_destinations = saved_routes
+	MatchState.buildings = saved2
 
 
 # The Audio autoload (presentation-layer SFX service). Headless uses the Dummy
@@ -3557,6 +3632,29 @@ func _test_additive_labour_cost_model() -> void:
 	Modifiers.reset()
 	MatchState.reset()
 
+func _test_recipe_labour_owns_cost() -> void:
+	var old_turn: int = int(TurnManager.current_turn)
+	TurnManager.current_turn = 1
+	var recipe: Dictionary = Catalog.get_recipe("r_039")
+	var building_data: Dictionary = Catalog.get_building_by_internal_name("electrolyser")
+	var building := {
+		"building_id": building_data.get("id", ""),
+		"recipe_id": "r_039",
+		"level": 1,
+	}
+	var expected := (
+		float(recipe.get("labour_unskilled_required", 0)) * EconomyConfig.LABOUR_UNSKILLED_RATE
+		+ float(recipe.get("labour_skilled_required", 0)) * EconomyConfig.LABOUR_SKILLED_RATE
+		+ float(recipe.get("labour_h_skilled_required", 0)) * EconomyConfig.LABOUR_HIGH_SKILLED_RATE
+	)
+	_check(int(recipe.get("labour_unskilled_required", 0)) >= 500
+		and int(recipe.get("labour_skilled_required", 0)) >= 100
+		and int(recipe.get("labour_h_skilled_required", 0)) >= 50,
+		"recipe labour: migrated rows retain the minimum crew")
+	_check(is_equal_approx(Production._base_labour_cost(building, recipe), expected),
+		"recipe labour: production cost uses the selected recipe, not the building default")
+	TurnManager.current_turn = old_turn
+
 func _test_labour_factor_floor() -> void:
 	Modifiers.reset()
 	MatchState.reset()
@@ -5109,6 +5207,12 @@ func _test_battery_buildable() -> void:
 		# comes from loaded cells, not the recipe.
 		_check(str(r.get("output_name", "")) == "" and (r.get("inputs", []) as Array).is_empty(),
 			"battery: housing recipe is a no-op (no inputs/outputs)")
+		var catalysts: Array = r.get("catalysts", []) as Array
+		_check(catalysts.size() == 3
+			and str(catalysts[0].get("internal_name", "")) == "lithium_battery"
+			and str(catalysts[1].get("internal_name", "")) == "sodium_battery"
+			and str(catalysts[2].get("internal_name", "")) == "iron_battery",
+			"battery: allowed cell chemistries come from recipe catalysts")
 	var tvd = load("res://scripts/tile_view_data.gd")
 	var opt: Dictionary = tvd.power_build_option("battery", "", "tile_5_10", {})
 	_check(str(opt.get("recipe_id", "")) != "", "battery: build option resolves a recipe (no longer 'not available')")
@@ -6213,6 +6317,34 @@ func _test_output_market_route() -> void:
 	_check(MatchState.get_output_special_order_id("inst_test_market", "g_001") == "",
 		"route_output_to_market clears the special-order tag")
 	SpecialOrderState.reset()
+
+	# Per-good shipping cap (the CTRL+click "send a specific amount every turn" flow).
+	MatchState.set_output_stockpile_destination("inst_test_market", "tile_3_9", "g_001")
+	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 10)
+	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 10,
+		"ship quantity cap set and read back")
+	MatchState.set_output_stockpile_destination("inst_test_market", "tile_3_8", "g_001")
+	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0,
+		"a plain re-route clears the cap (plain click ships everything)")
+	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 7)
+	MatchState.route_output_to_market("inst_test_market", "g_001")
+	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0,
+		"routing back to market clears the cap")
+	MatchState.set_output_stockpile_destination("inst_test_market", "tile_3_9", "g_001")
+	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 5)
+	var routed_state: Dictionary = MatchState.export_state()
+	_check((routed_state.get("output_ship_quantities", {}) as Dictionary).has("inst_test_market"),
+		"ship quantity caps ride the save export")
+	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 0)
+	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0
+		and not MatchState.output_ship_quantities.has("inst_test_market"),
+		"clearing the cap removes the empty per-building entry")
+	MatchState.import_state(routed_state)
+	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 5,
+		"ship quantity caps survive a save round-trip")
+	MatchState.clear_output_stockpile_destination("inst_test_market", "g_001")
+	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0,
+		"clearing the route clears the cap too")
 
 func _test_bulk_sell() -> void:
 	Stockpile.add("tile_3_8", "g_001", 30)
@@ -7853,6 +7985,43 @@ func _test_recipe_requirements() -> void:
 	_check(no_phantom, "promotion gate: active recipes only reference real goods")
 	var mine_b: Dictionary = Catalog.get_building("b_001")
 	_check("extraction" in mine_b.get("building_type", []), "Mine building_type contains extraction")
+
+func _test_research_recipe_and_level_tiers() -> void:
+	var graphitisation: Dictionary = Catalog.get_recipe("r_042")
+	_check(str(graphitisation.get("required_research", "")) == "Biomass Cracking",
+		"bio-graphitisation is gated by Biochemistry's Biomass Cracking")
+	var has_biomass_node := false
+	for unlock in MatchState._unlock_defs:
+		if str(unlock.get("title", "")) == "Biomass Cracking":
+			has_biomass_node = str(unlock.get("category", "")) == "Biochemistry"
+	_check(has_biomass_node, "Biomass Cracking belongs to the Biochemistry tree")
+
+	var file := FileAccess.open("res://data/research_unlocks.csv", FileAccess.READ)
+	var level2_ok := file != null
+	var level2_count := 0
+	var warehouse_level2_ok := true
+	if file != null:
+		var header := file.get_csv_line()
+		var indices := {}
+		for index in header.size():
+			indices[header[index]] = index
+		while not file.eof_reached():
+			var row := file.get_csv_line()
+			if row.is_empty() or row[0].strip_edges() == "":
+				continue
+			var icon_index: int = int(indices.get("icon", -1))
+			var rank_index: int = int(indices.get("rank", -1))
+			if icon_index >= 0 and rank_index >= 0 and icon_index < row.size() and row[icon_index] == "level2":
+				level2_count += 1
+				if rank_index >= row.size() or row[rank_index] != "II":
+					level2_ok = false
+			var title_index: int = int(indices.get("title", -1))
+			var description_index: int = int(indices.get("description", -1))
+			if title_index >= 0 and description_index >= 0 and title_index < row.size() and description_index < row.size() and row[title_index] == "Pallet Racking Systems" and "warehouse level 2" in row[description_index] and (rank_index < 0 or rank_index >= row.size() or row[rank_index] != "II"):
+				warehouse_level2_ok = false
+		file.close()
+	_check(level2_ok and level2_count == 21, "all 21 Level 2 building unlocks are Tier II")
+	_check(warehouse_level2_ok, "warehouse Level 2 unlock is Tier II")
 
 # Logic: the regenerated bottom-menu icons import and load as textures.
 func _test_menu_icons() -> void:

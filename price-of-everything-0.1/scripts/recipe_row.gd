@@ -6,6 +6,8 @@ const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
 const NAVY := Color(0.015686275, 0.058823529, 0.105882353)
 const UNAFFORDABLE_FLASH_COLOR := Color(0.7, 0.12, 0.08, 0.5)
 const GoodIcons := preload("res://scripts/good_icons.gd")
+# Power output uses the same lightning the tile-panel recipe diagram shows.
+const RECIPE_POWER_ICON := "res://assets/icons/ui_icons/recipe_power_icon.png"
 
 @onready var output_icon: TextureRect = $Row/OutputIcon
 @onready var name_label: Label = $Row/TextColumn/NameLabel
@@ -53,7 +55,11 @@ func setup(recipe_data: Dictionary, parent_building_id: String) -> void:
 	if not gui_input.is_connected(_on_row_gui_input):
 		gui_input.connect(_on_row_gui_input)
 
-	output_icon.texture = GoodIcons.texture_for(recipe_data.get("output_good_id", ""), recipe_data.get("output_name", ""), true)
+	var output_gid: String = recipe_data.get("output_good_id", "")
+	if Catalog.get_internal_name(output_gid) == "power":
+		output_icon.texture = load(RECIPE_POWER_ICON)
+	else:
+		output_icon.texture = GoodIcons.texture_for(output_gid, recipe_data.get("output_name", ""), true)
 
 	var parts: Array = []
 	for inp in recipe_data.get("inputs", []):

@@ -1237,7 +1237,7 @@ func _on_special_order_reroute_requested() -> void:
 	_enter_stockpile_ui_mode()
 	MatchState.request_toast("Pick a destination tile for the remaining special-order shipments", "info")
 
-func _on_stockpile_destination_selected(tile_data: Dictionary) -> void:
+func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = false) -> void:
 	if _v2_picking_dest:
 		_v2_picking_dest = false
 		terrain_layer.end_stockpile_destination_selection()
@@ -1267,9 +1267,52 @@ func _on_stockpile_destination_selected(tile_data: Dictionary) -> void:
 	var instance_id: String = _pending_stockpile_selection.get("instance_id", "")
 	var good_id: String = _pending_stockpile_selection.get("good_id", "")
 	var tile_id: String = tile_data.get("id", "")
+	if ctrl:
+		# CTRL+click: don't route yet — highlight the pick green and open the
+		# ship-quantity panel (consumers on that tile + amount box + Confirm).
+		_open_ship_quantity_panel(_pending_stockpile_selection.duplicate(), tile_id)
+		_pending_stockpile_selection.clear()
+		_hide_stockpile_select_prompt()
+		return
 	MatchState.set_output_stockpile_destination(instance_id, tile_id, good_id)
 	_pending_stockpile_selection.clear()
 	_hide_stockpile_select_prompt()
+	_exit_stockpile_ui_mode()
+
+# ----- CTRL+click ship-quantity flow -----
+
+var _ship_qty_panel: PanelContainer = null
+var _ship_qty_selection: Dictionary = {}
+var _ship_qty_tile := ""
+
+func _open_ship_quantity_panel(selection: Dictionary, tile_id: String) -> void:
+	_ship_qty_selection = selection
+	_ship_qty_tile = tile_id
+	terrain_layer.mark_selected_destination(tile_id)
+	if _ship_qty_panel == null:
+		_ship_qty_panel = load("res://scripts/ship_quantity_panel.gd").new()
+		_ship_qty_panel.name = "ShipQuantityPanel"
+		_hud.add_child(_ship_qty_panel)
+		_ship_qty_panel.confirmed.connect(_on_ship_qty_confirmed)
+		_ship_qty_panel.cancelled.connect(_on_ship_qty_cancelled)
+	_ship_qty_panel.open(selection, tile_id)
+
+func _on_ship_qty_confirmed(qty: int) -> void:
+	var iid := str(_ship_qty_selection.get("instance_id", ""))
+	var gid := str(_ship_qty_selection.get("good_id", ""))
+	if iid != "" and gid != "" and _ship_qty_tile != "" and qty > 0:
+		MatchState.set_output_stockpile_destination(iid, _ship_qty_tile, gid)
+		MatchState.set_output_ship_quantity(iid, gid, qty)
+		MatchState.request_toast("Sending %d %s to %s every turn" % [qty, Catalog.get_display_name(gid), Catalog.tile_label(_ship_qty_tile)], "success")
+	_close_ship_quantity_flow()
+
+func _on_ship_qty_cancelled() -> void:
+	_close_ship_quantity_flow()
+
+func _close_ship_quantity_flow() -> void:
+	_ship_qty_selection = {}
+	_ship_qty_tile = ""
+	terrain_layer.clear_selected_destination()
 	_exit_stockpile_ui_mode()
 
 func _cancel_special_order_reroute_pick() -> void:
@@ -1910,9 +1953,12 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 		print("[Build] FAILED: tile %s is full (need %s, max %s)" % [tile_id, str(projected_space), str(MatchState.MAX_TILE_LAND)])
 		_show_tile_space_error("There is no more room on that tile. Demolish buildings to make room.")
 		return {"allowed": false, "cost_multiplier": 1.0}
+	# The owned-land gate only counts the player's estate — NPC buildings sit on
+	# their own land and must not eat the land the player has bought.
+	var projected_player := MatchState.get_tile_player_space_used(tile_id) + added_space
 	var land_owned := MatchState.get_tile_land_owned(tile_id)
-	if projected_space > float(land_owned):
-		print("[Build] FAILED: insufficient land on tile %s (need %s, own %s)" % [tile_id, str(projected_space), str(land_owned)])
+	if projected_player > float(land_owned):
+		print("[Build] FAILED: insufficient land on tile %s (need %s, own %s)" % [tile_id, str(projected_player), str(land_owned)])
 		_show_tile_space_error("You cannot build that. You do not own sufficient land on tile %s" % tile_id)
 		return {"allowed": false, "cost_multiplier": 1.0}
 	var cost_multiplier := 1.0
@@ -1994,19 +2040,19 @@ func _build_stockpile_select_prompt() -> void:
 	_stockpile_select_prompt = PanelContainer.new()
 	_stockpile_select_prompt.name = "StockpileSelectPrompt"
 	_stockpile_select_prompt.visible = false
-	_stockpile_select_prompt.custom_minimum_size = Vector2(520, 30)
+	_stockpile_select_prompt.custom_minimum_size = Vector2(640, 30)
 	_stockpile_select_prompt.anchor_left = 0.5
 	_stockpile_select_prompt.anchor_right = 0.5
 	_stockpile_select_prompt.anchor_top = 1.0
 	_stockpile_select_prompt.anchor_bottom = 1.0
-	_stockpile_select_prompt.offset_left = -260.0
-	_stockpile_select_prompt.offset_right = 260.0
+	_stockpile_select_prompt.offset_left = -320.0
+	_stockpile_select_prompt.offset_right = 320.0
 	_stockpile_select_prompt.offset_top = -158.0
 	_stockpile_select_prompt.offset_bottom = -128.0
 	_stockpile_select_prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(DS.PALETTE.BG_PANEL, 0.94)
-	style.border_color = Color(0.995, 0.93, 0.76, 0.6)
+	style.border_color = DS.PALETTE.BORDER   # solid off-white outline
 	style.border_width_left = 1
 	style.border_width_top = 1
 	style.border_width_right = 1
@@ -2027,13 +2073,12 @@ func _build_stockpile_select_prompt() -> void:
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_stockpile_select_prompt.add_child(label)
 
-func _show_stockpile_select_prompt(selection: Dictionary) -> void:
+func _show_stockpile_select_prompt(_selection: Dictionary) -> void:
 	if _stockpile_select_prompt == null:
 		return
 	var label := _stockpile_select_prompt.get_node_or_null("Label") as Label
 	if label != null:
-		var good_id: String = selection.get("good_id", "")
-		label.text = "Select tile to send %s to for stockpiling" % Catalog.get_display_name(good_id)
+		label.text = "Click to select a tile to ship to. CTRL+click to send a specific amount every turn."
 	_stockpile_select_prompt.visible = true
 
 func _hide_stockpile_select_prompt() -> void:

@@ -298,6 +298,7 @@ func _populate_land_rail() -> void:
 		_land_rail.add_child(legend)
 
 	var buy := _make_action_button("Buy Land")
+	buy.name = "BLBuyLandButton"   # tutorial spotlight target
 	buy.add_theme_font_size_override("font_size", 14)  # one size up
 	buy.pressed.connect(func(): _on_buy_land_pressed(buy))
 	_land_rail.add_child(buy)
@@ -312,19 +313,19 @@ func _refresh_land_rail() -> void:
 	if _land_chart == null or _current_tile_id == "":
 		return
 	var data := TileViewData.land_chart_data(_current_tile_id, _current_tile_data)
+	# land_totals is the single source of owned/buyable — the collapsed rail used to
+	# compute its own buyable off MAX_TILE_LAND and drift from the expanded figures.
+	var totals := TileViewData.land_totals(_current_tile_id, _current_tile_data)
 	if _rail_expanded:
-		var totals := TileViewData.land_totals(_current_tile_id, _current_tile_data)
 		if _rail_total_label != null:
 			_rail_total_label.text = "%d | %d | %d" % [int(totals.built), int(totals.buyable), int(totals.max)]
 		if _density_note != null:
 			_density_note.visible = int(totals.built) > 100  # only once built crosses 100
-		_land_chart.configure(data.segments, float(data.type_cap), int(data.type_cap), true, int(data.owned), int(totals.buyable))
+		_land_chart.configure(data.segments, float(data.type_cap), int(data.type_cap), true, int(data.owned), int(totals.buyable), int(data.npc_footprint))
 	else:
-		var owned := int(data.owned)
-		var buyable := maxi(0, int(data.max_possible) - owned)
 		if _rail_owned_label != null:
-			_rail_owned_label.text = "%d / %d" % [owned, buyable]
-		_land_chart.configure(data.segments, float(data.axis_max), int(data.max_possible), false)
+			_rail_owned_label.text = "%d / %d" % [int(data.owned), int(totals.buyable)]
+		_land_chart.configure(data.segments, float(data.axis_max), int(data.type_cap), false, int(data.owned), int(totals.buyable), int(data.npc_footprint))
 
 func _build_header() -> HBoxContainer:
 	var header := HBoxContainer.new()
@@ -466,8 +467,8 @@ func _make_tile(tab_id: String, label_text: String) -> PanelContainer:
 	metric_row.add_child(metric)
 	var unit := Label.new()
 	unit.theme_type_variation = &"Caption"
-	unit.add_theme_font_size_override("font_size", 9)
-	unit.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	unit.add_theme_font_size_override("font_size", 10)
+	unit.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	unit.size_flags_vertical = Control.SIZE_SHRINK_END
 	metric_row.add_child(unit)
 	vbox.add_child(metric_row)
@@ -615,8 +616,8 @@ func _make_survey_button(status: String) -> Control:
 	var sub := Label.new()
 	sub.text = "Surveying will reveal deposits"
 	sub.theme_type_variation = &"Caption"
-	sub.add_theme_font_size_override("font_size", 9)
-	sub.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	sub.add_theme_font_size_override("font_size", 10)
+	sub.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(sub)
@@ -1558,8 +1559,8 @@ func _make_buildings_header(title: String, right_text: String, with_filter: bool
 	var filter_label := Label.new()
 	filter_label.text = "Show your buildings only"
 	filter_label.theme_type_variation = &"Caption"
-	filter_label.add_theme_font_size_override("font_size", 11)
-	filter_label.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	filter_label.add_theme_font_size_override("font_size", 12)
+	filter_label.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	filter_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(filter_label)
 	_player_only_checkbox = UIHelpers.make_custom_checkbox()
@@ -1590,7 +1591,9 @@ func _on_player_buildings_only_toggled(pressed: bool) -> void:
 ## small remaining cap collapses to just the maximum.
 func _on_buy_land_pressed(anchor: Control) -> void:
 	var patch := MatchState.LAND_PATCH_SIZE
-	var max_land := MatchState.get_tile_land_patches_available(_current_tile_id) * patch
+	var cap := TileViewData.tile_max_capacity(_current_tile_data)
+	# Exact purchasable units (the last patch may be a clipped sliver next to NPC land).
+	var max_land := MatchState.get_tile_land_units_available(_current_tile_id, cap)
 	if max_land <= 0:
 		MatchState.request_toast("No more land available to buy on this tile", "caution")
 		return
@@ -1639,9 +1642,10 @@ func _on_buy_land_pressed(anchor: Control) -> void:
 	popup.popup(Rect2i(Vector2i(anchor.global_position) + Vector2i(0, int(anchor.size.y)), Vector2i(260, 0)))
 
 func _buy_land_amount(land_amount: int) -> void:
-	var patches := int(land_amount / MatchState.LAND_PATCH_SIZE)
+	var patches := ceili(float(land_amount) / float(MatchState.LAND_PATCH_SIZE))
 	if patches > 0:
-		if MatchState.purchase_tile_land(_current_tile_id, patches):
+		var cap := TileViewData.tile_max_capacity(_current_tile_data)
+		if MatchState.purchase_tile_land(_current_tile_id, patches, cap):
 			Audio.transaction()
 
 func _on_bl_build_pressed() -> void:
@@ -1708,8 +1712,8 @@ func _make_infra_cell(slot: Dictionary) -> VBoxContainer:
 	else:
 		cap_label.text = "%d cap" % int(slot.get("cap", 0))
 	cap_label.theme_type_variation = &"Caption"
-	cap_label.add_theme_font_size_override("font_size", 9)
-	cap_label.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	cap_label.add_theme_font_size_override("font_size", 10)
+	cap_label.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	cap_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	cap_label.custom_minimum_size = Vector2(INFRA_DIAL.BUTTON_SIZE + 22, 0)
 	cell.add_child(cap_label)
@@ -1904,8 +1908,12 @@ func _go_to_building(instance_id: String) -> void:
 
 # --- Stockpile pane (vertical bar chart) ------------------------------------
 func _build_stock_pane(pane: VBoxContainer) -> void:
-	# Warehouse level + expansion offer — first thing under the tab row, so a full
-	# tile's fix is right where the player is looking (owner spec 2026-07-09).
+	# Peak utilisation last turn — first row of the pane. Counts what's held PLUS
+	# the goods that only transited the tile (the JIT building-to-building feed),
+	# so a warehouse that looks half-empty but moves a lot still reads as busy.
+	pane.add_child(_make_stock_utilisation_row())
+	# Warehouse level + expansion offer — a full tile's fix is right where the
+	# player is looking (owner spec 2026-07-09).
 	pane.add_child(_make_warehouse_section())
 	# Just-in-Time Logistics readout: goods routed producer→consumer without
 	# touching the warehouse this turn (only shown once the unlock is doing work).
@@ -1936,6 +1944,49 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 		pane.add_child(_make_section_header("Overflow Shipments", "can't unload", "problem"))
 		for r in overflow:
 			pane.add_child(_make_overflow_row(r))
+
+# "Stock Utilisation last turn" — the tile's peak storage demand: units held in
+# the warehouse plus units that passed straight between same-tile buildings via
+# the JIT feed (they never took a slot, but they were stock the tile handled).
+func _make_stock_utilisation_row() -> Control:
+	var stock := TileViewData.stockpile_summary(_current_tile_id)
+	var transited := Production.get_jit_fed_for_tile(_current_tile_id)
+	var capacity := maxi(1, int(stock.capacity))
+	var peak := int(stock.used) + transited
+	var pct := roundi(float(peak) / float(capacity) * 100.0)
+	var color: Color = DS.PALETTE.OK
+	if pct >= 100:
+		color = DS.PALETTE.DANGER
+	elif pct >= 80:
+		color = DS.PALETTE.WARN
+
+	var card := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = DS.PALETTE.BG_CARD
+	sb.border_color = DS.PALETTE.BORDER_SOFT
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(6)
+	sb.content_margin_left = 8
+	sb.content_margin_right = 8
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
+	card.add_theme_stylebox_override("panel", sb)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	card.add_child(row)
+	var title := Label.new()
+	title.text = "Stock Utilisation last turn"
+	title.theme_type_variation = &"Body"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(title)
+	var value := Label.new()
+	value.text = "%d%%" % pct
+	value.theme_type_variation = &"Numeric"
+	value.add_theme_color_override("font_color", color)
+	row.add_child(value)
+	card.tooltip_text = "%d held + %d passed building-to-building, of %d storage" % [int(stock.used), transited, capacity]
+	return card
 
 # --- Warehouse expansion (per-tile storage upgrade, paid in materials) -------
 # Collapsed: one row with the current level/capacity + an Expand button. Clicking
@@ -2628,8 +2679,8 @@ func _make_section_header(title: String, right_text: String, status: String) -> 
 	var title_label := Label.new()
 	title_label.text = title.to_upper()
 	title_label.add_theme_font_override("font", UIFonts.section())
-	title_label.add_theme_font_size_override("font_size", 11)
-	title_label.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	title_label.add_theme_font_size_override("font_size", 12)
+	title_label.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	row.add_child(title_label)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2638,8 +2689,8 @@ func _make_section_header(title: String, right_text: String, status: String) -> 
 		var right := Label.new()
 		right.text = right_text
 		right.theme_type_variation = &"Caption"
-		right.add_theme_font_size_override("font_size", 11)
-		right.add_theme_color_override("font_color", _status_color(status) if status != "ok" else DS.PALETTE.TEXT_DIM)
+		right.add_theme_font_size_override("font_size", 12)
+		right.add_theme_color_override("font_color", _status_color(status) if status != "ok" else DS.PALETTE.TEXT)
 		row.add_child(right)
 	return row
 
@@ -2792,6 +2843,17 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	name_label.theme_type_variation = &"BuildingName"  # next size up (Barlow Semi 22)
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # spills onto next row
 	info.add_child(name_label)
+	# The header is ANCHORED inside a fixed-height Control (so the NPC banner can
+	# float), which means a wrapped 2-line name doesn't grow the plate — it spills
+	# out of the card bottom. Measure the real line count once laid out and grow
+	# the plate by the extra rows.
+	name_label.ready.connect(func() -> void:
+		await name_label.get_tree().process_frame
+		if not is_instance_valid(name_label) or not is_instance_valid(overlay):
+			return
+		var extra_lines := name_label.get_line_count() - 1
+		if extra_lines > 0:
+			overlay.custom_minimum_size.y = (GROUP_CARD_H - 10) + float(extra_lines) * name_label.get_line_height())
 	var pusher := Control.new()
 	pusher.size_flags_vertical = Control.SIZE_EXPAND_FILL  # pushes cost basis to the bottom
 	pusher.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -3068,8 +3130,8 @@ func _make_building_row(b: Dictionary) -> HBoxContainer:
 	var land := Label.new()
 	land.text = ("%s LAND" % _fmt_size(float(b.land)))
 	land.theme_type_variation = &"Caption"
-	land.add_theme_font_size_override("font_size", 11)
-	land.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	land.add_theme_font_size_override("font_size", 12)
+	land.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	pill_row.add_child(land)
 	info.add_child(pill_row)
 	row.add_child(card)
@@ -3246,8 +3308,8 @@ func _make_metric_line(label_text: String, value: String, value_color: Color) ->
 	var l := Label.new()
 	l.text = label_text
 	l.theme_type_variation = &"Caption"
-	l.add_theme_font_size_override("font_size", 10)
-	l.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	l.add_theme_font_size_override("font_size", 11)
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	row.add_child(l)
 	var v := Label.new()
 	v.text = value

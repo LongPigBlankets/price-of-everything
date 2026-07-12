@@ -1,0 +1,5 @@
+recipe_id,recipe,target_min,target_profit,minimum_labour_profit,needed_to_minimum_band,needed_to_target,primary_output,output_qty,price_increase_per_output_to_minimum_band,extra_output_units_to_minimum_band,maintenance_reduction_to_minimum_band,highest_cost_input,highest_cost_input_qty,highest_cost_input_unit_cost,input_units_to_remove_to_minimum_band
+r_208,Sustainable Biomass Production,5.0,15.0,-4.797,9.797,19.797,biomass,15.0,0.653,11,1.0,fertilisers,1.0,12.772,1
+r_209,Strip Farming - Biomass,5.0,7.5,-34.865,39.865,42.365,biomass,24.0,1.661,44,1.0,fertilisers,4.0,12.772,4
+r_211,Agri Solar Farming - Biomass,5.0,7.5,3.43,1.57,4.07,biomass,10.0,0.157,2,1.0,,0.0,0.0,
+r_212,Livestock Farming - Biomass,5.0,7.5,4.349,0.651,3.151,biomass,12.0,0.054,1,0.651,pure_water,3.0,0.466,2

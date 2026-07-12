@@ -20,7 +20,7 @@ var money: float = 1000.0  # was: int = 1000
 const DEFAULT_RULESET := {"name": "standard"}
 var ruleset: Dictionary = DEFAULT_RULESET.duplicate(true)
 
-const DEFAULT_TILE_LAND_OWNED := 100
+const DEFAULT_TILE_LAND_OWNED := 0
 const LAND_PATCH_SIZE := 10
 const LAND_PATCH_COST := 10.0
 const MAX_TILE_LAND := 200
@@ -266,6 +266,10 @@ var peak_profit_per_turn: float = 0.0              # best profit/turn reached (a
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
 var output_special_order_destinations: Dictionary = {}  # instance_id -> {good_id -> special_order_id}
 const MARKET_DESTINATION := "__market__"  # sentinel tile_id: route this building's output to market
+# Per-good SHIPPING CAP for an explicit tile route (the CTRL+click "send a specific
+# amount every turn" flow): only min(cap, produced) ships to the destination each
+# turn; the remainder stays in the origin tile's stockpile. 0 / absent = ship all.
+var output_ship_quantities: Dictionary = {}  # instance_id -> {good_id -> int}
 var input_tile_only: Dictionary = {}  # "instance_id|good_id" -> true (tile stockpile ONLY; default buys from market)
 var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
@@ -577,6 +581,8 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 	if owner == LOCAL_PLAYER:
 		_stamp_purchase_build_value(instance_id)
 		_grant_building_land(instance_id)
+		# The tile size chart stacks buildings bought off an NPC at the top of the pile.
+		buildings[instance_id]["acquired_from_npc"] = true
 	building_owner_changed.emit(instance_id)
 	# A newly player-owned building may satisfy build-count / ownership unlock conditions.
 	_check_unlock_conditions()
@@ -885,9 +891,12 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 	var source := Construction.find_source_tile(tile_id, shortfall) if not all_on_tile else {}
 
 	# Footprint check (the larger building must still fit, counting other pending upgrades).
+	# Physical room uses everything on the tile; the owned-land gate only counts the
+	# player's own estate (NPC buildings sit on their own land).
 	var delta := _upgrade_size_delta(building_id, level, target)
 	var projected := get_tile_space_used(tile_id) + delta
-	var fits := projected <= float(MAX_TILE_LAND) and projected <= float(get_tile_land_owned(tile_id))
+	var projected_player := get_tile_player_space_used(tile_id) + delta
+	var fits := projected <= float(MAX_TILE_LAND) and projected_player <= float(get_tile_land_owned(tile_id))
 
 	var gate := BuildingLevels.research_gate(internal, target)
 	var pend := pending_upgrade(instance_id)
@@ -1005,9 +1014,11 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 		return {"ok": false, "reason": "Requires research: %s" % gate, "research": gate}
 
 	# Footprint: the larger building must fit (counting other in-progress upgrades).
+	# Physical room counts everything; the owned-land gate only the player's estate.
 	var size_delta := _upgrade_size_delta(building_id, level, target)
 	var projected := get_tile_space_used(tile_id) + size_delta
-	if projected > float(MAX_TILE_LAND) or projected > float(get_tile_land_owned(tile_id)):
+	var projected_player := get_tile_player_space_used(tile_id) + size_delta
+	if projected > float(MAX_TILE_LAND) or projected_player > float(get_tile_land_owned(tile_id)):
 		return {"ok": false, "reason": "Not enough room on the tile for the larger building."}
 
 	# Split materials: what's on the tile vs the shortfall.
@@ -1386,6 +1397,24 @@ func get_tile_space_used(tile_id: String) -> float:
 	# In-progress upgrades reserve the extra room the building is about to grow into.
 	total += reserved_upgrade_space_on_tile(tile_id)
 	return total
+
+# Footprint of buildings the player does NOT own on the tile. NPC buildings sit on
+# their own (unpurchasable) land, so they never count against the player's owned
+# land — buying the building converts that footprint to owned via _grant_building_land.
+func get_tile_npc_footprint(tile_id: String) -> float:
+	var total := 0.0
+	for instance in get_buildings_on_tile(tile_id):
+		if is_player_owned(instance):
+			continue
+		var building_data := Catalog.get_building(str(instance.get("building_id", "")))
+		total += float(building_data.get("tile_size_used", 1.0)) * BuildingLevels.mult("size", int(instance.get("level", 1)))
+	return total
+
+# Space the PLAYER's estate takes on the tile: owned buildings plus construction /
+# upgrade reservations (only the player builds). This — not the physical total —
+# is what the owned-land gate compares against.
+func get_tile_player_space_used(tile_id: String) -> float:
+	return maxf(0.0, get_tile_space_used(tile_id) - get_tile_npc_footprint(tile_id))
 
 # --- Public API: survey state ---
 ## Seed the surveyed set with the NPC port tiles (called once at match start).
@@ -2124,9 +2153,19 @@ func _install_battery_cells(tile_id: String, good_id: String, qty: int) -> void:
 		Stockpile.add(tile_id, good_id, qty - take)
 	battery_cells_changed.emit(tile_id)
 
-func get_tile_land_patches_available(tile_id: String) -> int:
-	var remaining := MAX_TILE_LAND - get_tile_land_owned(tile_id)
-	return maxi(0, int(floor(float(remaining) / float(LAND_PATCH_SIZE))))
+# Patches still purchasable: the tile cap minus the land under NPC buildings (not
+# for sale — buy the building instead) minus what the player already owns. `cap`
+# lets the UI pass the terrain-adjusted tile capacity; it never exceeds MAX_TILE_LAND.
+# The FINAL patch may be a clipped sliver (ceil): NPC footprints rarely align to the
+# 10-unit patch grid, and flooring would leave the last few land units of a tile
+# permanently unbuyable and unbuildable.
+func get_tile_land_patches_available(tile_id: String, cap: int = MAX_TILE_LAND) -> int:
+	return maxi(0, int(ceil(float(get_tile_land_units_available(tile_id, cap)) / float(LAND_PATCH_SIZE))))
+
+# Exact land units still purchasable on the tile (not rounded to patches).
+func get_tile_land_units_available(tile_id: String, cap: int = MAX_TILE_LAND) -> int:
+	var effective_cap := mini(cap, MAX_TILE_LAND)
+	return maxi(0, effective_cap - int(round(get_tile_npc_footprint(tile_id))) - get_tile_land_owned(tile_id))
 
 # Cash rebate a Chief Investment advisor gives toward a build: a fraction of the
 # required build materials' CURRENT market value (tier3 +10% / tier2 +5% / tier1 -5%
@@ -2178,10 +2217,10 @@ func effective_build_duration(building_id: String) -> int:
 		dur -= 1
 	return maxi(BUILD_DURATION_MIN, dur)
 
-func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
+func purchase_tile_land(tile_id: String, patches: int = 1, cap: int = MAX_TILE_LAND) -> bool:
 	if tile_id == "":
 		return false
-	var available := get_tile_land_patches_available(tile_id)
+	var available := get_tile_land_patches_available(tile_id, cap)
 	if available <= 0:
 		return false
 	var clamped_patches: int = clampi(patches, 1, available)
@@ -2191,7 +2230,9 @@ func purchase_tile_land(tile_id: String, patches: int = 1) -> bool:
 	if not deduct_money(cost):
 		return false
 	var owned := get_tile_land_owned(tile_id)
-	tile_land_owned[tile_id] = mini(MAX_TILE_LAND, owned + clamped_patches * LAND_PATCH_SIZE)
+	# The last patch can be a clipped sliver — never grant past the NPC-adjusted cap.
+	var granted := mini(clamped_patches * LAND_PATCH_SIZE, get_tile_land_units_available(tile_id, cap))
+	tile_land_owned[tile_id] = mini(MAX_TILE_LAND, owned + granted)
 	tile_land_owned_changed.emit(tile_id)
 	return true
 
@@ -2244,6 +2285,7 @@ func reset() -> void:
 	tile_buildings.clear()
 	output_stockpile_destinations.clear()
 	output_special_order_destinations.clear()
+	output_ship_quantities.clear()
 	pending_output_stockpile_selection.clear()
 	queued_stockpile_market_sales.clear()
 	sell_surplus_tiles.clear()
@@ -2318,6 +2360,7 @@ func debug_dump() -> Dictionary:
 		"tile_buildings": tile_buildings.duplicate(true),
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
 		"output_special_order_destinations": output_special_order_destinations.duplicate(true),
+		"output_ship_quantities": output_ship_quantities.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": pending_transport_shipments.duplicate(true),
 		"tile_land_owned": tile_land_owned.duplicate(true),
@@ -2369,6 +2412,7 @@ func export_state() -> Dictionary:
 		"route_objective": route_objective,
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
 		"output_special_order_destinations": output_special_order_destinations.duplicate(true),
+		"output_ship_quantities": output_ship_quantities.duplicate(true),
 		"input_tile_only": input_tile_only.duplicate(true),
 		"recurring_moves": recurring_moves.duplicate(true),
 		"scheduled_moves": scheduled_moves.duplicate(true),
@@ -2459,6 +2503,7 @@ func import_state(d: Dictionary) -> void:
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
 	output_special_order_destinations = (d.get("output_special_order_destinations", {}) as Dictionary).duplicate(true)
+	output_ship_quantities = (d.get("output_ship_quantities", {}) as Dictionary).duplicate(true)
 	input_tile_only = (d.get("input_tile_only", {}) as Dictionary).duplicate(true)
 	recurring_moves = (d.get("recurring_moves", []) as Array).duplicate(true)
 	scheduled_moves = (d.get("scheduled_moves", []) as Array).duplicate(true)
@@ -2620,8 +2665,27 @@ func set_output_stockpile_destination(instance_id: String, tile_id: String, good
 	per_good[good_id] = tile_id
 	output_stockpile_destinations[instance_id] = per_good
 	_clear_output_special_order_tag(instance_id, good_id)
+	set_output_ship_quantity(instance_id, good_id, 0)  # plain routing ships ALL; a cap is set explicitly after
 	pending_output_stockpile_selection.clear()
 	output_stockpile_destination_changed.emit(instance_id, tile_id, good_id)
+
+# Cap how much of `good_id` ships to the explicit destination each turn (the CTRL+click
+# "send a specific amount" flow). qty <= 0 clears the cap (ship everything).
+func set_output_ship_quantity(instance_id: String, good_id: String, qty: int) -> void:
+	if instance_id == "" or good_id == "":
+		return
+	var per_good: Dictionary = output_ship_quantities.get(instance_id, {})
+	if qty <= 0:
+		per_good.erase(good_id)
+	else:
+		per_good[good_id] = qty
+	if per_good.is_empty():
+		output_ship_quantities.erase(instance_id)
+	else:
+		output_ship_quantities[instance_id] = per_good
+
+func get_output_ship_quantity(instance_id: String, good_id: String) -> int:
+	return int((output_ship_quantities.get(instance_id, {}) as Dictionary).get(good_id, 0))
 
 func clear_output_stockpile_destination(instance_id: String, good_id: String = "") -> void:
 	if instance_id == "":
@@ -2629,6 +2693,7 @@ func clear_output_stockpile_destination(instance_id: String, good_id: String = "
 	if good_id == "":
 		output_stockpile_destinations.erase(instance_id)  # clear the whole building
 		output_special_order_destinations.erase(instance_id)
+		output_ship_quantities.erase(instance_id)
 		return
 	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
 	per_good.erase(good_id)
@@ -2636,6 +2701,7 @@ func clear_output_stockpile_destination(instance_id: String, good_id: String = "
 		output_stockpile_destinations.erase(instance_id)
 	else:
 		output_stockpile_destinations[instance_id] = per_good
+	set_output_ship_quantity(instance_id, good_id, 0)
 	_clear_output_special_order_tag(instance_id, good_id)
 
 func get_output_stockpile_destination(instance_id: String, good_id: String = "") -> String:
@@ -2658,6 +2724,7 @@ func route_output_to_market(instance_id: String, good_id: String) -> void:
 	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
 	per_good[good_id] = MARKET_DESTINATION
 	output_stockpile_destinations[instance_id] = per_good
+	set_output_ship_quantity(instance_id, good_id, 0)
 	_clear_output_special_order_tag(instance_id, good_id)
 	pending_output_stockpile_selection.clear()
 	output_stockpile_destination_changed.emit(instance_id, MARKET_DESTINATION, good_id)

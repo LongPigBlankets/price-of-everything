@@ -38,7 +38,7 @@ const DIFFICULTIES: Array = [
 		"desc": "All resource deposits on the map, but some are finite. Some tiles are surveyed."},
 	{"id": "hard", "label": "Hard",
 		"desc": "A single finite rare-earth deposit on the map. Other deposits are reduced. Some tiles are surveyed."},
-	{"id": "very_hard", "label": "Very Hard",
+	{"id": "very_hard", "label": "Very Hard", "locked": true,
 		"desc": "No rare-earth deposits. A single alloy-metal deposit on the map. Other deposits reduced. Only your starting tiles are surveyed."},
 	{"id": "god", "label": "God of Industry", "locked": true,
 		"desc": "No rare-earth, alloy-metal or crude-oil deposits. Other deposits reduced. Only your starting tiles are surveyed."},
@@ -325,7 +325,7 @@ func _build_settings_columns(parent: Node) -> void:
 		var b := _stacked_button(dcol, olabel, dgroup)
 		if bool(opt.get("locked", false)) and not unlocked:
 			b.disabled = true
-			b.tooltip_text = "Complete a game to unlock %s." % olabel
+			b.tooltip_text = "This difficulty is unlocked once you finish one game"
 			continue
 		b.toggled.connect(func(on: bool) -> void:
 			if on:

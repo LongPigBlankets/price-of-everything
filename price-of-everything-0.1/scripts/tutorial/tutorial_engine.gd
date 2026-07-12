@@ -166,6 +166,13 @@ func _run_setup(actions: Array) -> void:
 				var cp := _find("ConstructPanel")
 				if cp != null and cp is Control:
 					(cp as Control).hide()
+			"close_empire_view":
+				# Force the empire view shut when the tutorial moves on — a player who
+				# opened it with Tab but didn't press Tab again to return would otherwise
+				# be stuck looking at the graph while the next card talks about the map.
+				var ev := _find("EmpireView")
+				if ev is Control and (ev as Control).visible:
+					(ev as Control).visible = false
 			"close_sourcing":
 				# Dismiss the "buy materials / cancel" construction dialog without building.
 				var md := _find("ConstructionMissingDialog")

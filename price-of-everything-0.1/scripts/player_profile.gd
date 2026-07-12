@@ -9,6 +9,9 @@ extends Node
 const PATH := "user://profile.json"
 
 var games_completed: int = 0
+# Hall of Records: every VICTORY, newest first. Losses are not recorded. Each entry:
+# {"date": "YYYY-MM-DD", "title": <victory name>, "turn": int, "secured": int, "epithet": String}
+var wins: Array = []
 
 
 func _ready() -> void:
@@ -21,6 +24,21 @@ func _ready() -> void:
 
 func has_completed_game() -> bool:
 	return games_completed > 0
+
+
+func get_wins() -> Array:
+	return wins
+
+
+## Record a victory for the Hall of Records. Also counts the game as completed:
+## a win ends the game without game_ended_signal (bottom_menu sets game_ended
+## directly), so without this bump winning would never unlock the hard difficulties.
+func record_win(entry: Dictionary) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	wins.push_front(entry)
+	games_completed += 1
+	_save()
 
 
 ## Test/debug hook: force the completed count and persist it.
@@ -47,6 +65,8 @@ func _load() -> void:
 	f.close()
 	if parsed is Dictionary:
 		games_completed = int((parsed as Dictionary).get("games_completed", 0))
+		var recorded: Variant = (parsed as Dictionary).get("wins", [])
+		wins = recorded if recorded is Array else []
 
 
 func _save() -> void:
@@ -56,7 +76,7 @@ func _save() -> void:
 	if f == null:
 		push_warning("[PlayerProfile] could not write %s" % tmp_path)
 		return
-	f.store_string(JSON.stringify({"games_completed": games_completed}, "\t"))
+	f.store_string(JSON.stringify({"games_completed": games_completed, "wins": wins}, "\t"))
 	f.close()
 	var err := DirAccess.rename_absolute(tmp_path, PATH)
 	if err != OK:

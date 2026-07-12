@@ -34,7 +34,7 @@ const HSM_POINTS := {
 const HSM_ORDER := ["HSM1", "HSM2", "HSM3", "HSM4", "HSM5", "HSM6"]
 
 signal tile_selected(tile_data)
-signal stockpile_destination_selected(tile_data)
+signal stockpile_destination_selected(tile_data, ctrl: bool)
 signal survey_tile_clicked(tile_data)
 
 var tiles := {}  # Vector2i(q, r) -> Dictionary
@@ -47,6 +47,7 @@ var _hover_overlay: TileMapLayer = null
 var _overlay_consumer: TileMapLayer = null   # light green — tiles that consume the stockpile good
 var _overlay_viable: TileMapLayer = null     # dark green — tiles with buildings but not consuming
 var _overlay_neutral: TileMapLayer = null    # dark grey — all other tiles
+var _overlay_selected: TileMapLayer = null   # bright green — the CTRL+click picked destination
 const TILE_HIGHLIGHT_ALPHA := 0.5
 
 func _enter_tree() -> void:
@@ -90,6 +91,25 @@ func _build_category_overlays() -> void:
 	_overlay_consumer = _make_tinted_overlay("StockpileConsumer", Color(0.35, 1.0, 0.35, TILE_HIGHLIGHT_ALPHA), 10)
 	_overlay_viable   = _make_tinted_overlay("StockpileViable",   Color(0.1,  0.45, 0.1,  TILE_HIGHLIGHT_ALPHA), 10)
 	_overlay_neutral  = _make_tinted_overlay("StockpileNeutral",  Color(0.25, 0.25, 0.25, TILE_HIGHLIGHT_ALPHA), 10)
+	_overlay_selected = _make_tinted_overlay("StockpileSelected", Color(0.35, 1.0, 0.35, 0.65), 23)
+
+## Keep one tile painted bright green after a CTRL+click destination pick, while the
+## ship-quantity panel is open. Cleared by clear_selected_destination().
+func mark_selected_destination(tile_id: String) -> void:
+	if _overlay_selected == null:
+		return
+	_overlay_selected.clear()
+	for coord in tiles:
+		if str((tiles[coord] as Dictionary).get("id", "")) == tile_id:
+			_overlay_selected.set_cell(map_coord_for_tile_coord(coord),
+				_source_for_tile_type((tiles[coord] as Dictionary).get("type", "")), Vector2i.ZERO)
+			_overlay_selected.visible = true
+			return
+
+func clear_selected_destination() -> void:
+	if _overlay_selected != null:
+		_overlay_selected.clear()
+		_overlay_selected.visible = false
 
 func _make_tinted_overlay(overlay_name: String, color: Color, z: int) -> TileMapLayer:
 	var layer := TileMapLayer.new()
@@ -551,7 +571,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			var tile_data: Dictionary = tiles[map_pos]
 
 			if _stockpile_destination_selection_active:
-				stockpile_destination_selected.emit(tile_data)
+				stockpile_destination_selected.emit(tile_data, event.ctrl_pressed or event.meta_pressed)
 				end_stockpile_destination_selection()
 				get_viewport().set_input_as_handled()
 			elif MapMode.current_mode == MapMode.Mode.SURVEYING:

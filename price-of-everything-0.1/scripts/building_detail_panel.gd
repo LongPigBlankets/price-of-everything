@@ -345,7 +345,7 @@ func _rebuild_fields(building: Dictionary) -> void:
 		_add_field("Value", _money_text(building_data.get("base_price", 0.0)))
 		_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data)))
 		_add_separator()
-		_add_labour_table(building_data)
+		_add_labour_table(building_data, recipe)
 		_add_separator()
 		_add_operation_table(building, recipe)
 		_apply_npc_field_blur()
@@ -370,12 +370,12 @@ func _rebuild_fields(building: Dictionary) -> void:
 		title_label.tooltip_text = _tile_title_tooltip(building)
 		location_label.visible = false
 		_show_storage_diagram(building)
-		_add_fill_storage_section(building)
+		_add_fill_storage_section(building, recipe)
 		var blvl := int(building.get("level", 1))
 		_add_field("Value", _money_text(building_data.get("base_price", 0.0)))
 		_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data) * BuildingLevels.mult("maint", blvl)))
 		_add_separator()
-		_add_labour_table(building_data)
+		_add_labour_table(building_data, recipe)
 		_update_run_warning(building, recipe, false)
 		return
 
@@ -415,7 +415,7 @@ func _rebuild_fields(building: Dictionary) -> void:
 	_add_separator()
 	_add_inbound_inputs_section(building, recipe)
 	_add_separator()
-	_add_labour_table(building_data)
+	_add_labour_table(building_data, recipe)
 	_add_separator()
 	_add_operation_table(building, recipe)
 
@@ -810,7 +810,7 @@ func _arrival_text(turns_remaining: int) -> String:
 		return "next turn"
 	return "in %d turns" % turns_remaining
 
-func _add_labour_table(building_data: Dictionary) -> void:
+func _add_labour_table(building_data: Dictionary, recipe: Dictionary = {}) -> void:
 	var header_row := HBoxContainer.new()
 	header_row.add_theme_constant_override("separation", 6)
 	fields_vbox.add_child(header_row)
@@ -837,9 +837,11 @@ func _add_labour_table(building_data: Dictionary) -> void:
 	table.add_child(_make_table_cell("Count", true, 52.0))
 	table.add_child(_make_table_cell("Cost", true, 70.0))
 
-	_add_labour_row(table, "Unskilled", building_data.get("labour_unskilled_required", 0), EconomyConfig.LABOUR_UNSKILLED_RATE)
-	_add_labour_row(table, "Skilled", building_data.get("labour_skilled_required", 0), EconomyConfig.LABOUR_SKILLED_RATE)
-	_add_labour_row(table, "Highly Skilled", building_data.get("labour_h_skilled_required", 0), EconomyConfig.LABOUR_HIGH_SKILLED_RATE)
+	var use_recipe_labour := int(recipe.get("labour_unskilled_required", -1)) >= 0
+	var source: Dictionary = recipe if use_recipe_labour else building_data
+	_add_labour_row(table, "Unskilled", source.get("labour_unskilled_required", 0), EconomyConfig.LABOUR_UNSKILLED_RATE)
+	_add_labour_row(table, "Skilled", source.get("labour_skilled_required", 0), EconomyConfig.LABOUR_SKILLED_RATE)
+	_add_labour_row(table, "Highly Skilled", source.get("labour_h_skilled_required", 0), EconomyConfig.LABOUR_HIGH_SKILLED_RATE)
 
 func _add_labour_row(table: GridContainer, label: String, count_value: Variant, rate: float) -> void:
 	var count := int(count_value)
@@ -1790,7 +1792,7 @@ func _storage_diagram_label() -> Label:
 # cards; locked types greyed "NOT AVAILABLE", quantity pill hidden), then a source — Buy from
 # Market (cost confirm + order), This tile's stockpile (instant load), or Other tile (routing,
 # next update).
-func _add_fill_storage_section(building: Dictionary) -> void:
+func _add_fill_storage_section(building: Dictionary, recipe: Dictionary = {}) -> void:
 	var tile_id := str(building.get("tile_id", ""))
 	_add_separator()
 	var fill_btn := Button.new()
@@ -1810,8 +1812,10 @@ func _add_fill_storage_section(building: Dictionary) -> void:
 		return
 	var type_row := HBoxContainer.new()
 	type_row.add_theme_constant_override("separation", 8)
-	for internal in ["lithium_battery", "sodium_battery", "iron_battery"]:
-		type_row.add_child(_make_battery_type_card(tile_id, internal))
+	for catalyst in recipe.get("catalysts", []) as Array:
+		var internal := str(catalyst.get("internal_name", ""))
+		if internal != "":
+			type_row.add_child(_make_battery_type_card(tile_id, internal))
 	fields_vbox.add_child(type_row)
 	if _fill_type == "" or not MatchState.is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(_fill_type, ""))):
 		return

@@ -212,7 +212,7 @@ func _rebuild(building: Dictionary) -> void:
 	if kind == "battery":
 		_body.add_child(_build_storage_card(building))
 		if BuildingReadout.owner_info(building).get("is_npc", false) == false:
-			_body.add_child(_build_battery_actions(building))
+			_body.add_child(_build_battery_actions(building, recipe))
 	elif kind == "port":
 		_body.add_child(_build_port_card())
 	elif is_infra:
@@ -259,7 +259,7 @@ func _rebuild(building: Dictionary) -> void:
 		_body.add_child(_build_shipments(ships))
 
 	_body.add_child(_make_section("Labour on this building"))
-	_body.add_child(_build_labour(BuildingReadout.labour(building_data)))
+	_body.add_child(_build_labour(BuildingReadout.labour(building_data, recipe)))
 
 	# sell / demolish (player-owned; the early NPC/construction returns skip this)
 	_body.add_child(_build_sell_demolish_row(building, building_data))
@@ -466,25 +466,25 @@ func _build_storage_card(building: Dictionary) -> PanelContainer:
 	return card
 
 # Battery cell management: source cells from the tile stockpile, or order them from the market.
-func _build_battery_actions(building: Dictionary) -> HBoxContainer:
+func _build_battery_actions(building: Dictionary, recipe: Dictionary) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", DS.SP["SM"])
 	var src := Button.new()
 	src.text = "Load from stockpile"
 	src.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	src.custom_minimum_size = Vector2(0, 40)
-	src.pressed.connect(func() -> void: _open_battery_source_sheet(building))
+	src.pressed.connect(func() -> void: _open_battery_source_sheet(building, recipe))
 	row.add_child(src)
 	var ord := Button.new()
 	ord.theme_type_variation = "Primary"
 	ord.text = "Order from market"
 	ord.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ord.custom_minimum_size = Vector2(0, 40)
-	ord.pressed.connect(func() -> void: _open_battery_order_sheet(building))
+	ord.pressed.connect(func() -> void: _open_battery_order_sheet(building, recipe))
 	row.add_child(ord)
 	return row
 
-func _open_battery_source_sheet(building: Dictionary) -> void:
+func _open_battery_source_sheet(building: Dictionary, recipe: Dictionary) -> void:
 	var tile := str(building.get("tile_id", ""))
 	_open_sheet("Load battery cells", func(vb: VBoxContainer) -> void:
 		var b := BuildingReadout.battery(building)
@@ -493,7 +493,8 @@ func _open_battery_source_sheet(building: Dictionary) -> void:
 		head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		head.text = "%d / %d cells fitted. Load cells from this tile's stockpile into the housing — locked capital, refundable by unloading." % [int(b.get("loaded", 0)), int(b.get("slots", 0))]
 		vb.add_child(head)
-		for internal in EconomyConfig.BATTERY_TYPE_UNLOCK:
+		for catalyst in recipe.get("catalysts", []) as Array:
+			var internal := str(catalyst.get("internal_name", ""))
 			var gid := str(Catalog.get_good_by_internal_name(str(internal)).get("id", ""))
 			if gid == "":
 				continue
@@ -518,9 +519,9 @@ func _open_battery_source_sheet(building: Dictionary) -> void:
 				var n := MatchState.load_battery_cells(tile, gid, loadable)
 				MatchState.request_toast(("Loaded %d %s cells" % [n, Catalog.get_display_name(gid)]) if n > 0 else "Nothing available to load", "success" if n > 0 else "warning")
 				_queue_refresh()
-				_open_battery_source_sheet(building))))
+				_open_battery_source_sheet(building, recipe))))
 
-func _open_battery_order_sheet(building: Dictionary) -> void:
+func _open_battery_order_sheet(building: Dictionary, recipe: Dictionary) -> void:
 	var tile := str(building.get("tile_id", ""))
 	_open_sheet("Order battery cells", func(vb: VBoxContainer) -> void:
 		var head := Label.new()
@@ -528,7 +529,8 @@ func _open_battery_order_sheet(building: Dictionary) -> void:
 		head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		head.text = "Order cells from the market to fill the housing — paid now, installed after delivery."
 		vb.add_child(head)
-		for internal in EconomyConfig.BATTERY_TYPE_UNLOCK:
+		for catalyst in recipe.get("catalysts", []) as Array:
+			var internal := str(catalyst.get("internal_name", ""))
 			var gid := str(Catalog.get_good_by_internal_name(str(internal)).get("id", ""))
 			if gid == "":
 				continue
@@ -1689,7 +1691,9 @@ func _build_routing_buttons(building: Dictionary, recipe: Dictionary) -> HBoxCon
 	row.add_theme_constant_override("separation", DS.SP["SM"])
 	if not (recipe.get("inputs", []) as Array).is_empty():
 		row.add_child(_route_card("Input sources", _input_summary(building, recipe), func() -> void: _open_input_sources_sheet(building, recipe)))
-	row.add_child(_route_card("Output destination", _output_summary(building, recipe), func() -> void: _open_output_sheet(building, recipe)))
+	var out_card := _route_card("Output destination", _output_summary(building, recipe), func() -> void: _open_output_sheet(building, recipe))
+	out_card.name = "OutputDestCard"   # tutorial spotlight target
+	row.add_child(out_card)
 	return row
 
 func _input_summary(building: Dictionary, recipe: Dictionary) -> String:
@@ -1705,6 +1709,18 @@ func _output_summary(building: Dictionary, recipe: Dictionary) -> String:
 	var dest := str(route.get("destination", "—"))
 	if not bool(route.get("reachable", true)):
 		dest += " · no route"
+	# Quantity-capped tile route (CTRL+click flow): show the split — what ships out
+	# and what stays behind, each on its own line (the card grows to fit).
+	var iid := str(building.get("instance_id", ""))
+	var gid := BuildingStatus.primary_output_good_id(recipe)
+	var cap := MatchState.get_output_ship_quantity(iid, gid)
+	if cap > 0 and not bool(route.get("has_market", false)):
+		var produced := BuildingStatus.primary_output_qty(recipe)
+		var lines := "Sending %d to %s" % [mini(cap, produced), dest]
+		var rest := maxi(0, produced - cap)
+		if rest > 0:
+			lines += "\nSending %d to tile stockpile" % rest
+		return lines
 	return dest
 
 # A clickable routing card (LABEL kicker + value + chevron) → opens a sheet. A PanelContainer,

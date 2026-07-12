@@ -15,6 +15,7 @@ const GLOW := Color(0.98, 0.80, 0.42)  # warm gold spotlight glow
 
 var _pulse := 0.0                      # drives the animated glow pulse
 var _no_dim := false                   # true = no dim/block (card only), so the map stays visible + interactive
+var _card_side := ""                   # "right" = prefer the bottom-right corner for the card
 var _hole: Rect2 = Rect2()             # spotlight rect in screen space (empty = full dim)
 var _target_node: Control = null       # live node whose rect we track each frame
 var _card: PanelContainer = null
@@ -208,6 +209,7 @@ func show_step(step: Dictionary, index: int, total: int) -> void:
 	visible = true
 	_mode = str(step.get("mode", ""))
 	_no_dim = bool(step.get("no_dim", false))
+	_card_side = str(step.get("card_side", ""))   # "right" prefers the bottom-right corner
 	_clear_annotations()
 
 	# "welcome": a centred modal intro panel — no corner card, no spotlight.
@@ -478,6 +480,21 @@ func _reposition_card() -> void:
 		Vector2(left_x, bottom_y), Vector2(right_x, bottom_y),
 		Vector2(left_x, top_y), Vector2(right_x, top_y),
 	]
+	match _card_side:
+		# A step can ask for a different corner first (e.g. the empire-view lesson:
+		# the default bottom-left corner sits exactly on the port row it describes).
+		"right":
+			candidates = [
+				Vector2(right_x, bottom_y), Vector2(left_x, bottom_y),
+				Vector2(right_x, top_y), Vector2(left_x, top_y),
+			]
+		"top_right":
+			candidates = [
+				Vector2(right_x, top_y), Vector2(left_x, top_y),
+				Vector2(right_x, bottom_y), Vector2(left_x, bottom_y),
+			]
+		_:
+			pass
 	var pos: Vector2 = candidates[0]
 	if _hole.has_area():
 		var chosen := false
@@ -571,6 +588,7 @@ func _build_annotations(step: Dictionary) -> void:
 		_annot_items.append({
 			"ref": str((t as Dictionary).get("ref", "")),
 			"side": str((t as Dictionary).get("side", "above")),
+			"lift": int((t as Dictionary).get("lift", 0)),
 			"label": lbl, "trect": Rect2(),
 		})
 	for h in step.get("hints", []):
@@ -600,15 +618,18 @@ func _position_annotations() -> void:
 		var ls := lbl.get_combined_minimum_size()
 		var gap := 12.0
 		var pos := Vector2.ZERO
+		# "lift" staggers a label N extra rows away from its target so long labels
+		# on adjacent buttons (bottom bar) don't run into their neighbours.
+		var lift := float(int(it.get("lift", 0))) * (ls.y + 6.0)
 		match str(it["side"]):
 			"below":
-				pos = Vector2(r.get_center().x - ls.x * 0.5, r.end.y + gap)
+				pos = Vector2(r.get_center().x - ls.x * 0.5, r.end.y + gap + lift)
 			"left":
 				pos = Vector2(r.position.x - gap - ls.x, r.get_center().y - ls.y * 0.5)
 			"right":
 				pos = Vector2(r.end.x + gap, r.get_center().y - ls.y * 0.5)
 			_:  # "above"
-				pos = Vector2(r.get_center().x - ls.x * 0.5, r.position.y - gap - ls.y)
+				pos = Vector2(r.get_center().x - ls.x * 0.5, r.position.y - gap - ls.y - lift)
 		pos.x = clampf(pos.x, 4.0, maxf(size.x - ls.x - 4.0, 4.0))
 		pos.y = clampf(pos.y, 4.0, maxf(size.y - ls.y - 4.0, 4.0))
 		lbl.position = pos - global_position

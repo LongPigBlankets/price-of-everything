@@ -1,0 +1,125 @@
+recipe_id,recipe,building,primary_output,formula_price,current_output_qty,canonical_supply_floor,unrounded_output_qty,suggested_output_qty,output_rounding,output_multiplier,labour_unskilled,labour_skilled,labour_h_skilled,labour_bill,input_bill,energy_bill,maintenance_bill,one_turn_inbound_freight,one_turn_outbound_freight,one_turn_working_inventory_warehouse_reserve,target_profit,planned_pre_tax_cash_after_freight_and_warehouse,target_min,target_max,in_target_band
+r_001,Coal Mining,mine,coal,0.4,60.0,60.0,60.0,60,multiple of 12,1.0,1806,273,50,10.0,0,3.0,2.0,0.0,0.9,0.6,7.5,7.5,5.0,10.0,True
+r_002,Iron Mining,mine,iron_ore,0.587,40.0,40.0,40.0,40,multiple of 5,1.0,1806,273,50,10.0,0,3.0,2.0,0.0,0.6,0.4,7.5,7.5,5.0,10.0,True
+r_003,Steelmaking,furnace,steel,1.748,48.0,48.0,48.0,48,multiple of 12,1.0,1144,429,50,9.379,49.323,14.0,1.0,0.9,0.72,1.08,7.5,7.5,5.0,10.0,True
+r_004,Power Production,coal_power,power,0.06,600.0,,594.646,595,multiple of 5,0.992,500,208,109,7.085,17.394,0.0,2.0,0.9,0.0,0.8,7.5,7.521,5.0,10.0,True
+r_005,Pig Iron Smelting,furnace,iron_ingots,0.974,70.0,70.0,70.0,70,multiple of 5,1.0,1144,429,50,9.379,33.075,14.0,1.0,0.9,1.05,1.3,7.5,7.5,5.0,10.0,True
+r_006,Copper Mining,mine,copper_ore,0.65,36.0,36.0,36.0,36,unit precision,1.0,1806,273,50,10.0,0,3.0,2.0,0.0,0.54,0.36,7.5,7.5,5.0,10.0,True
+r_007,Copper Blistering,furnace,copper_ingots,2.364,24.0,24.0,24.0,24,unit precision,1.0,964,362,50,8.16,24.57,14.0,1.0,0.54,0.36,0.6,7.5,7.5,5.0,10.0,True
+r_008,Copper Wire Drawing,industrial_factory,copper_wiring,3.83,32.0,32.0,32.0,32,unit precision,1.0,4895,1836,186,39.242,59.567,8.0,7.0,0.36,0.32,0.56,7.5,7.5,5.0,10.0,True
+r_009,Motor Manufacture,industrial_factory,motor,9.298,28.0,28.0,28.0,28,unit precision,1.0,7114,2668,270,57.018,183.736,3.0,7.0,0.77,0.42,0.9,7.5,7.5,5.0,10.0,True
+r_011,Water Pumping,water_pump,pure_water,0.428,48.0,48.0,48.0,48,multiple of 12,1.0,1197,182,50,7.178,0,2.0,1.0,0.0,1.44,1.44,7.5,7.5,5.0,10.0,True
+r_014,Oil Drilling,oil_well,crude_oil,1.066,20.0,20.0,20.0,20,unit precision,1.0,1498,231,50,8.611,0,3.0,1.0,0.0,0.6,0.6,7.5,7.5,5.0,10.0,True
+r_015,Bauxite Mining,mine,bauxite_ore,1.15,20.0,20.0,20.0,20,unit precision,1.0,1806,273,50,10.0,0,3.0,2.0,0.0,0.3,0.2,7.5,7.5,5.0,10.0,True
+r_016,Lithium Mining,mine,lithium_ore,2.838,8.0,8.0,8.0,8,unit precision,1.0,1806,273,50,10.0,0,3.0,2.0,0.0,0.12,0.08,7.5,7.5,5.0,10.0,True
+r_017,Rare Earth Mining,mine,ree_ore,1.9,12.0,12.0,12.0,12,unit precision,1.0,1806,273,50,10.0,0,3.0,2.0,0.0,0.18,0.12,7.5,7.5,5.0,10.0,True
+r_018,Sand Excavation,mine,sand,0.525,45.0,45.0,45.0,45,multiple of 5,1.0,1806,273,50,10.0,0,3.0,2.0,0.0,0.675,0.45,7.5,7.5,5.0,10.0,True
+r_019,Limestone Mining,mine,limestone,0.925,25.0,25.0,25.0,25,unit precision,1.0,1806,273,50,10.0,0,3.0,2.0,0.0,0.375,0.25,7.5,7.5,5.0,10.0,True
+r_020,Flash Copper Smelting,furnace,copper_ingots,2.364,65.0,24.0,60.792,60,multiple of 12,0.923,937,352,50,7.978,87.93,14.0,1.0,0.57,0.9,1.3,30.0,28.147,20.0,60.0,True
+r_022,Fuels Refining,petro_refinery,fuels,2.367,22.0,22.0,22.0,22,unit precision,1.0,756,287,50,6.774,27.881,7.0,1.0,0.3,0.66,0.96,7.5,7.5,5.0,10.0,True
+r_023,Ethylene Refining,petro_refinery,ethylene,3.842,13.0,13.0,13.0,13,unit precision,1.0,756,287,50,6.774,27.881,7.0,1.0,0.3,0.39,1.6,5.0,5.0,0.0,5.0,True
+r_024,Plastics Manufacturing,poly_plant,plastics,5.16,12.0,12.0,12.0,12,unit precision,1.0,553,329,66,7.04,40.34,7.0,1.0,0.3,0.12,1.12,5.0,5.0,0.0,5.0,True
+r_025,Basic Oxygen Steelmaking,furnace,steel,1.748,40.0,48.0,42.258,40,multiple of 5,1.0,804,302,50,7.072,34.797,14.0,1.0,0.42,0.6,0.92,15.0,11.11,5.0,30.0,True
+r_026,Copper Pipe Hot Rolling,furnace,copper_pipe,3.018,18.0,18.0,18.0,18,unit precision,1.0,616,231,50,5.789,32.265,7.0,1.0,0.195,0.27,0.31,7.5,7.5,5.0,10.0,True
+r_028,Synthetic Rubber Production,poly_plant,rubber,4.814,17.0,17.0,17.0,17,unit precision,1.0,553,329,66,7.04,57.14,7.0,1.0,0.42,0.17,1.57,7.5,7.5,5.0,10.0,True
+r_029,Concrete Firing,furnace,concrete,3.909,22.0,28.0,22.31,22,unit precision,1.0,1078,405,50,8.938,53.744,14.0,1.0,0.825,0.33,0.87,7.5,6.295,5.0,10.0,True
+r_030,Electric Concrete Production,eaf,concrete,3.909,28.0,28.0,28.0,28,unit precision,1.0,2158,819,81,17.36,66.166,14.0,2.0,0.96,0.42,1.05,7.5,7.5,5.0,10.0,True
+r_031,Direct Reduced Iron Smelting,furnace,iron_ingots,0.974,400.0,70.0,403.938,405,multiple of 5,1.012,951,357,50,8.07,344.006,14.0,1.0,0.6,6.075,4.85,15.0,16.008,5.0,30.0,True
+r_032,Lithium Ion Battery Manufacturing,industrial_factory,lithium_battery,24.75,10.0,10.0,10.0,10,unit precision,1.0,4239,1590,161,33.981,213.818,2.0,7.0,0.27,0.15,0.28,-10.0,-10.0,-50.0,-1.0,True
+r_033,Construction Equiment Assembly (ICE),industrial_factory,construction_equipment_ice,34.77,12.0,12.0,12.0,12,unit precision,1.0,7114,2668,270,57.018,341.362,2.0,7.0,1.02,0.36,0.98,7.5,7.5,5.0,10.0,True
+r_034,Construction Equipment Assembly (EV),industrial_factory,construction_equipment_ev,32.897,12.0,12.0,12.0,12,unit precision,1.0,6319,2370,240,50.653,303.715,2.0,7.0,0.52,0.36,0.52,30.0,30.0,20.0,60.0,True
+r_035,Silica Washing,petro_refinery,silica,2.64,13.0,13.0,13.0,13,unit precision,1.0,882,335,50,7.638,10.009,7.0,1.0,0.45,0.195,0.53,7.5,7.5,5.0,10.0,True
+r_037,Onshore wind generation,onshore_wind_farm,power,0.06,228.0,,227.667,228,multiple of 12,1.0,500,100,50,4.16,0,0.0,2.0,0.0,0.0,0.0,7.5,7.52,5.0,10.0,True
+r_038,Gas Combined Cycle Turbines,coal_power,power,0.06,430.0,,430.23,430,multiple of 5,1.0,500,126,66,4.922,11.152,0.0,2.0,0.12,0.0,0.12,7.5,7.486,5.0,10.0,True
+r_039,Lithium Electrolysis,electrolyser,lithium_carbonate,15.28,9.0,9.0,5.046,5,unit precision,0.556,784,294,50,6.931,32.773,16.0,1.0,0.165,0.075,0.16,20.0,19.296,15.0,25.0,True
+r_040,Bayer Process,furnace,alumina,1.972,30.0,30.0,30.0,30,unit precision,1.0,851,319,50,7.386,30.87,14.0,1.0,0.54,0.45,1.3,3.6,3.6,0.0,5.0,True
+r_041,Rare Earth Reduction,electrolyser,refined_ree,11.658,6.0,6.0,6.0,6,unit precision,1.0,915,343,50,7.821,27.93,24.0,1.0,0.45,0.09,1.16,7.5,7.5,5.0,10.0,True
+r_042,Bio-Graphitisation,furnace,graphite,9.071,22.0,10.0,22.203,22,unit precision,1.0,682,256,50,6.24,108.943,24.0,1.0,0.3,0.33,0.58,60.0,58.167,30.0,100.0,True
+r_044,Silicon Smelting,eaf,metallurgical_silicon,1.84,20.0,20.0,20.0,20,unit precision,1.0,1162,441,50,9.552,3.192,14.0,2.0,0.03,0.3,0.22,7.5,7.5,5.0,10.0,True
+r_045,Polysilicon (Siemens) Smelting,chem_plant,polysilicon,21.548,3.0,3.0,3.0,3,unit precision,1.0,2408,903,91,19.286,9.658,24.0,4.0,0.075,0.045,0.08,7.5,7.5,5.0,10.0,True
+r_046,Haber Bosch Process,chem_plant,ammonia,28.187,30.0,30.0,30.0,30,unit precision,1.0,2809,1054,107,22.531,791.076,14.0,4.0,0.6,0.9,5.0,7.5,7.5,5.0,10.0,True
+r_047,Fertilisers Production,chem_plant,fertilisers,12.164,24.0,24.0,24.0,24,unit precision,1.0,2809,1054,107,22.531,248.988,7.0,4.0,0.4,0.36,1.16,7.5,7.5,5.0,10.0,True
+r_050,Aluminium (Hall Heroult) Smelting,furnace,aluminium,5.691,20.0,20.0,20.0,20,unit precision,1.0,851,319,50,7.386,75.225,24.0,1.0,0.42,0.3,0.48,5.0,5.0,0.0,5.0,True
+r_053,Industrial Glassmaking,furnace,glass,2.103,32.0,32.0,32.0,32,unit precision,1.0,1114,418,50,9.178,32.839,14.0,1.0,0.855,0.32,1.61,7.5,7.5,5.0,10.0,True
+r_054,High Strength Glassmaking,furnace,glass,2.103,31.0,32.0,31.248,31,unit precision,1.0,616,231,50,5.789,28.956,14.0,1.0,0.21,0.31,0.45,15.0,14.483,5.0,30.0,True
+r_055,uPVC Window Manufacturing,industrial_factory,windows,11.475,18.0,18.0,18.0,18,unit precision,1.0,6552,2457,248,52.49,136.246,2.0,7.0,0.43,0.27,0.61,7.5,7.5,5.0,10.0,True
+r_056,Window Manufacturing,industrial_factory,windows,11.475,17.0,18.0,16.782,17,unit precision,1.0,6159,2310,293,51.261,121.584,4.0,7.0,0.43,0.255,0.55,7.5,9.991,5.0,10.0,True
+r_057,Building Frame Manufacture,assembly_plant,building_frame,14.599,26.0,26.0,26.0,26,unit precision,1.0,5208,4631,1559,111.011,244.033,2.0,13.0,0.6,0.78,0.66,7.5,7.5,5.0,10.0,True
+r_058,Solar Panel Manufacturing,assembly_plant,solar_panel,26.41,8.0,8.0,8.0,8,unit precision,1.0,4435,3943,1328,94.541,93.197,2.0,13.0,0.435,0.24,0.37,7.5,7.5,5.0,10.0,True
+r_059,Wind Turbine Manufacturing,assembly_plant,wind_turbine,69.022,3.0,3.0,3.0,3,unit precision,1.0,3157,2807,945,67.29,116.928,2.0,13.0,0.13,0.09,0.13,7.5,7.5,5.0,10.0,True
+r_060,Durable Perovskite Solar Panels,assembly_plant,solar_panel,26.41,12.0,8.0,11.603,12,unit precision,1.0,3157,2807,945,67.29,173.365,2.0,13.0,0.18,0.36,0.25,50.0,60.48,40.0,60.0,False
+r_061,Segmented Assembly Wind Turbines,assembly_plant,wind_turbine,69.022,3.0,3.0,2.969,3,unit precision,1.0,3157,2807,945,67.29,92.318,2.0,13.0,0.11,0.09,0.11,30.0,32.15,20.0,60.0,True
+r_063,Heterojunction Solar Panels,high_tech_manufactory,solar_panel,26.41,12.0,8.0,12.473,12,unit precision,1.0,2299,2044,686,48.931,218.616,2.0,9.0,0.21,0.36,0.27,50.0,37.537,40.0,60.0,False
+r_064,Triple Tandem Solar Panels,high_tech_manufactory,solar_panel,26.41,15.0,8.0,15.073,15,unit precision,1.0,2447,2176,731,52.112,283.946,2.0,9.0,0.255,0.45,0.32,50.0,48.072,40.0,60.0,True
+r_065,SynRM Magnetless Motors,assembly_plant,motor,9.298,27.0,28.0,27.49,27,unit precision,1.0,4118,3661,1233,87.779,91.604,2.0,13.0,0.28,0.405,0.52,60.0,55.458,30.0,100.0,True
+r_066,Axial Flux Motors,assembly_plant,motor,9.298,28.0,28.0,23.491,23,unit precision,0.821,4034,3587,1208,86.0,101.287,2.0,13.0,0.3,0.345,0.47,15.0,10.451,5.0,30.0,True
+r_067,Rubber Vulcanisation,chem_plant,tyres,5.465,25.0,25.0,25.0,25,unit precision,1.0,3383,1269,128,27.104,98.06,2.0,4.0,0.35,0.375,0.54,4.2,4.2,0.0,5.0,True
+r_068,Car Body Manufacturing,industrial_factory,car_body,11.173,14.0,14.0,14.0,14,unit precision,1.0,5472,2052,207,43.834,94.787,2.0,7.0,0.435,0.42,0.44,7.5,7.5,5.0,10.0,True
+r_069,Lightweight Car Bodies,assembly_plant,car_body,11.173,20.0,14.0,19.83,20,unit precision,1.0,3774,3356,1130,80.454,94.789,2.0,13.0,0.3,0.6,0.41,30.0,31.897,20.0,60.0,True
+r_071,ICE Engine Manufacturing,industrial_factory,engine,45.617,6.0,6.0,6.0,6,unit precision,1.0,7114,2668,270,57.018,198.46,2.0,7.0,0.825,0.18,0.72,7.5,7.5,5.0,10.0,True
+r_072,V8 Engine Manufacturing,industrial_factory,engine,45.617,6.0,6.0,5.174,5,unit precision,0.833,5995,2248,227,48.029,162.597,2.0,7.0,0.66,0.15,0.57,15.0,7.08,5.0,30.0,True
+r_073,Large Vehicle Engine Manufacturing,assembly_plant,large_engine,42.064,11.0,11.0,11.0,11,unit precision,1.0,5863,5213,1755,124.966,305.026,2.0,13.0,1.29,0.33,1.09,15.0,15.0,5.0,30.0,True
+r_074,Hybrid Engine Manufacturing,assembly_plant,engine,45.617,7.0,6.0,6.881,7,unit precision,1.0,3863,3434,1157,82.352,200.562,2.0,13.0,0.38,0.21,0.37,15.0,20.446,5.0,30.0,True
+r_076,Electric Arc Steelmaking,eaf,steel,1.748,185.0,48.0,194.204,195,multiple of 5,1.054,1356,515,51,10.915,276.769,14.0,2.0,0.36,2.925,2.51,30.0,31.372,20.0,60.0,True
+r_077,HIsarna Steel Making,furnace,steel,1.748,50.0,48.0,52.321,50,multiple of 5,1.0,820,308,50,7.181,36.895,14.0,1.0,0.45,0.75,1.12,30.0,26.002,20.0,60.0,True
+r_081,Fluidised Bed Reactor + CZ Silicon,chem_plant,polysilicon,21.548,14.0,3.0,14.249,14,unit precision,1.0,2408,903,91,19.286,198.748,24.0,4.0,0.195,0.21,0.59,60.0,54.647,30.0,100.0,True
+r_082,Electric Calcination Alumina,chem_plant,alumina,1.972,180.0,30.0,180.035,180,multiple of 12,1.0,3440,1290,130,27.552,289.59,20.0,4.0,0.6,2.7,3.0,7.5,7.432,5.0,10.0,True
+r_084,Aluminium Direct Carbothermic Electrolysis,eaf,aluminium,5.691,23.0,20.0,23.347,23,unit precision,1.0,1322,502,50,10.65,69.149,20.0,2.0,0.285,0.345,0.42,30.0,28.034,20.0,60.0,True
+r_087,Nitrogen Air Separation,chem_plant,nitrogen,1.176,50.0,50.0,50.0,50,multiple of 5,1.0,2408,903,91,19.286,0,14.0,4.0,0.0,1.5,5.0,15.0,15.0,5.0,30.0,True
+r_099,Lithium Phosphate Batteries,high_tech_manufactory,lithium_battery,24.75,8.0,10.0,8.391,8,unit precision,1.0,2275,2023,679,48.429,157.494,2.0,9.0,0.225,0.12,0.4,-10.0,-19.669,-50.0,-1.0,True
+r_101,Alkaline Battery Manufacturing,industrial_factory,alkaline_battery,5.493,24.0,24.0,24.0,24,unit precision,1.0,6627,2486,251,53.104,60.519,2.0,7.0,0.66,0.36,0.68,7.5,7.5,5.0,10.0,True
+r_102,Sodium Ion Battery Manufacturing,assembly_plant,sodium_battery,31.955,12.0,12.0,12.0,12,unit precision,1.0,5863,5213,1755,124.966,211.646,2.0,13.0,0.93,0.18,0.74,30.0,30.0,20.0,60.0,True
+r_105,Water Treatment,water_recycling,pure_water,0.428,120.0,48.0,123.288,125,multiple of 5,1.042,1467,224,50,8.445,2.52,2.0,1.0,0.72,3.75,4.47,30.0,30.631,20.0,60.0,True
+r_106,Scrap Recycling,eaf,steel,1.748,27.0,48.0,28.566,29,unit precision,1.074,1485,564,56,11.958,20.16,7.0,2.0,0.36,0.435,0.53,7.5,8.247,5.0,10.0,True
+r_108,Biowaste Recycling,recycling_plant,biomass,0.909,48.0,30.0,47.715,48,multiple of 12,1.0,1670,630,62,13.376,9.45,2.0,2.0,0.3,0.48,0.78,15.0,15.253,5.0,30.0,True
+r_114,Hydrochloric Acid Production,industrial_factory,industrial_acids,28.121,45.0,45.0,45.0,45,multiple of 5,1.0,5995,2248,227,48.029,1185.408,7.0,7.0,1.08,1.35,8.1,7.5,7.5,5.0,10.0,True
+r_115,Sulphuric Acid Production,industrial_factory,industrial_acids,28.121,3.0,45.0,3.528,4,unit precision,1.333,6159,2310,233,49.341,28.868,7.0,7.0,0.825,0.12,1.12,5.0,18.212,0.0,10.0,False
+r_116,Generic Acid Production,industrial_factory,industrial_acids,28.121,29.0,45.0,30.655,31,unit precision,1.069,5995,2248,227,48.029,806.4,7.0,7.0,0.72,0.93,4.54,-12.5,-2.853,-20.0,-5.0,False
+r_117,ICE Car Production,industrial_factory,ice_car,101.877,6.0,6.0,6.0,6,unit precision,1.0,6994,2623,265,56.042,529.397,2.0,7.0,0.975,0.18,0.67,15.0,15.0,0.0,30.0,True
+r_118,Automated ICE Car Assembly,assembly_plant,ice_car,101.877,9.0,6.0,8.531,9,unit precision,1.0,5863,5213,1755,124.966,686.735,2.0,13.0,1.25,0.27,0.87,40.0,87.804,30.0,50.0,False
+r_119,EV Assembly,assembly_plant,ev_car,139.184,5.0,5.0,5.0,5,unit precision,1.0,5524,4912,1654,117.76,496.792,2.0,13.0,0.72,0.15,0.5,65.0,65.0,30.0,100.0,True
+r_120,Basic Circuit Soldering,industrial_factory,circuit_board,14.789,12.0,12.0,12.0,12,unit precision,1.0,5192,1947,197,41.61,118.567,2.0,7.0,0.285,0.12,0.39,7.5,7.5,5.0,10.0,True
+r_121,Circuit Printing,assembly_plant,circuit_board,14.789,11.0,12.0,11.077,11,unit precision,1.0,3157,2807,945,67.29,51.059,2.0,13.0,0.13,0.11,0.23,30.0,28.864,20.0,60.0,True
+r_122,Semiconductor Fabbing,assembly_plant,cpu,74.571,5.0,5.0,5.0,5,unit precision,1.0,3863,3434,1157,82.352,284.807,2.0,13.0,0.285,0.05,0.36,-10.0,-10.0,-50.0,-1.0,True
+r_123,Fabless Semiconductors,high_tech_manufactory,cpu,74.571,5.0,5.0,3.645,4,unit precision,0.8,2275,2023,679,48.429,147.093,2.0,9.0,0.125,0.04,0.13,65.0,91.466,30.0,100.0,True
+r_124,Semiconductor 3D Printing,high_tech_manufactory,cpu,74.571,5.0,5.0,3.19,3,unit precision,0.6,2275,2023,679,48.429,118.273,2.0,9.0,0.085,0.03,0.09,60.0,45.805,40.0,80.0,True
+r_125,Computer Assembly,assembly_plant,computer,53.134,9.0,9.0,9.0,9,unit precision,1.0,3157,2807,945,67.29,387.988,2.0,13.0,0.13,0.09,0.21,7.5,7.5,5.0,10.0,True
+r_126,Electrical Components Production,industrial_factory,electrical_components,11.286,12.0,12.0,12.0,12,unit precision,1.0,4686,1758,178,37.568,80.593,2.0,7.0,0.245,0.18,0.34,7.5,7.5,5.0,10.0,True
+r_127,Precision Electrical Components,high_tech_manufactory,electrical_components,11.286,21.0,12.0,21.313,21,unit precision,1.0,2784,2475,831,59.261,139.269,2.0,9.0,0.245,0.315,0.43,30.0,26.476,20.0,60.0,True
+r_131,Hydrogen Power,coal_power,power,0.06,2540.0,,2539.693,2540,multiple of 5,1.0,500,126,66,4.922,130.2,0.0,2.0,0.06,0.0,0.2,15.0,15.018,5.0,30.0,True
+r_132,Alloy Metal Smelting,furnace,alloy_ingots,1.682,30.0,30.0,30.0,30,unit precision,1.0,719,270,50,6.493,20.212,14.0,1.0,0.3,0.45,0.5,7.5,7.5,5.0,10.0,True
+r_133,Alloy Metal Electrolysis,electrolyser,alloy_ingots,1.682,50.0,30.0,51.376,50,multiple of 5,1.0,1023,384,50,8.56,24.412,20.0,1.0,0.45,0.75,1.2,30.0,27.72,20.0,60.0,True
+r_134,Alloy Metal Mining,mine,alloy_ore,0.962,24.0,24.0,24.0,24,unit precision,1.0,1806,273,50,10.0,0,3.0,2.0,0.0,0.36,0.24,7.5,7.5,5.0,10.0,True
+r_135,Fibreglass Production,industrial_factory,fibreglass,11.719,6.0,6.0,6.0,6,unit precision,1.0,3831,1437,145,30.694,22.879,2.0,7.0,0.06,0.06,0.12,7.5,7.5,5.0,10.0,True
+r_136,Iron Air Batteries,industrial_factory,iron_battery,25.155,15.0,15.0,15.0,15,unit precision,1.0,7114,2668,270,57.018,272.304,2.0,7.0,3.795,0.225,4.98,30.0,30.0,20.0,60.0,True
+r_145,Offshore Wind Power Generation,offshore_wind_farm,power,0.06,245.0,,244.333,245,multiple of 5,1.0,500,100,50,4.16,0,0.0,3.0,0.0,0.0,0.0,7.5,7.54,5.0,10.0,True
+r_146,Solar Power Generation,solar_farm,power,0.06,228.0,,227.667,228,multiple of 12,1.0,500,100,50,4.16,0,0.0,2.0,0.0,0.0,0.0,7.5,7.52,5.0,10.0,True
+r_150,Petroleum Needle Coke Calcination,petro_refinery,graphite,9.071,10.0,10.0,10.0,10,unit precision,1.0,789,300,50,7.005,50.554,24.0,1.0,0.24,0.15,0.26,7.5,7.5,5.0,10.0,True
+r_151,Petroleum Needle Coke Power,petro_refinery,power,0.06,680.0,,679.191,680,multiple of 5,1.0,756,287,50,6.774,25.277,0.0,1.0,0.12,0.0,0.08,7.5,7.549,5.0,10.0,True
+r_154,Coal Liquefaction,chem_plant,fuels,2.367,85.0,22.0,84.609,85,multiple of 5,1.0,2408,903,91,19.286,134.4,7.0,4.0,0.21,2.55,2.85,30.0,30.902,20.0,60.0,True
+r_165,Radial Axial Tire Production,industrial_factory,tyres,5.465,36.0,25.0,36.984,36,multiple of 12,1.0,6850,2569,260,54.902,128.701,2.0,7.0,0.625,0.54,0.83,7.5,2.147,0.0,15.0,True
+r_175,PVC Polymerisation,poly_plant,pvc,5.678,16.0,16.0,16.0,16,unit precision,1.0,736,438,88,9.376,62.27,7.0,1.0,0.78,0.16,2.76,7.5,7.5,5.0,10.0,True
+r_177,Shale Oil Fracking,fracking_oil_well,crude_oil,1.066,29.0,20.0,29.5,29,unit precision,1.0,1722,266,50,9.664,0,3.0,2.0,0.0,0.87,0.87,15.0,14.497,5.0,30.0,True
+r_178,Offshore Oil Extraction,offshore_oil_platform,crude_oil,1.066,45.0,20.0,44.417,45,multiple of 5,1.0,1722,266,50,9.664,0,3.0,2.0,0.0,1.35,1.35,30.0,30.586,20.0,60.0,True
+r_179,Sulphur Mining,mine,sulphur,0.962,24.0,24.0,24.0,24,unit precision,1.0,1806,273,50,10.0,0,3.0,2.0,0.0,0.36,0.24,7.5,7.5,5.0,10.0,True
+r_180,Oil Refining,petro_refinery,processed_oil,2.655,18.0,18.0,18.0,18,unit precision,1.0,882,335,50,7.638,22.377,7.0,1.0,0.6,0.54,1.14,7.5,7.5,5.0,10.0,True
+r_181,Oil Power Production,coal_power,power,0.06,525.0,,525.165,525,multiple of 5,1.0,500,126,66,4.922,16.728,0.0,2.0,0.18,0.0,0.18,7.5,7.49,5.0,10.0,True
+r_203,Hairpin Stator Motors,assembly_plant,motor,9.298,28.0,28.0,23.119,23,unit precision,0.821,3949,3512,1183,84.208,99.66,2.0,13.0,0.285,0.345,0.46,15.0,13.895,5.0,30.0,True
+r_204,Heavy Vehicles Assembly,industrial_factory,heavy_vehicle,194.075,5.0,5.0,5.0,5,unit precision,1.0,7114,2668,270,57.018,886.663,2.0,7.0,1.515,0.15,1.03,15.0,15.0,0.0,30.0,True
+r_205,Heavy Vehicles Automated Manufacturing,assembly_plant,heavy_vehicle,194.075,5.0,5.0,5.561,6,unit precision,1.2,5863,5213,1755,124.966,886.663,2.0,13.0,1.515,0.18,1.04,50.0,135.086,30.0,70.0,False
+r_206,Electric Heavy Vehicles Manufacturing,assembly_plant,heavy_vehicle,194.075,5.0,5.0,5.476,5,unit precision,1.0,4802,4269,1438,102.365,883.96,2.0,13.0,0.885,0.15,0.39,60.0,-32.373,60.0,90.0,False
+r_207,Heavy Electric Motor,assembly_plant,large_engine,42.064,13.0,11.0,12.453,13,unit precision,1.0,5863,5213,1755,124.966,352.071,2.0,13.0,0.78,0.39,0.65,30.0,52.972,20.0,60.0,True
+r_213,Aggressive Logging - Biomass,new_forest,biomass,0.909,30.0,30.0,30.0,30,unit precision,1.0,2898,448,50,15.174,0,1.0,3.0,0.0,0.3,0.3,7.5,7.5,5.0,10.0,True
+r_214,Sustainable Forestry - Biomass,new_forest,biomass,0.909,55.0,30.0,55.305,55,multiple of 5,1.0,2898,448,50,15.174,0,1.0,3.0,0.0,0.55,0.55,30.0,29.729,20.0,60.0,True
+r_215,Gentle Pruning - Biomass,new_forest,biomass,0.909,30.0,30.0,30.0,30,unit precision,1.0,2898,448,50,15.174,0,1.0,3.0,0.0,0.3,0.3,7.5,7.5,5.0,10.0,True
+r_217,Biomass Carbonisation,furnace,carbonised_biomass,2.961,18.0,18.0,18.0,18,unit precision,1.0,788,296,50,6.963,22.91,14.0,1.0,0.24,0.27,0.42,7.5,7.5,5.0,10.0,True
+r_218,Petroleum Coking,petro_refinery,pet_coke,3.009,18.0,18.0,18.0,18,unit precision,1.0,882,335,50,7.638,22.377,14.0,1.0,0.6,0.27,0.78,7.5,7.5,5.0,10.0,True
+r_219,Copper Pipe Moulding,furnace,copper_pipe,3.018,27.0,18.0,27.134,27,unit precision,1.0,643,241,50,5.971,36.847,7.0,1.0,0.24,0.405,0.43,30.0,29.6,20.0,60.0,True
+r_220,Copper Pipe Manufacturing,industrial_factory,copper_pipe,3.018,48.0,18.0,46.695,48,multiple of 12,1.0,3870,1451,147,31.018,64.275,7.0,7.0,0.24,0.72,0.72,30.0,33.905,20.0,60.0,True
+r_221,Deepwater Oil Extraction,offshore_oil_platform,crude_oil,1.066,45.0,20.0,44.417,45,multiple of 5,1.0,1722,266,50,9.664,0,3.0,2.0,0.0,1.35,1.35,30.0,30.586,20.0,60.0,True
+r_222,Subsea Manifold Extraction,offshore_oil_platform,crude_oil,1.066,75.0,20.0,74.251,75,multiple of 5,1.0,1722,266,50,9.664,0,3.0,2.0,0.0,2.25,2.25,60.0,60.753,30.0,100.0,True
+r_223,Floating Offshore Wind Power,offshore_wind_farm,power,0.06,1120.0,,1119.333,1120,multiple of 5,1.0,500,100,50,4.16,0,0.0,3.0,0.0,0.0,0.0,60.0,60.04,30.0,100.0,True
+r_224,Hydroelectric Power,hydro_power_plant,power,0.06,370.0,,369.333,370,multiple of 5,1.0,500,100,50,4.16,0,0.0,3.0,0.0,0.0,0.0,15.0,15.04,5.0,30.0,True
+r_226,Magnetic Separation Electrolysis,electrolyser,refined_ree,11.658,7.0,6.0,7.235,7,unit precision,1.0,784,294,50,6.931,21.749,24.0,1.0,0.27,0.105,0.29,30.0,27.264,20.0,60.0,True
+r_227,Rudimentary Lithium Refinement,furnace,lithium_carbonate,15.28,9.0,9.0,9.0,9,unit precision,1.0,616,231,50,5.789,112.418,10.0,1.0,0.21,0.135,0.47,7.5,7.5,5.0,10.0,True
+r_228,Bio Ethylene,chem_plant,ethylene,3.842,28.0,13.0,27.757,28,unit precision,1.0,2408,903,91,19.286,9.546,10.0,4.0,0.1,0.84,2.9,60.0,60.901,30.0,100.0,True

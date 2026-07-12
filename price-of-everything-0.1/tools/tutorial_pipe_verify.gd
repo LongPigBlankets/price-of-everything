@@ -10,6 +10,7 @@ extends Node
 
 const BuildingReadout := preload("res://scripts/building_readout.gd")
 const TutorialDetectors := preload("res://scripts/tutorial/tutorial_detectors.gd")
+const TutorialSteps := preload("res://scripts/tutorial/tutorial_steps.gd")
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const TUTORIAL_START := "res://data/starts/tutorial.json"
@@ -154,6 +155,79 @@ func _run() -> void:
 	_check(dlg.find_child("SourcingBuyButton", true, false) != null,
 		"sourcing dialog has the named buy button (SourcingBuyButton)")
 	dlg.queue_free()
+
+	# --- Buy Land lesson: the tutorial seeds ONLY the factory plot; the furnace build
+	#     hits the owned-land wall until the player buys the shortfall. All figures are
+	#     COMPUTED from the catalog + TutorialSteps so rebalances keep this green.
+	var seed: int = TutorialSteps.TUTORIAL_SEED_LAND
+	var target: int = TutorialSteps._land_lesson_target()
+	var fp_factory: int = TutorialSteps._footprint("b_007")
+	var fp_cable: int = TutorialSteps._footprint("b_006")
+	var fp_furnace: int = TutorialSteps._footprint("b_002")
+	var fp_pipe: int = TutorialSteps._footprint("b_018")
+	_check(MatchState.get_tile_land_owned(WINDOW_TILE) == seed,
+		"tutorial start seeds %d land on the factory tile (got %d)" % [seed, MatchState.get_tile_land_owned(WINDOW_TILE)])
+	_check(MatchState.get_tile_land_owned("tile_6_6") == 0,
+		"other board tiles start with no land owned")
+	# The step-5 costing click (window factory footprint) fits the seeded plot.
+	_check(MatchState.get_tile_player_space_used(WINDOW_TILE) + float(fp_factory) <= float(seed),
+		"pricing up the window factory fits the seeded plot (the sourcing dialog can open)")
+	# Buy the NPC factory as the buy_factory step does: its footprint lands as owned land.
+	var fac_iid := ""
+	for iid in MatchState.tile_buildings.get(WINDOW_TILE, []):
+		if str(MatchState.get_building(str(iid)).get("building_id", "")) == "b_007":
+			fac_iid = str(iid)
+	_check(fac_iid != "", "window factory instance resolves on the co-location tile")
+	MatchState.set_building_owner(fac_iid, MatchState.LOCAL_PLAYER)
+	var owned_after_buy := seed + fp_factory
+	_check(MatchState.get_tile_land_owned(WINDOW_TILE) == owned_after_buy,
+		"buying the factory grants its footprint (owned %d)" % owned_after_buy)
+	# The cable fits; WITH the cable laid (the power lesson precedes integration)
+	# the furnace does not — that's the buy_land step's wall.
+	var used := MatchState.get_tile_player_space_used(WINDOW_TILE)
+	_check(used + float(fp_cable) <= float(owned_after_buy), "the power-lesson cable fits the granted land")
+	MatchState.add_building("b_006", "", WINDOW_TILE)   # the cable the power lesson lays
+	used = MatchState.get_tile_player_space_used(WINDOW_TILE)
+	_check(used + float(fp_furnace) > float(owned_after_buy),
+		"the furnace does NOT fit before the buy_land step (%d + %d > %d)" % [int(used), fp_furnace, owned_after_buy])
+	_check(not TutorialDetectors.poll({"kind": "tile_land_at_least", "tile": WINDOW_TILE, "amount": target}),
+		"tile_land_at_least(%d) false before the purchase" % target)
+	var patches := ceili(float(target - owned_after_buy) / float(MatchState.LAND_PATCH_SIZE))
+	_check(MatchState.purchase_tile_land(WINDOW_TILE, patches),
+		"buying %d land patch(es) on the factory tile succeeds" % patches)
+	_check(TutorialDetectors.poll({"kind": "tile_land_at_least", "tile": WINDOW_TILE, "amount": target}),
+		"tile_land_at_least(%d) true after the purchase — buy_land advances" % target)
+	_check(MatchState.get_tile_player_space_used(WINDOW_TILE) + float(fp_furnace + fp_pipe) <= float(target),
+		"furnace + reinforced pipe fit the purchased land (both branches unblocked)")
+
+	# --- Transport lesson: the building panel's output card opens the routing sheet,
+	#     and the route detectors track the redirect → revert loop.
+	MatchState.focus_building_requested.emit(fac_iid)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var out_card := _main.find_child("OutputDestCard", true, false) as Control
+	_check(out_card != null and out_card.is_visible_in_tree(),
+		"building panel exposes the output-destination card (OutputDestCard)")
+	if out_card != null:
+		var ev := InputEventMouseButton.new()
+		ev.pressed = true
+		ev.button_index = MOUSE_BUTTON_LEFT
+		out_card.gui_input.emit(ev)
+		await get_tree().process_frame
+		_check(TutorialDetectors.poll({"kind": "node_visible", "ref": "ActionSheet"}),
+			"clicking the card opens the routing sheet (ActionSheet) — redirect step advances")
+	var wf_good := str(Catalog.get_recipe("r_056").get("output_good_id", ""))
+	_check(wf_good != "", "window recipe has an output good for routing")
+	_check(not TutorialDetectors.poll({"kind": "output_routed_offtile", "tile": WINDOW_TILE, "building_id": "b_007"}),
+		"output_routed_offtile false before the redirect")
+	MatchState.set_output_stockpile_destination(fac_iid, "tile_5_7", wf_good)
+	_check(TutorialDetectors.poll({"kind": "output_routed_offtile", "tile": WINDOW_TILE, "building_id": "b_007"}),
+		"output_routed_offtile true once shipped to the sand tile")
+	MatchState.route_output_to_market(fac_iid, wf_good)
+	_check(TutorialDetectors.poll({"kind": "output_routed_market", "tile": WINDOW_TILE, "building_id": "b_007"}),
+		"output_routed_market true once set back to Global market")
+	_check(_main.find_child("EmpireView", true, false) != null,
+		"empire view exists for the Tab lesson (transport_ports)")
 
 
 ## Wait for the async terrain build, then a couple more frames so world_map._ready's
