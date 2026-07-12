@@ -35,9 +35,12 @@ const MOD_H := 48.0
 const NOTCH_H := 102.0
 const NOTCH_MIN_W := 300.0
 const NOTCH_RADIUS := 16.0
-# Research icon (the same microscope art the bottom menu uses) shown in the
-# briefing notch on turns a research unlock lands.
-const RESEARCH_ICON: Texture2D = preload("res://assets/icons/ui_icons/200/tech.png")
+# Research microscope object — the exact art the bottom menu's (alt-mode) Research
+# button uses. Composited onto a teal disc + light ring in the briefing notch on
+# research-unlock turns, mirroring bottom_menu.ALT_COLORS["TechButton"].
+const RESEARCH_ICON: Texture2D = preload("res://assets/icons/ui_icons/alt/research.png")
+const RESEARCH_DISC := Color("#1e5e63")   # teal disc  (ALT_COLORS["TechButton"][0])
+const RESEARCH_RING := Color("#ddefec")   # light ring (ALT_COLORS["TechButton"][1])
 # Metallic bottom bezel (the end-turn dock's machined-silver family), lit from the left.
 const EDGE_H := 7.0
 const SILVER_LT := Color("#b3bcc6")
@@ -94,7 +97,7 @@ var _victory_target: Label   # "/ N" — the rising win threshold for the curren
 # Briefing notch (top_level: centred on the viewport, hangs below the bar)
 var _briefing_btn: Control
 var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyph)
-var _research_icon: TextureRect  # microscope — visible only on turns research unlocks
+var _research_badge: Panel  # teal microscope badge — visible only on turns research unlocks
 var _briefing_head: Label
 var _briefing_sub: Label
 var _briefing_dot: Panel
@@ -602,17 +605,33 @@ func _build_briefing() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	notch.add_child(row)
-	# Research microscope (leads the row) — shown only on turns a research unlock lands.
-	_research_icon = TextureRect.new()
-	_research_icon.texture = RESEARCH_ICON
-	_research_icon.custom_minimum_size = Vector2(28, 28)
-	_research_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_research_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_research_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_research_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_research_icon.tooltip_text = "Research unlocked this turn"
-	_research_icon.visible = false
-	row.add_child(_research_icon)
+	# Research badge (leads the row) — the bottom menu's teal microscope, built to
+	# match its alt-mode style: research.png object on a teal disc + light ring.
+	# Shown only on turns a research unlock lands.
+	_research_badge = Panel.new()
+	_research_badge.custom_minimum_size = Vector2(40, 40)
+	var rbsb := StyleBoxFlat.new()
+	rbsb.bg_color = RESEARCH_DISC
+	rbsb.set_corner_radius_all(20)          # circular on the 40px disc
+	rbsb.border_color = RESEARCH_RING
+	rbsb.set_border_width_all(3)
+	_research_badge.add_theme_stylebox_override("panel", rbsb)
+	_research_badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_research_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_research_badge.tooltip_text = "Research unlocked this turn"
+	_research_badge.visible = false
+	var micro := TextureRect.new()
+	micro.texture = RESEARCH_ICON
+	micro.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	micro.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	micro.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	micro.offset_left = 4.0
+	micro.offset_top = 4.0
+	micro.offset_right = -4.0
+	micro.offset_bottom = -4.0
+	micro.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_research_badge.add_child(micro)
+	row.add_child(_research_badge)
 	var glyph_holder := Control.new()
 	glyph_holder.custom_minimum_size = Vector2(28, 28)
 	glyph_holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -669,8 +688,8 @@ func _refresh_briefing() -> void:
 			updates += 1
 		if str(it.get("event_kind", "")) == "research_unlocked":
 			research = true
-	if _research_icon != null:
-		_research_icon.visible = research
+	if _research_badge != null:
+		_research_badge.visible = research
 	var hot := decisions > 0
 	(_briefing_btn as _NotchBtn).warn = hot
 	(_briefing_btn as _NotchBtn).active = TurnBriefing.expanded
