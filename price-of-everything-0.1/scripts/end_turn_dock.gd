@@ -2,7 +2,7 @@ extends Control
 ## End Turn Dock — the bottom-right turn control.
 ##
 ## A single industrial navy-steel plate in the bottom-right corner carrying the
-## emissive END TURN button (centred) with the phase roller beneath it. The
+## emissive END TURN button in a low row with the phase roller to its right. The
 ## per-turn financial breakdown that used to live here (the "Turn Summary" plate
 ## and its slide-up ledger) now lives in the top bar's Treasury mini-panel, so
 ## this dock is purely the end-turn control.
@@ -36,12 +36,15 @@ const SILVER_MD := Color("#8b95a1")
 const SILVER_DK := Color("#5b636e")
 
 # ── Geometry (local px; computed rects derive from these in _update_layout) ───
-const PLATE_W := 300.0    # visible width of the navy plate (grows off the right edge)
+const PLATE_W := 330.0    # visible width of the navy plate (grows off the right edge)
 const BTN_W := 150.0
 const BTN_H := 56.0
-const ROLLER_H := 30.0    # phase roller height (below the button)
+const ROLLER_W := 96.0    # phase roller width (sits to the right of the button)
+const ROLLER_H := 30.0    # phase roller height
+const ROW_GAP := 12.0     # gap between the button and the roller
+const TOP_PAD := 40.0     # navy padding above the button/roller row
+const BOTTOM_PAD := 40.0  # gap from the roller's bottom to the screen's bottom edge
 const RIVET_EDGE := 5.0   # rivet centre inset from a plate edge
-const BASE_H := 150.0     # navy base panel height
 const BASE_BLEED := 20.0  # base bottom/right edges extend this far off-screen
 const BASE_RADIUS := 14.0 # squarish-rounded corner radius on the silver under-plate
 const BASE_INSET := 6.0   # navy plate inset inside the silver plate
@@ -126,28 +129,31 @@ func _build_interactive_children() -> void:
 func _update_layout() -> void:
 	var w := size.x
 	var h := size.y
-	var navy_top := h - (BASE_H - BASE_BLEED)       # visible top of the navy panel
 
-	# Navy base: anchored bottom-right, squarish-rounded, bleeds off bottom + right,
-	# and never overlaps the bottom menu.
+	# The END TURN button and phase roller sit in a horizontal row, the roller to
+	# the right of the button and vertically centred on it. The row sits low: the
+	# roller's bottom is BOTTOM_PAD above the screen's bottom edge.
+	var row_center_y := h - BOTTOM_PAD - ROLLER_H * 0.5
+	var button_top := row_center_y - BTN_H * 0.5
+
+	# Navy/silver plate: only TOP_PAD of plate sits above the row; it bleeds off the
+	# bottom + right edges of the screen and never overlaps the bottom menu.
+	var navy_top := button_top - TOP_PAD
 	var base_left := w - PLATE_W
 	base_left = maxf(base_left, _menu_right_local() + 12.0)
-	_r_base = Rect2(base_left, navy_top, (w + BASE_BLEED) - base_left, BASE_H)
+	_r_base = Rect2(base_left, navy_top, (w + BASE_BLEED) - base_left, (h + BASE_BLEED) - navy_top)
 
-	# Centre the END TURN button + phase roller in the visible plate.
+	# Centre the [button + gap + roller] row horizontally in the visible plate.
 	var visible_w := w - base_left
-	var visible_h := BASE_H - BASE_BLEED
-	var cluster_h := BTN_H + 4.0 + ROLLER_H
-	var cluster_top := navy_top + (visible_h - cluster_h) * 0.5
-	_r_button = Rect2(base_left + (visible_w - BTN_W) * 0.5, cluster_top, BTN_W, BTN_H)
+	var row_w := BTN_W + ROW_GAP + ROLLER_W
+	var row_left := base_left + (visible_w - row_w) * 0.5
 
+	_r_button = Rect2(row_left, button_top, BTN_W, BTN_H)
 	_end_turn_button.position = _r_button.position
 	_end_turn_button.size = _r_button.size
 
-	# Phase roller centred below the button — 70% of the button width.
-	var roller_w := BTN_W * 0.7
-	_roller.position = Vector2(_r_button.get_center().x - roller_w * 0.5, _r_button.end.y + 4.0)
-	_roller.size = Vector2(roller_w, ROLLER_H)
+	_roller.position = Vector2(row_left + BTN_W + ROW_GAP, row_center_y - ROLLER_H * 0.5)
+	_roller.size = Vector2(ROLLER_W, ROLLER_H)
 
 	# Base blocker covers the visible navy panel — absorbs map clicks behind it.
 	_base_block.position = _r_base.position
