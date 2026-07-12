@@ -16,6 +16,8 @@ extends PanelContainer
 @onready var money_widget: Button = $MarginContainer/HBoxContainer/MoneyWidget
 
 signal money_widget_clicked
+## Treasury mini-panel action requests a specific tab in the full Money panel.
+signal money_panel_tab_requested(tab_name: String)
 ## The victory flyout's "Full breakdown" was clicked (opens the Victory panel).
 signal victory_widget_clicked
 ## A council flyout row was clicked (opens the People panel).
@@ -949,7 +951,9 @@ func _open_fly(id: String) -> void:
 	var anchor: Control = money_widget
 	match id:
 		"treasury":
-			_fly_panel.custom_minimum_size = Vector2(330, 0)
+			# This is the compact money mini-panel. Keep it distinct from the
+			# full Money panel, which the buttons below open.
+			_fly_panel.custom_minimum_size = Vector2(510, 0)
 			vb.add_child(_fly_head("Treasury"))
 			_fly_treasury(vb)
 			anchor = money_widget
@@ -970,6 +974,10 @@ func _open_fly(id: String) -> void:
 	var place := func() -> void:
 		if _fly_panel == null or not is_instance_valid(_fly_panel):
 			return
+		# CanvasLayer children do not participate in a parent Container layout.
+		# Give the mini-panel its measured content height explicitly, otherwise it
+		# retains the viewport height and leaves an empty panel below its actions.
+		_fly_panel.size = _fly_panel.get_combined_minimum_size()
 		var vw := get_viewport().get_visible_rect().size.x
 		var x := anchor.global_position.x
 		x = clampf(x, 8.0, vw - _fly_panel.size.x - 8.0)
@@ -1018,10 +1026,10 @@ func _fly_pad(vb: VBoxContainer, sep: int = 7) -> VBoxContainer:
 	vb.add_child(pad)
 	return inner
 
-func _fly_row(label: String, value: String, tone: Color = C_TEXT) -> Control:
+func _fly_row(label: String, value: String, tone: Color = C_TEXT, label_tone: Color = Color("#8ea3ba")) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
-	var l := _mini(label, Color("#8ea3ba"), 12)
+	var l := _mini(label, label_tone, 12)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(l)
 	var v := Label.new()
@@ -1046,43 +1054,52 @@ func _fly_btn(text: String, primary: bool) -> Button:
 	b.focus_mode = Control.FOCUS_NONE
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.custom_minimum_size = Vector2(0, 30)
+	# CanvasLayer children do not inherit the viewport theme reliably, so apply
+	# the DS theme directly to keep the flyout CTAs in the metal-button family.
+	b.theme = DS.theme
 	if primary:
 		b.theme_type_variation = "Primary"
 	return b
 
-# Treasury: cash / net / runway, last turn's ledger, loans + capacity, deep-links.
+# Treasury mini-panel: cash / net / runway, last-turn two-column breakdown,
+# loans + capacity, then deep-links into the full Money panel.
 func _fly_treasury(vb: VBoxContainer) -> void:
 	var inner := _fly_pad(vb)
 	var s: Dictionary = Production.last_turn_summary
 	var net := float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
-	inner.add_child(_fly_row("Cash on hand", _money_text(MatchState.money)))
-	inner.add_child(_fly_row("Net last turn", ("+" if net >= 0.0 else "−") + _money_text(absf(net)).trim_prefix("£").insert(0, "£"), C_GOOD if net >= 0.0 else C_BAD))
+	inner.add_child(_fly_row("Cash on hand", _money_text(MatchState.money), C_BRIGHT, C_BRIGHT))
+	inner.add_child(_fly_row("Net last turn", _fly_signed_money(net), C_BRIGHT, C_BRIGHT))
 	var runway := _runway_turns()
 	if runway > 0:
-		inner.add_child(_fly_row("Runway at current burn", "≈ %d turns" % runway, C_BAD))
+		inner.add_child(_fly_row("Runway at current burn", "≈ %d turns" % runway, C_BRIGHT, C_BRIGHT))
 	inner.add_child(_fly_sep())
-	var income := [
+
+	# Mirror the expanded turn summary: revenue and outgoings read side by side,
+	# using its precise monetary values rather than the top bar's rounded format.
+	var revenue := [
 		["Goods sold", float(s.get("goods_sales_revenue", 0.0))],
 		["Power sold", float(s.get("power_sales_revenue", 0.0))],
 		["Green subsidy", float(s.get("green_subsidy_received", 0.0))],
 	]
-	for e in income:
-		if float(e[1]) > 0.005:
-			inner.add_child(_fly_row(str(e[0]), "+" + _money_text(float(e[1])), C_GOOD))
-	var expenses := [
-		["Wages", float(s.get("labour_paid", 0.0))],
-		["Maintenance", float(s.get("maintenance_paid", 0.0))],
-		["Goods bought", float(s.get("goods_purchased_cost", 0.0))],
-		["Transport", float(s.get("transport_paid", 0.0))],
+	var operating_costs := float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) + float(s.get("advisor_paid", 0.0))
+	var taxes_and_dividends := float(s.get("taxes_paid", 0.0)) + float(s.get("dividends_paid", 0.0))
+	var costs := [
+		["Operating costs", operating_costs],
+		["Power bought", float(s.get("power_purchase_cost", 0.0))],
+		["Transport costs", float(s.get("transport_paid", 0.0))],
+		["Goods purchased", float(s.get("goods_purchased_cost", 0.0))],
+		["Warehousing", float(s.get("warehousing_paid", 0.0))],
 		["Interest", float(s.get("interest_paid", 0.0))],
+		["Taxes & dividends", taxes_and_dividends],
 		["Carbon tax", float(s.get("carbon_tax_paid", 0.0))],
+		["Profit sharing", float(s.get("profit_sharing_paid", 0.0))],
 	]
-	for e in expenses:
-		if float(e[1]) > 0.005:
-			inner.add_child(_fly_row(str(e[0]), "−" + _money_text(float(e[1])), C_BAD))
+	inner.add_child(_fly_money_breakdown(revenue, costs))
 	vb.add_child(_fly_sep())
 	var loans := _fly_pad(vb, 8)
-	var tag := _tag("Loans")
+	var loans_pad := loans.get_parent() as MarginContainer
+	loans_pad.add_theme_constant_override("margin_bottom", 20)
+	var tag := _fly_money_column_header("Loans")
 	loans.add_child(tag)
 	for l in LoanState.loans:
 		var card := PanelContainer.new()
@@ -1098,29 +1115,93 @@ func _fly_treasury(vb: VBoxContainer) -> void:
 		card.add_theme_stylebox_override("panel", csb)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
-		var nm := _mini("Loan #%d" % int(l.get("id", 0)), Color("#e6c987"), 12)
+		var nm := _mini("Loan #%d" % int(l.get("id", 0)), C_BRIGHT, 12)
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(nm)
-		row.add_child(_mini("%s @ %.0f%%" % [_money_text(float(l.get("principal_remaining", 0.0))), float(l.get("interest_rate", 0.0)) * 100.0], C_TEXT, 12))
+		row.add_child(_mini("%s @ %.0f%%" % [_money_text(float(l.get("principal_remaining", 0.0))), float(l.get("interest_rate", 0.0)) * 100.0], C_BRIGHT, 12))
 		card.add_child(row)
 		loans.add_child(card)
 	if LoanState.loans.is_empty():
-		loans.add_child(_mini("No loans outstanding.", C_MUTED, 11))
-	loans.add_child(_fly_row("Borrowing capacity left", _money_text(LoanState.available_capacity())))
+		loans.add_child(_mini("No loans outstanding.", C_BRIGHT, 11))
+	loans.add_child(_fly_row("Borrowing capacity left", _money_text(LoanState.available_capacity()), C_BRIGHT, C_BRIGHT))
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 8)
 	var take := _fly_btn("Take loan", true)
 	take.name = "FlyTakeLoanButton"   # stable target: the e2e loan flow presses this
 	take.pressed.connect(func() -> void:
-		_close_fly()
-		money_widget_clicked.emit())
+		_open_money_panel_tab("Loans"))
 	actions.add_child(take)
-	var manage := _fly_btn("Money & loans", false)
-	manage.pressed.connect(func() -> void:
-		_close_fly()
-		money_widget_clicked.emit())
-	actions.add_child(manage)
+	var balance := _fly_btn("Balance", false)
+	balance.name = "FlyBalanceButton"
+	balance.pressed.connect(func() -> void:
+		_open_money_panel_tab("Balance"))
+	actions.add_child(balance)
+	var charts := _fly_btn("Charts", false)
+	charts.name = "FlyChartsButton"
+	charts.pressed.connect(func() -> void:
+		_open_money_panel_tab("Charts"))
+	actions.add_child(charts)
 	loans.add_child(actions)
+
+func _open_money_panel_tab(tab_name: String) -> void:
+	_close_fly()
+	money_panel_tab_requested.emit(tab_name)
+
+func _fly_money_breakdown(revenue: Array, costs: Array) -> Control:
+	var columns := HBoxContainer.new()
+	columns.add_theme_constant_override("separation", 12)
+	columns.add_child(_fly_money_column("Revenue", revenue, true))
+	var divider := Panel.new()
+	divider.custom_minimum_size = Vector2(1, 0)
+	var divider_box := StyleBoxFlat.new()
+	divider_box.bg_color = C_TRACK_EDGE
+	divider.add_theme_stylebox_override("panel", divider_box)
+	columns.add_child(divider)
+	columns.add_child(_fly_money_column("Costs", costs, false))
+	return columns
+
+func _fly_money_column(title: String, entries: Array, is_revenue: bool) -> VBoxContainer:
+	var column := VBoxContainer.new()
+	column.name = "%sColumn" % title
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_theme_constant_override("separation", 5)
+	column.add_child(_fly_money_column_header(title))
+	var has_entries := false
+	for entry in entries:
+		var amount := float(entry[1])
+		if amount <= 0.005:
+			continue
+		has_entries = true
+		column.add_child(_fly_money_row(str(entry[0]), amount, is_revenue))
+	if not has_entries:
+		column.add_child(_mini("None last turn", C_BRIGHT, 11))
+	return column
+
+func _fly_money_column_header(text: String) -> Label:
+	var header := Label.new()
+	header.text = text.to_upper()
+	header.theme_type_variation = "Numeric"
+	header.add_theme_font_size_override("font_size", 12)
+	header.add_theme_color_override("font_color", C_BRIGHT)
+	return header
+
+func _fly_money_row(label: String, amount: float, is_revenue: bool) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	var name := _mini(label, C_BRIGHT, 11)
+	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(name)
+	var value := Label.new()
+	value.theme_type_variation = "Numeric"
+	value.text = _fly_signed_money(amount if is_revenue else -amount)
+	value.add_theme_font_size_override("font_size", 11)
+	value.add_theme_color_override("font_color", C_GOOD if is_revenue else C_BAD)
+	row.add_child(value)
+	return row
+
+func _fly_signed_money(amount: float) -> String:
+	return "%s£%.2f" % ["+" if amount >= 0.0 else "−", absf(amount)]
 
 func _runway_turns() -> int:
 	var s: Dictionary = Production.last_turn_summary

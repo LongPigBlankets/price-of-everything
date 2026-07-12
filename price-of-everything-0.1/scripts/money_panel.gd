@@ -152,7 +152,7 @@ func _ready() -> void:
 	_profit_sharing_value = _insert_finance_row(balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
 	_proj_profit_sharing_value = _insert_finance_row(projection_content, "Proj_DividendsRow", "Profit Sharing", "-£0.00")
 	close_button.pressed.connect(hide)
-	title_label.text = "Money & Budget"
+	title_label.text = "Money"
 	
 	take_loan_button.pressed.connect(_on_take_loan_pressed)
 	
@@ -181,8 +181,28 @@ func _ready() -> void:
 	_chart_costs_button.pressed.connect(_on_chart_mode_pressed.bind("costs"))
 	_build_sales_tab()
 	_build_purchases_tab()
+	_hide_redundant_tabs()
 	_tab_container.tab_changed.connect(_on_tab_changed)
-	_apply_tab_size(_tab_container.current_tab)
+	open_tab("Balance")
+
+# The Treasury mini-panel owns the compact cash snapshot. Keep the detailed
+# Balance, Loans, and Charts views here; Stats and Budget are no longer exposed
+# as tabs, while their nodes stay alive for save-compatible calculations.
+func _hide_redundant_tabs() -> void:
+	for tab_name in ["Stats", "Budget"]:
+		for index in _tab_container.get_tab_count():
+			if _tab_container.get_tab_title(index) == tab_name:
+				_tab_container.set_tab_hidden(index, true)
+				break
+
+func open_tab(tab_name: String) -> void:
+	for index in _tab_container.get_tab_count():
+		if _tab_container.get_tab_title(index) != tab_name or _tab_container.is_tab_hidden(index):
+			continue
+		_tab_container.current_tab = index
+		_on_tab_changed(index)
+		return
+	push_warning("[MoneyPanel] Requested unavailable tab: %s" % tab_name)
 
 func _on_turn_processed(_summary: Dictionary) -> void:
 	# History capture must run even while hidden — it's data, not display.

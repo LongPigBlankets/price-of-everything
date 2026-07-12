@@ -386,9 +386,10 @@ var debug_turn_logs_enabled: bool = false
 # Session-only; never persisted. See docs/building-detail-v2-plan.md.
 var use_bdp_v2: bool = true
 
-# Debug-only: the construct-panel redesign stays behind `swap construct_panel`.
-# Session-only; classic construct remains the default.
-var use_construct_panel_v2: bool = false
+# Debug-only: `swap construct_panel` keeps the classic construct panel available
+# for comparison. The redesigned construct panel is the normal default.
+# Session-only; the cheat only changes the active match.
+var use_construct_panel_v2: bool = true
 
 # Construct V2 defaults. They are match settings rather than panel-local state so
 # a construction captures the current choices when it begins, including after a

@@ -113,6 +113,7 @@ func _ready() -> void:
 	mapmodes_button.pressed.connect(_on_mapmodes_pressed)
 	mapmodes_panel.hide()
 	top_bar.money_widget_clicked.connect(_on_money_widget_clicked)
+	top_bar.money_panel_tab_requested.connect(_on_money_panel_tab_requested)
 	money_panel.hide()
 	top_bar.victory_widget_clicked.connect(_on_victory_widget_clicked)
 	victory_panel.hide()
@@ -503,6 +504,12 @@ func _on_people_pressed() -> void:
 func _on_money_widget_clicked() -> void:
 	_hide_all_panels()
 	_set_panel_visible(money_panel, true)
+	money_panel.open_tab("Balance")
+
+func _on_money_panel_tab_requested(tab_name: String) -> void:
+	_hide_all_panels()
+	_set_panel_visible(money_panel, true)
+	money_panel.open_tab(tab_name)
 
 func _on_victory_widget_clicked() -> void:
 	# Toggle: clicking the top-bar score widget opens the Victory panel, or closes
@@ -562,7 +569,6 @@ func _on_loan_confirmed(amount: float) -> void:
 	var ok: bool = LoanState.take_loan(amount)
 	if not ok:
 		print("[HUD] Loan request failed for £%.2f" % amount)
-	# Auto-switch Money panel to Loans tab
-	var tab_container: TabContainer = money_panel.get_node("MarginContainer/ModalLayout/TabContainer")
-	tab_container.current_tab = 3  # 0=Stats, 1=Balance, 2=Budget, 3=Loans
+	# Auto-switch Money panel to Loans tab.
+	money_panel.open_tab("Loans")
 	money_panel.show()
