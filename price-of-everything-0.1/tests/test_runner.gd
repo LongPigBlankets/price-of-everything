@@ -73,6 +73,7 @@ func _ready() -> void:
 	await _test_building_ledger()
 	await _test_debug_terminal()
 	_test_building_shapes()
+	_test_footprint_rejects_interior_road_segment()
 	_test_building_category_key()
 	_test_queue_move()
 	_test_move_extras()
@@ -1133,6 +1134,20 @@ func _test_arin_bridge() -> void:
 	RoadWorks.reset()
 	RoadCrossings.reset_for_tests()
 	await get_tree().process_frame
+
+# Regression: a sampled road can have a whole short segment inside a large building.
+# This used to evade the edge-to-edge clearance test and drew the Metal Magnate
+# furnace and pump underneath the Stoneshore roads.
+func _test_footprint_rejects_interior_road_segment() -> void:
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	var footprint := PackedVector2Array([
+		Vector2(-30, -20), Vector2(30, -20), Vector2(30, 20), Vector2(-30, 20),
+	])
+	var interior_road: Array = [[Vector2(-6, 0), Vector2(6, 0)]]
+	_check(not bv._footprint_clears(Vector2.ZERO, footprint, interior_road, 1.0),
+		"building visuals: reject a road segment wholly inside a footprint")
+	bv.free()
+
 
 # Urban block-subdivision: a seeded urban tile lays a grid of lots; buildings claim them
 # in emit order (tight, non-overlapping), fall back to the continuous packer when full,
