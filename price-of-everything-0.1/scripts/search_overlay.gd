@@ -43,6 +43,10 @@ var _search_stack: VBoxContainer = null
 var _search_input: LineEdit = null
 var _results_panel: PanelContainer = null
 var _columns_row: HBoxContainer = null
+# When a good's entry shows the two-column "Produced by / Used in" recipe panel,
+# the overlay grows to full height minus the bottom menu.
+var _recipe_view_active := false
+const BOTTOM_RESERVE := 112.0   # room left for the bottom menu below the tall panel
 var _empty_view := "none"
 var _accordion_expanded: Dictionary = {
 	"Goods": true,
@@ -215,7 +219,14 @@ func _layout_search_stack() -> void:
 	_search_stack.offset_left = -width * 0.5
 	_search_stack.offset_right = width * 0.5
 	_search_stack.offset_top = SEARCH_TOP_OFFSET
-	_search_stack.offset_bottom = SEARCH_TOP_OFFSET + SEARCH_HEIGHT
+	# The recipe panel wants the whole height down to the bottom menu; normal search
+	# keeps the compact fixed height.
+	var stack_h := SEARCH_HEIGHT
+	if _recipe_view_active:
+		stack_h = maxf(SEARCH_HEIGHT, size.y - SEARCH_TOP_OFFSET - BOTTOM_RESERVE)
+	_search_stack.offset_bottom = SEARCH_TOP_OFFSET + stack_h
+	if _results_panel != null:
+		_results_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL if _recipe_view_active else Control.SIZE_FILL
 
 func _on_search_text_changed(new_text: String) -> void:
 	_refresh_results(new_text)
@@ -240,6 +251,8 @@ func _refresh_results(query: String) -> void:
 	_columns_row.add_child(_make_result_column("Buildings", buildings))
 
 func _clear_results_content() -> void:
+	_recipe_view_active = false
+	_layout_search_stack()  # collapse back to compact height whenever content changes
 	for child in _columns_row.get_children():
 		_columns_row.remove_child(child)
 		child.queue_free()
@@ -533,9 +546,15 @@ func _show_result_detail(result: Dictionary) -> void:
 		return
 	_clear_results_content()
 	_results_panel.visible = true
+	_recipe_view_active = result_type == "good"
 	_columns_row.add_child(_make_encyclopedia_entry(result))
+	_layout_search_stack()  # grow to full height if the recipe panel is showing
 
 func _make_encyclopedia_entry(result: Dictionary) -> Control:
+	# A good's entry is a full-height two-column recipe panel (Produced by / Used in).
+	if result.get("type", "") == "good":
+		return _make_good_recipes_entry(result)
+
 	var entry := HBoxContainer.new()
 	entry.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	entry.add_theme_constant_override("separation", 16)
@@ -629,6 +648,117 @@ func _make_encyclopedia_entry(result: Dictionary) -> Control:
 		facts.add_child(_make_fact_label(fact))
 
 	return entry
+
+# --- Good → recipes panel -----------------------------------------------------
+# A good's encyclopedia entry as two full-height scrolling columns: every recipe that
+# PRODUCES this good, and every recipe that USES it — each rendered with the shared
+# DS recipe-diagram builder. Recipes gated behind a hidden building are skipped, to
+# match the hidden-building filtering used elsewhere in the overlay.
+func _make_good_recipes_entry(result: Dictionary) -> Control:
+	var good_id := str(result.get("id", (result.get("payload", {}) as Dictionary).get("id", "")))
+	var produced_by: Array = []
+	var used_in: Array = []
+	for recipe in Catalog.all_recipes():
+		if not MatchState.is_building_available(str(recipe.get("building_id", ""))):
+			continue
+		for o in recipe.get("outputs", []):
+			if str(o.get("good_id", "")) == good_id:
+				produced_by.append(recipe)
+				break
+		for inp in recipe.get("inputs", []):
+			if str(inp.get("good_id", "")) == good_id:
+				used_in.append(recipe)
+				break
+
+	var root := VBoxContainer.new()
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_theme_constant_override("separation", 10)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 10)
+	root.add_child(header)
+	var back_button := Button.new()
+	back_button.custom_minimum_size = Vector2(92, 26)
+	back_button.text = "RESULTS"
+	back_button.flat = true
+	back_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	back_button.add_theme_font_size_override("font_size", 12)
+	back_button.add_theme_color_override("font_color", OFF_WHITE)
+	back_button.add_theme_color_override("font_hover_color", OFF_WHITE)
+	back_button.pressed.connect(func() -> void:
+		_refresh_results(_search_input.text)
+		_focus_search_input()
+	)
+	header.add_child(back_button)
+	var title := Label.new()
+	title.text = str(result.get("title", ""))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.clip_text = true
+	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_color_override("font_color", OFF_WHITE)
+	header.add_child(title)
+
+	var cols := HBoxContainer.new()
+	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	cols.add_theme_constant_override("separation", 12)
+	cols.add_child(_make_recipe_column("Produced by", produced_by))
+	cols.add_child(_make_recipe_column("Used in", used_in))
+	root.add_child(cols)
+	return root
+
+func _make_recipe_column(heading_text: String, recipes: Array) -> Control:
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 6)
+
+	var heading := Label.new()
+	heading.text = "%s  (%d)" % [heading_text, recipes.size()]
+	heading.add_theme_font_size_override("font_size", 15)
+	heading.add_theme_color_override("font_color", OFF_WHITE)
+	col.add_child(heading)
+
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _make_panel_style(MUTED_PANEL, RESULT_BORDER, 1.0, 6, 10))
+	col.add_child(panel)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 14)
+	scroll.add_child(list)
+
+	if recipes.is_empty():
+		var none := Label.new()
+		none.text = "No recipes."
+		none.add_theme_font_size_override("font_size", 13)
+		none.add_theme_color_override("font_color", SUBTITLE_COLOR)
+		list.add_child(none)
+	else:
+		for recipe in recipes:
+			list.add_child(_recipe_caption(recipe))
+			list.add_child(DS.recipe_diagram_for(recipe))
+	return col
+
+func _recipe_caption(recipe: Dictionary) -> Label:
+	var l := Label.new()
+	var rname := str(recipe.get("display_name", recipe.get("recipe_id", "")))
+	var bname := Catalog.get_building_display_name(recipe.get("building_id", ""))
+	l.text = ("%s  ·  %s" % [rname, bname]) if bname != "" else rname
+	l.add_theme_font_size_override("font_size", 13)
+	l.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return l
 
 func _make_entry_image(result: Dictionary) -> PanelContainer:
 	var image_panel := PanelContainer.new()

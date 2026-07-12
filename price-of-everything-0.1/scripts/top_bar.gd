@@ -100,6 +100,7 @@ var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyp
 var _research_badge: Panel  # teal microscope badge — visible only on turns research unlocks
 var _research_pill: Panel  # count pill on the badge — shown when >1 research unlocks in a turn
 var _research_pill_label: Label
+var _research_seen := false  # UI-only: briefing opened while research showing; reset each turn
 var _briefing_head: Label
 var _briefing_sub: Label
 var _briefing_dot: Panel
@@ -141,11 +142,18 @@ func _ready() -> void:
 	MatchState.advisors_changed.connect(_queue_refresh)
 	MatchState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
-	TurnManager.turn_advanced.connect(func(_t: int) -> void: _queue_refresh())
+	# A new turn brings a fresh research digest, so the microscope should show again.
+	TurnManager.turn_advanced.connect(func(_t: int) -> void:
+		_research_seen = false
+		_queue_refresh())
 	LoanState.loans_updated.connect(_queue_refresh)
 	VictoryState.score_changed.connect(func(_t: int, _b: Dictionary) -> void: _queue_refresh())
 	TurnBriefing.items_changed.connect(_queue_refresh)
-	TurnBriefing.expanded_changed.connect(func(_e: bool) -> void: _queue_refresh())
+	# Opening the briefing marks research as seen — hide the microscope until next turn.
+	TurnBriefing.expanded_changed.connect(func(e: bool) -> void:
+		if e:
+			_research_seen = true
+		_queue_refresh())
 	# The v2 briefing notch replaces the collapsed strip.
 	TurnBriefing.strip_enabled = false
 	get_viewport().size_changed.connect(_recenter_notch)
@@ -718,9 +726,9 @@ func _refresh_briefing() -> void:
 		if str(it.get("event_kind", "")) == "research_unlocked":
 			research_count += int(it.get("magnitude", 1))   # aggregated item carries the count
 	if _research_badge != null:
-		_research_badge.visible = research_count > 0
+		_research_badge.visible = research_count > 0 and not _research_seen
 	if _research_pill != null:
-		_research_pill.visible = research_count > 1
+		_research_pill.visible = research_count > 1 and not _research_seen
 		_research_pill_label.text = "%d" % research_count
 	var hot := decisions > 0
 	(_briefing_btn as _NotchBtn).warn = hot

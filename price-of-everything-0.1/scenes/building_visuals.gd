@@ -91,9 +91,10 @@ const PLAYER_OUTLINE_W := 1.0
 # RoadHash (deterministic across save/load). Farms keep their own field look.
 const INK := Color("#3a2c18")
 const INK_W := 1.3
-const WASH_GREY := Color("#8d8a80")           # extraction / power / electrochemistry
+const WASH_GREY := Color("#8d8a80")           # extraction / mines
 const WASH_RED := Color("#b0483a")            # urban production / default
 const WASH_MUSTARD := Color("#c9992e")        # storage / logistics / infrastructure
+const WASH_YELLOW := Color("#E3C84A")         # power — matches tile size chart CAT_POWER
 const WASH_RUINS := Color("#7a5f43")
 # Owner 2026-07-10: restore the pre-ink colour FAMILIES in muted plate shades.
 const WASH_NAVY := Color("#5d7285")           # metallurgy (furnaces) — washed steel navy (was #4A7A9B)
@@ -3173,8 +3174,10 @@ func _wobble_poly(seed_key: String, verts: PackedVector2Array) -> PackedVector2A
 ## refineries their purple-turned-pink, manufacturing its orange.
 func _wash_family(cat: String) -> String:
 	match cat:
-		"extraction", "power":
+		"extraction":
 			return "grey"
+		"power":
+			return "yellow"
 		"electrochemistry":
 			return "lime"
 		"metallurgy":
@@ -3206,6 +3209,7 @@ func _wash_for(cat: String, iid: String, is_npc: bool) -> Color:
 	var base: Color
 	match fam:
 		"grey":    base = WASH_GREY
+		"yellow":  base = WASH_YELLOW
 		"lime":    base = WASH_LIME
 		"navy":    base = WASH_NAVY
 		"blue":    base = WASH_BLUE
@@ -3228,7 +3232,7 @@ func _draw_roof_motifs(cat: String, iid: String, verts: PackedVector2Array, is_n
 	var lng: Vector2 = ax if ax.length() >= bx.length() else bx
 	var shr: Vector2 = bx if lng == ax else ax
 	match _wash_family(cat):
-		"grey", "navy", "orange":
+		"grey", "navy", "orange", "yellow":
 			var n := clampi(int(lng.length() / SAWTOOTH_PITCH), 1, 12)
 			for k in range(1, n):
 				var base: Vector2 = verts[0] + lng * (float(k) / float(n))

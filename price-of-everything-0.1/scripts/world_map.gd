@@ -1436,6 +1436,10 @@ func _make_legend_row(color: Color, text: String) -> HBoxContainer:
 	return row
 
 func _on_end_turn_pressed() -> void:
+	# Arm verbose-log capture on the first End Turn of turn 1 (current_turn only
+	# increments once resolution runs, so it is still 1 here). arm() is idempotent.
+	if TurnManager.current_turn == 1:
+		SessionLog.arm()
 	TurnManager.commit_turn()
 
 func _on_encyclopedia_pressed() -> void:
