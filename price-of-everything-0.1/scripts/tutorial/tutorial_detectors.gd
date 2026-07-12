@@ -77,6 +77,10 @@ static func poll(decide: Dictionary) -> bool:
 		"output_routed_market":
 			# True once an output is explicitly routed back to the global market.
 			return _output_route_state(str(decide.get("tile", "")), str(decide.get("building_id", ""))).market
+		"output_routed_same_tile":
+			# True once an output is explicitly routed to THIS tile's stockpile — the
+			# co-located producer→consumer feed (e.g. glass furnace → window factory).
+			return _output_route_state(str(decide.get("tile", "")), str(decide.get("building_id", ""))).ontile
 		_:
 			return false
 
@@ -201,7 +205,7 @@ static func _board_has_infra(infra: String) -> bool:
 ## Reads MatchState.output_stockpile_destinations (instance_id -> {good_id -> dest});
 ## buildings with no explicit route report neither (the sell_mode fallback isn't a route).
 static func _output_route_state(tile_id: String, building_id: String) -> Dictionary:
-	var state := {"market": false, "offtile": false}
+	var state := {"market": false, "offtile": false, "ontile": false}
 	if tile_id == "":
 		return state
 	for iid in MatchState.buildings:
@@ -217,7 +221,9 @@ static func _output_route_state(tile_id: String, building_id: String) -> Diction
 			var dest := str(per_good[gid])
 			if dest == MatchState.MARKET_DESTINATION:
 				state.market = true
-			elif dest != tile_id:
+			elif dest == tile_id:
+				state.ontile = true
+			else:
 				state.offtile = true
 	return state
 
