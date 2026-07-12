@@ -612,6 +612,8 @@ func _try_choose_free_unlock(position: Vector2) -> bool:
 	var title := _unlock_title_at_position(position)
 	if title.is_empty():
 		return false
+	if not MatchState.is_node_available(title):
+		return false   # greyed (tier- or prereq-locked) node — can't be free-picked either
 	_free_unlocked_titles[title] = true
 	MatchState.grant_unlock(title, false)  # free choice — unlocked, but no "Unlocked …" dialog
 	_free_unlocks = maxi(0, _free_unlocks - 1)
@@ -1333,11 +1335,13 @@ func _unlock_brightness(rect: Rect2, bounds: Rect2) -> float:
 
 func _draw_unlock(unlock: Dictionary, rect: Rect2, brightness: float) -> void:
 	var title: String = unlock["title"]
+	var is_root := bool(unlock.get("is_category_root", false))
 	var free_unlocked := _free_unlocked_titles.has(title) or MatchState.is_unlocked(title)
-	var hovered_for_free := _choosing_free_unlock and _hover_unlock_title == title and not free_unlocked and not bool(unlock.get("is_category_root", false))
-	_draw_unlock_shell(rect, brightness, unlock, free_unlocked, hovered_for_free)
+	var locked := not free_unlocked and not is_root and not MatchState.is_node_available(title)
+	var hovered_for_free := _choosing_free_unlock and _hover_unlock_title == title and not free_unlocked and not is_root and not locked
+	_draw_unlock_shell(rect, brightness, unlock, free_unlocked, hovered_for_free, locked)
 	_draw_unlock_rivets(rect, brightness)
-	if bool(unlock.get("is_category_root", false)):
+	if is_root:
 		_draw_unlock_title_text(TITLE_FONT, unlock["title"], rect.grow(-16.0), UNLOCK_TITLE_SIZE)
 		return
 
@@ -1355,11 +1359,14 @@ func _draw_unlock(unlock: Dictionary, rect: Rect2, brightness: float) -> void:
 	var condition_rect := Rect2(rect.position + Vector2(14.0, 142.0), Vector2(rect.size.x - 28.0, 44.0))
 	if free_unlocked:
 		_draw_free_unlock_bar(condition_rect)
+	elif locked:
+		draw_style_box(_condition_style, condition_rect)
+		_draw_wrapped_lines(BODY_FONT, _lock_reason(unlock), condition_rect.grow(-7.0), UNLOCK_CONDITION_SIZE, DS.PALETTE["TEXT_MUTED"], 2, HORIZONTAL_ALIGNMENT_CENTER, true)
 	else:
 		draw_style_box(_condition_style, condition_rect)
 		_draw_wrapped_lines(BODY_FONT, _condition_text(unlock), condition_rect.grow(-7.0), UNLOCK_CONDITION_SIZE, DS.PALETTE["ACCENT"], 2, HORIZONTAL_ALIGNMENT_CENTER, true)
 
-func _draw_unlock_shell(rect: Rect2, brightness: float, unlock: Dictionary, free_unlocked: bool, hovered_for_free: bool) -> void:
+func _draw_unlock_shell(rect: Rect2, brightness: float, unlock: Dictionary, free_unlocked: bool, hovered_for_free: bool, locked: bool = false) -> void:
 	_draw_unlock_shadow(rect, brightness)
 	if hovered_for_free:
 		for index in 3:
@@ -1377,6 +1384,9 @@ func _draw_unlock_shell(rect: Rect2, brightness: float, unlock: Dictionary, free
 	if free_unlocked:
 		base_color = _rank_plate_color(_rank_value(unlock))
 		border_color = base_color.lightened(0.20)
+	elif locked:
+		base_color = DS.PALETTE["BG_INSET"].darkened(0.45)
+		border_color = DS.PALETTE["BORDER_SOFT"].darkened(0.35)
 	var style := _make_stylebox(_shade_color(base_color, brightness + (0.10 if hovered_for_free else 0.0)), _shade_color(border_color, brightness), UNLOCK_RADIUS, 2)
 	draw_style_box(style, rect)
 	_draw_machined_bevel(rect, brightness)
@@ -1395,6 +1405,18 @@ func _draw_unlock_shell(rect: Rect2, brightness: float, unlock: Dictionary, free
 			Color(1.0, 1.0, 1.0, 0.03),
 		])
 	)
+
+## Why a node is greyed out — shown on its card in place of the unlock condition.
+func _lock_reason(unlock: Dictionary) -> String:
+	var rank := _rank_value(unlock)
+	var category := String(unlock.get("category", ""))
+	if not MatchState.is_tier_available(category, rank):
+		var prev_i: int = maxi(0, RANKS.find(rank) - 1)
+		return "Locked — unlock more Tier %s research first" % RANKS[prev_i]
+	for p in _prereq_titles(unlock):
+		if not MatchState.is_unlocked(str(p)):
+			return "Requires: %s" % str(p)
+	return "Locked"
 
 func _rank_plate_color(rank: String) -> Color:
 	return _rank_shared_color(rank)

@@ -30,7 +30,34 @@
 			"target": "*",
 			"target_match": { "good_internal": "iron_ingots" },
 			"pct": 10.0,
-			"label": "Metals Magnate Start",
+			"label": "Legacy of Metal: +10% iron ingot output",
+			"source": "start:metals_magnate"
+		},
+		{
+			"id": "start_metals_magnate_copper",
+			"domain": "recipe_output",
+			"target": "*",
+			"target_match": { "good_internal": "copper_ingots" },
+			"pct": 10.0,
+			"label": "Legacy of Metal: +10% copper ingot output",
+			"source": "start:metals_magnate"
+		},
+		{
+			"id": "start_metals_magnate_alloy",
+			"domain": "recipe_output",
+			"target": "*",
+			"target_match": { "good_internal": "alloy_ingots" },
+			"pct": 10.0,
+			"label": "Legacy of Metal: +10% alloy ingot output",
+			"source": "start:metals_magnate"
+		},
+		{
+			"id": "start_metals_magnate_steel",
+			"domain": "recipe_output",
+			"target": "*",
+			"target_match": { "good_internal": "steel" },
+			"pct": 10.0,
+			"label": "Legacy of Metal: +10% steel output",
 			"source": "start:metals_magnate"
 		}
 	]

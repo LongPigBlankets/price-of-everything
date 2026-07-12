@@ -42,9 +42,6 @@ const OLD_GROWTH_TILE_TYPES := ["rural", "hill"]
 signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
 
 var _survey_dialog: PanelContainer = null
-var _unlock_dialog: PanelContainer = null
-var _pending_condition_unlocks: Array = []
-var _unlock_flush_deferred: bool = false
 var _special_order_resolution_dialog: Control = null
 var _stockpile_select_prompt: PanelContainer = null
 var _pending_stockpile_selection: Dictionary = {}
@@ -225,10 +222,8 @@ func _build_base() -> void:
 	_survey_dialog = load("res://scripts/survey_dialog.gd").new()
 	_hud.add_child(_survey_dialog)
 
-	# "Unlocked …" popup, shown when a research unlock is earned by its condition.
-	_unlock_dialog = load("res://scripts/unlock_dialog.gd").new()
-	_hud.add_child(_unlock_dialog)
-	MatchState.unlock_granted.connect(_on_unlock_granted)
+	# Research unlocks no longer pop a dialog — they are aggregated into a single
+	# Turn Briefing "Research unlocked" update (see turn_briefing._research_aggregate_item).
 
 	# The tabbed Tile View Panel; built in code, lives under HUDContent. Named
 	# "TileInfoPanel" so building_detail_panel's panel-stacking lookups find it.
@@ -370,6 +365,22 @@ func finish_build(animate: bool) -> void:
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
 
+	# Fresh Metal Magnate start: pin the camera on Stoneshore Docks and show the
+	# once-only founding intro. Gated on pending_start so a loaded save (which keeps
+	# ruleset.start_id) never re-shows it.
+	if pending_start and String(MatchState.ruleset.get("start_id", "")) == "metal_magnate":
+		_show_metal_magnate_intro()
+
+
+func _show_metal_magnate_intro() -> void:
+	# Wait for the loading screen (if any) to dismiss first, so the modal sits over the
+	# game board — not over the loading slideshow and its own "Begin" button.
+	while _loading_screen_active():
+		await get_tree().process_frame
+	_focus_camera_on_tile("tile_5_10")   # centre on Stoneshore Docks (the start's hub)
+	var intro: CanvasLayer = load("res://scripts/metal_magnate_intro.gd").new()
+	add_child(intro)
+
 
 ## A loading screen (parented to the tree root, surviving the scene change) is up
 ## iff one of the root's children is a LoadingScreen — only then do we spread the
@@ -462,30 +473,6 @@ func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
 	if tile_name == "":
 		tile_name = tile_id
 	_survey_dialog.open_for(tile_id, tile_name, status == "partial")
-
-func _on_unlock_granted(title: String, description: String, via_condition: bool) -> void:
-	if not via_condition:
-		return
-	_pending_condition_unlocks.append({"title": title, "description": description})
-	if TurnManager.is_resolving:
-		return
-	if not _unlock_flush_deferred:
-		_unlock_flush_deferred = true
-		call_deferred("_flush_pending_unlocks")
-
-func _flush_pending_unlocks() -> void:
-	_unlock_flush_deferred = false
-	if _pending_condition_unlocks.is_empty() or _unlock_dialog == null:
-		return
-	var unlocks := _pending_condition_unlocks.duplicate(true)
-	_pending_condition_unlocks.clear()
-	if unlocks.size() == 1:
-		var unlock: Dictionary = {}
-		if unlocks[0] is Dictionary:
-			unlock = unlocks[0]
-		_unlock_dialog.show_unlock(str(unlock.get("title", "")), str(unlock.get("description", "")))
-	else:
-		_unlock_dialog.show_unlocks(unlocks)
 
 func _on_v2_building_clicked(building: Dictionary) -> void:
 	_open_building_detail(building)
@@ -1449,6 +1436,10 @@ func _make_legend_row(color: Color, text: String) -> HBoxContainer:
 	return row
 
 func _on_end_turn_pressed() -> void:
+	# Arm verbose-log capture on the first End Turn of turn 1 (current_turn only
+	# increments once resolution runs, so it is still 1 here). arm() is idempotent.
+	if TurnManager.current_turn == 1:
+		SessionLog.arm()
 	TurnManager.commit_turn()
 
 func _on_encyclopedia_pressed() -> void:
@@ -1734,7 +1725,11 @@ func _place_start_buildings(animate: bool = false) -> void:
 func _place_pending_start_buildings(animate: bool = false) -> void:
 	for instance_id in MatchState.buildings:
 		var inst: Dictionary = MatchState.buildings[instance_id]
-		if not MatchState.is_player_owned(inst):
+		# Player buildings always (re)lay out here. NPC buildings only if no earlier
+		# pass drew them: ports/ruins/companies already have footprints, but a snapshot-
+		# seeded NPC building (e.g. the tutorial's Vandel window factory) does not and
+		# would otherwise never render.
+		if not MatchState.is_player_owned(inst) and building_visuals.has_placement(str(instance_id)):
 			continue
 		var tile_id := str(inst.get("tile_id", ""))
 		var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
@@ -2103,7 +2098,6 @@ func _on_resolution_started() -> void:
 
 func _on_resolution_completed() -> void:
 	end_turn_button.disabled = false
-	_flush_pending_unlocks()
 
 func _update_turn_counter(turn: int) -> void:
 	turn_counter.text = "Turn %d / %d" % [turn, TurnManager.MAX_TURNS]

@@ -1,17 +1,17 @@
 extends Node2D
 ## A transparent flat-top hex mask sized to a terrain tile. Set `color` (alpha controls
-## transparency) and `tile_size` before adding to the tree. For a "partial" power tile (some
-## consumption self-supplied, some bought from the national grid), set `hatch = true` plus
-## `hatch_color`: the base `color` (amber) fills the hex and `hatch_color` (red) is overlaid as
-## 10px-thick diagonal bars separated by 10px gaps.
+## transparency) and `tile_size` before adding to the tree. Set `hatch = true` plus a
+## `hatch_color` to overlay 45° diagonal bars on the base `color`, clipped to the hex — e.g.
+## the "partly grid" power tile (amber base + red bars) or the intermittency tile (amber base +
+## green barber-pole). `hatch_bar_width` / `hatch_stride` (world units, perpendicular) tune the
+## bar thickness and pitch per instance.
 
 var color: Color = Color(0, 0, 0, 0)
 var tile_size := Vector2(64, 56)
 var hatch: bool = false
 var hatch_color: Color = Color(0.8, 0.2, 0.2, 0.5)
-
-const HATCH_BAR_WIDTH := 10.0   # red bar thickness
-const HATCH_STRIDE := 20.0      # 10px red bar + 10px amber gap
+var hatch_bar_width: float = 10.0   # bar thickness (default: legacy 10px red "partly grid" bar)
+var hatch_stride: float = 20.0      # x-step between bars (10px bar + 10px gap by default)
 
 func _draw() -> void:
 	var half_w := tile_size.x * 0.5
@@ -41,5 +41,5 @@ func _draw_hatch(poly: PackedVector2Array, col: Color) -> void:
 		var line := PackedVector2Array([p1, p2])
 		for seg in Geometry2D.intersect_polyline_with_polygon(line, poly):
 			if seg.size() >= 2:
-				draw_polyline(seg, col, HATCH_BAR_WIDTH)
-		off += HATCH_STRIDE
+				draw_polyline(seg, col, hatch_bar_width)
+		off += hatch_stride

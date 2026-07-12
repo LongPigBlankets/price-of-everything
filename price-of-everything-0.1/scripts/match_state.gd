@@ -371,11 +371,6 @@ enum RouteObjective { FASTEST, CHEAPEST, BLENDED }
 var route_objective: int = RouteObjective.FASTEST
 
 
-# Debug-only: when true the bottom menu shows the alternate icon set instead of
-# the old circular icon set. Toggled at runtime via the `swap bottom menu` cheat.
-# Session-only; never persisted. Defaults to the white-rimmed alternate buttons.
-var use_alt_bottom_menu: bool = true
-
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
 # large empires can produce hundreds of console lines per turn in editor builds.
 # Toggled at runtime via the `logs` debug-terminal cheat. Session-only.
@@ -386,9 +381,10 @@ var debug_turn_logs_enabled: bool = false
 # Session-only; never persisted. See docs/building-detail-v2-plan.md.
 var use_bdp_v2: bool = true
 
-# Debug-only: the construct-panel redesign stays behind `swap construct_panel`.
-# Session-only; classic construct remains the default.
-var use_construct_panel_v2: bool = false
+# Debug-only: `swap construct_panel` keeps the classic construct panel available
+# for comparison. The redesigned construct panel is the normal default.
+# Session-only; the cheat only changes the active match.
+var use_construct_panel_v2: bool = true
 
 # Construct V2 defaults. They are match settings rather than panel-local state so
 # a construction captures the current choices when it begins, including after a
@@ -493,8 +489,6 @@ signal overflow_shipment_held(record: Dictionary)
 ## A special-order delivery reached port with units beyond the completed order's
 ## demand. The UI must ask whether to sell those units or stockpile them at port.
 signal special_order_overflow_ready(record: Dictionary)
-## Debug cheat `swap bottom menu` flipped which bottom-menu icon set is active.
-signal alt_bottom_menu_changed(enabled: bool)
 # The Building Detail v2 dev-toggle flipped (`swap bdp` cheat); world_map re-renders the
 # active detail panel. Session-only.
 signal bdp_v2_changed(enabled: bool)
@@ -1704,9 +1698,11 @@ func _load_unlock_defs() -> void:
 			if p != "":
 				prereqs.append(p)
 		var q := _csv_at(row, idx, "Quantity")
+		var rank_raw := _csv_at(row, idx, "rank").strip_edges().to_upper()
 		_unlock_defs.append({
 			"title": _csv_at(row, idx, "title"),
 			"category": _csv_at(row, idx, "category"),
+			"rank": rank_raw if rank_raw != "" else "I",
 			"action": _csv_at(row, idx, "Action"),
 			"object": _csv_at(row, idx, "Object"),
 			"qty": int(q) if q.is_valid_int() else 0,
@@ -1763,6 +1759,83 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 			break
 	unlock_granted.emit(title, desc, via_condition)
 
+## The loaded unlock definition for a research title (empty if unknown).
+func get_unlock_def(title: String) -> Dictionary:
+	for d in _unlock_defs:
+		if str(d.get("title", "")) == title:
+			return d
+	return {}
+
+# ── Research tier gating (per category) ──────────────────────────────────────
+const TIER_UNLOCK_THRESHOLD := 3
+const _TIER_ORDER := ["I", "II", "III"]
+
+## True when `category`'s roman `tier` is open. Tier I is always open; a higher
+## tier opens once >= min(TIER_UNLOCK_THRESHOLD, nodes-in-prior-tier) of the
+## immediately lower tier in the same category are unlocked. The clamp lets thin
+## categories (fewer than 3 nodes in a tier) advance by unlocking ALL of them, so
+## they can never permanently softlock.
+func is_tier_available(category: String, tier: String) -> bool:
+	var t := tier.strip_edges().to_upper()
+	var i := _TIER_ORDER.find(t)
+	if i <= 0:
+		return true
+	var prev: String = _TIER_ORDER[i - 1]
+	var total := _tier_node_count(category, prev)
+	if total <= 0:
+		return true
+	return _tier_unlocked_count(category, prev) >= mini(TIER_UNLOCK_THRESHOLD, total)
+
+func _tier_node_count(category: String, tier: String) -> int:
+	var n := 0
+	for d in _unlock_defs:
+		if str(d.get("category", "")) == category and str(d.get("rank", "I")) == tier:
+			n += 1
+	return n
+
+func _tier_unlocked_count(category: String, tier: String) -> int:
+	var n := 0
+	for d in _unlock_defs:
+		if str(d.get("category", "")) == category and str(d.get("rank", "I")) == tier \
+				and unlocked_titles.has(str(d.get("title", ""))):
+			n += 1
+	return n
+
+## A research node is currently available (workable toward / grantable / free-pickable)
+## when its category tier is open AND every listed prereq is already unlocked.
+func is_node_available(title: String) -> bool:
+	var d := get_unlock_def(title)
+	if d.is_empty():
+		return false
+	if not is_tier_available(str(d.get("category", "")), str(d.get("rank", "I"))):
+		return false
+	for p in d.get("prereqs", []):
+		if not unlocked_titles.has(str(p)):
+			return false
+	return true
+
+## Human-readable "unlock-by-doing" condition for a research title — the same
+## wording the research panel shows on a node card. Empty when the node carries
+## no real condition (Placeholder / missing fields).
+func unlock_condition_text(title: String) -> String:
+	var d := get_unlock_def(title)
+	if d.is_empty():
+		return ""
+	var action := str(d.get("action", "")).strip_edges()
+	if action == "Placeholder":
+		return ""
+	var object_name := str(d.get("object", "")).strip_edges()
+	var qty := int(d.get("qty", 0))
+	var unit := str(d.get("unit", "")).strip_edges()
+	if action.is_empty() or object_name.is_empty() or qty <= 0 or unit.is_empty():
+		return ""
+	var ul := unit.to_lower()
+	if ul == "turns":
+		return "%s %s for %d turns" % [action, object_name, qty]
+	if ul == "percentage":
+		return "%s %s to %d%%" % [action, object_name, qty]
+	return "%s %s %d %s" % [action, object_name, qty, unit]
+
 ## Record progress toward action+object conditions (e.g. record("Survey","tiles")).
 ## Advance/reset the per-tile "stockpile fed by 7+ buildings" streaks from this
 ## turn's flush: {tile_id -> distinct producing buildings}. Tiles at the bar
@@ -1796,6 +1869,11 @@ func _check_unlock_conditions() -> void:
 			continue
 		var action := str(d.action)
 		if action == "" or str(d.object) == "":
+			continue
+		# Per-category tier-lock: a higher tier's conditions can't be met until enough
+		# of the prior tier is unlocked (see is_tier_available). Reuses `d` so this
+		# stays a single pass over _unlock_defs.
+		if not is_tier_available(str(d.get("category", "")), str(d.get("rank", "I"))):
 			continue
 		var prereqs_met := true
 		for p in d.prereqs:
@@ -1838,6 +1916,12 @@ func _live_condition_met(d: Dictionary) -> bool:
 			return _count_buildings(obj, 1, false, turns) >= need
 		"Run Profitable L2":
 			return _count_buildings(obj, 2, true, 0) >= need
+		"Run Recipe":
+			# "Run N player buildings currently set to a recipe of this category"
+			# (e.g. furnaces on a Glassmaking recipe). A leading int in Unit optionally
+			# requires a minimum full-output run-streak.
+			var recipe_streak := _leading_int(str(d.get("unit", "")), 0)
+			return _count_buildings_running_recipe_type(obj, recipe_streak) >= need
 		"Stockpile filled":
 			# Just-in-Time Logistics: some tile's stockpile received goods from 3+
 			# buildings for <qty> consecutive turns (streaks kept at output flush).
@@ -1863,6 +1947,29 @@ func _count_buildings(internal: String, level: int, require_profitable: bool, mi
 		if min_streak > 0 and int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < min_streak:
 			continue
 		if require_profitable and not _is_building_profitable(inst):
+			continue
+		n += 1
+	return n
+
+# Count player-owned buildings whose CURRENTLY-ASSIGNED recipe has recipe_type ==
+# `recipe_type` (case-insensitive), optionally requiring a minimum full-output
+# run-streak. Powers recipe-specific research gates (e.g. "run furnaces on a
+# Glassmaking recipe"). Because glassmaking recipes only exist in the furnace,
+# matching recipe_type already means "a furnace running glassmaking".
+func _count_buildings_running_recipe_type(recipe_type: String, min_streak: int) -> int:
+	var want := recipe_type.strip_edges().to_lower()
+	if want == "":
+		return 0
+	var n := 0
+	for inst in buildings.values():
+		if not is_player_owned(inst):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
+		if recipe.is_empty():
+			continue
+		if str(recipe.get("recipe_type", "")).strip_edges().to_lower() != want:
+			continue
+		if min_streak > 0 and int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < min_streak:
 			continue
 		n += 1
 	return n
@@ -2671,18 +2778,6 @@ func _requote_shipment_routes() -> void:
 func set_sell_mode(mode: int) -> void:
 	sell_mode = mode
 	sell_mode_changed.emit(mode)
-
-## Debug cheat: switch between the current and alternate bottom-menu icon sets.
-## Returns the new state. Session-only, never persisted.
-func set_use_alt_bottom_menu(enabled: bool) -> bool:
-	if enabled == use_alt_bottom_menu:
-		return use_alt_bottom_menu
-	use_alt_bottom_menu = enabled
-	alt_bottom_menu_changed.emit(use_alt_bottom_menu)
-	return use_alt_bottom_menu
-
-func toggle_use_alt_bottom_menu() -> bool:
-	return set_use_alt_bottom_menu(not use_alt_bottom_menu)
 
 ## Debug cheat: toggle verbose production / CostSolver console logs.
 ## Returns the new state. Session-only, never persisted.

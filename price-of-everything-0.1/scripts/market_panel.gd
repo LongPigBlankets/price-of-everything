@@ -66,6 +66,7 @@ func _ensure_built() -> void:
 
 
 func _ready() -> void:
+	add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
 	title_label.text = "Market"
 	close_button.pressed.connect(hide)
 	MarketState.prices_updated.connect(_queue_refresh)

@@ -192,7 +192,7 @@ func _build_header(data: Dictionary) -> Control:
 	left.add_theme_constant_override("separation", 10)
 	top.add_child(left)
 
-	var kicker := "PRICE OF EVERYTHING · END OF GAME · TURN %d OF %d" % [int(data.get("turn", 0)), int(data.get("max_turns", 300))]
+	var kicker := "CARBON AND CAPITAL · END OF GAME · TURN %d OF %d" % [int(data.get("turn", 0)), int(data.get("max_turns", 300))]
 	left.add_child(_lbl(kicker, _tracked_font(), 12, C_KICKER))
 
 	var word_row := HBoxContainer.new()

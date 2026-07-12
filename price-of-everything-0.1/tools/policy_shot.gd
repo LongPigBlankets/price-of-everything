@@ -61,8 +61,6 @@ func _ready() -> void:
 	Production.turn_processed.emit(summary)
 	await _settle(140)   # dock expands
 	await _shot("/tmp/poe_policy_dock.png")
-	var dock: Control = game.get_node("UILayer/HUD/HUDContent/EndTurnDock")
-	dock.call("_collapse")
 	await _settle(30)
 
 	var money_panel: Control = game.get_node("UILayer/HUD/HUDContent/MoneyPanel")

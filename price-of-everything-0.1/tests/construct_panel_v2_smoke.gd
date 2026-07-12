@@ -7,7 +7,39 @@ func _ready() -> void:
 	for _i in 8:
 		await get_tree().process_frame
 
-	MatchState.set_use_construct_panel_v2(true)
+	assert(MatchState.use_construct_panel_v2, "Construct Panel V2 should be the default")
+	var top_bar := get_tree().root.find_child("TopBar", true, false)
+	assert(top_bar != null, "Top bar was not instantiated")
+	top_bar.call("_open_fly", "treasury")
+	await get_tree().process_frame
+	var money_mini_panel := top_bar.get("_fly_panel") as PanelContainer
+	assert(money_mini_panel != null and money_mini_panel.custom_minimum_size.x == 510.0,
+		"Treasury money mini-panel uses the expanded two-column width")
+	assert(is_equal_approx(money_mini_panel.size.y, money_mini_panel.get_combined_minimum_size().y),
+		"Treasury money mini-panel fits its content instead of filling the viewport")
+	assert(money_mini_panel.find_child("RevenueColumn", true, false) != null
+		and money_mini_panel.find_child("CostsColumn", true, false) != null,
+		"Treasury money mini-panel has Revenue and Costs columns")
+	assert(money_mini_panel.find_child("FlyTakeLoanButton", true, false) != null
+		and money_mini_panel.find_child("FlyBalanceButton", true, false) != null
+		and money_mini_panel.find_child("FlyChartsButton", true, false) != null,
+		"Treasury money mini-panel exposes loan, balance, and chart shortcuts")
+	top_bar.call("_close_fly")
+	var full_money_panel := get_tree().root.find_child("MoneyPanel", true, false) as PanelContainer
+	var money_tabs := full_money_panel.get_node("MarginContainer/ModalLayout/TabContainer") as TabContainer
+	for index in money_tabs.get_tab_count():
+		var title := money_tabs.get_tab_title(index)
+		if title in ["Stats", "Budget"]:
+			assert(money_tabs.is_tab_hidden(index), "%s is not exposed in Money" % title)
+	for target in [["FlyTakeLoanButton", "Loans"], ["FlyBalanceButton", "Balance"], ["FlyChartsButton", "Charts"]]:
+		top_bar.call("_open_fly", "treasury")
+		await get_tree().process_frame
+		var action := (top_bar.get("_fly_panel") as PanelContainer).find_child(str(target[0]), true, false) as Button
+		action.pressed.emit()
+		await get_tree().process_frame
+		assert(full_money_panel.visible and money_tabs.get_tab_title(money_tabs.current_tab) == str(target[1]),
+			"Treasury %s shortcut opens the %s tab" % [target[0], target[1]])
+		full_money_panel.hide()
 	var panel := get_tree().root.find_child("ConstructPanelV2", true, false)
 	assert(panel != null, "V2 construct panel was not instantiated")
 	panel.call("open_browser")

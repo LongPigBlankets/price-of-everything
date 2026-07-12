@@ -3,12 +3,14 @@ class_name PauseMenu
 ## In-game menu opened by Esc when no other panel is left to close (see
 ## world_map._unhandled_input → PanelStack.close_top() returning false).
 ## Centered black rounded panel with: Return to game / Save Game / Load Game /
-## Settings (placeholder) / Quit to Desktop. Esc or "Return to game" closes it.
+## Settings (placeholder) / Exit to Main Menu / Exit to Desktop. Esc or
+## "Return to game" closes it.
 
 const PANEL_BLACK := Color(0.03, 0.03, 0.045)
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
 const PANEL_SIZE := Vector2(420, 480)
 const RESOLVING_TOOLTIP := "Please wait until the turn resolves"
+const MAIN_MENU_SCENE := "res://scenes/main_menu.tscn"  # matches bottom_menu.gd
 
 var _save_btn: Button
 var _load_btn: Button
@@ -79,7 +81,8 @@ func _ready() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(spacer)
-	vbox.add_child(_make_button("Quit to Desktop", false, _on_quit_pressed))
+	vbox.add_child(_make_button("Exit to Main Menu", false, _on_exit_to_menu_pressed))
+	vbox.add_child(_make_button("Exit to Desktop", false, _on_quit_pressed))
 
 	PanelStack.push(self)
 	visibility_changed.connect(_on_visibility_changed)
@@ -121,7 +124,17 @@ func _on_settings_pressed() -> void:
 	SettingsPanel.open(get_parent())
 
 
+func _on_exit_to_menu_pressed() -> void:
+	# Autoloads survive; the scene tree (and this menu) is freed. A subsequent
+	# New Game reinitialises via SaveLoad.apply_pending() → MatchState.reset(),
+	# exactly as the victory/bankruptcy return-to-menu paths rely on.
+	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
+
+
 func _on_quit_pressed() -> void:
+	# get_tree().quit() does not raise WM_CLOSE_REQUEST, so flush the session log
+	# here; SessionLog guards against a duplicate write on _exit_tree.
+	SessionLog.flush()
 	get_tree().quit()
 
 

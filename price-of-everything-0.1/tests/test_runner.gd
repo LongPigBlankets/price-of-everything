@@ -34,7 +34,6 @@ func _ready() -> void:
 	_test_catalog_loaded()
 	_test_recipe_requirements()
 	_test_research_recipe_and_level_tiers()
-	_test_menu_icons()
 	_test_bottom_menu_default()
 	_test_panel_stack_focus()
 	_test_ports()
@@ -150,6 +149,7 @@ func _ready() -> void:
 	await _test_modifiers_production_recipe_output()
 	await _test_modifiers_roundtrip()
 	_test_live_unlock_conditions()
+	_test_research_tier_gating()
 	_test_deposit_penalty_modifier()
 	_test_workforce_output_modifier_surfaces_in_building_status()
 	_test_recipe_labour_owns_cost()
@@ -4472,6 +4472,28 @@ func _test_flavor_nodes_wired() -> void:
 	Modifiers.reset()
 	MatchState.reset()
 
+func _test_research_tier_gating() -> void:
+	MatchState.reset()
+	# Tier I is always open; a higher tier opens on >=min(3, prior-tier-count) unlocked
+	# in the prior tier of the SAME category.
+	_check(MatchState.is_tier_available("Metallurgy", "I"), "tier gate: Tier I always open")
+	_check(not MatchState.is_tier_available("Metallurgy", "II"),
+		"tier gate: Metallurgy II locked with 0 Tier-I unlocked")
+	MatchState.grant_unlock("Basic Blast Furnaces")
+	MatchState.grant_unlock("Continuous Casting")
+	_check(not MatchState.is_tier_available("Metallurgy", "II"),
+		"tier gate: Metallurgy II still locked at 2/3 Tier-I")
+	MatchState.grant_unlock("Oxygen-Enriched Blast")
+	_check(MatchState.is_tier_available("Metallurgy", "II"),
+		"tier gate: Metallurgy II opens at 3 Tier-I unlocked")
+	# Softlock clamp: Recycling has a single Tier-II node, so Tier III must open on just it.
+	_check(not MatchState.is_tier_available("Recycling", "III"),
+		"tier gate: Recycling III locked before its lone Tier-II node")
+	MatchState.grant_unlock("Membrane Bioreactors")
+	_check(MatchState.is_tier_available("Recycling", "III"),
+		"tier gate: Recycling III opens after its single Tier-II (min(3,count) clamp avoids softlock)")
+	MatchState.reset()
+
 func _test_live_unlock_conditions() -> void:
 	Modifiers.reset()
 	MatchState.reset()
@@ -4840,7 +4862,11 @@ func _test_save_load_ui() -> void:
 	await get_tree().process_frame
 	var menu_buttons: Array = []
 	_collect_buttons(menu, menu_buttons)
-	_check(menu_buttons.size() == 5, "pause menu: shows the 5 options")
+	# Return to game / Save / Load / Settings / Exit to Main Menu / Exit to Desktop
+	_check(menu_buttons.size() == 6, "pause menu: shows the 6 options")
+	var menu_labels: Array = menu_buttons.map(func(b: Button) -> String: return b.text)
+	_check(menu_labels.has("Exit to Main Menu"), "pause menu: has Exit to Main Menu")
+	_check(menu_labels.has("Exit to Desktop"), "pause menu: has Exit to Desktop")
 	_check(PanelStack.close_top() and not menu.visible, "pause menu: Esc path (close_top) closes it")
 	await get_tree().process_frame
 	DirAccess.remove_absolute("user://saves/__test_ui.json")
@@ -7758,7 +7784,6 @@ func _test_scripts_parse() -> void:
 		"res://scripts/sale_effects.gd",
 		"res://scripts/ui_helpers.gd",
 		"res://scripts/market_panel.gd",
-		"res://scripts/turn_summary.gd",
 		"res://scripts/construction.gd",
 		"res://scripts/construction_missing_dialog.gd",
 		"res://scripts/transport_service.gd",
@@ -8113,17 +8138,7 @@ func _test_research_recipe_and_level_tiers() -> void:
 	_check(level2_ok and level2_count == 21, "all 21 Level 2 building unlocks are Tier II")
 	_check(warehouse_level2_ok, "warehouse Level 2 unlock is Tier II")
 
-# Logic: the regenerated bottom-menu icons import and load as textures.
-func _test_menu_icons() -> void:
-	var all_ok := true
-	for key in ["resources", "buildings", "map_overlays", "markets", "politics", "construct", "tech"]:
-		var path := "res://assets/icons/ui_icons/200/%s.png" % key
-		if not (ResourceLoader.exists(path) and load(path) is Texture2D):
-			all_ok = false
-	_check(all_ok, "bottom-menu icons (200px tier) import and load")
-
 func _test_bottom_menu_default() -> void:
-	_check(MatchState.use_alt_bottom_menu, "white-rimmed bottom menu is the default")
 	var all_ok := true
 	for key in ["construct", "goods", "building_ledger", "mapmodes", "market", "politics", "research", "people"]:
 		var path := "res://assets/icons/ui_icons/alt/%s.png" % key
@@ -8961,14 +8976,18 @@ func _test_briefing_event_mapping() -> void:
 	EventScheduler.reset()
 	TurnBriefing.reset()
 	EventScheduler.emit_event({"id": "tb_ev_res", "kind": "research_unlocked",
-		"title": "Unlocked: Test", "body": "x", "persistent": false})
+		"title": "Unlocked: Test", "body": "x", "persistent": false,
+		"research_name": "Test", "research_reward": "Reward X", "research_condition": "Produce coal 5 units"})
 	EventScheduler.emit_event({"id": "tb_ev_news", "kind": "carbon_announcement",
 		"title": "Carbon tax announced", "body": "x", "severity": "warning", "persistent": true})
 	TurnBriefing._rebuild_items()
 	var by_id := {}
 	for it in TurnBriefing.items():
 		by_id[str(it.id)] = it
-	_check(by_id.has("ev:tb_ev_res") and str(by_id["ev:tb_ev_res"].section) == "info",
+	# Research unlocks aggregate into a single "info" update that carries each entry.
+	var agg: Dictionary = by_id.get("research_unlocked_agg", {})
+	_check(not agg.is_empty() and str(agg.get("section", "")) == "info" \
+			and str((agg.get("research", [{}])[0] as Dictionary).get("reward", "")) == "Reward X",
 		"briefing: research events land in the info section")
 	_check(by_id.has("ev:tb_ev_news") and str(by_id["ev:tb_ev_news"].section) == "news",
 		"briefing: unknown announcement kinds land in the news section")

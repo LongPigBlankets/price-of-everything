@@ -5,7 +5,7 @@
 # Usage from code:
 #   var card := preload("res://scenes/section_card.tscn").instantiate()
 #   card.title = "Buildings"
-#   card.icon = preload("res://assets/icons/ui_icons/buildings_icon.png")
+#   card.icon = preload("res://assets/icons/ui_icons/alt/building_ledger.png")
 #   card.content.add_child(some_label)
 #
 # Usage in .tscn: instance section_card.tscn, set `title` / `icon` exports.

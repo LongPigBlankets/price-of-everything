@@ -65,7 +65,7 @@ const SP := {"XS": 4, "SM": 8, "MD": 12, "LG": 20, "XL": 32, "XXL": 48}
 # ── Font sizes ─────────────────────────────────────────────────────────────
 const FS := {
 	"H1": 32, "SECTION": 22, "BUILDING": 22,
-	"BODY": 14, "CAPTION": 13, "NUMERIC": 16,
+	"BODY": 14, "CAPTION": 14, "NUMERIC": 16,   # CAPTION was 13 — bumped +1 for legibility
 	"BUTTON": 17,
 }
 
@@ -81,6 +81,28 @@ const FONT_PATHS := {
 }
 
 var theme: Theme
+
+# ── DS component builders ───────────────────────────────────────────────────
+# The design system is more than styleboxes: these are the blessed builders for
+# the two most-repeated composite widgets, so every panel renders them identically.
+# The implementations live in dedicated RefCounted modules (preloaded, headless-safe);
+# DS is the discoverable façade.
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
+const RecipeDiagram := preload("res://scripts/recipe_diagram.gd")
+
+## Framed + bevelled good icon (off-white plate + raised metal rim + clipped/zoomed
+## art) — the market-panel goods-tab treatment. THE way to render a good icon.
+func good_icon(good_id: String, internal_name: String, size: int = 98) -> Control:
+	return UIHelpers.make_framed_good_icon(good_id, internal_name, size, size <= 128)
+
+## Recipe strip (cream card, inputs → navy power-arrow → output, bleeding icons +
+## qty pills) from a BuildingReadout.flow() dict.
+func recipe_diagram(flow: Dictionary) -> PanelContainer:
+	return RecipeDiagram.build(flow)
+
+## Recipe strip straight from a Catalog recipe dict (no building instance).
+func recipe_diagram_for(recipe: Dictionary) -> PanelContainer:
+	return RecipeDiagram.from_recipe(recipe)
 
 func _ready() -> void:
 	theme = _build_theme()
@@ -106,7 +128,7 @@ func _build_theme() -> Theme:
 	_label_var(t, fonts, "Section",      "BARLOW_BOLD", FS["SECTION"],  PALETTE["ACCENT"], 0.08)
 	_label_var(t, fonts, "BuildingName", "BARLOW_SEMI", FS["BUILDING"], PALETTE["TEXT"])
 	_label_var(t, fonts, "Body",         "PLEX_MED",    FS["BODY"],     PALETTE["TEXT"])
-	_label_var(t, fonts, "Caption",      "PLEX",        FS["CAPTION"],  PALETTE["TEXT_MUTED"])
+	_label_var(t, fonts, "Caption",      "PLEX",        FS["CAPTION"],  PALETTE["TEXT"])  # off-white, not muted — small text was low-contrast
 	_label_var(t, fonts, "Numeric",      "PLEX_SEMI",   FS["NUMERIC"],  PALETTE["TEXT"])
 
 	# ── PanelContainer base + variations ───────────────────────────────

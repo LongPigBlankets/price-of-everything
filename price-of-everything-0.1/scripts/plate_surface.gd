@@ -19,7 +19,6 @@ var _fill_sb: StyleBoxFlat
 
 func _ready() -> void:
 	resized.connect(queue_redraw)
-	MatchState.alt_bottom_menu_changed.connect(func(_e): queue_redraw())
 	_fill_sb = StyleBoxFlat.new()
 	_fill_sb.bg_color = FILL_COLOR
 	_fill_sb.corner_radius_top_left = FILL_RADIUS
@@ -28,8 +27,6 @@ func _ready() -> void:
 	_fill_sb.corner_radius_bottom_left = FILL_RADIUS
 
 func _draw() -> void:
-	if not MatchState.use_alt_bottom_menu:
-		return  # the metal-plate material is part of the alt look only
 	draw_style_box(_fill_sb, Rect2(Vector2.ZERO, size))  # hide the navy behind the plate's rounded corners
 	draw_texture_rect(PLATE_TEX, Rect2(Vector2.ZERO, size), false)
 	# Faint worn stencilled part-number along the bottom of the plate, in the

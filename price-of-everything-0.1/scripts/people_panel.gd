@@ -63,6 +63,7 @@ func _ready() -> void:
 	size = MARKET_FALLBACK_SIZE
 	_apply_research_window(self)
 	theme_type_variation = &"PanelContainer"
+	add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
 	_build_panel()
 	MatchState.labour_multiplier_changed.connect(func(_value: float): _refresh_labour())
 	MatchState.workforce_policies_changed.connect(_refresh_policy_buttons)
