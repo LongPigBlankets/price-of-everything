@@ -3084,6 +3084,35 @@ func _test_start_config_expansion() -> void:
 		"start config: override survey_all_tiles merges into the match ruleset")
 	_check(str(ov_rules.get("name", "")) == "standard",
 		"start config: override merge keeps the start's ruleset name")
+	# Per-building output routing (output_to) → output_stockpile_destinations, keyed by
+	# the minted instance_id, resolving the recipe's output good. And modifiers passthrough.
+	var routed: Dictionary = SaveLoad.expand_start_config({
+		"start": true,
+		"buildings": [
+			{"building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_6_8", "output_to": "tile_6_9"},
+			{"building_id": "b_002", "recipe_id": "r_005", "tile_id": "tile_6_9", "output_to": "market"},
+		],
+		"modifiers": [
+			{"id": "start_test_iron", "domain": "recipe_output", "target_match": {"good_internal": "iron_ingots"}, "pct": 10.0, "label": "Test Start"},
+		],
+	})
+	var rmatch: Dictionary = routed.get("match", {})
+	var dests: Dictionary = rmatch.get("output_stockpile_destinations", {})
+	var mine_route := false
+	var furn_market := false
+	for iid in dests:
+		var per_good: Dictionary = dests[iid]
+		if str(iid).begins_with("inst_b_001_") and str(per_good.get("g_001", "")) == "tile_6_9":
+			mine_route = true
+		if str(iid).begins_with("inst_b_002_") and str(per_good.get("g_004", "")) == MatchState.MARKET_DESTINATION:
+			furn_market = true
+	_check(mine_route, "start config: output_to tile routes the mine's coal output to the furnace tile")
+	_check(furn_market, "start config: output_to market routes the furnace's iron_ingots to __market__")
+	var seeded_mods: Dictionary = (routed.get("modifiers", {}) as Dictionary).get("modifiers", {})
+	var tm: Dictionary = seeded_mods.get("start_test_iron", {})
+	_check(float(tm.get("pct", 0.0)) == 10.0 and str(tm.get("domain", "")) == "recipe_output"
+		and float(tm.get("mult", 0.0)) == 1.0 and tm.has("expires_turn"),
+		"start config: modifiers passthrough fills the ModifierState import shape (pct/domain/mult/expires_turn)")
 
 # Phase 3 end-to-end: a start config applied through the scene pipeline keeps
 # the scene-seeded NPC buildings (ports/ruins), seeds debt WITHOUT cash, and

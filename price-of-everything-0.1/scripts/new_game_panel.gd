@@ -21,7 +21,7 @@ const DEFAULT_START := "res://data/starts/default.json"
 # playable; everything else is greyed with a "Locked in the Demo" tooltip. Flip
 # DEMO_LOCK to false to restore the full menu after the demo.
 const DEMO_LOCK := true
-const DEMO_START_ID := "coal_baron"
+const DEMO_START_ID := "metal_magnate"
 const DEMO_DIFFICULTY_ID := "normal"
 const DEMO_SPEED_ID := "300"
 const DEMO_LOCK_TIP := "Locked in the Demo"

@@ -283,6 +283,10 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			surveyed[port_tile] = true
 
 	var buildings: Dictionary = {}
+	# Per-building output routing authored on the building entry (output_to: a tile id,
+	# or "market"). Keyed by the instance_id we mint here, so it's robust to array
+	# reordering — no fragile predicted ids. Shape: instance_id -> {good_id -> dest}.
+	var output_routes: Dictionary = {}
 	var counter := START_COUNTER_BASE
 	for entry in cfg.get("buildings", []):
 		var building_id := str(entry.get("building_id", ""))
@@ -291,15 +295,26 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			continue
 		counter += 1
 		var instance_id := "inst_%s_%06x" % [building_id, counter]
+		var recipe_id := str(entry.get("recipe_id", ""))
 		buildings[instance_id] = {
 			"instance_id": instance_id,
 			"building_id": building_id,
-			"recipe_id": str(entry.get("recipe_id", "")),
+			"recipe_id": recipe_id,
 			"tile_id": tile_id,
 			"owner": str(entry.get("owner", MatchState.LOCAL_PLAYER)),
 			# Optional starting upgrade level (1..3); production reads building.level.
 			"level": clampi(int(entry.get("level", 1)), 1, BuildingLevels.MAX_LEVEL),
 		}
+		var out_to := str(entry.get("output_to", ""))
+		if out_to != "":
+			var dest: String = MatchState.MARKET_DESTINATION if out_to == "market" else out_to
+			var per_good: Dictionary = {}
+			for o in Catalog.get_recipe(recipe_id).get("outputs", []):
+				var gid := str((o as Dictionary).get("good_id", ""))
+				if gid != "":
+					per_good[gid] = dest
+			if not per_good.is_empty():
+				output_routes[instance_id] = per_good
 		surveyed[tile_id] = true
 	for tile in cfg.get("surveyed_tiles", []):
 		surveyed[str(tile)] = true
@@ -356,11 +371,40 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			"recurring_sells": _stamped_orders(recurring.get("sells", [])),
 			"recurring_bulk_sells": _stamped_orders(recurring.get("bulk_sells", [])),
 			"recurring_buys": _stamped_orders(recurring.get("buys", [])),
+			"output_stockpile_destinations": output_routes,
 		},
 		"stockpile": {"by_tile": (cfg.get("stockpile", {}) as Dictionary).duplicate(true)},
 		"loans": {"loans": loans, "next_loan_id": loans.size() + 1},
 		"infrastructure": (cfg.get("infrastructure", {}) as Dictionary).duplicate(true),
+		"modifiers": _expand_start_modifiers(cfg.get("modifiers", [])),
 	}
+
+
+# Normalise the start config's authoring modifier list into ModifierState's import
+# shape. Each authored entry needs only {id, domain, pct/mult/add, target/target_match,
+# label, source}; we fill the defaults apply() reads by direct key access so it can't
+# crash on a missing add/mult/pct.
+func _expand_start_modifiers(entries: Variant) -> Dictionary:
+	var mods: Dictionary = {}
+	if entries is Array:
+		var n := 0
+		for e in entries:
+			if not (e is Dictionary):
+				continue
+			var d: Dictionary = (e as Dictionary).duplicate(true)
+			n += 1
+			var mid := str(d.get("id", "start_mod_%d" % n))
+			d["id"] = mid
+			d["domain"] = str(d.get("domain", ""))
+			d["target"] = str(d.get("target", "*"))
+			d["target_match"] = d.get("target_match", {})
+			d["mult"] = float(d.get("mult", 1.0))
+			d["add"] = float(d.get("add", 0.0))
+			d["pct"] = float(d.get("pct", 0.0))
+			d["expires_turn"] = int(d.get("expires_turn", 0))
+			d["added_turn"] = int(d.get("added_turn", 1))
+			mods[mid] = d
+	return {"modifiers": mods, "history": [], "next_id": 1}
 
 # Authoring convenience: `"ruleset": "hardcore"` and `"ruleset": {"name": "hardcore",
 # ...per-rule keys}` are both accepted; the dict form is what gets stored.

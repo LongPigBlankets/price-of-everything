@@ -311,6 +311,8 @@ func _build_menu() -> void:
 			b.pressed.connect(_on_hall_of_records_pressed)
 		elif label == "Settings":
 			b.pressed.connect(_on_settings_pressed)
+		elif label == "Credits":
+			_make_coming_soon(b, "Coming soon.")
 		elif label == "Encyclopedia":
 			_make_coming_soon(b, "Coming soon. In the meantime check out the encyclopedia in the top bar in the game.")
 		vbox.add_child(b)
