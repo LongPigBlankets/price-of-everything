@@ -320,6 +320,17 @@ func open_for_tile(tile_id: String, tile_data: Dictionary) -> void:
 	show()
 
 
+## Expand a building card so its recipe rows exist (RecipeRow_<id> nodes) — used by
+## the tutorial to reveal the recipe it wants to spotlight without a manual click.
+func expand_building(building_id: String) -> void:
+	if not visible or _view != View.BROWSE:
+		return
+	_expanded_building_id = building_id
+	_render()
+	# The recipe rows now exist; the coach overlay scrolls its spotlight target
+	# (RecipeRow_<id>) into view itself, so no scrolling is needed here.
+
+
 func _reset_to_browse() -> void:
 	_active_filters.clear()
 	_search_query = ""
@@ -864,6 +875,7 @@ func _make_building_card(building: Dictionary) -> Control:
 	# Tile View building cards are 100px tall (90px content + 5px metal inset).
 	# Keep the construct parent card on that same rhythm.
 	var card := TileBuildingCard.new(12, 5, 10)
+	card.name = "BuildingCard_%s" % building_id   # tutorial spotlight / scroll target
 	card.muted = disabled or not affordable
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 0)
@@ -954,6 +966,7 @@ func _make_building_card(building: Dictionary) -> Control:
 
 func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bool = true) -> Button:
 	var button := MetalRecipeRow.new()
+	button.name = "RecipeRow_%s" % str(recipe.get("recipe_id", ""))   # tutorial spotlight target
 	button.custom_minimum_size = Vector2(0, RECIPE_ROW_HEIGHT)
 	button.tooltip_text = "Choose this recipe" if affordable else "Insufficient funds"
 	button.add_theme_color_override("font_color", TEXT)
@@ -1078,6 +1091,7 @@ func _render_confirm() -> void:
 	value_label.add_theme_color_override("font_color", MUTED)
 	value_row.add_child(value_label)
 	var value := Label.new()
+	value.name = "BuildCostValue"   # tutorial spotlight target (build-cost step)
 	value.text = _money(_construction_display_cost(str(_selected_building.get("id", ""))))
 	value.add_theme_font_size_override("font_size", 16)
 	value.add_theme_color_override("font_color", TEXT)
@@ -1102,6 +1116,7 @@ func _render_confirm() -> void:
 	total.add_theme_color_override("font_color", TEXT)
 	_footer.add_child(total)
 	var confirm := Button.new()
+	confirm.name = "BuildConfirmButton"   # tutorial spotlight target
 	confirm.text = "Confirm" if _locked_tile_id != "" else "Confirm · select tile"
 	confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	confirm.theme_type_variation = "Primary"

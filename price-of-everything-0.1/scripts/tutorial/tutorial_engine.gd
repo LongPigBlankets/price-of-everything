@@ -167,9 +167,16 @@ func _run_setup(actions: Array) -> void:
 				if bdp != null and bdp is Control:
 					(bdp as Control).hide()
 			"close_construct":
-				var cp := _find("ConstructPanel")
-				if cp != null and cp is Control:
-					(cp as Control).hide()
+				for cp_name in ["ConstructPanel", "ConstructPanelV2"]:
+					var cp := _find(cp_name)
+					if cp != null and cp is Control:
+						(cp as Control).hide()
+			"expand_construct_building":
+				# Reveal a building's recipe rows in construct panel v2 so the next
+				# step can spotlight a specific RecipeRow_<id>.
+				var cpv2 := _find("ConstructPanelV2")
+				if cpv2 != null and cpv2.has_method("expand_building"):
+					cpv2.expand_building(str(a.get("building_id", "")))
 			"close_empire_view":
 				# Force the empire view shut when the tutorial moves on — a player who
 				# opened it with Tab but didn't press Tab again to return would otherwise
