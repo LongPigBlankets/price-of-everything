@@ -3,7 +3,7 @@ extends Control
 ## Title screen: navy backdrop, the animated goods board on the right, and a
 ## framed menu column on the left - a rounded off-white outline holding the
 ## buttons, with a 9-sliced ornate plate at the top carrying the centred navy
-## "PRICE OF EVERYTHING" title. Only New Game is wired up so far.
+## "CARBON AND CAPITAL" title. Only New Game is wired up so far.
 
 const MAP_SCENE := "res://scenes/main.tscn"
 const NAVY := Color(0, 0.07, 0.14)            # established theme background navy
@@ -362,7 +362,7 @@ func _build_menu() -> void:
 
 func _title_label() -> Label:
 	var l := Label.new()
-	l.text = "PRICE OF EVERYTHING"
+	l.text = "CARBON AND CAPITAL"
 	l.theme_type_variation = &"Title"   # Bebas Neue - block capitals
 	l.add_theme_font_size_override("font_size", TITLE_FONT)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
