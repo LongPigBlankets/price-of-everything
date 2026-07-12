@@ -274,7 +274,11 @@ func finish_build(animate: bool) -> void:
 	# A loaded save applies only now, once the terrain and default seeding exist;
 	# it overwrites the fresh-match state above (docs/save_load_spec.md).
 	var loaded_pending := SaveLoad.apply_pending()
-	if loaded_pending:
+	# A normal loaded save must restore its existing visual state immediately. A
+	# start snapshot is different: its player buildings need to wait for the baked
+	# road network below, otherwise they use the roadless fallback and sit under
+	# turn-one streets. They are emitted in the post-road pass instead.
+	if loaded_pending and not pending_start:
 		_rebuild_after_load()
 	# Advanced Setting "All tiles surveyed at game start": reveal every tile now that
 	# the terrain (and any pending ruleset) exists.
@@ -323,6 +327,8 @@ func finish_build(animate: bool) -> void:
 		if not pending_tutorial:
 			await _place_ruins("tile_23_16", animate)
 			await _place_start_buildings(animate)
+		if pending_start:
+			await _place_pending_start_buildings(animate)
 	RoadWorks.rebuild_occupancy()   # no-op until OCCUPANCY_ROADS_ENABLED
 
 	# Port dockhouses: white harbour slabs + pier fingers on the sea edge of
@@ -1698,6 +1704,23 @@ func _place_start_buildings(animate: bool = false) -> void:
 		building_placed.emit(tile_id, str(entry.building), str(entry.recipe), instance_id, coord)
 		if animate:
 			await get_tree().process_frame   # one building per frame keeps the slideshow moving
+## Emit a start snapshot's player-owned buildings only after RoadNetwork has
+## bootstrapped. SaveLoad already imported their simulation data; this is solely
+## the deferred visual pass that gives them the same road-aware layout as ports,
+## ruins and the pre-placed NPC companies.
+func _place_pending_start_buildings(animate: bool = false) -> void:
+	for instance_id in MatchState.buildings:
+		var inst: Dictionary = MatchState.buildings[instance_id]
+		if not MatchState.is_player_owned(inst):
+			continue
+		var tile_id := str(inst.get("tile_id", ""))
+		var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
+		if tile_id == "" or coord == Vector2i(-1, -1):
+			continue
+		building_placed.emit(tile_id, str(inst.get("building_id", "")),
+			str(inst.get("recipe_id", "")), str(instance_id), coord)
+		if animate:
+			await get_tree().process_frame
 
 func _tile_has_building(tile_id: String, building_id: String) -> bool:
 	for iid in MatchState.tile_buildings.get(tile_id, []):

@@ -4325,6 +4325,23 @@ func _test_sell_protects_build_materials() -> void:
 	_check(Production._arrived_this_turn(t, "g_027") == 0,
 		"goods that did not arrive this turn have no grace")
 	Production._inbound_delivery_this_turn.clear()
+	# (c) Existing stock is not grandfathered when a new local consumer appears:
+	# Sell Surplus must immediately liquidate the accumulated amount above the
+	# lead-time working reserve, while keeping that reserve safe for production.
+	var iron_tile := "tile_5_10"
+	var iron_id := "g_004"
+	var steel_furnace := MatchState.add_building("b_002", "r_003", iron_tile, "player_1")
+	Stockpile.add(iron_tile, iron_id, 600)
+	MatchState.enable_sell_surplus(iron_tile)
+	var iron_reserve: Dictionary = Production.compute_sell_reserve_for_tile(iron_tile)
+	var iron_before := Stockpile.get_at_tile(iron_tile, iron_id)
+	Production._process_production()
+	var iron_after := Stockpile.get_at_tile(iron_tile, iron_id)
+	_check(iron_before > int(iron_reserve.get(iron_id, 0)),
+		"sell reserve test starts with accumulated iron above the working reserve")
+	_check(iron_after <= int(iron_reserve.get(iron_id, 0)),
+		"sell surplus drains accumulated iron but keeps the lead-time production reserve")
+	MatchState.remove_building(steel_furnace)
 	Modifiers.reset()
 	MatchState.reset()
 	Stockpile.clear_all()
