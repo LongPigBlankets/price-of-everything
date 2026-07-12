@@ -18,9 +18,23 @@ const LORE_PARAGRAPHS := [
 ]
 const BONUS := "Legacy of Metal Bonus: +10% iron ingots, copper ingots, alloy metal ingots and steel output."
 
+var _input_blocked_parent: Node = null
+
 func _ready() -> void:
 	layer = 150
 	_build()
+	# Modal: suspend the map's own input (Tab → Empire View, X → Search, map clicks)
+	# while the intro is up. The scrim only blocks the mouse; hotkeys reach world_map
+	# via _input / _unhandled_input, so disable those on the parent and restore on exit.
+	_input_blocked_parent = get_parent()
+	if _input_blocked_parent != null:
+		_input_blocked_parent.set_process_input(false)
+		_input_blocked_parent.set_process_unhandled_input(false)
+
+func _exit_tree() -> void:
+	if _input_blocked_parent != null and is_instance_valid(_input_blocked_parent):
+		_input_blocked_parent.set_process_input(true)
+		_input_blocked_parent.set_process_unhandled_input(true)
 
 func _build() -> void:
 	var scrim := ColorRect.new()

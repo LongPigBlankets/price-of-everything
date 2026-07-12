@@ -373,6 +373,10 @@ func finish_build(animate: bool) -> void:
 
 
 func _show_metal_magnate_intro() -> void:
+	# Wait for the loading screen (if any) to dismiss first, so the modal sits over the
+	# game board — not over the loading slideshow and its own "Begin" button.
+	while _loading_screen_active():
+		await get_tree().process_frame
 	_focus_camera_on_tile("tile_5_10")   # centre on Stoneshore Docks (the start's hub)
 	var intro: CanvasLayer = load("res://scripts/metal_magnate_intro.gd").new()
 	add_child(intro)
