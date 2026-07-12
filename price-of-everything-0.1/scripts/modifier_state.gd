@@ -312,6 +312,15 @@ func _register_extraction_penalties() -> void:
 # pick). One-shot: grant_unlock never re-fires for an already-unlocked title, so
 # the timed bonus lands exactly once.
 func _on_unlock_granted(title: String, _description: String, _via_condition: bool) -> void:
+	apply_unlock_modifier(title)
+
+## Apply the standing modifier(s) a research title grants (idempotent — add() keys by
+## id). Called both from the unlock_granted signal AND directly by
+## MatchState.grant_unlock: a title can be unlocked during game SETUP (a start's
+## buildings satisfy a scale condition like "Operational Team Managers" at 3 buildings)
+## at a moment this listener isn't connected yet, and grant_unlock is one-shot, so the
+## signal path alone would drop the bonus forever.
+func apply_unlock_modifier(title: String) -> void:
 	if not UNLOCK_MODIFIERS.has(title):
 		return
 	var spec = UNLOCK_MODIFIERS[title]
@@ -320,6 +329,26 @@ func _on_unlock_granted(title: String, _description: String, _via_condition: boo
 			add(m)
 	else:
 		add(spec)
+
+# Re-apply the standing modifier of every already-unlocked research title. SaveLoad
+# imports buildings (which can satisfy a scale unlock like "Operational Team Managers"
+# at 3 buildings and add its modifier) BEFORE Modifiers.import_state replaces the
+# registry wholesale — wiping it. grant_unlock is one-shot, so the modifier would
+# otherwise be lost forever (the title shows unlocked but the bonus never lands).
+# Mirrors MatchState.reapply_mission_modifiers. Only PERMANENT specs (no duration_turns)
+# are re-applied: a timed bonus's remaining expiry is authoritative from the saved
+# registry and must not be refreshed here. add() keys by id, so this is idempotent.
+func reapply_unlock_modifiers(unlocked_titles: Dictionary) -> void:
+	for title in unlocked_titles.keys():
+		var key := str(title)
+		if not UNLOCK_MODIFIERS.has(key):
+			continue
+		var spec = UNLOCK_MODIFIERS[key]
+		var specs: Array = spec if spec is Array else [spec]
+		for m in specs:
+			if (m as Dictionary).has("duration_turns"):
+				continue  # timed bonus — saved expiry is authoritative
+			add(m)
 
 
 # ── Public API ────────────────────────────────────────────────────────────

@@ -113,6 +113,11 @@ func import_snapshot(snap: Dictionary) -> void:
 	# Permanent advisor-mission rewards (perm slices + capstones) are also derived from
 	# advisor_missions_completed, so re-apply them after the Modifiers registry reload.
 	MatchState.reapply_mission_modifiers()
+	# Scale/condition research unlocks (e.g. Operational Team Managers at 3 buildings)
+	# add their modifier when the unlock fires — but a start/save building import fires
+	# it BEFORE Modifiers.import_state above wipes the registry, and grant_unlock is
+	# one-shot so it never re-fires. Re-apply the permanent ones from unlocked_titles.
+	Modifiers.reapply_unlock_modifiers(MatchState.unlocked_titles)
 	# Missing "victory" key (old saves) -> import_state({}) leaves a fresh zero state.
 	VictoryState.import_state(snap.get("victory", {}))
 	# Additive key (tolerant reader): pre-feature saves seed the policy schedule fresh.
