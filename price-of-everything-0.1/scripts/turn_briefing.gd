@@ -466,7 +466,7 @@ func _event_item(ev: Dictionary) -> Dictionary:
 	if section == "":
 		return {}
 	return {
-		"id": "ev:%s" % str(ev.id), "kind": "event", "section": section,
+		"id": "ev:%s" % str(ev.id), "kind": "event", "event_kind": kind, "section": section,
 		"severity": str(ev.get("severity", "info")),
 		"dismissible": true, "event_id": str(ev.id),
 		"icon": str(_EVENT_ICONS.get(kind, "flag")),

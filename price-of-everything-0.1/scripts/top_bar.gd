@@ -35,6 +35,9 @@ const MOD_H := 48.0
 const NOTCH_H := 102.0
 const NOTCH_MIN_W := 300.0
 const NOTCH_RADIUS := 16.0
+# Research icon (a copy of the bottom menu's microscope) shown in the briefing
+# notch on turns a research unlock lands.
+const RESEARCH_ICON: Texture2D = preload("res://assets/icons/ui_icons/tech_icon.png")
 # Metallic bottom bezel (the end-turn dock's machined-silver family), lit from the left.
 const EDGE_H := 7.0
 const SILVER_LT := Color("#b3bcc6")
@@ -91,6 +94,7 @@ var _victory_target: Label   # "/ N" — the rising win threshold for the curren
 # Briefing notch (top_level: centred on the viewport, hangs below the bar)
 var _briefing_btn: Control
 var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyph)
+var _research_icon: TextureRect  # microscope — visible only on turns research unlocks
 var _briefing_head: Label
 var _briefing_sub: Label
 var _briefing_dot: Panel
@@ -598,6 +602,17 @@ func _build_briefing() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	notch.add_child(row)
+	# Research microscope (leads the row) — shown only on turns a research unlock lands.
+	_research_icon = TextureRect.new()
+	_research_icon.texture = RESEARCH_ICON
+	_research_icon.custom_minimum_size = Vector2(28, 28)
+	_research_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_research_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_research_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_research_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_research_icon.tooltip_text = "Research unlocked this turn"
+	_research_icon.visible = false
+	row.add_child(_research_icon)
 	var glyph_holder := Control.new()
 	glyph_holder.custom_minimum_size = Vector2(28, 28)
 	glyph_holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -646,11 +661,16 @@ func _recenter_notch() -> void:
 func _refresh_briefing() -> void:
 	var decisions := 0
 	var updates := 0
+	var research := false
 	for it in TurnBriefing.items():
 		if str(it.get("kind", "")) == "decision":
 			decisions += 1
 		else:
 			updates += 1
+		if str(it.get("event_kind", "")) == "research_unlocked":
+			research = true
+	if _research_icon != null:
+		_research_icon.visible = research
 	var hot := decisions > 0
 	(_briefing_btn as _NotchBtn).warn = hot
 	(_briefing_btn as _NotchBtn).active = TurnBriefing.expanded
