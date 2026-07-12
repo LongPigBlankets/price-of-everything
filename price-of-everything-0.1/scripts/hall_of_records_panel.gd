@@ -53,16 +53,6 @@ func _build() -> void:
 	plate.add_theme_stylebox_override("panel", sb)
 	add_child(plate)
 
-	# Back button, top-right.
-	var back := Button.new()
-	back.text = "Back"
-	back.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	back.offset_left = -120
-	back.offset_top = 24
-	back.offset_right = -24
-	back.pressed.connect(func() -> void: back_requested.emit())
-	plate.add_child(back)
-
 	# Content column: banner up top, the record list scrolling beneath.
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -71,6 +61,24 @@ func _build() -> void:
 	margin.add_theme_constant_override("margin_top", 28)
 	margin.add_theme_constant_override("margin_bottom", 28)
 	plate.add_child(margin)
+
+	# Back button, top-right — added AFTER the content so it renders on top (the
+	# full-rect content margin would otherwise sit over it and eat clicks), with an
+	# explicit size (the old PRESET_TOP_RIGHT left offset_bottom at 0 → -24px tall,
+	# so it was unclickable).
+	var back := Button.new()
+	back.text = "Back"
+	back.custom_minimum_size = Vector2(96, 40)
+	back.anchor_left = 1.0
+	back.anchor_right = 1.0
+	back.anchor_top = 0.0
+	back.anchor_bottom = 0.0
+	back.offset_left = -120
+	back.offset_right = -24
+	back.offset_top = 24
+	back.offset_bottom = 64
+	back.pressed.connect(func() -> void: back_requested.emit())
+	plate.add_child(back)
 
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 14)

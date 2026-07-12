@@ -88,13 +88,13 @@ func _show_tutorial_prompt() -> void:
 # loading screen, then let IT drive a threaded load of the map scene — so the loading
 # visuals animate during the heavy load instead of the menu freezing. (overrides —
 # difficulty/victory/tutorial — are consumed by prepare_new_game in Phase 2.)
-func _on_start_requested(start_path: String, _overrides: Dictionary) -> void:
+func _on_start_requested(start_path: String, overrides: Dictionary) -> void:
 	# Prepare the snapshot, raise the loading screen, and let IT drive a threaded load of the map
 	# scene. The heavy instantiation + first render happen behind the animated loading screen; the
 	# HUD panels build lazily (on first open) and the hill work spreads via the loading-screen
-	# pacing gate, so the freeze is far smaller than it was. (overrides — difficulty/victory/
-	# tutorial — are consumed by prepare_new_game in Phase 2.)
-	SaveLoad.prepare_new_game(start_path)
+	# pacing gate, so the freeze is far smaller than it was. The panel's overrides (ruleset —
+	# survey_all_tiles, tutorial_enabled, difficulty/speed) merge into the start's ruleset.
+	SaveLoad.prepare_new_game(start_path, overrides)
 	var screen := LoadingScreen.show_global(get_tree())
 	screen.begin_load(SaveLoad.MAIN_SCENE)
 
@@ -311,6 +311,8 @@ func _build_menu() -> void:
 			b.pressed.connect(_on_hall_of_records_pressed)
 		elif label == "Settings":
 			b.pressed.connect(_on_settings_pressed)
+		elif label == "Encyclopedia":
+			_make_coming_soon(b, "Coming soon. In the meantime check out the encyclopedia in the top bar in the game.")
 		vbox.add_child(b)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -367,6 +369,23 @@ func _title_label() -> Label:
 	l.set_anchors_preset(Control.PRESET_FULL_RECT)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
+
+
+# Grey a menu button into a "not available yet" state that STILL shows its tooltip
+# on hover. A truly disabled Button (disabled=true) doesn't surface its tooltip, so
+# we keep it enabled, mute it, kill the hover highlight and wire no handler.
+func _make_coming_soon(b: Button, tip: String) -> void:
+	b.tooltip_text = tip
+	b.focus_mode = Control.FOCUS_NONE
+	b.mouse_default_cursor_shape = Control.CURSOR_ARROW
+	b.add_theme_color_override("font_color", OFF_WHITE * Color(1, 1, 1, 0.38))
+	b.add_theme_color_override("font_hover_color", OFF_WHITE * Color(1, 1, 1, 0.38))
+	b.add_theme_color_override("font_pressed_color", OFF_WHITE * Color(1, 1, 1, 0.38))
+	var muted := StyleBoxFlat.new()
+	muted.bg_color = Color(NAVY, 0.0)   # no fill — reads as inert text, not a button
+	muted.set_corner_radius_all(6)
+	for st in ["normal", "hover", "pressed", "focus"]:
+		b.add_theme_stylebox_override(st, muted)
 
 
 func _make_button(text: String, primary: bool) -> Button:

@@ -228,9 +228,9 @@ class LoadingPlate extends Control:
 	const RIM := Color("#f4e6c0")          # cream metallic rim / header
 	const ACCENT := Color("#e6b34a")       # gold
 	const OFF_WHITE := Color("#eef1ea")    # tip body
-	const INSET := 6.0                     # navy octagon inset inside the silver plate
-	const CUT := 28.0                      # octagon corner cut
-	const RIVET_EDGE := 9.0
+	const INSET := 6.0                     # navy inset inside the silver plate (= silver band width)
+	const RADIUS := 24.0                   # rounded-rect corner radius (was an octagon corner cut)
+	const RIVET_EDGE := 9.0                # bolts sit this far in from each edge — on the silver band
 
 	var header := "Loading"
 	var tip := ""
@@ -245,18 +245,19 @@ class LoadingPlate extends Control:
 		var r := Rect2(Vector2.ZERO, size)
 
 		# Drop shadow under the whole plate.
-		draw_colored_polygon(_octa(Rect2(r.position + Vector2(0, 4), r.size), CUT), Color(0, 0, 0, 0.35))
+		draw_colored_polygon(_round_rect(Rect2(r.position + Vector2(0, 4), r.size), RADIUS), Color(0, 0, 0, 0.35))
 
-		# Silver under-plate (the riveted frame).
-		var sp := _octa(r, CUT)
+		# Silver under-plate (the riveted frame) — a rounded rectangle so its corners
+		# extend out under the bolts (an octagon chamfered them away).
+		var sp := _round_rect(r, RADIUS)
 		draw_polygon(sp, _grad(sp, r, SILVER_LT, SILVER_MD, SILVER_DK, SILVER_MD))
 		var so := sp.duplicate()
 		so.append(sp[0])
 		draw_polyline(so, Color("#3a4048"), 1.5, true)
 
-		# Navy octagon on top, inset, with diagonal lighting + sheen + cream rim.
+		# Navy plate on top, inset, with diagonal lighting + sheen + cream rim.
 		var nr := r.grow(-INSET)
-		var np := _octa(nr, CUT - INSET)
+		var np := _round_rect(nr, RADIUS - INSET)
 		draw_polygon(np, _grad(np, nr, NAVY_TL, NAVY_TR, NAVY_BR, NAVY_BL))
 		draw_polygon(np, _grad(np, nr, Color(1, 1, 1, 0.10), Color(1, 1, 1, 0.03), Color(0, 0, 0, 0.0), Color(1, 1, 1, 0.02)))
 		var no := np.duplicate()
@@ -283,17 +284,27 @@ class LoadingPlate extends Control:
 		draw_multiline_string(F_BODY, Vector2(nr.position.x + 30, dy + 16 + F_BODY.get_ascent(16)),
 			tip, HORIZONTAL_ALIGNMENT_LEFT, tip_w, 16, -1, OFF_WHITE)
 
-	func _octa(r: Rect2, cut: float) -> PackedVector2Array:
-		var x0 := r.position.x
-		var y0 := r.position.y
-		var x1 := r.end.x
-		var y1 := r.end.y
-		return PackedVector2Array([
-			Vector2(x0 + cut, y0), Vector2(x1 - cut, y0),
-			Vector2(x1, y0 + cut), Vector2(x1, y1 - cut),
-			Vector2(x1 - cut, y1), Vector2(x0 + cut, y1),
-			Vector2(x0, y1 - cut), Vector2(x0, y0 + cut),
-		])
+	# A rounded-rectangle outline (clockwise), arc-traced at each corner. Fed to
+	# draw_polygon/_grad exactly like the old octagon was.
+	func _round_rect(r: Rect2, radius: float) -> PackedVector2Array:
+		var rad := clampf(radius, 0.0, minf(r.size.x, r.size.y) * 0.5)
+		var segs := 6
+		var pts := PackedVector2Array()
+		# corner arc centres + sweep, in order TL, TR, BR, BL.
+		var corners := [
+			[r.position + Vector2(rad, rad), PI, PI * 1.5],
+			[Vector2(r.end.x - rad, r.position.y + rad), PI * 1.5, TAU],
+			[r.end - Vector2(rad, rad), 0.0, PI * 0.5],
+			[Vector2(r.position.x + rad, r.end.y - rad), PI * 0.5, PI],
+		]
+		for cnr in corners:
+			var c: Vector2 = cnr[0]
+			var a0: float = cnr[1]
+			var a1: float = cnr[2]
+			for i in range(segs + 1):
+				var t := a0 + (a1 - a0) * float(i) / float(segs)
+				pts.append(c + Vector2(cos(t), sin(t)) * rad)
+		return pts
 
 	func _grad(pts: PackedVector2Array, r: Rect2, tl: Color, tr: Color, br: Color, bl: Color) -> PackedColorArray:
 		var cols := PackedColorArray()

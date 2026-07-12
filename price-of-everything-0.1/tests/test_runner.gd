@@ -3075,6 +3075,15 @@ func _test_start_config_expansion() -> void:
 	var defaults: Dictionary = SaveLoad.expand_start_config({"start": true})
 	_check(float((defaults.get("match", {}) as Dictionary).get("money", 0.0)) == EconomyConfig.STARTING_MONEY,
 		"start config: omitted money falls back to STARTING_MONEY")
+	# New Game panel overrides merge into the match ruleset (survey_all_tiles etc.).
+	var ov_snap: Dictionary = SaveLoad.expand_start_config(
+		{"start": true, "ruleset": {"name": "standard"}},
+		{"ruleset": {"survey_all_tiles": true, "tutorial_enabled": false}})
+	var ov_rules: Dictionary = (ov_snap.get("match", {}) as Dictionary).get("ruleset", {})
+	_check(bool(ov_rules.get("survey_all_tiles", false)) == true,
+		"start config: override survey_all_tiles merges into the match ruleset")
+	_check(str(ov_rules.get("name", "")) == "standard",
+		"start config: override merge keeps the start's ruleset name")
 
 # Phase 3 end-to-end: a start config applied through the scene pipeline keeps
 # the scene-seeded NPC buildings (ports/ruins), seeds debt WITHOUT cash, and

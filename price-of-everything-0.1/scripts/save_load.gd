@@ -252,14 +252,14 @@ func _merge_npc_buildings(snap: Dictionary) -> void:
 ## Build the pending start snapshot WITHOUT changing scene, so the caller can drive
 ## a non-blocking (threaded) transition to MAIN_SCENE itself and keep a loading
 ## screen animating during the heavy scene load. See LoadingScreen.begin_load.
-func prepare_new_game(start_path: String = DEFAULT_START) -> void:
+func prepare_new_game(start_path: String = DEFAULT_START, overrides: Dictionary = {}) -> void:
 	var cfg := _read_json_file(start_path)
 	if cfg.is_empty():
 		# No/corrupt start file: a plain fresh match (today's behaviour).
 		push_warning("[SaveLoad] start config missing or corrupt: %s — starting fresh" % start_path)
 		_pending_snapshot = {}
 	else:
-		_pending_snapshot = expand_start_config(cfg)
+		_pending_snapshot = expand_start_config(cfg, overrides)
 
 
 func start_new_game(start_path: String = DEFAULT_START) -> String:
@@ -273,7 +273,7 @@ func start_new_game(start_path: String = DEFAULT_START) -> String:
 ## Expand the authoring shape (see data/starts/*.json) into a full snapshot.
 ## Anything omitted falls back to new-game defaults at import. Loans become
 ## outstanding debt WITHOUT disbursing principal — `money` is what you start with.
-func expand_start_config(cfg: Dictionary) -> Dictionary:
+func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Dictionary:
 	# Surveyed set: the NPC port tiles (as seed_surveyed_ports does), the tiles
 	# under starting buildings (you can see what you own), plus any listed extras.
 	var surveyed: Dictionary = {}
@@ -328,6 +328,12 @@ func expand_start_config(cfg: Dictionary) -> Dictionary:
 
 	var recurring: Dictionary = cfg.get("recurring", {})
 	var ruleset := _normalize_ruleset(cfg.get("ruleset", MatchState.DEFAULT_RULESET))
+	# New Game panel overrides (difficulty/speed/tutorial_enabled/survey_all_tiles)
+	# merge over the start's ruleset — the match ruleset is where world_map reads
+	# survey_all_tiles and the Tutorial engine reads tutorial_enabled.
+	var override_rules: Dictionary = overrides.get("ruleset", {})
+	for k in override_rules:
+		ruleset[str(k)] = override_rules[k]
 	return {
 		"save_version": SAVE_VERSION,
 		"start": true,

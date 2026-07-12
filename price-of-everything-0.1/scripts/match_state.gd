@@ -1426,6 +1426,19 @@ func seed_surveyed_ports() -> void:
 	_surveyable_dirty = true
 	surveyed_tiles_changed.emit()
 
+## Mark a batch of tiles surveyed in one shot (one signal emit). Used by the
+## "All tiles surveyed at game start" Advanced Setting at world build.
+func mark_tiles_surveyed(tile_ids: Array) -> void:
+	var changed := false
+	for tid in tile_ids:
+		var s := str(tid)
+		if s != "" and not surveyed_tiles.has(s):
+			surveyed_tiles[s] = true
+			changed = true
+	if changed:
+		_surveyable_dirty = true
+		surveyed_tiles_changed.emit()
+
 func is_tile_surveyed(tile_id: String) -> bool:
 	return surveyed_tiles.has(tile_id)
 
