@@ -13,6 +13,7 @@ const TITLE_PLATE: Texture2D = preload("res://assets/ui/title_plate.png")
 const NewGamePanelScene := preload("res://scripts/new_game_panel.gd")
 const TutorialPanelScene := preload("res://scripts/tutorial_intro_panel.gd")
 const HallOfRecordsPanelScene := preload("res://scripts/hall_of_records_panel.gd")
+const TutorialPromptScene := preload("res://scripts/tutorial_prompt_dialog.gd")
 const TUTORIAL_START := "res://data/starts/tutorial.json"
 const NEW_GAME_BOTTOM_GAP := 220.0   # panel stops this far above the screen bottom (board peeks beneath)
 
@@ -35,6 +36,7 @@ const PLATE_BOTTOM := 206.0
 var _new_game_panel: Control
 var _tutorial_panel: Control
 var _hall_of_records_panel: Control
+var _tutorial_prompt: Control
 var _goods_grid: Control
 
 
@@ -43,6 +45,7 @@ func _ready() -> void:
 	_build_new_game_panel()
 	_build_tutorial_panel()
 	_build_hall_of_records_panel()
+	_build_tutorial_prompt()
 	Audio.play_music()   # looping main-menu theme (placeholder track)
 	# Warm the map scene off-thread while the player is on the menu: this pulls main.tscn and
 	# all its textures off disk into RAM on a worker thread (no main-thread cost, no frame drop),
@@ -52,9 +55,31 @@ func _ready() -> void:
 
 
 # Clicking New Game no longer launches immediately — it opens the settings panel,
-# whose Start New Game button drives the load (see _on_start_requested).
+# whose Start New Game button drives the load (see _on_start_requested). A player who
+# has never finished the tutorial first gets a nudge to do it.
 func _on_new_game_pressed() -> void:
-	_show_new_game_panel()
+	if PlayerProfile.has_done_tutorial():
+		_show_new_game_panel()
+	else:
+		_show_tutorial_prompt()
+
+
+# ── "Play without the tutorial?" prompt ──────────────────────────────────────────
+
+func _build_tutorial_prompt() -> void:
+	_tutorial_prompt = TutorialPromptScene.new()
+	_tutorial_prompt.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_tutorial_prompt.z_index = 200   # over every side panel
+	_tutorial_prompt.go_to_tutorial.connect(_on_tutorial_pressed)
+	_tutorial_prompt.proceed_anyway.connect(_show_new_game_panel)
+	add_child(_tutorial_prompt)
+
+
+func _show_tutorial_prompt() -> void:
+	if _tutorial_prompt == null or _tutorial_prompt.visible:
+		return
+	_close_side_panels()
+	_tutorial_prompt.open()
 
 
 # Start New Game pressed in the settings panel. New Game flows through the same

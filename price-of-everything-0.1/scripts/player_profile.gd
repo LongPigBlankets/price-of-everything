@@ -9,6 +9,10 @@ extends Node
 const PATH := "user://profile.json"
 
 var games_completed: int = 0
+# True once the player has reached the END of the tutorial (the integration_done step),
+# not merely started or skipped it. Gates the "play without the tutorial?" prompt on
+# New Game.
+var tutorial_completed: bool = false
 # Hall of Records: every VICTORY, newest first. Losses are not recorded. Each entry:
 # {"date": "YYYY-MM-DD", "title": <victory name>, "turn": int, "secured": int, "epithet": String}
 var wins: Array = []
@@ -24,6 +28,21 @@ func _ready() -> void:
 
 func has_completed_game() -> bool:
 	return games_completed > 0
+
+
+func has_done_tutorial() -> bool:
+	return tutorial_completed
+
+
+## Mark the tutorial as finished (the Tutorial engine calls this when the player
+## reaches the terminal step). Idempotent; skipped mid-tutorial does NOT count.
+func mark_tutorial_completed() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if tutorial_completed:
+		return
+	tutorial_completed = true
+	_save()
 
 
 func get_wins() -> Array:
@@ -65,6 +84,7 @@ func _load() -> void:
 	f.close()
 	if parsed is Dictionary:
 		games_completed = int((parsed as Dictionary).get("games_completed", 0))
+		tutorial_completed = bool((parsed as Dictionary).get("tutorial_completed", false))
 		var recorded: Variant = (parsed as Dictionary).get("wins", [])
 		wins = recorded if recorded is Array else []
 
@@ -76,7 +96,7 @@ func _save() -> void:
 	if f == null:
 		push_warning("[PlayerProfile] could not write %s" % tmp_path)
 		return
-	f.store_string(JSON.stringify({"games_completed": games_completed, "wins": wins}, "\t"))
+	f.store_string(JSON.stringify({"games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins}, "\t"))
 	f.close()
 	var err := DirAccess.rename_absolute(tmp_path, PATH)
 	if err != OK:

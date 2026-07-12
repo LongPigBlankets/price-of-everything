@@ -268,6 +268,20 @@ func _test_tutorial_engine() -> void:
 	_check(TutorialSteps.BOARD_TILES.has(TutorialSteps.STUB_TILE), "tutorial: board includes the coal stub")
 	_check(TutorialSteps.BOARD_TILES.has(TutorialSteps.GLASS_TILE), "tutorial: board includes the glass furnace tile (port-adjacent)")
 
+	# The New Game "have you done the tutorial?" gate reads PlayerProfile.has_done_tutorial(),
+	# which reflects the tutorial_completed flag (marked when the engine enters integration_done).
+	var tut_saved: bool = PlayerProfile.tutorial_completed
+	PlayerProfile.tutorial_completed = false
+	_check(not PlayerProfile.has_done_tutorial(), "profile: has_done_tutorial false before finishing")
+	PlayerProfile.tutorial_completed = true
+	_check(PlayerProfile.has_done_tutorial(), "profile: has_done_tutorial true once the flag is set")
+	PlayerProfile.tutorial_completed = tut_saved
+	var terminal_present := false
+	for s in steps:
+		if str((s as Dictionary).get("id", "")) == "integration_done":
+			terminal_present = true
+	_check(terminal_present, "tutorial: terminal integration_done step exists (the completion hook target)")
+
 	# building_owned_on_tile detector: player-owned building on the tile -> true;
 	# NPC-owned -> false; unknown predicate kind -> false. Save/restore live buildings.
 	var saved: Dictionary = MatchState.buildings
