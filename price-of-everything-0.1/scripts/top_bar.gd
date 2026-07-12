@@ -35,9 +35,9 @@ const MOD_H := 48.0
 const NOTCH_H := 102.0
 const NOTCH_MIN_W := 300.0
 const NOTCH_RADIUS := 16.0
-# Research icon (a copy of the bottom menu's microscope) shown in the briefing
-# notch on turns a research unlock lands.
-const RESEARCH_ICON: Texture2D = preload("res://assets/icons/ui_icons/tech_icon.png")
+# Research icon (the same microscope art the bottom menu uses) shown in the
+# briefing notch on turns a research unlock lands.
+const RESEARCH_ICON: Texture2D = preload("res://assets/icons/ui_icons/200/tech.png")
 # Metallic bottom bezel (the end-turn dock's machined-silver family), lit from the left.
 const EDGE_H := 7.0
 const SILVER_LT := Color("#b3bcc6")
