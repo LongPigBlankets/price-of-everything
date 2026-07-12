@@ -377,7 +377,6 @@ func _build_power() -> void:
 	var mod := _ModuleBtn.new(self)
 	mod.name = "PowerModule"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
-	mod.mouse_default_cursor_shape = Control.CURSOR_ARROW
 	var row := _module_row(mod)
 	_power_glyph = _mini("⚡", C_GOOD, 19)
 	row.add_child(_power_glyph)
@@ -392,6 +391,14 @@ func _build_power() -> void:
 	col.add_child(_power_sub)
 	_hbox().add_child(mod)
 	_power_btn = mod
+	mod.pressed.connect(_on_power_pressed)
+
+func _on_power_pressed() -> void:
+	# Toggle the Power (power-balance) map overlay directly on the MapMode autoload —
+	# the same call the Mapmodes panel's Power row makes. set_sentinel_mode is itself a
+	# toggle, and the overlay is driven by MapMode signals (map_overlay.gd), so the
+	# Mapmodes panel need not be open for the overlay to appear.
+	MapMode.set_sentinel_mode(MapMode.Mode.POWER_BALANCE, MapMode.POWER_SENTINEL)
 
 func _power_stats() -> Dictionary:
 	var s: Dictionary = Production.last_turn_summary
@@ -633,10 +640,10 @@ func _build_briefing() -> void:
 	micro.offset_bottom = -6.0
 	micro.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_research_badge.add_child(micro)
-	# Count pill on the badge's top-right corner — only when >1 research this turn.
+	# Count pill on the badge's bottom-right corner — only when >1 research this turn.
 	_research_pill = Panel.new()
 	_research_pill.custom_minimum_size = Vector2(24, 18)
-	_research_pill.position = Vector2(40, -6)
+	_research_pill.position = Vector2(40, 48)
 	_research_pill.z_index = 1
 	_research_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var rpsb := StyleBoxFlat.new()

@@ -799,6 +799,16 @@ func _draw_power_marker(world_pos: Vector2, status: Dictionary) -> void:
 		hex.set("color", Color(amber.r, amber.g, amber.b, TILE_MASK_ALPHA))
 		hex.set("hatch", true)
 		hex.set("hatch_color", Color(red.r, red.g, red.b, TILE_MASK_ALPHA))
+	elif status.state == "intermittent":
+		# Intermittent renewable generation -> amber base + a 20/20 green barber-pole
+		# (20u green bar, 20u amber gap perpendicular; x-stride = 40 / sin45 ≈ 56.57).
+		var amber_i: Color = POWER_COLORS["self_supplied"]
+		var green_i := Color("#5BD180")   # DS.PALETTE["OK"]
+		hex.set("color", Color(amber_i.r, amber_i.g, amber_i.b, TILE_MASK_ALPHA))
+		hex.set("hatch", true)
+		hex.set("hatch_color", Color(green_i.r, green_i.g, green_i.b, TILE_MASK_ALPHA))
+		hex.set("hatch_bar_width", 20.0)
+		hex.set("hatch_stride", 56.57)
 	else:
 		var color: Color = POWER_COLORS.get(status.state, Color.MAGENTA)
 		hex.set("color", Color(color.r, color.g, color.b, TILE_MASK_ALPHA))
@@ -828,6 +838,8 @@ func _format_power_label(status: Dictionary) -> String:
 			return "%d" % status.net  # already negative, "-N"
 		"balanced":
 			return "0"
+		"intermittent":
+			return "~%d" % int(status.get("intermittent", 0))
 		"cables_missing":
 			return "(-%d)" % status.power_required
 		"cables_unused":
@@ -900,6 +912,11 @@ func _get_power_status_for_tile(tile_data: Dictionary) -> Dictionary:
 	if has_power_buildings:
 		if power_required_total > 0 and not has_cables:
 			return {"state": "cables_missing", "power_required": power_required_total}
+		# Intermittent renewable generation (solar/wind) gets its own barber-pole overlay,
+		# taking precedence over the tile's net balance so intermittent sources stand out.
+		var intermittent: int = int(Production.get_tile_intermittency(tile_id).get("green_intermittent_produced", 0))
+		if intermittent > 0:
+			return {"state": "intermittent", "intermittent": intermittent}
 		var net: int = power_produced - power_consumed
 		if net > 0:
 			return {"state": "surplus", "net": net}
