@@ -156,6 +156,7 @@ func _build_base() -> void:
 	TurnManager.turn_resolution_completed.connect(_on_resolution_completed)
 	MatchState.output_stockpile_selection_started.connect(_on_output_stockpile_selection_started)
 	MatchState.output_stockpile_selection_cancelled.connect(_on_output_stockpile_selection_cancelled)
+	MatchState.hidden_buildings_enabled.connect(_on_hidden_buildings_enabled)
 
 	_update_turn_counter(TurnManager.current_turn)
 	_update_phase_label(TurnManager.current_phase)
@@ -274,7 +275,11 @@ func finish_build(animate: bool) -> void:
 	# A loaded save applies only now, once the terrain and default seeding exist;
 	# it overwrites the fresh-match state above (docs/save_load_spec.md).
 	var loaded_pending := SaveLoad.apply_pending()
-	if loaded_pending:
+	# A normal loaded save must restore its existing visual state immediately. A
+	# start snapshot is different: its player buildings need to wait for the baked
+	# road network below, otherwise they use the roadless fallback and sit under
+	# turn-one streets. They are emitted in the post-road pass instead.
+	if loaded_pending and not pending_start:
 		_rebuild_after_load()
 	# Advanced Setting "All tiles surveyed at game start": reveal every tile now that
 	# the terrain (and any pending ruleset) exists.
@@ -321,8 +326,11 @@ func finish_build(animate: bool) -> void:
 		# Tutorial keeps the ports (coast/docks) but drops the ruins + NPC start
 		# companies so the board is a clean slate around the seeded window factory.
 		if not pending_tutorial:
-			await _place_ruins("tile_23_16", animate)
+			if MatchState.is_building_available("b_031"):
+				await _place_ruins("tile_23_16", animate)
 			await _place_start_buildings(animate)
+		if pending_start:
+			await _place_pending_start_buildings(animate)
 	RoadWorks.rebuild_occupancy()   # no-op until OCCUPANCY_ROADS_ENABLED
 
 	# Port dockhouses: white harbour slabs + pier fingers on the sea edge of
@@ -1508,6 +1516,19 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 	var mat_check: Dictionary = Construction.check_tile(tile_id, building_id)
 	if not bool(mat_check.get("satisfied", false)):
 		print("[Build] materials missing on %s for %s: %s" % [tile_id, building_id, str(mat_check.get("missing", {}))])
+		match MatchState.construct_material_source:
+			"market":
+				_on_construction_buy_requested(building_id, recipe_id, tile_id)
+				return
+			"same_tile":
+				MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
+				return
+			"any_tile":
+				if not Construction.find_source_tile(tile_id, mat_check.get("missing", {})).is_empty():
+					_on_construction_use_stockpile_requested(building_id, recipe_id, tile_id)
+				else:
+					MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
+				return
 		_show_construction_missing_dialog(building_id, recipe_id, tile_id, mat_check.get("missing", {}))
 		return
 
@@ -1652,6 +1673,12 @@ func _place_ruins(tile_id: String, animate: bool = false) -> void:
 	if animate:
 		await get_tree().process_frame
 
+func _on_hidden_buildings_enabled() -> void:
+	# The two constructible prototypes reappear in the catalogue through MatchState's
+	# unlock signal. Ruins are world scenery, so restore their authored placement too.
+	if terrain_layer != null:
+		_place_ruins("tile_23_16")
+
 func _place_northern_old_growth_forests() -> void:
 	for coord_key in terrain_layer.tiles:
 		var coord: Vector2i = coord_key
@@ -1685,6 +1712,8 @@ func _place_start_buildings(animate: bool = false) -> void:
 	# purchase rotation. Deterministic instance ids — the roads-v2 bake seeds the
 	# same list, so its forest footprint discs match a fresh match exactly.
 	for entry in StartBuildings.entries():
+		if not MatchState.is_building_available(str(entry.building)):
+			continue
 		var tile_id := str(entry.tile)
 		var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
 		if coord == Vector2i(-1, -1):
@@ -1698,6 +1727,23 @@ func _place_start_buildings(animate: bool = false) -> void:
 		building_placed.emit(tile_id, str(entry.building), str(entry.recipe), instance_id, coord)
 		if animate:
 			await get_tree().process_frame   # one building per frame keeps the slideshow moving
+## Emit a start snapshot's player-owned buildings only after RoadNetwork has
+## bootstrapped. SaveLoad already imported their simulation data; this is solely
+## the deferred visual pass that gives them the same road-aware layout as ports,
+## ruins and the pre-placed NPC companies.
+func _place_pending_start_buildings(animate: bool = false) -> void:
+	for instance_id in MatchState.buildings:
+		var inst: Dictionary = MatchState.buildings[instance_id]
+		if not MatchState.is_player_owned(inst):
+			continue
+		var tile_id := str(inst.get("tile_id", ""))
+		var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
+		if tile_id == "" or coord == Vector2i(-1, -1):
+			continue
+		building_placed.emit(tile_id, str(inst.get("building_id", "")),
+			str(inst.get("recipe_id", "")), str(instance_id), coord)
+		if animate:
+			await get_tree().process_frame
 
 func _tile_has_building(tile_id: String, building_id: String) -> bool:
 	for iid in MatchState.tile_buildings.get(tile_id, []):
@@ -1891,6 +1937,26 @@ func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
 				return
 		var space_check := _space_check_for_build(tile_id, infra_building_id)
 		if not bool(space_check.get("allowed", false)):
+			return
+		# Infrastructure uses the same construction-material lifecycle as every
+		# other building. Previously it skipped this check, then start_on_tile()
+		# consumed whatever happened to be there and silently began the project.
+		var mat_check: Dictionary = Construction.check_tile(tile_id, infra_building_id)
+		if not bool(mat_check.get("satisfied", false)):
+			match MatchState.construct_material_source:
+				"market":
+					_on_construction_buy_requested(infra_building_id, "", tile_id)
+					return
+				"same_tile":
+					MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
+					return
+				"any_tile":
+					if not Construction.find_source_tile(tile_id, mat_check.get("missing", {})).is_empty():
+						_on_construction_use_stockpile_requested(infra_building_id, "", tile_id)
+					else:
+						MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
+					return
+			_show_construction_missing_dialog(infra_building_id, "", tile_id, mat_check.get("missing", {}))
 			return
 		var cost_multiplier := float(space_check.get("cost_multiplier", 1.0))
 		cost *= cost_multiplier

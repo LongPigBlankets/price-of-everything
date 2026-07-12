@@ -2,6 +2,7 @@ extends PanelContainer
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 # Shared status/cost helpers (one source of truth with the Building Ledger).
 const BuildingStatus := preload("res://scripts/building_status.gd")
+const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
 
 @onready var title_label: Label = $MarginContainer/VBoxContainer/HeaderRow/TitleLabel
 @onready var close_button: Button = $MarginContainer/VBoxContainer/HeaderRow/CloseButton
@@ -397,6 +398,8 @@ func _rebuild_fields(building: Dictionary) -> void:
 
 	_add_field("Maintenance cost", _money_text(_maintenance_cost(building_data) * BuildingLevels.mult("maint", lvl)))
 	_add_power_sources_section(building)
+	if is_infrastructure:
+		_add_infrastructure_details(building_data)
 
 	if not is_infrastructure and recipe.get("output_name", "") != "power":
 		var route_info := _output_route_summary()
@@ -707,6 +710,54 @@ func _add_section_label(text: String) -> void:
 	label.text = text
 	label.modulate = Color(0.7, 0.85, 1.0)
 	fields_vbox.add_child(label)
+
+func _add_infrastructure_details(building_data: Dictionary) -> void:
+	_add_separator()
+	_add_section_label("Infrastructure")
+	var purpose := Label.new()
+	purpose.text = InfrastructureInfo.purpose(InfrastructureInfo.key_for(building_data))
+	purpose.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	purpose.modulate = Color(0.85, 0.92, 1.0)
+	fields_vbox.add_child(purpose)
+	var key := InfrastructureInfo.key_for(building_data)
+	if not InfrastructureInfo.has_level_stats(key):
+		_add_text("Nothing yet.")
+		return
+	_add_section_label("Stats")
+	var card := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.04, 0.12, 0.2, 0.9)
+	style.border_color = Color(0.28, 0.45, 0.62, 0.8)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(7)
+	style.set_content_margin_all(8)
+	card.add_theme_stylebox_override("panel", style)
+	var levels := VBoxContainer.new()
+	levels.add_theme_constant_override("separation", 3)
+	card.add_child(levels)
+	for level in range(1, 4):
+		levels.add_child(_infrastructure_level_accordion(key, level))
+	fields_vbox.add_child(card)
+
+func _infrastructure_level_accordion(key: String, level: int) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	var stats := InfrastructureInfo.level_stats(key, level)
+	var header := Button.new()
+	header.text = "Level %d   %s" % [level, "▾" if level == 1 else "▸"]
+	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	box.add_child(header)
+	var details := VBoxContainer.new()
+	details.visible = level == 1
+	box.add_child(details)
+	for item in [[str(stats.get("capacity_label", "Transport soft cap")), str(stats.get("capacity", "—"))], ["Tiles covered in 1 turn", str(stats.get("tiles", "—"))], ["Cost per unit", str(stats.get("cost", "—"))]]:
+		var line := Label.new()
+		line.text = "%s: %s" % [str(item[0]), str(item[1])]
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		details.add_child(line)
+	header.pressed.connect(func() -> void:
+		details.visible = not details.visible
+		header.text = "Level %d   %s" % [level, "▾" if details.visible else "▸"])
+	return box
 
 # "Power Source(s): x Green from A, B; y Grey from C; z Grey from Grid" — where this
 # building's power came from (on-demand attribution to the nearest source buildings).

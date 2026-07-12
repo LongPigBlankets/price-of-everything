@@ -268,6 +268,8 @@ func _goods_results(query: String) -> Array:
 func _recipe_results(query: String) -> Array:
 	var results: Array = []
 	for recipe in Catalog.all_recipes():
+		if not MatchState.is_building_available(str(recipe.get("building_id", ""))):
+			continue
 		var display_name: String = recipe.get("display_name", "")
 		var building_name := Catalog.get_building_display_name(recipe.get("building_id", ""))
 		var output_names := _recipe_output_names(recipe)
@@ -296,6 +298,8 @@ func _recipe_results(query: String) -> Array:
 func _building_results(query: String) -> Array:
 	var results: Array = []
 	for building in Catalog.all_buildings():
+		if not MatchState.is_building_available(str(building.get("id", ""))):
+			continue
 		var display_name: String = building.get("display_name", "")
 		var internal_name: String = building.get("internal_name", "")
 		var best_match := _best_text_match(query, [

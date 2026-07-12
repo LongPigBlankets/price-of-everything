@@ -13,6 +13,11 @@ const DEMOLISH_TURNS := 1
 const LOCAL_PLAYER := "player_1"
 var money: float = 1000.0  # was: int = 1000
 
+# Three legacy/prototype buildings are deliberately absent from normal matches.
+# `unlock hidden_buildings` is an explicit development cheat for testing them.
+const HIDDEN_BUILDING_IDS := {"b_029": true, "b_030": true, "b_031": true, "b_035": true}
+var hidden_buildings_unlocked: bool = false
+
 # --- Ruleset ---
 # Which rule variant this match plays under. Carried in saves and start configs so
 # future rule changes (scoring, brakes, era pacing, …) can key off it; only "name"
@@ -381,6 +386,23 @@ var debug_turn_logs_enabled: bool = false
 # Session-only; never persisted. See docs/building-detail-v2-plan.md.
 var use_bdp_v2: bool = true
 
+# Debug-only: the construct-panel redesign stays behind `swap construct_panel`.
+# Session-only; classic construct remains the default.
+var use_construct_panel_v2: bool = false
+
+# Construct V2 defaults. They are match settings rather than panel-local state so
+# a construction captures the current choices when it begins, including after a
+# save/load. The legacy cost-display field remains load-compatible but is no
+# longer exposed in the V2 settings UI.
+var construct_cost_display: String = "grid"
+var construct_start_half_capacity: bool = false
+# Defaults captured by constructions when they are started. "ask" preserves the
+# existing delivery prompt; the other modes choose a source automatically.
+var construct_material_source: String = "ask"
+# New production defaults to market routing unless the player explicitly chooses
+# the building's own tile stockpile.
+var construct_output_destination: String = "market"
+
 # --- Signals ---
 signal money_changed(new_amount: float) 
 signal building_added(instance: Dictionary)
@@ -462,6 +484,7 @@ signal deposit_exhausted(tile_id: String, token: String)
 ## A research unlock was granted. via_condition is true when earned by meeting its
 ## condition (shows the "Unlocked …" dialog); false for a free-chosen unlock.
 signal unlock_granted(title: String, description: String, via_condition: bool)
+signal hidden_buildings_enabled
 ## A tile finished being surveyed (drives the on-map survey animation). deposit_goods
 ## is an array of {good_id, internal_name} for the non-water deposits revealed.
 signal tile_survey_completed(tile_id: String, deposit_goods: Array)
@@ -475,6 +498,8 @@ signal alt_bottom_menu_changed(enabled: bool)
 # The Building Detail v2 dev-toggle flipped (`swap bdp` cheat); world_map re-renders the
 # active detail panel. Session-only.
 signal bdp_v2_changed(enabled: bool)
+signal construct_panel_v2_changed(enabled: bool)
+signal construct_settings_changed
 ## A UI surface (notification deep-link, etc.) asks the map to focus a tile:
 ## centre the camera on it and open its tile panel. world_map handles it.
 signal focus_tile_requested(tile_id: String)
@@ -2286,6 +2311,17 @@ func get_building(instance_id: String) -> Dictionary:
 	# Returns the instance dict, or empty dict if not found
 	return buildings.get(instance_id, {})
 
+func is_building_available(building_id: String) -> bool:
+	return hidden_buildings_unlocked or not HIDDEN_BUILDING_IDS.has(building_id)
+
+func cheat_unlock_hidden_buildings() -> void:
+	if hidden_buildings_unlocked:
+		return
+	hidden_buildings_unlocked = true
+	# Existing catalogue panels already refresh from this signal after research cheats.
+	unlock_granted.emit("Hidden Buildings", "Legacy prototype buildings enabled.", false)
+	hidden_buildings_enabled.emit()
+
 # --- Helpers ---
 func _generate_instance_id(building_id: String) -> String:
 	_next_instance_counter += 1
@@ -2300,6 +2336,11 @@ func reserve_instance_id(building_id: String) -> String:
 # --- Reset (useful for new game / testing) ---
 func reset() -> void:
 	money = 1000
+	hidden_buildings_unlocked = false
+	construct_cost_display = "grid"
+	construct_start_half_capacity = false
+	construct_material_source = "ask"
+	construct_output_destination = "market"
 	buildings.clear()
 	tile_buildings.clear()
 	output_stockpile_destinations.clear()
@@ -2397,6 +2438,10 @@ func export_state() -> Dictionary:
 	return {
 		"money": money,
 		"ruleset": ruleset.duplicate(true),
+		"construct_cost_display": construct_cost_display,
+		"construct_start_half_capacity": construct_start_half_capacity,
+		"construct_material_source": construct_material_source,
+		"construct_output_destination": construct_output_destination,
 		"next_instance_counter": _next_instance_counter,
 		"shipment_id_counter": _shipment_id_counter,
 		"buildings": _buildings_for_save(),
@@ -2470,6 +2515,10 @@ func import_state(d: Dictionary) -> void:
 	# new-game default, so older/partial snapshots (and Phase 3 start configs) load.
 	money = float(d.get("money", EconomyConfig.STARTING_MONEY))
 	ruleset = (d.get("ruleset", DEFAULT_RULESET) as Dictionary).duplicate(true)
+	set_construct_cost_display(str(d.get("construct_cost_display", "grid")), false)
+	set_construct_start_half_capacity(bool(d.get("construct_start_half_capacity", false)), false)
+	set_construct_material_source(str(d.get("construct_material_source", "ask")), false)
+	set_construct_output_destination(str(d.get("construct_output_destination", "market")), false)
 	_next_instance_counter = int(d.get("next_instance_counter", 0))
 	_shipment_id_counter = int(d.get("shipment_id_counter", 0))
 	buildings = _normalise_loaded_buildings(d.get("buildings", {}))
@@ -2652,6 +2701,64 @@ func set_use_bdp_v2(enabled: bool) -> bool:
 
 func toggle_use_bdp_v2() -> bool:
 	return set_use_bdp_v2(not use_bdp_v2)
+
+func set_use_construct_panel_v2(enabled: bool) -> bool:
+	if enabled == use_construct_panel_v2:
+		return use_construct_panel_v2
+	use_construct_panel_v2 = enabled
+	construct_panel_v2_changed.emit(use_construct_panel_v2)
+	return use_construct_panel_v2
+
+func toggle_use_construct_panel_v2() -> bool:
+	return set_use_construct_panel_v2(not use_construct_panel_v2)
+
+func set_construct_cost_display(value: String, emit_change: bool = true) -> void:
+	var resolved := value.to_lower()
+	if resolved not in ["grid", "compact", "list"]:
+		resolved = "grid"
+	if construct_cost_display == resolved:
+		return
+	construct_cost_display = resolved
+	if emit_change:
+		construct_settings_changed.emit()
+
+func set_construct_start_half_capacity(enabled: bool, emit_change: bool = true) -> void:
+	if construct_start_half_capacity == enabled:
+		return
+	construct_start_half_capacity = enabled
+	if emit_change:
+		construct_settings_changed.emit()
+
+func set_construct_material_source(value: String, emit_change: bool = true) -> void:
+	var resolved := value.to_lower().strip_edges()
+	if resolved not in ["ask", "market", "same_tile", "any_tile"]:
+		resolved = "ask"
+	if construct_material_source == resolved:
+		return
+	construct_material_source = resolved
+	if emit_change:
+		construct_settings_changed.emit()
+
+func set_construct_output_destination(value: String, emit_change: bool = true) -> void:
+	var resolved := value.to_lower().strip_edges()
+	if resolved not in ["market", "same_tile"]:
+		resolved = "market"
+	if construct_output_destination == resolved:
+		return
+	construct_output_destination = resolved
+	if emit_change:
+		construct_settings_changed.emit()
+
+## Multiplier applied only to a new building's first successful operating turn.
+## It is stored on the instance, so changing the default later cannot alter an
+## already-started project or a completed building.
+func startup_capacity_multiplier(building: Dictionary) -> float:
+	return 0.5 if bool(building.get("startup_half_capacity", false)) else 1.0
+
+func consume_startup_capacity(instance_id: String) -> void:
+	if instance_id == "" or not buildings.has(instance_id):
+		return
+	buildings[instance_id].erase("startup_half_capacity")
 
 func set_route_objective(objective: int) -> void:
 	if objective == route_objective:

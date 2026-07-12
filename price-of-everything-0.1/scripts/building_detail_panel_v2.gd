@@ -14,6 +14,7 @@ const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const BuyDialog := preload("res://scripts/buy_building_dialog.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
 
 const HEADER_HEIGHT := 44.0
 const PANEL_EDGE_MARGIN := 20.0
@@ -247,6 +248,9 @@ func _rebuild(building: Dictionary) -> void:
 
 	_body.add_child(_make_section("Economics · per turn"))
 	_body.add_child(_build_economics(BuildingReadout.economics(building, recipe, building_data)))
+	if is_infra:
+		_body.add_child(_make_section("Infrastructure"))
+		_body.add_child(_build_infrastructure_details(building_data))
 
 	var pw := BuildingReadout.power(building, recipe)
 	if bool(pw.get("needs", false)):
@@ -606,9 +610,47 @@ func _build_infra_card() -> PanelContainer:
 	var lbl := Label.new()
 	lbl.add_theme_color_override("font_color", CREAM_INK)
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lbl.text = "Infrastructure — moves goods across the region. Runs no recipe."
+	lbl.text = InfrastructureInfo.purpose(InfrastructureInfo.key_for(Catalog.get_building(str(_current_building.get("building_id", "")))))
 	card.add_child(lbl)
 	return card
+
+func _build_infrastructure_details(building_data: Dictionary) -> PanelContainer:
+	var card := _make_card()
+	var vb := card.get_child(0) as VBoxContainer
+	var key := InfrastructureInfo.key_for(building_data)
+	if not InfrastructureInfo.has_level_stats(key):
+		var none := Label.new()
+		none.theme_type_variation = "Body"
+		none.text = "Nothing yet."
+		vb.add_child(none)
+		return card
+	var heading := Label.new()
+	heading.theme_type_variation = "Caption"
+	heading.text = "STATS"
+	heading.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+	vb.add_child(heading)
+	for level in range(1, 4):
+		vb.add_child(_infrastructure_level_accordion(key, level))
+	return card
+
+func _infrastructure_level_accordion(key: String, level: int) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	var stats := InfrastructureInfo.level_stats(key, level)
+	var header := Button.new()
+	header.text = "Level %d   %s" % [level, "▾" if level == 1 else "▸"]
+	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	header.custom_minimum_size = Vector2(0, 30)
+	box.add_child(header)
+	var details := VBoxContainer.new()
+	details.visible = level == 1
+	details.add_theme_constant_override("separation", 3)
+	box.add_child(details)
+	for item in [[str(stats.get("capacity_label", "Transport soft cap")), str(stats.get("capacity", "—"))], ["Tiles covered in 1 turn", str(stats.get("tiles", "—"))], ["Cost per unit", str(stats.get("cost", "—"))]]:
+		details.add_child(_metric(str(item[0]), str(item[1]), DS.PALETTE["TEXT"], false))
+	header.pressed.connect(func() -> void:
+		details.visible = not details.visible
+		header.text = "Level %d   %s" % [level, "▾" if details.visible else "▸"])
+	return box
 
 func _build_port_card() -> PanelContainer:
 	var card := PanelContainer.new()

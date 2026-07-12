@@ -73,6 +73,7 @@ func _ready() -> void:
 	await _test_building_ledger()
 	await _test_debug_terminal()
 	_test_building_shapes()
+	_test_footprint_rejects_interior_road_segment()
 	_test_building_category_key()
 	_test_queue_move()
 	_test_move_extras()
@@ -1133,6 +1134,20 @@ func _test_arin_bridge() -> void:
 	RoadWorks.reset()
 	RoadCrossings.reset_for_tests()
 	await get_tree().process_frame
+
+# Regression: a sampled road can have a whole short segment inside a large building.
+# This used to evade the edge-to-edge clearance test and drew the Metal Magnate
+# furnace and pump underneath the Stoneshore roads.
+func _test_footprint_rejects_interior_road_segment() -> void:
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	var footprint := PackedVector2Array([
+		Vector2(-30, -20), Vector2(30, -20), Vector2(30, 20), Vector2(-30, 20),
+	])
+	var interior_road: Array = [[Vector2(-6, 0), Vector2(6, 0)]]
+	_check(not bv._footprint_clears(Vector2.ZERO, footprint, interior_road, 1.0),
+		"building visuals: reject a road segment wholly inside a footprint")
+	bv.free()
+
 
 # Urban block-subdivision: a seeded urban tile lays a grid of lots; buildings claim them
 # in emit order (tight, non-overlapping), fall back to the continuous packer when full,
@@ -4310,6 +4325,26 @@ func _test_sell_protects_build_materials() -> void:
 	_check(Production._arrived_this_turn(t, "g_027") == 0,
 		"goods that did not arrive this turn have no grace")
 	Production._inbound_delivery_this_turn.clear()
+	# (c) Existing stock is not grandfathered when a new local consumer appears:
+	# Sell Surplus must immediately liquidate the accumulated amount above the
+	# lead-time working reserve, while keeping that reserve safe for production.
+	var iron_tile := "tile_5_10"
+	var iron_id := "g_004"
+	var steel_furnace := MatchState.add_building("b_002", "r_003", iron_tile, "player_1")
+	Stockpile.add(iron_tile, iron_id, 600)
+	MatchState.enable_sell_surplus(iron_tile)
+	# The master order must still clear accumulated stock if a previous per-good
+	# order left a restrictive price-impact tolerance on this tile.
+	MatchState.set_auto_sell_impact(iron_tile, 0)
+	var iron_reserve: Dictionary = Production.compute_sell_reserve_for_tile(iron_tile)
+	var iron_before := Stockpile.get_at_tile(iron_tile, iron_id)
+	Production._process_production()
+	var iron_after := Stockpile.get_at_tile(iron_tile, iron_id)
+	_check(iron_before > int(iron_reserve.get(iron_id, 0)),
+		"sell reserve test starts with accumulated iron above the working reserve")
+	_check(iron_after <= int(iron_reserve.get(iron_id, 0)),
+		"sell surplus drains accumulated iron but keeps the lead-time production reserve")
+	MatchState.remove_building(steel_furnace)
 	Modifiers.reset()
 	MatchState.reset()
 	Stockpile.clear_all()
@@ -7710,6 +7745,9 @@ func _test_scripts_parse() -> void:
 		"res://scripts/good_icons.gd",
 		"res://scripts/catalog.gd",
 		"res://scripts/construct_panel.gd",
+		"res://scripts/construct_panel_v2.gd",
+		"res://scripts/building_detail_panel_v2.gd",
+		"res://scripts/infrastructure_info.gd",
 		"res://scripts/build_mode.gd",
 		"res://scripts/building_row.gd",
 		"res://scripts/recipe_row.gd",

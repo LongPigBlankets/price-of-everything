@@ -64,6 +64,35 @@ func requirements_for(building_id: String) -> Dictionary:
 	return reqs
 
 
+## Cash-equivalent value of a building's material kit at this turn's market
+## prices. It is deliberately not a tile-specific purchase quote: until the
+## player picks a site, freight and density costs are unknown.
+func market_value(building_id: String) -> float:
+	var total := 0.0
+	var requirements := requirements_for(building_id)
+	for good_id in requirements:
+		var unit_price := MarketState.get_price(str(good_id))
+		if unit_price <= 0.0:
+			unit_price = Catalog.get_base_price(str(good_id))
+		total += float(int(requirements.get(good_id, 0))) * unit_price
+	return total
+
+
+## Cash value of buying the complete construction kit from the market this turn.
+## Unlike market_value(), this uses the actual buy-side price (including the
+## market spread). Freight/warehousing remains site-dependent until a tile is
+## selected and is therefore called out separately by the confirm panel.
+func market_purchase_value(building_id: String) -> float:
+	var total := 0.0
+	var requirements := requirements_for(building_id)
+	for good_id in requirements:
+		var unit_price := MarketState.get_buy_price(str(good_id))
+		if unit_price <= 0.0:
+			unit_price = Catalog.get_base_price(str(good_id))
+		total += float(int(requirements.get(good_id, 0))) * unit_price
+	return total
+
+
 # Whether the target tile holds every required material, and what's short.
 # Returns {satisfied: bool, missing: {good_id: qty_short}, required: {good_id: qty}}.
 func check_tile(tile_id: String, building_id: String) -> Dictionary:
@@ -86,6 +115,7 @@ func check_tile(tile_id: String, building_id: String) -> Dictionary:
 # turns (or immediately if a building has no positive duration).
 func start_on_tile(building_id: String, recipe_id: String, tile_id: String, build_cost: float = 0.0) -> String:
 	var reqs: Dictionary = requirements_for(building_id)
+	var output_destination := MatchState.construct_output_destination
 	for good_id in reqs:
 		Stockpile.consume(tile_id, good_id, int(reqs[good_id]))
 
@@ -97,7 +127,8 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 		# Degenerate (no construction time): complete at once, but still fire the lifecycle
 		# signals so visuals/toasts follow the same path as a timed build.
 		construction_started.emit(instance_id, tile_id)
-		_complete_build(building_id, recipe_id, tile_id, instance_id)
+		_complete_build(building_id, recipe_id, tile_id, instance_id,
+			MatchState.construct_start_half_capacity and recipe_id != "", output_destination)
 		construction_completed.emit(instance_id, tile_id)
 		return instance_id
 
@@ -113,6 +144,8 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 		"construction_duration": duration,
 		"reserved_space": float(building.get("tile_size_used", 1)),
 		"build_cost": build_cost,
+		"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
+		"output_destination": output_destination,
 	}
 	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, recipe_id)
 	construction_started.emit(instance_id, tile_id)
@@ -140,6 +173,7 @@ func start_awaiting_market(building_id: String, recipe_id: String, tile_id: Stri
 	var building: Dictionary = Catalog.get_building(building_id)
 	var duration: int = MatchState.effective_build_duration(building_id)
 	var instance_id: String = MatchState.reserve_instance_id(building_id)
+	var output_destination := MatchState.construct_output_destination
 
 	# Reserve the in-place portion of every material RIGHT NOW, so co-located production
 	# buildings can't consume it before claim_materials runs. Only the shortfall is then
@@ -166,6 +200,8 @@ func start_awaiting_market(building_id: String, recipe_id: String, tile_id: Stri
 		"reserved_space": float(building.get("tile_size_used", 1)),
 		"source": {"kind": "market"},  # re-ordered from market each turn until secured
 		"build_cost": build_cost,
+		"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
+		"output_destination": output_destination,
 	}
 	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, recipe_id)
 	materials_ordered.emit(instance_id, tile_id)
@@ -210,6 +246,7 @@ func start_awaiting_from_tile(building_id: String, recipe_id: String, dest_tile:
 	var building: Dictionary = Catalog.get_building(building_id)
 	var duration: int = MatchState.effective_build_duration(building_id)
 	var instance_id: String = MatchState.reserve_instance_id(building_id)
+	var output_destination := MatchState.construct_output_destination
 
 	# Reserve the in-place portion now (see start_awaiting_market); only the shortfall is
 	# moved in from the source tile and remains to be claimed.
@@ -232,6 +269,8 @@ func start_awaiting_from_tile(building_id: String, recipe_id: String, dest_tile:
 		"reserved_space": float(building.get("tile_size_used", 1)),
 		"source": {"kind": "tile", "from_tile_id": source_tile},
 		"build_cost": build_cost,
+		"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
+		"output_destination": output_destination,
 	}
 	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(dest_tile, instance_id, building_id, recipe_id)
 	materials_ordered.emit(instance_id, dest_tile)
@@ -411,6 +450,8 @@ func _promote(instance_id: String) -> void:
 		str(project.get("recipe_id", "")),
 		str(project.get("tile_id", "")),
 		instance_id,
+		bool(project.get("startup_half_capacity", false)),
+		str(project.get("output_destination", MatchState.construct_output_destination)),
 	)
 	# Carry the real paid build cost (money, density-aware) + the consumed material kit
 	# onto the live instance, so MatchState.refund_cost can give an exact demolish refund.
@@ -423,8 +464,21 @@ func _promote(instance_id: String) -> void:
 
 
 # Promotion seam: turn a (pending) construction into a live building, reusing the stable id.
-func _complete_build(building_id: String, recipe_id: String, tile_id: String, instance_id: String) -> String:
-	return MatchState.add_building(building_id, recipe_id, tile_id, MatchState.LOCAL_PLAYER, instance_id)
+func _complete_build(building_id: String, recipe_id: String, tile_id: String, instance_id: String, startup_half_capacity: bool = false, output_destination: String = "") -> String:
+	var completed_id := MatchState.add_building(building_id, recipe_id, tile_id, MatchState.LOCAL_PLAYER, instance_id)
+	if startup_half_capacity and MatchState.buildings.has(completed_id):
+		MatchState.buildings[completed_id]["startup_half_capacity"] = true
+	var destination := output_destination if output_destination in ["market", "same_tile"] else MatchState.construct_output_destination
+	var recipe := Catalog.get_recipe(recipe_id)
+	for output in recipe.get("outputs", []):
+		var good_id := str(output.get("good_id", ""))
+		if good_id == "":
+			continue
+		if destination == "same_tile":
+			MatchState.set_output_stockpile_destination(completed_id, tile_id, good_id)
+		else:
+			MatchState.route_output_to_market(completed_id, good_id)
+	return completed_id
 
 
 # --- Queries ---

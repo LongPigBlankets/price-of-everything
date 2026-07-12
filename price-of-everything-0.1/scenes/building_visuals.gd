@@ -2689,6 +2689,12 @@ func _footprint_clears(center: Vector2, local_verts: PackedVector2Array, segs: A
 		if maxf(sa.x, sb.x) < lo.x or minf(sa.x, sb.x) > hi.x \
 			or maxf(sa.y, sb.y) < lo.y or minf(sa.y, sb.y) > hi.y:
 			continue
+		# A finely sampled road can have a complete short segment INSIDE a large
+		# footprint. Edge-to-edge distance alone misses that case (there is no
+		# crossing edge), which left start buildings visually under a road. Reject
+		# an interior endpoint before checking ordinary crossings / near misses.
+		if Geometry2D.is_point_in_polygon(sa, world) or Geometry2D.is_point_in_polygon(sb, world):
+			return false
 		for i2 in n:
 			if _seg_seg_dist(world[i2], world[(i2 + 1) % n], sa, sb) < clearance:
 				return false
