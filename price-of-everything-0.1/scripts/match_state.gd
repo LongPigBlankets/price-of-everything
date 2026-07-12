@@ -1725,6 +1725,12 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 	unlocked_titles[title] = true
 	_surveyable_dirty = true  # e.g. Geoscanning changes survey range
 	flag_agenda_event(AGENDA_TECH_UNLOCK)
+	# Apply any standing modifier this unlock grants NOW, not only via the signal
+	# below: unlocks fired during game setup (e.g. a start's buildings hitting
+	# "Operational Team Managers" at 3 buildings) can emit before ModifierState's
+	# unlock_granted listener is connected, and grant_unlock is one-shot — so the
+	# signal alone would drop the bonus. Idempotent (add() keys by id).
+	Modifiers.apply_unlock_modifier(title)
 	var desc := ""
 	for d in _unlock_defs:
 		if str(d.title) == title:
