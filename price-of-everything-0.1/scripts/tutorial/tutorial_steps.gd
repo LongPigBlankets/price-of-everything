@@ -99,7 +99,6 @@ static func steps() -> Array:
 				{ "ref": "EncyclopediaButton", "label": "Encyclopedia (X)", "side": "below" },
 				{ "ref": "MenuModule", "label": "Main menu", "side": "below" },
 				{ "ref": "EndTurnButton", "label": "End turn", "side": "above" },
-				{ "ref": "TurnSummaryMarker", "label": "Turn summary", "side": "left" },
 			],
 			"hints": [
 				"Press X to open the Encyclopedia search bar",
