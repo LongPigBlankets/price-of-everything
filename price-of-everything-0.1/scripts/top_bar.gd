@@ -98,6 +98,8 @@ var _victory_target: Label   # "/ N" — the rising win threshold for the curren
 var _briefing_btn: Control
 var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyph)
 var _research_badge: Panel  # teal microscope badge — visible only on turns research unlocks
+var _research_pill: Panel  # count pill on the badge — shown when >1 research unlocks in a turn
+var _research_pill_label: Label
 var _briefing_head: Label
 var _briefing_sub: Label
 var _briefing_dot: Panel
@@ -609,12 +611,12 @@ func _build_briefing() -> void:
 	# match its alt-mode style: research.png object on a teal disc + light ring.
 	# Shown only on turns a research unlock lands.
 	_research_badge = Panel.new()
-	_research_badge.custom_minimum_size = Vector2(40, 40)
+	_research_badge.custom_minimum_size = Vector2(60, 60)
 	var rbsb := StyleBoxFlat.new()
 	rbsb.bg_color = RESEARCH_DISC
-	rbsb.set_corner_radius_all(20)          # circular on the 40px disc
+	rbsb.set_corner_radius_all(30)          # circular on the 60px disc
 	rbsb.border_color = RESEARCH_RING
-	rbsb.set_border_width_all(3)
+	rbsb.set_border_width_all(4)
 	_research_badge.add_theme_stylebox_override("panel", rbsb)
 	_research_badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_research_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -625,12 +627,32 @@ func _build_briefing() -> void:
 	micro.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	micro.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	micro.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	micro.offset_left = 4.0
-	micro.offset_top = 4.0
-	micro.offset_right = -4.0
-	micro.offset_bottom = -4.0
+	micro.offset_left = 6.0
+	micro.offset_top = 6.0
+	micro.offset_right = -6.0
+	micro.offset_bottom = -6.0
 	micro.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_research_badge.add_child(micro)
+	# Count pill on the badge's top-right corner — only when >1 research this turn.
+	_research_pill = Panel.new()
+	_research_pill.custom_minimum_size = Vector2(24, 18)
+	_research_pill.position = Vector2(40, -6)
+	_research_pill.z_index = 1
+	_research_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var rpsb := StyleBoxFlat.new()
+	rpsb.bg_color = C_RED
+	rpsb.set_corner_radius_all(9)           # stadium/pill shape
+	rpsb.border_color = C_BRIGHT
+	rpsb.set_border_width_all(2)
+	_research_pill.add_theme_stylebox_override("panel", rpsb)
+	_research_pill.visible = false
+	_research_pill_label = _mini("2", C_BRIGHT, 12)
+	_research_pill_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_research_pill_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_research_pill_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_research_pill_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_research_pill.add_child(_research_pill_label)
+	_research_badge.add_child(_research_pill)
 	row.add_child(_research_badge)
 	var glyph_holder := Control.new()
 	glyph_holder.custom_minimum_size = Vector2(28, 28)
@@ -680,16 +702,19 @@ func _recenter_notch() -> void:
 func _refresh_briefing() -> void:
 	var decisions := 0
 	var updates := 0
-	var research := false
+	var research_count := 0
 	for it in TurnBriefing.items():
 		if str(it.get("kind", "")) == "decision":
 			decisions += 1
 		else:
 			updates += 1
 		if str(it.get("event_kind", "")) == "research_unlocked":
-			research = true
+			research_count += int(it.get("magnitude", 1))   # aggregated item carries the count
 	if _research_badge != null:
-		_research_badge.visible = research
+		_research_badge.visible = research_count > 0
+	if _research_pill != null:
+		_research_pill.visible = research_count > 1
+		_research_pill_label.text = "%d" % research_count
 	var hot := decisions > 0
 	(_briefing_btn as _NotchBtn).warn = hot
 	(_briefing_btn as _NotchBtn).active = TurnBriefing.expanded

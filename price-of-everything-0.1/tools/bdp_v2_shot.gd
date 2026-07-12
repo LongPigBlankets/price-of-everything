@@ -300,9 +300,9 @@ func _pick_building() -> Dictionary:
 	return MatchState.get_building(iid)
 
 func _dismiss_unlock() -> void:
-	var dlg = _wm._unlock_dialog if _wm != null else null
-	if dlg != null and is_instance_valid(dlg):
-		dlg.visible = false
+	# Research unlocks no longer pop a dialog — they aggregate into the Turn Briefing
+	# (see turn_briefing._research_aggregate_item), so there is nothing to dismiss.
+	pass
 
 func _all_buttons(root: Node) -> Array:
 	var out: Array = []

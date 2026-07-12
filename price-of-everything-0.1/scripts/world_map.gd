@@ -42,9 +42,6 @@ const OLD_GROWTH_TILE_TYPES := ["rural", "hill"]
 signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
 
 var _survey_dialog: PanelContainer = null
-var _unlock_dialog: PanelContainer = null
-var _pending_condition_unlocks: Array = []
-var _unlock_flush_deferred: bool = false
 var _special_order_resolution_dialog: Control = null
 var _stockpile_select_prompt: PanelContainer = null
 var _pending_stockpile_selection: Dictionary = {}
@@ -225,10 +222,8 @@ func _build_base() -> void:
 	_survey_dialog = load("res://scripts/survey_dialog.gd").new()
 	_hud.add_child(_survey_dialog)
 
-	# "Unlocked …" popup, shown when a research unlock is earned by its condition.
-	_unlock_dialog = load("res://scripts/unlock_dialog.gd").new()
-	_hud.add_child(_unlock_dialog)
-	MatchState.unlock_granted.connect(_on_unlock_granted)
+	# Research unlocks no longer pop a dialog — they are aggregated into a single
+	# Turn Briefing "Research unlocked" update (see turn_briefing._research_aggregate_item).
 
 	# The tabbed Tile View Panel; built in code, lives under HUDContent. Named
 	# "TileInfoPanel" so building_detail_panel's panel-stacking lookups find it.
@@ -462,30 +457,6 @@ func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
 	if tile_name == "":
 		tile_name = tile_id
 	_survey_dialog.open_for(tile_id, tile_name, status == "partial")
-
-func _on_unlock_granted(title: String, description: String, via_condition: bool) -> void:
-	if not via_condition:
-		return
-	_pending_condition_unlocks.append({"title": title, "description": description})
-	if TurnManager.is_resolving:
-		return
-	if not _unlock_flush_deferred:
-		_unlock_flush_deferred = true
-		call_deferred("_flush_pending_unlocks")
-
-func _flush_pending_unlocks() -> void:
-	_unlock_flush_deferred = false
-	if _pending_condition_unlocks.is_empty() or _unlock_dialog == null:
-		return
-	var unlocks := _pending_condition_unlocks.duplicate(true)
-	_pending_condition_unlocks.clear()
-	if unlocks.size() == 1:
-		var unlock: Dictionary = {}
-		if unlocks[0] is Dictionary:
-			unlock = unlocks[0]
-		_unlock_dialog.show_unlock(str(unlock.get("title", "")), str(unlock.get("description", "")))
-	else:
-		_unlock_dialog.show_unlocks(unlocks)
 
 func _on_v2_building_clicked(building: Dictionary) -> void:
 	_open_building_detail(building)
@@ -2103,7 +2074,6 @@ func _on_resolution_started() -> void:
 
 func _on_resolution_completed() -> void:
 	end_turn_button.disabled = false
-	_flush_pending_unlocks()
 
 func _update_turn_counter(turn: int) -> void:
 	turn_counter.text = "Turn %d / %d" % [turn, TurnManager.MAX_TURNS]

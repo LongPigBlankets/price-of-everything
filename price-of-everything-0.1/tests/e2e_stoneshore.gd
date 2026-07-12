@@ -36,6 +36,7 @@ var _turn_wall_records: Array[Dictionary] = []
 var _main: Node = null
 var _terrain: HexMap = null
 var _construct_panel: Control = null
+var _construct_panel_v2: Control = null
 var _money_panel: Control = null
 var _loan_dialog: Control = null
 var _terminal: Node = null
@@ -458,6 +459,7 @@ func _load_main_scene() -> void:
 	_ready_ms = float(Time.get_ticks_usec() - ready_start) / 1000.0
 	_terrain = _main.get_node("%TerrainLayer") as HexMap
 	_construct_panel = _main.get_node("%ConstructPanel") as Control
+	_construct_panel_v2 = _find_by_script(_main, "res://scripts/construct_panel_v2.gd") as Control
 	_money_panel = _main.get_node("%MoneyPanel") as Control
 	_loan_dialog = _main.get_node("%TakeLoanDialog") as Control
 	_terminal = _find_by_script(_main, "res://scripts/debug_terminal.gd")
@@ -627,7 +629,13 @@ func _open_construct_panel_via_bottom_menu() -> void:
 	if button != null:
 		button.pressed.emit()
 	await get_tree().process_frame
-	_check(_construct_panel.visible, "construct panel opened from bottom menu")
+	# %ConstructButton opens the v2 panel when use_construct_panel_v2 is set (default
+	# true); v2 is built at runtime by BottomMenu with no %unique path, so it's found
+	# by script above. Fall back to v1 if the flag is ever flipped off.
+	var active_panel: Control = _construct_panel
+	if MatchState.use_construct_panel_v2 and _construct_panel_v2 != null:
+		active_panel = _construct_panel_v2
+	_check(active_panel != null and active_panel.visible, "construct panel opened from bottom menu")
 
 
 func _land_path(source_tile: String, dest_tile: String) -> Array:

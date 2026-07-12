@@ -488,7 +488,7 @@ func _on_deposit_exhausted(tile_id: String, token: String) -> void:
 		"persistent": true,
 	})
 
-func _on_unlock_granted(title: String, _description: String, via_condition: bool) -> void:
+func _on_unlock_granted(title: String, description: String, via_condition: bool) -> void:
 	if not via_condition:
 		return
 	emit_event({
@@ -500,6 +500,10 @@ func _on_unlock_granted(title: String, _description: String, via_condition: bool
 		"deeplink": {"panel": "research"},
 		"persistent": false,
 		"auto_dismiss_turns": 5,
+		# Carried so the Turn Briefing can render name / reward / condition per unlock.
+		"research_name": title,
+		"research_reward": description,
+		"research_condition": MatchState.unlock_condition_text(title),
 	})
 
 func _on_sale_arrived(_port_tile_id: String, revenue: float) -> void:

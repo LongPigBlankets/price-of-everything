@@ -11,6 +11,7 @@ const CARD_MAX_H := 640.0
 const MARGIN := 64.0
 const CHOICE_MIN_W := 190.0
 const CHOICE_MIN_H := 300.0   # taller decision cards
+const REWARD_FONT := preload("res://assets/fonts/IBMPlexSans-SemiBold.ttf")  # bold reward line
 
 var _card: PanelContainer
 var _menu_list: VBoxContainer
@@ -589,11 +590,17 @@ func _build_generic_detail(it: Dictionary) -> void:
 		tag = "critical" if str(it.severity) == "critical" else "warning"
 	_detail.add_child(_detail_head(it, tag, _item_color(it)))
 
-	var body := Label.new()
-	body.theme_type_variation = "Body"
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.text = str(it.get("body", ""))
-	_detail.add_child(body)
+	var body_text := str(it.get("body", ""))
+	if body_text != "":
+		var body := Label.new()
+		body.theme_type_variation = "Body"
+		body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		body.text = body_text
+		_detail.add_child(body)
+
+	# Aggregated research unlocks: name / bold-green reward / condition, per entry.
+	if it.has("research"):
+		_build_research_list(it.get("research", []))
 
 	# Stat rows (2-column grid of label/value cards).
 	var rows: Array = it.get("rows", [])
@@ -654,6 +661,33 @@ func _build_generic_detail(it: Dictionary) -> void:
 			hint.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
 			actions.add_child(hint)
 	_detail.add_child(actions)
+
+func _build_research_list(entries: Array) -> void:
+	for r: Dictionary in entries:
+		var group := VBoxContainer.new()
+		group.add_theme_constant_override("separation", 2)
+		var name_lbl := Label.new()
+		name_lbl.theme_type_variation = "Body"
+		name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		name_lbl.text = str(r.get("name", ""))
+		name_lbl.add_theme_color_override("font_color", Color("#F3F8FD"))
+		group.add_child(name_lbl)
+		var reward_lbl := Label.new()
+		reward_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		reward_lbl.add_theme_font_override("font", REWARD_FONT)
+		reward_lbl.add_theme_color_override("font_color", DS.PALETTE["OK"])   # green, bold
+		reward_lbl.text = str(r.get("reward", ""))
+		group.add_child(reward_lbl)
+		var cond := str(r.get("condition", ""))
+		if cond != "":
+			var cond_lbl := Label.new()
+			cond_lbl.theme_type_variation = "Caption"
+			cond_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			cond_lbl.text = "Our business learned this because we did: %s" % cond
+			cond_lbl.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+			group.add_child(cond_lbl)
+		_detail.add_child(group)
+
 
 func _stat_card(label: String, value: String, tone: String) -> Control:
 	var card := PanelContainer.new()

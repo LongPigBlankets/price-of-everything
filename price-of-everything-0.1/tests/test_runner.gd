@@ -8949,14 +8949,18 @@ func _test_briefing_event_mapping() -> void:
 	EventScheduler.reset()
 	TurnBriefing.reset()
 	EventScheduler.emit_event({"id": "tb_ev_res", "kind": "research_unlocked",
-		"title": "Unlocked: Test", "body": "x", "persistent": false})
+		"title": "Unlocked: Test", "body": "x", "persistent": false,
+		"research_name": "Test", "research_reward": "Reward X", "research_condition": "Produce coal 5 units"})
 	EventScheduler.emit_event({"id": "tb_ev_news", "kind": "carbon_announcement",
 		"title": "Carbon tax announced", "body": "x", "severity": "warning", "persistent": true})
 	TurnBriefing._rebuild_items()
 	var by_id := {}
 	for it in TurnBriefing.items():
 		by_id[str(it.id)] = it
-	_check(by_id.has("ev:tb_ev_res") and str(by_id["ev:tb_ev_res"].section) == "info",
+	# Research unlocks aggregate into a single "info" update that carries each entry.
+	var agg: Dictionary = by_id.get("research_unlocked_agg", {})
+	_check(not agg.is_empty() and str(agg.get("section", "")) == "info" \
+			and str((agg.get("research", [{}])[0] as Dictionary).get("reward", "")) == "Reward X",
 		"briefing: research events land in the info section")
 	_check(by_id.has("ev:tb_ev_news") and str(by_id["ev:tb_ev_news"].section) == "news",
 		"briefing: unknown announcement kinds land in the news section")

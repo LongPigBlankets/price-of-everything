@@ -170,12 +170,19 @@ func _rebuild_items() -> void:
 	# Resolution-phase events are stamped current_turn-1; post-resolution ones (bridge
 	# loan) the current turn — so the window is [current_turn-1, current_turn].
 	var min_turn: int = maxi(1, int(TurnManager.current_turn) - 1)
+	var research_events: Array = []
 	for ev: Dictionary in EventScheduler.active_events():
 		if int(ev.get("turn_fired", 0)) < min_turn:
+			continue
+		# All research unlocked this turn collapses into one aggregated update below.
+		if str(ev.get("kind", "")) == "research_unlocked":
+			research_events.append(ev)
 			continue
 		var item := _event_item(ev)
 		if not item.is_empty():
 			out.append(item)
+	if not research_events.is_empty():
+		out.append(_research_aggregate_item(research_events))
 	# Order: decisions, then alerts by severity, then news, then info (newest first).
 	var rank := {"decisions": 0, "alerts": 1, "news": 2, "info": 3}
 	var sev_rank := {"critical": 0, "warning": 1, "info": 2}
@@ -475,6 +482,26 @@ func _event_item(ev: Dictionary) -> Dictionary:
 		"deeplink": ev.get("deeplink", {}),
 		"acked": _acked.has(str(ev.id)),
 		"ackable": section == "news",
+	}
+
+
+# All research unlocked this turn, rolled into one "info" update. The panel renders
+# each entry (name / bold-green reward / condition line); the notch reads `magnitude`.
+func _research_aggregate_item(events: Array) -> Dictionary:
+	var list: Array = []
+	for ev: Dictionary in events:
+		list.append({
+			"name": str(ev.get("research_name", "")),
+			"reward": str(ev.get("research_reward", "")),
+			"condition": str(ev.get("research_condition", "")),
+		})
+	var n := list.size()
+	return {
+		"id": "research_unlocked_agg", "kind": "event", "event_kind": "research_unlocked",
+		"section": "info", "severity": "info", "dismissible": false,
+		"icon": "beaker", "magnitude": n, "research": list,
+		"title": ("%d research unlocked" % n) if n != 1 else "Research unlocked",
+		"body": "",
 	}
 
 

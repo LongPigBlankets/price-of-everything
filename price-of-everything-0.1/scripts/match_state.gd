@@ -1757,6 +1757,35 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 			break
 	unlock_granted.emit(title, desc, via_condition)
 
+## The loaded unlock definition for a research title (empty if unknown).
+func get_unlock_def(title: String) -> Dictionary:
+	for d in _unlock_defs:
+		if str(d.get("title", "")) == title:
+			return d
+	return {}
+
+## Human-readable "unlock-by-doing" condition for a research title — the same
+## wording the research panel shows on a node card. Empty when the node carries
+## no real condition (Placeholder / missing fields).
+func unlock_condition_text(title: String) -> String:
+	var d := get_unlock_def(title)
+	if d.is_empty():
+		return ""
+	var action := str(d.get("action", "")).strip_edges()
+	if action == "Placeholder":
+		return ""
+	var object_name := str(d.get("object", "")).strip_edges()
+	var qty := int(d.get("qty", 0))
+	var unit := str(d.get("unit", "")).strip_edges()
+	if action.is_empty() or object_name.is_empty() or qty <= 0 or unit.is_empty():
+		return ""
+	var ul := unit.to_lower()
+	if ul == "turns":
+		return "%s %s for %d turns" % [action, object_name, qty]
+	if ul == "percentage":
+		return "%s %s to %d%%" % [action, object_name, qty]
+	return "%s %s %d %s" % [action, object_name, qty, unit]
+
 ## Record progress toward action+object conditions (e.g. record("Survey","tiles")).
 ## Advance/reset the per-tile "stockpile fed by 7+ buildings" streaks from this
 ## turn's flush: {tile_id -> distinct producing buildings}. Tiles at the bar
