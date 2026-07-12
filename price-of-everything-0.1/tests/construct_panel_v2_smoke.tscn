@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/construct_panel_v2_smoke.gd" id="1"]
+
+[node name="ConstructPanelV2Smoke" type="Node"]
+script = ExtResource("1")

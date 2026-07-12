@@ -9,6 +9,7 @@ extends CanvasLayer
 ##   swap tvp                         toggle between the classic and alternate Tile View Panel
 ##   swap bottom menu                 toggle between the current and alternate bottom-menu icons
 ##   swap bdp                         toggle to the classic v1 building-detail panel (v2 is default)
+##   swap construct_panel             toggle the construct-panel redesign
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   swap song                       advance to the next music track
 ##   help                             list commands
@@ -138,7 +139,10 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "bdp":
 				MatchState.toggle_use_bdp_v2()
 				return "Building Detail panel → %s" % ("v2 (redesign)" if MatchState.use_bdp_v2 else "v1 (classic)")
-			return "usage: swap bottom menu  |  swap song  |  swap bdp"
+			if parts.size() >= 2 and parts[1].to_lower() == "construct_panel":
+				MatchState.toggle_use_construct_panel_v2()
+				return "Construct panel → %s" % ("v2 (redesign)" if MatchState.use_construct_panel_v2 else "v1 (classic)")
+			return "usage: swap bottom menu  |  swap song  |  swap bdp  |  swap construct_panel"
 		"survey":
 			if parts.size() >= 2 and parts[1].to_lower() == "limit":
 				MatchState.cheat_survey_within_limits()
@@ -278,7 +282,7 @@ func _run_command(text: String) -> String:
 				return "usage: win <greenest|logistics|richest|autarkic|widest|all>"
 			return _cheat_win_track(parts[1].to_lower())
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   swap bdp   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap bottom menu   |   swap song   |   swap bdp   |   swap construct_panel   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

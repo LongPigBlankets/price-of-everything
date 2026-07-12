@@ -76,6 +76,8 @@ func _reset_position() -> void:
 ## Open from the TVP "Build" button: only buildings/recipes valid for this tile,
 ## and selecting a recipe builds it directly on this tile.
 func open_for_tile(tile_id: String, tile_data: Dictionary) -> void:
+	if MatchState.use_construct_panel_v2:
+		return
 	_opened_for_tile = true
 	_tile_filter = tile_id
 	_tile_filter_data = tile_data
@@ -93,6 +95,8 @@ func open_for_tile(tile_id: String, tile_data: Dictionary) -> void:
 	_opened_for_tile = false
 
 func open_for_output_good(good_id: String) -> void:
+	if MatchState.use_construct_panel_v2:
+		return
 	# Open the panel showing only buildings/recipes that produce good_id, with the
 	# search/filter/sort controls hidden.
 	_opened_for_good = true

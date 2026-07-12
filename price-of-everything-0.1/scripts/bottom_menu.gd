@@ -76,8 +76,13 @@ var _hovered := {}        # button -> true while the mouse is over it
 # Building ledger is instantiated lazily on first open (no main.tscn edit needed).
 var building_ledger_panel: PanelContainer = null
 var people_panel: PanelContainer = null
+var construct_panel_v2: PanelContainer = null
 
 func _ready() -> void:
+	construct_panel_v2 = load("res://scripts/construct_panel_v2.gd").new()
+	construct_panel.get_parent().add_child(construct_panel_v2)
+	construct_panel_v2.hide()
+	MatchState.construct_panel_v2_changed.connect(_on_construct_panel_v2_changed)
 	# Capture the shared button styleboxes before any alt override so we can
 	# restore them when the alt menu is toggled off.
 	for s in ["normal", "hover", "pressed", "focus"]:
@@ -101,6 +106,7 @@ func _ready() -> void:
 
 	# All panels start hidden
 	construct_panel.hide()
+	construct_panel_v2.hide()
 	resource_panel.hide()
 	market_panel.hide()
 	research_panel.hide()
@@ -125,6 +131,7 @@ func _ready() -> void:
 	# A button rises while its panel is open and drops when it closes. Buttons
 	# with no panel (Politics/People) and disabled buttons never rise.
 	_link_rise(construct_panel, %ConstructButton)
+	_link_rise(construct_panel_v2, %ConstructButton)
 	_link_rise(resource_panel, %ResourcesButton)
 	_link_rise(market_panel, %MarketButton)
 	_link_rise(mapmodes_panel, %MapmodesButton)
@@ -286,6 +293,7 @@ func _set_button_icon(button_name: String, path: String) -> void:
 
 func _hide_all_panels() -> void:
 	_set_panel_visible(construct_panel, false)
+	_set_panel_visible(construct_panel_v2, false)
 	_set_panel_visible(resource_panel, false)
 	_set_panel_visible(market_panel, false)
 	_set_panel_visible(mapmodes_panel, false)
@@ -395,7 +403,28 @@ func _ensure_specular(button: Button) -> TextureRect:
 	return sp
 
 func _on_construct_pressed() -> void:
-	_toggle_panel(construct_panel)
+	var panel := _active_construct_panel()
+	if panel.visible:
+		_set_panel_visible(panel, false)
+		return
+	_hide_all_panels()
+	if panel == construct_panel_v2 and panel.has_method("open_browser"):
+		panel.open_browser()
+	else:
+		_set_panel_visible(panel, true)
+
+func _active_construct_panel() -> PanelContainer:
+	if MatchState.use_construct_panel_v2 and is_instance_valid(construct_panel_v2):
+		return construct_panel_v2
+	return construct_panel
+
+func _on_construct_panel_v2_changed(_enabled: bool) -> void:
+	var was_open: bool = construct_panel.visible or (is_instance_valid(construct_panel_v2) and construct_panel_v2.visible)
+	_set_panel_visible(construct_panel, false)
+	if is_instance_valid(construct_panel_v2):
+		_set_panel_visible(construct_panel_v2, false)
+	if was_open:
+		_set_panel_visible(_active_construct_panel(), true)
 
 func _on_resources_pressed() -> void:
 	_toggle_panel(resource_panel)

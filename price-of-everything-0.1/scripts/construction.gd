@@ -64,6 +64,20 @@ func requirements_for(building_id: String) -> Dictionary:
 	return reqs
 
 
+## Cash-equivalent value of a building's material kit at this turn's market
+## prices. It is deliberately not a tile-specific purchase quote: until the
+## player picks a site, freight and density costs are unknown.
+func market_value(building_id: String) -> float:
+	var total := 0.0
+	var requirements := requirements_for(building_id)
+	for good_id in requirements:
+		var unit_price := MarketState.get_price(str(good_id))
+		if unit_price <= 0.0:
+			unit_price = Catalog.get_base_price(str(good_id))
+		total += float(int(requirements.get(good_id, 0))) * unit_price
+	return total
+
+
 # Whether the target tile holds every required material, and what's short.
 # Returns {satisfied: bool, missing: {good_id: qty_short}, required: {good_id: qty}}.
 func check_tile(tile_id: String, building_id: String) -> Dictionary:

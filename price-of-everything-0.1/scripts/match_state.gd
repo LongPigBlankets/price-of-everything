@@ -381,6 +381,10 @@ var debug_turn_logs_enabled: bool = false
 # Session-only; never persisted. See docs/building-detail-v2-plan.md.
 var use_bdp_v2: bool = true
 
+# Debug-only: the construct-panel redesign stays behind `swap construct_panel`.
+# Session-only; classic construct remains the default.
+var use_construct_panel_v2: bool = false
+
 # --- Signals ---
 signal money_changed(new_amount: float) 
 signal building_added(instance: Dictionary)
@@ -475,6 +479,7 @@ signal alt_bottom_menu_changed(enabled: bool)
 # The Building Detail v2 dev-toggle flipped (`swap bdp` cheat); world_map re-renders the
 # active detail panel. Session-only.
 signal bdp_v2_changed(enabled: bool)
+signal construct_panel_v2_changed(enabled: bool)
 ## A UI surface (notification deep-link, etc.) asks the map to focus a tile:
 ## centre the camera on it and open its tile panel. world_map handles it.
 signal focus_tile_requested(tile_id: String)
@@ -2652,6 +2657,16 @@ func set_use_bdp_v2(enabled: bool) -> bool:
 
 func toggle_use_bdp_v2() -> bool:
 	return set_use_bdp_v2(not use_bdp_v2)
+
+func set_use_construct_panel_v2(enabled: bool) -> bool:
+	if enabled == use_construct_panel_v2:
+		return use_construct_panel_v2
+	use_construct_panel_v2 = enabled
+	construct_panel_v2_changed.emit(use_construct_panel_v2)
+	return use_construct_panel_v2
+
+func toggle_use_construct_panel_v2() -> bool:
+	return set_use_construct_panel_v2(not use_construct_panel_v2)
 
 func set_route_objective(objective: int) -> void:
 	if objective == route_objective:
