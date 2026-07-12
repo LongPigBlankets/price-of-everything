@@ -6,6 +6,7 @@ extends CanvasLayer
 signal begin_pressed
 
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const PipeFrame := preload("res://scripts/pipe_frame.gd")
 const TITLE_FONT := preload("res://assets/fonts/BebasNeue-Regular.ttf")
 const BONUS_FONT := preload("res://assets/fonts/IBMPlexSans-SemiBold.ttf")
 
@@ -49,16 +50,8 @@ func _build() -> void:
 
 	var card := PanelContainer.new()
 	card.custom_minimum_size = Vector2(780, 0)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color("#0B1B2C")
-	sb.border_color = Color(Color("#CDB98A"), 0.7)
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(14)
-	sb.content_margin_left = 32
-	sb.content_margin_right = 32
-	sb.content_margin_top = 28
-	sb.content_margin_bottom = 24
-	card.add_theme_stylebox_override("panel", sb)
+	# The tile-view dark-brown pipe frame (navy fill + brown pipe, no coloured outline).
+	card.add_theme_stylebox_override("panel", PipeFrame.dark_brown_stylebox(34.0))
 	center.add_child(card)
 
 	var col := VBoxContainer.new()

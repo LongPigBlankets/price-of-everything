@@ -261,7 +261,7 @@ func _ready() -> void:
 	offset_right = 576.0
 	offset_bottom = 958.0
 	custom_minimum_size = Vector2(510, 720)
-	add_theme_stylebox_override("panel", _panel_style(NAVY, GOLD_DARK, 2, 14, 0))
+	add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
 	_build_shell()
 	_load_data()
 	if not MatchState.unlock_granted.is_connected(_on_unlock_granted):

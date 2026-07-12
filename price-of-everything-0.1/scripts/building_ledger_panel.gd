@@ -73,6 +73,7 @@ var _drag_mouse_start := Vector2.ZERO
 func _ready() -> void:
 	if DS and DS.theme:
 		theme = DS.theme
+	add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
 	title_label.text = "Buildings"
 	close_button.pressed.connect(func() -> void: close_requested.emit())
 	header.gui_input.connect(_on_header_gui_input)

@@ -63,7 +63,7 @@ func _ready() -> void:
 func _build_shell() -> void:
 	var bg := StyleBoxFlat.new()
 	bg.bg_color = DS.PALETTE["BG_PANEL"]
-	bg.set_border_width_all(2)
+	bg.set_border_width_all(0)   # the brass pipe overlay replaces the coloured outline
 	bg.border_color = DS.PALETTE["BORDER_SOFT"]
 	bg.set_corner_radius_all(10)
 	bg.set_content_margin_all(0)
@@ -71,8 +71,9 @@ func _build_shell() -> void:
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, DS.SP["MD"])
+		margin.add_theme_constant_override("margin_" + side, 26)   # clear the brass frame
 	add_child(margin)
+	add_child(preload("res://scripts/brass_pipe_frame.gd").new())   # brass frame, drawn on top
 
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", DS.SP["SM"])

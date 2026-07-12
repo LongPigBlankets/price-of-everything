@@ -153,6 +153,16 @@ func _ready() -> void:
 	_proj_profit_sharing_value = _insert_finance_row(projection_content, "Proj_DividendsRow", "Profit Sharing", "-£0.00")
 	close_button.pressed.connect(hide)
 	title_label.text = "Money"
+	# Own copy of the shared navy stylebox: keep the navy fill, drop the cream border,
+	# and zero content_margin so the brass overlay reaches the panel edge.
+	var _base_sb := get_theme_stylebox("panel")
+	if _base_sb is StyleBoxFlat:
+		var _sb := (_base_sb as StyleBoxFlat).duplicate() as StyleBoxFlat
+		_sb.set_border_width_all(0)
+		_sb.set_content_margin_all(0)
+		add_theme_stylebox_override("panel", _sb)
+	for _side in ["left", "right", "top", "bottom"]:
+		$MarginContainer.add_theme_constant_override("margin_" + _side, 26)
 	
 	take_loan_button.pressed.connect(_on_take_loan_pressed)
 	
@@ -184,6 +194,7 @@ func _ready() -> void:
 	_hide_redundant_tabs()
 	_tab_container.tab_changed.connect(_on_tab_changed)
 	open_tab("Balance")
+	add_child(preload("res://scripts/brass_pipe_frame.gd").new())   # brass frame, drawn on top
 
 # The Treasury mini-panel owns the compact cash snapshot. Keep the detailed
 # Balance, Loans, and Charts views here; Stats and Budget are no longer exposed
