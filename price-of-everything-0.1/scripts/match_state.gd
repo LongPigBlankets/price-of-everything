@@ -1698,9 +1698,11 @@ func _load_unlock_defs() -> void:
 			if p != "":
 				prereqs.append(p)
 		var q := _csv_at(row, idx, "Quantity")
+		var rank_raw := _csv_at(row, idx, "rank").strip_edges().to_upper()
 		_unlock_defs.append({
 			"title": _csv_at(row, idx, "title"),
 			"category": _csv_at(row, idx, "category"),
+			"rank": rank_raw if rank_raw != "" else "I",
 			"action": _csv_at(row, idx, "Action"),
 			"object": _csv_at(row, idx, "Object"),
 			"qty": int(q) if q.is_valid_int() else 0,
@@ -1764,6 +1766,54 @@ func get_unlock_def(title: String) -> Dictionary:
 			return d
 	return {}
 
+# ── Research tier gating (per category) ──────────────────────────────────────
+const TIER_UNLOCK_THRESHOLD := 3
+const _TIER_ORDER := ["I", "II", "III"]
+
+## True when `category`'s roman `tier` is open. Tier I is always open; a higher
+## tier opens once >= min(TIER_UNLOCK_THRESHOLD, nodes-in-prior-tier) of the
+## immediately lower tier in the same category are unlocked. The clamp lets thin
+## categories (fewer than 3 nodes in a tier) advance by unlocking ALL of them, so
+## they can never permanently softlock.
+func is_tier_available(category: String, tier: String) -> bool:
+	var t := tier.strip_edges().to_upper()
+	var i := _TIER_ORDER.find(t)
+	if i <= 0:
+		return true
+	var prev: String = _TIER_ORDER[i - 1]
+	var total := _tier_node_count(category, prev)
+	if total <= 0:
+		return true
+	return _tier_unlocked_count(category, prev) >= mini(TIER_UNLOCK_THRESHOLD, total)
+
+func _tier_node_count(category: String, tier: String) -> int:
+	var n := 0
+	for d in _unlock_defs:
+		if str(d.get("category", "")) == category and str(d.get("rank", "I")) == tier:
+			n += 1
+	return n
+
+func _tier_unlocked_count(category: String, tier: String) -> int:
+	var n := 0
+	for d in _unlock_defs:
+		if str(d.get("category", "")) == category and str(d.get("rank", "I")) == tier \
+				and unlocked_titles.has(str(d.get("title", ""))):
+			n += 1
+	return n
+
+## A research node is currently available (workable toward / grantable / free-pickable)
+## when its category tier is open AND every listed prereq is already unlocked.
+func is_node_available(title: String) -> bool:
+	var d := get_unlock_def(title)
+	if d.is_empty():
+		return false
+	if not is_tier_available(str(d.get("category", "")), str(d.get("rank", "I"))):
+		return false
+	for p in d.get("prereqs", []):
+		if not unlocked_titles.has(str(p)):
+			return false
+	return true
+
 ## Human-readable "unlock-by-doing" condition for a research title — the same
 ## wording the research panel shows on a node card. Empty when the node carries
 ## no real condition (Placeholder / missing fields).
@@ -1820,6 +1870,11 @@ func _check_unlock_conditions() -> void:
 		var action := str(d.action)
 		if action == "" or str(d.object) == "":
 			continue
+		# Per-category tier-lock: a higher tier's conditions can't be met until enough
+		# of the prior tier is unlocked (see is_tier_available). Reuses `d` so this
+		# stays a single pass over _unlock_defs.
+		if not is_tier_available(str(d.get("category", "")), str(d.get("rank", "I"))):
+			continue
 		var prereqs_met := true
 		for p in d.prereqs:
 			if not unlocked_titles.has(str(p)):
@@ -1861,6 +1916,12 @@ func _live_condition_met(d: Dictionary) -> bool:
 			return _count_buildings(obj, 1, false, turns) >= need
 		"Run Profitable L2":
 			return _count_buildings(obj, 2, true, 0) >= need
+		"Run Recipe":
+			# "Run N player buildings currently set to a recipe of this category"
+			# (e.g. furnaces on a Glassmaking recipe). A leading int in Unit optionally
+			# requires a minimum full-output run-streak.
+			var recipe_streak := _leading_int(str(d.get("unit", "")), 0)
+			return _count_buildings_running_recipe_type(obj, recipe_streak) >= need
 		"Stockpile filled":
 			# Just-in-Time Logistics: some tile's stockpile received goods from 3+
 			# buildings for <qty> consecutive turns (streaks kept at output flush).
@@ -1886,6 +1947,29 @@ func _count_buildings(internal: String, level: int, require_profitable: bool, mi
 		if min_streak > 0 and int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < min_streak:
 			continue
 		if require_profitable and not _is_building_profitable(inst):
+			continue
+		n += 1
+	return n
+
+# Count player-owned buildings whose CURRENTLY-ASSIGNED recipe has recipe_type ==
+# `recipe_type` (case-insensitive), optionally requiring a minimum full-output
+# run-streak. Powers recipe-specific research gates (e.g. "run furnaces on a
+# Glassmaking recipe"). Because glassmaking recipes only exist in the furnace,
+# matching recipe_type already means "a furnace running glassmaking".
+func _count_buildings_running_recipe_type(recipe_type: String, min_streak: int) -> int:
+	var want := recipe_type.strip_edges().to_lower()
+	if want == "":
+		return 0
+	var n := 0
+	for inst in buildings.values():
+		if not is_player_owned(inst):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
+		if recipe.is_empty():
+			continue
+		if str(recipe.get("recipe_type", "")).strip_edges().to_lower() != want:
+			continue
+		if min_streak > 0 and int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < min_streak:
 			continue
 		n += 1
 	return n

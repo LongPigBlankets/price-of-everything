@@ -149,6 +149,7 @@ func _ready() -> void:
 	await _test_modifiers_production_recipe_output()
 	await _test_modifiers_roundtrip()
 	_test_live_unlock_conditions()
+	_test_research_tier_gating()
 	_test_deposit_penalty_modifier()
 	_test_workforce_output_modifier_surfaces_in_building_status()
 	_test_recipe_labour_owns_cost()
@@ -4469,6 +4470,28 @@ func _test_flavor_nodes_wired() -> void:
 	_check(absf(Modifiers.apply("transport_cost", "g", 100.0, {"good_id": "g"}) - 90.0) < 0.001,
 		"Route Optimization wires −10% transport cost")
 	Modifiers.reset()
+	MatchState.reset()
+
+func _test_research_tier_gating() -> void:
+	MatchState.reset()
+	# Tier I is always open; a higher tier opens on >=min(3, prior-tier-count) unlocked
+	# in the prior tier of the SAME category.
+	_check(MatchState.is_tier_available("Metallurgy", "I"), "tier gate: Tier I always open")
+	_check(not MatchState.is_tier_available("Metallurgy", "II"),
+		"tier gate: Metallurgy II locked with 0 Tier-I unlocked")
+	MatchState.grant_unlock("Basic Blast Furnaces")
+	MatchState.grant_unlock("Continuous Casting")
+	_check(not MatchState.is_tier_available("Metallurgy", "II"),
+		"tier gate: Metallurgy II still locked at 2/3 Tier-I")
+	MatchState.grant_unlock("Oxygen-Enriched Blast")
+	_check(MatchState.is_tier_available("Metallurgy", "II"),
+		"tier gate: Metallurgy II opens at 3 Tier-I unlocked")
+	# Softlock clamp: Recycling has a single Tier-II node, so Tier III must open on just it.
+	_check(not MatchState.is_tier_available("Recycling", "III"),
+		"tier gate: Recycling III locked before its lone Tier-II node")
+	MatchState.grant_unlock("Membrane Bioreactors")
+	_check(MatchState.is_tier_available("Recycling", "III"),
+		"tier gate: Recycling III opens after its single Tier-II (min(3,count) clamp avoids softlock)")
 	MatchState.reset()
 
 func _test_live_unlock_conditions() -> void:

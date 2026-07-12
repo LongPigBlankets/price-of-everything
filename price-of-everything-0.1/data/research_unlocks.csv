@@ -13,7 +13,7 @@ Metallurgy,,,,,I,Build,Furnace,3,units,Basic Blast Furnaces,furnace,Increases Fu
 Metallurgy,Basic Blast Furnaces,,,,I,Sell,Steel,250,units,Continuous Casting,cast,Refines continuous-casting practice (prerequisite tech).
 Metallurgy,Continuous Casting,,,,II,Run,Steel Mill,12,turns,Alloy Heat Treatment,alloy,Unlocks new recipes: HIsarna Steel Making (24 Steel); Copper Pipe Moulding (22 Copper Pipe).
 Metallurgy,Alloy Heat Treatment,,,,II,Own,land,5,units,Electric Arc Refining,eaf,Unlocks new recipes: Electric Arc Steelmaking (22 Steel); ELYSIS Aluminium (15 Aluminium); Flash Copper Smelting (36 Copper Ingots).
-Inorganic Chemistry,,,,,I,Build,furnace,3,units,High Strength Glassmaking,glass,Unlocks new recipe: High Strength Glassmaking (28 Glass).
+Inorganic Chemistry,,,,,I,Run Recipe,Glassmaking,3,furnaces,High Strength Glassmaking,glass,Unlocks new recipe: High Strength Glassmaking (28 Glass).
 Inorganic Chemistry,,,,,I,Build,Chemical Plant,3,units,Chlor Alkali Cells,cell,Increases Electrolyser output by 5% permanently.
 Inorganic Chemistry,Chlor Alkali Cells,,,,I,Sell,Chlorine,250,units,Acid Gas Scrubbing,scrub,Reduces Chemical Plant labour by 5% permanently.
 Inorganic Chemistry,Acid Gas Scrubbing,,,,II,Run,Chemical Plant,12,turns,Industrial Salt Purification,salt,Increases Chemical Plant output by 25% for 20 turns.
