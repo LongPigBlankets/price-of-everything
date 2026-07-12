@@ -220,7 +220,7 @@ static func steps() -> Array:
 			"id": "lay_cable_factory",
 			"chapter": "Power",
 			"title": "Lay a cable to power it",
-			"body": "Power reaches a building over a physical cable network. In the tile panel's Infrastructure row, click the Cables “+” to lay a cable on this tile — that's all it takes to switch it on.",
+			"body": "Power reaches a building over a physical cable network. In the tile panel's Infrastructure row, click the Cables “+” to lay a cable on this tile.",
 			"setup": [
 				{ "action": "focus_tile", "tile": WINDOW_TILE },
 			],
@@ -228,6 +228,19 @@ static func steps() -> Array:
 			"lock_panel": true,
 			"done": {
 				"wake": ["construction_started", "infrastructure_attempted"],
+				"decide": { "kind": "node_visible", "ref": "SourcingBuyButton" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "lay_cable_source",
+			"chapter": "Power",
+			"title": "Buy the cable materials",
+			"body": "Laying a cable needs a few construction materials you don't have on this tile yet. Choose Buy from market to order them and start the cable — that's all it takes to switch the tile on.",
+			"setup": [],
+			"spotlight": { "kind": "node_name", "ref": "SourcingBuyButton" },
+			"done": {
+				"wake": ["construction_started", "infrastructure_attempted", "materials_ordered"],
 				"decide": { "kind": "tile_cabled_or_ordered", "tile": WINDOW_TILE },
 			},
 			"advance": "auto",
