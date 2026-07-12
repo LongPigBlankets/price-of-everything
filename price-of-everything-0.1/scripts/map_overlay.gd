@@ -793,12 +793,13 @@ func _draw_power_marker(world_pos: Vector2, status: Dictionary) -> void:
 	hex.set_script(load("res://scripts/power_hex_overlay.gd"))
 	hex.set("tile_size", tile)
 	if status.state == "partial":
-		# Some consumption self-supplied, some from the national grid -> amber base + red bars.
-		var amber: Color = POWER_COLORS["self_supplied"]
+		# Deficit partly covered by own generation, rest from the national grid ->
+		# red base (grid) + yellow bars (the self-supplied share).
 		var red: Color = POWER_COLORS["national"]
-		hex.set("color", Color(amber.r, amber.g, amber.b, TILE_MASK_ALPHA))
+		var yellow := Color(0.95, 0.85, 0.2)   # bright yellow bars on the red grid base
+		hex.set("color", Color(red.r, red.g, red.b, TILE_MASK_ALPHA))
 		hex.set("hatch", true)
-		hex.set("hatch_color", Color(red.r, red.g, red.b, TILE_MASK_ALPHA))
+		hex.set("hatch_color", Color(yellow.r, yellow.g, yellow.b, TILE_MASK_ALPHA))
 	elif status.state == "intermittent":
 		# Intermittent renewable generation -> amber base + a 20/20 green barber-pole
 		# (20u green bar, 20u amber gap perpendicular; x-stride = 40 / sin45 ≈ 56.57).

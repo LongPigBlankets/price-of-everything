@@ -11,7 +11,7 @@ const POWER_LEGEND_ROWS: Array = [
 	{"color": Color(0.2, 0.8, 0.2), "text": "+N  Surplus (exporting)"},
 	{"color": Color(0.95, 0.65, 0.10), "text": "-N  Deficit, self-supplied"},
 	{"color": Color(0.8, 0.2, 0.2), "text": "-N  Deficit, from national grid"},
-	{"color": Color(0.95, 0.65, 0.10), "hatch": Color(0.8, 0.2, 0.2), "text": "-N  Deficit, partly grid"},
+	{"color": Color(0.8, 0.2, 0.2), "hatch": Color(0.95, 0.85, 0.2), "text": "-N  Deficit, partly grid"},
 	{"color": Color(0.95, 0.65, 0.10), "hatch": Color(0.357, 0.820, 0.502), "text": "~N  Intermittent generation"},
 	{"color": Color(0.05, 0.05, 0.05), "text": "(-N)  Cables required"},
 	{"color": Color(0.5, 0.5, 0.5), "text": "Cables unused"},
@@ -82,6 +82,8 @@ func _clear_entries() -> void:
 
 # --- Power mode ---
 
+const LegendHatchScript := preload("res://scripts/legend_hatch_swatch.gd")
+
 func _rebuild_power() -> void:
 	_clear_entries()
 	for row in POWER_LEGEND_ROWS:
@@ -90,6 +92,11 @@ func _rebuild_power() -> void:
 		var swatch: ColorRect = entry.get_node("ColourSwatch")
 		var label: Label = entry.get_node("NameLabel")
 		swatch.color = row.color
+		if row.has("hatch"):
+			var hatch := Control.new()
+			hatch.set_script(LegendHatchScript)
+			hatch.hatch_color = row.hatch
+			swatch.add_child(hatch)   # base ColorRect + diagonal stripes on top
 		label.text = row.text
 
 # --- Logistics mode ---
