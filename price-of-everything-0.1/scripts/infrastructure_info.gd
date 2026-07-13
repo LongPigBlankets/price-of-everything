@@ -26,7 +26,6 @@ static func has_level_stats(key: String) -> bool:
 	return key != "hvdc"
 
 static func level_stats(key: String, level: int) -> Dictionary:
-	var level_multiplier: float = float(EconomyConfig.TRANSPORT_CAP_LEVEL_MULT.get(level, 1.0))
 	if key == "cables":
 		return {
 			"capacity_label": "Power cap",
@@ -40,7 +39,7 @@ static func level_stats(key: String, level: int) -> Dictionary:
 		"roads": range = 2
 		"rail": range = 4
 		"pipes", "reinf_pipes": range = 2
-	var base_cap: float = float(EconomyConfig.TRANSPORT_LINK_CAP_BY_MODE.get(mode, 0))
+	var capacity: float = TransportService.link_capacity(mode, level)
 	var cost := "£0.02–£0.06 / unit / turn"
 	if key == "rail":
 		cost = "£0.01–£0.03 / unit / turn"
@@ -48,7 +47,7 @@ static func level_stats(key: String, level: int) -> Dictionary:
 		cost = "£0.03 / unit / tile"
 	return {
 		"capacity_label": "Transport soft cap",
-		"capacity": "%s units / tile / turn" % _number(base_cap * level_multiplier),
+		"capacity": "%s units / tile / turn" % _number(capacity),
 		"tiles": "%d tile%s / turn" % [range, "" if range == 1 else "s"],
 		"cost": cost,
 	}

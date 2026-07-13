@@ -1,4 +1,6 @@
 recipe_id,recipe,target_min,target_profit,minimum_labour_profit,needed_to_minimum_band,needed_to_target,primary_output,output_qty,price_increase_per_output_to_minimum_band,extra_output_units_to_minimum_band,maintenance_reduction_to_minimum_band,highest_cost_input,highest_cost_input_qty,highest_cost_input_unit_cost,input_units_to_remove_to_minimum_band
+r_039,Lithium Electrolysis,15.0,20.0,5.938,9.062,14.062,lithium_carbonate,9.0,1.007,2,1.0,lithium_ore,11.0,2.98,4
+r_115,Sulphuric Acid Production,0.0,5.0,-36.888,36.888,41.888,industrial_acids,3.0,12.296,11,7.0,sulphur,21.0,1.01,37
 r_208,Sustainable Biomass Production,5.0,15.0,-4.797,9.797,19.797,biomass,15.0,0.653,11,1.0,fertilisers,1.0,12.772,1
 r_209,Strip Farming - Biomass,5.0,7.5,-34.865,39.865,42.365,biomass,24.0,1.661,44,1.0,fertilisers,4.0,12.772,4
 r_211,Agri Solar Farming - Biomass,5.0,7.5,3.43,1.57,4.07,biomass,10.0,0.157,2,1.0,,0.0,0.0,

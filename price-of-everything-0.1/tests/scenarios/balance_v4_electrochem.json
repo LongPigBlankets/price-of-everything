@@ -1,0 +1,94 @@
+{
+	"name": "balance_v4_electrochem",
+	"display_name": "Balance v4 — electrochemistry player",
+	"note": "Chlor-alkali plus base and membraneless water electrolysis; raw salt remains a market raw material.",
+	"balance_v4": true,
+	"unlocks": ["Membraneless Electrolysis"],
+	"integration_earliest_turn": 80,
+	"balance_build_cash_reserve": 400,
+	"target_goods": ["chlorine", "sodium_hydroxide", "hydrogen", "oxygen"],
+	"target_recipe_ids": ["r_012", "r_079", "r_080"],
+	"surplus_sales": ["tile_22_9", "tile_23_9", "tile_21_10", "tile_23_10"],
+	"port_distance_pairs": [
+		{"hub": "tile_22_9", "port": "tile_24_7"},
+		{"hub": "tile_23_9", "port": "tile_24_7"},
+		{"hub": "tile_21_10", "port": "tile_24_7"},
+		{"hub": "tile_23_10", "port": "tile_24_7"}
+	],
+	"balance_runway_turns": 40,
+	"balance_runway_transport_spine": {},
+	"balance_runway_buildings": [
+		{"id": "runway_coal", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_8_4", "deposit": "coal"},
+		{"id": "runway_water", "internal_name": "water_pump", "recipe_id": "r_011", "tile": "tile_8_4", "deposit": "water", "count": 2},
+		{"id": "runway_power", "internal_name": "coal_power", "recipe_id": "r_004", "tile": "tile_8_4", "count": 3}
+	],
+	"balance_runway_routes": [
+		{"id": "runway_coal", "good": "coal", "dest": "tile_8_4"},
+		{"id": "runway_water", "good": "pure_water", "dest": "tile_8_4"}
+	],
+	"balance_runway_tile_only_inputs": [
+		{"id": "runway_power", "goods": ["coal", "pure_water"]}
+	],
+	"balance_runway_surplus_sales": ["tile_8_4"],
+	"transport_spine": {
+		"corridors": [
+			["tile_22_9", "tile_24_7"]
+		],
+		"rails": "corridors",
+		"cables": ["tile_21_9", "tile_22_9"]
+	},
+	"balance_operating_transport_spine": {
+		"corridors": [["tile_22_9", "tile_24_7"]],
+		"reinf_pipes": "corridors"
+	},
+	"balance_scale_transport_spine": {},
+	"balance_standalone_buildings": [
+		{"id": "electrolysis", "internal_name": "electrolyser", "recipe_id": "r_079", "tile": "tile_22_9"},
+		{"id": "membrane", "internal_name": "electrolyser", "recipe_id": "r_080", "tile": "tile_22_9"}
+	],
+	"balance_post_transport_buildings": [
+		{"id": "chlor", "internal_name": "chem_plant", "recipe_id": "r_012", "tile": "tile_22_9"}
+	],
+	"balance_standalone_routes": [
+		{"id": "chlor", "good": "chlorine", "dest": "market"},
+		{"id": "chlor", "good": "sodium_hydroxide", "dest": "market"},
+		{"id": "chlor", "good": "hydrogen", "dest": "market"},
+		{"id": "electrolysis", "good": "hydrogen", "dest": "market"},
+		{"id": "electrolysis", "good": "oxygen", "dest": "market"},
+		{"id": "membrane", "good": "hydrogen", "dest": "market"},
+		{"id": "membrane", "good": "oxygen", "dest": "market"}
+	],
+	"balance_preintegration_buildings": [
+		{"id": "pre_membrane", "internal_name": "electrolyser", "recipe_id": "r_080", "tile": "tile_22_9", "count": 3},
+		{"id": "pre_electrolysis", "internal_name": "electrolyser", "recipe_id": "r_079", "tile": "tile_22_9"}
+	],
+	"balance_preintegration_routes": [
+		{"id": "pre_membrane", "good": "hydrogen", "dest": "market"},
+		{"id": "pre_membrane", "good": "oxygen", "dest": "market"},
+		{"id": "pre_electrolysis", "good": "hydrogen", "dest": "market"},
+		{"id": "pre_electrolysis", "good": "oxygen", "dest": "market"}
+	],
+	"balance_integration_buildings": [
+		{"id": "power", "internal_name": "coal_power", "recipe_id": "r_004", "tile": "tile_22_9"},
+		{"id": "coal", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_22_9", "deposit": "coal"},
+		{"id": "water", "internal_name": "water_pump", "recipe_id": "r_011", "tile": "tile_22_9", "deposit": "water", "count": 4}
+	],
+	"balance_required_integration_ids": [
+		"coal", "water", "power"
+	],
+	"balance_integration_routes": [
+		{"id": "coal", "good": "coal", "dest": "tile_22_9"},
+		{"id": "water", "good": "pure_water", "dest": "tile_22_9"}
+	],
+	"balance_tile_only_inputs": [
+		{"id": "power", "goods": ["coal", "pure_water"]},
+		{"id": "chlor", "goods": ["pure_water"]},
+		{"id": "electrolysis", "goods": ["pure_water"]},
+		{"id": "membrane", "goods": ["pure_water"]},
+		{"id": "pre_electrolysis", "goods": ["pure_water"]},
+		{"id": "pre_membrane", "goods": ["pure_water"]}
+	],
+	"balance_scale_buildings": [],
+	"balance_scale_routes": [],
+	"balance_scale_tile_only_inputs": []
+}

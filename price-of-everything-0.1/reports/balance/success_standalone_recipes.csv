@@ -1,0 +1,137 @@
+recipe_id,recipe,primary_output,start_unlocked,research_unlock,unlock_exists,revenue,market_input_bill,grid_power_bill,labour_bill,maintenance_bill,freight,working_inventory_reserve,profit
+r_001,Coal Mining,coal,True,,True,24.0,0,3.0,10.0,2.0,0.9,0.6,7.5
+r_002,Iron Mining,iron_ore,True,,True,23.48,0,3.0,10.0,2.0,0.6,0.4,7.48
+r_003,Steelmaking,steel,True,,True,88.08,49.896,14.0,9.379,1.0,1.62,1.08,11.105
+r_004,Power Production,power,True,,True,36.0,17.724,0.0,7.085,2.0,0.9,0.8,7.491
+r_005,Pig Iron Smelting,iron_ingots,True,,True,69.16,33.054,14.0,9.379,1.0,1.95,1.3,8.477
+r_006,Copper Mining,copper_ore,True,,True,23.4,0,3.0,10.0,2.0,0.54,0.36,7.5
+r_007,Copper Blistering,copper_ingots,True,,True,56.736,24.57,14.0,8.16,1.0,0.9,0.6,7.506
+r_008,Copper Wire Drawing,copper_wiring,True,,True,122.56,59.573,8.0,39.242,7.0,0.68,0.56,7.506
+r_009,Motor Manufacture,motor,True,,True,263.088,186.491,3.0,57.018,7.0,1.19,0.9,7.49
+r_010,Salt Mining,basic_salt,True,,True,22.5,0,3.0,10.0,2.0,0.525,0.35,6.625
+r_011,Water Pumping,pure_water,True,,True,21.312,0,2.0,7.178,1.0,1.44,1.44,8.254
+r_012,Chlor-Alkali Process,chlorine,True,,True,123.64,43.613,20.0,35.818,4.0,4.62,10.56,5.03
+r_014,Oil Drilling,crude_oil,True,,True,21.32,0,3.0,8.611,1.0,0.6,0.6,7.509
+r_015,Bauxite Mining,bauxite_ore,True,,True,23.0,0,3.0,10.0,2.0,0.3,0.2,7.5
+r_016,Lithium Mining,lithium_ore,True,,True,22.704,0,3.0,10.0,2.0,0.12,0.08,7.504
+r_017,Rare Earth Mining,ree_ore,True,,True,22.8,0,3.0,10.0,2.0,0.18,0.12,7.5
+r_018,Sand Excavation,sand,True,,True,23.625,0,3.0,10.0,2.0,0.675,0.45,7.5
+r_019,Limestone Mining,limestone,True,,True,23.125,0,3.0,10.0,2.0,0.375,0.25,7.5
+r_020,Flash Copper Smelting,copper_ingots,False,Electric Arc Refining,True,85.104,28.287,14.0,7.978,1.0,1.11,1.06,31.669
+r_022,Fuels Refining,fuels,True,,True,52.074,27.877,7.0,6.774,1.0,0.96,0.96,7.502
+r_023,Ethylene Refining,ethylene,True,,True,49.946,27.877,7.0,6.774,1.0,0.69,1.6,5.004
+r_024,Plastics Manufacturing,plastics,True,,True,61.92,40.341,7.0,7.04,1.0,0.42,1.12,4.999
+r_025,Basic Oxygen Steelmaking,steel,False,Oxygen-Enriched Blast,True,73.4,23.213,14.0,7.072,1.0,1.02,0.92,26.175
+r_026,Copper Pipe Hot Rolling,copper_pipe,True,,True,54.324,32.269,7.0,5.789,1.0,0.465,0.31,7.492
+r_028,Synthetic Rubber Production,rubber,True,,True,66.096,41.391,7.0,7.04,1.0,0.59,1.57,7.505
+r_029,Concrete Firing,concrete,True,,True,86.306,54.044,14.0,8.938,1.0,1.155,0.87,6.3
+r_030,Electric Concrete Production,concrete,True,,True,109.844,66.555,14.0,17.36,2.0,1.38,1.05,7.499
+r_031,Direct Reduced Iron Smelting,iron_ingots,False,Basic Blast Furnaces,True,79.04,35.816,14.0,8.07,1.0,1.8,1.6,16.754
+r_032,Lithium Ion Battery Manufacturing,lithium_battery,False,Lithium Battery Storage,True,150.0,132.294,2.0,33.981,7.0,0.36,0.24,-25.875
+r_033,Construction Equiment Assembly (ICE),construction_equipment_ice,True,,True,420.408,335.765,2.0,57.018,7.0,1.38,0.98,16.266
+r_034,Construction Equipment Assembly (EV),construction_equipment_ev,False,Electric Plant & Machinery,True,399.492,298.929,2.0,50.653,7.0,0.88,0.52,39.51
+r_035,Silica Washing,silica,True,,True,34.489,10.175,7.0,7.638,1.0,0.645,0.53,7.501
+r_037,Onshore wind generation,power,True,,True,13.68,0,0.0,4.16,2.0,0.0,0.0,7.52
+r_038,Gas Combined Cycle Turbines,power,True,,True,25.8,11.151,0.0,4.922,2.0,0.12,0.12,7.487
+r_039,Lithium Electrolysis,lithium_carbonate,False,Solid-Oxide Electrolysis,True,59.877,32.779,16.0,74.022,1.0,0.3,0.2,-64.424
+r_040,Bayer Process,alumina,True,,True,59.16,30.87,14.0,7.386,1.0,0.99,1.3,3.614
+r_041,Rare Earth Reduction,refined_ree,True,,True,69.948,27.93,24.0,7.821,1.0,0.54,1.16,7.497
+r_042,Bio-Graphitisation,graphite,False,Biomass Cracking,True,199.562,57.164,24.0,6.24,1.0,0.63,0.58,109.948
+r_044,Silicon Smelting,metallurgical_silicon,True,,True,70.56,36.257,14.0,9.552,2.0,0.75,0.5,7.502
+r_045,Polysilicon (Siemens) Smelting,polysilicon,True,,True,73.509,18.522,24.0,19.286,4.0,0.12,0.08,7.501
+r_046,Haber Bosch Process,ammonia,True,,True,105.99,51.458,14.0,22.531,4.0,1.5,5.0,7.5
+r_047,Fertilisers Production,fertilisers,True,,True,291.936,41.895,7.0,22.531,4.0,0.76,1.16,214.59
+r_050,Aluminium (Hall Heroult) Smelting,aluminium,True,,True,113.82,75.236,24.0,7.386,1.0,0.72,0.48,4.999
+r_051,Desalination,pure_water,True,,True,27.76,0,7.0,9.238,1.0,1.425,1.35,7.747
+r_053,Industrial Glassmaking,glass,True,,True,67.296,32.839,14.0,9.178,1.0,1.175,1.61,7.495
+r_054,High Strength Glassmaking,glass,False,High Strength Glassmaking,True,65.193,29.037,14.0,5.789,1.0,0.52,0.45,14.398
+r_055,uPVC Window Manufacturing,windows,True,,True,206.55,136.242,2.0,52.49,7.0,0.7,0.61,7.509
+r_056,Window Manufacturing,windows,True,,True,195.075,121.584,4.0,51.261,7.0,0.685,0.55,9.995
+r_057,Building Frame Manufacture,building_frame,True,,True,381.238,245.681,2.0,111.011,13.0,1.38,0.66,7.506
+r_058,Solar Panel Manufacturing,solar_panel,True,,True,246.744,128.654,2.0,94.541,13.0,0.675,0.37,7.504
+r_059,Wind Turbine Manufacturing,wind_turbine,True,,True,207.273,117.134,2.0,67.29,13.0,0.22,0.13,7.5
+r_060,Durable Perovskite Solar Panels,solar_panel,False,Atomic Layer Deposition,True,370.116,191.981,2.0,67.29,13.0,0.54,0.25,95.055
+r_061,Segmented Assembly Wind Turbines,wind_turbine,False,Segmented Blade Assembly,True,207.273,92.524,2.0,67.29,13.0,0.2,0.11,32.149
+r_063,Heterojunction Solar Panels,solar_panel,False,Heterojunction Cell Lines,True,370.116,243.437,2.0,48.931,9.0,0.57,0.27,65.908
+r_064,Triple Tandem Solar Panels,solar_panel,False,Tandem Cell Stacking,True,462.645,314.972,2.0,52.112,9.0,0.705,0.32,83.536
+r_065,SynRM Magnetless Motors,motor,False,Synchronous Reluctance Drives,True,253.692,92.159,2.0,87.779,13.0,0.685,0.52,57.549
+r_066,Axial Flux Motors,motor,False,Axial Flux Motor Lines,True,263.088,101.84,2.0,131.232,13.0,0.72,0.52,13.777
+r_067,Rubber Vulcanisation,tyres,True,,True,136.625,81.522,2.0,27.104,4.0,0.725,0.54,20.734
+r_068,Car Body Manufacturing,car_body,True,,True,158.256,96.618,2.0,43.834,7.0,0.855,0.44,7.51
+r_069,Lightweight Car Bodies,car_body,False,Composite Panel Pressing,True,226.08,95.889,2.0,80.454,13.0,0.9,0.41,33.426
+r_071,ICE Engine Manufacturing,engine,True,,True,275.358,200.116,2.0,57.018,7.0,1.005,0.72,7.499
+r_072,V8 Engine Manufacturing,engine,False,Precision Assembly Lines,True,275.358,163.699,2.0,87.638,7.0,0.84,0.58,13.6
+r_073,Large Vehicle Engine Manufacturing,large_engine,False,Heavy Engine Casting,True,465.641,307.961,2.0,124.966,13.0,1.62,1.09,15.004
+r_074,Hybrid Engine Manufacturing,engine,False,Hybrid Powertrain Integration,True,321.251,201.707,2.0,82.352,13.0,0.59,0.37,21.232
+r_076,Electric Arc Steelmaking,steel,False,Electric Arc Refining,True,91.75,30.458,14.0,10.915,2.0,1.11,1.06,32.206
+r_077,HIsarna Steel Making,steel,False,Alloy Heat Treatment,True,91.75,21.403,14.0,7.181,1.0,1.2,1.12,45.846
+r_078,Methane Pyrolysis,hydrogen,False,Methane Pyrolysis,True,125.368,44.604,14.0,7.165,1.0,1.08,2.16,55.359
+r_079,Water Electrolysis,hydrogen,True,,True,47.95,6.527,24.0,6.931,1.0,1.05,2.52,5.922
+r_080,Membraneless Electrolysis,hydrogen,False,Membraneless Electrolysis,True,75.35,6.527,24.0,6.931,1.0,1.41,3.72,31.762
+r_081,Fluidised Bed Reactor + CZ Silicon,polysilicon,False,Czochralski Crystal Growth,True,147.018,30.801,24.0,19.286,4.0,0.285,0.51,68.136
+r_082,Electric Calcination Alumina,alumina,True,,True,106.488,43.05,20.0,27.552,4.0,1.41,1.74,8.736
+r_083,ELYSIS Aluminium,aluminium,False,Electric Arc Refining,True,87.047,37.359,20.0,11.178,2.0,0.555,0.37,15.585
+r_084,Aluminium Direct Carbothermic Electrolysis,aluminium,False,Ultra-High-Power Arcs,True,130.893,69.157,20.0,10.65,2.0,0.63,0.42,28.036
+r_087,Nitrogen Air Separation,nitrogen,False,Process Intensification,True,58.8,0,14.0,19.286,4.0,1.5,5.0,15.014
+r_099,Lithium Phosphate Batteries,lithium_battery,False,Lithium Iron Phosphate Cells,True,200.0,97.436,2.0,48.429,9.0,0.405,0.44,42.29
+r_101,Alkaline Battery Manufacturing,alkaline_battery,True,,True,131.832,60.522,2.0,53.104,7.0,1.02,0.68,7.506
+r_102,Sodium Ion Battery Manufacturing,sodium_battery,False,Sodium Battery Storage,True,90.0,23.576,0.2,4.16,13.0,0.195,0.13,48.739
+r_105,Water Treatment,pure_water,False,Wastewater Bioreactors,True,53.28,2.52,2.0,8.445,1.0,4.32,4.32,30.675
+r_106,Scrap Recycling,steel,True,,True,49.545,20.16,7.0,11.958,2.0,0.765,0.51,7.152
+r_107,E-Waste Recycling,copper_wiring,False,Advanced Oxidation Loops,True,41.443,18.9,2.0,13.376,2.0,0.59,0.41,4.167
+r_108,Biowaste Recycling,biomass,False,Biowaste Digestion,True,43.632,9.45,2.0,13.376,2.0,0.78,0.78,15.246
+r_114,Hydrochloric Acid Production,industrial_acids,True,,True,156.15,75.978,7.0,48.029,7.0,2.43,8.1,7.613
+r_115,Sulphuric Acid Production,industrial_acids,True,,True,10.41,29.137,7.0,49.341,7.0,0.915,1.02,-84.003
+r_116,Generic Acid Production,industrial_acids,True,,True,124.92,66.78,7.0,48.029,7.0,1.8,5.04,-10.729
+r_117,ICE Car Production,ice_car,True,,True,613.824,531.958,2.0,56.042,7.0,1.155,0.67,14.999
+r_118,Automated ICE Car Assembly,ice_car,False,Automated Body-in-White Lines,True,920.736,690.15,2.0,173.194,13.0,1.52,0.87,40.002
+r_119,EV Assembly,ev_car,False,Electric Vehicle Assembly,True,702.045,495.93,2.0,117.76,13.0,0.87,0.5,71.985
+r_120,Basic Circuit Soldering,circuit_board,True,,True,177.468,118.572,2.0,41.61,7.0,0.405,0.39,7.491
+r_121,Circuit Printing,circuit_board,False,300mm Wafer Lines,True,162.679,54.606,2.0,67.29,13.0,0.24,0.23,25.313
+r_122,Semiconductor Fabbing,cpu,True,,True,354.055,266.007,2.0,82.352,13.0,0.335,0.36,-9.999
+r_123,Fabless Semiconductors,cpu,False,Advanced Photolithography,True,354.055,159.501,2.0,146.858,9.0,0.175,0.14,36.381
+r_124,Semiconductor 3D Printing,cpu,False,Additive Semiconductor Printing,True,354.055,130.682,2.0,152.102,9.0,0.135,0.11,60.026
+r_125,Computer Assembly,computer,True,,True,479.97,372.197,2.0,67.29,13.0,0.22,0.21,25.054
+r_126,Electrical Components Production,electrical_components,True,,True,135.432,80.598,2.0,37.568,7.0,0.425,0.34,7.501
+r_127,Precision Electrical Components,electrical_components,False,Precision Electronics Assembly,True,237.006,139.272,2.0,59.261,9.0,0.56,0.43,26.483
+r_131,Hydrogen Power,power,False,Hydrogen Combustion Turbines,True,152.4,6.93,0.0,4.922,2.0,0.06,0.2,138.288
+r_132,Alloy Metal Smelting,alloy_ingots,True,,True,50.46,20.202,14.0,6.493,1.0,0.75,0.5,7.515
+r_133,Alloy Metal Electrolysis,alloy_ingots,False,Molten Salt Alloy Electrolysis,True,84.1,24.402,20.0,8.56,1.0,1.2,1.2,27.738
+r_134,Alloy Metal Mining,alloy_ore,True,,True,23.088,0,3.0,10.0,2.0,0.36,0.24,7.488
+r_135,Fibreglass Production,fibreglass,True,,True,70.314,22.878,2.0,30.694,7.0,0.12,0.12,7.501
+r_136,Iron Air Batteries,iron_battery,False,Iron-Air Battery Cells,True,30.0,16.321,0.5,4.16,7.0,0.42,0.48,1.119
+r_145,Offshore Wind Power Generation,power,True,,True,14.7,0,0.0,4.16,3.0,0.0,0.0,7.54
+r_146,Solar Power Generation,power,True,,True,13.68,0,0.0,4.16,2.0,0.0,0.0,7.52
+r_150,Petroleum Needle Coke Calcination,graphite,True,,True,90.71,50.551,24.0,7.005,1.0,0.39,0.26,7.504
+r_151,Petroleum Needle Coke Power,power,True,,True,40.8,25.276,0.0,6.774,1.0,0.12,0.08,7.55
+r_154,Coal Liquefaction,fuels,False,Fischer-Tropsch Synthesis,True,201.195,11.13,7.0,19.286,4.0,2.76,2.85,154.169
+r_165,Radial Axial Tire Production,tyres,True,,True,196.74,114.964,2.0,54.902,7.0,1.165,0.83,15.878
+r_175,PVC Polymerisation,pvc,True,,True,90.848,62.271,7.0,9.376,1.0,0.94,2.76,7.501
+r_177,Shale Oil Fracking,crude_oil,False,Shale Oil Fracturing,True,30.914,0,3.0,9.664,2.0,0.87,0.87,14.51
+r_178,Offshore Oil Extraction,crude_oil,False,Offshore Drilling Platforms,True,47.97,0,3.0,9.664,2.0,1.35,1.35,30.606
+r_179,Sulphur Mining,sulphur,True,,True,23.088,0,3.0,10.0,2.0,0.36,0.24,7.488
+r_180,Oil Refining,processed_oil,True,,True,47.79,22.386,7.0,7.638,1.0,1.14,1.14,7.486
+r_181,Oil Power Production,power,True,,True,31.5,16.727,0.0,4.922,2.0,0.18,0.18,7.492
+r_203,Hairpin Stator Motors,motor,False,Hairpin Stator Winding,True,263.088,100.395,2.0,132.666,13.0,0.705,0.51,13.813
+r_204,Heavy Vehicles Assembly,heavy_vehicle,True,,True,1140.0,893.52,2.0,219.434,7.0,1.665,1.03,15.352
+r_205,Heavy Vehicles Automated Manufacturing,heavy_vehicle,False,Heavy Vehicle Assembly,True,1140.0,893.52,2.0,178.451,13.0,1.665,1.03,50.334
+r_206,Electric Heavy Vehicles Manufacturing,heavy_vehicle,False,Electric Drivetrain Integration,True,1140.0,891.342,2.0,169.77,13.0,1.035,0.39,62.464
+r_207,Heavy Electric Motor,large_engine,False,Motor Winding Automation,True,550.303,355.19,2.0,124.966,13.0,1.17,0.65,53.327
+r_208,Sustainable Biomass Production,biomass,False,Energy Crop Cultivation,True,14.135,12.772,1.0,6.102,1.0,0.315,0.31,-7.365
+r_209,Strip Farming - Biomass,biomass,True,,True,23.316,52.021,1.0,6.102,1.0,0.81,0.79,-38.408
+r_211,Agri Solar Farming - Biomass,biomass,True,,True,9.59,0,1.0,6.102,1.0,0.25,0.25,0.988
+r_212,Livestock Farming - Biomass,biomass,True,,True,11.908,1.399,1.0,6.102,1.0,0.51,0.51,1.387
+r_213,Aggressive Logging - Biomass,biomass,True,,True,27.27,0,1.0,15.174,3.0,0.3,0.3,7.496
+r_214,Sustainable Forestry - Biomass,biomass,False,Sustainable Forestry,True,49.995,0,1.0,15.174,3.0,0.55,0.55,29.721
+r_215,Gentle Pruning - Biomass,biomass,True,,True,27.27,0,1.0,15.174,3.0,0.3,0.3,7.496
+r_217,Biomass Carbonisation,carbonised_biomass,True,,True,53.298,22.907,14.0,6.963,1.0,0.51,0.42,7.498
+r_218,Petroleum Coking,pet_coke,True,,True,54.162,22.386,14.0,7.638,1.0,0.87,0.78,7.488
+r_219,Copper Pipe Moulding,copper_pipe,False,Alloy Heat Treatment,True,81.486,36.851,7.0,5.971,1.0,0.645,0.43,29.589
+r_220,Copper Pipe Manufacturing,copper_pipe,False,Precision Tube Drawing,True,144.864,38.394,7.0,31.018,7.0,0.96,0.72,59.772
+r_221,Deepwater Oil Extraction,crude_oil,False,Dynamic-Positioning Drilling,True,47.97,0,3.0,9.664,2.0,1.35,1.35,30.606
+r_222,Subsea Manifold Extraction,crude_oil,False,Subsea Production Systems,True,79.95,0,3.0,9.664,2.0,2.25,2.25,60.786
+r_223,Floating Offshore Wind Power,power,False,Floating Offshore Wind Farms,True,67.2,0,0.0,4.16,3.0,0.0,0.0,60.04
+r_224,Hydroelectric Power,power,False,hydro,False,22.2,0,0.0,4.16,3.0,0.0,0.0,15.04
+r_226,Magnetic Separation Electrolysis,refined_ree,False,Molten Salt Alloy Electrolysis,True,81.606,21.815,24.0,6.931,1.0,0.375,0.29,27.195
+r_227,Rudimentary Lithium Refinement,lithium_carbonate,True,,True,59.877,34.77,10.0,5.789,1.0,0.345,0.47,7.503
+r_228,Bio Ethylene,ethylene,False,Biomass Cracking,True,107.576,9.545,10.0,19.286,4.0,0.94,2.9,60.905

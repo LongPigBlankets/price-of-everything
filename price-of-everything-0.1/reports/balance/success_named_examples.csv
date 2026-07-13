@@ -1,0 +1,7 @@
+example,recipe_id,recipe,standalone_grid_profit,one_integrated_input,one_input_supplier,individual_two_building_profit,one_level_integrated_profit,one_level_integration_gain,fully_integrated_coal_power,fully_integrated_oil_power,fully_integrated_firmed_wind
+Motors,r_009,Motor Manufacture,7.49,copper_wiring,Copper Wire Drawing,14.995,22.404,7.408,108.77,108.77,93.894
+Chlor-alkali,r_012,Chlor-Alkali Process,5.03,pure_water,Water Pumping,13.284,19.541,6.257,44.445,44.445,32.902
+ICE cars,r_117,ICE Car Production,14.999,engine,ICE Engine Manufacturing,22.498,36.746,14.248,286.777,286.777,256.263
+CPUs,r_122,Semiconductor Fabbing,-9.999,circuit_board,Basic Circuit Soldering,-2.508,6.846,9.353,120.486,120.486,99.882
+Windows — aluminium,r_056,Window Manufacturing,9.995,glass,Industrial Glassmaking,17.49,21.554,4.064,85.203,85.203,68.635
+Windows — PVC,r_055,uPVC Window Manufacturing,7.509,glass,Industrial Glassmaking,15.003,19.648,4.645,90.616,90.616,76.392

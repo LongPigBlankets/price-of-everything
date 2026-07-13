@@ -21,11 +21,31 @@ WAGE = (0.0032, 0.0096, 0.032)
 MIN_STAFF = (500, 100, 50)
 MIN_LABOUR_COST = sum(count * wage for count, wage in zip(MIN_STAFF, WAGE))
 GRID = 0.10
+GRID_SELL = 0.06
 BUY_MARKUP = 0.05
+# Capital is shown separately from operating cash and levelized over the live
+# 36-turn loan term.  It is an analysis horizon, not a new simulation rule.
+POWER_INVESTMENT_HORIZON_TURNS = 36
+# Live L1 storage calibration from EconomyConfig: 18 lithium cells fill 1000
+# firming units.  One L1 housing therefore covers every base onshore-wind run.
+BATTERY_L1_FIRMING = 1000.0
+LITHIUM_CELLS_PER_L1 = 18.0
 # The live production loop charges the building CSV maintenance value once per
 # turn.  Keep this in lock-step with Production._calculate_maintenance_cost():
 # applying the retired 2x multiplier here made every formula margin too low.
 MAINT_MULT = 1.0
+EXTRACTION_PENALTY_PCT = {
+    "coal": -30.0,
+    "iron_ore": -30.0,
+    "copper_ore": -30.0,
+    "limestone": -30.0,
+    "sand": -30.0,
+    "basic_salt": -30.0,
+    "ree_ore": -30.0,
+    "alloy_ore": -30.0,
+    "sulphur": -15.0,
+    "bauxite_ore": -15.0,
+}
 CAP_SENSITIVITY_FIELDS = (
     "recipe_id", "recipe", "output_good", "current_base_price",
     "max_base_price_for_400_cap", "price_reduction_per_unit",
@@ -56,6 +76,8 @@ RECIPE_TARGET_OVERRIDES = {
     "r_040": (3.6, 0.0, 5.0, "alumina supports the aluminium starter chain"),
     "r_050": (5.0, 0.0, 5.0, "aluminium keeps the upper starter margin"),
     "r_067": (4.2, 0.0, 5.0, "tyres support modest direct integration"),
+    "r_099": (45.0, 30.0, 60.0, "researched LFP batteries should profitably outperform conventional lithium-ion cells"),
+    "r_136": (5.0, 0.0, 10.0, "iron-air cells are a deliberately thin-margin route to cheap bulk storage"),
     "r_115": (5.0, 0.0, 10.0, "sulphuric acid should be modestly profitable"),
     "r_116": (-12.5, -20.0, -5.0, "generic acid should be deliberately loss-making"),
     "r_118": (40.0, 30.0, 50.0, "automated ICE assembly should beat the base recipe margin"),
@@ -164,12 +186,24 @@ def imputed(goods, buildings, recipes, power, labour_costs=None):
             direct = sum(q*costs[g] for g,q in pairs(r,"input","qty",6)) + f(r.get("energy_req"))*power + labour_cost + f(b.get("maintenance_cost"))*MAINT_MULT
             weights = [max(.000001, q*(.06 if g=="power" else f(goods[g].get("base_price")))) for g,q in outs]
             for (g,q),w in zip(outs,weights):
+                if g == "power":
+                    # `power` is an explicit scenario valuation (grid import,
+                    # export opportunity, coal/oil, or firmed wind).  Letting
+                    # the generic imputed-cost loop reduce it would silently
+                    # reintroduce the old cheapest-generator bug.
+                    continue
                 candidate = direct*w/sum(weights)/q
                 if candidate < costs[g] - 1e-8: costs[g] = candidate; changed = True
         if not changed: break
     return costs
 
 def power_cost(goods, buildings, recipes, costs, labour_costs=None):
+    """Legacy technical production-cost floor.
+
+    Do not use this as the economic value of internally consumed electricity:
+    a generated unit can be sold for GRID_SELL, so its operating opportunity
+    cost cannot be below that export price.  Kept for report compatibility.
+    """
     candidates=[]
     for r in recipes:
         qty=sum(q for g,q in pairs(r,"output","output_qty",5) if g=="power")
@@ -179,6 +213,133 @@ def power_cost(goods, buildings, recipes, costs, labour_costs=None):
         total=sum(q*costs[g] for g,q in pairs(r,"input","qty",6))+labour_cost+f(b.get("maintenance_cost"))*MAINT_MULT+f(r.get("energy_req"))*GRID
         candidates.append(total/qty)
     return min(candidates, default=GRID)
+
+
+def building_capital_cost(building, goods):
+    """Market-acquisition value of a building's cash and material kit."""
+    total = f(building.get("build_cost_money"))
+    for index in range(1, 8):
+        good = str(building.get(f"build_material_{index}", "")).strip()
+        quantity = f(building.get(f"build_qty_{index}"))
+        if good and quantity > 0 and good in goods:
+            total += quantity * f(goods[good].get("base_price")) * (1 + BUY_MARKUP)
+    return total
+
+
+def _power_generator_scenario(label, recipe, goods, buildings, battery_recipe=None):
+    building = buildings[recipe["_building"]]
+    output = output_qty(recipe, "power")
+    if output <= 0:
+        raise ValueError(f"{recipe['recipe_id']} has no power output")
+    fuel_inputs = pairs(recipe, "input", "qty", 6)
+    fuel_bill = sum(quantity * f(goods[good].get("base_price")) * (1 + BUY_MARKUP) for good, quantity in fuel_inputs)
+    generator_labour = labour(recipe, building)
+    generator_maintenance = f(building.get("maintenance_cost")) * MAINT_MULT
+    battery_buildings = 0
+    battery_cells = 0
+    battery_locked_capital = 0.0
+    battery_housing_capital = 0.0
+    battery_labour = 0.0
+    battery_maintenance = 0.0
+    if battery_recipe is not None:
+        battery_building = buildings[battery_recipe["_building"]]
+        battery_buildings = int(math.ceil(output / BATTERY_L1_FIRMING))
+        firming_per_cell = BATTERY_L1_FIRMING / LITHIUM_CELLS_PER_L1
+        battery_cells = int(math.ceil(output / firming_per_cell))
+        battery_locked_capital = battery_cells * f(goods["lithium_battery"].get("base_price")) * (1 + BUY_MARKUP)
+        battery_housing_capital = battery_buildings * building_capital_cost(battery_building, goods)
+        battery_labour = battery_buildings * labour(battery_recipe, battery_building)
+        battery_maintenance = battery_buildings * f(battery_building.get("maintenance_cost")) * MAINT_MULT
+    generator_capital = building_capital_cost(building, goods)
+    total_investment = generator_capital + battery_housing_capital + battery_locked_capital
+    operating_cost = fuel_bill + generator_labour + generator_maintenance + battery_labour + battery_maintenance
+    operating_unit_cost = operating_cost / output
+    levelized_unit_cost = (operating_cost + total_investment / POWER_INVESTMENT_HORIZON_TURNS) / output
+    return {
+        "scenario": label,
+        "source_recipe_id": recipe["recipe_id"],
+        "source_recipe": recipe.get("display_name", ""),
+        "generator_output": output,
+        "grid_purchase_price": GRID,
+        "grid_sale_price": GRID_SELL,
+        "fuel_inputs": "; ".join(f"{good} {quantity:g}" for good, quantity in fuel_inputs) or "none",
+        "fuel_market_bill": fuel_bill,
+        "generator_labour_bill": generator_labour,
+        "generator_maintenance_bill": generator_maintenance,
+        "battery_buildings": battery_buildings,
+        "lithium_cells_locked": battery_cells,
+        "battery_labour_bill": battery_labour,
+        "battery_maintenance_bill": battery_maintenance,
+        "generator_capital": generator_capital,
+        "battery_housing_capital": battery_housing_capital,
+        "battery_cell_locked_capital": battery_locked_capital,
+        "total_investment": total_investment,
+        "investment_horizon_turns": POWER_INVESTMENT_HORIZON_TURNS,
+        "operating_cost_per_power": operating_unit_cost,
+        "levelized_cost_per_power": levelized_unit_cost,
+        "short_run_opportunity_cost_per_power": max(GRID_SELL, operating_unit_cost),
+        "long_run_opportunity_cost_per_power": max(GRID_SELL, levelized_unit_cost),
+    }
+
+
+def power_opportunity_scenarios(goods, buildings, recipes):
+    """Comparable grid and owned-generation electricity valuations."""
+    recipe_by_id = {recipe["recipe_id"]: recipe for recipe in recipes}
+    rows = [
+        {
+            "scenario": "grid purchase",
+            "source_recipe_id": "",
+            "source_recipe": "National grid import",
+            "generator_output": "",
+            "grid_purchase_price": GRID,
+            "grid_sale_price": GRID_SELL,
+            "fuel_inputs": "none",
+            "investment_horizon_turns": POWER_INVESTMENT_HORIZON_TURNS,
+            "operating_cost_per_power": GRID,
+            "levelized_cost_per_power": GRID,
+            "short_run_opportunity_cost_per_power": GRID,
+            "long_run_opportunity_cost_per_power": GRID,
+        },
+        {
+            "scenario": "foregone grid sale",
+            "source_recipe_id": "",
+            "source_recipe": "Existing surplus generation",
+            "generator_output": "",
+            "grid_purchase_price": GRID,
+            "grid_sale_price": GRID_SELL,
+            "fuel_inputs": "none",
+            "investment_horizon_turns": POWER_INVESTMENT_HORIZON_TURNS,
+            "operating_cost_per_power": GRID_SELL,
+            "levelized_cost_per_power": GRID_SELL,
+            "short_run_opportunity_cost_per_power": GRID_SELL,
+            "long_run_opportunity_cost_per_power": GRID_SELL,
+        },
+        _power_generator_scenario("coal power", recipe_by_id["r_004"], goods, buildings),
+        _power_generator_scenario("oil power", recipe_by_id["r_181"], goods, buildings),
+        _power_generator_scenario("onshore wind + lithium battery", recipe_by_id["r_037"], goods, buildings, recipe_by_id["r_225"]),
+    ]
+    fields = (
+        "scenario", "source_recipe_id", "source_recipe", "generator_output", "grid_purchase_price", "grid_sale_price",
+        "fuel_inputs", "fuel_market_bill", "generator_labour_bill", "generator_maintenance_bill", "battery_buildings",
+        "lithium_cells_locked", "battery_labour_bill", "battery_maintenance_bill", "generator_capital",
+        "battery_housing_capital", "battery_cell_locked_capital", "total_investment", "investment_horizon_turns",
+        "operating_cost_per_power", "levelized_cost_per_power", "short_run_opportunity_cost_per_power",
+        "long_run_opportunity_cost_per_power",
+    )
+    for row in rows:
+        for field in fields:
+            row.setdefault(field, 0.0 if field not in {"source_recipe_id", "source_recipe", "fuel_inputs", "generator_output"} else "")
+    return rows, fields
+
+
+def write_power_opportunity_report(goods, buildings, recipes):
+    rows, fields = power_opportunity_scenarios(goods, buildings, recipes)
+    with open(OUT / "power_opportunity_costs.csv", "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: round(value, 6) if isinstance(value, float) else value for key, value in row.items()})
+    return rows
 
 def recommended_labour_costs(goods, buildings, recipes, ranks):
     """Return the labour budget needed to put each recipe in its target band."""
@@ -246,6 +407,23 @@ def output_qty(recipe, good):
         if output_good == good:
             return quantity
     return 0.0
+
+
+def godot_round_nonnegative(value):
+    """Match Godot round() for the non-negative recipe quantities used here."""
+    # Decimal halves such as 45 * 0.7 can land just below the exact value in
+    # binary floating point. The epsilon preserves Godot's half-up outcome.
+    return math.floor(value + 0.5 + 1e-9)
+
+
+def extraction_startup_revenue(recipe, goods):
+    """Day-one mine revenue after the live per-output deposit penalties."""
+    total = 0.0
+    for good, quantity in pairs(recipe, "output", "output_qty", 5):
+        pct = EXTRACTION_PENALTY_PCT.get(good, 0.0)
+        deployed_quantity = godot_round_nonnegative(quantity * (1.0 + pct / 100.0))
+        total += deployed_quantity * f(goods[good].get("base_price"))
+    return total
 
 
 def one_turn_market_freight(good, quantity, goods):
@@ -587,7 +765,10 @@ def run():
     goods, buildings, raw, recipes = load(); ranks=rank_map()
     recommended_labour = recommended_labour_costs(goods, buildings, recipes, ranks)
     grid=imputed(goods,buildings,recipes,GRID,recommended_labour)
-    own=power_cost(goods,buildings,recipes,grid,recommended_labour)
+    # Internal electricity is worth at least the grid revenue forgone by not
+    # exporting it.  The former global-min technical cost selected a rank-III
+    # wind recipe for every chain and incorrectly valued power at ~£0.0064.
+    own=GRID_SELL
     full=imputed(goods,buildings,recipes,own,recommended_labour)
     one_layer_cost, one_layer_supplier = one_layer_input_costs(goods, buildings, recipes, recommended_labour)
     recipe_by_id = {r["recipe_id"]: r for r in recipes}
@@ -607,7 +788,8 @@ def run():
                 direct_suppliers.append(f"{g}: {supplier['recipe_id']} {supplier.get('display_name','')}")
         transport,storage,modes=friction(r,goods)
         mine="deposit:" in r.get("requirements","") or "mining" in r.get("category","").lower()
-        startup=rev*.5-market-energy-maint-current_labour if mine else ""
+        startup_revenue=extraction_startup_revenue(r, goods) if mine else ""
+        startup=startup_revenue-market-energy-maint-current_labour if mine else ""
         flags=[]
         if not mine and not target_min<=standalone<=target_max: flags.append("standalone_band")
         if input_profit<20 or input_profit>100: flags.append("input_band")
@@ -616,8 +798,9 @@ def run():
         action="ok" if "standalone_band" not in flags else ("labour" if budget>=MIN_LABOUR_COST else "quantity_or_price")
         if "profit_cap" in flags: action="structural_cap_review"
         primary=pairs(r,"output","output_qty",5)[0][0] if pairs(r,"output","output_qty",5) else ""
-        rows.append({"recipe_id":r["recipe_id"],"display_name":r.get("display_name",""),"building_id":r["_building"],"research":r.get("required_research",""),"tech_rank":rank,"primary_output":primary,"standalone_target":target_policy,"target_profit":round(targ,3),"target_min":target_min,"target_max":target_max,"standalone_revenue":round(rev,3),"standalone_inputs_bill":round(market,3),"standalone_power_units":f(r.get("energy_req")),"standalone_energy_bill":round(energy,3),"standalone_maintenance_bill":round(maint,3),"current_standalone_profit":round(rev-market-energy-maint-current_labour,3),"mine_startup_profit_50pct_output":round(startup,3) if startup!="" else "","minimum_labour_unskilled":MIN_STAFF[0],"minimum_labour_skilled":MIN_STAFF[1],"minimum_labour_h_skilled":MIN_STAFF[2],"minimum_labour_cost":round(MIN_LABOUR_COST,3),"diagnostic_target_fitted_labour_unskilled":counts[0],"diagnostic_target_fitted_labour_skilled":counts[1],"diagnostic_target_fitted_labour_h_skilled":counts[2],"diagnostic_target_fitted_labour_cost":round(newlab,3),"diagnostic_target_fitted_standalone_profit":round(standalone,3),"minimum_labour_standalone_profit":round(minimum_labour_standalone,3),"fractional_one_layer_cost_proxy_profit":round(one_layer_profit,3),"proxy_cheapest_direct_suppliers":"; ".join(direct_suppliers),"imputed_market_input_cost_proxy_profit":round(input_profit,3),"imputed_full_cost_proxy_profit":round(full_profit,3),"cap_reduction_needed":round(max(0,max(input_profit,full_profit)-400),3),"route_assumption":modes,"one_turn_transport_cost":round(transport,3),"one_turn_storage_cost":round(storage,3),"diagnostic_target_fitted_profit_after_one_turn_friction":round(standalone-transport-storage,3),"recommendation":action,"flags":";".join(flags)})
+        rows.append({"recipe_id":r["recipe_id"],"display_name":r.get("display_name",""),"building_id":r["_building"],"research":r.get("required_research",""),"tech_rank":rank,"primary_output":primary,"standalone_target":target_policy,"target_profit":round(targ,3),"target_min":target_min,"target_max":target_max,"standalone_revenue":round(rev,3),"standalone_inputs_bill":round(market,3),"standalone_power_units":f(r.get("energy_req")),"standalone_energy_bill":round(energy,3),"standalone_maintenance_bill":round(maint,3),"current_standalone_profit":round(rev-market-energy-maint-current_labour,3),"mine_startup_revenue_live_penalty":round(startup_revenue,3) if startup_revenue!="" else "","mine_startup_profit_live_penalty":round(startup,3) if startup!="" else "","minimum_labour_unskilled":MIN_STAFF[0],"minimum_labour_skilled":MIN_STAFF[1],"minimum_labour_h_skilled":MIN_STAFF[2],"minimum_labour_cost":round(MIN_LABOUR_COST,3),"diagnostic_target_fitted_labour_unskilled":counts[0],"diagnostic_target_fitted_labour_skilled":counts[1],"diagnostic_target_fitted_labour_h_skilled":counts[2],"diagnostic_target_fitted_labour_cost":round(newlab,3),"diagnostic_target_fitted_standalone_profit":round(standalone,3),"minimum_labour_standalone_profit":round(minimum_labour_standalone,3),"fractional_one_layer_cost_proxy_profit":round(one_layer_profit,3),"proxy_cheapest_direct_suppliers":"; ".join(direct_suppliers),"imputed_market_input_cost_proxy_profit":round(input_profit,3),"imputed_full_cost_proxy_profit":round(full_profit,3),"cap_reduction_needed":round(max(0,max(input_profit,full_profit)-400),3),"route_assumption":modes,"one_turn_transport_cost":round(transport,3),"one_turn_storage_cost":round(storage,3),"diagnostic_target_fitted_profit_after_one_turn_friction":round(standalone-transport-storage,3),"recommendation":action,"flags":";".join(flags)})
     OUT.mkdir(parents=True,exist_ok=True)
+    power_rows = write_power_opportunity_report(goods, buildings, recipes)
     deployed_rows = write_deployed_recipe_economics(goods, buildings, recipes, ranks)
     with open(OUT/"recipe_rebalance_baseline.csv","w",newline="",encoding="utf-8") as h:
         w=csv.DictWriter(h,fieldnames=rows[0].keys());w.writeheader();w.writerows(rows)
@@ -681,7 +864,13 @@ def run():
         w=csv.DictWriter(h,fieldnames=forced_rows[0].keys());w.writeheader();w.writerows(forced_rows)
     with open(OUT/"recipe_rebalance_summary.md","w",encoding="utf-8") as h:
         h.write("# Recipe rebalance baseline\n\n")
-        h.write(f"- Active recipes: {len(recipes)} of {len(raw)} CSV rows\n- Own-power unit cost: {own:.4f}\n- One-turn route assumption: rail for solids, pipe for liquids/gases, roads otherwise\n- Maintenance is charged once, matching the live production loop\n- Standalone target metric: pre-tax cash after one-turn market freight and a one-turn working-inventory warehouse reserve\n- Static deployed recipe economics in target band: {sum(row['in_target_after_one_turn_friction_before_tax'] is True for row in deployed_rows)}\n- Structural +400 reviews: {len(caps)}\n\n")
+        h.write(f"- Active recipes: {len(recipes)} of {len(raw)} CSV rows\n- Internal-power short-run opportunity cost: {own:.4f} (foregone grid sale)\n- Grid purchase price: {GRID:.4f}\n- Power investment horizon: {POWER_INVESTMENT_HORIZON_TURNS} turns\n- One-turn route assumption: rail for solids, pipe for liquids/gases, roads otherwise\n- Maintenance is charged once, matching the live production loop\n- Standalone target metric: pre-tax cash after one-turn market freight and a one-turn working-inventory warehouse reserve\n- Static deployed recipe economics in target band: {sum(row['in_target_after_one_turn_friction_before_tax'] is True for row in deployed_rows)}\n- Structural +400 reviews: {len(caps)}\n\n")
+        h.write("## Power opportunity-cost scenarios\n\n")
+        h.write("Short-run cost includes operating cash and the export forgone by internal use. Long-run cost also levelizes generator, battery-housing and locked-cell investment over the stated horizon.\n\n")
+        h.write("| Scenario | Operating £/power | Levelized £/power | Short-run opportunity | Long-run opportunity |\n|---|---:|---:|---:|---:|\n")
+        for row in power_rows:
+            h.write(f"| {row['scenario']} | {float(row['operating_cost_per_power']):.4f} | {float(row['levelized_cost_per_power']):.4f} | {float(row['short_run_opportunity_cost_per_power']):.4f} | {float(row['long_run_opportunity_cost_per_power']):.4f} |\n")
+        h.write("\n")
         h.write("| Recipe | Input integrated | Fully integrated | Reduce to cap by |\n|---|---:|---:|---:|\n")
         for r in caps: h.write(f"| {r['display_name']} | {r['imputed_market_input_cost_proxy_profit']:.1f} | {r['imputed_full_cost_proxy_profit']:.1f} | {r['cap_reduction_needed']:.1f} |\n")
         h.write("\n`deployed_recipe_economics.csv` is the authoritative standalone view: deployed labour and output, one-turn market freight, working-inventory warehouse reserve, tax and dividends. Fields labelled `diagnostic` or `proxy` in `recipe_rebalance_baseline.csv` are not cashflow predictions.\n")

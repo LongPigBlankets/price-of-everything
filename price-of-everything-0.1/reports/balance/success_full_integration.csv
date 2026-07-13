@@ -1,0 +1,409 @@
+power_scenario,power_cost_per_unit,recipe_id,recipe,primary_output,full_integration_profit,over_50,over_100,over_150,over_200,over_300,over_400
+coal power,0.06,r_001,Coal Mining,coal,8.7,False,False,False,False,False,False
+coal power,0.06,r_002,Iron Mining,iron_ore,8.68,False,False,False,False,False,False
+coal power,0.06,r_003,Steelmaking,steel,47.54,False,False,False,False,False,False
+coal power,0.06,r_004,Power Production,power,20.272,False,False,False,False,False,False
+coal power,0.06,r_005,Pig Iron Smelting,iron_ingots,30.231,False,False,False,False,False,False
+coal power,0.06,r_006,Copper Mining,copper_ore,8.7,False,False,False,False,False,False
+coal power,0.06,r_007,Copper Blistering,copper_ingots,24.776,False,False,False,False,False,False
+coal power,0.06,r_008,Copper Wire Drawing,copper_wiring,49.119,False,False,False,False,False,False
+coal power,0.06,r_009,Motor Manufacture,motor,108.77,True,True,False,False,False,False
+coal power,0.06,r_010,Salt Mining,basic_salt,7.825,False,False,False,False,False,False
+coal power,0.06,r_011,Water Pumping,pure_water,9.054,False,False,False,False,False,False
+coal power,0.06,r_012,Chlor-Alkali Process,chlorine,44.445,False,False,False,False,False,False
+coal power,0.06,r_014,Oil Drilling,crude_oil,8.709,False,False,False,False,False,False
+coal power,0.06,r_015,Bauxite Mining,bauxite_ore,8.7,False,False,False,False,False,False
+coal power,0.06,r_016,Lithium Mining,lithium_ore,8.704,False,False,False,False,False,False
+coal power,0.06,r_017,Rare Earth Mining,ree_ore,8.7,False,False,False,False,False,False
+coal power,0.06,r_018,Sand Excavation,sand,8.7,False,False,False,False,False,False
+coal power,0.06,r_019,Limestone Mining,limestone,8.7,False,False,False,False,False,False
+coal power,0.06,r_020,Flash Copper Smelting,copper_ingots,51.564,True,False,False,False,False,False
+coal power,0.06,r_022,Fuels Refining,fuels,29.652,False,False,False,False,False,False
+coal power,0.06,r_023,Ethylene Refining,ethylene,27.154,False,False,False,False,False,False
+coal power,0.06,r_024,Plastics Manufacturing,plastics,37.761,False,False,False,False,False,False
+coal power,0.06,r_025,Basic Oxygen Steelmaking,steel,45.995,False,False,False,False,False,False
+coal power,0.06,r_026,Copper Pipe Hot Rolling,copper_pipe,31.099,False,False,False,False,False,False
+coal power,0.06,r_028,Synthetic Rubber Production,rubber,41.522,False,False,False,False,False,False
+coal power,0.06,r_029,Concrete Firing,concrete,41.186,False,False,False,False,False,False
+coal power,0.06,r_030,Electric Concrete Production,concrete,49.329,False,False,False,False,False,False
+coal power,0.06,r_031,Direct Reduced Iron Smelting,iron_ingots,45.117,False,False,False,False,False,False
+coal power,0.06,r_032,Lithium Ion Battery Manufacturing,lithium_battery,48.304,False,False,False,False,False,False
+coal power,0.06,r_033,Construction Equiment Assembly (ICE),construction_equipment_ice,204.35,True,True,True,True,False,False
+coal power,0.06,r_034,Construction Equipment Assembly (EV),construction_equipment_ev,201.576,True,True,True,True,False,False
+coal power,0.06,r_035,Silica Washing,silica,17.237,False,False,False,False,False,False
+coal power,0.06,r_037,Onshore wind generation,power,7.52,False,False,False,False,False,False
+coal power,0.06,r_038,Gas Combined Cycle Turbines,power,15.228,False,False,False,False,False,False
+coal power,0.06,r_039,Lithium Electrolysis,lithium_carbonate,-43.945,False,False,False,False,False,False
+coal power,0.06,r_040,Bayer Process,alumina,24.317,False,False,False,False,False,False
+coal power,0.06,r_041,Rare Earth Reduction,refined_ree,30.912,False,False,False,False,False,False
+coal power,0.06,r_042,Bio-Graphitisation,graphite,152.222,True,True,True,False,False,False
+coal power,0.06,r_044,Silicon Smelting,metallurgical_silicon,32.488,False,False,False,False,False,False
+coal power,0.06,r_045,Polysilicon (Siemens) Smelting,polysilicon,26.354,False,False,False,False,False,False
+coal power,0.06,r_046,Haber Bosch Process,ammonia,52.244,True,False,False,False,False,False
+coal power,0.06,r_047,Fertilisers Production,fertilisers,241.786,True,True,True,True,False,False
+coal power,0.06,r_050,Aluminium (Hall Heroult) Smelting,aluminium,58.825,True,False,False,False,False,False
+coal power,0.06,r_051,Desalination,pure_water,10.547,False,False,False,False,False,False
+coal power,0.06,r_053,Industrial Glassmaking,glass,29.965,False,False,False,False,False,False
+coal power,0.06,r_054,High Strength Glassmaking,glass,34.726,False,False,False,False,False,False
+coal power,0.06,r_055,uPVC Window Manufacturing,windows,90.616,True,False,False,False,False,False
+coal power,0.06,r_056,Window Manufacturing,windows,85.203,True,False,False,False,False,False
+coal power,0.06,r_057,Building Frame Manufacture,building_frame,138.298,True,True,False,False,False,False
+coal power,0.06,r_058,Solar Panel Manufacturing,solar_panel,74.051,True,False,False,False,False,False
+coal power,0.06,r_059,Wind Turbine Manufacturing,wind_turbine,60.541,True,False,False,False,False,False
+coal power,0.06,r_060,Durable Perovskite Solar Panels,solar_panel,221.131,True,True,True,True,False,False
+coal power,0.06,r_061,Segmented Assembly Wind Turbines,wind_turbine,76.461,True,False,False,False,False,False
+coal power,0.06,r_063,Heterojunction Solar Panels,solar_panel,226.439,True,True,True,True,False,False
+coal power,0.06,r_064,Triple Tandem Solar Panels,solar_panel,288.522,True,True,True,True,False,False
+coal power,0.06,r_065,SynRM Magnetless Motors,motor,105.658,True,True,False,False,False,False
+coal power,0.06,r_066,Axial Flux Motors,motor,69.866,True,False,False,False,False,False
+coal power,0.06,r_067,Rubber Vulcanisation,tyres,72.562,True,False,False,False,False,False
+coal power,0.06,r_068,Car Body Manufacturing,car_body,74.404,True,False,False,False,False,False
+coal power,0.06,r_069,Lightweight Car Bodies,car_body,87.648,True,False,False,False,False,False
+coal power,0.06,r_071,ICE Engine Manufacturing,engine,119.682,True,True,False,False,False,False
+coal power,0.06,r_072,V8 Engine Manufacturing,engine,108.702,True,True,False,False,False,False
+coal power,0.06,r_073,Large Vehicle Engine Manufacturing,large_engine,197.114,True,True,True,False,False,False
+coal power,0.06,r_074,Hybrid Engine Manufacturing,engine,127.541,True,True,False,False,False,False
+coal power,0.06,r_076,Electric Arc Steelmaking,steel,59.519,True,False,False,False,False,False
+coal power,0.06,r_077,HIsarna Steel Making,steel,65.501,True,False,False,False,False,False
+coal power,0.06,r_078,Methane Pyrolysis,hydrogen,91.92,True,False,False,False,False,False
+coal power,0.06,r_079,Water Electrolysis,hydrogen,21.459,False,False,False,False,False,False
+coal power,0.06,r_080,Membraneless Electrolysis,hydrogen,47.299,False,False,False,False,False,False
+coal power,0.06,r_081,Fluidised Bed Reactor + CZ Silicon,polysilicon,95.717,True,False,False,False,False,False
+coal power,0.06,r_082,Electric Calcination Alumina,alumina,41.874,False,False,False,False,False,False
+coal power,0.06,r_083,ELYSIS Aluminium,aluminium,41.302,False,False,False,False,False,False
+coal power,0.06,r_084,Aluminium Direct Carbothermic Electrolysis,aluminium,80.115,True,False,False,False,False,False
+coal power,0.06,r_087,Nitrogen Air Separation,nitrogen,20.614,False,False,False,False,False,False
+coal power,0.06,r_099,Lithium Phosphate Batteries,lithium_battery,96.487,True,False,False,False,False,False
+coal power,0.06,r_101,Alkaline Battery Manufacturing,alkaline_battery,43.344,False,False,False,False,False,False
+coal power,0.06,r_102,Sodium Ion Battery Manufacturing,sodium_battery,65.037,True,False,False,False,False,False
+coal power,0.06,r_105,Water Treatment,pure_water,33.821,False,False,False,False,False,False
+coal power,0.06,r_106,Scrap Recycling,steel,10.552,False,False,False,False,False,False
+coal power,0.06,r_107,E-Waste Recycling,copper_wiring,5.717,False,False,False,False,False,False
+coal power,0.06,r_108,Biowaste Recycling,biomass,16.646,False,False,False,False,False,False
+coal power,0.06,r_114,Hydrochloric Acid Production,industrial_acids,69.201,True,False,False,False,False,False
+coal power,0.06,r_115,Sulphuric Acid Production,industrial_acids,-64.332,False,False,False,False,False,False
+coal power,0.06,r_116,Generic Acid Production,industrial_acids,38.683,False,False,False,False,False,False
+coal power,0.06,r_117,ICE Car Production,ice_car,286.777,True,True,True,True,False,False
+coal power,0.06,r_118,Automated ICE Car Assembly,ice_car,391.354,True,True,True,True,True,False
+coal power,0.06,r_119,EV Assembly,ev_car,321.449,True,True,True,True,True,False
+coal power,0.06,r_120,Basic Circuit Soldering,circuit_board,74.084,True,False,False,False,False,False
+coal power,0.06,r_121,Circuit Printing,circuit_board,55.871,True,False,False,False,False,False
+coal power,0.06,r_122,Semiconductor Fabbing,cpu,120.486,True,True,False,False,False,False
+coal power,0.06,r_123,Fabless Semiconductors,cpu,135.303,True,True,False,False,False,False
+coal power,0.06,r_124,Semiconductor 3D Printing,cpu,144.065,True,True,False,False,False,False
+coal power,0.06,r_125,Computer Assembly,computer,194.257,True,True,True,False,False,False
+coal power,0.06,r_126,Electrical Components Production,electrical_components,49.497,False,False,False,False,False,False
+coal power,0.06,r_127,Precision Electrical Components,electrical_components,104.36,True,True,False,False,False,False
+coal power,0.06,r_131,Hydrogen Power,power,143.838,True,True,False,False,False,False
+coal power,0.06,r_132,Alloy Metal Smelting,alloy_ingots,22.317,False,False,False,False,False,False
+coal power,0.06,r_133,Alloy Metal Electrolysis,alloy_ingots,47.598,False,False,False,False,False,False
+coal power,0.06,r_134,Alloy Metal Mining,alloy_ore,8.688,False,False,False,False,False,False
+coal power,0.06,r_135,Fibreglass Production,fibreglass,22.432,False,False,False,False,False,False
+coal power,0.06,r_136,Iron Air Batteries,iron_battery,13.43,False,False,False,False,False,False
+coal power,0.06,r_145,Offshore Wind Power Generation,power,7.54,False,False,False,False,False,False
+coal power,0.06,r_146,Solar Power Generation,power,7.52,False,False,False,False,False,False
+coal power,0.06,r_150,Petroleum Needle Coke Calcination,graphite,49.718,False,False,False,False,False,False
+coal power,0.06,r_151,Petroleum Needle Coke Power,power,23.857,False,False,False,False,False,False
+coal power,0.06,r_154,Coal Liquefaction,fuels,164.668,True,True,True,False,False,False
+coal power,0.06,r_165,Radial Axial Tire Production,tyres,93.605,True,False,False,False,False,False
+coal power,0.06,r_175,PVC Polymerisation,pvc,55.641,True,False,False,False,False,False
+coal power,0.06,r_177,Shale Oil Fracking,crude_oil,15.71,False,False,False,False,False,False
+coal power,0.06,r_178,Offshore Oil Extraction,crude_oil,31.806,False,False,False,False,False,False
+coal power,0.06,r_179,Sulphur Mining,sulphur,8.688,False,False,False,False,False,False
+coal power,0.06,r_180,Oil Refining,processed_oil,30.281,False,False,False,False,False,False
+coal power,0.06,r_181,Oil Power Production,power,19.102,False,False,False,False,False,False
+coal power,0.06,r_203,Hairpin Stator Motors,motor,69.548,True,False,False,False,False,False
+coal power,0.06,r_204,Heavy Vehicles Assembly,heavy_vehicle,467.175,True,True,True,True,True,True
+coal power,0.06,r_205,Heavy Vehicles Automated Manufacturing,heavy_vehicle,502.158,True,True,True,True,True,True
+coal power,0.06,r_206,Electric Heavy Vehicles Manufacturing,heavy_vehicle,493.145,True,True,True,True,True,True
+coal power,0.06,r_207,Heavy Electric Motor,large_engine,238.768,True,True,True,True,False,False
+coal power,0.06,r_208,Sustainable Biomass Production,biomass,3.768,False,False,False,False,False,False
+coal power,0.06,r_209,Strip Farming - Biomass,biomass,5.771,False,False,False,False,False,False
+coal power,0.06,r_211,Agri Solar Farming - Biomass,biomass,1.388,False,False,False,False,False,False
+coal power,0.06,r_212,Livestock Farming - Biomass,biomass,3.059,False,False,False,False,False,False
+coal power,0.06,r_213,Aggressive Logging - Biomass,biomass,7.896,False,False,False,False,False,False
+coal power,0.06,r_214,Sustainable Forestry - Biomass,biomass,30.121,False,False,False,False,False,False
+coal power,0.06,r_215,Gentle Pruning - Biomass,biomass,7.896,False,False,False,False,False,False
+coal power,0.06,r_217,Biomass Carbonisation,carbonised_biomass,28.292,False,False,False,False,False,False
+coal power,0.06,r_218,Petroleum Coking,pet_coke,33.083,False,False,False,False,False,False
+coal power,0.06,r_219,Copper Pipe Moulding,copper_pipe,55.906,True,False,False,False,False,False
+coal power,0.06,r_220,Copper Pipe Manufacturing,copper_pipe,86.951,True,False,False,False,False,False
+coal power,0.06,r_221,Deepwater Oil Extraction,crude_oil,31.806,False,False,False,False,False,False
+coal power,0.06,r_222,Subsea Manifold Extraction,crude_oil,61.986,True,False,False,False,False,False
+coal power,0.06,r_223,Floating Offshore Wind Power,power,60.04,True,False,False,False,False,False
+coal power,0.06,r_224,Hydroelectric Power,power,15.04,False,False,False,False,False,False
+coal power,0.06,r_226,Magnetic Separation Electrolysis,refined_ree,47.191,False,False,False,False,False,False
+coal power,0.06,r_227,Rudimentary Lithium Refinement,lithium_carbonate,27.657,False,False,False,False,False,False
+coal power,0.06,r_228,Bio Ethylene,ethylene,71.236,True,False,False,False,False,False
+oil power,0.06,r_001,Coal Mining,coal,8.7,False,False,False,False,False,False
+oil power,0.06,r_002,Iron Mining,iron_ore,8.68,False,False,False,False,False,False
+oil power,0.06,r_003,Steelmaking,steel,47.54,False,False,False,False,False,False
+oil power,0.06,r_004,Power Production,power,20.272,False,False,False,False,False,False
+oil power,0.06,r_005,Pig Iron Smelting,iron_ingots,30.231,False,False,False,False,False,False
+oil power,0.06,r_006,Copper Mining,copper_ore,8.7,False,False,False,False,False,False
+oil power,0.06,r_007,Copper Blistering,copper_ingots,24.776,False,False,False,False,False,False
+oil power,0.06,r_008,Copper Wire Drawing,copper_wiring,49.119,False,False,False,False,False,False
+oil power,0.06,r_009,Motor Manufacture,motor,108.77,True,True,False,False,False,False
+oil power,0.06,r_010,Salt Mining,basic_salt,7.825,False,False,False,False,False,False
+oil power,0.06,r_011,Water Pumping,pure_water,9.054,False,False,False,False,False,False
+oil power,0.06,r_012,Chlor-Alkali Process,chlorine,44.445,False,False,False,False,False,False
+oil power,0.06,r_014,Oil Drilling,crude_oil,8.709,False,False,False,False,False,False
+oil power,0.06,r_015,Bauxite Mining,bauxite_ore,8.7,False,False,False,False,False,False
+oil power,0.06,r_016,Lithium Mining,lithium_ore,8.704,False,False,False,False,False,False
+oil power,0.06,r_017,Rare Earth Mining,ree_ore,8.7,False,False,False,False,False,False
+oil power,0.06,r_018,Sand Excavation,sand,8.7,False,False,False,False,False,False
+oil power,0.06,r_019,Limestone Mining,limestone,8.7,False,False,False,False,False,False
+oil power,0.06,r_020,Flash Copper Smelting,copper_ingots,51.564,True,False,False,False,False,False
+oil power,0.06,r_022,Fuels Refining,fuels,29.652,False,False,False,False,False,False
+oil power,0.06,r_023,Ethylene Refining,ethylene,27.154,False,False,False,False,False,False
+oil power,0.06,r_024,Plastics Manufacturing,plastics,37.761,False,False,False,False,False,False
+oil power,0.06,r_025,Basic Oxygen Steelmaking,steel,45.995,False,False,False,False,False,False
+oil power,0.06,r_026,Copper Pipe Hot Rolling,copper_pipe,31.099,False,False,False,False,False,False
+oil power,0.06,r_028,Synthetic Rubber Production,rubber,41.522,False,False,False,False,False,False
+oil power,0.06,r_029,Concrete Firing,concrete,41.186,False,False,False,False,False,False
+oil power,0.06,r_030,Electric Concrete Production,concrete,49.329,False,False,False,False,False,False
+oil power,0.06,r_031,Direct Reduced Iron Smelting,iron_ingots,45.117,False,False,False,False,False,False
+oil power,0.06,r_032,Lithium Ion Battery Manufacturing,lithium_battery,48.304,False,False,False,False,False,False
+oil power,0.06,r_033,Construction Equiment Assembly (ICE),construction_equipment_ice,204.35,True,True,True,True,False,False
+oil power,0.06,r_034,Construction Equipment Assembly (EV),construction_equipment_ev,201.576,True,True,True,True,False,False
+oil power,0.06,r_035,Silica Washing,silica,17.237,False,False,False,False,False,False
+oil power,0.06,r_037,Onshore wind generation,power,7.52,False,False,False,False,False,False
+oil power,0.06,r_038,Gas Combined Cycle Turbines,power,15.228,False,False,False,False,False,False
+oil power,0.06,r_039,Lithium Electrolysis,lithium_carbonate,-43.945,False,False,False,False,False,False
+oil power,0.06,r_040,Bayer Process,alumina,24.317,False,False,False,False,False,False
+oil power,0.06,r_041,Rare Earth Reduction,refined_ree,30.912,False,False,False,False,False,False
+oil power,0.06,r_042,Bio-Graphitisation,graphite,152.222,True,True,True,False,False,False
+oil power,0.06,r_044,Silicon Smelting,metallurgical_silicon,32.488,False,False,False,False,False,False
+oil power,0.06,r_045,Polysilicon (Siemens) Smelting,polysilicon,26.354,False,False,False,False,False,False
+oil power,0.06,r_046,Haber Bosch Process,ammonia,52.244,True,False,False,False,False,False
+oil power,0.06,r_047,Fertilisers Production,fertilisers,241.786,True,True,True,True,False,False
+oil power,0.06,r_050,Aluminium (Hall Heroult) Smelting,aluminium,58.825,True,False,False,False,False,False
+oil power,0.06,r_051,Desalination,pure_water,10.547,False,False,False,False,False,False
+oil power,0.06,r_053,Industrial Glassmaking,glass,29.965,False,False,False,False,False,False
+oil power,0.06,r_054,High Strength Glassmaking,glass,34.726,False,False,False,False,False,False
+oil power,0.06,r_055,uPVC Window Manufacturing,windows,90.616,True,False,False,False,False,False
+oil power,0.06,r_056,Window Manufacturing,windows,85.203,True,False,False,False,False,False
+oil power,0.06,r_057,Building Frame Manufacture,building_frame,138.298,True,True,False,False,False,False
+oil power,0.06,r_058,Solar Panel Manufacturing,solar_panel,74.051,True,False,False,False,False,False
+oil power,0.06,r_059,Wind Turbine Manufacturing,wind_turbine,60.541,True,False,False,False,False,False
+oil power,0.06,r_060,Durable Perovskite Solar Panels,solar_panel,221.131,True,True,True,True,False,False
+oil power,0.06,r_061,Segmented Assembly Wind Turbines,wind_turbine,76.461,True,False,False,False,False,False
+oil power,0.06,r_063,Heterojunction Solar Panels,solar_panel,226.439,True,True,True,True,False,False
+oil power,0.06,r_064,Triple Tandem Solar Panels,solar_panel,288.522,True,True,True,True,False,False
+oil power,0.06,r_065,SynRM Magnetless Motors,motor,105.658,True,True,False,False,False,False
+oil power,0.06,r_066,Axial Flux Motors,motor,69.866,True,False,False,False,False,False
+oil power,0.06,r_067,Rubber Vulcanisation,tyres,72.562,True,False,False,False,False,False
+oil power,0.06,r_068,Car Body Manufacturing,car_body,74.404,True,False,False,False,False,False
+oil power,0.06,r_069,Lightweight Car Bodies,car_body,87.648,True,False,False,False,False,False
+oil power,0.06,r_071,ICE Engine Manufacturing,engine,119.682,True,True,False,False,False,False
+oil power,0.06,r_072,V8 Engine Manufacturing,engine,108.702,True,True,False,False,False,False
+oil power,0.06,r_073,Large Vehicle Engine Manufacturing,large_engine,197.114,True,True,True,False,False,False
+oil power,0.06,r_074,Hybrid Engine Manufacturing,engine,127.541,True,True,False,False,False,False
+oil power,0.06,r_076,Electric Arc Steelmaking,steel,59.519,True,False,False,False,False,False
+oil power,0.06,r_077,HIsarna Steel Making,steel,65.501,True,False,False,False,False,False
+oil power,0.06,r_078,Methane Pyrolysis,hydrogen,91.92,True,False,False,False,False,False
+oil power,0.06,r_079,Water Electrolysis,hydrogen,21.459,False,False,False,False,False,False
+oil power,0.06,r_080,Membraneless Electrolysis,hydrogen,47.299,False,False,False,False,False,False
+oil power,0.06,r_081,Fluidised Bed Reactor + CZ Silicon,polysilicon,95.717,True,False,False,False,False,False
+oil power,0.06,r_082,Electric Calcination Alumina,alumina,41.874,False,False,False,False,False,False
+oil power,0.06,r_083,ELYSIS Aluminium,aluminium,41.302,False,False,False,False,False,False
+oil power,0.06,r_084,Aluminium Direct Carbothermic Electrolysis,aluminium,80.115,True,False,False,False,False,False
+oil power,0.06,r_087,Nitrogen Air Separation,nitrogen,20.614,False,False,False,False,False,False
+oil power,0.06,r_099,Lithium Phosphate Batteries,lithium_battery,96.487,True,False,False,False,False,False
+oil power,0.06,r_101,Alkaline Battery Manufacturing,alkaline_battery,43.344,False,False,False,False,False,False
+oil power,0.06,r_102,Sodium Ion Battery Manufacturing,sodium_battery,65.037,True,False,False,False,False,False
+oil power,0.06,r_105,Water Treatment,pure_water,33.821,False,False,False,False,False,False
+oil power,0.06,r_106,Scrap Recycling,steel,10.552,False,False,False,False,False,False
+oil power,0.06,r_107,E-Waste Recycling,copper_wiring,5.717,False,False,False,False,False,False
+oil power,0.06,r_108,Biowaste Recycling,biomass,16.646,False,False,False,False,False,False
+oil power,0.06,r_114,Hydrochloric Acid Production,industrial_acids,69.201,True,False,False,False,False,False
+oil power,0.06,r_115,Sulphuric Acid Production,industrial_acids,-64.332,False,False,False,False,False,False
+oil power,0.06,r_116,Generic Acid Production,industrial_acids,38.683,False,False,False,False,False,False
+oil power,0.06,r_117,ICE Car Production,ice_car,286.777,True,True,True,True,False,False
+oil power,0.06,r_118,Automated ICE Car Assembly,ice_car,391.354,True,True,True,True,True,False
+oil power,0.06,r_119,EV Assembly,ev_car,321.449,True,True,True,True,True,False
+oil power,0.06,r_120,Basic Circuit Soldering,circuit_board,74.084,True,False,False,False,False,False
+oil power,0.06,r_121,Circuit Printing,circuit_board,55.871,True,False,False,False,False,False
+oil power,0.06,r_122,Semiconductor Fabbing,cpu,120.486,True,True,False,False,False,False
+oil power,0.06,r_123,Fabless Semiconductors,cpu,135.303,True,True,False,False,False,False
+oil power,0.06,r_124,Semiconductor 3D Printing,cpu,144.065,True,True,False,False,False,False
+oil power,0.06,r_125,Computer Assembly,computer,194.257,True,True,True,False,False,False
+oil power,0.06,r_126,Electrical Components Production,electrical_components,49.497,False,False,False,False,False,False
+oil power,0.06,r_127,Precision Electrical Components,electrical_components,104.36,True,True,False,False,False,False
+oil power,0.06,r_131,Hydrogen Power,power,143.838,True,True,False,False,False,False
+oil power,0.06,r_132,Alloy Metal Smelting,alloy_ingots,22.317,False,False,False,False,False,False
+oil power,0.06,r_133,Alloy Metal Electrolysis,alloy_ingots,47.598,False,False,False,False,False,False
+oil power,0.06,r_134,Alloy Metal Mining,alloy_ore,8.688,False,False,False,False,False,False
+oil power,0.06,r_135,Fibreglass Production,fibreglass,22.432,False,False,False,False,False,False
+oil power,0.06,r_136,Iron Air Batteries,iron_battery,13.43,False,False,False,False,False,False
+oil power,0.06,r_145,Offshore Wind Power Generation,power,7.54,False,False,False,False,False,False
+oil power,0.06,r_146,Solar Power Generation,power,7.52,False,False,False,False,False,False
+oil power,0.06,r_150,Petroleum Needle Coke Calcination,graphite,49.718,False,False,False,False,False,False
+oil power,0.06,r_151,Petroleum Needle Coke Power,power,23.857,False,False,False,False,False,False
+oil power,0.06,r_154,Coal Liquefaction,fuels,164.668,True,True,True,False,False,False
+oil power,0.06,r_165,Radial Axial Tire Production,tyres,93.605,True,False,False,False,False,False
+oil power,0.06,r_175,PVC Polymerisation,pvc,55.641,True,False,False,False,False,False
+oil power,0.06,r_177,Shale Oil Fracking,crude_oil,15.71,False,False,False,False,False,False
+oil power,0.06,r_178,Offshore Oil Extraction,crude_oil,31.806,False,False,False,False,False,False
+oil power,0.06,r_179,Sulphur Mining,sulphur,8.688,False,False,False,False,False,False
+oil power,0.06,r_180,Oil Refining,processed_oil,30.281,False,False,False,False,False,False
+oil power,0.06,r_181,Oil Power Production,power,19.102,False,False,False,False,False,False
+oil power,0.06,r_203,Hairpin Stator Motors,motor,69.548,True,False,False,False,False,False
+oil power,0.06,r_204,Heavy Vehicles Assembly,heavy_vehicle,467.175,True,True,True,True,True,True
+oil power,0.06,r_205,Heavy Vehicles Automated Manufacturing,heavy_vehicle,502.158,True,True,True,True,True,True
+oil power,0.06,r_206,Electric Heavy Vehicles Manufacturing,heavy_vehicle,493.145,True,True,True,True,True,True
+oil power,0.06,r_207,Heavy Electric Motor,large_engine,238.768,True,True,True,True,False,False
+oil power,0.06,r_208,Sustainable Biomass Production,biomass,3.768,False,False,False,False,False,False
+oil power,0.06,r_209,Strip Farming - Biomass,biomass,5.771,False,False,False,False,False,False
+oil power,0.06,r_211,Agri Solar Farming - Biomass,biomass,1.388,False,False,False,False,False,False
+oil power,0.06,r_212,Livestock Farming - Biomass,biomass,3.059,False,False,False,False,False,False
+oil power,0.06,r_213,Aggressive Logging - Biomass,biomass,7.896,False,False,False,False,False,False
+oil power,0.06,r_214,Sustainable Forestry - Biomass,biomass,30.121,False,False,False,False,False,False
+oil power,0.06,r_215,Gentle Pruning - Biomass,biomass,7.896,False,False,False,False,False,False
+oil power,0.06,r_217,Biomass Carbonisation,carbonised_biomass,28.292,False,False,False,False,False,False
+oil power,0.06,r_218,Petroleum Coking,pet_coke,33.083,False,False,False,False,False,False
+oil power,0.06,r_219,Copper Pipe Moulding,copper_pipe,55.906,True,False,False,False,False,False
+oil power,0.06,r_220,Copper Pipe Manufacturing,copper_pipe,86.951,True,False,False,False,False,False
+oil power,0.06,r_221,Deepwater Oil Extraction,crude_oil,31.806,False,False,False,False,False,False
+oil power,0.06,r_222,Subsea Manifold Extraction,crude_oil,61.986,True,False,False,False,False,False
+oil power,0.06,r_223,Floating Offshore Wind Power,power,60.04,True,False,False,False,False,False
+oil power,0.06,r_224,Hydroelectric Power,power,15.04,False,False,False,False,False,False
+oil power,0.06,r_226,Magnetic Separation Electrolysis,refined_ree,47.191,False,False,False,False,False,False
+oil power,0.06,r_227,Rudimentary Lithium Refinement,lithium_carbonate,27.657,False,False,False,False,False,False
+oil power,0.06,r_228,Bio Ethylene,ethylene,71.236,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_001,Coal Mining,coal,7.386,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_002,Iron Mining,iron_ore,7.366,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_003,Steelmaking,steel,36.809,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_004,Power Production,power,19.673,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_005,Pig Iron Smelting,iron_ingots,22.348,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_006,Copper Mining,copper_ore,7.386,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_007,Copper Blistering,copper_ingots,17.331,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_008,Copper Wire Drawing,copper_wiring,40.496,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_009,Motor Manufacture,motor,93.894,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_010,Salt Mining,basic_salt,6.511,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_011,Water Pumping,pure_water,8.179,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_012,Chlor-Alkali Process,chlorine,32.902,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_014,Oil Drilling,crude_oil,7.395,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_015,Bauxite Mining,bauxite_ore,7.386,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_016,Lithium Mining,lithium_ore,7.39,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_017,Rare Earth Mining,ree_ore,7.386,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_018,Sand Excavation,sand,7.386,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_019,Limestone Mining,limestone,7.386,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_020,Flash Copper Smelting,copper_ingots,43.885,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_022,Fuels Refining,fuels,24.689,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_023,Ethylene Refining,ethylene,22.191,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_024,Plastics Manufacturing,plastics,33.104,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_025,Basic Oxygen Steelmaking,steel,37.778,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_026,Copper Pipe Hot Rolling,copper_pipe,25.26,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_028,Synthetic Rubber Production,rubber,36.723,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_029,Concrete Firing,concrete,31.169,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_030,Electric Concrete Production,concrete,38.341,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_031,Direct Reduced Iron Smelting,iron_ingots,36.795,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_032,Lithium Ion Battery Manufacturing,lithium_battery,36.213,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_033,Construction Equiment Assembly (ICE),construction_equipment_ice,189.496,True,True,True,False,False,False
+onshore wind + lithium battery,0.104,r_034,Construction Equipment Assembly (EV),construction_equipment_ev,186.223,True,True,True,False,False,False
+onshore wind + lithium battery,0.104,r_035,Silica Washing,silica,13.799,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_037,Onshore wind generation,power,7.52,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_038,Gas Combined Cycle Turbines,power,14.468,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_039,Lithium Electrolysis,lithium_carbonate,-52.759,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_040,Bayer Process,alumina,16.275,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_041,Rare Earth Reduction,refined_ree,18.598,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_042,Bio-Graphitisation,graphite,135.425,True,True,False,False,False,False
+onshore wind + lithium battery,0.104,r_044,Silicon Smelting,metallurgical_silicon,23.274,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_045,Polysilicon (Siemens) Smelting,polysilicon,13.541,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_046,Haber Bosch Process,ammonia,42.236,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_047,Fertilisers Production,fertilisers,235.137,True,True,True,True,False,False
+onshore wind + lithium battery,0.104,r_050,Aluminium (Hall Heroult) Smelting,aluminium,40.515,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_051,Desalination,pure_water,7.481,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_053,Industrial Glassmaking,glass,21.813,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_054,High Strength Glassmaking,glass,25.798,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_055,uPVC Window Manufacturing,windows,76.392,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_056,Window Manufacturing,windows,68.635,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_057,Building Frame Manufacture,building_frame,120.858,True,True,False,False,False,False
+onshore wind + lithium battery,0.104,r_058,Solar Panel Manufacturing,solar_panel,59.75,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_059,Wind Turbine Manufacturing,wind_turbine,52.498,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_060,Durable Perovskite Solar Panels,solar_panel,203.903,True,True,True,True,False,False
+onshore wind + lithium battery,0.104,r_061,Segmented Assembly Wind Turbines,wind_turbine,69.387,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_063,Heterojunction Solar Panels,solar_panel,204.736,True,True,True,True,False,False
+onshore wind + lithium battery,0.104,r_064,Triple Tandem Solar Panels,solar_panel,259.504,True,True,True,True,False,False
+onshore wind + lithium battery,0.104,r_065,SynRM Magnetless Motors,motor,98.318,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_066,Axial Flux Motors,motor,59.168,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_067,Rubber Vulcanisation,tyres,66.23,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_068,Car Body Manufacturing,car_body,64.344,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_069,Lightweight Car Bodies,car_body,79.293,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_071,ICE Engine Manufacturing,engine,102.681,True,True,False,False,False,False
+onshore wind + lithium battery,0.104,r_072,V8 Engine Manufacturing,engine,94.938,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_073,Large Vehicle Engine Manufacturing,large_engine,171.265,True,True,True,False,False,False
+onshore wind + lithium battery,0.104,r_074,Hybrid Engine Manufacturing,engine,114.935,True,True,False,False,False,False
+onshore wind + lithium battery,0.104,r_076,Electric Arc Steelmaking,steel,50.758,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_077,HIsarna Steel Making,steel,57.269,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_078,Methane Pyrolysis,hydrogen,82.753,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_079,Water Electrolysis,hydrogen,10.835,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_080,Membraneless Electrolysis,hydrogen,36.675,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_081,Fluidised Bed Reactor + CZ Silicon,polysilicon,82.294,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_082,Electric Calcination Alumina,alumina,30.388,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_083,ELYSIS Aluminium,aluminium,28.164,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_084,Aluminium Direct Carbothermic Electrolysis,aluminium,64.585,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_087,Nitrogen Air Separation,nitrogen,14.483,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_099,Lithium Phosphate Batteries,lithium_battery,86.991,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_101,Alkaline Battery Manufacturing,alkaline_battery,35.728,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_102,Sodium Ion Battery Manufacturing,sodium_battery,62.615,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_105,Water Treatment,pure_water,32.852,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_106,Scrap Recycling,steel,7.486,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_107,E-Waste Recycling,copper_wiring,4.841,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_108,Biowaste Recycling,biomass,15.77,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_114,Hydrochloric Acid Production,industrial_acids,60.583,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_115,Sulphuric Acid Production,industrial_acids,-68.685,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_116,Generic Acid Production,industrial_acids,30.072,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_117,ICE Car Production,ice_car,256.263,True,True,True,True,False,False
+onshore wind + lithium battery,0.104,r_118,Automated ICE Car Assembly,ice_car,351.805,True,True,True,True,True,False
+onshore wind + lithium battery,0.104,r_119,EV Assembly,ev_car,298.724,True,True,True,True,False,False
+onshore wind + lithium battery,0.104,r_120,Basic Circuit Soldering,circuit_board,64.703,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_121,Circuit Printing,circuit_board,50.786,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_122,Semiconductor Fabbing,cpu,99.882,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_123,Fabless Semiconductors,cpu,120.48,True,True,False,False,False,False
+onshore wind + lithium battery,0.104,r_124,Semiconductor 3D Printing,cpu,131.796,True,True,False,False,False,False
+onshore wind + lithium battery,0.104,r_125,Computer Assembly,computer,178.706,True,True,True,False,False,False
+onshore wind + lithium battery,0.104,r_126,Electrical Components Production,electrical_components,42.894,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_127,Precision Electrical Components,electrical_components,90.061,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_131,Hydrogen Power,power,143.355,True,True,False,False,False,False
+onshore wind + lithium battery,0.104,r_132,Alloy Metal Smelting,alloy_ingots,15.091,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_133,Alloy Metal Electrolysis,alloy_ingots,37.371,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_134,Alloy Metal Mining,alloy_ore,7.374,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_135,Fibreglass Production,fibreglass,19.527,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_136,Iron Air Batteries,iron_battery,11.825,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_145,Offshore Wind Power Generation,power,7.54,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_146,Solar Power Generation,power,7.52,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_150,Petroleum Needle Coke Calcination,graphite,33.447,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_151,Petroleum Needle Coke Power,power,20.977,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_154,Coal Liquefaction,fuels,160.901,True,True,True,False,False,False
+onshore wind + lithium battery,0.104,r_165,Radial Axial Tire Production,tyres,84.317,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_175,PVC Polymerisation,pvc,49.631,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_177,Shale Oil Fracking,crude_oil,14.396,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_178,Offshore Oil Extraction,crude_oil,30.492,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_179,Sulphur Mining,sulphur,7.374,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_180,Oil Refining,processed_oil,26.865,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_181,Oil Power Production,power,17.964,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_203,Hairpin Stator Motors,motor,59.134,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_204,Heavy Vehicles Assembly,heavy_vehicle,428.839,True,True,True,True,True,True
+onshore wind + lithium battery,0.104,r_205,Heavy Vehicles Automated Manufacturing,heavy_vehicle,463.822,True,True,True,True,True,True
+onshore wind + lithium battery,0.104,r_206,Electric Heavy Vehicles Manufacturing,heavy_vehicle,453.41,True,True,True,True,True,True
+onshore wind + lithium battery,0.104,r_207,Heavy Electric Motor,large_engine,217.359,True,True,True,True,False,False
+onshore wind + lithium battery,0.104,r_208,Sustainable Biomass Production,biomass,3.053,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_209,Strip Farming - Biomass,biomass,4.209,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_211,Agri Solar Farming - Biomass,biomass,0.95,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_212,Livestock Farming - Biomass,biomass,2.597,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_213,Aggressive Logging - Biomass,biomass,7.458,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_214,Sustainable Forestry - Biomass,biomass,29.683,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_215,Gentle Pruning - Biomass,biomass,7.458,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_217,Biomass Carbonisation,carbonised_biomass,21.97,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_218,Petroleum Coking,pet_coke,26.602,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_219,Copper Pipe Moulding,copper_pipe,49.634,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_220,Copper Pipe Manufacturing,copper_pipe,80.708,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_221,Deepwater Oil Extraction,crude_oil,30.492,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_222,Subsea Manifold Extraction,crude_oil,60.672,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_223,Floating Offshore Wind Power,power,60.04,True,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_224,Hydroelectric Power,power,15.04,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_226,Magnetic Separation Electrolysis,refined_ree,35.554,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_227,Rudimentary Lithium Refinement,lithium_carbonate,21.389,False,False,False,False,False,False
+onshore wind + lithium battery,0.104,r_228,Bio Ethylene,ethylene,66.777,True,False,False,False,False,False

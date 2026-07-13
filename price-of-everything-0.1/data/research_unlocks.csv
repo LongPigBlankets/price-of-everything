@@ -1,9 +1,9 @@
 category,prereq_1,prereq_2,prereq_3,prereq_othercategory,rank,Action,Object,Quantity,Unit,title,icon,description
-Mining and Surveying,,,,,I,Produce,coal,500,units,Improved Coal Mining,coal,Increases coal mining output by 20% permanently.
-Mining and Surveying,Improved Coal Mining,,,,II,Produce,iron_ore,500,units,Beneficiated Iron Mining,iron,Increases iron ore mining output by 20% permanently.
-Mining and Surveying,Improved Coal Mining,Beneficiated Iron Mining,,,II,Produce,limestone,500,units,Deep Seam Surveying,survey,"Increases limestone, sand and salt mining output by 20% permanently."
-Mining and Surveying,Beneficiated Iron Mining,,,,II,Own,land,5,units,Copper Froth Flotation,copper,Increases copper ore mining output by 20% permanently.
-Mining and Surveying,Deep Seam Surveying,Copper Froth Flotation,,,III,Run,Mine,15,turns,Automated Mine Dispatch,truck,Increases Mine output by 10% permanently.
+Mining and Surveying,,,,,I,Produce,coal,500,units,Improved Coal Mining,coal,Increases coal mining output by 15% permanently.
+Mining and Surveying,Improved Coal Mining,,,,II,Produce,iron_ore,500,units,Beneficiated Iron Mining,iron,Increases iron ore mining output by 15% permanently.
+Mining and Surveying,Improved Coal Mining,Beneficiated Iron Mining,,,II,Produce,limestone,500,units,Deep Seam Surveying,survey,"Increases limestone, sand and salt mining output by 15% permanently."
+Mining and Surveying,Beneficiated Iron Mining,,,,II,Own,land,5,units,Copper Froth Flotation,copper,Increases copper ore mining output by 15% permanently.
+Mining and Surveying,Deep Seam Surveying,Copper Froth Flotation,,,III,Run,Mine,15,turns,Automated Mine Dispatch,truck,"Increases coal, iron, copper, limestone, sand and salt mining output by a further 15% permanently."
 Petrochemistry,,,,,I,Build,Oil Refinery,3,units,Fractional Distillation,oil,Increases Petrochemical Refinery output by 5% permanently.
 Petrochemistry,Fractional Distillation,,,,I,Sell,Processed Oil,250,units,Catalytic Cracking,catalyst,Reduces Petrochemical Refinery power consumption by 5% permanently.
 Petrochemistry,Catalytic Cracking,,,,II,Run,Oil Refinery,12,turns,Polymer Feedstocks,poly,Increases Polymerisation Refinery output by 5% permanently.
@@ -12,7 +12,7 @@ Petrochemistry,Polymer Feedstocks,Solvent Recovery,,,III,Run,Polymer Feedstocks,
 Metallurgy,,,,,I,Build,Furnace,3,units,Basic Blast Furnaces,furnace,Increases Furnace output by 5% permanently.
 Metallurgy,Basic Blast Furnaces,,,,I,Sell,Steel,250,units,Continuous Casting,cast,Refines continuous-casting practice (prerequisite tech).
 Metallurgy,Continuous Casting,,,,II,Run,Steel Mill,12,turns,Alloy Heat Treatment,alloy,Unlocks new recipes: HIsarna Steel Making (24 Steel); Copper Pipe Moulding (22 Copper Pipe).
-Metallurgy,Alloy Heat Treatment,,,,II,Own,land,5,units,Electric Arc Refining,eaf,Unlocks new recipes: Electric Arc Steelmaking (22 Steel); ELYSIS Aluminium (15 Aluminium); Flash Copper Smelting (36 Copper Ingots).
+Metallurgy,Alloy Heat Treatment,,,,II,Own,land,5,units,Electric Arc Refining,eaf,Unlocks new recipes: Electric Arc Steelmaking (50 Steel); ELYSIS Aluminium (15 Aluminium); Flash Copper Smelting (36 Copper Ingots).
 Inorganic Chemistry,,,,,I,Run Recipe,Glassmaking,3,furnaces,High Strength Glassmaking,glass,Unlocks new recipe: High Strength Glassmaking (28 Glass).
 Inorganic Chemistry,,,,,I,Build,Chemical Plant,3,units,Chlor Alkali Cells,cell,Increases Electrolyser output by 5% permanently.
 Inorganic Chemistry,Chlor Alkali Cells,,,,I,Sell,Chlorine,250,units,Acid Gas Scrubbing,scrub,Reduces Chemical Plant labour by 5% permanently.
@@ -65,7 +65,7 @@ People Management,,,,,II,Build,any,15,units,Third Advisor Seat,team,Unlocks a 3r
 People Management,,,,,III,Build,any,100,units,Fourth Advisor Seat,team,Unlocks a 4th advisor seat once you own 100 buildings.
 People Management,,,,,III,Sustain,1000+ profit/turn,3,turns,Fifth Advisor Seat,team,Unlocks a 5th advisor seat after 3 turns above 1000 profit/turn.
 Mining and Surveying,,,,,I,Run Profitable,mine,3,buildings,Mining Mastery,+5%,Increases output of all mines by 5% for 30 turns.
-Mining and Surveying,Copper Froth Flotation,,,,II,Produce,ree_ore,500,units,Rare Vein Prospecting,rare,Increases rare earth and alloy ore mining output by 20% permanently.
+Mining and Surveying,Copper Froth Flotation,,,,II,Produce,ree_ore,500,units,Rare Vein Prospecting,rare,Increases rare earth and alloy ore mining output by 15% permanently.
 Manufacturing,Modular Factory Cells,,,,II,Run L1,industrial_factory,3,20 turns,Conveyor Mass Assembly,level2,Unlocks upgrading Industrial Goods Factory to Level 2 for more output.
 Renewable Power,Battery Balancing,,,,III,Run,Battery,15,turns,Long Duration Storage,storage,Reduces building maintenance by 15% for 30 turns.
 Mining and Surveying,,,,,I,Survey,deposits,2,deposits,Spectral Crystallography,survey,+1 adjacent tile revealed when surveying
@@ -80,7 +80,7 @@ Petrochemistry,Offshore Drilling Platforms,,,,III,Run Profitable,offshore_oil_pl
 Petrochemistry,Horizontal Drilling,Multiphase Subsea Boosting,,,III,Produce,crude_oil,1000,units,Enhanced Oil Recovery,eor,Increases all oil extraction output by 20% for 30 turns.
 Petrochemistry,Offshore Drilling Platforms,,,,III,Run,Offshore Platform,12,turns,Remote Platform Operations,remote,Reduces oil extraction labour by 30% permanently.
 Metallurgy,Electric Arc Refining,,,,III,Run,Electrolyser,15,turns,Hydrogen Direct Reduction,h2steel,Pioneers hydrogen-based ironmaking (prerequisite tech).
-Mining and Surveying,Rare Vein Prospecting,,,,II,Produce,bauxite_ore,500,units,Composite Drill Bits,drill,"Increases rare earth, alloy, sulphur and bauxite mining output by 20% permanently."
+Mining and Surveying,Rare Vein Prospecting,,,,II,Produce,bauxite_ore,500,units,Composite Drill Bits,drill,"Increases rare earth, alloy, sulphur and bauxite mining output by 15% permanently."
 Biochemistry,Wastewater Bioreactors,,,,II,Run,Forest,12,turns,Sustainable Forestry,forest,Unlocks new recipe: Sustainable Forestry - Biomass (24 Biomass).
 Manufacturing,Precision Assembly Lines,,,,II,Sell,Copper Pipe,250,units,Precision Tube Drawing,tube,Unlocks new recipe: Copper Pipe Manufacturing (24 Copper Pipe).
 Mining and Surveying,Automated Mine Dispatch,,,,II,Run L1,mine,3,20 turns,In-Pit Crushing,level2,Unlocks upgrading Mine to Level 2 for more output.
@@ -214,11 +214,11 @@ Manufacturing,Precision Assembly Lines,,,,III,Produce,solar_panel,600,units,Tand
 Manufacturing,Precision Assembly Lines,,,,III,Produce,cpu,600,units,Additive Semiconductor Printing,assembly,Unlocks new recipe: Semiconductor 3D Printing (4 Cpu).
 Renewable Power,Utility Solar Arrays,,,,II,Produce,wind_turbine,400,units,Segmented Blade Assembly,wind,Unlocks new recipe: Segmented Assembly Wind Turbines (4 Wind Turbine).
 Renewable Power,Utility Solar Arrays,,,,II,Produce,food,400,units,Agrivoltaic Integration,solar,Unlocks new recipe: Agri Solar Farming (5 Food).
-Renewable Power,Utility Solar Arrays,,,,II,Build,high_tech_manufactory,3,units,Lithium Iron Phosphate Cells,battery,Unlocks new recipe: Lithium Phosphate Batteries (6 Lithium Battery).
-Renewable Power,Utility Solar Arrays,,,,II,Build,factory,3,units,Iron-Air Battery Cells,battery,Unlocks new recipe: Iron Air Batteries (12 Iron Battery).
+Renewable Power,Utility Solar Arrays,,,,II,Build,high_tech_manufactory,3,units,Lithium Iron Phosphate Cells,battery,Unlocks new recipe: Lithium Phosphate Batteries (8 Lithium Battery).
+Renewable Power,Utility Solar Arrays,,,,II,Build,factory,3,units,Iron-Air Battery Cells,battery,Unlocks new recipe: Iron Air Batteries (6 Iron Battery).
 Metallurgy,Basic Blast Furnaces,,,,II,Produce,alloy_ingots,400,units,Molten Salt Alloy Electrolysis,alloy,Unlocks new recipe: Alloy Metal Electrolysis (30 Alloy Ingots).
-Metallurgy,Electric Arc Refining,,,,III,Produce,polysilicon,600,units,Czochralski Crystal Growth,glass,Unlocks new recipe: Fluidised Bed Reactor + CZ Silicon (8 Polysilicon).
-Inorganic Chemistry,Chlor Alkali Cells,,,,II,Produce,hydrogen,400,units,Membraneless Electrolysis,cell,Unlocks new recipe: Membraneless Electrolysis (6 Hydrogen).
+Metallurgy,Electric Arc Refining,,,,III,Produce,polysilicon,600,units,Czochralski Crystal Growth,glass,Unlocks new recipe: Fluidised Bed Reactor + CZ Silicon (6 Polysilicon).
+Inorganic Chemistry,Chlor Alkali Cells,,,,II,Produce,hydrogen,400,units,Membraneless Electrolysis,cell,Unlocks new recipe: Membraneless Electrolysis (22 Hydrogen and 11 Oxygen).
 Petrochemistry,Fractional Distillation,,,,II,Produce,fuels,400,units,Fischer-Tropsch Synthesis,oil,Unlocks new recipe: Coal Liquefaction (8 Fuels).
 Petrochemistry,Fractional Distillation,,,,II,Produce,hydrogen,400,units,Methane Pyrolysis,gas,Unlocks new recipe: Methane Pyrolysis (16 Hydrogen).
 Biochemistry,,,,,I,Produce,biomass,250,units,Energy Crop Cultivation,ferment,Unlocks new recipe: Sustainable Biomass Production (10 Biomass).

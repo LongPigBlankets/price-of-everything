@@ -113,45 +113,53 @@ const UNLOCK_MODIFIERS := {
 		"label": "Combined Heat & Power: −5% maintenance",
 		"source": "research:combined_heat_power",
 	},
-	# ── mining-yield research: a +20% recipe_output tile on the mined good,
-	# stacking ADDITIVELY with that good's standing deposit penalty (so e.g. an
-	# iron mine reads −50% + 20% = net −30% once the tech lands). Matched by the
-	# good's internal name, same as the deposit penalties below.
+	# ── mining-yield research: +15% recipe_output tiles on the mined good,
+	# stacking ADDITIVELY with that good's standing deposit penalty. Common
+	# deposits start at −30% and have two recovery steps; bauxite and sulphur
+	# start at −15% and have one. Matched by the good's internal name, same as
+	# the deposit penalties below.
 	"Improved Coal Mining": {
 		"id": "yield_coal", "domain": "recipe_output",
-		"target_match": {"good_internal": "coal"}, "pct": 20.0,
+		"target_match": {"good_internal": "coal"}, "pct": 15.0,
 		"label": "Improved Coal Mining", "source": "research:mining_yield",
 	},
 	"Beneficiated Iron Mining": {
 		"id": "yield_iron_ore", "domain": "recipe_output",
-		"target_match": {"good_internal": "iron_ore"}, "pct": 20.0,
+		"target_match": {"good_internal": "iron_ore"}, "pct": 15.0,
 		"label": "Beneficiated Iron Mining", "source": "research:mining_yield",
 	},
 	"Copper Froth Flotation": {
 		"id": "yield_copper_ore", "domain": "recipe_output",
-		"target_match": {"good_internal": "copper_ore"}, "pct": 20.0,
+		"target_match": {"good_internal": "copper_ore"}, "pct": 15.0,
 		"label": "Copper Froth Flotation", "source": "research:mining_yield",
 	},
 	"Deep Seam Surveying": [
-		{"id": "yield_limestone", "domain": "recipe_output", "target_match": {"good_internal": "limestone"}, "pct": 20.0, "label": "Deep Seam Surveying", "source": "research:mining_yield"},
-		{"id": "yield_sand", "domain": "recipe_output", "target_match": {"good_internal": "sand"}, "pct": 20.0, "label": "Deep Seam Surveying", "source": "research:mining_yield"},
-		{"id": "yield_basic_salt", "domain": "recipe_output", "target_match": {"good_internal": "basic_salt"}, "pct": 20.0, "label": "Deep Seam Surveying", "source": "research:mining_yield"},
+		{"id": "yield_limestone", "domain": "recipe_output", "target_match": {"good_internal": "limestone"}, "pct": 15.0, "label": "Deep Seam Surveying", "source": "research:mining_yield"},
+		{"id": "yield_sand", "domain": "recipe_output", "target_match": {"good_internal": "sand"}, "pct": 15.0, "label": "Deep Seam Surveying", "source": "research:mining_yield"},
+		{"id": "yield_basic_salt", "domain": "recipe_output", "target_match": {"good_internal": "basic_salt"}, "pct": 15.0, "label": "Deep Seam Surveying", "source": "research:mining_yield"},
 	],
 	"Rare Vein Prospecting": [
-		{"id": "yield_ree_ore", "domain": "recipe_output", "target_match": {"good_internal": "ree_ore"}, "pct": 20.0, "label": "Rare Vein Prospecting", "source": "research:mining_yield"},
-		{"id": "yield_alloy_ore", "domain": "recipe_output", "target_match": {"good_internal": "alloy_ore"}, "pct": 20.0, "label": "Rare Vein Prospecting", "source": "research:mining_yield"},
+		{"id": "yield_ree_ore", "domain": "recipe_output", "target_match": {"good_internal": "ree_ore"}, "pct": 15.0, "label": "Rare Vein Prospecting", "source": "research:mining_yield"},
+		{"id": "yield_alloy_ore", "domain": "recipe_output", "target_match": {"good_internal": "alloy_ore"}, "pct": 15.0, "label": "Rare Vein Prospecting", "source": "research:mining_yield"},
 	],
 	"Composite Drill Bits": [
-		{"id": "yield_ree_ore_2", "domain": "recipe_output", "target_match": {"good_internal": "ree_ore"}, "pct": 20.0, "label": "Composite Drill Bits", "source": "research:mining_yield"},
-		{"id": "yield_alloy_ore_2", "domain": "recipe_output", "target_match": {"good_internal": "alloy_ore"}, "pct": 20.0, "label": "Composite Drill Bits", "source": "research:mining_yield"},
-		{"id": "yield_sulphur", "domain": "recipe_output", "target_match": {"good_internal": "sulphur"}, "pct": 20.0, "label": "Composite Drill Bits", "source": "research:mining_yield"},
-		{"id": "yield_bauxite_ore", "domain": "recipe_output", "target_match": {"good_internal": "bauxite_ore"}, "pct": 20.0, "label": "Composite Drill Bits", "source": "research:mining_yield"},
+		{"id": "yield_ree_ore_2", "domain": "recipe_output", "target_match": {"good_internal": "ree_ore"}, "pct": 15.0, "label": "Composite Drill Bits", "source": "research:mining_yield"},
+		{"id": "yield_alloy_ore_2", "domain": "recipe_output", "target_match": {"good_internal": "alloy_ore"}, "pct": 15.0, "label": "Composite Drill Bits", "source": "research:mining_yield"},
+		{"id": "yield_sulphur", "domain": "recipe_output", "target_match": {"good_internal": "sulphur"}, "pct": 15.0, "label": "Composite Drill Bits", "source": "research:mining_yield"},
+		{"id": "yield_bauxite_ore", "domain": "recipe_output", "target_match": {"good_internal": "bauxite_ore"}, "pct": 15.0, "label": "Composite Drill Bits", "source": "research:mining_yield"},
 	],
 	# ── Flavor-node benefits wired to behaviour (2026-06-19). 41 of the 47
 	# design-intent nodes; 5 transport-throughput + 1 gas-plant node have no engine
 	# system yet and stay description-only. market_price applies on sale revenue;
 	# transport_cost applies in TransportService; the rest use existing hooks.
-	"Automated Mine Dispatch": {"id": "rn_automated_mine_dispatch", "domain": "recipe_output", "target_match": {"building_id": "b_001"}, "pct": 10.0, "label": "Automated Mine Dispatch", "source": "research_node"},
+	"Automated Mine Dispatch": [
+		{"id": "yield_coal_2", "domain": "recipe_output", "target_match": {"good_internal": "coal"}, "pct": 15.0, "label": "Automated Mine Dispatch", "source": "research:mining_yield"},
+		{"id": "yield_iron_ore_2", "domain": "recipe_output", "target_match": {"good_internal": "iron_ore"}, "pct": 15.0, "label": "Automated Mine Dispatch", "source": "research:mining_yield"},
+		{"id": "yield_copper_ore_2", "domain": "recipe_output", "target_match": {"good_internal": "copper_ore"}, "pct": 15.0, "label": "Automated Mine Dispatch", "source": "research:mining_yield"},
+		{"id": "yield_limestone_2", "domain": "recipe_output", "target_match": {"good_internal": "limestone"}, "pct": 15.0, "label": "Automated Mine Dispatch", "source": "research:mining_yield"},
+		{"id": "yield_sand_2", "domain": "recipe_output", "target_match": {"good_internal": "sand"}, "pct": 15.0, "label": "Automated Mine Dispatch", "source": "research:mining_yield"},
+		{"id": "yield_basic_salt_2", "domain": "recipe_output", "target_match": {"good_internal": "basic_salt"}, "pct": 15.0, "label": "Automated Mine Dispatch", "source": "research:mining_yield"},
+	],
 	"Fractional Distillation": {"id": "rn_fractional_distillation", "domain": "recipe_output", "target_match": {"building_id": "b_011"}, "pct": 5.0, "label": "Fractional Distillation", "source": "research_node"},
 	"Catalytic Cracking": {"id": "rn_catalytic_cracking", "domain": "building_power", "target_match": {"building_id": "b_011"}, "pct": -5.0, "label": "Catalytic Cracking", "source": "research_node"},
 	"Polymer Feedstocks": {"id": "rn_polymer_feedstocks", "domain": "recipe_output", "target_match": {"building_id": "b_013"}, "pct": 5.0, "label": "Polymer Feedstocks", "source": "research_node"},
@@ -257,13 +265,13 @@ const UNLOCK_MODIFIERS := {
 
 # Standing deposit penalty per extraction good — a permanent recipe_output tile on
 # the mined good ("exhausted surface deposits"). Registered at match start and after
-# every state reset so it's always live; mining-yield research (above) adds +20%
+# every state reset so it's always live; mining-yield research (above) adds +15%
 # tiles that stack additively against it. Keyed by good internal_name. Goods NOT
 # listed (crude_oil, lithium_ore, …) are exempt and mine at full yield.
 const EXTRACTION_PENALTY_PCT := {
-	"coal": -50.0, "iron_ore": -50.0, "copper_ore": -50.0, "limestone": -50.0,
-	"sand": -50.0, "basic_salt": -50.0, "ree_ore": -50.0, "alloy_ore": -50.0,
-	"sulphur": -30.0, "bauxite_ore": -30.0,
+	"coal": -30.0, "iron_ore": -30.0, "copper_ore": -30.0, "limestone": -30.0,
+	"sand": -30.0, "basic_salt": -30.0, "ree_ore": -30.0, "alloy_ore": -30.0,
+	"sulphur": -15.0, "bauxite_ore": -15.0,
 }
 
 signal modifiers_changed()

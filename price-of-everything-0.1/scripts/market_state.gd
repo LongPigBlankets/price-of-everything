@@ -14,6 +14,7 @@ var prices: Dictionary = {}  # good_id -> impact-FREE base price (float), drifts
 var impact_pct: Dictionary = {}   # good_id -> accumulated %
 var _turn_sold: Dictionary = {}   # good_id -> units the player sold to market this turn
 var _turn_bought: Dictionary = {} # good_id -> units the player bought this turn
+var _lifetime_sold: Dictionary = {} # good_id -> units sold over the saved match
 
 signal prices_updated()
 
@@ -51,6 +52,27 @@ func record_market_sale_volume(good_id: String, qty: int) -> void:
 	if good_id == "" or qty <= 0:
 		return
 	_turn_sold[good_id] = int(_turn_sold.get(good_id, 0)) + qty
+	record_lifetime_sale_volume(good_id, qty)
+
+## Research "Sell N units" conditions need a saved lifetime counter. This is
+## separate from price-impact volume so grid exports and contract sales can count
+## as sales without moving the ordinary spot-market glut calculation.
+func record_lifetime_sale_volume(good_id: String, qty: int) -> void:
+	if good_id == "" or qty <= 0:
+		return
+	_lifetime_sold[good_id] = int(_lifetime_sold.get(good_id, 0)) + qty
+
+func lifetime_sold(good_id: String) -> int:
+	return int(_lifetime_sold.get(good_id, 0))
+
+func lifetime_sold_total() -> int:
+	var total := 0
+	for qty in _lifetime_sold.values():
+		total += int(qty)
+	return total
+
+func reset_lifetime_sales() -> void:
+	_lifetime_sold.clear()
 
 func record_market_buy_volume(good_id: String, qty: int) -> void:
 	if good_id == "" or qty <= 0:
@@ -93,9 +115,13 @@ func get_estimated_price_in_n_turns(good_id: String, n: int) -> float:
 
 func export_state() -> Dictionary:
 	# Per-turn volume trackers are transient (consumed by tick_turn the same
-	# frame the turn resolves; saving is DECIDE-only), so only the accumulated
-	# impact needs to persist.
-	return {"prices": prices.duplicate(true), "impact_pct": impact_pct.duplicate(true)}
+	# frame the turn resolves; saving is DECIDE-only). Persist accumulated price
+	# impact and lifetime sale volume used by research conditions.
+	return {
+		"prices": prices.duplicate(true),
+		"impact_pct": impact_pct.duplicate(true),
+		"lifetime_sold": _lifetime_sold.duplicate(true),
+	}
 
 func import_state(d: Dictionary) -> void:
 	# Re-seed from the catalog first so goods added since the save keep their base
@@ -107,6 +133,7 @@ func import_state(d: Dictionary) -> void:
 	for good_id in saved:
 		prices[good_id] = float(saved[good_id])
 	impact_pct = (d.get("impact_pct", {}) as Dictionary).duplicate(true)
+	_lifetime_sold = (d.get("lifetime_sold", {}) as Dictionary).duplicate(true)
 	_turn_sold.clear()
 	_turn_bought.clear()
 
@@ -218,6 +245,9 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 	if special_order_id == "":
 		for it in items:
 			record_market_sale_volume(str(it.good_id), int(it.qty))
+	else:
+		for it in items:
+			record_lifetime_sale_volume(str(it.good_id), int(it.qty))
 
 	# Victory feed: one goods movement per sale routed through execute_sale —
 	# production-output dispatch + the player/UI queue_sell & bulk sell_all_to_market.

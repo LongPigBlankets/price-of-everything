@@ -195,26 +195,30 @@ const TRANSPORT_MODE_COST_MULT := {
 	"reinf_pipes": 1.0,
 	"nothing": 1.0,
 }
-# Per-turn throughput one tile-link can carry by mode (goods/turn), at infra Level 1.
+# Per-turn throughput one tile-link can carry by mode and infrastructure level.
 # ENFORCED via a soft cap: when a tile's in-transit flow on a mode exceeds this
-# (× the tile's infra-level multiplier × throughput research), the overflow incurs a
+# (after throughput research), the overflow incurs a
 # per-turn congestion surcharge (MatchState.charge_transport_congestion). Goods still
 # move — it's a cost, not a gate. Modes not listed are uncapped (cables=power, overland).
 const TRANSPORT_LINK_CAP_BY_MODE := {
-	"roads": 200,
-	"rail": 400,
-	"pipes": 200,
-	"reinf_pipes": 350,
+	"roads": 300,
+	"rail": 600,
+	"pipes": 250,
+	"reinf_pipes": 250,
 }
-# Infra level multiplies a link's capacity: L2 doubles it, L3 ×3.5.
-const TRANSPORT_CAP_LEVEL_MULT := {1: 1.0, 2: 2.0, 3: 3.5}
+const TRANSPORT_LINK_CAP_BY_MODE_LEVEL := {
+	"roads": {1: 300, 2: 500, 3: 750},
+	"rail": {1: 600, 2: 1200, 3: 2000},
+	"pipes": {1: 250, 2: 600, 3: 1200},
+	"reinf_pipes": {1: 250, 2: 600, 3: 1200},
+}
 # Cables HARD-cap a tile's power per turn by cable level — separately for production
 # (export) and draw (import). A tile can both produce AND draw up to this. Power above
 # the cap simply doesn't generate / isn't supplied.
 const CABLE_POWER_CAP := {1: 2000, 2: 4000, 3: 7000}
 # Infrastructure upgrades (roads/rails/pipes/reinf_pipes/cables) are CASH-ONLY for now
 # (owner ruling 2026-07-10): a flat £ price per target level, no material kit, no
-# research gate. Capacity still scales by TRANSPORT_CAP_LEVEL_MULT / CABLE_POWER_CAP.
+# research gate. Capacity still scales by the mode tier table / CABLE_POWER_CAP.
 # (Balance data — rule #7.)
 const INFRA_UPGRADE_CASH_COST := {2: 150.0, 3: 350.0}
 
@@ -338,3 +342,9 @@ func transport_cost_for_route(good_id: String, qty: int, route: Dictionary) -> f
 		var mode := str(leg.get("mode", ""))
 		total += float(qty) * class_rate * float(TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
 	return total
+
+func transport_link_capacity(mode: String, level: int) -> float:
+	var tiers: Dictionary = TRANSPORT_LINK_CAP_BY_MODE_LEVEL.get(mode, {})
+	if tiers.is_empty():
+		return 0.0
+	return float(tiers.get(clampi(level, 1, 3), 0.0))

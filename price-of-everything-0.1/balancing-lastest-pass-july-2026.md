@@ -11,6 +11,8 @@ The source of truth is the committed data, not this prose summary:
 - `reports/balance/systemic_formula_prices.csv` is the complete canonical-price schedule.
 - `reports/balance/systemic_formula_recipe_plan.csv` is the complete formula-derived schedule of output quantities, labour and target margin for active recipes.
 - `reports/balance/deployed_recipe_economics.csv` is the complete deployed standalone cashflow view.
+- `reports/balance/power_opportunity_costs.csv` compares grid purchase/export with coal, oil and battery-firmed onshore wind.
+- `reports/balance/balance_success_summary.md` is the decision-facing scorecard for standalone viability, research-route superiority, one-input integration gain and full-integration profit thresholds.
 - `reports/balance/integer_one_layer_chains.csv` and `reports/balance/forced_one_layer_chains.csv` contain the whole-building integration checks.
 
 These files deliberately keep the full value list in CSV form so it is reviewable, diffable and usable by tools without duplicating hundreds of values into a stale prose table.
@@ -37,14 +39,14 @@ The target is a cash cushion, not a guarantee that every player layout is profit
 
 1. Pick one non-recycling base recipe as the canonical producer for each good.
 2. Solve market prices from that canonical production chain, preserving raw/intermediate/processed/finished/apex relationships where possible.
-3. Keep power demand unchanged. It represents physical energy consumption and is not used as a balancing lever.
+3. Keep power demand unchanged. It represents physical energy consumption and is not used as a balancing lever. Internal power is valued at no less than its foregone grid sale, with source-specific operating and investment views reported separately.
 4. Set maintenance at the building level, then use recipe-owned labour, inputs, output quantities and good prices to reach the target bands.
 5. Require every migrated recipe to retain at least 500 unskilled, 100 skilled and 50 highly skilled workers.
 6. Bias advanced chemical, polymer, assembly, high-tech manufacturing, electrolyser and electric-arc recipes toward skilled and highly skilled labour.
 7. Check that a base consumer generally needs no more than one base supplier building for each canonical input. The formula report records zero canonical links that require more than one supplier building.
 8. Round outputs above 36 to nearby multiples of 5 or 12 where that does not break the one-building supply floor. This avoids arbitrary-looking values such as 44 or 69.
 
-The formula converged in 33 iterations. It places 117 of 124 single-output recipes within their target bands before the deliberately reviewed exceptions and deployment overrides.
+The formula now evaluates complete output baskets, allocating joint cost by output quantity × market price and scaling all coproducts together. Chlor-alkali, methane pyrolysis and water electrolysis use reaction-unit stoichiometric output ratios; remaining multi-output recipes retain their deployed integer ratios. Current convergence and coverage figures are generated in `reports/balance/systemic_formula_summary.md`.
 
 ### Deliberate recipe decisions
 
@@ -90,6 +92,7 @@ Run the tools in this order from `price-of-everything-0.1`:
 python3 -B tools/systemic_recipe_formula.py
 python3 -B tools/apply_systemic_recipe_plan.py
 python3 -B tools/recipe_rebalance.py
+python3 -B tools/balance_success_metrics.py
 ```
 
 The tools regenerate the balance reports listed above. They are committed as review artifacts; generated Godot `.translation` and `.import` files are intentionally not treated as balancing source data.

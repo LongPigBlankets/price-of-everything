@@ -1,0 +1,1329 @@
+{
+	"assertions_failed": 2,
+	"assertions_passed": 527,
+	"average_port_distance": 0.0,
+	"bankruptcy_turn": 143,
+	"building_runs": {
+		"coal_extra": [
+			{
+				"instance_id": "inst_b_001_0003f8",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_001",
+				"tile_id": "tile_6_8"
+			},
+			{
+				"instance_id": "inst_b_001_0003f9",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_001",
+				"tile_id": "tile_6_8"
+			}
+		],
+		"coal_start": [
+			{
+				"instance_id": "inst_b_001_0003e9",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_001",
+				"tile_id": "tile_6_8"
+			}
+		],
+		"copper_ingots": [
+			{
+				"instance_id": "inst_b_002_0003f2",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_007",
+				"tile_id": "tile_5_10"
+			}
+		],
+		"copper_ore": [
+			{
+				"instance_id": "inst_b_001_0003fc",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_006",
+				"tile_id": "tile_9_10"
+			},
+			{
+				"instance_id": "inst_b_001_0003fd",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_006",
+				"tile_id": "tile_9_10"
+			}
+		],
+		"iron_extra": [
+			{
+				"instance_id": "inst_b_001_0003fa",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_002",
+				"tile_id": "tile_7_10"
+			}
+		],
+		"iron_start": [
+			{
+				"instance_id": "inst_b_001_0003ea",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_002",
+				"tile_id": "tile_7_10"
+			}
+		],
+		"motor": [
+			{
+				"instance_id": "inst_b_007_0003f4",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_009",
+				"tile_id": "tile_5_10"
+			}
+		],
+		"pig_iron": [
+			{
+				"instance_id": "inst_b_002_0003eb",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_005",
+				"tile_id": "tile_5_10"
+			}
+		],
+		"power_b": [
+			{
+				"instance_id": "inst_b_003_0003f7",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_004",
+				"tile_id": "tile_5_10"
+			}
+		],
+		"power_start": [
+			{
+				"instance_id": "inst_b_003_0003ec",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_004",
+				"tile_id": "tile_5_10"
+			}
+		],
+		"steel": [
+			{
+				"instance_id": "inst_b_002_0003f1",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_003",
+				"tile_id": "tile_5_10"
+			}
+		],
+		"water": [
+			{
+				"instance_id": "inst_b_037_0003f6",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_011",
+				"tile_id": "tile_6_9"
+			}
+		],
+		"wiring": [
+			{
+				"instance_id": "inst_b_007_0003f3",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_008",
+				"tile_id": "tile_5_10"
+			}
+		]
+	},
+	"earned_research_modifiers_enabled": true,
+	"emergency_bridge_loan_principal": 1141.25,
+	"emergency_bridge_loans_taken": 14,
+	"expansion_loan_gate_rejections": 0,
+	"expansion_loan_principal": 0.0,
+	"expansion_loans_taken": 0,
+	"final_active_modifiers": [
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_coal",
+			"label": "Exhausted Coal deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "coal"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_iron_ore",
+			"label": "Exhausted Iron Ore deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "iron_ore"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_copper_ore",
+			"label": "Exhausted Copper Ore deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "copper_ore"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_limestone",
+			"label": "Exhausted Limestone deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "limestone"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_sand",
+			"label": "Exhausted Sand deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "sand"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_basic_salt",
+			"label": "Exhausted Basic Salt deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "basic_salt"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_ree_ore",
+			"label": "Exhausted Rare Earth Ore deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "ree_ore"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_alloy_ore",
+			"label": "Exhausted Alloy Metals Ore deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "alloy_ore"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_sulphur",
+			"label": "Exhausted Sulphur deposits",
+			"mult": 1.0,
+			"pct": -15.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "sulphur"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_bauxite_ore",
+			"label": "Exhausted Bauxite Ore deposits",
+			"mult": 1.0,
+			"pct": -15.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "bauxite_ore"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "start_metals_magnate_iron",
+			"label": "Legacy of Metal: +10% iron ingot output",
+			"mult": 1.0,
+			"pct": 10.0,
+			"source": "start:metals_magnate",
+			"target": "*",
+			"target_match": {
+				"good_internal": "iron_ingots"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "start_metals_magnate_copper",
+			"label": "Legacy of Metal: +10% copper ingot output",
+			"mult": 1.0,
+			"pct": 10.0,
+			"source": "start:metals_magnate",
+			"target": "*",
+			"target_match": {
+				"good_internal": "copper_ingots"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "start_metals_magnate_alloy",
+			"label": "Legacy of Metal: +10% alloy ingot output",
+			"mult": 1.0,
+			"pct": 10.0,
+			"source": "start:metals_magnate",
+			"target": "*",
+			"target_match": {
+				"good_internal": "alloy_ingots"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "start_metals_magnate_steel",
+			"label": "Legacy of Metal: +10% steel output",
+			"mult": 1.0,
+			"pct": 10.0,
+			"source": "start:metals_magnate",
+			"target": "*",
+			"target_match": {
+				"good_internal": "steel"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 1,
+			"domain": "labour_headcount",
+			"expires_turn": 0,
+			"id": "rn_operational_team_managers",
+			"label": "Operational Team Managers",
+			"mult": 1.0,
+			"pct": -10.0,
+			"source": "research_node",
+			"target": "*",
+			"target_match": {
+
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 12,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "yield_coal",
+			"label": "Improved Coal Mining",
+			"mult": 1.0,
+			"pct": 15.0,
+			"source": "research:mining_yield",
+			"target": "*",
+			"target_match": {
+				"good_internal": "coal"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 22,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "rn_basic_blast_furnaces",
+			"label": "Basic Blast Furnaces",
+			"mult": 1.0,
+			"pct": 5.0,
+			"source": "research_node",
+			"target": "*",
+			"target_match": {
+				"building_id": "b_002"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 67,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "rn_bulk_haulage_fleets",
+			"label": "Bulk Haulage Fleets",
+			"mult": 1.0,
+			"pct": 5.0,
+			"source": "research_node",
+			"target": "*",
+			"target_match": {
+				"building_id": "b_001"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 67,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "yield_iron_ore",
+			"label": "Beneficiated Iron Mining",
+			"mult": 1.0,
+			"pct": 15.0,
+			"source": "research:mining_yield",
+			"target": "*",
+			"target_match": {
+				"good_internal": "iron_ore"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 67,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "yield_copper_ore",
+			"label": "Copper Froth Flotation",
+			"mult": 1.0,
+			"pct": 15.0,
+			"source": "research:mining_yield",
+			"target": "*",
+			"target_match": {
+				"good_internal": "copper_ore"
+			}
+		}
+	],
+	"final_building_count": 17,
+	"final_cash": -2266.65416398474,
+	"final_economy": {
+		"goods_sales_revenue": 147.920130485697,
+		"grid_bought": 300,
+		"grid_sold": 0,
+		"money_in": 147.920130485697,
+		"money_out": 427.988892365673,
+		"power_demand": 300,
+		"power_sales_revenue": 0.0,
+		"power_supply": 0,
+		"starved": [
+			{
+				"building_id": "b_001",
+				"instance_id": "inst_b_001_0003e9",
+				"missing": [
+					{
+						"good_id": "coal",
+						"have": 0,
+						"internal_name": "coal",
+						"need": 1
+					}
+				],
+				"tile_id": "tile_6_8"
+			},
+			{
+				"building_id": "b_001",
+				"instance_id": "inst_b_001_0003ea",
+				"missing": [
+					{
+						"good_id": "iron_ore",
+						"have": 0,
+						"internal_name": "iron_ore",
+						"need": 1
+					}
+				],
+				"tile_id": "tile_7_10"
+			},
+			{
+				"building_id": "b_002",
+				"instance_id": "inst_b_002_0003eb",
+				"missing": [
+					{
+						"good_id": "g_002",
+						"have": 0,
+						"internal_name": "iron_ore",
+						"need": 40
+					},
+					{
+						"good_id": "g_001",
+						"have": 0,
+						"internal_name": "coal",
+						"need": 20
+					}
+				],
+				"tile_id": "tile_5_10"
+			},
+			{
+				"building_id": "b_003",
+				"instance_id": "inst_b_003_0003ec",
+				"missing": [
+					{
+						"good_id": "g_001",
+						"have": 0,
+						"internal_name": "coal",
+						"need": 20
+					}
+				],
+				"tile_id": "tile_5_10"
+			},
+			{
+				"building_id": "b_002",
+				"instance_id": "inst_b_002_0003f1",
+				"missing": [
+					{
+						"good_id": "g_001",
+						"have": 0,
+						"internal_name": "coal",
+						"need": 20
+					}
+				],
+				"tile_id": "tile_5_10"
+			},
+			{
+				"building_id": "b_007",
+				"instance_id": "inst_b_007_0003f4",
+				"missing": [
+					{
+						"good_id": "g_006",
+						"have": 0,
+						"internal_name": "steel",
+						"need": 30
+					}
+				],
+				"tile_id": "tile_5_10"
+			},
+			{
+				"building_id": "b_003",
+				"instance_id": "inst_b_003_0003f7",
+				"missing": [
+					{
+						"good_id": "g_001",
+						"have": 0,
+						"internal_name": "coal",
+						"need": 20
+					}
+				],
+				"tile_id": "tile_5_10"
+			},
+			{
+				"building_id": "b_001",
+				"instance_id": "inst_b_001_0003f8",
+				"missing": [
+					{
+						"good_id": "coal",
+						"have": 0,
+						"internal_name": "coal",
+						"need": 1
+					}
+				],
+				"tile_id": "tile_6_8"
+			},
+			{
+				"building_id": "b_001",
+				"instance_id": "inst_b_001_0003f9",
+				"missing": [
+					{
+						"good_id": "coal",
+						"have": 0,
+						"internal_name": "coal",
+						"need": 1
+					}
+				],
+				"tile_id": "tile_6_8"
+			},
+			{
+				"building_id": "b_001",
+				"instance_id": "inst_b_001_0003fa",
+				"missing": [
+					{
+						"good_id": "iron_ore",
+						"have": 0,
+						"internal_name": "iron_ore",
+						"need": 1
+					}
+				],
+				"tile_id": "tile_7_10"
+			}
+		]
+	},
+	"final_units_sold": 9004,
+	"grid_bought_after_integration": 2160,
+	"integration_scope": "the exact Metal Magnate start — £300, four inherited buildings, three owned tiles, seeded inputs, authored infrastructure/routes, no opening debt and four +10% metal legacies — expanded downstream to motors and then fully integrated",
+	"integration_stages": {
+		"coal_extra": {
+			"building_count": 13,
+			"cash": 1088.45850163042,
+			"loan_capacity_left": 2768.81054350356,
+			"profit": 37.0592305716983,
+			"turn": 55,
+			"units_sold": 5452
+		},
+		"copper_ingots": {
+			"building_count": 6,
+			"cash": 740.426456803532,
+			"loan_capacity_left": 2178.64622352936,
+			"profit": 57.4995114320126,
+			"turn": 27,
+			"units_sold": 2324
+		},
+		"copper_ore": {
+			"building_count": 17,
+			"cash": 1031.93292700856,
+			"loan_capacity_left": 2382.46935597269,
+			"profit": 9.77349472408275,
+			"turn": 68,
+			"units_sold": 7150
+		},
+		"iron_extra": {
+			"building_count": 14,
+			"cash": 1105.47136823052,
+			"loan_capacity_left": 2413.3227593492,
+			"profit": 26.3972733060799,
+			"turn": 59,
+			"units_sold": 5912
+		},
+		"motor": {
+			"building_count": 8,
+			"cash": 898.656697400257,
+			"loan_capacity_left": 1093.11559105966,
+			"profit": -194.816972951308,
+			"turn": 41,
+			"units_sold": 4005
+		},
+		"power_b": {
+			"building_count": 11,
+			"cash": 1160.05253348368,
+			"loan_capacity_left": 2611.83466907974,
+			"profit": 44.345201017621,
+			"turn": 51,
+			"units_sold": 5060
+		},
+		"steel": {
+			"building_count": 5,
+			"cash": 528.87511609351,
+			"loan_capacity_left": 1169.12463312383,
+			"profit": 39.9721305125213,
+			"turn": 19,
+			"units_sold": 1462
+		},
+		"water": {
+			"building_count": 10,
+			"cash": 1081.97803342056,
+			"loan_capacity_left": 2571.3400977019,
+			"profit": 40.363432196812,
+			"turn": 47,
+			"units_sold": 4636
+		},
+		"wiring": {
+			"building_count": 7,
+			"cash": 1065.19165612897,
+			"loan_capacity_left": 2575.45803060334,
+			"profit": 59.4932109545835,
+			"turn": 37,
+			"units_sold": 3564
+		}
+	},
+	"last_profit": -280.068761879976,
+	"maintenance_paid_total": 8850.0,
+	"max_bankruptcy_streak": 12,
+	"profit_by_turn": [
+		{
+			"profit": 29.797376,
+			"turn": 2
+		},
+		{
+			"profit": 30.1467062272,
+			"turn": 3
+		},
+		{
+			"profit": 30.4959460786688,
+			"turn": 4
+		},
+		{
+			"profit": 27.6476407373009,
+			"turn": 5
+		},
+		{
+			"profit": 20.023964245659,
+			"turn": 6
+		},
+		{
+			"profit": 19.9227882177162,
+			"turn": 7
+		},
+		{
+			"profit": 19.8215091904623,
+			"turn": 8
+		},
+		{
+			"profit": 19.7201266794843,
+			"turn": 9
+		},
+		{
+			"profit": 19.6186401988579,
+			"turn": 10
+		},
+		{
+			"profit": 19.5170492611417,
+			"turn": 11
+		},
+		{
+			"profit": 24.6123831640451,
+			"turn": 12
+		},
+		{
+			"profit": 19.9607481327423,
+			"turn": 13
+		},
+		{
+			"profit": 19.6983344877744,
+			"turn": 14
+		},
+		{
+			"profit": -63.6858540622323,
+			"turn": 15
+		},
+		{
+			"profit": 42.6850565699372,
+			"turn": 16
+		},
+		{
+			"profit": 42.6035223570639,
+			"turn": 17
+		},
+		{
+			"profit": 41.1672243468366,
+			"turn": 18
+		},
+		{
+			"profit": 39.9721305125213,
+			"turn": 19
+		},
+		{
+			"profit": 39.8350509633254,
+			"turn": 20
+		},
+		{
+			"profit": 39.6978598297553,
+			"turn": 21
+		},
+		{
+			"profit": 39.5605564642515,
+			"turn": 22
+		},
+		{
+			"profit": 6.71794887610957,
+			"turn": 23
+		},
+		{
+			"profit": 58.0414854774132,
+			"turn": 24
+		},
+		{
+			"profit": 57.8609451858167,
+			"turn": 25
+		},
+		{
+			"profit": 57.6802874345729,
+			"turn": 26
+		},
+		{
+			"profit": 57.4995114320126,
+			"turn": 27
+		},
+		{
+			"profit": 57.3186163841974,
+			"turn": 28
+		},
+		{
+			"profit": 57.1376014949108,
+			"turn": 29
+		},
+		{
+			"profit": 56.9564659656501,
+			"turn": 30
+		},
+		{
+			"profit": -27.6602568885628,
+			"turn": 31
+		},
+		{
+			"profit": 55.1218418274674,
+			"turn": 32
+		},
+		{
+			"profit": 54.8227614222707,
+			"turn": 33
+		},
+		{
+			"profit": 54.5234407144557,
+			"turn": 34
+		},
+		{
+			"profit": 54.2238784087942,
+			"turn": 35
+		},
+		{
+			"profit": 53.9240732062884,
+			"turn": 36
+		},
+		{
+			"profit": 59.4932109545835,
+			"turn": 37
+		},
+		{
+			"profit": 59.2126724590965,
+			"turn": 38
+		},
+		{
+			"profit": 58.9318929906006,
+			"turn": 39
+		},
+		{
+			"profit": 58.6508712290347,
+			"turn": 40
+		},
+		{
+			"profit": -194.816972951308,
+			"turn": 41
+		},
+		{
+			"profit": 58.2419394943261,
+			"turn": 42
+		},
+		{
+			"profit": 60.9042722406076,
+			"turn": 43
+		},
+		{
+			"profit": 49.1446628054979,
+			"turn": 44
+		},
+		{
+			"profit": 48.7376521221789,
+			"turn": 45
+		},
+		{
+			"profit": 48.3302024721764,
+			"turn": 46
+		},
+		{
+			"profit": 40.363432196812,
+			"turn": 47
+		},
+		{
+			"profit": 54.5801833525043,
+			"turn": 48
+		},
+		{
+			"profit": 47.3868605676877,
+			"turn": 49
+		},
+		{
+			"profit": 52.3756646023161,
+			"turn": 50
+		},
+		{
+			"profit": 44.345201017621,
+			"turn": 51
+		},
+		{
+			"profit": 53.9931134834961,
+			"turn": 52
+		},
+		{
+			"profit": 53.4028926090093,
+			"turn": 53
+		},
+		{
+			"profit": 52.8121365213817,
+			"turn": 54
+		},
+		{
+			"profit": 37.0592305716983,
+			"turn": 55
+		},
+		{
+			"profit": 38.7431863744052,
+			"turn": 56
+		},
+		{
+			"profit": 38.2706545625535,
+			"turn": 57
+		},
+		{
+			"profit": 37.7975086352182,
+			"turn": 58
+		},
+		{
+			"profit": 26.3972733060799,
+			"turn": 59
+		},
+		{
+			"profit": 40.1977528887774,
+			"turn": 60
+		},
+		{
+			"profit": 26.7272248551388,
+			"turn": 61
+		},
+		{
+			"profit": 34.675410631787,
+			"turn": 62
+		},
+		{
+			"profit": 35.7221476592064,
+			"turn": 63
+		},
+		{
+			"profit": 35.2178976067495,
+			"turn": 64
+		},
+		{
+			"profit": 34.712989475069,
+			"turn": 65
+		},
+		{
+			"profit": 34.2074204241382,
+			"turn": 66
+		},
+		{
+			"profit": 33.7011876051548,
+			"turn": 67
+		},
+		{
+			"profit": 9.77349472408275,
+			"turn": 68
+		},
+		{
+			"profit": 24.7325594662407,
+			"turn": 69
+		},
+		{
+			"profit": 51.5897421311452,
+			"turn": 70
+		},
+		{
+			"profit": 24.2546453019895,
+			"turn": 71
+		},
+		{
+			"profit": 31.2844547312744,
+			"turn": 72
+		},
+		{
+			"profit": 40.7892587332605,
+			"turn": 73
+		},
+		{
+			"profit": 40.2089218162478,
+			"turn": 74
+		},
+		{
+			"profit": 41.3174591431988,
+			"turn": 75
+		},
+		{
+			"profit": 35.1537400693011,
+			"turn": 76
+		},
+		{
+			"profit": 29.1738228679184,
+			"turn": 77
+		},
+		{
+			"profit": 28.6015429680533,
+			"turn": 78
+		},
+		{
+			"profit": 28.0285134467816,
+			"turn": 79
+		},
+		{
+			"profit": 27.4547310687076,
+			"turn": 80
+		},
+		{
+			"profit": 26.8801925884046,
+			"turn": 81
+		},
+		{
+			"profit": 26.3048947503788,
+			"turn": 82
+		},
+		{
+			"profit": 25.7288342890318,
+			"turn": 83
+		},
+		{
+			"profit": 25.1520079286224,
+			"turn": 84
+		},
+		{
+			"profit": 24.5744123832302,
+			"turn": 85
+		},
+		{
+			"profit": 23.9960443567163,
+			"turn": 86
+		},
+		{
+			"profit": 23.4169005426868,
+			"turn": 87
+		},
+		{
+			"profit": 22.8369776244538,
+			"turn": 88
+		},
+		{
+			"profit": 24.8674722749975,
+			"turn": 89
+		},
+		{
+			"profit": 13.790099207023,
+			"turn": 90
+		},
+		{
+			"profit": 2.11953820064912,
+			"turn": 91
+		},
+		{
+			"profit": -2.0730915821315,
+			"turn": 92
+		},
+		{
+			"profit": -6.26654401486451,
+			"turn": 93
+		},
+		{
+			"profit": -10.4608224500008,
+			"turn": 94
+		},
+		{
+			"profit": -14.718072834715,
+			"turn": 95
+		},
+		{
+			"profit": -19.2287753825363,
+			"turn": 96
+		},
+		{
+			"profit": -23.7407843732586,
+			"turn": 97
+		},
+		{
+			"profit": -28.254105111648,
+			"turn": 98
+		},
+		{
+			"profit": -32.5287429192635,
+			"turn": 99
+		},
+		{
+			"profit": -37.0447031345221,
+			"turn": 100
+		},
+		{
+			"profit": -43.9168055096517,
+			"turn": 101
+		},
+		{
+			"profit": -48.4330718087877,
+			"turn": 102
+		},
+		{
+			"profit": -49.3143153510315,
+			"turn": 103
+		},
+		{
+			"profit": -50.1969051768618,
+			"turn": 104
+		},
+		{
+			"profit": -51.080846707566,
+			"turn": 105
+		},
+		{
+			"profit": -51.9661453816684,
+			"turn": 106
+		},
+		{
+			"profit": -52.8528066549941,
+			"turn": 107
+		},
+		{
+			"profit": -53.7408360007326,
+			"turn": 108
+		},
+		{
+			"profit": -54.6302389095024,
+			"turn": 109
+		},
+		{
+			"profit": -55.5210208894146,
+			"turn": 110
+		},
+		{
+			"profit": -56.4131874661402,
+			"turn": 111
+		},
+		{
+			"profit": -57.306744182971,
+			"turn": 112
+		},
+		{
+			"profit": -58.2016966008885,
+			"turn": 113
+		},
+		{
+			"profit": -59.0980502986277,
+			"turn": 114
+		},
+		{
+			"profit": -59.9958108727424,
+			"turn": 115
+		},
+		{
+			"profit": -60.8949839376729,
+			"turn": 116
+		},
+		{
+			"profit": -61.79557512581,
+			"turn": 117
+		},
+		{
+			"profit": -62.6975900875636,
+			"turn": 118
+		},
+		{
+			"profit": -63.6010344914278,
+			"turn": 119
+		},
+		{
+			"profit": -64.5059140240484,
+			"turn": 120
+		},
+		{
+			"profit": -65.4122343902908,
+			"turn": 121
+		},
+		{
+			"profit": -66.3200013133056,
+			"turn": 122
+		},
+		{
+			"profit": -67.2292205345984,
+			"turn": 123
+		},
+		{
+			"profit": -68.139897814097,
+			"turn": 124
+		},
+		{
+			"profit": -69.0520389302189,
+			"turn": 125
+		},
+		{
+			"profit": -69.9656496799407,
+			"turn": 126
+		},
+		{
+			"profit": -71.5654422163408,
+			"turn": 127
+		},
+		{
+			"profit": -74.6687315442695,
+			"turn": 128
+		},
+		{
+			"profit": -77.8683307382333,
+			"turn": 129
+		},
+		{
+			"profit": -81.167188471595,
+			"turn": 130
+		},
+		{
+			"profit": -84.5683435349765,
+			"turn": 131
+		},
+		{
+			"profit": -88.0749275899096,
+			"turn": 132
+		},
+		{
+			"profit": -91.690168006629,
+			"turn": 133
+		},
+		{
+			"profit": -95.4173907885767,
+			"turn": 134
+		},
+		{
+			"profit": -99.2600235862633,
+			"turn": 135
+		},
+		{
+			"profit": -103.221598803223,
+			"turn": 136
+		},
+		{
+			"profit": -107.305756796872,
+			"turn": 137
+		},
+		{
+			"profit": -111.51624917717,
+			"turn": 138
+		},
+		{
+			"profit": -115.856942206077,
+			"turn": 139
+		},
+		{
+			"profit": -117.78533055212,
+			"turn": 140
+		},
+		{
+			"profit": -118.721694275497,
+			"turn": 141
+		},
+		{
+			"profit": -67.8195756125688,
+			"turn": 142
+		},
+		{
+			"profit": -67.6097154386835,
+			"turn": 143
+		},
+		{
+			"profit": -156.235925417981,
+			"turn": 144
+		},
+		{
+			"profit": -156.869590098699,
+			"turn": 145
+		},
+		{
+			"profit": -382.913116926509,
+			"turn": 146
+		},
+		{
+			"profit": -277.612755532984,
+			"turn": 147
+		},
+		{
+			"profit": -278.429683503495,
+			"turn": 148
+		},
+		{
+			"profit": -279.248350241462,
+			"turn": 149
+		},
+		{
+			"profit": -280.068761879976,
+			"turn": 150
+		}
+	],
+	"prudent_expansion_enabled": true,
+	"research_unlock_turns": {
+		"Axial Flux Motor Lines": 50,
+		"Basic Blast Furnaces": 23,
+		"Bench Blasting Expansion": 55,
+		"Beneficiated Iron Mining": 68,
+		"Bulk Haulage Fleets": 68,
+		"Continuous Casting": 23,
+		"Copper Froth Flotation": 68,
+		"Hairpin Stator Winding": 50,
+		"Hydrogen Combustion Turbines": 2,
+		"Improved Coal Mining": 13,
+		"Mining Mastery": 68,
+		"Operational Team Managers": 2,
+		"Third Advisor Seat": 63
+	},
+	"scenario": "balance_v4_motors_metal_magnate",
+	"start_config": "res://data/starts/metal_magnate.json",
+	"start_modifiers_preserved": true,
+	"starting_money": 300.0,
+	"target_recipe_first_run": {
+		"r_009": 42
+	},
+	"target_turn": 150,
+	"target_units_sold": {
+		"motor": 1708
+	},
+	"turn_150": {
+		"building_count": 17,
+		"cash": -2266.65416398474,
+		"loan_capacity_left": -12.0,
+		"profit": -280.068761879976,
+		"units_sold": 9004
+	},
+	"turn_30": {
+		"building_count": 6,
+		"cash": 760.742706483675,
+		"loan_capacity_left": 2505.00134465458,
+		"profit": 56.9564659656501,
+		"units_sold": 2696
+	},
+	"turn_80": {
+		"building_count": 17,
+		"cash": 1434.52231875268,
+		"loan_capacity_left": 2386.92125411614,
+		"profit": 27.4547310687076,
+		"units_sold": 8820
+	},
+	"turn_chain_fully_integrated": 68,
+	"turn_profit_gt_100": -1,
+	"turn_profit_gt_1000": -1,
+	"turn_profit_gt_200": -1,
+	"turn_profit_gt_500": -1,
+	"unprofitable_cash_cushion_waits": 0
+}
