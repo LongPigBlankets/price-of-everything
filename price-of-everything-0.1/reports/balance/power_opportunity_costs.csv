@@ -1,0 +1,6 @@
+scenario,source_recipe_id,source_recipe,generator_output,grid_purchase_price,grid_sale_price,fuel_inputs,fuel_market_bill,generator_labour_bill,generator_maintenance_bill,battery_buildings,lithium_cells_locked,battery_labour_bill,battery_maintenance_bill,generator_capital,battery_housing_capital,battery_cell_locked_capital,total_investment,investment_horizon_turns,operating_cost_per_power,levelized_cost_per_power,short_run_opportunity_cost_per_power,long_run_opportunity_cost_per_power
+grid purchase,,National grid import,,0.1,0.06,none,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,36,0.1,0.1,0.1,0.1
+foregone grid sale,,Existing surplus generation,,0.1,0.06,none,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,36,0.06,0.06,0.06,0.06
+coal power,r_004,Power Production,600.0,0.1,0.06,coal 20; pure_water 20,17.724,7.0848,2.0,0,0,0.0,0.0,113.9709,0.0,0.0,113.9709,36,0.044681,0.049958,0.06,0.06
+oil power,r_181,Oil Power Production,525.0,0.1,0.06,processed_oil 6,16.7265,4.9216,2.0,0,0,0.0,0.0,113.9709,0.0,0.0,113.9709,36,0.045044,0.051074,0.06,0.06
+onshore wind + lithium battery,r_037,Onshore wind generation,228.0,0.1,0.06,none,0,4.16,2.0,1,5,4.16,3.0,100.7326,140.4268,131.25,372.4094,36,0.058421,0.103793,0.06,0.103793

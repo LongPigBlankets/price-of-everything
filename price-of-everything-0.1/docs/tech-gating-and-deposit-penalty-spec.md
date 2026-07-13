@@ -1,6 +1,6 @@
 # Spec — Tech-Gating + Mine Deposit-Penalty
 
-> **STATUS: BOTH IMPLEMENTED (2026-06-19).** Feature 1 — `catalog.gd` reads `required_research` + `get_recipes_for_building` filters on `MatchState.is_unlocked`. Feature 2 — `MatchState.get_deposit_yield()` (live from `unlocked_titles`, capped 1.0) + `production.gd:_produce_outputs` multiplies deposit-mined output. **Oil (crude_oil) and scarce ores (lithium) are exempt** (not in `PENALISED_EXTRACTION`). 627/627 headless tests pass. The cables power-throughput mechanic (§ below was *not* part of this — it's the still-pending 3rd feature).
+> **STATUS: BOTH IMPLEMENTED.** Feature 1 — `catalog.gd` reads `required_research` and filters locked recipes. Feature 2 — permanent per-good `recipe_output` modifiers in `modifier_state.gd` apply the standing deposit penalty and additive mining-recovery research. **Oil and lithium remain exempt.**
 
 Two small engine features that make the EA rebalance's tech recipes and mine balance *function*. The recipe **data** is already authored (forward-compatible); these features switch it on. Both are contained, follow existing patterns, and are independently shippable.
 
@@ -50,42 +50,22 @@ Two small engine features that make the EA rebalance's tech recipes and mine bal
 
 ## Feature 2 — Mine Deposit-Penalty + Research-Restores-Output
 
-**Goal:** extraction recipes start at **×0.5 output** ("exhausted surface deposits"); mining-research nodes raise a per-good yield multiplier back toward (and past) 1.0. Diegetic depletion → tech recovery. This is what makes early mining thin and makes the **Beneficiated Iron Mining** research node meaningful (it replaces the retired r_075 recipe).
+**Goal:** common extraction recipes start at **×0.70 output** ("exhausted surface deposits"), while bauxite and sulphur start at **×0.85**. Mining-research nodes restore output in additive +15% steps: two steps for common deposits and one for bauxite/sulphur. Diegetic depletion → staged tech recovery.
 
-**State — `match_state.gd`:**
-- Add `var deposit_yield: Dictionary = {}` (good_id → multiplier). Declare near `unlocked_titles` (line 93); clear in `reset` (751); **derive on load** from `unlocked_titles` (see below) so no new serialization is needed.
-- Helper:
-  ```gdscript
-  const EXTRACTION_PENALTY := 0.5
-  func get_deposit_yield(good_id: String) -> float:
-      return deposit_yield.get(good_id, EXTRACTION_PENALTY)
-  ```
-  (Apply the 0.5 default only to extraction goods — coal/iron_ore/copper_ore/etc.; a `Catalog.is_extraction_good(g)` helper or the recipe's "no inputs + deposit requirement" flag identifies them. Non-extraction goods → 1.0.)
+**State — `modifier_state.gd`:** `EXTRACTION_PENALTY_PCT` registers permanent per-good `recipe_output` modifiers on reset. Common deposits use −30%; bauxite and sulphur use −15%. Research modifiers use the same target and stack additively.
 
-**Output application — `production.gd`** (the output-generation branch, ~line 162+, the non-power case mirroring the power case at 162–168):
+**Output application — `production.gd`:** `_produce_outputs` resolves `recipe_output` modifiers with a `good_internal` context before building-level and workforce multipliers.
+
+**Research effect — `modifier_state.gd`:** unlock titles map to +15% per-good modifiers:
 ```gdscript
-var mult := MatchState.get_deposit_yield(good_id) if Catalog.is_extraction_recipe(recipe) else 1.0
-var qty := int(round(recipe.output_qty * mult))
-```
-Only extraction recipes are scaled; processing recipes are untouched.
-
-**Research effect — `match_state.gd:539 grant_unlock(title)`:** a static bonus map, applied when a mining node unlocks:
-```gdscript
-const RESEARCH_YIELD_BONUS := {
-    "Beneficiated Iron Mining": {"iron_ore": 0.5},   # 0.5 -> 1.0 (the user's "100%")
-    "Improved Coal Mining":     {"coal": 0.5},
-    "Copper Froth Flotation":   {"copper_ore": 0.4},
-    "Deep Seam Surveying":      {"iron_ore": 0.2, "coal": 0.2, "copper_ore": 0.2},
-    # ... per design
-}
-# in grant_unlock, after setting unlocked_titles[title]:
-for good in RESEARCH_YIELD_BONUS.get(title, {}):
-    deposit_yield[good] = deposit_yield.get(good, EXTRACTION_PENALTY) + RESEARCH_YIELD_BONUS[title][good]
+"Improved Coal Mining": {"good_internal": "coal", "pct": 15.0}
+"Automated Mine Dispatch": [# second +15% step for common deposits]
+"Composite Drill Bits": [# second rare/alloy step; sole bauxite/sulphur step]
 ```
 
-**Save/load:** derive `deposit_yield` from `unlocked_titles` on load (loop the unlocked titles through `RESEARCH_YIELD_BONUS`) — no new serialized field, version-safe.
+**Save/load:** modifiers are serialized, and standing penalties are re-seeded after reset/import so older saves cannot lose the baseline rule.
 
-**Design knobs:** start penalty (0.5), per-node bonus amounts, and *which* goods are penalized — recommend the infinite bulk deposits (coal, iron_ore, copper_ore, limestone, sand, basic_salt); leave scarce/strategic deposits (lithium_ore, ree_ore, bauxite) at full yield, or give them their own surveying nodes. Yields can exceed 1.0 (late mining tech beats the baseline) — intended.
+**Design knobs:** start penalties, the +15% recovery step, and which goods are penalized. Dedicated recovery nodes stop at exactly 100%; separate general mining-productivity research can still raise late-game output above baseline.
 
 **Effort:** one dict + one multiply in production + one hook in `grant_unlock`.
 
@@ -93,5 +73,5 @@ for good in RESEARCH_YIELD_BONUS.get(title, {}):
 
 ## Build order & validation
 1. Feature 1 code (2 edits) + the new research nodes → verify tagged recipes hidden until their node unlocks (headless test: assert `get_recipes_for_building` excludes a locked recipe, includes it after `grant_unlock`).
-2. Feature 2 state + production multiply + bonus map → verify a fresh iron mine outputs ×0.5, and outputs ×1.0 after `grant_unlock("Beneficiated Iron Mining")`.
+2. Feature 2 modifiers → verify every −30% good has two +15% recovery unlocks, every −15% good has one, and each path ends at exactly 100%.
 3. Re-run `tools/balance.py` (unaffected — it ignores both fields) and the headless sim to confirm the early-game thinning matches the design.

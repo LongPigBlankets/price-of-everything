@@ -1,0 +1,81 @@
+{
+	"name": "balance_v4_batteries",
+	"display_name": "Balance v4 — battery player",
+	"note": "LFP, sodium-ion and iron-air batteries; manufactured inputs close to raw ores/salts/graphite plus owned power.",
+	"integration_scope": "LFP manufactured inputs to raw lithium ore, salts and graphite; sodium-ion and iron-air remain standalone comparison lines",
+	"balance_v4": true,
+	"unlocks": ["Lithium Iron Phosphate Cells", "Sodium Battery Storage", "Iron-Air Battery Cells", "Solid-Oxide Electrolysis", "Electric Arc Refining", "Basic Blast Furnaces"],
+	"integration_earliest_turn": 122,
+	"balance_build_cash_reserve": 400,
+	"target_goods": ["lithium_battery", "sodium_battery", "iron_battery"],
+	"target_recipe_ids": ["r_099", "r_102", "r_136"],
+	"surplus_sales": ["tile_8_4", "tile_22_9"],
+	"port_distance_pairs": [
+		{"hub": "tile_22_9", "port": "tile_24_7"}
+	],
+	"balance_runway_turns": 40,
+	"balance_runway_transport_spine": {},
+	"balance_runway_buildings": [
+		{"id": "runway_coal", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_8_4", "deposit": "coal"},
+		{"id": "runway_water", "internal_name": "water_pump", "recipe_id": "r_011", "tile": "tile_8_4", "deposit": "water", "count": 2},
+		{"id": "runway_power", "internal_name": "coal_power", "recipe_id": "r_004", "tile": "tile_8_4", "count": 3}
+	],
+	"balance_runway_routes": [
+		{"id": "runway_coal", "good": "coal", "dest": "tile_8_4"},
+		{"id": "runway_water", "good": "pure_water", "dest": "tile_8_4"}
+	],
+	"balance_runway_tile_only_inputs": [
+		{"id": "runway_power", "goods": ["coal", "pure_water"]}
+	],
+	"balance_runway_surplus_sales": ["tile_8_4"],
+	"transport_spine": {
+		"corridors": [["tile_22_9", "tile_24_7"]],
+		"rails": "corridors",
+		"cables": ["tile_21_9", "tile_22_9"]
+	},
+	"balance_operating_transport_spine": {
+		"corridors": [["tile_22_9", "tile_24_7"]],
+		"reinf_pipes": "corridors"
+	},
+	"balance_standalone_buildings": [
+		{"id": "lfp", "internal_name": "high_tech_manufactory", "recipe_id": "r_099", "tile": "tile_22_9"},
+		{"id": "sodium", "internal_name": "assembly_plant", "recipe_id": "r_102", "tile": "tile_22_9"},
+		{"id": "iron_air", "internal_name": "industrial_factory", "recipe_id": "r_136", "tile": "tile_22_9"}
+	],
+	"balance_post_transport_buildings": [],
+	"balance_standalone_routes": [
+		{"id": "lfp", "good": "lithium_battery", "dest": "market"},
+		{"id": "sodium", "good": "sodium_battery", "dest": "market"},
+		{"id": "iron_air", "good": "iron_battery", "dest": "market"}
+	],
+	"balance_preintegration_buildings": [],
+	"balance_preintegration_routes": [],
+	"balance_integration_buildings": [
+		{"id": "water", "internal_name": "water_pump", "recipe_id": "r_011", "tile": "tile_22_9", "deposit": "water"},
+		{"id": "electrolysis", "internal_name": "electrolyser", "recipe_id": "r_079", "tile": "tile_22_9"},
+		{"id": "lithium", "internal_name": "electrolyser", "recipe_id": "r_039", "tile": "tile_22_9"},
+		{"id": "copper", "internal_name": "furnace", "recipe_id": "r_007", "tile": "tile_22_9"},
+		{"id": "wiring", "internal_name": "industrial_factory", "recipe_id": "r_008", "tile": "tile_22_9"},
+		{"id": "acid", "internal_name": "industrial_factory", "recipe_id": "r_116", "tile": "tile_22_9"}
+	],
+	"balance_required_integration_ids": ["water", "electrolysis", "lithium", "copper", "wiring", "acid"],
+	"balance_integration_routes": [
+		{"id": "water", "good": "pure_water", "dest": "tile_22_9"},
+		{"id": "electrolysis", "good": "hydrogen", "dest": "tile_22_9"},
+		{"id": "electrolysis", "good": "oxygen", "dest": "tile_22_9"},
+		{"id": "lithium", "good": "lithium_carbonate", "dest": "tile_22_9"},
+		{"id": "copper", "good": "copper_ingots", "dest": "tile_22_9"},
+		{"id": "wiring", "good": "copper_wiring", "dest": "tile_22_9"},
+		{"id": "acid", "good": "industrial_acids", "dest": "tile_22_9"}
+	],
+	"balance_tile_only_inputs": [
+		{"id": "electrolysis", "goods": ["pure_water"]},
+		{"id": "wiring", "goods": ["copper_ingots"]},
+		{"id": "acid", "goods": ["hydrogen"]},
+		{"id": "lfp", "goods": ["lithium_carbonate", "copper_wiring", "industrial_acids"]}
+	],
+	"balance_scale_transport_spine": {},
+	"balance_scale_buildings": [],
+	"balance_scale_routes": [],
+	"balance_scale_tile_only_inputs": []
+}

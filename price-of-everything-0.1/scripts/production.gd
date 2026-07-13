@@ -405,6 +405,14 @@ func _process_production() -> void:
 		MatchState.add_money(grid.grid_sell_revenue)
 		summary.power_sales_revenue = grid.grid_sell_revenue
 		summary.money_in += grid.grid_sell_revenue
+	# Grid exports bypass MarketState.execute_sale(), but still satisfy research
+	# conditions that ask the player to sell power. Keep them out of spot-price
+	# impact while adding them to the saved lifetime sales ledger.
+	if grid.grid_sold > 0:
+		var power_good := Catalog.get_good_by_internal_name("power")
+		MarketState.record_lifetime_sale_volume(
+			str(power_good.get("id", "")), int(grid.grid_sold)
+		)
 	# Green-energy subsidy (PolicyState schedule): £ per green MW GENERATED this turn
 	# (intermittent + steady — the same "green" the Greenest victory track counts).
 	var subsidy_rate: float = PolicyState.green_subsidy_rate(int(TurnManager.current_turn))
@@ -1259,18 +1267,26 @@ func _record_building_output(instance_id: String, good_key: String, qty: int) ->
 	produced_by_building[instance_id] = totals
 
 ## Lifetime units of a good produced across all buildings — feeds the "Produce N
-## units of X" research conditions. Outputs record under the catalog good_id, but
-## the research condition's Object is the good's internal_name (e.g. "coal"), so
-## resolve that to the id first. Accepts either form.
+## units of X" research conditions. Material outputs record under the good_id;
+## generated power records under its internal name. Accept either catalog form
+## and total both possible ledger keys without double-counting identical keys.
 func lifetime_total(good: String) -> int:
-	var gid := good
-	var g: Dictionary = Catalog.get_good_by_internal_name(good)
-	if not g.is_empty():
-		gid = str(g.get("id", good))
+	var g: Dictionary = Catalog.get_good(good)
+	if g.is_empty():
+		g = Catalog.get_good_by_internal_name(good)
+	var gid := str(g.get("id", good))
+	var internal := str(g.get("internal_name", good))
 	var total: int = 0
 	for inst_id in produced_by_building:
-		total += int((produced_by_building[inst_id] as Dictionary).get(gid, 0))
+		var ledger: Dictionary = produced_by_building[inst_id] as Dictionary
+		total += int(ledger.get(gid, 0))
+		if internal != gid:
+			total += int(ledger.get(internal, 0))
 	return total
+
+func reset_lifetime_research_metrics() -> void:
+	produced_by_building.clear()
+	full_output_streak_by_building.clear()
 
 func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
 	# A levelled building consumes/produces scaled quantities (see _consume_inputs /

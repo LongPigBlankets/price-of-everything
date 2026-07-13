@@ -1,0 +1,851 @@
+{
+	"assertions_failed": 3,
+	"assertions_passed": 382,
+	"average_port_distance": 2.0,
+	"bankruptcy_turn": 69,
+	"building_runs": {
+		"coal_process": [
+			{
+				"instance_id": "inst_b_001_0003f1",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_001",
+				"tile_id": "tile_23_10"
+			}
+		],
+		"copper_ingots": [
+			{
+				"instance_id": "inst_b_002_0003ee",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_007",
+				"tile_id": "tile_24_9"
+			}
+		],
+		"motor": [
+			{
+				"instance_id": "inst_b_007_0003f0",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_009",
+				"tile_id": "tile_24_9"
+			}
+		],
+		"power_a": [
+			{
+				"instance_id": "inst_b_003_0003f3",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_004",
+				"tile_id": "tile_23_10"
+			}
+		],
+		"steel": [
+			{
+				"instance_id": "inst_b_002_0003ed",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_003",
+				"tile_id": "tile_24_9"
+			}
+		],
+		"water": [
+			{
+				"instance_id": "inst_b_037_0003f2",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_011",
+				"tile_id": "tile_23_10"
+			}
+		],
+		"wiring": [
+			{
+				"instance_id": "inst_b_007_0003ef",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_008",
+				"tile_id": "tile_24_9"
+			}
+		]
+	},
+	"earned_research_modifiers_enabled": false,
+	"emergency_bridge_loan_principal": 1517.03061777477,
+	"emergency_bridge_loans_taken": 21,
+	"expansion_loan_gate_rejections": 0,
+	"expansion_loan_principal": 0.0,
+	"expansion_loans_taken": 0,
+	"final_active_modifiers": [],
+	"final_building_count": 7,
+	"final_cash": -19088.1653228243,
+	"final_economy": {
+		"goods_sales_revenue": 0.0,
+		"grid_bought": 20,
+		"grid_sold": 0,
+		"money_in": 0.0,
+		"money_out": 280.608822395495,
+		"power_demand": 20,
+		"power_sales_revenue": 0.0,
+		"power_supply": 0,
+		"starved": [
+			{
+				"building_id": "b_002",
+				"instance_id": "inst_b_002_0003ed",
+				"missing": [
+					{
+						"good_id": "g_004",
+						"have": 0,
+						"internal_name": "iron_ingots",
+						"need": 40
+					},
+					{
+						"good_id": "g_001",
+						"have": 0,
+						"internal_name": "coal",
+						"need": 20
+					}
+				],
+				"tile_id": "tile_24_9"
+			},
+			{
+				"building_id": "b_002",
+				"instance_id": "inst_b_002_0003ee",
+				"missing": [
+					{
+						"good_id": "g_003",
+						"have": 0,
+						"internal_name": "copper_ore",
+						"need": 36
+					}
+				],
+				"tile_id": "tile_24_9"
+			},
+			{
+				"building_id": "b_007",
+				"instance_id": "inst_b_007_0003ef",
+				"missing": [
+					{
+						"good_id": "g_005",
+						"have": 0,
+						"internal_name": "copper_ingots",
+						"need": 24
+					}
+				],
+				"tile_id": "tile_24_9"
+			},
+			{
+				"building_id": "b_007",
+				"instance_id": "inst_b_007_0003f0",
+				"missing": [
+					{
+						"good_id": "g_006",
+						"have": 0,
+						"internal_name": "steel",
+						"need": 30
+					}
+				],
+				"tile_id": "tile_24_9"
+			},
+			{
+				"building_id": "b_001",
+				"instance_id": "inst_b_001_0003f1",
+				"missing": [
+					{
+						"good_id": "coal",
+						"have": 0,
+						"internal_name": "coal",
+						"need": 1
+					}
+				],
+				"tile_id": "tile_23_10"
+			},
+			{
+				"building_id": "b_003",
+				"instance_id": "inst_b_003_0003f3",
+				"missing": [
+					{
+						"good_id": "g_001",
+						"have": 16,
+						"internal_name": "coal",
+						"need": 20
+					}
+				],
+				"tile_id": "tile_23_10"
+			}
+		]
+	},
+	"final_units_sold": 4892,
+	"integration_scope": "base motors through a downstream steel/copper hub, then nearby pig iron, iron/copper/coal extraction, water and owned coal power using road freight",
+	"integration_stages": {
+		"coal_process": {
+			"building_count": 5,
+			"cash": 143.756028985748,
+			"loan_capacity_left": -189.589874625783,
+			"profit": -17.710723904946,
+			"turn": 18,
+			"units_sold": 658
+		},
+		"power_a": {
+			"building_count": 7,
+			"cash": 0.0,
+			"loan_capacity_left": 177.701799729437,
+			"profit": -5.51347169320542,
+			"turn": 54,
+			"units_sold": 4054
+		},
+		"water": {
+			"building_count": 6,
+			"cash": 125.115963406454,
+			"loan_capacity_left": 47.7801717190221,
+			"profit": -14.6502788469852,
+			"turn": 48,
+			"units_sold": 3778
+		}
+	},
+	"last_profit": -280.608822395495,
+	"maintenance_paid_total": 5798.0,
+	"max_bankruptcy_streak": 76,
+	"profit_by_turn": [
+		{
+			"profit": 0.0,
+			"turn": 2
+		},
+		{
+			"profit": 0.0,
+			"turn": 3
+		},
+		{
+			"profit": 0.0,
+			"turn": 4
+		},
+		{
+			"profit": -748.291007326176,
+			"turn": 5
+		},
+		{
+			"profit": -195.326695780853,
+			"turn": 6
+		},
+		{
+			"profit": -58.2373739899778,
+			"turn": 7
+		},
+		{
+			"profit": 10.2878152416107,
+			"turn": 8
+		},
+		{
+			"profit": 9.97364874440916,
+			"turn": 9
+		},
+		{
+			"profit": 9.65916480159569,
+			"turn": 10
+		},
+		{
+			"profit": 9.34436191109609,
+			"turn": 11
+		},
+		{
+			"profit": 9.02923856655423,
+			"turn": 12
+		},
+		{
+			"profit": 8.71379325731607,
+			"turn": 13
+		},
+		{
+			"profit": 3.34115580906592,
+			"turn": 14
+		},
+		{
+			"profit": 3.02506202120469,
+			"turn": 15
+		},
+		{
+			"profit": 2.70864171074317,
+			"turn": 16
+		},
+		{
+			"profit": 2.39189334968006,
+			"turn": 17
+		},
+		{
+			"profit": -17.710723904946,
+			"turn": 18
+		},
+		{
+			"profit": -18.2291959475443,
+			"turn": 19
+		},
+		{
+			"profit": 3.11719755252,
+			"turn": 20
+		},
+		{
+			"profit": 2.7695185949546,
+			"turn": 21
+		},
+		{
+			"profit": 2.42148187753571,
+			"turn": 22
+		},
+		{
+			"profit": 2.07308571999368,
+			"turn": 23
+		},
+		{
+			"profit": 1.72432843723283,
+			"turn": 24
+		},
+		{
+			"profit": 0.563676253253959,
+			"turn": 25
+		},
+		{
+			"profit": 0.21419164537258,
+			"turn": 26
+		},
+		{
+			"profit": -0.211967456486605,
+			"turn": 27
+		},
+		{
+			"profit": -0.759184224838862,
+			"turn": 28
+		},
+		{
+			"profit": -1.30697853024594,
+			"turn": 29
+		},
+		{
+			"profit": -1.85535305149961,
+			"turn": 30
+		},
+		{
+			"profit": -2.4043104751272,
+			"turn": 31
+		},
+		{
+			"profit": -2.95385349541999,
+			"turn": 32
+		},
+		{
+			"profit": -3.5039848144616,
+			"turn": 33
+		},
+		{
+			"profit": -4.05470714215556,
+			"turn": 34
+		},
+		{
+			"profit": -4.60602319625485,
+			"turn": 35
+		},
+		{
+			"profit": -5.15793570238975,
+			"turn": 36
+		},
+		{
+			"profit": -5.71044739409649,
+			"turn": 37
+		},
+		{
+			"profit": -6.26356101284654,
+			"turn": 38
+		},
+		{
+			"profit": -6.81727930807455,
+			"turn": 39
+		},
+		{
+			"profit": -7.3716050372081,
+			"turn": 40
+		},
+		{
+			"profit": -7.92654096569674,
+			"turn": 41
+		},
+		{
+			"profit": -4.37206492096345,
+			"turn": 42
+		},
+		{
+			"profit": -1.58762835812229,
+			"turn": 43
+		},
+		{
+			"profit": -1.99071186661405,
+			"turn": 44
+		},
+		{
+			"profit": -2.54811640847601,
+			"turn": 45
+		},
+		{
+			"profit": -3.10614509829145,
+			"turn": 46
+		},
+		{
+			"profit": -3.66480075025686,
+			"turn": 47
+		},
+		{
+			"profit": -14.6502788469852,
+			"turn": 48
+		},
+		{
+			"profit": -18.7288920341301,
+			"turn": 49
+		},
+		{
+			"profit": -40.2525822499005,
+			"turn": 50
+		},
+		{
+			"profit": -42.8497036753316,
+			"turn": 51
+		},
+		{
+			"profit": -41.8475417570181,
+			"turn": 52
+		},
+		{
+			"profit": -43.8460995047523,
+			"turn": 53
+		},
+		{
+			"profit": -5.51347169320542,
+			"turn": 54
+		},
+		{
+			"profit": -12.337171655579,
+			"turn": 55
+		},
+		{
+			"profit": -13.563442748214,
+			"turn": 56
+		},
+		{
+			"profit": -14.7905327378808,
+			"turn": 57
+		},
+		{
+			"profit": -16.018444997124,
+			"turn": 58
+		},
+		{
+			"profit": -17.2471829088804,
+			"turn": 59
+		},
+		{
+			"profit": -18.4767498665172,
+			"turn": 60
+		},
+		{
+			"profit": -19.6154826072037,
+			"turn": 61
+		},
+		{
+			"profit": -20.8467178786161,
+			"turn": 62
+		},
+		{
+			"profit": -31.1814664570479,
+			"turn": 63
+		},
+		{
+			"profit": -32.4064810678098,
+			"turn": 64
+		},
+		{
+			"profit": -33.8323497517603,
+			"turn": 65
+		},
+		{
+			"profit": -35.2590759577535,
+			"turn": 66
+		},
+		{
+			"profit": -36.6866631453517,
+			"turn": 67
+		},
+		{
+			"profit": -38.1151147848651,
+			"turn": 68
+		},
+		{
+			"profit": -39.5444343573905,
+			"turn": 69
+		},
+		{
+			"profit": 25.9335482308509,
+			"turn": 70
+		},
+		{
+			"profit": 25.7617199302741,
+			"turn": 71
+		},
+		{
+			"profit": 10.408578973297,
+			"turn": 72
+		},
+		{
+			"profit": -14.6625720045528,
+			"turn": 73
+		},
+		{
+			"profit": -7.01565450188517,
+			"turn": 74
+		},
+		{
+			"profit": -252.67365748925,
+			"turn": 75
+		},
+		{
+			"profit": -253.0706434452,
+			"turn": 76
+		},
+		{
+			"profit": -253.468724083567,
+			"turn": 77
+		},
+		{
+			"profit": -253.867902785812,
+			"turn": 78
+		},
+		{
+			"profit": -251.640468458995,
+			"turn": 79
+		},
+		{
+			"profit": -250.983616043111,
+			"turn": 80
+		},
+		{
+			"profit": -251.386109339853,
+			"turn": 81
+		},
+		{
+			"profit": -251.789714340607,
+			"turn": 82
+		},
+		{
+			"profit": -252.194434484179,
+			"turn": 83
+		},
+		{
+			"profit": -252.600273220966,
+			"turn": 84
+		},
+		{
+			"profit": -252.490419274102,
+			"turn": 85
+		},
+		{
+			"profit": -252.852672261755,
+			"turn": 86
+		},
+		{
+			"profit": -253.261887597116,
+			"turn": 87
+		},
+		{
+			"profit": -253.672235444032,
+			"turn": 88
+		},
+		{
+			"profit": -254.083719311487,
+			"turn": 89
+		},
+		{
+			"profit": -254.473426053636,
+			"turn": 90
+		},
+		{
+			"profit": -254.864275869859,
+			"turn": 91
+		},
+		{
+			"profit": -255.279188971458,
+			"turn": 92
+		},
+		{
+			"profit": -255.695252248377,
+			"turn": 93
+		},
+		{
+			"profit": -256.112469269237,
+			"turn": 94
+		},
+		{
+			"profit": -256.530843614719,
+			"turn": 95
+		},
+		{
+			"profit": -256.950378877601,
+			"turn": 96
+		},
+		{
+			"profit": -257.256495329473,
+			"turn": 97
+		},
+		{
+			"profit": -257.67836325411,
+			"turn": 98
+		},
+		{
+			"profit": -258.101402947519,
+			"turn": 99
+		},
+		{
+			"profit": -258.525618051315,
+			"turn": 100
+		},
+		{
+			"profit": -258.951012219431,
+			"turn": 101
+		},
+		{
+			"profit": -259.377589118161,
+			"turn": 102
+		},
+		{
+			"profit": -259.80535242621,
+			"turn": 103
+		},
+		{
+			"profit": -260.23430583473,
+			"turn": 104
+		},
+		{
+			"profit": -260.664453047374,
+			"turn": 105
+		},
+		{
+			"profit": -261.095797780332,
+			"turn": 106
+		},
+		{
+			"profit": -261.528343762382,
+			"turn": 107
+		},
+		{
+			"profit": -261.962094734934,
+			"turn": 108
+		},
+		{
+			"profit": -262.397054452075,
+			"turn": 109
+		},
+		{
+			"profit": -262.626976680612,
+			"turn": 110
+		},
+		{
+			"profit": -263.064365200122,
+			"turn": 111
+		},
+		{
+			"profit": -263.502973802996,
+			"turn": 112
+		},
+		{
+			"profit": -263.942806294484,
+			"turn": 113
+		},
+		{
+			"profit": -264.383866492742,
+			"turn": 114
+		},
+		{
+			"profit": -264.82615822888,
+			"turn": 115
+		},
+		{
+			"profit": -265.269685347006,
+			"turn": 116
+		},
+		{
+			"profit": -265.714451704274,
+			"turn": 117
+		},
+		{
+			"profit": -266.160461170931,
+			"turn": 118
+		},
+		{
+			"profit": -266.607717630364,
+			"turn": 119
+		},
+		{
+			"profit": -267.056224979147,
+			"turn": 120
+		},
+		{
+			"profit": -267.345570460423,
+			"turn": 121
+		},
+		{
+			"profit": -267.773674663948,
+			"turn": 122
+		},
+		{
+			"profit": -268.225958192811,
+			"turn": 123
+		},
+		{
+			"profit": -268.679508330144,
+			"turn": 124
+		},
+		{
+			"profit": -269.134329039172,
+			"turn": 125
+		},
+		{
+			"profit": -269.567507629929,
+			"turn": 126
+		},
+		{
+			"profit": -270.001964759304,
+			"turn": 127
+		},
+		{
+			"profit": -270.460621097757,
+			"turn": 128
+		},
+		{
+			"profit": -270.920563996039,
+			"turn": 129
+		},
+		{
+			"profit": -271.381797485233,
+			"turn": 130
+		},
+		{
+			"profit": -271.844325610144,
+			"turn": 131
+		},
+		{
+			"profit": -272.308152429344,
+			"turn": 132
+		},
+		{
+			"profit": -272.681615348558,
+			"turn": 133
+		},
+		{
+			"profit": -273.148051787375,
+			"turn": 134
+		},
+		{
+			"profit": -273.615799179306,
+			"turn": 135
+		},
+		{
+			"profit": -274.084861638496,
+			"turn": 136
+		},
+		{
+			"profit": -274.555243293105,
+			"turn": 137
+		},
+		{
+			"profit": -275.026948285366,
+			"turn": 138
+		},
+		{
+			"profit": -275.49998077163,
+			"turn": 139
+		},
+		{
+			"profit": -275.974344922419,
+			"turn": 140
+		},
+		{
+			"profit": -276.450044922475,
+			"turn": 141
+		},
+		{
+			"profit": -276.927084970815,
+			"turn": 142
+		},
+		{
+			"profit": -277.40546928078,
+			"turn": 143
+		},
+		{
+			"profit": -277.885202080088,
+			"turn": 144
+		},
+		{
+			"profit": -278.366287610884,
+			"turn": 145
+		},
+		{
+			"profit": -278.711230129794,
+			"turn": 146
+		},
+		{
+			"profit": -279.149200574643,
+			"turn": 147
+		},
+		{
+			"profit": -279.63436989784,
+			"turn": 148
+		},
+		{
+			"profit": -280.120909066434,
+			"turn": 149
+		},
+		{
+			"profit": -280.608822395495,
+			"turn": 150
+		}
+	],
+	"prudent_expansion_enabled": false,
+	"research_unlock_turns": {
+		"Axial Flux Motor Lines": 14,
+		"Hairpin Stator Winding": 14,
+		"Hydrogen Combustion Turbines": 54,
+		"Improved Coal Mining": 26,
+		"Operational Team Managers": 5
+	},
+	"scenario": "balance_v4_motors_road_1200",
+	"start_config": "res://data/starts/open_field.json",
+	"start_modifiers_preserved": false,
+	"starting_money": 1200.0,
+	"target_recipe_first_run": {
+		"r_009": 6
+	},
+	"target_turn": 150,
+	"target_units_sold": {
+		"motor": 1904
+	},
+	"turn_150": {
+		"building_count": 7,
+		"cash": -19088.1653228243,
+		"loan_capacity_left": -2.25,
+		"profit": -280.608822395495,
+		"units_sold": 4892
+	},
+	"turn_30": {
+		"building_count": 5,
+		"cash": 175.775629711265,
+		"loan_capacity_left": -237.838674481053,
+		"profit": -1.85535305149961,
+		"units_sold": 1930
+	},
+	"turn_80": {
+		"building_count": 7,
+		"cash": -1515.70501230594,
+		"loan_capacity_left": -13.9139369093768,
+		"profit": -250.983616043111,
+		"units_sold": 4892
+	},
+	"turn_chain_fully_integrated": -1,
+	"turn_profit_gt_100": -1,
+	"turn_profit_gt_1000": -1,
+	"turn_profit_gt_200": -1,
+	"turn_profit_gt_500": -1,
+	"unprofitable_cash_cushion_waits": 0
+}

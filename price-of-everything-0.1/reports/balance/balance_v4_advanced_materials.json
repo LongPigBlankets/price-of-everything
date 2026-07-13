@@ -1,0 +1,860 @@
+{
+	"assertions_failed": 3,
+	"assertions_passed": 403,
+	"average_port_distance": 3.0,
+	"bankruptcy_turn": 134,
+	"building_runs": {
+		"eaf_steel": [
+			{
+				"instance_id": "inst_b_008_0003f9",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_076",
+				"tile_id": "tile_22_9"
+			}
+		],
+		"electric_alumina": [
+			{
+				"instance_id": "inst_b_012_0003fe",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_082",
+				"tile_id": "tile_22_9"
+			}
+		],
+		"flash": [
+			{
+				"instance_id": "inst_b_002_0003f7",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_020",
+				"tile_id": "tile_22_9"
+			}
+		],
+		"runway_coal": [
+			{
+				"instance_id": "inst_b_001_0003ed",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_001",
+				"tile_id": "tile_8_4"
+			}
+		],
+		"runway_power": [
+			{
+				"instance_id": "inst_b_003_0003f0",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_004",
+				"tile_id": "tile_8_4"
+			},
+			{
+				"instance_id": "inst_b_003_0003f1",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_004",
+				"tile_id": "tile_8_4"
+			},
+			{
+				"instance_id": "inst_b_003_0003f2",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_004",
+				"tile_id": "tile_8_4"
+			}
+		],
+		"runway_water": [
+			{
+				"instance_id": "inst_b_037_0003ee",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_011",
+				"tile_id": "tile_8_4"
+			},
+			{
+				"instance_id": "inst_b_037_0003ef",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_011",
+				"tile_id": "tile_8_4"
+			}
+		],
+		"silica": [
+			{
+				"instance_id": "inst_b_011_0003ff",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_035",
+				"tile_id": "tile_22_9"
+			}
+		],
+		"silicon": [
+			{
+				"instance_id": "inst_b_008_0003f8",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_044",
+				"tile_id": "tile_22_9"
+			}
+		]
+	},
+	"earned_research_modifiers_enabled": false,
+	"emergency_bridge_loan_principal": 558.177514365927,
+	"emergency_bridge_loans_taken": 10,
+	"expansion_loan_gate_rejections": 0,
+	"expansion_loan_principal": 0.0,
+	"expansion_loans_taken": 0,
+	"final_active_modifiers": [],
+	"final_building_count": 19,
+	"final_cash": -1892.96842446947,
+	"final_economy": {
+		"goods_sales_revenue": 0.0,
+		"grid_bought": 0,
+		"grid_sold": 1730,
+		"money_in": 103.8,
+		"money_out": 316.594078885942,
+		"power_demand": 70,
+		"power_sales_revenue": 103.8,
+		"power_supply": 1800,
+		"starved": [
+			{
+				"building_id": "b_002",
+				"instance_id": "inst_b_002_0003f7",
+				"missing": [
+					{
+						"good_id": "g_065",
+						"have": 1,
+						"internal_name": "industrial_acids",
+						"need": 2
+					}
+				],
+				"tile_id": "tile_22_9"
+			},
+			{
+				"building_id": "b_008",
+				"instance_id": "inst_b_008_0003f8",
+				"missing": [
+					{
+						"good_id": "g_001",
+						"have": 0,
+						"internal_name": "coal",
+						"need": 20
+					}
+				],
+				"tile_id": "tile_22_9"
+			},
+			{
+				"building_id": "b_008",
+				"instance_id": "inst_b_008_0003f9",
+				"missing": [
+					{
+						"good_id": "g_004",
+						"have": 0,
+						"internal_name": "iron_ingots",
+						"need": 16
+					}
+				],
+				"tile_id": "tile_22_9"
+			},
+			{
+				"building_id": "b_012",
+				"instance_id": "inst_b_012_0003fe",
+				"missing": [
+					{
+						"good_id": "g_022",
+						"have": 0,
+						"internal_name": "bauxite_ore",
+						"need": 20
+					}
+				],
+				"tile_id": "tile_22_9"
+			},
+			{
+				"building_id": "b_011",
+				"instance_id": "inst_b_011_0003ff",
+				"missing": [
+					{
+						"good_id": "g_018",
+						"have": 1,
+						"internal_name": "sand",
+						"need": 10
+					}
+				],
+				"tile_id": "tile_22_9"
+			}
+		]
+	},
+	"final_units_sold": 6036,
+	"integration_scope": "all scenario targets",
+	"integration_stages": {
+		"silica": {
+			"building_count": 19,
+			"cash": 188.242586992917,
+			"loan_capacity_left": 94.9629289674974,
+			"profit": -78.4559561914905,
+			"turn": 124,
+			"units_sold": 6080
+		}
+	},
+	"last_profit": -212.794078885942,
+	"maintenance_paid_total": 7690.4,
+	"max_bankruptcy_streak": 8,
+	"profit_by_turn": [
+		{
+			"profit": 0.0,
+			"turn": 2
+		},
+		{
+			"profit": 0.0,
+			"turn": 3
+		},
+		{
+			"profit": 0.0,
+			"turn": 4
+		},
+		{
+			"profit": 0.0,
+			"turn": 5
+		},
+		{
+			"profit": 0.0,
+			"turn": 6
+		},
+		{
+			"profit": 0.0,
+			"turn": 7
+		},
+		{
+			"profit": -240.020294113272,
+			"turn": 8
+		},
+		{
+			"profit": -79.8079825271144,
+			"turn": 9
+		},
+		{
+			"profit": 19.0661024435309,
+			"turn": 10
+		},
+		{
+			"profit": 18.2970771528845,
+			"turn": 11
+		},
+		{
+			"profit": 30.8758845978026,
+			"turn": 12
+		},
+		{
+			"profit": 14.8383136903197,
+			"turn": 13
+		},
+		{
+			"profit": 14.0685738977014,
+			"turn": 14
+		},
+		{
+			"profit": 13.2985943121303,
+			"turn": 15
+		},
+		{
+			"profit": 12.6051741158465,
+			"turn": 16
+		},
+		{
+			"profit": 12.5259124881056,
+			"turn": 17
+		},
+		{
+			"profit": 12.4464086051678,
+			"turn": 18
+		},
+		{
+			"profit": 12.3666616402864,
+			"turn": 19
+		},
+		{
+			"profit": 12.286670763696,
+			"turn": 20
+		},
+		{
+			"profit": 12.2064351426017,
+			"turn": 21
+		},
+		{
+			"profit": 12.1259539411674,
+			"turn": 22
+		},
+		{
+			"profit": 12.0452263205036,
+			"turn": 23
+		},
+		{
+			"profit": 11.964251438657,
+			"turn": 24
+		},
+		{
+			"profit": 11.8830284505979,
+			"turn": 25
+		},
+		{
+			"profit": 11.8015565082088,
+			"turn": 26
+		},
+		{
+			"profit": 11.7198347602729,
+			"turn": 27
+		},
+		{
+			"profit": 11.6378623524622,
+			"turn": 28
+		},
+		{
+			"profit": 11.5556384273255,
+			"turn": 29
+		},
+		{
+			"profit": 11.4731621242768,
+			"turn": 30
+		},
+		{
+			"profit": 11.3904325795832,
+			"turn": 31
+		},
+		{
+			"profit": 11.3074489263531,
+			"turn": 32
+		},
+		{
+			"profit": 11.2242102945242,
+			"turn": 33
+		},
+		{
+			"profit": 11.1407158108514,
+			"turn": 34
+		},
+		{
+			"profit": 11.0569645988945,
+			"turn": 35
+		},
+		{
+			"profit": 10.9729557790066,
+			"turn": 36
+		},
+		{
+			"profit": 10.8886884683213,
+			"turn": 37
+		},
+		{
+			"profit": 10.804161780741,
+			"turn": 38
+		},
+		{
+			"profit": 10.7193748269242,
+			"turn": 39
+		},
+		{
+			"profit": 10.6343267142734,
+			"turn": 40
+		},
+		{
+			"profit": 10.5490165469227,
+			"turn": 41
+		},
+		{
+			"profit": 10.4634434257253,
+			"turn": 42
+		},
+		{
+			"profit": 10.3776064482413,
+			"turn": 43
+		},
+		{
+			"profit": 10.2915047087246,
+			"turn": 44
+		},
+		{
+			"profit": 10.205137298111,
+			"turn": 45
+		},
+		{
+			"profit": 10.1185033040051,
+			"turn": 46
+		},
+		{
+			"profit": 10.0316018106681,
+			"turn": 47
+		},
+		{
+			"profit": 9.94443189900433,
+			"turn": 48
+		},
+		{
+			"profit": 9.85699264654934,
+			"turn": 49
+		},
+		{
+			"profit": -0.735495113349032,
+			"turn": 50
+		},
+		{
+			"profit": -6.99510241323941,
+			"turn": 51
+		},
+		{
+			"profit": -7.13299748120848,
+			"turn": 52
+		},
+		{
+			"profit": -7.27131921261217,
+			"turn": 53
+		},
+		{
+			"profit": -188.427650233975,
+			"turn": 54
+		},
+		{
+			"profit": -105.734214668004,
+			"turn": 55
+		},
+		{
+			"profit": -119.87333989583,
+			"turn": 56
+		},
+		{
+			"profit": -62.3234487018091,
+			"turn": 57
+		},
+		{
+			"profit": -138.555345214896,
+			"turn": 58
+		},
+		{
+			"profit": 18.707207014032,
+			"turn": 59
+		},
+		{
+			"profit": 18.4511328378399,
+			"turn": 60
+		},
+		{
+			"profit": 18.194804894052,
+			"turn": 61
+		},
+		{
+			"profit": 17.9382215338091,
+			"turn": 62
+		},
+		{
+			"profit": 17.681381103762,
+			"turn": 63
+		},
+		{
+			"profit": 22.2533442978854,
+			"turn": 64
+		},
+		{
+			"profit": -60.8329345803164,
+			"turn": 65
+		},
+		{
+			"profit": 7.5443060451077,
+			"turn": 66
+		},
+		{
+			"profit": -118.907670464648,
+			"turn": 67
+		},
+		{
+			"profit": -29.3875873741731,
+			"turn": 68
+		},
+		{
+			"profit": -80.3132578282769,
+			"turn": 69
+		},
+		{
+			"profit": 8.59569783565837,
+			"turn": 70
+		},
+		{
+			"profit": 8.23465159467935,
+			"turn": 71
+		},
+		{
+			"profit": 7.87315335487972,
+			"turn": 72
+		},
+		{
+			"profit": 7.51120192880302,
+			"turn": 73
+		},
+		{
+			"profit": 7.14879611705783,
+			"turn": 74
+		},
+		{
+			"profit": 6.78593470832641,
+			"turn": 75
+		},
+		{
+			"profit": 6.42261647937136,
+			"turn": 76
+		},
+		{
+			"profit": 6.05884019504327,
+			"turn": 77
+		},
+		{
+			"profit": 5.69460460828799,
+			"turn": 78
+		},
+		{
+			"profit": 5.32990846015286,
+			"turn": 79
+		},
+		{
+			"profit": 4.96475047979379,
+			"turn": 80
+		},
+		{
+			"profit": 4.59912938448122,
+			"turn": 81
+		},
+		{
+			"profit": 4.23304387960627,
+			"turn": 82
+		},
+		{
+			"profit": 3.8664926586863,
+			"turn": 83
+		},
+		{
+			"profit": 3.49947440337081,
+			"turn": 84
+		},
+		{
+			"profit": 3.13198778344622,
+			"turn": 85
+		},
+		{
+			"profit": 2.76403145684128,
+			"turn": 86
+		},
+		{
+			"profit": 6.3137720265895,
+			"turn": 87
+		},
+		{
+			"profit": 5.94487221300221,
+			"turn": 88
+		},
+		{
+			"profit": 5.57549859541996,
+			"turn": 89
+		},
+		{
+			"profit": 5.20564978438523,
+			"turn": 90
+		},
+		{
+			"profit": 12.8497204012727,
+			"turn": 91
+		},
+		{
+			"profit": 8.84255335125403,
+			"turn": 92
+		},
+		{
+			"profit": 7.13878733322156,
+			"turn": 93
+		},
+		{
+			"profit": 3.13065998075717,
+			"turn": 94
+		},
+		{
+			"profit": -0.877949689929778,
+			"turn": 95
+		},
+		{
+			"profit": -4.88704313926854,
+			"turn": 96
+		},
+		{
+			"profit": -8.89662183950799,
+			"turn": 97
+		},
+		{
+			"profit": -12.9066872747139,
+			"turn": 98
+		},
+		{
+			"profit": -16.9172409407678,
+			"turn": 99
+		},
+		{
+			"profit": -11.6912895969314,
+			"turn": 100
+		},
+		{
+			"profit": -15.7028242595801,
+			"turn": 101
+		},
+		{
+			"profit": -19.7148517116001,
+			"turn": 102
+		},
+		{
+			"profit": -20.0910098597585,
+			"turn": 103
+		},
+		{
+			"profit": -20.4676638953598,
+			"turn": 104
+		},
+		{
+			"profit": -20.8448153851554,
+			"turn": 105
+		},
+		{
+			"profit": -21.2224659077062,
+			"turn": 106
+		},
+		{
+			"profit": -21.6006170533837,
+			"turn": 107
+		},
+		{
+			"profit": -21.9792704243699,
+			"turn": 108
+		},
+		{
+			"profit": -22.358427634658,
+			"turn": 109
+		},
+		{
+			"profit": -22.7380903100539,
+			"turn": 110
+		},
+		{
+			"profit": -23.1182600881765,
+			"turn": 111
+		},
+		{
+			"profit": -23.4989386184596,
+			"turn": 112
+		},
+		{
+			"profit": -24.0427769421543,
+			"turn": 113
+		},
+		{
+			"profit": -24.8946478325305,
+			"turn": 114
+		},
+		{
+			"profit": -25.7636913027987,
+			"turn": 115
+		},
+		{
+			"profit": -26.6502448690113,
+			"turn": 116
+		},
+		{
+			"profit": -27.5546526593603,
+			"turn": 117
+		},
+		{
+			"profit": -28.4772655434836,
+			"turn": 118
+		},
+		{
+			"profit": -29.4184412643019,
+			"turn": 119
+		},
+		{
+			"profit": -30.3785445724318,
+			"turn": 120
+		},
+		{
+			"profit": -43.8306388391028,
+			"turn": 121
+		},
+		{
+			"profit": -44.4335441070942,
+			"turn": 122
+		},
+		{
+			"profit": -45.0372738693969,
+			"turn": 123
+		},
+		{
+			"profit": -78.4559561914905,
+			"turn": 124
+		},
+		{
+			"profit": -61.7291766138711,
+			"turn": 125
+		},
+		{
+			"profit": -53.1530479211082,
+			"turn": 126
+		},
+		{
+			"profit": -47.3018598273655,
+			"turn": 127
+		},
+		{
+			"profit": -47.9733399641541,
+			"turn": 128
+		},
+		{
+			"profit": -48.645705124423,
+			"turn": 129
+		},
+		{
+			"profit": -49.3189583181413,
+			"turn": 130
+		},
+		{
+			"profit": -49.9931025761157,
+			"turn": 131
+		},
+		{
+			"profit": -50.6681409499932,
+			"turn": 132
+		},
+		{
+			"profit": -51.3440765122672,
+			"turn": 133
+		},
+		{
+			"profit": -52.0209123562825,
+			"turn": 134
+		},
+		{
+			"profit": -52.6986515962408,
+			"turn": 135
+		},
+		{
+			"profit": -33.9338770045385,
+			"turn": 136
+		},
+		{
+			"profit": -12.3295413834143,
+			"turn": 137
+		},
+		{
+			"profit": -4.7750773514166,
+			"turn": 138
+		},
+		{
+			"profit": -199.694667634036,
+			"turn": 139
+		},
+		{
+			"profit": -134.975954107525,
+			"turn": 140
+		},
+		{
+			"profit": -7.13297378806726,
+			"turn": 141
+		},
+		{
+			"profit": 7.31636390952838,
+			"turn": 142
+		},
+		{
+			"profit": -136.744355022983,
+			"turn": 143
+		},
+		{
+			"profit": -220.269664359814,
+			"turn": 144
+		},
+		{
+			"profit": -137.902703147442,
+			"turn": 145
+		},
+		{
+			"profit": -212.142537146488,
+			"turn": 146
+		},
+		{
+			"profit": -212.550789551062,
+			"turn": 147
+		},
+		{
+			"profit": -212.960257969086,
+			"turn": 148
+		},
+		{
+			"profit": -213.116806766557,
+			"turn": 149
+		},
+		{
+			"profit": -212.794078885942,
+			"turn": 150
+		}
+	],
+	"prudent_expansion_enabled": false,
+	"research_unlock_turns": {
+		"Basic Blast Furnaces": 2,
+		"Continuous Casting": 62,
+		"Electric Arc Refining": 2,
+		"Flue Heat Recovery": 49,
+		"Heavy Freight Corridors": 50,
+		"Hydrogen Combustion Turbines": 10,
+		"Improved Coal Mining": 16,
+		"Large-Diameter Mains": 56,
+		"Operational Team Managers": 8,
+		"Pulverized Coal Boilers": 8,
+		"Reheat Turbine Cycles": 8,
+		"Steam Turbine Upgrades": 10,
+		"Third Advisor Seat": 56
+	},
+	"scenario": "balance_v4_advanced_materials",
+	"start_config": "res://data/starts/open_field.json",
+	"start_modifiers_preserved": false,
+	"starting_money": 1500.0,
+	"target_recipe_first_run": {
+		"r_020": 58,
+		"r_044": 55,
+		"r_076": 58,
+		"r_082": 69
+	},
+	"target_turn": 150,
+	"target_units_sold": {
+		"alumina": 1944,
+		"copper_ingots": 1440,
+		"metallurgical_silicon": 760,
+		"steel": 1850
+	},
+	"turn_150": {
+		"building_count": 19,
+		"cash": -1892.96842446947,
+		"loan_capacity_left": -293.425228923297,
+		"profit": -212.794078885942,
+		"units_sold": 6036
+	},
+	"turn_30": {
+		"building_count": 6,
+		"cash": 740.79299653316,
+		"loan_capacity_left": 822.309081856666,
+		"profit": 11.4731621242768,
+		"units_sold": 60
+	},
+	"turn_80": {
+		"building_count": 18,
+		"cash": 224.101096536106,
+		"loan_capacity_left": 20.470321480557,
+		"profit": 4.96475047979379,
+		"units_sold": 3170
+	},
+	"turn_chain_fully_integrated": -1,
+	"turn_profit_gt_100": -1,
+	"turn_profit_gt_1000": -1,
+	"turn_profit_gt_200": -1,
+	"turn_profit_gt_500": -1,
+	"unprofitable_cash_cushion_waits": 0
+}

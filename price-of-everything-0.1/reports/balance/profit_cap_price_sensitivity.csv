@@ -1,4 +1,4 @@
 recipe_id,recipe,output_good,current_base_price,max_base_price_for_400_cap,price_reduction_per_unit,standalone_after_cap_price_with_minimum_labour,price_only_keeps_start_margin,downstream_consumer_count,downstream_consumers
-r_205,Heavy Vehicles Automated Manufacturing,heavy_vehicle,228.0,212.574,15.426,147.172,True,0,none (terminal)
-r_206,Electric Heavy Vehicles Manufacturing,heavy_vehicle,228.0,213.112,14.888,151.175,True,0,none (terminal)
-r_204,Heavy Vehicles Assembly,heavy_vehicle,228.0,219.572,8.428,188.161,True,0,none (terminal)
+r_206,Electric Heavy Vehicles Manufacturing,heavy_vehicle,228.0,219.249,8.751,185.745,True,0,none (terminal)
+r_205,Heavy Vehicles Automated Manufacturing,heavy_vehicle,228.0,220.341,7.659,189.025,True,0,none (terminal)
+r_204,Heavy Vehicles Assembly,heavy_vehicle,228.0,227.338,0.662,230.011,True,0,none (terminal)

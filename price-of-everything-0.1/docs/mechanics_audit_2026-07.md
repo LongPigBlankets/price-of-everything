@@ -26,7 +26,7 @@
 | 8 | HIGH | Loan principal repayment is booked as interest and shields taxable profit (verified) | Loans |
 | 9 | HIGH | Manual sells pay zero freight; auto-sells pay full freight — manual clicking strictly dominates | Markets |
 | 10 | HIGH | Demolish is promised by three UIs but is a no-op; blind-build mistakes are permanent traps | Buildings |
-| 11 | HIGH | 95 of 231 research nodes have conditions that can never fire; hydro is permanently unbuildable | Research/data |
+| 11 | HIGH | Research evaluator gap fixed; 10 conditions still reference unshipped content, while hydro/consumer gates reference nonexistent research titles | Research/data |
 | 12 | HIGH | Fluids bypass the pipe-only rule on every tile-to-tile move; unreachable routes fall back to a haul that's *cheaper* than real routes | Transport |
 | 13 | HIGH | Load-game runs two full synchronous layout passes with no yields; new-game places NPC buildings at 1/frame (~8 s floor) | Performance |
 | 14 | HIGH | Empire view does O(samples × buildings) background sampling and O(n²) panel separation every frame | Empire view |
@@ -187,14 +187,14 @@
 ## 9. Research & tech gating
 
 ### Working well
-- The unlock engine itself is solid: prereq checking, live conditions, NARRATIVE-phase re-evaluation after production settles, idempotent grants (`match_state.gd:1396-1466`).
+- The unlock engine now evaluates all shipped verbs (`Produce`, `Sell`, `Build`, `Own`, `Run`, level/profit/recipe variants, `Survey`, `Stockpile filled`, and `Sustain`), normalises IDs/internal/display names, saves lifetime sales, and re-evaluates after production settles. A CSV-wide regression audit catches new unresolved targets.
 - All 42 upgrade-gate titles and all 106 code-side `UNLOCK_MODIFIERS` keys resolve to real CSV titles — the code↔CSV contract is well maintained where exercised.
 
 ### Issues
 | Severity | Finding |
 |---|---|
 | HIGH | **Research gating is UI-cosmetic only**: only the construct panel filters gated recipes; the search overlay indexes `Catalog.all_recipes()` unfiltered and its Build button goes straight to placement — neither `world_map._on_build_attempted` nor `Construction.start_on_tile` checks `required_research`. Any of the ~47 gated recipes is buildable on turn 1 (`search_overlay.gd:263, 486-496`, `world_map.gd:1295-1366`). |
-| HIGH | **95 of 231 research nodes can never auto-fire**: `_live_condition_met()` handles only 5 action types — all 41 `Run`, 16 `Own`, 15 `Sell`, 1 `Sustain` rows are dead — and `_count_buildings()` compares against `internal_name` while ~55 rows use Title-Case display names (`Mine`, `Furnace`, `Oil Refinery`…). 16 gated recipes (incl. all offshore oil and water recycling) are reachable only via free picks (`match_state.gd:1448-1487`). |
+| HIGH | **10 research conditions still reference unshipped content**: Gas Plant, Depot, Dispatch Room, Market Office, Operations Desk, Operations Planning, Training Office, Labour, Continuous Improvement Team, and Food. The first nine have no matching live building/good metric; Food is absent from the goods catalog, so its farming recipes are dormant too. These 10 direct gaps plus tier/prerequisite cascading leave 18 non-placeholder nodes without any automatic unlock path (after accounting for the three advisor-seat titles granted by their dedicated code path). The evaluator/casing defect itself is fixed. |
 | HIGH | **Hydro is permanently unreachable**: building b_027 and recipe r_224 gate on title `hydro`, which doesn't exist in `research_unlocks.csv` (noted as possibly intentional cheat-gating — if so, hide the building; today the player sees a dead entry). r_166/r_167 gate on nonexistent `consumer`. |
 | MEDIUM | **Free research unlocks are a session-local UI variable**: not saved, reset to 2 on every panel construction, decremented even when clicking an already-unlocked node, and never prereq-checked — bankable/farmable across reloads and spendable on rank-4 nodes directly (`research_panel.gd:67, 98, 611-622`). |
 | MEDIUM | "Run Profitable" conditions compare unit cost to `base_price` while the ledger shows Net/t against live prices — unlocks appear stuck for no visible reason (`match_state.gd:1499-1511` vs `building_ledger_panel.gd:447`). |
@@ -340,10 +340,10 @@
 ### Issues
 | Severity | Finding |
 |---|---|
-| HIGH | **No test validates the datasets the game actually loads.** Nothing asserts recipes↔goods↔buildings↔research referential integrity — every data finding above (hydro gate, 95 dead conditions, Title-Case object typos, r_109's lost output, consumer_factory) shipped silently. A ~50-line integrity test closes most of section 16. |
+| HIGH | **Dataset validation remains incomplete.** The suite now audits every non-placeholder research action/object target and fails on unexpected unresolved targets, but recipes↔goods↔buildings and raw `required_research` gates still lack a complete referential-integrity test (hydro/consumer gates and dormant Food recipes remain). |
 | MEDIUM | Hardcoded catalog counts (76/37) break the suite on every legitimate data addition — the known recurring failure. |
 | MEDIUM | The E2E isn't run by `tools/run_tests.py` (separate scene), so the richest integration test can rot unnoticed; Python tests are unrunnable (`pytest` missing) and target stale data. |
-| Gap | No test that research conditions are satisfiable, that every non-infra building has ≥1 active un-gated recipe, no generator round-trip check, no balance.py↔economy_config sync check. |
+| Gap | No test that every non-infra building has ≥1 active un-gated recipe, no generator round-trip check, no balance.py↔economy_config sync check. |
 
 ---
 

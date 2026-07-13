@@ -3542,7 +3542,7 @@ func _test_modifiers_production_recipe_output() -> void:
 	# revealing + topping up the deposit).
 	MatchState.reveal_deposit(tile, "coal")
 	MatchState.deposit_remaining[tile] = {"coal": 999}
-	# Coal carries a standing −50% deposit-penalty modifier (re-seeded by the reset
+	# Coal carries a standing −30% deposit-penalty modifier (re-seeded by the reset
 	# above); drop it so this test isolates the +5% extraction modifier on a clean
 	# 60-unit baseline.
 	Modifiers.remove("deposit_penalty_coal")
@@ -3596,18 +3596,18 @@ func _test_deposit_penalty_modifier() -> void:
 	Modifiers.reset()
 	MatchState.reset()          # re-seeds the standing per-good deposit penalties
 	Stockpile.clear_all()
-	# Coal starts at a standing −50% deposit penalty.
+	# Coal starts at a standing −30% deposit penalty.
 	var r: Dictionary = Modifiers.resolve_pct("recipe_output", "r_001", {"good_internal": "coal"})
-	_check(absf(float(r.get("net", 0.0)) - (-50.0)) < 0.001,
-		"coal mine starts at a −50%% deposit penalty (got %s)" % float(r.get("net", 0.0)))
-	# Researching Improved Coal Mining adds a +20% tile → net −30% (additive, no cap).
+	_check(absf(float(r.get("net", 0.0)) - (-30.0)) < 0.001,
+		"coal mine starts at a −30%% deposit penalty (got %s)" % float(r.get("net", 0.0)))
+	# The first recovery unlock adds +15% → net −15% (additive, no cap).
 	MatchState.grant_unlock("Improved Coal Mining")
 	var r2: Dictionary = Modifiers.resolve_pct("recipe_output", "r_001", {"good_internal": "coal"})
-	_check(absf(float(r2.get("net", 0.0)) - (-30.0)) < 0.001,
-		"Improved Coal Mining: −50%% + 20%% = net −30%% (got %s)" % float(r2.get("net", 0.0)))
+	_check(absf(float(r2.get("net", 0.0)) - (-15.0)) < 0.001,
+		"Improved Coal Mining: −30%% + 15%% = net −15%% (got %s)" % float(r2.get("net", 0.0)))
 	_check((r2.get("parts", []) as Array).size() == 2,
 		"breakdown shows both the penalty tile and the research tile")
-	# End to end: a coal mine produces round(60 * 0.70) = 42.
+	# End to end: a coal mine produces round(60 * 0.85) = 51.
 	var tile := "tile_6_8"
 	var inst: String = MatchState.add_building("b_001", "r_001", tile)
 	MatchState.reveal_deposit(tile, "coal")
@@ -3615,8 +3615,13 @@ func _test_deposit_penalty_modifier() -> void:
 	var summary := _fresh_production_summary()
 	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
 	Production._flush_output_buffer()
-	_check(int(summary.produced.get("g_001", 0)) == 42,
-		"coal output reflects net −30%% (60 → 42, got %d)" % int(summary.produced.get("g_001", 0)))
+	_check(int(summary.produced.get("g_001", 0)) == 51,
+		"coal output reflects net −15%% (60 → 51, got %d)" % int(summary.produced.get("g_001", 0)))
+	# The second recovery unlock removes the remaining penalty exactly.
+	MatchState.grant_unlock("Automated Mine Dispatch")
+	var r3: Dictionary = Modifiers.resolve_pct("recipe_output", "r_001", {"good_internal": "coal"})
+	_check(absf(float(r3.get("net", 0.0))) < 0.001,
+		"Automated Mine Dispatch: −30%% + 15%% + 15%% = full coal output")
 	# Exempt goods (not in EXTRACTION_PENALTY_PCT) carry no penalty tile.
 	var ro: Dictionary = Modifiers.resolve_pct("recipe_output", "rX", {"good_internal": "crude_oil"})
 	_check(absf(float(ro.get("net", 0.0))) < 0.001,
@@ -3625,9 +3630,47 @@ func _test_deposit_penalty_modifier() -> void:
 	# baseline rule re-seeded on import (regression: penalties vanished after load).
 	Modifiers.import_state({"modifiers": {}, "history": [], "next_id": 1})
 	var rload: Dictionary = Modifiers.resolve_pct("recipe_output", "r_001", {"good_internal": "coal"})
-	_check(absf(float(rload.get("net", 0.0)) - (-50.0)) < 0.001,
+	_check(absf(float(rload.get("net", 0.0)) - (-30.0)) < 0.001,
 		"a load with no saved penalties re-seeds the coal penalty (got %s)" % float(rload.get("net", 0.0)))
 	MatchState.remove_building(inst)
+
+	# Every penalized extraction good has exactly enough +15% research steps to
+	# cancel its standing penalty: two for −30% goods, one for −15% goods.
+	var expected_recovery_steps := {
+		"coal": 2, "iron_ore": 2, "copper_ore": 2, "limestone": 2,
+		"sand": 2, "basic_salt": 2, "ree_ore": 2, "alloy_ore": 2,
+		"sulphur": 1, "bauxite_ore": 1,
+	}
+	var recovery_unlocks := {}
+	for unlock_title in Modifiers.UNLOCK_MODIFIERS:
+		var raw_spec = Modifiers.UNLOCK_MODIFIERS[unlock_title]
+		var specs: Array = raw_spec if raw_spec is Array else [raw_spec]
+		for raw_effect in specs:
+			var effect: Dictionary = raw_effect
+			if str(effect.get("source", "")) != "research:mining_yield":
+				continue
+			var effect_good := str((effect.get("target_match", {}) as Dictionary).get("good_internal", ""))
+			if effect_good == "":
+				continue
+			_check(absf(float(effect.get("pct", 0.0)) - 15.0) < 0.001,
+				"%s restores %s output by exactly 15%%" % [unlock_title, effect_good])
+			var titles: Array = recovery_unlocks.get(effect_good, [])
+			titles.append(str(unlock_title))
+			recovery_unlocks[effect_good] = titles
+	for recovery_good in expected_recovery_steps:
+		var recovery_titles: Array = recovery_unlocks.get(recovery_good, [])
+		_check(recovery_titles.size() == int(expected_recovery_steps[recovery_good]),
+			"%s has exactly %d mining-yield recovery unlock%s" % [
+				recovery_good, int(expected_recovery_steps[recovery_good]),
+				"" if int(expected_recovery_steps[recovery_good]) == 1 else "s",
+			])
+		Modifiers.reset()
+		MatchState.reset()
+		for recovery_title in recovery_titles:
+			Modifiers.apply_unlock_modifier(str(recovery_title))
+		var recovered: Dictionary = Modifiers.resolve_pct("recipe_output", "test", {"good_internal": recovery_good})
+		_check(absf(float(recovered.get("net", 0.0))) < 0.001,
+			"%s recovery research restores full output exactly" % recovery_good)
 	Modifiers.reset()
 	MatchState.reset()
 
@@ -4405,15 +4448,22 @@ func _test_transport_congestion() -> void:
 	MatchState.reset()
 	MatchState.pending_transport_shipments.clear()
 	MatchState._last_link_flow.clear()
-	# Capacity = base mode cap × infra-level multiplier (L1×1, L2×2, L3×3.5).
-	_check(absf(MatchState.tile_mode_capacity("roads", 1) - 200.0) < 0.001, "roads L1 capacity = 200")
-	_check(absf(MatchState.tile_mode_capacity("roads", 2) - 400.0) < 0.001, "roads L2 capacity = 400 (×2)")
-	_check(absf(MatchState.tile_mode_capacity("rail", 3) - 1400.0) < 0.001, "rail L3 capacity = 1400 (400×3.5)")
+	# Capacity is explicitly calibrated per mode and infrastructure level.
+	_check(absf(MatchState.tile_mode_capacity("roads", 1) - 300.0) < 0.001, "roads L1 capacity = 300")
+	_check(absf(MatchState.tile_mode_capacity("roads", 2) - 500.0) < 0.001, "roads L2 capacity = 500")
+	_check(absf(MatchState.tile_mode_capacity("roads", 3) - 750.0) < 0.001, "roads L3 capacity = 750")
+	_check(absf(MatchState.tile_mode_capacity("rail", 1) - 600.0) < 0.001, "rail L1 capacity = 600")
+	_check(absf(MatchState.tile_mode_capacity("rail", 2) - 1200.0) < 0.001, "rail L2 capacity = 1200")
+	_check(absf(MatchState.tile_mode_capacity("rail", 3) - 2000.0) < 0.001, "rail L3 capacity = 2000")
+	_check(absf(MatchState.tile_mode_capacity("pipes", 1) - 250.0) < 0.001, "pipes L1 capacity = 250")
+	_check(absf(MatchState.tile_mode_capacity("pipes", 2) - 600.0) < 0.001, "pipes L2 capacity = 600")
+	_check(absf(MatchState.tile_mode_capacity("pipes", 3) - 1200.0) < 0.001, "pipes L3 capacity = 1200")
+	_check(absf(MatchState.tile_mode_capacity("reinf_pipes", 3) - 1200.0) < 0.001, "reinforced pipes match pipe capacity")
 	_check(absf(MatchState.tile_mode_capacity("cables", 1)) < 0.001, "an uncapped mode (cables) reports 0")
 	# Throughput research raises capacity: Heavy Freight Corridors +25% rail.
 	MatchState.grant_unlock("Heavy Freight Corridors")
-	_check(absf(MatchState.tile_mode_capacity("rail", 1) - 500.0) < 0.001,
-		"Heavy Freight Corridors raises rail L1 capacity 400 → 500")
+	_check(absf(MatchState.tile_mode_capacity("rail", 1) - 750.0) < 0.001,
+		"Heavy Freight Corridors raises rail L1 capacity 600 → 750")
 
 	var route := {"tiles": ["tile_a", "tile_b"],
 		"legs": [{"mode": "roads", "from": "tile_a", "to": "tile_b"}]}
@@ -4426,13 +4476,13 @@ func _test_transport_congestion() -> void:
 			"turns_remaining": 2, "tiles": ["tile_a", "tile_b"],
 			"legs": [{"mode": "roads", "from": "tile_a", "to": "tile_b"}]})
 		MatchState.update_transport_congestion()
-	# roads L1 cap = 200; tier-2 threshold = cap + base L1 cap = 400.
-	load_flow.call(150)
-	_check(MatchState.route_congestion_tier(route) == 0, "150 under cap 200 → tier 0")
-	load_flow.call(300)
-	_check(MatchState.route_congestion_tier(route) == 1, "300 over cap 200 (≤ cap+L1 400) → tier 1 (+100%)")
-	load_flow.call(500)
-	_check(MatchState.route_congestion_tier(route) == 2, "500 over cap+L1 400 → tier 2 (+200%)")
+	# roads L1 cap = 300; tier-2 threshold = cap + base L1 cap = 600.
+	load_flow.call(250)
+	_check(MatchState.route_congestion_tier(route) == 0, "250 under cap 300 → tier 0")
+	load_flow.call(450)
+	_check(MatchState.route_congestion_tier(route) == 1, "450 over cap 300 (≤ cap+L1 600) → tier 1 (+100%)")
+	load_flow.call(700)
+	_check(MatchState.route_congestion_tier(route) == 2, "700 over cap+L1 600 → tier 2 (+200%)")
 
 	Modifiers.reset()
 	MatchState.reset()
@@ -4497,6 +4547,7 @@ func _test_research_tier_gating() -> void:
 func _test_live_unlock_conditions() -> void:
 	Modifiers.reset()
 	MatchState.reset()
+	MarketState.import_state({})
 	Stockpile.clear_all()
 	Production.produced_by_building.clear()
 	Production.full_output_streak_by_building.clear()
@@ -4526,6 +4577,59 @@ func _test_live_unlock_conditions() -> void:
 	MatchState._check_unlock_conditions()
 	_check(MatchState.is_unlocked("Improved Coal Mining"),
 		"Produce condition met once lifetime coal hits 500 (summed across buildings)")
+	# Generated power uses its internal name in the production ledger, unlike
+	# material outputs. The live condition must accept that form too.
+	Production.produced_by_building.clear()
+	Production.produced_by_building["generator"] = {"power": 250}
+	_check(MatchState._live_condition_met({"action": "Produce", "object": "Power", "qty": 250}),
+		"Produce condition resolves display-name casing and internal-key power output")
+
+	# --- "Sell N units": saved lifetime volume across ordinary/special/grid paths ---
+	var steel_gid := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	MarketState.record_lifetime_sale_volume(steel_gid, 249)
+	_check(not MatchState._live_condition_met({"action": "Sell", "object": "Steel", "qty": 250}),
+		"Sell condition remains unmet one unit below its lifetime threshold")
+	MarketState.record_lifetime_sale_volume(steel_gid, 1)
+	_check(MatchState._live_condition_met({"action": "Sell", "object": "Steel", "qty": 250}),
+		"Sell condition resolves a display name and trips at the lifetime threshold")
+	_check(MatchState._live_condition_met({"action": "Sell", "object": "Freight", "qty": 250}),
+		"Sell Freight resolves to aggregate lifetime shipment volume")
+	var market_sale_snapshot := MarketState.export_state()
+	MarketState.import_state({})
+	_check(not MatchState._live_condition_met({"action": "Sell", "object": "Steel", "qty": 250}),
+		"a fresh market state clears lifetime research sale volume")
+	MarketState.import_state(market_sale_snapshot)
+	_check(MatchState._live_condition_met({"action": "Sell", "object": "Steel", "qty": 250}),
+		"lifetime research sale volume survives a save/load round-trip")
+
+	# --- Display-name/case resolver: the original live-game casing regression ---
+	MatchState.reset()
+	for i in range(3):
+		MatchState.add_building("b_002", "", "tile_furnace_%d" % i)
+	_check(MatchState.is_unlocked("Basic Blast Furnaces"),
+		"Build Furnace unlock fires with the CSV display name (case-insensitive)")
+
+	# --- Plain Run and concept aliases: one building, sustained full-output streak ---
+	MatchState.reset()
+	Production.full_output_streak_by_building.clear()
+	var refinery_iid := MatchState.add_building("b_011", "", "tile_refinery")
+	Production.full_output_streak_by_building[refinery_iid] = 12
+	_check(MatchState._live_condition_met({"action": "Run", "object": "Oil Refinery", "qty": 12}),
+		"Run condition resolves Oil Refinery to petro_refinery and its run streak")
+	var factory_iid := MatchState.add_building("b_007", "", "tile_factory")
+	Production.full_output_streak_by_building[factory_iid] = 15
+	_check(MatchState._live_condition_met({"action": "Run", "object": "Modular Factory Cells", "qty": 15}),
+		"Run condition resolves a research-concept alias to its live building")
+
+	# --- Own land and Sustain verbs ---
+	MatchState.tile_land_owned.clear()
+	for i in range(5):
+		MatchState.tile_land_owned["tile_owned_%d" % i] = 1
+	_check(MatchState._live_condition_met({"action": "Own", "object": "land", "qty": 5}),
+		"Own land condition counts explicitly owned tiles")
+	MatchState._advisor_profit_streak = 3
+	_check(MatchState._live_condition_met({"action": "Sustain", "object": "1000+ profit/turn", "qty": 3}),
+		"Sustain condition reads the saved advisor profit streak")
 
 	# --- "Run L1 … for N turns": level + run-streak filter ---
 	MatchState.reset()
@@ -4537,15 +4641,54 @@ func _test_live_unlock_conditions() -> void:
 	_check(MatchState._count_buildings("coal_power", 1, false, 20) == 1,
 		"the L1 building counts once its run-streak reaches 20 turns")
 
-	# --- Forward-compatible level filter: no Level-2 buildings exist yet ---
+	# --- Level filter: this fixture contains no Level-2 buildings ---
 	_check(MatchState._count_buildings("coal_power", 2, false, 0) == 0,
-		"Level-2 gates stay unmet until the leveling mechanic ships")
+		"Level-2 gates stay unmet when the owned building is only Level 1")
 	# --- Profitability filter: a building with no costed output isn't profitable ---
 	_check(MatchState._count_buildings("coal_power", -1, true, 0) == 0,
 		"the profitable filter excludes buildings with no known unit cost")
 
+	# Every non-placeholder research row must either resolve to a live metric or
+	# appear in this explicit content-gap allowlist. This catches new casing,
+	# identifier and unsupported-verb regressions across the full CSV.
+	var expected_content_gaps := [
+		"Agrivoltaic Integration",
+		"Autonomous Dispatch Rooms",
+		"Combined Cycle Gas",
+		"Continuous Improvement Teams",
+		"Integrated Operations Planning",
+		"Risk Desk Procedures",
+		"Route Optimization",
+		"Safety Training",
+		"Shift Supervisors",
+		"Spot Price Reporting",
+	]
+	var actual_content_gaps: Array = []
+	for issue in MatchState.research_condition_issues():
+		actual_content_gaps.append(str(issue.title))
+	actual_content_gaps.sort()
+	_check(actual_content_gaps == expected_content_gaps,
+		"research condition audit has no unexpected unresolved targets (got %s)" % [actual_content_gaps])
+	var research_titles: Dictionary = {}
+	var duplicate_titles: Array = []
+	for unlock_def in MatchState._unlock_defs:
+		var unlock_title := str(unlock_def.get("title", ""))
+		if research_titles.has(unlock_title):
+			duplicate_titles.append(unlock_title)
+		research_titles[unlock_title] = true
+	var missing_prereqs: Array = []
+	for unlock_def in MatchState._unlock_defs:
+		for prereq in unlock_def.get("prereqs", []):
+			if not research_titles.has(str(prereq)):
+				missing_prereqs.append("%s -> %s" % [unlock_def.title, prereq])
+	_check(duplicate_titles.is_empty(),
+		"research dataset has no duplicate unlock titles (got %s)" % [duplicate_titles])
+	_check(missing_prereqs.is_empty(),
+		"every research prerequisite resolves to an unlock title (got %s)" % [missing_prereqs])
+
 	Modifiers.reset()
 	MatchState.reset()
+	MarketState.import_state({})
 	Production.produced_by_building.clear()
 	Production.full_output_streak_by_building.clear()
 
@@ -7687,16 +7830,28 @@ func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	var recipe := Catalog.get_recipe("r_020")
 	var building_id := str(recipe.get("building_id", ""))
 	var saved_unlocks := MatchState.unlocked_titles.duplicate(true)
+	var saved_land := MatchState.tile_land_owned.duplicate(true)
+	var saved_construct_v2 := MatchState.use_construct_panel_v2
+	# This fixture explicitly instantiates the legacy panel and calls its tile-open
+	# API, so do not let the live v2 routing toggle make that API return early.
+	MatchState.use_construct_panel_v2 = false
+	# Electric Arc Refining now has a functioning Own-land auto-condition. Keep
+	# that condition deliberately unmet while this test isolates panel filtering.
+	MatchState.tile_land_owned.clear()
 	MatchState.unlocked_titles.erase("Electric Arc Refining")
 	var packed: PackedScene = load("res://scenes/construct_panel.tscn")
 	if packed == null or recipe.is_empty() or building_id == "":
 		_check(false, "research unlock: construct panel fixture resolves")
 		_replace_dict(MatchState.unlocked_titles, saved_unlocks)
+		_replace_dict(MatchState.tile_land_owned, saved_land)
+		MatchState.use_construct_panel_v2 = saved_construct_v2
 		return
 	var panel: Control = packed.instantiate() as Control
 	if panel == null:
 		_check(false, "research unlock: construct panel instantiates as Control")
 		_replace_dict(MatchState.unlocked_titles, saved_unlocks)
+		_replace_dict(MatchState.tile_land_owned, saved_land)
+		MatchState.use_construct_panel_v2 = saved_construct_v2
 		return
 	add_child(panel)
 	await get_tree().process_frame
@@ -7723,6 +7878,8 @@ func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	panel.queue_free()
 	await get_tree().process_frame
 	_replace_dict(MatchState.unlocked_titles, saved_unlocks)
+	_replace_dict(MatchState.tile_land_owned, saved_land)
+	MatchState.use_construct_panel_v2 = saved_construct_v2
 
 func _construct_panel_has_recipe(panel: Node, building_id: String, recipe_id: String) -> bool:
 	var by_building: Dictionary = panel.get("recipes_by_building")
@@ -8878,9 +9035,9 @@ func _test_infra_upgrade() -> void:
 	var rid: String = MatchState.add_building("b_019", "", "tile_9_9", "player_1", "test_infra_rails")
 	var rpv: Dictionary = MatchState.preview_upgrade(rid)
 	var rcap: Dictionary = rpv.get("capacity", {})
-	_check(bool(rpv.get("infra", false)) and absf(float(rcap.get("cur", 0.0)) - 400.0) < 0.001
-		and absf(float(rcap.get("new", 0.0)) - 800.0) < 0.001,
-		"infra upgrade: rails capacity delta 400 → 800 (rail mode mapping)")
+	_check(bool(rpv.get("infra", false)) and absf(float(rcap.get("cur", 0.0)) - 600.0) < 0.001
+		and absf(float(rcap.get("new", 0.0)) - 1200.0) < 0.001,
+		"infra upgrade: rails capacity delta 600 → 1200 (rail mode mapping)")
 	MatchState.remove_building(rid)
 
 	MatchState.pending_upgrades = pend_before

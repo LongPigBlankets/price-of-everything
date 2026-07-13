@@ -85,6 +85,10 @@ func transport_cost_for_route(good_id: String, qty: int, route_data: Dictionary,
 	return cost
 
 
+func link_capacity(mode: String, level: int) -> float:
+	return EconomyConfig.transport_link_capacity(mode, level)
+
+
 func quote_manifest(source_tile: String, destination_tile: String, goods_qtys: Dictionary, options: Dictionary = {}) -> Dictionary:
 	var surcharge := float(options.get("surcharge", 1.0))
 	var items: Array = []

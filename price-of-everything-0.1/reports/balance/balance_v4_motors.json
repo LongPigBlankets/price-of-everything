@@ -1,0 +1,789 @@
+{
+	"assertions_failed": 4,
+	"assertions_passed": 343,
+	"average_port_distance": 3.0,
+	"bankruptcy_turn": 28,
+	"building_runs": {
+		"copper_ingots": [
+			{
+				"instance_id": "inst_b_002_0003ee",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_007",
+				"tile_id": "tile_22_9"
+			}
+		],
+		"motor": [
+			{
+				"instance_id": "inst_b_007_0003f0",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_009",
+				"tile_id": "tile_22_9"
+			}
+		],
+		"steel": [
+			{
+				"instance_id": "inst_b_002_0003ed",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_003",
+				"tile_id": "tile_22_9"
+			}
+		],
+		"water": [
+			{
+				"instance_id": "inst_b_037_0003f2",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_011",
+				"tile_id": "tile_20_9"
+			}
+		],
+		"wiring": [
+			{
+				"instance_id": "inst_b_007_0003ef",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_008",
+				"tile_id": "tile_22_9"
+			}
+		]
+	},
+	"earned_research_modifiers_enabled": false,
+	"emergency_bridge_loan_principal": 1912.32146866729,
+	"emergency_bridge_loans_taken": 9,
+	"expansion_loan_gate_rejections": 0,
+	"expansion_loan_principal": 0.0,
+	"expansion_loans_taken": 0,
+	"final_active_modifiers": [],
+	"final_building_count": 6,
+	"final_cash": -26631.718153234,
+	"final_economy": {
+		"goods_sales_revenue": 0.0,
+		"grid_bought": 20,
+		"grid_sold": 0,
+		"money_in": 0.0,
+		"money_out": 246.520375314045,
+		"power_demand": 20,
+		"power_sales_revenue": 0.0,
+		"power_supply": 0,
+		"starved": [
+			{
+				"building_id": "b_002",
+				"instance_id": "inst_b_002_0003ed",
+				"missing": [
+					{
+						"good_id": "g_004",
+						"have": 0,
+						"internal_name": "iron_ingots",
+						"need": 40
+					},
+					{
+						"good_id": "g_001",
+						"have": 0,
+						"internal_name": "coal",
+						"need": 20
+					}
+				],
+				"tile_id": "tile_22_9"
+			},
+			{
+				"building_id": "b_002",
+				"instance_id": "inst_b_002_0003ee",
+				"missing": [
+					{
+						"good_id": "g_003",
+						"have": 0,
+						"internal_name": "copper_ore",
+						"need": 36
+					}
+				],
+				"tile_id": "tile_22_9"
+			},
+			{
+				"building_id": "b_007",
+				"instance_id": "inst_b_007_0003ef",
+				"missing": [
+					{
+						"good_id": "g_005",
+						"have": 0,
+						"internal_name": "copper_ingots",
+						"need": 24
+					}
+				],
+				"tile_id": "tile_22_9"
+			},
+			{
+				"building_id": "b_007",
+				"instance_id": "inst_b_007_0003f0",
+				"missing": [
+					{
+						"good_id": "g_007",
+						"have": 13,
+						"internal_name": "copper_wiring",
+						"need": 32
+					}
+				],
+				"tile_id": "tile_22_9"
+			}
+		]
+	},
+	"final_units_sold": 558,
+	"integration_scope": "base motors through an initially market-fed steel/copper chain, then pig iron, iron/copper/coal extraction, water and owned coal power",
+	"integration_stages": {
+		"water": {
+			"building_count": 6,
+			"cash": -785.362076435473,
+			"loan_capacity_left": -713.507700534661,
+			"profit": -246.328028884355,
+			"turn": 27,
+			"units_sold": 502
+		}
+	},
+	"last_profit": -246.520375314045,
+	"maintenance_paid_total": 5154.0,
+	"max_bankruptcy_streak": 119,
+	"profit_by_turn": [
+		{
+			"profit": 0.0,
+			"turn": 2
+		},
+		{
+			"profit": 0.0,
+			"turn": 3
+		},
+		{
+			"profit": 0.0,
+			"turn": 4
+		},
+		{
+			"profit": 0.0,
+			"turn": 5
+		},
+		{
+			"profit": -1047.10399368787,
+			"turn": 6
+		},
+		{
+			"profit": -151.260597450125,
+			"turn": 7
+		},
+		{
+			"profit": -202.221999632704,
+			"turn": 8
+		},
+		{
+			"profit": -204.075602506646,
+			"turn": 9
+		},
+		{
+			"profit": 58.2138519126129,
+			"turn": 10
+		},
+		{
+			"profit": 66.3626160048681,
+			"turn": 11
+		},
+		{
+			"profit": 24.0029088234153,
+			"turn": 12
+		},
+		{
+			"profit": 8.7619376449297,
+			"turn": 13
+		},
+		{
+			"profit": 20.7099307467729,
+			"turn": 14
+		},
+		{
+			"profit": 12.0782340458695,
+			"turn": 15
+		},
+		{
+			"profit": -286.67053994333,
+			"turn": 16
+		},
+		{
+			"profit": -215.576372629373,
+			"turn": 17
+		},
+		{
+			"profit": 26.1090873484491,
+			"turn": 18
+		},
+		{
+			"profit": 26.1494351718256,
+			"turn": 19
+		},
+		{
+			"profit": 58.6312750470084,
+			"turn": 20
+		},
+		{
+			"profit": 34.1562964618297,
+			"turn": 21
+		},
+		{
+			"profit": 12.3109639751693,
+			"turn": 22
+		},
+		{
+			"profit": -47.7749245859384,
+			"turn": 23
+		},
+		{
+			"profit": -190.635485480737,
+			"turn": 24
+		},
+		{
+			"profit": -220.437475724056,
+			"turn": 25
+		},
+		{
+			"profit": -230.360217461132,
+			"turn": 26
+		},
+		{
+			"profit": -246.328028884355,
+			"turn": 27
+		},
+		{
+			"profit": -153.957306797774,
+			"turn": 28
+		},
+		{
+			"profit": 49.4275181742304,
+			"turn": 29
+		},
+		{
+			"profit": 30.5256131231903,
+			"turn": 30
+		},
+		{
+			"profit": 29.2451660563374,
+			"turn": 31
+		},
+		{
+			"profit": -212.125811364389,
+			"turn": 32
+		},
+		{
+			"profit": -213.871808550871,
+			"turn": 33
+		},
+		{
+			"profit": -215.618624997449,
+			"turn": 34
+		},
+		{
+			"profit": -217.366263161561,
+			"turn": 35
+		},
+		{
+			"profit": -219.114725508715,
+			"turn": 36
+		},
+		{
+			"profit": -220.864014512518,
+			"turn": 37
+		},
+		{
+			"profit": -222.614132654699,
+			"turn": 38
+		},
+		{
+			"profit": -224.365082425143,
+			"turn": 39
+		},
+		{
+			"profit": -226.11686632192,
+			"turn": 40
+		},
+		{
+			"profit": -227.869486851309,
+			"turn": 41
+		},
+		{
+			"profit": -229.622946527831,
+			"turn": 42
+		},
+		{
+			"profit": -226.772159456034,
+			"turn": 43
+		},
+		{
+			"profit": -222.465453414735,
+			"turn": 44
+		},
+		{
+			"profit": -220.238107931832,
+			"turn": 45
+		},
+		{
+			"profit": -220.554949507912,
+			"turn": 46
+		},
+		{
+			"profit": -220.872642928351,
+			"turn": 47
+		},
+		{
+			"profit": -221.191190757722,
+			"turn": 48
+		},
+		{
+			"profit": -221.510595569046,
+			"turn": 49
+		},
+		{
+			"profit": -221.830859943819,
+			"turn": 50
+		},
+		{
+			"profit": -211.205223400147,
+			"turn": 51
+		},
+		{
+			"profit": -211.52721468035,
+			"turn": 52
+		},
+		{
+			"profit": -211.850073319635,
+			"turn": 53
+		},
+		{
+			"profit": -212.173801933695,
+			"turn": 54
+		},
+		{
+			"profit": -212.49840314685,
+			"turn": 55
+		},
+		{
+			"profit": -212.823879592075,
+			"turn": 56
+		},
+		{
+			"profit": -213.150233911029,
+			"turn": 57
+		},
+		{
+			"profit": -213.47746875409,
+			"turn": 58
+		},
+		{
+			"profit": -213.713920113715,
+			"turn": 59
+		},
+		{
+			"profit": -214.04292399114,
+			"turn": 60
+		},
+		{
+			"profit": -214.372816396409,
+			"turn": 61
+		},
+		{
+			"profit": -214.703600015072,
+			"turn": 62
+		},
+		{
+			"profit": -215.035277541552,
+			"turn": 63
+		},
+		{
+			"profit": -215.367851679172,
+			"turn": 64
+		},
+		{
+			"profit": -215.701325140191,
+			"turn": 65
+		},
+		{
+			"profit": -216.035700645831,
+			"turn": 66
+		},
+		{
+			"profit": -216.370980926312,
+			"turn": 67
+		},
+		{
+			"profit": -216.707168720883,
+			"turn": 68
+		},
+		{
+			"profit": -217.044266777851,
+			"turn": 69
+		},
+		{
+			"profit": -217.382277854618,
+			"turn": 70
+		},
+		{
+			"profit": -217.721204717708,
+			"turn": 71
+		},
+		{
+			"profit": -218.061050142804,
+			"turn": 72
+		},
+		{
+			"profit": -218.401816914776,
+			"turn": 73
+		},
+		{
+			"profit": -218.743507827716,
+			"turn": 74
+		},
+		{
+			"profit": -219.086125684969,
+			"turn": 75
+		},
+		{
+			"profit": -219.429673299167,
+			"turn": 76
+		},
+		{
+			"profit": -219.774153492261,
+			"turn": 77
+		},
+		{
+			"profit": -220.119569095556,
+			"turn": 78
+		},
+		{
+			"profit": -220.46592294974,
+			"turn": 79
+		},
+		{
+			"profit": -220.813217904919,
+			"turn": 80
+		},
+		{
+			"profit": -221.161456820654,
+			"turn": 81
+		},
+		{
+			"profit": -221.510642565986,
+			"turn": 82
+		},
+		{
+			"profit": -221.86077801948,
+			"turn": 83
+		},
+		{
+			"profit": -222.211866069249,
+			"turn": 84
+		},
+		{
+			"profit": -222.563909612993,
+			"turn": 85
+		},
+		{
+			"profit": -222.916911558033,
+			"turn": 86
+		},
+		{
+			"profit": -222.964966722233,
+			"turn": 87
+		},
+		{
+			"profit": -223.319894230476,
+			"turn": 88
+		},
+		{
+			"profit": -223.675788920036,
+			"turn": 89
+		},
+		{
+			"profit": -224.032653737054,
+			"turn": 90
+		},
+		{
+			"profit": -224.390491637462,
+			"turn": 91
+		},
+		{
+			"profit": -224.74930558702,
+			"turn": 92
+		},
+		{
+			"profit": -225.109098561345,
+			"turn": 93
+		},
+		{
+			"profit": -225.469873545952,
+			"turn": 94
+		},
+		{
+			"profit": -225.564624968731,
+			"turn": 95
+		},
+		{
+			"profit": -225.927372970204,
+			"turn": 96
+		},
+		{
+			"profit": -226.291111998227,
+			"turn": 97
+		},
+		{
+			"profit": -226.655845078248,
+			"turn": 98
+		},
+		{
+			"profit": -227.021575245788,
+			"turn": 99
+		},
+		{
+			"profit": -227.388305546474,
+			"turn": 100
+		},
+		{
+			"profit": -227.756039036079,
+			"turn": 101
+		},
+		{
+			"profit": -228.124778780553,
+			"turn": 102
+		},
+		{
+			"profit": -228.494527856063,
+			"turn": 103
+		},
+		{
+			"profit": -228.865289349028,
+			"turn": 104
+		},
+		{
+			"profit": -229.237066356154,
+			"turn": 105
+		},
+		{
+			"profit": -229.609861984473,
+			"turn": 106
+		},
+		{
+			"profit": -229.983679351377,
+			"turn": 107
+		},
+		{
+			"profit": -230.358521584657,
+			"turn": 108
+		},
+		{
+			"profit": -230.734391822539,
+			"turn": 109
+		},
+		{
+			"profit": -231.111293213719,
+			"turn": 110
+		},
+		{
+			"profit": -231.489228917404,
+			"turn": 111
+		},
+		{
+			"profit": -231.868202103348,
+			"turn": 112
+		},
+		{
+			"profit": -232.248215951888,
+			"turn": 113
+		},
+		{
+			"profit": -232.629273653981,
+			"turn": 114
+		},
+		{
+			"profit": -233.011378411245,
+			"turn": 115
+		},
+		{
+			"profit": -233.394533435995,
+			"turn": 116
+		},
+		{
+			"profit": -233.77874195128,
+			"turn": 117
+		},
+		{
+			"profit": -234.164007190924,
+			"turn": 118
+		},
+		{
+			"profit": -234.55033239956,
+			"turn": 119
+		},
+		{
+			"profit": -234.937720832673,
+			"turn": 120
+		},
+		{
+			"profit": -235.326175756635,
+			"turn": 121
+		},
+		{
+			"profit": -235.715700448746,
+			"turn": 122
+		},
+		{
+			"profit": -236.106298197272,
+			"turn": 123
+		},
+		{
+			"profit": -236.497972301484,
+			"turn": 124
+		},
+		{
+			"profit": -236.890726071697,
+			"turn": 125
+		},
+		{
+			"profit": -237.28456282931,
+			"turn": 126
+		},
+		{
+			"profit": -237.679485906843,
+			"turn": 127
+		},
+		{
+			"profit": -238.07549864798,
+			"turn": 128
+		},
+		{
+			"profit": -238.472604407609,
+			"turn": 129
+		},
+		{
+			"profit": -238.870806551856,
+			"turn": 130
+		},
+		{
+			"profit": -238.720108458133,
+			"turn": 131
+		},
+		{
+			"profit": -239.120513515171,
+			"turn": 132
+		},
+		{
+			"profit": -239.522025123066,
+			"turn": 133
+		},
+		{
+			"profit": -239.924646693316,
+			"turn": 134
+		},
+		{
+			"profit": -240.328381648863,
+			"turn": 135
+		},
+		{
+			"profit": -240.733233424133,
+			"turn": 136
+		},
+		{
+			"profit": -241.139205465078,
+			"turn": 137
+		},
+		{
+			"profit": -241.546301229216,
+			"turn": 138
+		},
+		{
+			"profit": -241.954524185673,
+			"turn": 139
+		},
+		{
+			"profit": -242.363877815223,
+			"turn": 140
+		},
+		{
+			"profit": -242.774365610333,
+			"turn": 141
+		},
+		{
+			"profit": -243.1859910752,
+			"turn": 142
+		},
+		{
+			"profit": -243.598757725795,
+			"turn": 143
+		},
+		{
+			"profit": -244.012669089907,
+			"turn": 144
+		},
+		{
+			"profit": -244.427728707183,
+			"turn": 145
+		},
+		{
+			"profit": -244.843940129168,
+			"turn": 146
+		},
+		{
+			"profit": -245.261306919353,
+			"turn": 147
+		},
+		{
+			"profit": -245.679832653212,
+			"turn": 148
+		},
+		{
+			"profit": -246.099520918251,
+			"turn": 149
+		},
+		{
+			"profit": -246.520375314045,
+			"turn": 150
+		}
+	],
+	"prudent_expansion_enabled": false,
+	"research_unlock_turns": {
+		"Axial Flux Motor Lines": 18,
+		"Hairpin Stator Winding": 18,
+		"Operational Team Managers": 6
+	},
+	"scenario": "balance_v4_motors",
+	"start_config": "res://data/starts/open_field.json",
+	"start_modifiers_preserved": false,
+	"starting_money": 1500.0,
+	"target_recipe_first_run": {
+		"r_009": 8
+	},
+	"target_turn": 150,
+	"target_units_sold": {
+		"motor": 420
+	},
+	"turn_150": {
+		"building_count": 6,
+		"cash": -26631.718153234,
+		"loan_capacity_left": -7.5,
+		"profit": -246.520375314045,
+		"units_sold": 558
+	},
+	"turn_30": {
+		"building_count": 6,
+		"cash": -859.366251935826,
+		"loan_capacity_left": -715.007700534661,
+		"profit": 30.5256131231903,
+		"units_sold": 558
+	},
+	"turn_80": {
+		"building_count": 6,
+		"cash": -11089.4074588356,
+		"loan_capacity_left": -12.0,
+		"profit": -220.813217904919,
+		"units_sold": 558
+	},
+	"turn_chain_fully_integrated": -1,
+	"turn_profit_gt_100": -1,
+	"turn_profit_gt_1000": -1,
+	"turn_profit_gt_200": -1,
+	"turn_profit_gt_500": -1,
+	"unprofitable_cash_cushion_waits": 0
+}

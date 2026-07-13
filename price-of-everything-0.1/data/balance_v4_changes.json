@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "preset": "balance_v4_july_2026",
+  "baseline_commit": "aabb4439e604e286d9854870bf711732a71d3b43",
+  "description": "Exact field-level runtime data changes for the July 2026 balance-v4 playtest. Old values are retained here so the preset can be reverted without replacing unrelated CSV edits.",
+  "files": [
+    {
+      "path": "data/Goods - goodsMVP.csv",
+      "key_column": "ID",
+      "changes": [
+        {"key": "g_011", "fields": {"base_price": {"old": "4.0", "new": "0.25"}}},
+        {"key": "g_014", "fields": {"base_price": {"old": "62.0", "new": "3.3"}}},
+        {"key": "g_028", "fields": {"base_price": {"old": "4.814", "new": "3.888"}}},
+        {"key": "g_041", "fields": {"base_price": {"old": "74.991", "new": "70.811"}}},
+        {"key": "g_047", "fields": {"base_price": {"old": "1.84", "new": "3.528"}}},
+        {"key": "g_048", "fields": {"base_price": {"old": "21.549", "new": "24.503"}}},
+        {"key": "g_051", "fields": {"base_price": {"old": "15.98", "new": "6.653"}}},
+        {"key": "g_054", "fields": {"base_price": {"old": "26.412", "new": "30.843"}}},
+        {"key": "g_059", "fields": {"base_price": {"old": "25.411", "new": "25"}}},
+        {"key": "g_060", "fields": {"base_price": {"old": "31.955", "new": "15"}}},
+        {"key": "g_061", "fields": {"base_price": {"old": "25.554", "new": "5"}}},
+        {"key": "g_065", "fields": {"base_price": {"old": "30.121", "new": "3.47"}}},
+        {"key": "g_069", "fields": {"base_price": {"old": "28.187", "new": "3.533"}}}
+      ]
+    },
+    {
+      "path": "data/recipes_all.csv",
+      "key_column": "recipe_id",
+      "changes": [
+        {"key": "r_012", "fields": {"output_qty_1": {"old": "66", "new": "22"}, "output_qty_2": {"old": "36", "new": "44"}, "output_qty_3": {"old": "12", "new": "22"}}},
+        {"key": "r_020", "fields": {"output_qty_1": {"old": "65", "new": "36"}}},
+        {"key": "r_031", "fields": {"output_qty_1": {"old": "400", "new": "80"}}},
+        {"key": "r_032", "fields": {"output_qty_1": {"old": "10", "new": "6"}}},
+        {"key": "r_044", "fields": {"qty_1": {"old": "1", "new": "10"}, "qty_2": {"old": "1", "new": "20"}}},
+        {"key": "r_076", "fields": {"output_qty_1": {"old": "185", "new": "50"}}},
+        {"key": "r_078", "fields": {"output_qty_1": {"old": "15", "new": "16"}, "output_qty_2": {"old": "4", "new": "8"}}},
+        {"key": "r_079", "fields": {"output_qty_2": {"old": "6", "new": "7"}}},
+        {"key": "r_080", "fields": {"output_qty_2": {"old": "8", "new": "11"}}},
+        {"key": "r_081", "fields": {"output_qty_1": {"old": "14", "new": "6"}}},
+        {"key": "r_082", "fields": {"output_qty_1": {"old": "180", "new": "54"}}},
+        {"key": "r_099", "fields": {"qty_1": {"old": "4", "new": "8"}}},
+        {"key": "r_102", "fields": {"qty_1": {"old": "35", "new": "4"}, "qty_2": {"old": "18", "new": "2"}, "qty_3": {"old": "9", "new": "1"}, "energy_req": {"old": "20", "new": "2"}, "output_qty_1": {"old": "12", "new": "6"}, "labour_unskilled_required": {"old": "5863", "new": "500"}, "labour_skilled_required": {"old": "5213", "new": "100"}, "labour_h_skilled_required": {"old": "1755", "new": "50"}}},
+        {"key": "r_116", "fields": {"output_qty_1": {"old": "29", "new": "36"}}},
+        {"key": "r_118", "fields": {"labour_unskilled_required": {"old": "5863", "new": "2592"}, "labour_skilled_required": {"old": "5213", "new": "4807"}, "labour_h_skilled_required": {"old": "1755", "new": "3711"}}},
+        {"key": "r_124", "fields": {"labour_unskilled_required": {"old": "844", "new": "796"}, "labour_skilled_required": {"old": "1818", "new": "1582"}, "labour_h_skilled_required": {"old": "4860", "new": "4199"}}},
+        {"key": "r_136", "fields": {"qty_1": {"old": "69", "new": "6"}, "qty_2": {"old": "23", "new": "2"}, "qty_3": {"old": "46", "new": "4"}, "qty_4": {"old": "46", "new": "4"}, "energy_req": {"old": "20", "new": "5"}, "output_qty_1": {"old": "15", "new": "6"}, "labour_unskilled_required": {"old": "7114", "new": "500"}, "labour_skilled_required": {"old": "2668", "new": "100"}, "labour_h_skilled_required": {"old": "270", "new": "50"}}}
+      ]
+    },
+    {
+      "path": "data/research_unlocks.csv",
+      "key_column": "title",
+      "changes": [
+        {"key": "Improved Coal Mining", "fields": {"description": {"old": "Increases coal mining output by 20% permanently.", "new": "Increases coal mining output by 15% permanently."}}},
+        {"key": "Beneficiated Iron Mining", "fields": {"description": {"old": "Increases iron ore mining output by 20% permanently.", "new": "Increases iron ore mining output by 15% permanently."}}},
+        {"key": "Deep Seam Surveying", "fields": {"description": {"old": "Increases limestone, sand and salt mining output by 20% permanently.", "new": "Increases limestone, sand and salt mining output by 15% permanently."}}},
+        {"key": "Copper Froth Flotation", "fields": {"description": {"old": "Increases copper ore mining output by 20% permanently.", "new": "Increases copper ore mining output by 15% permanently."}}},
+        {"key": "Automated Mine Dispatch", "fields": {"description": {"old": "Increases Mine output by 10% permanently.", "new": "Increases coal, iron, copper, limestone, sand and salt mining output by a further 15% permanently."}}},
+        {"key": "Rare Vein Prospecting", "fields": {"description": {"old": "Increases rare earth and alloy ore mining output by 20% permanently.", "new": "Increases rare earth and alloy ore mining output by 15% permanently."}}},
+        {"key": "Composite Drill Bits", "fields": {"description": {"old": "Increases rare earth, alloy, sulphur and bauxite mining output by 20% permanently.", "new": "Increases rare earth, alloy, sulphur and bauxite mining output by 15% permanently."}}},
+        {"key": "Electric Arc Refining", "fields": {"description": {"old": "Unlocks new recipes: Electric Arc Steelmaking (22 Steel); ELYSIS Aluminium (15 Aluminium); Flash Copper Smelting (36 Copper Ingots).", "new": "Unlocks new recipes: Electric Arc Steelmaking (50 Steel); ELYSIS Aluminium (15 Aluminium); Flash Copper Smelting (36 Copper Ingots)."}}},
+        {"key": "Lithium Iron Phosphate Cells", "fields": {"description": {"old": "Unlocks new recipe: Lithium Phosphate Batteries (6 Lithium Battery).", "new": "Unlocks new recipe: Lithium Phosphate Batteries (8 Lithium Battery)."}}},
+        {"key": "Iron-Air Battery Cells", "fields": {"description": {"old": "Unlocks new recipe: Iron Air Batteries (12 Iron Battery).", "new": "Unlocks new recipe: Iron Air Batteries (6 Iron Battery)."}}},
+        {"key": "Czochralski Crystal Growth", "fields": {"description": {"old": "Unlocks new recipe: Fluidised Bed Reactor + CZ Silicon (8 Polysilicon).", "new": "Unlocks new recipe: Fluidised Bed Reactor + CZ Silicon (6 Polysilicon)."}}},
+        {"key": "Membraneless Electrolysis", "fields": {"description": {"old": "Unlocks new recipe: Membraneless Electrolysis (6 Hydrogen).", "new": "Unlocks new recipe: Membraneless Electrolysis (22 Hydrogen and 11 Oxygen)."}}}
+      ]
+    }
+  ]
+}

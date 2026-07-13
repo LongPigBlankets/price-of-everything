@@ -1,0 +1,57 @@
+recipe_id,recipe,research_unlock,primary_output,base_recipe_id,base_recipe,unlock_profit,base_profit,profit_advantage,beats_base
+r_020,Flash Copper Smelting,Electric Arc Refining,copper_ingots,r_007,Copper Blistering,31.669,7.506,24.163,True
+r_025,Basic Oxygen Steelmaking,Oxygen-Enriched Blast,steel,r_003,Steelmaking,26.175,11.105,15.07,True
+r_031,Direct Reduced Iron Smelting,Basic Blast Furnaces,iron_ingots,r_005,Pig Iron Smelting,16.754,8.477,8.277,True
+r_032,Lithium Ion Battery Manufacturing,Lithium Battery Storage,lithium_battery,,,-25.875,,,no base comparator
+r_034,Construction Equipment Assembly (EV),Electric Plant & Machinery,construction_equipment_ev,,,39.51,,,no base comparator
+r_039,Lithium Electrolysis,Solid-Oxide Electrolysis,lithium_carbonate,r_227,Rudimentary Lithium Refinement,-64.424,7.503,-71.928,False
+r_042,Bio-Graphitisation,Biomass Cracking,graphite,r_150,Petroleum Needle Coke Calcination,109.948,7.504,102.444,True
+r_054,High Strength Glassmaking,High Strength Glassmaking,glass,r_053,Industrial Glassmaking,14.398,7.495,6.903,True
+r_060,Durable Perovskite Solar Panels,Atomic Layer Deposition,solar_panel,r_058,Solar Panel Manufacturing,95.055,7.504,87.552,True
+r_061,Segmented Assembly Wind Turbines,Segmented Blade Assembly,wind_turbine,r_059,Wind Turbine Manufacturing,32.149,7.5,24.65,True
+r_063,Heterojunction Solar Panels,Heterojunction Cell Lines,solar_panel,r_058,Solar Panel Manufacturing,65.908,7.504,58.404,True
+r_064,Triple Tandem Solar Panels,Tandem Cell Stacking,solar_panel,r_058,Solar Panel Manufacturing,83.536,7.504,76.033,True
+r_065,SynRM Magnetless Motors,Synchronous Reluctance Drives,motor,r_009,Motor Manufacture,57.549,7.49,50.059,True
+r_066,Axial Flux Motors,Axial Flux Motor Lines,motor,r_009,Motor Manufacture,13.777,7.49,6.287,True
+r_069,Lightweight Car Bodies,Composite Panel Pressing,car_body,r_068,Car Body Manufacturing,33.426,7.51,25.917,True
+r_072,V8 Engine Manufacturing,Precision Assembly Lines,engine,r_071,ICE Engine Manufacturing,13.6,7.499,6.101,True
+r_073,Large Vehicle Engine Manufacturing,Heavy Engine Casting,large_engine,,,15.004,,,no base comparator
+r_074,Hybrid Engine Manufacturing,Hybrid Powertrain Integration,engine,r_071,ICE Engine Manufacturing,21.232,7.499,13.733,True
+r_076,Electric Arc Steelmaking,Electric Arc Refining,steel,r_003,Steelmaking,32.206,11.105,21.102,True
+r_077,HIsarna Steel Making,Alloy Heat Treatment,steel,r_003,Steelmaking,45.846,11.105,34.741,True
+r_078,Methane Pyrolysis,Methane Pyrolysis,hydrogen,r_079,Water Electrolysis,55.359,5.922,49.437,True
+r_080,Membraneless Electrolysis,Membraneless Electrolysis,hydrogen,r_079,Water Electrolysis,31.762,5.922,25.84,True
+r_081,Fluidised Bed Reactor + CZ Silicon,Czochralski Crystal Growth,polysilicon,r_045,Polysilicon (Siemens) Smelting,68.136,7.501,60.635,True
+r_083,ELYSIS Aluminium,Electric Arc Refining,aluminium,r_050,Aluminium (Hall Heroult) Smelting,15.585,4.999,10.587,True
+r_084,Aluminium Direct Carbothermic Electrolysis,Ultra-High-Power Arcs,aluminium,r_050,Aluminium (Hall Heroult) Smelting,28.036,4.999,23.037,True
+r_087,Nitrogen Air Separation,Process Intensification,nitrogen,,,15.014,,,no base comparator
+r_099,Lithium Phosphate Batteries,Lithium Iron Phosphate Cells,lithium_battery,,,42.29,,,no base comparator
+r_102,Sodium Ion Battery Manufacturing,Sodium Battery Storage,sodium_battery,,,48.739,,,no base comparator
+r_105,Water Treatment,Wastewater Bioreactors,pure_water,r_011,Water Pumping,30.675,8.254,22.421,True
+r_107,E-Waste Recycling,Advanced Oxidation Loops,copper_wiring,r_008,Copper Wire Drawing,4.167,7.506,-3.339,False
+r_108,Biowaste Recycling,Biowaste Digestion,biomass,r_213,Aggressive Logging - Biomass,15.246,7.496,7.75,True
+r_118,Automated ICE Car Assembly,Automated Body-in-White Lines,ice_car,r_117,ICE Car Production,40.002,14.999,25.003,True
+r_119,EV Assembly,Electric Vehicle Assembly,ev_car,,,71.985,,,no base comparator
+r_121,Circuit Printing,300mm Wafer Lines,circuit_board,r_120,Basic Circuit Soldering,25.313,7.491,17.822,True
+r_123,Fabless Semiconductors,Advanced Photolithography,cpu,r_122,Semiconductor Fabbing,36.381,-9.999,46.38,True
+r_124,Semiconductor 3D Printing,Additive Semiconductor Printing,cpu,r_122,Semiconductor Fabbing,60.026,-9.999,70.025,True
+r_127,Precision Electrical Components,Precision Electronics Assembly,electrical_components,r_126,Electrical Components Production,26.483,7.501,18.982,True
+r_131,Hydrogen Power,Hydrogen Combustion Turbines,power,r_151,Petroleum Needle Coke Power,138.288,7.55,130.738,True
+r_133,Alloy Metal Electrolysis,Molten Salt Alloy Electrolysis,alloy_ingots,r_132,Alloy Metal Smelting,27.738,7.515,20.223,True
+r_136,Iron Air Batteries,Iron-Air Battery Cells,iron_battery,,,1.119,,,no base comparator
+r_154,Coal Liquefaction,Fischer-Tropsch Synthesis,fuels,r_022,Fuels Refining,154.169,7.502,146.666,True
+r_177,Shale Oil Fracking,Shale Oil Fracturing,crude_oil,r_014,Oil Drilling,14.51,7.509,7.001,True
+r_178,Offshore Oil Extraction,Offshore Drilling Platforms,crude_oil,r_014,Oil Drilling,30.606,7.509,23.097,True
+r_203,Hairpin Stator Motors,Hairpin Stator Winding,motor,r_009,Motor Manufacture,13.813,7.49,6.323,True
+r_205,Heavy Vehicles Automated Manufacturing,Heavy Vehicle Assembly,heavy_vehicle,r_204,Heavy Vehicles Assembly,50.334,15.352,34.982,True
+r_206,Electric Heavy Vehicles Manufacturing,Electric Drivetrain Integration,heavy_vehicle,r_204,Heavy Vehicles Assembly,62.464,15.352,47.112,True
+r_207,Heavy Electric Motor,Motor Winding Automation,large_engine,,,53.327,,,no base comparator
+r_208,Sustainable Biomass Production,Energy Crop Cultivation,biomass,r_213,Aggressive Logging - Biomass,-7.365,7.496,-14.86,False
+r_214,Sustainable Forestry - Biomass,Sustainable Forestry,biomass,r_213,Aggressive Logging - Biomass,29.721,7.496,22.225,True
+r_219,Copper Pipe Moulding,Alloy Heat Treatment,copper_pipe,r_026,Copper Pipe Hot Rolling,29.589,7.492,22.097,True
+r_220,Copper Pipe Manufacturing,Precision Tube Drawing,copper_pipe,r_026,Copper Pipe Hot Rolling,59.772,7.492,52.28,True
+r_221,Deepwater Oil Extraction,Dynamic-Positioning Drilling,crude_oil,r_014,Oil Drilling,30.606,7.509,23.097,True
+r_222,Subsea Manifold Extraction,Subsea Production Systems,crude_oil,r_014,Oil Drilling,60.786,7.509,53.277,True
+r_223,Floating Offshore Wind Power,Floating Offshore Wind Farms,power,r_151,Petroleum Needle Coke Power,60.04,7.55,52.49,True
+r_226,Magnetic Separation Electrolysis,Molten Salt Alloy Electrolysis,refined_ree,r_041,Rare Earth Reduction,27.195,7.497,19.698,True
+r_228,Bio Ethylene,Biomass Cracking,ethylene,r_023,Ethylene Refining,60.905,5.004,55.901,True

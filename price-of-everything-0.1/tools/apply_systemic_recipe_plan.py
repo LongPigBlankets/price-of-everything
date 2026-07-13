@@ -2,7 +2,7 @@
 """Deploy the approved systemic recipe plan into the live CSV data.
 
 ``systemic_recipe_formula.py`` is the source of truth for canonical prices,
-single-output quantities and the normal recipe workforce.  This script keeps
+ratio-preserving output baskets and the normal recipe workforce.  This script keeps
 the formula output intact, then applies the small set of explicitly approved
 route exceptions whose workforce is intentionally margin-controlled.
 """
@@ -35,6 +35,7 @@ SPECIAL_TARGETS = {
     "r_039": (20.0, (0.05, 0.35, 0.60)),  # lithium electrolysis
     "r_066": (15.0, (0.20, 0.45, 0.35)),  # axial-flux motors
     "r_072": (15.0, (0.35, 0.45, 0.20)),  # V8 engines
+    "r_118": (40.0, (0.20, 0.45, 0.35)),  # automated ICE assembly
     "r_123": (70.0, (0.05, 0.25, 0.70)),  # fabless semiconductors
     "r_124": (70.0, (0.05, 0.25, 0.70)),  # 3D semiconductors
     "r_203": (15.0, (0.20, 0.45, 0.35)),  # hairpin motors
@@ -146,9 +147,9 @@ def main() -> None:
     recipe_by_id = {row["recipe_id"]: row for row in recipes}
     good_by_name = {row["internal_name"]: row for row in goods_rows}
 
-    # Deploy prices and formula-planned output quantity/workforce.  Recipes
-    # absent from the plan are legacy/multi-output rows and retain their
-    # formula-compatible existing values until they get a dedicated model.
+    # Deploy prices and formula-planned output baskets/workforce.  Every output
+    # in a joint-product recipe moves together, preserving the systemic plan's
+    # industrial or deployed ratio.
     for good, source in prices.items():
         if good in good_by_name and source.get("formula_price", ""):
             good_by_name[good]["base_price"] = source["formula_price"]
@@ -157,7 +158,19 @@ def main() -> None:
         if recipe_id not in recipe_by_id:
             continue
         recipe = recipe_by_id[recipe_id]
-        recipe["output_qty_1"] = plan["suggested_output_qty"]
+        suggested_outputs = {
+            item.split(":", 1)[0]: item.split(":", 1)[1]
+            for item in plan.get("suggested_outputs", "").split("|")
+            if ":" in item
+        }
+        if suggested_outputs:
+            for index in range(1, 6):
+                good = recipe.get(f"output_{index}", "")
+                if good in suggested_outputs:
+                    recipe[f"output_qty_{index}"] = suggested_outputs[good]
+        else:
+            # Compatibility with plans generated before basket support.
+            recipe["output_qty_1"] = plan["suggested_output_qty"]
         for column, plan_column in zip(LABOUR_COLUMNS, ("labour_unskilled", "labour_skilled", "labour_h_skilled")):
             recipe[column] = plan[plan_column]
     for recipe in recipes:
@@ -194,7 +207,10 @@ def main() -> None:
         building_id = model.ALIASES.get(recipe["building_id"], recipe["building_id"])
         building = buildings[building_id]
         revenue = model.revenue(recipe, good_by_name)
-        labour_budget = revenue - direct_cost_without_labour(recipe, building, good_by_name) - target_profit
+        # SPECIAL_TARGETS use the same after-freight-and-working-inventory
+        # profit definition as recipe_rebalance.py.
+        friction = sum(model.one_turn_recipe_friction(recipe, good_by_name))
+        labour_budget = revenue - direct_cost_without_labour(recipe, building, good_by_name) - target_profit - friction
         staff = staff_for_budget(labour_budget, mix)
         for column, count in zip(LABOUR_COLUMNS, staff):
             recipe[column] = str(count)

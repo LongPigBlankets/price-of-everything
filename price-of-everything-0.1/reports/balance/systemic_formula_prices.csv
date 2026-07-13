@@ -1,77 +1,77 @@
 good,canonical_recipe_id,canonical_recipe,current_price,formula_price
-alkaline_battery,r_101,Alkaline Battery Manufacturing,5.493,5.493
+alkaline_battery,r_101,Alkaline Battery Manufacturing,5.493,4.921
 alloy_ingots,r_132,Alloy Metal Smelting,1.682,1.682
 alloy_ore,r_134,Alloy Metal Mining,0.962,0.962
-alumina,r_040,Bayer Process,1.972,1.972
-aluminium,r_050,Aluminium (Hall Heroult) Smelting,5.691,5.691
-ammonia,r_046,Haber Bosch Process,28.187,28.187
-basic_salt,,,0.5,0.5
+alumina,r_040,Bayer Process,1.972,1.924
+aluminium,r_050,Aluminium (Hall Heroult) Smelting,5.691,5.498
+ammonia,r_046,Haber Bosch Process,3.533,3.533
+basic_salt,r_010,Salt Mining,0.5,0.228
 bauxite_ore,r_015,Bauxite Mining,1.15,1.15
 bio_waste,,,0.3,0.3
-biomass,r_213,Aggressive Logging - Biomass,0.909,0.909
-building_frame,r_057,Building Frame Manufacture,14.663,14.599
-car_body,r_068,Car Body Manufacturing,11.304,11.173
-carbonised_biomass,r_217,Biomass Carbonisation,2.961,2.961
-chem_salts,,,1.0,1.0
-chlorine,,,0.72,0.72
+biomass,r_211,Agri Solar Farming - Biomass,0.909,0.664
+building_frame,r_057,Building Frame Manufacture,14.663,14.475
+car_body,r_068,Car Body Manufacturing,11.304,11.071
+carbonised_biomass,r_217,Biomass Carbonisation,2.961,2.618
+chem_salts,r_010,Salt Mining,1.0,0.456
+chlorine,r_012,Chlor-Alkali Process,0.72,0.567
 circuit_board,r_120,Basic Circuit Soldering,14.789,14.789
 coal,r_001,Coal Mining,0.4,0.4
-computer,r_125,Computer Assembly,53.33,53.134
+computer,r_125,Computer Assembly,53.33,51.335
 concrete,r_030,Electric Concrete Production,3.923,3.909
-construction_equipment_ev,r_034,Construction Equipment Assembly (EV),33.291,32.897
-construction_equipment_ice,r_033,Construction Equiment Assembly (ICE),35.034,34.77
+construction_equipment_ev,r_034,Construction Equipment Assembly (EV),33.291,32.337
+construction_equipment_ice,r_033,Construction Equiment Assembly (ICE),35.034,34.041
 copper_ingots,r_007,Copper Blistering,2.364,2.364
 copper_ore,r_006,Copper Mining,0.65,0.65
 copper_pipe,r_026,Copper Pipe Hot Rolling,3.018,3.018
 copper_wiring,r_008,Copper Wire Drawing,3.83,3.83
-cpu,r_122,Semiconductor Fabbing,74.991,74.571
+cpu,r_122,Semiconductor Fabbing,70.811,70.811
 crude_oil,r_014,Oil Drilling,1.066,1.066
 e_waste,,,0.6,0.6
-electrical_components,r_126,Electrical Components Production,11.286,11.286
-engine,r_071,ICE Engine Manufacturing,45.893,45.617
+electrical_components,r_126,Electrical Components Production,11.286,11.047
+engine,r_071,ICE Engine Manufacturing,45.893,44.713
 ethylene,r_023,Ethylene Refining,3.842,3.842
-ev_car,r_119,EV Assembly,140.409,139.184
-fertilisers,r_047,Fertilisers Production,12.164,12.164
-fibreglass,r_135,Fibreglass Production,11.719,11.719
+ev_car,r_119,EV Assembly,140.409,135.774
+fertilisers,r_047,Fertilisers Production,12.164,3.302
+fibreglass,r_135,Fibreglass Production,11.719,11.693
 fuels,r_022,Fuels Refining,2.367,2.367
-glass,r_053,Industrial Glassmaking,2.103,2.103
+glass,r_053,Industrial Glassmaking,2.103,2.053
 graphite,r_150,Petroleum Needle Coke Calcination,9.071,9.071
-heavy_vehicle,r_204,Heavy Vehicles Assembly,228.0,194.075
+heavy_vehicle,r_204,Heavy Vehicles Assembly,228.0,192.141
 high_grade_silicon,,,60.0,60.0
-hydrogen,,,62.0,62.0
-ice_car,r_117,ICE Car Production,102.304,101.877
-industrial_acids,r_114,Hydrochloric Acid Production,30.121,28.121
-iron_battery,r_136,Iron Air Batteries,25.554,25.155
+hydrogen,r_079,Water Electrolysis,3.3,3.3
+ice_car,r_117,ICE Car Production,102.304,97.876
+industrial_acids,r_114,Hydrochloric Acid Production,3.47,3.47
+iron_battery,r_136,Iron Air Batteries,5.0,5.0
 iron_ingots,r_005,Pig Iron Smelting,0.988,0.974
 iron_ore,r_002,Iron Mining,0.587,0.587
-large_engine,r_073,Large Vehicle Engine Manufacturing,42.331,42.064
+large_engine,r_073,Large Vehicle Engine Manufacturing,42.331,41.196
 limestone,r_019,Limestone Mining,0.925,0.925
-lithium_battery,r_032,Lithium Ion Battery Manufacturing,25.411,24.75
-lithium_carbonate,r_227,Rudimentary Lithium Refinement,15.98,15.28
+lithium_battery,r_032,Lithium Ion Battery Manufacturing,25.0,25.0
+lithium_carbonate,r_227,Rudimentary Lithium Refinement,6.653,6.653
 lithium_ore,r_016,Lithium Mining,2.838,2.838
-metallurgical_silicon,r_044,Silicon Smelting,1.84,1.84
+metallurgical_silicon,r_044,Silicon Smelting,3.528,3.528
 motor,r_009,Motor Manufacture,9.396,9.298
 nitrogen,r_087,Nitrogen Air Separation,1.176,1.176
-oxygen,,,4.0,4.0
+oxygen,r_079,Water Electrolysis,0.25,0.25
 pet_coke,r_218,Petroleum Coking,3.009,3.009
 plastics,r_024,Plastics Manufacturing,5.16,5.16
-polysilicon,r_045,Polysilicon (Siemens) Smelting,21.549,21.548
+polysilicon,r_045,Polysilicon (Siemens) Smelting,24.503,24.503
 power,,,0.1,0.1
 processed_oil,r_180,Oil Refining,2.655,2.655
 pure_water,r_011,Water Pumping,0.444,0.428
-pvc,r_175,PVC Polymerisation,5.678,5.678
+pvc,r_175,PVC Polymerisation,5.678,5.548
 ree_ore,r_017,Rare Earth Mining,1.9,1.9
-refined_ree,r_041,Rare Earth Reduction,11.658,11.658
-rubber,r_028,Synthetic Rubber Production,4.814,4.814
+refined_ree,r_041,Rare Earth Reduction,11.658,11.376
+rubber,r_028,Synthetic Rubber Production,3.888,3.888
 sand,r_018,Sand Excavation,0.525,0.525
 scrap,,,0.8,0.8
 silica,r_035,Silica Washing,2.653,2.64
-sodium_battery,r_102,Sodium Ion Battery Manufacturing,31.955,31.955
-sodium_hydroxide,,,0.8,0.8
-solar_panel,r_058,Solar Panel Manufacturing,26.412,26.41
+sodium_battery,r_102,Sodium Ion Battery Manufacturing,15.0,15.0
+sodium_hydroxide,r_012,Chlor-Alkali Process,0.8,0.63
+solar_panel,r_058,Solar Panel Manufacturing,30.843,30.843
 steel,r_003,Steelmaking,1.835,1.748
 sulphur,r_179,Sulphur Mining,0.962,0.962
-tyres,r_067,Rubber Vulcanisation,5.465,5.465
-waste_water,,,0.1,0.1
-wind_turbine,r_059,Wind Turbine Manufacturing,69.091,69.022
-windows,r_055,uPVC Window Manufacturing,11.475,11.475
+tyres,r_067,Rubber Vulcanisation,5.465,4.804
+waste_water,r_211,Agri Solar Farming - Biomass,0.1,0.073
+wind_turbine,r_059,Wind Turbine Manufacturing,69.091,68.621
+windows,r_055,uPVC Window Manufacturing,11.475,11.298

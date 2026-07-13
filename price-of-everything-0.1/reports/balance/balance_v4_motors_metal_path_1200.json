@@ -1,0 +1,1054 @@
+{
+	"assertions_failed": 3,
+	"assertions_passed": 537,
+	"average_port_distance": 2.0,
+	"bankruptcy_turn": 110,
+	"building_runs": {
+		"coal_hub_a": [
+			{
+				"instance_id": "inst_b_001_0003f9",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_001",
+				"tile_id": "tile_20_9"
+			}
+		],
+		"coal_local": [
+			{
+				"instance_id": "inst_b_001_0003f4",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_001",
+				"tile_id": "tile_23_10"
+			}
+		],
+		"copper_ingots": [
+			{
+				"instance_id": "inst_b_002_0003f1",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_007",
+				"tile_id": "tile_24_9"
+			}
+		],
+		"iron_a": [
+			{
+				"instance_id": "inst_b_001_0003f6",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_002",
+				"tile_id": "tile_25_11"
+			}
+		],
+		"iron_b": [
+			{
+				"instance_id": "inst_b_001_0003f7",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_002",
+				"tile_id": "tile_25_11"
+			}
+		],
+		"motor": [
+			{
+				"instance_id": "inst_b_007_0003f3",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_009",
+				"tile_id": "tile_24_9"
+			}
+		],
+		"pig_iron": [
+			{
+				"instance_id": "inst_b_002_0003ef",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_005",
+				"tile_id": "tile_24_9"
+			}
+		],
+		"power_local": [
+			{
+				"instance_id": "inst_b_003_0003ee",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_004",
+				"tile_id": "tile_23_10"
+			}
+		],
+		"steel": [
+			{
+				"instance_id": "inst_b_002_0003f0",
+				"level": 1,
+				"ran_last_turn": true,
+				"recipe_id": "r_003",
+				"tile_id": "tile_24_9"
+			}
+		],
+		"water_local": [
+			{
+				"instance_id": "inst_b_037_0003ed",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_011",
+				"tile_id": "tile_23_10"
+			}
+		],
+		"wiring": [
+			{
+				"instance_id": "inst_b_007_0003f2",
+				"level": 1,
+				"ran_last_turn": false,
+				"recipe_id": "r_008",
+				"tile_id": "tile_24_9"
+			}
+		]
+	},
+	"earned_research_modifiers_enabled": false,
+	"emergency_bridge_loan_principal": 1487.7381087735,
+	"emergency_bridge_loans_taken": 30,
+	"expansion_loan_gate_rejections": 0,
+	"expansion_loan_principal": 137.761891226504,
+	"expansion_loans_taken": 1,
+	"final_active_modifiers": [
+		{
+			"add": 0.0,
+			"added_turn": 150,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_coal",
+			"label": "Exhausted Coal deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "coal"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 150,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_iron_ore",
+			"label": "Exhausted Iron Ore deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "iron_ore"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 150,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_copper_ore",
+			"label": "Exhausted Copper Ore deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "copper_ore"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 150,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_limestone",
+			"label": "Exhausted Limestone deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "limestone"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 150,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_sand",
+			"label": "Exhausted Sand deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "sand"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 150,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_basic_salt",
+			"label": "Exhausted Basic Salt deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "basic_salt"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 150,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_ree_ore",
+			"label": "Exhausted Rare Earth Ore deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "ree_ore"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 150,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_alloy_ore",
+			"label": "Exhausted Alloy Metals Ore deposits",
+			"mult": 1.0,
+			"pct": -30.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "alloy_ore"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 150,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_sulphur",
+			"label": "Exhausted Sulphur deposits",
+			"mult": 1.0,
+			"pct": -15.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "sulphur"
+			}
+		},
+		{
+			"add": 0.0,
+			"added_turn": 150,
+			"domain": "recipe_output",
+			"expires_turn": 0,
+			"id": "deposit_penalty_bauxite_ore",
+			"label": "Exhausted Bauxite Ore deposits",
+			"mult": 1.0,
+			"pct": -15.0,
+			"source": "deposit_penalty",
+			"target": "*",
+			"target_match": {
+				"good_internal": "bauxite_ore"
+			}
+		}
+	],
+	"final_building_count": 13,
+	"final_cash": -8098.6424050798,
+	"final_economy": {
+		"goods_sales_revenue": 110.417537837068,
+		"grid_bought": 60,
+		"grid_sold": 290,
+		"money_in": 127.817537837068,
+		"money_out": 361.005740397943,
+		"power_demand": 370,
+		"power_sales_revenue": 17.4,
+		"power_supply": 600,
+		"starved": [
+			{
+				"building_id": "b_002",
+				"instance_id": "inst_b_002_0003f1",
+				"missing": [
+					{
+						"good_id": "g_003",
+						"have": 0,
+						"internal_name": "copper_ore",
+						"need": 36
+					}
+				],
+				"tile_id": "tile_24_9"
+			},
+			{
+				"building_id": "b_007",
+				"instance_id": "inst_b_007_0003f2",
+				"missing": [
+					{
+						"good_id": "g_005",
+						"have": 0,
+						"internal_name": "copper_ingots",
+						"need": 24
+					}
+				],
+				"tile_id": "tile_24_9"
+			},
+			{
+				"building_id": "b_007",
+				"instance_id": "inst_b_007_0003f3",
+				"missing": [
+					{
+						"good_id": "g_007",
+						"have": 0,
+						"internal_name": "copper_wiring",
+						"need": 32
+					}
+				],
+				"tile_id": "tile_24_9"
+			}
+		]
+	},
+	"final_units_sold": 9226,
+	"integration_scope": "blank-start motors from stock-controlled water and market-fed coal power through pig iron, steel, copper, wiring and motors; coal, iron, copper and a second power block are attempted after motors",
+	"integration_stages": {
+		"coal_hub_a": {
+			"building_count": 13,
+			"cash": 0.0,
+			"loan_capacity_left": 560.070441379905,
+			"profit": -29.4573409507035,
+			"turn": 95,
+			"units_sold": 6706
+		},
+		"coal_local": {
+			"building_count": 8,
+			"cash": 363.8197155043,
+			"loan_capacity_left": 607.25,
+			"profit": 2.28588495421667,
+			"turn": 71,
+			"units_sold": 4672
+		},
+		"copper_ingots": {
+			"building_count": 5,
+			"cash": 816.888472814239,
+			"loan_capacity_left": 1332.86864029229,
+			"profit": 22.5468515567784,
+			"turn": 50,
+			"units_sold": 2638
+		},
+		"iron_a": {
+			"building_count": 10,
+			"cash": 217.919426632321,
+			"loan_capacity_left": 688.25,
+			"profit": -5.03265250773836,
+			"turn": 80,
+			"units_sold": 5384
+		},
+		"iron_b": {
+			"building_count": 11,
+			"cash": 132.712064171467,
+			"loan_capacity_left": 1283.18228274643,
+			"profit": -2.89967574218787,
+			"turn": 85,
+			"units_sold": 5800
+		},
+		"motor": {
+			"building_count": 7,
+			"cash": 694.932294258582,
+			"loan_capacity_left": 870.169718441776,
+			"profit": -51.8654053668951,
+			"turn": 66,
+			"units_sold": 4262
+		},
+		"pig_iron": {
+			"building_count": 3,
+			"cash": 750.280404079351,
+			"loan_capacity_left": 583.040017091474,
+			"profit": 13.2209954142684,
+			"turn": 24,
+			"units_sold": 420
+		},
+		"steel": {
+			"building_count": 4,
+			"cash": 703.945283033768,
+			"loan_capacity_left": 1004.43062007768,
+			"profit": 16.8063005372979,
+			"turn": 37,
+			"units_sold": 1402
+		},
+		"wiring": {
+			"building_count": 6,
+			"cash": 821.950194288044,
+			"loan_capacity_left": 1298.19273860869,
+			"profit": 25.620754640046,
+			"turn": 62,
+			"units_sold": 3902
+		}
+	},
+	"last_expansion_loan_decision": {
+		"interest_per_turn_after_loan": 0.412356724374159,
+		"interest_per_turn_limit": 0.797779595821728,
+		"principal": 137.761891226504,
+		"trailing_average_profit": 1.59555919164346,
+		"turn": 89
+	},
+	"last_profit": -233.188202560875,
+	"maintenance_paid_total": 5518.0,
+	"max_bankruptcy_streak": 45,
+	"max_expansion_interest_per_turn": 0.412356724374159,
+	"profit_by_turn": [
+		{
+			"profit": 0.0,
+			"turn": 2
+		},
+		{
+			"profit": 0.0,
+			"turn": 3
+		},
+		{
+			"profit": 0.0,
+			"turn": 4
+		},
+		{
+			"profit": 0.0,
+			"turn": 5
+		},
+		{
+			"profit": -52.5538852689399,
+			"turn": 6
+		},
+		{
+			"profit": -25.332862295983,
+			"turn": 7
+		},
+		{
+			"profit": 0.408937664322742,
+			"turn": 8
+		},
+		{
+			"profit": 6.33785415503407,
+			"turn": 9
+		},
+		{
+			"profit": 6.71320690334495,
+			"turn": 10
+		},
+		{
+			"profit": 7.08850712756464,
+			"turn": 11
+		},
+		{
+			"profit": 7.46375466230198,
+			"turn": 12
+		},
+		{
+			"profit": 7.83894934151677,
+			"turn": 13
+		},
+		{
+			"profit": 1.80207566407323,
+			"turn": 14
+		},
+		{
+			"profit": 1.24464266941436,
+			"turn": 15
+		},
+		{
+			"profit": 0.68712631197269,
+			"turn": 16
+		},
+		{
+			"profit": 6.57439615949032,
+			"turn": 17
+		},
+		{
+			"profit": -67.8236426651401,
+			"turn": 18
+		},
+		{
+			"profit": -45.7171035121673,
+			"turn": 19
+		},
+		{
+			"profit": 14.6377365743874,
+			"turn": 20
+		},
+		{
+			"profit": 8.4857604176221,
+			"turn": 21
+		},
+		{
+			"profit": 7.89007788168658,
+			"turn": 22
+		},
+		{
+			"profit": 7.29429245843365,
+			"turn": 23
+		},
+		{
+			"profit": 13.2209954142684,
+			"turn": 24
+		},
+		{
+			"profit": 13.5578288056732,
+			"turn": 25
+		},
+		{
+			"profit": 13.894589030833,
+			"turn": 26
+		},
+		{
+			"profit": 14.2312757684739,
+			"turn": 27
+		},
+		{
+			"profit": -100.305162583337,
+			"turn": 28
+		},
+		{
+			"profit": -18.8473931095272,
+			"turn": 29
+		},
+		{
+			"profit": 17.5812144801409,
+			"turn": 30
+		},
+		{
+			"profit": 23.5460826684658,
+			"turn": 31
+		},
+		{
+			"profit": 23.8420460180683,
+			"turn": 32
+		},
+		{
+			"profit": 24.1379173161007,
+			"turn": 33
+		},
+		{
+			"profit": 24.4336960825871,
+			"turn": 34
+		},
+		{
+			"profit": 18.0815860967611,
+			"turn": 35
+		},
+		{
+			"profit": 17.4440063450103,
+			"turn": 36
+		},
+		{
+			"profit": 16.8063005372979,
+			"turn": 37
+		},
+		{
+			"profit": 22.8510761811692,
+			"turn": 38
+		},
+		{
+			"profit": 23.1463850378226,
+			"turn": 39
+		},
+		{
+			"profit": 23.4415984515161,
+			"turn": 40
+		},
+		{
+			"profit": -23.481563618989,
+			"turn": 41
+		},
+		{
+			"profit": -10.7936570574516,
+			"turn": 42
+		},
+		{
+			"profit": 22.6497591407357,
+			"turn": 43
+		},
+		{
+			"profit": 21.977227414287,
+			"turn": 44
+		},
+		{
+			"profit": 28.0695168417877,
+			"turn": 45
+		},
+		{
+			"profit": 28.3301809004402,
+			"turn": 46
+		},
+		{
+			"profit": 28.590726137649,
+			"turn": 47
+		},
+		{
+			"profit": 28.8511519086458,
+			"turn": 48
+		},
+		{
+			"profit": 29.1114575666884,
+			"turn": 49
+		},
+		{
+			"profit": 22.5468515567784,
+			"turn": 50
+		},
+		{
+			"profit": 21.8732509783859,
+			"turn": 51
+		},
+		{
+			"profit": 21.1994946845782,
+			"turn": 52
+		},
+		{
+			"profit": 27.3866660649731,
+			"turn": 53
+		},
+		{
+			"profit": -14.6506944500174,
+			"turn": 54
+		},
+		{
+			"profit": -73.6497099287627,
+			"turn": 55
+		},
+		{
+			"profit": 27.4782413780486,
+			"turn": 56
+		},
+		{
+			"profit": 20.7201816805722,
+			"turn": 57
+		},
+		{
+			"profit": 19.9379030600139,
+			"turn": 58
+		},
+		{
+			"profit": 19.1553219581792,
+			"turn": 59
+		},
+		{
+			"profit": 25.3193958431565,
+			"turn": 60
+		},
+		{
+			"profit": 25.4702111580935,
+			"turn": 61
+		},
+		{
+			"profit": 25.620754640046,
+			"turn": 62
+		},
+		{
+			"profit": 25.7710250261026,
+			"turn": 63
+		},
+		{
+			"profit": 18.9242314086162,
+			"turn": 64
+		},
+		{
+			"profit": 18.1398066673466,
+			"turn": 65
+		},
+		{
+			"profit": -51.8654053668951,
+			"turn": 66
+		},
+		{
+			"profit": -242.772971193175,
+			"turn": 67
+		},
+		{
+			"profit": 8.94684626535195,
+			"turn": 68
+		},
+		{
+			"profit": 22.1484300648291,
+			"turn": 69
+		},
+		{
+			"profit": 22.1440360656969,
+			"turn": 70
+		},
+		{
+			"profit": 2.28588495421667,
+			"turn": 71
+		},
+		{
+			"profit": 8.45392917246011,
+			"turn": 72
+		},
+		{
+			"profit": 17.2579807312958,
+			"turn": 73
+		},
+		{
+			"profit": 22.1573413942572,
+			"turn": 74
+		},
+		{
+			"profit": 20.9933978662898,
+			"turn": 75
+		},
+		{
+			"profit": 21.108943346224,
+			"turn": 76
+		},
+		{
+			"profit": 21.2239756269734,
+			"turn": 77
+		},
+		{
+			"profit": 14.1628264052503,
+			"turn": 78
+		},
+		{
+			"profit": -53.2112157892529,
+			"turn": 79
+		},
+		{
+			"profit": -5.03265250773836,
+			"turn": 80
+		},
+		{
+			"profit": 7.8702232651371,
+			"turn": 81
+		},
+		{
+			"profit": 26.4471985860121,
+			"turn": 82
+		},
+		{
+			"profit": 16.8025390960532,
+			"turn": 83
+		},
+		{
+			"profit": 9.63216338141359,
+			"turn": 84
+		},
+		{
+			"profit": -2.89967574218787,
+			"turn": 85
+		},
+		{
+			"profit": -74.5598837758286,
+			"turn": 86
+		},
+		{
+			"profit": 8.43943223665292,
+			"turn": 87
+		},
+		{
+			"profit": -6.77419746469843,
+			"turn": 88
+		},
+		{
+			"profit": 3.12144280297588,
+			"turn": 89
+		},
+		{
+			"profit": 3.08776741605078,
+			"turn": 90
+		},
+		{
+			"profit": 5.89557080654833,
+			"turn": 91
+		},
+		{
+			"profit": -4.93646084249883,
+			"turn": 92
+		},
+		{
+			"profit": -81.6600110618329,
+			"turn": 93
+		},
+		{
+			"profit": -19.6606632129624,
+			"turn": 94
+		},
+		{
+			"profit": -29.4573409507035,
+			"turn": 95
+		},
+		{
+			"profit": -16.5423863032993,
+			"turn": 96
+		},
+		{
+			"profit": -8.47257498832641,
+			"turn": 97
+		},
+		{
+			"profit": -48.9168671609215,
+			"turn": 98
+		},
+		{
+			"profit": -55.0362965494588,
+			"turn": 99
+		},
+		{
+			"profit": -61.3439014149138,
+			"turn": 100
+		},
+		{
+			"profit": -41.0947301636431,
+			"turn": 101
+		},
+		{
+			"profit": -45.0690366141531,
+			"turn": 102
+		},
+		{
+			"profit": -46.4385789556111,
+			"turn": 103
+		},
+		{
+			"profit": -47.8510443745544,
+			"turn": 104
+		},
+		{
+			"profit": -127.058099263353,
+			"turn": 105
+		},
+		{
+			"profit": -82.8463576004128,
+			"turn": 106
+		},
+		{
+			"profit": -74.1532147433593,
+			"turn": 107
+		},
+		{
+			"profit": -59.747364647043,
+			"turn": 108
+		},
+		{
+			"profit": -59.7463208318716,
+			"turn": 109
+		},
+		{
+			"profit": -59.7463801025764,
+			"turn": 110
+		},
+		{
+			"profit": -48.552287729943,
+			"turn": 111
+		},
+		{
+			"profit": -115.845424997911,
+			"turn": 112
+		},
+		{
+			"profit": -46.7810104722709,
+			"turn": 113
+		},
+		{
+			"profit": -42.1363661951141,
+			"turn": 114
+		},
+		{
+			"profit": -27.3247438149385,
+			"turn": 115
+		},
+		{
+			"profit": -211.647402076733,
+			"turn": 116
+		},
+		{
+			"profit": -223.5429369322,
+			"turn": 117
+		},
+		{
+			"profit": -224.851049393879,
+			"turn": 118
+		},
+		{
+			"profit": -282.530010091629,
+			"turn": 119
+		},
+		{
+			"profit": -231.770163499791,
+			"turn": 120
+		},
+		{
+			"profit": -216.840649001804,
+			"turn": 121
+		},
+		{
+			"profit": -216.691246529067,
+			"turn": 122
+		},
+		{
+			"profit": -216.216637915431,
+			"turn": 123
+		},
+		{
+			"profit": -216.06989345365,
+			"turn": 124
+		},
+		{
+			"profit": -284.706582593685,
+			"turn": 125
+		},
+		{
+			"profit": -245.943807386268,
+			"turn": 126
+		},
+		{
+			"profit": -235.432096800117,
+			"turn": 127
+		},
+		{
+			"profit": -220.304520658476,
+			"turn": 128
+		},
+		{
+			"profit": -220.164502221988,
+			"turn": 129
+		},
+		{
+			"profit": -220.002926331256,
+			"turn": 130
+		},
+		{
+			"profit": -232.219103393309,
+			"turn": 131
+		},
+		{
+			"profit": -290.257803589678,
+			"turn": 132
+		},
+		{
+			"profit": -239.213503205355,
+			"turn": 133
+		},
+		{
+			"profit": -239.462011570661,
+			"turn": 134
+		},
+		{
+			"profit": -224.109766948846,
+			"turn": 135
+		},
+		{
+			"profit": -223.979362348353,
+			"turn": 136
+		},
+		{
+			"profit": -236.34711332528,
+			"turn": 137
+		},
+		{
+			"profit": -237.723622210532,
+			"turn": 138
+		},
+		{
+			"profit": -295.26847739304,
+			"turn": 139
+		},
+		{
+			"profit": -244.024383986405,
+			"turn": 140
+		},
+		{
+			"profit": -244.286865250005,
+			"turn": 141
+		},
+		{
+			"profit": -228.732711773693,
+			"turn": 142
+		},
+		{
+			"profit": -228.54701896107,
+			"turn": 143
+		},
+		{
+			"profit": -228.40858529815,
+			"turn": 144
+		},
+		{
+			"profit": -240.986217308207,
+			"turn": 145
+		},
+		{
+			"profit": -258.304524182946,
+			"turn": 146
+		},
+		{
+			"profit": -260.086673262044,
+			"turn": 147
+		},
+		{
+			"profit": -249.081510810603,
+			"turn": 148
+		},
+		{
+			"profit": -233.317977270989,
+			"turn": 149
+		},
+		{
+			"profit": -233.188202560875,
+			"turn": 150
+		}
+	],
+	"prudent_expansion_enabled": true,
+	"research_unlock_turns": {
+		"Axial Flux Motor Lines": 75,
+		"Basic Blast Furnaces": 41,
+		"Bench Blasting Expansion": 85,
+		"Continuous Casting": 41,
+		"Hairpin Stator Winding": 75,
+		"Hydrogen Combustion Turbines": 8,
+		"Improved Coal Mining": 95,
+		"Operational Team Managers": 18
+	},
+	"scenario": "balance_v4_motors_metal_path_1200",
+	"start_config": "res://data/starts/open_field.json",
+	"start_modifiers_preserved": false,
+	"starting_money": 1200.0,
+	"stock_control_pauses": 33,
+	"stock_control_resumes": 31,
+	"target_recipe_first_run": {
+		"r_009": 67
+	},
+	"target_turn": 150,
+	"target_units_sold": {
+		"motor": 1344
+	},
+	"turn_150": {
+		"building_count": 13,
+		"cash": -8098.6424050798,
+		"loan_capacity_left": -4.5,
+		"profit": -233.188202560875,
+		"units_sold": 9226
+	},
+	"turn_30": {
+		"building_count": 4,
+		"cash": 555.653647969477,
+		"loan_capacity_left": 308.75,
+		"profit": 17.5812144801409,
+		"units_sold": 856
+	},
+	"turn_80": {
+		"building_count": 10,
+		"cash": 217.919426632321,
+		"loan_capacity_left": 688.25,
+		"profit": -5.03265250773836,
+		"units_sold": 5384
+	},
+	"turn_chain_fully_integrated": -1,
+	"turn_profit_gt_100": -1,
+	"turn_profit_gt_1000": -1,
+	"turn_profit_gt_200": -1,
+	"turn_profit_gt_500": -1,
+	"unprofitable_cash_cushion_waits": 15
+}

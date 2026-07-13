@@ -1,118 +1,136 @@
 consumer_recipe_id,consumer_recipe,input_good,required_input_qty,supplier_recipe_id,supplier_recipe,supplier_output_qty,buildings_required,within_one_supplier_building
-r_003,Steelmaking,iron_ingots,40.0,r_005,Pig Iron Smelting,70,0.571,True
-r_003,Steelmaking,coal,20.0,r_001,Coal Mining,60,0.333,True
-r_005,Pig Iron Smelting,iron_ore,40.0,r_002,Iron Mining,40,1.0,True
-r_005,Pig Iron Smelting,coal,20.0,r_001,Coal Mining,60,0.333,True
-r_007,Copper Blistering,copper_ore,36.0,r_006,Copper Mining,36,1.0,True
-r_008,Copper Wire Drawing,copper_ingots,24.0,r_007,Copper Blistering,24,1.0,True
-r_009,Motor Manufacture,steel,30.0,r_003,Steelmaking,48,0.625,True
-r_009,Motor Manufacture,copper_wiring,32.0,r_008,Copper Wire Drawing,32,1.0,True
-r_022,Fuels Refining,processed_oil,10.0,r_180,Oil Refining,18,0.556,True
-r_023,Ethylene Refining,processed_oil,10.0,r_180,Oil Refining,18,0.556,True
-r_024,Plastics Manufacturing,ethylene,10.0,r_023,Ethylene Refining,13,0.769,True
-r_026,Copper Pipe Hot Rolling,copper_ingots,13.0,r_007,Copper Blistering,24,0.542,True
-r_028,Synthetic Rubber Production,ethylene,10.0,r_023,Ethylene Refining,13,0.769,True
-r_030,Electric Concrete Production,limestone,25.0,r_019,Limestone Mining,25,1.0,True
-r_030,Electric Concrete Production,pure_water,13.0,r_011,Water Pumping,48,0.271,True
-r_030,Electric Concrete Production,silica,13.0,r_035,Silica Washing,13,1.0,True
-r_032,Lithium Ion Battery Manufacturing,lithium_carbonate,9.0,r_227,Rudimentary Lithium Refinement,9,1.0,True
-r_032,Lithium Ion Battery Manufacturing,electrical_components,3.0,r_126,Electrical Components Production,12,0.25,True
-r_032,Lithium Ion Battery Manufacturing,graphite,3.0,r_150,Petroleum Needle Coke Calcination,10,0.3,True
-r_032,Lithium Ion Battery Manufacturing,alloy_ingots,3.0,r_132,Alloy Metal Smelting,30,0.1,True
-r_033,Construction Equiment Assembly (ICE),steel,12.0,r_003,Steelmaking,48,0.25,True
-r_033,Construction Equiment Assembly (ICE),rubber,9.0,r_028,Synthetic Rubber Production,17,0.529,True
-r_033,Construction Equiment Assembly (ICE),plastics,9.0,r_024,Plastics Manufacturing,12,0.75,True
-r_033,Construction Equiment Assembly (ICE),fuels,12.0,r_022,Fuels Refining,22,0.545,True
-r_033,Construction Equiment Assembly (ICE),motor,20.0,r_009,Motor Manufacture,28,0.714,True
-r_034,Construction Equipment Assembly (EV),steel,10.0,r_003,Steelmaking,48,0.208,True
-r_034,Construction Equipment Assembly (EV),rubber,8.0,r_028,Synthetic Rubber Production,17,0.471,True
-r_034,Construction Equipment Assembly (EV),plastics,8.0,r_024,Plastics Manufacturing,12,0.667,True
-r_034,Construction Equipment Assembly (EV),lithium_battery,4.0,r_032,Lithium Ion Battery Manufacturing,10,0.4,True
-r_034,Construction Equipment Assembly (EV),motor,10.0,r_009,Motor Manufacture,28,0.357,True
-r_035,Silica Washing,sand,10.0,r_018,Sand Excavation,45,0.222,True
-r_035,Silica Washing,pure_water,10.0,r_011,Water Pumping,48,0.208,True
-r_227,Rudimentary Lithium Refinement,lithium_ore,8.0,r_016,Lithium Mining,8,1.0,True
-r_227,Rudimentary Lithium Refinement,industrial_acids,3.0,r_114,Hydrochloric Acid Production,45,0.067,True
-r_040,Bayer Process,bauxite_ore,20.0,r_015,Bauxite Mining,20,1.0,True
-r_041,Rare Earth Reduction,ree_ore,10.0,r_017,Rare Earth Mining,12,0.833,True
-r_150,Petroleum Needle Coke Calcination,pet_coke,16.0,r_218,Petroleum Coking,18,0.889,True
-r_044,Silicon Smelting,silica,1.0,r_035,Silica Washing,13,0.077,True
-r_044,Silicon Smelting,coal,1.0,r_001,Coal Mining,60,0.017,True
-r_045,Polysilicon (Siemens) Smelting,metallurgical_silicon,5.0,r_044,Silicon Smelting,20,0.25,True
-r_046,Haber Bosch Process,nitrogen,8.0,r_087,Nitrogen Air Separation,50,0.16,True
-r_047,Fertilisers Production,ammonia,8.0,r_046,Haber Bosch Process,30,0.267,True
-r_047,Fertilisers Production,biomass,4.0,r_213,Aggressive Logging - Biomass,30,0.133,True
-r_050,Aluminium (Hall Heroult) Smelting,alumina,20.0,r_040,Bayer Process,30,0.667,True
-r_050,Aluminium (Hall Heroult) Smelting,graphite,3.0,r_150,Petroleum Needle Coke Calcination,10,0.3,True
-r_053,Industrial Glassmaking,sand,30.0,r_018,Sand Excavation,45,0.667,True
-r_053,Industrial Glassmaking,limestone,9.0,r_019,Limestone Mining,25,0.36,True
-r_055,uPVC Window Manufacturing,glass,32.0,r_053,Industrial Glassmaking,32,1.0,True
-r_055,uPVC Window Manufacturing,pvc,11.0,r_175,PVC Polymerisation,16,0.688,True
-r_057,Building Frame Manufacture,steel,18.0,r_003,Steelmaking,48,0.375,True
-r_057,Building Frame Manufacture,windows,12.0,r_055,uPVC Window Manufacturing,18,0.667,True
-r_057,Building Frame Manufacture,copper_pipe,6.0,r_026,Copper Pipe Hot Rolling,18,0.333,True
-r_057,Building Frame Manufacture,electrical_components,4.0,r_126,Electrical Components Production,12,0.333,True
-r_058,Solar Panel Manufacturing,metallurgical_silicon,20.0,r_044,Silicon Smelting,20,1.0,True
-r_058,Solar Panel Manufacturing,electrical_components,3.0,r_126,Electrical Components Production,12,0.25,True
-r_058,Solar Panel Manufacturing,alloy_ingots,4.0,r_132,Alloy Metal Smelting,30,0.133,True
-r_058,Solar Panel Manufacturing,aluminium,2.0,r_050,Aluminium (Hall Heroult) Smelting,20,0.1,True
-r_059,Wind Turbine Manufacturing,fibreglass,4.0,r_135,Fibreglass Production,6,0.667,True
-r_059,Wind Turbine Manufacturing,refined_ree,2.0,r_041,Rare Earth Reduction,6,0.333,True
-r_059,Wind Turbine Manufacturing,motor,2.0,r_009,Motor Manufacture,28,0.071,True
-r_059,Wind Turbine Manufacturing,electrical_components,2.0,r_126,Electrical Components Production,12,0.167,True
-r_067,Rubber Vulcanisation,rubber,17.0,r_028,Synthetic Rubber Production,17,1.0,True
-r_067,Rubber Vulcanisation,sulphur,12.0,r_179,Sulphur Mining,24,0.5,True
-r_068,Car Body Manufacturing,steel,20.0,r_003,Steelmaking,48,0.417,True
-r_068,Car Body Manufacturing,aluminium,7.0,r_050,Aluminium (Hall Heroult) Smelting,20,0.35,True
-r_068,Car Body Manufacturing,plastics,3.0,r_024,Plastics Manufacturing,12,0.25,True
-r_071,ICE Engine Manufacturing,steel,18.0,r_003,Steelmaking,48,0.375,True
-r_071,ICE Engine Manufacturing,copper_wiring,15.0,r_008,Copper Wire Drawing,32,0.469,True
-r_071,ICE Engine Manufacturing,aluminium,9.0,r_050,Aluminium (Hall Heroult) Smelting,20,0.45,True
-r_071,ICE Engine Manufacturing,processed_oil,6.0,r_180,Oil Refining,18,0.333,True
-r_071,ICE Engine Manufacturing,alkaline_battery,6.0,r_101,Alkaline Battery Manufacturing,24,0.25,True
-r_073,Large Vehicle Engine Manufacturing,steel,32.0,r_003,Steelmaking,48,0.667,True
-r_073,Large Vehicle Engine Manufacturing,aluminium,16.0,r_050,Aluminium (Hall Heroult) Smelting,20,0.8,True
-r_073,Large Vehicle Engine Manufacturing,processed_oil,12.0,r_180,Oil Refining,18,0.667,True
-r_073,Large Vehicle Engine Manufacturing,electrical_components,6.0,r_126,Electrical Components Production,12,0.5,True
-r_073,Large Vehicle Engine Manufacturing,alkaline_battery,8.0,r_101,Alkaline Battery Manufacturing,24,0.333,True
-r_101,Alkaline Battery Manufacturing,alloy_ingots,20.0,r_132,Alloy Metal Smelting,30,0.667,True
-r_102,Sodium Ion Battery Manufacturing,aluminium,18.0,r_050,Aluminium (Hall Heroult) Smelting,20,0.9,True
-r_102,Sodium Ion Battery Manufacturing,graphite,9.0,r_150,Petroleum Needle Coke Calcination,10,0.9,True
-r_117,ICE Car Production,car_body,6.0,r_068,Car Body Manufacturing,14,0.429,True
-r_117,ICE Car Production,engine,6.0,r_071,ICE Engine Manufacturing,6,1.0,True
-r_117,ICE Car Production,glass,6.0,r_053,Industrial Glassmaking,32,0.188,True
-r_117,ICE Car Production,tyres,25.0,r_067,Rubber Vulcanisation,25,1.0,True
-r_117,ICE Car Production,fuels,6.0,r_022,Fuels Refining,22,0.273,True
-r_119,EV Assembly,car_body,5.0,r_068,Car Body Manufacturing,14,0.357,True
-r_119,EV Assembly,motor,8.0,r_009,Motor Manufacture,28,0.286,True
-r_119,EV Assembly,glass,5.0,r_053,Industrial Glassmaking,32,0.156,True
-r_119,EV Assembly,tyres,20.0,r_067,Rubber Vulcanisation,25,0.8,True
-r_119,EV Assembly,lithium_battery,6.0,r_032,Lithium Ion Battery Manufacturing,10,0.6,True
-r_119,EV Assembly,cpu,1.0,r_122,Semiconductor Fabbing,5,0.2,True
-r_120,Basic Circuit Soldering,copper_wiring,12.0,r_008,Copper Wire Drawing,32,0.375,True
-r_120,Basic Circuit Soldering,plastics,12.0,r_024,Plastics Manufacturing,12,1.0,True
-r_120,Basic Circuit Soldering,alloy_ingots,3.0,r_132,Alloy Metal Smelting,30,0.1,True
-r_122,Semiconductor Fabbing,metallurgical_silicon,4.0,r_044,Silicon Smelting,20,0.2,True
-r_122,Semiconductor Fabbing,circuit_board,12.0,r_120,Basic Circuit Soldering,12,1.0,True
-r_122,Semiconductor Fabbing,industrial_acids,1.0,r_114,Hydrochloric Acid Production,45,0.022,True
-r_122,Semiconductor Fabbing,refined_ree,5.0,r_041,Rare Earth Reduction,6,0.833,True
-r_125,Computer Assembly,circuit_board,3.0,r_120,Basic Circuit Soldering,12,0.25,True
-r_125,Computer Assembly,cpu,4.0,r_122,Semiconductor Fabbing,5,0.8,True
-r_125,Computer Assembly,aluminium,2.0,r_050,Aluminium (Hall Heroult) Smelting,20,0.1,True
-r_125,Computer Assembly,plastics,3.0,r_024,Plastics Manufacturing,12,0.25,True
-r_126,Electrical Components Production,copper_wiring,12.0,r_008,Copper Wire Drawing,32,0.375,True
-r_126,Electrical Components Production,plastics,5.0,r_024,Plastics Manufacturing,12,0.417,True
-r_132,Alloy Metal Smelting,alloy_ore,20.0,r_134,Alloy Metal Mining,24,0.833,True
-r_135,Fibreglass Production,glass,3.0,r_053,Industrial Glassmaking,32,0.094,True
-r_135,Fibreglass Production,plastics,3.0,r_024,Plastics Manufacturing,12,0.25,True
-r_136,Iron Air Batteries,iron_ingots,69.0,r_005,Pig Iron Smelting,70,0.986,True
-r_136,Iron Air Batteries,steel,46.0,r_003,Steelmaking,48,0.958,True
-r_136,Iron Air Batteries,pure_water,46.0,r_011,Water Pumping,48,0.958,True
-r_175,PVC Polymerisation,ethylene,13.0,r_023,Ethylene Refining,13,1.0,True
-r_180,Oil Refining,crude_oil,20.0,r_014,Oil Drilling,20,1.0,True
-r_204,Heavy Vehicles Assembly,car_body,14.0,r_068,Car Body Manufacturing,14,1.0,True
-r_204,Heavy Vehicles Assembly,large_engine,11.0,r_073,Large Vehicle Engine Manufacturing,11,1.0,True
-r_204,Heavy Vehicles Assembly,lithium_battery,7.0,r_032,Lithium Ion Battery Manufacturing,10,0.7,True
-r_204,Heavy Vehicles Assembly,fuels,22.0,r_022,Fuels Refining,22,1.0,True
-r_217,Biomass Carbonisation,biomass,24.0,r_213,Aggressive Logging - Biomass,30,0.8,True
-r_218,Petroleum Coking,crude_oil,20.0,r_014,Oil Drilling,20,1.0,True
+r_003,Steelmaking,iron_ingots,40.0,r_005,Pig Iron Smelting,70.0,0.571,True
+r_003,Steelmaking,coal,20.0,r_001,Coal Mining,60.0,0.333,True
+r_005,Pig Iron Smelting,iron_ore,40.0,r_002,Iron Mining,40.0,1.0,True
+r_005,Pig Iron Smelting,coal,20.0,r_001,Coal Mining,60.0,0.333,True
+r_007,Copper Blistering,copper_ore,36.0,r_006,Copper Mining,36.0,1.0,True
+r_008,Copper Wire Drawing,copper_ingots,24.0,r_007,Copper Blistering,24.0,1.0,True
+r_009,Motor Manufacture,steel,30.0,r_003,Steelmaking,48.0,0.625,True
+r_009,Motor Manufacture,copper_wiring,32.0,r_008,Copper Wire Drawing,32.0,1.0,True
+r_012,Chlor-Alkali Process,basic_salt,44.0,r_010,Salt Mining,60.0,0.733,True
+r_012,Chlor-Alkali Process,pure_water,44.0,r_011,Water Pumping,48.0,0.917,True
+r_079,Water Electrolysis,pure_water,14.0,r_011,Water Pumping,48.0,0.292,True
+r_022,Fuels Refining,processed_oil,10.0,r_180,Oil Refining,18.0,0.556,True
+r_023,Ethylene Refining,processed_oil,10.0,r_180,Oil Refining,18.0,0.556,True
+r_024,Plastics Manufacturing,ethylene,10.0,r_023,Ethylene Refining,13.0,0.769,True
+r_026,Copper Pipe Hot Rolling,copper_ingots,13.0,r_007,Copper Blistering,24.0,0.542,True
+r_028,Synthetic Rubber Production,ethylene,10.0,r_023,Ethylene Refining,13.0,0.769,True
+r_028,Synthetic Rubber Production,oxygen,4.0,r_079,Water Electrolysis,7.0,0.571,True
+r_030,Electric Concrete Production,limestone,25.0,r_019,Limestone Mining,25.0,1.0,True
+r_030,Electric Concrete Production,pure_water,13.0,r_011,Water Pumping,48.0,0.271,True
+r_030,Electric Concrete Production,silica,13.0,r_035,Silica Washing,13.0,1.0,True
+r_032,Lithium Ion Battery Manufacturing,lithium_carbonate,9.0,r_227,Rudimentary Lithium Refinement,9.0,1.0,True
+r_032,Lithium Ion Battery Manufacturing,electrical_components,3.0,r_126,Electrical Components Production,12.0,0.25,True
+r_032,Lithium Ion Battery Manufacturing,graphite,3.0,r_150,Petroleum Needle Coke Calcination,10.0,0.3,True
+r_032,Lithium Ion Battery Manufacturing,alloy_ingots,3.0,r_132,Alloy Metal Smelting,30.0,0.1,True
+r_033,Construction Equiment Assembly (ICE),steel,12.0,r_003,Steelmaking,48.0,0.25,True
+r_033,Construction Equiment Assembly (ICE),rubber,9.0,r_028,Synthetic Rubber Production,17.0,0.529,True
+r_033,Construction Equiment Assembly (ICE),plastics,9.0,r_024,Plastics Manufacturing,12.0,0.75,True
+r_033,Construction Equiment Assembly (ICE),fuels,12.0,r_022,Fuels Refining,22.0,0.545,True
+r_033,Construction Equiment Assembly (ICE),motor,20.0,r_009,Motor Manufacture,28.0,0.714,True
+r_034,Construction Equipment Assembly (EV),steel,10.0,r_003,Steelmaking,48.0,0.208,True
+r_034,Construction Equipment Assembly (EV),rubber,8.0,r_028,Synthetic Rubber Production,17.0,0.471,True
+r_034,Construction Equipment Assembly (EV),plastics,8.0,r_024,Plastics Manufacturing,12.0,0.667,True
+r_034,Construction Equipment Assembly (EV),lithium_battery,4.0,r_032,Lithium Ion Battery Manufacturing,6.0,0.667,True
+r_034,Construction Equipment Assembly (EV),motor,10.0,r_009,Motor Manufacture,28.0,0.357,True
+r_035,Silica Washing,sand,10.0,r_018,Sand Excavation,45.0,0.222,True
+r_035,Silica Washing,pure_water,10.0,r_011,Water Pumping,48.0,0.208,True
+r_227,Rudimentary Lithium Refinement,lithium_ore,8.0,r_016,Lithium Mining,8.0,1.0,True
+r_227,Rudimentary Lithium Refinement,industrial_acids,3.0,r_114,Hydrochloric Acid Production,45.0,0.067,True
+r_040,Bayer Process,bauxite_ore,20.0,r_015,Bauxite Mining,20.0,1.0,True
+r_040,Bayer Process,sodium_hydroxide,8.0,r_012,Chlor-Alkali Process,44.0,0.182,True
+r_041,Rare Earth Reduction,ree_ore,10.0,r_017,Rare Earth Mining,12.0,0.833,True
+r_041,Rare Earth Reduction,sodium_hydroxide,5.0,r_012,Chlor-Alkali Process,44.0,0.114,True
+r_041,Rare Earth Reduction,chlorine,5.0,r_012,Chlor-Alkali Process,22.0,0.227,True
+r_150,Petroleum Needle Coke Calcination,pet_coke,16.0,r_218,Petroleum Coking,18.0,0.889,True
+r_044,Silicon Smelting,silica,10.0,r_035,Silica Washing,13.0,0.769,True
+r_044,Silicon Smelting,coal,20.0,r_001,Coal Mining,60.0,0.333,True
+r_045,Polysilicon (Siemens) Smelting,metallurgical_silicon,5.0,r_044,Silicon Smelting,20.0,0.25,True
+r_046,Haber Bosch Process,nitrogen,8.0,r_087,Nitrogen Air Separation,50.0,0.16,True
+r_046,Haber Bosch Process,hydrogen,12.0,r_079,Water Electrolysis,14.0,0.857,True
+r_047,Fertilisers Production,ammonia,8.0,r_046,Haber Bosch Process,30.0,0.267,True
+r_047,Fertilisers Production,chem_salts,8.0,r_010,Salt Mining,24.0,0.333,True
+r_047,Fertilisers Production,biomass,4.0,r_211,Agri Solar Farming - Biomass,24.0,0.167,True
+r_050,Aluminium (Hall Heroult) Smelting,alumina,20.0,r_040,Bayer Process,30.0,0.667,True
+r_050,Aluminium (Hall Heroult) Smelting,graphite,3.0,r_150,Petroleum Needle Coke Calcination,10.0,0.3,True
+r_050,Aluminium (Hall Heroult) Smelting,chem_salts,5.0,r_010,Salt Mining,24.0,0.208,True
+r_053,Industrial Glassmaking,sand,30.0,r_018,Sand Excavation,45.0,0.667,True
+r_053,Industrial Glassmaking,sodium_hydroxide,9.0,r_012,Chlor-Alkali Process,44.0,0.205,True
+r_053,Industrial Glassmaking,limestone,9.0,r_019,Limestone Mining,25.0,0.36,True
+r_055,uPVC Window Manufacturing,glass,32.0,r_053,Industrial Glassmaking,32.0,1.0,True
+r_055,uPVC Window Manufacturing,pvc,11.0,r_175,PVC Polymerisation,16.0,0.688,True
+r_057,Building Frame Manufacture,steel,18.0,r_003,Steelmaking,48.0,0.375,True
+r_057,Building Frame Manufacture,windows,12.0,r_055,uPVC Window Manufacturing,18.0,0.667,True
+r_057,Building Frame Manufacture,copper_pipe,6.0,r_026,Copper Pipe Hot Rolling,18.0,0.333,True
+r_057,Building Frame Manufacture,electrical_components,4.0,r_126,Electrical Components Production,12.0,0.333,True
+r_058,Solar Panel Manufacturing,metallurgical_silicon,20.0,r_044,Silicon Smelting,20.0,1.0,True
+r_058,Solar Panel Manufacturing,electrical_components,3.0,r_126,Electrical Components Production,12.0,0.25,True
+r_058,Solar Panel Manufacturing,alloy_ingots,4.0,r_132,Alloy Metal Smelting,30.0,0.133,True
+r_058,Solar Panel Manufacturing,aluminium,2.0,r_050,Aluminium (Hall Heroult) Smelting,20.0,0.1,True
+r_059,Wind Turbine Manufacturing,fibreglass,4.0,r_135,Fibreglass Production,6.0,0.667,True
+r_059,Wind Turbine Manufacturing,refined_ree,2.0,r_041,Rare Earth Reduction,6.0,0.333,True
+r_059,Wind Turbine Manufacturing,motor,2.0,r_009,Motor Manufacture,28.0,0.071,True
+r_059,Wind Turbine Manufacturing,electrical_components,2.0,r_126,Electrical Components Production,12.0,0.167,True
+r_067,Rubber Vulcanisation,rubber,17.0,r_028,Synthetic Rubber Production,17.0,1.0,True
+r_067,Rubber Vulcanisation,sulphur,12.0,r_179,Sulphur Mining,24.0,0.5,True
+r_068,Car Body Manufacturing,steel,20.0,r_003,Steelmaking,48.0,0.417,True
+r_068,Car Body Manufacturing,aluminium,7.0,r_050,Aluminium (Hall Heroult) Smelting,20.0,0.35,True
+r_068,Car Body Manufacturing,plastics,3.0,r_024,Plastics Manufacturing,12.0,0.25,True
+r_071,ICE Engine Manufacturing,steel,18.0,r_003,Steelmaking,48.0,0.375,True
+r_071,ICE Engine Manufacturing,copper_wiring,15.0,r_008,Copper Wire Drawing,32.0,0.469,True
+r_071,ICE Engine Manufacturing,aluminium,9.0,r_050,Aluminium (Hall Heroult) Smelting,20.0,0.45,True
+r_071,ICE Engine Manufacturing,processed_oil,6.0,r_180,Oil Refining,18.0,0.333,True
+r_071,ICE Engine Manufacturing,alkaline_battery,6.0,r_101,Alkaline Battery Manufacturing,24.0,0.25,True
+r_073,Large Vehicle Engine Manufacturing,steel,32.0,r_003,Steelmaking,48.0,0.667,True
+r_073,Large Vehicle Engine Manufacturing,aluminium,16.0,r_050,Aluminium (Hall Heroult) Smelting,20.0,0.8,True
+r_073,Large Vehicle Engine Manufacturing,processed_oil,12.0,r_180,Oil Refining,18.0,0.667,True
+r_073,Large Vehicle Engine Manufacturing,electrical_components,6.0,r_126,Electrical Components Production,12.0,0.5,True
+r_073,Large Vehicle Engine Manufacturing,alkaline_battery,8.0,r_101,Alkaline Battery Manufacturing,24.0,0.333,True
+r_132,Alloy Metal Smelting,alloy_ore,20.0,r_134,Alloy Metal Mining,24.0,0.833,True
+r_101,Alkaline Battery Manufacturing,alloy_ingots,20.0,r_132,Alloy Metal Smelting,30.0,0.667,True
+r_101,Alkaline Battery Manufacturing,chem_salts,24.0,r_010,Salt Mining,24.0,1.0,True
+r_102,Sodium Ion Battery Manufacturing,basic_salt,4.0,r_010,Salt Mining,60.0,0.067,True
+r_102,Sodium Ion Battery Manufacturing,aluminium,2.0,r_050,Aluminium (Hall Heroult) Smelting,20.0,0.1,True
+r_102,Sodium Ion Battery Manufacturing,graphite,1.0,r_150,Petroleum Needle Coke Calcination,10.0,0.1,True
+r_114,Hydrochloric Acid Production,chlorine,18.0,r_012,Chlor-Alkali Process,22.0,0.818,True
+r_114,Hydrochloric Acid Production,hydrogen,18.0,r_079,Water Electrolysis,14.0,1.286,False
+r_117,ICE Car Production,car_body,6.0,r_068,Car Body Manufacturing,14.0,0.429,True
+r_117,ICE Car Production,engine,6.0,r_071,ICE Engine Manufacturing,6.0,1.0,True
+r_117,ICE Car Production,glass,6.0,r_053,Industrial Glassmaking,32.0,0.188,True
+r_117,ICE Car Production,tyres,25.0,r_067,Rubber Vulcanisation,25.0,1.0,True
+r_117,ICE Car Production,fuels,6.0,r_022,Fuels Refining,22.0,0.273,True
+r_119,EV Assembly,car_body,5.0,r_068,Car Body Manufacturing,14.0,0.357,True
+r_119,EV Assembly,motor,8.0,r_009,Motor Manufacture,28.0,0.286,True
+r_119,EV Assembly,glass,5.0,r_053,Industrial Glassmaking,32.0,0.156,True
+r_119,EV Assembly,tyres,20.0,r_067,Rubber Vulcanisation,25.0,0.8,True
+r_119,EV Assembly,lithium_battery,6.0,r_032,Lithium Ion Battery Manufacturing,6.0,1.0,True
+r_119,EV Assembly,cpu,1.0,r_122,Semiconductor Fabbing,5.0,0.2,True
+r_120,Basic Circuit Soldering,copper_wiring,12.0,r_008,Copper Wire Drawing,32.0,0.375,True
+r_120,Basic Circuit Soldering,plastics,12.0,r_024,Plastics Manufacturing,12.0,1.0,True
+r_120,Basic Circuit Soldering,alloy_ingots,3.0,r_132,Alloy Metal Smelting,30.0,0.1,True
+r_122,Semiconductor Fabbing,metallurgical_silicon,4.0,r_044,Silicon Smelting,20.0,0.2,True
+r_122,Semiconductor Fabbing,circuit_board,12.0,r_120,Basic Circuit Soldering,12.0,1.0,True
+r_122,Semiconductor Fabbing,industrial_acids,1.0,r_114,Hydrochloric Acid Production,45.0,0.022,True
+r_122,Semiconductor Fabbing,refined_ree,5.0,r_041,Rare Earth Reduction,6.0,0.833,True
+r_125,Computer Assembly,circuit_board,3.0,r_120,Basic Circuit Soldering,12.0,0.25,True
+r_125,Computer Assembly,cpu,4.0,r_122,Semiconductor Fabbing,5.0,0.8,True
+r_125,Computer Assembly,aluminium,2.0,r_050,Aluminium (Hall Heroult) Smelting,20.0,0.1,True
+r_125,Computer Assembly,plastics,3.0,r_024,Plastics Manufacturing,12.0,0.25,True
+r_126,Electrical Components Production,copper_wiring,12.0,r_008,Copper Wire Drawing,32.0,0.375,True
+r_126,Electrical Components Production,plastics,5.0,r_024,Plastics Manufacturing,12.0,0.417,True
+r_126,Electrical Components Production,chem_salts,5.0,r_010,Salt Mining,24.0,0.208,True
+r_135,Fibreglass Production,glass,3.0,r_053,Industrial Glassmaking,32.0,0.094,True
+r_135,Fibreglass Production,plastics,3.0,r_024,Plastics Manufacturing,12.0,0.25,True
+r_136,Iron Air Batteries,iron_ingots,6.0,r_005,Pig Iron Smelting,70.0,0.086,True
+r_136,Iron Air Batteries,oxygen,2.0,r_079,Water Electrolysis,7.0,0.286,True
+r_136,Iron Air Batteries,steel,4.0,r_003,Steelmaking,48.0,0.083,True
+r_136,Iron Air Batteries,pure_water,4.0,r_011,Water Pumping,48.0,0.083,True
+r_175,PVC Polymerisation,ethylene,13.0,r_023,Ethylene Refining,13.0,1.0,True
+r_175,PVC Polymerisation,chlorine,13.0,r_012,Chlor-Alkali Process,22.0,0.591,True
+r_180,Oil Refining,crude_oil,20.0,r_014,Oil Drilling,20.0,1.0,True
+r_204,Heavy Vehicles Assembly,car_body,14.0,r_068,Car Body Manufacturing,14.0,1.0,True
+r_204,Heavy Vehicles Assembly,large_engine,11.0,r_073,Large Vehicle Engine Manufacturing,11.0,1.0,True
+r_204,Heavy Vehicles Assembly,lithium_battery,7.0,r_032,Lithium Ion Battery Manufacturing,6.0,1.167,False
+r_204,Heavy Vehicles Assembly,fuels,22.0,r_022,Fuels Refining,22.0,1.0,True
+r_217,Biomass Carbonisation,biomass,24.0,r_211,Agri Solar Farming - Biomass,24.0,1.0,True
+r_218,Petroleum Coking,crude_oil,20.0,r_014,Oil Drilling,20.0,1.0,True

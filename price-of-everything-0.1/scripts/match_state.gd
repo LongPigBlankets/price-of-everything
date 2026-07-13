@@ -357,6 +357,41 @@ var _unlock_progress: Dictionary = {}
 # output flush; tiles that miss the bar in a turn drop out (streak resets). Saved.
 var stockpile_feed_streaks: Dictionary = {}
 var _unlock_defs: Array = []   # [{title, action, object, qty, prereqs, description}]
+# Legacy research rows use a mix of internal names, display names and names of
+# the process/research concept that represents a building group. Resolve those
+# labels centrally so live conditions do not depend on CSV casing or wording.
+const RESEARCH_BUILDING_ALIASES := {
+	"oil_refinery": ["petro_refinery"],
+	"coal_power_plant": ["coal_power"],
+	"factory": ["industrial_factory"],
+	"steel_mill": ["furnace"],
+	"polymer_feedstocks": ["poly_plant"],
+	"precision_reagent_handling": ["chem_plant"],
+	"bioreactor": ["farm"],
+	"cell_culture_automation": ["farm"],
+	"modular_factory_cells": ["industrial_factory"],
+	"grid_synchronous_generation": [
+		"coal_power", "solar_farm", "onshore_wind_farm", "offshore_wind_farm",
+		"hydro_power_plant",
+	],
+	"wind_farm": ["onshore_wind_farm", "offshore_wind_farm"],
+	"renewable_dispatch_forecasting": [
+		"solar_farm", "onshore_wind_farm", "offshore_wind_farm", "hydro_power_plant",
+	],
+	"pipe_network": ["pipes", "reinf_pipes"],
+	"utility_corridor": ["roads", "rails", "pipes", "reinf_pipes", "cables"],
+	"battery": ["battery"],
+	"offshore_platform": ["offshore_oil_platform"],
+	"forest": ["new_forest", "old_forest"],
+	"power_plant": [
+		"coal_power", "solar_farm", "onshore_wind_farm", "offshore_wind_farm",
+		"hydro_power_plant",
+	],
+}
+const RESEARCH_GOOD_ALIASES := {
+	"bioplastics": "plastics",
+	"motors": "motor",
+}
 # Survey range: how many tiles out from a surveyed tile you may survey. The red
 # limit line and the click check both use it; +1 once Geoscanning is unlocked.
 const SURVEY_RANGE_BASE := 2
@@ -1882,9 +1917,9 @@ func _check_unlock_conditions() -> void:
 				break
 		if not prereqs_met:
 			continue
-		# Live conditions evaluated against current state (production totals, owned
-		# buildings, profitability, run-streaks). The Object is an internal_name —
-		# a good_id for "Produce", a building internal_name for the "Run …" verbs.
+		# Live conditions evaluated against current state (production/sales totals,
+		# owned land/buildings, profitability and run-streaks). Legacy CSV Objects
+		# may be IDs, internal names, display names or explicit concept aliases.
 		# Level-filtered verbs ("Run L1", "Run Profitable L2") are forward-compatible:
 		# every building is Level 1 until the leveling mechanic ships, so L1 gates can
 		# already fire and L2 gates wait for it.
@@ -1896,18 +1931,32 @@ func _check_unlock_conditions() -> void:
 		if int(_unlock_progress.get(key, 0)) >= int(d.qty):
 			grant_unlock(title, true)
 
-# True when a research def's live condition is satisfied right now. Returns false
-# for any action this evaluator doesn't own (those fall back to the accumulator).
+# True when a research def's live condition is satisfied right now. Survey also
+# retains the legacy accumulator below, while all other shipped verbs resolve here.
 func _live_condition_met(d: Dictionary) -> bool:
 	var action := str(d.action)
 	var obj := str(d.object)
 	var need := int(d.qty)
 	match action:
 		"Produce":
-			return Production.lifetime_total(obj) >= need
+			var produce_good := _research_good_id(obj)
+			return produce_good != "" and Production.lifetime_total(produce_good) >= need
+		"Sell":
+			if _research_key(obj) == "freight":
+				return MarketState.lifetime_sold_total() >= need
+			var sell_good := _research_good_id(obj)
+			return sell_good != "" and MarketState.lifetime_sold(sell_good) >= need
 		"Build":
-			# "Own N player-built buildings of this internal_name" (any level/run state).
+			# Own N player-built buildings of this type (any level/run state).
 			return _count_buildings(obj, -1, false, 0) >= need
+		"Own":
+			if _research_key(obj) == "land":
+				return _research_owned_land_units() >= need
+			return _count_buildings(obj, -1, false, 0) >= need
+		"Run":
+			# Plain Run conditions mean one matching building sustaining full output
+			# for Quantity turns ("Run Mine for 15 turns").
+			return _count_buildings(obj, -1, false, need) >= 1
 		"Run Profitable":
 			return _count_buildings(obj, -1, true, 0) >= need
 		"Run L1":
@@ -1926,21 +1975,126 @@ func _live_condition_met(d: Dictionary) -> bool:
 			# Just-in-Time Logistics: some tile's stockpile received goods from 3+
 			# buildings for <qty> consecutive turns (streaks kept at output flush).
 			return max_stockpile_feed_streak() >= need
+		"Sustain":
+			var threshold := _leading_int(obj, 0)
+			return threshold == int(ADVISOR_SLOT_PROFIT_5) \
+				and _advisor_profit_streak >= need
 	return false
 
-# Count player-owned buildings whose internal_name == `internal`, optionally
-# filtered by level (-1 = any), profitability, and a minimum consecutive run-streak.
-# `internal` == "any" (or "") matches every building type — used by scale-based
-# unlocks that gate on total buildings owned rather than a specific type.
+
+func _research_key(value: String) -> String:
+	var key := value.strip_edges().to_lower()
+	for token in [" ", "-", "/", "."]:
+		key = key.replace(token, "_")
+	while "__" in key:
+		key = key.replace("__", "_")
+	return key.trim_prefix("_").trim_suffix("_")
+
+
+func _research_building_targets(raw: String) -> Array:
+	var key := _research_key(raw)
+	if key == "" or key == "any":
+		return []
+	var targets: Array = []
+	if RESEARCH_BUILDING_ALIASES.has(key):
+		for internal in RESEARCH_BUILDING_ALIASES[key]:
+			if not targets.has(str(internal)):
+				targets.append(str(internal))
+	for building in Catalog.all_buildings():
+		var internal := str(building.get("internal_name", ""))
+		if key in [
+			_research_key(str(building.get("id", ""))),
+			_research_key(internal),
+			_research_key(str(building.get("display_name", ""))),
+		] and not targets.has(internal):
+			targets.append(internal)
+	return targets
+
+
+func _research_good_id(raw: String) -> String:
+	var key := _research_key(raw)
+	var internal_alias := str(RESEARCH_GOOD_ALIASES.get(key, key))
+	for good in Catalog.all_goods():
+		if internal_alias in [
+			_research_key(str(good.get("id", ""))),
+			_research_key(str(good.get("internal_name", ""))),
+			_research_key(str(good.get("display_name", ""))),
+		]:
+			return str(good.get("id", ""))
+	return ""
+
+
+func _research_owned_land_units() -> int:
+	var total := 0
+	for tile_id in tile_land_owned:
+		if str(tile_id).begins_with("tile_") and int(tile_land_owned[tile_id]) > 0:
+			total += 1
+	return total
+
+
+## Dataset audit used by tests and diagnostics. Placeholder nodes deliberately
+## carry no live condition; every other row should resolve to a live metric.
+func research_condition_issues() -> Array:
+	var issues: Array = []
+	for d in _unlock_defs:
+		var reason := _research_condition_issue(d)
+		if reason != "":
+			issues.append({
+				"title": str(d.get("title", "")),
+				"action": str(d.get("action", "")),
+				"object": str(d.get("object", "")),
+				"reason": reason,
+			})
+	return issues
+
+
+func _research_condition_issue(d: Dictionary) -> String:
+	var action := str(d.get("action", ""))
+	var obj := str(d.get("object", ""))
+	if action == "Placeholder":
+		return ""
+	if action in ["Build", "Run", "Run Profitable", "Run L1", "Run Profitable L2"]:
+		if _research_key(obj) != "any" and _research_building_targets(obj).is_empty():
+			return "unknown building target"
+		return ""
+	if action == "Own":
+		if _research_key(obj) != "land" and _research_building_targets(obj).is_empty():
+			return "unknown ownership target"
+		return ""
+	if action in ["Produce", "Sell"]:
+		if action == "Sell" and _research_key(obj) == "freight":
+			return ""
+		if _research_good_id(obj) == "":
+			return "unknown good target"
+		return ""
+	if action == "Run Recipe":
+		var wanted := _research_key(obj)
+		for recipe in Catalog.all_recipes():
+			if _research_key(str(recipe.get("recipe_type", ""))) == wanted:
+				return ""
+		return "unknown recipe type"
+	if action == "Survey":
+		return "" if _research_key(obj) in ["tiles", "deposits"] else "unknown survey target"
+	if action == "Stockpile filled":
+		return ""
+	if action == "Sustain":
+		return "" if _leading_int(obj, 0) == int(ADVISOR_SLOT_PROFIT_5) \
+			else "unsupported sustain threshold"
+	return "unsupported action"
+
+# Count player-owned buildings resolved from an ID/internal/display/concept name,
+# optionally filtered by level (-1 = any), profitability, and a minimum consecutive
+# run-streak. `internal` == "any" (or "") matches every non-infrastructure building.
 func _count_buildings(internal: String, level: int, require_profitable: bool, min_streak: int) -> int:
-	var match_any: bool = internal == "any" or internal == ""
+	var match_any: bool = _research_key(internal) == "any" or internal == ""
+	var targets := _research_building_targets(internal)
 	var n := 0
 	for inst in buildings.values():
 		if not is_player_owned(inst):
 			continue
 		if match_any and str(Catalog.get_building(str(inst.get("building_id", ""))).get("category", "")) == "infrastructure":
 			continue   # "build N buildings" (any-type scale unlocks) ignores infrastructure
-		if not match_any and _building_internal(inst) != internal:
+		if not match_any and not targets.has(_building_internal(inst)):
 			continue
 		if level >= 0 and _building_level(inst) != level:
 			continue
@@ -1977,8 +2131,8 @@ func _count_buildings_running_recipe_type(recipe_type: String, min_streak: int) 
 func _building_internal(inst: Dictionary) -> String:
 	return str(Catalog.get_building(str(inst.get("building_id", ""))).get("internal_name", ""))
 
-# Production buildings have no level field yet (leveling mechanic unbuilt), so this
-# reports Level 1 for everything — the forward-compatible default.
+# Imported legacy buildings may lack a level; treat those as Level 1. Player-built
+# and upgraded instances carry their actual level in the live state.
 func _building_level(inst: Dictionary) -> int:
 	return int(inst.get("level", 1))
 
@@ -2513,6 +2667,11 @@ func reset() -> void:
 	unlocked_titles.clear()
 	_unlock_progress.clear()
 	stockpile_feed_streaks.clear()
+	# These research ledgers live in their owning simulation systems, but share
+	# the match lifetime. Reset-without-import paths (tests/scenarios) must not let
+	# production or sale progress leak into the next match.
+	MarketState.reset_lifetime_sales()
+	Production.reset_lifetime_research_metrics()
 	_next_instance_counter = 0
 	ruleset = DEFAULT_RULESET.duplicate(true)
 	state_reset.emit()
@@ -3851,13 +4010,12 @@ func _shipment_total_units(s: Dictionary) -> int:
 		return total
 	return int(s.get("qty", 0))
 
-## Per-turn capacity of one tile-link: base mode cap × level multiplier × the
+## Per-turn capacity of one tile-link: configured mode/level cap × the
 ## transport_throughput research multiplier. 0 means the mode is uncapped.
 func tile_mode_capacity(mode: String, level: int) -> float:
-	var base: float = float(EconomyConfig.TRANSPORT_LINK_CAP_BY_MODE.get(mode, 0))
-	if base <= 0.0:
+	var cap: float = TransportService.link_capacity(mode, level)
+	if cap <= 0.0:
 		return 0.0
-	var cap := base * float(EconomyConfig.TRANSPORT_CAP_LEVEL_MULT.get(level, 1.0))
 	return Modifiers.apply("transport_throughput", mode, cap, {"mode": mode})
 
 # A tile's installed infra level for a mode (from the HexMap terrain). Defaults to

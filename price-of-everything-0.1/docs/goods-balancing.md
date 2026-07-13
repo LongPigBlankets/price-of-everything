@@ -24,7 +24,8 @@ trivially solvable (the genre's classic failure mode).
 Two exceptions sit on top of that rule:
 
 - **Raw resources** are profitable standalone (you *extract* value rather than add it).
-  They are governed by **deposit depletion** (−50% at start) and **oversupply glut**
+  They are governed by **deposit depletion** (−30% for common deposits and −15% for
+  bauxite/sulphur at start) and **oversupply glut**
   (selling too much craters the price), not by thin margins.
 - **Tech-gated recipes are rewards.** A recipe unlocked by research may be clearly
   profitable — that profit *is* the reward for the tech investment.
@@ -54,8 +55,11 @@ A recipe's per-turn running cost = **labour + maintenance + energy + transport**
   building even (single ≈ 0), clamped to **5–25%**. `build_material_value` is the
   building's build-kit valued at current market prices.
 - **Maintenance** = `5% × build_material_value`.
-- **Energy** = `energy_req × power_price`. Power costs **£1.00** bought from the grid
-  (standalone) but only **~£0.44** when self-supplied from your own plant (integrated).
+- **Energy** = `energy_req × power_price`. Power costs **£0.10** bought from the grid.
+  Existing self-generated power has a **£0.06 minimum opportunity cost** because that is
+  the grid sale forgone by consuming it internally. Source comparisons also report actual
+  operating cost and a 36-turn levelized investment cost: coal, oil, and onshore wind with
+  lithium-cell battery firming are not collapsed into one universal "own power" number.
 - **Exempt goods** skip the break-even solve and take a flat 5% labour, so they read as
   *profitable resources*: power, mining, `processed_oil`, `refined_ree`,
   `lithium_carbonate`.
@@ -72,11 +76,16 @@ For any recipe:
 
 ```
 single = revenue − market_inputs − energy(grid)  − run_cost     # standalone
-full   = revenue − own_inputs    − energy(own)    − run_cost     # integrated
+full   = revenue − own_inputs    − energy(opportunity) − run_cost # integrated
 
 full − single = (market_inputs − own_inputs) + energy × (grid − own)
               = the INTEGRATION GAIN
 ```
+
+The old diagnostic selected the cheapest power recipe anywhere in the tech tree and applied
+its technical production cost to every chain. That understated electricity at roughly £0.0064.
+The repaired model floors internal power at the £0.06 export opportunity and keeps generator
+operating/investment scenarios separate.
 
 The gain is **independent of the output price** — raising the price lifts `single` and
 `full` by the same amount. So:
@@ -144,7 +153,7 @@ made there — **including the recipe that produces that good** (a circular trap
 
 | Chain | Decision |
 |---|---|
-| **Mines / raw** | Profitable standalone; −50% deposit start + glut governance. Coal cheap+abundant (high yield). |
+| **Mines / raw** | Profitable standalone; −30% common-deposit / −15% bauxite-and-sulphur start + glut governance. Each +15% recovery node restores one step. Coal remains cheap and abundant. |
 | **Ingots → steel / wiring → motor** | Break-even ladder: each step flat-single; motor deepened so integrated ≥ +£75. |
 | **Petrochemical (crude→processed→ethylene→rubber/plastics)** | Crude/processed profitable (deposit+glut); ethylene/rubber/plastics flat-single, profitable integrated. Build-kit quantities trimmed to dampen the loop. |
 | **ICE car (engine/body/tyres → car)** | Car flattened (£260→£174): single ≈ 0, integrated +£340. |
@@ -154,7 +163,7 @@ made there — **including the recipe that produces that good** (a circular trap
 | **Solar panel / building frame** | Deepened to ~+£100 integrated, flat single, prices held (both feed downstream/build kits). |
 | **REE** | Valuable resource (exempt). Base reduction inefficient; gated Magnetic Separation Electrolysis = the efficient reward. |
 | **Lithium** | Valuable resource like REE. **Split refining:** crude *Rudimentary Refinement* (very negative standalone, barely integrated) vs gated *Lithium Electrolysis* (barely-profitable standalone, +£105 integrated). Ore priced up to carry the gain. |
-| **Batteries** | Tiered by lithium density: Sodium +£80 < LFP +£167 < Lithium-Ion +£366 (matches real NMC-vs-LFP premium). All flat standalone. |
+| **Batteries** | Conventional lithium-ion is deliberately loss-making standalone (−£25.88), while researched LFP is profitable (+£42.29) and yields 8 cells from 8 lithium carbonate. Installed cell capital for 1,000 storage falls lithium £450 > sodium £360 > iron-air £300 (18×£25, 24×£15, 60×£5). |
 | **EVs / heavy vehicles** | Base flat standalone; gated variants reward via throughput (Automated = bigger batch) or embedded value (Electric/EV own batteries + CPUs). |
 | **Steel / aluminium / windows** | Flat-single intermediates; gated Basic Oxygen beats base steel via yield; uPVC kept the better window recipe over aluminium. |
 | **PVC / hydrogen / chlor-alkali** | Negative standalone, profitable integrated. Hydrogen deliberately marginal (multiple routes); membraneless = the yield boost. PVC fixed via yield (was underwater). |
@@ -167,12 +176,16 @@ made there — **including the recipe that produces that good** (a circular trap
 
 - **`tools/chain_profit.gd`** — the balancing harness. Reads the live CSVs and prints,
   per recipe: `single` (standalone), `full` (integrated), break-even price, mines at the
-  −50% start, and chain totals. **This is the primary tool — iterate here.**
+  live deposit penalties, and chain totals. **This is the primary tool — iterate here.**
   Run: `<godot> --headless --path . res://tools/chain_profit.tscn --quit-after 200`.
-- **`tests/e2e_stoneshore.gd`** — full headless playthrough; the holistic check (is the
-  economy viable end-to-end?). *Note: the rebalance changed margins enough that the
-  pre-rebalance "optimized" buildout now runs net-negative — the scenario buildout needs
-  re-optimising for the new economy before its profitability asserts will pass.*
+- **`tests/e2e_stoneshore.gd`** — full headless playthrough; its `balance_v4` mode uses
+  live land purchase, construction, loans, deposits, transport maintenance, owned power,
+  production and market sales. Run `python3 -B tools/run_balance_v4_e2e.py` for the
+  150-turn, 10-recipe portfolio benchmark and consolidated report.
+- **`data/balance_v4_changes.json`** and **`tools/manage_balance_v4_data.py`** — exact
+  field-level old/new runtime values plus safe `--status`, `--revert` and `--apply`
+  commands. See `docs/balance-v4-playtest.md` for the manual motor strategy and expected
+  checkpoints.
 - **`tools/run_tests.py`** — ~860 unit asserts (mechanical correctness).
 
 ---

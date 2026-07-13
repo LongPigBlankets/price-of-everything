@@ -52,14 +52,28 @@ var _scenario := {}
 var _scenario_name := DEFAULT_SCENARIO
 var _scenario_note := ""
 var _target_turn := DEFAULT_TARGET_TURN
+var _balance_metrics_output_path := ""
+var _balance_research_override := false
 var _revenue_history: Array[float] = []
 var _profit_post_tax_history: Array[float] = []
+var _profit_by_turn: Array[Dictionary] = []
 var _cash_before_runway := 0.0
 var _cash_after_runway := 0.0
 var _cash_after_coal_runway := 0.0
 var _cash_after_buildout := 0.0
 var _coal_backed_available_capacity := 0.0
 var _coal_backed_loan_amount := 0.0
+var _balance_mode := false
+var _balance_metrics := {}
+var _balance_bad_streak := 0
+var _balance_built_ids: Array[String] = []
+var _balance_integration_turn := -1
+var _balance_thresholds := {100: -1, 200: -1, 500: -1, 1000: -1}
+var _balance_recipe_first_run := {}
+var _balance_stage_metrics := {}
+var _balance_research_unlock_turns := {}
+var _balance_start_config := {}
+var _balance_start_modifiers: Array[Dictionary] = []
 
 
 func _ready() -> void:
@@ -67,8 +81,11 @@ func _ready() -> void:
 	print("\n==== price-of-everything E2E: %s ====" % _scenario_name)
 	print("[E2E] scenario=%s target_turn=%d" % [_scenario_name, _target_turn])
 	await _run()
-	_check(_passed >= 80, "E2E scenario produced at least 80 assertions")
-	_write_latest_metrics()
+	_check(_passed >= (25 if _balance_mode else 80), "E2E scenario produced the expected assertion coverage")
+	if _balance_mode:
+		_write_balance_metrics()
+	else:
+		_write_latest_metrics()
 	print("==== E2E %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -77,8 +94,14 @@ func _run() -> void:
 	_reset_autoloads()
 	_resolve_catalog_ids()
 	_load_scenario()
+	_balance_mode = bool(_scenario.get("balance_v4", false))
+	if _balance_mode:
+		_prepare_balance_start()
 	await _load_main_scene()
 	_check_ui_loaded()
+	if _balance_mode:
+		await _run_balance_v4()
+		return
 	_check_stoneshore_fixture()
 	await _survey_deposits_via_ui()
 	await _take_loan_via_ui(50.0, "initial working-capital loan")
@@ -135,6 +158,10 @@ func _parse_cmdline_args() -> void:
 	_scenario_name = first
 	if args.size() > 1 and str(args[1]).is_valid_int():
 		_target_turn = maxi(1, int(args[1]))
+	if args.size() > 2:
+		_balance_metrics_output_path = str(args[2])
+	if args.size() > 3:
+		_balance_research_override = str(args[3]).strip_edges().to_lower() == "research"
 
 
 func _load_scenario() -> void:
@@ -154,10 +181,398 @@ func _load_scenario() -> void:
 		"scenario buildings is an array")
 
 
+func _prepare_balance_start() -> void:
+	var start_path := str(_scenario.get("balance_start_config", "res://data/starts/open_field.json"))
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(start_path))
+	var cfg: Dictionary = parsed if typeof(parsed) == TYPE_DICTIONARY else {}
+	_check(not cfg.is_empty(), "balance start config loaded: %s" % start_path)
+	_balance_start_config = cfg.duplicate(true)
+	# Legacy balance fixtures intentionally override Open Field's cash/unlocks and expose
+	# all deposits to the optimizing player.  An authored start (Metal Magnate, etc.) is
+	# instead loaded verbatim: cash, assets, stock, land and survey state all come from
+	# the same file the New Game screen uses.
+	var authored_start := _scenario.has("balance_start_config")
+	if not authored_start:
+		cfg["money"] = float(_scenario.get("starting_money", cfg.get("money", EconomyConfig.STARTING_MONEY)))
+		cfg["unlocks"] = (_scenario.get("unlocks", []) as Array).duplicate()
+	var ruleset_overrides := {"tutorial_enabled": false}
+	if not authored_start or bool(_scenario.get("balance_survey_all_tiles", false)):
+		ruleset_overrides["survey_all_tiles"] = true
+	var start_id := str(_scenario.get("balance_start_id", ""))
+	if start_id != "":
+		ruleset_overrides["start_id"] = start_id
+	SaveLoad._pending_snapshot = SaveLoad.expand_start_config(cfg, {
+		"ruleset": ruleset_overrides,
+	})
+	Modifiers.reset()
+
+
+func _run_balance_v4() -> void:
+	var keep_deposit_penalties := bool(_scenario.get("balance_keep_deposit_penalties", false))
+	var keep_start_modifiers := bool(_scenario.get("balance_keep_start_modifiers", false))
+	var consider_research := bool(_scenario.get("balance_consider_research_modifiers", false)) \
+		or _balance_research_override
+	_balance_start_modifiers.clear()
+	if keep_start_modifiers:
+		for modifier in Modifiers.active():
+			var m: Dictionary = modifier
+			if str(m.get("source", "")).begins_with("start:"):
+				_balance_start_modifiers.append(m.duplicate(true))
+	_neutralize_balance_modifiers(keep_deposit_penalties, keep_start_modifiers)
+	var expected_starting_money := float(_scenario.get("starting_money",
+		_balance_start_config.get("money", 1500.0)))
+	_balance_metrics["starting_money"] = expected_starting_money
+	_balance_metrics["start_config"] = str(_scenario.get("balance_start_config", "res://data/starts/open_field.json"))
+	_balance_metrics["earned_research_modifiers_enabled"] = consider_research
+	_balance_metrics["start_modifiers_preserved"] = keep_start_modifiers
+	_balance_metrics["prudent_expansion_enabled"] = bool(_scenario.get("balance_prudent_expansion", false))
+	_balance_metrics["expansion_loans_taken"] = 0
+	_balance_metrics["expansion_loan_principal"] = 0.0
+	_balance_metrics["expansion_loan_gate_rejections"] = 0
+	_balance_metrics["unprofitable_cash_cushion_waits"] = 0
+	_balance_metrics["emergency_bridge_loans_taken"] = 0
+	_balance_metrics["emergency_bridge_loan_principal"] = 0.0
+	_check(absf(MatchState.money - expected_starting_money) < 0.01,
+		"balance player starts with configured £%.0f" % expected_starting_money)
+	var expected_modifiers := (Modifiers.EXTRACTION_PENALTY_PCT.size() if keep_deposit_penalties else 0) \
+		+ (_balance_start_modifiers.size() if keep_start_modifiers else 0)
+	_check(Modifiers.active_count() == expected_modifiers,
+		"balance player has only the configured standing and authored-start modifiers")
+	_validate_authored_balance_start()
+	if consider_research:
+		# A populated authored start can satisfy scale/run conditions during snapshot
+		# import. Reapply those already-earned research effects after the baseline
+		# modifier scrub so the research-enabled player receives them on turn one.
+		Modifiers.reapply_unlock_modifiers(MatchState.unlocked_titles)
+	_register_existing_balance_buildings()
+	var expected_start_buildings := int(_scenario.get("balance_expected_start_buildings",
+		(_balance_start_config.get("buildings", []) as Array).size()))
+	_check(_player_building_count() == expected_start_buildings,
+		"balance player starts with exactly %d authored production buildings" % expected_start_buildings)
+	await _open_construct_panel_via_bottom_menu()
+
+	var initial_surveys: Array = _scenario.get("balance_initial_surveys", [])
+	for raw_tile_id in initial_surveys:
+		var tile_id := str(raw_tile_id)
+		if not MatchState.is_tile_surveyed(tile_id):
+			await _survey_tile_via_ui(tile_id)
+	var survey_wait := 0
+	while not MatchState.surveying_in_progress.is_empty() and survey_wait < 8 \
+			and TurnManager.current_turn < _target_turn:
+		await _advance_turns(1, "complete authored-start resource surveys")
+		survey_wait += 1
+	for raw_tile_id in initial_surveys:
+		_check(MatchState.is_tile_surveyed(str(raw_tile_id)),
+			"authored-start player completed paid survey: %s" % str(raw_tile_id))
+
+	if _scenario.has("balance_runway_transport_spine"):
+		var main_spine = _scenario.get("transport_spine", {})
+		_scenario["transport_spine"] = _scenario.get("balance_runway_transport_spine", {})
+		await _build_transport_spine_from_config()
+		await _advance_until_no_construction(12)
+		_scenario["transport_spine"] = main_spine
+		await _build_buildings_from_list(_scenario.get("balance_runway_buildings", []))
+		await _advance_until_no_construction(20)
+		_configure_output_routes(_scenario.get("balance_runway_routes", []))
+		_configure_tile_only_inputs(_scenario.get("balance_runway_tile_only_inputs", []))
+		_configure_surplus_sales(_scenario.get("balance_runway_surplus_sales", []))
+		var runway_end := TurnManager.current_turn + int(_scenario.get("balance_runway_turns", 12))
+		await _run_to_target_turn(mini(runway_end, _target_turn))
+		_check(_cumulative_run_metric("revenue") > 0.0,
+			"deposit-backed runway generated real goods or grid-power revenue")
+
+	var distances: Array[float] = []
+	for pair in _scenario.get("port_distance_pairs", []):
+		var path := _land_path(str(pair.get("hub", "")), str(pair.get("port", "")))
+		distances.append(float(maxi(0, path.size() - 1)))
+	var average_distance := 0.0
+	for distance in distances:
+		average_distance += distance
+	if not distances.is_empty():
+		average_distance /= float(distances.size())
+	_balance_metrics["average_port_distance"] = average_distance
+	var expected_port_distance := float(_scenario.get("expected_average_port_distance", 3.0))
+	var port_distance_tolerance := float(_scenario.get("port_distance_tolerance", 0.5))
+	_check(absf(average_distance - expected_port_distance) <= port_distance_tolerance,
+		"average production-hub distance from port is %.1f tiles" % expected_port_distance)
+
+	await _build_transport_spine_from_config()
+	await _advance_until_no_construction(12)
+	await _build_buildings_from_list(_scenario.get("balance_standalone_buildings", []))
+	await _advance_until_no_construction(24)
+	if _scenario.has("balance_operating_transport_spine") and TurnManager.current_turn < _target_turn:
+		var construction_spine = _scenario.get("transport_spine", {})
+		_scenario["transport_spine"] = _scenario.get("balance_operating_transport_spine", {})
+		await _build_transport_spine_from_config()
+		await _advance_until_no_construction(16)
+		_scenario["transport_spine"] = construction_spine
+	if TurnManager.current_turn < _target_turn:
+		await _build_buildings_from_list(_scenario.get("balance_post_transport_buildings", []))
+		await _advance_until_no_construction(20)
+	_configure_output_routes(_scenario.get("balance_standalone_routes", []))
+	_check(_player_production_building_count() > 0, "standalone portfolio was physically constructed")
+	if TurnManager.current_turn < _target_turn:
+		await _build_buildings_from_list(_scenario.get("balance_preintegration_buildings", []))
+		await _advance_until_no_construction(32)
+		_configure_output_routes(_scenario.get("balance_preintegration_routes", []))
+
+	var integration_earliest := int(_scenario.get("integration_earliest_turn", 12))
+	if TurnManager.current_turn < integration_earliest:
+		await _run_to_target_turn(integration_earliest)
+	if _scenario.has("balance_integration_transport_spine") and TurnManager.current_turn < _target_turn:
+		var pre_integration_spine = _scenario.get("transport_spine", {})
+		_scenario["transport_spine"] = _scenario.get("balance_integration_transport_spine", {})
+		await _build_transport_spine_from_config()
+		await _advance_until_no_construction(20)
+		_scenario["transport_spine"] = pre_integration_spine
+	_configure_surplus_sales_from_config()
+	for integration_entry in _scenario.get("balance_integration_buildings", []):
+		if TurnManager.current_turn >= _target_turn:
+			break
+		var logical_id := str((integration_entry as Dictionary).get("id", ""))
+		for stage_spine_entry in _scenario.get("balance_integration_stage_transport_spines", []):
+			if typeof(stage_spine_entry) != TYPE_DICTIONARY \
+					or str((stage_spine_entry as Dictionary).get("before_id", "")) != logical_id:
+				continue
+			var saved_spine = _scenario.get("transport_spine", {})
+			_scenario["transport_spine"] = (stage_spine_entry as Dictionary).get("spine", {})
+			await _build_transport_spine_from_config()
+			await _advance_until_no_construction(16)
+			_scenario["transport_spine"] = saved_spine
+		if (integration_entry as Dictionary).has("upgrade_id"):
+			var source_id := str((integration_entry as Dictionary).get("upgrade_id", ""))
+			var source_instance := _first_instance(source_id)
+			var target_level := int((integration_entry as Dictionary).get("level", 2))
+			if source_instance != "":
+				await _upgrade_to_level(source_instance, target_level)
+				if MatchState.buildings.has(source_instance) \
+						and int((MatchState.buildings[source_instance] as Dictionary).get("level", 1)) >= target_level:
+					_register_built(logical_id, source_instance)
+		else:
+			await _build_buildings_from_list([integration_entry])
+			await _advance_until_no_construction(24)
+		var stage_routes: Array = []
+		for route in _scenario.get("balance_integration_routes", []):
+			if str((route as Dictionary).get("id", "")) == logical_id:
+				stage_routes.append(route)
+		for route in _scenario.get("balance_integration_stage_routes", []):
+			if str((route as Dictionary).get("after_id", "")) == logical_id:
+				stage_routes.append(route)
+		_configure_output_routes(stage_routes)
+		var stage_inputs: Array = []
+		for input_entry in _scenario.get("balance_integration_stage_tile_only_inputs", []):
+			if str((input_entry as Dictionary).get("after_id", "")) == logical_id:
+				stage_inputs.append(input_entry)
+		_configure_tile_only_inputs(stage_inputs)
+		if not _logical_ids_built([logical_id]):
+			continue
+		_balance_stage_metrics[logical_id] = _balance_stage_snapshot()
+		for runway_entry in _scenario.get("balance_integration_stage_runways", []):
+			if typeof(runway_entry) != TYPE_DICTIONARY \
+					or str((runway_entry as Dictionary).get("after_id", "")) != logical_id:
+				continue
+			var minimum_cash := float((runway_entry as Dictionary).get("minimum_cash", 0.0))
+			var minimum_turns := int((runway_entry as Dictionary).get("minimum_turns", 0))
+			var maximum_turn := mini(_target_turn,
+				int((runway_entry as Dictionary).get("maximum_turn", _target_turn)))
+			var stage_end_turn := TurnManager.current_turn + minimum_turns
+			while TurnManager.current_turn < maximum_turn \
+					and int(_balance_metrics.get("bankruptcy_turn", -1)) < 0 \
+					and (TurnManager.current_turn < stage_end_turn or MatchState.money < minimum_cash):
+				await _advance_turns(1, "operate peak output before the next balance expansion")
+			_balance_stage_metrics[logical_id] = _balance_stage_snapshot()
+	var integration_complete := _logical_ids_built(_scenario.get("balance_required_integration_ids", [])) \
+		and Construction.construction_projects.is_empty()
+	_check(integration_complete, "every required raw-material and owned-power integration asset exists")
+	if integration_complete:
+		_configure_output_routes(_scenario.get("balance_integration_routes", []))
+		_configure_tile_only_inputs(_scenario.get("balance_tile_only_inputs", []))
+		_configure_surplus_sales_from_config()
+		_balance_integration_turn = TurnManager.current_turn
+	_check(Construction.construction_projects.is_empty(), "full-integration construction queue completed")
+	_check(_balance_integration_turn > 0, "full-integration turn was recorded")
+
+	if _scenario.has("balance_scale_transport_spine") and TurnManager.current_turn < _target_turn:
+		var initial_spine = _scenario.get("transport_spine", {})
+		_scenario["transport_spine"] = _scenario.get("balance_scale_transport_spine", {})
+		await _build_transport_spine_from_config()
+		await _advance_until_no_construction(20)
+		_scenario["transport_spine"] = initial_spine
+	await _build_buildings_from_list(_scenario.get("balance_scale_buildings", []))
+	await _advance_until_no_construction(48)
+	_configure_output_routes(_scenario.get("balance_scale_routes", []))
+	_configure_tile_only_inputs(_scenario.get("balance_scale_tile_only_inputs", []))
+	_configure_surplus_sales_from_config()
+	_cash_after_buildout = MatchState.money
+	await _run_to_target_turn(_target_turn)
+
+	var all_assets_retained := true
+	for instance_id in _balance_built_ids:
+		if not MatchState.buildings.has(instance_id) or not MatchState.is_player_owned(MatchState.buildings[instance_id]):
+			all_assets_retained = false
+			break
+	_check(all_assets_retained, "no constructed production building was sold or demolished")
+	_check(int(_balance_metrics.get("bankruptcy_turn", -1)) < 0,
+		"player never exhausted loan capacity with negative cash and profit for five turns")
+	_check(float(_balance_metrics.get("maintenance_paid_total", 0.0)) > 0.0,
+		"real building and infrastructure maintenance was paid")
+	_check(_player_power_building_count() > 0,
+		"portfolio owns a live power-producing building")
+	_check(int(_balance_metrics.get("grid_bought_after_integration", 0)) == 0,
+		"fully integrated portfolio used owned power rather than grid imports")
+	_check(_total_units_sold() > 0, "portfolio sold goods through the real market route")
+	for target in _scenario.get("target_goods", []):
+		_check(_sold_qty(_good_id(str(target))) > 0, "target good sold: %s" % str(target))
+
+
+func _neutralize_balance_modifiers(keep_deposit_penalties: bool, keep_start_modifiers: bool = false) -> void:
+	Modifiers.reset()
+	if keep_deposit_penalties:
+		# Deposit exhaustion is a standing game rule, not a player modifier. Re-seed
+		# it after clearing earned bonuses so the benchmark sees live yields.
+		for good_internal in Modifiers.EXTRACTION_PENALTY_PCT:
+			var good := Catalog.get_good_by_internal_name(str(good_internal))
+			Modifiers.add({
+				"id": "deposit_penalty_%s" % str(good_internal),
+				"domain": "recipe_output",
+				"target_match": {"good_internal": str(good_internal)},
+				"pct": float(Modifiers.EXTRACTION_PENALTY_PCT[good_internal]),
+				"label": "Exhausted %s deposits" % str(good.get("display_name", good_internal)),
+				"source": "deposit_penalty",
+			})
+	if keep_start_modifiers:
+		for modifier in _balance_start_modifiers:
+			Modifiers.add(modifier)
+
+
+func _validate_authored_balance_start() -> void:
+	if not _scenario.has("balance_start_config"):
+		return
+	var expected_start_id := str(_scenario.get("balance_start_id", ""))
+	if expected_start_id != "":
+		_check(str(MatchState.ruleset.get("start_id", "")) == expected_start_id,
+			"authored start carries ruleset start_id=%s" % expected_start_id)
+	var expected_loans: Array = _balance_start_config.get("loans", [])
+	_check(LoanState.loans.size() == expected_loans.size(),
+		"authored start has exactly %d opening loans" % expected_loans.size())
+	for raw_tile_id in (_balance_start_config.get("land", {}) as Dictionary):
+		var tile_id := str(raw_tile_id)
+		var expected_land := int((_balance_start_config.get("land", {}) as Dictionary)[raw_tile_id])
+		_check(MatchState.get_tile_land_owned(tile_id) == expected_land,
+			"authored start owns %d land on %s" % [expected_land, tile_id])
+	for raw_tile_id in (_balance_start_config.get("stockpile", {}) as Dictionary):
+		var tile_id := str(raw_tile_id)
+		for raw_good_id in ((_balance_start_config.get("stockpile", {}) as Dictionary)[raw_tile_id] as Dictionary):
+			var good_id := str(raw_good_id)
+			var expected_qty := int(((_balance_start_config.get("stockpile", {}) as Dictionary)[raw_tile_id] as Dictionary)[raw_good_id])
+			_check(Stockpile.get_at_tile(tile_id, good_id) == expected_qty,
+				"authored start stocks %d %s on %s" % [expected_qty, good_id, tile_id])
+	for raw_tile_id in (_balance_start_config.get("infrastructure", {}) as Dictionary):
+		var tile_id := str(raw_tile_id)
+		var expected: Dictionary = (_balance_start_config.get("infrastructure", {}) as Dictionary)[raw_tile_id]
+		var tile_data := _tile(tile_id)
+		for infra_type in expected.get("present", []):
+			_check((tile_data.get("infrastructure_present", []) as Array).has(str(infra_type)),
+				"authored start includes %s on %s" % [str(infra_type), tile_id])
+		for raw_infra_type in (expected.get("levels", {}) as Dictionary):
+			var infra_type := str(raw_infra_type)
+			var expected_level := int((expected.get("levels", {}) as Dictionary)[raw_infra_type])
+			_check(int((tile_data.get("infrastructure_levels", {}) as Dictionary).get(infra_type, 0)) == expected_level,
+				"authored start has level-%d %s on %s" % [expected_level, infra_type, tile_id])
+	var expected_surveyed := {}
+	for port in Catalog.all_ports():
+		expected_surveyed[str(port.get("tile_id", ""))] = true
+	for entry in _balance_start_config.get("buildings", []):
+		expected_surveyed[str((entry as Dictionary).get("tile_id", ""))] = true
+	for tile_id in _balance_start_config.get("surveyed_tiles", []):
+		expected_surveyed[str(tile_id)] = true
+	expected_surveyed.erase("")
+	_check(MatchState.surveyed_tiles.size() == expected_surveyed.size(),
+		"authored start preserves its exact initial survey footprint")
+	for tile_id in expected_surveyed:
+		_check(MatchState.is_tile_surveyed(str(tile_id)),
+			"authored start begins with %s surveyed" % str(tile_id))
+	for raw_entry in _balance_start_config.get("buildings", []):
+		var entry: Dictionary = raw_entry
+		var matching_instance := ""
+		for raw_instance_id in MatchState.buildings:
+			var instance_id := str(raw_instance_id)
+			var building: Dictionary = MatchState.buildings[instance_id]
+			if MatchState.is_player_owned(building) \
+					and str(building.get("building_id", "")) == str(entry.get("building_id", "")) \
+					and str(building.get("recipe_id", "")) == str(entry.get("recipe_id", "")) \
+					and str(building.get("tile_id", "")) == str(entry.get("tile_id", "")):
+				matching_instance = instance_id
+				break
+		_check(matching_instance != "",
+			"authored start building is live: %s/%s on %s" % [
+				str(entry.get("building_id", "")), str(entry.get("recipe_id", "")),
+				str(entry.get("tile_id", "")),
+			])
+		if matching_instance == "":
+			continue
+		_check(int((MatchState.buildings[matching_instance] as Dictionary).get("level", 1)) \
+				== int(entry.get("level", 1)),
+			"authored start building preserves its opening level")
+		var output_to := str(entry.get("output_to", ""))
+		if output_to == "":
+			continue
+		for output in Catalog.get_recipe(str(entry.get("recipe_id", ""))).get("outputs", []):
+			var good_id := str((output as Dictionary).get("good_id", ""))
+			if output_to == "market":
+				_check(MatchState.is_output_market(matching_instance, good_id),
+					"authored start output remains routed to market")
+			else:
+				_check(MatchState.get_output_stockpile_destination(matching_instance, good_id) == output_to,
+					"authored start output remains routed to %s" % output_to)
+	var configured_modifiers: Array = _balance_start_config.get("modifiers", [])
+	for modifier in configured_modifiers:
+		_check(Modifiers.has(str((modifier as Dictionary).get("id", ""))),
+			"authored start modifier is active: %s" % str((modifier as Dictionary).get("id", "")))
+
+
+func _register_existing_balance_buildings() -> void:
+	var claimed := {}
+	for raw_entry in _scenario.get("balance_existing_buildings", []):
+		if typeof(raw_entry) != TYPE_DICTIONARY:
+			continue
+		var entry: Dictionary = raw_entry
+		var logical_id := str(entry.get("id", ""))
+		var building_id := str(entry.get("building_id", ""))
+		if building_id == "":
+			building_id = _building_id(str(entry.get("internal_name", "")))
+		var recipe_id := _scenario_recipe_id(entry)
+		var tile_id := str(entry.get("tile", entry.get("tile_id", "")))
+		var wanted := maxi(1, int(entry.get("count", 1)))
+		var matches: Array[String] = []
+		for raw_instance_id in MatchState.buildings:
+			var instance_id := str(raw_instance_id)
+			if claimed.has(instance_id):
+				continue
+			var building: Dictionary = MatchState.buildings[instance_id]
+			if MatchState.is_player_owned(building) \
+					and str(building.get("building_id", "")) == building_id \
+					and str(building.get("recipe_id", "")) == recipe_id \
+					and str(building.get("tile_id", "")) == tile_id:
+				matches.append(instance_id)
+		matches.sort()
+		_check(matches.size() >= wanted,
+			"authored start resolved %d live instance(s) for %s" % [wanted, logical_id])
+		for i in range(mini(wanted, matches.size())):
+			var instance_id := matches[i]
+			claimed[instance_id] = true
+			_register_built(logical_id, instance_id)
+			_balance_built_ids.append(instance_id)
+
+
 # Resolve a scenario building entry's recipe: prefer an explicit recipe_key into
 # the pre-resolved _recipes map; otherwise fall back to _recipe_for() via the
 # internal_name + recipe_output (+ optional recipe_display) fields.
 func _scenario_recipe_id(entry: Dictionary) -> String:
+	var explicit := str(entry.get("recipe_id", ""))
+	if explicit != "":
+		_check(not Catalog.get_recipe(explicit).is_empty(), "scenario recipe_id resolved: %s" % explicit)
+		return explicit
 	var key := str(entry.get("recipe_key", ""))
 	if key != "":
 		var resolved := str(_recipes.get(key, ""))
@@ -174,24 +589,38 @@ func _scenario_recipe_id(entry: Dictionary) -> String:
 # (the turn-1 rebalance left no pre-placed build materials on these tiles, so a
 # direct tile-materials build would silently no-op — see open_field_1.json note).
 func _build_buildings_from_list(entries: Array) -> void:
+	var upgrade_requests: Array[Dictionary] = []
 	for entry in entries:
 		if typeof(entry) != TYPE_DICTIONARY:
 			continue
 		var logical_id := str(entry.get("id", ""))
 		var internal := str(entry.get("internal_name", ""))
-		var building_id := str(_buildings.get(internal, ""))
+		var building_id := _building_id(internal)
 		_check(building_id != "", "scenario building internal_name resolved: %s" % internal)
 		var recipe_id := _scenario_recipe_id(entry)
 		_check(recipe_id != "", "scenario building recipe resolved for %s" % logical_id)
 		var tile_id := str(entry.get("tile", ""))
+		var required_deposit := str(entry.get("deposit", ""))
+		if required_deposit != "":
+			_check(_tile_deposits_include(_tile(tile_id), required_deposit),
+				"deposit-aware player placed %s on a real %s deposit" % [logical_id, required_deposit])
 		var count := maxi(1, int(entry.get("count", 1)))
 		var allow_market: bool = bool(entry.get("allow_market_materials", true))
 		for i in range(count):
+			if _balance_mode and not await _ensure_balance_build_funding(building_id, tile_id):
+				_check(true, "player skipped an unaffordable or land-constrained expansion")
+				break
 			var instance_id := await _build_building_via_build_mode(building_id, recipe_id, tile_id, allow_market)
 			_register_built(logical_id, instance_id)
+			if _balance_mode and instance_id != "":
+				_balance_built_ids.append(instance_id)
 			var level := int(entry.get("level", 1))
 			if level > 1 and instance_id != "":
-				_apply_level(instance_id, level)
+				upgrade_requests.append({"instance_id": instance_id, "target_level": level})
+	if not upgrade_requests.is_empty():
+		await _advance_until_no_construction(24)
+		for request in upgrade_requests:
+			await _upgrade_to_level(str(request.instance_id), int(request.target_level))
 
 
 # Map a logical scenario id to its instance id(s). The first instance also lands
@@ -215,18 +644,59 @@ func _first_instance(logical_id: String) -> String:
 	return str(list[0]) if not list.is_empty() else ""
 
 
-# Best-effort level-up of a freshly built/awaiting building, mirroring the level
-# field on a scenario building entry. Tolerant of either a live building or a
-# project still under construction.
-func _apply_level(instance_id: String, level: int) -> void:
-	if MatchState.buildings.has(instance_id):
-		var b: Dictionary = MatchState.buildings[instance_id]
-		b["level"] = level
-		MatchState.buildings[instance_id] = b
-	elif Construction.construction_projects.has(instance_id):
-		var p: Dictionary = Construction.construction_projects[instance_id]
-		p["target_level"] = level
-		Construction.construction_projects[instance_id] = p
+func _logical_ids_built(logical_ids: Array) -> bool:
+	for logical_id in logical_ids:
+		var found := false
+		for instance_id in _instances_for(str(logical_id)):
+			if MatchState.buildings.has(str(instance_id)) and MatchState.is_player_owned(MatchState.buildings[str(instance_id)]):
+				found = true
+				break
+		if not found:
+			return false
+	return true
+
+
+# Scenario upgrades use the same paid, multi-turn path as the player.  No level
+# fields are mutated directly: missing kits come from the market, land is bought
+# if the larger footprint needs it, and the building remains unavailable during
+# the real upgrade countdown.
+func _upgrade_to_level(instance_id: String, target_level: int) -> void:
+	while MatchState.buildings.has(instance_id) \
+			and int((MatchState.buildings[instance_id] as Dictionary).get("level", 1)) < target_level \
+			and TurnManager.current_turn < _target_turn:
+		var preview: Dictionary = MatchState.preview_upgrade(instance_id)
+		_check(bool(preview.get("ok", false)) and not bool(preview.get("research_locked", false)),
+			"building upgrade is available and research-unlocked")
+		if not bool(preview.get("ok", false)) or bool(preview.get("research_locked", false)):
+			return
+		var land_cost := 0.0
+		if not bool(preview.get("fits", false)):
+			land_cost = MatchState.LAND_PATCH_COST
+		var required := float(preview.get("market_cost", 0.0)) + land_cost
+		var funded := true
+		if _balance_mode and bool(_scenario.get("balance_prudent_expansion", false)):
+			funded = await _ensure_prudent_expansion_cash(required)
+		elif _balance_mode:
+			funded = await _ensure_balance_cash(required + 5.0)
+		if not funded:
+			_check(true, "player skipped an unaffordable building upgrade")
+			return
+		if not bool(preview.get("fits", false)):
+			var tile_id := str((MatchState.buildings[instance_id] as Dictionary).get("tile_id", ""))
+			var bought := MatchState.purchase_tile_land(tile_id, 1)
+			_check(bought, "upgrade footprint land purchase succeeded on %s" % tile_id)
+			if not bought:
+				return
+			preview = MatchState.preview_upgrade(instance_id)
+		var result: Dictionary = MatchState.start_upgrade(instance_id, "market")
+		_check(bool(result.get("ok", false)), "paid building upgrade entered the live queue")
+		if not bool(result.get("ok", false)):
+			return
+		var waited := 0
+		while MatchState.is_upgrading(instance_id) and waited < 16 and TurnManager.current_turn < _target_turn:
+			await _advance_turns(1, "complete paid building upgrade")
+			waited += 1
+		_check(not MatchState.is_upgrading(instance_id), "building upgrade completed without cancellation")
 
 
 func _buy_land_from_config() -> void:
@@ -258,7 +728,7 @@ func _build_coal_runway_from_config() -> void:
 	for route in runway.get("route_to_market", []):
 		if typeof(route) != TYPE_DICTIONARY:
 			continue
-		var good_id := str(_goods.get(str(route.get("good", "")), ""))
+		var good_id := _good_id(str(route.get("good", "")))
 		for instance_id in _instances_for(str(route.get("id", ""))):
 			var iid := str(instance_id)
 			MatchState.route_output_to_market(iid, good_id)
@@ -292,7 +762,21 @@ func _build_transport_spine_from_config() -> void:
 				"optimized corridor has adjacent step %s -> %s" % [str(path[i]), str(path[i + 1])])
 		resolved_corridors.append(path)
 
-	for tile_id in spine.get("roads", []):
+	# Roads accept the same "corridors" shorthand as rail and pipe networks so a
+	# scenario can compare transport modes over exactly the same physical paths.
+	var roads_spec = spine.get("roads", [])
+	var road_tiles: Array = []
+	if typeof(roads_spec) == TYPE_STRING and str(roads_spec) == "corridors":
+		var corridor_tiles := {}
+		for path in resolved_corridors:
+			for tile_id in path:
+				corridor_tiles[str(tile_id)] = true
+		road_tiles = corridor_tiles.keys()
+		road_tiles.sort()
+	elif typeof(roads_spec) == TYPE_ARRAY:
+		for tile_id in roads_spec:
+			road_tiles.append(str(tile_id))
+	for tile_id in road_tiles:
 		await _build_infra_via_build_mode("roads", str(tile_id))
 
 	# rails: either an explicit tile list, or the literal "corridors" to mean "every
@@ -312,6 +796,22 @@ func _build_transport_spine_from_config() -> void:
 	for tile_id in rail_tiles:
 		await _build_infra_via_build_mode("rails", str(tile_id))
 
+	for infra_type in ["pipes", "reinf_pipes"]:
+		var spec = spine.get(infra_type, [])
+		var tiles: Array = []
+		if typeof(spec) == TYPE_STRING and str(spec) == "corridors":
+			var unique := {}
+			for path in resolved_corridors:
+				for tile_id in path:
+					unique[str(tile_id)] = true
+			tiles = unique.keys()
+			tiles.sort()
+		elif typeof(spec) == TYPE_ARRAY:
+			for tile_id in spec:
+				tiles.append(str(tile_id))
+		for tile_id in tiles:
+			await _build_infra_via_build_mode(infra_type, str(tile_id))
+
 	for tile_id in spine.get("cables", []):
 		await _build_infra_via_build_mode("cables", str(tile_id))
 
@@ -323,11 +823,15 @@ func _build_supply_chain_from_config() -> void:
 
 
 func _configure_output_routes_from_config() -> void:
-	for route in _scenario.get("output_routes", []):
+	_configure_output_routes(_scenario.get("output_routes", []))
+
+
+func _configure_output_routes(routes: Array) -> void:
+	for route in routes:
 		if typeof(route) != TYPE_DICTIONARY:
 			continue
 		var logical_id := str(route.get("id", ""))
-		var good_id := str(_goods.get(str(route.get("good", "")), ""))
+		var good_id := _good_id(str(route.get("good", "")))
 		var dest := str(route.get("dest", ""))
 		for instance_id in _instances_for(logical_id):
 			var iid := str(instance_id)
@@ -340,7 +844,11 @@ func _configure_output_routes_from_config() -> void:
 
 
 func _configure_surplus_sales_from_config() -> void:
-	for tile_id in _scenario.get("surplus_sales", []):
+	_configure_surplus_sales(_scenario.get("surplus_sales", []))
+
+
+func _configure_surplus_sales(tile_ids: Array) -> void:
+	for tile_id in tile_ids:
 		MatchState.set_auto_sell_impact(str(tile_id), MatchState.IMPACT_ANY)
 		_check(MatchState.get_auto_sell_impact(str(tile_id)) == MatchState.IMPACT_ANY,
 			"surplus sale impact set to any for %s" % str(tile_id))
@@ -350,13 +858,17 @@ func _configure_surplus_sales_from_config() -> void:
 
 
 func _configure_tile_only_inputs_from_config() -> void:
-	for entry in _scenario.get("tile_only_inputs", []):
+	_configure_tile_only_inputs(_scenario.get("tile_only_inputs", []))
+
+
+func _configure_tile_only_inputs(entries: Array) -> void:
+	for entry in entries:
 		if typeof(entry) != TYPE_DICTIONARY:
 			continue
 		var logical_id := str(entry.get("id", ""))
 		var good_ids: Array = []
 		for g in entry.get("goods", []):
-			good_ids.append(str(_goods.get(str(g), "")))
+			good_ids.append(_good_id(str(g)))
 		for instance_id in _instances_for(logical_id):
 			_set_tile_only(str(instance_id), good_ids)
 
@@ -393,6 +905,7 @@ func _reset_autoloads() -> void:
 	Production.full_output_streak_by_building.clear()
 	_revenue_history.clear()
 	_profit_post_tax_history.clear()
+	_profit_by_turn.clear()
 	MarketState.prices.clear()
 	for good in Catalog.all_goods():
 		MarketState.prices[str(good.get("id", ""))] = float(good.get("base_price", 1.0))
@@ -429,7 +942,7 @@ func _resolve_catalog_ids() -> void:
 
 
 func _recipe_for(building_internal: String, output_internal: String, display_contains: String = "") -> String:
-	var building_id := str(_buildings.get(building_internal, ""))
+	var building_id := _building_id(building_internal)
 	var output_good := Catalog.get_good_by_internal_name(output_internal)
 	var output_id := str(output_good.get("id", ""))
 	for recipe in Catalog.all_recipes():
@@ -441,6 +954,26 @@ func _recipe_for(building_internal: String, output_internal: String, display_con
 			continue
 		return str(recipe.get("recipe_id", ""))
 	return ""
+
+
+func _building_id(internal: String) -> String:
+	if _buildings.has(internal):
+		return str(_buildings[internal])
+	var building := Catalog.get_building_by_internal_name(internal)
+	var building_id := str(building.get("id", ""))
+	if building_id != "":
+		_buildings[internal] = building_id
+	return building_id
+
+
+func _good_id(internal: String) -> String:
+	if _goods.has(internal):
+		return str(_goods[internal])
+	var good := Catalog.get_good_by_internal_name(internal)
+	var good_id := str(good.get("id", ""))
+	if good_id != "":
+		_goods[internal] = good_id
+	return good_id
 
 
 func _load_main_scene() -> void:
@@ -678,7 +1211,11 @@ func _build_infra_via_build_mode(infra_type: String, tile_id: String) -> void:
 	if existing.has(infra_type):
 		_check(true, "%s already present on %s" % [infra_type, tile_id])
 		return
-	_ensure_land_for_build(str(_buildings.get(infra_type, "")), tile_id)
+	var building_id := _building_id(infra_type)
+	if _balance_mode and not await _ensure_balance_build_funding(building_id, tile_id):
+		_check(true, "player skipped unaffordable infrastructure expansion")
+		return
+	_ensure_land_for_build(building_id, tile_id)
 	var before_projects := Construction.construction_projects.size()
 	BuildMode.enter_infrastructure_mode(infra_type)
 	_check(BuildMode.is_active and BuildMode.kind == BuildMode.Kind.INFRASTRUCTURE,
@@ -686,8 +1223,18 @@ func _build_infra_via_build_mode(infra_type: String, tile_id: String) -> void:
 	BuildMode.set("_last_attempt_ms", 0)
 	BuildMode.attempt_build(tile_id)
 	await get_tree().process_frame
-	BuildMode.exit_build_mode()
 	var started := Construction.construction_projects.size() > before_projects
+	if not started:
+		var dialog := _main.get("_construction_dialog") as Control
+		if dialog != null and dialog.visible:
+			var buy_btn := dialog.get("_buy_button") as Button
+			_check(buy_btn != null and not buy_btn.disabled,
+				"buy-and-construct button enabled for %s infrastructure" % infra_type)
+			if buy_btn != null and not buy_btn.disabled:
+				buy_btn.pressed.emit()
+			await get_tree().process_frame
+			started = Construction.construction_projects.size() > before_projects
+	BuildMode.exit_build_mode()
 	_check(started, "infrastructure project queued: %s on %s" % [infra_type, tile_id])
 
 
@@ -717,6 +1264,127 @@ func _build_building_via_build_mode(building_id: String, recipe_id: String, tile
 	return instance_id
 
 
+func _ensure_balance_build_funding(building_id: String, tile_id: String) -> bool:
+	if building_id == "":
+		return false
+	var building := Catalog.get_building(building_id)
+	var footprint := maxf(0.0, float(building.get("tile_size_used", 1.0)))
+	var needed_land := MatchState.get_tile_player_space_used(tile_id) + footprint \
+		- float(MatchState.get_tile_land_owned(tile_id))
+	if needed_land > float(MatchState.get_tile_land_units_available(tile_id)) + 0.001:
+		return false
+	var land_cost := float(maxi(0, ceili(needed_land / float(MatchState.LAND_PATCH_SIZE)))) \
+		* MatchState.LAND_PATCH_COST
+	var material_cost := Construction.estimate_market_cost(tile_id, building_id)
+	if material_cost <= 0.0 and not Construction.requirements_for(building_id).is_empty():
+		material_cost = Construction.market_purchase_value(building_id) * 1.10
+	var project_cost := land_cost + float(building.get("base_price", 0.0)) + material_cost
+	if bool(_scenario.get("balance_prudent_expansion", false)):
+		return await _ensure_prudent_expansion_cash(project_cost)
+	var reserve := float(_scenario.get("balance_build_cash_reserve", 5.0))
+	var required := project_cost + reserve
+	return await _ensure_balance_cash(required)
+
+
+func _ensure_prudent_expansion_cash(project_cost: float) -> bool:
+	var profit_window := maxi(1, int(_scenario.get("balance_profit_window", 3)))
+	var interest_fraction := maxf(0.0,
+		float(_scenario.get("balance_loan_interest_profit_fraction", 0.5)))
+	var cash_multiplier := maxf(1.0,
+		float(_scenario.get("balance_unprofitable_cash_multiplier", 1.5)))
+	var wait_limit := maxi(0, int(_scenario.get("balance_funding_wait_turns", 80)))
+	var waited := 0
+	while TurnManager.current_turn < _target_turn \
+			and int(_balance_metrics.get("bankruptcy_turn", -1)) < 0:
+		var has_full_window := _profit_post_tax_history.size() >= profit_window
+		var average_profit := _recent_array_average(_profit_post_tax_history, profit_window) \
+			if has_full_window else 0.0
+		if average_profit <= 0.0:
+			# Strictly more than 150% leaves half the full project cost behind for
+			# the first input purchases and early operating losses.
+			if MatchState.money > project_cost * cash_multiplier + 0.001:
+				_check(true, "loss-making expansion retained the configured cash cushion")
+				return true
+			_balance_metrics["unprofitable_cash_cushion_waits"] = \
+				int(_balance_metrics.get("unprofitable_cash_cushion_waits", 0)) + 1
+		else:
+			if MatchState.money + 0.001 >= project_cost:
+				_check(true, "profitable expansion was funded from operating cash")
+				return true
+			var gap := project_cost - MatchState.money
+			var borrow := minf(gap, maxf(0.0, LoanState.available_capacity()))
+			if borrow >= 1.0:
+				var rate := LoanState.effective_loan_interest_rate()
+				var existing_interest := _active_loan_interest_per_turn()
+				var proposed_interest := borrow * rate / float(EconomyConfig.LOAN_TERM_TURNS)
+				var interest_limit := average_profit * interest_fraction
+				if existing_interest + proposed_interest < interest_limit:
+					_check(existing_interest + proposed_interest < interest_limit,
+						"expansion-loan interest stayed below half trailing profit")
+					var before_capacity := LoanState.available_capacity()
+					var ok := LoanState.take_loan(borrow)
+					_check(ok and borrow <= before_capacity + 0.001,
+						"prudent expansion borrowing stayed inside live loan capacity")
+					if ok:
+						_balance_metrics["expansion_loans_taken"] = \
+							int(_balance_metrics.get("expansion_loans_taken", 0)) + 1
+						_balance_metrics["expansion_loan_principal"] = \
+							float(_balance_metrics.get("expansion_loan_principal", 0.0)) + borrow
+						_balance_metrics["max_expansion_interest_per_turn"] = maxf(
+							float(_balance_metrics.get("max_expansion_interest_per_turn", 0.0)),
+							existing_interest + proposed_interest)
+						_balance_metrics["last_expansion_loan_decision"] = {
+							"turn": TurnManager.current_turn,
+							"principal": borrow,
+							"trailing_average_profit": average_profit,
+							"interest_per_turn_after_loan": existing_interest + proposed_interest,
+							"interest_per_turn_limit": interest_limit,
+						}
+						continue
+				else:
+					_balance_metrics["expansion_loan_gate_rejections"] = \
+						int(_balance_metrics.get("expansion_loan_gate_rejections", 0)) + 1
+		if waited >= wait_limit or _player_production_building_count() <= 0:
+			break
+		await _advance_turns(1, "wait for prudent expansion funding")
+		waited += 1
+	return false
+
+
+func _active_loan_interest_per_turn() -> float:
+	var total := 0.0
+	for loan in LoanState.loans:
+		var rate := maxf(0.0, float((loan as Dictionary).get("interest_rate", 0.0)))
+		var payment := maxf(0.0, float((loan as Dictionary).get("payment_per_turn", 0.0)))
+		if rate > 0.0:
+			total += payment * rate / (1.0 + rate)
+	return total
+
+
+func _ensure_balance_cash(required: float) -> bool:
+	var waited := 0
+	while MatchState.money + 0.001 < required and waited < 40 \
+			and TurnManager.current_turn < _target_turn \
+			and int(_balance_metrics.get("bankruptcy_turn", -1)) < 0:
+		var gap := required - MatchState.money
+		var available := maxf(0.0, LoanState.available_capacity())
+		var borrow := minf(gap, available)
+		if borrow >= 1.0:
+			var before_capacity := LoanState.available_capacity()
+			var ok := LoanState.take_loan(borrow)
+			_check(ok and borrow <= before_capacity + 0.001,
+				"construction borrowing stayed inside live loan capacity")
+			continue
+		if _player_production_building_count() <= 0:
+			break
+		await _advance_turns(1, "wait for operating cash before next balance build")
+		waited += 1
+	var funded := MatchState.money + 0.001 >= required
+	if funded:
+		_check(true, "player financed the action without debug cash and within live loan capacity")
+	return funded
+
+
 # Tiles start with ZERO owned land (owner 2026-07-11): before each scenario build,
 # buy the patches the footprint needs — exactly what a player does from the TVP.
 func _ensure_land_for_build(building_id: String, tile_id: String) -> void:
@@ -726,7 +1394,9 @@ func _ensure_land_for_build(building_id: String, tile_id: String) -> void:
 	if shortfall <= 0.0:
 		return
 	var patches := ceili(shortfall / float(MatchState.LAND_PATCH_SIZE))
-	MatchState.purchase_tile_land(tile_id, patches)
+	var ok := MatchState.purchase_tile_land(tile_id, patches)
+	if _balance_mode:
+		_check(ok, "land purchase succeeded within tile capacity on %s" % tile_id)
 
 
 func _find_new_project_or_building(before_projects: Dictionary, before_buildings: Dictionary,
@@ -768,9 +1438,13 @@ func _set_tile_only(instance_id: String, good_ids: Array) -> void:
 
 func _advance_until_no_construction(max_turns: int) -> void:
 	var turns := 0
-	while not Construction.construction_projects.is_empty() and turns < max_turns:
+	while not Construction.construction_projects.is_empty() and turns < max_turns \
+			and (not _balance_mode or TurnManager.current_turn < _target_turn):
 		await _advance_turns(1, "waiting for construction")
 		turns += 1
+	if _balance_mode and TurnManager.current_turn >= _target_turn and not Construction.construction_projects.is_empty():
+		_check(true, "scenario horizon stopped further construction without cancellation or demolition")
+		return
 	_check(turns < max_turns, "construction completed within %d turns" % max_turns)
 	for key in _built.keys():
 		var instance_id := str(_built[key])
@@ -807,11 +1481,101 @@ func _capture_turn_metrics() -> void:
 	if summary.is_empty():
 		_revenue_history.append(0.0)
 		_profit_post_tax_history.append(0.0)
+		_profit_by_turn.append({"turn": TurnManager.current_turn, "profit": 0.0})
+		if _balance_mode:
+			_capture_balance_turn(0.0, summary)
 		return
 	var revenue := float(summary.get("goods_sales_revenue", 0.0)) + float(summary.get("power_sales_revenue", 0.0))
 	var profit_post_tax := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
 	_revenue_history.append(revenue)
 	_profit_post_tax_history.append(profit_post_tax)
+	_profit_by_turn.append({"turn": TurnManager.current_turn, "profit": profit_post_tax})
+	if _balance_mode:
+		_capture_balance_turn(profit_post_tax, summary)
+
+
+func _capture_balance_turn(profit_post_tax: float, summary: Dictionary) -> void:
+	var turn := TurnManager.current_turn
+	for title in MatchState.unlocked_titles.keys():
+		if not _balance_research_unlock_turns.has(str(title)):
+			_balance_research_unlock_turns[str(title)] = turn
+	# The baseline keeps unlock gates but excludes their economic modifiers.  The
+	# opt-in research comparison retains every modifier earned through live play.
+	var consider_research := bool(_scenario.get("balance_consider_research_modifiers", false)) \
+		or _balance_research_override
+	if not consider_research:
+		_neutralize_balance_modifiers(
+			bool(_scenario.get("balance_keep_deposit_penalties", false)),
+			bool(_scenario.get("balance_keep_start_modifiers", false)),
+		)
+	_apply_balance_stock_controls()
+	_balance_metrics["last_profit"] = profit_post_tax
+	_balance_metrics["maintenance_paid_total"] = float(_balance_metrics.get("maintenance_paid_total", 0.0)) \
+		+ float(summary.get("maintenance_paid", 0.0))
+	for threshold in _balance_thresholds.keys():
+		if int(_balance_thresholds[threshold]) < 0 and profit_post_tax > float(threshold):
+			_balance_thresholds[threshold] = turn
+	for instance_id in Production.last_turn_run.keys():
+		if not MatchState.buildings.has(str(instance_id)):
+			continue
+		var recipe_id := str((MatchState.buildings[str(instance_id)] as Dictionary).get("recipe_id", ""))
+		if recipe_id in _scenario.get("target_recipe_ids", []) and not _balance_recipe_first_run.has(recipe_id):
+			_balance_recipe_first_run[recipe_id] = turn
+	if _balance_integration_turn > 0:
+		_balance_metrics["grid_bought_after_integration"] = \
+			int(_balance_metrics.get("grid_bought_after_integration", 0)) \
+			+ int(summary.get("grid_bought", 0))
+
+	# The benchmark mirrors the owner-defined bankruptcy rule.  A legal bridge
+	# loan is taken first whenever capacity remains; bankruptcy requires all
+	# three bad conditions for five consecutive turns.
+	if MatchState.money < 0.0 and LoanState.available_capacity() >= 1.0:
+		var bridge := minf(-MatchState.money, LoanState.available_capacity())
+		if bridge >= 1.0:
+			if LoanState.take_loan(bridge):
+				_balance_metrics["emergency_bridge_loans_taken"] = \
+					int(_balance_metrics.get("emergency_bridge_loans_taken", 0)) + 1
+				_balance_metrics["emergency_bridge_loan_principal"] = \
+					float(_balance_metrics.get("emergency_bridge_loan_principal", 0.0)) + bridge
+	var bad := MatchState.money < 0.0 and profit_post_tax < 0.0 and LoanState.available_capacity() < 1.0
+	_balance_bad_streak = _balance_bad_streak + 1 if bad else 0
+	_balance_metrics["max_bankruptcy_streak"] = maxi(
+		int(_balance_metrics.get("max_bankruptcy_streak", 0)), _balance_bad_streak)
+	if _balance_bad_streak >= 5 and int(_balance_metrics.get("bankruptcy_turn", -1)) < 0:
+		_balance_metrics["bankruptcy_turn"] = turn
+
+	if turn in [30, 80, 150]:
+		_balance_metrics["turn_%d" % turn] = {
+			"building_count": _player_building_count(),
+			"units_sold": _total_units_sold(),
+			"cash": MatchState.money,
+			"profit": profit_post_tax,
+			"loan_capacity_left": LoanState.available_capacity(),
+		}
+
+
+func _apply_balance_stock_controls() -> void:
+	for entry in _scenario.get("balance_stock_controls", []):
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var good_id := _good_id(str((entry as Dictionary).get("good", "")))
+		var pause_above := maxi(0, int((entry as Dictionary).get("pause_above", 80)))
+		var resume_below := maxi(0, int((entry as Dictionary).get("resume_below", 40)))
+		for raw_instance_id in _instances_for(str((entry as Dictionary).get("id", ""))):
+			var instance_id := str(raw_instance_id)
+			if not MatchState.buildings.has(instance_id):
+				continue
+			var tile_id := str((MatchState.buildings[instance_id] as Dictionary).get("tile_id", ""))
+			var on_hand := Stockpile.get_at_tile(tile_id, good_id)
+			var paused := MatchState.is_building_paused(instance_id)
+			if not paused and on_hand >= pause_above:
+				MatchState.set_building_paused(instance_id, true)
+				_balance_metrics["stock_control_pauses"] = \
+					int(_balance_metrics.get("stock_control_pauses", 0)) + 1
+			elif paused and on_hand <= resume_below:
+				MatchState.set_building_paused(instance_id, false)
+				_balance_metrics["stock_control_resumes"] = \
+					int(_balance_metrics.get("stock_control_resumes", 0)) + 1
 
 
 func _check_economy_end_state() -> void:
@@ -1074,6 +1838,13 @@ func _recent_array_total(values: Array[float], count: int) -> float:
 	return total
 
 
+func _recent_array_average(values: Array[float], count: int) -> float:
+	var used := mini(values.size(), maxi(0, count))
+	if used <= 0:
+		return 0.0
+	return _recent_array_total(values, used) / float(used)
+
+
 func _sold_qty(good_id: String) -> int:
 	var total := 0
 	for row in MatchState.transaction_log:
@@ -1088,6 +1859,129 @@ func _sold_revenue(good_id: String) -> float:
 		if str(row.get("kind", "")) == "sell" and str(row.get("good_id", "")) == good_id:
 			total += float(row.get("qty", 0)) * MarketState.get_price(good_id)
 	return total
+
+
+func _total_units_sold() -> int:
+	var total := 0
+	for row in MatchState.transaction_log:
+		if str(row.get("kind", "")) == "sell":
+			total += int(row.get("qty", 0))
+	return total
+
+
+func _player_building_count() -> int:
+	var total := 0
+	for building in MatchState.buildings.values():
+		if MatchState.is_player_owned(building):
+			total += 1
+	return total
+
+
+func _player_production_building_count() -> int:
+	var total := 0
+	for building in MatchState.buildings.values():
+		if not MatchState.is_player_owned(building):
+			continue
+		var data := Catalog.get_building(str(building.get("building_id", "")))
+		if str(data.get("category", "")) != "infrastructure":
+			total += 1
+	return total
+
+
+func _player_power_building_count() -> int:
+	var power_good_id := _good_id("power")
+	var total := 0
+	for building in MatchState.buildings.values():
+		if not MatchState.is_player_owned(building):
+			continue
+		var recipe := Catalog.get_recipe(str(building.get("recipe_id", "")))
+		if Catalog.recipe_produces(recipe, power_good_id):
+			total += 1
+	return total
+
+
+func _balance_stage_snapshot() -> Dictionary:
+	return {
+		"turn": TurnManager.current_turn,
+		"cash": MatchState.money,
+		"profit": _profit_post_tax_history[-1] if not _profit_post_tax_history.is_empty() else 0.0,
+		"loan_capacity_left": LoanState.available_capacity(),
+		"building_count": _player_building_count(),
+		"units_sold": _total_units_sold(),
+	}
+
+
+func _write_balance_metrics() -> void:
+	var summary: Dictionary = Production.last_turn_summary
+	_balance_metrics["scenario"] = _scenario_name
+	_balance_metrics["integration_scope"] = str(_scenario.get("integration_scope", "all scenario targets"))
+	_balance_metrics["target_turn"] = _target_turn
+	_balance_metrics["turn_chain_fully_integrated"] = _balance_integration_turn
+	_balance_metrics["turn_profit_gt_100"] = _balance_thresholds[100]
+	_balance_metrics["turn_profit_gt_200"] = _balance_thresholds[200]
+	_balance_metrics["turn_profit_gt_500"] = _balance_thresholds[500]
+	_balance_metrics["turn_profit_gt_1000"] = _balance_thresholds[1000]
+	_balance_metrics["final_building_count"] = _player_building_count()
+	_balance_metrics["final_units_sold"] = _total_units_sold()
+	_balance_metrics["final_cash"] = MatchState.money
+	_balance_metrics["target_recipe_first_run"] = _balance_recipe_first_run.duplicate(true)
+	_balance_metrics["integration_stages"] = _balance_stage_metrics.duplicate(true)
+	_balance_metrics["profit_by_turn"] = _profit_by_turn.duplicate(true)
+	_balance_metrics["research_unlock_turns"] = _balance_research_unlock_turns.duplicate(true)
+	_balance_metrics["final_active_modifiers"] = Modifiers.active().duplicate(true)
+	for recipe_id in _scenario.get("target_recipe_ids", []):
+		_check(int(_balance_recipe_first_run.get(str(recipe_id), -1)) > 0,
+			"target recipe ran in the live simulation: %s" % str(recipe_id))
+	_balance_metrics["assertions_passed"] = _passed
+	_balance_metrics["assertions_failed"] = _failed
+	_balance_metrics["final_economy"] = {
+		"money_in": float(summary.get("money_in", 0.0)),
+		"money_out": float(summary.get("money_out", 0.0)),
+		"goods_sales_revenue": float(summary.get("goods_sales_revenue", 0.0)),
+		"power_sales_revenue": float(summary.get("power_sales_revenue", 0.0)),
+		"power_supply": int(summary.get("power_supply", 0)),
+		"power_demand": int(summary.get("power_demand", 0)),
+		"grid_bought": int(summary.get("grid_bought", 0)),
+		"grid_sold": int(summary.get("grid_sold", 0)),
+		"starved": summary.get("starved", []),
+	}
+	var target_sales := {}
+	for target in _scenario.get("target_goods", []):
+		target_sales[str(target)] = _sold_qty(_good_id(str(target)))
+	_balance_metrics["target_units_sold"] = target_sales
+	var building_runs := {}
+	for logical_id in _built_by_id:
+		var rows: Array = []
+		for raw_instance_id in _instances_for(str(logical_id)):
+			var instance_id := str(raw_instance_id)
+			if not MatchState.buildings.has(instance_id):
+				continue
+			var building: Dictionary = MatchState.buildings[instance_id]
+			rows.append({
+				"instance_id": instance_id,
+				"recipe_id": str(building.get("recipe_id", "")),
+				"tile_id": str(building.get("tile_id", "")),
+				"level": int(building.get("level", 1)),
+				"ran_last_turn": Production.last_turn_run.has(instance_id),
+			})
+		building_runs[str(logical_id)] = rows
+	_balance_metrics["building_runs"] = building_runs
+	if not _balance_metrics.has("bankruptcy_turn"):
+		_balance_metrics["bankruptcy_turn"] = -1
+	for turn in [30, 80, 150]:
+		var key := "turn_%d" % turn
+		if not _balance_metrics.has(key):
+			_balance_metrics[key] = {
+				"building_count": -1, "units_sold": -1, "cash": 0.0,
+				"profit": 0.0, "loan_capacity_left": 0.0,
+			}
+	var path := _balance_metrics_output_path if _balance_metrics_output_path != "" \
+		else "user://balance_v4_%s.json" % _scenario_name
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(_balance_metrics, "\t"))
+		file.close()
+	print("[BALANCE_V4_METRICS] ", JSON.stringify(_balance_metrics))
 
 
 func _tile(tile_id: String) -> Dictionary:
