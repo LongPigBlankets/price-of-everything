@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://c8i7ies68i6xa"
+
+[deps]
+
+files=["res://reports/balance/minimum_labour_structural_candidates.recipe.translation", "res://reports/balance/minimum_labour_structural_candidates.target.translation", "res://reports/balance/minimum_labour_structural_candidates.target.translation", "res://reports/balance/minimum_labour_structural_candidates.minimum.translation", "res://reports/balance/minimum_labour_structural_candidates.needed.translation", "res://reports/balance/minimum_labour_structural_candidates.needed.translation", "res://reports/balance/minimum_labour_structural_candidates.primary.translation", "res://reports/balance/minimum_labour_structural_candidates.output.translation", "res://reports/balance/minimum_labour_structural_candidates.price.translation", "res://reports/balance/minimum_labour_structural_candidates.extra.translation", "res://reports/balance/minimum_labour_structural_candidates.maintenance.translation", "res://reports/balance/minimum_labour_structural_candidates.highest.translation", "res://reports/balance/minimum_labour_structural_candidates.highest.translation", "res://reports/balance/minimum_labour_structural_candidates.highest.translation", "res://reports/balance/minimum_labour_structural_candidates.input.translation"]
+
+source_file="res://reports/balance/minimum_labour_structural_candidates.csv"
+dest_files=["res://reports/balance/minimum_labour_structural_candidates.recipe.translation", "res://reports/balance/minimum_labour_structural_candidates.target.translation", "res://reports/balance/minimum_labour_structural_candidates.target.translation", "res://reports/balance/minimum_labour_structural_candidates.minimum.translation", "res://reports/balance/minimum_labour_structural_candidates.needed.translation", "res://reports/balance/minimum_labour_structural_candidates.needed.translation", "res://reports/balance/minimum_labour_structural_candidates.primary.translation", "res://reports/balance/minimum_labour_structural_candidates.output.translation", "res://reports/balance/minimum_labour_structural_candidates.price.translation", "res://reports/balance/minimum_labour_structural_candidates.extra.translation", "res://reports/balance/minimum_labour_structural_candidates.maintenance.translation", "res://reports/balance/minimum_labour_structural_candidates.highest.translation", "res://reports/balance/minimum_labour_structural_candidates.highest.translation", "res://reports/balance/minimum_labour_structural_candidates.highest.translation", "res://reports/balance/minimum_labour_structural_candidates.input.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

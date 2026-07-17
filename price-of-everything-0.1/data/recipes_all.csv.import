@@ -1,19 +1,3 @@
 [remap]
 
-importer="csv_translation"
-type="Translation"
-uid="uid://coaxs22cocbwc"
-
-[deps]
-
-files=["res://data/recipes_all.display.translation", "res://data/recipes_all.building.translation", "res://data/recipes_all.input.translation", "res://data/recipes_all.qty.translation", "res://data/recipes_all.input.translation", "res://data/recipes_all.qty.translation", "res://data/recipes_all.input.translation", "res://data/recipes_all.qty.translation", "res://data/recipes_all.input.translation", "res://data/recipes_all.qty.translation", "res://data/recipes_all.input.translation", "res://data/recipes_all.qty.translation", "res://data/recipes_all.input.translation", "res://data/recipes_all.qty.translation", "res://data/recipes_all.energy.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.en.translation", "res://data/recipes_all.en.translation", "res://data/recipes_all.requirements.translation", "res://data/recipes_all.pollution.translation", "res://data/recipes_all.en.translation", "res://data/recipes_all.category.translation", "res://data/recipes_all.terminal.translation", "res://data/recipes_all.required.translation", "res://data/recipes_all.labour.translation", "res://data/recipes_all.labour.translation", "res://data/recipes_all.labour.translation", "res://data/recipes_all.catalysts.translation"]
-
-source_file="res://data/recipes_all.csv"
-dest_files=["res://data/recipes_all.display.translation", "res://data/recipes_all.building.translation", "res://data/recipes_all.input.translation", "res://data/recipes_all.qty.translation", "res://data/recipes_all.input.translation", "res://data/recipes_all.qty.translation", "res://data/recipes_all.input.translation", "res://data/recipes_all.qty.translation", "res://data/recipes_all.input.translation", "res://data/recipes_all.qty.translation", "res://data/recipes_all.input.translation", "res://data/recipes_all.qty.translation", "res://data/recipes_all.input.translation", "res://data/recipes_all.qty.translation", "res://data/recipes_all.energy.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.output.translation", "res://data/recipes_all.en.translation", "res://data/recipes_all.en.translation", "res://data/recipes_all.requirements.translation", "res://data/recipes_all.pollution.translation", "res://data/recipes_all.en.translation", "res://data/recipes_all.category.translation", "res://data/recipes_all.terminal.translation", "res://data/recipes_all.required.translation", "res://data/recipes_all.labour.translation", "res://data/recipes_all.labour.translation", "res://data/recipes_all.labour.translation", "res://data/recipes_all.catalysts.translation"]
-
-[params]
-
-compress=1
-delimiter=0
-unescape_keys=false
-unescape_translations=true
+importer="keep"

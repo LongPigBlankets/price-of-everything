@@ -8,8 +8,7 @@ extends Node
 ## or determinism impact (never calls randi/randf; the flag is session-only and
 ## never serialized). No-op under --headless so unit/e2e runs write no stray files.
 
-const SAVE_DIR := "user://saves"  # mirrors SaveLoad.SAVE_DIR; hardcoded so flush()
-                                  # is robust to autoload teardown ordering.
+const AppPaths := preload("res://scripts/app_paths.gd")  # session logs live in <base>/logs/
 
 var armed := false
 var _flushed := false
@@ -59,9 +58,9 @@ func flush() -> void:
 	if _flushed or not armed or _tee == null or _tee.buffer.is_empty():
 		return
 	_flushed = true
-	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
+	var logs_dir := AppPaths.logs_dir()
 	var stamp := Time.get_datetime_string_from_system().replace(":", "-").replace("T", "_")
-	var path := "%s/session_log_%s.txt" % [SAVE_DIR, stamp]
+	var path := "%s/session_log_%s.txt" % [logs_dir, stamp]
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		push_warning("SessionLog: could not open %s for writing" % path)

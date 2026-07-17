@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://dm6hqfq5m01d0"
+
+[deps]
+
+files=["res://reports/balance/success_standalone_recipes.recipe.translation", "res://reports/balance/success_standalone_recipes.primary.translation", "res://reports/balance/success_standalone_recipes.start.translation", "res://reports/balance/success_standalone_recipes.research.translation", "res://reports/balance/success_standalone_recipes.unlock.translation", "res://reports/balance/success_standalone_recipes.revenue.translation", "res://reports/balance/success_standalone_recipes.market.translation", "res://reports/balance/success_standalone_recipes.grid.translation", "res://reports/balance/success_standalone_recipes.labour.translation", "res://reports/balance/success_standalone_recipes.maintenance.translation", "res://reports/balance/success_standalone_recipes.freight.translation", "res://reports/balance/success_standalone_recipes.working.translation", "res://reports/balance/success_standalone_recipes.profit.translation"]
+
+source_file="res://reports/balance/success_standalone_recipes.csv"
+dest_files=["res://reports/balance/success_standalone_recipes.recipe.translation", "res://reports/balance/success_standalone_recipes.primary.translation", "res://reports/balance/success_standalone_recipes.start.translation", "res://reports/balance/success_standalone_recipes.research.translation", "res://reports/balance/success_standalone_recipes.unlock.translation", "res://reports/balance/success_standalone_recipes.revenue.translation", "res://reports/balance/success_standalone_recipes.market.translation", "res://reports/balance/success_standalone_recipes.grid.translation", "res://reports/balance/success_standalone_recipes.labour.translation", "res://reports/balance/success_standalone_recipes.maintenance.translation", "res://reports/balance/success_standalone_recipes.freight.translation", "res://reports/balance/success_standalone_recipes.working.translation", "res://reports/balance/success_standalone_recipes.profit.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

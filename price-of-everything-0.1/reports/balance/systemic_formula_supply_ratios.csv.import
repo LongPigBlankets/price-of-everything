@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://brfgbdtnfepko"
+
+[deps]
+
+files=["res://reports/balance/systemic_formula_supply_ratios.consumer.translation", "res://reports/balance/systemic_formula_supply_ratios.input.translation", "res://reports/balance/systemic_formula_supply_ratios.required.translation", "res://reports/balance/systemic_formula_supply_ratios.supplier.translation", "res://reports/balance/systemic_formula_supply_ratios.supplier.translation", "res://reports/balance/systemic_formula_supply_ratios.supplier.translation", "res://reports/balance/systemic_formula_supply_ratios.buildings.translation", "res://reports/balance/systemic_formula_supply_ratios.within.translation"]
+
+source_file="res://reports/balance/systemic_formula_supply_ratios.csv"
+dest_files=["res://reports/balance/systemic_formula_supply_ratios.consumer.translation", "res://reports/balance/systemic_formula_supply_ratios.input.translation", "res://reports/balance/systemic_formula_supply_ratios.required.translation", "res://reports/balance/systemic_formula_supply_ratios.supplier.translation", "res://reports/balance/systemic_formula_supply_ratios.supplier.translation", "res://reports/balance/systemic_formula_supply_ratios.supplier.translation", "res://reports/balance/systemic_formula_supply_ratios.buildings.translation", "res://reports/balance/systemic_formula_supply_ratios.within.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

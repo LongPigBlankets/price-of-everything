@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://c4ucfd5orucff"
+
+[deps]
+
+files=["res://reports/balance/systemic_deployment_overrides.recipe.translation", "res://reports/balance/systemic_deployment_overrides.deployment.translation", "res://reports/balance/systemic_deployment_overrides.base.translation", "res://reports/balance/systemic_deployment_overrides.deployed.translation", "res://reports/balance/systemic_deployment_overrides.base.translation", "res://reports/balance/systemic_deployment_overrides.deployed.translation", "res://reports/balance/systemic_deployment_overrides.deployed.translation", "res://reports/balance/systemic_deployment_overrides.deployed.translation", "res://reports/balance/systemic_deployment_overrides.target.translation", "res://reports/balance/systemic_deployment_overrides.target.translation", "res://reports/balance/systemic_deployment_overrides.target.translation", "res://reports/balance/systemic_deployment_overrides.target.translation", "res://reports/balance/systemic_deployment_overrides.deployed.translation", "res://reports/balance/systemic_deployment_overrides.id.translation"]
+
+source_file="res://reports/balance/systemic_deployment_overrides.csv"
+dest_files=["res://reports/balance/systemic_deployment_overrides.recipe.translation", "res://reports/balance/systemic_deployment_overrides.deployment.translation", "res://reports/balance/systemic_deployment_overrides.base.translation", "res://reports/balance/systemic_deployment_overrides.deployed.translation", "res://reports/balance/systemic_deployment_overrides.base.translation", "res://reports/balance/systemic_deployment_overrides.deployed.translation", "res://reports/balance/systemic_deployment_overrides.deployed.translation", "res://reports/balance/systemic_deployment_overrides.deployed.translation", "res://reports/balance/systemic_deployment_overrides.target.translation", "res://reports/balance/systemic_deployment_overrides.target.translation", "res://reports/balance/systemic_deployment_overrides.target.translation", "res://reports/balance/systemic_deployment_overrides.target.translation", "res://reports/balance/systemic_deployment_overrides.deployed.translation", "res://reports/balance/systemic_deployment_overrides.id.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

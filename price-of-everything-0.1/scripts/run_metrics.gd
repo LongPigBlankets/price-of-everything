@@ -20,8 +20,13 @@ extends Node
 # LoanState (debt), Catalog (building/good valuation), Production
 # (turn_processed summary + building_starved), TurnManager (turn signals).
 
-const CSV_PATH := "user://run_metrics.csv"
-const SUMMARY_PATH := "user://run_metrics_summary.json"
+const AppPaths := preload("res://scripts/app_paths.gd")  # telemetry lives in <base>/logs/
+
+static func _csv_path() -> String:
+	return AppPaths.logs_dir().path_join("run_metrics.csv")
+
+static func _summary_path() -> String:
+	return AppPaths.logs_dir().path_join("run_metrics_summary.json")
 
 # Stable CSV column order. Append-only: never reorder/remove a column once shipped.
 const COLUMNS: Array[String] = [
@@ -92,7 +97,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_connect_signals()
 	_reset_run_state()
-	print("[RunMetrics] ready (enabled). Logging to %s" % CSV_PATH)
+	print("[RunMetrics] ready (enabled). Logging to %s" % _csv_path())
 
 
 func _connect_signals() -> void:
@@ -350,22 +355,22 @@ func _metrics_turn() -> int:
 
 func _append_row(row: Dictionary) -> void:
 	var f: FileAccess
-	if not _header_written and not FileAccess.file_exists(CSV_PATH):
+	if not _header_written and not FileAccess.file_exists(_csv_path()):
 		# Fresh file: create + write the header.
-		f = FileAccess.open(CSV_PATH, FileAccess.WRITE)
+		f = FileAccess.open(_csv_path(), FileAccess.WRITE)
 		if f == null:
-			push_warning("[RunMetrics] cannot open %s for writing" % CSV_PATH)
+			push_warning("[RunMetrics] cannot open %s for writing" % _csv_path())
 			return
 		f.store_line(",".join(COLUMNS))
 		_header_written = true
 	else:
 		# Append to the existing file.
-		f = FileAccess.open(CSV_PATH, FileAccess.READ_WRITE)
+		f = FileAccess.open(_csv_path(), FileAccess.READ_WRITE)
 		if f == null:
 			# File vanished between checks — recreate with a header.
-			f = FileAccess.open(CSV_PATH, FileAccess.WRITE)
+			f = FileAccess.open(_csv_path(), FileAccess.WRITE)
 			if f == null:
-				push_warning("[RunMetrics] cannot open %s for writing" % CSV_PATH)
+				push_warning("[RunMetrics] cannot open %s for writing" % _csv_path())
 				return
 			f.store_line(",".join(COLUMNS))
 		_header_written = true
@@ -399,8 +404,8 @@ func _format_cell(value) -> String:
 func reset() -> void:
 	if not enabled:
 		return
-	if FileAccess.file_exists(CSV_PATH):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(CSV_PATH))
+	if FileAccess.file_exists(_csv_path()):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(_csv_path()))
 	_reset_run_state()
 
 ## Write the per-run roll-up to user://run_metrics_summary.json. Idempotent within
@@ -412,13 +417,13 @@ func finish_run() -> Dictionary:
 	if _summary_written:
 		return _last_run_summary()
 	var data: Dictionary = _last_run_summary()
-	var f := FileAccess.open(SUMMARY_PATH, FileAccess.WRITE)
+	var f := FileAccess.open(_summary_path(), FileAccess.WRITE)
 	if f != null:
 		f.store_string(JSON.stringify(data, "\t"))
 		f.close()
-		print("[RunMetrics] run summary written to %s" % SUMMARY_PATH)
+		print("[RunMetrics] run summary written to %s" % _summary_path())
 	else:
-		push_warning("[RunMetrics] cannot write %s" % SUMMARY_PATH)
+		push_warning("[RunMetrics] cannot write %s" % _summary_path())
 	_summary_written = true
 	return data
 
@@ -441,9 +446,9 @@ func _last_run_summary() -> Dictionary:
 ## Handy for the validation sim's assertions and for tests.
 func read_rows() -> Array:
 	var rows: Array = []
-	if not FileAccess.file_exists(CSV_PATH):
+	if not FileAccess.file_exists(_csv_path()):
 		return rows
-	var f := FileAccess.open(CSV_PATH, FileAccess.READ)
+	var f := FileAccess.open(_csv_path(), FileAccess.READ)
 	if f == null:
 		return rows
 	var header: PackedStringArray = f.get_csv_line()

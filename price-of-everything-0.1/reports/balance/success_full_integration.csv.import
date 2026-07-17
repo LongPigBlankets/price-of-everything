@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://m013731nms33"
+
+[deps]
+
+files=["res://reports/balance/success_full_integration.power.translation", "res://reports/balance/success_full_integration.recipe.translation", "res://reports/balance/success_full_integration.recipe.translation", "res://reports/balance/success_full_integration.primary.translation", "res://reports/balance/success_full_integration.full.translation", "res://reports/balance/success_full_integration.over.translation", "res://reports/balance/success_full_integration.over.translation", "res://reports/balance/success_full_integration.over.translation", "res://reports/balance/success_full_integration.over.translation", "res://reports/balance/success_full_integration.over.translation", "res://reports/balance/success_full_integration.over.translation"]
+
+source_file="res://reports/balance/success_full_integration.csv"
+dest_files=["res://reports/balance/success_full_integration.power.translation", "res://reports/balance/success_full_integration.recipe.translation", "res://reports/balance/success_full_integration.recipe.translation", "res://reports/balance/success_full_integration.primary.translation", "res://reports/balance/success_full_integration.full.translation", "res://reports/balance/success_full_integration.over.translation", "res://reports/balance/success_full_integration.over.translation", "res://reports/balance/success_full_integration.over.translation", "res://reports/balance/success_full_integration.over.translation", "res://reports/balance/success_full_integration.over.translation", "res://reports/balance/success_full_integration.over.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

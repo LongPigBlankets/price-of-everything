@@ -1457,42 +1457,6 @@ func _diag_row(r: Dictionary, top_border: bool) -> Control:
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail.custom_minimum_size = Vector2(PANEL_WIDTH - 110.0, 0)
 	col.add_child(detail)
-	# "See all modifiers" accordion — each contributing modifier as its own coloured row.
-	var parts: Array = r.get("parts", [])
-	if not parts.is_empty():
-		var toggle := Button.new()
-		toggle.flat = true
-		toggle.focus_mode = Control.FOCUS_NONE
-		toggle.theme_type_variation = "Caption"
-		toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		toggle.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
-		toggle.text = "▸ See all modifiers"
-		col.add_child(toggle)
-		var list := VBoxContainer.new()
-		list.add_theme_constant_override("separation", 1)
-		list.visible = false
-		for p in parts:
-			var pct := int(p.get("pct", 0))
-			var prow := HBoxContainer.new()
-			prow.add_theme_constant_override("separation", DS.SP["SM"])
-			var pl := Label.new()
-			pl.theme_type_variation = "Caption"
-			pl.text = str(p.get("label", ""))
-			pl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			pl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			pl.custom_minimum_size = Vector2(PANEL_WIDTH - 170.0, 0)
-			prow.add_child(pl)
-			var pv := Label.new()
-			pv.theme_type_variation = "Numeric"
-			pv.text = "%s%d%%" % ["+" if pct >= 0 else "−", absi(pct)]
-			pv.add_theme_color_override("font_color", DS.PALETTE["OK"] if pct >= 0 else DS.PALETTE["DANGER"])
-			pv.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-			prow.add_child(pv)
-			list.add_child(prow)
-		col.add_child(list)
-		toggle.pressed.connect(func() -> void:
-			list.visible = not list.visible
-			toggle.text = ("▾ Hide modifiers" if list.visible else "▸ See all modifiers"))
 	return wrap
 
 # --- cost to produce (emphasised, per output good) -----------------------------------------

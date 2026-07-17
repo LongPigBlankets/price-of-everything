@@ -7,7 +7,7 @@ extends Node
 ## Phase 1 (current): in-place snapshot/apply + debug-terminal slots. Phase 2 adds
 ## scene-reload sequencing (main-menu Load Game) and on-map visual rebuild.
 
-const SAVE_DIR := "user://saves"
+const AppPaths := preload("res://scripts/app_paths.gd")
 # Version history (migrations in _migrate): 1 = initial format; 2 = adds `ruleset`
 # (match.ruleset + meta.ruleset) so future rule variants can key off saves;
 # 3 = adds special order state; 4 = advisor seats/acquisition; 5 = structured
@@ -160,7 +160,7 @@ func save_slot(slot: String) -> String:
 	var path := _slot_path(slot)
 	if path == "":
 		return "invalid save name '%s'" % slot
-	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
+	DirAccess.make_dir_recursive_absolute(AppPaths.saves_dir())
 	# Write to a temp file and rename over the slot so a crash/power loss
 	# mid-write can never destroy both the old and the new copy of the save.
 	var tmp_path := path + ".tmp"
@@ -575,14 +575,14 @@ func list_slots() -> Array:
 	# [{slot, turn, money, timestamp}] sorted by name; meta read without full parse cost
 	# is not worth the complexity at this scale, so we parse each file.
 	var out: Array = []
-	var dir := DirAccess.open(SAVE_DIR)
+	var dir := DirAccess.open(AppPaths.saves_dir())
 	if dir == null:
 		return out
 	for file in dir.get_files():
 		if not file.ends_with(".json"):
 			continue
 		var slot := file.trim_suffix(".json")
-		var f := FileAccess.open("%s/%s" % [SAVE_DIR, file], FileAccess.READ)
+		var f := FileAccess.open("%s/%s" % [AppPaths.saves_dir(), file], FileAccess.READ)
 		if f == null:
 			continue
 		var parsed: Variant = JSON.parse_string(f.get_as_text())
@@ -604,7 +604,7 @@ func _slot_path(slot: String) -> String:
 	var name := slot.strip_edges().validate_filename()
 	if name == "":
 		return ""
-	return "%s/%s.json" % [SAVE_DIR, name]
+	return "%s/%s.json" % [AppPaths.saves_dir(), name]
 
 # --- Version migrations ---
 # Older saves step up one version at a time; each rung only knows the shape of the
