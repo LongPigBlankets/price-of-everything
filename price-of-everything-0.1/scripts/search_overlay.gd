@@ -80,6 +80,21 @@ func open_encyclopedia() -> void:
 	_search_input.text = ""
 	_show_encyclopedia_landing()
 
+## Deep-link straight to a GOOD's entry (the Produced by / Used in recipe view).
+## Used by the Goods Graph's expanded-card "Encyclopedia entry" button.
+func open_encyclopedia_good(good_id: String) -> void:
+	var good: Dictionary = Catalog.get_good(good_id)
+	if good.is_empty():
+		open_encyclopedia()
+		return
+	show()
+	PanelStack.push(self)
+	move_to_front()
+	_empty_view = "encyclopedia"
+	_search_input.text = ""
+	_show_result_detail({"type": "good", "id": good_id,
+		"title": str(good.get("display_name", good_id)), "payload": good})
+
 func open_encyclopedia_entry(entry_id: String) -> void:
 	# Deep-link straight to a Mechanics entry (used by in-game "More info" links).
 	show()
@@ -149,7 +164,11 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
 		_layout_search_stack()
 
-func _unhandled_input(event: InputEvent) -> void:
+## Esc must close in ONE press. _unhandled_input alone took two: while the search
+## LineEdit holds focus, the GUI consumes the first Esc to release focus and only
+## the second ever reached _unhandled_input. _input runs BEFORE the GUI, so this
+## sees the first press regardless of focus.
+func _input(event: InputEvent) -> void:
 	if not visible:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
@@ -162,6 +181,11 @@ func _build_ui() -> void:
 	dim.color = DIM_BLACK
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	# Clicking the dimmed area outside the search bar / entry panel closes the
+	# overlay (owner 2026-07-19). Panels above the dim still swallow their clicks.
+	dim.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			close_search())
 	add_child(dim)
 
 	_search_stack = VBoxContainer.new()
@@ -699,6 +723,16 @@ func _make_good_recipes_entry(result: Dictionary) -> Control:
 	title.add_theme_font_size_override("font_size", 24)
 	title.add_theme_color_override("font_color", OFF_WHITE)
 	header.add_child(title)
+
+	# The good's authored balancing band ("Tier: Processed") — the same vocabulary
+	# as the Goods Graph's band headers.
+	var tier_value := str(Catalog.get_good(good_id).get("goods_graph_tier", ""))
+	if tier_value != "":
+		var tier_label := Label.new()
+		tier_label.text = "Tier: %s" % tier_value.capitalize()
+		tier_label.add_theme_font_size_override("font_size", 14)
+		tier_label.add_theme_color_override("font_color", SUBTITLE_COLOR)
+		header.add_child(tier_label)
 
 	var cols := HBoxContainer.new()
 	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL

@@ -312,10 +312,10 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 			var cap := Power.tile_power_cap(tile_id)
 			var on_wire := int(Power.tile_produced.get(tile_id, 0))
 			rows.append(_row("bad", "bolt", "Cables overloaded",
-				"%d of %d kW already on this tile's cables — the %d kW from this plant can't be pushed to the network. Upgrade the cables or reduce generation here." % [
+				"%d of %d MW already on this tile's cables — the %d MW from this plant can't be pushed to the network. Upgrade the cables or reduce generation here." % [
 					on_wire, cap, BuildingStatus.effective_power_output(building, recipe)]))
 		else:
-			rows.append(_row("ok", "bolt", "Generating power", "%d kW / turn" % BuildingStatus.effective_power_output(building, recipe)))
+			rows.append(_row("ok", "bolt", "Generating power", "%d MW / turn" % BuildingStatus.effective_power_output(building, recipe)))
 	elif needs_power:
 		var pw := power(building, recipe)
 		var st := str(pw.get("state", "none"))
@@ -323,9 +323,9 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		if st == "none":
 			rows.append(_row("bad", "bolt", "Unpowered", "No power reaching this building — the recipe halts."))
 		elif st == "ready":
-			rows.append(_row("warn", "bolt", "Ready to draw power", "%d kW ready to draw from the grid once it runs." % amt))
+			rows.append(_row("warn", "bolt", "Ready to draw power", "%d MW ready to draw from the grid once it runs." % amt))
 		else:
-			rows.append(_row("ok" if st == "own" else "warn", "bolt", "Powered", "%d kW drawn · %s" % [amt, power_state_text(st)]))
+			rows.append(_row("ok" if st == "own" else "warn", "bolt", "Powered", "%d MW drawn · %s" % [amt, power_state_text(st)]))
 
 	# 2b) green-power intermittency — only for green generators / green-power consumers; skipped
 	# for buildings that only supply or draw grey (coal/gas/oil) power.

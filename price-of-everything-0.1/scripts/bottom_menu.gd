@@ -120,17 +120,17 @@ func _ready() -> void:
 # Keyboard shortcuts for the bottom-menu tools. Emitting the button's own `pressed` keeps
 # behaviour identical to a click (panel toggle + rise tween + audio cue). Runs in
 # _unhandled_key_input so it fires only for keys not already consumed by a focused widget /
-# _input (Tab=empire) / _unhandled_input (X=encyclopedia), and it skips modified/repeat keys
-# and never fires while a text field (market/ledger search) has focus.
+# _input (Tab=empire, G=goods graph) / _unhandled_input (X=encyclopedia), and it skips
+# modified/repeat keys and never fires while a text field (market/ledger search) has focus.
 const _MENU_SHORTCUTS := {
 	KEY_C: "ConstructButton",   # Construct
-	KEY_G: "ResourcesButton",   # Goods
+	KEY_R: "ResourcesButton",   # Resources (was G — G now toggles the Goods Graph)
 	KEY_M: "MarketButton",      # Markets
 	KEY_O: "MapmodesButton",    # Map Overlays
 	KEY_L: "BuildingsButton",   # Buildings ledger
 	KEY_N: "PoliticsButton",    # Narrative and Politics
 	KEY_P: "PeopleButton",      # People (labour/advisors)
-	KEY_R: "TechButton",        # Research
+	KEY_T: "TechButton",        # Research / Tech (was R, freed for Resources)
 }
 
 func _unhandled_key_input(event: InputEvent) -> void:

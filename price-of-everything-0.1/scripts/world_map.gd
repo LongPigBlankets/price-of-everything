@@ -32,6 +32,11 @@ var _v2_picking_dest: bool = false
 const EmpireViewScript := preload("res://scripts/empire_view.gd")
 var empire_view: EmpireViewScript
 
+# Goods Graph — full-screen goods-web view (G to toggle; also reachable from the
+# top bar and the Resources panel). See scripts/goods_graph_view.gd.
+const GoodsGraphViewScript := preload("res://scripts/goods_graph_view.gd")
+var goods_graph_view: GoodsGraphViewScript
+
 const DENSITY_SOFT_CAPACITY := 100.0
 const InfraIcons := preload("res://scripts/infra_icons.gd")
 const OLD_GROWTH_FOREST_BUILDING_ID := "b_016"
@@ -144,6 +149,8 @@ func _build_base() -> void:
 	if search_overlay.has_signal("recipe_build_requested"):
 		search_overlay.recipe_build_requested.connect(_on_search_recipe_build_requested)
 	MatchState.encyclopedia_entry_requested.connect(_on_encyclopedia_entry_requested)
+	MatchState.goods_graph_requested.connect(_on_goods_graph_requested)
+	MatchState.encyclopedia_good_requested.connect(_on_encyclopedia_good_requested)
 	MatchState.focus_tile_requested.connect(_on_focus_tile_requested)
 	MatchState.focus_building_requested.connect(_on_focus_building_requested)
 
@@ -174,6 +181,12 @@ func _build_base() -> void:
 	empire_view.name = "EmpireView"
 	empire_view.visible = false
 	hud_content.add_child(empire_view)
+
+	# Goods Graph: full-screen goods-web view (G to toggle).
+	goods_graph_view = GoodsGraphViewScript.new()
+	goods_graph_view.name = "GoodsGraphView"
+	goods_graph_view.visible = false
+	hud_content.add_child(goods_graph_view)
 
 	# Wire visuals to react to building placements
 	building_placed.connect(building_visuals.on_building_placed)
@@ -1450,6 +1463,14 @@ func _on_encyclopedia_entry_requested(entry_id: String) -> void:
 	if search_overlay != null and search_overlay.has_method("open_encyclopedia_entry"):
 		search_overlay.open_encyclopedia_entry(entry_id)
 
+func _on_goods_graph_requested() -> void:
+	if goods_graph_view != null:
+		goods_graph_view.toggle()
+
+func _on_encyclopedia_good_requested(good_id: String) -> void:
+	if search_overlay != null and search_overlay.has_method("open_encyclopedia_good"):
+		search_overlay.open_encyclopedia_good(good_id)
+
 func _on_search_recipe_build_requested(building_id: String, recipe_id: String) -> void:
 	BuildMode.enter_build_mode(building_id, recipe_id)
 
@@ -2161,6 +2182,10 @@ func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_empire_view") and not _is_text_entry_focused():
 		if empire_view != null:
 			empire_view.toggle()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("toggle_goods_graph") and not _is_text_entry_focused():
+		if goods_graph_view != null:
+			goods_graph_view.toggle()
 		get_viewport().set_input_as_handled()
 
 

@@ -16,7 +16,21 @@ var _drag_offset := Vector2.ZERO
 func _ready() -> void:
 	close_button.pressed.connect(hide)
 	title_label.text = "Resources"
+	_add_goods_graph_button()
 	_build_panel_content()
+
+## Header shortcut into the full-screen Goods Graph (the web this table is a flat
+## view of). Routed through MatchState so this panel needs no reference to the view.
+func _add_goods_graph_button() -> void:
+	var btn := Button.new()
+	btn.text = "Goods Graph"
+	btn.tooltip_text = "Open the goods production web (G)"
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.theme_type_variation = &"Primary"
+	btn.pressed.connect(func() -> void: MatchState.goods_graph_requested.emit())
+	var header := close_button.get_parent()
+	header.add_child(btn)
+	header.move_child(btn, close_button.get_index())
 
 func _build_panel_content() -> void:
 	for child in content_vbox.get_children():

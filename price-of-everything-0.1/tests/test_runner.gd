@@ -33,6 +33,7 @@ func _ready() -> void:
 	_test_scene_loads()
 	await _test_main_scene_instantiates()
 	_test_catalog_loaded()
+	_test_goods_flow_graph()
 	_test_recipe_requirements()
 	_test_research_recipe_and_level_tiers()
 	_test_bottom_menu_default()
@@ -5617,6 +5618,173 @@ func _test_main_menu_grid_unique() -> void:
 	_check(filled == mini((cols - 1) * (grid.ROWS - 1), n_goods),
 		"main menu grid: 7x7 filled with unique goods (%d cells, %d goods with art)" % [filled, n_goods])
 	grid.free()
+
+# Goods Graph data builder (scripts/goods_flow_graph.gd): the runtime goods web is
+# complete, joins only known goods, is defined by game-start recipes (gated flag
+# honest), and lays out deterministically (CLAUDE.md #3).
+func _test_goods_flow_graph() -> void:
+	var GoodsFlowGraph := preload("res://scripts/goods_flow_graph.gd")
+	var g: Dictionary = GoodsFlowGraph.build()
+	var nodes: Array = g["nodes"]
+	var by_id: Dictionary = g["by_id"]
+	var edges: Array = g["edges"]
+	_check(nodes.size() == Catalog.all_goods().size(),
+		"goods graph: one node per catalog good (%d)" % nodes.size())
+	var ok_edges := not edges.is_empty()
+	for e in edges:
+		if not (by_id.has(str(e["from"])) and by_id.has(str(e["to"]))):
+			ok_edges = false
+	_check(ok_edges, "goods graph: every edge joins two known goods (%d edges)" % edges.size())
+	_check(int(g["tier_count"]) >= 4, "goods graph: web layers into >=4 tiers (%d)" % int(g["tier_count"]))
+	# Tiers layer on the BASE skeleton; alternates (e.g. recycling routes) may feed a
+	# tier-0 raw good, so only route-0 edges must never target tier 0.
+	var t0_clean := true
+	for e in edges:
+		if int(e.get("route", 0)) == 0 and int(by_id.get(str(e["to"]), {}).get("tier", -1)) == 0:
+			t0_clean = false
+	_check(t0_clean, "goods graph: tier-0 goods take no BASE-route inputs")
+	_check(int(by_id.get("coal", {}).get("tier", -1)) == 0, "goods graph: coal is a tier-0 source")
+	var steel: Dictionary = by_id.get("steel", {})
+	_check(int(steel.get("tier", -1)) >= 1 and (steel.get("inputs", []) as Array).size() >= 1,
+		"goods graph: steel sits deeper with inputs")
+	var base_ok := true
+	for n in nodes:
+		var rid := str(n.get("recipe_id", ""))
+		if rid == "":
+			continue
+		var r: Dictionary = Catalog.get_recipe(rid)
+		if bool(n["gated"]) != (str(r.get("required_research", "")) != ""):
+			base_ok = false
+	_check(base_ok, "goods graph: defining recipes are game-start unless flagged gated")
+	# Owner ask 2026-07-18: the semiconductor chain is visible at game start —
+	# polysilicon -> high_grade_silicon (r_229) -> cpu (r_230, 3 inputs so it wins
+	# the simplest-base pick over r_122's 4) -> computer.
+	var hgs: Dictionary = by_id.get("high_grade_silicon", {})
+	_check(str(hgs.get("recipe_id", "")) == "r_229" and (hgs.get("inputs", []) as Array).has("polysilicon"),
+		"goods graph: high_grade_silicon is made from polysilicon (r_229)")
+	var cpu: Dictionary = by_id.get("cpu", {})
+	_check(str(cpu.get("recipe_id", "")) == "r_230" and (cpu.get("inputs", []) as Array).has("high_grade_silicon"),
+		"goods graph: cpu's defining base route consumes high_grade_silicon (r_230)")
+	# Power union: fuel-less wind is the simplest producer, but the edges must still
+	# carry every game-start fuel route (coal, processed_oil, pet_coke).
+	var power: Dictionary = by_id.get("power", {})
+	var power_inputs: Array = power.get("inputs", [])
+	_check(power_inputs.has("coal") and power_inputs.has("processed_oil") and power_inputs.has("pet_coke"),
+		"goods graph: power carries the union of game-start fuel edges")
+	# Owner 2026-07-19: r_231 Anthracite Graphitisation (45 coal -> 2 graphite,
+	# 160 MW, ungated) is graphite's SIMPLEST base route (1 input, lower energy than
+	# pet-coke calcination), so the web edge is coal; pet-coke and the gated bio
+	# route live in the alternates grid.
+	var graphite: Dictionary = by_id.get("graphite", {})
+	_check(str(graphite.get("recipe_id", "")) == "r_231"
+		and (graphite.get("inputs", []) as Array).has("coal")
+		and not (graphite.get("inputs", []) as Array).has("carbonised_biomass"),
+		"goods graph: graphite's base route is Anthracite Graphitisation (coal)")
+	var graphite_routes: Array = GoodsFlowGraph.routes_for_good("graphite")
+	var has_bio := false
+	for gr in graphite_routes:
+		if str((gr.get("recipe", {}) as Dictionary).get("recipe_id", "")) == "r_042":
+			has_bio = bool(gr.get("gated", false))
+	_check(has_bio, "goods graph: grid routes for graphite include gated Bio-Graphitisation (r_042)")
+	var steel_routes: Array = GoodsFlowGraph.routes_for_good("steel")
+	_check(steel_routes.size() >= 2 and str((steel_routes[0].get("recipe", {}) as Dictionary).get("recipe_id", ""))
+		== str(by_id.get("steel", {}).get("recipe_id", "")),
+		"goods graph: grid routes are defining-first (steel, %d routes)" % steel_routes.size())
+	var all_base := true
+	var has_gated_dash := false
+	for e in edges:
+		if int(e.get("route", 0)) != 0:
+			all_base = false
+		if bool(e.get("route_gated", false)):
+			has_gated_dash = true
+	_check(all_base and has_gated_dash,
+		"goods graph: web edges are all base-route; gated-only goods still dash")
+	# Owner 2026-07-19: plain-substring good search (min 3 letters), position-ranked.
+	var hits: Array = GoodsFlowGraph.search_goods("ste", nodes)
+	_check(not hits.is_empty() and str((hits[0] as Dictionary).get("display", "")) == "Steel",
+		"goods graph: search 'ste' ranks Steel first (%d hits)" % hits.size())
+	_check(GoodsFlowGraph.search_goods("st", nodes).is_empty(),
+		"goods graph: search needs at least 3 letters")
+	_check(GoodsFlowGraph.search_goods("polysil", nodes).size() == 1,
+		"goods graph: search 'polysil' matches exactly one good (Enter auto-picks)")
+	# Authored bands (goods_graph_tier): every good carries a valid band, and no
+	# base-route edge flows from a later band to an earlier one (the zero-backward
+	# invariant the banding was designed around).
+	var band_index: Dictionary = {}
+	for bi in range(GoodsFlowGraph.TIER_BANDS.size()):
+		band_index[GoodsFlowGraph.TIER_BANDS[bi]] = bi
+	var bands_ok := true
+	var good_band: Dictionary = {}
+	for good in Catalog.all_goods():
+		var bv := str(good.get("goods_graph_tier", ""))
+		good_band[str(good.get("internal_name", ""))] = bv
+		if not band_index.has(bv):
+			bands_ok = false
+	_check(bands_ok, "goods graph: every good has a valid goods_graph_tier band")
+	var no_backward := true
+	for e in edges:
+		if int(band_index.get(good_band.get(str(e["to"]), ""), 0)) 				< int(band_index.get(good_band.get(str(e["from"]), ""), 0)):
+			no_backward = false
+	_check(no_backward, "goods graph: no base edge flows backward across bands")
+	_check((g.get("bands", []) as Array).size() == 5,
+		"goods graph: five labelled band regions")
+	var g2: Dictionary = GoodsFlowGraph.build()
+	var sig := func(gr: Dictionary) -> String:
+		var parts := ""
+		for n in gr["nodes"]:
+			parts += "%s@%s;" % [str(n["id"]), str(n["pos"])]
+		return parts + str(gr["edges"])   # edge dicts embed their waypoints
+	_check(sig.call(g) == sig.call(g2), "goods graph: build is deterministic")
+	# Orthogonal routing: every edge is an axis-aligned waypoint chain; vertical lane
+	# runs of different edges that share y-range keep clear x separation; horizontal
+	# runs of different edges that share x-range never sit collinear (>= the sibling
+	# port-fan spacing H_SEP_SIBLING); and the final bilayer crossing count is
+	# bounded (and visible in the PASS name).
+	var ortho := true
+	var verts: Array = []   # [x, y_lo, y_hi, edge_index]
+	var horiz: Array = []   # [y, x_lo, x_hi, edge_index]
+	for ei: int in range(edges.size()):
+		var wp: PackedVector2Array = (edges[ei] as Dictionary).get("waypoints", PackedVector2Array())
+		if wp.size() < 2:
+			ortho = false
+			continue
+		for i: int in range(wp.size() - 1):
+			var a := wp[i]
+			var b := wp[i + 1]
+			var dx := absf(a.x - b.x)
+			var dy := absf(a.y - b.y)
+			if dx > 0.01 and dy > 0.01:
+				ortho = false
+			if dx <= 0.01 and dy > 0.01:
+				verts.append([a.x, minf(a.y, b.y), maxf(a.y, b.y), ei])
+			if dy <= 0.01 and dx > 0.01:
+				horiz.append([a.y, minf(a.x, b.x), maxf(a.x, b.x), ei])
+	_check(ortho, "goods graph: every edge is an axis-aligned waypoint chain (>=2 points)")
+	var sep_ok := true
+	for i: int in range(verts.size()):
+		for j: int in range(i + 1, verts.size()):
+			var a: Array = verts[i]
+			var b: Array = verts[j]
+			if int(a[3]) == int(b[3]):
+				continue
+			var overlap: bool = maxf(float(a[1]), float(b[1])) < minf(float(a[2]), float(b[2])) - 0.01
+			if overlap and absf(float(a[0]) - float(b[0])) < 11.9:
+				sep_ok = false
+	_check(sep_ok, "goods graph: y-overlapping vertical runs sit >=11.9 units apart")
+	var hsep_ok := true
+	for i: int in range(horiz.size()):
+		for j: int in range(i + 1, horiz.size()):
+			var a: Array = horiz[i]
+			var b: Array = horiz[j]
+			if int(a[3]) == int(b[3]):
+				continue
+			var overlap: bool = maxf(float(a[1]), float(b[1])) < minf(float(a[2]), float(b[2])) - 0.01
+			if overlap and absf(float(a[0]) - float(b[0])) < 5.9:
+				hsep_ok = false
+	_check(hsep_ok, "goods graph: x-overlapping horizontal runs sit >=5.9 units apart (owner floor: 5 px at max zoom 1.0)")
+	var crossings := int(g.get("crossings", -1))
+	_check(crossings >= 0 and crossings < 900,
+		"goods graph: %d crossings after ordering (< 900 canary; banded columns)" % crossings)
 
 func _check(ok: bool, name: String) -> void:
 	if ok:

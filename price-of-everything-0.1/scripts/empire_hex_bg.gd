@@ -29,6 +29,9 @@ const ROW_GAP_FRAC := 0.20      # gap between rows = this fraction of the cell h
 const INNER := 3                # number of inner hexes per cell
 const GAP_FRAC := 0.26          # constant inward gap between nested hexes, as a fraction of the apothem (hw)
 const LINE_W := 1.5
+# Overridable per host view: the goods graph runs a thinner lattice so its dense
+# flow lines stay the loudest layer; the empire view keeps the default.
+var line_width: float = LINE_W
 
 # Animation rendering.
 const BAND := 0.46 * HEX_HW     # gaussian half-width of the lit band (~half a hex) — gradient falloff
@@ -153,7 +156,7 @@ func _draw() -> void:
 		cols.resize(pts.size())
 		for i in range(pts.size()):
 			cols[i] = GREY.lerp(GOLD, _brightness(pts[i], rsz))
-		draw_polyline_colors(pts, cols, LINE_W, true)
+		draw_polyline_colors(pts, cols, line_width, true)
 
 
 ## Build the static lattice: every cell's outer + nested loops, each subdivided

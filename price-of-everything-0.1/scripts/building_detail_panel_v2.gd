@@ -1062,7 +1062,7 @@ func _recipe_choice_row(iid: String, recipe: Dictionary, is_current: bool) -> Co
 	var flow_line := Label.new()
 	flow_line.theme_type_variation = "Caption"
 	flow_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	flow_line.text = "%s  →  %d %s · %d kW" % [
+	flow_line.text = "%s  →  %d %s · %d MW" % [
 		", ".join(parts) if not parts.is_empty() else "no inputs", int(recipe.get("output_qty", 0)), out_disp, int(recipe.get("energy_req", 0))]
 	vb.add_child(flow_line)
 	return card
@@ -1381,7 +1381,7 @@ func _recipe_arrow(power_in: int) -> Control:
 			hb.add_child(bolt)
 		else:
 			var kw := Label.new()
-			kw.text = "kW"
+			kw.text = "MW"
 			kw.add_theme_color_override("font_color", DS.PALETTE["WARN"])
 			hb.add_child(kw)
 	else:
@@ -1645,7 +1645,7 @@ func _build_power_line(pw: Dictionary) -> PanelContainer:
 	var lbl := Label.new()
 	lbl.theme_type_variation = "Caption"
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lbl.text = "Draws %d kW · %s" % [int(pw.get("amount", 0)), BuildingReadout.power_state_text(str(pw.get("state", "none")))]
+	lbl.text = "Draws %d MW · %s" % [int(pw.get("amount", 0)), BuildingReadout.power_state_text(str(pw.get("state", "none")))]
 	vb.add_child(lbl)
 	return card
 
