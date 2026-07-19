@@ -2,7 +2,12 @@ extends CanvasLayer
 ## In-game debug / cheat terminal. Toggle with the backtick key ( ` ); Esc closes.
 ## Type a command and press Enter. Add new cheats in _run_command().
 ##
+## Every command is locked until `debug CandC` is entered (case-sensitive); before
+## that, anything typed answers "invalid operation". The unlock lasts for the app
+## run (static var), surviving scene reloads from the `load` cheat.
+##
 ## Commands:
+##   debug CandC                      unlock the commands below
 ##   cash <int>                       add that much cash (negative allowed)
 ##   sellmode <stockpile|market|building>  set the global production sell mode
 ##   logs                             toggle verbose production / CostSolver logs
@@ -15,6 +20,10 @@ extends CanvasLayer
 ##   help                             list commands
 
 const TOGGLE_KEY := KEY_QUOTELEFT  # the ` / ~ key
+const UNLOCK_WORD := "CandC"  # case-sensitive pass-phrase for `debug <word>`
+
+# Survives scene reloads (e.g. the `load` cheat) but resets on app restart.
+static var _cheats_unlocked := false
 
 var _panel: PanelContainer
 var _cmd: LineEdit
@@ -56,11 +65,14 @@ func _build_ui() -> void:
 	vbox.add_child(_output)
 
 	_cmd = LineEdit.new()
-	_cmd.placeholder_text = "cheat…  e.g.  cash 1000        ( ` to close )"
+	_cmd.placeholder_text = "cheat…  e.g.  cash 1000        ( ` to close )" if _cheats_unlocked else "…        ( ` to close )"
 	_cmd.text_submitted.connect(_on_submit)
 	vbox.add_child(_cmd)
 
-	_print_line("[b]Debug terminal[/b] — type 'help'. Toggle with the ` key.")
+	if _cheats_unlocked:
+		_print_line("[b]Debug terminal[/b] — type 'help'. Toggle with the ` key.")
+	else:
+		_print_line("[b]Terminal[/b] — toggle with the ` key.")
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -95,6 +107,16 @@ func _run_command(text: String) -> String:
 	var parts := text.split(" ", false)
 	if parts.is_empty():
 		return ""
+	if parts[0].to_lower() == "debug":
+		if parts.size() >= 2 and parts[1] == UNLOCK_WORD:
+			if _cheats_unlocked:
+				return "debug mode already enabled"
+			_cheats_unlocked = true
+			_cmd.placeholder_text = "cheat…  e.g.  cash 1000        ( ` to close )"
+			return "Debug mode enabled — type 'help' for commands."
+		return "invalid operation"
+	if not _cheats_unlocked:
+		return "invalid operation"
 	match parts[0].to_lower():
 		"cash":
 			if parts.size() < 2 or not parts[1].is_valid_int():

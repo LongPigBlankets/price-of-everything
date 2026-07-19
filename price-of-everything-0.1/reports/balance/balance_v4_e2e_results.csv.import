@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://cw8r1l5ope8of"
+
+[deps]
+
+files=["res://reports/balance/balance_v4_e2e_results.recipes.translation", "res://reports/balance/balance_v4_e2e_results.profit.translation", "res://reports/balance/balance_v4_e2e_results.profit.translation", "res://reports/balance/balance_v4_e2e_results.profit.translation", "res://reports/balance/balance_v4_e2e_results.profit.translation", "res://reports/balance/balance_v4_e2e_results.buildings.translation", "res://reports/balance/balance_v4_e2e_results.buildings.translation", "res://reports/balance/balance_v4_e2e_results.buildings.translation", "res://reports/balance/balance_v4_e2e_results.units.translation", "res://reports/balance/balance_v4_e2e_results.units.translation", "res://reports/balance/balance_v4_e2e_results.units.translation", "res://reports/balance/balance_v4_e2e_results.fully.translation", "res://reports/balance/balance_v4_e2e_results.bankruptcy.translation", "res://reports/balance/balance_v4_e2e_results.max.translation", "res://reports/balance/balance_v4_e2e_results.average.translation", "res://reports/balance/balance_v4_e2e_results.grid.translation", "res://reports/balance/balance_v4_e2e_results.integration.translation", "res://reports/balance/balance_v4_e2e_results.assertions.translation", "res://reports/balance/balance_v4_e2e_results.starting.translation", "res://reports/balance/balance_v4_e2e_results.expansion.translation", "res://reports/balance/balance_v4_e2e_results.expansion.translation", "res://reports/balance/balance_v4_e2e_results.loan.translation", "res://reports/balance/balance_v4_e2e_results.cash.translation", "res://reports/balance/balance_v4_e2e_results.emergency.translation"]
+
+source_file="res://reports/balance/balance_v4_e2e_results.csv"
+dest_files=["res://reports/balance/balance_v4_e2e_results.recipes.translation", "res://reports/balance/balance_v4_e2e_results.profit.translation", "res://reports/balance/balance_v4_e2e_results.profit.translation", "res://reports/balance/balance_v4_e2e_results.profit.translation", "res://reports/balance/balance_v4_e2e_results.profit.translation", "res://reports/balance/balance_v4_e2e_results.buildings.translation", "res://reports/balance/balance_v4_e2e_results.buildings.translation", "res://reports/balance/balance_v4_e2e_results.buildings.translation", "res://reports/balance/balance_v4_e2e_results.units.translation", "res://reports/balance/balance_v4_e2e_results.units.translation", "res://reports/balance/balance_v4_e2e_results.units.translation", "res://reports/balance/balance_v4_e2e_results.fully.translation", "res://reports/balance/balance_v4_e2e_results.bankruptcy.translation", "res://reports/balance/balance_v4_e2e_results.max.translation", "res://reports/balance/balance_v4_e2e_results.average.translation", "res://reports/balance/balance_v4_e2e_results.grid.translation", "res://reports/balance/balance_v4_e2e_results.integration.translation", "res://reports/balance/balance_v4_e2e_results.assertions.translation", "res://reports/balance/balance_v4_e2e_results.starting.translation", "res://reports/balance/balance_v4_e2e_results.expansion.translation", "res://reports/balance/balance_v4_e2e_results.expansion.translation", "res://reports/balance/balance_v4_e2e_results.loan.translation", "res://reports/balance/balance_v4_e2e_results.cash.translation", "res://reports/balance/balance_v4_e2e_results.emergency.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

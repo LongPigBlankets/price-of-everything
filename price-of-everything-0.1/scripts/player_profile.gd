@@ -6,7 +6,11 @@ extends Node
 ## A game counts as "completed" when it ends — won or reached the turn cap — which is
 ## exactly when TurnManager emits game_ended_signal.
 
-const PATH := "user://profile.json"
+const AppPaths := preload("res://scripts/app_paths.gd")
+
+# The profile lives alongside the save slots in <base>/savegames/.
+static func _path() -> String:
+	return AppPaths.saves_dir().path_join("profile.json")
 
 var games_completed: int = 0
 # True once the player has reached the END of the tutorial (the integration_done step),
@@ -16,10 +20,14 @@ var tutorial_completed: bool = false
 # Hall of Records: every VICTORY, newest first. Losses are not recorded. Each entry:
 # {"date": "YYYY-MM-DD", "title": <victory name>, "turn": int, "secured": int, "epithet": String}
 var wins: Array = []
+# Display preference chosen in Settings → Graphics (persisted, applied at startup).
+# Vector2i.ZERO = never set → keep the project.godot default window size.
+var window_size: Vector2i = Vector2i.ZERO
 
 
 func _ready() -> void:
 	_load()
+	_apply_window_size()  # honour the saved resolution before the menu is shown
 	# Registered after TurnManager in [autoload], so the singleton already exists.
 	if TurnManager != null and TurnManager.has_signal("game_ended_signal"):
 		if not TurnManager.game_ended_signal.is_connected(_on_game_ended):
@@ -75,9 +83,9 @@ func _on_game_ended(_reason: String) -> void:
 
 
 func _load() -> void:
-	if not FileAccess.file_exists(PATH):
+	if not FileAccess.file_exists(_path()):
 		return
-	var f := FileAccess.open(PATH, FileAccess.READ)
+	var f := FileAccess.open(_path(), FileAccess.READ)
 	if f == null:
 		return
 	var parsed: Variant = JSON.parse_string(f.get_as_text())
@@ -87,17 +95,43 @@ func _load() -> void:
 		tutorial_completed = bool((parsed as Dictionary).get("tutorial_completed", false))
 		var recorded: Variant = (parsed as Dictionary).get("wins", [])
 		wins = recorded if recorded is Array else []
+		window_size = Vector2i(int((parsed as Dictionary).get("window_w", 0)), int((parsed as Dictionary).get("window_h", 0)))
 
 
 func _save() -> void:
 	# Temp-file + rename so a crash mid-write can't corrupt the profile.
-	var tmp_path := PATH + ".tmp"
+	var tmp_path := _path() + ".tmp"
 	var f := FileAccess.open(tmp_path, FileAccess.WRITE)
 	if f == null:
 		push_warning("[PlayerProfile] could not write %s" % tmp_path)
 		return
-	f.store_string(JSON.stringify({"games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins}, "\t"))
+	f.store_string(JSON.stringify({"games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y}, "\t"))
 	f.close()
-	var err := DirAccess.rename_absolute(tmp_path, PATH)
+	var err := DirAccess.rename_absolute(tmp_path, _path())
 	if err != OK:
-		push_warning("[PlayerProfile] could not finalise %s (%s)" % [PATH, error_string(err)])
+		push_warning("[PlayerProfile] could not finalise %s (%s)" % [_path(), error_string(err)])
+
+
+## Persist and apply the window resolution chosen in Settings → Graphics.
+func set_window_size(size: Vector2i) -> void:
+	window_size = size
+	_apply_window_size()
+	_save()
+
+
+## Apply the saved window size to the OS window, re-centred on the current screen with
+## the top-left clamped on-screen (so an ultrawide pick on a smaller display can't push
+## the title bar off the top-left). No-op when headless or when nothing is saved.
+func _apply_window_size() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if window_size.x <= 0 or window_size.y <= 0:
+		return
+	DisplayServer.window_set_size(window_size)
+	var screen := DisplayServer.window_get_current_screen()
+	var origin := DisplayServer.screen_get_position(screen)
+	var avail := DisplayServer.screen_get_size(screen)
+	var pos := origin + (avail - window_size) / 2
+	pos.x = maxi(pos.x, origin.x)
+	pos.y = maxi(pos.y, origin.y)
+	DisplayServer.window_set_position(pos)

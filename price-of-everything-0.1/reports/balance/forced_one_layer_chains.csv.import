@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://ddcuoqu5edi2q"
+
+[deps]
+
+files=["res://reports/balance/forced_one_layer_chains.recipe.translation", "res://reports/balance/forced_one_layer_chains.deployed.translation", "res://reports/balance/forced_one_layer_chains.surplus.translation", "res://reports/balance/forced_one_layer_chains.operating.translation", "res://reports/balance/forced_one_layer_chains.net.translation", "res://reports/balance/forced_one_layer_chains.net.translation"]
+
+source_file="res://reports/balance/forced_one_layer_chains.csv"
+dest_files=["res://reports/balance/forced_one_layer_chains.recipe.translation", "res://reports/balance/forced_one_layer_chains.deployed.translation", "res://reports/balance/forced_one_layer_chains.surplus.translation", "res://reports/balance/forced_one_layer_chains.operating.translation", "res://reports/balance/forced_one_layer_chains.net.translation", "res://reports/balance/forced_one_layer_chains.net.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

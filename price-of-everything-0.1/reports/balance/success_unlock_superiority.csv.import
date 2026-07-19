@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://deojcfe01njkh"
+
+[deps]
+
+files=["res://reports/balance/success_unlock_superiority.recipe.translation", "res://reports/balance/success_unlock_superiority.research.translation", "res://reports/balance/success_unlock_superiority.primary.translation", "res://reports/balance/success_unlock_superiority.base.translation", "res://reports/balance/success_unlock_superiority.base.translation", "res://reports/balance/success_unlock_superiority.unlock.translation", "res://reports/balance/success_unlock_superiority.base.translation", "res://reports/balance/success_unlock_superiority.profit.translation", "res://reports/balance/success_unlock_superiority.beats.translation"]
+
+source_file="res://reports/balance/success_unlock_superiority.csv"
+dest_files=["res://reports/balance/success_unlock_superiority.recipe.translation", "res://reports/balance/success_unlock_superiority.research.translation", "res://reports/balance/success_unlock_superiority.primary.translation", "res://reports/balance/success_unlock_superiority.base.translation", "res://reports/balance/success_unlock_superiority.base.translation", "res://reports/balance/success_unlock_superiority.unlock.translation", "res://reports/balance/success_unlock_superiority.base.translation", "res://reports/balance/success_unlock_superiority.profit.translation", "res://reports/balance/success_unlock_superiority.beats.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

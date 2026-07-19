@@ -1150,6 +1150,7 @@ func _add_cash_through_terminal(amount: int) -> void:
 		return
 	var before := MatchState.money
 	_cash_before_runway = before
+	_terminal.call("_run_command", "debug CandC")  # commands are gated until unlocked
 	var result := str(_terminal.call("_run_command", "cash %d" % amount))
 	_check(result.find("Added") >= 0, "debug terminal accepted cash command")
 	_check(MatchState.money >= before + float(amount), "debug terminal cash applied")

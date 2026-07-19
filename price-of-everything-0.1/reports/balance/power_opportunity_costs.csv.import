@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://cguxglxp8hob3"
+
+[deps]
+
+files=["res://reports/balance/power_opportunity_costs.source.translation", "res://reports/balance/power_opportunity_costs.source.translation", "res://reports/balance/power_opportunity_costs.generator.translation", "res://reports/balance/power_opportunity_costs.grid.translation", "res://reports/balance/power_opportunity_costs.grid.translation", "res://reports/balance/power_opportunity_costs.fuel.translation", "res://reports/balance/power_opportunity_costs.fuel.translation", "res://reports/balance/power_opportunity_costs.generator.translation", "res://reports/balance/power_opportunity_costs.generator.translation", "res://reports/balance/power_opportunity_costs.battery.translation", "res://reports/balance/power_opportunity_costs.lithium.translation", "res://reports/balance/power_opportunity_costs.battery.translation", "res://reports/balance/power_opportunity_costs.battery.translation", "res://reports/balance/power_opportunity_costs.generator.translation", "res://reports/balance/power_opportunity_costs.battery.translation", "res://reports/balance/power_opportunity_costs.battery.translation", "res://reports/balance/power_opportunity_costs.total.translation", "res://reports/balance/power_opportunity_costs.investment.translation", "res://reports/balance/power_opportunity_costs.operating.translation", "res://reports/balance/power_opportunity_costs.levelized.translation", "res://reports/balance/power_opportunity_costs.short.translation", "res://reports/balance/power_opportunity_costs.long.translation"]
+
+source_file="res://reports/balance/power_opportunity_costs.csv"
+dest_files=["res://reports/balance/power_opportunity_costs.source.translation", "res://reports/balance/power_opportunity_costs.source.translation", "res://reports/balance/power_opportunity_costs.generator.translation", "res://reports/balance/power_opportunity_costs.grid.translation", "res://reports/balance/power_opportunity_costs.grid.translation", "res://reports/balance/power_opportunity_costs.fuel.translation", "res://reports/balance/power_opportunity_costs.fuel.translation", "res://reports/balance/power_opportunity_costs.generator.translation", "res://reports/balance/power_opportunity_costs.generator.translation", "res://reports/balance/power_opportunity_costs.battery.translation", "res://reports/balance/power_opportunity_costs.lithium.translation", "res://reports/balance/power_opportunity_costs.battery.translation", "res://reports/balance/power_opportunity_costs.battery.translation", "res://reports/balance/power_opportunity_costs.generator.translation", "res://reports/balance/power_opportunity_costs.battery.translation", "res://reports/balance/power_opportunity_costs.battery.translation", "res://reports/balance/power_opportunity_costs.total.translation", "res://reports/balance/power_opportunity_costs.investment.translation", "res://reports/balance/power_opportunity_costs.operating.translation", "res://reports/balance/power_opportunity_costs.levelized.translation", "res://reports/balance/power_opportunity_costs.short.translation", "res://reports/balance/power_opportunity_costs.long.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://bvmvhsij11x5e"
+
+[deps]
+
+files=["res://reports/balance/systemic_formula_prices.canonical.translation", "res://reports/balance/systemic_formula_prices.canonical.translation", "res://reports/balance/systemic_formula_prices.current.translation", "res://reports/balance/systemic_formula_prices.formula.translation"]
+
+source_file="res://reports/balance/systemic_formula_prices.csv"
+dest_files=["res://reports/balance/systemic_formula_prices.canonical.translation", "res://reports/balance/systemic_formula_prices.canonical.translation", "res://reports/balance/systemic_formula_prices.current.translation", "res://reports/balance/systemic_formula_prices.formula.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

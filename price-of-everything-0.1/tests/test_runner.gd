@@ -21,6 +21,7 @@ const RoadRegionsLoader := preload("res://scripts/road_regions.gd")
 const TutorialSteps := preload("res://scripts/tutorial/tutorial_steps.gd")
 const TutorialDetectors := preload("res://scripts/tutorial/tutorial_detectors.gd")
 const BuildingReadout := preload("res://scripts/building_readout.gd")
+const AppPaths := preload("res://scripts/app_paths.gd")  # saves now live in <base>/savegames/
 
 func _ready() -> void:
 	print("\n==== price-of-everything tests ====")
@@ -71,6 +72,8 @@ func _ready() -> void:
 	_test_tile_deposit_build_options_respect_research_unlocks()
 	await _test_building_ledger()
 	await _test_debug_terminal()
+	await _test_capacity_dialog_expand()
+	await _test_app_paths()
 	_test_building_shapes()
 	_test_footprint_rejects_interior_road_segment()
 	_test_building_category_key()
@@ -277,6 +280,14 @@ func _test_tutorial_engine() -> void:
 	PlayerProfile.tutorial_completed = true
 	_check(PlayerProfile.has_done_tutorial(), "profile: has_done_tutorial true once the flag is set")
 	PlayerProfile.tutorial_completed = tut_saved
+
+	# Settings → Graphics resolution persists through PlayerProfile (apply is a headless no-op).
+	var ws_saved: Vector2i = PlayerProfile.window_size
+	PlayerProfile.set_window_size(Vector2i(3440, 1440))
+	_check(PlayerProfile.window_size == Vector2i(3440, 1440), "profile: set_window_size stores the chosen resolution")
+	PlayerProfile.set_window_size(ws_saved)  # restore + persist the original
+	_check(PlayerProfile.window_size == ws_saved, "profile: window_size restored after test")
+
 	var terminal_present := false
 	for s in steps:
 		if str((s as Dictionary).get("id", "")) == "integration_done":
@@ -3051,7 +3062,7 @@ func _test_save_load_roundtrip() -> void:
 		if not (shipment.has("tiles") and shipment.has("path") and shipment.has("legs")):
 			requoted = false
 	_check(requoted, "in-flight shipment routes re-quoted on load")
-	DirAccess.remove_absolute("user://saves/__test_roundtrip.json")
+	DirAccess.remove_absolute(AppPaths.saves_dir().path_join("__test_roundtrip.json"))
 
 # Both sides of a comparison pass through stringify -> parse -> normalize so 5.0
 # (native float) and 5 (JSON-round-tripped int) canonicalise identically.
@@ -3186,8 +3197,8 @@ func _test_save_version_migration() -> void:
 	_check((migrated_infra.get("present", []) as Array).has("pipes")
 			and migrated_infra.has("levels"),
 		"v1 -> v5 migration upgrades infrastructure arrays to structured entries")
-	DirAccess.make_dir_recursive_absolute("user://saves")
-	var f := FileAccess.open("user://saves/__test_v1.json", FileAccess.WRITE)
+	DirAccess.make_dir_recursive_absolute(AppPaths.saves_dir())
+	var f := FileAccess.open(AppPaths.saves_dir().path_join("__test_v1.json"), FileAccess.WRITE)
 	f.store_string(JSON.stringify(snap))
 	f.close()
 	MatchState.ruleset = {"name": "__sentinel__"}
@@ -3198,7 +3209,7 @@ func _test_save_version_migration() -> void:
 		"migrated save re-exports with meta.ruleset")
 	_check(SpecialOrderState.get_active_orders().is_empty(),
 		"v1 -> v3 migration starts with no active special orders")
-	DirAccess.remove_absolute("user://saves/__test_v1.json")
+	DirAccess.remove_absolute(AppPaths.saves_dir().path_join("__test_v1.json"))
 
 # Phase 4: a finished game stays finished across save/load.
 func _test_game_ended_persists() -> void:
@@ -3246,7 +3257,7 @@ func _test_autosave_rotation() -> void:
 	SaveLoad._autosave_index = 0
 	TurnManager.current_turn = SaveLoad.AUTOSAVE_EVERY_TURNS + 1  # turn N just finished
 	SaveLoad._on_turn_resolution_completed()
-	_check(SaveLoad._autosave_index == 1 and FileAccess.file_exists("user://saves/autosave_1.json"),
+	_check(SaveLoad._autosave_index == 1 and FileAccess.file_exists(AppPaths.saves_dir().path_join("autosave_1.json")),
 		"autosave fires on the Nth finished turn into slot 1")
 	TurnManager.current_turn = SaveLoad.AUTOSAVE_EVERY_TURNS + 2  # off-cadence turn
 	SaveLoad._on_turn_resolution_completed()
@@ -3254,8 +3265,8 @@ func _test_autosave_rotation() -> void:
 	TurnManager.current_turn = 2 * SaveLoad.AUTOSAVE_EVERY_TURNS + 1
 	SaveLoad._on_turn_resolution_completed()
 	_check(SaveLoad._autosave_index == 2, "next cadence point rotates to slot 2")
-	DirAccess.remove_absolute("user://saves/autosave_1.json")
-	DirAccess.remove_absolute("user://saves/autosave_2.json")
+	DirAccess.remove_absolute(AppPaths.saves_dir().path_join("autosave_1.json"))
+	DirAccess.remove_absolute(AppPaths.saves_dir().path_join("autosave_2.json"))
 	TurnManager.current_turn = saved_turn
 	SaveLoad._autosave_index = saved_index
 
@@ -4996,7 +5007,7 @@ func _test_save_load_ui() -> void:
 	_check(save_screen._cta.disabled, "save screen: CTA disabled while the name is empty")
 	save_screen._name_edit.text = "__test_ui_named"
 	save_screen._do_save()
-	_check(FileAccess.file_exists("user://saves/__test_ui_named.json"),
+	_check(FileAccess.file_exists(AppPaths.saves_dir().path_join("__test_ui_named.json")),
 		"save screen: writes the named slot")
 	_check(not save_screen.visible, "save screen: closes after saving")
 	await get_tree().process_frame
@@ -5012,8 +5023,8 @@ func _test_save_load_ui() -> void:
 	_check(menu_labels.has("Exit to Desktop"), "pause menu: has Exit to Desktop")
 	_check(PanelStack.close_top() and not menu.visible, "pause menu: Esc path (close_top) closes it")
 	await get_tree().process_frame
-	DirAccess.remove_absolute("user://saves/__test_ui.json")
-	DirAccess.remove_absolute("user://saves/__test_ui_named.json")
+	DirAccess.remove_absolute(AppPaths.saves_dir().path_join("__test_ui.json"))
+	DirAccess.remove_absolute(AppPaths.saves_dir().path_join("__test_ui_named.json"))
 
 func _collect_buttons(node: Node, out: Array) -> void:
 	if node is Button:
@@ -6718,6 +6729,13 @@ func _test_debug_terminal() -> void:
 	var term: Node = load("res://scripts/debug_terminal.gd").new()
 	add_child(term)
 	await get_tree().process_frame
+	# Commands are gated behind `debug CandC` (case-sensitive, per app run).
+	term._cheats_unlocked = false
+	_check(term._run_command("cash 250") == "invalid operation", "terminal: locked before unlock")
+	_check(term._run_command("debug candc") == "invalid operation", "terminal: pass-phrase is case-sensitive")
+	_check(term._run_command("help") == "invalid operation", "terminal: help locked too")
+	_check("enabled" in term._run_command("debug CandC"), "terminal: debug CandC unlocks")
+	_check("already" in term._run_command("debug CandC"), "terminal: repeat unlock reported")
 	var before: float = MatchState.money
 	var result: String = term._run_command("cash 250")
 	_check(absf(MatchState.money - (before + 250.0)) < 0.001, "terminal: cash adds the amount")
@@ -6734,6 +6752,55 @@ func _test_debug_terminal() -> void:
 	_check(fake_layer.visible, "terminal: heightmap visible after second toggle")
 	fake_layer.queue_free()
 	term.queue_free()
+
+func _test_app_paths() -> void:
+	# Portable data layout: saves/logs sit next to the build, in the project when in-editor.
+	var AppPaths = load("res://scripts/app_paths.gd")
+	# The macOS base is the folder CONTAINING the .app — 4 levels up from the binary.
+	var sample := "/Users/x/Carbon and Capital (Experimental)/Carbon and Capital.app/Contents/MacOS/Carbon and Capital"
+	_check(AppPaths._macos_bundle_parent(sample) == "/Users/x/Carbon and Capital (Experimental)",
+		"app_paths: macOS base resolves to the folder containing the .app")
+	var base: String = AppPaths.base_dir()
+	_check(AppPaths.saves_dir() == base.path_join("savegames"), "app_paths: saves_dir is <base>/savegames")
+	_check(AppPaths.logs_dir() == base.path_join("logs"), "app_paths: logs_dir is <base>/logs")
+	_check(DirAccess.dir_exists_absolute(AppPaths.saves_dir()), "app_paths: savegames dir is created on demand")
+	_check(DirAccess.dir_exists_absolute(AppPaths.logs_dir()), "app_paths: logs dir is created on demand")
+	# In the editor + headless runner (both carry the "editor" feature) the base is the project folder.
+	_check(base == ProjectSettings.globalize_path("res://").trim_suffix("/"),
+		"app_paths: editor/test base is the project folder, not user://")
+
+func _test_capacity_dialog_expand() -> void:
+	# The tile-at-capacity dialog's Expand button drives the real per-tile warehouse
+	# upgrade (materials from empire stock or market), and Stop Production is disabled.
+	var Cap := load("res://scripts/capacity_dialog.gd")
+	var dlg: Node = Cap.new()
+	add_child(dlg)
+	await get_tree().process_frame
+	var tile := "tile_16_4"
+	Stockpile.set_warehouse_level(tile, 1)
+	_check(Stockpile.get_warehouse_level(tile) == 1, "capacity dialog: tile starts at warehouse L1")
+	# Stock the L1->L2 bill so the works pay from empire stock (no cash path needed).
+	var costs: Dictionary = EconomyConfig.WAREHOUSE_UPGRADE_COSTS[2]
+	var totals_before: Dictionary = {}
+	for gid in costs:
+		totals_before[gid] = Stockpile.get_total(str(gid))
+		Stockpile.add(tile, str(gid), int(costs[gid]))
+	# Present the dialog for this tile and check button states.
+	dlg._on_tile_reached_capacity(tile)
+	_check(dlg._current_tile == tile, "capacity dialog: shows the full tile")
+	_check(not dlg._expand_btn.disabled, "capacity dialog: Expand enabled when affordable")
+	_check(dlg._stop_btn.disabled, "capacity dialog: Stop Production is disabled")
+	_check(dlg._stop_btn.tooltip_text == "Coming soon", "capacity dialog: Stop Production hover says 'Coming soon'")
+	# Press Expand — the warehouse upgrades and the bill is consumed from stock.
+	dlg._choose(Cap.ACTION_EXPAND)
+	_check(Stockpile.get_warehouse_level(tile) == 2, "capacity dialog: Expand upgrades the warehouse to L2")
+	var consumed_ok := true
+	for gid in costs:
+		if Stockpile.get_total(str(gid)) != int(totals_before[gid]):
+			consumed_ok = false
+	_check(consumed_ok, "capacity dialog: Expand consumed exactly the material bill from stock")
+	Stockpile.set_warehouse_level(tile, 1)  # reset shared state for later tests
+	dlg.queue_free()
 
 func _test_building_ledger() -> void:
 	_check(MatchState.route_objective == MatchState.RouteObjective.FASTEST,
@@ -8235,6 +8302,22 @@ func _test_catalog_loaded() -> void:
 	_check(has_all_biomass, "farm has its base biomass recipes (buildable, not recipe-less): %s" % str(farm_recipe_ids))
 	_check(int(Catalog.get_building_by_internal_name("farm").get("tile_size_used", 0)) == 15, "farm building is tile_size_used 15")
 
+	# The three acid recipes (r_114/115/116) were moved to the Chemical Plant
+	# (owner request 2026-07-13); they used to sit on the Industrial Factory via the
+	# industrial_goods_factory→industrial_factory alias.
+	var chem_id: String = str(Catalog.get_building_by_internal_name("chem_plant").get("id", ""))
+	var indf_id: String = str(Catalog.get_building_by_internal_name("industrial_factory").get("id", ""))
+	var chem_recipe_ids: Array = []
+	for r in Catalog.get_recipes_for_building(chem_id):
+		chem_recipe_ids.append(str(r.get("recipe_id", "")))
+	var indf_recipe_ids: Array = []
+	for r in Catalog.get_recipes_for_building(indf_id):
+		indf_recipe_ids.append(str(r.get("recipe_id", "")))
+	for acid in ["r_114", "r_115", "r_116"]:
+		_check(chem_recipe_ids.has(acid), "%s (acid) is now on the Chemical Plant" % acid)
+		_check(not indf_recipe_ids.has(acid), "%s (acid) is no longer on the Industrial Factory" % acid)
+	_check(not indf_recipe_ids.is_empty(), "Industrial Factory still has recipes (not farm-bugged by the move)")
+
 # Logic: recipe requirements parse correctly (guards the build-mode path that
 # silently broke earlier in the merge).
 func _test_recipe_requirements() -> void:
@@ -8984,6 +9067,25 @@ func _test_building_diagnostics() -> void:
 	for r in rows:
 		titles.append(str(r.get("label", "")))
 	_check(not titles.has("Stockpile over-utilised"), "diagnostics: cleared warehouse drops the row")
+
+	# The "Output modifiers" row was removed from diagnostics (owner request 2026-07-13).
+	# Even with an active recipe_output modifier — which used to produce that row plus a
+	# "See all modifiers" accordion (the row carried a "parts" array) — none appears now.
+	var building_status = load("res://scripts/building_status.gd")
+	var mod_id: String = Modifiers.add({"domain": "recipe_output", "target": "*", "pct": 12.0, "label": "Test output boost"})
+	var net_parts: Array = building_status.net_output_modifier(mill, mill_recipe).get("parts", [])
+	_check(not net_parts.is_empty(), "diagnostics: precondition — a recipe_output modifier is active on the recipe")
+	rows = readout.diagnostics(mill, mill_recipe, Catalog.get_building("b_002"), false)
+	var has_mod_row := false
+	var has_parts := false
+	for r in rows:
+		if str(r.get("label", "")).begins_with("Output modifiers"):
+			has_mod_row = true
+		if r.has("parts"):
+			has_parts = true
+	_check(not has_mod_row, "diagnostics: no 'Output modifiers' row even with an active modifier")
+	_check(not has_parts, "diagnostics: no diagnostics row carries a modifier 'parts' accordion")
+	Modifiers.remove(mod_id)
 
 func _test_infra_upgrade() -> void:
 	# Cash-only infrastructure upgrades (owner ruling: L2 £150, L3 £350). The pending

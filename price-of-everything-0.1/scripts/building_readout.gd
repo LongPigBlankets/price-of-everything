@@ -412,22 +412,6 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 			else:
 				rows.append(_row("bad", "scale", "Dearer than market", "Producing at £%s / unit — %d%% above the £%s market price." % [_num(uc), absi(pct), _num(bp)]))
 
-	# 6) output modifiers — the panel renders these as an expandable "See all modifiers" accordion
-	var mod := BuildingStatus.net_output_modifier(building, recipe)
-	var parts: Array = mod.get("parts", [])
-	var wparts: Array = mod.get("workforce_parts", [])
-	if not parts.is_empty() or not wparts.is_empty():
-		var net := int(mod.get("pct", 0))
-		var all_parts: Array = []
-		for p in parts:
-			all_parts.append({"label": str(p.get("label", "")), "pct": int(round(float(p.get("pct", 0.0))))})
-		for p in wparts:
-			all_parts.append({"label": str(p.get("label", "")), "pct": int(round(float(p.get("pct", 0.0))))})
-		var mrow := _row("ok" if net >= 0 else "warn", "trend", "Output modifiers %s" % str(mod.get("text", "")),
-			"%d contributing modifier%s" % [all_parts.size(), "" if all_parts.size() == 1 else "s"])
-		mrow["parts"] = all_parts
-		rows.append(mrow)
-
 	return rows
 
 # Green-power intermittency status row (or {} for no row). Shown for a GREEN power generator or a

@@ -19,7 +19,10 @@ extends Node
 # Master switch. When false every public method returns immediately.
 var enabled: bool = true
 
-const CSV_PATH := "user://turn_profile.csv"
+const AppPaths := preload("res://scripts/app_paths.gd")  # telemetry lives in <base>/logs/
+
+static func _csv_path() -> String:
+	return AppPaths.logs_dir().path_join("turn_profile.csv")
 
 # Stable column order for the CSV + console. Phases first (excluding DECIDE),
 # then the PROCESS sub-steps in execution order, then scale counts.
@@ -61,7 +64,7 @@ var _csv_header_written: bool = false
 
 func _ready() -> void:
 	# Detect a pre-existing CSV so we don't double-write the header across runs.
-	_csv_header_written = FileAccess.file_exists(CSV_PATH)
+	_csv_header_written = FileAccess.file_exists(_csv_path())
 
 
 # --- Phase timing (called by TurnManager) -----------------------------------
@@ -190,12 +193,12 @@ func _log_console(turn: int) -> void:
 
 
 func _write_csv_row(turn: int) -> void:
-	var existed := FileAccess.file_exists(CSV_PATH)
+	var existed := FileAccess.file_exists(_csv_path())
 	# Open in append mode (creates the file if it doesn't exist).
-	var f := FileAccess.open(CSV_PATH, FileAccess.READ_WRITE) if existed else FileAccess.open(CSV_PATH, FileAccess.WRITE)
+	var f := FileAccess.open(_csv_path(), FileAccess.READ_WRITE) if existed else FileAccess.open(_csv_path(), FileAccess.WRITE)
 	if f == null:
 		# Never let an I/O failure disrupt the turn — just warn once.
-		push_warning("[TurnProfiler] Could not open %s for writing (err %d)" % [CSV_PATH, FileAccess.get_open_error()])
+		push_warning("[TurnProfiler] Could not open %s for writing (err %d)" % [_csv_path(), FileAccess.get_open_error()])
 		return
 	# Seek to end for append.
 	f.seek_end()

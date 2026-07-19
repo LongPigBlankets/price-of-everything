@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://oj3twpfs8yob"
+
+[deps]
+
+files=["res://reports/balance/success_named_examples.recipe.translation", "res://reports/balance/success_named_examples.recipe.translation", "res://reports/balance/success_named_examples.standalone.translation", "res://reports/balance/success_named_examples.one.translation", "res://reports/balance/success_named_examples.one.translation", "res://reports/balance/success_named_examples.individual.translation", "res://reports/balance/success_named_examples.one.translation", "res://reports/balance/success_named_examples.one.translation", "res://reports/balance/success_named_examples.fully.translation", "res://reports/balance/success_named_examples.fully.translation", "res://reports/balance/success_named_examples.fully.translation"]
+
+source_file="res://reports/balance/success_named_examples.csv"
+dest_files=["res://reports/balance/success_named_examples.recipe.translation", "res://reports/balance/success_named_examples.recipe.translation", "res://reports/balance/success_named_examples.standalone.translation", "res://reports/balance/success_named_examples.one.translation", "res://reports/balance/success_named_examples.one.translation", "res://reports/balance/success_named_examples.individual.translation", "res://reports/balance/success_named_examples.one.translation", "res://reports/balance/success_named_examples.one.translation", "res://reports/balance/success_named_examples.fully.translation", "res://reports/balance/success_named_examples.fully.translation", "res://reports/balance/success_named_examples.fully.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

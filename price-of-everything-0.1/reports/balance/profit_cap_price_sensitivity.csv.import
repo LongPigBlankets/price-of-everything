@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://bqt5nmhqmf3ug"
+
+[deps]
+
+files=["res://reports/balance/profit_cap_price_sensitivity.recipe.translation", "res://reports/balance/profit_cap_price_sensitivity.output.translation", "res://reports/balance/profit_cap_price_sensitivity.current.translation", "res://reports/balance/profit_cap_price_sensitivity.max.translation", "res://reports/balance/profit_cap_price_sensitivity.price.translation", "res://reports/balance/profit_cap_price_sensitivity.standalone.translation", "res://reports/balance/profit_cap_price_sensitivity.price.translation", "res://reports/balance/profit_cap_price_sensitivity.downstream.translation", "res://reports/balance/profit_cap_price_sensitivity.downstream.translation"]
+
+source_file="res://reports/balance/profit_cap_price_sensitivity.csv"
+dest_files=["res://reports/balance/profit_cap_price_sensitivity.recipe.translation", "res://reports/balance/profit_cap_price_sensitivity.output.translation", "res://reports/balance/profit_cap_price_sensitivity.current.translation", "res://reports/balance/profit_cap_price_sensitivity.max.translation", "res://reports/balance/profit_cap_price_sensitivity.price.translation", "res://reports/balance/profit_cap_price_sensitivity.standalone.translation", "res://reports/balance/profit_cap_price_sensitivity.price.translation", "res://reports/balance/profit_cap_price_sensitivity.downstream.translation", "res://reports/balance/profit_cap_price_sensitivity.downstream.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

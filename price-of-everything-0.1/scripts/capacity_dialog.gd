@@ -18,13 +18,8 @@ const BADGE_TEXT_SIZE := 14
 const BADGE_NAVY := Color(0.0, 0.119856, 0.243095, 1.0)
 const BADGE_PAPER := Color(0.995234, 0.930806, 0.763265, 1.0)
 const ICON_SIZE := 100.0
-const CARD_WIDTH := 340.0       # fixed so the icons can pin to the frame edges
+const CARD_WIDTH := 340.0       # fixed frame width; icons centre and shrink to fit
 const MONEY_FONT := preload("res://assets/fonts/BarlowCondensed-Bold.ttf")
-
-# Placeholder expansion cost (hardcoded for now): 10 steel, 10 concrete, 10 copper
-# wiring + £50.  g_006 steel, g_017 concrete, g_007 copper_wiring.
-const EXPAND_MATERIALS := [["g_006", 10], ["g_017", 10], ["g_007", 10]]
-const EXPAND_MONEY := 50
 
 const ACTION_SELL := "sell_surplus"
 const ACTION_EXPAND := "expand"
@@ -32,6 +27,11 @@ const ACTION_STOP := "stop"
 
 var _title: Label
 var _checkbox: CheckBox
+var _sell_btn: Button
+var _expand_btn: Button
+var _stop_btn: Button
+var _cost_label: Label
+var _cost_holder: VBoxContainer     # per-tile cost card is rebuilt into this
 var _default_action: String = ""    # "" = always ask; otherwise applied to every tile
 var _decided: Dictionary = {}       # tile_id -> true once handled
 var _queue: Array = []              # tiles waiting for a decision
@@ -68,8 +68,37 @@ func _show_next() -> void:
 	_current_tile = str(_queue.pop_front())
 	_title.text = "Tile %s has reached maximum capacity.\nHow do you want to proceed?" % Catalog.tile_label(_current_tile)
 	_checkbox.button_pressed = false
+	_refresh_for_tile()
 	visible = true
 	move_to_front()
+
+
+# Rebuild the cost card and the Expand button for the tile now being shown: the material
+# bill, whether it's affordable, and the capacity gain all depend on this tile's current
+# warehouse level and live market prices, so this can't be baked once at build time.
+func _refresh_for_tile() -> void:
+	for c in _cost_holder.get_children():
+		c.queue_free()
+	var quote: Dictionary = MatchState.warehouse_upgrade_quote(_current_tile)
+	if bool(quote.get("maxed", false)):
+		_cost_label.visible = false
+		var note := Label.new()
+		note.text = "This tile's warehouse is already fully upgraded."
+		note.add_theme_font_size_override("font_size", 13)
+		note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_cost_holder.add_child(note)
+		_expand_btn.text = "Storage maxed"
+		_expand_btn.disabled = true
+		_expand_btn.tooltip_text = "This warehouse is already at its maximum level."
+		return
+	_cost_label.visible = true
+	_cost_holder.add_child(_build_cost_section(quote))
+	var gain: int = int(quote.get("next_cap", 0)) - int(quote.get("current_cap", 0))
+	_expand_btn.text = "Expand storage (+%d)" % gain
+	var affordable: bool = bool(quote.get("empire_ok", false)) or bool(quote.get("money_ok", false))
+	_expand_btn.disabled = not affordable
+	_expand_btn.tooltip_text = "" if affordable else "You don't have the materials in stock, nor the cash to buy them."
 
 
 func _choose(action: String) -> void:
@@ -100,9 +129,22 @@ func _apply_action(action: String, tile_id: String) -> void:
 			if MatchState.has_method("set_auto_sell_impact"):
 				MatchState.set_auto_sell_impact(tile_id, MatchState.IMPACT_ANY)
 		ACTION_EXPAND:
-			pass  # Storage expansion not implemented yet (cost shown, no effect).
+			# Real per-tile warehouse upgrade (same path as the tile panel's Expand
+			# Warehouse). Pay from empire stock when the full bill is on hand, else buy
+			# the materials at market. Applies immediately; upgrade_warehouse toasts on
+			# success. The Expand button is disabled when neither source can cover it, so
+			# a click that reaches here can normally afford it — but guard anyway (the
+			# "apply to all tiles" default path routes future tiles through here unseen).
+			var quote: Dictionary = MatchState.warehouse_upgrade_quote(tile_id)
+			if bool(quote.get("maxed", false)):
+				return
+			var source := "empire" if bool(quote.get("empire_ok", false)) else "market"
+			var res: Dictionary = MatchState.upgrade_warehouse(tile_id, source)
+			if not bool(res.get("ok", false)):
+				MatchState.request_toast("Couldn't expand storage on %s (%s)." % [
+					Catalog.tile_label(tile_id), str(res.get("reason", "?"))], "warning")
 		ACTION_STOP:
-			pass  # Stop-production not implemented yet (no such concept yet).
+			pass  # Stop-production is not built yet — the button is disabled ("Coming soon").
 
 
 func _build_ui() -> void:
@@ -139,20 +181,29 @@ func _build_ui() -> void:
 	row.add_theme_constant_override("separation", 8)
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	row.add_child(_make_option_button("Sell surplus automatically", ACTION_SELL, 1.0))
-	row.add_child(_make_option_button("Expand Logistics and Storage on tile by 500", ACTION_EXPAND, 2.0))
-	row.add_child(_make_option_button("Stop Production on tile", ACTION_STOP, 1.0))
+	_sell_btn = _make_option_button("Sell surplus automatically", ACTION_SELL, 1.0)
+	row.add_child(_sell_btn)
+	_expand_btn = _make_option_button("Expand storage", ACTION_EXPAND, 2.0)
+	row.add_child(_expand_btn)
+	_stop_btn = _make_option_button("Stop Production on tile", ACTION_STOP, 1.0)
+	# Not built yet: show it, but greyed out with a "Coming soon" hint on hover.
+	_stop_btn.disabled = true
+	_stop_btn.tooltip_text = "Coming soon"
+	row.add_child(_stop_btn)
 	vb.add_child(row)
 
 	# "This will cost:" — compact row introducing the cost card below the options.
-	var cost_label := Label.new()
-	cost_label.text = "This will cost:"
-	cost_label.add_theme_font_size_override("font_size", 12)
-	cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vb.add_child(cost_label)
+	_cost_label = Label.new()
+	_cost_label.text = "This will cost:"
+	_cost_label.add_theme_font_size_override("font_size", 12)
+	_cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vb.add_child(_cost_label)
 
-	# Framed goods card with the expansion materials.
-	vb.add_child(_build_cost_section())
+	# Framed goods card with the expansion materials — populated per tile in _show_next.
+	_cost_holder = VBoxContainer.new()
+	_cost_holder.alignment = BoxContainer.ALIGNMENT_CENTER
+	_cost_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vb.add_child(_cost_holder)
 
 	# Divider, then the "don't ask again" label + tickbox pushed to the right.
 	vb.add_child(HSeparator.new())
@@ -181,73 +232,58 @@ func _make_option_button(text: String, action: String, ratio: float) -> Button:
 	return b
 
 
-func _build_cost_section() -> Control:
-	# A framed card (the pipe frame, matching the title card) holding the 60x60 good
-	# icons — each with the standard quantity pill — and the money cost.
-	# Fixed-width framed card. The icons are placed by anchor (not a row container):
-	# the left icon's left edge and the right icon's right edge pin to the frame's
-	# inner edges, the middle icon centres, and they overlap if 3x100 exceeds the
-	# inner width. The money cost sits navy + bold along the bottom of the frame.
+func _build_cost_section(quote: Dictionary) -> Control:
+	# A framed cream card (the pipe frame, matching the title card) holding the REAL
+	# warehouse-upgrade materials from the quote — each good icon carries the standard
+	# quantity pill — with a navy line below saying how the works are paid for. The icons
+	# sit in a centred row that shrinks for the four-material L2→L3 bill so it still fits
+	# the fixed-width frame.
 	var card := PanelContainer.new()
 	card.add_theme_stylebox_override("panel", GOODS_FRAME)
 	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	card.custom_minimum_size = Vector2(CARD_WIDTH, 0)
 
-	var inner := Control.new()
-	# Icons (100) at the top + 50px breathing room + the money strip (30) at the bottom.
-	inner.custom_minimum_size = Vector2(0, ICON_SIZE + 50.0 + 30.0)
-	card.add_child(inner)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 12)
+	pad.add_theme_constant_override("margin_right", 12)
+	pad.add_theme_constant_override("margin_top", 16)
+	pad.add_theme_constant_override("margin_bottom", 12)
+	card.add_child(pad)
 
-	var mats := EXPAND_MATERIALS
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	pad.add_child(col)
 
-	# Middle (centred), added first so the edge-pinned icons draw over it.
-	var mid := _cost_cell(str(mats[1][0]), int(mats[1][1]))
-	_anchor_slot(mid, 0.5, -ICON_SIZE / 2.0, ICON_SIZE / 2.0)
-	inner.add_child(mid)
+	var mats: Array = quote.get("materials", [])
+	# Full 100px icons for the three-material L1→L2 bill; shrink to 72 for the four
+	# materials of L2→L3 so the row stays inside the frame.
+	var icon_px: float = ICON_SIZE if mats.size() <= 3 else 72.0
+	var icons_row := HBoxContainer.new()
+	icons_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	icons_row.add_theme_constant_override("separation", 8 if mats.size() <= 3 else 4)
+	for m in mats:
+		icons_row.add_child(_cost_cell(str(m.get("good_id", "")), int(m.get("qty", 0)), icon_px))
+	col.add_child(icons_row)
 
-	# Left: left edge pinned to the frame's inner-left.
-	var left := _cost_cell(str(mats[0][0]), int(mats[0][1]))
-	_anchor_slot(left, 0.0, 0.0, ICON_SIZE)
-	inner.add_child(left)
-
-	# Right: right edge pinned to the frame's inner-right.
-	var right := _cost_cell(str(mats[2][0]), int(mats[2][1]))
-	_anchor_slot(right, 1.0, -ICON_SIZE, 0.0)
-	inner.add_child(right)
-
-	# Money cost: navy, bold, bottom of the frame.
-	var money := Label.new()
-	money.text = "and £%d" % EXPAND_MONEY
-	money.add_theme_font_override("font", MONEY_FONT)
-	money.add_theme_font_size_override("font_size", 22)
-	money.add_theme_color_override("font_color", BADGE_NAVY)
-	money.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	money.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	money.anchor_left = 0.0
-	money.anchor_right = 1.0
-	money.anchor_top = 1.0
-	money.anchor_bottom = 1.0
-	money.offset_top = -30.0
-	inner.add_child(money)
+	# Payment line: pull from your own stock when you hold the whole bill, otherwise buy
+	# it at market — this mirrors what _apply_action(EXPAND) will actually do.
+	var pay := Label.new()
+	if bool(quote.get("empire_ok", false)):
+		pay.text = "from your stockpiles"
+	else:
+		pay.text = "£%d at market" % int(round(float(quote.get("market_total", 0.0))))
+	pay.add_theme_font_override("font", MONEY_FONT)
+	pay.add_theme_font_size_override("font_size", 20)
+	pay.add_theme_color_override("font_color", BADGE_NAVY)
+	pay.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(pay)
 	return card
 
 
-func _anchor_slot(slot: Control, anchor_x: float, off_left: float, off_right: float) -> void:
-	# Pin a 100x100 icon slot to the top of `inner` at the given horizontal anchor.
-	slot.anchor_left = anchor_x
-	slot.anchor_right = anchor_x
-	slot.anchor_top = 0.0
-	slot.anchor_bottom = 0.0
-	slot.offset_left = off_left
-	slot.offset_right = off_right
-	slot.offset_top = 0.0
-	slot.offset_bottom = ICON_SIZE
-
-
-func _cost_cell(gid: String, qty: int) -> Control:
-	# A 60x60 icon slot with the quantity pill overlaid on its corner.
+func _cost_cell(gid: String, qty: int, size: float) -> Control:
+	# A square icon slot with the quantity pill overlaid on its bottom-right corner.
 	var slot := Control.new()
-	slot.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
+	slot.custom_minimum_size = Vector2(size, size)
 	slot.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var icon := GoodIcons.texture_for(gid, Catalog.get_internal_name(gid))
@@ -268,7 +304,7 @@ func _cost_cell(gid: String, qty: int) -> Control:
 		ph.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		ph.set_anchors_preset(Control.PRESET_FULL_RECT)
 		slot.add_child(ph)
-	slot.add_child(_make_qty_badge(qty, ICON_SIZE))
+	slot.add_child(_make_qty_badge(qty, size))
 	return slot
 
 
