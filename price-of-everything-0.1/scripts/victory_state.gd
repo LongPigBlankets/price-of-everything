@@ -486,11 +486,7 @@ func _reset_fields() -> void:
 
 # Standing player-owned buildings (all categories) — the end screen's "buildings" series.
 func _count_player_buildings() -> int:
-	var n := 0
-	for inst in MatchState.buildings.values():
-		if MatchState.is_player_owned(inst):
-			n += 1
-	return n
+	return MatchState.player_building_count()
 
 func _zero_categories() -> Dictionary:
 	var d := {}

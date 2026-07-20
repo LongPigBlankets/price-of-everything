@@ -187,16 +187,19 @@ func _ready() -> void:
 State: `_rows: Array[Dictionary]` (unflushed rows), `run_id`, `session_id`,
 `playtime_carried_s`, `_session_start_msec`, `_tier_index`.
 
-### 3.1 Disk cache — every 10 turns and on every exit
+### 3.1 Disk cache — the crash checkpoint IS the cache (built design)
 
-- Rows append to `<AppPaths base>/telemetry/run_<run_id>.jsonl` (one JSON object per
-  line, `FileAccess` append + `flush()`), sibling of the existing `logs/` and
-  `savegames/` dirs.
-- **Flush triggers:** `(turn % 10) == 0` after a row is captured (same cadence as the
-  autosave rotation in `save_load.gd:27`), plus every end/exit path in §3.3. Between
-  flushes at most 10 rows (~1 KB) are at risk — and even those only to a crash.
-- Appending line-by-line (rather than rewriting a JSON array) means a crash mid-write
-  loses at most one line and never corrupts the file.
+The original draft used a separate `.jsonl` row cache; the built system folds it into
+the crash checkpoint instead: every `CHECKPOINT_EVERY` (10) turns, a **complete
+envelope including all captured rows** is atomically rewritten (tmp + rename,
+`call_deferred` so it lands the frame after resolution) as
+`<AppPaths base>/telemetry/outbox/ck_<run>.json`, `reason: "crash"`. One file, one
+format, directly uploadable:
+
+- Clean close: checkpoint deleted, final envelope spooled from the in-memory rows.
+- Crash / force-kill: the checkpoint survives with everything up to the last
+  10-turn boundary — at most `CHECKPOINT_EVERY` turns of rows are lost.
+- Rows live in memory (`_rows`); the happy path never reads the checkpoint back.
 
 ### 3.2 Performance budget (why this cannot repeat the verbose-log slowdown)
 
@@ -448,9 +451,16 @@ Exported-build gotchas — **all verified live 2026-07-20** against the real end
    `application/config/version`, `TELEMETRY_DEBUG=1` override for headless
    verification, `tools/telemetry/flush_outbox.tscn` drain tool.
    **No consent gate yet — phase-A builds must not ship to players.**
-3. **Phase B — per-turn capture:** the §1.1 rows (tier index, sparse `produced`,
-   victory array), 10-turn jsonl cache, envelope collation from `_rows`, save-key
-   `telemetry` (run_id + playtime across sessions), TurnProfiler acceptance gate.
+3. **Phase B — per-turn capture: BUILT 2026-07-20.** The §1.1 rows (sparse
+   `produced`, victory array, playtime, session ordinal), checkpoint-as-cache
+   (§3.1), envelope collation from `_rows`, additive save-key `telemetry`
+   (run_id + started_at + playtime + session survive save/load),
+   `MatchState.player_building_count()` promoted public, `run.ruleset` +
+   `end.victory` in the envelope. **Measured capture max: 234 µs at 562
+   buildings** (e2e, `TELEMETRY_DEBUG` print) — 4× under the 1 ms gate.
+   `tiers` is emitted only when the goods CSV carries `goods_graph_tier`
+   (tolerant read) — that column lives on the unmerged goods-graph branch, so
+   rows omit it until that merges; per-good `produced` carries the full data.
 4. **Phase C — consent + identity:** PlayerProfile fields, first-launch popup, New
    Game panel checkbox, real per-install `player_id`, editor-build upload guard +
    `telemetry` cheat. Gate every phase-A/B entry point on consent. Ship blocker.

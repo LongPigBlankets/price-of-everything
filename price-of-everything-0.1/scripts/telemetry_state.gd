@@ -1,8 +1,16 @@
 extends Node
-## Telemetry — phase A: anonymous run envelopes, uploaded at close time and
-## crash-resilient via periodic checkpoints. No per-turn metrics and no consent
-## gate yet; both arrive in later phases (docs/telemetry-spec.md §9).
-## Phase-A builds must not ship to players — consent lands first.
+## Telemetry — phases A+B: anonymous run envelopes with one row of economic
+## data per turn (money, revenue, profit, loans, buildings, power, per-good
+## production, victory tracks, playtime), uploaded at close time and
+## crash-resilient via periodic checkpoints that carry the rows. No consent
+## gate yet (docs/telemetry-spec.md §9) — these builds must not ship to
+## players; consent lands first.
+##
+## Rows are a pure observer of Production.last_turn_summary and sim autoload
+## state — no sim writes, no sim RNG, nothing in _process. The crash
+## checkpoint doubles as the on-disk row cache: it is a complete envelope
+## rewritten (deferred, atomically) every CHECKPOINT_EVERY turns, so a crash
+## loses at most CHECKPOINT_EVERY turns of rows.
 ##
 ## Lifecycle: arms when a run starts (MatchState.state_reset, with the first
 ## resolved turn as a fallback for harness-style runs) and finalizes ONCE per
@@ -29,6 +37,10 @@ const SCHEMA_VERSION := 1
 const QUIT_UPLOAD_WINDOW_MSEC := 6000  # Apps Script round trips run 1.5-4 s
 const CHECKPOINT_EVERY := 10
 const COMPLETE_REASONS: Array[String] = ["victory", "turn_cap", "bankruptcy"]
+# Order of the per-row tier rollup. The goods CSV's goods_graph_tier column is
+# read tolerantly: it only exists once the goods-graph branch lands, so until
+# then rows omit "tiers" (per-good `produced` carries the full information).
+const TIER_BANDS: Array[String] = ["raw", "processed", "intermediate", "finished", "apex"]
 
 var enabled := false
 var _armed := false
@@ -38,7 +50,14 @@ var _session_id := ""
 var _run_id := ""
 var _run_started_unix := 0
 var _run_started_msec := 0
+var _playtime_carried_s := 0  # playtime from earlier sessions of a loaded run
+var _session_ordinal := 1     # 1 = first sitting of the run, +1 per load
+var _rows: Array = []         # one Dictionary per completed turn, this session
 var _uploading := {}  # path -> true while a request for that outbox file is in flight
+var _tier_built := false
+var _tier_available := false
+var _tier_index := {}         # good_id -> index into TIER_BANDS
+var _capture_max_usec := 0    # worst per-turn capture cost, for the perf gate
 
 
 func _ready() -> void:
@@ -80,6 +99,10 @@ func _on_run_started() -> void:
 	_run_id = _uuid()
 	_run_started_unix = int(Time.get_unix_time_from_system())
 	_run_started_msec = Time.get_ticks_msec()
+	_playtime_carried_s = 0
+	_session_ordinal = 1
+	_rows = []
+	_ensure_tier_index()
 	_retry_outbox()
 
 
@@ -88,9 +111,111 @@ func _on_turn_completed() -> void:
 		return
 	if not _armed:
 		_on_run_started()
+	if _finalized:
+		return
+	var t0 := Time.get_ticks_usec()
+	var summary: Dictionary = Production.last_turn_summary
+	if not summary.is_empty():
+		_rows.append(_build_row(summary))
+	_capture_max_usec = maxi(_capture_max_usec, int(Time.get_ticks_usec() - t0))
 	var done_turn := TurnManager.current_turn - 1
 	if done_turn > 0 and done_turn % CHECKPOINT_EVERY == 0:
-		_write_json(_checkpoint_path(), _build_envelope("crash"))
+		# Deferred: the (growing) checkpoint rewrite lands on the frame after
+		# turn resolution, off the end-turn critical path.
+		_write_checkpoint.call_deferred()
+
+
+func _write_checkpoint() -> void:
+	if not enabled or not _armed or _finalized:
+		return
+	_write_json(_checkpoint_path(), _build_envelope("crash"))
+
+
+## One row per completed turn, lifted from the already-computed summary.
+## Budget (spec §3.2): < 0.5 ms — dict reads + one pass over buildings
+## (player_building_count) + one pass over summary.produced.
+func _build_row(summary: Dictionary) -> Dictionary:
+	var revenue := float(summary.get("goods_sales_revenue", 0.0)) \
+			+ float(summary.get("power_sales_revenue", 0.0))
+	var pre_tax := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
+	var profit := pre_tax - float(summary.get("taxes_paid", 0.0)) \
+			- float(summary.get("dividends_paid", 0.0)) \
+			- float(summary.get("profit_sharing_paid", 0.0))
+	var produced := {}
+	var tiers := [0, 0, 0, 0, 0]
+	var summary_produced: Dictionary = summary.get("produced", {})
+	for good_id in summary_produced:
+		if good_id == "power":
+			continue
+		var qty := int(summary_produced[good_id])
+		produced[good_id] = qty
+		if _tier_available:
+			tiers[_tier_index.get(good_id, 2)] += qty
+	var row := {
+		"turn": TurnManager.current_turn - 1,
+		"money": snappedf(MatchState.money, 0.01),
+		"revenue": snappedf(revenue, 0.01),
+		"profit": snappedf(profit, 0.01),
+		"loans": snappedf(LoanState.total_outstanding(), 0.01),
+		"buildings": MatchState.player_building_count(),
+		"power_gen": int(summary.get("power_supply", 0)),
+		"power_use": int(summary.get("power_demand", 0)),
+		"victory": _victory_array(),
+		"playtime_s": _playtime_s(),
+		"session": _session_ordinal,
+		"produced": produced,
+	}
+	if _tier_available:
+		row["tiers"] = tiers
+	return row
+
+
+func _victory_array() -> Array:
+	var arr := []
+	for key in VictoryState.TRACK_ORDER:
+		arr.append(int(round(float(VictoryState.track_best.get(key, 0.0)) * 1000.0)))
+	return arr
+
+
+func _playtime_s() -> int:
+	return _playtime_carried_s + int((Time.get_ticks_msec() - _run_started_msec) / 1000)
+
+
+func _ensure_tier_index() -> void:
+	if _tier_built:
+		return
+	_tier_built = true
+	for g in Catalog.all_goods():
+		var band := str(g.get("goods_graph_tier", "")).strip_edges().to_lower()
+		var idx := TIER_BANDS.find(band)
+		if idx >= 0:
+			_tier_index[str(g.get("id", ""))] = idx
+			_tier_available = true
+
+
+## Save integration (additive "telemetry" key, tolerant reader).
+func export_state() -> Dictionary:
+	if not enabled or not _armed:
+		return {}
+	return {
+		"run_id": _run_id,
+		"started_at": _run_started_unix,
+		"playtime_s": _playtime_s(),
+		"session": _session_ordinal,
+	}
+
+
+## Runs AFTER state_reset has re-armed with a fresh identity; a saved run_id
+## overrides it so the resumed run keeps its identity across sessions.
+func import_state(d: Dictionary) -> void:
+	if not enabled or str(d.get("run_id", "")) == "":
+		return
+	_run_id = str(d["run_id"])
+	_run_started_unix = int(d.get("started_at", _run_started_unix))
+	_playtime_carried_s = int(d.get("playtime_s", 0))
+	_session_ordinal = int(d.get("session", 1)) + 1
+	_run_started_msec = Time.get_ticks_msec()
+	_rows = []
 
 
 ## The run ended on-screen (victory / turn cap / bankruptcy): finalize with the
@@ -150,8 +275,10 @@ func _finalize_run(reason: String) -> void:
 	var path := AppPaths.telemetry_outbox_dir().path_join(
 			"%s_%d.json" % [_run_id.substr(0, 12), envelope["sent_at"]])
 	_write_json(path, envelope)
-	print("[Telemetry] spooled %s (%s, turn %d)"
-			% [path.get_file(), reason, envelope["end"]["turn"]])
+	print("[Telemetry] spooled %s (%s, turn %d, %d rows)"
+			% [path.get_file(), reason, envelope["end"]["turn"], _rows.size()])
+	if OS.get_environment("TELEMETRY_DEBUG") == "1":
+		print("[Telemetry] capture max %d us over %d rows" % [_capture_max_usec, _rows.size()])
 
 
 func _build_envelope(reason: String) -> Dictionary:
@@ -167,15 +294,19 @@ func _build_envelope(reason: String) -> Dictionary:
 			"version": str(ProjectSettings.get_setting("application/config/version", "dev")),
 			"os": OS.get_name(),
 		},
-		"run": {"started_at": _run_started_unix},
+		"run": {
+			"started_at": _run_started_unix,
+			"ruleset": str(MatchState.ruleset.get("name", "standard")),
+		},
 		"end": {
 			"reason": reason,
 			"run_complete": reason in COMPLETE_REASONS,
 			"turn": TurnManager.current_turn,
 			"ended_at": now,
-			"playtime_s": (Time.get_ticks_msec() - _run_started_msec) / 1000,
+			"playtime_s": _playtime_s(),
+			"victory": _victory_array(),
 		},
-		"turns": [],
+		"turns": _rows,
 	}
 
 
