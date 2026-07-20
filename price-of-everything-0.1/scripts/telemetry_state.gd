@@ -7,11 +7,15 @@ extends Node
 ## Lifecycle: arms when a run starts (MatchState.state_reset, with the first
 ## resolved turn as a fallback for harness-style runs) and finalizes ONCE per
 ## run. Delivery, by exit path:
-##  - Window X: we own the close handshake (auto_accept_quit false) — spool to
-##    disk FIRST, then upload with a bounded wait (QUIT_UPLOAD_WINDOW_MSEC) and
-##    quit regardless; the outbox catches timeouts.
-##  - quit() teardown (pause-menu Exit to Desktop): disk only, uploads next boot
-##    (no awaiting is possible while the tree tears down).
+##  - Game end (victory / turn_cap / bankruptcy signals): finalize with the
+##    real reason, run_complete true, upload immediately (end screen is up).
+##  - Window X / request_app_quit() (main-menu Quit, pause-menu Exit to
+##    Desktop): we own the close handshake (auto_accept_quit false) — spool to
+##    disk FIRST, hide the window, upload with a bounded wait
+##    (QUIT_UPLOAD_WINDOW_MSEC) and quit regardless; the outbox catches
+##    timeouts.
+##  - Raw quit() teardown (any path not routed through request_app_quit):
+##    disk only via EXIT_TREE, uploads next boot.
 ##  - Crash / force-kill: a checkpoint envelope (reason "crash") is rewritten
 ##    every CHECKPOINT_EVERY turns; a clean close deletes it, so one surviving
 ##    on boot means the process died — it uploads with the retry.
@@ -24,6 +28,7 @@ const TOKEN := "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641"
 const SCHEMA_VERSION := 1
 const QUIT_UPLOAD_WINDOW_MSEC := 6000  # Apps Script round trips run 1.5-4 s
 const CHECKPOINT_EVERY := 10
+const COMPLETE_REASONS: Array[String] = ["victory", "turn_cap", "bankruptcy"]
 
 var enabled := false
 var _armed := false
@@ -49,6 +54,9 @@ func _ready() -> void:
 	_session_id = _uuid()
 	MatchState.state_reset.connect(_on_run_started)
 	TurnManager.turn_resolution_completed.connect(_on_turn_completed)
+	VictoryState.victory_achieved.connect(_on_victory)
+	TurnManager.game_ended_signal.connect(_on_game_ended)
+	SolvencyState.bankruptcy_declared.connect(_on_bankruptcy)
 	print("[Telemetry] ready (phase A, session %s)" % _session_id.substr(0, 8))
 	_retry_outbox()
 
@@ -85,12 +93,36 @@ func _on_turn_completed() -> void:
 		_write_json(_checkpoint_path(), _build_envelope("crash"))
 
 
-func _handle_window_close() -> void:
+## The run ended on-screen (victory / turn cap / bankruptcy): finalize with the
+## real reason and upload immediately — the app stays alive on the end screen.
+func _on_victory(_total: int, _turn: int) -> void:
+	_finalize_run("victory")
+	_retry_outbox()
+
+
+func _on_game_ended(reason: String) -> void:
+	_finalize_run("turn_cap" if reason == "turn_cap_reached" else reason)
+	_retry_outbox()
+
+
+func _on_bankruptcy() -> void:
+	_finalize_run("bankruptcy")
+	_retry_outbox()
+
+
+## App-wide quit entry point (main-menu Quit, pause-menu Exit to Desktop):
+## same spool → hide window → bounded upload drain → quit as the window X.
+## Safe to call whether or not telemetry is enabled.
+func request_app_quit() -> void:
+	_handle_window_close("quit_to_desktop")
+
+
+func _handle_window_close(reason: String = "window_close") -> void:
 	if _closing:
 		return
 	_closing = true
 	# Disk before network: even if the upload stalls, the envelope is spooled.
-	_finalize_run("window_close")
+	_finalize_run(reason)
 	if not enabled:
 		get_tree().quit()
 		return
@@ -138,7 +170,7 @@ func _build_envelope(reason: String) -> Dictionary:
 		"run": {"started_at": _run_started_unix},
 		"end": {
 			"reason": reason,
-			"run_complete": false,
+			"run_complete": reason in COMPLETE_REASONS,
 			"turn": TurnManager.current_turn,
 			"ended_at": now,
 			"playtime_s": (Time.get_ticks_msec() - _run_started_msec) / 1000,

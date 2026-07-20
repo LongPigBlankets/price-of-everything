@@ -319,7 +319,9 @@ func _build_menu() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(spacer)
-	vbox.add_child(_make_button("Quit", false))
+	var quit_btn := _make_button("Quit", false)
+	quit_btn.pressed.connect(TelemetryState.request_app_quit)
+	vbox.add_child(quit_btn)
 
 	# 9-sliced ornate plate overlapping the top of the frame (hides the outline
 	# behind it), with the title centred in its cream middle.

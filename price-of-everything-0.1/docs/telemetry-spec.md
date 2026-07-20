@@ -229,19 +229,21 @@ Rules that keep it that way:
 
 | event | hook | action |
 |---|---|---|
-| Victory | `VictoryState.victory_achieved` (end screen mounts via `bottom_menu.gd:465`) | flush, build envelope (`victory`, complete), enqueue, upload now |
+| Victory | `VictoryState.victory_achieved` | flush, build envelope (`victory`, `run_complete: true`), enqueue, upload now |
 | Turn cap defeat | `TurnManager.game_ended_signal("turn_cap_reached")` | same, reason `turn_cap` |
-| Bankruptcy | `SolvencyState` game-over path | same, reason `bankruptcy` |
+| Bankruptcy | `SolvencyState.bankruptcy_declared` | same, reason `bankruptcy` |
+| Menu quits | `TelemetryState.request_app_quit()` — wired to the main-menu Quit button and pause-menu Exit to Desktop | routes into the window-close handshake below, reason `quit_to_desktop` |
 | Exit to Main Menu | new run re-arming (`MatchState.state_reset` while armed) | flush, envelope reason `quit_to_menu`, enqueue, upload now |
 | Window X | `_notification(NOTIFICATION_WM_CLOSE_REQUEST)`; TelemetryState owns the handshake (`auto_accept_quit(false)`) | **spool first** (disk, crash-safe), hide the window (close feels instant), fire uploads, quit when drained or after `QUIT_UPLOAD_WINDOW_MSEC` (6 s) — outbox catches timeouts |
-| Exit to Desktop | `NOTIFICATION_EXIT_TREE` (from `quit()`; no awaiting possible during teardown) | spool to outbox only; uploads next boot |
+| Raw `quit()` (any path not routed through `request_app_quit`) | `NOTIFICATION_EXIT_TREE` (no awaiting possible during teardown) | spool to outbox only; uploads next boot |
 | **Crash / force-kill** | checkpoint envelope (`reason: "crash"`) rewritten atomically every `CHECKPOINT_EVERY` (10) turns; a clean finalize deletes it | a surviving `ck_*.json` on boot = the process died → uploads with the retry, already labelled `crash` |
 | App relaunch | `_ready` | retry everything in the outbox (§6.3), skipping the active run's live checkpoint |
 
-Window close is the primary delivery path (main-menu quit is currently unwired, so
-every session ends there): measured close-time drain ≈ 1.5 s on a normal connection,
-hidden-window so the close feels instant, 6 s hard ceiling. Exit-to-Desktop and
-crashes deliver on the next launch; nothing is ever lost, and quitting never hangs.
+Every deliberate exit (window X, main-menu Quit, pause-menu Exit to Desktop) now
+routes through the close handshake: measured close-time drain ≈ 1.5 s on a normal
+connection, hidden-window so the close feels instant, 6 s hard ceiling. Game-end
+reasons upload instantly on the end screen; crashes deliver on the next launch;
+nothing is ever lost, and quitting never hangs.
 
 ---
 
