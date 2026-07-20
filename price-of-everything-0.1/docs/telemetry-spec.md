@@ -354,7 +354,9 @@ created by TelemetryState on itself:
 func _upload(envelope: Dictionary) -> void:
     var http := HTTPRequest.new()
     add_child(http)
+    http.use_threads = true
     http.timeout = 10.0
+    http.max_redirects = 0        # the 302 itself is the success signal (see below)
     http.request_completed.connect(_on_upload_done.bind(http, envelope_path))
     var body := JSON.stringify(envelope)          # token injected into the dict
     http.request(ENDPOINT_URL, ["Content-Type: application/json"],
@@ -364,14 +366,21 @@ func _upload(envelope: Dictionary) -> void:
 Async, fire-and-forget; on success the outbox file is deleted, on anything else it
 stays for the next retry. No retry loops, no backoff — the outbox *is* the retry.
 
-Two exported-build gotchas, handled up front:
+Exported-build gotchas — **all verified live 2026-07-20** against the real endpoint
+(`tools/telemetry/poc_send.tscn`, curl cross-check):
 
 - **Apps Script answers a POST with a 302 redirect** (to `script.googleusercontent.com`,
-  where the `ContentService` response body lives). Crucially, `doPost` has *already
-  executed* by the time the redirect is issued — so treat response code **200 or 302 as
-  success**, whether or not `HTTPRequest` followed the redirect.
-- **TLS just works:** Godot 4 ships a bundled Mozilla CA store, so HTTPS to
-  `script.google.com` needs no certificate setup in exported builds on any platform.
+  where the `ContentService` response body lives). `doPost` has *already executed* by
+  the time the redirect is issued, so the 302 itself is the success signal. Set
+  `max_redirects = 0` and don't fetch the body — the one-time response URL is flaky
+  for non-browser clients (curl following it intermittently got a Google error page
+  even though the write had succeeded).
+- **With `max_redirects = 0`, Godot reports the completion `result` as
+  `RESULT_REDIRECT_LIMIT_REACHED` (12), NOT `RESULT_SUCCESS`** — the success check
+  must key on `response_code == 302` (or a plain 200), never on the result enum.
+- **TLS just works:** Godot's bundled Mozilla CA store handshakes with
+  `script.google.com` with no certificate setup (verified from the headless engine on
+  macOS).
 
 ### 6.3 Outbox spool
 
