@@ -47,7 +47,7 @@ the row's turn is `TurnManager.current_turn - 1` (same fix as
 | `turn` | int | `TurnManager.current_turn - 1` |
 | `money` | float | `MatchState.money` |
 | `revenue` | float | `summary.goods_sales_revenue + summary.power_sales_revenue` (mirrors `production.gd:541`) |
-| `profit` | float | retained post-tax profit: `(money_in − money_out) − taxes_paid − dividends_paid − profit_sharing_paid` (mirrors `SolvencyState._post_tax_profit`) |
+| `profit` | float | retained post-tax profit = `money_in − money_out`, **no further subtraction**: by summary emission `_apply_tax_and_dividends` has already added taxes/dividends/profit-sharing into `money_out`, so in−out IS the net the game's turn readout shows (verified identical to RunMetrics `profit_post_tax`). Subtracting `taxes_paid` again double-counts — the phase-B v1 bug |
 | `loans` | float | `LoanState.total_outstanding()` (`loan_state.gd:198`) |
 | `buildings` | int | count of player-owned entries in `MatchState.buildings` (see §5 note) |
 | `power_gen` | int | `summary.power_supply` |

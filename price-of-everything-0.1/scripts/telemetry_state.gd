@@ -137,10 +137,12 @@ func _write_checkpoint() -> void:
 func _build_row(summary: Dictionary) -> Dictionary:
 	var revenue := float(summary.get("goods_sales_revenue", 0.0)) \
 			+ float(summary.get("power_sales_revenue", 0.0))
-	var pre_tax := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
-	var profit := pre_tax - float(summary.get("taxes_paid", 0.0)) \
-			- float(summary.get("dividends_paid", 0.0)) \
-			- float(summary.get("profit_sharing_paid", 0.0))
+	# By summary emission, money_out ALREADY contains taxes/dividends/profit
+	# sharing (_apply_tax_and_dividends adds them as it charges), so in − out IS
+	# the retained post-tax net — the same number the game's turn readout shows.
+	# Subtracting taxes_paid etc. again here double-counts them (SolvencyState's
+	# _post_tax_profit backs them out of money_out first for the same reason).
+	var profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
 	var produced := {}
 	var tiers := [0, 0, 0, 0, 0]
 	var summary_produced: Dictionary = summary.get("produced", {})
