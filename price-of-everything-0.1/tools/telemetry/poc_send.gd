@@ -5,7 +5,7 @@ extends Node
 ##   <godot> --headless --path . res://tools/telemetry/poc_send.tscn
 ## Prints "TELEMETRY POC PASS/FAIL" and quits (exit code 0 on pass).
 
-const URL := "https://script.google.com/macros/s/AKfycbx9fgcEBw5asUWCOxU_IgauBhCnXduRH2oOncHQbZi2Jg95mNK97G_ykSQqSDHu9e1A/exec"
+const URL := "https://script.google.com/macros/s/AKfycbw8dUX-A_dSKmI2GB4_2AbRXbGnOKTbP8mpEa17t6wBBAg4Y0LcCnS_xJNH3EeNRwdr/exec"
 const ENVELOPE_PATH := "res://tools/telemetry/sample_envelope.json"
 
 func _ready() -> void:
