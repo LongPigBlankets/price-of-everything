@@ -232,13 +232,16 @@ Rules that keep it that way:
 | Victory | `VictoryState.victory_achieved` (end screen mounts via `bottom_menu.gd:465`) | flush, build envelope (`victory`, complete), enqueue, upload now |
 | Turn cap defeat | `TurnManager.game_ended_signal("turn_cap_reached")` | same, reason `turn_cap` |
 | Bankruptcy | `SolvencyState` game-over path | same, reason `bankruptcy` |
-| Exit to Main Menu | `pause_menu.gd:129` (add one call) | flush, envelope reason `quit_to_menu` (checkpoint), enqueue, upload now |
-| Exit to Desktop | `pause_menu.gd:134` (beside `SessionLog.flush()`) | flush + envelope to outbox; **no network wait**, `get_tree().quit()` proceeds |
-| Window X | `_notification(NOTIFICATION_WM_CLOSE_REQUEST)` (same pattern as `session_log.gd:72`) | synchronous flush + envelope to outbox only |
-| App relaunch | `_ready` | retry everything in the outbox (§6.3) |
+| Exit to Main Menu | new run re-arming (`MatchState.state_reset` while armed) | flush, envelope reason `quit_to_menu`, enqueue, upload now |
+| Window X | `_notification(NOTIFICATION_WM_CLOSE_REQUEST)`; TelemetryState owns the handshake (`auto_accept_quit(false)`) | **spool first** (disk, crash-safe), hide the window (close feels instant), fire uploads, quit when drained or after `QUIT_UPLOAD_WINDOW_MSEC` (6 s) — outbox catches timeouts |
+| Exit to Desktop | `NOTIFICATION_EXIT_TREE` (from `quit()`; no awaiting possible during teardown) | spool to outbox only; uploads next boot |
+| **Crash / force-kill** | checkpoint envelope (`reason: "crash"`) rewritten atomically every `CHECKPOINT_EVERY` (10) turns; a clean finalize deletes it | a surviving `ck_*.json` on boot = the process died → uploads with the retry, already labelled `crash` |
+| App relaunch | `_ready` | retry everything in the outbox (§6.3), skipping the active run's live checkpoint |
 
-The two hard-quit paths write to disk only. The envelope uploads on the next launch —
-friends who play a demo launch it again; nothing is lost, and quitting never stalls.
+Window close is the primary delivery path (main-menu quit is currently unwired, so
+every session ends there): measured close-time drain ≈ 1.5 s on a normal connection,
+hidden-window so the close feels instant, 6 s hard ceiling. Exit-to-Desktop and
+crashes deliver on the next launch; nothing is ever lost, and quitting never hangs.
 
 ---
 

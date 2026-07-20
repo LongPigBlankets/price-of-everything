@@ -1,24 +1,34 @@
 extends Node
-## Telemetry — phase A: anonymous run envelopes spooled to disk on every close
-## path, uploaded from the outbox on the next boot. No per-turn metrics and no
-## consent gate yet; both arrive in later phases (docs/telemetry-spec.md §9).
+## Telemetry — phase A: anonymous run envelopes, uploaded at close time and
+## crash-resilient via periodic checkpoints. No per-turn metrics and no consent
+## gate yet; both arrive in later phases (docs/telemetry-spec.md §9).
 ## Phase-A builds must not ship to players — consent lands first.
 ##
 ## Lifecycle: arms when a run starts (MatchState.state_reset, with the first
-## resolved turn as a fallback for harness-style runs), finalizes ONCE per run
-## on the first close path that fires — window X, quit() teardown, or a new run
-## re-arming (= quit to menu). Close paths only touch disk; the network happens
-## on the next boot's outbox retry, so quitting never blocks on a request.
+## resolved turn as a fallback for harness-style runs) and finalizes ONCE per
+## run. Delivery, by exit path:
+##  - Window X: we own the close handshake (auto_accept_quit false) — spool to
+##    disk FIRST, then upload with a bounded wait (QUIT_UPLOAD_WINDOW_MSEC) and
+##    quit regardless; the outbox catches timeouts.
+##  - quit() teardown (pause-menu Exit to Desktop): disk only, uploads next boot
+##    (no awaiting is possible while the tree tears down).
+##  - Crash / force-kill: a checkpoint envelope (reason "crash") is rewritten
+##    every CHECKPOINT_EVERY turns; a clean close deletes it, so one surviving
+##    on boot means the process died — it uploads with the retry.
+##  - New run re-arming while armed = quit to menu: spool + upload (app alive).
 
 const AppPaths := preload("res://scripts/app_paths.gd")
 
 const ENDPOINT_URL := "https://script.google.com/macros/s/AKfycbx9fgcEBw5asUWCOxU_IgauBhCnXduRH2oOncHQbZi2Jg95mNK97G_ykSQqSDHu9e1A/exec"
 const TOKEN := "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641"
 const SCHEMA_VERSION := 1
+const QUIT_UPLOAD_WINDOW_MSEC := 6000  # Apps Script round trips run 1.5-4 s
+const CHECKPOINT_EVERY := 10
 
 var enabled := false
 var _armed := false
 var _finalized := false
+var _closing := false
 var _session_id := ""
 var _run_id := ""
 var _run_started_unix := 0
@@ -33,6 +43,9 @@ func _ready() -> void:
 			or OS.get_environment("TELEMETRY_DEBUG") == "1"
 	if not enabled:
 		return
+	# We own the window-close handshake: _handle_window_close() must call
+	# get_tree().quit() on every path or the app can no longer be closed.
+	get_tree().set_auto_accept_quit(false)
 	_session_id = _uuid()
 	MatchState.state_reset.connect(_on_run_started)
 	TurnManager.turn_resolution_completed.connect(_on_turn_completed)
@@ -42,7 +55,7 @@ func _ready() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
-		_finalize_run("window_close")
+		_handle_window_close()
 	elif what == NOTIFICATION_EXIT_TREE:
 		# quit() skips WM_CLOSE but tears the tree down; _finalized keeps the
 		# window-X path (which fires both) from spooling twice.
@@ -63,15 +76,50 @@ func _on_run_started() -> void:
 
 
 func _on_turn_completed() -> void:
-	if enabled and not _armed:
+	if not enabled:
+		return
+	if not _armed:
 		_on_run_started()
+	var done_turn := TurnManager.current_turn - 1
+	if done_turn > 0 and done_turn % CHECKPOINT_EVERY == 0:
+		_write_json(_checkpoint_path(), _build_envelope("crash"))
+
+
+func _handle_window_close() -> void:
+	if _closing:
+		return
+	_closing = true
+	# Disk before network: even if the upload stalls, the envelope is spooled.
+	_finalize_run("window_close")
+	if not enabled:
+		get_tree().quit()
+		return
+	# Hide the window so the close feels instant while uploads drain unseen.
+	if DisplayServer.get_name() != "headless":
+		get_window().hide()
+	_retry_outbox()
+	_quit_when_drained()
+
+
+func _quit_when_drained() -> void:
+	var deadline := Time.get_ticks_msec() + QUIT_UPLOAD_WINDOW_MSEC
+	while Time.get_ticks_msec() < deadline and not _uploading.is_empty():
+		await get_tree().process_frame
+	get_tree().quit()
 
 
 func _finalize_run(reason: String) -> void:
 	if not enabled or not _armed or _finalized:
 		return
 	_finalized = true
-	_spool(_build_envelope(reason))
+	# The clean envelope supersedes the crash checkpoint.
+	DirAccess.remove_absolute(_checkpoint_path())
+	var envelope := _build_envelope(reason)
+	var path := AppPaths.telemetry_outbox_dir().path_join(
+			"%s_%d.json" % [_run_id.substr(0, 12), envelope["sent_at"]])
+	_write_json(path, envelope)
+	print("[Telemetry] spooled %s (%s, turn %d)"
+			% [path.get_file(), reason, envelope["end"]["turn"]])
 
 
 func _build_envelope(reason: String) -> Dictionary:
@@ -99,25 +147,26 @@ func _build_envelope(reason: String) -> Dictionary:
 	}
 
 
-func _spool(envelope: Dictionary) -> void:
-	var dir := AppPaths.telemetry_outbox_dir()
-	var path := dir.path_join("%s_%d.json" % [_run_id.substr(0, 12), envelope["sent_at"]])
+func _checkpoint_path() -> String:
+	return AppPaths.telemetry_outbox_dir().path_join("ck_%s.json" % _run_id.substr(0, 12))
+
+
+func _write_json(path: String, data: Dictionary) -> void:
 	var tmp := path + ".tmp"
 	var f := FileAccess.open(tmp, FileAccess.WRITE)
 	if f == null:
-		push_warning("[Telemetry] cannot write outbox file: " + tmp)
+		push_warning("[Telemetry] cannot write: " + tmp)
 		return
-	f.store_string(JSON.stringify(envelope))
+	f.store_string(JSON.stringify(data))
 	f.close()
 	DirAccess.rename_absolute(tmp, path)
-	print("[Telemetry] spooled %s (%s, turn %d)"
-			% [path.get_file(), envelope["end"]["reason"], envelope["end"]["turn"]])
 
 
 func _retry_outbox() -> void:
 	var dir := AppPaths.telemetry_outbox_dir()
+	var live_checkpoint := "ck_%s.json" % _run_id.substr(0, 12) if _armed and not _finalized else ""
 	for fname in DirAccess.get_files_at(dir):
-		if fname.ends_with(".json"):
+		if fname.ends_with(".json") and fname != live_checkpoint:
 			_upload_file(dir.path_join(fname))
 
 
