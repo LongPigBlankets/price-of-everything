@@ -1,4 +1,4 @@
-// Carbon and Capital — telemetry endpoint (proof of concept)
+// Carbon and Capital — telemetry endpoint (v2: single pipe-joined goods column)
 // See docs/telemetry-spec.md §6.
 //
 // Setup (once, signed in as carbon.capital.data@gmail.com):
@@ -9,17 +9,24 @@
 //   4. Authorize when prompted (it's your own script — Advanced → Go to project)
 //   5. Copy the Web app URL ending in /exec
 //
-// The runs/turns tabs self-create with headers on the first POST — no manual
-// seeding. Visiting the /exec URL in a browser (GET) should print "alive".
+// Updating an EXISTING deployment (keeps the same /exec URL):
+//   paste the new code, save, then Deploy → Manage deployments → ✏️ →
+//   Version: New version → Deploy. If the turns tab still has the old
+//   per-good columns, DELETE that tab — it self-recreates with this header.
+//
+// The runs/turns tabs self-create with headers on the first POST. Visiting the
+// /exec URL in a browser (GET) should print "alive".
 
 const TOKEN = "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641";
 
 const RUNS_HEADER = ["received_at", "player_id", "run_id", "session_id", "version",
                      "os", "end_reason", "run_complete", "end_turn", "raw_json"];
-// Fixed columns of the turns tab; per-good columns auto-append to the right of
-// these the first time a good id is seen (header row = source of truth).
+// One row per turn. "goods" is the sparse per-good production pipe-joined as
+// name:qty (e.g. "coal:51|iron_ore:28|steel:53") — zero-production goods are
+// absent by construction. tiers/victory are pipe-joined arrays.
 const FIXED = ["run_id", "session_id", "turn", "money", "revenue", "profit", "loans",
-               "buildings", "power_gen", "power_use", "tiers", "victory", "playtime_s"];
+               "buildings", "power_gen", "power_use", "tiers", "victory",
+               "playtime_s", "goods"];
 
 function doGet() {
   return ContentService.createTextOutput("alive");
@@ -39,25 +46,18 @@ function doPost(e) {
       p.end.turn, JSON.stringify(p)]);
 
   const sh = sheetWithHeader_(ss, "turns", FIXED);
-  const header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  const seen = new Set(header);
-  (p.turns || []).forEach(t => Object.keys(t.produced || {}).forEach(g => {
-    if (!seen.has(g)) {
-      seen.add(g);
-      header.push(g);
-      sh.getRange(1, header.length).setValue(g);   // new good → new column
-    }
-  }));
-
-  const rows = (p.turns || []).map(t => header.map((col, i) => {
-    if (i >= FIXED.length) return (t.produced || {})[col] || 0;  // good columns
+  const rows = (p.turns || []).map(t => FIXED.map(col => {
     if (col === "run_id") return p.run_id;
     if (col === "session_id") return p.session_id;
     if (col === "tiers" || col === "victory") return (t[col] || []).join("|");
+    if (col === "goods") {
+      const pr = t.produced || {};
+      return Object.keys(pr).map(g => g + ":" + pr[g]).join("|");
+    }
     return t[col];
   }));
   if (rows.length) {
-    sh.getRange(sh.getLastRow() + 1, 1, rows.length, header.length).setValues(rows);
+    sh.getRange(sh.getLastRow() + 1, 1, rows.length, FIXED.length).setValues(rows);
   }
   return ContentService.createTextOutput("ok");
 }

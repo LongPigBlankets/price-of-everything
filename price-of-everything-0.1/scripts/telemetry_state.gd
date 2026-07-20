@@ -33,7 +33,7 @@ const AppPaths := preload("res://scripts/app_paths.gd")
 
 const ENDPOINT_URL := "https://script.google.com/macros/s/AKfycbx9fgcEBw5asUWCOxU_IgauBhCnXduRH2oOncHQbZi2Jg95mNK97G_ykSQqSDHu9e1A/exec"
 const TOKEN := "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641"
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 2  # v2: produced keyed by internal good name, not g_NNN id
 const QUIT_UPLOAD_WINDOW_MSEC := 6000  # Apps Script round trips run 1.5-4 s
 const CHECKPOINT_EVERY := 10
 const COMPLETE_REASONS: Array[String] = ["victory", "turn_cap", "bankruptcy"]
@@ -54,9 +54,10 @@ var _playtime_carried_s := 0  # playtime from earlier sessions of a loaded run
 var _session_ordinal := 1     # 1 = first sitting of the run, +1 per load
 var _rows: Array = []         # one Dictionary per completed turn, this session
 var _uploading := {}  # path -> true while a request for that outbox file is in flight
-var _tier_built := false
+var _goods_indexed := false
 var _tier_available := false
 var _tier_index := {}         # good_id -> index into TIER_BANDS
+var _good_names := {}         # good_id -> internal_name ("coal"), for readable rows
 var _capture_max_usec := 0    # worst per-turn capture cost, for the perf gate
 
 
@@ -150,7 +151,7 @@ func _build_row(summary: Dictionary) -> Dictionary:
 		if good_id == "power":
 			continue
 		var qty := int(summary_produced[good_id])
-		produced[good_id] = qty
+		produced[_good_names.get(good_id, good_id)] = qty
 		if _tier_available:
 			tiers[_tier_index.get(good_id, 2)] += qty
 	var row := {
@@ -184,14 +185,18 @@ func _playtime_s() -> int:
 
 
 func _ensure_tier_index() -> void:
-	if _tier_built:
+	if _goods_indexed:
 		return
-	_tier_built = true
+	_goods_indexed = true
 	for g in Catalog.all_goods():
+		var gid := str(g.get("id", ""))
+		var iname := str(g.get("internal_name", "")).strip_edges()
+		if iname != "":
+			_good_names[gid] = iname
 		var band := str(g.get("goods_graph_tier", "")).strip_edges().to_lower()
 		var idx := TIER_BANDS.find(band)
 		if idx >= 0:
-			_tier_index[str(g.get("id", ""))] = idx
+			_tier_index[gid] = idx
 			_tier_available = true
 
 

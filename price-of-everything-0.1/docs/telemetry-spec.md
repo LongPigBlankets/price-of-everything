@@ -53,7 +53,7 @@ the row's turn is `TurnManager.current_turn - 1` (same fix as
 | `power_gen` | int | `summary.power_supply` |
 | `power_use` | int | `summary.power_demand` |
 | `tiers` | Array[int], 5 | units produced this turn summed by goods tier, order `[raw, processed, intermediate, finished, apex]` (see §1.2) — derivable from `produced`, kept as a precomputed rollup for cheap sheet pivots |
-| `produced` | Dictionary, **sparse** | per-good units produced this turn: shallow copy of `summary.produced` minus the `"power"` key. Only goods actually produced appear — a good's absence *means* 0; the client **never** sends ~70 zero-filled labelled fields (zeros are the server's job, see §6.1) |
+| `produced` | Dictionary, **sparse** | per-good units produced this turn, **keyed by internal good name** (`coal`, `iron_ore` — schema 2; ids were schema 1): copy of `summary.produced` minus the `"power"` key, ids mapped via the Catalog. Only goods actually produced appear — absence *means* 0; zero-filled fields are never sent |
 | `victory` | Array[int], 5 | per-track score 0–1000, order `VictoryState.TRACK_ORDER` = `[autarkic, logistics, richest, widest, greenest]`: `round(track_best[key] * 1000)` |
 | `playtime_s` | int | total wall-clock seconds this run has been played, across sessions (see §1.3) |
 | `session` | int | session ordinal for this run (1 = first sitting, increments on each load) |
@@ -301,53 +301,41 @@ exceeds ~20k uploads/day (the free execution quota) — it won't.
   - **`runs`** — one row per envelope: received_at, player_id, run_id, session_id,
     version, os, end_reason, run_complete, final_turn, playtime_s, victory total,
     plus the raw envelope JSON in the last column (nothing is ever thrown away).
-  - **`turns`** — one row per turn: the fixed fields first, then **one column per
-    good** (dense — the sparse `produced` dict is exploded here, blanks filled with
-    0). The **header row is the source of truth** for good columns: `doPost` reads
-    it, maps each row's `produced` onto it, and auto-appends a new header column the
-    first time it sees an unknown good id — so adding goods to the game never needs a
-    script redeploy.
-- **Cell budget (the one real limit per-good columns introduce):** a Google
-  spreadsheet caps at 10 M cells. ~12 fixed + ~76 good columns ≈ 88 cols → ~113k
-  turn-rows ≈ **~380 full 300-turn runs** (over 1000 typical shorter runs) per
-  spreadsheet. Plenty for the friends demo; for itch, rotate to a fresh spreadsheet
-  per build version (natural anyway — just redeploy the script bound to the new
-  sheet, or point the same script at a new sheet id). If volume ever makes rotation
-  annoying, the fallback is collapsing `produced` into one `good:qty|good:qty` cell
-  (14 cols ≈ 2400 full runs) and exploding in Python instead.
-- `doPost(e)` sketch (paste into a bound Apps Script, deploy as Web App, "execute as
-  me", "anyone with the link"; `turns` header row pre-seeded with the fixed columns):
+  - **`turns`** — one row per turn, **14 fixed columns** ending in a single `goods`
+    cell: the sparse `produced` dict pipe-joined as `name:qty`
+    (`coal:51|iron_ore:28|steel:53`), zero-production goods absent by construction.
+    Adopted 2026-07-20 in place of the earlier dense per-good columns (that design
+    and its header-auto-append machinery are retired — one cell reads better, needs
+    no column management, and preserves the cell budget). Explode in the analysis
+    layer (`SPLIT` in Sheets, or one-liner dict parse in Python).
+- **Cell budget:** a Google spreadsheet caps at 10 M cells. 14 columns → ~714k
+  turn-rows ≈ **~2,380 full 300-turn runs** per spreadsheet (many more at typical
+  run lengths). Rotate to a fresh spreadsheet per build version anyway for clean
+  comparisons.
+- The deployable script is version-controlled at `tools/telemetry/Code.gs` (paste
+  into a bound Apps Script, deploy as Web App, "execute as me", access "Anyone";
+  both tabs self-create with headers on the first POST). Core of `doPost`:
 
 ```javascript
-const TOKEN = "…long random string…";
 const FIXED = ["run_id", "session_id", "turn", "money", "revenue", "profit", "loans",
-               "buildings", "power_gen", "power_use", "tiers", "victory", "playtime_s"];
-function doPost(e) {
-  const p = JSON.parse(e.postData.contents);
-  if (p.token !== TOKEN) return ContentService.createTextOutput("no");
-  const ss = SpreadsheetApp.getActive();
-  ss.getSheetByName("runs").appendRow([new Date(), p.player_id, p.run_id,
-      p.session_id, p.client.version, p.client.os, p.end.reason,
-      p.end.run_complete, p.end.turn, JSON.stringify(p)]);
-  const sh = ss.getSheetByName("turns");
-  const header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  const seen = new Set(header);
-  p.turns.forEach(t => Object.keys(t.produced || {}).forEach(g => {
-    if (!seen.has(g)) { seen.add(g); header.push(g);
-        sh.getRange(1, header.length).setValue(g); }        // new good → new column
-  }));
-  const rows = p.turns.map(t => header.map((col, i) => {
-    if (i >= FIXED.length) return (t.produced || {})[col] || 0;   // good columns
-    if (col === "run_id") return p.run_id;
-    if (col === "session_id") return p.session_id;
-    if (col === "tiers" || col === "victory") return t[col].join("|");
-    return t[col];
-  }));
-  if (rows.length)
-    sh.getRange(sh.getLastRow() + 1, 1, rows.length, header.length).setValues(rows);
-  return ContentService.createTextOutput("ok");
-}
+               "buildings", "power_gen", "power_use", "tiers", "victory",
+               "playtime_s", "goods"];
+const rows = (p.turns || []).map(t => FIXED.map(col => {
+  if (col === "run_id") return p.run_id;
+  if (col === "session_id") return p.session_id;
+  if (col === "tiers" || col === "victory") return (t[col] || []).join("|");
+  if (col === "goods") {
+    const pr = t.produced || {};
+    return Object.keys(pr).map(g => g + ":" + pr[g]).join("|");
+  }
+  return t[col];
+}));
+sh.getRange(sh.getLastRow() + 1, 1, rows.length, FIXED.length).setValues(rows);
 ```
+
+  Updating a live deployment keeps the `/exec` URL: paste, save, Deploy → Manage
+  deployments → ✏️ → new version. If the `turns` tab still carries an old header
+  (e.g. the retired per-good columns), delete that tab — it self-recreates.
 
 - The deploy URL + token are consts at the top of `telemetry_state.gd`. They are not
   secrets — the token exists only to keep drive-by junk out of the sheet. Accept that

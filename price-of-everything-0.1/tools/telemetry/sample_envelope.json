@@ -1,6 +1,6 @@
 {
   "token": "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641",
-  "schema": 1,
+  "schema": 2,
   "player_id": "poc0000000000000000000000000cafe",
   "run_id": "poc00000000000000000000000000run",
   "session_id": "poc0000000000000000000000000sess",
@@ -11,16 +11,16 @@
            "victory": [40, 0, 25, 100, 0], "won_turn": 0 },
   "turns": [
     { "turn": 1,  "money": 200.0,  "revenue": 0.0,   "profit": -12.0,  "loans": 0.0,   "buildings": 1, "power_gen": 0,   "power_use": 0,  "tiers": [0,0,0,0,0],    "victory": [0,0,0,0,0],       "playtime_s": 62,  "produced": {} },
-    { "turn": 2,  "money": 162.0,  "revenue": 24.0,  "profit": -14.0,  "loans": 0.0,   "buildings": 1, "power_gen": 0,   "power_use": 5,  "tiers": [8,0,0,0,0],    "victory": [0,0,5,20,0],      "playtime_s": 118, "produced": { "g_001": 8 } },
-    { "turn": 3,  "money": 149.0,  "revenue": 26.0,  "profit": -11.0,  "loans": 0.0,   "buildings": 1, "power_gen": 0,   "power_use": 5,  "tiers": [8,0,0,0,0],    "victory": [0,0,8,20,0],      "playtime_s": 171, "produced": { "g_001": 8 } },
-    { "turn": 4,  "money": 401.0,  "revenue": 30.0,  "profit": -9.0,   "loans": 300.0, "buildings": 2, "power_gen": 0,   "power_use": 11, "tiers": [14,0,0,0,0],   "victory": [2,0,8,40,0],      "playtime_s": 240, "produced": { "g_001": 8, "g_002": 6 } },
-    { "turn": 5,  "money": 355.0,  "revenue": 41.0,  "profit": -6.0,   "loans": 291.0, "buildings": 2, "power_gen": 0,   "power_use": 11, "tiers": [14,0,0,0,0],   "victory": [4,0,10,40,0],     "playtime_s": 301, "produced": { "g_001": 8, "g_002": 6 } },
-    { "turn": 6,  "money": 322.0,  "revenue": 47.0,  "profit": -2.0,   "loans": 282.0, "buildings": 3, "power_gen": 20,  "power_use": 16, "tiers": [14,0,0,0,0],   "victory": [6,0,10,60,0],     "playtime_s": 355, "produced": { "g_001": 8, "g_002": 6 } },
-    { "turn": 7,  "money": 305.0,  "revenue": 55.0,  "profit": 3.0,    "loans": 273.0, "buildings": 3, "power_gen": 20,  "power_use": 16, "tiers": [14,4,0,0,0],   "victory": [9,0,12,60,0],     "playtime_s": 409, "produced": { "g_001": 8, "g_002": 6, "g_004": 4 } },
-    { "turn": 8,  "money": 298.0,  "revenue": 62.0,  "profit": 7.0,    "loans": 264.0, "buildings": 4, "power_gen": 20,  "power_use": 20, "tiers": [14,4,0,0,0],   "victory": [12,0,14,80,0],    "playtime_s": 466, "produced": { "g_001": 8, "g_002": 6, "g_004": 4 } },
-    { "turn": 9,  "money": 301.0,  "revenue": 71.0,  "profit": 12.0,   "loans": 255.0, "buildings": 4, "power_gen": 20,  "power_use": 20, "tiers": [14,4,0,0,0],   "victory": [16,0,17,80,0],    "playtime_s": 520, "produced": { "g_001": 8, "g_002": 6, "g_004": 4 } },
-    { "turn": 10, "money": 318.0,  "revenue": 84.0,  "profit": 18.0,   "loans": 246.0, "buildings": 5, "power_gen": 20,  "power_use": 24, "tiers": [22,4,0,0,0],   "victory": [21,0,19,100,0],   "playtime_s": 585, "produced": { "g_001": 8, "g_002": 6, "g_004": 4, "g_016": 8 } },
-    { "turn": 11, "money": 344.0,  "revenue": 92.0,  "profit": 24.0,   "loans": 237.0, "buildings": 5, "power_gen": 20,  "power_use": 24, "tiers": [22,4,2,0,0],   "victory": [28,0,22,100,0],   "playtime_s": 641, "produced": { "g_001": 8, "g_002": 6, "g_004": 4, "g_016": 8, "g_006": 2 } },
-    { "turn": 12, "money": 378.0,  "revenue": 101.0, "profit": 29.0,   "loans": 228.0, "buildings": 5, "power_gen": 20,  "power_use": 24, "tiers": [22,4,2,0,0],   "victory": [40,0,25,100,0],   "playtime_s": 697, "produced": { "g_001": 8, "g_002": 6, "g_004": 4, "g_016": 8, "g_006": 2 } }
+    { "turn": 2,  "money": 162.0,  "revenue": 24.0,  "profit": -14.0,  "loans": 0.0,   "buildings": 1, "power_gen": 0,   "power_use": 5,  "tiers": [8,0,0,0,0],    "victory": [0,0,5,20,0],      "playtime_s": 118, "produced": { "coal": 8 } },
+    { "turn": 3,  "money": 149.0,  "revenue": 26.0,  "profit": -11.0,  "loans": 0.0,   "buildings": 1, "power_gen": 0,   "power_use": 5,  "tiers": [8,0,0,0,0],    "victory": [0,0,8,20,0],      "playtime_s": 171, "produced": { "coal": 8 } },
+    { "turn": 4,  "money": 401.0,  "revenue": 30.0,  "profit": -9.0,   "loans": 300.0, "buildings": 2, "power_gen": 0,   "power_use": 11, "tiers": [14,0,0,0,0],   "victory": [2,0,8,40,0],      "playtime_s": 240, "produced": { "coal": 8, "iron_ore": 6 } },
+    { "turn": 5,  "money": 355.0,  "revenue": 41.0,  "profit": -6.0,   "loans": 291.0, "buildings": 2, "power_gen": 0,   "power_use": 11, "tiers": [14,0,0,0,0],   "victory": [4,0,10,40,0],     "playtime_s": 301, "produced": { "coal": 8, "iron_ore": 6 } },
+    { "turn": 6,  "money": 322.0,  "revenue": 47.0,  "profit": -2.0,   "loans": 282.0, "buildings": 3, "power_gen": 20,  "power_use": 16, "tiers": [14,0,0,0,0],   "victory": [6,0,10,60,0],     "playtime_s": 355, "produced": { "coal": 8, "iron_ore": 6 } },
+    { "turn": 7,  "money": 305.0,  "revenue": 55.0,  "profit": 3.0,    "loans": 273.0, "buildings": 3, "power_gen": 20,  "power_use": 16, "tiers": [14,4,0,0,0],   "victory": [9,0,12,60,0],     "playtime_s": 409, "produced": { "coal": 8, "iron_ore": 6, "iron_ingots": 4 } },
+    { "turn": 8,  "money": 298.0,  "revenue": 62.0,  "profit": 7.0,    "loans": 264.0, "buildings": 4, "power_gen": 20,  "power_use": 20, "tiers": [14,4,0,0,0],   "victory": [12,0,14,80,0],    "playtime_s": 466, "produced": { "coal": 8, "iron_ore": 6, "iron_ingots": 4 } },
+    { "turn": 9,  "money": 301.0,  "revenue": 71.0,  "profit": 12.0,   "loans": 255.0, "buildings": 4, "power_gen": 20,  "power_use": 20, "tiers": [14,4,0,0,0],   "victory": [16,0,17,80,0],    "playtime_s": 520, "produced": { "coal": 8, "iron_ore": 6, "iron_ingots": 4 } },
+    { "turn": 10, "money": 318.0,  "revenue": 84.0,  "profit": 18.0,   "loans": 246.0, "buildings": 5, "power_gen": 20,  "power_use": 24, "tiers": [22,4,0,0,0],   "victory": [21,0,19,100,0],   "playtime_s": 585, "produced": { "coal": 8, "iron_ore": 6, "iron_ingots": 4, "limestone": 8 } },
+    { "turn": 11, "money": 344.0,  "revenue": 92.0,  "profit": 24.0,   "loans": 237.0, "buildings": 5, "power_gen": 20,  "power_use": 24, "tiers": [22,4,2,0,0],   "victory": [28,0,22,100,0],   "playtime_s": 641, "produced": { "coal": 8, "iron_ore": 6, "iron_ingots": 4, "limestone": 8, "steel": 2 } },
+    { "turn": 12, "money": 378.0,  "revenue": 101.0, "profit": 29.0,   "loans": 228.0, "buildings": 5, "power_gen": 20,  "power_use": 24, "tiers": [22,4,2,0,0],   "victory": [40,0,25,100,0],   "playtime_s": 697, "produced": { "coal": 8, "iron_ore": 6, "iron_ingots": 4, "limestone": 8, "steel": 2 } }
   ]
 }
