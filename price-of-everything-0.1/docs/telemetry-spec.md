@@ -431,19 +431,26 @@ Exported-build gotchas — **all verified live 2026-07-20** against the real end
 
 ---
 
-## 9. Build order
+## 9. Build order (re-phased 2026-07-20: transport first, capture second)
 
-1. **Phase 0 — backend (~30 min, no code):** create the Sheet + Apps Script, deploy,
-   note URL + token.
-2. **Phase 1 — capture:** TelemetryState autoload (rows, tier index, playtime, jsonl
-   cache, save key), PlayerProfile consent fields, consent popup + New Game panel
-   checkbox, `application/config/version`, cheat. Ship-ready even before upload
-   exists — the jsonl files can be collected by hand from friends if needed.
-3. **Phase 2 — upload:** envelope builder, outbox, HTTPRequest, boot-time retry,
-   editor guard. End-to-end test against the live endpoint.
-4. **Phase 3 (optional, later):** mid-run checkpoint upload every 100 turns (catches
-   never-relaunched crashes), proper settings screen surface, a small Python report
-   script in `tools/` reading the sheet's CSV export.
+1. **Phase 0 — backend: DONE.** Live Apps Script endpoint + Sheet, verified from
+   curl and the engine (`tools/telemetry/`).
+2. **Phase A — close-path export skeleton: BUILT 2026-07-20.**
+   `scripts/telemetry_state.gd` autoload: arm-on-`state_reset` (first-resolved-turn
+   fallback), finalize-once lifecycle (window X / `quit()` teardown / re-arm =
+   quit-to-menu), minimal envelope (ids, client version/os, timestamps, playtime,
+   end reason, turn, empty `turns`), atomic outbox spool, boot-time retry upload,
+   `application/config/version`, `TELEMETRY_DEBUG=1` override for headless
+   verification, `tools/telemetry/flush_outbox.tscn` drain tool.
+   **No consent gate yet — phase-A builds must not ship to players.**
+3. **Phase B — per-turn capture:** the §1.1 rows (tier index, sparse `produced`,
+   victory array), 10-turn jsonl cache, envelope collation from `_rows`, save-key
+   `telemetry` (run_id + playtime across sessions), TurnProfiler acceptance gate.
+4. **Phase C — consent + identity:** PlayerProfile fields, first-launch popup, New
+   Game panel checkbox, real per-install `player_id`, editor-build upload guard +
+   `telemetry` cheat. Gate every phase-A/B entry point on consent. Ship blocker.
+5. **Phase D (optional):** mid-run checkpoint upload every 100 turns, settings
+   surface, a Python report script reading the sheet's CSV export.
 
 ---
 

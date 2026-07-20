@@ -6,3 +6,4 @@
 # Runtime data written next to the project when run from the editor (AppPaths)
 /savegames/
 /logs/
+/telemetry/
