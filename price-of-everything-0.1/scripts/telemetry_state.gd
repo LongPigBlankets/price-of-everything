@@ -1,10 +1,15 @@
 extends Node
-## Telemetry — phases A+B: anonymous run envelopes with one row of economic
+## Telemetry — phases A+B+C: anonymous run envelopes with one row of economic
 ## data per turn (money, revenue, profit, loans, buildings, power, per-good
 ## production, victory tracks, playtime), uploaded at close time and
-## crash-resilient via periodic checkpoints that carry the rows. No consent
-## gate yet (docs/telemetry-spec.md §9) — these builds must not ship to
-## players; consent lands first.
+## crash-resilient via periodic checkpoints that carry the rows.
+##
+## Consent (docs/telemetry-spec.md §2): opt-out checkbox on the New Game and
+## Tutorial screens, staged via set_next_run_consent() and fixed for the run's
+## lifetime — it rides the save ("collect"), so a resumed opted-out run stays
+## off. When off, nothing is captured, cached, or sent for that run. Tutorial
+## runs carry a "-T" run-id suffix. player_id is an anonymous per-install uuid
+## from PlayerProfile.
 ##
 ## Rows are a pure observer of Production.last_turn_summary and sim autoload
 ## state — no sim writes, no sim RNG, nothing in _process. The crash
@@ -52,6 +57,9 @@ var _run_started_unix := 0
 var _run_started_msec := 0
 var _playtime_carried_s := 0  # playtime from earlier sessions of a loaded run
 var _session_ordinal := 1     # 1 = first sitting of the run, +1 per load
+var _collect := true          # this run's consent (the opt-out checkbox at start)
+var _next_collect := true     # staged by the New Game / Tutorial screens
+var _next_tutorial := false   # staged: suffix the next run id with "-T"
 var _rows: Array = []         # one Dictionary per completed turn, this session
 var _uploading := {}  # path -> true while a request for that outbox file is in flight
 var _goods_indexed := false
@@ -90,6 +98,13 @@ func _notification(what: int) -> void:
 		_finalize_run("quit_to_desktop")
 
 
+## Staged by the New Game / Tutorial screens just before a run starts; consumed
+## by the next arm (loads then override consent from the save in import_state).
+func set_next_run_consent(collect: bool, tutorial: bool) -> void:
+	_next_collect = collect
+	_next_tutorial = tutorial
+
+
 func _on_run_started() -> void:
 	if not enabled:
 		return
@@ -97,7 +112,10 @@ func _on_run_started() -> void:
 		_finalize_run("quit_to_menu")
 	_armed = true
 	_finalized = false
-	_run_id = _uuid()
+	_collect = _next_collect
+	_run_id = _uuid() + ("-T" if _next_tutorial else "")
+	_next_collect = true
+	_next_tutorial = false
 	_run_started_unix = int(Time.get_unix_time_from_system())
 	_run_started_msec = Time.get_ticks_msec()
 	_playtime_carried_s = 0
@@ -112,7 +130,7 @@ func _on_turn_completed() -> void:
 		return
 	if not _armed:
 		_on_run_started()
-	if _finalized:
+	if _finalized or not _collect:
 		return
 	var t0 := Time.get_ticks_usec()
 	var summary: Dictionary = Production.last_turn_summary
@@ -209,6 +227,7 @@ func export_state() -> Dictionary:
 		"started_at": _run_started_unix,
 		"playtime_s": _playtime_s(),
 		"session": _session_ordinal,
+		"collect": _collect,
 	}
 
 
@@ -221,6 +240,8 @@ func import_state(d: Dictionary) -> void:
 	_run_started_unix = int(d.get("started_at", _run_started_unix))
 	_playtime_carried_s = int(d.get("playtime_s", 0))
 	_session_ordinal = int(d.get("session", 1)) + 1
+	# Consent was fixed when the run started; a resumed opted-out run stays off.
+	_collect = bool(d.get("collect", true))
 	_run_started_msec = Time.get_ticks_msec()
 	_rows = []
 
@@ -278,6 +299,10 @@ func _finalize_run(reason: String) -> void:
 	_finalized = true
 	# The clean envelope supersedes the crash checkpoint.
 	DirAccess.remove_absolute(_checkpoint_path())
+	if not _collect:
+		print("[Telemetry] run %s ended (%s) — metrics off, nothing sent"
+				% [_run_id.substr(0, 8), reason])
+		return
 	var envelope := _build_envelope(reason)
 	var path := AppPaths.telemetry_outbox_dir().path_join(
 			"%s_%d.json" % [_run_id.substr(0, 12), envelope["sent_at"]])
@@ -293,7 +318,7 @@ func _build_envelope(reason: String) -> Dictionary:
 	return {
 		"token": TOKEN,
 		"schema": SCHEMA_VERSION,
-		"player_id": "phase-a",  # per-install id arrives with the consent phase
+		"player_id": PlayerProfile.get_telemetry_player_id(),
 		"run_id": _run_id,
 		"session_id": _session_id,
 		"sent_at": now,

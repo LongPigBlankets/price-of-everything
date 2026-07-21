@@ -79,6 +79,7 @@ var _speed_turns := 300
 var _tutorial_on := false
 var _survey_all := true
 var _advanced: Dictionary = {}   # setting id -> bool
+var _send_metrics := true        # telemetry opt-out checkbox (default on; remembered)
 
 var _card_buttons: Array = []
 var _detail_desc: Label
@@ -408,6 +409,14 @@ func _build_settings_columns(parent: Node) -> void:
 
 	parent.add_child(_difficulty_caption)
 
+	# Telemetry consent (opt-out, docs/telemetry-spec.md §2): defaults to the
+	# player's remembered choice; consumed by main_menu on Start.
+	_send_metrics = not PlayerProfile.telemetry_opt_out
+	var consent := UIHelpers.make_telemetry_consent_row(_send_metrics)
+	(consent["checkbox"] as CheckBox).toggled.connect(
+			func(on: bool) -> void: _send_metrics = on)
+	parent.add_child(consent["row"])
+
 
 func _settings_column(parent: Node, heading: String) -> VBoxContainer:
 	var v := VBoxContainer.new()
@@ -566,6 +575,8 @@ func _press_in_group(row: Node, i: int) -> void:
 
 func _on_start_pressed() -> void:
 	var overrides := {
+		# Consumed (and erased) by main_menu before prepare_new_game.
+		"telemetry_opt_in": _send_metrics,
 		"ruleset": {
 			"start_id": _start_id,
 			"difficulty": _difficulty_id,

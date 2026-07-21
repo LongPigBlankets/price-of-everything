@@ -94,6 +94,12 @@ func _on_start_requested(start_path: String, overrides: Dictionary) -> void:
 	# HUD panels build lazily (on first open) and the hill work spreads via the loading-screen
 	# pacing gate, so the freeze is far smaller than it was. The panel's overrides (ruleset —
 	# survey_all_tiles, tutorial_enabled, difficulty/speed) merge into the start's ruleset.
+	# Telemetry consent rides overrides from the panel; stage it for the run that is
+	# about to arm (state_reset) and remember the choice for the next screen.
+	var metrics_on := bool(overrides.get("telemetry_opt_in", true))
+	overrides.erase("telemetry_opt_in")
+	PlayerProfile.set_telemetry_opt_out(not metrics_on)
+	TelemetryState.set_next_run_consent(metrics_on, false)
 	SaveLoad.prepare_new_game(start_path, overrides)
 	var screen := LoadingScreen.show_global(get_tree())
 	screen.begin_load(SaveLoad.MAIN_SCENE)
@@ -250,6 +256,11 @@ func _on_hall_of_records_back() -> void:
 # pipeline as New Game; the tutorial_enabled flag rides tutorial.json's ruleset dict
 # into MatchState.ruleset, where the Tutorial autoload picks it up.
 func _on_tutorial_begin() -> void:
+	# Telemetry consent from the intro panel's checkbox; tutorial runs get a
+	# "-T" suffixed run id so they separate cleanly in the data.
+	var metrics_on: bool = _tutorial_panel.send_metrics_enabled()
+	PlayerProfile.set_telemetry_opt_out(not metrics_on)
+	TelemetryState.set_next_run_consent(metrics_on, true)
 	SaveLoad.prepare_new_game(TUTORIAL_START)
 	var screen := LoadingScreen.show_global(get_tree())
 	screen.begin_load(SaveLoad.MAIN_SCENE)

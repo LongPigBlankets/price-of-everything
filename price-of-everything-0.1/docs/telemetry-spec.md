@@ -127,41 +127,35 @@ up as `ended_at` ≫ `received_at`).
 
 ---
 
-## 2. Consent — first-launch popup, not a quit popup
+## 2. Consent — per-run opt-out at the start screens (BUILT 2026-07-21)
 
-**Decision: ask once, at the main menu, before the first New Game.** A quit-time popup
-is the wrong shape for three reasons: consent must *precede* collection (rows are
-cached during play), the close path should stay instant (`SessionLog` already flushes
-synchronously there and nothing may block it), and a crash skips any quit popup
-entirely.
+**Owner decision (supersedes the earlier opt-in-popup draft):** consent is a
+default-ticked **opt-out checkbox on the two run-start surfaces** — the New Game
+settings panel and the Tutorial intro panel — fixed for the run's lifetime the
+moment it starts. Consent still *precedes* collection (nothing is captured before a
+start screen is passed), with none of the popup's friction.
 
-- **UI:** clone the `tutorial_prompt_dialog.gd` pattern (modal over the main menu,
-  instantiated by `main_menu.gd` — same slot where the "proceed without the Tutorial?"
-  gate lives). Shown when `PlayerProfile.telemetry_consent == "unset"` on pressing
-  **New Game**, before the new-game panel. Two buttons, no default-on:
-  - **"Share anonymous data"** → `granted`
-  - **"No thanks"** → `declined`
-- **Copy (draft):** *"Help balance Carbon and Capital? If you opt in, the game records
-  anonymous gameplay statistics — per-turn economy numbers like revenue, buildings and
-  score — and sends them to the developer when a run ends. No personal information,
-  ever. You can change this any time on the New Game screen."*
-- **Changeable later:** one `CheckBox` row on the New Game panel
-  (`new_game_panel.gd` already builds checkbox rows for the tutorial toggle,
-  `:389-409`) reflecting/writing the profile flag. This doubles as the "settings"
-  surface until a real settings screen exists.
-- **Storage:** three new `PlayerProfile` fields beside `tutorial_completed`
-  (`player_profile.gd:15-25`), persisted in `profile.json` via the existing atomic
-  `_save()`:
-
-```gdscript
-var telemetry_consent: String = "unset"   # "unset" | "granted" | "declined"
-var telemetry_consent_version: int = 0    # bump if the consent copy materially changes
-var telemetry_player_id: String = ""      # UUID minted on first grant
-```
-
-- **Gate:** every TelemetryState entry point early-returns unless consent is
-  `granted`. Revoking consent stops capture immediately and deletes the local
-  `telemetry/` cache and outbox.
+- **UI:** `UIHelpers.make_telemetry_consent_row()` — shared by both panels:
+  - Checkbox: **"Send in-game performance metrics to the developer"**
+  - Caption below: *"What kind of metrics do you send?"* — hover tooltip:
+    *"Revenue, profit, goods produced per turn, buildings count, loans.
+    Nothing outside the game is collected."*
+- **Flow:** the panel stages the choice via `TelemetryState.set_next_run_consent(
+  collect, tutorial)` (called by `main_menu` on Start / Begin Tutorial); the next
+  arm consumes it. Tutorial runs get a **`-T` suffix on the run id** so they
+  separate cleanly in the data.
+- **Per-run and save-bound:** the choice rides the save (`telemetry.collect`), so a
+  resumed opted-out run stays off and a resumed opted-in run keeps its run id and
+  playtime. Old saves (no key) default to on.
+- **Remembered default:** `PlayerProfile.telemetry_opt_out` stores the last checkbox
+  state so the next start screen defaults to the player's previous choice (fresh
+  installs default ticked).
+- **Identity:** `PlayerProfile.telemetry_player_id` — anonymous 32-hex per-install
+  uuid, minted lazily on first use (in-memory only under headless so tests never
+  dirty the profile).
+- **Gate:** when a run is opted out, TelemetryState captures no rows, writes no
+  checkpoint, and spools no envelope — finalize logs "metrics off, nothing sent".
+  The boot-time outbox retry still runs (those envelopes came from consented runs).
 
 ---
 
@@ -400,7 +394,10 @@ Exported-build gotchas — **all verified live 2026-07-20** against the real end
 
 ## 7. Privacy posture
 
-- Opt-in only, off by default, revocable; revocation deletes local caches.
+- Per-run opt-out, **on by default** (owner decision for the playtest phase — an
+  explicit checkbox on every run-start screen, with the collected fields listed one
+  hover away). Weaker than the original opt-in draft; acceptable for anonymous
+  playtest data, and the itch page must disclose it. Revisit for any wider release.
 - Collected: the §1 economic fields, run config (start/difficulty), game version, OS
   family string, random IDs. **Not collected:** names, emails, IPs (Apps Script does
   not expose caller IP to the script), hardware IDs, locale, save contents.
@@ -449,9 +446,13 @@ Exported-build gotchas — **all verified live 2026-07-20** against the real end
    `tiers` is emitted only when the goods CSV carries `goods_graph_tier`
    (tolerant read) — that column lives on the unmerged goods-graph branch, so
    rows omit it until that merges; per-good `produced` carries the full data.
-4. **Phase C — consent + identity:** PlayerProfile fields, first-launch popup, New
-   Game panel checkbox, real per-install `player_id`, editor-build upload guard +
-   `telemetry` cheat. Gate every phase-A/B entry point on consent. Ship blocker.
+4. **Phase C — consent + identity: BUILT 2026-07-21** (per-run opt-out design, §2):
+   shared consent row on the New Game + Tutorial screens, staged consent consumed at
+   arm, `-T` tutorial run-id suffix, save-bound `collect` flag, remembered
+   `telemetry_opt_out` default, real per-install `player_id`. Deliberately NOT
+   built: the editor-build upload guard (the owner is the only dev and wants their
+   own runs in the sheet during development — revisit before itch) and the
+   `telemetry` cheat.
 5. **Phase D (optional):** mid-run checkpoint upload every 100 turns, settings
    surface, a Python report script reading the sheet's CSV export.
 
