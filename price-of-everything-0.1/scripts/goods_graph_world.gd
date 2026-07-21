@@ -51,7 +51,7 @@ const _PLATE_LT := Color("#b3bcc6")
 const _PLATE_DK := Color("#5b636e")
 const _PLATE_TEXT := Color(0.035, 0.085, 0.15, 1.0)       # embossed navy
 const _HEADER_GAP := 52.0                                 # clearance between plate and first card row
-const _PLATE_H := 62.0
+const _PLATE_H := 124.0                                   # tier-header plate at 2x (owner 2026-07-21)
 
 var _nodes: Array = []
 var _by_id: Dictionary = {}
@@ -476,15 +476,15 @@ func _draw_tier_headers(_font: Font) -> void:
 	var top := INF
 	for n in _nodes:
 		top = minf(top, (n["pos"] as Vector2).y - (n["half"] as Vector2).y)
-	const FS := 38
+	const FS := 76   # tier labels at 2x (owner 2026-07-21)
 	for band in _bands:
 		var label := str((band as Dictionary).get("label", ""))
 		var first := float(int((band as Dictionary).get("first", 0)))
 		var count := float(int((band as Dictionary).get("count", 1)))
-		var cx := (first + (count - 1.0) * 0.5) * GoodsFlowGraph.COL_W
+		var cx := (GoodsFlowGraph.col_x(int(first)) + GoodsFlowGraph.col_x(int(first + count - 1.0))) * 0.5
 		var text_w := _BEBAS.get_string_size(label, HORIZONTAL_ALIGNMENT_CENTER, -1, FS).x
-		var plate := Rect2(Vector2(cx - text_w * 0.5 - 34.0, top - _HEADER_GAP - _PLATE_H),
-			Vector2(text_w + 68.0, _PLATE_H))
+		var plate := Rect2(Vector2(cx - text_w * 0.5 - 68.0, top - _HEADER_GAP - _PLATE_H),
+			Vector2(text_w + 136.0, _PLATE_H))
 		_draw_metal_plate(plate)
 		var baseline := plate.get_center().y + FS * 0.34
 		# Engraved text: light catch below-right, navy on top.

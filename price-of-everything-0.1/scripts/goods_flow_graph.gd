@@ -25,6 +25,12 @@ extends RefCounted
 # +30% width so the icon chip reads ~100 px at maximum zoom-in (view _ZOOM_MAX = 1.0),
 # with a wider channel (COL_W - CARD_W = 180) to relax the edge routing.
 const COL_W := 820.0
+# Column x-spacing is NOT uniform: within a tier the step is tightened, and each
+# tier boundary adds an extra gap (owner 2026-07-21). All column->x mapping goes
+# through col_x(); COL_W remains the base for card/channel geometry.
+const INTRA_TIER_TIGHTEN := 20.0   # within a tier, columns sit this much closer
+const TIER_GAP := 50.0             # extra x inserted at each tier boundary (net inter-tier gap = TIER_GAP - INTRA_TIER_TIGHTEN wider than COL_W)
+static var _col_x: PackedFloat32Array = PackedFloat32Array()
 const ROW_H := 160.0
 const DUMMY_ROW_H := 72.0   # dummy (edge-corridor) rows are compressed: no card to fit
 const CARD_W := 380.0
@@ -86,6 +92,19 @@ const TIER_BANDS: Array[String] = ["raw", "processed", "intermediate", "finished
 ##                               from the source card's right edge to the target's left
 ##   tier_count: int
 ##   crossings: int            — bilayer crossing count of the final row ordering
+## World-space x for a column index, honouring the tightened intra-tier step and
+## the per-boundary TIER_GAP (see build()). Falls back to uniform COL_W spacing
+## for out-of-range indices (only before the first build()).
+static func col_x(c: int) -> float:
+	if c >= 0 and c < _col_x.size():
+		return _col_x[c]
+	if _col_x.is_empty():
+		return float(c) * COL_W
+	if c < 0:
+		return float(c) * (COL_W - INTRA_TIER_TIGHTEN)
+	return _col_x[_col_x.size() - 1] + float(c - _col_x.size() + 1) * (COL_W - INTRA_TIER_TIGHTEN)
+
+
 static func build() -> Dictionary:
 	# 1 · Goods universe, keyed by internal name.
 	var goods: Dictionary = {}
@@ -208,6 +227,22 @@ static func build() -> Dictionary:
 		depth[n] = int(band_base[band_of[n]]) + mini(sub, int(sub_count[band_of[n]]) - 1)
 	var maxd := col_cursor - 1
 
+	# Per-column x: tighten within a tier, add TIER_GAP at each tier boundary. One
+	# source of truth for every column->x conversion (nodes, edges, headers).
+	var _boundary_cols: Dictionary = {}
+	for bm: Dictionary in bands_meta:
+		var f := int(bm.get("first", 0))
+		if f > 0:
+			_boundary_cols[f] = true
+	_col_x = PackedFloat32Array()
+	var running_x := 0.0
+	for c: int in range(maxd + 1):
+		if c > 0:
+			running_x += COL_W - INTRA_TIER_TIGHTEN
+			if _boundary_cols.has(c):
+				running_x += TIER_GAP
+		_col_x.append(running_x)
+
 	# 6 · Sugiyama layout graph: real goods plus one invisible dummy vertex per
 	# intermediate tier of every multi-tier edge. Dummies occupy row slots exactly
 	# like real nodes (their slot stays empty visually — the corridor the edge runs
@@ -275,7 +310,7 @@ static func build() -> Dictionary:
 				continue   # dummy slot: left empty, forms an edge corridor
 			var rec := _node_record(internal, goods[internal], chosen.get(internal, {}),
 				primary.get(internal, anyout.get(internal, [])), d, i,
-				Vector2(d * COL_W, float(ypos[internal])), adj, radj, radj_base)
+				Vector2(col_x(d), float(ypos[internal])), adj, radj, radj_base)
 			by_id[internal] = rec
 			nodes.append(rec)
 
@@ -816,7 +851,7 @@ static func _route_edges(edges: Array, chains: Dictionary, backs: Array,
 		var ey: float = exit_y[ei]
 		var ty: float = entry_y[ei]
 		var pts: Array = []
-		pts.append(Vector2(float(ldepth[u]) * COL_W + CARD_W * 0.5, ey))
+		pts.append(Vector2(col_x(int(ldepth[u])) + CARD_W * 0.5, ey))
 		if chains.has(ei):
 			var chain: Array = chains[ei]
 			var lx := _lane_x(int(ldepth[u]), int(lane_of["%d:0" % ei]), lane_gap)
@@ -835,7 +870,7 @@ static func _route_edges(edges: Array, chains: Dictionary, backs: Array,
 			pts.append(Vector2(lx_out, yb))
 			pts.append(Vector2(lx_in, yb))
 			pts.append(Vector2(lx_in, ty))
-		pts.append(Vector2(float(ldepth[v]) * COL_W - CARD_W * 0.5, ty))
+		pts.append(Vector2(col_x(int(ldepth[v])) - CARD_W * 0.5, ty))
 		e["waypoints"] = _collapse(pts)
 
 
@@ -866,16 +901,16 @@ static func _deconflict_horizontals(edges: Array, chains: Dictionary, ldepth: Di
 		var v := str(e["to"])
 		var du := float(int(ldepth[u]))
 		var dv := float(int(ldepth[v]))
-		segs.append([1, float(exit_y[ei]), du * COL_W + CARD_W * 0.5,
-			(du + 1.0) * COL_W - CARD_W * 0.5, u, v, 0, ei, -1, float(ypos[u]), u])
-		segs.append([1, float(entry_y[ei]), (dv - 1.0) * COL_W + CARD_W * 0.5,
-			dv * COL_W - CARD_W * 0.5, u, v, 1, ei, -2, float(ypos[v]), v])
+		segs.append([1, float(exit_y[ei]), col_x(int(du)) + CARD_W * 0.5,
+			col_x(int(du) + 1) - CARD_W * 0.5, u, v, 0, ei, -1, float(ypos[u]), u])
+		segs.append([1, float(entry_y[ei]), col_x(int(dv) - 1) + CARD_W * 0.5,
+			col_x(int(dv)) - CARD_W * 0.5, u, v, 1, ei, -2, float(ypos[v]), v])
 		if chains.has(ei):
 			var chain: Array = chains[ei]
 			for j: int in range(1, chain.size() - 1):
-				var d := float(int(ldepth[chain[j]]))
-				segs.append([0, float(ypos[chain[j]]), (d - 1.0) * COL_W + CARD_W * 0.5,
-					(d + 1.0) * COL_W - CARD_W * 0.5, u, v, 2, ei, j, 0.0, ""])
+				var d := int(ldepth[chain[j]])
+				segs.append([0, float(ypos[chain[j]]), col_x(d - 1) + CARD_W * 0.5,
+					col_x(d + 1) - CARD_W * 0.5, u, v, 2, ei, j, 0.0, ""])
 	segs.sort_custom(func(a: Array, b: Array) -> bool: return _key_less(a, b))
 
 	# Conflict prefilter: for each segment, the segments of OTHER edges whose
@@ -981,7 +1016,7 @@ static func _add_span(chan_spans: Dictionary, c: int, y0: float, y1: float,
 
 ## Lane index -> world x inside channel c (the gap right of column c's cards).
 static func _lane_x(c: int, lane: int, lane_gap: Dictionary) -> float:
-	return float(c) * COL_W + CARD_W * 0.5 + LANE_PAD \
+	return col_x(c) + CARD_W * 0.5 + LANE_PAD \
 		+ float(lane) * float(lane_gap.get(c, LANE_GAP_MAX))
 
 
