@@ -18,12 +18,10 @@ const _NAVY := Color(0.015686, 0.058824, 0.105882, 1.0)     # DS.PALETTE["BG_PAN
 
 const GoodsFlowGraph := preload("res://scripts/goods_flow_graph.gd")
 const GraphWorldScript := preload("res://scripts/goods_graph_world.gd")
-const HexBgScript := preload("res://scripts/empire_hex_bg.gd")
 
 var _map_camera: Node = null                   # the map Camera2D (group "camera"); gated while open
 var _hidden_layers: Array[CanvasItem] = []     # world layers hidden on enter, restored on leave
 var _graph_world: Control
-var _bg: Control
 
 
 func _ready() -> void:
@@ -52,25 +50,11 @@ func _build_ui() -> void:
 	base.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(base)
 
-	_bg = HexBgScript.new()
-	_bg.name = "HexFieldBg"
-	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	# The dense goods web needs more contrast than the empire view's big plates:
-	# thin + fade the animated hex PATTERN (the navy base above stays opaque) so the
-	# flow lines stay the loudest thing on screen.
-	_bg.set("line_width", 1.0)
-	_bg.modulate = Color(1.0, 1.0, 1.0, 0.24)
-	add_child(_bg)
-
 	_graph_world = GraphWorldScript.new()
 	_graph_world.name = "GraphWorld"
 	_graph_world.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_graph_world.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_graph_world)
-
-	# The background's building-origin pulse (anim 1) ripples out of the good cards.
-	_bg.call("set_graph_world", _graph_world)
 
 	var hint := Label.new()
 	hint.name = "Hint"
