@@ -4885,7 +4885,7 @@ func check_profit_milestones(profit_per_turn: float) -> void:
 			crossed_milestones.append(m)
 			draw_advisor_from_pool()
 
-func _player_building_count() -> int:
+func player_building_count() -> int:
 	var n := 0
 	for b in buildings.values():
 		if b is Dictionary and is_player_owned(b):
@@ -4902,7 +4902,7 @@ func _update_advisor_slots(profit_per_turn: float) -> void:
 		_advisor_profit_streak = 0
 	if _advisor_profit_streak >= ADVISOR_SLOT_PROFIT_STREAK:
 		advisor_slot_profit_unlocked = true
-	var bldgs := _player_building_count()
+	var bldgs := player_building_count()
 	var target := MAX_ADVISOR_SLOTS_DEFAULT
 	if bldgs >= ADVISOR_SLOT_BUILDINGS_3:
 		target += 1

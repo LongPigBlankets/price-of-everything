@@ -11,6 +11,7 @@ config_version=5
 [application]
 
 config/name="Price of Everything 0.1"
+config/version="0.1.0"
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://scenes/icon.svg"
@@ -47,6 +48,7 @@ SolvencyState="*res://scripts/solvency_state.gd"
 TurnBriefing="*res://scripts/turn_briefing.gd"
 SaveLoad="*res://scripts/save_load.gd"
 SessionLog="*res://scripts/session_log.gd"
+TelemetryState="*res://scripts/telemetry_state.gd"
 PlayerProfile="*res://scripts/player_profile.gd"
 LoadPacing="*res://scripts/load_pacing.gd"
 Tutorial="*res://scripts/tutorial/tutorial_engine.gd"

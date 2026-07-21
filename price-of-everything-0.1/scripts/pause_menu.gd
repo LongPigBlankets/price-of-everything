@@ -132,10 +132,11 @@ func _on_exit_to_menu_pressed() -> void:
 
 
 func _on_quit_pressed() -> void:
-	# get_tree().quit() does not raise WM_CLOSE_REQUEST, so flush the session log
-	# here; SessionLog guards against a duplicate write on _exit_tree.
+	# Neither this path nor request_app_quit raises WM_CLOSE_REQUEST, so flush
+	# the session log here; SessionLog guards against a duplicate on _exit_tree.
+	# TelemetryState spools + uploads (bounded) and owns the quit() call.
 	SessionLog.flush()
-	get_tree().quit()
+	TelemetryState.request_app_quit()
 
 
 func _on_visibility_changed() -> void:
