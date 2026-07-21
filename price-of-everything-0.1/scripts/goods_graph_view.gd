@@ -1,0 +1,143 @@
+extends Control
+## Goods Graph — full-screen goods-web view (G to toggle).
+##
+## The production web of the whole economy: every good as a card in tier columns
+## (raw sources left -> finished goods right), connected by the input->output flows
+## of each good's BASE recipe — the simplest recipe available at game start (see
+## scripts/goods_flow_graph.gd). Clicking a good traces its supply chain. Phase 2
+## adds the zoom/focus mode with alternate-recipe swapping.
+##
+## Same lifecycle as the empire view (scripts/empire_view.gd): a full-rect Control
+## created in code by world_map, driven entirely by `visible` so any opener/closer
+## (G, the top-bar module, the Resources-panel button, PanelStack Esc) runs the same
+## enter/leave side-effects. Presentation only — never mutates the sim (CLAUDE.md #5),
+## no per-frame economic work (#2).
+
+const _ACCENT := Color(0.995234, 0.930806, 0.763265, 1.0)   # DS.PALETTE["ACCENT"] gold
+const _NAVY := Color(0.015686, 0.058824, 0.105882, 1.0)     # DS.PALETTE["BG_PANEL"]
+
+const GoodsFlowGraph := preload("res://scripts/goods_flow_graph.gd")
+const GraphWorldScript := preload("res://scripts/goods_graph_world.gd")
+const HexBgScript := preload("res://scripts/empire_hex_bg.gd")
+
+var _map_camera: Node = null                   # the map Camera2D (group "camera"); gated while open
+var _hidden_layers: Array[CanvasItem] = []     # world layers hidden on enter, restored on leave
+var _graph_world: Control
+var _bg: Control
+
+
+func _ready() -> void:
+	visible = false
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_STOP   # eat clicks so they don't fall through to the map
+	_build_ui()
+	_map_camera = get_tree().get_first_node_in_group("camera")
+	visibility_changed.connect(_on_visibility_changed)
+
+
+## Toggle open/closed. Called from world_map on the `toggle_goods_graph` (G) action,
+## the top-bar Goods Graph module and the Resources panel's Goods Graph button.
+func toggle() -> void:
+	visible = not visible
+
+
+func _build_ui() -> void:
+	# Opaque navy base FIRST: it is what actually blanks the screen (the world-hide
+	# only covers map layers — HUD siblings below this view are hidden by this fill,
+	# exactly the role the hex bg's own fill plays in the empire view).
+	var base := ColorRect.new()
+	base.name = "NavyBase"
+	base.color = _NAVY
+	base.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	base.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(base)
+
+	_bg = HexBgScript.new()
+	_bg.name = "HexFieldBg"
+	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# The dense goods web needs more contrast than the empire view's big plates:
+	# thin + fade the animated hex PATTERN (the navy base above stays opaque) so the
+	# flow lines stay the loudest thing on screen.
+	_bg.set("line_width", 1.0)
+	_bg.modulate = Color(1.0, 1.0, 1.0, 0.24)
+	add_child(_bg)
+
+	_graph_world = GraphWorldScript.new()
+	_graph_world.name = "GraphWorld"
+	_graph_world.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_graph_world.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_graph_world)
+
+	# The background's building-origin pulse (anim 1) ripples out of the good cards.
+	_bg.call("set_graph_world", _graph_world)
+
+	var hint := Label.new()
+	hint.name = "Hint"
+	hint.text = "GOODS GRAPH  ·  base recipes at game start · dashed = research-locked  ·  click a good: trace its chain, see alternate recipes, open its encyclopedia entry  ·  drag to pan · scroll to zoom · G to return"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hint.theme_type_variation = &"Caption"
+	hint.modulate = Color(_ACCENT.r, _ACCENT.g, _ACCENT.b, 0.6)
+	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	hint.offset_top = -36.0
+	add_child(hint)
+
+
+func _on_visibility_changed() -> void:
+	if visible:
+		_enter()
+	else:
+		_leave()
+
+
+func _enter() -> void:
+	move_to_front()
+	_hide_world()
+	_set_camera_blocked(true)
+	PanelStack.push(self)
+	_rebuild_graph()
+
+
+## Rebuild from the Catalog on each open: ~400 ms of layout work (ordering + routing),
+## acceptable as a once-per-open cost, and the gated flags stay honest as research
+## unlocks change which producers are available.
+func _rebuild_graph() -> void:
+	if _graph_world == null:
+		return
+	_graph_world.set_graph(GoodsFlowGraph.build())
+
+
+func _leave() -> void:
+	_show_world()
+	_set_camera_blocked(false)
+	PanelStack.remove(self)
+
+
+## Hide every world render layer so the navy view fully replaces the map (identical
+## to empire_view.gd: only previously-visible layers are recorded, the Camera2D is
+## skipped, and the UILayer is a CanvasLayer so the HUD stays visible).
+func _hide_world() -> void:
+	_hidden_layers.clear()
+	var root := get_tree().current_scene
+	if root == null:
+		return
+	for child in root.get_children():
+		if child is Camera2D:
+			continue
+		if child is CanvasItem and (child as CanvasItem).visible:
+			var layer := child as CanvasItem
+			layer.visible = false
+			_hidden_layers.append(layer)
+
+
+func _show_world() -> void:
+	for layer in _hidden_layers:
+		if is_instance_valid(layer):
+			layer.visible = true
+	_hidden_layers.clear()
+
+
+func _set_camera_blocked(blocked: bool) -> void:
+	if _map_camera != null and is_instance_valid(_map_camera):
+		_map_camera.set("input_blocked", blocked)

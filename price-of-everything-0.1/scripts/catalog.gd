@@ -536,6 +536,9 @@ func _parse_good_row(headers: PackedStringArray, line: PackedStringArray) -> Dic
 		"category": raw.get("category", ""),
 		"transport_class": raw.get("transport_class", EconomyConfig.DEFAULT_TRANSPORT_WEIGHT_CLASS),
 		"good_type": raw.get("good_type", ""),
+		# Authored balancing band (raw/processed/intermediate/finished/apex) — the
+		# Goods Graph's column regions and the encyclopedia's "Tier:" line.
+		"goods_graph_tier": raw.get("goods_graph_tier", ""),
 		"base_price": float(raw.get("base_price", "1")),
 		"decay_rate": float(raw.get("decay_rate", "0")),
 		"is_buyable": raw.get("is_buyable", "").to_upper() == "TRUE",

@@ -173,6 +173,35 @@ static func make_custom_checkbox() -> CheckBox:
 		cb.add_theme_stylebox_override(state, no_box)
 	return cb
 
+## Telemetry consent row (shared by the New Game and Tutorial screens): opt-out
+## checkbox + a hover caption explaining exactly what gets sent. Returns
+## {"row": Control, "checkbox": CheckBox}. See docs/telemetry-spec.md §2.
+static func make_telemetry_consent_row(checked: bool) -> Dictionary:
+	var row := VBoxContainer.new()
+	row.add_theme_constant_override("separation", 2)
+
+	var cb := CheckBox.new()
+	cb.text = "  Send in-game performance metrics to the developer"
+	cb.add_theme_icon_override("unchecked", checkbox_icon(false))
+	cb.add_theme_icon_override("checked", checkbox_icon(true))
+	cb.add_theme_icon_override("unchecked_disabled", checkbox_icon(false))
+	cb.add_theme_icon_override("checked_disabled", checkbox_icon(true))
+	cb.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+	cb.button_pressed = checked
+	row.add_child(cb)
+
+	var hint := Label.new()
+	hint.text = "      What kind of metrics do you send?"
+	hint.theme_type_variation = &"Caption"
+	hint.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+	hint.tooltip_text = "Revenue, profit, goods produced per turn, buildings count, loans.\nNothing outside the game is collected."
+	# Labels default to MOUSE_FILTER_IGNORE, which suppresses tooltips.
+	hint.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.add_child(hint)
+
+	return {"row": row, "checkbox": cb}
+
+
 static func make_setting_row(label_text: String, control: Control, row_height: float = 30.0) -> HBoxContainer:
 	# Label on the left, control pushed to the right edge.
 	var row := HBoxContainer.new()

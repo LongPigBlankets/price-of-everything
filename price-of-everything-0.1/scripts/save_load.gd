@@ -79,6 +79,7 @@ func export_snapshot() -> Dictionary:
 		"briefing": TurnBriefing.export_state(),
 		"victory": VictoryState.export_state(),
 		"policy": PolicyState.export_state(),
+		"telemetry": TelemetryState.export_state(),
 		"infrastructure": _collect_infrastructure(),
 		"roads": {
 			"network": RoadNetwork.instance().export_state(),
@@ -122,6 +123,10 @@ func import_snapshot(snap: Dictionary) -> void:
 	VictoryState.import_state(snap.get("victory", {}))
 	# Additive key (tolerant reader): pre-feature saves seed the policy schedule fresh.
 	PolicyState.import_state(snap.get("policy", {}))
+	# Additive key (tolerant reader): a resumed run keeps its telemetry run_id and
+	# accumulated playtime; a missing key keeps the fresh identity minted by the
+	# state_reset above.
+	TelemetryState.import_state(snap.get("telemetry", {}))
 	# roads-v2: BUILT geometry restores verbatim; planning orders resume
 	# deterministically; mid-reveal orders restart their reveal (cosmetic).
 	# Old saves carry no "roads" key — the network stays empty here and

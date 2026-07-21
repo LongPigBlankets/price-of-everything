@@ -85,8 +85,11 @@ const DENSITY_SOFT_CAPACITY := 100.0
 
 const STATUS_ICON_CONFIG := [
 	{
+		# The tile-view panel's outlined yellow bolt (owner 2026-07-19: nicer than
+		# the tinted stencil); drawn untinted — the status colour lives on the dot.
 		"key": "power",
-		"path": "res://assets/icons/ui_icons/power_status_icon.png",
+		"path": "res://assets/icons/ui_icons/recipe_power_icon.png",
+		"untinted": true,
 		"tooltip": "Power status\nGreen: powered by your own supply · Amber: powered via the grid · Red: not powered · Grey: no power needed",
 	},
 	{
@@ -2471,7 +2474,8 @@ func _build_status_icon_column() -> void:
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.texture = load(icon_path)
-		icon.modulate = ICON_TINT
+		if not bool(config.get("untinted", false)):
+			icon.modulate = ICON_TINT
 		icon.tooltip_text = tooltip
 		icon.theme = _tooltip_theme
 		wrapper.add_child(icon)

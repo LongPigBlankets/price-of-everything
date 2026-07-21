@@ -11,6 +11,7 @@ config_version=5
 [application]
 
 config/name="Price of Everything 0.1"
+config/version="0.1.0"
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://scenes/icon.svg"
@@ -47,6 +48,7 @@ SolvencyState="*res://scripts/solvency_state.gd"
 TurnBriefing="*res://scripts/turn_briefing.gd"
 SaveLoad="*res://scripts/save_load.gd"
 SessionLog="*res://scripts/session_log.gd"
+TelemetryState="*res://scripts/telemetry_state.gd"
 PlayerProfile="*res://scripts/player_profile.gd"
 LoadPacing="*res://scripts/load_pacing.gd"
 Tutorial="*res://scripts/tutorial/tutorial_engine.gd"
@@ -127,6 +129,11 @@ camera_zoom_out={
 toggle_empire_view={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194306,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+toggle_goods_graph={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":71,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
 ]
 }
 

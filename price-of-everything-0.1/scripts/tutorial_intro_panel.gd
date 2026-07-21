@@ -9,6 +9,8 @@ extends Control
 signal begin_requested
 signal back_requested
 
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
+
 const NAVY := Color(0, 0.07, 0.14)
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
 
@@ -17,6 +19,8 @@ const COVERS: Array = [
 	"Power it, lay cables and pipelines, source water and coal",
 	"Survey, mine, ship, and integrate a supply chain",
 ]
+
+var _consent_cb: CheckBox
 
 
 func _ready() -> void:
@@ -101,6 +105,18 @@ func _build() -> void:
 	begin.add_theme_font_size_override("font_size", 26)
 	begin.pressed.connect(func() -> void: begin_requested.emit())
 	col.add_child(begin)
+
+	# Telemetry consent (opt-out, docs/telemetry-spec.md §2) — same row as the
+	# New Game screen; main_menu reads send_metrics_enabled() on Begin.
+	var consent := UIHelpers.make_telemetry_consent_row(not PlayerProfile.telemetry_opt_out)
+	_consent_cb = consent["checkbox"] as CheckBox
+	var consent_center := CenterContainer.new()
+	consent_center.add_child(consent["row"])
+	col.add_child(consent_center)
+
+
+func send_metrics_enabled() -> bool:
+	return _consent_cb == null or _consent_cb.button_pressed
 
 
 func _sp(key: String, fallback: int) -> int:

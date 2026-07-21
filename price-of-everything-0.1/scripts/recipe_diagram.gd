@@ -2,7 +2,7 @@ extends RefCounted
 ## THE reusable recipe diagram — the DS-blessed "recipe strip" look, extracted from
 ## building_detail_panel_v2 so every panel renders a recipe identically. A cream
 ## parchment card with a thin navy inset outline holding:
-##     inputs  →  navy power-arrow (carries the kW draw + bolt)  →  output
+##     inputs  →  navy power-arrow (carries the MW draw + bolt)  →  output
 ## Good icons are UNFRAMED chroma art that bleeds ~20% past its slot (the BDP look);
 ## quantities sit in a navy pill on each icon's bottom-right (with an optional
 ## struck base→effective delta + green/red rim when a modifier is in play).
@@ -248,7 +248,7 @@ static func _recipe_arrow(power_in: int) -> Control:
 			hb.add_child(bolt)
 		else:
 			var kw := Label.new()
-			kw.text = "kW"
+			kw.text = "MW"
 			kw.add_theme_color_override("font_color", DS.PALETTE["WARN"])
 			hb.add_child(kw)
 	else:

@@ -23,6 +23,11 @@ var wins: Array = []
 # Display preference chosen in Settings → Graphics (persisted, applied at startup).
 # Vector2i.ZERO = never set → keep the project.godot default window size.
 var window_size: Vector2i = Vector2i.ZERO
+# Telemetry (docs/telemetry-spec.md): remembered state of the "send metrics"
+# opt-out checkbox (false = metrics on, the default) and the anonymous
+# per-install player id (16 random bytes, hex — never personal information).
+var telemetry_opt_out: bool = false
+var telemetry_player_id: String = ""
 
 
 func _ready() -> void:
@@ -74,6 +79,26 @@ func set_games_completed(n: int) -> void:
 	_save()
 
 
+## Remember the "send metrics" checkbox so the next New Game / Tutorial screen
+## defaults to the player's last choice (true = they unticked it).
+func set_telemetry_opt_out(v: bool) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if telemetry_opt_out == v:
+		return
+	telemetry_opt_out = v
+	_save()
+
+
+## Anonymous per-install telemetry id, minted on first use.
+func get_telemetry_player_id() -> String:
+	if telemetry_player_id == "":
+		telemetry_player_id = Crypto.new().generate_random_bytes(16).hex_encode()
+		if DisplayServer.get_name() != "headless":
+			_save()
+	return telemetry_player_id
+
+
 func _on_game_ended(_reason: String) -> void:
 	# Don't count automated/headless runs (tests, balance harness) toward unlocks.
 	if DisplayServer.get_name() == "headless":
@@ -96,6 +121,8 @@ func _load() -> void:
 		var recorded: Variant = (parsed as Dictionary).get("wins", [])
 		wins = recorded if recorded is Array else []
 		window_size = Vector2i(int((parsed as Dictionary).get("window_w", 0)), int((parsed as Dictionary).get("window_h", 0)))
+		telemetry_opt_out = bool((parsed as Dictionary).get("telemetry_opt_out", false))
+		telemetry_player_id = str((parsed as Dictionary).get("telemetry_player_id", ""))
 
 
 func _save() -> void:
@@ -105,7 +132,7 @@ func _save() -> void:
 	if f == null:
 		push_warning("[PlayerProfile] could not write %s" % tmp_path)
 		return
-	f.store_string(JSON.stringify({"games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y}, "\t"))
+	f.store_string(JSON.stringify({"games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id}, "\t"))
 	f.close()
 	var err := DirAccess.rename_absolute(tmp_path, _path())
 	if err != OK:

@@ -33,6 +33,10 @@ static func logs_dir() -> String:
 	return _ensure(base_dir().path_join("logs"))
 
 
+static func telemetry_outbox_dir() -> String:
+	return _ensure(base_dir().path_join("telemetry").path_join("outbox"))
+
+
 ## Test hook: drop the cached base so the next call re-resolves.
 static func reset_cache() -> void:
 	_base = ""

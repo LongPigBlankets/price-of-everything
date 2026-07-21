@@ -131,6 +131,7 @@ func _ready() -> void:
 	_build_victory()
 	_build_briefing()
 	_build_council()
+	_build_goods_graph()
 	_adopt_encyclopedia_and_turn()
 	_build_menu()
 	_build_fly_layer()
@@ -855,6 +856,57 @@ func _portrait_chip(aid: String, size: float) -> Control:
 	chip_holder.position = Vector2(size - 12, size - 8)
 	holder.add_child(chip_holder)
 	return holder
+
+
+# ── 5b · Goods Graph ─────────────────────────────────────────────────────────────
+
+## Small goods-web vector icon: tiered flow nodes joined by edges (drawn — no
+## suitable glyph in the bundled font). Mirrors the _BookIcon pattern.
+class _WebIcon extends Control:
+	var color := Color("#8ea3ba")
+	func _init(c: Color) -> void:
+		color = c
+		custom_minimum_size = Vector2(19, 16)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func set_color(c: Color) -> void:
+		color = c
+		queue_redraw()
+	func _draw() -> void:
+		var w := size.x
+		var h := size.y
+		# Left source node -> two mid nodes -> right sink node (a mini flow chart).
+		var src := Vector2(2.5, h * 0.5)
+		var mid_a := Vector2(w * 0.5, 3.0)
+		var mid_b := Vector2(w * 0.5, h - 3.0)
+		var sink := Vector2(w - 2.5, h * 0.5)
+		for pair: Array in [[src, mid_a], [src, mid_b], [mid_a, sink], [mid_b, sink]]:
+			draw_line(pair[0], pair[1], Color(color, 0.7), 1.2, true)
+		for p: Vector2 in [src, mid_a, mid_b, sink]:
+			draw_circle(p, 2.4, Color(color, 0.25))
+			draw_arc(p, 2.4, 0.0, TAU, 10, color, 1.2, true)
+
+func _build_goods_graph() -> void:
+	var mod := _ModuleBtn.new(self)
+	mod.name = "GoodsGraphModule"
+	mod.tooltip_text = "Goods Graph (G) — how every good is made and what it feeds"
+	mod.custom_minimum_size = Vector2(0, MOD_H)
+	var row := _module_row(mod)
+	var icon := _WebIcon.new(Color("#8ea3ba"))
+	row.add_child(icon)
+	var lbl := _mini("GOODS GRAPH", Color("#8ea3ba"), 13)
+	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(lbl)
+	mod.mouse_entered.connect(func() -> void:
+		icon.set_color(C_BRIGHT)
+		lbl.add_theme_color_override("font_color", C_BRIGHT))
+	mod.mouse_exited.connect(func() -> void:
+		icon.set_color(Color("#8ea3ba"))
+		lbl.add_theme_color_override("font_color", Color("#8ea3ba")))
+	mod.pressed.connect(func() -> void:
+		_close_fly()
+		MatchState.goods_graph_requested.emit())
+	_hbox().add_child(mod)
 
 
 # ── 6/7/8 · Encyclopedia (adopted) · Turn/date · Menu ───────────────────────────

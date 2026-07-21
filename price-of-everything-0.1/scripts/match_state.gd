@@ -488,6 +488,11 @@ signal transfer_for_good_requested(good_id: String)
 signal purchase_for_good_requested(good_id: String)
 ## A UI element asked to open an Encyclopedia entry (e.g. a "More info" link).
 signal encyclopedia_entry_requested(entry_id: String)
+## A UI element (top-bar module, Resources-panel button) asked to toggle the
+## full-screen Goods Graph view (scripts/goods_graph_view.gd).
+signal goods_graph_requested
+## The Goods Graph's expanded card asked for a good's Encyclopedia entry.
+signal encyclopedia_good_requested(good_id: String)
 ## A UI element (e.g. the tile-view intermittency "see more" link) asked to open the
 ## building ledger pre-filtered to a single filter key (e.g. "green_intermittent").
 signal building_ledger_filter_requested(filter_key: String)
@@ -4880,7 +4885,7 @@ func check_profit_milestones(profit_per_turn: float) -> void:
 			crossed_milestones.append(m)
 			draw_advisor_from_pool()
 
-func _player_building_count() -> int:
+func player_building_count() -> int:
 	var n := 0
 	for b in buildings.values():
 		if b is Dictionary and is_player_owned(b):
@@ -4897,7 +4902,7 @@ func _update_advisor_slots(profit_per_turn: float) -> void:
 		_advisor_profit_streak = 0
 	if _advisor_profit_streak >= ADVISOR_SLOT_PROFIT_STREAK:
 		advisor_slot_profit_unlocked = true
-	var bldgs := _player_building_count()
+	var bldgs := player_building_count()
 	var target := MAX_ADVISOR_SLOTS_DEFAULT
 	if bldgs >= ADVISOR_SLOT_BUILDINGS_3:
 		target += 1
