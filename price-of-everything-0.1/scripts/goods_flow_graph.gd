@@ -28,8 +28,13 @@ const COL_W := 820.0
 # Column x-spacing is NOT uniform: within a tier the step is tightened, and each
 # tier boundary adds an extra gap (owner 2026-07-21). All column->x mapping goes
 # through col_x(); COL_W remains the base for card/channel geometry.
-const INTRA_TIER_TIGHTEN := 20.0   # within a tier, columns sit this much closer
-const TIER_GAP := 50.0             # extra x inserted at each tier boundary (net inter-tier gap = TIER_GAP - INTRA_TIER_TIGHTEN wider than COL_W)
+# Column spacing (owner 2026-07-21: tight columns, wide tier gaps). 60u columns
+# was requested but is infeasible — the edge density needs >= ~180u between any
+# adjacent columns or y-overlapping risers crowd below the 11.9u readability floor
+# (measured; widening tiers does not rescue it). 200u is the tightest with margin,
+# still less than half the old ~420u; tiers get a clearly wider 500u.
+const INTRA_COL_GAP := 200.0
+const INTER_TIER_GAP := 500.0
 static var _col_x: PackedFloat32Array = PackedFloat32Array()
 const ROW_H := 160.0
 const DUMMY_ROW_H := 72.0   # dummy (edge-corridor) rows are compressed: no card to fit
@@ -101,8 +106,8 @@ static func col_x(c: int) -> float:
 	if _col_x.is_empty():
 		return float(c) * COL_W
 	if c < 0:
-		return float(c) * (COL_W - INTRA_TIER_TIGHTEN)
-	return _col_x[_col_x.size() - 1] + float(c - _col_x.size() + 1) * (COL_W - INTRA_TIER_TIGHTEN)
+		return float(c) * (CARD_W + INTRA_COL_GAP)
+	return _col_x[_col_x.size() - 1] + float(c - _col_x.size() + 1) * (CARD_W + INTRA_COL_GAP)
 
 
 static func build() -> Dictionary:
@@ -238,9 +243,8 @@ static func build() -> Dictionary:
 	var running_x := 0.0
 	for c: int in range(maxd + 1):
 		if c > 0:
-			running_x += COL_W - INTRA_TIER_TIGHTEN
-			if _boundary_cols.has(c):
-				running_x += TIER_GAP
+			# pitch = card width + the gap AFTER this column's kind of boundary
+			running_x += CARD_W + (INTER_TIER_GAP if _boundary_cols.has(c) else INTRA_COL_GAP)
 		_col_x.append(running_x)
 
 	# 6 · Sugiyama layout graph: real goods plus one invisible dummy vertex per
@@ -840,7 +844,11 @@ static func _route_edges(edges: Array, chains: Dictionary, backs: Array,
 			lane_of["%d:%d" % [int(s[5]), int(s[4])]] = lane
 			for j3: int in (succ[idx] as Array):
 				min_lane[j3] = maxi(int(min_lane[j3]), lane + 1)
-		lane_gap[c] = clampf((CHANNEL_W - 2.0 * LANE_PAD) / maxf(1.0, float(lane_end.size())),
+		# Distribute lanes across the ACTUAL channel width (varies now: ~60u within a
+		# tier, ~200u between tiers), not a fixed CHANNEL_W, so risers pack correctly.
+		# Pad is proportional so a tight intra-tier channel isn't eaten by fixed pad.
+		var chan_w := col_x(c + 1) - col_x(c) - CARD_W
+		lane_gap[c] = clampf((chan_w - 2.0 * _lane_pad(chan_w)) / maxf(1.0, float(lane_end.size())),
 			LANE_GAP_MIN, LANE_GAP_MAX)
 
 	# Assemble each edge's axis-aligned waypoint chain.
@@ -1016,8 +1024,14 @@ static func _add_span(chan_spans: Dictionary, c: int, y0: float, y1: float,
 
 ## Lane index -> world x inside channel c (the gap right of column c's cards).
 static func _lane_x(c: int, lane: int, lane_gap: Dictionary) -> float:
-	return col_x(c) + CARD_W * 0.5 + LANE_PAD \
+	return col_x(c) + CARD_W * 0.5 + _lane_pad(col_x(c + 1) - col_x(c) - CARD_W) \
 		+ float(lane) * float(lane_gap.get(c, LANE_GAP_MAX))
+
+
+## Lane inset from a card edge, proportional to the channel so a tight intra-tier
+## channel keeps room for its risers instead of losing it all to a fixed pad.
+static func _lane_pad(chan_w: float) -> float:
+	return clampf(chan_w * 0.15, 4.0, LANE_PAD)
 
 
 ## Drop zero-length segments and merge collinear runs; the result is a strict
