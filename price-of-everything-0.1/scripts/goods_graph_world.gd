@@ -655,36 +655,39 @@ func _route_focus_edges(members: Dictionary) -> void:
 			anchors["%d:o" % ei] = float(fe["ty"])
 			anchors["%d:i" % ei] = float(fe["ty"])
 	port_y = _assign_focus_ports(anchors)
-	# 3 · Nested lane assignment (owner 2026-07-22: the steel fan braided): per
-	# channel, SHORTER vertical spans take INNER lanes, so a stub crossing the
-	# channel never cuts through a longer edge's vertical run.
-	var chan_reqs: Dictionary = {}   # channel -> [[span_len, ei, leg]]
+	# 5 · Lane ordering per channel by MINIMUM PAIRWISE CROSSINGS (owner
+	# 2026-07-22b: coal->ingots cut through coal->steel's corridor run —
+	# shortest-span nesting only prevents riser braiding and is blind to the
+	# horizontal runs that continue past a lane). Each leg in a channel is a Z:
+	# entry stub at ys, vertical to ye, exit run at ye, with both horizontals
+	# reaching past every other lane. For any two legs the crossing count
+	# depends ONLY on which lane sits left of the other, so the best order is a
+	# linear-arrangement problem — solved exactly (subset DP) per channel.
+	var chan_reqs: Dictionary = {}   # channel -> [[ei, leg, ys, ye, dir]]
 	for ei: int in range(_focus_edges.size()):
 		var fe: Dictionary = _focus_edges[ei]
 		var oy: float = port_y["%d:o" % ei]
 		var iy: float = port_y["%d:i" % ei]
 		var midy: float = float(fe["ty"]) if fe.has("ty") else iy
+		var dirn := int(fe["dir"])
 		var xch := int(fe["exit_ch"])
 		if not chan_reqs.has(xch):
 			chan_reqs[xch] = []
-		(chan_reqs[xch] as Array).append([absf(midy - oy), ei, 0])
+		(chan_reqs[xch] as Array).append([ei, 0, oy, midy, dirn])
 		if fe.has("ty"):
 			var ech := int(fe["entry_ch"])
 			if not chan_reqs.has(ech):
 				chan_reqs[ech] = []
-			(chan_reqs[ech] as Array).append([absf(iy - float(fe["ty"])), ei, 1])
+			(chan_reqs[ech] as Array).append([ei, 1, float(fe["ty"]), iy, dirn])
 	var lane_x: Dictionary = {}   # "ei:leg" -> world x
 	for ch in chan_reqs:
-		var reqs: Array = chan_reqs[ch]
-		reqs.sort_custom(func(a: Array, b: Array) -> bool:
-			return float(a[0]) < float(b[0]) \
-				or (float(a[0]) == float(b[0]) and int(a[1]) < int(b[1])))
-		for li: int in range(reqs.size()):
-			var rq: Array = reqs[li]
-			lane_x["%d:%d" % [int(rq[1]), int(rq[2])]] = \
+		var order := _f_lane_order(chan_reqs[ch] as Array)
+		for li: int in range(order.size()):
+			var rq: Array = order[li]
+			lane_x["%d:%d" % [int(rq[0]), int(rq[1])]] = \
 				float(ch) * _FCOL_W + GoodsFlowGraph.CARD_W * 0.5 + _F_LANE_PAD \
 				+ float(li) * _F_LANE_STEP
-	# 4 · Waypoints.
+	# 6 · Waypoints.
 	for ei: int in range(_focus_edges.size()):
 		var fe: Dictionary = _focus_edges[ei]
 		var f := str(fe["from"])
@@ -807,6 +810,100 @@ func _f_run_clear(y: float, used: Array, port_ys: Array) -> bool:
 		if absf(float(p) - y) < _F_PORT_AVOID:
 			return false
 	return true
+
+
+## Crossings between two channel legs when `a` takes the lane LEFT of `b`.
+## A leg [ei, leg, ys, ye, dir] is a Z shape: entry stub at ys arriving from
+## its source side (left when dir==1, right when dir==-1), a vertical between
+## ys and ye at its lane, and an exit run at ye leaving to its destination
+## side. Both horizontals extend past every other lane in the channel, so a
+## crossing happens exactly when one leg's horizontal y falls strictly inside
+## the other leg's vertical span on the side that horizontal actually covers.
+func _f_leg_cross(a: Array, b: Array) -> int:
+	var n := 0
+	# b's horizontal on the LEFT side (entry when travelling right, exit when
+	# travelling left) sweeps across a's vertical.
+	if _f_between(float(b[2]) if int(b[4]) == 1 else float(b[3]), a):
+		n += 1
+	# a's horizontal on the RIGHT side sweeps across b's vertical.
+	if _f_between(float(a[3]) if int(a[4]) == 1 else float(a[2]), b):
+		n += 1
+	return n
+
+
+func _f_between(y: float, leg: Array) -> bool:
+	var lo := minf(float(leg[2]), float(leg[3]))
+	var hi := maxf(float(leg[2]), float(leg[3]))
+	return y > lo + 0.5 and y < hi - 0.5
+
+
+## Left-to-right lane order for one channel minimising total pairwise
+## crossings. Pair costs are order-decomposable, so subset DP is exact; past
+## 12 legs (unseen in practice) a deterministic pairwise-improvement bubble
+## keeps it O(n^2).
+func _f_lane_order(reqs: Array) -> Array:
+	var n := reqs.size()
+	if n <= 1:
+		return reqs.duplicate()
+	var base := reqs.duplicate()
+	base.sort_custom(func(a: Array, b: Array) -> bool:
+		return float(a[3]) < float(b[3]) \
+			or (float(a[3]) == float(b[3]) and int(a[0]) < int(b[0])))
+	var w: Array = []   # w[i][j] = crossings if base[i] sits left of base[j]
+	for i: int in range(n):
+		var row := PackedInt32Array()
+		row.resize(n)
+		for j: int in range(n):
+			if i != j:
+				row[j] = _f_leg_cross(base[i] as Array, base[j] as Array)
+		w.append(row)
+	var order: Array = []
+	if n <= 12:
+		var full := (1 << n) - 1
+		var dp := PackedInt32Array()
+		var par := PackedInt32Array()
+		dp.resize(full + 1)
+		par.resize(full + 1)
+		for m: int in range(1, full + 1):
+			dp[m] = 1 << 24
+		for m: int in range(full):
+			if int(dp[m]) >= (1 << 24):
+				continue
+			for k: int in range(n):
+				if m & (1 << k):
+					continue
+				var cost := int(dp[m])
+				for i: int in range(n):
+					if m & (1 << i):
+						cost += int((w[i] as PackedInt32Array)[k])
+				var nm := m | (1 << k)
+				if cost < int(dp[nm]):
+					dp[nm] = cost
+					par[nm] = k
+		var m := full
+		while m != 0:
+			var k := int(par[m])
+			order.push_front(k)
+			m &= ~(1 << k)
+	else:
+		for i: int in range(n):
+			order.append(i)
+		var improved := true
+		var passes := 0
+		while improved and passes < n:
+			improved = false
+			passes += 1
+			for i: int in range(n - 1):
+				var a := int(order[i])
+				var b := int(order[i + 1])
+				if int((w[b] as PackedInt32Array)[a]) < int((w[a] as PackedInt32Array)[b]):
+					order[i] = b
+					order[i + 1] = a
+					improved = true
+	var out: Array = []
+	for idx in order:
+		out.append(base[int(idx)])
+	return out
 
 
 ## Nearest tier column for a good's web position (columns are non-uniform; see
