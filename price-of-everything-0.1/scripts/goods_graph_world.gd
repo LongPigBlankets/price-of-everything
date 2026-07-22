@@ -500,28 +500,81 @@ func _build_focus_layout() -> void:
 	_fpos.clear()
 	_focus_edges.clear()
 	var sel := _selected_id
-	var sel_col := _col_of(sel)
-	var members: Dictionary = {sel: 0}   # id -> relative column
+	# 1 · Kept edges first (trace rules) — the column logic below needs them to
+	# detect within-band chains.
+	for e in _edges:
+		var ef := str(e["from"])
+		var et := str(e["to"])
+		var route := int(e.get("route", 0))
+		var member_f := ef == sel or _upstream.has(ef) or _feeds.has(ef)
+		var member_t := et == sel or _upstream.has(et) or _feeds.has(et)
+		if not (member_f and member_t and _by_id.has(ef) and _by_id.has(et)):
+			continue
+		var keep := (route == 0 and (_upstream.has(et) or et == sel) and _upstream.has(ef)) \
+			or et == sel or (ef == sel and _feeds.has(et))
+		if not keep:
+			continue
+		_focus_edges.append({"from": ef, "to": et, "route": route,
+			"gated": bool(e.get("route_gated", false))})
+	# 2 · Focus columns by TIER BAND (owner 2026-07-22): same-band members share
+	# one column and stack vertically — iron ore + coal sit up-down, not in a
+	# row — UNLESS a kept edge links two members of the band (a within-band
+	# chain), which splits that band into web-order sub-columns.
+	var col_band: Dictionary = {}
+	for bi: int in range(_bands.size()):
+		var bnd: Dictionary = _bands[bi]
+		var b0 := int(bnd.get("first", 0))
+		for c: int in range(b0, b0 + int(bnd.get("count", 1))):
+			col_band[c] = bi
+	var sel_band := int(col_band.get(_col_of(sel), 0))
+	var members: Dictionary = {sel: 0.0}   # id -> sortable column key (band*100+sub)
 	for id in _upstream:
 		if _by_id.has(str(id)):
-			members[str(id)] = mini(-1, _col_of(str(id)) - sel_col)
+			var bd := int(col_band.get(_col_of(str(id)), 0)) - sel_band
+			members[str(id)] = float(mini(-1, bd)) * 100.0
 	for id in _feeds:
 		if _by_id.has(str(id)):
-			members[str(id)] = maxi(1, _col_of(str(id)) - sel_col)
-	# Compress relative columns to consecutive ranks: web columns are SUB-columns,
-	# so raw inputs can sit many columns from the selection — without compression
-	# a short chain spreads across a void. Order is preserved, steps become uniform.
+			# +1 shift keeps same-band feeds (e.g. motor for steel) clear of the
+			# selection column while later bands stay separated.
+			var bd := int(col_band.get(_col_of(str(id)), 0)) - sel_band
+			members[str(id)] = float(maxi(1, bd + 1)) * 100.0
+	var groups: Dictionary = {}
+	for id: String in members:
+		var gk: float = members[id]
+		if not groups.has(gk):
+			groups[gk] = []
+		(groups[gk] as Array).append(id)
+	for gk in groups:
+		var garr: Array = groups[gk]
+		if garr.size() < 2 or float(gk) == 0.0:
+			continue
+		var internal := false
+		for fe in _focus_edges:
+			if garr.has(str(fe["from"])) and garr.has(str(fe["to"])):
+				internal = true
+				break
+		if not internal:
+			continue
+		var wcols: Array = []
+		for id: String in garr:
+			var wc := _col_of(id)
+			if not wcols.has(wc):
+				wcols.append(wc)
+		wcols.sort()
+		for id: String in garr:
+			members[id] = float(gk) + float(wcols.find(_col_of(id)))
+	# 3 · Compress the keys to consecutive integer columns (order preserved).
 	var neg: Array = []
 	var pos_cols: Array = []
 	for id: String in members:
-		var c: int = members[id]
-		if c < 0 and not neg.has(c):
-			neg.append(c)
-		elif c > 0 and not pos_cols.has(c):
-			pos_cols.append(c)
+		var ck: float = members[id]
+		if ck < 0.0 and not neg.has(ck):
+			neg.append(ck)
+		elif ck > 0.0 and not pos_cols.has(ck):
+			pos_cols.append(ck)
 	neg.sort()
 	pos_cols.sort()
-	var remap: Dictionary = {0: 0}
+	var remap: Dictionary = {0.0: 0}
 	for i: int in range(neg.size()):
 		remap[neg[i]] = -(neg.size() - i)
 	for i: int in range(pos_cols.size()):
@@ -548,19 +601,6 @@ func _build_focus_layout() -> void:
 			var r := Rect2(p - half, half * 2.0)
 			_focus_bbox = r if first else _focus_bbox.merge(r)
 			first = false
-	# Focus edges (trace rules), then route them with the card-clearance rules.
-	for e in _edges:
-		var f := str(e["from"])
-		var t := str(e["to"])
-		if not (_fpos.has(f) and _fpos.has(t)):
-			continue
-		var route := int(e.get("route", 0))
-		var keep := (route == 0 and (_upstream.has(t) or t == sel) and _upstream.has(f)) \
-			or t == sel or (f == sel and _feeds.has(t))
-		if not keep:
-			continue
-		_focus_edges.append({"from": f, "to": t, "route": route,
-			"gated": bool(e.get("route_gated", false))})
 	_route_focus_edges(members)
 	_focus_bbox = _focus_bbox.grow(220.0)
 
@@ -602,49 +642,78 @@ func _route_focus_edges(members: Dictionary) -> void:
 			var rec: Array = arr[i]
 			port_y["%d:%s" % [int(rec[1]), "o" if bool(rec[2]) else "i"]] = \
 				cy + (float(i) - float(n - 1) * 0.5) * step
-	# 2/3 · Verticals take 14u-spaced lanes in the card-free channel between
-	# columns; column-skipping edges cross intermediate columns at a corridor y
-	# cleared of every card there, corridors nudged apart per use.
-	var lane_next: Dictionary = {}
+	# 2 · Geometry per edge (channels + corridor ys) BEFORE lane assignment: a
+	# lane's position must depend on the edge's vertical span, not edge order.
 	var used_transit: Array = []
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		var cf := int(members[str(fe["from"])])
+		var ct := int(members[str(fe["to"])])
+		var dirn := int(fe["dir"])
+		fe["cf"] = cf
+		fe["ct"] = ct
+		fe["exit_ch"] = cf if dirn == 1 else cf - 1
+		fe["entry_ch"] = ct - 1 if dirn == 1 else ct
+		if int(fe["exit_ch"]) != int(fe["entry_ch"]):
+			var tyy := _f_transit_y(mini(cf, ct) + 1, maxi(cf, ct) - 1,
+				(float(port_y["%d:o" % ei]) + float(port_y["%d:i" % ei])) * 0.5,
+				used_transit)
+			used_transit.append(tyy)
+			fe["ty"] = tyy
+	# 3 · Nested lane assignment (owner 2026-07-22: the steel fan braided): per
+	# channel, SHORTER vertical spans take INNER lanes, so a stub crossing the
+	# channel never cuts through a longer edge's vertical run.
+	var chan_reqs: Dictionary = {}   # channel -> [[span_len, ei, leg]]
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		var oy: float = port_y["%d:o" % ei]
+		var iy: float = port_y["%d:i" % ei]
+		var midy: float = float(fe["ty"]) if fe.has("ty") else iy
+		var xch := int(fe["exit_ch"])
+		if not chan_reqs.has(xch):
+			chan_reqs[xch] = []
+		(chan_reqs[xch] as Array).append([absf(midy - oy), ei, 0])
+		if fe.has("ty"):
+			var ech := int(fe["entry_ch"])
+			if not chan_reqs.has(ech):
+				chan_reqs[ech] = []
+			(chan_reqs[ech] as Array).append([absf(iy - float(fe["ty"])), ei, 1])
+	var lane_x: Dictionary = {}   # "ei:leg" -> world x
+	for ch in chan_reqs:
+		var reqs: Array = chan_reqs[ch]
+		reqs.sort_custom(func(a: Array, b: Array) -> bool:
+			return float(a[0]) < float(b[0]) \
+				or (float(a[0]) == float(b[0]) and int(a[1]) < int(b[1])))
+		for li: int in range(reqs.size()):
+			var rq: Array = reqs[li]
+			lane_x["%d:%d" % [int(rq[1]), int(rq[2])]] = \
+				float(ch) * _FCOL_W + GoodsFlowGraph.CARD_W * 0.5 + _F_LANE_PAD \
+				+ float(li) * _F_LANE_STEP
+	# 4 · Waypoints.
 	for ei: int in range(_focus_edges.size()):
 		var fe: Dictionary = _focus_edges[ei]
 		var f := str(fe["from"])
 		var t := str(fe["to"])
-		var cf := int(members[f])
-		var ct := int(members[t])
 		var dirn := int(fe["dir"])
 		var oy: float = port_y["%d:o" % ei]
 		var iy: float = port_y["%d:i" % ei]
 		var p0 := Vector2((_fpos[f] as Vector2).x + half_w * float(dirn), oy)
 		var p3 := Vector2((_fpos[t] as Vector2).x - half_w * float(dirn), iy)
-		var exit_ch := cf if dirn == 1 else cf - 1
-		var entry_ch := ct - 1 if dirn == 1 else ct
+		var lx_exit := float(lane_x["%d:0" % ei])
 		var wp := PackedVector2Array()
 		wp.append(p0)
-		var lx_exit := _f_lane_x(exit_ch, lane_next)
-		if exit_ch == entry_ch:
+		if not fe.has("ty"):
 			wp.append(Vector2(lx_exit, oy))
 			wp.append(Vector2(lx_exit, iy))
 		else:
-			var lx_entry := _f_lane_x(entry_ch, lane_next)
-			var tyy := _f_transit_y(mini(cf, ct) + 1, maxi(cf, ct) - 1,
-				(oy + iy) * 0.5, used_transit)
-			used_transit.append(tyy)
+			var lx_entry := float(lane_x["%d:1" % ei])
+			var tyy := float(fe["ty"])
 			wp.append(Vector2(lx_exit, oy))
 			wp.append(Vector2(lx_exit, tyy))
 			wp.append(Vector2(lx_entry, tyy))
 			wp.append(Vector2(lx_entry, iy))
 		wp.append(p3)
 		fe["wp"] = wp
-
-
-## x of the next free 14u lane in the channel between focus columns k and k+1.
-func _f_lane_x(k: int, lane_next: Dictionary) -> float:
-	var lane := int(lane_next.get(k, 0))
-	lane_next[k] = lane + 1
-	return float(k) * _FCOL_W + GoodsFlowGraph.CARD_W * 0.5 + _F_LANE_PAD \
-		+ float(lane) * _F_LANE_STEP
 
 
 ## A corridor y crossing focus columns lo..hi clear of every card there by
