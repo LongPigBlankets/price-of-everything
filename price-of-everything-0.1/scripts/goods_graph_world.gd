@@ -85,8 +85,18 @@ var _mode := _Mode.WEB
 # Clicking a good REORGANISES the view around it: the selection + its upstream cone
 # + direct feeds tween from their web positions into a compact relative-depth
 # arrangement; everything else fades out in place. Click empty space to tween back.
+# Focus-view routing (owner 2026-07-22): no run may cross a card, passing runs
+# keep >= _F_CLEAR from cards, and no two edges share a collinear run — ports
+# fan along card edges, verticals take per-channel lanes, column-skipping edges
+# cross through card-free corridors.
+const _FCOL_W := 720.0
+const _FROW_H := 200.0
+const _F_PORT_STEP := 24.0
+const _F_LANE_PAD := 24.0
+const _F_LANE_STEP := 14.0
+const _F_CLEAR := 10.0
 var _fpos: Dictionary = {}        # id -> focus position (world)
-var _focus_edges: Array = []      # [{from,to,route,gated,fan}]
+var _focus_edges: Array = []      # [{from,to,route,gated,dir,wp}]
 var _focus_t := 0.0               # 0 = web, 1 = focus arrangement (animated)
 var _focus_target := 0.0
 var _focus_bbox := Rect2()
@@ -489,8 +499,6 @@ func _exit_focus() -> void:
 func _build_focus_layout() -> void:
 	_fpos.clear()
 	_focus_edges.clear()
-	const FCOL_W := 720.0
-	const FROW_H := 200.0
 	var sel := _selected_id
 	var sel_col := _col_of(sel)
 	var members: Dictionary = {sel: 0}   # id -> relative column
@@ -533,15 +541,14 @@ func _build_focus_layout() -> void:
 			return ((_by_id[a] as Dictionary)["pos"] as Vector2).y \
 				< ((_by_id[b] as Dictionary)["pos"] as Vector2).y)
 		for i: int in range(arr.size()):
-			var p := Vector2(float(c) * FCOL_W,
-				(float(i) - float(arr.size() - 1) * 0.5) * FROW_H)
+			var p := Vector2(float(c) * _FCOL_W,
+				(float(i) - float(arr.size() - 1) * 0.5) * _FROW_H)
 			_fpos[arr[i]] = p
 			var half: Vector2 = (_by_id[arr[i]] as Dictionary)["half"]
 			var r := Rect2(p - half, half * 2.0)
 			_focus_bbox = r if first else _focus_bbox.merge(r)
 			first = false
-	# Focus edges + per-channel fan indices so parallel elbows never collide.
-	var chan: Dictionary = {}   # "cfrom>cto" -> count so far
+	# Focus edges (trace rules), then route them with the card-clearance rules.
 	for e in _edges:
 		var f := str(e["from"])
 		var t := str(e["to"])
@@ -552,12 +559,137 @@ func _build_focus_layout() -> void:
 			or t == sel or (f == sel and _feeds.has(t))
 		if not keep:
 			continue
-		var key := "%d>%d" % [int(members[f]), int(members[t])]
-		var fan := int(chan.get(key, 0))
-		chan[key] = fan + 1
 		_focus_edges.append({"from": f, "to": t, "route": route,
-			"gated": bool(e.get("route_gated", false)), "fan": fan})
+			"gated": bool(e.get("route_gated", false))})
+	_route_focus_edges(members)
 	_focus_bbox = _focus_bbox.grow(220.0)
+
+
+## Orthogonal routes for the focus edges (owner 2026-07-22): no run crosses a
+## card rect; runs that don't touch a card keep >= _F_CLEAR of clearance; no two
+## edges share a collinear run (distinct ports, lanes and corridors).
+func _route_focus_edges(members: Dictionary) -> void:
+	var half_w := GoodsFlowGraph.CARD_W * 0.5
+	# 1 · Ports: every edge end gets its own y on its card edge, ordered by the
+	# other end's y so stubs fan without crossing as they leave the card.
+	var side_edges: Dictionary = {}   # "id|R"/"id|L" -> [[other_y, ei, is_out]]
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		var f := str(fe["from"])
+		var t := str(fe["to"])
+		var dirn := 1 if int(members[t]) >= int(members[f]) else -1
+		fe["dir"] = dirn
+		var fkey := f + ("|R" if dirn == 1 else "|L")
+		var tkey := t + ("|L" if dirn == 1 else "|R")
+		if not side_edges.has(fkey):
+			side_edges[fkey] = []
+		if not side_edges.has(tkey):
+			side_edges[tkey] = []
+		(side_edges[fkey] as Array).append([(_fpos[t] as Vector2).y, ei, true])
+		(side_edges[tkey] as Array).append([(_fpos[f] as Vector2).y, ei, false])
+	var port_y: Dictionary = {}   # "ei:o"/"ei:i" -> world y
+	for key: String in side_edges:
+		var arr: Array = side_edges[key]
+		arr.sort_custom(func(a: Array, b: Array) -> bool:
+			return float(a[0]) < float(b[0]) \
+				or (float(a[0]) == float(b[0]) and int(a[1]) < int(b[1])))
+		var cy := (_fpos[key.split("|")[0]] as Vector2).y
+		var n := arr.size()
+		var step := 0.0
+		if n > 1:
+			step = minf(_F_PORT_STEP, (GoodsFlowGraph.CARD_H - 28.0) / float(n - 1))
+		for i: int in range(n):
+			var rec: Array = arr[i]
+			port_y["%d:%s" % [int(rec[1]), "o" if bool(rec[2]) else "i"]] = \
+				cy + (float(i) - float(n - 1) * 0.5) * step
+	# 2/3 · Verticals take 14u-spaced lanes in the card-free channel between
+	# columns; column-skipping edges cross intermediate columns at a corridor y
+	# cleared of every card there, corridors nudged apart per use.
+	var lane_next: Dictionary = {}
+	var used_transit: Array = []
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		var f := str(fe["from"])
+		var t := str(fe["to"])
+		var cf := int(members[f])
+		var ct := int(members[t])
+		var dirn := int(fe["dir"])
+		var oy: float = port_y["%d:o" % ei]
+		var iy: float = port_y["%d:i" % ei]
+		var p0 := Vector2((_fpos[f] as Vector2).x + half_w * float(dirn), oy)
+		var p3 := Vector2((_fpos[t] as Vector2).x - half_w * float(dirn), iy)
+		var exit_ch := cf if dirn == 1 else cf - 1
+		var entry_ch := ct - 1 if dirn == 1 else ct
+		var wp := PackedVector2Array()
+		wp.append(p0)
+		var lx_exit := _f_lane_x(exit_ch, lane_next)
+		if exit_ch == entry_ch:
+			wp.append(Vector2(lx_exit, oy))
+			wp.append(Vector2(lx_exit, iy))
+		else:
+			var lx_entry := _f_lane_x(entry_ch, lane_next)
+			var tyy := _f_transit_y(mini(cf, ct) + 1, maxi(cf, ct) - 1,
+				(oy + iy) * 0.5, used_transit)
+			used_transit.append(tyy)
+			wp.append(Vector2(lx_exit, oy))
+			wp.append(Vector2(lx_exit, tyy))
+			wp.append(Vector2(lx_entry, tyy))
+			wp.append(Vector2(lx_entry, iy))
+		wp.append(p3)
+		fe["wp"] = wp
+
+
+## x of the next free 14u lane in the channel between focus columns k and k+1.
+func _f_lane_x(k: int, lane_next: Dictionary) -> float:
+	var lane := int(lane_next.get(k, 0))
+	lane_next[k] = lane + 1
+	return float(k) * _FCOL_W + GoodsFlowGraph.CARD_W * 0.5 + _F_LANE_PAD \
+		+ float(lane) * _F_LANE_STEP
+
+
+## A corridor y crossing focus columns lo..hi clear of every card there by
+## >= _F_CLEAR, as close as possible to want_y, and >= 12u from prior corridors.
+func _f_transit_y(lo: int, hi: int, want_y: float, used: Array) -> float:
+	var blocked: Array = []   # [y0, y1] per card, grown by the clearance
+	for id: String in _fpos:
+		var p: Vector2 = _fpos[id]
+		var c := int(roundf(p.x / _FCOL_W))
+		if c < lo or c > hi:
+			continue
+		var half: Vector2 = (_by_id[id] as Dictionary)["half"]
+		blocked.append([p.y - half.y - _F_CLEAR, p.y + half.y + _F_CLEAR])
+	blocked.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	var merged: Array = []
+	for b: Array in blocked:
+		if merged.is_empty() or float(b[0]) > float((merged[-1] as Array)[1]):
+			merged.append([float(b[0]), float(b[1])])
+		else:
+			(merged[-1] as Array)[1] = maxf(float((merged[-1] as Array)[1]), float(b[1]))
+	var best := want_y
+	var bestd := INF
+	for gi: int in range(merged.size() + 1):
+		var g0 := -1.0e9 if gi == 0 else float((merged[gi - 1] as Array)[1])
+		var g1 := 1.0e9 if gi == merged.size() else float((merged[gi] as Array)[0])
+		if g1 - g0 < 4.0:
+			continue
+		var y := clampf(want_y, g0 + 2.0, g1 - 2.0)
+		var guard := 0
+		while guard < 32 and _f_too_close(y, used) and y < g1 - 2.0:
+			y = clampf(y + 14.0, g0 + 2.0, g1 - 2.0)
+			guard += 1
+		if _f_too_close(y, used):
+			continue
+		if absf(y - want_y) < bestd:
+			bestd = absf(y - want_y)
+			best = y
+	return best
+
+
+func _f_too_close(y: float, used: Array) -> bool:
+	for u in used:
+		if absf(float(u) - y) < 12.0:
+			return true
+	return false
 
 
 ## Nearest tier column for a good's web position (columns are non-uniform; see
@@ -866,13 +998,9 @@ func _fillet_polyline(wp: PackedVector2Array) -> PackedVector2Array:
 func _draw_focus_edge(fe: Dictionary, alpha_mul: float) -> void:
 	if alpha_mul <= 0.003:
 		return
-	var a: Vector2 = _fpos.get(str(fe["from"]), Vector2.ZERO)
-	var b: Vector2 = _fpos.get(str(fe["to"]), Vector2.ZERO)
-	var half := GoodsFlowGraph.CARD_W * 0.5
-	var p0 := Vector2(a.x + half, a.y)
-	var p3 := Vector2(b.x - half, b.y)
-	var elbow := (p0.x + p3.x) * 0.5 + float(int(fe.get("fan", 0))) * 28.0
-	var wp := PackedVector2Array([p0, Vector2(elbow, p0.y), Vector2(elbow, p3.y), p3])
+	var wp: PackedVector2Array = fe.get("wp", PackedVector2Array())
+	if wp.size() < 2:
+		return
 	var route := clampi(int(fe.get("route", 0)), 0, _ROUTE_COLORS.size() - 1)
 	var color := Color(_ROUTE_COLORS[route], alpha_mul)
 	var pts := _fillet_polyline(wp)
@@ -880,10 +1008,11 @@ func _draw_focus_edge(fe: Dictionary, alpha_mul: float) -> void:
 		_draw_dashed_polyline(pts, color, _EDGE_WIDTH * 1.3)
 	else:
 		draw_polyline(pts, color, _EDGE_WIDTH * 1.3, true)
+	var tip := wp[wp.size() - 1]
 	var tip_dir := (pts[pts.size() - 1] - pts[pts.size() - 2]).normalized()
 	var nrm := Vector2(-tip_dir.y, tip_dir.x)
 	draw_colored_polygon(PackedVector2Array([
-		p3, p3 - tip_dir * 9.0 + nrm * 5.4, p3 - tip_dir * 9.0 - nrm * 5.4]), color)
+		tip, tip - tip_dir * 9.0 + nrm * 5.4, tip - tip_dir * 9.0 - nrm * 5.4]), color)
 
 
 func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 1.0,
