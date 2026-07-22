@@ -30,9 +30,11 @@ const _ROUTE_COLORS: Array[Color] = [
 	Color("#7ec98a"),   # 2 · second alternate
 	Color("#b48ad9"),   # 3 · third alternate
 ]
-const _EDGE_DIM := Color(0.995, 0.931, 0.763, 0.08)      # unrelated line while tracing
-const _REST_ALPHA_BASE := 0.60
-const _REST_ALPHA_ALT := 0.48
+# Resting/unrelated web alpha (owner 2026-07-21): the always-on web at 0.6 alpha
+# was the screen's dominant noise, and nobody traces a line through 638 crossings
+# without selecting anyway. At rest the web is a faint ghost (0.0 = none at all);
+# hover lights a card's direct edges, click lights the full chain.
+const _REST_GHOST_ALPHA := 0.10
 
 const _EDGE_WIDTH := 2.5                                  # world units (scales with zoom)
 const _ZOOM_MIN := 0.18                                   # absolute fallback; the live floor is _zoom_floor
@@ -540,26 +542,30 @@ func _draw_edge(e: Dictionary, tracing: bool) -> void:
 
 	var route := clampi(int(e.get("route", 0)), 0, _ROUTE_COLORS.size() - 1)
 	var route_c: Color = _ROUTE_COLORS[route]
-	var color := Color(route_c, _REST_ALPHA_BASE if route == 0 else _REST_ALPHA_ALT)
-	var width := _EDGE_WIDTH
+	var from_id := str(e["from"])
+	var to_id := str(e["to"])
+	var lit := false
 	if tracing:
-		var from_id := str(e["from"])
-		var to_id := str(e["to"])
 		# The lit chain beyond the selection is the BASE chain (route-0 edges over the
 		# base cone); at the selection itself every route lights, colour-coded.
 		var in_cone: bool = route == 0 \
 			and (_upstream.has(to_id) or to_id == _selected_id) and _upstream.has(from_id)
 		var out_of_sel: bool = from_id == _selected_id and _feeds.has(to_id)
-		if in_cone or to_id == _selected_id or out_of_sel:
-			# Related edges keep their ROUTE colour (the up/down reading comes from
-			# which side of the selection they sit), just lit and heavier.
-			color = route_c
-			width = _EDGE_WIDTH * 1.3
-		else:
-			color = _EDGE_DIM
-	elif _hover_id != "" and (str(e["from"]) == _hover_id or str(e["to"]) == _hover_id):
+		lit = in_cone or to_id == _selected_id or out_of_sel
+	var color := route_c
+	var width := _EDGE_WIDTH
+	if lit:
+		# Related edges keep their ROUTE colour (the up/down reading comes from
+		# which side of the selection they sit), just lit and heavier.
+		width = _EDGE_WIDTH * 1.3
+	elif not tracing and _hover_id != "" and (from_id == _hover_id or to_id == _hover_id):
 		color = Color(route_c, 0.9)
 		width = _EDGE_WIDTH * 1.2
+	else:
+		# Resting web, or unrelated to the active trace: ghost or nothing.
+		if _REST_GHOST_ALPHA <= 0.001:
+			return
+		color = Color(route_c, _REST_GHOST_ALPHA if route == 0 else _REST_GHOST_ALPHA * 0.8)
 
 	var pts := _fillet_polyline(wp)
 	if bool(e.get("route_gated", false)):
