@@ -152,16 +152,23 @@ static func build() -> Dictionary:
 		for o in outs:
 			_index_append(anyout, str(o.get("internal_name", "")), r)
 
-	# 3 · Defining recipe per good (simplest game-start, gated fallback).
+	# 3 · Defining recipe per good (simplest game-start, gated fallback). Owner
+	# rule 2026-07-22: a Recycling (waste-to-good) recipe can NEVER be the base —
+	# scrap->steel may be the simplest route, but coal+iron IS steel. Recycling
+	# routes stay as alternates; a recycling base is allowed only when no other
+	# producer exists at all (even a gated non-recycling route outranks it).
 	var chosen: Dictionary = {}   # internal -> {recipe, gated}
 	for internal in goods:
 		var producers: Array = primary.get(internal, anyout.get(internal, []))
 		if producers.is_empty():
 			continue
-		var base: Array = producers.filter(
+		var making: Array = producers.filter(
+			func(r: Dictionary) -> bool: return str(r.get("recipe_type", "")).to_lower() != "recycling")
+		var pool: Array = making if not making.is_empty() else producers
+		var base: Array = pool.filter(
 			func(r: Dictionary) -> bool: return str(r.get("required_research", "")) == "")
 		if base.is_empty():
-			chosen[internal] = {"recipe": _simplest(producers), "gated": true}
+			chosen[internal] = {"recipe": _simplest(pool), "gated": true}
 		else:
 			chosen[internal] = {"recipe": _simplest(base), "gated": false}
 
@@ -489,22 +496,22 @@ static func _simplest(recipes: Array) -> Dictionary:
 ## Element shape: {recipe: Dictionary, gated: bool}. routes[0] always equals the
 ## good's defining recipe (same ordering as _simplest / the chosen fallback).
 static func _ranked_producers(producers: Array) -> Array:
-	var ungated: Array = []
-	var gated: Array = []
-	for r in producers:
-		if str(r.get("required_research", "")) == "":
-			ungated.append(r)
-		else:
-			gated.append(r)
+	# Mirrors the base-recipe chooser exactly (owner 2026-07-22: Recycling can
+	# never be the base), so the grid always leads with the defining recipe:
+	# non-recycling ungated > non-recycling gated > recycling ungated > gated.
 	var by_key := func(a: Dictionary, b: Dictionary) -> bool:
 		return _key_less(_simplest_key(a), _simplest_key(b))
-	ungated.sort_custom(by_key)
-	gated.sort_custom(by_key)
+	var tiers: Array = [[], [], [], []]
+	for r in producers:
+		var rec := str(r.get("recipe_type", "")).to_lower() == "recycling"
+		var gat := str(r.get("required_research", "")) != ""
+		(tiers[(2 if rec else 0) + (1 if gat else 0)] as Array).append(r)
 	var out: Array = []
-	for r in ungated:
-		out.append({"recipe": r, "gated": false})
-	for r in gated:
-		out.append({"recipe": r, "gated": true})
+	for ti: int in range(4):
+		var arr: Array = tiers[ti]
+		arr.sort_custom(by_key)
+		for r in arr:
+			out.append({"recipe": r, "gated": ti % 2 == 1})
 	return out
 
 
