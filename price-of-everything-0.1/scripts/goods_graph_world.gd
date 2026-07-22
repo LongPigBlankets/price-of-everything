@@ -78,8 +78,20 @@ var _feeds: Dictionary = {}        # internal -> true, direct consumers of the s
 # WEB shows the base chain; selecting a good expands its card with two buttons
 # ("See alternate recipes" -> GRID of per-recipe minigraph islands, "Encyclopedia
 # entry" -> deep-link). GRID keeps the same pan/zoom camera and a big Back button.
-enum _Mode { WEB, GRID }
+enum _Mode { WEB, GRID, FOCUS }
 var _mode := _Mode.WEB
+
+# --- focus reorg (owner UX 2026-07-21) ----------------------------------------------
+# Clicking a good REORGANISES the view around it: the selection + its upstream cone
+# + direct feeds tween from their web positions into a compact relative-depth
+# arrangement; everything else fades out in place. Click empty space to tween back.
+var _fpos: Dictionary = {}        # id -> focus position (world)
+var _focus_edges: Array = []      # [{from,to,route,gated,fan}]
+var _focus_t := 0.0               # 0 = web, 1 = focus arrangement (animated)
+var _focus_target := 0.0
+var _focus_bbox := Rect2()
+var _focus_saved_zoom := 1.0      # web camera restored on exit (GRID has its own save)
+var _focus_saved_offset := Vector2.ZERO
 var _grid_islands: Array = []      # [{recipe, gated, rect, header, inputs:[{...}], out_rect}]
 var _grid_bbox := Rect2()
 var _saved_zoom := 1.0
@@ -234,6 +246,8 @@ func _reset_view() -> void:
 
 
 func _layout_bbox() -> Rect2:
+	if _mode == _Mode.FOCUS:
+		return _focus_bbox
 	if _mode == _Mode.GRID:
 		# Headroom above the islands for the screen-space Back button.
 		var gb := _grid_bbox
@@ -329,6 +343,12 @@ func _zoom_at(screen_pos: Vector2, factor: float) -> void:
 func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
+	if _focus_t != _focus_target:
+		_focus_t = move_toward(_focus_t, _focus_target, delta / 0.28)
+		if _focus_target <= 0.0 and _focus_t <= 0.0:
+			_fpos.clear()
+			_focus_edges.clear()
+		queue_redraw()
 	if _search_box != null and _search_box.has_focus():
 		return   # typing in the search bar must not WASD-pan the camera
 	var dir := Vector2.ZERO
@@ -347,6 +367,13 @@ func _process(delta: float) -> void:
 
 func _node_at(screen_pos: Vector2) -> String:
 	var w := _screen_to_world(screen_pos)
+	if _mode == _Mode.FOCUS:
+		# Only the focus members are visible/clickable, at their focus positions.
+		for id in _fpos:
+			var half2: Vector2 = (_by_id.get(str(id), {}) as Dictionary).get("half", Vector2.ZERO)
+			if Rect2((_fpos[id] as Vector2) - half2, half2 * 2.0).has_point(w):
+				return str(id)
+		return ""
 	for n in _nodes:
 		var half: Vector2 = n["half"]
 		if Rect2((n["pos"] as Vector2) - half, half * 2.0).has_point(w):
@@ -407,13 +434,14 @@ func _click_at(screen_pos: Vector2) -> void:
 ## Select a good by internal name and light its trace. Public for the screenshot
 ## tool and the phase-2 deep links (e.g. "show me steel" from the encyclopedia).
 func select_good(id: String) -> void:
-	if _mode != _Mode.WEB or not _by_id.has(id):
+	if (_mode != _Mode.WEB and _mode != _Mode.FOCUS) or not _by_id.has(id):
 		return
 	_selected_id = id
 	_upstream = _collect_upstream(id)
 	_feeds.clear()
 	for f in (_by_id.get(id, {}) as Dictionary).get("feeds", []):
 		_feeds[f] = true
+	_enter_focus()
 	good_selected.emit(id)
 	queue_redraw()
 
@@ -421,12 +449,129 @@ func select_good(id: String) -> void:
 func _clear_selection() -> void:
 	if _selected_id == "":
 		return
+	_exit_focus()
 	_selected_id = ""
 	_upstream.clear()
 	_feeds.clear()
 	_tray_buttons.clear()
 	_hover_tray = -1
 	queue_redraw()
+
+
+## Enter (or re-target) the focus arrangement for the current selection. The web
+## camera is saved only on the WEB -> FOCUS transition; refocusing keeps it.
+func _enter_focus() -> void:
+	if _mode == _Mode.WEB:
+		_focus_saved_zoom = _view_zoom
+		_focus_saved_offset = _view_offset
+	_build_focus_layout()
+	_mode = _Mode.FOCUS
+	_focus_target = 1.0
+	_hover_id = ""
+	_reset_view()   # fit the camera to the focus arrangement (_layout_bbox branches)
+
+
+func _exit_focus() -> void:
+	if _mode != _Mode.FOCUS:
+		return
+	_mode = _Mode.WEB
+	_focus_target = 0.0
+	_view_zoom = _focus_saved_zoom
+	_view_offset = _focus_saved_offset
+	_zoom_floor = _fit_zoom()
+	queue_redraw()
+
+
+## Relative-depth arrangement: selection at the origin, its upstream cone in
+## columns to the left (by tier distance), direct feeds one column right; each
+## column stacked and centred. Focus edges follow the trace rules (base cone +
+## every route into the selection + selection -> feeds).
+func _build_focus_layout() -> void:
+	_fpos.clear()
+	_focus_edges.clear()
+	const FCOL_W := 720.0
+	const FROW_H := 200.0
+	var sel := _selected_id
+	var sel_col := _col_of(sel)
+	var members: Dictionary = {sel: 0}   # id -> relative column
+	for id in _upstream:
+		if _by_id.has(str(id)):
+			members[str(id)] = mini(-1, _col_of(str(id)) - sel_col)
+	for id in _feeds:
+		if _by_id.has(str(id)):
+			members[str(id)] = maxi(1, _col_of(str(id)) - sel_col)
+	# Compress relative columns to consecutive ranks: web columns are SUB-columns,
+	# so raw inputs can sit many columns from the selection — without compression
+	# a short chain spreads across a void. Order is preserved, steps become uniform.
+	var neg: Array = []
+	var pos_cols: Array = []
+	for id: String in members:
+		var c: int = members[id]
+		if c < 0 and not neg.has(c):
+			neg.append(c)
+		elif c > 0 and not pos_cols.has(c):
+			pos_cols.append(c)
+	neg.sort()
+	pos_cols.sort()
+	var remap: Dictionary = {0: 0}
+	for i: int in range(neg.size()):
+		remap[neg[i]] = -(neg.size() - i)
+	for i: int in range(pos_cols.size()):
+		remap[pos_cols[i]] = i + 1
+	var buckets: Dictionary = {}
+	for id: String in members:
+		var c: int = int(remap[members[id]])
+		members[id] = c
+		if not buckets.has(c):
+			buckets[c] = []
+		(buckets[c] as Array).append(id)
+	var first := true
+	for c: int in buckets:
+		var arr: Array = buckets[c]
+		# Stable, familiar order: keep the web's vertical order within a column.
+		arr.sort_custom(func(a: String, b: String) -> bool:
+			return ((_by_id[a] as Dictionary)["pos"] as Vector2).y \
+				< ((_by_id[b] as Dictionary)["pos"] as Vector2).y)
+		for i: int in range(arr.size()):
+			var p := Vector2(float(c) * FCOL_W,
+				(float(i) - float(arr.size() - 1) * 0.5) * FROW_H)
+			_fpos[arr[i]] = p
+			var half: Vector2 = (_by_id[arr[i]] as Dictionary)["half"]
+			var r := Rect2(p - half, half * 2.0)
+			_focus_bbox = r if first else _focus_bbox.merge(r)
+			first = false
+	# Focus edges + per-channel fan indices so parallel elbows never collide.
+	var chan: Dictionary = {}   # "cfrom>cto" -> count so far
+	for e in _edges:
+		var f := str(e["from"])
+		var t := str(e["to"])
+		if not (_fpos.has(f) and _fpos.has(t)):
+			continue
+		var route := int(e.get("route", 0))
+		var keep := (route == 0 and (_upstream.has(t) or t == sel) and _upstream.has(f)) \
+			or t == sel or (f == sel and _feeds.has(t))
+		if not keep:
+			continue
+		var key := "%d>%d" % [int(members[f]), int(members[t])]
+		var fan := int(chan.get(key, 0))
+		chan[key] = fan + 1
+		_focus_edges.append({"from": f, "to": t, "route": route,
+			"gated": bool(e.get("route_gated", false)), "fan": fan})
+	_focus_bbox = _focus_bbox.grow(220.0)
+
+
+## Nearest tier column for a good's web position (columns are non-uniform; see
+## GoodsFlowGraph.col_x).
+func _col_of(id: String) -> int:
+	var x := (((_by_id.get(id, {}) as Dictionary).get("pos", Vector2.ZERO)) as Vector2).x
+	var best := 0
+	var bestd := INF
+	for c in range(_tier_count):
+		var d := absf(GoodsFlowGraph.col_x(c) - x)
+		if d < bestd:
+			bestd = d
+			best = c
+	return best
 
 
 ## Transitive closure of the selection's BASE-recipe inputs (its canonical supply
@@ -458,6 +603,41 @@ func _draw() -> void:
 	var font := get_theme_default_font()
 	if _mode == _Mode.GRID:
 		_draw_grid(font)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		return
+	# Focus reorg: while focused (or animating in/out), members tween between web
+	# and focus positions, everything else cross-fades, and edges swap between the
+	# ghost web and the on-demand focus routing.
+	var ft := _focus_t
+	if _mode == _Mode.FOCUS or ft > 0.001:
+		if ft < 0.6:
+			# Web chrome (tier plates, lane labels) belongs to the resting view —
+			# drop it early in the tween instead of leaving it full-strength.
+			_draw_tier_headers(font)
+			_draw_lanes()
+		if ft < 0.999:
+			for e in _edges:
+				_draw_edge(e, false, 1.0 - ft)
+		for fe in _focus_edges:
+			_draw_focus_edge(fe, ft)
+		var fsel: Dictionary = {}
+		for n in _nodes:
+			var id := str(n["id"])
+			if _fpos.has(id):
+				if id == _selected_id:
+					fsel = n
+					continue
+				_draw_card(n, font, false, 1.0, (n["pos"] as Vector2).lerp(_fpos[id], ft))
+			elif ft < 0.999:
+				_draw_card(n, font, false, 1.0 - ft)
+		_tray_buttons.clear()
+		if not fsel.is_empty():
+			var spos := (fsel["pos"] as Vector2).lerp(_fpos[str(fsel["id"])], ft)
+			_draw_card(fsel, font, false, 1.0, spos)
+			if ft > 0.999:
+				var copy: Dictionary = fsel.duplicate()
+				copy["pos"] = spos
+				_draw_card_tray(copy, font)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		return
 	_draw_tier_headers(font)
@@ -570,7 +750,9 @@ func _draw_metal_plate(rect: Rect2) -> void:
 ## axis-aligned and lane-separated by the builder), corners rounded with quarter-arc
 ## fillets, tinted by the trace state. Back-edges are NOT x-monotonic: cycle edges
 ## dive below the deepest row and run right-to-left, so cull on the waypoint bbox.
-func _draw_edge(e: Dictionary, tracing: bool) -> void:
+func _draw_edge(e: Dictionary, tracing: bool, alpha_mul: float = 1.0) -> void:
+	if alpha_mul <= 0.003:
+		return
 	var wp: PackedVector2Array = e["waypoints"]
 	if wp.size() < 2:
 		return
@@ -607,6 +789,7 @@ func _draw_edge(e: Dictionary, tracing: bool) -> void:
 		if _REST_GHOST_ALPHA <= 0.001:
 			return
 		color = Color(route_c, _REST_GHOST_ALPHA if route == 0 else _REST_GHOST_ALPHA * 0.8)
+	color.a *= alpha_mul
 
 	var pts := _fillet_polyline(wp)
 	if bool(e.get("route_gated", false)):
@@ -677,8 +860,37 @@ func _fillet_polyline(wp: PackedVector2Array) -> PackedVector2Array:
 	return out
 
 
-func _draw_card(node: Dictionary, font: Font, tracing: bool) -> void:
-	var pos: Vector2 = node["pos"]
+## Straight elbow route for one focus edge (few edges, generous spacing — no lane
+## machinery needed): out of the source's right edge, elbow between the columns
+## (fanned per channel so parallels never overdraw), into the target's left edge.
+func _draw_focus_edge(fe: Dictionary, alpha_mul: float) -> void:
+	if alpha_mul <= 0.003:
+		return
+	var a: Vector2 = _fpos.get(str(fe["from"]), Vector2.ZERO)
+	var b: Vector2 = _fpos.get(str(fe["to"]), Vector2.ZERO)
+	var half := GoodsFlowGraph.CARD_W * 0.5
+	var p0 := Vector2(a.x + half, a.y)
+	var p3 := Vector2(b.x - half, b.y)
+	var elbow := (p0.x + p3.x) * 0.5 + float(int(fe.get("fan", 0))) * 28.0
+	var wp := PackedVector2Array([p0, Vector2(elbow, p0.y), Vector2(elbow, p3.y), p3])
+	var route := clampi(int(fe.get("route", 0)), 0, _ROUTE_COLORS.size() - 1)
+	var color := Color(_ROUTE_COLORS[route], alpha_mul)
+	var pts := _fillet_polyline(wp)
+	if bool(fe.get("gated", false)):
+		_draw_dashed_polyline(pts, color, _EDGE_WIDTH * 1.3)
+	else:
+		draw_polyline(pts, color, _EDGE_WIDTH * 1.3, true)
+	var tip_dir := (pts[pts.size() - 1] - pts[pts.size() - 2]).normalized()
+	var nrm := Vector2(-tip_dir.y, tip_dir.x)
+	draw_colored_polygon(PackedVector2Array([
+		p3, p3 - tip_dir * 9.0 + nrm * 5.4, p3 - tip_dir * 9.0 - nrm * 5.4]), color)
+
+
+func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 1.0,
+		pos_override: Vector2 = Vector2.INF) -> void:
+	if alpha_mul <= 0.01:
+		return
+	var pos: Vector2 = node["pos"] if pos_override == Vector2.INF else pos_override
 	var half: Vector2 = node["half"]
 	var rect := Rect2(pos - half, half * 2.0)
 	# Cull cards outside the viewport (world-space test against the visible window).
@@ -691,7 +903,7 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool) -> void:
 	var gated: bool = node.get("gated", false)
 	var related := not tracing \
 		or id == _selected_id or _upstream.has(id) or _feeds.has(id)
-	var alpha := 1.0 if related else 0.38
+	var alpha := (1.0 if related else 0.38) * alpha_mul
 	# Research-gated goods rest dimmed, but a gated good that is PART of the active
 	# trace stays fully lit — the lock tag (below) carries the "gated" signal instead,
 	# so transparency never has two meanings at once.
@@ -924,7 +1136,9 @@ func _search_pick(internal: String) -> void:
 func _exit_grid() -> void:
 	if _mode != _Mode.GRID:
 		return
-	_mode = _Mode.WEB
+	# A live selection means the grid was entered FROM the focus arrangement —
+	# return there (its layout and _focus_t survived the grid detour).
+	_mode = _Mode.FOCUS if _selected_id != "" and not _fpos.is_empty() else _Mode.WEB
 	_back_btn.visible = false
 	_search_box.visible = true
 	_grid_islands.clear()
