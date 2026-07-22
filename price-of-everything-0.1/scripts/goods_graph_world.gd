@@ -38,7 +38,7 @@ const _REST_GHOST_ALPHA := 0.10
 
 const _EDGE_WIDTH := 2.5                                  # world units (scales with zoom)
 const _ZOOM_MIN := 0.07                                   # absolute fallback; the live floor is _zoom_floor (swimlane chart is tall)
-const _LANE_GUTTER := 620.0                               # left room for swimlane labels
+const _LANE_GUTTER := 840.0                               # left room for swimlane labels (2-line names)
 const _ZOOM_MAX := 1.0                                    # icon chips are 100 world units -> 100 px at max zoom-in
 const _ZOOM_STEP := 1.12
 const _PAN_SPEED := 900.0
@@ -518,11 +518,17 @@ func _draw_lanes() -> void:
 		var top := float(lane.get("top", 0.0))
 		var height := float(lane.get("height", 0.0))
 		var tint: Color = lane.get("color", _MUTED)
-		var label := str(lane.get("label", ""))
-		# Left-gutter label, vertically centred in the band, right-aligned to the chart edge.
-		var text_w := _BEBAS.get_string_size(label, HORIZONTAL_ALIGNMENT_RIGHT, -1, LFS).x
-		draw_string(_BEBAS, Vector2(left - text_w - 72.0, top + height * 0.5 + LFS * 0.34),
-			label, HORIZONTAL_ALIGNMENT_RIGHT, -1, LFS, Color(tint, 0.85))
+		# Long lane names split on " & " into stacked right-aligned lines.
+		var lines := str(lane.get("label", "")).split(" & ")
+		var fs := LFS if lines.size() == 1 else 84
+		var line_h := fs * 1.06
+		var block_top := top + height * 0.5 - line_h * float(lines.size() - 1) * 0.5
+		for li in range(lines.size()):
+			var text := lines[li] if li == 0 else "& " + lines[li]
+			var text_w := _BEBAS.get_string_size(text, HORIZONTAL_ALIGNMENT_RIGHT, -1, fs).x
+			draw_string(_BEBAS, Vector2(left - text_w - 72.0,
+				block_top + line_h * float(li) + fs * 0.34),
+				text, HORIZONTAL_ALIGNMENT_RIGHT, -1, fs, Color(tint, 0.85))
 		# Faint lane rule through the middle of the gap below (not after the last lane).
 		if i < _lanes.size() - 1:
 			var next_top := float((_lanes[i + 1] as Dictionary).get("top", 0.0))

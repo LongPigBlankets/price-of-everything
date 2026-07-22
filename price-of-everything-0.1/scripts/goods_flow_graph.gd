@@ -40,7 +40,15 @@ const INTER_TIER_GAP := 500.0
 # lanes that run horizontally across every tier — the vertical axis reads as
 # taxonomy. Crossing-minimisation still runs, but only WITHIN a (column, lane)
 # cell; a lane's band height is its tallest cell and cells centre in the band.
-const LANE_ORDER: Array[String] = ["energy", "metals", "construction", "chems", "agribio", "waste"]
+const LANE_ORDER: Array[String] = ["energy", "petrochem", "metals", "construction",
+	"vehicles", "electronics", "chems", "agribio", "waste"]
+# Display names where the CSV slug isn't the full lane title (owner 2026-07-22).
+# " & " splits into stacked label lines in the renderer.
+const LANE_LABELS := {
+	"petrochem": "HYDROCARBONS & PETROCHEM",
+	"vehicles": "VEHICLES & PARTS",
+	"electronics": "ELECTRICALS & ELECTRONICS",
+}
 const LANE_GAP_Y := 140.0   # vertical air between lane bands
 
 
@@ -88,6 +96,9 @@ const CAT_COLOR := {
 	"consumer": Color("#c98ad9"), "hightech": Color("#e0c44f"),
 	"component": Color("#b0b0c0"), "power": Color("#f2c14e"),
 	"waste": Color("#8a8a8a"),
+	# Owner re-taxonomy 2026-07-22: the three lanes carved out of construction.
+	"petrochem": Color("#c2703e"), "vehicles": Color("#c98ad9"),
+	"electronics": Color("#4fc7d4"),
 }
 const TYPE_COLOR := {
 	"raw": Color("#9aa0a8"), "intermediate": Color("#8ea3ba"),
@@ -324,9 +335,10 @@ static func build() -> Dictionary:
 		if not lane_h.has(lr):
 			continue
 		lane_top[lr] = ly
-		var label := LANE_ORDER[lr].to_upper() if lr < LANE_ORDER.size() else "OTHER"
+		var slug := LANE_ORDER[lr] if lr < LANE_ORDER.size() else ""
+		var label: String = LANE_LABELS.get(slug, slug.to_upper()) if slug != "" else "OTHER"
 		lanes_meta.append({"label": label, "top": ly, "height": float(lane_h[lr]),
-			"color": CAT_COLOR.get(LANE_ORDER[lr] if lr < LANE_ORDER.size() else "", DEFAULT_COLOR)})
+			"color": CAT_COLOR.get(slug, DEFAULT_COLOR)})
 		ly += float(lane_h[lr]) + LANE_GAP_Y
 
 	var ypos: Dictionary = {}     # layout vertex -> row-centre y

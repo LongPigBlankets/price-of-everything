@@ -5783,8 +5783,12 @@ func _test_goods_flow_graph() -> void:
 				hsep_ok = false
 	_check(hsep_ok, "goods graph: x-overlapping horizontal runs sit >=5.9 units apart (owner floor: 5 px at max zoom 1.0)")
 	var crossings := int(g.get("crossings", -1))
-	_check(crossings >= 0 and crossings < 900,
-		"goods graph: %d crossings after ordering (< 900 canary; banded columns)" % crossings)
+	# Canary re-baselined 2026-07-22: the 9-lane category swimlanes constrain the
+	# ordering (crossing-minimisation only runs within a lane cell), measured 1032
+	# vs 816 under 6 lanes / 638 unconstrained. Crossings are a regression tripwire,
+	# not a visual floor — the resting web renders at ghost alpha.
+	_check(crossings >= 0 and crossings < 1400,
+		"goods graph: %d crossings after ordering (< 1400 canary; swimlane-constrained)" % crossings)
 
 func _check(ok: bool, name: String) -> void:
 	if ok:
