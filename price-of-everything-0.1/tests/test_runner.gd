@@ -5726,6 +5726,15 @@ func _test_goods_flow_graph() -> void:
 		if int(band_index.get(good_band.get(str(e["to"]), ""), 0)) 				< int(band_index.get(good_band.get(str(e["from"]), ""), 0)):
 			no_backward = false
 	_check(no_backward, "goods graph: no base edge flows backward across bands")
+	# Owner rule 2026-07-22: a Recycling recipe can never be the base — steel's
+	# base is Steelmaking (iron_ingots + coal), with Scrap Recycling an alternate.
+	var steel_base_srcs: Array = []
+	for e in edges:
+		if str(e["to"]) == "steel" and int(e.get("route", 0)) == 0:
+			steel_base_srcs.append(str(e["from"]))
+	_check(steel_base_srcs.has("iron_ingots") and steel_base_srcs.has("coal")
+		and not steel_base_srcs.has("scrap"),
+		"goods graph: steel base = iron_ingots+coal, never scrap (recycling rule)")
 	_check((g.get("bands", []) as Array).size() == 5,
 		"goods graph: five labelled band regions")
 	var g2: Dictionary = GoodsFlowGraph.build()
@@ -5783,8 +5792,12 @@ func _test_goods_flow_graph() -> void:
 				hsep_ok = false
 	_check(hsep_ok, "goods graph: x-overlapping horizontal runs sit >=5.9 units apart (owner floor: 5 px at max zoom 1.0)")
 	var crossings := int(g.get("crossings", -1))
-	_check(crossings >= 0 and crossings < 900,
-		"goods graph: %d crossings after ordering (< 900 canary; banded columns)" % crossings)
+	# Canary re-baselined 2026-07-22: the 9-lane category swimlanes constrain the
+	# ordering (crossing-minimisation only runs within a lane cell), measured 1032
+	# vs 816 under 6 lanes / 638 unconstrained. Crossings are a regression tripwire,
+	# not a visual floor — the resting web renders at ghost alpha.
+	_check(crossings >= 0 and crossings < 1400,
+		"goods graph: %d crossings after ordering (< 1400 canary; swimlane-constrained)" % crossings)
 
 func _check(ok: bool, name: String) -> void:
 	if ok:

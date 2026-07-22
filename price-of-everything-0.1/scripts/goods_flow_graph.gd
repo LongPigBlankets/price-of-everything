@@ -35,6 +35,26 @@ const COL_W := 820.0
 # still less than half the old ~420u; tiers get a clearly wider 500u.
 const INTRA_COL_GAP := 200.0
 const INTER_TIER_GAP := 500.0
+
+# Swimlanes (owner 2026-07-21): the resting view groups goods into CATEGORY
+# lanes that run horizontally across every tier — the vertical axis reads as
+# taxonomy. Crossing-minimisation still runs, but only WITHIN a (column, lane)
+# cell; a lane's band height is its tallest cell and cells centre in the band.
+const LANE_ORDER: Array[String] = ["energy", "petrochem", "metals", "construction",
+	"vehicles", "electronics", "chems", "agribio", "waste"]
+# Display names where the CSV slug isn't the full lane title (owner 2026-07-22).
+# " & " splits into stacked label lines in the renderer.
+const LANE_LABELS := {
+	"petrochem": "HYDROCARBONS & PETROCHEM",
+	"vehicles": "VEHICLES & PARTS",
+	"electronics": "ELECTRICALS & ELECTRONICS",
+}
+const LANE_GAP_Y := 140.0   # vertical air between lane bands
+
+
+static func _lane_rank_of(cat: String) -> int:
+	var i := LANE_ORDER.find(cat)
+	return i if i >= 0 else LANE_ORDER.size()   # unknown categories sink to a trailing OTHER lane
 static var _col_x: PackedFloat32Array = PackedFloat32Array()
 const ROW_H := 160.0
 const DUMMY_ROW_H := 72.0   # dummy (edge-corridor) rows are compressed: no card to fit
@@ -76,6 +96,9 @@ const CAT_COLOR := {
 	"consumer": Color("#c98ad9"), "hightech": Color("#e0c44f"),
 	"component": Color("#b0b0c0"), "power": Color("#f2c14e"),
 	"waste": Color("#8a8a8a"),
+	# Owner re-taxonomy 2026-07-22: the three lanes carved out of construction.
+	"petrochem": Color("#c2703e"), "vehicles": Color("#c98ad9"),
+	"electronics": Color("#4fc7d4"),
 }
 const TYPE_COLOR := {
 	"raw": Color("#9aa0a8"), "intermediate": Color("#8ea3ba"),
@@ -129,16 +152,23 @@ static func build() -> Dictionary:
 		for o in outs:
 			_index_append(anyout, str(o.get("internal_name", "")), r)
 
-	# 3 · Defining recipe per good (simplest game-start, gated fallback).
+	# 3 · Defining recipe per good (simplest game-start, gated fallback). Owner
+	# rule 2026-07-22: a Recycling (waste-to-good) recipe can NEVER be the base —
+	# scrap->steel may be the simplest route, but coal+iron IS steel. Recycling
+	# routes stay as alternates; a recycling base is allowed only when no other
+	# producer exists at all (even a gated non-recycling route outranks it).
 	var chosen: Dictionary = {}   # internal -> {recipe, gated}
 	for internal in goods:
 		var producers: Array = primary.get(internal, anyout.get(internal, []))
 		if producers.is_empty():
 			continue
-		var base: Array = producers.filter(
+		var making: Array = producers.filter(
+			func(r: Dictionary) -> bool: return str(r.get("recipe_type", "")).to_lower() != "recycling")
+		var pool: Array = making if not making.is_empty() else producers
+		var base: Array = pool.filter(
 			func(r: Dictionary) -> bool: return str(r.get("required_research", "")) == "")
 		if base.is_empty():
-			chosen[internal] = {"recipe": _simplest(producers), "gated": true}
+			chosen[internal] = {"recipe": _simplest(pool), "gated": true}
 		else:
 			chosen[internal] = {"recipe": _simplest(base), "gated": false}
 
@@ -255,8 +285,13 @@ static func build() -> Dictionary:
 	# depth[from], e.g. waste_water -> water) get no dummies; _route_edges sends them
 	# below the web instead.
 	var ldepth: Dictionary = {}   # layout vertex (good or dummy) -> column
+	# Swimlane rank per layout vertex: goods by category; a dummy inherits its
+	# edge's TARGET lane, so a cross-lane edge dives to the destination lane at
+	# its first hop and runs its corridor there.
+	var lane_rank: Dictionary = {}
 	for n: String in nodes_sorted:
 		ldepth[n] = int(depth[n])
+		lane_rank[n] = _lane_rank_of(str((goods[n] as Dictionary).get("category", "")))
 	var ladj: Dictionary = {}     # layout vertex -> chain successors (next column)
 	var lradj: Dictionary = {}    # layout vertex -> chain predecessors
 	var chains: Dictionary = {}   # edge index -> Array[String] chain, from .. to
@@ -272,6 +307,7 @@ static func build() -> Dictionary:
 		for d: int in range(int(depth[u]) + 1, int(depth[v])):
 			var dummy := "~%s>%s@%d" % [u, v, d]
 			ldepth[dummy] = d
+			lane_rank[dummy] = int(lane_rank[v])
 			chain.append(dummy)
 		chain.append(v)
 		chains[ei] = chain
@@ -284,25 +320,45 @@ static func build() -> Dictionary:
 	# compressed DUMMY_ROW_H — so each row's centre y is the cumulative sum of the
 	# heights above it, and every column is vertically centred by its TOTAL height
 	# (not its row count) against the tallest column.
-	var cols := _order_columns(ldepth, ladj, lradj, goods, maxd)
+	var cols := _order_columns(ldepth, ladj, lradj, goods, maxd, lane_rank)
 	var crossings := count_crossings(cols, ladj, maxd)
-	var col_height: Dictionary = {}   # column -> sum of its row heights
-	var max_height := 0.0
+
+	# 7b · Swimlane vertical placement: a lane band's height is its tallest
+	# (column, lane) cell; each cell centres within its band; bands stack with
+	# LANE_GAP_Y of air. Empty lanes take no space.
+	var lane_count := LANE_ORDER.size() + 1
+	var cell_h: Dictionary = {}     # "lane:column" -> summed row heights
+	var lane_h: Dictionary = {}     # lane rank -> band height
 	for d: int in range(maxd + 1):
-		var total := 0.0
 		for v: String in cols.get(d, []) as Array:
-			total += ROW_H if goods.has(v) else DUMMY_ROW_H
-		col_height[d] = total
-		max_height = maxf(max_height, total)
+			var lr := int(lane_rank.get(v, lane_count - 1))
+			var key := "%d:%d" % [lr, d]
+			cell_h[key] = float(cell_h.get(key, 0.0)) + (ROW_H if goods.has(v) else DUMMY_ROW_H)
+			lane_h[lr] = maxf(float(lane_h.get(lr, 0.0)), float(cell_h[key]))
+	var lane_top: Dictionary = {}
+	var lanes_meta: Array = []
+	var ly := 0.0
+	for lr: int in range(lane_count):
+		if not lane_h.has(lr):
+			continue
+		lane_top[lr] = ly
+		var slug := LANE_ORDER[lr] if lr < LANE_ORDER.size() else ""
+		var label: String = LANE_LABELS.get(slug, slug.to_upper()) if slug != "" else "OTHER"
+		lanes_meta.append({"label": label, "top": ly, "height": float(lane_h[lr]),
+			"color": CAT_COLOR.get(slug, DEFAULT_COLOR)})
+		ly += float(lane_h[lr]) + LANE_GAP_Y
 
 	var ypos: Dictionary = {}     # layout vertex -> row-centre y
 	for d: int in range(maxd + 1):
-		var col: Array = cols.get(d, [])
-		var y := (max_height - float(col_height[d])) * 0.5
-		for i: int in range(col.size()):
-			var h := ROW_H if goods.has(col[i]) else DUMMY_ROW_H
-			ypos[col[i]] = y + h * 0.5
-			y += h
+		var cursor: Dictionary = {}   # lane rank -> next free y in this column
+		for v: String in cols.get(d, []) as Array:
+			var lr := int(lane_rank.get(v, lane_count - 1))
+			if not cursor.has(lr):
+				var cell := float(cell_h.get("%d:%d" % [lr, d], 0.0))
+				cursor[lr] = float(lane_top[lr]) + (float(lane_h[lr]) - cell) * 0.5
+			var h := ROW_H if goods.has(v) else DUMMY_ROW_H
+			ypos[v] = float(cursor[lr]) + h * 0.5
+			cursor[lr] = float(cursor[lr]) + h
 
 	var by_id: Dictionary = {}
 	var nodes: Array = []
@@ -319,10 +375,13 @@ static func build() -> Dictionary:
 			nodes.append(rec)
 
 	# 8 · Orthogonal edge geometry (adds "waypoints" to every edge dict).
-	_route_edges(edges, chains, backs, ldepth, ypos, max_height)
+	# Back-edge corridors dive below the whole chart: its bottom is the last
+	# lane's bottom edge (ly overshoots by one trailing LANE_GAP_Y).
+	_route_edges(edges, chains, backs, ldepth, ypos, ly - LANE_GAP_Y)
 
 	return {"nodes": nodes, "by_id": by_id, "edges": edges, "tier_count": maxd + 1,
 		"bands": bands_meta,
+		"lanes": lanes_meta,
 		"crossings": crossings}
 
 
@@ -437,22 +496,22 @@ static func _simplest(recipes: Array) -> Dictionary:
 ## Element shape: {recipe: Dictionary, gated: bool}. routes[0] always equals the
 ## good's defining recipe (same ordering as _simplest / the chosen fallback).
 static func _ranked_producers(producers: Array) -> Array:
-	var ungated: Array = []
-	var gated: Array = []
-	for r in producers:
-		if str(r.get("required_research", "")) == "":
-			ungated.append(r)
-		else:
-			gated.append(r)
+	# Mirrors the base-recipe chooser exactly (owner 2026-07-22: Recycling can
+	# never be the base), so the grid always leads with the defining recipe:
+	# non-recycling ungated > non-recycling gated > recycling ungated > gated.
 	var by_key := func(a: Dictionary, b: Dictionary) -> bool:
 		return _key_less(_simplest_key(a), _simplest_key(b))
-	ungated.sort_custom(by_key)
-	gated.sort_custom(by_key)
+	var tiers: Array = [[], [], [], []]
+	for r in producers:
+		var rec := str(r.get("recipe_type", "")).to_lower() == "recycling"
+		var gat := str(r.get("required_research", "")) != ""
+		(tiers[(2 if rec else 0) + (1 if gat else 0)] as Array).append(r)
 	var out: Array = []
-	for r in ungated:
-		out.append({"recipe": r, "gated": false})
-	for r in gated:
-		out.append({"recipe": r, "gated": true})
+	for ti: int in range(4):
+		var arr: Array = tiers[ti]
+		arr.sort_custom(by_key)
+		for r in arr:
+			out.append({"recipe": r, "gated": ti % 2 == 1})
 	return out
 
 
@@ -488,7 +547,7 @@ static func _visit_depth(u: String, radj: Dictionary, depth: Dictionary, state: 
 ## stopping as soon as a round fails to improve it. Fully deterministic: every sort
 ## key ends in a unique id or row index.
 static func _order_columns(ldepth: Dictionary, ladj: Dictionary, lradj: Dictionary,
-		goods: Dictionary, maxd: int) -> Dictionary:
+		goods: Dictionary, maxd: int, lane_rank: Dictionary) -> Dictionary:
 	var cols: Dictionary = {}
 	for v: String in _sorted_keys(ldepth):
 		var d: int = ldepth[v]
@@ -499,10 +558,10 @@ static func _order_columns(ldepth: Dictionary, ladj: Dictionary, lradj: Dictiona
 		var arr: Array = cols.get(d, [])
 		var keyed: Array = []
 		for id: String in arr:
-			keyed.append([_seed_key(id, goods), id])
+			keyed.append([int(lane_rank.get(id, 0)), _seed_key(id, goods), id])
 		keyed.sort_custom(func(a: Array, b: Array) -> bool: return _key_less(a, b))
 		for i: int in range(arr.size()):
-			arr[i] = (keyed[i] as Array)[1]
+			arr[i] = (keyed[i] as Array)[2]
 
 	var best := count_crossings(cols, ladj, maxd)
 	var best_cols := _copy_cols(cols)
@@ -512,16 +571,16 @@ static func _order_columns(ldepth: Dictionary, ladj: Dictionary, lradj: Dictiona
 		for _sweep: int in range(BARY_SWEEPS):
 			var pos := _positions(cols, maxd)
 			for d: int in range(1, maxd + 1):
-				_bary_sort(cols, d, lradj, pos, use_median)
+				_bary_sort(cols, d, lradj, pos, lane_rank, use_median)
 			pos = _positions(cols, maxd)
 			for d: int in range(maxd - 1, -1, -1):
-				_bary_sort(cols, d, ladj, pos, use_median)
+				_bary_sort(cols, d, ladj, pos, lane_rank, use_median)
 		# Transpose and sift only ever apply strictly-improving moves, so this inner
 		# polish loop is monotone decreasing — run it to its local fixpoint.
 		var c := count_crossings(cols, ladj, maxd)
 		for _polish: int in range(8):
-			_transpose(cols, ladj, lradj, maxd)
-			_sift(cols, ladj, lradj, maxd)
+			_transpose(cols, ladj, lradj, maxd, lane_rank)
+			_sift(cols, ladj, lradj, maxd, lane_rank)
 			var c2 := count_crossings(cols, ladj, maxd)
 			if c2 == c:
 				break
@@ -564,16 +623,17 @@ static func _positions(cols: Dictionary, maxd: int) -> Dictionary:
 ## current row (so ties keep their relative order and the unstable sort stays
 ## deterministic).
 static func _bary_sort(cols: Dictionary, d: int, neighbours: Dictionary, pos: Dictionary,
-		use_median: bool = false) -> void:
+		lane_rank: Dictionary, use_median: bool = false) -> void:
 	var arr: Array = cols.get(d, [])
 	var keyed: Array = []
 	for id: String in arr:
 		var key := _median(id, neighbours, pos) if use_median \
 			else _barycentre(id, neighbours, pos)
-		keyed.append([key, int(pos.get(id, 0)), id])
+		# Lane rank leads the key: barycentre only reorders WITHIN a lane cell.
+		keyed.append([int(lane_rank.get(id, 0)), key, int(pos.get(id, 0)), id])
 	keyed.sort_custom(func(a: Array, b: Array) -> bool: return _key_less(a, b))
 	for i: int in range(arr.size()):
-		arr[i] = (keyed[i] as Array)[2]
+		arr[i] = (keyed[i] as Array)[3]
 
 
 static func _barycentre(n: String, neighbours: Dictionary, pos: Dictionary) -> float:
@@ -606,7 +666,8 @@ static func _median(n: String, neighbours: Dictionary, pos: Dictionary) -> float
 ## strictly reduces the crossing count of the column's two adjacent channels. A swap
 ## of neighbours u/w only changes crossings between u's and w's own segments, so the
 ## gain is counted over those pairs alone. Mutates cols in place; guarded loop.
-static func _transpose(cols: Dictionary, ladj: Dictionary, lradj: Dictionary, maxd: int) -> void:
+static func _transpose(cols: Dictionary, ladj: Dictionary, lradj: Dictionary, maxd: int,
+		lane_rank: Dictionary) -> void:
 	var pos := _positions(cols, maxd)
 	var improved := true
 	var guard := 0
@@ -618,6 +679,8 @@ static func _transpose(cols: Dictionary, ladj: Dictionary, lradj: Dictionary, ma
 			for i: int in range(arr.size() - 1):
 				var u: String = arr[i]
 				var w: String = arr[i + 1]
+				if int(lane_rank.get(u, 0)) != int(lane_rank.get(w, 0)):
+					continue   # never swap across a lane boundary
 				if _swap_gain(u, w, ladj, pos) + _swap_gain(u, w, lradj, pos) > 0:
 					arr[i] = w
 					arr[i + 1] = u
@@ -631,7 +694,8 @@ static func _transpose(cols: Dictionary, ladj: Dictionary, lradj: Dictionary, ma
 ## on adjacent-column rows (never on rows inside v's own column), so the cumulative
 ## swap gains give the exact crossing delta for every landing row in one scan.
 ## Deterministic: columns in order, vertices by degree (desc) then id.
-static func _sift(cols: Dictionary, ladj: Dictionary, lradj: Dictionary, maxd: int) -> void:
+static func _sift(cols: Dictionary, ladj: Dictionary, lradj: Dictionary, maxd: int,
+		lane_rank: Dictionary) -> void:
 	var pos := _positions(cols, maxd)
 	for d: int in range(maxd + 1):
 		var arr: Array = cols.get(d, [])
@@ -643,16 +707,21 @@ static func _sift(cols: Dictionary, ladj: Dictionary, lradj: Dictionary, maxd: i
 		for entry: Array in order:
 			var v: String = entry[1]
 			var i: int = pos[v]
+			var vlane := int(lane_rank.get(v, 0))
 			var best_delta := 0
 			var best_pos := i
 			var delta := 0
-			for k: int in range(i - 1, -1, -1):   # bubble v upward
+			for k: int in range(i - 1, -1, -1):   # bubble v upward, within its lane
+				if int(lane_rank.get(arr[k], 0)) != vlane:
+					break
 				delta -= _swap_gain(arr[k], v, ladj, pos) + _swap_gain(arr[k], v, lradj, pos)
 				if delta < best_delta:
 					best_delta = delta
 					best_pos = k
 			delta = 0
-			for k: int in range(i + 1, arr.size()):   # bubble v downward
+			for k: int in range(i + 1, arr.size()):   # bubble v downward, within its lane
+				if int(lane_rank.get(arr[k], 0)) != vlane:
+					break
 				delta -= _swap_gain(v, arr[k], ladj, pos) + _swap_gain(v, arr[k], lradj, pos)
 				if delta < best_delta:
 					best_delta = delta
