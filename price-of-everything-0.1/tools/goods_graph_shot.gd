@@ -47,7 +47,7 @@ func _ready() -> void:
 		sbox.text = ""
 		world.call("_refresh_search", "")
 		world.call("select_good", TRACE_GOOD)
-		for _i in range(10):
+		for _i in range(80):   # let the focus-reorg tween (0.28 s) settle (120 Hz displays)
 			await get_tree().process_frame
 		get_viewport().get_texture().get_image().save_png("res://goods_graph_trace.png")
 		print("[SHOT] saved goods_graph_trace.png (traced %s, card tray expanded)" % TRACE_GOOD)

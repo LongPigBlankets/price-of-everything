@@ -37,7 +37,8 @@ const _ROUTE_COLORS: Array[Color] = [
 const _REST_GHOST_ALPHA := 0.10
 
 const _EDGE_WIDTH := 2.5                                  # world units (scales with zoom)
-const _ZOOM_MIN := 0.18                                   # absolute fallback; the live floor is _zoom_floor
+const _ZOOM_MIN := 0.07                                   # absolute fallback; the live floor is _zoom_floor (swimlane chart is tall)
+const _LANE_GUTTER := 840.0                               # left room for swimlane labels (2-line names)
 const _ZOOM_MAX := 1.0                                    # icon chips are 100 world units -> 100 px at max zoom-in
 const _ZOOM_STEP := 1.12
 const _PAN_SPEED := 900.0
@@ -60,6 +61,7 @@ var _by_id: Dictionary = {}
 var _edges: Array = []
 var _tier_count: int = 0
 var _bands: Array = []   # [{label, first, count}] — one header plate per band region
+var _lanes: Array = []   # [{label, top, height, color}] — category swimlane bands
 
 var _view_zoom: float = 1.0
 var _view_offset: Vector2 = Vector2.ZERO
@@ -76,8 +78,32 @@ var _feeds: Dictionary = {}        # internal -> true, direct consumers of the s
 # WEB shows the base chain; selecting a good expands its card with two buttons
 # ("See alternate recipes" -> GRID of per-recipe minigraph islands, "Encyclopedia
 # entry" -> deep-link). GRID keeps the same pan/zoom camera and a big Back button.
-enum _Mode { WEB, GRID }
+enum _Mode { WEB, GRID, FOCUS }
 var _mode := _Mode.WEB
+
+# --- focus reorg (owner UX 2026-07-21) ----------------------------------------------
+# Clicking a good REORGANISES the view around it: the selection + its upstream cone
+# + direct feeds tween from their web positions into a compact relative-depth
+# arrangement; everything else fades out in place. Click empty space to tween back.
+# Focus-view routing (owner 2026-07-22): no run may cross a card, passing runs
+# keep >= _F_CLEAR from cards, and no two edges share a collinear run — ports
+# fan along card edges, verticals take per-channel lanes, column-skipping edges
+# cross through card-free corridors.
+const _FCOL_W := 720.0
+const _FROW_H := 200.0
+const _F_PORT_STEP := 24.0
+const _F_LANE_PAD := 24.0
+const _F_LANE_STEP := 14.0
+const _F_CLEAR := 10.0
+const _F_CORRIDOR_SEP := 28.0   # min gap between parallel long corridors
+const _F_PORT_AVOID := 16.0     # corridors keep this far from port-stub runs
+var _fpos: Dictionary = {}        # id -> focus position (world)
+var _focus_edges: Array = []      # [{from,to,route,gated,dir,wp}]
+var _focus_t := 0.0               # 0 = web, 1 = focus arrangement (animated)
+var _focus_target := 0.0
+var _focus_bbox := Rect2()
+var _focus_saved_zoom := 1.0      # web camera restored on exit (GRID has its own save)
+var _focus_saved_offset := Vector2.ZERO
 var _grid_islands: Array = []      # [{recipe, gated, rect, header, inputs:[{...}], out_rect}]
 var _grid_bbox := Rect2()
 var _saved_zoom := 1.0
@@ -171,6 +197,7 @@ func set_graph(graph: Dictionary) -> void:
 	_edges = graph.get("edges", [])
 	_tier_count = int(graph.get("tier_count", 0))
 	_bands = graph.get("bands", [])
+	_lanes = graph.get("lanes", [])
 	_hover_id = ""
 	_selected_id = ""
 	_upstream.clear()
@@ -231,6 +258,8 @@ func _reset_view() -> void:
 
 
 func _layout_bbox() -> Rect2:
+	if _mode == _Mode.FOCUS:
+		return _focus_bbox
 	if _mode == _Mode.GRID:
 		# Headroom above the islands for the screen-space Back button.
 		var gb := _grid_bbox
@@ -259,6 +288,10 @@ func _layout_bbox() -> Rect2:
 	# Headroom for the tier-header plates and the gap beneath them.
 	bb.position.y -= _HEADER_GAP + _PLATE_H + 40.0
 	bb.size.y += _HEADER_GAP + _PLATE_H + 40.0
+	# Left gutter for the swimlane category labels.
+	if not _lanes.is_empty():
+		bb.position.x -= _LANE_GUTTER
+		bb.size.x += _LANE_GUTTER
 	return bb
 
 
@@ -322,6 +355,12 @@ func _zoom_at(screen_pos: Vector2, factor: float) -> void:
 func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
+	if _focus_t != _focus_target:
+		_focus_t = move_toward(_focus_t, _focus_target, delta / 0.28)
+		if _focus_target <= 0.0 and _focus_t <= 0.0:
+			_fpos.clear()
+			_focus_edges.clear()
+		queue_redraw()
 	if _search_box != null and _search_box.has_focus():
 		return   # typing in the search bar must not WASD-pan the camera
 	var dir := Vector2.ZERO
@@ -340,6 +379,13 @@ func _process(delta: float) -> void:
 
 func _node_at(screen_pos: Vector2) -> String:
 	var w := _screen_to_world(screen_pos)
+	if _mode == _Mode.FOCUS:
+		# Only the focus members are visible/clickable, at their focus positions.
+		for id in _fpos:
+			var half2: Vector2 = (_by_id.get(str(id), {}) as Dictionary).get("half", Vector2.ZERO)
+			if Rect2((_fpos[id] as Vector2) - half2, half2 * 2.0).has_point(w):
+				return str(id)
+		return ""
 	for n in _nodes:
 		var half: Vector2 = n["half"]
 		if Rect2((n["pos"] as Vector2) - half, half * 2.0).has_point(w):
@@ -400,13 +446,14 @@ func _click_at(screen_pos: Vector2) -> void:
 ## Select a good by internal name and light its trace. Public for the screenshot
 ## tool and the phase-2 deep links (e.g. "show me steel" from the encyclopedia).
 func select_good(id: String) -> void:
-	if _mode != _Mode.WEB or not _by_id.has(id):
+	if (_mode != _Mode.WEB and _mode != _Mode.FOCUS) or not _by_id.has(id):
 		return
 	_selected_id = id
 	_upstream = _collect_upstream(id)
 	_feeds.clear()
 	for f in (_by_id.get(id, {}) as Dictionary).get("feeds", []):
 		_feeds[f] = true
+	_enter_focus()
 	good_selected.emit(id)
 	queue_redraw()
 
@@ -414,12 +461,463 @@ func select_good(id: String) -> void:
 func _clear_selection() -> void:
 	if _selected_id == "":
 		return
+	_exit_focus()
 	_selected_id = ""
 	_upstream.clear()
 	_feeds.clear()
 	_tray_buttons.clear()
 	_hover_tray = -1
 	queue_redraw()
+
+
+## Enter (or re-target) the focus arrangement for the current selection. The web
+## camera is saved only on the WEB -> FOCUS transition; refocusing keeps it.
+func _enter_focus() -> void:
+	if _mode == _Mode.WEB:
+		_focus_saved_zoom = _view_zoom
+		_focus_saved_offset = _view_offset
+	_build_focus_layout()
+	_mode = _Mode.FOCUS
+	_focus_target = 1.0
+	_hover_id = ""
+	_reset_view()   # fit the camera to the focus arrangement (_layout_bbox branches)
+
+
+func _exit_focus() -> void:
+	if _mode != _Mode.FOCUS:
+		return
+	_mode = _Mode.WEB
+	_focus_target = 0.0
+	_view_zoom = _focus_saved_zoom
+	_view_offset = _focus_saved_offset
+	_zoom_floor = _fit_zoom()
+	queue_redraw()
+
+
+## Relative-depth arrangement: selection at the origin, its upstream cone in
+## columns to the left (by tier distance), direct feeds one column right; each
+## column stacked and centred. Focus edges follow the trace rules (base cone +
+## every route into the selection + selection -> feeds).
+func _build_focus_layout() -> void:
+	_fpos.clear()
+	_focus_edges.clear()
+	var sel := _selected_id
+	# 1 · Kept edges first (trace rules) — the column logic below needs them to
+	# detect within-band chains.
+	for e in _edges:
+		var ef := str(e["from"])
+		var et := str(e["to"])
+		var route := int(e.get("route", 0))
+		var member_f := ef == sel or _upstream.has(ef) or _feeds.has(ef)
+		var member_t := et == sel or _upstream.has(et) or _feeds.has(et)
+		if not (member_f and member_t and _by_id.has(ef) and _by_id.has(et)):
+			continue
+		var keep := (route == 0 and (_upstream.has(et) or et == sel) and _upstream.has(ef)) \
+			or et == sel or (ef == sel and _feeds.has(et))
+		if not keep:
+			continue
+		_focus_edges.append({"from": ef, "to": et, "route": route,
+			"gated": bool(e.get("route_gated", false))})
+	# 2 · Focus columns by TIER BAND (owner 2026-07-22): same-band members share
+	# one column and stack vertically — iron ore + coal sit up-down, not in a
+	# row — UNLESS a kept edge links two members of the band (a within-band
+	# chain), which splits that band into web-order sub-columns.
+	var col_band: Dictionary = {}
+	for bi: int in range(_bands.size()):
+		var bnd: Dictionary = _bands[bi]
+		var b0 := int(bnd.get("first", 0))
+		for c: int in range(b0, b0 + int(bnd.get("count", 1))):
+			col_band[c] = bi
+	var sel_band := int(col_band.get(_col_of(sel), 0))
+	var members: Dictionary = {sel: 0.0}   # id -> sortable column key (band*100+sub)
+	for id in _upstream:
+		if _by_id.has(str(id)):
+			var bd := int(col_band.get(_col_of(str(id)), 0)) - sel_band
+			members[str(id)] = float(mini(-1, bd)) * 100.0
+	for id in _feeds:
+		if _by_id.has(str(id)):
+			# +1 shift keeps same-band feeds (e.g. motor for steel) clear of the
+			# selection column while later bands stay separated.
+			var bd := int(col_band.get(_col_of(str(id)), 0)) - sel_band
+			members[str(id)] = float(maxi(1, bd + 1)) * 100.0
+	var groups: Dictionary = {}
+	for id: String in members:
+		var gk: float = members[id]
+		if not groups.has(gk):
+			groups[gk] = []
+		(groups[gk] as Array).append(id)
+	for gk in groups:
+		var garr: Array = groups[gk]
+		if garr.size() < 2 or float(gk) == 0.0:
+			continue
+		var internal := false
+		for fe in _focus_edges:
+			if garr.has(str(fe["from"])) and garr.has(str(fe["to"])):
+				internal = true
+				break
+		if not internal:
+			continue
+		var wcols: Array = []
+		for id: String in garr:
+			var wc := _col_of(id)
+			if not wcols.has(wc):
+				wcols.append(wc)
+		wcols.sort()
+		for id: String in garr:
+			members[id] = float(gk) + float(wcols.find(_col_of(id)))
+	# 3 · Compress the keys to consecutive integer columns (order preserved).
+	var neg: Array = []
+	var pos_cols: Array = []
+	for id: String in members:
+		var ck: float = members[id]
+		if ck < 0.0 and not neg.has(ck):
+			neg.append(ck)
+		elif ck > 0.0 and not pos_cols.has(ck):
+			pos_cols.append(ck)
+	neg.sort()
+	pos_cols.sort()
+	var remap: Dictionary = {0.0: 0}
+	for i: int in range(neg.size()):
+		remap[neg[i]] = -(neg.size() - i)
+	for i: int in range(pos_cols.size()):
+		remap[pos_cols[i]] = i + 1
+	var buckets: Dictionary = {}
+	for id: String in members:
+		var c: int = int(remap[members[id]])
+		members[id] = c
+		if not buckets.has(c):
+			buckets[c] = []
+		(buckets[c] as Array).append(id)
+	var first := true
+	for c: int in buckets:
+		var arr: Array = buckets[c]
+		# Stable, familiar order: keep the web's vertical order within a column.
+		arr.sort_custom(func(a: String, b: String) -> bool:
+			return ((_by_id[a] as Dictionary)["pos"] as Vector2).y \
+				< ((_by_id[b] as Dictionary)["pos"] as Vector2).y)
+		for i: int in range(arr.size()):
+			var p := Vector2(float(c) * _FCOL_W,
+				(float(i) - float(arr.size() - 1) * 0.5) * _FROW_H)
+			_fpos[arr[i]] = p
+			var half: Vector2 = (_by_id[arr[i]] as Dictionary)["half"]
+			var r := Rect2(p - half, half * 2.0)
+			_focus_bbox = r if first else _focus_bbox.merge(r)
+			first = false
+	_route_focus_edges(members)
+	_focus_bbox = _focus_bbox.grow(220.0)
+
+
+## Orthogonal routes for the focus edges (owner 2026-07-22): no run crosses a
+## card rect; runs that don't touch a card keep >= _F_CLEAR of clearance; no two
+## edges share a collinear run (distinct ports, lanes and corridors).
+func _route_focus_edges(members: Dictionary) -> void:
+	var half_w := GoodsFlowGraph.CARD_W * 0.5
+	# 1 · Directions and channels.
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		var cf := int(members[str(fe["from"])])
+		var ct := int(members[str(fe["to"])])
+		var dirn := 1 if ct >= cf else -1
+		fe["dir"] = dirn
+		fe["cf"] = cf
+		fe["ct"] = ct
+		fe["exit_ch"] = cf if dirn == 1 else cf - 1
+		fe["entry_ch"] = ct - 1 if dirn == 1 else ct
+	# 2 · PASS-1 ports anchored by the far card's centre, to seed corridor picks.
+	var anchors: Dictionary = {}
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		anchors["%d:o" % ei] = (_fpos[str(fe["to"])] as Vector2).y
+		anchors["%d:i" % ei] = (_fpos[str(fe["from"])] as Vector2).y
+	var port_y := _assign_focus_ports(anchors)
+	# 3 · Corridors for column-skipping edges, chosen by MINIMUM TOTAL VERTICAL
+	# TRAVEL (owner 2026-07-22: coal->steel must go over the top of iron ingots,
+	# not dive below — the general rule, not a special case). Corridors also keep
+	# clear of each other and of every port-stub run.
+	var used_transit: Array = []
+	var all_port_ys: Array = port_y.values()
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		if int(fe["exit_ch"]) != int(fe["entry_ch"]):
+			var cf := int(fe["cf"])
+			var ct := int(fe["ct"])
+			var tyy := _f_transit_y(mini(cf, ct) + 1, maxi(cf, ct) - 1,
+				float(port_y["%d:o" % ei]), float(port_y["%d:i" % ei]),
+				used_transit, all_port_ys)
+			used_transit.append(tyy)
+			fe["ty"] = tyy
+	# 4 · PASS-2 ports: a skip edge's real departure direction is its CORRIDOR,
+	# so both of its ports re-anchor to the corridor y — the topmost port leads
+	# to the top corridor and stubs never cross leaving the card.
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		if fe.has("ty"):
+			anchors["%d:o" % ei] = float(fe["ty"])
+			anchors["%d:i" % ei] = float(fe["ty"])
+	port_y = _assign_focus_ports(anchors)
+	# 5 · Lane ordering per channel by MINIMUM PAIRWISE CROSSINGS (owner
+	# 2026-07-22b: coal->ingots cut through coal->steel's corridor run —
+	# shortest-span nesting only prevents riser braiding and is blind to the
+	# horizontal runs that continue past a lane). Each leg in a channel is a Z:
+	# entry stub at ys, vertical to ye, exit run at ye, with both horizontals
+	# reaching past every other lane. For any two legs the crossing count
+	# depends ONLY on which lane sits left of the other, so the best order is a
+	# linear-arrangement problem — solved exactly (subset DP) per channel.
+	var chan_reqs: Dictionary = {}   # channel -> [[ei, leg, ys, ye, dir]]
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		var oy: float = port_y["%d:o" % ei]
+		var iy: float = port_y["%d:i" % ei]
+		var midy: float = float(fe["ty"]) if fe.has("ty") else iy
+		var dirn := int(fe["dir"])
+		var xch := int(fe["exit_ch"])
+		if not chan_reqs.has(xch):
+			chan_reqs[xch] = []
+		(chan_reqs[xch] as Array).append([ei, 0, oy, midy, dirn])
+		if fe.has("ty"):
+			var ech := int(fe["entry_ch"])
+			if not chan_reqs.has(ech):
+				chan_reqs[ech] = []
+			(chan_reqs[ech] as Array).append([ei, 1, float(fe["ty"]), iy, dirn])
+	var lane_x: Dictionary = {}   # "ei:leg" -> world x
+	for ch in chan_reqs:
+		var order := _f_lane_order(chan_reqs[ch] as Array)
+		for li: int in range(order.size()):
+			var rq: Array = order[li]
+			lane_x["%d:%d" % [int(rq[0]), int(rq[1])]] = \
+				float(ch) * _FCOL_W + GoodsFlowGraph.CARD_W * 0.5 + _F_LANE_PAD \
+				+ float(li) * _F_LANE_STEP
+	# 6 · Waypoints.
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		var f := str(fe["from"])
+		var t := str(fe["to"])
+		var dirn := int(fe["dir"])
+		var oy: float = port_y["%d:o" % ei]
+		var iy: float = port_y["%d:i" % ei]
+		var p0 := Vector2((_fpos[f] as Vector2).x + half_w * float(dirn), oy)
+		var p3 := Vector2((_fpos[t] as Vector2).x - half_w * float(dirn), iy)
+		var lx_exit := float(lane_x["%d:0" % ei])
+		var wp := PackedVector2Array()
+		wp.append(p0)
+		if not fe.has("ty"):
+			wp.append(Vector2(lx_exit, oy))
+			wp.append(Vector2(lx_exit, iy))
+		else:
+			var lx_entry := float(lane_x["%d:1" % ei])
+			var tyy := float(fe["ty"])
+			wp.append(Vector2(lx_exit, oy))
+			wp.append(Vector2(lx_exit, tyy))
+			wp.append(Vector2(lx_entry, tyy))
+			wp.append(Vector2(lx_entry, iy))
+		wp.append(p3)
+		fe["wp"] = wp
+
+
+## A corridor y crossing focus columns lo..hi clear of every card there by
+## >= _F_CLEAR, as close as possible to want_y, and >= 12u from prior corridors.
+## Port assignment: each edge end gets its own y on its card edge, ordered by
+## its anchor (the far card's centre, or the corridor y for skip edges) so the
+## stubs fan without crossing as they leave the card.
+func _assign_focus_ports(anchors: Dictionary) -> Dictionary:
+	var side_edges: Dictionary = {}   # "id|R"/"id|L" -> [[anchor_y, ei, is_out]]
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		var dirn := int(fe["dir"])
+		var fkey := str(fe["from"]) + ("|R" if dirn == 1 else "|L")
+		var tkey := str(fe["to"]) + ("|L" if dirn == 1 else "|R")
+		if not side_edges.has(fkey):
+			side_edges[fkey] = []
+		if not side_edges.has(tkey):
+			side_edges[tkey] = []
+		(side_edges[fkey] as Array).append([float(anchors["%d:o" % ei]), ei, true])
+		(side_edges[tkey] as Array).append([float(anchors["%d:i" % ei]), ei, false])
+	var port_y: Dictionary = {}   # "ei:o"/"ei:i" -> world y
+	for key: String in side_edges:
+		var arr: Array = side_edges[key]
+		arr.sort_custom(func(a: Array, b: Array) -> bool:
+			return float(a[0]) < float(b[0]) \
+				or (float(a[0]) == float(b[0]) and int(a[1]) < int(b[1])))
+		var cy := (_fpos[key.split("|")[0]] as Vector2).y
+		var n := arr.size()
+		var step := 0.0
+		if n > 1:
+			step = minf(_F_PORT_STEP, (GoodsFlowGraph.CARD_H - 28.0) / float(n - 1))
+		for i: int in range(n):
+			var rec: Array = arr[i]
+			port_y["%d:%s" % [int(rec[1]), "o" if bool(rec[2]) else "i"]] = \
+				cy + (float(i) - float(n - 1) * 0.5) * step
+	return port_y
+
+
+## A corridor y crossing focus columns lo..hi, clear of every card there by
+## >= _F_CLEAR, chosen by MINIMUM TOTAL VERTICAL TRAVEL (|oy-y| + |iy-y|) so the
+## route goes over/under obstacles on whichever side is genuinely shorter, and
+## kept >= _F_CORRIDOR_SEP from other corridors / >= _F_PORT_AVOID from every
+## port-stub run so long horizontals never read as one line.
+func _f_transit_y(lo: int, hi: int, oy: float, iy: float, used: Array, port_ys: Array) -> float:
+	var blocked: Array = []   # [y0, y1] per card, grown by the clearance
+	for id: String in _fpos:
+		var p: Vector2 = _fpos[id]
+		var c := int(roundf(p.x / _FCOL_W))
+		if c < lo or c > hi:
+			continue
+		var half: Vector2 = (_by_id[id] as Dictionary)["half"]
+		blocked.append([p.y - half.y - _F_CLEAR, p.y + half.y + _F_CLEAR])
+	blocked.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	var merged: Array = []
+	for b: Array in blocked:
+		if merged.is_empty() or float(b[0]) > float((merged[-1] as Array)[1]):
+			merged.append([float(b[0]), float(b[1])])
+		else:
+			(merged[-1] as Array)[1] = maxf(float((merged[-1] as Array)[1]), float(b[1]))
+	var y_lo := minf(oy, iy)
+	var y_hi := maxf(oy, iy)
+	var best := (oy + iy) * 0.5
+	var best_cost := INF
+	for gi: int in range(merged.size() + 1):
+		var g0 := -1.0e9 if gi == 0 else float((merged[gi - 1] as Array)[1])
+		var g1 := 1.0e9 if gi == merged.size() else float((merged[gi] as Array)[0])
+		if g1 - g0 < 4.0:
+			continue
+		# Travel-optimal y in this gap: anywhere inside [y_lo, y_hi] costs the
+		# minimum; outside, cost grows with distance from that interval.
+		var seed := clampf(clampf((y_lo + y_hi) * 0.5, y_lo, y_hi), g0 + 2.0, g1 - 2.0)
+		for dir_step: int in [0, 1, -1]:
+			var y := seed
+			var guard := 0
+			while guard < 8 and not _f_run_clear(y, used, port_ys):
+				if dir_step == 0:
+					break   # the un-nudged seed only counts if already clear
+				y = clampf(y + float(dir_step) * _F_CORRIDOR_SEP, g0 + 2.0, g1 - 2.0)
+				guard += 1
+				if y <= g0 + 2.0 or y >= g1 - 2.0:
+					break
+			if not _f_run_clear(y, used, port_ys):
+				continue
+			var cost := absf(oy - y) + absf(iy - y)
+			if cost < best_cost:
+				best_cost = cost
+				best = y
+	return best
+
+
+func _f_run_clear(y: float, used: Array, port_ys: Array) -> bool:
+	for u in used:
+		if absf(float(u) - y) < _F_CORRIDOR_SEP:
+			return false
+	for p in port_ys:
+		if absf(float(p) - y) < _F_PORT_AVOID:
+			return false
+	return true
+
+
+## Crossings between two channel legs when `a` takes the lane LEFT of `b`.
+## A leg [ei, leg, ys, ye, dir] is a Z shape: entry stub at ys arriving from
+## its source side (left when dir==1, right when dir==-1), a vertical between
+## ys and ye at its lane, and an exit run at ye leaving to its destination
+## side. Both horizontals extend past every other lane in the channel, so a
+## crossing happens exactly when one leg's horizontal y falls strictly inside
+## the other leg's vertical span on the side that horizontal actually covers.
+func _f_leg_cross(a: Array, b: Array) -> int:
+	var n := 0
+	# b's horizontal on the LEFT side (entry when travelling right, exit when
+	# travelling left) sweeps across a's vertical.
+	if _f_between(float(b[2]) if int(b[4]) == 1 else float(b[3]), a):
+		n += 1
+	# a's horizontal on the RIGHT side sweeps across b's vertical.
+	if _f_between(float(a[3]) if int(a[4]) == 1 else float(a[2]), b):
+		n += 1
+	return n
+
+
+func _f_between(y: float, leg: Array) -> bool:
+	var lo := minf(float(leg[2]), float(leg[3]))
+	var hi := maxf(float(leg[2]), float(leg[3]))
+	return y > lo + 0.5 and y < hi - 0.5
+
+
+## Left-to-right lane order for one channel minimising total pairwise
+## crossings. Pair costs are order-decomposable, so subset DP is exact; past
+## 12 legs (unseen in practice) a deterministic pairwise-improvement bubble
+## keeps it O(n^2).
+func _f_lane_order(reqs: Array) -> Array:
+	var n := reqs.size()
+	if n <= 1:
+		return reqs.duplicate()
+	var base := reqs.duplicate()
+	base.sort_custom(func(a: Array, b: Array) -> bool:
+		return float(a[3]) < float(b[3]) \
+			or (float(a[3]) == float(b[3]) and int(a[0]) < int(b[0])))
+	var w: Array = []   # w[i][j] = crossings if base[i] sits left of base[j]
+	for i: int in range(n):
+		var row := PackedInt32Array()
+		row.resize(n)
+		for j: int in range(n):
+			if i != j:
+				row[j] = _f_leg_cross(base[i] as Array, base[j] as Array)
+		w.append(row)
+	var order: Array = []
+	if n <= 12:
+		var full := (1 << n) - 1
+		var dp := PackedInt32Array()
+		var par := PackedInt32Array()
+		dp.resize(full + 1)
+		par.resize(full + 1)
+		for m: int in range(1, full + 1):
+			dp[m] = 1 << 24
+		for m: int in range(full):
+			if int(dp[m]) >= (1 << 24):
+				continue
+			for k: int in range(n):
+				if m & (1 << k):
+					continue
+				var cost := int(dp[m])
+				for i: int in range(n):
+					if m & (1 << i):
+						cost += int((w[i] as PackedInt32Array)[k])
+				var nm := m | (1 << k)
+				if cost < int(dp[nm]):
+					dp[nm] = cost
+					par[nm] = k
+		var m := full
+		while m != 0:
+			var k := int(par[m])
+			order.push_front(k)
+			m &= ~(1 << k)
+	else:
+		for i: int in range(n):
+			order.append(i)
+		var improved := true
+		var passes := 0
+		while improved and passes < n:
+			improved = false
+			passes += 1
+			for i: int in range(n - 1):
+				var a := int(order[i])
+				var b := int(order[i + 1])
+				if int((w[b] as PackedInt32Array)[a]) < int((w[a] as PackedInt32Array)[b]):
+					order[i] = b
+					order[i + 1] = a
+					improved = true
+	var out: Array = []
+	for idx in order:
+		out.append(base[int(idx)])
+	return out
+
+
+## Nearest tier column for a good's web position (columns are non-uniform; see
+## GoodsFlowGraph.col_x).
+func _col_of(id: String) -> int:
+	var x := (((_by_id.get(id, {}) as Dictionary).get("pos", Vector2.ZERO)) as Vector2).x
+	var best := 0
+	var bestd := INF
+	for c in range(_tier_count):
+		var d := absf(GoodsFlowGraph.col_x(c) - x)
+		if d < bestd:
+			bestd = d
+			best = c
+	return best
 
 
 ## Transitive closure of the selection's BASE-recipe inputs (its canonical supply
@@ -453,7 +951,43 @@ func _draw() -> void:
 		_draw_grid(font)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		return
+	# Focus reorg: while focused (or animating in/out), members tween between web
+	# and focus positions, everything else cross-fades, and edges swap between the
+	# ghost web and the on-demand focus routing.
+	var ft := _focus_t
+	if _mode == _Mode.FOCUS or ft > 0.001:
+		if ft < 0.6:
+			# Web chrome (tier plates, lane labels) belongs to the resting view —
+			# drop it early in the tween instead of leaving it full-strength.
+			_draw_tier_headers(font)
+			_draw_lanes()
+		if ft < 0.999:
+			for e in _edges:
+				_draw_edge(e, false, 1.0 - ft)
+		for fe in _focus_edges:
+			_draw_focus_edge(fe, ft)
+		var fsel: Dictionary = {}
+		for n in _nodes:
+			var id := str(n["id"])
+			if _fpos.has(id):
+				if id == _selected_id:
+					fsel = n
+					continue
+				_draw_card(n, font, false, 1.0, (n["pos"] as Vector2).lerp(_fpos[id], ft))
+			elif ft < 0.999:
+				_draw_card(n, font, false, 1.0 - ft)
+		_tray_buttons.clear()
+		if not fsel.is_empty():
+			var spos := (fsel["pos"] as Vector2).lerp(_fpos[str(fsel["id"])], ft)
+			_draw_card(fsel, font, false, 1.0, spos)
+			if ft > 0.999:
+				var copy: Dictionary = fsel.duplicate()
+				copy["pos"] = spos
+				_draw_card_tray(copy, font)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		return
 	_draw_tier_headers(font)
+	_draw_lanes()
 	var tracing := _selected_id != ""
 	for e in _edges:
 		_draw_edge(e, tracing)
@@ -496,6 +1030,39 @@ func _draw_tier_headers(_font: Font) -> void:
 			HORIZONTAL_ALIGNMENT_CENTER, plate.size.x, FS, _PLATE_TEXT)
 
 
+## Category swimlanes (owner 2026-07-21): each lane gets a left-gutter label in
+## its category colour and a faint separator hairline in the gap below it, so
+## the vertical axis reads as taxonomy without competing with the cards.
+func _draw_lanes() -> void:
+	if _lanes.is_empty():
+		return
+	var left := GoodsFlowGraph.col_x(0) - GoodsFlowGraph.CARD_W * 0.5
+	var right := GoodsFlowGraph.col_x(_tier_count - 1) + GoodsFlowGraph.CARD_W * 0.5
+	const LFS := 120   # sized to stay legible at the (tall chart's) fit zoom
+	for i in range(_lanes.size()):
+		var lane: Dictionary = _lanes[i]
+		var top := float(lane.get("top", 0.0))
+		var height := float(lane.get("height", 0.0))
+		var tint: Color = lane.get("color", _MUTED)
+		# Long lane names split on " & " into stacked right-aligned lines.
+		var lines := str(lane.get("label", "")).split(" & ")
+		var fs := LFS if lines.size() == 1 else 84
+		var line_h := fs * 1.06
+		var block_top := top + height * 0.5 - line_h * float(lines.size() - 1) * 0.5
+		for li in range(lines.size()):
+			var text := lines[li] if li == 0 else "& " + lines[li]
+			var text_w := _BEBAS.get_string_size(text, HORIZONTAL_ALIGNMENT_RIGHT, -1, fs).x
+			draw_string(_BEBAS, Vector2(left - text_w - 72.0,
+				block_top + line_h * float(li) + fs * 0.34),
+				text, HORIZONTAL_ALIGNMENT_RIGHT, -1, fs, Color(tint, 0.85))
+		# Faint lane rule through the middle of the gap below (not after the last lane).
+		if i < _lanes.size() - 1:
+			var next_top := float((_lanes[i + 1] as Dictionary).get("top", 0.0))
+			var gap_y := (top + height + next_top) * 0.5
+			draw_line(Vector2(left - 40.0, gap_y), Vector2(right + 40.0, gap_y),
+				Color(_CREAM, 0.10), 1.5)
+
+
 ## Octagon (rect with 45-degree cut corners) filled with a top-left-lit silver
 ## gradient, brushed with faint horizontal streaks, edges bevelled light/shadow.
 func _draw_metal_plate(rect: Rect2) -> void:
@@ -529,7 +1096,9 @@ func _draw_metal_plate(rect: Rect2) -> void:
 ## axis-aligned and lane-separated by the builder), corners rounded with quarter-arc
 ## fillets, tinted by the trace state. Back-edges are NOT x-monotonic: cycle edges
 ## dive below the deepest row and run right-to-left, so cull on the waypoint bbox.
-func _draw_edge(e: Dictionary, tracing: bool) -> void:
+func _draw_edge(e: Dictionary, tracing: bool, alpha_mul: float = 1.0) -> void:
+	if alpha_mul <= 0.003:
+		return
 	var wp: PackedVector2Array = e["waypoints"]
 	if wp.size() < 2:
 		return
@@ -566,6 +1135,7 @@ func _draw_edge(e: Dictionary, tracing: bool) -> void:
 		if _REST_GHOST_ALPHA <= 0.001:
 			return
 		color = Color(route_c, _REST_GHOST_ALPHA if route == 0 else _REST_GHOST_ALPHA * 0.8)
+	color.a *= alpha_mul
 
 	var pts := _fillet_polyline(wp)
 	if bool(e.get("route_gated", false)):
@@ -636,8 +1206,34 @@ func _fillet_polyline(wp: PackedVector2Array) -> PackedVector2Array:
 	return out
 
 
-func _draw_card(node: Dictionary, font: Font, tracing: bool) -> void:
-	var pos: Vector2 = node["pos"]
+## Straight elbow route for one focus edge (few edges, generous spacing — no lane
+## machinery needed): out of the source's right edge, elbow between the columns
+## (fanned per channel so parallels never overdraw), into the target's left edge.
+func _draw_focus_edge(fe: Dictionary, alpha_mul: float) -> void:
+	if alpha_mul <= 0.003:
+		return
+	var wp: PackedVector2Array = fe.get("wp", PackedVector2Array())
+	if wp.size() < 2:
+		return
+	var route := clampi(int(fe.get("route", 0)), 0, _ROUTE_COLORS.size() - 1)
+	var color := Color(_ROUTE_COLORS[route], alpha_mul)
+	var pts := _fillet_polyline(wp)
+	if bool(fe.get("gated", false)):
+		_draw_dashed_polyline(pts, color, _EDGE_WIDTH * 1.3)
+	else:
+		draw_polyline(pts, color, _EDGE_WIDTH * 1.3, true)
+	var tip := wp[wp.size() - 1]
+	var tip_dir := (pts[pts.size() - 1] - pts[pts.size() - 2]).normalized()
+	var nrm := Vector2(-tip_dir.y, tip_dir.x)
+	draw_colored_polygon(PackedVector2Array([
+		tip, tip - tip_dir * 9.0 + nrm * 5.4, tip - tip_dir * 9.0 - nrm * 5.4]), color)
+
+
+func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 1.0,
+		pos_override: Vector2 = Vector2.INF) -> void:
+	if alpha_mul <= 0.01:
+		return
+	var pos: Vector2 = node["pos"] if pos_override == Vector2.INF else pos_override
 	var half: Vector2 = node["half"]
 	var rect := Rect2(pos - half, half * 2.0)
 	# Cull cards outside the viewport (world-space test against the visible window).
@@ -650,7 +1246,7 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool) -> void:
 	var gated: bool = node.get("gated", false)
 	var related := not tracing \
 		or id == _selected_id or _upstream.has(id) or _feeds.has(id)
-	var alpha := 1.0 if related else 0.38
+	var alpha := (1.0 if related else 0.38) * alpha_mul
 	# Research-gated goods rest dimmed, but a gated good that is PART of the active
 	# trace stays fully lit — the lock tag (below) carries the "gated" signal instead,
 	# so transparency never has two meanings at once.
@@ -883,7 +1479,9 @@ func _search_pick(internal: String) -> void:
 func _exit_grid() -> void:
 	if _mode != _Mode.GRID:
 		return
-	_mode = _Mode.WEB
+	# A live selection means the grid was entered FROM the focus arrangement —
+	# return there (its layout and _focus_t survived the grid detour).
+	_mode = _Mode.FOCUS if _selected_id != "" and not _fpos.is_empty() else _Mode.WEB
 	_back_btn.visible = false
 	_search_box.visible = true
 	_grid_islands.clear()
