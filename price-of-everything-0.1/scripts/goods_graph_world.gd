@@ -95,6 +95,8 @@ const _F_PORT_STEP := 24.0
 const _F_LANE_PAD := 24.0
 const _F_LANE_STEP := 14.0
 const _F_CLEAR := 10.0
+const _F_CORRIDOR_SEP := 28.0   # min gap between parallel long corridors
+const _F_PORT_AVOID := 16.0     # corridors keep this far from port-stub runs
 var _fpos: Dictionary = {}        # id -> focus position (world)
 var _focus_edges: Array = []      # [{from,to,route,gated,dir,wp}]
 var _focus_t := 0.0               # 0 = web, 1 = focus arrangement (animated)
@@ -610,56 +612,49 @@ func _build_focus_layout() -> void:
 ## edges share a collinear run (distinct ports, lanes and corridors).
 func _route_focus_edges(members: Dictionary) -> void:
 	var half_w := GoodsFlowGraph.CARD_W * 0.5
-	# 1 · Ports: every edge end gets its own y on its card edge, ordered by the
-	# other end's y so stubs fan without crossing as they leave the card.
-	var side_edges: Dictionary = {}   # "id|R"/"id|L" -> [[other_y, ei, is_out]]
-	for ei: int in range(_focus_edges.size()):
-		var fe: Dictionary = _focus_edges[ei]
-		var f := str(fe["from"])
-		var t := str(fe["to"])
-		var dirn := 1 if int(members[t]) >= int(members[f]) else -1
-		fe["dir"] = dirn
-		var fkey := f + ("|R" if dirn == 1 else "|L")
-		var tkey := t + ("|L" if dirn == 1 else "|R")
-		if not side_edges.has(fkey):
-			side_edges[fkey] = []
-		if not side_edges.has(tkey):
-			side_edges[tkey] = []
-		(side_edges[fkey] as Array).append([(_fpos[t] as Vector2).y, ei, true])
-		(side_edges[tkey] as Array).append([(_fpos[f] as Vector2).y, ei, false])
-	var port_y: Dictionary = {}   # "ei:o"/"ei:i" -> world y
-	for key: String in side_edges:
-		var arr: Array = side_edges[key]
-		arr.sort_custom(func(a: Array, b: Array) -> bool:
-			return float(a[0]) < float(b[0]) \
-				or (float(a[0]) == float(b[0]) and int(a[1]) < int(b[1])))
-		var cy := (_fpos[key.split("|")[0]] as Vector2).y
-		var n := arr.size()
-		var step := 0.0
-		if n > 1:
-			step = minf(_F_PORT_STEP, (GoodsFlowGraph.CARD_H - 28.0) / float(n - 1))
-		for i: int in range(n):
-			var rec: Array = arr[i]
-			port_y["%d:%s" % [int(rec[1]), "o" if bool(rec[2]) else "i"]] = \
-				cy + (float(i) - float(n - 1) * 0.5) * step
-	# 2 · Geometry per edge (channels + corridor ys) BEFORE lane assignment: a
-	# lane's position must depend on the edge's vertical span, not edge order.
-	var used_transit: Array = []
+	# 1 · Directions and channels.
 	for ei: int in range(_focus_edges.size()):
 		var fe: Dictionary = _focus_edges[ei]
 		var cf := int(members[str(fe["from"])])
 		var ct := int(members[str(fe["to"])])
-		var dirn := int(fe["dir"])
+		var dirn := 1 if ct >= cf else -1
+		fe["dir"] = dirn
 		fe["cf"] = cf
 		fe["ct"] = ct
 		fe["exit_ch"] = cf if dirn == 1 else cf - 1
 		fe["entry_ch"] = ct - 1 if dirn == 1 else ct
+	# 2 · PASS-1 ports anchored by the far card's centre, to seed corridor picks.
+	var anchors: Dictionary = {}
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		anchors["%d:o" % ei] = (_fpos[str(fe["to"])] as Vector2).y
+		anchors["%d:i" % ei] = (_fpos[str(fe["from"])] as Vector2).y
+	var port_y := _assign_focus_ports(anchors)
+	# 3 · Corridors for column-skipping edges, chosen by MINIMUM TOTAL VERTICAL
+	# TRAVEL (owner 2026-07-22: coal->steel must go over the top of iron ingots,
+	# not dive below — the general rule, not a special case). Corridors also keep
+	# clear of each other and of every port-stub run.
+	var used_transit: Array = []
+	var all_port_ys: Array = port_y.values()
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
 		if int(fe["exit_ch"]) != int(fe["entry_ch"]):
+			var cf := int(fe["cf"])
+			var ct := int(fe["ct"])
 			var tyy := _f_transit_y(mini(cf, ct) + 1, maxi(cf, ct) - 1,
-				(float(port_y["%d:o" % ei]) + float(port_y["%d:i" % ei])) * 0.5,
-				used_transit)
+				float(port_y["%d:o" % ei]), float(port_y["%d:i" % ei]),
+				used_transit, all_port_ys)
 			used_transit.append(tyy)
 			fe["ty"] = tyy
+	# 4 · PASS-2 ports: a skip edge's real departure direction is its CORRIDOR,
+	# so both of its ports re-anchor to the corridor y — the topmost port leads
+	# to the top corridor and stubs never cross leaving the card.
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		if fe.has("ty"):
+			anchors["%d:o" % ei] = float(fe["ty"])
+			anchors["%d:i" % ei] = float(fe["ty"])
+	port_y = _assign_focus_ports(anchors)
 	# 3 · Nested lane assignment (owner 2026-07-22: the steel fan braided): per
 	# channel, SHORTER vertical spans take INNER lanes, so a stub crossing the
 	# channel never cuts through a longer edge's vertical run.
@@ -718,7 +713,46 @@ func _route_focus_edges(members: Dictionary) -> void:
 
 ## A corridor y crossing focus columns lo..hi clear of every card there by
 ## >= _F_CLEAR, as close as possible to want_y, and >= 12u from prior corridors.
-func _f_transit_y(lo: int, hi: int, want_y: float, used: Array) -> float:
+## Port assignment: each edge end gets its own y on its card edge, ordered by
+## its anchor (the far card's centre, or the corridor y for skip edges) so the
+## stubs fan without crossing as they leave the card.
+func _assign_focus_ports(anchors: Dictionary) -> Dictionary:
+	var side_edges: Dictionary = {}   # "id|R"/"id|L" -> [[anchor_y, ei, is_out]]
+	for ei: int in range(_focus_edges.size()):
+		var fe: Dictionary = _focus_edges[ei]
+		var dirn := int(fe["dir"])
+		var fkey := str(fe["from"]) + ("|R" if dirn == 1 else "|L")
+		var tkey := str(fe["to"]) + ("|L" if dirn == 1 else "|R")
+		if not side_edges.has(fkey):
+			side_edges[fkey] = []
+		if not side_edges.has(tkey):
+			side_edges[tkey] = []
+		(side_edges[fkey] as Array).append([float(anchors["%d:o" % ei]), ei, true])
+		(side_edges[tkey] as Array).append([float(anchors["%d:i" % ei]), ei, false])
+	var port_y: Dictionary = {}   # "ei:o"/"ei:i" -> world y
+	for key: String in side_edges:
+		var arr: Array = side_edges[key]
+		arr.sort_custom(func(a: Array, b: Array) -> bool:
+			return float(a[0]) < float(b[0]) \
+				or (float(a[0]) == float(b[0]) and int(a[1]) < int(b[1])))
+		var cy := (_fpos[key.split("|")[0]] as Vector2).y
+		var n := arr.size()
+		var step := 0.0
+		if n > 1:
+			step = minf(_F_PORT_STEP, (GoodsFlowGraph.CARD_H - 28.0) / float(n - 1))
+		for i: int in range(n):
+			var rec: Array = arr[i]
+			port_y["%d:%s" % [int(rec[1]), "o" if bool(rec[2]) else "i"]] = \
+				cy + (float(i) - float(n - 1) * 0.5) * step
+	return port_y
+
+
+## A corridor y crossing focus columns lo..hi, clear of every card there by
+## >= _F_CLEAR, chosen by MINIMUM TOTAL VERTICAL TRAVEL (|oy-y| + |iy-y|) so the
+## route goes over/under obstacles on whichever side is genuinely shorter, and
+## kept >= _F_CORRIDOR_SEP from other corridors / >= _F_PORT_AVOID from every
+## port-stub run so long horizontals never read as one line.
+func _f_transit_y(lo: int, hi: int, oy: float, iy: float, used: Array, port_ys: Array) -> float:
 	var blocked: Array = []   # [y0, y1] per card, grown by the clearance
 	for id: String in _fpos:
 		var p: Vector2 = _fpos[id]
@@ -734,31 +768,45 @@ func _f_transit_y(lo: int, hi: int, want_y: float, used: Array) -> float:
 			merged.append([float(b[0]), float(b[1])])
 		else:
 			(merged[-1] as Array)[1] = maxf(float((merged[-1] as Array)[1]), float(b[1]))
-	var best := want_y
-	var bestd := INF
+	var y_lo := minf(oy, iy)
+	var y_hi := maxf(oy, iy)
+	var best := (oy + iy) * 0.5
+	var best_cost := INF
 	for gi: int in range(merged.size() + 1):
 		var g0 := -1.0e9 if gi == 0 else float((merged[gi - 1] as Array)[1])
 		var g1 := 1.0e9 if gi == merged.size() else float((merged[gi] as Array)[0])
 		if g1 - g0 < 4.0:
 			continue
-		var y := clampf(want_y, g0 + 2.0, g1 - 2.0)
-		var guard := 0
-		while guard < 32 and _f_too_close(y, used) and y < g1 - 2.0:
-			y = clampf(y + 14.0, g0 + 2.0, g1 - 2.0)
-			guard += 1
-		if _f_too_close(y, used):
-			continue
-		if absf(y - want_y) < bestd:
-			bestd = absf(y - want_y)
-			best = y
+		# Travel-optimal y in this gap: anywhere inside [y_lo, y_hi] costs the
+		# minimum; outside, cost grows with distance from that interval.
+		var seed := clampf(clampf((y_lo + y_hi) * 0.5, y_lo, y_hi), g0 + 2.0, g1 - 2.0)
+		for dir_step: int in [0, 1, -1]:
+			var y := seed
+			var guard := 0
+			while guard < 8 and not _f_run_clear(y, used, port_ys):
+				if dir_step == 0:
+					break   # the un-nudged seed only counts if already clear
+				y = clampf(y + float(dir_step) * _F_CORRIDOR_SEP, g0 + 2.0, g1 - 2.0)
+				guard += 1
+				if y <= g0 + 2.0 or y >= g1 - 2.0:
+					break
+			if not _f_run_clear(y, used, port_ys):
+				continue
+			var cost := absf(oy - y) + absf(iy - y)
+			if cost < best_cost:
+				best_cost = cost
+				best = y
 	return best
 
 
-func _f_too_close(y: float, used: Array) -> bool:
+func _f_run_clear(y: float, used: Array, port_ys: Array) -> bool:
 	for u in used:
-		if absf(float(u) - y) < 12.0:
-			return true
-	return false
+		if absf(float(u) - y) < _F_CORRIDOR_SEP:
+			return false
+	for p in port_ys:
+		if absf(float(p) - y) < _F_PORT_AVOID:
+			return false
+	return true
 
 
 ## Nearest tier column for a good's web position (columns are non-uniform; see
