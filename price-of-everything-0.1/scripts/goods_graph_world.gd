@@ -37,7 +37,8 @@ const _ROUTE_COLORS: Array[Color] = [
 const _REST_GHOST_ALPHA := 0.10
 
 const _EDGE_WIDTH := 2.5                                  # world units (scales with zoom)
-const _ZOOM_MIN := 0.18                                   # absolute fallback; the live floor is _zoom_floor
+const _ZOOM_MIN := 0.07                                   # absolute fallback; the live floor is _zoom_floor (swimlane chart is tall)
+const _LANE_GUTTER := 620.0                               # left room for swimlane labels
 const _ZOOM_MAX := 1.0                                    # icon chips are 100 world units -> 100 px at max zoom-in
 const _ZOOM_STEP := 1.12
 const _PAN_SPEED := 900.0
@@ -60,6 +61,7 @@ var _by_id: Dictionary = {}
 var _edges: Array = []
 var _tier_count: int = 0
 var _bands: Array = []   # [{label, first, count}] — one header plate per band region
+var _lanes: Array = []   # [{label, top, height, color}] — category swimlane bands
 
 var _view_zoom: float = 1.0
 var _view_offset: Vector2 = Vector2.ZERO
@@ -171,6 +173,7 @@ func set_graph(graph: Dictionary) -> void:
 	_edges = graph.get("edges", [])
 	_tier_count = int(graph.get("tier_count", 0))
 	_bands = graph.get("bands", [])
+	_lanes = graph.get("lanes", [])
 	_hover_id = ""
 	_selected_id = ""
 	_upstream.clear()
@@ -259,6 +262,10 @@ func _layout_bbox() -> Rect2:
 	# Headroom for the tier-header plates and the gap beneath them.
 	bb.position.y -= _HEADER_GAP + _PLATE_H + 40.0
 	bb.size.y += _HEADER_GAP + _PLATE_H + 40.0
+	# Left gutter for the swimlane category labels.
+	if not _lanes.is_empty():
+		bb.position.x -= _LANE_GUTTER
+		bb.size.x += _LANE_GUTTER
 	return bb
 
 
@@ -454,6 +461,7 @@ func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		return
 	_draw_tier_headers(font)
+	_draw_lanes()
 	var tracing := _selected_id != ""
 	for e in _edges:
 		_draw_edge(e, tracing)
@@ -494,6 +502,33 @@ func _draw_tier_headers(_font: Font) -> void:
 			HORIZONTAL_ALIGNMENT_CENTER, plate.size.x, FS, Color(1, 1, 1, 0.30))
 		draw_string(_BEBAS, Vector2(plate.position.x, baseline), label,
 			HORIZONTAL_ALIGNMENT_CENTER, plate.size.x, FS, _PLATE_TEXT)
+
+
+## Category swimlanes (owner 2026-07-21): each lane gets a left-gutter label in
+## its category colour and a faint separator hairline in the gap below it, so
+## the vertical axis reads as taxonomy without competing with the cards.
+func _draw_lanes() -> void:
+	if _lanes.is_empty():
+		return
+	var left := GoodsFlowGraph.col_x(0) - GoodsFlowGraph.CARD_W * 0.5
+	var right := GoodsFlowGraph.col_x(_tier_count - 1) + GoodsFlowGraph.CARD_W * 0.5
+	const LFS := 120   # sized to stay legible at the (tall chart's) fit zoom
+	for i in range(_lanes.size()):
+		var lane: Dictionary = _lanes[i]
+		var top := float(lane.get("top", 0.0))
+		var height := float(lane.get("height", 0.0))
+		var tint: Color = lane.get("color", _MUTED)
+		var label := str(lane.get("label", ""))
+		# Left-gutter label, vertically centred in the band, right-aligned to the chart edge.
+		var text_w := _BEBAS.get_string_size(label, HORIZONTAL_ALIGNMENT_RIGHT, -1, LFS).x
+		draw_string(_BEBAS, Vector2(left - text_w - 72.0, top + height * 0.5 + LFS * 0.34),
+			label, HORIZONTAL_ALIGNMENT_RIGHT, -1, LFS, Color(tint, 0.85))
+		# Faint lane rule through the middle of the gap below (not after the last lane).
+		if i < _lanes.size() - 1:
+			var next_top := float((_lanes[i + 1] as Dictionary).get("top", 0.0))
+			var gap_y := (top + height + next_top) * 0.5
+			draw_line(Vector2(left - 40.0, gap_y), Vector2(right + 40.0, gap_y),
+				Color(_CREAM, 0.10), 1.5)
 
 
 ## Octagon (rect with 45-degree cut corners) filled with a top-left-lit silver

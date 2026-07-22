@@ -1,19 +1,19 @@
 ID,internal_name,display_name,category,transport_class,transport_cost,transport_duration,transport_method,good_type,decay_rate,base_price,is_buyable,is_sellable,green_sales_premium,is_fossil_fuel,co2_tax_multiplier,goods_graph_tier
-g_001,coal,Coal,,solid_heavy,,,,raw,0.001,0.4,TRUE,TRUE,0,yes,0.5,raw
-g_002,iron_ore,Iron Ore,,solid_heavy,,,,raw,0.001,0.587,TRUE,TRUE,0,no,0,raw
-g_003,copper_ore,Copper Ore,,solid_heavy,,,,raw,0.001,0.65,TRUE,TRUE,0,no,0,raw
-g_004,iron_ingots,Iron Ingots,,solid_heavy,,,,intermediate,0.001,0.988,TRUE,TRUE,0,no,0,processed
-g_005,copper_ingots,Copper Ingots,,solid_heavy,,,,intermediate,0.001,2.364,TRUE,TRUE,0,no,0,processed
-g_006,steel,Steel,,solid_heavy,,,,intermediate,0.001,1.835,TRUE,TRUE,0,no,0,intermediate
-g_007,copper_wiring,Copper Wiring,,solid_light,,,,intermediate,0.001,3.83,TRUE,TRUE,0,no,0,intermediate
-g_008,motor,Motor,,solid_heavy,,,,intermediate,0.001,9.396,TRUE,TRUE,0,no,0,intermediate
-g_009,pure_water,Pure Water,,safe_liquid,,,,raw,0.001,0.444,TRUE,TRUE,0,no,0,raw
-g_010,power,Power,,electricity,,,,power,0,0.1,TRUE,TRUE,0,yes,0,intermediate
-g_011,oxygen,Oxygen,,hazard_liquid,,,,intermediate,0.001,0.25,TRUE,TRUE,0,no,0,processed
-g_012,chlorine,Chlorine,,hazard_liquid,,,,intermediate,0.001,0.72,TRUE,TRUE,0,no,0,processed
-g_013,sodium_hydroxide,Sodium Hydroxide,,hazard_liquid,,,,intermediate,0.001,0.8,TRUE,TRUE,0,no,0,processed
-g_014,hydrogen,Hydrogen,,hazard_liquid,,,,intermediate,0.001,3.3,TRUE,TRUE,0,no,0,processed
-g_015,basic_salt,Basic Salt,,solid_heavy,,,,raw,0.001,0.5,TRUE,TRUE,0,no,0,raw
+g_001,coal,Coal,energy,solid_heavy,,,,raw,0.001,0.4,TRUE,TRUE,0,yes,0.5,raw
+g_002,iron_ore,Iron Ore,metals,solid_heavy,,,,raw,0.001,0.587,TRUE,TRUE,0,no,0,raw
+g_003,copper_ore,Copper Ore,metals,solid_heavy,,,,raw,0.001,0.65,TRUE,TRUE,0,no,0,raw
+g_004,iron_ingots,Iron Ingots,metals,solid_heavy,,,,intermediate,0.001,0.988,TRUE,TRUE,0,no,0,processed
+g_005,copper_ingots,Copper Ingots,metals,solid_heavy,,,,intermediate,0.001,2.364,TRUE,TRUE,0,no,0,processed
+g_006,steel,Steel,metals,solid_heavy,,,,intermediate,0.001,1.835,TRUE,TRUE,0,no,0,intermediate
+g_007,copper_wiring,Copper Wiring,metals,solid_light,,,,intermediate,0.001,3.83,TRUE,TRUE,0,no,0,intermediate
+g_008,motor,Motor,construction,solid_heavy,,,,intermediate,0.001,9.396,TRUE,TRUE,0,no,0,intermediate
+g_009,pure_water,Pure Water,chems,safe_liquid,,,,raw,0.001,0.444,TRUE,TRUE,0,no,0,raw
+g_010,power,Power,energy,electricity,,,,power,0,0.1,TRUE,TRUE,0,yes,0,intermediate
+g_011,oxygen,Oxygen,chems,hazard_liquid,,,,intermediate,0.001,0.25,TRUE,TRUE,0,no,0,processed
+g_012,chlorine,Chlorine,chems,hazard_liquid,,,,intermediate,0.001,0.72,TRUE,TRUE,0,no,0,processed
+g_013,sodium_hydroxide,Sodium Hydroxide,chems,hazard_liquid,,,,intermediate,0.001,0.8,TRUE,TRUE,0,no,0,processed
+g_014,hydrogen,Hydrogen,chems,hazard_liquid,,,,intermediate,0.001,3.3,TRUE,TRUE,0,no,0,processed
+g_015,basic_salt,Basic Salt,chems,solid_heavy,,,,raw,0.001,0.5,TRUE,TRUE,0,no,0,raw
 g_016,limestone,Limestone,construction,solid_heavy,1,1,vehicle,raw,0.005,0.925,TRUE,TRUE,0,no,0,raw
 g_017,concrete,Concrete,construction,solid_heavy,1,1,vehicle,intermediate,0.002,3.923,TRUE,TRUE,0,no,0,intermediate
 g_018,sand,Sand,construction,solid_heavy,1,1,vehicle,raw,0.005,0.525,TRUE,TRUE,0,no,0,raw
