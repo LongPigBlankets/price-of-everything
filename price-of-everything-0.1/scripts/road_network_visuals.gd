@@ -8,12 +8,9 @@ extends Node2D
 ##   toward the tile by the order's reveal fraction.
 ## Only active while the 'toggle roadsv2' cheat has v2 enabled.
 
-const TRUNK_COLOR := Color("d97b29")
-const LOCAL_COLOR := Color("e8c84a")
-const CASING := Color(0.24, 0.16, 0.05, 0.9)
+# Road colors live in MapStyle ('toggle ink' swaps them); widths are P2 work.
 const TRUNK_WIDTH := 7.0
 const LOCAL_WIDTH := 4.5
-const BRIDGE_COLOR := Color(0.32, 0.2, 0.08)
 # Junctions are kept to at most 5 roads upstream (RoadWorks degree cap) — there
 # is no special junction glyph; roads simply meet and merge.
 
@@ -32,6 +29,12 @@ func _ready() -> void:
 	_active_layer.draw.connect(_draw_active)
 	add_child(_active_layer)
 	RoadWorks.order_settled.connect(func(_id: int) -> void: _drawn_edges = -1)
+	MapStyle.style_changed.connect(_on_style_changed)
+
+func _on_style_changed() -> void:
+	_drawn_edges = -1
+	queue_redraw()
+	_active_layer.queue_redraw()
 
 func _process(_delta: float) -> void:
 	# 'toggle roads' hides the whole layer; drawing is skipped while hidden.
@@ -107,14 +110,14 @@ func _draw() -> void:
 			if not _point_built(terrain, flagged, bridge.point):
 				continue   # the road there is hidden — so is its bridge
 			var t: Vector2 = bridge.tangent
-			draw_line(bridge.point - t * 21.0, bridge.point + t * 21.0, BRIDGE_COLOR, 10.0, true)
+			draw_line(bridge.point - t * 21.0, bridge.point + t * 21.0, MapStyle.road_bridge(), 10.0, true)
 	# Preview bridges: drawn the instant a river road is built, at its
 	# predetermined crossing, while the connecting road is still planning.
 	for pb in RoadWorks.preview_bridges():
 		if not _point_built(terrain, flagged, pb.point):
 			continue
 		var pt: Vector2 = pb.tangent
-		draw_line(pb.point - pt * 21.0, pb.point + pt * 21.0, BRIDGE_COLOR, 10.0, true)
+		draw_line(pb.point - pt * 21.0, pb.point + pt * 21.0, MapStyle.road_bridge(), 10.0, true)
 
 func _draw_active() -> void:
 	var network := RoadNetwork.instance()
@@ -229,10 +232,10 @@ func _draw_terminus_glyphs(network: RoadNetwork, terrain: HexMap, flagged: Dicti
 		if terrain != null and not _arms_inside_tile(terrain, tip, arms):
 			continue   # too close to the tile seam — stay a plain dead end
 		var tier := str(edge2.tier)
-		var core: Color = TRUNK_COLOR if tier == RoadNetwork.TIER_TRUNK else LOCAL_COLOR
+		var core: Color = MapStyle.road_trunk() if tier == RoadNetwork.TIER_TRUNK else MapStyle.road_local()
 		var w: float = TRUNK_WIDTH if tier == RoadNetwork.TIER_TRUNK else LOCAL_WIDTH
 		for a in arms:
-			draw_line(tip, a, CASING, w + 2.5, true)
+			draw_line(tip, a, MapStyle.road_casing(), w + 2.5, true)
 		for a2 in arms:
 			draw_line(tip, a2, core, w, true)
 
@@ -350,6 +353,6 @@ func _draw_edge_polyline(canvas: CanvasItem, pts: PackedVector2Array, tier: Stri
 		return
 	var width: float = TRUNK_WIDTH if tier == RoadNetwork.TIER_TRUNK else LOCAL_WIDTH
 	if pass_i == 0:
-		canvas.draw_polyline(pts, CASING, width + 2.5, true)
+		canvas.draw_polyline(pts, MapStyle.road_casing(), width + 2.5, true)
 	else:
-		canvas.draw_polyline(pts, TRUNK_COLOR if tier == RoadNetwork.TIER_TRUNK else LOCAL_COLOR, width, true)
+		canvas.draw_polyline(pts, MapStyle.road_trunk() if tier == RoadNetwork.TIER_TRUNK else MapStyle.road_local(), width, true)

@@ -7,11 +7,11 @@ extends Node2D
 
 const PARCHMENT_Z := 90            # above hills/roads/buildings/ports, below UI layers
 const NOISE_SEED := 7              # fixed — purely visual, stable between runs
-const GRAIN_DARKEST := Color(0.86, 0.81, 0.72)   # multiply floor: ~15% warm darkening (spec: 12-18%)
-const GRAIN_LIGHTEST := Color(1.0, 0.99, 0.96)
+# Grain ramp colors live in MapStyle ('toggle ink' deepens the multiply floor).
 
 var _tex: NoiseTexture2D = null
 var _rect := Rect2()
+var _ramp: Gradient = null
 
 func setup(world_rect: Rect2) -> void:
 	_rect = world_rect
@@ -26,15 +26,27 @@ func setup(world_rect: Rect2) -> void:
 	_tex.height = 256
 	_tex.seamless = true
 	_tex.noise = noise
-	var ramp := Gradient.new()
-	ramp.offsets = PackedFloat32Array([0.0, 1.0])
-	ramp.colors = PackedColorArray([GRAIN_DARKEST, GRAIN_LIGHTEST])
-	_tex.color_ramp = ramp
+	_ramp = Gradient.new()
+	_ramp.offsets = PackedFloat32Array([0.0, 1.0])
+	_apply_ramp()
+	_tex.color_ramp = _ramp
 	var mat := CanvasItemMaterial.new()
 	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_MUL
 	material = mat
 	# NoiseTexture2D fills asynchronously — redraw once the pixels exist.
 	_tex.changed.connect(queue_redraw)
+	if not MapStyle.style_changed.is_connected(_on_style_changed):
+		MapStyle.style_changed.connect(_on_style_changed)
+	queue_redraw()
+
+func _apply_ramp() -> void:
+	_ramp.colors = PackedColorArray([MapStyle.parchment_darkest(), MapStyle.parchment_lightest()])
+
+func _on_style_changed() -> void:
+	# In-place Gradient edit fires its changed signal (NoiseTexture2D listens
+	# and regenerates); the reassign is belt-and-braces for setter early-outs.
+	_apply_ramp()
+	_tex.color_ramp = _ramp
 	queue_redraw()
 
 func _draw() -> void:

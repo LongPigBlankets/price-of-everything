@@ -283,7 +283,10 @@ func _run_command(text: String) -> String:
 					layer.visible = not layer.visible
 					now_visible = layer.visible
 				return "heightmap → %s" % ("on" if now_visible else "off (plain map + rivers)")
-			return "usage: toggle logs | heightmap | roads | roadocc"
+			if parts.size() >= 2 and parts[1].to_lower() == "ink":
+				MapStyle.set_ink(not MapStyle.ink)
+				return "map style → %s" % ("ink & wash" if MapStyle.ink else "classic")
+			return "usage: toggle logs | heightmap | roads | roadocc | ink"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")
@@ -320,7 +323,7 @@ func _run_command(text: String) -> String:
 				return "usage: win <greenest|logistics|richest|autarkic|widest|all>"
 			return _cheat_win_track(parts[1].to_lower())
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

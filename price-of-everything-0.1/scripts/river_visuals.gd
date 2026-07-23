@@ -1,7 +1,8 @@
 extends Node2D
 
 const RIVER_PROPERTIES_PATH := "res://data/river_properties.csv"
-const RIVER_COLOR := Color(0.17647059, 0.40784314, 0.76862745, 1.0)
+## River blue lives in MapStyle (river_color — same hue as lakes/shelf so all
+## water reads as one; the 'toggle ink' cheat swaps it).
 const RIVER_WIDTH := 15.0
 const RIVER_MOUTH_WIDTH := 25.0
 const CURVE_STEPS := 16
@@ -32,6 +33,7 @@ var river_properties := {}
 
 func _ready() -> void:
 	river_properties = _load_river_properties()
+	MapStyle.style_changed.connect(queue_redraw)
 	queue_redraw()
 
 func _draw() -> void:
@@ -273,7 +275,7 @@ func _draw_bean_lake(center: Vector2, width: float, height: float, seed_text: St
 		var radius_x: float = width * 0.5 * (1.0 + 0.08 * sin(angle * 3.0 + phase))
 		var radius_y: float = height * 0.5 * (1.0 + 0.10 * cos(angle * 2.0 + phase))
 		points.append(center + Vector2(cos(angle) * radius_x, sin(angle) * radius_y))
-	draw_colored_polygon(points, RIVER_COLOR)
+	draw_colored_polygon(points, MapStyle.river_color())
 
 func _draw_cubic_segment(
 	start: Vector2,
@@ -294,7 +296,7 @@ func _draw_cubic_segment(
 		var t: float = float(step) / float(CURVE_STEPS)
 		var point: Vector2 = _cubic_bezier(start, control_a, control_b, end, t)
 		var width: float = lerpf(start_width, end_width, t)
-		draw_line(previous, point, RIVER_COLOR, width, true)
+		draw_line(previous, point, MapStyle.river_color(), width, true)
 		previous = point
 
 func _hsm_outward_direction(hsm: String) -> Vector2:

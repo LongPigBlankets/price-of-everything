@@ -143,8 +143,7 @@ const MASK_DEBUG := false            # set true to log tiles where the road gate
 # Farms (b_014, cat "farm"): irregular polygonal fields that gravitate to the river (or to the
 # tile edge if non-farm buildings already crowd the tile), clipped to the hex, hatched dark-green,
 # with a brown barn (rect) + silo (circle). Field = light green + 3px dark-green diagonal hatching.
-const FARM_FIELD_COLOR := Color("a8d98a")            # light green field
-const FARM_HATCH := Color(0.18, 0.38, 0.18, 0.85)    # dark green hatching
+# Field fill + hatch colors live in MapStyle ('toggle ink' swaps them).
 const FARM_HATCH_W := 3.0
 const FARM_HATCH_SPACING := 12.0                     # gap between hatch lines (u)
 const FARM_BARN := Vector2(10.0, 6.0)                # brown barn rect (~size-60 by area, pre-scale)
@@ -238,6 +237,8 @@ func _ready() -> void:
 	# brown tracks (the yellow road now represents them).
 	if RoadWorks.has_signal("farm_roads_promoted"):
 		RoadWorks.farm_roads_promoted.connect(_on_farm_roads_promoted)
+	# 'toggle ink' map restyle: farm field/hatch colors come from MapStyle.
+	MapStyle.style_changed.connect(queue_redraw)
 
 func _on_farm_roads_promoted(tile_id: String) -> void:
 	# Rebuild the tile's layout so the now-promoted ring + trunk are omitted from the brown tracks
@@ -3065,7 +3066,7 @@ func _draw() -> void:
 		if verts.size() < 3:
 			continue
 		if is_farm:
-			draw_colored_polygon(verts, FARM_FIELD_COLOR)
+			draw_colored_polygon(verts, MapStyle.farm_field())
 			var loop := verts.duplicate()
 			loop.append(verts[0])
 			if bool(placement.is_npc):
@@ -3076,7 +3077,7 @@ func _draw() -> void:
 			for seg in (hatch_src as Array):
 				var s: PackedVector2Array = seg
 				if s.size() >= 2:
-					draw_polyline(s, FARM_HATCH, FARM_HATCH_W)
+					draw_polyline(s, MapStyle.farm_hatch(), FARM_HATCH_W)
 		else:
 			# Ink & wash: wash fill + one sepia ink outline + category-flavoured
 			# roof motifs. The DRAWN polygon gets a hand-wobble (ink spec I4);
