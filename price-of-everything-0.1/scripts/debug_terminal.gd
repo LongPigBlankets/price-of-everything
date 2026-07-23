@@ -14,6 +14,7 @@ extends CanvasLayer
 ##   swap tvp                         toggle between the classic and alternate Tile View Panel
 ##   swap bdp                         toggle to the classic v1 building-detail panel (v2 is default)
 ##   swap construct_panel             toggle the construct-panel redesign
+##   swap loading_screen              toggle the slow pre-optimization new-game build (for recordings)
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   unlock hidden_buildings          enable the three hidden prototype buildings
 ##   swap song                       advance to the next music track
@@ -21,6 +22,15 @@ extends CanvasLayer
 
 const TOGGLE_KEY := KEY_QUOTELEFT  # the ` / ~ key
 const UNLOCK_WORD := "CandC"  # case-sensitive pass-phrase for `debug <word>`
+
+# In the main menu there is no match, so only commands that don't touch match state
+# are allowed (`debug` runs before this gate; `swap loading_screen`/`swap song` are the
+# useful ones — e.g. arm the slow-load recording before starting a game). Everything
+# else would poke a not-yet-started MatchState or a missing map scene.
+const MENU_SAFE_COMMANDS := {"swap": true, "help": true}
+
+# Set true when this terminal is instantiated on the main menu (main_menu.gd).
+var menu_mode := false
 
 # Survives scene reloads (e.g. the `load` cheat) but resets on app restart.
 static var _cheats_unlocked := false
@@ -117,6 +127,8 @@ func _run_command(text: String) -> String:
 		return "invalid operation"
 	if not _cheats_unlocked:
 		return "invalid operation"
+	if menu_mode and not MENU_SAFE_COMMANDS.has(parts[0].to_lower()):
+		return "'%s' is only available during a match  (main menu: swap loading_screen | swap song | help)" % parts[0].to_lower()
 	match parts[0].to_lower():
 		"cash":
 			if parts.size() < 2 or not parts[1].is_valid_int():
@@ -164,7 +176,11 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "construct_panel":
 				MatchState.toggle_use_construct_panel_v2()
 				return "Construct panel → %s" % ("v2 (redesign)" if MatchState.use_construct_panel_v2 else "v1 (classic)")
-			return "usage: swap song  |  swap bdp  |  swap construct_panel"
+			if parts.size() >= 2 and parts[1].to_lower() == "loading_screen":
+				var legacy: bool = LoadPacing.toggle_legacy_load()
+				return "New-game load → %s  (takes effect on the next New Game)" % (
+					"LEGACY slow build (one building/frame)" if legacy else "fast build (default)")
+			return "usage: swap song  |  swap bdp  |  swap construct_panel  |  swap loading_screen"
 		"survey":
 			if parts.size() >= 2 and parts[1].to_lower() == "limit":
 				MatchState.cheat_survey_within_limits()
@@ -304,7 +320,7 @@ func _run_command(text: String) -> String:
 				return "usage: win <greenest|logistics|richest|autarkic|widest|all>"
 			return _cheat_win_track(parts[1].to_lower())
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

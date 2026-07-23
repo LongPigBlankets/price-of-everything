@@ -211,6 +211,8 @@ var _warned_no_nav := false
 # Bumped on every footprint add/remove so the road realizer's avoidance-disc cache
 # (keyed off this) rebuilds — lets roads built later route around buildings.
 var footprint_version: int = 0
+var _bulk := false                       # begin_bulk()/end_bulk() window (match-start placement)
+var _bulk_dirty_tiles: Dictionary = {}   # tile_id -> true; subcomp marks deferred to end_bulk
 var farm_lanes_version: int = 0   # bumps when farm tracks change, so the realizer re-caches the corridor
 
 # Tiles whose road settled this frame and whose buildings must re-pack onto the
@@ -292,7 +294,27 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 	if instance_id != "" and _placement_index.has(instance_id):
 		remove_instance(instance_id)
 	_place_building(instance_id, building_id, tile_id, coord)
+	if _bulk:
+		_bulk_dirty_tiles[tile_id] = true
+		return
 	_mark_subcomp_dirty(tile_id)
+	queue_redraw()
+
+
+## Bulk window for the match-start placement pass. Layout is untouched (geometry is
+## identical either way); only the per-placement redraw + ancillary rebuild are
+## deferred, so ~475 placements cost ONE redraw and one subcomponent rebuild per
+## touched tile — redrawing the whole layer per placement was most of the ~60 s
+## new-game load.
+func begin_bulk() -> void:
+	_bulk = true
+
+
+func end_bulk() -> void:
+	_bulk = false
+	for tid in _bulk_dirty_tiles:
+		_mark_subcomp_dirty(str(tid))
+	_bulk_dirty_tiles.clear()
 	queue_redraw()
 
 ## True once this instance has a drawn footprint — lets the start-building pass skip

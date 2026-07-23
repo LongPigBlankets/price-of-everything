@@ -83,9 +83,11 @@ func _enter() -> void:
 	_rebuild_graph()
 
 
-## Rebuild from the Catalog on each open: ~400 ms of layout work (ordering + routing),
-## acceptable as a once-per-open cost, and the gated flags stay honest as research
-## unlocks change which producers are available.
+## Hand the graph world the shared layout. GoodsFlowGraph.build() is a pure function of
+## the Catalog (research unlocks do NOT change it — the "gated" flag is the static
+## required_research column), so it is computed once and cached: world_map warms that
+## cache under the loading screen, and every open — this one included — returns the
+## cached layout instantly instead of re-running the ~120 ms Sugiyama pass.
 func _rebuild_graph() -> void:
 	if _graph_world == null:
 		return

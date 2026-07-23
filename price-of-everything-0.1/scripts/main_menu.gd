@@ -46,6 +46,12 @@ func _ready() -> void:
 	_build_tutorial_panel()
 	_build_hall_of_records_panel()
 	_build_tutorial_prompt()
+	# Debug/cheat terminal (toggle with `). Menu mode allows only the match-independent
+	# cheats — chiefly `swap loading_screen`, so the slow-build recording can be armed
+	# before the first New Game (the in-match terminal is added by world_map).
+	var term: CanvasLayer = load("res://scripts/debug_terminal.gd").new()
+	term.menu_mode = true
+	add_child(term)
 	Audio.play_music()   # looping main-menu theme (placeholder track)
 	# Warm the map scene off-thread while the player is on the menu: this pulls main.tscn and
 	# all its textures off disk into RAM on a worker thread (no main-thread cost, no frame drop),

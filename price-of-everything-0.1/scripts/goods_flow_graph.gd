@@ -133,7 +133,22 @@ static func col_x(c: int) -> float:
 	return _col_x[_col_x.size() - 1] + float(c - _col_x.size() + 1) * (CARD_W + INTRA_COL_GAP)
 
 
-static func build() -> Dictionary:
+## The whole goods-graph layout (nodes with positions, routed edges, bands, lanes).
+## It is a PURE function of the Catalog — no MatchState, no research-unlock state, no
+## RNG (the "gated" flag is the static `required_research` CSV column) — so the result
+## is identical for every open and every match. The Catalog is fixed for the app run,
+## so we compute it ONCE and cache it: the first call (warmed under the loading screen
+## via world_map) pays the ~120 ms Sugiyama layout; every later open returns instantly.
+## Pass force=true (or clear_cache()) to recompute, e.g. after a catalog reload in tests.
+static var _cache: Dictionary = {}
+
+## Drop the cached layout so the next build() recomputes (catalog reloads in tools/tests).
+static func clear_cache() -> void:
+	_cache = {}
+
+static func build(force := false) -> Dictionary:
+	if not force and not _cache.is_empty():
+		return _cache
 	# 1 · Goods universe, keyed by internal name.
 	var goods: Dictionary = {}
 	for g in Catalog.all_goods():
@@ -379,10 +394,11 @@ static func build() -> Dictionary:
 	# lane's bottom edge (ly overshoots by one trailing LANE_GAP_Y).
 	_route_edges(edges, chains, backs, ldepth, ypos, ly - LANE_GAP_Y)
 
-	return {"nodes": nodes, "by_id": by_id, "edges": edges, "tier_count": maxd + 1,
+	_cache = {"nodes": nodes, "by_id": by_id, "edges": edges, "tier_count": maxd + 1,
 		"bands": bands_meta,
 		"lanes": lanes_meta,
 		"crossings": crossings}
+	return _cache
 
 
 ## Every producing recipe of a good, simplest-first with ungated before gated —
