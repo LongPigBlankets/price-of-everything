@@ -30,6 +30,11 @@ const RIVER_POINTS := {
 @onready var terrain_layer: HexMap = %TerrainLayer
 
 var river_properties := {}
+## Which draw pass is running: 1 = water (always); 0 = ink bank casing, drawn
+## first across the WHOLE map in ink mode — casing must finish everywhere
+## before any blue goes down, or tile-seam joints blotch dark over the
+## neighbouring path's water.
+var _pass := 1
 
 func _ready() -> void:
 	river_properties = _load_river_properties()
@@ -40,15 +45,18 @@ func _draw() -> void:
 	if terrain_layer == null:
 		return
 
-	for coord in terrain_layer.tiles:
-		var tile_data: Dictionary = terrain_layer.tiles[coord]
-		if not tile_data.get("has_river", false):
-			continue
-		var river_type: String = str(tile_data.get("river_type", ""))
-		if river_type == "" or not river_properties.has(river_type):
-			continue
-		var river_data: Dictionary = river_properties[river_type]
-		_draw_tile_river(coord, river_data)
+	var passes: Array = [0, 1] if MapStyle.ink else [1]
+	for p in passes:
+		_pass = p
+		for coord in terrain_layer.tiles:
+			var tile_data: Dictionary = terrain_layer.tiles[coord]
+			if not tile_data.get("has_river", false):
+				continue
+			var river_type: String = str(tile_data.get("river_type", ""))
+			if river_type == "" or not river_properties.has(river_type):
+				continue
+			var river_data: Dictionary = river_properties[river_type]
+			_draw_tile_river(coord, river_data)
 
 ## Returns every river path as a world-space, sampled polyline along the exact
 ## same routes the river is drawn on (one entry per path; tiles with joints/merges
@@ -268,6 +276,8 @@ func _path_tangents(points: PackedVector2Array, point_ids: Array[String]) -> Arr
 	return tangents
 
 func _draw_bean_lake(center: Vector2, width: float, height: float, seed_text: String) -> void:
+	if _pass == 0:
+		return   # lakes draw fill + shore in the water pass (no casing needed)
 	var points := PackedVector2Array()
 	var phase: float = float(abs(hash(seed_text)) % 628) / 100.0
 	for step in range(LAKE_SHAPE_STEPS):
@@ -276,6 +286,10 @@ func _draw_bean_lake(center: Vector2, width: float, height: float, seed_text: St
 		var radius_y: float = height * 0.5 * (1.0 + 0.10 * cos(angle * 2.0 + phase))
 		points.append(center + Vector2(cos(angle) * radius_x, sin(angle) * radius_y))
 	draw_colored_polygon(points, MapStyle.river_color())
+	if MapStyle.ink:
+		var shore := points.duplicate()
+		shore.append(shore[0])
+		draw_polyline(shore, MapStyle.lake_shore_color(MapStyle.river_color()), MapStyle.lake_shore_width(), true)
 
 func _draw_cubic_segment(
 	start: Vector2,
@@ -296,8 +310,29 @@ func _draw_cubic_segment(
 		var t: float = float(step) / float(CURVE_STEPS)
 		var point: Vector2 = _cubic_bezier(start, control_a, control_b, end, t)
 		var width: float = lerpf(start_width, end_width, t)
-		draw_line(previous, point, MapStyle.river_color(), width, true)
+		if _pass == 0:
+			draw_line(previous, point, MapStyle.river_casing(), width + MapStyle.river_casing_extra(), true)
+		else:
+			draw_line(previous, point, MapStyle.river_color(), width, true)
+			if MapStyle.ink and step == CURVE_STEPS / 2:
+				_draw_flow_squiggle(previous, point, width)
 		previous = point
+
+## One short darker-blue dash along the flow direction, seeded per location —
+## the mockup's "water is moving" mark. Skips ~1/3 of candidates for rhythm.
+func _draw_flow_squiggle(a: Vector2, b: Vector2, width: float) -> void:
+	var mid := (a + b) * 0.5
+	var seed := "rsq|%d|%d" % [roundi(mid.x), roundi(mid.y)]
+	if RoadHash.pick(seed, 3) == 0:
+		return
+	var dir := (b - a).normalized()
+	if dir == Vector2.ZERO:
+		return
+	var perp := Vector2(-dir.y, dir.x)
+	var slide := (float(RoadHash.pick(seed + "|s", 100)) / 100.0 - 0.5) * width * 0.5
+	var dash_len := width * (0.8 + float(RoadHash.pick(seed + "|l", 100)) / 100.0 * 0.8)
+	var c := mid + perp * slide
+	draw_line(c - dir * dash_len * 0.5, c + dir * dash_len * 0.5, MapStyle.river_squiggle(), 2.0, true)
 
 func _hsm_outward_direction(hsm: String) -> Vector2:
 	match hsm:

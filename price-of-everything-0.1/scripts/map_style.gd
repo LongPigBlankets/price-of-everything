@@ -99,3 +99,49 @@ func parchment_darkest() -> Color:
 
 func parchment_lightest() -> Color:
 	return Color(1.0, 0.99, 0.96)
+
+## ── P1 ink structure: contours, coast, water lining, river banks ────────────
+
+const INK := Color("3a2c18")
+
+## Relief band outlines. Classic keeps the darkened-fill stroke; ink draws
+## sepia contour hairlines with every 2nd band emphasized (engraved read).
+func contour_color(band: int, fill: Color) -> Color:
+	if not ink:
+		return fill.darkened(0.22)
+	return Color(INK.r, INK.g, INK.b, 0.55 if band % 2 == 0 else 0.35)
+
+func contour_width(band: int) -> float:
+	if not ink:
+		return 1.5
+	return 2.0 if band % 2 == 0 else 1.2
+
+## Coastline stroke where the landmass meets the sea (owner: keep it bold).
+## Transparent in classic = skip drawing.
+func coast_color() -> Color:
+	return Color(INK.r, INK.g, INK.b, 0.9) if ink else Color(0.0, 0.0, 0.0, 0.0)
+
+func coast_width() -> float:
+	return 4.2
+
+## Engraved water lining: hairlines offset seaward from the coast, fading out.
+## Entries are [offset_u, alpha, width]; empty in classic.
+func water_lining() -> Array:
+	return [[14.0, 0.38, 1.3], [30.0, 0.22, 1.1]] if ink else []
+
+func lake_shore_color(fill: Color) -> Color:
+	return Color(INK.r, INK.g, INK.b, 0.7) if ink else fill.darkened(0.25)
+
+func lake_shore_width() -> float:
+	return 2.2 if ink else 2.0
+
+## River bank casing (ink only): drawn under the water pass, wider by _extra.
+func river_casing() -> Color:
+	return Color(INK.r, INK.g, INK.b, 0.8)
+
+func river_casing_extra() -> float:
+	return 4.0
+
+## Flow squiggles inside the river (ink only): short darker-blue dashes.
+func river_squiggle() -> Color:
+	return Color(0.247, 0.435, 0.639, 0.5)

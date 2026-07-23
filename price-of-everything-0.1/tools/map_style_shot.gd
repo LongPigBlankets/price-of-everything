@@ -22,6 +22,11 @@ func _ready() -> void:
 	for _i in 40:   # map build + first draws settle
 		await get_tree().process_frame
 	_terrain = _wm.get_node("%TerrainLayer")
+	# The hover hex grid follows the real mouse — hide it so captures are clean
+	# regardless of where the cursor sits during the windowed run.
+	var grid: Node = _wm.find_child("HexGridOverlay", true, false)
+	if grid != null:
+		(grid as CanvasItem).visible = false
 	var mn := Vector2(1e30, 1e30)
 	var mx := Vector2(-1e30, -1e30)
 	for coord in _terrain.tiles:

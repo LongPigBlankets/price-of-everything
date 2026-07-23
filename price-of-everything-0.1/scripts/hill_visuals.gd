@@ -13,6 +13,10 @@ extends Node2D
 ## dropping the stale far-zoom texture bake.
 const OUTLINE_DARKEN := 0.22
 const OUTLINE_WIDTH := 1.5
+## Baked sea band that is the sandy LAND BASE the terrain sits on — its polygon
+## boundary IS the coastline (stroked in ink mode; water lining offsets out
+## from it seaward).
+const COAST_BAND := 5
 ## Longest side of the baked terrain texture, in pixels. The map is ~12,950 ×
 ## 10,500 world units; 4096 keeps it crisp at the default view, for ~54 MB of
 ## VRAM. The texture is only ever shown ZOOMED OUT now (where its softness is
@@ -54,6 +58,11 @@ func _white_texture() -> Texture2D:
 
 var _bake_deferred := false   # the far-zoom texture bake is pending; built lazily on first need
 var _meshes_warm := false     # _warm_all_meshes() done → the cached-mesh vector LOD is usable
+# Water-lining polylines: the COAST_BAND polys offset seaward per MapStyle
+# tier, cached once (style-independent geometry; only ink mode draws them).
+# Entries: {src: int (index into _sea), tier: int, pts: PackedVector2Array (closed)}.
+var _coast_lines: Array = []
+var _coast_lines_built := false
 
 func _enter_tree() -> void:
 	# the 'toggle heightmap' debug cheat flips visibility on this group
@@ -179,10 +188,12 @@ func _bake_to_texture() -> void:
 	vp.disable_3d = true
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	add_child(vp)
+	if not MapStyle.water_lining().is_empty():
+		_ensure_coast_lines(MapStyle.water_lining())
 	var painter := HillPainter.new()
 	painter.configure(_sea, _polys, _lakes, _bake_rect.position, scale,
 		MapStyle.sea_colors(), MapStyle.band_colors(), MapStyle.water_color(),
-		OUTLINE_DARKEN, OUTLINE_WIDTH, _mesh_cache, _white_texture())
+		_coast_lines, _mesh_cache, _white_texture())
 	vp.add_child(painter)
 	# Let the viewport render its single frame, then grab the pixels.
 	await get_tree().process_frame
@@ -208,17 +219,20 @@ func _draw_culled_meshes(cull: Rect2) -> void:
 		if spts.size() < 3:
 			continue
 		_draw_fill("s%d" % i, spts, sea_cols[clampi(_sea[i].b, 0, sea_cols.size() - 1)], white)
+	_draw_water_lining(self, cull, Transform2D.IDENTITY)
 	for i in _polys.size():
 		if not cull.intersects(_poly_bb[i]):
 			continue
 		var pts: PackedVector2Array = _polys[i].p
 		if pts.size() < 3:
 			continue
-		var color: Color = band_cols[clampi(_polys[i].b, 0, band_cols.size() - 1)]
+		var band := clampi(_polys[i].b, 0, band_cols.size() - 1)
+		var color: Color = band_cols[band]
 		_draw_fill("p%d" % i, pts, color, white)
 		var outline := pts.duplicate()
 		outline.append(pts[0])
-		draw_polyline(outline, color.darkened(OUTLINE_DARKEN), OUTLINE_WIDTH, false)
+		draw_polyline(outline, MapStyle.contour_color(band, color), MapStyle.contour_width(band), false)
+	_draw_coast_strokes(self, cull, Transform2D.IDENTITY)
 	for i in _lakes.size():
 		if not cull.intersects(_lake_bb[i]):
 			continue
@@ -228,7 +242,67 @@ func _draw_culled_meshes(cull: Rect2) -> void:
 		_draw_fill("l%d" % i, lake_pts, water, white)
 		var shore := lake_pts.duplicate()
 		shore.append(lake_pts[0])
-		draw_polyline(shore, water.darkened(0.25), 2.0, false)
+		draw_polyline(shore, MapStyle.lake_shore_color(water), MapStyle.lake_shore_width(), false)
+
+## Coastline ink strokes (ink mode): the COAST_BAND poly outlines, drawn OVER
+## the band fills so the ink reads as drawn onto the finished wash.
+func _draw_coast_strokes(canvas: CanvasItem, cull: Rect2, xform: Transform2D) -> void:
+	var coast := MapStyle.coast_color()
+	if coast.a <= 0.0:
+		return
+	var culling := cull.size.x > 0.0
+	var w := MapStyle.coast_width()
+	for i in _sea.size():
+		if int(_sea[i].b) != COAST_BAND:
+			continue
+		if culling and not cull.intersects(_sea_bb[i]):
+			continue
+		var pts: PackedVector2Array = _sea[i].p
+		if pts.size() < 3:
+			continue
+		var loop := xform * pts
+		loop.append(loop[0])
+		canvas.draw_polyline(loop, coast, w, true)
+
+## Engraved water lining (ink mode): cached seaward offsets of the coast,
+## drawn over the sea fills, fading with distance from shore.
+func _draw_water_lining(canvas: CanvasItem, cull: Rect2, xform: Transform2D) -> void:
+	var tiers: Array = MapStyle.water_lining()
+	if tiers.is_empty():
+		return
+	_ensure_coast_lines(tiers)
+	var culling := cull.size.x > 0.0
+	for entry in _coast_lines:
+		var tier: Array = tiers[entry.tier]
+		if culling and not cull.intersects(_sea_bb[entry.src].grow(float(tier[0]) + 8.0)):
+			continue
+		var pts: PackedVector2Array = xform * (entry.pts as PackedVector2Array)
+		canvas.draw_polyline(pts, Color(MapStyle.INK.r, MapStyle.INK.g, MapStyle.INK.b, float(tier[1])), float(tier[2]), true)
+
+## Offset the COAST_BAND polys seaward once per lining tier. The geometry is
+## style-independent, so it's built once ever (lazy: only ink mode asks).
+## Clipper gotcha (see building_visuals _offset_ccw): positive delta only
+## GROWS counter-clockwise polygons — normalize winding first.
+func _ensure_coast_lines(tiers: Array) -> void:
+	if _coast_lines_built:
+		return
+	_coast_lines_built = true
+	for i in _sea.size():
+		if int(_sea[i].b) != COAST_BAND:
+			continue
+		var pts: PackedVector2Array = _sea[i].p
+		if pts.size() < 3:
+			continue
+		var ccw := pts.duplicate()
+		if Geometry2D.is_polygon_clockwise(ccw):
+			ccw.reverse()
+		for t in tiers.size():
+			for off in Geometry2D.offset_polygon(ccw, float(tiers[t][0]), Geometry2D.JOIN_ROUND):
+				if off.size() < 3:
+					continue
+				var closed: PackedVector2Array = off.duplicate()
+				closed.append(closed[0])
+				_coast_lines.append({"src": i, "tier": t, "pts": closed})
 
 ## Triangulate every fill polygon once (load-time, ~tens of ms — the old direct
 ## draw triangulated all of these EVERY frame), so panning only ever draws
@@ -300,6 +374,7 @@ func _draw_polys_direct(cull: Rect2 = Rect2()) -> void:
 			continue
 		var sband: int = clampi(_sea[i].b, 0, sea_cols.size() - 1)
 		draw_colored_polygon(spts, sea_cols[sband])
+	_draw_water_lining(self, cull if culling else Rect2(), Transform2D.IDENTITY)
 	for i in _polys.size():
 		if culling and not cull.intersects(_poly_bb[i]):
 			continue
@@ -311,7 +386,8 @@ func _draw_polys_direct(cull: Rect2 = Rect2()) -> void:
 		draw_colored_polygon(pts, color)
 		var outline := pts.duplicate()
 		outline.append(pts[0])
-		draw_polyline(outline, color.darkened(OUTLINE_DARKEN), OUTLINE_WIDTH, true)
+		draw_polyline(outline, MapStyle.contour_color(band, color), MapStyle.contour_width(band), true)
+	_draw_coast_strokes(self, cull if culling else Rect2(), Transform2D.IDENTITY)
 	for i in _lakes.size():
 		if culling and not cull.intersects(_lake_bb[i]):
 			continue
@@ -321,7 +397,7 @@ func _draw_polys_direct(cull: Rect2 = Rect2()) -> void:
 		draw_colored_polygon(lake_pts, water)
 		var shore: PackedVector2Array = lake_pts.duplicate()
 		shore.append(lake_pts[0])
-		draw_polyline(shore, water.darkened(0.25), 2.0, true)
+		draw_polyline(shore, MapStyle.lake_shore_color(water), MapStyle.lake_shore_width(), true)
 
 ## Node2D that paints the contours into the bake SubViewport in texture space
 ## (world point -> (p - origin) * scale). Line widths stay in texture pixels so
@@ -336,13 +412,12 @@ class HillPainter:
 	var _sea_colors: Array
 	var _band_colors: Array
 	var _water: Color
-	var _outline_darken: float
-	var _outline_width: float
+	var _coast_lines: Array = []  # water-lining polylines (world space, pre-offset)
 	var _meshes: Dictionary       # pre-triangulated fill meshes (keyed s%d/p%d/l%d) so the bake
 	var _white: Texture2D         # draws cached meshes instead of re-triangulating every contour
 
 	func configure(sea: Array, polys: Array, lakes: Array, origin: Vector2, scale: float,
-			sea_colors: Array, band_colors: Array, water: Color, outline_darken: float, outline_width: float,
+			sea_colors: Array, band_colors: Array, water: Color, coast_lines: Array,
 			meshes: Dictionary, white: Texture2D) -> void:
 		_sea = sea
 		_polys = polys
@@ -352,8 +427,7 @@ class HillPainter:
 		_sea_colors = sea_colors
 		_band_colors = band_colors
 		_water = water
-		_outline_darken = outline_darken
-		_outline_width = outline_width
+		_coast_lines = coast_lines
 		_meshes = meshes
 		_white = white
 
@@ -373,15 +447,32 @@ class HillPainter:
 			if spts.size() < 3:
 				continue
 			_fill("s%d" % i, spts, _sea_colors[clampi(_sea[i].b, 0, _sea_colors.size() - 1)], xform)
+		var lining: Array = MapStyle.water_lining()
+		if not lining.is_empty():
+			for entry in _coast_lines:
+				var tier: Array = lining[entry.tier]
+				draw_polyline(_to_tex(entry.pts), Color(MapStyle.INK.r, MapStyle.INK.g, MapStyle.INK.b, float(tier[1])), float(tier[2]), true)
 		for i in _polys.size():
 			var pts: PackedVector2Array = _polys[i].p
 			if pts.size() < 3:
 				continue
-			var color: Color = _band_colors[clampi(_polys[i].b, 0, _band_colors.size() - 1)]
+			var band := clampi(_polys[i].b, 0, _band_colors.size() - 1)
+			var color: Color = _band_colors[band]
 			_fill("p%d" % i, pts, color, xform)
 			var outline := _to_tex(pts)
 			outline.append(outline[0])
-			draw_polyline(outline, color.darkened(_outline_darken), _outline_width, true)
+			draw_polyline(outline, MapStyle.contour_color(band, color), MapStyle.contour_width(band), true)
+		var coast := MapStyle.coast_color()
+		if coast.a > 0.0:
+			for i in _sea.size():
+				if int(_sea[i].b) != COAST_BAND:
+					continue
+				var cpts: PackedVector2Array = _sea[i].p
+				if cpts.size() < 3:
+					continue
+				var cloop := _to_tex(cpts)
+				cloop.append(cloop[0])
+				draw_polyline(cloop, coast, MapStyle.coast_width(), true)
 		for i in _lakes.size():
 			var lake_pts: PackedVector2Array = _lakes[i]
 			if lake_pts.size() < 3:
@@ -389,7 +480,7 @@ class HillPainter:
 			_fill("l%d" % i, lake_pts, _water, xform)
 			var shore := _to_tex(lake_pts)
 			shore.append(shore[0])
-			draw_polyline(shore, _water.darkened(0.25), 2.0, true)
+			draw_polyline(shore, MapStyle.lake_shore_color(_water), MapStyle.lake_shore_width(), true)
 
 	func _fill(key: String, pts: PackedVector2Array, color: Color, xform: Transform2D) -> void:
 		var mesh: Mesh = _meshes.get(key, null)
