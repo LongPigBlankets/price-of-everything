@@ -145,3 +145,31 @@ func river_casing_extra() -> float:
 ## Flow squiggles inside the river (ink only): short darker-blue dashes.
 func river_squiggle() -> Color:
 	return Color(0.247, 0.435, 0.639, 0.5)
+
+## ── P2 road stroke: geometry post-pass + dashed symbology ───────────────────
+
+func road_width(trunk: bool) -> float:
+	if not ink:
+		return 7.0 if trunk else 4.5
+	return 4.5 if trunk else 3.0
+
+func road_casing_width(trunk: bool) -> float:
+	return road_width(trunk) + (2.6 if ink else 2.5)
+
+## Drawn-polyline restyle (ink only, spec §3c Class 2): RDP simplify kills the
+## A*-grid meander, then a seeded hand wobble goes back on top. The LOGIC
+## geometry, tiles, bridges and gameplay flags are never touched.
+func road_simplify_eps() -> float:
+	return 10.0 if ink else 0.0
+
+## [subdivide step u, perpendicular amplitude u]; empty = no wobble (classic).
+func road_wobble() -> Array:
+	return [20.0, 1.5] if ink else []
+
+## Casing dash pattern [dash u, gap u] (ink only; classic casing is solid).
+func road_dash() -> Array:
+	return [14.0, 8.0]
+
+## Pier plank tick hairlines (ink only).
+func pier_plank_color() -> Color:
+	return Color(INK.r, INK.g, INK.b, 0.45)

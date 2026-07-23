@@ -60,6 +60,13 @@ func _draw() -> void:
 			var y := t * b_len * 0.8 - pier_w * 0.5
 			draw_rect(Rect2(Vector2(0.0, y), Vector2(pier_len, pier_w)), pier, true)
 			draw_rect(Rect2(Vector2(0.0, y), Vector2(pier_len, pier_w)), outline, false, tile_h * 0.008)
+			if MapStyle.ink:
+				# Timber read: plank tick hairlines across each finger.
+				var plank := MapStyle.pier_plank_color()
+				var px := 5.0
+				while px < pier_len - 2.0:
+					draw_line(Vector2(px, y), Vector2(px, y + pier_w), plank, 0.9, true)
+					px += 6.0
 		draw_rect(Rect2(Vector2(-thick, -b_len * 0.5), Vector2(thick, b_len)), dockhouse, true)
 		draw_rect(Rect2(Vector2(-thick, -b_len * 0.5), Vector2(thick, b_len)), outline, false, tile_h * 0.012)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
