@@ -113,6 +113,18 @@ func farm_outline_width(is_npc: bool) -> float:
 		return 2.0 if is_npc else 1.0
 	return 1.1
 
+## P3b parcel fabric (ink only): the field base is a parchment path tan that
+## shows through the parcel insets as the little farm roads; parcels tint
+## from the variant set by their baked index and carry a faint ink hairline.
+func farm_path_color() -> Color:
+	return Color("d6c99e")
+
+func farm_parcel_tint(i: int) -> Color:
+	return _FARM_VARIANTS[absi(i) % _FARM_VARIANTS.size()]
+
+func farm_parcel_outline() -> Color:
+	return Color(INK.r, INK.g, INK.b, 0.35)
+
 ## Farm outbuildings: classic brown; ink = brick barn / mustard silo + ink.
 func farm_barn_color() -> Color:
 	return Color("b0483a") if ink else Color(0.50, 0.33, 0.16)

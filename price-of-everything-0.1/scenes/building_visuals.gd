@@ -363,11 +363,11 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		return  # tile too crowded to fit it — not drawn rather than overlapping
 
 	var verts: PackedVector2Array = placed.verts
-	# Farms carry BOTH hatch sets baked once (clipped to the — possibly hex-cut —
-	# field): the classic 45° green hatch and the ink-mode long-axis furrows.
-	# The style toggle just picks which set to draw — no re-bake on flip.
+	# Farms carry BOTH looks baked once (clipped to the — possibly hex-cut —
+	# field): the classic 45° green hatch and the ink-mode parcel fabric
+	# (P3b). The style toggle just picks which set to draw — no re-bake.
 	var hatch: Array = _bake_farm_hatch(verts) if cat == "farm" else []
-	var furrows: Array = _bake_farm_furrows(verts) if cat == "farm" else []
+	var parcels: Array = _bake_farm_parcels(verts) if cat == "farm" else []
 	var placement := {
 		"instance_id": instance_id,
 		"building_id": building_id,
@@ -381,7 +381,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		"center_rel": placed.center_rel,
 		"half": placed.half,
 		"hatch": hatch,
-		"furrows": furrows,
+		"parcels": parcels,
 		"offshore": bool(placed.get("offshore", false)),
 	}
 	if instance_id != "":
@@ -1524,7 +1524,7 @@ func _build_farm_layout(tile_id: String, coord: Vector2i, center: Vector2, farms
 			if cell.size() >= 3:
 				var parts := Geometry2D.intersect_polygons(farms[i].verts, cell)
 				render = _largest_ccw(parts, farms[i].verts)
-		_farm_render[str(farms[i].instance_id)] = {"verts": render, "hatch": _bake_farm_hatch(render), "furrows": _bake_farm_furrows(render)}
+		_farm_render[str(farms[i].instance_id)] = {"verts": render, "hatch": _bake_farm_hatch(render), "parcels": _bake_farm_parcels(render)}
 		fields_w.append(render)
 	# Group farms into webs by FIELD ADJACENCY (touching = share a side) so distant farms never share a
 	# web/ring; one ring per web, computed up front so the inter-field web can EXTEND out to meet it. The
@@ -2576,14 +2576,8 @@ func _bake_farm_hatch(verts: PackedVector2Array) -> Array:
 		off += FARM_HATCH_SPACING
 	return out
 
-## Ink-mode furrows: hatch lines along the field's LONG AXIS (principal
-## component of the outline) with a small seeded per-field angle jitter, so
-## adjacent plots plough in different directions like the reference plate.
-## Baked once at layout beside the classic hatch; deterministic (centroid seed).
-func _bake_farm_furrows(verts: PackedVector2Array) -> Array:
-	var out: Array = []
-	if verts.size() < 3:
-		return out
+## [centroid, principal angle]: the polygon's PCA long axis.
+func _poly_long_axis(verts: PackedVector2Array) -> Array:
 	var ctr := Vector2.ZERO
 	for v in verts:
 		ctr += v
@@ -2596,7 +2590,18 @@ func _bake_farm_furrows(verts: PackedVector2Array) -> Array:
 		sxx += r.x * r.x
 		sxy += r.x * r.y
 		syy += r.y * r.y
-	var ang := 0.5 * atan2(2.0 * sxy, sxx - syy)
+	return [ctr, 0.5 * atan2(2.0 * sxy, sxx - syy)]
+
+## Ink-mode furrows: hatch lines along a polygon's LONG AXIS (+ang_offset for
+## the occasional deliberately-perpendicular parcel) with a small seeded
+## angle jitter. Used per-parcel by the P3b fabric; deterministic.
+func _bake_farm_furrows(verts: PackedVector2Array, ang_offset: float = 0.0) -> Array:
+	var out: Array = []
+	if verts.size() < 3:
+		return out
+	var axis := _poly_long_axis(verts)
+	var ctr: Vector2 = axis[0]
+	var ang: float = float(axis[1]) + ang_offset
 	ang += deg_to_rad(float(RoadHash.pick("furrow|%d|%d" % [roundi(ctr.x), roundi(ctr.y)], 13)) - 6.0)
 	var d := Vector2(cos(ang), sin(ang))
 	var n := Vector2(-d.y, d.x)
@@ -2610,6 +2615,87 @@ func _bake_farm_furrows(verts: PackedVector2Array) -> Array:
 		for seg in clipped:
 			out.append(seg)
 		off += FARM_HATCH_SPACING
+	return out
+
+# ── P3b parcel fabric (ink farms) ──────────────────────────────────────────────
+const PARCEL_STRIP_MIN := 30.0   # strip width range across the long axis
+const PARCEL_STRIP_MAX := 55.0
+const PARCEL_CUT_MIN := 40.0     # cross-cut spacing range along the long axis
+const PARCEL_CUT_MAX := 80.0
+const PARCEL_SHEAR_DEG := 3.0    # per-cut tilt so cells are trapezoids, not graph paper
+const PARCEL_INSET := 2.2        # gap: the base path-tan shows through = the little roads
+const PARCEL_MIN_AREA := 250.0   # drop boundary slivers (base shows = path widening)
+
+## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
+## rect/trapezoid parcels clipped at the field boundary; each parcel is inset
+## so the path-tan base reads as the small roads between plots. Seeded from
+## the field centroid — deterministic and layout-independent. The LOGIC
+## footprint polygon is never touched. Entry: {p: poly, t: tint idx, f: furrows}.
+func _bake_farm_parcels(verts: PackedVector2Array) -> Array:
+	var out: Array = []
+	if verts.size() < 3:
+		return out
+	var axis := _poly_long_axis(verts)
+	var ctr: Vector2 = axis[0]
+	var ang := float(axis[1])
+	var d := Vector2(cos(ang), sin(ang))
+	var n := Vector2(-d.y, d.x)
+	var seed_base := "fparcel|%d|%d" % [roundi(ctr.x), roundi(ctr.y)]
+	var dmin := 1.0e9
+	var dmax := -1.0e9
+	var nmin := 1.0e9
+	var nmax := -1.0e9
+	for v in verts:
+		var r := v - ctr
+		dmin = minf(dmin, r.dot(d))
+		dmax = maxf(dmax, r.dot(d))
+		nmin = minf(nmin, r.dot(n))
+		nmax = maxf(nmax, r.dot(n))
+	var ccw := verts.duplicate()
+	if Geometry2D.is_polygon_clockwise(ccw):
+		ccw.reverse()
+	var pi_ct := 0
+	var n0 := nmin
+	var row := 0
+	while n0 < nmax:
+		var w := lerpf(PARCEL_STRIP_MIN, PARCEL_STRIP_MAX, float(RoadHash.pick("%s|r%d" % [seed_base, row], 100)) / 100.0)
+		var n1 := minf(n0 + w, nmax)
+		var d0 := dmin
+		var col := 0
+		while d0 < dmax:
+			var cl := lerpf(PARCEL_CUT_MIN, PARCEL_CUT_MAX, float(RoadHash.pick("%s|r%d|c%d" % [seed_base, row, col], 100)) / 100.0)
+			var d1 := minf(d0 + cl, dmax)
+			var s0 := tan(deg_to_rad((float(RoadHash.pick("%s|r%d|s%d" % [seed_base, row, col], 100)) / 100.0 * 2.0 - 1.0) * PARCEL_SHEAR_DEG))
+			var s1 := tan(deg_to_rad((float(RoadHash.pick("%s|r%d|s%d" % [seed_base, row, col + 1], 100)) / 100.0 * 2.0 - 1.0) * PARCEL_SHEAR_DEG))
+			var quad := PackedVector2Array([
+				ctr + d * d0 + n * n0,
+				ctr + d * d1 + n * n0,
+				ctr + d * (d1 + s1 * (n1 - n0)) + n * n1,
+				ctr + d * (d0 + s0 * (n1 - n0)) + n * n1,
+			])
+			for piece in Geometry2D.intersect_polygons(quad, ccw):
+				if piece.size() < 3 or absf(_poly_area(piece)) < PARCEL_MIN_AREA:
+					continue
+				var pcw: PackedVector2Array = piece.duplicate()
+				if Geometry2D.is_polygon_clockwise(pcw):
+					pcw.reverse()
+				for inset in Geometry2D.offset_polygon(pcw, -PARCEL_INSET):
+					if inset.size() < 3:
+						continue
+					# ~60% furrowed along the parcel's own axis, ~10% ploughed
+					# perpendicular for rhythm, the rest plain.
+					var fseg: Array = []
+					var roll := RoadHash.pick("%s|f%d" % [seed_base, pi_ct], 10)
+					if roll < 6:
+						fseg = _bake_farm_furrows(inset, 0.0)
+					elif roll < 7:
+						fseg = _bake_farm_furrows(inset, PI * 0.5)
+					out.append({"p": inset, "t": RoadHash.pick("%s|t%d" % [seed_base, pi_ct], 4), "f": fseg})
+					pi_ct += 1
+			d0 = d1
+			col += 1
+		n0 = n1
+		row += 1
 	return out
 
 ## Lower is better: hug the nearest same-type building (terraced rows of a kind); if none
@@ -3101,28 +3187,45 @@ func _draw() -> void:
 		var is_farm: bool = str(placement.cat) == "farm"
 		var verts: PackedVector2Array = placement.verts
 		var hatch_src: Array = placement.get("hatch", [])
-		var furrow_src: Array = placement.get("furrows", [])
+		var parcel_src: Array = placement.get("parcels", [])
 		if is_farm:
 			# Use the cell-clipped (lane-snapped) shape + its re-baked hatch when the layout pass ran.
 			var fid := str(placement.instance_id)
 			if _farm_render.has(fid):
 				verts = _farm_render[fid].verts
 				hatch_src = _farm_render[fid].hatch
-				furrow_src = (_farm_render[fid] as Dictionary).get("furrows", [])
+				parcel_src = (_farm_render[fid] as Dictionary).get("parcels", [])
 		if verts.size() < 3:
 			continue
 		if is_farm:
-			var fid2 := str(placement.instance_id)
-			draw_colored_polygon(verts, MapStyle.farm_field_variant(fid2))
-			var loop := verts.duplicate()
-			loop.append(verts[0])
-			var farm_npc := bool(placement.is_npc)
-			draw_polyline(loop, MapStyle.farm_outline_color(farm_npc), MapStyle.farm_outline_width(farm_npc), true)
-			# Classic: 45° dark-green hatch. Ink: long-axis furrows (both baked).
-			for seg in ((furrow_src if MapStyle.ink else hatch_src) as Array):
-				var s: PackedVector2Array = seg
-				if s.size() >= 2:
-					draw_polyline(s, MapStyle.farm_hatch(), MapStyle.farm_hatch_width())
+			if MapStyle.ink:
+				# P3b parcel fabric: the path-tan base shows through the parcel
+				# insets as the little farm roads; NO outer outline (the parcel
+				# edges carry the boundary — kills the chunky-blob read).
+				draw_colored_polygon(verts, MapStyle.farm_path_color())
+				for pc in parcel_src:
+					var pp: PackedVector2Array = pc.p
+					if pp.size() < 3:
+						continue
+					draw_colored_polygon(pp, MapStyle.farm_parcel_tint(int(pc.t)))
+					var pl := pp.duplicate()
+					pl.append(pp[0])
+					draw_polyline(pl, MapStyle.farm_parcel_outline(), 0.9, true)
+					for seg in (pc.f as Array):
+						var fs: PackedVector2Array = seg
+						if fs.size() >= 2:
+							draw_polyline(fs, MapStyle.farm_hatch(), MapStyle.farm_hatch_width())
+			else:
+				var fid2 := str(placement.instance_id)
+				draw_colored_polygon(verts, MapStyle.farm_field_variant(fid2))
+				var loop := verts.duplicate()
+				loop.append(verts[0])
+				var farm_npc := bool(placement.is_npc)
+				draw_polyline(loop, MapStyle.farm_outline_color(farm_npc), MapStyle.farm_outline_width(farm_npc), true)
+				for seg in (hatch_src as Array):
+					var s: PackedVector2Array = seg
+					if s.size() >= 2:
+						draw_polyline(s, MapStyle.farm_hatch(), MapStyle.farm_hatch_width())
 		else:
 			# Ink & wash: wash fill + one sepia ink outline + category-flavoured
 			# roof motifs. The DRAWN polygon gets a hand-wobble (ink spec I4);
