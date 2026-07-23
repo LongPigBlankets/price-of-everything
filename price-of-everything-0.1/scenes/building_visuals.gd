@@ -3149,25 +3149,29 @@ func _draw() -> void:
 	# forests). A promoted tile's _farm_lanes already excludes the ring + trunk (now real yellow roads).
 	# A filled disc (radius = half the track width) at each segment end JOINS the corners + junctions so
 	# the network reads as continuous instead of broken butt-capped segments.
-	var joint_r := FARM_LANE_W * 0.5
-	for tid in _farm_lanes:
-		for seg in (_farm_lanes[tid] as Array):
-			var ls: PackedVector2Array = seg
-			if ls.size() >= 2:
-				draw_polyline(ls, FARM_LANE_COLOR, FARM_LANE_W)
-				for v in ls:
-					draw_circle(v, joint_r, FARM_LANE_COLOR)   # fill each corner/junction
-	# Bridge decks where a lane crosses a river.
-	for tid2 in _farm_bridges:
-		for br in (_farm_bridges[tid2] as Array):
-			var bp: Vector2 = br.p
-			var bd: Vector2 = br.dir
-			var bpr := Vector2(-bd.y, bd.x)
-			var e0 := bp - bd * (FARM_BRIDGE_LEN * 0.5)
-			var e1 := bp + bd * (FARM_BRIDGE_LEN * 0.5)
-			draw_line(e0, e1, FARM_BRIDGE_COLOR, FARM_BRIDGE_W)            # deck
-			draw_line(e0 - bpr * 5.0, e0 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)   # abutment rails
-			draw_line(e1 - bpr * 5.0, e1 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)
+	# Ink mode draws NO grey lane web (owner ruling 2026-07-23): the mockup's
+	# farms are parcel blocks sitting beside the roads, not lane-connected
+	# blobs. Classic keeps the dirt tracks + their river bridge decks.
+	if not MapStyle.ink:
+		var joint_r := FARM_LANE_W * 0.5
+		for tid in _farm_lanes:
+			for seg in (_farm_lanes[tid] as Array):
+				var ls: PackedVector2Array = seg
+				if ls.size() >= 2:
+					draw_polyline(ls, FARM_LANE_COLOR, FARM_LANE_W)
+					for v in ls:
+						draw_circle(v, joint_r, FARM_LANE_COLOR)   # fill each corner/junction
+		# Bridge decks where a lane crosses a river.
+		for tid2 in _farm_bridges:
+			for br in (_farm_bridges[tid2] as Array):
+				var bp: Vector2 = br.p
+				var bd: Vector2 = br.dir
+				var bpr := Vector2(-bd.y, bd.x)
+				var e0 := bp - bd * (FARM_BRIDGE_LEN * 0.5)
+				var e1 := bp + bd * (FARM_BRIDGE_LEN * 0.5)
+				draw_line(e0, e1, FARM_BRIDGE_COLOR, FARM_BRIDGE_W)            # deck
+				draw_line(e0 - bpr * 5.0, e0 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)   # abutment rails
+				draw_line(e1 - bpr * 5.0, e1 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)
 	# Round tanks + farm barns/silos on top (tanks sit off their building; farm outbuildings sit ON the field).
 	for sc in _subcomponents:
 		var k := str(sc.kind)

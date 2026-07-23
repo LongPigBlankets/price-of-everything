@@ -340,6 +340,46 @@ Classes 1+2)*
   angle along the plot's long axis, hairline ink; outline white → sepia;
   barn/silo → red/mustard washes + ink. Lane web + lane bridges kept.
 
+**P3b — Farm parcelization** *(DESIGNED 2026-07-23 after owner feedback:
+"farms look too chunky"; grey lane web already removed in ink mode)*
+
+Target read (from the mockup): a farm is not one big blob — it's a **block of
+rectangular/trapezoid parcels** packed edge-to-edge, separated by thin light
+paths ("small regular roads"), each parcel individually tinted and furrowed,
+with irregular parcels where the grid meets the block's outer boundary.
+
+Mechanism — draw-only, the logic footprint/occupancy polygon is untouched
+(same drawn-vs-logic split as buildings and roads):
+
+1. Keep the existing field polygon exactly as-is; it becomes the **clip
+   boundary** for a parcel grid.
+2. At layout bake (beside the existing hatch/furrow bakes, so the style
+   toggle stays instant): build an **oriented grid in the field's PCA frame**
+   — seeded strip widths ~30–55u along the long axis, seeded cross-cuts
+   ~40–80u, each cross-cut sheared ±3° (seeded) so cells are trapezoids, not
+   graph paper. Clip every cell to the field polygon
+   (`Geometry2D.intersect_polygons`) → edge cells become the mockup's
+   irregular boundary parcels. CCW-normalize before any offsetting (the
+   Clipper winding gotcha).
+3. **Paths between parcels**: fill the whole field with a parchment-tan path
+   color first, then draw each parcel **inset ~2.2u** (negative
+   `offset_polygon`) — the base showing through the gaps *is* the small-road
+   network. No extra line drawing needed for paths.
+4. Per parcel (all seeded via `RoadHash` on instance_id + parcel index):
+   tint from the straw/olive variant set; ~60% get hairline furrows along
+   the parcel's own long axis (a few deliberately perpendicular); hairline
+   sepia outline at low alpha; the rest stay plain for rhythm.
+5. Store as `placement.parcels` / `_farm_render.parcels`
+   (`[{poly, tint_i, furrows}]`); ink draw renders parcels instead of the
+   single fill+furrows; classic path untouched. Barn/silo unchanged.
+6. Field outer outline: drop it in ink mode — the parcel edges + paths carry
+   the boundary (removes the last "chunky blob" cue).
+
+Cost: bake ~10–25 clip ops per farm × ~30 farms, once at layout — trivial.
+Draw adds ~20–40 canvas commands per farm (parcel fills + hairlines);
+farms redraw only on layout events. If command count ever matters, parcels
+can collapse into one per-vertex-colored ArrayMesh per farm.
+
 **P4 — Tree glyphs** *(forest identity)*
 - Replace disc lobes with 2–3 seeded canopy-glyph `ArrayMesh` variants (lumpy
   fan + trunk notch + ink rim baked into the mesh), instanced through the
