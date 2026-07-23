@@ -363,8 +363,11 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		return  # tile too crowded to fit it — not drawn rather than overlapping
 
 	var verts: PackedVector2Array = placed.verts
-	# Farms carry their dark-green hatch baked once (clipped to the — possibly hex-cut — field).
+	# Farms carry BOTH hatch sets baked once (clipped to the — possibly hex-cut —
+	# field): the classic 45° green hatch and the ink-mode long-axis furrows.
+	# The style toggle just picks which set to draw — no re-bake on flip.
 	var hatch: Array = _bake_farm_hatch(verts) if cat == "farm" else []
+	var furrows: Array = _bake_farm_furrows(verts) if cat == "farm" else []
 	var placement := {
 		"instance_id": instance_id,
 		"building_id": building_id,
@@ -378,6 +381,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		"center_rel": placed.center_rel,
 		"half": placed.half,
 		"hatch": hatch,
+		"furrows": furrows,
 		"offshore": bool(placed.get("offshore", false)),
 	}
 	if instance_id != "":
@@ -1520,7 +1524,7 @@ func _build_farm_layout(tile_id: String, coord: Vector2i, center: Vector2, farms
 			if cell.size() >= 3:
 				var parts := Geometry2D.intersect_polygons(farms[i].verts, cell)
 				render = _largest_ccw(parts, farms[i].verts)
-		_farm_render[str(farms[i].instance_id)] = {"verts": render, "hatch": _bake_farm_hatch(render)}
+		_farm_render[str(farms[i].instance_id)] = {"verts": render, "hatch": _bake_farm_hatch(render), "furrows": _bake_farm_furrows(render)}
 		fields_w.append(render)
 	# Group farms into webs by FIELD ADJACENCY (touching = share a side) so distant farms never share a
 	# web/ring; one ring per web, computed up front so the inter-field web can EXTEND out to meet it. The
@@ -2572,6 +2576,42 @@ func _bake_farm_hatch(verts: PackedVector2Array) -> Array:
 		off += FARM_HATCH_SPACING
 	return out
 
+## Ink-mode furrows: hatch lines along the field's LONG AXIS (principal
+## component of the outline) with a small seeded per-field angle jitter, so
+## adjacent plots plough in different directions like the reference plate.
+## Baked once at layout beside the classic hatch; deterministic (centroid seed).
+func _bake_farm_furrows(verts: PackedVector2Array) -> Array:
+	var out: Array = []
+	if verts.size() < 3:
+		return out
+	var ctr := Vector2.ZERO
+	for v in verts:
+		ctr += v
+	ctr /= float(verts.size())
+	var sxx := 0.0
+	var sxy := 0.0
+	var syy := 0.0
+	for v in verts:
+		var r := v - ctr
+		sxx += r.x * r.x
+		sxy += r.x * r.y
+		syy += r.y * r.y
+	var ang := 0.5 * atan2(2.0 * sxy, sxx - syy)
+	ang += deg_to_rad(float(RoadHash.pick("furrow|%d|%d" % [roundi(ctr.x), roundi(ctr.y)], 13)) - 6.0)
+	var d := Vector2(cos(ang), sin(ang))
+	var n := Vector2(-d.y, d.x)
+	var bb := _verts_bb(verts)
+	var reach := bb.size.length()
+	var ext := reach * 0.5
+	var off := -ext
+	while off <= ext:
+		var mid := ctr + n * off
+		var clipped := Geometry2D.intersect_polyline_with_polygon(PackedVector2Array([mid - d * reach, mid + d * reach]), verts)
+		for seg in clipped:
+			out.append(seg)
+		off += FARM_HATCH_SPACING
+	return out
+
 ## Lower is better: hug the nearest same-type building (terraced rows of a kind); if none
 ## of this type is placed yet, prefer a frontage slot nearer the tile centre.
 func _row_score(center: Vector2, cat: String, placed_here: Array) -> float:
@@ -3036,11 +3076,15 @@ func _draw() -> void:
 			_draw_subcomponent(sc)
 	# Courtyard block-masses draw under their members: one welded mass + inner
 	# yard; the members then contribute ink outlines only (party-wall slices).
+	var shadow := MapStyle.building_shadow_color()
+	var shadow_off := MapStyle.building_shadow_offset()
 	for tid_m in _block_masses:
 		for m in (_block_masses[tid_m] as Array):
 			if _cull and not _view.intersects(m.bb):
 				continue
 			var mw := _wobble_poly(str(m.key), m.poly)
+			if shadow.a > 0.0:
+				draw_colored_polygon(_offset_pts(mw, shadow_off), shadow)
 			draw_colored_polygon(mw, m.color)
 			var ml := mw.duplicate()
 			ml.append(mw[0])
@@ -3057,27 +3101,28 @@ func _draw() -> void:
 		var is_farm: bool = str(placement.cat) == "farm"
 		var verts: PackedVector2Array = placement.verts
 		var hatch_src: Array = placement.get("hatch", [])
+		var furrow_src: Array = placement.get("furrows", [])
 		if is_farm:
 			# Use the cell-clipped (lane-snapped) shape + its re-baked hatch when the layout pass ran.
 			var fid := str(placement.instance_id)
 			if _farm_render.has(fid):
 				verts = _farm_render[fid].verts
 				hatch_src = _farm_render[fid].hatch
+				furrow_src = (_farm_render[fid] as Dictionary).get("furrows", [])
 		if verts.size() < 3:
 			continue
 		if is_farm:
-			draw_colored_polygon(verts, MapStyle.farm_field())
+			var fid2 := str(placement.instance_id)
+			draw_colored_polygon(verts, MapStyle.farm_field_variant(fid2))
 			var loop := verts.duplicate()
 			loop.append(verts[0])
-			if bool(placement.is_npc):
-				draw_polyline(loop, Color.WHITE, NPC_OUTLINE_W, true)
-			else:
-				draw_polyline(loop, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
-			# Dark-green diagonal hatch (baked + clipped to the field).
-			for seg in (hatch_src as Array):
+			var farm_npc := bool(placement.is_npc)
+			draw_polyline(loop, MapStyle.farm_outline_color(farm_npc), MapStyle.farm_outline_width(farm_npc), true)
+			# Classic: 45° dark-green hatch. Ink: long-axis furrows (both baked).
+			for seg in ((furrow_src if MapStyle.ink else hatch_src) as Array):
 				var s: PackedVector2Array = seg
 				if s.size() >= 2:
-					draw_polyline(s, MapStyle.farm_hatch(), FARM_HATCH_W)
+					draw_polyline(s, MapStyle.farm_hatch(), MapStyle.farm_hatch_width())
 		else:
 			# Ink & wash: wash fill + one sepia ink outline + category-flavoured
 			# roof motifs. The DRAWN polygon gets a hand-wobble (ink spec I4);
@@ -3087,6 +3132,8 @@ func _draw() -> void:
 			var in_mass: bool = (_massed_by_tile.get(str(placement.tile_id), {}) as Dictionary).has(str(placement.instance_id))
 			var wob := _wobble_poly(str(placement.instance_id), verts)
 			if not in_mass:
+				if shadow.a > 0.0:
+					draw_colored_polygon(_offset_pts(wob, shadow_off), shadow)
 				draw_colored_polygon(wob, _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
 			var loop2 := wob.duplicate()
 			loop2.append(wob[0])
@@ -3159,15 +3206,30 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		if kind == "tank":
 			draw_circle(_poly_centroid(sv), 1.4, INK)   # reference: tank = ink circle + centre dot
 		return
-	draw_colored_polygon(sv, sc.color)
+	# Farm barn/silo fall through to here. Ink: brick barn / mustard silo + ink
+	# outline; classic keeps the brown + white/grey look.
+	var fb_fill: Color = sc.color
+	if MapStyle.ink:
+		fb_fill = MapStyle.farm_silo_color() if kind == "farm_silo" else MapStyle.farm_barn_color()
+	draw_colored_polygon(sv, fb_fill)
 	var sl := sv.duplicate()
 	sl.append(sv[0])
-	if bool(sc.is_npc):
+	if MapStyle.ink:
+		draw_polyline(sl, INK, 1.0, true)
+	elif bool(sc.is_npc):
 		draw_polyline(sl, Color.WHITE, NPC_OUTLINE_W, true)
 	else:
 		draw_polyline(sl, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
 
 # ── Ink & wash helpers (phase I1) ──────────────────────────────────────────────
+
+## Shift a polygon by a fixed offset (SE micro-shadow under building fills).
+func _offset_pts(pts: PackedVector2Array, off: Vector2) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	out.resize(pts.size())
+	for i in pts.size():
+		out[i] = pts[i] + off
+	return out
 
 ## Hand-drawn wobble (ink spec I4), DRAW time only: subdivide each edge every
 ## ~WOBBLE_STEP and jitter the interior points perpendicular ±WOBBLE_AMP, seeded

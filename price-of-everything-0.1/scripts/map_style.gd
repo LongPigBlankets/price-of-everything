@@ -84,13 +84,49 @@ func port_outline() -> Color:
 func port_pier() -> Color:
 	return Color("cbb489") if ink else Color(0.90, 0.92, 0.94)
 
-## ── Farms (building_visuals farm branch; furrow rework lands in P3) ─────────
+## ── Farms (building_visuals farm branch) ────────────────────────────────────
 
-func farm_field() -> Color:
-	return Color("b8c08a") if ink else Color("a8d98a")
+## Classic: one flat green. Ink: a seeded straw/olive patchwork variant per
+## field (the mockup's "every plot hand-tinted slightly differently").
+const _FARM_VARIANTS: Array[Color] = [
+	Color("b8c08a"), Color("c6c48d"), Color("cfc492"), Color("b0b47e"),
+]
+
+func farm_field_variant(seed_key: String) -> Color:
+	if not ink:
+		return Color("a8d98a")
+	return _FARM_VARIANTS[RoadHash.pick("ffield|%s" % seed_key, _FARM_VARIANTS.size())]
 
 func farm_hatch() -> Color:
-	return Color(0.333, 0.314, 0.165, 0.8) if ink else Color(0.18, 0.38, 0.18, 0.85)
+	return Color(0.30, 0.27, 0.16, 0.7) if ink else Color(0.18, 0.38, 0.18, 0.85)
+
+func farm_hatch_width() -> float:
+	return 1.1 if ink else 3.0
+
+func farm_outline_color(is_npc: bool) -> Color:
+	if not ink:
+		return Color.WHITE if is_npc else Color(0.5, 0.5, 0.5)
+	return Color(INK.r, INK.g, INK.b, 0.6)
+
+func farm_outline_width(is_npc: bool) -> float:
+	if not ink:
+		return 2.0 if is_npc else 1.0
+	return 1.1
+
+## Farm outbuildings: classic brown; ink = brick barn / mustard silo + ink.
+func farm_barn_color() -> Color:
+	return Color("b0483a") if ink else Color(0.50, 0.33, 0.16)
+
+func farm_silo_color() -> Color:
+	return Color("c9992e") if ink else Color(0.50, 0.33, 0.16)
+
+## ── P3 building micro-shadow (ink only; transparent = skip) ─────────────────
+
+func building_shadow_color() -> Color:
+	return Color(INK.r, INK.g, INK.b, 0.13) if ink else Color(0.0, 0.0, 0.0, 0.0)
+
+func building_shadow_offset() -> Vector2:
+	return Vector2(1.5, 2.5)
 
 ## ── Parchment grain (parchment_overlay) ─────────────────────────────────────
 
