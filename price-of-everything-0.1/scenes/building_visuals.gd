@@ -368,6 +368,9 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# (P3b). The style toggle just picks which set to draw — no re-bake.
 	var hatch: Array = _bake_farm_hatch(verts) if cat == "farm" else []
 	var parcels: Dictionary = _bake_farm_parcels(verts) if cat == "farm" else {}
+	var iname := str(bd.get("internal_name", ""))
+	if INK_ART_NAMES.has(iname):
+		_ink_art_iid[str(instance_id)] = true
 	var placement := {
 		"instance_id": instance_id,
 		"building_id": building_id,
@@ -378,6 +381,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		"is_npc": not MatchState.is_player_owned(MatchState.get_building(instance_id)),
 		"bb": _verts_bb(verts).grow(NPC_OUTLINE_W),
 		"cat": cat,
+		"iname": iname,
 		"center_rel": placed.center_rel,
 		"half": placed.half,
 		"hatch": hatch,
@@ -2627,6 +2631,22 @@ const PARCEL_INSET := 2.2        # gap: the base path-tan shows through = the li
 const PARCEL_MIN_AREA := 250.0   # drop boundary slivers (base shows = path widening)
 const FURROW_SPACING := 7.0      # ink furrow pitch (owner: denser than the classic 12u hatch)
 
+# ── Ink building art (hand-drawn industrial sprites, ink mode only) ────────────
+## Buildings that render as baked top-down art in ink mode (owner 2026-07-23);
+## sprites live at assets/ink_buildings/<internal_name>_l{1,2,3}.png (see
+## tools/bake_ink_buildings.gd). Everything else keeps the procedural plates.
+const INK_ART_NAMES := {
+	"furnace": true, "eaf": true, "industrial_factory": true,
+	"consumer_factory": true, "assembly_plant": true,
+	"high_tech_manufactory": true, "petro_refinery": true,
+	"chem_plant": true, "poly_plant": true, "electrolyser": true,
+}
+const INK_ART_SCALE := 2.0    # sprite long side vs footprint long side — the
+                              # footprints are deliberately undersized (plate
+                              # look); the art needs room to read its detail
+var _ink_art_tex: Dictionary = {}   # "name_lN" -> Texture2D (null = missing; lazy)
+var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
+
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
 ## rect/trapezoid parcels clipped at the field boundary; each parcel is inset
 ## so the path-tan base reads as the small roads between plots. Seeded from
@@ -3306,21 +3326,24 @@ func _draw() -> void:
 			# Members of a courtyard mass skip their fill — the mass carries it —
 			# and their outline thins into a party-wall division.
 			var in_mass: bool = (_massed_by_tile.get(str(placement.tile_id), {}) as Dictionary).has(str(placement.instance_id))
-			var wob := _wobble_poly(str(placement.instance_id), verts)
-			if not in_mass:
-				if shadow.a > 0.0:
-					draw_colored_polygon(_offset_pts(wob, shadow_off), shadow)
-				draw_colored_polygon(wob, _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
-			var loop2 := wob.duplicate()
-			loop2.append(wob[0])
-			draw_polyline(loop2, INK, 1.0 if in_mass else INK_W, true)
-			# Quad footprints only — L/C shapes (6/8 verts) keep a clean roof so a
-			# motif never spills off the polygon (same guard the old ridges used).
-			# Offshore platforms stay plain (a helipad dot instead of shed roofs).
-			if bool(placement.get("offshore", false)):
-				draw_circle(_poly_centroid(verts), 2.4, INK)
-			elif verts.size() == 4:
-				_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts, bool(placement.is_npc))
+			if MapStyle.ink and not in_mass and _draw_ink_art(placement, verts):
+				pass   # baked industrial sprite replaces wash/outline/motifs
+			else:
+				var wob := _wobble_poly(str(placement.instance_id), verts)
+				if not in_mass:
+					if shadow.a > 0.0:
+						draw_colored_polygon(_offset_pts(wob, shadow_off), shadow)
+					draw_colored_polygon(wob, _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
+				var loop2 := wob.duplicate()
+				loop2.append(wob[0])
+				draw_polyline(loop2, INK, 1.0 if in_mass else INK_W, true)
+				# Quad footprints only — L/C shapes (6/8 verts) keep a clean roof so a
+				# motif never spills off the polygon (same guard the old ridges used).
+				# Offshore platforms stay plain (a helipad dot instead of shed roofs).
+				if bool(placement.get("offshore", false)):
+					draw_circle(_poly_centroid(verts), 2.4, INK)
+				elif verts.size() == 4:
+					_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts, bool(placement.is_npc))
 	# Thin dirt tracks between adjacent farms (kept within FARM_LANE_REACH of the fields, routed around
 	# forests). A promoted tile's _farm_lanes already excludes the ring + trunk (now real yellow roads).
 	# A filled disc (radius = half the track width) at each segment end JOINS the corners + junctions so
@@ -3363,6 +3386,8 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 	var kind := str(sc.kind)
 	if MapStyle.ink and (kind == "farm_barn" or kind == "farm_silo"):
 		return   # ink farms draw their own parcel-snapped outbuildings (P3b)
+	if MapStyle.ink and _ink_art_iid.get(str(sc.get("iid", "")), false):
+		return   # the baked sprite carries the whole compound (wings/tanks/storeys)
 	if kind == "tankfarm":
 		var twash := _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc))
 		for tc in (sc.tanks as Array):
@@ -3404,6 +3429,44 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		draw_polyline(sl, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
 
 # ── Ink & wash helpers (phase I1) ──────────────────────────────────────────────
+
+## Baked industrial sprite (ink mode): drawn centered on the footprint, rotated
+## to its first edge, long side scaled to INK_ART_SCALE x the footprint extent.
+## Level picks the artwork (l1/l2/l3 = progressively fuller compounds); the NPC
+## copy lifts toward paper-white to keep the ownership cue. A silhouette shadow
+## (the texture re-drawn dark + offset) replaces the polygon micro-shadow.
+## Returns false when no art applies — caller falls back to the plate look.
+func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
+	var iname := str(placement.get("iname", ""))
+	if not INK_ART_NAMES.has(iname) or verts.size() < 3:
+		return false
+	var lvl := clampi(int((MatchState.get_building(str(placement.instance_id)) as Dictionary).get("level", 1)), 1, 3)
+	var key := "%s_l%d" % [iname, lvl]
+	if not _ink_art_tex.has(key):
+		var path := "res://assets/ink_buildings/%s.png" % key
+		_ink_art_tex[key] = (load(path) as Texture2D) if ResourceLoader.exists(path) else null
+	var tex: Texture2D = _ink_art_tex[key]
+	if tex == null:
+		return false
+	var dir := (verts[1] - verts[0]).normalized()
+	var ctr := _poly_centroid(verts)
+	var dmax := 0.0
+	var nmax := 0.0
+	for v in verts:
+		var r := v - ctr
+		dmax = maxf(dmax, absf(r.dot(dir)))
+		nmax = maxf(nmax, absf(r.dot(Vector2(-dir.y, dir.x))))
+	var ts := tex.get_size()
+	var scale := maxf(dmax, nmax) * 2.0 * INK_ART_SCALE / maxf(ts.x, ts.y)
+	var sh := MapStyle.building_shadow_color()
+	if sh.a > 0.0:
+		draw_set_transform(ctr + MapStyle.building_shadow_offset() * 1.6, dir.angle(), Vector2(scale, scale))
+		draw_texture_rect(tex, Rect2(-ts * 0.5, ts), false, sh)
+	draw_set_transform(ctr, dir.angle(), Vector2(scale, scale))
+	var tint := Color(1.10, 1.06, 0.98) if bool(placement.is_npc) else Color.WHITE
+	draw_texture_rect(tex, Rect2(-ts * 0.5, ts), false, tint)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	return true
 
 ## Shift a polygon by a fixed offset (SE micro-shadow under building fills).
 func _offset_pts(pts: PackedVector2Array, off: Vector2) -> PackedVector2Array:

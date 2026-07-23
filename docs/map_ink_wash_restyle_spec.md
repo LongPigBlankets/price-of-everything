@@ -380,6 +380,21 @@ Draw adds ~20–40 canvas commands per farm (parcel fills + hairlines);
 farms redraw only on layout events. If command count ever matters, parcels
 can collapse into one per-vertex-colored ArrayMesh per farm.
 
+**P3c — Baked industrial sprites** *(BUILT 2026-07-23, owner-directed)*
+Hand-drawn top-down art (two 3×3 magenta-keyed sheets, `assets/ink_buildings/
+src/`) replaces the procedural plates in ink mode for exactly ten industrial
+types: furnace, EAF, both factories, assembly plant, high-tech manufactory,
+both refineries, chemical plant, electrolyser. Assignment rules: tank+pipework
+art → refineries/chem/electrolyser; flues-without-tanks → furnace/EAF; plain
+sheds/roof compounds → factories/assembly/high-tech. `tools/
+bake_ink_buildings.gd` slices, hue-keys the magenta (incl. its shadows),
+de-fringes, crops, and applies authored per-level erase rects: L3 = full art,
+L2/L1 progressively trimmed along logical axes (tank yards, towers, satellite
+sheds). Renderer (`_draw_ink_art`): sprite centered/rotated to the footprint,
+long side = 2× footprint extent, level-picked live, silhouette shadow, NPC
+lifted toward paper-white; procedural wings/tanks/storeys suppressed for these
+instances. Classic untouched.
+
 **P4 — Tree glyphs** *(forest identity)*
 - Replace disc lobes with 2–3 seeded canopy-glyph `ArrayMesh` variants (lumpy
   fan + trunk notch + ink rim baked into the mesh), instanced through the

@@ -58,6 +58,7 @@ func _capture_set(mode: String) -> void:
 	await _shot(_tile_pos(COAST_TILE), 0.55, "coast", mode, 12)
 	await _shot(_tile_pos(INLAND_TILE), 0.45, "inland", mode, 12)
 	await _shot(_farm_pos(), 1.5, "farmclose", mode, 12)
+	await _shot(_plant_pos(), 1.2, "plantclose", mode, 12)
 
 ## Centroid of the first farm field placement — so the close framing always
 ## lands on an actual farm regardless of the seeded layout.
@@ -73,6 +74,24 @@ func _farm_pos() -> Vector2:
 						c += p
 					return c / float(pts.size())
 	return _tile_pos(INLAND_TILE)
+
+## Centroid of the first sprite-arted industrial placement (priority order),
+## so the plant framing shows the baked building art.
+const PLANT_NAMES := ["petro_refinery", "chem_plant", "furnace", "eaf", "industrial_factory"]
+
+func _plant_pos() -> Vector2:
+	var bv: Node = get_tree().get_first_node_in_group("building_footprints")
+	if bv != null:
+		for want in PLANT_NAMES:
+			for placement in (bv.get("_placements") as Array):
+				if str(placement.get("iname", "")) == str(want):
+					var pts: PackedVector2Array = placement.get("verts", PackedVector2Array())
+					if pts.size() >= 3:
+						var c := Vector2.ZERO
+						for p in pts:
+							c += p
+						return c / float(pts.size())
+	return _tile_pos(COAST_TILE)
 
 func _tile_pos(tile_id: String) -> Vector2:
 	var coord: Vector2i = _terrain.id_to_coord(tile_id)
