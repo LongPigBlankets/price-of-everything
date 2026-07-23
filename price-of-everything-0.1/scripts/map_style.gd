@@ -27,9 +27,11 @@ const _BAND_CLASSIC: Array[Color] = [
 	Color("7e955c"), Color("9aa771"), Color("bebd8b"), Color("c9b384"),
 	Color("bd9c69"), Color("a17e50"), Color("7d5c3a"), Color(1.0, 1.0, 1.0),
 ]
+## Lowland bands [2..4] deepened 2026-07-23 (owner: "too pastel") toward the
+## richer olive of the reference plate; uplands keep the straw→sienna climb.
 const _BAND_INK: Array[Color] = [
-	Color("55603c"), Color("ddd0a6"), Color("a9ad7b"), Color("b1b381"),
-	Color("b9b884"), Color("c1bd85"), Color("c9c287"), Color("cdb47e"),
+	Color("55603c"), Color("ddd0a6"), Color("9aa465"), Color("a3ad6e"),
+	Color("adb377"), Color("c1bd85"), Color("c9c287"), Color("cdb47e"),
 	Color("bf9a6a"), Color("a98156"), Color("8d6a47"), Color("efe6ce"),
 ]
 
@@ -86,10 +88,11 @@ func port_pier() -> Color:
 
 ## ── Farms (building_visuals farm branch) ────────────────────────────────────
 
-## Classic: one flat green. Ink: a seeded straw/olive patchwork variant per
-## field (the mockup's "every plot hand-tinted slightly differently").
+## Classic: one flat green. Ink: a seeded patchwork variant per parcel —
+## owner's mix (2026-07-23): pastel yellowish-green, pastel green, pastel
+## greenish-brown, plus a light yellow-green.
 const _FARM_VARIANTS: Array[Color] = [
-	Color("b8c08a"), Color("c6c48d"), Color("cfc492"), Color("b0b47e"),
+	Color("b9c47f"), Color("a2b87c"), Color("a89e6a"), Color("c3c98b"),
 ]
 
 func farm_field_variant(seed_key: String) -> Color:

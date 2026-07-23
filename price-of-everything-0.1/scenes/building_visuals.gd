@@ -367,7 +367,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# field): the classic 45° green hatch and the ink-mode parcel fabric
 	# (P3b). The style toggle just picks which set to draw — no re-bake.
 	var hatch: Array = _bake_farm_hatch(verts) if cat == "farm" else []
-	var parcels: Array = _bake_farm_parcels(verts) if cat == "farm" else []
+	var parcels: Dictionary = _bake_farm_parcels(verts) if cat == "farm" else {}
 	var placement := {
 		"instance_id": instance_id,
 		"building_id": building_id,
@@ -2614,7 +2614,7 @@ func _bake_farm_furrows(verts: PackedVector2Array, ang_offset: float = 0.0) -> A
 		var clipped := Geometry2D.intersect_polyline_with_polygon(PackedVector2Array([mid - d * reach, mid + d * reach]), verts)
 		for seg in clipped:
 			out.append(seg)
-		off += FARM_HATCH_SPACING
+		off += FURROW_SPACING
 	return out
 
 # ── P3b parcel fabric (ink farms) ──────────────────────────────────────────────
@@ -2625,16 +2625,19 @@ const PARCEL_CUT_MAX := 80.0
 const PARCEL_SHEAR_DEG := 3.0    # per-cut tilt so cells are trapezoids, not graph paper
 const PARCEL_INSET := 2.2        # gap: the base path-tan shows through = the little roads
 const PARCEL_MIN_AREA := 250.0   # drop boundary slivers (base shows = path widening)
+const FURROW_SPACING := 7.0      # ink furrow pitch (owner: denser than the classic 12u hatch)
 
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
 ## rect/trapezoid parcels clipped at the field boundary; each parcel is inset
 ## so the path-tan base reads as the small roads between plots. Seeded from
 ## the field centroid — deterministic and layout-independent. The LOGIC
-## footprint polygon is never touched. Entry: {p: poly, t: tint idx, f: furrows}.
-func _bake_farm_parcels(verts: PackedVector2Array) -> Array:
+## footprint polygon is never touched. Returns {parcels: [{p, t, f}],
+## barn: quad, silo_c: Vector2, silo_r: float} — the ink outbuildings are
+## SNAPPED inside one parcel (flush to a path edge, never overflowing).
+func _bake_farm_parcels(verts: PackedVector2Array) -> Dictionary:
 	var out: Array = []
 	if verts.size() < 3:
-		return out
+		return {"parcels": out}
 	var axis := _poly_long_axis(verts)
 	var ctr: Vector2 = axis[0]
 	var ang := float(axis[1])
@@ -2696,7 +2699,64 @@ func _bake_farm_parcels(verts: PackedVector2Array) -> Array:
 			col += 1
 		n0 = n1
 		row += 1
-	return out
+	var result := {"parcels": out, "silo_r": FARM_SILO_R * FARM_OUTBUILDING_SCALE}
+	result.merge(_snap_farm_outbuildings(out))
+	return result
+
+## Find a parcel that fits the barn flush against one of its (path-facing)
+## edges, and the silo beside the barn along the same edge — both fully
+## inside the parcel so nothing overflows onto the little roads. Largest
+## parcels and longest edges first; {} when no parcel can host them.
+func _snap_farm_outbuildings(parcels: Array) -> Dictionary:
+	var bw := FARM_BARN.x * FARM_OUTBUILDING_SCALE
+	var bh := FARM_BARN.y * FARM_OUTBUILDING_SCALE
+	var sr := FARM_SILO_R * FARM_OUTBUILDING_SCALE
+	var by_area: Array = []
+	for i in parcels.size():
+		by_area.append([absf(_poly_area(parcels[i].p)), i])
+	by_area.sort_custom(func(x, y) -> bool: return float(x[0]) > float(y[0]))
+	for entry in by_area.slice(0, 6):
+		var poly: PackedVector2Array = parcels[int(entry[1])].p
+		var edges: Array = []
+		for i in poly.size():
+			var ea: Vector2 = poly[i]
+			var eb: Vector2 = poly[(i + 1) % poly.size()]
+			edges.append([ea.distance_to(eb), ea, eb])
+		edges.sort_custom(func(x, y) -> bool: return float(x[0]) > float(y[0]))
+		for e in edges.slice(0, 4):
+			if float(e[0]) < bw + 6.0:
+				continue
+			var ea2: Vector2 = e[1]
+			var eb2: Vector2 = e[2]
+			var dir := (eb2 - ea2).normalized()
+			var mid := (ea2 + eb2) * 0.5
+			for side in [1.0, -1.0]:
+				var n := Vector2(-dir.y, dir.x) * float(side)
+				var bc := mid + n * (bh * 0.5 + 2.0)
+				var barn := PackedVector2Array([
+					bc - dir * (bw * 0.5) - n * (bh * 0.5),
+					bc + dir * (bw * 0.5) - n * (bh * 0.5),
+					bc + dir * (bw * 0.5) + n * (bh * 0.5),
+					bc - dir * (bw * 0.5) + n * (bh * 0.5),
+				])
+				var ok := true
+				for corner in barn:
+					if not Geometry2D.is_point_in_polygon(corner, poly):
+						ok = false
+						break
+				if not ok:
+					continue
+				for sdir in [1.0, -1.0]:
+					var sc2 := bc + dir * float(sdir) * (bw * 0.5 + sr + 3.0)
+					var fits := true
+					for probe in [sc2, sc2 + Vector2(sr + 1.0, 0.0), sc2 - Vector2(sr + 1.0, 0.0), sc2 + Vector2(0.0, sr + 1.0), sc2 - Vector2(0.0, sr + 1.0)]:
+						if not Geometry2D.is_point_in_polygon(probe, poly):
+							fits = false
+							break
+					if fits:
+						return {"barn": barn, "silo_c": sc2}
+				return {"barn": barn}
+	return {}
 
 ## Lower is better: hug the nearest same-type building (terraced rows of a kind); if none
 ## of this type is placed yet, prefer a frontage slot nearer the tile centre.
@@ -3187,14 +3247,14 @@ func _draw() -> void:
 		var is_farm: bool = str(placement.cat) == "farm"
 		var verts: PackedVector2Array = placement.verts
 		var hatch_src: Array = placement.get("hatch", [])
-		var parcel_src: Array = placement.get("parcels", [])
+		var parcel_src: Dictionary = placement.get("parcels", {})
 		if is_farm:
 			# Use the cell-clipped (lane-snapped) shape + its re-baked hatch when the layout pass ran.
 			var fid := str(placement.instance_id)
 			if _farm_render.has(fid):
 				verts = _farm_render[fid].verts
 				hatch_src = _farm_render[fid].hatch
-				parcel_src = (_farm_render[fid] as Dictionary).get("parcels", [])
+				parcel_src = (_farm_render[fid] as Dictionary).get("parcels", {})
 		if verts.size() < 3:
 			continue
 		if is_farm:
@@ -3203,7 +3263,7 @@ func _draw() -> void:
 				# insets as the little farm roads; NO outer outline (the parcel
 				# edges carry the boundary — kills the chunky-blob read).
 				draw_colored_polygon(verts, MapStyle.farm_path_color())
-				for pc in parcel_src:
+				for pc in (parcel_src.get("parcels", []) as Array):
 					var pp: PackedVector2Array = pc.p
 					if pp.size() < 3:
 						continue
@@ -3215,6 +3275,19 @@ func _draw() -> void:
 						var fs: PackedVector2Array = seg
 						if fs.size() >= 2:
 							draw_polyline(fs, MapStyle.farm_hatch(), MapStyle.farm_hatch_width())
+				# Parcel-snapped outbuildings (subcomponent barn/silo skip in ink).
+				var barn: PackedVector2Array = parcel_src.get("barn", PackedVector2Array())
+				if barn.size() == 4:
+					draw_colored_polygon(barn, MapStyle.farm_barn_color())
+					var bl := barn.duplicate()
+					bl.append(barn[0])
+					draw_polyline(bl, INK, 1.0, true)
+				var silo_c: Vector2 = parcel_src.get("silo_c", Vector2.INF)
+				if silo_c.is_finite():
+					var sr3 := float(parcel_src.get("silo_r", 8.4))
+					draw_circle(silo_c, sr3, MapStyle.farm_silo_color())
+					draw_arc(silo_c, sr3, 0.0, TAU, 20, INK, 1.0, true)
+					draw_circle(silo_c, 1.2, INK)
 			else:
 				var fid2 := str(placement.instance_id)
 				draw_colored_polygon(verts, MapStyle.farm_field_variant(fid2))
@@ -3288,6 +3361,8 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		return
 	var sv: PackedVector2Array = sc.verts
 	var kind := str(sc.kind)
+	if MapStyle.ink and (kind == "farm_barn" or kind == "farm_silo"):
+		return   # ink farms draw their own parcel-snapped outbuildings (P3b)
 	if kind == "tankfarm":
 		var twash := _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc))
 		for tc in (sc.tanks as Array):

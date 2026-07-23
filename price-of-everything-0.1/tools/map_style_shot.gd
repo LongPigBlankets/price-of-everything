@@ -17,6 +17,10 @@ var _wide_center := Vector2.ZERO
 var _wide_zoom := 0.1
 
 func _ready() -> void:
+	# The windowed run steals focus — a stray keystroke from the user working
+	# at the machine can open panels mid-capture (a G opened the Goods Graph
+	# over one run's shots). Screenshots need no input; block it all.
+	get_viewport().set_disable_input(true)
 	_wm = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(_wm)
 	for _i in 40:   # map build + first draws settle
@@ -53,6 +57,22 @@ func _capture_set(mode: String) -> void:
 	await _shot(_wide_center, _wide_zoom, "wide", mode, 30)
 	await _shot(_tile_pos(COAST_TILE), 0.55, "coast", mode, 12)
 	await _shot(_tile_pos(INLAND_TILE), 0.45, "inland", mode, 12)
+	await _shot(_farm_pos(), 1.5, "farmclose", mode, 12)
+
+## Centroid of the first farm field placement — so the close framing always
+## lands on an actual farm regardless of the seeded layout.
+func _farm_pos() -> Vector2:
+	var bv: Node = get_tree().get_first_node_in_group("building_footprints")
+	if bv != null:
+		for placement in (bv.get("_placements") as Array):
+			if str(placement.get("cat", "")) == "farm":
+				var pts: PackedVector2Array = placement.get("verts", PackedVector2Array())
+				if pts.size() >= 3:
+					var c := Vector2.ZERO
+					for p in pts:
+						c += p
+					return c / float(pts.size())
+	return _tile_pos(INLAND_TILE)
 
 func _tile_pos(tile_id: String) -> Vector2:
 	var coord: Vector2i = _terrain.id_to_coord(tile_id)

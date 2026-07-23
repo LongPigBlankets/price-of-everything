@@ -41,19 +41,50 @@ static func make(kind: String, area: float, seed_val: int) -> Dictionary:
 ## NOTE: the guarantee relies on the clip cell staying CONVEX — if a future change clips a field
 ## against a CONCAVE polygon, the convexity proof breaks and a free-run smoothing pass becomes needed.
 static func farm_field(area: float, seed_val: int) -> Dictionary:
-	const N := 10                       # decagon
-	const JR_LO := 0.90                 # radius floor (band kept wide enough for silhouette variety)
-	const JR_HI := 1.08                 # radius ceiling (proven base-angle floor 125.6° with AJ below)
-	const AJ := 0.0523599               # ±3° angular jitter (3·PI/180); keeps vertices in angular order
+	## Field silhouettes come in three seeded families (owner 2026-07-23 —
+	## "not just a heptagon/octagon"): jittered decagon blobs, odd
+	## quadrilaterals (non-parallel sides), and wide triangles. The shape is
+	## built unit-scale, seeded-rotated (quads/tris), then uniformly scaled
+	## so every family lands the same effective area as the old decagon
+	## (~1.36×a — the historic 1.18 radius fudge), keeping layout balance.
+	const JR_LO := 0.90
+	const JR_HI := 1.08
+	const AJ := 0.0523599               # ±3° angular jitter for the blob family
 	var a := maxf(area, MIN_AREA)
-	var r := sqrt(a / PI) * 1.18
+	var kind := (seed_val * 17 + 5) % 5   # 0-1 blob, 2-3 odd quad, 4 wide triangle
+	var n := 10
+	var stretch := 1.0
+	var jr_lo := JR_LO
+	var jr_hi := JR_HI
+	var aj := AJ
+	if kind == 2 or kind == 3:
+		n = 4
+		stretch = 1.15 + float((seed_val * 29) % 100) / 100.0 * 0.35   # 1.15–1.5 aspect
+		jr_lo = 0.82
+		jr_hi = 1.12
+		aj = 0.14                        # ±8°: corners wander → sides go non-parallel
+	elif kind == 4:
+		n = 3
+		stretch = 1.4 + float((seed_val * 29) % 100) / 100.0 * 0.4     # 1.4–1.8 = WIDE triangle
+		jr_lo = 0.88
+		jr_hi = 1.10
+		aj = 0.12
+	var rot := TAU * float((seed_val * 37) % 360) / 360.0 if n < 10 else 0.0
 	var verts := PackedVector2Array()
-	for i in N:
+	for i in n:
 		var hr := float((seed_val * 7 + i * 31) % 100) / 100.0       # seeded radius roll
 		var ha := float((seed_val * 13 + i * 47) % 100) / 100.0      # seeded angle roll
-		var jr := JR_LO + (JR_HI - JR_LO) * hr                       # radius in [0.90, 1.08]
-		var ang := TAU * float(i) / float(N) + (ha - 0.5) * 2.0 * AJ  # base + [-3°, +3°], stays ordered
-		verts.append(Vector2(cos(ang), sin(ang)) * r * jr)
+		var jr := jr_lo + (jr_hi - jr_lo) * hr
+		var ang := TAU * float(i) / float(n) + (ha - 0.5) * 2.0 * aj  # stays ordered
+		verts.append(Vector2(cos(ang) * stretch, sin(ang)).rotated(rot) * jr)
+	# uniform scale to the target area (shoelace on the unit shape)
+	var s2 := 0.0
+	for i in verts.size():
+		var j := (i + 1) % verts.size()
+		s2 += verts[i].x * verts[j].y - verts[j].x * verts[i].y
+	var k := sqrt(a * 1.36 / maxf(absf(s2) * 0.5, 0.001))
+	for i in verts.size():
+		verts[i] *= k
 	var lo := verts[0]
 	var hi := verts[0]
 	for v in verts:
