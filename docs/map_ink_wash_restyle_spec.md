@@ -322,9 +322,11 @@ Classes 1+2)*
   untouched. Cached per edge alongside the dash lists below.
 - Dashed casings: walk each (simplified) polyline emitting dash segments
   (world-unit dash/gap ~14/8u, seeded phase via `RoadHash`) into one batched
-  multiline; keep a solid near-parchment bed core; narrow widths (~4.5 trunk /
-  3 local); trunk = heavier or double dash. Rebuild only on the existing
-  network-change events.
+  multiline; keep a solid near-parchment bed core. Widths (owner +50% ruling
+  2026-07-23): 6.75 trunk / 4.5 local. **Trunk = the cross-continent
+  arteries** (the bake's long-haul spine tier) and carries a dashed ink
+  centre line (11/9u, batched) on top of the bed. Rebuild only on the
+  existing network-change events.
 - Bridges: tan deck + two short parallel ink strokes; terminus glyphs inherit
   ink automatically.
 - Piers: tan deck fill, ink outline, plank tick hairlines.

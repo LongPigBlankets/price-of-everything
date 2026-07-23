@@ -151,10 +151,10 @@ func river_squiggle() -> Color:
 func road_width(trunk: bool) -> float:
 	if not ink:
 		return 7.0 if trunk else 4.5
-	return 4.5 if trunk else 3.0
+	return 6.75 if trunk else 4.5
 
 func road_casing_width(trunk: bool) -> float:
-	return road_width(trunk) + (2.6 if ink else 2.5)
+	return road_width(trunk) + (3.2 if ink else 2.5)
 
 ## Drawn-polyline restyle (ink only, spec §3c Class 2): RDP simplify kills the
 ## A*-grid meander, then a seeded hand wobble goes back on top. The LOGIC
@@ -173,3 +173,14 @@ func road_dash() -> Array:
 ## Pier plank tick hairlines (ink only).
 func pier_plank_color() -> Color:
 	return Color(INK.r, INK.g, INK.b, 0.45)
+
+## Trunk roads are the CROSS-CONTINENT ARTERIES (the bake's long-haul spine
+## tier) — in ink mode they carry a dashed centre line on top of the bed.
+func trunk_center_dash() -> Array:
+	return [11.0, 9.0]
+
+func trunk_center_color() -> Color:
+	return Color(INK.r, INK.g, INK.b, 0.55)
+
+func trunk_center_width() -> float:
+	return 1.2

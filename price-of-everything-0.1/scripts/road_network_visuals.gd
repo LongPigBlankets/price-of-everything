@@ -137,9 +137,9 @@ func _draw_bridge_glyph(canvas: CanvasItem, point: Vector2, tangent: Vector2) ->
 		canvas.draw_line(point - tangent * 21.0, point + tangent * 21.0, MapStyle.road_bridge(), 10.0, true)
 		return
 	var n := Vector2(-tangent.y, tangent.x)
-	canvas.draw_line(point - tangent * 21.0, point + tangent * 21.0, MapStyle.road_local(), 7.0, true)
+	canvas.draw_line(point - tangent * 21.0, point + tangent * 21.0, MapStyle.road_local(), 9.0, true)
 	for s in [-1.0, 1.0]:
-		var off: Vector2 = n * (4.2 * float(s))
+		var off: Vector2 = n * (5.4 * float(s))
 		canvas.draw_line(point - tangent * 21.0 + off, point + tangent * 21.0 + off, MapStyle.road_casing(), 1.6, true)
 
 ## Ink-mode run renderer: dashes for every run are accumulated per tier and
@@ -148,6 +148,7 @@ func _draw_bridge_glyph(canvas: CanvasItem, point: Vector2, tangent: Vector2) ->
 func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadNetwork) -> void:
 	var dash_local := PackedVector2Array()
 	var dash_trunk := PackedVector2Array()
+	var center_trunk := PackedVector2Array()
 	var beds: Array = []   # [styled pts, is_trunk]
 	for edge_id in runs_by_edge:
 		var is_trunk := str(network.edges[edge_id].tier) == RoadNetwork.TIER_TRUNK
@@ -159,15 +160,20 @@ func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadN
 		if entry.is_empty() or int(entry.n_runs) != runs.size() or int(entry.n_pts) != n_pts:
 			var styled: Array = []
 			var dashes := PackedVector2Array()
+			var center := PackedVector2Array()
 			for run in runs:
 				var pts := _styled_run(run, str(edge_id))
 				if pts.size() >= 2:
 					styled.append(pts)
-					_emit_dashes(pts, str(edge_id), dashes)
-			entry = {"styled": styled, "dashes": dashes, "n_runs": runs.size(), "n_pts": n_pts}
+					_emit_dashes(pts, str(edge_id), dashes, MapStyle.road_dash(), "")
+					if is_trunk:
+						# Arteries (trunk tier) carry a dashed centre line.
+						_emit_dashes(pts, str(edge_id), center, MapStyle.trunk_center_dash(), "c")
+			entry = {"styled": styled, "dashes": dashes, "center": center, "n_runs": runs.size(), "n_pts": n_pts}
 			_ink_cache[edge_id] = entry
 		if is_trunk:
 			dash_trunk.append_array(entry.dashes)
+			center_trunk.append_array(entry.center)
 		else:
 			dash_local.append_array(entry.dashes)
 		for pts2 in entry.styled:
@@ -178,6 +184,8 @@ func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadN
 		canvas.draw_multiline(dash_trunk, MapStyle.road_casing(), MapStyle.road_casing_width(true), true)
 	for b in beds:
 		canvas.draw_polyline(b[0], MapStyle.road_trunk() if b[1] else MapStyle.road_local(), MapStyle.road_width(b[1]), true)
+	if center_trunk.size() >= 2:
+		canvas.draw_multiline(center_trunk, MapStyle.trunk_center_color(), MapStyle.trunk_center_width(), true)
 
 ## Simplify-then-wobble the DRAWN polyline (endpoints and simplified corners
 ## stay exact, so junction joints and network connectivity read unchanged).
@@ -249,13 +257,13 @@ func _rdp(pts: PackedVector2Array, eps: float) -> PackedVector2Array:
 			out.append(pts[i])
 	return out
 
-## Walk the polyline emitting [start, end] pairs for the dash-ON stretches,
-## with a seeded phase per edge so parallel roads don't tick in sync.
-func _emit_dashes(pts: PackedVector2Array, seed_key: String, into: PackedVector2Array) -> void:
-	var d: Array = MapStyle.road_dash()
-	var dash: float = d[0]
-	var period: float = dash + float(d[1])
-	var t := -float(RoadHash.pick("rdash|%s" % seed_key, 100)) / 100.0 * period
+## Walk the polyline emitting [start, end] pairs for the dash-ON stretches of
+## `pattern` [dash, gap], with a seeded phase per edge (+salt distinguishes
+## the casing walk from the centre-line walk) so lines don't tick in sync.
+func _emit_dashes(pts: PackedVector2Array, seed_key: String, into: PackedVector2Array, pattern: Array, salt: String) -> void:
+	var dash: float = pattern[0]
+	var period: float = dash + float(pattern[1])
+	var t := -float(RoadHash.pick("rdash|%s%s" % [seed_key, salt], 100)) / 100.0 * period
 	for i in range(pts.size() - 1):
 		var a := pts[i]
 		var b := pts[i + 1]
