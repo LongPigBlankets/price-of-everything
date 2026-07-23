@@ -35,6 +35,8 @@ var empire_view: EmpireViewScript
 # Goods Graph — full-screen goods-web view (G to toggle; also reachable from the
 # top bar and the Resources panel). See scripts/goods_graph_view.gd.
 const GoodsGraphViewScript := preload("res://scripts/goods_graph_view.gd")
+const GoodsFlowGraphScript := preload("res://scripts/goods_flow_graph.gd")
+const GoodIconsScript := preload("res://scripts/good_icons.gd")
 var goods_graph_view: GoodsGraphViewScript
 
 const DENSITY_SOFT_CAPACITY := 100.0
@@ -267,6 +269,12 @@ func _build_base() -> void:
 # scaffold. `animate` (true when a loading screen is up) spreads building placement one-per-frame
 # so the loading animation keeps running; false builds synchronously (tests / e2e / load-game).
 func finish_build(animate: bool) -> void:
+	# Kick off worker-thread loads of the Goods Graph's MEDIUM good icons NOW, so they
+	# stream in parallel with the ~5 s map build below instead of stalling the main
+	# thread ~3.2 s on first Goods Graph open (69 medium PNGs at ~47 ms each). Only under
+	# a loading screen — tests / e2e / load-game don't open the graph and shouldn't pay it.
+	if _loading_screen_active():
+		GoodIconsScript.warm_async(Catalog.all_goods())
 	# The port tiles start surveyed (the Surveying mapmode reveals them on turn 1).
 	MatchState.seed_surveyed_ports()
 	# Track depletable-deposit yields so mining can run them down over time.
@@ -321,13 +329,23 @@ func finish_build(animate: bool) -> void:
 	# roads-v3: every tile the baked network crosses carries "roads" infrastructure
 	# from turn 0 (geometry == gameplay — anchors AND the corridor tiles a trunk
 	# passes through). Fresh start only; a loaded save restores its own flags.
-	# When a loading screen is up, place the start buildings ONE PER FRAME so its
-	# slideshow keeps animating through the ~7 s of per-building visual layout instead
-	# of the whole window freezing. Without a loading screen (tests, e2e, load-game)
-	# `animate` is false and placement runs synchronously, exactly as before.
+	# When a loading screen is up, placements batch into ~PLACE_SLICE_MS time slices
+	# (see _place_yield) so the loading animation stays live, and the visual layers
+	# coalesce their redraws into one shot at end_bulk — per-building frames + full
+	# per-placement redraws were most of the ~60 s new-game load. Without a loading
+	# screen (tests, e2e, load-game) `animate` is false and placement runs
+	# synchronously, exactly as before.
 	if not loaded_pending or pending_start:
 		_apply_baked_road_flags()
 		await _build_yield()
+		# The bulk window coalesces the per-placement redraws (the fast path). The
+		# `swap loading_screen` cheat leaves it off so each placement redraws the whole
+		# layer, reproducing the old slow build for a recording.
+		var bulk_place := not LoadPacing.legacy_load
+		if bulk_place:
+			building_visuals.begin_bulk()
+			forest_visuals.begin_bulk()
+		_place_slice_t0 = Time.get_ticks_msec()
 		# BUILDINGS now — after the baked road network — so they lay out against real
 		# streets (NPC ports, the ruins, the start companies, + future player start builds).
 		await _place_npc_ports(animate)
@@ -339,6 +357,9 @@ func finish_build(animate: bool) -> void:
 			await _place_start_buildings(animate)
 		if pending_start:
 			await _place_pending_start_buildings(animate)
+		if bulk_place:
+			building_visuals.end_bulk()
+			forest_visuals.end_bulk()
 	RoadWorks.rebuild_occupancy()   # no-op until OCCUPANCY_ROADS_ENABLED
 
 	# Port dockhouses: white harbour slabs + pier fingers on the sea edge of
@@ -374,6 +395,20 @@ func finish_build(animate: bool) -> void:
 	if loaded_pending and not pending_start and building_visuals.has_method("relayout"):
 		building_visuals.relayout()
 
+	# Warm the Goods Graph layout under the loading screen so its first open is instant.
+	# The ~120 ms Sugiyama ordering + routing is deterministic (a pure function of the
+	# Catalog — no sim/research/RNG state), so it is computed once here and cached for the
+	# app run; without this it was paid as a hitch on the first Goods Graph (G) open, and
+	# re-paid on every open. Yield first so it lands on its own slice under the animation.
+	await _build_yield()
+	GoodsFlowGraphScript.build()
+	# Populate the good-icon cache from the medium loads kicked off at the top of the
+	# build. By now the workers have had the whole build to run, so this is mostly a
+	# cache scan; any straggler blocks briefly here (under the screen) rather than on open.
+	if _loading_screen_active():
+		GoodIconsScript.warm(Catalog.all_goods())
+
+	_audit_start_visuals()
 	build_complete = true   # the loading screen may now offer "Begin"
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
@@ -411,6 +446,27 @@ func _loading_screen_active() -> bool:
 func _build_yield() -> void:
 	if _loading_screen_active():
 		await get_tree().process_frame
+
+const PLACE_SLICE_MS := 30
+var _place_slice_t0 := 0
+
+# Time-budget yield for the start-building placement passes: batch ~PLACE_SLICE_MS of
+# placements per frame, yielding only when the slice is spent, so the loading screen
+# keeps animating (~30 fps) without paying a frame per building — one-per-frame across
+# ~475 buildings (each frame also redrawing the whole layer) was most of the ~60 s
+# new-game load. Yield timing never feeds layout (all placement is seeded), so where
+# the frame boundaries fall cannot change geometry. No-op without a loading screen
+# (tests / e2e stay fully synchronous).
+func _place_yield(animate: bool) -> void:
+	if not animate:
+		return
+	if LoadPacing.legacy_load:
+		await get_tree().process_frame   # cheat: the slow pre-optimization one-per-frame build
+		return
+	if Time.get_ticks_msec() - _place_slice_t0 < PLACE_SLICE_MS:
+		return
+	await get_tree().process_frame
+	_place_slice_t0 = Time.get_ticks_msec()
 
 ## roads-v3: apply "roads" infrastructure to every tile the baked starting
 ## network crosses (anchors AND corridor tiles — the bake's flagged_tiles list),
@@ -1669,8 +1725,7 @@ func _place_npc_ports(animate: bool = false) -> void:
 			continue
 		var instance_id := MatchState.add_building("b_004", "", tile_id, "Three Diamonds Shipping Corporation")
 		building_placed.emit(tile_id, "b_004", "", instance_id, coord)
-		if animate:
-			await get_tree().process_frame   # let the loading screen animate between buildings
+		await _place_yield(animate)   # keeps the loading screen animating between slices
 
 func _place_ruins(tile_id: String, animate: bool = false) -> void:
 	# A pre-placed disused/ruins building (b_031), NPC-owned to start with.
@@ -1682,8 +1737,7 @@ func _place_ruins(tile_id: String, animate: bool = false) -> void:
 			return
 	var instance_id := MatchState.add_building("b_031", "", tile_id, "Abandoned Holdings")
 	building_placed.emit(tile_id, "b_031", "", instance_id, coord)
-	if animate:
-		await get_tree().process_frame
+	await _place_yield(animate)
 
 func _on_hidden_buildings_enabled() -> void:
 	# The two constructible prototypes reappear in the catalogue through MatchState's
@@ -1737,8 +1791,7 @@ func _place_start_buildings(animate: bool = false) -> void:
 			str(entry.building), str(entry.recipe), tile_id,
 			str(entry.owner), instance_id, false)
 		building_placed.emit(tile_id, str(entry.building), str(entry.recipe), instance_id, coord)
-		if animate:
-			await get_tree().process_frame   # one building per frame keeps the slideshow moving
+		await _place_yield(animate)   # ~30 ms placement slices keep the slideshow moving
 ## Emit a start snapshot's player-owned buildings only after RoadNetwork has
 ## bootstrapped. SaveLoad already imported their simulation data; this is solely
 ## the deferred visual pass that gives them the same road-aware layout as ports,
@@ -1746,11 +1799,27 @@ func _place_start_buildings(animate: bool = false) -> void:
 func _place_pending_start_buildings(animate: bool = false) -> void:
 	for instance_id in MatchState.buildings:
 		var inst: Dictionary = MatchState.buildings[instance_id]
+		var building_id := str(inst.get("building_id", ""))
+		if LoadPacing.legacy_load:
+			# Cheat: reproduce the old procedure — the original skip re-emits every start
+			# forest one per frame (the ~11 s tail), which is exactly what we want to record.
+			if not MatchState.is_player_owned(inst) and building_visuals.has_placement(str(instance_id)):
+				continue
+		# Forests draw in ForestVisuals and never get a building_visuals footprint, so
+		# has_placement() is false for them forever — without this check every start
+		# forest (~145) was re-emitted here one-per-frame on every load (~11 s of the
+		# loading screen) while also churning the forest draw cache. Roads/cables render
+		# from network state, not placements, so re-emitting them does nothing either.
+		elif building_visuals.FOREST_BUILDING_IDS.has(building_id):
+			if forest_visuals.has_forest(str(instance_id)):
+				continue
+		elif building_visuals.NON_FOOTPRINT_IDS.has(building_id):
+			continue
 		# Player buildings always (re)lay out here. NPC buildings only if no earlier
 		# pass drew them: ports/ruins/companies already have footprints, but a snapshot-
 		# seeded NPC building (e.g. the tutorial's Vandel window factory) does not and
 		# would otherwise never render.
-		if not MatchState.is_player_owned(inst) and building_visuals.has_placement(str(instance_id)):
+		elif not MatchState.is_player_owned(inst) and building_visuals.has_placement(str(instance_id)):
 			continue
 		var tile_id := str(inst.get("tile_id", ""))
 		var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
@@ -1758,8 +1827,41 @@ func _place_pending_start_buildings(animate: bool = false) -> void:
 			continue
 		building_placed.emit(tile_id, str(inst.get("building_id", "")),
 			str(inst.get("recipe_id", "")), str(instance_id), coord)
-		if animate:
-			await get_tree().process_frame
+		await _place_yield(animate)
+
+## Post-build sanity: every sim building should have landed in a visual layer — a
+## footprint in BuildingVisuals or (forests) a tracked disc set in ForestVisuals —
+## and the baked road network should have bootstrapped into RoadNetwork. One cheap
+## dictionary pass; it prints ONLY on failure (console output is expensive in
+## Godot, so a clean load logs nothing).
+func _audit_start_visuals() -> void:
+	var no_footprint: Dictionary = {}   # building_id -> count without a drawn footprint
+	var no_forest: Dictionary = {}      # forest building_id -> count missing from ForestVisuals
+	for iid in MatchState.buildings:
+		var inst: Dictionary = MatchState.buildings[iid]
+		var bid := str(inst.get("building_id", ""))
+		if building_visuals.FOREST_BUILDING_IDS.has(bid):
+			if not forest_visuals.has_forest(str(iid)):
+				no_forest[bid] = int(no_forest.get(bid, 0)) + 1
+		elif building_visuals.NON_FOOTPRINT_IDS.has(bid):
+			continue   # roads/cables render from network state, not placements
+		elif not building_visuals.has_placement(str(iid)):
+			no_footprint[bid] = int(no_footprint.get(bid, 0)) + 1
+	if not no_footprint.is_empty():
+		push_warning("Visual audit: %d building(s) have no drawn footprint (layout failed or tile too crowded), by id: %s"
+			% [_audit_total(no_footprint), no_footprint])
+	if not no_forest.is_empty():
+		push_warning("Visual audit: %d forest(s) missing from ForestVisuals, by id: %s"
+			% [_audit_total(no_forest), no_forest])
+	var baked_edges: Variant = RoadsBaked.network_state().get("edges", [])
+	if RoadNetwork.instance().edges.is_empty() and not baked_edges.is_empty():
+		push_warning("Visual audit: RoadNetwork is empty but the baked start network has edges — bootstrap_from_bake failed?")
+
+func _audit_total(counts: Dictionary) -> int:
+	var n := 0
+	for k in counts:
+		n += int(counts[k])
+	return n
 
 func _tile_has_building(tile_id: String, building_id: String) -> bool:
 	for iid in MatchState.tile_buildings.get(tile_id, []):

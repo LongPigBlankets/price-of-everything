@@ -213,6 +213,13 @@ func _format_stockpile_sale_message(sale_record: Dictionary) -> String:
 	return message
 
 func _push_toast(stack: VBoxContainer, message: String, toast_type: String) -> void:
+	# Nothing that fires while the world is still building behind the loading screen
+	# is player-initiated — it is the match-start seeding (NPC ports, start companies,
+	# their material orders). Those toasts used to expire unseen under a ~60 s load;
+	# now that the build finishes in ~11 s they were still on screen at the reveal.
+	# (The `swap loading_screen` cheat keeps them, to reproduce the old load faithfully.)
+	if LoadPacing.is_background_build() and not LoadPacing.legacy_load:
+		return
 	var toast: PanelContainer = _make_toast(message, toast_type)
 	stack.add_child(toast)
 	# Detach the oldest BEFORE queue_free — queue_free is deferred until

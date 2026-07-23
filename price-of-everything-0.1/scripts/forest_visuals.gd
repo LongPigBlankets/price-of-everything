@@ -60,6 +60,7 @@ var _disc_mesh: Mesh = null
 var _canopy_mm: MultiMesh = null
 var _arc_pts: PackedVector2Array = PackedVector2Array()
 var _mm_dirty: bool = true
+var _bulk := false   # begin_bulk()/end_bulk() window (match-start placement)
 var _white_tex: Texture2D = null
 
 func _white_texture() -> Texture2D:
@@ -80,6 +81,22 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 	}
 	# A new forest changes its neighbours' pull, so recompute centres next draw.
 	_neighbour_dirty = true
+	_mm_dirty = true
+	if _bulk:
+		return
+	_draw_cache.clear()
+	queue_redraw()
+
+
+## Bulk window (match-start placement): defer the cache clear + redraw to end_bulk so
+## placing ~145 start forests rebuilds the draw data once instead of once per forest.
+func begin_bulk() -> void:
+	_bulk = true
+
+
+func end_bulk() -> void:
+	_bulk = false
+	_neighbour_dirty = true
 	_draw_cache.clear()
 	_mm_dirty = true
 	queue_redraw()
@@ -92,6 +109,12 @@ func clear_all() -> void:
 	_river_paths_by_coord.clear()
 	_river_cache_ready = false
 	queue_redraw()
+
+## True once this forest instance is tracked (and thus drawn). Forests never get a
+## building_visuals footprint, so this is their equivalent of has_placement() — the
+## start-building passes use it to skip re-emitting forests that already render.
+func has_forest(instance_id: String) -> bool:
+	return _forests.has(instance_id)
 
 func remove_instance(instance_id: String) -> void:
 	if not _forests.has(instance_id):

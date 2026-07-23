@@ -5737,13 +5737,16 @@ func _test_goods_flow_graph() -> void:
 		"goods graph: steel base = iron_ingots+coal, never scrap (recycling rule)")
 	_check((g.get("bands", []) as Array).size() == 5,
 		"goods graph: five labelled band regions")
-	var g2: Dictionary = GoodsFlowGraph.build()
+	# build() caches (world_map warms it under the loading screen); force=true recomputes
+	# independently, so this both keeps the determinism check meaningful AND verifies the
+	# cached layout equals a fresh build.
+	var g2: Dictionary = GoodsFlowGraph.build(true)
 	var sig := func(gr: Dictionary) -> String:
 		var parts := ""
 		for n in gr["nodes"]:
 			parts += "%s@%s;" % [str(n["id"]), str(n["pos"])]
 		return parts + str(gr["edges"])   # edge dicts embed their waypoints
-	_check(sig.call(g) == sig.call(g2), "goods graph: build is deterministic")
+	_check(sig.call(g) == sig.call(g2), "goods graph: build is deterministic (cache == fresh)")
 	# Orthogonal routing: every edge is an axis-aligned waypoint chain; vertical lane
 	# runs of different edges that share y-range keep clear x separation; horizontal
 	# runs of different edges that share x-range never sit collinear (>= the sibling
