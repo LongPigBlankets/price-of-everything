@@ -26,6 +26,8 @@ const DECK := Color("c9bc95")
 const GBASE := Color("b4b3af")   # grey apron slab under power infrastructure
 ## Open-pit benches, rim -> floor. Concentric darkening reads as depth from any
 ## rotation (a directional cue would fight the world-fixed light).
+## Common rotor yaw for every turbine on a site (local radians).
+const TURBINE_YAW := -0.55
 const PIT_BENCH: Array[Color] = [
 	Color("cdbc95"), Color("b8a67e"), Color("a08e69"), Color("877659"),
 ]
@@ -296,11 +298,13 @@ static func _recipe(iname: String, l: int) -> Array:
 		"wind_farm":
 			# 2 turbines wide; rows 2 -> 4 -> 6. Each is a small triangle
 			# (nacelle) with a thin line for the rotor arms.
+			# Turbines doubled in size with much wider spacing (owner) — a wind
+			# site should read as sparse machines over open ground.
 			var wrows := [2, 4, 6][l - 1] as int
 			var p := []
 			for r in wrows:
 				for cc in 2:
-					p.append(_turbine(70.0 + float(cc) * 26.0, 44.0 + float(r) * 15.0, 6.0))
+					p.append(_turbine(70.0 + float(cc) * 44.0, 44.0 + float(r) * 30.0, 11.0))
 			return p
 		"mine":
 			# Wiggly open pit with stepped benches; a headframe on the west rim
@@ -935,10 +939,9 @@ static func _rd_panel(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: 
 static func _rd_turbine(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
 	var ctr: Vector2 = pr.c
 	var r := float(pr.r)
-	# Rotor arms sweep across the nacelle; angle varies per position so the farm
-	# doesn't look like a stamped pattern (deterministic, not seeded RNG).
-	var a := float(int(ctr.x + ctr.y)) * 0.7
-	var arm := Vector2(cos(a), sin(a)) * r * 1.7
+	# Every turbine in a farm faces the same way (owner) — real sites yaw into
+	# a common wind. Fixed local angle, so they rotate together with the site.
+	var arm := Vector2(cos(TURBINE_YAW), sin(TURBINE_YAW)) * r * 1.7
 	c.draw_line(ctr - arm, ctr + arm, INK, 1.0 * iw, true)
 	var perp := Vector2(-arm.y, arm.x) * 0.55
 	c.draw_line(ctr, ctr + perp, INK, 1.0 * iw, true)

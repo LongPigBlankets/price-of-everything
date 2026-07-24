@@ -349,7 +349,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var iname_lot := str(bd.get("internal_name", ""))
 	var has_art := INK_ART_KEY.has(iname_lot)
 	if has_art:
-		var side := _art_size_for(size_units)
+		var side := _art_size_for(size_units, str(INK_ART_KEY.get(iname_lot, "")))
 		area = maxf(area, side * side)
 	# Art buildings keep QUAD footprints: the composition is rect-framed, and
 	# an L/C footprint's notch — legally occupied by a neighbour — would sit
@@ -2414,7 +2414,10 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 		# Snap flush: near edge sits DESIGN_GAP past the carriageway clearance. Try both
 		# sides of the road; keep whichever side has buildable land.
 		for side in [1.0, -1.0]:
-			var off: Vector2 = normal * side * (ROAD_CLEAR + base_half.y + DESIGN_GAP)
+			# Use the CALLER's clearance, not the constant — art buildings pass a
+			# tight frontage (ART_ROAD_PAD) and were being snapped at ROAD_CLEAR
+			# anyway, parking them ~12u further off the carriageway than asked.
+			var off: Vector2 = normal * side * (road_clear + base_half.y + DESIGN_GAP)
 			var t := 0.0
 			while t <= seg_len:
 				var center: Vector2 = a + tangent * t + off
@@ -2728,6 +2731,10 @@ const ART_ROAD_PAD := 5.5    # art frontage: footprint edge ~1u off the carriage
 const ART_DRAWN_MIN := 40.0
 const ART_DRAWN_MAX := 90.0
 const ART_SIZE_UNITS_MAX := 30.0
+## Per-recipe drawn-size overrides. Wind sites sprawl — at the size-10 default
+## they read as a cramped cluster rather than machines spread over open ground
+## (owner). Visual only: it moves the lot too, so reservation stays honest.
+const ART_SIZE_OVERRIDE := {"wind_farm": ART_DRAWN_MAX}
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
 
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
@@ -3536,7 +3543,7 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 	# from whatever the placement path happened to reserve. Capped by the
 	# actual footprint so a building shrunk to fit a packed tile draws inside
 	# its slot rather than over its neighbours.
-	var size_target := _art_size_for(int(placement.get("size_units", 1)))
+	var size_target := _art_size_for(int(placement.get("size_units", 1)), art_key)
 	var target := clampf(minf(size_target, maxf(dmax, nmax) * 2.0), ART_DRAWN_MIN, ART_DRAWN_MAX)
 	# Colour by the SAME rule as the plate look — category triad, NPC
 	# paper-white, seeded jitter — so ownership and category read identically
@@ -3547,7 +3554,9 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 
 ## Drawn/lot side for a building of `size_units`, interpolating the drawn-size
 ## band across the CSV's real 1..30 range.
-func _art_size_for(size_units: int) -> float:
+func _art_size_for(size_units: int, art_key: String = "") -> float:
+	if ART_SIZE_OVERRIDE.has(art_key):
+		return float(ART_SIZE_OVERRIDE[art_key])
 	var t := clampf((float(size_units) - 1.0) / (ART_SIZE_UNITS_MAX - 1.0), 0.0, 1.0)
 	return lerpf(ART_DRAWN_MIN, ART_DRAWN_MAX, t)
 
