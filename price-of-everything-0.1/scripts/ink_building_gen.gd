@@ -32,13 +32,20 @@ const SHADOW_OFF := Vector2(1.7, 2.2)   # world units per shadow-scale k
 static var _cache: Dictionary = {}   # "iname|lvl" -> {prims: Array, size: Vector2}
 
 ## Draw one building. `target` = desired world size of the long side; `ang` =
-## footprint rotation. Returns false when the type has no recipe.
-static func draw(c: CanvasItem, iname: String, lvl: int, ctr: Vector2, ang: float, target: float, npc: bool) -> bool:
+## footprint rotation. `anchor` (optional, in the recipe's design space) pins
+## that local point at `ctr` instead of centering the bounding box — ports use
+## it to hold the quay spine on the shoreline while the piers reach seaward.
+## Returns false when the type has no recipe.
+static func draw(c: CanvasItem, iname: String, lvl: int, ctr: Vector2, ang: float, target: float, npc: bool, anchor: Vector2 = Vector2.INF) -> bool:
 	var entry := _entry(iname, clampi(lvl, 1, 3))
 	if entry.is_empty():
 		return false
 	var size: Vector2 = entry.size
 	var s := target / maxf(size.x, size.y)
+	var pos := ctr
+	if anchor.is_finite():
+		var anchor_local := (anchor - (entry.center as Vector2)) * s
+		pos = ctr - anchor_local.rotated(ang)
 	var prims: Array = entry.prims
 	# silhouette shadow passes, farthest (tallest) first, offset in WORLD space
 	var groups: Dictionary = {}
@@ -50,11 +57,11 @@ static func draw(c: CanvasItem, iname: String, lvl: int, ctr: Vector2, ang: floa
 	var ks: Array = groups.keys()
 	ks.sort_custom(func(a, b) -> bool: return float(a) > float(b))
 	for k in ks:
-		c.draw_set_transform(ctr + SHADOW_OFF * float(k), ang, Vector2(s, s))
+		c.draw_set_transform(pos + SHADOW_OFF * float(k), ang, Vector2(s, s))
 		for pr in (groups[k] as Array):
 			_draw_sil(c, pr)
 	# body pass
-	c.draw_set_transform(ctr, ang, Vector2(s, s))
+	c.draw_set_transform(pos, ang, Vector2(s, s))
 	for pr in prims:
 		_draw_prim(c, pr, ang, npc)
 	c.draw_set_transform_matrix(Transform2D.IDENTITY)
@@ -70,7 +77,7 @@ static func _entry(iname: String, lvl: int) -> Dictionary:
 		return {}
 	var bb := _bounds(prims)
 	_shift(prims, -bb.get_center())
-	var entry := {"prims": prims, "size": bb.size}
+	var entry := {"prims": prims, "size": bb.size, "center": bb.get_center()}
 	_cache[key] = entry
 	return entry
 
@@ -233,11 +240,11 @@ static func _recipe(iname: String, l: int) -> Array:
 			p.append(_containers(48, 66, 2, 3))
 			p.append(_containers(52, 84, 1, 2))
 			p.append(_cbase(100, 41))
-			p.append(_bar(Vector2(93, 43.2), Vector2(124, 33), 3, 1.6))
-			p.append(_dot(124, 33, 1.3))
+			p.append(_bar(Vector2(94, 43), Vector2(118, 36), 3, 1.6))
+			p.append(_dot(118, 36, 1.3))
 			p.append(_cbase(110, 69))
-			p.append(_bar(Vector2(102, 71.5), Vector2(140, 62), 3, 1.6))
-			p.append(_dot(140, 62, 1.3))
+			p.append(_bar(Vector2(103, 71.5), Vector2(130, 64), 3, 1.6))
+			p.append(_dot(130, 64, 1.3))
 			return p
 		"electrolyser":
 			var p := [_pad(56, 54, 44, 40)]

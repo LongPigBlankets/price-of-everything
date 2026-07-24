@@ -3447,7 +3447,11 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 		var r := v - ctr
 		dmax = maxf(dmax, absf(r.dot(dir)))
 		nmax = maxf(nmax, absf(r.dot(Vector2(-dir.y, dir.x))))
-	var target := maxf(dmax, nmax) * 2.0 * INK_ART_SCALE
+	# Normalised size (owner ruling: unbounded 2x-footprint caused overlap
+	# chaos): footprint-proportional but clamped to a readable floor and a
+	# per-level ceiling, so big footprints can't explode into neighbours and
+	# upgrades still read as growth.
+	var target := clampf(maxf(dmax, nmax) * 2.0 * INK_ART_SCALE * 0.5, 34.0, 40.0 + 9.0 * float(lvl))
 	return InkBuildingGen.draw(self, iname, lvl, ctr, dir.angle(), target, bool(placement.is_npc))
 
 ## Shift a polygon by a fixed offset (SE micro-shadow under building fills).
