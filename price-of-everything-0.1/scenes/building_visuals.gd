@@ -388,6 +388,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 			for shrink in [0.6, 0.3]:
 				placed = _search(tile_id, coord, kind, area * float(shrink), seed_v, cat, is_edge, placed_here, rc)
 				if not placed.is_empty():
+					placed["shrink"] = shrink
 					break
 	if placed.is_empty():
 		return  # tile too crowded to fit it — not drawn rather than overlapping
@@ -413,6 +414,9 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		"cat": cat,
 		"iname": iname,
 		"size_units": size_units,
+		"via": str(placed.get("via", "block" if not offshore else "offshore")),
+		"shrink": float(placed.get("shrink", 1.0)),
+		"diag": placed.get("diag", {}),
 		"center_rel": placed.center_rel,
 		"half": placed.half,
 		"hatch": hatch,
@@ -2400,6 +2404,7 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 	var base_half := _aabb_half(base_verts)
 	var best := {}
 	var best_score := INF
+	var diag := {"tried": 0, "land": 0, "overlap": 0, "road": 0, "river": 0, "segs": segs.size()}
 	for s in segs:
 		var a: Vector2 = s[0]
 		var b: Vector2 = s[1]
@@ -2427,9 +2432,15 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 						best_score = score
 						best = {"center": center, "rv": rv, "half": half}
 					break   # first free slot on this side of this segment
+				elif DIAG:
+					diag.tried += 1
+					var why := _reject_reason(center, rv, half, placed_here, land, segs, rivers, road_clear)
+					diag[why] = int(diag.get(why, 0)) + 1
 				t += PACK_STEP
 	if not best.is_empty():
-		return _finalize(coord, best.center, best.rv, best.half)
+		var okr := _finalize(coord, best.center, best.rv, best.half)
+		okr["via"] = "frontage"
+		return okr
 
 	# Fallback A: no usable frontage — abut the nearest existing building (any type) with
 	# DESIGN_GAP, axis-aligned, so a roadless tile still packs into a cluster.
@@ -2440,7 +2451,10 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 			var span: float = (nb.half * dir.abs()).length() + (half0 * dir.abs()).length() + DESIGN_GAP
 			var center: Vector2 = nb.pos + dir * span
 			if _valid(center, base_verts, half0, placed_here, land, segs, rivers, road_clear):
-				return _finalize(coord, center, base_verts, half0)
+				var ar := _finalize(coord, center, base_verts, half0)
+				ar["via"] = "abut"
+				ar["diag"] = diag
+				return ar
 
 	# Fallback B: the free cell nearest the tile centre (first building on a roadless tile).
 	# Centre-seeking — NOT lowest-elevation — so a roadless cluster forms inland rather than
@@ -2456,8 +2470,24 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 			best_d = d
 			best_center = rel
 	if best_center != Vector2.INF:
-		return _finalize(coord, best_center, base_verts, half0)
+		var br := _finalize(coord, best_center, base_verts, half0)
+		br["via"] = "any"
+		br["diag"] = diag
+		return br
 	return {}
+
+## First failing gate for a rejected candidate — the frontage search's "why".
+## `land` folds hex bounds, water, elevation, forest and the river corridor.
+func _reject_reason(center: Vector2, local_verts: PackedVector2Array, half: Vector2, placed_here: Array, land: PackedByteArray, segs: Array, rivers: Array, road_clear: float) -> String:
+	if not _footprint_on_land(center, local_verts, land):
+		return "land"
+	if _overlaps(center, half, placed_here):
+		return "overlap"
+	if not _footprint_clears(center, local_verts, segs, road_clear):
+		return "road"
+	if not _footprint_clears(center, local_verts, rivers, RIVER_CLEAR):
+		return "river"
+	return "?"
 
 ## Edge-seeker (recycling/extraction): the free land cell that maximises distance from the
 ## tile centre and from other buildings, i.e. a far empty corner. Axis-aligned.
@@ -2477,7 +2507,9 @@ func _place_edge(tile_id: String, coord: Vector2i, base_verts: PackedVector2Arra
 			best_center = rel
 	if best_center == Vector2.INF:
 		return {}
-	return _finalize(coord, best_center, base_verts, half)
+	var er := _finalize(coord, best_center, base_verts, half)
+	er["via"] = "edge"
+	return er
 
 ## True if the tile already carries a non-farm building (forests never enter _placements, so
 ## any placement with cat != "farm" is a non-farm/non-forest building).
@@ -2723,6 +2755,10 @@ const INK_ART_KEY := {
 const ART_SIDE_MIN := 40.0
 const ART_SIDE_MAX := 90.0
 const ART_ROAD_PAD := 5.5    # art frontage: footprint edge ~1u off the carriageway edge
+## Placement diagnostics (tools/road_frontage_audit). Off in play: classifying
+## a rejected candidate costs four extra predicate calls, and the frontage
+## search rejects a lot of candidates.
+static var DIAG := false
 ## Hard bounds on the DRAWN sprite's long side, in world units (owner ruling
 ## 2026-07-23). Applied at draw time so it holds no matter which placement path
 ## sized the lot — block-template lots ignore the art lot area entirely.

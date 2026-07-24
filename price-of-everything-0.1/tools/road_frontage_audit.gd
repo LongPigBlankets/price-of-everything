@@ -12,6 +12,10 @@ const MAX_GAP := 15.0
 const EDGE_SAMPLE := 3.0   # perimeter sampling step (u) for polygon->segment distance
 
 func _ready() -> void:
+	# Classify every rejected frontage candidate (off in play — it costs four
+	# extra predicate calls per rejection).
+	var bv_script := load("res://scenes/building_visuals.gd")
+	bv_script.set("DIAG", true)
 	var game: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(game)
 	for _i in 240:
@@ -41,7 +45,8 @@ func _ready() -> void:
 		measured += 1
 		var cat := str(p.get("cat", ""))
 		var iname := str(p.get("iname", ""))
-		var row := [tile_id, iname if iname != "" else cat, cat, gap]
+		var row := [tile_id, iname if iname != "" else cat, cat, gap,
+			str(p.get("via", "?")), float(p.get("shrink", 1.0)), p.get("diag", {}), _extent(verts)]
 		var by_design_cat := cat == "farm" or cat == "extraction" or iname == "mine"
 		if gap > MAX_GAP:
 			if by_design_cat:
@@ -63,16 +68,64 @@ func _ready() -> void:
 	print("TILES FAILING:               %d" % by_tile.size())
 	print("buildings over %.0fu:          %d" % [MAX_GAP, fails.size()])
 	print("off-road by design (farm/extraction), not counted: %d" % by_design.size())
+	# WHY: which placement route produced the failures, and how big they were.
+	var via_fail: Dictionary = {}
+	var via_pass: Dictionary = {}
+	var rej: Dictionary = {"land": 0, "overlap": 0, "road": 0, "river": 0, "tried": 0}
+	var fail_extent := 0.0
+	var pass_extent := 0.0
+	var shrunk := 0
+	for p in placements:
+		var tile_id2 := str(p.get("tile_id", ""))
+		if (tile_segs.get(tile_id2, []) as Array).is_empty():
+			continue
+		var cat2 := str(p.get("cat", ""))
+		if cat2 == "farm" or cat2 == "extraction" or str(p.get("iname", "")) == "mine":
+			continue
+		var v := str(p.get("via", "?"))
+		var verts2: PackedVector2Array = p.get("verts", PackedVector2Array())
+		if verts2.size() < 3:
+			continue
+		var g := _poly_to_segs(verts2, tile_segs[tile_id2], bv.call("_tile_center_world_pos", p.get("coord")))
+		if g > MAX_GAP:
+			via_fail[v] = int(via_fail.get(v, 0)) + 1
+			fail_extent += _extent(verts2)
+			if float(p.get("shrink", 1.0)) < 1.0:
+				shrunk += 1
+			var d: Dictionary = p.get("diag", {})
+			for k in rej.keys():
+				rej[k] = int(rej[k]) + int(d.get(k, 0))
+		else:
+			via_pass[v] = int(via_pass.get(v, 0)) + 1
+			pass_extent += _extent(verts2)
+	print("\nplaced VIA (failing):  %s" % str(via_fail))
+	print("placed VIA (passing):  %s" % str(via_pass))
+	print("mean footprint extent: failing %.1fu vs passing %.1fu" % [
+		fail_extent / maxf(1.0, float(fails.size())),
+		pass_extent / maxf(1.0, float(via_pass.values().reduce(func(a, b): return a + b, 0)))])
+	print("failing buildings that had already been SHRUNK: %d" % shrunk)
+	print("frontage candidates rejected (failing bldgs): %s" % str(rej))
+
 	fails.sort_custom(func(a, b) -> bool: return float(a[3]) > float(b[3]))
 	print("\nworst offenders:")
 	for i in mini(15, fails.size()):
-		print("  %-12s %-22s %6.1fu" % [fails[i][0], fails[i][1], fails[i][3]])
+		print("  %-12s %-22s %6.1fu  via=%-9s ext=%.0fu" % [
+			fails[i][0], fails[i][1], fails[i][3], fails[i][4], fails[i][7]])
 	var tiles: Array = by_tile.keys()
 	tiles.sort_custom(func(a, b) -> bool: return float(by_tile[a][0]) > float(by_tile[b][0]))
 	print("\nfailing tiles (worst building each):")
 	for i in mini(20, tiles.size()):
 		print("  %-12s %6.1fu  (%s)" % [tiles[i], by_tile[tiles[i]][0], by_tile[tiles[i]][1]])
 	get_tree().quit(0)
+
+## Longest side of a footprint, world units.
+func _extent(pts: PackedVector2Array) -> float:
+	var mn := Vector2(1e30, 1e30)
+	var mx := Vector2(-1e30, -1e30)
+	for p in pts:
+		mn = mn.min(p)
+		mx = mx.max(p)
+	return maxf((mx - mn).x, (mx - mn).y)
 
 ## Minimum distance from the footprint's perimeter to any road centreline.
 ## Segments are tile-relative; footprints are world — hence `origin`.
