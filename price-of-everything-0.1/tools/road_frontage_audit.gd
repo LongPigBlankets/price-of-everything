@@ -27,6 +27,8 @@ func _ready() -> void:
 		return
 	var placements: Array = bv.get("_placements")
 	var tile_segs: Dictionary = bv.get("_tile_segs")
+	# A block's own service streets count as roads to front onto (already world-space).
+	var block_streets: Dictionary = bv.get("_block_streets")
 
 	var by_tile: Dictionary = {}          # tile_id -> [worst_gap, worst_name]
 	var fails: Array = []                 # [tile_id, iname, cat, gap]
@@ -41,7 +43,8 @@ func _ready() -> void:
 		if verts.size() < 3:
 			continue
 		var origin: Vector2 = bv.call("_tile_center_world_pos", p.get("coord"))
-		var gap := _poly_to_segs(verts, segs, origin)
+		var gap := minf(_poly_to_segs(verts, segs, origin),
+			_poly_to_segs(verts, block_streets.get(tile_id, []), Vector2.ZERO))
 		measured += 1
 		var cat := str(p.get("cat", ""))
 		var iname := str(p.get("iname", ""))
@@ -86,7 +89,8 @@ func _ready() -> void:
 		var verts2: PackedVector2Array = p.get("verts", PackedVector2Array())
 		if verts2.size() < 3:
 			continue
-		var g := _poly_to_segs(verts2, tile_segs[tile_id2], bv.call("_tile_center_world_pos", p.get("coord")))
+		var g := minf(_poly_to_segs(verts2, tile_segs[tile_id2], bv.call("_tile_center_world_pos", p.get("coord"))),
+			_poly_to_segs(verts2, block_streets.get(tile_id2, []), Vector2.ZERO))
 		if g > MAX_GAP:
 			via_fail[v] = int(via_fail.get(v, 0)) + 1
 			fail_extent += _extent(verts2)
@@ -98,7 +102,22 @@ func _ready() -> void:
 		else:
 			via_pass[v] = int(via_pass.get(v, 0)) + 1
 			pass_extent += _extent(verts2)
-	print("\nplaced VIA (failing):  %s" % str(via_fail))
+	var street_tiles := 0
+	var street_count := 0
+	for t in block_streets:
+		street_tiles += 1
+		street_count += (block_streets[t] as Array).size()
+	var fail_block_with_streets := 0
+	var fail_block_no_streets := 0
+	for f in fails:
+		if str(f[4]) == "block":
+			if (block_streets.get(str(f[0]), []) as Array).is_empty():
+				fail_block_no_streets += 1
+			else:
+				fail_block_with_streets += 1
+	print("\nblock streets: %d tiles, %d streets" % [street_tiles, street_count])
+	print("failing block bldgs on tiles WITH streets: %d / WITHOUT: %d" % [fail_block_with_streets, fail_block_no_streets])
+	print("placed VIA (failing):  %s" % str(via_fail))
 	print("placed VIA (passing):  %s" % str(via_pass))
 	print("mean footprint extent: failing %.1fu vs passing %.1fu" % [
 		fail_extent / maxf(1.0, float(fails.size())),
@@ -131,6 +150,8 @@ func _extent(pts: PackedVector2Array) -> float:
 ## Segments are tile-relative; footprints are world — hence `origin`.
 func _poly_to_segs(verts: PackedVector2Array, segs: Array, origin: Vector2) -> float:
 	var best := INF
+	if segs.is_empty():
+		return best
 	for i in verts.size():
 		var a := verts[i]
 		var b := verts[(i + 1) % verts.size()]

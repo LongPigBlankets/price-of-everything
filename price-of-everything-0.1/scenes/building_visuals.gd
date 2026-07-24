@@ -77,6 +77,18 @@ const CHUNK_GAP := 4.0               # gap between filled chunks
 const BLOCK_DEBUG := false           # set true to log per-tile block decisions to the console ([BLOCKDBG])
 
 const ROAD_CLEAR := 18.0             # no footprint edge may come within this of a road centreline
+## The buildable mask is rasterised at this (the tightest frontage any caller
+## uses); per-caller distances are enforced in _valid, not by the mask.
+const MASK_ROAD_CLEAR := 5.0
+## City blocks get service streets between row pairs, so interior rows front a
+## road instead of sitting up to 174u behind one.
+const BLOCK_STREET_W := 17.0
+const BLOCK_ROWS_PER_STREET := 2
+## A lot must sit this close to the road (or one of the block's own streets) to
+## be usable. Half a lot of building + this ≈ the 15u frontage rule. Before the
+## service streets existed this was BLOCK_ROAD_ADJ (130u), which let interior
+## lots sit a tile-eighth from anything — the bulk of the audit's failures.
+const BLOCK_FRONT_MAX := BLOCK_LOT * 0.7
 const ROAD_OVERLAP := 5.0            # relayout: a building is only re-packed if a new road comes THIS close to its footprint (an actual overlap, well inside ROAD_CLEAR) — otherwise it stays put
 const RIVER_CLEAR := 16.0            # no footprint edge may come within this of a river arm
 const RIVER_ROAD_PAD := 28.0         # reserve a road corridor: buildings keep this off river arms (room for a bank road to the bridge)
@@ -193,6 +205,7 @@ var _tile_segs: Dictionary = {}       # tile_id -> Array of [a, b] road segments
 var _tile_rivers: Dictionary = {}     # tile_id -> Array of [a, b] river-arm segments (rel to centre)
 var _tile_block_mode: Dictionary = {}      # tile_id -> bool (seeded once, urban-only)
 var _tile_block_templates: Dictionary = {} # tile_id -> {angle, lots:Array[Vector2], claimed:Array[bool]} ({} = no block)
+var _block_streets: Dictionary = {}        # tile_id -> Array of [world a, world b] service streets
 
 # Ancillary tanks/annexes (second pass, re-derived; never persisted). Each: {tile_id, verts (world), color, bb}.
 var _subcomponents: Array = []
@@ -446,6 +459,13 @@ func _ensure_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	# its road gets a permanent empty template and never blocks even once the road arrives.
 	if not tmpl.is_empty():
 		_tile_block_templates[tile_id] = tmpl
+		# The block's own service streets, in world space, for drawing.
+		var world: Array = []
+		var origin := _tile_center_world_pos(coord)
+		for s in (tmpl.get("streets", []) as Array):
+			world.append([origin + (s[0] as Vector2), origin + (s[1] as Vector2)])
+		if not world.is_empty():
+			_block_streets[tile_id] = world
 	return tmpl
 
 ## Public: build/cache this tile's block template if a road run + room exist; true when a real grid formed.
@@ -515,12 +535,27 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	var cols: int = clampi(int(best_len / BLOCK_LOT), 3, BLOCK_MAX_COLS)
 	var origin := ra + tangent * (BLOCK_LOT * 0.5) + normal * frontage
 	var lots: Array = []
+	var streets: Array = []
 	for r in BLOCK_ROWS:
+		# A street goes in ahead of every ODD row, so each one serves the row on
+		# both sides of it: row 0 fronts the anchor road, rows 1-2 share the
+		# first street, rows 3-4 the second. (Streets between PAIRS instead
+		# stranded the back row 69u from anything.)
+		var depth := float(r) * BLOCK_LOT + float((r + 1) / 2) * BLOCK_STREET_W
+		if r % 2 == 1:
+			var prev := float(r - 1) * BLOCK_LOT + float(r / 2) * BLOCK_STREET_W
+			var sd := (prev + depth) * 0.5
+			streets.append([
+				origin + tangent * (-BLOCK_LOT * 0.5) + normal * sd,
+				origin + tangent * (float(cols - 1) * BLOCK_LOT + BLOCK_LOT * 0.5) + normal * sd,
+			])
 		for c in cols:
-			var ctr: Vector2 = origin + tangent * (float(c) * BLOCK_LOT) + normal * (float(r) * BLOCK_LOT)
+			var ctr: Vector2 = origin + tangent * (float(c) * BLOCK_LOT) + normal * depth
 			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
 				continue
-			if _cell_near_road(ctr, segs):   # only road-facing lots; the interior stays empty
+			# A lot must front SOMETHING — the anchor road or one of the block's
+			# own service streets.
+			if _near_frontage(ctr, segs) or _near_street(ctr, streets):
 				lots.append(ctr)
 	if lots.size() < BLOCK_MIN_LOTS:
 		if BLOCK_DEBUG: print("[BLOCKDBG] %s: only %d usable lots (run=%.0fu cols=%d) — need %d" % [tile_id, lots.size(), best_len, cols, BLOCK_MIN_LOTS])
@@ -529,7 +564,18 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	for _i in lots.size():
 		claimed.append(false)
 	if BLOCK_DEBUG: print("[BLOCKDBG] %s: BLOCK formed — %d lots (run=%.0fu cols=%d)" % [tile_id, lots.size(), best_len, cols])
-	return {"angle": angle, "lots": lots, "claimed": claimed, "segs": segs}
+	return {"angle": angle, "lots": lots, "claimed": claimed, "segs": segs, "streets": streets}
+
+## Is this lot centre close enough to a road / to one of the block's own
+## service streets to count as fronting it?
+func _near_street(ctr: Vector2, streets: Array) -> bool:
+	return _near_frontage(ctr, streets)
+
+func _near_frontage(ctr: Vector2, segs: Array) -> bool:
+	for s in segs:
+		if _pt_seg_dist(ctr, s[0], s[1]) <= BLOCK_FRONT_MAX:
+			return true
+	return false
 
 ## A few BIG chunks filling the block box (enclosure-seeded tiles): C cols along the road (2-3 by run length)
 ## x R rows deep (1-2), 3-6 total. Each cell is sized so its building FILLS it (`_claim_slot` reads `cell`),
@@ -2223,7 +2269,13 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 	# scanning every seg per cell. The roads-v3 start network puts finely-sampled
 	# (~12u) polylines on most tiles, so the old 648-cells × all-segs scan was
 	# ~150k _pt_seg_dist calls per tile (~25 s of world build across the map).
-	var road_block := _rasterize_seg_clearance(segs, ROAD_CLEAR)
+	# Carve the mask at the TIGHTEST clearance any caller may ask for, not at
+	# ROAD_CLEAR. The mask used to forbid everything within 18u of a road, which
+	# made the 5.5u art frontage structurally impossible — the audit showed
+	# 99.9% of rejected frontage candidates failing here rather than on the
+	# road-clearance test. Each caller still enforces its own distance through
+	# _valid/_farm_valid/_wing_valid, so nothing gets closer than it should.
+	var road_block := _rasterize_seg_clearance(segs, MASK_ROAD_CLEAR)
 	# Port quay/pier strip: the dock composition is drawn decoration with no
 	# placement footprint — without this carve, buildings legally packed under
 	# it and the port (z=60) drew over them (owner report, Stoneshore Docks).
@@ -3474,6 +3526,15 @@ func _draw() -> void:
 	# forests). A promoted tile's _farm_lanes already excludes the ring + trunk (now real yellow roads).
 	# A filled disc (radius = half the track width) at each segment end JOINS the corners + junctions so
 	# the network reads as continuous instead of broken butt-capped segments.
+	# Block service streets, drawn in the road style so a city block reads as
+	# streets + frontages rather than a slab of buildings. Under the buildings
+	# (drawn earlier), like a carriageway they stand on.
+	for tid_s in _block_streets:
+		for s in (_block_streets[tid_s] as Array):
+			var sa: Vector2 = s[0]
+			var sb: Vector2 = s[1]
+			draw_line(sa, sb, MapStyle.road_casing(), BLOCK_STREET_W * 0.62, true)
+			draw_line(sa, sb, MapStyle.road_local(), BLOCK_STREET_W * 0.42, true)
 	# Ink mode draws NO grey lane web (owner ruling 2026-07-23): the mockup's
 	# farms are parcel blocks sitting beside the roads, not lane-connected
 	# blobs. Classic keeps the dirt tracks + their river bridge decks.
