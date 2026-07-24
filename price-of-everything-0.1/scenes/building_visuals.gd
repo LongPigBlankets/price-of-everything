@@ -340,11 +340,17 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# crowd-dependent shrink, undersized so the tile never fills.
 	var area := maxf(float(size_units) * SIZE_UNIT_AREA, BUILDABLE_MIN_AREA)
 	# Shape-language buildings reserve an ART-SIZED lot — placement must
-	# separate what is drawn, not the old undersized plates.
+	# separate what is drawn, not the old undersized plates. Lot side scales
+	# with tile_size_used between the min and 3x-min classes.
 	var iname_lot := str(bd.get("internal_name", ""))
-	if INK_ART_KEY.has(iname_lot):
-		area = maxf(area, ART_LOT_AREA_SMALL if INK_ART_SMALL.has(iname_lot) else ART_LOT_AREA)
-	var kind: String = BuildingShapes.KINDS[RoadHash.pick("poly|%s|%s|kind" % [tile_id, instance_id], BuildingShapes.KINDS.size())]
+	var has_art := INK_ART_KEY.has(iname_lot)
+	if has_art:
+		var side := ART_SIDE_MIN + (ART_SIDE_MAX - ART_SIDE_MIN) * clampf((float(size_units) - 1.0) / 9.0, 0.0, 1.0)
+		area = maxf(area, side * side)
+	# Art buildings keep QUAD footprints: the composition is rect-framed, and
+	# an L/C footprint's notch — legally occupied by a neighbour — would sit
+	# under the art (the residual start-tile overlap the owner reported).
+	var kind: String = BuildingShapes.KINDS[RoadHash.pick("poly|%s|%s|kind" % [tile_id, instance_id], 2 if has_art else BuildingShapes.KINDS.size())]
 	var seed_v := RoadHash.pick("poly|%s|%s|var" % [tile_id, instance_id], 9)
 	var placed_here := _placed_on_tile(tile_id)
 
@@ -364,7 +370,8 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		if not tmpl.is_empty():
 			placed = _claim_slot(tmpl, size_units, coord, tile_id, placed_here)
 	if placed.is_empty() and not offshore:
-		placed = _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here)
+		# Art buildings front the road tightly (edge ~1u off the carriageway).
+		placed = _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here, ART_ROAD_PAD if has_art else ROAD_CLEAR)
 	if placed.is_empty():
 		return  # tile too crowded to fit it — not drawn rather than overlapping
 
@@ -2273,7 +2280,7 @@ func _rasterize_seg_clearance(segs: Array, pad: float) -> PackedByteArray:
 	return mask
 
 ## Place one building. Returns {verts (world), center_rel, half}; {} if nothing fits.
-func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array) -> Dictionary:
+func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array, road_clear: float = ROAD_CLEAR) -> Dictionary:
 	if not _tile_land.has(tile_id):
 		return {}   # caller must _ensure_tile first; never KeyError-crash on a miss
 	var land: PackedByteArray = _tile_land[tile_id]
@@ -2291,8 +2298,8 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 		return placed
 	var base_verts: PackedVector2Array = BuildingShapes.make(kind, area, seed_v).verts
 	if is_edge:
-		return _place_edge(tile_id, coord, base_verts, placed_here, land)
-	return _place_frontage(tile_id, coord, base_verts, cat, placed_here, land)
+		return _place_edge(tile_id, coord, base_verts, placed_here, land, road_clear)
+	return _place_frontage(tile_id, coord, base_verts, cat, placed_here, land, road_clear)
 
 ## Offshore placement: pick the WATER cell that maximises distance to the
 ## buildings already on the tile (capped so ties break toward the tile centre)
@@ -2331,7 +2338,7 @@ func _place_offshore(coord: Vector2i, area: float, placed_here: Array) -> Dictio
 ## Tight row along a road frontage: orient the long axis along the road, snap flush to the
 ## carriageway clearance, and take the first free slot (which abuts the prior building with
 ## ~DESIGN_GAP). Falls back to abutting the nearest neighbour, then to the lowest free cell.
-func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2Array, cat: String, placed_here: Array, land: PackedByteArray) -> Dictionary:
+func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2Array, cat: String, placed_here: Array, land: PackedByteArray, road_clear: float = ROAD_CLEAR) -> Dictionary:
 	var segs: Array = _tile_segs.get(tile_id, [])
 	var rivers: Array = _tile_rivers.get(tile_id, [])
 	# Pre-rotation half: because we rotate the shape's long axis (local x) onto the road
@@ -2358,7 +2365,7 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 			var t := 0.0
 			while t <= seg_len:
 				var center: Vector2 = a + tangent * t + off
-				if _valid(center, rv, half, placed_here, land, segs, rivers):
+				if _valid(center, rv, half, placed_here, land, segs, rivers, road_clear):
 					var score := _row_score(center, cat, placed_here)
 					if score < best_score:
 						best_score = score
@@ -2376,7 +2383,7 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 		for dir in [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP]:
 			var span: float = (nb.half * dir.abs()).length() + (half0 * dir.abs()).length() + DESIGN_GAP
 			var center: Vector2 = nb.pos + dir * span
-			if _valid(center, base_verts, half0, placed_here, land, segs, rivers):
+			if _valid(center, base_verts, half0, placed_here, land, segs, rivers, road_clear):
 				return _finalize(coord, center, base_verts, half0)
 
 	# Fallback B: the free cell nearest the tile centre (first building on a roadless tile).
@@ -2386,7 +2393,7 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 	var best_d := 1.0e9
 	for key in (_tile_landkeys[tile_id] as PackedInt32Array):
 		var rel := Vector2(((key % GRID_COLS) + 0.5) * CELL, ((key / GRID_COLS) + 0.5) * CELL) - TILE_CENTER
-		if not _valid(rel, base_verts, half0, placed_here, land, segs, rivers):
+		if not _valid(rel, base_verts, half0, placed_here, land, segs, rivers, road_clear):
 			continue
 		var d := rel.length()
 		if d < best_d:
@@ -2398,7 +2405,7 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 
 ## Edge-seeker (recycling/extraction): the free land cell that maximises distance from the
 ## tile centre and from other buildings, i.e. a far empty corner. Axis-aligned.
-func _place_edge(tile_id: String, coord: Vector2i, base_verts: PackedVector2Array, placed_here: Array, land: PackedByteArray) -> Dictionary:
+func _place_edge(tile_id: String, coord: Vector2i, base_verts: PackedVector2Array, placed_here: Array, land: PackedByteArray, road_clear: float = ROAD_CLEAR) -> Dictionary:
 	var segs: Array = _tile_segs.get(tile_id, [])
 	var rivers: Array = _tile_rivers.get(tile_id, [])
 	var half := _aabb_half(base_verts)
@@ -2406,7 +2413,7 @@ func _place_edge(tile_id: String, coord: Vector2i, base_verts: PackedVector2Arra
 	var best_score := -INF
 	for key in (_tile_landkeys[tile_id] as PackedInt32Array):
 		var rel := Vector2(((key % GRID_COLS) + 0.5) * CELL, ((key / GRID_COLS) + 0.5) * CELL) - TILE_CENTER
-		if not _valid(rel, base_verts, half, placed_here, land, segs, rivers):
+		if not _valid(rel, base_verts, half, placed_here, land, segs, rivers, road_clear):
 			continue
 		var score := rel.length() + W_AWAY * _nearest_building_dist(rel, placed_here)
 		if score > best_score:
@@ -2650,11 +2657,12 @@ const INK_ART_KEY := {
 	"coal_power": "power_plant", "water_pump": "water_pump",
 	"pipes": "pipes", "reinf_pipes": "pipes", "cables": "cables",
 }
-## Small infrastructure pieces reserve a smaller lot than the big compounds.
-const INK_ART_SMALL := {"water_pump": true, "pipes": true, "reinf_pipes": true, "cables": true}
-const ART_LOT_AREA := 2000.0        # ~45u lot for the industrial compounds
-const ART_LOT_AREA_SMALL := 900.0   # ~30u lot for pump/pipes/cables
-const ART_LVL_FRAC: Array[float] = [0.78, 0.9, 1.0]   # art grows INTO its lot by level
+## Lot side scales with tile_size_used from the smallest class to 3x for the
+## biggest (owner's 10:30 ratio); levels never rescale the art — the L3 frame
+## is the lot and upgrades annex into it.
+const ART_SIDE_MIN := 36.0
+const ART_SIDE_MAX := 108.0
+const ART_ROAD_PAD := 5.5    # art frontage: footprint edge ~1u off the carriageway edge
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
 
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
@@ -3459,9 +3467,9 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 		var r := v - ctr
 		dmax = maxf(dmax, absf(r.dot(dir)))
 		nmax = maxf(nmax, absf(r.dot(Vector2(-dir.y, dir.x))))
-	# The lot IS art-sized now (ART_LOT_AREA floor at placement); the compound
-	# grows into it by level, so upgrades read without ever leaving the lot.
-	var target := maxf(dmax, nmax) * 2.0 * ART_LVL_FRAC[lvl - 1]
+	# The lot IS the L3 frame: the generator draws every level at the same
+	# scale inside it, so upgrades annex outward instead of inflating.
+	var target := maxf(dmax, nmax) * 2.0
 	return InkBuildingGen.draw(self, art_key, lvl, ctr, dir.angle(), target, bool(placement.is_npc))
 
 ## Shift a polygon by a fixed offset (SE micro-shadow under building fills).
