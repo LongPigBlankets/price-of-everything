@@ -380,7 +380,19 @@ Draw adds ~20–40 canvas commands per farm (parcel fills + hairlines);
 farms redraw only on layout events. If command count ever matters, parcels
 can collapse into one per-vertex-colored ArrayMesh per farm.
 
-**P3c — Baked industrial sprites** *(BUILT 2026-07-23, owner-directed)*
+**P3c — Industrial building art** *(REVISED 2026-07-23: procedural shape
+language supersedes the baked sprites — owner judged the bitmap assets too
+large)*. `scripts/ink_building_gen.gd` draws ten industrial types from
+primitives (flat roofs, seamless flat-polygons with courtyard holes, sawtooth
+bays, gables, tanks/spheres/stacks, EAF vessels with three electrode rods,
+capsules, apses, pipes, cables, pads, battery units, suspended corridors) at
+three levels that read as build-out — language iterated with the owner in-chat
+(v1→v3). **Lighting is world-fixed**: facet tones from world normals vs the NW
+light, shadows offset world-SE, highlights aim world-NW — rotated footprints
+stay correctly lit. The baked-sprite pipeline below is retired (removed from
+the repo; recoverable from git history).
+
+*(superseded)* **Baked industrial sprites** *(BUILT 2026-07-23, owner-directed)*
 Hand-drawn top-down art (two 3×3 magenta-keyed sheets, `assets/ink_buildings/
 src/`) replaces the procedural plates in ink mode for exactly ten industrial
 types: furnace, EAF, both factories, assembly plant, high-tech manufactory,

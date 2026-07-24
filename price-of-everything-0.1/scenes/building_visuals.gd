@@ -2631,20 +2631,18 @@ const PARCEL_INSET := 2.2        # gap: the base path-tan shows through = the li
 const PARCEL_MIN_AREA := 250.0   # drop boundary slivers (base shows = path widening)
 const FURROW_SPACING := 7.0      # ink furrow pitch (owner: denser than the classic 12u hatch)
 
-# ── Ink building art (hand-drawn industrial sprites, ink mode only) ────────────
-## Buildings that render as baked top-down art in ink mode (owner 2026-07-23);
-## sprites live at assets/ink_buildings/<internal_name>_l{1,2,3}.png (see
-## tools/bake_ink_buildings.gd). Everything else keeps the procedural plates.
+# ── Ink building art (procedural shape language, ink mode only) ────────────────
+## Buildings drawn by InkBuildingGen (owner's shape-language v3, world-fixed
+## lighting) in ink mode. Everything else keeps the procedural plates.
 const INK_ART_NAMES := {
 	"furnace": true, "eaf": true, "industrial_factory": true,
 	"consumer_factory": true, "assembly_plant": true,
 	"high_tech_manufactory": true, "petro_refinery": true,
 	"chem_plant": true, "poly_plant": true, "electrolyser": true,
 }
-const INK_ART_SCALE := 2.0    # sprite long side vs footprint long side — the
-                              # footprints are deliberately undersized (plate
-                              # look); the art needs room to read its detail
-var _ink_art_tex: Dictionary = {}   # "name_lN" -> Texture2D (null = missing; lazy)
+const INK_ART_SCALE := 2.0    # drawn long side vs footprint long side — the
+							  # footprints are deliberately undersized (plate
+							  # look); the art needs room to read its detail
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
 
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
@@ -3430,24 +3428,17 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 
 # ── Ink & wash helpers (phase I1) ──────────────────────────────────────────────
 
-## Baked industrial sprite (ink mode): drawn centered on the footprint, rotated
-## to its first edge, long side scaled to INK_ART_SCALE x the footprint extent.
-## Level picks the artwork (l1/l2/l3 = progressively fuller compounds); the NPC
-## copy lifts toward paper-white to keep the ownership cue. A silhouette shadow
-## (the texture re-drawn dark + offset) replaces the polygon micro-shadow.
-## Returns false when no art applies — caller falls back to the plate look.
+## Procedural industrial art (ink mode): InkBuildingGen draws the shape-language
+## compound centered on the footprint, rotated to its first edge, long side
+## scaled to INK_ART_SCALE x the footprint extent. The generator computes facet
+## tones from WORLD normals, offsets shadows in world SE and aims highlights
+## world NW — so rotation keeps the light source top-left (owner requirement).
+## Returns false when no recipe applies — caller falls back to the plate look.
 func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 	var iname := str(placement.get("iname", ""))
 	if not INK_ART_NAMES.has(iname) or verts.size() < 3:
 		return false
 	var lvl := clampi(int((MatchState.get_building(str(placement.instance_id)) as Dictionary).get("level", 1)), 1, 3)
-	var key := "%s_l%d" % [iname, lvl]
-	if not _ink_art_tex.has(key):
-		var path := "res://assets/ink_buildings/%s.png" % key
-		_ink_art_tex[key] = (load(path) as Texture2D) if ResourceLoader.exists(path) else null
-	var tex: Texture2D = _ink_art_tex[key]
-	if tex == null:
-		return false
 	var dir := (verts[1] - verts[0]).normalized()
 	var ctr := _poly_centroid(verts)
 	var dmax := 0.0
@@ -3456,17 +3447,8 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 		var r := v - ctr
 		dmax = maxf(dmax, absf(r.dot(dir)))
 		nmax = maxf(nmax, absf(r.dot(Vector2(-dir.y, dir.x))))
-	var ts := tex.get_size()
-	var scale := maxf(dmax, nmax) * 2.0 * INK_ART_SCALE / maxf(ts.x, ts.y)
-	var sh := MapStyle.building_shadow_color()
-	if sh.a > 0.0:
-		draw_set_transform(ctr + MapStyle.building_shadow_offset() * 1.6, dir.angle(), Vector2(scale, scale))
-		draw_texture_rect(tex, Rect2(-ts * 0.5, ts), false, sh)
-	draw_set_transform(ctr, dir.angle(), Vector2(scale, scale))
-	var tint := Color(1.10, 1.06, 0.98) if bool(placement.is_npc) else Color.WHITE
-	draw_texture_rect(tex, Rect2(-ts * 0.5, ts), false, tint)
-	draw_set_transform_matrix(Transform2D.IDENTITY)
-	return true
+	var target := maxf(dmax, nmax) * 2.0 * INK_ART_SCALE
+	return InkBuildingGen.draw(self, iname, lvl, ctr, dir.angle(), target, bool(placement.is_npc))
 
 ## Shift a polygon by a fixed offset (SE micro-shadow under building fills).
 func _offset_pts(pts: PackedVector2Array, off: Vector2) -> PackedVector2Array:
