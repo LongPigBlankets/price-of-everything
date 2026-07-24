@@ -43,6 +43,14 @@ func setup(hex_map: TileMapLayer) -> void:
 	queue_redraw()
 
 func _draw() -> void:
+	if MapStyle.ink:
+		# Ink mode: the shape-language port (quay spine + warehouses +
+		# container stacks + plank piers + jib cranes), world-lit like every
+		# other generated building. Ports are neutral infrastructure -> npc
+		# tint off.
+		for g in _glyphs:
+			InkBuildingGen.draw(self, "port", 1, g["pos"] as Vector2, float(g["angle"]), float(g["tile_h"]) * 0.55, false)
+		return
 	var dockhouse := MapStyle.port_dockhouse()
 	var outline := MapStyle.port_outline()
 	var pier := MapStyle.port_pier()

@@ -22,6 +22,8 @@ const DKR := Color("7a7975")
 const BORE := Color("3b3835")
 const HI := Color("e6e5e0")
 const PAD_C := Color("b6afa2")
+const DECK := Color("c9bc95")
+const CONTAINER_COLS: Array[Color] = [Color("a8564a"), Color("bfa04a"), Color("b8b7b2")]
 const NPC_PAPER := Color("efe9db")
 const SHADOW := Color(0.184, 0.169, 0.149, 0.22)
 const LIGHT_DIR := Vector2(-0.7071068, -0.7071068)
@@ -217,6 +219,26 @@ static func _recipe(iname: String, l: int) -> Array:
 			if l >= 2:
 				p.append(_capsule(88, 26, 40, 12))
 			return p
+		"port":
+			# Authored with +X = seaward (port_visuals passes the sea-facing
+			# angle): quay spine along the shore with warehouses + container
+			# stacks, plank-decked pier fingers, two jib cranes (elevated
+			# shadows). Neutral infrastructure — callers pass npc=false.
+			var p := [_deck(44, 28, 30, 100, true)]
+			p.append(_gable_v(48, 34, 20, 28))
+			p.append(_gable_v(48, 96, 20, 26))
+			p.append(_deck(74, 36, 50, 10, false))
+			p.append(_deck(74, 64, 58, 10, false))
+			p.append(_deck(74, 92, 44, 10, false))
+			p.append(_containers(48, 66, 2, 3))
+			p.append(_containers(52, 84, 1, 2))
+			p.append(_cbase(100, 41))
+			p.append(_bar(Vector2(93, 43.2), Vector2(124, 33), 3, 1.6))
+			p.append(_dot(124, 33, 1.3))
+			p.append(_cbase(110, 69))
+			p.append(_bar(Vector2(102, 71.5), Vector2(140, 62), 3, 1.6))
+			p.append(_dot(140, 62, 1.3))
+			return p
 		"electrolyser":
 			var p := [_pad(56, 54, 44, 40)]
 			for r in 3:
@@ -306,6 +328,21 @@ static func _unit(x: float, y: float) -> Dictionary:
 static func _box(x: float, y: float, w: float, h: float) -> Dictionary:
 	return {"t": "box", "r": Rect2(x, y, w, h)}
 
+static func _gable_v(x: float, y: float, w: float, h: float) -> Dictionary:
+	return {"t": "gable_v", "r": Rect2(x, y, w, h)}
+
+static func _deck(x: float, y: float, w: float, h: float, vert: bool) -> Dictionary:
+	return {"t": "deck", "r": Rect2(x, y, w, h), "vert": vert}
+
+static func _containers(x: float, y: float, rows: int, cols: int) -> Dictionary:
+	return {"t": "containers", "r": Rect2(x, y, cols * 8.3 - 1.3, rows * 5.5 - 1.3), "rows": rows, "cols": cols}
+
+static func _cbase(cx: float, cy: float) -> Dictionary:
+	return {"t": "cbase", "c": Vector2(cx, cy), "r": 4.2}
+
+static func _dot(cx: float, cy: float, r: float) -> Dictionary:
+	return {"t": "dot", "c": Vector2(cx, cy), "r": r}
+
 static func _to_packed(runs: Array) -> Array:
 	var out: Array = []
 	for run in runs:
@@ -319,7 +356,7 @@ static func _bounds(prims: Array) -> Rect2:
 	var mx := Vector2(-1e9, -1e9)
 	for pr in prims:
 		match str(pr.t):
-			"tank", "sphere", "stack", "vessel", "apse":
+			"tank", "sphere", "stack", "vessel", "apse", "cbase", "dot":
 				mn = mn.min(pr.c - Vector2(pr.r, pr.r))
 				mx = mx.max(pr.c + Vector2(pr.r, pr.r))
 			"bar":
@@ -343,7 +380,7 @@ static func _bounds(prims: Array) -> Rect2:
 static func _shift(prims: Array, off: Vector2) -> void:
 	for pr in prims:
 		match str(pr.t):
-			"tank", "sphere", "stack", "vessel", "apse":
+			"tank", "sphere", "stack", "vessel", "apse", "cbase", "dot":
 				pr.c = (pr.c as Vector2) + off
 			"bar":
 				pr.a = (pr.a as Vector2) + off
@@ -375,8 +412,10 @@ static func _shift(prims: Array, off: Vector2) -> void:
 
 static func _draw_sil(c: CanvasItem, pr: Dictionary) -> void:
 	match str(pr.t):
-		"tank", "sphere", "stack", "vessel":
+		"tank", "sphere", "stack", "vessel", "cbase":
 			c.draw_circle(pr.c, float(pr.r), SHADOW)
+		"dot":
+			pass
 		"apse":
 			var pts := PackedVector2Array()
 			for i in 13:
@@ -447,6 +486,18 @@ static func _draw_prim(c: CanvasItem, pr: Dictionary, rot: float, npc: bool) -> 
 			var r: Rect2 = pr.r
 			c.draw_colored_polygon(_rect_poly(r), _fill(LT, npc))
 			_outline_rect(c, r, 0.9)
+		"gable_v":
+			_rd_gable_v(c, pr, rot, npc)
+		"deck":
+			_rd_deck(c, pr, rot, npc)
+		"containers":
+			_rd_containers(c, pr, npc)
+		"cbase":
+			c.draw_circle(pr.c, float(pr.r), _fill(MLT, npc))
+			c.draw_arc(pr.c, float(pr.r), 0.0, TAU, 16, INK, 1.2, true)
+			c.draw_circle(pr.c, 1.2, INK)
+		"dot":
+			c.draw_circle(pr.c, float(pr.r), INK)
 
 static func _outline_rect(c: CanvasItem, r: Rect2, w: float) -> void:
 	var loop := _rect_poly(r)
@@ -622,6 +673,38 @@ static func _rd_apse(c: CanvasItem, pr: Dictionary, npc: bool) -> void:
 	var loop := pts.duplicate()
 	loop.append(pts[0])
 	c.draw_polyline(loop, INK, 1.3, true)
+
+static func _rd_gable_v(c: CanvasItem, pr: Dictionary, rot: float, npc: bool) -> void:
+	var r: Rect2 = pr.r
+	c.draw_rect(Rect2(r.position, Vector2(r.size.x * 0.5, r.size.y)), _fill(_facet3(Vector2(-1, 0), rot), npc))
+	c.draw_rect(Rect2(r.position + Vector2(r.size.x * 0.5, 0), Vector2(r.size.x * 0.5, r.size.y)), _fill(_facet3(Vector2(1, 0), rot), npc))
+	c.draw_line(r.position + Vector2(r.size.x * 0.5, 0), r.position + Vector2(r.size.x * 0.5, r.size.y), INK, 0.9, true)
+	_outline_rect(c, r, 1.4)
+
+static func _rd_deck(c: CanvasItem, pr: Dictionary, rot: float, npc: bool) -> void:
+	var r: Rect2 = pr.r
+	c.draw_colored_polygon(_rect_poly(r), _fill(DECK, npc))
+	var tick := Color(INK.r, INK.g, INK.b, 0.4)
+	if bool(pr.vert):
+		var yy := r.position.y + 5.0
+		while yy < r.end.y - 2.0:
+			c.draw_line(Vector2(r.position.x + 1.5, yy), Vector2(r.end.x - 1.5, yy), tick, 0.8, true)
+			yy += 6.0
+	else:
+		var xx := r.position.x + 5.0
+		while xx < r.end.x - 2.0:
+			c.draw_line(Vector2(xx, r.position.y + 1.5), Vector2(xx, r.end.y - 1.5), tick, 0.8, true)
+			xx += 6.0
+	c.draw_rect(Rect2(r.position, Vector2(r.size.x, 1.6)), _fill(_facet3(Vector2(0, -1), rot), npc))
+	_outline_rect(c, r, 1.2)
+
+static func _rd_containers(c: CanvasItem, pr: Dictionary, npc: bool) -> void:
+	var r: Rect2 = pr.r
+	for i in int(pr.rows):
+		for j in int(pr.cols):
+			var cr := Rect2(r.position + Vector2(j * 8.3, i * 5.5), Vector2(7, 4.2))
+			c.draw_colored_polygon(_rect_poly(cr), _fill(CONTAINER_COLS[(i + j) % 3], npc))
+			_outline_rect(c, cr, 0.7)
 
 static func _rd_unit(c: CanvasItem, pr: Dictionary, rot: float, npc: bool) -> void:
 	var r: Rect2 = pr.r
