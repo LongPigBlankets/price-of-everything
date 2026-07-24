@@ -23,8 +23,8 @@ func _ready() -> void:
 	get_viewport().set_disable_input(true)
 	_wm = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(_wm)
-	for _i in 40:   # map build + first draws settle
-		await get_tree().process_frame
+	for _i in 150:   # map build + post-load camera configure settle (house
+		await get_tree().process_frame   # trap: it overrides pans before ~140)
 	_terrain = _wm.get_node("%TerrainLayer")
 	# The hover hex grid follows the real mouse — hide it so captures are clean
 	# regardless of where the cursor sits during the windowed run.
@@ -41,9 +41,21 @@ func _ready() -> void:
 	var span := mx - mn
 	var vp := get_viewport().get_visible_rect().size
 	_wide_zoom = minf(vp.x / (span.x + 1200.0), vp.y / (span.y + 1200.0))
-	_cam = Camera2D.new()
-	add_child(_cam)
-	_cam.make_current()
+	# Drive the GAME's camera (house pattern) — a second Camera2D loses to the
+	# controller's post-load configure + zoom smoothing, and every framing then
+	# captures the same intro view (all shots came out byte-identical).
+	_cam = get_viewport().get_camera_2d()
+	if _cam == null:
+		push_error("map_style_shot: no game camera found")
+		get_tree().quit(1)
+		return
+	# Its _process() lerps zoom toward _target_zoom and then _clamp_to_bounds()
+	# re-centres on the whole map — which silently made every framing capture
+	# the same intro view. Stop the controller; we drive the transform.
+	_cam.set_process(false)
+	_cam.set_physics_process(false)
+	if "edge_pan_enabled" in _cam:
+		_cam.set("edge_pan_enabled", false)
 	await _capture_set("classic")
 	MapStyle.set_ink(true)
 	await _capture_set("ink")
@@ -101,8 +113,12 @@ func _tile_pos(tile_id: String) -> Vector2:
 	return _terrain.map_to_local(_terrain.map_coord_for_tile_coord(coord))
 
 func _shot(pos: Vector2, zoom: float, framing: String, mode: String, settle: int) -> void:
+	# Snap the controller's own targets too, or its smoothing lerps the view
+	# back toward the intro framing between shots.
 	_cam.position = pos
 	_cam.zoom = Vector2(zoom, zoom)
+	if "_target_zoom" in _cam:
+		_cam.set("_target_zoom", Vector2(zoom, zoom))
 	for _i in settle:   # give redraws (and the lazy hill re-bake) time to land
 		await get_tree().process_frame
 	var path := "/tmp/poe_mapstyle_%s_%s.png" % [framing, mode]

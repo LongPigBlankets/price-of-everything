@@ -329,32 +329,29 @@ static func _recipe(iname: String, l: int) -> Array:
 			p.append(_dot(130, 64, 1.3))
 			return p
 		"electrolyser":
+			# Compact frame (owner: electrolysers read too small) — the L1
+			# core fills ~2/3 of the L3 frame so small lots still read.
 			var p := [_pad(56, 54, 44, 40)]
 			for r in 3:
 				for cc in 3:
 					p.append(_unit(62 + cc * 13, 59 + r * 13))
-			p.append(_cable([[Vector2(60, 100), Vector2(96, 100)], [Vector2(66, 96), Vector2(66, 100)], [Vector2(79, 96), Vector2(79, 100)], [Vector2(92, 96), Vector2(92, 100)]]))
-			p.append(_pipes([[Vector2(100, 74), Vector2(110, 74)]]))
-			p.append(_tank(116, 62, 7))
-			p.append(_tank(116, 80, 7))
+			p.append(_cable([[Vector2(60, 90), Vector2(96, 90)], [Vector2(66, 86), Vector2(66, 90)], [Vector2(79, 86), Vector2(79, 90)], [Vector2(92, 86), Vector2(92, 90)]]))
+			p.append(_pipes([[Vector2(100, 66), Vector2(106, 66)], [Vector2(100, 82), Vector2(106, 82)]]))
+			p.append(_tank(113, 66, 7))
+			p.append(_tank(113, 84, 7))
 			if l >= 2:
-				p.append(_pad(56, 98, 44, 26))
-				p.append(_unit(62, 103))
-				p.append(_unit(75, 103))
-				p.append(_unit(88, 103))
-				p.append(_cable([[Vector2(60, 122), Vector2(96, 122)], [Vector2(66, 118), Vector2(66, 122)], [Vector2(79, 118), Vector2(79, 122)], [Vector2(92, 118), Vector2(92, 122)]]))
-				p.append(_tank(134, 62, 7))
-				p.append(_tank(134, 80, 7))
+				p.append(_pad(56, 96, 44, 24))
+				p.append(_unit(62, 101))
+				p.append(_unit(75, 101))
+				p.append(_unit(88, 101))
+				p.append(_cable([[Vector2(60, 117), Vector2(96, 117)]]))
+				p.append(_tank(130, 66, 7))
+				p.append(_tank(130, 84, 7))
 			if l >= 3:
-				p.append(_pad(104, 98, 40, 26))
-				p.append(_unit(110, 103))
-				p.append(_unit(123, 103))
-				p.append(_unit(136, 103))
-				p.append(_cable([[Vector2(108, 122), Vector2(140, 122)], [Vector2(114, 118), Vector2(114, 122)], [Vector2(127, 118), Vector2(127, 122)]]))
-				p.append(_flat(126, 34, 26, 18, 1))
-				p.append(_tank(152, 62, 7))
-				p.append(_tank(152, 80, 7))
-				p.append(_cable([[Vector2(100, 66), Vector2(106, 66), Vector2(106, 90)]]))
+				p.append(_box(102, 96, 16, 12))
+				p.append(_cable([[Vector2(110, 108), Vector2(110, 117), Vector2(96, 117)]]))
+				p.append(_tank(147, 66, 7))
+				p.append(_tank(147, 84, 7))
 			return p
 	return []
 

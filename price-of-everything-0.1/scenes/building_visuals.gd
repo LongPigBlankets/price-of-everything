@@ -371,7 +371,17 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 			placed = _claim_slot(tmpl, size_units, coord, tile_id, placed_here)
 	if placed.is_empty() and not offshore:
 		# Art buildings front the road tightly (edge ~1u off the carriageway).
-		placed = _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here, ART_ROAD_PAD if has_art else ROAD_CLEAR)
+		var rc := ART_ROAD_PAD if has_art else ROAD_CLEAR
+		placed = _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here, rc)
+		# Dense tiles (Stoneshore Docks runs 100+ buildings): rather than
+		# silently vanishing, art buildings retry with smaller lots — the
+		# city packs tighter and the art just draws smaller (strokes stay
+		# constant-width regardless).
+		if placed.is_empty() and has_art:
+			for shrink in [0.55, 0.3]:
+				placed = _search(tile_id, coord, kind, area * float(shrink), seed_v, cat, is_edge, placed_here, rc)
+				if not placed.is_empty():
+					break
 	if placed.is_empty():
 		return  # tile too crowded to fit it — not drawn rather than overlapping
 
@@ -2202,6 +2212,10 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 	# (~12u) polylines on most tiles, so the old 648-cells × all-segs scan was
 	# ~150k _pt_seg_dist calls per tile (~25 s of world build across the map).
 	var road_block := _rasterize_seg_clearance(segs, ROAD_CLEAR)
+	# Port quay/pier strip: the dock composition is drawn decoration with no
+	# placement footprint — without this carve, buildings legally packed under
+	# it and the port (z=60) drew over them (owner report, Stoneshore Docks).
+	var port_blocks := _port_block_frames(coord, center)
 	var keys := PackedInt32Array()
 	var farm_keys := PackedInt32Array()
 	for row in GRID_ROWS:
@@ -2212,6 +2226,16 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 			var key := row * GRID_COLS + col
 			if road_block[key] == 1:
 				continue   # too close to a road carriageway
+			var in_port := false
+			for pb in port_blocks:
+				var dd: Vector2 = rel - (pb.o as Vector2)
+				var dp := dd.dot(pb.dir as Vector2)
+				var pp := dd.dot(Vector2(-(pb.dir as Vector2).y, (pb.dir as Vector2).x))
+				if dp > -70.0 and dp < 170.0 and absf(pp) < 150.0:
+					in_port = true
+					break
+			if in_port:
+				continue   # under the dock quay/piers
 			if nav_ok:
 				var c := nav.cell_of(center + rel)
 				if nav.water(c.x, c.y) != 0:
@@ -2259,6 +2283,27 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 ## segment only visits its own grown bbox (a few cells for the ~12u-sampled road
 ## polylines), with the exact point-segment distance test inside — same result
 ## as the brute-force per-cell scan at a fraction of the cost.
+## Oriented block frames for any dock on this tile — mirrors port_visuals'
+## glyph math (position 0.30 tile-heights toward the first sea neighbour,
+## facing seaward). Entries: {o: rel-space origin, dir: seaward direction}.
+func _port_block_frames(coord: Vector2i, center: Vector2) -> Array:
+	var out: Array = []
+	if terrain_layer == null:
+		return out
+	var tile_h := 480.0
+	for p in Catalog.all_ports():
+		var pcoord: Vector2i = terrain_layer.id_to_coord(str(p.get("tile_id", "")))
+		if pcoord != coord:
+			continue
+		var cell: Vector2i = terrain_layer.map_coord_for_tile_coord(coord)
+		for ncell in terrain_layer.get_surrounding_cells(cell):
+			var ntile: Dictionary = terrain_layer.tiles.get(terrain_layer.tile_coord_for_map_coord(ncell), {})
+			if str(ntile.get("type", "")) in ["sea", "deep_sea"]:
+				var sea_dir := (terrain_layer.map_to_local(ncell) - terrain_layer.map_to_local(cell)).normalized()
+				out.append({"o": sea_dir * tile_h * 0.30, "dir": sea_dir})
+				break
+	return out
+
 func _rasterize_seg_clearance(segs: Array, pad: float) -> PackedByteArray:
 	var mask := PackedByteArray()
 	mask.resize(GRID_COLS * GRID_ROWS)
@@ -2660,7 +2705,7 @@ const INK_ART_KEY := {
 ## Lot side scales with tile_size_used from the smallest class to 3x for the
 ## biggest (owner's 10:30 ratio); levels never rescale the art — the L3 frame
 ## is the lot and upgrades annex into it.
-const ART_SIDE_MIN := 36.0
+const ART_SIDE_MIN := 42.0
 const ART_SIDE_MAX := 108.0
 const ART_ROAD_PAD := 5.5    # art frontage: footprint edge ~1u off the carriageway edge
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
