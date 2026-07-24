@@ -79,6 +79,13 @@ static func draw(c: CanvasItem, iname: String, lvl: int, ctr: Vector2, ang: floa
 ## Every level of a type shares the L3 reference frame (center + size), so the
 ## L1 core sits exactly where it sits inside the full compound and upgrades
 ## read as annexes appearing around it.
+## The reference frame a level draws into, in design units. Every level of a
+## type shares the L3 frame, which is what lets placement reserve an upgraded
+## building's full footprint up front. Public for the regression test.
+static func level_frame(iname: String, lvl: int) -> Vector2:
+	var entry := _entry(iname, clampi(lvl, 1, 3))
+	return (entry.size as Vector2) if not entry.is_empty() else Vector2.ZERO
+
 static func _entry(iname: String, lvl: int) -> Dictionary:
 	var key := "%s|%d" % [iname, lvl]
 	if _cache.has(key):
