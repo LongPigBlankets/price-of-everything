@@ -23,6 +23,7 @@ const BORE := Color("3b3835")
 const HI := Color("e6e5e0")
 const PAD_C := Color("b6afa2")
 const DECK := Color("c9bc95")
+const GBASE := Color("b4b3af")   # grey apron slab under power infrastructure
 const CONTAINER_COLS: Array[Color] = [Color("a8564a"), Color("bfa04a"), Color("b8b7b2")]
 const NPC_PAPER := Color("efe9db")
 const SHADOW := Color(0.184, 0.169, 0.149, 0.22)
@@ -226,6 +227,72 @@ static func _recipe(iname: String, l: int) -> Array:
 			if l >= 2:
 				p.append(_capsule(88, 26, 40, 12))
 			return p
+		"power_plant":
+			# Two big wide chimneys from L1; the base halls grow with level;
+			# transformers + power towers appear nearby; one grey apron slab
+			# sits under the whole compound (owner spec).
+			var p := [_gpad(40, 36, 112, 84)]
+			p.append(_flat(56, 76, 60, 26, 2))
+			if l >= 2:
+				p.append(_flat(116, 76, 24, 26, 1))
+			if l >= 3:
+				p.append(_flat(56, 106, 60, 10, 0))
+			p.append(_stack(72, 58, 11))
+			p.append(_stack(100, 58, 11))
+			if l >= 2:
+				p.append(_box(44, 100, 12, 8))
+				p.append(_dot(47, 98.5, 1.1))
+				p.append(_dot(52, 98.5, 1.1))
+				p.append(_cable([[Vector2(140, 54), Vector2(134, 70)]]))
+				p.append(_pylon(140, 48))
+			if l >= 3:
+				p.append(_box(44, 88, 12, 8))
+				p.append(_dot(47, 86.5, 1.1))
+				p.append(_dot(52, 86.5, 1.1))
+				p.append(_cable([[Vector2(140, 98), Vector2(132, 108)]]))
+				p.append(_pylon(140, 92))
+			return p
+		"water_pump":
+			# Fixed pump house; two round tanks + the pipework grow with level.
+			var tr := [6.5, 8.5, 10.5][l - 1] as float
+			var p := [_flat(50, 60, 34, 28, 1)]
+			p.append(_pipes([[Vector2(84, 66), Vector2(104.0 - tr, 66)], [Vector2(84, 84), Vector2(104.0 - tr, 84)]]))
+			if l >= 2:
+				p.append(_pipes([[Vector2(104, 66.0 + tr), Vector2(104, 84.0 - tr)]]))
+			if l >= 3:
+				p.append(_pipes([[Vector2(94, 52), Vector2(94, 96)]]))
+				p.append(_dot(94, 75, 1.6))
+			p.append(_tank(104, 66.0 - (tr - 6.5) * 0.6, tr))
+			p.append(_tank(104, 84.0 + (tr - 6.5) * 0.6, tr))
+			return p
+		"pipes":
+			# Small valve house; pipes run out in a cross and vanish underground
+			# (dark caps). Shared by pipes + reinforced pipes.
+			var p := [_pipes([
+				[Vector2(82, 62), Vector2(82, 44)],
+				[Vector2(82, 86), Vector2(82, 104)],
+				[Vector2(70, 74), Vector2(52, 74)],
+				[Vector2(94, 74), Vector2(112, 74)],
+			])]
+			p.append(_dot(82, 44, 2.2))
+			p.append(_dot(82, 104, 2.2))
+			p.append(_dot(52, 74, 2.2))
+			p.append(_dot(112, 74, 2.2))
+			p.append(_flat(70, 62, 24, 24, 1))
+			return p
+		"cables":
+			# Transformer station: apron, two transformer boxes with bushings,
+			# a power tower, and plenty of cable runs.
+			var p := [_gpad(56, 58, 52, 34)]
+			p.append(_box(62, 66, 12, 8))
+			p.append(_dot(65, 64.5, 1.1))
+			p.append(_dot(70, 64.5, 1.1))
+			p.append(_box(78, 66, 12, 8))
+			p.append(_dot(81, 64.5, 1.1))
+			p.append(_dot(86, 64.5, 1.1))
+			p.append(_cable([[Vector2(65, 64), Vector2(96, 52)], [Vector2(81, 64), Vector2(96, 52)], [Vector2(86, 64), Vector2(102, 70)], [Vector2(70, 64), Vector2(56, 48)]]))
+			p.append(_pylon(98, 50))
+			return p
 		"port":
 			# Authored with +X = seaward (port_visuals passes the sea-facing
 			# angle): quay spine along the shore with warehouses + container
@@ -350,6 +417,12 @@ static func _cbase(cx: float, cy: float) -> Dictionary:
 static func _dot(cx: float, cy: float, r: float) -> Dictionary:
 	return {"t": "dot", "c": Vector2(cx, cy), "r": r}
 
+static func _gpad(x: float, y: float, w: float, h: float) -> Dictionary:
+	return {"t": "gpad", "r": Rect2(x, y, w, h)}
+
+static func _pylon(cx: float, cy: float) -> Dictionary:
+	return {"t": "pylon", "c": Vector2(cx, cy), "r": 7.0, "k": 1.8}
+
 static func _to_packed(runs: Array) -> Array:
 	var out: Array = []
 	for run in runs:
@@ -363,7 +436,7 @@ static func _bounds(prims: Array) -> Rect2:
 	var mx := Vector2(-1e9, -1e9)
 	for pr in prims:
 		match str(pr.t):
-			"tank", "sphere", "stack", "vessel", "apse", "cbase", "dot":
+			"tank", "sphere", "stack", "vessel", "apse", "cbase", "dot", "pylon":
 				mn = mn.min(pr.c - Vector2(pr.r, pr.r))
 				mx = mx.max(pr.c + Vector2(pr.r, pr.r))
 			"bar":
@@ -387,7 +460,7 @@ static func _bounds(prims: Array) -> Rect2:
 static func _shift(prims: Array, off: Vector2) -> void:
 	for pr in prims:
 		match str(pr.t):
-			"tank", "sphere", "stack", "vessel", "apse", "cbase", "dot":
+			"tank", "sphere", "stack", "vessel", "apse", "cbase", "dot", "pylon":
 				pr.c = (pr.c as Vector2) + off
 			"bar":
 				pr.a = (pr.a as Vector2) + off
@@ -421,6 +494,8 @@ static func _draw_sil(c: CanvasItem, pr: Dictionary) -> void:
 	match str(pr.t):
 		"tank", "sphere", "stack", "vessel", "cbase":
 			c.draw_circle(pr.c, float(pr.r), SHADOW)
+		"pylon":
+			c.draw_rect(Rect2((pr.c as Vector2) - Vector2(5, 5), Vector2(10, 10)), SHADOW)
 		"dot":
 			pass
 		"apse":
@@ -505,6 +580,20 @@ static func _draw_prim(c: CanvasItem, pr: Dictionary, rot: float, npc: bool) -> 
 			c.draw_circle(pr.c, 1.2, INK)
 		"dot":
 			c.draw_circle(pr.c, float(pr.r), INK)
+		"gpad":
+			c.draw_colored_polygon(_rect_poly(pr.r), _fill(GBASE, npc))
+			_outline_rect(c, pr.r, 1.1)
+		"pylon":
+			var pc: Vector2 = pr.c
+			var hs := 5.0
+			var sq := PackedVector2Array([pc + Vector2(-hs, -hs), pc + Vector2(hs, -hs), pc + Vector2(hs, hs), pc + Vector2(-hs, hs)])
+			var loop := sq.duplicate()
+			loop.append(sq[0])
+			c.draw_polyline(loop, INK, 1.1, true)
+			c.draw_line(sq[0], sq[2], INK, 0.9, true)
+			c.draw_line(sq[1], sq[3], INK, 0.9, true)
+			c.draw_line(pc + Vector2(-9, 0), pc + Vector2(9, 0), INK, 1.2, true)
+			c.draw_circle(pc, 1.2, INK)
 
 static func _outline_rect(c: CanvasItem, r: Rect2, w: float) -> void:
 	var loop := _rect_poly(r)

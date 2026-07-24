@@ -22,8 +22,9 @@ extends Node2D
 const TileViewData := preload("res://scripts/tile_view_data.gd")
 
 # Network infrastructure drawn by its own layer, NOT as a building footprint:
-# b_005 roads (RoadNetworkVisuals), b_006 cables.
-const NON_FOOTPRINT_IDS := {"b_005": true, "b_006": true}
+# b_005 roads (RoadNetworkVisuals). b_006 cables regained a footprint
+# 2026-07-23 — it draws as the shape-language transformer station.
+const NON_FOOTPRINT_IDS := {"b_005": true}
 const FOREST_BUILDING_IDS := {"b_015": true, "b_016": true}
 
 # Buildable grid: 27×24 cells of 20u in the tile-local frame, used only for the
@@ -338,6 +339,11 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# Fixed area per size point (see SIZE_UNIT_AREA): consistent on every tile, no
 	# crowd-dependent shrink, undersized so the tile never fills.
 	var area := maxf(float(size_units) * SIZE_UNIT_AREA, BUILDABLE_MIN_AREA)
+	# Shape-language buildings reserve an ART-SIZED lot — placement must
+	# separate what is drawn, not the old undersized plates.
+	var iname_lot := str(bd.get("internal_name", ""))
+	if INK_ART_KEY.has(iname_lot):
+		area = maxf(area, ART_LOT_AREA_SMALL if INK_ART_SMALL.has(iname_lot) else ART_LOT_AREA)
 	var kind: String = BuildingShapes.KINDS[RoadHash.pick("poly|%s|%s|kind" % [tile_id, instance_id], BuildingShapes.KINDS.size())]
 	var seed_v := RoadHash.pick("poly|%s|%s|var" % [tile_id, instance_id], 9)
 	var placed_here := _placed_on_tile(tile_id)
@@ -369,7 +375,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var hatch: Array = _bake_farm_hatch(verts) if cat == "farm" else []
 	var parcels: Dictionary = _bake_farm_parcels(verts) if cat == "farm" else {}
 	var iname := str(bd.get("internal_name", ""))
-	if INK_ART_NAMES.has(iname):
+	if INK_ART_KEY.has(iname):
 		_ink_art_iid[str(instance_id)] = true
 	var placement := {
 		"instance_id": instance_id,
@@ -2631,18 +2637,24 @@ const PARCEL_INSET := 2.2        # gap: the base path-tan shows through = the li
 const PARCEL_MIN_AREA := 250.0   # drop boundary slivers (base shows = path widening)
 const FURROW_SPACING := 7.0      # ink furrow pitch (owner: denser than the classic 12u hatch)
 
-# ── Ink building art (procedural shape language, ink mode only) ────────────────
-## Buildings drawn by InkBuildingGen (owner's shape-language v3, world-fixed
-## lighting) in ink mode. Everything else keeps the procedural plates.
-const INK_ART_NAMES := {
-	"furnace": true, "eaf": true, "industrial_factory": true,
-	"consumer_factory": true, "assembly_plant": true,
-	"high_tech_manufactory": true, "petro_refinery": true,
-	"chem_plant": true, "poly_plant": true, "electrolyser": true,
+# ── Ink building art (procedural shape language — DEFAULT in both styles) ──────
+## internal_name -> InkBuildingGen recipe key (aliases collapse variants).
+## Owner 2026-07-23: the shape-language art is the default building look in
+## BOTH map styles, and its lot is reserved at ART size so the packer
+## separates what is actually drawn (plate-sized lots caused overlap).
+const INK_ART_KEY := {
+	"furnace": "furnace", "eaf": "eaf", "industrial_factory": "industrial_factory",
+	"consumer_factory": "consumer_factory", "assembly_plant": "assembly_plant",
+	"high_tech_manufactory": "high_tech_manufactory", "petro_refinery": "petro_refinery",
+	"chem_plant": "chem_plant", "poly_plant": "poly_plant", "electrolyser": "electrolyser",
+	"coal_power": "power_plant", "water_pump": "water_pump",
+	"pipes": "pipes", "reinf_pipes": "pipes", "cables": "cables",
 }
-const INK_ART_SCALE := 2.0    # drawn long side vs footprint long side — the
-							  # footprints are deliberately undersized (plate
-							  # look); the art needs room to read its detail
+## Small infrastructure pieces reserve a smaller lot than the big compounds.
+const INK_ART_SMALL := {"water_pump": true, "pipes": true, "reinf_pipes": true, "cables": true}
+const ART_LOT_AREA := 2000.0        # ~45u lot for the industrial compounds
+const ART_LOT_AREA_SMALL := 900.0   # ~30u lot for pump/pipes/cables
+const ART_LVL_FRAC: Array[float] = [0.78, 0.9, 1.0]   # art grows INTO its lot by level
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
 
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
@@ -3324,8 +3336,8 @@ func _draw() -> void:
 			# Members of a courtyard mass skip their fill — the mass carries it —
 			# and their outline thins into a party-wall division.
 			var in_mass: bool = (_massed_by_tile.get(str(placement.tile_id), {}) as Dictionary).has(str(placement.instance_id))
-			if MapStyle.ink and not in_mass and _draw_ink_art(placement, verts):
-				pass   # baked industrial sprite replaces wash/outline/motifs
+			if not in_mass and _draw_ink_art(placement, verts):
+				pass   # shape-language art replaces wash/outline/motifs (both styles)
 			else:
 				var wob := _wobble_poly(str(placement.instance_id), verts)
 				if not in_mass:
@@ -3384,8 +3396,8 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 	var kind := str(sc.kind)
 	if MapStyle.ink and (kind == "farm_barn" or kind == "farm_silo"):
 		return   # ink farms draw their own parcel-snapped outbuildings (P3b)
-	if MapStyle.ink and _ink_art_iid.get(str(sc.get("iid", "")), false):
-		return   # the baked sprite carries the whole compound (wings/tanks/storeys)
+	if _ink_art_iid.get(str(sc.get("iid", "")), false):
+		return   # the shape-language art carries the whole compound (both styles)
 	if kind == "tankfarm":
 		var twash := _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc))
 		for tc in (sc.tanks as Array):
@@ -3435,8 +3447,8 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 ## world NW — so rotation keeps the light source top-left (owner requirement).
 ## Returns false when no recipe applies — caller falls back to the plate look.
 func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
-	var iname := str(placement.get("iname", ""))
-	if not INK_ART_NAMES.has(iname) or verts.size() < 3:
+	var art_key: String = INK_ART_KEY.get(str(placement.get("iname", "")), "")
+	if art_key == "" or verts.size() < 3:
 		return false
 	var lvl := clampi(int((MatchState.get_building(str(placement.instance_id)) as Dictionary).get("level", 1)), 1, 3)
 	var dir := (verts[1] - verts[0]).normalized()
@@ -3447,12 +3459,10 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 		var r := v - ctr
 		dmax = maxf(dmax, absf(r.dot(dir)))
 		nmax = maxf(nmax, absf(r.dot(Vector2(-dir.y, dir.x))))
-	# Normalised size (owner ruling: unbounded 2x-footprint caused overlap
-	# chaos): footprint-proportional but clamped to a readable floor and a
-	# per-level ceiling, so big footprints can't explode into neighbours and
-	# upgrades still read as growth.
-	var target := clampf(maxf(dmax, nmax) * 2.0 * INK_ART_SCALE * 0.5, 34.0, 40.0 + 9.0 * float(lvl))
-	return InkBuildingGen.draw(self, iname, lvl, ctr, dir.angle(), target, bool(placement.is_npc))
+	# The lot IS art-sized now (ART_LOT_AREA floor at placement); the compound
+	# grows into it by level, so upgrades read without ever leaving the lot.
+	var target := maxf(dmax, nmax) * 2.0 * ART_LVL_FRAC[lvl - 1]
+	return InkBuildingGen.draw(self, art_key, lvl, ctr, dir.angle(), target, bool(placement.is_npc))
 
 ## Shift a polygon by a fixed offset (SE micro-shadow under building fills).
 func _offset_pts(pts: PackedVector2Array, off: Vector2) -> PackedVector2Array:
