@@ -36,6 +36,11 @@ const LIGHT_DIR := Vector2(-0.7071068, -0.7071068)
 const SHADOW_OFF := Vector2(1.7, 2.2)   # world units per shadow-scale k
 
 static var _cache: Dictionary = {}   # "iname|lvl" -> {prims: Array, size: Vector2}
+## Category wash for the building masses, supplied per draw by the caller so
+## the SAME rules as the classic plate look apply (BuildingVisuals._wash_for:
+## category triad, NPC paper-white, seeded value jitter). Transparent = keep
+## the neutral grey palette (ports, and any caller that passes no wash).
+static var _wash_base := Color(0, 0, 0, 0)
 
 ## Draw one building. `target` = the world size of the FULL (L3) compound's
 ## long side — every level draws at the same scale anchored to the L3 frame,
@@ -44,10 +49,11 @@ static var _cache: Dictionary = {}   # "iname|lvl" -> {prims: Array, size: Vecto
 ## regardless of building size (owner: consistent linework; also the port-blur
 ## fix). `anchor` (optional, design space) pins that local point at `ctr`.
 ## Returns false when the type has no recipe.
-static func draw(c: CanvasItem, iname: String, lvl: int, ctr: Vector2, ang: float, target: float, npc: bool, anchor: Vector2 = Vector2.INF) -> bool:
+static func draw(c: CanvasItem, iname: String, lvl: int, ctr: Vector2, ang: float, target: float, npc: bool, anchor: Vector2 = Vector2.INF, wash: Color = Color(0, 0, 0, 0)) -> bool:
 	var entry := _entry(iname, clampi(lvl, 1, 3))
 	if entry.is_empty():
 		return false
+	_wash_base = wash
 	var size: Vector2 = entry.size
 	var s := target / maxf(size.x, size.y)
 	var iw := 1.0 / s   # inverse scale: stroke widths stay constant in world units
@@ -112,7 +118,27 @@ static func _ref_frame(iname: String) -> Dictionary:
 ## ── tones (world-normal lighting) ───────────────────────────────────────────
 
 static func _fill(col: Color, npc: bool) -> Color:
-	return col.lerp(NPC_PAPER, 0.30) if npc else col
+	var c := _remap(col)
+	return c.lerp(NPC_PAPER, 0.30) if npc else c
+
+## Recolour the neutral building-mass greys onto the caller's category wash,
+## preserving each tone's role (roof / lit face / shaded face). Material colours
+## that carry their own meaning — pit earth, timber decks, solar cells, shipping
+## containers, concrete aprons — deliberately fall through unchanged.
+static func _remap(col: Color) -> Color:
+	if _wash_base.a <= 0.0:
+		return col
+	if col == MID:
+		return _wash_base
+	if col == LT:
+		return _wash_base.lightened(0.20)
+	if col == MLT:
+		return _wash_base.lightened(0.10)
+	if col == DK:
+		return _wash_base.darkened(0.16)
+	if col == DKR:
+		return _wash_base.darkened(0.28)
+	return col
 
 ## 3-step facet tone for pitched surfaces and edge strips.
 static func _facet3(n_local: Vector2, rot: float) -> Color:
@@ -743,7 +769,7 @@ static func _rd_saw(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: fl
 	for i in int(pr.bays):
 		var by := r.position.y + i * bh
 		c.draw_rect(Rect2(r.position.x, by, r.size.x, bh * 0.72), _fill(_facet3(Vector2(0, -1), rot), npc))
-		c.draw_rect(Rect2(r.position.x, by + bh * 0.72, r.size.x, bh * 0.28), _fill(_facet3(Vector2(0, 1), rot).darkened(0.06), npc))
+		c.draw_rect(Rect2(r.position.x, by + bh * 0.72, r.size.x, bh * 0.28), _fill(_facet3(Vector2(0, 1), rot), npc).darkened(0.06))
 		c.draw_line(Vector2(r.position.x, by + bh * 0.72), Vector2(r.end.x, by + bh * 0.72), INK, 0.9 * iw, true)
 		c.draw_line(Vector2(r.position.x, by + bh), Vector2(r.end.x, by + bh), INK, 0.7 * iw, true)
 	_outline_rect(c, r, 1.4 * iw)

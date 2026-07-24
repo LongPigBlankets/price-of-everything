@@ -3538,7 +3538,12 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 	# its slot rather than over its neighbours.
 	var size_target := _art_size_for(int(placement.get("size_units", 1)))
 	var target := clampf(minf(size_target, maxf(dmax, nmax) * 2.0), ART_DRAWN_MIN, ART_DRAWN_MAX)
-	return InkBuildingGen.draw(self, art_key, lvl, ctr, dir.angle(), target, bool(placement.is_npc))
+	# Colour by the SAME rule as the plate look — category triad, NPC
+	# paper-white, seeded jitter — so ownership and category read identically
+	# in both styles. _wash_for already encodes ownership, so the generator's
+	# own npc dulling is left off.
+	var wash := _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc))
+	return InkBuildingGen.draw(self, art_key, lvl, ctr, dir.angle(), target, false, Vector2.INF, wash)
 
 ## Drawn/lot side for a building of `size_units`, interpolating the drawn-size
 ## band across the CSV's real 1..30 range.

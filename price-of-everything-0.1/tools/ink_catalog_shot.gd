@@ -14,6 +14,13 @@ const KEYS := [
 const CELL := Vector2(150.0, 132.0)
 const DRAWN := 96.0        # generous so detail is legible on the sheet
 const COLS := 9            # 3 types per row (3 levels each)
+## Sample washes from BuildingVisuals' category triad, cycled so the sheet also
+## proves the mass recolour works (and that material colours — pit earth,
+## timber decks, solar cells, containers — correctly ignore it).
+const WASHES: Array[Color] = [
+	Color("b0483a"), Color("8d8a80"), Color("c9992e"), Color("5d7285"),
+	Color("b57f97"), Color("9fae5a"), Color("efe9db"),
+]
 
 func _ready() -> void:
 	get_viewport().set_disable_input(true)
@@ -37,7 +44,7 @@ func _draw() -> void:
 			var col: int = (i % 3) * 3 + (int(lvl) - 1)
 			var row: int = i / 3
 			var ctr := Vector2(float(col) + 0.5, float(row) + 0.5) * CELL + Vector2(0.0, 8.0)
-			InkBuildingGen.draw(self, key, lvl, ctr, 0.0, DRAWN, false)
+			InkBuildingGen.draw(self, key, lvl, ctr, 0.0, DRAWN, false, Vector2.INF, WASHES[i % WASHES.size()])
 			if lvl == 1:
 				draw_string(font, ctr + Vector2(-CELL.x * 0.45, -CELL.y * 0.42),
 					"%s" % key, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("2f2b26"))
