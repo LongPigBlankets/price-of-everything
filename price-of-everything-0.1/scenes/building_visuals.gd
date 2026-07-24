@@ -57,10 +57,10 @@ const BLOCK_MIN_ROAD := 70.0         # need a straight road segment ≥ this (~7
 const BLOCK_MAX_COLS := 4            # lots along the road
 const BLOCK_ROWS := 4                # lots deep (the rectangle reaches back ~15-20% of the tile)
 ## Lot pitch (u); axis-aligned so lots pack tight (smaller = denser, more lots).
-## Raised 46 -> 66 (owner 2026-07-23: buildings read too small). This is THE
-## size lever on developed tiles — they place through the block template, which
-## ignores the per-building art lot area.
-const BLOCK_LOT := 66.0
+## THE size lever on developed tiles — they place through the block template,
+## which ignores the per-building art lot area. 46 -> 58 puts block buildings
+## mid-range of the ART_DRAWN_MIN/MAX band without over-crowding the tile.
+const BLOCK_LOT := 58.0
 const BLOCK_ROAD_ADJ := 130.0        # a lot is usable within this of a road (~2 frontage rows); deeper interior stays empty
 const BLOCK_ROAD_PAD := 7.0          # gap from the road to a block's near edge (tight Sanborn frontage; vs ROAD_CLEAR 18)
 const BLOCK_FILL_MIN := 0.85         # smallest building as a fraction of the lot (tight gaps between block buildings)
@@ -2712,9 +2712,16 @@ const INK_ART_KEY := {
 ## Lot side scales with tile_size_used from the smallest class to 3x for the
 ## biggest (owner's 10:30 ratio); levels never rescale the art — the L3 frame
 ## is the lot and upgrades annex into it.
-const ART_SIDE_MIN := 66.0
-const ART_SIDE_MAX := 132.0
+## Lot sides now match the drawn bounds, so a lot reserves exactly what gets
+## drawn — no wasted ground (which was crowding buildings off dense tiles).
+const ART_SIDE_MIN := 40.0
+const ART_SIDE_MAX := 80.0
 const ART_ROAD_PAD := 5.5    # art frontage: footprint edge ~1u off the carriageway edge
+## Hard bounds on the DRAWN sprite's long side, in world units (owner ruling
+## 2026-07-23). Applied at draw time so it holds no matter which placement path
+## sized the lot — block-template lots ignore the art lot area entirely.
+const ART_DRAWN_MIN := 40.0
+const ART_DRAWN_MAX := 80.0
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
 
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
@@ -3520,8 +3527,10 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 		dmax = maxf(dmax, absf(r.dot(dir)))
 		nmax = maxf(nmax, absf(r.dot(Vector2(-dir.y, dir.x))))
 	# The lot IS the L3 frame: the generator draws every level at the same
-	# scale inside it, so upgrades annex outward instead of inflating.
-	var target := maxf(dmax, nmax) * 2.0
+	# scale inside it, so upgrades annex outward instead of inflating. The
+	# result is clamped to the drawn-size bounds — a shrunk lot on a packed
+	# tile still reads, and a huge lot can't produce a monster.
+	var target := clampf(maxf(dmax, nmax) * 2.0, ART_DRAWN_MIN, ART_DRAWN_MAX)
 	return InkBuildingGen.draw(self, art_key, lvl, ctr, dir.angle(), target, bool(placement.is_npc))
 
 ## Shift a polygon by a fixed offset (SE micro-shadow under building fills).
