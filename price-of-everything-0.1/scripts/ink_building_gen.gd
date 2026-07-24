@@ -247,6 +247,28 @@ static func _recipe(iname: String, l: int) -> Array:
 			if l >= 2:
 				p.append(_capsule(88, 26, 40, 12))
 			return p
+		"solar_farm":
+			# 3 panels wide; rows 3 -> 4 -> 6 (owner). The L3 frame is 3x6, so
+			# lower levels fill the near rows and upgrades extend the array
+			# instead of rescaling it.
+			var rows := [3, 4, 6][l - 1] as int
+			var p := []
+			for r in rows:
+				for cc in 3:
+					p.append(_panel(56.0 + float(cc) * 14.0, 40.0 + float(r) * 11.0, 11.0, 8.0))
+			# Inverter shed beside the FIRST row — anything positioned off the
+			# L3 extent floats detached at L1/L2 (all levels share the L3 frame).
+			p.append(_box(99, 41, 14, 10))
+			return p
+		"wind_farm":
+			# 2 turbines wide; rows 2 -> 4 -> 6. Each is a small triangle
+			# (nacelle) with a thin line for the rotor arms.
+			var wrows := [2, 4, 6][l - 1] as int
+			var p := []
+			for r in wrows:
+				for cc in 2:
+					p.append(_turbine(70.0 + float(cc) * 26.0, 44.0 + float(r) * 15.0, 6.0))
+			return p
 		"mine":
 			# Wiggly open pit with stepped benches; a headframe on the west rim
 			# with a scaffold/lift running down to the floor; upgrades add more
@@ -449,6 +471,12 @@ static func _cbase(cx: float, cy: float) -> Dictionary:
 static func _dot(cx: float, cy: float, r: float) -> Dictionary:
 	return {"t": "dot", "c": Vector2(cx, cy), "r": r}
 
+static func _panel(x: float, y: float, w: float, h: float) -> Dictionary:
+	return {"t": "panel", "r": Rect2(x, y, w, h)}
+
+static func _turbine(cx: float, cy: float, r: float) -> Dictionary:
+	return {"t": "turbine", "c": Vector2(cx, cy), "r": r, "k": 1.4}
+
 static func _pit(cx: float, cy: float, rx: float, ry: float, rings: int) -> Dictionary:
 	return {"t": "pit", "c": Vector2(cx, cy), "rx": rx, "ry": ry, "rings": rings}
 
@@ -475,7 +503,7 @@ static func _bounds(prims: Array) -> Rect2:
 	var mx := Vector2(-1e9, -1e9)
 	for pr in prims:
 		match str(pr.t):
-			"tank", "sphere", "stack", "vessel", "apse", "cbase", "dot", "pylon":
+			"tank", "sphere", "stack", "vessel", "apse", "cbase", "dot", "pylon", "turbine":
 				mn = mn.min(pr.c - Vector2(pr.r, pr.r))
 				mx = mx.max(pr.c + Vector2(pr.r, pr.r))
 			"bar", "scaffold":
@@ -502,7 +530,7 @@ static func _bounds(prims: Array) -> Rect2:
 static func _shift(prims: Array, off: Vector2) -> void:
 	for pr in prims:
 		match str(pr.t):
-			"tank", "sphere", "stack", "vessel", "apse", "cbase", "dot", "pylon":
+			"tank", "sphere", "stack", "vessel", "apse", "cbase", "dot", "pylon", "turbine":
 				pr.c = (pr.c as Vector2) + off
 			"bar", "scaffold":
 				pr.a = (pr.a as Vector2) + off
@@ -544,6 +572,10 @@ static func _draw_sil(c: CanvasItem, pr: Dictionary) -> void:
 			var sd := ((pr.b as Vector2) - (pr.a as Vector2)).normalized()
 			var sn := Vector2(-sd.y, sd.x) * float(pr.w) * 0.5
 			c.draw_colored_polygon(PackedVector2Array([pr.a + sn, pr.b + sn, pr.b - sn, pr.a - sn]), SHADOW)
+		"panel":
+			c.draw_colored_polygon(_rect_poly(pr.r), SHADOW)
+		"turbine":
+			c.draw_circle(pr.c, float(pr.r) * 0.5, SHADOW)
 		"pit", "dot":
 			pass   # the pit is an excavation — a mass shadow would invert it
 		"apse":
@@ -631,6 +663,10 @@ static func _draw_prim(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw:
 		"gpad":
 			c.draw_colored_polygon(_rect_poly(pr.r), _fill(GBASE, npc))
 			_outline_rect(c, pr.r, 1.1 * iw)
+		"panel":
+			_rd_panel(c, pr, rot, npc, iw)
+		"turbine":
+			_rd_turbine(c, pr, rot, npc, iw)
 		"pit":
 			_rd_pit(c, pr, npc, iw)
 		"scaffold":
@@ -853,6 +889,35 @@ static func _rd_containers(c: CanvasItem, pr: Dictionary, npc: bool, iw: float) 
 			var cr := Rect2(r.position + Vector2(j * 8.3, i * 5.5), Vector2(7, 4.2))
 			c.draw_colored_polygon(_rect_poly(cr), _fill(CONTAINER_COLS[(i + j) % 3], npc))
 			_outline_rect(c, cr, 0.7 * iw)
+
+## Solar panel: dark cell face with a lit leading edge and one mullion.
+static func _rd_panel(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
+	var r: Rect2 = pr.r
+	c.draw_colored_polygon(_rect_poly(r), _fill(Color("5d6470"), npc))
+	c.draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * 0.28)), _fill(_facet3(Vector2(0, -1), rot).lerp(Color("7d8794"), 0.5), npc))
+	c.draw_line(r.position + Vector2(r.size.x * 0.5, 0.0), r.position + Vector2(r.size.x * 0.5, r.size.y), INK, 0.6 * iw, true)
+	_outline_rect(c, r, 0.9 * iw)
+
+## Wind turbine: small triangle for the nacelle + a thin line for the rotor.
+static func _rd_turbine(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
+	var ctr: Vector2 = pr.c
+	var r := float(pr.r)
+	# Rotor arms sweep across the nacelle; angle varies per position so the farm
+	# doesn't look like a stamped pattern (deterministic, not seeded RNG).
+	var a := float(int(ctr.x + ctr.y)) * 0.7
+	var arm := Vector2(cos(a), sin(a)) * r * 1.7
+	c.draw_line(ctr - arm, ctr + arm, INK, 1.0 * iw, true)
+	var perp := Vector2(-arm.y, arm.x) * 0.55
+	c.draw_line(ctr, ctr + perp, INK, 1.0 * iw, true)
+	var tri := PackedVector2Array([
+		ctr + Vector2(0.0, -r * 0.9),
+		ctr + Vector2(r * 0.75, r * 0.7),
+		ctr + Vector2(-r * 0.75, r * 0.7),
+	])
+	c.draw_colored_polygon(tri, _fill(LT, npc))
+	var loop := tri.duplicate()
+	loop.append(tri[0])
+	c.draw_polyline(loop, INK, 1.0 * iw, true)
 
 ## Open pit: concentric wiggly benches stepping down to the floor. The wiggle
 ## is a fixed harmonic (not seeded) so the shape is stable per recipe, and the

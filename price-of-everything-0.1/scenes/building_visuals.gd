@@ -2708,6 +2708,8 @@ const INK_ART_KEY := {
 	"high_tech_manufactory": "high_tech_manufactory", "petro_refinery": "petro_refinery",
 	"chem_plant": "chem_plant", "poly_plant": "poly_plant", "electrolyser": "electrolyser",
 	"coal_power": "power_plant", "water_pump": "water_pump", "mine": "mine",
+	"solar_farm": "solar_farm",
+	"onshore_wind_farm": "wind_farm", "offshore_wind_farm": "wind_farm",
 	"pipes": "pipes", "reinf_pipes": "pipes", "cables": "cables",
 }
 ## Lot side scales with tile_size_used from the smallest class to 3x for the
