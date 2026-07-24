@@ -71,6 +71,7 @@ func _capture_set(mode: String) -> void:
 	await _shot(_tile_pos(INLAND_TILE), 0.45, "inland", mode, 12)
 	await _shot(_farm_pos(), 1.5, "farmclose", mode, 12)
 	await _shot(_plant_pos(), 1.2, "plantclose", mode, 12)
+	await _shot(_named_pos("electrolyser"), 1.6, "elyclose", mode, 12)
 
 ## Centroid of the first farm field placement — so the close framing always
 ## lands on an actual farm regardless of the seeded layout.
@@ -92,18 +93,37 @@ func _farm_pos() -> Vector2:
 const PLANT_NAMES := ["petro_refinery", "chem_plant", "furnace", "eaf", "industrial_factory"]
 
 func _plant_pos() -> Vector2:
-	var bv: Node = get_tree().get_first_node_in_group("building_footprints")
-	if bv != null:
-		for want in PLANT_NAMES:
-			for placement in (bv.get("_placements") as Array):
-				if str(placement.get("iname", "")) == str(want):
-					var pts: PackedVector2Array = placement.get("verts", PackedVector2Array())
-					if pts.size() >= 3:
-						var c := Vector2.ZERO
-						for p in pts:
-							c += p
-						return c / float(pts.size())
+	for want in PLANT_NAMES:
+		var p := _named_pos(str(want))
+		if p != Vector2.INF:
+			return p
 	return _tile_pos(COAST_TILE)
+
+## Centroid of the first placement of `iname`, or INF when none is placed.
+func _named_pos(iname: String) -> Vector2:
+	var bv: Node = get_tree().get_first_node_in_group("building_footprints")
+	if bv == null:
+		return _tile_pos(COAST_TILE)
+	for placement in (bv.get("_placements") as Array):
+		if str(placement.get("iname", "")) == iname:
+			var pts: PackedVector2Array = placement.get("verts", PackedVector2Array())
+			if pts.size() >= 3:
+				var c := Vector2.ZERO
+				for p in pts:
+					c += p
+				print("[SHOT] %s footprint extent ~%.1fu" % [iname, _extent(pts)])
+				return c / float(pts.size())
+	return Vector2.INF
+
+## Longest side of the placement's footprint, in world units — logged so the
+## drawn size can be checked against the owner's target range.
+func _extent(pts: PackedVector2Array) -> float:
+	var mn := Vector2(1e30, 1e30)
+	var mx := Vector2(-1e30, -1e30)
+	for p in pts:
+		mn = mn.min(p)
+		mx = mx.max(p)
+	return maxf((mx - mn).x, (mx - mn).y)
 
 func _tile_pos(tile_id: String) -> Vector2:
 	var coord: Vector2i = _terrain.id_to_coord(tile_id)
@@ -121,6 +141,10 @@ func _shot(pos: Vector2, zoom: float, framing: String, mode: String, settle: int
 		_cam.set("_target_zoom", Vector2(zoom, zoom))
 	for _i in settle:   # give redraws (and the lazy hill re-bake) time to land
 		await get_tree().process_frame
+	# get_texture().get_image() returns whatever the GPU last PRESENTED — without
+	# this the capture is a stale frame from an earlier framing (three different
+	# shots came out byte-identical). Same guard the hill texture bake uses.
+	await RenderingServer.frame_post_draw
 	var path := "/tmp/poe_mapstyle_%s_%s.png" % [framing, mode]
 	get_viewport().get_texture().get_image().save_png(path)
 	print("[SHOT] %s" % path)

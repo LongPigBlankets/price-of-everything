@@ -56,7 +56,11 @@ const BLOCK_PROB := 100              # % of eligible tiles using block mode; low
 const BLOCK_MIN_ROAD := 70.0         # need a straight road segment ≥ this (~7u) to anchor a block
 const BLOCK_MAX_COLS := 4            # lots along the road
 const BLOCK_ROWS := 4                # lots deep (the rectangle reaches back ~15-20% of the tile)
-const BLOCK_LOT := 46.0              # lot pitch (u); axis-aligned so lots pack tight (smaller = denser, more lots)
+## Lot pitch (u); axis-aligned so lots pack tight (smaller = denser, more lots).
+## Raised 46 -> 66 (owner 2026-07-23: buildings read too small). This is THE
+## size lever on developed tiles — they place through the block template, which
+## ignores the per-building art lot area.
+const BLOCK_LOT := 66.0
 const BLOCK_ROAD_ADJ := 130.0        # a lot is usable within this of a road (~2 frontage rows); deeper interior stays empty
 const BLOCK_ROAD_PAD := 7.0          # gap from the road to a block's near edge (tight Sanborn frontage; vs ROAD_CLEAR 18)
 const BLOCK_FILL_MIN := 0.85         # smallest building as a fraction of the lot (tight gaps between block buildings)
@@ -378,7 +382,10 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		# city packs tighter and the art just draws smaller (strokes stay
 		# constant-width regardless).
 		if placed.is_empty() and has_art:
-			for shrink in [0.55, 0.3]:
+			# Gentle first steps so a shrunk building still reads, then a
+			# deep last resort — a small building beats an invisible one
+			# (larger lots pushed 22 buildings off the map without it).
+			for shrink in [0.8, 0.62, 0.45, 0.3, 0.2]:
 				placed = _search(tile_id, coord, kind, area * float(shrink), seed_v, cat, is_edge, placed_here, rc)
 				if not placed.is_empty():
 					break
@@ -2705,8 +2712,8 @@ const INK_ART_KEY := {
 ## Lot side scales with tile_size_used from the smallest class to 3x for the
 ## biggest (owner's 10:30 ratio); levels never rescale the art — the L3 frame
 ## is the lot and upgrades annex into it.
-const ART_SIDE_MIN := 42.0
-const ART_SIDE_MAX := 108.0
+const ART_SIDE_MIN := 66.0
+const ART_SIDE_MAX := 132.0
 const ART_ROAD_PAD := 5.5    # art frontage: footprint edge ~1u off the carriageway edge
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
 
