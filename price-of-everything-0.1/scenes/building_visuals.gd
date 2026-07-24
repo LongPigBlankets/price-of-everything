@@ -2707,7 +2707,7 @@ const INK_ART_KEY := {
 	"consumer_factory": "consumer_factory", "assembly_plant": "assembly_plant",
 	"high_tech_manufactory": "high_tech_manufactory", "petro_refinery": "petro_refinery",
 	"chem_plant": "chem_plant", "poly_plant": "poly_plant", "electrolyser": "electrolyser",
-	"coal_power": "power_plant", "water_pump": "water_pump",
+	"coal_power": "power_plant", "water_pump": "water_pump", "mine": "mine",
 	"pipes": "pipes", "reinf_pipes": "pipes", "cables": "cables",
 }
 ## Lot side scales with tile_size_used from the smallest class to 3x for the

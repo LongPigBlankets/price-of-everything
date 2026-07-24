@@ -24,6 +24,11 @@ const HI := Color("e6e5e0")
 const PAD_C := Color("b6afa2")
 const DECK := Color("c9bc95")
 const GBASE := Color("b4b3af")   # grey apron slab under power infrastructure
+## Open-pit benches, rim -> floor. Concentric darkening reads as depth from any
+## rotation (a directional cue would fight the world-fixed light).
+const PIT_BENCH: Array[Color] = [
+	Color("cdbc95"), Color("b8a67e"), Color("a08e69"), Color("877659"),
+]
 const CONTAINER_COLS: Array[Color] = [Color("a8564a"), Color("bfa04a"), Color("b8b7b2")]
 const NPC_PAPER := Color("efe9db")
 const SHADOW := Color(0.184, 0.169, 0.149, 0.22)
@@ -242,6 +247,21 @@ static func _recipe(iname: String, l: int) -> Array:
 			if l >= 2:
 				p.append(_capsule(88, 26, 40, 12))
 			return p
+		"mine":
+			# Wiggly open pit with stepped benches; a headframe on the west rim
+			# with a scaffold/lift running down to the floor; upgrades add more
+			# buildings along the pit's width, each with its own incline.
+			var p := [_pit(110, 80, 46, 38, 4)]
+			p.append(_scaffold(Vector2(72, 74), Vector2(107, 79)))
+			p.append(_flat(40, 62, 32, 26, 1))
+			if l >= 2:
+				p.append(_scaffold(Vector2(88, 40), Vector2(100, 62)))
+				p.append(_flat(72, 20, 34, 20, 1))
+			if l >= 3:
+				p.append(_scaffold(Vector2(136, 42), Vector2(124, 62)))
+				p.append(_flat(126, 22, 32, 20, 1))
+				p.append(_box(46, 92, 14, 10))
+			return p
 		"power_plant":
 			# Two big wide chimneys from L1; the base halls grow with level;
 			# transformers + power towers appear nearby; one grey apron slab
@@ -429,6 +449,13 @@ static func _cbase(cx: float, cy: float) -> Dictionary:
 static func _dot(cx: float, cy: float, r: float) -> Dictionary:
 	return {"t": "dot", "c": Vector2(cx, cy), "r": r}
 
+static func _pit(cx: float, cy: float, rx: float, ry: float, rings: int) -> Dictionary:
+	return {"t": "pit", "c": Vector2(cx, cy), "rx": rx, "ry": ry, "rings": rings}
+
+## Inclined lift/conveyor: a bar with rungs, drawn with an elevated shadow.
+static func _scaffold(a: Vector2, b: Vector2) -> Dictionary:
+	return {"t": "scaffold", "a": a, "b": b, "w": 5.0, "k": 1.5}
+
 static func _gpad(x: float, y: float, w: float, h: float) -> Dictionary:
 	return {"t": "gpad", "r": Rect2(x, y, w, h)}
 
@@ -451,9 +478,12 @@ static func _bounds(prims: Array) -> Rect2:
 			"tank", "sphere", "stack", "vessel", "apse", "cbase", "dot", "pylon":
 				mn = mn.min(pr.c - Vector2(pr.r, pr.r))
 				mx = mx.max(pr.c + Vector2(pr.r, pr.r))
-			"bar":
+			"bar", "scaffold":
 				mn = mn.min((pr.a as Vector2).min(pr.b))
 				mx = mx.max((pr.a as Vector2).max(pr.b))
+			"pit":
+				mn = mn.min((pr.c as Vector2) - Vector2(pr.rx, pr.ry))
+				mx = mx.max((pr.c as Vector2) + Vector2(pr.rx, pr.ry))
 			"pipes", "cable":
 				for run in (pr.runs as Array):
 					for v in run:
@@ -474,9 +504,11 @@ static func _shift(prims: Array, off: Vector2) -> void:
 		match str(pr.t):
 			"tank", "sphere", "stack", "vessel", "apse", "cbase", "dot", "pylon":
 				pr.c = (pr.c as Vector2) + off
-			"bar":
+			"bar", "scaffold":
 				pr.a = (pr.a as Vector2) + off
 				pr.b = (pr.b as Vector2) + off
+			"pit":
+				pr.c = (pr.c as Vector2) + off
 			"pipes", "cable":
 				var shifted: Array = []
 				for run in (pr.runs as Array):
@@ -508,8 +540,12 @@ static func _draw_sil(c: CanvasItem, pr: Dictionary) -> void:
 			c.draw_circle(pr.c, float(pr.r), SHADOW)
 		"pylon":
 			c.draw_rect(Rect2((pr.c as Vector2) - Vector2(5, 5), Vector2(10, 10)), SHADOW)
-		"dot":
-			pass
+		"scaffold":
+			var sd := ((pr.b as Vector2) - (pr.a as Vector2)).normalized()
+			var sn := Vector2(-sd.y, sd.x) * float(pr.w) * 0.5
+			c.draw_colored_polygon(PackedVector2Array([pr.a + sn, pr.b + sn, pr.b - sn, pr.a - sn]), SHADOW)
+		"pit", "dot":
+			pass   # the pit is an excavation — a mass shadow would invert it
 		"apse":
 			var pts := PackedVector2Array()
 			for i in 13:
@@ -595,6 +631,10 @@ static func _draw_prim(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw:
 		"gpad":
 			c.draw_colored_polygon(_rect_poly(pr.r), _fill(GBASE, npc))
 			_outline_rect(c, pr.r, 1.1 * iw)
+		"pit":
+			_rd_pit(c, pr, npc, iw)
+		"scaffold":
+			_rd_scaffold(c, pr, npc, iw)
 		"pylon":
 			var pc: Vector2 = pr.c
 			var hs := 5.0
@@ -813,6 +853,46 @@ static func _rd_containers(c: CanvasItem, pr: Dictionary, npc: bool, iw: float) 
 			var cr := Rect2(r.position + Vector2(j * 8.3, i * 5.5), Vector2(7, 4.2))
 			c.draw_colored_polygon(_rect_poly(cr), _fill(CONTAINER_COLS[(i + j) % 3], npc))
 			_outline_rect(c, cr, 0.7 * iw)
+
+## Open pit: concentric wiggly benches stepping down to the floor. The wiggle
+## is a fixed harmonic (not seeded) so the shape is stable per recipe, and the
+## rings darken inward so depth reads at any rotation.
+static func _rd_pit(c: CanvasItem, pr: Dictionary, npc: bool, iw: float) -> void:
+	var ctr: Vector2 = pr.c
+	var rings := int(pr.rings)
+	for i in rings:
+		var f := 1.0 - float(i) * (0.72 / float(rings))
+		var col: Color = PIT_BENCH[mini(i, PIT_BENCH.size() - 1)]
+		var ring := PackedVector2Array()
+		for s in 40:
+			var a := TAU * float(s) / 40.0
+			var wob := 1.0 + 0.075 * sin(a * 3.0 + float(i) * 1.1) + 0.045 * cos(a * 5.0 - float(i) * 0.7)
+			ring.append(ctr + Vector2(cos(a) * float(pr.rx) * f * wob, sin(a) * float(pr.ry) * f * wob))
+		c.draw_colored_polygon(ring, _fill(col, npc))
+		var loop := ring.duplicate()
+		loop.append(ring[0])
+		c.draw_polyline(loop, INK, (1.3 if i == 0 else 0.8) * iw, true)
+
+## Inclined lift/conveyor down into the pit: deck + rungs.
+static func _rd_scaffold(c: CanvasItem, pr: Dictionary, npc: bool, iw: float) -> void:
+	var a: Vector2 = pr.a
+	var b: Vector2 = pr.b
+	var d := (b - a)
+	var len := d.length()
+	if len < 0.01:
+		return
+	var dirv := d / len
+	var n := Vector2(-dirv.y, dirv.x) * float(pr.w) * 0.5
+	var quad := PackedVector2Array([a + n, b + n, b - n, a - n])
+	c.draw_colored_polygon(quad, _fill(MLT, npc))
+	var step := 5.0
+	var t := step
+	while t < len - 1.0:
+		var p := a + dirv * t
+		c.draw_line(p + n, p - n, INK, 0.7 * iw, true)
+		t += step
+	c.draw_line(a + n, b + n, INK, 1.1 * iw, true)
+	c.draw_line(a - n, b - n, INK, 1.1 * iw, true)
 
 static func _rd_unit(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
 	var r: Rect2 = pr.r

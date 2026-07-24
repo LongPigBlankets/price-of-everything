@@ -73,6 +73,7 @@ func _capture_set(mode: String) -> void:
 	await _shot(_farm_pos(), 1.5, "farmclose", mode, 12)
 	await _shot(_plant_pos(), 1.2, "plantclose", mode, 12)
 	await _shot(_named_pos("electrolyser"), 1.6, "elyclose", mode, 12)
+	await _shot(_named_pos("mine"), 1.5, "mineclose", mode, 12)
 
 ## Centroid of the first farm field placement — so the close framing always
 ## lands on an actual farm regardless of the seeded layout.
