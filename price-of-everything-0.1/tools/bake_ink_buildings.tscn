@@ -1,4 +1,0 @@
-[gd_scene format=3 uid="uid://cinkbldgbake01"]
-[ext_resource type="Script" path="res://tools/bake_ink_buildings.gd" id="1"]
-[node name="BakeInkBuildings" type="Node" ]
-script = ExtResource("1")
