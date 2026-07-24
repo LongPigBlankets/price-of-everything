@@ -349,7 +349,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var iname_lot := str(bd.get("internal_name", ""))
 	var has_art := INK_ART_KEY.has(iname_lot)
 	if has_art:
-		var side := ART_SIDE_MIN + (ART_SIDE_MAX - ART_SIDE_MIN) * clampf((float(size_units) - 1.0) / 9.0, 0.0, 1.0)
+		var side := _art_size_for(size_units)
 		area = maxf(area, side * side)
 	# Art buildings keep QUAD footprints: the composition is rect-framed, and
 	# an L/C footprint's notch — legally occupied by a neighbour — would sit
@@ -382,10 +382,10 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		# city packs tighter and the art just draws smaller (strokes stay
 		# constant-width regardless).
 		if placed.is_empty() and has_art:
-			# Gentle first steps so a shrunk building still reads, then a
-			# deep last resort — a small building beats an invisible one
-			# (larger lots pushed 22 buildings off the map without it).
-			for shrink in [0.8, 0.62, 0.45, 0.3, 0.2]:
+			# Two steps only: each retry is a full grid search, and at 557
+			# buildings a five-step ladder made the world build minutes long.
+			# 0.6 still reads; 0.3 is the last resort before going undrawn.
+			for shrink in [0.6, 0.3]:
 				placed = _search(tile_id, coord, kind, area * float(shrink), seed_v, cat, is_edge, placed_here, rc)
 				if not placed.is_empty():
 					break
@@ -412,6 +412,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		"bb": _verts_bb(verts).grow(NPC_OUTLINE_W),
 		"cat": cat,
 		"iname": iname,
+		"size_units": size_units,
 		"center_rel": placed.center_rel,
 		"half": placed.half,
 		"hatch": hatch,
@@ -2712,16 +2713,19 @@ const INK_ART_KEY := {
 ## Lot side scales with tile_size_used from the smallest class to 3x for the
 ## biggest (owner's 10:30 ratio); levels never rescale the art — the L3 frame
 ## is the lot and upgrades annex into it.
-## Lot sides now match the drawn bounds, so a lot reserves exactly what gets
-## drawn — no wasted ground (which was crowding buildings off dense tiles).
+## Lot sides match the drawn bounds, so a lot reserves exactly what gets drawn
+## — no wasted ground (which was crowding buildings off dense tiles).
 const ART_SIDE_MIN := 40.0
-const ART_SIDE_MAX := 80.0
+const ART_SIDE_MAX := 90.0
 const ART_ROAD_PAD := 5.5    # art frontage: footprint edge ~1u off the carriageway edge
 ## Hard bounds on the DRAWN sprite's long side, in world units (owner ruling
 ## 2026-07-23). Applied at draw time so it holds no matter which placement path
 ## sized the lot — block-template lots ignore the art lot area entirely.
+## Scaled by tile_size_used, whose real range in the buildings CSV is 1..30
+## (1-2 = tiny infra, 10 = the bulk, 30 = mine, the largest).
 const ART_DRAWN_MIN := 40.0
-const ART_DRAWN_MAX := 80.0
+const ART_DRAWN_MAX := 90.0
+const ART_SIZE_UNITS_MAX := 30.0
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
 
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
@@ -3526,12 +3530,19 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 		var r := v - ctr
 		dmax = maxf(dmax, absf(r.dot(dir)))
 		nmax = maxf(nmax, absf(r.dot(Vector2(-dir.y, dir.x))))
-	# The lot IS the L3 frame: the generator draws every level at the same
-	# scale inside it, so upgrades annex outward instead of inflating. The
-	# result is clamped to the drawn-size bounds — a shrunk lot on a packed
-	# tile still reads, and a huge lot can't produce a monster.
-	var target := clampf(maxf(dmax, nmax) * 2.0, ART_DRAWN_MIN, ART_DRAWN_MAX)
+	# Drawn size comes from tile_size_used (40u at 1 → 90u at 30/mine), not
+	# from whatever the placement path happened to reserve. Capped by the
+	# actual footprint so a building shrunk to fit a packed tile draws inside
+	# its slot rather than over its neighbours.
+	var size_target := _art_size_for(int(placement.get("size_units", 1)))
+	var target := clampf(minf(size_target, maxf(dmax, nmax) * 2.0), ART_DRAWN_MIN, ART_DRAWN_MAX)
 	return InkBuildingGen.draw(self, art_key, lvl, ctr, dir.angle(), target, bool(placement.is_npc))
+
+## Drawn/lot side for a building of `size_units`, interpolating the drawn-size
+## band across the CSV's real 1..30 range.
+func _art_size_for(size_units: int) -> float:
+	var t := clampf((float(size_units) - 1.0) / (ART_SIZE_UNITS_MAX - 1.0), 0.0, 1.0)
+	return lerpf(ART_DRAWN_MIN, ART_DRAWN_MAX, t)
 
 ## Shift a polygon by a fixed offset (SE micro-shadow under building fills).
 func _offset_pts(pts: PackedVector2Array, off: Vector2) -> PackedVector2Array:

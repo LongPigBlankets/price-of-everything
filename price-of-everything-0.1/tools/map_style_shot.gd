@@ -25,6 +25,7 @@ func _ready() -> void:
 	add_child(_wm)
 	for _i in 150:   # map build + post-load camera configure settle (house
 		await get_tree().process_frame   # trap: it overrides pans before ~140)
+	print("[SHOT] settle done — starting captures")
 	_terrain = _wm.get_node("%TerrainLayer")
 	# The hover hex grid follows the real mouse — hide it so captures are clean
 	# regardless of where the cursor sits during the windowed run.
