@@ -1,0 +1,4 @@
+[gd_scene format=3 uid="uid://croadfrontaudit1"]
+[ext_resource type="Script" path="res://tools/road_frontage_audit.gd" id="1"]
+[node name="RoadFrontageAudit" type="Node"]
+script = ExtResource("1")
