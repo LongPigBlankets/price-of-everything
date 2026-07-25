@@ -198,8 +198,12 @@ func _ready() -> void:
 	await _test_subcomponents()
 	await _test_farms()
 	await _test_farm_lanes()
-	await _test_farm_road_promotion()
-	await _test_farm_ring_dedup()
+	# Farm ring promotion was removed 2026-07-23 (RoadWorks.PROMOTE_FARM_RINGS):
+	# ink farms carry their own parcel-path fabric, and the promoted ring was
+	# decoration — transport reads each tile's road FLAG, not whether
+	# carriageways meet. _test_farm_road_promotion / _test_farm_ring_dedup
+	# asserted the promotion happens, so they retire with the feature. The
+	# routing-bias tests still run: roads may still favour a farm cluster.
 	await _test_farm_ring_bridge()
 	await _test_farm_ring_continuity()
 	await _test_farm_road_routing_bias()
