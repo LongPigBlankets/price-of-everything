@@ -30,9 +30,13 @@ const FOREST_BUILDING_IDS := {"b_015": true, "b_016": true}
 # Buildable grid: 27×24 cells of 20u in the tile-local frame, used only for the
 # buildable MASK (is this point land?). Placement itself is continuous. The hex is
 # FLAT-TOP (verts (135,0)(405,0)(540,240)(405,480)(135,480)(0,240), centre (270,240)).
-const GRID_COLS := 27
-const GRID_ROWS := 24
-const CELL := 20.0
+## Buildable-mask resolution. 5u cells (was 20u): the coarse grid stamped whole
+## cells around roads, so a footprint could not legally sit within ~a cell of a
+## carriageway no matter what clearance the caller asked for — the reason block
+## frontage rows were unbuildable. 16x the cells, so watch world-build time.
+const GRID_COLS := 108
+const GRID_ROWS := 96
+const CELL := 5.0
 const TILE_CENTER := Vector2(270.0, 240.0)
 const DESIGN_GAP := 1.0              # gap between adjacent footprints / footprint-to-road (tight terrace cling)
 const PACK_STEP := 2.0               # scan granularity (u) when walking a frontage for the first free slot
@@ -527,7 +531,10 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	var vrect: PackedVector2Array = _rotate(BuildingShapes.make_rect(vfull, vfull).verts, angle)
 	var vhalf: Vector2 = _aabb_half(vrect)
 	# build on whichever side of the road carries land; frontage row sits flush to clearance.
-	var frontage := BLOCK_ROAD_PAD + BLOCK_LOT * BLOCK_FILL_MAX * 0.5   # first row hugs the road
+	# First row hugs the road. The +epsilon matters: landing the near edge exactly
+	# on BLOCK_ROAD_PAD put it on the clearance test's boundary, where it failed —
+	# so the frontage row was never buildable and the block started a lot back.
+	var frontage := BLOCK_ROAD_PAD + 2.0 + BLOCK_LOT * BLOCK_FILL_MAX * 0.5
 	var mid := (ra + rb) * 0.5
 	if not _valid(mid + normal * frontage, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
 		normal = -normal
