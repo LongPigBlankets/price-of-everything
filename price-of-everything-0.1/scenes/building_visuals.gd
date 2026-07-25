@@ -59,8 +59,9 @@ const SIZE_UNIT_AREA := 100.0
 const BLOCK_PROB := 100              # % of eligible tiles using block mode; lower for variety (block forms only where a road run + room exist)
 const BLOCK_MIN_ROAD := 70.0         # need a straight road segment ≥ this (~7u) to anchor a block
 const BLOCK_MAX_COLS := 3            # lots along the road (owner: 2x2 or 3x2 blocks only)
-const BLOCK_ROWS := 2                # lots deep — the back row still fronts nothing, but two
-									 # rows keep it to one row of set-back buildings, not three
+const BLOCK_ROWS := 2                # lots deep at first — a block starts 2x2/3x2 and grows a
+									 # row at a time (_grow_block_rows) as its lots fill
+const BLOCK_MAX_ROWS := 5            # ceiling on that growth
 ## Lot pitch (u); axis-aligned so lots pack tight (smaller = denser, more lots).
 ## THE size lever on developed tiles — they place through the block template,
 ## which ignores the per-building art lot area. 46 -> 58 puts block buildings
@@ -904,12 +905,51 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 			claimed[i] = true   # blocked (a road moved onto it, or a fallback sits there) — consume it
 			continue
 		claimed[i] = true
+		_grow_block_rows(tmpl, tile_id, coord)   # keep a spare row ahead of demand
 		# Occupying a lot behind the frontage row is what earns the block its
 		# side roads — they are access to something, not decoration.
 		if int((tmpl.get("rows", []) as Array)[i] if i < (tmpl.get("rows", []) as Array).size() else 0) >= 1:
 			_ensure_block_side_roads(tmpl, tile_id, coord)
 		return _finalize(coord, ctr, rv, half)
 	return {}
+
+## Add another row of lots behind the block once the existing ones are (nearly)
+## all taken, so a tile that keeps building keeps packing into its block instead
+## of scattering the overflow across the tile (owner report, tile_6_12). Rows
+## are added one at a time and only where they validate, so the block grows into
+## the space it actually has.
+func _grow_block_rows(tmpl: Dictionary, tile_id: String, coord: Vector2i) -> void:
+	if not tmpl.has("origin"):
+		return
+	var lots: Array = tmpl.lots
+	var claimed: Array = tmpl.claimed
+	var rows: Array = tmpl.rows
+	for i in claimed.size():
+		if not bool(claimed[i]):
+			return   # a lot is still free — nothing to grow yet
+	if rows.is_empty() or int(rows[rows.size() - 1]) >= BLOCK_MAX_ROWS - 1:
+		return
+	var next_row := int(rows[rows.size() - 1]) + 1
+	var origin: Vector2 = tmpl.origin
+	var tangent: Vector2 = tmpl.tangent
+	var normal: Vector2 = tmpl.normal
+	var cols: int = int(tmpl.get("cols", 2))
+	var angle: float = tmpl.angle
+	var land: PackedByteArray = _tile_land.get(tile_id, PackedByteArray())
+	var segs: Array = tmpl.get("segs", [])
+	var rivers: Array = _tile_rivers.get(tile_id, [])
+	var vfull := BLOCK_LOT * BLOCK_FILL_MAX
+	var vrect: PackedVector2Array = _rotate(BuildingShapes.make_rect(vfull, vfull).verts, angle)
+	var vhalf: Vector2 = _aabb_half(vrect)
+	for c in cols:
+		var ctr: Vector2 = origin + tangent * (float(c) * BLOCK_LOT) + normal * (float(next_row) * BLOCK_LOT)
+		if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
+			continue
+		if not _footprint_dry(ctr, vrect, coord):
+			continue
+		lots.append(ctr)
+		claimed.append(false)
+		rows.append(next_row)
 
 ## Side roads for a block whose second row has started to fill: they run out of
 ## the fronting road along the block's two sides, as far back as the occupied
@@ -1418,6 +1458,12 @@ func _build_block_masses(tile_id: String, coord: Vector2i, blds: Array) -> void:
 		if str(p.cat) == "farm" or bool(p.get("offshore", false)):
 			continue
 		if (p.verts as PackedVector2Array).size() != 4:
+			continue
+		# Shape-language buildings draw their own compound, and a mass member
+		# skips its fill and contributes only party-wall ink — which is why a
+		# cluster of 5+ factories reverted to plate outlines and then to
+		# apparently transparent shapes (owner report, tile_6_12).
+		if INK_ART_KEY.has(str(p.get("iname", ""))):
 			continue
 		cands.append(p)
 	if cands.size() < COURT_MIN_BUNCH:
@@ -2586,6 +2632,8 @@ func _place_edge(tile_id: String, coord: Vector2i, base_verts: PackedVector2Arra
 		var rel := Vector2(((key % GRID_COLS) + 0.5) * CELL, ((key / GRID_COLS) + 0.5) * CELL) - TILE_CENTER
 		if not _valid(rel, base_verts, half, placed_here, land, segs, rivers, road_clear):
 			continue
+		if not _footprint_dry(rel, base_verts, coord):
+			continue   # the rim is where the water is
 		var score := rel.length() + W_AWAY * _nearest_building_dist(rel, placed_here)
 		if score > best_score:
 			best_score = score
@@ -2595,6 +2643,22 @@ func _place_edge(tile_id: String, coord: Vector2i, base_verts: PackedVector2Arra
 	var er := _finalize(coord, best_center, base_verts, half)
 	er["via"] = "edge"
 	return er
+
+## Point-wise water test over a footprint. The buildable mask is a grid and the
+## edge-seeker deliberately heads for the tile rim, where a corner can hang over
+## the coast between sampled cells — an onshore wind farm ended up on water
+## (owner report). Offshore structures are exempt; they belong there.
+func _footprint_dry(center: Vector2, local_verts: PackedVector2Array, coord: Vector2i) -> bool:
+	var nav := NavGrid.instance()
+	if nav == null or not nav.is_ready():
+		return true
+	var origin := _tile_center_world_pos(coord)
+	for v in local_verts:
+		var c := nav.cell_of(origin + center + v)
+		if nav.water(c.x, c.y) != 0:
+			return false
+	var cc := nav.cell_of(origin + center)
+	return nav.water(cc.x, cc.y) == 0
 
 ## True if the tile already carries a non-farm building (forests never enter _placements, so
 ## any placement with cat != "farm" is a non-farm/non-forest building).
