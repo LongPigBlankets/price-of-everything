@@ -63,6 +63,7 @@ const BLOCK_ROWS := 2                # lots deep at first — a block starts 2x2
 									 # row at a time (_grow_block_rows) as its lots fill
 const BLOCK_MAX_ROWS := 5            # ceiling on growing DEEPER
 const BLOCK_MAX_GROWN_COLS := 9      # ceiling on growing ALONG the road (the preferred direction)
+const BLOCK_FARM_LIMIT := 2          # this many farms on a tile and its other buildings stop blocking
 ## Lot pitch (u); axis-aligned so lots pack tight (smaller = denser, more lots).
 ## THE size lever on developed tiles — they place through the block template,
 ## which ignores the per-building art lot area. 46 -> 58 puts block buildings
@@ -469,7 +470,24 @@ func _use_block_mode(tile_id: String, _coord: Vector2i) -> bool:
 	# tiles regardless of urban/rural. Tune BLOCK_PROB for how many eligible tiles block.
 	if not _tile_block_mode.has(tile_id):
 		_tile_block_mode[tile_id] = RoadHash.pick("blockmode|%s" % tile_id, 100) < BLOCK_PROB
-	return bool(_tile_block_mode[tile_id])
+	if not bool(_tile_block_mode[tile_id]):
+		return false
+	# Farmland reads as fields with steadings among them, not as a factory
+	# grid dropped between the fields (owner). Once a tile carries more than
+	# one farm, its non-farm buildings go back to the continuous packer, which
+	# tucks them along the roads instead of laying a block. Counted live rather
+	# than cached: the first building on a tile usually predates its farms.
+	return _tile_farm_count(tile_id) < BLOCK_FARM_LIMIT
+
+## How many farms are already placed on this tile.
+func _tile_farm_count(tile_id: String) -> int:
+	var n := 0
+	for p in _placements:
+		if str(p.get("cat", "")) == "farm" and str(p.get("tile_id", "")) == tile_id:
+			n += 1
+			if n >= BLOCK_FARM_LIMIT:
+				return n
+	return n
 
 func _ensure_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	if _tile_block_templates.has(tile_id):
