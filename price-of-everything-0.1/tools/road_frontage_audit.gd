@@ -35,6 +35,10 @@ func _ready() -> void:
 	var placements: Array = bv.get("_placements")
 	var tile_segs: Dictionary = bv.get("_tile_segs")
 	var block_streets: Dictionary = {}   # (blocks no longer invent their own streets)
+	# A building fronting a SERVICE LANE has frontage — the lane is a street, just a
+	# thin one. Measuring only against main roads would score the lane as a failure.
+	var lanes: Dictionary = bv.get("_service_segs")
+	var lane_only := 0
 
 	var by_tile: Dictionary = {}          # tile_id -> [worst_gap, worst_name]
 	var fails: Array = []                 # [tile_id, iname, cat, gap]
@@ -49,8 +53,12 @@ func _ready() -> void:
 		if verts.size() < 3:
 			continue
 		var origin: Vector2 = bv.call("_tile_center_world_pos", p.get("coord"))
-		var gap := minf(_poly_to_segs(verts, segs, origin),
+		var road_gap := minf(_poly_to_segs(verts, segs, origin),
 			_poly_to_segs(verts, block_streets.get(tile_id, []), Vector2.ZERO))
+		var lane_gap := _poly_to_segs(verts, lanes.get(tile_id, []), origin)
+		var gap := minf(road_gap, lane_gap)
+		if road_gap > MAX_GAP and lane_gap <= MAX_GAP:
+			lane_only += 1
 		measured += 1
 		var cat := str(p.get("cat", ""))
 		var iname := str(p.get("iname", ""))
@@ -75,6 +83,7 @@ func _ready() -> void:
 	print("tiles with roads:            %d" % road_tiles)
 	print("buildings measured:          %d" % measured)
 	print("TILES FAILING:               %d" % by_tile.size())
+	print("saved by a service lane:     %d buildings" % lane_only)
 	print("buildings over %.0fu:          %d" % [MAX_GAP, fails.size()])
 	print("off-road by design (farm/extraction), not counted: %d" % by_design.size())
 	# WHY: which placement route produced the failures, and how big they were.

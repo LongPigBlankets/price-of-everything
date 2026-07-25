@@ -94,10 +94,36 @@ const CHUNK_DEPTH := 88.0            # chunk depth (perpendicular) → 1-2 rows 
 const CHUNK_GAP := 4.0               # gap between filled chunks
 const BLOCK_DEBUG := false           # set true to log per-tile block decisions to the console ([BLOCKDBG])
 
-const ROAD_CLEAR := 18.0             # no footprint edge may come within this of a road centreline
+const ROAD_CLEAR := 15.0             # no footprint edge may come within this of a MAIN road centreline
 ## The buildable mask is rasterised at this (the tightest frontage any caller
 ## uses); per-caller distances are enforced in _valid, not by the mask.
 const MASK_ROAD_CLEAR := 5.0
+
+# --- Service lanes -----------------------------------------------------------
+## A thin street laid INTO a large roadless pocket once a tile is developed, so
+## interior buildings get a frontage to face instead of drifting inland. Planned
+## by ServiceLanes (scripts/service_lanes.gd); see there for the routing rules.
+##
+## The whole point is the clearance ratio: a main road sterilises 15u either side,
+## a lane 4u. A lane therefore opens far more frontage than the ground it costs —
+## which is the test any new street has to pass before it earns its land.
+const SERVICE_CLEAR := 4.0           # buildings keep only this off a lane centreline
+const SERVICE_WIDTH := 2.0           # drawn carriageway width (vs 7u for a local road)
+const SERVICE_MIN_BUILDINGS := 3     # a tile earns its lane only once this many buildings stand on it
+const SERVICE_VOID_RADIUS := 60.0    # a cell further than this from every road centres a ~120u roadless pocket
+const SERVICE_ANCHOR_KEEP := 30.0    # the lane leaves the road this far from any junction or stub
+const SERVICE_FORK_KEEP := 20.0      # and rejoins this far from one, so it meets ONE branch of a fork
+const SERVICE_REJOIN_MIN := 90.0     # a rejoin nearer the anchor than this would just loop back
+const SERVICE_FOREST_COST := 6.0     # routing bump inside a forest disc (steers around, never forbids)
+const SERVICE_RIVER_COST := 2.5      # bump near a river arm — the lane runs alongside, hence riverside lanes
+## Clearance a lane keeps from buildings that ALREADY stand when it is planned. Must
+## exceed SERVICE_CLEAR (which is what later buildings keep off the lane), plus slack
+## for RDP corner-cutting between cell centres. The simplified chord may cut up to
+## SERVICE_SIMPLIFY inside the routed line, so the guarantee is PAD - SIMPLIFY = 5u,
+## comfortably over SERVICE_CLEAR. At 3.0/5.0 the audit found lanes 2.3u from a
+## pre-existing footprint.
+const SERVICE_BUILD_PAD := 8.0
+const SERVICE_SIMPLIFY := 3.0        # RDP epsilon on the routed grid path
 ## NOTE (audit, 2026-07-23): block-placed buildings sit ~65u from their road and
 ## cannot currently do better. The block's own frontage row is never buildable:
 ## _rasterize_seg_clearance stamps whole 20u CELLS around a road, so a footprint
@@ -224,6 +250,8 @@ var _tile_landkeys: Dictionary = {}   # tile_id -> PackedInt32Array (buildable c
 var _farm_land: Dictionary = {}       # tile_id -> PackedByteArray: like _tile_land but farms tolerate the
 var _farm_landkeys: Dictionary = {}   # outer 30% of forest discs (FARM_FOREST_TOL) — they nestle closer
 var _tile_segs: Dictionary = {}       # tile_id -> Array of [a, b] road segments (rel to centre)
+var _service_segs: Dictionary = {}    # tile_id -> Array of [a, b] SERVICE LANE segments (rel to centre)
+var _service_world: Dictionary = {}   # the same lanes in world space, for _draw
 var _tile_rivers: Dictionary = {}     # tile_id -> Array of [a, b] river-arm segments (rel to centre)
 var _tile_block_mode: Dictionary = {}      # tile_id -> bool (seeded once, urban-only)
 var _tile_block_templates: Dictionary = {} # tile_id -> {angle, lots:Array[Vector2], claimed:Array[bool]} ({} = no block)
@@ -408,6 +436,10 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var kind: String = BuildingShapes.KINDS[RoadHash.pick("poly|%s|%s|kind" % [tile_id, instance_id], 2 if has_art else BuildingShapes.KINDS.size())]
 	var seed_v := RoadHash.pick("poly|%s|%s|var" % [tile_id, instance_id], 9)
 	var placed_here := _placed_on_tile(tile_id)
+	# A developed tile lays one service lane into its largest roadless pocket, before
+	# this building is sited — so everything from here on has an interior frontage to
+	# face instead of drifting to the "any free cell" fallback in the tile's middle.
+	_ensure_service_lane(tile_id, coord, placed_here.size())
 
 	# Block-subdivision (seeded urban tiles): claim a lot first; the continuous packer is
 	# the fallback for every building the grid can't take (full / blocked). Edge-seekers
@@ -545,13 +577,14 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 		return {}
 	var segs: Array = _block_road_segments(coord)   # ungated: any road crossing the tile (validation + adjacency)
 	var rivers: Array = _tile_rivers.get(tile_id, [])
+	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
 	# Road-ENCLOSED pockets get first claim (owner 2026-07-10): when the
 	# streets already bound an interior area, the lot grid anchors INSIDE it,
 	# so the tile's buildings fill the block the roads drew — without touching
 	# the roads (lots keep the same clearance validation as everywhere else).
 	var pocket := _enclosed_pocket(tile_id, coord, segs)
 	if not pocket.is_empty():
-		var ptmpl := _pocket_template(pocket, land, segs, rivers)
+		var ptmpl := _pocket_template(pocket, land, segs, rivers, lanes)
 		if not ptmpl.is_empty():
 			if BLOCK_DEBUG: print("[BLOCKDBG] %s: POCKET block — %d lots inside a road-enclosed area" % [tile_id, (ptmpl.lots as Array).size()])
 			return ptmpl
@@ -579,13 +612,13 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	# so the frontage row was never buildable and the block started a lot back.
 	var frontage := BLOCK_ROAD_PAD + 2.0 + BLOCK_LOT * BLOCK_FILL_MAX * 0.5
 	var mid := (ra + rb) * 0.5
-	if not _valid(mid + normal * frontage, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
+	if not _valid(mid + normal * frontage, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD, lanes):
 		normal = -normal
 	# ~CHUNK_PROB% of block tiles (seeded) fill the block with a few BIG chunks (one building per
 	# chunk) for a dense interior. Same template shape + a `cell` field; fine grid if too cramped.
 	# (Seed key kept from the retired enclosure system so tile picks stay stable.)
 	if RoadHash.pick("enclseed|%s" % tile_id, 100) < CHUNK_PROB:
-		var chunk := _chunk_template(best_len, mid, tangent, normal, angle, land, segs, rivers)
+		var chunk := _chunk_template(best_len, mid, tangent, normal, angle, land, segs, rivers, lanes)
 		if not chunk.is_empty():
 			return chunk
 	# 3 along the road when the run allows, else 2 — so a block is 3x2 or 2x2.
@@ -596,7 +629,7 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	for r in BLOCK_ROWS:
 		for c in cols:
 			var ctr: Vector2 = origin + tangent * (float(c) * BLOCK_LOT) + normal * (float(r) * BLOCK_LOT)
-			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
+			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD, lanes):
 				continue
 			if _cell_near_road(ctr, segs):   # only road-facing lots; the interior stays empty
 				lots.append(ctr)
@@ -615,7 +648,7 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 ## A few BIG chunks filling the block box (enclosure-seeded tiles): C cols along the road (2-3 by run length)
 ## x R rows deep (1-2), 3-6 total. Each cell is sized so its building FILLS it (`_claim_slot` reads `cell`),
 ## for a dense interior the enclosure ring hugs. Returns {angle, lots, claimed, segs, cell} or {} (too cramped).
-func _chunk_template(best_len: float, mid: Vector2, tangent: Vector2, normal: Vector2, angle: float, land: PackedByteArray, segs: Array, rivers: Array) -> Dictionary:
+func _chunk_template(best_len: float, mid: Vector2, tangent: Vector2, normal: Vector2, angle: float, land: PackedByteArray, segs: Array, rivers: Array, lanes: Array) -> Dictionary:
 	var w := clampf(best_len, ENCL_MIN_U, ENCL_MAX_U)
 	var base: int = clampi(int(round(w / CHUNK_COLS_TARGET)), 2, 3)   # cols by run width → ~70-80u chunks
 	# Coarse-to-FINE grids, packed into a TIGHT block. A 2-row block of BIG cells is ideal, but real
@@ -644,7 +677,7 @@ func _chunk_template(best_len: float, mid: Vector2, tangent: Vector2, normal: Ve
 			for c in cols:
 				var ctr: Vector2 = origin + tangent * (float(c) * cell.x) + normal * (float(r) * cell.y)
 				crow.append(ctr)
-				vrow.append(_chunk_valid(ctr, crect, land, segs, rivers))
+				vrow.append(_chunk_valid(ctr, crect, land, segs, rivers, lanes))
 			ctrs.append(crow)
 			valid.append(vrow)
 		var lots: Array = []
@@ -784,7 +817,7 @@ func _enclosed_pocket(tile_id: String, _coord: Vector2i, segs: Array) -> Diction
 	return {"cells": rels, "center": centroid}
 
 ## Lot grid over an enclosed pocket, aligned to the street nearest its centre.
-func _pocket_template(pocket: Dictionary, land: PackedByteArray, segs: Array, rivers: Array) -> Dictionary:
+func _pocket_template(pocket: Dictionary, land: PackedByteArray, segs: Array, rivers: Array, lanes: Array) -> Dictionary:
 	var centroid: Vector2 = pocket.center
 	var best_d := 1.0e30
 	var angle := 0.0
@@ -817,7 +850,7 @@ func _pocket_template(pocket: Dictionary, land: PackedByteArray, segs: Array, ri
 	for r in rows:
 		for c in cols:
 			var ctr := tangent * (tmin + (float(c) + 0.5) * BLOCK_LOT) + normal * (nmin + (float(r) + 0.5) * BLOCK_LOT)
-			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
+			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD, lanes):
 				continue
 			# The lot must genuinely sit in the pocket (not spill past its rim).
 			var near_cell := false
@@ -941,7 +974,8 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 		# Chunks use the RELAXED validation (the big footprint may overlap a forest/road-clearance edge but
 		# must stay in-hex + off road/river centrelines). NO AABB-overlap check — the chunk grid is
 		# non-overlapping by construction, and rotated cells' AABBs falsely collide. Fine lots: strict check.
-		var ok: bool = _chunk_valid(ctr, rv, land, segs, rivers) if cell != Vector2.ZERO else _valid(ctr, rv, half, placed_here, land, segs, rivers, BLOCK_ROAD_PAD)
+		var lanes: Array = _service_segs.get(tile_id, [])
+		var ok: bool = _chunk_valid(ctr, rv, land, segs, rivers, lanes) if cell != Vector2.ZERO else _valid(ctr, rv, half, placed_here, land, segs, rivers, BLOCK_ROAD_PAD, lanes)
 		if not ok:
 			claimed[i] = true   # blocked (a road moved onto it, or a fallback sits there) — consume it
 			continue
@@ -1002,6 +1036,7 @@ func _append_block_lots(tmpl: Dictionary, tile_id: String, coord: Vector2i, cols
 	var angle: float = tmpl.angle
 	var land: PackedByteArray = _tile_land.get(tile_id, PackedByteArray())
 	var segs: Array = tmpl.get("segs", [])
+	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
 	var rivers: Array = _tile_rivers.get(tile_id, [])
 	var vfull := BLOCK_LOT * BLOCK_FILL_MAX
 	var vrect: PackedVector2Array = _rotate(BuildingShapes.make_rect(vfull, vfull).verts, angle)
@@ -1010,7 +1045,7 @@ func _append_block_lots(tmpl: Dictionary, tile_id: String, coord: Vector2i, cols
 	for c in cols_range:
 		for r in rows_range:
 			var ctr: Vector2 = origin + tangent * (float(c) * BLOCK_LOT) + normal * (float(r) * BLOCK_LOT)
-			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
+			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD, lanes):
 				continue
 			if not _footprint_dry(ctr, vrect, coord):
 				continue
@@ -1107,6 +1142,8 @@ func relayout_tile(tile_id: String) -> void:
 			_farm_land.erase(tile_id)
 			_farm_landkeys.erase(tile_id)
 			_tile_segs.erase(tile_id)
+			_service_segs.erase(tile_id)   # the lane re-plans against the new network
+			_service_world.erase(tile_id)
 			_tile_rivers.erase(tile_id)
 			_mark_subcomp_dirty(tile_id)   # re-derive farm lanes against the new road; buildings stay put
 			queue_redraw()
@@ -1135,6 +1172,8 @@ func relayout_tile(tile_id: String) -> void:
 		_farm_land.erase(tile_id)
 		_farm_landkeys.erase(tile_id)
 		_tile_segs.erase(tile_id)
+		_service_segs.erase(tile_id)   # the lane re-plans against the new network
+		_service_world.erase(tile_id)
 		_tile_rivers.erase(tile_id)
 		_mark_subcomp_dirty(tile_id)
 		queue_redraw()
@@ -1150,6 +1189,8 @@ func relayout_tile(tile_id: String) -> void:
 	_farm_land.erase(tile_id)
 	_farm_landkeys.erase(tile_id)
 	_tile_segs.erase(tile_id)
+	_service_segs.erase(tile_id)   # the lane re-plans against the new network
+	_service_world.erase(tile_id)
 	_tile_rivers.erase(tile_id)
 	# Block tiles STAY PUT: keep the grid (origin/orientation) but free all its lots so the
 	# survivors re-claim them in emit order, re-validated against the rebuilt road mask. A
@@ -1240,6 +1281,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 		return
 	var rivers: Array = _tile_rivers.get(tile_id, [])
 	var segs: Array = _block_road_segments(coord)   # avoid ALL roads on the tile, gated or not
+	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
 	var center := _tile_center_world_pos(coord)
 	# Farm layout first: each field Voronoi-snaps to its cell, with thin lanes between adjacent fields.
 	# Must run before the barn/silo pass so they sit on the CLIPPED field.
@@ -1457,7 +1499,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 				var tdir: Vector2 = dirs[(j2 + trot) % dirs.size()]
 				var text: float = absf(tdir.x) * bhalf.x + absf(tdir.y) * bhalf.y
 				var tctr: Vector2 = bpos + tdir * (text + SUBCOMP_GAP + maxf(tbh.x, tbh.y))
-				if not _valid(tctr, tblock, tbh, placed, land, segs, rivers):
+				if not _valid(tctr, tblock, tbh, placed, land, segs, rivers, ROAD_CLEAR, lanes):
 					continue
 				var tentry := {"pos": tctr, "half": tbh}
 				placed.append(tentry)
@@ -1489,7 +1531,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 				var dir: Vector2 = dirs[(j + rot) % dirs.size()]
 				var ext: float = absf(dir.x) * bhalf.x + absf(dir.y) * bhalf.y
 				var ctr: Vector2 = bpos + dir * (ext + gap + maxf(sh.x, sh.y))
-				if not _valid(ctr, verts, sh, against, land, segs, rivers):
+				if not _valid(ctr, verts, sh, against, land, segs, rivers, ROAD_CLEAR, lanes):
 					continue
 				var entry := {"pos": ctr, "half": sh}
 				placed.append(entry)
@@ -2534,6 +2576,140 @@ func _rasterize_seg_clearance(segs: Array, pad: float) -> PackedByteArray:
 					mask[key] = 1
 	return mask
 
+## Lay this tile's service lane, once the tile has earned one. Bakes the world into
+## the two grids ServiceLanes needs (it knows nothing of NavGrid or forests), routes,
+## then carves the result into the buildable mask and registers it as frontage.
+##
+## ONE lane per tile, decided once: it becomes part of the tile's fabric, and letting
+## it re-plan as buildings land would shuffle the layout out from under them.
+func _ensure_service_lane(tile_id: String, coord: Vector2i, building_count: int) -> void:
+	if _service_segs.has(tile_id) or not _tile_land.has(tile_id):
+		return
+	if building_count < SERVICE_MIN_BUILDINGS:
+		return
+	var segs: Array = _tile_segs.get(tile_id, [])
+	if segs.is_empty():
+		return   # a lane hangs off the main network; it never starts one
+	_service_segs[tile_id] = []   # the decision is made once, even when nothing is laid
+	var center := _tile_center_world_pos(coord)
+	var discs := _forest_discs(coord, center)
+	var rivers: Array = _tile_rivers.get(tile_id, [])
+	var lake := _tile_lake(coord, center)
+	var footprints := _placed_on_tile(tile_id)
+	# A street goes AROUND a block, never through it — and "the block" means the ground
+	# it can still GROW into, not just the lots drawn today. Blocking only the current
+	# lots measured badly on tile_6_12 (+20 factories): the lane crossed the growth
+	# envelope, cost the block 4 lots, and pushed those buildings out to the "any"
+	# fallback in the tile's middle — the exact behaviour lanes exist to stop.
+	var tmpl: Dictionary = _tile_block_templates.get(tile_id, {})
+	if not tmpl.is_empty() and tmpl.has("origin"):
+		var vfull := BLOCK_LOT * BLOCK_FILL_MAX
+		var lot_half := _aabb_half(_rotate(BuildingShapes.make_rect(vfull, vfull).verts, float(tmpl.get("angle", 0.0))))
+		var b_origin: Vector2 = tmpl.origin
+		var b_tan: Vector2 = tmpl.tangent
+		var b_norm: Vector2 = tmpl.normal
+		for c in range(-1, BLOCK_MAX_GROWN_COLS + 1):
+			for r in range(0, BLOCK_MAX_ROWS + 1):
+				footprints.append({
+					"pos": b_origin + b_tan * (float(c) * BLOCK_LOT) + b_norm * (float(r) * BLOCK_LOT),
+					"half": lot_half, "cat": "lot"})
+	for lot in (tmpl.get("lots", []) as Array):
+		footprints.append({"pos": lot, "half": _aabb_half(_rotate(BuildingShapes.make_rect(BLOCK_LOT * BLOCK_FILL_MAX, BLOCK_LOT * BLOCK_FILL_MAX).verts, float(tmpl.get("angle", 0.0)))), "cat": "lot"})
+	var nav := NavGrid.instance()
+	var nav_ok := nav != null and nav.is_ready()
+	var n := GRID_COLS * GRID_ROWS
+	var blocked := PackedByteArray()
+	var cost := PackedFloat32Array()
+	blocked.resize(n)
+	cost.resize(n)
+	for row in GRID_ROWS:
+		for col in GRID_COLS:
+			var key := row * GRID_COLS + col
+			var rel := Vector2((col + 0.5) * CELL, (row + 0.5) * CELL) - TILE_CENTER
+			if not _in_hex_rel(rel):
+				blocked[key] = 1
+				continue
+			if nav_ok:
+				var c := nav.cell_of(center + rel)
+				# Sea, lake, river and the shore fringe are walls, not costs — which is
+				# exactly why a lane forced along a coast comes out as a beachfront road.
+				if nav.water(c.x, c.y) != 0 or nav.level(c.x, c.y) < MIN_BUILD_LEVEL:
+					blocked[key] = 1
+					continue
+			if not lake.is_empty():
+				var dl: Vector2 = rel - lake.c
+				if (dl.x * dl.x) / (lake.rx * lake.rx) + (dl.y * dl.y) / (lake.ry * lake.ry) <= 1.0:
+					blocked[key] = 1
+					continue
+			var on_building := false
+			for p in footprints:
+				var h: Vector2 = p.half
+				var dd: Vector2 = (rel - (p.pos as Vector2)).abs()
+				if dd.x < h.x + SERVICE_BUILD_PAD and dd.y < h.y + SERVICE_BUILD_PAD:
+					on_building = true
+					break
+			if on_building:
+				blocked[key] = 1   # a new street never runs through what is already built
+				continue
+			for d in discs:
+				if rel.distance_to(d.c) < float(d.r):
+					cost[key] += SERVICE_FOREST_COST
+					break
+			for rseg in rivers:
+				if _pt_seg_dist(rel, rseg[0], rseg[1]) < RIVER_ROAD_PAD:
+					cost[key] += SERVICE_RIVER_COST
+					break
+	var line: PackedVector2Array = ServiceLanes.plan({
+		"cols": GRID_COLS, "rows": GRID_ROWS, "cell": CELL,
+		"tile_center": TILE_CENTER, "segs": segs,
+		"blocked": blocked, "cost": cost,
+		"void_radius": SERVICE_VOID_RADIUS,
+		"anchor_keep": SERVICE_ANCHOR_KEEP,
+		"fork_keep": SERVICE_FORK_KEEP,
+		"rejoin_min": SERVICE_REJOIN_MIN,
+		"simplify": SERVICE_SIMPLIFY,
+	})
+	if line.size() < 2:
+		return
+	var out: Array = []
+	for i in range(1, line.size()):
+		out.append([line[i - 1], line[i]])
+	_service_segs[tile_id] = out
+	# Drawn geometry is the straight route plus a baked hand-wobble; the CLEARANCE
+	# above is measured on the straight chords, so the wiggle costs no land.
+	var world := PackedVector2Array()
+	for p in line:
+		world.append(center + p)
+	_service_world[tile_id] = ServiceLanes.wobble(world, tile_id)
+	_carve_service_lane(tile_id, out)
+	queue_redraw()
+
+## Take the lane's own 4u clearance out of the cached buildable masks, so buildings
+## placed after it cannot be packed onto the carriageway. A local edit rather than a
+## mask rebuild: nothing else about the tile changed, and the rebuild is expensive.
+func _carve_service_lane(tile_id: String, segs: Array) -> void:
+	var block := _rasterize_seg_clearance(segs, SERVICE_CLEAR)
+	if _tile_land.has(tile_id):
+		var land: PackedByteArray = _tile_land[tile_id]
+		var keys := PackedInt32Array()
+		for key in (_tile_landkeys[tile_id] as PackedInt32Array):
+			if block[key] == 1:
+				land[key] = 0
+			else:
+				keys.append(key)
+		_tile_land[tile_id] = land
+		_tile_landkeys[tile_id] = keys
+	if _farm_land.has(tile_id):
+		var fland: PackedByteArray = _farm_land[tile_id]
+		var fkeys := PackedInt32Array()
+		for key in (_farm_landkeys[tile_id] as PackedInt32Array):
+			if block[key] == 1:
+				fland[key] = 0
+			else:
+				fkeys.append(key)
+		_farm_land[tile_id] = fland
+		_farm_landkeys[tile_id] = fkeys
+
 ## Place one building. Returns {verts (world), center_rel, half}; {} if nothing fits.
 func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array, road_clear: float = ROAD_CLEAR, override_verts: PackedVector2Array = PackedVector2Array()) -> Dictionary:
 	if not _tile_land.has(tile_id):
@@ -2598,14 +2774,26 @@ func _place_offshore(coord: Vector2i, area: float, placed_here: Array) -> Dictio
 func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2Array, cat: String, placed_here: Array, land: PackedByteArray, road_clear: float = ROAD_CLEAR) -> Dictionary:
 	var segs: Array = _tile_segs.get(tile_id, [])
 	var rivers: Array = _tile_rivers.get(tile_id, [])
+	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
 	# Pre-rotation half: because we rotate the shape's long axis (local x) onto the road
 	# tangent, the shape's local y maps exactly onto the road normal — so base_half.y is
 	# the building's true depth perpendicular to the road, used to snap its near edge flush.
 	var base_half := _aabb_half(base_verts)
 	var best := {}
 	var best_score := INF
-	var diag := {"tried": 0, "land": 0, "overlap": 0, "road": 0, "river": 0, "segs": segs.size()}
-	for s in segs:
+	# Service lanes offer frontage too, at their own much tighter clearance — that is
+	# the entire return on the land they cost. A building fronting a lane still keeps
+	# road_clear off every MAIN road (_valid checks those), and the lane's own 4u is
+	# already carved out of the mask, so no extra clearance test is needed here.
+	var frontage_src: Array = []
+	for s0 in segs:
+		frontage_src.append([s0, road_clear])
+	for s1 in (_service_segs.get(tile_id, []) as Array):
+		frontage_src.append([s1, SERVICE_CLEAR])
+	var diag := {"tried": 0, "land": 0, "overlap": 0, "road": 0, "river": 0, "segs": frontage_src.size()}
+	for fs in frontage_src:
+		var s: Array = fs[0]
+		var clear: float = fs[1]
 		var a: Vector2 = s[0]
 		var b: Vector2 = s[1]
 		var tangent := b - a
@@ -2622,11 +2810,11 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 			# Use the CALLER's clearance, not the constant — art buildings pass a
 			# tight frontage (ART_ROAD_PAD) and were being snapped at ROAD_CLEAR
 			# anyway, parking them ~12u further off the carriageway than asked.
-			var off: Vector2 = normal * side * (road_clear + base_half.y + DESIGN_GAP)
+			var off: Vector2 = normal * side * (clear + base_half.y + DESIGN_GAP)
 			var t := 0.0
 			while t <= seg_len:
 				var center: Vector2 = a + tangent * t + off
-				if _valid(center, rv, half, placed_here, land, segs, rivers, road_clear):
+				if _valid(center, rv, half, placed_here, land, segs, rivers, road_clear, lanes):
 					var score := _row_score(center, cat, placed_here)
 					if score < best_score:
 						best_score = score
@@ -2650,7 +2838,7 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 		for dir in [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP]:
 			var span: float = (nb.half * dir.abs()).length() + (half0 * dir.abs()).length() + DESIGN_GAP
 			var center: Vector2 = nb.pos + dir * span
-			if _valid(center, base_verts, half0, placed_here, land, segs, rivers, road_clear):
+			if _valid(center, base_verts, half0, placed_here, land, segs, rivers, road_clear, lanes):
 				var ar := _finalize(coord, center, base_verts, half0)
 				ar["via"] = "abut"
 				ar["diag"] = diag
@@ -2663,7 +2851,7 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 	var best_d := 1.0e9
 	for key in (_tile_landkeys[tile_id] as PackedInt32Array):
 		var rel := Vector2(((key % GRID_COLS) + 0.5) * CELL, ((key / GRID_COLS) + 0.5) * CELL) - TILE_CENTER
-		if not _valid(rel, base_verts, half0, placed_here, land, segs, rivers, road_clear):
+		if not _valid(rel, base_verts, half0, placed_here, land, segs, rivers, road_clear, lanes):
 			continue
 		var d := rel.length()
 		if d < best_d:
@@ -2694,12 +2882,13 @@ func _reject_reason(center: Vector2, local_verts: PackedVector2Array, half: Vect
 func _place_edge(tile_id: String, coord: Vector2i, base_verts: PackedVector2Array, placed_here: Array, land: PackedByteArray, road_clear: float = ROAD_CLEAR) -> Dictionary:
 	var segs: Array = _tile_segs.get(tile_id, [])
 	var rivers: Array = _tile_rivers.get(tile_id, [])
+	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
 	var half := _aabb_half(base_verts)
 	var best_center := Vector2.INF
 	var best_score := -INF
 	for key in (_tile_landkeys[tile_id] as PackedInt32Array):
 		var rel := Vector2(((key % GRID_COLS) + 0.5) * CELL, ((key / GRID_COLS) + 0.5) * CELL) - TILE_CENTER
-		if not _valid(rel, base_verts, half, placed_here, land, segs, rivers, road_clear):
+		if not _valid(rel, base_verts, half, placed_here, land, segs, rivers, road_clear, lanes):
 			continue
 		if not _footprint_dry(rel, base_verts, coord):
 			continue   # the rim is where the water is
@@ -2772,6 +2961,7 @@ func _neighbor_farm_world_pts(tile_id: String, coord: Vector2i) -> PackedVector2
 func _place_farm(tile_id: String, coord: Vector2i, base_verts: PackedVector2Array, placed_here: Array, land: PackedByteArray, toward_river: bool) -> Dictionary:
 	var segs: Array = _tile_segs.get(tile_id, [])
 	var rivers: Array = _tile_rivers.get(tile_id, [])
+	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
 	var half := _aabb_half(base_verts)
 	var nbr_pts: PackedVector2Array = _neighbor_farm_world_pts(tile_id, coord)   # precomputed ONCE
 	var has_nbr := nbr_pts.size() > 0
@@ -2801,25 +2991,26 @@ func _place_farm(tile_id: String, coord: Vector2i, base_verts: PackedVector2Arra
 		return float(a[0]) < float(b[0]) or (float(a[0]) == float(b[0]) and int(a[1]) < int(b[1])))
 	for c in cands:
 		best_center = c[2] as Vector2
-		if _farm_valid(best_center, base_verts, half, placed_here, land, segs, rivers):
+		if _farm_valid(best_center, base_verts, half, placed_here, land, segs, rivers, lanes):
 			return _finalize(coord, best_center, base_verts, half)
 	var nb := _nearest_placed(placed_here)   # fallback: abut a neighbour
 	if not nb.is_empty():
 		for dir in [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP]:
 			var span: float = (nb.half * dir.abs()).length() + (half * dir.abs()).length() + DESIGN_GAP
 			var center: Vector2 = nb.pos + dir * span
-			if _farm_valid(center, base_verts, half, placed_here, land, segs, rivers):
+			if _farm_valid(center, base_verts, half, placed_here, land, segs, rivers, lanes):
 				return _finalize(coord, center, base_verts, half)
 	return {}
 
 ## Relaxed validity for farm fields: like _valid, but the footprint may extend OUTSIDE the hex
 ## (those parts get clipped). It must still keep clear of roads, rivers and other buildings, and
 ## every in-hex part of the footprint must be buildable land (no water/forest/off-elevation).
-func _farm_valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, placed_here: Array, land: PackedByteArray, segs: Array, rivers: Array) -> bool:
+func _farm_valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, placed_here: Array, land: PackedByteArray, segs: Array, rivers: Array, lanes: Array = []) -> bool:
 	return _farm_footprint_ok(center, local_verts, land) \
 		and not _farm_overlaps(center, half, placed_here) \
 		and _footprint_clears(center, local_verts, segs, ROAD_CLEAR) \
-		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR)
+		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR) \
+		and _footprint_clears(center, local_verts, lanes, SERVICE_CLEAR)
 
 ## Farm overlap rule: a farm keeps the full AABB clear of NON-farm buildings, but only a centre
 ## spacing (FARM_MIN_SEP) from other FARMS — adjacent fields are meant to overlap pre-clip and then
@@ -3208,11 +3399,12 @@ func _overlaps(center: Vector2, half: Vector2, placed_here: Array) -> bool:
 
 ## A candidate footprint is valid iff it sits on buildable land, doesn't overlap a placed
 ## building (with DESIGN_GAP), and no edge of it comes within clearance of any road or river.
-func _valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, placed_here: Array, land: PackedByteArray, segs: Array, rivers: Array, road_clear: float = ROAD_CLEAR) -> bool:
+func _valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, placed_here: Array, land: PackedByteArray, segs: Array, rivers: Array, road_clear: float = ROAD_CLEAR, lanes: Array = []) -> bool:
 	return _footprint_on_land(center, local_verts, land) \
 		and not _overlaps(center, half, placed_here) \
 		and _footprint_clears(center, local_verts, segs, road_clear) \
-		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR)
+		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR) \
+		and _footprint_clears(center, local_verts, lanes, SERVICE_CLEAR)
 
 ## PRECISE wing validation (owner 2026-07-10: the buildable mask is 20u-cell
 ## chunky and reserves the 28u river bank corridor — a cosmetic wing only
@@ -3244,14 +3436,16 @@ func _wing_valid(wctr: Vector2, local_verts: PackedVector2Array, half: Vector2, 
 ## Relaxed validation for a big CHUNK (it fills its cell): only the CENTRE must be buildable land (the chunk
 ## may overlap a forest edge or the road-clearance band — the building just draws over it), but it must stay
 ## IN-HEX (no corner outside the tile) and keep BLOCK_ROAD_PAD / RIVER_CLEAR off road + river centrelines.
-func _chunk_valid(center: Vector2, local_verts: PackedVector2Array, land: PackedByteArray, segs: Array, rivers: Array) -> bool:
+func _chunk_valid(center: Vector2, local_verts: PackedVector2Array, land: PackedByteArray, segs: Array, rivers: Array, lanes: Array = []) -> bool:
 	if not _land_at(center, land):
 		return false
 	for v in local_verts:
 		var p: Vector2 = center + v
 		if absf(p.x) > 270.0 or absf(p.y) > 240.0 or 240.0 * absf(p.x) + 135.0 * absf(p.y) > 64800.0:
 			return false   # a corner off-hex would draw outside the tile
-	return _footprint_clears(center, local_verts, segs, BLOCK_ROAD_PAD) and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR)
+	return _footprint_clears(center, local_verts, segs, BLOCK_ROAD_PAD) \
+		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR) \
+		and _footprint_clears(center, local_verts, lanes, SERVICE_CLEAR)
 
 ## True if the WHOLE footprint polygon keeps `clearance` clear of every obstacle segment —
 ## every footprint edge is at least `clearance` from every segment. Catches a footprint whose
@@ -3462,6 +3656,8 @@ func _clear_tile_caches() -> void:
 	_farm_land.clear()
 	_farm_landkeys.clear()
 	_tile_segs.clear()
+	_service_segs.clear()
+	_service_world.clear()
 	_tile_rivers.clear()
 	_tile_block_mode.clear()
 	_tile_block_templates.clear()
@@ -3709,6 +3905,13 @@ func _draw() -> void:
 		for s in (_block_streets[tid_s] as Array):
 			draw_line(s[0], s[1], MapStyle.road_casing(), 11.0, true)
 			draw_line(s[0], s[1], MapStyle.road_local(), 7.0, true)
+	# Service lanes: SERVICE_WIDTH of carriageway and a hairline casing. Deliberately
+	# far thinner than a local road — the eye should read them as access, not route,
+	# and the thinness is the visual promise that they cost almost no land.
+	for tid_v in _service_world:
+		draw_polyline(_service_world[tid_v] as PackedVector2Array, MapStyle.road_casing(), SERVICE_WIDTH + 2.0, true)
+	for tid_v2 in _service_world:
+		draw_polyline(_service_world[tid_v2] as PackedVector2Array, MapStyle.road_local(), SERVICE_WIDTH, true)
 	# Ink mode draws NO grey lane web (owner ruling 2026-07-23): the mockup's
 	# farms are parcel blocks sitting beside the roads, not lane-connected
 	# blobs. Classic keeps the dirt tracks + their river bridge decks.
