@@ -56,7 +56,7 @@ const BLOCK_PROB := 100              # % of eligible tiles using block mode; low
 const BLOCK_MIN_ROAD := 70.0         # need a straight road segment ≥ this (~7u) to anchor a block
 const BLOCK_MAX_COLS := 3            # lots along the road (owner: 2x2 or 3x2 blocks only)
 const BLOCK_ROWS := 2                # lots deep — the back row still fronts nothing, but two
-                                     # rows keep it to one row of set-back buildings, not three
+									 # rows keep it to one row of set-back buildings, not three
 ## Lot pitch (u); axis-aligned so lots pack tight (smaller = denser, more lots).
 ## THE size lever on developed tiles — they place through the block template,
 ## which ignores the per-building art lot area. 46 -> 58 puts block buildings
@@ -67,8 +67,8 @@ const BLOCK_ROAD_PAD := 7.0          # gap from the road to a block's near edge 
 const BLOCK_FILL_MIN := 0.85         # smallest building as a fraction of the lot (tight gaps between block buildings)
 const BLOCK_FILL_MAX := 0.9          # largest (lots validated at this size)
 const BLOCK_MIN_LOTS := 2            # fewer usable lots than this -> skip block mode.
-                                     # 2, not 3: blocks are now 2x2/3x2 and the frontage row
-                                     # is unbuildable (mask cells), so a 2-wide block offers 2.
+									 # 2, not 3: blocks are now 2x2/3x2 and the frontage row
+									 # is unbuildable (mask cells), so a 2-wide block offers 2.
 const BLOCK_ASPECT := 0.62           # block building depth as a fraction of its width — LONG side faces the road
 const BLOCK_SQUARE_PCT := 25         # % of block buildings kept square (seeded) for variety
 # ~CHUNK_PROB% of block tiles (seeded) fill the block with a FEW BIG CHUNKS (3-6) instead of the fine
@@ -395,7 +395,9 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	if placed.is_empty() and not offshore:
 		# Art buildings front the road tightly (edge ~1u off the carriageway).
 		var rc := ART_ROAD_PAD if has_art else ROAD_CLEAR
-		placed = _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here, rc)
+		var akey := str(INK_ART_KEY.get(iname_lot, ""))
+		placed = _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here, rc,
+			_sprite_lot_verts(size_units, akey))
 		# Dense tiles (Stoneshore Docks runs 100+ buildings): rather than
 		# silently vanishing, art buildings retry with smaller lots — the
 		# city packs tighter and the art just draws smaller (strokes stay
@@ -405,7 +407,8 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 			# buildings a five-step ladder made the world build minutes long.
 			# 0.6 still reads; 0.3 is the last resort before going undrawn.
 			for shrink in [0.6, 0.3]:
-				placed = _search(tile_id, coord, kind, area * float(shrink), seed_v, cat, is_edge, placed_here, rc)
+				placed = _search(tile_id, coord, kind, area * float(shrink), seed_v, cat, is_edge, placed_here, rc,
+					_sprite_lot_verts(size_units, akey, sqrt(float(shrink))))
 				if not placed.is_empty():
 					placed["shrink"] = shrink
 					break
@@ -2366,7 +2369,7 @@ func _rasterize_seg_clearance(segs: Array, pad: float) -> PackedByteArray:
 	return mask
 
 ## Place one building. Returns {verts (world), center_rel, half}; {} if nothing fits.
-func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array, road_clear: float = ROAD_CLEAR) -> Dictionary:
+func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array, road_clear: float = ROAD_CLEAR, override_verts: PackedVector2Array = PackedVector2Array()) -> Dictionary:
 	if not _tile_land.has(tile_id):
 		return {}   # caller must _ensure_tile first; never KeyError-crash on a miss
 	var land: PackedByteArray = _tile_land[tile_id]
@@ -2382,7 +2385,9 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 		if not placed.is_empty():
 			placed.verts = _clip_to_hex(placed.verts, coord)
 		return placed
-	var base_verts: PackedVector2Array = BuildingShapes.make(kind, area, seed_v).verts
+	# Shape-language buildings supply their own lot (the sprite's box); everyone
+	# else gets the seeded plate shape sized from `area`.
+	var base_verts: PackedVector2Array = override_verts if not override_verts.is_empty() else BuildingShapes.make(kind, area, seed_v).verts
 	if is_edge:
 		return _place_edge(tile_id, coord, base_verts, placed_here, land, road_clear)
 	return _place_frontage(tile_id, coord, base_verts, cat, placed_here, land, road_clear)
@@ -2803,7 +2808,7 @@ const ART_SIZE_OVERRIDE := {"wind_farm": ART_DRAWN_MAX}
 ## Blocked space is the DRAWN sprite plus this margin, not the lot the packer
 ## reserved — a lot is sized for the biggest thing that could stand on it, and
 ## treating all of it as solid wasted ground and pushed neighbours away.
-const ART_BLOCK_MARGIN := 3.0
+const ART_BLOCK_MARGIN := 6.0
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
 
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
@@ -3659,6 +3664,24 @@ func _crop_to_sprite(placed: Dictionary, size_units: int, art_key: String) -> vo
 		world.append(ctr + v)
 	placed.verts = world
 	placed.half = _aabb_half(local)
+
+## The LOT for a shape-language building: its sprite's own box plus
+## ART_BLOCK_MARGIN, long side first so _place_frontage (which rotates local x
+## onto the road tangent) presents the long face to the street and snaps using
+## the sprite's shallow depth. Feeding this into the search — rather than a fat
+## square lot that gets cropped afterwards — is what actually pulls buildings
+## up to the road.
+func _sprite_lot_verts(size_units: int, art_key: String, shrink: float = 1.0) -> PackedVector2Array:
+	if art_key == "":
+		return PackedVector2Array()
+	var frame: Vector2 = InkBuildingGen.level_frame(art_key, 3)
+	if frame.x <= 0.0 or frame.y <= 0.0:
+		return PackedVector2Array()
+	var target := clampf(_art_size_for(size_units, art_key) * shrink, ART_DRAWN_MIN * 0.5, ART_DRAWN_MAX)
+	var s := target / maxf(frame.x, frame.y)
+	var long_side := maxf(frame.x, frame.y) * s + ART_BLOCK_MARGIN * 2.0
+	var short_side := minf(frame.x, frame.y) * s + ART_BLOCK_MARGIN * 2.0
+	return BuildingShapes.make_rect(long_side, short_side).verts
 
 ## Drawn/lot side for a building of `size_units`, interpolating the drawn-size
 ## band across the CSV's real 1..30 range.
