@@ -295,8 +295,21 @@ func farm_promote_candidates_for_coord(coord: Vector2i) -> Dictionary:
 			return out
 	return {}
 
-## All farm-track segments on a tile (for the road realizer's follow-the-web cost bias; Stage 2).
+## Farm tracks offered to the road realizer's follow-the-web cost bias.
+## The cluster's OUTER RING only — not the interior lane web (owner
+## 2026-07-23). The realizer discounts these cells, so offering the interior
+## threaded roads straight through a farm grouping; offering just the ring keeps
+## the pull TOWARD the grouping while roads stop at its edge. Falls back to the
+## lane web on a tile whose ring hasn't been derived yet.
 func farm_lane_segments(tile_id: String) -> Array:
+	var ring: Array = (_farm_promote.get(tile_id, {}) as Dictionary).get("ring", [])
+	if not ring.is_empty():
+		var out: Array = []
+		for poly in ring:
+			var pv: PackedVector2Array = poly
+			for i in range(pv.size() - 1):
+				out.append([pv[i], pv[i + 1]])
+		return out
 	return _farm_lanes.get(tile_id, [])
 
 ## Every farm-track segment on the map as [a, b] world pairs (multi-point ring polylines are split
