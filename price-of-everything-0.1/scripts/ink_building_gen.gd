@@ -184,7 +184,11 @@ static func _recipe(iname: String, l: int) -> Array:
 				p.append(_bar(Vector2(134, 63), Vector2(134, 66), 5, 1.0))
 			return p
 		"industrial_factory":
-			var p := [_saw(50, 44, 74, 62, 4), _flat(124, 44, 16, 62, 0), _loadbay(44, 112)]
+			# Loading bay hangs off the SHORT (west) side and touches the shed,
+			# so the long flat face is free to sit against the road. That makes
+			# the compound wider and shallower — depth is what keeps a building
+			# off its frontage.
+			var p := [_saw(50, 44, 74, 62, 4), _flat(124, 44, 16, 62, 0), _loadbay(20, 67)]
 			if l >= 2:
 				p.append(_multi(142, 52, 26, 34, 2))
 			if l >= 3:
