@@ -10,6 +10,13 @@ extends Node
 
 const MAX_GAP := 15.0
 const EDGE_SAMPLE := 3.0   # perimeter sampling step (u) for polygon->segment distance
+## Off-road by design (mirrors BuildingVisuals.OFF_ROAD_NAMES): pits and
+## renewable farms belong on open ground, so they are reported separately
+## rather than counted as frontage failures.
+const OFF_ROAD := {
+	"mine": true, "solar_farm": true,
+	"onshore_wind_farm": true, "offshore_wind_farm": true,
+}
 
 func _ready() -> void:
 	# Classify every rejected frontage candidate (off in play — it costs four
@@ -49,7 +56,7 @@ func _ready() -> void:
 		var iname := str(p.get("iname", ""))
 		var row := [tile_id, iname if iname != "" else cat, cat, gap,
 			str(p.get("via", "?")), float(p.get("shrink", 1.0)), p.get("diag", {}), _extent(verts)]
-		var by_design_cat := cat == "farm" or cat == "extraction" or iname == "mine"
+		var by_design_cat := cat == "farm" or cat == "extraction" or OFF_ROAD.has(iname)
 		if gap > MAX_GAP:
 			if by_design_cat:
 				by_design.append(row)

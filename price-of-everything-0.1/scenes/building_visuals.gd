@@ -356,7 +356,9 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var types: Array = bd.get("building_type", [])
 	# Recycling (internal_name ~ "recycl": b_036 recycling_plant + b_022 water_recycling)
 	# and extraction (mines) invert placement — they seek the far tile edges.
-	var is_edge: bool = types.has("extraction") or str(bd.get("internal_name", "")).to_lower().contains("recycl")
+	var is_edge: bool = types.has("extraction") \
+		or str(bd.get("internal_name", "")).to_lower().contains("recycl") \
+		or OFF_ROAD_NAMES.has(str(bd.get("internal_name", "")))
 	var cat := TileViewData.category_key(bd)
 	var size_units := int(bd.get("tile_size_used", 1))
 	# Fixed area per size point (see SIZE_UNIT_AREA): consistent on every tile, no
@@ -2809,6 +2811,14 @@ const ART_SIZE_OVERRIDE := {"wind_farm": ART_DRAWN_MAX}
 ## reserved — a lot is sized for the biggest thing that could stand on it, and
 ## treating all of it as solid wasted ground and pushed neighbours away.
 const ART_BLOCK_MARGIN := 6.0
+## Sprawling sites that belong on open ground rather than fronting a street
+## (owner): pits and renewable farms. They take the edge-seeker path — the same
+## one extraction uses — so they head for an empty corner of the tile, and the
+## frontage audit counts them as off-road by design rather than as failures.
+const OFF_ROAD_NAMES := {
+	"mine": true, "solar_farm": true,
+	"onshore_wind_farm": true, "offshore_wind_farm": true,
+}
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
 
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
