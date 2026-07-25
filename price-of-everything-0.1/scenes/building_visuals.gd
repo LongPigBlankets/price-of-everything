@@ -54,18 +54,21 @@ const SIZE_UNIT_AREA := 100.0
 # never persisted. Blocks STAY PUT when a road later settles (only blocked lots fall back).
 const BLOCK_PROB := 100              # % of eligible tiles using block mode; lower for variety (block forms only where a road run + room exist)
 const BLOCK_MIN_ROAD := 70.0         # need a straight road segment ≥ this (~7u) to anchor a block
-const BLOCK_MAX_COLS := 4            # lots along the road
-const BLOCK_ROWS := 4                # lots deep (the rectangle reaches back ~15-20% of the tile)
+const BLOCK_MAX_COLS := 3            # lots along the road (owner: 2x2 or 3x2 blocks only)
+const BLOCK_ROWS := 2                # lots deep — the back row still fronts nothing, but two
+                                     # rows keep it to one row of set-back buildings, not three
 ## Lot pitch (u); axis-aligned so lots pack tight (smaller = denser, more lots).
 ## THE size lever on developed tiles — they place through the block template,
 ## which ignores the per-building art lot area. 46 -> 58 puts block buildings
 ## mid-range of the ART_DRAWN_MIN/MAX band without over-crowding the tile.
-const BLOCK_LOT := 58.0
+const BLOCK_LOT := 44.0
 const BLOCK_ROAD_ADJ := 130.0        # a lot is usable within this of a road (~2 frontage rows); deeper interior stays empty
 const BLOCK_ROAD_PAD := 7.0          # gap from the road to a block's near edge (tight Sanborn frontage; vs ROAD_CLEAR 18)
 const BLOCK_FILL_MIN := 0.85         # smallest building as a fraction of the lot (tight gaps between block buildings)
 const BLOCK_FILL_MAX := 0.9          # largest (lots validated at this size)
-const BLOCK_MIN_LOTS := 3            # fewer usable lots than this -> skip block mode
+const BLOCK_MIN_LOTS := 2            # fewer usable lots than this -> skip block mode.
+                                     # 2, not 3: blocks are now 2x2/3x2 and the frontage row
+                                     # is unbuildable (mask cells), so a 2-wide block offers 2.
 const BLOCK_ASPECT := 0.62           # block building depth as a fraction of its width — LONG side faces the road
 const BLOCK_SQUARE_PCT := 25         # % of block buildings kept square (seeded) for variety
 # ~CHUNK_PROB% of block tiles (seeded) fill the block with a FEW BIG CHUNKS (3-6) instead of the fine
@@ -409,6 +412,8 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	if placed.is_empty():
 		return  # tile too crowded to fit it — not drawn rather than overlapping
 
+	if has_art:
+		_crop_to_sprite(placed, size_units, str(INK_ART_KEY.get(iname_lot, "")))
 	var verts: PackedVector2Array = placed.verts
 	# Farms carry BOTH looks baked once (clipped to the — possibly hex-cut —
 	# field): the classic 45° green hatch and the ink-mode parcel fabric
@@ -528,7 +533,8 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 		var chunk := _chunk_template(best_len, mid, tangent, normal, angle, land, segs, rivers)
 		if not chunk.is_empty():
 			return chunk
-	var cols: int = clampi(int(best_len / BLOCK_LOT), 3, BLOCK_MAX_COLS)
+	# 3 along the road when the run allows, else 2 — so a block is 3x2 or 2x2.
+	var cols: int = clampi(int(best_len / BLOCK_LOT), 2, BLOCK_MAX_COLS)
 	var origin := ra + tangent * (BLOCK_LOT * 0.5) + normal * frontage
 	var lots: Array = []
 	for r in BLOCK_ROWS:
@@ -2794,6 +2800,10 @@ const ART_SIZE_UNITS_MAX := 30.0
 ## they read as a cramped cluster rather than machines spread over open ground
 ## (owner). Visual only: it moves the lot too, so reservation stays honest.
 const ART_SIZE_OVERRIDE := {"wind_farm": ART_DRAWN_MAX}
+## Blocked space is the DRAWN sprite plus this margin, not the lot the packer
+## reserved — a lot is sized for the biggest thing that could stand on it, and
+## treating all of it as solid wasted ground and pushed neighbours away.
+const ART_BLOCK_MARGIN := 3.0
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
 
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
@@ -3610,6 +3620,45 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 	# own npc dulling is left off.
 	var wash := _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc))
 	return InkBuildingGen.draw(self, art_key, lvl, ctr, dir.angle(), target, false, Vector2.INF, wash)
+
+## Replace a shape-language placement's footprint with the sprite's own box
+## (+ ART_BLOCK_MARGIN), keeping its centre and road-facing orientation. The
+## polygon is what everything downstream treats as solid — overlap tests,
+## avoidance discs, the frontage audit — so cropping it here is what lets lots
+## pack tightly without the art actually touching.
+func _crop_to_sprite(placed: Dictionary, size_units: int, art_key: String) -> void:
+	if art_key == "":
+		return
+	var frame: Vector2 = InkBuildingGen.level_frame(art_key, 3)
+	if frame.x <= 0.0 or frame.y <= 0.0:
+		return
+	var pv: PackedVector2Array = placed.verts
+	if pv.size() < 3:
+		return
+	var ctr := Vector2.ZERO
+	for v in pv:
+		ctr += v
+	ctr /= float(pv.size())
+	var dirv := (pv[1] - pv[0]).normalized()
+	var mn := Vector2(1e30, 1e30)
+	var mx := Vector2(-1e30, -1e30)
+	for v in pv:
+		mn = mn.min(v)
+		mx = mx.max(v)
+	var lot_extent := maxf((mx - mn).x, (mx - mn).y)
+	var target := clampf(minf(_art_size_for(size_units, art_key), lot_extent), ART_DRAWN_MIN, ART_DRAWN_MAX)
+	var s := target / maxf(frame.x, frame.y)
+	var hx := frame.x * s * 0.5 + ART_BLOCK_MARGIN
+	var hy := frame.y * s * 0.5 + ART_BLOCK_MARGIN
+	var local := PackedVector2Array([
+		Vector2(-hx, -hy).rotated(dirv.angle()), Vector2(hx, -hy).rotated(dirv.angle()),
+		Vector2(hx, hy).rotated(dirv.angle()), Vector2(-hx, hy).rotated(dirv.angle()),
+	])
+	var world := PackedVector2Array()
+	for v in local:
+		world.append(ctr + v)
+	placed.verts = world
+	placed.half = _aabb_half(local)
 
 ## Drawn/lot side for a building of `size_units`, interpolating the drawn-size
 ## band across the CSV's real 1..30 range.
