@@ -70,26 +70,45 @@ func _ready() -> void:
 		for s in mine:
 			pts.append("(%.0f,%.0f)" % [(s[1] as Vector2).x, (s[1] as Vector2).y])
 		print("%s lane (rel to tile centre): %s" % [tid, " -> ".join(pts)])
-	# Nothing may sit ON a lane: report every footprint closer than SERVICE_CLEAR.
-	var breaches := 0
-	for k in lanes:
-		var lsegs: Array = lanes[k]
-		if lsegs.is_empty():
+	# Nothing may sit ON a lane. Tested against the DRAWN (wobbled) polyline in world
+	# space, and by real intersection: the earlier vertex-distance check was unsound —
+	# a lane crossing a 44u building's middle is ~20u from its nearest CORNER, so it
+	# scored as clear.
+	var world_lanes: Dictionary = bv.get("_service_world")
+	var crossings := 0
+	var too_close := 0
+	for k in world_lanes:
+		var pts: PackedVector2Array = world_lanes[k]
+		if pts.size() < 2:
 			continue
-		for p in (bv.get("_placements") as Array):
-			if str(p.get("tile_id", "")) != str(k):
+		for pl in (bv.get("_placements") as Array):
+			if str(pl.get("tile_id", "")) != str(k):
 				continue
-			var origin: Vector2 = bv.call("_tile_center_world_pos", p.get("coord", Vector2i.ZERO))
-			var vs: PackedVector2Array = p.get("verts", PackedVector2Array())
+			var vs: PackedVector2Array = pl.get("verts", PackedVector2Array())
+			if vs.size() < 3:
+				continue
+			var hit := false
 			var near := 1.0e9
-			for v in vs:
-				for s in lsegs:
-					near = minf(near, bv.call("_pt_seg_dist", v - origin, s[0], s[1]))
-			if near < 4.0:
-				breaches += 1
-				if breaches <= 6:
-					print("  BREACH %s %s: %.1fu from its lane" % [k, str(p.get("building_id", "?")), near])
-	print("lane breaches (footprint within SERVICE_CLEAR): %d" % breaches)
+			for i in range(pts.size() - 1):
+				var a: Vector2 = pts[i]
+				var b: Vector2 = pts[i + 1]
+				if Geometry2D.is_point_in_polygon(a, vs) or Geometry2D.is_point_in_polygon(b, vs):
+					hit = true
+				for j in vs.size():
+					var e0: Vector2 = vs[j]
+					var e1: Vector2 = vs[(j + 1) % vs.size()]
+					if Geometry2D.segment_intersects_segment(a, b, e0, e1) != null:
+						hit = true
+					near = minf(near, bv.call("_seg_seg_dist", a, b, e0, e1) if bv.has_method("_seg_seg_dist") else bv.call("_pt_seg_dist", e0, a, b))
+			if hit:
+				crossings += 1
+				if crossings <= 8:
+					print("  CROSSES %s %s" % [k, str(pl.get("building_id", "?"))])
+			elif near < 4.0:
+				too_close += 1
+				if too_close <= 8:
+					print("  TIGHT %s %s: %.1fu via=%s cat=%s" % [k, str(pl.get("building_id", "?")), near, str(pl.get("via", "?")), str(pl.get("cat", "?"))])
+	print("lanes DRAWN OVER a building: %d   |   closer than 4u: %d" % [crossings, too_close])
 	MapStyle.set_ink(true)
 	# Frame the tile and save a PNG (windowed runs only). Camera controller is
 	# suspended, or its zoom smoothing + bounds clamp snap the view back.

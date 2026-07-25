@@ -1415,7 +1415,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 					var slide_max: float = maxf(pext - wing_pext, 0.0)
 					var slide := (float(RoadHash.pick("wing|%s|%d|sl" % [iid, wi], 100)) / 100.0 - 0.5) * 2.0 * slide_max
 					wctr += perp * slide
-					if not _wing_valid(wctr, wverts_l, wh, others, segs, rivers, wdiscs, center):
+					if not _wing_valid(wctr, wverts_l, wh, others, segs, rivers, wdiscs, center, lanes):
 						continue
 					var wentry := {"pos": wctr, "half": wh}
 					placed.append(wentry)
@@ -1444,7 +1444,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 						var wing_ext2: float = ww * 0.5 if di2 < 2 else whh * 0.5
 						for step in [34.0, 42.0, 50.0, 58.0]:
 							var wctr2: Vector2 = bpos + wdir2 * (float(wexts[di2]) + step + wing_ext2)
-							if not _wing_valid(wctr2, wverts_l, wh, others, segs, rivers, wdiscs, center):
+							if not _wing_valid(wctr2, wverts_l, wh, others, segs, rivers, wdiscs, center, lanes):
 								continue
 							var pa: Vector2 = bpos + wdir2 * float(wexts[di2])
 							var pb: Vector2 = wctr2 - wdir2 * wing_ext2
@@ -2671,18 +2671,45 @@ func _ensure_service_lane(tile_id: String, coord: Vector2i, building_count: int)
 	})
 	if line.size() < 2:
 		return
+	# Wobble FIRST, then measure everything off the wobbled line. Treating the wiggle as
+	# free draw-time decoration was wrong: clearance, the mask carve and frontage were all
+	# computed on the straight chords while the drawn lane sat up to WOBBLE_AMP to one
+	# side of them, so a building validated 4u clear could be 1.5u from the road you can
+	# actually see. One line, one geometry.
+	var wobbled := ServiceLanes.wobble(line, tile_id)
 	var out: Array = []
-	for i in range(1, line.size()):
-		out.append([line[i - 1], line[i]])
+	for i in range(1, wobbled.size()):
+		out.append([wobbled[i - 1], wobbled[i]])
+	# Last gate: the routed path honours SERVICE_BUILD_PAD cell by cell, but RDP can cut a
+	# corner inside it and the wobble can lean further in. Check the FINAL line against
+	# every building already standing, and drop the lane rather than draw it over one.
+	if not _lane_clears_buildings(tile_id, out):
+		return
 	_service_segs[tile_id] = out
-	# Drawn geometry is the straight route plus a baked hand-wobble; the CLEARANCE
-	# above is measured on the straight chords, so the wiggle costs no land.
 	var world := PackedVector2Array()
-	for p in line:
+	for p in wobbled:
 		world.append(center + p)
-	_service_world[tile_id] = ServiceLanes.wobble(world, tile_id)
+	_service_world[tile_id] = world
 	_carve_service_lane(tile_id, out)
 	queue_redraw()
+
+## True if `segs` (a candidate lane, tile-relative) keeps SERVICE_CLEAR off every
+## footprint already placed on the tile. Buildings sited AFTER a lane are handled the
+## other way round, by the lane check threaded through _valid/_chunk_valid/_farm_valid.
+func _lane_clears_buildings(tile_id: String, segs: Array) -> bool:
+	for p in _placements:
+		if str(p.tile_id) != tile_id:
+			continue
+		var verts: PackedVector2Array = p.get("verts", PackedVector2Array())
+		if verts.size() < 3:
+			continue
+		var origin: Vector2 = _tile_center_world_pos(p.coord)
+		var local := PackedVector2Array()
+		for v in verts:
+			local.append(v - origin)
+		if not _footprint_clears(Vector2.ZERO, local, segs, SERVICE_CLEAR):
+			return false
+	return true
 
 ## Take the lane's own 4u clearance out of the cached buildable masks, so buildings
 ## placed after it cannot be packed onto the carriageway. A local edit rather than a
@@ -3410,7 +3437,7 @@ func _valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, pla
 ## chunky and reserves the 28u river bank corridor — a cosmetic wing only
 ## needs the real clearances). Checks hex, water, elevation and forest discs
 ## point-wise, exact 18u road / 16u river distances, and building overlaps.
-func _wing_valid(wctr: Vector2, local_verts: PackedVector2Array, half: Vector2, others: Array, segs: Array, rivers: Array, discs: Array, center: Vector2) -> bool:
+func _wing_valid(wctr: Vector2, local_verts: PackedVector2Array, half: Vector2, others: Array, segs: Array, rivers: Array, discs: Array, center: Vector2, lanes: Array = []) -> bool:
 	if _overlaps(wctr, half, others):
 		return false
 	var nav := NavGrid.instance()
@@ -3431,7 +3458,8 @@ func _wing_valid(wctr: Vector2, local_verts: PackedVector2Array, half: Vector2, 
 			if pr.distance_to(d.c) < float(d.r):
 				return false
 	return _footprint_clears(wctr, local_verts, segs, ROAD_CLEAR) \
-		and _footprint_clears(wctr, local_verts, rivers, RIVER_CLEAR)
+		and _footprint_clears(wctr, local_verts, rivers, RIVER_CLEAR) \
+		and _footprint_clears(wctr, local_verts, lanes, SERVICE_CLEAR)
 
 ## Relaxed validation for a big CHUNK (it fills its cell): only the CENTRE must be buildable land (the chunk
 ## may overlap a forest edge or the road-clearance band — the building just draws over it), but it must stay

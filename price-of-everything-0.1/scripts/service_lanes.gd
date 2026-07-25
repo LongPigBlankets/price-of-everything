@@ -423,10 +423,13 @@ static func _rdp(pts: PackedVector2Array, eps: float) -> PackedVector2Array:
 	return out
 
 
-## Hand-drawn jitter for the DRAWN lane, baked once at plan time (_draw runs every
-## frame). A looser hand than the trunk roads' 20u/1.5u — an unmade access track was
-## never surveyed. Draw geometry only: clearance is measured on the straight chords,
-## so the wiggle is free. It is the cheap half of "make it look natural".
+## Hand-drawn jitter, baked once at plan time (_draw runs every frame). A looser hand
+## than the trunk roads' 20u/1.5u — an unmade access track was never surveyed.
+##
+## The caller measures clearance on the WOBBLED line, not the straight chords it came
+## from. Treating the wiggle as free decoration put the drawn lane up to WOBBLE_AMP off
+## the geometry everything else was validated against, and two lanes ended up drawn over
+## a building. The wiggle does cost land — about WOBBLE_AMP of it.
 const WOBBLE_STEP := 16.0
 const WOBBLE_AMP := 2.5
 
