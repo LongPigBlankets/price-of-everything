@@ -61,7 +61,15 @@ const BLOCK_MIN_ROAD := 70.0         # need a straight road segment ≥ this (~7
 const BLOCK_MAX_COLS := 3            # lots along the road (owner: 2x2 or 3x2 blocks only)
 const BLOCK_ROWS := 2                # lots deep at first — a block starts 2x2/3x2 and grows a
 									 # row at a time (_grow_block_rows) as its lots fill
-const BLOCK_MAX_ROWS := 5            # ceiling on growing DEEPER
+## Ceiling on growing DEEPER.
+##
+## MEASURED (tile_6_12, +20 factories): holding this at BLOCK_ROWS to keep
+## buildings off the tile's empty middle BACKFIRES — the block then absorbs 3
+## instead of 14 and 8 buildings scatter inland via the "any" fallback, which
+## places at the free cell nearest the tile CENTRE. The tile simply has less
+## road frontage than it has buildings, so some must go inland; the real choice
+## is whether that happens as a tidy block or as scatter. Tidy wins.
+const BLOCK_MAX_ROWS := 5
 const BLOCK_MAX_GROWN_COLS := 9      # ceiling on growing ALONG the road (the preferred direction)
 const BLOCK_FARM_LIMIT := 2          # this many farms on a tile and its other buildings stop blocking
 ## Lot pitch (u); axis-aligned so lots pack tight (smaller = denser, more lots).
