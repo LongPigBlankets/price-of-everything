@@ -61,7 +61,8 @@ const BLOCK_MIN_ROAD := 70.0         # need a straight road segment ≥ this (~7
 const BLOCK_MAX_COLS := 3            # lots along the road (owner: 2x2 or 3x2 blocks only)
 const BLOCK_ROWS := 2                # lots deep at first — a block starts 2x2/3x2 and grows a
 									 # row at a time (_grow_block_rows) as its lots fill
-const BLOCK_MAX_ROWS := 5            # ceiling on that growth
+const BLOCK_MAX_ROWS := 5            # ceiling on growing DEEPER
+const BLOCK_MAX_GROWN_COLS := 9      # ceiling on growing ALONG the road (the preferred direction)
 ## Lot pitch (u); axis-aligned so lots pack tight (smaller = denser, more lots).
 ## THE size lever on developed tiles — they place through the block template,
 ## which ignores the per-building art lot area. 46 -> 58 puts block buildings
@@ -218,6 +219,7 @@ var _tile_rivers: Dictionary = {}     # tile_id -> Array of [a, b] river-arm seg
 var _tile_block_mode: Dictionary = {}      # tile_id -> bool (seeded once, urban-only)
 var _tile_block_templates: Dictionary = {} # tile_id -> {angle, lots:Array[Vector2], claimed:Array[bool]} ({} = no block)
 var _block_streets: Dictionary = {}        # tile_id -> [[world a, world b]] side roads (earned by a 2nd-row build)
+var _grew_this_claim := false              # re-entry guard for the grow-and-retry in _claim_slot
 
 # Ancillary tanks/annexes (second pass, re-derived; never persisted). Each: {tile_id, verts (world), color, bb}.
 var _subcomponents: Array = []
@@ -905,12 +907,22 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 			claimed[i] = true   # blocked (a road moved onto it, or a fallback sits there) — consume it
 			continue
 		claimed[i] = true
-		_grow_block_rows(tmpl, tile_id, coord)   # keep a spare row ahead of demand
+		_grow_block_rows(tmpl, tile_id, coord)   # keep spare lots ahead of demand
 		# Occupying a lot behind the frontage row is what earns the block its
 		# side roads — they are access to something, not decoration.
 		if int((tmpl.get("rows", []) as Array)[i] if i < (tmpl.get("rows", []) as Array).size() else 0) >= 1:
 			_ensure_block_side_roads(tmpl, tile_id, coord)
 		return _finalize(coord, ctr, rv, half)
+	# Every lot is spoken for — but lots are also consumed when they turn out to
+	# be blocked, and that path never reaches the growth call above. Grow now and
+	# retry once, or a block quietly stops accepting buildings the moment its
+	# last lot is invalidated rather than claimed.
+	if not _grew_this_claim:
+		_grew_this_claim = true
+		_grow_block_rows(tmpl, tile_id, coord)
+		var out := _claim_slot(tmpl, size_units, coord, tile_id, placed_here)
+		_grew_this_claim = false
+		return out
 	return {}
 
 ## Add another row of lots behind the block once the existing ones are (nearly)
@@ -921,19 +933,33 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 func _grow_block_rows(tmpl: Dictionary, tile_id: String, coord: Vector2i) -> void:
 	if not tmpl.has("origin"):
 		return
-	var lots: Array = tmpl.lots
-	var claimed: Array = tmpl.claimed
-	var rows: Array = tmpl.rows
-	for i in claimed.size():
-		if not bool(claimed[i]):
+	for c in (tmpl.claimed as Array):
+		if not bool(c):
 			return   # a lot is still free — nothing to grow yet
-	if rows.is_empty() or int(rows[rows.size() - 1]) >= BLOCK_MAX_ROWS - 1:
-		return
-	var next_row := int(rows[rows.size() - 1]) + 1
+	var col_min := int(tmpl.get("col_min", 0))
+	var col_max := int(tmpl.get("col_max", int(tmpl.get("cols", 2)) - 1))
+	var row_max := int(tmpl.get("row_max", BLOCK_ROWS - 1))
+	# Grow ALONG THE ROAD first and only go deeper as a last resort: depth runs
+	# out within a row or two (hex edge, water, road clearance) while a road run
+	# usually has frontage to spare, and a lot on the frontage is worth more
+	# than one buried behind the block.
+	var rows_span: Array = range(0, row_max + 1)
+	if col_max - col_min + 1 < BLOCK_MAX_GROWN_COLS:
+		if _append_block_lots(tmpl, tile_id, coord, [col_max + 1], rows_span) > 0:
+			tmpl["col_max"] = col_max + 1
+			return
+		if _append_block_lots(tmpl, tile_id, coord, [col_min - 1], rows_span) > 0:
+			tmpl["col_min"] = col_min - 1
+			return
+	if row_max < BLOCK_MAX_ROWS - 1:
+		if _append_block_lots(tmpl, tile_id, coord, range(col_min, col_max + 1), [row_max + 1]) > 0:
+			tmpl["row_max"] = row_max + 1
+
+## Append every valid lot at the given (col, row) cells. Returns how many landed.
+func _append_block_lots(tmpl: Dictionary, tile_id: String, coord: Vector2i, cols_range, rows_range) -> int:
 	var origin: Vector2 = tmpl.origin
 	var tangent: Vector2 = tmpl.tangent
 	var normal: Vector2 = tmpl.normal
-	var cols: int = int(tmpl.get("cols", 2))
 	var angle: float = tmpl.angle
 	var land: PackedByteArray = _tile_land.get(tile_id, PackedByteArray())
 	var segs: Array = tmpl.get("segs", [])
@@ -941,15 +967,19 @@ func _grow_block_rows(tmpl: Dictionary, tile_id: String, coord: Vector2i) -> voi
 	var vfull := BLOCK_LOT * BLOCK_FILL_MAX
 	var vrect: PackedVector2Array = _rotate(BuildingShapes.make_rect(vfull, vfull).verts, angle)
 	var vhalf: Vector2 = _aabb_half(vrect)
-	for c in cols:
-		var ctr: Vector2 = origin + tangent * (float(c) * BLOCK_LOT) + normal * (float(next_row) * BLOCK_LOT)
-		if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
-			continue
-		if not _footprint_dry(ctr, vrect, coord):
-			continue
-		lots.append(ctr)
-		claimed.append(false)
-		rows.append(next_row)
+	var added := 0
+	for c in cols_range:
+		for r in rows_range:
+			var ctr: Vector2 = origin + tangent * (float(c) * BLOCK_LOT) + normal * (float(r) * BLOCK_LOT)
+			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
+				continue
+			if not _footprint_dry(ctr, vrect, coord):
+				continue
+			(tmpl.lots as Array).append(ctr)
+			(tmpl.claimed as Array).append(false)
+			(tmpl.rows as Array).append(r)
+			added += 1
+	return added
 
 ## Side roads for a block whose second row has started to fill: they run out of
 ## the fronting road along the block's two sides, as far back as the occupied

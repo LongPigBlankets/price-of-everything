@@ -50,4 +50,20 @@ func _ready() -> void:
 		tid, (tmpl2.get("lots", []) as Array).size(), claimed,
 		str((tmpl2.get("rows", []) as Array).back() if not (tmpl2.get("rows", []) as Array).is_empty() else -1)])
 	print("placed VIA: %s" % str(via))
+	# Frame the tile and save a PNG (windowed runs only). Camera controller is
+	# suspended, or its zoom smoothing + bounds clamp snap the view back.
+	var cam := get_viewport().get_camera_2d()
+	if cam != null and DisplayServer.get_name() != "headless":
+		cam.set_process(false)
+		cam.set_physics_process(false)
+		var grid: Node = game.find_child("HexGridOverlay", true, false)
+		if grid != null:
+			(grid as CanvasItem).visible = false
+		cam.position = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+		cam.zoom = Vector2(1.5, 1.5)
+		for _j in 20:
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("/tmp/poe_block_probe.png")
+		print("[SHOT] /tmp/poe_block_probe.png")
 	get_tree().quit(0)
