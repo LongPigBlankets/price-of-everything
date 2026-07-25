@@ -27,8 +27,7 @@ func _ready() -> void:
 		return
 	var placements: Array = bv.get("_placements")
 	var tile_segs: Dictionary = bv.get("_tile_segs")
-	# A block's own service streets count as roads to front onto (already world-space).
-	var block_streets: Dictionary = bv.get("_block_streets")
+	var block_streets: Dictionary = {}   # (blocks no longer invent their own streets)
 
 	var by_tile: Dictionary = {}          # tile_id -> [worst_gap, worst_name]
 	var fails: Array = []                 # [tile_id, iname, cat, gap]
