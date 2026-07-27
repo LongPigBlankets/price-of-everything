@@ -1,7 +1,7 @@
 {
   "name": "open_field_1",
   "display_name": "Open Field 1 \u2014 Capital motor chain",
-  "note": "optimized Capital motor chain: coal-first runway on tile_22_3, dual coal power on tile_20_9, iron+steel tile_26_5, copper+wiring tile_21_10, assembly tile_25_6, 24 production buildings",
+  "note": "optimized Capital motor chain, SIZED so each stage's producers meet the summed demand of their consumers: 3 motor <- 3 wiring + 2 steel; 3 wiring <- 3 copper blistering <- 3 copper mines; 2 steel <- 2 pig iron <- 3 iron mines; 3 coal power + 2 water pumps cover 1590 energy; 4 coal mines feed smelting + power.",
   "_comment_materials": "allow_market_materials must be true for every producer: the turn-1 rebalance left no pre-placed build materials on these NPC tiles, so a direct build with materials_from='tile' silently no-ops. Buying build materials from the market is exactly what the motor chain's furnaces/factories already do.",
   "land_purchases": [
     {
@@ -104,13 +104,8 @@
       "tile_24_7"
     ],
     "rails": "corridors",
-    "cables": [
-      "tile_22_3",
-      "tile_20_9",
-      "tile_26_5",
-      "tile_21_10",
-      "tile_25_6"
-    ]
+    "pipes": "corridors",
+    "cables": "corridors"
   },
   "buildings": [
     {
@@ -198,6 +193,13 @@
       "allow_market_materials": true
     },
     {
+      "id": "copper_ingots_c",
+      "internal_name": "furnace",
+      "recipe_key": "copper_ingots",
+      "tile": "tile_21_10",
+      "allow_market_materials": true
+    },
+    {
       "id": "copper_wiring_a",
       "internal_name": "industrial_factory",
       "recipe_key": "copper_wiring",
@@ -206,6 +208,13 @@
     },
     {
       "id": "copper_wiring_b",
+      "internal_name": "industrial_factory",
+      "recipe_key": "copper_wiring",
+      "tile": "tile_21_10",
+      "allow_market_materials": true
+    },
+    {
+      "id": "copper_wiring_c",
       "internal_name": "industrial_factory",
       "recipe_key": "copper_wiring",
       "tile": "tile_21_10",
@@ -240,6 +249,13 @@
       "allow_market_materials": true
     },
     {
+      "id": "water_pump_b",
+      "internal_name": "water_pump",
+      "recipe_key": "water_pumping",
+      "tile": "tile_20_9",
+      "allow_market_materials": true
+    },
+    {
       "id": "power",
       "internal_name": "coal_power",
       "recipe_key": "power",
@@ -251,6 +267,20 @@
       "internal_name": "coal_power",
       "recipe_key": "power",
       "tile": "tile_20_9",
+      "allow_market_materials": true
+    },
+    {
+      "id": "power_c",
+      "internal_name": "coal_power",
+      "recipe_key": "power",
+      "tile": "tile_22_3",
+      "allow_market_materials": true
+    },
+    {
+      "id": "power_d",
+      "internal_name": "coal_power",
+      "recipe_key": "power",
+      "tile": "tile_22_3",
       "allow_market_materials": true
     }
   ],
@@ -273,7 +303,7 @@
     {
       "id": "coal_mine_d",
       "good": "coal",
-      "dest": "tile_20_9"
+      "dest": "tile_22_3"
     },
     {
       "id": "steel_a",
@@ -359,6 +389,26 @@
       "id": "pig_iron_b",
       "good": "iron_ingots",
       "dest": "tile_26_5"
+    },
+    {
+      "id": "copper_ingots_c",
+      "good": "copper_ingots",
+      "dest": "tile_21_10"
+    },
+    {
+      "id": "copper_wiring_c",
+      "good": "copper_wiring",
+      "dest": "tile_25_6"
+    },
+    {
+      "id": "water_pump_b",
+      "good": "pure_water",
+      "dest": "tile_22_3"
+    },
+    {
+      "id": "water_pump",
+      "good": "pure_water",
+      "dest": "tile_20_9"
     }
   ],
   "surplus_sales": [
@@ -440,6 +490,18 @@
       "goods": [
         "steel",
         "copper_wiring"
+      ]
+    },
+    {
+      "id": "copper_ingots_c",
+      "goods": [
+        "copper_ore"
+      ]
+    },
+    {
+      "id": "copper_wiring_c",
+      "goods": [
+        "copper_ingots"
       ]
     }
   ]

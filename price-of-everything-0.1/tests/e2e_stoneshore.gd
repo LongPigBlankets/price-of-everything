@@ -812,7 +812,24 @@ func _build_transport_spine_from_config() -> void:
 		for tile_id in tiles:
 			await _build_infra_via_build_mode(infra_type, str(tile_id))
 
-	for tile_id in spine.get("cables", []):
+	# Cables accept the same "corridors" shorthand as roads/rails/pipes. Without it a
+	# scenario writing "cables": "corridors" silently iterated the STRING and tried to
+	# build on tiles named "c", "o", "r"... — and a power network only spans tiles that
+	# are actually cabled, so cabling the endpoints but not the corridor between them
+	# leaves each plant stranded on its own island.
+	var cables_spec = spine.get("cables", [])
+	var cable_tiles: Array = []
+	if typeof(cables_spec) == TYPE_STRING and str(cables_spec) == "corridors":
+		var seen_cable := {}
+		for path in resolved_corridors:
+			for tile_id in path:
+				if not seen_cable.has(str(tile_id)):
+					seen_cable[str(tile_id)] = true
+					cable_tiles.append(str(tile_id))
+	elif typeof(cables_spec) == TYPE_ARRAY:
+		for tile_id in cables_spec:
+			cable_tiles.append(str(tile_id))
+	for tile_id in cable_tiles:
 		await _build_infra_via_build_mode("cables", str(tile_id))
 
 
@@ -1632,8 +1649,10 @@ func _check_economy_end_state() -> void:
 		_check(MatchState.get_output_stockpile_destination(coal_mine_c, str(_goods.coal)) == "tile_20_9",
 			"coal output routed to power tile")
 	if coal_mine_d != "":
-		_check(MatchState.get_output_stockpile_destination(coal_mine_d, str(_goods.coal)) == "tile_20_9",
-			"second coal output routed to power tile")
+		# Generation is split across two cabled tiles (CABLE_POWER_CAP is per tile), so the
+		# second pair of plants sits on tile_22_3 and takes its coal on-site.
+		_check(MatchState.get_output_stockpile_destination(coal_mine_d, str(_goods.coal)) == "tile_22_3",
+			"second coal output routed to the second power tile")
 	if steel_a != "":
 		_check(MatchState.get_output_stockpile_destination(steel_a, str(_goods.steel)) == "tile_25_6",
 			"steel output routed to motor tile")
@@ -2063,7 +2082,18 @@ func _dump_chain_diagnostics() -> void:
 	rows.sort()
 	for r in rows:
 		print(r)
+	for t in ["tile_20_9", "tile_22_3", "tile_21_10", "tile_26_5", "tile_25_6"]:
+		var tot: Dictionary = Stockpile.get_tile_totals(t)
+		var n := 0
+		for g in tot:
+			n += int(tot[g])
+		print("[E2E]   stock %-11s %4d/%d units  %s" % [
+			t, n, Stockpile.get_capacity(t), tot])
 	print("[E2E]   tile stock 21_10=%s" % [Stockpile.get_tile_totals("tile_21_10")])
 	print("[E2E]   tile stock 26_5 =%s" % [Stockpile.get_tile_totals("tile_26_5")])
 	print("[E2E]   tile stock 25_6 =%s" % [Stockpile.get_tile_totals("tile_25_6")])
+	var sm: Dictionary = Production.last_turn_summary
+	print("[E2E]   power supply=%d demand=%d grid_bought=%d grid_sold=%d" % [
+		int(sm.get("power_supply", 0)), int(sm.get("power_demand", 0)),
+		int(sm.get("grid_bought", 0)), int(sm.get("grid_sold", 0))])
 	print("[E2E] --- end chain diagnostics ---")
