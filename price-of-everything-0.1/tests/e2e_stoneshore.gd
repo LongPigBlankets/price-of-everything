@@ -1592,6 +1592,7 @@ func _check_economy_end_state() -> void:
 	var coal_mine_d := _first_instance("coal_mine_d")
 	var steel_a := _first_instance("steel_a")
 	var wiring_a := _first_instance("copper_wiring_a")
+	_dump_chain_diagnostics()
 	_check(not summary.is_empty(), "production summary exists after E2E run")
 	_check(int(summary.get("power_demand", 0)) > 0, "power demand was transmitted through cabled tiles")
 	_check(int(summary.get("grid_bought", 0)) >= 0, "power grid settlement ran")
@@ -2029,3 +2030,40 @@ func _check(ok: bool, name: String) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  ", name)
+
+
+## Per-building state at the end of the run. Printed unconditionally before the chain
+## assertions so a production failure says WHY (starved of what / blocked by what) instead
+## of only that it happened — the log previously showed a bare "produced motors" FAIL with
+## nothing to act on.
+func _dump_chain_diagnostics() -> void:
+	var BuildingReadout := preload("res://scripts/building_readout.gd")
+	print("[E2E] --- chain diagnostics @ turn %d ---" % TurnManager.current_turn)
+	var rows: Array = []
+	for iid in MatchState.buildings:
+		var inst: Dictionary = MatchState.buildings[iid]
+		if not MatchState.is_player_owned(inst):
+			continue
+		var rid := str(inst.get("recipe_id", ""))
+		var rec: Dictionary = Catalog.get_recipe(rid)
+		var tile := str(inst.get("tile_id", ""))
+		var state := BuildingReadout.run_state(inst, rec, false)
+		var missing: Variant = Production.missing_by_building.get(str(iid), {})
+		var blocked: Variant = Production.blocked_reason_by_building.get(str(iid), "")
+		var miss_txt := ""
+		if missing is Array:
+			for m in missing:
+				miss_txt += "%s need %d have %d; " % [
+					str((m as Dictionary).get("internal_name", "")),
+					int((m as Dictionary).get("need", 0)), int((m as Dictionary).get("have", 0))]
+		rows.append("[E2E]   %-12s %-30s %-11s %-9s %s%s" % [
+			tile, str(rec.get("display_name", rid)).substr(0, 30), state,
+			str(inst.get("building_id", "")), miss_txt,
+			("BLOCKED=" + str((blocked as Dictionary).get("message", blocked)) if blocked else "")])
+	rows.sort()
+	for r in rows:
+		print(r)
+	print("[E2E]   tile stock 21_10=%s" % [Stockpile.get_tile_totals("tile_21_10")])
+	print("[E2E]   tile stock 26_5 =%s" % [Stockpile.get_tile_totals("tile_26_5")])
+	print("[E2E]   tile stock 25_6 =%s" % [Stockpile.get_tile_totals("tile_25_6")])
+	print("[E2E] --- end chain diagnostics ---")
