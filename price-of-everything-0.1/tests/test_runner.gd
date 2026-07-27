@@ -106,6 +106,7 @@ func _ready() -> void:
 	_test_input_buy_capacity_building_first()
 	_test_warehouse_upgrade()
 	_test_warehousing_fee_rates()
+	_test_two_part_freight_tariff()
 	_test_jit_streak_and_direct_feed()
 	_test_sell_protects_build_materials()
 	_test_auto_sell_goods()
@@ -4429,13 +4430,41 @@ func _test_sell_protects_build_materials() -> void:
 	Stockpile.clear_all()
 
 func _test_warehousing_fee_rates() -> void:
-	# Per-unit storage fee by transport class (owner spec): solids 0.01,
-	# safe/plain liquids 0.03, hazard liquids + gases 0.1.
-	_check(absf(EconomyConfig.warehousing_cost_per_unit("g_006") - 0.01) < 0.0001, "steel (solid_heavy) stores at 0.01/unit")
-	_check(absf(EconomyConfig.warehousing_cost_per_unit("g_027") - 0.01) < 0.0001, "plastics (solid_light) store at 0.01/unit")
-	_check(absf(EconomyConfig.warehousing_cost_per_unit("g_031") - 0.03) < 0.0001, "fuels (liquid) store at 0.03/unit")
-	_check(absf(EconomyConfig.warehousing_cost_per_unit("g_065") - 0.1) < 0.0001, "industrial acids (hazard_liquid) store at 0.1/unit")
-	_check(absf(EconomyConfig.warehousing_cost_per_unit("") - 0.01) < 0.0001, "unknown class falls back to the solid rate")
+	# Per-unit storage fee is a TWO-PART tariff by transport class (owner ruling 2026-07-27):
+	# flat floor-space leg + ad-valorem capital leg charged on this turn's decayed base price.
+	for pair in [["g_006", "solid_heavy", "steel"], ["g_027", "solid_heavy", "plastics"],
+			["g_031", "liquid", "fuels"], ["g_065", "hazard_liquid", "industrial acids"]]:
+		var gid := str(pair[0])
+		var band: Dictionary = EconomyConfig.WAREHOUSING_BY_CLASS[str(pair[1])]
+		var want: float = float(band["flat"]) + float(band["av"]) * MarketState.get_base_price_now(gid)
+		_check(absf(EconomyConfig.warehousing_cost_per_unit(gid) - want) < 0.0001,
+			"%s (%s) stores at flat %.3f + %.3f x base price" % [str(pair[2]), str(pair[1]), band["flat"], band["av"]])
+	_check(Catalog.get_transport_class("g_027") == "solid_heavy",
+		"plastics reclassified solid_light -> solid_heavy (resin pellets ship by bulk silo)")
+	_check(absf(EconomyConfig.warehousing_cost_per_unit("") - EconomyConfig.WAREHOUSING_BY_CLASS["solid_light"]["flat"]) < 0.0001,
+		"unknown good falls back to the solid_light FLAT leg only (no invented value basis)")
+
+func _test_two_part_freight_tariff() -> void:
+	# Freight is flat weight-class rate + ad-valorem leg (owner ruling 2026-07-27), so the
+	# burden stops collapsing to ~0.1% of value at the top of the chain. Valued on the
+	# decayed base price: no buy markup, no glut/deficit impact.
+	for gid in ["g_006", "g_038", "g_027"]:
+		var cls := Catalog.get_transport_class(gid)
+		var flat: float = EconomyConfig.transport_cost_per_unit_turn(cls)
+		var av: float = float(EconomyConfig.TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS[cls])
+		var want: float = flat + av * MarketState.get_base_price_now(gid)
+		_check(absf(EconomyConfig.transport_rate_for_good(gid) - want) < 0.0001,
+			"%s freight = flat %.3f + %.4f x base price" % [Catalog.get_internal_name(gid), flat, av])
+	_check(EconomyConfig.transport_rate_for_good("g_061")
+			> EconomyConfig.transport_cost_per_unit_turn(Catalog.get_transport_class("g_061")),
+		"a high-value good (iron_battery) is dearer to haul than its flat leg alone")
+	_check(absf(EconomyConfig.transport_rate_for_good("g_041")
+			- EconomyConfig.transport_cost_per_unit_turn(Catalog.get_transport_class("g_041"))) < 0.0001,
+		"solid_light (cpu) has a ZERO ad-valorem leg — electronics stay near-free to ship")
+	_check(absf(EconomyConfig.transport_rate_for_good("") - EconomyConfig.transport_cost_per_unit_turn("standard")) < 0.0001,
+		"unknown good falls back to the flat leg only")
+	_check(Catalog.get_transport_class("g_038") == "solid_heavy",
+		"glass reclassified solid_light -> solid_heavy (~2500 kg/m3, the densest thing in the chain)")
 
 func _test_warehouse_upgrade() -> void:
 	# Per-tile warehouse expansion paid in materials (owner spec 2026-07-09):

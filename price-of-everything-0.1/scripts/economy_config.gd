@@ -185,6 +185,27 @@ const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
 	"gas": 0.03,
 	"electricity": 0.02,
 }
+# AD-VALOREM component of the freight tariff: £/unit/turn per £1 of the good's value.
+# Real freight is a two-part tariff — a weight/volume charge plus insurance and handling
+# that scale with what the cargo is worth. With the flat rate alone, freight burden collapses
+# to ~0.1% of value at the top of the chain (heavy_vehicle) where reality is 2-5%, because
+# the class rates only span 3x while prices span 2280x. solid_light is deliberately 0.0 so
+# electronics stay near-free to ship, as they are in reality (CPUs go by air).
+# Valued at MarketState.get_base_price_now() — this turn's DECAYED base price, with no
+# buy-side markup and no glut/deficit impact (owner ruling 2026-07-27). Impact is excluded
+# on purpose: market-linking freight would make a flooded good cheaper to haul, partly
+# cancelling the price-impact penalty, and would make the quote unpredictable to plan against.
+const TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS := {
+	"standard": 0.004,
+	"solid_light": 0.0,
+	"solid_heavy": 0.008,
+	"ultra_heavy": 0.010,
+	"safe_liquid": 0.004,
+	"hazard_liquid": 0.006,
+	"liquid": 0.005,
+	"gas": 0.006,
+	"electricity": 0.0,
+}
 
 # Per-mode multiplier on the weight-class rate. Rail is half the per-unit cost of
 # roads/overland (and also faster — see infrastructure.csv range 4 vs 2).
@@ -241,16 +262,38 @@ const WAREHOUSE_UPGRADE_COSTS := {
 # (owner spec 2026-07-09, part of the recipes-vs-overheads rebalance). Solids rack
 # cheaply; liquids need tankage; hazardous liquids and gases need certified
 # pressure storage. Goods in transit, overflow-hold or JIT feed pay nothing.
-const WAREHOUSING_COST_PER_UNIT_BY_CLASS := {
-	"solid_light": 0.01, "solid_heavy": 0.01, "ultra_heavy": 0.01,
-	"safe_liquid": 0.03, "liquid": 0.03,
-	"hazard_liquid": 0.1, "gas": 0.1,
+#
+# TWO-PART TARIFF (owner ruling 2026-07-27): flat + ad-valorem, the same shape as freight.
+# A flat-only rate can only be correct at ONE price point — at 0.03 flat, coal pays for its
+# own value in 13 turns while an ice_car takes 3410, so a hoarder sitting on £56k of CPUs
+# paid the same as one sitting on £320 of coal. Real inventory carrying cost is 15-25%/yr
+# OF VALUE across commodities, because cost of capital dominates physical storage. The
+# ad-valorem term compresses that 262x spread to ~12x while costing the tutorial cluster
+# the same as flat-0.03 did (measured: £2.41/turn on its 80-unit buffer, 14%/yr of the
+# inventory's value, 1.1% of revenue — real-world warehousing is 1-2% of revenue).
+# `flat` is the floor-space/handling leg, `av` the capital/insurance leg.
+const WAREHOUSING_BY_CLASS := {
+	"solid_light":   {"flat": 0.010, "av": 0.004},  # small footprint, but secure + insured
+	"solid_heavy":   {"flat": 0.020, "av": 0.004},  # racking + floor loading — the workhorse
+	"ultra_heavy":   {"flat": 0.060, "av": 0.004},  # a parked car or turbine eats floor area
+	"safe_liquid":   {"flat": 0.015, "av": 0.002},  # tankage: capital-heavy, cheap per unit
+	"liquid":        {"flat": 0.025, "av": 0.003},
+	"hazard_liquid": {"flat": 0.100, "av": 0.006},  # bunded, ventilated, licensed storage
+	"gas":           {"flat": 0.120, "av": 0.006},  # pressure vessels + boil-off losses
 }
 
 func warehousing_cost_per_unit(good_id: String) -> float:
-	return float(WAREHOUSING_COST_PER_UNIT_BY_CLASS.get(
-		Catalog.get_transport_class(good_id),
-		WAREHOUSING_COST_PER_UNIT_BY_CLASS["solid_light"]))
+	var band: Dictionary = WAREHOUSING_BY_CLASS.get(
+		Catalog.get_transport_class(good_id), WAREHOUSING_BY_CLASS["solid_light"])
+	return float(band["flat"]) + float(band["av"]) * good_value_basis(good_id)
+
+## The value a two-part tariff (freight or storage) charges against: this turn's DECAYED
+## base price — no buy-side markup, no glut/deficit impact. Returns 0.0 for an unknown or
+## empty good so both tariffs fall back to their flat leg rather than an invented value.
+func good_value_basis(good_id: String) -> float:
+	if good_id == "" or Catalog.get_good(good_id).is_empty():
+		return 0.0
+	return MarketState.get_base_price_now(good_id)
 
 # --- Loans ---
 # Capacity is no longer a flat ceiling. It STARTS at the base below and scales with
@@ -321,17 +364,24 @@ func transport_cost_per_unit_turn(weight_class: String) -> float:
 		TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS[DEFAULT_TRANSPORT_WEIGHT_CLASS]
 	))
 
-func transport_cost_for(good_id: String, qty: int, transport_turns: int, mode_mult: float = 1.0) -> float:
+## The full two-part freight rate for one unit of `good_id` for one turn-move:
+## the weight-class flat leg plus the ad-valorem leg charged against this turn's
+## decayed base price. See TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS for why both exist.
+func transport_rate_for_good(good_id: String) -> float:
 	var weight_class := Catalog.get_transport_class(good_id)
-	return float(qty) * float(maxi(transport_turns, 0)) * transport_cost_per_unit_turn(weight_class) * mode_mult
+	var av: float = float(TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS.get(
+		weight_class, TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS[DEFAULT_TRANSPORT_WEIGHT_CLASS]))
+	return transport_cost_per_unit_turn(weight_class) + av * good_value_basis(good_id)
+
+func transport_cost_for(good_id: String, qty: int, transport_turns: int, mode_mult: float = 1.0) -> float:
+	return float(qty) * float(maxi(transport_turns, 0)) * transport_rate_for_good(good_id) * mode_mult
 
 func transport_cost_for_route(good_id: String, qty: int, route: Dictionary) -> float:
 	# Leg-aware cost. Each leg is one turn-move; pipe legs charge the flat liquid rate,
 	# rail/road legs charge weight-class * mode multiplier. Falls back to a turns-based
 	# overland charge when the route has no infra legs (straight-line haul).
 	var legs: Array = route.get("legs", [])
-	var weight_class := Catalog.get_transport_class(good_id)
-	var class_rate := transport_cost_per_unit_turn(weight_class)
+	var class_rate := transport_rate_for_good(good_id)
 	if legs.is_empty():
 		var turns: int = int(route.get("turns", 0))
 		return float(qty) * float(maxi(turns, 0)) * class_rate
