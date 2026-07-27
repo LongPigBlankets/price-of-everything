@@ -76,6 +76,16 @@ func record_drawn(tile_id: String, amount: int) -> void:
 	tile_drawn[tile_id] = int(tile_drawn.get(tile_id, 0)) + amount
 	add_demand(amount)
 
+## A tile's cable level (0 = uncabled). Public so the building-detail diagnostics can tell
+## "upgrade your cables" from "this tile is already at the maximum".
+func cable_level(tile_id: String) -> int:
+	return _tile_cable_level(tile_id)
+
+## True when this tile's cables are at the highest level the cap table defines — there is
+## no upgrade left to suggest.
+func cable_level_is_max(tile_id: String) -> bool:
+	return _tile_cable_level(tile_id) >= EconomyConfig.CABLE_POWER_CAP.size()
+
 func _tile_cable_level(tile_id: String) -> int:
 	var hex_map = get_tree().get_first_node_in_group("hex_map") if get_tree() else null
 	if hex_map == null:

@@ -2096,4 +2096,11 @@ func _dump_chain_diagnostics() -> void:
 	print("[E2E]   power supply=%d demand=%d grid_bought=%d grid_sold=%d" % [
 		int(sm.get("power_supply", 0)), int(sm.get("power_demand", 0)),
 		int(sm.get("grid_bought", 0)), int(sm.get("grid_sold", 0))])
+	var series := ""
+	for i in range(_profit_by_turn.size()):
+		var e: Dictionary = _profit_by_turn[i]
+		var t := int(e.get("turn", 0))
+		if t % 10 == 0 or t == 1:
+			series += "t%d=%+.0f " % [t, float(e.get("profit", 0.0))]
+	print("[E2E]   post-tax profit by turn: %s" % series)
 	print("[E2E] --- end chain diagnostics ---")

@@ -9335,15 +9335,36 @@ func _test_building_diagnostics() -> void:
 	var titles: Array = []
 	for r in rows:
 		titles.append(str(r.get("label", "")))
-	_check(titles.has("Cannot push power"), "diagnostics: grid-blocked plant shows 'Cannot push power' fault")
-	_check(titles.has("Cables overloaded"), "diagnostics: grid-blocked plant shows the cables-overloaded row")
+	_check(titles.has("Power output capped"), "diagnostics: cable-capped plant shows the 'Power output capped' row")
 	_check(not titles.has("Generating power"), "diagnostics: blocked plant doesn't claim to be generating")
+	# AMBER, not red — the plant is throttled, not faulted.
+	var capped_tone := ""
+	var capped_detail := ""
+	for r in rows:
+		if str(r.get("label", "")) == "Power output capped":
+			capped_tone = str(r.get("tone", ""))
+			capped_detail = str(r.get("detail", ""))
+	_check(capped_tone == "warn", "diagnostics: the cable cap reads amber, not a critical fault")
+	_check(capped_detail.begins_with("Power output capped because of cabling."),
+		"diagnostics: cable-cap detail leads with the cause")
+	_check(capped_detail.contains("MW produced"), "diagnostics: cable-cap detail reports produced/capacity")
+	# The plant's run_state is "restarting" (its power "input" is unmet), and the cap row
+	# must WIN that race — otherwise a permanently throttled plant cheerfully reports
+	# "Starting — production begins next turn" forever.
+	_check(not titles.has("Starting"), "diagnostics: the cable cap outranks the 'Starting' row")
+	# Below max cable level the advice is actionable; at max there is nothing to upgrade.
+	if Power.cable_level_is_max("tile_9_9"):
+		_check(capped_detail.ends_with("Max power capacity reached for this tile."),
+			"diagnostics: at max cable level the row stops offering an upgrade")
+	else:
+		_check(capped_detail.ends_with("Upgrade cables to increase tile capacity."),
+			"diagnostics: below max cable level the row tells the player to upgrade")
 	Production.missing_by_building.erase("diag_plant")
 	rows = readout.diagnostics(plant, Catalog.get_recipe("r_004"), Catalog.get_building("b_003"), false)
 	titles = []
 	for r in rows:
 		titles.append(str(r.get("label", "")))
-	_check(not titles.has("Cables overloaded"), "diagnostics: unblocked plant has no cables row")
+	_check(not titles.has("Power output capped"), "diagnostics: unblocked plant has no cable-cap row")
 
 	# Non-power producer on a FULL tile warehouse → stockpile over-utilised row.
 	var mill := {"instance_id": "diag_mill", "tile_id": "tile_8_8", "building_id": "b_002", "recipe_id": "r_002", "level": 1, "owner": "player_1"}
