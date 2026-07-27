@@ -297,7 +297,12 @@ func _process_production() -> void:
 			# Route output: power goes to Power supply (per-tile, capped), else Stockpile
 			var output_name: String = recipe.get("output_name", "")
 			if output_name == "power":
-				var output_qty: int = _effective_power_output(building, recipe)
+				# Derate to the tile's remaining cable headroom when the plant slightly
+				# overshoots it (Power.producible_amount). Everything downstream — the
+				# summary, the Greenest denominator, the per-quality split — reads this
+				# already-capped figure, so nothing books power that never reached the wire.
+				var output_qty: int = Power.producible_amount(
+					str(building.get("tile_id", "")), _effective_power_output(building, recipe))
 				Power.record_produced(str(building.get("tile_id", "")), output_qty)
 				summary.produced["power"] = summary.produced.get("power", 0) + output_qty
 				# Greenest victory track: attribute generation to its building type. The
@@ -1926,7 +1931,8 @@ func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
 		elif draw > 0 and not Power.can_draw(tile_id, draw):
 			missing.append({"good_id": "power", "internal_name": "power",
 				"need": draw, "have": Power.tile_power_cap(tile_id)})
-		elif produces_power and not Power.can_produce(tile_id, power_out):
+		elif produces_power and Power.producible_amount(tile_id, power_out) <= 0:
+			# Blocked outright: the overshoot is too big to derate into the headroom.
 			missing.append({"good_id": "power", "internal_name": "power",
 				"need": power_out, "have": Power.tile_power_cap(tile_id)})
 

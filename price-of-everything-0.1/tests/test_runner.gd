@@ -258,6 +258,7 @@ func _ready() -> void:
 	_test_cfo_tax_credit()
 	_test_policy_state()
 	_test_insider_tip()
+	_test_partial_power_dispatch()
 	_test_building_diagnostics()
 	_test_infra_upgrade()
 	if not _failed_names.is_empty():
@@ -9321,6 +9322,26 @@ func _test_insider_tip() -> void:
 	PolicyState._insider_tip_fired = false
 	MatchState.advisor_seats = seats_before
 	TurnManager.current_turn = turn_before
+
+func _test_partial_power_dispatch() -> void:
+	# PARTIAL DISPATCH (owner ruling): a generator that slightly overshoots its tile's
+	# remaining cable headroom runs DERATED into the gap; a bigger overshoot doesn't run.
+	# Tested through the pure decision so it needs no cabled fixture tile.
+	var tol: float = Power.PARTIAL_DISPATCH_TOLERANCE
+	_check(Power.dispatchable(600, 2000) == 600, "a plant well under the headroom dispatches in full")
+	_check(Power.dispatchable(600, 600) == 600, "an exact fit dispatches in full")
+	# 620 into 600 headroom: overshoot 20 = 3.2% of output -> derate to 600.
+	_check(Power.dispatchable(620, 600) == 600,
+		"a small overshoot derates to the headroom instead of idling the plant")
+	# 800 into 600: overshoot 200 = 25% of output -> at the tolerance, refuse.
+	_check(Power.dispatchable(800, 600) == 0,
+		"an overshoot AT the %d%% tolerance does not run" % int(tol * 100.0))
+	# 690 into 620 (the e2e's real case): overshoot 70 = 10.1% -> derate.
+	_check(Power.dispatchable(690, 620) == 620,
+		"the e2e's stranded 3rd plant now fills its tile's remaining 620 MW")
+	_check(Power.dispatchable(690, 0) == 0, "a full tile dispatches nothing")
+	_check(Power.dispatchable(0, 2000) == 0, "a zero-output building dispatches nothing")
+	_check(Power.dispatchable(690, -50) == 0, "negative headroom dispatches nothing")
 
 func _test_building_diagnostics() -> void:
 	# New BDP diagnostics: cable-overload for power producers, stockpile-over-utilised

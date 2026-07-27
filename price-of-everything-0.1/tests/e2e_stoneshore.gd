@@ -121,12 +121,14 @@ func _run() -> void:
 	_check(int(TransportService.route("tile_21_10", "tile_25_6", _goods.copper_wiring).get("turns", 999)) < (1 << 30),
 		"copper-to-motor rail route is reachable")
 
+	_apply_scenario_unlocks()
 	await _build_supply_chain_from_config()
 	_configure_output_routes_from_config()
 	_configure_surplus_sales_from_config()
 	_configure_tile_only_inputs_from_config()
 	await _advance_until_no_construction(14)
 	_check(Construction.construction_projects.is_empty(), "all scenario construction projects completed")
+	_load_battery_cells_from_config()   # a battery store has no cell slots until it is BUILT
 	_check(MatchState.buildings.size() >= 24, "scenario has a live multi-building industrial base")
 
 	_cash_after_buildout = MatchState.money
@@ -932,7 +934,7 @@ func _reset_autoloads() -> void:
 func _resolve_catalog_ids() -> void:
 	for internal in ["coal", "iron_ore", "copper_ore", "iron_ingots", "copper_ingots",
 			"steel", "copper_wiring", "motor", "pure_water", "basic_salt",
-			"chem_salts", "chlorine", "sodium_hydroxide"]:
+			"chem_salts", "chlorine", "sodium_hydroxide", "lithium_battery"]:
 		var good := Catalog.get_good_by_internal_name(internal)
 		_check(not good.is_empty(), "catalog good exists: %s" % internal)
 		_goods[internal] = str(good.get("id", ""))
@@ -954,6 +956,10 @@ func _resolve_catalog_ids() -> void:
 	_recipes.motor = _recipe_for("industrial_factory", "motor", "Motor")
 	_recipes.chlorine = _recipe_for("chem_plant", "chlorine", "Chlor")
 	_recipes.power = _recipe_for("coal_power", "power", "Power")
+	# Wind variant (open_field_wind): onshore generation + battery firming. Resolved
+	# unconditionally so a missing catalog entry fails loudly in every scenario.
+	_recipes.onshore_wind = _recipe_for("onshore_wind_farm", "power", "Onshore")
+	_recipes.battery_storage = _recipe_for("battery", "", "Battery Storage")
 	for key in _recipes.keys():
 		_check(str(_recipes[key]) != "", "scenario recipe resolved: %s -> %s" % [str(key), str(_recipes[key])])
 
@@ -1645,14 +1651,14 @@ func _check_economy_end_state() -> void:
 	if coal_mine_a != "":
 		_check(MatchState.get_output_stockpile_destination(coal_mine_a, str(_goods.coal)) == "tile_26_5",
 			"coal output routed to iron/steel tile")
-	if coal_mine_c != "":
-		_check(MatchState.get_output_stockpile_destination(coal_mine_c, str(_goods.coal)) == "tile_20_9",
-			"coal output routed to power tile")
-	if coal_mine_d != "":
-		# Generation is split across two cabled tiles (CABLE_POWER_CAP is per tile), so the
-		# second pair of plants sits on tile_22_3 and takes its coal on-site.
-		_check(MatchState.get_output_stockpile_destination(coal_mine_d, str(_goods.coal)) == "tile_22_3",
-			"second coal output routed to the second power tile")
+	# Assert the scenario's OWN declared routing was applied, rather than a hardcoded
+	# topology — the wind variant has no coal plants and sends all coal to smelting.
+	for logical in ["coal_mine_c", "coal_mine_d"]:
+		var iid := _first_instance(logical)
+		var want := _declared_route(logical, "coal")
+		if iid != "" and want != "" and want != "market":
+			_check(MatchState.get_output_stockpile_destination(iid, str(_goods.coal)) == want,
+				"%s coal routed to its declared destination %s" % [logical, want])
 	if steel_a != "":
 		_check(MatchState.get_output_stockpile_destination(steel_a, str(_goods.steel)) == "tile_25_6",
 			"steel output routed to motor tile")
@@ -2104,3 +2110,39 @@ func _dump_chain_diagnostics() -> void:
 			series += "t%d=%+.0f " % [t, float(e.get("profit", 0.0))]
 	print("[E2E]   post-tax profit by turn: %s" % series)
 	print("[E2E] --- end chain diagnostics ---")
+
+
+## Free research unlocks a scenario grants up front (JSON "unlocks": ["Title", ...]).
+## The wind variant uses this for "Lithium Battery Storage" so its battery stores have a
+## legal cell type; Battery Storage accepts ANY ONE of its catalyst goods, not all three.
+func _apply_scenario_unlocks() -> void:
+	for title in _scenario.get("unlocks", []):
+		MatchState.unlocked_titles[str(title)] = true
+		_check(MatchState.unlocked_titles.has(str(title)), "scenario unlock granted: %s" % str(title))
+	if not (_scenario.get("unlocks", []) as Array).is_empty():
+		Modifiers.reapply_unlock_modifiers(MatchState.unlocked_titles)
+
+
+## Battery stores are inert until cells are loaded into their slots. JSON:
+##   "battery_cells": [{"tile": "tile_20_9", "good": "lithium_battery", "qty": 40}]
+func _load_battery_cells_from_config() -> void:
+	for entry in _scenario.get("battery_cells", []):
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var tile_id := str((entry as Dictionary).get("tile", ""))
+		var good_id := _good_id(str((entry as Dictionary).get("good", "")))
+		var qty := int((entry as Dictionary).get("qty", 0))
+		if tile_id == "" or good_id == "" or qty <= 0:
+			continue
+		Stockpile.add(tile_id, good_id, qty)
+		var loaded := MatchState.load_battery_cells(tile_id, good_id, qty)
+		_check(loaded > 0, "battery cells loaded on %s: %d x %s" % [tile_id, loaded, str((entry as Dictionary).get("good", ""))])
+
+
+## The destination a scenario DECLARED for a logical building's good ("" if it declares none).
+func _declared_route(logical_id: String, good_internal: String) -> String:
+	for e in _scenario.get("output_routes", []):
+		if typeof(e) == TYPE_DICTIONARY and str((e as Dictionary).get("id", "")) == logical_id \
+				and str((e as Dictionary).get("good", "")) == good_internal:
+			return str((e as Dictionary).get("dest", ""))
+	return ""

@@ -52,9 +52,31 @@ func tile_power_cap(tile_id: String) -> int:
 
 ## True if the tile can still produce `amount` more power this turn (export cap).
 func can_produce(tile_id: String, amount: int) -> bool:
-	if amount <= 0:
-		return true
-	return int(tile_produced.get(tile_id, 0)) + amount <= tile_power_cap(tile_id)
+	return producible_amount(tile_id, amount) > 0 or amount <= 0
+
+## How much of `amount` a generator on this tile may actually put on the wire this turn.
+## PARTIAL DISPATCH (owner ruling 2026-07-27): a plant whose output slightly overshoots the
+## tile's remaining cable headroom runs DERATED to fill the gap rather than idling — but only
+## while the shortfall is under PARTIAL_DISPATCH_TOLERANCE of its own output. Past that it
+## does not run at all, so a tile can't be packed with plants each contributing a sliver.
+##   returns `amount` (fits) · the remaining headroom (small overshoot) · 0 (won't run)
+## Before this, dispatch was all-or-nothing: two 690 MW plants filled 1380 of a 2000 cap and
+## a third simply never started, stranding 620 MW of headroom while paying full upkeep.
+const PARTIAL_DISPATCH_TOLERANCE: float = 0.25
+
+func producible_amount(tile_id: String, amount: int) -> int:
+	return dispatchable(amount, tile_power_cap(tile_id) - int(tile_produced.get(tile_id, 0)))
+
+## The partial-dispatch decision on its own, free of tile lookups so it is directly testable:
+## full output when it fits, the headroom when the overshoot is under the tolerance, else 0.
+static func dispatchable(amount: int, headroom: int) -> int:
+	if amount <= 0 or headroom <= 0:
+		return 0
+	if amount <= headroom:
+		return amount
+	if float(amount - headroom) < PARTIAL_DISPATCH_TOLERANCE * float(amount):
+		return headroom
+	return 0
 
 ## True if the tile can still draw `amount` more power this turn (import cap).
 func can_draw(tile_id: String, amount: int) -> bool:
