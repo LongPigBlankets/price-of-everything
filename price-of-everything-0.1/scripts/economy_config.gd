@@ -56,46 +56,50 @@ const MAX_PRICE_IMPACT_PCT: int = 10
 # once it crosses multiples of the good's BASE OUTPUT (the largest per-turn
 # output among active recipes producing it, L1 unmodified —
 # Catalog.base_output_for_good). E.g. copper wiring, base output 32:
-#   64 units  (2x) → 0.33 %/turn
-#   128 units (4x) → 0.99 %/turn
-#   320 units (10x) → 2.97 %/turn
+#   65 units  (>2x)  → 0.1 %/turn
+#   129 units (>4x)  → 0.2 %/turn
+#   321 units (>10x) → 0.5 %/turn
 # Net selling pushes the price DOWN (glut), net buying UP (deficit). The
 # accumulated impact is capped at ±PRICE_IMPACT_CAP_PCT and, while volume stays
-# at or under 1x, recovers toward 0 by price_impact_recovery() per turn. The
+# at or under 2x, recovers toward 0 by price_impact_recovery() per turn. The
 # impact multiplies the good's decayed base price, so it stacks on top of the
 # normal per-turn drift. Thresholds are STATIC for now; later they scale with
 # expected output every 10 turns. Goods with no active producing recipe have no
 # base output and take no impact.
-const PRICE_IMPACT_CAP_PCT: float = 50.0
+const PRICE_IMPACT_CAP_PCT: float = 40.0
 const PRICE_IMPACT_RECOVERY_PCT: float = 0.1
-# CONTINUOUS response (owner ruling 2026-07-27), replacing the old 2x/3x/4x bands.
-# The bands SATURATED: >4x was the top, so 4.1x and 50x accrued the same 0.4%/turn and
-# flooding had no marginal cost. Worse, 0.4%/turn was only twice the free passive decay
-# (windows 0.2%/turn), so 125 turns of maximum overproduction were needed to reach the cap
-# — overproduction was effectively unpunished on any playable timescale.
-#   rate = K x (volume / base_output - 1),  unbounded above
-# K = 0.33 puts 4x at ~1%/turn (-20% in 20 turns — felt within a session, survivable if you
-# correct), 10x at ~3%/turn, 50x at ~16%/turn (price collapses in a turn, as flooding should).
-# The response is SYMMETRIC: net buying pushes price UP at the same rate, so an empire that
-# scales into being the marginal buyer of its own inputs feels integration pressure from the
-# market rather than from a hand-set bonus.
-const PRICE_IMPACT_K: float = 0.33
-# Recovery scales with the accumulated impact. A flat 0.1%/turn against a curve that can
-# accrue 16%/turn would be a one-way ratchet: a single overbuild would pin a good at the
-# -50% floor for 500 turns. This unwinds a capped good in ~19 turns instead.
-const PRICE_IMPACT_RECOVERY_SCALE: float = 0.05
+# BANDED response, thresholds spaced out (owner ruling 2026-07-27). The bands are back —
+# the continuous curve bit far too early in practice: a normal 3-factory chain sells 3x one
+# building's batch, which crushed motors to the -48% floor over 75 turns purely for being
+# a normal size. Volume must be genuinely excessive before the market notices:
+#     > 2x  base output -> 0.1 %/turn   (a nudge — you are now moving this market)
+#     > 4x               -> 0.2 %/turn
+#     >10x               -> 0.5 %/turn  (flooding; hits the -40% cap in 80 turns)
+# base_output is the largest per-turn batch among active recipes producing the good
+# (Catalog.base_output_for_good), so the thresholds rescale with any recipe rebalance.
+const PRICE_IMPACT_RATE_2X: float = 0.1
+const PRICE_IMPACT_RATE_4X: float = 0.2
+const PRICE_IMPACT_RATE_10X: float = 0.5
 
 ## %/turn accrual for one turn's net player market volume in one good.
 func price_impact_rate(net_volume: int, base_output: int) -> float:
 	if base_output <= 0:
 		return 0.0
-	var ratio := float(absi(net_volume)) / float(base_output)
-	return maxf(0.0, PRICE_IMPACT_K * (ratio - 1.0))
+	var v := float(absi(net_volume))
+	if v > 10.0 * float(base_output):
+		return PRICE_IMPACT_RATE_10X
+	if v > 4.0 * float(base_output):
+		return PRICE_IMPACT_RATE_4X
+	if v > 2.0 * float(base_output):
+		return PRICE_IMPACT_RATE_2X
+	return 0.0
 
 ## %/turn a good's accumulated impact bleeds back toward 0 while its volume is under the
-## bite. Deeper impacts unwind faster so the curve can't ratchet.
-func price_impact_recovery(current_pct: float) -> float:
-	return PRICE_IMPACT_RECOVERY_PCT + PRICE_IMPACT_RECOVERY_SCALE * absf(current_pct)
+## bite. FLAT: the depth-scaled recovery that guarded against a ratchet is unnecessary now
+## accrual tops out at 0.5%/turn, and at these rates scaling it would invert the incentive —
+## recovery would outrun accrual and reward pulsing production on and off.
+func price_impact_recovery(_current_pct: float) -> float:
+	return PRICE_IMPACT_RECOVERY_PCT
 
 # Market spread: buying a unit costs the sale price plus this markup.
 const MARKET_BUY_MARKUP: float = 0.05

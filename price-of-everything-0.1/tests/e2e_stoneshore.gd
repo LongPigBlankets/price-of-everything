@@ -2109,6 +2109,21 @@ func _dump_chain_diagnostics() -> void:
 		if t % 10 == 0 or t == 1:
 			series += "t%d=%+.0f " % [t, float(e.get("profit", 0.0))]
 	print("[E2E]   post-tax profit by turn: %s" % series)
+	print("[E2E]   COSTS  sales=%.0f pwrSell=%.0f | inputs=%.0f labour=%.0f maint=%.0f trans=%.0f whse=%.0f tax=%.0f div=%.0f co2=%.0f int=%.0f" % [
+		float(sm.get("goods_sales_revenue", 0.0)), float(sm.get("power_sales_revenue", 0.0)),
+		float(sm.get("goods_purchased_cost", 0.0)), float(sm.get("labour_paid", 0.0)),
+		float(sm.get("maintenance_paid", 0.0)), float(sm.get("transport_paid", 0.0)),
+		float(sm.get("warehousing_paid", 0.0)), float(sm.get("taxes_paid", 0.0)),
+		float(sm.get("dividends_paid", 0.0)), float(sm.get("carbon_tax_paid", 0.0)),
+		float(sm.get("interest_paid", 0.0))])
+	for gi in ["motor", "coal", "steel", "iron_ingots", "copper_wiring"]:
+		var g := Catalog.get_good_by_internal_name(gi)
+		var gid := str(g.get("id", ""))
+		if gid == "":
+			continue
+		print("[E2E]   PRICE %-14s base_now %7.3f  impact %+6.2f%%  effective %7.3f  (base_output %d)" % [
+			gi, MarketState.get_base_price_now(gid), MarketState.get_impact_pct(gid),
+			MarketState.get_price(gid), Catalog.base_output_for_good(gid)])
 	print("[E2E] --- end chain diagnostics ---")
 
 

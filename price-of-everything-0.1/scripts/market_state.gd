@@ -79,13 +79,14 @@ func record_market_buy_volume(good_id: String, qty: int) -> void:
 		return
 	_turn_bought[good_id] = int(_turn_bought.get(good_id, 0)) + qty
 
-## The 2x/3x/4x per-turn volume thresholds for a good, or [] when the good has
+## The 2x/4x/10x per-turn volume thresholds for a good, or [] when the good has
 ## no active producing recipe (no base output → no impact).
 func impact_thresholds(good_id: String) -> PackedInt32Array:
 	var base_out := Catalog.base_output_for_good(good_id)
 	if base_out <= 0:
 		return PackedInt32Array()
-	return PackedInt32Array([base_out * 2, base_out * 3, base_out * 4])
+	# Must track EconomyConfig.price_impact_rate's bands: 2x / 4x / 10x.
+	return PackedInt32Array([base_out * 2, base_out * 4, base_out * 10])
 
 func get_buy_price(good_id: String) -> float:
 	# The price you PAY to buy a unit from the market — the sale price plus the
