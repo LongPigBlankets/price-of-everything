@@ -4139,13 +4139,26 @@ func update_transport_congestion() -> void:
 ## base Level-1 cap (a fixed buffer, regardless of the tile's infra level). Drives the
 ## +100% (tier 1) / +200% (tier 2) transport-cost penalty.
 func route_congestion_tier(route_data: Dictionary) -> int:
+	return int(route_congestion(route_data).get("tier", 0))
+
+## Congestion tier PLUS the headroom that governs how many units escape the penalty.
+## MARGINAL pricing (owner ruling 2026-07-27): only the units ABOVE a congested link's
+## remaining capacity pay the surcharge, not the whole shipment. The old whole-route
+## multiplier was a cliff — 301 units on a 300-cap link doubled the cost of all 301, and
+## a single congested leg penalised every other leg of the journey. Upgrading infra does
+## NOT make freight cheaper per unit (owner ruling); it raises the cap, so more of the
+## shipment rides at the base rate. Returns {tier, headroom}: headroom is the tightest
+## remaining capacity across the route's capped links (0 when already at or over cap).
+func route_congestion(route_data: Dictionary) -> Dictionary:
+	var clear := {"tier": 0, "headroom": 0}
 	if _last_link_flow.is_empty():
-		return 0
+		return clear
 	var tiles: Array = route_data.get("tiles", [])
 	var legs: Array = route_data.get("legs", [])
 	if tiles.is_empty() or legs.is_empty():
-		return 0
+		return clear
 	var worst := 0
+	var headroom := -1.0
 	var idx := 0
 	for leg in legs:
 		var start := idx
@@ -4166,7 +4179,11 @@ func route_congestion_tier(route_data: Dictionary) -> int:
 					worst = maxi(worst, 2)
 				elif flow > cap:
 					worst = maxi(worst, 1)
-	return worst
+				var link_headroom := maxf(0.0, cap - flow)
+				headroom = link_headroom if headroom < 0.0 else minf(headroom, link_headroom)
+	if worst == 0:
+		return clear
+	return {"tier": worst, "headroom": int(maxf(0.0, headroom))}
 
 func enable_sell_surplus(tile_id: String) -> void:
 	if tile_id == "" or sell_surplus_tiles.has(tile_id):

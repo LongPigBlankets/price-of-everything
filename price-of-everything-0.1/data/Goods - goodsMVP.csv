@@ -9,7 +9,7 @@ g_007,copper_wiring,Copper Wiring,metals,solid_heavy,,,,intermediate,0.001,3.83,
 g_008,motor,Motor,electronics,ultra_heavy,,,,intermediate,0.001,9.396,TRUE,TRUE,0,no,0,intermediate
 g_009,pure_water,Pure Water,chems,safe_liquid,,,,raw,0.001,0.444,TRUE,TRUE,0,no,0,raw
 g_010,power,Power,energy,electricity,,,,power,0,0.1,TRUE,TRUE,0,yes,0,intermediate
-g_011,oxygen,Oxygen,chems,hazard_liquid,,,,intermediate,0.001,0.25,TRUE,TRUE,0,no,0,processed
+g_011,oxygen,Oxygen,chems,safe_liquid,,,,intermediate,0.001,0.25,TRUE,TRUE,0,no,0,processed
 g_012,chlorine,Chlorine,chems,hazard_liquid,,,,intermediate,0.001,0.72,TRUE,TRUE,0,no,0,processed
 g_013,sodium_hydroxide,Sodium Hydroxide,chems,hazard_liquid,,,,intermediate,0.001,0.8,TRUE,TRUE,0,no,0,processed
 g_014,hydrogen,Hydrogen,chems,hazard_liquid,,,,intermediate,0.001,3.3,TRUE,TRUE,0,no,0,processed
@@ -22,9 +22,9 @@ g_020,silica,Silica,chems,solid_heavy,1,1,vehicle,intermediate,0.002,2.653,TRUE,
 g_021,copper_pipe,Copper Pipe,construction,solid_heavy,1,1,vehicle,intermediate,0.002,3.018,TRUE,TRUE,0,no,0,intermediate
 g_022,bauxite_ore,Bauxite Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,1.15,TRUE,TRUE,0,no,0,raw
 g_023,building_frame,Building Frame,construction,ultra_heavy,1,1,vehicle,finished,0.005,14.663,TRUE,TRUE,0,no,0,finished
-g_024,ethylene,Ethylene,petrochem,gas,2,1,pipe,intermediate,0.002,3.842,TRUE,TRUE,0,no,1.0,processed
-g_025,processed_oil,Processed Oil,petrochem,liquid,1,1,pipe,intermediate,0.002,2.655,TRUE,TRUE,0,no,2.7,processed
-g_026,crude_oil,Crude Oil,petrochem,liquid,2,1,pipe,raw,0.005,1.066,TRUE,TRUE,0,yes,0.1,raw
+g_024,ethylene,Ethylene,petrochem,hazard_liquid,2,1,pipe,intermediate,0.002,3.842,TRUE,TRUE,0,no,1.0,processed
+g_025,processed_oil,Processed Oil,petrochem,safe_liquid,1,1,pipe,intermediate,0.002,2.655,TRUE,TRUE,0,no,2.7,processed
+g_026,crude_oil,Crude Oil,petrochem,safe_liquid,2,1,pipe,raw,0.005,1.066,TRUE,TRUE,0,yes,0.1,raw
 g_027,plastics,Plastics,petrochem,solid_heavy,1,1,vehicle,finished,0.0005,5.16,TRUE,TRUE,0,no,0,intermediate
 g_028,rubber,Rubber,petrochem,solid_heavy,1,1,vehicle,finished,0.0005,3.888,TRUE,TRUE,0,no,0,intermediate
 g_029,aluminium,Aluminium,metals,solid_heavy,1,1,vehicle,intermediate,0.002,5.691,TRUE,TRUE,0.15,no,0,intermediate
@@ -66,7 +66,7 @@ g_064,fertilisers,Fertilisers,agribio,solid_heavy,1,1,vehicle,intermediate,0.002
 g_065,industrial_acids,Industrial Acids,chems,hazard_liquid,1,1,pipe,intermediate,0.001,3.47,TRUE,TRUE,0,no,0,processed
 g_066,graphite,Graphite,chems,solid_heavy,1,1,vehicle,intermediate,0.002,9.071,TRUE,TRUE,0,no,0,processed
 g_067,scrap,Scrap Metal,metals,solid_heavy,1,1,vehicle,raw,0.001,0.8,TRUE,TRUE,0,no,0,raw
-g_068,nitrogen,Nitrogen,chems,hazard_liquid,1,1,pipe,intermediate,0.001,1.176,TRUE,TRUE,0,no,0,raw
+g_068,nitrogen,Nitrogen,chems,safe_liquid,1,1,pipe,intermediate,0.001,1.176,TRUE,TRUE,0,no,0,raw
 g_069,ammonia,Ammonia,chems,hazard_liquid,1,1,pipe,intermediate,0.001,3.533,TRUE,TRUE,0,no,0,processed
 g_070,alkaline_battery,Alkaline Battery,energy,solid_heavy,1,1,vehicle,intermediate,0.0005,5.493,TRUE,TRUE,0,no,0,intermediate
 g_071,construction_equipment_ice,Construction Equipment ICE,construction,ultra_heavy,1,1,vehicle,finished,0.0005,35.034,TRUE,TRUE,0,no,0,apex

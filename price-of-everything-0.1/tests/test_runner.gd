@@ -4549,6 +4549,20 @@ func _test_transport_congestion() -> void:
 	load_flow.call(700)
 	_check(MatchState.route_congestion_tier(route) == 2, "700 over cap+L1 600 → tier 2 (+200%)")
 
+	# MARGINAL charging: only the units above the congested link's remaining capacity pay
+	# the surcharge. A clear link has full headroom; an over-cap link has none.
+	load_flow.call(250)
+	_check(int(MatchState.route_congestion(route).get("headroom", -1)) == 0,
+		"an uncongested route reports no penalty band at all (tier 0)")
+	load_flow.call(450)
+	var cong: Dictionary = MatchState.route_congestion(route)
+	_check(int(cong.get("tier", 0)) == 1 and int(cong.get("headroom", -1)) == 0,
+		"a link already 150 over its 300 cap has zero headroom — every unit pays")
+	# A link UNDER cap but pushed over by this turn's own flow keeps its remaining headroom.
+	load_flow.call(280)
+	_check(int(MatchState.route_congestion(route).get("tier", 0)) == 0,
+		"280 under the 300 cap stays clear — headroom only matters once a link is over")
+
 	Modifiers.reset()
 	MatchState.reset()
 	MatchState.pending_transport_shipments.clear()
@@ -6611,45 +6625,76 @@ func _test_price_impact() -> void:
 # impact, capped at ±50%, recovering 0.1%/turn under the threshold. The impact
 # multiplies the decayed base price; `prices` stays the impact-free series.
 func _test_price_impact_thresholds() -> void:
-	# Rate banding off the base output (strictly-above thresholds).
-	_check(EconomyConfig.price_impact_rate(64, 32) == 0.0, "2x exactly is under the bite")
-	_check(EconomyConfig.price_impact_rate(65, 32) == 0.1, "just over 2x accrues 0.1%")
-	_check(EconomyConfig.price_impact_rate(96, 32) == 0.1, "3x exactly stays in the 2x band")
-	_check(EconomyConfig.price_impact_rate(97, 32) == 0.2, "over 3x accrues 0.2%")
-	_check(EconomyConfig.price_impact_rate(129, 32) == 0.4, "over 4x accrues 0.4%")
-	_check(EconomyConfig.price_impact_rate(-129, 32) == 0.4, "buying volume uses the same bands")
+	# CONTINUOUS response: rate = K x (volume / base_output - 1), unbounded above.
+	var k: float = EconomyConfig.PRICE_IMPACT_K
+	_check(EconomyConfig.price_impact_rate(32, 32) == 0.0, "1x base output is under the bite")
+	_check(EconomyConfig.price_impact_rate(16, 32) == 0.0, "below base output never accrues")
+	_check(absf(EconomyConfig.price_impact_rate(64, 32) - k) < 0.0001, "2x accrues K")
+	_check(absf(EconomyConfig.price_impact_rate(128, 32) - 3.0 * k) < 0.0001, "4x accrues 3K")
+	_check(absf(EconomyConfig.price_impact_rate(320, 32) - 9.0 * k) < 0.0001, "10x accrues 9K")
+	_check(EconomyConfig.price_impact_rate(1600, 32) > EconomyConfig.price_impact_rate(320, 32),
+		"the curve does NOT saturate — 50x hurts more than 10x (the old bands stopped at 4x)")
+	_check(absf(EconomyConfig.price_impact_rate(-128, 32) - 3.0 * k) < 0.0001,
+		"buying volume is symmetric — scale forces integration pressure from the market")
 	_check(EconomyConfig.price_impact_rate(1000, 0) == 0.0, "no base output -> no impact")
+	# Recovery scales with depth so the curve can't ratchet a good to the floor and pin it.
+	_check(EconomyConfig.price_impact_recovery(0.0) == EconomyConfig.PRICE_IMPACT_RECOVERY_PCT,
+		"a clean good recovers at the base rate")
+	_check(EconomyConfig.price_impact_recovery(-50.0) > 10.0 * EconomyConfig.PRICE_IMPACT_RECOVERY_PCT,
+		"a capped good unwinds far faster than the flat base rate")
+	_check(absf(EconomyConfig.price_impact_recovery(-50.0) - EconomyConfig.price_impact_recovery(50.0)) < 0.0001,
+		"recovery is symmetric in glut and deficit")
 
 	# Accrual, stacking on decay, recovery, and the cap — driven through the
 	# real per-turn pipeline on a scratch good id.
 	var gid := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
 	var coal_base: int = Catalog.base_output_for_good(gid)
 	_check(coal_base > 0, "coal has a base building output")
+	# Flush any volume an earlier test left on the books BEFORE measuring. The old banded
+	# model saturated at >4x so leftover volume changed nothing; the continuous curve reads
+	# the exact ratio, so residue would shift every expected value below.
+	MarketState._turn_sold.clear()
+	MarketState._turn_bought.clear()
 	MarketState.impact_pct.erase(gid)
 	# tick_turn decays every good's base price — restore the table afterwards so
 	# later market tests see untouched prices.
 	var prices_snapshot: Dictionary = MarketState.prices.duplicate(true)
 	var base_before: float = MarketState.get_base_price_now(gid)
-	MarketState.record_market_sale_volume(gid, coal_base * 4 + 1)      # >4x sell
+	var rate_4x: float = EconomyConfig.price_impact_rate(coal_base * 4, coal_base)
+	MarketState.record_market_sale_volume(gid, coal_base * 4)          # 4x sell
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 0.4) < 0.0001, "one >4x sell turn accrues -0.4%")
+	var after_4x: float = -rate_4x
+	_check(absf(MarketState.get_impact_pct(gid) - after_4x) < 0.0001,
+		"one 4x sell turn accrues -%.2f%% (continuous curve)" % rate_4x)
 	var decay: float = float(Catalog.get_good(gid).get("decay_rate", 0.0))
-	var expected: float = base_before * (1.0 - decay) * (1.0 - 0.004)
+	var expected: float = base_before * (1.0 - decay) * (1.0 + after_4x / 100.0)
 	_check(absf(MarketState.get_price(gid) - expected) < 0.0001,
 		"impact multiplies the decayed base price (stacks on normal drift)")
-	MarketState.record_market_sale_volume(gid, coal_base * 3 + 1)      # >3x sell
+	var rate_3x: float = EconomyConfig.price_impact_rate(coal_base * 3, coal_base)
+	MarketState.record_market_sale_volume(gid, coal_base * 3)          # 3x sell
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 0.6) < 0.0001, "a >3x turn adds -0.2%")
+	var after_3x: float = after_4x - rate_3x
+	_check(absf(MarketState.get_impact_pct(gid) - after_3x) < 0.0001,
+		"a 3x turn adds -%.2f%% — strictly less than the 4x turn" % rate_3x)
+	_check(rate_3x < rate_4x, "the curve is monotonic: 3x bites less than 4x")
+	var recov: float = EconomyConfig.price_impact_recovery(after_3x)
 	MarketState.tick_turn()                                            # quiet turn
-	_check(absf(MarketState.get_impact_pct(gid) + 0.5) < 0.0001, "quiet turn recovers +0.1%")
-	MarketState.record_market_buy_volume(gid, coal_base * 2 + 1)       # >2x BUY
+	_check(absf(MarketState.get_impact_pct(gid) - (after_3x + recov)) < 0.0001,
+		"a quiet turn recovers by the depth-scaled rate")
+	var at_quiet: float = after_3x + recov
+	var rate_2x: float = EconomyConfig.price_impact_rate(coal_base * 2, coal_base)
+	MarketState.record_market_buy_volume(gid, coal_base * 2)           # 2x BUY
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 0.4) < 0.0001, "net buying pushes impact up (+0.1%)")
+	_check(absf(MarketState.get_impact_pct(gid) - (at_quiet + rate_2x)) < 0.0001,
+		"net buying pushes impact UP by the same curve (deficit side)")
 	# Netting: equal buys and sells cancel to a quiet (recovery) turn.
+	var before_net: float = MarketState.get_impact_pct(gid)
+	var recov_net: float = EconomyConfig.price_impact_recovery(before_net)
 	MarketState.record_market_sale_volume(gid, coal_base * 4)
 	MarketState.record_market_buy_volume(gid, coal_base * 4)
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 0.3) < 0.0001, "offsetting buy+sell nets to recovery")
+	_check(absf(MarketState.get_impact_pct(gid) - move_toward(before_net, 0.0, recov_net)) < 0.0001,
+		"offsetting buy+sell nets to recovery")
 	# Cap at ±50%.
 	MarketState.impact_pct[gid] = -49.9
 	MarketState.record_market_sale_volume(gid, coal_base * 5)

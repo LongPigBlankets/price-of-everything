@@ -157,7 +157,9 @@ func _tick_impact(good_id: String) -> void:
 	if rate > 0.0:
 		a += -rate if net > 0 else rate
 	else:
-		a = move_toward(a, 0.0, EconomyConfig.PRICE_IMPACT_RECOVERY_PCT)
+		# Recovery scales with how deep the impact is, so the continuous curve can't
+		# ratchet a good to the floor and pin it there (see EconomyConfig).
+		a = move_toward(a, 0.0, EconomyConfig.price_impact_recovery(a))
 	a = clampf(a, -EconomyConfig.PRICE_IMPACT_CAP_PCT, EconomyConfig.PRICE_IMPACT_CAP_PCT)
 	if absf(a) < 0.0001:
 		impact_pct.erase(good_id)

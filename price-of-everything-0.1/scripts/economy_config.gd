@@ -22,18 +22,18 @@ const MAINTENANCE_PER_BUILDING: float = 1.0
 # Rebalance: unskilled:skilled:h_skilled = 1:3:10 (a highly-skilled worker costs 10x an unskilled
 # one). Rates raised so per-building head-counts read in the ~1000-10000 range at the back-solved
 # wage bills; head-counts were rescaled in lock-step so each building's total wage bill is unchanged.
-const LABOUR_UNSKILLED_RATE: float = 0.0032
-const LABOUR_SKILLED_RATE: float = 0.0096
-const LABOUR_HIGH_SKILLED_RATE: float = 0.032
+const LABOUR_UNSKILLED_RATE: float = 0.00304
+const LABOUR_SKILLED_RATE: float = 0.00912
+const LABOUR_HIGH_SKILLED_RATE: float = 0.0304
 
 # --- Labour wage growth (compounding per turn) ---
 # Wages drift upward every turn: the effective rate at turn t is
 #   base_rate * (1 + growth) ^ (t - 1).
 # Higher-skilled labour inflates fastest, so margins compress over a long game
 # and the player must keep expanding revenue to stay ahead of the wage bill.
-const LABOUR_UNSKILLED_GROWTH: float = 0.0015    # +0.15%/turn
-const LABOUR_SKILLED_GROWTH: float = 0.0025      # +0.25%/turn
-const LABOUR_HIGH_SKILLED_GROWTH: float = 0.004  # +0.40%/turn
+const LABOUR_UNSKILLED_GROWTH: float = 0.0005    # +0.05%/turn
+const LABOUR_SKILLED_GROWTH: float = 0.001       # +0.10%/turn
+const LABOUR_HIGH_SKILLED_GROWTH: float = 0.002  # +0.20%/turn
 
 # --- MVP labour stub: every building has these counts ---
 # Remove these once buildings catalog has real employment data.
@@ -56,34 +56,46 @@ const MAX_PRICE_IMPACT_PCT: int = 10
 # once it crosses multiples of the good's BASE OUTPUT (the largest per-turn
 # output among active recipes producing it, L1 unmodified —
 # Catalog.base_output_for_good). E.g. copper wiring, base output 32:
-#   net volume > 2x (65+)  → 0.1 %/turn
-#   net volume > 3x (97+)  → 0.2 %/turn
-#   net volume > 4x (129+) → 0.4 %/turn
+#   64 units  (2x) → 0.33 %/turn
+#   128 units (4x) → 0.99 %/turn
+#   320 units (10x) → 2.97 %/turn
 # Net selling pushes the price DOWN (glut), net buying UP (deficit). The
 # accumulated impact is capped at ±PRICE_IMPACT_CAP_PCT and, while volume stays
-# at or under the 2x threshold, recovers toward 0 by PRICE_IMPACT_RECOVERY_PCT
-# per turn. The impact multiplies the good's decayed base price, so it stacks
-# on top of the normal per-turn drift. Thresholds are STATIC for now; later
-# they scale with expected output every 10 turns. Goods with no active
-# producing recipe have no base output and take no impact.
-const PRICE_IMPACT_RATE_2X: float = 0.1   # % per turn accrued in the >2x band
-const PRICE_IMPACT_RATE_3X: float = 0.2   # >3x band
-const PRICE_IMPACT_RATE_4X: float = 0.4   # >4x band
+# at or under 1x, recovers toward 0 by price_impact_recovery() per turn. The
+# impact multiplies the good's decayed base price, so it stacks on top of the
+# normal per-turn drift. Thresholds are STATIC for now; later they scale with
+# expected output every 10 turns. Goods with no active producing recipe have no
+# base output and take no impact.
 const PRICE_IMPACT_CAP_PCT: float = 50.0
 const PRICE_IMPACT_RECOVERY_PCT: float = 0.1
+# CONTINUOUS response (owner ruling 2026-07-27), replacing the old 2x/3x/4x bands.
+# The bands SATURATED: >4x was the top, so 4.1x and 50x accrued the same 0.4%/turn and
+# flooding had no marginal cost. Worse, 0.4%/turn was only twice the free passive decay
+# (windows 0.2%/turn), so 125 turns of maximum overproduction were needed to reach the cap
+# — overproduction was effectively unpunished on any playable timescale.
+#   rate = K x (volume / base_output - 1),  unbounded above
+# K = 0.33 puts 4x at ~1%/turn (-20% in 20 turns — felt within a session, survivable if you
+# correct), 10x at ~3%/turn, 50x at ~16%/turn (price collapses in a turn, as flooding should).
+# The response is SYMMETRIC: net buying pushes price UP at the same rate, so an empire that
+# scales into being the marginal buyer of its own inputs feels integration pressure from the
+# market rather than from a hand-set bonus.
+const PRICE_IMPACT_K: float = 0.33
+# Recovery scales with the accumulated impact. A flat 0.1%/turn against a curve that can
+# accrue 16%/turn would be a one-way ratchet: a single overbuild would pin a good at the
+# -50% floor for 500 turns. This unwinds a capped good in ~19 turns instead.
+const PRICE_IMPACT_RECOVERY_SCALE: float = 0.05
 
 ## %/turn accrual for one turn's net player market volume in one good.
 func price_impact_rate(net_volume: int, base_output: int) -> float:
 	if base_output <= 0:
 		return 0.0
-	var v := float(absi(net_volume))
-	if v > 4.0 * float(base_output):
-		return PRICE_IMPACT_RATE_4X
-	if v > 3.0 * float(base_output):
-		return PRICE_IMPACT_RATE_3X
-	if v > 2.0 * float(base_output):
-		return PRICE_IMPACT_RATE_2X
-	return 0.0
+	var ratio := float(absi(net_volume)) / float(base_output)
+	return maxf(0.0, PRICE_IMPACT_K * (ratio - 1.0))
+
+## %/turn a good's accumulated impact bleeds back toward 0 while its volume is under the
+## bite. Deeper impacts unwind faster so the curve can't ratchet.
+func price_impact_recovery(current_pct: float) -> float:
+	return PRICE_IMPACT_RECOVERY_PCT + PRICE_IMPACT_RECOVERY_SCALE * absf(current_pct)
 
 # Market spread: buying a unit costs the sale price plus this markup.
 const MARKET_BUY_MARKUP: float = 0.05
@@ -110,8 +122,8 @@ const SEAPORT_SUBSCRIPTION_COST_PER_GOOD: float = 1.0
 const SEAPORT_RANGE_TILES: int = 10
 
 # --- Power grid pricing ---
-const GRID_BUY_PRICE: float = 0.1    # £/unit when buying from grid (shortfall)
-const GRID_SELL_PRICE: float = 0.06  # £/unit when selling surplus to grid
+const GRID_BUY_PRICE: float = 0.12    # £/unit when buying from grid (shortfall)
+const GRID_SELL_PRICE: float = 0.08  # £/unit when selling surplus to grid
 
 # --- Decarbonisation squeeze: CO2 tax + green subsidy (PolicyState schedules the phases) ---
 # Carbon levy per unit of a taxed good CONSUMED by a player building:
