@@ -137,10 +137,18 @@ func import_state(d: Dictionary) -> void:
 	_turn_sold.clear()
 	_turn_bought.clear()
 
+## Per-good price decay is suppressed until this turn (owner ruling 2026-07-27), then runs
+## the existing per-good path unchanged. The monotonic downward drift is deliberate design
+## pressure — this is a GRACE PERIOD, not mean-reversion: it gives the opening ~30 turns a
+## flat margin so a player learning the game doesn't watch their number rot while they read
+## the tutorial. Measured: the cluster's net moves only +16.00 -> +15.71 across t1..t20.
+const DECAY_FIRST_TURN := 30
+
 func tick_turn() -> void:
+	var decay_live: bool = int(TurnManager.current_turn) >= DECAY_FIRST_TURN
 	for good_id in prices.keys():
 		var good: Dictionary = Catalog.get_good(good_id)
-		var decay: float = good.get("decay_rate", 0.0)
+		var decay: float = float(good.get("decay_rate", 0.0)) if decay_live else 0.0
 		prices[good_id] = prices[good_id] * (1.0 - decay)
 		_tick_impact(str(good_id))
 	_turn_sold.clear()

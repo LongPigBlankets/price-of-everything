@@ -215,7 +215,9 @@ const TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS := {
 	"safe_liquid": 0.004,
 	"hazard_liquid": 0.006,
 	"liquid": 0.005,
-	"gas": 0.006,
+	"gas": 0.004,   # deliberately IDENTICAL to safe_liquid (owner ruling 2026-07-27):
+	                # nitrogen and oxygen are gases physically, but inert/routinely piped,
+	                # so they should not carry a freight premium over a safe liquid.
 	"electricity": 0.0,
 }
 

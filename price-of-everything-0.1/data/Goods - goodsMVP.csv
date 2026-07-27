@@ -1,77 +1,77 @@
 ID,internal_name,display_name,category,transport_class,transport_cost,transport_duration,transport_method,good_type,decay_rate,base_price,is_buyable,is_sellable,green_sales_premium,is_fossil_fuel,co2_tax_multiplier,goods_graph_tier
-g_001,coal,Coal,petrochem,solid_heavy,,,,raw,0.001,0.4,TRUE,TRUE,0,yes,0.5,raw
-g_002,iron_ore,Iron Ore,metals,solid_heavy,,,,raw,0.001,0.587,TRUE,TRUE,0,no,0,raw
-g_003,copper_ore,Copper Ore,metals,solid_heavy,,,,raw,0.001,0.65,TRUE,TRUE,0,no,0,raw
-g_004,iron_ingots,Iron Ingots,metals,solid_heavy,,,,intermediate,0.001,0.988,TRUE,TRUE,0,no,0,processed
-g_005,copper_ingots,Copper Ingots,metals,solid_heavy,,,,intermediate,0.001,2.364,TRUE,TRUE,0,no,0,processed
-g_006,steel,Steel,metals,solid_heavy,,,,intermediate,0.001,1.835,TRUE,TRUE,0,no,0,intermediate
-g_007,copper_wiring,Copper Wiring,metals,solid_heavy,,,,intermediate,0.001,3.83,TRUE,TRUE,0,no,0,intermediate
-g_008,motor,Motor,electronics,ultra_heavy,,,,intermediate,0.001,9.396,TRUE,TRUE,0,no,0,intermediate
-g_009,pure_water,Pure Water,chems,safe_liquid,,,,raw,0.001,0.444,TRUE,TRUE,0,no,0,raw
-g_010,power,Power,energy,electricity,,,,power,0,0.1,TRUE,TRUE,0,yes,0,intermediate
-g_011,oxygen,Oxygen,chems,safe_liquid,,,,intermediate,0.001,0.25,TRUE,TRUE,0,no,0,processed
-g_012,chlorine,Chlorine,chems,hazard_liquid,,,,intermediate,0.001,0.72,TRUE,TRUE,0,no,0,processed
-g_013,sodium_hydroxide,Sodium Hydroxide,chems,hazard_liquid,,,,intermediate,0.001,0.8,TRUE,TRUE,0,no,0,processed
-g_014,hydrogen,Hydrogen,chems,hazard_liquid,,,,intermediate,0.001,3.3,TRUE,TRUE,0,no,0,processed
-g_015,basic_salt,Basic Salt,chems,solid_heavy,,,,raw,0.001,0.5,TRUE,TRUE,0,no,0,raw
-g_016,limestone,Limestone,construction,solid_heavy,1,1,vehicle,raw,0.005,0.925,TRUE,TRUE,0,no,0,raw
-g_017,concrete,Concrete,construction,solid_heavy,1,1,vehicle,intermediate,0.002,3.923,TRUE,TRUE,0,no,0,intermediate
-g_018,sand,Sand,construction,solid_heavy,1,1,vehicle,raw,0.005,0.525,TRUE,TRUE,0,no,0,raw
-g_019,chem_salts,Chemical Salts,chems,solid_heavy,1,1,vehicle,intermediate,0.002,1.0,TRUE,TRUE,0,no,0,raw
-g_020,silica,Silica,chems,solid_heavy,1,1,vehicle,intermediate,0.002,2.653,TRUE,TRUE,0,no,0,processed
-g_021,copper_pipe,Copper Pipe,construction,solid_heavy,1,1,vehicle,intermediate,0.002,3.018,TRUE,TRUE,0,no,0,intermediate
-g_022,bauxite_ore,Bauxite Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,1.15,TRUE,TRUE,0,no,0,raw
-g_023,building_frame,Building Frame,construction,ultra_heavy,1,1,vehicle,finished,0.005,14.663,TRUE,TRUE,0,no,0,finished
-g_024,ethylene,Ethylene,petrochem,hazard_liquid,2,1,pipe,intermediate,0.002,3.842,TRUE,TRUE,0,no,1.0,processed
-g_025,processed_oil,Processed Oil,petrochem,safe_liquid,1,1,pipe,intermediate,0.002,2.655,TRUE,TRUE,0,no,2.7,processed
-g_026,crude_oil,Crude Oil,petrochem,safe_liquid,2,1,pipe,raw,0.005,1.066,TRUE,TRUE,0,yes,0.1,raw
-g_027,plastics,Plastics,petrochem,solid_heavy,1,1,vehicle,finished,0.0005,5.16,TRUE,TRUE,0,no,0,intermediate
-g_028,rubber,Rubber,petrochem,solid_heavy,1,1,vehicle,finished,0.0005,3.888,TRUE,TRUE,0,no,0,intermediate
-g_029,aluminium,Aluminium,metals,solid_heavy,1,1,vehicle,intermediate,0.002,5.691,TRUE,TRUE,0.15,no,0,intermediate
-g_030,alumina,Alumina,chems,solid_heavy,1,1,vehicle,intermediate,0.002,1.972,TRUE,TRUE,0,no,0,processed
-g_031,fuels,Diesel Fuel,petrochem,liquid,2,1,pipe,finished,0.0005,2.367,TRUE,TRUE,0,no,0,processed
-g_032,ree_ore,Rare Earth Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,1.9,TRUE,TRUE,0,no,0,raw
-g_033,pvc,PVC,petrochem,solid_heavy,1,1,vehicle,intermediate,0.002,5.678,TRUE,TRUE,0,no,0,intermediate
-g_034,alloy_ingots,Alloy Metals Ingots,metals,solid_heavy,1,1,vehicle,intermediate,0.002,1.682,TRUE,TRUE,0,no,0,processed
-g_035,refined_ree,Refined Rare Earths,metals,solid_heavy,1,1,vehicle,intermediate,0.002,11.658,TRUE,TRUE,0,no,0,processed
-g_036,electrical_components,Electrical Components,electronics,solid_heavy,1,1,vehicle,intermediate,0.002,11.286,TRUE,TRUE,0,no,0,intermediate
-g_037,alloy_ore,Alloy Metals Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,0.962,TRUE,TRUE,0,no,0,raw
-g_038,glass,Glass,construction,solid_heavy,2,1,vehicle,finished,0.0005,2.103,TRUE,TRUE,0,no,0,intermediate
-g_039,windows,Windows,construction,solid_heavy,1,1,vehicle,intermediate,0.002,11.475,TRUE,TRUE,0,no,0,intermediate
-g_040,sulphur,Sulphur,chems,solid_heavy,1,1,vehicle,raw,0.005,0.962,TRUE,TRUE,0,no,0,raw
-g_041,cpu,CPU,electronics,solid_light,1,1,vehicle,finished,0.0005,70.811,TRUE,TRUE,0,no,0,apex
-g_042,computer,Computer,electronics,solid_light,1,1,vehicle,finished,0.0005,53.33,TRUE,TRUE,0,no,0,apex
-g_043,circuit_board,Circuit Board,electronics,solid_light,1,1,vehicle,intermediate,0.001,14.789,TRUE,TRUE,0,no,0,intermediate
-g_044,tyres,Tyres,vehicles,solid_heavy,1,1,vehicle,intermediate,0.001,5.465,TRUE,TRUE,0,no,0,intermediate
-g_045,car_body,Car Body,vehicles,ultra_heavy,1,1,vehicle,intermediate,0.001,11.304,TRUE,TRUE,0,no,0,finished
-g_046,engine,Engine,vehicles,ultra_heavy,1,1,vehicle,intermediate,0.001,45.893,TRUE,TRUE,0,no,0,finished
-g_047,metallurgical_silicon,Metallurgical Silicon,metals,solid_heavy,1,1,vehicle,intermediate,0.002,3.528,TRUE,TRUE,0,no,0,processed
-g_048,polysilicon,Polysilicon,chems,solid_heavy,1,1,vehicle,intermediate,0.002,24.503,TRUE,TRUE,0,no,0,intermediate
-g_049,high_grade_silicon,High Grade Silicon,electronics,solid_heavy,1,1,vehicle,intermediate,0.001,60.0,TRUE,TRUE,0,no,0,intermediate
-g_050,lithium_ore,Lithium Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,2.838,TRUE,TRUE,0,no,0,raw
-g_051,lithium_carbonate,Lithium Carbonate,chems,solid_heavy,1,1,vehicle,intermediate,0.002,6.653,TRUE,TRUE,0,no,0,processed
-g_052,large_engine,Large Engine,vehicles,ultra_heavy,1,1,vehicle,intermediate,0.001,42.331,TRUE,TRUE,0,no,0,finished
-g_053,wind_turbine,Wind Turbine,energy,ultra_heavy,1,1,vehicle,finished,0.0005,69.091,TRUE,TRUE,0,no,0,finished
-g_054,solar_panel,Solar Panel,energy,solid_heavy,1,1,vehicle,finished,0.0005,30.843,TRUE,TRUE,0,no,0,finished
-g_055,heavy_vehicle,Heavy Vehicle,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,228,TRUE,TRUE,0,no,0,apex
-g_056,ice_car,Diesel Car,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,102.304,TRUE,TRUE,0,no,0,apex
-g_057,ev_car,Electric Car,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,140.409,TRUE,TRUE,0,no,0,apex
-g_058,fibreglass,Fibreglass,construction,solid_light,1,1,vehicle,intermediate,0.001,11.719,TRUE,TRUE,0,no,0,intermediate
-g_059,lithium_battery,Lithium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,25,TRUE,TRUE,0,no,0,finished
-g_060,sodium_battery,Sodium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,15,TRUE,TRUE,0,no,0,finished
-g_061,iron_battery,Iron Air Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,5,TRUE,TRUE,0,no,0,finished
-g_062,biomass,Biomass,agribio,solid_heavy,1,1,vehicle,raw,0.005,0.909,TRUE,TRUE,0,no,0,raw
-g_063,waste_water,Waste Water,waste,safe_liquid,,,,waste,0,0.1,FALSE,FALSE,0,no,0,raw
-g_064,fertilisers,Fertilisers,agribio,solid_heavy,1,1,vehicle,intermediate,0.002,12.164,TRUE,TRUE,0,no,0,intermediate
-g_065,industrial_acids,Industrial Acids,chems,hazard_liquid,1,1,pipe,intermediate,0.001,3.47,TRUE,TRUE,0,no,0,processed
-g_066,graphite,Graphite,chems,solid_heavy,1,1,vehicle,intermediate,0.002,9.071,TRUE,TRUE,0,no,0,processed
-g_067,scrap,Scrap Metal,metals,solid_heavy,1,1,vehicle,raw,0.001,0.8,TRUE,TRUE,0,no,0,raw
-g_068,nitrogen,Nitrogen,chems,safe_liquid,1,1,pipe,intermediate,0.001,1.176,TRUE,TRUE,0,no,0,raw
-g_069,ammonia,Ammonia,chems,hazard_liquid,1,1,pipe,intermediate,0.001,3.533,TRUE,TRUE,0,no,0,processed
-g_070,alkaline_battery,Alkaline Battery,energy,solid_heavy,1,1,vehicle,intermediate,0.0005,5.493,TRUE,TRUE,0,no,0,intermediate
-g_071,construction_equipment_ice,Construction Equipment ICE,construction,ultra_heavy,1,1,vehicle,finished,0.0005,35.034,TRUE,TRUE,0,no,0,apex
-g_072,construction_equipment_ev,Construction Equipment EV,construction,ultra_heavy,1,1,vehicle,finished,0.0005,33.291,TRUE,TRUE,0,no,0,apex
-g_073,bio_waste,Bio Waste,waste,solid_heavy,1,1,vehicle,raw,0.002,0.3,TRUE,TRUE,0,no,0,raw
-g_074,e_waste,Electronic Waste,waste,solid_heavy,1,1,vehicle,raw,0.001,0.6,TRUE,TRUE,0,no,0,raw
-g_075,pet_coke,Petroleum Needle Coke,petrochem,solid_heavy,1,1,vehicle,intermediate,0.001,3.009,TRUE,TRUE,0,yes,0,processed
-g_076,carbonised_biomass,Carbonised Biomass,agribio,solid_heavy,1,1,vehicle,intermediate,0.002,2.961,TRUE,TRUE,0.1,no,0,processed
+g_001,coal,Coal,petrochem,solid_heavy,,,,raw,0.001,0.44,TRUE,TRUE,0,yes,0.5,raw
+g_002,iron_ore,Iron Ore,metals,solid_heavy,,,,raw,0.001,0.6457,TRUE,TRUE,0,no,0,raw
+g_003,copper_ore,Copper Ore,metals,solid_heavy,,,,raw,0.001,0.715,TRUE,TRUE,0,no,0,raw
+g_004,iron_ingots,Iron Ingots,metals,solid_heavy,,,,intermediate,0.001,1.0868,TRUE,TRUE,0,no,0,processed
+g_005,copper_ingots,Copper Ingots,metals,solid_heavy,,,,intermediate,0.001,2.6004,TRUE,TRUE,0,no,0,processed
+g_006,steel,Steel,metals,solid_heavy,,,,intermediate,0.001,2.0185,TRUE,TRUE,0,no,0,intermediate
+g_007,copper_wiring,Copper Wiring,metals,solid_heavy,,,,intermediate,0.001,4.213,TRUE,TRUE,0,no,0,intermediate
+g_008,motor,Motor,electronics,ultra_heavy,,,,intermediate,0.001,10.3356,TRUE,TRUE,0,no,0,intermediate
+g_009,pure_water,Pure Water,chems,safe_liquid,,,,raw,0.001,0.4884,TRUE,TRUE,0,no,0,raw
+g_010,power,Power,energy,electricity,,,,power,0,0.11,TRUE,TRUE,0,yes,0,intermediate
+g_011,oxygen,Oxygen,chems,gas,,,,intermediate,0.001,0.275,TRUE,TRUE,0,no,0,processed
+g_012,chlorine,Chlorine,chems,hazard_liquid,,,,intermediate,0.001,0.792,TRUE,TRUE,0,no,0,processed
+g_013,sodium_hydroxide,Sodium Hydroxide,chems,hazard_liquid,,,,intermediate,0.001,0.88,TRUE,TRUE,0,no,0,processed
+g_014,hydrogen,Hydrogen,chems,hazard_liquid,,,,intermediate,0.001,3.63,TRUE,TRUE,0,no,0,processed
+g_015,basic_salt,Basic Salt,chems,solid_heavy,,,,raw,0.001,0.55,TRUE,TRUE,0,no,0,raw
+g_016,limestone,Limestone,construction,solid_heavy,1,1,vehicle,raw,0.005,1.0175,TRUE,TRUE,0,no,0,raw
+g_017,concrete,Concrete,construction,solid_heavy,1,1,vehicle,intermediate,0.002,4.3153,TRUE,TRUE,0,no,0,intermediate
+g_018,sand,Sand,construction,solid_heavy,1,1,vehicle,raw,0.005,0.5775,TRUE,TRUE,0,no,0,raw
+g_019,chem_salts,Chemical Salts,chems,solid_heavy,1,1,vehicle,intermediate,0.002,1.1,TRUE,TRUE,0,no,0,raw
+g_020,silica,Silica,chems,solid_heavy,1,1,vehicle,intermediate,0.002,2.9183,TRUE,TRUE,0,no,0,processed
+g_021,copper_pipe,Copper Pipe,construction,solid_heavy,1,1,vehicle,intermediate,0.002,3.3198,TRUE,TRUE,0,no,0,intermediate
+g_022,bauxite_ore,Bauxite Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,1.265,TRUE,TRUE,0,no,0,raw
+g_023,building_frame,Building Frame,construction,ultra_heavy,1,1,vehicle,finished,0.005,16.1293,TRUE,TRUE,0,no,0,finished
+g_024,ethylene,Ethylene,petrochem,hazard_liquid,2,1,pipe,intermediate,0.002,4.2262,TRUE,TRUE,0,no,1.0,processed
+g_025,processed_oil,Processed Oil,petrochem,safe_liquid,1,1,pipe,intermediate,0.002,2.9205,TRUE,TRUE,0,no,2.7,processed
+g_026,crude_oil,Crude Oil,petrochem,safe_liquid,2,1,pipe,raw,0.005,1.1726,TRUE,TRUE,0,yes,0.1,raw
+g_027,plastics,Plastics,petrochem,solid_heavy,1,1,vehicle,finished,0.0005,5.676,TRUE,TRUE,0,no,0,intermediate
+g_028,rubber,Rubber,petrochem,solid_heavy,1,1,vehicle,finished,0.0005,4.2768,TRUE,TRUE,0,no,0,intermediate
+g_029,aluminium,Aluminium,metals,solid_heavy,1,1,vehicle,intermediate,0.002,6.2601,TRUE,TRUE,0.15,no,0,intermediate
+g_030,alumina,Alumina,chems,solid_heavy,1,1,vehicle,intermediate,0.002,2.1692,TRUE,TRUE,0,no,0,processed
+g_031,fuels,Diesel Fuel,petrochem,safe_liquid,2,1,pipe,finished,0.0005,2.6037,TRUE,TRUE,0,no,0,processed
+g_032,ree_ore,Rare Earth Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,2.09,TRUE,TRUE,0,no,0,raw
+g_033,pvc,PVC,petrochem,solid_heavy,1,1,vehicle,intermediate,0.002,6.2458,TRUE,TRUE,0,no,0,intermediate
+g_034,alloy_ingots,Alloy Metals Ingots,metals,solid_heavy,1,1,vehicle,intermediate,0.002,1.8502,TRUE,TRUE,0,no,0,processed
+g_035,refined_ree,Refined Rare Earths,metals,solid_heavy,1,1,vehicle,intermediate,0.002,12.8238,TRUE,TRUE,0,no,0,processed
+g_036,electrical_components,Electrical Components,electronics,solid_heavy,1,1,vehicle,intermediate,0.002,12.4146,TRUE,TRUE,0,no,0,intermediate
+g_037,alloy_ore,Alloy Metals Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,1.0582,TRUE,TRUE,0,no,0,raw
+g_038,glass,Glass,construction,solid_heavy,2,1,vehicle,finished,0.0005,2.3133,TRUE,TRUE,0,no,0,intermediate
+g_039,windows,Windows,construction,solid_heavy,1,1,vehicle,intermediate,0.002,12.6225,TRUE,TRUE,0,no,0,intermediate
+g_040,sulphur,Sulphur,chems,solid_heavy,1,1,vehicle,raw,0.005,1.0582,TRUE,TRUE,0,no,0,raw
+g_041,cpu,CPU,electronics,solid_light,1,1,vehicle,finished,0.0005,77.8921,TRUE,TRUE,0,no,0,apex
+g_042,computer,Computer,electronics,solid_light,1,1,vehicle,finished,0.0005,58.663,TRUE,TRUE,0,no,0,apex
+g_043,circuit_board,Circuit Board,electronics,solid_light,1,1,vehicle,intermediate,0.001,16.2679,TRUE,TRUE,0,no,0,intermediate
+g_044,tyres,Tyres,vehicles,solid_heavy,1,1,vehicle,intermediate,0.001,6.0115,TRUE,TRUE,0,no,0,intermediate
+g_045,car_body,Car Body,vehicles,ultra_heavy,1,1,vehicle,intermediate,0.001,12.4344,TRUE,TRUE,0,no,0,finished
+g_046,engine,Engine,vehicles,ultra_heavy,1,1,vehicle,intermediate,0.001,50.4823,TRUE,TRUE,0,no,0,finished
+g_047,metallurgical_silicon,Metallurgical Silicon,metals,solid_heavy,1,1,vehicle,intermediate,0.002,3.8808,TRUE,TRUE,0,no,0,processed
+g_048,polysilicon,Polysilicon,chems,solid_heavy,1,1,vehicle,intermediate,0.002,26.9533,TRUE,TRUE,0,no,0,intermediate
+g_049,high_grade_silicon,High Grade Silicon,electronics,solid_heavy,1,1,vehicle,intermediate,0.001,66,TRUE,TRUE,0,no,0,intermediate
+g_050,lithium_ore,Lithium Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,3.1218,TRUE,TRUE,0,no,0,raw
+g_051,lithium_carbonate,Lithium Carbonate,chems,solid_heavy,1,1,vehicle,intermediate,0.002,7.3183,TRUE,TRUE,0,no,0,processed
+g_052,large_engine,Large Engine,vehicles,ultra_heavy,1,1,vehicle,intermediate,0.001,46.5641,TRUE,TRUE,0,no,0,finished
+g_053,wind_turbine,Wind Turbine,energy,ultra_heavy,1,1,vehicle,finished,0.0005,76.0001,TRUE,TRUE,0,no,0,finished
+g_054,solar_panel,Solar Panel,energy,solid_heavy,1,1,vehicle,finished,0.0005,33.9273,TRUE,TRUE,0,no,0,finished
+g_055,heavy_vehicle,Heavy Vehicle,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,250.8,TRUE,TRUE,0,no,0,apex
+g_056,ice_car,Diesel Car,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,112.534,TRUE,TRUE,0,no,0,apex
+g_057,ev_car,Electric Car,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,154.45,TRUE,TRUE,0,no,0,apex
+g_058,fibreglass,Fibreglass,construction,solid_light,1,1,vehicle,intermediate,0.001,12.8909,TRUE,TRUE,0,no,0,intermediate
+g_059,lithium_battery,Lithium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,27.5,TRUE,TRUE,0,no,0,finished
+g_060,sodium_battery,Sodium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,16.5,TRUE,TRUE,0,no,0,finished
+g_061,iron_battery,Iron Air Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,5.5,TRUE,TRUE,0,no,0,finished
+g_062,biomass,Biomass,agribio,solid_heavy,1,1,vehicle,raw,0.005,0.9999,TRUE,TRUE,0,no,0,raw
+g_063,waste_water,Waste Water,waste,safe_liquid,,,,waste,0,0.11,FALSE,FALSE,0,no,0,raw
+g_064,fertilisers,Fertilisers,agribio,solid_heavy,1,1,vehicle,intermediate,0.002,13.3804,TRUE,TRUE,0,no,0,intermediate
+g_065,industrial_acids,Industrial Acids,chems,hazard_liquid,1,1,pipe,intermediate,0.001,3.817,TRUE,TRUE,0,no,0,processed
+g_066,graphite,Graphite,chems,solid_heavy,1,1,vehicle,intermediate,0.002,9.9781,TRUE,TRUE,0,no,0,processed
+g_067,scrap,Scrap Metal,metals,solid_heavy,1,1,vehicle,raw,0.001,0.88,TRUE,TRUE,0,no,0,raw
+g_068,nitrogen,Nitrogen,chems,gas,1,1,pipe,intermediate,0.001,1.2936,TRUE,TRUE,0,no,0,raw
+g_069,ammonia,Ammonia,chems,hazard_liquid,1,1,pipe,intermediate,0.001,3.8863,TRUE,TRUE,0,no,0,processed
+g_070,alkaline_battery,Alkaline Battery,energy,solid_heavy,1,1,vehicle,intermediate,0.0005,6.0423,TRUE,TRUE,0,no,0,intermediate
+g_071,construction_equipment_ice,Construction Equipment ICE,construction,ultra_heavy,1,1,vehicle,finished,0.0005,38.5374,TRUE,TRUE,0,no,0,apex
+g_072,construction_equipment_ev,Construction Equipment EV,construction,ultra_heavy,1,1,vehicle,finished,0.0005,36.6201,TRUE,TRUE,0,no,0,apex
+g_073,bio_waste,Bio Waste,waste,solid_heavy,1,1,vehicle,raw,0.002,0.33,TRUE,TRUE,0,no,0,raw
+g_074,e_waste,Electronic Waste,waste,solid_heavy,1,1,vehicle,raw,0.001,0.66,TRUE,TRUE,0,no,0,raw
+g_075,pet_coke,Petroleum Needle Coke,petrochem,solid_heavy,1,1,vehicle,intermediate,0.001,3.3099,TRUE,TRUE,0,yes,0,processed
+g_076,carbonised_biomass,Carbonised Biomass,agribio,solid_heavy,1,1,vehicle,intermediate,0.002,3.2571,TRUE,TRUE,0.1,no,0,processed

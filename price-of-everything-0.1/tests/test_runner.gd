@@ -4432,13 +4432,16 @@ func _test_sell_protects_build_materials() -> void:
 func _test_warehousing_fee_rates() -> void:
 	# Per-unit storage fee is a TWO-PART tariff by transport class (owner ruling 2026-07-27):
 	# flat floor-space leg + ad-valorem capital leg charged on this turn's decayed base price.
-	for pair in [["g_006", "solid_heavy", "steel"], ["g_027", "solid_heavy", "plastics"],
-			["g_031", "liquid", "fuels"], ["g_065", "hazard_liquid", "industrial acids"]]:
+	# Class comes from the catalog, not a hardcoded label, so a reclassification can't
+	# silently stale this test out (fuels moved liquid -> safe_liquid on 2026-07-27).
+	for pair in [["g_006", "steel"], ["g_027", "plastics"],
+			["g_031", "fuels"], ["g_065", "industrial acids"]]:
 		var gid := str(pair[0])
-		var band: Dictionary = EconomyConfig.WAREHOUSING_BY_CLASS[str(pair[1])]
+		var cls := Catalog.get_transport_class(gid)
+		var band: Dictionary = EconomyConfig.WAREHOUSING_BY_CLASS[cls]
 		var want: float = float(band["flat"]) + float(band["av"]) * MarketState.get_base_price_now(gid)
 		_check(absf(EconomyConfig.warehousing_cost_per_unit(gid) - want) < 0.0001,
-			"%s (%s) stores at flat %.3f + %.3f x base price" % [str(pair[2]), str(pair[1]), band["flat"], band["av"]])
+			"%s (%s) stores at flat %.3f + %.3f x base price" % [str(pair[1]), cls, band["flat"], band["av"]])
 	_check(Catalog.get_transport_class("g_027") == "solid_heavy",
 		"plastics reclassified solid_light -> solid_heavy (resin pellets ship by bulk silo)")
 	_check(absf(EconomyConfig.warehousing_cost_per_unit("") - EconomyConfig.WAREHOUSING_BY_CLASS["solid_light"]["flat"]) < 0.0001,
@@ -6666,7 +6669,10 @@ func _test_price_impact_thresholds() -> void:
 	var after_4x: float = -rate_4x
 	_check(absf(MarketState.get_impact_pct(gid) - after_4x) < 0.0001,
 		"one 4x sell turn accrues -%.2f%% (continuous curve)" % rate_4x)
-	var decay: float = float(Catalog.get_good(gid).get("decay_rate", 0.0))
+	# Decay is suppressed until MarketState.DECAY_FIRST_TURN, so the effective rate at this
+	# turn may be 0 — read it the same way tick_turn() does rather than off the CSV.
+	var decay: float = float(Catalog.get_good(gid).get("decay_rate", 0.0)) \
+		if int(TurnManager.current_turn) >= MarketState.DECAY_FIRST_TURN else 0.0
 	var expected: float = base_before * (1.0 - decay) * (1.0 + after_4x / 100.0)
 	_check(absf(MarketState.get_price(gid) - expected) < 0.0001,
 		"impact multiplies the decayed base price (stacks on normal drift)")
