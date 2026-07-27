@@ -2619,6 +2619,7 @@ func reset() -> void:
 	auto_sell_keep.clear()
 	auto_sell_impact.clear()
 	pending_transport_shipments.clear()
+	_unpaid_purchase_total = 0.0
 	pending_upgrades.clear()
 	pending_retrofits.clear()
 	demolish_queue.clear()
@@ -2855,6 +2856,7 @@ func import_state(d: Dictionary) -> void:
 	auto_sell_impact = (d.get("auto_sell_impact", {}) as Dictionary).duplicate(true)
 	queued_stockpile_market_sales = (d.get("queued_stockpile_market_sales", {}) as Dictionary).duplicate(true)
 	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
+	_recompute_unpaid_purchases()  # rebuilt from the shipments so the accumulator can't drift
 	pending_upgrades = (d.get("pending_upgrades", []) as Array).duplicate(true)
 	pending_retrofits = (d.get("pending_retrofits", []) as Array).duplicate(true)
 	demolish_queue = (d.get("demolish_queue", {}) as Dictionary).duplicate(true)
@@ -3102,6 +3104,15 @@ func get_output_stockpile_destination(instance_id: String, good_id: String = "")
 		return ""  # unset, or a market route (not a stockpile tile)
 	return tile_id
 
+## True when ANY destination is recorded for this building+good — including a market route,
+## which get_output_stockpile_destination() reports as "" because it isn't a stockpile tile.
+## Construction uses this so completing a build defaults the route without overwriting a
+## choice the player already made while it was under construction.
+func has_output_destination(instance_id: String, good_id: String) -> bool:
+	if instance_id == "" or good_id == "":
+		return false
+	return str((output_stockpile_destinations.get(instance_id, {}) as Dictionary).get(good_id, "")) != ""
+
 func route_output_to_market(instance_id: String, good_id: String) -> void:
 	# Per-building, per-good "send output to market" — does NOT touch global sell_mode.
 	if instance_id == "" or good_id == "":
@@ -3192,6 +3203,39 @@ func consume_queued_stockpile_market_sales() -> Array:
 
 func emit_stockpile_market_sale_completed(sale_record: Dictionary) -> void:
 	stockpile_market_sale_completed.emit(sale_record)
+
+## Running total of market purchases that are in transit and NOT yet paid for. Kept as an
+## accumulator rather than summed over pending_transport_shipments on every order, because
+## a busy turn places many orders and the shipment list is a known sim hot-spot. Rebuilt
+## from the shipment list on load (_recompute_unpaid_purchases) so it can't drift.
+var _unpaid_purchase_total: float = 0.0
+
+## What a new market purchase may still commit: cash on hand, PLUS what the player could
+## still borrow, MINUS purchases already in transit that haven't been paid for yet.
+## Pay-on-arrival (owner ruling 2026-07-27) means an order may legitimately push the balance
+## negative — the auto-bridge loan is what catches that. The line it must not cross is the
+## point where the debt could no longer be financed at all. Because in-transit commitments
+## are subtracted, orders placed in the same turn resolve SEQUENTIALLY: each one consumes
+## the headroom the next is measured against, so a big order fails without blocking the
+## small ones behind it.
+func purchase_headroom() -> float:
+	return money + maxf(0.0, LoanState.available_capacity()) - _unpaid_purchase_total
+
+func unpaid_purchase_total() -> float:
+	return _unpaid_purchase_total
+
+## Cash leaves when the goods land. Called once per arriving purchase shipment.
+func settle_arrived_purchase(cost: float) -> void:
+	if cost <= 0.0:
+		return
+	add_money(-cost)
+	_unpaid_purchase_total = maxf(0.0, _unpaid_purchase_total - cost)
+
+func _recompute_unpaid_purchases() -> void:
+	var total := 0.0
+	for shipment in pending_transport_shipments:
+		total += float((shipment as Dictionary).get("purchase_cost", 0.0))
+	_unpaid_purchase_total = total
 
 func queue_transport_shipment(shipment: Dictionary) -> void:
 	var s := shipment.duplicate(true)
@@ -3493,11 +3537,13 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	var unit_price := MarketState.get_buy_price(good_id)
 	var transport := float(quote.get("transport_cost", 0.0))
 	var total := float(quote.get("cost", 0.0))
-	if total > money:
-		# Best-effort: buy as much as we can afford rather than nothing (avoids an
-		# all-or-nothing starvation cliff when cash dips below a full order).
+	# Gate on the FINANCEABLE headroom, not on cash in hand — see purchase_headroom().
+	var headroom := purchase_headroom()
+	if total > headroom:
+		# Best-effort: take as much as the headroom allows rather than nothing (avoids an
+		# all-or-nothing starvation cliff when the balance dips below a full order).
 		var per_unit := unit_price + transport / float(maxi(qty, 1))
-		qty = mini(qty, int(floor(money / maxf(per_unit, 0.0001))))
+		qty = mini(qty, int(floor(headroom / maxf(per_unit, 0.0001))))
 		if qty <= 0:
 			return {}
 		quote = TransportService.quote_market_buy(dest_tile, good_id, qty, covered)
@@ -3505,9 +3551,12 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 		turns = int(quote.get("turns", 0))
 		transport = float(quote.get("transport_cost", 0.0))
 		total = float(quote.get("cost", 0.0))
-		if total > money:
+		if total > headroom:
 			return {}
-	add_money(-total)
+	# Goods with a transit leg are paid for ON ARRIVAL; instant (0-turn) deliveries have no
+	# transit to defer over, so they settle here.
+	if turns < 1:
+		add_money(-total)
 	# Deficit feed: heavy player buying in one good pushes its price up (the
 	# mirror of the sell-side glut) — see MarketState._tick_impact.
 	MarketState.record_market_buy_volume(good_id, qty)
@@ -3524,9 +3573,16 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 			"good_id": good_id, "qty": qty,
 			"turns_remaining": turns, "transport_turns": turns,
 			"transport_cost": transport, "is_purchase": true,
+			# The unpaid bill rides with the goods. Production settles it on arrival and
+			# books it into that turn's summary, so money_out always matches real cash.
+			# Additive save field: an old save's in-flight shipments have no purchase_cost,
+			# which correctly reads as "already paid for" under the old charge-on-order rule.
+			"purchase_cost": total,
+			"purchase_goods_cost": total - transport,
 			"tiles": route.get("tiles", []), "path": route.get("path", []), "legs": route.get("legs", []),
 		}
 		shipment.merge(extra, true)  # optional tags, e.g. construction_instance_id
+		_unpaid_purchase_total += total
 		queue_transport_shipment(shipment)
 	else:
 		Stockpile.add(dest_tile, good_id, qty)
@@ -3541,7 +3597,9 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	elif str(extra.get("buy_kind", "")) != "":
 		buy_category = str(extra.get("buy_kind", ""))
 	goods_movement_recorded.emit("buy", buy_category, turns)
-	return {"qty": qty, "turns": turns, "cost": total,
+	# `deferred` tells the caller the cash has NOT left yet — Production books a deferred
+	# purchase into the summary when it arrives, not here, so money_out tracks real cash.
+	return {"qty": qty, "turns": turns, "cost": total, "deferred": turns >= 1,
 		"goods_cost": float(qty) * unit_price, "transport_cost": transport, "port": port}
 
 func tiles_producing(good_id: String) -> Dictionary:

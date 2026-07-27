@@ -809,6 +809,21 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 		var qty: int = int(shipment.get("qty", 0))
 		if destination_tile == "" or good_id == "" or qty <= 0:
 			continue
+		# PAY ON ARRIVAL: settle the bill that rode in with the goods, and book it into THIS
+		# turn's summary so money_out reconciles with the real cash delta. Charged in full on
+		# first arrival even if the tile is too full to take everything — the goods are ours
+		# either way, and the overflow record deliberately carries no purchase_cost, so a
+		# retried unload can never charge twice.
+		var purchase_cost: float = float(shipment.get("purchase_cost", 0.0))
+		if purchase_cost > 0.0:
+			MatchState.settle_arrived_purchase(purchase_cost)
+			var goods_cost: float = float(shipment.get("purchase_goods_cost", purchase_cost))
+			var freight: float = purchase_cost - goods_cost
+			summary.goods_purchased_cost += goods_cost
+			summary.transport_paid += freight
+			summary.money_out += purchase_cost
+			summary.purchased_cost[good_id] = float(summary.purchased_cost.get(good_id, 0.0)) + goods_cost
+			_accumulate_by_type(summary.goods_purchased_by_type, str(shipment.get("buy_building_id", "")), goods_cost, 0)
 		var added := Stockpile.add(destination_tile, good_id, qty)
 		var per_unit_transport: float = float(shipment.get("transport_cost", 0.0)) / float(qty)
 		_record_inbound_delivery(destination_tile, good_id, added, per_unit_transport)
@@ -2304,6 +2319,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 				var bought: Dictionary = MatchState.queue_buy(tile_id, good_id, order, true, {
 					"buy_kind": "input",
 					"auto_input_pipeline": true,
+					"buy_building_id": str(rep_building[good_id]),
 				})
 				var got: int = int(bought.get("qty", 0))
 				if got < order:
@@ -2315,10 +2331,15 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 						"short_cost": float(order - got) * MarketState.get_buy_price(good_id),
 					})
 				if not bought.is_empty():
+					# `purchased` counts what was ORDERED this turn (the pipeline diagnostic
+					# the briefing reads). The CASH lines below only apply to an order that
+					# settles immediately — a deferred one is booked on arrival instead, so
+					# money_out always matches the real cash delta.
+					summary.purchased[good_id] = int(summary.purchased.get(good_id, 0)) + int(bought.get("qty", 0))
+				if not bought.is_empty() and not bool(bought.get("deferred", false)):
 					summary.goods_purchased_cost += float(bought.get("goods_cost", 0.0))
 					summary.transport_paid += float(bought.get("transport_cost", 0.0))
 					summary.money_out += float(bought.get("cost", 0.0))
-					summary.purchased[good_id] = int(summary.purchased.get(good_id, 0)) + int(bought.get("qty", 0))
 					summary.purchased_cost[good_id] = float(summary.purchased_cost.get(good_id, 0.0)) + float(bought.get("goods_cost", 0.0))
 					_accumulate_by_type(summary.goods_purchased_by_type, str(rep_building[good_id]), float(bought.get("goods_cost", 0.0)), 0)
 	# Player-set recurring market purchases (Purchases tab), delivered to the chosen tile.
@@ -2326,10 +2347,11 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		var rgood := str(rb.get("good", ""))
 		var rbought: Dictionary = MatchState.queue_buy(str(rb.get("dest", "")), rgood, int(rb.get("qty", 0)), false, {"buy_kind": "input"})
 		if not rbought.is_empty():
+			summary.purchased[rgood] = int(summary.purchased.get(rgood, 0)) + int(rbought.get("qty", 0))
+		if not rbought.is_empty() and not bool(rbought.get("deferred", false)):
 			summary.goods_purchased_cost += float(rbought.get("goods_cost", 0.0))
 			summary.transport_paid += float(rbought.get("transport_cost", 0.0))
 			summary.money_out += float(rbought.get("cost", 0.0))
-			summary.purchased[rgood] = int(summary.purchased.get(rgood, 0)) + int(rbought.get("qty", 0))
 			summary.purchased_cost[rgood] = float(summary.purchased_cost.get(rgood, 0.0)) + float(rbought.get("goods_cost", 0.0))
 			_accumulate_by_type(summary.goods_purchased_by_type, "", float(rbought.get("goods_cost", 0.0)), 0)
 

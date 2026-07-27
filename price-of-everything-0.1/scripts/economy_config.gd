@@ -194,7 +194,7 @@ const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
 	"safe_liquid": 0.03,
 	"hazard_liquid": 0.03,
 	"liquid": 0.03,
-	"gas": 0.03,
+	"gas": 0.06,        # 2x safe_liquid — compression/cryogenics (owner ruling 2026-07-27)
 	"electricity": 0.02,
 }
 # AD-VALOREM component of the freight tariff: £/unit/turn per £1 of the good's value.
@@ -215,9 +215,9 @@ const TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS := {
 	"safe_liquid": 0.004,
 	"hazard_liquid": 0.006,
 	"liquid": 0.005,
-	"gas": 0.004,   # deliberately IDENTICAL to safe_liquid (owner ruling 2026-07-27):
-	                # nitrogen and oxygen are gases physically, but inert/routinely piped,
-	                # so they should not carry a freight premium over a safe liquid.
+	"gas": 0.008,   # 2x safe_liquid (owner ruling 2026-07-27). Gases are inert enough to
+	                # ride NORMAL pipework — they do not need the reinforced line — but
+	                # compression/cryogenic handling makes them twice as dear to move.
 	"electricity": 0.0,
 }
 
@@ -293,7 +293,7 @@ const WAREHOUSING_BY_CLASS := {
 	"safe_liquid":   {"flat": 0.015, "av": 0.002},  # tankage: capital-heavy, cheap per unit
 	"liquid":        {"flat": 0.025, "av": 0.003},
 	"hazard_liquid": {"flat": 0.100, "av": 0.006},  # bunded, ventilated, licensed storage
-	"gas":           {"flat": 0.120, "av": 0.006},  # pressure vessels + boil-off losses
+	"gas":           {"flat": 0.030, "av": 0.004},  # 2x safe_liquid: pressure vessels + boil-off
 }
 
 func warehousing_cost_per_unit(good_id: String) -> float:

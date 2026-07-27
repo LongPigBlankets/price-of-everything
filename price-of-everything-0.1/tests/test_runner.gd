@@ -6114,7 +6114,15 @@ func _test_market_buy() -> void:
 	_check(not result.is_empty(), "queue_buy returns a summary")
 	_check(absf(float(result.get("goods_cost", 0)) + float(result.get("transport_cost", 0)) - float(result.get("cost", 0))) < 0.01,
 		"queue_buy splits cost into goods + transport")
-	_check(MatchState.money < money_before, "queue_buy pays for goods + transport")
+	# PAY ON ARRIVAL (owner ruling 2026-07-27): a shipped order does NOT charge at order
+	# time — the bill rides with the goods and settles when they land.
+	_check(bool(result.get("deferred", false)), "a shipped buy is flagged deferred")
+	_check(absf(MatchState.money - money_before) < 0.0001,
+		"queue_buy does NOT charge at order time — the bill rides with the goods")
+	_check(absf(MatchState.unpaid_purchase_total() - float(result.get("cost", 0.0))) < 0.01,
+		"the unpaid bill is tracked against future purchase headroom")
+	_check(MatchState.purchase_headroom() < money_before + LoanState.available_capacity() + 0.01,
+		"in-transit commitments reduce the headroom the next order is measured against")
 	_check(MatchState.get_pending_transport_shipments().size() > ship_before, "queue_buy queues an inbound shipment")
 	var rows: Array = MatchState.get_oneoff_transaction_rows()
 	_check(rows.size() == t_before + 1 and str(rows[rows.size() - 1].get("type", "")) == "Buy",
