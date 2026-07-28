@@ -8,12 +8,11 @@ extends Node2D
 ##   toward the tile by the order's reveal fraction.
 ## Only active while the 'toggle roadsv2' cheat has v2 enabled.
 
-const TRUNK_COLOR := Color("d97b29")
-const LOCAL_COLOR := Color("e8c84a")
-const CASING := Color(0.24, 0.16, 0.05, 0.9)
-const TRUNK_WIDTH := 7.0
-const LOCAL_WIDTH := 4.5
-const BRIDGE_COLOR := Color(0.32, 0.2, 0.08)
+# Road colors AND widths live in MapStyle ('toggle ink' swaps them). Ink mode
+# additionally restyles the DRAWN geometry per run (RDP simplify + seeded
+# wobble — spec §3c Class 2; logic geometry untouched) and replaces the solid
+# casing with dash segments batched into ONE draw_multiline per tier
+# (GL-compat: per-dash draw_line commands would be ~26k canvas commands).
 # Junctions are kept to at most 5 roads upstream (RoadWorks degree cap) — there
 # is no special junction glyph; roads simply meet and merge.
 
@@ -25,6 +24,13 @@ var _drawn_fp_version := -1   # terminus glyphs depend on building footprints
 const FP_POLL_FRAMES := 30
 var _fp_poll_cooldown := 0
 var _active_layer: Node2D = null
+## Ink-mode styled geometry cache: edge_id -> {styled: Array[PackedVector2Array],
+## dashes: PackedVector2Array, n_runs: int, n_pts: int}. Simplify+wobble+dash
+## per edge is too heavy to redo on every static redraw (footprint polls redraw
+## repeatedly during match-start seeding — recomputing 728 edges each time
+## froze the run). Entries invalidate by run-count/point-count mismatch;
+## the whole cache clears on style flip.
+var _ink_cache: Dictionary = {}
 
 func _ready() -> void:
 	_active_layer = Node2D.new()
@@ -32,6 +38,13 @@ func _ready() -> void:
 	_active_layer.draw.connect(_draw_active)
 	add_child(_active_layer)
 	RoadWorks.order_settled.connect(func(_id: int) -> void: _drawn_edges = -1)
+	MapStyle.style_changed.connect(_on_style_changed)
+
+func _on_style_changed() -> void:
+	_ink_cache.clear()
+	_drawn_edges = -1
+	queue_redraw()
+	_active_layer.queue_redraw()
 
 func _process(_delta: float) -> void:
 	# 'toggle roads' hides the whole layer; drawing is skipped while hidden.
@@ -94,10 +107,13 @@ func _draw() -> void:
 			runs_by_edge[edge_id] = [edge.geometry]
 		else:
 			runs_by_edge[edge_id] = _clip_to_built(edge.geometry, terrain, flagged)
-	for pass_i in 2:   # casing under colour
-		for edge_id4 in runs_by_edge:
-			for run in runs_by_edge[edge_id4]:
-				_draw_edge_polyline(self, run, str(network.edges[edge_id4].tier), pass_i)
+	if MapStyle.ink:
+		_draw_runs_ink(self, runs_by_edge, network)
+	else:
+		for pass_i in 2:   # casing under colour
+			for edge_id4 in runs_by_edge:
+				for run in runs_by_edge[edge_id4]:
+					_draw_edge_polyline(self, run, str(network.edges[edge_id4].tier), pass_i)
 	_draw_terminus_glyphs(network, terrain, flagged)
 	for edge_id2 in network.edges:
 		var edge2: Dictionary = network.edges[edge_id2]
@@ -106,15 +122,169 @@ func _draw() -> void:
 		for bridge in edge2.bridges:
 			if not _point_built(terrain, flagged, bridge.point):
 				continue   # the road there is hidden — so is its bridge
-			var t: Vector2 = bridge.tangent
-			draw_line(bridge.point - t * 21.0, bridge.point + t * 21.0, BRIDGE_COLOR, 10.0, true)
+			_draw_bridge_glyph(self, bridge.point, bridge.tangent)
 	# Preview bridges: drawn the instant a river road is built, at its
 	# predetermined crossing, while the connecting road is still planning.
 	for pb in RoadWorks.preview_bridges():
 		if not _point_built(terrain, flagged, pb.point):
 			continue
-		var pt: Vector2 = pb.tangent
-		draw_line(pb.point - pt * 21.0, pb.point + pt * 21.0, BRIDGE_COLOR, 10.0, true)
+		_draw_bridge_glyph(self, pb.point, pb.tangent)
+
+## Classic: one thick brown deck stroke. Ink: a tan deck plank with two thin
+## ink rails along its long sides (the mockup's little bridge symbol).
+func _draw_bridge_glyph(canvas: CanvasItem, point: Vector2, tangent: Vector2) -> void:
+	if not MapStyle.ink:
+		canvas.draw_line(point - tangent * 21.0, point + tangent * 21.0, MapStyle.road_bridge(), 10.0, true)
+		return
+	var n := Vector2(-tangent.y, tangent.x)
+	canvas.draw_line(point - tangent * 21.0, point + tangent * 21.0, MapStyle.road_local(), 9.0, true)
+	for s in [-1.0, 1.0]:
+		var off: Vector2 = n * (5.4 * float(s))
+		canvas.draw_line(point - tangent * 21.0 + off, point + tangent * 21.0 + off, MapStyle.road_casing(), 1.6, true)
+
+## Ink-mode run renderer: dashes for every run are accumulated per tier and
+## submitted as ONE draw_multiline each; the solid near-parchment beds go on
+## top (dashes stick out both sides = the vintage dashed-casing symbol).
+func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadNetwork) -> void:
+	var dash_local := PackedVector2Array()
+	var dash_trunk := PackedVector2Array()
+	var center_trunk := PackedVector2Array()
+	var beds: Array = []   # [styled pts, is_trunk]
+	for edge_id in runs_by_edge:
+		var is_trunk := str(network.edges[edge_id].tier) == RoadNetwork.TIER_TRUNK
+		var runs: Array = runs_by_edge[edge_id]
+		var n_pts := 0
+		for run in runs:
+			n_pts += (run as PackedVector2Array).size()
+		var entry: Dictionary = _ink_cache.get(edge_id, {})
+		if entry.is_empty() or int(entry.n_runs) != runs.size() or int(entry.n_pts) != n_pts:
+			var styled: Array = []
+			var dashes := PackedVector2Array()
+			var center := PackedVector2Array()
+			for run in runs:
+				var pts := _styled_run(run, str(edge_id))
+				if pts.size() >= 2:
+					styled.append(pts)
+					_emit_dashes(pts, str(edge_id), dashes, MapStyle.road_dash(), "")
+					if is_trunk:
+						# Arteries (trunk tier) carry a dashed centre line.
+						_emit_dashes(pts, str(edge_id), center, MapStyle.trunk_center_dash(), "c")
+			entry = {"styled": styled, "dashes": dashes, "center": center, "n_runs": runs.size(), "n_pts": n_pts}
+			_ink_cache[edge_id] = entry
+		if is_trunk:
+			dash_trunk.append_array(entry.dashes)
+			center_trunk.append_array(entry.center)
+		else:
+			dash_local.append_array(entry.dashes)
+		for pts2 in entry.styled:
+			beds.append([pts2, is_trunk])
+	if dash_local.size() >= 2:
+		canvas.draw_multiline(dash_local, MapStyle.road_casing(), MapStyle.road_casing_width(false), true)
+	if dash_trunk.size() >= 2:
+		canvas.draw_multiline(dash_trunk, MapStyle.road_casing(), MapStyle.road_casing_width(true), true)
+	for b in beds:
+		canvas.draw_polyline(b[0], MapStyle.road_trunk() if b[1] else MapStyle.road_local(), MapStyle.road_width(b[1]), true)
+	if center_trunk.size() >= 2:
+		canvas.draw_multiline(center_trunk, MapStyle.trunk_center_color(), MapStyle.trunk_center_width(), true)
+
+## Simplify-then-wobble the DRAWN polyline (endpoints and simplified corners
+## stay exact, so junction joints and network connectivity read unchanged).
+func _styled_run(run: PackedVector2Array, seed_key: String) -> PackedVector2Array:
+	return _wobble_polyline(_rdp(run, MapStyle.road_simplify_eps()), seed_key)
+
+func _wobble_polyline(pts: PackedVector2Array, seed_key: String) -> PackedVector2Array:
+	var w: Array = MapStyle.road_wobble()
+	if w.is_empty() or pts.size() < 2:
+		return pts
+	var step: float = w[0]
+	var amp: float = w[1]
+	var out := PackedVector2Array()
+	var k := 0
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		out.append(a)
+		var seg_len := a.distance_to(b)
+		var n := int(seg_len / step)
+		if n > 0:
+			var dir := (b - a) / seg_len
+			var perp := Vector2(-dir.y, dir.x)
+			for j in range(1, n + 1):
+				var off := (float(RoadHash.pick("rwob|%s|%d" % [seed_key, k], 200)) / 100.0 - 1.0) * amp
+				k += 1
+				out.append(a + (b - a) * (float(j) / float(n + 1)) + perp * off)
+	out.append(pts[pts.size() - 1])
+	return out
+
+## Ramer-Douglas-Peucker on an open polyline; endpoints always kept.
+func _rdp(pts: PackedVector2Array, eps: float) -> PackedVector2Array:
+	if eps <= 0.0 or pts.size() < 3:
+		return pts
+	var keep := PackedByteArray()
+	keep.resize(pts.size())
+	keep.fill(0)
+	keep[0] = 1
+	keep[pts.size() - 1] = 1
+	var stack: Array = [[0, pts.size() - 1]]
+	while not stack.is_empty():
+		var span: Array = stack.pop_back()
+		var i0: int = span[0]
+		var i1: int = span[1]
+		if i1 - i0 < 2:
+			continue
+		var a := pts[i0]
+		var b := pts[i1]
+		var ab := b - a
+		var ab_len2 := ab.length_squared()
+		var best := -1.0
+		var best_i := -1
+		for i in range(i0 + 1, i1):
+			# squared point-segment distance, inline (native helper per point
+			# was the hot cost across 728 edges)
+			var ap := pts[i] - a
+			var t := 0.0 if ab_len2 <= 0.0 else clampf(ap.dot(ab) / ab_len2, 0.0, 1.0)
+			var d2 := (ap - ab * t).length_squared()
+			if d2 > best:
+				best = d2
+				best_i = i
+		if best > eps * eps:
+			keep[best_i] = 1
+			stack.append([i0, best_i])
+			stack.append([best_i, i1])
+	var out := PackedVector2Array()
+	for i in pts.size():
+		if keep[i] == 1:
+			out.append(pts[i])
+	return out
+
+## Walk the polyline emitting [start, end] pairs for the dash-ON stretches of
+## `pattern` [dash, gap], with a seeded phase per edge (+salt distinguishes
+## the casing walk from the centre-line walk) so lines don't tick in sync.
+func _emit_dashes(pts: PackedVector2Array, seed_key: String, into: PackedVector2Array, pattern: Array, salt: String) -> void:
+	var dash: float = pattern[0]
+	var period: float = dash + float(pattern[1])
+	var t := -float(RoadHash.pick("rdash|%s%s" % [seed_key, salt], 100)) / 100.0 * period
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		var seg := a.distance_to(b)
+		if seg <= 0.001:
+			continue
+		var dir := (b - a) / seg
+		var walked := 0.0
+		while walked < seg - 0.001:
+			var pos := fposmod(t + walked, period)
+			if pos < dash:
+				var run_len := minf(dash - pos, seg - walked)
+				into.append(a + dir * walked)
+				into.append(a + dir * (walked + run_len))
+				# float landmine: pos can land a hair under `dash` (or fposmod
+				# can graze `period`), making the natural advance ~0 — clamp to
+				# a minimum step or this loop spins forever at 99% CPU.
+				walked += maxf(run_len, 0.05)
+			else:
+				walked += maxf(minf(period - pos, seg - walked), 0.05)
+		t += seg
 
 func _draw_active() -> void:
 	var network := RoadNetwork.instance()
@@ -128,7 +298,13 @@ func _draw_active() -> void:
 		var revealed := _suffix_by_fraction(edge.geometry, frac)
 		if revealed.size() < 2:
 			continue
-		for run in _clip_to_built(revealed, terrain, flagged):
+		var runs: Array = _clip_to_built(revealed, terrain, flagged)
+		if MapStyle.ink:
+			var single: Dictionary = {}
+			single[edge_id] = runs
+			_draw_runs_ink(_active_layer, single, network)
+			continue
+		for run in runs:
 			for pass_i in 2:
 				_draw_edge_polyline(_active_layer, run, str(edge.tier), pass_i)
 
@@ -229,12 +405,12 @@ func _draw_terminus_glyphs(network: RoadNetwork, terrain: HexMap, flagged: Dicti
 		if terrain != null and not _arms_inside_tile(terrain, tip, arms):
 			continue   # too close to the tile seam — stay a plain dead end
 		var tier := str(edge2.tier)
-		var core: Color = TRUNK_COLOR if tier == RoadNetwork.TIER_TRUNK else LOCAL_COLOR
-		var w: float = TRUNK_WIDTH if tier == RoadNetwork.TIER_TRUNK else LOCAL_WIDTH
+		var is_trunk := tier == RoadNetwork.TIER_TRUNK
+		var core: Color = MapStyle.road_trunk() if is_trunk else MapStyle.road_local()
 		for a in arms:
-			draw_line(tip, a, CASING, w + 2.5, true)
+			draw_line(tip, a, MapStyle.road_casing(), MapStyle.road_casing_width(is_trunk), true)
 		for a2 in arms:
-			draw_line(tip, a2, core, w, true)
+			draw_line(tip, a2, core, MapStyle.road_width(is_trunk), true)
 
 ## Every arm endpoint must sit at least TERMINUS_EDGE_INSET inside the hex of
 ## the tile that owns the TIP, so a terminus bar never dangles over a tile seam.
@@ -348,8 +524,8 @@ func _suffix_by_fraction(pts: PackedVector2Array, frac: float) -> PackedVector2A
 func _draw_edge_polyline(canvas: CanvasItem, pts: PackedVector2Array, tier: String, pass_i: int) -> void:
 	if pts.size() < 2:
 		return
-	var width: float = TRUNK_WIDTH if tier == RoadNetwork.TIER_TRUNK else LOCAL_WIDTH
+	var is_trunk := tier == RoadNetwork.TIER_TRUNK
 	if pass_i == 0:
-		canvas.draw_polyline(pts, CASING, width + 2.5, true)
+		canvas.draw_polyline(pts, MapStyle.road_casing(), MapStyle.road_casing_width(is_trunk), true)
 	else:
-		canvas.draw_polyline(pts, TRUNK_COLOR if tier == RoadNetwork.TIER_TRUNK else LOCAL_COLOR, width, true)
+		canvas.draw_polyline(pts, MapStyle.road_trunk() if is_trunk else MapStyle.road_local(), MapStyle.road_width(is_trunk), true)

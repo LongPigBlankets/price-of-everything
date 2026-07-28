@@ -44,6 +44,14 @@ signal orders_changed()
 ## player road reached it — BuildingVisuals stops drawing those brown tracks (tile_id).
 signal farm_roads_promoted(tile_id: String)
 
+## Farm rings no longer become real roads (owner 2026-07-23). Ink farms carry
+## their own parcel-path fabric, so the promoted ring is redundant decoration —
+## and it is only decoration: transport reads each tile's road FLAG, not whether
+## carriageways physically meet, so a farm tile a road already crosses is just
+## as connected without it. Roads may still serve a farm cluster; they simply
+## stop at its edge or at a junction instead of being threaded around the ring.
+const PROMOTE_FARM_RINGS := false
+
 var orders: Dictionary = {}     # id -> order dict
 var _queue: Array = []          # order ids awaiting planning (FIFO)
 var _active: int = -1           # order id currently planning
@@ -536,6 +544,8 @@ func _undoubled_runs(net: RoadNetwork, coord: Vector2i, poly: PackedVector2Array
 ## outer ring + one through-path) into real RoadNetwork roads — STATE_BUILT, drawn yellow, persisted.
 ## One-time per tile (idempotent via _farm_promoted; the edges themselves ride in RoadNetwork state).
 func _promote_farm_roads_if_reached(order: Dictionary, net) -> void:
+	if not PROMOTE_FARM_RINGS:
+		return
 	var bv := _building_visuals()
 	if bv == null or not bv.has_method("farm_promote_candidates_for_coord"):
 		return

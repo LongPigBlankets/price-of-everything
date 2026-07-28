@@ -22,16 +22,21 @@ extends Node2D
 const TileViewData := preload("res://scripts/tile_view_data.gd")
 
 # Network infrastructure drawn by its own layer, NOT as a building footprint:
-# b_005 roads (RoadNetworkVisuals), b_006 cables.
-const NON_FOOTPRINT_IDS := {"b_005": true, "b_006": true}
+# b_005 roads (RoadNetworkVisuals). b_006 cables regained a footprint
+# 2026-07-23 — it draws as the shape-language transformer station.
+const NON_FOOTPRINT_IDS := {"b_005": true}
 const FOREST_BUILDING_IDS := {"b_015": true, "b_016": true}
 
 # Buildable grid: 27×24 cells of 20u in the tile-local frame, used only for the
 # buildable MASK (is this point land?). Placement itself is continuous. The hex is
 # FLAT-TOP (verts (135,0)(405,0)(540,240)(405,480)(135,480)(0,240), centre (270,240)).
-const GRID_COLS := 27
-const GRID_ROWS := 24
-const CELL := 20.0
+## Buildable-mask resolution. 5u cells (was 20u): the coarse grid stamped whole
+## cells around roads, so a footprint could not legally sit within ~a cell of a
+## carriageway no matter what clearance the caller asked for — the reason block
+## frontage rows were unbuildable. 16x the cells, so watch world-build time.
+const GRID_COLS := 108
+const GRID_ROWS := 96
+const CELL := 5.0
 const TILE_CENTER := Vector2(270.0, 240.0)
 const DESIGN_GAP := 1.0              # gap between adjacent footprints / footprint-to-road (tight terrace cling)
 const PACK_STEP := 2.0               # scan granularity (u) when walking a frontage for the first free slot
@@ -53,14 +58,32 @@ const SIZE_UNIT_AREA := 100.0
 # never persisted. Blocks STAY PUT when a road later settles (only blocked lots fall back).
 const BLOCK_PROB := 100              # % of eligible tiles using block mode; lower for variety (block forms only where a road run + room exist)
 const BLOCK_MIN_ROAD := 70.0         # need a straight road segment ≥ this (~7u) to anchor a block
-const BLOCK_MAX_COLS := 4            # lots along the road
-const BLOCK_ROWS := 4                # lots deep (the rectangle reaches back ~15-20% of the tile)
-const BLOCK_LOT := 46.0              # lot pitch (u); axis-aligned so lots pack tight (smaller = denser, more lots)
+const BLOCK_MAX_COLS := 3            # lots along the road (owner: 2x2 or 3x2 blocks only)
+const BLOCK_ROWS := 2                # lots deep at first — a block starts 2x2/3x2 and grows a
+									 # row at a time (_grow_block_rows) as its lots fill
+## Ceiling on growing DEEPER.
+##
+## MEASURED (tile_6_12, +20 factories): holding this at BLOCK_ROWS to keep
+## buildings off the tile's empty middle BACKFIRES — the block then absorbs 3
+## instead of 14 and 8 buildings scatter inland via the "any" fallback, which
+## places at the free cell nearest the tile CENTRE. The tile simply has less
+## road frontage than it has buildings, so some must go inland; the real choice
+## is whether that happens as a tidy block or as scatter. Tidy wins.
+const BLOCK_MAX_ROWS := 5
+const BLOCK_MAX_GROWN_COLS := 9      # ceiling on growing ALONG the road (the preferred direction)
+const BLOCK_FARM_LIMIT := 2          # this many farms on a tile and its other buildings stop blocking
+## Lot pitch (u); axis-aligned so lots pack tight (smaller = denser, more lots).
+## THE size lever on developed tiles — they place through the block template,
+## which ignores the per-building art lot area. 46 -> 58 puts block buildings
+## mid-range of the ART_DRAWN_MIN/MAX band without over-crowding the tile.
+const BLOCK_LOT := 44.0
 const BLOCK_ROAD_ADJ := 130.0        # a lot is usable within this of a road (~2 frontage rows); deeper interior stays empty
 const BLOCK_ROAD_PAD := 7.0          # gap from the road to a block's near edge (tight Sanborn frontage; vs ROAD_CLEAR 18)
 const BLOCK_FILL_MIN := 0.85         # smallest building as a fraction of the lot (tight gaps between block buildings)
 const BLOCK_FILL_MAX := 0.9          # largest (lots validated at this size)
-const BLOCK_MIN_LOTS := 3            # fewer usable lots than this -> skip block mode
+const BLOCK_MIN_LOTS := 2            # fewer usable lots than this -> skip block mode.
+									 # 2, not 3: blocks are now 2x2/3x2 and the frontage row
+									 # is unbuildable (mask cells), so a 2-wide block offers 2.
 const BLOCK_ASPECT := 0.62           # block building depth as a fraction of its width — LONG side faces the road
 const BLOCK_SQUARE_PCT := 25         # % of block buildings kept square (seeded) for variety
 # ~CHUNK_PROB% of block tiles (seeded) fill the block with a FEW BIG CHUNKS (3-6) instead of the fine
@@ -71,7 +94,49 @@ const CHUNK_DEPTH := 88.0            # chunk depth (perpendicular) → 1-2 rows 
 const CHUNK_GAP := 4.0               # gap between filled chunks
 const BLOCK_DEBUG := false           # set true to log per-tile block decisions to the console ([BLOCKDBG])
 
-const ROAD_CLEAR := 18.0             # no footprint edge may come within this of a road centreline
+const ROAD_CLEAR := 15.0             # no footprint edge may come within this of a MAIN road centreline
+## The buildable mask is rasterised at this (the tightest frontage any caller
+## uses); per-caller distances are enforced in _valid, not by the mask.
+const MASK_ROAD_CLEAR := 5.0
+
+# --- Service lanes -----------------------------------------------------------
+## A thin street laid INTO a large roadless pocket once a tile is developed, so
+## interior buildings get a frontage to face instead of drifting inland. Planned
+## by ServiceLanes (scripts/service_lanes.gd); see there for the routing rules.
+##
+## The whole point is the clearance ratio: a main road sterilises 15u either side,
+## a lane 4u. A lane therefore opens far more frontage than the ground it costs —
+## which is the test any new street has to pass before it earns its land.
+const SERVICE_CLEAR := 4.0           # buildings keep only this off a lane centreline
+const SERVICE_WIDTH := 2.0           # drawn carriageway width (vs 7u for a local road)
+const SERVICE_MIN_BUILDINGS := 3     # a tile earns its lane only once this many buildings stand on it
+const SERVICE_VOID_RADIUS := 60.0    # a cell further than this from every road centres a ~120u roadless pocket
+const SERVICE_ANCHOR_KEEP := 30.0    # the lane leaves the road this far from any junction or stub
+const SERVICE_FORK_KEEP := 20.0      # and rejoins this far from one, so it meets ONE branch of a fork
+const SERVICE_REJOIN_MIN := 90.0     # a rejoin nearer the anchor than this would just loop back
+const SERVICE_FOREST_COST := 6.0     # routing bump inside a forest disc (steers around, never forbids)
+const SERVICE_RIVER_COST := 2.5      # bump near a river arm — the lane runs alongside, hence riverside lanes
+## Clearance a lane keeps from buildings that ALREADY stand when it is planned. Must
+## exceed SERVICE_CLEAR (which is what later buildings keep off the lane), plus slack
+## for RDP corner-cutting between cell centres. The simplified chord may cut up to
+## SERVICE_SIMPLIFY inside the routed line, so the guarantee is PAD - SIMPLIFY = 5u,
+## comfortably over SERVICE_CLEAR. At 3.0/5.0 the audit found lanes 2.3u from a
+## pre-existing footprint.
+const SERVICE_BUILD_PAD := 8.0
+const SERVICE_SIMPLIFY := 3.0        # RDP epsilon on the routed grid path
+## NOTE (audit, 2026-07-23): block-placed buildings sit ~65u from their road and
+## cannot currently do better. The block's own frontage row is never buildable:
+## _rasterize_seg_clearance stamps whole 20u CELLS around a road, so a footprint
+## whose near edge is BLOCK_ROAD_PAD (7u) out still overlaps blocked cells and
+## fails _valid — the first usable row is a whole lot back. Tightening the
+## road-proximity gate therefore just starves blocks of lots (0-2 usable, below
+## BLOCK_MIN_LOTS) rather than pulling them closer.
+##
+## Service streets were tried and REMOVED (owner): inventing roads to suit
+## buildings is backwards, a one-building block got a street to nowhere, and
+## unvalidated street geometry drew over the sea. If interior access is ever
+## wanted it should grow out of the fronting road along the block's sides, gated
+## on the block actually being full.
 const ROAD_OVERLAP := 5.0            # relayout: a building is only re-packed if a new road comes THIS close to its footprint (an actual overlap, well inside ROAD_CLEAR) — otherwise it stays put
 const RIVER_CLEAR := 16.0            # no footprint edge may come within this of a river arm
 const RIVER_ROAD_PAD := 28.0         # reserve a road corridor: buildings keep this off river arms (room for a bank road to the bridge)
@@ -143,8 +208,7 @@ const MASK_DEBUG := false            # set true to log tiles where the road gate
 # Farms (b_014, cat "farm"): irregular polygonal fields that gravitate to the river (or to the
 # tile edge if non-farm buildings already crowd the tile), clipped to the hex, hatched dark-green,
 # with a brown barn (rect) + silo (circle). Field = light green + 3px dark-green diagonal hatching.
-const FARM_FIELD_COLOR := Color("a8d98a")            # light green field
-const FARM_HATCH := Color(0.18, 0.38, 0.18, 0.85)    # dark green hatching
+# Field fill + hatch colors live in MapStyle ('toggle ink' swaps them).
 const FARM_HATCH_W := 3.0
 const FARM_HATCH_SPACING := 12.0                     # gap between hatch lines (u)
 const FARM_BARN := Vector2(10.0, 6.0)                # brown barn rect (~size-60 by area, pre-scale)
@@ -186,9 +250,13 @@ var _tile_landkeys: Dictionary = {}   # tile_id -> PackedInt32Array (buildable c
 var _farm_land: Dictionary = {}       # tile_id -> PackedByteArray: like _tile_land but farms tolerate the
 var _farm_landkeys: Dictionary = {}   # outer 30% of forest discs (FARM_FOREST_TOL) — they nestle closer
 var _tile_segs: Dictionary = {}       # tile_id -> Array of [a, b] road segments (rel to centre)
+var _service_segs: Dictionary = {}    # tile_id -> Array of [a, b] SERVICE LANE segments (rel to centre)
+var _service_world: Dictionary = {}   # the same lanes in world space, for _draw
 var _tile_rivers: Dictionary = {}     # tile_id -> Array of [a, b] river-arm segments (rel to centre)
 var _tile_block_mode: Dictionary = {}      # tile_id -> bool (seeded once, urban-only)
 var _tile_block_templates: Dictionary = {} # tile_id -> {angle, lots:Array[Vector2], claimed:Array[bool]} ({} = no block)
+var _block_streets: Dictionary = {}        # tile_id -> [[world a, world b]] side roads (earned by a 2nd-row build)
+var _grew_this_claim := false              # re-entry guard for the grow-and-retry in _claim_slot
 
 # Ancillary tanks/annexes (second pass, re-derived; never persisted). Each: {tile_id, verts (world), color, bb}.
 var _subcomponents: Array = []
@@ -238,6 +306,8 @@ func _ready() -> void:
 	# brown tracks (the yellow road now represents them).
 	if RoadWorks.has_signal("farm_roads_promoted"):
 		RoadWorks.farm_roads_promoted.connect(_on_farm_roads_promoted)
+	# 'toggle ink' map restyle: farm field/hatch colors come from MapStyle.
+	MapStyle.style_changed.connect(queue_redraw)
 
 func _on_farm_roads_promoted(tile_id: String) -> void:
 	# Rebuild the tile's layout so the now-promoted ring + trunk are omitted from the brown tracks
@@ -261,8 +331,21 @@ func farm_promote_candidates_for_coord(coord: Vector2i) -> Dictionary:
 			return out
 	return {}
 
-## All farm-track segments on a tile (for the road realizer's follow-the-web cost bias; Stage 2).
+## Farm tracks offered to the road realizer's follow-the-web cost bias.
+## The cluster's OUTER RING only — not the interior lane web (owner
+## 2026-07-23). The realizer discounts these cells, so offering the interior
+## threaded roads straight through a farm grouping; offering just the ring keeps
+## the pull TOWARD the grouping while roads stop at its edge. Falls back to the
+## lane web on a tile whose ring hasn't been derived yet.
 func farm_lane_segments(tile_id: String) -> Array:
+	var ring: Array = (_farm_promote.get(tile_id, {}) as Dictionary).get("ring", [])
+	if not ring.is_empty():
+		var out: Array = []
+		for poly in ring:
+			var pv: PackedVector2Array = poly
+			for i in range(pv.size() - 1):
+				out.append([pv[i], pv[i + 1]])
+		return out
 	return _farm_lanes.get(tile_id, [])
 
 ## Every farm-track segment on the map as [a, b] world pairs (multi-point ring polylines are split
@@ -331,15 +414,32 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var types: Array = bd.get("building_type", [])
 	# Recycling (internal_name ~ "recycl": b_036 recycling_plant + b_022 water_recycling)
 	# and extraction (mines) invert placement — they seek the far tile edges.
-	var is_edge: bool = types.has("extraction") or str(bd.get("internal_name", "")).to_lower().contains("recycl")
+	var is_edge: bool = types.has("extraction") \
+		or str(bd.get("internal_name", "")).to_lower().contains("recycl") \
+		or OFF_ROAD_NAMES.has(str(bd.get("internal_name", "")))
 	var cat := TileViewData.category_key(bd)
 	var size_units := int(bd.get("tile_size_used", 1))
 	# Fixed area per size point (see SIZE_UNIT_AREA): consistent on every tile, no
 	# crowd-dependent shrink, undersized so the tile never fills.
 	var area := maxf(float(size_units) * SIZE_UNIT_AREA, BUILDABLE_MIN_AREA)
-	var kind: String = BuildingShapes.KINDS[RoadHash.pick("poly|%s|%s|kind" % [tile_id, instance_id], BuildingShapes.KINDS.size())]
+	# Shape-language buildings reserve an ART-SIZED lot — placement must
+	# separate what is drawn, not the old undersized plates. Lot side scales
+	# with tile_size_used between the min and 3x-min classes.
+	var iname_lot := str(bd.get("internal_name", ""))
+	var has_art := INK_ART_KEY.has(iname_lot)
+	if has_art:
+		var side := _art_size_for(size_units, str(INK_ART_KEY.get(iname_lot, "")))
+		area = maxf(area, side * side)
+	# Art buildings keep QUAD footprints: the composition is rect-framed, and
+	# an L/C footprint's notch — legally occupied by a neighbour — would sit
+	# under the art (the residual start-tile overlap the owner reported).
+	var kind: String = BuildingShapes.KINDS[RoadHash.pick("poly|%s|%s|kind" % [tile_id, instance_id], 2 if has_art else BuildingShapes.KINDS.size())]
 	var seed_v := RoadHash.pick("poly|%s|%s|var" % [tile_id, instance_id], 9)
 	var placed_here := _placed_on_tile(tile_id)
+	# A developed tile lays one service lane into its largest roadless pocket, before
+	# this building is sited — so everything from here on has an interior frontage to
+	# face instead of drifting to the "any free cell" fallback in the tile's middle.
+	_ensure_service_lane(tile_id, coord, placed_here.size())
 
 	# Block-subdivision (seeded urban tiles): claim a lot first; the continuous packer is
 	# the fallback for every building the grid can't take (full / blocked). Edge-seekers
@@ -357,13 +457,39 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		if not tmpl.is_empty():
 			placed = _claim_slot(tmpl, size_units, coord, tile_id, placed_here)
 	if placed.is_empty() and not offshore:
-		placed = _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here)
+		# Art buildings front the road tightly (edge ~1u off the carriageway).
+		var rc := ART_ROAD_PAD if has_art else ROAD_CLEAR
+		var akey := str(INK_ART_KEY.get(iname_lot, ""))
+		placed = _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here, rc,
+			_sprite_lot_verts(size_units, akey))
+		# Dense tiles (Stoneshore Docks runs 100+ buildings): rather than
+		# silently vanishing, art buildings retry with smaller lots — the
+		# city packs tighter and the art just draws smaller (strokes stay
+		# constant-width regardless).
+		if placed.is_empty() and has_art:
+			# Two steps only: each retry is a full grid search, and at 557
+			# buildings a five-step ladder made the world build minutes long.
+			# 0.6 still reads; 0.3 is the last resort before going undrawn.
+			for shrink in [0.6, 0.3]:
+				placed = _search(tile_id, coord, kind, area * float(shrink), seed_v, cat, is_edge, placed_here, rc,
+					_sprite_lot_verts(size_units, akey, sqrt(float(shrink))))
+				if not placed.is_empty():
+					placed["shrink"] = shrink
+					break
 	if placed.is_empty():
 		return  # tile too crowded to fit it — not drawn rather than overlapping
 
+	if has_art:
+		_crop_to_sprite(placed, size_units, str(INK_ART_KEY.get(iname_lot, "")))
 	var verts: PackedVector2Array = placed.verts
-	# Farms carry their dark-green hatch baked once (clipped to the — possibly hex-cut — field).
+	# Farms carry BOTH looks baked once (clipped to the — possibly hex-cut —
+	# field): the classic 45° green hatch and the ink-mode parcel fabric
+	# (P3b). The style toggle just picks which set to draw — no re-bake.
 	var hatch: Array = _bake_farm_hatch(verts) if cat == "farm" else []
+	var parcels: Dictionary = _bake_farm_parcels(verts) if cat == "farm" else {}
+	var iname := str(bd.get("internal_name", ""))
+	if INK_ART_KEY.has(iname):
+		_ink_art_iid[str(instance_id)] = true
 	var placement := {
 		"instance_id": instance_id,
 		"building_id": building_id,
@@ -374,9 +500,15 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		"is_npc": not MatchState.is_player_owned(MatchState.get_building(instance_id)),
 		"bb": _verts_bb(verts).grow(NPC_OUTLINE_W),
 		"cat": cat,
+		"iname": iname,
+		"size_units": size_units,
+		"via": str(placed.get("via", "block" if not offshore else "offshore")),
+		"shrink": float(placed.get("shrink", 1.0)),
+		"diag": placed.get("diag", {}),
 		"center_rel": placed.center_rel,
 		"half": placed.half,
 		"hatch": hatch,
+		"parcels": parcels,
 		"offshore": bool(placed.get("offshore", false)),
 	}
 	if instance_id != "":
@@ -391,7 +523,24 @@ func _use_block_mode(tile_id: String, _coord: Vector2i) -> bool:
 	# tiles regardless of urban/rural. Tune BLOCK_PROB for how many eligible tiles block.
 	if not _tile_block_mode.has(tile_id):
 		_tile_block_mode[tile_id] = RoadHash.pick("blockmode|%s" % tile_id, 100) < BLOCK_PROB
-	return bool(_tile_block_mode[tile_id])
+	if not bool(_tile_block_mode[tile_id]):
+		return false
+	# Farmland reads as fields with steadings among them, not as a factory
+	# grid dropped between the fields (owner). Once a tile carries more than
+	# one farm, its non-farm buildings go back to the continuous packer, which
+	# tucks them along the roads instead of laying a block. Counted live rather
+	# than cached: the first building on a tile usually predates its farms.
+	return _tile_farm_count(tile_id) < BLOCK_FARM_LIMIT
+
+## How many farms are already placed on this tile.
+func _tile_farm_count(tile_id: String) -> int:
+	var n := 0
+	for p in _placements:
+		if str(p.get("cat", "")) == "farm" and str(p.get("tile_id", "")) == tile_id:
+			n += 1
+			if n >= BLOCK_FARM_LIMIT:
+				return n
+	return n
 
 func _ensure_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	if _tile_block_templates.has(tile_id):
@@ -428,13 +577,14 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 		return {}
 	var segs: Array = _block_road_segments(coord)   # ungated: any road crossing the tile (validation + adjacency)
 	var rivers: Array = _tile_rivers.get(tile_id, [])
+	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
 	# Road-ENCLOSED pockets get first claim (owner 2026-07-10): when the
 	# streets already bound an interior area, the lot grid anchors INSIDE it,
 	# so the tile's buildings fill the block the roads drew — without touching
 	# the roads (lots keep the same clearance validation as everywhere else).
 	var pocket := _enclosed_pocket(tile_id, coord, segs)
 	if not pocket.is_empty():
-		var ptmpl := _pocket_template(pocket, land, segs, rivers)
+		var ptmpl := _pocket_template(pocket, land, segs, rivers, lanes)
 		if not ptmpl.is_empty():
 			if BLOCK_DEBUG: print("[BLOCKDBG] %s: POCKET block — %d lots inside a road-enclosed area" % [tile_id, (ptmpl.lots as Array).size()])
 			return ptmpl
@@ -457,27 +607,33 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	var vrect: PackedVector2Array = _rotate(BuildingShapes.make_rect(vfull, vfull).verts, angle)
 	var vhalf: Vector2 = _aabb_half(vrect)
 	# build on whichever side of the road carries land; frontage row sits flush to clearance.
-	var frontage := BLOCK_ROAD_PAD + BLOCK_LOT * BLOCK_FILL_MAX * 0.5   # first row hugs the road
+	# First row hugs the road. The +epsilon matters: landing the near edge exactly
+	# on BLOCK_ROAD_PAD put it on the clearance test's boundary, where it failed —
+	# so the frontage row was never buildable and the block started a lot back.
+	var frontage := BLOCK_ROAD_PAD + 2.0 + BLOCK_LOT * BLOCK_FILL_MAX * 0.5
 	var mid := (ra + rb) * 0.5
-	if not _valid(mid + normal * frontage, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
+	if not _valid(mid + normal * frontage, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD, lanes):
 		normal = -normal
 	# ~CHUNK_PROB% of block tiles (seeded) fill the block with a few BIG chunks (one building per
 	# chunk) for a dense interior. Same template shape + a `cell` field; fine grid if too cramped.
 	# (Seed key kept from the retired enclosure system so tile picks stay stable.)
 	if RoadHash.pick("enclseed|%s" % tile_id, 100) < CHUNK_PROB:
-		var chunk := _chunk_template(best_len, mid, tangent, normal, angle, land, segs, rivers)
+		var chunk := _chunk_template(best_len, mid, tangent, normal, angle, land, segs, rivers, lanes)
 		if not chunk.is_empty():
 			return chunk
-	var cols: int = clampi(int(best_len / BLOCK_LOT), 3, BLOCK_MAX_COLS)
+	# 3 along the road when the run allows, else 2 — so a block is 3x2 or 2x2.
+	var cols: int = clampi(int(best_len / BLOCK_LOT), 2, BLOCK_MAX_COLS)
 	var origin := ra + tangent * (BLOCK_LOT * 0.5) + normal * frontage
 	var lots: Array = []
+	var rows: Array = []   # row index per lot — a 2nd-row build earns the side roads
 	for r in BLOCK_ROWS:
 		for c in cols:
 			var ctr: Vector2 = origin + tangent * (float(c) * BLOCK_LOT) + normal * (float(r) * BLOCK_LOT)
-			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
+			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD, lanes):
 				continue
 			if _cell_near_road(ctr, segs):   # only road-facing lots; the interior stays empty
 				lots.append(ctr)
+				rows.append(r)
 	if lots.size() < BLOCK_MIN_LOTS:
 		if BLOCK_DEBUG: print("[BLOCKDBG] %s: only %d usable lots (run=%.0fu cols=%d) — need %d" % [tile_id, lots.size(), best_len, cols, BLOCK_MIN_LOTS])
 		return {}
@@ -485,12 +641,14 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	for _i in lots.size():
 		claimed.append(false)
 	if BLOCK_DEBUG: print("[BLOCKDBG] %s: BLOCK formed — %d lots (run=%.0fu cols=%d)" % [tile_id, lots.size(), best_len, cols])
-	return {"angle": angle, "lots": lots, "claimed": claimed, "segs": segs}
+	return {"angle": angle, "lots": lots, "claimed": claimed, "segs": segs, "rows": rows,
+		"origin": origin, "tangent": tangent, "normal": normal, "cols": cols, "frontage": frontage}
+
 
 ## A few BIG chunks filling the block box (enclosure-seeded tiles): C cols along the road (2-3 by run length)
 ## x R rows deep (1-2), 3-6 total. Each cell is sized so its building FILLS it (`_claim_slot` reads `cell`),
 ## for a dense interior the enclosure ring hugs. Returns {angle, lots, claimed, segs, cell} or {} (too cramped).
-func _chunk_template(best_len: float, mid: Vector2, tangent: Vector2, normal: Vector2, angle: float, land: PackedByteArray, segs: Array, rivers: Array) -> Dictionary:
+func _chunk_template(best_len: float, mid: Vector2, tangent: Vector2, normal: Vector2, angle: float, land: PackedByteArray, segs: Array, rivers: Array, lanes: Array) -> Dictionary:
 	var w := clampf(best_len, ENCL_MIN_U, ENCL_MAX_U)
 	var base: int = clampi(int(round(w / CHUNK_COLS_TARGET)), 2, 3)   # cols by run width → ~70-80u chunks
 	# Coarse-to-FINE grids, packed into a TIGHT block. A 2-row block of BIG cells is ideal, but real
@@ -519,7 +677,7 @@ func _chunk_template(best_len: float, mid: Vector2, tangent: Vector2, normal: Ve
 			for c in cols:
 				var ctr: Vector2 = origin + tangent * (float(c) * cell.x) + normal * (float(r) * cell.y)
 				crow.append(ctr)
-				vrow.append(_chunk_valid(ctr, crect, land, segs, rivers))
+				vrow.append(_chunk_valid(ctr, crect, land, segs, rivers, lanes))
 			ctrs.append(crow)
 			valid.append(vrow)
 		var lots: Array = []
@@ -659,7 +817,7 @@ func _enclosed_pocket(tile_id: String, _coord: Vector2i, segs: Array) -> Diction
 	return {"cells": rels, "center": centroid}
 
 ## Lot grid over an enclosed pocket, aligned to the street nearest its centre.
-func _pocket_template(pocket: Dictionary, land: PackedByteArray, segs: Array, rivers: Array) -> Dictionary:
+func _pocket_template(pocket: Dictionary, land: PackedByteArray, segs: Array, rivers: Array, lanes: Array) -> Dictionary:
 	var centroid: Vector2 = pocket.center
 	var best_d := 1.0e30
 	var angle := 0.0
@@ -692,7 +850,7 @@ func _pocket_template(pocket: Dictionary, land: PackedByteArray, segs: Array, ri
 	for r in rows:
 		for c in cols:
 			var ctr := tangent * (tmin + (float(c) + 0.5) * BLOCK_LOT) + normal * (nmin + (float(r) + 0.5) * BLOCK_LOT)
-			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD):
+			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD, lanes):
 				continue
 			# The lot must genuinely sit in the pocket (not spill past its rim).
 			var near_cell := false
@@ -816,13 +974,120 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 		# Chunks use the RELAXED validation (the big footprint may overlap a forest/road-clearance edge but
 		# must stay in-hex + off road/river centrelines). NO AABB-overlap check — the chunk grid is
 		# non-overlapping by construction, and rotated cells' AABBs falsely collide. Fine lots: strict check.
-		var ok: bool = _chunk_valid(ctr, rv, land, segs, rivers) if cell != Vector2.ZERO else _valid(ctr, rv, half, placed_here, land, segs, rivers, BLOCK_ROAD_PAD)
+		var lanes: Array = _service_segs.get(tile_id, [])
+		var ok: bool = _chunk_valid(ctr, rv, land, segs, rivers, lanes) if cell != Vector2.ZERO else _valid(ctr, rv, half, placed_here, land, segs, rivers, BLOCK_ROAD_PAD, lanes)
 		if not ok:
 			claimed[i] = true   # blocked (a road moved onto it, or a fallback sits there) — consume it
 			continue
 		claimed[i] = true
+		_grow_block_rows(tmpl, tile_id, coord)   # keep spare lots ahead of demand
+		# Occupying a lot behind the frontage row is what earns the block its
+		# side roads — they are access to something, not decoration.
+		if int((tmpl.get("rows", []) as Array)[i] if i < (tmpl.get("rows", []) as Array).size() else 0) >= 1:
+			_ensure_block_side_roads(tmpl, tile_id, coord)
 		return _finalize(coord, ctr, rv, half)
+	# Every lot is spoken for — but lots are also consumed when they turn out to
+	# be blocked, and that path never reaches the growth call above. Grow now and
+	# retry once, or a block quietly stops accepting buildings the moment its
+	# last lot is invalidated rather than claimed.
+	if not _grew_this_claim:
+		_grew_this_claim = true
+		_grow_block_rows(tmpl, tile_id, coord)
+		var out := _claim_slot(tmpl, size_units, coord, tile_id, placed_here)
+		_grew_this_claim = false
+		return out
 	return {}
+
+## Add another row of lots behind the block once the existing ones are (nearly)
+## all taken, so a tile that keeps building keeps packing into its block instead
+## of scattering the overflow across the tile (owner report, tile_6_12). Rows
+## are added one at a time and only where they validate, so the block grows into
+## the space it actually has.
+func _grow_block_rows(tmpl: Dictionary, tile_id: String, coord: Vector2i) -> void:
+	if not tmpl.has("origin"):
+		return
+	for c in (tmpl.claimed as Array):
+		if not bool(c):
+			return   # a lot is still free — nothing to grow yet
+	var col_min := int(tmpl.get("col_min", 0))
+	var col_max := int(tmpl.get("col_max", int(tmpl.get("cols", 2)) - 1))
+	var row_max := int(tmpl.get("row_max", BLOCK_ROWS - 1))
+	# Grow ALONG THE ROAD first and only go deeper as a last resort: depth runs
+	# out within a row or two (hex edge, water, road clearance) while a road run
+	# usually has frontage to spare, and a lot on the frontage is worth more
+	# than one buried behind the block.
+	var rows_span: Array = range(0, row_max + 1)
+	if col_max - col_min + 1 < BLOCK_MAX_GROWN_COLS:
+		if _append_block_lots(tmpl, tile_id, coord, [col_max + 1], rows_span) > 0:
+			tmpl["col_max"] = col_max + 1
+			return
+		if _append_block_lots(tmpl, tile_id, coord, [col_min - 1], rows_span) > 0:
+			tmpl["col_min"] = col_min - 1
+			return
+	if row_max < BLOCK_MAX_ROWS - 1:
+		if _append_block_lots(tmpl, tile_id, coord, range(col_min, col_max + 1), [row_max + 1]) > 0:
+			tmpl["row_max"] = row_max + 1
+
+## Append every valid lot at the given (col, row) cells. Returns how many landed.
+func _append_block_lots(tmpl: Dictionary, tile_id: String, coord: Vector2i, cols_range, rows_range) -> int:
+	var origin: Vector2 = tmpl.origin
+	var tangent: Vector2 = tmpl.tangent
+	var normal: Vector2 = tmpl.normal
+	var angle: float = tmpl.angle
+	var land: PackedByteArray = _tile_land.get(tile_id, PackedByteArray())
+	var segs: Array = tmpl.get("segs", [])
+	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
+	var rivers: Array = _tile_rivers.get(tile_id, [])
+	var vfull := BLOCK_LOT * BLOCK_FILL_MAX
+	var vrect: PackedVector2Array = _rotate(BuildingShapes.make_rect(vfull, vfull).verts, angle)
+	var vhalf: Vector2 = _aabb_half(vrect)
+	var added := 0
+	for c in cols_range:
+		for r in rows_range:
+			var ctr: Vector2 = origin + tangent * (float(c) * BLOCK_LOT) + normal * (float(r) * BLOCK_LOT)
+			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD, lanes):
+				continue
+			if not _footprint_dry(ctr, vrect, coord):
+				continue
+			(tmpl.lots as Array).append(ctr)
+			(tmpl.claimed as Array).append(false)
+			(tmpl.rows as Array).append(r)
+			added += 1
+	return added
+
+## Side roads for a block whose second row has started to fill: they run out of
+## the fronting road along the block's two sides, as far back as the occupied
+## rows reach. Built once per tile, and each side is dropped if it would cross
+## water — unvalidated street geometry drew over the sea last time.
+func _ensure_block_side_roads(tmpl: Dictionary, tile_id: String, coord: Vector2i) -> void:
+	if _block_streets.has(tile_id) or not tmpl.has("origin"):
+		return
+	var origin: Vector2 = tmpl.origin
+	var tangent: Vector2 = tmpl.tangent
+	var normal: Vector2 = tmpl.normal
+	var cols: int = int(tmpl.get("cols", 2))
+	var frontage: float = float(tmpl.get("frontage", 0.0))
+	var depth := float(BLOCK_ROWS - 1) * BLOCK_LOT + BLOCK_LOT * 0.6
+	var world_origin := _tile_center_world_pos(coord)
+	var nav := NavGrid.instance()
+	var out: Array = []
+	for side in [-0.6, float(cols - 1) + 0.6]:
+		var base: Vector2 = origin + tangent * (side * BLOCK_LOT)
+		var a: Vector2 = base - normal * frontage          # at the fronting road
+		var b: Vector2 = base + normal * depth             # back past the last row
+		var dry := true
+		if nav != null and nav.is_ready():
+			for t in 6:
+				var p: Vector2 = world_origin + a.lerp(b, float(t) / 5.0)
+				var c := nav.cell_of(p)
+				if nav.water(c.x, c.y) != 0:
+					dry = false
+					break
+		if dry:
+			out.append([world_origin + a, world_origin + b])
+	if not out.is_empty():
+		_block_streets[tile_id] = out
+		queue_redraw()
 
 ## Re-run every placement (one-shot) now that the road network exists, so seeds laid
 ## out before bootstrap snap to frontage — and so any seed laid out before NavGrid was
@@ -877,6 +1142,8 @@ func relayout_tile(tile_id: String) -> void:
 			_farm_land.erase(tile_id)
 			_farm_landkeys.erase(tile_id)
 			_tile_segs.erase(tile_id)
+			_service_segs.erase(tile_id)   # the lane re-plans against the new network
+			_service_world.erase(tile_id)
 			_tile_rivers.erase(tile_id)
 			_mark_subcomp_dirty(tile_id)   # re-derive farm lanes against the new road; buildings stay put
 			queue_redraw()
@@ -905,6 +1172,8 @@ func relayout_tile(tile_id: String) -> void:
 		_farm_land.erase(tile_id)
 		_farm_landkeys.erase(tile_id)
 		_tile_segs.erase(tile_id)
+		_service_segs.erase(tile_id)   # the lane re-plans against the new network
+		_service_world.erase(tile_id)
 		_tile_rivers.erase(tile_id)
 		_mark_subcomp_dirty(tile_id)
 		queue_redraw()
@@ -920,6 +1189,8 @@ func relayout_tile(tile_id: String) -> void:
 	_farm_land.erase(tile_id)
 	_farm_landkeys.erase(tile_id)
 	_tile_segs.erase(tile_id)
+	_service_segs.erase(tile_id)   # the lane re-plans against the new network
+	_service_world.erase(tile_id)
 	_tile_rivers.erase(tile_id)
 	# Block tiles STAY PUT: keep the grid (origin/orientation) but free all its lots so the
 	# survivors re-claim them in emit order, re-validated against the rebuilt road mask. A
@@ -1010,6 +1281,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 		return
 	var rivers: Array = _tile_rivers.get(tile_id, [])
 	var segs: Array = _block_road_segments(coord)   # avoid ALL roads on the tile, gated or not
+	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
 	var center := _tile_center_world_pos(coord)
 	# Farm layout first: each field Voronoi-snaps to its cell, with thin lanes between adjacent fields.
 	# Must run before the barn/silo pass so they sit on the CLIPPED field.
@@ -1143,7 +1415,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 					var slide_max: float = maxf(pext - wing_pext, 0.0)
 					var slide := (float(RoadHash.pick("wing|%s|%d|sl" % [iid, wi], 100)) / 100.0 - 0.5) * 2.0 * slide_max
 					wctr += perp * slide
-					if not _wing_valid(wctr, wverts_l, wh, others, segs, rivers, wdiscs, center):
+					if not _wing_valid(wctr, wverts_l, wh, others, segs, rivers, wdiscs, center, lanes):
 						continue
 					var wentry := {"pos": wctr, "half": wh}
 					placed.append(wentry)
@@ -1172,7 +1444,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 						var wing_ext2: float = ww * 0.5 if di2 < 2 else whh * 0.5
 						for step in [34.0, 42.0, 50.0, 58.0]:
 							var wctr2: Vector2 = bpos + wdir2 * (float(wexts[di2]) + step + wing_ext2)
-							if not _wing_valid(wctr2, wverts_l, wh, others, segs, rivers, wdiscs, center):
+							if not _wing_valid(wctr2, wverts_l, wh, others, segs, rivers, wdiscs, center, lanes):
 								continue
 							var pa: Vector2 = bpos + wdir2 * float(wexts[di2])
 							var pb: Vector2 = wctr2 - wdir2 * wing_ext2
@@ -1227,7 +1499,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 				var tdir: Vector2 = dirs[(j2 + trot) % dirs.size()]
 				var text: float = absf(tdir.x) * bhalf.x + absf(tdir.y) * bhalf.y
 				var tctr: Vector2 = bpos + tdir * (text + SUBCOMP_GAP + maxf(tbh.x, tbh.y))
-				if not _valid(tctr, tblock, tbh, placed, land, segs, rivers):
+				if not _valid(tctr, tblock, tbh, placed, land, segs, rivers, ROAD_CLEAR, lanes):
 					continue
 				var tentry := {"pos": tctr, "half": tbh}
 				placed.append(tentry)
@@ -1259,7 +1531,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 				var dir: Vector2 = dirs[(j + rot) % dirs.size()]
 				var ext: float = absf(dir.x) * bhalf.x + absf(dir.y) * bhalf.y
 				var ctr: Vector2 = bpos + dir * (ext + gap + maxf(sh.x, sh.y))
-				if not _valid(ctr, verts, sh, against, land, segs, rivers):
+				if not _valid(ctr, verts, sh, against, land, segs, rivers, ROAD_CLEAR, lanes):
 					continue
 				var entry := {"pos": ctr, "half": sh}
 				placed.append(entry)
@@ -1297,6 +1569,12 @@ func _build_block_masses(tile_id: String, coord: Vector2i, blds: Array) -> void:
 		if str(p.cat) == "farm" or bool(p.get("offshore", false)):
 			continue
 		if (p.verts as PackedVector2Array).size() != 4:
+			continue
+		# Shape-language buildings draw their own compound, and a mass member
+		# skips its fill and contributes only party-wall ink — which is why a
+		# cluster of 5+ factories reverted to plate outlines and then to
+		# apparently transparent shapes (owner report, tile_6_12).
+		if INK_ART_KEY.has(str(p.get("iname", ""))):
 			continue
 		cands.append(p)
 	if cands.size() < COURT_MIN_BUNCH:
@@ -1519,7 +1797,7 @@ func _build_farm_layout(tile_id: String, coord: Vector2i, center: Vector2, farms
 			if cell.size() >= 3:
 				var parts := Geometry2D.intersect_polygons(farms[i].verts, cell)
 				render = _largest_ccw(parts, farms[i].verts)
-		_farm_render[str(farms[i].instance_id)] = {"verts": render, "hatch": _bake_farm_hatch(render)}
+		_farm_render[str(farms[i].instance_id)] = {"verts": render, "hatch": _bake_farm_hatch(render), "parcels": _bake_farm_parcels(render)}
 		fields_w.append(render)
 	# Group farms into webs by FIELD ADJACENCY (touching = share a side) so distant farms never share a
 	# web/ring; one ring per web, computed up front so the inter-field web can EXTEND out to meet it. The
@@ -2179,7 +2457,17 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 	# scanning every seg per cell. The roads-v3 start network puts finely-sampled
 	# (~12u) polylines on most tiles, so the old 648-cells × all-segs scan was
 	# ~150k _pt_seg_dist calls per tile (~25 s of world build across the map).
-	var road_block := _rasterize_seg_clearance(segs, ROAD_CLEAR)
+	# Carve the mask at the TIGHTEST clearance any caller may ask for, not at
+	# ROAD_CLEAR. The mask used to forbid everything within 18u of a road, which
+	# made the 5.5u art frontage structurally impossible — the audit showed
+	# 99.9% of rejected frontage candidates failing here rather than on the
+	# road-clearance test. Each caller still enforces its own distance through
+	# _valid/_farm_valid/_wing_valid, so nothing gets closer than it should.
+	var road_block := _rasterize_seg_clearance(segs, MASK_ROAD_CLEAR)
+	# Port quay/pier strip: the dock composition is drawn decoration with no
+	# placement footprint — without this carve, buildings legally packed under
+	# it and the port (z=60) drew over them (owner report, Stoneshore Docks).
+	var port_blocks := _port_block_frames(coord, center)
 	var keys := PackedInt32Array()
 	var farm_keys := PackedInt32Array()
 	for row in GRID_ROWS:
@@ -2190,6 +2478,16 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 			var key := row * GRID_COLS + col
 			if road_block[key] == 1:
 				continue   # too close to a road carriageway
+			var in_port := false
+			for pb in port_blocks:
+				var dd: Vector2 = rel - (pb.o as Vector2)
+				var dp := dd.dot(pb.dir as Vector2)
+				var pp := dd.dot(Vector2(-(pb.dir as Vector2).y, (pb.dir as Vector2).x))
+				if dp > -70.0 and dp < 170.0 and absf(pp) < 150.0:
+					in_port = true
+					break
+			if in_port:
+				continue   # under the dock quay/piers
 			if nav_ok:
 				var c := nav.cell_of(center + rel)
 				if nav.water(c.x, c.y) != 0:
@@ -2237,6 +2535,27 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 ## segment only visits its own grown bbox (a few cells for the ~12u-sampled road
 ## polylines), with the exact point-segment distance test inside — same result
 ## as the brute-force per-cell scan at a fraction of the cost.
+## Oriented block frames for any dock on this tile — mirrors port_visuals'
+## glyph math (position 0.30 tile-heights toward the first sea neighbour,
+## facing seaward). Entries: {o: rel-space origin, dir: seaward direction}.
+func _port_block_frames(coord: Vector2i, center: Vector2) -> Array:
+	var out: Array = []
+	if terrain_layer == null:
+		return out
+	var tile_h := 480.0
+	for p in Catalog.all_ports():
+		var pcoord: Vector2i = terrain_layer.id_to_coord(str(p.get("tile_id", "")))
+		if pcoord != coord:
+			continue
+		var cell: Vector2i = terrain_layer.map_coord_for_tile_coord(coord)
+		for ncell in terrain_layer.get_surrounding_cells(cell):
+			var ntile: Dictionary = terrain_layer.tiles.get(terrain_layer.tile_coord_for_map_coord(ncell), {})
+			if str(ntile.get("type", "")) in ["sea", "deep_sea"]:
+				var sea_dir := (terrain_layer.map_to_local(ncell) - terrain_layer.map_to_local(cell)).normalized()
+				out.append({"o": sea_dir * tile_h * 0.30, "dir": sea_dir})
+				break
+	return out
+
 func _rasterize_seg_clearance(segs: Array, pad: float) -> PackedByteArray:
 	var mask := PackedByteArray()
 	mask.resize(GRID_COLS * GRID_ROWS)
@@ -2257,8 +2576,169 @@ func _rasterize_seg_clearance(segs: Array, pad: float) -> PackedByteArray:
 					mask[key] = 1
 	return mask
 
+## Lay this tile's service lane, once the tile has earned one. Bakes the world into
+## the two grids ServiceLanes needs (it knows nothing of NavGrid or forests), routes,
+## then carves the result into the buildable mask and registers it as frontage.
+##
+## ONE lane per tile, decided once: it becomes part of the tile's fabric, and letting
+## it re-plan as buildings land would shuffle the layout out from under them.
+func _ensure_service_lane(tile_id: String, coord: Vector2i, building_count: int) -> void:
+	if _service_segs.has(tile_id) or not _tile_land.has(tile_id):
+		return
+	if building_count < SERVICE_MIN_BUILDINGS:
+		return
+	var segs: Array = _tile_segs.get(tile_id, [])
+	if segs.is_empty():
+		return   # a lane hangs off the main network; it never starts one
+	_service_segs[tile_id] = []   # the decision is made once, even when nothing is laid
+	var center := _tile_center_world_pos(coord)
+	var discs := _forest_discs(coord, center)
+	var rivers: Array = _tile_rivers.get(tile_id, [])
+	var lake := _tile_lake(coord, center)
+	var footprints := _placed_on_tile(tile_id)
+	# A street goes AROUND a block, never through it — and "the block" means the ground
+	# it can still GROW into, not just the lots drawn today. Blocking only the current
+	# lots measured badly on tile_6_12 (+20 factories): the lane crossed the growth
+	# envelope, cost the block 4 lots, and pushed those buildings out to the "any"
+	# fallback in the tile's middle — the exact behaviour lanes exist to stop.
+	var tmpl: Dictionary = _tile_block_templates.get(tile_id, {})
+	if not tmpl.is_empty() and tmpl.has("origin"):
+		var vfull := BLOCK_LOT * BLOCK_FILL_MAX
+		var lot_half := _aabb_half(_rotate(BuildingShapes.make_rect(vfull, vfull).verts, float(tmpl.get("angle", 0.0))))
+		var b_origin: Vector2 = tmpl.origin
+		var b_tan: Vector2 = tmpl.tangent
+		var b_norm: Vector2 = tmpl.normal
+		for c in range(-1, BLOCK_MAX_GROWN_COLS + 1):
+			for r in range(0, BLOCK_MAX_ROWS + 1):
+				footprints.append({
+					"pos": b_origin + b_tan * (float(c) * BLOCK_LOT) + b_norm * (float(r) * BLOCK_LOT),
+					"half": lot_half, "cat": "lot"})
+	for lot in (tmpl.get("lots", []) as Array):
+		footprints.append({"pos": lot, "half": _aabb_half(_rotate(BuildingShapes.make_rect(BLOCK_LOT * BLOCK_FILL_MAX, BLOCK_LOT * BLOCK_FILL_MAX).verts, float(tmpl.get("angle", 0.0)))), "cat": "lot"})
+	var nav := NavGrid.instance()
+	var nav_ok := nav != null and nav.is_ready()
+	var n := GRID_COLS * GRID_ROWS
+	var blocked := PackedByteArray()
+	var cost := PackedFloat32Array()
+	blocked.resize(n)
+	cost.resize(n)
+	for row in GRID_ROWS:
+		for col in GRID_COLS:
+			var key := row * GRID_COLS + col
+			var rel := Vector2((col + 0.5) * CELL, (row + 0.5) * CELL) - TILE_CENTER
+			if not _in_hex_rel(rel):
+				blocked[key] = 1
+				continue
+			if nav_ok:
+				var c := nav.cell_of(center + rel)
+				# Sea, lake, river and the shore fringe are walls, not costs — which is
+				# exactly why a lane forced along a coast comes out as a beachfront road.
+				if nav.water(c.x, c.y) != 0 or nav.level(c.x, c.y) < MIN_BUILD_LEVEL:
+					blocked[key] = 1
+					continue
+			if not lake.is_empty():
+				var dl: Vector2 = rel - lake.c
+				if (dl.x * dl.x) / (lake.rx * lake.rx) + (dl.y * dl.y) / (lake.ry * lake.ry) <= 1.0:
+					blocked[key] = 1
+					continue
+			var on_building := false
+			for p in footprints:
+				var h: Vector2 = p.half
+				var dd: Vector2 = (rel - (p.pos as Vector2)).abs()
+				if dd.x < h.x + SERVICE_BUILD_PAD and dd.y < h.y + SERVICE_BUILD_PAD:
+					on_building = true
+					break
+			if on_building:
+				blocked[key] = 1   # a new street never runs through what is already built
+				continue
+			for d in discs:
+				if rel.distance_to(d.c) < float(d.r):
+					cost[key] += SERVICE_FOREST_COST
+					break
+			for rseg in rivers:
+				if _pt_seg_dist(rel, rseg[0], rseg[1]) < RIVER_ROAD_PAD:
+					cost[key] += SERVICE_RIVER_COST
+					break
+	var line: PackedVector2Array = ServiceLanes.plan({
+		"cols": GRID_COLS, "rows": GRID_ROWS, "cell": CELL,
+		"tile_center": TILE_CENTER, "segs": segs,
+		"blocked": blocked, "cost": cost,
+		"void_radius": SERVICE_VOID_RADIUS,
+		"anchor_keep": SERVICE_ANCHOR_KEEP,
+		"fork_keep": SERVICE_FORK_KEEP,
+		"rejoin_min": SERVICE_REJOIN_MIN,
+		"simplify": SERVICE_SIMPLIFY,
+	})
+	if line.size() < 2:
+		return
+	# Wobble FIRST, then measure everything off the wobbled line. Treating the wiggle as
+	# free draw-time decoration was wrong: clearance, the mask carve and frontage were all
+	# computed on the straight chords while the drawn lane sat up to WOBBLE_AMP to one
+	# side of them, so a building validated 4u clear could be 1.5u from the road you can
+	# actually see. One line, one geometry.
+	var wobbled := ServiceLanes.wobble(line, tile_id)
+	var out: Array = []
+	for i in range(1, wobbled.size()):
+		out.append([wobbled[i - 1], wobbled[i]])
+	# Last gate: the routed path honours SERVICE_BUILD_PAD cell by cell, but RDP can cut a
+	# corner inside it and the wobble can lean further in. Check the FINAL line against
+	# every building already standing, and drop the lane rather than draw it over one.
+	if not _lane_clears_buildings(tile_id, out):
+		return
+	_service_segs[tile_id] = out
+	var world := PackedVector2Array()
+	for p in wobbled:
+		world.append(center + p)
+	_service_world[tile_id] = world
+	_carve_service_lane(tile_id, out)
+	queue_redraw()
+
+## True if `segs` (a candidate lane, tile-relative) keeps SERVICE_CLEAR off every
+## footprint already placed on the tile. Buildings sited AFTER a lane are handled the
+## other way round, by the lane check threaded through _valid/_chunk_valid/_farm_valid.
+func _lane_clears_buildings(tile_id: String, segs: Array) -> bool:
+	for p in _placements:
+		if str(p.tile_id) != tile_id:
+			continue
+		var verts: PackedVector2Array = p.get("verts", PackedVector2Array())
+		if verts.size() < 3:
+			continue
+		var origin: Vector2 = _tile_center_world_pos(p.coord)
+		var local := PackedVector2Array()
+		for v in verts:
+			local.append(v - origin)
+		if not _footprint_clears(Vector2.ZERO, local, segs, SERVICE_CLEAR):
+			return false
+	return true
+
+## Take the lane's own 4u clearance out of the cached buildable masks, so buildings
+## placed after it cannot be packed onto the carriageway. A local edit rather than a
+## mask rebuild: nothing else about the tile changed, and the rebuild is expensive.
+func _carve_service_lane(tile_id: String, segs: Array) -> void:
+	var block := _rasterize_seg_clearance(segs, SERVICE_CLEAR)
+	if _tile_land.has(tile_id):
+		var land: PackedByteArray = _tile_land[tile_id]
+		var keys := PackedInt32Array()
+		for key in (_tile_landkeys[tile_id] as PackedInt32Array):
+			if block[key] == 1:
+				land[key] = 0
+			else:
+				keys.append(key)
+		_tile_land[tile_id] = land
+		_tile_landkeys[tile_id] = keys
+	if _farm_land.has(tile_id):
+		var fland: PackedByteArray = _farm_land[tile_id]
+		var fkeys := PackedInt32Array()
+		for key in (_farm_landkeys[tile_id] as PackedInt32Array):
+			if block[key] == 1:
+				fland[key] = 0
+			else:
+				fkeys.append(key)
+		_farm_land[tile_id] = fland
+		_farm_landkeys[tile_id] = fkeys
+
 ## Place one building. Returns {verts (world), center_rel, half}; {} if nothing fits.
-func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array) -> Dictionary:
+func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array, road_clear: float = ROAD_CLEAR, override_verts: PackedVector2Array = PackedVector2Array()) -> Dictionary:
 	if not _tile_land.has(tile_id):
 		return {}   # caller must _ensure_tile first; never KeyError-crash on a miss
 	var land: PackedByteArray = _tile_land[tile_id]
@@ -2274,10 +2754,12 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 		if not placed.is_empty():
 			placed.verts = _clip_to_hex(placed.verts, coord)
 		return placed
-	var base_verts: PackedVector2Array = BuildingShapes.make(kind, area, seed_v).verts
+	# Shape-language buildings supply their own lot (the sprite's box); everyone
+	# else gets the seeded plate shape sized from `area`.
+	var base_verts: PackedVector2Array = override_verts if not override_verts.is_empty() else BuildingShapes.make(kind, area, seed_v).verts
 	if is_edge:
-		return _place_edge(tile_id, coord, base_verts, placed_here, land)
-	return _place_frontage(tile_id, coord, base_verts, cat, placed_here, land)
+		return _place_edge(tile_id, coord, base_verts, placed_here, land, road_clear)
+	return _place_frontage(tile_id, coord, base_verts, cat, placed_here, land, road_clear)
 
 ## Offshore placement: pick the WATER cell that maximises distance to the
 ## buildings already on the tile (capped so ties break toward the tile centre)
@@ -2316,16 +2798,29 @@ func _place_offshore(coord: Vector2i, area: float, placed_here: Array) -> Dictio
 ## Tight row along a road frontage: orient the long axis along the road, snap flush to the
 ## carriageway clearance, and take the first free slot (which abuts the prior building with
 ## ~DESIGN_GAP). Falls back to abutting the nearest neighbour, then to the lowest free cell.
-func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2Array, cat: String, placed_here: Array, land: PackedByteArray) -> Dictionary:
+func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2Array, cat: String, placed_here: Array, land: PackedByteArray, road_clear: float = ROAD_CLEAR) -> Dictionary:
 	var segs: Array = _tile_segs.get(tile_id, [])
 	var rivers: Array = _tile_rivers.get(tile_id, [])
+	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
 	# Pre-rotation half: because we rotate the shape's long axis (local x) onto the road
 	# tangent, the shape's local y maps exactly onto the road normal — so base_half.y is
 	# the building's true depth perpendicular to the road, used to snap its near edge flush.
 	var base_half := _aabb_half(base_verts)
 	var best := {}
 	var best_score := INF
-	for s in segs:
+	# Service lanes offer frontage too, at their own much tighter clearance — that is
+	# the entire return on the land they cost. A building fronting a lane still keeps
+	# road_clear off every MAIN road (_valid checks those), and the lane's own 4u is
+	# already carved out of the mask, so no extra clearance test is needed here.
+	var frontage_src: Array = []
+	for s0 in segs:
+		frontage_src.append([s0, road_clear])
+	for s1 in (_service_segs.get(tile_id, []) as Array):
+		frontage_src.append([s1, SERVICE_CLEAR])
+	var diag := {"tried": 0, "land": 0, "overlap": 0, "road": 0, "river": 0, "segs": frontage_src.size()}
+	for fs in frontage_src:
+		var s: Array = fs[0]
+		var clear: float = fs[1]
 		var a: Vector2 = s[0]
 		var b: Vector2 = s[1]
 		var tangent := b - a
@@ -2339,19 +2834,28 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 		# Snap flush: near edge sits DESIGN_GAP past the carriageway clearance. Try both
 		# sides of the road; keep whichever side has buildable land.
 		for side in [1.0, -1.0]:
-			var off: Vector2 = normal * side * (ROAD_CLEAR + base_half.y + DESIGN_GAP)
+			# Use the CALLER's clearance, not the constant — art buildings pass a
+			# tight frontage (ART_ROAD_PAD) and were being snapped at ROAD_CLEAR
+			# anyway, parking them ~12u further off the carriageway than asked.
+			var off: Vector2 = normal * side * (clear + base_half.y + DESIGN_GAP)
 			var t := 0.0
 			while t <= seg_len:
 				var center: Vector2 = a + tangent * t + off
-				if _valid(center, rv, half, placed_here, land, segs, rivers):
+				if _valid(center, rv, half, placed_here, land, segs, rivers, road_clear, lanes):
 					var score := _row_score(center, cat, placed_here)
 					if score < best_score:
 						best_score = score
 						best = {"center": center, "rv": rv, "half": half}
 					break   # first free slot on this side of this segment
+				elif DIAG:
+					diag.tried += 1
+					var why := _reject_reason(center, rv, half, placed_here, land, segs, rivers, road_clear)
+					diag[why] = int(diag.get(why, 0)) + 1
 				t += PACK_STEP
 	if not best.is_empty():
-		return _finalize(coord, best.center, best.rv, best.half)
+		var okr := _finalize(coord, best.center, best.rv, best.half)
+		okr["via"] = "frontage"
+		return okr
 
 	# Fallback A: no usable frontage — abut the nearest existing building (any type) with
 	# DESIGN_GAP, axis-aligned, so a roadless tile still packs into a cluster.
@@ -2361,8 +2865,11 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 		for dir in [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP]:
 			var span: float = (nb.half * dir.abs()).length() + (half0 * dir.abs()).length() + DESIGN_GAP
 			var center: Vector2 = nb.pos + dir * span
-			if _valid(center, base_verts, half0, placed_here, land, segs, rivers):
-				return _finalize(coord, center, base_verts, half0)
+			if _valid(center, base_verts, half0, placed_here, land, segs, rivers, road_clear, lanes):
+				var ar := _finalize(coord, center, base_verts, half0)
+				ar["via"] = "abut"
+				ar["diag"] = diag
+				return ar
 
 	# Fallback B: the free cell nearest the tile centre (first building on a roadless tile).
 	# Centre-seeking — NOT lowest-elevation — so a roadless cluster forms inland rather than
@@ -2371,35 +2878,72 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 	var best_d := 1.0e9
 	for key in (_tile_landkeys[tile_id] as PackedInt32Array):
 		var rel := Vector2(((key % GRID_COLS) + 0.5) * CELL, ((key / GRID_COLS) + 0.5) * CELL) - TILE_CENTER
-		if not _valid(rel, base_verts, half0, placed_here, land, segs, rivers):
+		if not _valid(rel, base_verts, half0, placed_here, land, segs, rivers, road_clear, lanes):
 			continue
 		var d := rel.length()
 		if d < best_d:
 			best_d = d
 			best_center = rel
 	if best_center != Vector2.INF:
-		return _finalize(coord, best_center, base_verts, half0)
+		var br := _finalize(coord, best_center, base_verts, half0)
+		br["via"] = "any"
+		br["diag"] = diag
+		return br
 	return {}
+
+## First failing gate for a rejected candidate — the frontage search's "why".
+## `land` folds hex bounds, water, elevation, forest and the river corridor.
+func _reject_reason(center: Vector2, local_verts: PackedVector2Array, half: Vector2, placed_here: Array, land: PackedByteArray, segs: Array, rivers: Array, road_clear: float) -> String:
+	if not _footprint_on_land(center, local_verts, land):
+		return "land"
+	if _overlaps(center, half, placed_here):
+		return "overlap"
+	if not _footprint_clears(center, local_verts, segs, road_clear):
+		return "road"
+	if not _footprint_clears(center, local_verts, rivers, RIVER_CLEAR):
+		return "river"
+	return "?"
 
 ## Edge-seeker (recycling/extraction): the free land cell that maximises distance from the
 ## tile centre and from other buildings, i.e. a far empty corner. Axis-aligned.
-func _place_edge(tile_id: String, coord: Vector2i, base_verts: PackedVector2Array, placed_here: Array, land: PackedByteArray) -> Dictionary:
+func _place_edge(tile_id: String, coord: Vector2i, base_verts: PackedVector2Array, placed_here: Array, land: PackedByteArray, road_clear: float = ROAD_CLEAR) -> Dictionary:
 	var segs: Array = _tile_segs.get(tile_id, [])
 	var rivers: Array = _tile_rivers.get(tile_id, [])
+	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
 	var half := _aabb_half(base_verts)
 	var best_center := Vector2.INF
 	var best_score := -INF
 	for key in (_tile_landkeys[tile_id] as PackedInt32Array):
 		var rel := Vector2(((key % GRID_COLS) + 0.5) * CELL, ((key / GRID_COLS) + 0.5) * CELL) - TILE_CENTER
-		if not _valid(rel, base_verts, half, placed_here, land, segs, rivers):
+		if not _valid(rel, base_verts, half, placed_here, land, segs, rivers, road_clear, lanes):
 			continue
+		if not _footprint_dry(rel, base_verts, coord):
+			continue   # the rim is where the water is
 		var score := rel.length() + W_AWAY * _nearest_building_dist(rel, placed_here)
 		if score > best_score:
 			best_score = score
 			best_center = rel
 	if best_center == Vector2.INF:
 		return {}
-	return _finalize(coord, best_center, base_verts, half)
+	var er := _finalize(coord, best_center, base_verts, half)
+	er["via"] = "edge"
+	return er
+
+## Point-wise water test over a footprint. The buildable mask is a grid and the
+## edge-seeker deliberately heads for the tile rim, where a corner can hang over
+## the coast between sampled cells — an onshore wind farm ended up on water
+## (owner report). Offshore structures are exempt; they belong there.
+func _footprint_dry(center: Vector2, local_verts: PackedVector2Array, coord: Vector2i) -> bool:
+	var nav := NavGrid.instance()
+	if nav == null or not nav.is_ready():
+		return true
+	var origin := _tile_center_world_pos(coord)
+	for v in local_verts:
+		var c := nav.cell_of(origin + center + v)
+		if nav.water(c.x, c.y) != 0:
+			return false
+	var cc := nav.cell_of(origin + center)
+	return nav.water(cc.x, cc.y) == 0
 
 ## True if the tile already carries a non-farm building (forests never enter _placements, so
 ## any placement with cat != "farm" is a non-farm/non-forest building).
@@ -2444,6 +2988,7 @@ func _neighbor_farm_world_pts(tile_id: String, coord: Vector2i) -> PackedVector2
 func _place_farm(tile_id: String, coord: Vector2i, base_verts: PackedVector2Array, placed_here: Array, land: PackedByteArray, toward_river: bool) -> Dictionary:
 	var segs: Array = _tile_segs.get(tile_id, [])
 	var rivers: Array = _tile_rivers.get(tile_id, [])
+	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
 	var half := _aabb_half(base_verts)
 	var nbr_pts: PackedVector2Array = _neighbor_farm_world_pts(tile_id, coord)   # precomputed ONCE
 	var has_nbr := nbr_pts.size() > 0
@@ -2473,25 +3018,26 @@ func _place_farm(tile_id: String, coord: Vector2i, base_verts: PackedVector2Arra
 		return float(a[0]) < float(b[0]) or (float(a[0]) == float(b[0]) and int(a[1]) < int(b[1])))
 	for c in cands:
 		best_center = c[2] as Vector2
-		if _farm_valid(best_center, base_verts, half, placed_here, land, segs, rivers):
+		if _farm_valid(best_center, base_verts, half, placed_here, land, segs, rivers, lanes):
 			return _finalize(coord, best_center, base_verts, half)
 	var nb := _nearest_placed(placed_here)   # fallback: abut a neighbour
 	if not nb.is_empty():
 		for dir in [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP]:
 			var span: float = (nb.half * dir.abs()).length() + (half * dir.abs()).length() + DESIGN_GAP
 			var center: Vector2 = nb.pos + dir * span
-			if _farm_valid(center, base_verts, half, placed_here, land, segs, rivers):
+			if _farm_valid(center, base_verts, half, placed_here, land, segs, rivers, lanes):
 				return _finalize(coord, center, base_verts, half)
 	return {}
 
 ## Relaxed validity for farm fields: like _valid, but the footprint may extend OUTSIDE the hex
 ## (those parts get clipped). It must still keep clear of roads, rivers and other buildings, and
 ## every in-hex part of the footprint must be buildable land (no water/forest/off-elevation).
-func _farm_valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, placed_here: Array, land: PackedByteArray, segs: Array, rivers: Array) -> bool:
+func _farm_valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, placed_here: Array, land: PackedByteArray, segs: Array, rivers: Array, lanes: Array = []) -> bool:
 	return _farm_footprint_ok(center, local_verts, land) \
 		and not _farm_overlaps(center, half, placed_here) \
 		and _footprint_clears(center, local_verts, segs, ROAD_CLEAR) \
-		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR)
+		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR) \
+		and _footprint_clears(center, local_verts, lanes, SERVICE_CLEAR)
 
 ## Farm overlap rule: a farm keeps the full AABB clear of NON-farm buildings, but only a centre
 ## spacing (FARM_MIN_SEP) from other FARMS — adjacent fields are meant to overlap pre-clip and then
@@ -2571,6 +3117,241 @@ func _bake_farm_hatch(verts: PackedVector2Array) -> Array:
 		off += FARM_HATCH_SPACING
 	return out
 
+## [centroid, principal angle]: the polygon's PCA long axis.
+func _poly_long_axis(verts: PackedVector2Array) -> Array:
+	var ctr := Vector2.ZERO
+	for v in verts:
+		ctr += v
+	ctr /= float(verts.size())
+	var sxx := 0.0
+	var sxy := 0.0
+	var syy := 0.0
+	for v in verts:
+		var r := v - ctr
+		sxx += r.x * r.x
+		sxy += r.x * r.y
+		syy += r.y * r.y
+	return [ctr, 0.5 * atan2(2.0 * sxy, sxx - syy)]
+
+## Ink-mode furrows: hatch lines along a polygon's LONG AXIS (+ang_offset for
+## the occasional deliberately-perpendicular parcel) with a small seeded
+## angle jitter. Used per-parcel by the P3b fabric; deterministic.
+func _bake_farm_furrows(verts: PackedVector2Array, ang_offset: float = 0.0) -> Array:
+	var out: Array = []
+	if verts.size() < 3:
+		return out
+	var axis := _poly_long_axis(verts)
+	var ctr: Vector2 = axis[0]
+	var ang: float = float(axis[1]) + ang_offset
+	ang += deg_to_rad(float(RoadHash.pick("furrow|%d|%d" % [roundi(ctr.x), roundi(ctr.y)], 13)) - 6.0)
+	var d := Vector2(cos(ang), sin(ang))
+	var n := Vector2(-d.y, d.x)
+	var bb := _verts_bb(verts)
+	var reach := bb.size.length()
+	var ext := reach * 0.5
+	var off := -ext
+	while off <= ext:
+		var mid := ctr + n * off
+		var clipped := Geometry2D.intersect_polyline_with_polygon(PackedVector2Array([mid - d * reach, mid + d * reach]), verts)
+		for seg in clipped:
+			out.append(seg)
+		off += FURROW_SPACING
+	return out
+
+# ── P3b parcel fabric (ink farms) ──────────────────────────────────────────────
+const PARCEL_STRIP_MIN := 30.0   # strip width range across the long axis
+const PARCEL_STRIP_MAX := 55.0
+const PARCEL_CUT_MIN := 40.0     # cross-cut spacing range along the long axis
+const PARCEL_CUT_MAX := 80.0
+const PARCEL_SHEAR_DEG := 3.0    # per-cut tilt so cells are trapezoids, not graph paper
+const PARCEL_INSET := 2.2        # gap: the base path-tan shows through = the little roads
+const PARCEL_MIN_AREA := 250.0   # drop boundary slivers (base shows = path widening)
+const FURROW_SPACING := 7.0      # ink furrow pitch (owner: denser than the classic 12u hatch)
+
+# ── Ink building art (procedural shape language — DEFAULT in both styles) ──────
+## internal_name -> InkBuildingGen recipe key (aliases collapse variants).
+## Owner 2026-07-23: the shape-language art is the default building look in
+## BOTH map styles, and its lot is reserved at ART size so the packer
+## separates what is actually drawn (plate-sized lots caused overlap).
+const INK_ART_KEY := {
+	"furnace": "furnace", "eaf": "eaf", "industrial_factory": "industrial_factory",
+	"consumer_factory": "consumer_factory", "assembly_plant": "assembly_plant",
+	"high_tech_manufactory": "high_tech_manufactory", "petro_refinery": "petro_refinery",
+	"chem_plant": "chem_plant", "poly_plant": "poly_plant", "electrolyser": "electrolyser",
+	"coal_power": "power_plant", "water_pump": "water_pump", "mine": "mine",
+	"solar_farm": "solar_farm",
+	"onshore_wind_farm": "wind_farm", "offshore_wind_farm": "wind_farm",
+	"pipes": "pipes", "reinf_pipes": "pipes", "cables": "cables",
+}
+## Lot side scales with tile_size_used from the smallest class to 3x for the
+## biggest (owner's 10:30 ratio); levels never rescale the art — the L3 frame
+## is the lot and upgrades annex into it.
+## Lot sides match the drawn bounds, so a lot reserves exactly what gets drawn
+## — no wasted ground (which was crowding buildings off dense tiles).
+const ART_SIDE_MIN := 40.0
+const ART_SIDE_MAX := 90.0
+const ART_ROAD_PAD := 5.5    # art frontage: footprint edge ~1u off the carriageway edge
+## Placement diagnostics (tools/road_frontage_audit). Off in play: classifying
+## a rejected candidate costs four extra predicate calls, and the frontage
+## search rejects a lot of candidates.
+static var DIAG := false
+## Hard bounds on the DRAWN sprite's long side, in world units (owner ruling
+## 2026-07-23). Applied at draw time so it holds no matter which placement path
+## sized the lot — block-template lots ignore the art lot area entirely.
+## Scaled by tile_size_used, whose real range in the buildings CSV is 1..30
+## (1-2 = tiny infra, 10 = the bulk, 30 = mine, the largest).
+const ART_DRAWN_MIN := 40.0
+const ART_DRAWN_MAX := 90.0
+const ART_SIZE_UNITS_MAX := 30.0
+## Per-recipe drawn-size overrides. Wind sites sprawl — at the size-10 default
+## they read as a cramped cluster rather than machines spread over open ground
+## (owner). Visual only: it moves the lot too, so reservation stays honest.
+const ART_SIZE_OVERRIDE := {"wind_farm": ART_DRAWN_MAX}
+## Blocked space is the DRAWN sprite plus this margin, not the lot the packer
+## reserved — a lot is sized for the biggest thing that could stand on it, and
+## treating all of it as solid wasted ground and pushed neighbours away.
+const ART_BLOCK_MARGIN := 6.0
+## Sprawling sites that belong on open ground rather than fronting a street
+## (owner): pits and renewable farms. They take the edge-seeker path — the same
+## one extraction uses — so they head for an empty corner of the tile, and the
+## frontage audit counts them as off-road by design rather than as failures.
+const OFF_ROAD_NAMES := {
+	"mine": true, "solar_farm": true,
+	"onshore_wind_farm": true, "offshore_wind_farm": true,
+}
+var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
+
+## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
+## rect/trapezoid parcels clipped at the field boundary; each parcel is inset
+## so the path-tan base reads as the small roads between plots. Seeded from
+## the field centroid — deterministic and layout-independent. The LOGIC
+## footprint polygon is never touched. Returns {parcels: [{p, t, f}],
+## barn: quad, silo_c: Vector2, silo_r: float} — the ink outbuildings are
+## SNAPPED inside one parcel (flush to a path edge, never overflowing).
+func _bake_farm_parcels(verts: PackedVector2Array) -> Dictionary:
+	var out: Array = []
+	if verts.size() < 3:
+		return {"parcels": out}
+	var axis := _poly_long_axis(verts)
+	var ctr: Vector2 = axis[0]
+	var ang := float(axis[1])
+	var d := Vector2(cos(ang), sin(ang))
+	var n := Vector2(-d.y, d.x)
+	var seed_base := "fparcel|%d|%d" % [roundi(ctr.x), roundi(ctr.y)]
+	var dmin := 1.0e9
+	var dmax := -1.0e9
+	var nmin := 1.0e9
+	var nmax := -1.0e9
+	for v in verts:
+		var r := v - ctr
+		dmin = minf(dmin, r.dot(d))
+		dmax = maxf(dmax, r.dot(d))
+		nmin = minf(nmin, r.dot(n))
+		nmax = maxf(nmax, r.dot(n))
+	var ccw := verts.duplicate()
+	if Geometry2D.is_polygon_clockwise(ccw):
+		ccw.reverse()
+	var pi_ct := 0
+	var n0 := nmin
+	var row := 0
+	while n0 < nmax:
+		var w := lerpf(PARCEL_STRIP_MIN, PARCEL_STRIP_MAX, float(RoadHash.pick("%s|r%d" % [seed_base, row], 100)) / 100.0)
+		var n1 := minf(n0 + w, nmax)
+		var d0 := dmin
+		var col := 0
+		while d0 < dmax:
+			var cl := lerpf(PARCEL_CUT_MIN, PARCEL_CUT_MAX, float(RoadHash.pick("%s|r%d|c%d" % [seed_base, row, col], 100)) / 100.0)
+			var d1 := minf(d0 + cl, dmax)
+			var s0 := tan(deg_to_rad((float(RoadHash.pick("%s|r%d|s%d" % [seed_base, row, col], 100)) / 100.0 * 2.0 - 1.0) * PARCEL_SHEAR_DEG))
+			var s1 := tan(deg_to_rad((float(RoadHash.pick("%s|r%d|s%d" % [seed_base, row, col + 1], 100)) / 100.0 * 2.0 - 1.0) * PARCEL_SHEAR_DEG))
+			var quad := PackedVector2Array([
+				ctr + d * d0 + n * n0,
+				ctr + d * d1 + n * n0,
+				ctr + d * (d1 + s1 * (n1 - n0)) + n * n1,
+				ctr + d * (d0 + s0 * (n1 - n0)) + n * n1,
+			])
+			for piece in Geometry2D.intersect_polygons(quad, ccw):
+				if piece.size() < 3 or absf(_poly_area(piece)) < PARCEL_MIN_AREA:
+					continue
+				var pcw: PackedVector2Array = piece.duplicate()
+				if Geometry2D.is_polygon_clockwise(pcw):
+					pcw.reverse()
+				for inset in Geometry2D.offset_polygon(pcw, -PARCEL_INSET):
+					if inset.size() < 3:
+						continue
+					# ~60% furrowed along the parcel's own axis, ~10% ploughed
+					# perpendicular for rhythm, the rest plain.
+					var fseg: Array = []
+					var roll := RoadHash.pick("%s|f%d" % [seed_base, pi_ct], 10)
+					if roll < 6:
+						fseg = _bake_farm_furrows(inset, 0.0)
+					elif roll < 7:
+						fseg = _bake_farm_furrows(inset, PI * 0.5)
+					out.append({"p": inset, "t": RoadHash.pick("%s|t%d" % [seed_base, pi_ct], 4), "f": fseg})
+					pi_ct += 1
+			d0 = d1
+			col += 1
+		n0 = n1
+		row += 1
+	var result := {"parcels": out, "silo_r": FARM_SILO_R * FARM_OUTBUILDING_SCALE}
+	result.merge(_snap_farm_outbuildings(out))
+	return result
+
+## Find a parcel that fits the barn flush against one of its (path-facing)
+## edges, and the silo beside the barn along the same edge — both fully
+## inside the parcel so nothing overflows onto the little roads. Largest
+## parcels and longest edges first; {} when no parcel can host them.
+func _snap_farm_outbuildings(parcels: Array) -> Dictionary:
+	var bw := FARM_BARN.x * FARM_OUTBUILDING_SCALE
+	var bh := FARM_BARN.y * FARM_OUTBUILDING_SCALE
+	var sr := FARM_SILO_R * FARM_OUTBUILDING_SCALE
+	var by_area: Array = []
+	for i in parcels.size():
+		by_area.append([absf(_poly_area(parcels[i].p)), i])
+	by_area.sort_custom(func(x, y) -> bool: return float(x[0]) > float(y[0]))
+	for entry in by_area.slice(0, 6):
+		var poly: PackedVector2Array = parcels[int(entry[1])].p
+		var edges: Array = []
+		for i in poly.size():
+			var ea: Vector2 = poly[i]
+			var eb: Vector2 = poly[(i + 1) % poly.size()]
+			edges.append([ea.distance_to(eb), ea, eb])
+		edges.sort_custom(func(x, y) -> bool: return float(x[0]) > float(y[0]))
+		for e in edges.slice(0, 4):
+			if float(e[0]) < bw + 6.0:
+				continue
+			var ea2: Vector2 = e[1]
+			var eb2: Vector2 = e[2]
+			var dir := (eb2 - ea2).normalized()
+			var mid := (ea2 + eb2) * 0.5
+			for side in [1.0, -1.0]:
+				var n := Vector2(-dir.y, dir.x) * float(side)
+				var bc := mid + n * (bh * 0.5 + 2.0)
+				var barn := PackedVector2Array([
+					bc - dir * (bw * 0.5) - n * (bh * 0.5),
+					bc + dir * (bw * 0.5) - n * (bh * 0.5),
+					bc + dir * (bw * 0.5) + n * (bh * 0.5),
+					bc - dir * (bw * 0.5) + n * (bh * 0.5),
+				])
+				var ok := true
+				for corner in barn:
+					if not Geometry2D.is_point_in_polygon(corner, poly):
+						ok = false
+						break
+				if not ok:
+					continue
+				for sdir in [1.0, -1.0]:
+					var sc2 := bc + dir * float(sdir) * (bw * 0.5 + sr + 3.0)
+					var fits := true
+					for probe in [sc2, sc2 + Vector2(sr + 1.0, 0.0), sc2 - Vector2(sr + 1.0, 0.0), sc2 + Vector2(0.0, sr + 1.0), sc2 - Vector2(0.0, sr + 1.0)]:
+						if not Geometry2D.is_point_in_polygon(probe, poly):
+							fits = false
+							break
+					if fits:
+						return {"barn": barn, "silo_c": sc2}
+				return {"barn": barn}
+	return {}
+
 ## Lower is better: hug the nearest same-type building (terraced rows of a kind); if none
 ## of this type is placed yet, prefer a frontage slot nearer the tile centre.
 func _row_score(center: Vector2, cat: String, placed_here: Array) -> float:
@@ -2645,17 +3426,18 @@ func _overlaps(center: Vector2, half: Vector2, placed_here: Array) -> bool:
 
 ## A candidate footprint is valid iff it sits on buildable land, doesn't overlap a placed
 ## building (with DESIGN_GAP), and no edge of it comes within clearance of any road or river.
-func _valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, placed_here: Array, land: PackedByteArray, segs: Array, rivers: Array, road_clear: float = ROAD_CLEAR) -> bool:
+func _valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, placed_here: Array, land: PackedByteArray, segs: Array, rivers: Array, road_clear: float = ROAD_CLEAR, lanes: Array = []) -> bool:
 	return _footprint_on_land(center, local_verts, land) \
 		and not _overlaps(center, half, placed_here) \
 		and _footprint_clears(center, local_verts, segs, road_clear) \
-		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR)
+		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR) \
+		and _footprint_clears(center, local_verts, lanes, SERVICE_CLEAR)
 
 ## PRECISE wing validation (owner 2026-07-10: the buildable mask is 20u-cell
 ## chunky and reserves the 28u river bank corridor — a cosmetic wing only
 ## needs the real clearances). Checks hex, water, elevation and forest discs
 ## point-wise, exact 18u road / 16u river distances, and building overlaps.
-func _wing_valid(wctr: Vector2, local_verts: PackedVector2Array, half: Vector2, others: Array, segs: Array, rivers: Array, discs: Array, center: Vector2) -> bool:
+func _wing_valid(wctr: Vector2, local_verts: PackedVector2Array, half: Vector2, others: Array, segs: Array, rivers: Array, discs: Array, center: Vector2, lanes: Array = []) -> bool:
 	if _overlaps(wctr, half, others):
 		return false
 	var nav := NavGrid.instance()
@@ -2676,19 +3458,22 @@ func _wing_valid(wctr: Vector2, local_verts: PackedVector2Array, half: Vector2, 
 			if pr.distance_to(d.c) < float(d.r):
 				return false
 	return _footprint_clears(wctr, local_verts, segs, ROAD_CLEAR) \
-		and _footprint_clears(wctr, local_verts, rivers, RIVER_CLEAR)
+		and _footprint_clears(wctr, local_verts, rivers, RIVER_CLEAR) \
+		and _footprint_clears(wctr, local_verts, lanes, SERVICE_CLEAR)
 
 ## Relaxed validation for a big CHUNK (it fills its cell): only the CENTRE must be buildable land (the chunk
 ## may overlap a forest edge or the road-clearance band — the building just draws over it), but it must stay
 ## IN-HEX (no corner outside the tile) and keep BLOCK_ROAD_PAD / RIVER_CLEAR off road + river centrelines.
-func _chunk_valid(center: Vector2, local_verts: PackedVector2Array, land: PackedByteArray, segs: Array, rivers: Array) -> bool:
+func _chunk_valid(center: Vector2, local_verts: PackedVector2Array, land: PackedByteArray, segs: Array, rivers: Array, lanes: Array = []) -> bool:
 	if not _land_at(center, land):
 		return false
 	for v in local_verts:
 		var p: Vector2 = center + v
 		if absf(p.x) > 270.0 or absf(p.y) > 240.0 or 240.0 * absf(p.x) + 135.0 * absf(p.y) > 64800.0:
 			return false   # a corner off-hex would draw outside the tile
-	return _footprint_clears(center, local_verts, segs, BLOCK_ROAD_PAD) and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR)
+	return _footprint_clears(center, local_verts, segs, BLOCK_ROAD_PAD) \
+		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR) \
+		and _footprint_clears(center, local_verts, lanes, SERVICE_CLEAR)
 
 ## True if the WHOLE footprint polygon keeps `clearance` clear of every obstacle segment —
 ## every footprint edge is at least `clearance` from every segment. Catches a footprint whose
@@ -2899,6 +3684,8 @@ func _clear_tile_caches() -> void:
 	_farm_land.clear()
 	_farm_landkeys.clear()
 	_tile_segs.clear()
+	_service_segs.clear()
+	_service_world.clear()
 	_tile_rivers.clear()
 	_tile_block_mode.clear()
 	_tile_block_templates.clear()
@@ -3035,11 +3822,15 @@ func _draw() -> void:
 			_draw_subcomponent(sc)
 	# Courtyard block-masses draw under their members: one welded mass + inner
 	# yard; the members then contribute ink outlines only (party-wall slices).
+	var shadow := MapStyle.building_shadow_color()
+	var shadow_off := MapStyle.building_shadow_offset()
 	for tid_m in _block_masses:
 		for m in (_block_masses[tid_m] as Array):
 			if _cull and not _view.intersects(m.bb):
 				continue
 			var mw := _wobble_poly(str(m.key), m.poly)
+			if shadow.a > 0.0:
+				draw_colored_polygon(_offset_pts(mw, shadow_off), shadow)
 			draw_colored_polygon(mw, m.color)
 			var ml := mw.duplicate()
 			ml.append(mw[0])
@@ -3056,27 +3847,58 @@ func _draw() -> void:
 		var is_farm: bool = str(placement.cat) == "farm"
 		var verts: PackedVector2Array = placement.verts
 		var hatch_src: Array = placement.get("hatch", [])
+		var parcel_src: Dictionary = placement.get("parcels", {})
 		if is_farm:
 			# Use the cell-clipped (lane-snapped) shape + its re-baked hatch when the layout pass ran.
 			var fid := str(placement.instance_id)
 			if _farm_render.has(fid):
 				verts = _farm_render[fid].verts
 				hatch_src = _farm_render[fid].hatch
+				parcel_src = (_farm_render[fid] as Dictionary).get("parcels", {})
 		if verts.size() < 3:
 			continue
 		if is_farm:
-			draw_colored_polygon(verts, FARM_FIELD_COLOR)
-			var loop := verts.duplicate()
-			loop.append(verts[0])
-			if bool(placement.is_npc):
-				draw_polyline(loop, Color.WHITE, NPC_OUTLINE_W, true)
+			if MapStyle.ink:
+				# P3b parcel fabric: the path-tan base shows through the parcel
+				# insets as the little farm roads; NO outer outline (the parcel
+				# edges carry the boundary — kills the chunky-blob read).
+				draw_colored_polygon(verts, MapStyle.farm_path_color())
+				for pc in (parcel_src.get("parcels", []) as Array):
+					var pp: PackedVector2Array = pc.p
+					if pp.size() < 3:
+						continue
+					draw_colored_polygon(pp, MapStyle.farm_parcel_tint(int(pc.t)))
+					var pl := pp.duplicate()
+					pl.append(pp[0])
+					draw_polyline(pl, MapStyle.farm_parcel_outline(), 0.9, true)
+					for seg in (pc.f as Array):
+						var fs: PackedVector2Array = seg
+						if fs.size() >= 2:
+							draw_polyline(fs, MapStyle.farm_hatch(), MapStyle.farm_hatch_width())
+				# Parcel-snapped outbuildings (subcomponent barn/silo skip in ink).
+				var barn: PackedVector2Array = parcel_src.get("barn", PackedVector2Array())
+				if barn.size() == 4:
+					draw_colored_polygon(barn, MapStyle.farm_barn_color())
+					var bl := barn.duplicate()
+					bl.append(barn[0])
+					draw_polyline(bl, INK, 1.0, true)
+				var silo_c: Vector2 = parcel_src.get("silo_c", Vector2.INF)
+				if silo_c.is_finite():
+					var sr3 := float(parcel_src.get("silo_r", 8.4))
+					draw_circle(silo_c, sr3, MapStyle.farm_silo_color())
+					draw_arc(silo_c, sr3, 0.0, TAU, 20, INK, 1.0, true)
+					draw_circle(silo_c, 1.2, INK)
 			else:
-				draw_polyline(loop, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
-			# Dark-green diagonal hatch (baked + clipped to the field).
-			for seg in (hatch_src as Array):
-				var s: PackedVector2Array = seg
-				if s.size() >= 2:
-					draw_polyline(s, FARM_HATCH, FARM_HATCH_W)
+				var fid2 := str(placement.instance_id)
+				draw_colored_polygon(verts, MapStyle.farm_field_variant(fid2))
+				var loop := verts.duplicate()
+				loop.append(verts[0])
+				var farm_npc := bool(placement.is_npc)
+				draw_polyline(loop, MapStyle.farm_outline_color(farm_npc), MapStyle.farm_outline_width(farm_npc), true)
+				for seg in (hatch_src as Array):
+					var s: PackedVector2Array = seg
+					if s.size() >= 2:
+						draw_polyline(s, MapStyle.farm_hatch(), MapStyle.farm_hatch_width())
 		else:
 			# Ink & wash: wash fill + one sepia ink outline + category-flavoured
 			# roof motifs. The DRAWN polygon gets a hand-wobble (ink spec I4);
@@ -3084,42 +3906,63 @@ func _draw() -> void:
 			# Members of a courtyard mass skip their fill — the mass carries it —
 			# and their outline thins into a party-wall division.
 			var in_mass: bool = (_massed_by_tile.get(str(placement.tile_id), {}) as Dictionary).has(str(placement.instance_id))
-			var wob := _wobble_poly(str(placement.instance_id), verts)
-			if not in_mass:
-				draw_colored_polygon(wob, _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
-			var loop2 := wob.duplicate()
-			loop2.append(wob[0])
-			draw_polyline(loop2, INK, 1.0 if in_mass else INK_W, true)
-			# Quad footprints only — L/C shapes (6/8 verts) keep a clean roof so a
-			# motif never spills off the polygon (same guard the old ridges used).
-			# Offshore platforms stay plain (a helipad dot instead of shed roofs).
-			if bool(placement.get("offshore", false)):
-				draw_circle(_poly_centroid(verts), 2.4, INK)
-			elif verts.size() == 4:
-				_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts, bool(placement.is_npc))
+			if not in_mass and _draw_ink_art(placement, verts):
+				pass   # shape-language art replaces wash/outline/motifs (both styles)
+			else:
+				var wob := _wobble_poly(str(placement.instance_id), verts)
+				if not in_mass:
+					if shadow.a > 0.0:
+						draw_colored_polygon(_offset_pts(wob, shadow_off), shadow)
+					draw_colored_polygon(wob, _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
+				var loop2 := wob.duplicate()
+				loop2.append(wob[0])
+				draw_polyline(loop2, INK, 1.0 if in_mass else INK_W, true)
+				# Quad footprints only — L/C shapes (6/8 verts) keep a clean roof so a
+				# motif never spills off the polygon (same guard the old ridges used).
+				# Offshore platforms stay plain (a helipad dot instead of shed roofs).
+				if bool(placement.get("offshore", false)):
+					draw_circle(_poly_centroid(verts), 2.4, INK)
+				elif verts.size() == 4:
+					_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts, bool(placement.is_npc))
 	# Thin dirt tracks between adjacent farms (kept within FARM_LANE_REACH of the fields, routed around
 	# forests). A promoted tile's _farm_lanes already excludes the ring + trunk (now real yellow roads).
 	# A filled disc (radius = half the track width) at each segment end JOINS the corners + junctions so
 	# the network reads as continuous instead of broken butt-capped segments.
-	var joint_r := FARM_LANE_W * 0.5
-	for tid in _farm_lanes:
-		for seg in (_farm_lanes[tid] as Array):
-			var ls: PackedVector2Array = seg
-			if ls.size() >= 2:
-				draw_polyline(ls, FARM_LANE_COLOR, FARM_LANE_W)
-				for v in ls:
-					draw_circle(v, joint_r, FARM_LANE_COLOR)   # fill each corner/junction
-	# Bridge decks where a lane crosses a river.
-	for tid2 in _farm_bridges:
-		for br in (_farm_bridges[tid2] as Array):
-			var bp: Vector2 = br.p
-			var bd: Vector2 = br.dir
-			var bpr := Vector2(-bd.y, bd.x)
-			var e0 := bp - bd * (FARM_BRIDGE_LEN * 0.5)
-			var e1 := bp + bd * (FARM_BRIDGE_LEN * 0.5)
-			draw_line(e0, e1, FARM_BRIDGE_COLOR, FARM_BRIDGE_W)            # deck
-			draw_line(e0 - bpr * 5.0, e0 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)   # abutment rails
-			draw_line(e1 - bpr * 5.0, e1 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)
+	# Block side roads — only exist once a second-row lot was actually built on.
+	for tid_s in _block_streets:
+		for s in (_block_streets[tid_s] as Array):
+			draw_line(s[0], s[1], MapStyle.road_casing(), 11.0, true)
+			draw_line(s[0], s[1], MapStyle.road_local(), 7.0, true)
+	# Service lanes: SERVICE_WIDTH of carriageway and a hairline casing. Deliberately
+	# far thinner than a local road — the eye should read them as access, not route,
+	# and the thinness is the visual promise that they cost almost no land.
+	for tid_v in _service_world:
+		draw_polyline(_service_world[tid_v] as PackedVector2Array, MapStyle.road_casing(), SERVICE_WIDTH + 2.0, true)
+	for tid_v2 in _service_world:
+		draw_polyline(_service_world[tid_v2] as PackedVector2Array, MapStyle.road_local(), SERVICE_WIDTH, true)
+	# Ink mode draws NO grey lane web (owner ruling 2026-07-23): the mockup's
+	# farms are parcel blocks sitting beside the roads, not lane-connected
+	# blobs. Classic keeps the dirt tracks + their river bridge decks.
+	if not MapStyle.ink:
+		var joint_r := FARM_LANE_W * 0.5
+		for tid in _farm_lanes:
+			for seg in (_farm_lanes[tid] as Array):
+				var ls: PackedVector2Array = seg
+				if ls.size() >= 2:
+					draw_polyline(ls, FARM_LANE_COLOR, FARM_LANE_W)
+					for v in ls:
+						draw_circle(v, joint_r, FARM_LANE_COLOR)   # fill each corner/junction
+		# Bridge decks where a lane crosses a river.
+		for tid2 in _farm_bridges:
+			for br in (_farm_bridges[tid2] as Array):
+				var bp: Vector2 = br.p
+				var bd: Vector2 = br.dir
+				var bpr := Vector2(-bd.y, bd.x)
+				var e0 := bp - bd * (FARM_BRIDGE_LEN * 0.5)
+				var e1 := bp + bd * (FARM_BRIDGE_LEN * 0.5)
+				draw_line(e0, e1, FARM_BRIDGE_COLOR, FARM_BRIDGE_W)            # deck
+				draw_line(e0 - bpr * 5.0, e0 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)   # abutment rails
+				draw_line(e1 - bpr * 5.0, e1 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)
 	# Round tanks + farm barns/silos on top (tanks sit off their building; farm outbuildings sit ON the field).
 	for sc in _subcomponents:
 		var k := str(sc.kind)
@@ -3133,6 +3976,10 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		return
 	var sv: PackedVector2Array = sc.verts
 	var kind := str(sc.kind)
+	if MapStyle.ink and (kind == "farm_barn" or kind == "farm_silo"):
+		return   # ink farms draw their own parcel-snapped outbuildings (P3b)
+	if _ink_art_iid.get(str(sc.get("iid", "")), false):
+		return   # the shape-language art carries the whole compound (both styles)
 	if kind == "tankfarm":
 		var twash := _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc))
 		for tc in (sc.tanks as Array):
@@ -3158,15 +4005,127 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		if kind == "tank":
 			draw_circle(_poly_centroid(sv), 1.4, INK)   # reference: tank = ink circle + centre dot
 		return
-	draw_colored_polygon(sv, sc.color)
+	# Farm barn/silo fall through to here. Ink: brick barn / mustard silo + ink
+	# outline; classic keeps the brown + white/grey look.
+	var fb_fill: Color = sc.color
+	if MapStyle.ink:
+		fb_fill = MapStyle.farm_silo_color() if kind == "farm_silo" else MapStyle.farm_barn_color()
+	draw_colored_polygon(sv, fb_fill)
 	var sl := sv.duplicate()
 	sl.append(sv[0])
-	if bool(sc.is_npc):
+	if MapStyle.ink:
+		draw_polyline(sl, INK, 1.0, true)
+	elif bool(sc.is_npc):
 		draw_polyline(sl, Color.WHITE, NPC_OUTLINE_W, true)
 	else:
 		draw_polyline(sl, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
 
 # ── Ink & wash helpers (phase I1) ──────────────────────────────────────────────
+
+## Procedural industrial art (ink mode): InkBuildingGen draws the shape-language
+## compound centered on the footprint, rotated to its first edge, long side
+## scaled to INK_ART_SCALE x the footprint extent. The generator computes facet
+## tones from WORLD normals, offsets shadows in world SE and aims highlights
+## world NW — so rotation keeps the light source top-left (owner requirement).
+## Returns false when no recipe applies — caller falls back to the plate look.
+func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
+	var art_key: String = INK_ART_KEY.get(str(placement.get("iname", "")), "")
+	if art_key == "" or verts.size() < 3:
+		return false
+	var lvl := clampi(int((MatchState.get_building(str(placement.instance_id)) as Dictionary).get("level", 1)), 1, 3)
+	var dir := (verts[1] - verts[0]).normalized()
+	var ctr := _poly_centroid(verts)
+	var dmax := 0.0
+	var nmax := 0.0
+	for v in verts:
+		var r := v - ctr
+		dmax = maxf(dmax, absf(r.dot(dir)))
+		nmax = maxf(nmax, absf(r.dot(Vector2(-dir.y, dir.x))))
+	# Drawn size comes from tile_size_used (40u at 1 → 90u at 30/mine), not
+	# from whatever the placement path happened to reserve. Capped by the
+	# actual footprint so a building shrunk to fit a packed tile draws inside
+	# its slot rather than over its neighbours.
+	var size_target := _art_size_for(int(placement.get("size_units", 1)), art_key)
+	var target := clampf(minf(size_target, maxf(dmax, nmax) * 2.0), ART_DRAWN_MIN, ART_DRAWN_MAX)
+	# Colour by the SAME rule as the plate look — category triad, NPC
+	# paper-white, seeded jitter — so ownership and category read identically
+	# in both styles. _wash_for already encodes ownership, so the generator's
+	# own npc dulling is left off.
+	var wash := _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc))
+	return InkBuildingGen.draw(self, art_key, lvl, ctr, dir.angle(), target, false, Vector2.INF, wash)
+
+## Replace a shape-language placement's footprint with the sprite's own box
+## (+ ART_BLOCK_MARGIN), keeping its centre and road-facing orientation. The
+## polygon is what everything downstream treats as solid — overlap tests,
+## avoidance discs, the frontage audit — so cropping it here is what lets lots
+## pack tightly without the art actually touching.
+func _crop_to_sprite(placed: Dictionary, size_units: int, art_key: String) -> void:
+	if art_key == "":
+		return
+	var frame: Vector2 = InkBuildingGen.level_frame(art_key, 3)
+	if frame.x <= 0.0 or frame.y <= 0.0:
+		return
+	var pv: PackedVector2Array = placed.verts
+	if pv.size() < 3:
+		return
+	var ctr := Vector2.ZERO
+	for v in pv:
+		ctr += v
+	ctr /= float(pv.size())
+	var dirv := (pv[1] - pv[0]).normalized()
+	var mn := Vector2(1e30, 1e30)
+	var mx := Vector2(-1e30, -1e30)
+	for v in pv:
+		mn = mn.min(v)
+		mx = mx.max(v)
+	var lot_extent := maxf((mx - mn).x, (mx - mn).y)
+	var target := clampf(minf(_art_size_for(size_units, art_key), lot_extent), ART_DRAWN_MIN, ART_DRAWN_MAX)
+	var s := target / maxf(frame.x, frame.y)
+	var hx := frame.x * s * 0.5 + ART_BLOCK_MARGIN
+	var hy := frame.y * s * 0.5 + ART_BLOCK_MARGIN
+	var local := PackedVector2Array([
+		Vector2(-hx, -hy).rotated(dirv.angle()), Vector2(hx, -hy).rotated(dirv.angle()),
+		Vector2(hx, hy).rotated(dirv.angle()), Vector2(-hx, hy).rotated(dirv.angle()),
+	])
+	var world := PackedVector2Array()
+	for v in local:
+		world.append(ctr + v)
+	placed.verts = world
+	placed.half = _aabb_half(local)
+
+## The LOT for a shape-language building: its sprite's own box plus
+## ART_BLOCK_MARGIN, long side first so _place_frontage (which rotates local x
+## onto the road tangent) presents the long face to the street and snaps using
+## the sprite's shallow depth. Feeding this into the search — rather than a fat
+## square lot that gets cropped afterwards — is what actually pulls buildings
+## up to the road.
+func _sprite_lot_verts(size_units: int, art_key: String, shrink: float = 1.0) -> PackedVector2Array:
+	if art_key == "":
+		return PackedVector2Array()
+	var frame: Vector2 = InkBuildingGen.level_frame(art_key, 3)
+	if frame.x <= 0.0 or frame.y <= 0.0:
+		return PackedVector2Array()
+	var target := clampf(_art_size_for(size_units, art_key) * shrink, ART_DRAWN_MIN * 0.5, ART_DRAWN_MAX)
+	var s := target / maxf(frame.x, frame.y)
+	var long_side := maxf(frame.x, frame.y) * s + ART_BLOCK_MARGIN * 2.0
+	var short_side := minf(frame.x, frame.y) * s + ART_BLOCK_MARGIN * 2.0
+	return BuildingShapes.make_rect(long_side, short_side).verts
+
+## Drawn/lot side for a building of `size_units`, interpolating the drawn-size
+## band across the CSV's real 1..30 range.
+func _art_size_for(size_units: int, art_key: String = "") -> float:
+	if ART_SIZE_OVERRIDE.has(art_key):
+		return float(ART_SIZE_OVERRIDE[art_key])
+	var t := clampf((float(size_units) - 1.0) / (ART_SIZE_UNITS_MAX - 1.0), 0.0, 1.0)
+	return lerpf(ART_DRAWN_MIN, ART_DRAWN_MAX, t)
+
+## Shift a polygon by a fixed offset (SE micro-shadow under building fills).
+func _offset_pts(pts: PackedVector2Array, off: Vector2) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	out.resize(pts.size())
+	for i in pts.size():
+		out[i] = pts[i] + off
+	return out
 
 ## Hand-drawn wobble (ink spec I4), DRAW time only: subdivide each edge every
 ## ~WOBBLE_STEP and jitter the interior points perpendicular ±WOBBLE_AMP, seeded

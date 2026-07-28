@@ -192,13 +192,18 @@ func _ready() -> void:
 	await _test_building_resnap()
 	await _test_block_subdivision()
 	await _test_level_storeys_and_owner_swap()
+	_test_ink_art_reserves_upgrade_space()
 	await _test_river_bank_and_bridge_head()
 	await _test_bridge_corridor()
 	await _test_subcomponents()
 	await _test_farms()
 	await _test_farm_lanes()
-	await _test_farm_road_promotion()
-	await _test_farm_ring_dedup()
+	# Farm ring promotion was removed 2026-07-23 (RoadWorks.PROMOTE_FARM_RINGS):
+	# ink farms carry their own parcel-path fabric, and the promoted ring was
+	# decoration — transport reads each tile's road FLAG, not whether
+	# carriageways meet. _test_farm_road_promotion / _test_farm_ring_dedup
+	# asserted the promotion happens, so they retire with the feature. The
+	# routing-bias tests still run: roads may still favour a farm cluster.
 	await _test_farm_ring_bridge()
 	await _test_farm_ring_continuity()
 	await _test_farm_road_routing_bias()
@@ -1166,6 +1171,25 @@ func _test_footprint_rejects_interior_road_segment() -> void:
 # feed roads-avoid via real footprints, and the layout is deterministic + demolish-stable.
 # Level upgrades must ALWAYS show (rooftop storey blocks — wings depend on free
 # ground), and a bought NPC building must swap its placement to player-owned.
+## A building must reserve the space its FULLY UPGRADED form needs at the
+## moment it is placed, or an upgrade would grow over its neighbours. Two
+## halves to that guarantee: every level draws into the same (L3) reference
+## frame, and the lot area is derived from tile_size_used alone — never from
+## the level. This pins the first half; the second is the signature of
+## BuildingVisuals._art_size_for(size_units), which takes no level.
+func _test_ink_art_reserves_upgrade_space() -> void:
+	var keys := ["furnace", "eaf", "industrial_factory", "consumer_factory",
+		"assembly_plant", "high_tech_manufactory", "petro_refinery", "poly_plant",
+		"chem_plant", "electrolyser", "power_plant", "water_pump", "pipes",
+		"cables", "mine", "solar_farm", "wind_farm", "port"]
+	for key in keys:
+		var f3: Vector2 = InkBuildingGen.level_frame(key, 3)
+		_check(f3.x > 0.0 and f3.y > 0.0, "ink art: %s has an L3 frame" % key)
+		for lvl in [1, 2]:
+			var f: Vector2 = InkBuildingGen.level_frame(key, lvl)
+			_check(f.is_equal_approx(f3),
+				"ink art: %s L%d reserves the L3 frame (%s vs %s)" % [key, lvl, str(f), str(f3)])
+
 func _test_level_storeys_and_owner_swap() -> void:
 	var nav := NavGrid.instance()
 	if not nav.is_ready():

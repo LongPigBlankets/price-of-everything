@@ -4,9 +4,7 @@ extends Node2D
 ## sticking out into the sea. Static decoration — geometry computed once in
 ## setup(), drawn once, no _process (CLAUDE.md rule #2).
 
-const BUILDING_WHITE := Color(0.96, 0.97, 0.98)
-const BUILDING_SHADOW := Color(0.55, 0.62, 0.69)
-const PIER_WHITE := Color(0.90, 0.92, 0.94)
+## Dockhouse/pier/outline colors live in MapStyle ('toggle ink' swaps them).
 # The dockhouse reads ~40 screen px thick at max zoom: max zoom frames ~2.5
 # tile-heights per ~1080px viewport, so 40px ≈ 0.09 tile heights.
 const THICKNESS_FRAC := 0.09
@@ -15,6 +13,9 @@ const PIER_LEN_FRAC := 0.30    # how far the pier fingers reach into the sea
 const PIER_COUNT := 3
 
 var _glyphs: Array = []   # [{pos: Vector2, angle: float, tile_h: float}]
+
+func _ready() -> void:
+	MapStyle.style_changed.connect(queue_redraw)
 
 func setup(hex_map: TileMapLayer) -> void:
 	_glyphs.clear()
@@ -42,6 +43,20 @@ func setup(hex_map: TileMapLayer) -> void:
 	queue_redraw()
 
 func _draw() -> void:
+	if MapStyle.ink:
+		# Ink mode: the shape-language port (quay spine + warehouses +
+		# container stacks + plank piers + jib cranes), world-lit like every
+		# other generated building. Ports are neutral infrastructure -> npc
+		# tint off.
+		# Anchor design-space (74, 78) — the quay spine's seaward edge — at the
+		# glyph position on the shoreline, so the spine hugs the coast and the
+		# three piers reach out to sea (owner ruling; -20% size).
+		for g in _glyphs:
+			InkBuildingGen.draw(self, "port", 1, g["pos"] as Vector2, float(g["angle"]), float(g["tile_h"]) * 0.44, false, Vector2(74, 78))
+		return
+	var dockhouse := MapStyle.port_dockhouse()
+	var outline := MapStyle.port_outline()
+	var pier := MapStyle.port_pier()
 	for g in _glyphs:
 		var tile_h: float = g["tile_h"]
 		var thick := tile_h * THICKNESS_FRAC
@@ -54,8 +69,15 @@ func _draw() -> void:
 		for i in range(PIER_COUNT):
 			var t := (float(i) - float(PIER_COUNT - 1) / 2.0) / float(PIER_COUNT)
 			var y := t * b_len * 0.8 - pier_w * 0.5
-			draw_rect(Rect2(Vector2(0.0, y), Vector2(pier_len, pier_w)), PIER_WHITE, true)
-			draw_rect(Rect2(Vector2(0.0, y), Vector2(pier_len, pier_w)), BUILDING_SHADOW, false, tile_h * 0.008)
-		draw_rect(Rect2(Vector2(-thick, -b_len * 0.5), Vector2(thick, b_len)), BUILDING_WHITE, true)
-		draw_rect(Rect2(Vector2(-thick, -b_len * 0.5), Vector2(thick, b_len)), BUILDING_SHADOW, false, tile_h * 0.012)
+			draw_rect(Rect2(Vector2(0.0, y), Vector2(pier_len, pier_w)), pier, true)
+			draw_rect(Rect2(Vector2(0.0, y), Vector2(pier_len, pier_w)), outline, false, tile_h * 0.008)
+			if MapStyle.ink:
+				# Timber read: plank tick hairlines across each finger.
+				var plank := MapStyle.pier_plank_color()
+				var px := 5.0
+				while px < pier_len - 2.0:
+					draw_line(Vector2(px, y), Vector2(px, y + pier_w), plank, 0.9, true)
+					px += 6.0
+		draw_rect(Rect2(Vector2(-thick, -b_len * 0.5), Vector2(thick, b_len)), dockhouse, true)
+		draw_rect(Rect2(Vector2(-thick, -b_len * 0.5), Vector2(thick, b_len)), outline, false, tile_h * 0.012)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
