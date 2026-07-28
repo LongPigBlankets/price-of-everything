@@ -458,6 +458,11 @@ static func _intermittency_row(building: Dictionary, recipe: Dictionary, is_infr
 	var unfirmed := float(im.get("unfirmed_intermittent", 0.0))
 	var demand := float(im.get("demand", green))
 	var derate := maxi(1, int(round(float(im.get("derate", 0.0)) * 100.0)))
+	# A load-following process takes no derate at all, so it reads as a STANDING benefit rather
+	# than the "you got away with it" phrasing of a building that merely happens to be firmed.
+	if bool(im.get("intermittency_immune", false)):
+		return _row("ok", "bolt", "Follows intermittent power",
+			"This process runs straight off unfirmed wind and solar — no derate, and no battery needed to avoid one.")
 	if unfirmed <= 0.001:
 		return _row("ok", "bolt", "Safe from intermittency", "All the green power it draws is firmed (battery) or steady — no output derate.")
 	if demand > 0.0 and unfirmed >= demand - 0.001:

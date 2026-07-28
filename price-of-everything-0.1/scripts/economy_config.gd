@@ -159,6 +159,12 @@ const POWER_STEADY_BUILDINGS := ["hydro_power_plant"]
 # Generic power_plant recipes whose fuel is biomass/waste count as steady green.
 # (MVP good internal_names: biomass g_062, bio_waste g_073, carbonised_biomass g_076.)
 const POWER_STEADY_FUELS := ["biomass", "bio_waste", "carbonised_biomass"]
+# Recipes that take NO intermittency derate however unfirmed their supply is. A membraneless
+# electrolyser has no membrane to dry out or differentially pressurise, so it can follow a
+# ragged renewable input up and down instead of needing a steady load — which is the whole
+# point of the research, and a benefit that survives a balance pass in a way that an output
+# bump does not. Listed by recipe_id because it is a property of the process, not the building.
+const INTERMITTENCY_IMMUNE_RECIPES := ["r_080"]
 # The ONLY buildings that may be placed on sea / deep_sea tiles. Every other building is
 # land-only, and these two are conversely water-only (cannot be placed on land). By
 # building internal_name. (offshore_wind_farm b_026, offshore_oil_platform b_033.)

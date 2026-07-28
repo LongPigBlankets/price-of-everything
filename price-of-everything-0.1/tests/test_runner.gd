@@ -5486,6 +5486,23 @@ func _test_power_intermittency_alloc() -> void:
 		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
 		{"tile_1_1": 0})
 	_check(absf(derate.call(d, "c1") - 0.2) < 0.001, "intermittency: 50% intermittent share -> 0.2 derate")
+	# A load-following recipe takes NO derate on fully unfirmed green and needs no battery.
+	# Paired with an identical non-immune consumer so the exemption is proved to be the cause
+	# rather than something else about the fixture zeroing the derate.
+	var immune_id: String = str(EconomyConfig.INTERMITTENCY_IMMUNE_RECIPES[0])
+	d = Production._allocate_power_derates(
+		{"tile_1_1": {"int": 200, "steady": 0}},
+		[{"iid": "imm", "tile": "tile_1_1", "demand": 100.0, "recipe_id": immune_id,
+		  "level": 1, "profit": 0.0, "age": 1},
+		 {"iid": "ctl", "tile": "tile_1_1", "demand": 100.0, "recipe_id": "r_009",
+		  "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 0})
+	_check(absf(derate.call(d, "imm")) < 0.001 and bool(d["imm"].get("intermittency_immune", false)),
+		"intermittency: a load-following recipe takes no derate on fully unfirmed green")
+	_check(absf(derate.call(d, "ctl") - 0.4) < 0.001 and not bool(d["ctl"].get("intermittency_immune", true)),
+		"intermittency: an identical non-immune consumer still takes the full 0.4 derate")
+	_check(int(d["imm"]["unfirmed_intermittent"]) == 100 and int(d["imm"]["green_consumed"]) == 100,
+		"intermittency: the immune consumer still RECORDS the unfirmed green it drew")
 	# Priority: scarce green (100) goes to the higher-level consumer first.
 	d = Production._allocate_power_derates(
 		{"tile_5_5": {"int": 100, "steady": 0}},

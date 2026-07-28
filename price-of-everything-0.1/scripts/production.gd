@@ -1695,6 +1695,7 @@ func _compute_power_intermittency() -> void:
 		consumers.append({
 			"iid": str(iid), "tile": str(b.get("tile_id", "")), "demand": float(demand),
 			"building_id": str(b.get("building_id", "")),
+			"recipe_id": str(b.get("recipe_id", "")),
 			"level": int(b.get("level", 1)), "profit": _consumer_profit_key(str(iid)),
 			"age": _instance_age(str(iid)),
 		})
@@ -1779,7 +1780,11 @@ func _allocate_power_derates(green_sources: Dictionary, consumers: Array, tile_c
 			cap_left[tile] = cap - firm  # exact decrement (no ceil over-charge)
 		var demand: float = float(cons["demand"])
 		var derate: float = 0.0
-		if demand > 0.0:
+		# Some processes can follow a ragged supply and take no derate at all. Zeroed HERE
+		# rather than at the point of use so the ledger, the diagnostics and the overlay all
+		# agree with production instead of each re-deriving the exemption.
+		var immune: bool = EconomyConfig.INTERMITTENCY_IMMUNE_RECIPES.has(str(cons.get("recipe_id", "")))
+		if demand > 0.0 and not immune:
 			derate = EconomyConfig.INTERMITTENCY_DERATE * clampf(unfirmed / demand, 0.0, 1.0)
 		result[iid] = {
 			"derate": derate,
@@ -1787,6 +1792,7 @@ func _allocate_power_derates(green_sources: Dictionary, consumers: Array, tile_c
 			"unfirmed_intermittent": unfirmed,
 			"steady_consumed": green - unfirmed,
 			"demand": demand,
+			"intermittency_immune": immune,
 		}
 	return result
 
