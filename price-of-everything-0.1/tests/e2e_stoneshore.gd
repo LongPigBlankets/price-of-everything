@@ -72,6 +72,16 @@ var _balance_mode := false
 var _level_schedule := false
 var _levels_applied := {}
 var _level_infra := false
+# `autoinfra`: upgrade a tile's infrastructure once it has run at >=90% of capacity for MORE
+# than 2 turns — the reactive policy a player would actually follow, rather than the blanket
+# upgrade `levels+infra` applies. Roads that are already L3 and still saturated escalate to
+# rail, which is the only capacity left above a 750-unit road.
+const INFRA_UTIL_THRESHOLD := 0.90
+const INFRA_UTIL_STREAK := 2
+var _auto_infra := false
+var _infra_streak := {}
+var _infra_spend := 0.0
+var _infra_actions := {}
 var _starve_detail := {}
 var _balance_metrics := {}
 var _balance_bad_streak := 0
@@ -144,6 +154,11 @@ func _print_profit_trajectory() -> void:
 		print("  starvation causes (last recorded):")
 		for k in _starve_detail:
 			print("    %-28s x%d" % [k, int(_starve_detail[k])])
+	if _auto_infra:
+		var acts := "  auto-infra: £%.0f spent   " % _infra_spend
+		for k in _infra_actions:
+			acts += "%s x%d   " % [k, int(_infra_actions[k])]
+		print(acts)
 	# Deposits are the other thing a levelled empire can exhaust: a mine at L3 pulls 3.5x the
 	# ore, so a deposit sized for L1 empties in under a third of the time.
 	var dep := {}
@@ -250,6 +265,8 @@ func _parse_cmdline_args() -> void:
 		elif la == "levels+infra":
 			_level_schedule = true
 			_level_infra = true
+		elif la == "autoinfra":
+			_auto_infra = true
 
 
 func _load_scenario() -> void:
@@ -1626,8 +1643,105 @@ func _apply_level_schedule() -> void:
 		("   + %d infrastructure slots" % tn) if _level_infra else ""])
 
 
+func _bump_infra(tile: Dictionary, tile_id: String, slot: String, to_level: int) -> void:
+	var lv: Dictionary = tile.get("infrastructure_levels", {})
+	lv[slot] = to_level
+	tile["infrastructure_levels"] = lv
+	var present: Array = tile.get("infrastructure_present", [])
+	if not present.has(slot):
+		present.append(slot)
+		tile["infrastructure_present"] = present
+	var cost := float(EconomyConfig.INFRA_UPGRADE_CASH_COST.get(to_level, 0.0))
+	MatchState.money -= cost
+	_infra_spend += cost
+	var key := "%s -> L%d" % [slot, to_level]
+	_infra_actions[key] = int(_infra_actions.get(key, 0)) + 1
+	_infra_streak["%s|%s" % [tile_id, slot]] = 0
+
+
+## One turn of the reactive infrastructure policy. Utilisation is measured against the SAME
+## capacity the engine enforces, so a tile upgrades on the number that was actually throttling
+## it rather than on an estimate.
+##
+## Only tiles that MOVED something are considered. Walking all ~1000 map tiles x 5 slots every
+## turn — each one calling Modifiers.apply and a group lookup — made a 12-turn run take longer
+## than a 300-turn run without it. A tile with no flow and no power draw cannot be at 90% of
+## anything, so the candidate set comes from the flow and power tables themselves.
+func _auto_upgrade_infra() -> void:
+	if not _auto_infra:
+		return
+	var flow: Dictionary = MatchState.transport_link_flow()
+	var cap_cache := {}                       # "mode|level" -> capacity, per turn
+	var candidates := {}                      # tile_id -> {slot: used}
+	for key in flow.keys():
+		var parts := str(key).split("|")
+		if parts.size() != 2:
+			continue
+		var slot := "rails" if str(parts[1]) == "rail" else str(parts[1])
+		if not candidates.has(parts[0]):
+			candidates[parts[0]] = {}
+		(candidates[parts[0]] as Dictionary)[slot] = float(flow[key])
+	for tile_id in Power.tile_produced.keys():
+		if not candidates.has(tile_id):
+			candidates[tile_id] = {}
+		(candidates[tile_id] as Dictionary)["cables"] = maxf(
+			float(Power.tile_produced.get(tile_id, 0)), float(Power.tile_drawn.get(tile_id, 0)))
+	for tile_id in Power.tile_drawn.keys():
+		if not candidates.has(tile_id):
+			candidates[tile_id] = {}
+		var c: Dictionary = candidates[tile_id]
+		c["cables"] = maxf(float(c.get("cables", 0.0)),
+			maxf(float(Power.tile_produced.get(tile_id, 0)), float(Power.tile_drawn.get(tile_id, 0))))
+	if candidates.is_empty():
+		return
+	var hm = get_tree().get_first_node_in_group("hex_map")
+	if hm == null:
+		return
+	var tiles: Dictionary = hm.get("tiles")
+	for tile_id in candidates.keys():
+		var coord = hm.id_to_coord(str(tile_id))
+		if not tiles.has(coord):
+			continue
+		var tile: Dictionary = tiles[coord]
+		var present: Array = tile.get("infrastructure_present", [])
+		var lv: Dictionary = tile.get("infrastructure_levels", {})
+		for slot in (candidates[tile_id] as Dictionary).keys():
+			if not present.has(slot):
+				continue
+			var level := int(lv.get(str(slot), 1))
+			var used := float((candidates[tile_id] as Dictionary)[slot])
+			var cap := 0.0
+			if str(slot) == "cables":
+				cap = float(EconomyConfig.CABLE_POWER_CAP.get(level, 0))
+			else:
+				var mode := "rail" if str(slot) == "rails" else str(slot)
+				var ck := "%s|%d" % [mode, level]
+				if not cap_cache.has(ck):
+					cap_cache[ck] = MatchState.tile_mode_capacity(mode, level)
+				cap = float(cap_cache[ck])
+			if cap <= 0.0:
+				continue
+			var key := "%s|%s" % [str(tile_id), str(slot)]
+			if used / cap < INFRA_UTIL_THRESHOLD:
+				_infra_streak[key] = 0
+				continue
+			var streak := int(_infra_streak.get(key, 0)) + 1
+			_infra_streak[key] = streak
+			if streak <= INFRA_UTIL_STREAK:
+				continue
+			if level < 3:
+				_bump_infra(tile, str(tile_id), str(slot), level + 1)
+			elif str(slot) == "roads":
+				# Roads top out at 750/turn; rail is the only tier above, so a saturated
+				# L3 road escalates to rail rather than staying stuck at its ceiling.
+				var rail_level := int(lv.get("rails", 0))
+				if rail_level < 3:
+					_bump_infra(tile, str(tile_id), "rails", rail_level + 1)
+
+
 func _capture_turn_metrics() -> void:
 	_apply_level_schedule()
+	_auto_upgrade_infra()
 	var summary: Dictionary = Production.last_turn_summary
 	if summary.is_empty():
 		_revenue_history.append(0.0)
