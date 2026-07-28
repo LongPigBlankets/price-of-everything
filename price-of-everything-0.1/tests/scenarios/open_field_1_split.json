@@ -1,7 +1,7 @@
 {
  "name": "open_field_1_split",
  "display_name": "Open Field 1 \u2014 motor chain, factories and power on their own tiles",
- "note": "Same chain as open_field_1 with the industrial factories and power plants moved one hex off the mine/furnace tiles. Control for whether the levelled-empire deadlock is tile storage pressure rather than the level multipliers.",
+ "note": "Same chain as open_field_1 with the industrial factories and power plants moved one hex off the mine/furnace tiles. Control for whether the levelled-empire deadlock is tile storage pressure rather than the level multipliers. Both new tiles are in surplus_sales: a mine makes 60 coal and a plant burns 20, so without a drain the excess fills the tile store in 40 turns and starves everything else on it.",
  "_comment_materials": "allow_market_materials must be true for every producer: the turn-1 rebalance left no pre-placed build materials on these NPC tiles, so a direct build with materials_from='tile' silently no-ops. Buying build materials from the market is exactly what the motor chain's furnaces/factories already do.",
  "land_purchases": [
   {
@@ -442,7 +442,9 @@
   "tile_20_9",
   "tile_26_5",
   "tile_21_10",
-  "tile_25_6"
+  "tile_25_6",
+  "tile_21_9",
+  "tile_22_4"
  ],
  "tile_only_inputs": [
   {
