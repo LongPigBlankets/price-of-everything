@@ -441,6 +441,69 @@ for r in sorted(BASE_SA, key=fin):
     if not BAND[0] <= fin(r) <= BAND[1]:
         print("    still out: %-7s %-34s %+8.1f" % (r["recipe_id"], r["display_name"][:34], fin(r)))
 
+# ============ PHASE 5 — gated recipes must not be a downgrade ========================
+# R2 forces a gated recipe to OUT-PRODUCE its base sibling; it says nothing about profit. All
+# five traps here are recipes whose gross margin does not cover their energy and maintenance,
+# so they satisfy R2 while making the player strictly poorer for unlocking the tech — a trap
+# the structural rules cannot see. r_074 is the extreme: its inputs cost more than its output
+# is worth, so it destroys value at any scale.
+#
+# The lever is the R2 multiplier itself. Moving a gated recipe from 1.0x to 1.5x its base
+# output is both the fix and the correct meaning of research, and it cannot disturb the ratio
+# ladder because rungs are measured against BASE producers only.
+def base_sibling(r):
+    g0 = outs(r)[0][0]
+    return [b for b in L if not (b.get("required_research") or "").strip()
+            and outs(b) and outs(b)[0][0] == g0 and bld(b) == bld(r)]
+
+
+traps, fixed5 = 0, 0
+for r in SA:
+    if not (r.get("required_research") or "").strip():
+        continue
+    sibs = base_sibling(r)
+    sib_net = max((net(b, price, lab_mult.get(b["recipe_id"], 1.0)) for b in sibs), default=None)
+    floor = BAND[0] if sib_net is None else max(sib_net, BAND[0])
+    if net(r, price, lab_mult.get(r["recipe_id"], 1.0)) >= floor:
+        continue
+    traps += 1
+    g0 = outs(r)[0][0]
+    saved = new_out.get((r["recipe_id"], g0))
+    bq = (max(new_out.get((b["recipe_id"], g0), dict(outs(b))[g0]) for b in sibs) if sibs
+          else eff_out(r)[0][1])
+    best = None
+    for m in GATED_MULT:
+        q = max(1, round(m * bq))
+        if not nice(q):
+            continue
+        new_out[(r["recipe_id"], g0)] = q
+        for lm in [0.40 + 0.05 * k for k in range(13)]:
+            n = net(r, price, lm)
+            # the smallest multiplier that clears the floor, so research improves the recipe
+            # without turning a marginal one into a windfall
+            if n >= floor and (best is None or (m, -n) < (best[1], -best[2])):
+                best = (q, m, n, lm)
+    if saved is None:
+        new_out.pop((r["recipe_id"], g0), None)
+    else:
+        new_out[(r["recipe_id"], g0)] = saved
+    if best:
+        new_out[(r["recipe_id"], g0)] = best[0]
+        lab_mult[r["recipe_id"]] = round(best[3], 4)
+        fixed5 += 1
+
+print("\nPHASE 5 — %d research traps found, %d repaired" % (traps, fixed5))
+for r in SA:
+    if not (r.get("required_research") or "").strip():
+        continue
+    sibs = base_sibling(r)
+    sib_net = max((net(b, price, lab_mult.get(b["recipe_id"], 1.0)) for b in sibs), default=None)
+    floor = BAND[0] if sib_net is None else max(sib_net, BAND[0])
+    n = net(r, price, lab_mult.get(r["recipe_id"], 1.0))
+    if n < floor:
+        print("    STILL A TRAP %-7s %-30s %+7.1f  (needs %+.1f)"
+              % (r["recipe_id"], r["display_name"][:30], n, floor))
+
 spec = {
     "prices": [{"good": g, "new": round(p, 4)} for g, p in sorted(price.items())
                if abs(p - price0[g]) > 0.005],

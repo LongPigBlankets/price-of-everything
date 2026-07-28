@@ -744,7 +744,8 @@ func _build_coal_runway_from_config() -> void:
 	_cash_after_coal_runway = MatchState.money
 	_check(_sold_qty(_goods.coal) > 0, "coal runway sold coal to market before the motor buildout")
 	_check(_recent_run_metric("profit_post_tax", mini(3, runway_turns)) > 0.0,
-		"coal runway is recently post-tax profitable before expansion")
+		"coal runway is recently post-tax profitable before expansion (%.1f)"
+		% _recent_run_metric("profit_post_tax", mini(3, runway_turns)))
 
 
 func _build_transport_spine_from_config() -> void:
@@ -1633,9 +1634,13 @@ func _check_economy_end_state() -> void:
 	_check(_sold_qty(_goods.motor) > 0, "motor sale was logged")
 	_check(_sold_revenue(_goods.motor) > 0.0, "motor sale produced market revenue")
 	_check(cumulative_revenue > 0.0, "cumulative scenario revenue is positive")
-	_check(recent_profit > 0.0, "last 10 turns are post-tax profitable")
-	_check(cumulative_profit > 0.0, "cumulative post-tax profit is positive")
-	_check(MatchState.money > _cash_after_buildout, "optimized motor chain increases cash after buildout")
+	# Carry the numbers into the assertion text. A balance assertion that reports only
+	# pass/fail cannot tell you whether a rebalance moved the economy toward it or away.
+	_check(recent_profit > 0.0, "last 10 turns are post-tax profitable (%.1f)" % recent_profit)
+	_check(cumulative_profit > 0.0, "cumulative post-tax profit is positive (%.1f)" % cumulative_profit)
+	_check(MatchState.money > _cash_after_buildout,
+		"optimized motor chain increases cash after buildout (%.1f -> %.1f, %+.1f)"
+		% [_cash_after_buildout, MatchState.money, MatchState.money - _cash_after_buildout])
 	_check(MatchState.transaction_log.size() > 0, "transaction ledger populated")
 	_check(MatchState.move_log.size() > 0, "movement ledger populated")
 	_check(MatchState.get_pending_transport_shipments().size() >= 0, "pending transport can be queried")

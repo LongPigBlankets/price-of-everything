@@ -4254,8 +4254,9 @@ func _test_input_buy_capacity_building_first() -> void:
 	_check(Production._inbound_qty(t, steel) == 50, "construction-tagged overflow is reserved freight (excluded)")
 	MatchState.overflow_shipments.clear()
 
-	# (b) three identical motor factories (r_009: 30 steel + 32 wiring), tile squeezed
-	# so exactly ONE building's full (lead+1) buffer fits.
+	# (b) three identical motor factories, tile squeezed so exactly ONE building's full
+	# (lead+1) buffer fits. Per-unit needs come from the recipe rather than literals, so a
+	# balance pass moving r_009's quantities cannot silently turn this into a stale fixture.
 	MatchState.money = 1000000.0
 	Production._same_tile_supply.clear()
 	# Power gate reads cables off the hex_map node — fake one for this tile (freed below).
@@ -4272,8 +4273,8 @@ func _test_input_buy_capacity_building_first() -> void:
 		iids.append(MatchState.add_building("b_007", "r_009", t, "player_1", "whx_%d" % i))
 	var lead_steel := maxi(1, int(TransportService.quote_market_buy(t, steel, 1, MatchState.seaport_would_cover(steel)).get("turns", 1)))
 	var lead_wiring := maxi(1, int(TransportService.quote_market_buy(t, wiring, 1, MatchState.seaport_would_cover(wiring)).get("turns", 1)))
-	var w_steel := 30 * (lead_steel + 1)
-	var w_wiring := 32 * (lead_wiring + 1)
+	var w_steel := _recipe_input_qty("r_009", steel) * (lead_steel + 1)
+	var w_wiring := _recipe_input_qty("r_009", wiring) * (lead_wiring + 1)
 	var junk := str(Catalog.get_good_by_internal_name("rubber").get("id", ""))
 	Stockpile.add(t, junk, Stockpile.get_capacity(t) - (w_steel + w_wiring))
 	var summary := {
@@ -4345,14 +4346,17 @@ func _test_jit_streak_and_direct_feed() -> void:
 	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
 	var wiring := str(Catalog.get_good_by_internal_name("copper_wiring").get("id", ""))
 	var consumer := MatchState.add_building("b_007", "r_009", t, "player_1", "jit_consumer")
-	# Produced-on-tile steel routes into the feed up to the consumer's 30/turn need.
-	Production._output_buffer.append({"coord": t, "good_id": steel, "qty": 40, "transport_cost": 0.0, "instance_id": "jit_src_1"})
+	# Produced-on-tile steel routes into the feed up to ONE turn of the consumer's need, and
+	# the surplus falls through to the warehouse. Both the need and the surplus are derived
+	# from the recipe so the split under test survives a balance pass.
+	var need_steel := _recipe_input_qty("r_009", steel)
+	Production._output_buffer.append({"coord": t, "good_id": steel, "qty": need_steel + 10, "transport_cost": 0.0, "instance_id": "jit_src_1"})
 	Production._flush_output_buffer()
-	_check(Production._feed_available(t, steel) == 30, "feed takes one turn of committed demand (30)")
+	_check(Production._feed_available(t, steel) == need_steel, "feed takes one turn of committed demand (%d)" % need_steel)
 	_check(Stockpile.get_at_tile(t, steel) == 10, "the surplus 10 lands in the warehouse")
-	_check(Production.get_jit_fed_for_tile(t) == 30, "JIT readout counts fed units")
+	_check(Production.get_jit_fed_for_tile(t) == need_steel, "JIT readout counts fed units")
 	# Availability + consumption draw the feed first.
-	Stockpile.add(t, wiring, 32)
+	Stockpile.add(t, wiring, _recipe_input_qty("r_009", wiring))
 	var recipe: Dictionary = Catalog.get_recipe("r_009")
 	var consumer_b: Dictionary = MatchState.get_building(consumer)
 	_check(bool(Production._can_run_recipe(consumer_b, recipe).get("can_run", true)) or true, "availability check ran")
@@ -5877,6 +5881,16 @@ func _test_goods_flow_graph() -> void:
 	# not a visual floor — the resting web renders at ghost alpha.
 	_check(crossings >= 0 and crossings < 1400,
 		"goods graph: %d crossings after ordering (< 1400 canary; swimlane-constrained)" % crossings)
+
+func _recipe_input_qty(recipe_id: String, good_id: String) -> int:
+	# Per-unit input need, read from the catalog instead of written into the test as a literal.
+	# Tests that hardcode a recipe's quantities fail the next balance pass without anything
+	# having actually broken, which trains you to edit the number rather than read the failure.
+	for inp in Catalog.get_recipe(recipe_id).get("inputs", []):
+		if str((inp as Dictionary).get("good_id", "")) == good_id:
+			return int((inp as Dictionary).get("qty", 0))
+	return 0
+
 
 func _check(ok: bool, name: String) -> void:
 	if ok:
