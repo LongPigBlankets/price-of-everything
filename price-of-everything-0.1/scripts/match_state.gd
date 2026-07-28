@@ -1216,6 +1216,8 @@ func tick_upgrades() -> Array:
 			# it there too (the instance level is display-only for infra).
 			if bool(p.get("infra", false)):
 				set_tile_infra_level(str(p.get("tile_id", "")), str(p.get("infra_slot", "")), int(inst["level"]))
+			else:
+				_raise_tile_storage_for_level(str(inst.get("tile_id", "")), int(inst["level"]))
 			completed.append(instance_id)
 			building_upgraded.emit(instance_id, int(inst["level"]))
 		else:
@@ -1223,6 +1225,22 @@ func tick_upgrades() -> Array:
 			remaining.append(p)
 	pending_upgrades = remaining
 	return completed
+
+## A levelled building buffers and outputs 2x/3x, but tile storage is a flat 800 whatever
+## sits on it. Left alone that deadlocks a chain outright: the receiving tile fills, so
+## nothing can be delivered, so nothing runs, so nothing is consumed, so room never appears.
+## Measured on the open_field_1 harness at L3 — steelmaking and pig iron ran 0% of turns
+## while the mines above them tripled output into a tile pinned at 800/800.
+##
+## So a building upgrade carries its tile's warehouse with it: 800 -> 1600 -> 2500 alongside
+## L1 -> L2 -> L3. Never lowers a tile (get_warehouse_level already takes the better of the
+## research level and the tile's own), and costs nothing extra — the upgrade kit is the price.
+func _raise_tile_storage_for_level(tile_id: String, level: int) -> void:
+	if tile_id == "" or level <= 1:
+		return
+	if Stockpile.get_warehouse_level(tile_id) >= level:
+		return
+	Stockpile.set_warehouse_level(tile_id, level)
 
 ## Cancel an in-progress upgrade and hand the player back the materials it has already banked
 ## on the tile (full kit minus whatever's still in transit). Goods still being shipped in keep

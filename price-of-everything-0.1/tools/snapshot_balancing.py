@@ -3,8 +3,8 @@
 
     python3 -B tools/snapshot_balancing.py [out.csv]
 
-Written before the 2026-07-28 cost-reallocation pass so the pre-change economy can be
-diffed against, or restored from, after the recipe formula is re-run. It reads the LIVE
+Take one of these BEFORE any large balance pass — see data/balance_baselines/README.md.
+The default output is dated, so snapshots accumulate rather than overwrite each other. It reads the LIVE
 data the game loads — data/recipes_all.csv, data/Goods - goodsMVP.csv,
 data/Buildings - buildingsMVP.csv — plus the rate constants in scripts/economy_config.gd.
 
@@ -24,11 +24,12 @@ otherwise the building's defaults apply. `labour_source` records which was used.
 import csv
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = (Path(sys.argv[1]).resolve() if len(sys.argv) > 1
-       else ROOT / "reports/balance/temp_legacy_balancing.csv")
+       else ROOT / ("data/balance_baselines/%s_pre-rebalance.csv" % date.today().isoformat()))
 
 MAX_IN, MAX_OUT = 6, 5
 

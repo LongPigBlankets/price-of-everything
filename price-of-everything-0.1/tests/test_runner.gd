@@ -223,6 +223,7 @@ func _ready() -> void:
 	_test_power_instance_age()
 	_test_power_intermittency_alloc()
 	_test_embodied_carbon()
+	_test_upgrade_raises_tile_storage()
 	_test_intermittency_tile_aggregate()
 	_test_detail_panel_owner_resolution()
 	_test_battery_buildable()
@@ -5449,6 +5450,27 @@ func _test_power_instance_age() -> void:
 	_check(Production._instance_age("inst_b_007_00001a") == 26, "instance age: parses trailing hex (1a = 26)")
 	_check(Production._instance_age("inst_b_001_000001") < Production._instance_age("inst_b_001_000002"),
 		"instance age: lower counter is older")
+
+func _test_upgrade_raises_tile_storage() -> void:
+	# A levelled building buffers and outputs 2x/3x while tile storage is a flat 800, which
+	# deadlocks a chain: the receiving tile fills, nothing can be delivered, nothing runs,
+	# nothing is consumed, so room never appears. The upgrade must carry the warehouse with it.
+	var t := "tile_9_9"
+	Stockpile.set_warehouse_level(t, 1)
+	_check(Stockpile.get_capacity(t) == EconomyConfig.WAREHOUSE_STORAGE_CAP[1],
+		"tile storage starts at L1 capacity (%d)" % int(EconomyConfig.WAREHOUSE_STORAGE_CAP[1]))
+	MatchState._raise_tile_storage_for_level(t, 2)
+	_check(Stockpile.get_capacity(t) == EconomyConfig.WAREHOUSE_STORAGE_CAP[2],
+		"a building upgrade to L2 raises its tile's storage to %d" % int(EconomyConfig.WAREHOUSE_STORAGE_CAP[2]))
+	MatchState._raise_tile_storage_for_level(t, 3)
+	_check(Stockpile.get_capacity(t) == EconomyConfig.WAREHOUSE_STORAGE_CAP[3],
+		"a building upgrade to L3 raises its tile's storage to %d" % int(EconomyConfig.WAREHOUSE_STORAGE_CAP[3]))
+	# A second, LOWER-level building on the same tile must not shrink it back.
+	MatchState._raise_tile_storage_for_level(t, 2)
+	_check(Stockpile.get_capacity(t) == EconomyConfig.WAREHOUSE_STORAGE_CAP[3],
+		"a later L2 upgrade on the same tile does NOT lower storage back down")
+	Stockpile.set_warehouse_level(t, 1)
+
 
 func _test_embodied_carbon() -> void:
 	# A fossil fuel carries its own point-of-combustion figure and is NOT re-derived from its
