@@ -258,6 +258,7 @@ func _ready() -> void:
 	_test_cfo_tax_credit()
 	_test_policy_state()
 	_test_insider_tip()
+	_test_deposit_running_out_warning()
 	_test_partial_power_dispatch()
 	_test_building_diagnostics()
 	_test_infra_upgrade()
@@ -9333,6 +9334,50 @@ func _test_insider_tip() -> void:
 	PolicyState._insider_tip_fired = false
 	MatchState.advisor_seats = seats_before
 	TurnManager.current_turn = turn_before
+
+func _test_deposit_running_out_warning() -> void:
+	# A mine within Production.DEPOSIT_WARNING_TURNS of exhausting its deposit raises an
+	# AMBER diagnostics row (with the ore's icon) and a DISMISSIBLE briefing warning.
+	# Exhaustion used to be silent — the input bill just doubled with no notice.
+	var saved: Dictionary = Production.last_turn_summary.duplicate(true)
+	var coal := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	Production.last_turn_summary = {"deposits_running_out": [{
+		"tile_id": "tile_6_8", "instance_id": "diag_mine", "building_id": "b_001",
+		"token": "coal", "good_id": coal, "remaining": 180, "per_turn": 60, "turns_left": 3,
+	}]}
+	var readout = load("res://scripts/building_readout.gd")
+	var mine := {"instance_id": "diag_mine", "tile_id": "tile_6_8", "building_id": "b_001",
+		"recipe_id": "r_001", "level": 1, "owner": "player_1"}
+	var rows: Array = readout.diagnostics(mine, Catalog.get_recipe("r_001"), Catalog.get_building("b_001"), false)
+	var found: Dictionary = {}
+	for r in rows:
+		if str(r.get("label", "")) == "Deposit running out":
+			found = r
+	_check(not found.is_empty(), "diagnostics: a nearly-empty deposit raises its own row")
+	_check(str(found.get("tone", "")) == "warn", "diagnostics: the deposit warning is amber, not a fault")
+	_check(str(found.get("good_id", "")) == coal, "diagnostics: the row carries the ORE's good id for its icon")
+	_check(str(found.get("detail", "")).contains("3 turn"), "diagnostics: the row states the turns remaining")
+	# The briefing update: warning severity, dismissible, and iconned with the same good.
+	var item: Dictionary = TurnBriefing._deposit_running_out_item()
+	_check(str(item.get("severity", "")) == "warning", "briefing: deposit update is a warning")
+	_check(bool(item.get("dismissible", false)), "briefing: deposit update can be dismissed")
+	_check(str(item.get("icon_good_id", "")) == coal, "briefing: deposit update uses the ore's icon")
+	_check(str(item.get("title", "")).contains("3 turn"), "briefing: title counts down the turns")
+	# Dismissing silences it, but a SECOND mine running out re-raises it. Drive the gate
+	# directly — dismiss() resolves the id through the live item list, which the panel
+	# builds and this harness does not.
+	TurnBriefing._alert_dismissed[str(item.get("id", ""))] = int(item.get("magnitude", 0))
+	_check(TurnBriefing._deposit_running_out_item().is_empty(), "briefing: dismissal silences the update")
+	(Production.last_turn_summary["deposits_running_out"] as Array).append({
+		"tile_id": "tile_7_10", "instance_id": "diag_mine_2", "building_id": "b_001",
+		"token": "iron_ore", "good_id": str(Catalog.get_good_by_internal_name("iron_ore").get("id", "")),
+		"remaining": 120, "per_turn": 40, "turns_left": 3,
+	})
+	_check(not TurnBriefing._deposit_running_out_item().is_empty(),
+		"briefing: a SECOND mine running out re-raises the dismissed update")
+	Production.last_turn_summary = {"deposits_running_out": []}
+	_check(TurnBriefing._deposit_running_out_item().is_empty(), "briefing: clears when no deposit is low")
+	Production.last_turn_summary = saved
 
 func _test_partial_power_dispatch() -> void:
 	# PARTIAL DISPATCH (owner ruling): a generator that slightly overshoots its tile's

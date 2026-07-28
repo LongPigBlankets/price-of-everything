@@ -5,6 +5,7 @@ extends Control
 ## map stays visible and reachable; decisions gate End Turn, not input (owner ruling).
 ## Read-only against the sim — mutations go through DecisionState / TurnBriefing.
 
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const MENU_WIDTH := 224.0
 const CARD_MAX_W := 900.0
 const CARD_MAX_H := 640.0
@@ -293,12 +294,7 @@ func _menu_row(it: Dictionary) -> Control:
 	row.add_child(hb)
 
 	var tint := _item_color(it)
-	var chip := Label.new()
-	chip.text = TurnBriefing.item_glyph(it)
-	chip.custom_minimum_size = Vector2(20, 0)
-	chip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	chip.add_theme_color_override("font_color", tint)
-	hb.add_child(chip)
+	hb.add_child(_item_icon(it, tint, 20))
 
 	var title := Label.new()
 	title.theme_type_variation = "Caption"
@@ -347,11 +343,7 @@ func _detail_head(it: Dictionary, tag_text: String, tag_color: Color) -> Control
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", DS.SP["SM"])
 	var tint := _item_color(it)
-	var chip := Label.new()
-	chip.text = TurnBriefing.item_glyph(it)
-	chip.add_theme_font_size_override("font_size", 18)
-	chip.add_theme_color_override("font_color", tint)
-	hb.add_child(chip)
+	hb.add_child(_item_icon(it, tint, 24))
 	var title := Label.new()
 	title.theme_type_variation = "Section"
 	title.text = str(it.title)
@@ -740,3 +732,18 @@ func _navigate(dl: Dictionary) -> void:
 		MatchState.focus_building_requested.emit(building_id)
 	elif tile_id != "":
 		MatchState.focus_tile_requested.emit(tile_id)
+
+
+## An update's leading mark: the GOOD's icon when the item names one (a deposit warning
+## shows the ore that is running out), otherwise the tone glyph. Keeps every other update
+## on the existing glyph path.
+func _item_icon(it: Dictionary, tint: Color, box: int) -> Control:
+	var gid := str(it.get("icon_good_id", ""))
+	if gid != "":
+		return UIHelpers.make_framed_good_icon(gid, Catalog.get_internal_name(gid), box, true)
+	var glyph := Label.new()
+	glyph.text = TurnBriefing.item_glyph(it)
+	glyph.custom_minimum_size = Vector2(box, 0)
+	glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	glyph.add_theme_color_override("font_color", tint)
+	return glyph

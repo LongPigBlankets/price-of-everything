@@ -158,6 +158,9 @@ func _rebuild_items() -> void:
 	var undersized := _storage_undersized_item()
 	if not undersized.is_empty():
 		out.append(undersized)
+	var deposit_low := _deposit_running_out_item()
+	if not deposit_low.is_empty():
+		out.append(deposit_low)
 	var cash_short := _input_cash_short_item()
 	if not cash_short.is_empty():
 		out.append(cash_short)
@@ -357,6 +360,55 @@ func _storage_undersized_item() -> Dictionary:
 		"rows": [
 			["Working set over capacity", "%d unit%s" % [shortfall, "" if shortfall == 1 else "s"], "bad"],
 			["Tiles affected", "%d" % rows.size(), ""],
+		],
+		"list": listed,
+		"list_more": maxi(0, rows.size() - listed.size()),
+	}
+
+## Mines within Production.DEPOSIT_WARNING_TURNS of exhausting their deposit. A WARNING,
+## not a critical: the mine is still producing normally today, and the player has a few
+## turns to site a replacement. Dismissible, and re-raises if a further mine drops in.
+func _deposit_running_out_item() -> Dictionary:
+	var rows: Array = Production.last_turn_summary.get("deposits_running_out", [])
+	if rows.is_empty():
+		_alert_dismissed.erase("alert:deposit_running_out")
+		return {}
+	var soonest: Dictionary = rows[0]
+	for r in rows:
+		if int((r as Dictionary).get("turns_left", 99)) < int(soonest.get("turns_left", 99)):
+			soonest = r
+	# Magnitude is the COUNT of warning mines, so dismissing one warning doesn't silence a
+	# second mine that starts running out later.
+	if _alert_dismissed.has("alert:deposit_running_out") \
+			and rows.size() <= int(_alert_dismissed["alert:deposit_running_out"]):
+		return {}
+	var token := str(soonest.get("token", "")).replace("_", " ")
+	var turns := int(soonest.get("turns_left", 0))
+	var listed: Array = []
+	for r in rows:
+		var d: Dictionary = r
+		if listed.size() >= STARVED_LIST_ROWS:
+			break
+		listed.append({
+			"instance_id": str(d.get("instance_id", "")), "tile_id": str(d.get("tile_id", "")),
+			"why": "%d turn%s of %s left" % [int(d.get("turns_left", 0)),
+				"" if int(d.get("turns_left", 0)) == 1 else "s", str(d.get("token", "")).replace("_", " ")],
+		})
+	var title := "%s deposit runs out in %d turn%s" % [
+		token.capitalize(), turns, "" if turns == 1 else "s"] if rows.size() == 1 \
+		else "%d deposits are running out" % rows.size()
+	return {
+		"id": "alert:deposit_running_out", "kind": "warning", "section": "alerts",
+		"severity": "warning", "dismissible": true, "magnitude": rows.size(),
+		"icon": "warn", "icon_good_id": str(soonest.get("good_id", "")),
+		"title": title,
+		"body": "%s has about %d turn%s of %s left (%d units at %d/turn). When it empties the mine stops and the chain starts BUYING what it used to dig, which lands as a step up in the input bill. Site a replacement mine on another deposit now — construction takes turns you won't have once this one is dry." % [
+			_tile_display(str(soonest.get("tile_id", ""))), turns, "" if turns == 1 else "s",
+			token, int(soonest.get("remaining", 0)), int(soonest.get("per_turn", 0))],
+		"rows": [
+			["Turns of ore left", "%d" % turns, "warn"],
+			["Remaining", "%d unit%s" % [int(soonest.get("remaining", 0)), "" if int(soonest.get("remaining", 0)) == 1 else "s"], ""],
+			["Extraction rate", "%d / turn" % int(soonest.get("per_turn", 0)), ""],
 		],
 		"list": listed,
 		"list_more": maxi(0, rows.size() - listed.size()),

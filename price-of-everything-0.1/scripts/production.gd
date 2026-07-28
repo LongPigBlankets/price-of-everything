@@ -1,6 +1,11 @@
 extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 
+## How many turns of ore left before a mine starts warning. Short enough to be actionable
+## (a replacement mine takes turns to build and the nearest spare deposit is 4-6 tiles away
+## on the shipped maps), long enough not to be noise.
+const DEPOSIT_WARNING_TURNS := 5
+
 const MAX_PRODUCTION_PASSES := 30
 
 var last_turn_summary: Dictionary = {}
@@ -156,6 +161,10 @@ func _process_production() -> void:
 	# Orders clipped by the destination tile's STORAGE capacity (not cash):
 	# {tile_id, good_id, wanted, placed}. Feeds the tile-full briefing alert.
 	"input_orders_capped": [],
+	# Mines whose deposit is within DEPOSIT_WARNING_TURNS of exhaustion, at this turn's
+	# extraction rate: {tile_id, instance_id, building_id, token, good_id, remaining,
+	# per_turn, turns_left}. Drives the amber BDP row + the dismissible briefing update.
+	"deposits_running_out": [],
 	# Tiles whose warehouse is STRUCTURALLY smaller than their buildings' steady-state
 	# working set (import buffers + local intermediates + outputs): {tile_id, required,
 	# capacity}. Fires the critical briefing update before the tile actually jams.
@@ -792,6 +801,34 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		mined += output_qty
 	if dep_token != "" and mined > 0:
 		MatchState.deplete_deposit(tile_id, dep_token, mined)
+		_record_deposit_runway(building, dep_token, mined, summary)
+
+
+## Flag a mine whose deposit is within DEPOSIT_WARNING_TURNS of running out, using THIS
+## turn's actual extraction as the rate (so an upgrade or an output modifier shortens the
+## runway the same turn it lands). Exhaustion was previously silent: the input bill simply
+## doubled as the chain started buying what it used to mine, with no warning at all.
+func _record_deposit_runway(building: Dictionary, token: String, mined_this_turn: int, summary: Dictionary) -> void:
+	if mined_this_turn <= 0:
+		return
+	var tile_id := str(building.get("tile_id", ""))
+	var remaining: int = MatchState.deposit_remaining_for(tile_id, token)
+	if remaining < 0:
+		return  # unbounded deposit — never runs out
+	var turns_left: int = int(floor(float(remaining) / float(mined_this_turn)))
+	if turns_left > DEPOSIT_WARNING_TURNS:
+		return
+	var good: Dictionary = Catalog.get_good_by_internal_name(token)
+	summary.deposits_running_out.append({
+		"tile_id": tile_id,
+		"instance_id": str(building.get("instance_id", "")),
+		"building_id": str(building.get("building_id", "")),
+		"token": token,
+		"good_id": str(good.get("id", "")),
+		"remaining": remaining,
+		"per_turn": mined_this_turn,
+		"turns_left": turns_left,
+	})
 
 func _recipe_deposit_token(recipe: Dictionary) -> String:
 	for req in recipe.get("requirements", []):

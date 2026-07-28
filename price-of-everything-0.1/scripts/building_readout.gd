@@ -293,6 +293,17 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	# 1) critical fault / restarting / all-clear
 	if exhausted:
 		rows.append(_row("bad", "warn", "Deposit exhausted", "The deposit here is mined out — this building can no longer produce."))
+	elif not _deposit_runway(iid).is_empty():
+		# AMBER: the deposit is nearly gone. Warned rather than faulted — the mine is still
+		# producing normally today. Exhaustion used to arrive with no notice at all: the
+		# input bill simply doubled as the chain began buying what it had been mining.
+		var dr: Dictionary = _deposit_runway(iid)
+		rows.append(_row_good("warn", "warn", str(dr.get("good_id", "")),
+			"Deposit running out",
+			"About %d turn%s of %s left here (%d units at %d/turn). Build a replacement mine on another deposit before this one stops — construction takes turns you won't have afterwards." % [
+				int(dr.get("turns_left", 0)), "" if int(dr.get("turns_left", 0)) == 1 else "s",
+				str(dr.get("token", "")).replace("_", " "),
+				int(dr.get("remaining", 0)), int(dr.get("per_turn", 0))]))
 	elif grid_blocked:
 		# AMBER, and checked BEFORE "restarting": a capped plant reports run_state
 		# "restarting" (its power "input" is unmet), so it used to show a cheerful
@@ -515,6 +526,23 @@ static func _can_pipe_input(tile: String, gid: String) -> bool:
 
 static func _row(tone: String, ic: String, label: String, detail: String) -> Dictionary:
 	return {"tone": tone, "ic": ic, "label": label, "detail": detail}
+
+## A diagnostics row that shows a GOOD's icon in place of the tone dot — used where the row
+## is about a specific commodity (the deposit warning names the ore that is running out).
+static func _row_good(tone: String, ic: String, good_id: String, label: String, detail: String) -> Dictionary:
+	var r := _row(tone, ic, label, detail)
+	r["good_id"] = good_id
+	return r
+
+## This turn's exhaustion warning for one building, or {} — Production records it while
+## depleting, so the runway already reflects upgrades and output modifiers.
+static func _deposit_runway(instance_id: String) -> Dictionary:
+	if instance_id == "":
+		return {}
+	for d in (Production.last_turn_summary.get("deposits_running_out", []) as Array):
+		if str((d as Dictionary).get("instance_id", "")) == instance_id:
+			return d
+	return {}
 
 ## Detail line for a generator throttled by its tile's cable export cap. Reports what the
 ## tile actually got onto the wire against what it can carry, then tells the player the one
