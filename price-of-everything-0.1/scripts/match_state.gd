@@ -383,7 +383,10 @@ const RESEARCH_BUILDING_ALIASES := {
 	"battery": ["battery"],
 	"offshore_platform": ["offshore_oil_platform"],
 	"forest": ["new_forest", "old_forest"],
-	"power_plant": [
+	# Renamed from "power_plant" when the coal plant took that internal name (2026-07-28):
+	# the alias key would otherwise swallow the literal building and make every
+	# coal-plant-specific gate satisfiable by a solar farm.
+	"any_power_plant": [
 		"power_plant", "solar_farm", "onshore_wind_farm", "offshore_wind_farm",
 		"hydro_power_plant",
 	],

@@ -5741,8 +5741,13 @@ func _test_goods_flow_graph() -> void:
 	# carry every game-start fuel route (coal, processed_oil, pet_coke).
 	var power: Dictionary = by_id.get("power", {})
 	var power_inputs: Array = power.get("inputs", [])
-	_check(power_inputs.has("coal") and power_inputs.has("processed_oil") and power_inputs.has("pet_coke"),
-		"goods graph: power carries the union of game-start fuel edges")
+	# Coal (r_004) and processed_oil (r_181) are start-unlocked; pet_coke's only route
+	# (r_151) moved behind "Combined Cycle Turbines" on 2026-07-28, so it is no longer a
+	# game-start edge.
+	_check(power_inputs.has("coal") and power_inputs.has("processed_oil"),
+		"goods graph: power carries the game-start fuel edges (coal, processed_oil)")
+	_check(not power_inputs.has("pet_coke"),
+		"goods graph: pet_coke is NOT a start edge — it is gated behind Combined Cycle Turbines")
 	# Owner 2026-07-19: r_231 Anthracite Graphitisation (45 coal -> 2 graphite,
 	# 160 MW, ungated) is graphite's SIMPLEST base route (1 input, lower energy than
 	# pet-coke calcination), so the web edge is coal; pet-coke and the gated bio

@@ -44,6 +44,17 @@ RATE_S = const("LABOUR_SKILLED_RATE", 0.00912)
 RATE_H = const("LABOUR_HIGH_SKILLED_RATE", 0.0304)
 GRID_BUY = const("GRID_BUY_PRICE", 0.12)
 
+def building_alias() -> dict:
+    """catalog.gd's BUILDING_ALIAS, parsed live so this snapshot resolves buildings exactly
+    as the game does. A few recipes name a building by an older internal name; the catalog
+    maps them, and without the same map this tool would wrongly report them unbuildable."""
+    src = (ROOT / "scripts/catalog.gd").read_text()
+    block = re.search(r"const BUILDING_ALIAS := \{(.*?)\n\}", src, re.S)
+    return dict(re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', block.group(1))) if block else {}
+
+
+ALIAS = building_alias()
+
 goods = {r["internal_name"]: r for r in csv.DictReader(open(ROOT / "data/Goods - goodsMVP.csv"))}
 buildings = {r["internal_name"]: r for r in csv.DictReader(open(ROOT / "data/Buildings - buildingsMVP.csv"))}
 recipes = list(csv.DictReader(open(ROOT / "data/recipes_all.csv")))
@@ -88,11 +99,21 @@ cols += [
 
 rows = []
 for r in recipes:
-    b = buildings.get(r.get("building_id", ""), {})
-    # 49 recipes name a building that has no row in the MVP buildings CSV — they sit behind
-    # the catalog's silent promotion gate and can never be built or costed. Mark them rather
-    # than emitting a 0 maintenance that would read as "free to run".
-    buildable = bool(b)
+    raw_building = r.get("building_id", "")
+    b = buildings.get(ALIAS.get(raw_building, raw_building), {})
+    # Recipes that fail the catalog's silent promotion gate can never be built or costed.
+    # Mark them rather than emitting a 0 maintenance that would read as "free to run".
+    # The catalog's promotion gate needs BOTH: a building that exists AND every input and
+    # output good present. r_109/r_112 name a real building but output a phantom
+    # `hydrocarbon_power`, so they can never appear in game either.
+    goods_ok = all(
+        (r.get("input_%d" % i) or "").strip() in goods
+        for i in range(1, MAX_IN + 1) if (r.get("input_%d" % i) or "").strip()
+    ) and all(
+        (r.get("output_%d" % i) or "").strip() in goods
+        for i in range(1, MAX_OUT + 1) if (r.get("output_%d" % i) or "").strip()
+    )
+    buildable = bool(b) and goods_ok
     row = {
         "recipe_id": r.get("recipe_id", ""),
         "display_name": r.get("display_name", ""),
@@ -162,5 +183,5 @@ bad = {k: v for k, v in by_building.items() if len(v) > 1}
 print("  maintenance is consistent within every building: %s"
       % ("YES" if not bad else "NO -> %s" % bad))
 n_unbuildable = sum(1 for r in rows if r["buildable"] == "FALSE")
-print("  buildable: %d   NOT buildable (no such building in the MVP catalog): %d"
+print("  buildable: %d   NOT buildable (missing building or phantom good): %d"
       % (len(rows) - n_unbuildable, n_unbuildable))

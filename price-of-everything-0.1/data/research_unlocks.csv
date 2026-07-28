@@ -130,6 +130,7 @@ Inorganic Chemistry,,,,,I,Build,electrolyser,3,units,High-Current Cell Stacks,st
 Inorganic Chemistry,,,,,I,Build,electrolyser,7,units,Bipolar Cell Arrays,cell,Reduces Electrolyser power consumption by 20% for 20 turns.
 Petrochemistry,,,,,I,Build,poly_plant,3,units,Heat-Integrated Trains,heat,Reduces Polymerisation Refinery power consumption by 10% permanently.
 Petrochemistry,Catalytic Cracking,,,,III,Run Profitable,petro_refinery,3,buildings,Continuous Catalyst Regeneration,ccr,Increases Petrochemical Refinery output by 5% permanently.
+Hydrocarbon Power,Steam Turbine Upgrades,,,,II,Run L1,power_plant,2,15 turns,Combined Cycle Turbines,turbine,Unlocks new recipes: Gas Combined Cycle Turbines and Petroleum Needle Coke Power.
 Hydrocarbon Power,Steam Turbine Upgrades,,,,II,Run L1,power_plant,5,20 turns,Supercritical Boilers,level2,Unlocks upgrading Coal Power Plant to Level 2 for more output.
 Hydrocarbon Power,Supercritical Boilers,,,,III,Run Profitable L2,power_plant,5,buildings,Ultra-Supercritical Units,level3,Unlocks upgrading Coal Power Plant to Level 3 for more output.
 Renewable Power,Onshore Wind Control,,,,II,Run L1,onshore_wind_farm,5,20 turns,Larger Rotor Diameters,level2,Unlocks upgrading Onshore Wind Farm to Level 2 for more output.
