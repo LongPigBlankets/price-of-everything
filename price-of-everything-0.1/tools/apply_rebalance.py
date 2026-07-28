@@ -45,6 +45,12 @@ price = {r[GH.index("internal_name")]: float(r[GH.index("base_price")] or 0)
 maint = {r[BH.index("internal_name")]: float(r[BH.index("maintenance_cost")] or 0)
          for r in build_rows[1:] if len(r) > BH.index("maintenance_cost")}
 building_names = set(maint)
+# Revenue counts SELLABLE outputs only, and a recipe needing an unbuyable input cannot be
+# costed standalone at all. waste_water is both, so a producer must not be paid for effluent.
+SELLABLE = {r[GH.index("internal_name")] for r in goods_rows[1:]
+            if len(r) > GH.index("is_sellable") and r[GH.index("is_sellable")].strip().upper() == "TRUE"}
+BUYABLE = {r[GH.index("internal_name")] for r in goods_rows[1:]
+           if len(r) > GH.index("is_buyable") and r[GH.index("is_buyable")].strip().upper() == "TRUE"}
 
 # catalog.gd BUILDING_ALIAS — recipes name a few buildings by an older internal name.
 import re
@@ -80,7 +86,7 @@ def net_of(r):
     b = ALIAS.get(r["building_id"], r["building_id"])
     rev = sum(price[r["output_%d" % i]] * int(r["output_qty_%d" % i])
               for i in range(1, MAX_OUT + 1)
-              if (r.get("output_%d" % i) or "").strip() and (r.get("output_qty_%d" % i) or "").strip())
+              if (r.get("output_%d" % i) or "").strip() in SELLABLE and (r.get("output_qty_%d" % i) or "").strip())
     inp = sum(price[r["input_%d" % i]] * int(r["qty_%d" % i])
               for i in range(1, MAX_IN + 1)
               if (r.get("input_%d" % i) or "").strip() and (r.get("qty_%d" % i) or "").strip())
@@ -165,21 +171,38 @@ for (good, _bld), rs in by_out_bld.items():
             problems.append("R2 %s (%s) makes %.2fx the base — not 1.0/1.2/1.5/2.0"
                             % (g["recipe_id"], good, ratio))
 
-# R1 alignment
+# RATIO — consumer_demand / producer_supply must sit on the ladder (owner spec 2026-07-28).
+# A consumer needing 33 against a producer making 100 is the 0.33x case.
+LADDER = [0.33, 0.5, 0.75, 1.0, 1.2, 1.5, 2.0]
 for good, rs in by_out.items():
     base = [r for r in rs if not (r.get("required_research") or "").strip()]
     if not base:
         continue
     b_out = max(int(r["output_qty_1"]) for r in base)
+    if b_out <= 0:
+        continue
     for r in live:
         for i in range(1, MAX_IN + 1):
             if (r.get("input_%d" % i) or "").strip() == good:
                 need = int(r["qty_%d" % i] or 0)
-                if need > b_out:
-                    problems.append("R1 %s needs %d %s but the best base producer makes %d"
-                                    % (r["recipe_id"], need, good, b_out))
+                ratio = need / b_out
+                if not any(abs(ratio - a) <= 0.04 for a in LADDER):
+                    problems.append("RATIO %s needs %d %s against a producer making %d = %.2fx"
+                                    % (r["recipe_id"], need, good, b_out, ratio))
 
-nets = sorted(net_of(r) for r in live)
+def costable(r):
+    outs_ok = any((r.get("output_%d" % i) or "").strip() in SELLABLE for i in range(1, MAX_OUT + 1))
+    ins_ok = all((r.get("input_%d" % i) or "").strip() in BUYABLE
+                 for i in range(1, MAX_IN + 1) if (r.get("input_%d" % i) or "").strip())
+    return outs_ok and ins_ok
+
+
+base_live = [r for r in live if costable(r) and not (r.get("required_research") or "").strip()]
+bn = sorted(net_of(r) for r in base_live)
+print("BASE (game start, standalone-costable): %d / %d in +%.0f..+%.0f  (%.0f%%)"
+      % (sum(1 for n in bn if BAND_STANDALONE[0] <= n <= BAND_STANDALONE[1]), len(bn),
+         *BAND_STANDALONE, 100 * sum(1 for n in bn if BAND_STANDALONE[0] <= n <= BAND_STANDALONE[1]) / len(bn)))
+nets = sorted(net_of(r) for r in live if costable(r))
 inb = sum(1 for n in nets if BAND_STANDALONE[0] <= n <= BAND_STANDALONE[1])
 print("PROJECTED: %d / %d live recipes in +%.0f..+%.0f  (%.0f%%)"
       % (inb, len(live), *BAND_STANDALONE, 100 * inb / len(live)))
