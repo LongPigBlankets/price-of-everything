@@ -198,7 +198,7 @@ r_224,Hydroelectric Power,hydro_power_plant,,,,,,,,,,,,,0,power,370,,,,,,,,,rive
 r_225,Battery Storage,battery,,,,,,,,,,,,,0,,,,,,,,,,,,,,Batteries,,,500,100,50,lithium_battery;sodium_battery;iron_battery
 r_226,Magnetic Separation Electrolysis,electrolyser,ree_ore,9,pure_water,14,,,,,,,,,240,refined_ree,6,,,,,,,,,,,,Electrochemistry,,Molten Salt Alloy Electrolysis,784,294,50,
 r_227,Rudimentary Lithium Refinement,furnace,lithium_ore,8,industrial_acids,7,,,,,,,,,100,lithium_carbonate,9,,,,,,,,,,,,Electrochemistry,,,616,231,50,
-r_228,Bio Ethylene,chem_plant,biomass,11,,,,,,,,,,,100,ethylene,28,,,,,,,,,,,,Biofuels,,Biomass Cracking,2408,903,91,
+r_228,Bio Ethylene,chem_plant,biomass,35,,,,,,,,,,,100,ethylene,28,,,,,,,,,,,,Biofuels,,Biomass Cracking,2408,903,91,
 r_229,CZ Monocrystal Growth,chem_plant,polysilicon,3,,,,,,,,,,,240,high_grade_silicon,3,,,,,,,,,,,,Chemistry,,,2408,903,91,
 r_230,Monocrystal CPU Fabbing,assembly_plant,high_grade_silicon,3,circuit_board,9,refined_ree,3,,,,,,,20,cpu,5,,,,,,,,,,,,Electronics,,,3863,3434,1157,
 r_231,Anthracite Graphitisation,eaf,coal,45,,,,,,,,,,,160,graphite,6,,,,,,,,,,,,Carbon,,,1162,441,50,

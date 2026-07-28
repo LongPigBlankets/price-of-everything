@@ -180,7 +180,13 @@ func settle_grid_transactions() -> Dictionary:
 		"net": supply_this_turn - demand_this_turn,
 		"grid_bought": grid_bought,
 		"grid_sold": grid_sold,
-		"grid_buy_cost": grid_bought * EconomyConfig.GRID_BUY_PRICE * buy_mult,
+		# Importing from the national grid carries the same carbon as generating the power
+		# yourself would have. Without this the grid is the cleanest loophole on the board:
+		# burn coal in your own plant and pay the levy, or buy the identical MW at a flat rate
+		# and pay nothing. The grid is priced as if generated the conventional way, matching
+		# how every other good's embodied carbon is derived.
+		"grid_buy_cost": grid_bought * (EconomyConfig.GRID_BUY_PRICE * buy_mult
+			+ MarketState.carbon_component(Catalog.get_good_by_internal_name("power").get("id", ""))),
 		"grid_sell_revenue": grid_sold * EconomyConfig.GRID_SELL_PRICE * sell_mult,
 	}
 

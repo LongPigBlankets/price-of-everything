@@ -5457,9 +5457,20 @@ func _test_embodied_carbon() -> void:
 	var oil := str(Catalog.get_good_by_internal_name("processed_oil").get("id", ""))
 	var coal := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
 	var pet := str(Catalog.get_good_by_internal_name("pet_coke").get("id", ""))
-	_check(absf(Catalog.embodied_carbon(oil) - 2.7) < 0.001, "embodied carbon: a fuel keeps its own figure, not its feedstock's")
+	var eth := str(Catalog.get_good_by_internal_name("ethylene").get("id", ""))
+	var pwr := str(Catalog.get_good_by_internal_name("power").get("id", ""))
 	_check(float(Catalog.get_good(pet).get("co2_tax_multiplier", 0.0)) > 0.0,
 		"pet coke now carries a carbon levy (it is a petroleum product)")
+	# THE LOOPHOLE: making ethylene pays the levy on the oil it cracks, so buying it must cost
+	# the same. Cracking 9 processed_oil at 2.7 yields 12 ethylene -> 2.03 carried per unit.
+	# A good's own levy is NOT its embodied figure: its consumer pays that directly.
+	var oil_levy := float(Catalog.get_good(oil).get("co2_tax_multiplier", 0.0))
+	_check(Catalog.embodied_carbon(eth) > oil_levy * 0.5,
+		"loophole closed: ethylene carries the oil levy that cracking it incurred (%.2f)" % Catalog.embodied_carbon(eth))
+	_check(Catalog.embodied_carbon(eth) > float(Catalog.get_good(eth).get("co2_tax_multiplier", 0.0)),
+		"loophole closed: ethylene's carried carbon exceeds its own levy, so buying cannot undercut making")
+	_check(Catalog.embodied_carbon(pwr) > 0.0,
+		"loophole closed: power carries the carbon of the coal burned to make it")
 	# A manufactured good carries the carbon of the fossil that made it.
 	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
 	_check(Catalog.embodied_carbon(steel) > 0.0, "embodied carbon: steel carries the coal that made it")

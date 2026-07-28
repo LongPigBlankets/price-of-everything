@@ -640,13 +640,21 @@ func _load_recipes() -> void:
 ## Carbon a good CARRIES because of how it was made, as opposed to the carbon it releases
 ## when consumed (that is co2_tax_multiplier, charged by PolicyState at the point of use).
 ##
-## Two separate numbers on purpose. Charging the levy on a manufactured good as well as on
-## the fuel that made it taxes the same carbon at every step of a chain — the steel mill pays
-## on its coal, the motor plant pays again inside the steel, the car plant again inside the
-## motor — which double-counts and lands hardest on exactly the deep integration the economy
-## is meant to reward. So the levy stays at the point of combustion and this figure instead
-## rides the MARKET PRICE, which is cost pass-through: buying steel cannot dodge the carbon
-## its production incurred.
+## The levy bites the first time a recipe uses a fossil fuel, and this figure carries it
+## forward down the chain through the MARKET PRICE. Together they make making and buying cost
+## the same carbon, which is what closes the loopholes:
+##
+##   oil -> ethylene   cracking 9 processed_oil costs 9 x 2.7 of levy, so the 12 ethylene it
+##                     yields each carry 2.03. Buying ethylene now costs that too, where
+##                     before it cost nothing and the oil levy was simply skipped.
+##   coal -> graphite  45 coal at 0.5 over 6 graphite = 3.75 carried per unit.
+##   coal -> power     20 coal at 0.5 over 600 MW, and the national grid is charged the same
+##                     way, so importing power is no longer a way to burn coal for free.
+##
+## Two separate numbers on purpose: charging the LEVY on manufactured goods as well would tax
+## the same carbon at every step — the steel mill on its coal, the motor plant again inside
+## the steel, the car plant again inside the motor — which double-counts and lands hardest on
+## exactly the deep integration the economy is meant to reward.
 ##
 ## Derived from the BASE (ungated) route, and the dirtiest one where a good has several. That
 ## is deliberate: it prices a good "as if produced the conventional way", so unlocking a clean
@@ -671,15 +679,17 @@ func _compute_embodied_carbon() -> void:
 func _embodied_of(good_id: String, base_routes: Dictionary, seen: Dictionary) -> float:
 	if _embodied_carbon.has(good_id):
 		return float(_embodied_carbon[good_id])
-	# A good that emits when burned already carries its own figure, and recursing past it
-	# would re-derive a deliberate point-of-combustion calibration from its feedstock:
-	# processed_oil is 2.7 while the crude it comes from is 0.1, and the DAG would flatten it.
-	var own := float(get_good(good_id).get("co2_tax_multiplier", 0.0))
-	if own > 0.0:
-		return own
 	if seen.has(good_id):
 		return 0.0            # recipe cycle — stop rather than recurse forever
 	seen[good_id] = true
+	# The levy bites the FIRST time a recipe uses a fossil fuel, and is carried forward from
+	# there. So each input contributes the levy its consumer will pay on it PLUS whatever that
+	# input already carried — never the good's own levy, which its own consumer pays directly.
+	#
+	# That distinction is the whole loophole. Short-circuiting a good at its own levy priced
+	# ethylene at 1.0 when the processed oil cracked to make it costs 2.7 x 9 / 12 = 2.03, so
+	# buying ethylene undercut making it and the oil levy was simply skipped. Deriving it
+	# instead gives make-and-buy the same carbon cost, which is what closes it.
 	var worst := 0.0
 	for r in base_routes.get(good_id, []):
 		var qty: int = 0
@@ -690,7 +700,9 @@ func _embodied_of(good_id: String, base_routes: Dictionary, seen: Dictionary) ->
 			continue
 		var carried := 0.0
 		for inp in r.get("inputs", []):
-			carried += float(inp.get("qty", 0)) * _embodied_of(str(inp.get("good_id", "")), base_routes, seen)
+			var gid: String = str(inp.get("good_id", ""))
+			var levy := float(get_good(gid).get("co2_tax_multiplier", 0.0))
+			carried += float(inp.get("qty", 0)) * (levy + _embodied_of(gid, base_routes, seen))
 		worst = maxf(worst, carried / float(qty))
 	seen.erase(good_id)
 	return worst
