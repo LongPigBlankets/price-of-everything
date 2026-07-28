@@ -31,9 +31,8 @@ Manufacturing,Interchangeable Tooling,,,,II,Own,land,5,units,Composite Panel Pre
 Manufacturing,Motor Winding Automation,Composite Panel Pressing,,,III,Run,Modular Factory Cells,15,turns,Modular Factory Cells,cell,Reorganises production into modular factory cells (prerequisite tech).
 Hydrocarbon Power,,,,,I,Build,Coal Power Plant,3,units,Pulverized Coal Boilers,boiler,Increases Coal Power Plant output by 5% permanently.
 Hydrocarbon Power,Pulverized Coal Boilers,,,,I,Sell,Power,250,units,Steam Turbine Upgrades,turbine,Increases Coal Power Plant output by 25% for 25 turns.
-Hydrocarbon Power,Steam Turbine Upgrades,,,,II,Run,Gas Plant,12,turns,Combined Cycle Gas,gas,Increases Gas Plant output by 10% permanently.
 Hydrocarbon Power,Pulverized Coal Boilers,,,,II,Own,land,5,units,Flue Heat Recovery,heat,Reduces Coal Power Plant power consumption by 10% permanently.
-Hydrocarbon Power,Combined Cycle Gas,Flue Heat Recovery,,,III,Run,Grid Synchronous Generation,15,turns,Grid Synchronous Generation,grid,Reduces all power plants maintenance by 8% for 20 turns.
+Hydrocarbon Power,Combined Cycle Turbines,Flue Heat Recovery,,,III,Run,Grid Synchronous Generation,15,turns,Grid Synchronous Generation,grid,Reduces all power plants maintenance by 8% for 20 turns.
 Renewable Power,,,,,I,Build,Solar Farm,3,units,Utility Solar Arrays,solar,Increases Solar Farm output by 5% permanently.
 Renewable Power,Utility Solar Arrays,,,,I,Sell,Power,250,units,Onshore Wind Control,wind,Increases Onshore Wind Farm output by 5% permanently.
 Renewable Power,Onshore Wind Control,,,,II,Run,Wind Farm,12,turns,Battery Balancing,battery,Increases Battery Electric Storage output by 10% permanently.

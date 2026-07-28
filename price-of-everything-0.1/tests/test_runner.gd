@@ -4738,7 +4738,6 @@ func _test_live_unlock_conditions() -> void:
 	var expected_content_gaps := [
 		"Agrivoltaic Integration",
 		"Autonomous Dispatch Rooms",
-		"Combined Cycle Gas",
 		"Continuous Improvement Teams",
 		"Integrated Operations Planning",
 		"Risk Desk Procedures",
