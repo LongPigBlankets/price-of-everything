@@ -81,12 +81,19 @@ var _level_infra := false
 # rail, which is the only capacity left above a 750-unit road.
 const INFRA_UTIL_THRESHOLD := 0.90
 const INFRA_UTIL_STREAK := 2
+# `techs`: grant every node in the branches an established industrial player would
+# realistically have finished — metallurgy, both power branches, operations, logistics and
+# people management. Left OFF by default so the other runs stay comparable.
+const TECH_CATEGORIES := ["Metallurgy", "Renewable Power", "Hydrocarbon Power",
+	"Markets and Operations", "Logistics", "People Management"]
+var _grant_tech_categories := false
 var _auto_infra := false
 var _infra_streak := {}
 var _infra_spend := 0.0
 var _infra_actions := {}
 var _starve_detail := {}
 var _audited := {}
+var _techs_granted := false
 var _diag_turns := 0
 var _diag_runs := {}
 var _diag_coal_made := 0
@@ -342,6 +349,8 @@ func _parse_cmdline_args() -> void:
 			_level_infra = true
 		elif la == "autoinfra":
 			_auto_infra = true
+		elif la == "techs":
+			_grant_tech_categories = true
 
 
 func _load_scenario() -> void:
@@ -1909,7 +1918,30 @@ func _diagnose_window() -> void:
 			_diag_worst_link = {"util": util, "key": str(key), "used": float(flow[key]), "cap": cap, "turn": turn}
 
 
+func _grant_tech_branches() -> void:
+	if not _grant_tech_categories or _techs_granted:
+		return
+	_techs_granted = true
+	var n := 0
+	var by_cat := {}
+	for d in MatchState._unlock_defs:
+		var cat := str((d as Dictionary).get("category", ""))
+		if not TECH_CATEGORIES.has(cat):
+			continue
+		var title := str((d as Dictionary).get("title", ""))
+		if title == "" or MatchState.is_unlocked(title):
+			continue
+		MatchState.grant_unlock(title)
+		by_cat[cat] = int(by_cat.get(cat, 0)) + 1
+		n += 1
+	var line := "[techs] granted %d nodes:  " % n
+	for c in by_cat:
+		line += "%s x%d   " % [c, int(by_cat[c])]
+	print(line)
+
+
 func _capture_turn_metrics() -> void:
+	_grant_tech_branches()
 	_apply_level_schedule()
 	_diagnose_window()
 	if int(TurnManager.current_turn) in [90, 200]:
