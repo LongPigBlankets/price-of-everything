@@ -102,36 +102,69 @@ print("  --> %d/%d in band | min %+.1f  median %+.1f  max %+.1f"
       % (sum(1 for x in nb if BASE_BAND[0] <= x <= BASE_BAND[1]), len(nb),
          min(nb), sorted(nb)[len(nb) // 2], max(nb)))
 
-# ---- 2. gated vs base sibling --------------------------------------------------------
+# ---- 2. gated vs the base route for the same good ------------------------------------
+# "Base sibling" scoped to the same BUILDING is the right test for R2 — research must not
+# downgrade a given building. It is the WRONG test for the question a player actually asks,
+# which is "does this route beat the base route for this good?". Building is irrelevant to
+# that: Fabless Semiconductors competes with Semiconductor Fabbing across a building change,
+# and scoping by building hides the comparison entirely.
+#
+# Both tests are reported. Same-building is the structural rule; same-good is the economics.
+def o1(r):
+    return outs(r)[0][0] if outs(r) else ""
+
+
 print()
 print("=" * 100)
-print("2. GATED RECIPES — against the base recipe they upgrade (same good, same building)")
+print("2. GATED RECIPES — against the best BASE route for the same good (any building)")
 print("=" * 100)
-print("  %-7s %-34s %-24s %8s %8s %9s" % ("id", "recipe", "research", "gated", "base", "uplift"))
-paired, orphan = [], []
-for r in sorted(GATED, key=lambda x: -net(x)):
-    g0 = outs(r)[0][0] if outs(r) else ""
-    sibs = [b for b in BASE if outs(b) and outs(b)[0][0] == g0 and bld(b) == bld(r)]
-    (paired if sibs else orphan).append((r, sibs))
-for r, sibs in sorted(paired, key=lambda t: (net(t[0]) - max(net(b) for b in t[1]))):
-    b = max(sibs, key=net)
-    up = net(r) - net(b)
-    print("  %-7s %-34s %-24s %+8.1f %+8.1f %+9.1f%s"
-          % (r["recipe_id"], r["display_name"][:34], (r.get("required_research") or "")[:24],
-             net(r), net(b), up, "" if up >= 0 else "   <-- DOWNGRADE"))
-    rows_csv.append(["gated", r["recipe_id"], r["display_name"], r.get("required_research", ""),
-                     "%.2f" % net(r), "%.2f" % net(b), "uplift %+.2f" % up])
-ups = [net(r) - max(net(b) for b in s) for r, s in paired]
-print("  --> %d gated recipes have a base sibling; %d are an uplift, %d a downgrade"
-      % (len(paired), sum(1 for u in ups if u >= 0), sum(1 for u in ups if u < 0)))
-print("      uplift min %+.1f  median %+.1f  max %+.1f" % (min(ups), sorted(ups)[len(ups) // 2], max(ups)))
-print("  --> %d gated recipes have NO base sibling (new capability, nothing to upgrade):" % len(orphan))
-for r, _ in sorted(orphan, key=lambda t: -net(t[0])):
-    n = net(r)
-    print("      %-7s %-38s %+8.1f  %s"
-          % (r["recipe_id"], r["display_name"][:38], n, "OK" if n >= BASE_BAND[0] else "LOW"))
-    rows_csv.append(["gated_orphan", r["recipe_id"], r["display_name"],
-                     r.get("required_research", ""), "%.2f" % n, "", "no base sibling"])
+same_bldg, diff_bldg, brand_new = [], [], []
+for r in GATED:
+    g = o1(r)
+    sg = [b for b in BASE if o1(b) == g]
+    if not sg:
+        brand_new.append(r)
+    elif [b for b in sg if bld(b) == bld(r)]:
+        same_bldg.append((r, max(sg, key=net)))
+    else:
+        diff_bldg.append((r, max(sg, key=net)))
+
+for title, group in (("2a. UPGRADE IN PLACE — base route is the same building",
+                      sorted(same_bldg, key=lambda t: net(t[0]) - net(t[1]))),
+                     ("2b. COMPETING ROUTE — base route is a different building",
+                      sorted(diff_bldg, key=lambda t: net(t[0]) - net(t[1])))):
+    print()
+    print("  " + title)
+    print("    %-7s %-32s %-22s %8s %8s %9s %8s"
+          % ("id", "recipe", "beats / loses to", "gated", "base", "uplift", "per-unit"))
+    for r, b in group:
+        g = o1(r)
+        qg, qb = dict(outs(r))[g], dict(outs(b))[g]
+        up = net(r) - net(b)
+        pu = net(r) / qg - net(b) / qb
+        print("    %-7s %-32s %-22s %+8.1f %+8.1f %+9.1f %+8.2f%s"
+              % (r["recipe_id"], r["display_name"][:32],
+                 "%s %s" % (b["recipe_id"], b["display_name"][:14]), net(r), net(b), up, pu,
+                 "   <-- WORSE THAN BASE" if up < 0 else ""))
+        rows_csv.append(["gated_" + ("same_bldg" if (r, b) in same_bldg else "diff_bldg"),
+                         r["recipe_id"], r["display_name"], r.get("required_research", ""),
+                         "%.2f" % net(r), "%.2f" % net(b), "uplift %+.2f" % up])
+    ups = [net(r) - net(b) for r, b in group]
+    print("    --> %d recipes | uplift min %+.1f  median %+.1f  max %+.1f | %d worse than base"
+          % (len(group), min(ups), sorted(ups)[len(ups) // 2], max(ups),
+             sum(1 for u in ups if u < 0)))
+
+print()
+print("  2c. NEW GOOD — no base recipe produces this at all, so there is nothing to beat")
+print("    %-7s %-38s %-24s %8s" % ("id", "recipe", "good", "net"))
+for r in sorted(brand_new, key=lambda x: -net(x)):
+    print("    %-7s %-38s %-24s %+8.1f  %s"
+          % (r["recipe_id"], r["display_name"][:38], o1(r), net(r),
+             "OK" if net(r) >= BASE_BAND[0] else "LOW"))
+    rows_csv.append(["gated_new_good", r["recipe_id"], r["display_name"],
+                     r.get("required_research", ""), "%.2f" % net(r), "", o1(r)])
+print("    --> %d recipes | %d below the +%.0f floor"
+      % (len(brand_new), sum(1 for r in brand_new if net(r) < BASE_BAND[0]), BASE_BAND[0]))
 
 # ---- 3. two-step pairs ---------------------------------------------------------------
 print()

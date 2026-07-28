@@ -79,64 +79,64 @@ base,r_057,Building Frame Manufacture,Assembly Plant,15.40,,OK
 base,r_041,Rare Earth Reduction,Electrolyser,15.33,,OK
 base,r_035,Silica Washing,Petrochemical Refinery,15.24,,OK
 base,r_050,Aluminium (Hall Heroult) Smelting,Furnace,15.02,,OK
-gated,r_080,Membraneless Electrolysis,Membraneless Electrolysis,18.77,17.63,uplift +1.14
-gated,r_151,Petroleum Needle Coke Power,Combined Cycle Turbines,31.92,30.75,uplift +1.17
-gated,r_038,Gas Combined Cycle Turbines,Combined Cycle Turbines,35.36,30.75,uplift +4.61
-gated,r_226,Magnetic Separation Electrolysis,Molten Salt Alloy Electrolysis,21.80,15.33,uplift +6.47
-gated,r_072,V8 Engine Manufacturing,Precision Assembly Lines,23.86,16.17,uplift +7.69
-gated,r_208,Sustainable Biomass Production,Energy Crop Cultivation,36.00,28.05,uplift +7.95
-gated,r_054,High Strength Glassmaking,High Strength Glassmaking,29.59,15.67,uplift +13.92
-gated,r_061,Segmented Assembly Wind Turbines,Segmented Blade Assembly,35.84,16.49,uplift +19.35
-gated,r_031,Direct Reduced Iron Smelting,Basic Blast Furnaces,36.25,16.46,uplift +19.79
-gated,r_025,Basic Oxygen Steelmaking,Oxygen-Enriched Blast,40.12,17.63,uplift +22.49
-gated,r_077,HIsarna Steel Making,Alloy Heat Treatment,40.26,17.63,uplift +22.63
-gated,r_081,Fluidised Bed Reactor + CZ Silicon,Czochralski Crystal Growth,49.71,23.68,uplift +26.03
-gated,r_223,Floating Offshore Wind Power,Floating Offshore Wind Farms,43.95,17.00,uplift +26.95
-gated,r_076,Electric Arc Steelmaking,Electric Arc Refining,50.45,19.05,uplift +31.40
-gated,r_219,Copper Pipe Moulding,Alloy Heat Treatment,49.69,16.41,uplift +33.27
-gated,r_020,Flash Copper Smelting,Electric Arc Refining,52.78,17.29,uplift +35.50
-gated,r_214,Sustainable Forestry - Biomass,Sustainable Forestry,78.38,28.38,uplift +50.00
-gated,r_078,Methane Pyrolysis,Methane Pyrolysis,71.92,17.63,uplift +54.29
-gated,r_131,Hydrogen Power,Hydrogen Combustion Turbines,103.98,30.75,uplift +73.23
-gated,r_060,Durable Perovskite Solar Panels,Atomic Layer Deposition,131.91,17.96,uplift +113.95
-gated_orphan,r_064,Triple Tandem Solar Panels,Tandem Cell Stacking,228.74,,no base sibling
-gated_orphan,r_154,Coal Liquefaction,Fischer-Tropsch Synthesis,201.15,,no base sibling
-gated_orphan,r_123,Fabless Semiconductors,Advanced Photolithography,166.58,,no base sibling
-gated_orphan,r_124,Semiconductor 3D Printing,Additive Semiconductor Printing,163.07,,no base sibling
-gated_orphan,r_042,Bio-Graphitisation,Biomass Cracking,104.30,,no base sibling
-gated_orphan,r_063,Heterojunction Solar Panels,Heterojunction Cell Lines,103.45,,no base sibling
-gated_orphan,r_222,Subsea Manifold Extraction,Subsea Production Systems,100.41,,no base sibling
-gated_orphan,r_074,Hybrid Engine Manufacturing,Hybrid Powertrain Integration,98.88,,no base sibling
-gated_orphan,r_207,Heavy Electric Motor,Motor Winding Automation,91.33,,no base sibling
-gated_orphan,r_228,Bio Ethylene,Biomass Cracking,91.13,,no base sibling
-gated_orphan,r_108,Biowaste Recycling,Biowaste Digestion,90.98,,no base sibling
-gated_orphan,r_099,Lithium Phosphate Batteries,Lithium Iron Phosphate Cells,74.44,,no base sibling
-gated_orphan,r_065,SynRM Magnetless Motors,Synchronous Reluctance Drives,62.21,,no base sibling
-gated_orphan,r_118,Automated ICE Car Assembly,Automated Body-in-White Lines,61.37,,no base sibling
-gated_orphan,r_178,Offshore Oil Extraction,Offshore Drilling Platforms,53.54,,no base sibling
-gated_orphan,r_221,Deepwater Oil Extraction,Dynamic-Positioning Drilling,53.54,,no base sibling
-gated_orphan,r_220,Copper Pipe Manufacturing,Precision Tube Drawing,48.99,,no base sibling
-gated_orphan,r_133,Alloy Metal Electrolysis,Molten Salt Alloy Electrolysis,47.08,,no base sibling
-gated_orphan,r_205,Heavy Vehicles Automated Manufacturing,Heavy Vehicle Assembly,43.92,,no base sibling
-gated_orphan,r_136,Iron Air Batteries,Iron-Air Battery Cells,39.01,,no base sibling
-gated_orphan,r_127,Precision Electrical Components,Precision Electronics Assembly,35.98,,no base sibling
-gated_orphan,r_084,Aluminium Direct Carbothermic Electrolysis,Ultra-High-Power Arcs,35.72,,no base sibling
-gated_orphan,r_224,Hydroelectric Power,hydro,30.75,,no base sibling
-gated_orphan,r_069,Lightweight Car Bodies,Composite Panel Pressing,30.47,,no base sibling
-gated_orphan,r_203,Hairpin Stator Motors,Hairpin Stator Winding,28.97,,no base sibling
-gated_orphan,r_083,ELYSIS Aluminium,Electric Arc Refining,28.02,,no base sibling
-gated_orphan,r_066,Axial Flux Motors,Axial Flux Motor Lines,27.51,,no base sibling
-gated_orphan,r_121,Circuit Printing,300mm Wafer Lines,27.37,,no base sibling
-gated_orphan,r_177,Shale Oil Fracking,Shale Oil Fracturing,26.97,,no base sibling
-gated_orphan,r_087,Nitrogen Air Separation,Process Intensification,21.56,,no base sibling
-gated_orphan,r_107,E-Waste Recycling,Advanced Oxidation Loops,20.89,,no base sibling
-gated_orphan,r_039,Lithium Electrolysis,Solid-Oxide Electrolysis,20.88,,no base sibling
-gated_orphan,r_032,Lithium Ion Battery Manufacturing,Lithium Battery Storage,17.30,,no base sibling
-gated_orphan,r_119,EV Assembly,Electric Vehicle Assembly,16.81,,no base sibling
-gated_orphan,r_206,Electric Heavy Vehicles Manufacturing,Electric Drivetrain Integration,16.58,,no base sibling
-gated_orphan,r_073,Large Vehicle Engine Manufacturing,Heavy Engine Casting,16.56,,no base sibling
-gated_orphan,r_102,Sodium Ion Battery Manufacturing,Sodium Battery Storage,16.50,,no base sibling
-gated_orphan,r_034,Construction Equipment Assembly (EV),Electric Plant & Machinery,15.15,,no base sibling
+gated_same_bldg,r_080,Membraneless Electrolysis,Membraneless Electrolysis,18.77,17.63,uplift +1.14
+gated_same_bldg,r_151,Petroleum Needle Coke Power,Combined Cycle Turbines,31.92,30.75,uplift +1.17
+gated_same_bldg,r_038,Gas Combined Cycle Turbines,Combined Cycle Turbines,35.36,30.75,uplift +4.61
+gated_same_bldg,r_226,Magnetic Separation Electrolysis,Molten Salt Alloy Electrolysis,21.80,15.33,uplift +6.47
+gated_same_bldg,r_208,Sustainable Biomass Production,Energy Crop Cultivation,36.00,28.38,uplift +7.62
+gated_same_bldg,r_072,V8 Engine Manufacturing,Precision Assembly Lines,23.86,16.17,uplift +7.69
+gated_same_bldg,r_223,Floating Offshore Wind Power,Floating Offshore Wind Farms,43.95,30.75,uplift +13.20
+gated_same_bldg,r_054,High Strength Glassmaking,High Strength Glassmaking,29.59,15.67,uplift +13.92
+gated_same_bldg,r_061,Segmented Assembly Wind Turbines,Segmented Blade Assembly,35.84,16.49,uplift +19.35
+gated_same_bldg,r_031,Direct Reduced Iron Smelting,Basic Blast Furnaces,36.25,16.46,uplift +19.79
+gated_same_bldg,r_025,Basic Oxygen Steelmaking,Oxygen-Enriched Blast,40.12,19.05,uplift +21.07
+gated_same_bldg,r_077,HIsarna Steel Making,Alloy Heat Treatment,40.26,19.05,uplift +21.21
+gated_same_bldg,r_081,Fluidised Bed Reactor + CZ Silicon,Czochralski Crystal Growth,49.71,23.68,uplift +26.03
+gated_same_bldg,r_076,Electric Arc Steelmaking,Electric Arc Refining,50.45,19.05,uplift +31.40
+gated_same_bldg,r_219,Copper Pipe Moulding,Alloy Heat Treatment,49.69,16.41,uplift +33.27
+gated_same_bldg,r_020,Flash Copper Smelting,Electric Arc Refining,52.78,17.29,uplift +35.50
+gated_same_bldg,r_214,Sustainable Forestry - Biomass,Sustainable Forestry,78.38,28.38,uplift +50.00
+gated_same_bldg,r_078,Methane Pyrolysis,Methane Pyrolysis,71.92,17.63,uplift +54.29
+gated_same_bldg,r_131,Hydrogen Power,Hydrogen Combustion Turbines,103.98,30.75,uplift +73.23
+gated_same_bldg,r_060,Durable Perovskite Solar Panels,Atomic Layer Deposition,131.91,17.96,uplift +113.95
+gated_diff_bldg,r_206,Electric Heavy Vehicles Manufacturing,Electric Drivetrain Integration,16.58,16.98,uplift -0.40
+gated_diff_bldg,r_224,Hydroelectric Power,hydro,30.75,30.75,uplift -0.00
+gated_diff_bldg,r_107,E-Waste Recycling,Advanced Oxidation Loops,20.89,17.58,uplift +3.30
+gated_diff_bldg,r_039,Lithium Electrolysis,Solid-Oxide Electrolysis,20.88,15.45,uplift +5.43
+gated_diff_bldg,r_066,Axial Flux Motors,Axial Flux Motor Lines,27.51,18.10,uplift +9.42
+gated_diff_bldg,r_121,Circuit Printing,300mm Wafer Lines,27.37,17.89,uplift +9.48
+gated_diff_bldg,r_177,Shale Oil Fracking,Shale Oil Fracturing,26.97,17.47,uplift +9.50
+gated_diff_bldg,r_203,Hairpin Stator Motors,Hairpin Stator Winding,28.97,18.10,uplift +10.87
+gated_diff_bldg,r_083,ELYSIS Aluminium,Electric Arc Refining,28.02,15.02,uplift +12.99
+gated_diff_bldg,r_069,Lightweight Car Bodies,Composite Panel Pressing,30.47,15.99,uplift +14.48
+gated_diff_bldg,r_127,Precision Electrical Components,Precision Electronics Assembly,35.98,15.46,uplift +20.53
+gated_diff_bldg,r_084,Aluminium Direct Carbothermic Electrolysis,Ultra-High-Power Arcs,35.72,15.02,uplift +20.70
+gated_diff_bldg,r_205,Heavy Vehicles Automated Manufacturing,Heavy Vehicle Assembly,43.92,16.98,uplift +26.93
+gated_diff_bldg,r_133,Alloy Metal Electrolysis,Molten Salt Alloy Electrolysis,47.08,16.42,uplift +30.66
+gated_diff_bldg,r_220,Copper Pipe Manufacturing,Precision Tube Drawing,48.99,16.41,uplift +32.58
+gated_diff_bldg,r_178,Offshore Oil Extraction,Offshore Drilling Platforms,53.54,17.47,uplift +36.06
+gated_diff_bldg,r_221,Deepwater Oil Extraction,Dynamic-Positioning Drilling,53.54,17.47,uplift +36.06
+gated_diff_bldg,r_065,SynRM Magnetless Motors,Synchronous Reluctance Drives,62.21,18.10,uplift +44.11
+gated_diff_bldg,r_118,Automated ICE Car Assembly,Automated Body-in-White Lines,61.37,15.63,uplift +45.74
+gated_diff_bldg,r_108,Biowaste Recycling,Biowaste Digestion,90.98,28.38,uplift +62.60
+gated_diff_bldg,r_228,Bio Ethylene,Biomass Cracking,91.13,17.49,uplift +73.64
+gated_diff_bldg,r_074,Hybrid Engine Manufacturing,Hybrid Powertrain Integration,98.88,16.17,uplift +82.71
+gated_diff_bldg,r_222,Subsea Manifold Extraction,Subsea Production Systems,100.41,17.47,uplift +82.94
+gated_diff_bldg,r_063,Heterojunction Solar Panels,Heterojunction Cell Lines,103.45,17.96,uplift +85.49
+gated_diff_bldg,r_042,Bio-Graphitisation,Biomass Cracking,104.30,18.08,uplift +86.22
+gated_diff_bldg,r_124,Semiconductor 3D Printing,Additive Semiconductor Printing,163.07,34.29,uplift +128.77
+gated_diff_bldg,r_123,Fabless Semiconductors,Advanced Photolithography,166.58,34.29,uplift +132.28
+gated_diff_bldg,r_154,Coal Liquefaction,Fischer-Tropsch Synthesis,201.15,15.82,uplift +185.32
+gated_diff_bldg,r_064,Triple Tandem Solar Panels,Tandem Cell Stacking,228.74,17.96,uplift +210.78
+gated_new_good,r_207,Heavy Electric Motor,Motor Winding Automation,91.33,,large_engine
+gated_new_good,r_099,Lithium Phosphate Batteries,Lithium Iron Phosphate Cells,74.44,,lithium_battery
+gated_new_good,r_136,Iron Air Batteries,Iron-Air Battery Cells,39.01,,iron_battery
+gated_new_good,r_087,Nitrogen Air Separation,Process Intensification,21.56,,nitrogen
+gated_new_good,r_032,Lithium Ion Battery Manufacturing,Lithium Battery Storage,17.30,,lithium_battery
+gated_new_good,r_119,EV Assembly,Electric Vehicle Assembly,16.81,,ev_car
+gated_new_good,r_073,Large Vehicle Engine Manufacturing,Heavy Engine Casting,16.56,,large_engine
+gated_new_good,r_102,Sodium Ion Battery Manufacturing,Sodium Battery Storage,16.50,,sodium_battery
+gated_new_good,r_034,Construction Equipment Assembly (EV),Electric Plant & Machinery,15.15,,construction_equipment_ev
 pair,r_229->r_230,Monocrystal CPU Fabbing,high_grade_silicon,72.72,1.00,OK
 pair,r_045->r_229,CZ Monocrystal Growth,polysilicon,62.11,0.75,OK
 pair,r_209->r_047,Fertilisers Production,biomass,60.64,0.31,OK
@@ -182,7 +182,7 @@ pair,r_024->r_120,Basic Circuit Soldering,plastics,34.70,1.20,OK
 pair,r_009->r_033,Construction Equiment Assembly (ICE),motor,34.67,0.71,OK
 pair,r_001->r_029,Concrete Firing,coal,34.60,0.30,OK
 pair,r_009->r_059,Wind Turbine Manufacturing,motor,34.58,0.32,OK
-pair,r_044->r_122,Semiconductor Fabbing,metallurgical_silicon,34.49,0.30,OK
+pair,r_044->r_122,Semiconductor Fabbing,metallurgical_silicon,34.48,0.30,OK
 pair,r_180->r_023,Ethylene Refining,processed_oil,34.46,0.50,OK
 pair,r_014->r_180,Oil Refining,crude_oil,34.44,1.00,OK
 pair,r_132->r_058,Solar Panel Manufacturing,alloy_ingots,34.38,0.30,OK
@@ -231,7 +231,7 @@ pair,r_011->r_012,Chlor-Alkali Process,pure_water,32.78,0.98,OK
 pair,r_018->r_053,Industrial Glassmaking,sand,32.70,0.71,OK
 pair,r_179->r_067,Rubber Vulcanisation,sulphur,32.59,0.50,OK
 pair,r_035->r_029,Concrete Firing,silica,32.57,0.75,OK
-pair,r_028->r_067,Rubber Vulcanisation,rubber,32.47,1.00,OK
+pair,r_028->r_067,Rubber Vulcanisation,rubber,32.48,1.00,OK
 pair,r_024->r_125,Computer Assembly,plastics,32.43,0.30,OK
 pair,r_022->r_033,Construction Equiment Assembly (ICE),fuels,32.40,0.52,OK
 pair,r_019->r_053,Industrial Glassmaking,limestone,32.39,0.36,OK
