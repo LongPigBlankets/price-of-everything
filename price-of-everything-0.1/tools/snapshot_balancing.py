@@ -27,7 +27,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "reports/balance/temp_legacy_balancing.csv"
+OUT = (Path(sys.argv[1]).resolve() if len(sys.argv) > 1
+       else ROOT / "reports/balance/temp_legacy_balancing.csv")
 
 MAX_IN, MAX_OUT = 6, 5
 
@@ -172,7 +173,7 @@ with open(OUT, "w", newline="") as fh:
     w.writeheader()
     w.writerows(rows)
 
-print("wrote %s" % OUT.relative_to(ROOT))
+print("wrote %s" % OUT)
 print("  %d recipes x %d columns" % (len(rows), len(cols)))
 print("  rates recorded: unskilled %.5f skilled %.5f h_skilled %.5f grid_buy %.2f"
       % (RATE_U, RATE_S, RATE_H, GRID_BUY))
