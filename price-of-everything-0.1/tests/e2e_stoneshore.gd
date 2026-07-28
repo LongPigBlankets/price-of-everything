@@ -83,6 +83,7 @@ var _infra_streak := {}
 var _infra_spend := 0.0
 var _infra_actions := {}
 var _starve_detail := {}
+var _audited := {}
 var _balance_metrics := {}
 var _balance_bad_streak := 0
 var _balance_built_ids: Array[String] = []
@@ -138,7 +139,7 @@ func _print_profit_trajectory() -> void:
 				line += "t%d %+.0f   " % [m, float(e.get("profit", 0.0))]
 				break
 	print(line)
-	print("  %-6s %9s %9s %9s %9s %7s %7s %7s %7s" % ["turn", "revenue", "labour", "maint", "carbon", "starvd", "short", "capped", "deplet"])
+	print("  %-6s %9s %9s %9s %9s %7s %7s %7s %7s" % ["turn", "revenue", "labour", "maint", "carbon", "starvd", "short", "capped", "stor!"])
 	for m in marks:
 		for e in _profit_by_turn:
 			if int(e.get("turn", 0)) == m and e.has("revenue"):
@@ -146,7 +147,7 @@ func _print_profit_trajectory() -> void:
 					float(e.get("revenue", 0.0)), float(e.get("labour", 0.0)),
 					float(e.get("maint", 0.0)), float(e.get("carbon", 0.0)),
 					int(e.get("starved", 0)), int(e.get("short", 0)),
-					int(e.get("capped", 0)), int(e.get("deposits", 0))])
+					int(e.get("capped", 0)), int(e.get("overcommit", 0))])
 				break
 	# Name what the starved buildings were actually missing. "9 starved" is a symptom; a
 	# capped power draw and an empty warehouse need opposite fixes.
@@ -1748,8 +1749,39 @@ func _auto_upgrade_infra() -> void:
 					_bump_infra(tile, str(tile_id), "rails", rail_level + 1)
 
 
+## One-shot audit of what every player building is actually DOING at a given turn. The
+## aggregate "9 starved" says nothing about whether the ratios held; this says which
+## buildings ran, at what level, and how much they made.
+func _audit_buildings(turn: int) -> void:
+	if not _level_schedule or _audited.has(turn):
+		return
+	_audited[turn] = true
+	var by_recipe := {}
+	for iid in MatchState.buildings.keys():
+		var inst: Dictionary = MatchState.buildings[iid]
+		if str(inst.get("owner", "")) != "player_1":
+			continue
+		var rid := str(inst.get("recipe_id", ""))
+		var lvl := int(inst.get("level", 1))
+		var key := "%s L%d" % [rid, lvl]
+		if not by_recipe.has(key):
+			by_recipe[key] = {"n": 0, "produced": 0, "name": str(Catalog.get_recipe(rid).get("display_name", rid))}
+		var e: Dictionary = by_recipe[key]
+		e["n"] = int(e["n"]) + 1
+		var totals: Dictionary = Production.produced_by_building.get(str(iid), {})
+		for gid in totals.keys():
+			e["produced"] = int(e["produced"]) + int(totals[gid])
+	# produced_by_building is LIFETIME, so the t90 -> t200 delta is the rate that matters.
+	print("  --- t%d building audit (recipe, level, count, LIFETIME units produced) ---" % turn)
+	for k in by_recipe:
+		var e: Dictionary = by_recipe[k]
+		print("    %-10s %-30s x%-3d produced %d" % [k, str(e["name"]).substr(0, 30), int(e["n"]), int(e["produced"])])
+
+
 func _capture_turn_metrics() -> void:
 	_apply_level_schedule()
+	if int(TurnManager.current_turn) in [90, 200]:
+		_audit_buildings(int(TurnManager.current_turn))
 	_auto_upgrade_infra()
 	var summary: Dictionary = Production.last_turn_summary
 	if summary.is_empty():
@@ -1780,6 +1812,10 @@ func _capture_turn_metrics() -> void:
 		"short": (summary.get("input_orders_short", []) as Array).size(),
 		"capped": (summary.get("input_orders_capped", []) as Array).size(),
 		"deposits": (summary.get("deposits_running_out", []) as Array).size(),
+		# Tile storage does NOT scale with building level: the cap is 800 + research + port
+		# boost regardless of whether the tile hosts L1 or L3 plant. A levelled tile can
+		# therefore be structurally unable to hold the buffers its own buildings need.
+		"overcommit": (summary.get("storage_overcommitted", []) as Array).size(),
 	})
 	if int(TurnManager.current_turn) >= 150:
 		_starve_detail.clear()
