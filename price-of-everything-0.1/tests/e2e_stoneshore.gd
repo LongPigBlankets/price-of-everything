@@ -64,6 +64,15 @@ var _cash_after_buildout := 0.0
 var _coal_backed_available_capacity := 0.0
 var _coal_backed_loan_amount := 0.0
 var _balance_mode := false
+# `levels` arg: take every player building to L2 at turn 100 and L3 at turn 150, to measure
+# what leveling an already-built empire is worth. It sets the level DIRECTLY rather than going
+# through start_upgrade, so it measures the steady-state economics of a levelled empire and
+# deliberately excludes the material kit and the 3-turn downtime — those are reported
+# separately rather than smeared into the per-turn numbers.
+var _level_schedule := false
+var _levels_applied := {}
+var _level_infra := false
+var _starve_detail := {}
 var _balance_metrics := {}
 var _balance_bad_streak := 0
 var _balance_built_ids: Array[String] = []
@@ -119,15 +128,39 @@ func _print_profit_trajectory() -> void:
 				line += "t%d %+.0f   " % [m, float(e.get("profit", 0.0))]
 				break
 	print(line)
-	print("  %-6s %9s %9s %9s %9s %9s %9s" % ["turn", "revenue", "labour", "maint", "inputs", "power", "carbon"])
+	print("  %-6s %9s %9s %9s %9s %7s %7s %7s %7s" % ["turn", "revenue", "labour", "maint", "carbon", "starvd", "short", "capped", "deplet"])
 	for m in marks:
 		for e in _profit_by_turn:
 			if int(e.get("turn", 0)) == m and e.has("revenue"):
-				print("  t%-5d %9.0f %9.0f %9.0f %9.0f %9.0f %9.0f" % [m,
+				print("  t%-5d %9.0f %9.0f %9.0f %9.0f %7d %7d %7d %7d" % [m,
 					float(e.get("revenue", 0.0)), float(e.get("labour", 0.0)),
-					float(e.get("maint", 0.0)), float(e.get("inputs", 0.0)),
-					float(e.get("power", 0.0)), float(e.get("carbon", 0.0))])
+					float(e.get("maint", 0.0)), float(e.get("carbon", 0.0)),
+					int(e.get("starved", 0)), int(e.get("short", 0)),
+					int(e.get("capped", 0)), int(e.get("deposits", 0))])
 				break
+	# Name what the starved buildings were actually missing. "9 starved" is a symptom; a
+	# capped power draw and an empty warehouse need opposite fixes.
+	if not _starve_detail.is_empty():
+		print("  starvation causes (last recorded):")
+		for k in _starve_detail:
+			print("    %-28s x%d" % [k, int(_starve_detail[k])])
+	# Deposits are the other thing a levelled empire can exhaust: a mine at L3 pulls 3.5x the
+	# ore, so a deposit sized for L1 empties in under a third of the time.
+	var dep := {}
+	for iid in MatchState.buildings.keys():
+		var inst: Dictionary = MatchState.buildings[iid]
+		if str(inst.get("owner", "")) != "player_1":
+			continue
+		var tid := str(inst.get("tile_id", ""))
+		for tok in ["coal", "iron_ore", "copper_ore", "limestone", "sand", "bauxite_ore"]:
+			var rem := MatchState.deposit_remaining_for(tid, tok)
+			if rem > 0 or dep.has(tok):
+				dep[tok] = int(dep.get(tok, 0)) + rem
+	if not dep.is_empty():
+		var dl := "  deposits left at end: "
+		for k in dep:
+			dl += "%s %d   " % [k, int(dep[k])]
+		print(dl)
 	# Where it crossed from black to red for good — the turn a fix has to target.
 	var last_positive := 0
 	for e in _profit_by_turn:
@@ -210,6 +243,13 @@ func _parse_cmdline_args() -> void:
 		_balance_metrics_output_path = str(args[2])
 	if args.size() > 3:
 		_balance_research_override = str(args[3]).strip_edges().to_lower() == "research"
+	for a in args:
+		var la := str(a).strip_edges().to_lower()
+		if la == "levels":
+			_level_schedule = true
+		elif la == "levels+infra":
+			_level_schedule = true
+			_level_infra = true
 
 
 func _load_scenario() -> void:
@@ -1547,7 +1587,47 @@ func _advance_turns(count: int, reason: String) -> void:
 				"turn advanced for %s (%d -> %d)" % [reason, before_turn, TurnManager.current_turn])
 
 
+func _apply_level_schedule() -> void:
+	if not _level_schedule:
+		return
+	var turn := int(TurnManager.current_turn)
+	var target := 0
+	if turn >= 150:
+		target = 3
+	elif turn >= 100:
+		target = 2
+	if target == 0 or _levels_applied.has(target):
+		return
+	_levels_applied[target] = true
+	var n := 0
+	for iid in MatchState.buildings.keys():
+		var inst: Dictionary = MatchState.buildings[iid]
+		if str(inst.get("owner", "")) != "player_1":
+			continue
+		if int(inst.get("level", 1)) >= target:
+			continue
+		inst["level"] = target
+		n += 1
+	var tn := 0
+	if _level_infra:
+		# Buildings alone starve: L1 cables cap a tile at 2000 power/turn and levelled
+		# buildings draw past it, which stalls the mines and empties the chain from the top.
+		# Levelling the infrastructure with them is the comparison that isolates that.
+		for hm in get_tree().get_nodes_in_group("hex_map"):
+			for coord in (hm.get("tiles") as Dictionary).keys():
+				var tile: Dictionary = (hm.get("tiles") as Dictionary)[coord]
+				var lv: Dictionary = tile.get("infrastructure_levels", {})
+				for slot in (tile.get("infrastructure_present", []) as Array):
+					if int(lv.get(str(slot), 1)) < target:
+						lv[str(slot)] = target
+						tn += 1
+				tile["infrastructure_levels"] = lv
+	print("[levels] t%d: %d buildings -> L%d%s" % [turn, n, target,
+		("   + %d infrastructure slots" % tn) if _level_infra else ""])
+
+
 func _capture_turn_metrics() -> void:
+	_apply_level_schedule()
 	var summary: Dictionary = Production.last_turn_summary
 	if summary.is_empty():
 		_revenue_history.append(0.0)
@@ -1571,7 +1651,23 @@ func _capture_turn_metrics() -> void:
 		"inputs": float(summary.get("goods_purchased_cost", 0.0)),
 		"power": float(summary.get("power_purchase_cost", 0.0)),
 		"carbon": float(summary.get("carbon_tax_paid", 0.0)),
+		# Why a turn was bad, not just that it was. A revenue collapse looks identical whether
+		# the cause is starved inputs, a capped power draw or an exhausted deposit.
+		"starved": (summary.get("starved", []) as Array).size(),
+		"short": (summary.get("input_orders_short", []) as Array).size(),
+		"capped": (summary.get("input_orders_capped", []) as Array).size(),
+		"deposits": (summary.get("deposits_running_out", []) as Array).size(),
 	})
+	if int(TurnManager.current_turn) >= 150:
+		_starve_detail.clear()
+		for rec in (summary.get("starved", []) as Array):
+			var miss: Array = (rec as Dictionary).get("missing", [])
+			if miss.is_empty():
+				_starve_detail["(no recipe inputs / not run)"] = int(_starve_detail.get("(no recipe inputs / not run)", 0)) + 1
+			for m in miss:
+				var key := "%s need %d have %d" % [str((m as Dictionary).get("internal_name", "?")),
+					int((m as Dictionary).get("need", 0)), int((m as Dictionary).get("have", 0))]
+				_starve_detail[key] = int(_starve_detail.get(key, 0)) + 1
 	if _balance_mode:
 		_capture_balance_turn(profit_post_tax, summary)
 

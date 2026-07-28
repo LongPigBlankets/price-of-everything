@@ -17,12 +17,41 @@ var _main: Node = null
 var _started := false
 var _frames := 0
 var _variant := "glass54"
+# `levels` arg — same schedule as the e2e harness: L2 at t100, L3 at t150, set directly so
+# the per-turn figures are the steady state of a levelled cluster, not the transition.
+var _level_schedule := false
+var _levels_applied := {}
+
+
+func _apply_level_schedule(turn: int) -> void:
+	if not _level_schedule:
+		return
+	var target := 0
+	if turn >= 150:
+		target = 3
+	elif turn >= 100:
+		target = 2
+	if target == 0 or _levels_applied.has(target):
+		return
+	_levels_applied[target] = true
+	var n := 0
+	for iid in MatchState.buildings.keys():
+		var inst: Dictionary = MatchState.buildings[iid]
+		if str(inst.get("owner", "")) != "player_1":
+			continue
+		if int(inst.get("level", 1)) < target:
+			inst["level"] = target
+			n += 1
+	print("[levels] t%d: %d buildings -> L%d" % [turn, n, target])
 
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
-		if str(a).strip_edges() != "":
-			_variant = str(a).strip_edges()
+		var arg := str(a).strip_edges()
+		if arg.to_lower() == "levels":
+			_level_schedule = true
+		elif arg != "":
+			_variant = arg
 	SaveLoad.prepare_new_game("res://data/starts/_tut_end_%s.json" % _variant)
 	_main = (load(MAIN_SCENE) as PackedScene).instantiate()
 	add_child(_main)
@@ -54,6 +83,7 @@ func _run() -> void:
 			print("  seeded: %s / %s on %s" % [inst.get("building_id"), inst.get("recipe_id"), inst.get("tile_id")])
 	var prev: float = MatchState.money
 	for t in range(1, TURNS + 1):
+		_apply_level_schedule(t)
 		TurnManager.commit_turn()
 		await TurnManager.turn_resolution_completed
 		var m: float = MatchState.money
