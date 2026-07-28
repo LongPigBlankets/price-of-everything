@@ -38,8 +38,22 @@ func get_price(good_id: String) -> float:
 
 ## This turn's impact-FREE price (what the price would be with zero glut/deficit
 ## impact) — the bracketed number in the market tab.
+##
+## Once the carbon levy is in force the price carries the carbon EMBODIED in making the good,
+## so buying it costs what making it the conventional way would have cost in levy. Without
+## this the market is a laundering route: a player buys steel instead of smelting it and the
+## carbon squeeze never reaches them. Added on top of the decayed base rather than folded into
+## it because a policy overlay should not compound with per-turn price drift.
 func get_base_price_now(good_id: String) -> float:
-	return prices.get(good_id, 1.0)
+	return prices.get(good_id, 1.0) + carbon_component(good_id)
+
+## The carbon slice of this turn's price — £0 until the levy starts, and broken out so the
+## market tab and the building readout can show WHY a good got dearer.
+func carbon_component(good_id: String) -> float:
+	var embodied := Catalog.embodied_carbon(good_id)
+	if embodied <= 0.0:
+		return 0.0
+	return embodied * EconomyConfig.CO2_TAX_RATE * PolicyState.co2_tax_scale(int(TurnManager.current_turn))
 
 func get_impact_pct(good_id: String) -> float:
 	return float(impact_pct.get(good_id, 0.0))

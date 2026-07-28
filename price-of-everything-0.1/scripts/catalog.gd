@@ -635,6 +635,69 @@ func _load_recipes() -> void:
 	
 	file.close()
 	print("Catalog: loaded %d recipes" % _all_recipes.size())
+	_compute_embodied_carbon()
+
+## Carbon a good CARRIES because of how it was made, as opposed to the carbon it releases
+## when consumed (that is co2_tax_multiplier, charged by PolicyState at the point of use).
+##
+## Two separate numbers on purpose. Charging the levy on a manufactured good as well as on
+## the fuel that made it taxes the same carbon at every step of a chain — the steel mill pays
+## on its coal, the motor plant pays again inside the steel, the car plant again inside the
+## motor — which double-counts and lands hardest on exactly the deep integration the economy
+## is meant to reward. So the levy stays at the point of combustion and this figure instead
+## rides the MARKET PRICE, which is cost pass-through: buying steel cannot dodge the carbon
+## its production incurred.
+##
+## Derived from the BASE (ungated) route, and the dirtiest one where a good has several. That
+## is deliberate: it prices a good "as if produced the conventional way", so unlocking a clean
+## recipe does not silently cheapen everyone else's market price. Handling the case where a
+## player actually holds a hydrocarbon-free route is a later pass (owner, 2026-07-28).
+var _embodied_carbon: Dictionary = {}   # good_id -> float
+
+func _compute_embodied_carbon() -> void:
+	_embodied_carbon.clear()
+	var base_routes := {}
+	for r in _all_recipes:
+		if str(r.get("required_research", "")) != "":
+			continue
+		var out_id: String = str(r.get("output_good_id", ""))
+		if out_id != "":
+			if not base_routes.has(out_id):
+				base_routes[out_id] = []
+			base_routes[out_id].append(r)
+	for good in _all_goods:
+		_embodied_carbon[good.id] = _embodied_of(good.id, base_routes, {})
+
+func _embodied_of(good_id: String, base_routes: Dictionary, seen: Dictionary) -> float:
+	if _embodied_carbon.has(good_id):
+		return float(_embodied_carbon[good_id])
+	# A good that emits when burned already carries its own figure, and recursing past it
+	# would re-derive a deliberate point-of-combustion calibration from its feedstock:
+	# processed_oil is 2.7 while the crude it comes from is 0.1, and the DAG would flatten it.
+	var own := float(get_good(good_id).get("co2_tax_multiplier", 0.0))
+	if own > 0.0:
+		return own
+	if seen.has(good_id):
+		return 0.0            # recipe cycle — stop rather than recurse forever
+	seen[good_id] = true
+	var worst := 0.0
+	for r in base_routes.get(good_id, []):
+		var qty: int = 0
+		for outp in r.get("outputs", []):
+			if str(outp.get("good_id", "")) == good_id:
+				qty = int(outp.get("qty", 0))
+		if qty <= 0:
+			continue
+		var carried := 0.0
+		for inp in r.get("inputs", []):
+			carried += float(inp.get("qty", 0)) * _embodied_of(str(inp.get("good_id", "")), base_routes, seen)
+		worst = maxf(worst, carried / float(qty))
+	seen.erase(good_id)
+	return worst
+
+## Carbon embodied in one unit of `good_id` by its conventional production route.
+func embodied_carbon(good_id: String) -> float:
+	return float(_embodied_carbon.get(good_id, 0.0))
 
 func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> Dictionary:
 	var raw := {}

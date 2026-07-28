@@ -205,8 +205,10 @@ def costable(r):
 #
 # Some recipes are deliberately uneconomic — an owner design call, not a defect. They are named
 # here so the exemption is explicit and reviewable rather than the test being silently loose.
-DELIBERATELY_UNECONOMIC = {
-    "r_131": "hydrogen power is a decarbonisation choice, not a profitable one (owner, 2026-07-28)",
+BELOW_BASE_BY_DESIGN = {
+    "r_131": "hydrogen power is a decarbonisation choice, not a profitable one (owner)",
+    "r_042": "bio-graphitisation exists to establish an alternate route, not to pay (owner)",
+    "r_065": "SynRM motors trade profit for a supply chain free of rare earths (owner)",
 }
 
 
@@ -215,7 +217,7 @@ def out1(r):
 
 
 for r in live:
-    if not (r.get("required_research") or "").strip() or r["recipe_id"] in DELIBERATELY_UNECONOMIC:
+    if not (r.get("required_research") or "").strip() or r["recipe_id"] in BELOW_BASE_BY_DESIGN:
         continue
     if not costable(r):
         continue
@@ -248,8 +250,8 @@ if problems:
         print("  ... and %d more" % (len(problems) - 40))
     sys.exit(1)
 print("\nall rule checks passed (ratio ladder, R2 multipliers, R3 nice numbers, no research traps)")
-for _rid, _why in DELIBERATELY_UNECONOMIC.items():
-    print("  trap-check exemption: %s — %s" % (_rid, _why))
+for _rid, _why in BELOW_BASE_BY_DESIGN.items():
+    print("  below base by design: %s — %s" % (_rid, _why))
 
 if DRY:
     print("--dry-run: nothing written")

@@ -222,6 +222,7 @@ func _ready() -> void:
 	_test_power_quality()
 	_test_power_instance_age()
 	_test_power_intermittency_alloc()
+	_test_embodied_carbon()
 	_test_intermittency_tile_aggregate()
 	_test_detail_panel_owner_resolution()
 	_test_battery_buildable()
@@ -5448,6 +5449,34 @@ func _test_power_instance_age() -> void:
 	_check(Production._instance_age("inst_b_007_00001a") == 26, "instance age: parses trailing hex (1a = 26)")
 	_check(Production._instance_age("inst_b_001_000001") < Production._instance_age("inst_b_001_000002"),
 		"instance age: lower counter is older")
+
+func _test_embodied_carbon() -> void:
+	# A fossil fuel carries its own point-of-combustion figure and is NOT re-derived from its
+	# feedstock — processed_oil is 2.7 while the crude it comes from is 0.1, and letting the
+	# DAG flatten that would gut the policy.
+	var oil := str(Catalog.get_good_by_internal_name("processed_oil").get("id", ""))
+	var coal := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	var pet := str(Catalog.get_good_by_internal_name("pet_coke").get("id", ""))
+	_check(absf(Catalog.embodied_carbon(oil) - 2.7) < 0.001, "embodied carbon: a fuel keeps its own figure, not its feedstock's")
+	_check(float(Catalog.get_good(pet).get("co2_tax_multiplier", 0.0)) > 0.0,
+		"pet coke now carries a carbon levy (it is a petroleum product)")
+	# A manufactured good carries the carbon of the fossil that made it.
+	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	_check(Catalog.embodied_carbon(steel) > 0.0, "embodied carbon: steel carries the coal that made it")
+	# ...and one made from nothing fossil carries none. biomass is the clean feedstock.
+	var bio := str(Catalog.get_good_by_internal_name("biomass").get("id", ""))
+	_check(absf(Catalog.embodied_carbon(bio)) < 0.001, "embodied carbon: biomass carries none")
+	# The levy is NOT charged on manufactured goods, so one tonne of carbon is taxed once.
+	# This is the property that stops a deep chain paying for the same coal at every step.
+	_check(absf(float(Catalog.get_good(steel).get("co2_tax_multiplier", 0.0))) < 0.001,
+		"no double count: steel carries embodied carbon but is not itself levied")
+	_check(float(Catalog.get_good(coal).get("co2_tax_multiplier", 0.0)) > 0.0,
+		"no double count: the levy lands on the coal instead")
+	# Market price: zero carbon component before the levy starts, positive once it is in force.
+	var t_before: int = PolicyState.CO2_RAMP_FIRST_TURN - 1
+	_check(absf(PolicyState.co2_tax_scale(t_before)) < 0.001, "carbon price: no component before the levy starts")
+	_check(PolicyState.co2_tax_scale(PolicyState.CO2_P1_TURN) > 0.0, "carbon price: the levy scale is live at P1")
+
 
 func _test_power_intermittency_alloc() -> void:
 	# Result is keyed by iid -> {derate, green_consumed, unfirmed_intermittent, steady_consumed, demand}.
