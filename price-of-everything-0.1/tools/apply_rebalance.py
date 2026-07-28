@@ -142,6 +142,16 @@ for r in live:
             problems.append("R3 %s outputs %s %s — not a multiple of 3, 4 or 5"
                             % (r["recipe_id"], q, r["output_%d" % i]))
 
+# Routes the owner has decided should be WORSE than the base they compete with. Each buys
+# something other than profit — a rare-earth-free supply chain, an alternate feedstock, a
+# decarbonisation option — so both the R2 downgrade rule and the trap check stand down here.
+BELOW_BASE_BY_DESIGN = {
+    "r_131": "hydrogen power is a decarbonisation choice, not a profitable one (owner)",
+    "r_042": "bio-graphitisation exists to establish an alternate route, not to pay (owner)",
+    "r_065": "SynRM motors trade profit for a supply chain free of rare earths (owner)",
+    "r_208": "sustainable farming yields LESS biomass, not more — quality over tonnage (owner)",
+}
+
 # R2 gated multipliers
 by_out = defaultdict(list)
 for r in live:
@@ -163,6 +173,8 @@ for (good, _bld), rs in by_out_bld.items():
         continue
     b_out = max(int(r["output_qty_1"]) for r in base)
     for g in gated:
+        if g["recipe_id"] in BELOW_BASE_BY_DESIGN:
+            continue
         ratio = int(g["output_qty_1"]) / b_out
         if ratio < 1.0 - 0.02:
             problems.append("R2 %s (%s) makes %.2fx the base — research must not downgrade"
@@ -205,11 +217,6 @@ def costable(r):
 #
 # Some recipes are deliberately uneconomic — an owner design call, not a defect. They are named
 # here so the exemption is explicit and reviewable rather than the test being silently loose.
-BELOW_BASE_BY_DESIGN = {
-    "r_131": "hydrogen power is a decarbonisation choice, not a profitable one (owner)",
-    "r_042": "bio-graphitisation exists to establish an alternate route, not to pay (owner)",
-    "r_065": "SynRM motors trade profit for a supply chain free of rare earths (owner)",
-}
 
 
 def out1(r):

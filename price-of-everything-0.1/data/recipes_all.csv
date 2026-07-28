@@ -179,7 +179,7 @@ r_204,Heavy Vehicles Assembly,factory,car_body,15,large_engine,11,lithium_batter
 r_205,Heavy Vehicles Automated Manufacturing,assembly_plant,car_body,15,large_engine,11,lithium_battery,7,fuels,21,,,,,20,heavy_vehicle,5,,,,,,,,,,,,Car And Large Vehicles,,Heavy Vehicle Assembly,2657,4953,3825,
 r_206,Electric Heavy Vehicles Manufacturing,assembly_plant,car_body,15,large_engine,11,lithium_battery,9,,,,,,,20,heavy_vehicle,5,,,,,,,,,,,,Car And Large Vehicles,,Electric Drivetrain Integration,1815,4117,3623,
 r_207,Heavy Electric Motor,assembly_plant,steel,16,aluminium,10,motor,15,electrical_components,9,,,,,20,large_engine,12,,,,,,,,,,,,Vehicle Components,,Motor Winding Automation,5863,5213,1755,
-r_208,Sustainable Biomass Production,farm,fertilisers,7,,,,,,,,,,,10,biomass,35,waste_water,5,,,,,,,,,,Farming,,Energy Crop Cultivation,966,147,50,
+r_208,Sustainable Biomass Production,farm,fertilisers,7,,,,,,,,,,,10,biomass,18,waste_water,5,,,,,,,,,,Farming,,Energy Crop Cultivation,966,147,50,
 r_209,Strip Farming - Biomass,farm,fertilisers,7,pure_water,14,,,,,,,,,10,biomass,35,waste_water,15,,,,,,,,1,,Farming,20,,966,147,50,
 r_211,Agri Solar Farming - Biomass,farm,,,,,,,,,,,,,10,biomass,10,waste_water,5,,,,,,,solar_farm,,,Farming,,,966,147,50,
 r_212,Livestock Farming - Biomass,farm,pure_water,14,,,,,,,,,,,10,biomass,18,waste_water,10,,,,,,,2 farms,1,,Farming,,,966,147,50,

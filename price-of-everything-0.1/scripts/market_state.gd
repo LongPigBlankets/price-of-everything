@@ -49,11 +49,20 @@ func get_base_price_now(good_id: String) -> float:
 
 ## The carbon slice of this turn's price — £0 until the levy starts, and broken out so the
 ## market tab and the building readout can show WHY a good got dearer.
+##
+## Power is the one good whose carbon is not fixed by its recipe: it comes off the national
+## grid, and the grid decarbonises over the game. Scaling it here rather than at each call
+## site means grid imports (Power._settle) and market purchases of power move together
+## instead of drifting apart.
 func carbon_component(good_id: String) -> float:
 	var embodied := Catalog.embodied_carbon(good_id)
 	if embodied <= 0.0:
 		return 0.0
-	return embodied * EconomyConfig.CO2_TAX_RATE * PolicyState.co2_tax_scale(int(TurnManager.current_turn))
+	var turn := int(TurnManager.current_turn)
+	var carbon := embodied * EconomyConfig.CO2_TAX_RATE * PolicyState.co2_tax_scale(turn)
+	if good_id == str(Catalog.get_good_by_internal_name("power").get("id", "")):
+		carbon *= PolicyState.grid_carbon_intensity(turn)
+	return carbon
 
 func get_impact_pct(good_id: String) -> float:
 	return float(impact_pct.get(good_id, 0.0))

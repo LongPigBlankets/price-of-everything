@@ -142,6 +142,18 @@ const CO2_TAX_PHASE_SCALE: Array = [0.0, 1.0, 2.0, 3.5]
 const GREEN_SUBSIDY_RATE: float = 0.03
 const GREEN_SUBSIDY_PHASE_SCALE: Array = [0.0, 1.0]
 
+# --- National grid carbon intensity -----------------------------------------------------
+# The grid the player imports from decarbonises on its own, whatever they do: fully carbon
+# intensive until turn 70, then falling to 30% of that by the last turn. It scales the carbon
+# priced into imported power, so buying grid power gets steadily cleaner — and the whole point
+# of the curve is that a coal plant does NOT, because a coal plant still burns coal.
+#
+# The curve starts before the levy does (turn 91), so the early part is invisible in £ and
+# only begins to matter as the tax ramps. That is deliberate: the world is already moving
+# when the policy arrives. (Balance data — rule #7.)
+const GRID_CARBON_FULL_TURN: int = 70
+const GRID_CARBON_FLOOR: float = 0.30
+
 # --- Power intermittency (green/grey quality, layered ON TOP of the single `power` good) ---
 # Solar/wind are intermittent green: a recipe relying on UNFIRMED intermittent power
 # produces less. output *= 1 - INTERMITTENCY_DERATE * unfirmed_intermittent_share, so a

@@ -5487,6 +5487,22 @@ func _test_embodied_carbon() -> void:
 	var t_before: int = PolicyState.CO2_RAMP_FIRST_TURN - 1
 	_check(absf(PolicyState.co2_tax_scale(t_before)) < 0.001, "carbon price: no component before the levy starts")
 	_check(PolicyState.co2_tax_scale(PolicyState.CO2_P1_TURN) > 0.0, "carbon price: the levy scale is live at P1")
+	# --- national grid decarbonises on its own ---
+	var full: int = EconomyConfig.GRID_CARBON_FULL_TURN
+	_check(absf(PolicyState.grid_carbon_intensity(1) - 1.0) < 0.001, "grid carbon: fully fossil at turn 1")
+	_check(absf(PolicyState.grid_carbon_intensity(full) - 1.0) < 0.001, "grid carbon: still fully fossil at turn %d" % full)
+	_check(absf(PolicyState.grid_carbon_intensity(TurnManager.MAX_TURNS) - EconomyConfig.GRID_CARBON_FLOOR) < 0.001,
+		"grid carbon: reaches the %d%% floor on the last turn" % int(EconomyConfig.GRID_CARBON_FLOOR * 100.0))
+	var mid := PolicyState.grid_carbon_intensity((full + TurnManager.MAX_TURNS) / 2)
+	_check(mid < 1.0 and mid > EconomyConfig.GRID_CARBON_FLOOR, "grid carbon: decays monotonically in between (%.2f)" % mid)
+	_check(PolicyState.grid_carbon_intensity(TurnManager.MAX_TURNS + 50) >= EconomyConfig.GRID_CARBON_FLOOR - 0.001,
+		"grid carbon: never falls below the floor past the last turn")
+	# The curve cleans the GRID, not a coal plant: coal's levy is a fixed per-unit charge and
+	# must not inherit the grid's decarbonisation, or burning coal would get cheaper over time.
+	var coal_levy_early := PolicyState.carbon_charge(coal, 100, PolicyState.CO2_P1_TURN)
+	var coal_levy_late := PolicyState.carbon_charge(coal, 100, TurnManager.MAX_TURNS)
+	_check(coal_levy_late >= coal_levy_early,
+		"grid carbon: burning coal yourself does NOT get cleaner as the grid does")
 
 
 func _test_power_intermittency_alloc() -> void:
