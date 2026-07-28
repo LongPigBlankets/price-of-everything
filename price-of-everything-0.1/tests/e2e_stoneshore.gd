@@ -86,8 +86,54 @@ func _ready() -> void:
 		_write_balance_metrics()
 	else:
 		_write_latest_metrics()
+	_print_profit_trajectory()
 	print("==== E2E %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
+
+
+## Per-turn profit was already being recorded and never shown. A single pass/fail on
+## "last 10 turns are profitable" cannot tell you whether a run peaked and decayed, never
+## got going, or fell off a cliff at one identifiable turn — and those need different fixes.
+func _print_profit_trajectory() -> void:
+	if _profit_by_turn.is_empty():
+		return
+	var peak := -INF
+	var peak_turn := 0
+	var trough := INF
+	var trough_turn := 0
+	for e in _profit_by_turn:
+		var p := float(e.get("profit", 0.0))
+		if p > peak:
+			peak = p
+			peak_turn = int(e.get("turn", 0))
+		if p < trough:
+			trough = p
+			trough_turn = int(e.get("turn", 0))
+	print("---- profit trajectory (post-tax £/turn) ----")
+	print("  peak %+.1f at t%d   trough %+.1f at t%d" % [peak, peak_turn, trough, trough_turn])
+	var marks: Array[int] = [1, 20, 40, 60, 80, 90, 100, 120, 150, 200, 250, 300]
+	var line := "  "
+	for m in marks:
+		for e in _profit_by_turn:
+			if int(e.get("turn", 0)) == m:
+				line += "t%d %+.0f   " % [m, float(e.get("profit", 0.0))]
+				break
+	print(line)
+	print("  %-6s %9s %9s %9s %9s %9s %9s" % ["turn", "revenue", "labour", "maint", "inputs", "power", "carbon"])
+	for m in marks:
+		for e in _profit_by_turn:
+			if int(e.get("turn", 0)) == m and e.has("revenue"):
+				print("  t%-5d %9.0f %9.0f %9.0f %9.0f %9.0f %9.0f" % [m,
+					float(e.get("revenue", 0.0)), float(e.get("labour", 0.0)),
+					float(e.get("maint", 0.0)), float(e.get("inputs", 0.0)),
+					float(e.get("power", 0.0)), float(e.get("carbon", 0.0))])
+				break
+	# Where it crossed from black to red for good — the turn a fix has to target.
+	var last_positive := 0
+	for e in _profit_by_turn:
+		if float(e.get("profit", 0.0)) > 0.0:
+			last_positive = int(e.get("turn", 0))
+	print("  last profitable turn: t%d of %d" % [last_positive, int(_profit_by_turn[-1].get("turn", 0))])
 
 
 func _run() -> void:
@@ -1514,7 +1560,18 @@ func _capture_turn_metrics() -> void:
 	var profit_post_tax := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
 	_revenue_history.append(revenue)
 	_profit_post_tax_history.append(profit_post_tax)
-	_profit_by_turn.append({"turn": TurnManager.current_turn, "profit": profit_post_tax})
+	# Keep the cost SIDES too, not just the net. "Unprofitable" is a symptom shared by wage
+	# inflation, price decay, an input-cost spiral and a carbon levy, and they need different
+	# fixes; only the decomposition tells them apart.
+	_profit_by_turn.append({
+		"turn": TurnManager.current_turn, "profit": profit_post_tax,
+		"revenue": revenue,
+		"labour": float(summary.get("labour_paid", 0.0)),
+		"maint": float(summary.get("maintenance_paid", 0.0)),
+		"inputs": float(summary.get("goods_purchased_cost", 0.0)),
+		"power": float(summary.get("power_purchase_cost", 0.0)),
+		"carbon": float(summary.get("carbon_tax_paid", 0.0)),
+	})
 	if _balance_mode:
 		_capture_balance_turn(profit_post_tax, summary)
 
