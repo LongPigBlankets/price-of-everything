@@ -121,7 +121,7 @@ func _build_ui() -> void:
 	vb.add_child(body)
 
 	# Missing materials in a framed 3x2 grid (the skinny pipe frame from the overflow panel).
-	# A 3-wide grid holds up to 6 cells, covering the busiest build (coal_power, 5 materials).
+	# A 3-wide grid holds up to 6 cells, covering the busiest build (power_plant, 5 materials).
 	var frame := PanelContainer.new()
 	frame.add_theme_stylebox_override("panel", GOODS_FRAME)
 	frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER

@@ -13,7 +13,6 @@ const INFRA_CSV_PATH := "res://data/infrastructure.csv"
 # game's building internal_names, so alias them here. Recipes whose building can't
 # be resolved (or whose goods don't all exist) are dropped by the promotion gate.
 const BUILDING_ALIAS := {
-	"power_plant": "coal_power",
 	"factory": "industrial_factory",
 	"industrial_goods_factory": "industrial_factory",
 	"consumer_goods_factory": "consumer_factory",

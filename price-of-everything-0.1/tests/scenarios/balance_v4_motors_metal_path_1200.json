@@ -39,7 +39,7 @@
 	},
 	"balance_runway_buildings": [
 		{"id": "water_local", "internal_name": "water_pump", "recipe_id": "r_011", "tile": "tile_23_10", "deposit": "water"},
-		{"id": "power_local", "internal_name": "coal_power", "recipe_id": "r_004", "tile": "tile_23_10"}
+		{"id": "power_local", "internal_name": "power_plant", "recipe_id": "r_004", "tile": "tile_23_10"}
 	],
 	"balance_runway_routes": [
 		{"id": "water_local", "good": "pure_water", "dest": "tile_23_10"}
@@ -102,7 +102,7 @@
 		{"id": "coal_hub_a", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_20_9", "deposit": "coal"},
 		{"id": "coal_hub_b", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_20_9", "deposit": "coal"},
 		{"id": "water_hub", "internal_name": "water_pump", "recipe_id": "r_011", "tile": "tile_23_10", "deposit": "water"},
-		{"id": "power_hub", "internal_name": "coal_power", "recipe_id": "r_004", "tile": "tile_24_9"},
+		{"id": "power_hub", "internal_name": "power_plant", "recipe_id": "r_004", "tile": "tile_24_9"},
 		{"id": "copper_ore_a", "internal_name": "mine", "recipe_id": "r_006", "tile": "tile_21_10", "deposit": "copper_ore"},
 		{"id": "copper_ore_b", "internal_name": "mine", "recipe_id": "r_006", "tile": "tile_21_10", "deposit": "copper_ore"}
 	],

@@ -35,6 +35,11 @@ const _ROUTE_COLORS: Array[Color] = [
 # without selecting anyway. At rest the web is a faint ghost (0.0 = none at all);
 # hover lights a card's direct edges, click lights the full chain.
 const _REST_GHOST_ALPHA := 0.10
+# Legacy resting web, retained behind the `swap goods_graph` cheat for screenshots
+# and A/B comparison with the pre-ghost implementation.
+const _LEGACY_REST_ALPHA_BASE := 0.60
+const _LEGACY_REST_ALPHA_ALT := 0.48
+const _LEGACY_EDGE_DIM := Color(0.995, 0.931, 0.763, 0.08)
 
 const _EDGE_WIDTH := 2.5                                  # world units (scales with zoom)
 const _ZOOM_MIN := 0.07                                   # absolute fallback; the live floor is _zoom_floor (swimlane chart is tall)
@@ -73,6 +78,7 @@ var _hover_id := ""
 var _selected_id := ""
 var _upstream: Dictionary = {}     # internal -> true, transitive input cone of the selection
 var _feeds: Dictionary = {}        # internal -> true, direct consumers of the selection
+var _legacy_presentation := false  # session-only; false keeps the current presentation default
 
 # --- alternate-recipes focus grid (owner UX 2026-07-19) ------------------------------
 # WEB shows the base chain; selecting a good expands its card with two buttons
@@ -198,6 +204,7 @@ func set_graph(graph: Dictionary) -> void:
 	_tier_count = int(graph.get("tier_count", 0))
 	_bands = graph.get("bands", [])
 	_lanes = graph.get("lanes", [])
+	_legacy_presentation = bool(graph.get("legacy_layout", false))
 	_hover_id = ""
 	_selected_id = ""
 	_upstream.clear()
@@ -453,7 +460,8 @@ func select_good(id: String) -> void:
 	_feeds.clear()
 	for f in (_by_id.get(id, {}) as Dictionary).get("feeds", []):
 		_feeds[f] = true
-	_enter_focus()
+	if not _legacy_presentation:
+		_enter_focus()
 	good_selected.emit(id)
 	queue_redraw()
 
@@ -960,7 +968,8 @@ func _draw() -> void:
 			# Web chrome (tier plates, lane labels) belongs to the resting view —
 			# drop it early in the tween instead of leaving it full-strength.
 			_draw_tier_headers(font)
-			_draw_lanes()
+			if not _legacy_presentation:
+				_draw_lanes()
 		if ft < 0.999:
 			for e in _edges:
 				_draw_edge(e, false, 1.0 - ft)
@@ -987,7 +996,8 @@ func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		return
 	_draw_tier_headers(font)
-	_draw_lanes()
+	if not _legacy_presentation:
+		_draw_lanes()
 	var tracing := _selected_id != ""
 	for e in _edges:
 		_draw_edge(e, tracing)
@@ -1123,18 +1133,33 @@ func _draw_edge(e: Dictionary, tracing: bool, alpha_mul: float = 1.0) -> void:
 		lit = in_cone or to_id == _selected_id or out_of_sel
 	var color := route_c
 	var width := _EDGE_WIDTH
-	if lit:
-		# Related edges keep their ROUTE colour (the up/down reading comes from
-		# which side of the selection they sit), just lit and heavier.
-		width = _EDGE_WIDTH * 1.3
-	elif not tracing and _hover_id != "" and (from_id == _hover_id or to_id == _hover_id):
-		color = Color(route_c, 0.9)
-		width = _EDGE_WIDTH * 1.2
+	if _legacy_presentation:
+		# This is the pre-8d8a7be8 implementation: all resting arrows remain
+		# visible, with base and alternate routes using separate alpha values.
+		color = Color(route_c, _LEGACY_REST_ALPHA_BASE if route == 0 else _LEGACY_REST_ALPHA_ALT)
+		if tracing:
+			if lit:
+				# Related edges keep their ROUTE colour, just lit and heavier.
+				color = route_c
+				width = _EDGE_WIDTH * 1.3
+			else:
+				color = _LEGACY_EDGE_DIM
+		elif not tracing and _hover_id != "" and (from_id == _hover_id or to_id == _hover_id):
+			color = Color(route_c, 0.9)
+			width = _EDGE_WIDTH * 1.2
 	else:
-		# Resting web, or unrelated to the active trace: ghost or nothing.
-		if _REST_GHOST_ALPHA <= 0.001:
-			return
-		color = Color(route_c, _REST_GHOST_ALPHA if route == 0 else _REST_GHOST_ALPHA * 0.8)
+		if lit:
+			# Related edges keep their ROUTE colour (the up/down reading comes from
+			# which side of the selection they sit), just lit and heavier.
+			width = _EDGE_WIDTH * 1.3
+		elif not tracing and _hover_id != "" and (from_id == _hover_id or to_id == _hover_id):
+			color = Color(route_c, 0.9)
+			width = _EDGE_WIDTH * 1.2
+		else:
+			# Resting web, or unrelated to the active trace: ghost or nothing.
+			if _REST_GHOST_ALPHA <= 0.001:
+				return
+			color = Color(route_c, _REST_GHOST_ALPHA if route == 0 else _REST_GHOST_ALPHA * 0.8)
 	color.a *= alpha_mul
 
 	var pts := _fillet_polyline(wp)

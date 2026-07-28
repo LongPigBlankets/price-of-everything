@@ -1,0 +1,74 @@
+{
+ "save_version": 2,
+ "start": true,
+ "name": "tut_end_split2",
+ "money": 100000,
+ "buildings": [
+  {
+   "building_id": "b_007",
+   "recipe_id": "r_056",
+   "tile_id": "tile_5_9"
+  },
+  {
+   "building_id": "b_002",
+   "recipe_id": "r_054",
+   "tile_id": "tile_5_8",
+   "output_to": "tile_5_9"
+  }
+ ],
+ "surveyed_tiles": [
+  "tile_5_9",
+  "tile_6_6",
+  "tile_7_7",
+  "tile_7_8",
+  "tile_5_8",
+  "tile_5_7"
+ ],
+ "land": {
+  "tile_5_9": 60,
+  "tile_5_8": 60
+ },
+ "infrastructure": {
+  "tile_5_9": {
+   "present": [
+    "roads",
+    "cables",
+    "reinf_pipes"
+   ],
+   "levels": {
+    "roads": 1,
+    "cables": 1,
+    "reinf_pipes": 1
+   }
+  },
+  "tile_5_10": {
+   "present": [
+    "reinf_pipes"
+   ],
+   "levels": {
+    "reinf_pipes": 1
+   }
+  },
+  "tile_5_8": {
+   "present": [
+    "roads",
+    "cables"
+   ],
+   "levels": {
+    "roads": 1,
+    "cables": 1
+   }
+  }
+ },
+ "stockpile": {
+  "tile_5_9": {
+   "g_038": 56,
+   "g_029": 20
+  },
+  "tile_5_8": {
+   "g_020": 12,
+   "g_030": 8,
+   "g_040": 8
+  }
+ }
+}

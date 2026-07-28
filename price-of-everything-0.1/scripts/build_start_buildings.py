@@ -39,7 +39,7 @@ OUT_PATH = os.path.join(ROOT, "data", "start_buildings.json")
 
 # Mirrors Catalog.BUILDING_ALIAS (catalog.gd).
 BUILDING_ALIAS = {
-    "power_plant": "coal_power",
+    
     "factory": "industrial_factory",
     "industrial_goods_factory": "industrial_factory",
     "consumer_goods_factory": "consumer_factory",
@@ -89,7 +89,7 @@ FARM = ("farm", "")
 FOREST = ("new_forest", "")
 SUPPORT_WATER = ("water_pump", "r_011")   # needs a water deposit on the tile
 SUPPORT_DESAL = ("desal", "r_051")
-SUPPORT_POWER = ("coal_power", "r_004")
+SUPPORT_POWER = ("power_plant", "r_004")
 
 # Dense-city theme axes (designer-ruled four + deposit-grounded proposals).
 DENSE_AXES = {

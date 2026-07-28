@@ -31,7 +31,7 @@
 		{"id": "coal_start", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_6_8"},
 		{"id": "iron_start", "internal_name": "mine", "recipe_id": "r_002", "tile": "tile_7_10"},
 		{"id": "pig_iron", "internal_name": "furnace", "recipe_id": "r_005", "tile": "tile_5_10"},
-		{"id": "power_start", "internal_name": "coal_power", "recipe_id": "r_004", "tile": "tile_5_10"}
+		{"id": "power_start", "internal_name": "power_plant", "recipe_id": "r_004", "tile": "tile_5_10"}
 	],
 
 	"balance_runway_turns": 8,
@@ -72,7 +72,7 @@
 		{"id": "wiring", "internal_name": "industrial_factory", "recipe_id": "r_008", "tile": "tile_5_10"},
 		{"id": "motor", "internal_name": "industrial_factory", "recipe_id": "r_009", "tile": "tile_5_10"},
 		{"id": "water", "internal_name": "water_pump", "recipe_id": "r_011", "tile": "tile_6_9", "deposit": "water"},
-		{"id": "power_b", "internal_name": "coal_power", "recipe_id": "r_004", "tile": "tile_5_10"},
+		{"id": "power_b", "internal_name": "power_plant", "recipe_id": "r_004", "tile": "tile_5_10"},
 		{"id": "coal_extra", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_6_8", "deposit": "coal", "count": 2},
 		{"id": "iron_extra", "internal_name": "mine", "recipe_id": "r_002", "tile": "tile_7_10", "deposit": "iron_ore"},
 		{"id": "copper_ore", "internal_name": "mine", "recipe_id": "r_006", "tile": "tile_9_10", "deposit": "copper_ore", "count": 2}

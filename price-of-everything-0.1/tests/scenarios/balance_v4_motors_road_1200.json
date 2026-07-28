@@ -74,9 +74,9 @@
 	"balance_integration_buildings": [
 		{"id": "coal_process", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_23_10", "deposit": "coal"},
 		{"id": "water", "internal_name": "water_pump", "recipe_id": "r_011", "tile": "tile_23_10", "deposit": "water"},
-		{"id": "power_a", "internal_name": "coal_power", "recipe_id": "r_004", "tile": "tile_23_10"},
+		{"id": "power_a", "internal_name": "power_plant", "recipe_id": "r_004", "tile": "tile_23_10"},
 		{"id": "coal_power", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_23_10", "deposit": "coal"},
-		{"id": "power_b", "internal_name": "coal_power", "recipe_id": "r_004", "tile": "tile_23_10"},
+		{"id": "power_b", "internal_name": "power_plant", "recipe_id": "r_004", "tile": "tile_23_10"},
 		{"id": "iron", "internal_name": "mine", "recipe_id": "r_002", "tile": "tile_25_11", "deposit": "iron_ore"},
 		{"id": "pig_iron", "internal_name": "furnace", "recipe_id": "r_005", "tile": "tile_24_9"},
 		{"id": "copper_ore", "internal_name": "mine", "recipe_id": "r_006", "tile": "tile_21_10", "deposit": "copper_ore"}

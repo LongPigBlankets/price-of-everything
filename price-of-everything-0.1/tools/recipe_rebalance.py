@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 OUT = ROOT / "reports" / "balance"
-ALIASES = {"power_plant": "coal_power", "factory": "industrial_factory", "industrial_goods_factory": "industrial_factory", "consumer_goods_factory": "consumer_factory", "water_well": "water_pump", "desal_plant": "desal", "water_treatment_plant": "water_recycling", "hydro_dam": "hydro_power_plant", "forest": "new_forest"}
+ALIASES = {"factory": "industrial_factory", "industrial_goods_factory": "industrial_factory", "consumer_goods_factory": "consumer_factory", "water_well": "water_pump", "desal_plant": "desal", "water_treatment_plant": "water_recycling", "hydro_dam": "hydro_power_plant", "forest": "new_forest"}
 WAGE = (0.0032, 0.0096, 0.032)
 # Every active recipe must retain a baseline operating crew.  The third figure
 # is highly skilled labour (the user-facing shorthand is "skilled").

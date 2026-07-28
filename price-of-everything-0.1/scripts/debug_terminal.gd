@@ -15,6 +15,7 @@ extends CanvasLayer
 ##   swap bdp                         toggle to the classic v1 building-detail panel (v2 is default)
 ##   swap construct_panel             toggle the construct-panel redesign
 ##   swap loading_screen              toggle the slow pre-optimization new-game build (for recordings)
+##   swap goods_graph                 toggle the legacy no-swimlane/fixed-card Goods Graph
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   unlock hidden_buildings          enable the three hidden prototype buildings
 ##   swap song                       advance to the next music track
@@ -180,7 +181,13 @@ func _run_command(text: String) -> String:
 				var legacy: bool = LoadPacing.toggle_legacy_load()
 				return "New-game load → %s  (takes effect on the next New Game)" % (
 					"LEGACY slow build (one building/frame)" if legacy else "fast build (default)")
-			return "usage: swap song  |  swap bdp  |  swap construct_panel  |  swap loading_screen"
+			if parts.size() >= 2 and parts[1].to_lower() == "goods_graph":
+				var view := get_tree().current_scene.find_child("GoodsGraphView", true, false) if get_tree().current_scene != null else null
+				if view == null:
+					return "Goods Graph view not found (start a match first)"
+				var legacy_graph: bool = bool(view.call("toggle_legacy_goods_graph"))
+				return "Goods Graph → %s" % ("LEGACY arrows/no-swimlanes/fixed cards" if legacy_graph else "current swimlanes/focus")
+			return "usage: swap song  |  swap bdp  |  swap construct_panel  |  swap loading_screen  |  swap goods_graph"
 		"survey":
 			if parts.size() >= 2 and parts[1].to_lower() == "limit":
 				MatchState.cheat_survey_within_limits()
@@ -323,7 +330,7 @@ func _run_command(text: String) -> String:
 				return "usage: win <greenest|logistics|richest|autarkic|widest|all>"
 			return _cheat_win_track(parts[1].to_lower())
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   swap goods_graph   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

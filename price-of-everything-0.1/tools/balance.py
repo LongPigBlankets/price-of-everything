@@ -21,7 +21,6 @@ RECIPES_CSV   = DATA / "recipes_all.csv"
 # building internal_name exactly like the game (scripts/catalog.gd BUILDING_ALIAS)
 # so the promotion gate here matches the Catalog's.
 BUILDING_ALIAS = {
-    "power_plant": "coal_power",
     "factory": "industrial_factory",
     "industrial_goods_factory": "industrial_factory",
     "consumer_goods_factory": "consumer_factory",

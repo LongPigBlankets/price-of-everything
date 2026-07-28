@@ -43,7 +43,7 @@ CURRENT = [
     ("Coal Mining", "mine", [], 4, [("coal", 20)], "deposit:coal", "extraction"),
     ("Iron Mining", "mine", [], 4, [("iron_ore", 20)], "deposit:iron_ore", "extraction"),
     ("Steelmaking", "furnace", [("iron_ingots", 20), ("coal", 10)], 14, [("steel", 30)], "", "smelting"),
-    ("Power Production", "coal_power", [("coal", 20), ("pure_water", 6)], 0, [("power", 100)], "", "power"),
+    ("Coal Power Production", "power_plant", [("coal", 20), ("pure_water", 6)], 0, [("power", 100)], "", "power"),
     ("Pig Iron Smelting", "furnace", [("iron_ore", 30), ("coal", 10)], 14, [("iron_ingots", 30)], "", "smelting"),
     ("Copper Mining", "mine", [], 4, [("copper_ore", 20)], "deposit:copper_ore", "extraction"),
     ("Copper Blistering", "furnace", [("copper_ore", 30)], 10, [("copper_ingots", 30)], "", "smelting"),

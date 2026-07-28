@@ -939,7 +939,7 @@ func _resolve_catalog_ids() -> void:
 		_check(not good.is_empty(), "catalog good exists: %s" % internal)
 		_goods[internal] = str(good.get("id", ""))
 	for internal in ["mine", "furnace", "industrial_factory", "chem_plant",
-			"water_pump", "coal_power", "roads", "rails", "cables"]:
+			"water_pump", "power_plant", "roads", "rails", "cables"]:
 		var building := Catalog.get_building_by_internal_name(internal)
 		_check(not building.is_empty(), "catalog building exists: %s" % internal)
 		_buildings[internal] = str(building.get("id", ""))
@@ -955,7 +955,7 @@ func _resolve_catalog_ids() -> void:
 	_recipes.copper_wiring = _recipe_for("industrial_factory", "copper_wiring", "Wire")
 	_recipes.motor = _recipe_for("industrial_factory", "motor", "Motor")
 	_recipes.chlorine = _recipe_for("chem_plant", "chlorine", "Chlor")
-	_recipes.power = _recipe_for("coal_power", "power", "Power")
+	_recipes.power = _recipe_for("power_plant", "power", "Coal Power")
 	# Wind variant (open_field_wind): onshore generation + battery firming. Resolved
 	# unconditionally so a missing catalog entry fails loudly in every scenario.
 	_recipes.onshore_wind = _recipe_for("onshore_wind_farm", "power", "Onshore")

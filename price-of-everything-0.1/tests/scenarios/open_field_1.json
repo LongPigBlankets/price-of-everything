@@ -257,28 +257,28 @@
     },
     {
       "id": "power",
-      "internal_name": "coal_power",
+      "internal_name": "power_plant",
       "recipe_key": "power",
       "tile": "tile_20_9",
       "allow_market_materials": true
     },
     {
       "id": "power_b",
-      "internal_name": "coal_power",
+      "internal_name": "power_plant",
       "recipe_key": "power",
       "tile": "tile_20_9",
       "allow_market_materials": true
     },
     {
       "id": "power_c",
-      "internal_name": "coal_power",
+      "internal_name": "power_plant",
       "recipe_key": "power",
       "tile": "tile_22_3",
       "allow_market_materials": true
     },
     {
       "id": "power_d",
-      "internal_name": "coal_power",
+      "internal_name": "power_plant",
       "recipe_key": "power",
       "tile": "tile_22_3",
       "allow_market_materials": true

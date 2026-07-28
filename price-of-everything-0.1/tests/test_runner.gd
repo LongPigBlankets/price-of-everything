@@ -4719,17 +4719,17 @@ func _test_live_unlock_conditions() -> void:
 	MatchState.reset()
 	Production.full_output_streak_by_building.clear()
 	var iid := MatchState.add_building("b_003", "", "tile_lv_1")  # Coal Power Plant, Level 1
-	_check(MatchState._count_buildings("coal_power", 1, false, 20) == 0,
+	_check(MatchState._count_buildings("power_plant", 1, false, 20) == 0,
 		"a fresh L1 building (streak 0) does not count toward a 20-turn gate")
 	Production.full_output_streak_by_building[iid] = 20
-	_check(MatchState._count_buildings("coal_power", 1, false, 20) == 1,
+	_check(MatchState._count_buildings("power_plant", 1, false, 20) == 1,
 		"the L1 building counts once its run-streak reaches 20 turns")
 
 	# --- Level filter: this fixture contains no Level-2 buildings ---
-	_check(MatchState._count_buildings("coal_power", 2, false, 0) == 0,
+	_check(MatchState._count_buildings("power_plant", 2, false, 0) == 0,
 		"Level-2 gates stay unmet when the owned building is only Level 1")
 	# --- Profitability filter: a building with no costed output isn't profitable ---
-	_check(MatchState._count_buildings("coal_power", -1, true, 0) == 0,
+	_check(MatchState._count_buildings("power_plant", -1, true, 0) == 0,
 		"the profitable filter excludes buildings with no known unit cost")
 
 	# Every non-placeholder research row must either resolve to a live metric or

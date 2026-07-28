@@ -141,14 +141,19 @@ static func col_x(c: int) -> float:
 ## via world_map) pays the ~120 ms Sugiyama layout; every later open returns instantly.
 ## Pass force=true (or clear_cache()) to recompute, e.g. after a catalog reload in tests.
 static var _cache: Dictionary = {}
+static var _legacy_cache: Dictionary = {}
 
 ## Drop the cached layout so the next build() recomputes (catalog reloads in tools/tests).
 static func clear_cache() -> void:
 	_cache = {}
+	_legacy_cache = {}
 
-static func build(force := false) -> Dictionary:
-	if not force and not _cache.is_empty():
-		return _cache
+## `legacy_layout` restores the pre-swimlane row placement while leaving the
+## current layout as the default. The two layouts have separate caches.
+static func build(force := false, legacy_layout := false) -> Dictionary:
+	var cache: Dictionary = _legacy_cache if legacy_layout else _cache
+	if not force and not cache.is_empty():
+		return cache
 	# 1 · Goods universe, keyed by internal name.
 	var goods: Dictionary = {}
 	for g in Catalog.all_goods():
@@ -300,13 +305,13 @@ static func build(force := false) -> Dictionary:
 	# depth[from], e.g. waste_water -> water) get no dummies; _route_edges sends them
 	# below the web instead.
 	var ldepth: Dictionary = {}   # layout vertex (good or dummy) -> column
-	# Swimlane rank per layout vertex: goods by category; a dummy inherits its
-	# edge's TARGET lane, so a cross-lane edge dives to the destination lane at
-	# its first hop and runs its corridor there.
 	var lane_rank: Dictionary = {}
 	for n: String in nodes_sorted:
 		ldepth[n] = int(depth[n])
-		lane_rank[n] = _lane_rank_of(str((goods[n] as Dictionary).get("category", "")))
+		if not legacy_layout:
+			# Swimlane rank per layout vertex: goods by category; a dummy inherits
+			# its edge's TARGET lane.
+			lane_rank[n] = _lane_rank_of(str((goods[n] as Dictionary).get("category", "")))
 	var ladj: Dictionary = {}     # layout vertex -> chain successors (next column)
 	var lradj: Dictionary = {}    # layout vertex -> chain predecessors
 	var chains: Dictionary = {}   # edge index -> Array[String] chain, from .. to
@@ -322,7 +327,8 @@ static func build(force := false) -> Dictionary:
 		for d: int in range(int(depth[u]) + 1, int(depth[v])):
 			var dummy := "~%s>%s@%d" % [u, v, d]
 			ldepth[dummy] = d
-			lane_rank[dummy] = int(lane_rank[v])
+			if not legacy_layout:
+				lane_rank[dummy] = int(lane_rank[v])
 			chain.append(dummy)
 		chain.append(v)
 		chains[ei] = chain
@@ -338,42 +344,63 @@ static func build(force := false) -> Dictionary:
 	var cols := _order_columns(ldepth, ladj, lradj, goods, maxd, lane_rank)
 	var crossings := count_crossings(cols, ladj, maxd)
 
-	# 7b · Swimlane vertical placement: a lane band's height is its tallest
-	# (column, lane) cell; each cell centres within its band; bands stack with
-	# LANE_GAP_Y of air. Empty lanes take no space.
-	var lane_count := LANE_ORDER.size() + 1
-	var cell_h: Dictionary = {}     # "lane:column" -> summed row heights
-	var lane_h: Dictionary = {}     # lane rank -> band height
-	for d: int in range(maxd + 1):
-		for v: String in cols.get(d, []) as Array:
-			var lr := int(lane_rank.get(v, lane_count - 1))
-			var key := "%d:%d" % [lr, d]
-			cell_h[key] = float(cell_h.get(key, 0.0)) + (ROW_H if goods.has(v) else DUMMY_ROW_H)
-			lane_h[lr] = maxf(float(lane_h.get(lr, 0.0)), float(cell_h[key]))
-	var lane_top: Dictionary = {}
-	var lanes_meta: Array = []
-	var ly := 0.0
-	for lr: int in range(lane_count):
-		if not lane_h.has(lr):
-			continue
-		lane_top[lr] = ly
-		var slug := LANE_ORDER[lr] if lr < LANE_ORDER.size() else ""
-		var label: String = LANE_LABELS.get(slug, slug.to_upper()) if slug != "" else "OTHER"
-		lanes_meta.append({"label": label, "top": ly, "height": float(lane_h[lr]),
-			"color": CAT_COLOR.get(slug, DEFAULT_COLOR)})
-		ly += float(lane_h[lr]) + LANE_GAP_Y
-
 	var ypos: Dictionary = {}     # layout vertex -> row-centre y
-	for d: int in range(maxd + 1):
-		var cursor: Dictionary = {}   # lane rank -> next free y in this column
-		for v: String in cols.get(d, []) as Array:
-			var lr := int(lane_rank.get(v, lane_count - 1))
-			if not cursor.has(lr):
-				var cell := float(cell_h.get("%d:%d" % [lr, d], 0.0))
-				cursor[lr] = float(lane_top[lr]) + (float(lane_h[lr]) - cell) * 0.5
-			var h := ROW_H if goods.has(v) else DUMMY_ROW_H
-			ypos[v] = float(cursor[lr]) + h * 0.5
-			cursor[lr] = float(cursor[lr]) + h
+	var route_bottom := 0.0
+	var lanes_meta: Array = []
+	if legacy_layout:
+		# Pre-swimlane layout: every column is vertically centred against the
+		# tallest column, with no category bands or lane-specific ordering.
+		var col_height: Dictionary = {}
+		var max_height := 0.0
+		for d: int in range(maxd + 1):
+			var total := 0.0
+			for v: String in cols.get(d, []) as Array:
+				total += ROW_H if goods.has(v) else DUMMY_ROW_H
+			col_height[d] = total
+			max_height = maxf(max_height, total)
+		for d: int in range(maxd + 1):
+			var col: Array = cols.get(d, [])
+			var y := (max_height - float(col_height[d])) * 0.5
+			for v: String in col:
+				var h := ROW_H if goods.has(v) else DUMMY_ROW_H
+				ypos[v] = y + h * 0.5
+				y += h
+		route_bottom = max_height
+	else:
+		# Swimlane vertical placement: a lane band's height is its tallest
+		# (column, lane) cell; each cell centres within its band; bands stack with
+		# LANE_GAP_Y of air. Empty lanes take no space.
+		var lane_count := LANE_ORDER.size() + 1
+		var cell_h: Dictionary = {}     # "lane:column" -> summed row heights
+		var lane_h: Dictionary = {}     # lane rank -> band height
+		for d: int in range(maxd + 1):
+			for v: String in cols.get(d, []) as Array:
+				var lr := int(lane_rank.get(v, lane_count - 1))
+				var key := "%d:%d" % [lr, d]
+				cell_h[key] = float(cell_h.get(key, 0.0)) + (ROW_H if goods.has(v) else DUMMY_ROW_H)
+				lane_h[lr] = maxf(float(lane_h.get(lr, 0.0)), float(cell_h[key]))
+		var lane_top: Dictionary = {}
+		var ly := 0.0
+		for lr: int in range(lane_count):
+			if not lane_h.has(lr):
+				continue
+			lane_top[lr] = ly
+			var slug := LANE_ORDER[lr] if lr < LANE_ORDER.size() else ""
+			var label: String = LANE_LABELS.get(slug, slug.to_upper()) if slug != "" else "OTHER"
+			lanes_meta.append({"label": label, "top": ly, "height": float(lane_h[lr]),
+				"color": CAT_COLOR.get(slug, DEFAULT_COLOR)})
+			ly += float(lane_h[lr]) + LANE_GAP_Y
+		for d: int in range(maxd + 1):
+			var cursor: Dictionary = {}   # lane rank -> next free y in this column
+			for v: String in cols.get(d, []) as Array:
+				var lr := int(lane_rank.get(v, lane_count - 1))
+				if not cursor.has(lr):
+					var cell := float(cell_h.get("%d:%d" % [lr, d], 0.0))
+					cursor[lr] = float(lane_top[lr]) + (float(lane_h[lr]) - cell) * 0.5
+				var h := ROW_H if goods.has(v) else DUMMY_ROW_H
+				ypos[v] = float(cursor[lr]) + h * 0.5
+				cursor[lr] = float(cursor[lr]) + h
+			route_bottom = ly - LANE_GAP_Y
 
 	var by_id: Dictionary = {}
 	var nodes: Array = []
@@ -390,15 +417,18 @@ static func build(force := false) -> Dictionary:
 			nodes.append(rec)
 
 	# 8 · Orthogonal edge geometry (adds "waypoints" to every edge dict).
-	# Back-edge corridors dive below the whole chart: its bottom is the last
-	# lane's bottom edge (ly overshoots by one trailing LANE_GAP_Y).
-	_route_edges(edges, chains, backs, ldepth, ypos, ly - LANE_GAP_Y)
+	# Back-edge corridors dive below the whole chart.
+	_route_edges(edges, chains, backs, ldepth, ypos, route_bottom)
 
-	_cache = {"nodes": nodes, "by_id": by_id, "edges": edges, "tier_count": maxd + 1,
+	cache = {"nodes": nodes, "by_id": by_id, "edges": edges, "tier_count": maxd + 1,
 		"bands": bands_meta,
 		"lanes": lanes_meta,
-		"crossings": crossings}
-	return _cache
+		"crossings": crossings, "legacy_layout": legacy_layout}
+	if legacy_layout:
+		_legacy_cache = cache
+	else:
+		_cache = cache
+	return cache
 
 
 ## Every producing recipe of a good, simplest-first with ungated before gated —

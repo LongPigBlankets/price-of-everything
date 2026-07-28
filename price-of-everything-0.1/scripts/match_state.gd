@@ -362,7 +362,7 @@ var _unlock_defs: Array = []   # [{title, action, object, qty, prereqs, descript
 # labels centrally so live conditions do not depend on CSV casing or wording.
 const RESEARCH_BUILDING_ALIASES := {
 	"oil_refinery": ["petro_refinery"],
-	"coal_power_plant": ["coal_power"],
+	"coal_power_plant": ["power_plant"],
 	"factory": ["industrial_factory"],
 	"steel_mill": ["furnace"],
 	"polymer_feedstocks": ["poly_plant"],
@@ -371,7 +371,7 @@ const RESEARCH_BUILDING_ALIASES := {
 	"cell_culture_automation": ["farm"],
 	"modular_factory_cells": ["industrial_factory"],
 	"grid_synchronous_generation": [
-		"coal_power", "solar_farm", "onshore_wind_farm", "offshore_wind_farm",
+		"power_plant", "solar_farm", "onshore_wind_farm", "offshore_wind_farm",
 		"hydro_power_plant",
 	],
 	"wind_farm": ["onshore_wind_farm", "offshore_wind_farm"],
@@ -384,7 +384,7 @@ const RESEARCH_BUILDING_ALIASES := {
 	"offshore_platform": ["offshore_oil_platform"],
 	"forest": ["new_forest", "old_forest"],
 	"power_plant": [
-		"coal_power", "solar_farm", "onshore_wind_farm", "offshore_wind_farm",
+		"power_plant", "solar_farm", "onshore_wind_farm", "offshore_wind_farm",
 		"hydro_power_plant",
 	],
 }

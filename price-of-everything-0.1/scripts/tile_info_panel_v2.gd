@@ -714,9 +714,9 @@ func _refresh_pane(tab_id: String) -> void:
 		"stock": _build_stock_pane(pane)
 
 const POWER_BUILDS := [
-	["Power plant", "coal_power", "coal"],
-	["Power Plant (Processed Oil)", "coal_power", "processed_oil"],
-	["Power Plant (Biomass)", "coal_power", "biomass"],
+	["Power plant", "power_plant", "coal"],
+	["Power Plant (Processed Oil)", "power_plant", "processed_oil"],
+	["Power Plant (Biomass)", "power_plant", "biomass"],
 	["Solar Farm", "solar_farm", ""],
 	["Wind Farm", "onshore_wind_farm", ""],
 ]
