@@ -79,6 +79,7 @@ base,r_057,Building Frame Manufacture,Assembly Plant,15.40,,OK
 base,r_041,Rare Earth Reduction,Electrolyser,15.33,,OK
 base,r_035,Silica Washing,Petrochemical Refinery,15.24,,OK
 base,r_050,Aluminium (Hall Heroult) Smelting,Furnace,15.02,,OK
+gated_same_bldg,r_131,Hydrogen Power,Hydrogen Combustion Turbines,-0.49,30.75,uplift -31.24
 gated_same_bldg,r_080,Membraneless Electrolysis,Membraneless Electrolysis,18.77,17.63,uplift +1.14
 gated_same_bldg,r_151,Petroleum Needle Coke Power,Combined Cycle Turbines,31.92,30.75,uplift +1.17
 gated_same_bldg,r_038,Gas Combined Cycle Turbines,Combined Cycle Turbines,35.36,30.75,uplift +4.61
@@ -97,12 +98,11 @@ gated_same_bldg,r_219,Copper Pipe Moulding,Alloy Heat Treatment,49.69,16.41,upli
 gated_same_bldg,r_020,Flash Copper Smelting,Electric Arc Refining,52.78,17.29,uplift +35.50
 gated_same_bldg,r_214,Sustainable Forestry - Biomass,Sustainable Forestry,78.38,28.38,uplift +50.00
 gated_same_bldg,r_078,Methane Pyrolysis,Methane Pyrolysis,71.92,17.63,uplift +54.29
-gated_same_bldg,r_131,Hydrogen Power,Hydrogen Combustion Turbines,103.98,30.75,uplift +73.23
 gated_same_bldg,r_060,Durable Perovskite Solar Panels,Atomic Layer Deposition,131.91,17.96,uplift +113.95
-gated_diff_bldg,r_206,Electric Heavy Vehicles Manufacturing,Electric Drivetrain Integration,16.58,16.98,uplift -0.40
 gated_diff_bldg,r_224,Hydroelectric Power,hydro,30.75,30.75,uplift -0.00
 gated_diff_bldg,r_107,E-Waste Recycling,Advanced Oxidation Loops,20.89,17.58,uplift +3.30
 gated_diff_bldg,r_039,Lithium Electrolysis,Solid-Oxide Electrolysis,20.88,15.45,uplift +5.43
+gated_diff_bldg,r_206,Electric Heavy Vehicles Manufacturing,Electric Drivetrain Integration,24.66,16.98,uplift +7.68
 gated_diff_bldg,r_066,Axial Flux Motors,Axial Flux Motor Lines,27.51,18.10,uplift +9.42
 gated_diff_bldg,r_121,Circuit Printing,300mm Wafer Lines,27.37,17.89,uplift +9.48
 gated_diff_bldg,r_177,Shale Oil Fracking,Shale Oil Fracturing,26.97,17.47,uplift +9.50
@@ -182,7 +182,7 @@ pair,r_024->r_120,Basic Circuit Soldering,plastics,34.70,1.20,OK
 pair,r_009->r_033,Construction Equiment Assembly (ICE),motor,34.67,0.71,OK
 pair,r_001->r_029,Concrete Firing,coal,34.60,0.30,OK
 pair,r_009->r_059,Wind Turbine Manufacturing,motor,34.58,0.32,OK
-pair,r_044->r_122,Semiconductor Fabbing,metallurgical_silicon,34.48,0.30,OK
+pair,r_044->r_122,Semiconductor Fabbing,metallurgical_silicon,34.49,0.30,OK
 pair,r_180->r_023,Ethylene Refining,processed_oil,34.46,0.50,OK
 pair,r_014->r_180,Oil Refining,crude_oil,34.44,1.00,OK
 pair,r_132->r_058,Solar Panel Manufacturing,alloy_ingots,34.38,0.30,OK

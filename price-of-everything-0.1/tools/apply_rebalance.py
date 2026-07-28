@@ -197,6 +197,37 @@ def costable(r):
     return outs_ok and ins_ok
 
 
+# TRAP — a gated recipe must not lose to the best BASE route for the same good.
+# Scoped by GOOD, not by good-and-building: R2 only compares within a building, so a gated
+# recipe in a NEW building can be worse than the base route it actually competes with and
+# still pass every structural check. That is how five research traps survived the first solve,
+# and how r_206 Electric Heavy Vehicles stayed hidden after them.
+#
+# Some recipes are deliberately uneconomic — an owner design call, not a defect. They are named
+# here so the exemption is explicit and reviewable rather than the test being silently loose.
+DELIBERATELY_UNECONOMIC = {
+    "r_131": "hydrogen power is a decarbonisation choice, not a profitable one (owner, 2026-07-28)",
+}
+
+
+def out1(r):
+    return (r.get("output_1") or "").strip()
+
+
+for r in live:
+    if not (r.get("required_research") or "").strip() or r["recipe_id"] in DELIBERATELY_UNECONOMIC:
+        continue
+    if not costable(r):
+        continue
+    rivals = [b for b in live if out1(b) == out1(r) and costable(b)
+              and not (b.get("required_research") or "").strip()]
+    if not rivals:
+        continue
+    best = max(rivals, key=net_of)
+    if net_of(r) < net_of(best) - 0.01:
+        problems.append("TRAP %s (%s) earns %+.1f but base %s earns %+.1f — research makes you poorer"
+                        % (r["recipe_id"], out1(r), net_of(r), best["recipe_id"], net_of(best)))
+
 base_live = [r for r in live if costable(r) and not (r.get("required_research") or "").strip()]
 bn = sorted(net_of(r) for r in base_live)
 print("BASE (game start, standalone-costable): %d / %d in +%.0f..+%.0f  (%.0f%%)"
@@ -216,7 +247,9 @@ if problems:
     if len(problems) > 40:
         print("  ... and %d more" % (len(problems) - 40))
     sys.exit(1)
-print("\nall rule checks passed (R1 alignment, R2 gated multipliers, R3 nice numbers)")
+print("\nall rule checks passed (ratio ladder, R2 multipliers, R3 nice numbers, no research traps)")
+for _rid, _why in DELIBERATELY_UNECONOMIC.items():
+    print("  trap-check exemption: %s — %s" % (_rid, _why))
 
 if DRY:
     print("--dry-run: nothing written")

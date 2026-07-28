@@ -1,0 +1,1490 @@
+{
+ "prices": [
+  {
+   "good": "alkaline_battery",
+   "new": 6.9752
+  },
+  {
+   "good": "alloy_ingots",
+   "new": 2.2509
+  },
+  {
+   "good": "alloy_ore",
+   "new": 1.3757
+  },
+  {
+   "good": "alumina",
+   "new": 2.8469
+  },
+  {
+   "good": "aluminium",
+   "new": 7.6177
+  },
+  {
+   "good": "ammonia",
+   "new": 4.0021
+  },
+  {
+   "good": "basic_salt",
+   "new": 0.7485
+  },
+  {
+   "good": "bauxite_ore",
+   "new": 1.6872
+  },
+  {
+   "good": "biomass",
+   "new": 2.4998
+  },
+  {
+   "good": "building_frame",
+   "new": 18.6867
+  },
+  {
+   "good": "car_body",
+   "new": 13.4924
+  },
+  {
+   "good": "carbonised_biomass",
+   "new": 5.5868
+  },
+  {
+   "good": "chem_salts",
+   "new": 1.4722
+  },
+  {
+   "good": "chlorine",
+   "new": 1.3964
+  },
+  {
+   "good": "circuit_board",
+   "new": 21.0104
+  },
+  {
+   "good": "coal",
+   "new": 0.5727
+  },
+  {
+   "good": "computer",
+   "new": 90.3998
+  },
+  {
+   "good": "concrete",
+   "new": 6.0567
+  },
+  {
+   "good": "construction_equipment_ev",
+   "new": 46.0876
+  },
+  {
+   "good": "construction_equipment_ice",
+   "new": 42.151
+  },
+  {
+   "good": "copper_ingots",
+   "new": 3.1132
+  },
+  {
+   "good": "copper_ore",
+   "new": 0.9442
+  },
+  {
+   "good": "copper_pipe",
+   "new": 4.0436
+  },
+  {
+   "good": "copper_wiring",
+   "new": 4.7361
+  },
+  {
+   "good": "cpu",
+   "new": 110.1196
+  },
+  {
+   "good": "crude_oil",
+   "new": 1.5626
+  },
+  {
+   "good": "electrical_components",
+   "new": 14.4927
+  },
+  {
+   "good": "engine",
+   "new": 57.8943
+  },
+  {
+   "good": "ethylene",
+   "new": 5.6054
+  },
+  {
+   "good": "ev_car",
+   "new": 265.1221
+  },
+  {
+   "good": "fertilisers",
+   "new": 6.0704
+  },
+  {
+   "good": "fibreglass",
+   "new": 19.3521
+  },
+  {
+   "good": "fuels",
+   "new": 3.1238
+  },
+  {
+   "good": "glass",
+   "new": 2.7808
+  },
+  {
+   "good": "graphite",
+   "new": 12.6876
+  },
+  {
+   "good": "heavy_vehicle",
+   "new": 292.485
+  },
+  {
+   "good": "high_grade_silicon",
+   "new": 58.1346
+  },
+  {
+   "good": "hydrogen",
+   "new": 3.8691
+  },
+  {
+   "good": "ice_car",
+   "new": 122.847
+  },
+  {
+   "good": "industrial_acids",
+   "new": 7.5376
+  },
+  {
+   "good": "iron_battery",
+   "new": 13.75
+  },
+  {
+   "good": "iron_ingots",
+   "new": 1.2809
+  },
+  {
+   "good": "iron_ore",
+   "new": 0.851
+  },
+  {
+   "good": "large_engine",
+   "new": 54.4058
+  },
+  {
+   "good": "limestone",
+   "new": 1.3528
+  },
+  {
+   "good": "lithium_battery",
+   "new": 50.5901
+  },
+  {
+   "good": "lithium_carbonate",
+   "new": 13.4745
+  },
+  {
+   "good": "lithium_ore",
+   "new": 4.1951
+  },
+  {
+   "good": "metallurgical_silicon",
+   "new": 4.8344
+  },
+  {
+   "good": "motor",
+   "new": 11.3283
+  },
+  {
+   "good": "pet_coke",
+   "new": 4.0941
+  },
+  {
+   "good": "plastics",
+   "new": 8.4345
+  },
+  {
+   "good": "processed_oil",
+   "new": 3.6601
+  },
+  {
+   "good": "pure_water",
+   "new": 0.568
+  },
+  {
+   "good": "pvc",
+   "new": 8.4971
+  },
+  {
+   "good": "ree_ore",
+   "new": 2.8017
+  },
+  {
+   "good": "refined_ree",
+   "new": 15.3914
+  },
+  {
+   "good": "rubber",
+   "new": 5.3266
+  },
+  {
+   "good": "sand",
+   "new": 0.7585
+  },
+  {
+   "good": "silica",
+   "new": 4.2886
+  },
+  {
+   "good": "sodium_battery",
+   "new": 22.7411
+  },
+  {
+   "good": "sodium_hydroxide",
+   "new": 1.0394
+  },
+  {
+   "good": "solar_panel",
+   "new": 44.5997
+  },
+  {
+   "good": "steel",
+   "new": 2.3679
+  },
+  {
+   "good": "sulphur",
+   "new": 1.4083
+  },
+  {
+   "good": "tyres",
+   "new": 6.1664
+  },
+  {
+   "good": "wind_turbine",
+   "new": 119.192
+  },
+  {
+   "good": "windows",
+   "new": 15.2147
+  }
+ ],
+ "input_qty": [
+  {
+   "recipe": "r_003",
+   "good": "iron_ingots",
+   "new": 37
+  },
+  {
+   "recipe": "r_004",
+   "good": "pure_water",
+   "new": 23
+  },
+  {
+   "recipe": "r_008",
+   "good": "copper_ingots",
+   "new": 25
+  },
+  {
+   "recipe": "r_009",
+   "good": "steel",
+   "new": 32
+  },
+  {
+   "recipe": "r_012",
+   "good": "basic_salt",
+   "new": 50
+  },
+  {
+   "recipe": "r_012",
+   "good": "pure_water",
+   "new": 47
+  },
+  {
+   "recipe": "r_020",
+   "good": "copper_ore",
+   "new": 28
+  },
+  {
+   "recipe": "r_020",
+   "good": "industrial_acids",
+   "new": 7
+  },
+  {
+   "recipe": "r_022",
+   "good": "processed_oil",
+   "new": 9
+  },
+  {
+   "recipe": "r_023",
+   "good": "processed_oil",
+   "new": 9
+  },
+  {
+   "recipe": "r_024",
+   "good": "ethylene",
+   "new": 9
+  },
+  {
+   "recipe": "r_025",
+   "good": "iron_ingots",
+   "new": 21
+  },
+  {
+   "recipe": "r_025",
+   "good": "limestone",
+   "new": 8
+  },
+  {
+   "recipe": "r_028",
+   "good": "ethylene",
+   "new": 9
+  },
+  {
+   "recipe": "r_029",
+   "good": "coal",
+   "new": 18
+  },
+  {
+   "recipe": "r_029",
+   "good": "limestone",
+   "new": 19
+  },
+  {
+   "recipe": "r_029",
+   "good": "pure_water",
+   "new": 14
+  },
+  {
+   "recipe": "r_029",
+   "good": "silica",
+   "new": 9
+  },
+  {
+   "recipe": "r_030",
+   "good": "pure_water",
+   "new": 14
+  },
+  {
+   "recipe": "r_030",
+   "good": "silica",
+   "new": 14
+  },
+  {
+   "recipe": "r_032",
+   "good": "alloy_ingots",
+   "new": 9
+  },
+  {
+   "recipe": "r_032",
+   "good": "electrical_components",
+   "new": 4
+  },
+  {
+   "recipe": "r_033",
+   "good": "fuels",
+   "new": 11
+  },
+  {
+   "recipe": "r_033",
+   "good": "plastics",
+   "new": 10
+  },
+  {
+   "recipe": "r_033",
+   "good": "rubber",
+   "new": 8
+  },
+  {
+   "recipe": "r_033",
+   "good": "steel",
+   "new": 13
+  },
+  {
+   "recipe": "r_034",
+   "good": "plastics",
+   "new": 10
+  },
+  {
+   "recipe": "r_034",
+   "good": "steel",
+   "new": 13
+  },
+  {
+   "recipe": "r_035",
+   "good": "pure_water",
+   "new": 14
+  },
+  {
+   "recipe": "r_035",
+   "good": "sand",
+   "new": 14
+  },
+  {
+   "recipe": "r_038",
+   "good": "processed_oil",
+   "new": 6
+  },
+  {
+   "recipe": "r_039",
+   "good": "lithium_ore",
+   "new": 12
+  },
+  {
+   "recipe": "r_041",
+   "good": "chlorine",
+   "new": 6
+  },
+  {
+   "recipe": "r_041",
+   "good": "ree_ore",
+   "new": 9
+  },
+  {
+   "recipe": "r_042",
+   "good": "ammonia",
+   "new": 9
+  },
+  {
+   "recipe": "r_044",
+   "good": "silica",
+   "new": 9
+  },
+  {
+   "recipe": "r_045",
+   "good": "metallurgical_silicon",
+   "new": 6
+  },
+  {
+   "recipe": "r_046",
+   "good": "nitrogen",
+   "new": 8
+  },
+  {
+   "recipe": "r_047",
+   "good": "ammonia",
+   "new": 9
+  },
+  {
+   "recipe": "r_047",
+   "good": "biomass",
+   "new": 11
+  },
+  {
+   "recipe": "r_050",
+   "good": "alumina",
+   "new": 19
+  },
+  {
+   "recipe": "r_053",
+   "good": "sand",
+   "new": 32
+  },
+  {
+   "recipe": "r_054",
+   "good": "alumina",
+   "new": 16
+  },
+  {
+   "recipe": "r_054",
+   "good": "sulphur",
+   "new": 7
+  },
+  {
+   "recipe": "r_055",
+   "good": "pvc",
+   "new": 12
+  },
+  {
+   "recipe": "r_056",
+   "good": "glass",
+   "new": 31
+  },
+  {
+   "recipe": "r_057",
+   "good": "steel",
+   "new": 16
+  },
+  {
+   "recipe": "r_057",
+   "good": "windows",
+   "new": 13
+  },
+  {
+   "recipe": "r_058",
+   "good": "alloy_ingots",
+   "new": 9
+  },
+  {
+   "recipe": "r_058",
+   "good": "aluminium",
+   "new": 6
+  },
+  {
+   "recipe": "r_058",
+   "good": "electrical_components",
+   "new": 4
+  },
+  {
+   "recipe": "r_059",
+   "good": "electrical_components",
+   "new": 4
+  },
+  {
+   "recipe": "r_059",
+   "good": "fibreglass",
+   "new": 3
+  },
+  {
+   "recipe": "r_059",
+   "good": "motor",
+   "new": 9
+  },
+  {
+   "recipe": "r_060",
+   "good": "alloy_ingots",
+   "new": 9
+  },
+  {
+   "recipe": "r_060",
+   "good": "aluminium",
+   "new": 6
+  },
+  {
+   "recipe": "r_060",
+   "good": "electrical_components",
+   "new": 4
+  },
+  {
+   "recipe": "r_061",
+   "good": "electrical_components",
+   "new": 4
+  },
+  {
+   "recipe": "r_061",
+   "good": "motor",
+   "new": 9
+  },
+  {
+   "recipe": "r_063",
+   "good": "alloy_ingots",
+   "new": 9
+  },
+  {
+   "recipe": "r_063",
+   "good": "aluminium",
+   "new": 6
+  },
+  {
+   "recipe": "r_063",
+   "good": "electrical_components",
+   "new": 4
+  },
+  {
+   "recipe": "r_064",
+   "good": "alloy_ingots",
+   "new": 9
+  },
+  {
+   "recipe": "r_064",
+   "good": "aluminium",
+   "new": 6
+  },
+  {
+   "recipe": "r_064",
+   "good": "electrical_components",
+   "new": 4
+  },
+  {
+   "recipe": "r_064",
+   "good": "polysilicon",
+   "new": 8
+  },
+  {
+   "recipe": "r_065",
+   "good": "steel",
+   "new": 13
+  },
+  {
+   "recipe": "r_066",
+   "good": "alloy_ingots",
+   "new": 9
+  },
+  {
+   "recipe": "r_066",
+   "good": "steel",
+   "new": 13
+  },
+  {
+   "recipe": "r_067",
+   "good": "rubber",
+   "new": 16
+  },
+  {
+   "recipe": "r_068",
+   "good": "steel",
+   "new": 21
+  },
+  {
+   "recipe": "r_069",
+   "good": "steel",
+   "new": 13
+  },
+  {
+   "recipe": "r_071",
+   "good": "alkaline_battery",
+   "new": 7
+  },
+  {
+   "recipe": "r_071",
+   "good": "aluminium",
+   "new": 10
+  },
+  {
+   "recipe": "r_071",
+   "good": "copper_wiring",
+   "new": 16
+  },
+  {
+   "recipe": "r_071",
+   "good": "steel",
+   "new": 16
+  },
+  {
+   "recipe": "r_072",
+   "good": "alkaline_battery",
+   "new": 7
+  },
+  {
+   "recipe": "r_072",
+   "good": "aluminium",
+   "new": 7
+  },
+  {
+   "recipe": "r_072",
+   "good": "processed_oil",
+   "new": 9
+  },
+  {
+   "recipe": "r_072",
+   "good": "steel",
+   "new": 13
+  },
+  {
+   "recipe": "r_073",
+   "good": "aluminium",
+   "new": 15
+  },
+  {
+   "recipe": "r_073",
+   "good": "processed_oil",
+   "new": 13
+  },
+  {
+   "recipe": "r_074",
+   "good": "aluminium",
+   "new": 7
+  },
+  {
+   "recipe": "r_074",
+   "good": "circuit_board",
+   "new": 4
+  },
+  {
+   "recipe": "r_074",
+   "good": "motor",
+   "new": 9
+  },
+  {
+   "recipe": "r_074",
+   "good": "processed_oil",
+   "new": 6
+  },
+  {
+   "recipe": "r_076",
+   "good": "hydrogen",
+   "new": 5
+  },
+  {
+   "recipe": "r_076",
+   "good": "iron_ingots",
+   "new": 21
+  },
+  {
+   "recipe": "r_077",
+   "good": "coal",
+   "new": 18
+  },
+  {
+   "recipe": "r_077",
+   "good": "iron_ingots",
+   "new": 21
+  },
+  {
+   "recipe": "r_078",
+   "good": "processed_oil",
+   "new": 18
+  },
+  {
+   "recipe": "r_079",
+   "good": "pure_water",
+   "new": 16
+  },
+  {
+   "recipe": "r_081",
+   "good": "alloy_ingots",
+   "new": 9
+  },
+  {
+   "recipe": "r_081",
+   "good": "hydrogen",
+   "new": 5
+  },
+  {
+   "recipe": "r_081",
+   "good": "industrial_acids",
+   "new": 7
+  },
+  {
+   "recipe": "r_081",
+   "good": "metallurgical_silicon",
+   "new": 6
+  },
+  {
+   "recipe": "r_082",
+   "good": "hydrogen",
+   "new": 5
+  },
+  {
+   "recipe": "r_083",
+   "good": "alumina",
+   "new": 16
+  },
+  {
+   "recipe": "r_084",
+   "good": "alumina",
+   "new": 16
+  },
+  {
+   "recipe": "r_084",
+   "good": "graphite",
+   "new": 5
+  },
+  {
+   "recipe": "r_099",
+   "good": "copper_wiring",
+   "new": 10
+  },
+  {
+   "recipe": "r_099",
+   "good": "graphite",
+   "new": 3
+  },
+  {
+   "recipe": "r_099",
+   "good": "industrial_acids",
+   "new": 7
+  },
+  {
+   "recipe": "r_099",
+   "good": "lithium_carbonate",
+   "new": 9
+  },
+  {
+   "recipe": "r_101",
+   "good": "alloy_ingots",
+   "new": 22
+  },
+  {
+   "recipe": "r_102",
+   "good": "aluminium",
+   "new": 6
+  },
+  {
+   "recipe": "r_102",
+   "good": "basic_salt",
+   "new": 8
+  },
+  {
+   "recipe": "r_102",
+   "good": "graphite",
+   "new": 3
+  },
+  {
+   "recipe": "r_114",
+   "good": "chlorine",
+   "new": 20
+  },
+  {
+   "recipe": "r_114",
+   "good": "hydrogen",
+   "new": 19
+  },
+  {
+   "recipe": "r_117",
+   "good": "car_body",
+   "new": 7
+  },
+  {
+   "recipe": "r_117",
+   "good": "fuels",
+   "new": 7
+  },
+  {
+   "recipe": "r_117",
+   "good": "glass",
+   "new": 10
+  },
+  {
+   "recipe": "r_117",
+   "good": "tyres",
+   "new": 26
+  },
+  {
+   "recipe": "r_118",
+   "good": "engine",
+   "new": 9
+  },
+  {
+   "recipe": "r_118",
+   "good": "fuels",
+   "new": 7
+  },
+  {
+   "recipe": "r_118",
+   "good": "glass",
+   "new": 10
+  },
+  {
+   "recipe": "r_118",
+   "good": "tyres",
+   "new": 28
+  },
+  {
+   "recipe": "r_119",
+   "good": "cpu",
+   "new": 5
+  },
+  {
+   "recipe": "r_119",
+   "good": "glass",
+   "new": 10
+  },
+  {
+   "recipe": "r_119",
+   "good": "motor",
+   "new": 9
+  },
+  {
+   "recipe": "r_119",
+   "good": "tyres",
+   "new": 19
+  },
+  {
+   "recipe": "r_120",
+   "good": "alloy_ingots",
+   "new": 9
+  },
+  {
+   "recipe": "r_121",
+   "good": "copper_wiring",
+   "new": 10
+  },
+  {
+   "recipe": "r_121",
+   "good": "metallurgical_silicon",
+   "new": 6
+  },
+  {
+   "recipe": "r_122",
+   "good": "industrial_acids",
+   "new": 7
+  },
+  {
+   "recipe": "r_122",
+   "good": "metallurgical_silicon",
+   "new": 6
+  },
+  {
+   "recipe": "r_122",
+   "good": "refined_ree",
+   "new": 6
+  },
+  {
+   "recipe": "r_123",
+   "good": "circuit_board",
+   "new": 4
+  },
+  {
+   "recipe": "r_124",
+   "good": "circuit_board",
+   "new": 4
+  },
+  {
+   "recipe": "r_124",
+   "good": "refined_ree",
+   "new": 2
+  },
+  {
+   "recipe": "r_125",
+   "good": "aluminium",
+   "new": 6
+  },
+  {
+   "recipe": "r_125",
+   "good": "circuit_board",
+   "new": 4
+  },
+  {
+   "recipe": "r_125",
+   "good": "cpu",
+   "new": 5
+  },
+  {
+   "recipe": "r_127",
+   "good": "refined_ree",
+   "new": 6
+  },
+  {
+   "recipe": "r_131",
+   "good": "hydrogen",
+   "new": 5
+  },
+  {
+   "recipe": "r_132",
+   "good": "alloy_ore",
+   "new": 19
+  },
+  {
+   "recipe": "r_133",
+   "good": "alloy_ore",
+   "new": 19
+  },
+  {
+   "recipe": "r_135",
+   "good": "glass",
+   "new": 10
+  },
+  {
+   "recipe": "r_136",
+   "good": "iron_ingots",
+   "new": 21
+  },
+  {
+   "recipe": "r_136",
+   "good": "pure_water",
+   "new": 14
+  },
+  {
+   "recipe": "r_136",
+   "good": "steel",
+   "new": 13
+  },
+  {
+   "recipe": "r_150",
+   "good": "pet_coke",
+   "new": 18
+  },
+  {
+   "recipe": "r_151",
+   "good": "pet_coke",
+   "new": 9
+  },
+  {
+   "recipe": "r_154",
+   "good": "coal",
+   "new": 18
+  },
+  {
+   "recipe": "r_154",
+   "good": "hydrogen",
+   "new": 5
+  },
+  {
+   "recipe": "r_165",
+   "good": "steel",
+   "new": 21
+  },
+  {
+   "recipe": "r_165",
+   "good": "sulphur",
+   "new": 12
+  },
+  {
+   "recipe": "r_175",
+   "good": "chlorine",
+   "new": 15
+  },
+  {
+   "recipe": "r_175",
+   "good": "ethylene",
+   "new": 14
+  },
+  {
+   "recipe": "r_203",
+   "good": "steel",
+   "new": 13
+  },
+  {
+   "recipe": "r_204",
+   "good": "car_body",
+   "new": 15
+  },
+  {
+   "recipe": "r_204",
+   "good": "fuels",
+   "new": 21
+  },
+  {
+   "recipe": "r_205",
+   "good": "car_body",
+   "new": 15
+  },
+  {
+   "recipe": "r_205",
+   "good": "fuels",
+   "new": 21
+  },
+  {
+   "recipe": "r_206",
+   "good": "car_body",
+   "new": 15
+  },
+  {
+   "recipe": "r_207",
+   "good": "aluminium",
+   "new": 10
+  },
+  {
+   "recipe": "r_207",
+   "good": "electrical_components",
+   "new": 9
+  },
+  {
+   "recipe": "r_207",
+   "good": "motor",
+   "new": 15
+  },
+  {
+   "recipe": "r_208",
+   "good": "fertilisers",
+   "new": 7
+  },
+  {
+   "recipe": "r_209",
+   "good": "fertilisers",
+   "new": 7
+  },
+  {
+   "recipe": "r_209",
+   "good": "pure_water",
+   "new": 14
+  },
+  {
+   "recipe": "r_212",
+   "good": "pure_water",
+   "new": 14
+  },
+  {
+   "recipe": "r_217",
+   "good": "biomass",
+   "new": 25
+  },
+  {
+   "recipe": "r_219",
+   "good": "copper_ingots",
+   "new": 13
+  },
+  {
+   "recipe": "r_220",
+   "good": "copper_ingots",
+   "new": 13
+  },
+  {
+   "recipe": "r_220",
+   "good": "industrial_acids",
+   "new": 7
+  },
+  {
+   "recipe": "r_226",
+   "good": "pure_water",
+   "new": 14
+  },
+  {
+   "recipe": "r_226",
+   "good": "ree_ore",
+   "new": 9
+  },
+  {
+   "recipe": "r_227",
+   "good": "industrial_acids",
+   "new": 7
+  },
+  {
+   "recipe": "r_228",
+   "good": "biomass",
+   "new": 11
+  },
+  {
+   "recipe": "r_230",
+   "good": "circuit_board",
+   "new": 9
+  },
+  {
+   "recipe": "r_230",
+   "good": "high_grade_silicon",
+   "new": 3
+  }
+ ],
+ "output_qty": [
+  {
+   "recipe": "r_003",
+   "good": "steel",
+   "new": 44
+  },
+  {
+   "recipe": "r_007",
+   "good": "copper_ingots",
+   "new": 25
+  },
+  {
+   "recipe": "r_008",
+   "good": "copper_wiring",
+   "new": 33
+  },
+  {
+   "recipe": "r_012",
+   "good": "chlorine",
+   "new": 20
+  },
+  {
+   "recipe": "r_012",
+   "good": "hydrogen",
+   "new": 20
+  },
+  {
+   "recipe": "r_012",
+   "good": "sodium_hydroxide",
+   "new": 40
+  },
+  {
+   "recipe": "r_020",
+   "good": "copper_ingots",
+   "new": 50
+  },
+  {
+   "recipe": "r_022",
+   "good": "fuels",
+   "new": 21
+  },
+  {
+   "recipe": "r_023",
+   "good": "ethylene",
+   "new": 12
+  },
+  {
+   "recipe": "r_024",
+   "good": "plastics",
+   "new": 10
+  },
+  {
+   "recipe": "r_025",
+   "good": "steel",
+   "new": 44
+  },
+  {
+   "recipe": "r_028",
+   "good": "rubber",
+   "new": 16
+  },
+  {
+   "recipe": "r_029",
+   "good": "concrete",
+   "new": 21
+  },
+  {
+   "recipe": "r_031",
+   "good": "iron_ingots",
+   "new": 84
+  },
+  {
+   "recipe": "r_035",
+   "good": "silica",
+   "new": 12
+  },
+  {
+   "recipe": "r_038",
+   "good": "power",
+   "new": 600
+  },
+  {
+   "recipe": "r_042",
+   "good": "graphite",
+   "new": 21
+  },
+  {
+   "recipe": "r_045",
+   "good": "polysilicon",
+   "new": 4
+  },
+  {
+   "recipe": "r_046",
+   "good": "ammonia",
+   "new": 30
+  },
+  {
+   "recipe": "r_054",
+   "good": "glass",
+   "new": 48
+  },
+  {
+   "recipe": "r_056",
+   "good": "windows",
+   "new": 16
+  },
+  {
+   "recipe": "r_057",
+   "good": "building_frame",
+   "new": 25
+  },
+  {
+   "recipe": "r_060",
+   "good": "solar_panel",
+   "new": 12
+  },
+  {
+   "recipe": "r_061",
+   "good": "wind_turbine",
+   "new": 3
+  },
+  {
+   "recipe": "r_068",
+   "good": "car_body",
+   "new": 15
+  },
+  {
+   "recipe": "r_072",
+   "good": "engine",
+   "new": 6
+  },
+  {
+   "recipe": "r_073",
+   "good": "large_engine",
+   "new": 10
+  },
+  {
+   "recipe": "r_074",
+   "good": "engine",
+   "new": 9
+  },
+  {
+   "recipe": "r_076",
+   "good": "steel",
+   "new": 54
+  },
+  {
+   "recipe": "r_077",
+   "good": "steel",
+   "new": 44
+  },
+  {
+   "recipe": "r_078",
+   "good": "hydrogen",
+   "new": 16
+  },
+  {
+   "recipe": "r_079",
+   "good": "hydrogen",
+   "new": 16
+  },
+  {
+   "recipe": "r_079",
+   "good": "oxygen",
+   "new": 8
+  },
+  {
+   "recipe": "r_080",
+   "good": "hydrogen",
+   "new": 16
+  },
+  {
+   "recipe": "r_080",
+   "good": "oxygen",
+   "new": 8
+  },
+  {
+   "recipe": "r_081",
+   "good": "polysilicon",
+   "new": 8
+  },
+  {
+   "recipe": "r_083",
+   "good": "alloy_ingots",
+   "new": 3
+  },
+  {
+   "recipe": "r_084",
+   "good": "aluminium",
+   "new": 24
+  },
+  {
+   "recipe": "r_107",
+   "good": "copper_wiring",
+   "new": 3
+  },
+  {
+   "recipe": "r_117",
+   "good": "ice_car",
+   "new": 6
+  },
+  {
+   "recipe": "r_121",
+   "good": "circuit_board",
+   "new": 10
+  },
+  {
+   "recipe": "r_131",
+   "good": "power",
+   "new": 1200
+  },
+  {
+   "recipe": "r_134",
+   "good": "alloy_ore",
+   "new": 25
+  },
+  {
+   "recipe": "r_136",
+   "good": "iron_battery",
+   "new": 9
+  },
+  {
+   "recipe": "r_151",
+   "good": "power",
+   "new": 720
+  },
+  {
+   "recipe": "r_177",
+   "good": "crude_oil",
+   "new": 28
+  },
+  {
+   "recipe": "r_207",
+   "good": "large_engine",
+   "new": 12
+  },
+  {
+   "recipe": "r_208",
+   "good": "biomass",
+   "new": 35
+  },
+  {
+   "recipe": "r_209",
+   "good": "biomass",
+   "new": 35
+  },
+  {
+   "recipe": "r_212",
+   "good": "biomass",
+   "new": 18
+  },
+  {
+   "recipe": "r_213",
+   "good": "biomass",
+   "new": 20
+  },
+  {
+   "recipe": "r_214",
+   "good": "biomass",
+   "new": 40
+  },
+  {
+   "recipe": "r_215",
+   "good": "biomass",
+   "new": 20
+  },
+  {
+   "recipe": "r_217",
+   "good": "carbonised_biomass",
+   "new": 21
+  },
+  {
+   "recipe": "r_219",
+   "good": "copper_pipe",
+   "new": 27
+  },
+  {
+   "recipe": "r_223",
+   "good": "power",
+   "new": 490
+  },
+  {
+   "recipe": "r_226",
+   "good": "refined_ree",
+   "new": 6
+  },
+  {
+   "recipe": "r_229",
+   "good": "high_grade_silicon",
+   "new": 3
+  },
+  {
+   "recipe": "r_231",
+   "good": "graphite",
+   "new": 6
+  }
+ ],
+ "labour_mult": [
+  {
+   "recipe": "r_020",
+   "mult": 0.4
+  },
+  {
+   "recipe": "r_039",
+   "mult": 0.4
+  },
+  {
+   "recipe": "r_054",
+   "mult": 0.4
+  },
+  {
+   "recipe": "r_056",
+   "mult": 0.71
+  },
+  {
+   "recipe": "r_066",
+   "mult": 0.86
+  },
+  {
+   "recipe": "r_074",
+   "mult": 0.4
+  },
+  {
+   "recipe": "r_081",
+   "mult": 0.4
+  },
+  {
+   "recipe": "r_115",
+   "mult": 0.4
+  },
+  {
+   "recipe": "r_116",
+   "mult": 0.55
+  },
+  {
+   "recipe": "r_121",
+   "mult": 0.56
+  },
+  {
+   "recipe": "r_136",
+   "mult": 0.4
+  },
+  {
+   "recipe": "r_165",
+   "mult": 0.5
+  }
+ ]
+}
