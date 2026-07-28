@@ -21,6 +21,86 @@ var _variant := "glass54"
 # the per-turn figures are the steady state of a levelled cluster, not the transition.
 var _level_schedule := false
 var _levels_applied := {}
+# `expand`: when a tracked deposit falls to 25% of what it started at, open a replacement mine
+# on the NEAREST tile whose deposit of the same ore is infinite. A finite deposit is a clock,
+# and the interesting question is whether a cluster can outrun it rather than whether it dies.
+const EXPAND_AT_FRACTION := 0.25
+var _expand_deposits := false
+var _deposit_start := {}          # "tile|token" -> yield at turn 1
+var _expanded := {}               # "tile|token" -> true once replaced
+var _expand_log: Array[String] = []
+
+
+## Nearest tile (hex distance) whose deposit of `token` is INFINITE, i.e. untracked.
+## seed_deposits skips any deposit with no quantity, so "not in deposit_remaining but present
+## on the tile" is exactly what infinite means.
+func _nearest_infinite(from_tile: String, token: String) -> String:
+	var hm = get_tree().get_first_node_in_group("hex_map")
+	if hm == null:
+		return ""
+	var best := ""
+	var best_d := 1 << 30
+	for coord in (hm.get("tiles") as Dictionary).keys():
+		var td: Dictionary = (hm.get("tiles") as Dictionary)[coord]
+		var tid := str(td.get("id", ""))
+		if tid == "" or tid == from_tile:
+			continue
+		var has := false
+		for dep in td.get("deposits", []):
+			if str(dep).begins_with(token) and not str(dep).contains("("):
+				has = true
+		if not has:
+			continue
+		if MatchState.deposit_remaining_for(tid, token) >= 0:
+			continue                       # tracked => finite, not what we are looking for
+		var d := Catalog.tile_hex_distance(from_tile, tid)
+		if d < best_d:
+			best_d = d
+			best = tid
+	return best
+
+
+func _expand_depleting_deposits(turn: int) -> void:
+	if not _expand_deposits:
+		return
+	for iid in MatchState.buildings.keys():
+		var inst: Dictionary = MatchState.buildings[iid]
+		if not MatchState.is_player_owned(inst):
+			continue
+		var tid := str(inst.get("tile_id", ""))
+		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
+		for outp in recipe.get("outputs", []):
+			var token := str(outp.get("internal_name", ""))
+			var rem := MatchState.deposit_remaining_for(tid, token)
+			if rem < 0:
+				continue                   # already infinite, nothing to outrun
+			var key := "%s|%s" % [tid, token]
+			if not _deposit_start.has(key):
+				_deposit_start[key] = maxi(rem, 1)
+			if _expanded.has(key):
+				continue
+			if float(rem) / float(_deposit_start[key]) > EXPAND_AT_FRACTION:
+				continue
+			var target := _nearest_infinite(tid, token)
+			if target == "":
+				_expand_log.append("t%d %s at %d%% — NO infinite %s deposit reachable"
+					% [turn, token, int(100.0 * rem / float(_deposit_start[key])), token])
+				_expanded[key] = true
+				continue
+			MatchState.purchase_tile_land(target, 1)
+			var new_id := MatchState.add_building(str(inst.get("building_id", "")),
+				str(inst.get("recipe_id", "")), target, "player_1")
+			# Route the replacement to wherever the original was shipping, per output good,
+			# or it mines into a warehouse nobody draws from.
+			var dest := str(inst.get("output_to", ""))
+			if dest != "" and dest != "market":
+				for o2 in recipe.get("outputs", []):
+					MatchState.set_output_stockpile_destination(str(new_id), dest, str(o2.get("good_id", "")))
+			_expanded[key] = true
+			_expand_log.append("t%d %s hit %d%% on %s -> opened %s on %s (infinite, %d tiles away)"
+				% [turn, token, int(100.0 * rem / float(_deposit_start[key])), tid,
+					str(inst.get("recipe_id", "")), target,
+					Catalog.tile_hex_distance(tid, target)])
 
 
 func _apply_level_schedule(turn: int) -> void:
@@ -50,6 +130,8 @@ func _ready() -> void:
 		var arg := str(a).strip_edges()
 		if arg.to_lower() == "levels":
 			_level_schedule = true
+		elif arg.to_lower() == "expand":
+			_expand_deposits = true
 		elif arg != "":
 			_variant = arg
 	SaveLoad.prepare_new_game("res://data/starts/_tut_end_%s.json" % _variant)
@@ -84,6 +166,7 @@ func _run() -> void:
 	var prev: float = MatchState.money
 	for t in range(1, TURNS + 1):
 		_apply_level_schedule(t)
+		_expand_depleting_deposits(t)
 		TurnManager.commit_turn()
 		await TurnManager.turn_resolution_completed
 		var m: float = MatchState.money
@@ -109,6 +192,7 @@ func _run() -> void:
 	print("=== steady state = the last ~10 REAL values ===")
 	get_tree().quit(0)
 
+	_report_expansion()
 
 func _f(s: Dictionary, k: String) -> float:
 	return float(s.get(k, 0.0))
@@ -157,6 +241,26 @@ func _becon(rid: String) -> float:
 			var bd: Dictionary = Catalog.get_building(str(inst.get("building_id", "")))
 			return float(BuildingReadout.economics(inst, rec, bd).get("net", 0.0))
 	return 0.0
+
+
+func _report_expansion() -> void:
+	if not _expand_deposits:
+		return
+	if true:
+		print("---- deposit expansion ----")
+		if _expand_log.is_empty():
+			print("  nothing fell to %d%% — no expansion was needed" % int(EXPAND_AT_FRACTION * 100.0))
+		for line in _expand_log:
+			print("  " + line)
+		for iid in MatchState.buildings.keys():
+			var inst2: Dictionary = MatchState.buildings[iid]
+			if not MatchState.is_player_owned(inst2):
+				continue
+			var t2 := str(inst2.get("tile_id", ""))
+			for tok2 in ["coal", "iron_ore", "copper_ore"]:
+				var r2 := MatchState.deposit_remaining_for(t2, tok2)
+				if r2 >= 0:
+					print("  %s %s: %d left" % [t2, tok2, r2])
 
 
 func _becon_other() -> float:

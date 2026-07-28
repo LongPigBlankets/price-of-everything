@@ -159,23 +159,32 @@ func _print_profit_trajectory() -> void:
 		for k in _infra_actions:
 			acts += "%s x%d   " % [k, int(_infra_actions[k])]
 		print(acts)
-	# Deposits are the other thing a levelled empire can exhaust: a mine at L3 pulls 3.5x the
-	# ore, so a deposit sized for L1 empties in under a third of the time.
-	var dep := {}
+	# Deposits: -1 means UNTRACKED, which is how the CSV spells "infinite" (seed_deposits
+	# skips any deposit with no quantity). The first version of this summed that sentinel in
+	# with real remainders and reported a number that looked like depletion where there was
+	# none — infinite tiles must be counted separately, not added.
+	var dep_left := {}
+	var seen_tiles := {}
 	for iid in MatchState.buildings.keys():
 		var inst: Dictionary = MatchState.buildings[iid]
 		if str(inst.get("owner", "")) != "player_1":
 			continue
 		var tid := str(inst.get("tile_id", ""))
+		if seen_tiles.has(tid):
+			continue                       # one tile, counted once, not once per building
+		seen_tiles[tid] = true
 		for tok in ["coal", "iron_ore", "copper_ore", "limestone", "sand", "bauxite_ore"]:
 			var rem := MatchState.deposit_remaining_for(tid, tok)
-			if rem > 0 or dep.has(tok):
-				dep[tok] = int(dep.get(tok, 0)) + rem
-	if not dep.is_empty():
-		var dl := "  deposits left at end: "
-		for k in dep:
-			dl += "%s %d   " % [k, int(dep[k])]
-		print(dl)
+			if rem < 0:
+				continue                   # untracked = infinite, nothing to deplete
+			dep_left[tok] = int(dep_left.get(tok, 0)) + rem
+	var dl := "  deposits (tracked only; anything absent here is an INFINITE deposit): "
+	if dep_left.is_empty():
+		dl += "none tracked — every mined deposit in this scenario is infinite"
+	else:
+		for k in dep_left:
+			dl += "%s %d left   " % [k, int(dep_left[k])]
+	print(dl)
 	# Where it crossed from black to red for good — the turn a fix has to target.
 	var last_positive := 0
 	for e in _profit_by_turn:
