@@ -1692,6 +1692,7 @@ func _apply_level_schedule() -> void:
 		return
 	_levels_applied[target] = true
 	var n := 0
+	var tiles_touched := {}
 	for iid in MatchState.buildings.keys():
 		var inst: Dictionary = MatchState.buildings[iid]
 		if str(inst.get("owner", "")) != "player_1":
@@ -1699,7 +1700,17 @@ func _apply_level_schedule() -> void:
 		if int(inst.get("level", 1)) >= target:
 			continue
 		inst["level"] = target
+		tiles_touched[str(inst.get("tile_id", ""))] = true
 		n += 1
+	# Take the tile's WAREHOUSE up with the first building on it. Storage is otherwise a flat
+	# 800 regardless of level, while an L3 building buffers and outputs 3x — which deadlocked
+	# the chain: no room to deliver, so nothing ran, so nothing was consumed, so no room ever
+	# appeared. 800 -> 1600 -> 2500 tracks the building levels.
+	var wh := 0
+	for tid in tiles_touched.keys():
+		if Stockpile.get_warehouse_level(str(tid)) < target:
+			Stockpile.set_warehouse_level(str(tid), target)
+			wh += 1
 	var tn := 0
 	if _level_infra:
 		# Buildings alone starve: L1 cables cap a tile at 2000 power/turn and levelled
@@ -1714,8 +1725,8 @@ func _apply_level_schedule() -> void:
 						lv[str(slot)] = target
 						tn += 1
 				tile["infrastructure_levels"] = lv
-	print("[levels] t%d: %d buildings -> L%d%s" % [turn, n, target,
-		("   + %d infrastructure slots" % tn) if _level_infra else ""])
+	print("[levels] t%d: %d buildings -> L%d   + %d tile warehouses -> L%d%s" % [turn, n, target,
+		wh, target, ("   + %d infrastructure slots" % tn) if _level_infra else ""])
 
 
 func _bump_infra(tile: Dictionary, tile_id: String, slot: String, to_level: int) -> void:
