@@ -1,4 +1,7 @@
 extends Node
+
+# RefCounted, not an autoload — consumers preload it (see building_levels.gd header).
+const BuildingLevels := preload("res://scripts/building_levels.gd")
 ## Headless end-to-end scenario for the foundations sprint.
 ##
 ## This runner deliberately instantiates the real main scene and drives the same
@@ -84,6 +87,11 @@ var _infra_spend := 0.0
 var _infra_actions := {}
 var _starve_detail := {}
 var _audited := {}
+var _diag_turns := 0
+var _diag_runs := {}
+var _diag_coal_made := 0
+var _diag_coal_sold := 0
+var _diag_worst_link := {}
 var _balance_metrics := {}
 var _balance_bad_streak := 0
 var _balance_built_ids: Array[String] = []
@@ -155,6 +163,63 @@ func _print_profit_trajectory() -> void:
 		print("  starvation causes (last recorded):")
 		for k in _starve_detail:
 			print("    %-28s x%d" % [k, int(_starve_detail[k])])
+	if _level_schedule and _diag_turns > 0:
+		print("---- diagnosis over t150-t200 (%d turns) ----" % _diag_turns)
+		# 2 — how OFTEN each recipe actually ran.
+		print("  RUN FREQUENCY (a starved building did not run that turn):")
+		for rid in _diag_runs:
+			var e: Dictionary = _diag_runs[rid]
+			if int(e["of"]) <= 0:
+				continue
+			var pct := 100.0 * float(e["ran"]) / float(e["of"])
+			print("    %-8s %-28s ran %5.1f%% of building-turns" % [rid,
+				str(Catalog.get_recipe(rid).get("display_name", rid)).substr(0, 28), pct])
+		# 3 — did the coal get sold instead of shipped?
+		print("  COAL produced %d, sold to market %d (%.0f%% of production sold)"
+			% [_diag_coal_made, _diag_coal_sold,
+				(100.0 * float(_diag_coal_sold) / maxf(1.0, float(_diag_coal_made)))])
+		# 4 — worst transport link seen in the window.
+		if not _diag_worst_link.is_empty():
+			print("  WORST LINK %s at t%d: %.0f / %.0f = %.0f%% of capacity"
+				% [str(_diag_worst_link.get("key", "")), int(_diag_worst_link.get("turn", 0)),
+					float(_diag_worst_link.get("used", 0.0)), float(_diag_worst_link.get("cap", 0.0)),
+					100.0 * float(_diag_worst_link.get("util", 0.0))])
+		else:
+			print("  WORST LINK: no capped-mode flow recorded (nothing in transit when sampled)")
+		# Coal is produced, not sold and not moving — so where is it? Tile storage does not
+		# scale with building level, so the receiving tile may simply have nowhere to put it.
+		print("  STOCKPILE / CAPACITY on the tiles that matter:")
+		var tiles_seen := {}
+		for iid in MatchState.buildings.keys():
+			var inst: Dictionary = MatchState.buildings[iid]
+			if str(inst.get("owner", "")) != "player_1":
+				continue
+			var tid := str(inst.get("tile_id", ""))
+			if tiles_seen.has(tid):
+				continue
+			tiles_seen[tid] = true
+			var total := Stockpile.get_used_capacity(tid)
+			var coal_here := int(Stockpile.get_at_tile(tid, str(Catalog.get_good_by_internal_name("coal").get("id", ""))))
+			print("    %-12s stored %5d / cap %5d   (coal here: %d)"
+				% [tid, total, Stockpile.get_capacity(tid), coal_here])
+		# 1 — what the output multipliers actually evaluate to for a downstream building.
+		print("  OUTPUT MULTIPLIERS on a live building of each downstream recipe:")
+		for want in ["r_003", "r_005", "r_009"]:
+			for iid in MatchState.buildings.keys():
+				var inst: Dictionary = MatchState.buildings[iid]
+				if str(inst.get("recipe_id", "")) != want or str(inst.get("owner", "")) != "player_1":
+					continue
+				var lvl2 := int(inst.get("level", 1))
+				var base := 100.0
+				var modded := Modifiers.apply("recipe_output", want, base, {
+					"recipe_id": want, "building_id": str(inst.get("building_id", "")),
+					"instance_id": str(iid)})
+				var derate := float((Production._intermittency_by_building.get(str(iid), {}) as Dictionary).get("derate", 0.0))
+				print("    %-8s L%d  recipe_output x%.3f   level x%.2f   workforce x%.3f   startup x%.3f   intermittency -%.0f%%"
+					% [want, lvl2, modded / base, BuildingLevels.mult("output", lvl2),
+						MatchState.workforce_output_multiplier(),
+						MatchState.startup_capacity_multiplier(inst), derate * 100.0])
+				break
 	if _auto_infra:
 		var acts := "  auto-infra: £%.0f spent   " % _infra_spend
 		for k in _infra_actions:
@@ -1778,8 +1843,64 @@ func _audit_buildings(turn: int) -> void:
 		print("    %-10s %-30s x%-3d produced %d" % [k, str(e["name"]).substr(0, 30), int(e["n"]), int(e["produced"])])
 
 
+## Four candidate causes for downstream buildings producing a sixth of their L1 rate while
+## the mines above them tripled. Each gets a measurement rather than an argument:
+##   1 negative modifiers   — what recipe_output/workforce/startup/derate actually multiply by
+##   2 intermittent running — how OFTEN a building runs, not just whether it starved once
+##   3 sell-before-ship     — coal sold to market vs coal produced, per turn
+##   4 transport bottleneck — worst link utilisation on the capped modes
+func _diagnose_window() -> void:
+	if not _level_schedule:
+		return
+	var turn := int(TurnManager.current_turn)
+	if turn < 150 or turn > 200:
+		return
+	var summary: Dictionary = Production.last_turn_summary
+	_diag_turns += 1
+	# 2 — run frequency. A building that starved this turn did not run.
+	var starved_now := {}
+	for rec in (summary.get("starved", []) as Array):
+		starved_now[str((rec as Dictionary).get("instance_id", ""))] = true
+	for iid in MatchState.buildings.keys():
+		var inst: Dictionary = MatchState.buildings[iid]
+		if str(inst.get("owner", "")) != "player_1":
+			continue
+		var rid := str(inst.get("recipe_id", ""))
+		if not _diag_runs.has(rid):
+			_diag_runs[rid] = {"ran": 0, "of": 0}
+		var e: Dictionary = _diag_runs[rid]
+		e["of"] = int(e["of"]) + 1
+		if not starved_now.has(str(iid)):
+			e["ran"] = int(e["ran"]) + 1
+	# 3 — coal produced vs sold to market in the same turn.
+	var coal_id := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	_diag_coal_made += int((summary.get("produced", {}) as Dictionary).get(coal_id, 0))
+	_diag_coal_sold += int((summary.get("sold", {}) as Dictionary).get(coal_id, 0))
+	# 4 — worst link utilisation across the capped modes.
+	var flow: Dictionary = MatchState.transport_link_flow()
+	for key in flow.keys():
+		var parts := str(key).split("|")
+		if parts.size() != 2:
+			continue
+		var mode := str(parts[1])
+		var slot := "rails" if mode == "rail" else mode
+		var lvl := 1
+		var hm0 = get_tree().get_first_node_in_group("hex_map")
+		if hm0 != null:
+			var c0 = hm0.id_to_coord(str(parts[0]))
+			if (hm0.get("tiles") as Dictionary).has(c0):
+				lvl = int(((hm0.get("tiles") as Dictionary)[c0] as Dictionary).get("infrastructure_levels", {}).get(slot, 1))
+		var cap := MatchState.tile_mode_capacity(mode, lvl)
+		if cap <= 0.0:
+			continue
+		var util := float(flow[key]) / cap
+		if util > float(_diag_worst_link.get("util", 0.0)):
+			_diag_worst_link = {"util": util, "key": str(key), "used": float(flow[key]), "cap": cap, "turn": turn}
+
+
 func _capture_turn_metrics() -> void:
 	_apply_level_schedule()
+	_diagnose_window()
 	if int(TurnManager.current_turn) in [90, 200]:
 		_audit_buildings(int(TurnManager.current_turn))
 	_auto_upgrade_infra()
