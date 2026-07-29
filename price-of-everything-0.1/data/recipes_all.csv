@@ -143,7 +143,7 @@ r_146,Solar Power Generation,solar_farm,,,,,,,,,,,,,0,power,228,,,,,,,,,,,,Power
 r_147,Propane Dehydrogenation,petro_refinery,propane,1,,,,,,,,,,,70,hydrogen,1,ethylene,1,,,,,,,,,,Refining,,,756,287,50,
 r_148,Steam Cracking,petro_refinery,light_oil,4,pure_water,2,,,,,,,,,70,ethylene,4,petro_gases,2,,,,,,,,,,Refining,,,756,287,50,
 r_149,Delayed Coking,petro_refinery,heavy_oil,4,,,,,,,,,,,70,pet_coke,8,,,,,,,,,,,,Carbon,,,756,287,50,
-r_150,Petroleum Needle Coke Calcination,petro_refinery,pet_coke,18,,,,,,,,,,,240,graphite,10,,,,,,,,,,,,Carbon,,,789,300,50,
+r_150,Petroleum Needle Coke Calcination,petro_refinery,pet_coke,14,,,,,,,,,,,240,graphite,10,,,,,,,,,,,,Carbon,,,789,300,50,
 r_151,Petroleum Needle Coke Power,power_plant,pet_coke,9,,,,,,,,,,,0,power,720,,,,,,,,,,,,Power,,Combined Cycle Turbines,756,287,50,
 r_152,Alcohol to Jet SAF,chem_plant,ethanol,6,hydrogen,3,,,,,,,,,70,SAF,6,pure_water,3,,,,,,,,,,Chemistry,,,2408,903,91,
 r_153,Biomass Gassification,bio_chem_plant,biomass,6,pure_water,4,,,,,,,,,70,fuels,4,,,,,,,,,,,,Biofuels,,,500,100,50,
