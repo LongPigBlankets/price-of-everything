@@ -341,8 +341,16 @@ func good_value_basis(good_id: String) -> float:
 # rolling profit plus a slice of revenue — the 40-turn payoff is the affordance that
 # lets debt service sit above pure interest without being unserviceable.
 const LOAN_BASE_CAPACITY: float = 50.0     # Floor on borrowing capacity (turn 1, no history)
-const LOAN_TERM_TURNS: int = 36            # How many turns to repay over
+const LOAN_TERM_TURNS: int = 36            # How many turns of REPAYMENT (after the grace)
 const LOAN_INTEREST_RATE: float = 0.10     # 10% over total term (not per turn)
+# Smallest loan the bank will write. The auto-bridge used to borrow the exact shortfall, so a
+# £1.36 gap became a £1.36 loan on a 36-turn book — 18 of them by turn 57 in a player log,
+# each carrying its own interest forever. A floor turns that into one loan with headroom.
+const LOAN_MINIMUM: float = 20.0
+# Turns before the first payment falls due. Interest still ACCRUES across them, so the grace
+# buys breathing room rather than free money: a loan now runs 12 + 36 = 48 turns and the
+# larger balance is amortised over the same 36 paying turns. (Balance data — rule #7.)
+const LOAN_GRACE_TURNS: int = 12
 const LOAN_PROFIT_WINDOW: int = 5          # Rolling window (turns) for the profit/revenue average
 const LOAN_REVENUE_BUFFER: float = 0.02    # Extra serviceable debt = this share of avg revenue
 # Asset-backed leg (2026-07-08): plant is collateral, so a loss-making trough never

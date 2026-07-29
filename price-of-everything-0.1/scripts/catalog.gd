@@ -69,9 +69,10 @@ const MARKET_DESTINATION := "__market__"
 const ROUTE_MAP_W := 30
 const ROUTE_MAP_H := 20
 
-# Global maintenance balance knob, applied to every building's per-turn maintenance
-# as it is parsed (lives here, not in EconomyConfig, because Catalog loads first).
-const MAINTENANCE_MULTIPLIER := 2.0
+# Maintenance is taken from the CSV as written. There used to be a x2 knob here, applied on
+# top of a CSV whose values had ALSO been doubled, so every building silently paid four times
+# its design figure — a mine costed at 2 was charged 8. Removed rather than set to 1.0: a
+# second place to double a number is what caused it (owner ruling, 2026-07-29).
 
 func _ready() -> void:
 	_load_goods()
@@ -944,7 +945,7 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 		"base_price": float(raw.get("build_cost_money", "0")),
 		"tile_size_used": 1 if raw.get("tile_size_used", "") == "" else int(raw.get("tile_size_used", "1")),
 		"build_duration": 0 if raw.get("build_duration", "") == "" else int(raw.get("build_duration", "0")),
-		"maintenance_cost": null if raw.get("maintenance_cost", "") == "" else MAINTENANCE_MULTIPLIER * float(raw.get("maintenance_cost", "0")),
+		"maintenance_cost": null if raw.get("maintenance_cost", "") == "" else float(raw.get("maintenance_cost", "0")),
 		"labour_unskilled_required": int(raw.get("labour_unskilled_required", "0")),
 		"labour_skilled_required": int(raw.get("labour_skilled_required", "0")),
 		"labour_h_skilled_required": int(raw.get("labour_h_skilled_required", "0")),

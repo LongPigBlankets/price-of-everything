@@ -242,6 +242,7 @@ func _ready() -> void:
 	_test_decision_company_scope_loyalty()
 	_test_decision_loan_fallback()
 	_test_loan_collateral_capacity()
+	_test_loan_minimum_and_grace()
 	_test_decision_commit_guard_and_auto_resolve()
 	_test_decision_roundtrip()
 	_test_building_pause()
@@ -8972,6 +8973,39 @@ func _test_decision_loan_fallback() -> void:
 		"decision loan (in the red): the overdraft is NOT refinanced back to £0")
 	LoanState.loans = loans_before
 	_decision_board_restore(snap)
+
+func _test_loan_minimum_and_grace() -> void:
+	LoanState.loans.clear()
+	MatchState.money = 100000.0
+	# MINIMUM: the auto-bridge used to borrow the exact shortfall, so a £1.36 gap became a
+	# £1.36 loan on a 36-turn book — 18 of them by turn 57 in a player log, each carrying its
+	# own interest forever. Anything smaller than the floor is written AT the floor.
+	_check(LoanState.take_loan(1.36), "tiny loan request is accepted")
+	var l: Dictionary = LoanState.loans[0]
+	_check(absf(float(l.principal_initial) - EconomyConfig.LOAN_MINIMUM) < 0.001,
+		"loan minimum: a £1.36 request is written as £%.0f" % EconomyConfig.LOAN_MINIMUM)
+	# GRACE: nothing due for LOAN_GRACE_TURNS, and the loan runs grace + term in total.
+	_check(absf(float(l.payment_per_turn)) < 0.001, "grace: no payment due on the turn it is taken")
+	_check(int(l.turns_remaining) == EconomyConfig.LOAN_GRACE_TURNS + EconomyConfig.LOAN_TERM_TURNS,
+		"grace: loan runs %d turns in total" % (EconomyConfig.LOAN_GRACE_TURNS + EconomyConfig.LOAN_TERM_TURNS))
+	# Interest ACCRUES across the grace: forbearance, not a discount. A 12+36 loan at 10%
+	# repays 1 + 0.10 x 48/36 = 1.1333x, against 1.10x with no grace at all.
+	var expected := float(l.principal_initial) * (1.0 + EconomyConfig.LOAN_INTEREST_RATE
+		* float(EconomyConfig.LOAN_GRACE_TURNS + EconomyConfig.LOAN_TERM_TURNS)
+		/ float(EconomyConfig.LOAN_TERM_TURNS))
+	_check(absf(float(l.get("total_repayment", 0.0)) - expected) < 0.01,
+		"grace accrues interest: total is %.2fx principal, not %.2fx"
+			% [expected / float(l.principal_initial), 1.0 + EconomyConfig.LOAN_INTEREST_RATE])
+	var before := MatchState.money
+	for _i in EconomyConfig.LOAN_GRACE_TURNS:
+		LoanState.process_payments()
+	_check(absf(MatchState.money - before) < 0.001, "grace: nothing is paid across the whole grace")
+	_check(int(LoanState.loans[0].grace_remaining) == 0, "grace: expired after %d turns" % EconomyConfig.LOAN_GRACE_TURNS)
+	_check(float(LoanState.loans[0].payment_per_turn) > 0.0, "grace: payments begin once it expires")
+	LoanState.process_payments()
+	_check(MatchState.money < before, "grace: money leaves the account on the first paying turn")
+	LoanState.loans.clear()
+
 
 func _test_loan_collateral_capacity() -> void:
 	# A loss-making firm with plant keeps a credit line: capacity = base + LTV x
