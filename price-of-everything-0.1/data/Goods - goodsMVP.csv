@@ -42,7 +42,7 @@ g_040,sulphur,Sulphur,chems,solid_heavy,1,1,vehicle,raw,0.005,1.4083,TRUE,TRUE,0
 g_041,cpu,CPU,electronics,solid_light,1,1,vehicle,finished,0.0005,110.12,TRUE,TRUE,0,no,0,apex
 g_042,computer,Computer,electronics,solid_light,1,1,vehicle,finished,0.0005,90.3998,TRUE,TRUE,0,no,0,apex
 g_043,circuit_board,Circuit Board,electronics,solid_light,1,1,vehicle,intermediate,0.001,21.0104,TRUE,TRUE,0,no,0,intermediate
-g_044,tyres,Tyres,vehicles,solid_heavy,1,1,vehicle,intermediate,0.001,6.1664,TRUE,TRUE,0,no,0,intermediate
+g_044,tyres,Tyres,vehicles,solid_heavy,1,1,vehicle,intermediate,0.001,6.4164,TRUE,TRUE,0,no,0,intermediate
 g_045,car_body,Car Body,vehicles,ultra_heavy,1,1,vehicle,intermediate,0.001,13.4924,TRUE,TRUE,0,no,0,finished
 g_046,engine,Engine,vehicles,ultra_heavy,1,1,vehicle,intermediate,0.001,57.8943,TRUE,TRUE,0,no,0,finished
 g_047,metallurgical_silicon,Metallurgical Silicon,metals,solid_heavy,1,1,vehicle,intermediate,0.002,4.8344,TRUE,TRUE,0,no,0,processed
@@ -54,8 +54,8 @@ g_052,large_engine,Large Engine,vehicles,ultra_heavy,1,1,vehicle,intermediate,0.
 g_053,wind_turbine,Wind Turbine,energy,ultra_heavy,1,1,vehicle,finished,0.0005,119.192,TRUE,TRUE,0,no,0,finished
 g_054,solar_panel,Solar Panel,energy,solid_heavy,1,1,vehicle,finished,0.0005,44.5997,TRUE,TRUE,0,no,0,finished
 g_055,heavy_vehicle,Heavy Vehicle,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,292.485,TRUE,TRUE,0,no,0,apex
-g_056,ice_car,Diesel Car,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,122.847,TRUE,TRUE,0,no,0,apex
-g_057,ev_car,Electric Car,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,265.122,TRUE,TRUE,0,no,0,apex
+g_056,ice_car,Diesel Car,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,123.897,TRUE,TRUE,0,no,0,apex
+g_057,ev_car,Electric Car,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,267.722,TRUE,TRUE,0,no,0,apex
 g_058,fibreglass,Fibreglass,construction,solid_light,1,1,vehicle,intermediate,0.001,19.3521,TRUE,TRUE,0,no,0,intermediate
 g_059,lithium_battery,Lithium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,50.5901,TRUE,TRUE,0,no,0,finished
 g_060,sodium_battery,Sodium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,22.7411,TRUE,TRUE,0,no,0,finished
