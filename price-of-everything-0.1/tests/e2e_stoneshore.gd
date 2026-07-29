@@ -1711,10 +1711,20 @@ func _apply_level_schedule() -> void:
 		inst["level"] = target
 		tiles_touched[str(inst.get("tile_id", ""))] = true
 		n += 1
-	# Take the tile's WAREHOUSE up with the first building on it. Storage is otherwise a flat
-	# 800 regardless of level, while an L3 building buffers and outputs 3x — which deadlocked
-	# the chain: no room to deliver, so nothing ran, so nothing was consumed, so no room ever
-	# appeared. 800 -> 1600 -> 2500 tracks the building levels.
+	# Take the tile's WAREHOUSE up with the first building on it, 800 -> 1600 -> 2500.
+	#
+	# HARNESS ONLY, and deliberately so (owner ruling 2026-07-28). This is a modelling
+	# assumption — "assume the player also expands storage" — not a game rule. It was briefly
+	# promoted into MatchState's upgrade path and reverted: making an upgrade silently buy a
+	# warehouse expansion the player never chose removes a real decision from them, and the
+	# tile-storage expansion already has its own materials cost and its own UI.
+	#
+	# Without it a levelled chain DEADLOCKS rather than merely running badly: storage is flat
+	# at 800 whatever sits on the tile, while an L3 building buffers and outputs 3x, so the
+	# receiving tile fills, nothing can be delivered, nothing runs, nothing is consumed, and
+	# room never appears. Measured at L3 on open_field_1: steelmaking and pig iron ran 0% of
+	# turns while the mines above them tripled output. That finding stands — what is open is
+	# whether the fix is automatic, a cost the player pays, or a warning before they upgrade.
 	var wh := 0
 	for tid in tiles_touched.keys():
 		if Stockpile.get_warehouse_level(str(tid)) < target:
