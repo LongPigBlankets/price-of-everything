@@ -1,97 +1,508 @@
 {
-	"name": "open_field_1",
-	"display_name": "Open Field 1 — Capital motor chain",
-	"note": "optimized Capital motor chain: coal-first runway on tile_22_3, dual coal power on tile_20_9, iron+steel tile_26_5, copper+wiring tile_21_10, assembly tile_25_6, 24 production buildings",
-
-	"_comment_materials": "allow_market_materials must be true for every producer: the turn-1 rebalance left no pre-placed build materials on these NPC tiles, so a direct build with materials_from='tile' silently no-ops. Buying build materials from the market is exactly what the motor chain's furnaces/factories already do.",
-
-	"land_purchases": [
-		{ "tile": "tile_22_3", "amount": 5 },
-		{ "tile": "tile_26_5", "amount": 10 },
-		{ "tile": "tile_21_10", "amount": 6 }
-	],
-
-	"coal_runway": {
-		"turns": 8,
-		"construction_window": 12,
-		"buildings": [
-			{ "id": "coal_mine_a", "internal_name": "mine", "recipe_key": "coal_mining", "tile": "tile_22_3", "allow_market_materials": true },
-			{ "id": "coal_mine_b", "internal_name": "mine", "recipe_key": "coal_mining", "tile": "tile_22_3", "allow_market_materials": true },
-			{ "id": "coal_mine_c", "internal_name": "mine", "recipe_key": "coal_mining", "tile": "tile_22_3", "allow_market_materials": true },
-			{ "id": "coal_mine_d", "internal_name": "mine", "recipe_key": "coal_mining", "tile": "tile_22_3", "allow_market_materials": true }
-		],
-		"route_to_market": [
-			{ "id": "coal_mine_a", "good": "coal" },
-			{ "id": "coal_mine_b", "good": "coal" },
-			{ "id": "coal_mine_c", "good": "coal" },
-			{ "id": "coal_mine_d", "good": "coal" }
-		],
-		"surplus_sales": [ "tile_22_3" ]
-	},
-
-	"transport_spine": {
-		"corridors": [
-			[ "tile_22_3", "tile_26_5" ],
-			[ "tile_22_3", "tile_20_9" ],
-			[ "tile_26_5", "tile_25_6" ],
-			[ "tile_21_10", "tile_25_6" ],
-			[ "tile_25_6", "tile_24_7" ]
-		],
-		"roads": [ "tile_22_3", "tile_20_9", "tile_26_5", "tile_21_10", "tile_25_6", "tile_24_7" ],
-		"rails": "corridors",
-		"cables": [ "tile_22_3", "tile_20_9", "tile_26_5", "tile_21_10", "tile_25_6" ]
-	},
-
-	"buildings": [
-		{ "id": "iron_mine_a", "internal_name": "mine", "recipe_key": "iron_mining", "tile": "tile_26_5", "allow_market_materials": true },
-		{ "id": "iron_mine_b", "internal_name": "mine", "recipe_key": "iron_mining", "tile": "tile_26_5", "allow_market_materials": true },
-		{ "id": "iron_mine_c", "internal_name": "mine", "recipe_key": "iron_mining", "tile": "tile_26_5", "allow_market_materials": true },
-		{ "id": "copper_mine_a", "internal_name": "mine", "recipe_key": "copper_mining", "tile": "tile_21_10", "allow_market_materials": true },
-		{ "id": "copper_mine_b", "internal_name": "mine", "recipe_key": "copper_mining", "tile": "tile_21_10", "allow_market_materials": true },
-		{ "id": "copper_mine_c", "internal_name": "mine", "recipe_key": "copper_mining", "tile": "tile_21_10", "allow_market_materials": true },
-		{ "id": "pig_iron_a", "internal_name": "furnace", "recipe_key": "pig_iron", "tile": "tile_26_5", "allow_market_materials": true },
-		{ "id": "pig_iron_b", "internal_name": "furnace", "recipe_key": "pig_iron", "tile": "tile_26_5", "allow_market_materials": true },
-		{ "id": "steel_a", "internal_name": "furnace", "recipe_key": "steel", "tile": "tile_26_5", "allow_market_materials": true },
-		{ "id": "steel_b", "internal_name": "furnace", "recipe_key": "steel", "tile": "tile_26_5", "allow_market_materials": true },
-		{ "id": "copper_ingots_a", "internal_name": "furnace", "recipe_key": "copper_ingots", "tile": "tile_21_10", "allow_market_materials": true },
-		{ "id": "copper_ingots_b", "internal_name": "furnace", "recipe_key": "copper_ingots", "tile": "tile_21_10", "allow_market_materials": true },
-		{ "id": "copper_wiring_a", "internal_name": "industrial_factory", "recipe_key": "copper_wiring", "tile": "tile_21_10", "allow_market_materials": true },
-		{ "id": "copper_wiring_b", "internal_name": "industrial_factory", "recipe_key": "copper_wiring", "tile": "tile_21_10", "allow_market_materials": true },
-		{ "id": "motor_a", "internal_name": "industrial_factory", "recipe_key": "motor", "tile": "tile_25_6", "allow_market_materials": true },
-		{ "id": "motor_b", "internal_name": "industrial_factory", "recipe_key": "motor", "tile": "tile_25_6", "allow_market_materials": true },
-		{ "id": "motor_c", "internal_name": "industrial_factory", "recipe_key": "motor", "tile": "tile_25_6", "allow_market_materials": true },
-		{ "id": "water_pump", "internal_name": "water_pump", "recipe_key": "water_pumping", "tile": "tile_20_9", "allow_market_materials": true },
-		{ "id": "power", "internal_name": "coal_power", "recipe_key": "power", "tile": "tile_20_9", "allow_market_materials": true },
-		{ "id": "power_b", "internal_name": "coal_power", "recipe_key": "power", "tile": "tile_20_9", "allow_market_materials": true }
-	],
-
-	"output_routes": [
-		{ "id": "coal_mine_a", "good": "coal", "dest": "tile_26_5" },
-		{ "id": "coal_mine_b", "good": "coal", "dest": "tile_26_5" },
-		{ "id": "coal_mine_c", "good": "coal", "dest": "tile_20_9" },
-		{ "id": "coal_mine_d", "good": "coal", "dest": "tile_20_9" },
-		{ "id": "steel_a", "good": "steel", "dest": "tile_25_6" },
-		{ "id": "steel_b", "good": "steel", "dest": "tile_25_6" },
-		{ "id": "copper_wiring_a", "good": "copper_wiring", "dest": "tile_25_6" },
-		{ "id": "copper_wiring_b", "good": "copper_wiring", "dest": "tile_25_6" },
-		{ "id": "motor_a", "good": "motor", "dest": "market" },
-		{ "id": "motor_b", "good": "motor", "dest": "market" },
-		{ "id": "motor_c", "good": "motor", "dest": "market" }
-	],
-
-	"surplus_sales": [ "tile_22_3", "tile_20_9", "tile_26_5", "tile_21_10", "tile_25_6" ],
-
-	"tile_only_inputs": [
-		{ "id": "pig_iron_a", "goods": [ "iron_ore", "coal" ] },
-		{ "id": "pig_iron_b", "goods": [ "iron_ore", "coal" ] },
-		{ "id": "steel_a", "goods": [ "iron_ingots", "coal" ] },
-		{ "id": "steel_b", "goods": [ "iron_ingots", "coal" ] },
-		{ "id": "copper_ingots_a", "goods": [ "copper_ore" ] },
-		{ "id": "copper_ingots_b", "goods": [ "copper_ore" ] },
-		{ "id": "copper_wiring_a", "goods": [ "copper_ingots" ] },
-		{ "id": "copper_wiring_b", "goods": [ "copper_ingots" ] },
-		{ "id": "motor_a", "goods": [ "steel", "copper_wiring" ] },
-		{ "id": "motor_b", "goods": [ "steel", "copper_wiring" ] },
-		{ "id": "motor_c", "goods": [ "steel", "copper_wiring" ] }
-	]
+  "name": "open_field_1",
+  "display_name": "Open Field 1 \u2014 Capital motor chain",
+  "note": "optimized Capital motor chain, SIZED so each stage's producers meet the summed demand of their consumers: 3 motor <- 3 wiring + 2 steel; 3 wiring <- 3 copper blistering <- 3 copper mines; 2 steel <- 2 pig iron <- 3 iron mines; 3 coal power + 2 water pumps cover 1590 energy; 4 coal mines feed smelting + power.",
+  "_comment_materials": "allow_market_materials must be true for every producer: the turn-1 rebalance left no pre-placed build materials on these NPC tiles, so a direct build with materials_from='tile' silently no-ops. Buying build materials from the market is exactly what the motor chain's furnaces/factories already do.",
+  "land_purchases": [
+    {
+      "tile": "tile_22_3",
+      "amount": 5
+    },
+    {
+      "tile": "tile_26_5",
+      "amount": 10
+    },
+    {
+      "tile": "tile_21_10",
+      "amount": 6
+    }
+  ],
+  "coal_runway": {
+    "turns": 8,
+    "construction_window": 12,
+    "buildings": [
+      {
+        "id": "coal_mine_a",
+        "internal_name": "mine",
+        "recipe_key": "coal_mining",
+        "tile": "tile_22_3",
+        "allow_market_materials": true
+      },
+      {
+        "id": "coal_mine_b",
+        "internal_name": "mine",
+        "recipe_key": "coal_mining",
+        "tile": "tile_22_3",
+        "allow_market_materials": true
+      },
+      {
+        "id": "coal_mine_c",
+        "internal_name": "mine",
+        "recipe_key": "coal_mining",
+        "tile": "tile_22_3",
+        "allow_market_materials": true
+      },
+      {
+        "id": "coal_mine_d",
+        "internal_name": "mine",
+        "recipe_key": "coal_mining",
+        "tile": "tile_22_3",
+        "allow_market_materials": true
+      }
+    ],
+    "route_to_market": [
+      {
+        "id": "coal_mine_a",
+        "good": "coal"
+      },
+      {
+        "id": "coal_mine_b",
+        "good": "coal"
+      },
+      {
+        "id": "coal_mine_c",
+        "good": "coal"
+      },
+      {
+        "id": "coal_mine_d",
+        "good": "coal"
+      }
+    ],
+    "surplus_sales": [
+      "tile_22_3"
+    ]
+  },
+  "transport_spine": {
+    "corridors": [
+      [
+        "tile_22_3",
+        "tile_26_5"
+      ],
+      [
+        "tile_22_3",
+        "tile_20_9"
+      ],
+      [
+        "tile_26_5",
+        "tile_25_6"
+      ],
+      [
+        "tile_21_10",
+        "tile_25_6"
+      ],
+      [
+        "tile_25_6",
+        "tile_24_7"
+      ]
+    ],
+    "roads": [
+      "tile_22_3",
+      "tile_20_9",
+      "tile_26_5",
+      "tile_21_10",
+      "tile_25_6",
+      "tile_24_7"
+    ],
+    "rails": "corridors",
+    "pipes": "corridors",
+    "cables": "corridors"
+  },
+  "buildings": [
+    {
+      "id": "iron_mine_a",
+      "internal_name": "mine",
+      "recipe_key": "iron_mining",
+      "tile": "tile_26_5",
+      "allow_market_materials": true
+    },
+    {
+      "id": "iron_mine_b",
+      "internal_name": "mine",
+      "recipe_key": "iron_mining",
+      "tile": "tile_26_5",
+      "allow_market_materials": true
+    },
+    {
+      "id": "iron_mine_c",
+      "internal_name": "mine",
+      "recipe_key": "iron_mining",
+      "tile": "tile_26_5",
+      "allow_market_materials": true
+    },
+    {
+      "id": "copper_mine_a",
+      "internal_name": "mine",
+      "recipe_key": "copper_mining",
+      "tile": "tile_21_10",
+      "allow_market_materials": true
+    },
+    {
+      "id": "copper_mine_b",
+      "internal_name": "mine",
+      "recipe_key": "copper_mining",
+      "tile": "tile_21_10",
+      "allow_market_materials": true
+    },
+    {
+      "id": "copper_mine_c",
+      "internal_name": "mine",
+      "recipe_key": "copper_mining",
+      "tile": "tile_21_10",
+      "allow_market_materials": true
+    },
+    {
+      "id": "pig_iron_a",
+      "internal_name": "furnace",
+      "recipe_key": "pig_iron",
+      "tile": "tile_26_5",
+      "allow_market_materials": true
+    },
+    {
+      "id": "pig_iron_b",
+      "internal_name": "furnace",
+      "recipe_key": "pig_iron",
+      "tile": "tile_26_5",
+      "allow_market_materials": true
+    },
+    {
+      "id": "steel_a",
+      "internal_name": "furnace",
+      "recipe_key": "steel",
+      "tile": "tile_26_5",
+      "allow_market_materials": true
+    },
+    {
+      "id": "steel_b",
+      "internal_name": "furnace",
+      "recipe_key": "steel",
+      "tile": "tile_26_5",
+      "allow_market_materials": true
+    },
+    {
+      "id": "copper_ingots_a",
+      "internal_name": "furnace",
+      "recipe_key": "copper_ingots",
+      "tile": "tile_21_10",
+      "allow_market_materials": true
+    },
+    {
+      "id": "copper_ingots_b",
+      "internal_name": "furnace",
+      "recipe_key": "copper_ingots",
+      "tile": "tile_21_10",
+      "allow_market_materials": true
+    },
+    {
+      "id": "copper_ingots_c",
+      "internal_name": "furnace",
+      "recipe_key": "copper_ingots",
+      "tile": "tile_21_10",
+      "allow_market_materials": true
+    },
+    {
+      "id": "copper_wiring_a",
+      "internal_name": "industrial_factory",
+      "recipe_key": "copper_wiring",
+      "tile": "tile_21_10",
+      "allow_market_materials": true
+    },
+    {
+      "id": "copper_wiring_b",
+      "internal_name": "industrial_factory",
+      "recipe_key": "copper_wiring",
+      "tile": "tile_21_10",
+      "allow_market_materials": true
+    },
+    {
+      "id": "copper_wiring_c",
+      "internal_name": "industrial_factory",
+      "recipe_key": "copper_wiring",
+      "tile": "tile_21_10",
+      "allow_market_materials": true
+    },
+    {
+      "id": "motor_a",
+      "internal_name": "industrial_factory",
+      "recipe_key": "motor",
+      "tile": "tile_25_6",
+      "allow_market_materials": true
+    },
+    {
+      "id": "motor_b",
+      "internal_name": "industrial_factory",
+      "recipe_key": "motor",
+      "tile": "tile_25_6",
+      "allow_market_materials": true
+    },
+    {
+      "id": "motor_c",
+      "internal_name": "industrial_factory",
+      "recipe_key": "motor",
+      "tile": "tile_25_6",
+      "allow_market_materials": true
+    },
+    {
+      "id": "water_pump",
+      "internal_name": "water_pump",
+      "recipe_key": "water_pumping",
+      "tile": "tile_20_9",
+      "allow_market_materials": true
+    },
+    {
+      "id": "water_pump_b",
+      "internal_name": "water_pump",
+      "recipe_key": "water_pumping",
+      "tile": "tile_20_9",
+      "allow_market_materials": true
+    },
+    {
+      "id": "power",
+      "internal_name": "power_plant",
+      "recipe_key": "power",
+      "tile": "tile_20_9",
+      "allow_market_materials": true
+    },
+    {
+      "id": "power_b",
+      "internal_name": "power_plant",
+      "recipe_key": "power",
+      "tile": "tile_20_9",
+      "allow_market_materials": true
+    },
+    {
+      "id": "power_c",
+      "internal_name": "power_plant",
+      "recipe_key": "power",
+      "tile": "tile_22_3",
+      "allow_market_materials": true
+    },
+    {
+      "id": "power_d",
+      "internal_name": "power_plant",
+      "recipe_key": "power",
+      "tile": "tile_22_3",
+      "allow_market_materials": true
+    }
+  ],
+  "output_routes": [
+    {
+      "id": "coal_mine_a",
+      "good": "coal",
+      "dest": "tile_26_5"
+    },
+    {
+      "id": "coal_mine_b",
+      "good": "coal",
+      "dest": "tile_26_5"
+    },
+    {
+      "id": "coal_mine_c",
+      "good": "coal",
+      "dest": "tile_20_9"
+    },
+    {
+      "id": "coal_mine_d",
+      "good": "coal",
+      "dest": "tile_22_3"
+    },
+    {
+      "id": "steel_a",
+      "good": "steel",
+      "dest": "tile_25_6"
+    },
+    {
+      "id": "steel_b",
+      "good": "steel",
+      "dest": "tile_25_6"
+    },
+    {
+      "id": "copper_wiring_a",
+      "good": "copper_wiring",
+      "dest": "tile_25_6"
+    },
+    {
+      "id": "copper_wiring_b",
+      "good": "copper_wiring",
+      "dest": "tile_25_6"
+    },
+    {
+      "id": "motor_a",
+      "good": "motor",
+      "dest": "market"
+    },
+    {
+      "id": "motor_b",
+      "good": "motor",
+      "dest": "market"
+    },
+    {
+      "id": "motor_c",
+      "good": "motor",
+      "dest": "market"
+    },
+    {
+      "id": "copper_mine_a",
+      "good": "copper_ore",
+      "dest": "tile_21_10"
+    },
+    {
+      "id": "copper_mine_b",
+      "good": "copper_ore",
+      "dest": "tile_21_10"
+    },
+    {
+      "id": "copper_mine_c",
+      "good": "copper_ore",
+      "dest": "tile_21_10"
+    },
+    {
+      "id": "copper_ingots_a",
+      "good": "copper_ingots",
+      "dest": "tile_21_10"
+    },
+    {
+      "id": "copper_ingots_b",
+      "good": "copper_ingots",
+      "dest": "tile_21_10"
+    },
+    {
+      "id": "iron_mine_a",
+      "good": "iron_ore",
+      "dest": "tile_26_5"
+    },
+    {
+      "id": "iron_mine_b",
+      "good": "iron_ore",
+      "dest": "tile_26_5"
+    },
+    {
+      "id": "iron_mine_c",
+      "good": "iron_ore",
+      "dest": "tile_26_5"
+    },
+    {
+      "id": "pig_iron_a",
+      "good": "iron_ingots",
+      "dest": "tile_26_5"
+    },
+    {
+      "id": "pig_iron_b",
+      "good": "iron_ingots",
+      "dest": "tile_26_5"
+    },
+    {
+      "id": "copper_ingots_c",
+      "good": "copper_ingots",
+      "dest": "tile_21_10"
+    },
+    {
+      "id": "copper_wiring_c",
+      "good": "copper_wiring",
+      "dest": "tile_25_6"
+    },
+    {
+      "id": "water_pump_b",
+      "good": "pure_water",
+      "dest": "tile_22_3"
+    },
+    {
+      "id": "water_pump",
+      "good": "pure_water",
+      "dest": "tile_20_9"
+    }
+  ],
+  "surplus_sales": [
+    "tile_22_3",
+    "tile_20_9",
+    "tile_26_5",
+    "tile_21_10",
+    "tile_25_6"
+  ],
+  "tile_only_inputs": [
+    {
+      "id": "pig_iron_a",
+      "goods": [
+        "iron_ore",
+        "coal"
+      ]
+    },
+    {
+      "id": "pig_iron_b",
+      "goods": [
+        "iron_ore",
+        "coal"
+      ]
+    },
+    {
+      "id": "steel_a",
+      "goods": [
+        "iron_ingots",
+        "coal"
+      ]
+    },
+    {
+      "id": "steel_b",
+      "goods": [
+        "iron_ingots",
+        "coal"
+      ]
+    },
+    {
+      "id": "copper_ingots_a",
+      "goods": [
+        "copper_ore"
+      ]
+    },
+    {
+      "id": "copper_ingots_b",
+      "goods": [
+        "copper_ore"
+      ]
+    },
+    {
+      "id": "copper_wiring_a",
+      "goods": [
+        "copper_ingots"
+      ]
+    },
+    {
+      "id": "copper_wiring_b",
+      "goods": [
+        "copper_ingots"
+      ]
+    },
+    {
+      "id": "motor_a",
+      "goods": [
+        "steel",
+        "copper_wiring"
+      ]
+    },
+    {
+      "id": "motor_b",
+      "goods": [
+        "steel",
+        "copper_wiring"
+      ]
+    },
+    {
+      "id": "motor_c",
+      "goods": [
+        "steel",
+        "copper_wiring"
+      ]
+    },
+    {
+      "id": "copper_ingots_c",
+      "goods": [
+        "copper_ore"
+      ]
+    },
+    {
+      "id": "copper_wiring_c",
+      "goods": [
+        "copper_ingots"
+      ]
+    }
+  ]
 }

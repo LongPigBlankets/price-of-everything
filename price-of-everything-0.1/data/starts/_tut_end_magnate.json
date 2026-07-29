@@ -1,0 +1,118 @@
+{
+ "save_version": 2,
+ "start": true,
+ "name": "magnate_probe",
+ "ruleset": "standard",
+ "money": 100000,
+ "buildings": [
+  {
+   "building_id": "b_001",
+   "recipe_id": "r_001",
+   "tile_id": "tile_6_8",
+   "output_to": "tile_5_10"
+  },
+  {
+   "building_id": "b_001",
+   "recipe_id": "r_002",
+   "tile_id": "tile_7_10",
+   "output_to": "tile_5_10"
+  },
+  {
+   "building_id": "b_002",
+   "recipe_id": "r_005",
+   "tile_id": "tile_5_10",
+   "output_to": "market"
+  },
+  {
+   "building_id": "b_003",
+   "recipe_id": "r_004",
+   "tile_id": "tile_5_10"
+  }
+ ],
+ "land": {
+  "tile_6_8": 50,
+  "tile_7_10": 50,
+  "tile_5_10": 50
+ },
+ "stockpile": {
+  "tile_5_10": {
+   "g_002": 120,
+   "g_001": 120,
+   "g_009": 120
+  }
+ },
+ "infrastructure": {
+  "tile_6_8": {
+   "present": [
+    "cables"
+   ],
+   "levels": {
+    "cables": 1
+   }
+  },
+  "tile_7_10": {
+   "present": [
+    "cables"
+   ],
+   "levels": {
+    "cables": 1
+   }
+  },
+  "tile_5_10": {
+   "present": [
+    "pipes",
+    "cables"
+   ],
+   "levels": {
+    "pipes": 1,
+    "cables": 1
+   }
+  }
+ },
+ "modifiers": [
+  {
+   "id": "start_metals_magnate_iron",
+   "domain": "recipe_output",
+   "target": "*",
+   "target_match": {
+    "good_internal": "iron_ingots"
+   },
+   "pct": 10.0,
+   "label": "Legacy of Metal: +10% iron ingot output",
+   "source": "start:metals_magnate"
+  },
+  {
+   "id": "start_metals_magnate_copper",
+   "domain": "recipe_output",
+   "target": "*",
+   "target_match": {
+    "good_internal": "copper_ingots"
+   },
+   "pct": 10.0,
+   "label": "Legacy of Metal: +10% copper ingot output",
+   "source": "start:metals_magnate"
+  },
+  {
+   "id": "start_metals_magnate_alloy",
+   "domain": "recipe_output",
+   "target": "*",
+   "target_match": {
+    "good_internal": "alloy_ingots"
+   },
+   "pct": 10.0,
+   "label": "Legacy of Metal: +10% alloy ingot output",
+   "source": "start:metals_magnate"
+  },
+  {
+   "id": "start_metals_magnate_steel",
+   "domain": "recipe_output",
+   "target": "*",
+   "target_match": {
+    "good_internal": "steel"
+   },
+   "pct": 10.0,
+   "label": "Legacy of Metal: +10% steel output",
+   "source": "start:metals_magnate"
+  }
+ ]
+}

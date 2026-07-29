@@ -474,6 +474,14 @@ func _complete_build(building_id: String, recipe_id: String, tile_id: String, in
 		var good_id := str(output.get("good_id", ""))
 		if good_id == "":
 			continue
+		# Only DEFAULT the route — never overwrite one the player already chose. The instance
+		# id is stable across the project -> building promotion, so a destination set while the
+		# building was still under construction lives in output_stockpile_destinations already,
+		# and this loop used to stomp it on completion. Wiring a furnace's output the moment you
+		# queue it is the natural play, and the setting silently vanished turns later (it is
+		# what made the e2e motor chain never route steel to its assembly tile).
+		if MatchState.has_output_destination(completed_id, good_id):
+			continue
 		if destination == "same_tile":
 			MatchState.set_output_stockpile_destination(completed_id, tile_id, good_id)
 		else:

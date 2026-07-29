@@ -103,6 +103,22 @@ func co2_tax_scale(turn: int) -> float:
 	var lvl := clampi(co2_tax_level(turn), 0, EconomyConfig.CO2_TAX_PHASE_SCALE.size() - 1)
 	return float(EconomyConfig.CO2_TAX_PHASE_SCALE[lvl])
 
+## How carbon-intensive the NATIONAL GRID is at `turn`, as a fraction of a fully fossil grid.
+##
+## 1.0 through turn 70, then falling linearly to GRID_CARBON_FLOOR on the last playable turn.
+## The world decarbonises whether or not the player does, so importing power gets cleaner over
+## the game while a coal plant stays exactly as dirty as coal — which is the pressure the curve
+## exists to create. Scales the carbon priced into imported power, not the levy on any fuel the
+## player burns themselves.
+func grid_carbon_intensity(turn: int) -> float:
+	if turn <= EconomyConfig.GRID_CARBON_FULL_TURN:
+		return 1.0
+	var span := float(TurnManager.MAX_TURNS - EconomyConfig.GRID_CARBON_FULL_TURN)
+	if span <= 0.0:
+		return EconomyConfig.GRID_CARBON_FLOOR
+	var t := clampf(float(turn - EconomyConfig.GRID_CARBON_FULL_TURN) / span, 0.0, 1.0)
+	return lerpf(1.0, EconomyConfig.GRID_CARBON_FLOOR, t)
+
 ## £ carbon levy for consuming `qty` units of the good at `turn` (0 for untaxed goods).
 func carbon_charge(good_id: String, qty: int, turn: int) -> float:
 	if qty <= 0:

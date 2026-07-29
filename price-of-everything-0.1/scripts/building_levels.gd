@@ -68,7 +68,7 @@ const _RESEARCH_GATE := {
 	"water_recycling":       {2: "Membrane Bioreactors", 3: "Closed-Loop Reclaim"},
 	"water_pump":            {3: "Extensive Drainage Systems"},
 	"farm":                  {3: "Controlled-Environment Farming"},
-	"coal_power":            {2: "Supercritical Boilers", 3: "Ultra-Supercritical Units"},
+	"power_plant":           {2: "Supercritical Boilers", 3: "Ultra-Supercritical Units"},
 	"solar_farm":            {2: "Single-Axis Trackers", 3: "Self-Adjusting Panel Network"},
 	"onshore_wind_farm":     {2: "Larger Rotor Diameters", 3: "Direct-Drive Megaturbines"},
 	"battery":               {2: "Liquid-Cooled Packs", 3: "Flow Battery Arrays"},

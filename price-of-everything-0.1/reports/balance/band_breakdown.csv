@@ -1,0 +1,261 @@
+section,id,name,context,net,compare,verdict
+base,r_229,CZ Monocrystal Growth,Chemical Plant,38.42,,OK
+base,r_082,Electric Calcination Alumina,Chemical Plant,36.23,,OK
+base,r_230,Monocrystal CPU Fabbing,Assembly Plant,34.29,,OK
+base,r_047,Fertilisers Production,Chemical Plant,32.59,,OK
+base,r_004,Coal Power Production,Power plant,30.75,,OK
+base,r_030,Electric Concrete Production,Electric Arc Furnace,30.48,,OK
+base,r_217,Biomass Carbonisation,Furnace,29.41,,OK
+base,r_213,Aggressive Logging - Biomass,New Growth Forest,28.38,,OK
+base,r_215,Gentle Pruning - Biomass,New Growth Forest,28.38,,OK
+base,r_209,Strip Farming - Biomass,Farm,28.05,,OK
+base,r_212,Livestock Farming - Biomass,Farm,28.05,,OK
+base,r_056,Window Manufacturing,Industrial Goods Factory,27.68,,OK
+base,r_165,Radial Axial Tire Production,Industrial Goods Factory,27.67,,OK
+base,r_116,Generic Acid Production,Chemical Plant,27.49,,OK
+base,r_181,Oil Power Production,Power plant,27.11,,OK
+base,r_115,Sulphuric Acid Production,Chemical Plant,25.10,,OK
+base,r_045,Polysilicon (Siemens) Smelting,Chemical Plant,23.68,,OK
+base,r_106,Scrap Recycling,Electric Arc Furnace,19.05,,OK
+base,r_051,Desalination,Desalination Plant,18.39,,OK
+base,r_009,Motor Manufacture,Industrial Goods Factory,18.10,,OK
+base,r_231,Anthracite Graphitisation,Electric Arc Furnace,18.08,,OK
+base,r_058,Solar Panel Manufacturing,Assembly Plant,17.96,,OK
+base,r_120,Basic Circuit Soldering,Industrial Goods Factory,17.89,,OK
+base,r_122,Semiconductor Fabbing,Assembly Plant,17.72,,OK
+base,r_079,Water Electrolysis,Electrolyser,17.63,,OK
+base,r_003,Steelmaking,Furnace,17.63,,OK
+base,r_008,Copper Wire Drawing,Industrial Goods Factory,17.58,,OK
+base,r_040,Bayer Process,Furnace,17.53,,OK
+base,r_023,Ethylene Refining,Petrochemical Refinery,17.49,,OK
+base,r_014,Oil Drilling,Oil Wells,17.47,,OK
+base,r_135,Fibreglass Production,Industrial Goods Factory,17.44,,OK
+base,r_114,Hydrochloric Acid Production,Chemical Plant,17.43,,OK
+base,r_029,Concrete Firing,Furnace,17.34,,OK
+base,r_134,Alloy Metal Mining,Mine,17.29,,OK
+base,r_007,Copper Blistering,Furnace,17.29,,OK
+base,r_001,Coal Mining,Mine,17.26,,OK
+base,r_175,PVC Polymerisation,Polymerisation Refinery,17.22,,OK
+base,r_037,Onshore wind generation,Onshore Wind Farm,17.13,,OK
+base,r_146,Solar Power Generation,Solar Farm,17.13,,OK
+base,r_046,Haber Bosch Process,Chemical Plant,17.08,,OK
+base,r_018,Sand Excavation,Mine,17.03,,OK
+base,r_145,Offshore Wind Power Generation,Offshore Wind Farm,17.00,,OK
+base,r_204,Heavy Vehicles Assembly,Industrial Goods Factory,16.98,,OK
+base,r_180,Oil Refining,Petrochemical Refinery,16.97,,OK
+base,r_002,Iron Mining,Mine,16.94,,OK
+base,r_006,Copper Mining,Mine,16.89,,OK
+base,r_024,Plastics Manufacturing,Polymerisation Refinery,16.81,,OK
+base,r_044,Silicon Smelting,Electric Arc Furnace,16.76,,OK
+base,r_012,Chlor-Alkali Process,Chemical Plant,16.74,,OK
+base,r_019,Limestone Mining,Mine,16.72,,OK
+base,r_179,Sulphur Mining,Mine,16.70,,OK
+base,r_055,uPVC Window Manufacturing,Industrial Goods Factory,16.65,,OK
+base,r_015,Bauxite Mining,Mine,16.64,,OK
+base,r_028,Synthetic Rubber Production,Polymerisation Refinery,16.59,,OK
+base,r_033,Construction Equiment Assembly (ICE),Industrial Goods Factory,16.58,,OK
+base,r_017,Rare Earth Mining,Mine,16.52,,OK
+base,r_059,Wind Turbine Manufacturing,Assembly Plant,16.49,,OK
+base,r_016,Lithium Mining,Mine,16.46,,OK
+base,r_005,Pig Iron Smelting,Furnace,16.46,,OK
+base,r_132,Alloy Metal Smelting,Furnace,16.42,,OK
+base,r_026,Copper Pipe Hot Rolling,Furnace,16.41,,OK
+base,r_218,Petroleum Coking,Petrochemical Refinery,16.39,,OK
+base,r_010,Salt Mining,Mine,16.33,,OK
+base,r_071,ICE Engine Manufacturing,Industrial Goods Factory,16.17,,OK
+base,r_011,Water Pumping,Water Pump,16.05,,OK
+base,r_211,Agri Solar Farming - Biomass,Farm,16.00,,OK
+base,r_068,Car Body Manufacturing,Industrial Goods Factory,15.99,,OK
+base,r_067,Rubber Vulcanisation,Chemical Plant,15.89,,OK
+base,r_022,Fuels Refining,Petrochemical Refinery,15.82,,OK
+base,r_150,Petroleum Needle Coke Calcination,Petrochemical Refinery,15.73,,OK
+base,r_101,Alkaline Battery Manufacturing,Industrial Goods Factory,15.70,,OK
+base,r_053,Industrial Glassmaking,Furnace,15.67,,OK
+base,r_117,ICE Car Production,Industrial Goods Factory,15.63,,OK
+base,r_125,Computer Assembly,Assembly Plant,15.62,,OK
+base,r_126,Electrical Components Production,Industrial Goods Factory,15.46,,OK
+base,r_227,Rudimentary Lithium Refinement,Furnace,15.45,,OK
+base,r_057,Building Frame Manufacture,Assembly Plant,15.40,,OK
+base,r_041,Rare Earth Reduction,Electrolyser,15.33,,OK
+base,r_035,Silica Washing,Petrochemical Refinery,15.24,,OK
+base,r_050,Aluminium (Hall Heroult) Smelting,Furnace,15.02,,OK
+gated_same_bldg,r_131,Hydrogen Power,Hydrogen Combustion Turbines,-0.49,30.75,uplift -31.24
+gated_same_bldg,r_080,Membraneless Electrolysis,Membraneless Electrolysis,18.77,17.63,uplift +1.14
+gated_same_bldg,r_151,Petroleum Needle Coke Power,Combined Cycle Turbines,31.92,30.75,uplift +1.17
+gated_same_bldg,r_038,Gas Combined Cycle Turbines,Combined Cycle Turbines,35.36,30.75,uplift +4.61
+gated_same_bldg,r_226,Magnetic Separation Electrolysis,Molten Salt Alloy Electrolysis,21.80,15.33,uplift +6.47
+gated_same_bldg,r_208,Sustainable Biomass Production,Energy Crop Cultivation,36.00,28.38,uplift +7.62
+gated_same_bldg,r_072,V8 Engine Manufacturing,Precision Assembly Lines,23.86,16.17,uplift +7.69
+gated_same_bldg,r_223,Floating Offshore Wind Power,Floating Offshore Wind Farms,43.95,30.75,uplift +13.20
+gated_same_bldg,r_054,High Strength Glassmaking,High Strength Glassmaking,29.59,15.67,uplift +13.92
+gated_same_bldg,r_061,Segmented Assembly Wind Turbines,Segmented Blade Assembly,35.84,16.49,uplift +19.35
+gated_same_bldg,r_031,Direct Reduced Iron Smelting,Basic Blast Furnaces,36.25,16.46,uplift +19.79
+gated_same_bldg,r_025,Basic Oxygen Steelmaking,Oxygen-Enriched Blast,40.12,19.05,uplift +21.07
+gated_same_bldg,r_077,HIsarna Steel Making,Alloy Heat Treatment,40.26,19.05,uplift +21.21
+gated_same_bldg,r_081,Fluidised Bed Reactor + CZ Silicon,Czochralski Crystal Growth,49.71,23.68,uplift +26.03
+gated_same_bldg,r_076,Electric Arc Steelmaking,Electric Arc Refining,50.45,19.05,uplift +31.40
+gated_same_bldg,r_219,Copper Pipe Moulding,Alloy Heat Treatment,49.69,16.41,uplift +33.27
+gated_same_bldg,r_020,Flash Copper Smelting,Electric Arc Refining,52.78,17.29,uplift +35.50
+gated_same_bldg,r_214,Sustainable Forestry - Biomass,Sustainable Forestry,78.38,28.38,uplift +50.00
+gated_same_bldg,r_078,Methane Pyrolysis,Methane Pyrolysis,71.92,17.63,uplift +54.29
+gated_same_bldg,r_060,Durable Perovskite Solar Panels,Atomic Layer Deposition,131.91,17.96,uplift +113.95
+gated_diff_bldg,r_224,Hydroelectric Power,hydro,30.75,30.75,uplift -0.00
+gated_diff_bldg,r_107,E-Waste Recycling,Advanced Oxidation Loops,20.89,17.58,uplift +3.30
+gated_diff_bldg,r_039,Lithium Electrolysis,Solid-Oxide Electrolysis,20.88,15.45,uplift +5.43
+gated_diff_bldg,r_206,Electric Heavy Vehicles Manufacturing,Electric Drivetrain Integration,24.66,16.98,uplift +7.68
+gated_diff_bldg,r_066,Axial Flux Motors,Axial Flux Motor Lines,27.51,18.10,uplift +9.42
+gated_diff_bldg,r_121,Circuit Printing,300mm Wafer Lines,27.37,17.89,uplift +9.48
+gated_diff_bldg,r_177,Shale Oil Fracking,Shale Oil Fracturing,26.97,17.47,uplift +9.50
+gated_diff_bldg,r_203,Hairpin Stator Motors,Hairpin Stator Winding,28.97,18.10,uplift +10.87
+gated_diff_bldg,r_083,ELYSIS Aluminium,Electric Arc Refining,28.02,15.02,uplift +12.99
+gated_diff_bldg,r_069,Lightweight Car Bodies,Composite Panel Pressing,30.47,15.99,uplift +14.48
+gated_diff_bldg,r_127,Precision Electrical Components,Precision Electronics Assembly,35.98,15.46,uplift +20.53
+gated_diff_bldg,r_084,Aluminium Direct Carbothermic Electrolysis,Ultra-High-Power Arcs,35.72,15.02,uplift +20.70
+gated_diff_bldg,r_205,Heavy Vehicles Automated Manufacturing,Heavy Vehicle Assembly,43.92,16.98,uplift +26.93
+gated_diff_bldg,r_133,Alloy Metal Electrolysis,Molten Salt Alloy Electrolysis,47.08,16.42,uplift +30.66
+gated_diff_bldg,r_220,Copper Pipe Manufacturing,Precision Tube Drawing,48.99,16.41,uplift +32.58
+gated_diff_bldg,r_178,Offshore Oil Extraction,Offshore Drilling Platforms,53.54,17.47,uplift +36.06
+gated_diff_bldg,r_221,Deepwater Oil Extraction,Dynamic-Positioning Drilling,53.54,17.47,uplift +36.06
+gated_diff_bldg,r_065,SynRM Magnetless Motors,Synchronous Reluctance Drives,62.21,18.10,uplift +44.11
+gated_diff_bldg,r_118,Automated ICE Car Assembly,Automated Body-in-White Lines,61.37,15.63,uplift +45.74
+gated_diff_bldg,r_108,Biowaste Recycling,Biowaste Digestion,90.98,28.38,uplift +62.60
+gated_diff_bldg,r_228,Bio Ethylene,Biomass Cracking,91.13,17.49,uplift +73.64
+gated_diff_bldg,r_074,Hybrid Engine Manufacturing,Hybrid Powertrain Integration,98.88,16.17,uplift +82.71
+gated_diff_bldg,r_222,Subsea Manifold Extraction,Subsea Production Systems,100.41,17.47,uplift +82.94
+gated_diff_bldg,r_063,Heterojunction Solar Panels,Heterojunction Cell Lines,103.45,17.96,uplift +85.49
+gated_diff_bldg,r_042,Bio-Graphitisation,Biomass Cracking,104.30,18.08,uplift +86.22
+gated_diff_bldg,r_124,Semiconductor 3D Printing,Additive Semiconductor Printing,163.07,34.29,uplift +128.77
+gated_diff_bldg,r_123,Fabless Semiconductors,Advanced Photolithography,166.58,34.29,uplift +132.28
+gated_diff_bldg,r_154,Coal Liquefaction,Fischer-Tropsch Synthesis,201.15,15.82,uplift +185.32
+gated_diff_bldg,r_064,Triple Tandem Solar Panels,Tandem Cell Stacking,228.74,17.96,uplift +210.78
+gated_new_good,r_207,Heavy Electric Motor,Motor Winding Automation,91.33,,large_engine
+gated_new_good,r_099,Lithium Phosphate Batteries,Lithium Iron Phosphate Cells,74.44,,lithium_battery
+gated_new_good,r_136,Iron Air Batteries,Iron-Air Battery Cells,39.01,,iron_battery
+gated_new_good,r_087,Nitrogen Air Separation,Process Intensification,21.56,,nitrogen
+gated_new_good,r_032,Lithium Ion Battery Manufacturing,Lithium Battery Storage,17.30,,lithium_battery
+gated_new_good,r_119,EV Assembly,Electric Vehicle Assembly,16.81,,ev_car
+gated_new_good,r_073,Large Vehicle Engine Manufacturing,Heavy Engine Casting,16.56,,large_engine
+gated_new_good,r_102,Sodium Ion Battery Manufacturing,Sodium Battery Storage,16.50,,sodium_battery
+gated_new_good,r_034,Construction Equipment Assembly (EV),Electric Plant & Machinery,15.15,,construction_equipment_ev
+pair,r_229->r_230,Monocrystal CPU Fabbing,high_grade_silicon,72.72,1.00,OK
+pair,r_045->r_229,CZ Monocrystal Growth,polysilicon,62.11,0.75,OK
+pair,r_209->r_047,Fertilisers Production,biomass,60.64,0.31,OK
+pair,r_047->r_209,Strip Farming - Biomass,fertilisers,60.64,0.29,OK
+pair,r_209->r_217,Biomass Carbonisation,biomass,57.46,0.71,OK
+pair,r_079->r_082,Electric Calcination Alumina,hydrogen,53.87,0.31,OK
+pair,r_015->r_082,Electric Calcination Alumina,bauxite_ore,52.88,1.00,OK
+pair,r_120->r_230,Monocrystal CPU Fabbing,circuit_board,52.18,0.75,OK
+pair,r_082->r_050,Aluminium (Hall Heroult) Smelting,alumina,51.26,0.35,OK
+pair,r_046->r_047,Fertilisers Production,ammonia,49.67,0.30,OK
+pair,r_041->r_230,Monocrystal CPU Fabbing,refined_ree,49.62,0.50,OK
+pair,r_001->r_004,Coal Power Production,coal,48.01,0.33,OK
+pair,r_019->r_030,Electric Concrete Production,limestone,47.20,1.00,OK
+pair,r_011->r_004,Coal Power Production,pure_water,46.80,0.48,OK
+pair,r_011->r_030,Electric Concrete Production,pure_water,46.53,0.29,OK
+pair,r_035->r_030,Electric Concrete Production,silica,45.72,1.17,OK
+pair,r_003->r_165,Radial Axial Tire Production,steel,45.30,0.48,OK
+pair,r_079->r_116,Generic Acid Production,hydrogen,45.13,0.75,OK
+pair,r_179->r_165,Radial Axial Tire Production,sulphur,44.36,0.50,OK
+pair,r_028->r_165,Radial Axial Tire Production,rubber,44.25,1.00,OK
+pair,r_011->r_209,Strip Farming - Biomass,pure_water,44.10,0.29,OK
+pair,r_011->r_212,Livestock Farming - Biomass,pure_water,44.09,0.29,OK
+pair,r_180->r_181,Oil Power Production,processed_oil,44.09,0.33,OK
+pair,r_053->r_056,Window Manufacturing,glass,43.34,0.97,OK
+pair,r_165->r_117,ICE Car Production,tyres,43.29,0.72,OK
+pair,r_050->r_056,Window Manufacturing,aluminium,42.70,0.50,OK
+pair,r_179->r_115,Sulphuric Acid Production,sulphur,41.80,1.50,OK
+pair,r_011->r_115,Sulphuric Acid Production,pure_water,41.15,0.35,OK
+pair,r_044->r_045,Polysilicon (Siemens) Smelting,metallurgical_silicon,40.45,0.30,OK
+pair,r_003->r_009,Motor Manufacture,steel,35.73,0.73,OK
+pair,r_008->r_009,Motor Manufacture,copper_wiring,35.68,0.97,OK
+pair,r_120->r_122,Semiconductor Fabbing,circuit_board,35.61,1.00,OK
+pair,r_008->r_120,Basic Circuit Soldering,copper_wiring,35.47,0.36,OK
+pair,r_001->r_231,Anthracite Graphitisation,coal,35.34,0.75,OK
+pair,r_114->r_122,Semiconductor Fabbing,industrial_acids,35.16,0.29,OK
+pair,r_079->r_114,Hydrochloric Acid Production,hydrogen,35.07,1.19,OK
+pair,r_001->r_003,Steelmaking,coal,34.89,0.33,OK
+pair,r_007->r_008,Copper Wire Drawing,copper_ingots,34.87,1.00,OK
+pair,r_044->r_058,Solar Panel Manufacturing,metallurgical_silicon,34.72,1.00,OK
+pair,r_079->r_046,Haber Bosch Process,hydrogen,34.71,0.75,OK
+pair,r_023->r_175,PVC Polymerisation,ethylene,34.71,1.17,OK
+pair,r_024->r_120,Basic Circuit Soldering,plastics,34.70,1.20,OK
+pair,r_009->r_033,Construction Equiment Assembly (ICE),motor,34.67,0.71,OK
+pair,r_001->r_029,Concrete Firing,coal,34.60,0.30,OK
+pair,r_009->r_059,Wind Turbine Manufacturing,motor,34.58,0.32,OK
+pair,r_044->r_122,Semiconductor Fabbing,metallurgical_silicon,34.49,0.30,OK
+pair,r_180->r_023,Ethylene Refining,processed_oil,34.46,0.50,OK
+pair,r_014->r_180,Oil Refining,crude_oil,34.44,1.00,OK
+pair,r_132->r_058,Solar Panel Manufacturing,alloy_ingots,34.38,0.30,OK
+pair,r_132->r_120,Basic Circuit Soldering,alloy_ingots,34.31,0.30,OK
+pair,r_023->r_024,Plastics Manufacturing,ethylene,34.30,0.75,OK
+pair,r_024->r_135,Fibreglass Production,plastics,34.25,0.30,OK
+pair,r_003->r_033,Construction Equiment Assembly (ICE),steel,34.21,0.30,OK
+pair,r_006->r_007,Copper Blistering,copper_ore,34.18,1.00,OK
+pair,r_015->r_040,Bayer Process,bauxite_ore,34.18,1.00,OK
+pair,r_012->r_114,Hydrochloric Acid Production,chlorine,34.17,1.00,OK
+pair,r_005->r_003,Steelmaking,iron_ingots,34.09,0.53,OK
+pair,r_023->r_028,Synthetic Rubber Production,ethylene,34.08,0.75,OK
+pair,r_019->r_029,Concrete Firing,limestone,34.06,0.76,OK
+pair,r_001->r_044,Silicon Smelting,coal,34.02,0.33,OK
+pair,r_012->r_175,PVC Polymerisation,chlorine,33.96,0.75,OK
+pair,r_135->r_059,Wind Turbine Manufacturing,fibreglass,33.93,0.50,OK
+pair,r_175->r_055,uPVC Window Manufacturing,pvc,33.87,0.75,OK
+pair,r_014->r_218,Petroleum Coking,crude_oil,33.86,1.00,OK
+pair,r_003->r_071,ICE Engine Manufacturing,steel,33.80,0.36,OK
+pair,r_008->r_071,ICE Engine Manufacturing,copper_wiring,33.75,0.48,OK
+pair,r_001->r_005,Pig Iron Smelting,coal,33.72,0.33,OK
+pair,r_134->r_132,Alloy Metal Smelting,alloy_ore,33.71,0.76,OK
+pair,r_007->r_026,Copper Pipe Hot Rolling,copper_ingots,33.70,0.52,OK
+pair,r_011->r_079,Water Electrolysis,pure_water,33.68,0.33,OK
+pair,r_003->r_068,Car Body Manufacturing,steel,33.62,0.48,OK
+pair,r_120->r_125,Computer Assembly,circuit_board,33.51,0.33,OK
+pair,r_126->r_058,Solar Panel Manufacturing,electrical_components,33.42,0.33,OK
+pair,r_002->r_005,Pig Iron Smelting,iron_ore,33.40,1.00,OK
+pair,r_024->r_033,Construction Equiment Assembly (ICE),plastics,33.39,1.00,OK
+pair,r_011->r_029,Concrete Firing,pure_water,33.38,0.29,OK
+pair,r_122->r_125,Computer Assembly,cpu,33.34,1.00,OK
+pair,r_028->r_033,Construction Equiment Assembly (ICE),rubber,33.17,0.50,OK
+pair,r_180->r_071,ICE Engine Manufacturing,processed_oil,33.14,0.33,OK
+pair,r_053->r_135,Fibreglass Production,glass,33.11,0.31,OK
+pair,r_010->r_012,Chlor-Alkali Process,basic_salt,33.07,2.00,OK
+pair,r_041->r_122,Semiconductor Fabbing,refined_ree,33.05,1.00,OK
+pair,r_008->r_126,Electrical Components Production,copper_wiring,33.04,0.36,OK
+pair,r_003->r_057,Building Frame Manufacture,steel,33.03,0.36,OK
+pair,r_050->r_058,Solar Panel Manufacturing,aluminium,32.98,0.30,OK
+pair,r_068->r_204,Heavy Vehicles Assembly,car_body,32.97,1.00,OK
+pair,r_114->r_227,Rudimentary Lithium Refinement,industrial_acids,32.88,0.29,OK
+pair,r_022->r_204,Heavy Vehicles Assembly,fuels,32.81,1.00,OK
+pair,r_024->r_068,Car Body Manufacturing,plastics,32.80,0.30,OK
+pair,r_180->r_022,Fuels Refining,processed_oil,32.80,0.50,OK
+pair,r_011->r_012,Chlor-Alkali Process,pure_water,32.78,0.98,OK
+pair,r_018->r_053,Industrial Glassmaking,sand,32.70,0.71,OK
+pair,r_179->r_067,Rubber Vulcanisation,sulphur,32.59,0.50,OK
+pair,r_035->r_029,Concrete Firing,silica,32.57,0.75,OK
+pair,r_028->r_067,Rubber Vulcanisation,rubber,32.48,1.00,OK
+pair,r_024->r_125,Computer Assembly,plastics,32.43,0.30,OK
+pair,r_022->r_033,Construction Equiment Assembly (ICE),fuels,32.40,0.52,OK
+pair,r_019->r_053,Industrial Glassmaking,limestone,32.39,0.36,OK
+pair,r_053->r_055,uPVC Window Manufacturing,glass,32.31,1.00,OK
+pair,r_018->r_035,Silica Washing,sand,32.27,0.31,OK
+pair,r_024->r_126,Electrical Components Production,plastics,32.26,0.50,OK
+pair,r_132->r_101,Alkaline Battery Manufacturing,alloy_ingots,32.12,0.73,OK
+pair,r_218->r_150,Petroleum Needle Coke Calcination,pet_coke,32.11,1.00,OK
+pair,r_012->r_041,Rare Earth Reduction,chlorine,32.07,0.30,OK
+pair,r_055->r_057,Building Frame Manufacture,windows,32.05,0.72,OK
+pair,r_035->r_044,Silicon Smelting,silica,32.00,0.75,OK
+pair,r_126->r_059,Wind Turbine Manufacturing,electrical_components,31.94,0.33,OK
+pair,r_016->r_227,Rudimentary Lithium Refinement,lithium_ore,31.91,1.00,OK
+pair,r_101->r_071,ICE Engine Manufacturing,alkaline_battery,31.87,0.29,OK
+pair,r_017->r_041,Rare Earth Reduction,ree_ore,31.85,0.75,OK
+pair,r_041->r_059,Wind Turbine Manufacturing,refined_ree,31.81,0.33,OK
+pair,r_026->r_057,Building Frame Manufacture,copper_pipe,31.81,0.33,OK
+pair,r_071->r_117,ICE Car Production,engine,31.80,1.00,OK
+pair,r_068->r_117,ICE Car Production,car_body,31.62,0.47,OK
+pair,r_022->r_117,ICE Car Production,fuels,31.45,0.33,OK
+pair,r_053->r_117,ICE Car Production,glass,31.29,0.31,OK
+pair,r_011->r_035,Silica Washing,pure_water,31.28,0.29,OK
+pair,r_050->r_071,ICE Engine Manufacturing,aluminium,31.19,0.50,OK
+pair,r_050->r_068,Car Body Manufacturing,aluminium,31.01,0.35,OK
+pair,r_126->r_057,Building Frame Manufacture,electrical_components,30.85,0.33,OK
+pair,r_150->r_050,Aluminium (Hall Heroult) Smelting,graphite,30.75,0.30,OK
+pair,r_050->r_125,Computer Assembly,aluminium,30.64,0.30,OK

@@ -1,0 +1,1439 @@
+<title>Packing Lab — road &amp; block dials</title>
+
+<style>
+:root{
+  --bg:#dcdcd6; --panel:#eceae3; --panel2:#e2e0d8; --line:#bab8ad; --line2:#cdcbc1;
+  --fg:#24221c; --dim:#6d6a5f; --accent:#7a4a2c;
+  --ok:#4a7336; --warn:#9a7519; --bad:#a03f28;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#191917; --panel:#232320; --panel2:#1e1e1b; --line:#3b3b34; --line2:#2e2e29;
+    --fg:#e7e4d9; --dim:#98948a; --accent:#cd9060;
+    --ok:#7ba85e; --warn:#c9a13c; --bad:#c9694c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#191917; --panel:#232320; --panel2:#1e1e1b; --line:#3b3b34; --line2:#2e2e29;
+  --fg:#e7e4d9; --dim:#98948a; --accent:#cd9060;
+  --ok:#7ba85e; --warn:#c9a13c; --bad:#c9694c;
+}
+:root[data-theme="light"]{
+  --bg:#dcdcd6; --panel:#eceae3; --panel2:#e2e0d8; --line:#bab8ad; --line2:#cdcbc1;
+  --fg:#24221c; --dim:#6d6a5f; --accent:#7a4a2c;
+  --ok:#4a7336; --warn:#9a7519; --bad:#a03f28;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:13px;line-height:1.5}
+
+.lab{display:grid;grid-template-columns:322px minmax(0,1fr);min-height:100vh}
+
+/* ---- dial rail ---- */
+.rail{background:var(--panel);border-right:1px solid var(--line);padding:20px 18px 28px;display:flex;flex-direction:column;gap:20px;max-height:100vh;overflow-y:auto}
+.brand h1{font-family:var(--serif);font-size:21px;font-weight:600;margin:0;letter-spacing:-.01em}
+.brand p{margin:5px 0 0;color:var(--dim);font-size:11.5px;line-height:1.45}
+
+.group{display:flex;flex-direction:column;gap:13px}
+.grouphead{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);
+  border-bottom:1px solid var(--line);padding-bottom:5px}
+
+.dial{display:flex;flex-direction:column;gap:5px}
+.dial .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.dial .nm{font-size:12px}
+.dial .val{font-variant-numeric:tabular-nums;color:var(--accent);font-size:12px;font-weight:600;white-space:nowrap}
+.dial .sub{font-size:10.5px;color:var(--dim);line-height:1.4}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:16px;background:transparent;margin:0;cursor:ew-resize}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--line);border-radius:0}
+input[type=range]::-moz-range-track{height:3px;background:var(--line)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:16px;margin-top:-6.5px;
+  background:var(--accent);border:0;border-radius:1px}
+input[type=range]::-moz-range-thumb{width:11px;height:16px;background:var(--accent);border:0;border-radius:1px}
+input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+.btns{display:flex;gap:7px;flex-wrap:wrap}
+button{font-family:var(--mono);font-size:11px;padding:6px 10px;background:var(--panel2);color:var(--fg);
+  border:1px solid var(--line);border-radius:2px;cursor:pointer}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.on{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+
+.toggles{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.tg{display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--dim)}
+.tg input{accent-color:var(--accent);margin:0}
+.tg.act{color:var(--fg)}
+
+/* ---- stage ---- */
+.stage{display:flex;flex-direction:column;min-width:0}
+.cwrap{flex:1;min-height:340px;position:relative;background:var(--panel2)}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+.readout{border-top:1px solid var(--line);background:var(--panel);
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr))}
+.stat{padding:11px 14px;border-right:1px solid var(--line2);display:flex;flex-direction:column;gap:3px}
+.stat:last-child{border-right:0}
+.stat .k{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.stat .v{font-size:19px;font-variant-numeric:tabular-nums;line-height:1.15;display:flex;align-items:baseline;gap:6px}
+.stat .u{font-size:11px;color:var(--dim);font-weight:400}
+.stat .n{font-size:10.5px;color:var(--dim)}
+.chip{display:inline-block;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;
+  padding:1.5px 5px;border-radius:2px;border:1px solid currentColor;white-space:nowrap}
+.ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+
+@media (max-width:900px){
+  .lab{grid-template-columns:1fr}
+  .rail{max-height:none;order:2;border-right:0;border-top:1px solid var(--line)}
+  .stage{order:1}
+  .cwrap{min-height:62vh}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="lab">
+<aside class="rail">
+  <div class="brand">
+    <h1>Packing Lab</h1>
+    <p>Focus tile plus three neighbours, so main roads merge across the seams. Constants ported from <code>building_visuals.gd</code> and <code>map_style.gd</code> — dial values transfer straight back.</p>
+  </div>
+
+  <div class="group">
+    <div class="grouphead">Preset</div>
+    <div class="btns">
+      <button id="pGame" class="on">Game today</button>
+      <button id="pMock">Mockup target</button>
+      <button id="pSeed">Re-roll seed</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <div class="grouphead">Roads</div>
+    <div class="dial" data-d="roadDensity">
+      <div class="top"><span class="nm">Road density</span><span class="val"></span></div>
+      <input type="range" min="0" max="9" step="1">
+      <div class="sub">Free-form side roads, outside any arc district. Every extra street also stamps mask cells.</div>
+    </div>
+    <div class="dial" data-d="roadSpurs">
+      <div class="top"><span class="nm">Road spurs</span><span class="val"></span></div>
+      <input type="range" min="0" max="6" step="1">
+      <div class="sub">Short dead-end access branches per tile, with terminus glyphs.</div>
+    </div>
+    <div class="dial" data-d="riverHug">
+      <div class="top"><span class="nm">River hug</span><span class="val"></span></div>
+      <input type="range" min="0" max="100" step="5">
+      <div class="sub">How hard roads are pulled to the bank, across the 4–24u <code>COST_RIVER_HUG</code> band. Adds a road along each bank.</div>
+    </div>
+    <p class="sub" style="margin:0">Rivers run through the top-left and centre tiles — HSM edge midpoint → central-square corner → C0 → and out. Each rivered tile keeps exactly one crossing; everywhere else the banks are separate networks and road geometry is cut at the water's edge.</p>
+  </div>
+
+  <div class="group">
+    <div class="grouphead">Buildings</div>
+    <div class="dial" data-d="maskCell">
+      <div class="top"><span class="nm">Mask cell</span><span class="val"></span></div>
+      <input type="range" min="4" max="40" step="1">
+      <div class="sub">Buildability raster granularity. Whole cells are stamped blocked, so this sets how far buildings sit off their street.</div>
+    </div>
+    <div class="dial" data-d="buildingSize">
+      <div class="top"><span class="nm">Building size</span><span class="val"></span></div>
+      <input type="range" min="14" max="120" step="1">
+      <div class="sub">Long side of one unit, shown as a share of the 540u tile width.</div>
+    </div>
+    <div class="dial" data-d="buildingCount">
+      <div class="top"><span class="nm">Building count</span><span class="val"></span></div>
+      <input type="range" min="1" max="120" step="1">
+      <div class="sub">Target units per tile. Blocks are filled first, then the frontage packer.</div>
+    </div>
+    <div class="dial" data-d="terraceSize">
+      <div class="top"><span class="nm">Terrace size</span><span class="val"></span></div>
+      <input type="range" min="1" max="9" step="1">
+      <div class="sub">Units per row, and the bunch needed to weld into one mass with party walls.</div>
+    </div>
+    <div class="dial" data-d="sizeVar">
+      <div class="top"><span class="nm">Size variation</span><span class="val"></span></div>
+      <input type="range" min="0" max="100" step="5">
+      <div class="sub">Per-unit jitter on length, and on depth away from the street so the kerb line stays true.</div>
+    </div>
+  </div>
+
+  <div class="group">
+    <div class="grouphead">Overlays</div>
+    <div class="toggles">
+      <label class="tg"><input type="checkbox" id="tMask"><span>Mask</span></label>
+      <label class="tg"><input type="checkbox" id="tLots"><span>Lots</span></label>
+      <label class="tg act"><input type="checkbox" id="tRims" checked><span>Hex rims</span></label>
+      <label class="tg act"><input type="checkbox" id="tShapes" checked><span>Silhouettes</span></label>
+      <label class="tg act"><input type="checkbox" id="tStraight" checked><span>Straight side roads</span></label>
+      <label class="tg act"><input type="checkbox" id="tArc" checked><span>Arc districts</span></label>
+    </div>
+    <p class="sub" style="margin:0">One arc district per tile, and a district blocks its neighbours. Hung off the longest main road — half the tile where that road bisects it, otherwise a quarter. Ring spacing is always two building rows plus kerbs, with 2–3 radials out to the outer arc. Nothing else is drawn inside it.</p>
+    <p class="sub" style="margin:0">Light green&nbsp;= half cross · yellow&nbsp;= C · red&nbsp;= L with 2–4 tanks in the notch · cream&nbsp;= rectangle. Annexes go on rectangles and Cs, detached by 5u. Five grey decorative outbuildings per tile sit off-budget, facing the nearest street.</p>
+  </div>
+</aside>
+
+<main class="stage">
+  <div class="cwrap"><canvas id="cv"></canvas></div>
+  <div class="readout" id="ro"></div>
+</main>
+</div>
+
+<script>
+"use strict";
+/* ---------------- constants ported from the Godot project ---------------- */
+const TILE_W=540, TILE_H=480, HEX_AREA=194400;
+const HEXV=[[-135,-240],[135,-240],[270,0],[135,240],[-135,240],[-270,0]];
+const NB=[[405,-240],[405,240],[0,480],[-405,240],[-405,-240],[0,-480]];
+const MASK_ROAD_CLEAR=5.0, DESIGN_GAP=1.0, BLOCK_ROAD_PAD=7.0, BLOCK_MIN_ROAD=70.0;
+const BLOCK_ASPECT=0.62, COURT_ADJ=10.0, PACK_STEP=4.0, AUDIT_MAX_GAP=15.0;
+const W_TRUNK=7.0, W_LOCAL=4.5, CASING=4.2; // casing widened from 3.2 so the
+// trunk/local hierarchy still reads at whole-cluster zoom
+const C_PAPER="#e6d9bd", C_WASH="#93a866", C_SAND="#dfd0ab";
+const C_CASE="rgba(58,44,24,.95)", C_LOCAL="#dfd0a2", C_TRUNK="#d4bd8a";
+const C_RIM="rgba(58,44,24,.34)", C_INK="#3a2c18";
+const USES={
+  residential:{fill:"#b4563c",name:"residential"},
+  industrial:{fill:"#c2d3a0",name:"industrial"},   // was grey; grey now means decorative
+  commercial:{fill:"#c9a03c",name:"commercial"},
+  civic:{fill:"#e0d6bc",name:"civic"},
+  decor:{fill:"#8d8b83",name:"decorative"}
+};
+const LAND_USES=["residential","industrial","commercial","civic"];
+const DECOR_PER_TILE=5;
+// Silhouette is keyed to land use (owner spec): grey = half cross, yellow = C,
+// red = L, cream = plain rectangle. Tanks live in the L's negative space;
+// annexes belong to rectangles and Cs. SEP is the detachment gap — below ~4u the
+// ink outline closes it up and two masses read as one.
+const SEP=5.0;
+const SHAPE_FOR={industrial:"halfcross",commercial:"c",residential:"l",civic:"rect",decor:"rect"};
+const TILES=[{id:"focus",cx:0,cy:0},{id:"nw",cx:-405,cy:-240},{id:"ne",cx:405,cy:-240},{id:"s",cx:0,cy:480}];
+
+/* ---------------- math helpers ---------------- */
+const fnv=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0};
+function rngFrom(s){let a=fnv(s);return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const inHex=(x,y)=>Math.abs(x)<=270&&Math.abs(y)<=240&&240*Math.abs(x)+135*Math.abs(y)<=64800;
+function ptSeg(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,L=dx*dx+dy*dy;let t=L>0?((px-ax)*dx+(py-ay)*dy)/L:0;t=t<0?0:t>1?1:t;return Math.hypot(px-(ax+t*dx),py-(ay+t*dy))}
+function segInt(a,b,c,d,e,f,g,h){const d1=(g-e)*(b-f)-(h-f)*(a-e),d2=(g-e)*(d-f)-(h-f)*(c-e),d3=(c-a)*(f-b)-(d-b)*(e-a),d4=(c-a)*(h-b)-(d-b)*(g-a);return((d1>0)!==(d2>0))&&((d3>0)!==(d4>0))}
+function ptRect(px,py,x0,y0,x1,y1){const dx=Math.max(x0-px,0,px-x1),dy=Math.max(y0-py,0,py-y1);return Math.hypot(dx,dy)}
+function segRect(ax,ay,bx,by,x0,y0,x1,y1){
+  if((ax>=x0&&ax<=x1&&ay>=y0&&ay<=y1)||(bx>=x0&&bx<=x1&&by>=y0&&by<=y1))return 0;
+  const c=[[x0,y0],[x1,y0],[x1,y1],[x0,y1]];let best=Infinity;
+  for(let i=0;i<4;i++){const p=c[i],q=c[(i+1)%4];
+    if(segInt(ax,ay,bx,by,p[0],p[1],q[0],q[1]))return 0;
+    best=Math.min(best,ptSeg(p[0],p[1],ax,ay,bx,by))}
+  return Math.min(best,ptRect(ax,ay,x0,y0,x1,y1),ptRect(bx,by,x0,y0,x1,y1));
+}
+function chaikin(p){if(p.length<3)return p;const o=[p[0]];for(let i=0;i<p.length-1;i++){const a=p[i],b=p[i+1];
+  o.push([a[0]*.75+b[0]*.25,a[1]*.75+b[1]*.25],[a[0]*.25+b[0]*.75,a[1]*.25+b[1]*.75])}o.push(p[p.length-1]);return o}
+function densify(p,step){const o=[p[0]];for(let i=0;i<p.length-1;i++){const a=p[i],b=p[i+1];
+  const L=Math.hypot(b[0]-a[0],b[1]-a[1]),n=Math.max(1,Math.round(L/step));
+  for(let k=1;k<=n;k++)o.push([a[0]+(b[0]-a[0])*k/n,a[1]+(b[1]-a[1])*k/n])}return o}
+function rectPoly(cx,cy,w,h,ang){const c=Math.cos(ang),s=Math.sin(ang),hw=w/2,hh=h/2;
+  return [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([x,y])=>[cx+x*c-y*s,cy+x*s+y*c])}
+function aabb(p){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const q of p){if(q[0]<x0)x0=q[0];if(q[0]>x1)x1=q[0];if(q[1]<y0)y0=q[1];if(q[1]>y1)y1=q[1]}return[x0,y0,x1,y1]}
+
+/* Silhouettes are built in canonical local space: x = along the street,
+   y from -h/2 (ROAD side) to +h/2 (far side). Every notch is cut from the FAR
+   edge, so the street-facing face stays a clean straight line and frontage
+   packing is unaffected. Sub-components sit INSIDE the reserved depth, so the
+   collision rect never changes — the footprint stays a box and the SAT test
+   stays valid on convex input. */
+function localShape(kind,w,h,rv){
+  const wantAnnex=(kind==="rect"||kind==="c");
+  let as=0,hm=h;
+  if(wantAnnex){
+    const a=Math.max(3.5,Math.min(8,h*0.26));
+    if(h-SEP-a>=h*0.42){as=a;hm=h-SEP-a}
+  }
+  const yb=-h/2,ytop=yb+hm,hw=w/2;
+  let mass,neg=null;
+  if(kind==="l"){
+    // arms stay thick: a notch much over half the width turns the L into a thin
+    // hook and its "negative space" becomes open grass rather than a pocket
+    const nw=0.48*w,nh=0.50*hm;
+    mass=[[-hw,yb],[hw,yb],[hw,ytop-nh],[hw-nw,ytop-nh],[hw-nw,ytop],[-hw,ytop]];
+    neg={x0:hw-nw,x1:hw,y0:ytop-nh,y1:ytop};
+  }else if(kind==="halfcross"||kind==="c"){
+    const nw=(kind==="c"?0.52:0.30)*w, nh=(kind==="c"?0.66:0.42)*hm;
+    mass=[[-hw,yb],[hw,yb],[hw,ytop],[nw/2,ytop],[nw/2,ytop-nh],
+          [-nw/2,ytop-nh],[-nw/2,ytop],[-hw,ytop]];
+  }else{
+    mass=[[-hw,yb],[hw,yb],[hw,ytop],[-hw,ytop]];
+  }
+  const annex=as>0?{x:w*0.22,y:ytop+SEP+as/2,s:as}:null;
+  // 2-4 tanks in the L's notch, clear of the two CLOSED sides (spine + near arm)
+  let tanks=null;
+  if(neg){
+    // Prefer the MOST tanks that still clear a legibility floor, so they read as
+    // plant rather than dots; fall back to the fattest pair if none do.
+    const fit=n=>Math.min((neg.y1-neg.y0-SEP)/2,(neg.x1-neg.x0-SEP)/(2*n));
+    let best=null;
+    for(const n of[4,3,2]){
+      const r=fit(n);
+      if(r>=2.2){best={n,r};break}
+      if(!best||r>best.r)best={n,r};
+    }
+    if(best.r>=1.3){
+      tanks=[];
+      const r=best.r,x0=neg.x0+SEP+r,x1=neg.x1-r,span=x1-x0;
+      // hug the notch's INNER corner (spine + near arm) at exactly SEP. Centring
+      // in the notch, or pinning to the open outer edge, floats them off the mass.
+      const y=neg.y0+SEP+r;
+      for(let k=0;k<best.n;k++)
+        tanks.push({x:best.n===1?(x0+x1)/2:x0+span*k/(best.n-1),y,r});
+    }
+  }
+  return{mass,annex,tanks};
+}
+function toWorld(pts,cx,cy,ang,f){
+  const c=Math.cos(ang),s=Math.sin(ang);
+  return pts.map(([x,y])=>[cx+x*c-(y*f)*s, cy+x*s+(y*f)*c]);
+}
+const gapOK=(a,b,g)=>a[2]+g<b[0]||b[2]+g<a[0]||a[3]+g<b[1]||b[3]+g<a[1];
+// Separating-axis test on the ORIENTED rects. An AABB test (what the Godot
+// _overlaps() does) inflates a rotated footprint enormously, so neighbours in a
+// terrace reject each other and rows can never close up.
+function sep(pa,pb,g){
+  for(const poly of[pa,pb])for(let i=0;i<poly.length;i++){
+    const p=poly[i],q=poly[(i+1)%poly.length];
+    let ax=-(q[1]-p[1]),ay=q[0]-p[0];
+    const L=Math.hypot(ax,ay)||1;ax/=L;ay/=L;
+    let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;
+    for(const v of pa){const d=v[0]*ax+v[1]*ay;if(d<a0)a0=d;if(d>a1)a1=d}
+    for(const v of pb){const d=v[0]*ax+v[1]*ay;if(d<b0)b0=d;if(d>b1)b1=d}
+    if(a0-b1>=g||b0-a1>=g)return true;
+  }
+  return false;
+}
+const clear=(a,b,g)=>gapOK(a.bb,b.bb,g)||sep(a.poly,b.poly,g);
+
+/* ---------------- state ---------------- */
+const S={roadDensity:3,roadSpurs:1,riverHug:60,maskCell:20,buildingSize:55,
+  buildingCount:4,terraceSize:2,sizeVar:0,seed:7,
+  mask:false,lots:false,rims:true,shapes:true,straightSide:true,arcDistricts:true};
+const PRESETS={
+  game:{roadDensity:3,roadSpurs:1,riverHug:60,maskCell:20,buildingSize:55,buildingCount:4,terraceSize:2,sizeVar:0},
+  mock:{roadDensity:2,roadSpurs:3,riverHug:75,maskCell:6,buildingSize:30,buildingCount:55,terraceSize:5,sizeVar:45}
+};
+
+/* ---------------- road generation ---------------- */
+function hexWorld(t){return HEXV.map(([x,y])=>[t.cx+x,t.cy+y])}
+function sharedEdges(){ // pairs of cluster tiles that touch, with their shared edge
+  const out=[];
+  for(let i=0;i<TILES.length;i++)for(let j=i+1;j<TILES.length;j++){
+    const dx=TILES[j].cx-TILES[i].cx,dy=TILES[j].cy-TILES[i].cy;
+    if(!NB.some(([a,b])=>Math.abs(a-dx)<1&&Math.abs(b-dy)<1))continue;
+    const A=hexWorld(TILES[i]),B=hexWorld(TILES[j]),sh=[];
+    for(const a of A)for(const b of B)if(Math.hypot(a[0]-b[0],a[1]-b[1])<1&&!sh.some(s=>Math.hypot(s[0]-a[0],s[1]-a[1])<1))sh.push(a);
+    if(sh.length===2)out.push({i,j,a:sh[0],b:sh[1]});
+  }
+  return out;
+}
+function route(pts,amp,key){ // terrain-ish wander then one Chaikin pass
+  let p=densify(pts,26);
+  if(amp>0){const r=rngFrom("wander|"+key),ph=r()*6.283,f=.55+r()*.5;
+    for(let i=1;i<p.length-1;i++){const a=p[i-1],b=p[i+1];
+      const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy)||1;
+      const o=Math.sin(i*f+ph)*amp+Math.sin(i*f*2.3+ph*1.7)*amp*.4;
+      p[i]=[p[i][0]-dy/L*o,p[i][1]+dx/L*o]}}
+  return chaikin(p);
+}
+/* ---------------- rivers ----------------
+   Ported from subtile_grid.gd RIVER_POINTS + river_properties.csv: a river is
+   entry HSM -> entry S -> C0 -> exit S -> exit HSM, where S1..S4 are the corners
+   of a 240x240 central square and HSM1..6 are the hex side midpoints. Tile-local
+   values are shifted by TILE_CENTER (270,240) to become centre-relative. */
+const RIVER_HALF=10.5;      // RIVER_BLOCK_RADIUS
+const RIVER_CLEAR=16.0;     // building clearance from the centreline
+const RIVER_ROAD_PAD=28.0;  // reserved road corridor
+const BRIDGE_APPROACH=50.0, BRIDGE_LENGTH=42.0;
+const C_WATER="#7ba2c2";
+const RP={C0:[0,0],S1:[120,-120],S2:[120,120],S3:[-120,120],S4:[-120,-120],
+  HSM1:[0,-240],HSM2:[202.5,-120],HSM3:[202.5,120],
+  HSM4:[0,240],HSM5:[-202.5,120],HSM6:[-202.5,-120]};
+// Top-left and centre tiles. HSM3 of nw and HSM6 of focus are the SAME world
+// point, so the two arcs join into one continuous curve across the seam.
+const RIVERS={nw:["HSM6","S4","C0","S2","HSM3"],focus:["HSM6","S4","C0","S2","HSM3"]};
+let RIV=null, DISTRICTS=null;
+
+function buildRivers(){
+  let chain=[];
+  for(const id of["nw","focus"]){
+    const t=TILES.find(x=>x.id===id);if(!t||!RIVERS[id])continue;
+    const pts=route(RIVERS[id].map(k=>[t.cx+RP[k][0],t.cy+RP[k][1]]),4.5,"riv|"+id);
+    if(chain.length&&Math.hypot(chain[chain.length-1][0]-pts[0][0],
+        chain[chain.length-1][1]-pts[0][1])<2)chain=chain.concat(pts.slice(1));
+    else chain=chain.concat(pts);
+  }
+  const segs=[];for(let i=0;i<chain.length-1;i++)segs.push([chain[i],chain[i+1]]);
+  // ONE crossing PER RIVERED TILE, at the mid-arc of that tile's stretch — the
+  // same shape as road_crossings.gd, which predetermines a gate per river arm
+  const bridges=[];
+  for(const t of TILES){
+    if(!RIVERS[t.id])continue;
+    const run=longestInHex(chain,t);
+    if(run.length<3)continue;
+    let tot=0;const cum=[0];
+    for(let i=0;i<run.length-1;i++){
+      tot+=Math.hypot(run[i+1][0]-run[i][0],run[i+1][1]-run[i][1]);cum.push(tot);
+    }
+    let bi=0;while(bi<run.length-2&&cum[bi+1]<tot*0.5)bi++;
+    const ft=(tot*0.5-cum[bi])/Math.max(1e-6,cum[bi+1]-cum[bi]);
+    const a=run[bi],b=run[bi+1];
+    const bx=a[0]+(b[0]-a[0])*ft,by=a[1]+(b[1]-a[1])*ft;
+    const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy)||1;
+    const nx=-dy/L,ny=dx/L,gd=RIVER_HALF+11;
+    bridges.push({x:bx,y:by,nx,ny,tx:dx/L,ty:dy/L,tile:t.id,
+      a:[bx-nx*gd,by-ny*gd],b:[bx+nx*gd,by+ny*gd]});
+  }
+  return{chain,segs,bridges};
+}
+// A point is on a deck only if it lies within the deck RECTANGLE spanning the
+// gates — not merely near the bridge. A radius waiver lets an approach road slip
+// through the water beside the deck and read as a second crossing.
+const DECK_HALF_W=6.5;
+function onAnyDeck(p,only){
+  const list=only?[only]:RIV.bridges;
+  for(const g of list)
+    if(ptSeg(p[0],p[1],g.a[0],g.a[1],g.b[0],g.b[1])<=DECK_HALF_W)return true;
+  return false;
+}
+function nearestBridge(p,q){
+  let best=null,bd=Infinity;
+  for(const g of RIV.bridges){
+    const d=Math.hypot(p[0]-g.x,p[1]-g.y)+Math.hypot(q[0]-g.x,q[1]-g.y);
+    if(d<bd){bd=d;best=g}
+  }
+  return best;
+}
+function nearestRiver(x,y){
+  let best={d:Infinity,i:-1,t:0,px:0,py:0};
+  for(let i=0;i<RIV.segs.length;i++){
+    const a=RIV.segs[i][0],b=RIV.segs[i][1];
+    const dx=b[0]-a[0],dy=b[1]-a[1],L=dx*dx+dy*dy;
+    let t=L>0?((x-a[0])*dx+(y-a[1])*dy)/L:0;t=t<0?0:t>1?1:t;
+    const px=a[0]+t*dx,py=a[1]+t*dy,d=Math.hypot(x-px,y-py);
+    if(d<best.d)best={d,i,t,px,py};
+  }
+  return best;
+}
+// Which bank a point is on. A point past either END of the river is NOT
+// separated from anything, so it returns 0 (unconstrained).
+function bankOf(x,y){
+  const n=nearestRiver(x,y);
+  if(n.i<0)return 0;
+  if((n.i===0&&n.t<=0.002)||(n.i===RIV.segs.length-1&&n.t>=0.998))return 0;
+  const a=RIV.segs[n.i][0],b=RIV.segs[n.i][1];
+  return (b[0]-a[0])*(y-a[1])-(b[1]-a[1])*(x-a[0])>0?1:-1;
+}
+function crossesRiver(pts){
+  for(let i=0;i<pts.length-1;i++)for(const s of RIV.segs)
+    if(segInt(pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1],s[0][0],s[0][1],s[1][0],s[1][1]))return true;
+  return false;
+}
+function pushOffRiver(p,pad,key){
+  const n=nearestRiver(p[0],p[1]);
+  if(n.d>=pad)return p;
+  let ux,uy;
+  if(n.d>0.5){ux=(p[0]-n.px)/n.d;uy=(p[1]-n.py)/n.d}
+  else{ // exactly on the centreline (C0 is both the river's mid point and the
+        // road anchor) — pick a bank and step off it, like _push_to_land
+    const a=RIV.segs[n.i][0],b=RIV.segs[n.i][1];
+    const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy)||1;
+    const sg=rngFrom("bank|"+key)()<0.5?1:-1;ux=-dy/L*sg;uy=dx/L*sg;
+  }
+  return[n.px+ux*pad,n.py+uy*pad];
+}
+const polyLen=p=>{let L=0;for(let i=0;i<p.length-1;i++)L+=Math.hypot(p[i+1][0]-p[i][0],p[i+1][1]-p[i][1]);return L};
+
+/* THE INVARIANT: no road paint may lie in the channel except on the bridge deck.
+   Enforced once, over the finished road list, so no generator can bypass it —
+   rather than each generator remembering to test itself.
+     - "wet" is per road CLASS: the painted edge, not the centreline, must clear
+       the water, so a trunk needs more room than a lane.
+     - polylines are densified first because a single segment can straddle the
+       channel with BOTH endpoints dry; a vertex-only test sees nothing.
+     - each road becomes its own dry runs; sub-stub fragments are dropped. */
+const WET_MARGIN=1.0, MIN_PIECE=18.0;
+function trimToBanks(roads){
+  const out=[];let cut=0,dropped=0;
+  for(const rd of roads){
+    const hw=(rd.cls==="trunk"?W_TRUNK:W_LOCAL)/2;
+    const wet=RIVER_HALF+hw+CASING/2+WET_MARGIN;
+    const pts=densify(rd.pts,8);
+    const pieces=[];let run=[];
+    for(const p of pts){
+      // the waiver is the deck RECTANGLE of the bridge this road was funnelled
+      // through — not a radius, and not any other bridge
+      const onDeck=rd.bridged&&onAnyDeck(p,rd.via);
+      if(onDeck||nearestRiver(p[0],p[1]).d>=wet)run.push(p);
+      else{if(run.length>1)pieces.push(run);run=[]}
+    }
+    if(run.length>1)pieces.push(run);
+    if(pieces.length===1&&pieces[0].length===pts.length){out.push(rd);continue}
+    cut++;
+    for(const pc of pieces){
+      if(polyLen(pc)<MIN_PIECE){dropped++;continue}
+      out.push({...rd,pts:pc,trimmed:true});
+    }
+  }
+  return{roads:out,cut,dropped};
+}
+/* Near-parallel duplicates. Two lanes 5u apart carry nothing a single street
+   doesn't, and read as a drafting error. The engine avoids them at ROUTING time
+   via the reuse discount (MERGE_RADIUS 7, COST_REUSE 0.5); with no cost field
+   here the equivalent is the engine's own _trim_overlap — keep only the runs of
+   a road that are NOVEL, and let the arterial win. Bridged roads are exempt:
+   shaving a crossing would break the only link between the banks. */
+const MERGE_RADIUS=7.0;
+function mergeOverlaps(roads){
+  const keep=[],acc=[];let dropped=0,merged=0;
+  const bbOf=p=>{const b=aabb(p);
+    return[b[0]-MERGE_RADIUS,b[1]-MERGE_RADIUS,b[2]+MERGE_RADIUS,b[3]+MERGE_RADIUS]};
+  const take=rd=>{keep.push(rd);acc.push({pts:rd.pts,bb:bbOf(rd.pts)})};
+  // nearest point on an already-accepted road, if it is within the merge radius
+  const host=p=>{
+    let bd=MERGE_RADIUS,bq=null;
+    for(const a of acc){
+      if(p[0]<a.bb[0]||p[0]>a.bb[2]||p[1]<a.bb[1]||p[1]>a.bb[3])continue;
+      for(let i=0;i<a.pts.length-1;i++){
+        const s=a.pts[i],e=a.pts[i+1];
+        const dx=e[0]-s[0],dy=e[1]-s[1],L=dx*dx+dy*dy;
+        let t=L>0?((p[0]-s[0])*dx+(p[1]-s[1])*dy)/L:0;t=t<0?0:t>1?1:t;
+        const qx=s[0]+t*dx,qy=s[1]+t*dy,d=Math.hypot(p[0]-qx,p[1]-qy);
+        if(d<bd){bd=d;bq=[qx,qy]}
+      }
+    }
+    return bq;
+  };
+  const rank=r=>r.bridged?0:r.cls==="trunk"?1:2;   // crossings, then arterials, then lanes
+  const order=roads.slice().sort((x,y)=>rank(x)-rank(y)||polyLen(y.pts)-polyLen(x.pts));
+  for(const rd of order){
+    if(rd.bridged){take(rd);continue}
+    const pts=densify(rd.pts,6);
+    let onHost=0;
+    const snapped=pts.map(p=>{const q=host(p);if(q){onHost++;return q}return p});
+    if(onHost===pts.length){dropped++;continue}   // wholly redundant, adds nothing
+    // collapse the stutter left where many points snapped to the same spot
+    const out=[snapped[0]];
+    for(let i=1;i<snapped.length;i++)
+      if(Math.hypot(snapped[i][0]-out[out.length-1][0],snapped[i][1]-out[out.length-1][1])>1.5)
+        out.push(snapped[i]);
+    if(out.length<2){dropped++;continue}
+    if(onHost)merged++;
+    take({...rd,pts:out,merged:onHost>0});
+  }
+  return{roads:keep,dropped,merged};
+}
+function offsetPolyline(pts,off){
+  const o=[];
+  for(let i=0;i<pts.length;i++){
+    const a=pts[Math.max(0,i-1)],b=pts[Math.min(pts.length-1,i+1)];
+    const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy)||1;
+    o.push([pts[i][0]-dy/L*off,pts[i][1]+dx/L*off]);
+  }
+  return o;
+}
+function longestInHex(pts,t){ // longest contiguous run of a polyline inside one hex
+  let best=[],cur=[];
+  for(const p of pts){
+    if(inHex(p[0]-t.cx,p[1]-t.cy))cur.push(p);
+    else{if(cur.length>best.length)best=cur;cur=[]}
+  }
+  return cur.length>best.length?cur:best;
+}
+// COST_RIVER_HUG's 4..24u band is measured from the BANK, not the centreline.
+// Anchoring it to the centreline put bank roads inside the channel at high hug.
+const hugBand=()=>24-(S.riverHug/100)*20;
+const hugOffset=()=>RIVER_HALF+W_LOCAL/2+CASING/2+hugBand();
+
+/* ---------------- settlement groupings ----------------
+   Where buildings will cluster, decided BEFORE roads. Main roads are pulled
+   toward the heaviest grouping, so reaching the tile centre is a preference the
+   settlement can override. The same seeds decide land use, so the road bends
+   toward the place the buildings actually end up. */
+let SETTLE=null;
+const CENTRE_PULL=0.55;   // 1.0 would pin the main road to the tile centre
+const RIVER_FOLLOW=95;    // a trunk within this of the water gets drawn alongside it
+
+function buildSettlements(){
+  const out={};
+  for(const t of TILES){
+    const r=rngFrom("settle|"+t.id+"|"+S.seed),pts=[];
+    for(let k=0;k<3;k++){
+      let x=0,y=0,guard=0;
+      do{x=(r()-.5)*440;y=(r()-.5)*400}while(!inHex(x,y)&&guard++<40);
+      pts.push({x:t.cx+x,y:t.cy+y,use:LAND_USES[Math.floor(r()*LAND_USES.length)],w:0.5+r()});
+    }
+    out[t.id]=pts;
+  }
+  return out;
+}
+// The main road's waypoint in a tile: the centre, displaced toward the heaviest
+// grouping, then drawn to the water where there is one.
+function townPoint(t){
+  const g=SETTLE[t.id].reduce((a,b)=>b.w>a.w?b:a);
+  let p=[t.cx+(g.x-t.cx)*(1-CENTRE_PULL),t.cy+(g.y-t.cy)*(1-CENTRE_PULL)];
+  if(RIVERS[t.id]){
+    const n=nearestRiver(p[0],p[1]),want=RIVER_ROAD_PAD+10;
+    if(n.d>0.5&&n.d<170)p=[n.px+(p[0]-n.px)/n.d*want,n.py+(p[1]-n.py)/n.d*want];
+  }
+  return pushOffRiver(p,RIVER_ROAD_PAD,t.id+"|"+S.seed);
+}
+// Pull a trunk alongside the river without ever changing which bank it is on:
+// each point only slides along the outward normal from its own nearest bank point.
+function followRiver(pts){
+  const want=RIVER_ROAD_PAD+8;
+  const out=pts.map(p=>{
+    const n=nearestRiver(p[0],p[1]);
+    if(n.d<2||n.d>RIVER_FOLLOW)return p;
+    const k=Math.min(1,(RIVER_FOLLOW-n.d)/RIVER_FOLLOW)*0.8;
+    const tx=n.px+(p[0]-n.px)/n.d*want,ty=n.py+(p[1]-n.py)/n.d*want;
+    return[p[0]+(tx-p[0])*k,p[1]+(ty-p[1])*k];
+  });
+  return crossesRiver(out)?pts:out;   // never let the pull walk it into the water
+}
+
+/* ---------------- arc districts ----------------
+   New England / structured-European fabric: side streets spring off the main
+   road as concentric semicircles, so every arc BOTH of whose ends sit on the
+   main road closes a ring. Ring spacing is derived, not chosen — it is exactly
+   two building rows plus their kerb clearances, so a block always fits between
+   two rings. Because the clearance term follows the mask cell, coarsening the
+   mask pushes the rings apart. */
+function ringGap(){
+  const depth=S.buildingSize*BLOCK_ASPECT;
+  const pad=Math.max(BLOCK_ROAD_PAD,MASK_ROAD_CLEAR+S.maskCell*0.75);
+  return 2*(depth+W_LOCAL/2+pad)+DESIGN_GAP;
+}
+function nearestOnPolys(p,polys,maxd){
+  let best=null,bd=maxd===undefined?1e9:maxd;
+  for(const pl of polys)for(let i=0;i<pl.length-1;i++){
+    const a=pl[i],b=pl[i+1];
+    const dx=b[0]-a[0],dy=b[1]-a[1],L=dx*dx+dy*dy;
+    let t=L>0?((p[0]-a[0])*dx+(p[1]-a[1])*dy)/L:0;t=t<0?0:t>1?1:t;
+    const qx=a[0]+t*dx,qy=a[1]+t*dy,d=Math.hypot(p[0]-qx,p[1]-qy);
+    if(d<bd){bd=d;best=[qx,qy]}
+  }
+  return best;
+}
+function nearestPort(p,P,maxd){
+  let best=null,bd=maxd;
+  for(const q of P){const d=Math.hypot(p[0]-q[0],p[1]-q[1]);if(d<bd){bd=d;best=q}}
+  return best;
+}
+// 1.0 exactly on the hex boundary — used to tell whether a road cuts clean across
+function hexF(x,y){
+  return Math.max(Math.abs(x)/270,Math.abs(y)/240,(240*Math.abs(x)+135*Math.abs(y))/64800);
+}
+// ONE district per tile. It owns its sector: every other kind of street is
+// suppressed inside the disc, so the arcs are the only fabric there.
+function arcDistrict(t,trunks,P){
+  if(!S.arcDistricts)return null;
+  const runs=[];
+  for(const pl of trunks)for(const rn of straightRuns(pl,t,90))runs.push(rn);
+  if(!runs.length)return null;
+  runs.sort((a,b)=>b.len-a.len);
+  const rn=runs[0];
+  // a road that enters and leaves through the rim BISECTS the tile, and earns a
+  // half-tile district; otherwise the district takes a quarter
+  const bisects=hexF(rn.a[0]-t.cx,rn.a[1]-t.cy)>0.88&&hexF(rn.b[0]-t.cx,rn.b[1]-t.cy)>0.88;
+  const rTarget=Math.sqrt(2*(bisects?0.5:0.25)*HEX_AREA/Math.PI);
+  const base=rn.ang,ux=Math.cos(base),uy=Math.sin(base);
+  const O=[(rn.a[0]+rn.b[0])/2,(rn.a[1]+rn.b[1])/2];
+  // The river is a hard boundary: a district that spans it would have its rings
+  // cut at the water and would swallow the riverside frontage.
+  const room=sg=>{const nx=-uy*sg,ny=ux*sg;let d=0;
+    for(let k=10;k<300;k+=5){
+      const px=O[0]+nx*k,py=O[1]+ny*k;
+      if(!inHex(px-t.cx,py-t.cy))break;
+      if(RIV&&nearestRiver(px,py).d<RIVER_ROAD_PAD)break;
+      d=k;
+    }
+    return d};
+  const side=room(1)>=room(-1)?1:-1;      // grow into the roomier bank
+  const GAP=ringGap(),rOuter=Math.min(rTarget,room(side));
+  if(rOuter<GAP)return null;
+  // even spacing that is never tighter than one ring gap
+  const rings=Math.max(1,Math.min(3,Math.floor(rOuter/GAP)));
+  const out=[],fr=rngFrom("dist|"+t.id+"|"+S.seed),wob=fr()*6.283;
+  for(let k=1;k<=rings;k++){
+    const rad=rOuter*k/rings,pts=[];
+    for(let i=0;i<=36;i++){              // half-turn: both ends land on the road
+      const th=base+side*(i/36)*Math.PI;
+      // 4% modulation, well inside the ring-gap margin, so it isn't compass-drawn
+      const rr=rad*(1+0.04*Math.sin(3*th+wob));
+      pts.push([O[0]+Math.cos(th)*rr,O[1]+Math.sin(th)*rr]);
+    }
+    let run=longestInHex(pts,t);
+    if(run.length<5)continue;
+    // an intact end meets the main road; a CLIPPED end runs out to a hex exit
+    const head=run[0]===pts[0]?nearestOnPolys(run[0],trunks,150):nearestPort(run[0],P,180);
+    const tail=run[run.length-1]===pts[pts.length-1]
+      ?nearestOnPolys(run[run.length-1],trunks,150):nearestPort(run[run.length-1],P,180);
+    if(head)run=[head].concat(run);
+    if(tail)run=run.concat([tail]);
+    if(crossesRiver(run))continue;
+    out.push({pts:chaikin(run),cls:"local",arc:true,ring:k,rad});
+  }
+  // radials off the main road out to the outer arc, crossing every ring
+  const nRad=bisects?3:2;
+  for(let i=1;i<=nRad;i++){
+    const th=base+side*Math.PI*i/(nRad+1);
+    const seg=longestInHex(densify([
+      [O[0]+Math.cos(th)*6,O[1]+Math.sin(th)*6],
+      [O[0]+Math.cos(th)*rOuter*1.01,O[1]+Math.sin(th)*rOuter*1.01]],16),t);
+    if(seg.length<3||crossesRiver(seg))continue;
+    out.push({pts:seg,cls:"local",arc:true,radial:true});
+  }
+  return{roads:out,core:O,rOuter,side,base,bisects,rings,radials:nRad};
+}
+function inDistrict(p,D){
+  if(!D)return false;
+  const dx=p[0]-D.core[0],dy=p[1]-D.core[1];
+  if(Math.hypot(dx,dy)>D.rOuter*1.02)return false;
+  return (Math.cos(D.base)*dy-Math.sin(D.base)*dx)*D.side>0;
+}
+
+function buildRoads(){
+  // Main roads are old through-routes and keep following terrain; side roads are
+  // laid out, so they run straight. Straight locals are also what let
+  // BLOCK_MIN_ROAD's <14-degree run test pass over a whole street.
+  const roads=[],seams=sharedEdges();
+  const amp=3.2, ampLocal=S.straightSide?0:3.2;
+  // main roads run town point to town point — NOT tile centre to tile centre —
+  // and merge where those points coincide
+  const anchor=t=>townPoint(t);
+  for(const s of seams){
+    const A=anchor(TILES[s.i]),B=anchor(TILES[s.j]);
+    const mid=[(s.a[0]+s.b[0])/2,(s.a[1]+s.b[1])/2];
+    let pts=route([A,mid,B],amp,"trunk"+s.i+s.j),bridged=false;
+    let via=null;
+    if(crossesRiver(pts)){
+      // funnel through this tile-pair's nearest crossing: A -> gate -> gate -> B
+      const g=nearestBridge(A,B);
+      if(g){
+        const near=Math.hypot(A[0]-g.a[0],A[1]-g.a[1])<Math.hypot(A[0]-g.b[0],A[1]-g.b[1])?g.a:g.b;
+        const far=near===g.a?g.b:g.a;
+        pts=route([A,near],amp,"tra"+s.i+s.j).concat(route([far,B],amp,"trb"+s.i+s.j));
+        bridged=true;via=g;
+      }
+    }
+    roads.push({pts:bridged?pts:followRiver(pts),cls:"trunk",bridged,via});
+  }
+  // main roads: gateway spokes out through unshared edges, leaving the cluster
+  for(let ti=0;ti<TILES.length;ti++){
+    const t=TILES[ti],V=hexWorld(t),r=rngFrom("spoke|"+t.id+"|"+S.seed);
+    const free=[];
+    for(let e=0;e<6;e++){
+      const a=V[e],b=V[(e+1)%6],mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+      if(seams.some(s=>(s.i===ti||s.j===ti)&&Math.hypot((s.a[0]+s.b[0])/2-mid[0],(s.a[1]+s.b[1])/2-mid[1])<1))continue;
+      free.push(mid);
+    }
+    const n=Math.min(free.length,ti===0?1:2);
+    for(let k=0;k<n;k++){
+      const m=free[Math.floor(r()*free.length)];if(!m)continue;
+      const dx=m[0]-t.cx,dy=m[1]-t.cy,L=Math.hypot(dx,dy)||1;
+      const pts=followRiver(route([anchor(t),m,[m[0]+dx/L*105,m[1]+dy/L*105]],amp,"spoke"+t.id+k));
+      if(crossesRiver(pts))continue;   // only the one bridge may cross
+      roads.push({pts,cls:"trunk"});
+    }
+  }
+  // seam ports shared by both tiles, so side roads meet across the boundary
+  const ports={};
+  for(let ti=0;ti<TILES.length;ti++)ports[ti]=[];
+  for(const s of seams){
+    const r=rngFrom("port|"+s.i+"|"+s.j+"|"+S.seed),n=1+(S.roadDensity>=4?1:0);
+    for(let k=0;k<n;k++){const t=.28+r()*.44;
+      const p=[s.a[0]+(s.b[0]-s.a[0])*t,s.a[1]+(s.b[1]-s.a[1])*t];
+      ports[s.i].push(p);ports[s.j].push(p)}
+  }
+  for(let ti=0;ti<TILES.length;ti++){ // outer-rim ports so side roads exit the frame
+    const t=TILES[ti],V=hexWorld(t),r=rngFrom("orim|"+t.id+"|"+S.seed);
+    for(let e=0;e<6;e++){const a=V[e],b=V[(e+1)%6],u=.3+r()*.4;
+      ports[ti].push([a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u])}
+  }
+  // one arc district per tile, laid before any free-form street so it can claim
+  // its sector
+  const trunkLines=roads.filter(rd=>rd.cls==="trunk").map(rd=>rd.pts);
+  const DIST=DISTRICTS={};
+  // A district blocks its neighbours, so claims go out in a seeded order and
+  // each tile checks its seams first. In this cluster only the focus tile touches
+  // all three others, so a seed either gives the centre one district or the
+  // outer ring three — never both.
+  const order=TILES.map((_,i)=>i),ro=rngFrom("distorder|"+S.seed);
+  for(let i=order.length-1;i>0;i--){const j=Math.floor(ro()*(i+1));
+    const tmp=order[i];order[i]=order[j];order[j]=tmp}
+  const claimed=new Set();
+  for(const ti of order){
+    if(seams.some(s=>(s.i===ti&&claimed.has(s.j))||(s.j===ti&&claimed.has(s.i)))){
+      DIST[ti]=null;continue;
+    }
+    const D=arcDistrict(TILES[ti],trunkLines,ports[ti]);
+    DIST[ti]=D;
+    if(D){claimed.add(ti);for(const a of D.roads)roads.push(a)}
+  }
+  // side roads: rim port to rim port, a third of them threading the anchor
+  for(let ti=0;ti<TILES.length;ti++){
+    const t=TILES[ti],P=ports[ti],r=rngFrom("side|"+t.id+"|"+S.seed);
+    for(let k=0;k<S.roadDensity;k++){
+      if(P.length<2)break;
+      const a=P[Math.floor(r()*P.length)];let b=P[Math.floor(r()*P.length)];
+      let guard=0;while(Math.hypot(a[0]-b[0],a[1]-b[1])<170&&guard++<8)b=P[Math.floor(r()*P.length)];
+      if(Math.hypot(a[0]-b[0],a[1]-b[1])<170)continue;
+      let via=r()<.36?[t.cx,t.cy]
+        :[(a[0]+b[0])/2+(r()-.5)*130,(a[1]+b[1])/2+(r()-.5)*130];
+      // roads prefer to run near the water (COST_RIVER_HUG): pull the control
+      // point into the hug band instead of letting it wander off
+      if(RIVERS[t.id]&&S.riverHug>0&&r()<S.riverHug/140){
+        const n=nearestRiver(via[0],via[1]),off=hugOffset();
+        if(n.d>0.5)via=[n.px+(via[0]-n.px)/n.d*off,n.py+(via[1]-n.py)/n.d*off];
+      }
+      const pts=route([a,via,b],ampLocal,"side"+t.id+k);
+      // no river test here — trimToBanks cuts it at the water and the two dry
+      // halves stay unconnected, which is what keeps the banks separate
+      if(pts.some(p=>inDistrict(p,DIST[ti])))continue;  // the district owns its sector
+      roads.push({pts,cls:"local"});
+    }
+  }
+  // bank roads: one per bank per rivered tile, following the water at hug distance
+  if(S.riverHug>0)for(let ti=0;ti<TILES.length;ti++){
+    const t=TILES[ti];
+    if(!RIVERS[t.id])continue;
+    for(const sg of[-1,1]){
+      const run=longestInHex(offsetPolyline(RIV.chain,hugOffset()*sg),t);
+      if(run.length<5)continue;
+      // the riverside outranks a district — the water was here first
+      roads.push({pts:run,cls:"local",bank:true});
+    }
+  }
+  // Every rivered tile KEEPS its crossing. If no trunk happened to funnel
+  // through this tile's bridge, tie the gates into the nearest road on each
+  // bank — otherwise the deck is a bridge to nowhere.
+  for(const g of RIV.bridges){
+    if(roads.some(rd=>rd.bridged&&rd.via===g))continue;
+    const reach=(gate)=>{
+      const want=bankOf(gate[0],gate[1]);let best=null,bd=300;
+      for(const rd of roads){
+        if(rd.bridged)continue;
+        for(const p of densify(rd.pts,12)){
+          if(bankOf(p[0],p[1])!==want)continue;
+          const d=Math.hypot(p[0]-gate[0],p[1]-gate[1]);
+          if(d<bd){bd=d;best=p}
+        }
+      }
+      return best;
+    };
+    const A=reach(g.a),B=reach(g.b);
+    if(!A||!B)continue;
+    roads.push({pts:densify([A,g.a,g.b,B],14),cls:"local",bridged:true,via:g});
+  }
+  // spurs: short dead ends off an existing road, with a terminus glyph
+  const glyphs=[];
+  for(let ti=0;ti<TILES.length;ti++){
+    const t=TILES[ti],r=rngFrom("spur|"+t.id+"|"+S.seed);
+    const host=roads.filter(rd=>rd.pts.some(p=>inHex(p[0]-t.cx,p[1]-t.cy)));
+    for(let k=0;k<S.roadSpurs;k++){
+      if(!host.length)break;
+      const rd=host[Math.floor(r()*host.length)];
+      const inside=rd.pts.filter(p=>inHex(p[0]-t.cx,p[1]-t.cy));
+      if(inside.length<3)continue;
+      const i=1+Math.floor(r()*(inside.length-2)),p=inside[i],q=inside[i+1];
+      const dx=q[0]-p[0],dy=q[1]-p[1],L=Math.hypot(dx,dy)||1;
+      const sg=r()<.5?1:-1,ang=Math.atan2(dx/L*sg,-dy/L*sg)+(r()-.5)*.5;
+      const len=62+r()*82;
+      const end=[p[0]+Math.cos(ang)*len,p[1]+Math.sin(ang)*len];
+      if(!inHex(end[0]-t.cx,end[1]-t.cy))continue;
+      const spts=route([p,end],ampLocal*.5,"spr"+t.id+k);
+      if(spts.some(q=>inDistrict(q,DIST[ti])))continue;
+      roads.push({pts:spts,cls:"local"});
+      const kind=r(),arm=20+r()*10;
+      const addGlyph=g=>glyphs.push(g);   // trimmed at the bank like any road
+      if(kind<.34){ // T crossbar
+        const n=[-Math.sin(ang),Math.cos(ang)];
+        addGlyph({pts:[[end[0]-n[0]*arm,end[1]-n[1]*arm],[end[0]+n[0]*arm,end[1]+n[1]*arm]],cls:"local"});
+      }else if(kind<.68){ // Y fork
+        for(const s of[-1,1]){const a2=ang+s*.61;
+          addGlyph({pts:[end,[end[0]+Math.cos(a2)*arm,end[1]+Math.sin(a2)*arm]],cls:"local"})}
+      }
+    }
+  }
+  return roads.concat(glyphs);
+}
+
+/* ---------------- buildability mask ---------------- */
+function buildMask(t,roads){
+  const cell=S.maskCell,cols=Math.ceil(TILE_W/cell),rows=Math.ceil(TILE_H/cell);
+  const m=new Uint8Array(cols*rows); // 0 free, 1 blocked
+  const ox=t.cx-TILE_W/2,oy=t.cy-TILE_H/2;
+  let within=0;
+  for(let ry=0;ry<rows;ry++)for(let cx=0;cx<cols;cx++){ // out-of-hex cells are blocked
+    const x0=ox+cx*cell,y0=oy+ry*cell;
+    const ok=inHex(x0-t.cx,y0-t.cy)&&inHex(x0+cell-t.cx,y0-t.cy)&&
+             inHex(x0-t.cx,y0+cell-t.cy)&&inHex(x0+cell-t.cx,y0+cell-t.cy);
+    if(!ok)m[ry*cols+cx]=1;else within++;
+  }
+  // stamp WHOLE cells within a clearance of a centreline — the granularity
+  // pathology this tool exists to show
+  const stamp=(a,b,clr)=>{
+    let x0=Math.min(a[0],b[0])-clr,x1=Math.max(a[0],b[0])+clr;
+    let y0=Math.min(a[1],b[1])-clr,y1=Math.max(a[1],b[1])+clr;
+    let c0=Math.floor((x0-ox)/cell),c1=Math.ceil((x1-ox)/cell);
+    let r0=Math.floor((y0-oy)/cell),r1=Math.ceil((y1-oy)/cell);
+    if(c1<0||r1<0||c0>=cols||r0>=rows)return;
+    c0=Math.max(0,c0);r0=Math.max(0,r0);c1=Math.min(cols-1,c1);r1=Math.min(rows-1,r1);
+    for(let ry=r0;ry<=r1;ry++)for(let cx=c0;cx<=c1;cx++){
+      const k=ry*cols+cx;if(m[k])continue;
+      const gx=ox+cx*cell,gy=oy+ry*cell;
+      if(segRect(a[0],a[1],b[0],b[1],gx,gy,gx+cell,gy+cell)<=clr)m[k]=1;
+    }
+  };
+  for(const rd of roads)
+    for(let i=0;i<rd.pts.length-1;i++)
+      stamp(rd.pts[i],rd.pts[i+1],MASK_ROAD_CLEAR+(rd.cls==="trunk"?W_TRUNK:W_LOCAL)/2);
+  if(RIV){
+    for(const s of RIV.segs)stamp(s[0],s[1],RIVER_CLEAR);
+    for(const g of RIV.bridges)stamp([g.x,g.y],[g.x,g.y],BRIDGE_APPROACH); // reserved approach
+  }
+  return {m,cols,rows,cell,ox,oy,within};
+}
+function maskFree(mk,poly){
+  const[bx0,by0,bx1,by1]=aabb(poly);
+  let c0=Math.floor((bx0-mk.ox)/mk.cell),c1=Math.floor((bx1-mk.ox)/mk.cell);
+  let r0=Math.floor((by0-mk.oy)/mk.cell),r1=Math.floor((by1-mk.oy)/mk.cell);
+  if(c0<0||r0<0||c1>=mk.cols||r1>=mk.rows)return false;
+  for(let ry=r0;ry<=r1;ry++)for(let cx=c0;cx<=c1;cx++)if(mk.m[ry*mk.cols+cx])return false;
+  return true;
+}
+
+/* ---------------- enclosed road pockets ----------------
+   A sliver fully ringed by roads gets paved. Found by rasterising road paint,
+   flooding from OUTSIDE, and keeping whatever the flood cannot reach — a face
+   walk over a planar road graph would be exact but this is robust against the
+   overlapping, merged and trimmed polylines we actually have.
+   The stamp radius already includes POCKET_INSET, so the paving stops that far
+   short of the kerb without a separate erosion pass. */
+// MIN as well as MAX: a few square units is a speck where two roads nearly
+// touch, not a yard, and painting it just adds grit.
+const POCKET_MAX_AREA=200.0, POCKET_MIN_AREA=30.0, POCKET_INSET=1.5, POCKET_CELL=2.5;
+function roadPockets(t,roads){
+  const cell=POCKET_CELL,pad=24;
+  const ox=t.cx-TILE_W/2-pad,oy=t.cy-TILE_H/2-pad;
+  const cols=Math.ceil((TILE_W+pad*2)/cell),rows=Math.ceil((TILE_H+pad*2)/cell);
+  const blocked=new Uint8Array(cols*rows);
+  for(const rd of roads){
+    const r=(rd.cls==="trunk"?W_TRUNK:W_LOCAL)/2+CASING/2+POCKET_INSET+cell*0.5;
+    for(let i=0;i<rd.pts.length-1;i++){
+      const a=rd.pts[i],b=rd.pts[i+1];
+      let c0=Math.floor((Math.min(a[0],b[0])-r-ox)/cell),c1=Math.ceil((Math.max(a[0],b[0])+r-ox)/cell);
+      let r0=Math.floor((Math.min(a[1],b[1])-r-oy)/cell),r1=Math.ceil((Math.max(a[1],b[1])+r-oy)/cell);
+      if(c1<0||r1<0||c0>=cols||r0>=rows)continue;
+      c0=Math.max(0,c0);r0=Math.max(0,r0);c1=Math.min(cols-1,c1);r1=Math.min(rows-1,r1);
+      for(let ry=r0;ry<=r1;ry++)for(let cx=c0;cx<=c1;cx++){
+        const k=ry*cols+cx;if(blocked[k])continue;
+        if(ptSeg(ox+(cx+.5)*cell,oy+(ry+.5)*cell,a[0],a[1],b[0],b[1])<=r)blocked[k]=1;
+      }
+    }
+  }
+  const seen=new Uint8Array(cols*rows),stack=[];
+  const push=(c,r2)=>{const k=r2*cols+c;if(!seen[k]&&!blocked[k]){seen[k]=1;stack.push(k)}};
+  for(let c=0;c<cols;c++){push(c,0);push(c,rows-1)}
+  for(let r2=0;r2<rows;r2++){push(0,r2);push(cols-1,r2)}
+  while(stack.length){
+    const k=stack.pop(),c=k%cols,r2=(k-c)/cols;
+    if(c>0)push(c-1,r2);if(c<cols-1)push(c+1,r2);
+    if(r2>0)push(c,r2-1);if(r2<rows-1)push(c,r2+1);
+  }
+  // anything neither road nor reachable from outside is an enclosed pocket
+  const lab=new Uint8Array(cols*rows),out=[];
+  for(let ry=0;ry<rows;ry++)for(let cx=0;cx<cols;cx++){
+    const k0=ry*cols+cx;
+    if(blocked[k0]||seen[k0]||lab[k0])continue;
+    const comp=[],st=[k0];lab[k0]=1;
+    while(st.length){
+      const k=st.pop(),c=k%cols,r2=(k-c)/cols;comp.push([c,r2]);
+      const n=[[c-1,r2],[c+1,r2],[c,r2-1],[c,r2+1]];
+      for(const[a,b]of n){
+        if(a<0||b<0||a>=cols||b>=rows)continue;
+        const kk=b*cols+a;
+        if(blocked[kk]||seen[kk]||lab[kk])continue;
+        lab[kk]=1;st.push(kk);
+      }
+    }
+    const area=comp.length*cell*cell;
+    if(area>POCKET_MAX_AREA||area<POCKET_MIN_AREA)continue;
+    if(!comp.some(([c,r2])=>inHex(ox+(c+.5)*cell-t.cx,oy+(r2+.5)*cell-t.cy)))continue;
+    out.push({area,cells:comp.map(([c,r2])=>[ox+c*cell,oy+r2*cell])});
+  }
+  return out;
+}
+
+/* ---------------- building placement ---------------- */
+// Longest sub-runs of a polyline whose heading stays within 14 deg of the run start.
+function straightRuns(pts,t,minLen){
+  const runs=[];let start=0;
+  const dirAt=i=>{const a=pts[i],b=pts[i+1];return Math.atan2(b[1]-a[1],b[0]-a[0])};
+  const push=(i0,i1)=>{
+    const a=pts[i0],b=pts[i1],L=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    if(L<minLen)return;
+    const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+    if(!inHex(mx-t.cx,my-t.cy))return;
+    runs.push({a,b,len:L,ang:Math.atan2(b[1]-a[1],b[0]-a[0])});
+  };
+  for(let i=0;i<pts.length-1;i++){
+    if(!inHex(pts[i][0]-t.cx,pts[i][1]-t.cy)){if(i>start)push(start,i);start=i+1;continue}
+    let d=Math.abs(dirAt(i)-dirAt(start));while(d>Math.PI)d=Math.abs(d-2*Math.PI);
+    if(d>0.244){push(start,i);start=i}
+  }
+  if(pts.length-1>start)push(start,pts.length-1);
+  return runs;
+}
+function placeTile(t,roads,mk){
+  const size=S.buildingSize,depth=size*BLOCK_ASPECT;
+  const placed=[],decor=[],all=[];   // `all` is the collision set; stats use `placed`
+  const segs=[];
+  for(const rd of roads){
+    const hw=(rd.cls==="trunk"?W_TRUNK:W_LOCAL)/2;
+    for(let i=0;i<rd.pts.length-1;i++){
+      const a=rd.pts[i],b=rd.pts[i+1];
+      if(inHex(a[0]-t.cx,a[1]-t.cy)||inHex(b[0]-t.cx,b[1]-t.cy))segs.push({a,b,hw});
+    }
+  }
+  const canPut=(cx,cy,ang,w,h)=>{
+    if(!inHex(cx-t.cx,cy-t.cy))return null;
+    const poly=rectPoly(cx,cy,w,h,ang);
+    if(!poly.every(p=>inHex(p[0]-t.cx,p[1]-t.cy)))return null;
+    if(!maskFree(mk,poly))return null;
+    const cand={poly,bb:aabb(poly)};
+    for(const o of all)if(!clear(cand,o,DESIGN_GAP))return null;
+    return cand;
+  };
+  const tryPut=(cx,cy,ang,use,w,h,f,isDecor)=>{
+    const v=canPut(cx,cy,ang,w,h);if(!v)return null;
+    const kind=S.shapes?SHAPE_FOR[use]:"rect";
+    const sh=localShape(kind,w,h,rngFrom("shp|"+t.id+"|"+Math.round(cx)+"|"+Math.round(cy)));
+    const b={...v,cx,cy,ang,use,kind,tile:t.id,area:w*h,decor:!!isDecor,
+      draw:toWorld(sh.mass,cx,cy,ang,f),
+      annex:sh.annex?toWorld(rectPoly(sh.annex.x,sh.annex.y,sh.annex.s,sh.annex.s,0),cx,cy,ang,f):null,
+      tanks:sh.tanks?sh.tanks.map(k=>{
+        const p=toWorld([[k.x,k.y]],cx,cy,ang,f)[0];return{x:p[0],y:p[1],r:k.r}}):null};
+    all.push(b);(isDecor?decor:placed).push(b);return b;
+  };
+  // per-unit jitter on length, and on depth outward only so the street line holds
+  const vary=(rv)=>{
+    const k=S.sizeVar/100;
+    const w=size*(1+(rv()-0.5)*0.9*k);
+    const h=depth*(1+(rv()-0.5)*0.6*k);
+    return{w:Math.max(size*0.45,w),h:Math.max(depth*0.55,h)};
+  };
+  // Whole mask cells are stamped blocked, so the shallowest valid depth is a
+  // ladder outward from the kerb — the same reason real lot rows end up ~65u out.
+  const LADDER=Math.max(5,S.maskCell*0.75);
+  const budget=S.buildingCount;
+  const r=rngFrom("place|"+t.id+"|"+S.seed);
+  let lots=0;
+  // Land use comes from the SAME settlement seeds that bent the main road here,
+  // so the road leans toward where the buildings actually are.
+  const useAt=(x,y)=>SETTLE[t.id].reduce((a,b)=>
+    Math.hypot(x-b.x,y-b.y)<Math.hypot(x-a.x,y-a.y)?b:a).use;
+
+  // block path: one lot grid per qualifying straight run, both sides of the street
+  const runs=[];
+  for(const rd of roads)for(const rn of straightRuns(rd.pts,t,BLOCK_MIN_ROAD))
+    runs.push({...rn,hw:(rd.cls==="trunk"?W_TRUNK:W_LOCAL)/2});
+  runs.sort((x,y)=>y.len-x.len);
+  for(const rn of runs.slice(0,8)){
+    if(placed.length>=budget)break;
+    const pitch=size+DESIGN_GAP;
+    const cols=Math.min(S.terraceSize,Math.max(1,Math.floor(rn.len/pitch)));
+    if(cols<1)continue;
+    const use=useAt((rn.a[0]+rn.b[0])/2,(rn.a[1]+rn.b[1])/2);
+    const ang=rn.ang,ux=Math.cos(ang),uy=Math.sin(ang),nx=-uy,ny=ux;
+    const at=(d,o,side)=>[rn.a[0]+ux*d+nx*o*side,rn.a[1]+uy*d+ny*o*side];
+    for(const side of[-1,1]){
+      // lengths fixed up front so the ladder pass and the placing pass agree
+      const rv=rngFrom("vary|"+t.id+"|"+Math.round(rn.len)+"|"+side+"|"+S.seed);
+      const units=[];for(let c=0;c<cols;c++)units.push(vary(rv));
+      const total=units.reduce((s,u)=>s+u.w,0)+(cols-1)*DESIGN_GAP;
+      const start=(rn.len-total)/2;
+      let run=0;const ds=units.map(u=>{const d=start+run+u.w/2;run+=u.w+DESIGN_GAP;return d});
+      const off=rn.hw+BLOCK_ROAD_PAD+depth/2;
+      // one shared row depth, with each unit's extra depth pushed AWAY from the road
+      let chosen=-1;
+      for(let k=0;k<9;k++){
+        const o=off+k*LADDER;let ok=0;
+        for(let c=0;c<cols;c++){
+          const u=units[c],p=at(ds[c],o+(u.h-depth)/2,side);
+          if(canPut(p[0],p[1],ang,u.w,u.h))ok++;
+        }
+        if(ok>=Math.min(cols,2)){chosen=o;break}
+      }
+      if(chosen<0){lots+=cols;continue}
+      for(let c=0;c<cols;c++){
+        if(placed.length>=budget)break;
+        lots++;
+        const u=units[c],p=at(ds[c],chosen+(u.h-depth)/2,side);
+        tryPut(p[0],p[1],ang,use,u.w,u.h,side);
+      }
+    }
+  }
+  // frontage packer fallback: walk the kerb, rotate to the tangent, first free slot
+  if(placed.length<budget){
+    // walked in order, NOT shuffled — consecutive slots along one street are
+    // what produce a terrace rather than a scatter
+    outer:for(const sg of segs){
+      const dx=sg.b[0]-sg.a[0],dy=sg.b[1]-sg.a[1],L=Math.hypot(dx,dy);
+      if(L<1)continue;
+      const ang=Math.atan2(dy,dx),nx=-dy/L,ny=dx/L;
+      const rv=rngFrom("fv|"+t.id+"|"+Math.round(sg.a[0])+"|"+Math.round(sg.a[1]));
+      for(let d=0;d<=L;d+=PACK_STEP){
+        for(const side of[1,-1]){
+          if(placed.length>=budget)break outer;
+          const u=vary(rv);
+          const off=sg.hw+MASK_ROAD_CLEAR+u.h/2+DESIGN_GAP;
+          for(let k=0;k<7;k++){ // walk outward until the mask lets it land
+            const o=off+k*LADDER;
+            const px=sg.a[0]+dx/L*d+nx*o*side,py=sg.a[1]+dy/L*d+ny*o*side;
+            if(tryPut(px,py,ang,useAt(px,py),u.w,u.h,side))break;
+          }
+        }
+      }
+    }
+  }
+  // decorative outbuildings: grey, off-budget, and placed ON the kerb — picked
+  // from a road segment and walked out the same ladder as the frontage packer,
+  // so they hug a street instead of floating in the field
+  if(segs.length){
+    const dsz=Math.max(9,size*0.42),dd=Math.max(6,dsz*BLOCK_ASPECT);
+    const dr=rngFrom("decor|"+t.id+"|"+S.seed);
+    // cluster them where the road network is BUSIEST: score every segment
+    // midpoint by how much road sits within DENSITY_R, take the best, then host
+    // only on segments near it. Outbuildings gather at the crossroads.
+    const DENSITY_R=70,CLUSTER_R=70;
+    const mids=segs.map(sg=>[(sg.a[0]+sg.b[0])/2,(sg.a[1]+sg.b[1])/2])
+      .filter(m=>inHex(m[0]-t.cx,m[1]-t.cy));
+    let hub=null,bestScore=-1;
+    for(const m of mids){
+      let n=0;
+      for(const q of mids)if(Math.hypot(q[0]-m[0],q[1]-m[1])<=DENSITY_R)n++;
+      if(n>bestScore){bestScore=n;hub=m}
+    }
+    let pool=hub?segs.filter(sg=>
+      Math.hypot((sg.a[0]+sg.b[0])/2-hub[0],(sg.a[1]+sg.b[1])/2-hub[1])<=CLUSTER_R):segs;
+    if(pool.length<3)pool=segs;
+    let made=0;
+    for(let att=0;att<600&&made<DECOR_PER_TILE;att++){
+      const sg=pool[Math.floor(dr()*pool.length)];
+      const dx=sg.b[0]-sg.a[0],dy=sg.b[1]-sg.a[1],L=Math.hypot(dx,dy);
+      if(L<1)continue;
+      const ang=Math.atan2(dy,dx),nx=-dy/L,ny=dx/L;
+      const u=dr(),side=dr()<.5?1:-1;
+      const off0=sg.hw+MASK_ROAD_CLEAR+dd/2+DESIGN_GAP;
+      for(let k=0;k<6;k++){
+        const o=off0+k*LADDER;
+        if(tryPut(sg.a[0]+dx*u+nx*o*side,sg.a[1]+dy*u+ny*o*side,
+                  ang,"decor",dsz,dd,side,true)){made++;break}
+      }
+    }
+  }
+  // weld adjacent same-use footprints into masses (union-find on dilated AABBs)
+  const par=placed.map((_,i)=>i);
+  const find=i=>{while(par[i]!==i){par[i]=par[par[i]];i=par[i]}return i};
+  for(let i=0;i<placed.length;i++)for(let j=i+1;j<placed.length;j++){
+    if(placed[i].use!==placed[j].use)continue;
+    if(!clear(placed[i],placed[j],COURT_ADJ))par[find(i)]=find(j);
+  }
+  const groups=new Map();
+  placed.forEach((b,i)=>{const k=find(i);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(b)});
+  const masses=[...groups.values()].filter(g=>g.length>=Math.max(2,S.terraceSize));
+  const singles=[...groups.values()].filter(g=>g.length<Math.max(2,S.terraceSize)).flat();
+  // setback: footprint edge to nearest carriageway edge
+  for(const b of placed){
+    let best=Infinity;
+    const probe=b.poly.concat([[(b.poly[0][0]+b.poly[1][0])/2,(b.poly[0][1]+b.poly[1][1])/2],
+                              [(b.poly[2][0]+b.poly[3][0])/2,(b.poly[2][1]+b.poly[3][1])/2]]);
+    for(const sg of segs)for(const p of probe)
+      best=Math.min(best,ptSeg(p[0],p[1],sg.a[0],sg.a[1],sg.b[0],sg.b[1])-sg.hw);
+    b.setback=Math.max(0,best);
+  }
+  const area=placed.reduce((s,b)=>s+b.area,0);
+  return {placed,decor,masses,singles,lots,segs,area,pockets:roadPockets(t,roads)};
+}
+
+/* ---------------- model ---------------- */
+function compute(){
+  RIV=buildRivers();
+  SETTLE=buildSettlements();   // groupings exist before roads, and pull them
+  // trim BEFORE the mask and the packers see the roads, so nothing is stamped
+  // or fronted against a stretch of road that no longer exists
+  const trim=trimToBanks(buildRoads());
+  const dedupe=mergeOverlaps(trim.roads);
+  const roads=dedupe.roads,tiles=[];
+  const illegal=roads.filter(r=>!r.bridged&&crossesRiver(r.pts)).length;
+  const bridged=roads.filter(r=>r.bridged).length;
+  const ds=Object.values(DISTRICTS||{}).filter(Boolean);
+  const districts=ds.length,half=ds.filter(d=>d.bisects).length;
+  for(const t of TILES){
+    const mk=buildMask(t,roads);
+    const res=placeTile(t,roads,mk);
+    let blocked=0;for(let i=0;i<mk.m.length;i++)if(mk.m[i])blocked++;
+    tiles.push({t,mk,...res,blocked,cells:mk.m.length});
+  }
+  return {roads,tiles,illegal,bridged,districts,half,ds,trim,dedupe};
+}
+
+/* ---------------- render ---------------- */
+const cv=document.getElementById("cv"),ctx=cv.getContext("2d");
+let VIEW={s:1,ox:0,oy:0};
+function fit(){
+  const wrap=cv.parentElement,dpr=window.devicePixelRatio||1;
+  const W=wrap.clientWidth,H=wrap.clientHeight;
+  if(W<2||H<2)return false; // layout not settled yet — caller retries
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const bx0=-675-95,bx1=675+95,by0=-480-95,by1=720+95;
+  const s=Math.min(W/(bx1-bx0),H/(by1-by0));
+  VIEW={s,ox:W/2-((bx0+bx1)/2)*s,oy:H/2-((by0+by1)/2)*s,W,H};
+  return true;
+}
+const TX=x=>x*VIEW.s+VIEW.ox, TY=y=>y*VIEW.s+VIEW.oy;
+function path(pts,close){ctx.beginPath();ctx.moveTo(TX(pts[0][0]),TY(pts[0][1]));
+  for(let i=1;i<pts.length;i++)ctx.lineTo(TX(pts[i][0]),TY(pts[i][1]));if(close)ctx.closePath()}
+function strokeRoads(model,widthOf,color,dash){
+  ctx.strokeStyle=color;ctx.lineJoin="round";ctx.lineCap="round";
+  if(dash)ctx.setLineDash(dash.map(d=>d*VIEW.s));else ctx.setLineDash([]);
+  for(const rd of model.roads){ctx.lineWidth=widthOf(rd)*VIEW.s;path(rd.pts,false);ctx.stroke()}
+  ctx.setLineDash([]);
+}
+function draw(model){
+  const s=VIEW.s;
+  ctx.fillStyle=C_PAPER;ctx.fillRect(0,0,VIEW.W,VIEW.H);
+  // tile wash + rim
+  for(const t of TILES){
+    path(hexWorld(t),true);
+    ctx.fillStyle=C_WASH;ctx.fill();
+  }
+  if(S.rims){ctx.strokeStyle=C_RIM;ctx.lineWidth=Math.max(1,2.2*s);
+    for(const t of TILES){path(hexWorld(t),true);ctx.stroke()}}
+  // river: ink bank, water, a faint flow line
+  if(RIV){
+    ctx.lineJoin="round";ctx.lineCap="round";
+    ctx.strokeStyle="rgba(46,58,70,.92)";ctx.lineWidth=(RIVER_HALF*2+3.4)*s;
+    path(RIV.chain,false);ctx.stroke();
+    ctx.strokeStyle=C_WATER;ctx.lineWidth=RIVER_HALF*2*s;
+    path(RIV.chain,false);ctx.stroke();
+    ctx.strokeStyle="rgba(255,255,255,.15)";ctx.lineWidth=Math.max(.6,2.4*s);
+    path(RIV.chain,false);ctx.stroke();
+  }
+  // industrial aprons under welded masses, clipped to their own hex
+  for(const tl of model.tiles){
+    const ind=tl.masses.filter(g=>g[0].use==="industrial");
+    if(!ind.length)continue;
+    ctx.save();path(hexWorld(tl.t),true);ctx.clip();
+    ctx.fillStyle="rgba(212,201,173,.9)";
+    for(const g of ind){
+      const bb=g.reduce((a,b)=>[Math.min(a[0],b.bb[0]),Math.min(a[1],b.bb[1]),
+        Math.max(a[2],b.bb[2]),Math.max(a[3],b.bb[3])],[1e9,1e9,-1e9,-1e9]);
+      ctx.fillRect(TX(bb[0]-11),TY(bb[1]-11),(bb[2]-bb[0]+22)*s,(bb[3]-bb[1]+22)*s);
+    }
+    ctx.restore();
+  }
+  // small road-enclosed slivers, paved. Drawn under the roads so the 1.5u
+  // stand-off can only ever read as too much, never as spill onto the kerb.
+  ctx.fillStyle=USES.decor.fill;
+  for(const tl of model.tiles)for(const pk of tl.pockets)
+    for(const c of pk.cells)
+      ctx.fillRect(TX(c[0]),TY(c[1]),POCKET_CELL*s+.6,POCKET_CELL*s+.6);
+  // mask overlay
+  if(S.mask)for(const tl of model.tiles){
+    const mk=tl.mk;ctx.fillStyle="rgba(168,63,40,.20)";
+    for(let ry=0;ry<mk.rows;ry++)for(let cx=0;cx<mk.cols;cx++){
+      if(!mk.m[ry*mk.cols+cx])continue;
+      const gx=mk.ox+cx*mk.cell,gy=mk.oy+ry*mk.cell;
+      if(!inHex(gx+mk.cell/2-tl.t.cx,gy+mk.cell/2-tl.t.cy))continue;
+      ctx.fillRect(TX(gx),TY(gy),mk.cell*s+.5,mk.cell*s+.5);
+    }
+  }
+  // roads: all casings, then all cores, so junctions merge
+  strokeRoads(model,rd=>(rd.cls==="trunk"?W_TRUNK:W_LOCAL)+CASING,C_CASE);
+  strokeRoads(model,rd=>rd.cls==="trunk"?W_TRUNK:0,C_TRUNK);
+  strokeRoads(model,rd=>rd.cls==="trunk"?0:W_LOCAL,C_LOCAL);
+  ctx.strokeStyle="rgba(58,44,24,.5)";ctx.lineWidth=1.2*s;ctx.setLineDash([11*s,9*s]);
+  for(const rd of model.roads)if(rd.cls==="trunk"){path(rd.pts,false);ctx.stroke()}
+  ctx.setLineDash([]);
+  // bridge decks span ACROSS the water, with two rails. Only decks a road
+  // actually uses are drawn — an unused one is a bridge to nowhere.
+  if(RIV)for(const g of RIV.bridges){
+    if(!model.roads.some(rd=>rd.bridged&&rd.via===g))continue;
+    const hl=BRIDGE_LENGTH/2;
+    const at=(a,b)=>[g.x+g.nx*a+g.tx*b,g.y+g.ny*a+g.ty*b];
+    path([at(-hl,-5.5),at(hl,-5.5),at(hl,5.5),at(-hl,5.5)],true);
+    ctx.fillStyle=C_TRUNK;ctx.fill();
+    ctx.strokeStyle=C_CASE;ctx.lineWidth=Math.max(1,1.8*s);ctx.stroke();
+    ctx.lineWidth=Math.max(.7,1.6*s);
+    for(const b of[-3.6,3.6]){path([at(-hl,b),at(hl,b)],false);ctx.stroke()}
+  }
+  // lot outlines
+  if(S.lots){ctx.strokeStyle="rgba(58,44,24,.42)";ctx.lineWidth=Math.max(.6,1*s);
+    for(const tl of model.tiles)for(const b of tl.placed){path(b.poly,true);ctx.stroke()}}
+  // welded masses: thick stroke, refill (covers internal halves), thin party walls
+  const ow=Math.max(1.1,2.3*s);
+  for(const tl of model.tiles){
+    // welded mass: thick stroke, refill (internal halves get covered on both
+    // sides), then a thin pass for the party walls
+    for(const g of tl.masses){
+      ctx.strokeStyle=C_INK;ctx.lineWidth=ow*2;ctx.lineJoin="miter";
+      for(const b of g){path(b.draw,true);ctx.stroke()}
+      ctx.fillStyle=USES[g[0].use].fill;
+      for(const b of g){path(b.draw,true);ctx.fill()}
+      ctx.strokeStyle="rgba(58,44,24,.55)";ctx.lineWidth=Math.max(.5,ow*.45);
+      for(const b of g){path(b.draw,true);ctx.stroke()}
+    }
+    for(const b of tl.singles.concat(tl.decor)){
+      path(b.draw,true);
+      ctx.fillStyle=USES[b.use].fill;ctx.fill();
+      ctx.strokeStyle=C_INK;ctx.lineWidth=b.decor?Math.max(.8,ow*.8):ow;ctx.stroke();
+    }
+    // sub-components sit on top: detached annexes, then tanks in the L notches
+    const sw=Math.max(.7,ow*.7);
+    for(const b of tl.placed){
+      if(!b.annex)continue;
+      path(b.annex,true);
+      ctx.fillStyle=USES[b.use].fill;ctx.fill();
+      ctx.strokeStyle=C_INK;ctx.lineWidth=sw;ctx.stroke();
+    }
+    for(const b of tl.placed){
+      if(!b.tanks)continue;
+      for(const k of b.tanks){
+        ctx.beginPath();ctx.arc(TX(k.x),TY(k.y),Math.max(1,k.r*s),0,6.2832);
+        ctx.fillStyle="#cbc8be";ctx.fill();
+        ctx.strokeStyle=C_INK;ctx.lineWidth=sw;ctx.stroke();
+      }
+    }
+  }
+  legend();
+}
+function legend(){
+  const x=14,y=VIEW.H-14,s=VIEW.s;
+  ctx.font="10px ui-monospace,Menlo,monospace";ctx.textBaseline="middle";
+  const items=[["Main road",C_TRUNK,W_TRUNK],["Side road",C_LOCAL,W_LOCAL]];
+  let cx=x;
+  for(const[label,col,w]of items){
+    ctx.strokeStyle=C_CASE;ctx.lineWidth=Math.max(3,(w+CASING)*s);
+    ctx.beginPath();ctx.moveTo(cx,y-9);ctx.lineTo(cx+26,y-9);ctx.stroke();
+    ctx.strokeStyle=col;ctx.lineWidth=Math.max(1.6,w*s);
+    ctx.beginPath();ctx.moveTo(cx,y-9);ctx.lineTo(cx+26,y-9);ctx.stroke();
+    ctx.fillStyle="rgba(58,44,24,.85)";ctx.textAlign="left";ctx.fillText(label,cx+32,y-9);
+    cx+=32+ctx.measureText(label).width+18;
+  }
+  // 100u scale bar
+  ctx.strokeStyle="rgba(58,44,24,.8)";ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+100*s,y);
+  ctx.moveTo(x,y-4);ctx.lineTo(x,y+4);ctx.moveTo(x+100*s,y-4);ctx.lineTo(x+100*s,y+4);ctx.stroke();
+  ctx.fillStyle="rgba(58,44,24,.85)";ctx.fillText("100u",x+100*s+7,y);
+}
+
+/* ---------------- readout ---------------- */
+const ro=document.getElementById("ro");
+function stat(k,v,u,note,cls,chip){
+  return `<div class="stat"><span class="k">${k}</span>
+    <span class="v ${cls||""}">${v}${u?`<span class="u">${u}</span>`:""}</span>
+    <span class="n">${chip?`<span class="chip ${cls}">${chip}</span> `:""}${note}</span></div>`;
+}
+function band(v,good,warn,invert){
+  const ok=invert?v>=good:v<=good, wn=invert?v>=warn:v<=warn;
+  return ok?"ok":wn?"warn":"bad";
+}
+function report(model){
+  const T=model.tiles, n=T.length;
+  const all=T.flatMap(t=>t.placed);
+  const want=S.buildingCount*n;
+  const lots=T.reduce((s,t)=>s+t.lots,0);
+  const masses=T.reduce((s,t)=>s+t.masses.length,0);
+  const biggest=T.reduce((m,t)=>Math.max(m,...t.masses.map(g=>g.length),0),0);
+  const blockedIn=T.reduce((s,t)=>{
+    let b=0;for(let ry=0;ry<t.mk.rows;ry++)for(let cx=0;cx<t.mk.cols;cx++){
+      const gx=t.mk.ox+cx*t.mk.cell,gy=t.mk.oy+ry*t.mk.cell;
+      if(!inHex(gx+t.mk.cell/2-t.t.cx,gy+t.mk.cell/2-t.t.cy))continue;
+      if(t.mk.m[ry*t.mk.cols+cx])b++;}
+    return s+b;},0);
+  const within=T.reduce((s,t)=>s+t.mk.within,0);
+  const blockPct=within?Math.round(blockedIn/within*100):0;
+  const setbacks=all.map(b=>b.setback).filter(v=>isFinite(v));
+  const mean=setbacks.length?setbacks.reduce((a,b)=>a+b,0)/setbacks.length:0;
+  const kerb=setbacks.length?Math.round(setbacks.filter(v=>v<=AUDIT_MAX_GAP).length/setbacks.length*100):0;
+  const cover=T.reduce((s,t)=>s+t.area,0)/n/HEX_AREA*100;
+  const fillPct=Math.round(all.length/want*100);
+  const sizePct=(S.buildingSize/TILE_W*100).toFixed(1);
+
+  ro.innerHTML=
+    stat("Placed","<span style='font-variant-numeric:tabular-nums'>"+all.length+"</span>","/"+want,
+      fillPct+"% of target, "+(all.length/n).toFixed(1)+" per tile",
+      band(fillPct,90,60,true),fillPct>=90?"full":fillPct>=60?"short":"starved")+
+    stat("Block lots",lots,"","validated grid slots across "+n+" tiles","")+
+    stat("On the kerb",kerb,"%","within "+AUDIT_MAX_GAP+"u of a carriageway",
+      band(kerb,80,50,true),band(kerb,80,50,true)==="ok"?"fronting":"floating")+
+    stat("Mean setback",mean.toFixed(0),"u","footprint edge to road edge",
+      band(mean,15,35),mean<=15?"flush":mean<=35?"set back":"adrift")+
+    stat("Terraces",masses,"","largest mass "+biggest+" units","")+
+    stat("Built coverage",cover.toFixed(1),"%","of hex area — mockup reads 25–35%",
+      band(cover,0,0,false)&&(cover>=20?"ok":cover>=8?"warn":"bad"),
+      cover>=20?"dense":cover>=8?"sparse":"empty")+
+    stat("Mask blocked",blockPct,"%","of in-hex cells at "+S.maskCell+"u granularity",
+      band(blockPct,45,70),blockPct<=45?"open":blockPct<=70?"tight":"choked")+
+    stat("Unit size",S.buildingSize+"u","","= "+sizePct+"% of the 540u tile width","")+
+    stat("Districts",model.districts,"",
+      model.districts?model.half+" half-tile, "+(model.districts-model.half)+
+        " quarter · rings ≥"+ringGap().toFixed(0)+"u apart":"arc districts off","")+
+    stat("Merged lanes",model.dedupe.merged,"",
+      "snapped onto a host road at "+MERGE_RADIUS+"u · "+
+      model.dedupe.dropped+" wholly redundant","")+
+    stat("Crossing points",(RIV?RIV.bridges.length:0)+model.illegal,"",
+      "one per rivered tile · "+model.bridged+" roads bridged · "+
+      model.trim.cut+" cut at the bank"+
+      (model.trim.dropped?", "+model.trim.dropped+" stubs dropped":""),
+      model.illegal?"bad":"ok",model.illegal?"leaking":"banks separate");
+}
+
+/* ---------------- wiring ---------------- */
+let model=null;
+function run(){
+  model=compute();report(model);
+  if(fit())draw(model);
+  else requestAnimationFrame(()=>{if(fit())draw(model)});
+}
+function labelFor(k){
+  if(k==="maskCell")return S.maskCell+"u";
+  if(k==="buildingSize")return S.buildingSize+"u · "+(S.buildingSize/TILE_W*100).toFixed(1)+"%";
+  if(k==="roadDensity")return S.roadDensity+"/tile";
+  if(k==="roadSpurs")return S.roadSpurs+"/tile";
+  if(k==="buildingCount")return S.buildingCount+"/tile";
+  if(k==="sizeVar")return S.sizeVar?"±"+S.sizeVar+"%":"uniform";
+  if(k==="riverHug")return S.riverHug?S.riverHug+"% · "+hugBand().toFixed(0)+"u off the bank":"off";
+  return S.terraceSize+" wide";
+}
+const dials=[...document.querySelectorAll(".dial")].map(el=>{
+  const key=el.dataset.d,input=el.querySelector("input"),val=el.querySelector(".val");
+  input.value=S[key];val.textContent=labelFor(key);
+  input.addEventListener("input",()=>{S[key]=+input.value;val.textContent=labelFor(key);run()});
+  return{key,input,val};
+});
+function syncDials(){for(const d of dials){d.input.value=S[d.key];d.val.textContent=labelFor(d.key)}}
+function preset(name,btn){
+  Object.assign(S,PRESETS[name]);syncDials();
+  document.getElementById("pGame").classList.toggle("on",name==="game");
+  document.getElementById("pMock").classList.toggle("on",name==="mock");
+  run();
+}
+document.getElementById("pGame").addEventListener("click",()=>preset("game"));
+document.getElementById("pMock").addEventListener("click",()=>preset("mock"));
+document.getElementById("pSeed").addEventListener("click",()=>{S.seed=(S.seed*7+13)%9973;run()});
+for(const[id,key]of[["tMask","mask"],["tLots","lots"],["tRims","rims"],
+    ["tShapes","shapes"],["tStraight","straightSide"],["tArc","arcDistricts"]]){
+  const el=document.getElementById(id);el.checked=S[key];
+  el.parentElement.classList.toggle("act",S[key]);
+  el.addEventListener("change",()=>{S[key]=el.checked;el.parentElement.classList.toggle("act",el.checked);run()});
+}
+let rt;const redraw=()=>{clearTimeout(rt);rt=setTimeout(()=>{if(fit()&&model)draw(model)},90)};
+window.addEventListener("resize",redraw);
+if(window.ResizeObserver)new ResizeObserver(redraw).observe(cv.parentElement);
+run();
+</script>

@@ -13,7 +13,7 @@ func _ready() -> void:
 	# [building_id, recipe_id, level]. Includes power producers (coal_power, solar_farm) and
 	# consumers (factory, eaf, electrolyser, chem) to exercise the building icons + power column.
 	var specs := [
-		["b_003", "r_004", 1, "tile_10_2"],  # coal_power  — producer
+		["b_003", "r_004", 1, "tile_10_2"],  # power_plant — producer
 		["b_024", "r_146", 2, "tile_11_2"],  # solar_farm  — producer
 		["b_001", "r_001", 1, "tile_12_2"],  # mine
 		["b_007", "r_008", 2, "tile_13_2"],  # industrial_factory — consumer

@@ -106,6 +106,7 @@ func _ready() -> void:
 	_test_input_buy_capacity_building_first()
 	_test_warehouse_upgrade()
 	_test_warehousing_fee_rates()
+	_test_two_part_freight_tariff()
 	_test_jit_streak_and_direct_feed()
 	_test_sell_protects_build_materials()
 	_test_auto_sell_goods()
@@ -221,6 +222,7 @@ func _ready() -> void:
 	_test_power_quality()
 	_test_power_instance_age()
 	_test_power_intermittency_alloc()
+	_test_embodied_carbon()
 	_test_intermittency_tile_aggregate()
 	_test_detail_panel_owner_resolution()
 	_test_battery_buildable()
@@ -240,6 +242,7 @@ func _ready() -> void:
 	_test_decision_company_scope_loyalty()
 	_test_decision_loan_fallback()
 	_test_loan_collateral_capacity()
+	_test_loan_minimum_and_grace()
 	_test_decision_commit_guard_and_auto_resolve()
 	_test_decision_roundtrip()
 	_test_building_pause()
@@ -251,12 +254,17 @@ func _ready() -> void:
 	_test_decision_pulse_pipeline()
 	_test_decision_queue_stacking()
 	_test_briefing_items_and_dismissal()
+	_test_storage_alert_rearms_on_upgrade()
+	_test_power_capped_alert()
+	_test_group_card_content_fits()
 	_test_briefing_event_mapping()
 	await _test_decision_view_never_empty()
 	_test_auto_bridge_loan()
 	_test_cfo_tax_credit()
 	_test_policy_state()
 	_test_insider_tip()
+	_test_deposit_running_out_warning()
+	_test_partial_power_dispatch()
 	_test_building_diagnostics()
 	_test_infra_upgrade()
 	if not _failed_names.is_empty():
@@ -4251,8 +4259,9 @@ func _test_input_buy_capacity_building_first() -> void:
 	_check(Production._inbound_qty(t, steel) == 50, "construction-tagged overflow is reserved freight (excluded)")
 	MatchState.overflow_shipments.clear()
 
-	# (b) three identical motor factories (r_009: 30 steel + 32 wiring), tile squeezed
-	# so exactly ONE building's full (lead+1) buffer fits.
+	# (b) three identical motor factories, tile squeezed so exactly ONE building's full
+	# (lead+1) buffer fits. Per-unit needs come from the recipe rather than literals, so a
+	# balance pass moving r_009's quantities cannot silently turn this into a stale fixture.
 	MatchState.money = 1000000.0
 	Production._same_tile_supply.clear()
 	# Power gate reads cables off the hex_map node — fake one for this tile (freed below).
@@ -4269,8 +4278,8 @@ func _test_input_buy_capacity_building_first() -> void:
 		iids.append(MatchState.add_building("b_007", "r_009", t, "player_1", "whx_%d" % i))
 	var lead_steel := maxi(1, int(TransportService.quote_market_buy(t, steel, 1, MatchState.seaport_would_cover(steel)).get("turns", 1)))
 	var lead_wiring := maxi(1, int(TransportService.quote_market_buy(t, wiring, 1, MatchState.seaport_would_cover(wiring)).get("turns", 1)))
-	var w_steel := 30 * (lead_steel + 1)
-	var w_wiring := 32 * (lead_wiring + 1)
+	var w_steel := _recipe_input_qty("r_009", steel) * (lead_steel + 1)
+	var w_wiring := _recipe_input_qty("r_009", wiring) * (lead_wiring + 1)
 	var junk := str(Catalog.get_good_by_internal_name("rubber").get("id", ""))
 	Stockpile.add(t, junk, Stockpile.get_capacity(t) - (w_steel + w_wiring))
 	var summary := {
@@ -4342,14 +4351,17 @@ func _test_jit_streak_and_direct_feed() -> void:
 	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
 	var wiring := str(Catalog.get_good_by_internal_name("copper_wiring").get("id", ""))
 	var consumer := MatchState.add_building("b_007", "r_009", t, "player_1", "jit_consumer")
-	# Produced-on-tile steel routes into the feed up to the consumer's 30/turn need.
-	Production._output_buffer.append({"coord": t, "good_id": steel, "qty": 40, "transport_cost": 0.0, "instance_id": "jit_src_1"})
+	# Produced-on-tile steel routes into the feed up to ONE turn of the consumer's need, and
+	# the surplus falls through to the warehouse. Both the need and the surplus are derived
+	# from the recipe so the split under test survives a balance pass.
+	var need_steel := _recipe_input_qty("r_009", steel)
+	Production._output_buffer.append({"coord": t, "good_id": steel, "qty": need_steel + 10, "transport_cost": 0.0, "instance_id": "jit_src_1"})
 	Production._flush_output_buffer()
-	_check(Production._feed_available(t, steel) == 30, "feed takes one turn of committed demand (30)")
+	_check(Production._feed_available(t, steel) == need_steel, "feed takes one turn of committed demand (%d)" % need_steel)
 	_check(Stockpile.get_at_tile(t, steel) == 10, "the surplus 10 lands in the warehouse")
-	_check(Production.get_jit_fed_for_tile(t) == 30, "JIT readout counts fed units")
+	_check(Production.get_jit_fed_for_tile(t) == need_steel, "JIT readout counts fed units")
 	# Availability + consumption draw the feed first.
-	Stockpile.add(t, wiring, 32)
+	Stockpile.add(t, wiring, _recipe_input_qty("r_009", wiring))
 	var recipe: Dictionary = Catalog.get_recipe("r_009")
 	var consumer_b: Dictionary = MatchState.get_building(consumer)
 	_check(bool(Production._can_run_recipe(consumer_b, recipe).get("can_run", true)) or true, "availability check ran")
@@ -4429,13 +4441,44 @@ func _test_sell_protects_build_materials() -> void:
 	Stockpile.clear_all()
 
 func _test_warehousing_fee_rates() -> void:
-	# Per-unit storage fee by transport class (owner spec): solids 0.01,
-	# safe/plain liquids 0.03, hazard liquids + gases 0.1.
-	_check(absf(EconomyConfig.warehousing_cost_per_unit("g_006") - 0.01) < 0.0001, "steel (solid_heavy) stores at 0.01/unit")
-	_check(absf(EconomyConfig.warehousing_cost_per_unit("g_027") - 0.01) < 0.0001, "plastics (solid_light) store at 0.01/unit")
-	_check(absf(EconomyConfig.warehousing_cost_per_unit("g_031") - 0.03) < 0.0001, "fuels (liquid) store at 0.03/unit")
-	_check(absf(EconomyConfig.warehousing_cost_per_unit("g_065") - 0.1) < 0.0001, "industrial acids (hazard_liquid) store at 0.1/unit")
-	_check(absf(EconomyConfig.warehousing_cost_per_unit("") - 0.01) < 0.0001, "unknown class falls back to the solid rate")
+	# Per-unit storage fee is a TWO-PART tariff by transport class (owner ruling 2026-07-27):
+	# flat floor-space leg + ad-valorem capital leg charged on this turn's decayed base price.
+	# Class comes from the catalog, not a hardcoded label, so a reclassification can't
+	# silently stale this test out (fuels moved liquid -> safe_liquid on 2026-07-27).
+	for pair in [["g_006", "steel"], ["g_027", "plastics"],
+			["g_031", "fuels"], ["g_065", "industrial acids"]]:
+		var gid := str(pair[0])
+		var cls := Catalog.get_transport_class(gid)
+		var band: Dictionary = EconomyConfig.WAREHOUSING_BY_CLASS[cls]
+		var want: float = float(band["flat"]) + float(band["av"]) * MarketState.get_base_price_now(gid)
+		_check(absf(EconomyConfig.warehousing_cost_per_unit(gid) - want) < 0.0001,
+			"%s (%s) stores at flat %.3f + %.3f x base price" % [str(pair[1]), cls, band["flat"], band["av"]])
+	_check(Catalog.get_transport_class("g_027") == "solid_heavy",
+		"plastics reclassified solid_light -> solid_heavy (resin pellets ship by bulk silo)")
+	_check(absf(EconomyConfig.warehousing_cost_per_unit("") - EconomyConfig.WAREHOUSING_BY_CLASS["solid_light"]["flat"]) < 0.0001,
+		"unknown good falls back to the solid_light FLAT leg only (no invented value basis)")
+
+func _test_two_part_freight_tariff() -> void:
+	# Freight is flat weight-class rate + ad-valorem leg (owner ruling 2026-07-27), so the
+	# burden stops collapsing to ~0.1% of value at the top of the chain. Valued on the
+	# decayed base price: no buy markup, no glut/deficit impact.
+	for gid in ["g_006", "g_038", "g_027"]:
+		var cls := Catalog.get_transport_class(gid)
+		var flat: float = EconomyConfig.transport_cost_per_unit_turn(cls)
+		var av: float = float(EconomyConfig.TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS[cls])
+		var want: float = flat + av * MarketState.get_base_price_now(gid)
+		_check(absf(EconomyConfig.transport_rate_for_good(gid) - want) < 0.0001,
+			"%s freight = flat %.3f + %.4f x base price" % [Catalog.get_internal_name(gid), flat, av])
+	_check(EconomyConfig.transport_rate_for_good("g_061")
+			> EconomyConfig.transport_cost_per_unit_turn(Catalog.get_transport_class("g_061")),
+		"a high-value good (iron_battery) is dearer to haul than its flat leg alone")
+	_check(absf(EconomyConfig.transport_rate_for_good("g_041")
+			- EconomyConfig.transport_cost_per_unit_turn(Catalog.get_transport_class("g_041"))) < 0.0001,
+		"solid_light (cpu) has a ZERO ad-valorem leg — electronics stay near-free to ship")
+	_check(absf(EconomyConfig.transport_rate_for_good("") - EconomyConfig.transport_cost_per_unit_turn("standard")) < 0.0001,
+		"unknown good falls back to the flat leg only")
+	_check(Catalog.get_transport_class("g_038") == "solid_heavy",
+		"glass reclassified solid_light -> solid_heavy (~2500 kg/m3, the densest thing in the chain)")
 
 func _test_warehouse_upgrade() -> void:
 	# Per-tile warehouse expansion paid in materials (owner spec 2026-07-09):
@@ -4519,6 +4562,20 @@ func _test_transport_congestion() -> void:
 	_check(MatchState.route_congestion_tier(route) == 1, "450 over cap 300 (≤ cap+L1 600) → tier 1 (+100%)")
 	load_flow.call(700)
 	_check(MatchState.route_congestion_tier(route) == 2, "700 over cap+L1 600 → tier 2 (+200%)")
+
+	# MARGINAL charging: only the units above the congested link's remaining capacity pay
+	# the surcharge. A clear link has full headroom; an over-cap link has none.
+	load_flow.call(250)
+	_check(int(MatchState.route_congestion(route).get("headroom", -1)) == 0,
+		"an uncongested route reports no penalty band at all (tier 0)")
+	load_flow.call(450)
+	var cong: Dictionary = MatchState.route_congestion(route)
+	_check(int(cong.get("tier", 0)) == 1 and int(cong.get("headroom", -1)) == 0,
+		"a link already 150 over its 300 cap has zero headroom — every unit pays")
+	# A link UNDER cap but pushed over by this turn's own flow keeps its remaining headroom.
+	load_flow.call(280)
+	_check(int(MatchState.route_congestion(route).get("tier", 0)) == 0,
+		"280 under the 300 cap stays clear — headroom only matters once a link is over")
 
 	Modifiers.reset()
 	MatchState.reset()
@@ -4671,17 +4728,17 @@ func _test_live_unlock_conditions() -> void:
 	MatchState.reset()
 	Production.full_output_streak_by_building.clear()
 	var iid := MatchState.add_building("b_003", "", "tile_lv_1")  # Coal Power Plant, Level 1
-	_check(MatchState._count_buildings("coal_power", 1, false, 20) == 0,
+	_check(MatchState._count_buildings("power_plant", 1, false, 20) == 0,
 		"a fresh L1 building (streak 0) does not count toward a 20-turn gate")
 	Production.full_output_streak_by_building[iid] = 20
-	_check(MatchState._count_buildings("coal_power", 1, false, 20) == 1,
+	_check(MatchState._count_buildings("power_plant", 1, false, 20) == 1,
 		"the L1 building counts once its run-streak reaches 20 turns")
 
 	# --- Level filter: this fixture contains no Level-2 buildings ---
-	_check(MatchState._count_buildings("coal_power", 2, false, 0) == 0,
+	_check(MatchState._count_buildings("power_plant", 2, false, 0) == 0,
 		"Level-2 gates stay unmet when the owned building is only Level 1")
 	# --- Profitability filter: a building with no costed output isn't profitable ---
-	_check(MatchState._count_buildings("coal_power", -1, true, 0) == 0,
+	_check(MatchState._count_buildings("power_plant", -1, true, 0) == 0,
 		"the profitable filter excludes buildings with no known unit cost")
 
 	# Every non-placeholder research row must either resolve to a live metric or
@@ -4690,7 +4747,6 @@ func _test_live_unlock_conditions() -> void:
 	var expected_content_gaps := [
 		"Agrivoltaic Integration",
 		"Autonomous Dispatch Rooms",
-		"Combined Cycle Gas",
 		"Continuous Improvement Teams",
 		"Integrated Operations Planning",
 		"Risk Desk Procedures",
@@ -5398,6 +5454,61 @@ func _test_power_instance_age() -> void:
 	_check(Production._instance_age("inst_b_001_000001") < Production._instance_age("inst_b_001_000002"),
 		"instance age: lower counter is older")
 
+func _test_embodied_carbon() -> void:
+	# A fossil fuel carries its own point-of-combustion figure and is NOT re-derived from its
+	# feedstock — processed_oil is 2.7 while the crude it comes from is 0.1, and letting the
+	# DAG flatten that would gut the policy.
+	var oil := str(Catalog.get_good_by_internal_name("processed_oil").get("id", ""))
+	var coal := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	var pet := str(Catalog.get_good_by_internal_name("pet_coke").get("id", ""))
+	var eth := str(Catalog.get_good_by_internal_name("ethylene").get("id", ""))
+	var pwr := str(Catalog.get_good_by_internal_name("power").get("id", ""))
+	_check(float(Catalog.get_good(pet).get("co2_tax_multiplier", 0.0)) > 0.0,
+		"pet coke now carries a carbon levy (it is a petroleum product)")
+	# THE LOOPHOLE: making ethylene pays the levy on the oil it cracks, so buying it must cost
+	# the same. Cracking 9 processed_oil at 2.7 yields 12 ethylene -> 2.03 carried per unit.
+	# A good's own levy is NOT its embodied figure: its consumer pays that directly.
+	var oil_levy := float(Catalog.get_good(oil).get("co2_tax_multiplier", 0.0))
+	_check(Catalog.embodied_carbon(eth) > oil_levy * 0.5,
+		"loophole closed: ethylene carries the oil levy that cracking it incurred (%.2f)" % Catalog.embodied_carbon(eth))
+	_check(Catalog.embodied_carbon(eth) > float(Catalog.get_good(eth).get("co2_tax_multiplier", 0.0)),
+		"loophole closed: ethylene's carried carbon exceeds its own levy, so buying cannot undercut making")
+	_check(Catalog.embodied_carbon(pwr) > 0.0,
+		"loophole closed: power carries the carbon of the coal burned to make it")
+	# A manufactured good carries the carbon of the fossil that made it.
+	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	_check(Catalog.embodied_carbon(steel) > 0.0, "embodied carbon: steel carries the coal that made it")
+	# ...and one made from nothing fossil carries none. biomass is the clean feedstock.
+	var bio := str(Catalog.get_good_by_internal_name("biomass").get("id", ""))
+	_check(absf(Catalog.embodied_carbon(bio)) < 0.001, "embodied carbon: biomass carries none")
+	# The levy is NOT charged on manufactured goods, so one tonne of carbon is taxed once.
+	# This is the property that stops a deep chain paying for the same coal at every step.
+	_check(absf(float(Catalog.get_good(steel).get("co2_tax_multiplier", 0.0))) < 0.001,
+		"no double count: steel carries embodied carbon but is not itself levied")
+	_check(float(Catalog.get_good(coal).get("co2_tax_multiplier", 0.0)) > 0.0,
+		"no double count: the levy lands on the coal instead")
+	# Market price: zero carbon component before the levy starts, positive once it is in force.
+	var t_before: int = PolicyState.CO2_RAMP_FIRST_TURN - 1
+	_check(absf(PolicyState.co2_tax_scale(t_before)) < 0.001, "carbon price: no component before the levy starts")
+	_check(PolicyState.co2_tax_scale(PolicyState.CO2_P1_TURN) > 0.0, "carbon price: the levy scale is live at P1")
+	# --- national grid decarbonises on its own ---
+	var full: int = EconomyConfig.GRID_CARBON_FULL_TURN
+	_check(absf(PolicyState.grid_carbon_intensity(1) - 1.0) < 0.001, "grid carbon: fully fossil at turn 1")
+	_check(absf(PolicyState.grid_carbon_intensity(full) - 1.0) < 0.001, "grid carbon: still fully fossil at turn %d" % full)
+	_check(absf(PolicyState.grid_carbon_intensity(TurnManager.MAX_TURNS) - EconomyConfig.GRID_CARBON_FLOOR) < 0.001,
+		"grid carbon: reaches the %d%% floor on the last turn" % int(EconomyConfig.GRID_CARBON_FLOOR * 100.0))
+	var mid := PolicyState.grid_carbon_intensity((full + TurnManager.MAX_TURNS) / 2)
+	_check(mid < 1.0 and mid > EconomyConfig.GRID_CARBON_FLOOR, "grid carbon: decays monotonically in between (%.2f)" % mid)
+	_check(PolicyState.grid_carbon_intensity(TurnManager.MAX_TURNS + 50) >= EconomyConfig.GRID_CARBON_FLOOR - 0.001,
+		"grid carbon: never falls below the floor past the last turn")
+	# The curve cleans the GRID, not a coal plant: coal's levy is a fixed per-unit charge and
+	# must not inherit the grid's decarbonisation, or burning coal would get cheaper over time.
+	var coal_levy_early := PolicyState.carbon_charge(coal, 100, PolicyState.CO2_P1_TURN)
+	var coal_levy_late := PolicyState.carbon_charge(coal, 100, TurnManager.MAX_TURNS)
+	_check(coal_levy_late >= coal_levy_early,
+		"grid carbon: burning coal yourself does NOT get cleaner as the grid does")
+
+
 func _test_power_intermittency_alloc() -> void:
 	# Result is keyed by iid -> {derate, green_consumed, unfirmed_intermittent, steady_consumed, demand}.
 	var derate := func(dd, k): return float((dd.get(k, {}) as Dictionary).get("derate", 0.0))
@@ -5435,6 +5546,23 @@ func _test_power_intermittency_alloc() -> void:
 		[{"iid": "c1", "tile": "tile_1_1", "demand": 100.0, "level": 1, "profit": 0.0, "age": 1}],
 		{"tile_1_1": 0})
 	_check(absf(derate.call(d, "c1") - 0.2) < 0.001, "intermittency: 50% intermittent share -> 0.2 derate")
+	# A load-following recipe takes NO derate on fully unfirmed green and needs no battery.
+	# Paired with an identical non-immune consumer so the exemption is proved to be the cause
+	# rather than something else about the fixture zeroing the derate.
+	var immune_id: String = str(EconomyConfig.INTERMITTENCY_IMMUNE_RECIPES[0])
+	d = Production._allocate_power_derates(
+		{"tile_1_1": {"int": 200, "steady": 0}},
+		[{"iid": "imm", "tile": "tile_1_1", "demand": 100.0, "recipe_id": immune_id,
+		  "level": 1, "profit": 0.0, "age": 1},
+		 {"iid": "ctl", "tile": "tile_1_1", "demand": 100.0, "recipe_id": "r_009",
+		  "level": 1, "profit": 0.0, "age": 1}],
+		{"tile_1_1": 0})
+	_check(absf(derate.call(d, "imm")) < 0.001 and bool(d["imm"].get("intermittency_immune", false)),
+		"intermittency: a load-following recipe takes no derate on fully unfirmed green")
+	_check(absf(derate.call(d, "ctl") - 0.4) < 0.001 and not bool(d["ctl"].get("intermittency_immune", true)),
+		"intermittency: an identical non-immune consumer still takes the full 0.4 derate")
+	_check(int(d["imm"]["unfirmed_intermittent"]) == 100 and int(d["imm"]["green_consumed"]) == 100,
+		"intermittency: the immune consumer still RECORDS the unfirmed green it drew")
 	# Priority: scarce green (100) goes to the higher-level consumer first.
 	d = Production._allocate_power_derates(
 		{"tile_5_5": {"int": 100, "steady": 0}},
@@ -5693,8 +5821,13 @@ func _test_goods_flow_graph() -> void:
 	# carry every game-start fuel route (coal, processed_oil, pet_coke).
 	var power: Dictionary = by_id.get("power", {})
 	var power_inputs: Array = power.get("inputs", [])
-	_check(power_inputs.has("coal") and power_inputs.has("processed_oil") and power_inputs.has("pet_coke"),
-		"goods graph: power carries the union of game-start fuel edges")
+	# Coal (r_004) and processed_oil (r_181) are start-unlocked; pet_coke's only route
+	# (r_151) moved behind "Combined Cycle Turbines" on 2026-07-28, so it is no longer a
+	# game-start edge.
+	_check(power_inputs.has("coal") and power_inputs.has("processed_oil"),
+		"goods graph: power carries the game-start fuel edges (coal, processed_oil)")
+	_check(not power_inputs.has("pet_coke"),
+		"goods graph: pet_coke is NOT a start edge — it is gated behind Combined Cycle Turbines")
 	# Owner 2026-07-19: r_231 Anthracite Graphitisation (45 coal -> 2 graphite,
 	# 160 MW, ungated) is graphite's SIMPLEST base route (1 input, lower energy than
 	# pet-coke calcination), so the web edge is coal; pet-coke and the gated bio
@@ -5825,6 +5958,16 @@ func _test_goods_flow_graph() -> void:
 	# not a visual floor — the resting web renders at ghost alpha.
 	_check(crossings >= 0 and crossings < 1400,
 		"goods graph: %d crossings after ordering (< 1400 canary; swimlane-constrained)" % crossings)
+
+func _recipe_input_qty(recipe_id: String, good_id: String) -> int:
+	# Per-unit input need, read from the catalog instead of written into the test as a literal.
+	# Tests that hardcode a recipe's quantities fail the next balance pass without anything
+	# having actually broken, which trains you to edit the number rather than read the failure.
+	for inp in Catalog.get_recipe(recipe_id).get("inputs", []):
+		if str((inp as Dictionary).get("good_id", "")) == good_id:
+			return int((inp as Dictionary).get("qty", 0))
+	return 0
+
 
 func _check(ok: bool, name: String) -> void:
 	if ok:
@@ -6068,7 +6211,15 @@ func _test_market_buy() -> void:
 	_check(not result.is_empty(), "queue_buy returns a summary")
 	_check(absf(float(result.get("goods_cost", 0)) + float(result.get("transport_cost", 0)) - float(result.get("cost", 0))) < 0.01,
 		"queue_buy splits cost into goods + transport")
-	_check(MatchState.money < money_before, "queue_buy pays for goods + transport")
+	# PAY ON ARRIVAL (owner ruling 2026-07-27): a shipped order does NOT charge at order
+	# time — the bill rides with the goods and settles when they land.
+	_check(bool(result.get("deferred", false)), "a shipped buy is flagged deferred")
+	_check(absf(MatchState.money - money_before) < 0.0001,
+		"queue_buy does NOT charge at order time — the bill rides with the goods")
+	_check(absf(MatchState.unpaid_purchase_total() - float(result.get("cost", 0.0))) < 0.01,
+		"the unpaid bill is tracked against future purchase headroom")
+	_check(MatchState.purchase_headroom() < money_before + LoanState.available_capacity() + 0.01,
+		"in-transit commitments reduce the headroom the next order is measured against")
 	_check(MatchState.get_pending_transport_shipments().size() > ship_before, "queue_buy queues an inbound shipment")
 	var rows: Array = MatchState.get_oneoff_transaction_rows()
 	_check(rows.size() == t_before + 1 and str(rows[rows.size() - 1].get("type", "")) == "Buy",
@@ -6582,63 +6733,108 @@ func _test_price_impact() -> void:
 # impact, capped at ±50%, recovering 0.1%/turn under the threshold. The impact
 # multiplies the decayed base price; `prices` stays the impact-free series.
 func _test_price_impact_thresholds() -> void:
-	# Rate banding off the base output (strictly-above thresholds).
+	# BANDED response with SPACED thresholds (owner ruling): 2x / 4x / 10x.
 	_check(EconomyConfig.price_impact_rate(64, 32) == 0.0, "2x exactly is under the bite")
-	_check(EconomyConfig.price_impact_rate(65, 32) == 0.1, "just over 2x accrues 0.1%")
-	_check(EconomyConfig.price_impact_rate(96, 32) == 0.1, "3x exactly stays in the 2x band")
-	_check(EconomyConfig.price_impact_rate(97, 32) == 0.2, "over 3x accrues 0.2%")
-	_check(EconomyConfig.price_impact_rate(129, 32) == 0.4, "over 4x accrues 0.4%")
-	_check(EconomyConfig.price_impact_rate(-129, 32) == 0.4, "buying volume uses the same bands")
+	_check(EconomyConfig.price_impact_rate(65, 32) == EconomyConfig.PRICE_IMPACT_RATE_2X,
+		"just over 2x accrues the gentle band")
+	_check(EconomyConfig.price_impact_rate(128, 32) == EconomyConfig.PRICE_IMPACT_RATE_2X,
+		"4x exactly is still the 2x band")
+	_check(EconomyConfig.price_impact_rate(129, 32) == EconomyConfig.PRICE_IMPACT_RATE_4X,
+		"just over 4x steps up")
+	_check(EconomyConfig.price_impact_rate(320, 32) == EconomyConfig.PRICE_IMPACT_RATE_4X,
+		"10x exactly is still the 4x band")
+	_check(EconomyConfig.price_impact_rate(321, 32) == EconomyConfig.PRICE_IMPACT_RATE_10X,
+		"over 10x is the flooding band")
+	_check(EconomyConfig.price_impact_rate(32000, 32) == EconomyConfig.PRICE_IMPACT_RATE_10X,
+		"the flooding band is the top — it saturates by design")
+	_check(EconomyConfig.price_impact_rate(-321, 32) == EconomyConfig.PRICE_IMPACT_RATE_10X,
+		"buying volume uses the same bands (deficit side)")
 	_check(EconomyConfig.price_impact_rate(1000, 0) == 0.0, "no base output -> no impact")
+	# A NORMAL multi-building chain must not be punished: 3 factories of one good is 3x,
+	# which sits in the gentle band, not the flooding one. (The continuous curve charged
+	# 0.66%/turn here and crushed motors to the floor over 75 turns.)
+	_check(EconomyConfig.price_impact_rate(84, 28) == EconomyConfig.PRICE_IMPACT_RATE_2X,
+		"a 3-factory chain sits in the gentle band, not the flooding one")
+	_check(EconomyConfig.PRICE_IMPACT_CAP_PCT == 40.0, "impact is capped at 40% of base price")
+	# Recovery is FLAT — depth-scaling would outrun a 0.5%/turn accrual and reward pulsing.
+	_check(EconomyConfig.price_impact_recovery(0.0) == EconomyConfig.PRICE_IMPACT_RECOVERY_PCT
+		and EconomyConfig.price_impact_recovery(-40.0) == EconomyConfig.PRICE_IMPACT_RECOVERY_PCT,
+		"recovery is flat at every depth, so pulsing production can't out-earn the penalty")
+	_check(EconomyConfig.PRICE_IMPACT_RECOVERY_PCT < EconomyConfig.PRICE_IMPACT_RATE_2X + 0.0001,
+		"recovery never exceeds even the gentlest accrual band")
 
 	# Accrual, stacking on decay, recovery, and the cap — driven through the
 	# real per-turn pipeline on a scratch good id.
 	var gid := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
 	var coal_base: int = Catalog.base_output_for_good(gid)
 	_check(coal_base > 0, "coal has a base building output")
+	# Flush any volume an earlier test left on the books BEFORE measuring — residue would
+	# push a sample into the wrong band and shift every expected value below.
+	MarketState._turn_sold.clear()
+	MarketState._turn_bought.clear()
 	MarketState.impact_pct.erase(gid)
 	# tick_turn decays every good's base price — restore the table afterwards so
 	# later market tests see untouched prices.
 	var prices_snapshot: Dictionary = MarketState.prices.duplicate(true)
 	var base_before: float = MarketState.get_base_price_now(gid)
-	MarketState.record_market_sale_volume(gid, coal_base * 4 + 1)      # >4x sell
+	# Sell in the FLOODING band (>10x) so the sample is unambiguous.
+	var rate_hi: float = EconomyConfig.price_impact_rate(coal_base * 11, coal_base)
+	MarketState.record_market_sale_volume(gid, coal_base * 11)
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 0.4) < 0.0001, "one >4x sell turn accrues -0.4%")
-	var decay: float = float(Catalog.get_good(gid).get("decay_rate", 0.0))
-	var expected: float = base_before * (1.0 - decay) * (1.0 - 0.004)
+	var after_4x: float = -rate_hi
+	_check(absf(MarketState.get_impact_pct(gid) - after_4x) < 0.0001,
+		"one >10x sell turn accrues -%.2f%%" % rate_hi)
+	# Decay is suppressed until MarketState.DECAY_FIRST_TURN, so the effective rate at this
+	# turn may be 0 — read it the same way tick_turn() does rather than off the CSV.
+	var decay: float = float(Catalog.get_good(gid).get("decay_rate", 0.0)) \
+		if int(TurnManager.current_turn) >= MarketState.DECAY_FIRST_TURN else 0.0
+	var expected: float = base_before * (1.0 - decay) * (1.0 + after_4x / 100.0)
 	_check(absf(MarketState.get_price(gid) - expected) < 0.0001,
 		"impact multiplies the decayed base price (stacks on normal drift)")
-	MarketState.record_market_sale_volume(gid, coal_base * 3 + 1)      # >3x sell
+	var rate_3x: float = EconomyConfig.price_impact_rate(coal_base * 3, coal_base)
+	MarketState.record_market_sale_volume(gid, coal_base * 3)          # 3x sell -> gentle band
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 0.6) < 0.0001, "a >3x turn adds -0.2%")
+	var after_3x: float = after_4x - rate_3x
+	_check(absf(MarketState.get_impact_pct(gid) - after_3x) < 0.0001,
+		"a 3x turn adds only -%.2f%%" % rate_3x)
+	_check(rate_3x < rate_hi, "bands are monotonic: 3x bites less than >10x")
+	var recov: float = EconomyConfig.price_impact_recovery(after_3x)
 	MarketState.tick_turn()                                            # quiet turn
-	_check(absf(MarketState.get_impact_pct(gid) + 0.5) < 0.0001, "quiet turn recovers +0.1%")
-	MarketState.record_market_buy_volume(gid, coal_base * 2 + 1)       # >2x BUY
+	_check(absf(MarketState.get_impact_pct(gid) - (after_3x + recov)) < 0.0001,
+		"a quiet turn recovers by the flat rate")
+	var at_quiet: float = after_3x + recov
+	var rate_2x: float = EconomyConfig.price_impact_rate(coal_base * 3, coal_base)
+	MarketState.record_market_buy_volume(gid, coal_base * 3)           # >2x BUY
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 0.4) < 0.0001, "net buying pushes impact up (+0.1%)")
+	_check(absf(MarketState.get_impact_pct(gid) - (at_quiet + rate_2x)) < 0.0001,
+		"net buying pushes impact UP by the same bands (deficit side)")
 	# Netting: equal buys and sells cancel to a quiet (recovery) turn.
+	var before_net: float = MarketState.get_impact_pct(gid)
+	var recov_net: float = EconomyConfig.price_impact_recovery(before_net)
 	MarketState.record_market_sale_volume(gid, coal_base * 4)
 	MarketState.record_market_buy_volume(gid, coal_base * 4)
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 0.3) < 0.0001, "offsetting buy+sell nets to recovery")
-	# Cap at ±50%.
-	MarketState.impact_pct[gid] = -49.9
-	MarketState.record_market_sale_volume(gid, coal_base * 5)
+	_check(absf(MarketState.get_impact_pct(gid) - move_toward(before_net, 0.0, recov_net)) < 0.0001,
+		"offsetting buy+sell nets to recovery")
+	# Cap at ±PRICE_IMPACT_CAP_PCT.
+	var cap: float = EconomyConfig.PRICE_IMPACT_CAP_PCT
+	MarketState.impact_pct[gid] = -(cap - 0.1)
+	MarketState.record_market_sale_volume(gid, coal_base * 11)
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 50.0) < 0.0001, "impact caps at -50%")
+	_check(absf(MarketState.get_impact_pct(gid) + cap) < 0.0001, "impact caps at -%d%%" % int(cap))
 	# Save round-trip keeps the accumulated impact.
 	var snap: Dictionary = MarketState.export_state()
 	MarketState.impact_pct.clear()
 	MarketState.import_state(snap)
-	_check(absf(MarketState.get_impact_pct(gid) + 50.0) < 0.0001, "impact survives save/load")
+	_check(absf(MarketState.get_impact_pct(gid) + cap) < 0.0001, "impact survives save/load")
 	# Recovery clears it fully given time (and erases the entry near zero).
 	MarketState.impact_pct[gid] = -0.05
 	MarketState.tick_turn()
 	_check(MarketState.get_impact_pct(gid) == 0.0, "recovery settles exactly to zero")
 	# UI helper: thresholds surface as 2x|3x|4x of the base output.
 	var th: PackedInt32Array = MarketState.impact_thresholds(gid)
-	_check(th.size() == 3 and th[0] == coal_base * 2 and th[2] == coal_base * 4,
-		"impact_thresholds returns 2x/3x/4x of base output")
+	_check(th.size() == 3 and th[0] == coal_base * 2 and th[1] == coal_base * 4 and th[2] == coal_base * 10,
+		"impact_thresholds returns 2x/4x/10x of base output, matching the live bands")
 	MarketState.impact_pct.erase(gid)
 	MarketState.prices = prices_snapshot
 	MarketState.prices_updated.emit()
@@ -8781,6 +8977,39 @@ func _test_decision_loan_fallback() -> void:
 	LoanState.loans = loans_before
 	_decision_board_restore(snap)
 
+func _test_loan_minimum_and_grace() -> void:
+	LoanState.loans.clear()
+	MatchState.money = 100000.0
+	# MINIMUM: the auto-bridge used to borrow the exact shortfall, so a £1.36 gap became a
+	# £1.36 loan on a 36-turn book — 18 of them by turn 57 in a player log, each carrying its
+	# own interest forever. Anything smaller than the floor is written AT the floor.
+	_check(LoanState.take_loan(1.36), "tiny loan request is accepted")
+	var l: Dictionary = LoanState.loans[0]
+	_check(absf(float(l.principal_initial) - EconomyConfig.LOAN_MINIMUM) < 0.001,
+		"loan minimum: a £1.36 request is written as £%.0f" % EconomyConfig.LOAN_MINIMUM)
+	# GRACE: nothing due for LOAN_GRACE_TURNS, and the loan runs grace + term in total.
+	_check(absf(float(l.payment_per_turn)) < 0.001, "grace: no payment due on the turn it is taken")
+	_check(int(l.turns_remaining) == EconomyConfig.LOAN_GRACE_TURNS + EconomyConfig.LOAN_TERM_TURNS,
+		"grace: loan runs %d turns in total" % (EconomyConfig.LOAN_GRACE_TURNS + EconomyConfig.LOAN_TERM_TURNS))
+	# Interest ACCRUES across the grace: forbearance, not a discount. A 12+36 loan at 10%
+	# repays 1 + 0.10 x 48/36 = 1.1333x, against 1.10x with no grace at all.
+	var expected := float(l.principal_initial) * (1.0 + EconomyConfig.LOAN_INTEREST_RATE
+		* float(EconomyConfig.LOAN_GRACE_TURNS + EconomyConfig.LOAN_TERM_TURNS)
+		/ float(EconomyConfig.LOAN_TERM_TURNS))
+	_check(absf(float(l.get("total_repayment", 0.0)) - expected) < 0.01,
+		"grace accrues interest: total is %.2fx principal, not %.2fx"
+			% [expected / float(l.principal_initial), 1.0 + EconomyConfig.LOAN_INTEREST_RATE])
+	var before := MatchState.money
+	for _i in EconomyConfig.LOAN_GRACE_TURNS:
+		LoanState.process_payments()
+	_check(absf(MatchState.money - before) < 0.001, "grace: nothing is paid across the whole grace")
+	_check(int(LoanState.loans[0].grace_remaining) == 0, "grace: expired after %d turns" % EconomyConfig.LOAN_GRACE_TURNS)
+	_check(float(LoanState.loans[0].payment_per_turn) > 0.0, "grace: payments begin once it expires")
+	LoanState.process_payments()
+	_check(MatchState.money < before, "grace: money leaves the account on the first paying turn")
+	LoanState.loans.clear()
+
+
 func _test_loan_collateral_capacity() -> void:
 	# A loss-making firm with plant keeps a credit line: capacity = base + LTV x
 	# building SALE value, even while the profit gate zeroes the cashflow leg. A
@@ -9234,6 +9463,70 @@ func _test_insider_tip() -> void:
 	MatchState.advisor_seats = seats_before
 	TurnManager.current_turn = turn_before
 
+func _test_deposit_running_out_warning() -> void:
+	# A mine within Production.DEPOSIT_WARNING_TURNS of exhausting its deposit raises an
+	# AMBER diagnostics row (with the ore's icon) and a DISMISSIBLE briefing warning.
+	# Exhaustion used to be silent — the input bill just doubled with no notice.
+	var saved: Dictionary = Production.last_turn_summary.duplicate(true)
+	var coal := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	Production.last_turn_summary = {"deposits_running_out": [{
+		"tile_id": "tile_6_8", "instance_id": "diag_mine", "building_id": "b_001",
+		"token": "coal", "good_id": coal, "remaining": 180, "per_turn": 60, "turns_left": 3,
+	}]}
+	var readout = load("res://scripts/building_readout.gd")
+	var mine := {"instance_id": "diag_mine", "tile_id": "tile_6_8", "building_id": "b_001",
+		"recipe_id": "r_001", "level": 1, "owner": "player_1"}
+	var rows: Array = readout.diagnostics(mine, Catalog.get_recipe("r_001"), Catalog.get_building("b_001"), false)
+	var found: Dictionary = {}
+	for r in rows:
+		if str(r.get("label", "")) == "Deposit running out":
+			found = r
+	_check(not found.is_empty(), "diagnostics: a nearly-empty deposit raises its own row")
+	_check(str(found.get("tone", "")) == "warn", "diagnostics: the deposit warning is amber, not a fault")
+	_check(str(found.get("good_id", "")) == coal, "diagnostics: the row carries the ORE's good id for its icon")
+	_check(str(found.get("detail", "")).contains("3 turn"), "diagnostics: the row states the turns remaining")
+	# The briefing update: warning severity, dismissible, and iconned with the same good.
+	var item: Dictionary = TurnBriefing._deposit_running_out_item()
+	_check(str(item.get("severity", "")) == "warning", "briefing: deposit update is a warning")
+	_check(bool(item.get("dismissible", false)), "briefing: deposit update can be dismissed")
+	_check(str(item.get("icon_good_id", "")) == coal, "briefing: deposit update uses the ore's icon")
+	_check(str(item.get("title", "")).contains("3 turn"), "briefing: title counts down the turns")
+	# Dismissing silences it, but a SECOND mine running out re-raises it. Drive the gate
+	# directly — dismiss() resolves the id through the live item list, which the panel
+	# builds and this harness does not.
+	TurnBriefing._alert_dismissed[str(item.get("id", ""))] = int(item.get("magnitude", 0))
+	_check(TurnBriefing._deposit_running_out_item().is_empty(), "briefing: dismissal silences the update")
+	(Production.last_turn_summary["deposits_running_out"] as Array).append({
+		"tile_id": "tile_7_10", "instance_id": "diag_mine_2", "building_id": "b_001",
+		"token": "iron_ore", "good_id": str(Catalog.get_good_by_internal_name("iron_ore").get("id", "")),
+		"remaining": 120, "per_turn": 40, "turns_left": 3,
+	})
+	_check(not TurnBriefing._deposit_running_out_item().is_empty(),
+		"briefing: a SECOND mine running out re-raises the dismissed update")
+	Production.last_turn_summary = {"deposits_running_out": []}
+	_check(TurnBriefing._deposit_running_out_item().is_empty(), "briefing: clears when no deposit is low")
+	Production.last_turn_summary = saved
+
+func _test_partial_power_dispatch() -> void:
+	# PARTIAL DISPATCH (owner ruling): a generator that slightly overshoots its tile's
+	# remaining cable headroom runs DERATED into the gap; a bigger overshoot doesn't run.
+	# Tested through the pure decision so it needs no cabled fixture tile.
+	var tol: float = Power.PARTIAL_DISPATCH_TOLERANCE
+	_check(Power.dispatchable(600, 2000) == 600, "a plant well under the headroom dispatches in full")
+	_check(Power.dispatchable(600, 600) == 600, "an exact fit dispatches in full")
+	# 620 into 600 headroom: overshoot 20 = 3.2% of output -> derate to 600.
+	_check(Power.dispatchable(620, 600) == 600,
+		"a small overshoot derates to the headroom instead of idling the plant")
+	# 800 into 600: overshoot 200 = 25% of output -> at the tolerance, refuse.
+	_check(Power.dispatchable(800, 600) == 0,
+		"an overshoot AT the %d%% tolerance does not run" % int(tol * 100.0))
+	# 690 into 620 (the e2e's real case): overshoot 70 = 10.1% -> derate.
+	_check(Power.dispatchable(690, 620) == 620,
+		"the e2e's stranded 3rd plant now fills its tile's remaining 620 MW")
+	_check(Power.dispatchable(690, 0) == 0, "a full tile dispatches nothing")
+	_check(Power.dispatchable(0, 2000) == 0, "a zero-output building dispatches nothing")
+	_check(Power.dispatchable(690, -50) == 0, "negative headroom dispatches nothing")
+
 func _test_building_diagnostics() -> void:
 	# New BDP diagnostics: cable-overload for power producers, stockpile-over-utilised
 	# for non-power producers (docs/co2-tax spec follow-ups).
@@ -9247,15 +9540,36 @@ func _test_building_diagnostics() -> void:
 	var titles: Array = []
 	for r in rows:
 		titles.append(str(r.get("label", "")))
-	_check(titles.has("Cannot push power"), "diagnostics: grid-blocked plant shows 'Cannot push power' fault")
-	_check(titles.has("Cables overloaded"), "diagnostics: grid-blocked plant shows the cables-overloaded row")
+	_check(titles.has("Power output capped"), "diagnostics: cable-capped plant shows the 'Power output capped' row")
 	_check(not titles.has("Generating power"), "diagnostics: blocked plant doesn't claim to be generating")
+	# AMBER, not red — the plant is throttled, not faulted.
+	var capped_tone := ""
+	var capped_detail := ""
+	for r in rows:
+		if str(r.get("label", "")) == "Power output capped":
+			capped_tone = str(r.get("tone", ""))
+			capped_detail = str(r.get("detail", ""))
+	_check(capped_tone == "warn", "diagnostics: the cable cap reads amber, not a critical fault")
+	_check(capped_detail.begins_with("Power output capped because of cabling."),
+		"diagnostics: cable-cap detail leads with the cause")
+	_check(capped_detail.contains("MW produced"), "diagnostics: cable-cap detail reports produced/capacity")
+	# The plant's run_state is "restarting" (its power "input" is unmet), and the cap row
+	# must WIN that race — otherwise a permanently throttled plant cheerfully reports
+	# "Starting — production begins next turn" forever.
+	_check(not titles.has("Starting"), "diagnostics: the cable cap outranks the 'Starting' row")
+	# Below max cable level the advice is actionable; at max there is nothing to upgrade.
+	if Power.cable_level_is_max("tile_9_9"):
+		_check(capped_detail.ends_with("Max power capacity reached for this tile."),
+			"diagnostics: at max cable level the row stops offering an upgrade")
+	else:
+		_check(capped_detail.ends_with("Upgrade cables to increase tile capacity."),
+			"diagnostics: below max cable level the row tells the player to upgrade")
 	Production.missing_by_building.erase("diag_plant")
 	rows = readout.diagnostics(plant, Catalog.get_recipe("r_004"), Catalog.get_building("b_003"), false)
 	titles = []
 	for r in rows:
 		titles.append(str(r.get("label", "")))
-	_check(not titles.has("Cables overloaded"), "diagnostics: unblocked plant has no cables row")
+	_check(not titles.has("Power output capped"), "diagnostics: unblocked plant has no cable-cap row")
 
 	# Non-power producer on a FULL tile warehouse → stockpile over-utilised row.
 	var mill := {"instance_id": "diag_mill", "tile_id": "tile_8_8", "building_id": "b_002", "recipe_id": "r_002", "level": 1, "owner": "player_1"}
@@ -9385,6 +9699,94 @@ func _test_decision_queue_stacking() -> void:
 	DecisionState.auto_resolve = false
 	_check(not DecisionState.has_pending(), "queue: auto_resolve clears the whole queue")
 	_decision_board_restore(snap)
+
+func _test_group_card_content_fits() -> void:
+	# A TVP group card stacks name (BuildingName 22) + "Cost Basis" (13) + value (14) inside
+	# GROUP_CARD_H. With a 20px inset top and bottom the content was ~7px taller than the space
+	# left, so the expanding pusher collapsed and the value row sat on the card's bottom edge.
+	# Measure with the real theme rather than trusting the arithmetic.
+	var TVP := preload("res://scripts/tile_info_panel_v2.gd")
+	var v_inset := 8   # must match tile_info_panel_v2._add_group_card
+	var name_lbl := Label.new()
+	name_lbl.theme_type_variation = &"BuildingName"
+	name_lbl.text = "Onshore wind generation"
+	var head_lbl := Label.new()
+	head_lbl.theme_type_variation = &"Body"
+	head_lbl.add_theme_font_size_override("font_size", 13)
+	head_lbl.text = "Cost Basis"
+	var val_lbl := Label.new()
+	val_lbl.theme_type_variation = &"Numeric"
+	val_lbl.add_theme_font_size_override("font_size", 14)
+	val_lbl.text = "0.4213"
+	var holder := Control.new()
+	add_child(holder)
+	for l in [name_lbl, head_lbl, val_lbl]:
+		holder.add_child(l)
+	var content: float = name_lbl.get_minimum_size().y + head_lbl.get_minimum_size().y \
+		+ val_lbl.get_minimum_size().y + 2.0 * 2.0   # VBox separation = 2, two gaps
+	var available: float = float(TVP.GROUP_CARD_H) - 2.0 * float(v_inset)
+	_check(content <= available,
+		"TVP group card: %.0fpx of rows fits the %.0fpx left by a %dpx inset" % [content, available, v_inset])
+	_check(float(TVP.GROUP_CARD_H) - 2.0 * 20.0 < content,
+		"...and the old 20px inset genuinely did NOT fit (that was the misalignment)")
+	holder.queue_free()
+
+
+func _test_storage_alert_rearms_on_upgrade() -> void:
+	# A jam that holds steady never grows, so the magnitude rule silenced this alert for good:
+	# the player dismissed once and never heard about the tile again while it clipped every
+	# input order. Upgrading the warehouse is the action they take, so it re-arms the alert.
+	var saved_summary: Dictionary = Production.last_turn_summary
+	var saved_overflow: Array = MatchState.overflow_shipments.duplicate(true)
+	TurnBriefing._alert_dismissed.erase("alert:storage_full")
+	TurnBriefing._storage_dismiss_levels.clear()
+	var t := "tile_5_5"
+	MatchState.overflow_shipments = [{"destination_tile": t, "qty": 40}]
+	Production.last_turn_summary = {"input_orders_capped": []}
+	var lvl0: int = Stockpile.get_warehouse_level(t)
+	var item: Dictionary = TurnBriefing._storage_full_item()
+	_check(str(item.get("id", "")) == "alert:storage_full", "storage-full alert fires on a jammed tile")
+	_check((item.get("tiles", []) as Array).has(t), "storage-full item names its jammed tiles (for dismissal)")
+	TurnBriefing._items = [item]
+	TurnBriefing.dismiss("alert:storage_full")
+	_check(int(TurnBriefing._storage_dismiss_levels.get(t, -1)) == lvl0,
+		"dismissal snapshots the tile's warehouse level (%d)" % lvl0)
+	_check(TurnBriefing._storage_full_item().is_empty(),
+		"a jam of the SAME size stays quiet after dismissal")
+	Stockpile.set_warehouse_level(t, lvl0 + 1)
+	_check(str(TurnBriefing._storage_full_item().get("id", "")) == "alert:storage_full",
+		"upgrading the warehouse re-arms the alert while the tile is still jammed")
+	MatchState.overflow_shipments = []
+	_check(TurnBriefing._storage_full_item().is_empty(), "alert self-clears once the jam is gone")
+	_check(TurnBriefing._storage_dismiss_levels.is_empty(), "self-clear forgets the dismissal levels")
+	Stockpile.set_warehouse_level(t, lvl0)
+	MatchState.overflow_shipments = saved_overflow
+	Production.last_turn_summary = saved_summary
+
+
+func _test_power_capped_alert() -> void:
+	# Production reports a generator blocked by the cable export cap exactly like a consumer
+	# with no supply: missing "power". Read literally that says "starved of power" — the
+	# opposite of the truth, and the opposite of the fix.
+	var saved_missing: Dictionary = Production.missing_by_building.duplicate(true)
+	TurnBriefing._alert_dismissed.erase("alert:power_capped")
+	TurnBriefing._alert_dismissed.erase("alert:starved")
+	# Build the generator rather than hunting the fixture for one: an early-returning test
+	# that finds nothing asserts nothing, and would have hidden a regression here in silence.
+	var gen: String = MatchState.add_building("b_003", "r_004", "tile_9_9", MatchState.LOCAL_PLAYER, "cable_cap_test")
+	_check(gen != "", "fixture: placed a coal power plant to stand in for a capped generator")
+	Production.missing_by_building = {gen: [{"internal_name": "power", "good_id": "power"}]}
+	var capped: Dictionary = TurnBriefing._cable_capped_producers()
+	_check(capped.has(gen), "a power producer missing 'power' is read as cable-capped, not starved")
+	var item: Dictionary = TurnBriefing._power_capped_item()
+	_check(str(item.get("id", "")) == "alert:power_capped" and str(item.get("severity", "")) == "warning",
+		"cable-cap alert fires as a warning (nothing is broken; output is being thrown away)")
+	_check(str(item.get("title", "")).contains("capped by cables"), "cable-cap alert names the cause")
+	var starved: Dictionary = TurnBriefing._starved_item()
+	_check(starved.is_empty(), "the same plant is NOT also reported as starved of power")
+	MatchState.remove_building(gen)
+	Production.missing_by_building = saved_missing
+
 
 func _test_briefing_items_and_dismissal() -> void:
 	# The Briefing assembles decisions + live alerts, decisions are never dismissible,

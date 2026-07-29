@@ -22,18 +22,18 @@ const MAINTENANCE_PER_BUILDING: float = 1.0
 # Rebalance: unskilled:skilled:h_skilled = 1:3:10 (a highly-skilled worker costs 10x an unskilled
 # one). Rates raised so per-building head-counts read in the ~1000-10000 range at the back-solved
 # wage bills; head-counts were rescaled in lock-step so each building's total wage bill is unchanged.
-const LABOUR_UNSKILLED_RATE: float = 0.0032
-const LABOUR_SKILLED_RATE: float = 0.0096
-const LABOUR_HIGH_SKILLED_RATE: float = 0.032
+const LABOUR_UNSKILLED_RATE: float = 0.00304
+const LABOUR_SKILLED_RATE: float = 0.00912
+const LABOUR_HIGH_SKILLED_RATE: float = 0.0304
 
 # --- Labour wage growth (compounding per turn) ---
 # Wages drift upward every turn: the effective rate at turn t is
 #   base_rate * (1 + growth) ^ (t - 1).
 # Higher-skilled labour inflates fastest, so margins compress over a long game
 # and the player must keep expanding revenue to stay ahead of the wage bill.
-const LABOUR_UNSKILLED_GROWTH: float = 0.0015    # +0.15%/turn
-const LABOUR_SKILLED_GROWTH: float = 0.0025      # +0.25%/turn
-const LABOUR_HIGH_SKILLED_GROWTH: float = 0.004  # +0.40%/turn
+const LABOUR_UNSKILLED_GROWTH: float = 0.0005    # +0.05%/turn
+const LABOUR_SKILLED_GROWTH: float = 0.001       # +0.10%/turn
+const LABOUR_HIGH_SKILLED_GROWTH: float = 0.002  # +0.20%/turn
 
 # --- MVP labour stub: every building has these counts ---
 # Remove these once buildings catalog has real employment data.
@@ -56,34 +56,50 @@ const MAX_PRICE_IMPACT_PCT: int = 10
 # once it crosses multiples of the good's BASE OUTPUT (the largest per-turn
 # output among active recipes producing it, L1 unmodified —
 # Catalog.base_output_for_good). E.g. copper wiring, base output 32:
-#   net volume > 2x (65+)  → 0.1 %/turn
-#   net volume > 3x (97+)  → 0.2 %/turn
-#   net volume > 4x (129+) → 0.4 %/turn
+#   65 units  (>2x)  → 0.1 %/turn
+#   129 units (>4x)  → 0.2 %/turn
+#   321 units (>10x) → 0.5 %/turn
 # Net selling pushes the price DOWN (glut), net buying UP (deficit). The
 # accumulated impact is capped at ±PRICE_IMPACT_CAP_PCT and, while volume stays
-# at or under the 2x threshold, recovers toward 0 by PRICE_IMPACT_RECOVERY_PCT
-# per turn. The impact multiplies the good's decayed base price, so it stacks
-# on top of the normal per-turn drift. Thresholds are STATIC for now; later
-# they scale with expected output every 10 turns. Goods with no active
-# producing recipe have no base output and take no impact.
-const PRICE_IMPACT_RATE_2X: float = 0.1   # % per turn accrued in the >2x band
-const PRICE_IMPACT_RATE_3X: float = 0.2   # >3x band
-const PRICE_IMPACT_RATE_4X: float = 0.4   # >4x band
-const PRICE_IMPACT_CAP_PCT: float = 50.0
+# at or under 2x, recovers toward 0 by price_impact_recovery() per turn. The
+# impact multiplies the good's decayed base price, so it stacks on top of the
+# normal per-turn drift. Thresholds are STATIC for now; later they scale with
+# expected output every 10 turns. Goods with no active producing recipe have no
+# base output and take no impact.
+const PRICE_IMPACT_CAP_PCT: float = 40.0
 const PRICE_IMPACT_RECOVERY_PCT: float = 0.1
+# BANDED response, thresholds spaced out (owner ruling 2026-07-27). The bands are back —
+# the continuous curve bit far too early in practice: a normal 3-factory chain sells 3x one
+# building's batch, which crushed motors to the -48% floor over 75 turns purely for being
+# a normal size. Volume must be genuinely excessive before the market notices:
+#     > 2x  base output -> 0.1 %/turn   (a nudge — you are now moving this market)
+#     > 4x               -> 0.2 %/turn
+#     >10x               -> 0.5 %/turn  (flooding; hits the -40% cap in 80 turns)
+# base_output is the largest per-turn batch among active recipes producing the good
+# (Catalog.base_output_for_good), so the thresholds rescale with any recipe rebalance.
+const PRICE_IMPACT_RATE_2X: float = 0.1
+const PRICE_IMPACT_RATE_4X: float = 0.2
+const PRICE_IMPACT_RATE_10X: float = 0.5
 
 ## %/turn accrual for one turn's net player market volume in one good.
 func price_impact_rate(net_volume: int, base_output: int) -> float:
 	if base_output <= 0:
 		return 0.0
 	var v := float(absi(net_volume))
+	if v > 10.0 * float(base_output):
+		return PRICE_IMPACT_RATE_10X
 	if v > 4.0 * float(base_output):
 		return PRICE_IMPACT_RATE_4X
-	if v > 3.0 * float(base_output):
-		return PRICE_IMPACT_RATE_3X
 	if v > 2.0 * float(base_output):
 		return PRICE_IMPACT_RATE_2X
 	return 0.0
+
+## %/turn a good's accumulated impact bleeds back toward 0 while its volume is under the
+## bite. FLAT: the depth-scaled recovery that guarded against a ratchet is unnecessary now
+## accrual tops out at 0.5%/turn, and at these rates scaling it would invert the incentive —
+## recovery would outrun accrual and reward pulsing production on and off.
+func price_impact_recovery(_current_pct: float) -> float:
+	return PRICE_IMPACT_RECOVERY_PCT
 
 # Market spread: buying a unit costs the sale price plus this markup.
 const MARKET_BUY_MARKUP: float = 0.05
@@ -110,8 +126,8 @@ const SEAPORT_SUBSCRIPTION_COST_PER_GOOD: float = 1.0
 const SEAPORT_RANGE_TILES: int = 10
 
 # --- Power grid pricing ---
-const GRID_BUY_PRICE: float = 0.1    # £/unit when buying from grid (shortfall)
-const GRID_SELL_PRICE: float = 0.06  # £/unit when selling surplus to grid
+const GRID_BUY_PRICE: float = 0.12    # £/unit when buying from grid (shortfall)
+const GRID_SELL_PRICE: float = 0.08  # £/unit when selling surplus to grid
 
 # --- Decarbonisation squeeze: CO2 tax + green subsidy (PolicyState schedules the phases) ---
 # Carbon levy per unit of a taxed good CONSUMED by a player building:
@@ -125,6 +141,18 @@ const CO2_TAX_PHASE_SCALE: Array = [0.0, 1.0, 2.0, 3.5]
 # Greenest victory track), paid at grid settlement once the subsidy is announced.
 const GREEN_SUBSIDY_RATE: float = 0.03
 const GREEN_SUBSIDY_PHASE_SCALE: Array = [0.0, 1.0]
+
+# --- National grid carbon intensity -----------------------------------------------------
+# The grid the player imports from decarbonises on its own, whatever they do: fully carbon
+# intensive until turn 70, then falling to 30% of that by the last turn. It scales the carbon
+# priced into imported power, so buying grid power gets steadily cleaner — and the whole point
+# of the curve is that a coal plant does NOT, because a coal plant still burns coal.
+#
+# The curve starts before the levy does (turn 91), so the early part is invisible in £ and
+# only begins to matter as the tax ramps. That is deliberate: the world is already moving
+# when the policy arrives. (Balance data — rule #7.)
+const GRID_CARBON_FULL_TURN: int = 70
+const GRID_CARBON_FLOOR: float = 0.30
 
 # --- Power intermittency (green/grey quality, layered ON TOP of the single `power` good) ---
 # Solar/wind are intermittent green: a recipe relying on UNFIRMED intermittent power
@@ -143,6 +171,12 @@ const POWER_STEADY_BUILDINGS := ["hydro_power_plant"]
 # Generic power_plant recipes whose fuel is biomass/waste count as steady green.
 # (MVP good internal_names: biomass g_062, bio_waste g_073, carbonised_biomass g_076.)
 const POWER_STEADY_FUELS := ["biomass", "bio_waste", "carbonised_biomass"]
+# Recipes that take NO intermittency derate however unfirmed their supply is. A membraneless
+# electrolyser has no membrane to dry out or differentially pressurise, so it can follow a
+# ragged renewable input up and down instead of needing a steady load — which is the whole
+# point of the research, and a benefit that survives a balance pass in a way that an output
+# bump does not. Listed by recipe_id because it is a property of the process, not the building.
+const INTERMITTENCY_IMMUNE_RECIPES := ["r_080"]
 # The ONLY buildings that may be placed on sea / deep_sea tiles. Every other building is
 # land-only, and these two are conversely water-only (cannot be placed on land). By
 # building internal_name. (offshore_wind_farm b_026, offshore_oil_platform b_033.)
@@ -182,8 +216,33 @@ const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
 	"safe_liquid": 0.03,
 	"hazard_liquid": 0.03,
 	"liquid": 0.03,
-	"gas": 0.03,
+	"gas": 0.30,        # ~10x safe_liquid — compression/cryogenics (owner ruling 2026-07-27)
 	"electricity": 0.02,
+}
+# AD-VALOREM component of the freight tariff: £/unit/turn per £1 of the good's value.
+# Real freight is a two-part tariff — a weight/volume charge plus insurance and handling
+# that scale with what the cargo is worth. With the flat rate alone, freight burden collapses
+# to ~0.1% of value at the top of the chain (heavy_vehicle) where reality is 2-5%, because
+# the class rates only span 3x while prices span 2280x. solid_light is deliberately 0.0 so
+# electronics stay near-free to ship, as they are in reality (CPUs go by air).
+# Valued at MarketState.get_base_price_now() — this turn's DECAYED base price, with no
+# buy-side markup and no glut/deficit impact (owner ruling 2026-07-27). Impact is excluded
+# on purpose: market-linking freight would make a flooded good cheaper to haul, partly
+# cancelling the price-impact penalty, and would make the quote unpredictable to plan against.
+const TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS := {
+	"standard": 0.004,
+	"solid_light": 0.0,
+	"solid_heavy": 0.008,
+	"ultra_heavy": 0.010,
+	"safe_liquid": 0.004,
+	"hazard_liquid": 0.006,
+	"liquid": 0.005,
+	"gas": 0.04,    # ~10x safe_liquid (owner ruling 2026-07-27). Gases ride NORMAL pipework
+	                # — they do not need the reinforced line — but compression and cryogenic
+	                # handling make them an order of magnitude dearer to move and hold. This
+	                # is why real air-separation units sit ON the customer's site rather than
+	                # shipping product: it pushes gas production local, which is correct.
+	"electricity": 0.0,
 }
 
 # Per-mode multiplier on the weight-class rate. Rail is half the per-unit cost of
@@ -241,16 +300,38 @@ const WAREHOUSE_UPGRADE_COSTS := {
 # (owner spec 2026-07-09, part of the recipes-vs-overheads rebalance). Solids rack
 # cheaply; liquids need tankage; hazardous liquids and gases need certified
 # pressure storage. Goods in transit, overflow-hold or JIT feed pay nothing.
-const WAREHOUSING_COST_PER_UNIT_BY_CLASS := {
-	"solid_light": 0.01, "solid_heavy": 0.01, "ultra_heavy": 0.01,
-	"safe_liquid": 0.03, "liquid": 0.03,
-	"hazard_liquid": 0.1, "gas": 0.1,
+#
+# TWO-PART TARIFF (owner ruling 2026-07-27): flat + ad-valorem, the same shape as freight.
+# A flat-only rate can only be correct at ONE price point — at 0.03 flat, coal pays for its
+# own value in 13 turns while an ice_car takes 3410, so a hoarder sitting on £56k of CPUs
+# paid the same as one sitting on £320 of coal. Real inventory carrying cost is 15-25%/yr
+# OF VALUE across commodities, because cost of capital dominates physical storage. The
+# ad-valorem term compresses that 262x spread to ~12x while costing the tutorial cluster
+# the same as flat-0.03 did (measured: £2.41/turn on its 80-unit buffer, 14%/yr of the
+# inventory's value, 1.1% of revenue — real-world warehousing is 1-2% of revenue).
+# `flat` is the floor-space/handling leg, `av` the capital/insurance leg.
+const WAREHOUSING_BY_CLASS := {
+	"solid_light":   {"flat": 0.010, "av": 0.004},  # small footprint, but secure + insured
+	"solid_heavy":   {"flat": 0.020, "av": 0.004},  # racking + floor loading — the workhorse
+	"ultra_heavy":   {"flat": 0.060, "av": 0.004},  # a parked car or turbine eats floor area
+	"safe_liquid":   {"flat": 0.015, "av": 0.002},  # tankage: capital-heavy, cheap per unit
+	"liquid":        {"flat": 0.025, "av": 0.003},
+	"hazard_liquid": {"flat": 0.100, "av": 0.006},  # bunded, ventilated, licensed storage
+	"gas":           {"flat": 0.150, "av": 0.020},  # ~10x safe_liquid: pressure vessels + boil-off
 }
 
 func warehousing_cost_per_unit(good_id: String) -> float:
-	return float(WAREHOUSING_COST_PER_UNIT_BY_CLASS.get(
-		Catalog.get_transport_class(good_id),
-		WAREHOUSING_COST_PER_UNIT_BY_CLASS["solid_light"]))
+	var band: Dictionary = WAREHOUSING_BY_CLASS.get(
+		Catalog.get_transport_class(good_id), WAREHOUSING_BY_CLASS["solid_light"])
+	return float(band["flat"]) + float(band["av"]) * good_value_basis(good_id)
+
+## The value a two-part tariff (freight or storage) charges against: this turn's DECAYED
+## base price — no buy-side markup, no glut/deficit impact. Returns 0.0 for an unknown or
+## empty good so both tariffs fall back to their flat leg rather than an invented value.
+func good_value_basis(good_id: String) -> float:
+	if good_id == "" or Catalog.get_good(good_id).is_empty():
+		return 0.0
+	return MarketState.get_base_price_now(good_id)
 
 # --- Loans ---
 # Capacity is no longer a flat ceiling. It STARTS at the base below and scales with
@@ -260,8 +341,16 @@ func warehousing_cost_per_unit(good_id: String) -> float:
 # rolling profit plus a slice of revenue — the 40-turn payoff is the affordance that
 # lets debt service sit above pure interest without being unserviceable.
 const LOAN_BASE_CAPACITY: float = 50.0     # Floor on borrowing capacity (turn 1, no history)
-const LOAN_TERM_TURNS: int = 36            # How many turns to repay over
+const LOAN_TERM_TURNS: int = 36            # How many turns of REPAYMENT (after the grace)
 const LOAN_INTEREST_RATE: float = 0.10     # 10% over total term (not per turn)
+# Smallest loan the bank will write. The auto-bridge used to borrow the exact shortfall, so a
+# £1.36 gap became a £1.36 loan on a 36-turn book — 18 of them by turn 57 in a player log,
+# each carrying its own interest forever. A floor turns that into one loan with headroom.
+const LOAN_MINIMUM: float = 20.0
+# Turns before the first payment falls due. Interest still ACCRUES across them, so the grace
+# buys breathing room rather than free money: a loan now runs 12 + 36 = 48 turns and the
+# larger balance is amortised over the same 36 paying turns. (Balance data — rule #7.)
+const LOAN_GRACE_TURNS: int = 12
 const LOAN_PROFIT_WINDOW: int = 5          # Rolling window (turns) for the profit/revenue average
 const LOAN_REVENUE_BUFFER: float = 0.02    # Extra serviceable debt = this share of avg revenue
 # Asset-backed leg (2026-07-08): plant is collateral, so a loss-making trough never
@@ -321,17 +410,24 @@ func transport_cost_per_unit_turn(weight_class: String) -> float:
 		TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS[DEFAULT_TRANSPORT_WEIGHT_CLASS]
 	))
 
-func transport_cost_for(good_id: String, qty: int, transport_turns: int, mode_mult: float = 1.0) -> float:
+## The full two-part freight rate for one unit of `good_id` for one turn-move:
+## the weight-class flat leg plus the ad-valorem leg charged against this turn's
+## decayed base price. See TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS for why both exist.
+func transport_rate_for_good(good_id: String) -> float:
 	var weight_class := Catalog.get_transport_class(good_id)
-	return float(qty) * float(maxi(transport_turns, 0)) * transport_cost_per_unit_turn(weight_class) * mode_mult
+	var av: float = float(TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS.get(
+		weight_class, TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS[DEFAULT_TRANSPORT_WEIGHT_CLASS]))
+	return transport_cost_per_unit_turn(weight_class) + av * good_value_basis(good_id)
+
+func transport_cost_for(good_id: String, qty: int, transport_turns: int, mode_mult: float = 1.0) -> float:
+	return float(qty) * float(maxi(transport_turns, 0)) * transport_rate_for_good(good_id) * mode_mult
 
 func transport_cost_for_route(good_id: String, qty: int, route: Dictionary) -> float:
 	# Leg-aware cost. Each leg is one turn-move; pipe legs charge the flat liquid rate,
 	# rail/road legs charge weight-class * mode multiplier. Falls back to a turns-based
 	# overland charge when the route has no infra legs (straight-line haul).
 	var legs: Array = route.get("legs", [])
-	var weight_class := Catalog.get_transport_class(good_id)
-	var class_rate := transport_cost_per_unit_turn(weight_class)
+	var class_rate := transport_rate_for_good(good_id)
 	if legs.is_empty():
 		var turns: int = int(route.get("turns", 0))
 		return float(qty) * float(maxi(turns, 0)) * class_rate

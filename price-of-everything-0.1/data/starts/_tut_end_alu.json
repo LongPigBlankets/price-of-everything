@@ -1,0 +1,16 @@
+{
+	"save_version": 2,
+	"start": true,
+	"name": "tut_end_alu",
+	"money": 600,
+	"buildings": [
+		{ "building_id": "b_007", "recipe_id": "r_056", "tile_id": "tile_5_9" },
+		{ "building_id": "b_002", "recipe_id": "r_050", "tile_id": "tile_5_9" }
+	],
+	"surveyed_tiles": [ "tile_5_9", "tile_6_6", "tile_7_7", "tile_7_8", "tile_5_8", "tile_5_7" ],
+	"land": { "tile_5_9": 100 },
+	"infrastructure": {
+		"tile_5_9": { "present": [ "roads", "cables", "reinf_pipes" ], "levels": { "roads": 1, "cables": 1, "reinf_pipes": 1 } },
+		"tile_5_10": { "present": [ "reinf_pipes" ], "levels": { "reinf_pipes": 1 } }
+	}
+}

@@ -52,9 +52,31 @@ func tile_power_cap(tile_id: String) -> int:
 
 ## True if the tile can still produce `amount` more power this turn (export cap).
 func can_produce(tile_id: String, amount: int) -> bool:
-	if amount <= 0:
-		return true
-	return int(tile_produced.get(tile_id, 0)) + amount <= tile_power_cap(tile_id)
+	return producible_amount(tile_id, amount) > 0 or amount <= 0
+
+## How much of `amount` a generator on this tile may actually put on the wire this turn.
+## PARTIAL DISPATCH (owner ruling 2026-07-27): a plant whose output slightly overshoots the
+## tile's remaining cable headroom runs DERATED to fill the gap rather than idling — but only
+## while the shortfall is under PARTIAL_DISPATCH_TOLERANCE of its own output. Past that it
+## does not run at all, so a tile can't be packed with plants each contributing a sliver.
+##   returns `amount` (fits) · the remaining headroom (small overshoot) · 0 (won't run)
+## Before this, dispatch was all-or-nothing: two 690 MW plants filled 1380 of a 2000 cap and
+## a third simply never started, stranding 620 MW of headroom while paying full upkeep.
+const PARTIAL_DISPATCH_TOLERANCE: float = 0.25
+
+func producible_amount(tile_id: String, amount: int) -> int:
+	return dispatchable(amount, tile_power_cap(tile_id) - int(tile_produced.get(tile_id, 0)))
+
+## The partial-dispatch decision on its own, free of tile lookups so it is directly testable:
+## full output when it fits, the headroom when the overshoot is under the tolerance, else 0.
+static func dispatchable(amount: int, headroom: int) -> int:
+	if amount <= 0 or headroom <= 0:
+		return 0
+	if amount <= headroom:
+		return amount
+	if float(amount - headroom) < PARTIAL_DISPATCH_TOLERANCE * float(amount):
+		return headroom
+	return 0
 
 ## True if the tile can still draw `amount` more power this turn (import cap).
 func can_draw(tile_id: String, amount: int) -> bool:
@@ -75,6 +97,16 @@ func record_drawn(tile_id: String, amount: int) -> void:
 		return
 	tile_drawn[tile_id] = int(tile_drawn.get(tile_id, 0)) + amount
 	add_demand(amount)
+
+## A tile's cable level (0 = uncabled). Public so the building-detail diagnostics can tell
+## "upgrade your cables" from "this tile is already at the maximum".
+func cable_level(tile_id: String) -> int:
+	return _tile_cable_level(tile_id)
+
+## True when this tile's cables are at the highest level the cap table defines — there is
+## no upgrade left to suggest.
+func cable_level_is_max(tile_id: String) -> bool:
+	return _tile_cable_level(tile_id) >= EconomyConfig.CABLE_POWER_CAP.size()
 
 func _tile_cable_level(tile_id: String) -> int:
 	var hex_map = get_tree().get_first_node_in_group("hex_map") if get_tree() else null
@@ -148,7 +180,13 @@ func settle_grid_transactions() -> Dictionary:
 		"net": supply_this_turn - demand_this_turn,
 		"grid_bought": grid_bought,
 		"grid_sold": grid_sold,
-		"grid_buy_cost": grid_bought * EconomyConfig.GRID_BUY_PRICE * buy_mult,
+		# Importing from the national grid carries the same carbon as generating the power
+		# yourself would have. Without this the grid is the cleanest loophole on the board:
+		# burn coal in your own plant and pay the levy, or buy the identical MW at a flat rate
+		# and pay nothing. The grid is priced as if generated the conventional way, matching
+		# how every other good's embodied carbon is derived.
+		"grid_buy_cost": grid_bought * (EconomyConfig.GRID_BUY_PRICE * buy_mult
+			+ MarketState.carbon_component(Catalog.get_good_by_internal_name("power").get("id", ""))),
 		"grid_sell_revenue": grid_sold * EconomyConfig.GRID_SELL_PRICE * sell_mult,
 	}
 

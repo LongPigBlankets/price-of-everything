@@ -13,7 +13,6 @@ const INFRA_CSV_PATH := "res://data/infrastructure.csv"
 # game's building internal_names, so alias them here. Recipes whose building can't
 # be resolved (or whose goods don't all exist) are dropped by the promotion gate.
 const BUILDING_ALIAS := {
-	"power_plant": "coal_power",
 	"factory": "industrial_factory",
 	"industrial_goods_factory": "industrial_factory",
 	"consumer_goods_factory": "consumer_factory",
@@ -70,9 +69,10 @@ const MARKET_DESTINATION := "__market__"
 const ROUTE_MAP_W := 30
 const ROUTE_MAP_H := 20
 
-# Global maintenance balance knob, applied to every building's per-turn maintenance
-# as it is parsed (lives here, not in EconomyConfig, because Catalog loads first).
-const MAINTENANCE_MULTIPLIER := 2.0
+# Maintenance is taken from the CSV as written. There used to be a x2 knob here, applied on
+# top of a CSV whose values had ALSO been doubled, so every building silently paid four times
+# its design figure — a mine costed at 2 was charged 8. Removed rather than set to 1.0: a
+# second place to double a number is what caused it (owner ruling, 2026-07-29).
 
 func _ready() -> void:
 	_load_goods()
@@ -636,6 +636,81 @@ func _load_recipes() -> void:
 	
 	file.close()
 	print("Catalog: loaded %d recipes" % _all_recipes.size())
+	_compute_embodied_carbon()
+
+## Carbon a good CARRIES because of how it was made, as opposed to the carbon it releases
+## when consumed (that is co2_tax_multiplier, charged by PolicyState at the point of use).
+##
+## The levy bites the first time a recipe uses a fossil fuel, and this figure carries it
+## forward down the chain through the MARKET PRICE. Together they make making and buying cost
+## the same carbon, which is what closes the loopholes:
+##
+##   oil -> ethylene   cracking 9 processed_oil costs 9 x 2.7 of levy, so the 12 ethylene it
+##                     yields each carry 2.03. Buying ethylene now costs that too, where
+##                     before it cost nothing and the oil levy was simply skipped.
+##   coal -> graphite  45 coal at 0.5 over 6 graphite = 3.75 carried per unit.
+##   coal -> power     20 coal at 0.5 over 600 MW, and the national grid is charged the same
+##                     way, so importing power is no longer a way to burn coal for free.
+##
+## Two separate numbers on purpose: charging the LEVY on manufactured goods as well would tax
+## the same carbon at every step — the steel mill on its coal, the motor plant again inside
+## the steel, the car plant again inside the motor — which double-counts and lands hardest on
+## exactly the deep integration the economy is meant to reward.
+##
+## Derived from the BASE (ungated) route, and the dirtiest one where a good has several. That
+## is deliberate: it prices a good "as if produced the conventional way", so unlocking a clean
+## recipe does not silently cheapen everyone else's market price. Handling the case where a
+## player actually holds a hydrocarbon-free route is a later pass (owner, 2026-07-28).
+var _embodied_carbon: Dictionary = {}   # good_id -> float
+
+func _compute_embodied_carbon() -> void:
+	_embodied_carbon.clear()
+	var base_routes := {}
+	for r in _all_recipes:
+		if str(r.get("required_research", "")) != "":
+			continue
+		var out_id: String = str(r.get("output_good_id", ""))
+		if out_id != "":
+			if not base_routes.has(out_id):
+				base_routes[out_id] = []
+			base_routes[out_id].append(r)
+	for good in _all_goods:
+		_embodied_carbon[good.id] = _embodied_of(good.id, base_routes, {})
+
+func _embodied_of(good_id: String, base_routes: Dictionary, seen: Dictionary) -> float:
+	if _embodied_carbon.has(good_id):
+		return float(_embodied_carbon[good_id])
+	if seen.has(good_id):
+		return 0.0            # recipe cycle — stop rather than recurse forever
+	seen[good_id] = true
+	# The levy bites the FIRST time a recipe uses a fossil fuel, and is carried forward from
+	# there. So each input contributes the levy its consumer will pay on it PLUS whatever that
+	# input already carried — never the good's own levy, which its own consumer pays directly.
+	#
+	# That distinction is the whole loophole. Short-circuiting a good at its own levy priced
+	# ethylene at 1.0 when the processed oil cracked to make it costs 2.7 x 9 / 12 = 2.03, so
+	# buying ethylene undercut making it and the oil levy was simply skipped. Deriving it
+	# instead gives make-and-buy the same carbon cost, which is what closes it.
+	var worst := 0.0
+	for r in base_routes.get(good_id, []):
+		var qty: int = 0
+		for outp in r.get("outputs", []):
+			if str(outp.get("good_id", "")) == good_id:
+				qty = int(outp.get("qty", 0))
+		if qty <= 0:
+			continue
+		var carried := 0.0
+		for inp in r.get("inputs", []):
+			var gid: String = str(inp.get("good_id", ""))
+			var levy := float(get_good(gid).get("co2_tax_multiplier", 0.0))
+			carried += float(inp.get("qty", 0)) * (levy + _embodied_of(gid, base_routes, seen))
+		worst = maxf(worst, carried / float(qty))
+	seen.erase(good_id)
+	return worst
+
+## Carbon embodied in one unit of `good_id` by its conventional production route.
+func embodied_carbon(good_id: String) -> float:
+	return float(_embodied_carbon.get(good_id, 0.0))
 
 func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> Dictionary:
 	var raw := {}
@@ -870,7 +945,7 @@ func _parse_building_row(headers: PackedStringArray, line: PackedStringArray) ->
 		"base_price": float(raw.get("build_cost_money", "0")),
 		"tile_size_used": 1 if raw.get("tile_size_used", "") == "" else int(raw.get("tile_size_used", "1")),
 		"build_duration": 0 if raw.get("build_duration", "") == "" else int(raw.get("build_duration", "0")),
-		"maintenance_cost": null if raw.get("maintenance_cost", "") == "" else MAINTENANCE_MULTIPLIER * float(raw.get("maintenance_cost", "0")),
+		"maintenance_cost": null if raw.get("maintenance_cost", "") == "" else float(raw.get("maintenance_cost", "0")),
 		"labour_unskilled_required": int(raw.get("labour_unskilled_required", "0")),
 		"labour_skilled_required": int(raw.get("labour_skilled_required", "0")),
 		"labour_h_skilled_required": int(raw.get("labour_h_skilled_required", "0")),

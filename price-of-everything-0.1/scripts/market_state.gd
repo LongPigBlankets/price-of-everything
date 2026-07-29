@@ -38,8 +38,31 @@ func get_price(good_id: String) -> float:
 
 ## This turn's impact-FREE price (what the price would be with zero glut/deficit
 ## impact) — the bracketed number in the market tab.
+##
+## Once the carbon levy is in force the price carries the carbon EMBODIED in making the good,
+## so buying it costs what making it the conventional way would have cost in levy. Without
+## this the market is a laundering route: a player buys steel instead of smelting it and the
+## carbon squeeze never reaches them. Added on top of the decayed base rather than folded into
+## it because a policy overlay should not compound with per-turn price drift.
 func get_base_price_now(good_id: String) -> float:
-	return prices.get(good_id, 1.0)
+	return prices.get(good_id, 1.0) + carbon_component(good_id)
+
+## The carbon slice of this turn's price — £0 until the levy starts, and broken out so the
+## market tab and the building readout can show WHY a good got dearer.
+##
+## Power is the one good whose carbon is not fixed by its recipe: it comes off the national
+## grid, and the grid decarbonises over the game. Scaling it here rather than at each call
+## site means grid imports (Power._settle) and market purchases of power move together
+## instead of drifting apart.
+func carbon_component(good_id: String) -> float:
+	var embodied := Catalog.embodied_carbon(good_id)
+	if embodied <= 0.0:
+		return 0.0
+	var turn := int(TurnManager.current_turn)
+	var carbon := embodied * EconomyConfig.CO2_TAX_RATE * PolicyState.co2_tax_scale(turn)
+	if good_id == str(Catalog.get_good_by_internal_name("power").get("id", "")):
+		carbon *= PolicyState.grid_carbon_intensity(turn)
+	return carbon
 
 func get_impact_pct(good_id: String) -> float:
 	return float(impact_pct.get(good_id, 0.0))
@@ -79,13 +102,14 @@ func record_market_buy_volume(good_id: String, qty: int) -> void:
 		return
 	_turn_bought[good_id] = int(_turn_bought.get(good_id, 0)) + qty
 
-## The 2x/3x/4x per-turn volume thresholds for a good, or [] when the good has
+## The 2x/4x/10x per-turn volume thresholds for a good, or [] when the good has
 ## no active producing recipe (no base output → no impact).
 func impact_thresholds(good_id: String) -> PackedInt32Array:
 	var base_out := Catalog.base_output_for_good(good_id)
 	if base_out <= 0:
 		return PackedInt32Array()
-	return PackedInt32Array([base_out * 2, base_out * 3, base_out * 4])
+	# Must track EconomyConfig.price_impact_rate's bands: 2x / 4x / 10x.
+	return PackedInt32Array([base_out * 2, base_out * 4, base_out * 10])
 
 func get_buy_price(good_id: String) -> float:
 	# The price you PAY to buy a unit from the market — the sale price plus the
@@ -137,10 +161,18 @@ func import_state(d: Dictionary) -> void:
 	_turn_sold.clear()
 	_turn_bought.clear()
 
+## Per-good price decay is suppressed until this turn (owner ruling 2026-07-27), then runs
+## the existing per-good path unchanged. The monotonic downward drift is deliberate design
+## pressure — this is a GRACE PERIOD, not mean-reversion: it gives the opening ~30 turns a
+## flat margin so a player learning the game doesn't watch their number rot while they read
+## the tutorial. Measured: the cluster's net moves only +16.00 -> +15.71 across t1..t20.
+const DECAY_FIRST_TURN := 30
+
 func tick_turn() -> void:
+	var decay_live: bool = int(TurnManager.current_turn) >= DECAY_FIRST_TURN
 	for good_id in prices.keys():
 		var good: Dictionary = Catalog.get_good(good_id)
-		var decay: float = good.get("decay_rate", 0.0)
+		var decay: float = float(good.get("decay_rate", 0.0)) if decay_live else 0.0
 		prices[good_id] = prices[good_id] * (1.0 - decay)
 		_tick_impact(str(good_id))
 	_turn_sold.clear()
@@ -157,7 +189,9 @@ func _tick_impact(good_id: String) -> void:
 	if rate > 0.0:
 		a += -rate if net > 0 else rate
 	else:
-		a = move_toward(a, 0.0, EconomyConfig.PRICE_IMPACT_RECOVERY_PCT)
+		# Recovery scales with how deep the impact is, so the continuous curve can't
+		# ratchet a good to the floor and pin it there (see EconomyConfig).
+		a = move_toward(a, 0.0, EconomyConfig.price_impact_recovery(a))
 	a = clampf(a, -EconomyConfig.PRICE_IMPACT_CAP_PCT, EconomyConfig.PRICE_IMPACT_CAP_PCT)
 	if absf(a) < 0.0001:
 		impact_pct.erase(good_id)

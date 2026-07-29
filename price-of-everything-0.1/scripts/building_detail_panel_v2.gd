@@ -1437,10 +1437,15 @@ func _diag_row(r: Dictionary, top_border: bool) -> Control:
 	chip_style.set_corner_radius_all(6)
 	chip_style.set_content_margin_all(3)
 	chip.add_theme_stylebox_override("panel", chip_style)
-	var dot := ColorRect.new()
-	dot.color = c
-	dot.custom_minimum_size = Vector2(12, 12)
-	chip.add_child(dot)
+	# A row about a specific commodity shows that good's icon instead of the tone dot.
+	var row_good := str(r.get("good_id", ""))
+	if row_good != "":
+		chip.add_child(UIHelpers.make_framed_good_icon(row_good, Catalog.get_internal_name(row_good), 18, true))
+	else:
+		var dot := ColorRect.new()
+		dot.color = c
+		dot.custom_minimum_size = Vector2(12, 12)
+		chip.add_child(dot)
 	hb.add_child(chip)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL

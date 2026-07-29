@@ -321,7 +321,7 @@ func _naked(r: Dictionary, out_mult := 1.0) -> float:
 func _compute_own_power_cost() -> float:
 	var coal := str(Catalog.get_good_by_internal_name("coal").get("id",""))
 	var water := str(Catalog.get_good_by_internal_name("pure_water").get("id",""))
-	var pp := Catalog.get_building_by_internal_name("coal_power") if Catalog.has_method("get_building_by_internal_name") else Catalog.get_building("b_003")
+	var pp := Catalog.get_building_by_internal_name("power_plant") if Catalog.has_method("get_building_by_internal_name") else Catalog.get_building("b_003")
 	return (20.0*_buy(coal) + 20.0*_buy(water) + _labour(pp) + _maint(pp)) / 100.0
 
 # Cheapest integrated unit cost of a good, memoised. Seeding the memo with the market price both

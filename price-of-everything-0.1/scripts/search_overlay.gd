@@ -133,6 +133,7 @@ func _mechanic_body(entry_id: String) -> String:
 			+ "A building relying on unfirmed intermittent power loses up to %d%% of its output that turn.\n\n"
 			+ "Hydro and biomass/waste power are green but STEADY, and never take this penalty. Fossil and national-grid power are grey and steady.\n\n"
 			+ "Batteries 'firm' intermittent power on a tile: up to their storage capacity, intermittent green is treated as steady and the penalty disappears. Build storage where you generate or draw intermittent green to cancel the intermittency.\n\n"
+			+ "A few processes can follow a ragged supply and take no penalty at all, needing no battery to escape it — Membraneless Electrolysis is the first. Its cells have no membrane to dry out or pressure-balance, so they can ramp with the wind instead of demanding a steady load.\n\n"
 			+ "(This is an early stub — worked numbers, the per-tile allocation order, and storage scaling will be detailed here in a later content pass.)") % [derate_pct]
 	if entry_id == "building_economics":
 		var tax_pct: int = int(round(EconomyConfig.TAX_RATE * 100.0))

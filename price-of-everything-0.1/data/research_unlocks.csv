@@ -31,9 +31,8 @@ Manufacturing,Interchangeable Tooling,,,,II,Own,land,5,units,Composite Panel Pre
 Manufacturing,Motor Winding Automation,Composite Panel Pressing,,,III,Run,Modular Factory Cells,15,turns,Modular Factory Cells,cell,Reorganises production into modular factory cells (prerequisite tech).
 Hydrocarbon Power,,,,,I,Build,Coal Power Plant,3,units,Pulverized Coal Boilers,boiler,Increases Coal Power Plant output by 5% permanently.
 Hydrocarbon Power,Pulverized Coal Boilers,,,,I,Sell,Power,250,units,Steam Turbine Upgrades,turbine,Increases Coal Power Plant output by 25% for 25 turns.
-Hydrocarbon Power,Steam Turbine Upgrades,,,,II,Run,Gas Plant,12,turns,Combined Cycle Gas,gas,Increases Gas Plant output by 10% permanently.
 Hydrocarbon Power,Pulverized Coal Boilers,,,,II,Own,land,5,units,Flue Heat Recovery,heat,Reduces Coal Power Plant power consumption by 10% permanently.
-Hydrocarbon Power,Combined Cycle Gas,Flue Heat Recovery,,,III,Run,Grid Synchronous Generation,15,turns,Grid Synchronous Generation,grid,Reduces all power plants maintenance by 8% for 20 turns.
+Hydrocarbon Power,Combined Cycle Turbines,Flue Heat Recovery,,,III,Run,Grid Synchronous Generation,15,turns,Grid Synchronous Generation,grid,Reduces all power plants maintenance by 8% for 20 turns.
 Renewable Power,,,,,I,Build,Solar Farm,3,units,Utility Solar Arrays,solar,Increases Solar Farm output by 5% permanently.
 Renewable Power,Utility Solar Arrays,,,,I,Sell,Power,250,units,Onshore Wind Control,wind,Increases Onshore Wind Farm output by 5% permanently.
 Renewable Power,Onshore Wind Control,,,,II,Run,Wind Farm,12,turns,Battery Balancing,battery,Increases Battery Electric Storage output by 10% permanently.
@@ -130,8 +129,9 @@ Inorganic Chemistry,,,,,I,Build,electrolyser,3,units,High-Current Cell Stacks,st
 Inorganic Chemistry,,,,,I,Build,electrolyser,7,units,Bipolar Cell Arrays,cell,Reduces Electrolyser power consumption by 20% for 20 turns.
 Petrochemistry,,,,,I,Build,poly_plant,3,units,Heat-Integrated Trains,heat,Reduces Polymerisation Refinery power consumption by 10% permanently.
 Petrochemistry,Catalytic Cracking,,,,III,Run Profitable,petro_refinery,3,buildings,Continuous Catalyst Regeneration,ccr,Increases Petrochemical Refinery output by 5% permanently.
-Hydrocarbon Power,Steam Turbine Upgrades,,,,II,Run L1,coal_power,5,20 turns,Supercritical Boilers,level2,Unlocks upgrading Coal Power Plant to Level 2 for more output.
-Hydrocarbon Power,Supercritical Boilers,,,,III,Run Profitable L2,coal_power,5,buildings,Ultra-Supercritical Units,level3,Unlocks upgrading Coal Power Plant to Level 3 for more output.
+Hydrocarbon Power,Steam Turbine Upgrades,,,,II,Run L1,power_plant,2,15 turns,Combined Cycle Turbines,turbine,Unlocks new recipes: Gas Combined Cycle Turbines and Petroleum Needle Coke Power.
+Hydrocarbon Power,Steam Turbine Upgrades,,,,II,Run L1,power_plant,5,20 turns,Supercritical Boilers,level2,Unlocks upgrading Coal Power Plant to Level 2 for more output.
+Hydrocarbon Power,Supercritical Boilers,,,,III,Run Profitable L2,power_plant,5,buildings,Ultra-Supercritical Units,level3,Unlocks upgrading Coal Power Plant to Level 3 for more output.
 Renewable Power,Onshore Wind Control,,,,II,Run L1,onshore_wind_farm,5,20 turns,Larger Rotor Diameters,level2,Unlocks upgrading Onshore Wind Farm to Level 2 for more output.
 Renewable Power,Larger Rotor Diameters,,,,III,Run Profitable L2,onshore_wind_farm,5,buildings,Direct-Drive Megaturbines,level3,Unlocks upgrading Onshore Wind Farm to Level 3 for more output.
 Renewable Power,Utility Solar Arrays,,,,II,Run L1,solar_farm,5,20 turns,Single-Axis Trackers,level2,Unlocks upgrading Solar Farm to Level 2 for more output.
@@ -159,7 +159,7 @@ Renewable Power,Battery Balancing,,,,II,Run,Battery,12,turns,Fast Response Stora
 Infrastructure,Substation Layouts,,,,II,Build,Cables,5,units,High Voltage Cabling,hvdc1,Unlocks HVDC long-distance power transmission.
 Infrastructure,High Voltage Cabling,,,,III,Run,Cables,12,turns,Undersea Current Doublers,hvdc2,Unlocks higher-capacity undersea HVDC power links.
 Infrastructure,Undersea Current Doublers,,,,III,Own,Cables,6,units,SF6-free Switchgear,hvdc3,Unlocks high-capacity HVDC switchgear for power links.
-Hydrocarbon Power,,,,,I,Build,coal_power,3,units,Reheat Turbine Cycles,turbine,Increases Coal Power Plant output by 10% permanently.
+Hydrocarbon Power,,,,,I,Build,power_plant,3,units,Reheat Turbine Cycles,turbine,Increases Coal Power Plant output by 10% permanently.
 Hydrocarbon Power,Flue Heat Recovery,,,,III,Run,Power Plant,15,turns,Combined Heat & Power,chp,Reduces maintenance for all buildings by 5% permanently.
 Renewable Power,,,,,I,Build,onshore_wind_farm,3,units,Taller Turbine Towers,onwind,Increases Onshore Wind Farm output by 10% permanently.
 Renewable Power,,,,,I,Build,onshore_wind_farm,7,units,Variable-Pitch Control,pitch,Reduces Onshore Wind Farm maintenance by 10% for 20 turns.

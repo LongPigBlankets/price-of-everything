@@ -39,10 +39,14 @@ const CONSTRUCTION_LOAN_TERM := 10
 const CONSTRUCTION_LOAN_RATE := 0.05
 
 func take_loan(amount: float) -> bool:
-	# Standard 36-turn loan at the config rate (minus any CFO discount).
-	if amount <= 0.0 or amount > available_capacity():
+	# Standard loan: LOAN_GRACE_TURNS interest-accruing turns, then 36 turns of repayment.
+	if amount <= 0.0:
 		return false
-	return _create_loan(amount, effective_loan_interest_rate(), EconomyConfig.LOAN_TERM_TURNS)
+	amount = maxf(amount, EconomyConfig.LOAN_MINIMUM)
+	if amount > available_capacity():
+		return false
+	return _create_loan(amount, effective_loan_interest_rate(), EconomyConfig.LOAN_TERM_TURNS,
+		EconomyConfig.LOAN_GRACE_TURNS)
 
 # Distress loan (decision events, spec §12.1): standard rate/term but BYPASSES the
 # profit-gated borrowing capacity — an unaffordable decision choice must always be
@@ -50,7 +54,8 @@ func take_loan(amount: float) -> bool:
 func take_distress_loan(amount: float) -> bool:
 	if amount <= 0.0:
 		return false
-	return _create_loan(amount, effective_loan_interest_rate(), EconomyConfig.LOAN_TERM_TURNS)
+	return _create_loan(maxf(amount, EconomyConfig.LOAN_MINIMUM), effective_loan_interest_rate(),
+		EconomyConfig.LOAN_TERM_TURNS, EconomyConfig.LOAN_GRACE_TURNS)
 
 func take_construction_loan(amount: float) -> bool:
 	# 10-turn, 5% build loan. Respects the same borrowing capacity as any other loan.
@@ -89,25 +94,35 @@ func take_grace_loan(amount: float, grace_turns: int) -> bool:
 # Shared loan creation: bakes the (rate, term) into the amortisation and disburses
 # the principal. Per-loan rate/term are stored so processing stays accurate even when
 # multiple loans of different terms coexist.
-func _create_loan(amount: float, rate: float, term: int) -> bool:
-	var total_repayment: float = amount * (1.0 + rate)
+func _create_loan(amount: float, rate: float, term: int, grace: int = 0) -> bool:
+	# Interest is charged for the loan's whole LIFE, grace included, then amortised over the
+	# paying turns only. So grace defers the burden and enlarges it — it is forbearance, not a
+	# discount — and a 12+36 loan repays 1 + 0.10 x 48/36 = 1.133x rather than 1.10x.
+	var life: float = float(term + grace)
+	var total_repayment: float = amount * (1.0 + rate * life / float(term))
 	var per_turn: float = total_repayment / float(term)
 	var loan: Dictionary = {
 		"id": _next_loan_id,
 		"principal_initial": amount,
-		"principal_remaining": total_repayment,
-		"payment_per_turn": per_turn,
-		"turns_remaining": term,
+		# During grace nothing is due, so the books carry the principal until it converts.
+		"principal_remaining": amount if grace > 0 else total_repayment,
+		"payment_per_turn": 0.0 if grace > 0 else per_turn,
+		"turns_remaining": term + grace,
 		"interest_paid": 0.0,
 		"interest_rate": rate,
+		"grace_remaining": grace,
+		"total_repayment": total_repayment,
 	}
 	_next_loan_id += 1
 	loans.append(loan)
 	MatchState.flag_agenda_event(MatchState.AGENDA_TOOK_LOAN)
 	MatchState.add_money(amount)   # disburse principal
-	print("[LoanState] Loan #%d taken: £%.2f (£%.4f/turn for %d turns @ %.1f%%, total £%.2f)" % [
-		loan.id, amount, per_turn, term, rate * 100.0, total_repayment
-	])
+	if grace > 0:
+		print("[LoanState] Loan #%d taken: £%.2f (%d grace turns, then £%.4f/turn for %d @ %.1f%%, total £%.2f)" % [
+			loan.id, amount, grace, per_turn, term, rate * 100.0, total_repayment])
+	else:
+		print("[LoanState] Loan #%d taken: £%.2f (£%.4f/turn for %d turns @ %.1f%%, total £%.2f)" % [
+			loan.id, amount, per_turn, term, rate * 100.0, total_repayment])
 	loan_taken.emit(loan)
 	loans_updated.emit()
 	return true
@@ -151,8 +166,12 @@ func process_payments() -> float:
 			loan.grace_remaining = int(loan.grace_remaining) - 1
 			loan.turns_remaining = int(loan.turns_remaining) - 1
 			if int(loan.grace_remaining) == 0:
+				# Standard loans banked the whole-life total at creation; the distressed-asset
+				# grace loan (take_grace_loan) has no such total and is interest-free by design,
+				# so it still converts at the plain rate.
 				var g_rate: float = float(loan.get("interest_rate", EconomyConfig.LOAN_INTEREST_RATE))
-				loan.principal_remaining = float(loan.principal_initial) * (1.0 + g_rate)
+				loan.principal_remaining = float(loan.get("total_repayment",
+					float(loan.principal_initial) * (1.0 + g_rate)))
 				loan.payment_per_turn = float(loan.principal_remaining) / float(EconomyConfig.LOAN_TERM_TURNS)
 				loan.turns_remaining = EconomyConfig.LOAN_TERM_TURNS
 			continue

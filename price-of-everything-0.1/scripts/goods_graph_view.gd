@@ -22,6 +22,7 @@ const GraphWorldScript := preload("res://scripts/goods_graph_world.gd")
 var _map_camera: Node = null                   # the map Camera2D (group "camera"); gated while open
 var _hidden_layers: Array[CanvasItem] = []     # world layers hidden on enter, restored on leave
 var _graph_world: Control
+var _legacy_goods_graph := false               # session-only; current presentation is default
 
 
 func _ready() -> void:
@@ -37,6 +38,14 @@ func _ready() -> void:
 ## the top-bar Goods Graph module and the Resources panel's Goods Graph button.
 func toggle() -> void:
 	visible = not visible
+
+
+## Debug cheat: switch the full Goods Graph presentation between current and legacy.
+## The normal default remains the current swimlane/focus presentation.
+func toggle_legacy_goods_graph() -> bool:
+	_legacy_goods_graph = not _legacy_goods_graph
+	_rebuild_graph()
+	return _legacy_goods_graph
 
 
 func _build_ui() -> void:
@@ -91,7 +100,7 @@ func _enter() -> void:
 func _rebuild_graph() -> void:
 	if _graph_world == null:
 		return
-	_graph_world.set_graph(GoodsFlowGraph.build())
+	_graph_world.set_graph(GoodsFlowGraph.build(false, _legacy_goods_graph))
 
 
 func _leave() -> void:

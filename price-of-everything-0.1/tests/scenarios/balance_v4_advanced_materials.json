@@ -17,7 +17,7 @@
 	"balance_runway_buildings": [
 		{"id": "runway_coal", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_8_4", "deposit": "coal"},
 		{"id": "runway_water", "internal_name": "water_pump", "recipe_id": "r_011", "tile": "tile_8_4", "deposit": "water", "count": 2},
-		{"id": "runway_power", "internal_name": "coal_power", "recipe_id": "r_004", "tile": "tile_8_4", "count": 3}
+		{"id": "runway_power", "internal_name": "power_plant", "recipe_id": "r_004", "tile": "tile_8_4", "count": 3}
 	],
 	"balance_runway_routes": [
 		{"id": "runway_coal", "good": "coal", "dest": "tile_8_4"},

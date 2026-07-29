@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://cblockprobe001"]
+[gd_scene format=3 uid="uid://dvqjjq5eox441"]
 [ext_resource type="Script" path="res://tools/block_probe.gd" id="1"]
 [node name="BlockProbe" type="Node"]
 script = ExtResource("1")

@@ -3178,7 +3178,7 @@ const INK_ART_KEY := {
 	"consumer_factory": "consumer_factory", "assembly_plant": "assembly_plant",
 	"high_tech_manufactory": "high_tech_manufactory", "petro_refinery": "petro_refinery",
 	"chem_plant": "chem_plant", "poly_plant": "poly_plant", "electrolyser": "electrolyser",
-	"coal_power": "power_plant", "water_pump": "water_pump", "mine": "mine",
+	"power_plant": "power_plant", "water_pump": "water_pump", "mine": "mine",
 	"solar_farm": "solar_farm",
 	"onshore_wind_farm": "wind_farm", "offshore_wind_farm": "wind_farm",
 	"pipes": "pipes", "reinf_pipes": "pipes", "cables": "cables",

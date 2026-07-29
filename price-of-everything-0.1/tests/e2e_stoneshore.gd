@@ -1,4 +1,7 @@
 extends Node
+
+# RefCounted, not an autoload — consumers preload it (see building_levels.gd header).
+const BuildingLevels := preload("res://scripts/building_levels.gd")
 ## Headless end-to-end scenario for the foundations sprint.
 ##
 ## This runner deliberately instantiates the real main scene and drives the same
@@ -64,6 +67,38 @@ var _cash_after_buildout := 0.0
 var _coal_backed_available_capacity := 0.0
 var _coal_backed_loan_amount := 0.0
 var _balance_mode := false
+# `levels` arg: take every player building to L2 at turn 100 and L3 at turn 150, to measure
+# what leveling an already-built empire is worth. It sets the level DIRECTLY rather than going
+# through start_upgrade, so it measures the steady-state economics of a levelled empire and
+# deliberately excludes the material kit and the 3-turn downtime — those are reported
+# separately rather than smeared into the per-turn numbers.
+var _level_schedule := false
+var _levels_applied := {}
+var _level_infra := false
+# `autoinfra`: upgrade a tile's infrastructure once it has run at >=90% of capacity for MORE
+# than 2 turns — the reactive policy a player would actually follow, rather than the blanket
+# upgrade `levels+infra` applies. Roads that are already L3 and still saturated escalate to
+# rail, which is the only capacity left above a 750-unit road.
+const INFRA_UTIL_THRESHOLD := 0.90
+const INFRA_UTIL_STREAK := 2
+# `techs`: grant every node in the branches an established industrial player would
+# realistically have finished — metallurgy, both power branches, operations, logistics and
+# people management. Left OFF by default so the other runs stay comparable.
+const TECH_CATEGORIES := ["Metallurgy", "Renewable Power", "Hydrocarbon Power",
+	"Markets and Operations", "Logistics", "People Management"]
+var _grant_tech_categories := false
+var _auto_infra := false
+var _infra_streak := {}
+var _infra_spend := 0.0
+var _infra_actions := {}
+var _starve_detail := {}
+var _audited := {}
+var _techs_granted := false
+var _diag_turns := 0
+var _diag_runs := {}
+var _diag_coal_made := 0
+var _diag_coal_sold := 0
+var _diag_worst_link := {}
 var _balance_metrics := {}
 var _balance_bad_streak := 0
 var _balance_built_ids: Array[String] = []
@@ -86,8 +121,149 @@ func _ready() -> void:
 		_write_balance_metrics()
 	else:
 		_write_latest_metrics()
+	_print_profit_trajectory()
 	print("==== E2E %d passed, %d failed ====\n" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
+
+
+## Per-turn profit was already being recorded and never shown. A single pass/fail on
+## "last 10 turns are profitable" cannot tell you whether a run peaked and decayed, never
+## got going, or fell off a cliff at one identifiable turn — and those need different fixes.
+func _print_profit_trajectory() -> void:
+	if _profit_by_turn.is_empty():
+		return
+	var peak := -INF
+	var peak_turn := 0
+	var trough := INF
+	var trough_turn := 0
+	for e in _profit_by_turn:
+		var p := float(e.get("profit", 0.0))
+		if p > peak:
+			peak = p
+			peak_turn = int(e.get("turn", 0))
+		if p < trough:
+			trough = p
+			trough_turn = int(e.get("turn", 0))
+	print("---- profit trajectory (post-tax £/turn) ----")
+	print("  peak %+.1f at t%d   trough %+.1f at t%d" % [peak, peak_turn, trough, trough_turn])
+	var marks: Array[int] = [1, 20, 40, 60, 80, 90, 100, 120, 150, 200, 250, 300]
+	var line := "  "
+	for m in marks:
+		for e in _profit_by_turn:
+			if int(e.get("turn", 0)) == m:
+				line += "t%d %+.0f   " % [m, float(e.get("profit", 0.0))]
+				break
+	print(line)
+	print("  %-6s %9s %9s %9s %9s %7s %7s %7s %7s" % ["turn", "revenue", "labour", "maint", "carbon", "starvd", "short", "capped", "stor!"])
+	for m in marks:
+		for e in _profit_by_turn:
+			if int(e.get("turn", 0)) == m and e.has("revenue"):
+				print("  t%-5d %9.0f %9.0f %9.0f %9.0f %7d %7d %7d %7d" % [m,
+					float(e.get("revenue", 0.0)), float(e.get("labour", 0.0)),
+					float(e.get("maint", 0.0)), float(e.get("carbon", 0.0)),
+					int(e.get("starved", 0)), int(e.get("short", 0)),
+					int(e.get("capped", 0)), int(e.get("overcommit", 0))])
+				break
+	# Name what the starved buildings were actually missing. "9 starved" is a symptom; a
+	# capped power draw and an empty warehouse need opposite fixes.
+	if not _starve_detail.is_empty():
+		print("  starvation causes (last recorded):")
+		for k in _starve_detail:
+			print("    %-28s x%d" % [k, int(_starve_detail[k])])
+	if _level_schedule and _diag_turns > 0:
+		print("---- diagnosis over t150-t200 (%d turns) ----" % _diag_turns)
+		# 2 — how OFTEN each recipe actually ran.
+		print("  RUN FREQUENCY (a starved building did not run that turn):")
+		for rid in _diag_runs:
+			var e: Dictionary = _diag_runs[rid]
+			if int(e["of"]) <= 0:
+				continue
+			var pct := 100.0 * float(e["ran"]) / float(e["of"])
+			print("    %-8s %-28s ran %5.1f%% of building-turns" % [rid,
+				str(Catalog.get_recipe(rid).get("display_name", rid)).substr(0, 28), pct])
+		# 3 — did the coal get sold instead of shipped?
+		print("  COAL produced %d, sold to market %d (%.0f%% of production sold)"
+			% [_diag_coal_made, _diag_coal_sold,
+				(100.0 * float(_diag_coal_sold) / maxf(1.0, float(_diag_coal_made)))])
+		# 4 — worst transport link seen in the window.
+		if not _diag_worst_link.is_empty():
+			print("  WORST LINK %s at t%d: %.0f / %.0f = %.0f%% of capacity"
+				% [str(_diag_worst_link.get("key", "")), int(_diag_worst_link.get("turn", 0)),
+					float(_diag_worst_link.get("used", 0.0)), float(_diag_worst_link.get("cap", 0.0)),
+					100.0 * float(_diag_worst_link.get("util", 0.0))])
+		else:
+			print("  WORST LINK: no capped-mode flow recorded (nothing in transit when sampled)")
+		# Coal is produced, not sold and not moving — so where is it? Tile storage does not
+		# scale with building level, so the receiving tile may simply have nowhere to put it.
+		print("  STOCKPILE / CAPACITY on the tiles that matter:")
+		var tiles_seen := {}
+		for iid in MatchState.buildings.keys():
+			var inst: Dictionary = MatchState.buildings[iid]
+			if str(inst.get("owner", "")) != "player_1":
+				continue
+			var tid := str(inst.get("tile_id", ""))
+			if tiles_seen.has(tid):
+				continue
+			tiles_seen[tid] = true
+			var total := Stockpile.get_used_capacity(tid)
+			var coal_here := int(Stockpile.get_at_tile(tid, str(Catalog.get_good_by_internal_name("coal").get("id", ""))))
+			print("    %-12s stored %5d / cap %5d   (coal here: %d)"
+				% [tid, total, Stockpile.get_capacity(tid), coal_here])
+		# 1 — what the output multipliers actually evaluate to for a downstream building.
+		print("  OUTPUT MULTIPLIERS on a live building of each downstream recipe:")
+		for want in ["r_003", "r_005", "r_009"]:
+			for iid in MatchState.buildings.keys():
+				var inst: Dictionary = MatchState.buildings[iid]
+				if str(inst.get("recipe_id", "")) != want or str(inst.get("owner", "")) != "player_1":
+					continue
+				var lvl2 := int(inst.get("level", 1))
+				var base := 100.0
+				var modded := Modifiers.apply("recipe_output", want, base, {
+					"recipe_id": want, "building_id": str(inst.get("building_id", "")),
+					"instance_id": str(iid)})
+				var derate := float((Production._intermittency_by_building.get(str(iid), {}) as Dictionary).get("derate", 0.0))
+				print("    %-8s L%d  recipe_output x%.3f   level x%.2f   workforce x%.3f   startup x%.3f   intermittency -%.0f%%"
+					% [want, lvl2, modded / base, BuildingLevels.mult("output", lvl2),
+						MatchState.workforce_output_multiplier(),
+						MatchState.startup_capacity_multiplier(inst), derate * 100.0])
+				break
+	if _auto_infra:
+		var acts := "  auto-infra: £%.0f spent   " % _infra_spend
+		for k in _infra_actions:
+			acts += "%s x%d   " % [k, int(_infra_actions[k])]
+		print(acts)
+	# Deposits: -1 means UNTRACKED, which is how the CSV spells "infinite" (seed_deposits
+	# skips any deposit with no quantity). The first version of this summed that sentinel in
+	# with real remainders and reported a number that looked like depletion where there was
+	# none — infinite tiles must be counted separately, not added.
+	var dep_left := {}
+	var seen_tiles := {}
+	for iid in MatchState.buildings.keys():
+		var inst: Dictionary = MatchState.buildings[iid]
+		if str(inst.get("owner", "")) != "player_1":
+			continue
+		var tid := str(inst.get("tile_id", ""))
+		if seen_tiles.has(tid):
+			continue                       # one tile, counted once, not once per building
+		seen_tiles[tid] = true
+		for tok in ["coal", "iron_ore", "copper_ore", "limestone", "sand", "bauxite_ore"]:
+			var rem := MatchState.deposit_remaining_for(tid, tok)
+			if rem < 0:
+				continue                   # untracked = infinite, nothing to deplete
+			dep_left[tok] = int(dep_left.get(tok, 0)) + rem
+	var dl := "  deposits (tracked only; anything absent here is an INFINITE deposit): "
+	if dep_left.is_empty():
+		dl += "none tracked — every mined deposit in this scenario is infinite"
+	else:
+		for k in dep_left:
+			dl += "%s %d left   " % [k, int(dep_left[k])]
+	print(dl)
+	# Where it crossed from black to red for good — the turn a fix has to target.
+	var last_positive := 0
+	for e in _profit_by_turn:
+		if float(e.get("profit", 0.0)) > 0.0:
+			last_positive = int(e.get("turn", 0))
+	print("  last profitable turn: t%d of %d" % [last_positive, int(_profit_by_turn[-1].get("turn", 0))])
 
 
 func _run() -> void:
@@ -121,12 +297,14 @@ func _run() -> void:
 	_check(int(TransportService.route("tile_21_10", "tile_25_6", _goods.copper_wiring).get("turns", 999)) < (1 << 30),
 		"copper-to-motor rail route is reachable")
 
+	_apply_scenario_unlocks()
 	await _build_supply_chain_from_config()
 	_configure_output_routes_from_config()
 	_configure_surplus_sales_from_config()
 	_configure_tile_only_inputs_from_config()
 	await _advance_until_no_construction(14)
 	_check(Construction.construction_projects.is_empty(), "all scenario construction projects completed")
+	_load_battery_cells_from_config()   # a battery store has no cell slots until it is BUILT
 	_check(MatchState.buildings.size() >= 24, "scenario has a live multi-building industrial base")
 
 	_cash_after_buildout = MatchState.money
@@ -162,6 +340,17 @@ func _parse_cmdline_args() -> void:
 		_balance_metrics_output_path = str(args[2])
 	if args.size() > 3:
 		_balance_research_override = str(args[3]).strip_edges().to_lower() == "research"
+	for a in args:
+		var la := str(a).strip_edges().to_lower()
+		if la == "levels":
+			_level_schedule = true
+		elif la == "levels+infra":
+			_level_schedule = true
+			_level_infra = true
+		elif la == "autoinfra":
+			_auto_infra = true
+		elif la == "techs":
+			_grant_tech_categories = true
 
 
 func _load_scenario() -> void:
@@ -742,7 +931,8 @@ func _build_coal_runway_from_config() -> void:
 	_cash_after_coal_runway = MatchState.money
 	_check(_sold_qty(_goods.coal) > 0, "coal runway sold coal to market before the motor buildout")
 	_check(_recent_run_metric("profit_post_tax", mini(3, runway_turns)) > 0.0,
-		"coal runway is recently post-tax profitable before expansion")
+		"coal runway is recently post-tax profitable before expansion (%.1f)"
+		% _recent_run_metric("profit_post_tax", mini(3, runway_turns)))
 
 
 func _build_transport_spine_from_config() -> void:
@@ -812,7 +1002,24 @@ func _build_transport_spine_from_config() -> void:
 		for tile_id in tiles:
 			await _build_infra_via_build_mode(infra_type, str(tile_id))
 
-	for tile_id in spine.get("cables", []):
+	# Cables accept the same "corridors" shorthand as roads/rails/pipes. Without it a
+	# scenario writing "cables": "corridors" silently iterated the STRING and tried to
+	# build on tiles named "c", "o", "r"... — and a power network only spans tiles that
+	# are actually cabled, so cabling the endpoints but not the corridor between them
+	# leaves each plant stranded on its own island.
+	var cables_spec = spine.get("cables", [])
+	var cable_tiles: Array = []
+	if typeof(cables_spec) == TYPE_STRING and str(cables_spec) == "corridors":
+		var seen_cable := {}
+		for path in resolved_corridors:
+			for tile_id in path:
+				if not seen_cable.has(str(tile_id)):
+					seen_cable[str(tile_id)] = true
+					cable_tiles.append(str(tile_id))
+	elif typeof(cables_spec) == TYPE_ARRAY:
+		for tile_id in cables_spec:
+			cable_tiles.append(str(tile_id))
+	for tile_id in cable_tiles:
 		await _build_infra_via_build_mode("cables", str(tile_id))
 
 
@@ -915,12 +1122,12 @@ func _reset_autoloads() -> void:
 func _resolve_catalog_ids() -> void:
 	for internal in ["coal", "iron_ore", "copper_ore", "iron_ingots", "copper_ingots",
 			"steel", "copper_wiring", "motor", "pure_water", "basic_salt",
-			"chem_salts", "chlorine", "sodium_hydroxide"]:
+			"chem_salts", "chlorine", "sodium_hydroxide", "lithium_battery"]:
 		var good := Catalog.get_good_by_internal_name(internal)
 		_check(not good.is_empty(), "catalog good exists: %s" % internal)
 		_goods[internal] = str(good.get("id", ""))
 	for internal in ["mine", "furnace", "industrial_factory", "chem_plant",
-			"water_pump", "coal_power", "roads", "rails", "cables"]:
+			"water_pump", "power_plant", "roads", "rails", "cables"]:
 		var building := Catalog.get_building_by_internal_name(internal)
 		_check(not building.is_empty(), "catalog building exists: %s" % internal)
 		_buildings[internal] = str(building.get("id", ""))
@@ -936,7 +1143,11 @@ func _resolve_catalog_ids() -> void:
 	_recipes.copper_wiring = _recipe_for("industrial_factory", "copper_wiring", "Wire")
 	_recipes.motor = _recipe_for("industrial_factory", "motor", "Motor")
 	_recipes.chlorine = _recipe_for("chem_plant", "chlorine", "Chlor")
-	_recipes.power = _recipe_for("coal_power", "power", "Power")
+	_recipes.power = _recipe_for("power_plant", "power", "Coal Power")
+	# Wind variant (open_field_wind): onshore generation + battery firming. Resolved
+	# unconditionally so a missing catalog entry fails loudly in every scenario.
+	_recipes.onshore_wind = _recipe_for("onshore_wind_farm", "power", "Onshore")
+	_recipes.battery_storage = _recipe_for("battery", "", "Battery Storage")
 	for key in _recipes.keys():
 		_check(str(_recipes[key]) != "", "scenario recipe resolved: %s -> %s" % [str(key), str(_recipes[key])])
 
@@ -1477,7 +1688,275 @@ func _advance_turns(count: int, reason: String) -> void:
 				"turn advanced for %s (%d -> %d)" % [reason, before_turn, TurnManager.current_turn])
 
 
+func _apply_level_schedule() -> void:
+	if not _level_schedule:
+		return
+	var turn := int(TurnManager.current_turn)
+	var target := 0
+	if turn >= 150:
+		target = 3
+	elif turn >= 100:
+		target = 2
+	if target == 0 or _levels_applied.has(target):
+		return
+	_levels_applied[target] = true
+	var n := 0
+	var tiles_touched := {}
+	for iid in MatchState.buildings.keys():
+		var inst: Dictionary = MatchState.buildings[iid]
+		if str(inst.get("owner", "")) != "player_1":
+			continue
+		if int(inst.get("level", 1)) >= target:
+			continue
+		inst["level"] = target
+		tiles_touched[str(inst.get("tile_id", ""))] = true
+		n += 1
+	# Take the tile's WAREHOUSE up with the first building on it, 800 -> 1600 -> 2500.
+	#
+	# HARNESS ONLY, and deliberately so (owner ruling 2026-07-28). This is a modelling
+	# assumption — "assume the player also expands storage" — not a game rule. It was briefly
+	# promoted into MatchState's upgrade path and reverted: making an upgrade silently buy a
+	# warehouse expansion the player never chose removes a real decision from them, and the
+	# tile-storage expansion already has its own materials cost and its own UI.
+	#
+	# Without it a levelled chain DEADLOCKS rather than merely running badly: storage is flat
+	# at 800 whatever sits on the tile, while an L3 building buffers and outputs 3x, so the
+	# receiving tile fills, nothing can be delivered, nothing runs, nothing is consumed, and
+	# room never appears. Measured at L3 on open_field_1: steelmaking and pig iron ran 0% of
+	# turns while the mines above them tripled output. That finding stands — what is open is
+	# whether the fix is automatic, a cost the player pays, or a warning before they upgrade.
+	var wh := 0
+	for tid in tiles_touched.keys():
+		if Stockpile.get_warehouse_level(str(tid)) < target:
+			Stockpile.set_warehouse_level(str(tid), target)
+			wh += 1
+	var tn := 0
+	if _level_infra:
+		# Buildings alone starve: L1 cables cap a tile at 2000 power/turn and levelled
+		# buildings draw past it, which stalls the mines and empties the chain from the top.
+		# Levelling the infrastructure with them is the comparison that isolates that.
+		for hm in get_tree().get_nodes_in_group("hex_map"):
+			for coord in (hm.get("tiles") as Dictionary).keys():
+				var tile: Dictionary = (hm.get("tiles") as Dictionary)[coord]
+				var lv: Dictionary = tile.get("infrastructure_levels", {})
+				for slot in (tile.get("infrastructure_present", []) as Array):
+					if int(lv.get(str(slot), 1)) < target:
+						lv[str(slot)] = target
+						tn += 1
+				tile["infrastructure_levels"] = lv
+	print("[levels] t%d: %d buildings -> L%d   + %d tile warehouses -> L%d%s" % [turn, n, target,
+		wh, target, ("   + %d infrastructure slots" % tn) if _level_infra else ""])
+
+
+func _bump_infra(tile: Dictionary, tile_id: String, slot: String, to_level: int) -> void:
+	var lv: Dictionary = tile.get("infrastructure_levels", {})
+	lv[slot] = to_level
+	tile["infrastructure_levels"] = lv
+	var present: Array = tile.get("infrastructure_present", [])
+	if not present.has(slot):
+		present.append(slot)
+		tile["infrastructure_present"] = present
+	var cost := float(EconomyConfig.INFRA_UPGRADE_CASH_COST.get(to_level, 0.0))
+	MatchState.money -= cost
+	_infra_spend += cost
+	var key := "%s -> L%d" % [slot, to_level]
+	_infra_actions[key] = int(_infra_actions.get(key, 0)) + 1
+	_infra_streak["%s|%s" % [tile_id, slot]] = 0
+
+
+## One turn of the reactive infrastructure policy. Utilisation is measured against the SAME
+## capacity the engine enforces, so a tile upgrades on the number that was actually throttling
+## it rather than on an estimate.
+##
+## Only tiles that MOVED something are considered. Walking all ~1000 map tiles x 5 slots every
+## turn — each one calling Modifiers.apply and a group lookup — made a 12-turn run take longer
+## than a 300-turn run without it. A tile with no flow and no power draw cannot be at 90% of
+## anything, so the candidate set comes from the flow and power tables themselves.
+func _auto_upgrade_infra() -> void:
+	if not _auto_infra:
+		return
+	var flow: Dictionary = MatchState.transport_link_flow()
+	var cap_cache := {}                       # "mode|level" -> capacity, per turn
+	var candidates := {}                      # tile_id -> {slot: used}
+	for key in flow.keys():
+		var parts := str(key).split("|")
+		if parts.size() != 2:
+			continue
+		var slot := "rails" if str(parts[1]) == "rail" else str(parts[1])
+		if not candidates.has(parts[0]):
+			candidates[parts[0]] = {}
+		(candidates[parts[0]] as Dictionary)[slot] = float(flow[key])
+	for tile_id in Power.tile_produced.keys():
+		if not candidates.has(tile_id):
+			candidates[tile_id] = {}
+		(candidates[tile_id] as Dictionary)["cables"] = maxf(
+			float(Power.tile_produced.get(tile_id, 0)), float(Power.tile_drawn.get(tile_id, 0)))
+	for tile_id in Power.tile_drawn.keys():
+		if not candidates.has(tile_id):
+			candidates[tile_id] = {}
+		var c: Dictionary = candidates[tile_id]
+		c["cables"] = maxf(float(c.get("cables", 0.0)),
+			maxf(float(Power.tile_produced.get(tile_id, 0)), float(Power.tile_drawn.get(tile_id, 0))))
+	if candidates.is_empty():
+		return
+	var hm = get_tree().get_first_node_in_group("hex_map")
+	if hm == null:
+		return
+	var tiles: Dictionary = hm.get("tiles")
+	for tile_id in candidates.keys():
+		var coord = hm.id_to_coord(str(tile_id))
+		if not tiles.has(coord):
+			continue
+		var tile: Dictionary = tiles[coord]
+		var present: Array = tile.get("infrastructure_present", [])
+		var lv: Dictionary = tile.get("infrastructure_levels", {})
+		for slot in (candidates[tile_id] as Dictionary).keys():
+			if not present.has(slot):
+				continue
+			var level := int(lv.get(str(slot), 1))
+			var used := float((candidates[tile_id] as Dictionary)[slot])
+			var cap := 0.0
+			if str(slot) == "cables":
+				cap = float(EconomyConfig.CABLE_POWER_CAP.get(level, 0))
+			else:
+				var mode := "rail" if str(slot) == "rails" else str(slot)
+				var ck := "%s|%d" % [mode, level]
+				if not cap_cache.has(ck):
+					cap_cache[ck] = MatchState.tile_mode_capacity(mode, level)
+				cap = float(cap_cache[ck])
+			if cap <= 0.0:
+				continue
+			var key := "%s|%s" % [str(tile_id), str(slot)]
+			if used / cap < INFRA_UTIL_THRESHOLD:
+				_infra_streak[key] = 0
+				continue
+			var streak := int(_infra_streak.get(key, 0)) + 1
+			_infra_streak[key] = streak
+			if streak <= INFRA_UTIL_STREAK:
+				continue
+			if level < 3:
+				_bump_infra(tile, str(tile_id), str(slot), level + 1)
+			elif str(slot) == "roads":
+				# Roads top out at 750/turn; rail is the only tier above, so a saturated
+				# L3 road escalates to rail rather than staying stuck at its ceiling.
+				var rail_level := int(lv.get("rails", 0))
+				if rail_level < 3:
+					_bump_infra(tile, str(tile_id), "rails", rail_level + 1)
+
+
+## One-shot audit of what every player building is actually DOING at a given turn. The
+## aggregate "9 starved" says nothing about whether the ratios held; this says which
+## buildings ran, at what level, and how much they made.
+func _audit_buildings(turn: int) -> void:
+	if not _level_schedule or _audited.has(turn):
+		return
+	_audited[turn] = true
+	var by_recipe := {}
+	for iid in MatchState.buildings.keys():
+		var inst: Dictionary = MatchState.buildings[iid]
+		if str(inst.get("owner", "")) != "player_1":
+			continue
+		var rid := str(inst.get("recipe_id", ""))
+		var lvl := int(inst.get("level", 1))
+		var key := "%s L%d" % [rid, lvl]
+		if not by_recipe.has(key):
+			by_recipe[key] = {"n": 0, "produced": 0, "name": str(Catalog.get_recipe(rid).get("display_name", rid))}
+		var e: Dictionary = by_recipe[key]
+		e["n"] = int(e["n"]) + 1
+		var totals: Dictionary = Production.produced_by_building.get(str(iid), {})
+		for gid in totals.keys():
+			e["produced"] = int(e["produced"]) + int(totals[gid])
+	# produced_by_building is LIFETIME, so the t90 -> t200 delta is the rate that matters.
+	print("  --- t%d building audit (recipe, level, count, LIFETIME units produced) ---" % turn)
+	for k in by_recipe:
+		var e: Dictionary = by_recipe[k]
+		print("    %-10s %-30s x%-3d produced %d" % [k, str(e["name"]).substr(0, 30), int(e["n"]), int(e["produced"])])
+
+
+## Four candidate causes for downstream buildings producing a sixth of their L1 rate while
+## the mines above them tripled. Each gets a measurement rather than an argument:
+##   1 negative modifiers   — what recipe_output/workforce/startup/derate actually multiply by
+##   2 intermittent running — how OFTEN a building runs, not just whether it starved once
+##   3 sell-before-ship     — coal sold to market vs coal produced, per turn
+##   4 transport bottleneck — worst link utilisation on the capped modes
+func _diagnose_window() -> void:
+	if not _level_schedule:
+		return
+	var turn := int(TurnManager.current_turn)
+	if turn < 150 or turn > 200:
+		return
+	var summary: Dictionary = Production.last_turn_summary
+	_diag_turns += 1
+	# 2 — run frequency. A building that starved this turn did not run.
+	var starved_now := {}
+	for rec in (summary.get("starved", []) as Array):
+		starved_now[str((rec as Dictionary).get("instance_id", ""))] = true
+	for iid in MatchState.buildings.keys():
+		var inst: Dictionary = MatchState.buildings[iid]
+		if str(inst.get("owner", "")) != "player_1":
+			continue
+		var rid := str(inst.get("recipe_id", ""))
+		if not _diag_runs.has(rid):
+			_diag_runs[rid] = {"ran": 0, "of": 0}
+		var e: Dictionary = _diag_runs[rid]
+		e["of"] = int(e["of"]) + 1
+		if not starved_now.has(str(iid)):
+			e["ran"] = int(e["ran"]) + 1
+	# 3 — coal produced vs sold to market in the same turn.
+	var coal_id := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	_diag_coal_made += int((summary.get("produced", {}) as Dictionary).get(coal_id, 0))
+	_diag_coal_sold += int((summary.get("sold", {}) as Dictionary).get(coal_id, 0))
+	# 4 — worst link utilisation across the capped modes.
+	var flow: Dictionary = MatchState.transport_link_flow()
+	for key in flow.keys():
+		var parts := str(key).split("|")
+		if parts.size() != 2:
+			continue
+		var mode := str(parts[1])
+		var slot := "rails" if mode == "rail" else mode
+		var lvl := 1
+		var hm0 = get_tree().get_first_node_in_group("hex_map")
+		if hm0 != null:
+			var c0 = hm0.id_to_coord(str(parts[0]))
+			if (hm0.get("tiles") as Dictionary).has(c0):
+				lvl = int(((hm0.get("tiles") as Dictionary)[c0] as Dictionary).get("infrastructure_levels", {}).get(slot, 1))
+		var cap := MatchState.tile_mode_capacity(mode, lvl)
+		if cap <= 0.0:
+			continue
+		var util := float(flow[key]) / cap
+		if util > float(_diag_worst_link.get("util", 0.0)):
+			_diag_worst_link = {"util": util, "key": str(key), "used": float(flow[key]), "cap": cap, "turn": turn}
+
+
+func _grant_tech_branches() -> void:
+	if not _grant_tech_categories or _techs_granted:
+		return
+	_techs_granted = true
+	var n := 0
+	var by_cat := {}
+	for d in MatchState._unlock_defs:
+		var cat := str((d as Dictionary).get("category", ""))
+		if not TECH_CATEGORIES.has(cat):
+			continue
+		var title := str((d as Dictionary).get("title", ""))
+		if title == "" or MatchState.is_unlocked(title):
+			continue
+		MatchState.grant_unlock(title)
+		by_cat[cat] = int(by_cat.get(cat, 0)) + 1
+		n += 1
+	var line := "[techs] granted %d nodes:  " % n
+	for c in by_cat:
+		line += "%s x%d   " % [c, int(by_cat[c])]
+	print(line)
+
+
 func _capture_turn_metrics() -> void:
+	_grant_tech_branches()
+	_apply_level_schedule()
+	_diagnose_window()
+	if int(TurnManager.current_turn) in [90, 200]:
+		_audit_buildings(int(TurnManager.current_turn))
+	_auto_upgrade_infra()
 	var summary: Dictionary = Production.last_turn_summary
 	if summary.is_empty():
 		_revenue_history.append(0.0)
@@ -1490,7 +1969,38 @@ func _capture_turn_metrics() -> void:
 	var profit_post_tax := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
 	_revenue_history.append(revenue)
 	_profit_post_tax_history.append(profit_post_tax)
-	_profit_by_turn.append({"turn": TurnManager.current_turn, "profit": profit_post_tax})
+	# Keep the cost SIDES too, not just the net. "Unprofitable" is a symptom shared by wage
+	# inflation, price decay, an input-cost spiral and a carbon levy, and they need different
+	# fixes; only the decomposition tells them apart.
+	_profit_by_turn.append({
+		"turn": TurnManager.current_turn, "profit": profit_post_tax,
+		"revenue": revenue,
+		"labour": float(summary.get("labour_paid", 0.0)),
+		"maint": float(summary.get("maintenance_paid", 0.0)),
+		"inputs": float(summary.get("goods_purchased_cost", 0.0)),
+		"power": float(summary.get("power_purchase_cost", 0.0)),
+		"carbon": float(summary.get("carbon_tax_paid", 0.0)),
+		# Why a turn was bad, not just that it was. A revenue collapse looks identical whether
+		# the cause is starved inputs, a capped power draw or an exhausted deposit.
+		"starved": (summary.get("starved", []) as Array).size(),
+		"short": (summary.get("input_orders_short", []) as Array).size(),
+		"capped": (summary.get("input_orders_capped", []) as Array).size(),
+		"deposits": (summary.get("deposits_running_out", []) as Array).size(),
+		# Tile storage does NOT scale with building level: the cap is 800 + research + port
+		# boost regardless of whether the tile hosts L1 or L3 plant. A levelled tile can
+		# therefore be structurally unable to hold the buffers its own buildings need.
+		"overcommit": (summary.get("storage_overcommitted", []) as Array).size(),
+	})
+	if int(TurnManager.current_turn) >= 150:
+		_starve_detail.clear()
+		for rec in (summary.get("starved", []) as Array):
+			var miss: Array = (rec as Dictionary).get("missing", [])
+			if miss.is_empty():
+				_starve_detail["(no recipe inputs / not run)"] = int(_starve_detail.get("(no recipe inputs / not run)", 0)) + 1
+			for m in miss:
+				var key := "%s need %d have %d" % [str((m as Dictionary).get("internal_name", "?")),
+					int((m as Dictionary).get("need", 0)), int((m as Dictionary).get("have", 0))]
+				_starve_detail[key] = int(_starve_detail.get(key, 0)) + 1
 	if _balance_mode:
 		_capture_balance_turn(profit_post_tax, summary)
 
@@ -1592,6 +2102,7 @@ func _check_economy_end_state() -> void:
 	var coal_mine_d := _first_instance("coal_mine_d")
 	var steel_a := _first_instance("steel_a")
 	var wiring_a := _first_instance("copper_wiring_a")
+	_dump_chain_diagnostics()
 	_check(not summary.is_empty(), "production summary exists after E2E run")
 	_check(int(summary.get("power_demand", 0)) > 0, "power demand was transmitted through cabled tiles")
 	_check(int(summary.get("grid_bought", 0)) >= 0, "power grid settlement ran")
@@ -1609,9 +2120,13 @@ func _check_economy_end_state() -> void:
 	_check(_sold_qty(_goods.motor) > 0, "motor sale was logged")
 	_check(_sold_revenue(_goods.motor) > 0.0, "motor sale produced market revenue")
 	_check(cumulative_revenue > 0.0, "cumulative scenario revenue is positive")
-	_check(recent_profit > 0.0, "last 10 turns are post-tax profitable")
-	_check(cumulative_profit > 0.0, "cumulative post-tax profit is positive")
-	_check(MatchState.money > _cash_after_buildout, "optimized motor chain increases cash after buildout")
+	# Carry the numbers into the assertion text. A balance assertion that reports only
+	# pass/fail cannot tell you whether a rebalance moved the economy toward it or away.
+	_check(recent_profit > 0.0, "last 10 turns are post-tax profitable (%.1f)" % recent_profit)
+	_check(cumulative_profit > 0.0, "cumulative post-tax profit is positive (%.1f)" % cumulative_profit)
+	_check(MatchState.money > _cash_after_buildout,
+		"optimized motor chain increases cash after buildout (%.1f -> %.1f, %+.1f)"
+		% [_cash_after_buildout, MatchState.money, MatchState.money - _cash_after_buildout])
 	_check(MatchState.transaction_log.size() > 0, "transaction ledger populated")
 	_check(MatchState.move_log.size() > 0, "movement ledger populated")
 	_check(MatchState.get_pending_transport_shipments().size() >= 0, "pending transport can be queried")
@@ -1627,12 +2142,14 @@ func _check_economy_end_state() -> void:
 	if coal_mine_a != "":
 		_check(MatchState.get_output_stockpile_destination(coal_mine_a, str(_goods.coal)) == "tile_26_5",
 			"coal output routed to iron/steel tile")
-	if coal_mine_c != "":
-		_check(MatchState.get_output_stockpile_destination(coal_mine_c, str(_goods.coal)) == "tile_20_9",
-			"coal output routed to power tile")
-	if coal_mine_d != "":
-		_check(MatchState.get_output_stockpile_destination(coal_mine_d, str(_goods.coal)) == "tile_20_9",
-			"second coal output routed to power tile")
+	# Assert the scenario's OWN declared routing was applied, rather than a hardcoded
+	# topology — the wind variant has no coal plants and sends all coal to smelting.
+	for logical in ["coal_mine_c", "coal_mine_d"]:
+		var iid := _first_instance(logical)
+		var want := _declared_route(logical, "coal")
+		if iid != "" and want != "" and want != "market":
+			_check(MatchState.get_output_stockpile_destination(iid, str(_goods.coal)) == want,
+				"%s coal routed to its declared destination %s" % [logical, want])
 	if steel_a != "":
 		_check(MatchState.get_output_stockpile_destination(steel_a, str(_goods.steel)) == "tile_25_6",
 			"steel output routed to motor tile")
@@ -2029,3 +2546,109 @@ func _check(ok: bool, name: String) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  ", name)
+
+
+## Per-building state at the end of the run. Printed unconditionally before the chain
+## assertions so a production failure says WHY (starved of what / blocked by what) instead
+## of only that it happened — the log previously showed a bare "produced motors" FAIL with
+## nothing to act on.
+func _dump_chain_diagnostics() -> void:
+	var BuildingReadout := preload("res://scripts/building_readout.gd")
+	print("[E2E] --- chain diagnostics @ turn %d ---" % TurnManager.current_turn)
+	var rows: Array = []
+	for iid in MatchState.buildings:
+		var inst: Dictionary = MatchState.buildings[iid]
+		if not MatchState.is_player_owned(inst):
+			continue
+		var rid := str(inst.get("recipe_id", ""))
+		var rec: Dictionary = Catalog.get_recipe(rid)
+		var tile := str(inst.get("tile_id", ""))
+		var state := BuildingReadout.run_state(inst, rec, false)
+		var missing: Variant = Production.missing_by_building.get(str(iid), {})
+		var blocked: Variant = Production.blocked_reason_by_building.get(str(iid), "")
+		var miss_txt := ""
+		if missing is Array:
+			for m in missing:
+				miss_txt += "%s need %d have %d; " % [
+					str((m as Dictionary).get("internal_name", "")),
+					int((m as Dictionary).get("need", 0)), int((m as Dictionary).get("have", 0))]
+		rows.append("[E2E]   %-12s %-30s %-11s %-9s %s%s" % [
+			tile, str(rec.get("display_name", rid)).substr(0, 30), state,
+			str(inst.get("building_id", "")), miss_txt,
+			("BLOCKED=" + str((blocked as Dictionary).get("message", blocked)) if blocked else "")])
+	rows.sort()
+	for r in rows:
+		print(r)
+	for t in ["tile_20_9", "tile_22_3", "tile_21_10", "tile_26_5", "tile_25_6"]:
+		var tot: Dictionary = Stockpile.get_tile_totals(t)
+		var n := 0
+		for g in tot:
+			n += int(tot[g])
+		print("[E2E]   stock %-11s %4d/%d units  %s" % [
+			t, n, Stockpile.get_capacity(t), tot])
+	print("[E2E]   tile stock 21_10=%s" % [Stockpile.get_tile_totals("tile_21_10")])
+	print("[E2E]   tile stock 26_5 =%s" % [Stockpile.get_tile_totals("tile_26_5")])
+	print("[E2E]   tile stock 25_6 =%s" % [Stockpile.get_tile_totals("tile_25_6")])
+	var sm: Dictionary = Production.last_turn_summary
+	print("[E2E]   power supply=%d demand=%d grid_bought=%d grid_sold=%d" % [
+		int(sm.get("power_supply", 0)), int(sm.get("power_demand", 0)),
+		int(sm.get("grid_bought", 0)), int(sm.get("grid_sold", 0))])
+	var series := ""
+	for i in range(_profit_by_turn.size()):
+		var e: Dictionary = _profit_by_turn[i]
+		var t := int(e.get("turn", 0))
+		if t % 10 == 0 or t == 1:
+			series += "t%d=%+.0f " % [t, float(e.get("profit", 0.0))]
+	print("[E2E]   post-tax profit by turn: %s" % series)
+	print("[E2E]   COSTS  sales=%.0f pwrSell=%.0f | inputs=%.0f labour=%.0f maint=%.0f trans=%.0f whse=%.0f tax=%.0f div=%.0f co2=%.0f int=%.0f" % [
+		float(sm.get("goods_sales_revenue", 0.0)), float(sm.get("power_sales_revenue", 0.0)),
+		float(sm.get("goods_purchased_cost", 0.0)), float(sm.get("labour_paid", 0.0)),
+		float(sm.get("maintenance_paid", 0.0)), float(sm.get("transport_paid", 0.0)),
+		float(sm.get("warehousing_paid", 0.0)), float(sm.get("taxes_paid", 0.0)),
+		float(sm.get("dividends_paid", 0.0)), float(sm.get("carbon_tax_paid", 0.0)),
+		float(sm.get("interest_paid", 0.0))])
+	for gi in ["motor", "coal", "steel", "iron_ingots", "copper_wiring"]:
+		var g := Catalog.get_good_by_internal_name(gi)
+		var gid := str(g.get("id", ""))
+		if gid == "":
+			continue
+		print("[E2E]   PRICE %-14s base_now %7.3f  impact %+6.2f%%  effective %7.3f  (base_output %d)" % [
+			gi, MarketState.get_base_price_now(gid), MarketState.get_impact_pct(gid),
+			MarketState.get_price(gid), Catalog.base_output_for_good(gid)])
+	print("[E2E] --- end chain diagnostics ---")
+
+
+## Free research unlocks a scenario grants up front (JSON "unlocks": ["Title", ...]).
+## The wind variant uses this for "Lithium Battery Storage" so its battery stores have a
+## legal cell type; Battery Storage accepts ANY ONE of its catalyst goods, not all three.
+func _apply_scenario_unlocks() -> void:
+	for title in _scenario.get("unlocks", []):
+		MatchState.unlocked_titles[str(title)] = true
+		_check(MatchState.unlocked_titles.has(str(title)), "scenario unlock granted: %s" % str(title))
+	if not (_scenario.get("unlocks", []) as Array).is_empty():
+		Modifiers.reapply_unlock_modifiers(MatchState.unlocked_titles)
+
+
+## Battery stores are inert until cells are loaded into their slots. JSON:
+##   "battery_cells": [{"tile": "tile_20_9", "good": "lithium_battery", "qty": 40}]
+func _load_battery_cells_from_config() -> void:
+	for entry in _scenario.get("battery_cells", []):
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var tile_id := str((entry as Dictionary).get("tile", ""))
+		var good_id := _good_id(str((entry as Dictionary).get("good", "")))
+		var qty := int((entry as Dictionary).get("qty", 0))
+		if tile_id == "" or good_id == "" or qty <= 0:
+			continue
+		Stockpile.add(tile_id, good_id, qty)
+		var loaded := MatchState.load_battery_cells(tile_id, good_id, qty)
+		_check(loaded > 0, "battery cells loaded on %s: %d x %s" % [tile_id, loaded, str((entry as Dictionary).get("good", ""))])
+
+
+## The destination a scenario DECLARED for a logical building's good ("" if it declares none).
+func _declared_route(logical_id: String, good_internal: String) -> String:
+	for e in _scenario.get("output_routes", []):
+		if typeof(e) == TYPE_DICTIONARY and str((e as Dictionary).get("id", "")) == logical_id \
+				and str((e as Dictionary).get("good", "")) == good_internal:
+			return str((e as Dictionary).get("dest", ""))
+	return ""

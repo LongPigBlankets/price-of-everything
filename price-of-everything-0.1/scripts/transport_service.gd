@@ -78,10 +78,17 @@ func transport_cost_for_route(good_id: String, qty: int, route_data: Dictionary,
 	var cost: float = EconomyConfig.transport_cost_for_route(good_id, qty, route_data) * surcharge
 	# transport_cost modifiers (research like Route Optimization) trim haulage cost.
 	cost = Modifiers.apply("transport_cost", good_id, cost, {"good_id": good_id})
-	# Throughput congestion: +100% over a link's capacity, +200% over capacity + L1 cap.
-	match MatchState.route_congestion_tier(route_data):
-		1: cost *= 2.0
-		2: cost *= 3.0
+	# Throughput congestion, charged MARGINALLY: only the units above a congested link's
+	# remaining capacity pay the surcharge (+100% over cap, +200% over cap + L1 buffer).
+	# The units that still fit ride at the base rate, so upgrading infra pays back by
+	# moving quantity out of the penalised band rather than by discounting the whole haul.
+	var cong: Dictionary = MatchState.route_congestion(route_data)
+	var tier: int = int(cong.get("tier", 0))
+	if tier > 0 and qty > 0:
+		var mult: float = 2.0 if tier == 1 else 3.0
+		var over: int = maxi(0, qty - int(cong.get("headroom", 0)))
+		var within: int = qty - over
+		cost *= (float(within) + float(over) * mult) / float(qty)
 	return cost
 
 
