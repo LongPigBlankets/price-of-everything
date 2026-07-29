@@ -528,7 +528,7 @@ func _result_has_build_action(result: Dictionary) -> bool:
 	return false
 
 func _recipe_buildable(recipe: Dictionary) -> bool:
-	var rec_req := str(recipe.get("required_research", ""))
+	var rec_req := str(recipe.get("tech_unlock_req", ""))
 	if rec_req != "" and not MatchState.is_unlocked(rec_req):
 		return false
 	# The recipe's building can be gated independently (e.g. hydro).

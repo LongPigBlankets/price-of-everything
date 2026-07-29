@@ -153,7 +153,7 @@ static func steps() -> Array:
 			"id": "build_cost",
 			"chapter": "First Factory",
 			"title": "Building costs more than buying — for now",
-			"body": "Here's the build bill. Constructing this factory from scratch needs roughly £%d of materials — see the construction cost estimate. Buying the one Vandel already built is cheaper today, so we'll do that instead. (Later, once you make these materials yourself, building your own can win.) Press Next — don't confirm the build." % _build_kit_cost("b_007"),
+			"body": "Here's the build bill. Constructing this factory from scratch costs roughly £%d — see the construction cost estimate. Buying the one Vandel already built is cheaper today, so we'll do that instead. (Later, once you make these materials yourself, building your own can win.) Press Next — don't confirm the build." % _build_confirm_cost("b_007"),
 			"setup": [],
 			"spotlight": { "kind": "node_name", "ref": "BuildCostValue" },
 			"done": { "wake": [], "decide": {} },
@@ -224,7 +224,7 @@ static func steps() -> Array:
 			"setup": [
 				{ "action": "focus_tile", "tile": WINDOW_TILE },
 			],
-			"spotlight": { "kind": "node_name", "ref": "InfraDial_cables" },
+			"spotlight": { "kind": "node_name", "ref": "InfraCell_cables" },
 			"lock_panel": true,
 			"done": {
 				"wake": ["construction_started", "infrastructure_attempted"],
@@ -342,8 +342,8 @@ static func steps() -> Array:
 		{
 			"id": "transport_pentagon_revert",
 			"chapter": "Transport",
-			"title": "Watch it move — then put it back",
-			"body": "End Turn and watch the map: a pentagon sets off from your factory, hauling windows overland — and every unit aboard pays for the trip. Distance and transport mode set the price; market trades pay the same way on the port run, priced into every sale. Seen it move? Those windows just pile up over there, so put it back: open the factory's Output destination again and choose Global market.",
+			"title": "Watch it move — then sell to market",
+			"body": "End Turn and watch the map: a pentagon sets off from your factory, hauling windows overland — and every unit aboard pays for the trip. Distance and transport mode set the price; market trades pay the same way on the port run, priced into every sale. Seen it move? Those windows just pile up over there, so set it to sell to market: open the factory's Output destination again and choose Global market.",
 			"setup": [ { "action": "open_logistics" } ],
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,
@@ -545,7 +545,7 @@ static func steps() -> Array:
 			"title": "Lay a reinforced pipe",
 			"body": "Stoneshore Docks already has a reinforced-pipe terminal where hazardous liquids come ashore. Connect your furnace to it: in the tile panel's Infrastructure row, click the Reinf. pipes \"+\" to lay a reinforced pipe on this tile.",
 			"setup": [ { "action": "focus_tile", "tile": GLASS_TILE } ],
-			"spotlight": { "kind": "node_name", "ref": "InfraDial_reinf_pipes" },
+			"spotlight": { "kind": "node_name", "ref": "InfraCell_reinf_pipes" },
 			"lock_panel": true,
 			"done": {
 				"wake": ["construction_started", "infrastructure_attempted"],
@@ -720,12 +720,14 @@ static func steps() -> Array:
 # rebalance updates the copy automatically. All read the Catalog autoload.
 
 ## Market value of a building's construction kit at base prices ("roughly £N").
-static func _build_kit_cost(building_id: String) -> int:
-	var total := 0.0
-	for mat in Catalog.get_building(building_id).get("materials", []):
-		var good: Dictionary = Catalog.get_good_by_internal_name(str(mat.get("name", "")))
-		total += float(good.get("base_price", 0.0)) * float(mat.get("qty", 0))
-	return int(round(total))
+## The figure the Build CONFIRM screen actually prints, so the copy can't misquote it:
+## the same sum as construct_panel_v2._construction_display_cost — the building's cash leg
+## plus its resolved material kit valued at MARKET BUY prices. The previous version summed
+## the raw materials list at BASE price with no cash leg, which quoted £177 for the window
+## factory where the panel showed £196.20 (and £129 vs £155 for the furnace).
+static func _build_confirm_cost(building_id: String) -> int:
+	var cash := maxf(0.0, float(Catalog.get_building(building_id).get("base_price", 0.0)))
+	return int(round(cash + Construction.market_purchase_value(building_id)))
 
 ## Base market price of a good, trimmed for prose ("10.22", "12.5", "8").
 static func _good_price_text(internal: String) -> String:

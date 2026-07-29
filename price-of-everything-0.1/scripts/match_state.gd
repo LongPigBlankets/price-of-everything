@@ -356,7 +356,9 @@ var _unlock_progress: Dictionary = {}
 # turn" — the Just-in-Time Logistics unlock condition. Updated by Production at
 # output flush; tiles that miss the bar in a turn drop out (streak resets). Saved.
 var stockpile_feed_streaks: Dictionary = {}
-var _unlock_defs: Array = []   # [{title, action, object, qty, prereqs, description}]
+var _unlock_defs: Array = []   # [{research_node_id, title, action, object, qty, prereqs, description}]
+var _node_id_by_title: Dictionary = {}   # lazy title -> research_node_id (see research_node_id_for_title)
+var _title_by_node_id: Dictionary = {}   # lazy research_node_id -> title (see research_title_for_node_id)
 # Legacy research rows use a mix of internal names, display names and names of
 # the process/research concept that represents a building group. Resolve those
 # labels centrally so live conditions do not depend on CSV casing or wording.
@@ -419,6 +421,12 @@ var debug_turn_logs_enabled: bool = false
 # Session-only; never persisted. See docs/building-detail-v2-plan.md.
 var use_bdp_v2: bool = true
 
+# Debug-only: `swap empire view sprite` switches the empire view to the sprite style —
+# no background pattern, a large 2.5D building sprite above each node with its metal
+# plate attached below (buildings without sprites keep the classic full-card layout).
+# Session-only; never persisted.
+var use_empire_sprite_view: bool = false
+
 # Debug-only: `swap construct_panel` keeps the classic construct panel available
 # for comparison. The redesigned construct panel is the normal default.
 # Session-only; the cheat only changes the active match.
@@ -430,6 +438,9 @@ var use_construct_panel_v2: bool = true
 # longer exposed in the V2 settings UI.
 var construct_cost_display: String = "grid"
 var construct_start_half_capacity: bool = false
+## When on, confirming a build on a tile the player has too little land for buys exactly
+## enough land patches to cover the shortfall first (see world_map._space_check_for_build).
+var construct_auto_buy_land: bool = false
 # Defaults captured by constructions when they are started. "ask" preserves the
 # existing delivery prompt; the other modes choose a source automatically.
 var construct_material_source: String = "ask"
@@ -1721,6 +1732,8 @@ func _join_and(parts: Array) -> String:
 # --- Public API: research unlocks ---
 func _load_unlock_defs() -> void:
 	_unlock_defs.clear()
+	_node_id_by_title.clear()   # rebuilt lazily against the rows loaded below
+	_title_by_node_id.clear()
 	var path := "res://data/research_unlocks.csv"
 	if not FileAccess.file_exists(path):
 		return
@@ -1743,6 +1756,7 @@ func _load_unlock_defs() -> void:
 		var q := _csv_at(row, idx, "Quantity")
 		var rank_raw := _csv_at(row, idx, "rank").strip_edges().to_upper()
 		_unlock_defs.append({
+			"research_node_id": _csv_at(row, idx, "research_node_id"),
 			"title": _csv_at(row, idx, "title"),
 			"category": _csv_at(row, idx, "category"),
 			"rank": rank_raw if rank_raw != "" else "I",
@@ -1761,8 +1775,43 @@ func _csv_at(row: PackedStringArray, idx: Dictionary, col: String) -> String:
 	var i: int = idx[col]
 	return row[i].strip_edges() if i < row.size() else ""
 
-func is_unlocked(title: String) -> bool:
-	return unlocked_titles.has(title)
+## Stable id for a research node's display title, or "" if the title is unknown.
+## `research_node_id` (research_unlocks.csv, assigned by tools/assign_research_ids.py) is
+## the permanent handle: renaming a node's title must not silently deaden the effects
+## keyed to it, which is what happened twice while UNLOCK_MODIFIERS was title-keyed.
+## Titles remain the canonical key in SAVES for now — see docs note in that tool.
+func research_node_id_for_title(title: String) -> String:
+	if _node_id_by_title.is_empty():
+		for d in _unlock_defs:
+			var t := str(d.get("title", ""))
+			var nid := str(d.get("research_node_id", ""))
+			if t != "" and nid != "":
+				_node_id_by_title[t] = nid
+	return str(_node_id_by_title.get(title, ""))
+
+
+## Display title for a research node id, or "" if unknown. The inverse of
+## research_node_id_for_title — used where a stored id has to be shown to the player
+## (a gated recipe's "requires research: …" line) so raw ids never reach the UI.
+func research_title_for_node_id(node_id: String) -> String:
+	if _title_by_node_id.is_empty():
+		for d in _unlock_defs:
+			var t := str(d.get("title", ""))
+			var nid := str(d.get("research_node_id", ""))
+			if t != "" and nid != "":
+				_title_by_node_id[nid] = t
+	return str(_title_by_node_id.get(node_id, ""))
+
+
+## Accepts a research_node_id (what prereq columns and recipe gates now store), a display
+## title (what SAVES still store), or a bare cheat token like "hydro"/"consumer" that has
+## no node at all. Taking all three keeps every gate call site unchanged across the id
+## migration — only what the DATA stores changed.
+func is_unlocked(title_or_id: String) -> bool:
+	if unlocked_titles.has(title_or_id):
+		return true
+	var mapped := research_title_for_node_id(title_or_id)
+	return mapped != "" and unlocked_titles.has(mapped)
 
 # Grant the first not-yet-unlocked research node in a category (an advisor-mission
 # reward). Returns the granted title, or "" if the category is already fully unlocked.
@@ -1853,7 +1902,9 @@ func is_node_available(title: String) -> bool:
 	if not is_tier_available(str(d.get("category", "")), str(d.get("rank", "I"))):
 		return false
 	for p in d.get("prereqs", []):
-		if not unlocked_titles.has(str(p)):
+		# prereqs are research_node_ids; is_unlocked resolves them against the
+		# title-keyed unlocked set.
+		if not is_unlocked(str(p)):
 			return false
 	return true
 
@@ -1920,7 +1971,7 @@ func _check_unlock_conditions() -> void:
 			continue
 		var prereqs_met := true
 		for p in d.prereqs:
-			if not unlocked_titles.has(str(p)):
+			if not is_unlocked(str(p)):   # prereqs are research_node_ids
 				prereqs_met = false
 				break
 		if not prereqs_met:
@@ -2608,6 +2659,7 @@ func reset() -> void:
 	hidden_buildings_unlocked = false
 	construct_cost_display = "grid"
 	construct_start_half_capacity = false
+	construct_auto_buy_land = false
 	construct_material_source = "ask"
 	construct_output_destination = "market"
 	buildings.clear()
@@ -2715,6 +2767,7 @@ func export_state() -> Dictionary:
 		"ruleset": ruleset.duplicate(true),
 		"construct_cost_display": construct_cost_display,
 		"construct_start_half_capacity": construct_start_half_capacity,
+		"construct_auto_buy_land": construct_auto_buy_land,
 		"construct_material_source": construct_material_source,
 		"construct_output_destination": construct_output_destination,
 		"next_instance_counter": _next_instance_counter,
@@ -2792,6 +2845,8 @@ func import_state(d: Dictionary) -> void:
 	ruleset = (d.get("ruleset", DEFAULT_RULESET) as Dictionary).duplicate(true)
 	set_construct_cost_display(str(d.get("construct_cost_display", "grid")), false)
 	set_construct_start_half_capacity(bool(d.get("construct_start_half_capacity", false)), false)
+	# Additive key: saves written before this setting existed simply default to off.
+	set_construct_auto_buy_land(bool(d.get("construct_auto_buy_land", false)), false)
 	set_construct_material_source(str(d.get("construct_material_source", "ask")), false)
 	set_construct_output_destination(str(d.get("construct_output_destination", "market")), false)
 	_next_instance_counter = int(d.get("next_instance_counter", 0))
@@ -2966,6 +3021,13 @@ func set_use_bdp_v2(enabled: bool) -> bool:
 func toggle_use_bdp_v2() -> bool:
 	return set_use_bdp_v2(not use_bdp_v2)
 
+## Debug cheat: toggle the empire view between the sprite style (big 2.5D sprites,
+## plates below, no backdrop) and the classic card style. Returns the new state.
+## Session-only, never persisted.
+func toggle_use_empire_sprite_view() -> bool:
+	use_empire_sprite_view = not use_empire_sprite_view
+	return use_empire_sprite_view
+
 func set_use_construct_panel_v2(enabled: bool) -> bool:
 	if enabled == use_construct_panel_v2:
 		return use_construct_panel_v2
@@ -2992,6 +3054,14 @@ func set_construct_start_half_capacity(enabled: bool, emit_change: bool = true) 
 	construct_start_half_capacity = enabled
 	if emit_change:
 		construct_settings_changed.emit()
+
+func set_construct_auto_buy_land(enabled: bool, emit_change: bool = true) -> void:
+	if construct_auto_buy_land == enabled:
+		return
+	construct_auto_buy_land = enabled
+	if emit_change:
+		construct_settings_changed.emit()
+
 
 func set_construct_material_source(value: String, emit_change: bool = true) -> void:
 	var resolved := value.to_lower().strip_edges()

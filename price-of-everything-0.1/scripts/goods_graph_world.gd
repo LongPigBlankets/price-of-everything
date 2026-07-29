@@ -1595,8 +1595,12 @@ func _draw_grid(font: Font) -> void:
 		if gated:
 			var name_w := _BEBAS.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
 			_draw_lock_tag(rect.position + Vector2(name_w + 26.0, 24.0), 1.0)
+			# tech_unlock_req stores a research_node_id — show the node's TITLE, or the
+			# raw value when it has no node (bare cheat tokens like "hydro").
+			var gate_raw := str(recipe.get("tech_unlock_req", ""))
+			var gate_name := MatchState.research_title_for_node_id(gate_raw)
 			draw_string(font, rect.position + Vector2(2.0, 54.0),
-				"requires research: %s" % str(recipe.get("required_research", "")),
+				"requires research: %s" % (gate_name if gate_name != "" else gate_raw),
 				HORIZONTAL_ALIGNMENT_LEFT, rect.size.x, 14, Color("#f3f8fd"))
 		# Inputs (or a note when the recipe takes none — wind, solar, hydro).
 		var inputs: Array = island["inputs"]

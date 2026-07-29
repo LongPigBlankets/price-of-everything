@@ -13,10 +13,27 @@ signal choice_made(goto)  # a branch choice button pressed (goto = target step i
 const DIM := Color(0, 0, 0, 0.6)
 const GLOW := Color(0.98, 0.80, 0.42)  # warm gold spotlight glow
 
+# Every step used to cut straight to its final state — full dim and the spotlight already
+# clamped on its target — which read as a jerk on each advance. The dim now fades up and
+# the spotlight settles onto its target over REVEAL_DUR. Purely cosmetic: the LOGICAL hole
+# (`_hole`) is correct from frame one, so hit-testing and card placement never lag behind
+# what the player can see (see _has_point / _drawn_hole).
+const REVEAL_DUR := 1.0
+# A spotlight with no previous hole to travel from irises in from this far outside the
+# target instead of just fading — it reads as the light finding the element.
+const IRIS_GROW := 90.0
+
 var _pulse := 0.0                      # drives the animated glow pulse
 var _no_dim := false                   # true = no dim/block (card only), so the map stays visible + interactive
 var _card_side := ""                   # "right" = prefer the bottom-right corner for the card
-var _hole: Rect2 = Rect2()             # spotlight rect in screen space (empty = full dim)
+var _hole: Rect2 = Rect2()             # SETTLED spotlight rect in screen space (empty = full dim)
+var _reveal := 1.0                     # 0→1 settle of the SPOTLIGHT for the current step
+var _hole_from: Rect2 = Rect2()        # rect the spotlight travels FROM (empty = iris in)
+# The dim's own presence, deliberately NOT reset per step. Restarting it on every advance
+# would un-dim to the bright map and re-dim between two consecutive dimmed steps — a
+# strobe, and worse than the hard cut it replaces. It ramps when the dim first APPEARS
+# (tutorial start, or returning from a no_dim step) and then simply stays up.
+var _dim_level := 0.0
 var _target_node: Control = null       # live node whose rect we track each frame
 var _card: PanelContainer = null
 var _eyebrow: Label = null
@@ -71,27 +88,77 @@ func _has_point(point: Vector2) -> bool:
 func _draw() -> void:
 	if _no_dim:
 		return   # card-only step: leave the map fully visible
+	var reveal := _reveal_eased()
+	var dim := Color(DIM.r, DIM.g, DIM.b, DIM.a * _eased(_dim_level))
 	var full := Rect2(Vector2.ZERO, size)
 	if not _hole.has_area():
-		draw_rect(full, DIM)
+		draw_rect(full, dim)
 		if _mode == "annotate":
 			_draw_annotation_lines()
 		return
-	var h := _hole
+	var h := _drawn_hole(reveal)
 	# Four quads around the hole (top / bottom / left band / right band).
-	draw_rect(Rect2(0, 0, size.x, h.position.y), DIM)                                   # top
-	draw_rect(Rect2(0, h.end.y, size.x, size.y - h.end.y), DIM)                          # bottom
-	draw_rect(Rect2(0, h.position.y, h.position.x, h.size.y), DIM)                       # left
-	draw_rect(Rect2(h.end.x, h.position.y, size.x - h.end.x, h.size.y), DIM)             # right
+	draw_rect(Rect2(0, 0, size.x, h.position.y), dim)                                   # top
+	draw_rect(Rect2(0, h.end.y, size.x, size.y - h.end.y), dim)                          # bottom
+	draw_rect(Rect2(0, h.position.y, h.position.x, h.size.y), dim)                       # left
+	draw_rect(Rect2(h.end.x, h.position.y, size.x - h.end.x, h.size.y), dim)             # right
 	# Pulsing golden glow: concentric stroked rings around the spotlight, fading out,
 	# their intensity breathing via _pulse. Draws the eye to the highlighted element.
 	var t := 0.5 + 0.5 * sin(_pulse * 3.2)
 	for i in range(5):
 		var grow := 2.0 + float(i) * 5.0
-		var a := (0.45 - float(i) * 0.08) * (0.55 + 0.45 * t)
+		var a := (0.45 - float(i) * 0.08) * (0.55 + 0.45 * t) * reveal
 		if a > 0.0:
 			draw_rect(h.grow(grow), Color(GLOW.r, GLOW.g, GLOW.b, a), false, 2.5)
-	draw_rect(h.grow(1.0), Color(GLOW.r, GLOW.g, GLOW.b, 0.9), false, 2.0)   # crisp inner frame
+	draw_rect(h.grow(1.0), Color(GLOW.r, GLOW.g, GLOW.b, 0.9 * reveal), false, 2.0)   # crisp inner frame
+
+
+func _advance_reveal(dt: float) -> void:
+	var step := dt / REVEAL_DUR
+	var moved := false
+	if _reveal < 1.0:
+		_reveal = minf(1.0, _reveal + step)
+		moved = true
+	# The dim only climbs while this step actually dims; a no_dim step parks it at 0 so it
+	# fades back in the next time the coach takes over the screen.
+	if not _no_dim and _dim_level < 1.0:
+		_dim_level = minf(1.0, _dim_level + step)
+		moved = true
+	if moved:
+		queue_redraw()
+
+
+## Cubic ease-out — fast off the mark, gentle into place.
+func _eased(t: float) -> float:
+	return 1.0 - pow(1.0 - clampf(t, 0.0, 1.0), 3.0)
+
+
+func _reveal_eased() -> float:
+	return _eased(_reveal)
+
+
+## Where to PAINT the spotlight this frame. `_hole` is always the settled truth; this is
+## the in-transit rect, so a step that re-targets mid-settle (a panel rebuilding under the
+## light, via _refind) simply re-aims the travel rather than restarting it.
+func _drawn_hole(reveal: float) -> Rect2:
+	if reveal >= 1.0:
+		return _hole
+	var from := _hole_from if _hole_from.has_area() else _hole.grow(IRIS_GROW)
+	return Rect2(from.position.lerp(_hole.position, reveal), from.size.lerp(_hole.size, reveal))
+
+
+## Begin a step's 1s settle. `from` is where the spotlight travels in from: the previous
+## step's hole when there was one (the light glides across the screen), or an empty rect,
+## which makes _drawn_hole iris in from outside the target instead.
+func _begin_reveal(from: Rect2) -> void:
+	_hole_from = from
+	_reveal = 0.0
+	if _no_dim:
+		# The coach has handed the screen back (a map-reading step). Park the dim so it
+		# fades in again next time it takes over, instead of snapping back to full.
+		_dim_level = 0.0
+	set_process(true)     # _process stops itself once the settle finishes
+	queue_redraw()
 
 
 func _process(dt: float) -> void:
@@ -100,8 +167,10 @@ func _process(dt: float) -> void:
 	if _mode == "annotate":
 		_position_annotations()
 		_pulse += dt
+		_advance_reveal(dt)
 		queue_redraw()
 		return
+	_advance_reveal(dt)
 	# Panels build/rebuild over several frames after they open (the stock chart pushes the
 	# Sell toggle down; an infra grid sizes its dials late). The node we grabbed on entry can
 	# end up freed-and-replaced or at a stale position, leaving the hole in the wrong place.
@@ -120,6 +189,10 @@ func _process(dt: float) -> void:
 	if _hole.has_area() or _no_dim:
 		_pulse += dt
 		queue_redraw()
+	elif _reveal >= 1.0 and _dim_level >= 1.0 and _target_node == null:
+		# Full-dim step with nothing to track and nothing left to settle (the welcome card
+		# is the usual case) — stop burning a frame callback until the next step arrives.
+		set_process(false)
 
 
 # Padded hole around a spotlit Control: a little breathing room, biased UPWARD so a
@@ -219,8 +292,8 @@ func show_step(step: Dictionary, index: int, total: int) -> void:
 		_spot = {}
 		_target_node = null
 		_hole = Rect2()
-		set_process(false)
-		queue_redraw()
+		# Processing stays ON for the dim fade; _process switches itself off once it lands.
+		_begin_reveal(Rect2())
 		return
 
 	_welcome_card.visible = false
@@ -254,13 +327,17 @@ func show_step(step: Dictionary, index: int, total: int) -> void:
 		_hole = Rect2()
 		_build_annotations(step)
 		set_process(true)          # track HUD rects (buttons animate) + redraw the leader lines
+		_begin_reveal(Rect2())
 		_card.reset_size()
 		_center_card_for_annotate()
 		_defer_reposition()
-		queue_redraw()
 		return
 
+	# Capture where the light currently sits BEFORE resolving the new target, so the
+	# spotlight glides from the last step's element instead of teleporting.
+	var previous_hole := _hole
 	_resolve_spotlight(step.get("spotlight", {}))
+	_begin_reveal(previous_hole)
 	# Drop any oversized size left by a previous (longer) step so the card can shrink,
 	# place it provisionally now (no flash), then re-measure next frame once the body
 	# Label has re-wrapped — get_combined_minimum_size() is stale on this same frame.

@@ -32,6 +32,24 @@ const RECIPE_ROW_HEIGHT := 116
 const FILTER_TYPES: Array = ["extraction", "refinery", "metallurgy", "electrochemistry",
 	"farm_forests", "power", "infrastructure", "water", "manufacturing"]
 
+# --- Site requirements (confirm screen) -------------------------------------
+# Fluids and gases move ONLY by pipe and power only over cables, so a recipe that
+# touches one and a tile that has no pipe/cable is a hard stall the build flow
+# never mentioned. Roads and rail are deliberately absent: solids always keep the
+# overland fallback (Catalog._modes_for_good hands non-fluids ROUTE_MODE_NONE), so
+# their absence slows a chain rather than blocking it.
+const INFRA_ROW_HEIGHT := 50
+const INFRA_ROW_ICON := 40
+const INFRA_ROW_ORDER: Array = ["cables", "pipes", "reinf_pipes"]
+# The DS body face is IBM Plex Medium; RichTextLabel gets no theming from DS, and
+# `[b]` on an unthemed RichTextLabel renders identically to the normal font. Load
+# the real SemiBold cut so the bolded infrastructure name actually reads as bold.
+const SEMIBOLD_FONT_PATH := "res://assets/fonts/IBMPlexSans-SemiBold.ttf"
+const INFRA_FLASH_DELAY := 1.0     # seconds after the confirm screen appears
+const INFRA_FLASH_UP := 0.3        # white ramps in ...
+const INFRA_FLASH_DOWN := 0.7      # ... then fades out — 1.0s of flash in total
+const INFRA_FLASH_PEAK := 0.45
+
 enum View { BROWSE, CONFIRM, SETTINGS }
 
 
@@ -255,6 +273,12 @@ var _output_good_filter := ""
 # (confirm first, then choose a site on the map).
 var _locked_tile_id := ""
 var _locked_tile_data: Dictionary = {}
+# Armed when the confirm screen is ENTERED, consumed by the first _render_confirm().
+# _render() also re-runs on unrelated signals (construct settings), and the flash is a
+# one-shot "look here" cue — re-arming it on every rebuild would make it a strobe.
+var _confirm_flash_pending := false
+var _semibold_cache: Font = null
+var _semibold_looked_up := false
 
 
 func _ready() -> void:
@@ -387,6 +411,7 @@ func _on_build_mode_exited_with_selection(building_id: String, recipe_id: String
 	if _selected_building.is_empty():
 		return
 	_view = View.CONFIRM
+	_confirm_flash_pending = true
 	_output_good_filter = ""
 	_render()
 	show()
@@ -521,7 +546,7 @@ func _load_data() -> void:
 	_buildings.clear()
 	_recipes_by_building.clear()
 	for recipe in Catalog.all_recipes():
-		var recipe_req := str(recipe.get("required_research", ""))
+		var recipe_req := str(recipe.get("tech_unlock_req", ""))
 		if recipe_req != "" and not MatchState.is_unlocked(recipe_req):
 			continue
 		# Tile-locked: drop recipes the terrain/deposits/potential forbid here.
@@ -687,39 +712,58 @@ func _render_settings() -> void:
 		choice.pressed.connect(_on_material_source_selected.bind(option_id))
 		source_box.add_child(choice)
 
-	var capacity_card := PanelContainer.new()
-	capacity_card.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, NAVY_LINE, 1, 9, 11))
-	_content.add_child(capacity_card)
-	var capacity_row := HBoxContainer.new()
-	capacity_row.add_theme_constant_override("separation", 10)
-	capacity_card.add_child(capacity_row)
-	var capacity_copy := VBoxContainer.new()
-	capacity_copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	capacity_copy.add_theme_constant_override("separation", 4)
-	capacity_row.add_child(capacity_copy)
-	var capacity_title := Label.new()
-	capacity_title.text = "Start at half capacity"
-	capacity_title.add_theme_font_size_override("font_size", 14)
-	capacity_title.add_theme_color_override("font_color", TEXT)
-	capacity_copy.add_child(capacity_title)
-	var capacity_note := Label.new()
-	capacity_note.text = "New buildings use half their inputs, power and output for their first successful operating turn. Existing projects are unchanged."
-	capacity_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	capacity_note.add_theme_font_size_override("font_size", 11)
-	capacity_note.add_theme_color_override("font_color", MUTED)
-	capacity_copy.add_child(capacity_note)
-	var capacity_toggle := Button.new()
-	capacity_toggle.text = "ON" if MatchState.construct_start_half_capacity else "OFF"
-	capacity_toggle.toggle_mode = true
-	capacity_toggle.button_pressed = MatchState.construct_start_half_capacity
-	capacity_toggle.custom_minimum_size = Vector2(58, 34)
-	capacity_toggle.focus_mode = Control.FOCUS_NONE
-	_style_button(capacity_toggle,
-		GOLD if capacity_toggle.button_pressed else NAVY_RAISED,
-		GOLD_DARK if capacity_toggle.button_pressed else NAVY_LINE,
-		NAVY if capacity_toggle.button_pressed else TEXT)
-	capacity_toggle.toggled.connect(_on_start_capacity_toggled)
-	capacity_row.add_child(capacity_toggle)
+	_content.add_child(_settings_toggle_card(
+		"Start at half capacity",
+		"New buildings use half their inputs, power and output for their first successful operating turn. Existing projects are unchanged.",
+		MatchState.construct_start_half_capacity, _on_start_capacity_toggled))
+	_content.add_child(_settings_toggle_card(
+		"Auto-buy land when building",
+		"If the chosen tile does not have enough of your land for the building, buy just enough to fit it as part of confirming. Tiles that already have room buy nothing.",
+		MatchState.construct_auto_buy_land, _on_auto_buy_land_toggled))
+
+
+## A settings row: title + explanatory note on the left, ON/OFF toggle on the right.
+## Extracted when the second such setting (auto-buy land) arrived rather than copying
+## the twenty-odd lines a second time.
+func _settings_toggle_card(title_text: String, note_text: String, is_on: bool, on_toggled: Callable) -> Control:
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, NAVY_LINE, 1, 9, 11))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	card.add_child(row)
+	var copy := VBoxContainer.new()
+	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	copy.add_theme_constant_override("separation", 4)
+	row.add_child(copy)
+	var title := Label.new()
+	title.text = title_text
+	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_color_override("font_color", TEXT)
+	copy.add_child(title)
+	var note := Label.new()
+	note.text = note_text
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.add_theme_font_size_override("font_size", 11)
+	note.add_theme_color_override("font_color", MUTED)
+	copy.add_child(note)
+	var toggle := Button.new()
+	toggle.text = "ON" if is_on else "OFF"
+	toggle.toggle_mode = true
+	toggle.button_pressed = is_on
+	toggle.custom_minimum_size = Vector2(58, 34)
+	toggle.focus_mode = Control.FOCUS_NONE
+	_style_button(toggle,
+		GOLD if is_on else NAVY_RAISED,
+		GOLD_DARK if is_on else NAVY_LINE,
+		NAVY if is_on else TEXT)
+	toggle.toggled.connect(on_toggled)
+	row.add_child(toggle)
+	return card
+
+
+func _on_auto_buy_land_toggled(enabled: bool) -> void:
+	MatchState.set_construct_auto_buy_land(enabled)
+	_render()
 
 
 func _on_back_from_settings() -> void:
@@ -1071,6 +1115,16 @@ func _render_confirm() -> void:
 	else:
 		_content.add_child(_infrastructure_details(_selected_building))
 
+	var requirement_rows := _site_requirement_rows()
+	if not requirement_rows.is_empty():
+		_content.add_child(_section_label("SITE REQUIREMENTS"))
+		for row in requirement_rows:
+			_content.add_child(row)
+		if _confirm_flash_pending:
+			_confirm_flash_pending = false
+			for row in requirement_rows:
+				_flash_row(row)
+
 	_content.add_child(_section_label("CONSTRUCTION MATERIALS"))
 	var material_note := Label.new()
 	material_note.text = _material_source_note()
@@ -1078,6 +1132,7 @@ func _render_confirm() -> void:
 	material_note.add_theme_color_override("font_color", MUTED)
 	_content.add_child(material_note)
 	_content.add_child(_materials_grid(_selected_building))
+	_content.add_child(_land_required_row(_selected_building))
 
 	var value_card := PanelContainer.new()
 	value_card.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, GOLD_DARK, 1, 9, 10))
@@ -1154,6 +1209,202 @@ func _materials_grid(building: Dictionary) -> Control:
 		none.add_theme_color_override("font_color", MUTED)
 		grid.add_child(none)
 	return box
+
+
+## "Land required: N" under the material kit. When the flow is locked to a tile the line
+## also reports what is actually free there, and says whether auto-buy will cover the gap —
+## running out of land mid-build was the single most confusing dead end in playtesting.
+func _land_required_row(building: Dictionary) -> Control:
+	var needed := int(round(maxf(0.0, float(building.get("tile_size_used", 1)))))
+	var text := "Land required: %d" % needed
+	var tint := MUTED
+	if _locked_tile_id != "":
+		var owned := MatchState.get_tile_land_owned(_locked_tile_id)
+		var used := int(round(MatchState.get_tile_player_space_used(_locked_tile_id)))
+		var free := maxi(0, owned - used)
+		text += "  ·  %d free on %s" % [free, Catalog.tile_label(_locked_tile_id)]
+		if free < needed:
+			if MatchState.construct_auto_buy_land:
+				text += "  ·  %d will be bought automatically" % (needed - free)
+				tint = GREEN
+			else:
+				text += "  ·  not enough — buy land first"
+				tint = GOLD
+	var row := PanelContainer.new()
+	row.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, NAVY_LINE, 1, 9, 8))
+	var label := Label.new()
+	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", tint)
+	row.add_child(label)
+	return row
+
+
+# ── Site requirements ────────────────────────────────────────────────────────
+# The confirm screen's answer to the commonest dead end in the build flow: a
+# building whose recipe moves a fluid or draws power, dropped on a tile with no
+# pipe or cable, which then quietly refuses to run. Rows are derived from the
+# recipe's own goods, so new content is covered without editing this file.
+
+## Ordered requirement rows, or empty when nothing on the recipe needs routing.
+## Without a locked tile we can only state what the recipe will need. WITH one we
+## know what the site already has, so inputs read as a verdict rather than a
+## warning — and the OUTPUT side is worth checking too, because a fluid (or power)
+## output with no way off the tile cannot be sold or shipped at all.
+func _site_requirement_rows() -> Array:
+	var rows: Array = []
+	if _selected_recipe.is_empty():
+		return rows   # infrastructure builds have no recipe, so no supply to route
+	var input_needs := _infra_needs_for(_selected_recipe.get("inputs", []))
+	if int(_selected_recipe.get("energy_req", 0)) > 0:
+		_add_infra_need(input_needs, "cables",
+			str(Catalog.get_good_by_internal_name("power").get("id", "")))
+	for infra_key in INFRA_ROW_ORDER:
+		if input_needs.has(infra_key):
+			rows.append(_infra_requirement_row(infra_key, input_needs[infra_key], false))
+	if _locked_tile_id != "":
+		var output_needs := _infra_needs_for(_selected_recipe.get("outputs", []))
+		for infra_key in INFRA_ROW_ORDER:
+			if output_needs.has(infra_key):
+				rows.append(_infra_requirement_row(infra_key, output_needs[infra_key], true))
+	return rows
+
+
+## {infra_key: [good_id, ...]} for the goods in `entries` that cannot move without
+## infrastructure. Entries are recipe input/output dicts ({good_id, qty, ...}).
+func _infra_needs_for(entries: Array) -> Dictionary:
+	var needs: Dictionary = {}
+	for entry in entries:
+		var good_id := str((entry as Dictionary).get("good_id", ""))
+		var infra_key := _infra_key_for_good(good_id)
+		if infra_key != "":
+			_add_infra_need(needs, infra_key, good_id)
+	return needs
+
+
+func _add_infra_need(needs: Dictionary, infra_key: String, good_id: String) -> void:
+	if good_id == "":
+		return
+	var goods: Array = needs.get(infra_key, [])
+	if not goods.has(good_id):
+		goods.append(good_id)
+	needs[infra_key] = goods
+
+
+## The infrastructure one good needs to reach or leave a tile, or "" when it can
+## travel overland. Mirrors infrastructure.csv's good_types_tolerated: hazardous
+## liquids need the reinforced pipe, other liquids and gases accept the plain one,
+## and power only moves on cables.
+func _infra_key_for_good(good_id: String) -> String:
+	if good_id == "":
+		return ""
+	match Catalog.get_transport_class(good_id):
+		"hazard_liquid":
+			return "reinf_pipes"
+		"safe_liquid", "liquid", "gas":
+			return "pipes"
+		"electricity":
+			return "cables"
+		_:
+			return ""
+
+
+func _infra_requirement_row(infra_key: String, good_ids: Array, is_output: bool) -> PanelContainer:
+	# Only a locked tile can be inspected. In the tile-independent flow the site is
+	# still unknown, so every row states a requirement instead of passing a verdict.
+	var satisfied := _locked_tile_id != "" \
+		and Catalog.tile_has_infrastructure(_locked_tile_id, infra_key)
+
+	var row := PanelContainer.new()
+	row.custom_minimum_size = Vector2(0, INFRA_ROW_HEIGHT)
+	row.add_theme_stylebox_override("panel",
+		_panel_style(NAVY_FIELD, GREEN if satisfied else GOLD, 1, 9, 6))
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	row.add_child(body)
+	body.add_child(_building_icon(Catalog.get_building_by_internal_name(infra_key), INFRA_ROW_ICON))
+
+	var text := RichTextLabel.new()
+	text.bbcode_enabled = true
+	text.fit_content = true
+	text.scroll_active = false
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	text.add_theme_font_size_override("normal_font_size", 12)
+	text.add_theme_font_size_override("bold_font_size", 12)
+	text.add_theme_color_override("default_color", TEXT)
+	var bold := _semibold_font()
+	if bold != null:
+		text.add_theme_font_override("bold_font", bold)
+	text.text = _infra_requirement_text(infra_key, good_ids, is_output, satisfied)
+	body.add_child(text)
+	return row
+
+
+func _infra_requirement_text(infra_key: String, good_ids: Array, is_output: bool, satisfied: bool) -> String:
+	var infra := "[b]%s[/b]" % _infra_connection_name(infra_key)
+	var goods := _good_name_list(good_ids)
+	# One good reads better named twice ("...or you cannot sell or ship the Chlorine");
+	# a list of three does not, so the second reference collapses to a pronoun.
+	var them := "the %s" % goods if good_ids.size() == 1 else "them"
+	if is_output:
+		if satisfied:
+			return "This tile already has a %s connection, so this building's output of %s can be sold or shipped." % [infra, goods]
+		return "This building's output of %s requires a %s connection. Ensure you build one or you cannot sell or ship %s." % [goods, infra, them]
+	if satisfied:
+		return "This tile already has a %s connection for this building's supply of %s." % [infra, goods]
+	return "This building requires a %s connection for its supply of %s. Ensure you build one or it cannot run." % [infra, goods]
+
+
+func _good_name_list(good_ids: Array) -> String:
+	var names := PackedStringArray()
+	for good_id in good_ids:
+		names.append(Catalog.get_display_name(str(good_id)))
+	return ", ".join(names)
+
+
+## The infrastructure's name as it reads inside "a ___ connection". Everywhere else
+## the UI calls this infrastructure "Cables" (plural — the tile panel dial, the
+## overlay legend), but "a Cables connection" is not English, so this one sentence
+## takes the singular. Pipework and Reinforced Pipework are mass nouns and stand as
+## infrastructure.csv names them; cables have no routing row there (power is settled
+## by the grid, not the router), hence the building-name fallback.
+func _infra_connection_name(infra_key: String) -> String:
+	if infra_key == "cables":
+		return "Cable"
+	var display := str(Catalog.infra(infra_key).get("display_name", ""))
+	if display == "":
+		display = str(Catalog.get_building_by_internal_name(infra_key).get("display_name", ""))
+	return display if display != "" else infra_key.capitalize()
+
+
+func _semibold_font() -> Font:
+	if not _semibold_looked_up:
+		_semibold_looked_up = true
+		if ResourceLoader.exists(SEMIBOLD_FONT_PATH):
+			_semibold_cache = load(SEMIBOLD_FONT_PATH) as Font
+	return _semibold_cache
+
+
+## One white wash across a requirement row, a beat after the confirm screen lands —
+## late enough that the player has begun reading, early enough to catch the eye
+## before they reach Confirm. A ColorRect overlay lets the tween animate a plain
+## property instead of mutating the row's shared StyleBox.
+func _flash_row(row: Control) -> void:
+	var wash := ColorRect.new()
+	wash.color = Color(1, 1, 1, 0)
+	wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(wash)
+	var tween := row.create_tween()
+	tween.tween_interval(INFRA_FLASH_DELAY)
+	tween.tween_property(wash, "color:a", INFRA_FLASH_PEAK, INFRA_FLASH_UP) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(wash, "color:a", 0.0, INFRA_FLASH_DOWN) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	tween.tween_callback(wash.queue_free)
 
 
 func _section_label(text: String) -> Control:
@@ -1503,10 +1754,13 @@ func _on_search_changed(text: String) -> void:
 
 
 func _on_filter_toggled(pressed: bool, category: String) -> void:
+	# Single-select: the chips read as alternative views of the catalogue, not as
+	# stackable predicates, so a new pick replaces the previous one and clicking the
+	# active chip clears the filter. _rebuild_filters sets button_pressed before it
+	# connects this signal, so the re-render can't feed a toggle back in.
+	_active_filters.clear()
 	if pressed:
 		_active_filters[category] = true
-	else:
-		_active_filters.erase(category)
 	_render()
 
 
@@ -1524,6 +1778,7 @@ func _on_recipe_pressed(building_id: String, recipe_id: String) -> void:
 	if _selected_building.is_empty() or _selected_recipe.is_empty():
 		return
 	_view = View.CONFIRM
+	_confirm_flash_pending = true
 	_render()
 
 
@@ -1546,6 +1801,7 @@ func _on_infrastructure_selected(building_id: String) -> void:
 	if _selected_building.is_empty():
 		return
 	_view = View.CONFIRM
+	_confirm_flash_pending = true
 	_render()
 
 

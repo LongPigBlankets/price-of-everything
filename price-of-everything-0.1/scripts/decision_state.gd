@@ -23,6 +23,10 @@ extends Node
 # --- Pacing / balance knobs (balance-volatile: gameplay pacing, cash amounts in the
 # catalog below are placeholders per architecture rule 7 — tune via the harness). ---
 const FIRST_DECISION_TURN := 10
+## Productive (non-infrastructure) player buildings required before ambient decisions
+## start. Turn number alone was the only gate, so a player who had barely built anything
+## still got union claims and substation failures — see _tick_narrative.
+const MIN_PRODUCTIVE_BUILDINGS := 2
 # The pulse pipeline (leans deterministic): a decision is PULLED on a pulse turn and
 # PRESENTED PULSE_LEAD_TURNS later. The gap between pulses is derived from how many
 # events are eligible right now — a fuller pool pulses sooner — clamped to [PULSE_MIN,
@@ -420,22 +424,38 @@ func _tick_narrative() -> void:
 	# Tutorial pocket: no decisions while the coach is running.
 	if Tutorial.active:
 		return
+	# Ambient decisions need something to be ABOUT. Every one of them presumes a going
+	# concern — union pay claims need crews, headhunters need someone worth poaching, a
+	# substation failure needs a tile with plant on it, a broker wants a good you actually
+	# ship. Below MIN_PRODUCTIVE_BUILDINGS the board stays quiet instead of inventing a
+	# crisis at a company that barely exists. Infrastructure doesn't count: laying two
+	# cables is not an operation with staff.
+	var ambient_ok := _productive_building_count() >= MIN_PRODUCTIVE_BUILDINGS
+	if not ambient_ok:
+		# Hold the pulse clock as well, so the first decision arrives a turn or more AFTER
+		# the threshold is met rather than the instant the second building goes up. Set to
+		# turn + 1 rather than a fresh _pulse_interval() because that draws from the seeded
+		# RNG, and consuming draws here would desync an otherwise identical run.
+		_next_pulse_turn = maxi(_next_pulse_turn, turn + 1)
 	# A) Reveal a pulled decision whose lead time is up. Promoting into the queue in
 	#    NARRATIVE of turn X surfaces it at DECIDE of X+1 — so this fires when
 	#    X+1 == show_turn (== pull_turn + PULSE_LEAD_TURNS). Decisions can stack (the
 	#    Briefing shows a queue), so a reveal is only held back by a full queue.
-	if not _scheduled_pull.is_empty() and pending_queue.size() < PENDING_QUEUE_CAP \
+	if ambient_ok and not _scheduled_pull.is_empty() and pending_queue.size() < PENDING_QUEUE_CAP \
 			and turn + 1 >= int(_scheduled_pull.get("show_turn", 0)):
 		_promote_scheduled()
 	# B) Story reservation: fires immediately (no pulse lead) and MAY stack on an
-	#    already-pending decision; holds only when the queue is full.
+	#    already-pending decision; holds only when the queue is full. Deliberately NOT
+	#    gated by ambient_ok — these are scripted beats (the carbon-levy notice at t90 is
+	#    blocking by design) and a reservation is ERASED as it fires, so skipping its turn
+	#    would drop that beat from the run permanently.
 	if _reservations.has(turn) and pending_queue.size() < PENDING_QUEUE_CAP:
 		var def_id := str(_reservations[turn])
 		_reservations.erase(turn)
 		_draw(def_id)
 	# C) Pulse: only into a QUIET board — no pending decision, nothing in flight, and
 	#    no story beat landing next turn.
-	elif not has_pending() and _scheduled_pull.is_empty() \
+	elif ambient_ok and not has_pending() and _scheduled_pull.is_empty() \
 			and not _reservations.has(turn + 1) \
 			and turn >= FIRST_DECISION_TURN and turn >= _next_pulse_turn:
 		var picked := _pick_random_definition(turn)
@@ -452,6 +472,21 @@ func _tick_narrative() -> void:
 
 # The gap to the next pulse, leaning deterministic: derived from how many events are
 # eligible right now (a fuller pool pulses sooner), plus one seeded turn of variation.
+## Player-owned buildings that actually run something. Infrastructure (cables, roads,
+## pipes, rail) is excluded: it has no crew to poach and no line to stop, so it should not
+## count toward "this company is a going concern".
+func _productive_building_count() -> int:
+	var n := 0
+	for b in MatchState.buildings.values():
+		if not (b is Dictionary) or not MatchState.is_player_owned(b):
+			continue
+		var bd: Dictionary = Catalog.get_building(str((b as Dictionary).get("building_id", "")))
+		if str(bd.get("category", "")).to_lower() == "infrastructure":
+			continue
+		n += 1
+	return n
+
+
 func _pulse_interval(turn: int) -> int:
 	var eligible := _eligible_ids(turn).size()
 	var base := clampi(PULSE_MAX - int(eligible / 2), PULSE_MIN, PULSE_MAX)

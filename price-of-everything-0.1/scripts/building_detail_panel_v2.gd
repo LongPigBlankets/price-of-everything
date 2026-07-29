@@ -191,7 +191,11 @@ func _rebuild(building: Dictionary) -> void:
 	var display_name := str(building_data.get("display_name", building.get("building_id", "Building")))
 	var recipe_name := str(recipe.get("display_name", ""))
 	_title_label.text = display_name if recipe_name == "" else "%s — %s" % [display_name, recipe_name]
-	_subtitle_label.text = "Level %d · tile %s" % [int(building.get("level", 1)), str(building.get("tile_id", "—"))]
+	# Catalog.tile_label, not the raw id: this was the one surface still printing
+	# "tile_5_9" at the player instead of "Stoneshore Fields - (5, 9)".
+	var _tile := str(building.get("tile_id", ""))
+	_subtitle_label.text = "Level %d · %s" % [
+		int(building.get("level", 1)), Catalog.tile_label(_tile) if _tile != "" else "—"]
 
 	# construction site → materials checklist + countdown only
 	var constr := BuildingReadout.construction(building)

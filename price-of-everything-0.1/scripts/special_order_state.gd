@@ -496,7 +496,7 @@ func _baseline_recipe_for_good(good_id: String) -> Dictionary:
 	var best_rank := 1 << 30
 	for recipe in Catalog.recipes_producing(good_id):
 		var r: Dictionary = recipe
-		if str(r.get("required_research", "")) != "":
+		if str(r.get("tech_unlock_req", "")) != "":
 			continue
 		var building_id := str(r.get("building_id", ""))
 		var building_internal := str(Catalog.get_building(building_id).get("internal_name", ""))

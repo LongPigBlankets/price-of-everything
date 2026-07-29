@@ -1293,7 +1293,10 @@ func _focus_camera_on_tile(tile_id: String) -> Dictionary:
 		var cell := terrain_layer.map_coord_for_tile_coord(coord)
 		var target: Vector2 = terrain_layer.to_global(terrain_layer.map_to_local(cell))
 		if cam.has_method("pan_to_world"):
-			cam.pan_to_world(target, 0.3)
+			# ui_focus_duration is the camera controller's own tunable (the tutorial raises
+			# it); fall back if any other Camera2D is ever the active one.
+			var dur = cam.get("ui_focus_duration")
+			cam.pan_to_world(target, float(dur) if dur != null else 0.3)
 		else:
 			cam.position = target
 	return terrain_layer.tiles[coord]
@@ -2150,6 +2153,23 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 	# their own land and must not eat the land the player has bought.
 	var projected_player := MatchState.get_tile_player_space_used(tile_id) + added_space
 	var land_owned := MatchState.get_tile_land_owned(tile_id)
+	# Auto-buy land (construct setting): cover ONLY the shortfall, rounded up to whole
+	# patches, and only when there genuinely isn't room already — a tile that can already
+	# take the building buys nothing. purchase_tile_land clamps to what's actually for sale
+	# and can grant a clipped sliver, so the gate below is re-evaluated on the real result
+	# rather than assumed to have succeeded.
+	if projected_player > float(land_owned) and MatchState.construct_auto_buy_land:
+		var shortfall := projected_player - float(land_owned)
+		var patches := int(ceil(shortfall / float(MatchState.LAND_PATCH_SIZE)))
+		var before := land_owned
+		if MatchState.purchase_tile_land(tile_id, patches):
+			land_owned = MatchState.get_tile_land_owned(tile_id)
+			MatchState.request_toast("Bought %d land on %s to fit this building." % [
+				land_owned - before, Catalog.tile_label(tile_id)], "info")
+		else:
+			print("[Build] auto-buy land FAILED on %s (wanted %d patch(es))" % [tile_id, patches])
+			_show_tile_space_error("Not enough money (or land for sale) to buy the land this building needs on %s" % Catalog.tile_label(tile_id))
+			return {"allowed": false, "cost_multiplier": 1.0}
 	if projected_player > float(land_owned):
 		print("[Build] FAILED: insufficient land on tile %s (need %s, own %s)" % [tile_id, str(projected_player), str(land_owned)])
 		_show_tile_space_error("You cannot build that. You do not own sufficient land on tile %s" % tile_id)

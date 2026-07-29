@@ -118,6 +118,11 @@ func _process(delta: float) -> void:
 	_apply_zoom_smoothing(delta)
 	_clamp_to_bounds()
 
+## How long a UI-driven focus pan takes (ledger row, notification jump-to-tile, a
+## tutorial step recentring the board). The tutorial raises this for its own steps so
+## they settle instead of snapping; every other caller keeps the snappy default.
+@export var ui_focus_duration: float = 0.3
+
 ## Smoothly pan to a world position — the UI-driven focus move (ledger/panel
 ## selection). Manual pans (keyboard, edge, drag) cancel it.
 func pan_to_world(target: Vector2, dur: float = 0.3) -> void:

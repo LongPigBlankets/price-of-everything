@@ -789,7 +789,7 @@ static func deposit_build_options(deposit_token: String) -> Array:
 	tokens[t.replace("_", " ")] = true
 	var opts: Array = []
 	for recipe in Catalog.all_recipes():
-		var rec_req := str(recipe.get("required_research", ""))
+		var rec_req := str(recipe.get("tech_unlock_req", ""))
 		if rec_req != "" and not MatchState.is_unlocked(rec_req):
 			continue
 		var bid := str(recipe.get("building_id", ""))

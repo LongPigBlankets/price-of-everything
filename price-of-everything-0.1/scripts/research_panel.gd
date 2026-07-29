@@ -978,12 +978,17 @@ func _find_unlock(unlocks: Array[Dictionary], title: String) -> Dictionary:
 			return unlock
 	return {}
 
+## Prereq columns store research_node_ids, but this panel's layout/graph is keyed by
+## display title, so resolve on the way out. Anything that doesn't resolve is passed
+## through unchanged (bare cheat tokens like "hydro" have no node).
 func _prereq_titles(unlock: Dictionary) -> Array[String]:
 	var titles: Array[String] = []
 	for key in ["prereq_1", "prereq_2", "prereq_3"]:
 		var value: String = unlock.get(key, "")
-		if not value.is_empty():
-			titles.append(value)
+		if value.is_empty():
+			continue
+		var resolved := MatchState.research_title_for_node_id(value)
+		titles.append(resolved if resolved != "" else value)
 	return titles
 
 func _draw_connections(unlocks: Array[Dictionary], layout: Dictionary, zoom: float) -> void:

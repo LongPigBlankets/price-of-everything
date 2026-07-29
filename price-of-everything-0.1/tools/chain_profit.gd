@@ -50,7 +50,7 @@ func _ready() -> void:
 		naked_tier[tier][1] += 1
 		if nk > 0: naked_tier[tier][0] += 1
 		var lbl := "%-28s [%-12s] out:%-15s" % [str(r.get("display_name","?")), tier, "%s x%d" % [str(r.get("output_name","?")), int(r.get("output_qty",0))]]
-		naked_rows.append([nk, "%s NAKED %+8.2f%s" % [lbl, nk, " [gated]" if str(r.get("required_research",""))!="" else ""]])
+		naked_rows.append([nk, "%s NAKED %+8.2f%s" % [lbl, nk, " [gated]" if str(r.get("tech_unlock_req",""))!="" else ""]])
 		if _is_mining(r):
 			mine_rows.append([nk, "%-28s base %+7.2f   start(-50%%) %+7.2f" % [str(r.get("display_name","?")), _naked(r, 1.0), _naked(r, 0.5)]])
 		var cost := _recipe_cost(r)
@@ -112,7 +112,7 @@ func _ready() -> void:
 		if price <= 0.01: continue
 		var b := _bld(r)
 		var tier3 := _good_tier(primary)
-		var gated3 := str(r.get("required_research","")) != ""
+		var gated3 := str(r.get("tech_unlock_req","")) != ""
 		var byval := 0.0                          # byproducts credited at full price (kept fixed)
 		for o in outs:
 			if str(o.good_id) != primary: byval += float(o.qty) * _sell(str(o.good_id))
@@ -178,12 +178,12 @@ func _ready() -> void:
 		var wpow := rev_g - ibuy - _transport(r) - lm - en * _own_power_per_unit
 		var twob := rev_b - iown - _transport_out(r) - lm - en * GRID
 		var full := rev_b - iown - _transport_out(r) - lm - en * _own_power_per_unit
-		print("RECIPECSV|%s|%s|%s|%s|%s|%d|%.2f|%.2f|%.2f|%.2f|%.2f|%s" % [str(r.get("recipe_id","")), str(r.get("display_name","?")), str(bb.get("internal_name","?")), _good_tier(prim), str(outs2[0].get("internal_name", prim)), int(r.get("output_qty",0)), rev_b, single, wpow, twob, full, "Y" if str(r.get("required_research",""))!="" else ""])
+		print("RECIPECSV|%s|%s|%s|%s|%s|%d|%.2f|%.2f|%.2f|%.2f|%.2f|%s" % [str(r.get("recipe_id","")), str(r.get("display_name","?")), str(bb.get("internal_name","?")), _good_tier(prim), str(outs2[0].get("internal_name", prim)), int(r.get("output_qty",0)), rev_b, single, wpow, twob, full, "Y" if str(r.get("tech_unlock_req",""))!="" else ""])
 	# PRICESOLVE: output price that makes the LONE building break even (single=0). Ungated, non-mine.
 	# flatprice < current => good is OVERPRICED -> its base recipe profits standalone (rule violation).
 	print("\nPRICESOLVE|recipe|good|flat_price|current_price|tier")
 	for r in Catalog.all_recipes():
-		if str(r.get("required_research","")) != "": continue
+		if str(r.get("tech_unlock_req","")) != "": continue
 		if _is_mining(r): continue
 		var outs3: Array = r.get("outputs", [])
 		if outs3.is_empty(): continue

@@ -4,7 +4,7 @@ extends RefCounted
 ## In-game port of the offline chart generator (scripts/build_goods_flow.py), with one
 ## deliberate inversion: the offline chart defines each good by its LEAST-efficient
 ## recipe (a documentation choice), while this picks the SIMPLEST recipe available at
-## GAME START — among producers with an empty `required_research` column: fewest
+## GAME START — among producers with an empty `tech_unlock_req` column: fewest
 ## distinct inputs, then lowest energy_req, then smallest total input quantity, with
 ## recipe_id as the final (deterministic) tie-break. A good whose every producer is
 ## research-gated falls back to the simplest gated recipe and is marked `gated`.
@@ -135,7 +135,7 @@ static func col_x(c: int) -> float:
 
 ## The whole goods-graph layout (nodes with positions, routed edges, bands, lanes).
 ## It is a PURE function of the Catalog — no MatchState, no research-unlock state, no
-## RNG (the "gated" flag is the static `required_research` CSV column) — so the result
+## RNG (the "gated" flag is the static `tech_unlock_req` CSV column) — so the result
 ## is identical for every open and every match. The Catalog is fixed for the app run,
 ## so we compute it ONCE and cache it: the first call (warmed under the loading screen
 ## via world_map) pays the ~120 ms Sugiyama layout; every later open returns instantly.
@@ -186,7 +186,7 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 			func(r: Dictionary) -> bool: return str(r.get("recipe_type", "")).to_lower() != "recycling")
 		var pool: Array = making if not making.is_empty() else producers
 		var base: Array = pool.filter(
-			func(r: Dictionary) -> bool: return str(r.get("required_research", "")) == "")
+			func(r: Dictionary) -> bool: return str(r.get("tech_unlock_req", "")) == "")
 		if base.is_empty():
 			chosen[internal] = {"recipe": _simplest(pool), "gated": true}
 		else:
@@ -209,7 +209,7 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 		var edge_recipes: Array = [chosen[internal]["recipe"]]
 		if str((goods[internal] as Dictionary).get("good_type", "")) == "power":
 			var ungated: Array = (primary.get(internal, anyout.get(internal, [])) as Array).filter(
-				func(r: Dictionary) -> bool: return str(r.get("required_research", "")) == "")
+				func(r: Dictionary) -> bool: return str(r.get("tech_unlock_req", "")) == "")
 			if not ungated.is_empty():
 				edge_recipes = ungated
 		for er in edge_recipes:
@@ -550,7 +550,7 @@ static func _ranked_producers(producers: Array) -> Array:
 	var tiers: Array = [[], [], [], []]
 	for r in producers:
 		var rec := str(r.get("recipe_type", "")).to_lower() == "recycling"
-		var gat := str(r.get("required_research", "")) != ""
+		var gat := str(r.get("tech_unlock_req", "")) != ""
 		(tiers[(2 if rec else 0) + (1 if gat else 0)] as Array).append(r)
 	var out: Array = []
 	for ti: int in range(4):
