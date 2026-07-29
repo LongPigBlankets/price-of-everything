@@ -2828,9 +2828,14 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	var info_margin := MarginContainer.new()
 	info_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	# NPC cards keep the name near the top (the banner owns the bottom); player solo
-	# cards show the pill row, so both use the smaller inset.
-	var v_inset := 8 if (solo or is_npc) else 20
+	# Every variant stacks the same three rows — name (BuildingName, 22px), the "Cost Basis"
+	# header (13px) and the value row (14px) — about 67px with separations. A group card used
+	# to take a 20px inset top AND bottom, leaving 60px inside the 100px card: seven pixels
+	# short. The expanding pusher collapsed to nothing and the value row was pressed against
+	# the card's bottom edge, which is the misalignment visible on any group card whose name
+	# is a single line. One inset for all three variants; the pusher does the bottom-aligning
+	# it was written to do.
+	var v_inset := 8
 	info_margin.add_theme_constant_override("margin_top", v_inset)
 	info_margin.add_theme_constant_override("margin_bottom", v_inset)
 	info_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
