@@ -150,6 +150,7 @@ BELOW_BASE_BY_DESIGN = {
     "r_042": "bio-graphitisation exists to establish an alternate route, not to pay (owner)",
     "r_065": "SynRM motors trade profit for a supply chain free of rare earths (owner)",
     "r_208": "sustainable farming yields LESS biomass, not more — quality over tonnage (owner)",
+    "r_151": "pet coke power trails coal power because pet coke now costs more — the fuel got dearer, so burning it did too (owner-directed price rise, 2026-07-29)",
 }
 
 # R2 gated multipliers
