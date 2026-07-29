@@ -13,6 +13,8 @@ extends Node
 ## Production — it owns no sim state beyond dismissal signatures for the live alerts
 ## (so a dismissed alert re-surfaces only if the condition worsens).
 
+# No class_name on building_status.gd, so an autoload must preload it to reach the helpers.
+const BuildingStatus := preload("res://scripts/building_status.gd")
 const StripScript := preload("res://scripts/turn_briefing_strip.gd")
 const PanelScript := preload("res://scripts/turn_briefing_panel.gd")
 
@@ -71,6 +73,12 @@ var expanded: bool = false
 
 var _items: Array = []                 # assembled BriefingItem dicts (view objects)
 var _alert_dismissed: Dictionary = {}  # alert_id -> magnitude at dismissal (persisted)
+# Warehouse level of each jammed tile at the moment "storage full" was dismissed. A jam that
+# holds steady never grows, so the magnitude rule alone silenced this alert permanently — the
+# player upgraded, assumed it was solved, and never heard about it again while the tile went on
+# clipping input orders. Upgrading is the one thing they DO about it, so an upgrade re-arms the
+# alert: if the tile is still jammed afterwards, they need to know the upgrade was not enough.
+var _storage_dismiss_levels: Dictionary = {}   # tile_id -> warehouse level at dismissal
 var _acked: Dictionary = {}            # event id -> true (session-scoped ack for news)
 var _last_alert_ids: Dictionary = {}   # alert ids present last evaluation (new-alert detect)
 var _layer: CanvasLayer = null
@@ -98,6 +106,7 @@ func _ready() -> void:
 
 func reset() -> void:
 	_alert_dismissed.clear()
+	_storage_dismiss_levels.clear()
 	_acked.clear()
 	_last_alert_ids.clear()
 	_select_on_expand = ""
@@ -158,6 +167,9 @@ func _rebuild_items() -> void:
 	var undersized := _storage_undersized_item()
 	if not undersized.is_empty():
 		out.append(undersized)
+	var power_capped := _power_capped_item()
+	if not power_capped.is_empty():
+		out.append(power_capped)
 	var deposit_low := _deposit_running_out_item()
 	if not deposit_low.is_empty():
 		out.append(deposit_low)
@@ -228,13 +240,86 @@ func _bankruptcy_item() -> Dictionary:
 		],
 	}
 
+## Player power PRODUCERS whose "missing: power" is really the tile cable export cap refusing
+## their dispatch, not a supply failure. Production reports them exactly like a starved consumer,
+## so without this split they surface as "starved of power" — advice that is the opposite of what
+## the player must do. building_readout already special-cases it; the briefing did not.
+## Returns instance_id -> {tile_id, mw}.
+func _cable_capped_producers() -> Dictionary:
+	var out: Dictionary = {}
+	for iid in Production.missing_by_building.keys():
+		var b: Dictionary = MatchState.get_building(str(iid))
+		if b.is_empty() or not MatchState.is_player_owned(b):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		if recipe.is_empty() or str(recipe.get("output_name", "")) != "power":
+			continue
+		for m in (Production.missing_by_building[iid] as Array):
+			if str((m as Dictionary).get("internal_name", "")) == "power":
+				out[str(iid)] = {
+					"tile_id": str(b.get("tile_id", "")),
+					"mw": BuildingStatus.effective_power_output(b, recipe),
+				}
+				break
+	return out
+
+## Generation the player is paying for and cannot sell, because the tile's cables are full.
+## Fires as a WARNING: nothing is broken, but the plant earns nothing while costing maintenance.
+func _power_capped_item() -> Dictionary:
+	var capped := _cable_capped_producers()
+	if capped.is_empty():
+		_alert_dismissed.erase("alert:power_capped")
+		return {}
+	var tiles: Dictionary = {}
+	var mw_idle := 0
+	var listed: Array = []
+	for iid in capped:
+		var d: Dictionary = capped[iid]
+		tiles[str(d["tile_id"])] = true
+		mw_idle += int(d["mw"])
+	var at_max := 0
+	for t in tiles:
+		if Power.cable_level_is_max(str(t)):
+			at_max += 1
+	for iid2 in capped:
+		if listed.size() >= STARVED_LIST_ROWS:
+			break
+		var d2: Dictionary = capped[iid2]
+		listed.append({
+			"instance_id": str(iid2), "tile_id": str(d2["tile_id"]),
+			"why": "output blocked — tile cables full",
+		})
+	var total := capped.size()
+	if _alert_dismissed.has("alert:power_capped") and total <= int(_alert_dismissed["alert:power_capped"]):
+		return {}
+	var advice := "Upgrade the cables on those tiles to raise the export cap, or move generation to a tile with spare capacity."
+	if at_max == tiles.size():
+		advice = "Those tiles are already at the maximum cable level — further generation there cannot be exported at all."
+	return {
+		"id": "alert:power_capped", "kind": "critical", "section": "alerts",
+		"severity": "warning", "dismissible": true, "magnitude": total, "icon": "bolt",
+		"title": "%d power plant%s capped by cables" % [total, "" if total == 1 else "s"],
+		"body": "These plants are not short of anything — their tile cannot export what they generate, so the power is thrown away while they still cost maintenance. " + advice,
+		"rows": [
+			["Plants blocked", "%d" % total, "warn"],
+			["Generation going nowhere", "%d MW / turn" % mw_idle, "warn" if mw_idle > 0 else ""],
+			["Tiles at maximum cable level", "%d of %d" % [at_max, tiles.size()], "bad" if at_max > 0 else ""],
+		],
+		"list": listed,
+		"list_more": maxi(0, total - listed.size()),
+	}
+
 # N buildings starved (power vs inputs), with deep-link rows to the worst offenders.
 func _starved_item() -> Dictionary:
 	var power_starved: Array = []
 	var input_starved: Array = []
+	# A generator blocked by the cable cap reports "missing: power" identically to a consumer
+	# with no supply. It belongs to the power-capped alert, not here — counting it as starved
+	# tells the player to find power for a building that is drowning in it.
+	var cable_capped := _cable_capped_producers()
 	for iid in Production.missing_by_building.keys():
 		var b: Dictionary = MatchState.get_building(str(iid))
-		if b.is_empty() or not MatchState.is_player_owned(b):
+		if b.is_empty() or not MatchState.is_player_owned(b) or cable_capped.has(str(iid)):
 			continue
 		var lacks_power := false
 		var missing: Array = Production.missing_by_building[iid]
@@ -292,10 +377,22 @@ func _storage_full_item() -> Dictionary:
 		capped_tiles[str(d.get("tile_id", ""))] = true
 	if held_total == 0 and capped_units == 0:
 		_alert_dismissed.erase("alert:storage_full")
+		_storage_dismiss_levels.clear()
 		return {}
 	var magnitude := held_total + capped_units
-	if _alert_dismissed.has("alert:storage_full") and magnitude <= int(_alert_dismissed["alert:storage_full"]):
-		return {}
+	if _alert_dismissed.has("alert:storage_full"):
+		# An upgrade is the player acting on this alert. If the tile is STILL jammed afterwards
+		# the upgrade did not solve it, and staying quiet would leave them believing it had.
+		var upgraded := false
+		for t_lvl in _storage_dismiss_levels:
+			if Stockpile.get_warehouse_level(str(t_lvl)) > int(_storage_dismiss_levels[t_lvl]):
+				upgraded = true
+				break
+		if upgraded:
+			_alert_dismissed.erase("alert:storage_full")
+			_storage_dismiss_levels.clear()
+		elif magnitude <= int(_alert_dismissed["alert:storage_full"]):
+			return {}
 	var listed: Array = []
 	for tile in held_by_tile:
 		if listed.size() >= STARVED_LIST_ROWS:
@@ -315,6 +412,7 @@ func _storage_full_item() -> Dictionary:
 		"id": "alert:storage_full", "kind": "critical", "section": "alerts",
 		"severity": "critical" if held_total > 0 else "warning",
 		"dismissible": true, "magnitude": magnitude, "icon": "gauge",
+		"tiles": tiles_affected.keys(),
 		"title": "Storage full on %d tile%s" % [tiles_affected.size(), "" if tiles_affected.size() == 1 else "s"],
 		"body": "Deliveries can't unload into a full stockpile — they wait outside and retry each turn while buildings starve. Free space (sell surplus, move goods) or expand the warehouse from the tile's Stockpile tab.",
 		"rows": [
@@ -567,6 +665,11 @@ func dismiss(item_id: String) -> void:
 		return   # decisions land here too — never dismissible (owner ruling)
 	if item.has("magnitude"):
 		_alert_dismissed[item_id] = item.magnitude   # quiet until it worsens
+		if item_id == "alert:storage_full":
+			# Remember how big each jammed tile's warehouse was, so an upgrade re-arms the alert.
+			_storage_dismiss_levels.clear()
+			for t in (item.get("tiles", []) as Array):
+				_storage_dismiss_levels[str(t)] = Stockpile.get_warehouse_level(str(t))
 	elif item.has("event_id"):
 		EventScheduler.dismiss(str(item.event_id))   # bell syncs (one source of truth)
 	_queue_refresh()

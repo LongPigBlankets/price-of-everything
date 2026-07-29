@@ -254,6 +254,8 @@ func _ready() -> void:
 	_test_decision_pulse_pipeline()
 	_test_decision_queue_stacking()
 	_test_briefing_items_and_dismissal()
+	_test_storage_alert_rearms_on_upgrade()
+	_test_power_capped_alert()
 	_test_briefing_event_mapping()
 	await _test_decision_view_never_empty()
 	_test_auto_bridge_loan()
@@ -9696,6 +9698,62 @@ func _test_decision_queue_stacking() -> void:
 	DecisionState.auto_resolve = false
 	_check(not DecisionState.has_pending(), "queue: auto_resolve clears the whole queue")
 	_decision_board_restore(snap)
+
+func _test_storage_alert_rearms_on_upgrade() -> void:
+	# A jam that holds steady never grows, so the magnitude rule silenced this alert for good:
+	# the player dismissed once and never heard about the tile again while it clipped every
+	# input order. Upgrading the warehouse is the action they take, so it re-arms the alert.
+	var saved_summary: Dictionary = Production.last_turn_summary
+	var saved_overflow: Array = MatchState.overflow_shipments.duplicate(true)
+	TurnBriefing._alert_dismissed.erase("alert:storage_full")
+	TurnBriefing._storage_dismiss_levels.clear()
+	var t := "tile_5_5"
+	MatchState.overflow_shipments = [{"destination_tile": t, "qty": 40}]
+	Production.last_turn_summary = {"input_orders_capped": []}
+	var lvl0: int = Stockpile.get_warehouse_level(t)
+	var item: Dictionary = TurnBriefing._storage_full_item()
+	_check(str(item.get("id", "")) == "alert:storage_full", "storage-full alert fires on a jammed tile")
+	_check((item.get("tiles", []) as Array).has(t), "storage-full item names its jammed tiles (for dismissal)")
+	TurnBriefing._items = [item]
+	TurnBriefing.dismiss("alert:storage_full")
+	_check(int(TurnBriefing._storage_dismiss_levels.get(t, -1)) == lvl0,
+		"dismissal snapshots the tile's warehouse level (%d)" % lvl0)
+	_check(TurnBriefing._storage_full_item().is_empty(),
+		"a jam of the SAME size stays quiet after dismissal")
+	Stockpile.set_warehouse_level(t, lvl0 + 1)
+	_check(str(TurnBriefing._storage_full_item().get("id", "")) == "alert:storage_full",
+		"upgrading the warehouse re-arms the alert while the tile is still jammed")
+	MatchState.overflow_shipments = []
+	_check(TurnBriefing._storage_full_item().is_empty(), "alert self-clears once the jam is gone")
+	_check(TurnBriefing._storage_dismiss_levels.is_empty(), "self-clear forgets the dismissal levels")
+	Stockpile.set_warehouse_level(t, lvl0)
+	MatchState.overflow_shipments = saved_overflow
+	Production.last_turn_summary = saved_summary
+
+
+func _test_power_capped_alert() -> void:
+	# Production reports a generator blocked by the cable export cap exactly like a consumer
+	# with no supply: missing "power". Read literally that says "starved of power" — the
+	# opposite of the truth, and the opposite of the fix.
+	var saved_missing: Dictionary = Production.missing_by_building.duplicate(true)
+	TurnBriefing._alert_dismissed.erase("alert:power_capped")
+	TurnBriefing._alert_dismissed.erase("alert:starved")
+	# Build the generator rather than hunting the fixture for one: an early-returning test
+	# that finds nothing asserts nothing, and would have hidden a regression here in silence.
+	var gen: String = MatchState.add_building("b_003", "r_004", "tile_9_9", MatchState.LOCAL_PLAYER, "cable_cap_test")
+	_check(gen != "", "fixture: placed a coal power plant to stand in for a capped generator")
+	Production.missing_by_building = {gen: [{"internal_name": "power", "good_id": "power"}]}
+	var capped: Dictionary = TurnBriefing._cable_capped_producers()
+	_check(capped.has(gen), "a power producer missing 'power' is read as cable-capped, not starved")
+	var item: Dictionary = TurnBriefing._power_capped_item()
+	_check(str(item.get("id", "")) == "alert:power_capped" and str(item.get("severity", "")) == "warning",
+		"cable-cap alert fires as a warning (nothing is broken; output is being thrown away)")
+	_check(str(item.get("title", "")).contains("capped by cables"), "cable-cap alert names the cause")
+	var starved: Dictionary = TurnBriefing._starved_item()
+	_check(starved.is_empty(), "the same plant is NOT also reported as starved of power")
+	MatchState.remove_building(gen)
+	Production.missing_by_building = saved_missing
+
 
 func _test_briefing_items_and_dismissal() -> void:
 	# The Briefing assembles decisions + live alerts, decisions are never dismissible,
