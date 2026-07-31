@@ -152,6 +152,9 @@ func _ready() -> void:
 	await _test_modifiers_expiry()
 	await _test_modifiers_event_payload()
 	await _test_modifiers_production_recipe_output()
+	await _test_deposit_runthrough_ignores_output_modifiers()
+	await _test_research_reference_integrity()
+	await _test_construct_settings_roundtrip()
 	await _test_modifiers_roundtrip()
 	_test_live_unlock_conditions()
 	_test_research_tier_gating()
@@ -391,8 +394,10 @@ func _test_tutorial_engine() -> void:
 	_check(TutorialDetectors.poll({"kind": "building_recipe_on_tile", "tile": TutorialSteps.GLASS_TILE, "recipe_id": "r_054"}) == false,
 		"tutorial: building_recipe_on_tile false before the furnace is retooled")
 	var glass_lay: Dictionary = by_id.get("glass_lay_pipe", {})
-	_check(str((glass_lay.get("spotlight", {}) as Dictionary).get("ref", "")) == "InfraDial_reinf_pipes",
-		"tutorial: glass_lay_pipe spotlights the reinforced-pipe dial")
+	# The whole CELL, not the bare "+" dial: the cell is the VBox holding the dial AND its
+	# name label, so the highlight encloses the infrastructure's name too.
+	_check(str((glass_lay.get("spotlight", {}) as Dictionary).get("ref", "")) == "InfraCell_reinf_pipes",
+		"tutorial: glass_lay_pipe spotlights the reinforced-pipe cell (dial + name)")
 	_check(TutorialDetectors.poll({"kind": "sell_surplus_on_tile", "tile": TutorialSteps.WINDOW_TILE}) == false,
 		"tutorial: sell_surplus_on_tile false before enabling it")
 	# Deeper-integration content (own power, survey/mine) authored + deferred.
@@ -437,9 +442,17 @@ func _test_tutorial_engine() -> void:
 		"tutorial: tile_land_at_least true at exactly the target amount")
 	MatchState.tile_land_owned = land_saved
 	# Live-value copy: the numbers quoted in the step bodies come from the catalog.
-	var kit_cost: int = TutorialSteps._build_kit_cost("b_007")
+	# The old assertion only checked the step agreed with its OWN helper, so a figure that
+	# disagreed with the Build confirm panel (£177 quoted vs £196 shown) went unnoticed.
+	# Assert against the panel's own formula as well as against the copy.
+	var kit_cost: int = TutorialSteps._build_confirm_cost("b_007")
+	var panel_cost := int(round(
+		maxf(0.0, float(Catalog.get_building("b_007").get("base_price", 0.0)))
+		+ Construction.market_purchase_value("b_007")))
+	_check(kit_cost == panel_cost,
+		"tutorial: build_cost matches the Build confirm panel figure (£%d vs £%d)" % [kit_cost, panel_cost])
 	_check(kit_cost > 0 and str((by_id.get("build_cost", {}) as Dictionary).get("body", "")).contains("£%d" % kit_cost),
-		"tutorial: build_cost quotes the live factory kit cost (£%d)" % kit_cost)
+		"tutorial: build_cost quotes the live factory build cost (£%d)" % kit_cost)
 	var win_price: String = TutorialSteps._good_price_text("windows")
 	_check(str((by_id.get("margin_motivation", {}) as Dictionary).get("body", "")).contains("£%s" % win_price),
 		"tutorial: margin_motivation quotes the live window price (£%s)" % win_price)
@@ -3611,6 +3624,178 @@ func _test_modifiers_production_recipe_output() -> void:
 	Modifiers.reset()
 	MatchState.remove_building(inst)
 
+## Deposit life must not depend on output multipliers: research/advisor/level bonuses
+## change how much ore you GET per turn, never how fast the seam empties. Drives the same
+## coal mine twice from an identical deposit — once clean, once at +50% output — and
+## asserts production rises while the deposit is charged the identical base amount.
+func _test_deposit_runthrough_ignores_output_modifiers() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+	var tile := "tile_6_8"  # has a coal deposit
+	var inst: String = MatchState.add_building("b_001", "r_001", tile)
+	MatchState.reveal_deposit(tile, "coal")
+	# Coal carries a standing −30% deposit penalty (re-seeded by reset); drop it so the
+	# baseline is the clean 60-unit recipe output.
+	Modifiers.remove("deposit_penalty_coal")
+
+	MatchState.deposit_remaining[tile] = {"coal": 999}
+	var summary := _fresh_production_summary()
+	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
+	Production._flush_output_buffer()
+	var plain_produced: int = int(summary.produced.get("g_001", 0))
+	var plain_drawn: int = 999 - MatchState.deposit_remaining_for(tile, "coal")
+
+	# Same mine, same deposit, but +50% output.
+	Stockpile.clear_all()
+	MatchState.deposit_remaining[tile] = {"coal": 999}
+	Modifiers.add({"id": "test_oil_style_yield", "domain": "recipe_output",
+		"target_match": {"building_id": "b_001"}, "mult": 1.5})
+	summary = _fresh_production_summary()
+	Production._produce_outputs(MatchState.get_building(inst), Catalog.get_recipe("r_001"), summary)
+	Production._flush_output_buffer()
+	var boosted_produced: int = int(summary.produced.get("g_001", 0))
+	var boosted_drawn: int = 999 - MatchState.deposit_remaining_for(tile, "coal")
+
+	_check(boosted_produced > plain_produced,
+		"deposit runthrough: +50%% modifier raises output (%d → %d)" % [plain_produced, boosted_produced])
+	_check(boosted_drawn == plain_drawn,
+		"deposit runthrough: deposit charged the SAME base amount either way (%d vs %d)"
+			% [plain_drawn, boosted_drawn])
+	_check(plain_drawn == plain_produced,
+		"deposit runthrough: unmodified extraction charges exactly what it produced (%d vs %d)"
+			% [plain_drawn, plain_produced])
+
+	Modifiers.reset()
+	MatchState.remove_building(inst)
+
+
+## Research nodes are referenced BY TITLE from three places, and only one of those was
+## covered: the unlock-audit test already checks title uniqueness and prereq resolution
+## (see "every research prerequisite resolves to an unlock title"). The OTHER two edges of
+## the graph had nothing enforcing them — a renamed node silently deadens its
+## UNLOCK_MODIFIERS entry (this is how five authored oil effects sat inert), and a renamed
+## node silently orphans any recipe gated on it. Those two are what this covers.
+func _test_research_reference_integrity() -> void:
+	var rows := _csv_dicts("res://data/research_unlocks.csv")
+	_check(not rows.is_empty(), "research CSV loaded (%d rows)" % rows.size())
+	var titles := {}
+	var node_ids := {}
+	var missing_ids: Array = []
+	var dupe_ids: Array = []
+	for r in rows:
+		var t := str(r.get("title", "")).strip_edges()
+		if t != "":
+			titles[t] = true
+		var nid := str(r.get("research_node_id", "")).strip_edges()
+		if nid == "":
+			missing_ids.append(t)
+		elif node_ids.has(nid):
+			dupe_ids.append(nid)
+		else:
+			node_ids[nid] = true
+	# Ids are permanent handles: every node must have one and no two may share one,
+	# or a modifier/save reference silently binds to the wrong node.
+	_check(missing_ids.is_empty(), "every research node has a research_node_id (%s)" % str(missing_ids))
+	_check(dupe_ids.is_empty(), "research_node_ids are unique (%s)" % str(dupe_ids))
+
+	var unwired: Array = []
+	for key in Modifiers.UNLOCK_MODIFIERS:
+		if not node_ids.has(str(key)):
+			unwired.append(str(key))
+	_check(unwired.is_empty(),
+		"every UNLOCK_MODIFIERS key is a real research_node_id (%s)" % str(unwired))
+
+	# The title↔id resolution every gate and modifier lookup depends on must round-trip
+	# in BOTH directions.
+	var unresolved: Array = []
+	var no_reverse: Array = []
+	for t in titles:
+		var nid2 := MatchState.research_node_id_for_title(str(t))
+		if nid2 == "":
+			unresolved.append(str(t))
+		elif MatchState.research_title_for_node_id(nid2) != str(t):
+			no_reverse.append(str(t))
+	_check(unresolved.is_empty(),
+		"every research title resolves to its node id (%s)" % str(unresolved))
+	_check(no_reverse.is_empty(),
+		"title→id→title round-trips for every node (%s)" % str(no_reverse))
+
+	# Phase 3: prereq columns store research_node_ids, not titles. A title left in one
+	# would still LOOK right in the CSV while silently failing every prereq check.
+	var title_prereqs: Array = []
+	for r in rows:
+		for col in ["prereq_1", "prereq_2", "prereq_3", "prereq_othercategory"]:
+			var p := str(r.get(col, "")).strip_edges()
+			if p == "":
+				continue
+			if node_ids.has(p):
+				continue
+			title_prereqs.append("%s.%s = '%s'" % [r.get("title", "?"), col, p])
+	_check(title_prereqs.is_empty(),
+		"every prereq is a research_node_id, not a title (%s)" % str(title_prereqs))
+
+	# Recipe gates. `consumer` and `hydro` are long-standing content gaps (verified against
+	# git history — they have never been titles); they are excluded so this test fails only
+	# on a NEW break, not on the pre-existing backlog.
+	# Recipe gates now store research_node_ids too. `consumer` and `hydro` are deliberate
+	# bare cheat tokens (b_027 hydro is gated by the `unlock hydro` cheat, not by a node),
+	# so they are expected to resolve to nothing.
+	var known_gaps := ["consumer", "hydro"]
+	var bad_gates: Array = []
+	for r in _csv_dicts("res://data/recipes_all.csv"):
+		var gate := str(r.get("tech_unlock_req", "")).strip_edges()
+		if gate == "" or node_ids.has(gate) or gate in known_gaps:
+			continue
+		bad_gates.append("%s → '%s'" % [r.get("recipe_id", "?"), gate])
+	_check(bad_gates.is_empty(),
+		"every recipe gate is a research_node_id (%s)" % str(bad_gates))
+
+
+func _csv_dicts(path: String) -> Array:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return []
+	var headers := f.get_csv_line()
+	var out: Array = []
+	while not f.eof_reached():
+		var line := f.get_csv_line()
+		if line.size() < 2 or line[0] == "":
+			continue
+		var row := {}
+		for i in headers.size():
+			row[headers[i].strip_edges()] = line[i].strip_edges() if i < line.size() else ""
+		out.append(row)
+	return out
+
+
+## Construct settings had no persistence coverage at all, so a setting could be added to
+## the panel and silently not survive a save. Also pins the additive-key contract: a save
+## written before auto-buy-land existed must load with it OFF rather than erroring.
+func _test_construct_settings_roundtrip() -> void:
+	MatchState.reset()
+	MatchState.set_construct_auto_buy_land(true)
+	MatchState.set_construct_start_half_capacity(true)
+	var snap: Dictionary = MatchState.export_state()
+	_check(bool(snap.get("construct_auto_buy_land", false)),
+		"construct settings: auto-buy land is exported")
+
+	MatchState.reset()
+	_check(not MatchState.construct_auto_buy_land, "construct settings: reset clears auto-buy land")
+	MatchState.import_state(snap)
+	_check(MatchState.construct_auto_buy_land, "construct settings: auto-buy land survives a round-trip")
+	_check(MatchState.construct_start_half_capacity, "construct settings: half-capacity survives a round-trip")
+
+	# A pre-existing save has no such key — it must default to off, not fail.
+	var legacy: Dictionary = snap.duplicate(true)
+	legacy.erase("construct_auto_buy_land")
+	MatchState.reset()
+	MatchState.import_state(legacy)
+	_check(not MatchState.construct_auto_buy_land,
+		"construct settings: a save predating the setting loads with it OFF")
+	MatchState.reset()
+
+
 func _test_modifiers_roundtrip() -> void:
 	Modifiers.reset()
 	TurnManager.current_turn = 50
@@ -3686,6 +3871,7 @@ func _test_deposit_penalty_modifier() -> void:
 		"sulphur": 1, "bauxite_ore": 1,
 	}
 	var recovery_unlocks := {}
+	# Keys are research_node_ids, not titles — apply_unlock_modifier accepts either.
 	for unlock_title in Modifiers.UNLOCK_MODIFIERS:
 		var raw_spec = Modifiers.UNLOCK_MODIFIERS[unlock_title]
 		var specs: Array = raw_spec if raw_spec is Array else [raw_spec]
@@ -3756,8 +3942,10 @@ func _test_additive_labour_cost_model() -> void:
 	var old_turn: int = int(TurnManager.current_turn)
 	TurnManager.current_turn = 1
 	# People-management unlocks now trim 10% each (was 5%).
-	var otm: Dictionary = Modifiers.UNLOCK_MODIFIERS.get("Operational Team Managers", {})
-	var shd: Dictionary = Modifiers.UNLOCK_MODIFIERS.get("Shift Handover Documentation", {})
+	# Looked up BY TITLE through the accessor: UNLOCK_MODIFIERS is keyed by research_node_id
+	# now, so indexing it with a title returns nothing.
+	var otm: Dictionary = Modifiers.unlock_spec_for("Operational Team Managers")
+	var shd: Dictionary = Modifiers.unlock_spec_for("Shift Handover Documentation")
 	_check(float(otm.get("pct", 0.0)) == -10.0 and float(shd.get("pct", 0.0)) == -10.0,
 		"labour unlocks: OTM and SHD each trim head-count by 10%")
 
@@ -4768,15 +4956,21 @@ func _test_live_unlock_conditions() -> void:
 		if research_titles.has(unlock_title):
 			duplicate_titles.append(unlock_title)
 		research_titles[unlock_title] = true
+	# Prereqs are research_node_ids since the id migration, so resolve against ids.
+	var research_node_ids: Dictionary = {}
+	for unlock_def in MatchState._unlock_defs:
+		var nid := str(unlock_def.get("research_node_id", ""))
+		if nid != "":
+			research_node_ids[nid] = true
 	var missing_prereqs: Array = []
 	for unlock_def in MatchState._unlock_defs:
 		for prereq in unlock_def.get("prereqs", []):
-			if not research_titles.has(str(prereq)):
+			if not research_node_ids.has(str(prereq)):
 				missing_prereqs.append("%s -> %s" % [unlock_def.title, prereq])
 	_check(duplicate_titles.is_empty(),
 		"research dataset has no duplicate unlock titles (got %s)" % [duplicate_titles])
 	_check(missing_prereqs.is_empty(),
-		"every research prerequisite resolves to an unlock title (got %s)" % [missing_prereqs])
+		"every research prerequisite resolves to a research_node_id (got %s)" % [missing_prereqs])
 
 	Modifiers.reset()
 	MatchState.reset()
@@ -5805,7 +5999,7 @@ func _test_goods_flow_graph() -> void:
 		if rid == "":
 			continue
 		var r: Dictionary = Catalog.get_recipe(rid)
-		if bool(n["gated"]) != (str(r.get("required_research", "")) != ""):
+		if bool(n["gated"]) != (str(r.get("tech_unlock_req", "")) != ""):
 			base_ok = false
 	_check(base_ok, "goods graph: defining recipes are game-start unless flagged gated")
 	# Owner ask 2026-07-18: the semiconductor chain is visible at game start —
@@ -7229,8 +7423,10 @@ func _test_ports() -> void:
 	_check(fields_ok, "every port has a tile_id and name")
 	_check(Catalog.tile_hex_distance("tile_5_10", "tile_5_10") == 0, "tile_hex_distance(self) == 0")
 	_check(Catalog.nearest_port_tile("tile_3_8") == "tile_5_10", "nearest_port_tile picks the closest port")
-	_check(Catalog.tile_label("tile_12_2") == "Miney McMineface - (12_2)", "tile_label uses nickname")
-	_check(Catalog.tile_label("tile_5_10") == "Stoneshore Docks - (5_10)", "tile_label falls back to city_name")
+	# Coordinates are comma-separated for the player; the underscore is an internal
+	# id separator and read as part of the name on screen.
+	_check(Catalog.tile_label("tile_12_2") == "Miney McMineface - (12, 2)", "tile_label uses nickname")
+	_check(Catalog.tile_label("tile_5_10") == "Stoneshore Docks - (5, 10)", "tile_label falls back to city_name")
 	_check(Catalog.infra_range("roads") == 2, "roads range is 2 tiles/turn")
 	_check(Catalog.infra_range("rail") == 4, "rail range is 4 tiles/turn")
 	_check(Catalog.all_infrastructure().size() == 5, "Catalog loads 5 infrastructure types")
@@ -8747,7 +8943,10 @@ func _test_recipe_requirements() -> void:
 
 func _test_research_recipe_and_level_tiers() -> void:
 	var graphitisation: Dictionary = Catalog.get_recipe("r_042")
-	_check(str(graphitisation.get("required_research", "")) == "Biomass Cracking",
+	# Gates store research_node_ids now; assert on the id the title resolves to, so the
+	# test keeps naming the node the designer knows while checking what the data holds.
+	_check(str(graphitisation.get("tech_unlock_req", ""))
+			== MatchState.research_node_id_for_title("Biomass Cracking"),
 		"bio-graphitisation is gated by Biochemistry's Biomass Cracking")
 	var has_biomass_node := false
 	for unlock in MatchState._unlock_defs:
@@ -9399,7 +9598,9 @@ func _test_policy_state() -> void:
 	# dormant pool (bio_chem_plant / spec_microbes don't exist — original state).
 	var r228: Dictionary = Catalog.get_recipe("r_228")
 	_check(not r228.is_empty(), "recipe: r_228 (Bio Ethylene) promotes")
-	_check(str(r228.get("required_research", "")) == "Biomass Cracking", "recipe: r_228 gated behind Biomass Cracking")
+	_check(str(r228.get("tech_unlock_req", ""))
+			== MatchState.research_node_id_for_title("Biomass Cracking"),
+		"recipe: r_228 gated behind Biomass Cracking")
 	_check(Catalog.get_recipe("r_155").is_empty(), "recipe: r_155 stays dormant (original pool state)")
 	var found_node := false
 	for d in MatchState._unlock_defs:

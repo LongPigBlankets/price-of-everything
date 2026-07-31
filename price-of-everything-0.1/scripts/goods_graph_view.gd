@@ -94,7 +94,7 @@ func _enter() -> void:
 
 ## Hand the graph world the shared layout. GoodsFlowGraph.build() is a pure function of
 ## the Catalog (research unlocks do NOT change it — the "gated" flag is the static
-## required_research column), so it is computed once and cached: world_map warms that
+## tech_unlock_req column), so it is computed once and cached: world_map warms that
 ## cache under the loading screen, and every open — this one included — returns the
 ## cached layout instantly instead of re-running the ~120 ms Sugiyama pass.
 func _rebuild_graph() -> void:

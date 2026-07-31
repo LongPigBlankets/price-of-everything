@@ -20,6 +20,7 @@ inputs + outputs are existing goods and the building resolves). Run:
 import csv
 import os
 import re
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -34,6 +35,7 @@ HEADER = [
     "output_1", "output_qty_1", "output_2", "output_qty_2", "output_3", "output_qty_3",
     "output_4", "output_qty_4", "output_5", "output_qty_5",
     "requirements", "pollution_output", "pollution_sensitivity", "category", "terminal_turns",
+    "tech_unlock_req",
 ]
 
 NAME_FIX = {"copper_wire": "copper_wiring", "plasticss": "plastics"}
@@ -65,7 +67,7 @@ def fix(good):
 
 
 def make_row(rid, name, building, inputs, energy, outputs, req, cat,
-             poll_out="", poll_sens="", terminal=""):
+             poll_out="", poll_sens="", terminal="", tech_unlock_req=""):
     row = {h: "" for h in HEADER}
     row["recipe_id"] = rid
     row["display_name"] = name
@@ -82,6 +84,10 @@ def make_row(rid, name, building, inputs, energy, outputs, req, cat,
     row["pollution_sensitivity"] = poll_sens
     row["category"] = cat
     row["terminal_turns"] = terminal
+    # research_node_id gating the recipe (research_unlocks.csv), or a bare cheat token
+    # like "hydro". Carried through from the master so a rebuild can't silently ungate
+    # every tech-locked recipe — which is exactly what this script used to do.
+    row["tech_unlock_req"] = tech_unlock_req
     return row
 
 
@@ -125,11 +131,39 @@ def parse_master(path):
                 (raw.get("pollution_output") or "").strip(),
                 (raw.get("pollution_sensitivity") or "").strip(),
                 (raw.get("terminal_turns") or "").strip(),
+                (raw.get("tech_unlock_req") or "").strip(),
             ))
     return out
 
 
+def _refuse_unless_forced():
+    """This script is a 2026-06 BOOTSTRAP, not a maintained pipeline. Running it today
+    destroys live data — measured 2026-07-29 against the current files:
+
+      * RENUMBERS recipe ids. It ignores the master's own recipe_id and reassigns
+        r_001.. by iteration order, so 131 ids would point at a DIFFERENT recipe
+        (r_046 'Haber Bosch Process' -> 'Polysilicon (Siemens) Smelting'). Saves,
+        tutorial steps (r_053/r_056), research gates and tests all reference ids.
+      * DELETES 28 recipes (203 -> 175) that were authored straight into
+        recipes_all.csv and never back-ported to the master.
+      * DROPS 4 columns it has no notion of: catalysts and the three labour_* fields.
+      * Reverts the 12 hardcoded CURRENT recipes to their June quantities, discarding
+        every balance pass since.
+
+    `tech_unlock_req` is now carried through (that part works — 42 of 62 gates survive),
+    but the script as a whole must not be run until it is rewritten to read the live file
+    as its base and stop renumbering. The flag exists so a future rewrite can test itself.
+    """
+    if "--i-know-this-renumbers-and-deletes" in sys.argv:
+        return
+    print(__doc__)
+    print(_refuse_unless_forced.__doc__)
+    print("REFUSING TO RUN. Re-run with --i-know-this-renumbers-and-deletes if you truly mean it.")
+    raise SystemExit(2)
+
+
 def main():
+    _refuse_unless_forced()
     rows = []
     current_names = set()
     for i, (name, bld, ins, e, outs, req, cat) in enumerate(CURRENT, start=1):

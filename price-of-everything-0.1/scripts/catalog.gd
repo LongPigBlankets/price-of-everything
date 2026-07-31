@@ -285,12 +285,16 @@ func remove_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 			_route_cache.clear()   # routing network changed: cached paths may now be invalid
 
 func tile_label(tile_id: String) -> String:
-	# "name - (a_b)", or "(a_b)" when the tile has no nickname/city_name.
+	# "name - (a, b)", or "(a, b)" when the tile has no nickname/city_name.
+	# The coordinate is comma-separated for the player: the raw id's underscore is an
+	# internal key separator and read as part of the name on screen. This is the single
+	# place tile coordinates become display text (the ledger's own label delegates here),
+	# so nothing downstream parses the result back into an id.
 	if tile_id == "":
 		return ""
 	var coord_part := tile_id
 	if coord_part.begins_with("tile_"):
-		coord_part = coord_part.substr(5)
+		coord_part = coord_part.substr(5).replace("_", ", ")
 	var label_name: String = _tile_names.get(tile_id, "")
 	return ("%s - (%s)" % [label_name, coord_part]) if label_name != "" else ("(%s)" % coord_part)
 
@@ -667,7 +671,7 @@ func _compute_embodied_carbon() -> void:
 	_embodied_carbon.clear()
 	var base_routes := {}
 	for r in _all_recipes:
-		if str(r.get("required_research", "")) != "":
+		if str(r.get("tech_unlock_req", "")) != "":
 			continue
 		var out_id: String = str(r.get("output_good_id", ""))
 		if out_id != "":
@@ -803,7 +807,7 @@ func _parse_recipe_row(headers: PackedStringArray, line: PackedStringArray) -> D
 		"labour_skilled_required": int(raw.get("labour_skilled_required", "-1")) if str(raw.get("labour_skilled_required", "-1")).is_valid_int() else -1,
 		"labour_h_skilled_required": int(raw.get("labour_h_skilled_required", "-1")) if str(raw.get("labour_h_skilled_required", "-1")).is_valid_int() else -1,
 		"requirements": _parse_requirements(raw.get("requirements", "")),
-		"required_research": raw.get("required_research", ""),
+		"tech_unlock_req": raw.get("tech_unlock_req", ""),
 	}
 
 # Parses the requirements string into a list of typed entries.
@@ -848,11 +852,11 @@ func get_recipe(recipe_id: String) -> Dictionary:
 	return _recipes_by_id.get(recipe_id, {})
 
 func get_recipes_for_building(building_id: String) -> Array:
-	# Feature 1: hide recipes gated behind un-researched tech (required_research
+	# Feature 1: hide recipes gated behind un-researched tech (tech_unlock_req
 	# column). Base recipes (empty column) are always available.
 	var out: Array = []
 	for r in _recipes_by_building.get(building_id, []):
-		var req: String = str(r.get("required_research", ""))
+		var req: String = str(r.get("tech_unlock_req", ""))
 		if req == "" or MatchState.is_unlocked(req):
 			out.append(r)
 	return out

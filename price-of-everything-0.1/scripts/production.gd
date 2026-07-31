@@ -748,11 +748,20 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 	if dep_token != "" and MatchState.deposit_depleted(tile_id, dep_token):
 		return
 	var mined := 0
+	# What the DEPOSIT is charged, in unmodified recipe units. Deposit life is deliberately
+	# independent of output multipliers: research, advisor bonuses, building levels, the
+	# workforce and the deposit penalty all change how much you GET per turn, never how
+	# fast the ore runs out. A 2000-unit seam therefore lasts the same number of turns
+	# whatever you have unlocked, so investing in yield can't quietly burn the field down.
+	# (Consequence to know: a building throttled by the startup ramp or by intermittent
+	# power still charges the deposit its full base rate for the turn.)
+	var mined_base := 0
 	var recipe_id: String = str(recipe.get("recipe_id", ""))
 	var recipe_type: String = str(recipe.get("recipe_type", "")).to_lower()
 	for output in _recipe_output_items(recipe):
 		var output_name: String = output.get("internal_name", "")
 		var output_qty: int = output.get("qty", 0)
+		var base_qty: int = output_qty   # captured before any multiplier touches it
 
 		if output_name == "" or output_qty <= 0:
 			continue
@@ -799,15 +808,18 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		summary.produced[good.id] = summary.produced.get(good.id, 0) + output_qty
 		_record_building_output(building.instance_id, good.id, output_qty)
 		mined += output_qty
+		mined_base += base_qty
 	if dep_token != "" and mined > 0:
-		MatchState.deplete_deposit(tile_id, dep_token, mined)
-		_record_deposit_runway(building, dep_token, mined, summary)
+		# Charged at the base rate, not `mined` — see the mined_base comment above.
+		MatchState.deplete_deposit(tile_id, dep_token, mined_base)
+		_record_deposit_runway(building, dep_token, mined_base, summary)
 
 
-## Flag a mine whose deposit is within DEPOSIT_WARNING_TURNS of running out, using THIS
-## turn's actual extraction as the rate (so an upgrade or an output modifier shortens the
-## runway the same turn it lands). Exhaustion was previously silent: the input bill simply
-## doubled as the chain started buying what it used to mine, with no warning at all.
+## Flag a mine whose deposit is within DEPOSIT_WARNING_TURNS of running out. The rate is
+## the turn's BASE extraction (`mined_base`), matching what actually gets charged to the
+## deposit — so the runway a player is shown is stable and an output upgrade no longer
+## appears to shorten the field's life. Exhaustion was previously silent: the input bill
+## simply doubled as the chain started buying what it used to mine, with no warning at all.
 func _record_deposit_runway(building: Dictionary, token: String, mined_this_turn: int, summary: Dictionary) -> void:
 	if mined_this_turn <= 0:
 		return

@@ -12,6 +12,7 @@ extends Control
 
 signal good_selected(internal_name: String)   # phase 2 hook (focus / recipe-swap mode)
 
+const LaneOrder := preload("res://scripts/lane_order.gd")
 const GoodsFlowGraph := preload("res://scripts/goods_flow_graph.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 
@@ -820,98 +821,10 @@ func _f_run_clear(y: float, used: Array, port_ys: Array) -> bool:
 	return true
 
 
-## Crossings between two channel legs when `a` takes the lane LEFT of `b`.
-## A leg [ei, leg, ys, ye, dir] is a Z shape: entry stub at ys arriving from
-## its source side (left when dir==1, right when dir==-1), a vertical between
-## ys and ye at its lane, and an exit run at ye leaving to its destination
-## side. Both horizontals extend past every other lane in the channel, so a
-## crossing happens exactly when one leg's horizontal y falls strictly inside
-## the other leg's vertical span on the side that horizontal actually covers.
-func _f_leg_cross(a: Array, b: Array) -> int:
-	var n := 0
-	# b's horizontal on the LEFT side (entry when travelling right, exit when
-	# travelling left) sweeps across a's vertical.
-	if _f_between(float(b[2]) if int(b[4]) == 1 else float(b[3]), a):
-		n += 1
-	# a's horizontal on the RIGHT side sweeps across b's vertical.
-	if _f_between(float(a[3]) if int(a[4]) == 1 else float(a[2]), b):
-		n += 1
-	return n
-
-
-func _f_between(y: float, leg: Array) -> bool:
-	var lo := minf(float(leg[2]), float(leg[3]))
-	var hi := maxf(float(leg[2]), float(leg[3]))
-	return y > lo + 0.5 and y < hi - 0.5
-
-
-## Left-to-right lane order for one channel minimising total pairwise
-## crossings. Pair costs are order-decomposable, so subset DP is exact; past
-## 12 legs (unseen in practice) a deterministic pairwise-improvement bubble
-## keeps it O(n^2).
+## Lane ordering now lives in `lane_order.gd` so the empire view can use the same solver —
+## both charts route orthogonal edges through vertical channels and the problem is identical.
 func _f_lane_order(reqs: Array) -> Array:
-	var n := reqs.size()
-	if n <= 1:
-		return reqs.duplicate()
-	var base := reqs.duplicate()
-	base.sort_custom(func(a: Array, b: Array) -> bool:
-		return float(a[3]) < float(b[3]) \
-			or (float(a[3]) == float(b[3]) and int(a[0]) < int(b[0])))
-	var w: Array = []   # w[i][j] = crossings if base[i] sits left of base[j]
-	for i: int in range(n):
-		var row := PackedInt32Array()
-		row.resize(n)
-		for j: int in range(n):
-			if i != j:
-				row[j] = _f_leg_cross(base[i] as Array, base[j] as Array)
-		w.append(row)
-	var order: Array = []
-	if n <= 12:
-		var full := (1 << n) - 1
-		var dp := PackedInt32Array()
-		var par := PackedInt32Array()
-		dp.resize(full + 1)
-		par.resize(full + 1)
-		for m: int in range(1, full + 1):
-			dp[m] = 1 << 24
-		for m: int in range(full):
-			if int(dp[m]) >= (1 << 24):
-				continue
-			for k: int in range(n):
-				if m & (1 << k):
-					continue
-				var cost := int(dp[m])
-				for i: int in range(n):
-					if m & (1 << i):
-						cost += int((w[i] as PackedInt32Array)[k])
-				var nm := m | (1 << k)
-				if cost < int(dp[nm]):
-					dp[nm] = cost
-					par[nm] = k
-		var m := full
-		while m != 0:
-			var k := int(par[m])
-			order.push_front(k)
-			m &= ~(1 << k)
-	else:
-		for i: int in range(n):
-			order.append(i)
-		var improved := true
-		var passes := 0
-		while improved and passes < n:
-			improved = false
-			passes += 1
-			for i: int in range(n - 1):
-				var a := int(order[i])
-				var b := int(order[i + 1])
-				if int((w[b] as PackedInt32Array)[a]) < int((w[a] as PackedInt32Array)[b]):
-					order[i] = b
-					order[i + 1] = a
-					improved = true
-	var out: Array = []
-	for idx in order:
-		out.append(base[int(idx)])
-	return out
+	return LaneOrder.solve(reqs)
 
 
 ## Nearest tier column for a good's web position (columns are non-uniform; see
@@ -1595,8 +1508,12 @@ func _draw_grid(font: Font) -> void:
 		if gated:
 			var name_w := _BEBAS.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
 			_draw_lock_tag(rect.position + Vector2(name_w + 26.0, 24.0), 1.0)
+			# tech_unlock_req stores a research_node_id — show the node's TITLE, or the
+			# raw value when it has no node (bare cheat tokens like "hydro").
+			var gate_raw := str(recipe.get("tech_unlock_req", ""))
+			var gate_name := MatchState.research_title_for_node_id(gate_raw)
 			draw_string(font, rect.position + Vector2(2.0, 54.0),
-				"requires research: %s" % str(recipe.get("required_research", "")),
+				"requires research: %s" % (gate_name if gate_name != "" else gate_raw),
 				HORIZONTAL_ALIGNMENT_LEFT, rect.size.x, 14, Color("#f3f8fd"))
 		# Inputs (or a note when the recipe takes none — wind, solar, hydro).
 		var inputs: Array = island["inputs"]

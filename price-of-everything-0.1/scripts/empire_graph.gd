@@ -19,11 +19,39 @@ const EmpireLayout := preload("res://scripts/empire_layout.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const BuildingIcon := preload("res://scripts/building_icon.gd")
+const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
+const NodePanel := preload("res://scripts/empire_node_panel.gd")
 
 const PORT_BUILDING_ID := "b_004"
 const BASE_HALF := Vector2(152.0, 90.0)           # L1 panel half-extent in layout px; level-scaled per node
+
+
+## The sprite's opaque content as a rect measured from the PANEL CENTRE, in unscaled panel px.
+## The 800px texture is drawn into a SPRITE_PX box (aspect-kept, so a uniform half scale) at the
+## top of the panel, and the panel centre sits SPRITE_PX/2 above the plate — hence the offset.
+static func _sprite_content_offset(sprite_tex) -> Rect2:
+	if not (MatchState.use_empire_sprite_view and sprite_tex != null):
+		return Rect2()
+	var used: Rect2 = BuildingSprites.content_rect(sprite_tex)
+	if used.size.x <= 0.0 or used.size.y <= 0.0:
+		return Rect2()
+	var k: float = NodePanel.SPRITE_PX / maxf(1.0, float(sprite_tex.get_width()))
+	var centre := Vector2(NodePanel.SPRITE_PX * 0.5,
+			(NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
+	return Rect2(used.position * k - centre, used.size * k)
+
+
+## Half-extent of a node as the layout must see it. Classic: the level-scaled plate. Sprite
+## view: a box wide enough for the sprite and tall enough for sprite + plate, centred on the
+## Control (which is why `plate_dy` is exactly half the sprite height).
+static func _node_half(level: int, sprite_tex) -> Vector2:
+	var plate: Vector2 = BASE_HALF * EmpireLayout.level_scale(level)
+	if not (MatchState.use_empire_sprite_view and sprite_tex != null):
+		return plate
+	return Vector2(maxf(BASE_HALF.x, NodePanel.SPRITE_PX * 0.5),
+			(NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
 const PORT_HALF := Vector2(86.0, 78.0)            # gold port hexagon half-extent
 
 # Ports always read left -> right in this order. Matched as case-insensitive substrings of the name.
@@ -63,6 +91,7 @@ static func build(terrain: Object) -> Dictionary:
 			out_name = _good_name(out_good)
 			if out_good != "":
 				good_icon = GoodIcons.texture_for(out_good, out_internal, true)
+		var sprite_tex: Texture2D = BuildingSprites.texture_for(str(bdata.get("internal_name", "")), level)
 
 		nodes.append({
 			"iid": iid,
@@ -75,9 +104,37 @@ static func build(terrain: Object) -> Dictionary:
 			"output_qty": out_qty,
 			"tile_id": str(b.get("tile_id", "")),
 			"seed": _tile_world_pos(terrain, str(b.get("tile_id", "")), idx),
-			"half": BASE_HALF * EmpireLayout.level_scale(level),
+			# The half-extent the LAYOUT separates by. In sprite view the panel is not the
+			# plate: it is SPRITE_PX tall growing UPWARD with the plate hung beneath, so
+			# separating by the plate alone let sprites sit on top of their neighbours and
+			# on the port hexes above them. Plates stay L1-sized in sprite view (the sprite
+			# carries the level), which is why this does not level-scale.
+			"half": _node_half(level, sprite_tex),
+			# The PLATE's own half-extent — what edges anchor to. Distinct from `half`, which
+			# is the layout footprint: in sprite view those differ by the whole 400px sprite,
+			# and anchoring to `half` puts every arrow out in open space beside the plate.
+			# Plates stay L1-sized in sprite view, so this does not level-scale there either.
+			"plate_half": (BASE_HALF if (MatchState.use_empire_sprite_view and sprite_tex != null)
+					else BASE_HALF * EmpireLayout.level_scale(level)),
+			# The sprite's OPAQUE box, as an offset rect from the panel centre (unscaled px).
+			# Routing may cross a sprite's transparent padding — that is the whole point of
+			# dropping the sprite behind the lines — but never the building itself.
+			"sprite_rect": _sprite_content_offset(sprite_tex),
+			# Set below once the sell edges are known: the icon of the port this building
+			# ships to, which the plate wears as a gold hex badge instead of drawing a line
+			# across the whole view. Null on buildings that do not sell to market.
+			"port_badge": null,
 			"is_port": false,
 			"icon": BuildingIcon.clean_texture(bid, str(bdata.get("internal_name", ""))),
+			# 2.5D isometric sprite (null while unsprited) — drawn large above the plate
+			# when `swap empire view sprite` is on; see building_sprites.gd.
+			"sprite": sprite_tex,
+			# Screen-px offset from the panel CENTRE down to the PLATE centre. In sprite view
+			# the Control grows upward by the 400px sprite, so the plate centre sits half the
+			# sprite height below the Control centre; edges anchor to the plate via this
+			# (empire_graph_world._plate_screen_of). Zero in classic mode / unsprited.
+			"plate_dy": ((NodePanel.SPRITE_PX * 0.5)
+					if (MatchState.use_empire_sprite_view and sprite_tex != null) else 0.0),
 			"good_icon": good_icon,
 			# The six RAG indicators as DATA, computed once here (single source: building_status.gd).
 			"rag": BuildingStatus.rag_indicators(b, recipe, false),
@@ -108,6 +165,7 @@ static func build(terrain: Object) -> Dictionary:
 			"order": _port_order(pname),
 			"seed": _tile_world_pos(terrain, str((p as Dictionary).get("tile_id", "")), 100000 + pidx),
 			"half": PORT_HALF,
+			"plate_half": PORT_HALF,
 			"is_port": true,
 			"icon": port_icon,
 		})
@@ -118,13 +176,46 @@ static func build(terrain: Object) -> Dictionary:
 			return int(a["order"]) < int(b["order"])
 		return str(a["name"]) < str(b["name"]))
 
+	# The BUY row: the same four ports mirrored on the TOP edge — market inputs arrive
+	# through them, market sales leave through the bottom row. One mirror per port, same
+	# name and fixed order; only the iid differs so the two rows stay distinct nodes.
+	var buy_ports: Array = []
+	for p in ports:
+		var bp: Dictionary = (p as Dictionary).duplicate()
+		bp["iid"] = "buy_" + str((p as Dictionary)["iid"])
+		bp["mirror_of"] = str((p as Dictionary)["iid"])
+		buy_ports.append(bp)
+
+	var sell_edges: Array = _build_sell_edges(nodes, ports, consumers)
+	_stamp_port_badges(nodes, ports, sell_edges)
 	return {
 		"nodes": nodes,
 		"ports": ports,
+		"buy_ports": buy_ports,
 		"edges": _build_edges(producers, consumers),
-		"sell_edges": _build_sell_edges(nodes, ports, consumers),
+		"sell_edges": sell_edges,
+		"market_edges": _build_market_edges(nodes, ports, consumers, producers),
 		"signature": _signature(nodes),
 	}
+
+
+## Give every building that ships to market the icon of the port it ships to. The empire view
+## wears this as a small gold hex on the plate INSTEAD of drawing a line across the whole graph:
+## measured, the port lines were 22 of 30 edges and 37 of 43 crossings, while carrying a
+## building-to-MARKET fact rather than the building-to-building relationships the view is for.
+static func _stamp_port_badges(nodes: Array, ports: Array, sell_edges: Array) -> void:
+	var icon_of: Dictionary = {}
+	for p in ports:
+		icon_of[str((p as Dictionary)["iid"])] = (p as Dictionary).get("icon")
+	var badge: Dictionary = {}
+	for e in sell_edges:
+		var f := str((e as Dictionary).get("from", ""))
+		if f != "" and not badge.has(f):
+			badge[f] = icon_of.get(str((e as Dictionary).get("to", "")))
+	for n in nodes:
+		var iid := str((n as Dictionary)["iid"])
+		if badge.has(iid):
+			(n as Dictionary)["port_badge"] = badge[iid]
 
 
 ## Market-sale edges: a building whose output good is NOT consumed by any player building is
@@ -158,6 +249,42 @@ static func _build_sell_edges(nodes: Array, ports: Array, consumers: Dictionary)
 		if ptile != "" and port_by_tile.has(ptile):
 			sell.append({"from": iid, "to": port_by_tile[ptile], "good": og, "actual": actual})
 	return sell
+
+
+## Market-input edges: one dashed line per building that consumes a good NO player building
+## produces — by the graph's own capability model that input can only be bought from the
+## market. One edge per building (its alphabetically first market-fed good), sourced from
+## the BUY mirror of the building's nearest port — the same nearest-port heuristic (and the
+## same honesty caveat) as the sell edges.
+static func _build_market_edges(nodes: Array, ports: Array, consumers: Dictionary, producers: Dictionary) -> Array:
+	var fed: Dictionary = {}                          # iid -> first market-fed good
+	var goods: Array = consumers.keys()
+	goods.sort()                                      # deterministic pick of the "first" good
+	for g in goods:
+		if producers.has(g) and not (producers[g] as Array).is_empty():
+			continue
+		for iid in consumers[g]:
+			if not fed.has(iid):
+				fed[iid] = g
+	var tile_of: Dictionary = {}
+	for n in nodes:
+		tile_of[str(n["iid"])] = str(n["tile_id"])
+	var port_by_tile: Dictionary = {}
+	for p in ports:
+		port_by_tile[str(p["tile_id"])] = str(p["iid"])
+	var fallback := "buy_" + str((ports[0] as Dictionary)["iid"]) if not ports.is_empty() else ""
+	var out: Array = []
+	var iids: Array = fed.keys()
+	iids.sort()
+	for iid in iids:
+		var src := fallback
+		if Catalog.has_method("nearest_port_tile") and tile_of.has(iid):
+			var ptile := str(Catalog.nearest_port_tile(tile_of[iid]))
+			if port_by_tile.has(ptile):
+				src = "buy_" + str(port_by_tile[ptile])
+		if src != "":
+			out.append({"from": src, "to": iid, "good": fed[iid]})
+	return out
 
 
 static func _port_order(name: String) -> int:

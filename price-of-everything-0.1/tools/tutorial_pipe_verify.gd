@@ -92,7 +92,9 @@ func _run() -> void:
 		"factory tile has NO cables (the power lesson still needs the player to lay one)")
 
 	# --- Research sub-flow: the better glass recipe r_054 is gated behind High Strength Glassmaking.
-	_check(str(Catalog.get_recipe("r_054").get("required_research", "")) == "High Strength Glassmaking",
+	# Gates store research_node_ids since the id migration — resolve the title to its id.
+	_check(str(Catalog.get_recipe("r_054").get("tech_unlock_req", ""))
+			== MatchState.research_node_id_for_title("High Strength Glassmaking"),
 		"r_054 (better glass) is gated behind the High Strength Glassmaking research node")
 	_check(not MatchState.is_unlocked("High Strength Glassmaking"),
 		"High Strength Glassmaking starts locked (player unlocks it via a free unlock)")
@@ -130,7 +132,7 @@ func _run() -> void:
 	var wf_bid := str(wf_recipe.get("building_id", ""))
 	_check(wf_bid != "" and not Catalog.get_building(wf_bid).is_empty(),
 		"r_056 (Window Manufacturing) maps to a real buildable building (got '%s')" % wf_bid)
-	_check(str(wf_recipe.get("required_research", "")) == "",
+	_check(str(wf_recipe.get("tech_unlock_req", "")) == "",
 		"r_056 is not research-gated (its build row always shows)")
 	# The tile panel exposes the named "Buy Buildings" button (build_close_buy spotlight).
 	MatchState.focus_tile_requested.emit(WINDOW_TILE)

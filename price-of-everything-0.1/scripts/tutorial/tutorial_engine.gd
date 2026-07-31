@@ -23,6 +23,7 @@ var _entry_turn: int = 0     # turn number when the current step was entered (fo
 var _overlay: Control = null
 var _poll: Timer = null
 var _wired: bool = false
+var _saved_focus_dur := 0.3  # camera's UI pan duration before the tutorial slowed it
 
 
 func _ready() -> void:
@@ -292,10 +293,19 @@ func _ensure_locked_panel_open(step: Dictionary) -> void:
 
 # ── Board confinement (camera clamp) ─────────────────────────────────────────────────
 
+## How long a tutorial step's recentring pan takes. Matches the coach overlay's own
+## settle (CoachOverlay.REVEAL_DUR) so the camera and the spotlight land together —
+## at the stock 0.3s the map snapped while the light was still travelling, which is
+## most of what made each step read as jerky.
+const FOCUS_PAN_DUR := 1.0
+
 func _apply_board_bounds() -> void:
 	var cam := get_tree().get_first_node_in_group("camera")
 	if cam == null or not cam.has_method("set_bounds_rect"):
 		return
+	if "ui_focus_duration" in cam:
+		_saved_focus_dur = float(cam.ui_focus_duration)
+		cam.ui_focus_duration = FOCUS_PAN_DUR
 	var rect := _board_world_rect()
 	if rect.has_area():
 		cam.set_bounds_rect(rect)
@@ -303,7 +313,11 @@ func _apply_board_bounds() -> void:
 
 func _restore_camera() -> void:
 	var cam := get_tree().get_first_node_in_group("camera")
-	if cam != null and cam.has_method("clear_bounds_rect"):
+	if cam == null:
+		return
+	if "ui_focus_duration" in cam:
+		cam.ui_focus_duration = _saved_focus_dur   # snappy again for bell/briefing jumps
+	if cam.has_method("clear_bounds_rect"):
 		cam.clear_bounds_rect()
 
 
