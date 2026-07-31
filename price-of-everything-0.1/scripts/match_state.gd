@@ -269,6 +269,10 @@ var peak_profit_per_turn: float = 0.0              # best profit/turn reached (a
 
 # --- Output routing ---
 var output_stockpile_destinations: Dictionary = {}  # instance_id -> {tile_id, good_id}
+# Optional split routes. Shape: instance_id -> {good_id -> [{tile_id, qty}]}. A
+# qty of 0 means "automatic equal share"; otherwise it is the units per turn sent
+# to that tile. Kept separate from the legacy single-route map for save compatibility.
+var output_split_destinations: Dictionary = {}
 var output_special_order_destinations: Dictionary = {}  # instance_id -> {good_id -> special_order_id}
 const MARKET_DESTINATION := "__market__"  # sentinel tile_id: route this building's output to market
 # Per-good SHIPPING CAP for an explicit tile route (the CTRL+click "send a specific
@@ -421,11 +425,20 @@ var debug_turn_logs_enabled: bool = false
 # Session-only; never persisted. See docs/building-detail-v2-plan.md.
 var use_bdp_v2: bool = true
 
-# Debug-only: `swap empire view sprite` switches the empire view to the sprite style —
-# no background pattern, a large 2.5D building sprite above each node with its metal
-# plate attached below (buildings without sprites keep the classic full-card layout).
-# Session-only; never persisted.
-var use_empire_sprite_view: bool = false
+# The empire view's DEFAULT look: no background pattern, a large 2.5D building sprite above
+# each node with its metal plate attached below. Buildings without a sprite keep the classic
+# full-card layout, so partial sprite coverage degrades gracefully.
+# `swap empire view sprite` toggles BACK to the classic card style. Session-only; never persisted.
+var use_empire_sprite_view: bool = true
+
+## Empire view: mark buildings that ship to market with a gold port hex on the sprite instead
+## of drawing a line to the port row. `swap port badge` toggles back to lines.
+## Session-only; never persisted.
+var show_port_badge: bool = true
+
+## Debug-only: `swap empire button` alternates the bottom-menu Empire View icon
+## between the current skyline and the badge-centre alternative. Session-only.
+var use_empire_button_badge: bool = false
 
 # Debug-only: `swap construct_panel` keeps the classic construct panel available
 # for comparison. The redesigned construct panel is the normal default.
@@ -505,6 +518,9 @@ signal encyclopedia_entry_requested(entry_id: String)
 ## A UI element (top-bar module, Resources-panel button) asked to toggle the
 ## full-screen Goods Graph view (scripts/goods_graph_view.gd).
 signal goods_graph_requested
+## A bottom-menu control asked to toggle the full-screen Empire View
+## (scripts/empire_view.gd).
+signal empire_view_requested
 ## The Goods Graph's expanded card asked for a good's Encyclopedia entry.
 signal encyclopedia_good_requested(good_id: String)
 ## A UI element (e.g. the tile-view intermittency "see more" link) asked to open the
@@ -547,6 +563,7 @@ signal special_order_overflow_ready(record: Dictionary)
 # active detail panel. Session-only.
 signal bdp_v2_changed(enabled: bool)
 signal construct_panel_v2_changed(enabled: bool)
+signal empire_button_icon_changed(use_badge: bool)
 signal construct_settings_changed
 ## A UI surface (notification deep-link, etc.) asks the map to focus a tile:
 ## centre the camera on it and open its tile panel. world_map handles it.
@@ -1762,7 +1779,8 @@ func _load_unlock_defs() -> void:
 			"rank": rank_raw if rank_raw != "" else "I",
 			"action": _csv_at(row, idx, "Action"),
 			"object": _csv_at(row, idx, "Object"),
-			"qty": int(q) if q.is_valid_int() else 0,
+			"qty": int(q) if q.is_valid_int() else _leading_int(q, 0),
+			"quantity_raw": q,
 			"unit": _csv_at(row, idx, "Unit"),
 			"prereqs": prereqs,
 			"description": _csv_at(row, idx, "description"),
@@ -1923,6 +1941,14 @@ func unlock_condition_text(title: String) -> String:
 	var unit := str(d.get("unit", "")).strip_edges()
 	if action.is_empty() or object_name.is_empty() or qty <= 0 or unit.is_empty():
 		return ""
+	if action == "Produce All":
+		var goods := object_name.split("|", false)
+		var quantities := str(d.get("quantity_raw", "")).split("|", false)
+		if goods.size() == quantities.size() and not goods.is_empty():
+			var parts: Array = []
+			for index in goods.size():
+				parts.append("%s %s" % [str(quantities[index]), str(goods[index]).capitalize()])
+			return "Produce %s" % _join_and(parts)
 	var ul := unit.to_lower()
 	if ul == "turns":
 		return "%s %s for %d turns" % [action, object_name, qty]
@@ -2000,6 +2026,17 @@ func _live_condition_met(d: Dictionary) -> bool:
 		"Produce":
 			var produce_good := _research_good_id(obj)
 			return produce_good != "" and Production.lifetime_total(produce_good) >= need
+		"Produce All":
+			var goods := obj.split("|", false)
+			var quantities := str(d.get("quantity_raw", need)).split("|", false)
+			if goods.is_empty() or goods.size() != quantities.size():
+				return false
+			for index in goods.size():
+				var good_id := _research_good_id(str(goods[index]))
+				var quantity_text := str(quantities[index])
+				if good_id == "" or not quantity_text.is_valid_int() or Production.lifetime_total(good_id) < int(quantity_text):
+					return false
+			return true
 		"Sell":
 			if _research_key(obj) == "freight":
 				return MarketState.lifetime_sold_total() >= need
@@ -2119,6 +2156,15 @@ func _research_condition_issue(d: Dictionary) -> String:
 	if action == "Own":
 		if _research_key(obj) != "land" and _research_building_targets(obj).is_empty():
 			return "unknown ownership target"
+		return ""
+	if action == "Produce All":
+		var goods := obj.split("|", false)
+		var quantities := str(d.get("quantity_raw", "")).split("|", false)
+		if goods.is_empty() or goods.size() != quantities.size():
+			return "invalid multi-good production condition"
+		for index in goods.size():
+			if _research_good_id(str(goods[index])) == "" or not str(quantities[index]).is_valid_int():
+				return "unknown good target"
 		return ""
 	if action in ["Produce", "Sell"]:
 		if action == "Sell" and _research_key(obj) == "freight":
@@ -2665,6 +2711,7 @@ func reset() -> void:
 	buildings.clear()
 	tile_buildings.clear()
 	output_stockpile_destinations.clear()
+	output_split_destinations.clear()
 	output_special_order_destinations.clear()
 	output_ship_quantities.clear()
 	pending_output_stockpile_selection.clear()
@@ -2746,6 +2793,7 @@ func debug_dump() -> Dictionary:
 		"buildings": _buildings_for_save(),
 		"tile_buildings": tile_buildings.duplicate(true),
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
+		"output_split_destinations": output_split_destinations.duplicate(true),
 		"output_special_order_destinations": output_special_order_destinations.duplicate(true),
 		"output_ship_quantities": output_ship_quantities.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
@@ -2803,6 +2851,7 @@ func export_state() -> Dictionary:
 		"sell_mode": sell_mode,
 		"route_objective": route_objective,
 		"output_stockpile_destinations": output_stockpile_destinations.duplicate(true),
+		"output_split_destinations": output_split_destinations.duplicate(true),
 		"output_special_order_destinations": output_special_order_destinations.duplicate(true),
 		"output_ship_quantities": output_ship_quantities.duplicate(true),
 		"input_tile_only": input_tile_only.duplicate(true),
@@ -2900,6 +2949,7 @@ func import_state(d: Dictionary) -> void:
 	sell_mode = int(d.get("sell_mode", SellMode.STOCKPILE_ALL))
 	route_objective = int(d.get("route_objective", RouteObjective.FASTEST))
 	output_stockpile_destinations = (d.get("output_stockpile_destinations", {}) as Dictionary).duplicate(true)
+	output_split_destinations = (d.get("output_split_destinations", {}) as Dictionary).duplicate(true)
 	output_special_order_destinations = (d.get("output_special_order_destinations", {}) as Dictionary).duplicate(true)
 	output_ship_quantities = (d.get("output_ship_quantities", {}) as Dictionary).duplicate(true)
 	input_tile_only = (d.get("input_tile_only", {}) as Dictionary).duplicate(true)
@@ -3024,9 +3074,21 @@ func toggle_use_bdp_v2() -> bool:
 ## Debug cheat: toggle the empire view between the sprite style (big 2.5D sprites,
 ## plates below, no backdrop) and the classic card style. Returns the new state.
 ## Session-only, never persisted.
+func toggle_show_port_badge() -> bool:
+	show_port_badge = not show_port_badge
+	return show_port_badge
+
+
 func toggle_use_empire_sprite_view() -> bool:
 	use_empire_sprite_view = not use_empire_sprite_view
 	return use_empire_sprite_view
+
+## Debug cheat: switch the bottom-menu Empire View icon to/from its badge-centre
+## alternative. Session-only, so it is safe for in-match visual comparison.
+func toggle_use_empire_button_badge() -> bool:
+	use_empire_button_badge = not use_empire_button_badge
+	empire_button_icon_changed.emit(use_empire_button_badge)
+	return use_empire_button_badge
 
 func set_use_construct_panel_v2(enabled: bool) -> bool:
 	if enabled == use_construct_panel_v2:
@@ -3100,12 +3162,13 @@ func set_route_objective(objective: int) -> void:
 	route_objective = objective
 	route_objective_changed.emit(objective)
 
-func begin_output_stockpile_selection(instance_id: String, good_id: String) -> void:
+func begin_output_stockpile_selection(instance_id: String, good_id: String, allow_split: bool = true) -> void:
 	if instance_id == "" or good_id == "":
 		return
 	pending_output_stockpile_selection = {
 		"instance_id": instance_id,
 		"good_id": good_id,
+		"allow_split": allow_split,
 	}
 	output_stockpile_selection_started.emit(pending_output_stockpile_selection.duplicate())
 
@@ -3124,6 +3187,7 @@ func set_output_stockpile_destination(instance_id: String, tile_id: String, good
 	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
 	per_good[good_id] = tile_id
 	output_stockpile_destinations[instance_id] = per_good
+	_clear_output_split_destinations(instance_id, good_id)
 	_clear_output_special_order_tag(instance_id, good_id)
 	set_output_ship_quantity(instance_id, good_id, 0)  # plain routing ships ALL; a cap is set explicitly after
 	pending_output_stockpile_selection.clear()
@@ -3152,6 +3216,7 @@ func clear_output_stockpile_destination(instance_id: String, good_id: String = "
 		return
 	if good_id == "":
 		output_stockpile_destinations.erase(instance_id)  # clear the whole building
+		output_split_destinations.erase(instance_id)
 		output_special_order_destinations.erase(instance_id)
 		output_ship_quantities.erase(instance_id)
 		return
@@ -3162,9 +3227,13 @@ func clear_output_stockpile_destination(instance_id: String, good_id: String = "
 	else:
 		output_stockpile_destinations[instance_id] = per_good
 	set_output_ship_quantity(instance_id, good_id, 0)
+	_clear_output_split_destinations(instance_id, good_id)
 	_clear_output_special_order_tag(instance_id, good_id)
 
 func get_output_stockpile_destination(instance_id: String, good_id: String = "") -> String:
+	var split := get_output_split_destinations(instance_id, good_id)
+	if not split.is_empty():
+		return str((split[0] as Dictionary).get("tile_id", ""))
 	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
 	if per_good.is_empty():
 		return ""
@@ -3177,6 +3246,76 @@ func get_output_stockpile_destination(instance_id: String, good_id: String = "")
 		return ""  # unset, or a market route (not a stockpile tile)
 	return tile_id
 
+# Returns the selected destinations for a split route in selection order. A single
+# destination remains a legacy route, so callers only split production when this has
+# two or three entries.
+func get_output_split_destinations(instance_id: String, good_id: String) -> Array:
+	if instance_id == "" or good_id == "":
+		return []
+	var per_good: Dictionary = output_split_destinations.get(instance_id, {})
+	var raw: Array = per_good.get(good_id, [])
+	var destinations: Array = []
+	for item in raw:
+		if not (item is Dictionary):
+			continue
+		var tile_id := str(item.get("tile_id", ""))
+		if tile_id == "" or tile_id == MARKET_DESTINATION:
+			continue
+		destinations.append({"tile_id": tile_id, "qty": clampi(int(item.get("qty", 0)), 0, 999)})
+	return destinations
+
+func add_output_split_destination(instance_id: String, good_id: String, tile_id: String) -> int:
+	if instance_id == "" or good_id == "" or tile_id == "":
+		return get_output_split_destinations(instance_id, good_id).size()
+	var destinations := get_output_split_destinations(instance_id, good_id)
+	for item in destinations:
+		if str((item as Dictionary).get("tile_id", "")) == tile_id:
+			return destinations.size()
+	if destinations.size() >= 3:
+		return destinations.size()
+	# The first Shift-click starts a new split selection, replacing the old route.
+	if destinations.is_empty():
+		var legacy: Dictionary = output_stockpile_destinations.get(instance_id, {})
+		legacy.erase(good_id)
+		if legacy.is_empty():
+			output_stockpile_destinations.erase(instance_id)
+		else:
+			output_stockpile_destinations[instance_id] = legacy
+		set_output_ship_quantity(instance_id, good_id, 0)
+		_clear_output_special_order_tag(instance_id, good_id)
+	destinations.append({"tile_id": tile_id, "qty": 0})
+	var per_good: Dictionary = output_split_destinations.get(instance_id, {})
+	per_good[good_id] = destinations
+	output_split_destinations[instance_id] = per_good
+	output_stockpile_destination_changed.emit(instance_id, tile_id, good_id)
+	return destinations.size()
+
+func set_output_split_quantity(instance_id: String, good_id: String, tile_id: String, qty: int) -> void:
+	var destinations := get_output_split_destinations(instance_id, good_id)
+	var changed := false
+	for item in destinations:
+		if str((item as Dictionary).get("tile_id", "")) == tile_id:
+			item["qty"] = clampi(qty, 0, 999)
+			changed = true
+			break
+	if not changed:
+		return
+	var per_good: Dictionary = output_split_destinations.get(instance_id, {})
+	per_good[good_id] = destinations
+	output_split_destinations[instance_id] = per_good
+	output_stockpile_destination_changed.emit(instance_id, tile_id, good_id)
+
+func _clear_output_split_destinations(instance_id: String, good_id: String = "") -> void:
+	if good_id == "":
+		output_split_destinations.erase(instance_id)
+		return
+	var per_good: Dictionary = output_split_destinations.get(instance_id, {})
+	per_good.erase(good_id)
+	if per_good.is_empty():
+		output_split_destinations.erase(instance_id)
+	else:
+		output_split_destinations[instance_id] = per_good
+
 ## True when ANY destination is recorded for this building+good — including a market route,
 ## which get_output_stockpile_destination() reports as "" because it isn't a stockpile tile.
 ## Construction uses this so completing a build defaults the route without overwriting a
@@ -3184,7 +3323,8 @@ func get_output_stockpile_destination(instance_id: String, good_id: String = "")
 func has_output_destination(instance_id: String, good_id: String) -> bool:
 	if instance_id == "" or good_id == "":
 		return false
-	return str((output_stockpile_destinations.get(instance_id, {}) as Dictionary).get(good_id, "")) != ""
+	return not get_output_split_destinations(instance_id, good_id).is_empty() \
+		or str((output_stockpile_destinations.get(instance_id, {}) as Dictionary).get(good_id, "")) != ""
 
 func route_output_to_market(instance_id: String, good_id: String) -> void:
 	# Per-building, per-good "send output to market" — does NOT touch global sell_mode.
@@ -3193,6 +3333,7 @@ func route_output_to_market(instance_id: String, good_id: String) -> void:
 	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
 	per_good[good_id] = MARKET_DESTINATION
 	output_stockpile_destinations[instance_id] = per_good
+	_clear_output_split_destinations(instance_id, good_id)
 	set_output_ship_quantity(instance_id, good_id, 0)
 	_clear_output_special_order_tag(instance_id, good_id)
 	pending_output_stockpile_selection.clear()
@@ -3207,6 +3348,7 @@ func route_output_to_special_order(instance_id: String, good_id: String, special
 	var per_good: Dictionary = output_stockpile_destinations.get(instance_id, {})
 	per_good[good_id] = MARKET_DESTINATION
 	output_stockpile_destinations[instance_id] = per_good
+	_clear_output_split_destinations(instance_id, good_id)
 	var per_order: Dictionary = output_special_order_destinations.get(instance_id, {})
 	per_order[good_id] = special_order_id
 	output_special_order_destinations[instance_id] = per_order

@@ -16,6 +16,9 @@ extends CanvasLayer
 ##   swap construct_panel             toggle the construct-panel redesign
 ##   swap loading_screen              toggle the slow pre-optimization new-game build (for recordings)
 ##   swap goods_graph                 toggle the legacy no-swimlane/fixed-card Goods Graph
+##   swap empire view sprite          toggle the empire view sprite style (big 2.5D sprites, no backdrop)
+##   swap port badge                 gold port hex on selling buildings <-> lines to the port row
+##   swap empire button               toggle the Empire View button's two icon treatments
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   unlock hidden_buildings          enable the three hidden prototype buildings
 ##   swap song                       advance to the next music track
@@ -187,7 +190,22 @@ func _run_command(text: String) -> String:
 					return "Goods Graph view not found (start a match first)"
 				var legacy_graph: bool = bool(view.call("toggle_legacy_goods_graph"))
 				return "Goods Graph → %s" % ("LEGACY arrows/no-swimlanes/fixed cards" if legacy_graph else "current swimlanes/focus")
-			return "usage: swap song  |  swap bdp  |  swap construct_panel  |  swap loading_screen  |  swap goods_graph"
+			if " ".join(parts.slice(1)).to_lower() == "empire button":
+				var badge_icon_on: bool = MatchState.toggle_use_empire_button_badge()
+				return "Empire button → %s" % ("badge-centre icon" if badge_icon_on else "bevelled skyline icon")
+			if " ".join(parts.slice(1)).to_lower() == "port badge":
+				var badge_on: bool = MatchState.toggle_show_port_badge()
+				var ev2 := get_tree().current_scene.find_child("EmpireView", true, false) if get_tree().current_scene != null else null
+				if ev2 != null:
+					ev2.call("refresh_graph")
+				return "Port marking → %s" % ("GOLD HEX badge on the sprite" if badge_on else "lines to the port row")
+			if " ".join(parts.slice(1)).to_lower() == "empire view sprite":
+				var sprite_view_on: bool = MatchState.toggle_use_empire_sprite_view()
+				var empire := get_tree().current_scene.find_child("EmpireView", true, false) if get_tree().current_scene != null else null
+				if empire != null:
+					empire.call("refresh_graph")
+				return "Empire view → %s" % ("SPRITE style (big sprites, plates below, no backdrop)" if sprite_view_on else "classic cards")
+			return "usage: swap song  |  swap bdp  |  swap construct_panel  |  swap loading_screen  |  swap goods_graph  |  swap empire button  |  swap empire view sprite  |  swap port badge"
 		"survey":
 			if parts.size() >= 2 and parts[1].to_lower() == "limit":
 				MatchState.cheat_survey_within_limits()
@@ -330,7 +348,7 @@ func _run_command(text: String) -> String:
 				return "usage: win <greenest|logistics|richest|autarkic|widest|all>"
 			return _cheat_win_track(parts[1].to_lower())
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   swap goods_graph   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
