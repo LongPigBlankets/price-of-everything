@@ -82,6 +82,7 @@ func _ready() -> void:
 	_test_move_extras()
 	_test_storage_boost()
 	_test_warehouse_storage_levels()
+	_test_stockpile_peak_vs_current()
 	_test_queue_sell()
 	_test_queue_sell_immediate_updates_turn_summary()
 	_test_market_execute_sale()
@@ -6283,6 +6284,33 @@ func _test_warehouse_storage_levels() -> void:
 		MatchState.unlocked_titles.erase("Pallet Racking Systems")
 	if not had_asrs:
 		MatchState.unlocked_titles.erase("Automated Storage & Retrieval")
+
+func _test_stockpile_peak_vs_current() -> void:
+	# The tile panel's "Stock Utilisation last turn" row and the Stockpile tab button must NOT
+	# be the same number. The button reads what is on the tile NOW; the row reads the HIGH-WATER
+	# mark the turn reached. A tile that fills on arrivals and drains through production ends
+	# the turn looking comfortable, which is how "cannot receive more goods" used to fire
+	# against a healthy-looking figure.
+	Stockpile.clear_all()
+	var t := "tile_peak_test_only"
+	var cap := Stockpile.get_capacity(t)
+	Stockpile.roll_turn_peaks()
+	Stockpile.add(t, "g_001", 500)
+	Stockpile.consume(t, "g_001", 460)
+	_check(Stockpile.get_used_capacity(t) == 40, "peak: end-of-turn level is the residue (40)")
+	_check(Stockpile.get_peak_used(t) == 500, "peak: the turn's high-water mark is kept (500)")
+	_check(Stockpile.get_refused(t) == 0, "peak: nothing was turned away")
+	# Overfill: the cap turns units away and that count is per tile.
+	Stockpile.add(t, "g_001", cap + 100)
+	_check(Stockpile.get_refused(t) == 140, "peak: units the cap turned away are counted (140)")
+	_check(Stockpile.get_peak_used(t) == cap, "peak: a tile that overflowed peaks at capacity")
+	# Rolling the turn re-seeds from the current level, so the mark never leaks across turns.
+	Stockpile.roll_turn_peaks()
+	_check(Stockpile.get_refused(t) == 0, "peak: the turn roll clears the turned-away count")
+	_check(Stockpile.get_peak_used(t) == Stockpile.get_used_capacity(t),
+		"peak: a fresh turn starts from the tile's current level")
+	Stockpile.clear_all()
+
 
 func _test_market_sale_credits() -> void:
 	# Output routed to market should be sold and its revenue credited on arrival,

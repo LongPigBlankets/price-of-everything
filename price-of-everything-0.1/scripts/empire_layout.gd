@@ -34,6 +34,7 @@ const SECTOR_FLOW_WIDTH := 1900.0                  # wrap a sector's chains past
                                                    # sectors squarish instead of one tall tower
 const SECTOR_MIN_W := 220.0                        # a port with no feeders still holds a slot
 const MIN_PORT_SEP := 280.0                        # port hexes never sit closer than this
+const SITE_BAND_GAP := 200.0                       # clear band between the block and the sites
 
 const RoadHash := preload("res://scripts/road_hash.gd")
 
@@ -276,6 +277,22 @@ static func _assign_layered_seeds(nodes: Array, edges: Array, sell_edges: Array 
 			votes[root] = {}
 		var pi := int(port_rank[t])
 		votes[root][pi] = int((votes[root] as Dictionary).get(pi, 0)) + 1
+	# A component with NO sell edges cannot vote — which is every construction site, since a
+	# site that is not finished ships nothing. Those fall back to `port_hint`: the port nearest
+	# the project's own tile. Without it every site would pile into the internal sector on the
+	# right, which is the one place that says nothing about where it is being built.
+	for r in comps:
+		if votes.has(r):
+			continue
+		for iid in comps[r]:
+			var nd: Dictionary = by_iid.get(iid, {})
+			var hint := str(nd.get("port_hint", ""))
+			if hint == "" or not port_rank.has(hint):
+				continue
+			if not votes.has(r):
+				votes[r] = {}
+			var hp := int(port_rank[hint])
+			votes[r][hp] = int((votes[r] as Dictionary).get(hp, 0)) + 1
 	var owner: Dictionary = {}                       # root -> sector index (ports.size() = internal)
 	for r in comps:
 		var best := ports.size()
@@ -292,15 +309,67 @@ static func _assign_layered_seeds(nodes: Array, edges: Array, sell_edges: Array 
 
 	# Lay each sector out left -> right in fixed port order; the sector's centre is written
 	# onto its port (place_ports reads it), so port separation follows sector width.
+	# Construction sites are held OUT of this packing and banded below it — see _place_site_band.
 	var x0 := 0.0
+	var site_rows: Array = []                        # [{cx, ids}], one per sector that has sites
 	for si in range(ports.size() + 1):
 		var mine: Array = comp_keys.filter(func(r): return int(owner[r]) == si)
+		var flow: Array = []
+		var sites: Array = []
+		for r in mine:
+			if _is_site_comp(comps[r], by_iid):
+				sites.append_array(comps[r] as Array)
+			else:
+				flow.append(r)
 		var w := SECTOR_MIN_W
-		if not mine.is_empty():
-			w = _pack_components(mine, comps, by_iid, in_e, out_e, layer, x0, SECTOR_FLOW_WIDTH)
+		if not flow.is_empty():
+			w = _pack_components(flow, comps, by_iid, in_e, out_e, layer, x0, SECTOR_FLOW_WIDTH)
 		if si < ports.size():
 			ports[si]["sector_cx"] = x0 + w * 0.5
+		if not sites.is_empty():
+			sites.sort()
+			site_rows.append({"cx": x0 + w * 0.5, "ids": sites})
 		x0 += w + SECTOR_GAP
+	_place_site_band(site_rows, by_iid)
+
+
+## A component is a construction site when every member is one (they are edge-less, so in
+## practice each is a component of one).
+static func _is_site_comp(ids: Array, by_iid: Dictionary) -> bool:
+	for iid in ids:
+		if not bool((by_iid.get(iid, {}) as Dictionary).get("under_construction", false)):
+			return false
+	return not ids.is_empty()
+
+
+## Construction sites get their own band UNDER the whole building block, each row centred on the
+## sector of the port its materials come through. They are edge-less, so nothing needs them
+## inside the flow — and every line the view draws lives ABOVE this band: input runs join plate
+## centres, market runs drop from the top row into plate tops, and both endpoints are block
+## nodes. Packing a site among the chains instead dropped a 400px sprite into the routing space,
+## where lines vanished under it (measured: 10 of 47 sprite crossings were sites). Below the
+## block that cannot happen by construction rather than by the router's best effort.
+static func _place_site_band(rows: Array, by_iid: Dictionary) -> void:
+	if rows.is_empty():
+		return
+	var bottom := -INF
+	for iid in by_iid:
+		var n: Dictionary = by_iid[iid]
+		if bool(n.get("under_construction", false)) or not n.has("seed"):
+			continue
+		bottom = maxf(bottom, (n["seed"] as Vector2).y + (n["half"] as Vector2).y)
+	if not is_finite(bottom):
+		bottom = 0.0
+	for row in rows:
+		var ids: Array = row["ids"]
+		var total := -COMP_GAP
+		for iid in ids:
+			total += (by_iid[iid]["half"] as Vector2).x * 2.0 + COMP_GAP
+		var x := float(row["cx"]) - total * 0.5
+		for iid in ids:
+			var h: Vector2 = by_iid[iid]["half"]
+			by_iid[iid]["seed"] = Vector2(x + h.x, bottom + SITE_BAND_GAP + h.y)
+			x += h.x * 2.0 + COMP_GAP
 
 
 ## Flow-pack a list of components into rows starting at x offset `x0`, wrapping at `wrap_w`.

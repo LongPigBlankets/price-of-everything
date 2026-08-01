@@ -186,6 +186,7 @@ static func build(terrain: Object) -> Dictionary:
 		bp["mirror_of"] = str((p as Dictionary)["iid"])
 		buy_ports.append(bp)
 
+	_append_construction_nodes(nodes, ports, terrain, idx)
 	var sell_edges: Array = _build_sell_edges(nodes, ports, consumers)
 	_stamp_port_badges(nodes, ports, sell_edges)
 	return {
@@ -197,6 +198,82 @@ static func build(terrain: Object) -> Dictionary:
 		"market_edges": _build_market_edges(nodes, ports, consumers, producers),
 		"signature": _signature(nodes),
 	}
+
+
+## Buildings still being BUILT. They join the graph as nodes with no edges at all — nothing
+## flows in or out of a site that is not finished — wearing the construction sprite rather than
+## the building's own. Because they have no sell edge, the sector vote cannot place them, so
+## each carries a `port_hint`: the port its MATERIALS come through (Catalog.nearest_port_tile,
+## the very port queue_buy sources from), falling back to the nearest port by world distance if
+## that tile is not one of the four. One fact, two consumers — the layout places the site in
+## that port's sector, and the focus chart draws the delivery run from the same hex.
+static func _append_construction_nodes(nodes: Array, ports: Array, terrain: Object,
+		idx: int) -> void:
+	var projects: Dictionary = Construction.construction_projects
+	if projects.is_empty():
+		return
+	var site_tex: Texture2D = BuildingSprites.texture_for("construction_site", 1)
+	var port_pos: Array = []
+	var port_by_tile: Dictionary = {}
+	for p in ports:
+		port_pos.append([str((p as Dictionary)["iid"]),
+				_tile_world_pos(terrain, str((p as Dictionary).get("tile_id", "")), 0)])
+		port_by_tile[str((p as Dictionary).get("tile_id", ""))] = str((p as Dictionary)["iid"])
+	for proj in projects.values():
+		var pd: Dictionary = proj
+		var tile := str(pd.get("tile_id", ""))
+		var iid := str(pd.get("instance_id", ""))
+		if iid == "":
+			continue
+		idx += 1
+		var seed_pos: Vector2 = _tile_world_pos(terrain, tile, idx)
+		var hint := str(port_by_tile.get(str(Catalog.nearest_port_tile(tile)), ""))
+		if hint == "":
+			var bestd := INF
+			for pp in port_pos:
+				var d: float = (seed_pos - (pp[1] as Vector2)).length()
+				if d < bestd:
+					bestd = d
+					hint = str(pp[0])
+		var bid := str(pd.get("building_id", ""))
+		var turns := int(pd.get("turns_remaining", 0))
+		var awaiting := str(pd.get("status", "")) == Construction.STATUS_AWAITING_MATERIALS
+		nodes.append({
+			"iid": iid,
+			"building_id": bid,
+			"name": str(pd.get("name", "Under construction")),
+			# The plate has no output, no RAG and no good icon to show, so the state gets its
+			# own line — otherwise a site's caption is just a name on an empty plate. A project
+			# waiting on materials is NOT counting down (turns_remaining is its full duration
+			# and does not move), so printing a countdown for one would be a lie.
+			"status_line": ("awaiting materials" if awaiting
+					else ("ready next turn" if turns <= 1 else "%d turns to completion" % turns)),
+			"level": 1,
+			"output_good": "",
+			"output_name": "under construction",
+			"output_qty": turns,
+			"tile_id": tile,
+			"seed": seed_pos,
+			"half": _node_half(1, site_tex),
+			"plate_half": (BASE_HALF if (MatchState.use_empire_sprite_view and site_tex != null)
+					else BASE_HALF),
+			"sprite_rect": _sprite_content_offset(site_tex),
+			"port_badge": null,
+			"is_port": false,
+			"under_construction": true,
+			"turns_remaining": turns,
+			"port_hint": hint,
+			# The glyph of the building being BUILT — with the site sprite standing in for every
+			# industry, this is the only thing on the card that says which one it will be. Needs
+			# the real internal name: InfraIcons.texture_for returns null without it.
+			"icon": BuildingIcon.clean_texture(bid,
+					str(Catalog.get_building(bid).get("internal_name", ""))),
+			"sprite": site_tex,
+			"plate_dy": ((NodePanel.SPRITE_PX * 0.5)
+					if (MatchState.use_empire_sprite_view and site_tex != null) else 0.0),
+			"good_icon": null,
+			"rag": [],
+		})
 
 
 ## Give every building that ships to market the icon of the port it ships to. The empire view

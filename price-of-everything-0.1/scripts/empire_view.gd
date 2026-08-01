@@ -38,6 +38,11 @@ func _ready() -> void:
 	_build_ui()
 	_map_camera = get_tree().get_first_node_in_group("camera")
 	visibility_changed.connect(_on_visibility_changed)
+	# The graph is a snapshot: construction countdowns, levels and RAG are all baked at build
+	# time. Left alone it would go stale the moment a turn landed under an open view — which is
+	# exactly when a player watching a build wants to see it move.
+	if TurnManager.has_signal("turn_advanced"):
+		TurnManager.turn_advanced.connect(func(_t: int) -> void: refresh_graph())
 
 
 ## Toggle open/closed. Called from world_map on the `toggle_empire_view` (Tab) action.
@@ -45,7 +50,24 @@ func toggle() -> void:
 	visible = not visible
 
 
+## Rebuild the graph immediately if the view is open (no-op otherwise — it rebuilds on
+## every open anyway). Used by the `swap empire view sprite` cheat so the swap shows live.
+func refresh_graph() -> void:
+	if visible:
+		_rebuild_graph()
+
+
 func _build_ui() -> void:
+	# Flat navy backing behind the hex field. In sprite view the hex pattern is hidden
+	# and this alone remains, so the sprites sit on a plain dark field (not the grey
+	# default-clear of the hidden world).
+	var flat := ColorRect.new()
+	flat.name = "FlatBg"
+	flat.color = Color(0.015, 0.058, 0.105, 1.0)   # loading_hex_bg NAVY
+	flat.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	flat.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(flat)
+
 	_bg = HexBgScript.new()
 	_bg.name = "HexFieldBg"
 	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -95,13 +117,28 @@ func _enter() -> void:
 func _rebuild_graph() -> void:
 	if _graph_world == null:
 		return
+	# Sprite view drops the hex-field backdrop entirely — sprites on plain black.
+	if _bg != null:
+		_bg.visible = not MatchState.use_empire_sprite_view
 	var terrain := get_tree().get_first_node_in_group("hex_map")
 	var g: Dictionary = EmpireGraphScript.build(terrain)
-	# Lay buildings out as supply-chain columns (input sources beside their consumers, crossings
-	# minimized), then drop the ports into a fixed-order row beneath the block.
-	EmpireLayout.solve(g["nodes"], g["edges"])
-	EmpireLayout.place_ports(g["ports"], EmpireLayout.bbox_of(g["nodes"]))
-	_graph_world.set_graph(g["nodes"], g["edges"], g["ports"], g["sell_edges"])
+	# Lay buildings out as supply-chain columns grouped into a sector per destination port
+	# (sector width follows the chains feeding that port), then drop the ports into their
+	# fixed-order row beneath — each centred under its own sector — and mirror the Market
+	# hub above the block for the dashed market-input lines.
+	EmpireLayout.solve(g["nodes"], g["edges"], g["sell_edges"], g["ports"])
+	var area := EmpireLayout.bbox_of(g["nodes"])
+	EmpireLayout.place_ports(g["ports"], area)
+	EmpireLayout.place_buy_ports(g["buy_ports"], g["ports"], area)
+	# set_graph rebuilds every panel, which drops any open mini-chart. Put it back, WITHOUT the
+	# ease-in: a chart that re-animated once a turn would read as the view flinching. A focused
+	# construction site keeps its id through promotion, so a build completing under an open
+	# chart simply becomes the finished building's chart.
+	var was_focused := str(_graph_world.call("focus_iid"))
+	_graph_world.set_graph(g["nodes"], g["edges"], g["ports"], g["sell_edges"],
+		g["market_edges"], g["buy_ports"])
+	if was_focused != "":
+		_graph_world.call("focus_on", was_focused, true)
 
 
 func _leave() -> void:

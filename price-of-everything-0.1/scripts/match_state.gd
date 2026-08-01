@@ -356,6 +356,26 @@ var revealed_deposits: Dictionary = {}  # tile_id -> {token: true}
 # and progress toward the action+object+quantity conditions (e.g. "Survey|tiles").
 var unlocked_titles: Dictionary = {}
 var _unlock_progress: Dictionary = {}
+# Lifetime sales routed through any seaport. These deliberately do not share the
+# market's general sales ledger: the logistics research chain requires that the
+# goods actually crossed a port.
+var _port_sale_total: int = 0
+var _port_sales_by_class: Dictionary = {}
+# Consecutive-turn progress for the infrastructure-utilisation research gates.
+# Kept separately from the legacy action/object accumulator because its Quantity is
+# the number of busy segments, while its duration lives in the Unit field.
+var _infrastructure_usage_streaks: Dictionary = {}
+var _infrastructure_usage_last_turn: Dictionary = {}
+# Per-building consecutive turns that were both productive and profitable at the
+# live market price. This backs the timed "Run … profitably" research gates.
+var _profitable_run_streaks: Dictionary = {}
+# Research conditions draw from several simulation services (production, market,
+# construction, ports and CostSolver).  They must be resolved after those services
+# have settled for the turn, not once for every individual shipment or building
+# completion.  Mutations merely mark this central snapshot dirty; NARRATIVE owns
+# the single authoritative refresh.
+var _research_progress_dirty: bool = true
+var _research_progress_last_turn: int = -1
 # Per-tile CONSECUTIVE-turn streak of "stockpile fed by 3+ distinct buildings this
 # turn" — the Just-in-Time Logistics unlock condition. Updated by Production at
 # output flush; tiles that miss the bar in a turn drop out (streak resets). Saved.
@@ -437,8 +457,8 @@ var use_empire_sprite_view: bool = true
 var show_port_badge: bool = true
 
 ## Debug-only: `swap empire button` alternates the bottom-menu Empire View icon
-## between the current skyline and the badge-centre alternative. Session-only.
-var use_empire_button_badge: bool = false
+## between the badge-centre default and the skyline alternative. Session-only.
+var use_empire_button_badge: bool = true
 
 # Debug-only: `swap construct_panel` keeps the classic construct panel available
 # for comparison. The redesigned construct panel is the normal default.
@@ -601,9 +621,11 @@ func _on_survey_phase_started(phase: int) -> void:
 		tick_surveys()
 		tick_battery_fills()
 	elif phase == TurnManager.Phase.NARRATIVE:
-		# Production, costs and run-streaks have settled for the turn — re-evaluate
-		# the live research conditions (Produce N / Run profitable / Run-for-N-turns).
-		_check_unlock_conditions()
+		# Production, costs and run-streaks have settled for the turn — one central
+		# research pass reads the final production/sales/profitability state.  This
+		# deliberately replaces per-shipment and per-completion scans.
+		_update_profitable_run_streaks()
+		_refresh_research_progress()
 # --- Public API: money ---
 func add_money(delta: float) -> void:
 	money += delta
@@ -653,8 +675,9 @@ func add_building(
 
 	if emit_added:
 		building_added.emit(instance)
-		# Building-driven research conditions (e.g. Mining Mastery) re-evaluate here.
-		_check_unlock_conditions()
+		# Construction can complete several buildings in one PROCESS pass.  Defer
+		# research evaluation to NARRATIVE so that batch costs stay constant.
+		_mark_research_progress_dirty()
 	return instance_id
 
 # Transfer ownership of an existing building (e.g. the player buys an NPC building from the
@@ -674,8 +697,9 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 		# The tile size chart stacks buildings bought off an NPC at the top of the pile.
 		buildings[instance_id]["acquired_from_npc"] = true
 	building_owner_changed.emit(instance_id)
-	# A newly player-owned building may satisfy build-count / ownership unlock conditions.
-	_check_unlock_conditions()
+	# A newly player-owned building may satisfy a count condition after the turn
+	# settles; never trigger a full scan from an interaction callback.
+	_mark_research_progress_dirty()
 
 # Sell a player-owned building to an NPC operator: credit its market value (what it would list
 # at), flip ownership to the NPC — the building keeps standing and its land stays occupied, but it
@@ -1949,12 +1973,31 @@ func unlock_condition_text(title: String) -> String:
 			for index in goods.size():
 				parts.append("%s %s" % [str(quantities[index]), str(goods[index]).capitalize()])
 			return "Produce %s" % _join_and(parts)
-	var ul := unit.to_lower()
-	if ul == "turns":
-		return "%s %s for %d turns" % [action, object_name, qty]
-	if ul == "percentage":
-		return "%s %s to %d%%" % [action, object_name, qty]
-	return "%s %s %d %s" % [action, object_name, qty, unit]
+	match action:
+		"Produce": return "Produce %d %s" % [qty, object_name.capitalize()]
+		"Sell": return "Sell %d units through the market" % qty if _research_key(object_name) == "freight" else "Sell %d %s through the market" % [qty, object_name.capitalize()]
+		"Sell Through Ports": return "Sell %d units through ports" % qty
+		"Sell Through Ports Classes": return "Sell at least %d units of each weight class through ports" % qty
+		"Purchase Ports": return "Purchase all %d ports" % qty
+		"Build": return "Build %d %s" % [qty, object_name.capitalize()]
+		"Own": return "Own %d land plots" % qty if _research_key(object_name) == "land" else "Own %d %s" % [qty, object_name.capitalize()]
+		"Run":
+			var run_turns := _leading_int(unit, 0)
+			return "Operate at least %d %s at full capacity for %d consecutive turns" % [qty, _condition_building_label(object_name, qty), run_turns] if run_turns > 0 else "Operate %s at full capacity for %d consecutive turns" % [object_name, qty]
+		"Run L1": return "Operate %d Level 1 %s at full capacity for %s" % [qty, object_name.capitalize(), unit]
+		"Run Profitable":
+			var profitable_turns := _leading_int(unit, 0)
+			return "Operate at least %d %s profitably for %d consecutive turns" % [qty, _condition_building_label(object_name, qty), profitable_turns] if profitable_turns > 0 else "Operate %d %s profitably" % [qty, _condition_building_label(object_name, qty)]
+		"Run Profitable L2": return "Operate %d Level 2 %s profitably" % [qty, object_name.capitalize()]
+		"Run Multiple": return _run_multiple_condition_text(d)
+		"Fulfil Special Orders": return "Fulfil at least %d special orders" % qty
+		"Run Recipe": return "Operate %d buildings using a %s recipe" % [qty, object_name]
+		"Survey": return "Survey %d %s" % [qty, object_name]
+		"Stockpile filled": return "Supply one stockpile from %s for %d consecutive turns" % [object_name, qty]
+		"Sustain": return "Maintain %s for %d consecutive turns" % [object_name, qty]
+		"Use Infrastructure": return "Use at least %d %s at 80%% throughput or higher" % [qty, object_name.capitalize()] if not "for" in unit else "Use %d %s at 80%% capacity for %d consecutive turns" % [qty, object_name.capitalize(), _leading_int(unit.get_slice("for", 1), 5)]
+		"Firm Intermittency": return "Firm at least %d power of intermittent generation" % qty
+	return "%s %s %d" % [action, object_name, qty]
 
 ## Record progress toward action+object conditions (e.g. record("Survey","tiles")).
 ## Advance/reset the per-tile "stockpile fed by 7+ buildings" streaks from this
@@ -1980,6 +2023,24 @@ func record_unlock_progress(action: String, object: String, amount: int = 1) -> 
 		return
 	var key := (action + "|" + object).to_lower()
 	_unlock_progress[key] = int(_unlock_progress.get(key, 0)) + amount
+	_mark_research_progress_dirty()
+
+
+## Mark the central research snapshot stale.  The next NARRATIVE phase performs
+## exactly one complete evaluation after every upstream metric is final.
+func _mark_research_progress_dirty() -> void:
+	_research_progress_dirty = true
+
+
+## One authoritative research-progress refresh per resolved turn.  Keeping this
+## separate from `_check_unlock_conditions()` preserves the latter as a useful
+## immediate diagnostic/test API while removing it from high-frequency game paths.
+func _refresh_research_progress() -> void:
+	var turn := int(TurnManager.current_turn)
+	if _research_progress_last_turn == turn and not _research_progress_dirty:
+		return
+	_research_progress_last_turn = turn
+	_research_progress_dirty = false
 	_check_unlock_conditions()
 
 func _check_unlock_conditions() -> void:
@@ -2042,6 +2103,18 @@ func _live_condition_met(d: Dictionary) -> bool:
 				return MarketState.lifetime_sold_total() >= need
 			var sell_good := _research_good_id(obj)
 			return sell_good != "" and MarketState.lifetime_sold(sell_good) >= need
+		"Sell Through Ports":
+			return _port_sale_total >= need
+		"Sell Through Ports Classes":
+			var classes := obj.split("|", false)
+			if classes.is_empty():
+				return false
+			for transport_kind in classes:
+				if int(_port_sales_by_class.get(str(transport_kind), 0)) < need:
+					return false
+			return true
+		"Purchase Ports":
+			return _owned_port_count() >= need
 		"Build":
 			# Own N player-built buildings of this type (any level/run state).
 			return _count_buildings(obj, -1, false, 0) >= need
@@ -2051,10 +2124,12 @@ func _live_condition_met(d: Dictionary) -> bool:
 			return _count_buildings(obj, -1, false, 0) >= need
 		"Run":
 			# Plain Run conditions mean one matching building sustaining full output
-			# for Quantity turns ("Run Mine for 15 turns").
-			return _count_buildings(obj, -1, false, need) >= 1
+			# for Quantity turns ("Run Mine for 15 turns"). Rows with a turn count
+			# in Unit instead mean N matching buildings for that many turns.
+			var run_turns := _leading_int(str(d.get("unit", "")), 0)
+			return _count_buildings(obj, -1, false, run_turns) >= need if run_turns > 0 else _count_buildings(obj, -1, false, need) >= 1
 		"Run Profitable":
-			return _count_buildings(obj, -1, true, 0) >= need
+			return _count_buildings(obj, -1, true, _leading_int(str(d.get("unit", "")), 0)) >= need
 		"Run L1":
 			# "Run N Level-1 buildings of this type for <Unit> turns."
 			var turns := _leading_int(str(d.get("unit", "")), 20)
@@ -2075,7 +2150,104 @@ func _live_condition_met(d: Dictionary) -> bool:
 			var threshold := _leading_int(obj, 0)
 			return threshold == int(ADVISOR_SLOT_PROFIT_5) \
 				and _advisor_profit_streak >= need
+		"Use Infrastructure":
+			return _infrastructure_usage_met(d)
+		"Firm Intermittency":
+			return Production.firmed_intermittent_power() >= need
+		"Run Multiple":
+			return _run_multiple_buildings_met(d)
+		"Fulfil Special Orders":
+			return SpecialOrderState.fulfilled_count >= need
 	return false
+
+
+func _run_multiple_buildings_met(d: Dictionary) -> bool:
+	var targets := str(d.get("object", "")).split("|", false)
+	var quantities := str(d.get("quantity_raw", "")).split("|", false)
+	var turns := _leading_int(str(d.get("unit", "")), 0)
+	if targets.is_empty() or targets.size() != quantities.size() or turns <= 0:
+		return false
+	for index in targets.size():
+		var count_text := str(quantities[index])
+		if not count_text.is_valid_int() or _count_buildings(str(targets[index]), -1, false, turns) < int(count_text):
+			return false
+	return true
+
+
+func _run_multiple_condition_text(d: Dictionary) -> String:
+	var targets := str(d.get("object", "")).split("|", false)
+	var quantities := str(d.get("quantity_raw", "")).split("|", false)
+	var turns := _leading_int(str(d.get("unit", "")), 0)
+	if targets.is_empty() or targets.size() != quantities.size() or turns <= 0:
+		return ""
+	var parts: Array[String] = []
+	for index in targets.size():
+		parts.append("%s %s" % [str(quantities[index]), _condition_building_label(str(targets[index]), int(quantities[index]))])
+	return "Operate at least %s at full capacity for %d consecutive turns" % [_join_and(parts), turns]
+
+
+func _condition_building_label(raw: String, quantity: int = 1) -> String:
+	var key := _research_key(raw)
+	if key == "high_tech_manufactory|assembly_plant":
+		return "High Tech Manufactories and/or Assembly Plants"
+	if key == "any":
+		return "buildings"
+	var label: String = str({
+		"high_tech_manufactory": "High Tech Manufactory",
+		"assembly_plant": "Assembly Plant",
+		"solar_farm": "Solar Farm",
+		"farm": "Farm",
+	}.get(key, raw.capitalize()))
+	if quantity != 1:
+		if label.ends_with("y"):
+			return "%sies" % label.left(label.length() - 1)
+		return "%ss" % label
+	return label
+
+
+## Count player-owned infrastructure segments carrying at least 80% of their
+## current capacity. Transport flow is the same per-tile metric surfaced by the
+## infrastructure overlay; cables use actual draw/generation against their power cap.
+## A segment set must sustain the target utilisation for the number of turns encoded
+## after "for" in the Unit cell (normally "80% for 5 turns").
+func _infrastructure_usage_met(d: Dictionary) -> bool:
+	var title := str(d.get("title", ""))
+	var need_segments := int(d.get("qty", 0))
+	if title == "" or need_segments <= 0:
+		return false
+	var unit := str(d.get("unit", ""))
+	var duration := 1
+	if "for" in unit:
+		duration = _leading_int(unit.get_slice("for", 1), 5)
+	var turn := int(TurnManager.current_turn)
+	# Conditions are evaluated from several hooks. Only advance/reset the streak
+	# once per resolved turn, after the actual transport and power use has settled.
+	if TurnManager.current_phase == TurnManager.Phase.NARRATIVE \
+			and int(_infrastructure_usage_last_turn.get(title, -1)) != turn:
+		_infrastructure_usage_last_turn[title] = turn
+		var active_segments := 0
+		var targets := _research_building_targets(str(d.get("object", "")))
+		for inst in buildings.values():
+			if not is_player_owned(inst) or not targets.has(_building_internal(inst)):
+				continue
+			var internal := _building_internal(inst)
+			var tile_id := str(inst.get("tile_id", ""))
+			var capacity := 0.0
+			var usage := 0.0
+			if internal == "cables":
+				capacity = float(Power.tile_power_cap(tile_id))
+				usage = float(maxi(int(Power.tile_drawn.get(tile_id, 0)), int(Power.tile_produced.get(tile_id, 0))))
+			else:
+				var mode := "rail" if internal == "rails" else internal
+				capacity = tile_mode_capacity(mode, _tile_infra_level(tile_id, mode))
+				usage = float(tile_mode_flow(tile_id, mode))
+			if capacity > 0.0 and usage >= capacity * 0.80:
+				active_segments += 1
+		if active_segments >= need_segments:
+			_infrastructure_usage_streaks[title] = int(_infrastructure_usage_streaks.get(title, 0)) + 1
+		else:
+			_infrastructure_usage_streaks[title] = 0
+	return int(_infrastructure_usage_streaks.get(title, 0)) >= duration
 
 
 func _research_key(value: String) -> String:
@@ -2088,6 +2260,13 @@ func _research_key(value: String) -> String:
 
 
 func _research_building_targets(raw: String) -> Array:
+	if "|" in raw:
+		var combined: Array = []
+		for part in raw.split("|", false):
+			for target in _research_building_targets(str(part)):
+				if not combined.has(target):
+					combined.append(target)
+		return combined
 	var key := _research_key(raw)
 	if key == "" or key == "any":
 		return []
@@ -2149,13 +2328,27 @@ func _research_condition_issue(d: Dictionary) -> String:
 	var obj := str(d.get("object", ""))
 	if action == "Placeholder":
 		return ""
-	if action in ["Build", "Run", "Run Profitable", "Run L1", "Run Profitable L2"]:
+	if action in ["Build", "Run", "Run Profitable", "Run L1", "Run Profitable L2", "Run Multiple", "Use Infrastructure"]:
 		if _research_key(obj) != "any" and _research_building_targets(obj).is_empty():
 			return "unknown building target"
 		return ""
+	if action == "Fulfil Special Orders":
+		return "" if _research_key(obj) == "special_order" else "unsupported special-order target"
 	if action == "Own":
 		if _research_key(obj) != "land" and _research_building_targets(obj).is_empty():
 			return "unknown ownership target"
+		return ""
+	if action == "Purchase Ports":
+		return "" if _research_key(obj) == "ports" else "unsupported port ownership target"
+	if action == "Sell Through Ports":
+		return "" if _research_key(obj) == "ports" else "unsupported port-sale target"
+	if action == "Sell Through Ports Classes":
+		var classes := obj.split("|", false)
+		if classes.is_empty():
+			return "missing port transport classes"
+		for transport_kind in classes:
+			if not ["solid_light", "solid_heavy", "ultra_heavy", "safe_liquid", "hazard_liquid", "gas"].has(str(transport_kind)):
+				return "unsupported port transport class"
 		return ""
 	if action == "Produce All":
 		var goods := obj.split("|", false)
@@ -2182,6 +2375,8 @@ func _research_condition_issue(d: Dictionary) -> String:
 		return "" if _research_key(obj) in ["tiles", "deposits"] else "unknown survey target"
 	if action == "Stockpile filled":
 		return ""
+	if action == "Firm Intermittency":
+		return "" if _research_key(obj) == "power" else "unsupported intermittency target"
 	if action == "Sustain":
 		return "" if _leading_int(obj, 0) == int(ADVISOR_SLOT_PROFIT_5) \
 			else "unsupported sustain threshold"
@@ -2203,7 +2398,8 @@ func _count_buildings(internal: String, level: int, require_profitable: bool, mi
 			continue
 		if level >= 0 and _building_level(inst) != level:
 			continue
-		if min_streak > 0 and int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < min_streak:
+		var streaks: Dictionary = _profitable_run_streaks if require_profitable else Production.full_output_streak_by_building
+		if min_streak > 0 and int(streaks.get(str(inst.get("instance_id", "")), 0)) < min_streak:
 			continue
 		if require_profitable and not _is_building_profitable(inst):
 			continue
@@ -2254,8 +2450,21 @@ func _is_building_profitable(inst: Dictionary) -> bool:
 	var good_id: String = str(bd.get("output_good_id", ""))
 	if good_id == "":
 		return false
-	var price: float = Catalog.get_base_price(good_id)
+	var price: float = MarketState.get_price(good_id)
 	return price > 0.0 and uc < price
+
+
+func _update_profitable_run_streaks() -> void:
+	var next: Dictionary = {}
+	for inst in buildings.values():
+		if not is_player_owned(inst):
+			continue
+		var iid := str(inst.get("instance_id", ""))
+		if iid == "" or int(Production.full_output_streak_by_building.get(iid, 0)) <= 0:
+			continue
+		if _is_building_profitable(inst):
+			next[iid] = int(_profitable_run_streaks.get(iid, 0)) + 1
+	_profitable_run_streaks = next
 
 # Leading integer of a string like "20 turns" -> 20; falls back to `default`.
 func _leading_int(s: String, default_val: int) -> int:
@@ -2514,6 +2723,7 @@ func order_battery_fill_market(tile_id: String, good_id: String, qty: int) -> Di
 	var cost := float(quote.get("cost", 0.0))
 	if not deduct_money(cost):
 		return {"ok": false, "reason": "funds", "cost": cost}
+	commit_sea_shipping(str(quote.get("port", "")), good_id, qty, "buy")
 	var turns: int = maxi(1, int(quote.get("turns", 1)))
 	pending_battery_fills.append({"tile_id": tile_id, "good_id": good_id, "qty": qty, "turns_left": turns})
 	battery_cells_changed.emit(tile_id)
@@ -2678,6 +2888,9 @@ func get_building(instance_id: String) -> Dictionary:
 	return buildings.get(instance_id, {})
 
 func is_building_available(building_id: String) -> bool:
+	# Ports are map infrastructure that may be bought from their existing owner, never built.
+	if building_id == "b_004":
+		return false
 	return hidden_buildings_unlocked or not HIDDEN_BUILDING_IDS.has(building_id)
 
 func cheat_unlock_hidden_buildings() -> void:
@@ -2721,6 +2934,12 @@ func reset() -> void:
 	auto_sell_keep.clear()
 	auto_sell_impact.clear()
 	pending_transport_shipments.clear()
+	_sea_shipping_turn = -1
+	_sea_port_usage_this_turn.clear()
+	_sea_port_charges_this_turn.clear()
+	_last_sea_shipping_turn = -1
+	_last_sea_port_usage.clear()
+	_last_sea_port_charges.clear()
 	_unpaid_purchase_total = 0.0
 	pending_upgrades.clear()
 	pending_retrofits.clear()
@@ -2774,6 +2993,13 @@ func reset() -> void:
 	# import_state, so this only bites the reset-without-import paths.)
 	unlocked_titles.clear()
 	_unlock_progress.clear()
+	_port_sale_total = 0
+	_port_sales_by_class.clear()
+	_infrastructure_usage_streaks.clear()
+	_infrastructure_usage_last_turn.clear()
+	_profitable_run_streaks.clear()
+	_research_progress_dirty = true
+	_research_progress_last_turn = -1
 	stockpile_feed_streaks.clear()
 	# These research ledgers live in their owning simulation systems, but share
 	# the match lifetime. Reset-without-import paths (tests/scenarios) must not let
@@ -2881,9 +3107,17 @@ func export_state() -> Dictionary:
 		"deposit_remaining": deposit_remaining.duplicate(true),
 		"unlocked_titles": unlocked_titles.duplicate(true),
 		"unlock_progress": _unlock_progress.duplicate(true),
+		"port_sale_total": _port_sale_total,
+		"port_sales_by_class": _port_sales_by_class.duplicate(true),
+		"infrastructure_usage_streaks": _infrastructure_usage_streaks.duplicate(true),
+		"infrastructure_usage_last_turn": _infrastructure_usage_last_turn.duplicate(true),
+		"profitable_run_streaks": _profitable_run_streaks.duplicate(true),
 		"stockpile_feed_streaks": stockpile_feed_streaks.duplicate(true),
 		"seaport_auto_subscribe": seaport_auto_subscribe,
 		"seaport_subscribed": seaport_subscribed.duplicate(true),
+		"last_sea_shipping_turn": _last_sea_shipping_turn,
+		"last_sea_port_usage": _last_sea_port_usage.duplicate(true),
+		"last_sea_port_charges": _last_sea_port_charges.duplicate(true),
 	}
 
 func import_state(d: Dictionary) -> void:
@@ -2982,10 +3216,26 @@ func import_state(d: Dictionary) -> void:
 	# saves always carry the key and overwrite as usual.
 	deposit_remaining = (d.get("deposit_remaining", deposit_remaining) as Dictionary).duplicate(true)
 	unlocked_titles = (d.get("unlocked_titles", {}) as Dictionary).duplicate(true)
+	# Research saves still store display titles. Preserve the node when its title
+	# becomes more specific, so an existing Containerized Freight unlock keeps its
+	# Tier-II position and receives the revised port-fee effect.
+	if unlocked_titles.has("Containerized Freight"):
+		unlocked_titles["Multimodal Containerized Freight"] = unlocked_titles["Containerized Freight"]
+		unlocked_titles.erase("Containerized Freight")
 	_unlock_progress = (d.get("unlock_progress", {}) as Dictionary).duplicate(true)
+	_port_sale_total = int(d.get("port_sale_total", 0))
+	_port_sales_by_class = (d.get("port_sales_by_class", {}) as Dictionary).duplicate(true)
+	_infrastructure_usage_streaks = (d.get("infrastructure_usage_streaks", {}) as Dictionary).duplicate(true)
+	_infrastructure_usage_last_turn = (d.get("infrastructure_usage_last_turn", {}) as Dictionary).duplicate(true)
+	_profitable_run_streaks = (d.get("profitable_run_streaks", {}) as Dictionary).duplicate(true)
+	_research_progress_dirty = true
+	_research_progress_last_turn = -1
 	stockpile_feed_streaks = (d.get("stockpile_feed_streaks", {}) as Dictionary).duplicate(true)
 	seaport_auto_subscribe = bool(d.get("seaport_auto_subscribe", false))
 	seaport_subscribed = (d.get("seaport_subscribed", {}) as Dictionary).duplicate(true)
+	_last_sea_shipping_turn = int(d.get("last_sea_shipping_turn", -1))
+	_last_sea_port_usage = (d.get("last_sea_port_usage", {}) as Dictionary).duplicate(true)
+	_last_sea_port_charges = (d.get("last_sea_port_charges", {}) as Dictionary).duplicate(true)
 	# Derived state: the tile index is rebuilt, never saved; caches invalidate.
 	_rebuild_tile_index()
 	_surveyable_dirty = true
@@ -3714,13 +3964,20 @@ func set_input_tile_only(instance_id: String, good_id: String, tile_only: bool) 
 func is_input_tile_only(instance_id: String, good_id: String) -> bool:
 	return bool(input_tile_only.get(_input_key(instance_id, good_id), false))
 
-# --- Seaport subscriptions ---
-# A subscribed good transfers through a seaport in 1 turn at ANY volume for a flat
-# per-turn fee (see EconomyConfig.SEAPORT_SUBSCRIPTION_COST_PER_GOOD), with no per-unit
-# market shipping cost. The sim sets seaport_auto_subscribe = true (every traded good
-# is covered from turn 1); the game will expose per-good toggles.
+# --- Seaport subscriptions and sea freight ---
+# A subscribed good transfers through a seaport in one turn. Its cost is charged when it
+# actually ships, rather than as the old standing subscription fee.
 var seaport_auto_subscribe: bool = false
 var seaport_subscribed: Dictionary = {}
+var _sea_shipping_turn: int = -1
+var _sea_port_usage_this_turn: Dictionary = {} # port tile -> transport class -> units
+var _sea_port_charges_this_turn: Dictionary = {} # port tile -> good -> charge breakdown
+# The port panel shows the latest completed traffic when a fresh turn has no
+# bookings yet. Keep this separate from the live ledgers: throughput quotes must
+# always start at zero on a new turn.
+var _last_sea_shipping_turn: int = -1
+var _last_sea_port_usage: Dictionary = {}
+var _last_sea_port_charges: Dictionary = {}
 
 func seaport_covers(good_id: String) -> bool:
 	if seaport_auto_subscribe:
@@ -3735,7 +3992,134 @@ func subscribe_seaport(good_id: String) -> void:
 	seaport_subscribed[good_id] = true
 
 func seaport_subscription_fee() -> float:
-	return float(seaport_subscribed.size()) * EconomyConfig.SEAPORT_SUBSCRIPTION_COST_PER_GOOD
+	return 0.0
+
+func _ensure_sea_shipping_turn() -> void:
+	var turn := int(TurnManager.current_turn) if TurnManager != null else 1
+	if turn == _sea_shipping_turn:
+		return
+	if _sea_shipping_turn >= 0 and not _sea_port_charges_this_turn.is_empty():
+		_last_sea_shipping_turn = _sea_shipping_turn
+		_last_sea_port_usage = _sea_port_usage_this_turn.duplicate(true)
+		_last_sea_port_charges = _sea_port_charges_this_turn.duplicate(true)
+	_sea_shipping_turn = turn
+	_sea_port_usage_this_turn.clear()
+	_sea_port_charges_this_turn.clear()
+
+func sea_shipping_growth_factor() -> float:
+	var turn := int(TurnManager.current_turn) if TurnManager != null else 1
+	return pow(1.0 + EconomyConfig.SEAPORT_FEE_GROWTH_PER_TURN, maxf(0.0, float(turn - 1)))
+
+func seaport_throughput_cap(good_id: String) -> int:
+	var transport_class := Catalog.get_transport_class(good_id)
+	var base := EconomyConfig.SEAPORT_THROUGHPUT_RESTRICTED if EconomyConfig.SEAPORT_RESTRICTED_TRANSPORT_CLASSES.has(transport_class) else EconomyConfig.SEAPORT_THROUGHPUT_STANDARD
+	return maxi(1, int(round(Modifiers.apply("port_throughput", "port", float(base), {"transport_class": transport_class}))))
+
+func seaport_base_fee(port_tile: String) -> float:
+	if is_seaport_player_owned(port_tile):
+		return 0.0
+	return maxf(0.0, Modifiers.apply("port_per_turn_fee", "port", EconomyConfig.SEAPORT_BASE_FEE_PER_GOOD))
+
+func seaport_insurance_rate(port_tile: String) -> float:
+	var base := EconomyConfig.OWNED_SEAPORT_INSURANCE_RATE if is_seaport_player_owned(port_tile) else EconomyConfig.SEAPORT_INSURANCE_RATE
+	return maxf(0.0, Modifiers.apply("port_ad_valorem_fee", "port", base))
+
+func is_seaport_player_owned(port_tile: String) -> bool:
+	if port_tile == "":
+		return false
+	for building in get_buildings_on_tile(port_tile):
+		if str(building.get("building_id", "")) == "b_004" and is_player_owned(building):
+			return true
+	return false
+
+func _owned_port_count() -> int:
+	var count := 0
+	for building in buildings.values():
+		if str(building.get("building_id", "")) == "b_004" and is_player_owned(building):
+			count += 1
+	return count
+
+func preview_sea_shipping(port_tile: String, good_id: String, qty: int) -> Dictionary:
+	if port_tile == "" or good_id == "" or qty <= 0:
+		return {}
+	_ensure_sea_shipping_turn()
+	var transport_class := Catalog.get_transport_class(good_id)
+	var cap := seaport_throughput_cap(good_id)
+	var usage: Dictionary = _sea_port_usage_this_turn.get(port_tile, {})
+	var used_before := int(usage.get(transport_class, 0))
+	var projected := used_before + qty
+	# This is a soft throughput cap: traffic can still pass, but the whole shipment costs double.
+	var at_cap := projected >= cap
+	var surcharge := 2.0 if at_cap else 1.0
+	var owned := is_seaport_player_owned(port_tile)
+	var existing_goods: Dictionary = _sea_port_charges_this_turn.get(port_tile, {})
+	var first_shipment_of_good := not existing_goods.has(good_id)
+	var growth := sea_shipping_growth_factor()
+	var fixed_fee := seaport_base_fee(port_tile) * growth * surcharge if (not owned and first_shipment_of_good) else 0.0
+	var insurance_rate := seaport_insurance_rate(port_tile)
+	var insured_value := float(qty) * MarketState.get_buy_price(good_id)
+	var insurance_fee := insured_value * insurance_rate * growth * surcharge
+	return {
+		"port": port_tile, "good_id": good_id, "qty": qty, "transport_class": transport_class,
+		"capacity": cap, "used_before": used_before, "projected_usage": projected,
+		"at_cap": at_cap, "surcharge": surcharge, "owned": owned, "growth": growth,
+		"base_fee": fixed_fee, "insurance_fee": insurance_fee, "total": fixed_fee + insurance_fee,
+	}
+
+func commit_sea_shipping(port_tile: String, good_id: String, qty: int, direction: String) -> Dictionary:
+	var charge := preview_sea_shipping(port_tile, good_id, qty)
+	if charge.is_empty():
+		return charge
+	var transport_class := str(charge.get("transport_class", ""))
+	var usage: Dictionary = _sea_port_usage_this_turn.get(port_tile, {}).duplicate()
+	usage[transport_class] = int(charge.get("projected_usage", qty))
+	_sea_port_usage_this_turn[port_tile] = usage
+	var by_good: Dictionary = _sea_port_charges_this_turn.get(port_tile, {}).duplicate(true)
+	var row: Dictionary = by_good.get(good_id, {
+		"good_id": good_id, "buy_qty": 0, "sell_qty": 0, "total_qty": 0,
+		"base_fee": 0.0, "insurance_fee": 0.0, "total": 0.0,
+		"transport_class": transport_class, "capacity": int(charge.get("capacity", 0)), "at_cap": false,
+	})
+	if direction == "sell":
+		row["sell_qty"] = int(row.get("sell_qty", 0)) + qty
+		_port_sale_total += qty
+		_port_sales_by_class[transport_class] = int(_port_sales_by_class.get(transport_class, 0)) + qty
+	else:
+		row["buy_qty"] = int(row.get("buy_qty", 0)) + qty
+	row["total_qty"] = int(row.get("total_qty", 0)) + qty
+	row["base_fee"] = float(row.get("base_fee", 0.0)) + float(charge.get("base_fee", 0.0))
+	row["insurance_fee"] = float(row.get("insurance_fee", 0.0)) + float(charge.get("insurance_fee", 0.0))
+	row["total"] = float(row.get("total", 0.0)) + float(charge.get("total", 0.0))
+	row["at_cap"] = bool(row.get("at_cap", false)) or bool(charge.get("at_cap", false))
+	by_good[good_id] = row
+	_sea_port_charges_this_turn[port_tile] = by_good
+	if direction == "sell":
+		# One large manifest may contain many goods.  Its port-sale totals are
+		# accumulated immediately, but research reads them once in NARRATIVE.
+		_mark_research_progress_dirty()
+	transport_shipments_changed.emit() # Refresh the open port readout after a shipment is booked.
+	return charge
+
+func seaport_shipping_summary(port_tile: String) -> Dictionary:
+	_ensure_sea_shipping_turn()
+	var current_rows: Dictionary = _sea_port_charges_this_turn.get(port_tile, {})
+	var use_latest_completed_turn := current_rows.is_empty()
+	var source_rows: Dictionary = _last_sea_port_charges.get(port_tile, {}) if use_latest_completed_turn else current_rows
+	var source_usage: Dictionary = _last_sea_port_usage.get(port_tile, {}) if use_latest_completed_turn else _sea_port_usage_this_turn.get(port_tile, {})
+	var rows: Array = []
+	for row in source_rows.values():
+		rows.append((row as Dictionary).duplicate(true))
+	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return Catalog.get_display_name(str(a.get("good_id", ""))) < Catalog.get_display_name(str(b.get("good_id", ""))))
+	var owned := is_seaport_player_owned(port_tile)
+	return {
+		"owned": owned, "growth": sea_shipping_growth_factor(),
+		"base_fee": seaport_base_fee(port_tile),
+		"insurance_rate": seaport_insurance_rate(port_tile),
+		"usage": source_usage.duplicate(),
+		"activity_turn": _last_sea_shipping_turn if use_latest_completed_turn else _sea_shipping_turn,
+		"is_current_turn": not use_latest_completed_turn,
+		"rows": rows,
+	}
 
 func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = true, extra: Dictionary = {}) -> Dictionary:
 	# Buy goods from the nearest port to dest_tile: pay now (price + transport), ship in,
@@ -3768,6 +4152,14 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 		total = float(quote.get("cost", 0.0))
 		if total > headroom:
 			return {}
+	# The quote previews a mutable port-capacity charge. Commit only after the final,
+	# financeable quantity is known, then reconcile in case an earlier shipment used capacity.
+	var sea_quote := float(quote.get("sea_transport_cost", 0.0))
+	var sea_charge := commit_sea_shipping(port, good_id, qty, "buy")
+	if not sea_charge.is_empty():
+		var actual_sea := float(sea_charge.get("total", 0.0))
+		transport += actual_sea - sea_quote
+		total += actual_sea - sea_quote
 	# Goods with a transit leg are paid for ON ARRIVAL; instant (0-turn) deliveries have no
 	# transit to defer over, so they settle here.
 	if turns < 1:
@@ -3998,6 +4390,7 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = 
 	var result := MarketState.execute_sale(source_tile, goods_qtys, {"log_oneoff": log_oneoff})
 	if result.is_empty():
 		return {}
+	Production.record_external_transport_cost(float(result.get("transport_cost", 0.0)))
 	if not bool(result.get("deferred", false)):
 		var sale_record: Dictionary = result.get("sale_record", {})
 		record_tile_sale(source_tile, int(result.get("total_qty", 0)), float(result.get("total_revenue", 0.0)))

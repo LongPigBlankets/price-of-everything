@@ -32,8 +32,10 @@ const PHASE_COLUMNS: Array[String] = [
 const SECTION_COLUMNS: Array[String] = [
 	"power_reset",
 	"transport_arrivals",
+	"construction",
 	"production_passes",
 	"starvation_report",
+	"power_alloc",
 	"grid_settlement",
 	"flush_outputs",
 	"recurring_moves",
@@ -42,6 +44,7 @@ const SECTION_COLUMNS: Array[String] = [
 	"maintenance_labour",
 	"loan_payments",
 	"tax_dividends",
+	"carbon_tax",
 	"cost_solve",
 	"emit_summary",
 ]
