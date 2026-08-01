@@ -157,6 +157,14 @@ func quote_market_buy(dest_tile: String, good_id: String, qty: int, covered: boo
 	var unit_price := MarketState.get_buy_price(good_id)
 	var goods_cost := float(qty) * unit_price
 	var transport := 0.0 if seaport_covered else transport_cost_for_route(good_id, qty, route_data)
+	# Risk Desk Procedures applies only to materials bought FROM the market, never
+	# to player sales or ordinary inter-tile freight.
+	transport = Modifiers.apply("market_input_transport", good_id, transport, {"good_id": good_id})
+	# Sea freight replaces the old standing subscription charge. It is deliberately
+	# quoted without mutating port usage; MatchState commits it only after the buy clears funds.
+	var sea_transport := MatchState.preview_sea_shipping(port, good_id, qty)
+	var sea_cost := float(sea_transport.get("total", 0.0))
+	transport += sea_cost
 	return {
 		"port": port,
 		"route": route_data,
@@ -165,6 +173,8 @@ func quote_market_buy(dest_tile: String, good_id: String, qty: int, covered: boo
 		"goods_cost": goods_cost,
 		"transport_cost": transport,
 		"cost": goods_cost + transport,
+		"sea_transport_cost": sea_cost,
+		"sea_transport": sea_transport,
 		"covered": seaport_covered,
 	}
 

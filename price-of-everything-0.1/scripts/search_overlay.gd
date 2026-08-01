@@ -37,6 +37,9 @@ const MECHANIC_ENTRIES := [
 	{"id": "market_price_mechanics", "title": "Market price mechanics"},
 	{"id": "intermittency", "title": "Power intermittency"},
 	{"id": "building_economics", "title": "Building Economics"},
+	{"id": "transport", "title": "Transport"},
+	{"id": "port_transport", "title": "Port transport"},
+	{"id": "advisors", "title": "Advisors and the council"},
 ]
 
 var _search_stack: VBoxContainer = null
@@ -117,16 +120,48 @@ func _mechanic_result(entry: Dictionary) -> Dictionary:
 		"payload": entry,
 	}
 
+## Turns of sustained volume to move a price by `target` percent at `rate` %/turn.
+static func _turns_to(target: float, rate: float) -> int:
+	return 0 if rate <= 0.0 else int(ceil(target / rate))
+
+
 func _mechanic_body(entry_id: String) -> String:
 	if entry_id == "market_price_mechanics":
-		var glut: int = EconomyConfig.GLUT_UNITS
-		var maxp: int = EconomyConfig.MAX_PRICE_IMPACT_PCT
-		return ("Every good has a market price that drifts over time and reacts to how much you sell.\n\n"
-			+ "Selling is gentle up to a point: move up to %d units of a single good in one turn and the price barely notices. "
-			+ "Push past that and you flood the market — every further %d units knocks roughly another 1%% off the price that turn, up to about %d%%. "
-			+ "Dumping a large stockpile all at once can crash the price temporarily; it recovers over the following turns.\n\n"
-			+ "The per-tile auto-sell control lets you cap this: pick how much price impact you'll tolerate each turn and it ships only enough to stay within that band, keeping the rest stockpiled for later.\n\n"
-			+ "(Detailed numbers and worked examples will live here in a later content pass.)") % [glut, glut, maxp]
+		# Reads the LIVE banded model. The previous body described the legacy GLUT_UNITS knobs
+		# (100 units, 1%% per further 100, 10%% cap) — those constants now feed only the auto-sell
+		# tolerance cap, so the page had been documenting a superseded model.
+		var r1 := String.num(EconomyConfig.PRICE_IMPACT_RATE_1X, 2)
+		var r2 := String.num(EconomyConfig.PRICE_IMPACT_RATE_2X, 1)
+		var r4 := String.num(EconomyConfig.PRICE_IMPACT_RATE_4X, 1)
+		var r10 := String.num(EconomyConfig.PRICE_IMPACT_RATE_10X, 1)
+		var cap := int(EconomyConfig.PRICE_IMPACT_CAP_PCT)
+		var rec := String.num(EconomyConfig.PRICE_IMPACT_RECOVERY_PCT, 1)
+		return ("Every good has a market price that drifts over time and reacts to how much YOU move through the market.\n\n"
+			+ "What matters is your NET volume in one good in one turn — sales minus purchases — measured against that good's BASE OUTPUT: the largest single batch any active recipe producing it makes at level 1, unmodified. Measuring against production rather than a flat number means the thresholds mean the same thing for a good made 8 at a time as for one made 400 at a time.\n\n"
+			+ "There are four bands. Cross a multiple of base output and the price moves that much per turn, for as long as you keep it up:\n\n"
+			+ "   over 1x base output — %s%%/turn\n"
+			+ "   over 2x — %s%%/turn\n"
+			+ "   over 4x — %s%%/turn\n"
+			+ "   over 10x — %s%%/turn\n\n"
+			+ "The 1x band is the one most operations touch. A single building with production modifiers can out-produce its own base recipe batch, and once it does, selling that output every turn starts to move the price — gently, at half the rate of the band above, but it no longer passes unnoticed. Two buildings' worth reaches the second band.\n\n"
+			+ "SELLING pushes the price DOWN (a glut); BUYING pushes it UP (a deficit). The bands are identical in both directions, so a large standing purchase order walks its good's price up against you exactly as fast as dumping walks it down.\n\n"
+			+ "The accumulated impact is capped at plus or minus %d%%, and it is NOT permanent: hold your net volume at or under 1x base output and it bleeds back toward zero at %s%%/turn. Accrual and recovery never both happen in a turn — cross any threshold and you accrue, stay under it and you recover — so a good you are steadily working will not begin to recover until you ease off.\n\n"
+			+ "[table=4][cell][b]Net volume/turn[/b][/cell][cell][b]Price moves[/b][/cell][cell][b]To reach 10%%[/b][/cell][cell][b]To reach the %d%% cap[/b][/cell]"
+			+ "[cell]over 1x base[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell][cell]%d turns[/cell]"
+			+ "[cell]over 2x[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell][cell]%d turns[/cell]"
+			+ "[cell]over 4x[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell][cell]%d turns[/cell]"
+			+ "[cell]over 10x[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell][cell]%d turns[/cell][/table]\n\n"
+			+ "Those turn counts assume you hold that volume every single turn without pause. Ease off below 1x and the impact unwinds at %s%%/turn instead.\n\n"
+			+ "The market table's impact column lists the four thresholds for each good. The per-tile auto-sell control uses them: pick how much price impact you will tolerate each turn and it ships only enough to stay inside that band, stockpiling the rest.\n\n"
+			+ "Goods no active recipe produces have no base output and take no impact at all.") % [
+				r1, r2, r4, r10,                      # the four band bullets
+				cap, rec,                             # "capped at +/-N%" ... "recovers at N%/turn"
+				cap,                                  # table header: "To reach the N% cap"
+				r1, _turns_to(10.0, EconomyConfig.PRICE_IMPACT_RATE_1X), _turns_to(float(cap), EconomyConfig.PRICE_IMPACT_RATE_1X),
+				r2, _turns_to(10.0, EconomyConfig.PRICE_IMPACT_RATE_2X), _turns_to(float(cap), EconomyConfig.PRICE_IMPACT_RATE_2X),
+				r4, _turns_to(10.0, EconomyConfig.PRICE_IMPACT_RATE_4X), _turns_to(float(cap), EconomyConfig.PRICE_IMPACT_RATE_4X),
+				r10, _turns_to(10.0, EconomyConfig.PRICE_IMPACT_RATE_10X), _turns_to(float(cap), EconomyConfig.PRICE_IMPACT_RATE_10X),
+				rec]
 	if entry_id == "intermittency":
 		var derate_pct: int = int(round(EconomyConfig.INTERMITTENCY_DERATE * 100.0))
 		return ("Solar and wind power are GREEN but INTERMITTENT — the sun and wind aren't always there. "
@@ -142,6 +177,36 @@ func _mechanic_body(entry_id: String) -> String:
 			+ "Treat that net as a GUIDE, not cash in the bank. It values a building's whole output at the current market price whether or not you actually sell it — so a building that feeds another of yours looks like it 'earns' the market value of goods it never sells.\n\n"
 			+ "IMPORTANT: you CANNOT simply add up the net value-add of your buildings. When one building hands its output to another instead of selling it, it gives up a market sale — one building is quietly subsidising the next. The producer is credited the full market price; the consumer books that same input at its cheaper cost-to-make. The only honest total of what you're really earning is the profit shown in the Turn Summary and the Money panel.\n\n"
 			+ "A few things one building's net can't see, either: %d%% tax and a %d%% dividend come off your profit before it reaches your balance; selling a lot of one good in a single turn floods the market and lowers the price you actually get; and shipping goods between tiles costs freight. Chase the bottom line in the Turn Summary — not the sum of the parts.") % [tax_pct, div_pct]
+	if entry_id == "transport":
+		return ("Transport moves goods between tiles and connects your economy to the world market. Roads, railways and pipes have a limited throughput on every tile they cross; congested links constrain the flow that can use them that turn.\n\n"
+			+ "Transport costs are shown as part of the money panel's Transport category. When a building buys inputs or sells output, use the route and capacity information to decide whether to move goods locally, build more infrastructure, or trade through a port.\n\n"
+			+ "Research can improve a transport mode's throughput or lower a specific transport cost. Those bonuses apply to the live route calculation, not just the building card.")
+	if entry_id == "port_transport":
+		return ("Ports connect eligible goods to the world market. Each unowned port charges a per-good fee once in a turn, plus an ad valorem insurance charge based on the market purchase price. Buying a port removes the per-good fee and lowers its insurance rate; its own maintenance and labour then apply instead.\n\n"
+			+ "A port normally carries 1,500 units of each transport class per turn. Hazardous liquids, gases and ultra-heavy solids each have a 300-unit limit. Traffic may exceed those limits, but that shipment pays double port fees.\n\n"
+			+ "The port panel lists default terms separately from your current terms, then shows the most recent shipment for each good. Its right-hand figures are per-turn fee | ad valorem charge. Port fees rise gradually as the game advances, and relevant research can reduce those fees or raise throughput.")
+	if entry_id == "advisors":
+		# Read the live model rather than restating it — an encyclopedia page that quotes hardcoded
+		# numbers is a page that silently goes wrong the first time the constants are tuned.
+		var seats: int = MatchState.max_advisor_slots
+		var base: float = EconomyConfig.ADVISOR_BASE_COST_PER_TURN
+		var growth_pct: float = EconomyConfig.ADVISOR_COST_GROWTH * 100.0
+		var share_pct: float = EconomyConfig.ADVISOR_REVENUE_SHARE * 100.0
+		return ("Advisors are the specialists you seat on the company council. You hold %d seat%s, and each seat covers a different part of the business — the seat decides WHAT the advisor affects, the advisor decides how strongly.
+
+"
+			+ "Hiring runs role first: pick the seat you want filled, then the candidate for it. Moving an advisor who is already seated does not need a free seat — they vacate the old one as they take the new, so a full council can still be reshuffled.
+
+"
+			+ "COST. Each advisor draws a retainer plus a share of the business. The retainer starts at £%.2f a turn and compounds at %.2f%% per turn — twice the rate ordinary high-skilled labour inflates, because the people worth seating get scarcer as the industry matures. On top of that each advisor takes %.0f%% of company revenue, so a council of %d costs %.0f%% of turnover before the retainers are counted.
+
+"
+			+ "That second term is the one to watch: advisors are nearly free while you are small and become a real line item once you are turning over serious money. The council panel shows the current total under the hire button, and the charge is billed each turn against that turn's revenue.
+
+"
+			+ "Retainers are charged whether or not an advisor's speciality is doing anything for you that turn, so an idle seat is a pure loss — leave it empty until you have work for it.") % [
+				seats, "" if seats == 1 else "s", base, growth_pct, share_pct, seats,
+				share_pct * float(seats)]
 	return ""
 
 func close_search() -> void:
@@ -633,11 +698,19 @@ func _make_encyclopedia_entry(result: Dictionary) -> Control:
 	type_label.add_theme_color_override("font_color", SUBTITLE_COLOR)
 	body_stack.add_child(type_label)
 
-	var body := Label.new()
+	# Mechanics bodies may carry BBCode (the price-impact entry renders a rate table); goods and
+	# buildings pass plain prose, so bbcode stays OFF for them — a stray "[" in a good's
+	# description would otherwise be eaten as markup.
+	var body := RichTextLabel.new()
+	var is_mechanic := str(result.get("type", "")) == "mechanic"
+	body.bbcode_enabled = is_mechanic
 	body.text = _entry_placeholder_text(result)
+	body.fit_content = true
+	body.scroll_active = false
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.add_theme_font_size_override("font_size", 15)
-	body.add_theme_color_override("font_color", OFF_WHITE)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_font_size_override("normal_font_size", 15)
+	body.add_theme_color_override("default_color", OFF_WHITE)
 	body_stack.add_child(body)
 
 	var note := Label.new()

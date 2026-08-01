@@ -103,10 +103,13 @@ func _rebuild_header() -> void:
 	header_static.add_theme_constant_override("separation", 10)
 	header_static.add_child(_header_spacer(98.0))             # framed icon column
 	header_static.add_child(_header_label("Product", 240.0, Color(0, 0, 0, 0), false))
-	header_static.add_child(_header_label("Sale now", 70.0, SALE_TINT))
-	header_static.add_child(_header_label("Sale +10t", 80.0, SALE_TINT))
-	header_static.add_child(_header_label("Buy now", 70.0, BUY_TINT))
-	header_static.add_child(_header_label("Buy +10t", 80.0, BUY_TINT))
+	# Two-line headings: the price cells already render "(£x.xx)" underneath when impact is
+	# active, and that bracket was unlabelled — a player had no way to learn what it was.
+	# "Impact" is a link into the Encyclopedia entry that explains the bands.
+	header_static.add_child(_impact_header("Price to sell", COL_PRICE_W, SALE_TINT))
+	header_static.add_child(_header_label("Price to sell\nin 10 turns", COL_EST_W, SALE_TINT))
+	header_static.add_child(_impact_header("Price to buy", COL_PRICE_W, BUY_TINT))
+	header_static.add_child(_header_label("Price to buy\nin 10 turns", COL_EST_W, BUY_TINT))
 	header_static.add_child(_header_label("Impact\nthresholds", 110.0))
 	header_static.add_child(_header_label("Sold", 60.0))
 	header_static.add_child(_header_label("Bought", 64.0))
@@ -131,6 +134,49 @@ const SPECIAL_ORDER_COLUMNS := [
 	{"key": "bonus", "label": "Bonus", "w": 100.0, "align": HORIZONTAL_ALIGNMENT_CENTER},
 	{"key": "producer", "label": "Producer", "w": 180.0, "align": HORIZONTAL_ALIGNMENT_LEFT},
 ]
+
+## Column widths for the four price columns. Kept in sync with market_row.gd's COL_PRICE /
+## COL_EST — the header and the rows are separate containers, so a mismatch silently skews
+## every column to the right of it.
+const COL_PRICE_W := 104.0
+const COL_EST_W := 104.0
+
+
+## A price heading whose second line labels the "(£x.xx)" bracket the cell renders under an
+## impacted price. RichTextLabel because only the word "Impact" is a link, not the whole line.
+func _impact_header(title: String, width: float, tint: Color) -> Control:
+	var rt := RichTextLabel.new()
+	rt.bbcode_enabled = true
+	rt.fit_content = true
+	rt.scroll_active = false
+	rt.custom_minimum_size = Vector2(width, 0)
+	rt.mouse_filter = Control.MOUSE_FILTER_PASS
+	rt.text = "[center]%s\n[font_size=11](before [url=impact]Impact[/url])[/font_size][/center]" % title
+	rt.add_theme_color_override("default_color", Color(1, 1, 1, 0.85))
+	rt.meta_clicked.connect(func(_meta: Variant) -> void:
+		var overlay := get_tree().get_first_node_in_group("search_overlay")
+		if overlay == null:
+			overlay = _find_search_overlay(get_tree().root)
+		if overlay != null and overlay.has_method("open_encyclopedia_entry"):
+			overlay.open_encyclopedia_entry("market_price_mechanics"))
+	if tint.a > 0.0:
+		var box := StyleBoxFlat.new()
+		box.bg_color = tint
+		box.content_margin_left = 6
+		box.content_margin_right = 6
+		rt.add_theme_stylebox_override("normal", box)
+	return rt
+
+
+func _find_search_overlay(n: Node) -> Node:
+	if n.get_script() != null and str(n.get_script().resource_path).ends_with("search_overlay.gd"):
+		return n
+	for c in n.get_children():
+		var f := _find_search_overlay(c)
+		if f != null:
+			return f
+	return null
+
 
 func _header_label(text: String, width: float, tint: Color = Color(0, 0, 0, 0), center: bool = true) -> Label:
 	var l := Label.new()

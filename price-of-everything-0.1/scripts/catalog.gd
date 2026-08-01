@@ -23,6 +23,10 @@ const BUILDING_ALIAS := {
 	"forest": "new_forest",
 }
 
+# Recipes in active repair stay loadable for old saves, but must not be suggested by
+# construction, special orders, the goods graph, or the encyclopedia.
+const HIDDEN_RECIPE_IDS := {"r_107": true}  # E-Waste Recycling
+
 # --- Goods storage ---
 var _goods_by_id: Dictionary = {}
 var _goods_by_internal_name: Dictionary = {}
@@ -863,7 +867,10 @@ func _parse_requirements(raw_str: String) -> Array:
 
 # Public API: recipes
 func all_recipes() -> Array:
-	return _all_recipes
+	return _all_recipes.filter(func(recipe: Dictionary) -> bool: return is_recipe_visible(recipe))
+
+func is_recipe_visible(recipe: Dictionary) -> bool:
+	return not HIDDEN_RECIPE_IDS.has(str(recipe.get("recipe_id", "")))
 
 func get_recipe(recipe_id: String) -> Dictionary:
 	return _recipes_by_id.get(recipe_id, {})
@@ -873,6 +880,8 @@ func get_recipes_for_building(building_id: String) -> Array:
 	# column). Base recipes (empty column) are always available.
 	var out: Array = []
 	for r in _recipes_by_building.get(building_id, []):
+		if not is_recipe_visible(r):
+			continue
 		var req: String = str(r.get("tech_unlock_req", ""))
 		if req == "" or MatchState.is_unlocked(req):
 			out.append(r)
@@ -889,7 +898,7 @@ func recipe_produces(recipe: Dictionary, good_id: String) -> bool:
 func recipes_producing(good_id: String) -> Array:
 	if good_id == "":
 		return []
-	return _all_recipes.filter(func(r: Dictionary) -> bool: return recipe_produces(r, good_id))
+	return _all_recipes.filter(func(r: Dictionary) -> bool: return is_recipe_visible(r) and recipe_produces(r, good_id))
 
 func recipe_output_qty(recipe: Dictionary, good_id: String) -> int:
 	for o in recipe.get("outputs", []):

@@ -464,10 +464,19 @@ func _build_victory() -> void:
 func _track_color(entry: Dictionary) -> Color:
 	return DS.PALETTE.get(str(entry.get("color_key", "")), C_CREAM)
 
+## queue_free() is DEFERRED: the old children live until the end of the frame while the new ones
+## are added immediately, so for one frame the container holds BOTH sets and the HBox lays out
+## double the widgets — which is the flicker. remove_child() first takes them out of the layout
+## in the same frame. (Same pattern advisor_council_tab._rebuild already uses.)
+func _clear_now(container: Node) -> void:
+	for c in container.get_children():
+		container.remove_child(c)
+		c.queue_free()
+
+
 func _refresh_victory() -> void:
 	var bd: Dictionary = VictoryState.get_breakdown()
-	for c in _victory_meters.get_children():
-		c.queue_free()
+	_clear_now(_victory_meters)
 	for t in (bd.get("tracks", []) as Array):
 		var cell := VBoxContainer.new()
 		cell.add_theme_constant_override("separation", 2)
@@ -796,8 +805,7 @@ func _refresh_council() -> void:
 	else:
 		_council_status.text = "%d seated" % seated.size()
 		_council_status.add_theme_color_override("font_color", C_MUTED)
-	for c in _council_stack.get_children():
-		c.queue_free()
+	_clear_now(_council_stack)
 	for aid in seated:
 		_council_stack.add_child(_portrait_chip(str(aid), 36))
 
@@ -1028,7 +1036,7 @@ func _build_fly_layer() -> void:
 	_fly_layer = CanvasLayer.new()
 	_fly_layer.layer = 110   # under the Turn Briefing hub (120)
 	add_child(_fly_layer)
-	_fly_scrim = Control.new()
+	_fly_scrim = _FlyScrim.new()
 	_fly_scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_fly_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
 	_fly_scrim.visible = false
@@ -1037,6 +1045,32 @@ func _build_fly_layer() -> void:
 			_fly_scrim.accept_event()
 			_close_fly())
 	_fly_layer.add_child(_fly_scrim)
+
+## Full-screen catcher that closes an open flyout on any outside click. It deliberately
+## does NOT cover the End Turn button: a STOP-filter Control consumes the event whether or
+## not it calls accept_event, so the only way to let that one click through is to be
+## un-hittable there. Ending a turn with the treasury mini-panel open now works, and the
+## panel stays up so the player sees the new numbers land.
+class _FlyScrim extends Control:
+	var _end_turn: Control = null
+
+	func _has_point(point: Vector2) -> bool:
+		var btn := _end_turn_button()
+		if btn != null and btn.is_visible_in_tree() \
+				and btn.get_global_rect().has_point(point + global_position):
+			return false
+		return true
+
+	func _end_turn_button() -> Control:
+		if _end_turn != null and is_instance_valid(_end_turn):
+			return _end_turn
+		var scene := get_tree().current_scene if is_inside_tree() else null
+		if scene == null:
+			return null
+		var n := scene.find_child("EndTurnButton", true, false)
+		_end_turn = n as Control
+		return _end_turn
+
 
 func _toggle_fly(id: String) -> void:
 	if _fly_open_id == id:
@@ -1067,6 +1101,7 @@ func _open_fly(id: String) -> void:
 		_fly_scrim.position = Vector2.ZERO
 	_fly_scrim.visible = true
 	_fly_panel = PanelContainer.new()
+	_fly_panel.name = "Flyout_%s" % id   # stable target (tutorial spotlight / e2e)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color("#0d1e31")
 	sb.border_color = C_ACTIVE_BORDER
@@ -1157,8 +1192,10 @@ func _fly_pad(vb: VBoxContainer, sep: int = 7) -> VBoxContainer:
 	vb.add_child(pad)
 	return inner
 
-func _fly_row(label: String, value: String, tone: Color = C_TEXT, label_tone: Color = Color("#8ea3ba")) -> Control:
+func _fly_row(label: String, value: String, tone: Color = C_TEXT, label_tone: Color = Color("#8ea3ba"), row_name: String = "") -> Control:
 	var row := HBoxContainer.new()
+	if row_name != "":
+		row.name = row_name   # stable target for the tutorial's money primer
 	row.add_theme_constant_override("separation", 12)
 	var l := _mini(label, label_tone, 12)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1198,11 +1235,11 @@ func _fly_treasury(vb: VBoxContainer) -> void:
 	var inner := _fly_pad(vb)
 	var s: Dictionary = Production.last_turn_summary
 	var net := float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
-	inner.add_child(_fly_row("Cash on hand", _money_text(MatchState.money), C_BRIGHT, C_BRIGHT))
-	inner.add_child(_fly_row("Net last turn", _fly_signed_money(net), C_BRIGHT, C_BRIGHT))
+	inner.add_child(_fly_row("Cash on hand", _money_text(MatchState.money), C_BRIGHT, C_BRIGHT, "FlyRowCash"))
+	inner.add_child(_fly_row("Net last turn", _fly_signed_money(net), C_BRIGHT, C_BRIGHT, "FlyRowNet"))
 	var runway := _runway_turns()
 	if runway > 0:
-		inner.add_child(_fly_row("Runway at current burn", "≈ %d turns" % runway, C_BRIGHT, C_BRIGHT))
+		inner.add_child(_fly_row("Runway at current burn", "≈ %d turns" % runway, C_BRIGHT, C_BRIGHT, "FlyRowRunway"))
 	inner.add_child(_fly_sep())
 
 	# Mirror the expanded turn summary: revenue and outgoings read side by side,

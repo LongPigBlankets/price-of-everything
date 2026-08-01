@@ -24,7 +24,10 @@ const RUNS_HEADER = ["received_at", "player_id", "run_id", "session_id", "versio
 // One row per turn. "goods" is the sparse per-good production pipe-joined as
 // name:qty (e.g. "coal:51|iron_ore:28|steel:53") — zero-production goods are
 // absent by construction. tiers/victory are pipe-joined arrays.
-const FIXED = ["run_id", "session_id", "turn", "money", "revenue", "profit", "loans",
+// "received_at" is stamped server-side per POST so the turns tab can be read for
+// recency on its own — the runs tab always had it, the turns tab did not, which made
+// "has anything arrived lately?" unanswerable without joining the two (owner 2026-08-01).
+const FIXED = ["received_at", "run_id", "session_id", "turn", "money", "revenue", "profit", "loans",
                "buildings", "power_gen", "power_use", "tiers", "victory",
                "playtime_s", "goods"];
 
@@ -46,7 +49,9 @@ function doPost(e) {
       p.end.turn, JSON.stringify(p)]);
 
   const sh = sheetWithHeader_(ss, "turns", FIXED);
+  const stamped = new Date();
   const rows = (p.turns || []).map(t => FIXED.map(col => {
+    if (col === "received_at") return stamped;
     if (col === "run_id") return p.run_id;
     if (col === "session_id") return p.session_id;
     if (col === "tiers" || col === "victory") return (t[col] || []).join("|");

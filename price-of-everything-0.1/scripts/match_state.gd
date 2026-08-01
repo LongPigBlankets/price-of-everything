@@ -2624,11 +2624,22 @@ func tile_firming_cap(tile_id: String) -> int:
 	return int(round(min(float(slots), tile_loaded_firming(tile_id))))
 
 # Cells of `good_id` still needed to FILL the tile's remaining firming headroom.
-func battery_cells_to_fill(tile_id: String, good_id: String) -> int:
+# Pass `instance_id` to scope it to ONE battery instead: the panel is opened on a single
+# building, and filling from the tile total meant a tile with four batteries ordered four
+# batteries' worth from whichever one you happened to click (owner 2026-08-01). Cells are pooled
+# per tile, so "this battery's share" is its own capacity less what the pool already firms —
+# clamped to the tile's real remaining headroom so it can never over-order either.
+func battery_cells_to_fill(tile_id: String, good_id: String, instance_id: String = "") -> int:
 	var density := _battery_density(good_id)
 	if density <= 0.0:
 		return 0
-	var free_firming := float(tile_battery_slots(tile_id)) - tile_loaded_firming(tile_id)
+	var loaded := tile_loaded_firming(tile_id)
+	var free_firming := float(tile_battery_slots(tile_id)) - loaded
+	if instance_id != "":
+		var inst: Dictionary = get_building(instance_id)
+		if not inst.is_empty():
+			var own := float(EconomyConfig.BATTERY_STORAGE_CAP.get(int(inst.get("level", 1)), 0))
+			free_firming = clampf(own - loaded, 0.0, free_firming)
 	return maxi(0, int(floor(free_firming / density + 0.0001)))
 
 func _battery_density(good_id: String) -> float:
@@ -5401,7 +5412,18 @@ func assign_advisor_to_seat(seat_id: String, advisor_id: String) -> bool:
 		return false
 	if not permanent_advisor_ids.has(advisor_id):
 		return false
-	if not advisor_seats.has(seat_id) and advisor_seats.size() >= max_advisor_slots:
+	# Capacity gate. An advisor who ALREADY holds a seat is moving, not arriving: the loop below
+	# vacates their old seat, so the seat count does not grow and the cap must not refuse them.
+	# Without this exemption, re-seating anyone silently failed once the council was full — the
+	# caller saw `false`, dropped back to the roster, and the advisor stayed in their previous
+	# role, which is exactly the "I hired them for one role and they went to another" report.
+	var takes_new_slot := not advisor_seats.has(seat_id)
+	if takes_new_slot:
+		for held in advisor_seats:
+			if str(advisor_seats[held]) == advisor_id:
+				takes_new_slot = false
+				break
+	if takes_new_slot and advisor_seats.size() >= max_advisor_slots:
 		return false
 	# One seat per advisor: vacate any other seat this advisor currently holds.
 	for existing_seat in advisor_seats.keys():
@@ -5963,12 +5985,27 @@ func _tick_fire_cooldowns() -> void:
 	if returned:
 		advisors_changed.emit()
 
-func advisor_payroll_per_turn() -> float:
-	var total := 0.0
-	for advisor_id in permanent_advisor_ids:
-		var a := _roster_entry(str(advisor_id))
-		total += float(a.get("salary", ADVISOR_COST_PER_TURN)) if not a.is_empty() else ADVISOR_COST_PER_TURN
-	return total
+## What ONE advisor costs this turn: a flat base that inflates at double the labour rate, plus
+## a share of company revenue (EconomyConfig, owner spec 2026-08-01). Per-advisor rather than
+## per-council, because the revenue share is charged once for each of them.
+## `revenue` is the turn's goods + power sales; pass 0.0 for the base-only figure.
+func advisor_cost_per_advisor(revenue: float = 0.0) -> float:
+	var t: int = maxi(1, int(TurnManager.current_turn))
+	var base: float = EconomyConfig.ADVISOR_BASE_COST_PER_TURN \
+		* pow(1.0 + EconomyConfig.ADVISOR_COST_GROWTH, float(t - 1))
+	return base + maxf(0.0, revenue) * EconomyConfig.ADVISOR_REVENUE_SHARE
+
+
+## Revenue the advisor share is taken from — the same goods + power sales figure tax uses, read
+## off the last resolved turn so the council panel and the ledger quote one number.
+func advisor_revenue_basis() -> float:
+	var s: Dictionary = Production.last_turn_summary
+	return float(s.get("goods_sales_revenue", 0.0)) + float(s.get("power_sales_revenue", 0.0))
+
+
+func advisor_payroll_per_turn(revenue: float = -1.0) -> float:
+	var rev: float = advisor_revenue_basis() if revenue < 0.0 else revenue
+	return float(permanent_advisor_ids.size()) * advisor_cost_per_advisor(rev)
 
 func _sanitize_advisor_ids(ids: Variant) -> Array:
 	var valid := {}

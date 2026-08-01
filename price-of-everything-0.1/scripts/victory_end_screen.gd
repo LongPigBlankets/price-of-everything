@@ -31,6 +31,13 @@ const C_NAVY_TOP := Color("#0c1d31")
 const C_NAVY_BOT := Color("#0a1521")
 const C_ACCENT_WIN := Color("#e6b34a")
 const C_ACCENT_LOSE := Color("#e2604a")
+## "Continuity" — survived to the bell with no track but still in profit. Amber: neither the
+## gold of a win nor the red of receivership (owner 2026-08-01).
+const C_ACCENT_CONT := Color("#e0932c")
+## The big word is amber TOO, not a pale sand (owner 2026-08-01) — victory pairs a near-white
+## word with a gold accent, but continuity reads as one amber verdict rather than two tones.
+const C_DISPLAY_CONT := Color("#e0932c")
+const C_TOTAL_CONT := Color("#e0932c")
 const C_HEADER_BORDER := Color("#16273a")
 const C_KICKER := Color("#71859b")
 const C_DISPLAY_WIN := Color("#f3f8fd")
@@ -93,7 +100,8 @@ func show_end(data: Dictionary) -> void:
 	_expand_overlay = null
 
 	var result := str(data.get("result", "victory"))
-	_accent = C_ACCENT_WIN if result == "victory" else C_ACCENT_LOSE
+	_accent = C_ACCENT_WIN if result == "victory" else (
+		C_ACCENT_CONT if result == "continuity" else C_ACCENT_LOSE)
 	_empire_data = data.get("empire", {})
 
 	# Dim scrim (STOP so nothing behind reacts; clicks are swallowed, not destructive).
@@ -199,8 +207,11 @@ func _build_header(data: Dictionary) -> Control:
 	word_row.add_theme_constant_override("separation", 18)
 	word_row.alignment = BoxContainer.ALIGNMENT_BEGIN
 	left.add_child(word_row)
-	var word := "VICTORY" if result == "victory" else "DEFEAT"
-	var word_col := C_DISPLAY_WIN if result == "victory" else C_DISPLAY_LOSE
+	# The big word is the result CATEGORY and sits beside the title, so continuity needs its own
+	# — left on the else branch it read "DEFEAT Continuity", which is the opposite of the point.
+	var word := "VICTORY" if result == "victory" else ("SURVIVAL" if result == "continuity" else "DEFEAT")
+	var word_col := C_DISPLAY_WIN if result == "victory" else (
+		C_DISPLAY_CONT if result == "continuity" else C_DISPLAY_LOSE)
 	var word_lbl := _lbl(word, _BEBAS, 74, word_col)
 	word_lbl.size_flags_vertical = Control.SIZE_SHRINK_END
 	word_row.add_child(word_lbl)
@@ -220,7 +231,8 @@ func _build_header(data: Dictionary) -> Control:
 	total_row.alignment = BoxContainer.ALIGNMENT_END
 	total_row.add_theme_constant_override("separation", 6)
 	right.add_child(total_row)
-	var total_col := C_TOTAL_WIN if result == "victory" else C_TOTAL_LOSE
+	var total_col := C_TOTAL_WIN if result == "victory" else (
+		C_TOTAL_CONT if result == "continuity" else C_TOTAL_LOSE)
 	var total_lbl := _lbl(str(int(data.get("total", 0))), _UIFonts.mono(), 52, total_col)
 	total_lbl.size_flags_vertical = Control.SIZE_SHRINK_END
 	total_row.add_child(total_lbl)
@@ -232,7 +244,7 @@ func _build_header(data: Dictionary) -> Control:
 	var pill_row := HBoxContainer.new()
 	pill_row.alignment = BoxContainer.ALIGNMENT_END
 	right.add_child(pill_row)
-	pill_row.add_child(_build_pill(won, int(data.get("turn", 0))))
+	pill_row.add_child(_build_pill(won, int(data.get("turn", 0)), result))
 
 	var sc := int(data.get("secured_count", 0))
 	var sec_lbl := _lbl("%d of 5 tracks secured" % sc, _UIFonts.PLEX_MED, 12, C_MUTED)
@@ -278,7 +290,7 @@ func _build_header(data: Dictionary) -> Control:
 	return sec
 
 
-func _build_pill(won: bool, turn: int) -> Control:
+func _build_pill(won: bool, turn: int, result: String = "victory") -> Control:
 	var pc := PanelContainer.new()
 	var mc := MarginContainer.new()
 	mc.add_theme_constant_override("margin_left", 12)
@@ -289,6 +301,11 @@ func _build_pill(won: bool, turn: int) -> Control:
 	if won:
 		pc.add_theme_stylebox_override("panel", _sb(C_TOTAL_WIN, C_TOTAL_WIN, 0, 12, 0))
 		mc.add_child(_lbl("✓  Won on turn %d" % turn, _UIFonts.PLEX_SEMI, 13, Color("#0c1622")))
+	elif result == "continuity":
+		# Not a red cross: no track was secured, but the company is still trading.
+		var amb := C_ACCENT_CONT
+		pc.add_theme_stylebox_override("panel", _sb(Color(amb.r, amb.g, amb.b, 0.14), amb, 1, 12, 0))
+		mc.add_child(_lbl("=  Still trading on turn %d" % turn, _UIFonts.PLEX_SEMI, 13, amb))
 	else:
 		var red := C_ACCENT_LOSE
 		pc.add_theme_stylebox_override("panel", _sb(Color(red.r, red.g, red.b, 0.14), red, 1, 12, 0))
@@ -699,7 +716,14 @@ func _make_empire_graph(interactive: bool) -> Control:
 	if (g.get("nodes", []) as Array).is_empty():
 		return null
 	_EmpireLayout.solve(g["nodes"], g["edges"])
-	_EmpireLayout.place_ports(g["ports"], _EmpireLayout.bbox_of(g["nodes"]))
+	# The end screen shows the network as it stood when the company stopped trading, so the SELL
+	# row goes: nothing leaves through those docks any more. The BUY row stays, because what the
+	# empire drew in from the market is part of the picture that remains (owner 2026-08-01).
+	# The sell ports are still POSITIONED — place_buy_ports mirrors each top hex onto its bottom
+	# twin's x — they are simply not handed to the graph, so nothing draws them.
+	var area: Rect2 = _EmpireLayout.bbox_of(g["nodes"])
+	_EmpireLayout.place_ports(g["ports"], area)
+	_EmpireLayout.place_buy_ports(g["buy_ports"], g["ports"], area)
 	var world: Control = _GraphWorld.new()
 	world.clip_contents = true
 	world.mouse_filter = Control.MOUSE_FILTER_STOP if interactive else Control.MOUSE_FILTER_IGNORE
@@ -710,7 +734,8 @@ func _make_empire_graph(interactive: bool) -> Control:
 		if applied[0] or world.size.x <= 1.0:
 			return
 		applied[0] = true
-		world.set_graph(g["nodes"], g["edges"], g["ports"], g["sell_edges"])
+		# Empty sell ports + empty sell edges; the buy row and its market lines carry through.
+		world.set_graph(g["nodes"], g["edges"], [], [], g["market_edges"], g["buy_ports"])
 		for c in world.get_children():
 			if c is Control:
 				(c as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE)

@@ -61,7 +61,12 @@ var _collect := true          # this run's consent (the opt-out checkbox at star
 var _next_collect := true     # staged by the New Game / Tutorial screens
 var _next_tutorial := false   # staged: suffix the next run id with "-T"
 var _rows: Array = []         # one Dictionary per completed turn, this session
-var _uploading := {}  # path -> true while a request for that outbox file is in flight
+var _uploading := {}  # path -> that file's delivery watermark while its request is in flight
+# Highest turn the server has ACCEPTED for this run. Every envelope used to carry the whole
+# run history, so a checkpoint upload followed by the final envelope wrote turn 1 to the sheet
+# two or three times over (owner 2026-08-01) — visible there as nested prefixes: 1-10, 1-20,
+# 1-27 for one run. Rows at or below the watermark are already in the sheet and are not resent.
+var _delivered_through := 0
 var _goods_indexed := false
 var _tier_available := false
 var _tier_index := {}         # good_id -> index into TIER_BANDS
@@ -121,6 +126,7 @@ func _on_run_started() -> void:
 	_playtime_carried_s = 0
 	_session_ordinal = 1
 	_rows = []
+	_delivered_through = 0
 	_ensure_tier_index()
 	_retry_outbox()
 
@@ -244,6 +250,7 @@ func import_state(d: Dictionary) -> void:
 	_collect = bool(d.get("collect", true))
 	_run_started_msec = Time.get_ticks_msec()
 	_rows = []
+	_delivered_through = _load_watermark()
 
 
 ## The run ended on-screen (victory / turn cap / bankruptcy): finalize with the
@@ -338,8 +345,47 @@ func _build_envelope(reason: String) -> Dictionary:
 			"playtime_s": _playtime_s(),
 			"victory": _victory_array(),
 		},
-		"turns": _rows,
+		"turns": _undelivered_rows(),
 	}
+
+
+## Rows the server has not confirmed yet. A failed upload leaves its file in the outbox and the
+## watermark unmoved, so nothing is dropped by filtering here — it is retried on the next boot.
+func _undelivered_rows() -> Array:
+	if _delivered_through <= 0:
+		return _rows
+	var out: Array = []
+	for r in _rows:
+		if int((r as Dictionary).get("turn", 0)) > _delivered_through:
+			out.append(r)
+	return out
+
+
+## The watermark lives beside the outbox, NOT inside it — _retry_outbox uploads every .json it
+## finds in the outbox, so a watermark file in there would be POSTed as if it were an envelope.
+func _watermark_path() -> String:
+	return AppPaths.telemetry_outbox_dir().get_base_dir().path_join("sent_%s.json" % _run_id.substr(0, 12))
+
+
+func _load_watermark() -> int:
+	var f := FileAccess.open(_watermark_path(), FileAccess.READ)
+	if f == null:
+		return 0
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	return int((parsed as Dictionary).get("through", 0)) if parsed is Dictionary else 0
+
+
+## Highest turn in `body`, or -1 when the envelope belongs to a different run (an older
+## crashed run draining from the outbox must not move THIS run's watermark).
+func _watermark_of(body: String) -> int:
+	var parsed: Variant = JSON.parse_string(body)
+	if not (parsed is Dictionary) or str((parsed as Dictionary).get("run_id", "")) != _run_id:
+		return -1
+	var top := 0
+	for r in ((parsed as Dictionary).get("turns", []) as Array):
+		top = maxi(top, int((r as Dictionary).get("turn", 0)))
+	return top
 
 
 func _checkpoint_path() -> String:
@@ -371,7 +417,7 @@ func _upload_file(path: String) -> void:
 	var body := FileAccess.get_file_as_string(path)
 	if body == "":
 		return
-	_uploading[path] = true
+	_uploading[path] = _watermark_of(body)
 	var http := HTTPRequest.new()
 	http.use_threads = true
 	http.timeout = 15.0
@@ -387,13 +433,21 @@ func _upload_file(path: String) -> void:
 
 func _on_upload_done(result: int, code: int, _headers: PackedStringArray,
 		_body: PackedByteArray, http: HTTPRequest, path: String) -> void:
+	var delivered := int(_uploading.get(path, -1))
 	_uploading.erase(path)
 	http.queue_free()
 	# With max_redirects = 0 the 302 arrives as RESULT_REDIRECT_LIMIT_REACHED,
 	# not RESULT_SUCCESS — the response code is the success signal.
 	if code == 302 or (result == HTTPRequest.RESULT_SUCCESS and code == 200):
 		DirAccess.remove_absolute(path)
-		print("[Telemetry] uploaded %s (http %d)" % [path.get_file(), code])
+		if delivered > _delivered_through:
+			_delivered_through = delivered
+			_write_json(_watermark_path(), {"run_id": _run_id, "through": _delivered_through})
+		# The run is over and its last envelope landed — the watermark has nothing left to guard.
+		if _finalized and delivered >= 0:
+			DirAccess.remove_absolute(_watermark_path())
+		print("[Telemetry] uploaded %s (http %d, delivered through turn %d)"
+				% [path.get_file(), code, _delivered_through])
 	else:
 		print("[Telemetry] upload failed for %s (result %d, http %d) — kept for next boot"
 				% [path.get_file(), result, code])

@@ -29,6 +29,14 @@ static func poll(decide: Dictionary) -> bool:
 			return _board_has_infra(str(decide.get("infra", "")))
 		"tile_has_infra":
 			return Catalog.tile_has_infrastructure(str(decide.get("tile", "")), str(decide.get("infra", "")))
+		"loan_taken":
+			# Any live loan of at least `amount`. Reads LoanState rather than watching a
+			# signal, so the step still completes if the player borrowed before reaching it.
+			return _loan_taken(float(decide.get("amount", 1.0)))
+		"advisor_seated":
+			# `count` advisors sitting in seats. Hiring alone is not enough — the lesson is
+			# that a seated advisor changes the numbers.
+			return MatchState.advisor_seats.size() >= int(decide.get("count", 1))
 		"tile_cabled_or_ordered":
 			# True the instant the player CLICKS the Cables cell (a b_006 construction
 			# project appears) OR once it finishes (tile_has_infra). Advancing on the
@@ -53,6 +61,10 @@ static func poll(decide: Dictionary) -> bool:
 			return _building_recipe_on_tile(str(decide.get("tile", "")), str(decide.get("recipe_id", "")))
 		"research_unlocked":
 			return MatchState.is_unlocked(str(decide.get("title", "")))
+		"research_search_contains":
+			return _research_search_contains(str(decide.get("text", "")))
+		"research_search_nonempty":
+			return _research_search_nonempty()
 		"in_mapmode":
 			# Map by name (avoids hardcoding enum ints). Only logistics is used today.
 			return str(decide.get("mode", "")) == "logistics" and MapMode.current_mode == MapMode.Mode.LOGISTICS
@@ -106,6 +118,25 @@ static func _node_visible(node_name: String) -> bool:
 		return false
 	var n := tree.current_scene.find_child(node_name, true, false)
 	return n is Control and (n as Control).is_visible_in_tree()
+
+static func _research_search_contains(text: String) -> bool:
+	if text == "":
+		return false
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null or tree.current_scene == null:
+		return false
+	var panel := tree.current_scene.find_child("ResearchPanel", true, false)
+	return panel is Control and (panel as Control).is_visible_in_tree() \
+		and str(panel.get("_search_query")).to_lower().contains(text.to_lower())
+
+
+static func _research_search_nonempty() -> bool:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null or tree.current_scene == null:
+		return false
+	var panel := tree.current_scene.find_child("ResearchPanel", true, false)
+	return panel is Control and (panel as Control).is_visible_in_tree() \
+		and not str(panel.get("_search_query")).strip_edges().is_empty()
 
 
 ## True when the player's building of `building_id` on `tile_id` actually PRODUCED last
@@ -190,6 +221,19 @@ static func _tile_infra_or_ordered(tile_id: String, infra: String, building_id: 
 
 
 ## True when any tutorial board tile carries the given infrastructure (cables/pipes/...).
+## True when the player holds a live loan of at least `amount`. Checks each loan's
+## ORIGINAL principal, not the outstanding balance, so a repayment tick between the
+## borrow and the poll can't un-complete the step.
+static func _loan_taken(amount: float) -> bool:
+	for loan in LoanState.loans:
+		if not (loan is Dictionary):
+			continue
+		var principal := float((loan as Dictionary).get("principal_initial", 0.0))
+		if principal >= amount - 0.001:
+			return true
+	return false
+
+
 static func _board_has_infra(infra: String) -> bool:
 	if infra == "":
 		return false

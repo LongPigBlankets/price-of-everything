@@ -15,6 +15,10 @@ extends RefCounted
 ## in-house (own plant) or INPUTS in-house (own glass). Labour + maintenance can't be
 ## integrated away — only modifiers (research/advisors/policies) trim those.
 
+## The loan the Money chapter asks the player to take. Small on purpose: the lesson is the
+## grace period and the repayment tail, not the sum.
+const TUTORIAL_LOAN_AMOUNT := 100
+
 const BOARD_TILES: Array = [
 	"tile_6_7", "tile_6_6", "tile_7_7", "tile_7_8", "tile_6_8", "tile_5_8", "tile_5_7", "tile_5_9",
 ]
@@ -32,7 +36,7 @@ const CAMERA_TILES: Array = [
 # cables are stripped in data/tile_properties.csv so the "lay a cable for power" lesson still lands here.
 const WINDOW_TILE := "tile_5_9"   # NPC Industrial Goods Factory (windows) — bought + co-located producers
 const GLASS_TILE := WINDOW_TILE   # glass furnace built on the factory tile (needs a reinf pipe for NaOH)
-const ALU_TILE := WINDOW_TILE     # aluminium furnace built on the factory tile (all-solid inputs, no pipe)
+const ALU_TILE := WINDOW_TILE     # aluminium furnace built on the factory tile (chlorine needs a reinf pipe)
 const INPUT_TILE := "tile_5_7"    # rural + sand(3000) deposit — the sand on the board (Encyclopedia reference)
 const POWER_TILE := "tile_6_6"    # rural, adjacent — build your own power plant (deeper integration)
 const WATER_TILE := "tile_7_8"    # deposit:water + river (deeper integration)
@@ -41,7 +45,8 @@ const STUB_TILE := "tile_6_8"     # hill, unsurveyed coal deposit (deeper integr
 # Building / recipe ids (verified against the catalog):
 #   b_007/r_056 window factory (28 glass + 10 aluminium -> 15 windows) · b_002 furnace runs r_053 glassmaking
 #   (sand+NaOH+limestone -> 28 glass), r_054 High Strength Glassmaking (silica+alumina+sulphur -> 48 glass,
-#   research-gated, no NaOH), AND r_050 aluminium Hall-Heroult (alumina+graphite+chem_salts -> 20 aluminium)
+#   research-gated, no NaOH), AND r_232 Bauxite Carbochlorination
+#   (bauxite+graphite+chlorine -> 20 aluminium; Tier-I Metallurgy unlock; chlorine needs reinforced pipes)
 #   b_018 reinf_pipes (£50, 1 turn — the only mode that carries NaOH) · b_003/r_004 coal power plant (deferred)
 
 ## Balance-sensitive numbers in the copy (kit costs, market prices, recipe
@@ -66,10 +71,8 @@ static func steps() -> Array:
 			"title": "Welcome to Carbon and Capital",
 			"mode": "welcome",
 			"paragraphs": [
-				"This is a game where you build out your industrial empire over 25 years across a country known as Taralia.",
-				"You will buy, build and branch out one good at a time — from coal and steel to computers and electric cars. You may begin in any industry: a power plant, a wind farm, a coal mine, a glass factory, a chemical plant or car assembly. It's your choice.",
-				"As you expand, remember the chains are interconnected, and there's more than one way to win — but all of them involve expanding out of whatever niche you start with to dominate your industry. Or, if you're truly bold... all industries. Good luck, and let the carbon flow.",
-				"This tutorial covers the basics: buying a building, making it run, building your second, and integrating them to sell a vertically integrated good to the global market. These skills will help you get started no matter where you choose to begin in your next game.",
+				"Carbon and Capital is an industrial simulator where you take over a business and expand it, integrating along the way until you are the biggest company in Taralia.",
+				"This tutorial will take you through the basics of buying and constructing buildings, how to feed your furnaces and factories and get your company up and running. It also covers how loans work, how to unlock research, hire advisors and more.",
 			],
 			"cta": "Begin",
 			"setup": [],
@@ -85,13 +88,14 @@ static func steps() -> Array:
 			"body": "A quick tour of the screen. The bar along the bottom is your toolkit — each tool has a keyboard shortcut (the letter in brackets). The top bar is your dashboard: money, victory tracks, the briefing with updates and decisions, your advisors and the menu. You end each turn from the bottom-right. Have a look, then press Next.",
 			"targets": [
 				{ "ref": "ConstructButton", "label": "Build (C)", "side": "above" },
-				{ "ref": "ResourcesButton", "label": "Goods (G)", "side": "above" },
+				{ "ref": "ResourcesButton", "label": "Goods list (R)", "side": "above" },
 				{ "ref": "BuildingsButton", "label": "Buildings (L)", "side": "above" },
 				{ "ref": "MapmodesButton", "label": "Overlays (O)", "side": "above" },
 				{ "ref": "MarketButton", "label": "Markets (M)", "side": "above" },
 				{ "ref": "PoliticsButton", "label": "Narrative & Politics (N)", "side": "above", "lift": 1 },
 				{ "ref": "TechButton", "label": "Research (R)", "side": "above" },
 				{ "ref": "PeopleButton", "label": "People (P)", "side": "above" },
+				{ "ref": "EmpireButton", "label": "Empire view (Tab)", "side": "above" },
 				{ "ref": "MoneyWidget", "label": "Budgets, charts & loans", "side": "below" },
 				{ "ref": "VictoryModule", "label": "Victory tracks — five ways to win", "side": "below" },
 				{ "ref": "BriefingModule", "label": "Briefing — updates & decisions", "side": "below" },
@@ -101,6 +105,7 @@ static func steps() -> Array:
 				{ "ref": "EndTurnButton", "label": "End turn", "side": "above" },
 			],
 			"hints": [
+				"Press G to open the Goods Graph",
 				"Press X to open the Encyclopedia search bar",
 				"Press Tab to view your empire at a glance",
 			],
@@ -393,7 +398,7 @@ static func steps() -> Array:
 			"id": "explore_encyclopedia",
 			"chapter": "Integration",
 			"title": "Look it up in the Encyclopedia",
-			"body": "This is the Encyclopedia — press X any time to open it. Search 'glass' (made in a Furnace from sand, and there's sand on your board) and 'aluminium' (smelted in a Chemical Plant from alumina). Have a look, then press Next.",
+			"body": "This is the Encyclopedia — press X any time to open it. Search 'glass' (made in a Furnace from sand, and there's sand on your board) and 'aluminium' (smelted in a Furnace). Have a look, then press Next.",
 			"setup": [ { "action": "open_encyclopedia" } ],
 			"spotlight": { "kind": "node_name", "ref": "SearchOverlay" },
 			"no_dim": true,
@@ -413,6 +418,89 @@ static func steps() -> Array:
 				"decide": { "kind": "node_hidden", "ref": "SearchOverlay" },
 			},
 			"advance": "auto",
+		},
+		{
+			"id": "revenue_settle",
+			"chapter": "Money",
+			"title": "Watch the shipment sell",
+			"body": "Your output is on its way to market, but revenue only lands when it arrives. Keep pressing End Turn and watch the shipment travel; this step will continue as soon as the sale goes through.",
+			"setup": [ { "action": "close_building_detail" } ],
+			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
+			"no_dim": true,
+			"done": {
+				"wake": ["turn_advanced", "turn_processed", "stockpile_market_sale_completed"],
+				"decide": { "kind": "market_sale_completed_since_entry" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "money_open",
+			"chapter": "Money",
+			"title": "Where the money actually goes",
+			"body": "Your factory is earning. Before you spend any of it, learn to read the books — every decision from here is really a question about this panel. Click your balance in the top-left corner to open it.",
+			"setup": [ { "action": "close_building_detail" } ],
+			"spotlight": { "kind": "node_name", "ref": "MoneyWidget" },
+			"done": {
+				"wake": [],
+				"decide": { "kind": "node_visible", "ref": "Flyout_treasury" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "money_primer",
+			"chapter": "Money",
+			"title": "Reading the books",
+			"mode": "annotate",
+			"body": "Every pound in and out, each turn. Revenue is what your goods sold for. OPERATING COSTS is your maintenance plus wages — the standing cost of simply owning the place, which you pay whether it produces or not. Everything below that is itemised: power bought, transport, goods purchased, warehousing, interest, tax and dividends. Net last turn is the whole lot netted off. For the full ledger, open Balance.",
+			"targets": [
+				{ "ref": "FlyRowCash", "label": "Everything you have to spend right now", "side": "left" },
+				{ "ref": "FlyRowNet", "label": "Last turn's profit — revenue minus every cost below", "side": "left" },
+				{ "ref": "FlyBalanceButton", "label": "Full itemised ledger, if you want the detail", "side": "left" },
+				{ "ref": "FlyTakeLoanButton", "label": "Borrow against future earnings", "side": "left" },
+			],
+			"hints": [
+				"Revenue minus costs is the number that decides whether you're winning",
+				"Press Esc to close any panel",
+			],
+			"setup": [ { "action": "open_money_panel" } ],
+			"spotlight": { "kind": "node_name", "ref": "Flyout_treasury" },
+			# This is an explanation-only card.  Re-locking its flyout from the poll can
+			# rebuild the money panel under the Next click, so leave the already-open
+			# panel alone while the player reads it.
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
+		},
+		{
+			"id": "money_take_loan",
+			"chapter": "Money",
+			"title": "Borrow to grow",
+			"body": "Waiting to save up is the slowest way to play. Borrow £%d for the integration you are about to build. Press Take loan — that opens the Loans tab — then set the amount to £%d and confirm. Nothing is locked while you do it, so take your time." % [TUTORIAL_LOAN_AMOUNT, TUTORIAL_LOAN_AMOUNT],
+			"setup": [ { "action": "open_money_panel" } ],
+			# The previous annotated step has already shown the Take loan button.  Do
+			# not retain a spotlight here: once the button opens the Loans tab, the old
+			# spotlight would intercept the confirmation controls behind it.
+			"spotlight": { "kind": "none", "ref": "" },
+			"no_dim": true,
+			"done": {
+				"wake": ["money_changed"],
+				"decide": { "kind": "loan_taken", "amount": TUTORIAL_LOAN_AMOUNT },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "money_loan_terms",
+			"chapter": "Money",
+			"title": "What you just signed",
+			"body": "Borrowed. Nothing is due for the first %d turns — that's your grace period, and it's the window to turn the money into something that earns. After it, the loan converts and you repay over %d turns, with interest of %d%% across the term. Plan for the repayment landing before it starts, not after." % [
+				EconomyConfig.LOAN_GRACE_TURNS, EconomyConfig.LOAN_TERM_TURNS,
+				int(round(EconomyConfig.LOAN_INTEREST_RATE * 100.0))],
+			"setup": [ { "action": "open_money_panel" } ],
+			"spotlight": { "kind": "node_name", "ref": "Flyout_treasury" },
+			# As with the preceding primer, this is a read-and-continue step.  The
+			# flyout is already opened on entry; polling must not rebuild it beneath
+			# the Next button while the player dismisses this explanation.
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
 		},
 		{
 			"id": "buy_land",
@@ -622,7 +710,9 @@ static func steps() -> Array:
 			"setup": [ { "action": "clear_mapmode" } ],
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,
-			"goto": "integration_done",
+			# Rejoin at the Advisors chapter, not the finale — jumping straight to
+			# integration_done skipped the whole advisor arc on the glass path.
+			"goto": "advisors_intro",
 			"done": {
 				"wake": ["turn_processed", "turn_advanced", "building_added"],
 				"decide": { "kind": "building_recipe_on_tile", "tile": GLASS_TILE, "recipe_id": "r_054" },
@@ -633,7 +723,7 @@ static func steps() -> Array:
 			"id": "build_alu_open",
 			"chapter": "Integration · Revenue",
 			"title": "Build an aluminium smelter",
-			"body": "A smelter makes %d aluminium a turn — your factory needs %d, and the surplus %d sells each turn. Build it right here on your factory's tile: co-located, its output feeds the factory on-site with no shipping. All its inputs are solids, so no pipe is needed. Open the build tile and click Build." % [
+			"body": "A smelter makes %d aluminium a turn — your factory needs %d, and the surplus %d sells each turn. Build it right here on your factory's tile: co-located, its output feeds the factory on-site with no shipping. We will improve this base process once it is running. Open the build tile and click Build." % [
 				_recipe_output_qty("r_050"),
 				_recipe_input_qty("r_056", "aluminium"),
 				maxi(0, _recipe_output_qty("r_050") - _recipe_input_qty("r_056", "aluminium")),
@@ -652,8 +742,8 @@ static func steps() -> Array:
 		{
 			"id": "build_alu_recipe",
 			"chapter": "Integration · Revenue",
-			"title": "Pick Aluminium Smelting",
-			"body": "Click the highlighted Aluminium (Hall Heroult) Smelting recipe.",
+			"title": "Pick Aluminium (Hall Heroult) Smelting",
+			"body": "Start with the highlighted Aluminium (Hall Heroult) Smelting recipe. It will get aluminium flowing; later we will unlock a better Furnace process and switch this same building over.",
 			"setup": [ { "action": "expand_construct_building", "building_id": "b_002" } ],
 			"spotlight": { "kind": "node_name", "ref": "RecipeRow_r_050" },
 			"done": {
@@ -703,10 +793,224 @@ static func steps() -> Array:
 			"advance": "auto",
 		},
 		{
+			"id": "alu_wait_built",
+			"chapter": "Integration · Revenue",
+			"title": "End turns until the smelter is built",
+			"body": "Keep pressing End Turn while the smelter goes up. Once it is finished, we can get its base process running and feed the factory.",
+			"setup": [ { "action": "focus_tile", "tile": ALU_TILE } ],
+			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
+			"done": {
+				"wake": ["construction_completed", "turn_processed", "turn_advanced"],
+				"decide": { "kind": "building_owned_on_tile", "tile": ALU_TILE, "building_id": "b_002" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "alu_run_base",
+			"chapter": "Integration · Revenue",
+			"title": "Let the base smelter run",
+			"body": "Keep pressing End Turn until the smelter reads Running. The Hall Heroult process can now feed the factory and sell its surplus.",
+			"setup": [ { "action": "focus_building_on_tile", "tile": ALU_TILE, "building_id": "b_002" } ],
+			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
+			"done": {
+				"wake": ["turn_processed", "turn_advanced"],
+				"decide": { "kind": "building_running_on_tile", "tile": ALU_TILE, "building_id": "b_002" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "alu_output_check",
+			"chapter": "Integration · Revenue",
+			"title": "Feed the factory before selling the surplus",
+			"body": "New buildings send output to the Market by default. In the smelter panel, open Output destination and switch it to Tile stockpile. The window factory can then take its aluminium on-site; only the excess becomes surplus for sale.",
+			"setup": [ { "action": "clear_mapmode" }, { "action": "focus_building_on_tile", "tile": ALU_TILE, "building_id": "b_002" } ],
+			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
+			"lock_panel": true,
+			"done": {
+				"wake": [],
+				"decide": { "kind": "output_routed_same_tile", "tile": ALU_TILE, "building_id": "b_002" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "alu_research",
+			"chapter": "Integration · Research",
+			"title": "We can improve our margins",
+			"body": "Let's improve our margins. Open the Research panel. There has to be a better way to make Aluminium.",
+			"setup": [ { "action": "clear_mapmode" } ],
+			"spotlight": { "kind": "node_name", "ref": "TechButton" },
+			"done": {
+				"wake": [],
+				"decide": { "kind": "node_visible", "ref": "ResearchPanel" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "alu_research_search",
+			"chapter": "Integration · Research",
+			"title": "Search for aluminium",
+			"body": "Use the Research search box and type aluminium. The highlighted Bauxite Carbochlorination process is the lower-temperature Furnace route we want.",
+			"setup": [],
+			"spotlight": { "kind": "node_name", "ref": "ResearchSearchInput" },
+			"release_overlay_when": { "kind": "research_search_nonempty" },
+			"lock_panel": true,
+			"done": {
+				"wake": [],
+				"decide": { "kind": "research_search_contains", "text": "aluminium" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "alu_research_condition",
+			"chapter": "Integration · Research",
+			"title": "Read the condition",
+			"body": "The normal unlock condition is Produce 300 Chlorine and 400 Aluminium. It replaces some of the Hall Heroult inputs with bauxite, graphite and chlorine, using less energy.",
+			"setup": [],
+			"spotlight": { "kind": "research_unlock", "ref": "Bauxite Carbochlorination" },
+			"lock_panel": true,
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
+		},
+		{
+			"id": "alu_research_unlock",
+			"chapter": "Integration · Research",
+			"title": "Use your free unlock",
+			"body": "But we have a free unlock from our brilliant researchers. Go ahead and unlock the highlighted Bauxite Carbochlorination research.",
+			"setup": [ { "action": "research_choose_free_unlock" } ],
+			"spotlight": { "kind": "research_unlock", "ref": "Bauxite Carbochlorination" },
+			"lock_panel": true,
+			"done": {
+				"wake": [],
+				"decide": { "kind": "research_unlocked", "title": "Bauxite Carbochlorination" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "alu_upgrade",
+			"chapter": "Integration · Research",
+			"title": "Switch recipes — your turn",
+			"body": "Unlocked! Close the Research panel (press R again, or Esc), find your smelter and press Change recipe. Pick Bauxite Carbochlorination, confirm the retool, then End Turn until the change completes. We will connect its chlorine supply next.",
+			"setup": [ { "action": "clear_mapmode" } ],
+			"spotlight": { "kind": "none", "ref": "" },
+			"no_dim": true,
+			"done": {
+				"wake": ["turn_processed", "turn_advanced", "building_added"],
+				"decide": { "kind": "building_recipe_on_tile", "tile": ALU_TILE, "recipe_id": "r_232" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "alu_diagnose_pipe",
+			"chapter": "Integration · Revenue",
+			"title": "The new process needs a chlorine pipe",
+			"body": "The retooled furnace now needs chlorine. Diagnostics reports 'No input Reinforced Pipeline': chlorine is hazardous, so it can move only through a reinforced pipe. The docks already has the terminal; this tile still needs the connection.",
+			"setup": [ { "action": "focus_building_on_tile", "tile": ALU_TILE, "building_id": "b_002" } ],
+			"spotlight": { "kind": "node_name", "ref": "DiagnosticsCard" },
+			"lock_panel": true,
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
+		},
+		{
+			"id": "alu_lay_pipe",
+			"chapter": "Integration · Revenue",
+			"title": "Lay the reinforced pipe",
+			"body": "Connect the smelter to Stoneshore Docks: in the tile panel's Infrastructure row, click the Reinf. pipes \"+\" to lay a reinforced pipe on this tile.",
+			"setup": [ { "action": "focus_tile", "tile": ALU_TILE } ],
+			"spotlight": { "kind": "node_name", "ref": "InfraCell_reinf_pipes" },
+			"lock_panel": true,
+			"done": {
+				"wake": ["construction_started", "infrastructure_attempted"],
+				"decide": { "kind": "tile_infra_or_ordered", "tile": ALU_TILE, "infra": "reinf_pipes", "building_id": "b_018" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "alu_final_run",
+			"chapter": "Integration · Revenue",
+			"title": "End turns until the new process runs",
+			"body": "The pipe takes a turn to lay; then chlorine flows in and the carbochlorination furnace fires up. Keep pressing End Turn until it reads Running.",
+			"setup": [ { "action": "focus_building_on_tile", "tile": ALU_TILE, "building_id": "b_002" } ],
+			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
+			"done": {
+				"wake": ["turn_processed", "turn_advanced"],
+				"decide": { "kind": "building_running_on_tile", "tile": ALU_TILE, "building_id": "b_002" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "advisors_intro",
+			"chapter": "Advisors",
+			"title": "You can't run all of it yourself",
+			"body": "One last lever, and it's the one players forget. Open People on the bottom bar (shortcut P). Advisors is the first tab. (The Council badge in the top bar only lists advisors you have already hired, so it's empty until you do.)",
+			"setup": [ { "action": "close_building_detail" } ],
+			"spotlight": { "kind": "node_name", "ref": "PeopleButton" },
+			"done": {
+				"wake": [],
+				"decide": { "kind": "node_visible", "ref": "PeoplePanel" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "advisors_explain",
+			"chapter": "Advisors",
+			"title": "These are the positions, not the people",
+			"body": "Every row here is a SEAT you can fill, and each seat pulls on a different part of the business. A CFO wants someone good with numbers — they manage your loans and your tax bill better than you will. A COO wants someone process-driven — they bring down labour and maintenance, the two costs you cannot integrate away. The same person is rarely right for both, so read the seat first and the candidate second. Look through the rest of the positions after the tutorial to see what each one governs.",
+			"setup": [ { "action": "open_people_panel" } ],
+			"spotlight": { "kind": "node_name", "ref": "PeoplePanel" },
+			"lock_panel": true,
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
+		},
+		{
+			"id": "advisors_inspect",
+			"chapter": "Advisors",
+			"title": "Inspect what a candidate brings",
+			"body": "Start with any empty seat, then open a candidate's profile. Read the WHAT THEY BRING bonuses — they change with the seat you chose, so this is where you decide which lever you want to improve.",
+			"setup": [ { "action": "open_people_panel" } ],
+			"spotlight": { "kind": "node_name", "ref": "PeoplePanel" },
+			"lock_panel": true,
+			"done": {
+				"wake": [],
+				"decide": { "kind": "node_visible", "ref": "AdvisorBonusSection" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "advisors_hire",
+			"chapter": "Advisors",
+			"title": "Choose any seat and hire them",
+			"body": "Now choose whichever available seat you want in the Assign to row, then Hire & assign. There is no prescribed answer: the seat determines the bonus, and the candidate determines how strongly they deliver it. Their effect starts next turn.",
+			"setup": [ { "action": "open_people_panel" } ],
+			"spotlight": { "kind": "node_name", "ref": "PeoplePanel" },
+			"lock_panel": true,
+			"done": {
+				# No seat-change signal exists; the engine's 0.25s poll re-evaluates the
+				# state anyway, and every available seat is a valid tutorial outcome.
+				"wake": ["money_changed"],
+				"decide": { "kind": "advisor_seated", "count": 1 },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "advisors_effect",
+			"chapter": "Advisors",
+			"title": "Watch what it moves",
+			"body": "Seated. End a turn and open the money panel again — the line their seat governs will have shifted. That's the whole game in one habit: change something, then go and read the number it was supposed to move. You know how to buy, build, connect, integrate, research, borrow and staff. The rest is yours.",
+			"setup": [],
+			"spotlight": { "kind": "none", "ref": "" },
+			"no_dim": true,
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
+		},
+		{
 			"id": "integration_done",
 			"chapter": "Integration",
 			"title": "That's integration",
-			"body": "You brought a cost in-house — and, on the glass path, let research unlock a far better recipe — the moves that turn a wafer-thin margin into real profit. Keep going: integrate your other inputs, generate your own power, and use research, advisors and labour policies to trim what's left. That's the whole game. This tutorial's done — press Skip to play freely.",
+			"body": "You brought a cost in-house and made your business more capable. You have now seen every lever the game gives you: buy and build, connect power and pipes, route output, read the books, borrow against the future, research a better recipe, and seat the advisors who bend the numbers. Nothing after this is new machinery — it is the same moves at a larger scale. Press Next to finish and take it from here.",
+			"body_by_branch": {
+				"glass": "You chose the Glass path: you brought the factory's biggest input in-house, then used research to unlock a stronger, more efficient recipe. That is how a wafer-thin margin becomes real profit. You have now seen every lever the game gives you: buy and build, connect power and pipes, route output, read the books, borrow against the future, research a better recipe, and seat the advisors who bend the numbers. Nothing after this is new machinery — it is the same moves at a larger scale. Press Next to finish and take it from here.",
+				"aluminium": "You chose the Aluminium path: you added a surplus revenue line, then used research to unlock the lower-energy Bauxite Carbochlorination process. That is how a wafer-thin margin becomes real profit. You have now seen every lever the game gives you: buy and build, connect power and pipes, route output, read the books, borrow against the future, research a better recipe, and seat the advisors who bend the numbers. Nothing after this is new machinery — it is the same moves at a larger scale. Press Next to finish and take it from here.",
+			},
 			"setup": [ { "action": "clear_mapmode" } ],
 			"spotlight": { "kind": "none", "ref": "" },
 			"done": { "wake": [], "decide": {} },

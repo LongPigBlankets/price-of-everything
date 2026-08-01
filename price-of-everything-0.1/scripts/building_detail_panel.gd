@@ -28,6 +28,9 @@ const HEADER_HEIGHT := 40.0
 const PANEL_EDGE_MARGIN := 20.0
 # The top bar is 36px tall; keep the panel 20px clear of it so it never overlaps.
 const TOP_BAR_CLEARANCE := 56.0
+
+# Empire-view click: dock at the tile view panel's spot (see building_detail_panel_v2.gd).
+var empire_dock := false
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 static var _suppress_tile_only_warning := false  # session-wide "Don't show again"
 const UPGRADE_BUTTON_SIZE := Vector2(40, 40)
@@ -1454,7 +1457,11 @@ func _position_visible_building_panels() -> void:
 	var right_edge := viewport_size.x - PANEL_EDGE_MARGIN
 	var top_edge := TOP_BAR_CLEARANCE
 	var tile_panel := get_parent().get_node_or_null("TileInfoPanel") as Control
-	if tile_panel != null and tile_panel.visible:
+	if empire_dock:
+		# Empire-view click: the tile view panel's spot (30 right, 78 top) — see v2.
+		right_edge = viewport_size.x - 30.0
+		top_edge = 78.0
+	elif tile_panel != null and tile_panel.visible:
 		right_edge = tile_panel.global_position.x - PANEL_EDGE_MARGIN
 		top_edge = maxf(tile_panel.global_position.y, TOP_BAR_CLEARANCE)
 	for i in range(panels.size()):
@@ -1874,7 +1881,8 @@ func _add_fill_storage_section(building: Dictionary, recipe: Dictionary = {}) ->
 	if _fill_type == "" or not MatchState.is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(_fill_type, ""))):
 		return
 	var gid := str(Catalog.get_good_by_internal_name(_fill_type).get("id", ""))
-	var need := MatchState.battery_cells_to_fill(tile_id, gid)
+	# Scoped to THIS battery, not the tile — see MatchState.battery_cells_to_fill.
+	var need := MatchState.battery_cells_to_fill(tile_id, gid, str(_current_building.get("instance_id", "")))
 	var gname := str(Catalog.get_good(gid).get("display_name", _fill_type))
 	if need <= 0:
 		_add_text("Storage is full for %s." % gname)

@@ -520,11 +520,6 @@ func _process_production() -> void:
 		_accumulate_by_type(summary.maintenance_by_type, btype, maint)
 		_accumulate_by_type(summary.labour_by_type, btype, labour)
 		# === LOAN INTEREST PAYMENTS ==+var loan_payment: float = LoanState.process_payments()
-	# Seaport subscription fees: flat per-turn charge per subscribed good.
-	var seaport_fee: float = MatchState.seaport_subscription_fee()
-	if seaport_fee > 0.0:
-		MatchState.add_money(-seaport_fee)
-		summary.money_out += seaport_fee
 	_apply_advisor_costs(summary)
 	# Warehousing: every stockpiled unit pays a per-turn storage fee by transport
 	# class (solids rack cheaply; hazardous liquids/gases need certified tanks).
@@ -642,7 +637,11 @@ func _process_production() -> void:
 # --- Helpers ---
 
 func _apply_advisor_costs(summary: Dictionary) -> float:
-	var payroll := MatchState.advisor_payroll_per_turn()
+	# Charge against THIS turn's revenue, not last turn's: the sell phase has already run by
+	# here, so the summary holds the real figure and the board is billed on what it actually
+	# helped earn. (The council panel quotes last turn's, since this turn's does not exist yet.)
+	var revenue := float(summary.get("goods_sales_revenue", 0.0)) + float(summary.get("power_sales_revenue", 0.0))
+	var payroll := MatchState.advisor_payroll_per_turn(revenue)
 	if payroll <= 0.0:
 		summary.advisor_paid = 0.0
 		return 0.0
@@ -1012,6 +1011,30 @@ func _sell_output_to_market(building: Dictionary, good: Dictionary, qty: int, su
 			_add_summary_sale(summary, str(it.good_id), int(it.qty), float(it.revenue))
 
 func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: int, summary: Dictionary) -> void:
+	var split := MatchState.get_output_split_destinations(str(building.get("instance_id", "")), good.id)
+	if split.size() >= 2:
+		var remaining := qty
+		var automatic: Array = []
+		for destination in split:
+			var requested := int((destination as Dictionary).get("qty", 0))
+			if requested > 0:
+				var sent := mini(requested, remaining)
+				if sent > 0:
+					_dispatch_output_to_destination(building, good, sent, str((destination as Dictionary).get("tile_id", "")), summary)
+					remaining -= sent
+			else:
+				automatic.append(destination)
+		# Blank quantity fields share whatever is left equally. This keeps the default
+		# route responsive to production modifiers while explicit fields are exact.
+		for index in automatic.size():
+			if remaining <= 0:
+				break
+			var share := ceili(float(remaining) / float(automatic.size() - index))
+			_dispatch_output_to_destination(building, good, share, str((automatic[index] as Dictionary).get("tile_id", "")), summary)
+			remaining -= share
+		if remaining > 0:
+			Stockpile.add(str(building.get("tile_id", "")), good.id, remaining)
+		return
 	var stockpile_coord = _output_stockpile_coord(building, good.id)
 	if stockpile_coord == null:
 		# Market-bound output (no stockpile destination): sell it via the nearest port.
@@ -1026,6 +1049,11 @@ func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: 
 		if cap > 0 and qty > cap:
 			Stockpile.add(origin_tile, good.id, qty - cap)
 			qty = cap
+	_dispatch_output_to_destination(building, good, qty, str(stockpile_coord), summary)
+
+func _dispatch_output_to_destination(building: Dictionary, good: Dictionary, qty: int, stockpile_coord: String, summary: Dictionary) -> void:
+	if qty <= 0 or stockpile_coord == "":
+		return
 	var route := _transport_route(building.get("tile_id", ""), stockpile_coord, good.id)
 	# Unreachable destination (e.g. a fluid with no pipe / reinforced-pipe network to
 	# the target): do NOT attempt delivery and charge NOTHING — the output stays in
@@ -1238,6 +1266,10 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		var sold_revenue: float = float(sold_qty) * price
 		if not (in_port_range and bool(covered_goods.get(good_key, false))):
 			transport_cost += TransportService.transport_cost_for_route(good_key, sold_qty, route)
+		# Every market sale crosses the sea leg. The subscription only waives the local
+		# inland route, never the port's handling and insurance charge.
+		var sea_charge := MatchState.commit_sea_shipping(port_tile, good_key, sold_qty, "sell")
+		transport_cost += float(sea_charge.get("total", 0.0))
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,
@@ -1298,6 +1330,12 @@ func record_external_goods_sale(sale_record: Dictionary) -> void:
 	_pending_external_sales.append(sale_record.duplicate(true))
 	if not last_turn_summary.is_empty() and _apply_sale_record_to_summary(last_turn_summary, sale_record):
 		turn_processed.emit(last_turn_summary)
+
+func record_external_transport_cost(cost: float) -> void:
+	if cost <= 0.0 or _active_turn_summary.is_empty():
+		return
+	_active_turn_summary.transport_paid += cost
+	_active_turn_summary.money_out += cost
 
 func _merge_pending_external_sales(summary: Dictionary) -> void:
 	if _pending_external_sales.is_empty():
@@ -1664,6 +1702,16 @@ func _tile_storage_cap(tile_id: String) -> int:
 	# Deposit model: firming comes from the battery CELLS loaded into the tile's housing, not
 	# the housing alone (docs/battery-storage-spec.md). MatchState owns the slot + cell math.
 	return MatchState.tile_firming_cap(tile_id)
+
+## Intermittent green power made firm in the most recently resolved turn. This is
+## the measurable output of the battery/intermittency system used by Flow Battery
+## Arrays' research gate: it counts power that would otherwise remain intermittent.
+func firmed_intermittent_power() -> int:
+	var total := 0.0
+	for tile in _intermittency_by_tile.values():
+		var state: Dictionary = tile
+		total += maxf(0.0, float(state.get("green_intermittent_produced", 0.0)) - float(state.get("unfirmed_consumed", 0.0)))
+	return int(round(total))
 
 # Last turn's profit margin for a consumer, snapped to 2dp (deterministic tiebreak):
 # (price - unit_cost) * output_qty from the previous CostSolver solve. 0.0 when unsolved

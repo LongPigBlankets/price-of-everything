@@ -102,14 +102,14 @@ func record_market_buy_volume(good_id: String, qty: int) -> void:
 		return
 	_turn_bought[good_id] = int(_turn_bought.get(good_id, 0)) + qty
 
-## The 2x/4x/10x per-turn volume thresholds for a good, or [] when the good has
+## The 1x/2x/4x/10x per-turn volume thresholds for a good, or [] when the good has
 ## no active producing recipe (no base output → no impact).
 func impact_thresholds(good_id: String) -> PackedInt32Array:
 	var base_out := Catalog.base_output_for_good(good_id)
 	if base_out <= 0:
 		return PackedInt32Array()
-	# Must track EconomyConfig.price_impact_rate's bands: 2x / 4x / 10x.
-	return PackedInt32Array([base_out * 2, base_out * 4, base_out * 10])
+	# Must track EconomyConfig.price_impact_rate's bands: 1x / 2x / 4x / 10x.
+	return PackedInt32Array([base_out, base_out * 2, base_out * 4, base_out * 10])
 
 func get_buy_price(good_id: String) -> float:
 	# The price you PAY to buy a unit from the market — the sale price plus the
@@ -293,8 +293,13 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 	if pay_transport_from_seller:
 		for it in items:
 			transport_cost += TransportService.transport_cost_for_route(str(it.good_id), int(it.qty), route)
-		if transport_cost > 0.0:
-			MatchState.add_money(-transport_cost)
+	# Sea costs apply to every market sale. Manual sales keep their historical gross
+	# inland freight, but never avoid the port charge.
+	for it in items:
+		var sea_charge := MatchState.commit_sea_shipping(port, str(it.good_id), int(it.qty), "sell")
+		transport_cost += float(sea_charge.get("total", 0.0))
+	if transport_cost > 0.0:
+		MatchState.add_money(-transport_cost)
 
 	var sale_record := {
 		"tile_id": source_tile,

@@ -42,24 +42,24 @@ research_renew_004,Renewable Power,research_renew_001,,,,II,Own,land,5,units,Hyd
 research_renew_005,Renewable Power,research_renew_003,research_renew_004,,,III,Run,Renewable Dispatch Forecasting,15,turns,Renewable Dispatch Forecasting,forecast,Increases all renewable power plant output by 25% for 15 turns.
 research_infra_001,Infrastructure,,,,,I,Build,Roads,3,units,Reinforced Roadbeds,road,Increases road throughput by 25% permanently.
 research_infra_002,Infrastructure,research_infra_001,,,,I,Sell,Concrete,250,units,Pipe Trench Standards,pipe,Reduces Pipeworks maintenance by 10% for 20 turns.
-research_infra_003,Infrastructure,research_infra_002,,,,II,Run,Pipe Network,12,turns,High Pressure Mains,main,Increases pipe throughput by 25% permanently.
+research_infra_003,Infrastructure,research_infra_002,,,,II,Use Infrastructure,pipes,3,80% for 5 turns,High Pressure Mains,main,Increases pipe throughput by 25% permanently.
 research_infra_004,Infrastructure,research_infra_001,,,,II,Own,land,5,units,Substation Layouts,substation,Increases cable throughput by 25% permanently.
-research_infra_005,Infrastructure,research_infra_003,research_infra_004,,,III,Run,Utility Corridor,15,turns,Integrated Utility Corridors,corridor,Reduces all buildings' maintenance by 5% for 20 turns.
-research_logi_001,Logistics,,,,,I,Build,Port,3,units,Depot Scheduling,depot,Increases Port output by 5% permanently.
-research_logi_002,Logistics,research_logi_001,,,,I,Sell,Freight,250,units,Containerized Freight,container,Reduces transport cost by 5% permanently.
-research_logi_003,Logistics,research_logi_002,,,,II,Run,Depot,12,turns,Route Optimization,route,Reduces transport cost by 10% for 20 turns.
+research_infra_005,Infrastructure,research_infra_003,research_infra_004,,,III,Use Infrastructure,Utility Corridor,10,80% for 5 turns,Integrated Utility Corridors,corridor,Reduces all buildings' maintenance by 5% for 20 turns.
+research_logi_001,Logistics,,,,,I,Sell Through Ports,ports,500,units,Depot Scheduling,depot,Reduces the port ad valorem transport fee by 20% permanently.
+research_logi_002,Logistics,research_logi_001,,,,II,Sell Through Ports,ports,2000,units,Multimodal Containerized Freight,container,Reduces the per-turn port fee by 50% permanently.
+research_logi_003,Logistics,research_logi_002,,,,II,Use Infrastructure,Roads,5,80% throughput,Route Optimization,route,Increases road throughput by 25% permanently.
 research_logi_004,Logistics,research_logi_001,,,,II,Own,land,5,units,Cold Chain Handling,cold,Reduces transport cost by 5% for 20 turns.
-research_logi_005,Logistics,research_logi_003,research_logi_004,,,III,Run,Dispatch Room,15,turns,Autonomous Dispatch Rooms,dispatch,Reduces Roads and Railways labour by 10% permanently.
-research_markets_001,Markets and Operations,,,,,I,Build,Market Office,3,units,Spot Price Reporting,price,Increases the sale price of all goods by 5% for 20 turns.
+research_logi_005,Logistics,research_logi_003,research_logi_004,,,III,Build,Roads,5,units,Autonomous Dispatch Rooms,dispatch,Reduces Roads and Railways labour by 10% permanently.
+research_markets_001,Markets and Operations,,,,,I,Fulfil Special Orders,special_order,3,orders,Spot Price Reporting,price,Increases special-order premiums by 25% of their current bonus permanently.
 research_markets_002,Markets and Operations,research_markets_001,,,,I,Sell,Steel,250,units,Forward Contracts,contract,Increases the sale price of steel by 5% for 20 turns.
-research_markets_003,Markets and Operations,research_markets_002,,,,II,Run,Operations Desk,12,turns,Risk Desk Procedures,risk,Increases the sale price of all goods by 5% for 15 turns.
+research_markets_003,Markets and Operations,research_markets_002,,,,II,Sell,Steel,500,units,Risk Desk Procedures,risk,Reduces market-material shipping costs by 25% permanently.
 research_markets_004,Markets and Operations,research_markets_001,,,,II,Own,land,5,units,Maintenance Budgeting,budget,Reduces all buildings maintenance by 10% for 20 turns.
-research_markets_005,Markets and Operations,research_markets_003,research_markets_004,,,III,Run,Operations Planning,15,turns,Integrated Operations Planning,ops,Increases output of all buildings by 5% permanently.
-research_people_001,People Management,,,,,I,Build,Training Office,3,units,Shift Supervisors,shift,Reduces Mine labour by 5% permanently.
-research_people_002,People Management,research_people_001,,,,I,Sell,Labour,250,units,Safety Training,safety,Reduces all buildings labour by 5% permanently.
+research_markets_005,Markets and Operations,research_markets_003,research_markets_004,,,III,Run Profitable,any,15,10 turns,Integrated Operations Planning,ops,Reduces all building maintenance and labour costs by 5% permanently.
+research_people_001,People Management,,,,,I,Run Profitable,mine,3,15 turns,Shift Supervisors,shift,Reduces Mine labour by 5% permanently.
+research_people_002,People Management,research_people_001,,,,I,Sell,Freight,500,units,Safety Training,safety,Reduces all building maintenance and labour costs by 5% permanently.
 research_people_003,People Management,research_people_002,,,,II,Run,Factory,12,turns,Specialist Apprenticeships,apprentice,Increases Assembly Plant output by 5% permanently.
 research_people_004,People Management,research_people_001,,,,II,Own,land,5,units,Union Liaison Offices,union,Reduces all buildings maintenance by 10% for 20 turns.
-research_people_005,People Management,research_people_003,research_people_004,,,III,Run,Continuous Improvement Team,15,turns,Continuous Improvement Teams,team,Reduces High Tech Manufactory and Assembly Plant labour by 10% permanently.
+research_people_005,People Management,research_people_003,research_people_004,,,III,Run,high_tech_manufactory|assembly_plant,10,10 turns,Continuous Improvement Teams,team,Increases all building output by 5% permanently.
 research_people_006,People Management,,,,,I,Build,any,3,units,Operational Team Managers,team,Reduces all buildings labour by 10% permanently.
 research_people_007,People Management,research_people_006,,,,II,Build,any,12,units,Shift Handover Documentation,shift,Reduces all buildings labour by a further 10% permanently.
 research_people_008,People Management,,,,,II,Build,any,15,units,Third Advisor Seat,team,Unlocks a 3rd advisor seat once you own 15 buildings.
@@ -107,7 +107,7 @@ research_mining_015,Mining and Surveying,,,,,I,Build,mine,12,units,Continuous Su
 research_mining_016,Mining and Surveying,,,,,I,Build,mine,12,units,Block Caving,cave,Reduces Mine maintenance by 20% permanently.
 research_metal_010,Metallurgy,research_metal_003,,,,III,Run,Steel Mill,15,turns,Pulverised Carbon Injection,pci,Reduces Furnace power consumption by 20% permanently.
 research_metal_011,Metallurgy,,,,,I,Build,furnace,7,units,Oxygen-Enriched Blast,furnace,Unlocks new recipe: Basic Oxygen Steelmaking (24 Steel).
-research_metal_012,Metallurgy,,,,,I,Placeholder,,,,Twin-Bell Charging,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+research_metal_012,Metallurgy,,,,,I,Produce All,chlorine|aluminium,300|400,units,Bauxite Carbochlorination,furnace,Unlocks new recipe: Bauxite Carbochlorination (20 Aluminium).
 research_metal_013,Metallurgy,research_metal_004,,,,III,Run,Steel Mill,15,turns,Scrap Preheating Towers,preheat,Reduces Electric Arc Furnace power consumption by 20% permanently.
 research_metal_014,Metallurgy,,,,,I,Build,eaf,3,units,Foamy Slag Practice,slag,Increases Electric Arc Furnace output by 5% permanently.
 research_metal_015,Metallurgy,research_metal_004,,,,II,Run L1,eaf,3,20 turns,Twin-Shell Furnaces,level2,Unlocks upgrading Electric Arc Furnace to Level 2 for more output.
@@ -139,27 +139,27 @@ research_renew_008,Renewable Power,research_renew_007,,,,III,Run Profitable L2,o
 research_renew_009,Renewable Power,research_renew_001,,,,II,Run L1,solar_farm,5,20 turns,Single-Axis Trackers,level2,Unlocks upgrading Solar Farm to Level 2 for more output.
 research_renew_010,Renewable Power,research_renew_009,,,,III,Run Profitable L2,solar_farm,5,buildings,Self-Adjusting Panel Network,level3,Unlocks upgrading Solar Farm to Level 3 for more output.
 research_renew_011,Renewable Power,research_renew_003,,,,II,Run L1,battery,3,20 turns,Liquid-Cooled Packs,level2,Unlocks upgrading Battery Electric Storage to Level 2 for more output.
-research_renew_012,Renewable Power,research_renew_011,,,,III,Run Profitable L2,battery,2,buildings,Flow Battery Arrays,level3,Unlocks upgrading Battery Electric Storage to Level 3 for more output.
+research_renew_012,Renewable Power,research_renew_011,,,,III,Firm Intermittency,power,4000,power,Flow Battery Arrays,level3,Unlocks upgrading Battery Electric Storage to Level 3 for more output.
 research_inorg_018,Inorganic Chemistry,research_inorg_004,,,,II,Run L1,desal,3,20 turns,Reverse Osmosis Trains,level2,Unlocks upgrading Desalination Plant to Level 2 for more output.
 research_inorg_019,Inorganic Chemistry,research_inorg_018,,,,III,Run Profitable L2,desal,2,buildings,Seawater RO Megaplants,level3,Unlocks upgrading Desalination Plant to Level 3 for more output.
 research_inorg_020,Inorganic Chemistry,research_inorg_004,,,,III,Run Profitable L2,water_pump,2,buildings,Extensive Drainage Systems,level3,Unlocks upgrading Water Pump to Level 3 for more output.
 research_recyc_001,Recycling,,,,,II,Run L1,water_recycling,3,20 turns,Membrane Bioreactors,level2,Unlocks upgrading Water Recyling Plant to Level 2 for more output.
 research_recyc_002,Recycling,research_recyc_001,,,,III,Run Profitable L2,water_recycling,2,buildings,Closed-Loop Reclaim,level3,Unlocks upgrading Water Recyling Plant to Level 3 for more output.
 research_biochem_007,Biochemistry,research_biochem_004,,,,III,Run Profitable L2,farm,3,buildings,Controlled-Environment Farming,level3,Unlocks upgrading Farm to Level 3 for more output.
-research_infra_006,Infrastructure,research_infra_001,,,,II,Run L1,roads,5,20 turns,Multi-Lane Widening,level2,Unlocks upgrading Roads to Level 2 for more output.
-research_infra_007,Infrastructure,research_infra_006,,,,III,Run Profitable L2,roads,5,buildings,Grade-Separated Interchanges,level3,Unlocks upgrading Roads to Level 3 for more output.
-research_infra_008,Infrastructure,research_infra_001,,,,II,Run L1,rails,5,20 turns,Longer Freight Consists,level2,Unlocks upgrading Railways to Level 2 for more output.
-research_infra_009,Infrastructure,research_infra_008,,,,III,Run Profitable L2,rails,5,buildings,Standardised Wagon Gantry Cranes,level3,Unlocks upgrading Railways to Level 3 for more output.
-research_infra_010,Infrastructure,research_infra_002,,,,II,Run L1,pipes,5,20 turns,Automated Pressure Management System,level2,Unlocks upgrading Pipeworks to Level 2 for more output.
-research_infra_011,Infrastructure,research_infra_010,,,,III,Run Profitable L2,pipes,5,buildings,Looped Distribution Grids,level3,Unlocks upgrading Pipeworks to Level 3 for more output.
-research_infra_012,Infrastructure,research_infra_003,,,,II,Run L1,reinf_pipes,3,20 turns,High-Pressure Manifolds,level2,Unlocks upgrading Reinforced Pipeworks to Level 2 for more output.
-research_infra_013,Infrastructure,research_infra_012,,,,III,Run Profitable L2,reinf_pipes,2,buildings,Cryogenic Transfer Lines,level3,Unlocks upgrading Reinforced Pipeworks to Level 3 for more output.
-research_infra_014,Infrastructure,research_infra_004,,,,II,Run L1,cables,5,20 turns,Reconductoring,level2,Unlocks upgrading Cables to Level 2 for more output.
-research_infra_015,Infrastructure,research_infra_014,,,,III,Run Profitable L2,cables,5,buildings,Smart Grid Control,level3,Unlocks upgrading Cables to Level 3 for more output.
+research_infra_006,Infrastructure,research_infra_001,,,,II,Use Infrastructure,roads,3,80% for 5 turns,Multi-Lane Widening,level2,Unlocks upgrading Roads to Level 2 for more output.
+research_infra_007,Infrastructure,research_infra_006,,,,III,Use Infrastructure,roads,5,80% for 5 turns,Grade-Separated Interchanges,level3,Unlocks upgrading Roads to Level 3 for more output.
+research_infra_008,Infrastructure,research_infra_001,,,,II,Use Infrastructure,rails,3,80% for 5 turns,Longer Freight Consists,level2,Unlocks upgrading Railways to Level 2 for more output.
+research_infra_009,Infrastructure,research_infra_008,,,,III,Use Infrastructure,rails,5,80% for 5 turns,Standardised Wagon Gantry Cranes,level3,Unlocks upgrading Railways to Level 3 for more output.
+research_infra_010,Infrastructure,research_infra_002,,,,II,Use Infrastructure,pipes,3,80% for 5 turns,Automated Pressure Management System,level2,Unlocks upgrading Pipeworks to Level 2 for more output.
+research_infra_011,Infrastructure,research_infra_010,,,,III,Use Infrastructure,pipes,5,80% for 5 turns,Looped Distribution Grids,level3,Unlocks upgrading Pipeworks to Level 3 for more output.
+research_infra_012,Infrastructure,research_infra_003,,,,II,Use Infrastructure,reinf_pipes,3,80% for 5 turns,High-Pressure Manifolds,level2,Unlocks upgrading Reinforced Pipeworks to Level 2 for more output.
+research_infra_013,Infrastructure,research_infra_012,,,,III,Use Infrastructure,reinf_pipes,5,80% for 5 turns,Cryogenic Transfer Lines,level3,Unlocks upgrading Reinforced Pipeworks to Level 3 for more output.
+research_infra_014,Infrastructure,research_infra_004,,,,II,Use Infrastructure,cables,3,80% for 5 turns,Reconductoring,level2,Unlocks upgrading Cables to Level 2 for more output.
+research_infra_015,Infrastructure,research_infra_014,,,,III,Use Infrastructure,cables,5,80% for 5 turns,Smart Grid Control,level3,Unlocks upgrading Cables to Level 3 for more output.
 research_renew_013,Renewable Power,research_renew_008,,,,III,Run,Wind Farm,12,turns,Floating Offshore Wind Farms,floatwind,Unlocks new recipe: Floating Offshore Wind Power (90 Power).
 research_renew_014,Renewable Power,research_renew_003,,,,II,Run,Battery,12,turns,Fast Response Storage,fastbat,Reduces power consumption for buildings sharing the tile by 5% permanently.
 research_infra_016,Infrastructure,research_infra_004,,,,II,Build,Cables,5,units,High Voltage Cabling,hvdc1,Unlocks HVDC long-distance power transmission.
-research_infra_017,Infrastructure,research_infra_016,,,,III,Run,Cables,12,turns,Undersea Current Doublers,hvdc2,Unlocks higher-capacity undersea HVDC power links.
+research_infra_017,Infrastructure,research_infra_016,,,,III,Use Infrastructure,cables,10,80% for 5 turns,Undersea Current Doublers,hvdc2,Unlocks higher-capacity undersea HVDC power links.
 research_infra_018,Infrastructure,research_infra_017,,,,III,Own,Cables,6,units,SF6-free Switchgear,hvdc3,Unlocks high-capacity HVDC switchgear for power links.
 research_hcpower_008,Hydrocarbon Power,,,,,I,Build,power_plant,3,units,Reheat Turbine Cycles,turbine,Increases Coal Power Plant output by 10% permanently.
 research_hcpower_009,Hydrocarbon Power,research_hcpower_003,,,,III,Run,Power Plant,15,turns,Combined Heat & Power,chp,Reduces maintenance for all buildings by 5% permanently.
@@ -178,10 +178,10 @@ research_recyc_004,Recycling,,,,,I,Build,recycling_plant,3,units,Advanced Oxidat
 research_recyc_005,Recycling,,,,,I,Build,water_recycling,7,units,Zero-Discharge Water,loop,Reduces Water Recycling Plant power consumption by 10% permanently.
 research_biochem_008,Biochemistry,,,,,I,Build,new_forest,3,units,Automated Harvest Fleets,harvest,Reduces New Growth Forest and Old Growth Forest labour by 5% permanently.
 research_infra_019,Infrastructure,,,,,I,Build,rails,3,units,Heavy Freight Corridors,rail,Increases rail throughput by 25% permanently.
-research_infra_020,Infrastructure,research_infra_001,,,,III,Run,Roads,15,turns,Smart Traffic Control,traffic,Increases road throughput by 25% permanently.
+research_infra_020,Infrastructure,research_infra_001,,,,III,Use Infrastructure,roads,10,80% for 5 turns,Smart Traffic Control,traffic,Increases road throughput by 25% permanently.
 research_infra_021,Infrastructure,,,,,I,Build,rails,7,units,Double-Track Sidings,rail,Reduces Railways maintenance by 10% permanently.
 research_infra_022,Infrastructure,,,,,I,Placeholder,,,,Heavy-Haul Bogies,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
-research_infra_023,Infrastructure,research_infra_008,,,,III,Run,Railways,15,turns,Electrified Rolling Stock,erail,Increases rail throughput by 25% permanently.
+research_infra_023,Infrastructure,research_infra_008,,,,III,Use Infrastructure,rails,10,80% for 5 turns,Electrified Rolling Stock,erail,Increases rail throughput by 25% permanently.
 research_infra_024,Infrastructure,,,,,I,Build,rails,12,units,Automated Rail Yards,rail,Reduces Railways maintenance by 10% permanently.
 research_infra_025,Infrastructure,,,,,I,Build,rails,12,units,Distributed-Power Trains,rail,Reduces transport cost by 5% permanently.
 research_infra_026,Infrastructure,,,,,I,Build,reinf_pipes,3,units,Large-Diameter Mains,pipe,Reduces Reinforced Pipeworks maintenance by 10% permanently.
@@ -190,7 +190,7 @@ research_infra_028,Infrastructure,,,,,I,Build,pipes,7,units,Trunk Pipeline Netwo
 research_infra_029,Infrastructure,,,,,I,Placeholder,,,,Smart Flow Control,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
 research_infra_030,Infrastructure,,,,,I,Build,reinf_pipes,7,units,Double-Walled Pipelines,pipe,Reduces Reinforced Pipeworks maintenance by 10% permanently.
 research_infra_031,Infrastructure,,,,,I,Build,pipes,12,units,Corrosion-Resistant Linings,pipe,Reduces Pipeworks maintenance by 10% permanently.
-research_infra_032,Infrastructure,research_infra_003,,,,III,Run,Pipe Network,15,turns,Leak-Detection Networks,leak,Increases pipe throughput by 25% permanently.
+research_infra_032,Infrastructure,research_infra_003,,,,III,Use Infrastructure,pipes,10,80% for 5 turns,Leak-Detection Networks,leak,Increases pipe throughput by 25% permanently.
 research_infra_033,Infrastructure,,,,,I,Placeholder,,,,Ultra-High-Pressure Mains,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
 research_mfg_025,Manufacturing,research_mfg_002,,,,III,Run Profitable,assembly_plant,3,buildings,Coordinated Robot Handoff,handoff,Increases Assembly Plant output by 5% permanently.
 research_infra_034,Infrastructure,research_infra_001,,,,III,Own,Roads,6,units,Electrified Road Haul,eroad,Increases road throughput by 25% permanently.
@@ -215,7 +215,7 @@ research_mfg_037,Manufacturing,research_mfg_002,,,,III,Produce,solar_panel,600,u
 research_mfg_038,Manufacturing,research_mfg_002,,,,III,Produce,solar_panel,600,units,Tandem Cell Stacking,solar,Unlocks new recipe: Triple Tandem Solar Panels (6 Solar Panel).
 research_mfg_039,Manufacturing,research_mfg_002,,,,III,Produce,cpu,600,units,Additive Semiconductor Printing,assembly,Unlocks new recipe: Semiconductor 3D Printing (4 Cpu).
 research_renew_028,Renewable Power,research_renew_001,,,,II,Produce,wind_turbine,400,units,Segmented Blade Assembly,wind,Unlocks new recipe: Segmented Assembly Wind Turbines (4 Wind Turbine).
-research_renew_029,Renewable Power,research_renew_001,,,,II,Produce,food,400,units,Agrivoltaic Integration,solar,Unlocks new recipe: Agri Solar Farming (5 Food).
+research_renew_029,Renewable Power,research_renew_001,,,,II,Run Multiple,farm|solar_farm,3|1,5 turns,Agrivoltaic Integration,solar,Unlocks new recipe: Agri Solar Farming (5 Food).
 research_renew_030,Renewable Power,research_renew_001,,,,II,Build,high_tech_manufactory,3,units,Lithium Iron Phosphate Cells,battery,Unlocks new recipe: Lithium Phosphate Batteries (8 Lithium Battery).
 research_renew_031,Renewable Power,research_renew_001,,,,II,Build,factory,3,units,Iron-Air Battery Cells,battery,Unlocks new recipe: Iron Air Batteries (6 Iron Battery).
 research_metal_017,Metallurgy,research_metal_001,,,,II,Produce,alloy_ingots,400,units,Molten Salt Alloy Electrolysis,alloy,Unlocks new recipe: Alloy Metal Electrolysis (30 Alloy Ingots).
@@ -229,8 +229,10 @@ research_mining_018,Mining and Surveying,research_mining_017,,,,II,Produce,crude
 research_mining_019,Mining and Surveying,research_mining_018,,,,III,Produce,crude_oil,600,units,Subsea Production Systems,manifold,Unlocks new recipe: Subsea Manifold Extraction (14 Crude Oil).
 research_recyc_006,Recycling,,,,,I,Produce,biomass,250,units,Biowaste Digestion,bio,Unlocks new recipe: Biowaste Recycling (24 Biomass).
 research_hcpower_010,Hydrocarbon Power,,,,,I,Produce,power,250,units,Hydrogen Combustion Turbines,turbine,Unlocks new recipe: Hydrogen Power (100 Power).
-research_infra_035,Infrastructure,research_infra_004,,,,III,Run,Cables,12,turns,Dynamic Line Rating,hvdc1,Increases cable throughput by 25% permanently.
+research_infra_035,Infrastructure,research_infra_004,,,,III,Use Infrastructure,cables,10,80% for 5 turns,Dynamic Line Rating,hvdc1,Increases cable throughput by 25% permanently.
 research_logi_006,Logistics,research_logi_001,,,,II,Build,port,3,units,Pallet Racking Systems,depot,Raises tile storage to 1600 (warehouse level 2).
 research_logi_007,Logistics,research_logi_006,,,,II,Build,port,3,units,Automated Storage & Retrieval,depot,Raises tile storage to 2500 (warehouse level 3).
 research_logi_008,Logistics,,,,,I,Stockpile filled,by 7+ buildings,5,turns,Just-in-Time Logistics,depot,Unlock JIT delivery from building producing a good to building consuming a good within the same tile. Reduces strain on warehouses.
+research_logi_009,Logistics,research_logi_002,,,,III,Sell Through Ports Classes,solid_light|solid_heavy|ultra_heavy|safe_liquid|hazard_liquid|gas,1500,units each,Smart Shipping Contracts,contract,Increases port throughput by 25% permanently.
+research_logi_010,Logistics,research_logi_009,,,,III,Purchase Ports,ports,4,ports,Port Network Acquisition,port,Reduces both port transport fees by 50% permanently.
 research_biochem_010,Biochemistry,research_biochem_006,,,,III,Produce,biomass,300,units,Biomass Cracking,bio,Unlocks new recipes: Bio Ethylene (3 Ethylene directly from biomass) and Bio-Graphitisation.

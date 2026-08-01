@@ -96,24 +96,35 @@ static func flow(building: Dictionary, recipe: Dictionary) -> Dictionary:
 			"internal": str(inp.get("internal_name", "")),
 			"qty": int(inp.get("qty", 0)),
 		})
+	# ALL outputs, not just the first: chlor-alkali makes chlorine, sodium hydroxide AND hydrogen,
+	# and the recipe card showed only the chlorine (owner 2026-08-01). The engine's effective-qty
+	# helper is defined for the recipe's PRIMARY output, so the co-products are scaled by the same
+	# ratio the primary was — one modifier applies to the whole batch, not per good.
 	var out_items := BuildingStatus.flow_output_items(recipe)
+	var outputs: Array = []
 	var output: Dictionary = {}
 	if not out_items.is_empty():
-		var o: Dictionary = out_items[0]
-		var base_qty := int(o.get("qty", 0))
+		var primary: Dictionary = out_items[0]
+		var primary_base := int(primary.get("qty", 0))
 		var eff := BuildingStatus.effective_output_qty(building, recipe)
 		if str(recipe.get("output_name", "")) == "power":
 			eff = BuildingStatus.effective_power_output(building, recipe)
-		output = {
-			"good_id": str(o.get("good_id", "")),
-			"internal": str(o.get("internal_name", "")),
-			"qty": eff,
-			"base_qty": base_qty,
-		}
+		var ratio := (float(eff) / float(primary_base)) if primary_base > 0 else 1.0
+		for i in range(out_items.size()):
+			var o: Dictionary = out_items[i]
+			var base_qty := int(o.get("qty", 0))
+			outputs.append({
+				"good_id": str(o.get("good_id", "")),
+				"internal": str(o.get("internal_name", "")),
+				"qty": eff if i == 0 else int(round(float(base_qty) * ratio)),
+				"base_qty": base_qty,
+			})
+		output = outputs[0]
 	var mod := BuildingStatus.net_output_modifier(building, recipe)
 	return {
 		"inputs": inputs,
-		"output": output,
+		"output": output,      # the primary output — kept for callers that show one hero icon
+		"outputs": outputs,    # every output, in recipe order (co-products included)
 		"power_in": BuildingStatus.effective_energy_req(building, recipe),
 		"produces_power": str(recipe.get("output_name", "")) == "power",
 		"mod_pct": int(mod.get("pct", 0)),
@@ -704,17 +715,26 @@ static func output_consumers(building: Dictionary, recipe: Dictionary) -> Array:
 	var iid := str(building.get("instance_id", ""))
 	if out_gid == "":
 		return []
-	var dest := MatchState.get_output_stockpile_destination(iid, out_gid)
-	if dest == "":
+	var destinations := MatchState.get_output_split_destinations(iid, out_gid)
+	if destinations.is_empty():
+		var single := MatchState.get_output_stockpile_destination(iid, out_gid)
+		if single != "":
+			destinations.append({"tile_id": single})
+	if destinations.is_empty():
 		# Unrouted output lands in this building's OWN tile stockpile (default STOCKPILE_ALL), so
 		# same-tile buildings draw from it. A market route / SELL_ALL has no downstream tile.
 		if not MatchState.is_output_market(iid, out_gid) and MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL:
-			dest = str(building.get("tile_id", ""))
-		if dest == "":
+			destinations.append({"tile_id": str(building.get("tile_id", ""))})
+		if destinations.is_empty():
 			return []
 	var rows: Array = []
+	var destination_tiles: Array = []
+	for destination in destinations:
+		var tile := str((destination as Dictionary).get("tile_id", ""))
+		if tile != "" and not destination_tiles.has(tile):
+			destination_tiles.append(tile)
 	for b in MatchState.buildings.values():
-		if str(b.get("instance_id", "")) == iid or str(b.get("tile_id", "")) != dest:
+		if str(b.get("instance_id", "")) == iid or not destination_tiles.has(str(b.get("tile_id", ""))):
 			continue
 		if not MatchState.is_player_owned(b):
 			continue
@@ -783,11 +803,18 @@ static func connections(building: Dictionary, recipe: Dictionary) -> Dictionary:
 			gid = str(Catalog.get_good_by_internal_name(str(o.get("internal_name", ""))).get("id", ""))
 		if gid == "":
 			continue
-		var dest := MatchState.get_output_stockpile_destination(iid, gid)
-		if dest != "" and dest != origin and not output_tiles.has(dest):
-			output_tiles.append(dest)
-		elif dest == "":
-			has_market = true
+		var split := MatchState.get_output_split_destinations(iid, gid)
+		if not split.is_empty():
+			for destination in split:
+				var split_dest := str((destination as Dictionary).get("tile_id", ""))
+				if split_dest != "" and split_dest != origin and not output_tiles.has(split_dest):
+					output_tiles.append(split_dest)
+		else:
+			var dest := MatchState.get_output_stockpile_destination(iid, gid)
+			if dest != "" and dest != origin and not output_tiles.has(dest):
+				output_tiles.append(dest)
+			elif dest == "":
+				has_market = true
 	return {"origin": origin, "input_tiles": input_tiles, "output_tiles": output_tiles, "has_market": has_market}
 
 static func _producers_for_input(inp: Dictionary, current_iid: String, current_tile: String) -> Array:
@@ -918,6 +945,9 @@ static func _routes_to_tile(producer: Dictionary, output: Dictionary, tile_id: S
 		return false
 	var piid := str(producer.get("instance_id", ""))
 	# Explicit output route to this tile.
+	for destination in MatchState.get_output_split_destinations(piid, gid):
+		if str((destination as Dictionary).get("tile_id", "")) == tile_id:
+			return true
 	if MatchState.get_output_stockpile_destination(piid, gid) == tile_id:
 		return true
 	# Same-tile producer whose output lands in the SHARED tile stockpile (an iron-ingot furnace

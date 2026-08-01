@@ -59,6 +59,10 @@ func _ready() -> void:
 	MatchState.advisors_changed.connect(_queue_refresh)
 	MatchState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	visibility_changed.connect(_queue_refresh)   # catch up when the tab is shown
+	# The tutorial advances from bonus inspection to hiring asynchronously. Rebuild the
+	# candidate footer when that happens, so its confirmation button becomes available.
+	if typeof(Tutorial) != TYPE_NIL and Tutorial.has_signal("step_changed"):
+		Tutorial.step_changed.connect(func(_id: String) -> void: _queue_refresh())
 	_rebuild()
 
 # Coalesced (notification_bell pattern): loyalty/seat changes arrive in bursts.
@@ -420,7 +424,11 @@ func _build_detail() -> void:
 		focus_seat = str(_view.get("hire_seat", ""))
 	if focus_seat == "":
 		focus_seat = str(MatchState.advisor_best_effect_seat(aid))
-	left.add_child(_sec_label("WHAT THEY BRING — %s" % _seat_name(focus_seat).to_upper()))
+	# A stable name lets the tutorial require players to open a candidate profile
+	# and read the seat-specific effects before they hire them.
+	var bonus_title := _sec_label("WHAT THEY BRING — %s" % _seat_name(focus_seat).to_upper())
+	bonus_title.name = "AdvisorBonusSection"
+	left.add_child(bonus_title)
 	var fx: Array = MatchState.advisor_seat_effect_list(aid, focus_seat)
 	if fx.is_empty():
 		left.add_child(_dim_label("No mechanical effects in this seat.", 12))
@@ -521,23 +529,45 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 			chosen[0] = sid
 			for other in buttons:
 				(buttons[other] as Button).set_pressed_no_signal(str(other) == sid)
-			confirm.disabled = false)
+			# Choosing a different seat must not bypass the tutorial's required
+			# bonus-inspection beat.
+			confirm.disabled = _tutorial_bonus_inspection_required())
 		buttons[sid] = b
 		chip_holder.add_child(b)
 	var employed := MatchState.permanent_advisor_ids.has(advisor_id)
-	confirm.text = "Assign to seat" if employed else "Hire & assign — £%.1f/turn" % _salary(advisor_id)
+	confirm.name = "AdvisorHireAssignButton"
+	confirm.text = "Assign to seat" if employed else "Hire & assign"
 	confirm.theme_type_variation = &"Primary"
-	confirm.disabled = chosen[0] == ""
+	confirm.disabled = chosen[0] == "" or _tutorial_bonus_inspection_required()
+	if _tutorial_bonus_inspection_required():
+		confirm.tooltip_text = "Inspect What They Bring before hiring."
 	confirm.pressed.connect(func() -> void:
 		if not MatchState.permanent_advisor_ids.has(advisor_id):
 			if not MatchState.hire_advisor(advisor_id):
 				MatchState.request_toast("Could not hire — council is full or they refuse to return.", "warning")
 				return
+		var who := str(MatchState.get_advisor(advisor_id).get("name", advisor_id))
 		if MatchState.assign_advisor_to_seat(chosen[0], advisor_id):
-			MatchState.request_toast("%s assigned as %s" % [str(MatchState.get_advisor(advisor_id).get("name", advisor_id)), _seat_name(chosen[0])], "success")
+			MatchState.request_toast("%s assigned as %s" % [who, _seat_name(chosen[0])], "success")
+		else:
+			# A refused assignment used to fall through silently and return to the roster, so
+			# the advisor appeared in whatever seat they were in before and it read as the game
+			# choosing a different role. Say so instead.
+			MatchState.request_toast("Could not seat %s as %s — the council is full." % [who, _seat_name(chosen[0])], "warning")
 		_set_view({"mode": "roster"}))
 	row.add_child(confirm)
+	# Cost sits BELOW the button, not inside its label: it is two numbers plus a percentage and
+	# it changes every turn, which made for a button caption that was mostly arithmetic.
+	if not employed:
+		var cost := _tone_label(_cost_breakdown(), _WARN, 12)
+		cost.name = "AdvisorHireCostLine"
+		wrap.add_child(cost)
 	return wrap
+
+
+func _tutorial_bonus_inspection_required() -> bool:
+	return typeof(Tutorial) != TYPE_NIL and Tutorial.has_method("is_active_step") \
+		and Tutorial.is_active_step("advisors_inspect")
 
 # ── shared atoms ─────────────────────────────────────────────────────────────
 func _back_row(title: String, subtitle: String) -> Control:
@@ -784,8 +814,19 @@ func _archetype(advisor_id: String) -> String:
 	var entry := MatchState._roster_entry(advisor_id)
 	return str((entry.get("traits", {}) as Dictionary).get("specialty_name", ""))
 
-func _salary(advisor_id: String) -> float:
-	return float(MatchState._roster_entry(advisor_id).get("salary", 0.0))
+## What one more advisor costs per turn under the live model — a flat base that inflates at
+## double the labour rate, plus 1% of company revenue each (EconomyConfig, owner 2026-08-01).
+## Not the roster's old per-advisor `salary` field, which the model replaced.
+func _salary(_advisor_id: String) -> float:
+	return MatchState.advisor_cost_per_advisor(MatchState.advisor_revenue_basis())
+
+
+## The cost broken out, for the line that sits UNDER the hire button.
+func _cost_breakdown() -> String:
+	var rev := MatchState.advisor_revenue_basis()
+	var base := MatchState.advisor_cost_per_advisor(0.0)
+	var share := rev * EconomyConfig.ADVISOR_REVENUE_SHARE
+	return "\u00a3%.1f/turn \u2014 \u00a3%.1f base + %.0f%% of revenue (\u00a3%.1f)" % [base + share, base, EconomyConfig.ADVISOR_REVENUE_SHARE * 100.0, share]
 
 ## [ [display_name, value 1-3, disc_key], ... ] sorted by value desc, top n.
 func _top_disciplines(advisor_id: String, n: int) -> Array:

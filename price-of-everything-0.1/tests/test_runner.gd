@@ -51,6 +51,11 @@ func _ready() -> void:
 	_test_people_panel_seat_ui()
 	_test_advisor_star_derivation()
 	_test_advisor_seat_assign_and_slot_cap()
+	_test_endgame_continuity_verdict()
+	_test_advisor_payroll_model()
+	_test_battery_fill_scope_and_units()
+	_test_land_chart_matches_upgrade_gate()
+	_test_recipe_flow_shows_co_products()
 	_test_advisor_seat_tier_scaling()
 	_test_advisor_reconcile_idempotent()
 	_test_advisor_seat_effects()
@@ -307,10 +312,16 @@ func _test_tutorial_engine() -> void:
 	_check(PlayerProfile.window_size == ws_saved, "profile: window_size restored after test")
 
 	var terminal_present := false
+	var terminal_step: Dictionary = {}
 	for s in steps:
 		if str((s as Dictionary).get("id", "")) == "integration_done":
 			terminal_present = true
+			terminal_step = s as Dictionary
 	_check(terminal_present, "tutorial: terminal integration_done step exists (the completion hook target)")
+	var terminal_variants: Dictionary = terminal_step.get("body_by_branch", {})
+	_check(str(terminal_variants.get("glass", "")).contains("Glass path")
+		and str(terminal_variants.get("aluminium", "")).contains("Aluminium path"),
+		"tutorial: finale names the Glass or Aluminium branch the player chose")
 
 	# building_owned_on_tile detector: player-owned building on the tile -> true;
 	# NPC-owned -> false; unknown predicate kind -> false. Save/restore live buildings.
@@ -342,8 +353,24 @@ func _test_tutorial_engine() -> void:
 		var sid := str((s as Dictionary).get("id", ""))
 		ids.append(sid)
 		by_id[sid] = s
-	for expected in ["welcome", "ui_primer", "goto_tile", "build_open", "build_pick_recipe", "build_cost", "build_close_buy", "buy_factory", "diagnose_factory", "lay_cable_factory", "run_until_running", "view_shipment", "analyse_supply", "explore_encyclopedia", "close_encyclopedia", "choose_integration", "build_glass_open", "build_glass_recipe", "build_glass_source", "glass_sell", "glass_wait_built", "glass_diagnose_pipe", "glass_lay_pipe", "glass_run", "glass_economics", "glass_better", "glass_research", "glass_upgrade", "build_alu_open", "sell_windows", "integration_done"]:
+	for expected in ["welcome", "ui_primer", "goto_tile", "build_open", "build_pick_recipe", "build_cost", "build_close_buy", "buy_factory", "diagnose_factory", "lay_cable_factory", "run_until_running", "view_shipment", "analyse_supply", "explore_encyclopedia", "close_encyclopedia", "revenue_settle", "choose_integration", "build_glass_open", "build_glass_recipe", "build_glass_source", "glass_sell", "glass_wait_built", "glass_diagnose_pipe", "glass_lay_pipe", "glass_run", "glass_economics", "glass_better", "glass_research", "glass_upgrade", "build_alu_open", "alu_run_base", "alu_output_check", "alu_research", "alu_research_search", "alu_research_condition", "alu_research_unlock", "alu_upgrade", "alu_diagnose_pipe", "alu_lay_pipe", "alu_final_run", "integration_done"]:
 		_check(expected in ids, "tutorial: step '%s' present" % expected)
+	var welcome: Dictionary = by_id.get("welcome", {})
+	var welcome_paragraphs: Array = welcome.get("paragraphs", [])
+	_check(welcome_paragraphs.size() == 2 and str(welcome_paragraphs[0]).begins_with("Carbon and Capital is an industrial simulator"),
+		"tutorial: welcome uses the concise Taralia introduction")
+	var primer_hints: Dictionary = by_id.get("ui_primer", {})
+	_check("Press G to open the Goods Graph" in (primer_hints.get("hints", []) as Array),
+		"tutorial: quick-control explanation includes the G Goods Graph shortcut")
+	_check("advisors_hire" in ids, "tutorial: advisor flow has a seat-agnostic assignment step")
+	var advisor_inspect: Dictionary = by_id.get("advisors_inspect", {})
+	var advisor_inspect_done: Dictionary = advisor_inspect.get("done", {})
+	var advisor_inspect_decide: Dictionary = advisor_inspect_done.get("decide", {})
+	_check(str(advisor_inspect_decide.get("kind", "")) == "node_visible"
+		and str(advisor_inspect_decide.get("ref", "")) == "AdvisorBonusSection",
+		"tutorial: advisor flow requires inspecting a candidate's bonuses before hiring")
+	_check(Tutorial.is_active_step("not_a_real_step") == false,
+		"tutorial: inactive step guard is false outside an active tutorial")
 	_check(TutorialDetectors.poll({"kind": "node_hidden", "ref": "NoSuchNode_xyz"}) == true,
 		"tutorial: node_hidden true for a missing node")
 	# New detectors are wired and default false in a fresh scene.
@@ -384,8 +411,27 @@ func _test_tutorial_engine() -> void:
 	# Glass branch now ends with a research sub-flow (unlock High Strength Glassmaking -> retool to r_054).
 	_check(str((by_id.get("glass_run", {}) as Dictionary).get("goto", "")) == "",
 		"tutorial: glass_run flows into the research steps (no early reconverge)")
-	_check(str((by_id.get("glass_upgrade", {}) as Dictionary).get("goto", "")) == "integration_done",
-		"tutorial: glass branch reconverges to integration_done after the recipe upgrade")
+	# Reconverges at the ADVISORS chapter, not the finale: jumping straight to
+	# integration_done skipped the whole advisor arc for anyone on the glass path.
+	_check(str((by_id.get("glass_upgrade", {}) as Dictionary).get("goto", "")) == "advisors_intro",
+		"tutorial: glass branch reconverges to the advisor arc after the recipe upgrade")
+	var alu_research: Dictionary = by_id.get("alu_research", {})
+	var alu_research_decide: Dictionary = (alu_research.get("done", {}) as Dictionary).get("decide", {})
+	var alu_search: Dictionary = by_id.get("alu_research_search", {})
+	var alu_search_decide: Dictionary = (alu_search.get("done", {}) as Dictionary).get("decide", {})
+	var alu_unlock: Dictionary = by_id.get("alu_research_unlock", {})
+	var alu_unlock_decide: Dictionary = (alu_unlock.get("done", {}) as Dictionary).get("decide", {})
+	var alu_upgrade: Dictionary = by_id.get("alu_upgrade", {})
+	var alu_upgrade_decide: Dictionary = (alu_upgrade.get("done", {}) as Dictionary).get("decide", {})
+	_check(str(alu_research_decide.get("kind", "")) == "node_visible"
+		and str(alu_search_decide.get("kind", "")) == "research_search_contains"
+		and str((alu_search.get("release_overlay_when", {}) as Dictionary).get("kind", "")) == "research_search_nonempty"
+		and str((alu_unlock.get("spotlight", {}) as Dictionary).get("kind", "")) == "research_unlock"
+		and str(alu_unlock_decide.get("title", "")) == "Bauxite Carbochlorination"
+		and str(((by_id.get("build_alu_recipe", {}) as Dictionary).get("spotlight", {}) as Dictionary).get("ref", "")) == "RecipeRow_r_050",
+		"tutorial: aluminium branch searches and free-unlocks Carbochlorination after building the base smelter")
+	_check(str(alu_upgrade_decide.get("recipe_id", "")) == "r_232",
+		"tutorial: aluminium branch asks the player to retool the existing smelter to Carbochlorination")
 	var gr_done: Dictionary = (by_id.get("glass_research", {}) as Dictionary).get("done", {})
 	var gr_decide: Dictionary = gr_done.get("decide", {})
 	_check(str(gr_decide.get("kind", "")) == "research_unlocked",
@@ -460,9 +506,50 @@ func _test_tutorial_engine() -> void:
 	var glass_qty: int = TutorialSteps._recipe_input_qty("r_056", "glass")
 	_check(glass_qty > 0 and str((by_id.get("choose_integration", {}) as Dictionary).get("body", "")).contains("%d units" % glass_qty),
 		"tutorial: choose_integration quotes the live glass quantity (%d)" % glass_qty)
-	var alu_out: int = TutorialSteps._recipe_output_qty("r_050")
+	var alu_out: int = TutorialSteps._recipe_output_qty("r_232")
 	_check(alu_out > 0 and str((by_id.get("build_alu_open", {}) as Dictionary).get("body", "")).contains("%d aluminium" % alu_out),
 		"tutorial: build_alu_open quotes the live smelter output (%d)" % alu_out)
+	var direct_bauxite: Dictionary = Catalog.get_recipe("r_232")
+	var direct_inputs: Array = direct_bauxite.get("inputs", [])
+	var direct_needs_chlorine := false
+	for direct_input in direct_inputs:
+		if str((direct_input as Dictionary).get("internal_name", "")) == "chlorine":
+			direct_needs_chlorine = true
+			break
+	_check(str(direct_bauxite.get("building_id", "")) == "b_002"
+		and int(direct_bauxite.get("energy_req", 0)) < int(Catalog.get_recipe("r_050").get("energy_req", 0))
+		and direct_needs_chlorine
+		and TutorialSteps._recipe_input_qty("r_232", "chlorine") == 20
+		and str(direct_bauxite.get("tech_unlock_req", "")) == "research_metal_012",
+		"tutorial: Bauxite Carbochlorination is the lower-energy gated furnace route with chlorine")
+	var carbo_unlock: Dictionary = MatchState.get_unlock_def("Bauxite Carbochlorination")
+	_check(str(carbo_unlock.get("action", "")) == "Produce All"
+		and str(carbo_unlock.get("object", "")) == "chlorine|aluminium"
+		and str(carbo_unlock.get("quantity_raw", "")) == "300|400",
+		"research: Bauxite Carbochlorination requires 300 Chlorine and 400 Aluminium")
+	_check(str(carbo_unlock.get("description", "")) == "Unlocks new recipe: Bauxite Carbochlorination (20 Aluminium).",
+		"research: Bauxite Carbochlorination description describes its recipe, not its condition")
+	_check(TutorialSteps._recipe_input_qty("r_050", "alumina") == 20
+		and int(Catalog.get_recipe("r_050").get("labour_unskilled_required", 0)) == 505
+		and int(Catalog.get_recipe("r_050").get("labour_skilled_required", 0)) == 189
+		and int(Catalog.get_recipe("r_050").get("labour_h_skilled_required", 0)) == 30,
+		"tutorial: Hall-Heroult's extra alumina is offset by its labour requirement")
+	var alu_lay: Dictionary = by_id.get("alu_lay_pipe", {})
+	_check(str((alu_lay.get("spotlight", {}) as Dictionary).get("ref", "")) == "InfraCell_reinf_pipes",
+		"tutorial: alu_lay_pipe spotlights the reinforced-pipe cell")
+	var settle_done: Dictionary = ((by_id.get("revenue_settle", {}) as Dictionary).get("done", {}) as Dictionary)
+	var settle_decide: Dictionary = settle_done.get("decide", {})
+	_check(str(settle_decide.get("kind", "")) == "market_sale_completed_since_entry",
+		"tutorial: money lesson waits for a shipment to reach market, not a hard-coded turn")
+	_check(bool((by_id.get("revenue_settle", {}) as Dictionary).get("no_dim", false)),
+		"tutorial: shipment wait keeps the map unobstructed")
+	var loan_step: Dictionary = by_id.get("money_take_loan", {})
+	_check(str((loan_step.get("spotlight", {}) as Dictionary).get("kind", "")) == "none",
+		"tutorial: loan confirmation remains interactive after opening the Loans tab")
+	_check(not bool((by_id.get("money_primer", {}) as Dictionary).get("lock_panel", false)),
+		"tutorial: money primer does not rebuild the flyout beneath its Next click")
+	_check(not bool((by_id.get("money_loan_terms", {}) as Dictionary).get("lock_panel", false)),
+		"tutorial: loan terms does not rebuild the flyout beneath its Next click")
 
 	# Transport arc: output-route detectors read the explicit per-good destinations.
 	var saved2: Dictionary = MatchState.buildings
@@ -4933,17 +5020,7 @@ func _test_live_unlock_conditions() -> void:
 	# Every non-placeholder research row must either resolve to a live metric or
 	# appear in this explicit content-gap allowlist. This catches new casing,
 	# identifier and unsupported-verb regressions across the full CSV.
-	var expected_content_gaps := [
-		"Agrivoltaic Integration",
-		"Autonomous Dispatch Rooms",
-		"Continuous Improvement Teams",
-		"Integrated Operations Planning",
-		"Risk Desk Procedures",
-		"Route Optimization",
-		"Safety Training",
-		"Shift Supervisors",
-		"Spot Price Reporting",
-	]
+	var expected_content_gaps: Array = []
 	var actual_content_gaps: Array = []
 	for issue in MatchState.research_condition_issues():
 		actual_content_gaps.append(str(issue.title))
@@ -6400,6 +6477,13 @@ func _test_transfer_helpers() -> void:
 func _test_recipes_producing() -> void:
 	_check(Catalog.recipes_producing("g_001").size() > 0, "recipes_producing finds producers of coal")
 	_check(Catalog.recipes_producing("g_nope").is_empty(), "recipes_producing is empty for an unknown good")
+	var aluminium: Dictionary = Catalog.get_good_by_internal_name("aluminium")
+	var has_ewaste := false
+	for recipe in Catalog.recipes_producing(str(aluminium.get("id", ""))):
+		if str(recipe.get("recipe_id", "")) == "r_107":
+			has_ewaste = true
+	_check(not has_ewaste and not Catalog.all_recipes().any(func(recipe: Dictionary) -> bool: return str(recipe.get("recipe_id", "")) == "r_107"),
+		"unfinished E-Waste Recycling is hidden from recipe discovery")
 	_check(Catalog.recipe_produces(Catalog.get_recipe("r_001"), "g_001"),
 		"recipe_produces detects a recipe's output good")
 
@@ -6955,8 +7039,18 @@ func _test_price_impact() -> void:
 # impact, capped at ±50%, recovering 0.1%/turn under the threshold. The impact
 # multiplies the decayed base price; `prices` stays the impact-free series.
 func _test_price_impact_thresholds() -> void:
-	# BANDED response with SPACED thresholds (owner ruling): 2x / 4x / 10x.
-	_check(EconomyConfig.price_impact_rate(64, 32) == 0.0, "2x exactly is under the bite")
+	# BANDED response with SPACED thresholds (owner ruling): 1x / 2x / 4x / 10x.
+	# The 1x band (owner 2026-08-01) exists so a building pushed above its own base recipe
+	# output by modifiers starts to register at all.
+	_check(EconomyConfig.price_impact_rate(32, 32) == 0.0, "1x exactly is under the bite")
+	_check(EconomyConfig.price_impact_rate(33, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
+		"just over 1x accrues the faintest band — a modified single building registers")
+	_check(EconomyConfig.price_impact_rate(-33, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
+		"the 1x band applies to BUYING too, not only selling")
+	_check(EconomyConfig.PRICE_IMPACT_RATE_1X * 2.0 == EconomyConfig.PRICE_IMPACT_RATE_2X,
+		"the 1x band accrues at exactly half the band above it")
+	_check(EconomyConfig.price_impact_rate(64, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
+		"2x exactly is the 1x band (bands are strictly-greater-than)")
 	_check(EconomyConfig.price_impact_rate(65, 32) == EconomyConfig.PRICE_IMPACT_RATE_2X,
 		"just over 2x accrues the gentle band")
 	_check(EconomyConfig.price_impact_rate(128, 32) == EconomyConfig.PRICE_IMPACT_RATE_2X,
@@ -7053,10 +7147,11 @@ func _test_price_impact_thresholds() -> void:
 	MarketState.impact_pct[gid] = -0.05
 	MarketState.tick_turn()
 	_check(MarketState.get_impact_pct(gid) == 0.0, "recovery settles exactly to zero")
-	# UI helper: thresholds surface as 2x|3x|4x of the base output.
+	# UI helper: thresholds surface as 1x|2x|4x|10x of the base output.
 	var th: PackedInt32Array = MarketState.impact_thresholds(gid)
-	_check(th.size() == 3 and th[0] == coal_base * 2 and th[1] == coal_base * 4 and th[2] == coal_base * 10,
-		"impact_thresholds returns 2x/4x/10x of base output, matching the live bands")
+	_check(th.size() == 4 and th[0] == coal_base and th[1] == coal_base * 2 \
+			and th[2] == coal_base * 4 and th[3] == coal_base * 10,
+		"impact_thresholds returns 1x/2x/4x/10x of base output, matching the live bands")
 	MarketState.impact_pct.erase(gid)
 	MarketState.prices = prices_snapshot
 	MarketState.prices_updated.emit()
@@ -7225,9 +7320,22 @@ func _test_output_market_route() -> void:
 		"routing back to market clears the cap")
 	MatchState.set_output_stockpile_destination("inst_test_market", "tile_3_9", "g_001")
 	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 5)
+	# Shift-click split routes keep up to three distinct tiles and each field is a
+	# three-digit per-turn amount (0 keeps that destination on its automatic share).
+	MatchState.add_output_split_destination("inst_test_market", "g_001", "tile_3_8")
+	MatchState.add_output_split_destination("inst_test_market", "g_001", "tile_3_9")
+	MatchState.add_output_split_destination("inst_test_market", "g_001", "tile_3_10")
+	MatchState.add_output_split_destination("inst_test_market", "g_001", "tile_3_11")
+	MatchState.set_output_split_quantity("inst_test_market", "g_001", "tile_3_9", 1200)
+	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 5)
+	var split_route := MatchState.get_output_split_destinations("inst_test_market", "g_001")
+	_check(split_route.size() == 3 and int((split_route[1] as Dictionary).get("qty", 0)) == 999,
+		"split output routes keep three destinations and clamp entered quantities to three digits")
 	var routed_state: Dictionary = MatchState.export_state()
 	_check((routed_state.get("output_ship_quantities", {}) as Dictionary).has("inst_test_market"),
 		"ship quantity caps ride the save export")
+	_check((routed_state.get("output_split_destinations", {}) as Dictionary).has("inst_test_market"),
+		"split output routes ride the save export")
 	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 0)
 	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0
 		and not MatchState.output_ship_quantities.has("inst_test_market"),
@@ -7235,6 +7343,8 @@ func _test_output_market_route() -> void:
 	MatchState.import_state(routed_state)
 	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 5,
 		"ship quantity caps survive a save round-trip")
+	_check(MatchState.get_output_split_destinations("inst_test_market", "g_001").size() == 3,
+		"split output routes survive a save round-trip")
 	MatchState.clear_output_stockpile_destination("inst_test_market", "g_001")
 	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0,
 		"clearing the route clears the cap too")
@@ -7739,15 +7849,49 @@ func _test_advisor_seat_assign_and_slot_cap() -> void:
 	# re-assigning within an already-occupied seat consumes no new slot
 	_check(MatchState.assign_advisor_to_seat("cfo", "marcus"), "seat: re-assign within cfo (no new slot)")
 	_check(MatchState.get_advisor_in_seat("cfo") == "marcus", "seat: cfo now holds marcus")
-	# one seat per advisor: moving tom (in coo) to hr vacates coo
-	MatchState.max_advisor_slots = 3
-	_check(MatchState.assign_advisor_to_seat("hr_director", "tom"), "seat: move tom -> hr_director")
+	# MOVING a seated advisor to an empty seat consumes no new slot — their old seat is vacated,
+	# so the count does not grow and a FULL council must not refuse the move. This is the bug
+	# behind "I hired them for one role and they went to another": the assign was refused, the
+	# panel returned to the roster without a word, and the advisor stayed where they were.
+	# Council is full here (2 seats, 2 slots) and the move must still succeed.
+	_check(MatchState.advisor_seats.size() == MatchState.max_advisor_slots,
+		"seat: council is full before the move (%d/%d)" % [MatchState.advisor_seats.size(), MatchState.max_advisor_slots])
+	_check(MatchState.assign_advisor_to_seat("hr_director", "tom"),
+		"seat: a seated advisor can move to an empty seat with the council full")
+	_check(MatchState.get_advisor_in_seat("hr_director") == "tom", "seat: tom landed in the seat asked for")
 	_check(MatchState.get_advisor_in_seat("coo") == "", "seat: one seat per advisor (coo vacated)")
+	# ...and a genuinely NEW arrival is still refused at the cap.
+	_check(not MatchState.assign_advisor_to_seat("coo", "eleanor"),
+		"seat: a new arrival is still blocked when the council is full")
+	MatchState.max_advisor_slots = 3
+	_check(MatchState.assign_advisor_to_seat("coo", "eleanor"), "seat: the same arrival fits once a slot opens")
 	_check(MatchState.unassign_seat("cfo"), "seat: unassign frees the seat")
 	_check(MatchState.get_advisor_in_seat("cfo") == "", "seat: cfo empty after unassign")
 	MatchState.advisor_seats = saved_seats
 	MatchState.max_advisor_slots = saved_slots
 	MatchState.permanent_advisor_ids = saved_hired
+
+func _test_endgame_continuity_verdict() -> void:
+	# Three outcomes, not two: reaching the bell with no track secured is only RECEIVERSHIP if
+	# the company was also losing money. Still in profit = "Continuity", amber (owner 2026-08-01).
+	var EGD := load("res://scripts/end_game_data.gd")
+	_check(EGD._title("continuity", 0, []) == "Continuity", "endgame: continuity is titled Continuity")
+	_check(EGD._title("defeat", 0, []) == "Receivership", "endgame: a loss-making end is still Receivership")
+	_check(EGD._title("victory", 5, []) == "The Full Ledger", "endgame: victory titles are untouched")
+	var copy: Array = EGD._copy("continuity", 0, 300, [])
+	_check(copy.size() == 1, "endgame: continuity copy is the owner's single paragraph")
+	_check(str(copy[0]).begins_with("You continued your predecessors' task"),
+		"endgame: continuity copy opens with the owner's wording")
+	_check(str(copy[0]).ends_with("we can't afford the fancy stuff."),
+		"endgame: continuity copy closes with the owner's wording")
+	# The verdict is driven by the SAME net/turn the top bar prints, so the two can never disagree.
+	var saved: Dictionary = Production.last_turn_summary.duplicate(true)
+	Production.last_turn_summary = {"money_in": 500.0, "money_out": 400.0}
+	_check(EGD._net_per_turn() > 0.0, "endgame: net/turn reads money_in - money_out (in profit)")
+	Production.last_turn_summary = {"money_in": 100.0, "money_out": 900.0}
+	_check(EGD._net_per_turn() < 0.0, "endgame: net/turn goes negative when outgoings win")
+	Production.last_turn_summary = saved
+
 
 func _test_advisor_seat_tier_scaling() -> void:
 	# rigid seats read the governing stat directly
@@ -8348,15 +8492,24 @@ func _test_advisor_seats_save_roundtrip() -> void:
 func _test_advisor_payroll_cost() -> void:
 	var saved_ids := MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_money := MatchState.money
-	MatchState.permanent_advisor_ids = ["vera", "alexandra"]   # salaries 1.0 + 4.0 = 5.0
-	MatchState.money = 100.0
-	var summary := {"advisor_paid": 0.0, "money_out": 0.0}
+	# The per-advisor `salary` field is gone (owner 2026-08-01): every advisor now costs the same
+	# inflating base plus 1% of revenue each. This test used to assert 1.0 + 4.0 = 5.0 from the
+	# roster fields; it now asserts the live model, and that the charge is billed against THIS
+	# turn's revenue out of the summary rather than last turn's.
+	var saved_turn: int = TurnManager.current_turn
+	TurnManager.current_turn = 1
+	MatchState.permanent_advisor_ids = ["vera", "alexandra"]
+	MatchState.money = 1000.0
+	var summary := {"advisor_paid": 0.0, "money_out": 0.0,
+		"goods_sales_revenue": 800.0, "power_sales_revenue": 200.0}
+	var expect: float = 2.0 * (EconomyConfig.ADVISOR_BASE_COST_PER_TURN + 1000.0 * EconomyConfig.ADVISOR_REVENUE_SHARE)
 	var paid: float = Production._apply_advisor_costs(summary)
-	_check(is_equal_approx(paid, 5.0)
-		and is_equal_approx(float(summary.get("advisor_paid", 0.0)), 5.0)
-		and is_equal_approx(float(summary.get("money_out", 0.0)), 5.0)
-		and is_equal_approx(MatchState.money, 95.0),
-		"advisor payroll sums each advisor's salary")
+	_check(is_equal_approx(paid, expect)
+		and is_equal_approx(float(summary.get("advisor_paid", 0.0)), expect)
+		and is_equal_approx(float(summary.get("money_out", 0.0)), expect)
+		and is_equal_approx(MatchState.money, 1000.0 - expect),
+		"advisor payroll = per-advisor (base + 1%% of this turn's revenue) — £%.1f for two" % expect)
+	TurnManager.current_turn = saved_turn
 	MatchState.permanent_advisor_ids = saved_ids
 	MatchState.money = saved_money
 	MatchState.money_changed.emit(MatchState.money)
@@ -8712,6 +8865,10 @@ func _test_widgets_instantiate() -> void:
 	_check(_tree_has_label_text(pp, str(first_advisor.get("name", "")))
 		and not MatchState.permanent_advisor_ids.has(first_id),
 		"PeoplePanel clicking an available advisor opens the profile, not an instant hire")
+	_check(pp.find_child("AdvisorBonusSection", true, false) != null,
+		"PeoplePanel candidate profile exposes its seat-specific bonuses")
+	_check(pp.find_child("AdvisorHireAssignButton", true, false) != null,
+		"PeoplePanel candidate profile exposes the hire-and-assign confirmation")
 	# The Hire & assign confirm runs exactly this hire + seat-assign pair.
 	var hired_ok := MatchState.hire_advisor(first_id) and MatchState.assign_advisor_to_seat("cfo", first_id)
 	council_tab.call("_set_view", {"mode": "roster"})
@@ -10095,3 +10252,139 @@ func _test_briefing_event_mapping() -> void:
 	EventScheduler.reset()
 	TurnBriefing.reset()
 	_decision_board_restore(snap)
+
+
+func _test_advisor_payroll_model() -> void:
+	# Owner spec 2026-08-01: each advisor costs a flat base per turn that inflates at DOUBLE the
+	# labour rate, plus 1% of company revenue — charged once per advisor, so a five-strong
+	# council takes 5% of turnover.
+	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_turn: int = TurnManager.current_turn
+	var saved_sum: Dictionary = Production.last_turn_summary.duplicate(true)
+	TurnManager.current_turn = 1
+	Production.last_turn_summary = {"goods_sales_revenue": 0.0, "power_sales_revenue": 0.0}
+	MatchState.permanent_advisor_ids = []
+	_check(is_equal_approx(MatchState.advisor_cost_per_advisor(0.0), EconomyConfig.ADVISOR_BASE_COST_PER_TURN),
+		"advisor cost: turn 1 base is £%.1f" % EconomyConfig.ADVISOR_BASE_COST_PER_TURN)
+	_check(is_equal_approx(EconomyConfig.ADVISOR_COST_GROWTH, 2.0 * EconomyConfig.LABOUR_HIGH_SKILLED_GROWTH),
+		"advisor cost: growth is exactly double high-skilled labour")
+	# 1% of revenue, per advisor.
+	_check(is_equal_approx(MatchState.advisor_cost_per_advisor(1000.0),
+			EconomyConfig.ADVISOR_BASE_COST_PER_TURN + 10.0),
+		"advisor cost: +1% of £1000 revenue = +£10 each")
+	MatchState.permanent_advisor_ids = ["vera", "tom", "marcus"]
+	_check(is_equal_approx(MatchState.advisor_payroll_per_turn(1000.0),
+			3.0 * (EconomyConfig.ADVISOR_BASE_COST_PER_TURN + 10.0)),
+		"advisor cost: payroll is per-advisor, not per-council")
+	# The base compounds with the turn number.
+	TurnManager.current_turn = 101
+	var t101: float = MatchState.advisor_cost_per_advisor(0.0)
+	_check(t101 > EconomyConfig.ADVISOR_BASE_COST_PER_TURN,
+		"advisor cost: the base inflates over a long game (£%.2f at t101)" % t101)
+	_check(is_equal_approx(t101, EconomyConfig.ADVISOR_BASE_COST_PER_TURN
+			* pow(1.0 + EconomyConfig.ADVISOR_COST_GROWTH, 100.0)),
+		"advisor cost: compounds as base * (1+growth)^(t-1)")
+	MatchState.permanent_advisor_ids = saved_hired
+	TurnManager.current_turn = saved_turn
+	Production.last_turn_summary = saved_sum
+
+
+func _test_battery_fill_scope_and_units() -> void:
+	# Two bugs, one root: the battery panel is opened on ONE building but every figure it used
+	# was tile-wide (owner 2026-08-01).
+	#  (a) "Fill from market" sized the order from the TILE's headroom, so a tile with several
+	#      batteries ordered for all of them from whichever one you clicked.
+	#  (b) The cream card read "36 / 2000" — a CELL COUNT over a MEGAWATT capacity.
+	# NON-DESTRUCTIVE: no MatchState.reset(). reset() wipes the NPC-port / scene state that
+	# later tests assert against (see the same warning on _test_warehouse_storage_levels) —
+	# doing it here took out two unrelated port tests.
+	var tile := "tile_batt_test_only"
+	var a := MatchState.add_building("b_028", "", tile, MatchState.LOCAL_PLAYER, "batt_a")
+	var b2 := MatchState.add_building("b_028", "", tile, MatchState.LOCAL_PLAYER, "batt_b")
+	var one_cap: int = int(EconomyConfig.BATTERY_STORAGE_CAP.get(1, 0))
+	_check(MatchState.tile_battery_slots(tile) == one_cap * 2,
+		"battery: two L1 batteries give the tile twice one battery's capacity")
+	var gid := ""
+	for internal in EconomyConfig.BATTERY_CELL_DENSITY:
+		var g := str(Catalog.get_good_by_internal_name(str(internal)).get("id", ""))
+		if g != "":
+			gid = g
+			break
+	if gid == "":
+		_check(false, "battery: a cell good exists to test with")
+		return
+	var tile_fill: int = MatchState.battery_cells_to_fill(tile, gid)
+	var one_fill: int = MatchState.battery_cells_to_fill(tile, gid, a)
+	_check(tile_fill > 0 and one_fill > 0, "battery: both fills are positive")
+	_check(one_fill * 2 == tile_fill,
+		"battery: filling ONE battery orders half a two-battery tile's total (%d vs %d)" % [one_fill, tile_fill])
+	# (b) the card's two numbers must now share a unit: MW firmed over MW capacity.
+	var r: Dictionary = load("res://scripts/building_readout.gd").battery(MatchState.get_building(a))
+	_check(int(r.get("firming_cap", -1)) <= int(r.get("slots", 0)),
+		"battery: power stabilised never exceeds the tile's firming capacity")
+	_check(int(r.get("firming_cap", -1)) == 0,
+		"battery: nothing loaded means 0 MW stabilised (not a cell count)")
+	MatchState.remove_building(a)
+	MatchState.remove_building(b2)
+
+
+func _test_land_chart_matches_upgrade_gate() -> void:
+	# The land chart drew every building at its LEVEL-1 footprint while the build/upgrade gate
+	# (MatchState.get_tile_space_used) counted the level-scaled size. A tile of upgraded
+	# buildings therefore looked far emptier than it was, and an upgrade was refused for want of
+	# room the player could see going spare (owner 2026-08-01, Stoneshore Docks).
+	# NON-DESTRUCTIVE: no MatchState.reset() — it wipes NPC-port state later tests assert on.
+	var TVD := load("res://scripts/tile_view_data.gd")
+	var tile := "tile_land_chart_test_only"
+	var bid := "b_007"
+	var base: float = maxf(0.0, float(Catalog.get_building(bid).get("tile_size_used", 1)))
+	if base <= 0.0:
+		_check(false, "land chart: test building has a footprint")
+		return
+	var iid := MatchState.add_building(bid, "", tile, MatchState.LOCAL_PLAYER, "landchart_a")
+	var at_l1: Dictionary = TVD.land_totals(tile, {})
+	_check(int(at_l1.built) == int(round(base)), "land chart: level 1 built figure is the base footprint")
+	# Level it up — the chart MUST grow with it.
+	MatchState.buildings[iid]["level"] = 3
+	var at_l3: Dictionary = TVD.land_totals(tile, {})
+	var gate_used: float = MatchState.get_tile_space_used(tile)
+	_check(int(at_l3.built) > int(at_l1.built),
+		"land chart: a levelled-up building takes MORE room in the readout (%d -> %d)" % [
+			int(at_l1.built), int(at_l3.built)])
+	_check(int(at_l3.built) == int(round(gate_used)),
+		"land chart: readout equals the figure the upgrade gate tests (%d vs %d)" % [
+			int(at_l3.built), int(round(gate_used))])
+	# And the chart's own segments must agree with the total it prints.
+	var chart: Dictionary = TVD.land_chart_data(tile, {})
+	var seg_total := 0.0
+	for s in (chart.get("segments", []) as Array):
+		if not bool((s as Dictionary).get("is_other", false)):
+			seg_total += float((s as Dictionary).get("size", 0.0))
+	_check(absf(seg_total - gate_used) < 0.51,
+		"land chart: segments sum to the gate's used space (%.1f vs %.1f)" % [seg_total, gate_used])
+	MatchState.remove_building(iid)
+
+
+func _test_recipe_flow_shows_co_products() -> void:
+	# Chlor-alkali yields chlorine, sodium hydroxide AND hydrogen; the recipe card drew only the
+	# first (owner 2026-08-01). NON-DESTRUCTIVE: no MatchState.reset().
+	var recipe: Dictionary = Catalog.get_recipe("r_012")
+	if recipe.is_empty():
+		_check(false, "co-products: r_012 (Chlor-Alkali) exists")
+		return
+	var tile := "tile_coproduct_test_only"
+	var iid := MatchState.add_building("b_012", "r_012", tile, MatchState.LOCAL_PLAYER, "coprod_a")
+	var f: Dictionary = load("res://scripts/building_readout.gd").flow(MatchState.get_building(iid), recipe)
+	var outs: Array = f.get("outputs", [])
+	_check(outs.size() == 3, "co-products: chlor-alkali flow carries all 3 outputs (got %d)" % outs.size())
+	var names: Array = []
+	for o in outs:
+		names.append(str((o as Dictionary).get("internal", "")))
+	_check(names.has("chlorine") and names.has("sodium_hydroxide") and names.has("hydrogen"),
+		"co-products: all three goods present (%s)" % str(names))
+	_check(str((f.get("output", {}) as Dictionary).get("internal", "")) == str(outs[0].get("internal", "")),
+		"co-products: the singular 'output' still points at the primary, for one-icon callers")
+	for o in outs:
+		_check(int((o as Dictionary).get("qty", 0)) > 0,
+			"co-products: %s has a positive effective quantity" % str((o as Dictionary).get("internal", "")))
+	MatchState.remove_building(iid)
