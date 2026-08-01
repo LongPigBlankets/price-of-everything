@@ -36,6 +36,10 @@ var _level := 1
 var _bg_style: StyleBoxFlat
 var _rivet_inset := 13.0
 var _plate_rect := Rect2()      # metal-plate sub-rect (the whole Control in classic mode)
+var _badge_rect := Rect2()      # port badge's box in panel coords; empty when there is no badge.
+                                # It can extend PAST the Control (a sprite that fills its frame
+                                # pushes the hex off the corner), which is what the overlap probe
+                                # checks against neighbours.
 
 
 ## Build the panel from a node dict (see empire_graph.gd). Sizes everything by the building's level.
@@ -109,7 +113,15 @@ func setup(node: Dictionary) -> void:
 			if sr.size.x > 0.0:
 				content = Rect2(sr.position + Vector2(SPRITE_PX * 0.5,
 						(SPRITE_PX + plate_sz.y) * 0.5), sr.size)
-			var bc := Vector2(content.end.x - bh * 0.9, content.end.y - bh * 0.9)
+			# The badge sits AT the sprite's bottom-right corner, not inside it (owner 2026-08-01):
+			# its centre goes just below and right of the content's corner, so only its top-left
+			# quadrant lands on the building instead of most of the hex sitting on it. Clamped to
+			# the sprite box, because sprites differ hugely in how much of their frame they fill
+			# (the petro refinery leaves ~80px at that corner, the mine 3px) — unclamped, a
+			# full-frame sprite would fling the badge clear of its own panel.
+			var bc := Vector2(minf(content.end.x + bh * 0.25, SPRITE_PX),
+					minf(content.end.y + bh * 0.25, SPRITE_PX))
+			_badge_rect = Rect2(bc - Vector2(bh, bh), Vector2(bh, bh) * 2.0)
 			var badge := Control.new()
 			badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			badge.draw.connect(_draw_port_badge.bind(badge, bc, bh, badge_icon))
@@ -139,7 +151,23 @@ func setup(node: Dictionary) -> void:
 	title.add_theme_color_override("font_color", _TEXT)
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# A construction site's plate carries no icons and no RAG row, so the name gets the room to
+	# wrap instead of being clipped down to a fragment on the one plate with space to spare.
+	if bool(node.get("under_construction", false)):
+		title.clip_text = false
+		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vb.add_child(title)
+
+	# Status line (construction sites): the countdown, or "awaiting materials".
+	if str(node.get("status_line", "")) != "":
+		var status := Label.new()
+		status.text = str(node.get("status_line", ""))
+		status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		status.add_theme_font_size_override("font_size", int(round(14.0 * cs)))
+		status.add_theme_color_override("font_color", _GOLD)
+		status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		vb.add_child(status)
 
 	# Icon pair — building icon + good icon, same size (100px at full zoom), centred, tight.
 	var isz := 100.0 * cs
@@ -148,9 +176,13 @@ func setup(node: Dictionary) -> void:
 	icons.add_theme_constant_override("separation", int(round(10.0 * cs)))
 	icons.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vb.add_child(icons)
-	# Sprite view: the building sprite floats above the plate, so the plate holds only
-	# the good icon. Classic (and unsprited buildings): glyph + good icon pair as always.
-	if not sprite_mode:
+	# The glyph stays on the plate even in sprite view (owner 2026-08-01). It used to be dropped
+	# on the theory that the sprite replaced it — but the sprite and the glyph are the same
+	# building at two zoom levels, and this plate is the ONE place they appear together, which is
+	# what teaches the player to read the glyph alone in the tile panel and the build menu. It
+	# also stops sprited and unsprited cards diverging into two different card designs.
+	# Same treatment as classic: the plain chroma-keyed glyph, no chip, left of the good icon.
+	if node.get("icon") != null:
 		icons.add_child(_make_icon(node.get("icon"), isz))
 	if str(node.get("output_good", "")) != "":
 		icons.add_child(_make_good_icon(node.get("good_icon"), int(node.get("output_qty", 0)), isz, cs))

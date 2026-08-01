@@ -33,6 +33,8 @@ const _SEP_ITERS := 28                                      # screen-space separ
 
 const NodePanelScript := preload("res://scripts/empire_node_panel.gd")
 const LaneOrder := preload("res://scripts/lane_order.gd")
+const GoodIcons := preload("res://scripts/good_icons.gd")
+const BuildingIcon := preload("res://scripts/building_icon.gd")
 
 var _nodes: Array = []
 var _ports: Array = []
@@ -70,6 +72,26 @@ var _focus_t := 0.0
 var _focus_target := 0.0
 var _fpos: Dictionary = {}                  # iid -> focus position (layout space)
 var _focus_members: Dictionary = {}         # iid -> true
+
+# --- CONSTRUCTION-SITE MINI-CHART --------------------------------------------------------
+# A site has no inputs and no outputs, so the depth-1 chart above would show a lone plate. What
+# it does have is a DELIVERY, and that is what the chart draws: the port its materials come
+# through on the left, the site on the right, and the kit itself somewhere along the run —
+# one lane per material, each parked at its own arrival time. All of it is read from the live
+# sim on every frame (`_site_lanes`), so a turn landing moves the goods with no rebuild.
+const _SITE_RUN := 1560.0                   # port -> site distance in the chart (layout px)
+const _LANE_ROW := 122.0                    # vertical pitch between material lanes
+const _LANE_CHIP := 74.0                    # material icon box
+const _ALERT := Color(0.94, 0.24, 0.19)     # blocked-shipment red
+const _WHITE := Color(1.0, 1.0, 1.0)
+const _CREAM := Color(0.995234, 0.930806, 0.763265)   # DS ACCENT / recipe-card OFF_WHITE
+const _PILL_NAVY := Color(0.0, 0.119856, 0.243095)    # recipe-card BADGE_NAVY
+var _focus_site: Dictionary = {}            # {} unless the selection is a construction site
+var _site_lane_n := 0                       # lane count, so _layout_bbox can frame them
+var _site_lane_pitch := _LANE_ROW           # widens when a lane carries a blocked message
+var _pulse := 0.0                           # 0..1 sawtooth driving the blocked-shipment flash
+var _chip_style: StyleBoxFlat = null        # reused per draw (draw_rect has no corner radius)
+var _pill_style: StyleBoxFlat = null
 
 var _last_zoom := -1.0
 var _last_offset := Vector2.INF
@@ -159,6 +181,7 @@ func _rebuild_panels() -> void:
 	_focus_target = 0.0
 	_fpos.clear()
 	_focus_members.clear()
+	_focus_site.clear()
 	for p in _panels:
 		(p["ctrl"] as Node).queue_free()
 	_panels.clear()
@@ -179,8 +202,10 @@ func _rebuild_panels() -> void:
 ## read these same positions (via `_screen_by_iid`) so they follow.
 func _reposition_panels() -> void:
 	_screen_by_iid.clear()
-	for p in _ports:
-		_screen_by_iid[str(p["iid"])] = _world_to_screen(p["pos"] as Vector2)
+	for arr in [_ports, _buy_ports]:
+		for p in arr:
+			_screen_by_iid[str(p["iid"])] = _world_to_screen(
+					_focus_pos(str(p["iid"]), p["pos"] as Vector2))
 
 	var sc := _detail()
 	var ids: Array = []
@@ -189,10 +214,7 @@ func _reposition_panels() -> void:
 	for pan in _panels:
 		var iid: String = pan["iid"]
 		ids.append(iid)
-		var wp: Vector2 = pan["pos"] as Vector2
-		if _focus_t > 0.0 and _fpos.has(iid):
-			wp = wp.lerp(_fpos[iid] as Vector2, _focus_t)
-		pos[iid] = _world_to_screen(wp)
+		pos[iid] = _world_to_screen(_focus_pos(iid, pan["pos"] as Vector2))
 		# Footprint AND gap scale with the card, or the separation pass fights the zoom: an
 		# unscaled gap dominates once cards are small and re-creates the jostling.
 		half[iid] = (pan["ctrl"] as Control).size * (0.5 * sc) + Vector2(_MIN_GAP * sc * 0.5, _MIN_GAP * sc * 0.5)
@@ -204,7 +226,7 @@ func _reposition_panels() -> void:
 	var port_rects: Array = []
 	for p2 in _ports:
 		port_rects.append({
-			"c": _world_to_screen(p2["pos"] as Vector2),
+			"c": _world_to_screen(_focus_pos(str(p2["iid"]), p2["pos"] as Vector2)),
 			"h": (p2["half"] as Vector2) * sc + Vector2(_MIN_GAP * sc, _MIN_GAP * sc),
 		})
 
@@ -268,11 +290,22 @@ func _reposition_panels() -> void:
 		ctrl.visible = a > 0.01
 
 
+## A node's LAYOUT position, eased toward its focus-chart position while a mini-chart is open.
+## PORTS go through this too, and that is the point: they are chart members (the export port of
+## the selection, and the port a construction site's materials come through), but they used to
+## keep drawing in their resting row while the panels gathered around the selection — so every
+## focus line ran off to the bottom of the composition instead of into the chart.
+func _focus_pos(iid: String, base: Vector2) -> Vector2:
+	if _focus_t > 0.0 and _fpos.has(iid):
+		return base.lerp(_fpos[iid] as Vector2, _focus_t)
+	return base
+
+
 ## Screen position of a node (separated for panels, projected for ports), with a projection fallback.
 func _screen_of(iid: String, node: Dictionary) -> Vector2:
 	if _screen_by_iid.has(iid):
 		return _screen_by_iid[iid]
-	return _world_to_screen(node["pos"] as Vector2)
+	return _world_to_screen(_focus_pos(iid, node["pos"] as Vector2))
 
 
 ## Screen centre of a node's PLATE. In sprite view the Control grows upward around the big
@@ -409,6 +442,16 @@ func _layout_bbox() -> Rect2:
 				f1 = false
 			else:
 				fb = fb.merge(r2)
+		# The material lanes fan out above and below the two chart nodes and can be taller than
+		# either of them, so the fit has to know about them or a six-material build frames with
+		# its top and bottom lanes off screen.
+		if not _focus_site.is_empty() and _site_lane_n > 0:
+			# The pitch itself widens when a lane carries a blocked message, so read it back
+			# rather than assuming the resting row height — otherwise a blocked seven-material
+			# build frames with its outer lanes off screen.
+			var lh := float(_site_lane_n) * _site_lane_pitch * 0.5 + 220.0
+			fb = fb.grow_individual(0.0, maxf(0.0, lh - fb.size.y * 0.5), 0.0,
+					maxf(0.0, lh - fb.size.y * 0.5))
 		if fb.size.x > 0.0 and fb.size.y > 0.0:
 			return fb
 	var bb := Rect2()
@@ -473,19 +516,26 @@ func _zoom_at(screen_pos: Vector2, factor: float) -> void:
 ## Depth-1 focus around `iid`: inputs on the left, the selection centred, outputs (buildings
 ## AND ports) on the right. Positions are built around the selection's CURRENT position so the
 ## arrangement gathers in around it rather than teleporting the camera somewhere else.
-func focus_on(iid: String) -> void:
+## `instant` skips the ease-in: used when the graph is REBUILT under an open chart (a turn
+## landing), where re-animating would read as the view flinching once per turn.
+func focus_on(iid: String, instant: bool = false) -> void:
 	if iid == "" or not _pos_by_iid.has(iid):
 		return
-	if _focus_iid == iid and _focus_target > 0.0:
+	if _focus_iid == iid and _focus_target > 0.0 and not instant:
 		return
 	_focus_iid = iid
 	_build_focus_layout()
 	_focus_target = 1.0
-	_focus_t = maxf(_focus_t, 0.51)         # so _layout_bbox reports the CHART before fitting
+	_focus_t = 1.0 if instant else maxf(_focus_t, 0.51)   # >0.5 so _layout_bbox reports the CHART
 	_zoom_floor = _ZOOM_MIN
 	_reset_view()                           # frame the mini-chart, not the empire
 	_last_zoom = -1.0                       # force the position pass to run while tweening
 	queue_redraw()
+
+
+## The building the mini-chart is open on ("" when at rest) — so a graph rebuild can put it back.
+func focus_iid() -> String:
+	return _focus_iid if _focus_target > 0.0 else ""
 
 
 func clear_focus() -> void:
@@ -502,7 +552,12 @@ func clear_focus() -> void:
 func _build_focus_layout() -> void:
 	_fpos.clear()
 	_focus_members.clear()
+	_focus_site.clear()
+	_site_lane_n = 0
 	var sel := _focus_iid
+	if bool((_box_by_iid.get(sel, {}) as Dictionary).get("under_construction", false)):
+		_build_site_focus_layout(_box_by_iid[sel] as Dictionary)
+		return
 	var ins: Array = []
 	var outs: Array = []
 	for e in _edges:
@@ -530,6 +585,27 @@ func _build_focus_layout() -> void:
 					(float(i) - (ids.size() - 1) * 0.5) * _FOCUS_ROW)
 
 
+## A construction site's chart is a DELIVERY, not a supply web: the port its materials come
+## through, the site, and nothing else. The wide run between them is the working area — the
+## material lanes are drawn into it from live sim state (`_draw_site_lanes`), so the two nodes
+## are the whole of the layout.
+func _build_site_focus_layout(seln: Dictionary) -> void:
+	var sel := str(seln["iid"])
+	var origin: Vector2 = _pos_by_iid[sel]
+	_focus_members[sel] = true
+	_fpos[sel] = origin
+	# `port_hint` is the port the sim actually sources this project's materials through
+	# (Catalog.nearest_port_tile — see empire_graph._append_construction_nodes).
+	var port_iid := str(seln.get("port_hint", ""))
+	if (port_iid == "" or not _pos_by_iid.has(port_iid)) and not _ports.is_empty():
+		port_iid = str((_ports[0] as Dictionary)["iid"])
+	if port_iid != "" and _pos_by_iid.has(port_iid):
+		_focus_members[port_iid] = true
+		_fpos[port_iid] = origin - Vector2(_SITE_RUN, 0.0)
+	_focus_site = {"iid": sel, "port": port_iid}
+	_site_lane_n = _site_lanes(sel).size()
+
+
 ## Is this edge part of the focus chart? Only edges that TOUCH the selection survive — a link
 ## between two of its neighbours is depth-1 geometry but not depth-1 meaning.
 func _focus_keeps(e: Dictionary) -> bool:
@@ -537,9 +613,126 @@ func _focus_keeps(e: Dictionary) -> bool:
 			or str(e.get("to", "")) == _focus_iid)
 
 
+## LIVE per-material delivery state for a focused construction site — one entry per required
+## good, read straight from the sim every frame, so a turn landing moves the goods along their
+## lanes with no graph rebuild.
+##
+## A material can be PART delivered (claim_materials takes whatever landed and leaves the rest
+## outstanding; queue_buy cash-clips an order the same way), so a lane carries two quantities:
+## `arrived` sits on the site and `outstanding` is still somewhere on the run.
+##   at        0..1 for the OUTSTANDING quantity: 0 = still at the source, 1 = at the site
+##   eta       turns until it reaches the site
+##   cause     why nothing is coming, "" when it is simply in transit:
+##             "infra"    — the route cannot be travelled at all. Same test queue_buy makes (a
+##                          fluid needs a pipe at the port AND a pipe network to the site),
+##                          which is why this one fails SILENTLY: the order is refused, not
+##                          queued, and the project waits forever.
+##             "capacity" — it reached the tile and cannot unload; it sits in overflow-hold.
+##             "cash"     — the order costs more than the financeable headroom.
+##             "" with nothing inbound = not ordered yet; reorder_market_materials will place it
+##             next turn, so that is a WAIT, not a fault, and raises no alert.
+func _site_lanes(iid: String) -> Array:
+	var proj: Dictionary = Construction.construction_projects.get(iid, {})
+	if proj.is_empty():
+		return []
+	var tile := str(proj.get("tile_id", ""))
+	# Market projects source from the nearest port, a tile-sourced one from its own source tile.
+	# Both are quoted through the same route(), so one test covers both.
+	var from_tile := str((proj.get("source", {}) as Dictionary).get("from_tile_id", ""))
+	if from_tile == "":
+		from_tile = str(Catalog.nearest_port_tile(tile))
+	var req: Dictionary = proj.get("required_materials", {})
+	var missing: Dictionary = proj.get("missing_materials", {})
+	var goods: Array = req.keys()
+	goods.sort()                                   # stable lane order from turn to turn
+	var out: Array = []
+	for g in goods:
+		var gid := str(g)
+		var required := int(req.get(gid, 0))
+		var outstanding := int(missing.get(gid, 0))
+		var eta := -1
+		var total := 1
+		for s in MatchState.get_inbound_transport_shipments(tile, gid):
+			# Only OUR freight: a neighbour importing the same good is not this build's kit.
+			if str((s as Dictionary).get("construction_instance_id", "")) != iid:
+				continue
+			var t := int((s as Dictionary).get("turns_remaining", 0))
+			if eta < 0 or t < eta:
+				eta = t
+				total = int((s as Dictionary).get("transport_turns", t))
+		var held := 0
+		for h in MatchState.get_overflow_shipments_for_tile(tile):
+			if str((h as Dictionary).get("construction_instance_id", "")) == iid \
+					and str((h as Dictionary).get("good_id", "")) == gid:
+				held += int((h as Dictionary).get("qty", 0))
+		var cause := ""
+		var infra := ""
+		var infra_icon: Texture2D = null
+		if outstanding > 0:
+			if from_tile == "" or not Catalog.tile_can_pipe_good(from_tile, gid) \
+					or not TransportService.route_is_reachable(
+						TransportService.route(from_tile, tile, gid)):
+				cause = "infra"
+				var info: Dictionary = Catalog.route_infra_for_good(gid)
+				infra = str(info.get("name", ""))
+				var modes: Array = info.get("modes", [])
+				if not modes.is_empty():
+					# Routing calls it "rail"; the building that builds it is "rails".
+					var internal := "rails" if str(modes[0]) == "rail" else str(modes[0])
+					infra_icon = BuildingIcon.clean_texture(
+							str(Catalog.get_building_by_internal_name(internal).get("id", "")), internal)
+			elif held > 0 or (eta < 0 and Stockpile.get_free_capacity(tile) <= 0):
+				cause = "capacity"
+			elif eta < 0 and float(MatchState.preview_buy(tile, gid, outstanding).get("cost", 0.0)) \
+					> MatchState.purchase_headroom():
+				cause = "cash"
+		# Held freight is AT the site and cannot unload — that is a real position, not a guess.
+		var at := 0.0
+		if cause == "capacity" and held > 0:
+			at = 1.0
+		elif cause == "":
+			at = (0.0 if eta < 0 else 1.0 - float(eta) / float(maxi(maxi(total, eta), 1)))
+		out.append({
+			"good": gid,
+			"icon": GoodIcons.texture_for(gid, str(Catalog.get_internal_name(gid)), true),
+			"required": required,
+			"arrived": maxi(0, required - outstanding),
+			"outstanding": outstanding,
+			"eta": maxi(0, eta),
+			"ordered": eta >= 0,
+			"at": at,
+			"delivered": outstanding <= 0,
+			"blocked": cause != "",
+			"cause": cause,
+			"infra": infra,
+			"infra_icon": infra_icon,
+			"message": _block_message(cause, infra),
+		})
+	return out
+
+
+## Why a material is not moving, in the owner's sentence shape. The infrastructure name is
+## data-driven (Catalog.route_infra_for_good reads infrastructure.csv), so it says exactly
+## "Pipework" / "Reinforced Pipework" / "Rail or Roads" rather than a hardcoded guess.
+func _block_message(cause: String, infra: String) -> String:
+	match cause:
+		"infra":
+			return "%s missing. Cannot deliver to construction site." % infra
+		"capacity":
+			return "Stockpile full at the site. Cannot deliver to construction site."
+		"cash":
+			return "Not enough cash to order. Cannot deliver to construction site."
+	return ""
+
+
 func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
+	# The blocked-shipment flash and the per-turn material positions both live in _draw, so a
+	# site chart redraws every frame. Only while one is open — at rest this costs nothing.
+	if not _focus_site.is_empty() and _focus_t > 0.0:
+		_pulse = fmod(_pulse + delta * 0.8, 1.0)
+		queue_redraw()
 	var dir := Vector2.ZERO
 	if Input.is_action_pressed("camera_right"):
 		dir.x -= 1.0
@@ -557,6 +750,7 @@ func _process(delta: float) -> void:
 			_focus_iid = ""
 			_fpos.clear()
 			_focus_members.clear()
+			_focus_site.clear()
 		_last_zoom = -1.0                   # positions are moving; do not take the skip
 		queue_redraw()
 	# Positions depend only on (zoom, offset, size, graph): skip the O(n²)
@@ -627,6 +821,11 @@ func _draw() -> void:
 		var path := _route_input(_box_by_iid[e["from"]], _box_by_iid[e["to"]], int(e.get("lane", 0)), int(e.get("lane_n", 1)), sc)
 		draw_polyline(path, Color(_EDGE, ea), _EDGE_WIDTH * sc, true)
 
+	# The construction-site delivery chart, under the port hexes so their gold sits on top of
+	# the lane ends (and under the panels, which are Controls and always above _draw).
+	if not _focus_site.is_empty() and _focus_t > 0.0:
+		_draw_site_lanes(font, sc)
+
 	# Building nodes are real Control panels (children, drawn on top); ports stay as drawn hexagons.
 	for p in _ports:
 		if _focus_t <= 0.0 or _focus_members.has(str(p["iid"])):
@@ -668,9 +867,14 @@ func _blocked(pts: PackedVector2Array, rects: Array) -> bool:
 
 
 func _seg_hits_rect(p0: Vector2, p1: Vector2, r: Rect2) -> bool:
-	if r.has_point(p0) or r.has_point(p1):
-		return true
-	# Liang-Barsky slab clip.
+	var s := _seg_rect_span(p0, p1, r)
+	return s.y > s.x
+
+
+## Parametric span (t0, t1) of the segment p0->p1 that lies inside `r`, by Liang-Barsky slab
+## clip; t1 <= t0 means it misses. One routine serves both "does this line cross a sprite"
+## and "where does this line have to stop for an icon".
+func _seg_rect_span(p0: Vector2, p1: Vector2, r: Rect2) -> Vector2:
 	var d := p1 - p0
 	var t0 := 0.0
 	var t1 := 1.0
@@ -681,7 +885,7 @@ func _seg_hits_rect(p0: Vector2, p1: Vector2, r: Rect2) -> bool:
 		var hi: float = r.end.x if k == 0 else r.end.y
 		if absf(dk) < 0.000001:
 			if p < lo or p > hi:
-				return false
+				return Vector2(1.0, 0.0)
 			continue
 		var ta := (lo - p) / dk
 		var tb := (hi - p) / dk
@@ -692,8 +896,8 @@ func _seg_hits_rect(p0: Vector2, p1: Vector2, r: Rect2) -> bool:
 		t0 = maxf(t0, ta)
 		t1 = minf(t1, tb)
 		if t0 > t1:
-			return false
-	return true
+			return Vector2(1.0, 0.0)
+	return Vector2(t0, t1)
 
 
 func _route_input(a: Dictionary, b: Dictionary, lane: int, lane_n: int, sc: float) -> PackedVector2Array:
@@ -791,7 +995,320 @@ func _route_market(hub: Dictionary, b: Dictionary, slot: int, slot_n: int, sc: f
 	var exit_x := ch.x - hh.x * 0.5 + frac * hh.x
 	var exit := Vector2(exit_x, ch.y + hh.y)
 	var end := Vector2(cb.x, cb.y - hb.y)
-	return _iso_route_v(exit, end, 26.0 * sc, float(slot + 1) / float(maxi(slot_n, 1) + 1), sc)
+	# Buy lines dive the full height of the composition, so they meet more sprites than any
+	# other family — and they were the ONLY family with no avoidance at all, which is where
+	# most measured "line disappears under a building" cases came from.
+	var obs := _sprite_obstacles(str(hub["iid"]), str(b["iid"]), sc)
+	var bias := float(slot + 1) / float(maxi(slot_n, 1) + 1)
+	var best := _iso_route_v(exit, end, 26.0 * sc, bias, sc)
+	if not _blocked(best, obs):
+		return best
+	for k in range(1, 8):
+		var alt := _iso_route_v(exit, end, 26.0 * sc, float(k) / 8.0, sc)
+		if not _blocked(alt, obs):
+			return alt
+	return best
+
+
+# --- construction-site delivery chart -----------------------------------------------------
+
+## One lane per required material, running from the port hex to the site plate. The material's
+## position ALONG its lane is its arrival time (`at`), so the picture answers "how far off is
+## this build" at a glance; the white counter between the goods and the site gives the number.
+## A material whose route cannot be travelled never moves at all, so its lane turns red and
+## carries the missing-infrastructure alert instead.
+func _draw_site_lanes(font: Font, sc: float) -> void:
+	var plan := site_lane_plan(sc)
+	var a := _focus_t
+	var fs := maxi(7, int(round(15.0 * sc)))
+	var chip := _LANE_CHIP * sc
+	for row in plan:
+		var lane: Dictionary = row["lane"]
+		var y: float = row["y"]
+		var blocked := bool(lane["blocked"])
+		var delivered := bool(lane["delivered"])
+		var col := Color(_ALERT, 0.85 * a) if blocked \
+			else Color(_SELL, (0.9 if delivered else 0.5) * a)
+		for piece in row["pieces"]:
+			if delivered:
+				draw_polyline(piece, col, _EDGE_WIDTH * 1.6 * sc, true)
+			else:
+				_draw_dashed_polyline(piece, col, _EDGE_WIDTH * 1.6 * sc, sc)
+		for m in row["marks"]:
+			_draw_material_chip((m as Dictionary)["c"], chip, lane["icon"],
+				int((m as Dictionary)["qty"]), font, sc, a)
+		if blocked:
+			_draw_blocked_alert(row["alert"],
+				lane["infra_icon"] if str(lane["cause"]) == "infra" else null,
+				str(lane["message"]) if bool(row["say"]) else "", font, sc, a)
+			continue
+		draw_string(font, Vector2(float(row["label_x"]) - 240.0 * sc, y - 16.0 * sc - chip * 0.5),
+			str(row["label"]), HORIZONTAL_ALIGNMENT_CENTER, 480.0 * sc, fs,
+			Color(_WHITE, (0.55 if delivered else 1.0) * a))
+
+
+## Everything the delivery chart draws, as data: per lane the goods marks (with their rects),
+## the line pieces that survive after the icons are cut out of them, the alert box and the
+## counter. The drawing above is a thin loop over this, so the probe measures exactly the
+## picture the player gets rather than a second copy of the arithmetic.
+func site_lane_plan(sc: float) -> Array:
+	var lanes := _site_lanes(str(_focus_site.get("iid", "")))
+	_site_lane_n = lanes.size()
+	var geo := site_lane_geometry(lanes, sc)
+	var chip := _LANE_CHIP * sc
+	var out: Array = []
+	var holes: Array = []                # CHART-wide, not per lane: see the clip below
+	var said: Dictionary = {}            # causes whose sentence has already been printed
+	for i in range(geo.size()):
+		var lane: Dictionary = lanes[i]
+		var g: Dictionary = geo[i]
+		var y: float = g["y"]
+		var lo: float = g["run_a"]
+		var hi: float = g["run_b"]
+		# A PART-delivered material shows TWICE: what landed sits on the site, what is still
+		# owed sits wherever it has got to. One icon could only ever tell half that story.
+		var marks: Array = []
+		if int(lane["arrived"]) > 0:
+			marks.append({"c": Vector2(hi, y), "qty": int(lane["arrived"]), "outstanding": false})
+		if int(lane["outstanding"]) > 0:
+			marks.append({"c": Vector2(lerpf(lo, hi, clampf(float(lane["at"]), 0.0, 1.0)), y),
+					"qty": int(lane["outstanding"]), "outstanding": true})
+		for m in marks:
+			holes.append(_chip_hole((m as Dictionary)["c"], chip, sc))
+		var alert := Rect2()
+		var say := false
+		if bool(lane["blocked"]):
+			alert = _alert_box(lane, marks, lo, hi, y, chip, sc)
+			if str(lane["cause"]) == "infra":
+				holes.append(alert.grow(5.0 * sc))
+			# The sentence appears ONCE per distinct cause. Every affected material still gets
+			# its red square; repeating the same line five times down the chart reads as five
+			# problems rather than one, and buries the one that IS different.
+			say = not said.has(str(lane["cause"]))
+			said[str(lane["cause"])] = true
+		# The counter tracks the OUTSTANDING quantity — the arrived half needs no countdown —
+		# and stays inside the open run: past the turn-down point it prints over the building
+		# art, which is where "on site" landed once the goods arrived, so when the gap ahead
+		# closes up the counter moves BEHIND the goods instead.
+		var label := "on site"
+		var mx := hi
+		if not bool(lane["delivered"]):
+			if bool(lane["ordered"]):
+				label = "%d turn%s to construction site" % [int(lane["eta"]),
+						("" if int(lane["eta"]) == 1 else "s")]
+				mx = lerpf(lo, hi, clampf(float(lane["at"]), 0.0, 1.0))
+			else:
+				label = "awaiting order"
+				mx = lo
+		var ahead := mx + chip * 0.55
+		var lx := clampf((ahead + hi) * 0.5, lo, hi)
+		if hi - ahead < 150.0 * sc:
+			lx = maxf(lo, mx - chip * 0.55 - 150.0 * sc)
+		out.append({
+			"lane": lane, "y": y, "path": g["path"], "marks": marks, "alert": alert,
+			"say": say, "label": label, "label_x": lx,
+		})
+	# Every icon (and the pill overhanging it) is a HOLE in EVERY line: no line of any colour,
+	# dashed or not, may cross a goods icon anywhere in the focused view. Clipping each lane
+	# against only its own icons is not enough — the lanes fan out of one point at the port, so
+	# a lane's vertical leg runs straight through its neighbours' icons on the way to its row.
+	for row in out:
+		(row as Dictionary)["holes"] = holes
+		(row as Dictionary)["pieces"] = _polyline_minus((row as Dictionary)["path"], holes)
+	return out
+
+
+## Keep-out box for a material chip: the cream plate plus the quantity pill that overhangs its
+## bottom-right corner, so a line cannot clip the pill either.
+func _chip_hole(c: Vector2, box: float, sc: float) -> Rect2:
+	var r := Rect2(c - Vector2(box, box) * 0.5, Vector2(box, box))
+	return r.grow_individual(4.0 * sc, 4.0 * sc, 22.0 * sc, 16.0 * sc)
+
+
+## Box the blocked-shipment pulse radiates from. It rings the OUTSTANDING goods when the goods
+## themselves are what cannot move (no cash, nowhere to unload); for missing INFRASTRUCTURE it
+## instead stands further along the run around the absent network's own icon, because there the
+## subject of the alert is the piece of network, not the cargo.
+func _alert_box(lane: Dictionary, marks: Array, lo: float, hi: float, y: float,
+		box: float, sc: float) -> Rect2:
+	var ox := lo
+	for m in marks:
+		if bool((m as Dictionary)["outstanding"]):
+			ox = ((m as Dictionary)["c"] as Vector2).x
+	if str(lane["cause"]) != "infra":
+		return _chip_hole(Vector2(ox, y), box, sc)
+	var cx := maxf(ox + box * 1.1 + 40.0 * sc, (ox + hi) * 0.5)
+	return Rect2(Vector2(cx, y) - Vector2(box, box) * 0.43, Vector2(box, box) * 0.86)
+
+
+## Screen geometry of the material lanes, one entry per lane: the drawn polyline, the straight
+## middle run the goods travel along, and the lane's y. Split out of the drawing so the probe
+## measures the SAME polylines the player sees rather than a second copy of the arithmetic.
+func site_lane_geometry(lanes: Array, sc: float) -> Array:
+	var iid := str(_focus_site.get("iid", ""))
+	var site: Dictionary = _box_by_iid.get(iid, {})
+	if site.is_empty() or lanes.is_empty():
+		return []
+	var sp := _plate_screen_of(iid, site)
+	var sh: Vector2 = (site.get("plate_half", site["half"]) as Vector2) * sc
+	var feed_x := sp.x - sh.x                    # every lane feeds into the plate's left edge
+	var pc := sp - Vector2(_SITE_RUN * _view_zoom, 0.0)
+	var port: Dictionary = _box_by_iid.get(str(_focus_site.get("port", "")), {})
+	if not port.is_empty():
+		pc = _screen_of(str(port["iid"]), port)
+		pc.x += (port["half"] as Vector2).x * sc
+	var jog := 52.0 * sc
+	# Where the lanes turn down toward the plate. Lane heights sit level with the SPRITE, not
+	# the plate, so this has to clear the sprite's full width (`half`), not the plate's —
+	# otherwise the tail of each run crosses the very building art it is delivering to.
+	var tx := sp.x - maxf(sh.x, (site["half"] as Vector2).x * sc) - 26.0 * sc
+	var n := lanes.size()
+	# A blocked lane carries its reason UNDER the alert, and two lines of it do not fit in the
+	# normal pitch — the sentence landed on the next lane's icons. Open the rows up whenever
+	# any lane is blocked rather than shortening the sentence.
+	_site_lane_pitch = _LANE_ROW
+	for l in lanes:
+		if bool((l as Dictionary)["blocked"]):
+			_site_lane_pitch = _LANE_ROW * 1.6
+			break
+	var pitch := _site_lane_pitch * sc
+	var out: Array = []
+	for i in range(n):
+		var y := pc.y + (float(i) - float(n - 1) * 0.5) * pitch
+		out.append({
+			"y": y,
+			# Goods start clear of the fan, not on it: the lanes all turn down at pc.x + jog, so
+			# a material parked at the very start of its run would sit ON the vertical legs of
+			# every other lane.
+			"run_a": pc.x + jog + _LANE_CHIP * sc * 0.7,
+			"run_b": tx,
+			"feed_x": feed_x,
+			"path": _orth(PackedVector2Array([
+				Vector2(pc.x, pc.y), Vector2(pc.x + jog, pc.y), Vector2(pc.x + jog, y),
+				Vector2(tx, y), Vector2(tx, sp.y), Vector2(feed_x, sp.y)]), _CHAMFER * sc),
+		})
+	return out
+
+
+## A material on its lane: the good's icon on the same ROUNDED cream chip the plates use, with
+## the quantity in the navy bottom-right pill — the recipe-card treatment (recipe_diagram.gd
+## `_qty_pill`, empire_node_panel `_make_badge`), so a material here reads as the same object
+## the build panel listed. Drawn through StyleBoxFlat rather than draw_rect because that is the
+## only canvas primitive with corner radii.
+func _draw_material_chip(c: Vector2, box: float, icon, qty: int, font: Font, sc: float, a: float) -> void:
+	var r := Rect2(c - Vector2(box, box) * 0.5, Vector2(box, box))
+	if _chip_style == null:
+		_chip_style = StyleBoxFlat.new()
+	_chip_style.bg_color = Color(_CREAM.r, _CREAM.g, _CREAM.b, 0.95 * a)
+	_chip_style.set_corner_radius_all(maxi(2, int(round(box * 0.13))))
+	draw_style_box(_chip_style, r)
+	if icon != null:
+		draw_texture_rect(icon, r.grow(-box * 0.11), false, Color(1, 1, 1, a))
+	if qty > 0:
+		_draw_qty_pill(r.end, qty, font, sc, a)
+
+
+## The recipe-card quantity pill: navy, fully rounded, cream border and number, overhanging the
+## icon's bottom-right corner by the same fraction the Control version uses.
+func _draw_qty_pill(anchor: Vector2, qty: int, font: Font, sc: float, a: float) -> void:
+	var txt := str(qty)
+	var h := 26.0 * sc
+	var fs := maxi(6, int(round(15.0 * sc)))
+	var w := maxf(h, float(txt.length()) * 10.0 * sc + 14.0 * sc)
+	var over := h * 0.36
+	var r := Rect2(anchor + Vector2(over, over) - Vector2(w, h), Vector2(w, h))
+	if _pill_style == null:
+		_pill_style = StyleBoxFlat.new()
+	_pill_style.bg_color = Color(_PILL_NAVY.r, _PILL_NAVY.g, _PILL_NAVY.b, a)
+	_pill_style.border_color = Color(_CREAM.r, _CREAM.g, _CREAM.b, a)
+	_pill_style.set_border_width_all(maxi(1, int(round(2.0 * sc))))
+	_pill_style.set_corner_radius_all(int(round(h * 0.5)))
+	draw_style_box(_pill_style, r)
+	draw_string(font, Vector2(r.position.x, r.get_center().y + float(fs) * 0.36), txt,
+		HORIZONTAL_ALIGNMENT_CENTER, w, fs, Color(_CREAM.r, _CREAM.g, _CREAM.b, a))
+
+
+## Split a polyline into the pieces lying OUTSIDE every rect in `holes`, so a line stops at an
+## icon and resumes past it. Drawing the icon on top is not the same thing — the line still
+## reads as passing behind it, which is exactly what the owner ruled out.
+func _polyline_minus(pts: PackedVector2Array, holes: Array) -> Array:
+	if holes.is_empty() or pts.size() < 2:
+		return ([pts] if pts.size() >= 2 else [])
+	var out: Array = []
+	var cur: Array = []                # plain Array: Packed arrays copy on assignment
+	for i in range(pts.size() - 1):
+		var p0 := pts[i]
+		var p1 := pts[i + 1]
+		var spans: Array = []
+		for h in holes:
+			var s := _seg_rect_span(p0, p1, h as Rect2)
+			if s.y > s.x:
+				spans.append(s)
+		spans.sort_custom(func(x, y): return (x as Vector2).x < (y as Vector2).x)
+		var t := 0.0
+		for sv in spans:
+			var a0: float = clampf((sv as Vector2).x, 0.0, 1.0)
+			var b0: float = clampf((sv as Vector2).y, 0.0, 1.0)
+			if b0 <= t:
+				continue                # already covered by an earlier, overlapping hole
+			if a0 > t:
+				_add_pt(cur, p0.lerp(p1, t))
+				_add_pt(cur, p0.lerp(p1, a0))
+			if cur.size() >= 2:
+				out.append(PackedVector2Array(cur))
+			cur = []
+			t = b0
+		if t < 1.0:
+			_add_pt(cur, p0.lerp(p1, t))
+			_add_pt(cur, p1)
+	if cur.size() >= 2:
+		out.append(PackedVector2Array(cur))
+	return out
+
+
+func _add_pt(arr: Array, p: Vector2) -> void:
+	if arr.is_empty() or (arr[arr.size() - 1] as Vector2).distance_to(p) > 0.01:
+		arr.append(p)
+
+
+## The blocked-shipment alert: the MISSING infrastructure's own icon, ringed by a red pulse that
+## radiates OUTWARD from the icon's edge. Every ring starts outside the art and only grows away
+## from it, so the flash never covers the icon (owner's ask) — the message sits underneath.
+## `base` is what the pulse radiates from: the missing-infrastructure icon's box when the fault
+## is the network, or the outstanding goods chip itself when the cargo is what cannot move
+## (no cash, nowhere to unload). Rings only ever grow AWAY from `base`, so whatever sits inside
+## it — icon or goods chip — is never covered.
+func _draw_blocked_alert(base: Rect2, icon, msg: String, font: Font, sc: float, a: float) -> void:
+	var c := base.get_center()
+	for k in range(3):
+		var ph := fmod(_pulse + float(k) / 3.0, 1.0)
+		draw_rect(base.grow(3.0 * sc + ph * 26.0 * sc), Color(_ALERT, (1.0 - ph) * 0.9 * a),
+			false, maxf(1.5, 3.0 * sc))
+	if icon != null:
+		draw_texture_rect(icon, base, false, Color(1.0, 0.86, 0.83, a))
+	if msg == "":
+		return
+	# The message stays INSIDE this lane's own half-pitch: dropped further it landed on the next
+	# lane's counter, and two overlapping white strings read as neither. Backed by a navy plate
+	# so the neighbouring lane lines never run through the words.
+	var fs := maxi(7, int(round(14.0 * sc)))
+	var w := 380.0 * sc
+	var top := base.end.y + 8.0 * sc
+	draw_rect(Rect2(c.x - w * 0.5, top - 4.0 * sc, w, float(fs) * 2.4 + 10.0 * sc),
+		Color(0.02, 0.05, 0.10, 0.88 * a), true)
+	draw_multiline_string(font, Vector2(c.x - w * 0.5, top + float(fs)), msg,
+		HORIZONTAL_ALIGNMENT_CENTER, w, fs, 2, Color(_WHITE, a))
+
+
+## Chamfer an orthogonal polyline after dropping coincident points — a single-lane chart puts
+## the lane y exactly on the port y, and a zero-length segment there leaves _chamfer with no
+## direction to cut against.
+func _orth(pts: PackedVector2Array, c: float) -> PackedVector2Array:
+	var clean := PackedVector2Array()
+	for p in pts:
+		if clean.is_empty() or clean[clean.size() - 1].distance_to(p) > 0.5:
+			clean.append(p)
+	return _chamfer(clean, c)
 
 
 ## Draw a polyline as dashes (12px on / 9px off), continuous across corners.
@@ -851,7 +1368,9 @@ func _chamfer(pts: PackedVector2Array, c: float) -> PackedVector2Array:
 
 ## A port as a gold metallic hexagon with the port icon embossed in navy, name beneath.
 func _draw_port(n: Dictionary, font: Font, sc: float) -> void:
-	var center: Vector2 = _world_to_screen(n["pos"] as Vector2)
+	# _screen_of, not a raw projection: a port that is part of an open mini-chart moves to its
+	# chart position like everything else, and the lines already anchor there.
+	var center: Vector2 = _screen_of(str(n["iid"]), n)
 	var half: Vector2 = (n["half"] as Vector2) * sc
 	var rect := Rect2(center - half, half * 2.0)
 	if not get_rect().grow(240.0).intersects(rect):

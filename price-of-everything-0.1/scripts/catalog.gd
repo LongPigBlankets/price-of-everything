@@ -607,6 +607,23 @@ func tile_can_pipe_good(tile_id: String, good_id: String) -> bool:
 			return true
 	return false
 
+## The infrastructure a good needs in order to travel at all, as
+## {modes: ["pipes", …], name: "Pipework or Reinforced Pipework"}. Names come from
+## infrastructure.csv, so this tracks the data instead of restating it, and `modes` is in
+## the same routing namespace as _modes_for_good ("rail", not the building's "rails").
+## Used to NAME what is missing when a route can't be found (the empire view's blocked
+## construction shipments); it says nothing about whether any given tile has it.
+func route_infra_for_good(good_id: String) -> Dictionary:
+	var modes: Array = []
+	var names: Array = []
+	for m in _modes_for_good(good_id):
+		if m == ROUTE_MODE_NONE:
+			continue
+		modes.append(m)
+		names.append(str(_infra_by_type.get(m, {}).get("display_name", m)))
+	return {"modes": modes, "name": (" or ".join(names) if not names.is_empty() else "Transport")}
+
+
 func is_raw(good_id: String) -> bool:
 	var g: Dictionary = _goods_by_id.get(good_id, {})
 	return g.get("good_type", "") == "raw"

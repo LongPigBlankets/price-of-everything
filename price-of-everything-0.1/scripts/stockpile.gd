@@ -25,6 +25,14 @@ var _capacity_lost_this_turn: int = 0
 # full). Cleared when a consume drops the tile back below capacity.
 var _at_capacity: Dictionary = {}  # tile_key -> bool
 
+# --- Per-turn HIGH-WATER marks. get_used_capacity() is the level right now, which after a turn
+# resolves is only what SURVIVED it: a tile can fill to the brim on transport_arrivals, drain
+# through production and sales, and end the turn reading half empty. That is why "tile cannot
+# receive more goods" fires against a comfortable-looking figure — the tile panel's utilisation
+# row needs the PEAK the turn actually reached, not the residue. Rolled at the top of PROCESS.
+var _peak_used: Dictionary = {}    # tile_key -> int, highest used capacity since the turn began
+var _refused: Dictionary = {}      # tile_key -> int, units the cap turned away since then
+
 signal stockpile_changed()
 # Fired the moment a tile crosses from below to at/over its storage capacity. The
 # capacity dialog listens to this to prompt the player (sell surplus / expand / stop).
@@ -51,7 +59,8 @@ func get_capacity(coord) -> int:
 	# storage-research upgrades OR a per-tile purchased expansion, plus any building
 	# storage_boost on the tile (a Port adds +600 on top).
 	var base: int = int(EconomyConfig.WAREHOUSE_STORAGE_CAP.get(get_warehouse_level(coord), TILE_CAPACITY))
-	return base + _storage_boost_for(coord)
+	var capacity := float(base + _storage_boost_for(coord))
+	return int(round(Modifiers.apply("stockpile_capacity", _tile_key(coord), capacity, {"tile_id": _tile_key(coord)})))
 
 ## Effective warehouse level for a tile: the better of the empire-wide research
 ## level and this tile's purchased expansion.
@@ -122,15 +131,27 @@ func add(coord, good_id: String, qty: int) -> int:
 	var free_capacity := get_free_capacity(coord)
 	var added: int = mini(qty, free_capacity)
 	if added < qty:
-		# Whatever couldn't fit is lost to the capacity cap — record it for metrics.
+		# Whatever couldn't fit is lost to the capacity cap — record it for metrics, and per
+		# tile so the panel can say how much this tile turned away.
 		_capacity_lost_this_turn += (qty - added)
+		var rk := _tile_key(coord)
+		_refused[rk] = int(_refused.get(rk, 0)) + (qty - added)
 	if added <= 0:
+		_note_peak(coord)   # a tile that refused goods is at its ceiling: that IS its peak
 		return 0
 	var tile_stockpile := _stockpile_for_tile(coord, true)
 	tile_stockpile[good_id] = int(tile_stockpile.get(good_id, 0)) + added
+	_note_peak(coord)
 	stockpile_changed.emit()
 	_check_capacity(coord)
 	return added
+
+
+func _note_peak(coord) -> void:
+	var key := _tile_key(coord)
+	var used := get_used_capacity(coord)
+	if used > int(_peak_used.get(key, 0)):
+		_peak_used[key] = used
 
 func consume(coord, good_id: String, qty: int) -> int:
 	# Returns actually consumed (may be less than qty if shortage).
@@ -196,17 +217,28 @@ func clear_all() -> void:
 	_warehouse_levels.clear()
 	_at_capacity.clear()
 	_capacity_lost_this_turn = 0
+	_peak_used.clear()
+	_refused.clear()
 	stockpile_changed.emit()
 
 # --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
 
 func export_state() -> Dictionary:
-	return {"by_tile": _by_tile.duplicate(true), "warehouse_levels": _warehouse_levels.duplicate(true)}
+	# peak/refused are ADDITIVE keys: an old save has neither, and the empty default reads
+	# correctly as "no figures for the turn before this save" until the next turn resolves.
+	return {
+		"by_tile": _by_tile.duplicate(true),
+		"warehouse_levels": _warehouse_levels.duplicate(true),
+		"peak_used": _peak_used.duplicate(),
+		"refused": _refused.duplicate(),
+	}
 
 func import_state(d: Dictionary) -> void:
 	# Silent: SaveLoad emits stockpile_changed once after every system imports.
 	_by_tile = (d.get("by_tile", {}) as Dictionary).duplicate(true)
 	_warehouse_levels = (d.get("warehouse_levels", {}) as Dictionary).duplicate(true)
+	_peak_used = (d.get("peak_used", {}) as Dictionary).duplicate()
+	_refused = (d.get("refused", {}) as Dictionary).duplicate()
 	_at_capacity.clear()
 	_capacity_lost_this_turn = 0
 
@@ -228,6 +260,28 @@ func get_capacity_lost_this_turn() -> int:
 
 func reset_capacity_lost_this_turn() -> void:
 	_capacity_lost_this_turn = 0
+
+
+# --- Per-turn high-water marks ---
+
+## Start a new turn's marks. Called at the top of PROCESS, so between turns these hold the
+## COMPLETED turn's figures — which is what a panel labelled "last turn" wants. Each tile is
+## seeded with its current level, so a tile that begins the turn full reads full even if
+## nothing further lands on it.
+func roll_turn_peaks() -> void:
+	_peak_used.clear()
+	_refused.clear()
+	for tile_key in _by_tile.keys():
+		_peak_used[tile_key] = get_used_capacity(tile_key)
+
+## Highest storage this tile held at any point in the turn — NOT the same number as
+## get_used_capacity(), which is the end-of-turn residue the Stockpile tab shows.
+func get_peak_used(coord) -> int:
+	return maxi(int(_peak_used.get(_tile_key(coord), 0)), get_used_capacity(coord))
+
+## Units this tile's cap turned away during the turn (0 when it never ran out of room).
+func get_refused(coord) -> int:
+	return int(_refused.get(_tile_key(coord), 0))
 
 func _stockpile_for_tile(coord, create_if_missing: bool) -> Dictionary:
 	var tile_key := _tile_key(coord)

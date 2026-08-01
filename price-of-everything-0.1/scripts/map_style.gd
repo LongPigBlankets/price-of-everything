@@ -9,7 +9,10 @@ extends Node
 
 signal style_changed
 
-var ink := false
+## Ink & wash is the DEFAULT look (owner 2026-08-01). `classic` is kept as the A/B reference —
+## `toggle ink` in the debug terminal flips back to it, which is still the regression check that
+## every layer reads its colours through this seam rather than hardcoding them.
+var ink := true
 
 func set_ink(on: bool) -> void:
 	if ink == on:
