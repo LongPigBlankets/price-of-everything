@@ -140,6 +140,9 @@ func _process_production() -> void:
 	_green_supply_by_tile.clear()  # _intermittency_by_* persist (they are last turn's)
 	_power_sources_by_tile.clear()
 	MatchState.reset_tile_sales_for_turn()  # per-turn sales figure, not accumulated
+	# Start this turn's storage high-water marks BEFORE transport_arrivals — arrivals are the
+	# spike the tile panel's utilisation row exists to show.
+	Stockpile.roll_turn_peaks()
 	TurnProfiler.section_begin("power_reset")
 	Power.reset_for_turn()
 	TurnProfiler.section_end("power_reset")

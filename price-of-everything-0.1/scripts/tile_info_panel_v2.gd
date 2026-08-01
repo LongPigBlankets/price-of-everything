@@ -1912,9 +1912,10 @@ func _go_to_building(instance_id: String) -> void:
 
 # --- Stockpile pane (vertical bar chart) ------------------------------------
 func _build_stock_pane(pane: VBoxContainer) -> void:
-	# Peak utilisation last turn — first row of the pane. Counts what's held PLUS
-	# the goods that only transited the tile (the JIT building-to-building feed),
-	# so a warehouse that looks half-empty but moves a lot still reads as busy.
+	# Peak utilisation last turn — first row of the pane, and deliberately NOT the same figure
+	# as the tab button (see _make_stock_utilisation_row). Goods that only transited via the
+	# JIT feed are excluded: they never took a slot, so they are not storage used — the JIT
+	# line further down reports them in their own right.
 	pane.add_child(_make_stock_utilisation_row())
 	# Warehouse level + expansion offer — a full tile's fix is right where the
 	# player is looking (owner spec 2026-07-09).
@@ -1949,17 +1950,20 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 		for r in overflow:
 			pane.add_child(_make_overflow_row(r))
 
-# "Stock Utilisation last turn" — the tile's peak storage demand: units held in
-# the warehouse plus units that passed straight between same-tile buildings via
-# the JIT feed (they never took a slot, but they were stock the tile handled).
+# "Stock Utilisation last turn" — the HIGH-WATER mark: the most storage this tile held at any
+# point during the turn (Stockpile.get_peak_used), which is a different number from the one the
+# Stockpile tab button shows. The button shows what is on the tile NOW — the residue after the
+# turn drained through production and sales — so a tile that filled to the brim on arrivals and
+# turned goods away can end the turn reading comfortable. That mismatch is the whole point of
+# this row: it was previously computed from the same current level, so the two always agreed
+# and it could never explain a "cannot receive more goods" alert.
 func _make_stock_utilisation_row() -> Control:
-	var stock := TileViewData.stockpile_summary(_current_tile_id)
-	var transited := Production.get_jit_fed_for_tile(_current_tile_id)
-	var capacity := maxi(1, int(stock.capacity))
-	var peak := int(stock.used) + transited
+	var capacity := maxi(1, Stockpile.get_capacity(_current_tile_id))
+	var peak := Stockpile.get_peak_used(_current_tile_id)
+	var refused := Stockpile.get_refused(_current_tile_id)
 	var pct := roundi(float(peak) / float(capacity) * 100.0)
 	var color: Color = DS.PALETTE.OK
-	if pct >= 100:
+	if refused > 0 or pct >= 100:
 		color = DS.PALETTE.DANGER
 	elif pct >= 80:
 		color = DS.PALETTE.WARN
@@ -1989,7 +1993,20 @@ func _make_stock_utilisation_row() -> Control:
 	value.theme_type_variation = &"Numeric"
 	value.add_theme_color_override("font_color", color)
 	row.add_child(value)
-	card.tooltip_text = "%d held + %d passed building-to-building, of %d storage" % [int(stock.used), transited, capacity]
+	# Units the cap actually turned away — the number behind "this tile cannot receive more
+	# goods". Only shown when it happened, so a healthy tile stays a single clean figure.
+	if refused > 0:
+		var box := VBoxContainer.new()
+		box.add_theme_constant_override("separation", 2)
+		box.add_child(card)
+		var lost := Label.new()
+		lost.text = "%d units turned away — the tile ran out of room" % refused
+		lost.theme_type_variation = &"Caption"
+		lost.add_theme_color_override("font_color", DS.PALETTE.DANGER)
+		box.add_child(lost)
+		card.tooltip_text = "Peak %d of %d storage during the turn; %d units could not be stored" % [peak, capacity, refused]
+		return box
+	card.tooltip_text = "Peak %d of %d storage during the turn (the Stockpile tab shows what is on the tile now)" % [peak, capacity]
 	return card
 
 # --- Warehouse expansion (per-tile storage upgrade, paid in materials) -------
