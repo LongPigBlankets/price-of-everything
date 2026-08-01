@@ -1331,14 +1331,32 @@ func _build_recipe_strip(flow: Dictionary) -> PanelContainer:
 	# navy filled arrow with the power draw on its body
 	row.add_child(_recipe_arrow(int(flow.get("power_in", 0))))
 
-	# outputs — a single big icon; its pill carries the base→modified delta (struck base + effective)
-	var output: Dictionary = flow.get("output", {})
-	if not output.is_empty():
+	# outputs — one hero icon, or a grid when the recipe has CO-PRODUCTS (chlor-alkali yields
+	# chlorine + sodium hydroxide + hydrogen; only the chlorine used to be drawn). The pill on
+	# each carries the base→modified delta.
+	var outputs: Array = flow.get("outputs", [])
+	if outputs.is_empty() and not (flow.get("output", {}) as Dictionary).is_empty():
+		outputs = [flow.get("output", {})]
+	if not outputs.is_empty():
 		var out_wrap := CenterContainer.new()
 		out_wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		out_wrap.clip_contents = false
-		out_wrap.add_child(_recipe_icon(str(output.get("good_id", "")), str(output.get("internal", "")),
-			int(output.get("qty", 0)), 126, 3, int(output.get("base_qty", -1)), int(flow.get("mod_pct", 0))))
+		var mod_pct := int(flow.get("mod_pct", 0))
+		if outputs.size() == 1:
+			var o0: Dictionary = outputs[0]
+			out_wrap.add_child(_recipe_icon(str(o0.get("good_id", "")), str(o0.get("internal", "")),
+				int(o0.get("qty", 0)), 126, 3, int(o0.get("base_qty", -1)), mod_pct))
+		else:
+			var grid := GridContainer.new()
+			grid.columns = 2
+			grid.clip_contents = false
+			grid.add_theme_constant_override("h_separation", DS.SP["SM"])
+			grid.add_theme_constant_override("v_separation", DS.SP["SM"])
+			for o in outputs:
+				grid.add_child(_recipe_icon(str((o as Dictionary).get("good_id", "")),
+					str((o as Dictionary).get("internal", "")), int((o as Dictionary).get("qty", 0)),
+					58, 1, int((o as Dictionary).get("base_qty", -1)), mod_pct))
+			out_wrap.add_child(grid)
 		row.add_child(out_wrap)
 	return card
 

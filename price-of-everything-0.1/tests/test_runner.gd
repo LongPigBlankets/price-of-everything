@@ -54,6 +54,8 @@ func _ready() -> void:
 	_test_endgame_continuity_verdict()
 	_test_advisor_payroll_model()
 	_test_battery_fill_scope_and_units()
+	_test_land_chart_matches_upgrade_gate()
+	_test_recipe_flow_shows_co_products()
 	_test_advisor_seat_tier_scaling()
 	_test_advisor_reconcile_idempotent()
 	_test_advisor_seat_effects()
@@ -10324,3 +10326,65 @@ func _test_battery_fill_scope_and_units() -> void:
 		"battery: nothing loaded means 0 MW stabilised (not a cell count)")
 	MatchState.remove_building(a)
 	MatchState.remove_building(b2)
+
+
+func _test_land_chart_matches_upgrade_gate() -> void:
+	# The land chart drew every building at its LEVEL-1 footprint while the build/upgrade gate
+	# (MatchState.get_tile_space_used) counted the level-scaled size. A tile of upgraded
+	# buildings therefore looked far emptier than it was, and an upgrade was refused for want of
+	# room the player could see going spare (owner 2026-08-01, Stoneshore Docks).
+	# NON-DESTRUCTIVE: no MatchState.reset() — it wipes NPC-port state later tests assert on.
+	var TVD := load("res://scripts/tile_view_data.gd")
+	var tile := "tile_land_chart_test_only"
+	var bid := "b_007"
+	var base: float = maxf(0.0, float(Catalog.get_building(bid).get("tile_size_used", 1)))
+	if base <= 0.0:
+		_check(false, "land chart: test building has a footprint")
+		return
+	var iid := MatchState.add_building(bid, "", tile, MatchState.LOCAL_PLAYER, "landchart_a")
+	var at_l1: Dictionary = TVD.land_totals(tile, {})
+	_check(int(at_l1.built) == int(round(base)), "land chart: level 1 built figure is the base footprint")
+	# Level it up — the chart MUST grow with it.
+	MatchState.buildings[iid]["level"] = 3
+	var at_l3: Dictionary = TVD.land_totals(tile, {})
+	var gate_used: float = MatchState.get_tile_space_used(tile)
+	_check(int(at_l3.built) > int(at_l1.built),
+		"land chart: a levelled-up building takes MORE room in the readout (%d -> %d)" % [
+			int(at_l1.built), int(at_l3.built)])
+	_check(int(at_l3.built) == int(round(gate_used)),
+		"land chart: readout equals the figure the upgrade gate tests (%d vs %d)" % [
+			int(at_l3.built), int(round(gate_used))])
+	# And the chart's own segments must agree with the total it prints.
+	var chart: Dictionary = TVD.land_chart_data(tile, {})
+	var seg_total := 0.0
+	for s in (chart.get("segments", []) as Array):
+		if not bool((s as Dictionary).get("is_other", false)):
+			seg_total += float((s as Dictionary).get("size", 0.0))
+	_check(absf(seg_total - gate_used) < 0.51,
+		"land chart: segments sum to the gate's used space (%.1f vs %.1f)" % [seg_total, gate_used])
+	MatchState.remove_building(iid)
+
+
+func _test_recipe_flow_shows_co_products() -> void:
+	# Chlor-alkali yields chlorine, sodium hydroxide AND hydrogen; the recipe card drew only the
+	# first (owner 2026-08-01). NON-DESTRUCTIVE: no MatchState.reset().
+	var recipe: Dictionary = Catalog.get_recipe("r_012")
+	if recipe.is_empty():
+		_check(false, "co-products: r_012 (Chlor-Alkali) exists")
+		return
+	var tile := "tile_coproduct_test_only"
+	var iid := MatchState.add_building("b_012", "r_012", tile, MatchState.LOCAL_PLAYER, "coprod_a")
+	var f: Dictionary = load("res://scripts/building_readout.gd").flow(MatchState.get_building(iid), recipe)
+	var outs: Array = f.get("outputs", [])
+	_check(outs.size() == 3, "co-products: chlor-alkali flow carries all 3 outputs (got %d)" % outs.size())
+	var names: Array = []
+	for o in outs:
+		names.append(str((o as Dictionary).get("internal", "")))
+	_check(names.has("chlorine") and names.has("sodium_hydroxide") and names.has("hydrogen"),
+		"co-products: all three goods present (%s)" % str(names))
+	_check(str((f.get("output", {}) as Dictionary).get("internal", "")) == str(outs[0].get("internal", "")),
+		"co-products: the singular 'output' still points at the primary, for one-icon callers")
+	for o in outs:
+		_check(int((o as Dictionary).get("qty", 0)) > 0,
+			"co-products: %s has a positive effective quantity" % str((o as Dictionary).get("internal", "")))
+	MatchState.remove_building(iid)
