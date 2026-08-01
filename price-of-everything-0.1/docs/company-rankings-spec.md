@@ -17,24 +17,25 @@ this feature would change a single number in a turn resolution, the implementati
 
 ---
 
-## 2. The one decision needed before building
+## 2. The cycle (owner ruling, 2026-08-01)
 
-The brief reads: *"production growth/decay 5 turns grow, 2 decrease, 2 fixed at 5%/2%/1%"*.
-That parses two ways and they produce visibly different tables.
+Each company runs a repeating cycle of **growth → stagnation → decay**, always **5 growth turns,
+2 decay turns and 2 flat turns** in a 9-turn period. The ORDER of those turns within the period is
+randomised per company, so the field does not move in lockstep, but the counts never vary.
 
-**(A) Temporal cycle — recommended.** Each company runs a repeating 9-turn cycle: **5 turns
-growing, 2 shrinking, 2 flat**, with its growth magnitude fixed per company at one of 5%/2%/1%.
-Each company gets a phase offset so they do not all peak together. Standings churn continuously
-and every company drifts upward over a long game — matching an industry that is broadly expanding
-with cyclical setbacks.
+Magnitudes are randomised per turn, not fixed per company:
 
-**(B) Population split.** Nine companies: 5 permanently growing, 2 permanently shrinking, 2 flat,
-at 5%/2%/1%. Standings are near-static after ~30 turns: the growers run away, the shrinkers sink,
-and the table stops being interesting.
+| phase | per-turn change |
+|---|---|
+| growth (5 turns) | `+1%` .. `+5%`, drawn per turn |
+| decay (2 turns) | `-0%` .. `-2%`, drawn per turn |
+| flat (2 turns) | 0 |
 
-**Recommendation: (A).** It is the reading the word "turns" supports, and (B) converges to a fixed
-order early, which defeats the point of a league table. **Everything below assumes (A)**; switching
-to (B) touches only §4.
+Expected drift per 9-turn period is roughly **+13%** (5 x ~3% growth against 2 x ~1% decay), so the
+whole field inflates over a long game while individual standings churn — which is the intent.
+
+This supersedes the earlier open question about whether the split was temporal or a population
+split. It is temporal, and it applies to every company.
 
 ---
 
@@ -73,33 +74,30 @@ seeded shuffle at match start so different matches get different line-ups.
 ### 4.2 State per company
 
 ```
-name           String   from the shuffled roster
-revenue        float    starts at 100.0/turn
-growth_rate    float    fixed per company: 0.05 | 0.02 | 0.01
-phase_offset   int      0..8, fixed per company
+name           String       from the shuffled roster
+revenue        float        starts at 100.0/turn
+cycle          Array[int]   9 entries, a shuffled permutation of 5 x GROW, 2 x DECAY, 2 x FLAT
 ```
 
-Distribute the nine companies across the three growth rates 3/3/3 so the table has a clear top,
-middle and tail.
+`cycle` is generated once per company at match start by shuffling the fixed multiset, so every
+company has the same *counts* and a different *order*. There is no per-company growth rate any
+more — magnitude is drawn per turn (§4.3).
 
 ### 4.3 Per-turn update
 
-For company `i` at turn `t`, the cycle position is `(t + phase_offset_i) % 9`:
+For company `i` at turn `t`, the phase is `cycle_i[t % 9]`:
 
-| position | behaviour |
+| phase | applied |
 |---|---|
-| 0–4 | grow: `revenue *= (1 + growth_rate)` |
-| 5–6 | shrink: `revenue *= (1 - growth_rate * 0.5)` |
-| 7–8 | flat: unchanged |
+| GROW | `revenue *= 1 + rand(0.01, 0.05)` |
+| DECAY | `revenue *= 1 - rand(0.00, 0.02)` |
+| FLAT | unchanged |
 
-Shrink is **half** the growth magnitude, so the long-run drift is upward — a company that grew 5%
-for five turns and fell 5% for two would still net +11%, which is fine, but halving it keeps the
-5%-tier companies from lapping the 1% tier inside 50 turns. Tune if the spread looks wrong; this
-is a display number, not a balance constant, so it does **not** fall under rule #7.
+Both draws come from the isolated stream in §5 — never `_match_rng`.
 
-The brief also specifies **revenue changing −2%..+5% per turn**. Apply a seeded per-turn jitter in
-that range on top of the cycle so the table is not perfectly mechanical. This is the only RNG draw
-in the feature.
+Because the magnitude is redrawn every turn, the earlier "shrink at half the growth rate" fudge is
+gone: the asymmetry now comes from the 5:2 turn split and the fact that the decay range is
+narrower than the growth range.
 
 ### 4.4 The player's row
 
@@ -162,14 +160,13 @@ load like everything else.
 
 ## 7. Open questions
 
-1. **§2 — cycle or population split.** Blocking. Recommendation: cycle (A).
-2. **Rival starting revenue.** 100/turn as briefed means the player laps the field by roughly t150.
-   Options: raise rivals' start, give the top rival a higher growth tier, or accept it as an
+1. **Rival starting revenue.** 100/turn as briefed means the player laps the field by roughly t150.
+   Options: raise rivals' start, weight one rival's cycle toward growth, or accept it as an
    intended power fantasy. Recommend deciding after seeing a real 300-turn run.
-3. **Does the player's company have a name?** The rankings need one for the player's row. If none
+2. **Does the player's company have a name?** The rankings need one for the player's row. If none
    exists, a New Game field is the natural home, defaulting to something neutral.
-4. **Do rivals react to the carbon clock?** Cheap and thematic — rivals on the 1% tier could stall
-   after t60 as the squeeze bites. Deferred; not in v1.
+3. **Do rivals react to the carbon clock?** Cheap and thematic — a rival's decay turns could bite
+   harder after t60 as the squeeze lands. Deferred; not in v1.
 
 ---
 
@@ -183,7 +180,10 @@ NPC-port state later tests assert against:
   what makes §5's no-save design safe.
 - **RNG isolation.** Draw the full table for 50 turns, assert `_match_rng`'s state is unchanged.
   This is the test that catches the determinism break described in §5.
-- **Cycle shape.** Over 9 turns a single company grows on 5, shrinks on 2, holds on 2.
+- **Cycle shape.** Over any 9 consecutive turns a company grows on exactly 5, decays on exactly 2
+  and holds on exactly 2 — the counts are invariant even though the order is shuffled.
+- **Magnitude bounds.** Over 500 sampled growth turns every draw lands in [1%, 5%]; over 500 decay
+  turns every draw lands in [0%, 2%].
 - **No sim effect.** Run 20 turns with rankings enabled and disabled; assert the player's money,
   every market price, and every stockpile are bit-identical. **The most important test here.**
 - **Player placement.** Zero revenue ⇒ last; revenue above every rival ⇒ first.

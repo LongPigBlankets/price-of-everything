@@ -96,24 +96,35 @@ static func flow(building: Dictionary, recipe: Dictionary) -> Dictionary:
 			"internal": str(inp.get("internal_name", "")),
 			"qty": int(inp.get("qty", 0)),
 		})
+	# ALL outputs, not just the first: chlor-alkali makes chlorine, sodium hydroxide AND hydrogen,
+	# and the recipe card showed only the chlorine (owner 2026-08-01). The engine's effective-qty
+	# helper is defined for the recipe's PRIMARY output, so the co-products are scaled by the same
+	# ratio the primary was — one modifier applies to the whole batch, not per good.
 	var out_items := BuildingStatus.flow_output_items(recipe)
+	var outputs: Array = []
 	var output: Dictionary = {}
 	if not out_items.is_empty():
-		var o: Dictionary = out_items[0]
-		var base_qty := int(o.get("qty", 0))
+		var primary: Dictionary = out_items[0]
+		var primary_base := int(primary.get("qty", 0))
 		var eff := BuildingStatus.effective_output_qty(building, recipe)
 		if str(recipe.get("output_name", "")) == "power":
 			eff = BuildingStatus.effective_power_output(building, recipe)
-		output = {
-			"good_id": str(o.get("good_id", "")),
-			"internal": str(o.get("internal_name", "")),
-			"qty": eff,
-			"base_qty": base_qty,
-		}
+		var ratio := (float(eff) / float(primary_base)) if primary_base > 0 else 1.0
+		for i in range(out_items.size()):
+			var o: Dictionary = out_items[i]
+			var base_qty := int(o.get("qty", 0))
+			outputs.append({
+				"good_id": str(o.get("good_id", "")),
+				"internal": str(o.get("internal_name", "")),
+				"qty": eff if i == 0 else int(round(float(base_qty) * ratio)),
+				"base_qty": base_qty,
+			})
+		output = outputs[0]
 	var mod := BuildingStatus.net_output_modifier(building, recipe)
 	return {
 		"inputs": inputs,
-		"output": output,
+		"output": output,      # the primary output — kept for callers that show one hero icon
+		"outputs": outputs,    # every output, in recipe order (co-products included)
 		"power_in": BuildingStatus.effective_energy_req(building, recipe),
 		"produces_power": str(recipe.get("output_name", "")) == "power",
 		"mod_pct": int(mod.get("pct", 0)),

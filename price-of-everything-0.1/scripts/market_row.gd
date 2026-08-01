@@ -13,8 +13,10 @@ const NAME_BOUND := "Electrical Components"
 const NAME_RIGHT_PAD := 20.0
 const NAME_FS_MAX := 30
 const NAME_FS_MIN := 14
-const COL_PRICE := 70.0
-const COL_EST := 80.0
+# Kept in sync with market_panel.gd's COL_PRICE_W / COL_EST_W (separate containers — a
+# mismatch silently skews every column to the right of it).
+const COL_PRICE := 104.0
+const COL_EST := 104.0
 const COL_IMPACT := 110.0
 const COL_SOLD := 60.0
 const COL_BOUGHT := 64.0
@@ -153,20 +155,28 @@ func _fit_name_font_size(btn: Button) -> int:
 	return fs
 
 
-## Static per-good column: the 2x|3x|4x per-turn volume thresholds past which
-## the player's net market volume starts moving this good's price. "—" for
-## goods no active recipe produces (they take no impact).
+## Static per-good column: the 1x|2x|4x|10x per-turn volume thresholds past which the player's
+## net market volume starts moving this good's price. "—" for goods no active recipe produces
+## (they take no impact). Rates and the cap are read from EconomyConfig rather than written out
+## — the previous hardcoded tooltip had drifted to "0.4%/turn ... ±50%" against a live model of
+## 0.5% and ±40%, and said 2x|3x|4x where the code had long been 2x/4x/10x.
 func _setup_impact_column() -> void:
 	var thresholds: PackedInt32Array = MarketState.impact_thresholds(good_id)
 	if thresholds.is_empty():
 		_impact_label.text = "—"
 		_impact_label.tooltip_text = "No production recipe — this good's price takes no volume impact."
 		return
-	_impact_label.text = "%d|%d|%d" % [thresholds[0], thresholds[1], thresholds[2]]
+	# The 1x band is shown as the headline figure: it is the one most players cross.
+	_impact_label.text = "%d|%d|%d|%d" % [thresholds[0], thresholds[1], thresholds[2], thresholds[3]]
 	_impact_label.tooltip_text = (
 		"Net selling (or buying) more than these units in one turn moves the price:\n" +
-		">%d: 0.1%%/turn · >%d: 0.2%%/turn · >%d: 0.4%%/turn (capped at ±50%%).\n" % [thresholds[0], thresholds[1], thresholds[2]] +
-		"Below the first threshold the impact recovers by 0.1%%/turn."
+		">%d: %s%%/turn · >%d: %s%%/turn · >%d: %s%%/turn · >%d: %s%%/turn (capped at ±%d%%).\n" % [
+			thresholds[0], String.num(EconomyConfig.PRICE_IMPACT_RATE_1X, 2),
+			thresholds[1], String.num(EconomyConfig.PRICE_IMPACT_RATE_2X, 1),
+			thresholds[2], String.num(EconomyConfig.PRICE_IMPACT_RATE_4X, 1),
+			thresholds[3], String.num(EconomyConfig.PRICE_IMPACT_RATE_10X, 1),
+			int(EconomyConfig.PRICE_IMPACT_CAP_PCT)] +
+		"Below the first threshold the impact recovers by %s%%/turn." % String.num(EconomyConfig.PRICE_IMPACT_RECOVERY_PCT, 1)
 	)
 
 func _make_col(width: float) -> Label:

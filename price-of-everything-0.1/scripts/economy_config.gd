@@ -67,12 +67,13 @@ const MAX_PRICE_IMPACT_PCT: int = 10
 # once it crosses multiples of the good's BASE OUTPUT (the largest per-turn
 # output among active recipes producing it, L1 unmodified —
 # Catalog.base_output_for_good). E.g. copper wiring, base output 32:
+#   33 units  (>1x)  → 0.05 %/turn
 #   65 units  (>2x)  → 0.1 %/turn
 #   129 units (>4x)  → 0.2 %/turn
 #   321 units (>10x) → 0.5 %/turn
 # Net selling pushes the price DOWN (glut), net buying UP (deficit). The
 # accumulated impact is capped at ±PRICE_IMPACT_CAP_PCT and, while volume stays
-# at or under 2x, recovers toward 0 by price_impact_recovery() per turn. The
+# at or under 1x, recovers toward 0 by price_impact_recovery() per turn. The
 # impact multiplies the good's decayed base price, so it stacks on top of the
 # normal per-turn drift. Thresholds are STATIC for now; later they scale with
 # expected output every 10 turns. Goods with no active producing recipe have no
@@ -83,11 +84,22 @@ const PRICE_IMPACT_RECOVERY_PCT: float = 0.1
 # the continuous curve bit far too early in practice: a normal 3-factory chain sells 3x one
 # building's batch, which crushed motors to the -48% floor over 75 turns purely for being
 # a normal size. Volume must be genuinely excessive before the market notices:
-#     > 2x  base output -> 0.1 %/turn   (a nudge — you are now moving this market)
+#     > 1x  base output -> 0.05 %/turn  (the faintest touch — see below)
+#     > 2x               -> 0.1 %/turn   (a nudge — you are now moving this market)
 #     > 4x               -> 0.2 %/turn
 #     >10x               -> 0.5 %/turn  (flooding; hits the -40% cap in 80 turns)
+#
+# ⚠️ BALANCE CHANGE (rule #7), owner ruling 2026-08-01: the 1x band is new. It exists so that
+# a building pushed ABOVE its own base recipe output by modifiers starts to register — under
+# the old floor a single heavily-modified building could sell 1.9x its base batch every turn
+# forever and the market never noticed. It accrues at HALF the 2x band by the owner's ruling.
+# This widens who is affected more than any previous impact change: every good sold at all
+# briskly by one building now drifts, where before it took two buildings' worth. The 1x band
+# also moves the RECOVERY floor with it — _tick_impact recovers only when the rate is 0.0, so
+# a good sitting between 1x and 2x now accrues instead of bleeding off.
 # base_output is the largest per-turn batch among active recipes producing the good
 # (Catalog.base_output_for_good), so the thresholds rescale with any recipe rebalance.
+const PRICE_IMPACT_RATE_1X: float = 0.05
 const PRICE_IMPACT_RATE_2X: float = 0.1
 const PRICE_IMPACT_RATE_4X: float = 0.2
 const PRICE_IMPACT_RATE_10X: float = 0.5
@@ -103,6 +115,8 @@ func price_impact_rate(net_volume: int, base_output: int) -> float:
 		return PRICE_IMPACT_RATE_4X
 	if v > 2.0 * float(base_output):
 		return PRICE_IMPACT_RATE_2X
+	if v > 1.0 * float(base_output):
+		return PRICE_IMPACT_RATE_1X
 	return 0.0
 
 ## %/turn a good's accumulated impact bleeds back toward 0 while its volume is under the

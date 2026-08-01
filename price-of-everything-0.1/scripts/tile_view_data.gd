@@ -1,5 +1,17 @@
 extends RefCounted
 const BuildingNaming := preload("res://scripts/building_naming.gd")
+const BuildingLevels := preload("res://scripts/building_levels.gd")
+
+
+## Room a building actually occupies, INCLUDING its level. A levelled-up building is bigger
+## (BuildingLevels "size" mult) and MatchState.get_tile_space_used — the figure the build and
+## upgrade gates test against — has always counted it that way. The land chart and its
+## built|buyable|max readout did not: they drew every building at its level-1 footprint, so a
+## tile of upgraded buildings looked far emptier than it was and an upgrade could be refused
+## for want of room the player could see going spare (owner 2026-08-01).
+static func footprint_of(building: Dictionary, bd: Dictionary) -> float:
+	var base := maxf(0.0, float(bd.get("tile_size_used", 1)))
+	return base * BuildingLevels.mult("size", int(building.get("level", 1)))
 ## Stateless data helpers for the Tile View Panels. Pure functions that read the
 ## canonical autoloads (MatchState, Production, Stockpile, Catalog, MarketState,
 ## CostSolver) and return plain dictionaries the UI can render. Keeping the maths
@@ -211,7 +223,7 @@ static func land_chart_data(tile_id: String, tile_data: Dictionary) -> Dictionar
 	var built := 0.0   # player-owned building footprint
 	for building in MatchState.get_buildings_on_tile(tile_id):
 		var bd: Dictionary = Catalog.get_building(building.get("building_id", ""))
-		var size := maxf(0.0, float(bd.get("tile_size_used", 1)))
+		var size := footprint_of(building, bd)
 		if size <= 0.0:
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
@@ -274,13 +286,16 @@ static func land_totals(tile_id: String, tile_data: Dictionary) -> Dictionary:
 	var npc := 0.0
 	for building in MatchState.get_buildings_on_tile(tile_id):
 		var bd: Dictionary = Catalog.get_building(building.get("building_id", ""))
-		var size := maxf(0.0, float(bd.get("tile_size_used", 1)))
+		var size := footprint_of(building, bd)
 		if str(building.get("owner", MatchState.LOCAL_PLAYER)) != MatchState.LOCAL_PLAYER:
 			npc += size
 		else:
 			built += size
 	for project in Construction.projects_on_tile(tile_id):
 		built += maxf(0.0, float(project.get("reserved_space", 1)))
+	# In-progress upgrades have already reserved the room they are growing into — the gate
+	# counts it, so the readout must too or the two disagree while an upgrade is running.
+	built += MatchState.reserved_upgrade_space_on_tile(tile_id)
 	var max_cap := int(maxf(1.0, float(_tile_max_capacity(tile_data)) - npc))
 	var owned := MatchState.get_tile_land_owned(tile_id)
 	var buyable := maxi(0, max_cap - owned)

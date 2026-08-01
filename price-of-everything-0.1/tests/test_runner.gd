@@ -54,6 +54,8 @@ func _ready() -> void:
 	_test_endgame_continuity_verdict()
 	_test_advisor_payroll_model()
 	_test_battery_fill_scope_and_units()
+	_test_land_chart_matches_upgrade_gate()
+	_test_recipe_flow_shows_co_products()
 	_test_advisor_seat_tier_scaling()
 	_test_advisor_reconcile_idempotent()
 	_test_advisor_seat_effects()
@@ -7037,8 +7039,18 @@ func _test_price_impact() -> void:
 # impact, capped at ±50%, recovering 0.1%/turn under the threshold. The impact
 # multiplies the decayed base price; `prices` stays the impact-free series.
 func _test_price_impact_thresholds() -> void:
-	# BANDED response with SPACED thresholds (owner ruling): 2x / 4x / 10x.
-	_check(EconomyConfig.price_impact_rate(64, 32) == 0.0, "2x exactly is under the bite")
+	# BANDED response with SPACED thresholds (owner ruling): 1x / 2x / 4x / 10x.
+	# The 1x band (owner 2026-08-01) exists so a building pushed above its own base recipe
+	# output by modifiers starts to register at all.
+	_check(EconomyConfig.price_impact_rate(32, 32) == 0.0, "1x exactly is under the bite")
+	_check(EconomyConfig.price_impact_rate(33, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
+		"just over 1x accrues the faintest band — a modified single building registers")
+	_check(EconomyConfig.price_impact_rate(-33, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
+		"the 1x band applies to BUYING too, not only selling")
+	_check(EconomyConfig.PRICE_IMPACT_RATE_1X * 2.0 == EconomyConfig.PRICE_IMPACT_RATE_2X,
+		"the 1x band accrues at exactly half the band above it")
+	_check(EconomyConfig.price_impact_rate(64, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
+		"2x exactly is the 1x band (bands are strictly-greater-than)")
 	_check(EconomyConfig.price_impact_rate(65, 32) == EconomyConfig.PRICE_IMPACT_RATE_2X,
 		"just over 2x accrues the gentle band")
 	_check(EconomyConfig.price_impact_rate(128, 32) == EconomyConfig.PRICE_IMPACT_RATE_2X,
@@ -7135,10 +7147,11 @@ func _test_price_impact_thresholds() -> void:
 	MarketState.impact_pct[gid] = -0.05
 	MarketState.tick_turn()
 	_check(MarketState.get_impact_pct(gid) == 0.0, "recovery settles exactly to zero")
-	# UI helper: thresholds surface as 2x|3x|4x of the base output.
+	# UI helper: thresholds surface as 1x|2x|4x|10x of the base output.
 	var th: PackedInt32Array = MarketState.impact_thresholds(gid)
-	_check(th.size() == 3 and th[0] == coal_base * 2 and th[1] == coal_base * 4 and th[2] == coal_base * 10,
-		"impact_thresholds returns 2x/4x/10x of base output, matching the live bands")
+	_check(th.size() == 4 and th[0] == coal_base and th[1] == coal_base * 2 \
+			and th[2] == coal_base * 4 and th[3] == coal_base * 10,
+		"impact_thresholds returns 1x/2x/4x/10x of base output, matching the live bands")
 	MarketState.impact_pct.erase(gid)
 	MarketState.prices = prices_snapshot
 	MarketState.prices_updated.emit()
@@ -10313,3 +10326,65 @@ func _test_battery_fill_scope_and_units() -> void:
 		"battery: nothing loaded means 0 MW stabilised (not a cell count)")
 	MatchState.remove_building(a)
 	MatchState.remove_building(b2)
+
+
+func _test_land_chart_matches_upgrade_gate() -> void:
+	# The land chart drew every building at its LEVEL-1 footprint while the build/upgrade gate
+	# (MatchState.get_tile_space_used) counted the level-scaled size. A tile of upgraded
+	# buildings therefore looked far emptier than it was, and an upgrade was refused for want of
+	# room the player could see going spare (owner 2026-08-01, Stoneshore Docks).
+	# NON-DESTRUCTIVE: no MatchState.reset() — it wipes NPC-port state later tests assert on.
+	var TVD := load("res://scripts/tile_view_data.gd")
+	var tile := "tile_land_chart_test_only"
+	var bid := "b_007"
+	var base: float = maxf(0.0, float(Catalog.get_building(bid).get("tile_size_used", 1)))
+	if base <= 0.0:
+		_check(false, "land chart: test building has a footprint")
+		return
+	var iid := MatchState.add_building(bid, "", tile, MatchState.LOCAL_PLAYER, "landchart_a")
+	var at_l1: Dictionary = TVD.land_totals(tile, {})
+	_check(int(at_l1.built) == int(round(base)), "land chart: level 1 built figure is the base footprint")
+	# Level it up — the chart MUST grow with it.
+	MatchState.buildings[iid]["level"] = 3
+	var at_l3: Dictionary = TVD.land_totals(tile, {})
+	var gate_used: float = MatchState.get_tile_space_used(tile)
+	_check(int(at_l3.built) > int(at_l1.built),
+		"land chart: a levelled-up building takes MORE room in the readout (%d -> %d)" % [
+			int(at_l1.built), int(at_l3.built)])
+	_check(int(at_l3.built) == int(round(gate_used)),
+		"land chart: readout equals the figure the upgrade gate tests (%d vs %d)" % [
+			int(at_l3.built), int(round(gate_used))])
+	# And the chart's own segments must agree with the total it prints.
+	var chart: Dictionary = TVD.land_chart_data(tile, {})
+	var seg_total := 0.0
+	for s in (chart.get("segments", []) as Array):
+		if not bool((s as Dictionary).get("is_other", false)):
+			seg_total += float((s as Dictionary).get("size", 0.0))
+	_check(absf(seg_total - gate_used) < 0.51,
+		"land chart: segments sum to the gate's used space (%.1f vs %.1f)" % [seg_total, gate_used])
+	MatchState.remove_building(iid)
+
+
+func _test_recipe_flow_shows_co_products() -> void:
+	# Chlor-alkali yields chlorine, sodium hydroxide AND hydrogen; the recipe card drew only the
+	# first (owner 2026-08-01). NON-DESTRUCTIVE: no MatchState.reset().
+	var recipe: Dictionary = Catalog.get_recipe("r_012")
+	if recipe.is_empty():
+		_check(false, "co-products: r_012 (Chlor-Alkali) exists")
+		return
+	var tile := "tile_coproduct_test_only"
+	var iid := MatchState.add_building("b_012", "r_012", tile, MatchState.LOCAL_PLAYER, "coprod_a")
+	var f: Dictionary = load("res://scripts/building_readout.gd").flow(MatchState.get_building(iid), recipe)
+	var outs: Array = f.get("outputs", [])
+	_check(outs.size() == 3, "co-products: chlor-alkali flow carries all 3 outputs (got %d)" % outs.size())
+	var names: Array = []
+	for o in outs:
+		names.append(str((o as Dictionary).get("internal", "")))
+	_check(names.has("chlorine") and names.has("sodium_hydroxide") and names.has("hydrogen"),
+		"co-products: all three goods present (%s)" % str(names))
+	_check(str((f.get("output", {}) as Dictionary).get("internal", "")) == str(outs[0].get("internal", "")),
+		"co-products: the singular 'output' still points at the primary, for one-icon callers")
+	for o in outs:
+		_check(int((o as Dictionary).get("qty", 0)) > 0,
+			"co-products: %s has a positive effective quantity" % str((o as Dictionary).get("internal", "")))
+	MatchState.remove_building(iid)
