@@ -23,10 +23,6 @@ const ALT_MENU_ICONS := {
 	"EmpireButton": "empire_city",
 }
 const EMPIRE_BUTTON_BADGE_ICON := "empire_city_badge"
-const EMPIRE_ICON_LEFT := 5.5
-const EMPIRE_ICON_RIGHT := 0.5
-const EMPIRE_ICON_TOP := 3.5
-const EMPIRE_ICON_BOTTOM := 1.5
 
 # Per-button colours for the alt menu: [background, object+ring]. The object
 # (icon art) is baked to the object colour; the button fill uses the background
@@ -181,14 +177,12 @@ func _icon_key_for_button(button_name: String) -> String:
 		return EMPIRE_BUTTON_BADGE_ICON
 	return ALT_MENU_ICONS.get(button_name, "")
 
-func _make_alt_button_style(fg: Color, fill: Color, icon_inset: float = 0.0) -> StyleBoxFlat:
+func _make_alt_button_style(fg: Color, fill: Color) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = fill
 	sb.set_border_width_all(6)  # 6px outer ring, same colour as the object
 	sb.border_color = fg
 	sb.set_corner_radius_all(45)  # round on the 90px button
-	# A 1px inset keeps the Empire artwork comfortably within the shared circular rim.
-	sb.set_content_margin_all(icon_inset)
 	sb.shadow_color = Color(0.02, 0.035, 0.045, 0.55)
 	sb.shadow_size = 3
 	sb.shadow_offset = Vector2(4, 4)  # to the bottom-right (offset > blur, light from top-left)
@@ -202,14 +196,13 @@ func _apply_alt_button_style(button_name: String) -> void:
 		return
 	var bg := Color(ALT_COLORS[button_name][0])
 	var fg := Color(ALT_COLORS[button_name][1])
-	var icon_inset := 1.0 if button_name == "EmpireButton" else 0.0
-	# The embossed Empire artwork is drawn by child controls.  Clip that group to
-	# the button, exactly like the built-in icon path used by every other menu item.
-	button.clip_contents = button_name == "EmpireButton"
-	button.add_theme_stylebox_override("normal", _make_alt_button_style(fg, bg, icon_inset))
-	button.add_theme_stylebox_override("hover", _make_alt_button_style(fg, bg, icon_inset))
-	button.add_theme_stylebox_override("pressed", _make_alt_button_style(fg, bg.darkened(0.08), icon_inset))
-	button.add_theme_stylebox_override("focus", _make_alt_button_style(fg, bg, icon_inset))
+	# Every button takes the same path now — no per-button inset, no clipping. The Empire
+	# artwork used to need both because it was drawn as child TextureRects rather than as the
+	# button's icon; its PNG now carries the shared disc and emboss like all the others.
+	button.add_theme_stylebox_override("normal", _make_alt_button_style(fg, bg))
+	button.add_theme_stylebox_override("hover", _make_alt_button_style(fg, bg))
+	button.add_theme_stylebox_override("pressed", _make_alt_button_style(fg, bg.darkened(0.08)))
+	button.add_theme_stylebox_override("focus", _make_alt_button_style(fg, bg))
 	# Per-button glow texture: an inside-out radial (bright centre → fades to the
 	# ring) with the object cut out, so only the background glows on hover.
 	_ensure_alt_glow(button, Color(bg.lightened(0.3), 0.55), "res://assets/icons/ui_icons/alt/_glow_%s.png" % _icon_key_for_button(button_name))
@@ -249,59 +242,13 @@ func _set_button_icon(button_name: String, path: String) -> void:
 	var button := get_node_or_null("%" + button_name) as Button
 	if button == null:
 		return
-	if button_name == "EmpireButton":
-		button.remove_theme_constant_override("icon_max_width")
-		_set_empire_button_art(button, path)
-		return
-	else:
-		button.remove_theme_constant_override("icon_max_width")
+	button.remove_theme_constant_override("icon_max_width")
 	if path == "":
 		button.icon = null  # explicit empty slot
 		return
 	if not ResourceLoader.exists(path):
 		return
 	button.icon = load(path)
-
-func _set_empire_button_art(button: Button, path: String) -> void:
-	button.icon = null
-	var texture: Texture2D = load(path) as Texture2D if ResourceLoader.exists(path) else null
-	for layer_name in ["EmpireRim", "EmpireEmbossShadow", "EmpireEmbossHighlight", "EmpireIcon"]:
-		var old_layer := button.get_node_or_null(layer_name)
-		if old_layer != null:
-			old_layer.queue_free()
-	if texture == null:
-		return
-
-	# The city gets a short, dense cast to its lower-right. It intentionally shows
-	# just beyond the original dark outline, matching the embossed objects on the
-	# research and market buttons without making the silhouette blurry.  These
-	# controls are full-rect anchored before their inset is applied: an ordinary
-	# `position` is interpreted from the menu container in this Button setup.
-	var shadow := _make_empire_art_layer("EmpireEmbossShadow", texture, Vector2(2.0, 2.5), Color(0.23, 0.13, 0.015, 0.62), 2)
-	button.add_child(shadow)
-	var highlight := _make_empire_art_layer("EmpireEmbossHighlight", texture, Vector2(-1.0, -1.0), Color(1.0, 0.94, 0.72, 0.22), 3)
-	button.add_child(highlight)
-	var icon := _make_empire_art_layer("EmpireIcon", texture, Vector2.ZERO, Color.WHITE, 4)
-	button.add_child(icon)
-
-func _make_empire_art_layer(layer_name: String, texture: Texture2D, position_offset: Vector2, tint: Color, z: int) -> TextureRect:
-	var layer := TextureRect.new()
-	layer.name = layer_name
-	layer.texture = texture
-	# Anchor inside the Button's own content rect, then apply the small optical
-	# right-shift and 2–3% size reduction as offsets.  This prevents the skyline
-	# escaping into the world canvas when the HBox lays out the bottom menu.
-	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	layer.offset_left = EMPIRE_ICON_LEFT + position_offset.x
-	layer.offset_right = -EMPIRE_ICON_RIGHT + position_offset.x
-	layer.offset_top = EMPIRE_ICON_TOP + position_offset.y
-	layer.offset_bottom = -EMPIRE_ICON_BOTTOM + position_offset.y
-	layer.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	layer.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	layer.modulate = tint
-	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.z_index = z
-	return layer
 
 func _hide_all_panels() -> void:
 	_set_panel_visible(construct_panel, false)

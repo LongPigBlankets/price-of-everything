@@ -39,6 +39,7 @@ const MECHANIC_ENTRIES := [
 	{"id": "building_economics", "title": "Building Economics"},
 	{"id": "transport", "title": "Transport"},
 	{"id": "port_transport", "title": "Port transport"},
+	{"id": "advisors", "title": "Advisors and the council"},
 ]
 
 var _search_stack: VBoxContainer = null
@@ -152,6 +153,28 @@ func _mechanic_body(entry_id: String) -> String:
 		return ("Ports connect eligible goods to the world market. Each unowned port charges a per-good fee once in a turn, plus an ad valorem insurance charge based on the market purchase price. Buying a port removes the per-good fee and lowers its insurance rate; its own maintenance and labour then apply instead.\n\n"
 			+ "A port normally carries 1,500 units of each transport class per turn. Hazardous liquids, gases and ultra-heavy solids each have a 300-unit limit. Traffic may exceed those limits, but that shipment pays double port fees.\n\n"
 			+ "The port panel lists default terms separately from your current terms, then shows the most recent shipment for each good. Its right-hand figures are per-turn fee | ad valorem charge. Port fees rise gradually as the game advances, and relevant research can reduce those fees or raise throughput.")
+	if entry_id == "advisors":
+		# Read the live model rather than restating it — an encyclopedia page that quotes hardcoded
+		# numbers is a page that silently goes wrong the first time the constants are tuned.
+		var seats: int = MatchState.max_advisor_slots
+		var base: float = EconomyConfig.ADVISOR_BASE_COST_PER_TURN
+		var growth_pct: float = EconomyConfig.ADVISOR_COST_GROWTH * 100.0
+		var share_pct: float = EconomyConfig.ADVISOR_REVENUE_SHARE * 100.0
+		return ("Advisors are the specialists you seat on the company council. You hold %d seat%s, and each seat covers a different part of the business — the seat decides WHAT the advisor affects, the advisor decides how strongly.
+
+"
+			+ "Hiring runs role first: pick the seat you want filled, then the candidate for it. Moving an advisor who is already seated does not need a free seat — they vacate the old one as they take the new, so a full council can still be reshuffled.
+
+"
+			+ "COST. Each advisor draws a retainer plus a share of the business. The retainer starts at £%.2f a turn and compounds at %.2f%% per turn — twice the rate ordinary high-skilled labour inflates, because the people worth seating get scarcer as the industry matures. On top of that each advisor takes %.0f%% of company revenue, so a council of %d costs %.0f%% of turnover before the retainers are counted.
+
+"
+			+ "That second term is the one to watch: advisors are nearly free while you are small and become a real line item once you are turning over serious money. The council panel shows the current total under the hire button, and the charge is billed each turn against that turn's revenue.
+
+"
+			+ "Retainers are charged whether or not an advisor's speciality is doing anything for you that turn, so an idle seat is a pure loss — leave it empty until you have work for it.") % [
+				seats, "" if seats == 1 else "s", base, growth_pct, share_pct, seats,
+				share_pct * float(seats)]
 	return ""
 
 func close_search() -> void:

@@ -464,10 +464,19 @@ func _build_victory() -> void:
 func _track_color(entry: Dictionary) -> Color:
 	return DS.PALETTE.get(str(entry.get("color_key", "")), C_CREAM)
 
+## queue_free() is DEFERRED: the old children live until the end of the frame while the new ones
+## are added immediately, so for one frame the container holds BOTH sets and the HBox lays out
+## double the widgets — which is the flicker. remove_child() first takes them out of the layout
+## in the same frame. (Same pattern advisor_council_tab._rebuild already uses.)
+func _clear_now(container: Node) -> void:
+	for c in container.get_children():
+		container.remove_child(c)
+		c.queue_free()
+
+
 func _refresh_victory() -> void:
 	var bd: Dictionary = VictoryState.get_breakdown()
-	for c in _victory_meters.get_children():
-		c.queue_free()
+	_clear_now(_victory_meters)
 	for t in (bd.get("tracks", []) as Array):
 		var cell := VBoxContainer.new()
 		cell.add_theme_constant_override("separation", 2)
@@ -796,8 +805,7 @@ func _refresh_council() -> void:
 	else:
 		_council_status.text = "%d seated" % seated.size()
 		_council_status.add_theme_color_override("font_color", C_MUTED)
-	for c in _council_stack.get_children():
-		c.queue_free()
+	_clear_now(_council_stack)
 	for aid in seated:
 		_council_stack.add_child(_portrait_chip(str(aid), 36))
 

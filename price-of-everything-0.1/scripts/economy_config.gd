@@ -35,6 +35,17 @@ const LABOUR_UNSKILLED_GROWTH: float = 0.0005    # +0.05%/turn
 const LABOUR_SKILLED_GROWTH: float = 0.001       # +0.10%/turn
 const LABOUR_HIGH_SKILLED_GROWTH: float = 0.002  # +0.20%/turn
 
+# --- Advisor payroll (owner spec 2026-08-01) ---
+# Each seated advisor costs a flat base per turn that inflates at DOUBLE the rate of labour,
+# plus a share of company revenue. The revenue share is what makes a council expensive to a
+# large empire and cheap to a small one — five advisors take 5% of turnover, so the board has
+# to earn its keep rather than being a fixed early-game tax.
+# The growth reference is HIGH-SKILLED labour: advisors are executives, and pinning it to the
+# same constant means the two can never drift apart if wage growth is retuned.
+const ADVISOR_BASE_COST_PER_TURN: float = 10.0
+const ADVISOR_COST_GROWTH: float = 2.0 * LABOUR_HIGH_SKILLED_GROWTH   # +0.40%/turn
+const ADVISOR_REVENUE_SHARE: float = 0.01                             # 1% of revenue, each
+
 # --- MVP labour stub: every building has these counts ---
 # Remove these once buildings catalog has real employment data.
 const STUB_UNSKILLED_PER_BUILDING: int = 100

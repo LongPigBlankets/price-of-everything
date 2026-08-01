@@ -471,11 +471,14 @@ func _build_storage_card(building: Dictionary) -> PanelContainer:
 	card.add_child(vb)
 	var head := Label.new()
 	head.add_theme_color_override("font_color", CREAM_INK)
-	head.text = "Energy storage — %d / %d cells loaded" % [int(b.get("loaded", 0)), int(b.get("slots", 0))]
+	# "36 / 2000" was cells over MEGAWATTS — a count divided by a capacity (owner 2026-08-01).
+	# The pair that shares a unit is power stabilised vs the tile's firming capacity.
+	head.text = "Power stabilised — %d / %d MW" % [int(b.get("firming_cap", 0)), int(b.get("slots", 0))]
 	vb.add_child(head)
 	var note := Label.new()
 	note.add_theme_color_override("font_color", CREAM_INK)
-	note.text = "Stores energy — runs no recipe"
+	note.text = "%d cell%s loaded — stores energy, runs no recipe" % [
+		int(b.get("loaded", 0)), "" if int(b.get("loaded", 0)) == 1 else "s"]
 	vb.add_child(note)
 	return card
 
@@ -513,7 +516,7 @@ func _open_battery_source_sheet(building: Dictionary, recipe: Dictionary) -> voi
 			if gid == "":
 				continue
 			var unlocked := MatchState.battery_type_loadable(gid)
-			var fill := MatchState.battery_cells_to_fill(tile, gid)
+			var fill := MatchState.battery_cells_to_fill(tile, gid, str(building.get("instance_id", "")))
 			var stock := Stockpile.get_at_tile(tile, gid)
 			var loadable := mini(fill, stock)
 			var subtitle := ""
@@ -549,7 +552,7 @@ func _open_battery_order_sheet(building: Dictionary, recipe: Dictionary) -> void
 			if gid == "":
 				continue
 			var unlocked := MatchState.battery_type_loadable(gid)
-			var fill := MatchState.battery_cells_to_fill(tile, gid)
+			var fill := MatchState.battery_cells_to_fill(tile, gid, str(building.get("instance_id", "")))
 			var subtitle := ""
 			var btn_text := ""
 			var enabled := false

@@ -637,7 +637,11 @@ func _process_production() -> void:
 # --- Helpers ---
 
 func _apply_advisor_costs(summary: Dictionary) -> float:
-	var payroll := MatchState.advisor_payroll_per_turn()
+	# Charge against THIS turn's revenue, not last turn's: the sell phase has already run by
+	# here, so the summary holds the real figure and the board is billed on what it actually
+	# helped earn. (The council panel quotes last turn's, since this turn's does not exist yet.)
+	var revenue := float(summary.get("goods_sales_revenue", 0.0)) + float(summary.get("power_sales_revenue", 0.0))
+	var payroll := MatchState.advisor_payroll_per_turn(revenue)
 	if payroll <= 0.0:
 		summary.advisor_paid = 0.0
 		return 0.0
