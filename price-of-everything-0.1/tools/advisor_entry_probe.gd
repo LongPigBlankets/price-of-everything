@@ -17,8 +17,11 @@ func _ready() -> void:
 	for e in overlay.MECHANIC_ENTRIES:
 		ids.append(str((e as Dictionary).get("id", "")))
 	print("MECHANIC IDS: %s" % str(ids))
-	var body: String = overlay._mechanic_body("advisors")
-	print("--- ADVISORS BODY (%d chars) ---" % body.length())
+	var which := OS.get_environment("ENTRY")
+	if which == "":
+		which = "advisors"
+	var body: String = overlay._mechanic_body(which)
+	print("--- %s BODY (%d chars) ---" % [which.to_upper(), body.length()])
 	print(body)
 	print("--- seats=%d  per-advisor now=%.2f  payroll@rev1000=%.2f ---" % [
 		MatchState.max_advisor_slots, MatchState.advisor_cost_per_advisor(0.0),

@@ -7037,8 +7037,18 @@ func _test_price_impact() -> void:
 # impact, capped at ±50%, recovering 0.1%/turn under the threshold. The impact
 # multiplies the decayed base price; `prices` stays the impact-free series.
 func _test_price_impact_thresholds() -> void:
-	# BANDED response with SPACED thresholds (owner ruling): 2x / 4x / 10x.
-	_check(EconomyConfig.price_impact_rate(64, 32) == 0.0, "2x exactly is under the bite")
+	# BANDED response with SPACED thresholds (owner ruling): 1x / 2x / 4x / 10x.
+	# The 1x band (owner 2026-08-01) exists so a building pushed above its own base recipe
+	# output by modifiers starts to register at all.
+	_check(EconomyConfig.price_impact_rate(32, 32) == 0.0, "1x exactly is under the bite")
+	_check(EconomyConfig.price_impact_rate(33, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
+		"just over 1x accrues the faintest band — a modified single building registers")
+	_check(EconomyConfig.price_impact_rate(-33, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
+		"the 1x band applies to BUYING too, not only selling")
+	_check(EconomyConfig.PRICE_IMPACT_RATE_1X * 2.0 == EconomyConfig.PRICE_IMPACT_RATE_2X,
+		"the 1x band accrues at exactly half the band above it")
+	_check(EconomyConfig.price_impact_rate(64, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
+		"2x exactly is the 1x band (bands are strictly-greater-than)")
 	_check(EconomyConfig.price_impact_rate(65, 32) == EconomyConfig.PRICE_IMPACT_RATE_2X,
 		"just over 2x accrues the gentle band")
 	_check(EconomyConfig.price_impact_rate(128, 32) == EconomyConfig.PRICE_IMPACT_RATE_2X,
@@ -7135,10 +7145,11 @@ func _test_price_impact_thresholds() -> void:
 	MarketState.impact_pct[gid] = -0.05
 	MarketState.tick_turn()
 	_check(MarketState.get_impact_pct(gid) == 0.0, "recovery settles exactly to zero")
-	# UI helper: thresholds surface as 2x|3x|4x of the base output.
+	# UI helper: thresholds surface as 1x|2x|4x|10x of the base output.
 	var th: PackedInt32Array = MarketState.impact_thresholds(gid)
-	_check(th.size() == 3 and th[0] == coal_base * 2 and th[1] == coal_base * 4 and th[2] == coal_base * 10,
-		"impact_thresholds returns 2x/4x/10x of base output, matching the live bands")
+	_check(th.size() == 4 and th[0] == coal_base and th[1] == coal_base * 2 \
+			and th[2] == coal_base * 4 and th[3] == coal_base * 10,
+		"impact_thresholds returns 1x/2x/4x/10x of base output, matching the live bands")
 	MarketState.impact_pct.erase(gid)
 	MarketState.prices = prices_snapshot
 	MarketState.prices_updated.emit()
