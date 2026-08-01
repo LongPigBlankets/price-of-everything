@@ -704,17 +704,26 @@ static func output_consumers(building: Dictionary, recipe: Dictionary) -> Array:
 	var iid := str(building.get("instance_id", ""))
 	if out_gid == "":
 		return []
-	var dest := MatchState.get_output_stockpile_destination(iid, out_gid)
-	if dest == "":
+	var destinations := MatchState.get_output_split_destinations(iid, out_gid)
+	if destinations.is_empty():
+		var single := MatchState.get_output_stockpile_destination(iid, out_gid)
+		if single != "":
+			destinations.append({"tile_id": single})
+	if destinations.is_empty():
 		# Unrouted output lands in this building's OWN tile stockpile (default STOCKPILE_ALL), so
 		# same-tile buildings draw from it. A market route / SELL_ALL has no downstream tile.
 		if not MatchState.is_output_market(iid, out_gid) and MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL:
-			dest = str(building.get("tile_id", ""))
-		if dest == "":
+			destinations.append({"tile_id": str(building.get("tile_id", ""))})
+		if destinations.is_empty():
 			return []
 	var rows: Array = []
+	var destination_tiles: Array = []
+	for destination in destinations:
+		var tile := str((destination as Dictionary).get("tile_id", ""))
+		if tile != "" and not destination_tiles.has(tile):
+			destination_tiles.append(tile)
 	for b in MatchState.buildings.values():
-		if str(b.get("instance_id", "")) == iid or str(b.get("tile_id", "")) != dest:
+		if str(b.get("instance_id", "")) == iid or not destination_tiles.has(str(b.get("tile_id", ""))):
 			continue
 		if not MatchState.is_player_owned(b):
 			continue
@@ -783,11 +792,18 @@ static func connections(building: Dictionary, recipe: Dictionary) -> Dictionary:
 			gid = str(Catalog.get_good_by_internal_name(str(o.get("internal_name", ""))).get("id", ""))
 		if gid == "":
 			continue
-		var dest := MatchState.get_output_stockpile_destination(iid, gid)
-		if dest != "" and dest != origin and not output_tiles.has(dest):
-			output_tiles.append(dest)
-		elif dest == "":
-			has_market = true
+		var split := MatchState.get_output_split_destinations(iid, gid)
+		if not split.is_empty():
+			for destination in split:
+				var split_dest := str((destination as Dictionary).get("tile_id", ""))
+				if split_dest != "" and split_dest != origin and not output_tiles.has(split_dest):
+					output_tiles.append(split_dest)
+		else:
+			var dest := MatchState.get_output_stockpile_destination(iid, gid)
+			if dest != "" and dest != origin and not output_tiles.has(dest):
+				output_tiles.append(dest)
+			elif dest == "":
+				has_market = true
 	return {"origin": origin, "input_tiles": input_tiles, "output_tiles": output_tiles, "has_market": has_market}
 
 static func _producers_for_input(inp: Dictionary, current_iid: String, current_tile: String) -> Array:
@@ -918,6 +934,9 @@ static func _routes_to_tile(producer: Dictionary, output: Dictionary, tile_id: S
 		return false
 	var piid := str(producer.get("instance_id", ""))
 	# Explicit output route to this tile.
+	for destination in MatchState.get_output_split_destinations(piid, gid):
+		if str((destination as Dictionary).get("tile_id", "")) == tile_id:
+			return true
 	if MatchState.get_output_stockpile_destination(piid, gid) == tile_id:
 		return true
 	# Same-tile producer whose output lands in the SHARED tile stockpile (an iron-ingot furnace

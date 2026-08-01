@@ -34,7 +34,7 @@ const FREE_UNLOCK_BUTTON_HEIGHT := 30.0
 const TAB_GAP := 6.0
 const TAB_HEIGHT := 54.0
 const TAB_FONT_SIZE := 14
-const UNLOCK_SIZE := Vector2(320.0, 200.0)
+const UNLOCK_SIZE := Vector2(320.0, 292.0)
 const UNLOCK_RADIUS := 12
 const UNLOCK_SLOT_SIZE := 80.0
 const UNLOCK_TITLE_SIZE := 22
@@ -93,12 +93,15 @@ var _condition_style: StyleBoxFlat
 var _tab_selected_style: StyleBoxFlat
 var _tab_unselected_style: StyleBoxFlat
 var _close_button: Button
+var _search_input: LineEdit
+var _search_query := ""
 var _stamp_font: Font
 var _dragging_tree := false
 var _free_unlocks := FREE_UNLOCK_TEST_START_COUNT
 var _choosing_free_unlock := false
 var _hover_unlock_title := ""
 var _free_unlocked_titles := {}
+var _expanded_requirement_titles := {}
 var _knowledge_grants := {
 	41: 2,
 	81: 3,
@@ -113,6 +116,7 @@ func _ready() -> void:
 	clip_contents = true
 	_stamp_font = _make_stamp_font()
 	_create_close_button()
+	_create_search_input()
 	_build_styles()
 	_load_unlock_rows()
 	if not TurnManager.turn_advanced.is_connected(_on_turn_advanced):
@@ -131,6 +135,70 @@ func _create_close_button() -> void:
 	_close_button.pressed.connect(_close_panel)
 	add_child(_close_button)
 
+
+## Search box in the panel header. A real LineEdit child rather than something painted in
+## _draw(): this panel is a custom canvas, but the close button already proves Control
+## children work here, and text entry is not worth hand-rolling.
+func _create_search_input() -> void:
+	_search_input = LineEdit.new()
+	_search_input.name = "ResearchSearchInput"
+	_search_input.placeholder_text = "Search research — name or reward"
+	_search_input.clear_button_enabled = true
+	if DS.theme != null:
+		_search_input.theme = DS.theme
+	_search_input.text_changed.connect(_on_search_changed)
+	add_child(_search_input)
+
+
+func _on_search_changed(text: String) -> void:
+	_search_query = text
+	# Results are drawn as a flat rank layout across every category, so the stored
+	# per-category pan/zoom would leave them off-screen. Reset the view each keystroke.
+	_category_view_state.erase(_selected_category)
+	queue_redraw()
+
+func begin_free_unlock_choice() -> void:
+	if _free_unlocks <= 0:
+		return
+	_choosing_free_unlock = true
+	_hover_unlock_title = ""
+	queue_redraw()
+
+## Tutorial/coach hook: the exact on-screen rectangle of a searched research node.
+## The tree is custom drawn, so it cannot otherwise be spotlighted like a normal Control.
+func tutorial_unlock_rect(title: String) -> Rect2:
+	if title == "" or not is_visible_in_tree():
+		return Rect2()
+	var unlocks := _category_unlocks(_selected_category)
+	var layout := _layout_unlocks(unlocks)
+	if not layout.has(title):
+		return Rect2()
+	var state := _current_view_state()
+	var zoom: float = state["zoom"]
+	var origin := _tree_origin() + (state["pan"] as Vector2)
+	var local: Rect2 = layout[title]
+	return Rect2(global_position + origin + local.position * zoom, local.size * zoom).grow(8.0)
+
+
+func _search_input_rect() -> Rect2:
+	var body := _body_rect()
+	var close := _close_button_rect()
+	var h := PANEL_TOP_BAR_HEIGHT - 16.0
+	var w := minf(300.0, maxf(140.0, body.size.x * 0.28))
+	var x := close.position.x - PANEL_HEADER_PADDING - w
+	return Rect2(Vector2(x, body.position.y + (PANEL_TOP_BAR_HEIGHT - h) * 0.5), Vector2(w, h))
+
+
+func _sync_search_input_layout() -> void:
+	if _search_input == null:
+		return
+	if DS.theme != null and _search_input.theme != DS.theme:
+		_search_input.theme = DS.theme
+	var rect := _search_input_rect()
+	_search_input.position = rect.position
+	_search_input.size = rect.size
+	_search_input.visible = visible
+
 func _make_stamp_font() -> Font:
 	var font := SystemFont.new()
 	font.font_names = PackedStringArray(["Georgia", "Times New Roman", "Times"])
@@ -138,6 +206,14 @@ func _make_stamp_font() -> Font:
 	return font
 
 func _input(event: InputEvent) -> void:
+	# Esc cancels free-unlock picking and must work even while the search LineEdit has focus.
+	if _choosing_free_unlock and event is InputEventKey and event.pressed \
+			and not event.echo and event.keycode == KEY_ESCAPE:
+		_choosing_free_unlock = false
+		_hover_unlock_title = ""
+		queue_redraw()
+		get_viewport().set_input_as_handled()
+		return
 	if not visible or not _event_inside_panel(event):
 		return
 
@@ -163,13 +239,6 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 			return
 
-		if mouse_event.button_index == MOUSE_BUTTON_RIGHT and mouse_event.pressed and _choosing_free_unlock:
-			_choosing_free_unlock = false
-			_hover_unlock_title = ""
-			queue_redraw()
-			accept_event()
-			return
-
 		if mouse_event.button_index == MOUSE_BUTTON_LEFT:
 			if mouse_event.pressed:
 				if _close_button_rect().has_point(mouse_event.position):
@@ -182,6 +251,9 @@ func _gui_input(event: InputEvent) -> void:
 					queue_redraw()
 					accept_event()
 					return
+				if _toggle_requirement_dropdown(mouse_event.position):
+					accept_event()
+					return
 				if _choosing_free_unlock and _try_choose_free_unlock(mouse_event.position):
 					accept_event()
 					return
@@ -192,11 +264,10 @@ func _gui_input(event: InputEvent) -> void:
 				if _dragging_tree:
 					accept_event()
 					return
-			else:
-				if _dragging_tree:
-					_dragging_tree = false
-					accept_event()
-					return
+			elif _dragging_tree:
+				_dragging_tree = false
+				accept_event()
+				return
 
 	if event is InputEventMouseMotion and _dragging_tree:
 		var motion := event as InputEventMouseMotion
@@ -206,6 +277,7 @@ func _gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
 		_update_hover_unlock(motion.position)
+		_update_profitability_tooltip(motion.position)
 
 	if event is InputEventMagnifyGesture:
 		var gesture := event as InputEventMagnifyGesture
@@ -217,6 +289,7 @@ func _gui_input(event: InputEvent) -> void:
 		_pan_tree(-(event as InputEventPanGesture).delta)
 		get_viewport().set_input_as_handled()
 		accept_event()
+
 
 func _draw() -> void:
 	if size.x <= 0.0 or size.y <= 0.0:
@@ -279,6 +352,7 @@ func _draw_panel_top_bar() -> void:
 		HORIZONTAL_ALIGNMENT_LEFT
 	)
 	_sync_close_button_layout()
+	_sync_search_input_layout()
 
 func _draw_knowledge_panel() -> void:
 	var rect := _knowledge_panel_rect()
@@ -456,6 +530,7 @@ func _load_unlock_rows() -> void:
 func _on_resized() -> void:
 	_category_view_state.clear()
 	_sync_close_button_layout()
+	_sync_search_input_layout()
 	queue_redraw()
 
 func _on_turn_advanced(new_turn: int) -> void:
@@ -643,6 +718,47 @@ func _unlock_title_at_position(position: Vector2) -> String:
 			return title
 	return ""
 
+## The requirements row is the card's small disclosure control. Keeping it in the
+## custom canvas (rather than adding 235 Buttons) preserves the panel's pan/zoom
+## behaviour while making every node expose its full unlock contract on demand.
+func _toggle_requirement_dropdown(position: Vector2) -> bool:
+	var unlocks := _category_unlocks(_selected_category)
+	var layout := _layout_unlocks(unlocks)
+	var state := _current_view_state()
+	var origin := _tree_origin() + (state["pan"] as Vector2)
+	var world_position := (position - origin) / float(state["zoom"])
+	for unlock in unlocks:
+		if bool(unlock.get("is_category_root", false)):
+			continue
+		var title := str(unlock.get("title", ""))
+		if title == "" or not layout.has(title):
+			continue
+		if _requirement_row_rect(layout[title] as Rect2).has_point(world_position):
+			if _expanded_requirement_titles.has(title):
+				_expanded_requirement_titles.erase(title)
+			else:
+				_expanded_requirement_titles[title] = true
+			queue_redraw()
+			return true
+	return false
+
+func _update_profitability_tooltip(position: Vector2) -> void:
+	var next_tooltip := ""
+	var unlocks := _category_unlocks(_selected_category)
+	var layout := _layout_unlocks(unlocks)
+	var state := _current_view_state()
+	var origin := _tree_origin() + (state["pan"] as Vector2)
+	var world_position := (position - origin) / float(state["zoom"])
+	for unlock in unlocks:
+		if str(unlock.get("action", "")) != "Run Profitable":
+			continue
+		var title := str(unlock.get("title", ""))
+		if title != "" and layout.has(title) and _requirement_row_rect(layout[title] as Rect2).has_point(world_position):
+			next_tooltip = "Profitably means its unit cost is lower than the current market price of what it produces."
+			break
+	if tooltip_text != next_tooltip:
+		tooltip_text = next_tooltip
+
 func _select_tab_at(position: Vector2) -> bool:
 	for category in CATEGORIES:
 		var rect := _tab_rect_for_category(category)
@@ -692,12 +808,39 @@ func _draw_tree() -> void:
 			_draw_unlock(unlock, layout[title], _unlock_brightness(layout[title], layout_bounds))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
+## The single filter every consumer goes through — layout, hit-testing, zoom bounds and
+## drawing all read this — so search hooks in here and the rest follows for free.
+##
+## With a query active the tab is IGNORED and matches come from EVERY category. That is
+## the point: the node you are hunting is usually in a tab you would not have guessed
+## (the tutorial asks for High Strength Glassmaking, which is filed under Inorganic
+## Chemistry), and a search that only looked in the open tab would not have helped.
+## Prereq cables to filtered-out parents simply do not draw — _draw_connections already
+## skips a prereq that is not in the layout.
 func _category_unlocks(category: String) -> Array[Dictionary]:
+	var query := _search_query.strip_edges().to_lower()
+	if query != "":
+		var hits: Array[Dictionary] = []
+		for unlock in _unlock_rows:
+			if _unlock_matches(unlock, query):
+				hits.append(unlock)
+		return hits
 	var rows: Array[Dictionary] = [_category_root_unlock(category)]
 	for unlock in _unlock_rows:
 		if unlock.get("category", "") == category:
 			rows.append(unlock)
 	return rows
+
+
+## Name or reward text. The description is where the reward lives ("Increases Concrete
+## output by 10% permanently"), so searching "concrete" or "maintenance" finds nodes by
+## what they DO, not just what they are called. Category is included too, so typing a
+## tab name still gathers that tree.
+func _unlock_matches(unlock: Dictionary, query: String) -> bool:
+	for key in ["title", "description", "category"]:
+		if str(unlock.get(key, "")).to_lower().contains(query):
+			return true
+	return false
 
 func _category_root_unlock(category: String) -> Dictionary:
 	return {
@@ -1361,15 +1504,52 @@ func _draw_unlock(unlock: Dictionary, rect: Rect2, brightness: float) -> void:
 	draw_style_box(_description_style, desc_rect)
 	_draw_wrapped_lines(BODY_FONT, unlock["description"], desc_rect.grow(-7.0), UNLOCK_DESC_SIZE, DS.PALETTE["TEXT_MUTED"], 4)
 
-	var condition_rect := Rect2(rect.position + Vector2(14.0, 142.0), Vector2(rect.size.x - 28.0, 44.0))
-	if free_unlocked:
-		_draw_free_unlock_bar(condition_rect)
-	elif locked:
-		draw_style_box(_condition_style, condition_rect)
-		_draw_wrapped_lines(BODY_FONT, _lock_reason(unlock), condition_rect.grow(-7.0), UNLOCK_CONDITION_SIZE, DS.PALETTE["TEXT_MUTED"], 2, HORIZONTAL_ALIGNMENT_CENTER, true)
+	var requirement_rect := _requirement_row_rect(rect)
+	var expanded := _expanded_requirement_titles.has(title)
+	draw_style_box(_condition_style, requirement_rect)
+	var summary := "Unlocked" if free_unlocked else (_lock_reason(unlock) if locked else _condition_text(unlock))
+	_draw_wrapped_lines(BODY_FONT, summary, requirement_rect.grow_individual(-7.0, -5.0, -26.0, -5.0), UNLOCK_CONDITION_SIZE, DS.PALETTE["TEXT_MUTED"] if locked else DS.PALETTE["ACCENT"], 2, HORIZONTAL_ALIGNMENT_CENTER, true)
+	_draw_requirement_caret(requirement_rect, expanded, DS.PALETTE["ACCENT"] if not locked else DS.PALETTE["TEXT_MUTED"])
+	if expanded:
+		var details_rect := Rect2(rect.position + Vector2(14.0, 186.0), Vector2(rect.size.x - 28.0, rect.size.y - 200.0))
+		draw_style_box(_description_style, details_rect)
+		_draw_wrapped_lines(BODY_FONT, _requirement_details(unlock), details_rect.grow( -7.0), UNLOCK_CONDITION_SIZE, DS.PALETTE["TEXT_MUTED"], 5, HORIZONTAL_ALIGNMENT_LEFT, true)
+
+func _requirement_row_rect(card_rect: Rect2) -> Rect2:
+	return Rect2(card_rect.position + Vector2(14.0, 142.0), Vector2(card_rect.size.x - 28.0, 38.0))
+
+func _draw_requirement_caret(rect: Rect2, expanded: bool, color: Color) -> void:
+	var center := Vector2(rect.end.x - 15.0, rect.get_center().y)
+	var points := PackedVector2Array([
+		center + (Vector2(-4.0, 2.0) if expanded else Vector2(-2.0, -4.0)),
+		center + (Vector2(4.0, 2.0) if expanded else Vector2(-2.0, 4.0)),
+		center + (Vector2(0.0, -3.0) if expanded else Vector2(4.0, 0.0)),
+	])
+	draw_colored_polygon(points, color)
+
+func _requirement_details(unlock: Dictionary) -> String:
+	var lines: Array[String] = []
+	var condition := _condition_text(unlock)
+	if condition != "":
+		lines.append("Requirement: %s" % condition)
+	var prereqs := _prereq_titles(unlock)
+	if prereqs.is_empty():
+		lines.append("Prerequisites: none")
 	else:
-		draw_style_box(_condition_style, condition_rect)
-		_draw_wrapped_lines(BODY_FONT, _condition_text(unlock), condition_rect.grow(-7.0), UNLOCK_CONDITION_SIZE, DS.PALETTE["ACCENT"], 2, HORIZONTAL_ALIGNMENT_CENTER, true)
+		lines.append("Prerequisites: %s" % _join_condition_parts(prereqs))
+	var rank := _rank_value(unlock)
+	if rank == "I":
+		lines.append("Tier I: available from the start")
+	else:
+		var previous: String = str(RANKS[maxi(0, RANKS.find(rank) - 1)])
+		var category := str(unlock.get("category", ""))
+		var prior_tier_nodes := 0
+		for node in _unlock_rows:
+			if str(node.get("category", "")) == category and _rank_value(node) == previous:
+				prior_tier_nodes += 1
+		var required_nodes := mini(3, prior_tier_nodes)
+		lines.append("Tier %s: unlock %d Tier %s node%s in %s" % [rank, required_nodes, previous, "" if required_nodes == 1 else "s", category])
+	return "\n".join(lines)
 
 func _draw_unlock_shell(rect: Rect2, brightness: float, unlock: Dictionary, free_unlocked: bool, hovered_for_free: bool, locked: bool = false) -> void:
 	_draw_unlock_shadow(rect, brightness)
@@ -1525,19 +1705,87 @@ func _condition_text(unlock: Dictionary) -> String:
 	var action := String(unlock.get("action", "")).strip_edges()
 	# Spare/unused nodes carry a "Placeholder" sentinel instead of a real condition.
 	if action == "Placeholder":
-		return "Placeholder"
+		return "No activity requirement"
 	var object_name := String(unlock.get("object", "")).strip_edges()
 	var quantity := String(unlock.get("quantity", "")).strip_edges()
 	var unit := String(unlock.get("unit", "")).strip_edges()
 	if action.is_empty() or object_name.is_empty() or quantity.is_empty() or unit.is_empty():
 		return ""
+	if action == "Produce All":
+		var goods := object_name.split("|", false)
+		var quantities := quantity.split("|", false)
+		if goods.size() == quantities.size() and not goods.is_empty():
+			var parts: Array = []
+			for index in goods.size():
+				parts.append("%s %s" % [str(quantities[index]), str(goods[index]).capitalize()])
+			return "Produce %s" % _join_condition_parts(parts)
+	match action:
+		"Produce": return "Produce %s %s" % [quantity, object_name.capitalize()]
+		"Sell": return "Sell %s units through the market" % quantity if object_name.to_lower() == "freight" else "Sell %s %s through the market" % [quantity, object_name.capitalize()]
+		"Build": return "Build %s %s" % [quantity, object_name.capitalize()]
+		"Own": return "Own %s land plots" % quantity if object_name.to_lower() == "land" else "Own %s %s" % [quantity, object_name.capitalize()]
+		"Run":
+			var run_turns := _leading_condition_int(unit, 0)
+			return "Operate at least %s %s at full capacity for %s consecutive turns" % [quantity, _condition_building_label(object_name, int(quantity)), run_turns] if run_turns > 0 else "Operate %s at full capacity for %s consecutive turns" % [object_name, quantity]
+		"Run L1": return "Operate %s Level 1 %s at full capacity for %s" % [quantity, object_name.capitalize(), unit]
+		"Run Profitable":
+			var profitable_turns := _leading_condition_int(unit, 0)
+			return "Operate at least %s %s profitably for %s consecutive turns" % [quantity, _condition_building_label(object_name, int(quantity)), profitable_turns] if profitable_turns > 0 else "Operate %s %s profitably" % [quantity, _condition_building_label(object_name, int(quantity))]
+		"Run Profitable L2": return "Operate %s Level 2 %s profitably" % [quantity, object_name.capitalize()]
+		"Run Multiple": return _run_multiple_condition_text(unlock)
+		"Fulfil Special Orders": return "Fulfil at least %s special orders" % quantity
+		"Run Recipe": return "Operate %s buildings using a %s recipe" % [quantity, object_name]
+		"Survey": return "Survey %s %s" % [quantity, object_name]
+		"Stockpile filled": return "Supply one stockpile from %s for %s consecutive turns" % [object_name, quantity]
+		"Sustain": return "Maintain %s for %s consecutive turns" % [object_name, quantity]
+		"Use Infrastructure": return "Use at least %s %s at 80%% throughput or higher" % [quantity, object_name.capitalize()] if not "for" in unit else "Use %s %s at 80%% capacity for %s consecutive turns" % [quantity, object_name.capitalize(), _leading_condition_int(unit.get_slice("for", 1), 5)]
+		"Firm Intermittency": return "Firm at least %s power of intermittent generation" % quantity
+	return "%s %s %s" % [action, object_name, quantity]
 
-	var unit_lower := unit.to_lower()
-	if unit_lower == "turns":
-		return "%s %s for %s turns" % [action, object_name, quantity]
-	if unit_lower == "percentage":
-		return "%s %s to %s%%" % [action, object_name, quantity]
-	return "%s %s %s %s" % [action, object_name, quantity, unit]
+func _run_multiple_condition_text(unlock: Dictionary) -> String:
+	var targets := str(unlock.get("object", "")).split("|", false)
+	var quantities := str(unlock.get("quantity", "")).split("|", false)
+	var turns := _leading_condition_int(str(unlock.get("unit", "")), 0)
+	if targets.is_empty() or targets.size() != quantities.size() or turns <= 0:
+		return ""
+	var parts: Array[String] = []
+	for index in targets.size():
+		parts.append("%s %s" % [str(quantities[index]), _condition_building_label(str(targets[index]), int(quantities[index]))])
+	return "Operate at least %s at full capacity for %s consecutive turns" % [_join_condition_parts(parts), turns]
+
+func _condition_building_label(raw: String, quantity: int = 1) -> String:
+	var key := raw.strip_edges().to_lower().replace(" ", "_")
+	if key == "high_tech_manufactory|assembly_plant":
+		return "High Tech Manufactories and/or Assembly Plants"
+	if key == "any":
+		return "buildings"
+	var label: String = str({
+		"high_tech_manufactory": "High Tech Manufactory",
+		"assembly_plant": "Assembly Plant",
+		"solar_farm": "Solar Farm",
+		"farm": "Farm",
+	}.get(key, raw.capitalize()))
+	if quantity != 1:
+		if label.ends_with("y"):
+			return "%sies" % label.left(label.length() - 1)
+		return "%ss" % label
+	return label
+
+func _leading_condition_int(value: String, default_value: int) -> int:
+	var digits := ""
+	for ch in value.strip_edges():
+		if ch >= "0" and ch <= "9":
+			digits += ch
+		elif digits != "":
+			break
+	return int(digits) if digits != "" else default_value
+
+func _join_condition_parts(parts: Array) -> String:
+	if parts.size() <= 1:
+		return str(parts[0]) if parts.size() == 1 else ""
+	if parts.size() == 2:
+		return "%s and %s" % [str(parts[0]), str(parts[1])]
+	return ", ".join(parts.slice(0, parts.size() - 1)) + ", and " + str(parts[parts.size() - 1])
 
 func _draw_tabs() -> void:
 	var tab_bar := _tab_bar_rect()
@@ -1622,7 +1870,25 @@ func _draw_wrapped_lines(font: Font, text: String, rect: Rect2, font_size: int, 
 	if center_vertically:
 		start_y = rect.position.y + (rect.size.y - content_height) * 0.5 + font_size
 	for index in lines.size():
-		draw_string(font, rect.position + Vector2(0.0, start_y - rect.position.y + float(index) * line_step), lines[index], alignment, rect.size.x, font_size, color)
+		var baseline_y := start_y + float(index) * line_step
+		draw_string(font, Vector2(rect.position.x, baseline_y), lines[index], alignment, rect.size.x, font_size, color)
+		_draw_profitably_underline(font, lines[index], rect, baseline_y, font_size, alignment, color)
+
+func _draw_profitably_underline(font: Font, line: String, rect: Rect2, baseline_y: float, font_size: int, alignment: HorizontalAlignment, color: Color) -> void:
+	var keyword := "profitably"
+	var keyword_index := line.to_lower().find(keyword)
+	if keyword_index < 0:
+		return
+	var line_width := font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x
+	var line_start_x := rect.position.x
+	if alignment == HORIZONTAL_ALIGNMENT_CENTER:
+		line_start_x += (rect.size.x - line_width) * 0.5
+	elif alignment == HORIZONTAL_ALIGNMENT_RIGHT:
+		line_start_x += rect.size.x - line_width
+	var prefix_width := font.get_string_size(line.left(keyword_index), HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x
+	var keyword_width := font.get_string_size(keyword, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x
+	var underline_y := baseline_y + 1.5
+	draw_line(Vector2(line_start_x + prefix_width, underline_y), Vector2(line_start_x + prefix_width + keyword_width, underline_y), color, 1.0)
 
 func _ellipsize(font: Font, text: String, max_width: float, font_size: int) -> String:
 	var output := text

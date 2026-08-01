@@ -21,6 +21,11 @@ const PANEL_EDGE_MARGIN := 20.0
 const TOP_BAR_CLEARANCE := 114.0   # clears the top bar AND the briefing notch hang + shadow (owner 2026-07-11)
 const BOTTOM_CLEARANCE := 110.0  # fallback: keep clear of the bottom menu when no tile panel to match
 const PANEL_WIDTH := 460.0
+
+# Empire-view click (world_map sets this before show_building): dock at the tile view
+# panel's spot instead of the default edge position — in that view there IS no tile panel,
+# and the detail panel takes its place.
+var empire_dock := false
 const MARKET_ICON := 98  # framed good-icon size, matching the market panel's goods rows
 const CREAM := Color(0.995234, 0.930806, 0.763265)  # recipe-strip parchment (matches v1 diagram paper)
 const CREAM_INK := Color(0.0, 0.119856, 0.243095)   # navy ink on the parchment
@@ -220,7 +225,7 @@ func _rebuild(building: Dictionary) -> void:
 		if BuildingReadout.owner_info(building).get("is_npc", false) == false:
 			_body.add_child(_build_battery_actions(building, recipe))
 	elif kind == "port":
-		_body.add_child(_build_port_card())
+		_body.add_child(_build_port_card(building))
 	elif is_infra:
 		_body.add_child(_build_infra_card())
 		# Levellable infra (roads/rails/pipes/reinf_pipes/cables) gets the same Upgrade
@@ -300,7 +305,7 @@ func _render_npc(building: Dictionary, building_data: Dictionary, recipe: Dictio
 	_set_badge({"label": "NPC-owned", "tone": "info"})
 	var kind := BuildingReadout.classify(building_data, recipe, str(building.get("building_id", "")))
 	if kind == "port":
-		_body.add_child(_build_port_card())
+		_body.add_child(_build_port_card(building))
 	else:
 		var fl := BuildingReadout.flow(building, recipe)
 		if not (fl.get("output", {}) as Dictionary).is_empty() or not (fl.get("inputs", []) as Array).is_empty():
@@ -657,28 +662,122 @@ func _infrastructure_level_accordion(key: String, level: int) -> VBoxContainer:
 		header.text = "Level %d   %s" % [level, "▾" if details.visible else "▸"])
 	return box
 
-func _build_port_card() -> PanelContainer:
-	var card := PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = CREAM
-	style.set_corner_radius_all(10)
-	style.set_content_margin_all(14)
-	card.add_theme_stylebox_override("panel", style)
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 4)
-	card.add_child(vb)
+func _build_port_card(building: Dictionary) -> PanelContainer:
+	var card := _make_card()
+	var vb := card.get_child(0) as VBoxContainer
+	var title_row := HBoxContainer.new()
+	title_row.add_theme_constant_override("separation", 8)
+	vb.add_child(title_row)
+	var gold_hex := Label.new()
+	gold_hex.text = "⬡"
+	gold_hex.add_theme_font_size_override("font_size", 34)
+	gold_hex.add_theme_color_override("font_color", Color("c99832"))
+	title_row.add_child(gold_hex)
 	var head := Label.new()
 	head.theme_type_variation = "BuildingName"
-	head.add_theme_color_override("font_color", CREAM_INK)
-	head.text = "Connected to the global market"
+	head.add_theme_color_override("font_color", Color.WHITE)
+	head.text = "Sea freight terminal"
 	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vb.add_child(head)
+	head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(head)
 	var sub := Label.new()
-	sub.add_theme_color_override("font_color", CREAM_INK)
+	sub.add_theme_color_override("font_color", Color.WHITE)
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sub.text = "The default sea route for this coastal region — output ships out to, and inputs arrive from, the world market through this port."
+	sub.text = "Inputs arrive from, and outputs ship to, the world market through this port. Sea freight is booked under Transport."
 	vb.add_child(sub)
+	var tile := str(building.get("tile_id", ""))
+	var sea := MatchState.seaport_shipping_summary(tile)
+	var owned := bool(sea.get("owned", false))
+	var growth := float(sea.get("growth", 1.0))
+	var rate_pct := float(sea.get("insurance_rate", 0.0)) * 100.0 * growth
+	var default_head := Label.new()
+	default_head.theme_type_variation = "Caption"
+	default_head.text = "DEFAULT PORT TERMS"
+	default_head.add_theme_color_override("font_color", Color.WHITE)
+	vb.add_child(default_head)
+	vb.add_child(_port_metric("Base fee", "£5.00 per active good / turn"))
+	vb.add_child(_port_metric("Insurance", "0.0500% of market buy value"))
+	vb.add_child(_port_metric("Throughput", "1,500 per class · 300 hazardous liquids, gases and ultra-heavy solids"))
+	vb.add_child(_port_metric("At the throughput cap", "Sea fees double for that shipment"))
+	vb.add_child(HSeparator.new())
+	var actual_head := Label.new()
+	actual_head.theme_type_variation = "Caption"
+	actual_head.text = "YOUR CURRENT PORT COSTS"
+	actual_head.add_theme_color_override("font_color", Color.WHITE)
+	vb.add_child(actual_head)
+	var actual_base := "£0.00 per active good" if owned else "£%.2f per active good" % (float(sea.get("base_fee", 0.0)) * growth)
+	vb.add_child(_port_metric("Base fee now", actual_base))
+	vb.add_child(_port_metric("Insurance now", "%.4f%% of market buy value" % rate_pct))
+	vb.add_child(_port_metric("Throughput now", "%s per class · %s restricted classes" % [
+		_fmt_int(sea_port_cap("g_018")), _fmt_int(sea_port_cap("g_017"))
+	]))
+	if owned:
+		vb.add_child(_port_metric("Owned-port upkeep", "£20.00 maintenance · about £15 labour / turn"))
+	var rows: Array = sea.get("rows", [])
+	if rows.is_empty():
+		var none := Label.new()
+		none.add_theme_color_override("font_color", Color.WHITE)
+		none.text = "No goods have shipped through this port yet."
+		vb.add_child(none)
+	else:
+		var used_by_class: Dictionary = sea.get("usage", {})
+		var activity := Label.new()
+		activity.theme_type_variation = "Caption"
+		activity.add_theme_color_override("font_color", Color.WHITE)
+		activity.text = "THIS TURN'S SEA FREIGHT" if bool(sea.get("is_current_turn", true)) else "MOST RECENT SEA FREIGHT"
+		vb.add_child(activity)
+		for row_value in rows:
+			var row: Dictionary = row_value
+			vb.add_child(_port_activity_row(row, used_by_class))
 	return card
+
+func _port_activity_row(row_data: Dictionary, used_by_class: Dictionary) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.custom_minimum_size = Vector2(0, 48)
+	row.add_theme_constant_override("separation", 8)
+	var gid := str(row_data.get("good_id", ""))
+	var icon := _flat_good_cell(gid, Catalog.get_internal_name(gid), int(row_data.get("total_qty", 0)), 40)
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(icon)
+	var detail := VBoxContainer.new()
+	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail.add_theme_constant_override("separation", 0)
+	var name := Label.new()
+	name.text = Catalog.get_display_name(gid)
+	name.add_theme_color_override("font_color", Color.WHITE)
+	detail.add_child(name)
+	var buy_qty := int(row_data.get("buy_qty", 0))
+	var sell_qty := int(row_data.get("sell_qty", 0))
+	var direction := Label.new()
+	direction.add_theme_color_override("font_color", Color.WHITE)
+	direction.add_theme_font_size_override("font_size", 12)
+	direction.text = "Bought %d · sold %d" % [buy_qty, sell_qty]
+	detail.add_child(direction)
+	row.add_child(detail)
+	var cost := Label.new()
+	cost.size_flags_horizontal = Control.SIZE_SHRINK_END
+	cost.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	cost.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	cost.add_theme_color_override("font_color", Color.WHITE)
+	cost.add_theme_font_size_override("font_size", 12)
+	cost.tooltip_text = "Per-turn fee | ad valorem"
+	cost.text = "£%.2f | £%.2f" % [float(row_data.get("base_fee", 0.0)), float(row_data.get("insurance_fee", 0.0))]
+	row.add_child(cost)
+	var transport_class := str(row_data.get("transport_class", ""))
+	var capacity := int(row_data.get("capacity", 0))
+	var used := int(used_by_class.get(transport_class, 0))
+	row.tooltip_text = "%d / %d %s" % [used, capacity, transport_class.replace("_", " ")]
+	return row
+
+func _port_metric(key: String, value: String) -> HBoxContainer:
+	var row := _metric(key, value, Color.WHITE, false)
+	var key_label := row.get_child(0) as Label
+	if key_label != null:
+		key_label.add_theme_color_override("font_color", Color.WHITE)
+	return row
+
+func sea_port_cap(good_id: String) -> int:
+	return MatchState.seaport_throughput_cap(good_id)
 
 # --- primary actions (upgrade · change recipe) ---------------------------------------------
 
@@ -1721,14 +1820,38 @@ func _input_summary(building: Dictionary, recipe: Dictionary) -> String:
 	return ", ".join(names) if not names.is_empty() else "Market / unlinked"
 
 func _output_summary(building: Dictionary, recipe: Dictionary) -> String:
+	var iid := str(building.get("instance_id", ""))
+	var gid := BuildingStatus.primary_output_good_id(recipe)
+	var split := MatchState.get_output_split_destinations(iid, gid)
+	if split.size() >= 2:
+		var produced := BuildingStatus.primary_output_qty(recipe)
+		var remaining := produced
+		var automatic: Array = []
+		var quantities: Dictionary = {}
+		for destination in split:
+			var requested := int((destination as Dictionary).get("qty", 0))
+			var tile_id := str((destination as Dictionary).get("tile_id", ""))
+			if requested > 0:
+				quantities[tile_id] = mini(requested, remaining)
+				remaining -= int(quantities[tile_id])
+			else:
+				automatic.append(destination)
+		for index in automatic.size():
+			var tile_id := str((automatic[index] as Dictionary).get("tile_id", ""))
+			var share := ceili(float(remaining) / float(automatic.size() - index)) if remaining > 0 else 0
+			quantities[tile_id] = share
+			remaining -= share
+		var lines: Array = []
+		for destination in split:
+			var tile_id := str((destination as Dictionary).get("tile_id", ""))
+			lines.append("%s: %d" % [Catalog.tile_label(tile_id), int(quantities.get(tile_id, 0))])
+		return "\n".join(lines)
 	var route := BuildingReadout.output_route(building, recipe)
 	var dest := str(route.get("destination", "—"))
 	if not bool(route.get("reachable", true)):
 		dest += " · no route"
 	# Quantity-capped tile route (CTRL+click flow): show the split — what ships out
 	# and what stays behind, each on its own line (the card grows to fit).
-	var iid := str(building.get("instance_id", ""))
-	var gid := BuildingStatus.primary_output_good_id(recipe)
 	var cap := MatchState.get_output_ship_quantity(iid, gid)
 	if cap > 0 and not bool(route.get("has_market", false)):
 		var produced := BuildingStatus.primary_output_qty(recipe)
@@ -1854,10 +1977,11 @@ func _open_output_sheet(building: Dictionary, recipe: Dictionary) -> void:
 	_open_sheet("Output destination", func(vb: VBoxContainer) -> void:
 		if good_id == "":
 			return
+		var split := MatchState.get_output_split_destinations(iid, good_id)
 		var cur_dest := MatchState.get_output_stockpile_destination(iid, good_id)
 		var is_market := MatchState.is_output_market(iid, good_id)
 		var on_tile := cur_dest != "" and cur_dest == tile_id
-		var other := cur_dest != "" and cur_dest != tile_id
+		var other := split.size() >= 2 or (cur_dest != "" and cur_dest != tile_id)
 		if not is_market and not on_tile and not other:  # no explicit route → the global sell mode
 			if MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL:
 				on_tile = true
@@ -1873,9 +1997,53 @@ func _open_output_sheet(building: Dictionary, recipe: Dictionary) -> void:
 			MatchState.set_output_stockpile_destination(iid, tile_id, good_id)
 			_queue_refresh()
 			_open_output_sheet(building, recipe)))
-		vb.add_child(_dest_option("Ship to another tile", "Pick a tile on the map to feed a downstream building you own.", other, func() -> void:
-			MatchState.begin_output_stockpile_selection(iid, good_id)
+		vb.add_child(_dest_option("Ship to another tile", "Pick a tile on the shipping map to feed a downstream building you own.", other, func() -> void:
+			MatchState.begin_output_stockpile_selection(iid, good_id, true)
 			_close_sheet()))
+		if split.size() >= 2:
+			vb.add_child(HSeparator.new())
+			var split_head := Label.new()
+			split_head.theme_type_variation = "Caption"
+			split_head.text = "SPLIT OUTPUT — UNITS PER TURN"
+			split_head.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+			vb.add_child(split_head)
+			var produced := BuildingStatus.primary_output_qty(recipe)
+			var automatic_count := 0
+			var committed := 0
+			for destination in split:
+				var requested := int((destination as Dictionary).get("qty", 0))
+				if requested > 0:
+					committed += mini(requested, produced)
+				else:
+					automatic_count += 1
+			var automatic_qty := ceili(float(maxi(0, produced - committed)) / float(maxi(1, automatic_count)))
+			for destination in split:
+				var row := HBoxContainer.new()
+				row.add_theme_constant_override("separation", DS.SP["SM"])
+				var tile_name := Label.new()
+				tile_name.theme_type_variation = "Body"
+				tile_name.text = Catalog.tile_label(str((destination as Dictionary).get("tile_id", "")))
+				tile_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				row.add_child(tile_name)
+				var amount := LineEdit.new()
+				amount.custom_minimum_size = Vector2(76, 0)
+				amount.max_length = 3
+				amount.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+				amount.placeholder_text = "Auto %d" % automatic_qty if int((destination as Dictionary).get("qty", 0)) <= 0 else ""
+				amount.text = str(int((destination as Dictionary).get("qty", 0))) if int((destination as Dictionary).get("qty", 0)) > 0 else ""
+				var destination_tile := str((destination as Dictionary).get("tile_id", ""))
+				amount.text_changed.connect(func(value: String) -> void:
+					var digits := ""
+					for character in value:
+						if character >= "0" and character <= "9":
+							digits += character
+					if digits.length() > 3:
+						digits = digits.left(3)
+					if digits != value:
+						amount.set_text(digits)
+					MatchState.set_output_split_quantity(iid, good_id, destination_tile, int(digits) if digits != "" else 0))
+				row.add_child(amount)
+				vb.add_child(row)
 		# Where the output actually ends up: the resolved destination (nearest port for a market
 		# route, else the target tile) + how far/costly it is to reach.
 		var route := BuildingReadout.output_route(building, recipe)
@@ -2135,6 +2303,14 @@ func _size_and_position() -> void:
 	var vp := get_viewport().get_visible_rect().size
 	var right_edge := vp.x - PANEL_EDGE_MARGIN
 	var top_edge := TOP_BAR_CLEARANCE
+	if empire_dock:
+		# Empire-view click: sit exactly where the tile view panel normally sits
+		# (tile_info_panel_v2._apply_anchors: 30 in from the right edge, 78 down).
+		right_edge = vp.x - 30.0
+		top_edge = 78.0
+		var x2 := clampf(right_edge - size.x, PANEL_EDGE_MARGIN, maxf(PANEL_EDGE_MARGIN, vp.x - size.x - PANEL_EDGE_MARGIN))
+		global_position = Vector2(x2, top_edge)
+		return
 	var tile_panel := get_parent().get_node_or_null("TileInfoPanel") as Control
 	if tile_panel != null and tile_panel.visible:
 		right_edge = tile_panel.global_position.x - PANEL_EDGE_MARGIN

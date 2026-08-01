@@ -34,7 +34,7 @@ const HSM_POINTS := {
 const HSM_ORDER := ["HSM1", "HSM2", "HSM3", "HSM4", "HSM5", "HSM6"]
 
 signal tile_selected(tile_data)
-signal stockpile_destination_selected(tile_data, ctrl: bool)
+signal stockpile_destination_selected(tile_data, ctrl: bool, shift: bool)
 signal survey_tile_clicked(tile_data)
 
 var tiles := {}  # Vector2i(q, r) -> Dictionary
@@ -571,8 +571,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			var tile_data: Dictionary = tiles[map_pos]
 
 			if _stockpile_destination_selection_active:
-				stockpile_destination_selected.emit(tile_data, event.ctrl_pressed or event.meta_pressed)
-				end_stockpile_destination_selection()
+				var shift: bool = event.shift_pressed
+				stockpile_destination_selected.emit(tile_data, event.ctrl_pressed or event.meta_pressed, shift)
+				# Shift-click keeps the picker open so output can be split between tiles.
+				if not shift:
+					end_stockpile_destination_selection()
 				get_viewport().set_input_as_handled()
 			elif MapMode.current_mode == MapMode.Mode.SURVEYING:
 				survey_tile_clicked.emit(tile_data)
@@ -581,22 +584,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				BuildMode.attempt_build(tile_data.id)
 			else:
 				tile_selected.emit(tile_data)
-		return
-
-	if event.button_index == MOUSE_BUTTON_RIGHT:
-		var handled := false
-		if _stockpile_destination_selection_active:
-			MatchState.cancel_output_stockpile_selection()
-			end_stockpile_destination_selection()
-			handled = true
-		if BuildMode.is_active:
-			BuildMode.exit_build_mode()
-			handled = true
-		if MapMode.is_active():
-			MapMode.exit_mode()
-			handled = true
-		if handled:
-			get_viewport().set_input_as_handled()
 		return
 
 func _river_data_for_tile(tile_data: Dictionary) -> Dictionary:

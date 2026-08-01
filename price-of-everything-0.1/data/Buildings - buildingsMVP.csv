@@ -2,7 +2,7 @@ ID,internal_name,display_name,energy_cost,building_stockpile,base_price,build_co
 b_001,mine,Mine,1,10000,30,30,construction_equipment_ice,1,concrete,3,rubber,4,plastics,4,,,2,30,production,standard,10000,,,,,4,2580,390,20,extraction,0,,,,,
 b_002,furnace,Furnace,1,10000,20,20,concrete,3,building_frame,2,construction_equipment_ice,1,rubber,2,plastics,2,2,20,production,standard,10000,,,,,3,880,330,33,metallurgy,0,,,,,
 b_003,power_plant,Power plant,0,0,15,15,steel,4,concrete,4,construction_equipment_ice,1,rubber,4,plastics,4,2,15,power,standard,10000,,,,,8,31,180,94,power,0,,,,,
-b_004,port,Port,1,10000,10000,10000,,,,,,,,,,,2,15,infrastructure,standard,10000,,,,,15,0,0,0,infrastructure,600,,,,,
+b_004,port,Port,1,10000,10000,10000,,,,,,,,,,,2,15,infrastructure,standard,10000,,,,,20,0,0,500,infrastructure,600,,,,,
 b_005,roads,Roads,0,0,25,25,,,,,,,,,,,1,2,infrastructure,standard,10000,,,,,1.5,0,0,0,infrastructure,0,,,,,
 b_006,cables,Cables,0,0,20,20,copper_wiring,5,electrical_components,2,,,,,,,1,2,infrastructure,standard,10000,,,,,1.5,0,0,0,infrastructure,0,,,,,
 b_007,industrial_factory,Industrial Goods Factory,10,10000,10,10,concrete,3,building_frame,3,construction_equipment_ice,1,rubber,4,plastics,4,2,10,production,standard,10000,,,,,10.5,5472,2052,207,manufacturing,0,,,,,

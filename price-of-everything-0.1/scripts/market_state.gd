@@ -293,8 +293,13 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 	if pay_transport_from_seller:
 		for it in items:
 			transport_cost += TransportService.transport_cost_for_route(str(it.good_id), int(it.qty), route)
-		if transport_cost > 0.0:
-			MatchState.add_money(-transport_cost)
+	# Sea costs apply to every market sale. Manual sales keep their historical gross
+	# inland freight, but never avoid the port charge.
+	for it in items:
+		var sea_charge := MatchState.commit_sea_shipping(port, str(it.good_id), int(it.qty), "sell")
+		transport_cost += float(sea_charge.get("total", 0.0))
+	if transport_cost > 0.0:
+		MatchState.add_money(-transport_cost)
 
 	var sale_record := {
 		"tile_id": source_tile,

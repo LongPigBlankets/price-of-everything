@@ -510,15 +510,19 @@ func _baseline_recipe_for_good(good_id: String) -> Dictionary:
 	return {} if fallback.is_empty() else (fallback[0] as Dictionary)
 
 func _premium_pct_for_good(good: Dictionary) -> float:
+	var base := INTERMEDIATE_PREMIUM_PCT
 	var internal := str(good.get("internal_name", ""))
 	if internal == "motor" or internal == "ice_car":
-		return ADVANCED_PREMIUM_PCT
-	var good_type := str(good.get("good_type", ""))
-	if good_type == "raw":
-		return RAW_PREMIUM_PCT
-	if good_type == "intermediate":
-		return INTERMEDIATE_PREMIUM_PCT
-	return FINISHED_PREMIUM_PCT
+		base = ADVANCED_PREMIUM_PCT
+	else:
+		var good_type := str(good.get("good_type", ""))
+		if good_type == "raw":
+			base = RAW_PREMIUM_PCT
+		elif good_type != "intermediate":
+			base = FINISHED_PREMIUM_PCT
+	# Spot Price Reporting compounds the existing premium, rather than adding
+	# a flat 25 percentage points (e.g. 40% becomes 50%, not 65%).
+	return Modifiers.apply("special_order_premium", internal, base, {"good_internal": internal})
 
 func _next_order_id(good_internal: String) -> String:
 	var id := "so_%s_%06d" % [good_internal, _next_order_counter]

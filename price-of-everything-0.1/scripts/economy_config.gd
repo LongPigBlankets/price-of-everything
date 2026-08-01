@@ -116,12 +116,17 @@ func units_cap_for_impact(max_pct: int) -> int:
 	# max_pct 0 -> GLUT_UNITS (no impact); 1 -> 2*GLUT_UNITS; etc.
 	return GLUT_UNITS * (max_pct + 1)
 
-# --- Seaport subscription shipping ---
-# A seaport can transfer ANY volume of a subscribed good in 1 turn for a flat per-turn
-# fee per good (NOT per unit). When a good is covered, market buy/sell shipping pays no
-# per-unit transport — just this standing subscription. (Sim auto-subscribes from turn 1;
-# the game will expose this as a per-good toggle.)
-const SEAPORT_SUBSCRIPTION_COST_PER_GOOD: float = 1.0
+# --- Seaport shipping ---
+# A subscription gives a good the one-turn sea link. The charge itself is only paid when
+# that good ships. Insurance uses the market BUY price for both imports and exports.
+const SEAPORT_SUBSCRIPTION_COST_PER_GOOD: float = 0.0 # Legacy standing fee; retained for saves.
+const SEAPORT_BASE_FEE_PER_GOOD: float = 5.0
+const SEAPORT_INSURANCE_RATE: float = 0.0005 # 0.05% of market buy value.
+const OWNED_SEAPORT_INSURANCE_RATE: float = 0.00025 # 0.025%; owned ports have no base fee.
+const SEAPORT_FEE_GROWTH_PER_TURN: float = 0.001 # Both components rise 0.1% per turn.
+const SEAPORT_THROUGHPUT_STANDARD: int = 1500
+const SEAPORT_THROUGHPUT_RESTRICTED: int = 300
+const SEAPORT_RESTRICTED_TRANSPORT_CLASSES := ["hazard_liquid", "gas", "ultra_heavy"]
 # A seaport can only service tiles within this many tiles of it (per turn).
 const SEAPORT_RANGE_TILES: int = 10
 

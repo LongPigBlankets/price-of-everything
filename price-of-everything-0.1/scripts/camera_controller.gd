@@ -14,8 +14,13 @@ extends Camera2D
 @export var zoomed_in_tile_count: float = 2.5
 
 var _target_zoom: Vector2
+# Screen point the current zoom gesture is anchored on (the cursor), held fixed in world
+# space while `zoom` eases toward `_target_zoom`. See _adjust_zoom / _apply_zoom_smoothing.
+var _zoom_anchor := Vector2.ZERO
+var _zoom_anchor_active := false
 var _intro_tween: Tween
 var _pan_tween: Tween
+var _pan_target := Vector2.INF   # destination of the live pan (see pan_to_world)
 
 # Drag-to-pan: armed by an unhandled left/middle press (so drags can never start
 # over UI), promoted to a real drag after DRAG_THRESHOLD px of motion. Motion and
@@ -126,7 +131,22 @@ func _process(delta: float) -> void:
 ## Smoothly pan to a world position — the UI-driven focus move (ledger/panel
 ## selection). Manual pans (keyboard, edge, drag) cancel it.
 func pan_to_world(target: Vector2, dur: float = 0.3) -> void:
+	# IDEMPOTENT: a repeat request for essentially the same destination while a pan is
+	# already in flight must not restart the tween. The tutorial re-runs a step's setup
+	# whenever the spotlight target has not appeared yet (_ensure_locked_panel_open), which
+	# re-emitted focus_tile and restarted this pan from wherever it had reached — measured
+	# as a 178px single-frame jerk in the middle of an otherwise smooth 1s move, which is
+	# the "map snaps in the background" during tutorial steps.
+	# Pre-clamp the destination. The per-frame _clamp_to_bounds would otherwise OVERRIDE the
+	# tween every frame — during the tutorial the board rect is narrower than the viewport,
+	# so the clamp force-centres the camera and the two fought each other. When the tween
+	# finally died the fight stopped and the camera snapped to the centre: a measured 542px
+	# single-frame jump, landing exactly as the pan ended. Aiming somewhere legal removes it.
+	target = clamped_position(target)
+	if _pan_tween != null and _pan_tween.is_valid() and _pan_target.distance_to(target) < 1.0:
+		return
 	_kill_pan_tween()
+	_pan_target = target
 	_pan_tween = create_tween()
 	_pan_tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_pan_tween.tween_property(self, "position", target, dur)
@@ -146,6 +166,7 @@ func pan_to_tile(tile_id: String, dur: float = 0.3) -> void:
 func _kill_pan_tween() -> void:
 	if _pan_tween != null and _pan_tween.is_valid():
 		_pan_tween.kill()
+	_pan_target = Vector2.INF   # no live destination; the next focus request always tweens
 
 func _input(event: InputEvent) -> void:
 	# Drag promotion/consumption runs in _input so the consumed release is
@@ -186,18 +207,35 @@ func _unhandled_input(event: InputEvent) -> void:
 		_adjust_zoom(event.factor - 1.0)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("camera_zoom_in"):
-		_adjust_zoom(1.0)
+		_adjust_zoom(1.0, false)    # keyboard: anchor on centre, the mouse is irrelevant
 	elif event.is_action_pressed("camera_zoom_out"):
-		_adjust_zoom(-1.0)
+		_adjust_zoom(-1.0, false)
 
 func _scroll_factor(event: InputEventMouseButton) -> float:
 	return maxf(absf(event.factor), 1.0)
 
-func _adjust_zoom(delta_steps: float) -> void:
+## `toward_cursor` records the cursor as the zoom anchor; the correction is then applied
+## FRAME BY FRAME in _apply_zoom_smoothing as `zoom` eases toward `_target_zoom`.
+##
+## It used to move `position` instantly here while `zoom` lerped over several frames. On a
+## mouse that reads as a small snap; on a trackpad, which fires a stream of small deltas,
+## every event added another instant jump on top of an unfinished lerp and the map juddered
+## and felt like it was fighting the scroll. Anchoring inside the smoothing means the world
+## point under the cursor is held on every rendered frame, so the view slides toward what
+## you are pointing at instead of arguing with you.
+func _adjust_zoom(delta_steps: float, toward_cursor: bool = true) -> void:
 	var effective_min := _effective_zoom_min()
-	_target_zoom = (_target_zoom + Vector2.ONE * zoom_step * delta_steps).clamp(
-		Vector2(effective_min, effective_min),
-		Vector2(zoom_max, zoom_max))
+	var new_zoom := clampf(_target_zoom.x + zoom_step * delta_steps, effective_min, zoom_max)
+	if is_equal_approx(new_zoom, _target_zoom.x):
+		return
+	if toward_cursor:
+		_zoom_anchor = get_viewport().get_mouse_position()
+		_zoom_anchor_active = true
+		_kill_pan_tween()   # a UI focus pan would fight the anchor
+	else:
+		_zoom_anchor_active = false
+	_target_zoom = Vector2(new_zoom, new_zoom)
+
 
 func _effective_zoom_min() -> float:
 	var viewport_size := get_viewport_rect().size
@@ -250,12 +288,28 @@ func _apply_zoom_smoothing(delta: float) -> void:
 		Vector2(effective_min, effective_min),
 		Vector2(zoom_max, zoom_max))
 
+	var previous := zoom.x
 	zoom = zoom.lerp(_target_zoom, zoom_smoothing * delta)
+	# Hold the anchored world point still across THIS frame's zoom change:
+	#   pos += offset/z_prev - offset/z_now
+	if _zoom_anchor_active and previous > 0.0 and zoom.x > 0.0 and not is_equal_approx(previous, zoom.x):
+		var offset := _zoom_anchor - get_viewport_rect().size * 0.5
+		position += offset / previous - offset / zoom.x
+	if _zoom_anchor_active and is_equal_approx(zoom.x, _target_zoom.x):
+		_zoom_anchor_active = false   # settled; stop steering until the next gesture
 
 @export var map_min: Vector2 = Vector2(-880, -500)  # top-left of map
 @export var map_max: Vector2 = Vector2(800, 400)    # bottom-right of map
 
 func _clamp_to_bounds() -> void:
+	position = clamped_position(position)
+
+
+## Where `pos` is actually allowed to sit, given the bounds and the current zoom. Public so
+## pan targets can be pre-clamped with the EXACT same rule the per-frame clamp applies —
+## see pan_to_world. On an axis where the map is narrower than the viewport there is only
+## one legal value (the centre), so a pan there must not aim anywhere else.
+func clamped_position(pos: Vector2) -> Vector2:
 	var viewport_size := get_viewport_rect().size
 	var half_view := (viewport_size * 0.5) / zoom
 
@@ -264,16 +318,15 @@ func _clamp_to_bounds() -> void:
 	var min_y := map_min.y + half_view.y
 	var max_y := map_max.y - half_view.y
 
-	# If the map is smaller than the viewport on an axis, center the camera on that axis
+	var out := pos
 	if min_x > max_x:
-		var center_x := (map_min.x + map_max.x) * 0.5
-		position.x = center_x
+		out.x = (map_min.x + map_max.x) * 0.5
 	else:
-		position.x = clamp(position.x, min_x, max_x)
+		out.x = clamp(out.x, min_x, max_x)
 
 	if min_y > max_y:
-		var center_y := (map_min.y + map_max.y) * 0.5
-		position.y = center_y
+		out.y = (map_min.y + map_max.y) * 0.5
 	else:
-		position.y = clamp(position.y, min_y, max_y)
+		out.y = clamp(out.y, min_y, max_y)
+	return out
 		

@@ -35,6 +35,7 @@ var _hole_from: Rect2 = Rect2()        # rect the spotlight travels FROM (empty 
 # (tutorial start, or returning from a no_dim step) and then simply stays up.
 var _dim_level := 0.0
 var _target_node: Control = null       # live node whose rect we track each frame
+var _virtual_spot := false             # custom-drawn target (currently ResearchPanel node)
 var _card: PanelContainer = null
 var _eyebrow: Label = null
 var _title: Label = null
@@ -181,7 +182,7 @@ func _process(dt: float) -> void:
 		if stale or _reresolve_t >= 0.2:
 			_reresolve_t = 0.0
 			_refind()
-	if _target_node != null and is_instance_valid(_target_node):
+	if _target_node != null and is_instance_valid(_target_node) and not _virtual_spot:
 		var r := _node_rect(_target_node)
 		if r != _hole:
 			_hole = r
@@ -235,7 +236,7 @@ func _find_scroll_ancestor(node: Node) -> ScrollContainer:
 # Does the current spotlight target a named/pathed node we should keep re-finding?
 func _needs_refind() -> bool:
 	var k := str(_spot.get("kind", ""))
-	return k == "node_name" or k == "node_path"
+	return k == "node_name" or k == "node_path" or k == "research_unlock"
 
 
 # Re-find the CURRENT node for the active spotlight (panels rebuild → the node we grabbed
@@ -247,6 +248,7 @@ func _refind() -> void:
 	var kind := str(_spot.get("kind", ""))
 	var ref := str(_spot.get("ref", ""))
 	var node: Control = null
+	_virtual_spot = false
 	if kind == "node_name":
 		var m := scene.find_child(ref, true, false)
 		if m is Control and (m as Control).is_visible_in_tree():
@@ -255,6 +257,16 @@ func _refind() -> void:
 		var n := scene.get_node_or_null(NodePath(ref))
 		if n is Control and (n as Control).is_visible_in_tree():
 			node = n as Control
+	elif kind == "research_unlock":
+		var panel := scene.find_child("ResearchPanel", true, false)
+		if panel is Control and (panel as Control).is_visible_in_tree() and panel.has_method("tutorial_unlock_rect"):
+			var rect: Rect2 = panel.tutorial_unlock_rect(ref)
+			if rect.has_area():
+				_target_node = panel as Control
+				_virtual_spot = true
+				_hole = rect
+				_reposition_card()
+				return
 	if node == null:
 		# Target gone (e.g. the encyclopedia was closed): drop the hole.
 		_target_node = null
@@ -269,11 +281,48 @@ func _refind() -> void:
 		_reposition_card()
 
 
+## Re-resolve the CURRENT step's spotlight without rebuilding the card.
+##
+## The engine used to call show_step() for this, which recreates the card's buttons — so a
+## step whose panel had gone away (clicking "Balance" replaces the treasury flyout) rebuilt
+## its Next button every 0.25s poll and the player's clicks landed on a button that no
+## longer existed. That is the "I have to press Next several times" bug. Reuse the stored
+## `_spot`, and keep the settle finished so nothing re-animates on a mere re-resolve.
+func refresh_spotlight() -> void:
+	if _spot.is_empty():
+		return
+	var previous := _hole
+	_resolve_spotlight(_spot)
+	_reveal = 1.0
+	_hole_from = previous
+	if _hole != previous:
+		_reposition_card()
+	queue_redraw()
+
+
+## Turns a guided input step into a read-only coach card: the panel beneath is fully
+## bright and interactive, but its instruction remains available in the corner.
+## Used once the player has demonstrated they found a search field, so typing the rest
+## of the query does not happen under a stale spotlight.
+func release_spotlight_and_dim() -> void:
+	_no_dim = true
+	_spot = {}
+	_target_node = null
+	_virtual_spot = false
+	_hole = Rect2()
+	_hole_from = Rect2()
+	_reveal = 1.0
+	_dim_level = 0.0
+	set_process(false)
+	_reposition_card()
+	queue_redraw()
+
+
 ## True when the current spotlight is still resolvable/visible — used by the engine to
 ## know a locked panel is still open (else it re-opens it).
 func spotlight_ok() -> bool:
 	if _target_node != null:
-		return is_instance_valid(_target_node) and (_target_node as Control).visible
+		return is_instance_valid(_target_node) and (_target_node as Control).is_visible_in_tree()
 	return _hole.has_area()
 
 
@@ -371,6 +420,7 @@ func _resolve_spotlight(spot: Dictionary) -> void:
 	_scrolled_node = null
 	_reresolve_t = 0.0
 	_target_node = null
+	_virtual_spot = false
 	_hole = Rect2()
 	match str(spot.get("kind", "none")):
 		"node_path":
@@ -391,6 +441,15 @@ func _resolve_spotlight(spot: Dictionary) -> void:
 					_target_node = m
 					_hole = _node_rect(m as Control)
 					_scroll_target_into_view(m as Control)
+		"research_unlock":
+			var scene := get_tree().current_scene
+			var panel := scene.find_child("ResearchPanel", true, false) if scene != null else null
+			if panel is Control and (panel as Control).is_visible_in_tree() and panel.has_method("tutorial_unlock_rect"):
+				var rect: Rect2 = panel.tutorial_unlock_rect(str(spot.get("ref", "")))
+				if rect.has_area():
+					_target_node = panel as Control
+					_virtual_spot = true
+					_hole = rect
 		"tile":
 			_hole = _tile_screen_rect(str(spot.get("ref", "")))
 		_:
@@ -490,13 +549,13 @@ func _build_welcome_panel() -> void:
 	_welcome_card = PanelContainer.new()
 	_welcome_card.theme_type_variation = &"CoachCard"
 	_welcome_card.mouse_filter = Control.MOUSE_FILTER_STOP
-	_welcome_card.custom_minimum_size = Vector2(620, 0)
+	_welcome_card.custom_minimum_size = Vector2(600, 0)
 	_welcome_card.visible = false
 	add_child(_welcome_card)
 
 	var margin := MarginContainer.new()
 	for s in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + s, _sp("XL", 26))
+		margin.add_theme_constant_override("margin_" + s, 30)
 	_welcome_card.add_child(margin)
 
 	var col := VBoxContainer.new()
@@ -505,6 +564,7 @@ func _build_welcome_panel() -> void:
 
 	_welcome_title = Label.new()
 	_welcome_title.theme_type_variation = &"Title"
+	_welcome_title.add_theme_font_size_override("font_size", DS.FS["H1"] + 2)
 	_welcome_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_welcome_title)
 
@@ -608,8 +668,9 @@ func _show_welcome(step: Dictionary) -> void:
 	for p in paras:
 		var pl := Label.new()
 		pl.theme_type_variation = &"Body"
+		pl.add_theme_font_size_override("font_size", DS.FS["BODY"] + 2)
 		pl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		pl.custom_minimum_size = Vector2(560, 0)
+		pl.custom_minimum_size = Vector2(540, 0)
 		pl.text = str(p)
 		_welcome_body.add_child(pl)
 	_welcome_btn.text = str(step.get("cta", "Begin"))
@@ -621,7 +682,7 @@ func _center_welcome() -> void:
 	if _welcome_card == null:
 		return
 	var s := _welcome_card.get_combined_minimum_size()
-	s.x = maxf(s.x, 620.0)
+	s.x = maxf(s.x, 600.0)
 	s.y = minf(s.y, maxf(size.y - 60.0, 0.0))
 	_welcome_card.custom_minimum_size = Vector2(s.x, 0.0)
 	_welcome_card.size = s

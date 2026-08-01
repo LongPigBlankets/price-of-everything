@@ -59,6 +59,10 @@ func _ready() -> void:
 	MatchState.advisors_changed.connect(_queue_refresh)
 	MatchState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	visibility_changed.connect(_queue_refresh)   # catch up when the tab is shown
+	# The tutorial advances from bonus inspection to hiring asynchronously. Rebuild the
+	# candidate footer when that happens, so its confirmation button becomes available.
+	if typeof(Tutorial) != TYPE_NIL and Tutorial.has_signal("step_changed"):
+		Tutorial.step_changed.connect(func(_id: String) -> void: _queue_refresh())
 	_rebuild()
 
 # Coalesced (notification_bell pattern): loyalty/seat changes arrive in bursts.
@@ -420,7 +424,11 @@ func _build_detail() -> void:
 		focus_seat = str(_view.get("hire_seat", ""))
 	if focus_seat == "":
 		focus_seat = str(MatchState.advisor_best_effect_seat(aid))
-	left.add_child(_sec_label("WHAT THEY BRING — %s" % _seat_name(focus_seat).to_upper()))
+	# A stable name lets the tutorial require players to open a candidate profile
+	# and read the seat-specific effects before they hire them.
+	var bonus_title := _sec_label("WHAT THEY BRING — %s" % _seat_name(focus_seat).to_upper())
+	bonus_title.name = "AdvisorBonusSection"
+	left.add_child(bonus_title)
 	var fx: Array = MatchState.advisor_seat_effect_list(aid, focus_seat)
 	if fx.is_empty():
 		left.add_child(_dim_label("No mechanical effects in this seat.", 12))
@@ -521,13 +529,18 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 			chosen[0] = sid
 			for other in buttons:
 				(buttons[other] as Button).set_pressed_no_signal(str(other) == sid)
-			confirm.disabled = false)
+			# Choosing a different seat must not bypass the tutorial's required
+			# bonus-inspection beat.
+			confirm.disabled = _tutorial_bonus_inspection_required())
 		buttons[sid] = b
 		chip_holder.add_child(b)
 	var employed := MatchState.permanent_advisor_ids.has(advisor_id)
+	confirm.name = "AdvisorHireAssignButton"
 	confirm.text = "Assign to seat" if employed else "Hire & assign — £%.1f/turn" % _salary(advisor_id)
 	confirm.theme_type_variation = &"Primary"
-	confirm.disabled = chosen[0] == ""
+	confirm.disabled = chosen[0] == "" or _tutorial_bonus_inspection_required()
+	if _tutorial_bonus_inspection_required():
+		confirm.tooltip_text = "Inspect What They Bring before hiring."
 	confirm.pressed.connect(func() -> void:
 		if not MatchState.permanent_advisor_ids.has(advisor_id):
 			if not MatchState.hire_advisor(advisor_id):
@@ -538,6 +551,11 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 		_set_view({"mode": "roster"}))
 	row.add_child(confirm)
 	return wrap
+
+
+func _tutorial_bonus_inspection_required() -> bool:
+	return typeof(Tutorial) != TYPE_NIL and Tutorial.has_method("is_active_step") \
+		and Tutorial.is_active_step("advisors_inspect")
 
 # ── shared atoms ─────────────────────────────────────────────────────────────
 func _back_row(title: String, subtitle: String) -> Control:

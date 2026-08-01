@@ -15,15 +15,22 @@ const TutorialDetectors := preload("res://scripts/tutorial/tutorial_detectors.gd
 
 const POLL_INTERVAL := 0.25   # s; re-evaluates the active step's decide predicate
 
+signal step_changed(id: String)
+
 var active: bool = false
 var hard_gate: bool = false  # true while a lock_panel step is up: Esc is swallowed (world_map)
 var _steps: Array = []
 var _index: int = -1
 var _entry_turn: int = 0     # turn number when the current step was entered (for turn-gated beats)
+var _market_sales_seen: int = 0 # completed sales observed during this tutorial run
+var _entry_market_sales_seen: int = 0 # snapshot at the active step's entry
+var _overlay_released_for_step: bool = false
+var _integration_branch: String = "" # "glass" or "aluminium", chosen at the fork
 var _overlay: Control = null
 var _poll: Timer = null
 var _wired: bool = false
 var _saved_focus_dur := 0.3  # camera's UI pan duration before the tutorial slowed it
+var _visited := 0            # steps actually ENTERED, so the counter follows the branch taken
 
 
 func _ready() -> void:
@@ -64,6 +71,9 @@ func _start() -> void:
 		return
 	active = true
 	_index = -1
+	_visited = 0
+	_market_sales_seen = 0
+	_integration_branch = ""
 	_ensure_overlay()
 	_wire_signals()
 	_ensure_poll()
@@ -77,16 +87,24 @@ func _enter(i: int) -> void:
 		_finish()
 		return
 	_entry_turn = TurnManager.current_turn
+	_entry_market_sales_seen = _market_sales_seen
+	_overlay_released_for_step = false
 	var step: Dictionary = _steps[_index]
+	step_changed.emit(str(step.get("id", "")))
 	# Reaching the terminal step = the player genuinely finished the tutorial (an early
 	# Skip goes straight to _finish and never enters this step, so it doesn't count).
 	if str(step.get("id", "")) == "integration_done":
 		PlayerProfile.mark_tutorial_completed()
 	hard_gate = bool(step.get("lock_panel", false))   # swallow Esc while this step's panel is up
 	_run_setup(step.get("setup", []))
+	_watch_overlay_release(step)
 	_apply_step_camera(step)
+	_visited += 1
 	if _overlay != null:
-		_overlay.show_step(step, _index, _steps.size())
+		# Path-aware numbering: the tutorial BRANCHES (glass vs aluminium) and the arms are
+		# different lengths, so a raw index/_steps.size() jumped (…41, then 55 of 55) and
+		# over-counted steps the player will never see.
+		_overlay.show_step(_display_step(step), _visited - 1, _visited + _remaining_after(_index))
 	# A step whose event already fired before entry should still complete.
 	call_deferred("_maybe_advance")
 
@@ -110,10 +128,75 @@ func _jump_to(id: String) -> void:
 	_finish()   # unknown target: end gracefully rather than soft-lock
 
 
+## A small number of cards vary by the route the player actually took. Keep the authored
+## branches in tutorial_steps.gd, then resolve them only for display so all completion
+## and navigation data remains exactly the same.
+func _display_step(step: Dictionary) -> Dictionary:
+	var variants: Dictionary = step.get("body_by_branch", {})
+	if variants.is_empty():
+		return step
+	var branch := _integration_branch
+	if branch == "":
+		branch = _detect_integration_branch()
+	var body := str(variants.get(branch, step.get("body", "")))
+	if body == "":
+		return step
+	var displayed := step.duplicate(true)
+	displayed["body"] = body
+	return displayed
+
+
+func _detect_integration_branch() -> String:
+	for iid in MatchState.buildings:
+		var inst: Dictionary = MatchState.buildings[iid]
+		if not MatchState.is_player_owned(inst):
+			continue
+		match str(inst.get("recipe_id", "")):
+			"r_054": return "glass"
+			"r_232": return "aluminium"
+	return ""
+
+
+## Steps still to come after `i` on the path actually being walked. Follows `goto` links;
+## at an unresolved `choices` step it takes the LONGEST arm, so the displayed total only
+## ever shrinks as the player commits and never jumps upward mid-run.
+func _remaining_after(i: int) -> int:
+	return maxi(0, _path_length_from(i, 0) - 1)
+
+
+func _path_length_from(i: int, depth: int) -> int:
+	# depth guard: a malformed goto cycle must not hang the counter.
+	if i < 0 or i >= _steps.size() or depth > _steps.size():
+		return 0
+	var step: Dictionary = _steps[i]
+	var best := 0
+	var choices: Array = step.get("choices", [])
+	if not choices.is_empty():
+		for c in choices:
+			if not (c is Dictionary):
+				continue
+			best = maxi(best, _path_length_from(_index_of_id(str((c as Dictionary).get("goto", ""))), depth + 1))
+	else:
+		var goto := str(step.get("goto", ""))
+		var nxt := _index_of_id(goto) if goto != "" else i + 1
+		best = _path_length_from(nxt, depth + 1)
+	return 1 + best
+
+
+func _index_of_id(id: String) -> int:
+	if id == "":
+		return -1
+	for i in _steps.size():
+		if str((_steps[i] as Dictionary).get("id", "")) == id:
+			return i
+	return -1
+
+
 func _finish() -> void:
 	active = false
 	hard_gate = false
 	_index = -1
+	step_changed.emit("")
 	if _poll != null:
 		_poll.stop()
 	_restore_camera()
@@ -190,6 +273,23 @@ func _run_setup(actions: Array) -> void:
 				var md := _find("ConstructionMissingDialog")
 				if md != null and md is Control:
 					(md as Control).hide()
+			"open_money_panel":
+				# The balance widget opens the TREASURY MINI-PANEL (a flyout), not the full
+				# Money panel — money_widget.pressed runs _toggle_fly("treasury"). Press the
+				# widget only when the flyout is not already up, since it toggles.
+				var fly := _find("Flyout_treasury")
+				if not (fly is Control and (fly as Control).is_visible_in_tree()):
+					var mw := _find("MoneyWidget")
+					if mw is BaseButton:
+						(mw as BaseButton).pressed.emit()
+			"open_people_panel":
+				# PeoplePanel is created lazily by bottom_menu on the first People press, so
+				# it cannot be spotlit until that has happened at least once.
+				var pp := _find("PeoplePanel")
+				if not (pp is Control and (pp as Control).is_visible_in_tree()):
+					var pb := _find("PeopleButton")
+					if pb is BaseButton:
+						(pb as BaseButton).pressed.emit()
 			"open_research":
 				# Open the Research panel by pressing its bottom-bar button — but only if it's not
 				# already open (the button toggles, so re-running setup mustn't close it).
@@ -198,6 +298,14 @@ func _run_setup(actions: Array) -> void:
 					var tb := _find("TechButton")
 					if tb is BaseButton:
 						(tb as BaseButton).pressed.emit()
+			"close_research":
+				var rp := _find("ResearchPanel")
+				if rp is Control:
+					(rp as Control).hide()
+			"research_choose_free_unlock":
+				var rp := _find("ResearchPanel")
+				if rp != null and rp.has_method("begin_free_unlock_choice"):
+					rp.begin_free_unlock_choice()
 			"show_construct_for_good":
 				MatchState.show_construct_for_good.emit(str(a.get("good", "")))
 			"toast":
@@ -210,6 +318,22 @@ func _run_setup(actions: Array) -> void:
 func _find(node_name: String) -> Node:
 	var scene := get_tree().current_scene
 	return scene.find_child(node_name, true, false) if scene != null else null
+
+
+## Some guided fields should be highlighted only until the player has found them.  Hook
+## the LineEdit signal as well as polling, so the dim is released on the first character
+## rather than up to a quarter-second later.
+func _watch_overlay_release(step: Dictionary) -> void:
+	var release_when: Dictionary = step.get("release_overlay_when", {})
+	if str(release_when.get("kind", "")) != "research_search_nonempty":
+		return
+	var search := _find("ResearchSearchInput")
+	if search is LineEdit and not (search as LineEdit).text_changed.is_connected(_on_tutorial_search_changed):
+		(search as LineEdit).text_changed.connect(_on_tutorial_search_changed)
+
+
+func _on_tutorial_search_changed(_text: String) -> void:
+	_maybe_advance()
 
 
 ## Resolve the player-owned building instance on a tile (for focus/spotlight setup).
@@ -243,6 +367,12 @@ func _wire_signals() -> void:
 	TurnManager.turn_advanced.connect(wake)
 	CostSolver.costs_updated.connect(wake)
 	Production.turn_processed.connect(wake)
+	# A shipment reaching the market is a different event from merely ending a turn.
+	# Keep this count in the tutorial rather than MatchState: it is only a lesson
+	# baseline, and therefore does not need to be persisted in normal game saves.
+	MatchState.stockpile_market_sale_completed.connect(func(_sale: Dictionary) -> void:
+		_market_sales_seen += 1
+		_maybe_advance())
 	if BuildMode.has_signal("infrastructure_attempted"):
 		BuildMode.infrastructure_attempted.connect(wake)
 	if MatchState.has_signal("sell_surplus_changed"):
@@ -262,12 +392,15 @@ func _maybe_advance() -> void:
 	if not active or _index < 0 or _index >= _steps.size():
 		return
 	var step: Dictionary = _steps[_index]
+	var released := _release_overlay_if_ready(step)
 	var decide: Dictionary = (step.get("done", {}) as Dictionary).get("decide", {})
 	# Evaluate completion first (info steps have no decide and advance via Next).
 	if not decide.is_empty():
 		var done := false
 		if str(decide.get("kind", "")) == "turn_advanced":
 			done = TurnManager.current_turn > _entry_turn   # needs engine state
+		elif str(decide.get("kind", "")) == "market_sale_completed_since_entry":
+			done = _market_sales_seen > _entry_market_sales_seen
 		else:
 			done = TutorialDetectors.poll(decide)
 		if done:
@@ -275,8 +408,20 @@ func _maybe_advance() -> void:
 			return
 	# Not yet done: a locked step keeps its panel open (re-opens it if the player
 	# closed it — the mouse is already blocked outside the spotlight, Esc is swallowed).
-	if bool(step.get("lock_panel", false)):
+	if bool(step.get("lock_panel", false)) and not released:
 		_ensure_locked_panel_open(step)
+
+
+func _release_overlay_if_ready(step: Dictionary) -> bool:
+	if _overlay_released_for_step:
+		return true
+	var release_when: Dictionary = step.get("release_overlay_when", {})
+	if release_when.is_empty() or not TutorialDetectors.poll(release_when):
+		return false
+	_overlay_released_for_step = true
+	if _overlay != null and is_instance_valid(_overlay) and _overlay.has_method("release_spotlight_and_dim"):
+		_overlay.release_spotlight_and_dim()
+	return true
 
 
 func _ensure_locked_panel_open(step: Dictionary) -> void:
@@ -285,10 +430,19 @@ func _ensure_locked_panel_open(step: Dictionary) -> void:
 	var kind := str((step.get("spotlight", {}) as Dictionary).get("kind", "none"))
 	if kind != "node_path" and kind != "node_name":
 		return   # only panel/card spotlights are "keep open"
-	if _overlay.spotlight_ok():
+	if str(step.get("mode", "")) == "annotate":
+		# Annotation steps have several callouts rather than one spotlight hole. Without
+		# this check their panel is "reopened" on every poll, toggling a flyout rapidly.
+		var annotated := _find(str((step.get("spotlight", {}) as Dictionary).get("ref", "")))
+		if annotated is Control and (annotated as Control).is_visible_in_tree():
+			return
+	elif _overlay.spotlight_ok():
 		return
-	_run_setup(step.get("setup", []))            # re-open the panel
-	_overlay.show_step(step, _index, _steps.size())   # re-resolve the spotlight
+	_run_setup(step.get("setup", []))     # re-open the panel
+	# refresh_spotlight, NOT show_step: show_step rebuilds the card, so on a step whose
+	# panel had been replaced (opening Balance from the treasury flyout) this ran every
+	# 0.25s poll and destroyed the Next button the player was clicking.
+	_overlay.refresh_spotlight()
 
 
 # ── Board confinement (camera clamp) ─────────────────────────────────────────────────
@@ -415,4 +569,15 @@ func _on_overlay_skipped() -> void:
 
 func _on_overlay_choice(goto: String) -> void:
 	if active and goto != "":
+		if goto == "build_glass_open":
+			_integration_branch = "glass"
+		elif goto == "build_alu_open":
+			_integration_branch = "aluminium"
 		_jump_to(goto)
+
+
+## Exposes the current tutorial beat to UI that must enforce a time-sensitive action
+## order (for example, reading an advisor's bonus before enabling their hire button).
+func is_active_step(id: String) -> bool:
+	return active and _index >= 0 and _index < _steps.size() \
+		and str((_steps[_index] as Dictionary).get("id", "")) == id
