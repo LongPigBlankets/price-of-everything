@@ -1707,20 +1707,20 @@ func _make_infra_cell(slot: Dictionary) -> VBoxContainer:
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	cell.add_child(label)
 
-	# Transit capacity beneath the name (Infinite for uncapped cables/HVDC).
-	var cap_label := Label.new()
-	if not bool(slot.get("capped", false)):
-		cap_label.text = "Infinite"
-	elif state == "exists":
-		cap_label.text = "%d/%d" % [int(transit.get("used", 0)), int(slot.get("cap", 0))]
-	else:
-		cap_label.text = "%d cap" % int(slot.get("cap", 0))
-	cap_label.theme_type_variation = &"Caption"
-	cap_label.add_theme_font_size_override("font_size", 10)
-	cap_label.add_theme_color_override("font_color", DS.PALETTE.TEXT)
-	cap_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	cap_label.custom_minimum_size = Vector2(INFRA_DIAL.BUTTON_SIZE + 22, 0)
-	cell.add_child(cap_label)
+	# Capacity only applies after the infrastructure exists. Showing "Infinite" on an
+	# unbuilt upgrade implies it is already providing a route.
+	if state == "exists":
+		var cap_label := Label.new()
+		if not bool(slot.get("capped", false)):
+			cap_label.text = "Infinite"
+		else:
+			cap_label.text = "%d/%d" % [int(transit.get("used", 0)), int(slot.get("cap", 0))]
+		cap_label.theme_type_variation = &"Caption"
+		cap_label.add_theme_font_size_override("font_size", 10)
+		cap_label.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+		cap_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cap_label.custom_minimum_size = Vector2(INFRA_DIAL.BUTTON_SIZE + 22, 0)
+		cell.add_child(cap_label)
 	return cell
 
 func _make_infra_button(icon: Texture2D, _unused, bg: Color, hover_bg: Color, tooltip: String, on_press: Callable) -> Button:

@@ -226,16 +226,16 @@ const UNLOCK_MODIFIERS := {
 	"research_renew_005": [{"id": "rn_renewable_dispatch_forecasting_0", "domain": "recipe_output", "target_match": {"building_id": "b_024"}, "pct": 25.0, "duration_turns": 15, "label": "Renewable Dispatch Forecasting", "source": "research_node"}, {"id": "rn_renewable_dispatch_forecasting_1", "domain": "recipe_output", "target_match": {"building_id": "b_025"}, "pct": 25.0, "duration_turns": 15, "label": "Renewable Dispatch Forecasting", "source": "research_node"}, {"id": "rn_renewable_dispatch_forecasting_2", "domain": "recipe_output", "target_match": {"building_id": "b_026"}, "pct": 25.0, "duration_turns": 15, "label": "Renewable Dispatch Forecasting", "source": "research_node"}, {"id": "rn_renewable_dispatch_forecasting_3", "domain": "recipe_output", "target_match": {"building_id": "b_027"}, "pct": 25.0, "duration_turns": 15, "label": "Renewable Dispatch Forecasting", "source": "research_node"}],  # Renewable Dispatch Forecasting
 	"research_infra_002": {"id": "rn_pipe_trench_standards", "domain": "maintenance", "target_match": {"building_id": "b_017"}, "pct": -10.0, "duration_turns": 20, "label": "Pipe Trench Standards", "source": "research_node"},  # Pipe Trench Standards
 	"research_infra_005": {"id": "rn_integrated_utility_corridors", "domain": "maintenance", "pct": -5.0, "duration_turns": 20, "label": "Integrated Utility Corridors", "source": "research_node"},  # Integrated Utility Corridors
-	"research_logi_001": {"id": "rn_depot_scheduling", "domain": "recipe_output", "target_match": {"building_id": "b_004"}, "pct": 5.0, "label": "Depot Scheduling", "source": "research_node"},  # Depot Scheduling
-	"research_logi_003": {"id": "rn_route_optimization", "domain": "transport_cost", "pct": -10.0, "duration_turns": 20, "label": "Route Optimization", "source": "research_node"},  # Route Optimization
+	"research_logi_001": {"id": "rn_depot_scheduling", "domain": "port_ad_valorem_fee", "pct": -20.0, "label": "Depot Scheduling: −20% port ad valorem fee", "source": "research_node"},
+	"research_logi_003": {"id": "rn_route_optimization", "domain": "transport_throughput", "target_match": {"mode": "roads"}, "pct": 25.0, "label": "Route Optimization: +25% road throughput", "source": "research_node"},
 	"research_logi_004": {"id": "rn_cold_chain_handling", "domain": "transport_cost", "pct": -5.0, "duration_turns": 20, "label": "Cold Chain Handling", "source": "research_node"},  # Cold Chain Handling
-	"research_markets_001": {"id": "rn_spot_price_reporting", "domain": "market_price", "pct": 5.0, "duration_turns": 20, "label": "Spot Price Reporting", "source": "research_node"},  # Spot Price Reporting
+	"research_markets_001": {"id": "rn_spot_price_reporting", "domain": "special_order_premium", "pct": 25.0, "label": "Spot Price Reporting: +25% special-order premium", "source": "research_node"},
 	"research_markets_002": {"id": "rn_forward_contracts", "domain": "market_price", "target_match": {"good_internal": "steel"}, "pct": 5.0, "duration_turns": 20, "label": "Forward Contracts", "source": "research_node"},  # Forward Contracts
-	"research_markets_003": {"id": "rn_risk_desk_procedures", "domain": "market_price", "pct": 5.0, "duration_turns": 15, "label": "Risk Desk Procedures", "source": "research_node"},  # Risk Desk Procedures
+	"research_markets_003": {"id": "rn_risk_desk", "domain": "market_input_transport", "pct": -25.0, "label": "Risk Desk Procedures: −25% market-input shipping", "source": "research_node"},
 	"research_markets_004": {"id": "rn_maintenance_budgeting", "domain": "maintenance", "pct": -10.0, "duration_turns": 20, "label": "Maintenance Budgeting", "source": "research_node"},  # Maintenance Budgeting
-	"research_markets_005": {"id": "rn_integrated_operations_planning", "domain": "recipe_output", "pct": 5.0, "label": "Integrated Operations Planning", "source": "research_node"},  # Integrated Operations Planning
+	"research_markets_005": [{"id": "rn_integrated_ops_maintenance", "domain": "maintenance", "pct": -5.0, "label": "Integrated Operations Planning: −5% maintenance", "source": "research_node"}, {"id": "rn_integrated_ops_labour", "domain": "labour_headcount", "pct": -5.0, "label": "Integrated Operations Planning: −5% labour", "source": "research_node"}],
 	"research_people_001": {"id": "rn_shift_supervisors", "domain": "labour_headcount", "target_match": {"building_id": "b_001"}, "pct": -5.0, "label": "Shift Supervisors", "source": "research_node"},  # Shift Supervisors
-	"research_people_002": {"id": "rn_safety_training", "domain": "labour_headcount", "pct": -5.0, "label": "Safety Training", "source": "research_node"},  # Safety Training
+	"research_people_002": [{"id": "rn_safety_training_maintenance", "domain": "maintenance", "pct": -5.0, "label": "Safety Training: −5% maintenance", "source": "research_node"}, {"id": "rn_safety_training_labour", "domain": "labour_headcount", "pct": -5.0, "label": "Safety Training: −5% labour", "source": "research_node"}],
 	# People-management track: global head-count trims earned purely by scale (total
 	# buildings owned), not by a specific building type. -10% at 3 buildings, another
 	# -10% at 12 — see docs/economy-bootstrap-findings.md.
@@ -244,14 +244,18 @@ const UNLOCK_MODIFIERS := {
 	"research_people_003": {"id": "rn_specialist_apprenticeships", "domain": "recipe_output", "target_match": {"building_id": "b_009"}, "pct": 5.0, "label": "Specialist Apprenticeships", "source": "research_node"},  # Specialist Apprenticeships
 	"research_people_004": {"id": "rn_union_liaison_offices", "domain": "maintenance", "pct": -10.0, "duration_turns": 20, "label": "Union Liaison Offices", "source": "research_node"},  # Union Liaison Offices
 	"research_people_005": [  # Continuous Improvement Teams
-		{"id": "rn_cit_high_tech", "domain": "labour_headcount", "target_match": {"building_id": "b_010"}, "pct": -10.0, "label": "Continuous Improvement Teams", "source": "research_node"},
-		{"id": "rn_cit_assembly", "domain": "labour_headcount", "target_match": {"building_id": "b_009"}, "pct": -10.0, "label": "Continuous Improvement Teams", "source": "research_node"},
+		{"id": "rn_continuous_improvement", "domain": "recipe_output", "pct": 5.0, "label": "Continuous Improvement Teams: +5% building output", "source": "research_node"},
 	],
 	# ── transport throughput (raises a mode's per-tile capacity → less congestion) ──
 	"research_infra_001": {"id": "rn_reinforced_roadbeds", "domain": "transport_throughput", "target_match": {"mode": "roads"}, "pct": 25.0, "label": "Reinforced Roadbeds", "source": "research_node"},  # Reinforced Roadbeds
 	"research_infra_003": {"id": "rn_high_pressure_mains", "domain": "transport_throughput", "target_match": {"mode": "pipes"}, "pct": 25.0, "label": "High Pressure Mains", "source": "research_node"},  # High Pressure Mains
-	"research_logi_002": {"id": "rn_containerized_freight", "domain": "transport_cost", "pct": -5.0, "label": "Containerized Freight", "source": "research_node"},  # Containerized Freight
+	"research_logi_002": {"id": "rn_multimodal_containerized_freight", "domain": "port_per_turn_fee", "pct": -50.0, "label": "Multimodal Containerized Freight: −50% per-turn port fee", "source": "research_node"},
 	"research_logi_005": [{"id": "rn_autonomous_dispatch_roads", "domain": "labour_headcount", "target_match": {"building_id": "b_005"}, "pct": -10.0, "label": "Autonomous Dispatch Rooms", "source": "research_node"}, {"id": "rn_autonomous_dispatch_rail", "domain": "labour_headcount", "target_match": {"building_id": "b_019"}, "pct": -10.0, "label": "Autonomous Dispatch Rooms", "source": "research_node"}],  # Autonomous Dispatch Rooms
+	"research_logi_009": {"id": "rn_smart_shipping_contracts", "domain": "port_throughput", "pct": 25.0, "label": "Smart Shipping Contracts: +25% port throughput", "source": "research_node"},
+	"research_logi_010": [
+		{"id": "rn_port_network_ad_valorem", "domain": "port_ad_valorem_fee", "pct": -50.0, "label": "Port Network Acquisition: −50% port ad valorem fee", "source": "research_node"},
+		{"id": "rn_port_network_per_turn", "domain": "port_per_turn_fee", "pct": -50.0, "label": "Port Network Acquisition: −50% per-turn port fee", "source": "research_node"},
+	],
 	# Logistics warehouse capacity (tile storage)
 	# Pallet Racking Systems / Automated Storage & Retrieval no longer grant a tile_storage
 	# modifier — they now raise the tile's WAREHOUSE LEVEL directly (see Stockpile.get_capacity

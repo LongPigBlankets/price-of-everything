@@ -37,6 +37,8 @@ const MECHANIC_ENTRIES := [
 	{"id": "market_price_mechanics", "title": "Market price mechanics"},
 	{"id": "intermittency", "title": "Power intermittency"},
 	{"id": "building_economics", "title": "Building Economics"},
+	{"id": "transport", "title": "Transport"},
+	{"id": "port_transport", "title": "Port transport"},
 ]
 
 var _search_stack: VBoxContainer = null
@@ -142,6 +144,14 @@ func _mechanic_body(entry_id: String) -> String:
 			+ "Treat that net as a GUIDE, not cash in the bank. It values a building's whole output at the current market price whether or not you actually sell it — so a building that feeds another of yours looks like it 'earns' the market value of goods it never sells.\n\n"
 			+ "IMPORTANT: you CANNOT simply add up the net value-add of your buildings. When one building hands its output to another instead of selling it, it gives up a market sale — one building is quietly subsidising the next. The producer is credited the full market price; the consumer books that same input at its cheaper cost-to-make. The only honest total of what you're really earning is the profit shown in the Turn Summary and the Money panel.\n\n"
 			+ "A few things one building's net can't see, either: %d%% tax and a %d%% dividend come off your profit before it reaches your balance; selling a lot of one good in a single turn floods the market and lowers the price you actually get; and shipping goods between tiles costs freight. Chase the bottom line in the Turn Summary — not the sum of the parts.") % [tax_pct, div_pct]
+	if entry_id == "transport":
+		return ("Transport moves goods between tiles and connects your economy to the world market. Roads, railways and pipes have a limited throughput on every tile they cross; congested links constrain the flow that can use them that turn.\n\n"
+			+ "Transport costs are shown as part of the money panel's Transport category. When a building buys inputs or sells output, use the route and capacity information to decide whether to move goods locally, build more infrastructure, or trade through a port.\n\n"
+			+ "Research can improve a transport mode's throughput or lower a specific transport cost. Those bonuses apply to the live route calculation, not just the building card.")
+	if entry_id == "port_transport":
+		return ("Ports connect eligible goods to the world market. Each unowned port charges a per-good fee once in a turn, plus an ad valorem insurance charge based on the market purchase price. Buying a port removes the per-good fee and lowers its insurance rate; its own maintenance and labour then apply instead.\n\n"
+			+ "A port normally carries 1,500 units of each transport class per turn. Hazardous liquids, gases and ultra-heavy solids each have a 300-unit limit. Traffic may exceed those limits, but that shipment pays double port fees.\n\n"
+			+ "The port panel lists default terms separately from your current terms, then shows the most recent shipment for each good. Its right-hand figures are per-turn fee | ad valorem charge. Port fees rise gradually as the game advances, and relevant research can reduce those fees or raise throughput.")
 	return ""
 
 func close_search() -> void:

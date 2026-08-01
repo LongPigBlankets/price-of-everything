@@ -307,10 +307,16 @@ func _test_tutorial_engine() -> void:
 	_check(PlayerProfile.window_size == ws_saved, "profile: window_size restored after test")
 
 	var terminal_present := false
+	var terminal_step: Dictionary = {}
 	for s in steps:
 		if str((s as Dictionary).get("id", "")) == "integration_done":
 			terminal_present = true
+			terminal_step = s as Dictionary
 	_check(terminal_present, "tutorial: terminal integration_done step exists (the completion hook target)")
+	var terminal_variants: Dictionary = terminal_step.get("body_by_branch", {})
+	_check(str(terminal_variants.get("glass", "")).contains("Glass path")
+		and str(terminal_variants.get("aluminium", "")).contains("Aluminium path"),
+		"tutorial: finale names the Glass or Aluminium branch the player chose")
 
 	# building_owned_on_tile detector: player-owned building on the tile -> true;
 	# NPC-owned -> false; unknown predicate kind -> false. Save/restore live buildings.
@@ -342,8 +348,24 @@ func _test_tutorial_engine() -> void:
 		var sid := str((s as Dictionary).get("id", ""))
 		ids.append(sid)
 		by_id[sid] = s
-	for expected in ["welcome", "ui_primer", "goto_tile", "build_open", "build_pick_recipe", "build_cost", "build_close_buy", "buy_factory", "diagnose_factory", "lay_cable_factory", "run_until_running", "view_shipment", "analyse_supply", "explore_encyclopedia", "close_encyclopedia", "choose_integration", "build_glass_open", "build_glass_recipe", "build_glass_source", "glass_sell", "glass_wait_built", "glass_diagnose_pipe", "glass_lay_pipe", "glass_run", "glass_economics", "glass_better", "glass_research", "glass_upgrade", "build_alu_open", "sell_windows", "integration_done"]:
+	for expected in ["welcome", "ui_primer", "goto_tile", "build_open", "build_pick_recipe", "build_cost", "build_close_buy", "buy_factory", "diagnose_factory", "lay_cable_factory", "run_until_running", "view_shipment", "analyse_supply", "explore_encyclopedia", "close_encyclopedia", "revenue_settle", "choose_integration", "build_glass_open", "build_glass_recipe", "build_glass_source", "glass_sell", "glass_wait_built", "glass_diagnose_pipe", "glass_lay_pipe", "glass_run", "glass_economics", "glass_better", "glass_research", "glass_upgrade", "build_alu_open", "alu_run_base", "alu_output_check", "alu_research", "alu_research_search", "alu_research_condition", "alu_research_unlock", "alu_upgrade", "alu_diagnose_pipe", "alu_lay_pipe", "alu_final_run", "integration_done"]:
 		_check(expected in ids, "tutorial: step '%s' present" % expected)
+	var welcome: Dictionary = by_id.get("welcome", {})
+	var welcome_paragraphs: Array = welcome.get("paragraphs", [])
+	_check(welcome_paragraphs.size() == 2 and str(welcome_paragraphs[0]).begins_with("Carbon and Capital is an industrial simulator"),
+		"tutorial: welcome uses the concise Taralia introduction")
+	var primer_hints: Dictionary = by_id.get("ui_primer", {})
+	_check("Press G to open the Goods Graph" in (primer_hints.get("hints", []) as Array),
+		"tutorial: quick-control explanation includes the G Goods Graph shortcut")
+	_check("advisors_hire" in ids, "tutorial: advisor flow has a seat-agnostic assignment step")
+	var advisor_inspect: Dictionary = by_id.get("advisors_inspect", {})
+	var advisor_inspect_done: Dictionary = advisor_inspect.get("done", {})
+	var advisor_inspect_decide: Dictionary = advisor_inspect_done.get("decide", {})
+	_check(str(advisor_inspect_decide.get("kind", "")) == "node_visible"
+		and str(advisor_inspect_decide.get("ref", "")) == "AdvisorBonusSection",
+		"tutorial: advisor flow requires inspecting a candidate's bonuses before hiring")
+	_check(Tutorial.is_active_step("not_a_real_step") == false,
+		"tutorial: inactive step guard is false outside an active tutorial")
 	_check(TutorialDetectors.poll({"kind": "node_hidden", "ref": "NoSuchNode_xyz"}) == true,
 		"tutorial: node_hidden true for a missing node")
 	# New detectors are wired and default false in a fresh scene.
@@ -384,8 +406,27 @@ func _test_tutorial_engine() -> void:
 	# Glass branch now ends with a research sub-flow (unlock High Strength Glassmaking -> retool to r_054).
 	_check(str((by_id.get("glass_run", {}) as Dictionary).get("goto", "")) == "",
 		"tutorial: glass_run flows into the research steps (no early reconverge)")
-	_check(str((by_id.get("glass_upgrade", {}) as Dictionary).get("goto", "")) == "integration_done",
-		"tutorial: glass branch reconverges to integration_done after the recipe upgrade")
+	# Reconverges at the ADVISORS chapter, not the finale: jumping straight to
+	# integration_done skipped the whole advisor arc for anyone on the glass path.
+	_check(str((by_id.get("glass_upgrade", {}) as Dictionary).get("goto", "")) == "advisors_intro",
+		"tutorial: glass branch reconverges to the advisor arc after the recipe upgrade")
+	var alu_research: Dictionary = by_id.get("alu_research", {})
+	var alu_research_decide: Dictionary = (alu_research.get("done", {}) as Dictionary).get("decide", {})
+	var alu_search: Dictionary = by_id.get("alu_research_search", {})
+	var alu_search_decide: Dictionary = (alu_search.get("done", {}) as Dictionary).get("decide", {})
+	var alu_unlock: Dictionary = by_id.get("alu_research_unlock", {})
+	var alu_unlock_decide: Dictionary = (alu_unlock.get("done", {}) as Dictionary).get("decide", {})
+	var alu_upgrade: Dictionary = by_id.get("alu_upgrade", {})
+	var alu_upgrade_decide: Dictionary = (alu_upgrade.get("done", {}) as Dictionary).get("decide", {})
+	_check(str(alu_research_decide.get("kind", "")) == "node_visible"
+		and str(alu_search_decide.get("kind", "")) == "research_search_contains"
+		and str((alu_search.get("release_overlay_when", {}) as Dictionary).get("kind", "")) == "research_search_nonempty"
+		and str((alu_unlock.get("spotlight", {}) as Dictionary).get("kind", "")) == "research_unlock"
+		and str(alu_unlock_decide.get("title", "")) == "Bauxite Carbochlorination"
+		and str(((by_id.get("build_alu_recipe", {}) as Dictionary).get("spotlight", {}) as Dictionary).get("ref", "")) == "RecipeRow_r_050",
+		"tutorial: aluminium branch searches and free-unlocks Carbochlorination after building the base smelter")
+	_check(str(alu_upgrade_decide.get("recipe_id", "")) == "r_232",
+		"tutorial: aluminium branch asks the player to retool the existing smelter to Carbochlorination")
 	var gr_done: Dictionary = (by_id.get("glass_research", {}) as Dictionary).get("done", {})
 	var gr_decide: Dictionary = gr_done.get("decide", {})
 	_check(str(gr_decide.get("kind", "")) == "research_unlocked",
@@ -460,9 +501,50 @@ func _test_tutorial_engine() -> void:
 	var glass_qty: int = TutorialSteps._recipe_input_qty("r_056", "glass")
 	_check(glass_qty > 0 and str((by_id.get("choose_integration", {}) as Dictionary).get("body", "")).contains("%d units" % glass_qty),
 		"tutorial: choose_integration quotes the live glass quantity (%d)" % glass_qty)
-	var alu_out: int = TutorialSteps._recipe_output_qty("r_050")
+	var alu_out: int = TutorialSteps._recipe_output_qty("r_232")
 	_check(alu_out > 0 and str((by_id.get("build_alu_open", {}) as Dictionary).get("body", "")).contains("%d aluminium" % alu_out),
 		"tutorial: build_alu_open quotes the live smelter output (%d)" % alu_out)
+	var direct_bauxite: Dictionary = Catalog.get_recipe("r_232")
+	var direct_inputs: Array = direct_bauxite.get("inputs", [])
+	var direct_needs_chlorine := false
+	for direct_input in direct_inputs:
+		if str((direct_input as Dictionary).get("internal_name", "")) == "chlorine":
+			direct_needs_chlorine = true
+			break
+	_check(str(direct_bauxite.get("building_id", "")) == "b_002"
+		and int(direct_bauxite.get("energy_req", 0)) < int(Catalog.get_recipe("r_050").get("energy_req", 0))
+		and direct_needs_chlorine
+		and TutorialSteps._recipe_input_qty("r_232", "chlorine") == 20
+		and str(direct_bauxite.get("tech_unlock_req", "")) == "research_metal_012",
+		"tutorial: Bauxite Carbochlorination is the lower-energy gated furnace route with chlorine")
+	var carbo_unlock: Dictionary = MatchState.get_unlock_def("Bauxite Carbochlorination")
+	_check(str(carbo_unlock.get("action", "")) == "Produce All"
+		and str(carbo_unlock.get("object", "")) == "chlorine|aluminium"
+		and str(carbo_unlock.get("quantity_raw", "")) == "300|400",
+		"research: Bauxite Carbochlorination requires 300 Chlorine and 400 Aluminium")
+	_check(str(carbo_unlock.get("description", "")) == "Unlocks new recipe: Bauxite Carbochlorination (20 Aluminium).",
+		"research: Bauxite Carbochlorination description describes its recipe, not its condition")
+	_check(TutorialSteps._recipe_input_qty("r_050", "alumina") == 20
+		and int(Catalog.get_recipe("r_050").get("labour_unskilled_required", 0)) == 505
+		and int(Catalog.get_recipe("r_050").get("labour_skilled_required", 0)) == 189
+		and int(Catalog.get_recipe("r_050").get("labour_h_skilled_required", 0)) == 30,
+		"tutorial: Hall-Heroult's extra alumina is offset by its labour requirement")
+	var alu_lay: Dictionary = by_id.get("alu_lay_pipe", {})
+	_check(str((alu_lay.get("spotlight", {}) as Dictionary).get("ref", "")) == "InfraCell_reinf_pipes",
+		"tutorial: alu_lay_pipe spotlights the reinforced-pipe cell")
+	var settle_done: Dictionary = ((by_id.get("revenue_settle", {}) as Dictionary).get("done", {}) as Dictionary)
+	var settle_decide: Dictionary = settle_done.get("decide", {})
+	_check(str(settle_decide.get("kind", "")) == "market_sale_completed_since_entry",
+		"tutorial: money lesson waits for a shipment to reach market, not a hard-coded turn")
+	_check(bool((by_id.get("revenue_settle", {}) as Dictionary).get("no_dim", false)),
+		"tutorial: shipment wait keeps the map unobstructed")
+	var loan_step: Dictionary = by_id.get("money_take_loan", {})
+	_check(str((loan_step.get("spotlight", {}) as Dictionary).get("kind", "")) == "none",
+		"tutorial: loan confirmation remains interactive after opening the Loans tab")
+	_check(not bool((by_id.get("money_primer", {}) as Dictionary).get("lock_panel", false)),
+		"tutorial: money primer does not rebuild the flyout beneath its Next click")
+	_check(not bool((by_id.get("money_loan_terms", {}) as Dictionary).get("lock_panel", false)),
+		"tutorial: loan terms does not rebuild the flyout beneath its Next click")
 
 	# Transport arc: output-route detectors read the explicit per-good destinations.
 	var saved2: Dictionary = MatchState.buildings
@@ -4933,17 +5015,7 @@ func _test_live_unlock_conditions() -> void:
 	# Every non-placeholder research row must either resolve to a live metric or
 	# appear in this explicit content-gap allowlist. This catches new casing,
 	# identifier and unsupported-verb regressions across the full CSV.
-	var expected_content_gaps := [
-		"Agrivoltaic Integration",
-		"Autonomous Dispatch Rooms",
-		"Continuous Improvement Teams",
-		"Integrated Operations Planning",
-		"Risk Desk Procedures",
-		"Route Optimization",
-		"Safety Training",
-		"Shift Supervisors",
-		"Spot Price Reporting",
-	]
+	var expected_content_gaps: Array = []
 	var actual_content_gaps: Array = []
 	for issue in MatchState.research_condition_issues():
 		actual_content_gaps.append(str(issue.title))
@@ -6400,6 +6472,13 @@ func _test_transfer_helpers() -> void:
 func _test_recipes_producing() -> void:
 	_check(Catalog.recipes_producing("g_001").size() > 0, "recipes_producing finds producers of coal")
 	_check(Catalog.recipes_producing("g_nope").is_empty(), "recipes_producing is empty for an unknown good")
+	var aluminium: Dictionary = Catalog.get_good_by_internal_name("aluminium")
+	var has_ewaste := false
+	for recipe in Catalog.recipes_producing(str(aluminium.get("id", ""))):
+		if str(recipe.get("recipe_id", "")) == "r_107":
+			has_ewaste = true
+	_check(not has_ewaste and not Catalog.all_recipes().any(func(recipe: Dictionary) -> bool: return str(recipe.get("recipe_id", "")) == "r_107"),
+		"unfinished E-Waste Recycling is hidden from recipe discovery")
 	_check(Catalog.recipe_produces(Catalog.get_recipe("r_001"), "g_001"),
 		"recipe_produces detects a recipe's output good")
 
@@ -7225,9 +7304,22 @@ func _test_output_market_route() -> void:
 		"routing back to market clears the cap")
 	MatchState.set_output_stockpile_destination("inst_test_market", "tile_3_9", "g_001")
 	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 5)
+	# Shift-click split routes keep up to three distinct tiles and each field is a
+	# three-digit per-turn amount (0 keeps that destination on its automatic share).
+	MatchState.add_output_split_destination("inst_test_market", "g_001", "tile_3_8")
+	MatchState.add_output_split_destination("inst_test_market", "g_001", "tile_3_9")
+	MatchState.add_output_split_destination("inst_test_market", "g_001", "tile_3_10")
+	MatchState.add_output_split_destination("inst_test_market", "g_001", "tile_3_11")
+	MatchState.set_output_split_quantity("inst_test_market", "g_001", "tile_3_9", 1200)
+	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 5)
+	var split_route := MatchState.get_output_split_destinations("inst_test_market", "g_001")
+	_check(split_route.size() == 3 and int((split_route[1] as Dictionary).get("qty", 0)) == 999,
+		"split output routes keep three destinations and clamp entered quantities to three digits")
 	var routed_state: Dictionary = MatchState.export_state()
 	_check((routed_state.get("output_ship_quantities", {}) as Dictionary).has("inst_test_market"),
 		"ship quantity caps ride the save export")
+	_check((routed_state.get("output_split_destinations", {}) as Dictionary).has("inst_test_market"),
+		"split output routes ride the save export")
 	MatchState.set_output_ship_quantity("inst_test_market", "g_001", 0)
 	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0
 		and not MatchState.output_ship_quantities.has("inst_test_market"),
@@ -7235,6 +7327,8 @@ func _test_output_market_route() -> void:
 	MatchState.import_state(routed_state)
 	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 5,
 		"ship quantity caps survive a save round-trip")
+	_check(MatchState.get_output_split_destinations("inst_test_market", "g_001").size() == 3,
+		"split output routes survive a save round-trip")
 	MatchState.clear_output_stockpile_destination("inst_test_market", "g_001")
 	_check(MatchState.get_output_ship_quantity("inst_test_market", "g_001") == 0,
 		"clearing the route clears the cap too")
@@ -8712,6 +8806,10 @@ func _test_widgets_instantiate() -> void:
 	_check(_tree_has_label_text(pp, str(first_advisor.get("name", "")))
 		and not MatchState.permanent_advisor_ids.has(first_id),
 		"PeoplePanel clicking an available advisor opens the profile, not an instant hire")
+	_check(pp.find_child("AdvisorBonusSection", true, false) != null,
+		"PeoplePanel candidate profile exposes its seat-specific bonuses")
+	_check(pp.find_child("AdvisorHireAssignButton", true, false) != null,
+		"PeoplePanel candidate profile exposes the hire-and-assign confirmation")
 	# The Hire & assign confirm runs exactly this hire + seat-assign pair.
 	var hired_ok := MatchState.hire_advisor(first_id) and MatchState.assign_advisor_to_seat("cfo", first_id)
 	council_tab.call("_set_view", {"mode": "roster"})

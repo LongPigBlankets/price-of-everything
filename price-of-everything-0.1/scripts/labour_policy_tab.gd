@@ -174,7 +174,7 @@ func _build_pensions(parent: Control) -> void:
 			"caption": "The baseline — no modifiers either way.",
 			"pick": func() -> void: _pick_exclusive(group, "")},
 		{"key": "generous", "label": "Generous",
-			"caption": "Output +0.05%/turn (max +5%) · labour costs ramp +0.1%→+0.4%/turn as the game ages (thirds of %d turns)." % (third * 3),
+			"caption": "Output +0.05%%/turn (max +5%%) · labour costs ramp +0.1%%→+0.4%%/turn as the game ages (thirds of %d turns)." % (third * 3),
 			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_GENEROUS_PENSIONS)},
 	], _pensions_key()))
 

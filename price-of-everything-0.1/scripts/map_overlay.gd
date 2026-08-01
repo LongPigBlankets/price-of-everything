@@ -82,14 +82,6 @@ func _ready() -> void:
 	BuildMode.mode_entered.connect(_on_build_mode_entered)
 	BuildMode.mode_exited.connect(_on_build_mode_exited)
 
-func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton \
-			and event.button_index == MOUSE_BUTTON_RIGHT \
-			and event.pressed \
-			and MapMode.current_mode != MapMode.Mode.NONE:
-		MapMode.clear_all()
-		get_viewport().set_input_as_handled()
-
 func _on_selections_changed(mode: int, selections: Array) -> void:
 	_clear_overlays()
 	_render_overlay(mode, selections)
