@@ -152,6 +152,7 @@ func _build_base() -> void:
 		search_overlay.recipe_build_requested.connect(_on_search_recipe_build_requested)
 	MatchState.encyclopedia_entry_requested.connect(_on_encyclopedia_entry_requested)
 	MatchState.goods_graph_requested.connect(_on_goods_graph_requested)
+	MatchState.empire_view_requested.connect(_on_empire_view_requested)
 	MatchState.encyclopedia_good_requested.connect(_on_encyclopedia_good_requested)
 	MatchState.focus_tile_requested.connect(_on_focus_tile_requested)
 	MatchState.focus_building_requested.connect(_on_focus_building_requested)
@@ -550,11 +551,12 @@ func _on_v2_building_clicked(building: Dictionary) -> void:
 ## dev-toggle selects. Both panels sit in HUDContent after later-added siblings, so
 ## move_to_front() must precede show — otherwise a re-sort undoes the positioning, leaving
 ## an empty-looking panel until the next click.
-func _open_building_detail(building: Dictionary) -> void:
+func _open_building_detail(building: Dictionary, empire_dock: bool = false) -> void:
 	if building.is_empty():
 		return
 	_last_detail_building = building
 	var panel := _active_building_panel()
+	panel.set("empire_dock", empire_dock)
 	panel.move_to_front()
 	panel.show_building(building)
 
@@ -1272,9 +1274,16 @@ func _on_focus_tile_requested(tile_id: String) -> void:
 ## UI-driven building selection (ledger row, empire view node, starvation
 ## notifications): pan to the tile and open BOTH the tile view panel and the
 ## building detail panel on top of it.
+## From INSIDE the Empire view the map is hidden, so the pan and the tile panel
+## would both happen invisibly behind the overlay — and the pan would leave the
+## map somewhere else on Tab-out. There, ONLY the building detail panel opens,
+## docked where the tile view panel normally sits (owner 2026-07-31).
 func _on_focus_building_requested(instance_id: String) -> void:
 	var building: Dictionary = MatchState.get_building(instance_id)
 	if building.is_empty():
+		return
+	if empire_view != null and empire_view.visible:
+		_open_building_detail(building, true)
 		return
 	var td := _focus_camera_on_tile(str(building.get("tile_id", "")))
 	if not td.is_empty():
@@ -1313,7 +1322,7 @@ func _on_special_order_reroute_requested() -> void:
 	_enter_stockpile_ui_mode()
 	MatchState.request_toast("Pick a destination tile for the remaining special-order shipments", "info")
 
-func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = false) -> void:
+func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = false, shift: bool = false) -> void:
 	if _v2_picking_dest:
 		_v2_picking_dest = false
 		terrain_layer.end_stockpile_destination_selection()
@@ -1343,6 +1352,26 @@ func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = fals
 	var instance_id: String = _pending_stockpile_selection.get("instance_id", "")
 	var good_id: String = _pending_stockpile_selection.get("good_id", "")
 	var tile_id: String = tile_data.get("id", "")
+	var allow_split := bool(_pending_stockpile_selection.get("allow_split", false))
+	if allow_split and shift:
+		var count := MatchState.add_output_split_destination(instance_id, good_id, tile_id)
+		if count >= 3:
+			_pending_stockpile_selection.clear()
+			_hide_stockpile_select_prompt()
+			terrain_layer.end_stockpile_destination_selection()
+			_exit_stockpile_ui_mode()
+			_open_building_detail(MatchState.get_building(instance_id))
+		else:
+			MatchState.request_toast("%d destination%s selected — Shift-click another, or release Shift and click to finish" % [count, "" if count == 1 else "s"], "info")
+		return
+	if allow_split and MatchState.get_output_split_destinations(instance_id, good_id).size() >= 2:
+		# A regular click after selecting two or three destinations is an explicit
+		# "done" action; clicking a selected tile avoids accidentally changing it.
+		_pending_stockpile_selection.clear()
+		_hide_stockpile_select_prompt()
+		_exit_stockpile_ui_mode()
+		_open_building_detail(MatchState.get_building(instance_id))
+		return
 	if ctrl:
 		# CTRL+click: don't route yet — highlight the pick green and open the
 		# ship-quantity panel (consumers on that tile + amount box + Confirm).
@@ -1525,6 +1554,10 @@ func _on_encyclopedia_entry_requested(entry_id: String) -> void:
 func _on_goods_graph_requested() -> void:
 	if goods_graph_view != null:
 		goods_graph_view.toggle()
+
+func _on_empire_view_requested() -> void:
+	if empire_view != null:
+		empire_view.toggle()
 
 func _on_encyclopedia_good_requested(good_id: String) -> void:
 	if search_overlay != null and search_overlay.has_method("open_encyclopedia_good"):
@@ -2290,7 +2323,7 @@ func _show_stockpile_select_prompt(_selection: Dictionary) -> void:
 		return
 	var label := _stockpile_select_prompt.get_node_or_null("Label") as Label
 	if label != null:
-		label.text = "Click to select a tile to ship to. CTRL+click to send a specific amount every turn."
+		label.text = "Click to choose a destination. CTRL + Click to send a specific quantity to 1 tile. SHIFT + Click to send to 2 or 3 tiles."
 	_stockpile_select_prompt.visible = true
 
 func _hide_stockpile_select_prompt() -> void:
@@ -2302,8 +2335,7 @@ func _hide_stockpile_select_prompt() -> void:
 # works inside text fields (e.g. the search overlay).
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_empire_view") and not _is_text_entry_focused():
-		if empire_view != null:
-			empire_view.toggle()
+		_on_empire_view_requested()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("toggle_goods_graph") and not _is_text_entry_focused():
 		if goods_graph_view != null:
@@ -2327,19 +2359,53 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	match event.keycode:
 		KEY_ESCAPE:
-			# A locked tutorial step keeps its panel open — swallow Esc so the player
-			# can't close the spotlit panel (or open the pause menu) and get stuck.
+			# Escape always cancels an active map interaction before it closes ordinary
+			# panels or opens Pause. This is the unified map cancel path.
+			if _cancel_map_interaction_or_mode():
+				get_viewport().set_input_as_handled()
+				return
+			# A locked tutorial step still protects its spotlit panel once all map
+			# interactions have been dismissed.
 			if Tutorial.active and Tutorial.hard_gate:
 				get_viewport().set_input_as_handled()
 				return
-			if _special_order_reroute_picking:
-				_cancel_special_order_reroute_pick()
-			elif not _pending_stockpile_selection.is_empty():
-				MatchState.cancel_output_stockpile_selection()
-			elif not PanelStack.close_top():
+			if not PanelStack.close_top():
 				# Nothing left to close: Esc opens the in-game menu.
 				PauseMenu.open(_hud)
 			get_viewport().set_input_as_handled()
+
+
+## Cancel the foremost map-level interaction. Each branch uses its established close
+## routine so prompts, legends, dimmers and HUD state remain in sync.
+func _cancel_map_interaction_or_mode() -> bool:
+	if _special_order_reroute_picking:
+		_cancel_special_order_reroute_pick()
+		return true
+	if _v2_picking_dest:
+		_v2_picking_dest = false
+		terrain_layer.end_stockpile_destination_selection()
+		return true
+	if not _buy.is_empty():
+		_close_buy()
+		return true
+	if not _transfer.is_empty():
+		_close_transfer()
+		return true
+	if _picking_buy_tile:
+		_picking_buy_tile = false
+		terrain_layer.end_stockpile_destination_selection()
+		_exit_stockpile_ui_mode()
+		return true
+	if not _pending_stockpile_selection.is_empty():
+		MatchState.cancel_output_stockpile_selection()
+		return true
+	if BuildMode.is_active:
+		BuildMode.exit_build_mode()
+		return true
+	if MapMode.is_active():
+		MapMode.clear_all()
+		return true
+	return false
 
 func _should_open_search(event: InputEventKey) -> bool:
 	if search_overlay == null or search_overlay.visible:
