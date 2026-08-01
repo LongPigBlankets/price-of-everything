@@ -107,8 +107,52 @@ func _on_game_ended(_reason: String) -> void:
 	_save()
 
 
+## Where the profile lived BEFORE AppPaths moved the game's data next to the project/executable.
+## Anything written prior to that is still sitting in the OS user-data dir, orphaned.
+static func _legacy_path() -> String:
+	return OS.get_user_data_dir().path_join("profile.json")
+
+
+## Fold an orphaned pre-AppPaths profile into the current one. When the data folder moved, every
+## victory recorded up to that point was left behind at the old path — the Hall of Records simply
+## stopped showing them, which reads exactly like "it isn't recording my wins any more".
+## Wins are merged by identity (date + title + turn) so running twice cannot duplicate them, and
+## games_completed takes the larger count so the difficulty unlocks are not rolled back either.
+func _merge_legacy() -> void:
+	var old := _legacy_path()
+	if old == _path() or not FileAccess.file_exists(old):
+		return
+	var f := FileAccess.open(old, FileAccess.READ)
+	if f == null:
+		return
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	if not (parsed is Dictionary):
+		return
+	var seen := {}
+	for w in wins:
+		seen["%s|%s|%d" % [str((w as Dictionary).get("date", "")), str((w as Dictionary).get("title", "")),
+			int((w as Dictionary).get("turn", 0))]] = true
+	var added := 0
+	for w in ((parsed as Dictionary).get("wins", []) as Array):
+		var key := "%s|%s|%d" % [str((w as Dictionary).get("date", "")), str((w as Dictionary).get("title", "")),
+			int((w as Dictionary).get("turn", 0))]
+		if not seen.has(key):
+			seen[key] = true
+			wins.append(w)
+			added += 1
+	var legacy_games := int((parsed as Dictionary).get("games_completed", 0))
+	var bumped := legacy_games > games_completed
+	games_completed = maxi(games_completed, legacy_games)
+	if added > 0 or bumped:
+		wins.sort_custom(func(a, b): return str((a as Dictionary).get("date", "")) > str((b as Dictionary).get("date", "")))
+		print("[PlayerProfile] recovered %d win(s) from the pre-move profile at %s" % [added, old])
+		_save()
+
+
 func _load() -> void:
 	if not FileAccess.file_exists(_path()):
+		_merge_legacy()
 		return
 	var f := FileAccess.open(_path(), FileAccess.READ)
 	if f == null:
@@ -123,6 +167,7 @@ func _load() -> void:
 		window_size = Vector2i(int((parsed as Dictionary).get("window_w", 0)), int((parsed as Dictionary).get("window_h", 0)))
 		telemetry_opt_out = bool((parsed as Dictionary).get("telemetry_opt_out", false))
 		telemetry_player_id = str((parsed as Dictionary).get("telemetry_player_id", ""))
+	_merge_legacy()
 
 
 func _save() -> void:

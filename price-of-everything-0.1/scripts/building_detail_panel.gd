@@ -1881,7 +1881,8 @@ func _add_fill_storage_section(building: Dictionary, recipe: Dictionary = {}) ->
 	if _fill_type == "" or not MatchState.is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(_fill_type, ""))):
 		return
 	var gid := str(Catalog.get_good_by_internal_name(_fill_type).get("id", ""))
-	var need := MatchState.battery_cells_to_fill(tile_id, gid)
+	# Scoped to THIS battery, not the tile — see MatchState.battery_cells_to_fill.
+	var need := MatchState.battery_cells_to_fill(tile_id, gid, str(_current_building.get("instance_id", "")))
 	var gname := str(Catalog.get_good(gid).get("display_name", _fill_type))
 	if need <= 0:
 		_add_text("Storage is full for %s." % gname)

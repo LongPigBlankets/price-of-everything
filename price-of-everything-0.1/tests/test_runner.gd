@@ -51,6 +51,9 @@ func _ready() -> void:
 	_test_people_panel_seat_ui()
 	_test_advisor_star_derivation()
 	_test_advisor_seat_assign_and_slot_cap()
+	_test_endgame_continuity_verdict()
+	_test_advisor_payroll_model()
+	_test_battery_fill_scope_and_units()
 	_test_advisor_seat_tier_scaling()
 	_test_advisor_reconcile_idempotent()
 	_test_advisor_seat_effects()
@@ -7833,15 +7836,49 @@ func _test_advisor_seat_assign_and_slot_cap() -> void:
 	# re-assigning within an already-occupied seat consumes no new slot
 	_check(MatchState.assign_advisor_to_seat("cfo", "marcus"), "seat: re-assign within cfo (no new slot)")
 	_check(MatchState.get_advisor_in_seat("cfo") == "marcus", "seat: cfo now holds marcus")
-	# one seat per advisor: moving tom (in coo) to hr vacates coo
-	MatchState.max_advisor_slots = 3
-	_check(MatchState.assign_advisor_to_seat("hr_director", "tom"), "seat: move tom -> hr_director")
+	# MOVING a seated advisor to an empty seat consumes no new slot — their old seat is vacated,
+	# so the count does not grow and a FULL council must not refuse the move. This is the bug
+	# behind "I hired them for one role and they went to another": the assign was refused, the
+	# panel returned to the roster without a word, and the advisor stayed where they were.
+	# Council is full here (2 seats, 2 slots) and the move must still succeed.
+	_check(MatchState.advisor_seats.size() == MatchState.max_advisor_slots,
+		"seat: council is full before the move (%d/%d)" % [MatchState.advisor_seats.size(), MatchState.max_advisor_slots])
+	_check(MatchState.assign_advisor_to_seat("hr_director", "tom"),
+		"seat: a seated advisor can move to an empty seat with the council full")
+	_check(MatchState.get_advisor_in_seat("hr_director") == "tom", "seat: tom landed in the seat asked for")
 	_check(MatchState.get_advisor_in_seat("coo") == "", "seat: one seat per advisor (coo vacated)")
+	# ...and a genuinely NEW arrival is still refused at the cap.
+	_check(not MatchState.assign_advisor_to_seat("coo", "eleanor"),
+		"seat: a new arrival is still blocked when the council is full")
+	MatchState.max_advisor_slots = 3
+	_check(MatchState.assign_advisor_to_seat("coo", "eleanor"), "seat: the same arrival fits once a slot opens")
 	_check(MatchState.unassign_seat("cfo"), "seat: unassign frees the seat")
 	_check(MatchState.get_advisor_in_seat("cfo") == "", "seat: cfo empty after unassign")
 	MatchState.advisor_seats = saved_seats
 	MatchState.max_advisor_slots = saved_slots
 	MatchState.permanent_advisor_ids = saved_hired
+
+func _test_endgame_continuity_verdict() -> void:
+	# Three outcomes, not two: reaching the bell with no track secured is only RECEIVERSHIP if
+	# the company was also losing money. Still in profit = "Continuity", amber (owner 2026-08-01).
+	var EGD := load("res://scripts/end_game_data.gd")
+	_check(EGD._title("continuity", 0, []) == "Continuity", "endgame: continuity is titled Continuity")
+	_check(EGD._title("defeat", 0, []) == "Receivership", "endgame: a loss-making end is still Receivership")
+	_check(EGD._title("victory", 5, []) == "The Full Ledger", "endgame: victory titles are untouched")
+	var copy: Array = EGD._copy("continuity", 0, 300, [])
+	_check(copy.size() == 1, "endgame: continuity copy is the owner's single paragraph")
+	_check(str(copy[0]).begins_with("You continued your predecessors' task"),
+		"endgame: continuity copy opens with the owner's wording")
+	_check(str(copy[0]).ends_with("we can't afford the fancy stuff."),
+		"endgame: continuity copy closes with the owner's wording")
+	# The verdict is driven by the SAME net/turn the top bar prints, so the two can never disagree.
+	var saved: Dictionary = Production.last_turn_summary.duplicate(true)
+	Production.last_turn_summary = {"money_in": 500.0, "money_out": 400.0}
+	_check(EGD._net_per_turn() > 0.0, "endgame: net/turn reads money_in - money_out (in profit)")
+	Production.last_turn_summary = {"money_in": 100.0, "money_out": 900.0}
+	_check(EGD._net_per_turn() < 0.0, "endgame: net/turn goes negative when outgoings win")
+	Production.last_turn_summary = saved
+
 
 func _test_advisor_seat_tier_scaling() -> void:
 	# rigid seats read the governing stat directly
@@ -8442,15 +8479,24 @@ func _test_advisor_seats_save_roundtrip() -> void:
 func _test_advisor_payroll_cost() -> void:
 	var saved_ids := MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_money := MatchState.money
-	MatchState.permanent_advisor_ids = ["vera", "alexandra"]   # salaries 1.0 + 4.0 = 5.0
-	MatchState.money = 100.0
-	var summary := {"advisor_paid": 0.0, "money_out": 0.0}
+	# The per-advisor `salary` field is gone (owner 2026-08-01): every advisor now costs the same
+	# inflating base plus 1% of revenue each. This test used to assert 1.0 + 4.0 = 5.0 from the
+	# roster fields; it now asserts the live model, and that the charge is billed against THIS
+	# turn's revenue out of the summary rather than last turn's.
+	var saved_turn: int = TurnManager.current_turn
+	TurnManager.current_turn = 1
+	MatchState.permanent_advisor_ids = ["vera", "alexandra"]
+	MatchState.money = 1000.0
+	var summary := {"advisor_paid": 0.0, "money_out": 0.0,
+		"goods_sales_revenue": 800.0, "power_sales_revenue": 200.0}
+	var expect: float = 2.0 * (EconomyConfig.ADVISOR_BASE_COST_PER_TURN + 1000.0 * EconomyConfig.ADVISOR_REVENUE_SHARE)
 	var paid: float = Production._apply_advisor_costs(summary)
-	_check(is_equal_approx(paid, 5.0)
-		and is_equal_approx(float(summary.get("advisor_paid", 0.0)), 5.0)
-		and is_equal_approx(float(summary.get("money_out", 0.0)), 5.0)
-		and is_equal_approx(MatchState.money, 95.0),
-		"advisor payroll sums each advisor's salary")
+	_check(is_equal_approx(paid, expect)
+		and is_equal_approx(float(summary.get("advisor_paid", 0.0)), expect)
+		and is_equal_approx(float(summary.get("money_out", 0.0)), expect)
+		and is_equal_approx(MatchState.money, 1000.0 - expect),
+		"advisor payroll = per-advisor (base + 1%% of this turn's revenue) — £%.1f for two" % expect)
+	TurnManager.current_turn = saved_turn
 	MatchState.permanent_advisor_ids = saved_ids
 	MatchState.money = saved_money
 	MatchState.money_changed.emit(MatchState.money)
@@ -10193,3 +10239,77 @@ func _test_briefing_event_mapping() -> void:
 	EventScheduler.reset()
 	TurnBriefing.reset()
 	_decision_board_restore(snap)
+
+
+func _test_advisor_payroll_model() -> void:
+	# Owner spec 2026-08-01: each advisor costs a flat base per turn that inflates at DOUBLE the
+	# labour rate, plus 1% of company revenue — charged once per advisor, so a five-strong
+	# council takes 5% of turnover.
+	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_turn: int = TurnManager.current_turn
+	var saved_sum: Dictionary = Production.last_turn_summary.duplicate(true)
+	TurnManager.current_turn = 1
+	Production.last_turn_summary = {"goods_sales_revenue": 0.0, "power_sales_revenue": 0.0}
+	MatchState.permanent_advisor_ids = []
+	_check(is_equal_approx(MatchState.advisor_cost_per_advisor(0.0), EconomyConfig.ADVISOR_BASE_COST_PER_TURN),
+		"advisor cost: turn 1 base is £%.1f" % EconomyConfig.ADVISOR_BASE_COST_PER_TURN)
+	_check(is_equal_approx(EconomyConfig.ADVISOR_COST_GROWTH, 2.0 * EconomyConfig.LABOUR_HIGH_SKILLED_GROWTH),
+		"advisor cost: growth is exactly double high-skilled labour")
+	# 1% of revenue, per advisor.
+	_check(is_equal_approx(MatchState.advisor_cost_per_advisor(1000.0),
+			EconomyConfig.ADVISOR_BASE_COST_PER_TURN + 10.0),
+		"advisor cost: +1% of £1000 revenue = +£10 each")
+	MatchState.permanent_advisor_ids = ["vera", "tom", "marcus"]
+	_check(is_equal_approx(MatchState.advisor_payroll_per_turn(1000.0),
+			3.0 * (EconomyConfig.ADVISOR_BASE_COST_PER_TURN + 10.0)),
+		"advisor cost: payroll is per-advisor, not per-council")
+	# The base compounds with the turn number.
+	TurnManager.current_turn = 101
+	var t101: float = MatchState.advisor_cost_per_advisor(0.0)
+	_check(t101 > EconomyConfig.ADVISOR_BASE_COST_PER_TURN,
+		"advisor cost: the base inflates over a long game (£%.2f at t101)" % t101)
+	_check(is_equal_approx(t101, EconomyConfig.ADVISOR_BASE_COST_PER_TURN
+			* pow(1.0 + EconomyConfig.ADVISOR_COST_GROWTH, 100.0)),
+		"advisor cost: compounds as base * (1+growth)^(t-1)")
+	MatchState.permanent_advisor_ids = saved_hired
+	TurnManager.current_turn = saved_turn
+	Production.last_turn_summary = saved_sum
+
+
+func _test_battery_fill_scope_and_units() -> void:
+	# Two bugs, one root: the battery panel is opened on ONE building but every figure it used
+	# was tile-wide (owner 2026-08-01).
+	#  (a) "Fill from market" sized the order from the TILE's headroom, so a tile with several
+	#      batteries ordered for all of them from whichever one you clicked.
+	#  (b) The cream card read "36 / 2000" — a CELL COUNT over a MEGAWATT capacity.
+	# NON-DESTRUCTIVE: no MatchState.reset(). reset() wipes the NPC-port / scene state that
+	# later tests assert against (see the same warning on _test_warehouse_storage_levels) —
+	# doing it here took out two unrelated port tests.
+	var tile := "tile_batt_test_only"
+	var a := MatchState.add_building("b_028", "", tile, MatchState.LOCAL_PLAYER, "batt_a")
+	var b2 := MatchState.add_building("b_028", "", tile, MatchState.LOCAL_PLAYER, "batt_b")
+	var one_cap: int = int(EconomyConfig.BATTERY_STORAGE_CAP.get(1, 0))
+	_check(MatchState.tile_battery_slots(tile) == one_cap * 2,
+		"battery: two L1 batteries give the tile twice one battery's capacity")
+	var gid := ""
+	for internal in EconomyConfig.BATTERY_CELL_DENSITY:
+		var g := str(Catalog.get_good_by_internal_name(str(internal)).get("id", ""))
+		if g != "":
+			gid = g
+			break
+	if gid == "":
+		_check(false, "battery: a cell good exists to test with")
+		return
+	var tile_fill: int = MatchState.battery_cells_to_fill(tile, gid)
+	var one_fill: int = MatchState.battery_cells_to_fill(tile, gid, a)
+	_check(tile_fill > 0 and one_fill > 0, "battery: both fills are positive")
+	_check(one_fill * 2 == tile_fill,
+		"battery: filling ONE battery orders half a two-battery tile's total (%d vs %d)" % [one_fill, tile_fill])
+	# (b) the card's two numbers must now share a unit: MW firmed over MW capacity.
+	var r: Dictionary = load("res://scripts/building_readout.gd").battery(MatchState.get_building(a))
+	_check(int(r.get("firming_cap", -1)) <= int(r.get("slots", 0)),
+		"battery: power stabilised never exceeds the tile's firming capacity")
+	_check(int(r.get("firming_cap", -1)) == 0,
+		"battery: nothing loaded means 0 MW stabilised (not a cell count)")
+	MatchState.remove_building(a)
+	MatchState.remove_building(b2)

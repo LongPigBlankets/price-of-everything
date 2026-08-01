@@ -536,7 +536,7 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 		chip_holder.add_child(b)
 	var employed := MatchState.permanent_advisor_ids.has(advisor_id)
 	confirm.name = "AdvisorHireAssignButton"
-	confirm.text = "Assign to seat" if employed else "Hire & assign — £%.1f/turn" % _salary(advisor_id)
+	confirm.text = "Assign to seat" if employed else "Hire & assign"
 	confirm.theme_type_variation = &"Primary"
 	confirm.disabled = chosen[0] == "" or _tutorial_bonus_inspection_required()
 	if _tutorial_bonus_inspection_required():
@@ -546,10 +546,22 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 			if not MatchState.hire_advisor(advisor_id):
 				MatchState.request_toast("Could not hire — council is full or they refuse to return.", "warning")
 				return
+		var who := str(MatchState.get_advisor(advisor_id).get("name", advisor_id))
 		if MatchState.assign_advisor_to_seat(chosen[0], advisor_id):
-			MatchState.request_toast("%s assigned as %s" % [str(MatchState.get_advisor(advisor_id).get("name", advisor_id)), _seat_name(chosen[0])], "success")
+			MatchState.request_toast("%s assigned as %s" % [who, _seat_name(chosen[0])], "success")
+		else:
+			# A refused assignment used to fall through silently and return to the roster, so
+			# the advisor appeared in whatever seat they were in before and it read as the game
+			# choosing a different role. Say so instead.
+			MatchState.request_toast("Could not seat %s as %s — the council is full." % [who, _seat_name(chosen[0])], "warning")
 		_set_view({"mode": "roster"}))
 	row.add_child(confirm)
+	# Cost sits BELOW the button, not inside its label: it is two numbers plus a percentage and
+	# it changes every turn, which made for a button caption that was mostly arithmetic.
+	if not employed:
+		var cost := _tone_label(_cost_breakdown(), _WARN, 12)
+		cost.name = "AdvisorHireCostLine"
+		wrap.add_child(cost)
 	return wrap
 
 
@@ -802,8 +814,19 @@ func _archetype(advisor_id: String) -> String:
 	var entry := MatchState._roster_entry(advisor_id)
 	return str((entry.get("traits", {}) as Dictionary).get("specialty_name", ""))
 
-func _salary(advisor_id: String) -> float:
-	return float(MatchState._roster_entry(advisor_id).get("salary", 0.0))
+## What one more advisor costs per turn under the live model — a flat base that inflates at
+## double the labour rate, plus 1% of company revenue each (EconomyConfig, owner 2026-08-01).
+## Not the roster's old per-advisor `salary` field, which the model replaced.
+func _salary(_advisor_id: String) -> float:
+	return MatchState.advisor_cost_per_advisor(MatchState.advisor_revenue_basis())
+
+
+## The cost broken out, for the line that sits UNDER the hire button.
+func _cost_breakdown() -> String:
+	var rev := MatchState.advisor_revenue_basis()
+	var base := MatchState.advisor_cost_per_advisor(0.0)
+	var share := rev * EconomyConfig.ADVISOR_REVENUE_SHARE
+	return "\u00a3%.1f/turn \u2014 \u00a3%.1f base + %.0f%% of revenue (\u00a3%.1f)" % [base + share, base, EconomyConfig.ADVISOR_REVENUE_SHARE * 100.0, share]
 
 ## [ [display_name, value 1-3, disc_key], ... ] sorted by value desc, top n.
 func _top_disciplines(advisor_id: String, n: int) -> Array:

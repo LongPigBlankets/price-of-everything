@@ -26,7 +26,12 @@ static func gather() -> Dictionary:
 	var won: bool = vs.won
 	var turn: int = vs.won_turn if won else int(TurnManager.current_turn)
 	turn = clampi(turn, 1, vs.MAX_TURNS)
-	var result := "victory" if won else "defeat"
+	# Three outcomes, not two. Running out of turns having secured NO track is only a defeat if
+	# the company was also losing money; a business still in the black at the bell survived, and
+	# the screen says so in amber rather than calling in the receivers (owner 2026-08-01).
+	# Net/turn comes from the same summary the top bar reads, so the verdict agrees with the
+	# figure the player was watching all game.
+	var result := "victory" if won else ("continuity" if _net_per_turn() > 0.0 else "defeat")
 	var total: int = vs.total_for_turn(turn)
 	var threshold: int = vs.win_threshold_for_turn(turn)
 
@@ -126,7 +131,16 @@ const _FOUR_TRACK_TITLES := {   # keyed by the MISSING track
 	"logistics": "Beyond all Limits",
 }
 
+## Net cash movement over the last resolved turn — the same figure the top bar prints as
+## "+£X / turn" (Production.last_turn_summary money_in - money_out).
+static func _net_per_turn() -> float:
+	var s: Dictionary = Production.last_turn_summary
+	return float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
+
+
 static func _title(result: String, secured: int, tracks: Array) -> String:
+	if result == "continuity":
+		return "Continuity"
 	if result == "defeat":
 		return "Receivership"
 	match secured:
@@ -148,6 +162,8 @@ static func _title(result: String, secured: int, tracks: Array) -> String:
 	return "Victory"   # threshold crossed on banked partials — no champion track
 
 static func _epithet(result: String, secured: int, turn: int) -> String:
+	if result == "continuity":
+		return "The clock ran out on turn %d — no track secured, but the company still turns a profit" % turn
 	if result == "defeat":
 		return "The clock ran out — no track secured before turn %d" % turn
 	var n := "%d track%s secured" % [secured, "" if secured == 1 else "s"]
@@ -161,6 +177,9 @@ static func _copy(result: String, secured: int, turn: int, tracks: Array) -> Arr
 		if bool(t.done):
 			names.append(str(t.name).to_lower())
 	var lead := "The books closed on turn %d." % turn
+	if result == "continuity":
+		# Owner's copy, verbatim (2026-08-01).
+		return ["You continued your predecessors' task and made this company survive through a lot of change. Although you never reached the crazy heights of success some thought you capable of, there is greatness in maintaining such a steady ship. Few businesses can claim to have survived this long or managed to avoid catastrophe like yours. Raise a glass - but make it a small one, we can't afford the fancy stuff."]
 	if result == "defeat":
 		return [
 			"%s No track ever crossed its gate, and the rising win bar climbed past everything the empire managed to bank." % lead,
