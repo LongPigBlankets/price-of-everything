@@ -120,6 +120,11 @@ func _mechanic_result(entry: Dictionary) -> Dictionary:
 		"payload": entry,
 	}
 
+## Turns of sustained volume to move a price by `target` percent at `rate` %/turn.
+static func _turns_to(target: float, rate: float) -> int:
+	return 0 if rate <= 0.0 else int(ceil(target / rate))
+
+
 func _mechanic_body(entry_id: String) -> String:
 	if entry_id == "market_price_mechanics":
 		# Reads the LIVE banded model. The previous body described the legacy GLUT_UNITS knobs
@@ -141,8 +146,22 @@ func _mechanic_body(entry_id: String) -> String:
 			+ "The 1x band is the one most operations touch. A single building with production modifiers can out-produce its own base recipe batch, and once it does, selling that output every turn starts to move the price — gently, at half the rate of the band above, but it no longer passes unnoticed. Two buildings' worth reaches the second band.\n\n"
 			+ "SELLING pushes the price DOWN (a glut); BUYING pushes it UP (a deficit). The bands are identical in both directions, so a large standing purchase order walks its good's price up against you exactly as fast as dumping walks it down.\n\n"
 			+ "The accumulated impact is capped at plus or minus %d%%, and it is NOT permanent: hold your net volume at or under 1x base output and it bleeds back toward zero at %s%%/turn. Accrual and recovery never both happen in a turn — cross any threshold and you accrue, stay under it and you recover — so a good you are steadily working will not begin to recover until you ease off.\n\n"
+			+ "[table=4][cell][b]Net volume/turn[/b][/cell][cell][b]Price moves[/b][/cell][cell][b]To reach 10%%[/b][/cell][cell][b]To reach the %d%% cap[/b][/cell]"
+			+ "[cell]over 1x base[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell][cell]%d turns[/cell]"
+			+ "[cell]over 2x[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell][cell]%d turns[/cell]"
+			+ "[cell]over 4x[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell][cell]%d turns[/cell]"
+			+ "[cell]over 10x[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell][cell]%d turns[/cell][/table]\n\n"
+			+ "Those turn counts assume you hold that volume every single turn without pause. Ease off below 1x and the impact unwinds at %s%%/turn instead.\n\n"
 			+ "The market table's impact column lists the four thresholds for each good. The per-tile auto-sell control uses them: pick how much price impact you will tolerate each turn and it ships only enough to stay inside that band, stockpiling the rest.\n\n"
-			+ "Goods no active recipe produces have no base output and take no impact at all.") % [r1, r2, r4, r10, cap, rec]
+			+ "Goods no active recipe produces have no base output and take no impact at all.") % [
+				r1, r2, r4, r10,                      # the four band bullets
+				cap, rec,                             # "capped at +/-N%" ... "recovers at N%/turn"
+				cap,                                  # table header: "To reach the N% cap"
+				r1, _turns_to(10.0, EconomyConfig.PRICE_IMPACT_RATE_1X), _turns_to(float(cap), EconomyConfig.PRICE_IMPACT_RATE_1X),
+				r2, _turns_to(10.0, EconomyConfig.PRICE_IMPACT_RATE_2X), _turns_to(float(cap), EconomyConfig.PRICE_IMPACT_RATE_2X),
+				r4, _turns_to(10.0, EconomyConfig.PRICE_IMPACT_RATE_4X), _turns_to(float(cap), EconomyConfig.PRICE_IMPACT_RATE_4X),
+				r10, _turns_to(10.0, EconomyConfig.PRICE_IMPACT_RATE_10X), _turns_to(float(cap), EconomyConfig.PRICE_IMPACT_RATE_10X),
+				rec]
 	if entry_id == "intermittency":
 		var derate_pct: int = int(round(EconomyConfig.INTERMITTENCY_DERATE * 100.0))
 		return ("Solar and wind power are GREEN but INTERMITTENT — the sun and wind aren't always there. "
@@ -679,11 +698,19 @@ func _make_encyclopedia_entry(result: Dictionary) -> Control:
 	type_label.add_theme_color_override("font_color", SUBTITLE_COLOR)
 	body_stack.add_child(type_label)
 
-	var body := Label.new()
+	# Mechanics bodies may carry BBCode (the price-impact entry renders a rate table); goods and
+	# buildings pass plain prose, so bbcode stays OFF for them — a stray "[" in a good's
+	# description would otherwise be eaten as markup.
+	var body := RichTextLabel.new()
+	var is_mechanic := str(result.get("type", "")) == "mechanic"
+	body.bbcode_enabled = is_mechanic
 	body.text = _entry_placeholder_text(result)
+	body.fit_content = true
+	body.scroll_active = false
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.add_theme_font_size_override("font_size", 15)
-	body.add_theme_color_override("font_color", OFF_WHITE)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_font_size_override("normal_font_size", 15)
+	body.add_theme_color_override("default_color", OFF_WHITE)
 	body_stack.add_child(body)
 
 	var note := Label.new()

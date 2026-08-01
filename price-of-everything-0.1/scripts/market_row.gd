@@ -13,8 +13,10 @@ const NAME_BOUND := "Electrical Components"
 const NAME_RIGHT_PAD := 20.0
 const NAME_FS_MAX := 30
 const NAME_FS_MIN := 14
-const COL_PRICE := 70.0
-const COL_EST := 80.0
+# Kept in sync with market_panel.gd's COL_PRICE_W / COL_EST_W (separate containers — a
+# mismatch silently skews every column to the right of it).
+const COL_PRICE := 104.0
+const COL_EST := 104.0
 const COL_IMPACT := 110.0
 const COL_SOLD := 60.0
 const COL_BOUGHT := 64.0
