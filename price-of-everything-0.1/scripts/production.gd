@@ -177,6 +177,8 @@ func _process_production() -> void:
 	"power_sales_revenue": 0.0,
 	"power_purchase_cost": 0.0,
 	"transport_paid": 0.0,
+	# Exact components of transport_paid for the Money panel's transport accordion.
+	"transport_breakdown": {},
 	"goods_purchased_cost": 0.0,
 	# Per-good purchased goods cost (goods value only, excludes transport), used by
 	# the money panel's Charts tab to split purchases by good tier.
@@ -877,6 +879,7 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 			var freight: float = purchase_cost - goods_cost
 			summary.goods_purchased_cost += goods_cost
 			summary.transport_paid += freight
+			_record_transport_breakdown(summary, shipment.get("transport_breakdown", {}), freight)
 			summary.money_out += purchase_cost
 			summary.purchased_cost[good_id] = float(summary.purchased_cost.get(good_id, 0.0)) + goods_cost
 			_accumulate_by_type(summary.goods_purchased_by_type, str(shipment.get("buy_building_id", "")), goods_cost, 0)
@@ -1003,6 +1006,7 @@ func _sell_output_to_market(building: Dictionary, good: Dictionary, qty: int, su
 	var transport_cost: float = float(result.get("transport_cost", 0.0))
 	if transport_cost > 0.0:
 		summary.transport_paid += transport_cost
+		_record_transport_breakdown(summary, result.get("transport_breakdown", {}), transport_cost)
 		summary.money_out += transport_cost
 	# Deferred sales credit the summary on arrival via _process_transport_arrivals;
 	# immediate sales (no route, 0-turn) add to the summary here.
@@ -1070,6 +1074,7 @@ func _dispatch_output_to_destination(building: Dictionary, good: Dictionary, qty
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 		summary.transport_paid += transport_cost
+		_record_transport_breakdown(summary, TransportService.transport_cost_breakdown_for_route(good.id, qty, route), transport_cost)
 		summary.money_out += transport_cost
 
 	if int(route.turns) >= 1:
@@ -1253,6 +1258,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 	var ship_turns: int = int(quote.get("turns", 0))
 	var deferred: bool = port_tile != "" and ship_turns >= 1
 	var transport_cost := 0.0
+	var transport_breakdown: Dictionary = {}
 	for good_id in totals.keys():
 		var qty: int = int(totals[good_id])
 		if qty <= 0:
@@ -1266,10 +1272,13 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		var sold_revenue: float = float(sold_qty) * price
 		if not (in_port_range and bool(covered_goods.get(good_key, false))):
 			transport_cost += TransportService.transport_cost_for_route(good_key, sold_qty, route)
+			_add_transport_breakdown(transport_breakdown, TransportService.transport_cost_breakdown_for_route(good_key, sold_qty, route))
 		# Every market sale crosses the sea leg. The subscription only waives the local
 		# inland route, never the port's handling and insurance charge.
 		var sea_charge := MatchState.commit_sea_shipping(port_tile, good_key, sold_qty, "sell")
 		transport_cost += float(sea_charge.get("total", 0.0))
+		transport_breakdown["port_fees"] = float(transport_breakdown.get("port_fees", 0.0)) + float(sea_charge.get("base_fee", 0.0))
+		transport_breakdown["port_insurance"] = float(transport_breakdown.get("port_insurance", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,
@@ -1285,6 +1294,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 		summary.transport_paid += transport_cost
+		_record_transport_breakdown(summary, transport_breakdown, transport_cost)
 		summary.money_out += transport_cost
 	if deferred and int(sale_record.total_qty) > 0:
 		# Goods are already consumed (in transit); cash lands when the port receives them.
@@ -1331,11 +1341,29 @@ func record_external_goods_sale(sale_record: Dictionary) -> void:
 	if not last_turn_summary.is_empty() and _apply_sale_record_to_summary(last_turn_summary, sale_record):
 		turn_processed.emit(last_turn_summary)
 
-func record_external_transport_cost(cost: float) -> void:
+func record_external_transport_cost(cost: float, breakdown: Dictionary = {}) -> void:
 	if cost <= 0.0 or _active_turn_summary.is_empty():
 		return
 	_active_turn_summary.transport_paid += cost
+	_record_transport_breakdown(_active_turn_summary, breakdown, cost)
 	_active_turn_summary.money_out += cost
+
+
+func _record_transport_breakdown(summary: Dictionary, breakdown: Dictionary, total: float) -> void:
+	var resolved: Dictionary = breakdown
+	if resolved.is_empty() and total > 0.0:
+		# Old in-flight save shipments have no breakdown. Their settled freight is
+		# still a real overland charge, so preserve reconciliation under Road.
+		resolved = {"roads": total}
+	var destination: Dictionary = summary.get("transport_breakdown", {})
+	for kind in resolved:
+		destination[str(kind)] = float(destination.get(str(kind), 0.0)) + float(resolved[kind])
+	summary["transport_breakdown"] = destination
+
+
+func _add_transport_breakdown(destination: Dictionary, addition: Dictionary) -> void:
+	for kind in addition:
+		destination[str(kind)] = float(destination.get(str(kind), 0.0)) + float(addition[kind])
 
 func _merge_pending_external_sales(summary: Dictionary) -> void:
 	if _pending_external_sales.is_empty():
@@ -2451,6 +2479,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 				if not bought.is_empty() and not bool(bought.get("deferred", false)):
 					summary.goods_purchased_cost += float(bought.get("goods_cost", 0.0))
 					summary.transport_paid += float(bought.get("transport_cost", 0.0))
+					_record_transport_breakdown(summary, bought.get("transport_breakdown", {}), float(bought.get("transport_cost", 0.0)))
 					summary.money_out += float(bought.get("cost", 0.0))
 					summary.purchased_cost[good_id] = float(summary.purchased_cost.get(good_id, 0.0)) + float(bought.get("goods_cost", 0.0))
 					_accumulate_by_type(summary.goods_purchased_by_type, str(rep_building[good_id]), float(bought.get("goods_cost", 0.0)), 0)
@@ -2463,6 +2492,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		if not rbought.is_empty() and not bool(rbought.get("deferred", false)):
 			summary.goods_purchased_cost += float(rbought.get("goods_cost", 0.0))
 			summary.transport_paid += float(rbought.get("transport_cost", 0.0))
+			_record_transport_breakdown(summary, rbought.get("transport_breakdown", {}), float(rbought.get("transport_cost", 0.0)))
 			summary.money_out += float(rbought.get("cost", 0.0))
 			summary.purchased_cost[rgood] = float(summary.purchased_cost.get(rgood, 0.0)) + float(rbought.get("goods_cost", 0.0))
 			_accumulate_by_type(summary.goods_purchased_by_type, "", float(rbought.get("goods_cost", 0.0)), 0)

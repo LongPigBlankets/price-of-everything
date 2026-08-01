@@ -50,6 +50,9 @@ const HEADER_HEIGHT := 40.0
 @onready var _costs_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection
 @onready var _proj_costs_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection
 var _transport_value: Label
+var _transport_caret: Button
+var _transport_breakdown_values: Dictionary = {}
+var _transport_expanded := false
 var _proj_transport_value: Label
 var _goods_purchased_value: Label
 var _proj_goods_purchased_value: Label
@@ -80,6 +83,15 @@ var _drag_offset := Vector2.ZERO
 const CHART_MAX_TURNS := 10
 const DEFAULT_PANEL_SIZE := Vector2(560, 620)
 const CHART_PANEL_SIZE := Vector2(620, 600)
+const EXPANDED_BALANCE_PANEL_SIZE := Vector2(560, 770)
+const TRANSPORT_BREAKDOWN_ROWS := [
+	["port_fees", "Port Transport per Turn Fees"],
+	["port_insurance", "Port Transport Ad Valorem Insurance"],
+	["rail", "Rail Transport"],
+	["roads", "Road Transport"],
+	["pipes", "Pipe Transport"],
+	["reinf_pipes", "Reinforced Pipe Transport"],
+]
 @onready var _tab_container: TabContainer = $MarginContainer/ModalLayout/TabContainer
 @onready var _chart: Control = $MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent/Chart
 @onready var _chart_revenue_button: Button = $MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent/ToggleRow/RevenueButton
@@ -114,6 +126,68 @@ func _insert_cost_row(section: VBoxContainer, after_node_name: String, label_tex
 		section.move_child(row, after.get_index() + 1)
 	return value_label
 
+
+func _insert_transport_accordion(section: VBoxContainer, after_node_name: String) -> Label:
+	var group := VBoxContainer.new()
+	group.add_theme_constant_override("separation", 4)
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	group.add_child(header)
+	_transport_caret = Button.new()
+	_transport_caret.flat = true
+	_transport_caret.focus_mode = Control.FOCUS_NONE
+	_transport_caret.custom_minimum_size = Vector2(22, 0)
+	_transport_caret.pressed.connect(_toggle_transport_breakdown)
+	header.add_child(_transport_caret)
+	var name_label := Label.new()
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text = "Transport"
+	header.add_child(name_label)
+	var value_label := Label.new()
+	value_label.custom_minimum_size = Vector2(80, 0)
+	value_label.text = "-£0.00"
+	header.add_child(value_label)
+	for spec: Array in TRANSPORT_BREAKDOWN_ROWS:
+		var row := HBoxContainer.new()
+		row.visible = false
+		row.add_theme_constant_override("separation", 8)
+		var indent := Control.new()
+		indent.custom_minimum_size = Vector2(30, 0)
+		row.add_child(indent)
+		var detail_label := Label.new()
+		detail_label.text = str(spec[1])
+		detail_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		detail_label.add_theme_color_override("font_color", Color(0.65, 0.72, 0.8))
+		row.add_child(detail_label)
+		var detail_value := Label.new()
+		detail_value.custom_minimum_size = Vector2(80, 0)
+		detail_value.text = "-£0.00"
+		row.add_child(detail_value)
+		_transport_breakdown_values[str(spec[0])] = detail_value
+		group.add_child(row)
+	section.add_child(group)
+	var after := section.get_node_or_null(after_node_name)
+	if after != null:
+		section.move_child(group, after.get_index() + 1)
+	_set_transport_expanded(false)
+	return value_label
+
+
+func _toggle_transport_breakdown() -> void:
+	_set_transport_expanded(not _transport_expanded)
+
+
+func _set_transport_expanded(expanded: bool) -> void:
+	_transport_expanded = expanded
+	if _transport_caret == null:
+		return
+	_transport_caret.text = "⌄" if expanded else "›"
+	_transport_caret.tooltip_text = "Hide transport cost breakdown" if expanded else "Show transport cost breakdown"
+	for value_label: Label in _transport_breakdown_values.values():
+		(value_label.get_parent() as Control).visible = expanded
+	if _tab_container != null and _tab_container.get_tab_title(_tab_container.current_tab) == "Balance":
+		size = EXPANDED_BALANCE_PANEL_SIZE if expanded else DEFAULT_PANEL_SIZE
+
 func _insert_finance_row(section: VBoxContainer, after_node_name: String, label_text: String, default_text: String) -> Label:
 	var row := HBoxContainer.new()
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -134,7 +208,7 @@ func _insert_finance_row(section: VBoxContainer, after_node_name: String, label_
 	return value_label
 
 func _ready() -> void:
-	_transport_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Transport")
+	_transport_value = _insert_transport_accordion(_costs_section, "PowerPurchaseRow")
 	_proj_transport_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Transport")
 	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
 	_proj_goods_purchased_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Goods purchased")
@@ -342,6 +416,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	labour_value.text = "-£%.2f" % labour
 	power_purchase_value.text = "-£%.2f" % power_purchase
 	_transport_value.text = "-£%.2f" % transport
+	_render_transport_breakdown(transport, summary.get("transport_breakdown", {}))
 	_goods_purchased_value.text = "-£%.2f" % goods_purchased
 	_warehousing_value.text = "-£%.2f" % warehousing
 	_carbon_tax_value.text = "-£%.2f" % carbon_tax
@@ -372,6 +447,30 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	_apply_breakdown_tooltip(labour_value, summary.get("labour_by_type", {}), "labour")
 	_apply_breakdown_tooltip(power_purchase_value, summary.get("power_purchase_by_type", {}), "power")
 	_apply_breakdown_tooltip(_goods_purchased_value, summary.get("goods_purchased_by_type", {}), "goods purchased")
+
+
+func _render_transport_breakdown(transport: float, raw_breakdown: Dictionary) -> void:
+	var breakdown: Dictionary = raw_breakdown.duplicate()
+	var component_total := 0.0
+	for value in breakdown.values():
+		component_total += float(value)
+	# Preserve reconciliation for an old summary or an as-yet-unclassified cost.
+	breakdown["roads"] = float(breakdown.get("roads", 0.0)) + (transport - component_total)
+	var remaining := transport
+	for index in TRANSPORT_BREAKDOWN_ROWS.size():
+		var spec: Array = TRANSPORT_BREAKDOWN_ROWS[index]
+		var key := str(spec[0])
+		var amount: float = float(breakdown.get(key, 0.0))
+		# The final displayed row receives the fractional-penny remainder, so the
+		# six visible amounts always add up to the displayed Transport total.
+		if index == TRANSPORT_BREAKDOWN_ROWS.size() - 1:
+			amount = remaining
+		else:
+			amount = snappedf(amount, 0.01)
+			remaining -= amount
+		var value_label := _transport_breakdown_values.get(key) as Label
+		if value_label != null:
+			value_label.text = "-£%.2f" % amount
 
 func _apply_breakdown_tooltip(value_label: Label, by_type: Dictionary, category: String) -> void:
 	if value_label == null:

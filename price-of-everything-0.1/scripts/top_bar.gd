@@ -94,6 +94,11 @@ var _victory_meters: HBoxContainer
 var _victory_score: Label
 var _victory_target: Label   # "/ N" — the rising win threshold for the current turn
 
+# Company rankings module
+var _rankings_btn: Control
+var _rankings_head: Label
+var _rankings_sub: Label
+
 # Briefing notch (top_level: centred on the viewport, hangs below the bar)
 var _briefing_btn: Control
 var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyph)
@@ -118,6 +123,7 @@ var _fly_layer: CanvasLayer
 var _fly_scrim: Control
 var _fly_panel: PanelContainer
 var _fly_open_id := ""
+var _rankings_tab := "revenue"
 
 # Coalesced refresh (notification-bell doctrine): sim signals mark dirty; ONE
 # deferred refresh per frame updates every module label.
@@ -129,6 +135,7 @@ func _ready() -> void:
 	_build_treasury()
 	_build_power()
 	_build_victory()
+	_build_rankings()
 	_build_briefing()
 	_build_council()
 	_build_goods_graph()
@@ -143,6 +150,7 @@ func _ready() -> void:
 	MatchState.advisors_changed.connect(_queue_refresh)
 	MatchState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
+	CompanyRankings.rankings_updated.connect(_queue_refresh)
 	# A new turn brings a fresh research digest, so the microscope should show again.
 	TurnManager.turn_advanced.connect(func(_t: int) -> void:
 		_research_seen = false
@@ -463,6 +471,59 @@ func _build_victory() -> void:
 
 func _track_color(entry: Dictionary) -> Color:
 	return DS.PALETTE.get(str(entry.get("color_key", "")), C_CREAM)
+
+
+# ── 4 · Rankings: player position in the cosmetic company league ────────────
+
+func _build_rankings() -> void:
+	var mod := _ModuleBtn.new(self)
+	mod.name = "RankingsModule"
+	mod.tooltip_text = "Company rankings — total revenue league table"
+	mod.custom_minimum_size = Vector2(0, MOD_H)
+	var row := _module_row(mod)
+	row.add_child(_mini("▲", C_CREAM.darkened(0.12), 15))
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(col)
+	col.add_child(_tag("Rankings"))
+	_rankings_head = _mini("10TH OF 10", C_BRIGHT, 14)
+	col.add_child(_rankings_head)
+	_rankings_sub = _mini("total revenue", C_MUTED, 11)
+	col.add_child(_rankings_sub)
+	mod.pressed.connect(func() -> void: _toggle_fly("rankings"))
+	_hbox().add_child(mod)
+	_rankings_btn = mod
+
+func _refresh_rankings() -> void:
+	if _rankings_head == null:
+		return
+	var rows: Array[Dictionary] = CompanyRankings.standings()
+	for row: Dictionary in rows:
+		if not bool(row.get("is_player", false)):
+			continue
+		var movement: int = int(row.get("rank_change", 0))
+		_rankings_head.text = "%s %s OF %d" % [_ranking_arrow(movement), _ordinal(int(row.get("rank", 10))), rows.size()]
+		_rankings_head.add_theme_color_override("font_color", C_GOOD if movement > 0 else (C_BAD if movement < 0 else C_BRIGHT))
+		_rankings_sub.text = "%s total revenue" % _money_text(float(row.get("revenue", 0.0)))
+		return
+
+func _ranking_arrow(change: int) -> String:
+	if change > 0:
+		return "▲"
+	if change < 0:
+		return "▼"
+	return "—"
+
+func _ordinal(value: int) -> String:
+	var suffix := "th"
+	if value % 100 < 11 or value % 100 > 13:
+		match value % 10:
+			1: suffix = "st"
+			2: suffix = "nd"
+			3: suffix = "rd"
+	return "%d%s" % [value, suffix]
 
 ## queue_free() is DEFERRED: the old children live until the end of the frame while the new ones
 ## are added immediately, so for one frame the container holds BOTH sets and the HBox lays out
@@ -1082,10 +1143,14 @@ func _close_fly() -> void:
 	_fly_open_id = ""
 	_fly_scrim.visible = false
 	if _fly_panel != null and is_instance_valid(_fly_panel):
+		if _fly_panel.get_parent() != null:
+			_fly_panel.get_parent().remove_child(_fly_panel)
 		_fly_panel.queue_free()
 	_fly_panel = null
 	if _victory_btn != null:
 		(_victory_btn as _ModuleBtn).active = false
+	if _rankings_btn != null:
+		(_rankings_btn as _ModuleBtn).active = false
 	if _council_btn != null:
 		(_council_btn as _ModuleBtn).active = false
 
@@ -1102,14 +1167,20 @@ func _open_fly(id: String) -> void:
 	_fly_scrim.visible = true
 	_fly_panel = PanelContainer.new()
 	_fly_panel.name = "Flyout_%s" % id   # stable target (tutorial spotlight / e2e)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color("#0d1e31")
-	sb.border_color = C_ACTIVE_BORDER
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(12)
-	sb.shadow_color = Color(0, 0, 0, 0.55)
-	sb.shadow_size = 18
-	_fly_panel.add_theme_stylebox_override("panel", sb)
+	if id == "rankings":
+		# CanvasLayer children do not consistently inherit the viewport's theme.
+		# Assign it here so this expanded panel genuinely uses DS Card/Outlined styles.
+		_fly_panel.theme = DS.theme
+		_fly_panel.theme_type_variation = "Card"
+	else:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color("#0d1e31")
+		sb.border_color = C_ACTIVE_BORDER
+		sb.set_border_width_all(1)
+		sb.set_corner_radius_all(12)
+		sb.shadow_color = Color(0, 0, 0, 0.55)
+		sb.shadow_size = 18
+		_fly_panel.add_theme_stylebox_override("panel", sb)
 	_fly_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 0)
@@ -1129,6 +1200,12 @@ func _open_fly(id: String) -> void:
 			_fly_victory(vb)
 			anchor = _victory_btn
 			(_victory_btn as _ModuleBtn).active = true
+		"rankings":
+			_fly_panel.custom_minimum_size = Vector2(560, 0)
+			vb.add_child(_fly_head("Company rankings"))
+			_fly_rankings(vb)
+			anchor = _rankings_btn
+			(_rankings_btn as _ModuleBtn).active = true
 		"council":
 			_fly_panel.custom_minimum_size = Vector2(352, 0)
 			vb.add_child(_fly_head("Council"))
@@ -1145,7 +1222,7 @@ func _open_fly(id: String) -> void:
 		# retains the viewport height and leaves an empty panel below its actions.
 		_fly_panel.size = _fly_panel.get_combined_minimum_size()
 		var vw := get_viewport().get_visible_rect().size.x
-		var x := anchor.global_position.x
+		var x := 12.0 if id == "rankings" else anchor.global_position.x
 		x = clampf(x, 8.0, vw - _fly_panel.size.x - 8.0)
 		_fly_panel.global_position = Vector2(x, BAR_H + 8.0)
 	place.call_deferred()
@@ -1215,6 +1292,155 @@ func _fly_sep() -> Control:
 	sb.bg_color = C_TRACK_EDGE
 	line.add_theme_stylebox_override("panel", sb)
 	return line
+
+func _fly_rankings(vb: VBoxContainer) -> void:
+	vb.add_child(_rankings_tabs())
+	if _rankings_tab == "goods":
+		_fly_goods_rankings(vb)
+	else:
+		_fly_revenue_rankings(vb)
+
+func _rankings_tabs() -> Control:
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 14)
+	pad.add_theme_constant_override("margin_right", 14)
+	pad.add_theme_constant_override("margin_top", 10)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	pad.add_child(row)
+	for tab: String in ["revenue", "goods"]:
+		var button := Button.new()
+		button.theme = DS.theme
+		button.text = "Revenue" if tab == "revenue" else "Goods"
+		# Keep both tabs clickable; the primary treatment, rather than a disabled
+		# button, marks the tab currently being shown.
+		button.theme_type_variation = "Primary" if tab == _rankings_tab else ""
+		button.custom_minimum_size = Vector2(110, 30)
+		button.pressed.connect(func() -> void: _set_rankings_tab(tab))
+		row.add_child(button)
+	return pad
+
+func _set_rankings_tab(tab: String) -> void:
+	if tab == _rankings_tab:
+		return
+	_rankings_tab = tab
+	_close_fly()
+	_open_fly("rankings")
+
+func _fly_revenue_rankings(vb: VBoxContainer) -> void:
+	var inner := _fly_pad(vb, 5)
+	var hint := Label.new()
+	hint.theme_type_variation = "Caption"
+	hint.text = "TOTAL REVENUE · LAST 5-TURN AVERAGE"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	inner.add_child(hint)
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 10)
+	var rank_head := _mini("RANK", C_MUTED, 10)
+	rank_head.custom_minimum_size = Vector2(68, 0)
+	header.add_child(rank_head)
+	var company_head := _mini("COMPANY", C_MUTED, 10)
+	company_head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(company_head)
+	var revenue_head := _mini("REVENUE", C_MUTED, 10)
+	revenue_head.custom_minimum_size = Vector2(112, 0)
+	revenue_head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	header.add_child(revenue_head)
+	var average_head := _mini("5T AVG", C_MUTED, 10)
+	average_head.custom_minimum_size = Vector2(112, 0)
+	average_head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	header.add_child(average_head)
+	inner.add_child(header)
+	inner.add_child(_fly_sep())
+	for entry: Dictionary in CompanyRankings.standings():
+		inner.add_child(_ranking_row(entry))
+
+func _fly_goods_rankings(vb: VBoxContainer) -> void:
+	var hint_pad := MarginContainer.new()
+	hint_pad.add_theme_constant_override("margin_left", 14)
+	hint_pad.add_theme_constant_override("margin_right", 14)
+	hint_pad.add_theme_constant_override("margin_top", 4)
+	hint_pad.add_theme_constant_override("margin_bottom", 8)
+	var hint := Label.new()
+	hint.theme_type_variation = "Caption"
+	hint.text = "TOP 3 RIVAL PRODUCERS + YOUR LAST-TURN OUTPUT · APEX GOODS ARE PLAYER-ONLY"
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint_pad.add_child(hint)
+	vb.add_child(hint_pad)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 650)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 8)
+	scroll.add_child(list)
+	for good: Dictionary in CompanyRankings.goods_standings():
+		list.add_child(_goods_ranking_card(good))
+	vb.add_child(scroll)
+
+func _goods_ranking_card(good: Dictionary) -> Control:
+	var card := PanelContainer.new()
+	card.theme_type_variation = "Card"
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	card.add_child(body)
+	body.add_child(DS.good_icon(str(good.get("good_id", "")), str(good.get("internal_name", "")), 40))
+	var details := VBoxContainer.new()
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.add_theme_constant_override("separation", 3)
+	body.add_child(details)
+	var name := Label.new()
+	name.theme_type_variation = "BuildingName"
+	name.text = str(good.get("display_name", ""))
+	details.add_child(name)
+	for producer: Dictionary in (good.get("producers", []) as Array):
+		var producer_row := HBoxContainer.new()
+		var rank := _mini("%s" % _ordinal(int(producer.get("rank", 0))), C_MUTED, 11)
+		rank.custom_minimum_size = Vector2(38, 0)
+		producer_row.add_child(rank)
+		var producer_name := Label.new()
+		producer_name.theme_type_variation = "Body"
+		producer_name.text = str(producer.get("name", ""))
+		producer_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		producer_row.add_child(producer_name)
+		var quantity := Label.new()
+		quantity.theme_type_variation = "Numeric"
+		quantity.text = "(%d)" % int(producer.get("quantity", 0))
+		producer_row.add_child(quantity)
+		details.add_child(producer_row)
+	return card
+
+func _ranking_row(entry: Dictionary) -> Control:
+	var card := PanelContainer.new()
+	card.theme_type_variation = "Outlined" if bool(entry.get("is_player", false)) else "Card"
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	card.add_child(row)
+	var rank := Label.new()
+	rank.theme_type_variation = "Numeric"
+	rank.text = "%s %s" % [_ranking_arrow(int(entry.get("rank_change", 0))), _ordinal(int(entry.get("rank", 0)))]
+	rank.custom_minimum_size = Vector2(68, 0)
+	row.add_child(rank)
+	var company := Label.new()
+	company.theme_type_variation = "Body"
+	company.text = str(entry.get("name", ""))
+	company.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(company)
+	var revenue := Label.new()
+	revenue.theme_type_variation = "Numeric"
+	revenue.text = "%s / turn" % _money_text(float(entry.get("revenue", 0.0)))
+	revenue.custom_minimum_size = Vector2(112, 0)
+	revenue.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(revenue)
+	var average := Label.new()
+	average.theme_type_variation = "Numeric"
+	average.text = "%s / turn" % _money_text(float(entry.get("trend_average", 0.0)))
+	average.custom_minimum_size = Vector2(112, 0)
+	average.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(average)
+	return card
 
 func _fly_btn(text: String, primary: bool) -> Button:
 	var b := Button.new()
@@ -1497,6 +1723,7 @@ func _apply_refresh() -> void:
 	_refresh_treasury()
 	_refresh_power()
 	_refresh_victory()
+	_refresh_rankings()
 	_refresh_briefing()
 	_refresh_council()
 	if _date_label != null:
