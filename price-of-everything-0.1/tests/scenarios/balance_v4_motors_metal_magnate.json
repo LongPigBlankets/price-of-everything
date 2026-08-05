@@ -1,132 +1,413 @@
 {
-	"name": "balance_v4_motors_metal_magnate",
-	"display_name": "Balance v4 — exact Metal Magnate motor expansion",
-	"note": "Load the live Metal Magnate start unchanged, operate its inherited iron chain, then add steel, copper blistering, wiring and motors before integrating water and the remaining raw-material capacity.",
-	"integration_scope": "the exact Metal Magnate start — £300, four inherited buildings, three owned tiles, seeded inputs, authored infrastructure/routes, no opening debt and four +10% metal legacies — expanded downstream to motors and then fully integrated",
-	"balance_v4": true,
-	"balance_start_config": "res://data/starts/metal_magnate.json",
-	"balance_start_id": "metal_magnate",
-	"starting_money": 300,
-	"balance_expected_start_buildings": 4,
-	"balance_keep_deposit_penalties": true,
-	"balance_keep_start_modifiers": true,
-	"balance_consider_research_modifiers": true,
-	"balance_prudent_expansion": true,
-	"balance_profit_window": 3,
-	"balance_loan_interest_profit_fraction": 0.5,
-	"balance_unprofitable_cash_multiplier": 1.5,
-	"balance_funding_wait_turns": 100,
-	"balance_initial_surveys": ["tile_6_9", "tile_9_10"],
-	"integration_earliest_turn": 10,
-	"expected_average_port_distance": 0,
-	"port_distance_tolerance": 0.01,
-	"target_goods": ["motor"],
-	"target_recipe_ids": ["r_009"],
-	"surplus_sales": ["tile_5_10"],
-	"port_distance_pairs": [
-		{"hub": "tile_5_10", "port": "tile_5_10"}
-	],
-
-	"balance_existing_buildings": [
-		{"id": "coal_start", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_6_8"},
-		{"id": "iron_start", "internal_name": "mine", "recipe_id": "r_002", "tile": "tile_7_10"},
-		{"id": "pig_iron", "internal_name": "furnace", "recipe_id": "r_005", "tile": "tile_5_10"},
-		{"id": "power_start", "internal_name": "power_plant", "recipe_id": "r_004", "tile": "tile_5_10"}
-	],
-
-	"balance_runway_turns": 8,
-	"balance_runway_transport_spine": {},
-	"balance_runway_buildings": [],
-	"balance_runway_routes": [
-		{"id": "pig_iron", "good": "iron_ingots", "dest": "market"}
-	],
-	"balance_runway_tile_only_inputs": [],
-	"balance_runway_surplus_sales": [],
-
-	"transport_spine": {},
-	"balance_standalone_buildings": [],
-	"balance_post_transport_buildings": [],
-	"balance_standalone_routes": [],
-	"balance_preintegration_buildings": [],
-	"balance_preintegration_routes": [],
-	"balance_integration_stage_transport_spines": [
-		{
-			"before_id": "water",
-			"spine": {
-				"corridors": [["tile_6_9", "tile_5_10"]],
-				"pipes": "corridors"
-			}
-		},
-		{
-			"before_id": "copper_ore",
-			"spine": {
-				"corridors": [["tile_9_10", "tile_5_10"]],
-				"roads": "corridors",
-				"cables": ["tile_8_10"]
-			}
-		}
-	],
-	"balance_integration_buildings": [
-		{"id": "steel", "internal_name": "furnace", "recipe_id": "r_003", "tile": "tile_5_10"},
-		{"id": "copper_ingots", "internal_name": "furnace", "recipe_id": "r_007", "tile": "tile_5_10"},
-		{"id": "wiring", "internal_name": "industrial_factory", "recipe_id": "r_008", "tile": "tile_5_10"},
-		{"id": "motor", "internal_name": "industrial_factory", "recipe_id": "r_009", "tile": "tile_5_10"},
-		{"id": "water", "internal_name": "water_pump", "recipe_id": "r_011", "tile": "tile_6_9", "deposit": "water"},
-		{"id": "power_b", "internal_name": "power_plant", "recipe_id": "r_004", "tile": "tile_5_10"},
-		{"id": "coal_extra", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_6_8", "deposit": "coal", "count": 2},
-		{"id": "iron_extra", "internal_name": "mine", "recipe_id": "r_002", "tile": "tile_7_10", "deposit": "iron_ore"},
-		{"id": "copper_ore", "internal_name": "mine", "recipe_id": "r_006", "tile": "tile_9_10", "deposit": "copper_ore", "count": 2}
-	],
-	"balance_required_integration_ids": [
-		"coal_start", "iron_start", "pig_iron", "power_start", "steel",
-		"copper_ingots", "wiring", "motor", "water", "power_b",
-		"coal_extra", "iron_extra", "copper_ore"
-	],
-	"balance_integration_stage_routes": [
-		{"after_id": "steel", "id": "pig_iron", "good": "iron_ingots", "dest": "tile_5_10"}
-	],
-	"balance_integration_stage_tile_only_inputs": [
-		{"after_id": "steel", "id": "steel", "goods": ["iron_ingots"]},
-		{"after_id": "wiring", "id": "wiring", "goods": ["copper_ingots"]},
-		{"after_id": "motor", "id": "motor", "goods": ["steel", "copper_wiring"]},
-		{"after_id": "water", "id": "power_start", "goods": ["pure_water"]},
-		{"after_id": "power_b", "id": "power_b", "goods": ["pure_water"]},
-		{"after_id": "coal_extra", "id": "power_start", "goods": ["coal", "pure_water"]},
-		{"after_id": "coal_extra", "id": "power_b", "goods": ["coal", "pure_water"]},
-		{"after_id": "coal_extra", "id": "pig_iron", "goods": ["coal"]},
-		{"after_id": "coal_extra", "id": "steel", "goods": ["iron_ingots", "coal"]},
-		{"after_id": "iron_extra", "id": "pig_iron", "goods": ["iron_ore", "coal"]},
-		{"after_id": "copper_ore", "id": "copper_ingots", "goods": ["copper_ore"]}
-	],
-	"balance_integration_stage_runways": [
-		{"after_id": "steel", "minimum_turns": 4, "minimum_cash": 500, "maximum_turn": 150},
-		{"after_id": "copper_ingots", "minimum_turns": 4, "minimum_cash": 650, "maximum_turn": 150},
-		{"after_id": "wiring", "minimum_turns": 6, "minimum_cash": 700, "maximum_turn": 150}
-	],
-	"balance_integration_routes": [
-		{"id": "coal_start", "good": "coal", "dest": "tile_5_10"},
-		{"id": "coal_extra", "good": "coal", "dest": "tile_5_10"},
-		{"id": "iron_start", "good": "iron_ore", "dest": "tile_5_10"},
-		{"id": "iron_extra", "good": "iron_ore", "dest": "tile_5_10"},
-		{"id": "pig_iron", "good": "iron_ingots", "dest": "tile_5_10"},
-		{"id": "steel", "good": "steel", "dest": "tile_5_10"},
-		{"id": "copper_ore", "good": "copper_ore", "dest": "tile_5_10"},
-		{"id": "copper_ingots", "good": "copper_ingots", "dest": "tile_5_10"},
-		{"id": "wiring", "good": "copper_wiring", "dest": "tile_5_10"},
-		{"id": "motor", "good": "motor", "dest": "market"},
-		{"id": "water", "good": "pure_water", "dest": "tile_5_10"}
-	],
-	"balance_tile_only_inputs": [
-		{"id": "power_start", "goods": ["coal", "pure_water"]},
-		{"id": "power_b", "goods": ["coal", "pure_water"]},
-		{"id": "pig_iron", "goods": ["iron_ore", "coal"]},
-		{"id": "steel", "goods": ["iron_ingots", "coal"]},
-		{"id": "copper_ingots", "goods": ["copper_ore"]},
-		{"id": "wiring", "goods": ["copper_ingots"]},
-		{"id": "motor", "goods": ["steel", "copper_wiring"]}
-	],
-	"balance_scale_transport_spine": {},
-	"balance_scale_buildings": [],
-	"balance_scale_routes": [],
-	"balance_scale_tile_only_inputs": []
+ "name": "balance_v4_motors_metal_magnate",
+ "display_name": "Balance v4 \u2014 exact Metal Magnate motor expansion",
+ "note": "Load the live Metal Magnate start unchanged, operate its inherited iron chain, then add steel, copper blistering, wiring and motors before integrating water and the remaining raw-material capacity.",
+ "integration_scope": "the exact Metal Magnate start \u2014 \u00a3300, four inherited buildings, three owned tiles, seeded inputs, authored infrastructure/routes, no opening debt and four +10% metal legacies \u2014 expanded downstream to motors and then fully integrated",
+ "balance_v4": true,
+ "balance_start_config": "res://data/starts/metal_magnate.json",
+ "balance_start_id": "metal_magnate",
+ "starting_money": 300,
+ "balance_expected_start_buildings": 4,
+ "balance_keep_deposit_penalties": true,
+ "balance_keep_start_modifiers": true,
+ "balance_consider_research_modifiers": true,
+ "balance_prudent_expansion": true,
+ "balance_profit_window": 3,
+ "balance_loan_interest_profit_fraction": 0.5,
+ "balance_unprofitable_cash_multiplier": 1.5,
+ "balance_funding_wait_turns": 100,
+ "balance_initial_surveys": [
+  "tile_6_9",
+  "tile_9_10"
+ ],
+ "integration_earliest_turn": 10,
+ "expected_average_port_distance": 0,
+ "port_distance_tolerance": 0.01,
+ "target_goods": [
+  "motor"
+ ],
+ "target_recipe_ids": [
+  "r_009"
+ ],
+ "surplus_sales": [
+  "tile_5_10"
+ ],
+ "port_distance_pairs": [
+  {
+   "hub": "tile_5_10",
+   "port": "tile_5_10"
+  }
+ ],
+ "balance_existing_buildings": [
+  {
+   "id": "coal_start",
+   "internal_name": "mine",
+   "recipe_id": "r_001",
+   "tile": "tile_6_8"
+  },
+  {
+   "id": "iron_start",
+   "internal_name": "mine",
+   "recipe_id": "r_002",
+   "tile": "tile_7_10"
+  },
+  {
+   "id": "pig_iron",
+   "internal_name": "furnace",
+   "recipe_id": "r_005",
+   "tile": "tile_5_10"
+  },
+  {
+   "id": "power_start",
+   "internal_name": "power_plant",
+   "recipe_id": "r_004",
+   "tile": "tile_5_10"
+  }
+ ],
+ "balance_runway_turns": 8,
+ "balance_runway_transport_spine": {},
+ "balance_runway_buildings": [],
+ "balance_runway_routes": [
+  {
+   "id": "pig_iron",
+   "good": "iron_ingots",
+   "dest": "market"
+  }
+ ],
+ "balance_runway_tile_only_inputs": [],
+ "balance_runway_surplus_sales": [],
+ "transport_spine": {},
+ "balance_standalone_buildings": [],
+ "balance_post_transport_buildings": [],
+ "balance_standalone_routes": [],
+ "balance_preintegration_buildings": [],
+ "balance_preintegration_routes": [],
+ "balance_integration_stage_transport_spines": [
+  {
+   "before_id": "water",
+   "spine": {
+    "corridors": [
+     [
+      "tile_6_9",
+      "tile_5_10"
+     ]
+    ],
+    "pipes": "corridors"
+   }
+  },
+  {
+   "before_id": "copper_ore",
+   "spine": {
+    "corridors": [
+     [
+      "tile_9_10",
+      "tile_5_10"
+     ]
+    ],
+    "roads": "corridors",
+    "cables": [
+     "tile_8_10"
+    ]
+   }
+  }
+ ],
+ "balance_integration_buildings": [
+  {
+   "id": "steel",
+   "internal_name": "furnace",
+   "recipe_id": "r_003",
+   "tile": "tile_5_10"
+  },
+  {
+   "id": "copper_ingots",
+   "internal_name": "furnace",
+   "recipe_id": "r_007",
+   "tile": "tile_5_10"
+  },
+  {
+   "id": "wiring",
+   "internal_name": "industrial_factory",
+   "recipe_id": "r_008",
+   "tile": "tile_5_10"
+  },
+  {
+   "id": "motor",
+   "internal_name": "industrial_factory",
+   "recipe_id": "r_009",
+   "tile": "tile_5_10"
+  },
+  {
+   "id": "water",
+   "internal_name": "water_pump",
+   "recipe_id": "r_011",
+   "tile": "tile_6_9",
+   "deposit": "water"
+  },
+  {
+   "id": "power_b",
+   "internal_name": "power_plant",
+   "recipe_id": "r_004",
+   "tile": "tile_5_10"
+  },
+  {
+   "id": "coal_extra",
+   "internal_name": "mine",
+   "recipe_id": "r_001",
+   "tile": "tile_6_8",
+   "deposit": "coal",
+   "count": 2
+  },
+  {
+   "id": "iron_extra",
+   "internal_name": "mine",
+   "recipe_id": "r_002",
+   "tile": "tile_7_10",
+   "deposit": "iron_ore"
+  },
+  {
+   "id": "copper_ore",
+   "internal_name": "mine",
+   "recipe_id": "r_006",
+   "tile": "tile_9_10",
+   "deposit": "copper_ore",
+   "count": 2
+  }
+ ],
+ "balance_required_integration_ids": [
+  "coal_start",
+  "iron_start",
+  "pig_iron",
+  "power_start",
+  "steel",
+  "copper_ingots",
+  "wiring",
+  "motor",
+  "water",
+  "power_b",
+  "coal_extra",
+  "iron_extra",
+  "copper_ore"
+ ],
+ "balance_integration_stage_routes": [
+  {
+   "after_id": "steel",
+   "id": "pig_iron",
+   "good": "iron_ingots",
+   "dest": "tile_5_10"
+  }
+ ],
+ "balance_integration_stage_tile_only_inputs": [
+  {
+   "after_id": "steel",
+   "id": "steel",
+   "goods": [
+    "iron_ingots"
+   ]
+  },
+  {
+   "after_id": "wiring",
+   "id": "wiring",
+   "goods": [
+    "copper_ingots"
+   ]
+  },
+  {
+   "after_id": "motor",
+   "id": "motor",
+   "goods": [
+    "steel",
+    "copper_wiring"
+   ]
+  },
+  {
+   "after_id": "water",
+   "id": "power_start",
+   "goods": [
+    "pure_water"
+   ]
+  },
+  {
+   "after_id": "power_b",
+   "id": "power_b",
+   "goods": [
+    "pure_water"
+   ]
+  },
+  {
+   "after_id": "coal_extra",
+   "id": "power_start",
+   "goods": [
+    "coal",
+    "pure_water"
+   ]
+  },
+  {
+   "after_id": "coal_extra",
+   "id": "power_b",
+   "goods": [
+    "coal",
+    "pure_water"
+   ]
+  },
+  {
+   "after_id": "coal_extra",
+   "id": "pig_iron",
+   "goods": [
+    "coal"
+   ]
+  },
+  {
+   "after_id": "coal_extra",
+   "id": "steel",
+   "goods": [
+    "iron_ingots",
+    "coal"
+   ]
+  },
+  {
+   "after_id": "iron_extra",
+   "id": "pig_iron",
+   "goods": [
+    "iron_ore",
+    "coal"
+   ]
+  },
+  {
+   "after_id": "copper_ore",
+   "id": "copper_ingots",
+   "goods": [
+    "copper_ore"
+   ]
+  }
+ ],
+ "balance_integration_stage_runways": [
+  {
+   "after_id": "steel",
+   "minimum_turns": 4,
+   "minimum_cash": 500,
+   "maximum_turn": 150
+  },
+  {
+   "after_id": "copper_ingots",
+   "minimum_turns": 4,
+   "minimum_cash": 650,
+   "maximum_turn": 150
+  },
+  {
+   "after_id": "wiring",
+   "minimum_turns": 6,
+   "minimum_cash": 700,
+   "maximum_turn": 150
+  }
+ ],
+ "balance_integration_routes": [
+  {
+   "id": "coal_start",
+   "good": "coal",
+   "dest": "tile_5_10"
+  },
+  {
+   "id": "coal_extra",
+   "good": "coal",
+   "dest": "tile_5_10"
+  },
+  {
+   "id": "iron_start",
+   "good": "iron_ore",
+   "dest": "tile_5_10"
+  },
+  {
+   "id": "iron_extra",
+   "good": "iron_ore",
+   "dest": "tile_5_10"
+  },
+  {
+   "id": "pig_iron",
+   "good": "iron_ingots",
+   "dest": "tile_5_10"
+  },
+  {
+   "id": "steel",
+   "good": "steel",
+   "dest": "tile_5_10"
+  },
+  {
+   "id": "copper_ore",
+   "good": "copper_ore",
+   "dest": "tile_5_10"
+  },
+  {
+   "id": "copper_ingots",
+   "good": "copper_ingots",
+   "dest": "tile_5_10"
+  },
+  {
+   "id": "wiring",
+   "good": "copper_wiring",
+   "dest": "tile_5_10"
+  },
+  {
+   "id": "motor",
+   "good": "motor",
+   "dest": "market"
+  },
+  {
+   "id": "water",
+   "good": "pure_water",
+   "dest": "tile_5_10"
+  }
+ ],
+ "balance_tile_only_inputs": [
+  {
+   "id": "power_start",
+   "goods": [
+    "coal",
+    "pure_water"
+   ]
+  },
+  {
+   "id": "power_b",
+   "goods": [
+    "coal",
+    "pure_water"
+   ]
+  },
+  {
+   "id": "pig_iron",
+   "goods": [
+    "iron_ore",
+    "coal"
+   ]
+  },
+  {
+   "id": "steel",
+   "goods": [
+    "iron_ingots",
+    "coal"
+   ]
+  },
+  {
+   "id": "copper_ingots",
+   "goods": [
+    "copper_ore"
+   ]
+  },
+  {
+   "id": "wiring",
+   "goods": [
+    "copper_ingots"
+   ]
+  },
+  {
+   "id": "motor",
+   "goods": [
+    "steel",
+    "copper_wiring"
+   ]
+  }
+ ],
+ "balance_scale_transport_spine": {},
+ "balance_scale_buildings": [],
+ "balance_scale_routes": [],
+ "balance_scale_tile_only_inputs": []
 }
