@@ -73,6 +73,40 @@ var _balance_mode := false
 # deliberately excludes the material kit and the 3-turn downtime — those are reported
 # separately rather than smeared into the per-turn numbers.
 var _level_schedule := false
+
+# ── Adaptive upstream right-sizing ───────────────────────────────────────────
+# The harness exists to test whether a PATH IS PLAYABLE, so it has to behave like a
+# player. A scripted build list that starves on one input for eighty turns is not
+# evidence that the path is unviable — it is evidence that the script under-built the
+# upstream and never noticed. A real player watches a plant sit idle for a few turns
+# and builds another supplier.
+#
+# So: when any player building is short of the same input for RIGHTSIZE_SHORT_TURNS
+# consecutive turns, build one more of whichever scenario entry produces that good, on
+# the tile the scenario already chose for it (which keeps deposits, infrastructure and
+# routing correct). Deposit tokens and power are excluded — another mine on an
+# exhausted deposit produces nothing, and power shortfalls are a generation/cable
+# problem this rule cannot fix.
+const RIGHTSIZE_SHORT_TURNS := 3        # consecutive short turns before the player reacts
+const RIGHTSIZE_COOLDOWN_TURNS := 5     # let a new plant land + ship before reacting again
+const RIGHTSIZE_MAX_ADDITIONS := 16     # runaway guard for the whole run
+const RIGHTSIZE_MAX_PER_GOOD := 4       # stop chasing a good that never recovers
+
+var _rightsize_enabled := true
+var _rightsize_armed := false           # set once the scenario's own build-out is done
+var _rightsize_busy := false            # reentrancy guard: building awaits turns
+var _entry_by_output := {}              # good_id -> scenario entry that produces it
+var _short_streak := {}                 # good_id -> consecutive turns short
+var _rightsize_ready_turn := {}         # good_id -> earliest turn we may act again
+var _rightsize_added := {}              # good_id -> how many we have added
+var _rightsize_log: Array[Dictionary] = []
+# good_id -> turns we WANTED more capacity but the existing producers were themselves
+# blocked. A high count here is the interesting diagnostic: it means the chain is stuck
+# on a cause (power, cash, an upstream input) that more plants would not fix.
+var _rightsize_blocked_upstream := {}
+# good_id -> turns we wanted more capacity but could not fund/fit it. A non-empty map
+# means the run failed on SOLVENCY, not on sizing.
+var _rightsize_unaffordable := {}
 var _levels_applied := {}
 var _level_infra := false
 # `autoinfra`: upgrade a tile's infrastructure once it has run at >=90% of capacity for MORE
@@ -271,6 +305,10 @@ func _run() -> void:
 	_resolve_catalog_ids()
 	_load_scenario()
 	_balance_mode = bool(_scenario.get("balance_v4", false))
+	# On by default: the harness models a player, and a player fixes a starved plant.
+	# A scenario can opt out to measure a deliberately fixed build-out.
+	_rightsize_enabled = bool(_scenario.get("adaptive_rightsizing", true))
+	_index_all_scenario_entries()
 	if _balance_mode:
 		_prepare_balance_start()
 	await _load_main_scene()
@@ -308,6 +346,11 @@ func _run() -> void:
 	_check(MatchState.buildings.size() >= 24, "scenario has a live multi-building industrial base")
 
 	_cash_after_buildout = MatchState.money
+	# Right-sizing is the player's correction to a BUILT empire, not a rival bidder for
+	# the build-out's cash. Arming it only now keeps it from competing with the
+	# scenario's own planned builds (which it otherwise starves of funds), and means a
+	# shortage it reacts to is a steady-state one rather than ramp-up noise.
+	_rightsize_armed = true
 	await _run_to_target_turn(_target_turn)
 	await _take_second_loan_if_capacity_allows()
 	_check_economy_end_state()
@@ -465,6 +508,11 @@ func _run_balance_v4() -> void:
 		_configure_output_routes(_scenario.get("balance_runway_routes", []))
 		_configure_tile_only_inputs(_scenario.get("balance_runway_tile_only_inputs", []))
 		_configure_surplus_sales(_scenario.get("balance_runway_surplus_sales", []))
+		# A balance scenario spends its whole turn budget inside these phases, so there
+		# is no post-buildout steady state to react in — arm right-sizing here instead.
+		# Safe to do mid-plan because `_ensure_balance_build_funding` applies the same
+		# prudent cash rule the scripted expansions use, so it cannot outbid them.
+		_rightsize_armed = true
 		var runway_end := TurnManager.current_turn + int(_scenario.get("balance_runway_turns", 12))
 		await _run_to_target_turn(mini(runway_end, _target_turn))
 		_check(_cumulative_run_metric("revenue") > 0.0,
@@ -593,6 +641,11 @@ func _run_balance_v4() -> void:
 	_configure_tile_only_inputs(_scenario.get("balance_scale_tile_only_inputs", []))
 	_configure_surplus_sales_from_config()
 	_cash_after_buildout = MatchState.money
+	# Right-sizing is the player's correction to a BUILT empire, not a rival bidder for
+	# the build-out's cash. Arming it only now keeps it from competing with the
+	# scenario's own planned builds (which it otherwise starves of funds), and means a
+	# shortage it reacts to is a steady-state one rather than ramp-up noise.
+	_rightsize_armed = true
 	await _run_to_target_turn(_target_turn)
 
 	var all_assets_retained := true
@@ -777,6 +830,188 @@ func _scenario_recipe_id(entry: Dictionary) -> String:
 # ids per logical id. count defaults to 1; allow_market_materials defaults to true
 # (the turn-1 rebalance left no pre-placed build materials on these tiles, so a
 # direct tile-materials build would silently no-op — see open_field_1.json note).
+## Index EVERY building the scenario knows how to build, from every phase list, before the
+## run starts — not just the ones already built. A plant starved of an input the scenario
+## only builds in a later phase is precisely the case worth reacting to: a player short of
+## acid builds the acid plant, they do not wait for a script to reach that line. Without
+## this, a scenario that goes broke before its integration phase can never be rescued,
+## because the producer it needs was never indexed.
+func _index_all_scenario_entries() -> void:
+	for key in _scenario.keys():
+		if not str(key).contains("buildings"):
+			continue
+		var entries = _scenario[key]
+		if typeof(entries) != TYPE_ARRAY:
+			continue
+		for entry in entries:
+			if typeof(entry) != TYPE_DICTIONARY:
+				continue
+			var internal := str((entry as Dictionary).get("internal_name", ""))
+			if internal == "":
+				continue
+			var building_id := _building_id(internal)
+			var recipe_id := _scenario_recipe_id(entry)
+			if building_id == "" or recipe_id == "":
+				continue
+			_index_entry_outputs(entry, building_id, recipe_id,
+				str((entry as Dictionary).get("tile", "")),
+				bool((entry as Dictionary).get("allow_market_materials", true)))
+
+
+## Record which scenario entry produces each good, so a downstream shortage can be
+## answered by building more of the RIGHT upstream plant on the tile the scenario already
+## picked (preserving deposit, infrastructure and routing choices). First writer wins: if
+## two entries make the same good, the earlier one is the scenario's primary source.
+func _index_entry_outputs(entry: Dictionary, building_id: String, recipe_id: String,
+		tile_id: String, allow_market: bool) -> void:
+	if building_id == "" or recipe_id == "" or tile_id == "":
+		return
+	var recipe: Dictionary = Catalog.get_recipe(recipe_id)
+	if recipe.is_empty():
+		return
+	for output in recipe.get("outputs", []):
+		var good_id := str((output as Dictionary).get("good_id", ""))
+		if good_id == "" or _entry_by_output.has(good_id):
+			continue
+		_entry_by_output[good_id] = {
+			"logical_id": str(entry.get("id", "")),
+			"building_id": building_id,
+			"recipe_id": recipe_id,
+			"tile": tile_id,
+			"allow_market": allow_market,
+		}
+
+
+## One turn of player-like supply management. Counts how long each good has been short
+## across ALL player buildings, and once a good has been short for RIGHTSIZE_SHORT_TURNS
+## consecutive turns, builds one more of its producer.
+##
+## Deliberately ignored: "power" (a generation/cable problem, not a supplier count) and
+## deposit tokens (another mine on an exhausted seam yields nothing — that IS a real
+## dead end and the run should show it).
+func _rightsize_tick() -> void:
+	if not _rightsize_enabled or not _rightsize_armed or _rightsize_busy:
+		return
+	if _rightsize_log.size() >= RIGHTSIZE_MAX_ADDITIONS:
+		return
+	var turn := int(TurnManager.current_turn)
+	var short_now := {}
+	for instance_id in Production.missing_by_building.keys():
+		var building: Dictionary = MatchState.buildings.get(str(instance_id), {})
+		if building.is_empty() or not MatchState.is_player_owned(building):
+			continue
+		var missing: Variant = Production.missing_by_building.get(str(instance_id), [])
+		if not (missing is Array):
+			continue
+		for m in (missing as Array):
+			var good_id := str((m as Dictionary).get("good_id", ""))
+			if good_id == "" or good_id == "power":
+				continue
+			# A missing deposit token is exhaustion, not under-supply.
+			if MatchState.deposit_depleted(str(building.get("tile_id", "")), good_id):
+				continue
+			short_now[good_id] = true
+
+	# Advance or reset each good's streak.
+	for good_id in _short_streak.keys():
+		if not short_now.has(good_id):
+			_short_streak[good_id] = 0
+	for good_id in short_now.keys():
+		_short_streak[good_id] = int(_short_streak.get(good_id, 0)) + 1
+
+	# Act on the longest-running shortage only — one build per turn keeps the run
+	# readable and lets each addition take effect before the next is judged.
+	var worst := ""
+	var worst_streak := 0
+	for good_id in _short_streak.keys():
+		var streak := int(_short_streak[good_id])
+		if streak < RIGHTSIZE_SHORT_TURNS:
+			continue
+		if turn < int(_rightsize_ready_turn.get(good_id, 0)):
+			continue
+		if int(_rightsize_added.get(good_id, 0)) >= RIGHTSIZE_MAX_PER_GOOD:
+			continue
+		if not _entry_by_output.has(good_id):
+			continue
+		# Only add capacity when the EXISTING producers are running flat out. If they
+		# exist but are themselves blocked (no power, starved of their own inputs), the
+		# constraint is that blockage, not the supplier count — another identical plant
+		# would sit just as idle and only burn cash. A player fixes the cause instead.
+		if not _producers_are_running(good_id):
+			_rightsize_blocked_upstream[good_id] = int(_rightsize_blocked_upstream.get(good_id, 0)) + 1
+			continue
+		if streak > worst_streak:
+			worst = good_id
+			worst_streak = streak
+	if worst == "":
+		return
+
+	var entry: Dictionary = _entry_by_output[worst]
+	var building_id := str(entry.get("building_id", ""))
+	var tile_id := str(entry.get("tile", ""))
+	_rightsize_busy = true
+	if _balance_mode and not await _ensure_balance_build_funding(building_id, tile_id):
+		# Wanted to fix the shortage and could not afford or fit it. This is the most
+		# important diagnostic the harness can produce: the chain is not unviable
+		# because it is mis-sized, it is unviable because the player is already broke.
+		_rightsize_unaffordable[worst] = int(_rightsize_unaffordable.get(worst, 0)) + 1
+		_rightsize_ready_turn[worst] = turn + RIGHTSIZE_COOLDOWN_TURNS
+		_short_streak[worst] = 0
+		_rightsize_busy = false
+		return
+	var instance_id := await _build_building_via_build_mode(
+		building_id, str(entry.get("recipe_id", "")), tile_id, bool(entry.get("allow_market", true)), true)
+	_rightsize_busy = false
+	if instance_id == "":
+		_rightsize_ready_turn[worst] = turn + RIGHTSIZE_COOLDOWN_TURNS
+		_short_streak[worst] = 0
+		return
+	_register_built(str(entry.get("logical_id", "")), instance_id)
+	if _balance_mode:
+		_balance_built_ids.append(instance_id)
+	_rightsize_added[worst] = int(_rightsize_added.get(worst, 0)) + 1
+	_rightsize_ready_turn[worst] = turn + RIGHTSIZE_COOLDOWN_TURNS
+	_short_streak[worst] = 0
+	_rightsize_log.append({
+		"turn": turn, "good_id": worst, "streak": worst_streak,
+		"logical_id": str(entry.get("logical_id", "")), "tile": tile_id,
+	})
+	print("[E2E] right-size: %s short %d turns -> built another %s on %s (t%d)"
+		% [_good_label(worst), worst_streak, str(entry.get("logical_id", "")), tile_id, turn])
+
+
+## True when at least one player-owned producer of `good_id` ran unobstructed last turn —
+## i.e. the shortage is a CAPACITY problem that more of the same plant would fix. False
+## when producers exist but are all blocked (their own inputs, or power), or when none
+## exists yet. Both of those are causes that adding capacity cannot address.
+func _producers_are_running(good_id: String) -> bool:
+	var found_any := false
+	for instance_id in MatchState.buildings.keys():
+		var building: Dictionary = MatchState.buildings[instance_id]
+		if not MatchState.is_player_owned(building):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
+		if recipe.is_empty():
+			continue
+		var makes_it := false
+		for output in recipe.get("outputs", []):
+			if str((output as Dictionary).get("good_id", "")) == good_id:
+				makes_it = true
+				break
+		if not makes_it:
+			continue
+		found_any = true
+		if not Production.missing_by_building.has(str(instance_id)):
+			return true       # this one is running fine, so capacity is the constraint
+	return not found_any      # nothing makes it yet -> the scenario's own entry can start it
+
+
+func _good_label(good_id: String) -> String:
+	var good: Dictionary = Catalog.get_good(good_id)
+	var name := str(good.get("internal_name", ""))
+	return name if name != "" else good_id
+
+
 func _build_buildings_from_list(entries: Array) -> void:
 	var upgrade_requests: Array[Dictionary] = []
 	for entry in entries:
@@ -795,6 +1030,7 @@ func _build_buildings_from_list(entries: Array) -> void:
 				"deposit-aware player placed %s on a real %s deposit" % [logical_id, required_deposit])
 		var count := maxi(1, int(entry.get("count", 1)))
 		var allow_market: bool = bool(entry.get("allow_market_materials", true))
+		_index_entry_outputs(entry, building_id, recipe_id, tile_id, allow_market)
 		for i in range(count):
 			if _balance_mode and not await _ensure_balance_build_funding(building_id, tile_id):
 				_check(true, "player skipped an unaffordable or land-constrained expansion")
@@ -1462,7 +1698,11 @@ func _build_infra_via_build_mode(infra_type: String, tile_id: String) -> void:
 	_check(started, "infrastructure project queued: %s on %s" % [infra_type, tile_id])
 
 
-func _build_building_via_build_mode(building_id: String, recipe_id: String, tile_id: String, _allow_market_materials: bool = true) -> String:
+## `quiet` is for SPECULATIVE builds (adaptive right-sizing), where failing to build is a
+## legitimate outcome — the player could not afford it — rather than a test failure. A
+## scripted scenario build keeps asserting, because there the failure IS the finding.
+func _build_building_via_build_mode(building_id: String, recipe_id: String, tile_id: String,
+		_allow_market_materials: bool = true, quiet: bool = false) -> String:
 	# Construction-material requirements mean a direct build can only succeed when
 	# the tile already holds every material. Always fall back to buy-and-construct
 	# when it does not; the argument remains for scenario-call compatibility.
@@ -1476,16 +1716,23 @@ func _build_building_via_build_mode(building_id: String, recipe_id: String, tile
 	var instance_id := _find_new_project_or_building(before_projects, before_buildings, building_id, recipe_id, tile_id)
 	if instance_id == "":
 		var dialog := _main.get("_construction_dialog") as Control
-		_check(dialog != null and dialog.visible, "missing-materials dialog opened for %s on %s" % [building_id, tile_id])
+		if not quiet:
+			_check(dialog != null and dialog.visible, "missing-materials dialog opened for %s on %s" % [building_id, tile_id])
 		if dialog != null:
 			var buy_btn := dialog.get("_buy_button") as Button
-			_check(buy_btn != null and not buy_btn.disabled, "buy-and-construct button enabled for %s" % building_id)
-			if buy_btn != null:
+			if not quiet:
+				_check(buy_btn != null and not buy_btn.disabled, "buy-and-construct button enabled for %s" % building_id)
+			if buy_btn != null and not buy_btn.disabled:
 				buy_btn.pressed.emit()
+			elif quiet and dialog.visible:
+				# Speculative build we cannot fund: close the dialog so it does not
+				# linger over the next turn's UI interactions.
+				dialog.hide()
 			await get_tree().process_frame
 		instance_id = _find_new_project_or_building(before_projects, before_buildings, building_id, recipe_id, tile_id)
-	_check(instance_id != "", "construction project created for %s on %s" % [building_id, tile_id])
-	_check(MatchState.money < money_before, "building attempt charged money for %s on %s" % [building_id, tile_id])
+	if not quiet:
+		_check(instance_id != "", "construction project created for %s on %s" % [building_id, tile_id])
+		_check(MatchState.money < money_before, "building attempt charged money for %s on %s" % [building_id, tile_id])
 	return instance_id
 
 
@@ -1689,6 +1936,7 @@ func _advance_turns(count: int, reason: String) -> void:
 		TurnManager.commit_turn()
 		await TurnManager.turn_resolution_completed
 		_capture_turn_metrics()
+		await _rightsize_tick()
 		var elapsed_ms := float(Time.get_ticks_usec() - start) / 1000.0
 		_turn_times_ms.append(elapsed_ms)
 		_turn_wall_records.append({
@@ -2221,6 +2469,10 @@ func _write_latest_metrics() -> void:
 	var slow_turns := _slow_turn_records(SLOW_TURN_THRESHOLD_MS)
 	var latest := {
 		"scenario": _scenario_name,
+		"rightsize_additions": _rightsize_log.size(),
+		"rightsize_log": _rightsize_log,
+		"rightsize_blocked_upstream": _rightsize_blocked_upstream,
+		"rightsize_unaffordable": _rightsize_unaffordable,
 		"target_turn": _target_turn,
 		"assertions_passed": _passed,
 		"assertions_failed": _failed,
