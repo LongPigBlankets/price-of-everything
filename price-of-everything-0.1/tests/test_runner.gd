@@ -2748,8 +2748,8 @@ func _test_special_order_settlement() -> void:
 	_check(SpecialOrderState.get_order(market_order_id).is_empty()
 		and EventScheduler._active.has("special_order_fulfilled:%s" % market_order_id),
 		"special orders: immediate market sales settle and close orders")
-	_check(absf(MatchState.money - (market_money_before + float(sale.get("total_revenue", 0.0)) + expected_bonus)) < 0.01,
-		"special orders: immediate market sale pays normal revenue plus premium")
+	_check(absf(MatchState.money - (market_money_before + float(sale.get("total_revenue", 0.0)) + expected_bonus - float(sale.get("transport_cost", 0.0)))) < 0.01,
+		"special orders: immediate market sale pays revenue and premium after its port charge")
 
 	EventScheduler.reset()
 	SpecialOrderState.reset()
@@ -2781,9 +2781,12 @@ func _test_output_special_order_route() -> void:
 	_check(SpecialOrderState.get_order(order_id).is_empty()
 		and EventScheduler._active.has("special_order_fulfilled:%s" % order_id),
 		"special orders: market-routed production output fulfils the order")
-	_check(MatchState.money > 500.0
-		and float(summary.get("goods_sales_revenue", 0.0)) > 0.0,
-		"special orders: market-routed production pays revenue and premium")
+	var revenue: float = float(summary.get("goods_sales_revenue", 0.0))
+	var transport_paid: float = float(summary.get("transport_paid", 0.0))
+	var premium: float = revenue * 0.25
+	_check(revenue > 0.0 and transport_paid > 0.0
+		and absf(MatchState.money - (500.0 + revenue + premium - transport_paid)) < 0.01,
+		"special orders: market-routed production accounts for revenue, premium, and delivery cost")
 
 	EventScheduler.reset()
 	SpecialOrderState.reset()
@@ -4876,19 +4879,22 @@ func _test_flavor_nodes_wired() -> void:
 	_check(absf(Modifiers.apply("labour_headcount", "b_999", 100.0, {"building_id": "b_999"}) - 95.0) < 0.001,
 		"Safety Training wires −5% labour empire-wide")
 	# maintenance: Grid Synchronous Generation → −8% on each power plant (array spec).
+	# Safety Training also supplies a global −5% maintenance effect, so assert Grid's
+	# own additive eight percentage-point contribution rather than a solo total.
+	var maintenance_before_grid: float = Modifiers.apply("maintenance", "b_024", 100.0, {"building_id": "b_024"})
 	MatchState.grant_unlock("Grid Synchronous Generation")
-	_check(absf(Modifiers.apply("maintenance", "b_024", 100.0, {"building_id": "b_024"}) - 92.0) < 0.001,
-		"Grid Synchronous Generation wires −8% maintenance on a power plant (solar)")
+	_check(absf(Modifiers.apply("maintenance", "b_024", 100.0, {"building_id": "b_024"}) - (maintenance_before_grid - 8.0)) < 0.001,
+		"Grid Synchronous Generation adds −8% maintenance on a power plant (solar)")
 	# market_price: Forward Contracts → +5% steel sale price, good-specific.
 	MatchState.grant_unlock("Forward Contracts")
 	_check(absf(Modifiers.apply("market_price", "gid", 10.0, {"good_internal": "steel"}) - 10.5) < 0.001,
 		"Forward Contracts wires +5% steel sale price")
 	_check(absf(Modifiers.apply("market_price", "gid", 10.0, {"good_internal": "coal"}) - 10.0) < 0.001,
 		"the steel sale-price modifier does not touch other goods")
-	# transport_cost: Route Optimization → −10% haulage.
+	# transport_throughput: Route Optimization → +25% road capacity.
 	MatchState.grant_unlock("Route Optimization")
-	_check(absf(Modifiers.apply("transport_cost", "g", 100.0, {"good_id": "g"}) - 90.0) < 0.001,
-		"Route Optimization wires −10% transport cost")
+	_check(absf(Modifiers.apply("transport_throughput", "roads", 100.0, {"mode": "roads"}) - 125.0) < 0.001,
+		"Route Optimization wires +25% road throughput")
 	Modifiers.reset()
 	MatchState.reset()
 
@@ -4976,6 +4982,9 @@ func _test_live_unlock_conditions() -> void:
 	MatchState.reset()
 	for i in range(3):
 		MatchState.add_building("b_002", "", "tile_furnace_%d" % i)
+	# Building additions mark research progress dirty; it is evaluated in the
+	# NARRATIVE phase, so invoke the shared evaluator for this synchronous unit test.
+	MatchState._check_unlock_conditions()
 	_check(MatchState.is_unlocked("Basic Blast Furnaces"),
 		"Build Furnace unlock fires with the CSV display name (case-insensitive)")
 
@@ -7486,19 +7495,22 @@ func _test_queue_sell_immediate_updates_turn_summary() -> void:
 
 func _test_market_execute_sale() -> void:
 	# Default behaviour: consume from the tile, log to ledger, defer revenue until
-	# the shipment lands at the port. Mirrors the queue_sell path.
-	Stockpile.add("tile_3_8", "g_001", 12)
+	# the shipment lands at the port. It keeps the historical gross inland freight,
+	# but pays the required port charge when the shipment is booked.
+	var tile := "tile_3_8"
+	var port_charge: float = float(MatchState.preview_sea_shipping("tile_5_10", "g_001", 12).get("total", 0.0))
+	Stockpile.add(tile, "g_001", 12)
 	var ships_before := MatchState.get_pending_transport_shipments().size()
 	var txn_before := MatchState.get_oneoff_transaction_rows().size()
-	var result: Dictionary = MarketState.execute_sale("tile_3_8", {"g_001": 12})
+	var result: Dictionary = MarketState.execute_sale(tile, {"g_001": 12})
 	_check(not result.is_empty(), "execute_sale returns a result")
-	_check(Stockpile.get_at_tile("tile_3_8", "g_001") == 0, "execute_sale consumes from the tile")
+	_check(Stockpile.get_at_tile(tile, "g_001") == 0, "execute_sale consumes from the tile")
 	_check(bool(result.get("deferred", false)) and MatchState.get_pending_transport_shipments().size() > ships_before,
 		"execute_sale queues a shipment (deferred sale)")
 	_check(MatchState.get_oneoff_transaction_rows().size() > txn_before,
 		"execute_sale logs a transaction row by default")
-	_check(float(result.get("transport_cost", -1.0)) == 0.0,
-		"execute_sale: transport not paid from seller unless requested")
+	_check(absf(float(result.get("transport_cost", -1.0)) - port_charge) < 0.01,
+		"execute_sale: only the mandatory port charge is paid unless inland freight is requested")
 
 func _test_market_execute_sale_skip_consume() -> void:
 	# skip_consume: the goods are already in the caller's hand (production output);
@@ -7730,8 +7742,9 @@ func _test_transport_service() -> void:
 		and absf(float(buy_quote.get("cost", 0.0)) - (float(buy_quote.get("goods_cost", 0.0)) + float(buy_quote.get("transport_cost", 0.0)))) < 0.01,
 		"TransportService quotes a market buy through the nearest port")
 	var covered_buy: Dictionary = TransportService.quote_market_buy("tile_3_8", "g_001", 10, true)
-	_check(int(covered_buy.get("turns", 0)) == 1 and float(covered_buy.get("transport_cost", -1.0)) == 0.0,
-		"TransportService applies covered seaport buy quotes")
+	_check(int(covered_buy.get("turns", 0)) == 1
+		and absf(float(covered_buy.get("transport_cost", -1.0)) - float(covered_buy.get("sea_transport_cost", -2.0))) < 0.01,
+		"TransportService applies covered seaport buy quotes while retaining the port charge")
 	var covered_sell: Dictionary = TransportService.quote_market_sell("tile_3_8", {"g_001": 10}, {"g_001": true})
 	_check(int(covered_sell.get("turns", 0)) == 1 and float(covered_sell.get("transport_cost", -1.0)) == 0.0,
 		"TransportService applies covered seaport sell quotes")
