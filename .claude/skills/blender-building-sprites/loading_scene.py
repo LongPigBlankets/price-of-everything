@@ -265,12 +265,6 @@ def build_street_scaffold():
         x += dash_l + gap
         i += 1
 
-    # Sky placeholder: one flat tone, NOINK; banded properly in P2. Stands at the far
-    # east end facing the camera (the road's vanishing point lands on it). Tall + wide
-    # enough that no plausible framing can look past an edge — the first hero shot
-    # escaped a 30-high plane and rendered black.
-    sky = _box(col, "sky", SKY_X, 0, 27.0, 0.1, 260, 60, _mat("load_sky"))
-    mark_noink(sky)
     return {"objects": len(col.objects), "building_front_y": BUILDING_FRONT_Y}
 
 
@@ -278,6 +272,177 @@ def phase0():
     info = build_street_scaffold()
     setup_load_rig()
     return {**info, "scene": SCENE_NAME}
+
+
+# ── Phase 2: backdrop — banded sky, city silhouette, haze ────────────────────
+# All backdrop materials are EMISSION (unlit, exact colour through the view transform —
+# the ink_seam trick): these planes face -X, which the sun barely grazes, so a lit
+# material would render them near-black and any sun tweak would repaint the sky.
+# Everything here is NOINK; the far city reads as pure silhouette against the horizon
+# band, which is also why the city tones must sit clearly darker than the horizon.
+
+SKY_BANDS = [                    # bottom -> top: warm horizon rising into deep grey-blue.
+    # The horizon band must clear the skyline (city peaks ~5.5) or the warmth is
+    # invisible from the low camera; the top band is the darkest so the frame's upper
+    # edge frames rather than fades.
+    (7.5,  (0.735, 0.600, 0.380)),
+    (5.0,  (0.560, 0.560, 0.520)),
+    (8.0,  (0.415, 0.465, 0.515)),
+    (40.0, (0.265, 0.330, 0.420)),
+]
+CITY_FAR_TONE = (0.335, 0.380, 0.430)    # far rank — barely darker than band 2
+CITY_NEAR_TONE = (0.270, 0.315, 0.375)   # near rank — reads in front of the far rank
+HAZE_TONE = (0.560, 0.555, 0.505)        # grounds the city into the horizon
+
+
+def _emat(name, rgb):
+    m = bpy.data.materials.get(name)
+    if m is None:
+        m = bpy.data.materials.new(name)
+        m.use_nodes = True
+        nt = m.node_tree
+        for n in list(nt.nodes):
+            nt.nodes.remove(n)
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        em = nt.nodes.new("ShaderNodeEmission")
+        em.inputs["Strength"].default_value = 1.0
+        nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+    m.node_tree.nodes["Emission"].inputs["Color"].default_value = (*rgb, 1.0)
+    return m
+
+
+def build_backdrop(seed=7):
+    """Banded sky (one mesh, one material slot per band), two-rank city silhouette
+    peaked at the vanishing point, and a haze strip grounding it. Idempotent."""
+    import random
+    sc = get_scene()
+    sky_col = _collection(sc, "LOAD_sky")
+    city_col = _collection(sc, "LOAD_city")
+    _wipe(sky_col)
+    _wipe(city_col)
+
+    # Sky: single plane at SKY_X facing the camera, horizontal band per material slot.
+    # Slots on ONE mesh give hard, un-inked boundaries; stacked coplanar boxes would
+    # z-fight exactly on the band lines.
+    mesh = bpy.data.meshes.new("sky_bands")
+    bm = bmesh.new()
+    y0, y1 = -260.0 / 2, 260.0 / 2
+    z = 0.0
+    faces = []
+    for i, (bh, _) in enumerate(SKY_BANDS):
+        v = [bm.verts.new(p) for p in ((SKY_X, y0, z), (SKY_X, y1, z),
+                                       (SKY_X, y1, z + bh), (SKY_X, y0, z + bh))]
+        f = bm.faces.new(v)
+        f.material_index = i
+        faces.append(f)
+        z += bh
+    bm.to_mesh(mesh)
+    bm.free()
+    sky = bpy.data.objects.new("sky_bands", mesh)
+    sky_col.objects.link(sky)
+    for i, (_, rgb) in enumerate(SKY_BANDS):
+        sky.data.materials.append(_emat("load_skyband_%d" % i, rgb))
+    for p in sky.data.polygons:
+        p.use_smooth = False
+    mark_noink(sky)
+
+    # City: two ranks of flat box massing, height envelope peaked at y=0 so the
+    # skyline crowds the road's vanishing point. Deterministic (seeded) so a rebuild
+    # is the same city.
+    rng = random.Random(seed)
+    for rank, (rx, tone) in enumerate((
+            (CITY_X + 2.5, CITY_FAR_TONE), (CITY_X, CITY_NEAR_TONE))):
+        m = _emat("load_city_%d" % rank, tone)
+        y = -52.0
+        i = 0
+        while y < 52.0:
+            w = rng.uniform(1.4, 4.2)
+            h = rng.uniform(0.8, 2.6) * (1.0 + 1.8 * math.exp(-(y / 14.0) ** 2))
+            ob = _box(city_col, "city_r%d_%d" % (rank, i), rx, y + w / 2, h / 2,
+                      1.2, w, h, m)
+            ob.data.materials[0] = m
+            mark_noink(ob)
+            # Occasional chimney/spire on the near rank keeps the skyline industrial.
+            if rank == 1 and rng.random() < 0.30:
+                sp = _box(city_col, "city_sp%d_%d" % (rank, i), rx - 0.2,
+                          y + w * rng.uniform(0.25, 0.75), h + 0.55,
+                          0.16, 0.16, 1.1, m)
+                mark_noink(sp)
+            y += w + rng.uniform(0.4, 1.6)
+            i += 1
+
+    # Haze: pale strip in front of the city base — grounds the silhouette and hides
+    # the hard line where distant ground meets the backdrop.
+    haze = _box(city_col, "haze", CITY_X - 1.6, 0, 0.65, 0.1, 240, 1.5,
+                _emat("load_haze", HAZE_TONE))
+    mark_noink(haze)
+    return {"sky_bands": len(SKY_BANDS), "city_objects": len(city_col.objects)}
+
+
+# ── Parallax layers ──────────────────────────────────────────────────────────
+# Depth slices for the Godot push-in. Scaled about the vanishing point at different
+# rates, back to front. The street (ground+road) spans every depth, so it rides at the
+# NEAR rate — the standard 2.5D-push cheat, invisible at the subtle zoom used here.
+FAR_SLOTS = ("off_d", "fur_b", "pp_a", "pp_b", "pet_a")
+
+LAYERS = [
+    ("L0_sky",   lambda n: n == "LOAD_sky"),
+    ("L1_city",  lambda n: n == "LOAD_city"),
+    ("L2_far",   lambda n: n.startswith("LOAD_bldg_") and n[10:] in FAR_SLOTS),
+    ("L3_near",  lambda n: n.startswith("LOAD_bldg_") and n[10:] not in FAR_SLOTS),
+    ("L4_street", lambda n: n == "LOAD_street"),
+]
+
+
+def _show_only_load(pred):
+    """Visibility per OBJECT as well as per collection: power plants dual-link their
+    pylons/transformers into FINE_INK, which stays visible — collection hiding alone
+    leaves them rendering into every other layer (the FINE_INK lesson, third time)."""
+    for c in bpy.data.collections:
+        if not c.name.startswith("LOAD_"):
+            continue
+        off = not pred(c.name)
+        c.hide_render = off
+        c.hide_viewport = off
+        for ob in c.objects:
+            ob.hide_render = off
+            ob.hide_viewport = off
+
+
+def render_layers(out_dir=None, width=2400, height=1350):
+    """Render each parallax layer alone, at overscan resolution for push headroom.
+
+    Freestyle thickness is ABSOLUTE px, so it scales with the canvas (2400/1920) —
+    otherwise the layers' ink is thinner than the 1920 hero and the composite look
+    drifts from the approved frame."""
+    import os
+    if out_dir is None:
+        out_dir = "/Users/crisu/Price of Everything/blender-assets/renders/loading/layers"
+    os.makedirs(out_dir, exist_ok=True)
+    sc = get_scene()
+    k = width / 1920.0
+    sc.render.resolution_x = width
+    sc.render.resolution_y = height
+    fs = sc.view_layers[0].freestyle_settings
+    fs.linesets["ink"].linestyle.thickness = 2.4 * k
+    fs.linesets["contour"].linestyle.thickness = 7.0 * k
+    if "ink_fine" in fs.linesets:
+        fs.linesets["ink_fine"].linestyle.thickness = 1.05 * k
+    done = []
+    for name, pred in LAYERS:
+        _show_only_load(pred)
+        sc.render.filepath = os.path.join(out_dir, name)
+        bpy.ops.render.render(write_still=True)
+        done.append(name)
+    # Restore: everything visible, hero-resolution ink.
+    _show_only_load(lambda n: True)
+    sc.render.resolution_x = 1920
+    sc.render.resolution_y = 1080
+    fs.linesets["ink"].linestyle.thickness = 2.4
+    fs.linesets["contour"].linestyle.thickness = 7.0
+    if "ink_fine" in fs.linesets:
+        fs.linesets["ink_fine"].linestyle.thickness = 1.05
+    return {"layers": done, "out": out_dir, "res": [width, height]}
 
 
 # ── Phase 1: buildings along the street ──────────────────────────────────────
