@@ -1,90 +1,317 @@
 {
-	"name": "balance_v4_advanced_materials",
-	"display_name": "Balance v4 — advanced materials player",
-	"note": "Flash copper, metallurgical silicon, EAF steel and electric alumina; manufactured inputs close to raw ores/salts/sand plus owned power.",
-	"balance_v4": true,
-	"unlocks": ["Electric Arc Refining", "Basic Blast Furnaces"],
-	"integration_earliest_turn": 120,
-	"balance_build_cash_reserve": 400,
-	"target_goods": ["copper_ingots", "metallurgical_silicon", "steel", "alumina"],
-	"target_recipe_ids": ["r_020", "r_044", "r_076", "r_082"],
-	"surplus_sales": ["tile_8_4", "tile_22_9"],
-	"port_distance_pairs": [
-		{"hub": "tile_22_9", "port": "tile_24_7"}
-	],
-	"balance_runway_turns": 40,
-	"balance_runway_transport_spine": {},
-	"balance_runway_buildings": [
-		{"id": "runway_coal", "internal_name": "mine", "recipe_id": "r_001", "tile": "tile_8_4", "deposit": "coal"},
-		{"id": "runway_water", "internal_name": "water_pump", "recipe_id": "r_011", "tile": "tile_8_4", "deposit": "water", "count": 2},
-		{"id": "runway_power", "internal_name": "power_plant", "recipe_id": "r_004", "tile": "tile_8_4", "count": 3}
-	],
-	"balance_runway_routes": [
-		{"id": "runway_coal", "good": "coal", "dest": "tile_8_4"},
-		{"id": "runway_water", "good": "pure_water", "dest": "tile_8_4"}
-	],
-	"balance_runway_tile_only_inputs": [
-		{"id": "runway_power", "goods": ["coal", "pure_water"]}
-	],
-	"balance_runway_surplus_sales": ["tile_8_4"],
-	"transport_spine": {
-		"corridors": [["tile_22_9", "tile_24_7"]],
-		"rails": "corridors",
-		"cables": ["tile_21_9", "tile_22_9"]
-	},
-	"balance_operating_transport_spine": {
-		"corridors": [["tile_22_9", "tile_24_7"]],
-		"reinf_pipes": "corridors"
-	},
-	"balance_standalone_buildings": [
-		{"id": "flash", "internal_name": "furnace", "recipe_id": "r_020", "tile": "tile_22_9"},
-		{"id": "silicon", "internal_name": "eaf", "recipe_id": "r_044", "tile": "tile_22_9"},
-		{"id": "eaf_steel", "internal_name": "eaf", "recipe_id": "r_076", "tile": "tile_22_9"}
-	],
-	"balance_post_transport_buildings": [
-		{"id": "electric_alumina", "internal_name": "chem_plant", "recipe_id": "r_082", "tile": "tile_22_9"}
-	],
-	"balance_standalone_routes": [
-		{"id": "flash", "good": "copper_ingots", "dest": "market"},
-		{"id": "silicon", "good": "metallurgical_silicon", "dest": "market"},
-		{"id": "eaf_steel", "good": "steel", "dest": "market"},
-		{"id": "electric_alumina", "good": "alumina", "dest": "market"}
-	],
-	"balance_preintegration_buildings": [],
-	"balance_preintegration_routes": [],
-	"balance_integration_buildings": [
-		{"id": "silica", "internal_name": "petro_refinery", "recipe_id": "r_035", "tile": "tile_22_9"},
-		{"id": "dri", "internal_name": "furnace", "recipe_id": "r_031", "tile": "tile_22_9"},
-		{"id": "chlor", "internal_name": "chem_plant", "recipe_id": "r_012", "tile": "tile_22_9"},
-		{"id": "water", "internal_name": "water_pump", "recipe_id": "r_011", "tile": "tile_22_9", "deposit": "water", "count": 2},
-		{"id": "electrolysis", "internal_name": "electrolyser", "recipe_id": "r_079", "tile": "tile_22_9"},
-		{"id": "acid", "internal_name": "industrial_factory", "recipe_id": "r_116", "tile": "tile_22_9"}
-	],
-	"balance_required_integration_ids": ["water", "electrolysis", "chlor", "acid", "silica", "dri"],
-	"balance_integration_routes": [
-		{"id": "water", "good": "pure_water", "dest": "tile_22_9"},
-		{"id": "electrolysis", "good": "hydrogen", "dest": "tile_22_9"},
-		{"id": "electrolysis", "good": "oxygen", "dest": "tile_22_9"},
-		{"id": "chlor", "good": "sodium_hydroxide", "dest": "tile_22_9"},
-		{"id": "chlor", "good": "hydrogen", "dest": "tile_22_9"},
-		{"id": "chlor", "good": "chlorine", "dest": "market"},
-		{"id": "acid", "good": "industrial_acids", "dest": "tile_22_9"},
-		{"id": "silica", "good": "silica", "dest": "tile_22_9"},
-		{"id": "dri", "good": "iron_ingots", "dest": "tile_22_9"}
-	],
-	"balance_tile_only_inputs": [
-		{"id": "electrolysis", "goods": ["pure_water"]},
-		{"id": "chlor", "goods": ["pure_water"]},
-		{"id": "acid", "goods": ["hydrogen"]},
-		{"id": "silica", "goods": ["pure_water"]},
-		{"id": "dri", "goods": ["hydrogen"]},
-		{"id": "flash", "goods": ["industrial_acids", "oxygen"]},
-		{"id": "silicon", "goods": ["silica"]},
-		{"id": "eaf_steel", "goods": ["iron_ingots", "hydrogen"]},
-		{"id": "electric_alumina", "goods": ["hydrogen", "sodium_hydroxide"]}
-	],
-	"balance_scale_transport_spine": {},
-	"balance_scale_buildings": [],
-	"balance_scale_routes": [],
-	"balance_scale_tile_only_inputs": []
+ "name": "balance_v4_advanced_materials",
+ "display_name": "Balance v4 \u2014 advanced materials player",
+ "note": "Flash copper, metallurgical silicon, EAF steel and electric alumina; manufactured inputs close to raw ores/salts/sand plus owned power.",
+ "balance_v4": true,
+ "unlocks": [
+  "Electric Arc Refining",
+  "Basic Blast Furnaces"
+ ],
+ "integration_earliest_turn": 120,
+ "balance_build_cash_reserve": 400,
+ "target_goods": [
+  "copper_ingots",
+  "metallurgical_silicon",
+  "steel",
+  "alumina"
+ ],
+ "target_recipe_ids": [
+  "r_020",
+  "r_044",
+  "r_076",
+  "r_082"
+ ],
+ "surplus_sales": [
+  "tile_8_4",
+  "tile_22_9"
+ ],
+ "port_distance_pairs": [
+  {
+   "hub": "tile_22_9",
+   "port": "tile_24_7"
+  }
+ ],
+ "balance_runway_turns": 40,
+ "balance_runway_transport_spine": {},
+ "balance_runway_buildings": [
+  {
+   "id": "runway_coal",
+   "internal_name": "mine",
+   "recipe_id": "r_001",
+   "tile": "tile_8_4",
+   "deposit": "coal"
+  },
+  {
+   "id": "runway_water",
+   "internal_name": "water_pump",
+   "recipe_id": "r_011",
+   "tile": "tile_8_4",
+   "deposit": "water",
+   "count": 2
+  },
+  {
+   "id": "runway_power",
+   "internal_name": "power_plant",
+   "recipe_id": "r_004",
+   "tile": "tile_8_4",
+   "count": 3
+  }
+ ],
+ "balance_runway_routes": [
+  {
+   "id": "runway_coal",
+   "good": "coal",
+   "dest": "tile_8_4"
+  },
+  {
+   "id": "runway_water",
+   "good": "pure_water",
+   "dest": "tile_8_4"
+  }
+ ],
+ "balance_runway_tile_only_inputs": [
+  {
+   "id": "runway_power",
+   "goods": [
+    "coal",
+    "pure_water"
+   ]
+  }
+ ],
+ "balance_runway_surplus_sales": [
+  "tile_8_4"
+ ],
+ "transport_spine": {
+  "corridors": [
+   [
+    "tile_22_9",
+    "tile_24_7"
+   ]
+  ],
+  "rails": "corridors",
+  "cables": [
+   "tile_21_9",
+   "tile_22_9"
+  ]
+ },
+ "balance_operating_transport_spine": {
+  "corridors": [
+   [
+    "tile_22_9",
+    "tile_24_7"
+   ]
+  ],
+  "reinf_pipes": "corridors"
+ },
+ "balance_standalone_buildings": [
+  {
+   "id": "flash",
+   "internal_name": "furnace",
+   "recipe_id": "r_020",
+   "tile": "tile_22_9"
+  },
+  {
+   "id": "silicon",
+   "internal_name": "eaf",
+   "recipe_id": "r_044",
+   "tile": "tile_22_9"
+  },
+  {
+   "id": "eaf_steel",
+   "internal_name": "eaf",
+   "recipe_id": "r_076",
+   "tile": "tile_22_9"
+  }
+ ],
+ "balance_post_transport_buildings": [
+  {
+   "id": "electric_alumina",
+   "internal_name": "chem_plant",
+   "recipe_id": "r_082",
+   "tile": "tile_22_9"
+  }
+ ],
+ "balance_standalone_routes": [
+  {
+   "id": "flash",
+   "good": "copper_ingots",
+   "dest": "market"
+  },
+  {
+   "id": "silicon",
+   "good": "metallurgical_silicon",
+   "dest": "market"
+  },
+  {
+   "id": "eaf_steel",
+   "good": "steel",
+   "dest": "market"
+  },
+  {
+   "id": "electric_alumina",
+   "good": "alumina",
+   "dest": "market"
+  }
+ ],
+ "balance_preintegration_buildings": [],
+ "balance_preintegration_routes": [],
+ "balance_integration_buildings": [
+  {
+   "id": "silica",
+   "internal_name": "petro_refinery",
+   "recipe_id": "r_035",
+   "tile": "tile_22_9"
+  },
+  {
+   "id": "dri",
+   "internal_name": "furnace",
+   "recipe_id": "r_031",
+   "tile": "tile_22_9"
+  },
+  {
+   "id": "chlor",
+   "internal_name": "chem_plant",
+   "recipe_id": "r_012",
+   "tile": "tile_22_9"
+  },
+  {
+   "id": "water",
+   "internal_name": "water_pump",
+   "recipe_id": "r_011",
+   "tile": "tile_22_9",
+   "deposit": "water",
+   "count": 2
+  },
+  {
+   "id": "electrolysis",
+   "internal_name": "electrolyser",
+   "recipe_id": "r_079",
+   "tile": "tile_22_9"
+  },
+  {
+   "id": "acid",
+   "internal_name": "industrial_factory",
+   "recipe_id": "r_116",
+   "tile": "tile_22_9"
+  }
+ ],
+ "balance_required_integration_ids": [
+  "water",
+  "electrolysis",
+  "chlor",
+  "acid",
+  "silica",
+  "dri"
+ ],
+ "balance_integration_routes": [
+  {
+   "id": "water",
+   "good": "pure_water",
+   "dest": "tile_22_9"
+  },
+  {
+   "id": "electrolysis",
+   "good": "hydrogen",
+   "dest": "tile_22_9"
+  },
+  {
+   "id": "electrolysis",
+   "good": "oxygen",
+   "dest": "tile_22_9"
+  },
+  {
+   "id": "chlor",
+   "good": "sodium_hydroxide",
+   "dest": "tile_22_9"
+  },
+  {
+   "id": "chlor",
+   "good": "hydrogen",
+   "dest": "tile_22_9"
+  },
+  {
+   "id": "chlor",
+   "good": "chlorine",
+   "dest": "market"
+  },
+  {
+   "id": "acid",
+   "good": "industrial_acids",
+   "dest": "tile_22_9"
+  },
+  {
+   "id": "silica",
+   "good": "silica",
+   "dest": "tile_22_9"
+  },
+  {
+   "id": "dri",
+   "good": "iron_ingots",
+   "dest": "tile_22_9"
+  }
+ ],
+ "balance_tile_only_inputs": [
+  {
+   "id": "electrolysis",
+   "goods": [
+    "pure_water"
+   ]
+  },
+  {
+   "id": "chlor",
+   "goods": [
+    "pure_water"
+   ]
+  },
+  {
+   "id": "acid",
+   "goods": [
+    "hydrogen"
+   ]
+  },
+  {
+   "id": "silica",
+   "goods": [
+    "pure_water"
+   ]
+  },
+  {
+   "id": "dri",
+   "goods": [
+    "hydrogen"
+   ]
+  },
+  {
+   "id": "flash",
+   "goods": [
+    "industrial_acids",
+    "oxygen"
+   ]
+  },
+  {
+   "id": "silicon",
+   "goods": [
+    "silica"
+   ]
+  },
+  {
+   "id": "eaf_steel",
+   "goods": [
+    "iron_ingots",
+    "hydrogen"
+   ]
+  },
+  {
+   "id": "electric_alumina",
+   "goods": [
+    "hydrogen",
+    "sodium_hydroxide"
+   ]
+  }
+ ],
+ "balance_scale_transport_spine": {},
+ "balance_scale_buildings": [],
+ "balance_scale_routes": [],
+ "balance_scale_tile_only_inputs": [],
+ "balance_consider_research_modifiers": true
 }
