@@ -296,6 +296,5 @@
  "balance_scale_tile_only_inputs": [],
  "balance_consider_research_modifiers": true,
  "expected_average_port_distance": 2.0,
- "auto_power": false,
- "_comment_auto_power": "OFF. electrochem is not short of GENERATION - tile_8_4 already runs three plants - and it is not the cable cap either: tile_8_4 carries no cable segment at all, so the 80%-capacity upgrade rule has nothing to raise. Enabling the rule stacks five useless plants there while the deficit grows 840 -> 3360, costing 473/2 -> 288/12. Needs the power rule to understand per-network delivery (cable a tile before generating on it) before it can be re-enabled here."
+ "_comment_auto_power": "Left at the default (off). Enabling it costs 474/2 -> 288/12: five plants land and the deficit still grows. See _power_tick."
 }

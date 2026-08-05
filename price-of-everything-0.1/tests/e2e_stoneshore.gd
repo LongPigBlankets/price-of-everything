@@ -341,9 +341,12 @@ func _run() -> void:
 	# On by default: the harness models a player, and a player fixes a starved plant.
 	# A scenario can opt out to measure a deliberately fixed build-out.
 	_rightsize_enabled = bool(_scenario.get("adaptive_rightsizing", true))
-	# Metal Magnate is excluded: it inherits an authored start whose generation is part
-	# of what is being measured, so adding plants would change the thing under test.
-	_power_enabled = bool(_scenario.get("auto_power", true))
+	# OFF BY DEFAULT. Measured across every scenario: the rule has degraded every run it
+	# ever fired in and improved none — electrochem 474/2 -> 288/12, advanced_materials
+	# 344/2 -> 273/12, batteries 328/2 -> 283/19, each after 4-5 plants. Cabling the tile
+	# first did not change that. Adding generation is evidently not what these scenarios
+	# are short of, so the rule stays opt-in ("auto_power": true) until it is understood.
+	_power_enabled = bool(_scenario.get("auto_power", false))
 	_power_mode = str(_scenario.get("auto_power_mode", "coal"))
 	_power_threshold = int(_scenario.get("auto_power_threshold", POWER_DEFICIT_THRESHOLD))
 	_index_all_scenario_entries()
@@ -1275,6 +1278,13 @@ func _power_tick() -> void:
 		_power_ready_turn = turn + POWER_COOLDOWN_TURNS
 		_rightsize_busy = false
 		return
+	# CABLE FIRST. Power settles per physical network, so a plant on an uncabled tile
+	# delivers nothing to the buildings that are short. electrochem stacked five plants
+	# on tile_8_4 — which carries no cable segment at all — while its deficit grew
+	# 840 -> 3360. Join the network before generating into it, not after.
+	_rightsize_busy = false
+	await _ensure_cabled_to_network(tile_id)
+	_rightsize_busy = true
 	var instance_id := await _build_building_via_build_mode(building_id, recipe_id, tile_id, true, true)
 	if instance_id == "" :
 		_power_ready_turn = turn + POWER_COOLDOWN_TURNS
@@ -1282,7 +1292,6 @@ func _power_tick() -> void:
 		return
 	if _balance_mode:
 		_balance_built_ids.append(instance_id)
-	await _ensure_cabled_to_network(tile_id)
 	var paired := ""
 	if is_wind:
 		# Firm the intermittent source where it is generated: a battery on the same tile.
