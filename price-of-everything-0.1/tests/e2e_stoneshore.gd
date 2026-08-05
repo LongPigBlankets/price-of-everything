@@ -107,6 +107,24 @@ var _rightsize_blocked_upstream := {}
 # good_id -> turns we wanted more capacity but could not fund/fit it. A non-empty map
 # means the run failed on SOLVENCY, not on sizing.
 var _rightsize_unaffordable := {}
+
+# ── Automatic generation capacity ────────────────────────────────────────────
+# Right-sizing deliberately ignores a "power" shortage: another smelter cannot fix it.
+# Generation is its own decision, so it gets its own rule — when the empire's power
+# DEFICIT (demand over supply) crosses POWER_DEFICIT_THRESHOLD, add a plant.
+#
+# Mode is per-scenario. Coal everywhere except the battery chain, which builds onshore
+# wind and pairs a battery store on the SAME tile so the intermittent source is firmed
+# where it is generated (open_field_wind is the worked example of that pattern).
+const POWER_DEFICIT_THRESHOLD := 400
+const POWER_COOLDOWN_TURNS := 4         # let the plant finish before judging again
+const POWER_MAX_ADDITIONS := 8
+
+var _power_enabled := true
+var _power_mode := "coal"               # "coal" | "wind"
+var _power_site := ""
+var _power_ready_turn := 0
+var _power_log: Array[Dictionary] = []
 var _levels_applied := {}
 var _level_infra := false
 # `autoinfra`: upgrade a tile's infrastructure once it has run at >=90% of capacity for MORE
@@ -308,6 +326,10 @@ func _run() -> void:
 	# On by default: the harness models a player, and a player fixes a starved plant.
 	# A scenario can opt out to measure a deliberately fixed build-out.
 	_rightsize_enabled = bool(_scenario.get("adaptive_rightsizing", true))
+	# Metal Magnate is excluded: it inherits an authored start whose generation is part
+	# of what is being measured, so adding plants would change the thing under test.
+	_power_enabled = bool(_scenario.get("auto_power", true))
+	_power_mode = str(_scenario.get("auto_power_mode", "coal"))
 	_index_all_scenario_entries()
 	if _balance_mode:
 		_prepare_balance_start()
@@ -1004,6 +1026,98 @@ func _producers_are_running(good_id: String) -> bool:
 		if not Production.missing_by_building.has(str(instance_id)):
 			return true       # this one is running fine, so capacity is the constraint
 	return not found_any      # nothing makes it yet -> the scenario's own entry can start it
+
+
+## The tile to put new generation on: reuse whichever tile the scenario already sites
+## generation on, so cabling and infrastructure are already correct. Falls back to the
+## tile of a building that is actually short of power.
+func _resolve_power_site() -> String:
+	if _power_site != "":
+		return _power_site
+	var wanted := "onshore_wind_farm" if _power_mode == "wind" else "power_plant"
+	for key in _scenario.keys():
+		var entries = _scenario[key]
+		if typeof(entries) != TYPE_ARRAY:
+			continue
+		for entry in entries:
+			if typeof(entry) != TYPE_DICTIONARY:
+				continue
+			if str((entry as Dictionary).get("internal_name", "")) == wanted:
+				_power_site = str((entry as Dictionary).get("tile", ""))
+				if _power_site != "":
+					return _power_site
+	# No generation in the plan at all (the downstream-first scenarios): put it where
+	# the demand is — the tile of the first building reporting a power shortage.
+	for instance_id in Production.missing_by_building.keys():
+		var missing: Variant = Production.missing_by_building.get(str(instance_id), [])
+		if not (missing is Array):
+			continue
+		for m in (missing as Array):
+			if str((m as Dictionary).get("good_id", "")) == "power":
+				var b: Dictionary = MatchState.buildings.get(str(instance_id), {})
+				_power_site = str(b.get("tile_id", ""))
+				if _power_site != "":
+					return _power_site
+	return ""
+
+
+## Add generation when the empire is short of power. Coal by default; the battery chain
+## builds wind + a co-sited battery instead.
+func _power_tick() -> void:
+	if not _power_enabled or not _rightsize_armed or _rightsize_busy:
+		return
+	if _power_log.size() >= POWER_MAX_ADDITIONS:
+		return
+	var turn := int(TurnManager.current_turn)
+	if turn < _power_ready_turn:
+		return
+	var summary: Dictionary = Production.last_turn_summary
+	if summary.is_empty():
+		return
+	var deficit := int(summary.get("power_demand", 0)) - int(summary.get("power_supply", 0))
+	if deficit < POWER_DEFICIT_THRESHOLD:
+		return
+	var tile_id := _resolve_power_site()
+	if tile_id == "":
+		return
+
+	var is_wind := _power_mode == "wind"
+	var building_id := _building_id("onshore_wind_farm" if is_wind else "power_plant")
+	var recipe_id := str(_recipes.get("onshore_wind" if is_wind else "power", ""))
+	if building_id == "" or recipe_id == "":
+		return
+
+	_rightsize_busy = true
+	if _balance_mode and not await _ensure_balance_build_funding(building_id, tile_id):
+		_power_ready_turn = turn + POWER_COOLDOWN_TURNS
+		_rightsize_busy = false
+		return
+	var instance_id := await _build_building_via_build_mode(building_id, recipe_id, tile_id, true, true)
+	if instance_id == "" :
+		_power_ready_turn = turn + POWER_COOLDOWN_TURNS
+		_rightsize_busy = false
+		return
+	if _balance_mode:
+		_balance_built_ids.append(instance_id)
+	var paired := ""
+	if is_wind:
+		# Firm the intermittent source where it is generated: a battery on the same tile.
+		var battery_id := _building_id("battery")
+		var battery_recipe := str(_recipes.get("battery_storage", ""))
+		if battery_id != "" and battery_recipe != "":
+			if not _balance_mode or await _ensure_balance_build_funding(battery_id, tile_id):
+				paired = await _build_building_via_build_mode(battery_id, battery_recipe, tile_id, true, true)
+				if paired != "" and _balance_mode:
+					_balance_built_ids.append(paired)
+	_rightsize_busy = false
+	_power_ready_turn = turn + POWER_COOLDOWN_TURNS
+	_power_log.append({
+		"turn": turn, "deficit": deficit, "mode": _power_mode,
+		"tile": tile_id, "battery": paired != "",
+	})
+	print("[E2E] power: deficit %d -> built %s on %s%s (t%d)"
+		% [deficit, ("onshore wind" if is_wind else "coal power"), tile_id,
+			(" + battery" if paired != "" else ""), turn])
 
 
 func _good_label(good_id: String) -> String:
@@ -1937,6 +2051,7 @@ func _advance_turns(count: int, reason: String) -> void:
 		await TurnManager.turn_resolution_completed
 		_capture_turn_metrics()
 		await _rightsize_tick()
+		await _power_tick()
 		var elapsed_ms := float(Time.get_ticks_usec() - start) / 1000.0
 		_turn_times_ms.append(elapsed_ms)
 		_turn_wall_records.append({
@@ -2473,6 +2588,8 @@ func _write_latest_metrics() -> void:
 		"rightsize_log": _rightsize_log,
 		"rightsize_blocked_upstream": _rightsize_blocked_upstream,
 		"rightsize_unaffordable": _rightsize_unaffordable,
+		"power_additions": _power_log.size(),
+		"power_log": _power_log,
 		"target_turn": _target_turn,
 		"assertions_passed": _passed,
 		"assertions_failed": _failed,
