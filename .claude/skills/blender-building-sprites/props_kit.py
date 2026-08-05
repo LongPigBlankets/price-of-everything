@@ -17,17 +17,19 @@ PALETTE["canopy_dark"] = (0.100, 0.215, 0.075) # shaded foliage mass
 PALETTE["bark"] = (0.170, 0.120, 0.080)
 
 
-def _blob(self, name, cx, cy, cz, r, mat, rng, jitter=0.075, squash=0.88):
-    """An irregular foliage clump: a dense UV sphere with seeded radial vertex noise.
-    This is the actual tutorial technique — the organic read comes from silhouette
-    IRREGULARITY, not from more perfect-sphere polygons. 32x20 segments so the jitter
-    has vertices to work with; smooth sides keep the cel shading soft."""
+def _blob(self, name, cx, cy, cz, r, mat, rng, jitter=0.075, scale=(1.0, 1.0, 0.88), rot_z=0.0):
+    """An irregular foliage chunk: dense UV sphere, seeded radial vertex noise, then a
+    NON-UNIFORM scale (owner: avoid spherical — wider than tall) and a random spin so
+    no two chunks share an axis. Irregular silhouette + anisotropy is what reads as
+    foliage; smooth sides keep the cel shading soft."""
     m = bpy.data.meshes.new(name)
     bm = bmesh.new()
     bmesh.ops.create_uvsphere(bm, u_segments=40, v_segments=26, radius=r)
     for v in bm.verts:
         v.co *= 1.0 + rng.uniform(-jitter, jitter)
-    bmesh.ops.scale(bm, vec=(1.0, 1.0, squash), verts=bm.verts)
+    bmesh.ops.scale(bm, vec=scale, verts=bm.verts)
+    bmesh.ops.rotate(bm, cent=(0, 0, 0),
+                     matrix=mathutils_rotation(rot_z), verts=bm.verts)
     bmesh.ops.translate(bm, vec=(cx, cy, cz), verts=bm.verts)
     bm.to_mesh(m); bm.free()
     ob = self.obj(name, m, mat)
@@ -36,7 +38,12 @@ def _blob(self, name, cx, cy, cz, r, mat, rng, jitter=0.075, squash=0.88):
     return ob
 
 
-def _taper(self, name, p0, p1, r0, r1, mat, segments=10):
+def mathutils_rotation(rz):
+    import mathutils
+    return mathutils.Matrix.Rotation(rz, 3, 'Z')
+
+
+def _taper(self, name, p0, p1, r0, r1, mat, segments=12):
     """Tapered limb between two points — trunks and branches thin toward the tip,
     which a constant-radius dircyl cannot do."""
     import mathutils
@@ -54,36 +61,60 @@ def _taper(self, name, p0, p1, r0, r1, mat, segments=10):
 
 
 def _tree(self, name, x, y, h=1.9, r=0.45, seed=0):
-    """Stylised street tree, tutorial construction: a TAPERED, slightly leaning trunk
-    with root flares, three tapered branches forking into the crown, and a crown of
-    jittered blobs (see _blob) — shaded clumps low/back, lit clumps high/front."""
+    """Stylised street tree v4 (owner notes):
+    - TRUNK: a chain of 3-4 tapered segments with lateral KINKS at each joint (a
+      small bark sphere covers each elbow — cylinder-meets-cylinder needs cover),
+      root flares at the base.
+    - CROWN: 3-4 chunks of varying size, jittered, and deliberately NON-SPHERICAL —
+      each stretched wider than tall on its own random horizontal axis."""
     import random
     rng = random.Random(seed)
-    zc = h * 0.70
-    lean = (rng.uniform(-0.06, 0.06) * r, rng.uniform(-0.06, 0.06) * r)
-    top = (x + lean[0], y + lean[1], h * 0.55)
-    self._taper(name + "_trunk", (x, y, 0.0), top, r * 0.17, r * 0.085, self.mat("bark"))
-    for ri in range(3):                       # root flares
+    # Kinked trunk: polyline from ground to crown underside with lateral drift.
+    n_seg = rng.randint(3, 4)
+    pts = [(x, y, 0.0)]
+    top_z = h * 0.60
+    for si in range(1, n_seg + 1):
+        t = si / n_seg
+        pts.append((x + rng.uniform(-0.10, 0.10) * r * (0.5 + t),
+                    y + rng.uniform(-0.10, 0.10) * r * (0.5 + t),
+                    top_z * t))
+    r_base, r_tip = r * 0.18, r * 0.07
+    for si in range(n_seg):
+        r0 = r_base + (r_tip - r_base) * (si / n_seg)
+        r1 = r_base + (r_tip - r_base) * ((si + 1) / n_seg)
+        self._taper("%s_t%d" % (name, si), pts[si], pts[si + 1], r0, r1,
+                    self.mat("bark"), segments=12)
+        if si > 0:
+            jx, jy, jz = pts[si]
+            self.sphere("%s_j%d" % (name, si), jx, jy, jz, r0 * 1.08, self.mat("bark"))
+    for ri in range(3):
         ang = rng.uniform(0, 6.283)
         self._taper("%s_root%d" % (name, ri), (x, y, 0.10),
-                    (x + math.cos(ang) * r * 0.22, y + math.sin(ang) * r * 0.22, 0.0),
-                    r * 0.075, r * 0.03, self.mat("bark"), segments=7)
-    clumps = [(0.0, 0.0, 0.10, 1.00)]
-    for ci in range(rng.randint(5, 7)):
+                    (x + math.cos(ang) * r * 0.24, y + math.sin(ang) * r * 0.24, 0.0),
+                    r * 0.075, r * 0.03, self.mat("bark"), segments=8)
+    # Crown: 3-4 wide chunks around the trunk top.
+    top = pts[-1]
+    zc = h * 0.74
+    n_chunk = rng.randint(3, 4)
+    chunks = [(0.0, 0.0, 0.05, 1.00)]
+    for ci in range(n_chunk - 1):
         ang = rng.uniform(0, 6.283)
-        rad = rng.uniform(0.45, 0.85)
-        clumps.append((math.cos(ang) * r * rng.uniform(0.45, 0.8),
-                       math.sin(ang) * r * rng.uniform(0.45, 0.8),
-                       rng.uniform(-0.35, 0.55) * r, rad))
-    for bi, (dx, dy, dz, rf) in enumerate(clumps[1:4]):   # branches fork to outer clumps
+        chunks.append((math.cos(ang) * r * rng.uniform(0.55, 0.95),
+                       math.sin(ang) * r * rng.uniform(0.55, 0.95),
+                       rng.uniform(-0.25, 0.45) * r,
+                       rng.uniform(0.45, 0.75)))
+    for bi, (dx, dy, dz, rf) in enumerate(chunks[1:3]):
         self._taper("%s_br%d" % (name, bi), top,
-                    (x + dx * 0.8, y + dy * 0.8, zc + dz * 0.6),
-                    r * 0.055, r * 0.022, self.mat("bark"), segments=7)
-    for ci, (dx, dy, dz, rf) in enumerate(clumps):
+                    (x + dx * 0.85, y + dy * 0.85, zc + dz * 0.7),
+                    r * 0.055, r * 0.022, self.mat("bark"), segments=8)
+    for ci, (dx, dy, dz, rf) in enumerate(chunks):
         shaded = dy > r * 0.15 or dz < -r * 0.1
         self._blob("%s_c%d" % (name, ci), x + dx, y + dy, zc + dz, r * rf,
                    self.mat("canopy_dark" if shaded else "canopy"), rng,
-                   squash=rng.uniform(0.82, 0.92))
+                   scale=(1.0 + rng.uniform(0.15, 0.45),
+                          1.0 + rng.uniform(0.05, 0.30),
+                          rng.uniform(0.55, 0.70)),
+                   rot_z=rng.uniform(0, 3.1416))
 
 
 def _mark_noink_props(ob):
