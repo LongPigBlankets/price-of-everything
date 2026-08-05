@@ -358,6 +358,7 @@ def build_backdrop(seed=7):
     # skyline crowds the road's vanishing point. Deterministic (seeded) so a rebuild
     # is the same city.
     rng = random.Random(seed)
+    tower = False
     for rank, (rx, tone) in enumerate((
             (CITY_X + 2.5, CITY_FAR_TONE), (CITY_X, CITY_NEAR_TONE))):
         m = _emat("load_city_%d" % rank, tone)
@@ -371,6 +372,13 @@ def build_backdrop(seed=7):
             if y < 1.5 and y + w > -1.5:
                 y = 1.5
             h = rng.uniform(0.6, 1.7) * (1.0 + 1.1 * math.exp(-(y / 14.0) ** 2))
+            # Skyscrapers (owner: "taller — skyscrapers on the horizon"): roughly a
+            # fifth of the near-rank blocks become towers — narrow slabs 3-5x the
+            # low-rise height, clustered toward the centre by the same envelope.
+            tower = rank == 1 and rng.random() < 0.22
+            if tower:
+                w = min(w, 2.2)
+                h = rng.uniform(3.4, 6.0) * (1.0 + 0.8 * math.exp(-(y / 16.0) ** 2))
             ob = _box(city_col, "city_r%d_%d" % (rank, i), rx, y + w / 2, h / 2,
                       1.2, w, h, m)
             ob.data.materials[0] = m
@@ -384,6 +392,10 @@ def build_backdrop(seed=7):
                 t = _box(city_col, "city_t%d_%d" % (rank, i), rx,
                          y + w / 2, h + 0.35, 1.0, tw, 0.7, m)
                 mark_noink(t)
+            if tower and h > 4.0:                         # towers get a second tier
+                t2 = _box(city_col, "city_t2%d_%d" % (rank, i), rx,
+                          y + w / 2, h + 0.95, 0.9, w * 0.35, 0.5, m)
+                mark_noink(t2)
             if rank == 1 and rng.random() < 0.45:         # rooftop water tank / hut
                 rt = _box(city_col, "city_rt%d_%d" % (rank, i), rx - 0.15,
                           y + w * rng.uniform(0.2, 0.8), h + 0.14,
@@ -394,6 +406,11 @@ def build_backdrop(seed=7):
                           y + w * rng.uniform(0.25, 0.75), h + 0.45,
                           0.14, 0.14, 0.9, m)
                 mark_noink(sp)
+            if tower:                                     # towers: tall window strip
+                wm = _emat("load_city_win", (0.220, 0.260, 0.320))
+                ws = _box(city_col, "city_tw%d_%d" % (rank, i),
+                          rx - 0.62, y + w / 2, h * 0.5, 0.02, w * 0.42, h * 0.8, wm)
+                mark_noink(ws)
             if rank == 1 and w > 2.0:                     # window-column strips
                 wm = _emat("load_city_win", (0.220, 0.260, 0.320))
                 for k in range(int(w / 0.8)):
@@ -426,22 +443,33 @@ def build_backdrop(seed=7):
         gt = _box(city_col, "city_gate_t_" + tag, gx, gy, 2.62, 1.0, 1.4, 0.65, gm)
         mark_noink(gt)
 
-    # Clouds (owner: 3-4). Flat poster cutouts: clusters of camera-facing cylinders
-    # over a flat-bottom slab — single pale emission tone, NOINK, so the overlaps
-    # vanish and only the cumulus silhouette reads. Between city and sky planes.
-    cm = _emat("load_cloud", (0.870, 0.880, 0.870))
-    for ci, (cy, cz, sc_f) in enumerate(((-26.0, 16.0, 1.25), (-6.0, 21.0, 0.9),
-                                         (12.0, 14.5, 1.1), (30.0, 19.0, 0.8))):
-        puffs = ((0.0, 0.0, 2.1), (2.2, 0.6, 1.5), (-2.3, 0.4, 1.6), (4.0, 0.1, 1.0))
-        for pi, (dy, dz, r) in enumerate(puffs):
+    # Clouds (owner rev 2): FLAT BOTTOMS — every puff disc is bottom-aligned on one
+    # line (centre z = bottom + r), with a fill slab down to that line — plus a light
+    # grey underside band drawn just in front for shading, and real size variety
+    # (one long, one tall, two small). All emission + NOINK: only silhouette + the
+    # two flat tones read, which is the poster grammar.
+    cm = _emat("load_cloud", (0.880, 0.890, 0.880))
+    sm = _emat("load_cloud_shade", (0.665, 0.690, 0.715))
+    CLOUDS = [
+        #  cy     bottom  scale  puffs (dy, r)
+        (-27.0, 15.5, 1.35, ((-3.6, 1.1), (-1.4, 1.9), (1.2, 2.3), (3.8, 1.5), (5.9, 0.9))),
+        ( -5.0, 20.5, 0.85, ((-1.6, 1.2), (0.4, 1.9), (2.2, 1.1))),
+        ( 13.0, 13.8, 1.10, ((-2.2, 1.3), (0.0, 2.6), (2.6, 1.6))),   # tall head
+        ( 31.0, 18.0, 0.70, ((-1.8, 1.1), (0.2, 1.6), (1.9, 1.0))),
+    ]
+    for ci, (cy, cz0, sc_f, puffs) in enumerate(CLOUDS):
+        y_lo = min(dy - r for dy, r in puffs) * sc_f
+        y_hi = max(dy + r for dy, r in puffs) * sc_f
+        for pi, (dy, r) in enumerate(puffs):
+            rr = r * sc_f
             m2 = bpy.data.meshes.new("cloud%d_%d" % (ci, pi))
             bm2 = bmesh.new()
             bmesh.ops.create_cone(bm2, cap_ends=True, segments=24,
-                                  radius1=r * sc_f, radius2=r * sc_f, depth=0.1)
+                                  radius1=rr, radius2=rr, depth=0.1)
             bmesh.ops.rotate(bm2, cent=(0, 0, 0),
                              matrix=mathutils.Matrix.Rotation(math.radians(90), 3, 'Y'),
                              verts=bm2.verts)
-            bmesh.ops.translate(bm2, vec=(84.0, cy + dy, cz + dz), verts=bm2.verts)
+            bmesh.ops.translate(bm2, vec=(84.0, cy + dy * sc_f, cz0 + rr), verts=bm2.verts)
             bm2.to_mesh(m2)
             bm2.free()
             ob = bpy.data.objects.new("cloud%d_%d" % (ci, pi), m2)
@@ -450,9 +478,15 @@ def build_backdrop(seed=7):
             for pl in ob.data.polygons:
                 pl.use_smooth = False
             mark_noink(ob)
-        base = _box(city_col, "cloud%d_base" % ci, 84.0, cy + 0.9, cz - 0.55 * sc_f,
-                    0.1, 6.4 * sc_f, 0.9, cm)
-        mark_noink(base)
+        # Fill between puff bottoms and the flat base line.
+        fill = _box(city_col, "cloud%d_fill" % ci, 84.0, cy + (y_lo + y_hi) / 2,
+                    cz0 + 0.45 * sc_f, 0.1, (y_hi - y_lo) * 0.96, 0.9 * sc_f, cm)
+        mark_noink(fill)
+        # Underside shading: a light grey band hugging the flat bottom, in FRONT of
+        # the white so it wins the depth test, inset so no grey pokes past the rim.
+        shade = _box(city_col, "cloud%d_shade" % ci, 83.7, cy + (y_lo + y_hi) / 2,
+                     cz0 + 0.24 * sc_f, 0.1, (y_hi - y_lo) * 0.80, 0.48 * sc_f, sm)
+        mark_noink(shade)
     return {"sky_bands": len(SKY_BANDS), "city_objects": len(city_col.objects)}
 
 
@@ -540,7 +574,7 @@ def render_layers(out_dir=None, width=2400, height=1350):
 SLOTS = [
     # near (west, large in frame)
     ("off_a", "office",      1, 180.0,  -3.0, "s"),
-    ("fac_a", "factory",     2,  -90.0,  1.5, "n"),
+    ("fac_a", "factory",     3,  -90.0,  1.5, "n", 0.9),   # L3; set back for the annex
     ("off_b", "office",      2, 180.0,   6.0, "s"),
     ("pol_a", "poly",        2,   0.0,  12.5, "n"),
     # mid
@@ -589,7 +623,7 @@ def _builder(kind):
     return _builder_cache[kind]
 
 
-def _place(col, rz_deg, slot_x, side="n"):
+def _place(col, rz_deg, slot_x, side="n", extra_setback=0.0):
     """Rotate a building about world Z, then drop it so its south face sits on the
     facade line and its centre on slot_x. Fully general about object origins: transforms
     are composed on matrix_world, and the bbox is measured from the matrices actually
@@ -607,9 +641,9 @@ def _place(col, rz_deg, slot_x, side="n"):
             xs.append(w.x)
             ys.append(w.y)
     if side == "n":
-        ty = BUILDING_FRONT_Y - min(ys)        # front face on the north facade line
+        ty = BUILDING_FRONT_Y + extra_setback - min(ys)   # north facade line
     else:
-        ty = -BUILDING_FRONT_Y - max(ys)       # mirrored line south of the road
+        ty = -BUILDING_FRONT_Y - extra_setback - max(ys)  # mirrored south line
     off = mathutils.Matrix.Translation((
         slot_x - (min(xs) + max(xs)) / 2.0, ty, 0.0))
     for ob in col.objects:
@@ -626,7 +660,9 @@ def phase1():
     and the sprite Camera pose (their setup_rig), so the load rig is re-asserted after."""
     sc = get_scene()
     placed = []
-    for suffix, kind, level, rz, x, side in SLOTS:
+    for slot in SLOTS:
+        suffix, kind, level, rz, x, side = slot[:6]
+        extra = slot[6] if len(slot) > 6 else 0.0
         fn, col_name = _builder(kind)
         fn(level)
         src = bpy.data.collections[col_name]
@@ -635,7 +671,7 @@ def phase1():
         for ob in list(src.objects):
             src.objects.unlink(ob)
             col.objects.link(ob)
-        _place(col, rz, x, side)
+        _place(col, rz, x, side, extra)
         placed.append({"slot": suffix, "level": level, "objects": len(col.objects)})
     setup_load_rig()
     return {"placed": placed}
