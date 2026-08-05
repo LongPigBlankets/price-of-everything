@@ -218,7 +218,10 @@ const FARM_FIELD_SCALE := 3.0          # field rendered 3× linear (≈9× area)
 const FARM_OUTBUILDING_SCALE := 2.1    # barn + silo (3× then 30% smaller), snapped to the plot's road edge
 const FARM_MIN_SEP := 70.0             # min farm centre spacing — fields then Voronoi-snap to lanes
 const FARM_CROSS_TILE_RADIUS := 440.0  # a neighbour-tile farm within this world radius pulls a new field toward the shared edge
-const FARM_FOREST_TOL := 0.7           # farms tolerate forests: excluded only inside 70% of a disc (30% closer)
+const FARM_FOREST_TOL := 0.35          # farms run UNDER forests: a field may reach 65% of the way into a
+                                       # disc (the canopy covers it — farms draw on the FarmUnderlay layer,
+                                       # below ForestVisuals). Not 0: the centre uses the same mask, so a
+                                       # floor keeps a field from being seeded dead under a wood and hidden.
 const FARM_ADJ_MAX := 12.0             # two fields are "adjacent" (share a side, get a lane) within this
 const FARM_RING_OFFSET := 6.0          # outer ring sits this far outside the fields (concave hug, not a hull)
 const FARM_LANE_COLOR := Color(0.60, 0.54, 0.43)     # thin dirt track between adjacent fields
@@ -274,6 +277,7 @@ var _farm_cluster_rings: Dictionary = {}  # tile_id -> Array of closed ring poly
 
 var _cull := false
 var _view := Rect2()
+var _farm_underlay: Node2D = null   # sibling canvas under ForestVisuals; see _ensure_farm_underlay
 var _warned_no_nav := false
 
 # Bumped on every footprint add/remove so the road realizer's avoidance-disc cache
@@ -308,6 +312,27 @@ func _ready() -> void:
 		RoadWorks.farm_roads_promoted.connect(_on_farm_roads_promoted)
 	# 'toggle ink' map restyle: farm field/hatch colors come from MapStyle.
 	MapStyle.style_changed.connect(queue_redraw)
+	_ensure_farm_underlay()
+
+## Farms draw on their own sibling canvas slotted just before ForestVisuals, so a field
+## can run under a wood and the canopy covers it. Everything in the world tree is z=0,
+## so sibling order IS the layering — there is no z_index that sits between the terrain
+## and the trees. Created here rather than in main.tscn so the pairing with this script
+## (which owns the geometry) can't be broken by a scene edit.
+func _ensure_farm_underlay() -> void:
+	if _farm_underlay != null and is_instance_valid(_farm_underlay):
+		return
+	var parent := get_parent()
+	var forest := parent.get_node_or_null("ForestVisuals") if parent != null else null
+	if parent == null:
+		return
+	_farm_underlay = Node2D.new()
+	_farm_underlay.name = "FarmUnderlay"
+	_farm_underlay.set_script(load("res://scripts/farm_underlay.gd"))
+	parent.add_child(_farm_underlay)
+	_farm_underlay.source = self
+	if forest != null:
+		parent.move_child(_farm_underlay, forest.get_index())   # immediately below the canopy
 
 func _on_farm_roads_promoted(tile_id: String) -> void:
 	# Rebuild the tile's layout so the now-promoted ring + trunk are omitted from the brown tracks
@@ -3815,6 +3840,10 @@ func remove_instance(instance_id: String) -> void:
 		queue_redraw()
 
 func _draw() -> void:
+	# The farm layer lives on a sibling canvas beneath the trees; keep it in step with
+	# this one (same frame's geometry, same _view for culling).
+	if _farm_underlay != null and is_instance_valid(_farm_underlay):
+		_farm_underlay.queue_redraw()
 	# Annexes + wings draw UNDER buildings so a same-colour extension merges seamlessly.
 	for sc in _subcomponents:
 		var uk := str(sc.kind)
@@ -3844,90 +3873,35 @@ func _draw() -> void:
 	for placement in _placements:
 		if _cull and not _view.intersects(placement.bb):
 			continue
-		var is_farm: bool = str(placement.cat) == "farm"
+		if str(placement.cat) == "farm":
+			continue   # farms draw on the underlay, beneath the forest canopy
 		var verts: PackedVector2Array = placement.verts
-		var hatch_src: Array = placement.get("hatch", [])
-		var parcel_src: Dictionary = placement.get("parcels", {})
-		if is_farm:
-			# Use the cell-clipped (lane-snapped) shape + its re-baked hatch when the layout pass ran.
-			var fid := str(placement.instance_id)
-			if _farm_render.has(fid):
-				verts = _farm_render[fid].verts
-				hatch_src = _farm_render[fid].hatch
-				parcel_src = (_farm_render[fid] as Dictionary).get("parcels", {})
 		if verts.size() < 3:
 			continue
-		if is_farm:
-			if MapStyle.ink:
-				# P3b parcel fabric: the path-tan base shows through the parcel
-				# insets as the little farm roads; NO outer outline (the parcel
-				# edges carry the boundary — kills the chunky-blob read).
-				draw_colored_polygon(verts, MapStyle.farm_path_color())
-				for pc in (parcel_src.get("parcels", []) as Array):
-					var pp: PackedVector2Array = pc.p
-					if pp.size() < 3:
-						continue
-					draw_colored_polygon(pp, MapStyle.farm_parcel_tint(int(pc.t)))
-					var pl := pp.duplicate()
-					pl.append(pp[0])
-					draw_polyline(pl, MapStyle.farm_parcel_outline(), 0.9, true)
-					for seg in (pc.f as Array):
-						var fs: PackedVector2Array = seg
-						if fs.size() >= 2:
-							draw_polyline(fs, MapStyle.farm_hatch(), MapStyle.farm_hatch_width())
-				# Parcel-snapped outbuildings (subcomponent barn/silo skip in ink).
-				var barn: PackedVector2Array = parcel_src.get("barn", PackedVector2Array())
-				if barn.size() == 4:
-					draw_colored_polygon(barn, MapStyle.farm_barn_color())
-					var bl := barn.duplicate()
-					bl.append(barn[0])
-					draw_polyline(bl, INK, 1.0, true)
-				var silo_c: Vector2 = parcel_src.get("silo_c", Vector2.INF)
-				if silo_c.is_finite():
-					var sr3 := float(parcel_src.get("silo_r", 8.4))
-					draw_circle(silo_c, sr3, MapStyle.farm_silo_color())
-					draw_arc(silo_c, sr3, 0.0, TAU, 20, INK, 1.0, true)
-					draw_circle(silo_c, 1.2, INK)
-			else:
-				var fid2 := str(placement.instance_id)
-				draw_colored_polygon(verts, MapStyle.farm_field_variant(fid2))
-				var loop := verts.duplicate()
-				loop.append(verts[0])
-				var farm_npc := bool(placement.is_npc)
-				draw_polyline(loop, MapStyle.farm_outline_color(farm_npc), MapStyle.farm_outline_width(farm_npc), true)
-				for seg in (hatch_src as Array):
-					var s: PackedVector2Array = seg
-					if s.size() >= 2:
-						draw_polyline(s, MapStyle.farm_hatch(), MapStyle.farm_hatch_width())
+		# Ink & wash: wash fill + one sepia ink outline + category-flavoured
+		# roof motifs. The DRAWN polygon gets a hand-wobble (ink spec I4);
+		# the placement polygon stays clean for occupancy/click logic.
+		# Members of a courtyard mass skip their fill — the mass carries it —
+		# and their outline thins into a party-wall division.
+		var in_mass: bool = (_massed_by_tile.get(str(placement.tile_id), {}) as Dictionary).has(str(placement.instance_id))
+		if not in_mass and _draw_ink_art(placement, verts):
+			pass   # shape-language art replaces wash/outline/motifs (both styles)
 		else:
-			# Ink & wash: wash fill + one sepia ink outline + category-flavoured
-			# roof motifs. The DRAWN polygon gets a hand-wobble (ink spec I4);
-			# the placement polygon stays clean for occupancy/click logic.
-			# Members of a courtyard mass skip their fill — the mass carries it —
-			# and their outline thins into a party-wall division.
-			var in_mass: bool = (_massed_by_tile.get(str(placement.tile_id), {}) as Dictionary).has(str(placement.instance_id))
-			if not in_mass and _draw_ink_art(placement, verts):
-				pass   # shape-language art replaces wash/outline/motifs (both styles)
-			else:
-				var wob := _wobble_poly(str(placement.instance_id), verts)
-				if not in_mass:
-					if shadow.a > 0.0:
-						draw_colored_polygon(_offset_pts(wob, shadow_off), shadow)
-					draw_colored_polygon(wob, _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
-				var loop2 := wob.duplicate()
-				loop2.append(wob[0])
-				draw_polyline(loop2, INK, 1.0 if in_mass else INK_W, true)
-				# Quad footprints only — L/C shapes (6/8 verts) keep a clean roof so a
-				# motif never spills off the polygon (same guard the old ridges used).
-				# Offshore platforms stay plain (a helipad dot instead of shed roofs).
-				if bool(placement.get("offshore", false)):
-					draw_circle(_poly_centroid(verts), 2.4, INK)
-				elif verts.size() == 4:
-					_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts, bool(placement.is_npc))
-	# Thin dirt tracks between adjacent farms (kept within FARM_LANE_REACH of the fields, routed around
-	# forests). A promoted tile's _farm_lanes already excludes the ring + trunk (now real yellow roads).
-	# A filled disc (radius = half the track width) at each segment end JOINS the corners + junctions so
-	# the network reads as continuous instead of broken butt-capped segments.
+			var wob := _wobble_poly(str(placement.instance_id), verts)
+			if not in_mass:
+				if shadow.a > 0.0:
+					draw_colored_polygon(_offset_pts(wob, shadow_off), shadow)
+				draw_colored_polygon(wob, _wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
+			var loop2 := wob.duplicate()
+			loop2.append(wob[0])
+			draw_polyline(loop2, INK, 1.0 if in_mass else INK_W, true)
+			# Quad footprints only — L/C shapes (6/8 verts) keep a clean roof so a
+			# motif never spills off the polygon (same guard the old ridges used).
+			# Offshore platforms stay plain (a helipad dot instead of shed roofs).
+			if bool(placement.get("offshore", false)):
+				draw_circle(_poly_centroid(verts), 2.4, INK)
+			elif verts.size() == 4:
+				_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts, bool(placement.is_npc))
 	# Block side roads — only exist once a second-row lot was actually built on.
 	for tid_s in _block_streets:
 		for s in (_block_streets[tid_s] as Array):
@@ -3940,6 +3914,77 @@ func _draw() -> void:
 		draw_polyline(_service_world[tid_v] as PackedVector2Array, MapStyle.road_casing(), SERVICE_WIDTH + 2.0, true)
 	for tid_v2 in _service_world:
 		draw_polyline(_service_world[tid_v2] as PackedVector2Array, MapStyle.road_local(), SERVICE_WIDTH, true)
+	# Round tanks on top (they sit off their building). Farm barns/silos are part of the
+	# farm layer and draw with it, under the canopy.
+	for sc in _subcomponents:
+		var k := str(sc.kind)
+		if k == "tank" or k == "tankfarm" or k == "storey":
+			_draw_subcomponent(sc)
+
+## Draw the whole farm layer — fields, parcel fabric, dirt tracks, outbuildings — onto
+## `c`, the FarmUnderlay canvas that sits below ForestVisuals. Geometry and caches stay
+## here; only the canvas differs, so a field can run under a wood and be covered by it.
+func draw_farm_layer(c: CanvasItem) -> void:
+	for placement in _placements:
+		if str(placement.cat) != "farm":
+			continue
+		if _cull and not _view.intersects(placement.bb):
+			continue
+		var verts: PackedVector2Array = placement.verts
+		var hatch_src: Array = placement.get("hatch", [])
+		var parcel_src: Dictionary = placement.get("parcels", {})
+		# Use the cell-clipped (lane-snapped) shape + its re-baked hatch when the layout pass ran.
+		var fid := str(placement.instance_id)
+		if _farm_render.has(fid):
+			verts = _farm_render[fid].verts
+			hatch_src = _farm_render[fid].hatch
+			parcel_src = (_farm_render[fid] as Dictionary).get("parcels", {})
+		if verts.size() < 3:
+			continue
+		if MapStyle.ink:
+			# P3b parcel fabric: the path-tan base shows through the parcel
+			# insets as the little farm roads; NO outer outline (the parcel
+			# edges carry the boundary — kills the chunky-blob read).
+			c.draw_colored_polygon(verts, MapStyle.farm_path_color())
+			for pc in (parcel_src.get("parcels", []) as Array):
+				var pp: PackedVector2Array = pc.p
+				if pp.size() < 3:
+					continue
+				c.draw_colored_polygon(pp, MapStyle.farm_parcel_tint(int(pc.t)))
+				var pl := pp.duplicate()
+				pl.append(pp[0])
+				c.draw_polyline(pl, MapStyle.farm_parcel_outline(), 0.9, true)
+				for seg in (pc.f as Array):
+					var fs: PackedVector2Array = seg
+					if fs.size() >= 2:
+						c.draw_polyline(fs, MapStyle.farm_hatch(), MapStyle.farm_hatch_width())
+			# Parcel-snapped outbuildings (subcomponent barn/silo skip in ink).
+			var barn: PackedVector2Array = parcel_src.get("barn", PackedVector2Array())
+			if barn.size() == 4:
+				c.draw_colored_polygon(barn, MapStyle.farm_barn_color())
+				var bl := barn.duplicate()
+				bl.append(barn[0])
+				c.draw_polyline(bl, INK, 1.0, true)
+			var silo_c: Vector2 = parcel_src.get("silo_c", Vector2.INF)
+			if silo_c.is_finite():
+				var sr3 := float(parcel_src.get("silo_r", 8.4))
+				c.draw_circle(silo_c, sr3, MapStyle.farm_silo_color())
+				c.draw_arc(silo_c, sr3, 0.0, TAU, 20, INK, 1.0, true)
+				c.draw_circle(silo_c, 1.2, INK)
+		else:
+			c.draw_colored_polygon(verts, MapStyle.farm_field_variant(fid))
+			var loop := verts.duplicate()
+			loop.append(verts[0])
+			var farm_npc := bool(placement.is_npc)
+			c.draw_polyline(loop, MapStyle.farm_outline_color(farm_npc), MapStyle.farm_outline_width(farm_npc), true)
+			for seg in (hatch_src as Array):
+				var s: PackedVector2Array = seg
+				if s.size() >= 2:
+					c.draw_polyline(s, MapStyle.farm_hatch(), MapStyle.farm_hatch_width())
+	# Thin dirt tracks between adjacent farms (kept within FARM_LANE_REACH of the fields, routed around
+	# forests). A promoted tile's _farm_lanes already excludes the ring + trunk (now real yellow roads).
+	# A filled disc (radius = half the track width) at each segment end JOINS the corners + junctions so
+	# the network reads as continuous instead of broken butt-capped segments.
 	# Ink mode draws NO grey lane web (owner ruling 2026-07-23): the mockup's
 	# farms are parcel blocks sitting beside the roads, not lane-connected
 	# blobs. Classic keeps the dirt tracks + their river bridge decks.
@@ -3949,9 +3994,9 @@ func _draw() -> void:
 			for seg in (_farm_lanes[tid] as Array):
 				var ls: PackedVector2Array = seg
 				if ls.size() >= 2:
-					draw_polyline(ls, FARM_LANE_COLOR, FARM_LANE_W)
+					c.draw_polyline(ls, FARM_LANE_COLOR, FARM_LANE_W)
 					for v in ls:
-						draw_circle(v, joint_r, FARM_LANE_COLOR)   # fill each corner/junction
+						c.draw_circle(v, joint_r, FARM_LANE_COLOR)   # fill each corner/junction
 		# Bridge decks where a lane crosses a river.
 		for tid2 in _farm_bridges:
 			for br in (_farm_bridges[tid2] as Array):
@@ -3960,20 +4005,21 @@ func _draw() -> void:
 				var bpr := Vector2(-bd.y, bd.x)
 				var e0 := bp - bd * (FARM_BRIDGE_LEN * 0.5)
 				var e1 := bp + bd * (FARM_BRIDGE_LEN * 0.5)
-				draw_line(e0, e1, FARM_BRIDGE_COLOR, FARM_BRIDGE_W)            # deck
-				draw_line(e0 - bpr * 5.0, e0 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)   # abutment rails
-				draw_line(e1 - bpr * 5.0, e1 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)
-	# Round tanks + farm barns/silos on top (tanks sit off their building; farm outbuildings sit ON the field).
+				c.draw_line(e0, e1, FARM_BRIDGE_COLOR, FARM_BRIDGE_W)            # deck
+				c.draw_line(e0 - bpr * 5.0, e0 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)   # abutment rails
+				c.draw_line(e1 - bpr * 5.0, e1 + bpr * 5.0, FARM_BRIDGE_COLOR, 2.0)
+	# Farm outbuildings sit ON the field, so they belong to this layer too.
 	for sc in _subcomponents:
 		var k := str(sc.kind)
-		if k == "tank" or k == "tankfarm" or k == "farm_barn" or k == "farm_silo" or k == "storey":
-			_draw_subcomponent(sc)
+		if k == "farm_barn" or k == "farm_silo":
+			_draw_subcomponent(sc, c)
 
 ## Draw one ancillary (tank/annex) in the parent's wash + ink; farm outbuildings
 ## keep their brown barn/silo look (farms are outside the plate restyle).
-func _draw_subcomponent(sc: Dictionary) -> void:
+func _draw_subcomponent(sc: Dictionary, canvas: CanvasItem = null) -> void:
 	if _cull and not _view.intersects(sc.bb):
 		return
+	var c: CanvasItem = canvas if canvas != null else self   # farm outbuildings draw on the underlay
 	var sv: PackedVector2Array = sc.verts
 	var kind := str(sc.kind)
 	if MapStyle.ink and (kind == "farm_barn" or kind == "farm_silo"):
@@ -3983,14 +4029,14 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 	if kind == "tankfarm":
 		var twash := _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc))
 		for tc in (sc.tanks as Array):
-			draw_circle(tc as Vector2, float(sc.r), twash)
-			draw_arc(tc as Vector2, float(sc.r), 0.0, TAU, 24, INK, INK_W, true)
-			draw_circle(tc as Vector2, 1.2, INK)
+			c.draw_circle(tc as Vector2, float(sc.r), twash)
+			c.draw_arc(tc as Vector2, float(sc.r), 0.0, TAU, 24, INK, INK_W, true)
+			c.draw_circle(tc as Vector2, 1.2, INK)
 		return
 	if kind == "corridor":
-		draw_colored_polygon(sv, _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc)))
-		draw_line(sv[0], sv[1], INK, 1.0)
-		draw_line(sv[2], sv[3], INK, 1.0)
+		c.draw_colored_polygon(sv, _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc)))
+		c.draw_line(sv[0], sv[1], INK, 1.0)
+		c.draw_line(sv[2], sv[3], INK, 1.0)
 		return
 	if kind == "annex" or kind == "tank" or kind == "wing" or kind == "storey":
 		if kind != "tank" and kind != "storey":
@@ -3998,27 +4044,27 @@ func _draw_subcomponent(sc: Dictionary) -> void:
 		var wash := _wash_for(str(sc.get("cat", "default")), str(sc.get("iid", "")), bool(sc.is_npc))
 		if kind == "storey":
 			wash = Color.from_hsv(wash.h, wash.s, clampf(wash.v * 0.92, 0.0, 1.0))
-		draw_colored_polygon(sv, wash)
+		c.draw_colored_polygon(sv, wash)
 		var si := sv.duplicate()
 		si.append(sv[0])
-		draw_polyline(si, INK, 1.0 if kind == "storey" else INK_W, true)
+		c.draw_polyline(si, INK, 1.0 if kind == "storey" else INK_W, true)
 		if kind == "tank":
-			draw_circle(_poly_centroid(sv), 1.4, INK)   # reference: tank = ink circle + centre dot
+			c.draw_circle(_poly_centroid(sv), 1.4, INK)   # reference: tank = ink circle + centre dot
 		return
 	# Farm barn/silo fall through to here. Ink: brick barn / mustard silo + ink
 	# outline; classic keeps the brown + white/grey look.
 	var fb_fill: Color = sc.color
 	if MapStyle.ink:
 		fb_fill = MapStyle.farm_silo_color() if kind == "farm_silo" else MapStyle.farm_barn_color()
-	draw_colored_polygon(sv, fb_fill)
+	c.draw_colored_polygon(sv, fb_fill)
 	var sl := sv.duplicate()
 	sl.append(sv[0])
 	if MapStyle.ink:
-		draw_polyline(sl, INK, 1.0, true)
+		c.draw_polyline(sl, INK, 1.0, true)
 	elif bool(sc.is_npc):
-		draw_polyline(sl, Color.WHITE, NPC_OUTLINE_W, true)
+		c.draw_polyline(sl, Color.WHITE, NPC_OUTLINE_W, true)
 	else:
-		draw_polyline(sl, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
+		c.draw_polyline(sl, PLAYER_OUTLINE, PLAYER_OUTLINE_W, true)
 
 # ── Ink & wash helpers (phase I1) ──────────────────────────────────────────────
 
@@ -4073,16 +4119,33 @@ func _crop_to_sprite(placed: Dictionary, size_units: int, art_key: String) -> vo
 		ctr += v
 	ctr /= float(pv.size())
 	var dirv := (pv[1] - pv[0]).normalized()
-	var mn := Vector2(1e30, 1e30)
-	var mx := Vector2(-1e30, -1e30)
+	# Measure the approved lot in ITS OWN frame. An axis-aligned bbox over-states a
+	# ROTATED lot by up to ~40% (Crying Shore's block runs at 45°), and reading the lot
+	# that way is what let the crop reach past the polygon _valid actually approved.
+	var ang := dirv.angle()
+	var hu := 0.0   # half-extent along the lot's first edge — the road tangent
+	var hv := 0.0   # half-extent across it, i.e. toward the road
 	for v in pv:
-		mn = mn.min(v)
-		mx = mx.max(v)
-	var lot_extent := maxf((mx - mn).x, (mx - mn).y)
-	var target := clampf(minf(_art_size_for(size_units, art_key), lot_extent), ART_DRAWN_MIN, ART_DRAWN_MAX)
+		var d := (v - ctr).rotated(-ang)
+		hu = maxf(hu, absf(d.x))
+		hv = maxf(hv, absf(d.y))
+	# frame.x runs along dirv and frame.y across it, matching how InkBuildingGen.draw
+	# rotates the art — so the footprint keeps describing the thing that gets drawn.
+	var target := clampf(minf(_art_size_for(size_units, art_key), maxf(hu, hv) * 2.0), ART_DRAWN_MIN, ART_DRAWN_MAX)
 	var s := target / maxf(frame.x, frame.y)
 	var hx := frame.x * s * 0.5 + ART_BLOCK_MARGIN
 	var hy := frame.y * s * 0.5 + ART_BLOCK_MARGIN
+	# A crop may only ever SHRINK. The ART_DRAWN_MIN floor and the margin above are both
+	# applied after the lot is known, so without this the box can end up bigger than the
+	# lot — and nothing re-runs _valid on the result, so an over-run lands straight on the
+	# carriageway. Shrink uniformly to keep the box matching the art's proportions.
+	var fit := 1.0
+	if hx > hu:
+		fit = minf(fit, hu / hx)
+	if hy > hv:
+		fit = minf(fit, hv / hy)
+	hx *= fit
+	hy *= fit
 	var local := PackedVector2Array([
 		Vector2(-hx, -hy).rotated(dirv.angle()), Vector2(hx, -hy).rotated(dirv.angle()),
 		Vector2(hx, hy).rotated(dirv.angle()), Vector2(-hx, hy).rotated(dirv.angle()),
