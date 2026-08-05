@@ -125,6 +125,10 @@ var _power_mode := "coal"               # "coal" | "wind"
 var _power_site := ""
 var _power_ready_turn := 0
 var _power_log: Array[Dictionary] = []
+
+# Market fallback for goods nothing in the plan can produce.
+var _market_opened: Array[Dictionary] = []
+var _market_unreachable := {}   # good_id -> turns the route from port was unreachable
 var _levels_applied := {}
 var _level_infra := false
 # `autoinfra`: upgrade a tile's infrastructure once it has run at >=90% of capacity for MORE
@@ -932,7 +936,9 @@ func _rightsize_tick() -> void:
 			# A missing deposit token is exhaustion, not under-supply.
 			if MatchState.deposit_depleted(str(building.get("tile_id", "")), good_id):
 				continue
-			short_now[good_id] = true
+			if not short_now.has(good_id):
+				short_now[good_id] = []
+			(short_now[good_id] as Array).append(str(instance_id))
 
 	# Advance or reset each good's streak.
 	for good_id in _short_streak.keys():
@@ -940,6 +946,18 @@ func _rightsize_tick() -> void:
 			_short_streak[good_id] = 0
 	for good_id in short_now.keys():
 		_short_streak[good_id] = int(_short_streak.get(good_id, 0)) + 1
+
+	# A good NOTHING in the plan can produce cannot be right-sized by building — the
+	# only way to get it is to buy it. Open market top-up for those, provided the goods
+	# can physically reach the tile: TransportService.route already encodes the
+	# transport class, so a reachable route IS the pipes / reinforced-pipes check for a
+	# fluid or hazard liquid. Runs before the build branch because it is free.
+	for good_id in short_now.keys():
+		if int(_short_streak.get(good_id, 0)) < RIGHTSIZE_SHORT_TURNS:
+			continue
+		if _entry_by_output.has(good_id):
+			continue    # buildable — handled by the right-sizing branch below
+		_open_market_for(str(good_id), short_now[good_id] as Array, turn)
 
 	# Act on the longest-running shortage only — one build per turn keeps the run
 	# readable and lets each addition take effect before the next is judged.
@@ -1000,6 +1018,39 @@ func _rightsize_tick() -> void:
 	})
 	print("[E2E] right-size: %s short %d turns -> built another %s on %s (t%d)"
 		% [_good_label(worst), worst_streak, str(entry.get("logical_id", "")), tile_id, turn])
+
+
+## Let a starved building buy `good_id` from the market, for goods no scenario entry can
+## produce (you cannot build your way out of needing them). Gated on the goods being able
+## to physically reach the tile from its nearest port: `TransportService.route` accounts
+## for the good's transport class, so a reachable route is exactly the pipework check —
+## a fluid needs pipes and a hazard liquid needs reinforced pipes, or the route is
+## unreachable and no amount of market ordering will deliver it.
+func _open_market_for(good_id: String, instance_ids: Array, turn: int) -> void:
+	for raw_id in instance_ids:
+		var instance_id := str(raw_id)
+		if not MatchState.is_input_tile_only(instance_id, good_id):
+			continue    # already free to buy; the shortage is supply, not permission
+		var building: Dictionary = MatchState.buildings.get(instance_id, {})
+		var tile_id := str(building.get("tile_id", ""))
+		if tile_id == "":
+			continue
+		var port_tile := TransportService.nearest_port_tile(tile_id)
+		if port_tile == "":
+			continue
+		var route: Dictionary = TransportService.route(port_tile, tile_id, good_id)
+		var reachable := bool(route.get("reachable",
+			int(route.get("turns", TransportService.INF_TURNS)) < TransportService.INF_TURNS))
+		if not reachable:
+			_market_unreachable[good_id] = int(_market_unreachable.get(good_id, 0)) + 1
+			continue
+		MatchState.set_input_tile_only(instance_id, good_id, false)
+		_market_opened.append({
+			"turn": turn, "good_id": good_id, "instance_id": instance_id,
+			"tile": tile_id, "port": port_tile, "turns": int(route.get("turns", -1)),
+		})
+		print("[E2E] market: %s unbuildable and short -> buying from %s to %s (%d turns, t%d)"
+			% [_good_label(good_id), port_tile, tile_id, int(route.get("turns", -1)), turn])
 
 
 ## True when at least one player-owned producer of `good_id` ran unobstructed last turn —
@@ -2590,6 +2641,9 @@ func _write_latest_metrics() -> void:
 		"rightsize_unaffordable": _rightsize_unaffordable,
 		"power_additions": _power_log.size(),
 		"power_log": _power_log,
+		"market_opened": _market_opened.size(),
+		"market_opened_log": _market_opened,
+		"market_unreachable": _market_unreachable,
 		"target_turn": _target_turn,
 		"assertions_passed": _passed,
 		"assertions_failed": _failed,

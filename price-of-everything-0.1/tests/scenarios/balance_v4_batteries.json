@@ -262,5 +262,6 @@
  "balance_scale_buildings": [],
  "balance_scale_routes": [],
  "balance_scale_tile_only_inputs": [],
- "auto_power_mode": "wind"
+ "auto_power_mode": "wind",
+ "balance_consider_research_modifiers": true
 }
