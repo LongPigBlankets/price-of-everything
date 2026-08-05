@@ -219,9 +219,9 @@ const FARM_OUTBUILDING_SCALE := 2.1    # barn + silo (3× then 30% smaller), sna
 const FARM_MIN_SEP := 70.0             # min farm centre spacing — fields then Voronoi-snap to lanes
 const FARM_CROSS_TILE_RADIUS := 440.0  # a neighbour-tile farm within this world radius pulls a new field toward the shared edge
 const FARM_FOREST_TOL := 0.35          # farms run UNDER forests: a field may reach 65% of the way into a
-                                       # disc (the canopy covers it — farms draw on the FarmUnderlay layer,
-                                       # below ForestVisuals). Not 0: the centre uses the same mask, so a
-                                       # floor keeps a field from being seeded dead under a wood and hidden.
+									   # disc (the canopy covers it — farms draw on the FarmUnderlay layer,
+									   # below ForestVisuals). Not 0: the centre uses the same mask, so a
+									   # floor keeps a field from being seeded dead under a wood and hidden.
 const FARM_ADJ_MAX := 12.0             # two fields are "adjacent" (share a side, get a lane) within this
 const FARM_RING_OFFSET := 6.0          # outer ring sits this far outside the fields (concave hug, not a hull)
 const FARM_LANE_COLOR := Color(0.60, 0.54, 0.43)     # thin dirt track between adjacent fields
