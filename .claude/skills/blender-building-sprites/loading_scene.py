@@ -141,9 +141,9 @@ def setup_load_rig(res_x=1920, res_y=1080):
     cam_ob.data.type = 'PERSP'
     cam_ob.data.lens = 32.0
     cam_ob.data.clip_end = 200.0
-    cam_ob.location = (-8.0, 0.0, 0.95)    # dead centre of the road (owner)
+    cam_ob.location = (-8.0, 0.0, 0.62)    # centreline, LOW — buildings loom (owner)
     cam_ob.rotation_euler = (math.radians(90.0), 0.0, math.radians(-90.0))  # look +X, plumb verticals
-    cam_ob.data.shift_y = 0.10                               # rising front instead of tilt
+    cam_ob.data.shift_y = 0.125                              # rising front instead of tilt
     sc.camera = cam_ob
 
     # Sun: shadowless (style contract), aimed so the -Y facades read lit and the east
@@ -290,13 +290,18 @@ def phase0():
 # Everything here is NOINK; the far city reads as pure silhouette against the horizon
 # band, which is also why the city tones must sit clearly darker than the horizon.
 
-SKY_BANDS = [                    # bottom -> top: pale warm horizon rising into SKY BLUE
-    # (owner 2026-08-05). The horizon band must clear the skyline or it is invisible
-    # from the low camera; saturation is pushed because AgX desaturates emission.
-    (7.5,  (0.740, 0.720, 0.600)),
-    (5.0,  (0.560, 0.660, 0.740)),
-    (8.0,  (0.400, 0.560, 0.730)),
-    (40.0, (0.240, 0.430, 0.680)),
+SKY_BANDS = [                    # bottom -> top: pale warm horizon rising into SKY BLUE.
+    # Eight bands interpolated between the four original keys (owner: "blend the sky
+    # bands more") — still visibly banded, poster-style, but each step is half the
+    # jump. Saturation pushed because AgX desaturates emission.
+    (4.5,  (0.740, 0.720, 0.600)),
+    (3.0,  (0.650, 0.690, 0.670)),
+    (3.0,  (0.560, 0.660, 0.740)),
+    (3.0,  (0.480, 0.610, 0.735)),
+    (4.0,  (0.400, 0.560, 0.730)),
+    (5.0,  (0.345, 0.515, 0.715)),
+    (6.0,  (0.290, 0.470, 0.695)),
+    (35.0, (0.240, 0.430, 0.680)),
 ]
 CITY_FAR_TONE = (0.360, 0.410, 0.470)    # far rank — hazier against the blue
 CITY_NEAR_TONE = (0.270, 0.315, 0.375)   # near rank — reads in front of the far rank
@@ -369,7 +374,7 @@ def build_backdrop(seed=7):
             # The road runs into the city at y=0: keep a corridor open through BOTH
             # ranks, or a random block walls the street off and the road reads as
             # ending in a field (the owner's "gap to the city").
-            if y < 1.5 and y + w > -1.5:
+            if rank == 1 and y < 1.5 and y + w > -1.5:
                 y = 1.5
             h = rng.uniform(0.6, 1.7) * (1.0 + 1.1 * math.exp(-(y / 14.0) ** 2))
             # Skyscrapers (owner: "taller — skyscrapers on the horizon"): roughly a
@@ -433,6 +438,24 @@ def build_backdrop(seed=7):
 
     # Gate blocks: two deliberate taller buildings flanking the road's entry into the
     # city, so the corridor reads as a street between buildings rather than a slot.
+    # Central skyscraper wall (owner: "basically touching across the middle"): a
+    # deliberate cluster on the FAR rank spanning the road axis, so the street
+    # visibly ends AT the city — tall slabs shoulder to shoulder behind the gates.
+    wallm = _emat("load_city_wall", CITY_FAR_TONE)
+    for wi, (wy, ww, wh) in enumerate(((-6.8, 2.2, 5.6), (-4.2, 1.8, 7.4),
+                                       (-1.6, 2.4, 6.2), (1.2, 1.9, 8.2),
+                                       (3.4, 2.1, 6.6), (5.8, 2.3, 5.2))):
+        tw = _box(city_col, "city_wall_%d" % wi, CITY_X + 2.5, wy, wh / 2,
+                  1.2, ww, wh, wallm)
+        mark_noink(tw)
+        cap = _box(city_col, "city_wallc_%d" % wi, CITY_X + 2.5, wy, wh + 0.3,
+                   1.0, ww * 0.55, 0.6, wallm)
+        mark_noink(cap)
+        wsm = _emat("load_city_win", (0.220, 0.260, 0.320))
+        wstrip = _box(city_col, "city_wallw_%d" % wi, CITY_X + 2.5 - 0.62, wy,
+                      wh * 0.5, 0.02, ww * 0.4, wh * 0.8, wsm)
+        mark_noink(wstrip)
+
     # The gates must stand IN FRONT of the haze (haze x = CITY_X - 1.6) or the wash
     # fades them to ghosts and the corridor loses its frame.
     gm = _emat("load_city_gate", (0.245, 0.290, 0.350))
