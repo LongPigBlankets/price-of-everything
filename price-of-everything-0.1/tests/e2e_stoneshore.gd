@@ -122,13 +122,17 @@ const POWER_MAX_ADDITIONS := 8
 
 var _power_enabled := true
 var _power_mode := "coal"               # "coal" | "wind"
-var _power_site := ""
+var _power_threshold := POWER_DEFICIT_THRESHOLD
 var _power_ready_turn := 0
 var _power_log: Array[Dictionary] = []
 
 # Market fallback for goods nothing in the plan can produce.
 var _market_opened: Array[Dictionary] = []
 var _market_unreachable := {}   # good_id -> turns the route from port was unreachable
+
+# Cable-to-network bookkeeping.
+var _cables_laid: Array[Dictionary] = []
+var _uncabled_tiles := {}       # tile -> times we could not find a cabled anchor
 var _levels_applied := {}
 var _level_infra := false
 # `autoinfra`: upgrade a tile's infrastructure once it has run at >=90% of capacity for MORE
@@ -334,6 +338,7 @@ func _run() -> void:
 	# of what is being measured, so adding plants would change the thing under test.
 	_power_enabled = bool(_scenario.get("auto_power", true))
 	_power_mode = str(_scenario.get("auto_power_mode", "coal"))
+	_power_threshold = int(_scenario.get("auto_power_threshold", POWER_DEFICIT_THRESHOLD))
 	_index_all_scenario_entries()
 	if _balance_mode:
 		_prepare_balance_start()
@@ -1006,6 +1011,7 @@ func _rightsize_tick() -> void:
 		_rightsize_ready_turn[worst] = turn + RIGHTSIZE_COOLDOWN_TURNS
 		_short_streak[worst] = 0
 		return
+	await _ensure_cabled_to_network(tile_id)
 	_register_built(str(entry.get("logical_id", "")), instance_id)
 	if _balance_mode:
 		_balance_built_ids.append(instance_id)
@@ -1079,12 +1085,73 @@ func _producers_are_running(good_id: String) -> bool:
 	return not found_any      # nothing makes it yet -> the scenario's own entry can start it
 
 
+## Every tile the harness builds on must end up on the power network, or the building is
+## dead on arrival — balance_v4_motors lost its whole chain to two mines sited on
+## uncabled tiles reporting "power need 30 have 0" for ninety turns. After any adaptive
+## build, cable the new tile back to the nearest tile that is ALREADY cabled (the
+## scenario's spine runs to its port, so joining it joins the port network).
+func _ensure_cabled_to_network(tile_id: String) -> void:
+	if tile_id == "" or Catalog.tile_has_infrastructure(tile_id, "cables"):
+		return
+	# Candidate anchors: anywhere the player already has a building, plus the scenario's
+	# own spine tiles. That is a small set and covers every tile actually in play.
+	var candidates := {}
+	for b in MatchState.buildings.values():
+		if MatchState.is_player_owned(b):
+			candidates[str((b as Dictionary).get("tile_id", ""))] = true
+	for entry in _entry_by_output.values():
+		candidates[str((entry as Dictionary).get("tile", ""))] = true
+	var best_path: Array = []
+	for candidate in candidates.keys():
+		var anchor := str(candidate)
+		if anchor == "" or anchor == tile_id:
+			continue
+		if not Catalog.tile_has_infrastructure(anchor, "cables"):
+			continue
+		var path := _land_path(tile_id, anchor)
+		if path.is_empty():
+			continue
+		if best_path.is_empty() or path.size() < best_path.size():
+			best_path = path
+	if best_path.is_empty():
+		_uncabled_tiles[tile_id] = int(_uncabled_tiles.get(tile_id, 0)) + 1
+		return
+	var laid := 0
+	for step in best_path:
+		var t := str(step)
+		if not Catalog.tile_has_infrastructure(t, "cables"):
+			await _build_infra_via_build_mode("cables", t)
+			laid += 1
+	if laid > 0:
+		_cables_laid.append({"tile": tile_id, "hops": best_path.size(), "laid": laid})
+		print("[E2E] cables: %s joined the port network via %d tiles (%d newly cabled)"
+			% [tile_id, best_path.size(), laid])
+
+
 ## The tile to put new generation on: reuse whichever tile the scenario already sites
 ## generation on, so cabling and infrastructure are already correct. Falls back to the
 ## tile of a building that is actually short of power.
+## Site new generation WHERE THE SHORTAGE IS, resolved freshper call. An earlier version
+## cached the scenario's first power tile and kept building there: electrochem stacked
+## five coal plants on its runway tile while the deficit GREW 840 -> 3360, because the
+## starving buildings were on a different cable network entirely. Power settles per
+## physical network, so generation has to land on the network that is short.
 func _resolve_power_site() -> String:
-	if _power_site != "":
-		return _power_site
+	# 1. The tile of a building actually reporting a power shortage.
+	for instance_id in Production.missing_by_building.keys():
+		var b: Dictionary = MatchState.buildings.get(str(instance_id), {})
+		if b.is_empty() or not MatchState.is_player_owned(b):
+			continue
+		var missing: Variant = Production.missing_by_building.get(str(instance_id), [])
+		if not (missing is Array):
+			continue
+		for m in (missing as Array):
+			if str((m as Dictionary).get("good_id", "")) == "power":
+				var t := str(b.get("tile_id", ""))
+				if t != "":
+					return t
+	# 2. Otherwise (deficit is grid purchases, nothing outright blocked) fall back to
+	#    wherever the scenario already sites generation.
 	var wanted := "onshore_wind_farm" if _power_mode == "wind" else "power_plant"
 	for key in _scenario.keys():
 		var entries = _scenario[key]
@@ -1094,21 +1161,9 @@ func _resolve_power_site() -> String:
 			if typeof(entry) != TYPE_DICTIONARY:
 				continue
 			if str((entry as Dictionary).get("internal_name", "")) == wanted:
-				_power_site = str((entry as Dictionary).get("tile", ""))
-				if _power_site != "":
-					return _power_site
-	# No generation in the plan at all (the downstream-first scenarios): put it where
-	# the demand is — the tile of the first building reporting a power shortage.
-	for instance_id in Production.missing_by_building.keys():
-		var missing: Variant = Production.missing_by_building.get(str(instance_id), [])
-		if not (missing is Array):
-			continue
-		for m in (missing as Array):
-			if str((m as Dictionary).get("good_id", "")) == "power":
-				var b: Dictionary = MatchState.buildings.get(str(instance_id), {})
-				_power_site = str(b.get("tile_id", ""))
-				if _power_site != "":
-					return _power_site
+				var st := str((entry as Dictionary).get("tile", ""))
+				if st != "":
+					return st
 	return ""
 
 
@@ -1125,8 +1180,26 @@ func _power_tick() -> void:
 	var summary: Dictionary = Production.last_turn_summary
 	if summary.is_empty():
 		return
-	var deficit := int(summary.get("power_demand", 0)) - int(summary.get("power_supply", 0))
-	if deficit < POWER_DEFICIT_THRESHOLD:
+	# `summary.power_demand` CANNOT be used here. production.gd records power draw inside
+	# the "building can run" branch, so a building blocked FOR WANT OF POWER never calls
+	# Power.record_drawn and contributes nothing to demand. In balance_v4_motors that
+	# reads demand 0 / supply 0 while two mines sit dead needing 30 each — the metric is
+	# structurally blind to the exact condition this rule exists to fix.
+	#
+	# Unserved demand is what the blocked buildings are asking for, plus whatever was
+	# bought off the national grid to cover the rest.
+	var deficit := int(summary.get("grid_bought", 0))
+	for instance_id in Production.missing_by_building.keys():
+		var b: Dictionary = MatchState.buildings.get(str(instance_id), {})
+		if b.is_empty() or not MatchState.is_player_owned(b):
+			continue
+		var missing: Variant = Production.missing_by_building.get(str(instance_id), [])
+		if not (missing is Array):
+			continue
+		for m in (missing as Array):
+			if str((m as Dictionary).get("good_id", "")) == "power":
+				deficit += int((m as Dictionary).get("need", 0))
+	if deficit < _power_threshold:
 		return
 	var tile_id := _resolve_power_site()
 	if tile_id == "":
@@ -1150,6 +1223,7 @@ func _power_tick() -> void:
 		return
 	if _balance_mode:
 		_balance_built_ids.append(instance_id)
+	await _ensure_cabled_to_network(tile_id)
 	var paired := ""
 	if is_wind:
 		# Firm the intermittent source where it is generated: a battery on the same tile.
@@ -2108,6 +2182,13 @@ func _advance_turns(count: int, reason: String) -> void:
 		TurnManager.commit_turn()
 		await TurnManager.turn_resolution_completed
 		_capture_turn_metrics()
+		# Assert the commit BEFORE the adaptive ticks. They can await further turns of
+		# their own (waiting for build funding), so checking afterwards compares
+		# `before_turn` against a clock they legitimately moved — e.g. "turn advanced
+		# 7 -> 13". The assertion is about the turn just committed, nothing else.
+		if before_turn <= 8 or before_turn % 10 == 0 or before_turn + 1 >= _target_turn:
+			_check(TurnManager.current_turn == before_turn + 1,
+				"turn advanced for %s (%d -> %d)" % [reason, before_turn, TurnManager.current_turn])
 		await _rightsize_tick()
 		await _power_tick()
 		var elapsed_ms := float(Time.get_ticks_usec() - start) / 1000.0
@@ -2117,9 +2198,6 @@ func _advance_turns(count: int, reason: String) -> void:
 			"reason": reason,
 			"wall_ms": elapsed_ms,
 		})
-		if before_turn <= 8 or before_turn % 10 == 0 or before_turn + 1 >= _target_turn:
-			_check(TurnManager.current_turn == before_turn + 1,
-				"turn advanced for %s (%d -> %d)" % [reason, before_turn, TurnManager.current_turn])
 
 
 func _apply_level_schedule() -> void:
@@ -2651,6 +2729,8 @@ func _write_latest_metrics() -> void:
 		"market_opened": _market_opened.size(),
 		"market_opened_log": _market_opened,
 		"market_unreachable": _market_unreachable,
+		"cables_laid": _cables_laid,
+		"uncabled_tiles": _uncabled_tiles,
 		"target_turn": _target_turn,
 		"assertions_passed": _passed,
 		"assertions_failed": _failed,

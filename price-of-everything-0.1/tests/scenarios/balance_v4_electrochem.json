@@ -1,7 +1,7 @@
 {
  "name": "balance_v4_electrochem",
  "display_name": "Balance v4 \u2014 electrochemistry player",
- "note": "Chlor-alkali plus base and membraneless water electrolysis; raw salt remains a market raw material.",
+ "note": "Chlor-alkali plus base and membraneless water electrolysis; raw salt remains a market raw material. Gas producers sit 2 hexes from Capital Port (tile_23_9) because gas moves by pipe at 1 tile/turn and 0.30/unit/turn, so haul length is the dominant cost; the coal mine stays on tile_22_9, the only nearby coal, and ships solid coal one hex.",
  "balance_v4": true,
  "unlocks": [
   "Membraneless Electrolysis"
@@ -20,18 +20,18 @@
   "r_080"
  ],
  "surplus_sales": [
-  "tile_22_9",
   "tile_23_9",
+  "tile_22_9",
   "tile_21_10",
   "tile_23_10"
  ],
  "port_distance_pairs": [
   {
-   "hub": "tile_22_9",
+   "hub": "tile_23_9",
    "port": "tile_24_7"
   },
   {
-   "hub": "tile_23_9",
+   "hub": "tile_22_9",
    "port": "tile_24_7"
   },
   {
@@ -96,20 +96,20 @@
  "transport_spine": {
   "corridors": [
    [
-    "tile_22_9",
+    "tile_23_9",
     "tile_24_7"
    ]
   ],
   "rails": "corridors",
   "cables": [
-   "tile_21_9",
-   "tile_22_9"
+   "tile_22_9",
+   "tile_23_9"
   ]
  },
  "balance_operating_transport_spine": {
   "corridors": [
    [
-    "tile_22_9",
+    "tile_23_9",
     "tile_24_7"
    ]
   ],
@@ -121,13 +121,13 @@
    "id": "electrolysis",
    "internal_name": "electrolyser",
    "recipe_id": "r_079",
-   "tile": "tile_22_9"
+   "tile": "tile_23_9"
   },
   {
    "id": "membrane",
    "internal_name": "electrolyser",
    "recipe_id": "r_080",
-   "tile": "tile_22_9"
+   "tile": "tile_23_9"
   }
  ],
  "balance_post_transport_buildings": [
@@ -135,7 +135,7 @@
    "id": "chlor",
    "internal_name": "chem_plant",
    "recipe_id": "r_012",
-   "tile": "tile_22_9"
+   "tile": "tile_23_9"
   }
  ],
  "balance_standalone_routes": [
@@ -180,14 +180,14 @@
    "id": "pre_membrane",
    "internal_name": "electrolyser",
    "recipe_id": "r_080",
-   "tile": "tile_22_9",
+   "tile": "tile_23_9",
    "count": 3
   },
   {
    "id": "pre_electrolysis",
    "internal_name": "electrolyser",
    "recipe_id": "r_079",
-   "tile": "tile_22_9"
+   "tile": "tile_23_9"
   }
  ],
  "balance_preintegration_routes": [
@@ -217,7 +217,7 @@
    "id": "power",
    "internal_name": "power_plant",
    "recipe_id": "r_004",
-   "tile": "tile_22_9"
+   "tile": "tile_23_9"
   },
   {
    "id": "coal",
@@ -230,7 +230,7 @@
    "id": "water",
    "internal_name": "water_pump",
    "recipe_id": "r_011",
-   "tile": "tile_22_9",
+   "tile": "tile_23_9",
    "deposit": "water",
    "count": 4
   }
@@ -244,12 +244,12 @@
   {
    "id": "coal",
    "good": "coal",
-   "dest": "tile_22_9"
+   "dest": "tile_23_9"
   },
   {
    "id": "water",
    "good": "pure_water",
-   "dest": "tile_22_9"
+   "dest": "tile_23_9"
   }
  ],
  "balance_tile_only_inputs": [
@@ -294,5 +294,8 @@
  "balance_scale_buildings": [],
  "balance_scale_routes": [],
  "balance_scale_tile_only_inputs": [],
- "balance_consider_research_modifiers": true
+ "balance_consider_research_modifiers": true,
+ "expected_average_port_distance": 2.0,
+ "auto_power": false,
+ "_comment_auto_power": "auto_power is OFF here deliberately. electrochem is not short of GENERATION - tile_8_4 already runs three plants - it is capped by L1 cable throughput (2000/turn per tile). Stacking more plants on a capped tile delivers nothing: the rule built five and the deficit still grew 840 -> 3360, costing 419/5 -> 288/12. Re-enable once the power rule refuses to add generation to a tile already at its cable cap."
 }
