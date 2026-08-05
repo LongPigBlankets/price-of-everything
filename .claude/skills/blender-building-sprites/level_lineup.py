@@ -1,0 +1,152 @@
+"""Build all three levels of a building side by side on one board, at ONE camera scale.
+
+Why this exists: the per-building builders each write into a single BLDG_* collection and
+hide every other one (skill rule 11), so only one level can be seen at a time. To show an
+upgrade story you need the three standing together at identical scale — otherwise relative
+size is unreadable, which is the whole point of a level set.
+
+Placement follows the camera's screen axes, not world axes. At this isometric,
+screen-horizontal is proportional to (x+y) and (x-y) is DEPTH, so the levels are separated
+along EQUAL +x/+y. Separating along x alone would stack them behind each other.
+
+Spacing is MEASURED: each level's span along the screen-horizontal axis is computed from its
+own vertices, so a wider L3 gets the room it needs and the gaps stay visually even.
+
+    exec(open("/Users/crisu/Price of Everything/blender-assets/sprite_kit.py").read())
+    exec(open("/Users/crisu/Price of Everything/blender-assets/factory_builder.py").read())
+    exec(open("/Users/crisu/Price of Everything/blender-assets/level_lineup.py").read())
+    build_lineup(build_factory, "factory")
+"""
+import math
+import bpy
+import mathutils
+
+ROOT2 = math.sqrt(2.0)
+
+
+def _world_verts(col):
+    """Every vertex of every mesh in a collection, in world space."""
+    out = []
+    for ob in col.objects:
+        if ob.type != 'MESH':
+            continue
+        mw = ob.matrix_world
+        for v in ob.data.vertices:
+            out.append(mw @ v.co)
+    return out
+
+
+def _screen_axes():
+    """Camera right/up in world space — the axes the render is actually laid out on."""
+    cam = bpy.data.objects.get("Camera")
+    m = cam.matrix_world.to_3x3()
+    return m @ mathutils.Vector((1, 0, 0)), m @ mathutils.Vector((0, 1, 0))
+
+
+def _move_to_collection(src, dst_name):
+    """Move src's objects into a fresh collection named dst_name, and return it."""
+    dst = bpy.data.collections.get(dst_name)
+    if dst is None:
+        dst = bpy.data.collections.new(dst_name)
+        bpy.context.scene.collection.children.link(dst)
+    for ob in list(dst.objects):
+        bpy.data.objects.remove(ob, do_unlink=True)
+    for ob in list(src.objects):
+        src.objects.unlink(ob)
+        dst.objects.link(ob)
+    dst.hide_render = False
+    dst.hide_viewport = False
+    return dst
+
+
+def _translate(col, vec):
+    for ob in col.objects:
+        ob.location = ob.location + vec
+    # matrix_world is a COMPUTED property: without this the reframe below re-measures the
+    # pre-translation positions and fits the camera to one building instead of three.
+    bpy.context.view_layer.update()
+
+
+def build_lineup(builder, name, levels=(1, 2, 3), gap=0.9, margin=1.06):
+    """Build `levels` via `builder(level)` and lay them out left->right on screen.
+
+    builder : the per-level build function, e.g. build_factory
+    name    : used for the SHOWCASE_<name>_L<n> collection names
+    gap     : clear space between levels, in screen-horizontal world units
+    margin  : ortho_scale padding factor
+    """
+    cols, spans = [], []
+
+    # 1. Build each level and park it in its own collection, measuring its screen span.
+    for lv in levels:
+        builder(lv)
+        src = bpy.data.collections.get("BLDG_%s" % name)
+        if src is None or not src.objects:
+            raise RuntimeError("builder produced nothing in BLDG_%s" % name)
+        col = _move_to_collection(src, "SHOWCASE_%s_L%d" % (name, lv))
+        us = [(v.x + v.y) / ROOT2 for v in _world_verts(col)]
+        cols.append(col)
+        spans.append((min(us), max(us)))
+
+    # 2. Place them: each level's left edge starts one `gap` after the previous right edge.
+    #    A shift of du along screen-horizontal is a world translation of du/sqrt2 on BOTH
+    #    x and y — equal parts, so depth (x-y) is untouched and nothing stacks.
+    cursor = 0.0
+    for col, (u0, u1) in zip(cols, spans):
+        du = cursor - u0
+        t = du / ROOT2
+        _translate(col, mathutils.Vector((t, t, 0.0)))
+        cursor += (u1 - u0) + gap
+
+    # 3. Hide every BLDG_* (the builders left the last one visible), show the showcase set.
+    for c in bpy.data.collections:
+        if c.name.startswith("BLDG_"):
+            c.hide_render = True
+            c.hide_viewport = True
+    for col in cols:
+        col.hide_render = False
+        col.hide_viewport = False
+
+    # 3b. FINE_INK defeats collection hiding. Any builder using a fine-ink assembly
+    #     (pylon / transformer / lattice_mast / insulator_string) DUAL-LINKS those objects
+    #     into FINE_INK, which must stay visible for the ink_fine lineset. Hiding the
+    #     owning BLDG_* therefore does not hide them, and they render into every later
+    #     shot — the construction site's 42-object crane mast turned up hanging over L1.
+    #     Collections cannot fix this; hide per OBJECT.
+    mine = set()
+    for col in cols:
+        mine.update(o.name for o in col.objects)
+    fine = bpy.data.collections.get("FINE_INK")
+    hidden = 0
+    if fine:
+        for ob in fine.objects:
+            stale = ob.name not in mine
+            ob.hide_render = stale
+            ob.hide_viewport = stale
+            hidden += int(stale)
+
+    # 4. Reframe: fit the group by projecting every vertex onto the camera's own axes.
+    #    Rotation is NOT touched — the locked isometric is the whole style contract; only
+    #    ortho_scale and the position perpendicular to the view axis change.
+    right, up = _screen_axes()
+    xs, ys = [], []
+    for col in cols:
+        for v in _world_verts(col):
+            xs.append(v.dot(right))
+            ys.append(v.dot(up))
+    cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+    scale = max(max(xs) - min(xs), max(ys) - min(ys)) * margin
+
+    cam = bpy.data.objects.get("Camera")
+    cam.data.ortho_scale = scale
+    centre = right * cx + up * cy
+    cam.location = centre + mathutils.Vector((1, -1, 1)).normalized() * 60.0
+
+    return {
+        "levels": list(levels),
+        "fine_ink_hidden": hidden,
+        "collections": [c.name for c in cols],
+        "spans": spans,
+        "ortho_scale": round(scale, 3),
+        "objects": [len(c.objects) for c in cols],
+    }
