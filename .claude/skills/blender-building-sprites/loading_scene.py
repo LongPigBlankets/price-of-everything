@@ -522,8 +522,10 @@ FAR_SLOTS = ("off_d", "fur_b", "pp_a", "pp_b", "pet_a", "off_e", "fac_e", "off_f
 LAYERS = [
     ("L0_sky",   lambda n: n == "LOAD_sky"),
     ("L1_city",  lambda n: n == "LOAD_city"),
-    ("L2_far",   lambda n: n.startswith("LOAD_bldg_") and n[10:] in FAR_SLOTS),
-    ("L3_near",  lambda n: n.startswith("LOAD_bldg_") and n[10:] not in FAR_SLOTS),
+    ("L2_far",   lambda n: (n.startswith("LOAD_bldg_") and n[10:] in FAR_SLOTS)
+                 or n == "LOAD_props_far"),
+    ("L3_near",  lambda n: (n.startswith("LOAD_bldg_") and n[10:] not in FAR_SLOTS)
+                 or n == "LOAD_props_near"),
     ("L4_street", lambda n: n == "LOAD_street"),
 ]
 
@@ -698,3 +700,63 @@ def phase1():
         placed.append({"slot": suffix, "level": level, "objects": len(col.objects)})
     setup_load_rig()
     return {"placed": placed}
+
+
+# ── Phase 3: street props — trees, grass, fences, lampposts ──────────────────
+# Built via the props kit (sprite_kit + props_kit patched Kit). MUST run after
+# phase1: open_collection() strips FINE_INK links, so a later builder run silently
+# reverts every fine-inked prop to thick ink — re-run phase3 after any phase1.
+PROPS_SPLIT_X = 30.0        # x >= split -> far parallax layer
+
+TREES = [                   # (x, side, h, r) — y is DERIVED: the canopy must clear the
+    # facade line (y = sign*(FRONT - r - 0.12)) or big crowns clip into buildings.
+    (-5.5,  1, 2.0, 0.48), (9.8,  1, 1.7, 0.42), (21.3, 1, 2.1, 0.50),
+    (30.5,  1, 1.8, 0.44), (43.0, 1, 1.9, 0.46), (56.5, 1, 1.6, 0.40),
+    (2.2,  -1, 1.8, 0.44), (13.5, -1, 2.2, 0.52), (22.6, -1, 1.6, 0.40),
+    (35.5, -1, 1.9, 0.46), (47.0, -1, 1.7, 0.42), (57.5, -1, 2.0, 0.48),
+]
+LAMPS = [                   # (x, side) — on the sidewalk, arm over the road. Nothing
+    # nearer than x=5: the camera sits at -8 and a lamp 2 units ahead fills the frame
+    # with pole (the first cut had one at -6 doing exactly that).
+    (8.0, 1), (22.0, 1), (36.0, 1), (50.0, 1), (64.0, 1),
+    (5.0, -1), (15.0, -1), (29.0, -1), (43.0, -1), (57.0, -1),
+]
+FENCES = [                  # power-plant and refinery yards get street fencing
+    ((48.6, -2.35), (55.4, -2.35)),
+    ((56.6,  2.35), (63.4,  2.35)),
+    ((31.0,  2.35), (37.0,  2.35)),
+]
+
+
+def phase3():
+    import random
+    B = "/Users/crisu/Price of Everything/blender-assets/"
+    ns = {}
+    exec(open(B + "sprite_kit.py").read(), ns)
+    exec(open(B + "props_kit.py").read(), ns)
+    kits = {}
+    for tag in ("near", "far"):
+        kits[tag] = ns["Kit"](ns["open_collection"]("LOAD_props_" + tag))
+    sc = get_scene()
+    for tag in ("near", "far"):
+        _collection(sc, "LOAD_props_" + tag)      # ensure linked into Loading
+
+    def kit_for(x):
+        return kits["far"] if x >= PROPS_SPLIT_X else kits["near"]
+
+    for i, (x, side, h, r) in enumerate(TREES):
+        ty = side * (BUILDING_FRONT_Y - r - 0.12)
+        kit_for(x).tree("tree_%d" % i, x, ty, h, r)
+    lamp_y = ROAD_HALF_W + 0.30
+    for i, (x, side) in enumerate(LAMPS):
+        kit_for(x).lamppost("lamp_%d" % i, x, side * lamp_y, toward=-side)
+    for i, (p0, p1) in enumerate(FENCES):
+        kit_for(p0[0]).fence_run("fence_%d" % i, p0, p1)
+    rng = random.Random(11)
+    for i in range(26):
+        x = rng.uniform(-7.5, 14.0)
+        side = rng.choice((1, -1))
+        y = side * rng.uniform(ROAD_HALF_W + SIDEWALK_W + 0.10, BUILDING_FRONT_Y - 0.25)
+        kits["near"].grass_tuft("tuft_%d" % i, x, y, rng.uniform(0.8, 1.4))
+    setup_load_rig()
+    return {"trees": len(TREES), "lamps": len(LAMPS), "fences": len(FENCES), "tufts": 26}
