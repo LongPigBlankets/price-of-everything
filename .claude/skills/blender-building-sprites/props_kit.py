@@ -17,36 +17,73 @@ PALETTE["canopy_dark"] = (0.100, 0.215, 0.075) # shaded foliage mass
 PALETTE["bark"] = (0.170, 0.120, 0.080)
 
 
+def _blob(self, name, cx, cy, cz, r, mat, rng, jitter=0.075, squash=0.88):
+    """An irregular foliage clump: a dense UV sphere with seeded radial vertex noise.
+    This is the actual tutorial technique — the organic read comes from silhouette
+    IRREGULARITY, not from more perfect-sphere polygons. 32x20 segments so the jitter
+    has vertices to work with; smooth sides keep the cel shading soft."""
+    m = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(bm, u_segments=40, v_segments=26, radius=r)
+    for v in bm.verts:
+        v.co *= 1.0 + rng.uniform(-jitter, jitter)
+    bmesh.ops.scale(bm, vec=(1.0, 1.0, squash), verts=bm.verts)
+    bmesh.ops.translate(bm, vec=(cx, cy, cz), verts=bm.verts)
+    bm.to_mesh(m); bm.free()
+    ob = self.obj(name, m, mat)
+    for poly in ob.data.polygons:
+        poly.use_smooth = True
+    return ob
+
+
+def _taper(self, name, p0, p1, r0, r1, mat, segments=10):
+    """Tapered limb between two points — trunks and branches thin toward the tip,
+    which a constant-radius dircyl cannot do."""
+    import mathutils
+    a, b = mathutils.Vector(p0), mathutils.Vector(p1)
+    d = b - a
+    m = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=segments,
+                          radius1=r0, radius2=r1, depth=d.length)
+    rot = mathutils.Vector((0, 0, 1)).rotation_difference(d.normalized()).to_matrix()
+    bmesh.ops.rotate(bm, cent=(0, 0, 0), matrix=rot, verts=bm.verts)
+    bmesh.ops.translate(bm, vec=(a + b) / 2, verts=bm.verts)
+    bm.to_mesh(m); bm.free()
+    return self.obj(name, m, mat, smooth=True)
+
+
 def _tree(self, name, x, y, h=1.9, r=0.45, seed=0):
-    """Stylised clump-canopy street tree (the standard cartoon-tree construction:
-    a CROWN OF 6-8 OVERLAPPING BLOBS, not a lollipop). Freestyle inks only the union
-    silhouette — clump-to-clump intersections carry no line (the T-junction rule,
-    working FOR us here) — so the crown reads as one lumpy organic mass, same
-    grammar as the clouds. Shaded clumps sit low/back, lit clumps high/front; a
-    couple of branch stubs tie crown to trunk. Seeded: every tree differs, every
-    rebuild repeats."""
+    """Stylised street tree, tutorial construction: a TAPERED, slightly leaning trunk
+    with root flares, three tapered branches forking into the crown, and a crown of
+    jittered blobs (see _blob) — shaded clumps low/back, lit clumps high/front."""
     import random
     rng = random.Random(seed)
     zc = h * 0.70
-    self.dircyl(name + "_trunk", (x, y, 0.0), (x, y, h * 0.52), r * 0.13, self.mat("bark"))
-    for bi in range(2):
+    lean = (rng.uniform(-0.06, 0.06) * r, rng.uniform(-0.06, 0.06) * r)
+    top = (x + lean[0], y + lean[1], h * 0.55)
+    self._taper(name + "_trunk", (x, y, 0.0), top, r * 0.17, r * 0.085, self.mat("bark"))
+    for ri in range(3):                       # root flares
         ang = rng.uniform(0, 6.283)
-        bx, by = x + math.cos(ang) * r * 0.4, y + math.sin(ang) * r * 0.4
-        self.dircyl("%s_br%d" % (name, bi), (x, y, h * 0.44),
-                    (bx, by, zc - r * 0.15), r * 0.055, self.mat("bark"))
-    clumps = [(0.0, 0.0, 0.10, 1.00)]                # (dx, dy, dz, radius factor)
+        self._taper("%s_root%d" % (name, ri), (x, y, 0.10),
+                    (x + math.cos(ang) * r * 0.22, y + math.sin(ang) * r * 0.22, 0.0),
+                    r * 0.075, r * 0.03, self.mat("bark"), segments=7)
+    clumps = [(0.0, 0.0, 0.10, 1.00)]
     for ci in range(rng.randint(5, 7)):
         ang = rng.uniform(0, 6.283)
-        rad = rng.uniform(0.45, 0.85) * r
+        rad = rng.uniform(0.45, 0.85)
         clumps.append((math.cos(ang) * r * rng.uniform(0.45, 0.8),
                        math.sin(ang) * r * rng.uniform(0.45, 0.8),
-                       rng.uniform(-0.35, 0.55) * r, rad / r))
+                       rng.uniform(-0.35, 0.55) * r, rad))
+    for bi, (dx, dy, dz, rf) in enumerate(clumps[1:4]):   # branches fork to outer clumps
+        self._taper("%s_br%d" % (name, bi), top,
+                    (x + dx * 0.8, y + dy * 0.8, zc + dz * 0.6),
+                    r * 0.055, r * 0.022, self.mat("bark"), segments=7)
     for ci, (dx, dy, dz, rf) in enumerate(clumps):
-        # back (+y) and low clumps in shade; front-top in light — the sun contract.
         shaded = dy > r * 0.15 or dz < -r * 0.1
-        ob = self.sphere("%s_c%d" % (name, ci), x + dx, y + dy, zc + dz, r * rf,
-                         self.mat("canopy_dark" if shaded else "canopy"))
-        ob.scale = (1.0, 1.0, rng.uniform(0.82, 0.95))   # slight squash: foliage, not balls
+        self._blob("%s_c%d" % (name, ci), x + dx, y + dy, zc + dz, r * rf,
+                   self.mat("canopy_dark" if shaded else "canopy"), rng,
+                   squash=rng.uniform(0.82, 0.92))
 
 
 def _mark_noink_props(ob):
@@ -78,9 +115,9 @@ def _grass_patch(self, name, x, y, rx=0.45, ry=0.30, dark=False, blades=3, seed=
         ang = rng.uniform(0, 6.283)
         bx = x + math.cos(ang) * rx * rng.uniform(0.4, 0.85)
         by = y + math.sin(ang) * ry * rng.uniform(0.4, 0.85)
-        self.dircyl("%s_b%d" % (name, i), (bx, by, 0.0),
+        self.dircyl("%s_b%d" % (name, i), (bx, by, 0.022),
                     (bx + rng.uniform(-0.03, 0.03), by + rng.uniform(-0.03, 0.03),
-                     rng.uniform(0.06, 0.10)),
+                     0.022 + rng.uniform(0.06, 0.10)),
                     0.010, self.mat("canopy_dark"), segments=6, smooth=False)
     self._fine_mode = _fm
 
@@ -92,8 +129,8 @@ def _grass_tuft(self, name, x, y, s=1.0):
     for i, (dx, dy, lean_x, lean_y) in enumerate((
             (0.0, 0.0, 0.03, 0.01), (0.035, 0.02, -0.025, 0.02),
             (-0.03, 0.015, 0.01, -0.03), (0.01, -0.03, -0.02, -0.015))):
-        base = (x + dx * s, y + dy * s, 0.0)
-        tip = (x + (dx + lean_x) * s, y + (dy + lean_y) * s, 0.115 * s)
+        base = (x + dx * s, y + dy * s, 0.022)
+        tip = (x + (dx + lean_x) * s, y + (dy + lean_y) * s, 0.022 + 0.115 * s)
         self.dircyl("%s_b%d" % (name, i), base, tip, 0.013 * s,
                     self.mat("canopy_dark"), segments=6, smooth=False)
     self._fine_mode = _fm
@@ -134,6 +171,8 @@ def _lamppost(self, name, x, y, h=1.55, arm=0.45, toward=-1):
     self._fine_mode = _fm
 
 
+Kit._blob = _blob
+Kit._taper = _taper
 Kit.tree = _tree
 Kit.grass_patch = _grass_patch
 Kit.grass_tuft = _grass_tuft

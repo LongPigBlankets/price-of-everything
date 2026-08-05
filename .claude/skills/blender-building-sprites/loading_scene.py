@@ -205,13 +205,14 @@ def setup_load_rig(res_x=1920, res_y=1080):
     contour = fs.linesets["contour"]
     contour.linestyle.color = (0.045, 0.055, 0.11)
     contour.linestyle.thickness = 7.0
-    # The 7px contour wraps EVERY isolated silhouette — right for a lone sprite
-    # building, wrong for street furniture: each grass tuft got a thick navy ring
-    # (the owner's "thick navy lines along the sidewalk"). Fine-ink objects keep
-    # their 1.05px line and lose the wrap.
-    contour.select_by_collection = True
-    contour.collection = fine
-    contour.collection_negation = 'EXCLUSIVE'
+    # DISABLED for the Loading scene (sprite scene unaffected — linesets are
+    # per-scene). The external contour is a SPRITE convention: with one isolated
+    # building it draws the cutout edge, but in a composed scene it draws a heavy
+    # navy ring at EVERY object-vs-object overlap — building against building,
+    # kerb against road, tuft against verge (two rounds of "navy lines" notes were
+    # both this lineset). Ink at 2.9px carries the scene's line weight instead.
+    contour.show_render = False
+    ink.linestyle.thickness = 2.9
 
     for ls in (ink, lf, contour):
         ls.select_by_face_marks = True
@@ -773,7 +774,7 @@ def phase3():
     for i in range(7):
         x = rng.uniform(-7.0, 12.0)
         side = rng.choice((1, -1))
-        y = side * rng.uniform(ROAD_HALF_W + SIDEWALK_W + 0.15, BUILDING_FRONT_Y - 0.3)
+        y = side * rng.uniform(ROAD_HALF_W + SIDEWALK_W + 0.40, BUILDING_FRONT_Y - 0.3)
         kits["near"].grass_tuft("tuft_%d" % i, x, y, rng.uniform(0.7, 1.0))
     setup_load_rig()
     return {"trees": len(TREES), "lamps": len(LAMPS), "fences": len(FENCES), "tufts": 26}
