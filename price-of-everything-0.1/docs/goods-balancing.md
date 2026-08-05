@@ -12,23 +12,72 @@ made so far. It is the reference for anyone touching `data/Goods - goodsMVP.csv`
 
 ## 1. The core pattern
 
-Almost every good follows one rule:
+> **Digging things up does not pay. Processing them does. Owning the chain pays most.**
 
-> **Flat or mildly negative standalone. Profitable only once integrated.**
+The economy is built around one question: *why would you integrate?* The answer must never
+be "because standalone production is arbitrarily crippled" — that reads as punishment. It
+is instead that **not integrating costs you money you can see**, and **integrating lets you
+keep profit you can also see**. Every incentive below is one of those two shapes.
 
-You should not be able to build a single factory, buy its inputs at market, sell its
-output at market, and print money. You profit by **owning the chain** — the margin lives
-in the upstream you no longer pay market price for. This keeps the economy from being
-trivially solvable (the genre's classic failure mode).
+### 1.1 Raw extraction does not pay at game start
 
-Two exceptions sit on top of that rule:
+Mining a raw good and selling it straight to market is **not** a viable standalone
+business at game start. Two forces do that work, and neither is a thin margin:
 
-- **Raw resources** are profitable standalone (you *extract* value rather than add it).
-  They are governed by **deposit depletion** (−30% for common deposits and −15% for
-  bauxite/sulphur at start) and **oversupply glut**
-  (selling too much craters the price), not by thin margins.
-- **Tech-gated recipes are rewards.** A recipe unlocked by research may be clearly
-  profitable — that profit *is* the reward for the tech investment.
+- **Deposit penalties.** Common deposits start at **−30%** output, bauxite and sulphur at
+  **−15%**. You extract less than the recipe nominally yields.
+- **A fixed, per-good cost of shipping.** `SEAPORT_BASE_FEE_PER_GOOD = 5.0` is a **flat**
+  charge per good per turn at a state port. It does not scale with cargo value, so a
+  heavy, low-value good has to move a lot of tonnage to clear it, while a lighter or
+  denser-value good clears it trivially.
+
+To make extraction pay you must **internalise more of the cost** — feed the ore into your
+own smelter instead of selling it, own the port so the base fee goes to zero, or research
+the nodes that cut it. That is the intended lesson of the opening turns.
+
+> A raw-only position is a **bridge**, not a business: it converts a deposit into the cash
+> and credit that fund your first real chain. Tests must never assert profit on it — see
+> §1.4.
+
+### 1.2 Processing pays modestly; integration multiplies it
+
+A processed good is **mildly profitable standalone** — you can build one plant, buy inputs
+at market, sell output at market, and make a little. That is deliberate: there is no wrong
+first move, and no dead opening. But the same plant fed by upstream you own earns
+substantially more, because owning the upstream deletes costs rather than adding bonuses.
+
+### 1.3 The integration levers are costs avoided, not bonuses granted
+
+Nearly every incentive to integrate is a **cost you stop paying**, which is why the design
+holds together without special-casing:
+
+| Lever | Cost if you *don't* integrate | Kept if you *do* |
+|---|---|---|
+| Market spread | You buy inputs at market price and sell output 5% under it | Internal transfers cross no spread |
+| Flat port fee | Every good shipped through a state port pays it, per turn | Internal moves never touch a port |
+| Transport | Every market leg is hauled and charged | Co-located or short-hauled stages cost less |
+| Deposit penalty | You sell reduced raw output at raw prices | You sell reduced raw output embedded in a finished good |
+| Glut | Dumping one raw good craters its own price | Value spread across several outputs moves no single price far |
+
+The **ad valorem** insurance component (`SEAPORT_INSURANCE_RATE = 0.0005`, halved again at
+an owned port) is deliberately **tiny** and is *not* one of these levers. Do not reason
+about it as a cost driver; the flat fee is the mechanism.
+
+**Tech-gated recipes are rewards.** A recipe unlocked by research may be clearly
+profitable — that profit *is* the return on the tech investment.
+
+### 1.4 What this means for tests
+
+Profitability must be asserted **at least one level above raw** — iron ingots, steel,
+motors — never on ore or coal alone. A test that asserts a mine-and-sell position breaks
+even is asserting the opposite of this design, and will either fail or be quietly loosened
+until it means nothing.
+
+`e2e_stoneshore.gd` had exactly one such assertion (the coal runway, carrying a −£10
+"port-fee tolerance" fitted to an observed −9.2). It now asserts revenue and solvency and
+*prints* the profit figure instead. The correct assertions live in
+`_check_economy_end_state()`: last-10-turn post-tax profit positive, cumulative post-tax
+profit positive, and cash rising after buildout.
 
 ---
 
@@ -36,14 +85,22 @@ Two exceptions sit on top of that rule:
 
 | Tier | Standalone | Integrated | Examples |
 |---|---|---|---|
-| **Raw resource** | profitable | profitable | ore/coal mines, crude oil, refined REE, lithium carbonate |
-| **Intermediate** | flat / mildly negative | +£15–40 | ingots, steel, copper wiring, ethylene, silicon, alumina, pvc, hydrogen, concrete |
-| **Finished / apex** | flat (≈£0) | +£75 → +£1000 | motor, CPU, computer, ICE/EV car, heavy vehicle, batteries |
-| **Gated (reward)** | flat → modestly + | ≥ its base recipe | Basic Oxygen Steel, Magnetic Separation REE, Automated Heavy Vehicles, EV Assembly |
+| **Raw resource** | **not viable** — deposit penalty + flat port fee | pays once embedded in your own chain | ore/coal mines, crude oil, refined REE, lithium carbonate |
+| **Intermediate** | modestly profitable | materially better | ingots, steel, copper wiring, ethylene, silicon, alumina, pvc, hydrogen, concrete |
+| **Finished / apex** | modestly profitable | far better | motor, CPU, computer, ICE/EV car, heavy vehicle, batteries |
+| **Gated (reward)** | ≥ its base recipe | ≥ its base recipe | Basic Oxygen Steel, Magnetic Separation REE, Automated Heavy Vehicles, EV Assembly |
 
 The integrated figure scales with **chain depth** — an apex that embeds a deep chain
 (CPU: silicon + circuit boards + REE) earns far more than a shallow one (motor: steel +
 wiring).
+
+> **On numbers in this table.** Earlier revisions quoted per-recipe £/turn figures here.
+> They are omitted deliberately: they were design-model outputs from
+> `tools/band_breakdown.py`, which does not net the player-level seaport fee, so they read
+> higher than a real position earns. Treat `reports/balance/band_breakdown.csv` as a
+> *relative* instrument — is this recipe in band, is the integrated pair ahead of the
+> standalone — rather than as a promise of a specific number. Quote it in balance
+> discussions, not in player-facing or marketing copy.
 
 ---
 
