@@ -32,9 +32,9 @@ ROAD_HALF_W = 0.62          # road half-width; two lanes at building scale
 KERB_W = 0.10
 PAVEMENT_W = 0.55           # pavement strip between kerb and building fronts
 BUILDING_FRONT_Y = ROAD_HALF_W + KERB_W + PAVEMENT_W   # facades sit at this y
-STREET_X0, STREET_X1 = -12.0, 62.0    # spans the slot list + entry/exit margins
-CITY_Y = 30.0               # distant city backdrop plane (P2)
-SKY_Y = 45.0                # sky backdrop plane
+STREET_X0, STREET_X1 = -14.0, 92.0    # camera end -> vanishing point at the city
+CITY_X = 74.0               # distant city backdrop plane (P2), faces the camera (-X)
+SKY_X = 90.0                # sky backdrop plane, faces the camera
 
 # Scene tones — flat Principled, specular 0, roughness 1 (the kit recipe). Large
 # surfaces obey the AgX value ceiling: past base ~0.3 everything renders within a few
@@ -124,8 +124,10 @@ def setup_load_rig(res_x=1920, res_y=1080):
     sc.render.use_freestyle = True
     sc.render.line_thickness_mode = 'ABSOLUTE'
 
-    # Camera: ground-level perspective, south of the road, looking north (+Y) with a
-    # slight downward tilt so roofs stay in frame. Never the sprite Camera object.
+    # Camera: one-point perspective DOWN the road toward the city (owner's call —
+    # replaces the earlier lateral-facade framing). Slightly off the centreline so the
+    # two building rows are asymmetric in frame. Tilt stays exactly 90: verticals
+    # plumb; framing raised by lens shift. Never the sprite Camera object.
     cam_ob = bpy.data.objects.get("LoadCam")
     if cam_ob is None:
         cam = bpy.data.cameras.new("LoadCam")
@@ -135,9 +137,9 @@ def setup_load_rig(res_x=1920, res_y=1080):
     cam_ob.data.type = 'PERSP'
     cam_ob.data.lens = 32.0
     cam_ob.data.clip_end = 200.0
-    cam_ob.location = (7.5, -9.0, 1.0)
-    cam_ob.rotation_euler = (math.radians(90.0), 0.0, 0.0)   # exact 90: verticals stay vertical
-    cam_ob.data.shift_y = 0.12                               # rising front instead of tilt
+    cam_ob.location = (-8.0, -0.45, 0.95)
+    cam_ob.rotation_euler = (math.radians(90.0), 0.0, math.radians(-90.0))  # look +X, plumb verticals
+    cam_ob.data.shift_y = 0.10                               # rising front instead of tilt
     sc.camera = cam_ob
 
     # Sun: shadowless (style contract), aimed so the -Y facades read lit and the east
@@ -231,8 +233,8 @@ def build_street_scaffold():
     # caught on the strip contact sheet as centre-line dashes floating on grass with no
     # road under them (the dashes are placed by true x; the slab was not).
     cx = (STREET_X0 + STREET_X1) / 2.0
-    ground = _box(col, "ground", cx, (SKY_Y - 8) / 2 - 6, -0.05,
-                  (STREET_X1 - STREET_X0) + 60, SKY_Y + 20, 0.1, _mat("load_ground"))
+    ground = _box(col, "ground", cx, 0, -0.05,
+                  (STREET_X1 - STREET_X0) + 60, 90, 0.1, _mat("load_ground"))
     mark_noink(ground)
 
     # Road slab: proud of the ground by EPS (coplanar faces smear — rule 1).
@@ -254,10 +256,11 @@ def build_street_scaffold():
         x += dash_l + gap
         i += 1
 
-    # Sky placeholder: one flat tone, NOINK; banded properly in P2.
-    # Tall enough that no plausible framing (lens shift, camera raise) can look past
-    # its top edge — the P1 hero shot escaped a 30-high plane and rendered black.
-    sky = _box(col, "sky", 25, SKY_Y, 27.0, 220, 0.1, 60, _mat("load_sky"))
+    # Sky placeholder: one flat tone, NOINK; banded properly in P2. Stands at the far
+    # east end facing the camera (the road's vanishing point lands on it). Tall + wide
+    # enough that no plausible framing can look past an edge — the first hero shot
+    # escaped a 30-high plane and rendered black.
+    sky = _box(col, "sky", SKY_X, 0, 27.0, 0.1, 260, 60, _mat("load_sky"))
     mark_noink(sky)
     return {"objects": len(col.objects), "building_front_y": BUILDING_FRONT_Y}
 
@@ -278,18 +281,27 @@ def phase0():
 # Zones: primary (likely ~11s of pan) carries the hero cast; the cushion repeats the
 # builders at other levels so a slow load never halts on sparse content; the last slot
 # is the terminal vista a >60s load rests on.
+# Slot: (suffix, builder kind, level/variant, rz deg, x centre, side).
+# side "n" = north row (detailed front faces -Y = the road, builders' default);
+# side "s" = south row (rotated so the front faces +Y = the road).
+# Depth order builds the skyline: offices and factories near the camera, the big
+# stack-and-tower plants further east so they stand against the city (P2).
 SLOTS = [
-    # primary zone
-    ("fac_a", "factory",      2, -90.0,  0.0),
-    ("fur_a", "furnace",      3,   0.0,  7.5),
-    ("fac_b", "factory",      3, -90.0, 15.5),
-    ("pp_a",  "powerplant",   3,   0.0, 24.5),
-    # cushion zone
-    ("fac_c", "factory",      1, -90.0, 32.0),
-    ("fur_b", "furnace",      2,   0.0, 38.5),
-    ("fac_d", "factory",      2, -90.0, 46.0),
-    # terminal vista
-    ("pp_b",  "powerplant",   2,   0.0, 54.5),
+    # near (west, large in frame)
+    ("off_a", "office",      1, 180.0,  -3.0, "s"),
+    ("fac_a", "factory",     2,  -90.0,  1.5, "n"),
+    ("off_b", "office",      2, 180.0,   6.0, "s"),
+    ("pol_a", "poly",        2,   0.0,  12.5, "n"),
+    # mid
+    ("fur_a", "furnace",     3, 180.0,  17.0, "s"),
+    ("off_c", "office",      3,   0.0,  24.0, "n"),
+    ("fac_b", "factory",     3,  90.0,  27.5, "s"),
+    ("pet_a", "petro",       2,   0.0,  34.0, "n"),
+    # far (against the city)
+    ("off_d", "office",      4, 180.0,  40.0, "s"),
+    ("fur_b", "furnace",     2,   0.0,  45.0, "n"),
+    ("pp_a",  "powerplant",  3, 180.0,  52.0, "s"),
+    ("pp_b",  "powerplant",  2,   0.0,  60.0, "n"),
 ]
 
 # Every builder file defines a module-level LEVELS and reads it from its exec namespace,
@@ -299,9 +311,12 @@ SLOTS = [
 # namespace, so its LEVELS resolves correctly.
 _BASE = "/Users/crisu/Price of Everything/blender-assets/"
 BUILDERS = {
-    "factory":    ("factory_builder.py",      "build_factory",      "BLDG_factory"),
-    "furnace":    ("furnace_builder.py",      "build_furnace",      "BLDG_furnace"),
-    "powerplant": ("power_plant_builder.py",  "build_power_plant",  "BLDG_powerplant"),
+    "factory":    ("factory_builder.py",       "build_factory",       "BLDG_factory"),
+    "furnace":    ("furnace_builder.py",       "build_furnace",       "BLDG_furnace"),
+    "powerplant": ("power_plant_builder.py",   "build_power_plant",   "BLDG_powerplant"),
+    "poly":       ("poly_plant_builder.py",    "build_poly_plant",    "BLDG_poly"),
+    "petro":      ("petro_refinery_builder.py","build_petro_refinery","BLDG_petro"),
+    "office":     ("office_builder.py",        "build_office",        "BLDG_office"),
 }
 _builder_cache = {}
 
@@ -316,7 +331,7 @@ def _builder(kind):
     return _builder_cache[kind]
 
 
-def _place(col, rz_deg, slot_x):
+def _place(col, rz_deg, slot_x, side="n"):
     """Rotate a building about world Z, then drop it so its south face sits on the
     facade line and its centre on slot_x. Fully general about object origins: transforms
     are composed on matrix_world, and the bbox is measured from the matrices actually
@@ -333,10 +348,12 @@ def _place(col, rz_deg, slot_x):
             w = m @ v.co
             xs.append(w.x)
             ys.append(w.y)
+    if side == "n":
+        ty = BUILDING_FRONT_Y - min(ys)        # front face on the north facade line
+    else:
+        ty = -BUILDING_FRONT_Y - max(ys)       # mirrored line south of the road
     off = mathutils.Matrix.Translation((
-        slot_x - (min(xs) + max(xs)) / 2.0,
-        BUILDING_FRONT_Y - min(ys),
-        0.0))
+        slot_x - (min(xs) + max(xs)) / 2.0, ty, 0.0))
     for ob in col.objects:
         if ob.name in mats:
             ob.matrix_world = off @ mats[ob.name]
@@ -351,7 +368,7 @@ def phase1():
     and the sprite Camera pose (their setup_rig), so the load rig is re-asserted after."""
     sc = get_scene()
     placed = []
-    for suffix, kind, level, rz, x in SLOTS:
+    for suffix, kind, level, rz, x, side in SLOTS:
         fn, col_name = _builder(kind)
         fn(level)
         src = bpy.data.collections[col_name]
@@ -360,7 +377,7 @@ def phase1():
         for ob in list(src.objects):
             src.objects.unlink(ob)
             col.objects.link(ob)
-        _place(col, rz, x)
+        _place(col, rz, x, side)
         placed.append({"slot": suffix, "level": level, "objects": len(col.objects)})
     setup_load_rig()
     return {"placed": placed}
