@@ -131,6 +131,13 @@ var _market_opened: Array[Dictionary] = []
 var _market_unreachable := {}   # good_id -> turns the route from port was unreachable
 
 # Cable-to-network bookkeeping.
+const INFRA_UPGRADE_AT := 0.80          # upgrade a segment running at 80%+ of capacity
+const INFRA_UPGRADE_COOLDOWN := 6       # let the upgrade land before re-testing
+const INFRA_UPGRADE_MAX := 20
+const INFRA_UPGRADEABLE := ["roads", "rails", "pipes", "reinf_pipes", "cables"]
+
+var _infra_upgrade_log: Array[Dictionary] = []
+var _infra_upgrade_ready := {}
 var _cables_laid: Array[Dictionary] = []
 var _uncabled_tiles := {}       # tile -> times we could not find a cabled anchor
 var _levels_applied := {}
@@ -1083,6 +1090,58 @@ func _producers_are_running(good_id: String) -> bool:
 		if not Production.missing_by_building.has(str(instance_id)):
 			return true       # this one is running fine, so capacity is the constraint
 	return not found_any      # nothing makes it yet -> the scenario's own entry can start it
+
+
+## Upgrade any infrastructure segment running at 80%+ of its capacity, paying the cost.
+## Mirrors the "Use Infrastructure" research condition's own measure
+## (match_state._infrastructure_usage_met): cables compare drawn/produced against
+## Power.tile_power_cap, everything else compares tile_mode_flow against
+## tile_mode_capacity.
+##
+## This is what lets generation keep expanding. A tile's cable level caps its throughput
+## (CABLE_POWER_CAP 1:2000 2:4000 3:7000), so past the cap another plant delivers
+## nothing — electrochem stacked five into a full L1 cable while its deficit grew
+## 840 -> 3360. Upgrading the cable raises the ceiling instead.
+func _upgrade_saturated_infrastructure() -> void:
+	if _rightsize_busy:
+		return
+	var turn := int(TurnManager.current_turn)
+	for instance_id in MatchState.buildings.keys():
+		if _infra_upgrade_log.size() >= INFRA_UPGRADE_MAX:
+			return
+		var inst: Dictionary = MatchState.buildings[instance_id]
+		if not MatchState.is_player_owned(inst):
+			continue
+		var internal := str(Catalog.get_building(str(inst.get("building_id", ""))).get("internal_name", ""))
+		if not INFRA_UPGRADEABLE.has(internal):
+			continue
+		var tile_id := str(inst.get("tile_id", ""))
+		if turn < int(_infra_upgrade_ready.get(str(instance_id), 0)):
+			continue
+		if MatchState.is_upgrading(str(instance_id)):
+			continue
+		var capacity := 0.0
+		var usage := 0.0
+		if internal == "cables":
+			capacity = float(Power.tile_power_cap(tile_id))
+			usage = float(maxi(int(Power.tile_drawn.get(tile_id, 0)), int(Power.tile_produced.get(tile_id, 0))))
+		else:
+			var mode := "rail" if internal == "rails" else internal
+			capacity = MatchState.tile_mode_capacity(mode, MatchState._tile_infra_level(tile_id, mode))
+			usage = float(MatchState.tile_mode_flow(tile_id, mode))
+		if capacity <= 0.0 or usage < capacity * INFRA_UPGRADE_AT:
+			continue
+		var result: Dictionary = MatchState.start_upgrade(str(instance_id), "market")
+		# Refusal is a legitimate outcome (already max level, or unaffordable): back off.
+		_infra_upgrade_ready[str(instance_id)] = turn + INFRA_UPGRADE_COOLDOWN
+		if not bool(result.get("ok", false)):
+			continue
+		_infra_upgrade_log.append({
+			"turn": turn, "tile": tile_id, "infra": internal,
+			"usage": usage, "capacity": capacity,
+		})
+		print("[E2E] infra: %s on %s at %d/%d (%.0f%%) -> upgrading (t%d)"
+			% [internal, tile_id, int(usage), int(capacity), usage / capacity * 100.0, turn])
 
 
 ## Every tile the harness builds on must end up on the power network, or the building is
@@ -2189,6 +2248,7 @@ func _advance_turns(count: int, reason: String) -> void:
 		if before_turn <= 8 or before_turn % 10 == 0 or before_turn + 1 >= _target_turn:
 			_check(TurnManager.current_turn == before_turn + 1,
 				"turn advanced for %s (%d -> %d)" % [reason, before_turn, TurnManager.current_turn])
+		_upgrade_saturated_infrastructure()
 		await _rightsize_tick()
 		await _power_tick()
 		var elapsed_ms := float(Time.get_ticks_usec() - start) / 1000.0
@@ -2730,6 +2790,7 @@ func _write_latest_metrics() -> void:
 		"market_opened_log": _market_opened,
 		"market_unreachable": _market_unreachable,
 		"cables_laid": _cables_laid,
+		"infra_upgrades": _infra_upgrade_log,
 		"uncabled_tiles": _uncabled_tiles,
 		"target_turn": _target_turn,
 		"assertions_passed": _passed,
