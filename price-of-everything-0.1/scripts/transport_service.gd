@@ -92,6 +92,40 @@ func transport_cost_for_route(good_id: String, qty: int, route_data: Dictionary,
 	return cost
 
 
+## Split a route's *actual* freight charge by infrastructure mode.  The base
+## route price is used only as a weighting; the resulting rows include research
+## discounts and congestion, and therefore add back to transport_cost_for_route.
+## A route with no built leg is the ordinary overland road haul.
+func transport_cost_breakdown_for_route(good_id: String, qty: int, route_data: Dictionary, surcharge: float = 1.0) -> Dictionary:
+	if not route_is_reachable(route_data) or qty <= 0:
+		return {}
+	var weights: Dictionary = {}
+	var legs: Array = route_data.get("legs", [])
+	var class_rate := EconomyConfig.transport_rate_for_good(good_id)
+	if legs.is_empty():
+		var turns := maxi(int(route_data.get("turns", 0)), 0)
+		weights["roads"] = float(qty) * float(turns) * class_rate * surcharge
+	else:
+		for leg: Dictionary in legs:
+			var mode := str(leg.get("mode", "roads"))
+			weights[mode] = float(weights.get(mode, 0.0)) + float(qty) * class_rate * float(EconomyConfig.TRANSPORT_MODE_COST_MULT.get(mode, 1.0)) * surcharge
+	return scale_transport_breakdown(weights, transport_cost_for_route(good_id, qty, route_data, surcharge))
+
+
+## Rescale a component dictionary while preserving its proportions. Used when a
+## modifier applies to a whole route rather than to individual links.
+func scale_transport_breakdown(breakdown: Dictionary, target_total: float) -> Dictionary:
+	var source_total := 0.0
+	for value in breakdown.values():
+		source_total += float(value)
+	if source_total <= 0.0 or target_total <= 0.0:
+		return {}
+	var scaled: Dictionary = {}
+	for key in breakdown.keys():
+		scaled[str(key)] = float(breakdown[key]) * target_total / source_total
+	return scaled
+
+
 func link_capacity(mode: String, level: int) -> float:
 	return EconomyConfig.transport_link_capacity(mode, level)
 
@@ -156,15 +190,17 @@ func quote_market_buy(dest_tile: String, good_id: String, qty: int, covered: boo
 		route_data["delayed"] = false
 	var unit_price := MarketState.get_buy_price(good_id)
 	var goods_cost := float(qty) * unit_price
-	var transport := 0.0 if seaport_covered else transport_cost_for_route(good_id, qty, route_data)
+	var route_transport := 0.0 if seaport_covered else transport_cost_for_route(good_id, qty, route_data)
+	var route_breakdown: Dictionary = {} if seaport_covered else transport_cost_breakdown_for_route(good_id, qty, route_data)
 	# Risk Desk Procedures applies only to materials bought FROM the market, never
 	# to player sales or ordinary inter-tile freight.
-	transport = Modifiers.apply("market_input_transport", good_id, transport, {"good_id": good_id})
+	route_transport = Modifiers.apply("market_input_transport", good_id, route_transport, {"good_id": good_id})
+	route_breakdown = scale_transport_breakdown(route_breakdown, route_transport)
 	# Sea freight replaces the old standing subscription charge. It is deliberately
 	# quoted without mutating port usage; MatchState commits it only after the buy clears funds.
 	var sea_transport := MatchState.preview_sea_shipping(port, good_id, qty)
 	var sea_cost := float(sea_transport.get("total", 0.0))
-	transport += sea_cost
+	var transport := route_transport + sea_cost
 	return {
 		"port": port,
 		"route": route_data,
@@ -175,6 +211,7 @@ func quote_market_buy(dest_tile: String, good_id: String, qty: int, covered: boo
 		"cost": goods_cost + transport,
 		"sea_transport_cost": sea_cost,
 		"sea_transport": sea_transport,
+		"route_transport_breakdown": route_breakdown,
 		"covered": seaport_covered,
 	}
 

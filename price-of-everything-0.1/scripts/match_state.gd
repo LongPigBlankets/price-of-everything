@@ -4171,6 +4171,10 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 		var actual_sea := float(sea_charge.get("total", 0.0))
 		transport += actual_sea - sea_quote
 		total += actual_sea - sea_quote
+	var transport_breakdown: Dictionary = (quote.get("route_transport_breakdown", {}) as Dictionary).duplicate()
+	if not sea_charge.is_empty():
+		transport_breakdown["port_fees"] = float(transport_breakdown.get("port_fees", 0.0)) + float(sea_charge.get("base_fee", 0.0))
+		transport_breakdown["port_insurance"] = float(transport_breakdown.get("port_insurance", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
 	# Goods with a transit leg are paid for ON ARRIVAL; instant (0-turn) deliveries have no
 	# transit to defer over, so they settle here.
 	if turns < 1:
@@ -4197,6 +4201,7 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 			# which correctly reads as "already paid for" under the old charge-on-order rule.
 			"purchase_cost": total,
 			"purchase_goods_cost": total - transport,
+			"transport_breakdown": transport_breakdown,
 			"tiles": route.get("tiles", []), "path": route.get("path", []), "legs": route.get("legs", []),
 		}
 		shipment.merge(extra, true)  # optional tags, e.g. construction_instance_id
@@ -4218,7 +4223,8 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	# `deferred` tells the caller the cash has NOT left yet — Production books a deferred
 	# purchase into the summary when it arrives, not here, so money_out tracks real cash.
 	return {"qty": qty, "turns": turns, "cost": total, "deferred": turns >= 1,
-		"goods_cost": float(qty) * unit_price, "transport_cost": transport, "port": port}
+		"goods_cost": float(qty) * unit_price, "transport_cost": transport,
+		"transport_breakdown": transport_breakdown, "port": port}
 
 func tiles_producing(good_id: String) -> Dictionary:
 	var out: Dictionary = {}
@@ -4401,7 +4407,7 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = 
 	var result := MarketState.execute_sale(source_tile, goods_qtys, {"log_oneoff": log_oneoff})
 	if result.is_empty():
 		return {}
-	Production.record_external_transport_cost(float(result.get("transport_cost", 0.0)))
+	Production.record_external_transport_cost(float(result.get("transport_cost", 0.0)), result.get("transport_breakdown", {}))
 	if not bool(result.get("deferred", false)):
 		var sale_record: Dictionary = result.get("sale_record", {})
 		record_tile_sale(source_tile, int(result.get("total_qty", 0)), float(result.get("total_revenue", 0.0)))

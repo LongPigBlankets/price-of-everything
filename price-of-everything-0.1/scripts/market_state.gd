@@ -290,14 +290,22 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 	MatchState.goods_movement_recorded.emit("sale", "", turns)
 
 	var transport_cost := 0.0
+	var transport_breakdown: Dictionary = {}
 	if pay_transport_from_seller:
 		for it in items:
-			transport_cost += TransportService.transport_cost_for_route(str(it.good_id), int(it.qty), route)
+			var good_id := str(it.good_id)
+			var qty := int(it.qty)
+			transport_cost += TransportService.transport_cost_for_route(good_id, qty, route)
+			var route_breakdown := TransportService.transport_cost_breakdown_for_route(good_id, qty, route)
+			for mode in route_breakdown:
+				transport_breakdown[mode] = float(transport_breakdown.get(mode, 0.0)) + float(route_breakdown[mode])
 	# Sea costs apply to every market sale. Manual sales keep their historical gross
 	# inland freight, but never avoid the port charge.
 	for it in items:
 		var sea_charge := MatchState.commit_sea_shipping(port, str(it.good_id), int(it.qty), "sell")
 		transport_cost += float(sea_charge.get("total", 0.0))
+		transport_breakdown["port_fees"] = float(transport_breakdown.get("port_fees", 0.0)) + float(sea_charge.get("base_fee", 0.0))
+		transport_breakdown["port_insurance"] = float(transport_breakdown.get("port_insurance", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 
@@ -364,6 +372,7 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 		"total_qty": returned_total_qty,
 		"total_revenue": returned_total_revenue,
 		"transport_cost": transport_cost,
+		"transport_breakdown": transport_breakdown,
 		"deferred": deferred,
 		"turns": turns,
 		"port": port,

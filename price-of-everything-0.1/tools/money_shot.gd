@@ -2,7 +2,8 @@ extends Node2D
 ## Verifies the money panel's Sales + new Purchases tabs (per-good breakdown with framed good icons).
 ## Seeds a couple of turns of sales/purchase history directly, then screenshots each tab.
 ##   Godot --path . res://tools/money_shot.tscn --quit-after 900
-## Writes /tmp/poe_money_sales.png and /tmp/poe_money_purchases.png.
+## Writes /tmp/poe_money_sales.png, /tmp/poe_money_purchases.png, and the
+## expanded transport accordion at /tmp/poe_money_transport.png.
 
 func _ready() -> void:
 	var packed := load("res://scenes/main.tscn") as PackedScene
@@ -46,6 +47,19 @@ func _ready() -> void:
 	await _settle(8)
 	get_viewport().get_texture().get_image().save_png("/tmp/poe_money_purchases.png")
 	print("[MONEY_SHOT] saved /tmp/poe_money_purchases.png")
+
+	_select_tab(mp, "Balance")
+	mp._render_balance_sheet({
+		"transport_paid": 216.40,
+		"transport_breakdown": {
+			"port_fees": 24.0, "port_insurance": 32.4, "rail": 48.0,
+			"roads": 60.0, "pipes": 20.0, "reinf_pipes": 32.0,
+		},
+	})
+	mp._set_transport_expanded(true)
+	await _settle(8)
+	get_viewport().get_texture().get_image().save_png("/tmp/poe_money_transport.png")
+	print("[MONEY_SHOT] saved /tmp/poe_money_transport.png")
 
 	get_tree().quit(0)
 

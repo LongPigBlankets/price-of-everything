@@ -14,15 +14,8 @@ extends RefCounted
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const BuildingPrice := preload("res://scripts/building_price.gd")
+const CompanyNames := preload("res://scripts/company_names.gd")
 const PORT_BUILDING_ID := "b_004"
-
-# Fake operator names for NPC-owned buildings (cosmetic; a stable pick per owner id — no RNG).
-const _COMPANIES := [
-	"Ashworth Industrials", "Meridian Foundries", "Blackwater Holdings", "Calderon & Vance",
-	"Ironbridge Group", "Nordvik Materials", "Halcyon Works", "Sterling Combine",
-	"Thornfield Mills", "Vantage Refineries", "Crown Metalworks", "Pemberton Chemical",
-	"Drexel Manufacturing", "Grayson Foundry Co.", "Aldridge Consolidated", "Whitmore Petrochem",
-]
 
 # Tone keys used by the diagnostics rows → resolved to DS palette by the panel.
 # "ok" | "warn" | "bad" | "info"
@@ -141,17 +134,32 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 	# recipes). Mirrors the CostSolver's imputed power_cost (energy × GRID_BUY_PRICE).
 	var power_cost := float(BuildingStatus.effective_energy_req(building, recipe)) * EconomyConfig.GRID_BUY_PRICE
 	# Simplified per-turn worth: Output value − transport − inputs − maintenance − labour − power.
-	# One "Output value" figure (the market worth of the run's output), tagged sold / if-sold, plus
-	# the freight to its SET destination. Net always folds them in.
+	# Output value includes every product of the run. A co-product is genuine value
+	# added by the same building, so leaving it out made multi-output recipes (such
+	# as Chlor-Alkali) appear materially less valuable than they are.
 	var out_gid := BuildingStatus.primary_output_good_id(recipe)
 	var units_out := BuildingStatus.effective_output_qty(building, recipe)
-	# Live market price (incl. glut/deficit impact), falling back to the impact-free base.
+	var output_value := 0.0
 	var price := 0.0
-	if out_gid != "":
-		price = MarketState.get_price(out_gid)
-		if price <= 0.0:
-			price = Catalog.get_base_price(out_gid)
-	var output_value := float(units_out) * price
+	var output_values: Array = []
+	var selling_outputs := 0
+	for output: Dictionary in (flow(building, recipe).get("outputs", []) as Array):
+		var output_gid := str(output.get("good_id", ""))
+		var output_qty := int(output.get("qty", 0))
+		if output_gid == "" or output_qty <= 0:
+			continue
+		# Live market price (incl. glut/deficit impact), falling back to the impact-free base.
+		var output_price := MarketState.get_price(output_gid)
+		if output_price <= 0.0:
+			output_price = Catalog.get_base_price(output_gid)
+		if output_gid == out_gid:
+			price = output_price
+		var value := float(output_qty) * output_price
+		output_value += value
+		output_values.append({"good_id": output_gid, "qty": output_qty, "price": output_price, "value": value})
+		var output_mode := str(_output_disposition(building, recipe, output_gid).get("mode", "held"))
+		if output_mode == "market" or output_mode == "tile_sales":
+			selling_outputs += 1
 	# Inputs valued at their COST TO PRODUCE — the CostSolver's imputed per-good cost, resolved over
 	# the whole chain (an internally-made input costs what it cost to make, not its market price).
 	# Falls back to market only for external inputs no player building produces — exactly mirroring
@@ -166,9 +174,12 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 		input_cost += float(inp.get("qty", 0)) * unit_price
 	# Is the output actually sold this turn (market route, or a tile that auto-sells its surplus)?
 	# A generator / infrastructure has no sellable good (units_out == 0) — never treat it as selling.
-	var disp := _output_disposition(building, recipe)
-	var mode := str(disp.get("mode", "held"))
-	var sells := (mode == "market" or mode == "tile_sales") and units_out > 0
+	var sells := selling_outputs > 0
+
+	# TODO(mid-August 2026): reconcile the remaining Economics lines with the
+	# settled per-building ledger. Transport is still primary-output-only and
+	# excludes sea charges; inputs, maintenance, labour, power, warehousing and
+	# carbon remain the existing illustrative estimates rather than full actuals.
 	# Transport cost of moving the output to its SET destination (nearest port for a market route,
 	# the target tile otherwise, 0 for same-tile / no destination).
 	var own_tile := str(building.get("tile_id", ""))
@@ -194,7 +205,9 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 	return {
 		"value": float(building_data.get("base_price", 0.0)),   # asset value (build/buy price), not per-turn
 		"output_value": output_value,
+		"output_values": output_values,
 		"sells": sells,
+		"selling_output_count": selling_outputs,
 		"units_out": units_out,
 		"sale_price": price,
 		"transport_cost": transport_cost,
@@ -214,9 +227,9 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 # Where this building's primary output goes this turn: "market" (direct market route, whole run
 # sells), "tile_sales" (lands on a tile whose surplus auto-sells — a partial sale is possible), or
 # "held" (feeds a downstream building or just sits in a stockpile — earns nothing directly).
-static func _output_disposition(building: Dictionary, recipe: Dictionary) -> Dictionary:
+static func _output_disposition(building: Dictionary, recipe: Dictionary, output_good_id: String = "") -> Dictionary:
 	var iid := str(building.get("instance_id", ""))
-	var gid := BuildingStatus.primary_output_good_id(recipe)
+	var gid := output_good_id if output_good_id != "" else BuildingStatus.primary_output_good_id(recipe)
 	var src := str(building.get("tile_id", ""))
 	if gid == "":
 		return {"mode": "held", "sell_tile": src, "good_id": ""}
@@ -858,7 +871,7 @@ static func company_name(owner_id: String) -> String:
 	var acc := 0
 	for i in owner_id.length():
 		acc = (acc * 31 + owner_id.unicode_at(i)) % 1000000
-	return _COMPANIES[acc % _COMPANIES.size()]
+	return CompanyNames.NAMES[acc % CompanyNames.NAMES.size()]
 
 # Purchase price shown on the NPC Buy button (matches the Buildings-market listing).
 static func buy_price(building: Dictionary) -> int:

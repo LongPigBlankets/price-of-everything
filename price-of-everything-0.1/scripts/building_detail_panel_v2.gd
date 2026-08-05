@@ -1726,7 +1726,9 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	# in. Skipped for generators / infra (no sellable good → units_out 0).
 	var units_out := int(econ.get("units_out", 0))
 	if units_out > 0:
-		var tag := "(sold)" if bool(econ.get("sells", false)) else "(if sold)"
+		var output_values: Array = econ.get("output_values", [])
+		var selling_count := int(econ.get("selling_output_count", 0))
+		var tag := "(sold)" if selling_count == output_values.size() else ("(part sold)" if selling_count > 0 else "(if sold)")
 		vb.add_child(_metric("Output value %s" % tag, "+£%.2f" % float(econ.get("output_value", 0.0)), DS.PALETTE["OK"], false))
 		var tc := float(econ.get("transport_cost", 0.0))
 		vb.add_child(_metric("Transport cost", ("−£%.2f" % tc) if tc > 0.0 else "£0.00", DS.PALETTE["DANGER"] if tc > 0.0 else DS.PALETTE["TEXT_MUTED"], false))

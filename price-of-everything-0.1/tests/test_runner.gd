@@ -33,6 +33,7 @@ func _ready() -> void:
 	_test_scene_loads()
 	await _test_main_scene_instantiates()
 	_test_catalog_loaded()
+	_test_company_rankings()
 	_test_goods_flow_graph()
 	_test_recipe_requirements()
 	_test_research_recipe_and_level_tiers()
@@ -6259,6 +6260,89 @@ func _check(ok: bool, name: String) -> void:
 		_failed_names.append(name)
 		printerr("  FAIL  ", name)
 
+func _test_company_rankings() -> void:
+	var history: Array[float] = [80.0, 95.0, 120.0, 140.0, 160.0]
+	var first: Array[Dictionary] = CompanyRankings.standings_for(24680, 50, history)
+	var second: Array[Dictionary] = CompanyRankings.standings_for(24680, 50, history)
+	_check(JSON.stringify(first) == JSON.stringify(second),
+		"company rankings: same seed, turn, and player history reconstruct the same table")
+	_check(first.size() == CompanyRankings.TOTAL_COMPANIES,
+		"company rankings: table contains nine rivals plus Your Company")
+	var names: Dictionary = {}
+	for row: Dictionary in first:
+		names[str(row.get("name", ""))] = true
+	_check(names.size() == CompanyRankings.TOTAL_COMPANIES and names.has("Your Company"),
+		"company rankings: seeded roster has unique rivals and the fixed player name")
+	var cycle: Array[int] = CompanyRankings._cycle_for(24680, 0)
+	var grows := 0
+	var decays := 0
+	var flats := 0
+	for phase: int in cycle:
+		if phase == CompanyRankings.CyclePhase.GROW:
+			grows += 1
+		elif phase == CompanyRankings.CyclePhase.DECAY:
+			decays += 1
+		else:
+			flats += 1
+	_check(grows == 5 and decays == 2 and flats == 2,
+		"company rankings: every rival cycle has 5 growth, 2 decay, and 2 flat turns")
+	var tied: Array[Dictionary] = CompanyRankings.standings_for(24680, 0, [100.0])
+	_check(bool(tied[0].get("is_player", false)) and int(tied[0].get("rank", 0)) == 1,
+		"company rankings: equal revenue always favours Your Company")
+	var player_row: Dictionary = {}
+	for row: Dictionary in first:
+		if bool(row.get("is_player", false)):
+			player_row = row
+	_check(is_equal_approx(float(player_row.get("trend_average", 0.0)), 119.0),
+		"company rankings: player trend is the average of the last five revenues")
+	var growth_rng := RandomNumberGenerator.new()
+	growth_rng.seed = 97531
+	var growth_total := 0.0
+	var growth_in_bounds := true
+	var decay_in_bounds := true
+	for _i: int in range(1000):
+		var growth_rate: float = CompanyRankings._growth_rate(growth_rng)
+		var decay_rate: float = CompanyRankings._decay_rate(growth_rng)
+		growth_total += growth_rate
+		growth_in_bounds = growth_in_bounds and growth_rate >= CompanyRankings.GROWTH_MIN and growth_rate <= CompanyRankings.GROWTH_MAX
+		decay_in_bounds = decay_in_bounds and decay_rate >= CompanyRankings.DECAY_MIN and decay_rate <= CompanyRankings.DECAY_MAX
+	_check(growth_in_bounds and decay_in_bounds,
+		"company rankings: growth stays within 1–25%% and decay within 1–5%%")
+	_check(absf(growth_total / 1000.0 - CompanyRankings.GROWTH_MEAN) < 0.01,
+		"company rankings: sampled growth remains centred near 15%%")
+	var goods_tables: Array[Dictionary] = CompanyRankings.goods_standings_for(24680, 0, {"g_001": 7})
+	var coal_table: Dictionary = {}
+	var cpu_table: Dictionary = {}
+	for good_table: Dictionary in goods_tables:
+		if str(good_table.get("good_id", "")) == "g_001":
+			coal_table = good_table
+		elif str(good_table.get("good_id", "")) == "g_041":
+			cpu_table = good_table
+	var coal_rows: Array = coal_table.get("producers", []) as Array
+	var cpu_rows: Array = cpu_table.get("producers", []) as Array
+	_check(coal_rows.size() == 4 and cpu_rows.size() == 1 and bool((cpu_rows[0] as Dictionary).get("is_player", false)),
+		"company rankings: normal goods show three rivals plus player; apex goods show only player")
+	var coal_base: int = Catalog.base_output_for_good("g_001")
+	_check(int((coal_rows[0] as Dictionary).get("quantity", 0)) >= coal_base
+		and coal_rows.any(func(row: Dictionary) -> bool: return bool(row.get("is_player", false)) and int(row.get("quantity", 0)) == 7),
+		"company rankings: rival goods start at base recipe output and retain actual player output")
+	var coal_before_increment: int = CompanyRankings._rival_good_output_for(24680, "g_001", 0, 4)
+	var coal_after_increment: int = CompanyRankings._rival_good_output_for(24680, "g_001", 0, 5)
+	_check(coal_before_increment == coal_base and coal_after_increment >= coal_base
+		and coal_after_increment - coal_base in [0, int(round(coal_base * 0.2)), int(round(coal_base * 0.5)), coal_base],
+		"company rankings: goods gain one allowed integer increment every five turns")
+	var rng_before: int = MatchState._match_rng.state
+	CompanyRankings.standings_for(13579, 300, history)
+	CompanyRankings.goods_standings_for(13579, 300, {"g_001": 20})
+	_check(MatchState._match_rng.state == rng_before,
+		"company rankings: table generation does not consume the simulation RNG")
+	var saved: Dictionary = CompanyRankings.export_state()
+	CompanyRankings.import_state({"player_revenue_history": history, "player_goods_produced": {"g_001": 9}})
+	var restored: Dictionary = CompanyRankings.export_state()
+	_check(restored.get("player_revenue_history", []) == history and int((restored.get("player_goods_produced", {}) as Dictionary).get("g_001", 0)) == 9,
+		"company rankings: player revenue history and goods output persist after load")
+	CompanyRankings.import_state(saved)
+
 # Empire view node packing (scripts/empire_layout.gd): the >=30px gap holds, packing is
 # deterministic, coincident seeds (same tile) fan out, and all nodes survive.
 func _test_empire_layout() -> void:
@@ -7643,6 +7727,13 @@ func _test_buy_grants_land() -> void:
 func _test_transport_service() -> void:
 	var route: Dictionary = TransportService.route("tile_12_2", "tile_13_2", "g_001")
 	_check(int(route.get("turns", -1)) == 1, "TransportService routes adjacent tiles")
+	var route_cost := TransportService.transport_cost_for_route("g_001", 10, route)
+	var route_breakdown := TransportService.transport_cost_breakdown_for_route("g_001", 10, route)
+	var breakdown_total := 0.0
+	for amount in route_breakdown.values():
+		breakdown_total += float(amount)
+	_check(absf(route_cost - breakdown_total) < 0.0001,
+		"TransportService route breakdown reconciles to the actual freight charge")
 	var quote: Dictionary = TransportService.quote_manifest("tile_12_2", "tile_13_2", {"g_001": 10})
 	_check(int(quote.get("turns", -1)) == 1 and float(quote.get("cost", 0.0)) > 0.0,
 		"TransportService quotes a manifest with turns and cost")
@@ -8821,6 +8912,9 @@ func _test_scripts_parse() -> void:
 		"res://scripts/tutorial/coach_overlay.gd",
 		"res://scripts/tutorial/tutorial_steps.gd",
 		"res://scripts/tutorial/tutorial_detectors.gd",
+		"res://scripts/company_names.gd",
+		"res://scripts/company_rankings.gd",
+		"res://scripts/top_bar.gd",
 	]:
 		_check(load(path) != null, "parses: " + path)
 
@@ -10400,4 +10494,14 @@ func _test_recipe_flow_shows_co_products() -> void:
 	for o in outs:
 		_check(int((o as Dictionary).get("qty", 0)) > 0,
 			"co-products: %s has a positive effective quantity" % str((o as Dictionary).get("internal", "")))
+	var building := MatchState.get_building(iid)
+	var econ: Dictionary = BuildingReadout.economics(building, recipe, Catalog.get_building("b_012"))
+	var valued_outputs: Array = econ.get("output_values", [])
+	var total_value := 0.0
+	for output in valued_outputs:
+		total_value += float((output as Dictionary).get("value", 0.0))
+	_check(valued_outputs.size() == 3,
+		"co-products: economics values all three chlor-alkali outputs")
+	_check(absf(float(econ.get("output_value", 0.0)) - total_value) < 0.0001,
+		"co-products: economics output value equals the sum of every output")
 	MatchState.remove_building(iid)

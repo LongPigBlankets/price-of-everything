@@ -13,8 +13,10 @@ const AppPaths := preload("res://scripts/app_paths.gd")
 # 3 = adds special order state; 4 = advisor seats/acquisition; 5 = structured
 # infrastructure snapshot with per-tile levels; 6 = roads-v3 — strips the retired
 # enclosure rings + urban anchor streets (encl:/urbanr: nodes and edges) from the
-# saved road network (RoadWorks' enclosure keys are simply ignored on import).
-const SAVE_VERSION := 6
+# saved road network (RoadWorks' enclosure keys are simply ignored on import);
+# 7 = cosmetic company-rankings player revenue history; 8 = last-turn player
+# goods quantities for the rankings' Goods tab.
+const SAVE_VERSION := 8
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -72,6 +74,7 @@ func export_snapshot() -> Dictionary:
 		"market": MarketState.export_state(),
 		"special_orders": SpecialOrderState.export_state(),
 		"production": Production.export_state(),
+		"company_rankings": CompanyRankings.export_state(),
 		"events": EventScheduler.export_state(),
 		"modifiers": Modifiers.export_state(),
 		"decisions": DecisionState.export_state(),
@@ -101,6 +104,7 @@ func import_snapshot(snap: Dictionary) -> void:
 	MarketState.import_state(snap.get("market", {}))
 	SpecialOrderState.import_state(snap.get("special_orders", {}))
 	Production.import_state(snap.get("production", {}))
+	CompanyRankings.import_state(snap.get("company_rankings", {}))
 	EventScheduler.import_state(snap.get("events", {}))
 	Modifiers.import_state(snap.get("modifiers", {}))
 	# Additive key (tolerant reader): pre-feature saves load a fresh decision state.
@@ -629,6 +633,10 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				snap = _migrate_v4_to_v5(snap)
 			5:
 				snap = _migrate_v5_to_v6(snap)
+			6:
+				snap = _migrate_v6_to_v7(snap)
+			7:
+				snap = _migrate_v7_to_v8(snap)
 			_:
 				break
 		version += 1
@@ -704,6 +712,19 @@ func _migrate_v5_to_v6(snap: Dictionary) -> Dictionary:
 	network["edges"] = edges
 	roads["network"] = network
 	snap["roads"] = roads
+	return snap
+
+func _migrate_v6_to_v7(snap: Dictionary) -> Dictionary:
+	# Rankings are presentation-only. Older saves start with no prior player trend.
+	if not snap.has("company_rankings"):
+		snap["company_rankings"] = {}
+	return snap
+
+func _migrate_v7_to_v8(snap: Dictionary) -> Dictionary:
+	var rankings: Dictionary = snap.get("company_rankings", {})
+	if not rankings.has("player_goods_produced"):
+		rankings["player_goods_produced"] = {}
+	snap["company_rankings"] = rankings
 	return snap
 
 # --- JSON helpers ---
