@@ -2011,6 +2011,13 @@ func _ensure_balance_cash(required: float) -> bool:
 			var ok := LoanState.take_loan(borrow)
 			_check(ok and borrow <= before_capacity + 0.001,
 				"construction borrowing stayed inside live loan capacity")
+			if not ok:
+				# available_capacity() reported room but the loan was refused. The
+				# `continue` below does not advance `waited`, so retrying an identical
+				# borrow against identical state spins forever — this loop emitted 1.27
+				# million failed assertions and an 80 MB log before it was caught. There
+				# is nothing to wait for: if the lender says no now it will say no again.
+				break
 			continue
 		if _player_production_building_count() <= 0:
 			break
