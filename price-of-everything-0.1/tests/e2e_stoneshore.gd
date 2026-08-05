@@ -930,13 +930,21 @@ func _build_coal_runway_from_config() -> void:
 	await _advance_turns(runway_turns, "coal runway market sales")
 	_cash_after_coal_runway = MatchState.money
 	_check(_sold_qty(_goods.coal) > 0, "coal runway sold coal to market before the motor buildout")
-	# Every early runway shipment now pays its port charge, so the three-turn
-	# average is allowed to be one small fee below break-even while still proving
-	# the coal runway is self-sustaining enough to fund the expansion loan.
+	_check(_sold_revenue(_goods.coal) > 0.0, "coal runway converted mined coal into market revenue")
+	# DESIGN RULE: a raw-material-only position is NOT meant to be profitable, so this
+	# phase must not assert profit or break-even. Every shipment pays the flat per-good
+	# seaport charge, which a heavy, low-value good like coal struggles to clear — that
+	# is precisely the incentive to ship lighter, higher-value goods instead. The runway
+	# is a BRIDGE: it turns a deposit into the cash and credit that fund the motor
+	# buildout. Profitability is asserted one level up, on the integrated chain, in
+	# _check_economy_end_state(). The figure is printed rather than asserted so a
+	# rebalance can still be observed here without pinning the economy to the wrong shape.
 	var recent_runway_profit: float = _recent_run_metric("profit_post_tax", mini(3, runway_turns))
-	_check(recent_runway_profit >= -10.0,
-		"coal runway is near break-even before expansion (%.1f; £10 port-fee tolerance)"
+	print("  [coal runway] 3-turn avg post-tax profit: %.1f (raw-only — not expected to be positive)"
 		% recent_runway_profit)
+	_check(MatchState.money > EconomyConfig.BANKRUPTCY_FLOOR,
+		"coal runway leaves the company solvent enough to fund the buildout (cash %.1f)"
+		% MatchState.money)
 
 
 func _build_transport_spine_from_config() -> void:
