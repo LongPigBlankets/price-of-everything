@@ -11,11 +11,11 @@ palette roles and window assembly (exec sprite_kit.py into this namespace first)
 """
 import bpy
 
-VARIANTS = {
-    1: dict(floors=2, wa=3.2, wb=2.0, depth=1.15, mirror=False),
+VARIANTS = {                     # owner 2026-08-05: two three-floor, two four-floor
+    1: dict(floors=3, wa=3.2, wb=2.0, depth=1.15, mirror=False),
     2: dict(floors=3, wa=2.6, wb=2.4, depth=1.15, mirror=True),
-    3: dict(floors=2, wa=4.0, wb=1.6, depth=1.25, mirror=False),
-    4: dict(floors=3, wa=3.0, wb=2.0, depth=1.10, mirror=True),
+    3: dict(floors=4, wa=4.0, wb=1.6, depth=1.25, mirror=False),
+    4: dict(floors=4, wa=3.0, wb=2.0, depth=1.10, mirror=True),
 }
 
 FLOOR_H = 0.62
@@ -68,9 +68,11 @@ def build_office(variant: int = 1) -> dict:
             K.window("wb_f%d_%d" % (f, j), "-X" if sgn > 0 else "+X",
                      ((bx0 if sgn > 0 else bx1), yc, zc), win_w, win_h, 1, 1)
 
-    # Entrance: door + brick surround — the building's single warm accent.
-    K.box("door_frame", 0.0, 0.0, 0.42, 0.62, 0.06, 0.84, K.mat("wall_brick"))
-    K.door("door", "-Y", (0.0, 0.0, 0.36), 0.44, 0.72)
+    # Entrance: the factory's personnel door verbatim (0.34 x 0.76 flat darkmetal
+    # panel, factory_builder.py:291) — the Kit's ribbed door at 0.44 x 0.72 read
+    # squat and misshapen at this scale. Brick surround stays the one warm accent.
+    K.box("door_frame", 0.0, 0.012, 0.42, 0.50, 0.05, 0.84, K.mat("wall_brick"))
+    K.box("door", 0.0, -EPS, 0.38, 0.34, 0.05, 0.76, K.mat("darkmetal"))
 
     print("bbox world %.2f x %.2f x %.2f" % (wa, d + wb, h + 0.08))
     return {"variant": variant, "objects": len(K.col.objects)}

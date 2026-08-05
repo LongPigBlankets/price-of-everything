@@ -42,7 +42,8 @@ SKY_X = 90.0                # sky backdrop plane, faces the camera
 # surfaces obey the AgX value ceiling: past base ~0.3 everything renders within a few
 # luma, so the BIG planes stay low; small crisp objects may go brighter.
 TONES = {
-    "load_ground":  (0.128, 0.150, 0.098),   # dry green-grey field
+    "load_ground":  (0.125, 0.170, 0.092),   # field green
+    "load_verge":   (0.128, 0.240, 0.075),   # vivid lawn at the building line (owner)
     "load_asphalt": (0.085, 0.095, 0.115),   # road — darker than ground, navy-leaning
     "load_kerb":    (0.420, 0.400, 0.340),   # pale stone, small surface
     "load_walk":    (0.240, 0.235, 0.215),   # sidewalk concrete — large surface, stays low
@@ -255,6 +256,14 @@ def build_street_scaffold():
              SIDEWALK_TOP / 2 + 0.006,
              STREET_X1 - STREET_X0 + EPS, KERB_W, SIDEWALK_TOP + 0.012, _mat("load_kerb"))
 
+    # Verges: the lawns between sidewalk and facades, proud of the ground by EPS so
+    # they read as kept grass against the duller field beyond (owner: vibrant green).
+    for side, tag in ((1, "n"), (-1, "s")):
+        y0v = side * (ROAD_HALF_W + SIDEWALK_W)
+        y1v = side * (BUILDING_FRONT_Y + 6.0)
+        _box(col, "verge_" + tag, cx, (y0v + y1v) / 2, -0.04 + EPS,
+             STREET_X1 - STREET_X0, abs(y1v - y0v), 0.1, _mat("load_verge"))
+
     # Centre dashes.
     dash_l, gap = 0.42, 0.55
     x = STREET_X0
@@ -281,16 +290,15 @@ def phase0():
 # Everything here is NOINK; the far city reads as pure silhouette against the horizon
 # band, which is also why the city tones must sit clearly darker than the horizon.
 
-SKY_BANDS = [                    # bottom -> top: warm horizon rising into deep grey-blue.
-    # The horizon band must clear the skyline (city peaks ~5.5) or the warmth is
-    # invisible from the low camera; the top band is the darkest so the frame's upper
-    # edge frames rather than fades.
-    (7.5,  (0.735, 0.600, 0.380)),
-    (5.0,  (0.560, 0.560, 0.520)),
-    (8.0,  (0.415, 0.465, 0.515)),
-    (40.0, (0.265, 0.330, 0.420)),
+SKY_BANDS = [                    # bottom -> top: pale warm horizon rising into SKY BLUE
+    # (owner 2026-08-05). The horizon band must clear the skyline or it is invisible
+    # from the low camera; saturation is pushed because AgX desaturates emission.
+    (7.5,  (0.740, 0.720, 0.600)),
+    (5.0,  (0.560, 0.660, 0.740)),
+    (8.0,  (0.400, 0.560, 0.730)),
+    (40.0, (0.240, 0.430, 0.680)),
 ]
-CITY_FAR_TONE = (0.335, 0.380, 0.430)    # far rank — barely darker than band 2
+CITY_FAR_TONE = (0.360, 0.410, 0.470)    # far rank — hazier against the blue
 CITY_NEAR_TONE = (0.270, 0.315, 0.375)   # near rank — reads in front of the far rank
 HAZE_TONE = (0.560, 0.555, 0.505)        # grounds the city into the horizon
 
@@ -357,17 +365,39 @@ def build_backdrop(seed=7):
         i = 0
         while y < 52.0:
             w = rng.uniform(1.4, 4.2)
-            h = rng.uniform(0.8, 2.6) * (1.0 + 1.8 * math.exp(-(y / 14.0) ** 2))
+            h = rng.uniform(0.6, 1.7) * (1.0 + 1.1 * math.exp(-(y / 14.0) ** 2))
             ob = _box(city_col, "city_r%d_%d" % (rank, i), rx, y + w / 2, h / 2,
                       1.2, w, h, m)
             ob.data.materials[0] = m
             mark_noink(ob)
-            # Occasional chimney/spire on the near rank keeps the skyline industrial.
-            if rank == 1 and rng.random() < 0.30:
+            # Detail pass (owner: "more detailed"): setback tiers on the taller
+            # blocks, rooftop clutter, window-column strips. All same-tone or near-
+            # tone flat geometry — detail through SILHOUETTE and faint value shifts,
+            # never ink, so the city stays a distant object.
+            if h > 1.6:                                   # setback tier
+                tw = w * rng.uniform(0.45, 0.7)
+                t = _box(city_col, "city_t%d_%d" % (rank, i), rx,
+                         y + w / 2, h + 0.35, 1.0, tw, 0.7, m)
+                mark_noink(t)
+            if rank == 1 and rng.random() < 0.45:         # rooftop water tank / hut
+                rt = _box(city_col, "city_rt%d_%d" % (rank, i), rx - 0.15,
+                          y + w * rng.uniform(0.2, 0.8), h + 0.14,
+                          0.3, rng.uniform(0.25, 0.5), 0.28, m)
+                mark_noink(rt)
+            if rank == 1 and rng.random() < 0.30:         # chimney/spire
                 sp = _box(city_col, "city_sp%d_%d" % (rank, i), rx - 0.2,
-                          y + w * rng.uniform(0.25, 0.75), h + 0.55,
-                          0.16, 0.16, 1.1, m)
+                          y + w * rng.uniform(0.25, 0.75), h + 0.45,
+                          0.14, 0.14, 0.9, m)
                 mark_noink(sp)
+            if rank == 1 and w > 2.0:                     # window-column strips
+                wm = _emat("load_city_win", (0.220, 0.260, 0.320))
+                for k in range(int(w / 0.8)):
+                    wy = y + 0.45 + k * 0.8
+                    if wy > y + w - 0.35:
+                        break
+                    ws = _box(city_col, "city_w%d_%d_%d" % (rank, i, k),
+                              rx - 0.62, wy, h * 0.45, 0.02, 0.30, h * 0.62, wm)
+                    mark_noink(ws)
             y += w + rng.uniform(0.4, 1.6)
             i += 1
 
@@ -376,6 +406,34 @@ def build_backdrop(seed=7):
     haze = _box(city_col, "haze", CITY_X - 1.6, 0, 0.65, 0.1, 240, 1.5,
                 _emat("load_haze", HAZE_TONE))
     mark_noink(haze)
+
+    # Clouds (owner: 3-4). Flat poster cutouts: clusters of camera-facing cylinders
+    # over a flat-bottom slab — single pale emission tone, NOINK, so the overlaps
+    # vanish and only the cumulus silhouette reads. Between city and sky planes.
+    cm = _emat("load_cloud", (0.870, 0.880, 0.870))
+    for ci, (cy, cz, sc_f) in enumerate(((-26.0, 16.0, 1.25), (-6.0, 21.0, 0.9),
+                                         (12.0, 14.5, 1.1), (30.0, 19.0, 0.8))):
+        puffs = ((0.0, 0.0, 2.1), (2.2, 0.6, 1.5), (-2.3, 0.4, 1.6), (4.0, 0.1, 1.0))
+        for pi, (dy, dz, r) in enumerate(puffs):
+            m2 = bpy.data.meshes.new("cloud%d_%d" % (ci, pi))
+            bm2 = bmesh.new()
+            bmesh.ops.create_cone(bm2, cap_ends=True, segments=24,
+                                  radius1=r * sc_f, radius2=r * sc_f, depth=0.1)
+            bmesh.ops.rotate(bm2, cent=(0, 0, 0),
+                             matrix=mathutils.Matrix.Rotation(math.radians(90), 3, 'Y'),
+                             verts=bm2.verts)
+            bmesh.ops.translate(bm2, vec=(84.0, cy + dy, cz + dz), verts=bm2.verts)
+            bm2.to_mesh(m2)
+            bm2.free()
+            ob = bpy.data.objects.new("cloud%d_%d" % (ci, pi), m2)
+            city_col.objects.link(ob)
+            ob.data.materials.append(cm)
+            for pl in ob.data.polygons:
+                pl.use_smooth = False
+            mark_noink(ob)
+        base = _box(city_col, "cloud%d_base" % ci, 84.0, cy + 0.9, cz - 0.55 * sc_f,
+                    0.1, 6.4 * sc_f, 0.9, cm)
+        mark_noink(base)
     return {"sky_bands": len(SKY_BANDS), "city_objects": len(city_col.objects)}
 
 
