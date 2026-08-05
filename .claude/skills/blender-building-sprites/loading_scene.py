@@ -365,6 +365,11 @@ def build_backdrop(seed=7):
         i = 0
         while y < 52.0:
             w = rng.uniform(1.4, 4.2)
+            # The road runs into the city at y=0: keep a corridor open through BOTH
+            # ranks, or a random block walls the street off and the road reads as
+            # ending in a field (the owner's "gap to the city").
+            if y < 1.5 and y + w > -1.5:
+                y = 1.5
             h = rng.uniform(0.6, 1.7) * (1.0 + 1.1 * math.exp(-(y / 14.0) ** 2))
             ob = _box(city_col, "city_r%d_%d" % (rank, i), rx, y + w / 2, h / 2,
                       1.2, w, h, m)
@@ -401,11 +406,25 @@ def build_backdrop(seed=7):
             y += w + rng.uniform(0.4, 1.6)
             i += 1
 
-    # Haze: pale strip in front of the city base — grounds the silhouette and hides
-    # the hard line where distant ground meets the backdrop.
-    haze = _box(city_col, "haze", CITY_X - 1.6, 0, 0.65, 0.1, 240, 1.5,
-                _emat("load_haze", HAZE_TONE))
-    mark_noink(haze)
+    # Haze: grounds the silhouette — but SPLIT around the road corridor. One unbroken
+    # strip occluded the road's last stretch, so the street visibly ended in haze a
+    # dozen units short of the skyline (the owner's "gap to the city").
+    for tag, y0h, y1h in (("s", -121.3, -1.3), ("n", 1.3, 121.3)):
+        hz = _box(city_col, "haze_" + tag, CITY_X - 1.6, (y0h + y1h) / 2, 0.65,
+                  0.1, y1h - y0h, 1.5, _emat("load_haze", HAZE_TONE))
+        mark_noink(hz)
+
+    # Gate blocks: two deliberate taller buildings flanking the road's entry into the
+    # city, so the corridor reads as a street between buildings rather than a slot.
+    # The gates must stand IN FRONT of the haze (haze x = CITY_X - 1.6) or the wash
+    # fades them to ghosts and the corridor loses its frame.
+    gm = _emat("load_city_gate", (0.245, 0.290, 0.350))
+    gx = CITY_X - 2.6
+    for tag, gy in (("s", -2.5), ("n", 2.5)):
+        g = _box(city_col, "city_gate_" + tag, gx, gy, 1.15, 1.2, 2.4, 2.3, gm)
+        mark_noink(g)
+        gt = _box(city_col, "city_gate_t_" + tag, gx, gy, 2.62, 1.0, 1.4, 0.65, gm)
+        mark_noink(gt)
 
     # Clouds (owner: 3-4). Flat poster cutouts: clusters of camera-facing cylinders
     # over a flat-bottom slab — single pale emission tone, NOINK, so the overlaps
@@ -441,7 +460,7 @@ def build_backdrop(seed=7):
 # Depth slices for the Godot push-in. Scaled about the vanishing point at different
 # rates, back to front. The street (ground+road) spans every depth, so it rides at the
 # NEAR rate — the standard 2.5D-push cheat, invisible at the subtle zoom used here.
-FAR_SLOTS = ("off_d", "fur_b", "pp_a", "pp_b", "pet_a")
+FAR_SLOTS = ("off_d", "fur_b", "pp_a", "pp_b", "pet_a", "off_e", "fac_e", "off_f")
 
 LAYERS = [
     ("L0_sky",   lambda n: n == "LOAD_sky"),
@@ -534,6 +553,13 @@ SLOTS = [
     ("fur_b", "furnace",     2,   0.0,  45.0, "n"),
     ("pp_a",  "powerplant",  3, 180.0,  52.0, "s"),
     ("pp_b",  "powerplant",  2,   0.0,  60.0, "n"),
+    # approach: small fillers bridging the last plants to the city skyline, so the
+    # street runs continuously INTO the city instead of stopping 14 units short of
+    # it (the owner's "gap to the city" — the other half of the fix, with the
+    # corridor through the haze).
+    ("off_e", "office",      1, 180.0, 66.0, "s"),
+    ("fac_e", "factory",     1, -90.0, 67.5, "n"),
+    ("off_f", "office",      2,   0.0, 71.5, "n"),
 ]
 
 # Every builder file defines a module-level LEVELS and reads it from its exec namespace,
