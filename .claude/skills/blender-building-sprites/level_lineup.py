@@ -132,13 +132,104 @@ def build_stack(builder, name, levels=(1, 2, 3), margin=1.10, ppu=93.0):
             "ortho_scale": round(span, 3), "res": [px, px]}
 
 
+def fit_stack(name, res=1080, margin=0.06, bottom=0.19, ppu_base=93.0, base_res=None):
+    """Frame every visible STACK_<name>_L* level, reserving a caption band at the bottom.
+
+    NDC y is 0 at the BOTTOM, and captions are drawn there, so the fit is ASYMMETRIC:
+    x into [margin, 1-margin] but y into [bottom, 1-margin]. Centring symmetrically drops
+    the building onto its own caption — the furnace's L3 landed at y=1022 against a caption
+    band at 972-1020. Reserve the band in the FRAMING; shifting the rendered pixels up
+    instead clips the top, which is where the tallest level's stack lives.
+
+    Also rescales Freestyle to the new canvas: thickness is in ABSOLUTE PIXELS, so a render
+    bigger than the sprite rig's 93 px-per-world-unit thins the ink relative to the subject.
+    """
+    from bpy_extras.object_utils import world_to_camera_view
+    scene = bpy.context.scene
+    cam = bpy.data.objects["Camera"]
+
+    for c in bpy.data.collections:
+        if c.name.startswith("STACK_%s_L" % name):
+            c.hide_render = False
+            c.hide_viewport = False
+
+    if base_res is None:
+        base_res = scene.render.resolution_x
+    k = res / float(base_res)
+    scene.render.resolution_x = scene.render.resolution_y = res
+    fs = scene.view_layers[0].freestyle_settings
+    fs.linesets["ink"].linestyle.thickness = 2.4 * k
+    fs.linesets["contour"].linestyle.thickness = 7.0 * k
+    if "ink_fine" in fs.linesets:
+        fs.linesets["ink_fine"].linestyle.thickness = 1.05 * k
+
+    def bbox():
+        xs, ys = [], []
+        for c in bpy.data.collections:
+            if not c.name.startswith("STACK_%s_L" % name) or c.hide_render:
+                continue
+            for ob in c.objects:
+                if ob.type != 'MESH':
+                    continue
+                mw = ob.matrix_world
+                for v in ob.data.vertices:
+                    p = world_to_camera_view(scene, cam, mw @ v.co)
+                    xs.append(p.x)
+                    ys.append(p.y)
+        return min(xs), max(xs), min(ys), max(ys)
+
+    for _ in range(4):
+        x0, x1, y0, y1 = bbox()
+        cam.data.ortho_scale *= max((x1 - x0) / (1 - 2 * margin),
+                                    (y1 - y0) / (1 - margin - bottom))
+        bpy.context.view_layer.update()
+        x0, x1, y0, y1 = bbox()
+        m3 = cam.matrix_world.to_3x3()
+        cam.location = (cam.location
+                        + (m3 @ mathutils.Vector((1, 0, 0)))
+                        * (((x0 + x1) / 2 - 0.5) * cam.data.ortho_scale)
+                        + (m3 @ mathutils.Vector((0, 1, 0)))
+                        * (((y0 + y1) / 2 - (bottom + 1 - margin) / 2) * cam.data.ortho_scale))
+        bpy.context.view_layer.update()
+    return {"ndc": [round(v, 4) for v in bbox()], "ortho": round(cam.data.ortho_scale, 3),
+            "res": res, "ink_scale": round(k, 3)}
+
+
+def render_stack(name, out_dir, levels=(1, 2, 3)):
+    """Render each level alone to out_dir/L<n>.png at the current camera."""
+    import os
+    os.makedirs(out_dir, exist_ok=True)
+    scene = bpy.context.scene
+    scene.render.image_settings.file_format = 'PNG'
+    scene.render.image_settings.color_mode = 'RGBA'
+    scene.render.film_transparent = True
+    for lv in levels:
+        show_only(name, lv, levels)
+        scene.render.filepath = os.path.join(out_dir, "L%d" % lv)
+        bpy.ops.render.render(write_still=True)
+    return {"out": out_dir, "levels": list(levels)}
+
+
 def show_only(name, level, levels=(1, 2, 3)):
-    """Make exactly one STACK level renderable. Used between renders."""
+    """Make exactly one STACK level renderable. Used between renders.
+
+    Hides per OBJECT as well as per collection. Builders that use a fine-ink assembly
+    (transformer / pylon / lattice_mast / insulator_string — the power plant uses several)
+    DUAL-LINK those objects into FINE_INK, which stays visible so the ink_fine lineset can
+    draw. Hiding only this level's collection therefore leaves the other levels' pylons and
+    transformers renderable, and they composite straight over the level being rendered.
+    See geometry rule 12.
+    """
     for lv in levels:
         c = bpy.data.collections.get("STACK_%s_L%d" % (name, lv))
-        if c:
-            c.hide_render = (lv != level)
-            c.hide_viewport = (lv != level)
+        if not c:
+            continue
+        off = lv != level
+        c.hide_render = off
+        c.hide_viewport = off
+        for ob in c.objects:
+            ob.hide_render = off
+            ob.hide_viewport = off
     return {"visible": level}
 
 
