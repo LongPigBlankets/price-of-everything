@@ -67,6 +67,81 @@ def _translate(col, vec):
     bpy.context.view_layer.update()
 
 
+def build_stack(builder, name, levels=(1, 2, 3), margin=1.10, ppu=93.0):
+    """Build every level AT THE SAME ORIGIN, framed by one camera that fits them all.
+
+    For an upgrade cross-fade the levels must occupy the same ground, so the building
+    appears to grow in place rather than sliding. The camera is fitted to the UNION of all
+    levels, so nothing clips at any point in the sequence and the smaller levels render at
+    their true relative size inside that fixed frame — which is what sells the growth.
+
+    Returns the per-level collections; render them one at a time with `show_only`.
+    """
+    cols = []
+    for lv in levels:
+        builder(lv)
+        src = bpy.data.collections.get("BLDG_%s" % name)
+        if src is None or not src.objects:
+            raise RuntimeError("builder produced nothing in BLDG_%s" % name)
+        cols.append(_move_to_collection(src, "STACK_%s_L%d" % (name, lv)))
+
+    # Hide EVERY other building collection, not just BLDG_*. A previous build_lineup leaves
+    # SHOWCASE_* collections standing at their spread-out positions; they are not BLDG_*, so
+    # a BLDG-only sweep leaves them renderable and they intrude from off-frame (they showed
+    # up as an inked strip pinned to the right edge of all three stack renders, including
+    # L1, whose own building was nowhere near that edge).
+    keep = {c.name for c in cols}
+    for c in bpy.data.collections:
+        if c.name in keep or c.name == "FINE_INK":
+            continue
+        if c.name.startswith("BLDG_") or c.name.startswith("SHOWCASE_") or c.name.startswith("STACK_"):
+            c.hide_render = True
+            c.hide_viewport = True
+
+    # FINE_INK leaks past collection hiding — see geometry rule 12.
+    mine = set()
+    for col in cols:
+        mine.update(o.name for o in col.objects)
+    fine = bpy.data.collections.get("FINE_INK")
+    if fine:
+        for ob in fine.objects:
+            stale = ob.name not in mine
+            ob.hide_render = stale
+            ob.hide_viewport = stale
+
+    right, up = _screen_axes()
+    xs, ys = [], []
+    for col in cols:
+        for v in _world_verts(col):
+            xs.append(v.dot(right))
+            ys.append(v.dot(up))
+    W, H = max(xs) - min(xs), max(ys) - min(ys)
+    cam = bpy.data.objects.get("Camera")
+    scene = bpy.context.scene
+    span = max(W, H) * margin
+    cam.data.ortho_scale = span
+    cam.location = (right * ((min(xs) + max(xs)) / 2) + up * ((min(ys) + max(ys)) / 2)
+                    + mathutils.Vector((1, -1, 1)).normalized() * 60.0)
+    # Square canvas: ortho_scale maps to the larger dimension, and a square keeps the
+    # framing valid whichever way the union turns out.
+    px = int(round(span * ppu))
+    scene.render.resolution_x = px
+    scene.render.resolution_y = px
+
+    return {"collections": [c.name for c in cols], "levels": list(levels),
+            "ortho_scale": round(span, 3), "res": [px, px]}
+
+
+def show_only(name, level, levels=(1, 2, 3)):
+    """Make exactly one STACK level renderable. Used between renders."""
+    for lv in levels:
+        c = bpy.data.collections.get("STACK_%s_L%d" % (name, lv))
+        if c:
+            c.hide_render = (lv != level)
+            c.hide_viewport = (lv != level)
+    return {"visible": level}
+
+
 def build_lineup(builder, name, levels=(1, 2, 3), gap=0.9, margin=1.06):
     """Build `levels` via `builder(level)` and lay them out left->right on screen.
 
