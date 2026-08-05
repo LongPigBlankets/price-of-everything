@@ -264,14 +264,23 @@ def build_lineup(builder, name, levels=(1, 2, 3), gap=0.9, margin=1.06):
         _translate(col, mathutils.Vector((t, t, 0.0)))
         cursor += (u1 - u0) + gap
 
-    # 3. Hide every BLDG_* (the builders left the last one visible), show the showcase set.
+    # 3. Hide every other building collection — BLDG_*, and also the SHOWCASE_*/STACK_*
+    #    sets a previous run may have left standing. A BLDG-only sweep leaves those
+    #    renderable and they intrude from off-frame.
+    keep = {c.name for c in cols}
     for c in bpy.data.collections:
-        if c.name.startswith("BLDG_"):
+        if c.name in keep:
+            continue
+        if (c.name.startswith("BLDG_") or c.name.startswith("SHOWCASE_")
+                or c.name.startswith("STACK_")):
             c.hide_render = True
             c.hide_viewport = True
     for col in cols:
         col.hide_render = False
         col.hide_viewport = False
+        for ob in col.objects:          # clear any per-object hide from show_only
+            ob.hide_render = False
+            ob.hide_viewport = False
 
     # 3b. FINE_INK defeats collection hiding. Any builder using a fine-ink assembly
     #     (pylon / transformer / lattice_mast / insulator_string) DUAL-LINKS those objects
