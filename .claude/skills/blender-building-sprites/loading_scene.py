@@ -205,6 +205,13 @@ def setup_load_rig(res_x=1920, res_y=1080):
     contour = fs.linesets["contour"]
     contour.linestyle.color = (0.045, 0.055, 0.11)
     contour.linestyle.thickness = 7.0
+    # The 7px contour wraps EVERY isolated silhouette — right for a lone sprite
+    # building, wrong for street furniture: each grass tuft got a thick navy ring
+    # (the owner's "thick navy lines along the sidewalk"). Fine-ink objects keep
+    # their 1.05px line and lose the wrap.
+    contour.select_by_collection = True
+    contour.collection = fine
+    contour.collection_negation = 'EXCLUSIVE'
 
     for ls in (ink, lf, contour):
         ls.select_by_face_marks = True
@@ -746,17 +753,27 @@ def phase3():
 
     for i, (x, side, h, r) in enumerate(TREES):
         ty = side * (BUILDING_FRONT_Y - r - 0.12)
-        kit_for(x).tree("tree_%d" % i, x, ty, h, r)
+        kit_for(x).tree("tree_%d" % i, x, ty, h, r, seed=i * 7 + 3)
     lamp_y = ROAD_HALF_W + 0.30
     for i, (x, side) in enumerate(LAMPS):
         kit_for(x).lamppost("lamp_%d" % i, x, side * lamp_y, toward=-side)
     for i, (p0, p1) in enumerate(FENCES):
         kit_for(p0[0]).fence_run("fence_%d" % i, p0, p1)
     rng = random.Random(11)
-    for i in range(26):
-        x = rng.uniform(-7.5, 14.0)
+    # Patches carry the grass texture (soft NOINK discs of off-tone green); a few
+    # small tufts sit on top as accents. The 26-tuft carpet read as chunky scribble.
+    for i in range(14):
+        x = rng.uniform(-7.5, 18.0)
         side = rng.choice((1, -1))
-        y = side * rng.uniform(ROAD_HALF_W + SIDEWALK_W + 0.10, BUILDING_FRONT_Y - 0.25)
-        kits["near"].grass_tuft("tuft_%d" % i, x, y, rng.uniform(0.8, 1.4))
+        y = side * rng.uniform(ROAD_HALF_W + SIDEWALK_W + 0.35, BUILDING_FRONT_Y - 0.35)
+        kits["near"].grass_patch("patch_%d" % i, x, y,
+                                 rx=rng.uniform(0.30, 0.75), ry=rng.uniform(0.20, 0.45),
+                                 dark=rng.random() < 0.5, blades=rng.randint(2, 4),
+                                 seed=i * 13 + 1)
+    for i in range(7):
+        x = rng.uniform(-7.0, 12.0)
+        side = rng.choice((1, -1))
+        y = side * rng.uniform(ROAD_HALF_W + SIDEWALK_W + 0.15, BUILDING_FRONT_Y - 0.3)
+        kits["near"].grass_tuft("tuft_%d" % i, x, y, rng.uniform(0.7, 1.0))
     setup_load_rig()
     return {"trees": len(TREES), "lamps": len(LAMPS), "fences": len(FENCES), "tufts": 26}

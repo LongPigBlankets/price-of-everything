@@ -7,6 +7,9 @@ object from FINE_INK, so props that fine-ink themselves must be built AFTER all
 builders have run. If phase1 re-runs, phase3 must re-run too, or the props silently
 revert to thick ink.
 """
+import math
+import bpy
+import bmesh
 
 # Palette additions — picked against the measured AgX curve like every kit tone.
 PALETTE["canopy"] = (0.150, 0.310, 0.100)      # lit foliage
@@ -14,14 +17,72 @@ PALETTE["canopy_dark"] = (0.100, 0.215, 0.075) # shaded foliage mass
 PALETTE["bark"] = (0.170, 0.120, 0.080)
 
 
-def _tree(self, name, x, y, h=1.9, r=0.45):
-    """Poster street tree: short trunk, canopy of three smooth spheres — one dark at
-    the back for depth, two lit in front. Spheres keep hard ink silhouettes (smooth
-    sides, rule 6) and the two-tone mass reads as foliage without any texture."""
-    self.dircyl(name + "_trunk", (x, y, 0.0), (x, y, h * 0.45), r * 0.14, self.mat("bark"))
-    self.sphere(name + "_c0", x + r * 0.30, y - r * 0.25, h * 0.68, r, self.mat("canopy"))
-    self.sphere(name + "_c1", x - r * 0.45, y + r * 0.30, h * 0.72, r * 0.78, self.mat("canopy_dark"))
-    self.sphere(name + "_c2", x + r * 0.15, y + r * 0.15, h * 0.92, r * 0.62, self.mat("canopy"))
+def _tree(self, name, x, y, h=1.9, r=0.45, seed=0):
+    """Stylised clump-canopy street tree (the standard cartoon-tree construction:
+    a CROWN OF 6-8 OVERLAPPING BLOBS, not a lollipop). Freestyle inks only the union
+    silhouette — clump-to-clump intersections carry no line (the T-junction rule,
+    working FOR us here) — so the crown reads as one lumpy organic mass, same
+    grammar as the clouds. Shaded clumps sit low/back, lit clumps high/front; a
+    couple of branch stubs tie crown to trunk. Seeded: every tree differs, every
+    rebuild repeats."""
+    import random
+    rng = random.Random(seed)
+    zc = h * 0.70
+    self.dircyl(name + "_trunk", (x, y, 0.0), (x, y, h * 0.52), r * 0.13, self.mat("bark"))
+    for bi in range(2):
+        ang = rng.uniform(0, 6.283)
+        bx, by = x + math.cos(ang) * r * 0.4, y + math.sin(ang) * r * 0.4
+        self.dircyl("%s_br%d" % (name, bi), (x, y, h * 0.44),
+                    (bx, by, zc - r * 0.15), r * 0.055, self.mat("bark"))
+    clumps = [(0.0, 0.0, 0.10, 1.00)]                # (dx, dy, dz, radius factor)
+    for ci in range(rng.randint(5, 7)):
+        ang = rng.uniform(0, 6.283)
+        rad = rng.uniform(0.45, 0.85) * r
+        clumps.append((math.cos(ang) * r * rng.uniform(0.45, 0.8),
+                       math.sin(ang) * r * rng.uniform(0.45, 0.8),
+                       rng.uniform(-0.35, 0.55) * r, rad / r))
+    for ci, (dx, dy, dz, rf) in enumerate(clumps):
+        # back (+y) and low clumps in shade; front-top in light — the sun contract.
+        shaded = dy > r * 0.15 or dz < -r * 0.1
+        ob = self.sphere("%s_c%d" % (name, ci), x + dx, y + dy, zc + dz, r * rf,
+                         self.mat("canopy_dark" if shaded else "canopy"))
+        ob.scale = (1.0, 1.0, rng.uniform(0.82, 0.95))   # slight squash: foliage, not balls
+
+
+def _mark_noink_props(ob):
+    mesh = ob.data
+    attr = mesh.attributes.get("freestyle_face")
+    if attr is None:
+        attr = mesh.attributes.new("freestyle_face", 'BOOLEAN', 'FACE')
+    for d in attr.data:
+        d.value = True
+
+
+def _grass_patch(self, name, x, y, rx=0.45, ry=0.30, dark=False, blades=3, seed=0):
+    """A soft PATCH of grass: a flat NOINK disc of off-tone green lying on the verge
+    (no outline — it reads as meadow variation, not an object), with a few fine-ink
+    blades on its rim. Patches carry the texture; blades are accents only."""
+    import random
+    rng = random.Random(seed)
+    m = bpy.data.meshes.new(name + "_pad")
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=12, radius1=1.0, radius2=1.0, depth=0.012)
+    bm.to_mesh(m); bm.free()
+    ob = self.obj(name + "_pad", m, self.mat("canopy_dark" if dark else "canopy"))
+    ob.location = (x, y, 0.028)
+    ob.scale = (rx, ry, 1.0)
+    _mark_noink_props(ob)
+    _fm = self._fine_mode
+    self._fine_mode = True
+    for i in range(blades):
+        ang = rng.uniform(0, 6.283)
+        bx = x + math.cos(ang) * rx * rng.uniform(0.4, 0.85)
+        by = y + math.sin(ang) * ry * rng.uniform(0.4, 0.85)
+        self.dircyl("%s_b%d" % (name, i), (bx, by, 0.0),
+                    (bx + rng.uniform(-0.03, 0.03), by + rng.uniform(-0.03, 0.03),
+                     rng.uniform(0.06, 0.10)),
+                    0.010, self.mat("canopy_dark"), segments=6, smooth=False)
+    self._fine_mode = _fm
 
 
 def _grass_tuft(self, name, x, y, s=1.0):
@@ -74,6 +135,7 @@ def _lamppost(self, name, x, y, h=1.55, arm=0.45, toward=-1):
 
 
 Kit.tree = _tree
+Kit.grass_patch = _grass_patch
 Kit.grass_tuft = _grass_tuft
 Kit.fence_run = _fence_run
 Kit.lamppost = _lamppost
