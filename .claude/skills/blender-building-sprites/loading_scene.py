@@ -29,9 +29,11 @@ SCENE_NAME = "Loading"
 
 # ── Street geometry contract (P1 places buildings against these numbers) ─────
 ROAD_HALF_W = 0.62          # road half-width; two lanes at building scale
-KERB_W = 0.10
-PAVEMENT_W = 0.55           # pavement strip between kerb and building fronts
-BUILDING_FRONT_Y = ROAD_HALF_W + KERB_W + PAVEMENT_W   # facades sit at this y
+SIDEWALK_W = 0.95           # raised sidewalk flanking the road (owner: on both sides)
+SIDEWALK_TOP = 0.105        # visibly a step above the road surface (~0.058)
+KERB_W = 0.10               # pale lip on the sidewalk's road edge
+SETBACK_W = 1.00            # grass strip between sidewalk and the facades
+BUILDING_FRONT_Y = ROAD_HALF_W + SIDEWALK_W + SETBACK_W   # facades sit at this y
 STREET_X0, STREET_X1 = -14.0, 92.0    # camera end -> vanishing point at the city
 CITY_X = 74.0               # distant city backdrop plane (P2), faces the camera (-X)
 SKY_X = 90.0                # sky backdrop plane, faces the camera
@@ -43,6 +45,7 @@ TONES = {
     "load_ground":  (0.128, 0.150, 0.098),   # dry green-grey field
     "load_asphalt": (0.085, 0.095, 0.115),   # road — darker than ground, navy-leaning
     "load_kerb":    (0.420, 0.400, 0.340),   # pale stone, small surface
+    "load_walk":    (0.240, 0.235, 0.215),   # sidewalk concrete — large surface, stays low
     "load_dash":    (0.700, 0.680, 0.600),   # centre-line dashes
     "load_sky":     (0.520, 0.600, 0.660),   # placeholder single tone; banded in P2
 }
@@ -137,7 +140,7 @@ def setup_load_rig(res_x=1920, res_y=1080):
     cam_ob.data.type = 'PERSP'
     cam_ob.data.lens = 32.0
     cam_ob.data.clip_end = 200.0
-    cam_ob.location = (-8.0, -0.45, 0.95)
+    cam_ob.location = (-8.0, 0.0, 0.95)    # dead centre of the road (owner)
     cam_ob.rotation_euler = (math.radians(90.0), 0.0, math.radians(-90.0))  # look +X, plumb verticals
     cam_ob.data.shift_y = 0.10                               # rising front instead of tilt
     sc.camera = cam_ob
@@ -241,10 +244,16 @@ def build_street_scaffold():
     _box(col, "road", cx, 0, 0.0 + EPS / 2,
          STREET_X1 - STREET_X0, ROAD_HALF_W * 2, 0.1 + EPS, _mat("load_asphalt"))
 
-    # Kerbs: slim pale strips, slightly proud of the road.
-    for side, name in ((1, "kerb_n"), (-1, "kerb_s")):
-        _box(col, name, cx, side * (ROAD_HALF_W + KERB_W / 2), 0.03,
-             STREET_X1 - STREET_X0, KERB_W, 0.06 + EPS, _mat("load_kerb"))
+    # Raised sidewalks flanking the road, with a pale kerb lip on the road edge. The
+    # slab is a real step above the asphalt (SIDEWALK_TOP vs ~0.058) so the kerb face
+    # catches its own ink line down the whole street.
+    for side, tag in ((1, "n"), (-1, "s")):
+        yc = side * (ROAD_HALF_W + SIDEWALK_W / 2)
+        _box(col, "walk_" + tag, cx, yc, SIDEWALK_TOP / 2,
+             STREET_X1 - STREET_X0, SIDEWALK_W, SIDEWALK_TOP, _mat("load_walk"))
+        _box(col, "kerb_" + tag, cx, side * (ROAD_HALF_W + KERB_W / 2),
+             SIDEWALK_TOP / 2 + 0.006,
+             STREET_X1 - STREET_X0 + EPS, KERB_W, SIDEWALK_TOP + 0.012, _mat("load_kerb"))
 
     # Centre dashes.
     dash_l, gap = 0.42, 0.55
