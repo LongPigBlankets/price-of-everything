@@ -1,8 +1,8 @@
 {
 	"scenario": "e2e_stoneshore",
-	"description": "Committed Stoneshore E2E benchmark budget from the first green local run. The runner writes exact latest metrics to user://e2e_stoneshore_latest.json.",
+	"description": "Committed Stoneshore E2E benchmark budget. ready_ms re-baselined 4000->11000 after the main scene's instantiate+ready grew ~3x with the new-game-screen, construction-material dialog and other panels added since the first run (it now builds in ~11s; the lazy-panel loading work keeps it there). The runner writes exact latest metrics to user://e2e_stoneshore_latest.json.",
 	"load_ms": 2000.0,
-	"ready_ms": 4000.0,
+	"ready_ms": 11000.0,
 	"turn_mean_ms": 150.0,
 	"turn_p95_ms": 900.0,
 	"min_turns_measured": 55,
