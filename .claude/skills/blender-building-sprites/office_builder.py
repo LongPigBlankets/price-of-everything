@@ -71,6 +71,15 @@ def build_office(variant: int = 1) -> dict:
             yc = d + (j + 0.5) * wb / max(1, int(wb / 1.05))
             K.window("wb_f%d_%d" % (f, j), "-X" if sgn > 0 else "+X",
                      ((bx0 if sgn > 0 else bx1), yc, zc), win_w, win_h, 1, 1)
+            # ...and the opposite X face of wing B, else it is a blank slab.
+            K.window("wbo_f%d_%d" % (f, j), "+X" if sgn > 0 else "-X",
+                     ((bx1 if sgn > 0 else bx0), yc, zc), win_w, win_h, 1, 1)
+        # End faces. The loading street sees every office from the WEST (one-point
+        # perspective), so a blank gable end reads as a grey slab behind the trees —
+        # one window per floor on each exposed end keeps all four elevations alive.
+        K.window("wae_f%d" % f, "-X", (ax0, d / 2, zc), win_w, win_h, 1, 1)
+        K.window("waw_f%d" % f, "+X", (ax1, d / 2, zc), win_w, win_h, 1, 1)
+        K.window("wbe_f%d" % f, "+Y", ((bx0 + bx1) / 2, d + wb, zc), win_w, win_h, 1, 1)
 
     # Entrance: factory-pattern flat darkmetal panel. Height is CAPPED at the top of
     # the ground-floor windows (owner: the door must not touch the window above it —

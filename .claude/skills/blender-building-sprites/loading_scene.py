@@ -34,7 +34,7 @@ SIDEWALK_TOP = 0.105        # visibly a step above the road surface (~0.058)
 KERB_W = 0.10               # pale lip on the sidewalk's road edge
 SETBACK_W = 1.00            # grass strip between sidewalk and the facades
 BUILDING_FRONT_Y = ROAD_HALF_W + SIDEWALK_W + SETBACK_W   # facades sit at this y
-STREET_X0, STREET_X1 = -14.0, 92.0    # camera end -> vanishing point at the city
+STREET_X0, STREET_X1 = -20.0, 92.0    # camera end -> vanishing point at the city
 CITY_X = 74.0               # distant city backdrop plane (P2), faces the camera (-X)
 SKY_X = 90.0                # sky backdrop plane, faces the camera
 
@@ -141,7 +141,7 @@ def setup_load_rig(res_x=1920, res_y=1080):
     cam_ob.data.type = 'PERSP'
     cam_ob.data.lens = 32.0
     cam_ob.data.clip_end = 200.0
-    cam_ob.location = (-8.0, 0.0, 0.62)    # centreline, LOW — buildings loom (owner)
+    cam_ob.location = (-13.0, 0.0, 0.62)   # pulled back: entrance zone in frame (owner)
     cam_ob.rotation_euler = (math.radians(90.0), 0.0, math.radians(-90.0))  # look +X, plumb verticals
     cam_ob.data.shift_y = 0.125                              # rising front instead of tilt
     sc.camera = cam_ob
@@ -295,6 +295,26 @@ def build_street_scaffold():
         x += dash_l + gap
         i += 1
 
+    # Single-lane side roads between buildings (owner): a crossing slab over the
+    # sidewalk, then a lane running back into the lots, plus parking pads with
+    # white bay dividers beside some of them.
+    for sx, side in ((7.5, 1), (29.5, 1), (48.5, 1), (11.5, -1), (33.5, -1), (46.0, -1)):
+        sgn = side
+        _box(col, "siderd_x_%s_%d" % (side, int(sx * 10)), sx,
+             sgn * (ROAD_HALF_W + SIDEWALK_W / 2), SIDEWALK_TOP + 0.004,
+             0.62, SIDEWALK_W + EPS, 0.014, _mat("load_asphalt"))
+        _box(col, "siderd_l_%s_%d" % (side, int(sx * 10)), sx,
+             sgn * (ROAD_HALF_W + SIDEWALK_W + 2.6), -0.02 + EPS,
+             0.62, 5.2, 0.1, _mat("load_asphalt"))
+    for px, side in ((8.9, 1), (30.9, 1), (12.9, -1), (47.4, -1)):
+        sgn = side
+        py = sgn * (BUILDING_FRONT_Y + 0.9)
+        _box(col, "park_pad_%s_%d" % (side, int(px * 10)), px, py, -0.02 + EPS * 2,
+             2.3, 1.7, 0.1, _mat("load_asphalt"))
+        for bi in range(4):
+            _box(col, "park_bay_%s_%d_%d" % (side, int(px * 10), bi),
+                 px - 1.15 + 0.575 * bi + 0.2875, py, 0.033,
+                 0.03, 1.5, 0.012, _mat("load_dash"))
     return {"objects": len(col.objects), "building_front_y": BUILDING_FRONT_Y}
 
 
@@ -619,6 +639,51 @@ def render_layers(out_dir=None, width=2400, height=1350):
                 temp_marked.append(ob.name)
         sc.render.filepath = os.path.join(out_dir, name)
         bpy.ops.render.render(write_still=True)
+        # LIGHT MASK for the scene stipple: same camera, white override, no ink,
+        # backdrop hidden (emission under an override would read as shaded and
+        # collect dots). Pure illumination -> scene_stipple.py bands from it.
+        if name not in ("L0_sky", "L1_city"):
+            ov = bpy.data.materials.get("_light_mask_override")
+            if ov is None:
+                ov = bpy.data.materials.new("_light_mask_override")
+                ov.use_nodes = True
+                b = ov.node_tree.nodes.get("Principled BSDF")
+                b.inputs["Base Color"].default_value = (0.8, 0.8, 0.8, 1.0)
+                b.inputs["Roughness"].default_value = 1.0
+                b.inputs["Specular IOR Level"].default_value = 0.0
+            vl = sc.view_layers[0]
+            backdrop_state = []
+            for cn in ("LOAD_sky", "LOAD_city"):
+                cc = bpy.data.collections.get(cn)
+                if cc:
+                    for ob in cc.objects:
+                        backdrop_state.append((ob.name, ob.hide_render))
+                        ob.hide_render = True
+            # Owner: "fully lit facades carry no stipple". EEVEE's sun shadow maps
+            # blanket south-facing VERTICALS in phantom shade (a bare test cube with
+            # provably clear sun rays masks at ambient level — renderer artifact;
+            # horizontal surfaces shadow correctly), which would dot exactly the
+            # walls that must stay clean. So the BUILDING layers' masks render with
+            # sun shadows OFF — facades band on face orientation alone, the owner's
+            # actual rule — while the STREET layer's mask keeps shadows for the
+            # ground, where they render right: tree/building shade on road and lawn
+            # keeps its denser dot bands.
+            sun_ob = bpy.data.objects.get("LoadSun")
+            if name in ("L3_far", "L4_near") and sun_ob:
+                sun_ob.data.use_shadow = False
+            vl.material_override = ov
+            sc.render.use_freestyle = False
+            os.makedirs(os.path.join(out_dir, "masks"), exist_ok=True)
+            sc.render.filepath = os.path.join(out_dir, "masks", name)
+            bpy.ops.render.render(write_still=True)
+            vl.material_override = None
+            sc.render.use_freestyle = True
+            if sun_ob:
+                sun_ob.data.use_shadow = True
+            for obname2, hr in backdrop_state:
+                ob = bpy.data.objects.get(obname2)
+                if ob:
+                    ob.hide_render = hr
         for obname in temp_marked:
             ob = bpy.data.objects.get(obname)
             if ob and ob.type == 'MESH':
@@ -653,10 +718,16 @@ def render_layers(out_dir=None, width=2400, height=1350):
 # Depth order builds the skyline: offices and factories near the camera, the big
 # stack-and-tower plants further east so they stand against the city (P2).
 SLOTS = [
+    # entrance (owner): construction site first on the LEFT; the right entrance is
+    # the park, planted in phase3. rz 180 is the one orientation that brings the
+    # CRANE (built centre-back of the sprite) to the street edge, where the frame's
+    # wide FOV can still see it — every other rotation leaves it mid-lot, which this
+    # close to camera is off-frame left. _stage_con_a() then rescales it into shot.
+    ("con_a", "construction", 0, 180.0,  -6.1, "n"),
     # near (west, large in frame)
-    ("off_a", "office",      1, 180.0,  -3.0, "s"),
+    ("off_a", "office",      1, 180.0,   2.5, "s"),   # moved east: the park owns the right entrance
     ("fac_a", "factory",     3,  -90.0,  1.5, "n", 0.9),   # L3; set back for the annex
-    ("off_b", "office",      2, 180.0,   6.0, "s"),
+    ("off_b", "office",      2, 180.0,   9.5, "s"),
     ("pol_a", "poly",        2,   0.0,  12.5, "n"),
     # mid
     ("fur_a", "furnace",     3, 180.0,  17.0, "s"),
@@ -684,6 +755,7 @@ SLOTS = [
 # namespace, so its LEVELS resolves correctly.
 _BASE = "/Users/crisu/Price of Everything/blender-assets/"
 BUILDERS = {
+    "construction": ("construction_site_builder.py", "build_construction_site", "BLDG_construction"),
     "factory":    ("factory_builder.py",       "build_factory",       "BLDG_factory"),
     "furnace":    ("furnace_builder.py",       "build_furnace",       "BLDG_furnace"),
     "powerplant": ("power_plant_builder.py",   "build_power_plant",   "BLDG_powerplant"),
@@ -736,6 +808,32 @@ def _place(col, rz_deg, slot_x, side="n", extra_setback=0.0):
         ob.hide_viewport = False
 
 
+def _stage_con_a(col):
+    """Loading-scene-only dressing of the LOAD copy (the sprite builder is untouched:
+    phase1 rebuilds BLDG_construction fresh, so this never leaks back). The sprite
+    crane is designed to tower OUT of the sprite frame — at the street entrance that
+    means towering out of SHOT: a 5.6 mast exits the frame top anywhere nearer than
+    ~10 units, and the jib along +X foreshortens to nothing for this camera. Scale
+    the crane 0.58 about its base (frame top at the mast's distance is ~z 3.6, so
+    the full jib clears it) and swing the jib to point SOUTH, over the street, so
+    mast + raked jib both read inside the frame at ground level."""
+    crane = [ob for ob in col.objects
+             if ob.type == 'MESH' and ob.name.split(".")[0].startswith("crane")]
+    pad = next((ob for ob in crane if ob.name.split(".")[0] == "crane_pad"), None)
+    if not crane or pad is None:
+        return
+    # Kit.box bakes verts at (cx,cy,cz) with an identity object matrix, so the
+    # object's translation is meaningless — the pad's bbox centre is the mast axis.
+    cs = [pad.matrix_world @ mathutils.Vector(c) for c in pad.bound_box]
+    pivot = mathutils.Vector((sum(c.x for c in cs) / 8.0, sum(c.y for c in cs) / 8.0, 0.0))
+    m = (mathutils.Matrix.Translation(pivot)
+         @ mathutils.Matrix.Rotation(math.radians(90.0), 4, 'Z')
+         @ mathutils.Matrix.Scale(0.58, 4)
+         @ mathutils.Matrix.Translation(-pivot))
+    for ob in crane:
+        ob.matrix_world = m @ ob.matrix_world
+
+
 def phase1():
     """Build the cast and place it. Builders stomp the ACTIVE scene's render settings
     and the sprite Camera pose (their setup_rig), so the load rig is re-asserted after."""
@@ -745,7 +843,10 @@ def phase1():
         suffix, kind, level, rz, x, side = slot[:6]
         extra = slot[6] if len(slot) > 6 else 0.0
         fn, col_name = _builder(kind)
-        fn(level)
+        try:
+            fn(level)
+        except TypeError:
+            fn()                       # no-arg builders (construction site)
         src = bpy.data.collections[col_name]
         col = _collection(sc, "LOAD_bldg_%s" % suffix)
         _wipe(col)
@@ -753,6 +854,8 @@ def phase1():
             src.objects.unlink(ob)
             col.objects.link(ob)
         _place(col, rz, x, side, extra)
+        if suffix == "con_a":
+            _stage_con_a(col)
         placed.append({"slot": suffix, "level": level, "objects": len(col.objects)})
     setup_load_rig()
     return {"placed": placed}
@@ -825,6 +928,29 @@ def phase3():
                                    h=0.45 + 0.25 * ((bi * 7) % 3) / 2.0,
                                    r=0.26 + 0.10 * ((bi * 5) % 2), seed=bi * 3 + 2)
             bi += 1
+
+    # THE PARK (owner): the right-hand entrance block is trees, not buildings — a
+    # loose two-deep grove with bushes and patches, x -12..-2 on the south side.
+    prng = random.Random(23)
+    for i in range(9):
+        px = -12.0 + i * 1.25 + prng.uniform(-0.4, 0.4)
+        py = -(2.2 + prng.uniform(0.0, 3.0))
+        kits["near"].tree("park_tree_%d" % i, px, py,
+                          h=prng.uniform(1.5, 2.3), r=prng.uniform(0.38, 0.55),
+                          seed=100 + i * 11)
+    for i in range(6):
+        px = -11.5 + i * 2.0 + prng.uniform(-0.5, 0.5)
+        py = -(2.0 + prng.uniform(0.2, 2.2))
+        kits["near"].spiky_bush("park_bush_%d" % i, px, py,
+                                h=prng.uniform(0.4, 0.7), r=prng.uniform(0.22, 0.34),
+                                seed=200 + i * 7)
+    for i in range(7):
+        px = prng.uniform(-12.0, -2.5)
+        py = -prng.uniform(1.9, 4.8)
+        kits["near"].grass_patch("park_patch_%d" % i, px, py,
+                                 rx=prng.uniform(0.35, 0.8), ry=prng.uniform(0.25, 0.5),
+                                 dark=prng.random() < 0.5, blades=prng.randint(2, 4),
+                                 seed=300 + i * 5)
 
     rng = random.Random(11)
     # Patches carry the grass texture (soft NOINK discs of off-tone green); a few
