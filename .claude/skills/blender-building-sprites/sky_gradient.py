@@ -48,7 +48,12 @@ def sky_gradient(src, dst, top=None, glow=None, glow_mix=GLOW_MIX):
     im = Image.open(src).convert("RGBA")
     a = np.asarray(im).astype(np.float32) / 255.0
     h, w = a.shape[:2]
-    alpha = a[..., 3]
+    # The backdrop is OPAQUE everywhere: the rendered sky plane ends at the
+    # horizon (alpha 0 below), but during the parallax push the street layer's
+    # road-end notch magnifies faster than the city behind it, and any tear
+    # between layers falls through to this one — below-horizon rows carry the
+    # horizon tone instead of void (which composited as a black bar).
+    alpha = np.ones_like(a[..., 3])
 
     stops = list(STOPS)
     if top:
