@@ -868,6 +868,51 @@ def render_layers(out_dir=None, width=2400, height=1350):
     return {"layers": done, "out": out_dir, "res": [width, height]}
 
 
+def render_stations(n=6, spacing=2.25, out_root=None, width=2400, height=1350):
+    """Render the layer set from N camera positions down the street.
+
+    A single still can only be dollied so far: the nearest building is ~5 units
+    ahead, and past ~4.5 of advance it tears apart because nothing was rendered
+    behind it. Stations refresh both resolution and occlusion — the player is
+    cross-faded from one to the next while both are warping, so the joins read as
+    continued motion rather than cuts (impostor/LOD morphing). Each station only
+    has to cover `spacing` of travel, which keeps its worst-case magnification at
+    spacing/(5.3-spacing) and well inside the tearing limit.
+
+    Writes progress.json after every station: this takes tens of minutes and the
+    MCP call will time out long before it finishes, so the log on disk is how the
+    run is followed.
+    """
+    import os
+    import json
+    if out_root is None:
+        out_root = "/Users/crisu/Price of Everything/blender-assets/renders/loading/stations"
+    os.makedirs(out_root, exist_ok=True)
+    sc = get_scene()
+    cam = bpy.data.objects["LoadCam"]
+    done = []
+    logf = os.path.join(out_root, "progress.json")
+    with open(logf, "w") as f:
+        json.dump({"done": [], "total": n, "spacing": spacing, "state": "start"}, f)
+    for i in range(n):
+        cam.location.x = CAM_X + i * spacing
+        sub = os.path.join(out_root, "s%d" % i)
+        try:
+            render_layers(out_dir=sub, width=width, height=height)
+            done.append({"i": i, "cam_x": round(cam.location.x, 3)})
+            state = "ok"
+        except Exception as exc:                      # keep the log honest
+            done.append({"i": i, "error": str(exc)})
+            state = "error"
+        with open(logf, "w") as f:
+            json.dump({"done": done, "total": n, "spacing": spacing,
+                       "state": state}, f)
+        if state == "error":
+            break
+    cam.location.x = CAM_X
+    return {"stations": len(done), "out": out_root}
+
+
 # ── Phase 1: buildings along the street ──────────────────────────────────────
 # Slot: (collection suffix, builder fn name, level, z-rotation deg, x centre).
 # Rotation puts each building's MORE DETAILED LONG SIDE toward the street (owner rule):
