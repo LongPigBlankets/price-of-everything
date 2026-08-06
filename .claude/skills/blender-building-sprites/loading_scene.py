@@ -747,6 +747,18 @@ def render_layers(out_dir=None, width=2400, height=1350):
             #   away-pointing normals recovers the true orientation), rendered
             #   under the Standard view transform for predictable values.
             #   scene_stipple gets per-layer cuts to match (0.55/0.30).
+            # The crane's lattice jib throws a long THIN dashed shadow line across
+            # the entrance lawn — geometrically true, but at dot scale it reads
+            # as a dirt trail, not shade (owner). The crane alone stops casting
+            # into the street mask; ballast and containers keep their blobs.
+            crane_state = []
+            if name == "L2_street":
+                cc2 = bpy.data.collections.get("LOAD_bldg_con_a")
+                if cc2:
+                    for ob2 in cc2.objects:
+                        if ob2.type == 'MESH' and ob2.name.split(".")[0].startswith("crane"):
+                            crane_state.append((ob2.name, ob2.visible_shadow))
+                            ob2.visible_shadow = False
             use_geo = name in ("L3_far", "L4_near")
             vt_prev = sc.view_settings.view_transform
             if use_geo:
@@ -763,6 +775,10 @@ def render_layers(out_dir=None, width=2400, height=1350):
             vl.material_override = None
             sc.render.use_freestyle = True
             sc.view_settings.view_transform = vt_prev
+            for obname2, vs in crane_state:
+                ob2 = bpy.data.objects.get(obname2)
+                if ob2:
+                    ob2.visible_shadow = vs
             for obname2, hr in backdrop_state:
                 ob = bpy.data.objects.get(obname2)
                 if ob:
@@ -915,6 +931,33 @@ def _stage_con_a(col):
          @ mathutils.Matrix.Translation(-pivot))
     for ob in crane:
         ob.matrix_world = m @ ob.matrix_world
+    # Owner (two rounds): the sprite's platform carried over as artifacts at the
+    # site base — its freestyle outline as navy lines across the grass, then its
+    # edges as dotted speck trails. Even sunk below grade it leaked through the
+    # sub-ground slit at the walk/verge box junction (ray-fan traced the trail to
+    # apron_kerb). The plate is invisible-by-design in this scene, so the LOAD
+    # copy simply DELETES it; the crane pad and machine feet are separate boxes
+    # and keep the site's concrete moments, the yard stands on grass.
+    for ob in list(col.objects):
+        if ob.type == 'MESH' and ob.name.split(".")[0] in ("apron", "apron_kerb"):
+            bpy.data.objects.remove(ob, do_unlink=True)
+    # ...and the frame's yard slab keeps its pale plate but loses its OUTLINE —
+    # its front edge peeks just over the lawn horizon and drew as a lone navy
+    # line floating rightward across the grass (the last of the platform lines).
+    for ob in col.objects:
+        if ob.type == 'MESH' and ob.name.split(".")[0] == "slab":
+            mark_noink(ob)
+    # The deep-yard clutter (spoil heaps, pipe stack, excavator, dozer) landed
+    # BEHIND the container row when rz 180 staged the crane streetside — from the
+    # street camera it can only ever flash sub-pixel slivers between the near
+    # boxes, which render as dashed earth/mustard/ink speck trails across the
+    # lawn. It contributes nothing legible at this angle: delete it.
+    for ob in list(col.objects):
+        if ob.type != 'MESH':
+            continue
+        base = ob.name.split(".")[0]
+        if base.startswith(("spoil", "pipe", "dig_", "doze_")) or base in ("dig", "doze"):
+            bpy.data.objects.remove(ob, do_unlink=True)
 
 
 def _recalc_outward(col):
@@ -1029,6 +1072,67 @@ def phase3():
                                    r=0.26 + 0.10 * ((bi * 5) % 2), seed=bi * 3 + 2)
             bi += 1
 
+    # Grass lined along the VISIBLE building bases (owner 2026-08-06: "the grass
+    # is most useful near the buildings"): broken bands of dense clumps hugging
+    # each building's street-facing edge and its west (camera-facing) end, just
+    # outside the apron footprint. Clumps are skipped where a side-road lane or
+    # parking pad crosses the line — grass through asphalt reads as neglect.
+    grng = random.Random(41)
+    avoid = []
+    for sx, sside in ((7.5, 1), (29.5, 1), (48.5, 1), (11.5, -1), (33.5, -1), (46.0, -1)):
+        ya = sside * (ROAD_HALF_W + SIDEWALK_W)
+        yb = sside * (BUILDING_FRONT_Y + 5.2)
+        avoid.append((sx - 0.50, sx + 0.50, min(ya, yb), max(ya, yb)))
+    for px, pside in ((8.9, 1), (30.9, 1), (12.9, -1), (47.4, -1)):
+        ya = pside * (BUILDING_FRONT_Y + 0.05)
+        yb = pside * (BUILDING_FRONT_Y + 1.80)
+        avoid.append((px - 1.30, px + 1.30, min(ya, yb), max(ya, yb)))
+
+    def blocked(cx, cy):
+        return any(ax0 <= cx <= ax1 and ay0 <= cy <= ay1
+                   for ax0, ax1, ay0, ay1 in avoid)
+
+    for bcol in bpy.data.collections:
+        if not bcol.name.startswith("LOAD_bldg_") or bcol.name == "LOAD_bldg_con_a":
+            continue
+        bxs, bys = [], []
+        for ob in bcol.objects:
+            if ob.type != 'MESH':
+                continue
+            for c in ob.bound_box:
+                w = ob.matrix_world @ mathutils.Vector(c)
+                bxs.append(w.x)
+                bys.append(w.y)
+        if not bxs:
+            continue
+        bx0, bx1, by0, by1 = min(bxs), max(bxs), min(bys), max(bys)
+        south = (by0 + by1) < 0
+        sname = bcol.name[10:]
+        fy = (by1 + 0.14) if south else (by0 - 0.14)   # street-facing edge, outside
+        x = bx0 + grng.uniform(0.2, 0.7)
+        ci = 0
+        while x < bx1 - 0.2:
+            if grng.random() < 0.8 and not blocked(x, fy):
+                kit_for(x).grass_patch("base_%s_f%d" % (sname, ci), x, fy,
+                                       rx=grng.uniform(0.35, 0.60),
+                                       ry=grng.uniform(0.08, 0.14),
+                                       dark=grng.random() < 0.5,
+                                       seed=1000 + ci * 17 + int(abs(x) * 7) % 97)
+            x += grng.uniform(1.05, 1.55)
+            ci += 1
+        wx = bx0 - 0.14                                 # west (camera-facing) end
+        y = by0 + 0.2
+        ci = 0
+        while y < by1 - 0.2:
+            if grng.random() < 0.8 and not blocked(wx, y):
+                kit_for(wx).grass_patch("base_%s_w%d" % (sname, ci), wx, y,
+                                       rx=grng.uniform(0.08, 0.14),
+                                       ry=grng.uniform(0.35, 0.60),
+                                       dark=grng.random() < 0.5,
+                                       seed=2000 + ci * 13 + int(abs(y) * 7) % 97)
+            y += grng.uniform(1.05, 1.55)
+            ci += 1
+
     # THE PARK (owner): the right-hand entrance block is trees, not buildings — a
     # loose two-deep grove with bushes and patches, x -12..-2 on the south side.
     prng = random.Random(23)
@@ -1053,11 +1157,11 @@ def phase3():
                                  seed=300 + i * 5)
 
     rng = random.Random(11)
-    # Blade scatters carry the grass texture; a few tufts sit on top as accents.
-    # ry is chosen FIRST and the centre y clamped so the whole scatter ellipse
-    # stays ON the verge (owner: the old base discs overflowed onto the sidewalk).
+    # A few loose verge scatters + tufts as accents — the MASS of the grass now
+    # lives in the building base bands above (owner). ry is chosen FIRST and the
+    # centre y clamped so the whole scatter ellipse stays ON the verge.
     walk_edge = ROAD_HALF_W + SIDEWALK_W
-    for i in range(14):
+    for i in range(7):
         x = rng.uniform(-7.5, 18.0)
         side = rng.choice((1, -1))
         ry = rng.uniform(0.18, 0.33)

@@ -49,6 +49,14 @@ def scene_stipple(src, mask_path, dst, spacing=14.0, dot_r=1.7, strength=0.38,
 
     is_glass = (rgb[..., 2] > rgb[..., 0] * 1.45) & (albedo < 0.38)
     covered = (alpha > 0.01) & (mask_a > 0.5) & ~is_glass
+    # Dots need AREA: erode coverage so slivers thinner than ~5px never collect
+    # dots. Sub-pixel strips of geometry peeking over a holdout horizon (e.g. a
+    # yard slab edge above the lawn) otherwise render as dashed speck trails.
+    er = covered.copy()
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
+            er &= np.roll(np.roll(covered, dy, 0), dx, 1)
+    covered = er
 
     h, w = light.shape
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
@@ -60,11 +68,24 @@ def scene_stipple(src, mask_path, dst, spacing=14.0, dot_r=1.7, strength=0.38,
     c_b = cov(_grid(xx, yy, spacing, 0.5, 0.5), dot_r)
     c_c = cov(_grid(xx, yy, spacing / 2), dot_r * 0.9)
 
+    # Shade features need AREA too: a scaffold pole or crane-jib shadow a few px
+    # wide dots as a dashed dirt trail across the lawn, not as shade. Erode the
+    # band masks so features thinner than ~2r+1 px carry no dots; broad shadow
+    # blobs and canopy shade merely shrink by the same margin.
+    def _er(m, r=3):
+        out = m.copy()
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                out &= np.roll(np.roll(m, dy, 0), dx, 1)
+        return out
+    band_a = _er(light < lit_cut)
+    band_b = _er(light < part_cut)
+
     coverage = np.zeros_like(light, dtype=np.float32)
-    coverage = np.maximum(coverage, c_a * (light < lit_cut))
-    coverage = np.maximum(coverage, c_b * (light < part_cut))
+    coverage = np.maximum(coverage, c_a * band_a)
+    coverage = np.maximum(coverage, c_b * band_b)
     if deep_shade:
-        coverage = np.maximum(coverage, c_c * (light < part_cut))
+        coverage = np.maximum(coverage, c_c * band_b)
     coverage *= covered
 
     out = rgb.copy()
