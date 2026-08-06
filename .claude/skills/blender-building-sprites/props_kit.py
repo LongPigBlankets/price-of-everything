@@ -129,26 +129,48 @@ def _mark_noink_props(ob):
 
 
 def _grass_patch(self, name, x, y, rx=0.45, ry=0.30, dark=False, blades=3, seed=0):
-    """A scatter of tapered grass blades inside an ellipse — NO base disc and NO ink
-    (owner 2026-08-06: the old NOINK pad ellipse could cross onto the sidewalk and
-    read as spilled paint, and the outlined constant-radius cylinder blades read as
-    navy scratches — the outline WAS the blade). Leaning tapered spikes in the two
-    canopy greens against the lawn tone carry the meadow texture on their own."""
+    """A DENSE scatter of tapered grass blades inside an ellipse — 40-50 per patch
+    (owner 2026-08-06) — with NO base disc and NO ink (the old NOINK pad ellipse
+    could cross onto the sidewalk, and outlined constant-radius cylinder blades
+    read as navy scratches — the outline WAS the blade). Leaning tapered spikes in
+    the two canopy greens carry the meadow texture on their own. At this count the
+    blades are BATCHED into one mesh per tone (two objects per patch), not one
+    object per blade — ~21 patches would otherwise add ~1000 objects to every
+    per-object pass in the layer pipeline. `blades` is kept for caller
+    compatibility but no longer sets the count."""
     import random
+    import mathutils
     rng = random.Random(seed)
-    for i in range(max(6, blades * 3)):
+    up = mathutils.Vector((0.0, 0.0, 1.0))
+    bms = {"canopy": bmesh.new(), "canopy_dark": bmesh.new()}
+    for i in range(rng.randint(40, 50)):
         ang = rng.uniform(0, 6.283)
         rad = math.sqrt(rng.random())          # uniform over the ellipse area
         bx = x + math.cos(ang) * rx * rad
         by = y + math.sin(ang) * ry * rad
-        h = rng.uniform(0.06, 0.13)
-        lean = rng.uniform(0.15, 0.45) * h
+        h = rng.uniform(0.05, 0.12)
+        lean = rng.uniform(0.15, 0.5) * h
         la = rng.uniform(0, 6.283)
-        mat = self.mat("canopy_dark" if (dark or rng.random() < 0.6) else "canopy")
-        ob = self._taper("%s_b%d" % (name, i), (bx, by, 0.012),
-                         (bx + math.cos(la) * lean, by + math.sin(la) * lean,
-                          0.012 + h),
-                         rng.uniform(0.014, 0.022), 0.002, mat, segments=5)
+        tone = "canopy_dark" if (dark or rng.random() < 0.6) else "canopy"
+        bm = bms[tone]
+        a = mathutils.Vector((bx, by, 0.012))
+        b = mathutils.Vector((bx + math.cos(la) * lean, by + math.sin(la) * lean,
+                              0.012 + h))
+        d = b - a
+        ret = bmesh.ops.create_cone(bm, cap_ends=True, segments=5,
+                                    radius1=rng.uniform(0.012, 0.02),
+                                    radius2=0.002, depth=d.length)
+        rot = up.rotation_difference(d.normalized()).to_matrix()
+        bmesh.ops.rotate(bm, cent=(0, 0, 0), matrix=rot, verts=ret["verts"])
+        bmesh.ops.translate(bm, vec=(a + b) / 2, verts=ret["verts"])
+    for tone, bm in bms.items():
+        if not len(bm.verts):
+            bm.free()
+            continue
+        me = bpy.data.meshes.new("%s_%s" % (name, tone))
+        bm.to_mesh(me)
+        bm.free()
+        ob = self.obj("%s_%s" % (name, tone), me, self.mat(tone), smooth=False)
         _mark_noink_props(ob)
 
 
