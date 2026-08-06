@@ -35,7 +35,12 @@ def _grid(xx, yy, spacing, off_u=0.0, off_v=0.0):
 
 
 def scene_stipple(src, mask_path, dst, spacing=14.0, dot_r=1.7, strength=0.38,
-                  lit_cut=0.70, part_cut=0.63, deep_shade=False):
+                  lit_cut=0.70, part_cut=0.63, deep_shade=False, px_scale=1.0):
+    # Every knob below is in PIXELS, so a layer rendered at a different canvas
+    # size needs them scaled or the dots come out finer/coarser on screen than
+    # the approved frame (px_scale = canvas_width / 2400, the reference).
+    spacing *= px_scale
+    dot_r *= px_scale
     im = Image.open(src).convert("RGBA")
     a = np.asarray(im).astype(np.float32) / 255.0
     rgb, alpha = a[..., :3], a[..., 3]
@@ -52,9 +57,10 @@ def scene_stipple(src, mask_path, dst, spacing=14.0, dot_r=1.7, strength=0.38,
     # Dots need AREA: erode coverage so slivers thinner than ~5px never collect
     # dots. Sub-pixel strips of geometry peeking over a holdout horizon (e.g. a
     # yard slab edge above the lawn) otherwise render as dashed speck trails.
+    _cr = max(1, int(round(2 * px_scale)))
     er = covered.copy()
-    for dy in range(-2, 3):
-        for dx in range(-2, 3):
+    for dy in range(-_cr, _cr + 1):
+        for dx in range(-_cr, _cr + 1):
             er &= np.roll(np.roll(covered, dy, 0), dx, 1)
     covered = er
 
@@ -72,7 +78,7 @@ def scene_stipple(src, mask_path, dst, spacing=14.0, dot_r=1.7, strength=0.38,
     # wide dots as a dashed dirt trail across the lawn, not as shade. Erode the
     # band masks so features thinner than ~2r+1 px carry no dots; broad shadow
     # blobs and canopy shade merely shrink by the same margin.
-    def _er(m, r=3):
+    def _er(m, r=max(1, int(round(3 * px_scale)))):
         out = m.copy()
         for dy in range(-r, r + 1):
             for dx in range(-r, r + 1):
@@ -104,7 +110,9 @@ if __name__ == "__main__":
     ap.add_argument("--lit-cut", type=float, default=0.70)
     ap.add_argument("--part-cut", type=float, default=0.63)
     ap.add_argument("--deep-shade", action="store_true")
+    ap.add_argument("--px-scale", type=float, default=1.0)
     args = ap.parse_args()
     scene_stipple(args.src, args.mask, args.dst, args.spacing, args.dot_r,
-                  args.strength, args.lit_cut, args.part_cut, args.deep_shade)
+                  args.strength, args.lit_cut, args.part_cut, args.deep_shade,
+                  args.px_scale)
     print("scene-stippled", args.src, "->", args.dst)

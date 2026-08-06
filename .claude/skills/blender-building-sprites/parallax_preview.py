@@ -10,13 +10,16 @@ full 45s worst case: constant creep to t=40, deceleration to zero over the
 last 5s. (In Godot the same ease-out fires early, whenever build_complete
 lands.)
 
-Geometry: layers are 2400x1350 with the approved frame at full-canvas; the
-output window is 1920x1080. All layers start at fit-scale 0.8 (the approved
-composition exactly) and the near/street layers grow to 1.0 (native pixels,
-central window) — a 25% push. Farther layers grow by their parallax rate
-share. The vanishing point of forward motion stays fixed on screen: with the
-rig's plumb verticals and shift_y 0.125 it sits at v=0.625 -> (1200, 844) in
-layer space.
+Geometry: layers are 3360x1890 with the approved frame at full-canvas; the
+output window is 1920x1080. All layers start at fit-scale (the approved
+composition exactly) and the near/street layers grow to 1.0 = native pixels,
+a 75% push — TRIPLE the original 25% (owner 2026-08-06 "triple the speed").
+Speed here is the rate of visual change; in forward-travel terms 75% growth
+is a bit over 2x the old distance. The layers were re-rendered at the larger
+canvas rather than upscaled, so the end of the push is still native-sharp.
+Farther layers grow by their parallax rate share. The vanishing point of
+forward motion stays fixed on screen: with the rig's plumb verticals and
+shift_y 0.125 it sits at v=0.625 of the canvas height.
 
     python3 parallax_preview.py [out.mp4]
 """
@@ -26,7 +29,7 @@ import os
 from PIL import Image
 
 BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "renders/loading/layers")
-LAYERS = [                       # (file, parallax rate share of the 25% push)
+LAYERS = [                       # (file, parallax rate share of the 75% push)
     ("L0_sky_graded.png", 0.08),
     ("L1_city.png", 0.25),
     ("L2_street_stippled.png", 1.00),   # street rides the near rate (plan)
@@ -34,9 +37,11 @@ LAYERS = [                       # (file, parallax rate share of the 25% push)
     ("L4_near_stippled.png", 1.00),
 ]
 W, H = 1920, 1080
-SRC_W, SRC_H = 2400, 1350
-FX, FY = 1200.0, 844.0           # vanishing point in layer space
-FOX, FOY = FX * 0.8, FY * 0.8    # ...held fixed at its t=0 screen position
+SRC_W, SRC_H = 3360, 1890        # 1.75x overscan (owner 2026-08-06: 3x speed)
+FIT = W / float(SRC_W)           # t=0 scale: whole layer in frame = approved comp
+PUSH = 1.0 / FIT - 1.0           # grow to NATIVE pixels: 0.75, i.e. 3x the old 0.25
+FX, FY = SRC_W / 2.0, 0.625 * SRC_H      # vanishing point in layer space
+FOX, FOY = FX * FIT, FY * FIT    # ...held fixed at its t=0 screen position
 FPS = 30
 T_TOTAL = 45.0
 T_CRUISE = 40.0                  # constant creep until here, then ease to halt
@@ -65,7 +70,7 @@ def main(out_path):
         p = progress(i / FPS)
         frame = None
         for img, rate in imgs:
-            k = 0.8 * (1.0 + 0.25 * rate * p)
+            k = FIT * (1.0 + PUSH * rate * p)
             a = 1.0 / k
             c = FX - FOX / k
             f = FY - FOY / k
