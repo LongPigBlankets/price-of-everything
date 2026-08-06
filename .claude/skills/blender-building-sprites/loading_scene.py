@@ -154,10 +154,20 @@ def setup_load_rig(res_x=1920, res_y=1080):
         sun_ob = bpy.data.objects.new("LoadSun", sun)
     if sun_ob.name not in [o.name for o in sc.collection.objects]:
         sc.collection.objects.link(sun_ob)
-    sun_ob.data.use_shadow = False
-    sun_ob.data.energy = 3.0
-    sun_ob.data.color = (1.0, 0.955, 0.87)   # warm print sunlight (owner reference)
-    sun_ob.rotation_euler = (math.radians(60.0), math.radians(-12.0), math.radians(15.0))
+    # Owner: light from the RIGHT of the frame (south, -Y) so the left-row facades
+    # are well lit — and CAST SHADOWS ON, scene only. The sprites' no-shadow contract
+    # stands for sprites; this composed scene follows the print reference, where
+    # trees and buildings throw shade (which the stipple pass then densifies).
+    sun_ob.data.use_shadow = True
+    sun_ob.data.energy = 3.6
+    sun_ob.data.color = (1.0, 0.955, 0.87)
+    sun_ob.data.angle = 0.02                 # near-hard shadow edges: print, not photo
+    if hasattr(sc, "eevee") and hasattr(sc.eevee, "use_shadows"):
+        sc.eevee.use_shadows = True
+    # Azimuth +25: sun from the south-EAST (ahead-right, down-street), so shadows
+    # angle toward the viewer like the reference — at -14 they fell away from camera
+    # and hid behind their own casters, reading as "no shadows".
+    sun_ob.rotation_euler = (math.radians(48.0), 0.0, math.radians(25.0))
 
     # Freestyle: same three linesets as the sprite rig, plus the NOINK face-mark
     # exclusion on ALL of them.
@@ -227,7 +237,7 @@ def setup_load_rig(res_x=1920, res_y=1080):
     bg = world.node_tree.nodes.get("Background")
     if bg:
         bg.inputs[0].default_value = (1, 1, 1, 1)
-        bg.inputs[1].default_value = 0.75
+        bg.inputs[1].default_value = 0.45   # low ambient: shadows must read (print look)
     sc.world = world
     return sc
 
@@ -270,8 +280,10 @@ def build_street_scaffold():
     for side, tag in ((1, "n"), (-1, "s")):
         y0v = side * (ROAD_HALF_W + SIDEWALK_W)
         y1v = side * (BUILDING_FRONT_Y + 6.0)
-        _box(col, "verge_" + tag, cx, (y0v + y1v) / 2, -0.04 + EPS,
-             STREET_X1 - STREET_X0, abs(y1v - y0v), 0.1, _mat("load_verge"))
+        vb = _box(col, "verge_" + tag, cx, (y0v + y1v) / 2, -0.04 + EPS,
+                  STREET_X1 - STREET_X0, abs(y1v - y0v), 0.1, _mat("load_verge"))
+        mark_noink(vb)   # terrain: its seams must not carry ink (they read as stray
+                         # navy lines across the lawns, through gaps and behind trees)
 
     # Centre dashes.
     dash_l, gap = 0.42, 0.55
@@ -515,6 +527,9 @@ def build_backdrop(seed=7):
         shade = _box(city_col, "cloud%d_shade" % ci, 83.7, cy + (y_lo + y_hi) / 2,
                      cz0 + 0.24 * sc_f, 0.1, (y_hi - y_lo) * 0.80, 0.48 * sc_f, sm)
         mark_noink(shade)
+    for c in (sky_col, city_col):
+        for ob in c.objects:
+            ob.visible_shadow = False
     return {"sky_bands": len(SKY_BANDS), "city_objects": len(city_col.objects)}
 
 
@@ -524,30 +539,39 @@ def build_backdrop(seed=7):
 # NEAR rate — the standard 2.5D-push cheat, invisible at the subtle zoom used here.
 FAR_SLOTS = ("off_d", "fur_b", "pp_a", "pp_b", "pet_a", "off_e", "fac_e", "off_f")
 
+# PAINT ORDER MATTERS: the street (ground/road/walks) spans EVERY depth, so it sits
+# just above the backdrop — painting it last overdraws tree trunks and building bases
+# (caught on the shadowed composite: the whole cast floated on the lawn). It still
+# RIDES at the near rate in Godot, same as L4 — that pairing is what keeps building-
+# to-ground contact stable during the push; far contacts slide a hair, masked by haze.
 LAYERS = [
-    ("L0_sky",   lambda n: n == "LOAD_sky"),
-    ("L1_city",  lambda n: n == "LOAD_city"),
-    ("L2_far",   lambda n: (n.startswith("LOAD_bldg_") and n[10:] in FAR_SLOTS)
-                 or n == "LOAD_props_far"),
-    ("L3_near",  lambda n: (n.startswith("LOAD_bldg_") and n[10:] not in FAR_SLOTS)
-                 or n == "LOAD_props_near"),
-    ("L4_street", lambda n: n == "LOAD_street"),
+    ("L0_sky",    lambda n: n == "LOAD_sky"),
+    ("L1_city",   lambda n: n == "LOAD_city"),
+    ("L2_street", lambda n: n == "LOAD_street"),
+    ("L3_far",    lambda n: (n.startswith("LOAD_bldg_") and n[10:] in FAR_SLOTS)
+                  or n == "LOAD_props_far"),
+    ("L4_near",   lambda n: (n.startswith("LOAD_bldg_") and n[10:] not in FAR_SLOTS)
+                  or n == "LOAD_props_near"),
 ]
 
 
 def _show_only_load(pred):
-    """Visibility per OBJECT as well as per collection: power plants dual-link their
-    pylons/transformers into FINE_INK, which stays visible — collection hiding alone
-    leaves them rendering into every other layer (the FINE_INK lesson, third time)."""
+    """Per-layer isolation for the SHADOWED scene: excluded objects become
+    CAMERA-INVISIBLE but remain in the render as SHADOW CASTERS (visible_camera off,
+    visible_shadow on). Plain hiding removes their cast shadows too, so the street
+    layer would render without a single building or tree shadow and the composite
+    would lose the ground shade entirely. Collections stay render-enabled; only the
+    per-object camera flag varies. (Also the FINE_INK lesson, still: per OBJECT.)"""
     for c in bpy.data.collections:
         if not c.name.startswith("LOAD_"):
             continue
-        off = not pred(c.name)
-        c.hide_render = off
-        c.hide_viewport = off
+        c.hide_render = False
+        c.hide_viewport = False
+        included = pred(c.name)
         for ob in c.objects:
-            ob.hide_render = off
-            ob.hide_viewport = off
+            ob.hide_render = False
+            ob.hide_viewport = False
+            ob.visible_camera = included
 
 
 def render_layers(out_dir=None, width=2400, height=1350):
@@ -572,10 +596,37 @@ def render_layers(out_dir=None, width=2400, height=1350):
     done = []
     for name, pred in LAYERS:
         _show_only_load(pred)
+        # Freestyle ignores visible_camera and inks every hidden caster as a ghost
+        # wireframe. The rig's face-mark exclusion is the kill switch: temporarily
+        # mark ALL faces of excluded objects (they keep casting shadows, camera-
+        # invisible, ink-suppressed), then strip the attribute after the render.
+        # Objects that already carry the attribute (permanent NOINK: sky, city,
+        # verges, patches) are left alone.
+        temp_marked = []
+        for c in bpy.data.collections:
+            if not c.name.startswith("LOAD_"):
+                continue
+            if pred(c.name):
+                continue
+            for ob in c.objects:
+                if ob.type != 'MESH':
+                    continue
+                if ob.data.attributes.get("freestyle_face") is not None:
+                    continue
+                attr = ob.data.attributes.new("freestyle_face", 'BOOLEAN', 'FACE')
+                for d in attr.data:
+                    d.value = True
+                temp_marked.append(ob.name)
         sc.render.filepath = os.path.join(out_dir, name)
         bpy.ops.render.render(write_still=True)
+        for obname in temp_marked:
+            ob = bpy.data.objects.get(obname)
+            if ob and ob.type == 'MESH':
+                attr = ob.data.attributes.get("freestyle_face")
+                if attr is not None:
+                    ob.data.attributes.remove(attr)
         done.append(name)
-    # Restore: everything visible, hero-resolution ink.
+    # Restore: everything camera-visible, hero-resolution ink.
     _show_only_load(lambda n: True)
     sc.render.resolution_x = 1920
     sc.render.resolution_y = 1080
