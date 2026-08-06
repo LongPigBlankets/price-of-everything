@@ -414,13 +414,14 @@ def build_backdrop(seed=7):
             if rank == 1 and y < 1.5 and y + w > -1.5:
                 y = 1.5
             h = rng.uniform(0.6, 1.7) * (1.0 + 1.1 * math.exp(-(y / 14.0) ** 2))
-            # Skyscrapers (owner: "taller — skyscrapers on the horizon"): roughly a
-            # fifth of the near-rank blocks become towers — narrow slabs 3-5x the
-            # low-rise height, clustered toward the centre by the same envelope.
+            # Skyscrapers (owner: "taller — skyscrapers on the horizon", then
+            # 2026-08-06 "50% taller again"): roughly a fifth of the near-rank
+            # blocks become towers — narrow slabs, clustered toward the centre by
+            # the same envelope.
             tower = rank == 1 and rng.random() < 0.22
             if tower:
                 w = min(w, 2.2)
-                h = rng.uniform(3.4, 6.0) * (1.0 + 0.8 * math.exp(-(y / 16.0) ** 2))
+                h = rng.uniform(5.1, 9.0) * (1.0 + 0.8 * math.exp(-(y / 16.0) ** 2))
             ob = _box(city_col, "city_r%d_%d" % (rank, i), rx, y + w / 2, h / 2,
                       1.2, w, h, m)
             ob.data.materials[0] = m
@@ -479,9 +480,9 @@ def build_backdrop(seed=7):
     # deliberate cluster on the FAR rank spanning the road axis, so the street
     # visibly ends AT the city — tall slabs shoulder to shoulder behind the gates.
     wallm = _emat("load_city_wall", CITY_FAR_TONE)
-    for wi, (wy, ww, wh) in enumerate(((-6.8, 2.2, 5.6), (-4.2, 1.8, 7.4),
-                                       (-1.6, 2.4, 6.2), (1.2, 1.9, 8.2),
-                                       (3.4, 2.1, 6.6), (5.8, 2.3, 5.2))):
+    for wi, (wy, ww, wh) in enumerate(((-6.8, 2.2, 8.4), (-4.2, 1.8, 11.1),
+                                       (-1.6, 2.4, 9.3), (1.2, 1.9, 12.3),
+                                       (3.4, 2.1, 9.9), (5.8, 2.3, 7.8))):
         tw = _box(city_col, "city_wall_%d" % wi, CITY_X + 2.5, wy, wh / 2,
                   1.2, ww, wh, wallm)
         mark_noink(tw)
