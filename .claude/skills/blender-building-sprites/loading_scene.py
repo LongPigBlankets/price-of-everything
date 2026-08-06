@@ -155,7 +155,8 @@ def setup_load_rig(res_x=1920, res_y=1080):
     if sun_ob.name not in [o.name for o in sc.collection.objects]:
         sc.collection.objects.link(sun_ob)
     sun_ob.data.use_shadow = False
-    sun_ob.data.energy = 2.6
+    sun_ob.data.energy = 3.0
+    sun_ob.data.color = (1.0, 0.955, 0.87)   # warm print sunlight (owner reference)
     sun_ob.rotation_euler = (math.radians(60.0), math.radians(-12.0), math.radians(15.0))
 
     # Freestyle: same three linesets as the sprite rig, plus the NOINK face-mark
@@ -298,18 +299,14 @@ def phase0():
 # Everything here is NOINK; the far city reads as pure silhouette against the horizon
 # band, which is also why the city tones must sit clearly darker than the horizon.
 
-SKY_BANDS = [                    # bottom -> top: pale warm horizon rising into SKY BLUE.
-    # Eight bands interpolated between the four original keys (owner: "blend the sky
-    # bands more") — still visibly banded, poster-style, but each step is half the
-    # jump. Saturation pushed because AgX desaturates emission.
-    (4.5,  (0.740, 0.720, 0.600)),
-    (3.0,  (0.650, 0.690, 0.670)),
-    (3.0,  (0.560, 0.660, 0.740)),
-    (3.0,  (0.480, 0.610, 0.735)),
-    (4.0,  (0.400, 0.560, 0.730)),
-    (5.0,  (0.345, 0.515, 0.715)),
-    (6.0,  (0.290, 0.470, 0.695)),
-    (35.0, (0.240, 0.430, 0.680)),
+SKY_BANDS = [                    # bottom -> top: compressed pale transition, then the
+    # vivid cerulean owns most of the frame (owner reference: one rich blue).
+    (4.0,  (0.820, 0.780, 0.620)),
+    (2.0,  (0.620, 0.720, 0.800)),
+    (2.0,  (0.450, 0.640, 0.850)),
+    (2.5,  (0.330, 0.570, 0.860)),
+    (3.5,  (0.250, 0.515, 0.860)),
+    (49.5, (0.175, 0.445, 0.850)),
 ]
 CITY_FAR_TONE = (0.360, 0.410, 0.470)    # far rank — hazier against the blue
 CITY_NEAR_TONE = (0.270, 0.315, 0.375)   # near rank — reads in front of the far rank
@@ -479,8 +476,8 @@ def build_backdrop(seed=7):
     # grey underside band drawn just in front for shading, and real size variety
     # (one long, one tall, two small). All emission + NOINK: only silhouette + the
     # two flat tones read, which is the poster grammar.
-    cm = _emat("load_cloud", (0.880, 0.890, 0.880))
-    sm = _emat("load_cloud_shade", (0.665, 0.690, 0.715))
+    cm = _emat("load_cloud", (0.930, 0.905, 0.830))
+    sm = _emat("load_cloud_shade", (0.760, 0.735, 0.660))
     CLOUDS = [
         #  cy     bottom  scale  puffs (dy, r)
         (-27.0, 15.5, 1.35, ((-3.6, 1.1), (-1.4, 1.9), (1.2, 2.3), (3.8, 1.5), (5.9, 0.9))),
@@ -765,6 +762,19 @@ def phase3():
         kit_for(x).lamppost("lamp_%d" % i, x, side * lamp_y, toward=-side)
     for i, (p0, p1) in enumerate(FENCES):
         kit_for(p0[0]).fence_run("fence_%d" % i, p0, p1)
+    # Spiky bushes between consecutive trees on each side (owner reference).
+    n_row = sorted([t for t in TREES if t[1] == 1])
+    s_row = sorted([t for t in TREES if t[1] == -1])
+    bi = 0
+    for row, sgn in ((n_row, 1), (s_row, -1)):
+        for a, b in zip(row, row[1:]):
+            bx = (a[0] + b[0]) / 2.0
+            by = sgn * (BUILDING_FRONT_Y - 0.55)
+            kit_for(bx).spiky_bush("bush_%d" % bi, bx, by,
+                                   h=0.45 + 0.25 * ((bi * 7) % 3) / 2.0,
+                                   r=0.26 + 0.10 * ((bi * 5) % 2), seed=bi * 3 + 2)
+            bi += 1
+
     rng = random.Random(11)
     # Patches carry the grass texture (soft NOINK discs of off-tone green); a few
     # small tufts sit on top as accents. The 26-tuft carpet read as chunky scribble.

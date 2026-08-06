@@ -25,7 +25,7 @@ def _blob(self, name, cx, cy, cz, r, mat, rng, jitter=0.12, scale=(1.0, 1.0, 0.8
     the lumpy silhouette carries line."""
     m = bpy.data.meshes.new(name)
     bm = bmesh.new()
-    bmesh.ops.create_icosphere(bm, subdivisions=2, radius=r)
+    bmesh.ops.create_icosphere(bm, subdivisions=3, radius=r)
     for v in bm.verts:
         v.co *= 1.0 + rng.uniform(-jitter, jitter)
     bmesh.ops.scale(bm, vec=scale, verts=bm.verts)
@@ -204,6 +204,32 @@ def _lamppost(self, name, x, y, h=1.55, arm=0.45, toward=-1):
     self._fine_mode = _fm
 
 
+def _spiky_bush(self, name, x, y, h=0.55, r=0.30, seed=0):
+    """Spiky evergreen bush (owner reference: small conifers between the trees):
+    a cluster of 3-5 jittered flat-shaded cones at varied heights and leans."""
+    import random
+    rng = random.Random(seed)
+    n = rng.randint(3, 5)
+    for ci in range(n):
+        ang = rng.uniform(0, 6.283)
+        dx = math.cos(ang) * r * (0 if ci == 0 else rng.uniform(0.35, 0.75))
+        dy = math.sin(ang) * r * (0 if ci == 0 else rng.uniform(0.35, 0.75))
+        ch = h * (1.0 if ci == 0 else rng.uniform(0.5, 0.85))
+        cr = r * (0.55 if ci == 0 else rng.uniform(0.3, 0.5))
+        m = bpy.data.meshes.new("%s_c%d" % (name, ci))
+        bm = bmesh.new()
+        bmesh.ops.create_cone(bm, cap_ends=True, segments=7,
+                              radius1=cr, radius2=cr * 0.06, depth=ch)
+        for v in bm.verts:
+            v.co.x *= 1.0 + rng.uniform(-0.15, 0.15)
+            v.co.y *= 1.0 + rng.uniform(-0.15, 0.15)
+        bmesh.ops.translate(bm, vec=(x + dx, y + dy, ch / 2), verts=bm.verts)
+        bm.to_mesh(m); bm.free()
+        self.obj("%s_c%d" % (name, ci), m,
+                 self.mat("canopy_dark" if ci % 2 else "canopy"))
+
+
+Kit.spiky_bush = _spiky_bush
 Kit._blob = _blob
 Kit._taper = _taper
 Kit.tree = _tree
