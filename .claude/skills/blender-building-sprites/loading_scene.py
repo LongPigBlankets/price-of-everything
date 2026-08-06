@@ -34,9 +34,16 @@ SIDEWALK_TOP = 0.105        # visibly a step above the road surface (~0.058)
 KERB_W = 0.10               # pale lip on the sidewalk's road edge
 SETBACK_W = 1.00            # grass strip between sidewalk and the facades
 BUILDING_FRONT_Y = ROAD_HALF_W + SIDEWALK_W + SETBACK_W   # facades sit at this y
-STREET_X0, STREET_X1 = -20.0, 92.0    # camera end -> vanishing point at the city
+STREET_X0, STREET_X1 = -20.0, 200.0   # camera end -> far beyond the visible terminus
 CITY_X = 74.0               # distant city backdrop plane (P2), faces the camera (-X)
-SKY_X = 90.0                # sky backdrop plane, faces the camera
+SKY_X = 210.0               # sky backdrop plane, faces the camera
+CAM_X = -13.0               # start camera x (the rig asserts this)
+# The street used to stop at 92 with the sky plane at 90, so the road's far end met
+# the sky plane's base in a visible hard wedge — the owner's "road runs out when
+# zooming in". The road now runs to 200 and dissolves into corridor haze long before
+# that; the sky plane moves back with it and is scaled to subtend the same angle.
+SKY_SCALE = (SKY_X - CAM_X) / (90.0 - CAM_X)
+HAZE_WALLS = ((88.0, 2.20), (104.0, 3.40))   # (x, height) far-field haze, far one taller
 
 # Scene tones — flat Principled, specular 0, roughness 1 (the kit recipe). Large
 # surfaces obey the AgX value ceiling: past base ~0.3 everything renders within a few
@@ -376,10 +383,11 @@ def build_backdrop(seed=7):
     # z-fight exactly on the band lines.
     mesh = bpy.data.meshes.new("sky_bands")
     bm = bmesh.new()
-    y0, y1 = -260.0 / 2, 260.0 / 2
+    y0, y1 = -260.0 / 2 * SKY_SCALE, 260.0 / 2 * SKY_SCALE
     z = 0.0
     faces = []
-    for i, (bh, _) in enumerate(SKY_BANDS):
+    for i, (bh0, _) in enumerate(SKY_BANDS):
+        bh = bh0 * SKY_SCALE
         v = [bm.verts.new(p) for p in ((SKY_X, y0, z), (SKY_X, y1, z),
                                        (SKY_X, y1, z + bh), (SKY_X, y0, z + bh))]
         f = bm.faces.new(v)
@@ -474,6 +482,21 @@ def build_backdrop(seed=7):
                   0.1, y1h - y0h, 1.5, _emat("load_haze", HAZE_TONE))
         mark_noink(hz)
 
+    # Corridor haze (owner: "the road runs out in the distance"). The split haze
+    # strip deliberately leaves the road corridor open so the street runs INTO the
+    # city; that same opening let the eye follow the road to its far end. Two low
+    # walls ACROSS the corridor, in the horizon haze tone and NOINK, close it off
+    # in depth: the road fades into atmosphere instead of ending. The far one is
+    # taller so the near one reads as a lighter veil in front of it.
+    for hi, (hx, hh) in enumerate(HAZE_WALLS):
+        # FULL ground width, not just the corridor: at 9 units wide the wall stopped
+        # the road but left the verge and field beyond it showing, so the street read
+        # as running out into bare grass. Spanning the ground makes the whole far
+        # field resolve into one atmospheric band, which is what haze does.
+        cw = _box(city_col, "haze_corridor_%d" % hi, hx, 0.0, hh / 2,
+                  0.1, 96.0, hh, _emat("load_haze", HAZE_TONE))
+        mark_noink(cw)
+
     # Gate blocks: two deliberate taller buildings flanking the road's entry into the
     # city, so the corridor reads as a street between buildings rather than a slot.
     # Central skyscraper wall (owner: "basically touching across the middle"): a
@@ -565,15 +588,47 @@ FAR_SLOTS = ("off_d", "fur_b", "pp_a", "pp_b", "pet_a", "off_e", "fac_e", "off_f
 # (caught on the shadowed composite: the whole cast floated on the lawn). It still
 # RIDES at the near rate in Godot, same as L4 — that pairing is what keeps building-
 # to-ground contact stable during the push; far contacts slide a hair, masked by haze.
+# Layers are sliced by the PLANE their content stands on, not by distance. Under a
+# forward dolly every plane PARALLEL to the travel axis maps by an exact homography,
+# and this street is three such plane families: the ground (z=0) and the two facade
+# rows (y = +/-BUILDING_FRONT_Y). Warping each by its own homography reproduces true
+# perspective motion — facades shear open, the road and its dashes stream toward the
+# camera — from five stills, with no extra renders. `plane` below tells the renderer
+# which warp to use: ("ground", z) | ("wall", y) | ("depth", x) for far backdrops.
+LAMP_Y = ROAD_HALF_W + 0.30
+
+_north_cache = []
+
+
+def _north_slots():
+    """Slot suffixes on the north row. Lazy: SLOTS is defined further down the file,
+    and the LAYERS lambdas only run at render time, by which point it exists."""
+    if not _north_cache:
+        _north_cache.extend(sl[0] for sl in SLOTS if sl[5] == "n")
+    return _north_cache
+
 LAYERS = [
-    ("L0_sky",    lambda n: n == "LOAD_sky"),
-    ("L1_city",   lambda n: n == "LOAD_city"),
-    ("L2_street", lambda n: n == "LOAD_street"),
-    ("L3_far",    lambda n: (n.startswith("LOAD_bldg_") and n[10:] in FAR_SLOTS)
-                  or n == "LOAD_props_far"),
-    ("L4_near",   lambda n: (n.startswith("LOAD_bldg_") and n[10:] not in FAR_SLOTS)
-                  or n == "LOAD_props_near"),
+    ("L0_sky",     lambda n: n == "LOAD_sky"),
+    ("L1_city",    lambda n: n == "LOAD_city"),
+    ("L2_ground",  lambda n: n == "LOAD_street"),
+    ("L3_north",   lambda n: (n.startswith("LOAD_bldg_") and n[10:] in _north_slots())
+                   or n == "LOAD_props_n"),
+    ("L4_south",   lambda n: (n.startswith("LOAD_bldg_") and n[10:] not in _north_slots())
+                   or n == "LOAD_props_s"),
+    ("L5_lamp_n",  lambda n: n == "LOAD_props_lamp_n"),
+    ("L6_lamp_s",  lambda n: n == "LOAD_props_lamp_s"),
 ]
+
+# Plane each layer rides, for the dolly warp (consumed by parallax_preview / Godot).
+LAYER_PLANES = {
+    "L0_sky":    ("depth", SKY_X),
+    "L1_city":   ("depth", CITY_X),
+    "L2_ground": ("ground", 0.0),
+    "L3_north":  ("wall", BUILDING_FRONT_Y),
+    "L4_south":  ("wall", -BUILDING_FRONT_Y),
+    "L5_lamp_n": ("wall", LAMP_Y),
+    "L6_lamp_s": ("wall", -LAMP_Y),
+}
 
 
 def _show_only_load(pred):
@@ -665,12 +720,24 @@ def render_layers(out_dir=None, width=2400, height=1350):
         # buildings' below-grade apron kerbs (hidden by the verge in the full
         # scene), and the composite painted them over the street as a dark band
         # under the construction site (owner: "looks like it's floating").
-        if name in ("L3_far", "L4_near"):
+        if name not in ("L0_sky", "L1_city", "L2_ground"):
             cc = bpy.data.collections.get("LOAD_street")
             if cc:
                 for ob in cc.objects:
                     ob.visible_camera = True
                     ob.is_holdout = True
+        # ...and the GROUND layer holds out the backdrop. The ground runs to x=230,
+        # far past the haze walls, but it is composited ON TOP of the city layer —
+        # so without this the far verge paints straight over the haze meant to hide
+        # it, and the street reads as running out into bare grass beyond the road's
+        # dissolve. Holdout cuts the alpha instead, letting the haze show through.
+        if name == "L2_ground":
+            for cn in ("LOAD_city", "LOAD_sky"):
+                cc = bpy.data.collections.get(cn)
+                if cc:
+                    for ob in cc.objects:
+                        ob.visible_camera = True
+                        ob.is_holdout = True
         # Freestyle ignores visible_camera and inks every hidden caster as a ghost
         # wireframe. The rig's face-mark exclusion is the kill switch: temporarily
         # mark ALL faces of excluded objects (they keep casting shadows, camera-
@@ -752,14 +819,14 @@ def render_layers(out_dir=None, width=2400, height=1350):
             # as a dirt trail, not shade (owner). The crane alone stops casting
             # into the street mask; ballast and containers keep their blobs.
             crane_state = []
-            if name == "L2_street":
+            if name == "L2_ground":
                 cc2 = bpy.data.collections.get("LOAD_bldg_con_a")
                 if cc2:
                     for ob2 in cc2.objects:
                         if ob2.type == 'MESH' and ob2.name.split(".")[0].startswith("crane"):
                             crane_state.append((ob2.name, ob2.visible_shadow))
                             ob2.visible_shadow = False
-            use_geo = name in ("L3_far", "L4_near")
+            use_geo = name != "L2_ground"
             vt_prev = sc.view_settings.view_transform
             if use_geo:
                 sun_ob = bpy.data.objects.get("LoadSun")
@@ -1041,24 +1108,32 @@ def phase3():
     ns = {}
     exec(open(B + "sprite_kit.py").read(), ns)
     exec(open(B + "props_kit.py").read(), ns)
+    # Props are grouped by the PLANE they stand on, not by distance: everything on
+    # the north verge shares the facade plane y=+FRONT and takes one dolly
+    # homography; the south verge takes its mirror. Lampposts sit far closer to the
+    # centreline (|y| ~ 0.92) so they get their own pair of layers — warped on the
+    # facade plane they would lag by ~2.8x.
     kits = {}
-    for tag in ("near", "far"):
+    for tag in ("n", "s", "lamp_n", "lamp_s"):
         kits[tag] = ns["Kit"](ns["open_collection"]("LOAD_props_" + tag))
     sc = get_scene()
-    for tag in ("near", "far"):
+    for tag in ("n", "s", "lamp_n", "lamp_s"):
         _collection(sc, "LOAD_props_" + tag)      # ensure linked into Loading
 
-    def kit_for(x):
-        return kits["far"] if x >= PROPS_SPLIT_X else kits["near"]
+    def kit_for(side):
+        return kits["n"] if side > 0 else kits["s"]
+
+    def lamp_kit(side):
+        return kits["lamp_n"] if side > 0 else kits["lamp_s"]
 
     for i, (x, side, h, r) in enumerate(TREES):
         ty = side * (BUILDING_FRONT_Y - r - 0.12)
-        kit_for(x).tree("tree_%d" % i, x, ty, h, r, seed=i * 7 + 3)
+        kit_for(side).tree("tree_%d" % i, x, ty, h, r, seed=i * 7 + 3)
     lamp_y = ROAD_HALF_W + 0.30
     for i, (x, side) in enumerate(LAMPS):
-        kit_for(x).lamppost("lamp_%d" % i, x, side * lamp_y, toward=-side)
+        lamp_kit(side).lamppost("lamp_%d" % i, x, side * lamp_y, toward=-side)
     for i, (p0, p1) in enumerate(FENCES):
-        kit_for(p0[0]).fence_run("fence_%d" % i, p0, p1)
+        kit_for(1 if p0[1] > 0 else -1).fence_run("fence_%d" % i, p0, p1)
     # Spiky bushes between consecutive trees on each side (owner reference).
     n_row = sorted([t for t in TREES if t[1] == 1])
     s_row = sorted([t for t in TREES if t[1] == -1])
@@ -1067,7 +1142,7 @@ def phase3():
         for a, b in zip(row, row[1:]):
             bx = (a[0] + b[0]) / 2.0
             by = sgn * (BUILDING_FRONT_Y - 0.55)
-            kit_for(bx).spiky_bush("bush_%d" % bi, bx, by,
+            kit_for(sgn).spiky_bush("bush_%d" % bi, bx, by,
                                    h=0.45 + 0.25 * ((bi * 7) % 3) / 2.0,
                                    r=0.26 + 0.10 * ((bi * 5) % 2), seed=bi * 3 + 2)
             bi += 1
@@ -1113,7 +1188,7 @@ def phase3():
         ci = 0
         while x < bx1 - 0.2:
             if grng.random() < 0.8 and not blocked(x, fy):
-                kit_for(x).grass_patch("base_%s_f%d" % (sname, ci), x, fy,
+                kit_for(-1 if south else 1).grass_patch("base_%s_f%d" % (sname, ci), x, fy,
                                        rx=grng.uniform(0.35, 0.60),
                                        ry=grng.uniform(0.08, 0.14),
                                        dark=grng.random() < 0.5,
@@ -1125,7 +1200,7 @@ def phase3():
         ci = 0
         while y < by1 - 0.2:
             if grng.random() < 0.8 and not blocked(wx, y):
-                kit_for(wx).grass_patch("base_%s_w%d" % (sname, ci), wx, y,
+                kit_for(-1 if south else 1).grass_patch("base_%s_w%d" % (sname, ci), wx, y,
                                        rx=grng.uniform(0.08, 0.14),
                                        ry=grng.uniform(0.35, 0.60),
                                        dark=grng.random() < 0.5,
@@ -1139,19 +1214,19 @@ def phase3():
     for i in range(9):
         px = -12.0 + i * 1.25 + prng.uniform(-0.4, 0.4)
         py = -(2.2 + prng.uniform(0.0, 3.0))
-        kits["near"].tree("park_tree_%d" % i, px, py,
+        kits["s"].tree("park_tree_%d" % i, px, py,
                           h=prng.uniform(1.5, 2.3), r=prng.uniform(0.38, 0.55),
                           seed=100 + i * 11)
     for i in range(6):
         px = -11.5 + i * 2.0 + prng.uniform(-0.5, 0.5)
         py = -(2.0 + prng.uniform(0.2, 2.2))
-        kits["near"].spiky_bush("park_bush_%d" % i, px, py,
+        kits["s"].spiky_bush("park_bush_%d" % i, px, py,
                                 h=prng.uniform(0.4, 0.7), r=prng.uniform(0.22, 0.34),
                                 seed=200 + i * 7)
     for i in range(7):
         px = prng.uniform(-12.0, -2.5)
         py = -prng.uniform(1.9, 4.8)
-        kits["near"].grass_patch("park_patch_%d" % i, px, py,
+        kits["s"].grass_patch("park_patch_%d" % i, px, py,
                                  rx=prng.uniform(0.35, 0.8), ry=prng.uniform(0.25, 0.5),
                                  dark=prng.random() < 0.5, blades=prng.randint(2, 4),
                                  seed=300 + i * 5)
@@ -1166,7 +1241,7 @@ def phase3():
         side = rng.choice((1, -1))
         ry = rng.uniform(0.18, 0.33)
         y = side * rng.uniform(walk_edge + 0.10 + ry, BUILDING_FRONT_Y - 0.10 - ry)
-        kits["near"].grass_patch("patch_%d" % i, x, y,
+        kit_for(side).grass_patch("patch_%d" % i, x, y,
                                  rx=rng.uniform(0.30, 0.75), ry=ry,
                                  dark=rng.random() < 0.5, blades=rng.randint(2, 4),
                                  seed=i * 13 + 1)
@@ -1174,6 +1249,6 @@ def phase3():
         x = rng.uniform(-7.0, 12.0)
         side = rng.choice((1, -1))
         y = side * rng.uniform(ROAD_HALF_W + SIDEWALK_W + 0.40, BUILDING_FRONT_Y - 0.3)
-        kits["near"].grass_tuft("tuft_%d" % i, x, y, rng.uniform(0.7, 1.0))
+        kit_for(side).grass_tuft("tuft_%d" % i, x, y, rng.uniform(0.7, 1.0))
     setup_load_rig()
     return {"trees": len(TREES), "lamps": len(LAMPS), "fences": len(FENCES), "tufts": 26}
