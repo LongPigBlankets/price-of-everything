@@ -595,6 +595,48 @@ def _show_only_load(pred):
             ob.visible_camera = included
 
 
+def _geo_mask_override(to_sun):
+    """Geometric light-mask material: emission = 0.2 + 0.8*max(0, dot(N', to_sun)),
+    N' = normal flipped toward the camera when backfacing. Render with 'Standard'
+    view transform; see the mask block in render_layers for why this exists."""
+    mat = bpy.data.materials.get("_geo_mask_override")
+    if mat is None:
+        mat = bpy.data.materials.new("_geo_mask_override")
+        mat.use_nodes = True
+        nt = mat.node_tree
+        nt.nodes.clear()
+        geo = nt.nodes.new("ShaderNodeNewGeometry")
+        neg2 = nt.nodes.new("ShaderNodeMath"); neg2.operation = 'MULTIPLY'
+        neg2.inputs[1].default_value = -2.0
+        plus1 = nt.nodes.new("ShaderNodeMath"); plus1.operation = 'ADD'
+        plus1.inputs[1].default_value = 1.0
+        flip = nt.nodes.new("ShaderNodeVectorMath"); flip.operation = 'SCALE'
+        sunv = nt.nodes.new("ShaderNodeCombineXYZ"); sunv.name = "sun_vec"
+        dot = nt.nodes.new("ShaderNodeVectorMath"); dot.operation = 'DOT_PRODUCT'
+        mx = nt.nodes.new("ShaderNodeMath"); mx.operation = 'MAXIMUM'
+        mx.inputs[1].default_value = 0.0
+        mad = nt.nodes.new("ShaderNodeMath"); mad.operation = 'MULTIPLY_ADD'
+        mad.inputs[1].default_value = 0.8
+        mad.inputs[2].default_value = 0.2
+        em = nt.nodes.new("ShaderNodeEmission")
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        nt.links.new(geo.outputs["Backfacing"], neg2.inputs[0])
+        nt.links.new(neg2.outputs[0], plus1.inputs[0])
+        nt.links.new(geo.outputs["Normal"], flip.inputs[0])
+        nt.links.new(plus1.outputs[0], flip.inputs["Scale"])
+        nt.links.new(flip.outputs[0], dot.inputs[0])
+        nt.links.new(sunv.outputs[0], dot.inputs[1])
+        nt.links.new(dot.outputs["Value"], mx.inputs[0])
+        nt.links.new(mx.outputs[0], mad.inputs[0])
+        nt.links.new(mad.outputs[0], em.inputs["Strength"])
+        nt.links.new(em.outputs[0], out.inputs["Surface"])
+    sv = mat.node_tree.nodes["sun_vec"]
+    sv.inputs[0].default_value = to_sun.x
+    sv.inputs[1].default_value = to_sun.y
+    sv.inputs[2].default_value = to_sun.z
+    return mat
+
+
 def render_layers(out_dir=None, width=2400, height=1350):
     """Render each parallax layer alone, at overscan resolution for push headroom.
 
@@ -638,8 +680,27 @@ def render_layers(out_dir=None, width=2400, height=1350):
                 for d in attr.data:
                     d.value = True
                 temp_marked.append(ob.name)
+        # COLOUR pass renders FLAT (owner 2026-08-06: "use only stippling of
+        # different densities" for shading) — sun off, ambient boosted to the LIT
+        # MIX: white 0.45 ambient + warm sun direct 3.6*cos48/pi*(1.0,0.955,0.87)
+        # = (1.22, 1.18, 1.12). Plain white 1.22 loses the sun's warmth and veils
+        # the whole frame cool — the tint must ride the ambient. Every surface then
+        # carries its lit palette tone and ALL light/shade information lives in the
+        # stipple pass. Emission backdrop (sky/city/clouds) ignores lights anyway.
+        sun_flat = bpy.data.objects.get("LoadSun")
+        wbg = sc.world.node_tree.nodes.get("Background") if sc.world else None
+        if sun_flat:
+            sun_flat.data.energy = 0.0
+        if wbg:
+            wbg.inputs[0].default_value = (1.0, 0.972, 0.918, 1.0)
+            wbg.inputs[1].default_value = 1.216
         sc.render.filepath = os.path.join(out_dir, name)
         bpy.ops.render.render(write_still=True)
+        if sun_flat:
+            sun_flat.data.energy = 3.6
+        if wbg:
+            wbg.inputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
+            wbg.inputs[1].default_value = 0.45
         # LIGHT MASK for the scene stipple: same camera, white override, no ink,
         # backdrop hidden (emission under an override would read as shaded and
         # collect dots). Pure illumination -> scene_stipple.py bands from it.
@@ -660,27 +721,36 @@ def render_layers(out_dir=None, width=2400, height=1350):
                     for ob in cc.objects:
                         backdrop_state.append((ob.name, ob.hide_render))
                         ob.hide_render = True
-            # Owner: "fully lit facades carry no stipple". EEVEE's sun shadow maps
-            # blanket south-facing VERTICALS in phantom shade (a bare test cube with
-            # provably clear sun rays masks at ambient level — renderer artifact;
-            # horizontal surfaces shadow correctly), which would dot exactly the
-            # walls that must stay clean. So the BUILDING layers' masks render with
-            # sun shadows OFF — facades band on face orientation alone, the owner's
-            # actual rule — while the STREET layer's mask keeps shadows for the
-            # ground, where they render right: tree/building shade on road and lawn
-            # keeps its denser dot bands.
-            sun_ob = bpy.data.objects.get("LoadSun")
-            if name in ("L3_far", "L4_near") and sun_ob:
-                sun_ob.data.use_shadow = False
-            vl.material_override = ov
+            # Owner: "fully lit facades carry no stipple". Two mask recipes:
+            # - STREET (horizontal surfaces, correct normals, correct shadows):
+            #   white diffuse override under the real sun — cast tree/building
+            #   shade survives into the mask and gets the deepest dot band.
+            # - BUILDINGS (L3/L4): some builder wall faces carry unreliable
+            #   normals — a bare control cube lights to 0.76 in the very render
+            #   where a facade of identical orientation sits at ambient — so no
+            #   diffuse render can classify them. Instead the mask is computed
+            #   GEOMETRICALLY in the override shader: emission = 0.2 + 0.8 *
+            #   max(0, dot(N', to_sun)) with N' backfacing-corrected (closed
+            #   boxes always show the camera their outward side, so flipping
+            #   away-pointing normals recovers the true orientation), rendered
+            #   under the Standard view transform for predictable values.
+            #   scene_stipple gets per-layer cuts to match (0.55/0.30).
+            use_geo = name in ("L3_far", "L4_near")
+            vt_prev = sc.view_settings.view_transform
+            if use_geo:
+                sun_ob = bpy.data.objects.get("LoadSun")
+                to_sun = (sun_ob.matrix_world.to_3x3() @ mathutils.Vector((0, 0, 1))).normalized()
+                vl.material_override = _geo_mask_override(to_sun)
+                sc.view_settings.view_transform = 'Standard'
+            else:
+                vl.material_override = ov
             sc.render.use_freestyle = False
             os.makedirs(os.path.join(out_dir, "masks"), exist_ok=True)
             sc.render.filepath = os.path.join(out_dir, "masks", name)
             bpy.ops.render.render(write_still=True)
             vl.material_override = None
             sc.render.use_freestyle = True
-            if sun_ob:
-                sun_ob.data.use_shadow = True
+            sc.view_settings.view_transform = vt_prev
             for obname2, hr in backdrop_state:
                 ob = bpy.data.objects.get(obname2)
                 if ob:
@@ -835,6 +905,22 @@ def _stage_con_a(col):
         ob.matrix_world = m @ ob.matrix_world
 
 
+def _recalc_outward(col):
+    """Make every face normal point OUT of its shell. Some builder meshes carry
+    inverted faces (half a coplanar wall classifying 'away' in the geometric light
+    mask while its window frames classify 'lit'). Flat-shaded closed boxes look
+    identical either way in beauty+ink, so this only affects the mask. LOAD copies
+    only — the sprite pipeline rebuilds BLDG_* fresh and is untouched."""
+    for ob in col.objects:
+        if ob.type != 'MESH':
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(ob.data)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bm.to_mesh(ob.data)
+        bm.free()
+
+
 def phase1():
     """Build the cast and place it. Builders stomp the ACTIVE scene's render settings
     and the sprite Camera pose (their setup_rig), so the load rig is re-asserted after."""
@@ -857,6 +943,7 @@ def phase1():
         _place(col, rz, x, side, extra)
         if suffix == "con_a":
             _stage_con_a(col)
+        _recalc_outward(col)
         placed.append({"slot": suffix, "level": level, "objects": len(col.objects)})
     setup_load_rig()
     return {"placed": placed}

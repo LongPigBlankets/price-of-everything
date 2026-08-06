@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 """Light-driven stipple for the loading SCENE (the sprites keep stylize.py).
 
-stylize.py bands dot density by ALBEDO luma, which is right for sprites (flat tones,
-no cast light) and wrong for a lit scene: lit brick (0.266) and shadowed road (0.277)
-overlap, so no luma threshold can keep lit facades clean while stippling shade.
+Owner 2026-08-06: shading is carried by STIPPLE DENSITY ALONE — the colour layers
+render FLAT (render_layers turns the sun off and boosts ambient for the colour
+pass), and this pass prints the light back on as dots: the denser the dots, the
+deeper the shade. Dots are half the size of the first pass (r 1.7 at 2400px) so
+density, not dot weight, is the signal.
 
-Here LIT vs SHADE comes from a LIGHT MASK — the same camera rendered with a white
-material override and no ink, so the mask is pure illumination. With one sun and a
-flat ambient the mask is close to binary (measured: shade ~0.604, lit ~0.765), so
-the lit/shade split is a single cut between the modes (default 0.70) and the density
-BANDS inside shade come from the albedo after all — in shadow the albedo IS the local
-depth cue (dark brick in shade sits deeper than pale kerb in the same shadow):
-  light >= lit_cut          -> no dots   (owner: fully lit areas carry no stipple)
-  in shade                  -> sparse grid
-  ... and albedo < mid_alb  -> + offset grid (2x)
-  ... and albedo < deep_alb -> + half-spacing grid (4x)
+LIT vs SHADE comes from a LIGHT MASK — the same camera rendered with a white
+material override and no ink (sun ON for masks). With one sun and a flat ambient
+the mask is nearly bimodal (shade ~0.604, lit ~0.765); tilted facets land between.
+Bands (mask luma):
+  light >= lit_cut   -> no dots        (fully lit carries no stipple)
+  part_cut..lit_cut  -> sparse grid    (grazing light: canopy facets, tilted faces)
+  < part_cut         -> 2x density     (faces turned from the sun)
+  < part_cut, --deep-shade -> 4x       (street layer: its full-shade pixels are
+                                        CAST SHADOWS — the deepest band)
 Pixels with no mask coverage (backdrop, sky) get no dots. Glass keeps stylize.py's
 blue-dominant test. Dot colour multiplies toward ink navy.
 
-    python3 scene_stipple.py colour.png mask.png out.png --spacing 20 --dot-r 3.4
+    python3 scene_stipple.py colour.png mask.png out.png [--deep-shade]
 """
 import argparse
 import numpy as np
@@ -33,8 +34,8 @@ def _grid(xx, yy, spacing, off_u=0.0, off_v=0.0):
     return np.sqrt((u - 0.5) ** 2 + (v - 0.5) ** 2) * spacing
 
 
-def scene_stipple(src, mask_path, dst, spacing=20.0, dot_r=3.4, strength=0.26,
-                  lit_cut=0.70, mid_alb=0.45, deep_alb=0.25):
+def scene_stipple(src, mask_path, dst, spacing=14.0, dot_r=1.7, strength=0.38,
+                  lit_cut=0.70, part_cut=0.63, deep_shade=False):
     im = Image.open(src).convert("RGBA")
     a = np.asarray(im).astype(np.float32) / 255.0
     rgb, alpha = a[..., :3], a[..., 3]
@@ -47,23 +48,28 @@ def scene_stipple(src, mask_path, dst, spacing=20.0, dot_r=3.4, strength=0.26,
     albedo = rgb[..., 0] * 0.2126 + rgb[..., 1] * 0.7152 + rgb[..., 2] * 0.0722
 
     is_glass = (rgb[..., 2] > rgb[..., 0] * 1.45) & (albedo < 0.38)
-    shaded = (alpha > 0.01) & (mask_a > 0.5) & ~is_glass & (light < lit_cut)
+    covered = (alpha > 0.01) & (mask_a > 0.5) & ~is_glass
 
     h, w = light.shape
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
-    g_a = _grid(xx, yy, spacing) < dot_r
-    g_b = _grid(xx, yy, spacing, 0.5, 0.5) < dot_r
-    g_c = (_grid(xx, yy, spacing / 2) < dot_r * 0.85)
+    # Anti-aliased coverage per grid (1px soft edge): at half-size dots a hard
+    # threshold rasterises square-ish; coverage keeps them round.
+    def cov(dist, r):
+        return np.clip(r + 0.5 - dist, 0.0, 1.0)
+    c_a = cov(_grid(xx, yy, spacing), dot_r)
+    c_b = cov(_grid(xx, yy, spacing, 0.5, 0.5), dot_r)
+    c_c = cov(_grid(xx, yy, spacing / 2), dot_r * 0.9)
 
-    dot = np.zeros_like(light, dtype=bool)
-    dot |= g_a
-    dot |= g_b & (albedo < mid_alb)
-    dot |= g_c & (albedo < deep_alb)
-    dot &= shaded
+    coverage = np.zeros_like(light, dtype=np.float32)
+    coverage = np.maximum(coverage, c_a * (light < lit_cut))
+    coverage = np.maximum(coverage, c_b * (light < part_cut))
+    if deep_shade:
+        coverage = np.maximum(coverage, c_c * (light < part_cut))
+    coverage *= covered
 
     out = rgb.copy()
-    k = strength
-    out[dot] = out[dot] * (1 - k) + INK[None, :] * k
+    k = strength * coverage[..., None]
+    out = out * (1 - k) + INK[None, None, :] * k
     res = np.concatenate([out, alpha[..., None]], axis=-1)
     Image.fromarray((np.clip(res, 0, 1) * 255).round().astype(np.uint8)).save(dst)
 
@@ -71,13 +77,13 @@ def scene_stipple(src, mask_path, dst, spacing=20.0, dot_r=3.4, strength=0.26,
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("src"); ap.add_argument("mask"); ap.add_argument("dst")
-    ap.add_argument("--spacing", type=float, default=20.0)
-    ap.add_argument("--dot-r", type=float, default=3.4)
-    ap.add_argument("--strength", type=float, default=0.26)
+    ap.add_argument("--spacing", type=float, default=14.0)
+    ap.add_argument("--dot-r", type=float, default=1.7)
+    ap.add_argument("--strength", type=float, default=0.38)
     ap.add_argument("--lit-cut", type=float, default=0.70)
-    ap.add_argument("--mid-alb", type=float, default=0.45)
-    ap.add_argument("--deep-alb", type=float, default=0.25)
+    ap.add_argument("--part-cut", type=float, default=0.63)
+    ap.add_argument("--deep-shade", action="store_true")
     args = ap.parse_args()
     scene_stipple(args.src, args.mask, args.dst, args.spacing, args.dot_r,
-                  args.strength, args.lit_cut, args.mid_alb, args.deep_alb)
+                  args.strength, args.lit_cut, args.part_cut, args.deep_shade)
     print("scene-stippled", args.src, "->", args.dst)
