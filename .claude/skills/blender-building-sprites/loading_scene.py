@@ -593,6 +593,7 @@ def _show_only_load(pred):
             ob.hide_render = False
             ob.hide_viewport = False
             ob.visible_camera = included
+            ob.is_holdout = False
 
 
 def _geo_mask_override(to_sun):
@@ -659,6 +660,17 @@ def render_layers(out_dir=None, width=2400, height=1350):
     done = []
     for name, pred in LAYERS:
         _show_only_load(pred)
+        # BUILDING layers: the street is not merely excluded, it's a HOLDOUT —
+        # it must still OCCLUDE and cut alpha. Camera-invisible ground exposed the
+        # buildings' below-grade apron kerbs (hidden by the verge in the full
+        # scene), and the composite painted them over the street as a dark band
+        # under the construction site (owner: "looks like it's floating").
+        if name in ("L3_far", "L4_near"):
+            cc = bpy.data.collections.get("LOAD_street")
+            if cc:
+                for ob in cc.objects:
+                    ob.visible_camera = True
+                    ob.is_holdout = True
         # Freestyle ignores visible_camera and inks every hidden caster as a ghost
         # wireframe. The rig's face-mark exclusion is the kill switch: temporarily
         # mark ALL faces of excluded objects (they keep casting shadows, camera-
@@ -1041,14 +1053,17 @@ def phase3():
                                  seed=300 + i * 5)
 
     rng = random.Random(11)
-    # Patches carry the grass texture (soft NOINK discs of off-tone green); a few
-    # small tufts sit on top as accents. The 26-tuft carpet read as chunky scribble.
+    # Blade scatters carry the grass texture; a few tufts sit on top as accents.
+    # ry is chosen FIRST and the centre y clamped so the whole scatter ellipse
+    # stays ON the verge (owner: the old base discs overflowed onto the sidewalk).
+    walk_edge = ROAD_HALF_W + SIDEWALK_W
     for i in range(14):
         x = rng.uniform(-7.5, 18.0)
         side = rng.choice((1, -1))
-        y = side * rng.uniform(ROAD_HALF_W + SIDEWALK_W + 0.35, BUILDING_FRONT_Y - 0.35)
+        ry = rng.uniform(0.18, 0.33)
+        y = side * rng.uniform(walk_edge + 0.10 + ry, BUILDING_FRONT_Y - 0.10 - ry)
         kits["near"].grass_patch("patch_%d" % i, x, y,
-                                 rx=rng.uniform(0.30, 0.75), ry=rng.uniform(0.20, 0.45),
+                                 rx=rng.uniform(0.30, 0.75), ry=ry,
                                  dark=rng.random() < 0.5, blades=rng.randint(2, 4),
                                  seed=i * 13 + 1)
     for i in range(7):

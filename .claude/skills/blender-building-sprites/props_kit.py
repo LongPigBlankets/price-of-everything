@@ -129,44 +129,46 @@ def _mark_noink_props(ob):
 
 
 def _grass_patch(self, name, x, y, rx=0.45, ry=0.30, dark=False, blades=3, seed=0):
-    """A soft PATCH of grass: a flat NOINK disc of off-tone green lying on the verge
-    (no outline — it reads as meadow variation, not an object), with a few fine-ink
-    blades on its rim. Patches carry the texture; blades are accents only."""
+    """A scatter of tapered grass blades inside an ellipse — NO base disc and NO ink
+    (owner 2026-08-06: the old NOINK pad ellipse could cross onto the sidewalk and
+    read as spilled paint, and the outlined constant-radius cylinder blades read as
+    navy scratches — the outline WAS the blade). Leaning tapered spikes in the two
+    canopy greens against the lawn tone carry the meadow texture on their own."""
     import random
     rng = random.Random(seed)
-    m = bpy.data.meshes.new(name + "_pad")
-    bm = bmesh.new()
-    bmesh.ops.create_cone(bm, cap_ends=True, segments=12, radius1=1.0, radius2=1.0, depth=0.012)
-    bm.to_mesh(m); bm.free()
-    ob = self.obj(name + "_pad", m, self.mat("canopy_dark" if dark else "canopy"))
-    ob.location = (x, y, 0.028)
-    ob.scale = (rx, ry, 1.0)
-    _mark_noink_props(ob)
-    _fm = self._fine_mode
-    self._fine_mode = True
-    for i in range(blades):
+    for i in range(max(6, blades * 3)):
         ang = rng.uniform(0, 6.283)
-        bx = x + math.cos(ang) * rx * rng.uniform(0.4, 0.85)
-        by = y + math.sin(ang) * ry * rng.uniform(0.4, 0.85)
-        self.dircyl("%s_b%d" % (name, i), (bx, by, 0.022),
-                    (bx + rng.uniform(-0.03, 0.03), by + rng.uniform(-0.03, 0.03),
-                     0.022 + rng.uniform(0.06, 0.10)),
-                    0.010, self.mat("canopy_dark"), segments=6, smooth=False)
-    self._fine_mode = _fm
+        rad = math.sqrt(rng.random())          # uniform over the ellipse area
+        bx = x + math.cos(ang) * rx * rad
+        by = y + math.sin(ang) * ry * rad
+        h = rng.uniform(0.06, 0.13)
+        lean = rng.uniform(0.15, 0.45) * h
+        la = rng.uniform(0, 6.283)
+        mat = self.mat("canopy_dark" if (dark or rng.random() < 0.6) else "canopy")
+        ob = self._taper("%s_b%d" % (name, i), (bx, by, 0.012),
+                         (bx + math.cos(la) * lean, by + math.sin(la) * lean,
+                          0.012 + h),
+                         rng.uniform(0.014, 0.022), 0.002, mat, segments=5)
+        _mark_noink_props(ob)
 
 
 def _grass_tuft(self, name, x, y, s=1.0):
-    """A few leaning blades — fine ink or they smudge at street scale."""
-    _fm = self._fine_mode
-    self._fine_mode = True
-    for i, (dx, dy, lean_x, lean_y) in enumerate((
-            (0.0, 0.0, 0.03, 0.01), (0.035, 0.02, -0.025, 0.02),
-            (-0.03, 0.015, 0.01, -0.03), (0.01, -0.03, -0.02, -0.015))):
-        base = (x + dx * s, y + dy * s, 0.022)
-        tip = (x + (dx + lean_x) * s, y + (dy + lean_y) * s, 0.022 + 0.115 * s)
-        self.dircyl("%s_b%d" % (name, i), base, tip, 0.013 * s,
-                    self.mat("canopy_dark"), segments=6, smooth=False)
-    self._fine_mode = _fm
+    """A clump: tapered blades fanning out from one root, leaning outward — the
+    classic grass-tuft silhouette. NOINK for the same reason as _grass_patch."""
+    import random
+    rng = random.Random((int(x * 37) + int(y * 91)) & 0xFFFF)
+    n = rng.randint(5, 6)
+    for i in range(n):
+        la = (i / n) * 6.283 + rng.uniform(-0.4, 0.4)
+        h = rng.uniform(0.07, 0.14) * s
+        lean = rng.uniform(0.25, 0.6) * h
+        bx = x + math.cos(la) * 0.012 * s
+        by = y + math.sin(la) * 0.012 * s
+        ob = self._taper("%s_b%d" % (name, i), (bx, by, 0.012),
+                         (bx + math.cos(la) * lean, by + math.sin(la) * lean,
+                          0.012 + h),
+                         0.016 * s, 0.002, self.mat("canopy_dark"), segments=5)
+        _mark_noink_props(ob)
 
 
 def _fence_run(self, name, p0, p1, h=0.42, post_gap=0.95):
