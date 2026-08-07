@@ -44,10 +44,21 @@ CAM_X = -13.0               # start camera x (the rig asserts this)
 # that; the sky plane moves back with it and is scaled to subtend the same angle.
 SKY_SCALE = (SKY_X - CAM_X) / (90.0 - CAM_X)
 HAZE_WALLS = ((88.0, 2.20), (104.0, 3.40))   # (x, height) far-field haze, far one taller
+# The city is BUILT at CITY_X but then pushed back by this factor, scaled about the
+# start camera so its projection is identical — the skyline looks the same while
+# physically retreating past the new end-of-street buildings (a construction site
+# and a power plant now stand at x 78 and 86, which would otherwise poke through a
+# backdrop sitting at 74). Everything in LOAD_city rides along: gates, central wall,
+# haze walls and clouds.
+CITY_PUSH = 1.55
+# Owner: no camera move may cross this fraction of the built street — past it the
+# far end thins out and the sparse slots show.
+TRAVEL_MAX_FRAC = 0.75
 
 # Scene tones — flat Principled, specular 0, roughness 1 (the kit recipe). Large
 # surfaces obey the AgX value ceiling: past base ~0.3 everything renders within a few
 # luma, so the BIG planes stay low; small crisp objects may go brighter.
+CITY_DARK_TONE = (0.150, 0.175, 0.205)   # LOD-2 shaded returns / cornices
 TONES = {
     "load_ground":  (0.125, 0.170, 0.092),   # field green
     "load_verge":   (0.128, 0.240, 0.075),   # vivid lawn at the building line (owner)
@@ -368,9 +379,18 @@ def _emat(name, rgb):
     return m
 
 
-def build_backdrop(seed=7):
+def build_backdrop(seed=7, detail=1):
     """Banded sky (one mesh, one material slot per band), two-rank city silhouette
-    peaked at the vanishing point, and a haze strip grounding it. Idempotent."""
+    peaked at the vanishing point, and a haze strip grounding it. Idempotent.
+
+    `detail` is the city LOD (owner: one for the first half of the run, a richer one
+    from 51% on, when the skyline is closer). LOD 2 keeps the SAME seeded massing —
+    identical block positions and sizes — and only adds finer elements, so the swap
+    cannot shift the skyline: window strips on every block rather than the wide ones,
+    a cornice at each parapet, pilasters on broad facades, and a shaded return on
+    the faces turned away from the sun (the sun is south, so the +Y flank is the
+    dark one, and it is the blocks right of centre that show it).
+    """
     import random
     sc = get_scene()
     sky_col = _collection(sc, "LOAD_sky")
@@ -471,6 +491,35 @@ def build_backdrop(seed=7):
                     ws = _box(city_col, "city_w%d_%d_%d" % (rank, i, k),
                               rx - 0.62, wy, h * 0.45, 0.02, 0.30, h * 0.62, wm)
                     mark_noink(ws)
+            if detail >= 2:
+                by = y + w / 2
+                dm = _emat("load_city_dark", CITY_DARK_TONE)
+                wm2 = _emat("load_city_win", (0.220, 0.260, 0.320))
+                # Shaded return: only visible on blocks right of the axis (y < 0),
+                # whose +Y flank turns away from the southern sun.
+                if by < -0.6:
+                    sf = _box(city_col, "city_sh%d_%d" % (rank, i), rx - 0.02,
+                              y + w, h / 2, 1.16, 0.06, h, dm)
+                    mark_noink(sf)
+                cor = _box(city_col, "city_co%d_%d" % (rank, i), rx - 0.03,
+                           by, h + 0.04, 1.26, w + 0.10, 0.10, dm)   # cornice
+                mark_noink(cor)
+                if w > 1.2:                                   # pilaster rhythm
+                    for k in range(max(2, int(w / 0.55))):
+                        px = y + 0.18 + k * 0.55
+                        if px > y + w - 0.14:
+                            break
+                        pil = _box(city_col, "city_pl%d_%d_%d" % (rank, i, k),
+                                   rx - 0.63, px, h * 0.5, 0.02, 0.07, h * 0.9, dm)
+                        mark_noink(pil)
+                if rank == 1 and w <= 2.0:                    # windows on the narrow ones too
+                    for k in range(max(1, int(w / 0.7))):
+                        wy2 = y + 0.30 + k * 0.7
+                        if wy2 > y + w - 0.25:
+                            break
+                        ws2 = _box(city_col, "city_nw%d_%d_%d" % (rank, i, k),
+                                   rx - 0.62, wy2, h * 0.45, 0.02, 0.22, h * 0.6, wm2)
+                        mark_noink(ws2)
             y += w + rng.uniform(0.4, 1.6)
             i += 1
 
@@ -571,6 +620,19 @@ def build_backdrop(seed=7):
         shade = _box(city_col, "cloud%d_shade" % ci, 83.7, cy + (y_lo + y_hi) / 2,
                      cz0 + 0.24 * sc_f, 0.1, (y_hi - y_lo) * 0.80, 0.48 * sc_f, sm)
         mark_noink(shade)
+    # Push the city back WITHOUT changing how it looks: scaling every vertex about
+    # the start camera leaves the projection from that camera exactly unchanged, so
+    # the approved skyline survives while physically retreating behind the new
+    # end-of-street buildings.
+    if CITY_PUSH != 1.0:
+        pivot = mathutils.Vector((CAM_X, 0.0, 0.62))
+        for ob in city_col.objects:
+            if ob.type != 'MESH':
+                continue
+            for v in ob.data.vertices:
+                w0 = ob.matrix_world @ v.co
+                v.co = ob.matrix_world.inverted() @ (pivot + (w0 - pivot) * CITY_PUSH)
+
     for c in (sky_col, city_col):
         for ob in c.objects:
             ob.visible_shadow = False
@@ -598,6 +660,15 @@ FAR_SLOTS = ("off_d", "fur_b", "pp_a", "pp_b", "pet_a", "off_e", "fac_e", "off_f
 LAMP_Y = ROAD_HALF_W + 0.30
 
 _north_cache = []
+_south_cache = []
+
+
+def _south_slots():
+    """Explicit membership, not "whatever is not north" — that catch-all silently
+    swept stray collections into the south layer and warped them backwards."""
+    if not _south_cache:
+        _south_cache.extend(sl[0] for sl in SLOTS if sl[5] == "s")
+    return _south_cache
 
 
 def _north_slots():
@@ -613,10 +684,11 @@ LAYERS = [
     ("L2_ground",  lambda n: n == "LOAD_street"),
     ("L3_north",   lambda n: (n.startswith("LOAD_bldg_") and n[10:] in _north_slots())
                    or n == "LOAD_props_n"),
-    ("L4_south",   lambda n: (n.startswith("LOAD_bldg_") and n[10:] not in _north_slots())
+    ("L4_south",   lambda n: (n.startswith("LOAD_bldg_") and n[10:] in _south_slots())
                    or n == "LOAD_props_s"),
     ("L5_lamp_n",  lambda n: n == "LOAD_props_lamp_n"),
     ("L6_lamp_s",  lambda n: n == "LOAD_props_lamp_s"),
+    ("L7_vehicles", lambda n: n == "LOAD_props_veh"),
 ]
 
 # Plane each layer rides, for the dolly warp (consumed by parallax_preview / Godot).
@@ -628,6 +700,7 @@ LAYER_PLANES = {
     "L4_south":  ("wall", -BUILDING_FRONT_Y),
     "L5_lamp_n": ("wall", LAMP_Y),
     "L6_lamp_s": ("wall", -LAMP_Y),
+    "L7_vehicles": ("ground", 0.0),   # they stand on the road; the film path ignores this
 }
 
 
@@ -957,6 +1030,11 @@ SLOTS = [
     ("off_e", "office",      1, 180.0, 66.0, "s"),
     ("fac_e", "factory",     1, -90.0, 67.5, "n"),
     ("off_f", "office",      2,   0.0, 71.5, "n"),
+    # End of the street (owner): a construction site on the RIGHT and a power plant
+    # on the LEFT, extending the built row from 73 to ~89 so the dolly has content
+    # ahead of it for longer.
+    ("con_b", "construction", 0, 180.0, 78.0, "s"),
+    ("pp_c",  "powerplant",   3,   0.0, 86.0, "n"),
 ]
 
 # Every builder file defines a module-level LEVELS and reads it from its exec namespace,
@@ -1092,6 +1170,23 @@ def phase1():
     """Build the cast and place it. Builders stomp the ACTIVE scene's render settings
     and the sprite Camera pose (their setup_rig), so the load rig is re-asserted after."""
     sc = get_scene()
+    # Drop LOAD_bldg_* collections whose slot no longer exists. phase1 wipes and
+    # refills the CURRENT slots but used to leave dropped ones standing, and two
+    # orphans (fac_c, fac_d from an older SLOTS) sat intersecting the petro
+    # refinery and the furnace with their fronts out on the sidewalk. Worse, the
+    # layer predicate is "not north -> south", so these north-side strays were
+    # composited into L4_south and warped with the south facade plane, sliding the
+    # wrong way and riding over their neighbours.
+    live = {sl[0] for sl in SLOTS}
+    for col in [c for c in bpy.data.collections if c.name.startswith("LOAD_bldg_")]:
+        if col.name[10:] in live:
+            continue
+        for ob in list(col.objects):
+            bpy.data.objects.remove(ob, do_unlink=True)
+        for scn in bpy.data.scenes:
+            if col.name in [x.name for x in scn.collection.children]:
+                scn.collection.children.unlink(col)
+        bpy.data.collections.remove(col)
     placed = []
     for slot in SLOTS:
         suffix, kind, level, rz, x, side = slot[:6]
@@ -1140,6 +1235,66 @@ LAMPS = [                   # (x, side) — on the sidewalk, arm over the road. 
     (8.0, 1), (22.0, 1), (36.0, 1), (50.0, 1), (64.0, 1),
     (5.0, -1), (15.0, -1), (29.0, -1), (43.0, -1), (57.0, -1),
 ]
+LANE_Y = 0.29               # lane centres; nothing may cross the centre line
+# Traffic (owner: 3-4 trucks + 2-3 cars down the road, a few cars back up it).
+# The game is British, so traffic keeps LEFT: down-street (+X) runs on the +Y side,
+# which is SCREEN LEFT, and oncoming is screen right — the way it looks from a car.
+#
+# It MOVES. The camera drives down the centre line, so a parked vehicle in the
+# down-street lane gets rear-ended: at camera x=22 the static truck at x=26 filled
+# half the frame, because its trailer tail sat 1.85 units off the lens. Down-street
+# traffic therefore runs slightly FASTER than the camera and slowly draws away;
+# oncoming traffic closes at nearly twice camera speed and sweeps past. Both wrap
+# around a window ahead so the stream never runs out — a wrap only ever happens ~90
+# units out, where a vehicle is a couple of pixels.
+AWAY_SPEED, ONCOMING_SPEED, WRAP = 1.15, 0.85, 90.0
+# (kind, x0, direction, colour)
+VEHICLES = [
+    ("truck", 6.0,   1, "truck_white"),
+    ("car",   17.0,  1, "car_red"),
+    ("truck", 31.0,  1, "truck_black"),
+    ("car",   44.0,  1, "car_blue"),
+    ("truck", 58.0,  1, "truck_white"),
+    ("car",   70.0,  1, "car_green"),
+    ("truck", 84.0,  1, "truck_black"),
+    ("car",   15.0, -1, "car_cream"),
+    ("car",   38.0, -1, "car_grey"),
+    ("car",   61.0, -1, "car_rust"),
+    ("car",   80.0, -1, "car_blue"),
+]
+
+
+def place_vehicles(advance=0.0, cam_x=None):
+    """(Re)build the traffic for a camera that has travelled `advance` units.
+
+    Cheap enough to call per frame — 11 vehicles, a few dozen boxes. Every frame of
+    the film is its own render, so this is all the animation system the traffic
+    needs; nothing is keyframed in Blender."""
+    B = "/Users/crisu/Price of Everything/blender-assets/"
+    ns = {}
+    exec(open(B + "sprite_kit.py").read(), ns)
+    exec(open(B + "props_kit.py").read(), ns)
+    exec(open(B + "vehicles_kit.py").read(), ns)
+    sc = get_scene()
+    col = _collection(sc, "LOAD_props_veh")
+    _wipe(col)
+    kit = ns["Kit"](ns["open_collection"]("LOAD_props_veh"))
+    _collection(sc, "LOAD_props_veh")
+    cx = CAM_X + advance if cam_x is None else cam_x
+    for vi, (kind, x0, vdir, colour) in enumerate(VEHICLES):
+        if vdir > 0:
+            x = x0 + AWAY_SPEED * advance
+        else:
+            x = x0 - ONCOMING_SPEED * advance
+        x = cx + ((x - cx) % WRAP)          # keep a stream ahead of the camera
+        vy = vdir * LANE_Y
+        if kind == "truck":
+            kit.truck("veh_%d" % vi, x, vy, face=float(vdir), colour=colour)
+        else:
+            kit.car("veh_%d" % vi, x, vy, face=float(vdir), colour=colour)
+    return {"vehicles": len(VEHICLES), "advance": advance}
+
+
 FENCES = [                  # power-plant and refinery yards get street fencing
     ((48.6, -2.35), (55.4, -2.35)),
     ((56.6,  2.35), (63.4,  2.35)),
@@ -1153,6 +1308,7 @@ def phase3():
     ns = {}
     exec(open(B + "sprite_kit.py").read(), ns)
     exec(open(B + "props_kit.py").read(), ns)
+    exec(open(B + "vehicles_kit.py").read(), ns)
     # Props are grouped by the PLANE they stand on, not by distance: everything on
     # the north verge shares the facade plane y=+FRONT and takes one dolly
     # homography; the south verge takes its mirror. Lampposts sit far closer to the
@@ -1295,5 +1451,9 @@ def phase3():
         side = rng.choice((1, -1))
         y = side * rng.uniform(ROAD_HALF_W + SIDEWALK_W + 0.40, BUILDING_FRONT_Y - 0.3)
         kit_for(side).grass_tuft("tuft_%d" % i, x, y, rng.uniform(0.7, 1.0))
+    # Traffic lives in place_vehicles(), which is re-run per frame so it can move.
+    place_vehicles(0.0)
+
     setup_load_rig()
-    return {"trees": len(TREES), "lamps": len(LAMPS), "fences": len(FENCES), "tufts": 26}
+    return {"trees": len(TREES), "lamps": len(LAMPS), "fences": len(FENCES),
+            "tufts": 26, "vehicles": len(VEHICLES)}
