@@ -52,7 +52,7 @@ HAZE_WALLS = ((88.0, 2.20), (104.0, 3.40))   # (x, height) far-field haze, far o
 # and a power plant now stand at x 78 and 86, which would otherwise poke through a
 # backdrop sitting at 74). Everything in LOAD_city rides along: gates, central wall,
 # haze walls and clouds.
-CITY_PUSH = 1.55
+CITY_PUSH = 1.92
 # Owner: no camera move may cross this fraction of the built street — past it the
 # far end thins out and the sparse slots show.
 TRAVEL_MAX_FRAC = 0.75
@@ -1067,6 +1067,13 @@ SLOTS = [
     # ahead of it for longer.
     ("con_b", "construction", 0, 180.0, 78.0, "s"),
     ("pp_c",  "powerplant",   3,   0.0, 86.0, "n"),
+    # THE PORT terminates the street. Left (north) bank gets two construction
+    # sites; the right (south) bank is the docks, which is about four slots wide
+    # and brings its own water — that water is the street's waterfront, so the
+    # last south building before it needs clearance or it stands in the sea.
+    ("con_c", "construction", 0,   0.0,  96.0, "n"),
+    ("con_d", "construction", 0,   0.0, 108.0, "n"),
+    ("port_a", "docks",       0,   0.0, 103.0, "s", 1.60),
 ]
 
 # Every builder file defines a module-level LEVELS and reads it from its exec namespace,
@@ -1083,6 +1090,7 @@ BUILDERS = {
     "poly":       ("poly_plant_builder.py",    "build_poly_plant",    "BLDG_poly"),
     "petro":      ("petro_refinery_builder.py","build_petro_refinery","BLDG_petro"),
     "office":     ("office_builder.py",        "build_office",        "BLDG_office"),
+    "docks":      ("docks_builder.py",         "build_docks",         "BLDG_docks"),
 }
 _builder_cache = {}
 
@@ -1267,6 +1275,10 @@ TREES = [                   # (x, side, h, r) — y is DERIVED: the canopy must 
     (83.0,  1, 1.8, 0.44), (87.5, 1, 1.7, 0.41),
     (64.5, -1, 1.8, 0.44), (69.5, -1, 2.0, 0.47), (75.0, -1, 1.7, 0.42),
     (80.5, -1, 1.9, 0.46), (85.5, -1, 1.8, 0.43),
+    # down to the port
+    (92.0,  1, 1.8, 0.44), (98.5, 1, 2.0, 0.47), (104.5, 1, 1.7, 0.42),
+    (110.0, 1, 1.9, 0.45),
+    (90.5, -1, 1.7, 0.41), (95.5, -1, 1.9, 0.46),
 ]
 LAMPS = [                   # (x, side) — on the sidewalk, arm over the road. Nothing
     # nearer than x=5: the camera sits at -8 and a lamp 2 units ahead fills the frame
@@ -1274,6 +1286,7 @@ LAMPS = [                   # (x, side) — on the sidewalk, arm over the road. 
     (8.0, 1), (22.0, 1), (36.0, 1), (50.0, 1), (64.0, 1),
     (5.0, -1), (15.0, -1), (29.0, -1), (43.0, -1), (57.0, -1),
     (78.0, 1), (71.0, -1), (85.0, -1),
+    (92.0, 1), (100.0, 1), (108.0, 1), (95.0, -1),
 ]
 LANE_Y = 0.29               # lane centres; nothing may cross the centre line
 # Traffic (owner: 3-4 trucks + 2-3 cars down the road, a few cars back up it).
@@ -1287,7 +1300,7 @@ LANE_Y = 0.29               # lane centres; nothing may cross the centre line
 # oncoming traffic closes at nearly twice camera speed and sweeps past. Both wrap
 # around a window ahead so the stream never runs out — a wrap only ever happens ~90
 # units out, where a vehicle is a couple of pixels.
-AWAY_SPEED, ONCOMING_SPEED, WRAP = 1.15, 0.85, 90.0
+AWAY_SPEED, ONCOMING_SPEED, WRAP = 1.15, 0.85, 125.0
 # (kind, x0, direction, colour)
 VEHICLES = [
     ("truck", 6.0,   1, "truck_white"),
@@ -1297,10 +1310,14 @@ VEHICLES = [
     ("truck", 58.0,  1, "truck_white"),
     ("car",   70.0,  1, "car_green"),
     ("truck", 84.0,  1, "truck_black"),
+    ("car",   97.0,  1, "car_grey"),
+    ("truck", 109.0, 1, "truck_white"),
     ("car",   15.0, -1, "car_cream"),
     ("car",   38.0, -1, "car_grey"),
     ("car",   61.0, -1, "car_rust"),
     ("car",   80.0, -1, "car_blue"),
+    ("car",   99.0, -1, "car_green"),
+    ("car",  113.0, -1, "car_red"),
 ]
 
 
@@ -1340,6 +1357,9 @@ FENCES = [                  # power-plant and refinery yards get street fencing
     ((56.6,  2.35), (63.4,  2.35)),
     ((31.0,  2.35), (37.0,  2.35)),
     ((82.0,  2.35), (89.0,  2.35)),     # the new power plant yard
+    # Fence along the port frontage, stopping short of the crossroads at the very
+    # end so the junction stays open (owner).
+    ((92.5, -2.35), (105.5, -2.35)),
 ]
 
 
@@ -1479,7 +1499,7 @@ def phase3():
     # centre y clamped so the whole scatter ellipse stays ON the verge.
     walk_edge = ROAD_HALF_W + SIDEWALK_W
     for i in range(16):
-        x = rng.uniform(-7.5, 84.0)
+        x = rng.uniform(-7.5, 106.0)
         side = rng.choice((1, -1))
         ry = rng.uniform(0.18, 0.33)
         y = side * rng.uniform(walk_edge + 0.10 + ry, BUILDING_FRONT_Y - 0.10 - ry)
@@ -1488,7 +1508,7 @@ def phase3():
                                  dark=rng.random() < 0.5, blades=rng.randint(2, 4),
                                  seed=i * 13 + 1)
     for i in range(14):
-        x = rng.uniform(-7.0, 84.0)
+        x = rng.uniform(-7.0, 106.0)
         side = rng.choice((1, -1))
         y = side * rng.uniform(ROAD_HALF_W + SIDEWALK_W + 0.40, BUILDING_FRONT_Y - 0.3)
         kit_for(side).grass_tuft("tuft_%d" % i, x, y, rng.uniform(0.7, 1.0))
