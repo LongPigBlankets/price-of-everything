@@ -285,6 +285,40 @@ def setup_load_rig(res_x=1920, res_y=1080):
     return sc
 
 
+# Every place a lane meets the main road. The sidewalk and kerb are BROKEN here
+# rather than having a lane painted over them: a side road that runs across an
+# unbroken pavement reads as a driveway, not a junction. Widths include a small
+# flare so the gap is a touch wider than the lane itself.
+JUNCTIONS_N = ((7.5, 0.62), (29.5, 0.62), (48.5, 0.62))
+JUNCTIONS_S = ((11.5, 0.62), (33.5, 0.62), (46.0, 0.62), (92.30, 0.90))
+JUNCTION_FLARE = 0.13
+
+
+def _junction_gaps(side):
+    js = JUNCTIONS_N if side > 0 else JUNCTIONS_S
+    return [(jx - jw / 2 - JUNCTION_FLARE, jx + jw / 2 + JUNCTION_FLARE)
+            for jx, jw in js]
+
+
+def _segmented_strip(col, name, gaps, cy, cz, sy, sz, mat, noink=False):
+    """A long strip along X, broken wherever a lane crosses it."""
+    spans = []
+    x = STREET_X0
+    for g0, g1 in sorted(gaps):
+        if g0 > x:
+            spans.append((x, g0))
+        x = max(x, g1)
+    if x < STREET_X1:
+        spans.append((x, STREET_X1))
+    out = []
+    for i, (a, b) in enumerate(spans):
+        ob = _box(col, "%s_%d" % (name, i), (a + b) / 2, cy, cz, b - a, sy, sz, mat)
+        if noink:
+            mark_noink(ob)
+        out.append(ob)
+    return out
+
+
 def build_street_scaffold():
     """Ground, road, kerbs, centre dashes, placeholder sky. Idempotent."""
     sc = get_scene()
@@ -324,11 +358,16 @@ def build_street_scaffold():
     # catches its own ink line down the whole street.
     for side, tag in ((1, "n"), (-1, "s")):
         yc = side * (ROAD_HALF_W + SIDEWALK_W / 2)
-        _box(col, "walk_" + tag, cx, yc, SIDEWALK_TOP / 2,
-             STREET_X1 - STREET_X0, SIDEWALK_W, SIDEWALK_TOP, _mat("load_walk"))
-        _box(col, "kerb_" + tag, cx, side * (ROAD_HALF_W + KERB_W / 2),
-             SIDEWALK_TOP / 2 + 0.006,
-             STREET_X1 - STREET_X0 + EPS, KERB_W, SIDEWALK_TOP + 0.012, _mat("load_kerb"))
+        gaps = _junction_gaps(side)
+        # Both the pavement AND its kerb stop at every junction. Leaving the kerb
+        # running through was the other half of the problem — a continuous kerb
+        # line across a side road is exactly the edge-of-road marking that made
+        # the lane read as painted on rather than joining.
+        _segmented_strip(col, "walk_" + tag, gaps, yc, SIDEWALK_TOP / 2,
+                         SIDEWALK_W, SIDEWALK_TOP, _mat("load_walk"))
+        _segmented_strip(col, "kerb_" + tag, gaps,
+                         side * (ROAD_HALF_W + KERB_W / 2), SIDEWALK_TOP / 2 + 0.006,
+                         KERB_W, SIDEWALK_TOP + 0.012, _mat("load_kerb"))
 
     # Verges: the lawns between sidewalk and facades, proud of the ground by EPS so
     # they read as kept grass against the duller field beyond (owner: vibrant green).
@@ -359,12 +398,13 @@ def build_street_scaffold():
     # white bay dividers beside some of them.
     for sx, side in ((7.5, 1), (29.5, 1), (48.5, 1), (11.5, -1), (33.5, -1), (46.0, -1)):
         sgn = side
-        _box(col, "siderd_x_%s_%d" % (side, int(sx * 10)), sx,
-             sgn * (ROAD_HALF_W + SIDEWALK_W / 2), SIDEWALK_TOP + 0.004,
-             0.62, SIDEWALK_W + EPS, 0.014, _mat("load_asphalt"))
-        _box(col, "siderd_l_%s_%d" % (side, int(sx * 10)), sx,
-             sgn * (ROAD_HALF_W + SIDEWALK_W + 2.6), -0.02 + EPS,
-             0.62, 5.2, 0.1, _mat("load_asphalt"))
+        # ONE lane at road level running from the carriageway edge out to the lot,
+        # through the gap the pavement now leaves for it. The old build laid a thin
+        # slab ON TOP of the sidewalk, which is why it read as paint.
+        depth = SIDEWALK_W + 5.2
+        _box(col, "siderd_%s_%d" % (side, int(sx * 10)), sx,
+             sgn * (ROAD_HALF_W + depth / 2), 0.0 + EPS / 2,
+             0.62, depth, 0.1 + EPS, _mat("load_asphalt"))
     # Parallel BACK STREETS behind each row (owner). The camera now sits high
     # enough to see over the buildings' flanks into what was open field; a road
     # with its own kerbs reads as "this is a district", not an edge of the world.
@@ -389,12 +429,9 @@ def build_street_scaffold():
     # to it. Crossing slab over the sidewalk, then the lane itself, then a mouth
     # flaring into the dock road so the junction reads as a T rather than a lane
     # stopping against a kerb.
-    _box(col, "portlink_x", PORT_LINK_X, -(ROAD_HALF_W + SIDEWALK_W / 2),
-         SIDEWALK_TOP + 0.004, PORT_LINK_W, SIDEWALK_W + EPS, 0.014,
-         _mat("load_asphalt"))
     _box(col, "portlink", PORT_LINK_X,
-         (-(ROAD_HALF_W + SIDEWALK_W) + DOCK_ROAD_Y) / 2, -0.02 + EPS,
-         PORT_LINK_W, abs(DOCK_ROAD_Y + ROAD_HALF_W + SIDEWALK_W), 0.1,
+         (-ROAD_HALF_W + DOCK_ROAD_Y) / 2, 0.0 + EPS / 2,
+         PORT_LINK_W, abs(DOCK_ROAD_Y + ROAD_HALF_W), 0.1 + EPS,
          _mat("load_asphalt"))
     _box(col, "portlink_mouth", PORT_LINK_X, DOCK_ROAD_Y - 0.18, -0.02 + EPS * 2,
          PORT_LINK_W + 0.70, 0.42, 0.1, _mat("load_asphalt"))
@@ -1064,6 +1101,84 @@ def render_stations(n=6, spacing=2.25, out_root=None, width=2400, height=1350):
             break
     cam.location.x = CAM_X
     return {"stations": len(done), "out": out_root}
+
+
+# ── The film: rendered in CHUNKS ────────────────────────────────────────────
+# Travel runs from the start camera to TRAVEL_MAX_FRAC of the built row, which is
+# where the far end starts to thin out. 447 keyframes over 45s at ~40s a keyframe
+# is about 5 hours all in (owner asked for denser frames than the 3.9h/351 plan),
+# and each keyframe then covers ~3 output frames at 30fps — the same interpolation
+# ratio the dense probe validated.
+FILM_START_X = CAM_X
+FILM_END_X = 81.8               # 75% of the built row, the agreed cap
+FILM_N = 447
+FILM_SECONDS = 45.0
+FILM_STEP = (FILM_END_X - FILM_START_X) / (FILM_N - 1)
+FILM_DIR = "/Users/crisu/Price of Everything/blender-assets/renders/loading/film"
+
+
+def build_film_scene(detail=1):
+    """Everything a chunk needs standing up, once."""
+    bpy.context.window.scene = get_scene()
+    phase0()
+    build_backdrop(detail=detail)
+    phase1()
+    phase3()
+    setup_load_rig()
+
+
+def render_film_chunk(i0, i1, out_dir=None, res=(2400, 1350), rebuild=True):
+    """Render keyframes [i0, i1). Chunks so a run can be stopped, inspected and
+    resumed without redoing work — and so a mistake costs one chunk, not a night.
+
+    The city LOD flips at the halfway mark, so a chunk that straddles it rebuilds
+    the backdrop mid-run; chunks that do not, do not pay for it.
+    """
+    import json
+    import os
+    out_dir = out_dir or FILM_DIR
+    os.makedirs(out_dir, exist_ok=True)
+    half = FILM_START_X + (FILM_END_X - FILM_START_X) * 0.5
+    lod = 1 if (FILM_START_X + i0 * FILM_STEP) < half else 2
+    # Standing the street up costs ~16 min (19 builders, thousands of objects) and
+    # is a per-CHUNK fixed cost, not per-frame. Skip it when the scene is already
+    # built at the right LOD — that is most of the difference between 5 chunks
+    # costing 6.25h and 5.0h.
+    if rebuild:
+        build_film_scene(detail=lod)
+    to_sun = (bpy.data.objects["LoadSun"].matrix_world.to_3x3()
+              @ mathutils.Vector((0, 0, 1))).normalized()
+    geo = _geo_mask_override(to_sun)
+    log = os.path.join(out_dir, "chunk_%04d_%04d.json" % (i0, i1))
+    # A chunk holds Blender's main thread for the best part of an hour, which also
+    # blocks the MCP server — so there is no way to ask it to stop from outside
+    # once it is running. It therefore watches for a sentinel file instead:
+    #     touch <FILM_DIR>/STOP
+    # Checked every 5 frames (a few minutes at ~40s a frame), and the file is
+    # cleared on exit so the next chunk is not stopped by a stale one.
+    stop_path = os.path.join(out_dir, "STOP")
+    if os.path.exists(stop_path):
+        os.remove(stop_path)
+    for idx in range(i0, i1):
+        if (idx - i0) % 5 == 0 and os.path.exists(stop_path):
+            os.remove(stop_path)
+            with open(log, "w") as f:
+                json.dump({"done": idx - i0, "total": i1 - i0, "next_idx": idx,
+                           "state": "stopped"}, f)
+            return {"stopped_at": idx, "resume_with": [idx, i1]}
+        cx = FILM_START_X + idx * FILM_STEP
+        if lod == 1 and cx >= half:
+            build_backdrop(detail=2)
+            setup_load_rig()
+            lod = 2
+            to_sun = (bpy.data.objects["LoadSun"].matrix_world.to_3x3()
+                      @ mathutils.Vector((0, 0, 1))).normalized()
+            geo = _geo_mask_override(to_sun)
+        render_film_frame(out_dir, idx, cx, geo_mat=geo, res=res)
+        with open(log, "w") as f:
+            json.dump({"done": idx - i0 + 1, "total": i1 - i0,
+                       "idx": idx, "cam_x": round(cx, 2), "state": "ok"}, f)
+    return {"rendered": i1 - i0}
 
 
 def render_film_frame(out_dir, idx, cam_x, geo_mat=None, res=(2400, 1350)):
