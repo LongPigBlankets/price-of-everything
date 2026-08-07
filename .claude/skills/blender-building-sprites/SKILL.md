@@ -564,6 +564,25 @@ Also: standing the whole street up (19 builders, thousands of objects) costs
 **~16 min**, and that is a per-CHUNK cost, not per-frame. Pass `rebuild=False`
 when the scene is already built at the right LOD.
 
+## A render pass must CREATE what it depends on
+
+`bpy.data.materials.get("_light_mask_override")` returns **None** in a fresh
+Blender, and assigning None to `view_layer.material_override` means *no
+override* — so the "light mask" silently became an ordinary render of the scene.
+The road's own dark asphalt then read as deep shade and every road in the film
+came out stippled as if unlit. It worked interactively only because an earlier
+call had left the material in the session.
+
+This is the `setup_rig()` rule applied to render passes: **never assume session
+state**. Create the material, check the collection exists, assert the camera.
+Headless runs are where these show up, because they start from nothing — which
+is also an argument for developing against `--background` rather than a
+long-lived GUI session.
+
+Symptom to recognise: a mask-driven effect that is uniformly wrong across a
+whole material (all roads, all glass) rather than wrong in patches. Patches mean
+geometry; uniform means the mask.
+
 ## Isolation: HOLDOUT, not camera-invisible
 
 When rendering one layer or one mask, the instinct is

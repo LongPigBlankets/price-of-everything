@@ -841,6 +841,28 @@ def _show_only_load(pred):
             ob.is_holdout = False
 
 
+def _light_mask_material():
+    """White diffuse override for the GROUND mask — created if absent.
+
+    This used to be fetched with materials.get(), which returns None in a fresh
+    Blender. Assigning None to material_override means NO override, so the mask
+    became an ordinary render of the street and the road's own dark asphalt read
+    as deep shadow — every road in the film came out stippled as if unlit. It
+    only worked interactively because an earlier call had left the material in
+    the session. Anything a render pass depends on must be CREATED by that pass,
+    never assumed to exist (same rule as setup_rig).
+    """
+    m = bpy.data.materials.get("_light_mask_override")
+    if m is None:
+        m = bpy.data.materials.new("_light_mask_override")
+        m.use_nodes = True
+        b = m.node_tree.nodes.get("Principled BSDF")
+        b.inputs["Base Color"].default_value = (0.8, 0.8, 0.8, 1.0)
+        b.inputs["Roughness"].default_value = 1.0
+        b.inputs["Specular IOR Level"].default_value = 0.0
+    return m
+
+
 def _geo_mask_override(to_sun):
     """Geometric light-mask material: emission = 0.2 + 0.8*max(0, dot(N', to_sun)),
     N' = normal flipped toward the camera when backfacing. Render with 'Standard'
@@ -974,7 +996,7 @@ def render_layers(out_dir=None, width=2400, height=1350):
         # backdrop hidden (emission under an override would read as shaded and
         # collect dots). Pure illumination -> scene_stipple.py bands from it.
         if name not in ("L0_sky", "L1_city"):
-            ov = bpy.data.materials.get("_light_mask_override")
+            ov = _light_mask_material()
             if ov is None:
                 ov = bpy.data.materials.new("_light_mask_override")
                 ov.use_nodes = True
@@ -1203,7 +1225,7 @@ def render_film_frame(out_dir, idx, cam_x, geo_mat=None, res=(2400, 1350)):
     sun = bpy.data.objects["LoadSun"]
     wbg = sc.world.node_tree.nodes.get("Background")
     vl = sc.view_layers[0]
-    ov = bpy.data.materials.get("_light_mask_override")
+    ov = _light_mask_material()
     if geo_mat is None:
         to_sun = (sun.matrix_world.to_3x3() @ mathutils.Vector((0, 0, 1))).normalized()
         geo_mat = _geo_mask_override(to_sun)
