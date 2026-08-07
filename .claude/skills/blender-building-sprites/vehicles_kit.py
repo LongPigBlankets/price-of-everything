@@ -47,6 +47,32 @@ PALETTE["veh_shadow"] = (0.088, 0.098, 0.088)   # road tone, darkened
 
 CAR_COLOURS = ("car_red", "car_blue", "car_green", "car_cream", "car_grey", "car_rust")
 
+# Vehicles dissolve into the distance rather than popping at the wrap point.
+# There is no alpha in this style — everything is flat opaque — so the fade is
+# ATMOSPHERIC: the body colour is lerped toward the horizon haze as the vehicle
+# recedes, which is what distance does to colour anyway. Fully hazed vehicles are
+# skipped entirely so nothing pops back at the wrap.
+HAZE_TONE = (0.640, 0.660, 0.690)
+
+
+def haze_mat(self, role, t):
+    """The role's colour mixed t of the way to the horizon haze (t 0..1)."""
+    if t <= 0.001:
+        return self.mat(role)
+    q = min(1.0, max(0.0, t))
+    key = "veh_haze_%s_%02d" % (role, int(q * 20))
+    m = bpy.data.materials.get(key)
+    if m is None:
+        base = PALETTE[ROLES.get(role, role)]
+        col = tuple(base[i] + (HAZE_TONE[i] - base[i]) * q for i in range(3))
+        m = bpy.data.materials.new(key)
+        m.use_nodes = True
+        b = m.node_tree.nodes.get("Principled BSDF")
+        b.inputs["Base Color"].default_value = (*col, 1.0)
+        b.inputs["Roughness"].default_value = 1.0
+        b.inputs["Specular IOR Level"].default_value = 0.0
+    return m
+
 # Cargo placards on the trailer backs, drawn from the game's own goods art so the
 # loading screen advertises the actual economy. Assigned by the vehicle's seed, so
 # a given truck always hauls the same cargo — the film rebuilds all traffic every
@@ -220,7 +246,7 @@ def _shadow(self, name, x, y, length, width, mat):
     return ob
 
 
-def _truck(self, name, x, y, face=1.0, colour="truck_white", seed=0):
+def _truck(self, name, x, y, face=1.0, colour="truck_white", seed=0, fade=0.0):
     """European cab-over: FLAT vertical front face, cab raised over the front axle,
     boxy trailer behind. `face` +1 points down-street, -1 back at the camera.
 
@@ -229,10 +255,11 @@ def _truck(self, name, x, y, face=1.0, colour="truck_white", seed=0):
     cargo box. Now they hang in open air under the trailer, which is what a semi
     actually looks like."""
     s = VEH_SCALE
-    body = self.mat(colour)
-    dark = self.mat("truck_black" if colour != "truck_black" else "darkmetal")
-    tyre, glass = self.mat("tyre"), self.mat("screen")
-    red, warm = self.mat("lamp_red"), self.mat("lamp_warm")
+    M = lambda r: haze_mat(self, r, fade)
+    body = M(colour)
+    dark = M("truck_black" if colour != "truck_black" else "darkmetal")
+    tyre, glass = M("tyre"), M("screen")
+    red, warm = M("lamp_red"), M("lamp_warm")
     f = face
 
     def bx(nm, cx, cy, cz, sx, sy, sz, m):
@@ -262,18 +289,18 @@ def _truck(self, name, x, y, face=1.0, colour="truck_white", seed=0):
     # two do not intersect — there is a gap between them. The strip was also wider
     # than the trailer, so it stuck out of both flanks as a dark bar.)
     _plate(self, name, plate_text(seed), x + f * -2.19 * s, y, 0.364 * s + ROAD_TOP,
-           0.062 * s, -f, self.mat("plate"), self.mat("plate_ink"))
+           0.062 * s, -f, M("plate"), M("plate_ink"))
     _cargo_placard(self, name, CARGO_ICONS[seed % len(CARGO_ICONS)],
                    x + f * -2.18 * s, y, 0.793 * s + ROAD_TOP, 0.255 * s, -f,
-                   self.mat("cream"))
+                   M("cream"))
     _wheels(self, name, x, y, (1.72, 0.92, -1.40, -1.78), 0.26, 0.115, tyre, f, s)
     _axles(self, name, x, y, (1.72, 0.92, -1.40, -1.78), 0.26, 0.115, dark, f, s,
            groups=((-1.78, -1.40),))
-    _shadow(self, name, x - f * 0.35 * s, y, 4.35 * s, 0.66 * s, self.mat("veh_shadow"))
+    _shadow(self, name, x - f * 0.35 * s, y, 4.35 * s, 0.66 * s, M("veh_shadow"))
     return {"len": 4.3 * s}
 
 
-def _car(self, name, x, y, face=1.0, colour="car_red", seed=0):
+def _car(self, name, x, y, face=1.0, colour="car_red", seed=0, fade=0.0):
     """Sedan. The cabin is a FRUSTUM, not a box (owner): roof shorter and narrower
     than the waist, so both screens rake ~22 degrees toward the middle of the car
     and the sides tumblehome. Everything else follows that shape — glass laid on
@@ -287,9 +314,10 @@ def _car(self, name, x, y, face=1.0, colour="car_red", seed=0):
     still has a bottom.
     """
     s = VEH_SCALE
-    body = self.mat(colour)
-    glass, tyre = self.mat("screen"), self.mat("tyre")
-    red, warm = self.mat("lamp_red"), self.mat("lamp_warm")
+    M = lambda r: haze_mat(self, r, fade)
+    body = M(colour)
+    glass, tyre = M("screen"), M("tyre")
+    red, warm = M("lamp_red"), M("lamp_warm")
     f = face
 
     def bx(nm, cx, cy, cz, sx, sy, sz, m):
@@ -334,9 +362,9 @@ def _car(self, name, x, y, face=1.0, colour="car_red", seed=0):
         bx("hlamp%d" % (sg > 0), 0.872, sg * 0.125, 0.278, 0.03, 0.10, 0.055, warm)
         bx("tlamp%d" % (sg > 0), -0.815, sg * 0.155, 0.300, 0.02, 0.10, 0.055, red)
     _plate(self, name, plate_text(seed), x + f * -0.83 * s, y, 0.228 * s + ROAD_TOP,
-           0.044 * s, -f, self.mat("plate"), self.mat("plate_ink"))
+           0.044 * s, -f, M("plate"), M("plate_ink"))
     _wheels(self, name, x, y, (0.52, -0.52), 0.205, 0.115, tyre, f, s)
-    _shadow(self, name, x, y, 1.82 * s, 0.60 * s, self.mat("veh_shadow"))
+    _shadow(self, name, x, y, 1.82 * s, 0.60 * s, M("veh_shadow"))
     return {"len": 1.8 * s}
 
 

@@ -1066,6 +1066,89 @@ def render_stations(n=6, spacing=2.25, out_root=None, width=2400, height=1350):
     return {"stations": len(done), "out": out_root}
 
 
+def render_film_frame(out_dir, idx, cam_x, geo_mat=None, res=(2400, 1350)):
+    """The three passes one film keyframe needs, with the isolation done right.
+
+    colour : flat (sun off, warm ambient), sky plane hidden — the vivid sky is
+             composited in post because AgX crushes the emission bands.
+    _geo   : geometric light mask, orientation only, for the walls.
+    _gnd   : diffuse mask of the GROUND, for real cast shadows on road and lawn.
+
+    THE TRAP, and why this lives here instead of being retyped per render: the
+    ground mask isolates the street by making everything else camera-INVISIBLE.
+    That leaves the ground BEHIND a building visible in the mask, so those pixels
+    report "ground" while the colour pass shows a wall — and the ground's cast
+    shadows print straight across building facades. Everything else must be a
+    HOLDOUT instead: it still occludes and cuts the mask's alpha, so the wall
+    falls through to the wall bands, and it keeps casting real shadows.
+    """
+    import os
+    sc = get_scene()
+    cam = bpy.data.objects["LoadCam"]
+    sun = bpy.data.objects["LoadSun"]
+    wbg = sc.world.node_tree.nodes.get("Background")
+    vl = sc.view_layers[0]
+    ov = bpy.data.materials.get("_light_mask_override")
+    if geo_mat is None:
+        to_sun = (sun.matrix_world.to_3x3() @ mathutils.Vector((0, 0, 1))).normalized()
+        geo_mat = _geo_mask_override(to_sun)
+    os.makedirs(out_dir, exist_ok=True)
+    sc.render.resolution_x, sc.render.resolution_y = res
+    fs = vl.freestyle_settings
+    k = res[0] / 1920.0
+    fs.linesets["ink"].linestyle.thickness = 2.4 * k
+    fs.linesets["contour"].linestyle.thickness = 7.0 * k
+    if "ink_fine" in fs.linesets:
+        fs.linesets["ink_fine"].linestyle.thickness = 1.05 * k
+
+    cam.location.x = cam_x
+    place_vehicles(advance=cam_x - CAM_X, cam_x=cam_x)
+    street = bpy.data.collections["LOAD_street"]
+    sky_objs = list(bpy.data.collections["LOAD_sky"].objects)
+    city_objs = list(bpy.data.collections["LOAD_city"].objects)
+    _show_only_load(lambda n: True)
+
+    for ob in sky_objs:
+        ob.hide_render = True
+    sun.data.energy = 0.0
+    wbg.inputs[0].default_value = (1.0, 0.972, 0.918, 1.0)
+    wbg.inputs[1].default_value = 1.216
+    sc.render.filepath = os.path.join(out_dir, "f%03d" % idx)
+    bpy.ops.render.render(write_still=True)
+    sun.data.energy = 3.6
+    wbg.inputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
+    wbg.inputs[1].default_value = 0.45
+
+    for ob in city_objs:
+        ob.hide_render = True
+    sc.render.use_freestyle = False
+    prev_vt = sc.view_settings.view_transform
+    vl.material_override = geo_mat
+    sc.view_settings.view_transform = 'Standard'
+    sc.render.filepath = os.path.join(out_dir, "f%03d_geo" % idx)
+    bpy.ops.render.render(write_still=True)
+    sc.view_settings.view_transform = prev_vt
+
+    for ob in street.objects:
+        ob.visible_camera = True
+        ob.is_holdout = False
+    for c in bpy.data.collections:
+        if c.name.startswith("LOAD_") and c is not street:
+            for ob in c.objects:
+                ob.visible_camera = True
+                ob.is_holdout = True          # occlude + cut alpha, keep casting
+    vl.material_override = ov
+    sc.render.filepath = os.path.join(out_dir, "f%03d_gnd" % idx)
+    bpy.ops.render.render(write_still=True)
+    vl.material_override = None
+    sc.render.use_freestyle = True
+
+    _show_only_load(lambda n: True)
+    for ob in sky_objs + city_objs:
+        ob.hide_render = False
+    return {"idx": idx, "cam_x": cam_x}
+
+
 # ── Phase 1: buildings along the street ──────────────────────────────────────
 # Slot: (collection suffix, builder fn name, level, z-rotation deg, x centre).
 # Rotation puts each building's MORE DETAILED LONG SIDE toward the street (owner rule):
@@ -1371,6 +1454,7 @@ LANE_Y = 0.29               # lane centres; nothing may cross the centre line
 # around a window ahead so the stream never runs out — a wrap only ever happens ~90
 # units out, where a vehicle is a couple of pixels.
 AWAY_SPEED, ONCOMING_SPEED, WRAP = 1.15, 0.85, 125.0
+VEH_FADE_AWAY, VEH_FADE_TOWARD = 14.0, 26.0   # fade bands before the wrap
 # (kind, x0, direction, colour)
 VEHICLES = [
     ("truck", 6.0,   1, "truck_white"),
@@ -1414,11 +1498,24 @@ def place_vehicles(advance=0.0, cam_x=None):
         else:
             x = x0 - ONCOMING_SPEED * advance
         x = cx + ((x - cx) % WRAP)          # keep a stream ahead of the camera
+        # Dissolve into the haze approaching the city rather than popping at the
+        # wrap. FADE_D is sized to about a second of RELATIVE travel: down-street
+        # traffic closes on the wrap slowly (0.15 u per unit of camera advance),
+        # oncoming much faster, so they get their own bands.
+        ahead = x - cx
+        fade_d = VEH_FADE_AWAY if vdir > 0 else VEH_FADE_TOWARD
+        fade = 0.0
+        if ahead > WRAP - fade_d:
+            fade = (ahead - (WRAP - fade_d)) / fade_d
+        if fade >= 0.98:                    # gone: never rebuilt, so it cannot pop
+            continue
         vy = vdir * LANE_Y
         if kind == "truck":
-            kit.truck("veh_%d" % vi, x, vy, face=float(vdir), colour=colour, seed=vi * 977 + 13)
+            kit.truck("veh_%d" % vi, x, vy, face=float(vdir), colour=colour,
+                      seed=vi * 977 + 13, fade=fade)
         else:
-            kit.car("veh_%d" % vi, x, vy, face=float(vdir), colour=colour, seed=vi * 977 + 13)
+            kit.car("veh_%d" % vi, x, vy, face=float(vdir), colour=colour,
+                    seed=vi * 977 + 13, fade=fade)
     return {"vehicles": len(VEHICLES), "advance": advance}
 
 
