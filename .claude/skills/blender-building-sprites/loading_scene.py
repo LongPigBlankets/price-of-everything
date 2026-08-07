@@ -37,6 +37,11 @@ BACK_STREET_Y = 13.5        # parallel road behind the NORTH row only — the so
 #                             side is open sea now
 SEA_WALK_Y = -9.30          # quay edge behind the south row: verge, then a walk,
 #                             then the drop to the water
+# The docks' own shore road ends up here once the port is rotated -90 and staged:
+# x 91.75..108.25, y -4.02..-3.22 — running parallel to the main street. A short
+# spur links the two into a proper T junction.
+PORT_LINK_X, PORT_LINK_W = 92.30, 0.90
+DOCK_ROAD_Y = -3.22         # near edge of the port's shore road
 SEA_Z = -0.30               # water surface. Deeper than this and it barely reads:
 #                             the south buildings run back to y -8.1, so at -10.55 and
 #                             -0.52 the water only appeared as a sliver past the last
@@ -379,6 +384,25 @@ def build_street_scaffold():
                  bd, 0.04, 0.012, _mat("load_dash"))
             bx += bd + 0.85
             bi += 1
+
+    # Spur connecting the main road to the docks' shore road, which runs parallel
+    # to it. Crossing slab over the sidewalk, then the lane itself, then a mouth
+    # flaring into the dock road so the junction reads as a T rather than a lane
+    # stopping against a kerb.
+    _box(col, "portlink_x", PORT_LINK_X, -(ROAD_HALF_W + SIDEWALK_W / 2),
+         SIDEWALK_TOP + 0.004, PORT_LINK_W, SIDEWALK_W + EPS, 0.014,
+         _mat("load_asphalt"))
+    _box(col, "portlink", PORT_LINK_X,
+         (-(ROAD_HALF_W + SIDEWALK_W) + DOCK_ROAD_Y) / 2, -0.02 + EPS,
+         PORT_LINK_W, abs(DOCK_ROAD_Y + ROAD_HALF_W + SIDEWALK_W), 0.1,
+         _mat("load_asphalt"))
+    _box(col, "portlink_mouth", PORT_LINK_X, DOCK_ROAD_Y - 0.18, -0.02 + EPS * 2,
+         PORT_LINK_W + 0.70, 0.42, 0.1, _mat("load_asphalt"))
+    ld = 0.34
+    for k in range(3):
+        _box(col, "portlink_d%d" % k, PORT_LINK_X,
+             -(ROAD_HALF_W + SIDEWALK_W) - 0.35 - k * 0.80, 0.061,
+             0.05, ld, 0.012, _mat("load_dash"))
 
     for px, side in ((8.9, 1), (30.9, 1), (12.9, -1), (47.4, -1)):
         sgn = side
@@ -1405,7 +1429,7 @@ FENCES = [                  # power-plant and refinery yards get street fencing
     ((82.0,  2.35), (89.0,  2.35)),     # the new power plant yard
     # Fence along the port frontage, stopping short of the crossroads at the very
     # end so the junction stays open (owner).
-    ((92.5, -2.35), (105.5, -2.35)),
+    ((93.8, -2.35), (105.5, -2.35)),
 ]
 
 
