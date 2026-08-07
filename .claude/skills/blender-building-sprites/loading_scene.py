@@ -33,7 +33,14 @@ SIDEWALK_W = 0.95           # raised sidewalk flanking the road (owner: on both 
 SIDEWALK_TOP = 0.105        # visibly a step above the road surface (~0.058)
 KERB_W = 0.10               # pale lip on the sidewalk's road edge
 SETBACK_W = 1.00            # grass strip between sidewalk and the facades
-BACK_STREET_Y = 13.5        # parallel road behind each building row (owner)
+BACK_STREET_Y = 13.5        # parallel road behind the NORTH row only — the south
+#                             side is open sea now
+SEA_WALK_Y = -9.30          # quay edge behind the south row: verge, then a walk,
+#                             then the drop to the water
+SEA_Z = -0.30               # water surface. Deeper than this and it barely reads:
+#                             the south buildings run back to y -8.1, so at -10.55 and
+#                             -0.52 the water only appeared as a sliver past the last
+#                             building, low and at the very edge of frame.
 BUILDING_FRONT_Y = ROAD_HALF_W + SIDEWALK_W + SETBACK_W   # facades sit at this y
 STREET_X0, STREET_X1 = -20.0, 200.0   # camera end -> far beyond the visible terminus
 CITY_X = 74.0               # distant city backdrop plane (P2), faces the camera (-X)
@@ -69,6 +76,9 @@ TONES = {
     "load_walk":    (0.240, 0.235, 0.215),   # sidewalk concrete — large surface, stays low
     "load_dash":    (0.700, 0.680, 0.600),   # centre-line dashes
     "load_sky":     (0.520, 0.600, 0.660),   # placeholder single tone; banded in P2
+    "load_sea":     (0.055, 0.135, 0.190),   # matches the docks' dock_water exactly,
+    #                                          so the street's sea and the port's bay
+    #                                          are one body of water
 }
 
 
@@ -284,9 +294,21 @@ def build_street_scaffold():
     # caught on the strip contact sheet as centre-line dashes floating on grass with no
     # road under them (the dashes are placed by true x; the slab was not).
     cx = (STREET_X0 + STREET_X1) / 2.0
-    ground = _box(col, "ground", cx, 0, -0.05,
-                  (STREET_X1 - STREET_X0) + 60, 90, 0.1, _mat("load_ground"))
+    # Ground stops at the south quay: the sea sits BELOW grade (-0.52), so a ground
+    # plate running the full width would simply cover it.
+    gy0, gy1 = SEA_WALK_Y, 45.0
+    ground = _box(col, "ground", cx, (gy0 + gy1) / 2, -0.05,
+                  (STREET_X1 - STREET_X0) + 60, gy1 - gy0, 0.1, _mat("load_ground"))
     mark_noink(ground)
+    # The sea behind the south row, continuous with the port's bay (owner) — same
+    # tone, same level. Behind the buildings: verge, walk, quay wall, water.
+    sea = _box(col, "sea", cx, (SEA_WALK_Y - 46.0) / 2, SEA_Z - 0.10,
+               (STREET_X1 - STREET_X0) + 60, 46.0 + SEA_WALK_Y, 0.20, _mat("load_sea"))
+    mark_noink(sea)
+    _box(col, "sea_wall", cx, SEA_WALK_Y + 0.49, -0.28,
+         STREET_X1 - STREET_X0, 0.98, 0.77, _mat("load_walk"))
+    _box(col, "sea_kerb", cx, SEA_WALK_Y + 0.06, 0.085,
+         STREET_X1 - STREET_X0, 0.12, 0.05, _mat("load_kerb"))
 
     # Road slab: proud of the ground by EPS (coplanar faces smear — rule 1).
     _box(col, "road", cx, 0, 0.0 + EPS / 2,
@@ -307,7 +329,9 @@ def build_street_scaffold():
     # they read as kept grass against the duller field beyond (owner: vibrant green).
     for side, tag in ((1, "n"), (-1, "s")):
         y0v = side * (ROAD_HALF_W + SIDEWALK_W)
-        y1v = side * (BUILDING_FRONT_Y + 7.0)   # +1 (owner): the raised camera sees
+        y1v = (SEA_WALK_Y + 0.98) if side < 0 else side * (BUILDING_FRONT_Y + 7.0)
+        #                                        south verge runs right up to the quay
+        #                                        walk; north keeps its +1 (owner): the raised camera sees
         #                                         further out, and the kept lawn used
         #                                         to stop short of the back street
         vb = _box(col, "verge_" + tag, cx, (y0v + y1v) / 2, -0.04 + EPS,
@@ -339,7 +363,7 @@ def build_street_scaffold():
     # Parallel BACK STREETS behind each row (owner). The camera now sits high
     # enough to see over the buildings' flanks into what was open field; a road
     # with its own kerbs reads as "this is a district", not an edge of the world.
-    for side, tag in ((1, "n"), (-1, "s")):
+    for side, tag in ((1, "n"),):          # south side is sea now, no back street
         by = side * BACK_STREET_Y
         _box(col, "backrd_" + tag, cx, by, 0.0 + EPS / 2,
              STREET_X1 - STREET_X0, ROAD_HALF_W * 1.7, 0.1 + EPS, _mat("load_asphalt"))
@@ -1073,7 +1097,13 @@ SLOTS = [
     # last south building before it needs clearance or it stands in the sea.
     ("con_c", "construction", 0,   0.0,  96.0, "n"),
     ("con_d", "construction", 0,   0.0, 108.0, "n"),
-    ("port_a", "docks",       0,   0.0, 103.0, "s", 1.60),
+    # rz -90 turns the docks a quarter: its SHORE ROAD, which runs along the local
+    # Y axis on the sprite's left side, becomes world X and so continues the main
+    # road straight to the end of the composition. It also swings the bay away from
+    # the street (opening to -Y) instead of across it. No setback — the shore edge
+    # meets the verge, and _stage_port drops the whole thing so its land surface
+    # sits at street level rather than 0.6 above it.
+    ("port_a", "docks",       0, -90.0, 100.0, "s", 0.0),
 ]
 
 # Every builder file defines a module-level LEVELS and reads it from its exec namespace,
@@ -1206,6 +1236,20 @@ def _recalc_outward(col):
         bm.free()
 
 
+def _stage_port(col):
+    """Drop the docks so its LAND surface meets the street.
+
+    The sprite is authored with its shore at z=0.60 (LAND_TOP) and its water at
+    0.06, which is right for a standalone sprite standing on nothing. Dropped into
+    the street it has to meet the ground: lower everything by LAND_TOP - 0.02 so
+    the shore sits level with the verge and the harbour water falls below grade,
+    which is what a harbour does."""
+    dz = -(0.62 - 0.02 - 0.02)
+    for ob in col.objects:
+        if ob.type == 'MESH':
+            ob.matrix_world = mathutils.Matrix.Translation((0, 0, dz)) @ ob.matrix_world
+
+
 def phase1():
     """Build the cast and place it. Builders stomp the ACTIVE scene's render settings
     and the sprite Camera pose (their setup_rig), so the load rig is re-asserted after."""
@@ -1245,6 +1289,8 @@ def phase1():
         _place(col, rz, x, side, extra)
         if suffix == "con_a":
             _stage_con_a(col)
+        if suffix == "port_a":
+            _stage_port(col)
         _recalc_outward(col)
         placed.append({"slot": suffix, "level": level, "objects": len(col.objects)})
     setup_load_rig()
