@@ -137,35 +137,11 @@ def plate_text(seed):
 
 
 def _plate(self, name, text, x, y, z, h, face, mat_bg, mat_ink):
-    """Number plate: a pale backing with real extruded characters on it. The text is
-    built as a FONT curve, evaluated to a mesh and the temporary object dropped —
-    a live curve would be re-evaluated every render for no gain. NOINK: at plate
-    size the ink outline would merge the glyphs into one black bar."""
-    self.box("%s_plate" % name, x, y, z, 0.02, h * 3.1, h * 1.15, mat_bg)
-    cur = bpy.data.curves.new(name + "_pc", type='FONT')
-    cur.body = text
-    cur.size = h
-    cur.align_x = 'CENTER'
-    cur.align_y = 'CENTER'
-    cur.extrude = 0.004
-    tmp = bpy.data.objects.new(name + "_ptmp", cur)
-    bpy.context.scene.collection.objects.link(tmp)
-    tmp.rotation_euler = (math.radians(90.0), 0.0, math.radians(90.0 * (1 if face > 0 else -1)))
-    tmp.location = (x + (0.012 if face > 0 else -0.012), y, z)
-    dg = bpy.context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg))
-    # new_from_object hands back LOCAL-space geometry: without this every plate's
-    # lettering piled up at the world origin instead of sitting on its vehicle.
-    me.transform(tmp.matrix_world)
-    bpy.data.objects.remove(tmp, do_unlink=True)
-    bpy.data.curves.remove(cur)
-    ob = self.obj("%s_ptxt" % name, me, mat_ink)
-    for p in ob.data.polygons:
-        p.use_smooth = False
-    attr = me.attributes.get("freestyle_face") or me.attributes.new("freestyle_face", 'BOOLEAN', 'FACE')
-    for d in attr.data:
-        d.value = True
-    return ob
+    """Number plate: just the pale backing now (owner: no text). The lettering was
+    a FONT curve evaluated to a mesh; at plate size on a moving vehicle it was
+    never legible enough to earn the per-frame cost, and it is gone rather than
+    left switched off. `text` is kept in the signature so callers are unchanged."""
+    return self.box("%s_plate" % name, x, y, z, 0.02, h * 3.1, h * 1.15, mat_bg)
 
 
 def _frustum(self, name, cx, cy, z0, z1, lx0, ly0, lx1, ly1, mat):
@@ -216,6 +192,22 @@ def _wheels(self, name, x, y, xs, half_w, r, mat, face=1.0, s=1.0):
                    ROAD_TOP + WHEEL_SINK * r * s, r * s, 0.055 * s, mat)
 
 
+def _axles(self, name, x, y, xs, half_w, r, mat, face=1.0, s=1.0, groups=()):
+    """Axle tubes across each wheel pair, plus a subframe tying a bogie together.
+    Without them the wheels read as four loose discs parked under a box; with the
+    body brought down onto them the whole thing reads as a chassis."""
+    cz = ROAD_TOP + WHEEL_SINK * r * s
+    for i, wx in enumerate(xs):
+        self.dircyl("%s_ax%d" % (name, i),
+                    (x + face * wx * s, y - half_w * s, cz),
+                    (x + face * wx * s, y + half_w * s, cz),
+                    0.032 * s, mat, segments=8, smooth=False)
+    for gi, (gx0, gx1) in enumerate(groups):
+        self.box("%s_bogie%d" % (name, gi), x + face * (gx0 + gx1) / 2 * s, y,
+                 cz + 0.045 * s, abs(gx1 - gx0) * s + 0.10 * s, 0.30 * s,
+                 0.07 * s, mat)
+
+
 def _shadow(self, name, x, y, length, width, mat):
     """A flat dark patch on the road under the vehicle. Grounds it: without one a
     body with open arches reads as floating. NOINK — an outline would make it a
@@ -255,24 +247,26 @@ def _truck(self, name, x, y, face=1.0, colour="truck_white", seed=0):
     for sg in (-1, 1):
         bx("hlamp%d" % (sg > 0), 2.11, sg * 0.17, 0.40, 0.02, 0.11, 0.07, warm)
         bx("cabwin%d" % (sg > 0), 1.72, sg * 0.265, 0.90, 0.42, 0.02, 0.26, glass)
-    bx("deflector", 1.35, 0.0, 1.18, 0.60, 0.46, 0.10, body)
+    bx("deflector", 1.35, 0.0, 1.143, 0.60, 0.46, 0.10, body)
     bx("chassis", 0.55, 0.0, 0.28, 2.10, 0.30, 0.09, dark)
 
     # ---- trailer, floor raised clear of the bogie ----
-    bx("trailer", -0.72, 0.0, 0.88, 2.86, 0.54, 0.80, body)        # z 0.48..1.28
-    bx("beam", -1.10, 0.0, 0.42, 2.10, 0.28, 0.10, dark)           # the chassis rail
-    bx("tdoor", -2.15, 0.0, 0.88, 0.03, 0.48, 0.76, dark)
-    bx("tbar", -2.18, 0.0, 0.30, 0.05, 0.46, 0.07, dark)           # rear underrun bar
+    bx("trailer", -0.72, 0.0, 0.732, 2.86, 0.54, 0.921, body)      # world 0.255..0.900
+    bx("beam", -1.10, 0.0, 0.255, 2.10, 0.30, 0.052, dark)         # rail, ON the axles
+    bx("tdoor", -2.15, 0.0, 0.732, 0.03, 0.48, 0.88, dark)
+    bx("tbar", -2.18, 0.0, 0.193, 0.05, 0.46, 0.07, dark)          # rear underrun bar
     for sg in (-1, 1):
-        bx("tlamp%d" % (sg > 0), -2.18, sg * 0.17, 0.58, 0.03, 0.10, 0.09, red)
-        bx("mudguard%d" % (sg > 0), -1.59, sg * 0.27, 0.40, 0.72, 0.05, 0.05, dark)
-    self.seam("%s_seam" % name, x + f * 0.85 * s, y, 0.88 * s + ROAD_TOP, 0.48 * s, axis='Z')
-    _plate(self, name, plate_text(seed), x + f * -2.19 * s, y, 0.58 * s + ROAD_TOP,
+        bx("tlamp%d" % (sg > 0), -2.18, sg * 0.17, 0.364, 0.03, 0.10, 0.09, red)
+        bx("mudguard%d" % (sg > 0), -1.59, sg * 0.27, 0.253, 0.72, 0.05, 0.045, dark)
+    self.seam("%s_seam" % name, x + f * 0.85 * s, y, 0.732 * s + ROAD_TOP, 0.55 * s, axis='Z')
+    _plate(self, name, plate_text(seed), x + f * -2.19 * s, y, 0.364 * s + ROAD_TOP,
            0.062 * s, -f, self.mat("plate"), self.mat("plate_ink"))
     _cargo_placard(self, name, CARGO_ICONS[seed % len(CARGO_ICONS)],
-                   x + f * -2.18 * s, y, 0.94 * s + ROAD_TOP, 0.255 * s, -f,
+                   x + f * -2.18 * s, y, 0.793 * s + ROAD_TOP, 0.255 * s, -f,
                    self.mat("cream"))
     _wheels(self, name, x, y, (1.72, 0.92, -1.40, -1.78), 0.26, 0.115, tyre, f, s)
+    _axles(self, name, x, y, (1.72, 0.92, -1.40, -1.78), 0.26, 0.115, dark, f, s,
+           groups=((-1.78, -1.40),))
     _shadow(self, name, x - f * 0.35 * s, y, 4.35 * s, 0.66 * s, self.mat("veh_shadow"))
     return {"len": 4.3 * s}
 
