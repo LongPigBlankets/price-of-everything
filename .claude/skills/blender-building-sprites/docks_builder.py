@@ -32,18 +32,29 @@ PALETTE["hull_red"] = (0.300, 0.085, 0.065)
 PALETTE["hull_black"] = (0.075, 0.078, 0.090)
 PALETTE["gantry_green"] = (0.080, 0.240, 0.135)
 PALETTE["gantry_green_lo"] = (0.050, 0.165, 0.095)
+PALETTE["dock_road"] = (0.088, 0.096, 0.115)
+PALETTE["dock_land"] = (0.128, 0.235, 0.080)
+PALETTE["dock_dash"] = (0.690, 0.670, 0.590)
 
 QUAY_Z = 0.62                 # deck level of the concrete arms, above the water
 WATER_Z = 0.06                # water surface; the bay floor is never seen
-ARM_W = 2.30                  # width of each concrete arm
-BAY = (-6.40, 6.40, -4.60, 5.20)   # x0, x1, y0, y1 of the OUTER edge of the C
-ENTRANCE_W = 3.40             # gap in the near-east corner, where ships come in
+ARM_W = 3.00                  # arm width. Widened from 2.30 to fit, across an arm:
+#   quay edge | container band | RAIL | crane gauge | RAIL | container band | road
+# Containers group on either SIDE of the rail pair and never between them (owner),
+# which is also how a real terminal works — the gauge has to stay clear.
+BAY = (-7.20, 7.20, -5.80, 6.40)   # x0, x1, y0, y1 of the OUTER edge of the C
+RAIL_A, RAIL_B = 0.60, 1.70   # rail offsets inward from the bay-facing quay edge
+ROAD_W = 0.80                 # service road along the BACK arm, onto the shore
+SHORE_X = -9.70              # land runs from here to the west arm: the port is a
+#                               quay off a shore, not an island. Water only lies to
+#                               the front, back and right (owner).
+LAND_TOP = QUAY_Z - 0.02
 
 # Berths, both inside the bay: the boxship lies along the FAR quay under the
 # gantries, the tanker along the near quay. Bay interior is x -4.1..6.4,
 # y -2.3..2.9, and a hull that overruns it ends up inside the concrete.
-SHIP_BOXER = (-0.40, 1.75, 6.40, 1.35)     # cx, cy, length(X), beam(Y)
-SHIP_TANKER = (0.70, -1.30, 6.60, 1.45)
+SHIP_BOXER = (0.60, 2.15, 6.80, 1.40)      # cx, cy, length(X), beam(Y)
+SHIP_TANKER = (0.90, -1.55, 7.00, 1.50)
 
 
 def _lift(K, dz, fn, *args, **kwargs):
@@ -63,7 +74,7 @@ def _lift(K, dz, fn, *args, **kwargs):
 
 
 def build_docks() -> dict:
-    setup_rig(ortho_scale=17.5, target=(0.0, 0.30, 1.30))
+    setup_rig(ortho_scale=21.5, target=(-0.55, 0.30, 0.95))
     # Hide every other sprite AND the showcase/stack collections the lineup tooling
     # leaves behind. Hiding only BLDG_* is not enough: SHOWCASE_mine_L1..L3 were still
     # render-enabled and dropped the mine's terraced pit into the middle of the docks.
@@ -79,87 +90,106 @@ def build_docks() -> dict:
     quay, quay_edge = K.mat("quay"), K.mat("quay_edge")
 
     x0, x1, y0, y1 = BAY
+    ix0, iy0, iy1 = x0 + ARM_W, y0 + ARM_W, y1 - ARM_W
 
-    # ---------------- water: one flat plane, the hole in the middle ----------------
-    # Deliberately larger than the bay and slid under the quay, so no sliver of ground
-    # shows between water and concrete at any corner.
-    K.box("water", 0.0, 0.3, WATER_Z - 0.05, (x1 - x0) + 1.6, (y1 - y0) + 1.6, 0.10, water)
-    for i, (wx, wy, wl) in enumerate(((-1.6, 1.0, 4.6), (2.2, 2.9, 3.4), (0.2, -1.2, 3.0),
-                                      (3.4, 0.4, 2.4), (-3.4, -1.8, 2.0))):
-        K.box("wake%d" % i, wx, wy, WATER_Z + 0.005, wl, 0.10, 0.01, water_lo)
+    # ---------------- shore on the LEFT, water on the other three sides ----------
+    # A rectangle of water on all four sides read as a floating island (owner). The
+    # port is a quay off a shore now: land to the west, water to the front, back and
+    # right. No wake strips either — thin dark slivers on the water inked as stray
+    # lines and read as debris between the ships.
+    # Margins kept tight — at 2.4 units of open water off the east end and 1.7 front
+    # and back, the sprite was mostly empty sea with the port crowded into a corner.
+    WX1, MY = 8.45, 1.25
+    K.box("water", (x0 + WX1) / 2, (y0 + y1) / 2, WATER_Z - 0.05, WX1 - x0 + 0.2,
+          (y1 - y0) + MY * 2, 0.10, water)
+    K.box("land", (SHORE_X + x0) / 2, (y0 + y1) / 2, LAND_TOP / 2 - 0.02,
+          x0 - SHORE_X, (y1 - y0) + MY * 2, LAND_TOP + 0.04, K.mat("dock_land"))
+    K.box("land_edge", x0 + 0.02, (y0 + y1) / 2, LAND_TOP - 0.02, 0.10,
+          (y1 - y0) + MY * 2, 0.16, quay_edge)
 
     # ---------------- the C: three concrete arms ----------------
     # THREE BOXES, not one concave polygon. poly_prism builds the cap as an n-gon and
     # triangulates it, which does not respect a concave boundary — the C came out
-    # filled solid and the bay (and both ships in it) vanished under concrete.
-    # The west arm is run LONG at both ends so its joints with the other two are
-    # buried inside the mass rather than abutting flush, where the crease would ink.
-    ix0, iy0, iy1 = x0 + ARM_W, y0 + ARM_W, y1 - ARM_W
+    # filled solid and the bay, with both ships in it, vanished under concrete. The
+    # west arm runs long at both ends so its joints are buried inside the mass rather
+    # than abutting flush, where the crease would ink.
     K.box("quay_s", (x0 + x1) / 2, (y0 + iy0) / 2, (QUAY_Z - 0.30) / 2,
           x1 - x0, iy0 - y0, QUAY_Z + 0.30, quay)
     K.box("quay_n", (x0 + x1) / 2, (iy1 + y1) / 2, (QUAY_Z - 0.30) / 2,
           x1 - x0, y1 - iy1, QUAY_Z + 0.30, quay)
     K.box("quay_w", (x0 + ix0) / 2, (iy0 + iy1) / 2, (QUAY_Z - 0.30) / 2,
           ix0 - x0, (iy1 - iy0) + 0.30, QUAY_Z + 0.30, quay)
-    # Pale lip along the three edges that face the water, which is what reads as a
-    # quay rather than a kerb-less slab.
-    K.box("lip_s", (x0 + x1) / 2, iy0 - 0.055, QUAY_Z + 0.005,
-          x1 - x0, 0.11, 0.065, quay_edge)
-    K.box("lip_n", (x0 + x1) / 2, iy1 + 0.055, QUAY_Z + 0.005,
-          x1 - x0, 0.11, 0.065, quay_edge)
+    for tag, ly in (("s", iy0 - 0.055), ("n", iy1 + 0.055)):
+        K.box("lip_" + tag, (x0 + x1) / 2, ly, QUAY_Z + 0.005,
+              x1 - x0, 0.11, 0.065, quay_edge)
     K.box("lip_w", ix0 + 0.055, (iy0 + iy1) / 2, QUAY_Z + 0.005,
           0.11, iy1 - iy0, 0.065, quay_edge)
-    # Bollards and fenders along the inner faces — the detail that says "quay" rather
-    # than "wall". Fine ink: at 0.09 wide the 2.4px line would be the whole bollard.
-    K._fine_mode = True
-    inner_n = y1 - ARM_W
-    for bx in [x0 + ARM_W + 0.55 + i * 1.25 for i in range(8)]:
-        if bx > x1 - ARM_W - 0.3:
-            break
-        K.cyl("bol_n%d" % int(bx * 10), bx, inner_n - 0.16, QUAY_Z, 0.075, 0.16, quay_edge)
-        K.cyl("bol_s%d" % int(bx * 10), bx, y0 + ARM_W + 0.16, QUAY_Z, 0.075, 0.16, quay_edge)
-    for by in [y0 + ARM_W + 0.6 + i * 1.2 for i in range(6)]:
-        if by > inner_n - 0.3:
-            break
-        K.cyl("bol_w%d" % int(by * 10), x0 + ARM_W + 0.16, by, QUAY_Z, 0.075, 0.16, quay_edge)
-    K._fine_mode = False
 
-    # ---------------- containers: all over the NEAR arm ----------------
-    # The near arm is the one the camera looks across, so this is where the colour
-    # goes; the far arm is left clear for the gantries to read against the sky.
+    # ---------------- rails: the FULL length of both working arms ---------------
+    # Each arm carries a pair, set in from its bay-facing edge. The crane straddles
+    # them and travels; stub rails under the crane alone read as a machine parked on
+    # two sleepers rather than a terminal.
+    rails = {}
+    for tag, edge, into in (("n", iy1, +1.0), ("s", iy0, -1.0)):
+        ra, rb = edge + into * RAIL_A, edge + into * RAIL_B
+        rails[tag] = (ra, rb)
+        for i, ry in enumerate((ra, rb)):
+            K.box("rail_%s%d" % (tag, i), (x0 + x1) / 2, ry, QUAY_Z + 0.035,
+                  x1 - x0 - 0.30, 0.13, 0.07, K.mat("darkmetal"))
+
+    # ---------------- gantries: one per arm, straddling its rails ----------------
+    CRANE_X = {"n": 1.30, "s": -2.20}
+    for tag, (ra, rb) in rails.items():
+        _portal_crane(K, "gc" + tag, CRANE_X[tag], ra, rb,
+                      1.0 if tag == "s" else -1.0, QUAY_Z)
+
+    # ---------------- containers: banded either side of the rails ---------------
+    # Placed by rule rather than by hand so nothing can drift under a crane: step
+    # along each band and skip any bay that falls inside the crane's gauge.
     box_mats = [K.mat("wall_brick"), K.mat("box_blue"), K.mat("plant_yellow"),
                 K.mat("gear"), K.mat("cont_blue")]
-    near_y = y0 + ARM_W / 2
-    for i, (cx, cy, cols, rows) in enumerate((
-            (-5.05, near_y + 0.55, 3, 3), (-2.60, near_y + 0.60, 3, 2),
-            (-0.10, near_y + 0.50, 3, 3), (2.35, near_y + 0.58, 3, 2),
-            (4.60, near_y + 0.45, 2, 2),
-            (-4.10, near_y - 0.62, 2, 1), (-1.20, near_y - 0.66, 3, 1),
-            (1.60, near_y - 0.60, 2, 2), (3.90, near_y - 0.64, 2, 1))):
-        _lift(K, QUAY_Z, K.container_stack, "cs%d" % i, cx, cy,
-              cols=cols, rows=rows, mats=box_mats)
-    # A row on the west arm too, so the C reads as one working yard rather than a
-    # decorated front edge.
-    for i, (cx, cy) in enumerate(((x0 + ARM_W / 2 + 0.1, -0.9), (x0 + ARM_W / 2 - 0.1, 1.4))):
-        _lift(K, QUAY_Z, K.container_stack, "csw%d" % i, cx, cy,
-              cols=2, rows=2, mats=box_mats)
+    ci = 0
+    for tag, (ra, rb) in rails.items():
+        edge = iy1 if tag == "n" else iy0
+        into = 1.0 if tag == "n" else -1.0
+        outer = (y1 - ROAD_W) if tag == "n" else y0
+        bands = [edge + into * (RAIL_A / 2),                    # quayside of the rails
+                 rb + into * 0.42]                              # landward of them
+        for bi, by in enumerate(bands):
+            if abs(outer - by) < 0.30:
+                continue
+            bx = x0 + 1.10
+            while bx < x1 - 1.10:
+                if abs(bx - CRANE_X[tag]) > 1.55:               # keep the gauge clear
+                    _lift(K, QUAY_Z, K.container_stack, "cs%d" % ci, bx, by,
+                          cols=2, rows=1 + (ci % 3 == 0) + (bi == 1 and ci % 2 == 0),
+                          mats=box_mats)
+                    ci += 1
+                bx += 2.45
+    for i, cy_ in enumerate((-1.30, 0.60, 2.20)):               # west arm holding area
+        _lift(K, QUAY_Z, K.container_stack, "csw%d" % i, x0 + ARM_W / 2 - 0.15, cy_,
+              cols=1, rows=2, mats=box_mats)
 
-    # ---------------- gantry cranes: two, on the FAR arm ----------------
-    # These are the silhouette. They straddle the far quay edge with their booms out
-    # over the water, which is the shape that says CONTAINER PORT from a long way off.
-    # One per arm, on rails, BOTH legs on concrete (owner). Before, both stood on
-    # the far arm with their inner legs out past the quay edge, standing in water.
-    # Far arm spans y 2.90..5.20, near arm -4.60..-2.30; the legs sit inside those
-    # and only the boom reaches over the bay.
-    _portal_crane(K, "gcN", -1.20, iy1 + 0.45, iy1 + 1.85, -1.0, QUAY_Z)
-    _portal_crane(K, "gcS", 1.90, y0 + 0.45, y0 + 1.85, 1.0, QUAY_Z)
+    # ---------------- road along the BACK arm, out onto the shore ---------------
+    road_y = y1 - ROAD_W / 2
+    K.box("road_n", (SHORE_X + x1) / 2, road_y, QUAY_Z + 0.012,
+          x1 - SHORE_X, ROAD_W, 0.03, K.mat("dock_road"))
+    K.box("road_w", SHORE_X + 1.05, (y0 + y1) / 2, LAND_TOP + 0.012,
+          ROAD_W, (y1 - y0) + 2.2, 0.03, K.mat("dock_road"))
+    dx = SHORE_X + 0.6
+    di = 0
+    while dx < x1 - 0.4:
+        K.box("rdash%d" % di, dx, road_y, QUAY_Z + 0.03, 0.42, 0.05, 0.012,
+              K.mat("dock_dash"))
+        dx += 1.05
+        di += 1
 
     # ---------------- ships ----------------
     _boxship(K, "boxr", *SHIP_BOXER, mats=box_mats)
     _tanker(K, "tank", *SHIP_TANKER)
 
     # ---------------- office in the corner where the arms meet ----------------
-    _office(K, "off", x0 + ARM_W / 2 + 0.05, y1 - ARM_W / 2 - 0.05, QUAY_Z)
+    _office(K, "off", x0 + ARM_W / 2 + 0.10, y1 - ROAD_W - 0.85, QUAY_Z)
 
     for w in K.validate(ground=-0.35):
         print("VALIDATE:", w)
