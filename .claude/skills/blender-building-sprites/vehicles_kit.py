@@ -22,6 +22,12 @@ import math
 import random
 
 VEH_SCALE = 0.70
+# The ROAD SLAB's top is at z=0.065, not 0 — the vehicles were authored against
+# z=0, which buried 40% of every wheel in the tarmac. Everything now sits on this,
+# and the wheels are allowed to sink only ~3.5% of their height so the tyre still
+# reads as meeting the road rather than hovering on it.
+ROAD_TOP = 0.065
+WHEEL_SINK = 0.93
 
 PALETTE["truck_white"] = (0.560, 0.545, 0.500)   # body white, under the AgX ceiling
 PALETTE["truck_black"] = (0.055, 0.058, 0.075)
@@ -148,6 +154,9 @@ def _plate(self, name, text, x, y, z, h, face, mat_bg, mat_ink):
     tmp.location = (x + (0.012 if face > 0 else -0.012), y, z)
     dg = bpy.context.evaluated_depsgraph_get()
     me = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg))
+    # new_from_object hands back LOCAL-space geometry: without this every plate's
+    # lettering piled up at the world origin instead of sitting on its vehicle.
+    me.transform(tmp.matrix_world)
     bpy.data.objects.remove(tmp, do_unlink=True)
     bpy.data.curves.remove(cur)
     ob = self.obj("%s_ptxt" % name, me, mat_ink)
@@ -156,6 +165,35 @@ def _plate(self, name, text, x, y, z, h, face, mat_bg, mat_ink):
     attr = me.attributes.get("freestyle_face") or me.attributes.new("freestyle_face", 'BOOLEAN', 'FACE')
     for d in attr.data:
         d.value = True
+    return ob
+
+
+def _frustum(self, name, cx, cy, z0, z1, lx0, ly0, lx1, ly1, mat):
+    """Truncated box: a smaller rectangle on top of a larger one. This is what
+    makes the cabin read as a car instead of a crate — the roof is shorter AND
+    narrower than the waist, so the ends rake and the sides tumblehome. The glass
+    is then laid on those raked faces rather than standing vertical."""
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    bot = [bm.verts.new(v) for v in ((cx - lx0 / 2, cy - ly0 / 2, z0),
+                                     (cx + lx0 / 2, cy - ly0 / 2, z0),
+                                     (cx + lx0 / 2, cy + ly0 / 2, z0),
+                                     (cx - lx0 / 2, cy + ly0 / 2, z0))]
+    top = [bm.verts.new(v) for v in ((cx - lx1 / 2, cy - ly1 / 2, z1),
+                                     (cx + lx1 / 2, cy - ly1 / 2, z1),
+                                     (cx + lx1 / 2, cy + ly1 / 2, z1),
+                                     (cx - lx1 / 2, cy + ly1 / 2, z1))]
+    bm.faces.new(list(reversed(bot)))
+    bm.faces.new(top)
+    for i in range(4):
+        j = (i + 1) % 4
+        bm.faces.new((bot[i], bot[j], top[j], top[i]))
+    bm.normal_update()
+    bm.to_mesh(me)
+    bm.free()
+    ob = self.obj(name, me, mat)
+    for poly in ob.data.polygons:
+        poly.use_smooth = False
     return ob
 
 
@@ -174,15 +212,15 @@ def _wheels(self, name, x, y, xs, half_w, r, mat, face=1.0, s=1.0):
     for i, wx in enumerate(xs):
         for sg in (-1, 1):
             _wheel(self, "%s_w%d%s" % (name, i, "p" if sg > 0 else "m"),
-                   x + face * wx * s, y + sg * half_w * s, r * s,
-                   r * s, 0.085 * s, mat)
+                   x + face * wx * s, y + sg * half_w * s,
+                   ROAD_TOP + WHEEL_SINK * r * s, r * s, 0.055 * s, mat)
 
 
 def _shadow(self, name, x, y, length, width, mat):
     """A flat dark patch on the road under the vehicle. Grounds it: without one a
     body with open arches reads as floating. NOINK — an outline would make it a
     solid object rather than shade."""
-    ob = self.box(name + "_shadow", x, y, 0.004, length, width, 0.008, mat)
+    ob = self.box(name + "_shadow", x, y, ROAD_TOP + 0.004, length, width, 0.008, mat)
     me = ob.data
     attr = me.attributes.get("freestyle_face") or me.attributes.new("freestyle_face", 'BOOLEAN', 'FACE')
     for d in attr.data:
@@ -192,7 +230,12 @@ def _shadow(self, name, x, y, length, width, mat):
 
 def _truck(self, name, x, y, face=1.0, colour="truck_white", seed=0):
     """European cab-over: FLAT vertical front face, cab raised over the front axle,
-    boxy trailer behind. `face` +1 points down-street, -1 back at the camera."""
+    boxy trailer behind. `face` +1 points down-street, -1 back at the camera.
+
+    The trailer floor sits HIGH with a narrow chassis beam under it (owner): with
+    the body carried down to the axles the bogie wheels looked like part of the
+    cargo box. Now they hang in open air under the trailer, which is what a semi
+    actually looks like."""
     s = VEH_SCALE
     body = self.mat(colour)
     dark = self.mat("truck_black" if colour != "truck_black" else "darkmetal")
@@ -201,40 +244,52 @@ def _truck(self, name, x, y, face=1.0, colour="truck_white", seed=0):
     f = face
 
     def bx(nm, cx, cy, cz, sx, sy, sz, m):
-        return self.box("%s_%s" % (name, nm), x + f * cx * s, y + cy * s, cz * s,
-                        sx * s, sy * s, sz * s, m)
+        return self.box("%s_%s" % (name, nm), x + f * cx * s, y + cy * s,
+                        cz * s + ROAD_TOP, sx * s, sy * s, sz * s, m)
 
-    bx("cab", 1.55, 0.0, 0.66, 1.10, 0.52, 0.86, body)
-    bx("screen", 2.10, 0.0, 0.86, 0.03, 0.396, 0.27, glass)
-    bx("grille", 2.10, 0.0, 0.44, 0.03, 0.40, 0.16, dark)
-    bx("bumper", 2.09, 0.0, 0.29, 0.06, 0.50, 0.12, dark)
+    # ---- tractor ----
+    bx("cab", 1.55, 0.0, 0.70, 1.10, 0.52, 0.86, body)             # z 0.27..1.13
+    bx("screen", 2.10, 0.0, 0.90, 0.03, 0.396, 0.27, glass)
+    bx("grille", 2.10, 0.0, 0.48, 0.03, 0.40, 0.16, dark)
+    bx("bumper", 2.09, 0.0, 0.33, 0.06, 0.50, 0.12, dark)
     for sg in (-1, 1):
-        bx("hlamp%d" % (sg > 0), 2.11, sg * 0.17, 0.36, 0.02, 0.11, 0.07, warm)
-        bx("cabwin%d" % (sg > 0), 1.72, sg * 0.265, 0.86, 0.42, 0.02, 0.26, glass)
-    bx("deflector", 1.35, 0.0, 1.14, 0.60, 0.46, 0.10, body)
-    bx("chassis", 0.55, 0.0, 0.20, 2.10, 0.34, 0.10, dark)
+        bx("hlamp%d" % (sg > 0), 2.11, sg * 0.17, 0.40, 0.02, 0.11, 0.07, warm)
+        bx("cabwin%d" % (sg > 0), 1.72, sg * 0.265, 0.90, 0.42, 0.02, 0.26, glass)
+    bx("deflector", 1.35, 0.0, 1.18, 0.60, 0.46, 0.10, body)
+    bx("chassis", 0.55, 0.0, 0.28, 2.10, 0.30, 0.09, dark)
 
-    bx("trailer", -0.72, 0.0, 0.76, 2.86, 0.54, 0.96, body)
-    bx("tskirt", -0.72, 0.0, 0.24, 2.80, 0.44, 0.10, dark)
-    bx("tdoor", -2.15, 0.0, 0.78, 0.03, 0.48, 0.84, dark)
-    bx("tbar", -2.18, 0.0, 0.24, 0.05, 0.46, 0.07, dark)          # rear underrun bar
-    for sg in (-1, 1):                                             # tail lights
-        bx("tlamp%d" % (sg > 0), -2.18, sg * 0.17, 0.42, 0.03, 0.10, 0.09, red)
-    self.seam("%s_seam" % name, x + f * 0.85 * s, y, 0.76 * s, 0.48 * s, axis='Z')
-    _plate(self, name, plate_text(seed), x + f * -2.19 * s, y, 0.42 * s,
+    # ---- trailer, floor raised clear of the bogie ----
+    bx("trailer", -0.72, 0.0, 0.88, 2.86, 0.54, 0.80, body)        # z 0.48..1.28
+    bx("beam", -1.10, 0.0, 0.42, 2.10, 0.28, 0.10, dark)           # the chassis rail
+    bx("tdoor", -2.15, 0.0, 0.88, 0.03, 0.48, 0.76, dark)
+    bx("tbar", -2.18, 0.0, 0.30, 0.05, 0.46, 0.07, dark)           # rear underrun bar
+    for sg in (-1, 1):
+        bx("tlamp%d" % (sg > 0), -2.18, sg * 0.17, 0.58, 0.03, 0.10, 0.09, red)
+        bx("mudguard%d" % (sg > 0), -1.59, sg * 0.27, 0.40, 0.72, 0.05, 0.05, dark)
+    self.seam("%s_seam" % name, x + f * 0.85 * s, y, 0.88 * s + ROAD_TOP, 0.48 * s, axis='Z')
+    _plate(self, name, plate_text(seed), x + f * -2.19 * s, y, 0.58 * s + ROAD_TOP,
            0.062 * s, -f, self.mat("plate"), self.mat("plate_ink"))
     _cargo_placard(self, name, CARGO_ICONS[seed % len(CARGO_ICONS)],
-                   x + f * -2.18 * s, y, 0.84 * s, 0.255 * s, -f, self.mat("cream"))
+                   x + f * -2.18 * s, y, 0.94 * s + ROAD_TOP, 0.255 * s, -f,
+                   self.mat("cream"))
     _wheels(self, name, x, y, (1.72, 0.92, -1.40, -1.78), 0.26, 0.115, tyre, f, s)
     _shadow(self, name, x - f * 0.35 * s, y, 4.35 * s, 0.66 * s, self.mat("veh_shadow"))
     return {"len": 4.3 * s}
 
 
 def _car(self, name, x, y, face=1.0, colour="car_red", seed=0):
-    """Sedan with a ROUNDED nose (stepped, so it reads round without smoothing),
-    OPEN wheel arches — the body only spans between the axles below the belt line,
-    so the wheels sit in gaps rather than against a slab — a RAKED windscreen, and
-    headlights and tail lights."""
+    """Sedan. The cabin is a FRUSTUM, not a box (owner): roof shorter and narrower
+    than the waist, so both screens rake ~22 degrees toward the middle of the car
+    and the sides tumblehome. Everything else follows that shape — glass laid on
+    the raked faces at the matching angle, side glass tilted with the tumblehome,
+    and the bonnet falling forward into the base of the screen.
+
+    Vertical stack matters as much as the shape. Deleting the underside slab
+    outright left the body floating a whole wheel-radius above the road on four
+    exposed tyres — it read as a flatbed. There IS a lower body (a rocker), but it
+    spans only between the axles, so the wheels stand in open arches while the car
+    still has a bottom.
+    """
     s = VEH_SCALE
     body = self.mat(colour)
     glass, tyre = self.mat("screen"), self.mat("tyre")
@@ -242,41 +297,48 @@ def _car(self, name, x, y, face=1.0, colour="car_red", seed=0):
     f = face
 
     def bx(nm, cx, cy, cz, sx, sy, sz, m):
-        return self.box("%s_%s" % (name, nm), x + f * cx * s, y + cy * s, cz * s,
-                        sx * s, sy * s, sz * s, m)
+        return self.box("%s_%s" % (name, nm), x + f * cx * s, y + cy * s,
+                        cz * s + ROAD_TOP, sx * s, sy * s, sz * s, m)
 
-    def rbx(nm, cx, cy, cz, sx, sy, sz, m, ang):
-        return self.rotbox("%s_%s" % (name, nm), x + f * cx * s, y + cy * s, cz * s,
-                           sx * s, sy * s, sz * s, m, 'Y', ang * f)
+    def rbx(nm, cx, cy, cz, sx, sy, sz, m, ang, axis='Y'):
+        return self.rotbox("%s_%s" % (name, nm), x + f * cx * s, y + cy * s,
+                           cz * s + ROAD_TOP, sx * s, sy * s, sz * s, m, axis,
+                           ang * (f if axis == 'Y' else 1.0))
 
-    # The sill spans only BETWEEN the axles, so from the wheel stations there is
-    # nothing below the belt line and the wheel stands in an open arch. The wheels
-    # are also wider than the body (0.205+0.055 out vs a 0.24 half-width): tucked
-    # inside they simply vanished behind the flanks at street distance.
-    # No underside slab (owner): the body starts at the belt line and the wheels
-    # carry it, so all four are fully visible and daylight shows under the car.
-    bx("belt", 0.0, 0.0, 0.30, 1.44, 0.48, 0.16, body)             # z 0.22..0.38
-    # Rounded nose: steps that shrink in WIDTH as well as height, so the front
-    # narrows the way a bonnet does instead of just stepping down.
-    # +angle drops the FRONT edge: at -9 the bonnet rose toward the nose, which
-    # reads as a wedge tipping backwards. A few degrees of fall is what a bonnet does.
-    rbx("bonnet", 0.58, 0.0, 0.375, 0.46, 0.47, 0.07, body, 6.0)
-    bx("nose1", 0.78, 0.0, 0.32, 0.12, 0.44, 0.16, body)
-    bx("nose2", 0.855, 0.0, 0.30, 0.05, 0.36, 0.13, body)
-    bx("nose3", 0.885, 0.0, 0.285, 0.03, 0.24, 0.09, body)
-    bx("fbumper", 0.845, 0.0, 0.215, 0.09, 0.44, 0.05, body)
-    bx("tail_end", -0.76, 0.0, 0.32, 0.12, 0.46, 0.15, body)
-    bx("rbumper", -0.83, 0.0, 0.215, 0.06, 0.44, 0.05, body)
-    # Cabin + raked glazing.
-    bx("cabin", -0.10, 0.0, 0.475, 0.66, 0.44, 0.19, body)         # z 0.38..0.57
-    rbx("wscreen", 0.26, 0.0, 0.475, 0.05, 0.378, 0.207, glass, -34.0)
-    rbx("rscreen", -0.46, 0.0, 0.475, 0.05, 0.378, 0.189, glass, 27.0)
+    # Rocker: between the axles only, so the wheels stand in open arches.
+    bx("rocker", 0.0, 0.0, 0.143, 0.72, 0.42, 0.100, body)         # z 0.093..0.193
+    # WAIST. Its height against the glasshouse is what decides whether this reads
+    # as a car: body 0.167 vs glass 0.118 is roughly 60/40, sedan proportion. The
+    # earlier 0.128/0.172 had more glass than body, which is a van.
+    bx("belt", 0.0, 0.0, 0.2765, 1.44, 0.48, 0.167, body)          # z 0.193..0.360
+    # Nose caps step DOWN inside the waist, which is where the bonnet's forward
+    # fall comes from. No separate hood lid: proud of the waist and a hair wider,
+    # it flanged all round and the car read as a flatbed with side walls.
+    bx("nose1", 0.78, 0.0, 0.2705, 0.12, 0.470, 0.155, body)
+    bx("nose2", 0.855, 0.0, 0.2580, 0.05, 0.380, 0.130, body)
+    bx("nose3", 0.885, 0.0, 0.2450, 0.03, 0.260, 0.100, body)
+    bx("fbumper", 0.845, 0.0, 0.205, 0.09, 0.44, 0.05, body)
+    bx("tail_end", -0.76, 0.0, 0.2705, 0.12, 0.470, 0.155, body)
+    bx("rbumper", -0.83, 0.0, 0.205, 0.06, 0.44, 0.05, body)
+
+    # ---- the glasshouse ----
+    # waist 0.86 long / 0.44 wide at z 0.360; roof 0.765 / 0.37 at z 0.478.
+    # 0.048 of run over 0.118 of rise = 22 deg on both screens (owner: ~20); the
+    # sides pull in 0.035 over the same rise = 16 deg of tumblehome.
+    z0, z1, cxc = 0.360, 0.478, -0.10
+    _frustum(self, "%s_cabin" % name, x + f * cxc * s, y,
+             z0 * s + ROAD_TOP, z1 * s + ROAD_TOP,
+             0.86 * s, 0.44 * s, 0.765 * s, 0.37 * s, body)
+    rake, zmid = 22.0, 0.419
+    rbx("wscreen", 0.3062, 0.0, zmid, 0.02, 0.38, 0.120, glass, -rake)
+    rbx("rscreen", -0.5062, 0.0, zmid, 0.02, 0.38, 0.112, glass, rake)
     for sg in (-1, 1):
-        bx("side%d" % (sg > 0), -0.10, sg * 0.222, 0.48, 0.52, 0.02, 0.12, glass)
-        bx("hlamp%d" % (sg > 0), 0.872, sg * 0.125, 0.315, 0.03, 0.10, 0.06, warm)
-        bx("tlamp%d" % (sg > 0), -0.815, sg * 0.155, 0.335, 0.02, 0.10, 0.06, red)
-    _plate(self, name, plate_text(seed), x + f * -0.83 * s, y, 0.255 * s,
-           0.048 * s, -f, self.mat("plate"), self.mat("plate_ink"))
+        rbx("side%d" % (sg > 0), cxc, sg * 0.204, zmid, 0.58, 0.02, 0.085,
+            glass, sg * 16.5, axis='X')
+        bx("hlamp%d" % (sg > 0), 0.872, sg * 0.125, 0.278, 0.03, 0.10, 0.055, warm)
+        bx("tlamp%d" % (sg > 0), -0.815, sg * 0.155, 0.300, 0.02, 0.10, 0.055, red)
+    _plate(self, name, plate_text(seed), x + f * -0.83 * s, y, 0.228 * s + ROAD_TOP,
+           0.044 * s, -f, self.mat("plate"), self.mat("plate_ink"))
     _wheels(self, name, x, y, (0.52, -0.52), 0.205, 0.115, tyre, f, s)
     _shadow(self, name, x, y, 1.82 * s, 0.60 * s, self.mat("veh_shadow"))
     return {"len": 1.8 * s}
