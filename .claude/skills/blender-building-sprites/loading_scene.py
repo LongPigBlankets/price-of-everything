@@ -38,6 +38,7 @@ STREET_X0, STREET_X1 = -20.0, 200.0   # camera end -> far beyond the visible ter
 CITY_X = 74.0               # distant city backdrop plane (P2), faces the camera (-X)
 SKY_X = 210.0               # sky backdrop plane, faces the camera
 CAM_X = -13.0               # start camera x (the rig asserts this)
+CAM_H = 1.62                # camera height (owner: raised 1.0 from 0.62)
 # The street used to stop at 92 with the sky plane at 90, so the road's far end met
 # the sky plane's base in a visible hard wedge — the owner's "road runs out when
 # zooming in". The road now runs to 200 and dissolves into corridor haze long before
@@ -159,7 +160,11 @@ def setup_load_rig(res_x=1920, res_y=1080):
     cam_ob.data.type = 'PERSP'
     cam_ob.data.lens = 32.0
     cam_ob.data.clip_end = 200.0
-    cam_ob.location = (-13.0, 0.0, 0.62)   # pulled back: entrance zone in frame (owner)
+    # Camera height raised 1.0 (owner 2026-08-06): 0.62 was human eye level, this
+    # looks over the traffic rather than through it and shows more of the road
+    # surface. The camera stays exactly horizontal, so the vanishing point does not
+    # move on screen — only the ground/sky balance changes.
+    cam_ob.location = (-13.0, 0.0, CAM_H)
     cam_ob.rotation_euler = (math.radians(90.0), 0.0, math.radians(-90.0))  # look +X, plumb verticals
     cam_ob.data.shift_y = 0.125                              # rising front instead of tilt
     sc.camera = cam_ob
@@ -1289,9 +1294,9 @@ def place_vehicles(advance=0.0, cam_x=None):
         x = cx + ((x - cx) % WRAP)          # keep a stream ahead of the camera
         vy = vdir * LANE_Y
         if kind == "truck":
-            kit.truck("veh_%d" % vi, x, vy, face=float(vdir), colour=colour)
+            kit.truck("veh_%d" % vi, x, vy, face=float(vdir), colour=colour, seed=vi * 977 + 13)
         else:
-            kit.car("veh_%d" % vi, x, vy, face=float(vdir), colour=colour)
+            kit.car("veh_%d" % vi, x, vy, face=float(vdir), colour=colour, seed=vi * 977 + 13)
     return {"vehicles": len(VEHICLES), "advance": advance}
 
 
