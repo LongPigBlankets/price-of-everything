@@ -51,14 +51,20 @@ CARGO_ICONS = ("g_008_motor.png", "g_038_glass.png", "g_029_aluminium.png",
                "g_036_electrical_components.png")
 
 
-def _cargo_placard(self, name, icon_file, x, y, z, h, face, mat_bg):
-    """Cream placard with a goods icon, inset from the trailer edges.
+def _cargo_placard(self, name, icon_file, x, y, z, h, nx, mat_bg):
+    """Cream placard with a goods icon on the trailer's REAR ONLY.
 
-    The icon is an IMAGE TEXTURE rather than modelled geometry — these are the
-    shipped goods icons, pre-keyed with alpha, and redrawing them in boxes would
-    lose the thing that makes them recognisable. Alpha-blended so the keyed
-    surround does not print as a cream square, and NOINK so Freestyle does not
-    trace a hard rectangle around the placard face."""
+    Built as a SINGLE QUAD, not a box. A box carries the texture on its front AND
+    its back face, and with an alpha-blended material EEVEE does not depth-sort
+    the two — so the icon rendered doubled with its own mirror image, and it also
+    appeared on the front of the cab. One quad plus backface culling gives exactly
+    one icon, on the back, facing the way it should.
+
+    The icon is an IMAGE TEXTURE rather than modelled geometry: these are the
+    shipped goods icons, pre-keyed with alpha, and redrawing them as boxes would
+    lose the thing that makes them recognisable. NOINK, or Freestyle traces a hard
+    rectangle around the placard face.
+    """
     import os
     self.box("%s_placard" % name, x, y, z, 0.02, h * 1.42, h * 1.42, mat_bg)
     path = os.path.join(ICON_DIR, icon_file)
@@ -69,6 +75,7 @@ def _cargo_placard(self, name, icon_file, x, y, z, h, face, mat_bg):
         mat = bpy.data.materials.new("veh_cargo_" + icon_file)
         mat.use_nodes = True
         mat.blend_method = 'BLEND'
+        mat.use_backface_culling = True
         nt = mat.node_tree
         nt.nodes.clear()
         img = bpy.data.images.get(icon_file) or bpy.data.images.load(path)
@@ -85,27 +92,34 @@ def _cargo_placard(self, name, icon_file, x, y, z, h, face, mat_bg):
         nt.links.new(trans.outputs[0], mix.inputs[1])
         nt.links.new(emit.outputs[0], mix.inputs[2])
         nt.links.new(mix.outputs[0], out.inputs["Surface"])
-    ob = self.box("%s_cargo" % name, x + (0.014 if face > 0 else -0.014), y, z,
-                  0.004, h, h, mat)
-    me = ob.data
+    px = x + 0.014 * (1.0 if nx > 0 else -1.0)
+    y0, y1, z0, z1 = y - h / 2, y + h / 2, z - h / 2, z + h / 2
+    me = bpy.data.meshes.new("%s_cargo" % name)
+    bm = bmesh.new()
+    order = ((y0, z0), (y1, z0), (y1, z1), (y0, z1)) if nx > 0 else \
+            ((y0, z0), (y0, z1), (y1, z1), (y1, z0))
+    face = bm.faces.new([bm.verts.new((px, vy, vz)) for vy, vz in order])
+    face.smooth = False
+    bm.normal_update()
+    bm.to_mesh(me)
+    bm.free()
+    ob = self.obj("%s_cargo" % name, me, mat)
     me.uv_layers.new(name="UVMap")
     uv = me.uv_layers.active.data
     for poly in me.polygons:
         poly.use_smooth = False
-        n = poly.normal
         for li in poly.loop_indices:
-            vi = me.loops[li].vertex_index
-            co = me.vertices[vi].co
-            if abs(n.x) > 0.5:                       # the two faces we actually see
-                u = (co.y - (y - h / 2)) / h
-                v = (co.z - (z - h / 2)) / h
-                uv[li].uv = (u if n.x * face > 0 else 1.0 - u, v)
-            else:
-                uv[li].uv = (0.0, 0.0)
+            co = me.vertices[me.loops[li].vertex_index].co
+            # Camera right is -Y, so from the -X side u must run against +Y or the
+            # art comes out mirrored.
+            uv[li].uv = ((co.y - y0) / h if nx > 0 else (y1 - co.y) / h,
+                         (co.z - z0) / h)
     attr = me.attributes.get("freestyle_face") or me.attributes.new("freestyle_face", 'BOOLEAN', 'FACE')
     for d in attr.data:
         d.value = True
     return ob
+
+
 _LET = "ABCDEFGHJKLMNPRSTVWXYZ"
 
 
@@ -145,31 +159,12 @@ def _plate(self, name, text, x, y, z, h, face, mat_bg, mat_ink):
     return ob
 
 
-def _half_wheel(self, name, cx, cy, cz, r, w, mat, segs=9):
-    """The BOTTOM HALF of a wheel (owner) — a semicircular prism lying along Y.
-    Only the lower half is ever outside the arch, so a full cylinder spends its
-    top half buried in the bodywork; this also keeps it from poking through.
-    Built by hand: a semicircle plus its chord, extruded across the tyre width."""
-    me = bpy.data.meshes.new(name)
-    bm = bmesh.new()
-    prof = []
-    for i in range(segs + 1):
-        a = math.pi + math.pi * i / segs           # 180 -> 360 deg = the lower half
-        prof.append((cx + r * math.cos(a), cz + r * math.sin(a)))
-    ring = [bm.verts.new((px, cy - w * 0.5, pz)) for px, pz in prof]
-    back = [bm.verts.new((px, cy + w * 0.5, pz)) for px, pz in prof]
-    bm.faces.new(ring)
-    bm.faces.new(list(reversed(back)))
-    for i in range(len(ring) - 1):
-        bm.faces.new((ring[i], ring[i + 1], back[i + 1], back[i]))
-    bm.faces.new((ring[-1], ring[0], back[0], back[-1]))   # close along the chord
-    bm.normal_update()
-    bm.to_mesh(me)
-    bm.free()
-    ob = self.obj(name, me, mat)
-    for poly in ob.data.polygons:
-        poly.use_smooth = False
-    return ob
+def _wheel(self, name, cx, cy, cz, r, w, mat, segs=14):
+    """A full ROUND wheel (owner: not half-cylinders — those read as bricks). 14
+    flat segments is round enough at street size and keeps the faceted look; the
+    car body no longer has an underside slab, so the whole wheel is visible."""
+    self.dircyl(name, (cx, cy - w * 0.5, cz), (cx, cy + w * 0.5, cz), r, mat,
+                segments=segs, smooth=False)
 
 
 def _wheels(self, name, x, y, xs, half_w, r, mat, face=1.0, s=1.0):
@@ -178,9 +173,9 @@ def _wheels(self, name, x, y, xs, half_w, r, mat, face=1.0, s=1.0):
     vehicle — which is why the cars looked like blocks with nothing underneath."""
     for i, wx in enumerate(xs):
         for sg in (-1, 1):
-            _half_wheel(self, "%s_w%d%s" % (name, i, "p" if sg > 0 else "m"),
-                        x + face * wx * s, y + sg * half_w * s, r * s,
-                        r * s, 0.075 * s, mat)
+            _wheel(self, "%s_w%d%s" % (name, i, "p" if sg > 0 else "m"),
+                   x + face * wx * s, y + sg * half_w * s, r * s,
+                   r * s, 0.085 * s, mat)
 
 
 def _shadow(self, name, x, y, length, width, mat):
@@ -210,7 +205,7 @@ def _truck(self, name, x, y, face=1.0, colour="truck_white", seed=0):
                         sx * s, sy * s, sz * s, m)
 
     bx("cab", 1.55, 0.0, 0.66, 1.10, 0.52, 0.86, body)
-    bx("screen", 2.10, 0.0, 0.86, 0.03, 0.44, 0.30, glass)
+    bx("screen", 2.10, 0.0, 0.86, 0.03, 0.396, 0.27, glass)
     bx("grille", 2.10, 0.0, 0.44, 0.03, 0.40, 0.16, dark)
     bx("bumper", 2.09, 0.0, 0.29, 0.06, 0.50, 0.12, dark)
     for sg in (-1, 1):
@@ -258,11 +253,14 @@ def _car(self, name, x, y, face=1.0, colour="car_red", seed=0):
     # nothing below the belt line and the wheel stands in an open arch. The wheels
     # are also wider than the body (0.205+0.055 out vs a 0.24 half-width): tucked
     # inside they simply vanished behind the flanks at street distance.
-    bx("sill", 0.0, 0.0, 0.16, 0.76, 0.42, 0.12, body)             # z 0.10..0.22
+    # No underside slab (owner): the body starts at the belt line and the wheels
+    # carry it, so all four are fully visible and daylight shows under the car.
     bx("belt", 0.0, 0.0, 0.30, 1.44, 0.48, 0.16, body)             # z 0.22..0.38
     # Rounded nose: steps that shrink in WIDTH as well as height, so the front
     # narrows the way a bonnet does instead of just stepping down.
-    rbx("bonnet", 0.58, 0.0, 0.375, 0.46, 0.47, 0.07, body, -9.0)
+    # +angle drops the FRONT edge: at -9 the bonnet rose toward the nose, which
+    # reads as a wedge tipping backwards. A few degrees of fall is what a bonnet does.
+    rbx("bonnet", 0.58, 0.0, 0.375, 0.46, 0.47, 0.07, body, 6.0)
     bx("nose1", 0.78, 0.0, 0.32, 0.12, 0.44, 0.16, body)
     bx("nose2", 0.855, 0.0, 0.30, 0.05, 0.36, 0.13, body)
     bx("nose3", 0.885, 0.0, 0.285, 0.03, 0.24, 0.09, body)
@@ -271,8 +269,8 @@ def _car(self, name, x, y, face=1.0, colour="car_red", seed=0):
     bx("rbumper", -0.83, 0.0, 0.215, 0.06, 0.44, 0.05, body)
     # Cabin + raked glazing.
     bx("cabin", -0.10, 0.0, 0.475, 0.66, 0.44, 0.19, body)         # z 0.38..0.57
-    rbx("wscreen", 0.26, 0.0, 0.475, 0.05, 0.42, 0.23, glass, -34.0)
-    rbx("rscreen", -0.46, 0.0, 0.475, 0.05, 0.42, 0.21, glass, 27.0)
+    rbx("wscreen", 0.26, 0.0, 0.475, 0.05, 0.378, 0.207, glass, -34.0)
+    rbx("rscreen", -0.46, 0.0, 0.475, 0.05, 0.378, 0.189, glass, 27.0)
     for sg in (-1, 1):
         bx("side%d" % (sg > 0), -0.10, sg * 0.222, 0.48, 0.52, 0.02, 0.12, glass)
         bx("hlamp%d" % (sg > 0), 0.872, sg * 0.125, 0.315, 0.03, 0.10, 0.06, warm)
