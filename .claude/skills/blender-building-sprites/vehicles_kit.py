@@ -258,7 +258,9 @@ def _truck(self, name, x, y, face=1.0, colour="truck_white", seed=0):
     for sg in (-1, 1):
         bx("tlamp%d" % (sg > 0), -2.18, sg * 0.17, 0.364, 0.03, 0.10, 0.09, red)
         bx("mudguard%d" % (sg > 0), -1.59, sg * 0.27, 0.253, 0.72, 0.05, 0.045, dark)
-    self.seam("%s_seam" % name, x + f * 0.85 * s, y, 0.732 * s + ROAD_TOP, 0.55 * s, axis='Z')
+    # (No cab/trailer seam. Kit.seam exists to hide a face INTERSECTION, and these
+    # two do not intersect — there is a gap between them. The strip was also wider
+    # than the trailer, so it stuck out of both flanks as a dark bar.)
     _plate(self, name, plate_text(seed), x + f * -2.19 * s, y, 0.364 * s + ROAD_TOP,
            0.062 * s, -f, self.mat("plate"), self.mat("plate_ink"))
     _cargo_placard(self, name, CARGO_ICONS[seed % len(CARGO_ICONS)],

@@ -1260,12 +1260,20 @@ TREES = [                   # (x, side, h, r) — y is DERIVED: the canopy must 
     (13.5, -1, 2.2, 0.52), (18.2, -1, 1.6, 0.39), (22.6, -1, 1.6, 0.40),
     (29.0, -1, 2.0, 0.47), (35.5, -1, 1.9, 0.46), (41.0, -1, 1.7, 0.41),
     (47.0, -1, 1.7, 0.42), (52.5, -1, 2.0, 0.48), (57.5, -1, 2.0, 0.48),
+    # Out to the new end of the built row. The avenue used to stop at 62 while the
+    # buildings ran to 89, so the last 25 units — a third of the whole run, and
+    # everything past the 55% mark — was buildings standing on bare grass.
+    (67.0,  1, 1.9, 0.46), (72.5, 1, 1.7, 0.42), (78.0, 1, 2.0, 0.48),
+    (83.0,  1, 1.8, 0.44), (87.5, 1, 1.7, 0.41),
+    (64.5, -1, 1.8, 0.44), (69.5, -1, 2.0, 0.47), (75.0, -1, 1.7, 0.42),
+    (80.5, -1, 1.9, 0.46), (85.5, -1, 1.8, 0.43),
 ]
 LAMPS = [                   # (x, side) — on the sidewalk, arm over the road. Nothing
     # nearer than x=5: the camera sits at -8 and a lamp 2 units ahead fills the frame
     # with pole (the first cut had one at -6 doing exactly that).
     (8.0, 1), (22.0, 1), (36.0, 1), (50.0, 1), (64.0, 1),
     (5.0, -1), (15.0, -1), (29.0, -1), (43.0, -1), (57.0, -1),
+    (78.0, 1), (71.0, -1), (85.0, -1),
 ]
 LANE_Y = 0.29               # lane centres; nothing may cross the centre line
 # Traffic (owner: 3-4 trucks + 2-3 cars down the road, a few cars back up it).
@@ -1331,6 +1339,7 @@ FENCES = [                  # power-plant and refinery yards get street fencing
     ((48.6, -2.35), (55.4, -2.35)),
     ((56.6,  2.35), (63.4,  2.35)),
     ((31.0,  2.35), (37.0,  2.35)),
+    ((82.0,  2.35), (89.0,  2.35)),     # the new power plant yard
 ]
 
 
@@ -1469,8 +1478,8 @@ def phase3():
     # lives in the building base bands above (owner). ry is chosen FIRST and the
     # centre y clamped so the whole scatter ellipse stays ON the verge.
     walk_edge = ROAD_HALF_W + SIDEWALK_W
-    for i in range(7):
-        x = rng.uniform(-7.5, 18.0)
+    for i in range(16):
+        x = rng.uniform(-7.5, 84.0)
         side = rng.choice((1, -1))
         ry = rng.uniform(0.18, 0.33)
         y = side * rng.uniform(walk_edge + 0.10 + ry, BUILDING_FRONT_Y - 0.10 - ry)
@@ -1478,8 +1487,8 @@ def phase3():
                                  rx=rng.uniform(0.30, 0.75), ry=ry,
                                  dark=rng.random() < 0.5, blades=rng.randint(2, 4),
                                  seed=i * 13 + 1)
-    for i in range(7):
-        x = rng.uniform(-7.0, 12.0)
+    for i in range(14):
+        x = rng.uniform(-7.0, 84.0)
         side = rng.choice((1, -1))
         y = side * rng.uniform(ROAD_HALF_W + SIDEWALK_W + 0.40, BUILDING_FRONT_Y - 0.3)
         kit_for(side).grass_tuft("tuft_%d" % i, x, y, rng.uniform(0.7, 1.0))
