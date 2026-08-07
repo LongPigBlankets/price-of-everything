@@ -508,6 +508,145 @@ geometry functions must never depend on saved .blend state.
   in-game consumer of these sprites hasn't been wired yet.
 - Brick coursing / hatch textures (graphite-icon style) — deliberately skipped;
   halftone-only was approved.
-- Headless (`--background`) batch rendering: the MCP addon needs GUI Blender;
-  a batch script can instead use plain `blender --background --python` once the
-  builder set grows.
+- Brick coursing beyond halftone — still deliberately skipped.
+
+
+## Headless rendering — use it for anything long (SOLVED 2026-08-07)
+
+The MCP addon needs a GUI Blender, but **you do not need MCP to render**:
+
+```bash
+blender --background industrial_goods_factory.blend --python tools_render_chunk.py -- 0 89
+```
+
+Use this for every batch or long run. It matters for a reason that is not
+obvious: **the MCP server runs on Blender's main thread**, so while a long
+operation is running it cannot answer a single call. A one-hour render loop
+started through MCP therefore blocks every status check *and* every attempt to
+stop it — the only way out is Esc in the GUI. Headless has none of that: you can
+poll its log, and kill it like any process.
+
+Because every builder rebuilds from code (`setup_rig()` / `build_film_scene()`),
+headless runs need nothing from saved .blend state.
+
+**Long loops must be interruptible.** Check a sentinel file every few frames:
+
+```python
+stop_path = os.path.join(out_dir, "STOP")
+if (idx - i0) % 5 == 0 and os.path.exists(stop_path):
+    os.remove(stop_path); return {"stopped_at": idx}
+```
+
+Clear it on entry as well as exit, or a stale file kills the next run.
+
+## Where the render time actually goes (MEASURED)
+
+Per keyframe of the loading film — three passes at 2400×1350 — **40.3s**:
+
+| pass | time | why |
+|---|---|---|
+| colour (EEVEE + Freestyle) | 35.7s | |
+| geometric mask (EEVEE only) | 2.3s | |
+| ground mask (EEVEE only) | 2.3s | |
+
+Same geometry, same engine, same resolution — the only difference is Freestyle.
+**~83% of render time is Freestyle**, which is CPU-only and largely
+single-threaded in its stroke phase.
+
+Consequences worth stating before anyone buys hardware:
+- A much faster GPU buys ~10%, not 3×. The GPU portion is already ~2s of 40.
+- The real levers are **resolution** (Freestyle's view map scales with it) and
+  **object count**.
+- Rendering keyframes and interpolating beats rendering every frame: 447
+  keyframes ≈ 5h gives 30fps output; rendering 1350 frames costs 15h.
+
+Also: standing the whole street up (19 builders, thousands of objects) costs
+**~16 min**, and that is a per-CHUNK cost, not per-frame. Pass `rebuild=False`
+when the scene is already built at the right LOD.
+
+## Isolation: HOLDOUT, not camera-invisible
+
+When rendering one layer or one mask, the instinct is
+`ob.visible_camera = False` for everything else. That is usually **wrong**,
+and it caused two separate bugs:
+
+- Building layers rendered with the street merely invisible exposed the
+  buildings' below-grade apron kerbs — normally hidden by the verge — which
+  then composited over the street as a dark band under the construction site.
+- The ground mask with buildings merely invisible left the ground *behind* each
+  building visible in the mask. Those pixels reported "ground", so the stipple
+  applied the ground's **cast-shadow** bands while the colour pass showed a
+  wall: shadows printed straight across facades.
+
+Use `visible_camera = True` + `is_holdout = True`: it still occludes and cuts
+alpha, and keeps casting shadows. Reset `is_holdout` on every pass.
+
+## Absolute vs relative coordinates in kit helpers
+
+Two bugs, one cause. A helper that takes a *centre* must offset by the parent's
+position, or everything it builds lands near the world origin:
+
+- `_wheels()` placed wheels at `face*wx*s` instead of `x + face*wx*s`, so every
+  vehicle's wheels sat in a heap at the origin. The symptom read as "the cars
+  have no wheels" — they existed, they just were not under the vehicle.
+- `bpy.data.meshes.new_from_object()` returns **LOCAL-space** geometry. Without
+  `me.transform(tmp.matrix_world)` every number plate's lettering baked at the
+  origin.
+
+When something is "missing", check whether it is at (0,0,0) before rebuilding it.
+
+## Kit gotchas found the hard way
+
+- **`PALETTE` additions must be at MODULE scope**, before any `Kit()` is
+  constructed — `Kit.__init__` builds its material table from PALETTE, so adding
+  roles inside a `build_*()` raises `KeyError` on the first `mat()` call.
+- **`poly_prism` cannot do concave outlines.** Its cap is an n-gon and the
+  triangulation does not respect concavity — a C-shaped quay came out filled
+  solid, burying the harbour and both ships. Use several overlapping boxes and
+  run the middle one long at both ends so the joints are buried inside the mass
+  rather than abutting flush (a flush abutment inks as a crease).
+- **`container_stack` and friends build from z=0** and take no z argument. On a
+  raised deck they end up half-buried. Wrap rather than changing a shared
+  signature: record `col.objects` before and after, translate the difference.
+- **Hiding `BLDG_*` is not enough.** `SHOWCASE_*` and `STACK_*` collections left
+  render-enabled by the lineup tooling will render into your sprite — the
+  mine's terraced pit appeared in the middle of the docks. Hide all three
+  prefixes.
+- **`Kit.seam` hides a face INTERSECTION.** Do not use it across a gap: on the
+  truck it was wider than the trailer and stuck out of both flanks as a dark bar.
+
+## Camera and framing traps
+
+- **`shift_y` is in units of the LARGER image dimension**, not the height. The
+  vanishing point is `H/2 + shift_y*max(W,H)` — using `0.625*H` put it 130px
+  out, which was invisible in a uniform zoom and fatal to a perspective warp.
+- **Far clip must clear the furthest backdrop.** Moving the sky plane to x=210
+  put it past the 200 clip, so straight renders came out with a transparent sky.
+  Only the film noticed nothing, because it composites its own sky.
+- **Aiming a camera**: look direction is `rz + 90°` for this rig. Two shots were
+  wasted pointing into a verge, and two more with the lens inside a building —
+  check the target is on open ground before rendering.
+- **Things beyond ~2× the road half-width only appear at the frame edge.** A sea
+  laid behind the south building row was geometrically correct and completely
+  invisible; the lever was the building row, not the water.
+
+## Proportion lessons at sprite scale
+
+Each of these read wrong until the RATIO changed, not the detail:
+
+- Tanks at 0.52r × 0.74h are squatter than a coin and read as discs on the
+  ground. 0.42 × 1.15 reads as a tank.
+- A car with more glass than body is a van. Body-to-glass wants ~60/40.
+- Hood and boot panels must be at least as WIDE as the waist. At 0.455 on a 0.48
+  waist the waist's top showed as a rim down the whole car and read as a
+  pickup-bed side wall.
+- Wheels tucked inside the body width vanish behind the flanks. Push them proud.
+- Tyres nearly as wide as they are tall read as balls.
+
+## Print-pass exclusions
+
+`stylize.py`'s glass test is `b > r*1.45 AND luma < 0.38`. Open water at
+`#497486` is blue-dominant but sits at luma 0.424, so it cleared the cut and the
+halftone screened the whole harbour. Use `--skip-hex` for explicit tones rather
+than loosening the glass rule — widening it starts skipping legitimate slate and
+shadowed brick on every other sprite.
