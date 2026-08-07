@@ -33,6 +33,7 @@ SIDEWALK_W = 0.95           # raised sidewalk flanking the road (owner: on both 
 SIDEWALK_TOP = 0.105        # visibly a step above the road surface (~0.058)
 KERB_W = 0.10               # pale lip on the sidewalk's road edge
 SETBACK_W = 1.00            # grass strip between sidewalk and the facades
+BACK_STREET_Y = 13.5        # parallel road behind each building row (owner)
 BUILDING_FRONT_Y = ROAD_HALF_W + SIDEWALK_W + SETBACK_W   # facades sit at this y
 STREET_X0, STREET_X1 = -20.0, 200.0   # camera end -> far beyond the visible terminus
 CITY_X = 74.0               # distant city backdrop plane (P2), faces the camera (-X)
@@ -159,7 +160,11 @@ def setup_load_rig(res_x=1920, res_y=1080):
         sc.collection.objects.link(cam_ob)
     cam_ob.data.type = 'PERSP'
     cam_ob.data.lens = 32.0
-    cam_ob.data.clip_end = 200.0
+    # Far clip must clear the SKY plane: moving SKY_X to 210 put the backdrop
+    # 223 units out, past the old 200 clip, so raw renders came out with a
+    # transparent (black) sky. The film composites its own graded sky and never
+    # noticed; anything rendering the scene straight did.
+    cam_ob.data.clip_end = 420.0
     # Camera height raised 1.0 (owner 2026-08-06): 0.62 was human eye level, this
     # looks over the traffic rather than through it and shows more of the road
     # surface. The camera stays exactly horizontal, so the vanishing point does not
@@ -302,7 +307,9 @@ def build_street_scaffold():
     # they read as kept grass against the duller field beyond (owner: vibrant green).
     for side, tag in ((1, "n"), (-1, "s")):
         y0v = side * (ROAD_HALF_W + SIDEWALK_W)
-        y1v = side * (BUILDING_FRONT_Y + 6.0)
+        y1v = side * (BUILDING_FRONT_Y + 7.0)   # +1 (owner): the raised camera sees
+        #                                         further out, and the kept lawn used
+        #                                         to stop short of the back street
         vb = _box(col, "verge_" + tag, cx, (y0v + y1v) / 2, -0.04 + EPS,
                   STREET_X1 - STREET_X0, abs(y1v - y0v), 0.1, _mat("load_verge"))
         mark_noink(vb)   # terrain: its seams must not carry ink (they read as stray
@@ -329,6 +336,26 @@ def build_street_scaffold():
         _box(col, "siderd_l_%s_%d" % (side, int(sx * 10)), sx,
              sgn * (ROAD_HALF_W + SIDEWALK_W + 2.6), -0.02 + EPS,
              0.62, 5.2, 0.1, _mat("load_asphalt"))
+    # Parallel BACK STREETS behind each row (owner). The camera now sits high
+    # enough to see over the buildings' flanks into what was open field; a road
+    # with its own kerbs reads as "this is a district", not an edge of the world.
+    for side, tag in ((1, "n"), (-1, "s")):
+        by = side * BACK_STREET_Y
+        _box(col, "backrd_" + tag, cx, by, 0.0 + EPS / 2,
+             STREET_X1 - STREET_X0, ROAD_HALF_W * 1.7, 0.1 + EPS, _mat("load_asphalt"))
+        for kside in (-1, 1):
+            _box(col, "backkerb_%s%d" % (tag, kside > 0), cx,
+                 by + kside * (ROAD_HALF_W * 0.85 + KERB_W / 2), 0.03,
+                 STREET_X1 - STREET_X0, KERB_W, 0.07, _mat("load_kerb"))
+        bd = 0.55
+        bx = STREET_X0
+        bi = 0
+        while bx < STREET_X1:
+            _box(col, "backdash_%s_%d" % (tag, bi), bx + bd / 2, by, 0.061,
+                 bd, 0.04, 0.012, _mat("load_dash"))
+            bx += bd + 0.85
+            bi += 1
+
     for px, side in ((8.9, 1), (30.9, 1), (12.9, -1), (47.4, -1)):
         sgn = side
         py = sgn * (BUILDING_FRONT_Y + 0.9)

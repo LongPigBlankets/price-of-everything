@@ -17,6 +17,7 @@ plate in every frame — a fresh random string each frame would flicker, and the
 film re-places all traffic every frame.
 """
 import bpy
+import bmesh
 import math
 import random
 
@@ -36,8 +37,75 @@ PALETTE["lamp_red"] = (0.520, 0.045, 0.040)      # tail lights
 PALETTE["lamp_warm"] = (0.720, 0.660, 0.420)     # headlights
 PALETTE["plate"] = (0.640, 0.615, 0.520)         # plate backing
 PALETTE["plate_ink"] = (0.045, 0.045, 0.055)
+PALETTE["veh_shadow"] = (0.088, 0.098, 0.088)   # road tone, darkened
 
 CAR_COLOURS = ("car_red", "car_blue", "car_green", "car_cream", "car_grey", "car_rust")
+
+# Cargo placards on the trailer backs, drawn from the game's own goods art so the
+# loading screen advertises the actual economy. Assigned by the vehicle's seed, so
+# a given truck always hauls the same cargo — the film rebuilds all traffic every
+# frame and a per-frame choice would flicker between goods.
+ICON_DIR = ("/Users/crisu/Price of Everything/price-of-everything/"
+            "price-of-everything-0.1/assets/icons/goods/medium/")
+CARGO_ICONS = ("g_008_motor.png", "g_038_glass.png", "g_029_aluminium.png",
+               "g_036_electrical_components.png")
+
+
+def _cargo_placard(self, name, icon_file, x, y, z, h, face, mat_bg):
+    """Cream placard with a goods icon, inset from the trailer edges.
+
+    The icon is an IMAGE TEXTURE rather than modelled geometry — these are the
+    shipped goods icons, pre-keyed with alpha, and redrawing them in boxes would
+    lose the thing that makes them recognisable. Alpha-blended so the keyed
+    surround does not print as a cream square, and NOINK so Freestyle does not
+    trace a hard rectangle around the placard face."""
+    import os
+    self.box("%s_placard" % name, x, y, z, 0.02, h * 1.42, h * 1.42, mat_bg)
+    path = os.path.join(ICON_DIR, icon_file)
+    if not os.path.exists(path):
+        return None
+    mat = bpy.data.materials.get("veh_cargo_" + icon_file)
+    if mat is None:
+        mat = bpy.data.materials.new("veh_cargo_" + icon_file)
+        mat.use_nodes = True
+        mat.blend_method = 'BLEND'
+        nt = mat.node_tree
+        nt.nodes.clear()
+        img = bpy.data.images.get(icon_file) or bpy.data.images.load(path)
+        tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.image = img
+        tex.interpolation = 'Closest'
+        emit = nt.nodes.new("ShaderNodeEmission")
+        emit.inputs["Strength"].default_value = 1.0
+        trans = nt.nodes.new("ShaderNodeBsdfTransparent")
+        mix = nt.nodes.new("ShaderNodeMixShader")
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        nt.links.new(tex.outputs["Color"], emit.inputs["Color"])
+        nt.links.new(tex.outputs["Alpha"], mix.inputs["Fac"])
+        nt.links.new(trans.outputs[0], mix.inputs[1])
+        nt.links.new(emit.outputs[0], mix.inputs[2])
+        nt.links.new(mix.outputs[0], out.inputs["Surface"])
+    ob = self.box("%s_cargo" % name, x + (0.014 if face > 0 else -0.014), y, z,
+                  0.004, h, h, mat)
+    me = ob.data
+    me.uv_layers.new(name="UVMap")
+    uv = me.uv_layers.active.data
+    for poly in me.polygons:
+        poly.use_smooth = False
+        n = poly.normal
+        for li in poly.loop_indices:
+            vi = me.loops[li].vertex_index
+            co = me.vertices[vi].co
+            if abs(n.x) > 0.5:                       # the two faces we actually see
+                u = (co.y - (y - h / 2)) / h
+                v = (co.z - (z - h / 2)) / h
+                uv[li].uv = (u if n.x * face > 0 else 1.0 - u, v)
+            else:
+                uv[li].uv = (0.0, 0.0)
+    attr = me.attributes.get("freestyle_face") or me.attributes.new("freestyle_face", 'BOOLEAN', 'FACE')
+    for d in attr.data:
+        d.value = True
+    return ob
 _LET = "ABCDEFGHJKLMNPRSTVWXYZ"
 
 
@@ -77,13 +145,54 @@ def _plate(self, name, text, x, y, z, h, face, mat_bg, mat_ink):
     return ob
 
 
-def _wheels(self, name, xs, half_w, r, mat, face=1.0, s=1.0):
+def _half_wheel(self, name, cx, cy, cz, r, w, mat, segs=9):
+    """The BOTTOM HALF of a wheel (owner) — a semicircular prism lying along Y.
+    Only the lower half is ever outside the arch, so a full cylinder spends its
+    top half buried in the bodywork; this also keeps it from poking through.
+    Built by hand: a semicircle plus its chord, extruded across the tyre width."""
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    prof = []
+    for i in range(segs + 1):
+        a = math.pi + math.pi * i / segs           # 180 -> 360 deg = the lower half
+        prof.append((cx + r * math.cos(a), cz + r * math.sin(a)))
+    ring = [bm.verts.new((px, cy - w * 0.5, pz)) for px, pz in prof]
+    back = [bm.verts.new((px, cy + w * 0.5, pz)) for px, pz in prof]
+    bm.faces.new(ring)
+    bm.faces.new(list(reversed(back)))
+    for i in range(len(ring) - 1):
+        bm.faces.new((ring[i], ring[i + 1], back[i + 1], back[i]))
+    bm.faces.new((ring[-1], ring[0], back[0], back[-1]))   # close along the chord
+    bm.normal_update()
+    bm.to_mesh(me)
+    bm.free()
+    ob = self.obj(name, me, mat)
+    for poly in ob.data.polygons:
+        poly.use_smooth = False
+    return ob
+
+
+def _wheels(self, name, x, y, xs, half_w, r, mat, face=1.0, s=1.0):
+    """NOTE the x/y: these used to be placed in ABSOLUTE coordinates, so every
+    vehicle's wheels sat in a heap near the world origin instead of under the
+    vehicle — which is why the cars looked like blocks with nothing underneath."""
     for i, wx in enumerate(xs):
         for sg in (-1, 1):
-            self.dircyl("%s_w%d%s" % (name, i, "p" if sg > 0 else "m"),
-                        (face * wx * s, sg * half_w * s, r * s),
-                        (face * wx * s, sg * (half_w + 0.055) * s, r * s),
-                        r * s, mat, segments=10, smooth=False)
+            _half_wheel(self, "%s_w%d%s" % (name, i, "p" if sg > 0 else "m"),
+                        x + face * wx * s, y + sg * half_w * s, r * s,
+                        r * s, 0.075 * s, mat)
+
+
+def _shadow(self, name, x, y, length, width, mat):
+    """A flat dark patch on the road under the vehicle. Grounds it: without one a
+    body with open arches reads as floating. NOINK — an outline would make it a
+    solid object rather than shade."""
+    ob = self.box(name + "_shadow", x, y, 0.004, length, width, 0.008, mat)
+    me = ob.data
+    attr = me.attributes.get("freestyle_face") or me.attributes.new("freestyle_face", 'BOOLEAN', 'FACE')
+    for d in attr.data:
+        d.value = True
+    return ob
 
 
 def _truck(self, name, x, y, face=1.0, colour="truck_white", seed=0):
@@ -119,7 +228,10 @@ def _truck(self, name, x, y, face=1.0, colour="truck_white", seed=0):
     self.seam("%s_seam" % name, x + f * 0.85 * s, y, 0.76 * s, 0.48 * s, axis='Z')
     _plate(self, name, plate_text(seed), x + f * -2.19 * s, y, 0.42 * s,
            0.062 * s, -f, self.mat("plate"), self.mat("plate_ink"))
-    _wheels(self, name, (1.72, 0.92, -1.40, -1.78), 0.26, 0.115, tyre, f, s)
+    _cargo_placard(self, name, CARGO_ICONS[seed % len(CARGO_ICONS)],
+                   x + f * -2.18 * s, y, 0.84 * s, 0.255 * s, -f, self.mat("cream"))
+    _wheels(self, name, x, y, (1.72, 0.92, -1.40, -1.78), 0.26, 0.115, tyre, f, s)
+    _shadow(self, name, x - f * 0.35 * s, y, 4.35 * s, 0.66 * s, self.mat("veh_shadow"))
     return {"len": 4.3 * s}
 
 
@@ -167,7 +279,8 @@ def _car(self, name, x, y, face=1.0, colour="car_red", seed=0):
         bx("tlamp%d" % (sg > 0), -0.815, sg * 0.155, 0.335, 0.02, 0.10, 0.06, red)
     _plate(self, name, plate_text(seed), x + f * -0.83 * s, y, 0.255 * s,
            0.048 * s, -f, self.mat("plate"), self.mat("plate_ink"))
-    _wheels(self, name, (0.52, -0.52), 0.205, 0.115, tyre, f, s)
+    _wheels(self, name, x, y, (0.52, -0.52), 0.205, 0.115, tyre, f, s)
+    _shadow(self, name, x, y, 1.82 * s, 0.60 * s, self.mat("veh_shadow"))
     return {"len": 1.8 * s}
 
 
