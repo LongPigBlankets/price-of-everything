@@ -1137,6 +1137,13 @@ FILM_N = 447
 FILM_SECONDS = 45.0
 FILM_STEP = (FILM_END_X - FILM_START_X) / (FILM_N - 1)
 FILM_DIR = "/Users/crisu/Price of Everything/blender-assets/renders/loading/film"
+# Render at OUTPUT resolution. 2400x1350 was overscan headroom for the old
+# plane-warp dolly; true rendered frames need none, and Freestyle's view map
+# scales with resolution, so it was the single largest avoidable cost (colour
+# pass ~96s at 2400). Ink weight is unaffected: thickness is set to
+# 2.4 * res_x/1920, so 3.0px at 2400 downscaled to 1920 and 2.4px rendered
+# natively at 1920 land on the same effective weight.
+FILM_RES = (1920, 1080)
 
 
 def build_film_scene(detail=1):
@@ -1149,7 +1156,7 @@ def build_film_scene(detail=1):
     setup_load_rig()
 
 
-def render_film_chunk(i0, i1, out_dir=None, res=(2400, 1350), rebuild=True):
+def render_film_chunk(i0, i1, out_dir=None, res=None, rebuild=True):
     """Render keyframes [i0, i1). Chunks so a run can be stopped, inspected and
     resumed without redoing work — and so a mistake costs one chunk, not a night.
 
@@ -1203,7 +1210,7 @@ def render_film_chunk(i0, i1, out_dir=None, res=(2400, 1350), rebuild=True):
     return {"rendered": i1 - i0}
 
 
-def render_film_frame(out_dir, idx, cam_x, geo_mat=None, res=(2400, 1350)):
+def render_film_frame(out_dir, idx, cam_x, geo_mat=None, res=None):
     """The three passes one film keyframe needs, with the isolation done right.
 
     colour : flat (sun off, warm ambient), sky plane hidden — the vivid sky is
@@ -1220,6 +1227,7 @@ def render_film_frame(out_dir, idx, cam_x, geo_mat=None, res=(2400, 1350)):
     falls through to the wall bands, and it keeps casting real shadows.
     """
     import os
+    res = res or FILM_RES
     sc = get_scene()
     cam = bpy.data.objects["LoadCam"]
     sun = bpy.data.objects["LoadSun"]
@@ -1612,17 +1620,32 @@ VEHICLES = [
 ]
 
 
+_VEH_NS = {}
+
+
+def _veh_ns():
+    """Kit namespace for the traffic, parsed ONCE.
+
+    place_vehicles runs per frame and used to exec sprite_kit.py, props_kit.py and
+    vehicles_kit.py on every call — several thousand lines of Python re-parsed for
+    each of ~450 frames, measured at roughly 28s of a 129s frame. The builders are
+    stateless with respect to this namespace, so one parse serves the whole run.
+    """
+    if not _VEH_NS:
+        B = "/Users/crisu/Price of Everything/blender-assets/"
+        exec(open(B + "sprite_kit.py").read(), _VEH_NS)
+        exec(open(B + "props_kit.py").read(), _VEH_NS)
+        exec(open(B + "vehicles_kit.py").read(), _VEH_NS)
+    return _VEH_NS
+
+
 def place_vehicles(advance=0.0, cam_x=None):
     """(Re)build the traffic for a camera that has travelled `advance` units.
 
     Cheap enough to call per frame — 11 vehicles, a few dozen boxes. Every frame of
     the film is its own render, so this is all the animation system the traffic
     needs; nothing is keyframed in Blender."""
-    B = "/Users/crisu/Price of Everything/blender-assets/"
-    ns = {}
-    exec(open(B + "sprite_kit.py").read(), ns)
-    exec(open(B + "props_kit.py").read(), ns)
-    exec(open(B + "vehicles_kit.py").read(), ns)
+    ns = _veh_ns()
     sc = get_scene()
     col = _collection(sc, "LOAD_props_veh")
     _wipe(col)
