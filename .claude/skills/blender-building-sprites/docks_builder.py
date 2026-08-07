@@ -42,7 +42,9 @@ ARM_W = 3.00                  # arm width. Widened from 2.30 to fit, across an a
 #   quay edge | container band | RAIL | crane gauge | RAIL | container band | road
 # Containers group on either SIDE of the rail pair and never between them (owner),
 # which is also how a real terminal works — the gauge has to stay clear.
-BAY = (-7.20, 7.20, -5.80, 6.40)   # x0, x1, y0, y1 of the OUTER edge of the C
+BAY = (-7.20, 7.20, -7.00, 7.20)   # x0, x1, y0, y1 of the OUTER edge of the C
+#                                    deepened front-to-back (owner): the bay now
+#                                    runs y -4.0..4.2 and holds three berths
 RAIL_A, RAIL_B = 0.60, 1.70   # rail offsets inward from the bay-facing quay edge
 ROAD_W = 0.80                 # service road along the BACK arm, onto the shore
 SHORE_X = -9.70              # land runs from here to the west arm: the port is a
@@ -53,8 +55,14 @@ LAND_TOP = QUAY_Z - 0.02
 # Berths, both inside the bay: the boxship lies along the FAR quay under the
 # gantries, the tanker along the near quay. Bay interior is x -4.1..6.4,
 # y -2.3..2.9, and a hull that overruns it ends up inside the concrete.
-SHIP_BOXER = (0.60, 2.15, 6.80, 1.40)      # cx, cy, length(X), beam(Y)
-SHIP_TANKER = (0.90, -1.55, 7.00, 1.50)
+# Three berths across the deepened bay. The TANKER lies at the front, against the
+# south arm where the tank farm and its pipe run are; the two container ships take
+# the far berth (under the north gantry) and the middle of the bay.
+SHIP_BOXER_A = (0.20, 3.20, 6.80, 1.40)    # cx, cy, length(X), beam(Y)
+SHIP_BOXER_B = (-0.30, 0.30, 6.20, 1.35)
+SHIP_TANKER = (1.90, -3.00, 7.00, 1.50)
+TANK_FARM_Y = -6.20                        # white tanks, landward band of the south arm
+MANIFOLD_X = 1.90                          # where the pipe run crosses to the ship
 
 
 def _lift(K, dz, fn, *args, **kwargs):
@@ -160,6 +168,10 @@ def build_docks() -> dict:
                 continue
             bx = x0 + 1.10
             while bx < x1 - 1.10:
+                # the tank farm owns the west half of the south arm's landward band
+                if tag == "s" and bi == 1 and bx < MANIFOLD_X + 0.9:
+                    bx += 2.45
+                    continue
                 if abs(bx - CRANE_X[tag]) > 1.55:               # keep the gauge clear
                     _lift(K, QUAY_Z, K.container_stack, "cs%d" % ci, bx, by,
                           cols=2, rows=1 + (ci % 3 == 0) + (bi == 1 and ci % 2 == 0),
@@ -185,8 +197,10 @@ def build_docks() -> dict:
         di += 1
 
     # ---------------- ships ----------------
-    _boxship(K, "boxr", *SHIP_BOXER, mats=box_mats)
+    _boxship(K, "boxA", *SHIP_BOXER_A, mats=box_mats)
+    _boxship(K, "boxB", *SHIP_BOXER_B, mats=box_mats)
     _tanker(K, "tank", *SHIP_TANKER)
+    _tank_farm(K, "tf", iy0, QUAY_Z)
 
     # ---------------- office in the corner where the arms meet ----------------
     _office(K, "off", x0 + ARM_W / 2 + 0.10, y1 - ROAD_W - 0.85, QUAY_Z)
@@ -196,6 +210,46 @@ def build_docks() -> dict:
     lo, hi = K.bounds()
     print("bbox world %.2f x %.2f x %.2f" % (hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]))
     return {"objects": len(K.col.objects)}
+
+
+def _tank_farm(K, name, quay_edge_y, z):
+    """White tanks on the front arm with a pipe run out to the tanker.
+
+    Sited WEST of the gantry's gauge so the header never fouls it, then a single
+    cross-pipe turns north at the manifold — east of the crane again — and reaches
+    the ship over the quay edge. Pipes crossing the rails there is fine; a terminal
+    really does run them across, and at sprite scale it reads as pipework.
+    """
+    white, steel = K.mat("white_wall"), K.mat("silver")
+    deck = K.mat("deck")
+    hdr_z = z + 0.46
+    # Taller than they are wide, or they read as flat discs lying on the quay
+    # rather than as tanks: 0.52r x 0.74h was squatter than a coin at this scale.
+    for i, tx in enumerate((-5.30, -3.85, -2.40, -0.95)):
+        K.cyl("%s_t%d" % (name, i), tx, TANK_FARM_Y, z, 0.42, 1.15, white)
+        K.cyl("%s_tr%d" % (name, i), tx, TANK_FARM_Y, z + 1.15, 0.44, 0.06, deck)
+        K.box("%s_bd%d" % (name, i), tx, TANK_FARM_Y, z + 0.60, 0.86, 0.86, 0.05,
+              K.mat("stair"))
+        K._fine_mode = True
+        K.dircyl("%s_dn%d" % (name, i), (tx, TANK_FARM_Y, z + 0.14),
+                 (tx, TANK_FARM_Y + 0.72, z + 0.14), 0.05, steel, segments=8)
+        K.dircyl("%s_up%d" % (name, i), (tx, TANK_FARM_Y + 0.72, z + 0.14),
+                 (tx, TANK_FARM_Y + 0.72, hdr_z), 0.05, steel, segments=8)
+        K._fine_mode = False
+    # Header along the farm, then the cross-run to the quay and the loading arm.
+    K.dircyl("%s_hdr" % name, (-5.60, TANK_FARM_Y + 0.72, hdr_z),
+             (MANIFOLD_X, TANK_FARM_Y + 0.72, hdr_z), 0.075, steel, segments=10)
+    K.dircyl("%s_cross" % name, (MANIFOLD_X, TANK_FARM_Y + 0.72, hdr_z),
+             (MANIFOLD_X, quay_edge_y - 0.22, hdr_z), 0.075, steel, segments=10)
+    for i, px in enumerate((-4.5, -2.6, -0.6, 1.0)):            # pipe-rack trestles
+        K.box("%s_tr_a%d" % (name, i), px, TANK_FARM_Y + 0.72, z + (hdr_z - z) / 2,
+              0.09, 0.09, hdr_z - z, K.mat("stair"))
+    K.box("%s_mast" % name, MANIFOLD_X, quay_edge_y - 0.34, z + 0.62,
+          0.26, 0.26, 1.24, K.mat("stair"))
+    K.dircyl("%s_arm" % name, (MANIFOLD_X, quay_edge_y - 0.34, z + 1.18),
+             (MANIFOLD_X, quay_edge_y + 0.72, z + 0.88), 0.065, steel, segments=8)
+    K.box("%s_head" % name, MANIFOLD_X, quay_edge_y + 0.78, z + 0.84,
+          0.30, 0.24, 0.20, K.mat("hi_vis"))
 
 
 def _portal_crane(K, name, cx, y_out, y_in, face, z):
