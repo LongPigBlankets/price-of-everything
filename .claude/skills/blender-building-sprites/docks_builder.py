@@ -42,7 +42,10 @@ ARM_W = 3.00                  # arm width. Widened from 2.30 to fit, across an a
 #   quay edge | container band | RAIL | crane gauge | RAIL | container band | road
 # Containers group on either SIDE of the rail pair and never between them (owner),
 # which is also how a real terminal works — the gauge has to stay clear.
-BAY = (-7.20, 7.20, -7.00, 7.20)   # x0, x1, y0, y1 of the OUTER edge of the C
+BAY = (-7.20, 7.20, -5.20, 7.20)   # x0, x1, y0, y1 of the OUTER edge of the C
+#   The FRONT arm has moved inward (y0 -7.00 -> -5.20) to open water in front of
+#   it, because the tanker now berths on its SEAWARD face — at the very front of
+#   the composition — rather than inside the bay.
 #                                    deepened front-to-back (owner): the bay now
 #                                    runs y -4.0..4.2 and holds three berths
 RAIL_A, RAIL_B = 0.60, 1.70   # rail offsets inward from the bay-facing quay edge
@@ -58,11 +61,14 @@ LAND_TOP = QUAY_Z - 0.02
 # Three berths across the deepened bay. The TANKER lies at the front, against the
 # south arm where the tank farm and its pipe run are; the two container ships take
 # the far berth (under the north gantry) and the middle of the bay.
-SHIP_BOXER_A = (0.20, 3.20, 6.80, 1.40)    # cx, cy, length(X), beam(Y)
-SHIP_BOXER_B = (-0.30, 0.30, 6.20, 1.35)
-SHIP_TANKER = (1.90, -3.00, 7.00, 1.50)
-TANK_FARM_Y = -6.20                        # white tanks, landward band of the south arm
-MANIFOLD_X = 1.90                          # where the pipe run crosses to the ship
+# Berths. Both container ships lie INSIDE the bay, one under each gantry; the
+# tanker lies OUTSIDE the front arm, alongside its seaward face, which is what puts
+# it at the front of the isometric view.
+SHIP_BOXER_A = (0.20, 3.20, 6.80, 1.40)    # cx, cy, length(X), beam(Y) — far berth
+SHIP_BOXER_B = (-0.30, -1.20, 6.20, 1.35)  # inner face of the front arm
+SHIP_TANKER = (1.90, -6.05, 7.00, 1.50)    # seaward face of the front arm
+TANK_FARM_Y = -4.55                        # tanks on the front arm's landward band
+MANIFOLD_X = 1.90                          # where the pipe run reaches the quay edge
 
 
 def _lift(K, dz, fn, *args, **kwargs):
@@ -82,7 +88,7 @@ def _lift(K, dz, fn, *args, **kwargs):
 
 
 def build_docks() -> dict:
-    setup_rig(ortho_scale=21.5, target=(-0.55, 0.30, 0.95))
+    setup_rig(ortho_scale=23.0, target=(-0.60, 0.20, 0.95))
     # Hide every other sprite AND the showcase/stack collections the lineup tooling
     # leaves behind. Hiding only BLDG_* is not enough: SHOWCASE_mine_L1..L3 were still
     # render-enabled and dropped the mine's terraced pit into the middle of the docks.
@@ -107,13 +113,16 @@ def build_docks() -> dict:
     # lines and read as debris between the ships.
     # Margins kept tight — at 2.4 units of open water off the east end and 1.7 front
     # and back, the sprite was mostly empty sea with the port crowded into a corner.
-    WX1, MY = 8.45, 1.25
-    K.box("water", (x0 + WX1) / 2, (y0 + y1) / 2, WATER_Z - 0.05, WX1 - x0 + 0.2,
-          (y1 - y0) + MY * 2, 0.10, water)
-    K.box("land", (SHORE_X + x0) / 2, (y0 + y1) / 2, LAND_TOP / 2 - 0.02,
-          x0 - SHORE_X, (y1 - y0) + MY * 2, LAND_TOP + 0.04, K.mat("dock_land"))
-    K.box("land_edge", x0 + 0.02, (y0 + y1) / 2, LAND_TOP - 0.02, 0.10,
-          (y1 - y0) + MY * 2, 0.16, quay_edge)
+    # Asymmetric margins: the front needs enough water to float the tanker clear of
+    # the quay, the back only needs a lip beyond the road.
+    WX1, MY_F, MY_B = 8.45, 2.90, 1.20
+    wy0, wy1 = y0 - MY_F, y1 + MY_B
+    K.box("water", (x0 + WX1) / 2, (wy0 + wy1) / 2, WATER_Z - 0.05, WX1 - x0 + 0.2,
+          wy1 - wy0, 0.10, water)
+    K.box("land", (SHORE_X + x0) / 2, (wy0 + wy1) / 2, LAND_TOP / 2 - 0.02,
+          x0 - SHORE_X, wy1 - wy0, LAND_TOP + 0.04, K.mat("dock_land"))
+    K.box("land_edge", x0 + 0.02, (wy0 + wy1) / 2, LAND_TOP - 0.02, 0.10,
+          wy1 - wy0, 0.16, quay_edge)
 
     # ---------------- the C: three concrete arms ----------------
     # THREE BOXES, not one concave polygon. poly_prism builds the cap as an n-gon and
@@ -186,8 +195,8 @@ def build_docks() -> dict:
     road_y = y1 - ROAD_W / 2
     K.box("road_n", (SHORE_X + x1) / 2, road_y, QUAY_Z + 0.012,
           x1 - SHORE_X, ROAD_W, 0.03, K.mat("dock_road"))
-    K.box("road_w", SHORE_X + 1.05, (y0 + y1) / 2, LAND_TOP + 0.012,
-          ROAD_W, (y1 - y0) + 2.2, 0.03, K.mat("dock_road"))
+    K.box("road_w", SHORE_X + 1.05, (wy0 + wy1) / 2, LAND_TOP + 0.012,
+          ROAD_W, wy1 - wy0, 0.03, K.mat("dock_road"))
     dx = SHORE_X + 0.6
     di = 0
     while dx < x1 - 0.4:
@@ -200,7 +209,7 @@ def build_docks() -> dict:
     _boxship(K, "boxA", *SHIP_BOXER_A, mats=box_mats)
     _boxship(K, "boxB", *SHIP_BOXER_B, mats=box_mats)
     _tanker(K, "tank", *SHIP_TANKER)
-    _tank_farm(K, "tf", iy0, QUAY_Z)
+    _tank_farm(K, "tf", y0, QUAY_Z)
 
     # ---------------- office in the corner where the arms meet ----------------
     _office(K, "off", x0 + ARM_W / 2 + 0.10, y1 - ROAD_W - 0.85, QUAY_Z)
@@ -212,44 +221,44 @@ def build_docks() -> dict:
     return {"objects": len(K.col.objects)}
 
 
-def _tank_farm(K, name, quay_edge_y, z):
-    """White tanks on the front arm with a pipe run out to the tanker.
+def _tank_farm(K, name, edge_y, z):
+    """White tanks on the front arm with pipes running out to the tanker.
 
-    Sited WEST of the gantry's gauge so the header never fouls it, then a single
-    cross-pipe turns north at the manifold — east of the crane again — and reaches
-    the ship over the quay edge. Pipes crossing the rails there is fine; a terminal
-    really does run them across, and at sprite scale it reads as pipework.
+    `edge_y` is the quay edge the pipes head for; the run's direction is taken from
+    which side of the farm it lies on, so the same code serves an inboard or an
+    outboard berth. Here it feeds OUTWARD, over the seaward face, and therefore
+    never crosses the crane gauge at all.
+
+    No caps on anything (owner): the tanks are plain open cylinders and the pipes
+    plain runs, with no roof discs and no head fitting on the loading arm.
     """
     white, steel = K.mat("white_wall"), K.mat("silver")
-    deck = K.mat("deck")
+    sgn = 1.0 if edge_y > TANK_FARM_Y else -1.0        # which way the pipes run
+    hdr_y = TANK_FARM_Y + sgn * 0.70
     hdr_z = z + 0.46
-    # Taller than they are wide, or they read as flat discs lying on the quay
-    # rather than as tanks: 0.52r x 0.74h was squatter than a coin at this scale.
-    for i, tx in enumerate((-5.30, -3.85, -2.40, -0.95)):
-        K.cyl("%s_t%d" % (name, i), tx, TANK_FARM_Y, z, 0.42, 1.15, white)
-        K.cyl("%s_tr%d" % (name, i), tx, TANK_FARM_Y, z + 1.15, 0.44, 0.06, deck)
-        K.box("%s_bd%d" % (name, i), tx, TANK_FARM_Y, z + 0.60, 0.86, 0.86, 0.05,
-              K.mat("stair"))
+    for i, tx in enumerate((-5.30, -3.85, -2.40, -0.95, 0.50)):
+        # Plain open cylinders. The walkway band I had at mid-height was a 0.88
+        # square plate, which with the roof caps gone read as a tabletop and hid
+        # the tank under it — "no caps" means nothing on top at all.
+        K.cyl("%s_t%d" % (name, i), tx, TANK_FARM_Y, z, 0.46, 1.30, white)
         K._fine_mode = True
-        K.dircyl("%s_dn%d" % (name, i), (tx, TANK_FARM_Y, z + 0.14),
-                 (tx, TANK_FARM_Y + 0.72, z + 0.14), 0.05, steel, segments=8)
-        K.dircyl("%s_up%d" % (name, i), (tx, TANK_FARM_Y + 0.72, z + 0.14),
-                 (tx, TANK_FARM_Y + 0.72, hdr_z), 0.05, steel, segments=8)
+        K.dircyl("%s_dn%d" % (name, i), (tx, TANK_FARM_Y, z + 0.16),
+                 (tx, hdr_y, z + 0.16), 0.05, steel, segments=8)
+        K.dircyl("%s_up%d" % (name, i), (tx, hdr_y, z + 0.16),
+                 (tx, hdr_y, hdr_z), 0.05, steel, segments=8)
         K._fine_mode = False
-    # Header along the farm, then the cross-run to the quay and the loading arm.
-    K.dircyl("%s_hdr" % name, (-5.60, TANK_FARM_Y + 0.72, hdr_z),
-             (MANIFOLD_X, TANK_FARM_Y + 0.72, hdr_z), 0.075, steel, segments=10)
-    K.dircyl("%s_cross" % name, (MANIFOLD_X, TANK_FARM_Y + 0.72, hdr_z),
-             (MANIFOLD_X, quay_edge_y - 0.22, hdr_z), 0.075, steel, segments=10)
-    for i, px in enumerate((-4.5, -2.6, -0.6, 1.0)):            # pipe-rack trestles
-        K.box("%s_tr_a%d" % (name, i), px, TANK_FARM_Y + 0.72, z + (hdr_z - z) / 2,
+    K.dircyl("%s_hdr" % name, (-5.60, hdr_y, hdr_z), (MANIFOLD_X, hdr_y, hdr_z),
+             0.075, steel, segments=10)
+    for i, px in enumerate((-4.6, -2.9, -1.2, 0.6)):
+        K.box("%s_trs%d" % (name, i), px, hdr_y, z + (hdr_z - z) / 2,
               0.09, 0.09, hdr_z - z, K.mat("stair"))
-    K.box("%s_mast" % name, MANIFOLD_X, quay_edge_y - 0.34, z + 0.62,
-          0.26, 0.26, 1.24, K.mat("stair"))
-    K.dircyl("%s_arm" % name, (MANIFOLD_X, quay_edge_y - 0.34, z + 1.18),
-             (MANIFOLD_X, quay_edge_y + 0.72, z + 0.88), 0.065, steel, segments=8)
-    K.box("%s_head" % name, MANIFOLD_X, quay_edge_y + 0.78, z + 0.84,
-          0.30, 0.24, 0.20, K.mat("hi_vis"))
+    # Out over the edge and down to the ship's manifold — pipe only, no fitting.
+    K.dircyl("%s_cross" % name, (MANIFOLD_X, hdr_y, hdr_z),
+             (MANIFOLD_X, edge_y + sgn * 0.30, hdr_z), 0.075, steel, segments=10)
+    K.box("%s_mast" % name, MANIFOLD_X, edge_y - sgn * 0.30, z + 0.62,
+          0.24, 0.24, 1.24, K.mat("stair"))
+    K.dircyl("%s_arm" % name, (MANIFOLD_X, edge_y - sgn * 0.30, z + 1.16),
+             (MANIFOLD_X, edge_y + sgn * 0.95, z + 0.72), 0.065, steel, segments=8)
 
 
 def _portal_crane(K, name, cx, y_out, y_in, face, z):
