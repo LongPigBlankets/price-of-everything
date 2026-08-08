@@ -1,0 +1,9 @@
+{
+ "version": 1,
+ "note": "experiment: tile_5_10 r=3",
+ "identity_overrides": {
+  "crying_shore": "dense_city",
+  "snare_harbour": "dense_city",
+  "sandy_shore": "dense_city"
+ }
+}
