@@ -51,7 +51,21 @@ workers), the 32GB Windows box takes 4-8 (5 workers):
 
 Each worker: `blender --background industrial_goods_factory.blend --python
 tools_render_chunk.py -- I0 I1`. Launch all of a machine's workers at once —
-they are independent processes. Expected wall: Mac ~2.5-4h (54-89s/frame),
+they are independent processes.
+
+**Pass the two numbers as two literal arguments.** A range held in a shell
+variable (`-- $RANGE`) reaches Blender as ONE token under zsh and PowerShell,
+which do not word-split unquoted expansions — and `ps` prints a single
+`"0 169"` argument identically to two, so the mistake is invisible from
+outside. On 2026-08-08 three Mac workers launched that way each fell through
+to the old `(0, 89)` default and spent twenty minutes rendering the same
+frames on top of each other. `tools_render_chunk.py` now splits a joined token
+and hard-errors on a missing range, and every worker prints
+`CHUNK_RANGE <i0> <i1>` as its first line. **Check that line in each log before
+walking away** — it is the whole verification:
+
+    grep CHUNK_RANGE <each log>     # must show three DIFFERENT ranges
+ Expected wall: Mac ~2.5-4h (54-89s/frame),
 PC ~3.5-5.5h (est. 70-115s/frame on the 5600X; measure the first frames and
 recompute before believing an ETA). RAM: ~5.5GB/worker — on the PC verify the
 FIRST worker's usage in Task Manager before starting the other four.
@@ -80,9 +94,19 @@ Transfer at the end: the PC ships its `film_wide/f*.png` (3 passes x 843 frames,
 
 ## One-time setup on a new machine
 
-1. Clone the game repo; this folder comes with it.
+1. Clone the game repo; this folder comes with it. The set is complete as of
+   2026-08-08 and verified byte-identical to the Mac's working copies:
+   `loading_scene.py`, `sprite_kit.py`, `props_kit.py`, `vehicles_kit.py`, the
+   eight builders `loading_scene.py` execs by name (construction / factory /
+   furnace / power_plant / poly_plant / petro_refinery / office / docks),
+   `tools_render_chunk.py`, `film_stitch.py`, `sky_gradient.py` and
+   `industrial_goods_factory.blend`. If a builder is ever added to the
+   `BUILDERS` map in `loading_scene.py`, copy it here too or a fresh clone
+   cannot build the street.
 2. Create a working root and copy this folder's *.py + *.blend into it, e.g.
-   `D:\poe-render\blender-assets\`. Create `renders\loading\film\` under it.
+   `D:\poe-render\blender-assets\`. Create `renders\loading\film_wide\` under
+   it — that is `FILM_DIR`, and it holds the frames, the per-chunk progress
+   json and the STOP sentinel.
 3. **Path shim — required.** Every script hardcodes the Mac root as a single
    consistent literal. Rewrite it once:
    - PowerShell:
@@ -94,11 +118,22 @@ Transfer at the end: the PC ships its `film_wide/f*.png` (3 passes x 843 frames,
    too (it is small; regenerate with `sky_gradient.py` if lost).
 4. Python 3 with numpy, pillow, scipy; ffmpeg on PATH. Blender 5.x
    (`blender.exe` full path on Windows).
-5. Smoke test (~3 min after the ~16 min build — do it once):
+5. Smoke test (~3 min after the build — do it once):
    `blender --background industrial_goods_factory.blend --python tools_render_chunk.py -- 0 1`
-   Then CHECK THE MASK (this exact bug shipped once): ground-mask luma on a
-   sunlit road pixel must be ~0.76, not ~0.36 —
-   `python3 -c "import numpy as np; from PIL import Image; a=np.asarray(Image.open('renders/loading/film/f000_gnd.png').convert('RGB'))/255.; print((a[...,0]*.2126+a[...,1]*.7152+a[...,2]*.0722)[760,960])"`
+   Then CHECK THE MASK (this exact bug shipped once): the ground mask's
+   brightest sunlit road must read ~0.76, not ~0.36. Check the frame's MAXIMUM
+   rather than one hardcoded pixel — the old `[760,960]` probe was chosen on a
+   1920-wide frame and lands on unlit ground at 2400 wide, where it reads 0.0
+   and looks like a failure that isn't one:
+
+       python3 -c "import numpy as np; from PIL import Image; \
+       a=np.asarray(Image.open('renders/loading/film_wide/f000_gnd.png').convert('RGB'))/255.; \
+       l=a[...,0]*.2126+a[...,1]*.7152+a[...,2]*.0722; \
+       print('max %.3f  sunlit-frac %.3f' % (l.max(), (l>0.5).mean()))"
+
+   Expected on a healthy widescreen frame 0: **max 0.765, sunlit-frac ~0.09**.
+   A max near 0.36 means the isolation regressed to camera-invisible instead of
+   HOLDOUT; a sunlit-frac near 0 means the sun or the road is missing entirely.
 
 ## Workers: how many, and how to split
 
@@ -108,10 +143,13 @@ Transfer at the end: the PC ships its `film_wide/f*.png` (3 passes x 843 frames,
 - Split [0, FILM_N) into equal contiguous ranges, one per worker:
   `blender --background industrial_goods_factory.blend --python tools_render_chunk.py -- I0 I1`
   e.g. 1350 over 5 workers: `0 270`, `270 540`, `540 810`, `810 1080`, `1080 1350`.
-- Each worker pays a ~16 min scene build before its first frame. Progress:
-  `renders/loading/film/chunk_I0_I1.json`. Frame rate varies 43–71s (1920) with
-  visible edge count — the entrance and port ends are the slow stretches.
-- STOP a worker: create `renders/loading/film/STOP` (checked every 5 frames;
+- Each worker pays a scene build before its first frame — ~16 min originally,
+  ~5 min since the kit namespace was cached. Progress:
+  `renders/loading/film_wide/chunk_I0_I1.json` (named from the worker's OWN
+  range — three identically-named jsons means three workers on the same range).
+  Frame rate varies 43–71s (1920) with visible edge count — the entrance and
+  port ends are the slow stretches.
+- STOP a worker: create `renders/loading/film_wide/STOP` (checked every 5 frames;
   clears itself; the json records the resume index) — or just kill the process
   and relaunch from the last done index.
 
@@ -141,6 +179,8 @@ post over 1350 frames.
 
 ## Known traps (each cost a debugging round — details in SKILL.md)
 
+- A worker given no usable range used to default silently to frames 0-89; now
+  it prints `CHUNK_RANGE` and refuses to guess. Read that line, every launch.
 - A render pass must CREATE what it depends on; never assume session state.
 - Ground-mask isolation must use HOLDOUT, not camera-invisible.
 - shift_y is in units of the LARGER image dimension.
