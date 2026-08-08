@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://d1blockdump001"]
+[gd_scene format=3 uid="uid://q4xuo1jy140s"]
 [ext_resource type="Script" path="res://tools/block_dump.gd" id="1"]
 [node name="BlockDump" type="Node"]
 script = ExtResource("1")
