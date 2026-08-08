@@ -57,6 +57,8 @@ const SIZE_UNIT_AREA := 100.0
 # tiles (lots of road to anchor to). Deterministic from tile_id; positions are re-derived,
 # never persisted. Blocks STAY PUT when a road later settles (only blocked lots fall back).
 const BLOCK_PROB := 100              # % of eligible tiles using block mode; lower for variety (block forms only where a road run + room exist)
+const BLOCK_PERIMETER := true        # block = an irregular quad packed on EVERY side, not one-sided rows
+const BLOCK_PERIM_JITTER := 0.22     # corner drift as a fraction of BLOCK_LOT — surveyed, not stamped
 const BLOCK_MIN_ROAD := 70.0         # need a straight road segment ≥ this (~7u) to anchor a block
 const BLOCK_MAX_COLS := 3            # lots along the road (owner: 2x2 or 3x2 blocks only)
 const BLOCK_ROWS := 1                # lots deep at first: FRONTAGE ONLY. A second row exists in
@@ -650,6 +652,12 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 		var chunk := _chunk_template(best_len, mid, tangent, normal, angle, land, segs, rivers, lanes)
 		if not chunk.is_empty():
 			return chunk
+	if BLOCK_PERIMETER:
+		var perim := _perimeter_template(tile_id, best_len, ra, tangent, normal, angle, frontage,
+			land, segs, rivers, lanes)
+		if not perim.is_empty():
+			if BLOCK_DEBUG: print("[BLOCKDBG] %s: PERIMETER block — %d lots on 4 sides" % [tile_id, (perim.lots as Array).size()])
+			return perim
 	# 3 along the road when the run allows, else 2 — so a block is 3x2 or 2x2.
 	var cols: int = clampi(int(best_len / BLOCK_LOT), 2, BLOCK_MAX_COLS)
 	var origin := ra + tangent * (BLOCK_LOT * 0.5) + normal * frontage
@@ -672,6 +680,79 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	if BLOCK_DEBUG: print("[BLOCKDBG] %s: BLOCK formed — %d lots (run=%.0fu cols=%d)" % [tile_id, lots.size(), best_len, cols])
 	return {"angle": angle, "lots": lots, "claimed": claimed, "segs": segs, "rows": rows,
 		"origin": origin, "tangent": tangent, "normal": normal, "cols": cols, "frontage": frontage}
+
+
+## A block as a closed IRREGULAR QUAD with buildings packed along EVERY side.
+##
+## The grid template only ever grows one way — along its anchor road, then backwards —
+## so its far rows front nothing and sit a row pitch (BLOCK_LOT) or more from any
+## carriageway. A perimeter block instead treats the block as a quad and rings it,
+## each building turned to face the side it stands on, leaving the middle a courtyard.
+## Every side is therefore an outside edge, which is what a surveyed city block is.
+##
+## Corners drift by a seeded amount so the quad reads as a block someone laid out
+## rather than a stamp; seeded, so a tile's block is identical on every load
+## (determinism — the same reason nothing here calls randf()).
+func _perimeter_template(tile_id: String, best_len: float, ra: Vector2, tangent: Vector2, normal: Vector2, angle: float, frontage: float, land: PackedByteArray, segs: Array, rivers: Array, lanes: Array) -> Dictionary:
+	var cols: int = clampi(int(best_len / BLOCK_LOT), 2, BLOCK_MAX_GROWN_COLS)
+	var depth_lots: int = 3 if RoadHash.pick("perimdepth|%s" % tile_id, 100) < 40 else 2
+	var base := ra + normal * (frontage - BLOCK_LOT * 0.5)
+	var quad := PackedVector2Array([
+		base,
+		base + tangent * (float(cols) * BLOCK_LOT),
+		base + tangent * (float(cols) * BLOCK_LOT) + normal * (float(depth_lots) * BLOCK_LOT),
+		base + normal * (float(depth_lots) * BLOCK_LOT),
+	])
+	var jit := BLOCK_LOT * BLOCK_PERIM_JITTER
+	for i in 4:
+		var jx := (float(RoadHash.pick("perimjx|%s|%d" % [tile_id, i], 200)) / 100.0 - 1.0) * jit
+		var jy := (float(RoadHash.pick("perimjy|%s|%d" % [tile_id, i], 200)) / 100.0 - 1.0) * jit
+		quad[i] = quad[i] + tangent * jx + normal * jy
+	var cen := (quad[0] + quad[1] + quad[2] + quad[3]) * 0.25
+	# Front first, then the two flanks, then the back. _claim_slot fills in order, so
+	# the road-facing side is always taken before anything standing behind it, and a
+	# flank/back claim still earns the block its access roads (rows >= 1).
+	var edges := [[0, 1, 0], [1, 2, 1], [3, 0, 1], [2, 3, 2]]
+	var lots: Array = []
+	var rows: Array = []
+	var angs: Array = []
+	for e in edges:
+		var p0: Vector2 = quad[int(e[0])]
+		var p1: Vector2 = quad[int(e[1])]
+		var elen := p0.distance_to(p1)
+		if elen < BLOCK_LOT * 0.6:
+			continue
+		var dir := (p1 - p0) / elen
+		var inw := Vector2(-dir.y, dir.x)
+		if inw.dot(cen - p0) < 0.0:
+			inw = -inw          # always step INTO the block, whichever way the edge runs
+		var n := maxi(1, int(elen / BLOCK_LOT))
+		var step := elen / float(n)
+		var la := wrapf(dir.angle(), -PI * 0.5, PI * 0.5)
+		var lrect: PackedVector2Array = _rotate(BuildingShapes.make_rect(
+			BLOCK_LOT * BLOCK_FILL_MAX, BLOCK_LOT * BLOCK_FILL_MAX).verts, la)
+		var lhalf: Vector2 = _aabb_half(lrect)
+		for i in n:
+			var ctr: Vector2 = p0 + dir * ((float(i) + 0.5) * step) + inw * (BLOCK_LOT * 0.5)
+			# Corners are reached by two edges; the second one must not stack a lot there.
+			var dup := false
+			for q in lots:
+				if (q as Vector2).distance_to(ctr) < BLOCK_LOT * 0.85:
+					dup = true
+					break
+			if dup or not _valid(ctr, lrect, lhalf, [], land, segs, rivers, BLOCK_ROAD_PAD, lanes):
+				continue
+			lots.append(ctr)
+			rows.append(int(e[2]))
+			angs.append(la)
+	if lots.size() < BLOCK_MIN_LOTS:
+		return {}
+	var claimed: Array = []
+	for _i in lots.size():
+		claimed.append(false)
+	return {"angle": angle, "lots": lots, "claimed": claimed, "segs": segs, "rows": rows,
+		"lot_angles": angs, "perimeter": true, "quad": quad,
+		"origin": quad[0], "tangent": tangent, "normal": normal, "cols": cols, "frontage": frontage}
 
 
 ## A few BIG chunks filling the block box (enclosure-seeded tiles): C cols along the road (2-3 by run length)
@@ -997,8 +1078,14 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 			rv = _rotate(BuildingShapes.make_rect(cell.x - CHUNK_GAP, cell.y - CHUNK_GAP).verts, angle)
 		else:
 			# Fine lot: longest side along the road (rect with width along the tangent), or square for a seeded few.
+			# A perimeter block's lots each face their OWN side of the quad, so the
+			# angle is per-lot there rather than one tilt shared by the whole grid.
+			var lot_ang: float = angle
+			var las: Array = tmpl.get("lot_angles", [])
+			if i < las.size():
+				lot_ang = float(las[i])
 			var aspect: float = 1.0 if RoadHash.pick("blkaspect|%s|%d" % [tile_id, i], 100) < BLOCK_SQUARE_PCT else BLOCK_ASPECT
-			rv = _rotate(BuildingShapes.make_rect(fill, fill * aspect).verts, angle)
+			rv = _rotate(BuildingShapes.make_rect(fill, fill * aspect).verts, lot_ang)
 		var half: Vector2 = _aabb_half(rv)
 		# Chunks use the RELAXED validation (the big footprint may overlap a forest/road-clearance edge but
 		# must stay in-hex + off road/river centrelines). NO AABB-overlap check — the chunk grid is
@@ -1035,6 +1122,8 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 func _grow_block_rows(tmpl: Dictionary, tile_id: String, coord: Vector2i) -> void:
 	if not tmpl.has("origin"):
 		return
+	if bool(tmpl.get("perimeter", false)):
+		return   # a perimeter block is generated whole; growing it inward would fill the courtyard
 	for c in (tmpl.claimed as Array):
 		if not bool(c):
 			return   # a lot is still free — nothing to grow yet
