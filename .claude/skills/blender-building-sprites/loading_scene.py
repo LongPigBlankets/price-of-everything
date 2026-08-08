@@ -1133,17 +1133,29 @@ def render_stations(n=6, spacing=2.25, out_root=None, width=2400, height=1350):
 # ratio the dense probe validated.
 FILM_START_X = CAM_X
 FILM_END_X = 81.8               # 75% of the built row, the agreed cap
-FILM_N = 447
+# TRUE 30fps, WIDESCREEN (owner 2026-08-08): 1350 frames = 45s x 30, no
+# interpolation. Frame is 2400x1080 (20:9) with the camera SENSOR widened
+# 36 -> 45: vertical FOV is unchanged (36*1080/1920 == 45*1080/2400 == 20.25mm),
+# so the centre 1920x1080 is pixel-identical to the approved 16:9 composition
+# and ultrawides get ~12.5% more street per side instead of an upscaled crop.
+# shift_y moves 0.125 -> 0.10 WITH the sensor: Blender's shift is in units of
+# the larger sensor dimension, so keeping 0.125 on a 45mm sensor would raise
+# the vanishing point 60px and re-frame every shot. 0.125*36 == 0.10*45.
+FILM_N = 1350
 FILM_SECONDS = 45.0
+FILM_RES_WIDE = (2400, 1080)
+FILM_SENSOR = 45.0
+FILM_SHIFT_Y = 0.10
 FILM_STEP = (FILM_END_X - FILM_START_X) / (FILM_N - 1)
-FILM_DIR = "/Users/crisu/Price of Everything/blender-assets/renders/loading/film"
+FILM_DIR = "/Users/crisu/Price of Everything/blender-assets/renders/loading/film_wide"
+# (the 447-frame 1920 run lives untouched in renders/loading/film)
 # Render at OUTPUT resolution. 2400x1350 was overscan headroom for the old
 # plane-warp dolly; true rendered frames need none, and Freestyle's view map
 # scales with resolution, so it was the single largest avoidable cost (colour
 # pass ~96s at 2400). Ink weight is unaffected: thickness is set to
 # 2.4 * res_x/1920, so 3.0px at 2400 downscaled to 1920 and 2.4px rendered
 # natively at 1920 land on the same effective weight.
-FILM_RES = (1920, 1080)
+FILM_RES = FILM_RES_WIDE
 
 
 def build_film_scene(detail=1):
@@ -1239,8 +1251,14 @@ def render_film_frame(out_dir, idx, cam_x, geo_mat=None, res=None):
         geo_mat = _geo_mask_override(to_sun)
     os.makedirs(out_dir, exist_ok=True)
     sc.render.resolution_x, sc.render.resolution_y = res
+    cam.data.sensor_width = FILM_SENSOR
+    cam.data.shift_y = FILM_SHIFT_Y
     fs = vl.freestyle_settings
-    k = res[0] / 1920.0
+    # Ink scales with HEIGHT, not width. The old res[0]/1920 rule assumed
+    # proportional overscan (same FOV, more pixels, later downscaled). The
+    # widescreen frame is native 1080 tall and displayed 1:1, so ink stays
+    # 2.4px; keying on width would draw 3.0px lines on every 16:9 screen.
+    k = res[1] / 1080.0
     fs.linesets["ink"].linestyle.thickness = 2.4 * k
     fs.linesets["contour"].linestyle.thickness = 7.0 * k
     if "ink_fine" in fs.linesets:

@@ -27,7 +27,7 @@ from PIL import Image
 from scipy.ndimage import binary_erosion, gaussian_filter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-W, H = 1920, 1080
+W, H = 1920, 1080          # overridden by set_size() for the widescreen film
 SKY = os.path.join(HERE, "renders/loading/layers/L0_sky_graded.png")
 SKY_X, CAM_X, LENS, SENSOR = 210.0, -13.0, 32.0, 36.0
 SHIFT_Y = 0.125
@@ -38,7 +38,11 @@ DOT_SPACING, DOT_R, DOT_STRENGTH = 11.2, 1.36, 0.38
 # edges, which is exactly where motion interpolation deforms, and blurring BEFORE
 # interpolation leaves it much less high-frequency detail to misalign there. It
 # also reads as speed, which is free.
-EDGE_FRAC, EDGE_SIGMA = 0.10, 7.0
+# Edge blur OFF (owner): it existed to hide motion-interpolation deformation
+# at the frame edges, and the 30fps film has no interpolation to hide. It was
+# also softening real content — and on the widescreen frame it would blur
+# exactly the bonus street the wide sensor buys.
+EDGE_FRAC, EDGE_SIGMA = 0.10, 0.0
 GND_CUTS = (0.70, 0.63, True)        # diffuse mask scale, deepest band = cast shadow
 WALL_CUTS = (0.775, 0.60, False)     # geometric mask scale
 
@@ -49,12 +53,30 @@ def _grid(xx, yy, sp, ou=0.0, ov=0.0):
     return np.sqrt((u - 0.5) ** 2 + (v - 0.5) ** 2) * sp
 
 
-yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
 _c = lambda d, r: np.clip(r + 0.5 - d, 0.0, 1.0)
-G_A = _c(_grid(xx, yy, DOT_SPACING), DOT_R)
-G_B = _c(_grid(xx, yy, DOT_SPACING, 0.5, 0.5), DOT_R)
-G_C = _c(_grid(xx, yy, DOT_SPACING / 2), DOT_R * 0.9)
-del xx, yy
+
+
+def set_size(w, h, sky=None, shift_y=None):
+    """Switch output geometry (and rebuild everything derived from it).
+
+    The widescreen film calls set_size(2400, 1080, sky='.../L0_sky_wide.png',
+    shift_y=0.10). Dot constants stay in OUTPUT pixels on purpose: the frame is
+    displayed 1:1 on 16:9 (centre crop), so the print screen must not scale.
+    """
+    global W, H, G_A, G_B, G_C, EDGE_W, SKY, SHIFT_Y
+    W, H = w, h
+    if sky:
+        globals()["SKY"] = sky
+    if shift_y is not None:
+        globals()["SHIFT_Y"] = shift_y
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    G_A = _c(_grid(xx, yy, DOT_SPACING), DOT_R)
+    G_B = _c(_grid(xx, yy, DOT_SPACING, 0.5, 0.5), DOT_R)
+    G_C = _c(_grid(xx, yy, DOT_SPACING / 2), DOT_R * 0.9)
+    EDGE_W = _edge_weight()
+
+
+
 
 
 def _bands(light, cuts):
@@ -77,11 +99,11 @@ def _edge_weight():
     return np.repeat(t[None, :], H, axis=0)[..., None]
 
 
-EDGE_W = _edge_weight()
-
-
 def _luma(a):
     return a[..., 0] * 0.2126 + a[..., 1] * 0.7152 + a[..., 2] * 0.0722
+
+
+set_size(1920, 1080)
 
 
 def sky_for(step_i, step):
@@ -143,7 +165,7 @@ def main():
     stage = os.path.join(d, "_stage")
     os.makedirs(stage, exist_ok=True)
     for i in range(n):
-        Image.fromarray(frame(d, i, args.step)).save(os.path.join(stage, "k%03d.png" % i))
+        Image.fromarray(frame(d, i, args.step)).save(os.path.join(stage, "k%04d.png" % i))
         print("keyframe %d/%d" % (i + 1, n), flush=True)
 
     kfps = args.pace / args.step                     # keyframes per second
@@ -152,7 +174,7 @@ def main():
                     ("fade", "framerate=fps=30")):
         out = "%s_%s.mp4" % (base, tag)
         subprocess.run(["ffmpeg", "-y", "-v", "error", "-r", "%.5f" % kfps,
-                        "-i", os.path.join(stage, "k%03d.png"),
+                        "-i", os.path.join(stage, "k%04d.png"),
                         "-vf", vf, "-c:v", "libx264", "-crf", "17",
                         "-pix_fmt", "yuv420p", "-movflags", "+faststart", out], check=True)
         print("wrote", out)

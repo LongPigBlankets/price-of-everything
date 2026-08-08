@@ -5,14 +5,78 @@ a fresh machine. Everything needed is IN THIS FOLDER — the scene rebuilds
 entirely from code; `industrial_goods_factory.blend` (441 KB, committed here) is
 just the base file the headless runs open.
 
-## What is being rendered
+## What is being rendered — PLAN OF RECORD (2026-08-08)
 
-A 45s dolly down the loading-screen street: N keyframes, 3 passes each
-(colour+ink / geometric wall mask / ground shadow mask), stitched by
-`film_stitch.py` (stipple + graded sky + encode). Current plan of record:
-447 keyframes at 1920x1080, interpolated to 30fps. If the owner switches to
-TRUE 30fps, N=1350 and the interpolation step disappears — same commands,
-different frame count (set FILM_N in loading_scene.py; FILM_STEP derives).
+A 45s dolly down the loading-screen street, **TRUE 30fps, WIDESCREEN**:
+**1350 frames at 2400x1080**, camera sensor 45 (was 36), shift_y 0.10 (was
+0.125), no interpolation, no edge blur. Output dir `renders/loading/film_wide/`.
+
+Why those numbers travel together: vertical FOV is unchanged
+(36*1080/1920 == 45*1080/2400), so the centre 1920x1080 is pixel-identical to
+the approved 16:9 composition — 16:9 players see exactly that crop at 1:1,
+ultrawides get ~12.5% more street per side. shift_y is in units of the LARGER
+sensor dimension, so it must drop to 0.10 with the 45mm sensor
+(0.125*36 == 0.10*45) or the vanishing point rises 60px. Ink stays 2.4px
+because thickness keys on HEIGHT (native 1080, displayed 1:1) — all of this is
+already wired into `loading_scene.py`; the constants are FILM_*.
+
+Three passes per frame (colour+ink / geometric wall mask / ground shadow mask),
+stitched by `film_stitch.py` — call `set_size(2400, 1080,
+sky='renders/loading/layers/L0_sky_wide.png', shift_y=0.10)` before `frame()`.
+The widescreen sky is generated, not rendered:
+`python3 -c "from PIL import Image; Image.new('RGBA',(2400,1080)).save('stub.png')"`
+then `python3 sky_gradient.py stub.png renders/loading/layers/L0_sky_wide.png`.
+
+**Before ANY batch: render frame 0 and look at the frame edges.** The wide
+sensor reveals ~12.5% of scene per side that no one has ever inspected —
+verges, tree lines, the sea, back streets. One frame, ~2 min.
+(An earlier 447-keyframe/1920 interpolated run lives in `renders/loading/film/`;
+superseded, keep for reference.)
+
+## The eighth split (2 machines, 8 workers)
+
+1350 frames in eight contiguous ranges; Mac takes 1-3 (RAM caps it at 3
+workers), the 32GB Windows box takes 4-8 (5 workers):
+
+| eighth | frames  | machine | command (`-- I0 I1`) |
+|-------|---------|---------|----------------------|
+| 1     | 0-169   | Mac     | `-- 0 169`   |
+| 2     | 169-338 | Mac     | `-- 169 338` |
+| 3     | 338-507 | Mac     | `-- 338 507` |
+| 4     | 507-676 | PC      | `-- 507 676` |
+| 5     | 676-845 | PC      | `-- 676 845` |
+| 6     | 845-1014| PC      | `-- 845 1014`|
+| 7     | 1014-1182| PC     | `-- 1014 1182`|
+| 8     | 1182-1350| PC     | `-- 1182 1350`|
+
+Each worker: `blender --background industrial_goods_factory.blend --python
+tools_render_chunk.py -- I0 I1`. Launch all of a machine's workers at once —
+they are independent processes. Expected wall: Mac ~2.5-4h (54-89s/frame),
+PC ~3.5-5.5h (est. 70-115s/frame on the 5600X; measure the first frames and
+recompute before believing an ETA). RAM: ~5.5GB/worker — on the PC verify the
+FIRST worker's usage in Task Manager before starting the other four.
+
+Transfer at the end: the PC ships its `film_wide/f*.png` (3 passes x 843 frames,
+~2-3GB) back to wherever the stitch runs; frames are plain PNGs, any transport.
+
+## Stitch + encode (true 30fps — no interpolation)
+
+    python3 - <<'EOF'
+    import sys, os
+    sys.path.insert(0, ".")
+    import film_stitch as F
+    from PIL import Image
+    F.set_size(2400, 1080, sky="renders/loading/layers/L0_sky_wide.png", shift_y=0.10)
+    d = "renders/loading/film_wide"; stage = os.path.join(d, "_stage")
+    os.makedirs(stage, exist_ok=True)
+    for i in range(1350):
+        Image.fromarray(F.frame(d, i, 0.0)).save(os.path.join(stage, "k%04d.png" % i))
+    EOF
+    ffmpeg -y -r 30 -i renders/loading/film_wide/_stage/k%04d.png -c:v libx264 -crf 17 -pix_fmt yuv420p -movflags +faststart loading_film_wide.mp4
+    # 16:9 delivery = centre crop, no scaling:
+    ffmpeg -y -i loading_film_wide.mp4 -vf "crop=1920:1080:240:0" -c:v libx264 -crf 17 -pix_fmt yuv420p loading_film_1080.mp4
+
+## What is being rendered — superseded 447-keyframe plan
 
 ## One-time setup on a new machine
 
