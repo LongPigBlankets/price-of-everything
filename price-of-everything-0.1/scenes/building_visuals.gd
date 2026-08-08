@@ -59,8 +59,13 @@ const SIZE_UNIT_AREA := 100.0
 const BLOCK_PROB := 100              # % of eligible tiles using block mode; lower for variety (block forms only where a road run + room exist)
 const BLOCK_MIN_ROAD := 70.0         # need a straight road segment ≥ this (~7u) to anchor a block
 const BLOCK_MAX_COLS := 3            # lots along the road (owner: 2x2 or 3x2 blocks only)
-const BLOCK_ROWS := 2                # lots deep at first — a block starts 2x2/3x2 and grows a
-									 # row at a time (_grow_block_rows) as its lots fill
+const BLOCK_ROWS := 1                # lots deep at first: FRONTAGE ONLY. A second row exists in
+									 # the template the moment the block is created, and _claim_slot
+									 # takes lots in order, so a block buried 2-3 buildings 53u back
+									 # before _grow_block_rows (which only fires once EVERY lot is
+									 # claimed) could extend along a road with frontage to spare.
+									 # Starting one deep makes growth add road-side columns first
+									 # and go deeper only when the frontage genuinely runs out.
 ## Ceiling on growing DEEPER.
 ##
 ## MEASURED (tile_6_12, +20 factories): holding this at BLOCK_ROWS to keep
@@ -1069,6 +1074,12 @@ func _append_block_lots(tmpl: Dictionary, tile_id: String, coord: Vector2i, cols
 	for c in cols_range:
 		for r in rows_range:
 			var ctr: Vector2 = origin + tangent * (float(c) * BLOCK_LOT) + normal * (float(r) * BLOCK_LOT)
+			# The template gates its own lots on road adjacency ("only road-facing lots;
+			# the interior stays empty") but growth did not, so a block kept marching
+			# along its FIXED straight tangent while the road curved away from it —
+			# adding perfectly valid lots that front nothing. Same gate, same reason.
+			if not _cell_near_road(ctr, segs):
+				continue
 			if not _valid(ctr, vrect, vhalf, [], land, segs, rivers, BLOCK_ROAD_PAD, lanes):
 				continue
 			if not _footprint_dry(ctr, vrect, coord):
