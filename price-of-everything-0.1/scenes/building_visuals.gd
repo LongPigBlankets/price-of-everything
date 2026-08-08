@@ -530,6 +530,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		"diag": placed.get("diag", {}),
 		"center_rel": placed.center_rel,
 		"half": placed.half,
+		"lverts": placed.get("lverts", PackedVector2Array()),
 		"hatch": hatch,
 		"parcels": parcels,
 		"offshore": bool(placed.get("offshore", false)),
@@ -2825,7 +2826,7 @@ func _place_offshore(coord: Vector2i, area: float, placed_here: Array) -> Dictio
 			var c := nav.cell_of(center + rel)
 			if nav.water(c.x, c.y) == 0:
 				continue   # land — offshore structures sit on water
-			if _overlaps(rel, half, placed_here):
+			if _overlaps(rel, half, placed_here, verts):
 				continue
 			var score := minf(_nearest_building_dist(rel, placed_here), OFFSHORE_MIN_SEP * 2.0) - rel.length() * 0.05
 			if score > best_score:
@@ -2938,7 +2939,7 @@ func _place_frontage(tile_id: String, coord: Vector2i, base_verts: PackedVector2
 func _reject_reason(center: Vector2, local_verts: PackedVector2Array, half: Vector2, placed_here: Array, land: PackedByteArray, segs: Array, rivers: Array, road_clear: float) -> String:
 	if not _footprint_on_land(center, local_verts, land):
 		return "land"
-	if _overlaps(center, half, placed_here):
+	if _overlaps(center, half, placed_here, local_verts):
 		return "overlap"
 	if not _footprint_clears(center, local_verts, segs, road_clear):
 		return "road"
@@ -3425,7 +3426,8 @@ func _placed_on_tile(tile_id: String) -> Array:
 	var out: Array = []
 	for p in _placements:
 		if p.tile_id == tile_id:
-			out.append({"pos": p.center_rel, "cat": p.cat, "half": p.half})
+			out.append({"pos": p.center_rel, "cat": p.cat, "half": p.half,
+				"lverts": p.get("lverts", PackedVector2Array())})
 	return out
 
 ## Turn a tile-local centre + local verts into a world placement record.
@@ -3434,7 +3436,10 @@ func _finalize(coord: Vector2i, center_rel: Vector2, local_verts: PackedVector2A
 	var verts := PackedVector2Array()
 	for v in local_verts:
 		verts.append(world_center + v)
-	return {"verts": verts, "center_rel": center_rel, "half": half}
+	# `lverts` is the same footprint kept ROTATED and centre-relative: the shape the
+	# next candidate's SAT test needs. `half` is only its upright bounding box, which
+	# is why it cannot be the collision shape on a diagonal street (see _overlaps).
+	return {"verts": verts, "center_rel": center_rel, "half": half, "lverts": local_verts}
 
 ## Rotate local verts by `ang` (radians), keeping them centred on the origin.
 func _rotate(verts: PackedVector2Array, ang: float) -> PackedVector2Array:
@@ -3454,8 +3459,53 @@ func _aabb_half(verts: PackedVector2Array) -> Vector2:
 		my = maxf(my, absf(v.y))
 	return Vector2(mx, my)
 
-## AABB-overlap (grown by DESIGN_GAP) of a candidate footprint against everything placed.
-func _overlaps(center: Vector2, half: Vector2, placed_here: Array) -> bool:
+## True when some axis separates these two convex footprints by at least `gap`.
+## `pa`/`pb` are centred on the origin and offset by `oa`/`ob`; projecting the offset
+## once per axis keeps this allocation-free on a hot path. Testing edge normals alone
+## is enough for convex shapes and exact for the rectangles these footprints are.
+## Port of sep() in tools/packing_lab.html.
+func _sat_separated(pa: PackedVector2Array, oa: Vector2, pb: PackedVector2Array, ob: Vector2, gap: float) -> bool:
+	for which in 2:
+		var edges: PackedVector2Array = pa if which == 0 else pb
+		var n := edges.size()
+		for i in n:
+			var p: Vector2 = edges[i]
+			var q: Vector2 = edges[(i + 1) % n]
+			var axis := Vector2(p.y - q.y, q.x - p.x)
+			var l := axis.length()
+			if l < 0.000001:
+				continue          # degenerate edge — carries no usable normal
+			axis /= l
+			var a0 := INF
+			var a1 := -INF
+			var oad := oa.dot(axis)
+			for v in pa:
+				var d := (v as Vector2).dot(axis) + oad
+				a0 = minf(a0, d)
+				a1 = maxf(a1, d)
+			var b0 := INF
+			var b1 := -INF
+			var obd := ob.dot(axis)
+			for v in pb:
+				var d := (v as Vector2).dot(axis) + obd
+				b0 = minf(b0, d)
+				b1 = maxf(b1, d)
+			if a0 - b1 >= gap or b0 - a1 >= gap:
+				return true
+	return false
+
+## Does a candidate footprint collide with anything already placed, keeping DESIGN_GAP?
+##
+## The upright-box comparison is now only a PREFILTER. It used to BE the whole test, and
+## that made terraces impossible on any street not near axis-aligned: `half` is an upright
+## box around a ROTATED footprint, so a 30x19u unit turned 45 degrees claims a 35x35u box
+## that is mostly empty air at the corners, and two neighbours a true DESIGN_GAP apart
+## rejected each other on that air alone — see docs/arc-districts-and-packing-spec.md §1,
+## which is also where the header's "1-2u Sanborn terrace look" went.
+## Boxes that already clear still exit early: cheap, and a clear box proves a clear shape.
+## Boxes that touch now go to SAT on the real oriented quads. Entries carrying no `lverts`
+## (wings, tanks, storeys) keep the old box behaviour, so ancillary packing is unchanged.
+func _overlaps(center: Vector2, half: Vector2, placed_here: Array, local_verts: PackedVector2Array = PackedVector2Array()) -> bool:
 	var lo := center - half - Vector2(DESIGN_GAP, DESIGN_GAP)
 	var hi := center + half + Vector2(DESIGN_GAP, DESIGN_GAP)
 	for e in placed_here:
@@ -3463,14 +3513,18 @@ func _overlaps(center: Vector2, half: Vector2, placed_here: Array) -> bool:
 			continue
 		if hi.y <= e.pos.y - e.half.y or lo.y >= e.pos.y + e.half.y:
 			continue
-		return true
+		var ev: PackedVector2Array = e.get("lverts", PackedVector2Array())
+		if local_verts.is_empty() or ev.is_empty():
+			return true       # no oriented shape on one side — box verdict stands
+		if not _sat_separated(local_verts, center, ev, e.pos, DESIGN_GAP):
+			return true
 	return false
 
 ## A candidate footprint is valid iff it sits on buildable land, doesn't overlap a placed
 ## building (with DESIGN_GAP), and no edge of it comes within clearance of any road or river.
 func _valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, placed_here: Array, land: PackedByteArray, segs: Array, rivers: Array, road_clear: float = ROAD_CLEAR, lanes: Array = []) -> bool:
 	return _footprint_on_land(center, local_verts, land) \
-		and not _overlaps(center, half, placed_here) \
+		and not _overlaps(center, half, placed_here, local_verts) \
 		and _footprint_clears(center, local_verts, segs, road_clear) \
 		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR) \
 		and _footprint_clears(center, local_verts, lanes, SERVICE_CLEAR)
@@ -3480,7 +3534,7 @@ func _valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, pla
 ## needs the real clearances). Checks hex, water, elevation and forest discs
 ## point-wise, exact 18u road / 16u river distances, and building overlaps.
 func _wing_valid(wctr: Vector2, local_verts: PackedVector2Array, half: Vector2, others: Array, segs: Array, rivers: Array, discs: Array, center: Vector2, lanes: Array = []) -> bool:
-	if _overlaps(wctr, half, others):
+	if _overlaps(wctr, half, others, local_verts):
 		return false
 	var nav := NavGrid.instance()
 	var nav_ok := nav != null and nav.is_ready()
@@ -4200,6 +4254,7 @@ func _crop_to_sprite(placed: Dictionary, size_units: int, art_key: String) -> vo
 		world.append(ctr + v)
 	placed.verts = world
 	placed.half = _aabb_half(local)
+	placed.lverts = local   # the cropped box IS the new collision shape (see _overlaps)
 
 ## The LOT for a shape-language building: its sprite's own box plus
 ## ART_BLOCK_MARGIN, long side first so _place_frontage (which rotates local x
