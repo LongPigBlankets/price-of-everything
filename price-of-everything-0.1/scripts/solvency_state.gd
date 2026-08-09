@@ -23,13 +23,31 @@ const DISTRESSED_LOAN := 500.0        # the rescue loan principal
 const DISTRESSED_GRACE_TURNS := 10    # interest-free turns before it amortises normally
 const HISTORY_CAP := 320              # >= MAX_TURNS, so a whole run fits
 
+# Tutorial kindness: a learner who ends turns while reading must not be able to lose the
+# lesson to arithmetic. Three top-ups, escalating in tone, then the training wheels come
+# off for real. See docs/early-game-onboarding-spec.md §3.
+const TUTORIAL_RESCUE_CASH := 2500.0
+const TUTORIAL_RESCUE_LIMIT := 3
+const TUTORIAL_RESCUE_TITLES: Array[String] = [
+	"The tutorial is feeling kind",
+	"You're testing the tutorial's kindness",
+	"Last chance. Don't waste it",
+]
+const TUTORIAL_RESCUE_BODIES: Array[String] = [
+	"Your balance went below zero, so the books have been topped back up to £%s. Running a factory costs money every turn before it earns any.",
+	"Below zero again — topped back up to £%s. There are only so many of these.",
+	"Topped up to £%s for the last time; the next red balance stands. Check what your factory buys each turn, and get its output sold.",
+]
+
 signal bankruptcy_declared()
+signal tutorial_rescued(count: int)
 
 var enabled: bool = false
 var history: Array = []                # [{turn, money, profit, empire_value, output_value}]
 var _bad_streak: int = 0
 var _distressed_offered: bool = false
 var _bankrupt: bool = false
+var _tutorial_rescues: int = 0
 var _last_summary: Dictionary = {}
 var _panel: Control = null
 var _panel_layer: CanvasLayer = null
@@ -48,6 +66,7 @@ func reset() -> void:
 	_bad_streak = 0
 	_distressed_offered = false
 	_bankrupt = false
+	_tutorial_rescues = 0
 	_last_summary = {}
 	_close_panel()
 
@@ -61,7 +80,13 @@ func _on_turn_processed(summary: Dictionary) -> void:
 	_last_summary = summary
 
 func _on_turn_resolution_completed() -> void:
-	if not enabled or _bankrupt:
+	if _bankrupt:
+		return
+	# Tutorial kindness runs FIRST — before the bridge loan, so a learner is topped up
+	# instead of taking on debt — and outside the headless gate below, so the suite can
+	# drive it. It is a no-op in every non-tutorial match.
+	_tutorial_rescue_if_needed()
+	if not enabled:
 		return
 	# Negative at the end of the turn → auto-borrow (against remaining capacity) to
 	# bridge back toward £0, and tell the player. If capacity can't cover the gap the
@@ -99,6 +124,43 @@ func _evaluate(money: float, profit: float) -> void:
 
 func _cfo_seated() -> bool:
 	return MatchState.get_advisor_in_seat("cfo") != ""
+
+
+# --- Tutorial rescue -----------------------------------------------------------------
+
+## How many times this tutorial run has been bailed out (telemetry reads this).
+func tutorial_rescues() -> int:
+	return _tutorial_rescues
+
+## Tutorial matches only: a negative balance is topped back up to TUTORIAL_RESCUE_CASH,
+## TUTORIAL_RESCUE_LIMIT times, with escalating copy. After the last one the balance is
+## allowed to go red and bankruptcy can genuinely fire — the stakes are part of the lesson.
+func _tutorial_rescue_if_needed() -> void:
+	if not bool(MatchState.ruleset.get("tutorial_enabled", false)):
+		return
+	if _tutorial_rescues >= TUTORIAL_RESCUE_LIMIT or float(MatchState.money) >= 0.0:
+		return
+	_tutorial_rescues += 1
+	# add_money (not a direct write) so money_changed fires and the HUD follows.
+	MatchState.add_money(TUTORIAL_RESCUE_CASH - float(MatchState.money))
+	var title: String = TUTORIAL_RESCUE_TITLES[_tutorial_rescues - 1]
+	var body: String = TUTORIAL_RESCUE_BODIES[_tutorial_rescues - 1] % ("%.0f" % TUTORIAL_RESCUE_CASH)
+	print("[Solvency] tutorial rescue %d/%d → £%.0f" % [_tutorial_rescues, TUTORIAL_RESCUE_LIMIT, TUTORIAL_RESCUE_CASH])
+	tutorial_rescued.emit(_tutorial_rescues)
+	if enabled:
+		# Same one-source-of-truth shape the bridge loan uses: a toast now, and a bell
+		# item that survives being missed. Non-blocking, so the coach's step machine
+		# is never interrupted mid-lesson.
+		MatchState.request_toast("%s — topped up to £%.0f." % [title, TUTORIAL_RESCUE_CASH], "info")
+		EventScheduler.emit_event({
+			"kind": "tutorial_rescue",
+			"severity": "info",
+			"title": title,
+			"body": body,
+			"source": "solvency",
+			"persistent": false,
+			"auto_dismiss_turns": 3,
+		})
 
 
 # --- Auto-bridge loan (keep the balance non-negative while capacity allows) -----------
@@ -232,6 +294,7 @@ func export_state() -> Dictionary:
 		"bad_streak": _bad_streak,
 		"distressed_offered": _distressed_offered,
 		"bankrupt": _bankrupt,
+		"tutorial_rescues": _tutorial_rescues,
 	}
 
 func import_state(d: Dictionary) -> void:
@@ -239,5 +302,7 @@ func import_state(d: Dictionary) -> void:
 	_bad_streak = int(d.get("bad_streak", 0))
 	_distressed_offered = bool(d.get("distressed_offered", false))
 	_bankrupt = bool(d.get("bankrupt", false))
+	# Tolerant reader: saves from before the rescue existed start the learner at zero.
+	_tutorial_rescues = int(d.get("tutorial_rescues", 0))
 	if _bankrupt and enabled:
 		_show_panel()
