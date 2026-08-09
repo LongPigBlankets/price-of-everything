@@ -45,7 +45,7 @@ research_infra_002,Infrastructure,research_infra_001,,,,I,Sell,Concrete,250,unit
 research_infra_003,Infrastructure,research_infra_002,,,,II,Use Infrastructure,pipes,3,80% for 5 turns,High Pressure Mains,main,Increases pipe throughput by 25% permanently.
 research_infra_004,Infrastructure,research_infra_001,,,,II,Own,land,5,units,Substation Layouts,substation,Increases cable throughput by 25% permanently.
 research_infra_005,Infrastructure,research_infra_003,research_infra_004,,,III,Use Infrastructure,Utility Corridor,10,80% for 5 turns,Integrated Utility Corridors,corridor,Reduces all buildings' maintenance by 5% for 20 turns.
-research_logi_001,Logistics,,,,,I,Sell Through Ports,ports,500,units,Depot Scheduling,depot,Reduces the port ad valorem transport fee by 20% permanently.
+research_logi_001,Logistics,,,,,I,Sell Through Ports,ports,500,units,Depot Scheduling,depot,Reduces road and rail transport cost by 10% permanently.
 research_logi_002,Logistics,research_logi_001,,,,II,Sell Through Ports,ports,2000,units,Multimodal Containerized Freight,container,Reduces the per-turn port fee by 50% permanently.
 research_logi_003,Logistics,research_logi_002,,,,II,Use Infrastructure,Roads,5,80% throughput,Route Optimization,route,Increases road throughput by 25% permanently.
 research_logi_004,Logistics,research_logi_001,,,,II,Own,land,5,units,Cold Chain Handling,cold,Reduces transport cost by 5% for 20 turns.

@@ -104,6 +104,7 @@ func _ready() -> void:
 	_test_tax_dividend_caps()
 	_test_tax_free_profit_floor()
 	_test_founder_advisor()
+	_test_depot_scheduling_overland_only()
 	_test_port_ad_valorem_schedule()
 	_test_tutorial_rescue()
 	_test_start_labour_preset()
@@ -6800,7 +6801,49 @@ func _test_founder_advisor() -> void:
 		"founder: the credit covers what it can and then runs out")
 	_check(MatchState.consume_freight_credit(10) == 0,
 		"founder: an exhausted credit covers nothing")
+
+	# Peeking must never spend: quotes, previews and the build forecast all run the same
+	# costing path as a real shipment, so a consuming peek would drain the gift on sight.
+	MatchState.add_freight_credit(100)
+	_check(MatchState.peek_freight_credit(40) == 40 and MatchState.freight_credit_units == 100,
+		"founder: peeking at the credit does not spend it")
+	_check(MatchState.peek_freight_credit(500) == 100,
+		"founder: a peek is capped at what remains")
+
+	# The credit buys free OVERLAND movement and must not touch the port's ad valorem.
+	var route := {"reachable": true, "turns": 2, "legs": [{"mode": "roads"}, {"mode": "roads"}]}
+	MatchState.freight_credit_units = 0
+	var full: float = TransportService.land_cost_after_credit("g_001", 100, route, false)
+	_check(full > 0.0, "founder: with no credit the haul is charged in full (%.2f)" % full)
+	MatchState.freight_credit_units = 100
+	_check(is_zero_approx(TransportService.land_cost_after_credit("g_001", 100, route, false)),
+		"founder: a fully covered haul is free")
+	_check(MatchState.freight_credit_units == 100,
+		"founder: quoting a covered haul still spends nothing")
+	MatchState.freight_credit_units = 50
+	var half: float = TransportService.land_cost_after_credit("g_001", 100, route, true)
+	_check(is_equal_approx(half, full * 0.5) and MatchState.freight_credit_units == 0,
+		"founder: a half-covered haul charges half and spends the rest")
 	TurnManager.current_turn = 1
+
+func _test_depot_scheduling_overland_only() -> void:
+	# Depot Scheduling trims road and rail only. The plain `transport_cost` domain is applied
+	# after the legs are summed and cannot tell road from pipe, so this rides its own domain
+	# scaled by the overland share of the route.
+	MatchState.reset()
+	var road := {"reachable": true, "turns": 2, "legs": [{"mode": "roads"}, {"mode": "roads"}]}
+	var pipe := {"reachable": true, "turns": 2, "legs": [{"mode": "pipes"}, {"mode": "pipes"}]}
+	var road_before: float = TransportService.transport_cost_for_route("g_001", 100, road)
+	var pipe_before: float = TransportService.transport_cost_for_route("g_017", 100, pipe)
+	Modifiers.add({"id": "test_depot", "domain": "road_rail_transport_cost", "pct": -10.0,
+		"label": "test", "source": "test"})
+	var road_after: float = TransportService.transport_cost_for_route("g_001", 100, road)
+	var pipe_after: float = TransportService.transport_cost_for_route("g_017", 100, pipe)
+	Modifiers.remove("test_depot")
+	_check(road_before > 0.0 and is_equal_approx(road_after, road_before * 0.9),
+		"depot scheduling: an all-road haul is 10%% cheaper (%.3f -> %.3f)" % [road_before, road_after])
+	_check(pipe_before <= 0.0 or is_equal_approx(pipe_after, pipe_before),
+		"depot scheduling: a pipe haul is untouched")
 
 func _test_port_ad_valorem_schedule() -> void:
 	# Port charging is ad valorem only, on a turn schedule: 0.5% while learning, 3% from t31.

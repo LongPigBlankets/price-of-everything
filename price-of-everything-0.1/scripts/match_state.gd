@@ -5478,6 +5478,15 @@ func consume_freight_credit(units: int) -> int:
 	return used
 
 
+## How much WOULD be covered, without spending it. Quotes, previews and the build forecast
+## must use this — they call the same costing path as a real shipment, and consuming there
+## would drain the gift by looking at it.
+func peek_freight_credit(units: int) -> int:
+	if freight_credit_units <= 0 or units <= 0:
+		return 0
+	return mini(freight_credit_units, units)
+
+
 ## Which posts the company can fill. Only CFO and COO exist until the people/labour research
 ## node opens the rest — see docs/early-game-onboarding-spec.md §5.4.
 func is_seat_available(seat_id: String) -> bool:

@@ -1073,7 +1073,8 @@ func _dispatch_output_to_destination(building: Dictionary, good: Dictionary, qty
 				Catalog.get_display_name(good.id), str(stockpile_coord), kept, qty,
 			])
 		return
-	var transport_cost: float = TransportService.transport_cost_for_route(good.id, qty, route)
+	# Founder freight credit applies to overland hauls; commit=true actually spends it.
+	var transport_cost: float = TransportService.land_cost_after_credit(good.id, qty, route, true)
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 		summary.transport_paid += transport_cost
@@ -1274,7 +1275,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		MarketState.record_market_sale_volume(good_key, sold_qty)
 		var sold_revenue: float = float(sold_qty) * price
 		if not (in_port_range and bool(covered_goods.get(good_key, false))):
-			transport_cost += TransportService.transport_cost_for_route(good_key, sold_qty, route)
+			transport_cost += TransportService.land_cost_after_credit(good_key, sold_qty, route, true)
 			_add_transport_breakdown(transport_breakdown, TransportService.transport_cost_breakdown_for_route(good_key, sold_qty, route))
 		# Every market sale crosses the sea leg. The subscription only waives the local
 		# inland route, never the port's handling and insurance charge.
