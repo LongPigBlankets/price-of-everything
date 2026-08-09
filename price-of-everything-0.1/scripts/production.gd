@@ -1280,8 +1280,10 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		# inland route, never the port's handling and insurance charge.
 		var sea_charge := MatchState.commit_sea_shipping(port_tile, good_key, sold_qty, "sell")
 		transport_cost += float(sea_charge.get("total", 0.0))
-		transport_breakdown["port_fees"] = float(transport_breakdown.get("port_fees", 0.0)) + float(sea_charge.get("base_fee", 0.0))
-		transport_breakdown["port_insurance"] = float(transport_breakdown.get("port_insurance", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
+		# Export leg — the mirror of queue_buy's port_inbound. "sea" carries the ad valorem
+		# for both directions so the redesign's headline component stands alone.
+		transport_breakdown["port_outbound"] = float(transport_breakdown.get("port_outbound", 0.0)) + float(sea_charge.get("base_fee", 0.0))
+		transport_breakdown["sea"] = float(transport_breakdown.get("sea", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,

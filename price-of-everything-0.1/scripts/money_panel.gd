@@ -85,8 +85,9 @@ const DEFAULT_PANEL_SIZE := Vector2(560, 620)
 const CHART_PANEL_SIZE := Vector2(620, 600)
 const EXPANDED_BALANCE_PANEL_SIZE := Vector2(560, 770)
 const TRANSPORT_BREAKDOWN_ROWS := [
-	["port_fees", "Port Transport per Turn Fees"],
-	["port_insurance", "Port Transport Ad Valorem Insurance"],
+	["port_inbound", "Port Fees — Imports"],
+	["port_outbound", "Port Fees — Exports"],
+	["sea", "Sea Freight (ad valorem)"],
 	["rail", "Rail Transport"],
 	["roads", "Road Transport"],
 	["pipes", "Pipe Transport"],

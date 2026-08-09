@@ -41,7 +41,10 @@ const RUNS_HEADER = ["received_at", "player_id", "run_id", "session_id", "versio
 //                     (missing_inputs, no_power, starting, market_input_cash, …)
 const FIXED = ["received_at", "run_id", "session_id", "turn", "money", "revenue", "profit", "loans",
                "buildings", "power_gen", "power_use", "tiers", "victory",
-               "playtime_s", "goods", "costs", "buildings_list", "building_states"];
+//   transport       — this turn's freight split, seven pipe-joined values in FIXED order:
+//                     port_inbound|port_outbound|roads|rail|pipes|reinf_pipes|sea
+//                     They sum to the `transport` entry inside `costs`.
+               "playtime_s", "goods", "costs", "transport", "buildings_list", "building_states"];
 
 function doGet() {
   return ContentService.createTextOutput("alive");
@@ -68,7 +71,8 @@ function doPost(e) {
     if (col === "run_id") return p.run_id;
     if (col === "session_id") return p.session_id;
     if (col === "tiers" || col === "victory") return (t[col] || []).join("|");
-    if (col === "buildings_list" || col === "building_states") return (t[col] || []).join("|");
+    if (col === "buildings_list" || col === "building_states" || col === "transport")
+      return (t[col] || []).join("|");
     if (col === "goods" || col === "costs") {
       const src = col === "goods" ? (t.produced || {}) : (t.costs || {});
       return Object.keys(src).map(k => k + ":" + src[k]).join("|");

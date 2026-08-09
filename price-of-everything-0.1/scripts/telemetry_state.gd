@@ -63,6 +63,14 @@ const COST_LINES := {
 	"profit_sharing_paid": "profit_share",
 	"carbon_tax_paid": "carbon",
 }
+# Per-turn freight split, FIXED ORDER, summing to the `transport` line in COST_LINES.
+# Added after a tutorial run had to have its freight decomposed by inference — the engine
+# always knew the split, the sheet just never carried it. Imports/exports are the flat
+# per-good port fee by direction; `sea` is the ad valorem, on its own line because it is the
+# component the freight redesign moves. See docs/early-game-onboarding-spec.md §4.2b.
+const TRANSPORT_LINES: Array[String] = [
+	"port_inbound", "port_outbound", "roads", "rail", "pipes", "reinf_pipes", "sea",
+]
 
 var enabled := false
 var _armed := false
@@ -233,6 +241,7 @@ func _build_row(summary: Dictionary) -> Dictionary:
 		"session": _session_ordinal,
 		"produced": produced,
 		"costs": costs,
+		"transport": _transport_split(summary),
 		"buildings_list": empire.list,
 		"building_states": empire.states,
 	}
@@ -250,6 +259,18 @@ func _victory_array() -> Array:
 
 func _playtime_s() -> int:
 	return _playtime_carried_s + int((Time.get_ticks_msec() - _run_started_msec) / 1000)
+
+
+## This turn's freight in TRANSPORT_LINES order, always seven values so the sheet column is
+## positional and safe to chart. Any freight the engine could not attribute to a mode (an
+## in-flight shipment restored from an old save carries no breakdown) lands in roads, which is
+## where production.gd's tolerant reader puts it — the seven therefore sum to `transport`.
+func _transport_split(summary: Dictionary) -> Array:
+	var breakdown: Dictionary = summary.get("transport_breakdown", {})
+	var out: Array = []
+	for key in TRANSPORT_LINES:
+		out.append(snappedf(float(breakdown.get(key, 0.0)), 0.01))
+	return out
 
 
 ## One pass over the player's buildings for the count, the "mine(l2)" roster, and each
