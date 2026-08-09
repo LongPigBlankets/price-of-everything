@@ -356,6 +356,10 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 		unlocked[str(title)] = true
 
 	var recurring: Dictionary = cfg.get("recurring", {})
+	# Optional "labour" block lets a start ship with a work-effort policy already chosen
+	# (e.g. metal_magnate opens on 1.2x overtime with its output momentum already at the
+	# cap, so the easy start reads as an inherited going concern rather than a blank slate).
+	var labour: Dictionary = cfg.get("labour", {})
 	var ruleset := _normalize_ruleset(cfg.get("ruleset", MatchState.DEFAULT_RULESET))
 	# New Game panel overrides (difficulty/speed/tutorial_enabled/survey_all_tiles)
 	# merge over the start's ruleset — the match ruleset is where world_map reads
@@ -376,6 +380,9 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 		"match": {
 			"money": float(cfg.get("money", EconomyConfig.STARTING_MONEY)),
 			"ruleset": ruleset,
+			# Which start this match began from — telemetry's segmentation field. Kept
+			# beside the ruleset (not inside it) so a teardown can't clobber it.
+			"scenario_name": str(cfg.get("name", "")),
 			"next_instance_counter": counter,
 			"buildings": buildings,
 			"tile_land_owned": (cfg.get("land", {}) as Dictionary).duplicate(true),
@@ -386,6 +393,12 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			"recurring_bulk_sells": _stamped_orders(recurring.get("bulk_sells", [])),
 			"recurring_buys": _stamped_orders(recurring.get("buys", [])),
 			"output_stockpile_destinations": output_routes,
+			"labour_multiplier": clampf(
+				float(labour.get("multiplier", EconomyConfig.LABOUR_MULTIPLIER_DEFAULT)),
+				EconomyConfig.LABOUR_MULTIPLIER_MIN, EconomyConfig.LABOUR_MULTIPLIER_MAX),
+			"labour_output_pressure_pct": clampf(
+				float(labour.get("output_pressure_pct", 0.0)),
+				EconomyConfig.LABOUR_OUTPUT_PRESSURE_FLOOR, EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
 		},
 		"stockpile": {"by_tile": (cfg.get("stockpile", {}) as Dictionary).duplicate(true)},
 		"loans": {"loans": loans, "next_loan_id": loans.size() + 1},
