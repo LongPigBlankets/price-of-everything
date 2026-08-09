@@ -116,24 +116,48 @@ Glut-immune by construction: charge and revenue move together, so the RATIO hold
 fall — unlike today's mostly-flat charge, which grows relatively heavier exactly when a player
 floods a market.
 
-**Research relief — 3 Logistics nodes, 1pp each:**
+**Research relief — one linear shipping line in Logistics — LOCKED 2026-08-09.**
+SU1 → SU2 → SU3, tiers I / II / III. Fully teched at t60+: `(5% − 1pp − 1pp) × 0.8` = **2.4%**,
+inside the 2-3% band.
 
-1. **Shipping Unlock 1** — import and export ≥3,000 units across ≥15 goods.
-2. **Shipping Unlock 2** — import and export ≥15,000 units across ≥30 goods.
-3. **Shipping Unlock 3** — own a port at level 2.
+| | node | tier | condition | effect |
+|---|---|---|---|---|
+| SU1 | **Groupage Contracts** (NEW) | I | import + export ≥5,000 units across ≥15 goods | −1pp ad valorem |
+| SU2 | **Multimodal Containerized Freight** (`research_logi_002`, repurposed) | II | export ≥500 units through **each** port | −1pp ad valorem |
+| SU3 | **Port Network Acquisition** (`research_logi_010`, repurposed) | III | own a port at level 2 | **−20% relative** |
 
-Counts goods bought from the global market via a port (import) and sold to it (export); NOT
-inter-port shipping. Both volume conditions carry a hover: *"Importing means buying from the
-global market via a port; exporting means selling to the global market via a port."* Needs new
-lifetime accumulators (units + distinct goods, each direction) — saved state, migration.
+Plus **Depot Scheduling** (`research_logi_001`) re-pointed: it now reduces the **flat per-turn
+port fee by 50%** and no longer touches ad valorem. Since Multimodal moves off that domain, it
+becomes the ONLY flat-fee reducer — the −50%/−50% pair that would have summed to −100% (pcts
+SUM in `Modifiers.apply`, they do not compound) is resolved by construction.
+
+After this change the ad valorem is touched by exactly SU1/SU2/SU3 and nothing else, and the
+flat fee by exactly Depot Scheduling. No accidental stacking remains.
+
+Import = bought from the global market via a port; export = sold to it. Inter-port shipping does
+not count. SU1 carries the hover: *"Importing means buying from the global market via a port;
+exporting means selling to the global market via a port."* Owner ruling: SU1 is deliberately
+**left gameable** (1 unit of 14 goods + bulk one cheap good) rather than adding a per-good
+threshold — 5,000 units is the real gate. Needs new lifetime accumulators (units + distinct
+goods) — saved state, migration.
+
+SU2's "each port" means all **four** (Stoneshore/west, Arin Estuary/south, Capital/east,
+Vandel's Skip/east) = 2,000 units minimum, but the binding cost is geographic REACH. Deliberate
+tension: the co-located player who pays almost no freight is exactly the player who cannot
+satisfy it, so the discount goes to the spread-out operation that actually needs it.
 
 **Port level 2** — new upgrade action on an owned port: 15 building frames, 10 construction
 equipment, 5 computers, 100 steel, 200 concrete, £1,000. Ports are ordinary buildings (b_004)
-and instances already carry `level`, so this rides the existing upgrade machinery rather than a
-new system; what is new is the fixed material cost and the button.
+whose instances already carry `level`, so this rides existing upgrade machinery; only the fixed
+material cost and the button are new.
 
-**Unresolved before build — see §9.9 and §9.10.** The Logistics tree already reduces this fee
-twice, and research landing before t60 would drive a 2.5% base below zero.
+**Pre-t60 consequence (accepted):** the same three unlocks against the 2.5% base give
+`(2.5 − 2) × 0.8` = **0.4%**. Near-free freight until the rate doubles at t60 — a reward for an
+achievement the owner rates as very hard, with a sharp lesson attached at t60.
+
+**Re-parenting fallout (§9.7):** `research_logi_003` (Route Optimization, road throughput) and
+`research_logi_009` (Smart Shipping Contracts) both currently list `research_logi_002` as
+prereq, and PNA currently hangs off `logi_009`, not `logi_002`.
 
 ### 4.3 Tax & dividend floor — **LOCKED**
 
@@ -355,16 +379,17 @@ and the 50k-char cell cap (assert at 500+ buildings).
    metal_magnate runs moved roughly 150–250 units/turn — 1000 units ≈ 4–6 turns of
    total haulage, spent well before Andrew leaves at t33. Fine if it's meant as an
    opening cushion; say so if it should instead last the tenure.
-5. **The Logistics tree already cuts the ad valorem twice** — `research_logi_001` "Depot
-   Scheduling" (−20%) and "Port Network Acquisition" (−50%), both `port_ad_valorem_fee`
-   modifiers (`modifier_state.gd:229,256`). `Modifiers.apply` composes as
-   `(base + add) × mult × (1 + pct/100)`, so those pct cuts multiply ON TOP of the three new
-   −1pp nodes: 5% → 2% (new nodes) → **0.6%** with both old ones, well under the 2% floor the
-   design targets. Do the new nodes REPLACE the two existing reducers, are the old ones
-   re-scoped to something else (throughput, freight), or does a hard floor arbitrate?
-6. **Research can land before t60**, when the base is 2.5%: three −1pp nodes take it to
-   **−0.5%**. Needs a floor (never below, say, 1%), or relief expressed as a share of the live
-   rate rather than fixed percentage points — the latter also fixes §9.5 automatically.
+5. **Re-parenting the shipping line breaks two existing edges.** `research_logi_003` (Route
+   Optimization — a ROAD throughput node) and `research_logi_009` (Smart Shipping Contracts)
+   both list `research_logi_002` as prereq. Once logi_002 becomes SU2 (prereq Groupage,
+   condition "export through each port"), a road-throughput node sits behind an international
+   shipping chain. Re-parent logi_003 to `logi_001`, or accept it?
+6. **PNA's prereq must move.** It currently hangs off `research_logi_009`, not `logi_002`. The
+   ruling is SU2 → SU3, so PNA re-parents to `logi_002` and `logi_009` becomes a leaf. Confirm
+   that logi_009 stays in the tree as a dead-end rather than being folded in.
+7. **PNA's condition softens a lot** — from "purchase 4 ports" to "own one port at level 2",
+   for a tier-III node. Intended, or should it keep a larger requirement (e.g. own 2 ports, one
+   at level 2)?
 
 *(Resolved this round: ad valorem **2.5% t1-59, 5% t60+**, relief **3 × 1pp** → 2% fully
 teched, flat port fee **waived until t33** · three Shipping unlocks as specced · port level 2
