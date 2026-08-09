@@ -5525,6 +5525,19 @@ func open_building_tab(instance_id: String, mode: String = "slices") -> bool:
 	return true
 
 
+## The player's answer to the credit offer. "none" closes the tab so this building's costs hit
+## cash exactly as they would have without the facility.
+func set_building_tab_mode(instance_id: String, mode: String) -> void:
+	if not building_tabs.has(instance_id):
+		return
+	if mode == "none":
+		building_tabs.erase(instance_id)
+		return
+	var tab: Dictionary = building_tabs[instance_id]
+	tab["mode"] = mode
+	building_tabs[instance_id] = tab
+
+
 func building_tab_debt(instance_id: String) -> float:
 	return float((building_tabs.get(instance_id, {}) as Dictionary).get("accrued", 0.0))
 

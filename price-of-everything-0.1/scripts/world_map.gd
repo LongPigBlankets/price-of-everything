@@ -92,6 +92,7 @@ var _buy_legend: VBoxContainer = null
 var _buy_legend_panel: PanelContainer = null
 var _buy_modal: PanelContainer = null
 var _buy_modal_label: Label = null
+var _credit_dialog: PanelContainer = null
 var _construction_dialog: PanelContainer = null
 var _deposit_dialog: Control = null  # reused "no deposit" / "deposit exhausted" modal
 var _deposit_dialog_target: Dictionary = {}  # building the current deposit dialog acts on
@@ -196,6 +197,7 @@ func _build_base() -> void:
 	building_placed.connect(forest_visuals.on_building_placed)
 	# A cancelled construction site removes its hex icon (it was never a real building).
 	Construction.construction_cancelled.connect(_on_construction_cancelled)
+	Construction.building_tab_opened.connect(_show_building_credit_dialog)
 	# Deposit feedback: reveal/popup when a blind (unsurveyed) build finishes, and a
 	# centre-screen prompt when a deposit runs out under a working building.
 	Construction.construction_completed.connect(_on_construction_completed_deposit_check)
@@ -1650,6 +1652,20 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
 	Audio.building_placed()
+
+## The credit facility offer, raised when a build is one turn out (Construction emits
+## building_tab_opened). Declining closes the tab so costs hit cash as they always did.
+func _show_building_credit_dialog(instance_id: String) -> void:
+	if _credit_dialog == null:
+		_credit_dialog = load("res://scripts/building_credit_dialog.gd").new()
+		_credit_dialog.name = "BuildingCreditDialog"
+		_hud.add_child(_credit_dialog)
+		_credit_dialog.choice_made.connect(func(iid: String, mode: String) -> void:
+			MatchState.set_building_tab_mode(iid, mode))
+	var building: Dictionary = MatchState.get_building(instance_id)
+	var label := str(Catalog.get_building(str(building.get("building_id", ""))).get("display_name", "this building"))
+	_credit_dialog.open(instance_id, label)
+
 
 func _show_construction_missing_dialog(building_id: String, recipe_id: String, tile_id: String, missing: Dictionary) -> void:
 	# Lazily build one reusable dialog on the HUD. Phase 1 only wires Cancel (close); the

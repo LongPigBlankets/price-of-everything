@@ -234,7 +234,6 @@ func _insert_finance_row(section: VBoxContainer, after_node_name: String, label_
 	return value_label
 
 func _ready() -> void:
-	_make_balance_scrollable()
 	_transport_value = _insert_transport_accordion(_costs_section, "PowerPurchaseRow")
 	_proj_transport_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Transport")
 	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
@@ -252,6 +251,7 @@ func _ready() -> void:
 	var balance_content := $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent as VBoxContainer
 	var projection_content := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent as VBoxContainer
 	_profit_sharing_value = _insert_finance_row(balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
+	_make_balance_scrollable()   # LAST: it moves BalanceContent, invalidating every $ path above
 	_proj_profit_sharing_value = _insert_finance_row(projection_content, "Proj_DividendsRow", "Profit Sharing", "-£0.00")
 	close_button.pressed.connect(hide)
 	title_label.text = "Money"
