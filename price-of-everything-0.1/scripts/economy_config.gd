@@ -395,6 +395,11 @@ const LOAN_COLLATERAL_LTV_MAX: float = 1.0    # With a seated CFO or Chief Inves
 # --- Tax & Dividends ---
 const TAX_RATE: float = 0.20
 const DIVIDEND_RATE: float = 0.20
+# Marginal tax-free floor: the first slice of each turn's profit is not assessed for
+# tax OR dividends. Kindness that dilutes with scale by construction — worth ~£7/turn
+# at any profit above the floor, which is decisive on a £25/turn early engine and noise
+# on a £500/turn one. See docs/early-game-onboarding-spec.md §4.3.
+const TAX_FREE_PROFIT_FLOOR: float = 20.0
 
 # --- Retrofit / retooling (advisor spec §7) ---
 # Changing a built building's recipe. Labour is a per-turn fraction of base while

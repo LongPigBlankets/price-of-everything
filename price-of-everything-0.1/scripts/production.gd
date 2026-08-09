@@ -680,7 +680,9 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 	# subset. Market input buys are real expenses and must prevent loss-making turns
 	# from paying tax or dividends.
 	var pre_tax_profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
-	var taxable_profit := maxf(0.0, pre_tax_profit)
+	# The first TAX_FREE_PROFIT_FLOOR of profit each turn is assessed at nothing, for tax
+	# and dividends alike. Only the slice above the floor is assessable.
+	var taxable_profit := maxf(0.0, pre_tax_profit - EconomyConfig.TAX_FREE_PROFIT_FLOOR)
 	var revenue := float(summary.get("goods_sales_revenue", 0.0)) + float(summary.get("power_sales_revenue", 0.0))
 	var cfo := MatchState.cfo_seated()
 	if taxable_profit <= 0.0:
@@ -688,8 +690,9 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 		summary.dividends_paid = 0.0
 		# CFO tax-loss carry-forward: age the existing credit windows, then bank a fresh
 		# credit off this losing turn's revenue (banked after aging so it keeps 5 turns).
+		# A turn inside the floor is profitable, not a loss, so it banks no credit.
 		MatchState.cfo_age_tax_credits()
-		if cfo:
+		if cfo and pre_tax_profit <= 0.0:
 			summary["tax_credit_banked"] = MatchState.cfo_bank_tax_credit(revenue)
 		return pre_tax_profit
 
