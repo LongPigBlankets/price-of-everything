@@ -46,8 +46,9 @@ research_infra_003,Infrastructure,research_infra_002,,,,II,Use Infrastructure,pi
 research_infra_004,Infrastructure,research_infra_001,,,,II,Own,land,5,units,Substation Layouts,substation,Increases cable throughput by 25% permanently.
 research_infra_005,Infrastructure,research_infra_003,research_infra_004,,,III,Use Infrastructure,Utility Corridor,10,80% for 5 turns,Integrated Utility Corridors,corridor,Reduces all buildings' maintenance by 5% for 20 turns.
 research_logi_001,Logistics,,,,,I,Sell Through Ports,ports,500,units,Depot Scheduling,depot,Reduces road and rail transport cost by 10% permanently.
-research_logi_002,Logistics,research_logi_001,,,,II,Sell Through Ports,ports,2000,units,Multimodal Containerized Freight,container,Reduces the per-turn port fee by 50% permanently.
-research_logi_003,Logistics,research_logi_002,,,,II,Use Infrastructure,Roads,5,80% throughput,Route Optimization,route,Increases road throughput by 25% permanently.
+research_logi_011,Logistics,,,,,I,Sell Through Ports,ports,5000,units,Groupage Contracts,depot,Reduces the port ad valorem fee by 10% permanently.
+research_logi_002,Logistics,research_logi_011,,,,II,Sell Through Every Port,ports,500,units,Multimodal Containerized Freight,container,Reduces the port ad valorem fee by 10% permanently.
+research_logi_003,Logistics,research_logi_001,,,,II,Use Infrastructure,Roads,5,80% throughput,Route Optimization,route,Increases road throughput by 25% permanently.
 research_logi_004,Logistics,research_logi_001,,,,II,Own,land,5,units,Cold Chain Handling,cold,Reduces transport cost by 5% for 20 turns.
 research_logi_005,Logistics,research_logi_003,research_logi_004,,,III,Build,Roads,5,units,Autonomous Dispatch Rooms,dispatch,Reduces Roads and Railways labour by 10% permanently.
 research_markets_001,Markets and Operations,,,,,I,Fulfil Special Orders,special_order,3,orders,Spot Price Reporting,price,Increases special-order premiums by 25% of their current bonus permanently.
@@ -235,5 +236,5 @@ research_logi_006,Logistics,research_logi_001,,,,II,Build,port,3,units,Pallet Ra
 research_logi_007,Logistics,research_logi_006,,,,II,Build,port,3,units,Automated Storage & Retrieval,depot,Raises tile storage to 2500 (warehouse level 3).
 research_logi_008,Logistics,,,,,I,Stockpile filled,by 7+ buildings,5,turns,Just-in-Time Logistics,depot,Unlock JIT delivery from building producing a good to building consuming a good within the same tile. Reduces strain on warehouses.
 research_logi_009,Logistics,research_logi_002,,,,III,Sell Through Ports Classes,solid_light|solid_heavy|ultra_heavy|safe_liquid|hazard_liquid|gas,1500,units each,Smart Shipping Contracts,contract,Increases port throughput by 25% permanently.
-research_logi_010,Logistics,research_logi_009,,,,III,Purchase Ports,ports,4,ports,Port Network Acquisition,port,Reduces both port transport fees by 50% permanently.
+research_logi_010,Logistics,research_logi_002,,,,III,Own Port At Level,ports,2,level,Port Network Acquisition,port,Reduces the port ad valorem fee by a further 20% permanently.
 research_biochem_010,Biochemistry,research_biochem_006,,,,III,Produce,biomass,300,units,Biomass Cracking,bio,Unlocks new recipes: Bio Ethylene (3 Ethylene directly from biomass) and Bio-Graphitisation.

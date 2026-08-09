@@ -396,6 +396,9 @@ var _unlock_progress: Dictionary = {}
 # market's general sales ledger: the logistics research chain requires that the
 # goods actually crossed a port.
 var _port_sale_total: int = 0
+## Lifetime units EXPORTED through each port (port_tile -> units). Drives the Logistics
+## shipping line's "through each port" condition — see docs/early-game-onboarding-spec.md §4.2b.
+var _port_sales_by_port: Dictionary = {}
 var _port_sales_by_class: Dictionary = {}
 # Consecutive-turn progress for the infrastructure-utilisation research gates.
 # Kept separately from the legacy action/object accumulator because its Quantity is
@@ -2022,6 +2025,8 @@ func unlock_condition_text(title: String) -> String:
 		"Produce": return "Produce %d %s" % [qty, object_name.capitalize()]
 		"Sell": return "Sell %d units through the market" % qty if _research_key(object_name) == "freight" else "Sell %d %s through the market" % [qty, object_name.capitalize()]
 		"Sell Through Ports": return "Sell %d units through ports" % qty
+		"Sell Through Every Port": return "Export %d units through EVERY port" % qty
+		"Own Port At Level": return "Own a port upgraded to level %d" % qty
 		"Sell Through Ports Classes": return "Sell at least %d units of each weight class through ports" % qty
 		"Purchase Ports": return "Purchase all %d ports" % qty
 		"Build": return "Build %d %s" % [qty, object_name.capitalize()]
@@ -2150,6 +2155,22 @@ func _live_condition_met(d: Dictionary) -> bool:
 			return sell_good != "" and MarketState.lifetime_sold(sell_good) >= need
 		"Sell Through Ports":
 			return _port_sale_total >= need
+		"Sell Through Every Port":
+			# Every port on the map must have carried `need` units of the player's exports.
+			# Volume is the small part; the real ask is REACH.
+			for port in Catalog.all_ports():
+				var ptile := str(port.get("tile_id", ""))
+				if ptile != "" and int(_port_sales_by_port.get(ptile, 0)) < need:
+					return false
+			return true
+		"Own Port At Level":
+			# A port building (b_004) the player owns, upgraded to at least `need`.
+			for b in buildings.values():
+				if not (b is Dictionary) or not is_player_owned(b):
+					continue
+				if str(b.get("building_id", "")) == "b_004" and int(b.get("level", 1)) >= need:
+					return true
+			return false
 		"Sell Through Ports Classes":
 			var classes := obj.split("|", false)
 			if classes.is_empty():
@@ -2387,6 +2408,8 @@ func _research_condition_issue(d: Dictionary) -> String:
 		return "" if _research_key(obj) == "ports" else "unsupported port ownership target"
 	if action == "Sell Through Ports":
 		return "" if _research_key(obj) == "ports" else "unsupported port-sale target"
+	if action == "Sell Through Every Port" or action == "Own Port At Level":
+		return "" if _research_key(obj) == "ports" else "unsupported port target"
 	if action == "Sell Through Ports Classes":
 		var classes := obj.split("|", false)
 		if classes.is_empty():
@@ -3057,6 +3080,7 @@ func reset() -> void:
 	unlocked_titles.clear()
 	_unlock_progress.clear()
 	_port_sale_total = 0
+	_port_sales_by_port.clear()
 	_port_sales_by_class.clear()
 	_infrastructure_usage_streaks.clear()
 	_infrastructure_usage_last_turn.clear()
@@ -3182,6 +3206,7 @@ func export_state() -> Dictionary:
 		"unlocked_titles": unlocked_titles.duplicate(true),
 		"unlock_progress": _unlock_progress.duplicate(true),
 		"port_sale_total": _port_sale_total,
+		"port_sales_by_port": _port_sales_by_port.duplicate(true),
 		"port_sales_by_class": _port_sales_by_class.duplicate(true),
 		"infrastructure_usage_streaks": _infrastructure_usage_streaks.duplicate(true),
 		"infrastructure_usage_last_turn": _infrastructure_usage_last_turn.duplicate(true),
@@ -3310,6 +3335,7 @@ func import_state(d: Dictionary) -> void:
 		unlocked_titles.erase("Containerized Freight")
 	_unlock_progress = (d.get("unlock_progress", {}) as Dictionary).duplicate(true)
 	_port_sale_total = int(d.get("port_sale_total", 0))
+	_port_sales_by_port = (d.get("port_sales_by_port", {}) as Dictionary).duplicate(true)
 	_port_sales_by_class = (d.get("port_sales_by_class", {}) as Dictionary).duplicate(true)
 	_infrastructure_usage_streaks = (d.get("infrastructure_usage_streaks", {}) as Dictionary).duplicate(true)
 	_infrastructure_usage_last_turn = (d.get("infrastructure_usage_last_turn", {}) as Dictionary).duplicate(true)
@@ -4174,6 +4200,7 @@ func commit_sea_shipping(port_tile: String, good_id: String, qty: int, direction
 		row["sell_qty"] = int(row.get("sell_qty", 0)) + qty
 		_port_sale_total += qty
 		_port_sales_by_class[transport_class] = int(_port_sales_by_class.get(transport_class, 0)) + qty
+		_port_sales_by_port[port_tile] = int(_port_sales_by_port.get(port_tile, 0)) + qty
 	else:
 		row["buy_qty"] = int(row.get("buy_qty", 0)) + qty
 	row["total_qty"] = int(row.get("total_qty", 0)) + qty

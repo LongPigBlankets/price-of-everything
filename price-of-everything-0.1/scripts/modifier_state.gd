@@ -249,11 +249,16 @@ const UNLOCK_MODIFIERS := {
 	# ── transport throughput (raises a mode's per-tile capacity → less congestion) ──
 	"research_infra_001": {"id": "rn_reinforced_roadbeds", "domain": "transport_throughput", "target_match": {"mode": "roads"}, "pct": 25.0, "label": "Reinforced Roadbeds", "source": "research_node"},  # Reinforced Roadbeds
 	"research_infra_003": {"id": "rn_high_pressure_mains", "domain": "transport_throughput", "target_match": {"mode": "pipes"}, "pct": 25.0, "label": "High Pressure Mains", "source": "research_node"},  # High Pressure Mains
-	"research_logi_002": {"id": "rn_multimodal_containerized_freight", "domain": "port_per_turn_fee", "pct": -50.0, "label": "Multimodal Containerized Freight: −50% per-turn port fee", "source": "research_node"},
+	# The shipping line trims the AD VALOREM, and its cuts are RELATIVE: percentage points
+	# against a 3% base would overshoot to nothing (3 − 1 − 1 = 1%, then PNA's −20% on top).
+	# Modifiers.apply sums pcts within a domain, so these three total −40% off the scheduled
+	# rate — 3% fully teched becomes 1.8%. See docs/early-game-onboarding-spec.md §4.2b.
+	"research_logi_011": {"id": "rn_groupage_contracts", "domain": "port_ad_valorem_fee", "pct": -10.0, "label": "Groupage Contracts: −10% port ad valorem fee", "source": "research_node"},
+	"research_logi_002": {"id": "rn_multimodal_containerized_freight", "domain": "port_ad_valorem_fee", "pct": -10.0, "label": "Multimodal Containerized Freight: −10% port ad valorem fee", "source": "research_node"},
 	"research_logi_005": [{"id": "rn_autonomous_dispatch_roads", "domain": "labour_headcount", "target_match": {"building_id": "b_005"}, "pct": -10.0, "label": "Autonomous Dispatch Rooms", "source": "research_node"}, {"id": "rn_autonomous_dispatch_rail", "domain": "labour_headcount", "target_match": {"building_id": "b_019"}, "pct": -10.0, "label": "Autonomous Dispatch Rooms", "source": "research_node"}],  # Autonomous Dispatch Rooms
 	"research_logi_009": {"id": "rn_smart_shipping_contracts", "domain": "port_throughput", "pct": 25.0, "label": "Smart Shipping Contracts: +25% port throughput", "source": "research_node"},
 	"research_logi_010": [
-		{"id": "rn_port_network_ad_valorem", "domain": "port_ad_valorem_fee", "pct": -50.0, "label": "Port Network Acquisition: −50% port ad valorem fee", "source": "research_node"},
+		{"id": "rn_port_network_ad_valorem", "domain": "port_ad_valorem_fee", "pct": -20.0, "label": "Port Network Acquisition: −20% port ad valorem fee", "source": "research_node"},
 		{"id": "rn_port_network_per_turn", "domain": "port_per_turn_fee", "pct": -50.0, "label": "Port Network Acquisition: −50% per-turn port fee", "source": "research_node"},
 	],
 	# Logistics warehouse capacity (tile storage)

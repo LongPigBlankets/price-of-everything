@@ -109,6 +109,7 @@ func _ready() -> void:
 	_test_purchase_inventory_seed()
 	_test_founder_advisor()
 	_test_depot_scheduling_overland_only()
+	_test_logistics_shipping_line()
 	_test_port_ad_valorem_schedule()
 	_test_tutorial_rescue()
 	_test_start_labour_preset()
@@ -7047,6 +7048,48 @@ func _test_depot_scheduling_overland_only() -> void:
 		"depot scheduling: an all-road haul is 10%% cheaper (%.3f -> %.3f)" % [road_before, road_after])
 	_check(pipe_before <= 0.0 or is_equal_approx(pipe_after, pipe_before),
 		"depot scheduling: a pipe haul is untouched")
+
+func _test_logistics_shipping_line() -> void:
+	# The three shipping unlocks trim the ad valorem RELATIVELY. Percentage points against a 3%
+	# base would overshoot to almost nothing, which is the collapse the schedule replaced.
+	MatchState.reset()
+	TurnManager.current_turn = 40                       # past the step, so the base is the full rate
+	var base: float = EconomyConfig.seaport_ad_valorem_rate(TurnManager.current_turn)
+	var port := "tile_5_10"
+	var before: float = MatchState.seaport_insurance_rate(port)
+	_check(is_equal_approx(before, base),
+		"shipping line: an unteched company pays the scheduled rate (%.2f%%)" % (100.0 * before))
+	for title in ["Groupage Contracts", "Multimodal Containerized Freight", "Port Network Acquisition"]:
+		MatchState.grant_unlock(title)
+	var after: float = MatchState.seaport_insurance_rate(port)
+	_check(is_equal_approx(after, base * 0.6),
+		"shipping line: all three together cut the rate 40%% (%.2f%% -> %.2f%%)"
+			% [100.0 * before, 100.0 * after])
+	_check(after > 0.0, "shipping line: relief never reaches zero — freight always costs something")
+
+	# "Through EVERY port" is a reach condition: one busy port is not enough.
+	MatchState.reset()
+	MatchState._port_sales_by_port = {"tile_5_10": 9999}
+	var one_port := {"action": "Sell Through Every Port", "object": "ports", "qty": 500}
+	_check(not MatchState._live_condition_met(one_port),
+		"shipping line: exporting through a single port does not satisfy 'every port'")
+	for port_def in Catalog.all_ports():
+		MatchState._port_sales_by_port[str(port_def.get("tile_id", ""))] = 500
+	_check(MatchState._live_condition_met(one_port),
+		"shipping line: reaching all %d ports satisfies it" % Catalog.all_ports().size())
+
+	# "Own a port at level N" reads the building's real level.
+	MatchState.reset()
+	var lvl := {"action": "Own Port At Level", "object": "ports", "qty": 2}
+	MatchState.buildings["inst_port"] = {
+		"instance_id": "inst_port", "building_id": "b_004", "recipe_id": "",
+		"tile_id": "tile_5_10", "level": 1,
+	}
+	_check(not MatchState._live_condition_met(lvl), "shipping line: a level-1 port does not qualify")
+	MatchState.buildings["inst_port"]["level"] = 2
+	_check(MatchState._live_condition_met(lvl), "shipping line: a level-2 port does")
+	MatchState.buildings.erase("inst_port")
+	TurnManager.current_turn = 1
 
 func _test_port_ad_valorem_schedule() -> void:
 	# Port charging is ad valorem only, on a turn schedule: 0.5% while learning, 3% from t31.
