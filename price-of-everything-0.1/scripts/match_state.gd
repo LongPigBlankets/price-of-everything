@@ -91,6 +91,24 @@ const FOUNDER_TENURE_TURNS := 30
 ## The research title that opens the rest of the council (data/research_unlocks.csv).
 const SEATS_UNLOCK_TITLE := "Executive Search"
 var all_seats_unlocked: bool = false        # set by the people/labour research node
+## "Worker pay while building not running": what share of a workforce's pay a building owes on a
+## turn it produced NOTHING. 1.0 is the old behaviour (they are paid in full regardless).
+## Deliberately keyed on zero output, never on "starving": a derated building still ran and is
+## still in CostSolver, and paying it less would make its imputed cost FALL as it got sicker.
+const IDLE_LABOUR_PAY_CHOICES: Array[float] = [0.5, 0.75, 1.0]
+var idle_labour_pay_share: float = 1.0
+
+func set_idle_labour_pay_share(value: float) -> void:
+	# Off-menu values are REFUSED, not rounded: this is a three-position policy switch, and
+	# silently snapping an unexpected value would hide a caller bug behind a plausible number.
+	var matched := false
+	for choice in IDLE_LABOUR_PAY_CHOICES:
+		if is_equal_approx(choice, value):
+			matched = true
+	if not matched or is_equal_approx(value, idle_labour_pay_share):
+		return
+	idle_labour_pay_share = value
+	labour_multiplier_changed.emit(labour_multiplier)   # the People panel repaints on this
 var founder_seat: String = ""               # which post Andrew took, "" if he never joined
 var founder_leaves_turn: int = 0            # tenure end; he cannot be dismissed before it
 const MAX_ADVISOR_SLOTS_DEFAULT := 2
@@ -2993,6 +3011,7 @@ func reset() -> void:
 	workforce_policy_effects.clear()
 	labour_multiplier = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
 	labour_output_pressure_pct = 0.0
+	idle_labour_pay_share = 1.0
 	permanent_advisor_ids.clear()
 	advisor_seats.clear()
 	all_seats_unlocked = false
@@ -3099,6 +3118,7 @@ func export_state() -> Dictionary:
 		"pending_battery_fills": pending_battery_fills.duplicate(true),
 		"labour_multiplier": labour_multiplier,
 		"labour_output_pressure_pct": labour_output_pressure_pct,
+		"idle_labour_pay_share": idle_labour_pay_share,
 		"workforce_policies": workforce_policies.duplicate(true),
 		"workforce_policy_effects": workforce_policy_effects.duplicate(true),
 		"permanent_advisor_ids": permanent_advisor_ids.duplicate(true),
@@ -3195,6 +3215,7 @@ func import_state(d: Dictionary) -> void:
 	pending_battery_fills = (d.get("pending_battery_fills", []) as Array).duplicate(true)
 	labour_multiplier = float(d.get("labour_multiplier", EconomyConfig.LABOUR_MULTIPLIER_DEFAULT))
 	labour_output_pressure_pct = float(d.get("labour_output_pressure_pct", 0.0))
+	idle_labour_pay_share = float(d.get("idle_labour_pay_share", 1.0))
 	workforce_policies = (d.get("workforce_policies", {}) as Dictionary).duplicate(true)
 	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
 	recruited_advisor_ids = _sanitize_advisor_ids(d.get("recruited_advisor_ids", STARTING_TRIO))
@@ -5482,6 +5503,32 @@ const PURCHASE_SEED_TURNS := 2
 var ghost_holdings: Dictionary = {}
 
 
+## What the stock a purchase arrives with is worth at market. The buyer pays for PURCHASE_SEED_
+## TURNS of it — an advisor may hand over a THIRD turn's worth, but the two are always paid for.
+func purchase_kit_cost(building: Dictionary) -> float:
+	var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
+	var total := 0.0
+	for input in recipe.get("inputs", []):
+		var gid := str(input.get("good_id", ""))
+		if gid != "":
+			total += float(int(input.get("qty", 0)) * PURCHASE_SEED_TURNS) * MarketState.get_buy_price(gid)
+	return total
+
+
+## The full asking price for an NPC building: the advisor-adjusted sale value plus the stock it
+## comes with. One helper so the listing, the Buy button and the charge cannot disagree.
+func building_purchase_price(building: Dictionary) -> int:
+	return int(round(
+		purchase_cost_after_advisor(float(BuildingPrice.sale_price(building)))
+		+ purchase_kit_cost(building)))
+
+
+## How many turns of inputs a purchase actually receives. The player pays for PURCHASE_SEED_
+## TURNS; a seated COO throws in one more (§5.4) — a gift of goods, not a discount on price.
+func purchase_seed_turns() -> int:
+	return PURCHASE_SEED_TURNS + (1 if get_advisor_in_seat("coo") != "" else 0)
+
+
 ## Seed a newly-bought building with stock. Returns the total units seeded (0 for infra, for
 ## input-less recipes, and for a building that already has its own stock on the tile).
 func seed_purchase_inventory(instance_id: String) -> int:
@@ -5498,7 +5545,7 @@ func seed_purchase_inventory(instance_id: String) -> int:
 	var seeded := 0
 	for input in inputs:
 		var gid := str(input.get("good_id", ""))
-		var qty := int(input.get("qty", 0)) * PURCHASE_SEED_TURNS
+		var qty := int(input.get("qty", 0)) * purchase_seed_turns()
 		if gid == "" or qty <= 0:
 			continue
 		var placed: int = Stockpile.add(tile_id, gid, qty)

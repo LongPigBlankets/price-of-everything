@@ -399,6 +399,7 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			"labour_output_pressure_pct": clampf(
 				float(labour.get("output_pressure_pct", 0.0)),
 				EconomyConfig.LABOUR_OUTPUT_PRESSURE_FLOOR, EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
+			"idle_labour_pay_share": clampf(float(labour.get("idle_pay_share", 1.0)), 0.5, 1.0),
 		},
 		"stockpile": {"by_tile": (cfg.get("stockpile", {}) as Dictionary).duplicate(true)},
 		"loans": {"loans": loans, "next_loan_id": loans.size() + 1},

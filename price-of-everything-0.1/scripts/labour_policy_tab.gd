@@ -120,6 +120,7 @@ func _rebuild() -> void:
 
 	left.add_child(_sec_label("WORKFORCE POLICIES"))
 	_build_effort(left)
+	_build_idle_pay(left)
 	_build_safety(left)
 	_build_pensions(left)
 	_build_bonus(left)
@@ -147,6 +148,28 @@ func _build_effort(parent: Control) -> void:
 		{"key": "over", "label": "1.2x Overtime",
 			"caption": "Salary cost +20% · output momentum +1%/turn, up to +10%.",
 			"pick": func() -> void: MatchState.set_labour_multiplier(1.2)},
+	], key))
+
+## "Worker pay while not running" — what a workforce is owed on a turn its building produced
+## nothing. Sits beside Work effort because both price the same people, just in opposite
+## directions: one buys more output, this one stops paying for output that never came.
+func _build_idle_pay(parent: Control) -> void:
+	var share := MatchState.idle_labour_pay_share
+	var key := "full"
+	if share < 0.6:
+		key = "half"
+	elif share < 0.9:
+		key = "most"
+	parent.add_child(_spectrum("Worker pay while building not running", [
+		{"key": "half", "label": "50%",
+			"caption": "A building that made nothing this turn pays half its wage bill. Cheapest, and hardest on the workforce.",
+			"pick": func() -> void: MatchState.set_idle_labour_pay_share(0.5)},
+		{"key": "most", "label": "75%",
+			"caption": "Most of the wage bill is paid through an idle turn.",
+			"pick": func() -> void: MatchState.set_idle_labour_pay_share(0.75)},
+		{"key": "full", "label": "100%",
+			"caption": "Workers are paid in full whether the line runs or not.",
+			"pick": func() -> void: MatchState.set_idle_labour_pay_share(1.0)},
 	], key))
 
 func _build_safety(parent: Control) -> void:

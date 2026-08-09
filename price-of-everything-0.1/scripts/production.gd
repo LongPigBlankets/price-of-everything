@@ -516,7 +516,13 @@ func _process_production() -> void:
 		var maint: float = _calculate_maintenance_cost(building)
 		var active_recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
 		# A paused (mothballed) building keeps its upkeep but carries no workforce.
-		var labour: float = 0.0 if MatchState.is_building_paused(str(building.get("instance_id", ""))) else _calculate_labour_cost(building, active_recipe)
+		var iid_cost := str(building.get("instance_id", ""))
+		var labour: float = 0.0 if MatchState.is_building_paused(iid_cost) else _calculate_labour_cost(building, active_recipe)
+		# "Worker pay while not running": a building that produced NOTHING this turn pays its
+		# workforce at the policy rate. Keyed strictly on having run — a derated building did
+		# run, so it pays in full and its labour still reaches CostSolver at the true figure.
+		if labour > 0.0 and not bool(last_turn_run.get(iid_cost, false)):
+			labour *= MatchState.idle_labour_pay_share
 		var total_cost: float = maint + labour
 		MatchState.add_money(-total_cost)
 		summary.maintenance_paid += maint

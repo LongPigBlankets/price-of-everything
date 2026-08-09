@@ -12,7 +12,8 @@
 	],
 	"labour": {
 		"multiplier": 1.2,
-		"output_pressure_pct": 10.0
+		"output_pressure_pct": 10.0,
+		"idle_pay_share": 0.5
 	},
 	"land": {
 		"tile_6_8": 50,

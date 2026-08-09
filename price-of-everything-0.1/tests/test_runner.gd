@@ -103,6 +103,7 @@ func _ready() -> void:
 	_test_market_input_pipeline_ignores_reserved_inbound()
 	_test_tax_dividend_caps()
 	_test_tax_free_profit_floor()
+	_test_idle_labour_pay_policy()
 	_test_purchase_inventory_seed()
 	_test_founder_advisor()
 	_test_depot_scheduling_overland_only()
@@ -6750,6 +6751,47 @@ func _test_start_labour_preset() -> void:
 		and is_equal_approx(float(wild_match.get("labour_output_pressure_pct", 0.0)),
 			EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
 		"start labour values are clamped to the configured range")
+
+func _test_idle_labour_pay_policy() -> void:
+	# "Worker pay while not running" keys strictly on producing NOTHING. That is what keeps it
+	# out of CostSolver: a building with no output never gets a turn report, so it is not in the
+	# solver's eligible set and its labour — full or half — cannot reach an imputed cost.
+	# Paying a DERATED building less would instead make its unit cost fall as it got sicker.
+	MatchState.reset()
+	_check(is_equal_approx(MatchState.idle_labour_pay_share, 1.0),
+		"idle pay: workers are paid in full by default")
+	MatchState.set_idle_labour_pay_share(0.5)
+	_check(is_equal_approx(MatchState.idle_labour_pay_share, 0.5), "idle pay: the 50% setting takes")
+	MatchState.set_idle_labour_pay_share(0.63)
+	_check(is_equal_approx(MatchState.idle_labour_pay_share, 0.5),
+		"idle pay: an off-menu value is refused rather than silently accepted")
+	MatchState.set_idle_labour_pay_share(0.75)
+	_check(is_equal_approx(MatchState.idle_labour_pay_share, 0.75), "idle pay: the 75% setting takes")
+
+	# CostSolver's contract: only buildings with at least one output are eligible. A building
+	# that produced nothing is absent from the reports entirely, so the policy cannot move any
+	# imputed cost — this asserts the property the policy's safety rests on.
+	MatchState.reset()
+	MarketState._init_prices_from_catalog()
+	Production._building_turn_reports.clear()
+	Production._building_turn_reports.append({
+		"instance_id": "inst_runs", "building_id": "b_002", "tile_id": "tile_5_10",
+		"recipe_id": "r_005", "inputs_consumed": {"g_002": 40, "g_001": 20},
+		"outputs_produced": {"g_004": 70}, "power_cost": 16.8, "labour_cost": 8.91,
+		"maintenance_cost": 3.0, "inbound_transport": 0.0,
+	})
+	Production._building_turn_reports.append({
+		"instance_id": "inst_idle", "building_id": "b_002", "tile_id": "tile_5_10",
+		"recipe_id": "r_005", "inputs_consumed": {}, "outputs_produced": {},
+		"power_cost": 0.0, "labour_cost": 8.91, "maintenance_cost": 3.0, "inbound_transport": 0.0,
+	})
+	CostSolver.solve(Production._building_turn_reports)
+	var per_building: Dictionary = CostSolver.last_result.get("per_building", {})
+	_check(per_building.has("inst_runs"),
+		"cost solver: a producing building is costed")
+	_check(not per_building.has("inst_idle"),
+		"cost solver: a building that produced nothing is excluded, so its wage bill cannot move any imputed cost")
+	Production._building_turn_reports.clear()
 
 func _test_purchase_inventory_seed() -> void:
 	# A bought building is a going concern: it arrives with stock to run on. A CONSTRUCTED one

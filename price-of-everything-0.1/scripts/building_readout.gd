@@ -875,7 +875,7 @@ static func company_name(owner_id: String) -> String:
 
 # Purchase price shown on the NPC Buy button (matches the Buildings-market listing).
 static func buy_price(building: Dictionary) -> int:
-	return int(round(MatchState.purchase_cost_after_advisor(float(BuildingPrice.sale_price(building)))))
+	return MatchState.building_purchase_price(building)
 
 # What you recover on Sell — the building's market list value.
 static func sell_value(building: Dictionary) -> int:
