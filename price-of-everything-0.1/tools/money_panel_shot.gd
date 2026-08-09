@@ -13,9 +13,11 @@ func _ready() -> void:
 		print("[MONEY_SHOT] money panel not found"); get_tree().quit(1); return
 	var panel = menu.money_panel
 	panel.show()
+	panel.size = panel.DEFAULT_PANEL_SIZE      # the game sizes it on open; match that
 	for _i in range(12):
 		await get_tree().process_frame
-	var content = panel.get_node_or_null("MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent")
+	# find_child, not a fixed path: BalanceContent moves under BalanceScroll at runtime.
+	var content = panel.find_child("BalanceContent", true, false)
 	print("[MONEY_SHOT] visible=%s balance_content=%s size=%s children=%d" % [
 		str(panel.visible), "found" if content else "MISSING",
 		str(content.size) if content else "-", content.get_child_count() if content else -1])

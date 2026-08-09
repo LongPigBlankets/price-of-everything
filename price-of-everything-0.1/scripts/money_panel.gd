@@ -85,6 +85,8 @@ const CHART_MAX_TURNS := 10
 const DEFAULT_PANEL_SIZE := Vector2(560, 620)
 const CHART_PANEL_SIZE := Vector2(620, 600)
 const EXPANDED_BALANCE_PANEL_SIZE := Vector2(560, 770)
+# Without a real minimum the tab collapses around the ScrollContainer and renders blank.
+const BALANCE_SCROLL_MIN_HEIGHT := 430.0
 const TRANSPORT_BREAKDOWN_ROWS := [
 	["port_inbound", "Port Fees — Imports"],
 	["port_outbound", "Port Fees — Exports"],
