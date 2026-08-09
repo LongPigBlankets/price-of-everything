@@ -1309,8 +1309,9 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		transport_cost += float(sea_charge.get("total", 0.0))
 		# Export leg — the mirror of queue_buy's port_inbound. "sea" carries the ad valorem
 		# for both directions so the redesign's headline component stands alone.
-		transport_breakdown["port_outbound"] = float(transport_breakdown.get("port_outbound", 0.0)) + float(sea_charge.get("base_fee", 0.0))
-		transport_breakdown["sea"] = float(transport_breakdown.get("sea", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
+		# Mirror of queue_buy's port_inbound: the whole export-side port charge on one line.
+		transport_breakdown["port_outbound"] = float(transport_breakdown.get("port_outbound", 0.0)) \
+			+ float(sea_charge.get("base_fee", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,

@@ -42,7 +42,7 @@ const RUNS_HEADER = ["received_at", "player_id", "run_id", "session_id", "versio
 const FIXED = ["received_at", "run_id", "session_id", "turn", "money", "revenue", "profit", "loans",
                "buildings", "power_gen", "power_use", "tiers", "victory",
 //   transport       — this turn's freight split, seven pipe-joined values in FIXED order:
-//                     port_inbound|port_outbound|roads|rail|pipes|reinf_pipes|sea
+//                     port_inbound|port_outbound|roads|rail|pipes|reinf_pipes
 //                     They sum to the `transport` entry inside `costs`.
                "playtime_s", "goods", "costs", "transport", "buildings_list", "building_states"];
 

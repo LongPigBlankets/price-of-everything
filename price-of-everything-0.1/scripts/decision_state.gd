@@ -430,7 +430,7 @@ func _retire_founder() -> void:
 		"kind": "founder_departs",
 		"severity": "info",
 		"title": "Andrew Keeler stands down",
-		"body": "Andrew has served his time as %s and is standing down, with his debt to your family considered paid. He wishes you luck. The chair is open — you can hire for it now." % seat_name,
+		"body": "Andrew has served his time as %s and is standing down, his debt to your family considered paid. He wishes you luck, and says he can see you are trying your best.\n\n\"One last piece of advice, and it is the only one that matters: treat your people well. It always pays off in the long term.\"\n\nThe chair is open — you can hire for it now." % seat_name,
 		"source": "advisors",
 		"persistent": false,
 		"auto_dismiss_turns": 3,
@@ -513,7 +513,7 @@ func _tick_narrative() -> void:
 		_reservations.erase(turn)
 		_draw(def_id)
 	# The founder's pro bono tenure runs out — he vacates and the post opens for a real hire.
-	if not MatchState.founder_tenure_expired() and turn >= MatchState.founder_leaves_turn:
+	if MatchState.founder_seat != "" and turn >= MatchState.founder_leaves_turn:
 		_retire_founder()
 	# C) Pulse: only into a QUIET board — no pending decision, nothing in flight, and
 	#    no story beat landing next turn.

@@ -65,11 +65,11 @@ const COST_LINES := {
 }
 # Per-turn freight split, FIXED ORDER, summing to the `transport` line in COST_LINES.
 # Added after a tutorial run had to have its freight decomposed by inference — the engine
-# always knew the split, the sheet just never carried it. Imports/exports are the flat
-# per-good port fee by direction; `sea` is the ad valorem, on its own line because it is the
-# component the freight redesign moves. See docs/early-game-onboarding-spec.md §4.2b.
+# always knew the split, the sheet just never carried it. Imports/exports carry the WHOLE port
+# charge by direction: splitting fee-from-ad-valorem left both reading zero once the flat fee
+# was retired. See docs/early-game-onboarding-spec.md §4.2b.
 const TRANSPORT_LINES: Array[String] = [
-	"port_inbound", "port_outbound", "roads", "rail", "pipes", "reinf_pipes", "sea",
+	"port_inbound", "port_outbound", "roads", "rail", "pipes", "reinf_pipes",
 ]
 
 var enabled := false

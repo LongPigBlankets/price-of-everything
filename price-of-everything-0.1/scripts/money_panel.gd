@@ -90,9 +90,8 @@ const PANEL_SCREEN_MARGIN := 90.0
 # Without a real minimum the tab collapses around the ScrollContainer and renders blank.
 const BALANCE_SCROLL_MIN_HEIGHT := 430.0
 const TRANSPORT_BREAKDOWN_ROWS := [
-	["port_inbound", "Port Fees — Imports"],
-	["port_outbound", "Port Fees — Exports"],
-	["sea", "Sea Freight (ad valorem)"],
+	["port_inbound", "Port Charges — Imports"],
+	["port_outbound", "Port Charges — Exports"],
 	["rail", "Rail Transport"],
 	["roads", "Road Transport"],
 	["pipes", "Pipe Transport"],

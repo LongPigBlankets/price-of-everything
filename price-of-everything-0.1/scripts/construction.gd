@@ -429,7 +429,11 @@ func tick_turn() -> Array:
 		# One turn out: its inputs are being ordered and the first money is about to move, so
 		# this is where the operational-loans tab opens (spec §5.3). Needs a seated CFO —
 		# without one there is nobody to arrange it and costs simply hit cash.
-		if int(project["turns_remaining"]) == 1 and MatchState.can_open_building_tab():
+		# Infrastructure has no recipe to run, so there are no start-up running costs to carry —
+		# offering the facility for a stretch of rail was simply wrong. Purchases never reach
+		# here at all (they are not construction projects); they get seeded stock instead.
+		if int(project["turns_remaining"]) == 1 and MatchState.can_open_building_tab() \
+				and not Catalog.get_recipe(str(project.get("recipe_id", ""))).get("inputs", []).is_empty():
 			if MatchState.open_building_tab(str(instance_id)):
 				building_tab_opened.emit(str(instance_id))
 		if int(project["turns_remaining"]) <= 0:

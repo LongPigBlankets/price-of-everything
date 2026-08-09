@@ -6704,8 +6704,8 @@ func _test_telemetry_schema3_row() -> void:
 		"money_in": 0.0, "money_out": 0.0, "produced": {},
 		"transport_paid": 61.50,
 		"transport_breakdown": {
-			"port_inbound": 5.0, "port_outbound": 10.0, "roads": 24.5,
-			"rail": 8.0, "pipes": 3.0, "reinf_pipes": 1.0, "sea": 10.0,
+			"port_inbound": 15.0, "port_outbound": 20.0, "roads": 14.5,
+			"rail": 8.0, "pipes": 3.0, "reinf_pipes": 1.0,
 		},
 	}
 	var freight_row: Dictionary = TelemetryState._build_row(freight)
@@ -6717,9 +6717,8 @@ func _test_telemetry_schema3_row() -> void:
 		split_total += float(v)
 	_check(is_equal_approx(split_total, float(freight.get("transport_paid", 0.0))),
 		"schema 3: the freight split reconciles against transport_paid (%.2f)" % split_total)
-	_check(is_equal_approx(float(split[0]), 5.0) and is_equal_approx(float(split[1]), 10.0)
-		and is_equal_approx(float(split[6]), 10.0),
-		"schema 3: imports, exports and sea freight land in their fixed positions")
+	_check(is_equal_approx(float(split[0]), 15.0) and is_equal_approx(float(split[1]), 20.0),
+		"schema 3: import and export port charges land in their fixed positions")
 
 	MatchState.buildings.erase("inst_tel_run")
 	MatchState.buildings.erase("inst_tel_dark")

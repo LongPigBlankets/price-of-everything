@@ -131,6 +131,8 @@ var _refresh_queued := false
 
 
 func _ready() -> void:
+	# Deferred so the flyout is rebuilt after the turn's numbers have settled, not mid-resolution.
+	TurnManager.turn_resolution_completed.connect(func() -> void: _refresh_open_fly.call_deferred())
 	_style_bar()
 	_build_treasury()
 	_build_power()
@@ -1139,6 +1141,16 @@ func _toggle_fly(id: String) -> void:
 	else:
 		_open_fly(id)
 
+## A resolved turn changes every number in the treasury mini-panel. It was built once on open,
+## so a player who left it up read last turn's figures — rebuild it in place instead.
+func _refresh_open_fly() -> void:
+	if _fly_open_id == "" or _fly_panel == null or not is_instance_valid(_fly_panel):
+		return
+	var id := _fly_open_id
+	_close_fly()
+	_open_fly(id)
+
+
 func _close_fly() -> void:
 	_fly_open_id = ""
 	_fly_scrim.visible = false
@@ -1147,6 +1159,7 @@ func _close_fly() -> void:
 			_fly_panel.get_parent().remove_child(_fly_panel)
 		_fly_panel.queue_free()
 	_fly_panel = null
+	_fly_open_id = ""
 	if _victory_btn != null:
 		(_victory_btn as _ModuleBtn).active = false
 	if _rankings_btn != null:

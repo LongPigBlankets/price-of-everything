@@ -4285,8 +4285,10 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 		# Split by DIRECTION: this is the import leg. The ad valorem rides its own "sea" line
 		# rather than being folded in, because it is the component about to carry the freight
 		# redesign and needs to be watchable on its own.
-		transport_breakdown["port_inbound"] = float(transport_breakdown.get("port_inbound", 0.0)) + float(sea_charge.get("base_fee", 0.0))
-		transport_breakdown["sea"] = float(transport_breakdown.get("sea", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
+		# The whole port charge, by direction. Splitting fee-from-ad-valorem left both direction
+		# lines reading zero once the flat fee was retired — reported from a turn-63 save.
+		transport_breakdown["port_inbound"] = float(transport_breakdown.get("port_inbound", 0.0)) \
+			+ float(sea_charge.get("base_fee", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
 	# Goods with a transit leg are paid for ON ARRIVAL; instant (0-turn) deliveries have no
 	# transit to defer over, so they settle here.
 	if turns < 1:
