@@ -9359,6 +9359,8 @@ func _test_widgets_instantiate() -> void:
 		and _tree_has_label_text(pp, "0.8x") and _tree_has_label_text(pp, "WORKFORCE POLICIES"),
 		"PeoplePanel builds Labour and Advisors tabs")
 	# The Advisors tab is now the ROLE-FIRST council view: one card per SEAT.
+	# Hiring opens at the founder's decision turn; this fixture exercises the hire flow.
+	TurnManager.current_turn = maxi(TurnManager.current_turn, DecisionState.FOUNDER_DECISION_TURN)
 	var council_tab: Node = _find_node_by_script(pp, "res://scripts/advisor_council_tab.gd")
 	_check(council_tab != null and _tree_has_label_text(pp, "COUNCIL SEATS")
 		and _tree_has_label_text(pp, "CFO") and _tree_has_label_text(pp, "VP Logistics"),

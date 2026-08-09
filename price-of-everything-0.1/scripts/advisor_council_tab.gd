@@ -426,19 +426,10 @@ func _build_detail() -> void:
 		focus_seat = str(MatchState.advisor_best_effect_seat(aid))
 	# A stable name lets the tutorial require players to open a candidate profile
 	# and read the seat-specific effects before they hire them.
-	var bonus_title := _sec_label("WHAT THEY BRING — %s" % _seat_name(focus_seat).to_upper())
+	var bonus_title := _sec_label("BONUSES FROM THIS ADVISOR'S EXPERTISE — %s" % _seat_name(focus_seat).to_upper())
 	bonus_title.name = "AdvisorBonusSection"
 	left.add_child(bonus_title)
-	var fx: Array = MatchState.advisor_seat_effect_list(aid, focus_seat)
-	if fx.is_empty():
-		left.add_child(_dim_label("No mechanical effects in this seat.", 12))
-	else:
-		var fxwrap := HFlowContainer.new()
-		fxwrap.add_theme_constant_override("h_separation", 8)
-		fxwrap.add_theme_constant_override("v_separation", 6)
-		left.add_child(fxwrap)
-		for eff in fx:
-			fxwrap.add_child(_effect_chip(_effect_text(eff), _GOOD if _effect_is_beneficial(eff) else _BAD))
+	left.add_child(_bonus_table(aid, focus_seat))
 
 	var right := VBoxContainer.new()
 	right.add_theme_constant_override("separation", 10)
@@ -487,6 +478,54 @@ func _build_detail() -> void:
 	else:
 		_root.add_child(_seat_choice_row(aid, ""))
 
+## The bonuses table: one row per standing effect this advisor brings in this seat, sourced
+## from the sim (advisor_seat_effect_list) so it can never drift from what is actually applied.
+func _bonus_table(advisor_id: String, seat_id: String) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 3)
+	var rows := _advisor_bonus_rows(advisor_id, seat_id)
+	if rows.is_empty():
+		box.add_child(_dim_label("No mechanical effects in this seat.", 12))
+		return box
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 3)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(grid)
+	grid.add_child(_dim_label("Bonus", 11))
+	grid.add_child(_dim_label("Effect", 11))
+	for r: Dictionary in rows:
+		var name_label := _dim_label(str(r.get("name", "")), 12)
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		grid.add_child(name_label)
+		grid.add_child(_tone_label(str(r.get("effect", "")), _GOOD if bool(r.get("good", true)) else _BAD, 12))
+	return box
+
+
+## One row per standing effect, plus the founder's one-off gift where it applies.
+func _advisor_bonus_rows(advisor_id: String, seat_id: String) -> Array:
+	var rows: Array = []
+	if seat_id != "":
+		for eff in MatchState.advisor_seat_effect_list(advisor_id, seat_id):
+			rows.append({
+				"name": _effect_text(eff),
+				"effect": "applied while seated",
+				"good": _effect_is_beneficial(eff),
+			})
+	if advisor_id == MatchState.FOUNDER_ADVISOR_ID:
+		if seat_id == "cfo":
+			rows.append({"name": "Signing gift — a one-off loan on favourable terms",
+				"effect": "£200 at 5%", "good": true})
+		elif seat_id == "coo":
+			rows.append({"name": "Signing gift — pre-paid domestic freight, and cheaper haulage",
+				"effect": "1000 units · −20%", "good": true})
+		rows.append({"name": "Serves for nothing — no salary for his tenure",
+			"effect": "£0 for %d turns" % MatchState.FOUNDER_TENURE_TURNS, "good": true})
+	return rows
+
+
 ## The "Assign to <seat chips> · Hire & assign" footer for candidates (and the
 ## reassign flow). Preselects the seat the journey started from.
 func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
@@ -494,6 +533,15 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 	wrap.add_theme_constant_override("separation", 8)
 	var open_seats: Array[String] = []
 	for sid in MatchState.SEAT_DEFINITIONS:
+		# Posts the company has not opened yet are not offered here either — the panel must
+		# not be a way around the gate the rest of the game enforces.
+		if not MatchState.is_seat_available(str(sid)):
+			continue
+		# The family friend sits where he was asked to sit. He is a favour in one of two
+		# chairs, not a hire who can be moved around the org chart.
+		if advisor_id == MatchState.FOUNDER_ADVISOR_ID \
+				and not MatchState.STARTING_SEATS.has(str(sid)):
+			continue
 		var holder := MatchState.get_advisor_in_seat(str(sid))
 		if holder == "" or holder == advisor_id:
 			open_seats.append(str(sid))
@@ -502,6 +550,13 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	wrap.add_child(row)
+	# Nobody is hired before the family friend has made his offer — that decision is the
+	# player's introduction to the council, and a hire beforehand pre-empts it.
+	if TurnManager.current_turn < DecisionState.FOUNDER_DECISION_TURN:
+		wrap.add_child(_tone_label(
+			"You have no board yet. An old friend of your father's is expected by turn %d."
+				% DecisionState.FOUNDER_DECISION_TURN, _BAD, 12))
+		return wrap
 	row.add_child(_dim_label("Assign to", 12))
 	if not can_take_new_seat:
 		row.add_child(_tone_label("Council is full (%d/%d) — unseat someone first." % [seated, MatchState.max_advisor_slots], _BAD, 12))

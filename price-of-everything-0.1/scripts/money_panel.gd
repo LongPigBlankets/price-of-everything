@@ -128,6 +128,30 @@ func _insert_cost_row(section: VBoxContainer, after_node_name: String, label_tex
 	return value_label
 
 
+## The Balance tab grew past the panel: the transport accordion expands, and the cost list has
+## gained rows (warehousing, goods purchased, the freight split). The Budget tab was authored
+## with a ScrollContainer; Balance was not. Reparenting at runtime rather than editing the
+## scene keeps the panel's several dozen @onready paths valid — they are resolved into node
+## references just before this runs, so moving the subtree afterwards is invisible to them.
+func _make_balance_scrollable() -> void:
+	var content: Control = get_node_or_null(
+		"MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent")
+	if content == null:
+		return
+	var host := content.get_parent()
+	if host == null or host is ScrollContainer:
+		return
+	var scroll := ScrollContainer.new()
+	scroll.name = "BalanceScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	host.remove_child(content)
+	host.add_child(scroll)
+	scroll.add_child(content)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+
 func _insert_transport_accordion(section: VBoxContainer, after_node_name: String) -> Label:
 	var group := VBoxContainer.new()
 	group.add_theme_constant_override("separation", 4)
@@ -209,6 +233,7 @@ func _insert_finance_row(section: VBoxContainer, after_node_name: String, label_
 	return value_label
 
 func _ready() -> void:
+	_make_balance_scrollable()
 	_transport_value = _insert_transport_accordion(_costs_section, "PowerPurchaseRow")
 	_proj_transport_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Transport")
 	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
