@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://bqf7x2n4d8kv1"]
+
+[ext_resource type="Script" path="res://tools/build_forecast_shot.gd" id="1"]
+
+[node name="BuildForecastShot" type="Node2D"]
+script = ExtResource("1")

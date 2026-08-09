@@ -21,6 +21,9 @@ const MUTED := Color("#8da0b6")
 const GOLD := Color("#e6b34a")
 const GOLD_DARK := Color("#c48d35")
 const GREEN := Color("#5fbf6b")
+const RED := DS.PALETTE["DANGER"]   # shared with the forecast chart's losing segments
+const BuildForecast := preload("res://scripts/build_forecast.gd")
+const BuildForecastChart := preload("res://scripts/build_forecast_chart.gd")
 const CREAM := Color("#f4e6c0")
 const CREAM_SHADOW := Color("#9f875d")
 const METAL_LIGHT := Color("#c4ced8")
@@ -1152,6 +1155,8 @@ func _render_confirm() -> void:
 	value.add_theme_color_override("font_color", TEXT)
 	value_row.add_child(value)
 
+	_add_forecast_section()
+
 	var placement_note := Label.new()
 	if _locked_tile_id != "":
 		placement_note.text = "Confirm to build on %s." % Catalog.tile_label(_locked_tile_id)
@@ -1767,6 +1772,65 @@ func _on_filter_toggled(pressed: bool, category: String) -> void:
 func _on_building_pressed(building_id: String) -> void:
 	_expanded_building_id = "" if _expanded_building_id == building_id else building_id
 	_render()
+
+
+## The trajectory the player is buying: construction turns, the dip while inputs are bought
+## before the first sale settles, then the steady margin. Added to the CONFIRM view because
+## that is the last moment the decision is free. See docs/early-game-onboarding-spec.md §5.1.
+func _add_forecast_section() -> void:
+	var building_id := str(_selected_building.get("id", ""))
+	var recipe_id := str(_selected_recipe.get("recipe_id", ""))
+	if building_id == "" or recipe_id == "":
+		return
+	var data: Dictionary = BuildForecast.project(building_id, recipe_id, _locked_tile_id)
+	var points: Array = data.get("points", [])
+	if points.size() < 2:
+		return
+
+	_content.add_child(_section_label("FIRST %d TURNS" % points.size()))
+
+	# A tile with no route to an input is the run-D failure: the player builds, the building
+	# never runs, and nothing says why. Say it here, in red, before the money moves.
+	if bool(data.get("no_supply", false)):
+		var warn := Label.new()
+		warn.text = "No supply route on this tile for %s — it would sit idle." \
+			% ", ".join(PackedStringArray(data.get("input_names", [])))
+		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		warn.add_theme_font_size_override("font_size", 11)
+		warn.add_theme_color_override("font_color", RED)
+		_content.add_child(warn)
+
+	var chart: Control = BuildForecastChart.new()
+	chart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chart.set_forecast(data)
+	_content.add_child(chart)
+
+	var steady := float(data.get("steady_net", 0.0))
+	var summary := Label.new()
+	var first_profit := int(data.get("first_profit", -1))
+	if steady <= 0.0:
+		summary.text = "At today's prices this loses %s a turn once running." % _money(-steady)
+		summary.add_theme_color_override("font_color", RED)
+	elif first_profit >= 0:
+		var payback := int(data.get("payback_turn", -1))
+		summary.text = "In profit from turn %d at %s a turn%s." % [
+			first_profit + 1, _money(steady),
+			"; construction paid back by turn %d" % payback if payback > 0 else "",
+		]
+		summary.add_theme_color_override("font_color", GREEN)
+	else:
+		summary.text = "Earns %s a turn once the first shipment sells." % _money(steady)
+		summary.add_theme_color_override("font_color", GREEN)
+	summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	summary.add_theme_font_size_override("font_size", 12)
+	_content.add_child(summary)
+
+	var caption := Label.new()
+	caption.text = "Assumes it sells straight to market at today's prices, with any pipework already built."
+	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	caption.add_theme_font_size_override("font_size", 10)
+	caption.add_theme_color_override("font_color", MUTED)
+	_content.add_child(caption)
 
 
 func _on_recipe_pressed(building_id: String, recipe_id: String) -> void:

@@ -21,6 +21,7 @@ const RoadRegionsLoader := preload("res://scripts/road_regions.gd")
 const TutorialSteps := preload("res://scripts/tutorial/tutorial_steps.gd")
 const TutorialDetectors := preload("res://scripts/tutorial/tutorial_detectors.gd")
 const BuildingReadout := preload("res://scripts/building_readout.gd")
+const BuildForecast := preload("res://scripts/build_forecast.gd")
 const AppPaths := preload("res://scripts/app_paths.gd")  # saves now live in <base>/savegames/
 
 func _ready() -> void:
@@ -101,6 +102,11 @@ func _ready() -> void:
 	_test_market_buy()
 	_test_market_input_pipeline_ignores_reserved_inbound()
 	_test_tax_dividend_caps()
+	_test_tax_free_profit_floor()
+	_test_tutorial_rescue()
+	_test_start_labour_preset()
+	_test_telemetry_schema3_row()
+	_test_build_forecast()
 	_test_purchases()
 	_test_exhausted_input_source_falls_back_to_market()
 	_test_recipes_producing()
@@ -6519,20 +6525,22 @@ func _test_tax_dividend_caps() -> void:
 		and is_equal_approx(MatchState.money, money_before),
 		"loss-making turns do not pay tax or dividends")
 
+	# Profit of 40 is assessed on 20 (40 − the 20 floor): tax 4.0, dividends 20% of the
+	# remaining 16, retained 40 − 4 − 3.2 = 32.8.
 	var profit_summary := {
-		"money_in": 100.0,
+		"money_in": 130.0,
 		"money_out": 90.0,
 		"taxes_paid": 0.0,
 		"dividends_paid": 0.0,
 	}
 	Production._apply_tax_and_dividends(profit_summary)
-	_check(is_equal_approx(float(profit_summary.get("taxes_paid", 0.0)), 2.0)
-		and is_equal_approx(float(profit_summary.get("dividends_paid", 0.0)), 1.6)
-		and is_equal_approx(float(profit_summary.get("money_in", 0.0)) - float(profit_summary.get("money_out", 0.0)), 6.4),
+	_check(is_equal_approx(float(profit_summary.get("taxes_paid", 0.0)), 4.0)
+		and is_equal_approx(float(profit_summary.get("dividends_paid", 0.0)), 3.2)
+		and is_equal_approx(float(profit_summary.get("money_in", 0.0)) - float(profit_summary.get("money_out", 0.0)), 32.8),
 		"tax is capped to profit and dividends are calculated after tax")
 
 	var profit_share_summary := {
-		"money_in": 100.0,
+		"money_in": 130.0,
 		"money_out": 90.0,
 		"taxes_paid": 0.0,
 		"dividends_paid": 0.0,
@@ -6541,10 +6549,227 @@ func _test_tax_dividend_caps() -> void:
 	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
 	var share_pretax: float = Production._apply_tax_and_dividends(profit_share_summary)
 	Production._apply_profit_sharing(profit_share_summary, share_pretax)
-	_check(is_equal_approx(float(profit_share_summary.get("profit_sharing_paid", 0.0)), 0.32)
-		and is_equal_approx(float(profit_share_summary.get("money_in", 0.0)) - float(profit_share_summary.get("money_out", 0.0)), 6.08),
+	_check(is_equal_approx(float(profit_share_summary.get("profit_sharing_paid", 0.0)), 1.64)
+		and is_equal_approx(float(profit_share_summary.get("money_in", 0.0)) - float(profit_share_summary.get("money_out", 0.0)), 31.16),
 		"profit sharing is paid from post-tax, post-dividend profit")
 	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, false)
+
+func _test_build_forecast() -> void:
+	# The construct panel's trajectory preview. Guards the SHAPE of the projection: flat
+	# while building, a dip once it starts buying inputs before the first sale settles,
+	# then the steady margin. See docs/early-game-onboarding-spec.md §5.1.
+	MatchState.reset()
+	# MarketState seeds prices a frame after _ready. Without this every good prices at £1 and
+	# the forecast measures nothing real — it cost a confusing "pig iron always loses" reading
+	# while building this.
+	MarketState._init_prices_from_catalog()
+	var smelter: Dictionary = BuildForecast.project("b_002", "r_005", "tile_5_10")
+	var points: Array = smelter.get("points", [])
+	_check(points.size() == BuildForecast.WINDOW_TURNS,
+		"forecast: projects %d turns" % BuildForecast.WINDOW_TURNS)
+
+	var build_turns: int = int(smelter.get("build_turns", 0))
+	var flat_while_building := true
+	for i in range(mini(build_turns, points.size())):
+		if not is_equal_approx(float(points[i]), 0.0):
+			flat_while_building = false
+	_check(flat_while_building, "forecast: construction turns cost nothing per turn")
+
+	# The dip is the point of the whole chart: costs land before the first sale settles, so
+	# the first producing turn must be negative whenever revenue is delayed.
+	var sale_delay: int = int(smelter.get("sale_delay", 1))
+	if build_turns < points.size() and sale_delay > 0:
+		_check(float(points[build_turns]) < 0.0,
+			"forecast: the first producing turn is a loss (inputs bought before revenue lands)")
+
+	# Steady margin agrees with the last point once revenue is flowing.
+	if points.size() > build_turns + sale_delay:
+		_check(is_equal_approx(float(points[points.size() - 1]), float(smelter.get("steady_net", 0.0))),
+			"forecast: the tail equals the steady-state margin")
+
+	# Sanity against the live catalog: the two starting metal_magnate recipes are profitable
+	# at market prices, so the panel cannot be telling players their opening chain loses money.
+	_check(float(smelter.get("steady_net", 0.0)) > 0.0,
+		"forecast: pig iron smelting projects a positive steady margin (%.2f)"
+			% float(smelter.get("steady_net", 0.0)))
+	var mine: Dictionary = BuildForecast.project("b_001", "r_001", "tile_6_8")
+	_check(float(mine.get("steady_net", 0.0)) > 0.0 and int(mine.get("first_profit", -1)) >= 0,
+		"forecast: coal mining projects a positive steady margin and a profit turn")
+
+	# An unknown building or recipe returns an empty, non-crashing projection.
+	var junk: Dictionary = BuildForecast.project("b_nope", "r_nope", "tile_5_10")
+	_check((junk.get("points", []) as Array).is_empty(),
+		"forecast: unknown building/recipe yields no projection instead of crashing")
+
+func _test_telemetry_schema3_row() -> void:
+	# Schema 3 adds the diagnosis fields the first playtest wanted and could not answer:
+	# what the player owned, why each building was or wasn't running, and where the money
+	# went. See docs/early-game-onboarding-spec.md §7.
+	MatchState.reset()
+	MatchState.scenario_name = "metal_magnate"
+	Production.last_turn_run.clear()
+	Production.missing_by_building.clear()
+	Production.blocked_reason_by_building.clear()
+	MatchState.buildings["inst_tel_run"] = {
+		"instance_id": "inst_tel_run", "building_id": "b_001",
+		"recipe_id": "r_001", "tile_id": "tile_3_3", "level": 2,
+	}
+	MatchState.buildings["inst_tel_dark"] = {
+		"instance_id": "inst_tel_dark", "building_id": "b_002",
+		"recipe_id": "r_005", "tile_id": "tile_3_4", "level": 1,
+	}
+	Production.last_turn_run["inst_tel_run"] = true
+	Production.missing_by_building["inst_tel_dark"] = [
+		{"good_id": "power", "internal_name": "power", "need": 40, "have": 0}]
+
+	var summary := {
+		"money_in": 500.0, "money_out": 300.0,
+		"goods_sales_revenue": 500.0, "power_sales_revenue": 0.0,
+		"goods_purchased_cost": 120.0, "labour_paid": 40.0, "maintenance_paid": 22.0,
+		"taxes_paid": 8.0, "produced": {}, "power_supply": 600, "power_demand": 200,
+	}
+	var row: Dictionary = TelemetryState._build_row(summary)
+
+	var roster: Array = row.get("buildings_list", [])
+	var states: Array = row.get("building_states", [])
+	_check(roster.size() == 2 and states.size() == roster.size()
+		and int(row.get("buildings", 0)) == roster.size(),
+		"schema 3: roster and states are index-aligned and match the building count")
+	var idx_run: int = roster.find("mine(l2)")
+	_check(idx_run >= 0, "schema 3: roster names buildings as internal_name(level)")
+	_check(idx_run >= 0 and str(states[idx_run]) == "running",
+		"schema 3: a building that ran reports running")
+	var idx_dark: int = roster.find("smelter(l1)") if roster.find("smelter(l1)") >= 0 else (1 - idx_run)
+	_check(str(states[idx_dark]) == "no_power",
+		"schema 3: a building missing power reports no_power, not a generic stall")
+
+	var costs: Dictionary = row.get("costs", {})
+	_check(is_equal_approx(float(costs.get("inputs", 0.0)), 120.0)
+		and is_equal_approx(float(costs.get("labour", 0.0)), 40.0)
+		and is_equal_approx(float(costs.get("tax", 0.0)), 8.0),
+		"schema 3: the cost breakdown carries the money_out components")
+	var costs_total: float = 0.0
+	for k in costs:
+		costs_total += float(costs[k])
+	_check(costs_total <= float(summary.get("money_out", 0.0)) + 0.01,
+		"schema 3: the cost breakdown sums into money_out (never on top of it)")
+
+	MatchState.buildings.erase("inst_tel_run")
+	MatchState.buildings.erase("inst_tel_dark")
+	Production.last_turn_run.clear()
+	Production.missing_by_building.clear()
+
+func _test_start_labour_preset() -> void:
+	# A start config may ship with a work-effort policy already chosen. metal_magnate (the
+	# easy start) opens on 1.2x overtime with its output momentum already at the cap, so it
+	# reads as an inherited going concern. See docs/early-game-onboarding-spec.md §5.5.
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/metal_magnate.json"))
+	_check(parsed is Dictionary, "metal_magnate start config parses")
+	var expanded: Dictionary = SaveLoad.expand_start_config(parsed as Dictionary)
+	var match_block: Dictionary = expanded.get("match", {})
+	_check(is_equal_approx(float(match_block.get("labour_multiplier", 0.0)), EconomyConfig.LABOUR_MULTIPLIER_MAX)
+		and is_equal_approx(float(match_block.get("labour_output_pressure_pct", -1.0)),
+			EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
+		"metal_magnate starts on 1.2x work effort with output momentum at the cap")
+
+	# Every other start is untouched: default effort, no accrued momentum.
+	var plain: Dictionary = SaveLoad.expand_start_config({"name": "plain", "money": 100})
+	var plain_match: Dictionary = plain.get("match", {})
+	_check(is_equal_approx(float(plain_match.get("labour_multiplier", 0.0)), EconomyConfig.LABOUR_MULTIPLIER_DEFAULT)
+		and is_equal_approx(float(plain_match.get("labour_output_pressure_pct", -1.0)), 0.0),
+		"starts without a labour block keep the default work effort")
+
+	# Authored values are clamped to the configured range, not trusted.
+	var wild: Dictionary = SaveLoad.expand_start_config({
+		"name": "wild", "labour": {"multiplier": 99.0, "output_pressure_pct": 999.0}})
+	var wild_match: Dictionary = wild.get("match", {})
+	_check(is_equal_approx(float(wild_match.get("labour_multiplier", 0.0)), EconomyConfig.LABOUR_MULTIPLIER_MAX)
+		and is_equal_approx(float(wild_match.get("labour_output_pressure_pct", 0.0)),
+			EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
+		"start labour values are clamped to the configured range")
+
+func _test_tutorial_rescue() -> void:
+	# Tutorial matches top a negative balance back up to £2500, three times, then stop.
+	# See docs/early-game-onboarding-spec.md §3.
+	MatchState.reset()
+	MatchState.ruleset = {"name": "tutorial", "tutorial_enabled": true}
+	SolvencyState.reset()
+
+	MatchState.money = -50.0
+	SolvencyState._on_turn_resolution_completed()
+	_check(is_equal_approx(MatchState.money, SolvencyState.TUTORIAL_RESCUE_CASH)
+		and SolvencyState.tutorial_rescues() == 1,
+		"first tutorial rescue tops the balance back up to £%.0f" % SolvencyState.TUTORIAL_RESCUE_CASH)
+
+	for _i in range(SolvencyState.TUTORIAL_RESCUE_LIMIT - 1):
+		MatchState.money = -50.0
+		SolvencyState._on_turn_resolution_completed()
+	_check(SolvencyState.tutorial_rescues() == SolvencyState.TUTORIAL_RESCUE_LIMIT
+		and is_equal_approx(MatchState.money, SolvencyState.TUTORIAL_RESCUE_CASH),
+		"the tutorial rescues %d times in total" % SolvencyState.TUTORIAL_RESCUE_LIMIT)
+
+	# Past the limit the kindness stops and the balance is allowed to stand red.
+	MatchState.money = -50.0
+	SolvencyState._on_turn_resolution_completed()
+	_check(is_equal_approx(MatchState.money, -50.0)
+		and SolvencyState.tutorial_rescues() == SolvencyState.TUTORIAL_RESCUE_LIMIT,
+		"after the last rescue a negative tutorial balance stands")
+
+	# The rescue counter rides the save so reloading cannot refill the allowance.
+	var saved: Dictionary = SolvencyState.export_state()
+	SolvencyState.reset()
+	SolvencyState.import_state(saved)
+	_check(SolvencyState.tutorial_rescues() == SolvencyState.TUTORIAL_RESCUE_LIMIT,
+		"the tutorial rescue count survives save/load")
+
+	# A normal match is never rescued, whatever the balance.
+	MatchState.reset()
+	MatchState.money = -50.0
+	SolvencyState._on_turn_resolution_completed()
+	_check(is_equal_approx(MatchState.money, -50.0) and SolvencyState.tutorial_rescues() == 0,
+		"non-tutorial matches are never rescued")
+
+func _test_tax_free_profit_floor() -> void:
+	# The first TAX_FREE_PROFIT_FLOOR of each turn's profit is assessed at nothing, for
+	# tax AND dividends. See docs/early-game-onboarding-spec.md §4.3.
+	MatchState.reset()
+	MatchState.money = 1000.0
+	var floor_value: float = EconomyConfig.TAX_FREE_PROFIT_FLOOR
+
+	# Profit strictly inside the floor: nothing is taken at all.
+	var inside := {
+		"money_in": floor_value - 5.0, "money_out": 0.0,
+		"taxes_paid": 0.0, "dividends_paid": 0.0,
+	}
+	var money_before := MatchState.money
+	Production._apply_tax_and_dividends(inside)
+	_check(is_equal_approx(float(inside.get("taxes_paid", -1.0)), 0.0)
+		and is_equal_approx(float(inside.get("dividends_paid", -1.0)), 0.0)
+		and is_equal_approx(MatchState.money, money_before),
+		"profit inside the tax-free floor pays neither tax nor dividends")
+
+	# Exactly at the floor: still nothing (the floor is inclusive).
+	var at_floor := {
+		"money_in": floor_value, "money_out": 0.0,
+		"taxes_paid": 0.0, "dividends_paid": 0.0,
+	}
+	Production._apply_tax_and_dividends(at_floor)
+	_check(is_equal_approx(float(at_floor.get("taxes_paid", -1.0)), 0.0)
+		and is_equal_approx(float(at_floor.get("dividends_paid", -1.0)), 0.0),
+		"profit exactly at the tax-free floor pays nothing")
+
+	# Above the floor: only the excess is assessed, so the relief is marginal, not a cliff.
+	var above := {
+		"money_in": floor_value + 100.0, "money_out": 0.0,
+		"taxes_paid": 0.0, "dividends_paid": 0.0,
+	}
+	Production._apply_tax_and_dividends(above)
+	var expected_tax: float = 100.0 * EconomyConfig.TAX_RATE
+	var expected_div: float = (100.0 - expected_tax) * EconomyConfig.DIVIDEND_RATE
+	_check(is_equal_approx(float(above.get("taxes_paid", 0.0)), expected_tax)
+		and is_equal_approx(float(above.get("dividends_paid", 0.0)), expected_div),
+		"above the floor only the excess profit is assessed (tax %.2f, dividends %.2f)"
+			% [expected_tax, expected_div])
 
 func _test_output_conservation() -> void:
 	# Default (STOCKPILE_ALL): a building's output should land in its own tile's stockpile.
