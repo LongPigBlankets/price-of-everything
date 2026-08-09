@@ -6764,9 +6764,11 @@ func _test_founder_advisor() -> void:
 	MatchState.permanent_advisor_ids = ["vera"]
 	_check(not MatchState.assign_advisor_to_seat("vp_logistics", "vera"),
 		"seats: a closed post refuses an appointment")
-	MatchState.all_seats_unlocked = true
+	MatchState.grant_unlock(MatchState.SEATS_UNLOCK_TITLE)
+	_check(MatchState.all_seats_unlocked,
+		"seats: %s opens the rest of the council" % MatchState.SEATS_UNLOCK_TITLE)
 	_check(MatchState.assign_advisor_to_seat("vp_logistics", "vera"),
-		"seats: the research unlock opens the rest of the council")
+		"seats: a closed post accepts an appointment once unlocked")
 
 	# Andrew joins pro bono, holds his post for the tenure, and cannot be displaced.
 	MatchState.reset()

@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://cpffgy328gm1o"
+
+[deps]
+
+files=["res://tools/tutorial_strings.file.translation", "res://tools/tutorial_strings.line.translation", "res://tools/tutorial_strings.step.translation", "res://tools/tutorial_strings.chapter.translation", "res://tools/tutorial_strings.field.translation", "res://tools/tutorial_strings.active.translation", "res://tools/tutorial_strings.format.translation", "res://tools/tutorial_strings.text.translation"]
+
+source_file="res://tools/tutorial_strings.csv"
+dest_files=["res://tools/tutorial_strings.file.translation", "res://tools/tutorial_strings.line.translation", "res://tools/tutorial_strings.step.translation", "res://tools/tutorial_strings.chapter.translation", "res://tools/tutorial_strings.field.translation", "res://tools/tutorial_strings.active.translation", "res://tools/tutorial_strings.format.translation", "res://tools/tutorial_strings.text.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

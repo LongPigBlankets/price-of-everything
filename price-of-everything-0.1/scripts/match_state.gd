@@ -88,6 +88,8 @@ var advisor_seats: Dictionary = {}          # seat_id -> advisor_id
 const STARTING_SEATS: Array[String] = ["cfo", "coo"]
 const FOUNDER_ADVISOR_ID := "andrew"
 const FOUNDER_TENURE_TURNS := 30
+## The research title that opens the rest of the council (data/research_unlocks.csv).
+const SEATS_UNLOCK_TITLE := "Executive Search"
 var all_seats_unlocked: bool = false        # set by the people/labour research node
 var founder_seat: String = ""               # which post Andrew took, "" if he never joined
 var founder_leaves_turn: int = 0            # tenure end; he cannot be dismissed before it
@@ -1894,6 +1896,11 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 	if title == "" or unlocked_titles.has(title):
 		return
 	unlocked_titles[title] = true
+	# Opening the rest of the council is not a modifier, so it is applied here rather than
+	# through apply_unlock_modifier. See docs/early-game-onboarding-spec.md §5.4.
+	if title == SEATS_UNLOCK_TITLE:
+		all_seats_unlocked = true
+		advisors_changed.emit()
 	_surveyable_dirty = true  # e.g. Geoscanning changes survey range
 	flag_agenda_event(AGENDA_TECH_UNLOCK)
 	# Apply any standing modifier this unlock grants NOW, not only via the signal

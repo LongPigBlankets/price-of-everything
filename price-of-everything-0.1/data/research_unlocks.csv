@@ -65,6 +65,7 @@ research_people_007,People Management,research_people_006,,,,II,Build,any,12,uni
 research_people_008,People Management,,,,,II,Build,any,15,units,Third Advisor Seat,team,Unlocks a 3rd advisor seat once you own 15 buildings.
 research_people_009,People Management,,,,,III,Build,any,100,units,Fourth Advisor Seat,team,Unlocks a 4th advisor seat once you own 100 buildings.
 research_people_010,People Management,,,,,III,Sustain,1000+ profit/turn,3,turns,Fifth Advisor Seat,team,Unlocks a 5th advisor seat after 3 turns above 1000 profit/turn.
+research_people_011,People Management,research_people_002,,,,II,Run Profitable,any,5,10 turns,Executive Search,search,Opens the remaining advisor posts for hire.
 research_mining_006,Mining and Surveying,,,,,I,Run Profitable,mine,3,buildings,Mining Mastery,+5%,Increases output of all mines by 5% for 30 turns.
 research_mining_007,Mining and Surveying,research_mining_004,,,,II,Produce,ree_ore,500,units,Rare Vein Prospecting,rare,Increases rare earth and alloy ore mining output by 15% permanently.
 research_mfg_006,Manufacturing,research_mfg_005,,,,II,Run L1,industrial_factory,3,20 turns,Conveyor Mass Assembly,level2,Unlocks upgrading Industrial Goods Factory to Level 2 for more output.
