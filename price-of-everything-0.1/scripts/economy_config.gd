@@ -145,9 +145,24 @@ func units_cap_for_impact(max_pct: int) -> int:
 # A subscription gives a good the one-turn sea link. The charge itself is only paid when
 # that good ships. Insurance uses the market BUY price for both imports and exports.
 const SEAPORT_SUBSCRIPTION_COST_PER_GOOD: float = 0.0 # Legacy standing fee; retained for saves.
-const SEAPORT_BASE_FEE_PER_GOOD: float = 5.0
-const SEAPORT_INSURANCE_RATE: float = 0.0005 # 0.05% of market buy value.
-const OWNED_SEAPORT_INSURANCE_RATE: float = 0.00025 # 0.025%; owned ports have no base fee.
+# Port charging is AD VALOREM ONLY (owner ruling 2026-08-09). The flat per-good fee is
+# retired: it was charged once per GOOD per turn, so quantity shipped was effectively free,
+# and freight collapsed from 11.3% of revenue to 0.3% as an empire grew. An ad valorem scales
+# with what actually moves, and is glut-immune — charge and revenue fall together, so the
+# RATIO holds when prices drop. Measured against a real run, this regime cuts port charges 65%
+# in the learning window (t1-30) and raises them 14% afterwards.
+# See docs/early-game-onboarding-spec.md §4.2b and tools/transport_bands.py.
+const SEAPORT_BASE_FEE_PER_GOOD: float = 0.0
+const SEAPORT_AD_VALOREM_EARLY: float = 0.005   # t1-30: learning window
+const SEAPORT_AD_VALOREM_LATE: float = 0.03     # t31+: the squeeze
+const SEAPORT_AD_VALOREM_STEP_TURN: int = 31
+const OWNED_SEAPORT_AD_VALOREM_SHARE: float = 0.5  # owning the port halves it, as before
+const SEAPORT_INSURANCE_RATE: float = 0.0005 # Legacy; superseded by the schedule above.
+const OWNED_SEAPORT_INSURANCE_RATE: float = 0.00025 # Legacy; superseded.
+
+## The ad valorem charged on value crossing a port this turn, before modifiers.
+func seaport_ad_valorem_rate(turn: int) -> float:
+	return SEAPORT_AD_VALOREM_EARLY if turn < SEAPORT_AD_VALOREM_STEP_TURN else SEAPORT_AD_VALOREM_LATE
 const SEAPORT_FEE_GROWTH_PER_TURN: float = 0.001 # Both components rise 0.1% per turn.
 const SEAPORT_THROUGHPUT_STANDARD: int = 1500
 const SEAPORT_THROUGHPUT_RESTRICTED: int = 300

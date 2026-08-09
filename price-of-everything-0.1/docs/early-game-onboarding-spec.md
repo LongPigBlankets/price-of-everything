@@ -31,8 +31,10 @@ fees are regressive — every flat midgame brake doubles as an early-game hammer
 
 1. **Kindness must dilute with scale** (grace windows, tax floors, starter kits, tabs).
 2. **Brakes must engage with scale.** No new flat costs, ever.
-3. **The anti-raw lever rotates by era**: t1–30 nothing (learning) → t33–110 port flat
-   fee (climb-the-chain squeeze) → t110+ depletion + carbon levy.
+3. **The anti-raw lever rotates by era**: t1-30 cheap (learning) → t31+ the ad valorem
+   six-folds (climb-the-chain squeeze) → t110+ depletion + carbon levy. NOTE: with the flat
+   per-good fee retired (§4.2b), the t33-110 flat-fee squeeze no longer exists — the tri-window
+   raw-only probe (§8.1) must confirm the ad valorem step carries that job alone.
 4. **Costs stay legible.** Deferred or auto-financed costs keep a visible panel row.
 5. **Cap the cost of mistakes; do not raise the reward of success.**
 
@@ -68,7 +70,12 @@ Tutorial runs only (`ruleset.tutorial_enabled`).
 - ~t28 bell notice: *"Your father's long-term contracts expire. From turn 31, the
   markets float."*
 
-### 4.2 Port fee era, t33–110 — **LOCKED**
+### 4.2 Port fee era, t33–110 — **SUPERSEDED by §4.2b (2026-08-09)**
+
+*The flat per-good fee is retired entirely; there is no t33 introduction and no t110 removal.
+Kept below only as the record of what was replaced and why.*
+
+### ~~4.2 (historic)~~ Port fee era, t33–110
 
 - **t1–32:** no flat seaport fee; ad valorem insurance only (0.05% / owned 0.025%).
 - **t33** *(tied to the advisor: Andrew's 30-turn tenure from t3 ends here, §5.4)*:
@@ -89,50 +96,51 @@ quantity is effectively free. That is the defect; the rates were never the probl
 
 **Target shape (owner):** early 7-8%, mid 4-5%, late 2-3% fully teched.
 
-**The fix — ad valorem on value, charged on both legs:**
+**The fix — ad valorem only, charged on both legs. BUILT 2026-08-09.**
 
 | | rate |
 |---|---|
-| t1-59 | **2.5%** of shipped value |
-| t60+ | **5.0%** |
-| research relief | **3 × 1 percentage point** → 2.0% fully teched |
-| flat per-good port fee | **waived until t33**, then active (ties to Andrew's departure, §5.4) |
+| t1-30 | **0.5%** of shipped value (learning window) |
+| t31+ | **3.0%** |
+| owned port | **half** the scheduled rate (unchanged behaviour) |
+| research relief | **relative** cuts, ≈ −10% / −10% / −20% → ~1.94% fully teched |
+| flat per-good port fee | **retired entirely** (`SEAPORT_BASE_FEE_PER_GOOD` 5.0 → 0.0) |
 
-Replaces `SEAPORT_INSURANCE_RATE` (today 0.05% — a 50× move, rule-7 flagged).
+Supersedes the earlier 2.5%/5%-plus-flat-fee design, which **testing rejected**: replayed
+against the delivered tutorial run it made every band worse (13.3% → 16.1% of revenue,
+−£380 over 49 turns) and, combined with rail, cancelled the rail saving almost exactly
+(checkpoints landing at −0.11 and −0.06). It was priced for the late-game integrated empire,
+not for anyone still learning. The regime here cuts port charges **65% in t1-30** and raises
+them **14% after**, and is the first version that improves the early game rather than taxing it.
 
-**Why these numbers.** Charged on imports AND exports, so burden = rate × (1 + imports/exports).
-Value-adding shrinks the import ratio, driving the burden DOWN TO the rate but **never below it —
-the rate is a floor, not a ceiling.** Modelled: at a 5% headline even a 20× value-add chain pays
-5.2%, and with only 2pp of relief it pays 3.1% — missing the 2-3% target structurally, not by
-tuning. Hence 3pp. Verified against both playstyles:
+Research relief must be RELATIVE, not percentage points: against a 3% base, three −1pp nodes
+would give 0.8% — back under target, recreating the collapse this replaces.
 
-| ad valorem | integrated late game | market-dependent chain |
-|---|---|---|
-| 2.0% | 2.2% | 15.4% |
-| 2.5% | 2.7% | 16.3% |
-| 5.0% | 5.2% | 20.6% |
-
-Glut-immune by construction: charge and revenue move together, so the RATIO holds when prices
-fall — unlike today's mostly-flat charge, which grows relatively heavier exactly when a player
-floods a market.
+**Why an ad valorem at all.** Charged on imports AND exports, so burden = rate × (1 +
+imports/exports). Value-adding shrinks the import ratio, driving the burden DOWN TO the rate but
+**never below it — the rate is a floor, not a ceiling.** That is the property that stops freight
+collapsing to nothing however integrated a player becomes. Glut-immune by construction: charge
+and revenue move together, so the RATIO holds when prices fall — unlike the retired flat charge,
+which grew relatively heavier exactly when a player flooded a market.
 
 **Research relief — one linear shipping line in Logistics — LOCKED 2026-08-09.**
-SU1 → SU2 → SU3, tiers I / II / III. Fully teched at t60+: `(5% − 1pp − 1pp) × 0.8` = **2.4%**,
-inside the 2-3% band.
+SU1 → SU2 → SU3, tiers I / II / III. Relief is **RELATIVE** (see §4.2b): against the 3% base,
+`3% × 0.9 × 0.9 × 0.8` ≈ **1.94%** fully teched. Percentage-point cuts are wrong here — three
+−1pp nodes against 3% would give 0.8%, recreating the collapse.
 
 | | node | tier | condition | effect |
 |---|---|---|---|---|
-| SU1 | **Groupage Contracts** (NEW) | I | import + export ≥5,000 units across ≥15 goods | −1pp ad valorem |
-| SU2 | **Multimodal Containerized Freight** (`research_logi_002`, repurposed) | II | export ≥500 units through **each** port | −1pp ad valorem |
+| SU1 | **Groupage Contracts** (NEW) | I | import + export ≥5,000 units across ≥15 goods | **−10% relative** |
+| SU2 | **Multimodal Containerized Freight** (`research_logi_002`, repurposed) | II | export ≥500 units through **each** port | **−10% relative** |
 | SU3 | **Port Network Acquisition** (`research_logi_010`, repurposed) | III | own a port at level 2 | **−20% relative** |
 
-Plus **Depot Scheduling** (`research_logi_001`) re-pointed: it now reduces the **flat per-turn
-port fee by 50%** and no longer touches ad valorem. Since Multimodal moves off that domain, it
-becomes the ONLY flat-fee reducer — the −50%/−50% pair that would have summed to −100% (pcts
-SUM in `Modifiers.apply`, they do not compound) is resolved by construction.
+**Depot Scheduling (`research_logi_001`) now has nothing to reduce — OPEN (§9.8).** It was
+re-pointed onto the flat per-turn fee, which §4.2b then retired, so it would cut a charge that
+is permanently zero. It needs a new effect (throughput, land freight, or a share of the ad
+valorem) before the shipping line ships.
 
-After this change the ad valorem is touched by exactly SU1/SU2/SU3 and nothing else, and the
-flat fee by exactly Depot Scheduling. No accidental stacking remains.
+Otherwise the ad valorem is touched by exactly SU1/SU2/SU3 and nothing else. No accidental
+stacking remains.
 
 Import = bought from the global market via a port; export = sold to it. Inter-port shipping does
 not count. SU1 carries the hover: *"Importing means buying from the global market via a port;
@@ -151,13 +159,31 @@ equipment, 5 computers, 100 steel, 200 concrete, £1,000. Ports are ordinary bui
 whose instances already carry `level`, so this rides existing upgrade machinery; only the fixed
 material cost and the button are new.
 
-**Pre-t60 consequence (accepted):** the same three unlocks against the 2.5% base give
-`(2.5 − 2) × 0.8` = **0.4%**. Near-free freight until the rate doubles at t60 — a reward for an
-achievement the owner rates as very hard, with a sharp lesson attached at t60.
+**Rail is the biggest early lever, and the tutorial never teaches it.** Land freight is 74% of
+transport spend (measured); rail is a flat 0.5x multiplier on it. Replayed on the tutorial run,
+GBP140 of rail (b_019, GBP70/tile, no materials, 1 turn) funded by a loan repaying GBP4.28/turn
+saves GBP14.27/turn — retained profit +GBP458 over 49 turns, and the first sale flips from
+-6.98 to +0.54. Under regime B **plus** rail the chain reads correctly at every step:
 
-**Re-parenting fallout (§9.7):** `research_logi_003` (Route Optimization, road throughput) and
-`research_logi_009` (Smart Shipping Contracts) both currently list `research_logi_002` as
-prereq, and PNA currently hangs off `logi_009`, not `logi_002`.
+| checkpoint | today | B + rail (after tax) |
+|---|---|---|
+| factory alone (`r_056`, buys glass + aluminium) | -2.45 | **+8.26** |
+| + furnace, industrial glass (`r_053`) | 4.71 | **+22.90** |
+| + furnace, high-strength glass (`r_054`) | 8.50 | **+26.22** |
+| + chem plant + 2nd furnace | 41.84 | **+50.76** |
+
+Monotonic: every step up the chain pays more, and high-strength beats industrial by
+GBP5.19/turn. **No recipe change needed.** Do NOT "fix" `r_053`'s energy (140 for 32 glass vs
+`r_054`'s 140 for 48 — 50% more per unit): that asymmetry is exactly what makes high-strength
+the better choice, and making it proportional would invert the intended ordering. Furnace ->
+factory freight is a non-issue: `GLASS_TILE := WINDOW_TILE`, so glass moves intra-tile free.
+
+*(An earlier reading of these checkpoints showed integration making the player poorer. That was
+an artifact of comparing turns carrying advisor fees and loan interest against one that carried
+neither; like-for-like the chain was always healthy.)*
+
+**Pre-t31 note:** relief landing before the step means near-free freight until t31, then the
+rate multiplies six-fold. Accepted as a reward with a sharp lesson attached.
 
 ### 4.3 Tax & dividend floor — **LOCKED**
 
@@ -387,6 +413,13 @@ and the 50k-char cell cap (assert at 500+ buildings).
 6. **PNA's prereq must move.** It currently hangs off `research_logi_009`, not `logi_002`. The
    ruling is SU2 → SU3, so PNA re-parents to `logi_002` and `logi_009` becomes a leaf. Confirm
    that logi_009 stays in the tree as a dead-end rather than being folded in.
+8. **Depot Scheduling now reduces a fee that no longer exists.** It was re-pointed onto the flat
+   per-good port fee, which §4.2b retires (`SEAPORT_BASE_FEE_PER_GOOD` = 0.0). Give it a new
+   effect — port throughput, land freight, or a relative share of the ad valorem — or retire the
+   node. Blocks the shipping line.
+9. **The anti-raw lever lost its era.** The t33-110 flat fee was the climb-the-chain squeeze;
+   with it gone, the t31 ad valorem step (0.5% → 3%) has to carry that job alone. §8.1's
+   tri-window raw-only probe must verify it does before this is considered settled.
 7. **PNA's condition softens a lot** — from "purchase 4 ports" to "own one port at level 2",
    for a tier-III node. Intended, or should it keep a larger requirement (e.g. own 2 ports, one
    at level 2)?

@@ -75,9 +75,10 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		if not sell_quote.is_empty():
 			outbound_freight = float(sell_quote.get("transport_cost", 0.0))
 			sale_delay = maxi(1, int(sell_quote.get("turns", 1)))
-			# The seaport charges per good moved, per turn, so a multi-output recipe pays
-			# it once per good. Player-owned ports return 0.
-			port_fee = MatchState.seaport_base_fee(str(sell_quote.get("port", ""))) * float(outputs.size())
+			# Port charging is ad valorem on the value crossing the quay, so it scales with
+			# what the building actually sells and steps up at SEAPORT_AD_VALOREM_STEP_TURN.
+			# Owned ports charge half. (The flat per-good fee is retired — §4.2b.)
+			port_fee = revenue * MatchState.seaport_insurance_rate(str(sell_quote.get("port", "")))
 
 	# --- Inputs: delivered cost (goods + inbound freight), and whether they can arrive ---
 	# An input the player already produces is NOT bought at retail. Charging the market buy

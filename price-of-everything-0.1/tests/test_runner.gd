@@ -103,6 +103,7 @@ func _ready() -> void:
 	_test_market_input_pipeline_ignores_reserved_inbound()
 	_test_tax_dividend_caps()
 	_test_tax_free_profit_floor()
+	_test_port_ad_valorem_schedule()
 	_test_tutorial_rescue()
 	_test_start_labour_preset()
 	_test_telemetry_schema3_row()
@@ -6602,8 +6603,9 @@ func _test_build_forecast() -> void:
 	# outbound haul is covered and free; a tile far from one must show real freight.
 	var breakdown: Dictionary = smelter.get("breakdown", {})
 	_check(float(breakdown.get("warehousing", 0.0)) > 0.0
-		and float(breakdown.get("port_fee", 0.0)) > 0.0,
-		"forecast: storage and port fees are priced in")
+		and is_equal_approx(float(breakdown.get("port_fee", 0.0)),
+			float(breakdown.get("revenue", 0.0)) * EconomyConfig.seaport_ad_valorem_rate(TurnManager.current_turn)),
+		"forecast: storage is priced in and the port charge is ad valorem on what it sells")
 	var remote: Dictionary = BuildForecast.project("b_002", "r_005", "tile_1_1")
 	_check(float((remote.get("breakdown", {}) as Dictionary).get("outbound_freight", 0.0)) > 0.0,
 		"forecast: a tile away from the port pays real outbound freight")
@@ -6745,6 +6747,23 @@ func _test_start_labour_preset() -> void:
 		and is_equal_approx(float(wild_match.get("labour_output_pressure_pct", 0.0)),
 			EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
 		"start labour values are clamped to the configured range")
+
+func _test_port_ad_valorem_schedule() -> void:
+	# Port charging is ad valorem only, on a turn schedule: 0.5% while learning, 3% from t31.
+	# The flat per-good fee is retired — it made quantity free, which is why freight collapsed
+	# to 0.3% of revenue late. See docs/early-game-onboarding-spec.md §4.2b.
+	_check(is_equal_approx(EconomyConfig.SEAPORT_BASE_FEE_PER_GOOD, 0.0),
+		"port: the flat per-good fee is retired")
+	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1), EconomyConfig.SEAPORT_AD_VALOREM_EARLY)
+		and is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(30), EconomyConfig.SEAPORT_AD_VALOREM_EARLY),
+		"port: turns 1-30 charge the learning-window rate (%.1f%%)"
+			% (100.0 * EconomyConfig.SEAPORT_AD_VALOREM_EARLY))
+	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(31), EconomyConfig.SEAPORT_AD_VALOREM_LATE)
+		and is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(200), EconomyConfig.SEAPORT_AD_VALOREM_LATE),
+		"port: turn 31 onwards charges the full rate (%.1f%%)"
+			% (100.0 * EconomyConfig.SEAPORT_AD_VALOREM_LATE))
+	_check(EconomyConfig.SEAPORT_AD_VALOREM_LATE > EconomyConfig.SEAPORT_AD_VALOREM_EARLY,
+		"port: the rate rises rather than falls at the step")
 
 func _test_tutorial_rescue() -> void:
 	# Tutorial matches top a negative balance back up to £2500, three times, then stop.
