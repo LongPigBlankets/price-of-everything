@@ -3043,6 +3043,7 @@ func reset() -> void:
 	freight_credit_units = 0
 	ghost_holdings.clear()
 	building_tabs.clear()
+	construct_credit_default = "ask"
 	max_advisor_slots = MAX_ADVISOR_SLOTS_DEFAULT
 	crossed_milestones.clear()
 	recruited_advisor_ids.clear()
@@ -3154,6 +3155,7 @@ func export_state() -> Dictionary:
 		"freight_credit_units": freight_credit_units,
 		"ghost_holdings": ghost_holdings.duplicate(true),
 		"building_tabs": building_tabs.duplicate(true),
+		"construct_credit_default": construct_credit_default,
 		"max_advisor_slots": max_advisor_slots,
 		"advisor_rng_seed": match_rng_seed,
 		"advisor_rng_state": _match_rng.state,
@@ -3283,6 +3285,7 @@ func import_state(d: Dictionary) -> void:
 	freight_credit_units = int(d.get("freight_credit_units", 0))
 	ghost_holdings = (d.get("ghost_holdings", {}) as Dictionary).duplicate(true)
 	building_tabs = (d.get("building_tabs", {}) as Dictionary).duplicate(true)
+	construct_credit_default = str(d.get("construct_credit_default", "ask"))
 	max_advisor_slots = clampi(int(d.get("max_advisor_slots", MAX_ADVISOR_SLOTS_DEFAULT)), MAX_ADVISOR_SLOTS_DEFAULT, MAX_ADVISOR_SLOTS_CAP)
 	match_rng_seed = int(d.get("advisor_rng_seed", DEFAULT_MATCH_RNG_SEED))
 	_match_rng.seed = match_rng_seed
@@ -5533,6 +5536,16 @@ func advisor_seat_governing_discipline(advisor_id: String, seat_id: String) -> S
 ## one to arrange it, costs simply hit cash as before.
 const TAB_WINDOW_TURNS := 5
 const TAB_SLICES := 12
+## What to do when a build's credit facility comes up: "ask" raises the dialog, the other three
+## answer it silently. Stored beside the other construct-panel defaults.
+const CREDIT_DEFAULT_CHOICES: Array[String] = ["ask", "slices", "loan", "none"]
+var construct_credit_default: String = "ask"
+
+func set_construct_credit_default(value: String) -> void:
+	if not CREDIT_DEFAULT_CHOICES.has(value) or value == construct_credit_default:
+		return
+	construct_credit_default = value
+	construct_settings_changed.emit()
 var building_tabs: Dictionary = {}   # instance_id -> {turns_left, accrued, mode, slices_left}
 
 

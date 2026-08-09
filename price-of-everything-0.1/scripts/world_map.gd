@@ -1662,6 +1662,11 @@ func _show_building_credit_dialog(instance_id: String) -> void:
 		_hud.add_child(_credit_dialog)
 		_credit_dialog.choice_made.connect(func(iid: String, mode: String) -> void:
 			MatchState.set_building_tab_mode(iid, mode))
+	# A standing answer skips the dialog entirely; "ask" is the only mode that interrupts.
+	var preset := MatchState.construct_credit_default
+	if preset != "ask":
+		MatchState.set_building_tab_mode(instance_id, preset)
+		return
 	var building: Dictionary = MatchState.get_building(instance_id)
 	var label := str(Catalog.get_building(str(building.get("building_id", ""))).get("display_name", "this building"))
 	_credit_dialog.open(instance_id, label)

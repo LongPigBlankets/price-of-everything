@@ -715,6 +715,50 @@ func _render_settings() -> void:
 		choice.pressed.connect(_on_material_source_selected.bind(option_id))
 		source_box.add_child(choice)
 
+	# Credit facility default. Greyed out without a CFO: the facility is arranged BY the CFO, so
+	# offering the choice with the seat empty would promise something the sim will refuse.
+	var has_cfo := MatchState.cfo_seated()
+	var credit_card := PanelContainer.new()
+	credit_card.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, NAVY_LINE, 1, 9, 11))
+	_content.add_child(credit_card)
+	var credit_box := VBoxContainer.new()
+	credit_box.add_theme_constant_override("separation", 7)
+	credit_card.add_child(credit_box)
+	var credit_title := Label.new()
+	credit_title.text = "Credit facility for new buildings"
+	credit_title.add_theme_font_size_override("font_size", 14)
+	credit_title.add_theme_color_override("font_color", TEXT if has_cfo else MUTED)
+	credit_box.add_child(credit_title)
+	var credit_note := Label.new()
+	credit_note.text = "A new building's first %d turns of inputs, labour, energy and maintenance can be carried instead of paid." % MatchState.TAB_WINDOW_TURNS
+	credit_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	credit_note.add_theme_font_size_override("font_size", 11)
+	credit_note.add_theme_color_override("font_color", MUTED)
+	credit_box.add_child(credit_note)
+	if not has_cfo:
+		var need_cfo := Label.new()
+		need_cfo.text = "Requires a CFO to enable"
+		need_cfo.add_theme_font_size_override("font_size", 12)
+		need_cfo.add_theme_color_override("font_color", RED)
+		credit_box.add_child(need_cfo)
+	var credit_group := ButtonGroup.new()
+	for option in [
+		{"id": "ask", "title": "Always choose", "detail": "Prompt each time a building is a turn from finishing"},
+		{"id": "slices", "title": "%d turns, no interest" % MatchState.TAB_SLICES, "detail": "Repay in equal interest-free instalments"},
+		{"id": "loan", "title": "Take it as a loan", "detail": "Smaller payments over a full loan term, with interest"},
+		{"id": "none", "title": "Don't use the facility", "detail": "Costs hit cash as they fall"},
+	]:
+		var option_id := str(option.get("id", ""))
+		var selected := MatchState.construct_credit_default == option_id
+		var radio_text := "●" if selected else "○"
+		var choice := _settings_choice_button(
+			"%s  %s\n    %s" % [radio_text, str(option.get("title", "")), str(option.get("detail", ""))],
+			selected, credit_group, true)
+		choice.disabled = not has_cfo
+		if has_cfo:
+			choice.pressed.connect(_on_credit_default_selected.bind(option_id))
+		credit_box.add_child(choice)
+
 	_content.add_child(_settings_toggle_card(
 		"Start at half capacity",
 		"New buildings use half their inputs, power and output for their first successful operating turn. Existing projects are unchanged.",
@@ -801,6 +845,11 @@ func _settings_choice_button(label_text: String, selected: bool, group: ButtonGr
 
 func _on_output_destination_selected(destination: String) -> void:
 	MatchState.set_construct_output_destination(destination)
+
+
+func _on_credit_default_selected(mode: String) -> void:
+	MatchState.set_construct_credit_default(mode)
+	_render()
 
 
 func _on_material_source_selected(source: String) -> void:
