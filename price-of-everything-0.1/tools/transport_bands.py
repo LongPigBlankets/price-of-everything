@@ -27,9 +27,26 @@ import csv
 import os
 import sys
 
-DEFAULT_CSV = os.path.expanduser(
-    "~/Library/Application Support/Godot/app_userdata/Price of Everything 0.1/run_metrics.csv"
-)
+# AppPaths.base_dir() prefers a PROJECT-LOCAL directory when it is writable and only falls back
+# to OS.get_user_data_dir(). Both are checked, newest first — pointing at the user-data copy
+# alone reads a stale file and silently reports numbers from whichever session last ran there,
+# which is exactly the mistake this comment exists to prevent.
+_HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CSV_CANDIDATES = [
+    os.path.join(_HERE, "logs", "run_metrics.csv"),
+    os.path.expanduser(
+        "~/Library/Application Support/Godot/app_userdata/Price of Everything 0.1/run_metrics.csv"),
+]
+
+
+def _default_csv() -> str:
+    found = [p for p in CSV_CANDIDATES if os.path.exists(p)]
+    if not found:
+        return CSV_CANDIDATES[0]
+    return max(found, key=os.path.getmtime)
+
+
+DEFAULT_CSV = _default_csv()
 # (label, lower turn, upper turn, target low %, target high %)
 DEFAULT_TARGETS = [("early", 7.0, 8.0), ("mid", 4.0, 5.0), ("late", 2.0, 3.0)]
 
