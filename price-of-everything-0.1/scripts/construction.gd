@@ -1,4 +1,8 @@
 extends Node
+
+## Raised when a build is one turn out and its operational-loans tab opens — the construct
+## panel listens and shows the choice. Emitted from the sim; the sim never opens a dialog.
+signal building_tab_opened(instance_id: String)
 # Owns construction projects — buildings that are awaiting materials or under construction
 # before they become live entries in MatchState.buildings. Keeping them in a SEPARATE
 # collection (not a status flag on MatchState.buildings) means every operational reader of
@@ -422,6 +426,12 @@ func tick_turn() -> Array:
 		if str(project.get("status", "")) != STATUS_UNDER_CONSTRUCTION:
 			continue
 		project["turns_remaining"] = int(project["turns_remaining"]) - 1
+		# One turn out: its inputs are being ordered and the first money is about to move, so
+		# this is where the operational-loans tab opens (spec §5.3). Needs a seated CFO —
+		# without one there is nobody to arrange it and costs simply hit cash.
+		if int(project["turns_remaining"]) == 1 and MatchState.can_open_building_tab():
+			if MatchState.open_building_tab(str(instance_id)):
+				building_tab_opened.emit(str(instance_id))
 		if int(project["turns_remaining"]) <= 0:
 			completed.append(instance_id)
 	for instance_id in completed:

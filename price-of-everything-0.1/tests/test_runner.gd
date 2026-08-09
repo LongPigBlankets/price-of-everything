@@ -103,6 +103,7 @@ func _ready() -> void:
 	_test_market_input_pipeline_ignores_reserved_inbound()
 	_test_tax_dividend_caps()
 	_test_tax_free_profit_floor()
+	_test_building_operational_tab()
 	_test_idle_labour_pay_policy()
 	_test_purchase_inventory_seed()
 	_test_founder_advisor()
@@ -6751,6 +6752,57 @@ func _test_start_labour_preset() -> void:
 		and is_equal_approx(float(wild_match.get("labour_output_pressure_pct", 0.0)),
 			EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
 		"start labour values are clamped to the configured range")
+
+func _test_building_operational_tab() -> void:
+	# A new build's first turns are carried, not paid (spec §5.3). Exposure is bounded by the
+	# window, which is why the old 1x-capex cap and forced sale are gone.
+	MatchState.reset()
+	MatchState.money = 1000.0
+	_check(not MatchState.can_open_building_tab(),
+		"tab: without a CFO there is nobody to arrange one")
+	_check(not MatchState.open_building_tab("inst_tab"),
+		"tab: no CFO means no tab, and costs simply hit cash")
+
+	MatchState.permanent_advisor_ids = ["vera"]
+	MatchState.assign_advisor_to_seat("cfo", "vera")
+	_check(MatchState.can_open_building_tab(), "tab: a seated CFO can arrange one")
+	_check(MatchState.open_building_tab("inst_tab"), "tab: opens for a new build")
+	_check(not MatchState.open_building_tab("inst_tab"), "tab: never opens twice for one building")
+
+	# Carry five turns of costs, then it settles into interest-free slices.
+	for _i in range(MatchState.TAB_WINDOW_TURNS):
+		_check(is_equal_approx(MatchState.accrue_building_tab("inst_tab", 20.0), 20.0),
+			"tab: a turn inside the window is carried")
+		MatchState.tick_building_tabs()
+	var owed: float = MatchState.building_tab_debt("inst_tab")
+	_check(is_equal_approx(owed, 20.0 * MatchState.TAB_WINDOW_TURNS),
+		"tab: carries exactly %d turns (£%.2f)" % [MatchState.TAB_WINDOW_TURNS, owed])
+	_check(is_equal_approx(MatchState.accrue_building_tab("inst_tab", 20.0), 0.0),
+		"tab: nothing is carried once the window closes")
+
+	# Repayment: equal interest-free slices until it clears.
+	var before: float = MatchState.money
+	MatchState.tick_building_tabs()
+	var paid: float = before - MatchState.money
+	_check(is_equal_approx(paid, owed / float(MatchState.TAB_SLICES)),
+		"tab: repays in %d equal slices (£%.2f each)" % [MatchState.TAB_SLICES, paid])
+	for _i in range(MatchState.TAB_SLICES):
+		MatchState.tick_building_tabs()
+	_check(not MatchState.building_tabs.has("inst_tab") and MatchState.total_building_tab_debt() <= 0.01,
+		"tab: clears once the last slice is paid")
+
+	# The loan route converts instead, and carries interest.
+	MatchState.reset()
+	MatchState.permanent_advisor_ids = ["vera"]
+	MatchState.assign_advisor_to_seat("cfo", "vera")
+	MatchState.open_building_tab("inst_loan", "loan")
+	MatchState.accrue_building_tab("inst_loan", 100.0)
+	var loans_before: float = LoanState.total_outstanding()
+	for _i in range(MatchState.TAB_WINDOW_TURNS):
+		MatchState.tick_building_tabs()
+	_check(LoanState.total_outstanding() > loans_before
+		and not MatchState.building_tabs.has("inst_loan"),
+		"tab: the loan route converts the balance into an ordinary loan")
 
 func _test_idle_labour_pay_policy() -> void:
 	# "Worker pay while not running" keys strictly on producing NOTHING. That is what keeps it

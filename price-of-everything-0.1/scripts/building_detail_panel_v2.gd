@@ -1743,6 +1743,15 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	var warehousing := float(econ.get("warehousing_cost", 0.0))
 	if warehousing > 0.0:
 		vb.add_child(_metric("Warehousing / turn", "−£%.2f" % warehousing, DS.PALETTE["DANGER"], false))
+	# Carried costs and held stock: both are money or goods the player owns but cannot see on
+	# the tile, so they get a line here rather than living only in the sim.
+	var iid_econ := str(_current_building.get("instance_id", ""))
+	var tab_debt := MatchState.building_tab_debt(iid_econ)
+	if tab_debt > 0.0:
+		vb.add_child(_metric("Building debt", "−£%.2f" % tab_debt, DS.PALETTE["WARN"], false))
+	var held := MatchState.ghost_holding_units(iid_econ)
+	if held > 0:
+		vb.add_child(_metric("Stored for this building", "%d units" % held, DS.PALETTE["TEXT_MUTED"], false))
 	# Carbon levy on this recipe's taxed inputs (only shown once the policy is in force).
 	var carbon_tax := float(econ.get("carbon_tax", 0.0))
 	if carbon_tax > 0.0:

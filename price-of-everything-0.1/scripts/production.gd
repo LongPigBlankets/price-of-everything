@@ -530,6 +530,22 @@ func _process_production() -> void:
 		summary.money_out += total_cost
 		_accumulate_by_type(summary.maintenance_by_type, btype, maint)
 		_accumulate_by_type(summary.labour_by_type, btype, labour)
+		# A new build's first turns are CARRIED, not paid: charge as normal above so every
+		# ledger stays honest, then refund onto its tab. Inputs are attributed synthetically
+		# (recipe x market price) because no per-building record of a market buy exists; power
+		# is the grid-imported share of its draw, since own generation costs nothing extra.
+		if MatchState.building_tabs.has(iid_cost):
+			var carried := labour + maint
+			for input in active_recipe.get("inputs", []):
+				var in_gid := str(input.get("good_id", ""))
+				if in_gid != "":
+					carried += float(_scaled_input_qty(input, building)) * MarketState.get_buy_price(in_gid)
+			if not Power.is_supplied(str(building.get("tile_id", "")), 0):
+				carried += float(_effective_energy_req(building, active_recipe)) * EconomyConfig.GRID_BUY_PRICE
+			var refunded := MatchState.accrue_building_tab(iid_cost, carried)
+			if refunded > 0.0:
+				MatchState.add_money(refunded)
+				summary.money_out -= refunded
 		# === LOAN INTEREST PAYMENTS ==+var loan_payment: float = LoanState.process_payments()
 	_apply_advisor_costs(summary)
 	# Warehousing: every stockpiled unit pays a per-turn storage fee by transport
@@ -554,6 +570,7 @@ func _process_production() -> void:
 	TurnProfiler.section_end("maintenance_labour")
 
 	TurnProfiler.section_begin("loan_payments")
+	MatchState.tick_building_tabs()
 	var loan_payment: float = LoanState.process_payments()
 	if loan_payment > 0:
 		summary.interest_paid = loan_payment

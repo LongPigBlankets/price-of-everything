@@ -57,6 +57,7 @@ var _proj_transport_value: Label
 var _goods_purchased_value: Label
 var _proj_goods_purchased_value: Label
 var _warehousing_value: Label
+var _building_tab_value: Label
 var _proj_warehousing_value: Label
 var _profit_sharing_value: Label
 var _proj_profit_sharing_value: Label
@@ -238,6 +239,7 @@ func _ready() -> void:
 	_proj_transport_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Transport")
 	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
 	_proj_goods_purchased_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Goods purchased")
+	_building_tab_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Building operational loans")
 	_warehousing_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Warehousing")
 	_proj_warehousing_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Warehousing")
 	_carbon_tax_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Carbon tax")
@@ -445,6 +447,8 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	_render_transport_breakdown(transport, summary.get("transport_breakdown", {}))
 	_goods_purchased_value.text = "-£%.2f" % goods_purchased
 	_warehousing_value.text = "-£%.2f" % warehousing
+	# Carried, not yet paid — shown as what is owed so deferred money never goes invisible.
+	_building_tab_value.text = "-£%.2f" % MatchState.total_building_tab_debt()
 	_carbon_tax_value.text = "-£%.2f" % carbon_tax
 	_green_subsidy_value.text = "+£%.2f" % green_subsidy
 	total_costs_value.text = "-£%.2f" % total_costs
