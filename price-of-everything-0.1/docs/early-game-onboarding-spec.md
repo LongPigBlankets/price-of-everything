@@ -328,10 +328,16 @@ slices CFO-gated · kit at exact market value, no premium · rescue always to £
 
 ## 11. Implementation phases (v2 — advisors moved ahead of the tab, which is CFO-gated)
 
-- **P1 — self-contained, no balance constants**: tutorial rescue (+`rescues`), build
-  preview + trajectory chart (§5.1 colours), tax/dividend floor, magnate **1.2×
-  labour pre-set only** (the §5.6 policy doesn't exist yet), telemetry schema 3
-  **including the `costs` breakdown**.
+- **P1 — BUILT 2026-08-09**, branch `easier-onboarding-and-mandatory-advisor`
+  (6 commits off origin/main). Tutorial rescue (+`rescues`), build preview +
+  trajectory chart, tax/dividend floor, magnate 1.2× labour pre-set, telemetry
+  schema 3 incl. the `costs` breakdown. Unit suite 1929 pass / 0 fail (+13 new
+  asserts, incl. the project's first telemetry coverage); e2e 748 pass / 0 fail,
+  revenue and building count identical to baseline, post-tax profit +£4.95/turn
+  from the floor. UI verified: `res://construct_forecast_shot.png`.
+  Notes for later phases: `MarketState` seeds prices one frame after `_ready`, so
+  any harness projecting earlier prices every good at £1; new scripts use `preload`
+  consts, not `class_name` (unregistered in headless runs).
 - **P2 — advisors**: CFO/COO-only seats, the t3 Andrew Keeler event (accordion UI,
   verbatim line), unfireable 30-turn tenure, signing gifts (5%/48t loan · 500-unit
   freight credit), farewell at t33, seat-unlock research node (research-standard
