@@ -79,6 +79,62 @@ Tutorial runs only (`ruleset.tutorial_enabled`).
   anti-raw job from here (§8 verifies, not assumes).
 - Fee keeps its `Modifiers` wrap (`port_per_turn_fee`).
 
+### 4.2b Freight economics — **LOCKED 2026-08-09** (rates), two conflicts open (§9)
+
+Measured first (`tools/transport_bands.py`, built for this): transport as a share of revenue is
+**1.6% → 0.7% → 0.2%** across t1-30 / t31-100 / t101+ for an integrated build, but **13.3%**
+throughout for a distributed one and **49%** worst case. The dispersion is across PLAYSTYLE, not
+across time — the seaport fee is charged per GOOD per turn while revenue scales with VOLUME, so
+quantity is effectively free. That is the defect; the rates were never the problem.
+
+**Target shape (owner):** early 7-8%, mid 4-5%, late 2-3% fully teched.
+
+**The fix — ad valorem on value, charged on both legs:**
+
+| | rate |
+|---|---|
+| t1-59 | **2.5%** of shipped value |
+| t60+ | **5.0%** |
+| research relief | **3 × 1 percentage point** → 2.0% fully teched |
+| flat per-good port fee | **waived until t33**, then active (ties to Andrew's departure, §5.4) |
+
+Replaces `SEAPORT_INSURANCE_RATE` (today 0.05% — a 50× move, rule-7 flagged).
+
+**Why these numbers.** Charged on imports AND exports, so burden = rate × (1 + imports/exports).
+Value-adding shrinks the import ratio, driving the burden DOWN TO the rate but **never below it —
+the rate is a floor, not a ceiling.** Modelled: at a 5% headline even a 20× value-add chain pays
+5.2%, and with only 2pp of relief it pays 3.1% — missing the 2-3% target structurally, not by
+tuning. Hence 3pp. Verified against both playstyles:
+
+| ad valorem | integrated late game | market-dependent chain |
+|---|---|---|
+| 2.0% | 2.2% | 15.4% |
+| 2.5% | 2.7% | 16.3% |
+| 5.0% | 5.2% | 20.6% |
+
+Glut-immune by construction: charge and revenue move together, so the RATIO holds when prices
+fall — unlike today's mostly-flat charge, which grows relatively heavier exactly when a player
+floods a market.
+
+**Research relief — 3 Logistics nodes, 1pp each:**
+
+1. **Shipping Unlock 1** — import and export ≥3,000 units across ≥15 goods.
+2. **Shipping Unlock 2** — import and export ≥15,000 units across ≥30 goods.
+3. **Shipping Unlock 3** — own a port at level 2.
+
+Counts goods bought from the global market via a port (import) and sold to it (export); NOT
+inter-port shipping. Both volume conditions carry a hover: *"Importing means buying from the
+global market via a port; exporting means selling to the global market via a port."* Needs new
+lifetime accumulators (units + distinct goods, each direction) — saved state, migration.
+
+**Port level 2** — new upgrade action on an owned port: 15 building frames, 10 construction
+equipment, 5 computers, 100 steel, 200 concrete, £1,000. Ports are ordinary buildings (b_004)
+and instances already carry `level`, so this rides the existing upgrade machinery rather than a
+new system; what is new is the fixed material cost and the button.
+
+**Unresolved before build — see §9.9 and §9.10.** The Logistics tree already reduces this fee
+twice, and research landing before t60 would drive a 2.5% base below zero.
+
 ### 4.3 Tax & dividend floor — **LOCKED**
 
 Marginal, both lines: `take = rate × max(0, profit − 20)` per turn, applied after the
@@ -299,8 +355,23 @@ and the 50k-char cell cap (assert at 500+ buildings).
    metal_magnate runs moved roughly 150–250 units/turn — 1000 units ≈ 4–6 turns of
    total haulage, spent well before Andrew leaves at t33. Fine if it's meant as an
    opening cushion; say so if it should instead last the tenure.
+5. **The Logistics tree already cuts the ad valorem twice** — `research_logi_001` "Depot
+   Scheduling" (−20%) and "Port Network Acquisition" (−50%), both `port_ad_valorem_fee`
+   modifiers (`modifier_state.gd:229,256`). `Modifiers.apply` composes as
+   `(base + add) × mult × (1 + pct/100)`, so those pct cuts multiply ON TOP of the three new
+   −1pp nodes: 5% → 2% (new nodes) → **0.6%** with both old ones, well under the 2% floor the
+   design targets. Do the new nodes REPLACE the two existing reducers, are the old ones
+   re-scoped to something else (throughput, freight), or does a hard floor arbitrate?
+6. **Research can land before t60**, when the base is 2.5%: three −1pp nodes take it to
+   **−0.5%**. Needs a floor (never below, say, 1%), or relief expressed as a share of the live
+   rate rather than fixed percentage points — the latter also fixes §9.5 automatically.
 
-*(Resolved this round: CFO gift = **£200 at 5%** · **48 turns confirmed correct** — it
+*(Resolved this round: ad valorem **2.5% t1-59, 5% t60+**, relief **3 × 1pp** → 2% fully
+teched, flat port fee **waived until t33** · three Shipping unlocks as specced · port level 2
+cost fixed. Ports are ordinary buildings (b_004) whose instances already carry `level`, so the
+upgrade rides existing machinery — only the fixed material cost and the button are new.)*
+
+*(Resolved earlier: CFO gift = **£200 at 5%** · **48 turns confirmed correct** — it
 is the standard loan life, `LOAN_GRACE_TURNS 12 + LOAN_TERM_TURNS 36`, verified in
 `economy_config.gd:374,383`; no new term is being introduced anywhere · COO gift =
 **1000 units domestic freight, not port** · COO ongoing = **−20% transport costs**
