@@ -85,6 +85,8 @@ const CHART_MAX_TURNS := 10
 const DEFAULT_PANEL_SIZE := Vector2(560, 620)
 const CHART_PANEL_SIZE := Vector2(620, 600)
 const EXPANDED_BALANCE_PANEL_SIZE := Vector2(560, 770)
+# Breathing room so the panel never runs to the screen edge.
+const PANEL_SCREEN_MARGIN := 90.0
 # Without a real minimum the tab collapses around the ScrollContainer and renders blank.
 const BALANCE_SCROLL_MIN_HEIGHT := 430.0
 const TRANSPORT_BREAKDOWN_ROWS := [
@@ -129,6 +131,38 @@ func _insert_cost_row(section: VBoxContainer, after_node_name: String, label_tex
 	if after != null:
 		section.move_child(row, after.get_index() + 1)
 	return value_label
+
+
+## The balance sheet is 939 px of rows and the panel had no height of its own — DEFAULT_PANEL_
+## SIZE and EXPANDED_BALANCE_PANEL_SIZE were declared but never applied — so it simply grew to
+## its content: 1117 px on the playtester's 1080p screen, with the bottom rows off the display
+## entirely. Cap it to what the screen can show; the sheet scrolls inside.
+func _fit_to_screen() -> void:
+	var available: float = get_viewport_rect().size.y - PANEL_SCREEN_MARGIN
+	var target: float = minf(EXPANDED_BALANCE_PANEL_SIZE.y, available)
+	custom_minimum_size = Vector2(DEFAULT_PANEL_SIZE.x, target)
+	size = Vector2(DEFAULT_PANEL_SIZE.x, target)
+
+
+## Put the sheet behind a ScrollContainer so a capped panel clips rather than truncates.
+##
+## The trap this hit twice: a ScrollContainer reports a MINIMUM SIZE OF ZERO by design, so it
+## cannot be relied on to give the panel any height — that is _fit_to_screen's job. The content
+## must also not expand vertically, or it stretches to the viewport instead of scrolling.
+func _make_balance_scrollable(content: Control) -> void:
+	var host := content.get_parent()
+	if host == null or host is ScrollContainer:
+		return
+	var scroll := ScrollContainer.new()
+	scroll.name = "BalanceScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	host.remove_child(content)
+	host.add_child(scroll)
+	scroll.add_child(content)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.size_flags_vertical = Control.SIZE_SHRINK_BEGIN   # natural height, so it scrolls
 
 
 func _insert_transport_accordion(section: VBoxContainer, after_node_name: String) -> Label:
@@ -229,6 +263,10 @@ func _ready() -> void:
 	var balance_content := $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent as VBoxContainer
 	var projection_content := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent as VBoxContainer
 	_profit_sharing_value = _insert_finance_row(balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
+	# LAST: moving BalanceContent invalidates the inline $ paths above.
+	_make_balance_scrollable(balance_content)
+	_fit_to_screen()
+	get_viewport().size_changed.connect(_fit_to_screen)
 	_proj_profit_sharing_value = _insert_finance_row(projection_content, "Proj_DividendsRow", "Profit Sharing", "-£0.00")
 	close_button.pressed.connect(hide)
 	title_label.text = "Money"

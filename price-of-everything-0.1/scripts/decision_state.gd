@@ -1272,6 +1272,14 @@ func _describe_effects(effects: Array, target: Dictionary) -> String:
 			"grant_unlock":
 				var title := _pick_free_tech(target)
 				parts.append("free research unlock: %s" % (title if title != "" else "none available"))
+			"seat_founder":
+				parts.append("he takes the %s's chair for %d turns, unpaid" % [
+					str(eff.get("seat", "")).to_upper(), MatchState.FOUNDER_TENURE_TURNS])
+			"founder_loan":
+				parts.append("a one-off £%.0f loan at %.0f%% as a signing gift" % [
+					float(eff.get("amount", 0.0)), float(eff.get("rate", 0.0)) * 100.0])
+			"freight_credit":
+				parts.append("%d units of pre-paid domestic freight" % int(eff.get("units", 0)))
 			"agenda_tag":
 				pass   # advisor sentiment ripples are shown via loyalty, not here
 			"schedule_event":
