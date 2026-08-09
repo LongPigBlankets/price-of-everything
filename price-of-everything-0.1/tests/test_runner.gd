@@ -6564,41 +6564,76 @@ func _test_build_forecast() -> void:
 	# while building this.
 	MarketState._init_prices_from_catalog()
 	var smelter: Dictionary = BuildForecast.project("b_002", "r_005", "tile_5_10")
-	var points: Array = smelter.get("points", [])
-	_check(points.size() == BuildForecast.WINDOW_TURNS,
-		"forecast: projects %d turns" % BuildForecast.WINDOW_TURNS)
+	var phases: Array = smelter.get("phases", [])
+	_check(phases.size() >= 3, "forecast: projects the build's phases (%d)" % phases.size())
 
-	var build_turns: int = int(smelter.get("build_turns", 0))
-	var flat_while_building := true
-	for i in range(mini(build_turns, points.size())):
-		if not is_equal_approx(float(points[i]), 0.0):
-			flat_while_building = false
-	_check(flat_while_building, "forecast: construction turns cost nothing per turn")
+	var by_kind := {}
+	for p in phases:
+		by_kind[str((p as Dictionary).get("kind", ""))] = p
+	_check(by_kind.has(BuildForecast.PHASE_COMPLETES)
+		and by_kind.has(BuildForecast.PHASE_SHIPPING)
+		and by_kind.has(BuildForecast.PHASE_SELLING),
+		"forecast: completes / shipping / selling phases are all present")
 
-	# The dip is the point of the whole chart: costs land before the first sale settles, so
-	# the first producing turn must be negative whenever revenue is delayed.
-	var sale_delay: int = int(smelter.get("sale_delay", 1))
-	if build_turns < points.size() and sale_delay > 0:
-		_check(float(points[build_turns]) < 0.0,
-			"forecast: the first producing turn is a loss (inputs bought before revenue lands)")
+	# Construction costs nothing per turn; the completion turn still owes labour+maintenance
+	# even though production.gd blocks it from running ("just_constructed").
+	if by_kind.has(BuildForecast.PHASE_BUILDING):
+		_check(is_equal_approx(float((by_kind[BuildForecast.PHASE_BUILDING] as Dictionary).get("per_turn", -1.0)), 0.0),
+			"forecast: construction turns cost nothing per turn")
+	var completes: float = float((by_kind[BuildForecast.PHASE_COMPLETES] as Dictionary).get("per_turn", 0.0))
+	var shipping: float = float((by_kind[BuildForecast.PHASE_SHIPPING] as Dictionary).get("per_turn", 0.0))
+	_check(completes < 0.0, "forecast: the completion turn still owes labour and upkeep")
+	_check(shipping < completes,
+		"forecast: producing-but-unpaid turns cost more than the idle completion turn")
 
-	# Steady margin agrees with the last point once revenue is flowing.
-	if points.size() > build_turns + sale_delay:
-		_check(is_equal_approx(float(points[points.size() - 1]), float(smelter.get("steady_net", 0.0))),
-			"forecast: the tail equals the steady-state margin")
+	# The shipping phase lasts exactly as long as the goods are in transit.
+	_check(int((by_kind[BuildForecast.PHASE_SHIPPING] as Dictionary).get("turns", 0))
+			== int(smelter.get("sale_delay", 0)),
+		"forecast: the unpaid stretch lasts the shipping delay")
 
-	# Sanity against the live catalog: the two starting metal_magnate recipes are profitable
-	# at market prices, so the panel cannot be telling players their opening chain loses money.
-	_check(float(smelter.get("steady_net", 0.0)) > 0.0,
-		"forecast: pig iron smelting projects a positive steady margin (%.2f)"
-			% float(smelter.get("steady_net", 0.0)))
+	# cash_needed is what the player must survive before revenue: the idle turn plus the
+	# unpaid producing turns. It is the number the summary line quotes.
+	var expected_need: float = -completes + (-shipping * float(smelter.get("sale_delay", 1)))
+	_check(is_equal_approx(float(smelter.get("cash_needed", 0.0)), expected_need),
+		"forecast: cash_needed covers the completion turn plus every unpaid producing turn")
+
+	# Freight, port fees and storage are all charged — the first cut of this forecast quoted
+	# revenue at raw market price and overstated the margin. tile_5_10 sits on the port, so its
+	# outbound haul is covered and free; a tile far from one must show real freight.
+	var breakdown: Dictionary = smelter.get("breakdown", {})
+	_check(float(breakdown.get("warehousing", 0.0)) > 0.0
+		and float(breakdown.get("port_fee", 0.0)) > 0.0,
+		"forecast: storage and port fees are priced in")
+	var remote: Dictionary = BuildForecast.project("b_002", "r_005", "tile_1_1")
+	_check(float((remote.get("breakdown", {}) as Dictionary).get("outbound_freight", 0.0)) > 0.0,
+		"forecast: a tile away from the port pays real outbound freight")
+	_check(float(smelter.get("steady_net", 0.0))
+			< float(breakdown.get("revenue", 0.0)) - float(breakdown.get("inputs", 0.0)),
+		"forecast: the steady margin is net of freight, port fees and storage")
+
+	# Two different businesses, and the forecast must tell them apart. Buying ore at retail to
+	# smelt and sell is thin by design — that is the same pressure that keeps raw-only play
+	# unprofitable. Feeding the smelter from your own ore is the integrated chain metal_magnate
+	# actually opens with, and it must not be quoted as though it shopped for its own inputs.
+	var bought_in: float = float(smelter.get("steady_net", 0.0))
+	Stockpile.add("tile_5_10", "g_002", 200)
+	Stockpile.add("tile_5_10", "g_001", 200)
+	var integrated: Dictionary = BuildForecast.project("b_002", "r_005", "tile_5_10")
+	var own_supply: float = float(integrated.get("steady_net", 0.0))
+	Stockpile.clear_all()
+	_check(own_supply > bought_in,
+		"forecast: own supply beats buying at retail (%.2f vs %.2f)" % [own_supply, bought_in])
+	_check(own_supply > 0.0,
+		"forecast: the integrated smelter projects a positive margin (%.2f)" % own_supply)
+
 	var mine: Dictionary = BuildForecast.project("b_001", "r_001", "tile_6_8")
-	_check(float(mine.get("steady_net", 0.0)) > 0.0 and int(mine.get("first_profit", -1)) >= 0,
-		"forecast: coal mining projects a positive steady margin and a profit turn")
+	_check(float(mine.get("steady_net", 0.0)) > 0.0,
+		"forecast: coal mining projects a positive steady margin (%.2f)"
+			% float(mine.get("steady_net", 0.0)))
 
 	# An unknown building or recipe returns an empty, non-crashing projection.
 	var junk: Dictionary = BuildForecast.project("b_nope", "r_nope", "tile_5_10")
-	_check((junk.get("points", []) as Array).is_empty(),
+	_check((junk.get("phases", []) as Array).is_empty(),
 		"forecast: unknown building/recipe yields no projection instead of crashing")
 
 func _test_telemetry_schema3_row() -> void:

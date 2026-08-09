@@ -23,7 +23,7 @@ const GOLD_DARK := Color("#c48d35")
 const GREEN := Color("#5fbf6b")
 const RED := DS.PALETTE["DANGER"]   # shared with the forecast chart's losing segments
 const BuildForecast := preload("res://scripts/build_forecast.gd")
-const BuildForecastChart := preload("res://scripts/build_forecast_chart.gd")
+const BuildForecastTable := preload("res://scripts/build_forecast_table.gd")
 const CREAM := Color("#f4e6c0")
 const CREAM_SHADOW := Color("#9f875d")
 const METAL_LIGHT := Color("#c4ced8")
@@ -1783,11 +1783,11 @@ func _add_forecast_section() -> void:
 	if building_id == "" or recipe_id == "":
 		return
 	var data: Dictionary = BuildForecast.project(building_id, recipe_id, _locked_tile_id)
-	var points: Array = data.get("points", [])
-	if points.size() < 2:
+	var phases: Array = data.get("phases", [])
+	if phases.is_empty():
 		return
 
-	_content.add_child(_section_label("FIRST %d TURNS" % points.size()))
+	_content.add_child(_section_label("WHAT IT DOES TO YOUR CASH"))
 
 	# A tile with no route to an input is the run-D failure: the player builds, the building
 	# never runs, and nothing says why. Say it here, in red, before the money moves.
@@ -1800,33 +1800,31 @@ func _add_forecast_section() -> void:
 		warn.add_theme_color_override("font_color", RED)
 		_content.add_child(warn)
 
-	var chart: Control = BuildForecastChart.new()
-	chart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	chart.set_forecast(data)
-	_content.add_child(chart)
+	var table: PanelContainer = BuildForecastTable.new()
+	table.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	table.set_forecast(data)
+	_content.add_child(table)
 
+	# The one number that decides whether this build is affordable: what the phases before
+	# revenue will take out of the bank. The playtester's failed expansion was exactly this —
+	# affordable to build, unaffordable to run until it sold anything.
+	var cash_needed := float(data.get("cash_needed", 0.0))
 	var steady := float(data.get("steady_net", 0.0))
 	var summary := Label.new()
-	var first_profit := int(data.get("first_profit", -1))
 	if steady <= 0.0:
-		summary.text = "At today's prices this loses %s a turn once running." % _money(-steady)
+		summary.text = "Costs %s before the first sale, then still loses %s a turn at today's prices." \
+			% [_money(cash_needed), _money(-steady)]
 		summary.add_theme_color_override("font_color", RED)
-	elif first_profit >= 0:
-		var payback := int(data.get("payback_turn", -1))
-		summary.text = "In profit from turn %d at %s a turn%s." % [
-			first_profit + 1, _money(steady),
-			"; construction paid back by turn %d" % payback if payback > 0 else "",
-		]
-		summary.add_theme_color_override("font_color", GREEN)
 	else:
-		summary.text = "Earns %s a turn once the first shipment sells." % _money(steady)
-		summary.add_theme_color_override("font_color", GREEN)
+		summary.text = "Needs %s in the bank to reach the first sale, then earns %s a turn." \
+			% [_money(cash_needed), _money(steady)]
+		summary.add_theme_color_override("font_color", GREEN if MatchState.money >= cash_needed else RED)
 	summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	summary.add_theme_font_size_override("font_size", 12)
 	_content.add_child(summary)
 
 	var caption := Label.new()
-	caption.text = "Assumes it sells straight to market at today's prices, with any pipework already built."
+	caption.text = "Per turn, at today's prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
 	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	caption.add_theme_font_size_override("font_size", 10)
 	caption.add_theme_color_override("font_color", MUTED)

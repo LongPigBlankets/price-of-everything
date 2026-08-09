@@ -37,8 +37,13 @@ func _ready() -> void:
 		panel._scroll.scroll_vertical = 10000
 		await _settle(6)
 
-	print("[FORECAST_SHOT] view=%s money=%.2f scroll=%d" % [
-		str(panel._view), MatchState.money, panel._scroll.scroll_vertical if panel._scroll else -1])
+	print("[FORECAST_SHOT] view=%s money=%.2f scroll=%d visible=%s in_tree=%s size=%s parent_vis=%s" % [
+		str(panel._view), MatchState.money, panel._scroll.scroll_vertical if panel._scroll else -1,
+		str(panel.visible), str(panel.is_inside_tree()), str(panel.size),
+		str(panel.get_parent().visible) if panel.get_parent() else "?"])
+	# Grab the image only once the frame carrying the panel has actually been drawn — a plain
+	# process_frame await can hand back the previous frame's buffer.
+	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
 	img.save_png("res://construct_forecast_shot.png")
 	print("SAVED construct_forecast_shot.png")
