@@ -25,8 +25,9 @@ func _ready() -> void:
 		(tab.size.y if tab else -1.0), (content.size.y if content else -1.0),
 		content.get_child_count() if content else -1])
 	var fits_screen: bool = panel.size.y <= get_window().size.y
-	print("[MONEY_SHOT] fits_screen=%s scrolls=%s" % [
-		str(fits_screen), str(content and tab and content.size.y > tab.size.y)])
+	var gap: float = get_window().size.y - (panel.position.y + panel.size.y)
+	print("[MONEY_SHOT] fits_screen=%s scrolls=%s bottom_gap=%.0f (target 120)" % [
+		str(fits_screen), str(content and tab and content.size.y > tab.size.y), gap])
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png("res://money_panel_shot.png")
 	print("SAVED money_panel_shot.png")
