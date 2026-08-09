@@ -24,6 +24,13 @@ var hidden_buildings_unlocked: bool = false
 # is defined today — add per-rule keys beside it as rules become real.
 const DEFAULT_RULESET := {"name": "standard"}
 var ruleset: Dictionary = DEFAULT_RULESET.duplicate(true)
+## Which start config this match began from ("metal_magnate", "tutorial", …). Telemetry's
+## primary segmentation field; empty for matches built without a start config (tests).
+## Unlike ruleset.name this is NOT reset by state_reset mid-teardown, so it stays readable.
+var scenario_name: String = ""
+## Sticky once any debug command moves the sim. Telemetry reports it so cheat runs can be
+## excluded from aggregates instead of silently poisoning them.
+var cheats_used: bool = false
 
 const DEFAULT_TILE_LAND_OWNED := 0
 const LAND_PATCH_SIZE := 10
@@ -3019,6 +3026,8 @@ func reset() -> void:
 	Production.reset_lifetime_research_metrics()
 	_next_instance_counter = 0
 	ruleset = DEFAULT_RULESET.duplicate(true)
+	scenario_name = ""
+	cheats_used = false
 	state_reset.emit()
 	advisors_changed.emit()
 
@@ -3050,6 +3059,8 @@ func export_state() -> Dictionary:
 	return {
 		"money": money,
 		"ruleset": ruleset.duplicate(true),
+		"scenario_name": scenario_name,
+		"cheats_used": cheats_used,
 		"construct_cost_display": construct_cost_display,
 		"construct_start_half_capacity": construct_start_half_capacity,
 		"construct_auto_buy_land": construct_auto_buy_land,
@@ -3137,6 +3148,9 @@ func import_state(d: Dictionary) -> void:
 	# new-game default, so older/partial snapshots (and Phase 3 start configs) load.
 	money = float(d.get("money", EconomyConfig.STARTING_MONEY))
 	ruleset = (d.get("ruleset", DEFAULT_RULESET) as Dictionary).duplicate(true)
+	# Tolerant readers: saves from before these existed load as an unknown start, uncheated.
+	scenario_name = str(d.get("scenario_name", ""))
+	cheats_used = bool(d.get("cheats_used", false))
 	set_construct_cost_display(str(d.get("construct_cost_display", "grid")), false)
 	set_construct_start_half_capacity(bool(d.get("construct_start_half_capacity", false)), false)
 	# Additive key: saves written before this setting existed simply default to off.
@@ -5579,6 +5593,11 @@ func draw_advisor_from_pool() -> String:
 func cheat_add_cash(amount: float) -> void:
 	add_money(amount)
 	fake_money_this_turn += amount
+
+## Sticky taint flag for telemetry — set by the debug terminal for any command that can
+## move the sim. Once set it rides the save for the rest of the match.
+func note_cheat_used() -> void:
+	cheats_used = true
 
 # The next un-crossed profit milestone (advisor recruit), or 0 if all crossed.
 func next_advisor_milestone() -> int:

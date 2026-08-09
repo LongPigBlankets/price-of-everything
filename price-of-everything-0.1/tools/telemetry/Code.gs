@@ -19,17 +19,29 @@
 
 const TOKEN = "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641";
 
+// v3 adds `start` (which start config the run began from — the field balance analysis
+// wants most, previously only recoverable by fingerprinting turn-1 production),
+// `cheats_used` (sticky taint: unflagged cheat runs poison aggregates) and `rescues`
+// (tutorial top-ups used, 0-3). All three are latched during the run, not read at
+// finalize, because a quit-to-menu envelope is built after the match is torn down.
 const RUNS_HEADER = ["received_at", "player_id", "run_id", "session_id", "version",
-                     "os", "end_reason", "run_complete", "end_turn", "raw_json"];
+                     "os", "start", "end_reason", "run_complete", "end_turn",
+                     "cheats_used", "rescues", "raw_json"];
 // One row per turn. "goods" is the sparse per-good production pipe-joined as
 // name:qty (e.g. "coal:51|iron_ore:28|steel:53") — zero-production goods are
 // absent by construction. tiers/victory are pipe-joined arrays.
 // "received_at" is stamped server-side per POST so the turns tab can be read for
 // recency on its own — the runs tab always had it, the turns tab did not, which made
 // "has anything arrived lately?" unanswerable without joining the two (owner 2026-08-01).
+// v3 adds three diagnosis columns, all pipe-joined like `goods`:
+//   costs           — this turn's money_out split as name:value (inputs:120|labour:40|…).
+//                     These SUM INTO money_out; they are not extra charges on top of it.
+//   buildings_list  — the player's roster as internal_name(level): mine(l1)|furnace(l2)
+//   building_states — index-aligned with buildings_list: running, or why it didn't run
+//                     (missing_inputs, no_power, starting, market_input_cash, …)
 const FIXED = ["received_at", "run_id", "session_id", "turn", "money", "revenue", "profit", "loans",
                "buildings", "power_gen", "power_use", "tiers", "victory",
-               "playtime_s", "goods"];
+               "playtime_s", "goods", "costs", "buildings_list", "building_states"];
 
 function doGet() {
   return ContentService.createTextOutput("alive");
@@ -43,10 +55,11 @@ function doPost(e) {
 
   const ss = SpreadsheetApp.getActive();
 
+  const run = p.run || {};
   const runs = sheetWithHeader_(ss, "runs", RUNS_HEADER);
   runs.appendRow([new Date(), p.player_id, p.run_id, p.session_id,
-      p.client.version, p.client.os, p.end.reason, p.end.run_complete,
-      p.end.turn, JSON.stringify(p)]);
+      p.client.version, p.client.os, run.start || "", p.end.reason, p.end.run_complete,
+      p.end.turn, run.cheats_used === true, p.end.rescues || 0, JSON.stringify(p)]);
 
   const sh = sheetWithHeader_(ss, "turns", FIXED);
   const stamped = new Date();
@@ -55,9 +68,10 @@ function doPost(e) {
     if (col === "run_id") return p.run_id;
     if (col === "session_id") return p.session_id;
     if (col === "tiers" || col === "victory") return (t[col] || []).join("|");
-    if (col === "goods") {
-      const pr = t.produced || {};
-      return Object.keys(pr).map(g => g + ":" + pr[g]).join("|");
+    if (col === "buildings_list" || col === "building_states") return (t[col] || []).join("|");
+    if (col === "goods" || col === "costs") {
+      const src = col === "goods" ? (t.produced || {}) : (t.costs || {});
+      return Object.keys(src).map(k => k + ":" + src[k]).join("|");
     }
     return t[col];
   }));

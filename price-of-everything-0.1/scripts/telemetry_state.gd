@@ -38,7 +38,7 @@ const AppPaths := preload("res://scripts/app_paths.gd")
 
 const ENDPOINT_URL := "https://script.google.com/macros/s/AKfycbw8dUX-A_dSKmI2GB4_2AbRXbGnOKTbP8mpEa17t6wBBAg4Y0LcCnS_xJNH3EeNRwdr/exec"
 const TOKEN := "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641"
-const SCHEMA_VERSION := 2  # v2: produced keyed by internal good name, not g_NNN id
+const SCHEMA_VERSION := 3  # v3: + run.start, rescues, cheats_used, per-building arrays, cost breakdown
 const QUIT_UPLOAD_WINDOW_MSEC := 6000  # Apps Script round trips run 1.5-4 s
 const CHECKPOINT_EVERY := 10
 const COMPLETE_REASONS: Array[String] = ["victory", "turn_cap", "bankruptcy"]
@@ -46,6 +46,23 @@ const COMPLETE_REASONS: Array[String] = ["victory", "turn_cap", "bankruptcy"]
 # read tolerantly: it only exists once the goods-graph branch lands, so until
 # then rows omit "tiers" (per-good `produced` carries the full information).
 const TIER_BANDS: Array[String] = ["raw", "processed", "intermediate", "finished", "apex"]
+# Per-turn cost breakdown: summary key -> short label in the `costs` cell. Diagnosis only —
+# every entry is a component of money_out, so the breakdown SUMS INTO money_out and must
+# never be subtracted from profit on top of it (see _build_row's note).
+const COST_LINES := {
+	"goods_purchased_cost": "inputs",
+	"transport_paid": "transport",
+	"labour_paid": "labour",
+	"maintenance_paid": "maintenance",
+	"power_purchase_cost": "power",
+	"warehousing_paid": "storage",
+	"interest_paid": "interest",
+	"advisor_paid": "advisors",
+	"taxes_paid": "tax",
+	"dividends_paid": "dividends",
+	"profit_sharing_paid": "profit_share",
+	"carbon_tax_paid": "carbon",
+}
 
 var enabled := false
 var _armed := false
@@ -71,6 +88,14 @@ var _goods_indexed := false
 var _tier_available := false
 var _tier_index := {}         # good_id -> index into TIER_BANDS
 var _good_names := {}         # good_id -> internal_name ("coal"), for readable rows
+var _building_names := {}     # building_id -> internal_name ("mine"), for the roster
+# Run-level facts captured DURING the run rather than read at envelope time. The envelope
+# for a quit-to-menu run is built from inside MatchState.state_reset, by which point the
+# match has already been torn down — anything read there is the reset default, which is
+# how `ruleset` came to report "standard" for tutorial runs in the delivered sheet.
+var _run_start_id := ""
+var _run_cheats := false
+var _run_rescues := 0
 var _capture_max_usec := 0    # worst per-turn capture cost, for the perf gate
 
 
@@ -127,6 +152,9 @@ func _on_run_started() -> void:
 	_session_ordinal = 1
 	_rows = []
 	_delivered_through = 0
+	_run_start_id = ""
+	_run_cheats = false
+	_run_rescues = 0
 	_ensure_tier_index()
 	_retry_outbox()
 
@@ -178,19 +206,35 @@ func _build_row(summary: Dictionary) -> Dictionary:
 		produced[_good_names.get(good_id, good_id)] = qty
 		if _tier_available:
 			tiers[_tier_index.get(good_id, 2)] += qty
+	# Every line here is a component of money_out, so the breakdown explains `profit`
+	# rather than adjusting it. Zero lines are dropped — the server densifies.
+	var costs := {}
+	for key in COST_LINES:
+		var amount := float(summary.get(key, 0.0))
+		if amount > 0.0:
+			costs[COST_LINES[key]] = snappedf(amount, 0.01)
+	var empire := _empire_snapshot()
+	# Run-level facts, latched while the match is still alive (see _run_start_id).
+	if _run_start_id == "":
+		_run_start_id = str(MatchState.scenario_name)
+	_run_cheats = _run_cheats or bool(MatchState.cheats_used)
+	_run_rescues = maxi(_run_rescues, SolvencyState.tutorial_rescues())
 	var row := {
 		"turn": TurnManager.current_turn - 1,
 		"money": snappedf(MatchState.money, 0.01),
 		"revenue": snappedf(revenue, 0.01),
 		"profit": snappedf(profit, 0.01),
 		"loans": snappedf(LoanState.total_outstanding(), 0.01),
-		"buildings": MatchState.player_building_count(),
+		"buildings": empire.count,
 		"power_gen": int(summary.get("power_supply", 0)),
 		"power_use": int(summary.get("power_demand", 0)),
 		"victory": _victory_array(),
 		"playtime_s": _playtime_s(),
 		"session": _session_ordinal,
 		"produced": produced,
+		"costs": costs,
+		"buildings_list": empire.list,
+		"building_states": empire.states,
 	}
 	if _tier_available:
 		row["tiers"] = tiers
@@ -208,10 +252,53 @@ func _playtime_s() -> int:
 	return _playtime_carried_s + int((Time.get_ticks_msec() - _run_started_msec) / 1000)
 
 
+## One pass over the player's buildings for the count, the "mine(l2)" roster, and each
+## building's index-aligned run state. Single loop with cached names: this runs every turn
+## inside the <0.5 ms capture budget (measured 234 us at 562 buildings before the arrays).
+func _empire_snapshot() -> Dictionary:
+	_ensure_tier_index()   # guarded; keeps the roster readable even if a row precedes arming
+	var names: Array = []
+	var states: Array = []
+	var ran: Dictionary = Production.last_turn_run
+	var missing: Dictionary = Production.missing_by_building
+	var blocked: Dictionary = Production.blocked_reason_by_building
+	for b in MatchState.buildings.values():
+		if not (b is Dictionary) or not MatchState.is_player_owned(b):
+			continue
+		var bid := str(b.get("building_id", ""))
+		names.append("%s(l%d)" % [_building_names.get(bid, bid), int(b.get("level", 1))])
+		states.append(_building_state(str(b.get("instance_id", "")), ran, missing, blocked))
+	return {"count": names.size(), "list": names, "states": states}
+
+
+## Why a building did or didn't run this turn. "running" plus the engine's own blocked
+## codes, so the sheet can separate "starving" from "starving BECAUSE it ran out of cash".
+func _building_state(iid: String, ran: Dictionary, missing: Dictionary, blocked: Dictionary) -> String:
+	if bool(ran.get(iid, false)):
+		return "running"
+	var code := str((blocked.get(iid, {}) as Dictionary).get("code", ""))
+	if code == "just_constructed":
+		return "starting"
+	if code != "":
+		return code
+	var missing_list: Array = missing.get(iid, [])
+	if missing_list.is_empty():
+		return "idle"
+	for m in missing_list:
+		if m is Dictionary and str((m as Dictionary).get("good_id", "")) == "power":
+			return "no_power"
+	return "missing_inputs"
+
+
 func _ensure_tier_index() -> void:
 	if _goods_indexed:
 		return
 	_goods_indexed = true
+	for b in Catalog.all_buildings():
+		var bid := str(b.get("id", ""))
+		var bname := str(b.get("internal_name", "")).strip_edges()
+		if bid != "" and bname != "":
+			_building_names[bid] = bname
 	for g in Catalog.all_goods():
 		var gid := str(g.get("id", ""))
 		var iname := str(g.get("internal_name", "")).strip_edges()
@@ -336,6 +423,11 @@ func _build_envelope(reason: String) -> Dictionary:
 		"run": {
 			"started_at": _run_started_unix,
 			"ruleset": str(MatchState.ruleset.get("name", "standard")),
+			# Latched during the run, not read here: on a quit-to-menu finalize the match
+			# has already been reset, which is exactly why `ruleset` above is unreliable
+			# on that path (a tutorial run reports "standard").
+			"start": _run_start_id,
+			"cheats_used": _run_cheats or bool(MatchState.cheats_used),
 		},
 		"end": {
 			"reason": reason,
@@ -344,6 +436,7 @@ func _build_envelope(reason: String) -> Dictionary:
 			"ended_at": now,
 			"playtime_s": _playtime_s(),
 			"victory": _victory_array(),
+			"rescues": maxi(_run_rescues, SolvencyState.tutorial_rescues()),
 		},
 		"turns": _undelivered_rows(),
 	}
