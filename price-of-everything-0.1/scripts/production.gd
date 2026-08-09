@@ -234,6 +234,9 @@ func _process_production() -> void:
 	# turn). claim_materials() lets awaiting projects consume their goods off the tile first, so
 	# construction owns them ahead of production/sell/surplus. Order matters: tick before claim,
 	# so a project that becomes under_construction this turn isn't also ticked the same turn.
+	# Stock held off-tile from a purchase moves in as capacity frees up. Before production, so a
+	# building that could not be fully stocked on the day it was bought can run on what lands.
+	MatchState.drain_ghost_holdings()
 	TurnProfiler.section_begin("construction")
 	var completed_construction: Array = Construction.tick_turn()
 	for completed_instance_id in completed_construction:

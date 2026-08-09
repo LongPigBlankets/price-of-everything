@@ -211,19 +211,26 @@ In the construct panel on recipe selection:
 
 ### 5.2 Starter kit + dearer buildings — **LOCKED**
 
-- Constructing a building: capex += **market value of 2 turns of its recipe inputs**,
-  **no premium** (exact market prices — confirmed).
-- **With COO-Andrew seated: 3 turns of inputs at the 2-turn price** (§5.4) — the extra
-  turn is his gift, not a capex increase.
-- The kit **materialises in the tile stockpile, claim-reserved** for this building
-  (reuse the construction-materials claim so co-located consumers / sell-all-surplus
-  cannot consume or flog it).
-- **Capacity edge case — LOCKED**: if the tile stockpile is full / short of room,
-  **log it** (expected rare). *(proposed)* fallback: a **ghost holding** — visible to
-  the player, not usable — that feeds only this building until room frees; verify
-  against warehouse-capacity rules at impl.
-- **Buildings only — nothing for infra.** NPC-bought buildings inherit their existing
-  stock instead; no kit.
+**LOCKED 2026-08-09 — a build gets the RAMP, a purchase gets the INVENTORY.** Two different
+problems, two solutions. (This corrects an earlier draft that had it backwards: it gave the kit
+to constructed buildings and had purchases inherit stock.)
+
+- **Constructed** building → the 5-turn operational-loans tab (§5.3). Nothing materialises.
+- **Bought** building → **2 turns of its recipe's inputs** (`PURCHASE_SEED_TURNS`) materialise
+  on its tile. Buying is priced higher to match (see §9.1 — the price side is NOT yet built).
+- **Infra, and recipes with no inputs** → neither. There is no inventory to seed.
+- **With COO-Andrew seated: 3 turns at the 2-turn price** (§5.4) — his gift, not a capex rise.
+
+Seeded in `MatchState.set_building_owner` rather than at the buy button, because THREE surfaces
+transfer ownership (market panel, building detail, tile info) and the tutorial buys through one
+of them — a choke point covers them all, the tutorial included.
+
+**Ghost holding — LOCKED.** Whatever will not fit on the tile is held off-tile for that building
+alone: it exists, nothing else can draw on it, and it drains onto the tile as capacity frees
+(before production, so a part-stocked building runs on what lands). Surfaced on the building's
+detail panel as "x units stored for this building". It must never be silently dropped — the
+player paid for it. Scoped to purchases only, so it cannot interact with construction claims or
+sell-all-surplus.
 
 ### 5.3 Building operational loans — **LOCKED** (simplified 5-turn form)
 

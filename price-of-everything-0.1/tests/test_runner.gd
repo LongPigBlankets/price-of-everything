@@ -103,6 +103,7 @@ func _ready() -> void:
 	_test_market_input_pipeline_ignores_reserved_inbound()
 	_test_tax_dividend_caps()
 	_test_tax_free_profit_floor()
+	_test_purchase_inventory_seed()
 	_test_founder_advisor()
 	_test_depot_scheduling_overland_only()
 	_test_port_ad_valorem_schedule()
@@ -6749,6 +6750,52 @@ func _test_start_labour_preset() -> void:
 		and is_equal_approx(float(wild_match.get("labour_output_pressure_pct", 0.0)),
 			EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
 		"start labour values are clamped to the configured range")
+
+func _test_purchase_inventory_seed() -> void:
+	# A bought building is a going concern: it arrives with stock to run on. A CONSTRUCTED one
+	# gets the ramp financed instead (§5.3's tab) — two different problems, two solutions.
+	MatchState.reset()
+	Stockpile.clear_all()
+	# b_002 runs r_005 (pig iron): iron_ore x40 + coal x20 per turn.
+	MatchState.buildings["inst_bought"] = {
+		"instance_id": "inst_bought", "building_id": "b_002", "recipe_id": "r_005",
+		"tile_id": "tile_5_10", "owner": "Someone Else", "level": 1,
+	}
+	MatchState.set_building_owner("inst_bought", MatchState.LOCAL_PLAYER)
+	var ore: int = Stockpile.get_at_tile("tile_5_10", "g_002")
+	var coal: int = Stockpile.get_at_tile("tile_5_10", "g_001")
+	_check(ore == 40 * MatchState.PURCHASE_SEED_TURNS and coal == 20 * MatchState.PURCHASE_SEED_TURNS,
+		"purchase: a bought building is seeded with %d turns of its inputs (ore %d, coal %d)"
+			% [MatchState.PURCHASE_SEED_TURNS, ore, coal])
+
+	# Infra and input-less recipes have no inventory to seed.
+	MatchState.buildings["inst_mine"] = {
+		"instance_id": "inst_mine", "building_id": "b_001", "recipe_id": "r_001",
+		"tile_id": "tile_6_8", "owner": "Someone Else", "level": 1,
+	}
+	_check(MatchState.seed_purchase_inventory("inst_mine") == 0,
+		"purchase: an input-less recipe seeds nothing")
+
+	# Whatever will not fit is held off-tile: visible, drawn on by nobody, and it moves in as
+	# capacity frees. It must never be silently dropped — the player paid for it.
+	MatchState.reset()
+	Stockpile.clear_all()
+	MatchState.ghost_holdings.clear()
+	MatchState._add_ghost_holding("inst_ghost", "g_001", 75)
+	_check(MatchState.ghost_holding_units("inst_ghost") == 75,
+		"purchase: goods that do not fit are held for that building alone")
+	MatchState.buildings["inst_ghost"] = {
+		"instance_id": "inst_ghost", "building_id": "b_002", "recipe_id": "r_005",
+		"tile_id": "tile_5_10", "owner": MatchState.LOCAL_PLAYER, "level": 1,
+	}
+	MatchState.drain_ghost_holdings()
+	_check(Stockpile.get_at_tile("tile_5_10", "g_001") == 75
+		and MatchState.ghost_holding_units("inst_ghost") == 0,
+		"purchase: held goods move onto the tile once there is room")
+	MatchState.buildings.erase("inst_bought")
+	MatchState.buildings.erase("inst_mine")
+	MatchState.buildings.erase("inst_ghost")
+	Stockpile.clear_all()
 
 func _test_founder_advisor() -> void:
 	# Only two posts exist until the player earns the rest, and the family friend fills one of

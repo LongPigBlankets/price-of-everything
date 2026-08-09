@@ -714,6 +714,10 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 		_grant_building_land(instance_id)
 		# The tile size chart stacks buildings bought off an NPC at the top of the pile.
 		buildings[instance_id]["acquired_from_npc"] = true
+		# A purchase is a going concern, so it arrives with stock to run on. Seeded HERE rather
+		# than in the market panel because three separate surfaces transfer ownership (market
+		# panel, building detail, tile info) and the tutorial buys through one of them.
+		seed_purchase_inventory(instance_id)
 	building_owner_changed.emit(instance_id)
 	# A newly player-owned building may satisfy a count condition after the turn
 	# settles; never trigger a full scan from an interaction callback.
@@ -2995,6 +2999,7 @@ func reset() -> void:
 	founder_seat = ""
 	founder_leaves_turn = 0
 	freight_credit_units = 0
+	ghost_holdings.clear()
 	max_advisor_slots = MAX_ADVISOR_SLOTS_DEFAULT
 	crossed_milestones.clear()
 	recruited_advisor_ids.clear()
@@ -3102,6 +3107,7 @@ func export_state() -> Dictionary:
 		"founder_seat": founder_seat,
 		"founder_leaves_turn": founder_leaves_turn,
 		"freight_credit_units": freight_credit_units,
+		"ghost_holdings": ghost_holdings.duplicate(true),
 		"max_advisor_slots": max_advisor_slots,
 		"advisor_rng_seed": match_rng_seed,
 		"advisor_rng_state": _match_rng.state,
@@ -3227,6 +3233,7 @@ func import_state(d: Dictionary) -> void:
 	founder_seat = str(d.get("founder_seat", ""))
 	founder_leaves_turn = int(d.get("founder_leaves_turn", 0))
 	freight_credit_units = int(d.get("freight_credit_units", 0))
+	ghost_holdings = (d.get("ghost_holdings", {}) as Dictionary).duplicate(true)
 	max_advisor_slots = clampi(int(d.get("max_advisor_slots", MAX_ADVISOR_SLOTS_DEFAULT)), MAX_ADVISOR_SLOTS_DEFAULT, MAX_ADVISOR_SLOTS_CAP)
 	match_rng_seed = int(d.get("advisor_rng_seed", DEFAULT_MATCH_RNG_SEED))
 	_match_rng.seed = match_rng_seed
@@ -5465,6 +5472,94 @@ func advisor_seat_governing_discipline(advisor_id: String, seat_id: String) -> S
 
 # Assign a HIRED, rostered advisor to a seat. Enforces the slot cap and
 # one-seat-per-advisor. Returns false if rejected.
+## Purchased buildings arrive with PURCHASE_SEED_TURNS of their recipe's inputs — a going
+## concern comes with stock, where a fresh build comes with a ramp to finance (§5.3's tab).
+## Infra and input-less recipes get nothing: there is no inventory to seed.
+const PURCHASE_SEED_TURNS := 2
+## Goods that could not fit in the tile when a purchase was seeded. They exist, the player can
+## see them on the building's detail panel, and NOTHING else can draw on them — they drain into
+## the tile as real capacity frees up. instance_id -> {good_id: qty}
+var ghost_holdings: Dictionary = {}
+
+
+## Seed a newly-bought building with stock. Returns the total units seeded (0 for infra, for
+## input-less recipes, and for a building that already has its own stock on the tile).
+func seed_purchase_inventory(instance_id: String) -> int:
+	var building: Dictionary = buildings.get(instance_id, {})
+	if building.is_empty():
+		return 0
+	var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
+	var inputs: Array = recipe.get("inputs", [])
+	if inputs.is_empty():
+		return 0
+	var tile_id := str(building.get("tile_id", ""))
+	if tile_id == "":
+		return 0
+	var seeded := 0
+	for input in inputs:
+		var gid := str(input.get("good_id", ""))
+		var qty := int(input.get("qty", 0)) * PURCHASE_SEED_TURNS
+		if gid == "" or qty <= 0:
+			continue
+		var placed: int = Stockpile.add(tile_id, gid, qty)
+		seeded += qty
+		var overflow := qty - placed
+		if overflow > 0:
+			_add_ghost_holding(instance_id, gid, overflow)
+	return seeded
+
+
+func _add_ghost_holding(instance_id: String, good_id: String, qty: int) -> void:
+	if qty <= 0:
+		return
+	var held: Dictionary = ghost_holdings.get(instance_id, {})
+	held[good_id] = int(held.get(good_id, 0)) + qty
+	ghost_holdings[instance_id] = held
+	print("[Purchase] %s: %d %s held off-tile (no room) — will move in as space frees" % [
+		instance_id, qty, good_id])
+
+
+## What is waiting off-tile for this building, for its detail panel's
+## "x units stored for this building" line.
+func ghost_holding_for(instance_id: String) -> Dictionary:
+	return (ghost_holdings.get(instance_id, {}) as Dictionary).duplicate()
+
+
+func ghost_holding_units(instance_id: String) -> int:
+	var total := 0
+	for gid in (ghost_holdings.get(instance_id, {}) as Dictionary):
+		total += int(ghost_holdings[instance_id][gid])
+	return total
+
+
+## Move held goods onto the tile as capacity allows. Called each turn before production, so a
+## building that could not be fully stocked on purchase fills up as it consumes what it has.
+func drain_ghost_holdings() -> void:
+	if ghost_holdings.is_empty():
+		return
+	for instance_id in ghost_holdings.keys():
+		var building: Dictionary = buildings.get(str(instance_id), {})
+		if building.is_empty():
+			ghost_holdings.erase(instance_id)   # building gone; the goods go with it
+			continue
+		var tile_id := str(building.get("tile_id", ""))
+		var held: Dictionary = ghost_holdings[instance_id]
+		for gid in held.keys():
+			var want := int(held[gid])
+			if want <= 0:
+				held.erase(gid)
+				continue
+			var placed: int = Stockpile.add(tile_id, str(gid), want)
+			if placed > 0:
+				held[gid] = want - placed
+			if int(held.get(gid, 0)) <= 0:
+				held.erase(gid)
+		if held.is_empty():
+			ghost_holdings.erase(instance_id)
+		else:
+			ghost_holdings[instance_id] = held
+
+
 ## Domestic freight the founder pre-paid: units of overland haulage that cost the player
 ## nothing. Consumed by TransportService before any charge is raised, so it shows up as
 ## genuinely free movement rather than a rebate. The COO gift.
