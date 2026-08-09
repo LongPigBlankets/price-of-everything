@@ -452,10 +452,6 @@ func reset() -> void:
 	_reservations.clear()
 	_history.clear()
 	flags.clear()
-	# The family friend arrives on a fixed turn in every sandbox match. Reserved here rather
-	# than scheduled elsewhere so it survives a reset and cannot be crowded out by an ambient
-	# draw. Suppressed for tutorials at fire time (the ruleset is not loaded yet at reset).
-	_reservations[FOUNDER_DECISION_TURN] = "family_friend"
 	_next_pulse_turn = FIRST_DECISION_TURN
 	_scheduled_pull = {}
 	_next_uid = 1
@@ -504,12 +500,18 @@ func _tick_narrative() -> void:
 	#    gated by ambient_ok — these are scripted beats (the carbon-levy notice at t90 is
 	#    blocking by design) and a reservation is ERASED as it fires, so skipping its turn
 	#    would drop that beat from the run permanently.
+	# The family friend arrives on a fixed turn in every sandbox match. Checked here rather than
+	# reserved at reset: import_state() clears _reservations wholesale and a NEW GAME has no
+	# "decisions" key, so import_state({}) ran immediately after reset() and wiped the booking.
+	# _fired_once is saved, so it is a once-only marker that survives both paths.
+	if turn >= FOUNDER_DECISION_TURN and not _fired_once.has("family_friend") \
+			and not bool(MatchState.ruleset.get("tutorial_enabled", false)) \
+			and pending_queue.size() < PENDING_QUEUE_CAP:
+		_draw("family_friend")
 	if _reservations.has(turn) and pending_queue.size() < PENDING_QUEUE_CAP:
 		var def_id := str(_reservations[turn])
 		_reservations.erase(turn)
-		# The tutorial teaches one chain; a board appointment is noise inside it.
-		if not (def_id == "family_friend" and bool(MatchState.ruleset.get("tutorial_enabled", false))):
-			_draw(def_id)
+		_draw(def_id)
 	# The founder's pro bono tenure runs out — he vacates and the post opens for a real hire.
 	if not MatchState.founder_tenure_expired() and turn >= MatchState.founder_leaves_turn:
 		_retire_founder()

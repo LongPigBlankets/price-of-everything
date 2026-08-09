@@ -103,6 +103,7 @@ func _ready() -> void:
 	_test_market_input_pipeline_ignores_reserved_inbound()
 	_test_tax_dividend_caps()
 	_test_tax_free_profit_floor()
+	_test_founder_decision_fires_on_a_new_game()
 	_test_building_operational_tab()
 	_test_idle_labour_pay_policy()
 	_test_purchase_inventory_seed()
@@ -6752,6 +6753,65 @@ func _test_start_labour_preset() -> void:
 		and is_equal_approx(float(wild_match.get("labour_output_pressure_pct", 0.0)),
 			EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
 		"start labour values are clamped to the configured range")
+
+func _test_founder_decision_fires_on_a_new_game() -> void:
+	# Reproduces the REAL new-game path, which is what a reservation-based booking could not
+	# survive: MatchState.reset() runs first, then SaveLoad calls DecisionState.import_state()
+	# with the snapshot's "decisions" key — and a fresh start has no such key, so import_state({})
+	# cleared the booking milliseconds after it was made. Reported from a live game: turn 5 of
+	# metal_magnate with no Andrew Keeler.
+	# DecisionState is inert headless (enabled = DisplayServer != headless), so the fixture
+	# turns it on — without this the test passes vacuously by drawing nothing at all.
+	var decisions_enabled: bool = DecisionState.enabled
+	DecisionState.enabled = true
+	MatchState.reset()
+	DecisionState.reset()
+	DecisionState.import_state({})            # the step that used to wipe it
+	TurnManager.current_turn = DecisionState.FOUNDER_DECISION_TURN
+	DecisionState._tick_narrative()
+	var found := false
+	for d in DecisionState.pending_queue:
+		if str((d as Dictionary).get("def_id", "")) == "family_friend":
+			found = true
+	_check(found, "founder: the offer fires on turn %d of a new game, after import_state"
+		% DecisionState.FOUNDER_DECISION_TURN)
+
+	# Once offered it never returns, and a later turn does not re-draw it.
+	DecisionState.pending_queue.clear()
+	DecisionState._tick_narrative()
+	var again := false
+	for d in DecisionState.pending_queue:
+		if str((d as Dictionary).get("def_id", "")) == "family_friend":
+			again = true
+	_check(not again, "founder: the offer is made once and does not repeat")
+
+	# A player who loads in past the turn still gets it — it is their introduction to the board.
+	MatchState.reset()
+	DecisionState.reset()
+	DecisionState.import_state({})
+	TurnManager.current_turn = DecisionState.FOUNDER_DECISION_TURN + 6
+	DecisionState._tick_narrative()
+	var late := false
+	for d in DecisionState.pending_queue:
+		if str((d as Dictionary).get("def_id", "")) == "family_friend":
+			late = true
+	_check(late, "founder: a run already past the turn still gets the offer")
+
+	# The tutorial teaches one chain; a board appointment is noise inside it.
+	MatchState.reset()
+	MatchState.ruleset = {"name": "tutorial", "tutorial_enabled": true}
+	DecisionState.reset()
+	DecisionState.import_state({})
+	TurnManager.current_turn = DecisionState.FOUNDER_DECISION_TURN
+	DecisionState._tick_narrative()
+	var in_tutorial := false
+	for d in DecisionState.pending_queue:
+		if str((d as Dictionary).get("def_id", "")) == "family_friend":
+			in_tutorial = true
+	_check(not in_tutorial, "founder: the offer is suppressed in the tutorial")
+	DecisionState.enabled = decisions_enabled
+	MatchState.reset()
+	TurnManager.current_turn = 1
 
 func _test_building_operational_tab() -> void:
 	# A new build's first turns are carried, not paid (spec §5.3). Exposure is bounded by the
