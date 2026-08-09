@@ -82,6 +82,15 @@ var permanent_advisor_ids: Array = []
 # --- Advisor seats (seat framework, docs/advisor-system-spec.md §4-6) ---
 # advisor_seats is sparse: only occupied seats are keys, so .size() == seated count.
 var advisor_seats: Dictionary = {}          # seat_id -> advisor_id
+## Only CFO and COO exist until the player earns the rest. A new player choosing between two
+## posts is a real decision; choosing between eleven is a menu.
+## See docs/early-game-onboarding-spec.md §5.4.
+const STARTING_SEATS: Array[String] = ["cfo", "coo"]
+const FOUNDER_ADVISOR_ID := "andrew"
+const FOUNDER_TENURE_TURNS := 30
+var all_seats_unlocked: bool = false        # set by the people/labour research node
+var founder_seat: String = ""               # which post Andrew took, "" if he never joined
+var founder_leaves_turn: int = 0            # tenure end; he cannot be dismissed before it
 const MAX_ADVISOR_SLOTS_DEFAULT := 2
 const MAX_ADVISOR_SLOTS_CAP := 5            # spec §4.1 hard ceiling
 var max_advisor_slots: int = MAX_ADVISOR_SLOTS_DEFAULT
@@ -2975,6 +2984,10 @@ func reset() -> void:
 	labour_output_pressure_pct = 0.0
 	permanent_advisor_ids.clear()
 	advisor_seats.clear()
+	all_seats_unlocked = false
+	founder_seat = ""
+	founder_leaves_turn = 0
+	freight_credit_units = 0
 	max_advisor_slots = MAX_ADVISOR_SLOTS_DEFAULT
 	crossed_milestones.clear()
 	recruited_advisor_ids.clear()
@@ -3078,6 +3091,10 @@ func export_state() -> Dictionary:
 		"workforce_policy_effects": workforce_policy_effects.duplicate(true),
 		"permanent_advisor_ids": permanent_advisor_ids.duplicate(true),
 		"advisor_seats": advisor_seats.duplicate(true),
+		"all_seats_unlocked": all_seats_unlocked,
+		"founder_seat": founder_seat,
+		"founder_leaves_turn": founder_leaves_turn,
+		"freight_credit_units": freight_credit_units,
 		"max_advisor_slots": max_advisor_slots,
 		"advisor_rng_seed": match_rng_seed,
 		"advisor_rng_state": _match_rng.state,
@@ -3197,6 +3214,12 @@ func import_state(d: Dictionary) -> void:
 	for pid in permanent_advisor_ids:
 		advisor_hired_turn[str(pid)] = int(raw_hired.get(str(pid), int(TurnManager.current_turn) - 1))
 	advisor_seats = _sanitize_advisor_seats(d.get("advisor_seats", {}))
+	# Tolerant readers: saves from before the founder existed load with every seat open, which
+	# is what those saves already behaved like.
+	all_seats_unlocked = bool(d.get("all_seats_unlocked", true))
+	founder_seat = str(d.get("founder_seat", ""))
+	founder_leaves_turn = int(d.get("founder_leaves_turn", 0))
+	freight_credit_units = int(d.get("freight_credit_units", 0))
 	max_advisor_slots = clampi(int(d.get("max_advisor_slots", MAX_ADVISOR_SLOTS_DEFAULT)), MAX_ADVISOR_SLOTS_DEFAULT, MAX_ADVISOR_SLOTS_CAP)
 	match_rng_seed = int(d.get("advisor_rng_seed", DEFAULT_MATCH_RNG_SEED))
 	_match_rng.seed = match_rng_seed
@@ -5304,6 +5327,9 @@ const SEAT_DEFINITIONS := {
 # never stored. salary is static (Phase-2 payroll); advisor_payroll_per_turn stays
 # flat for now. traits.specialty_domain is filled in Phase 1+ for effect routing.
 const ADVISOR_ROSTER := [
+	# The family friend. Joins pro bono at turn 3 in whichever post the player picks, then
+	# leaves at t33. Salary 0 — he is a favour, not a hire. See spec §5.4.
+	{"id": "andrew",    "name": "Andrew Keeler",   "role": "coo",                "inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 3, "salary": 0.0, "traits": {"specialty_name": "Old Family Friend", "specialty_description": "owes your family a debt; serves 30 turns for nothing", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "vera",      "name": "Vera Ashby",      "role": "cfo",                "inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 3, "salary": 1.0, "traits": {"specialty_name": "Family Trust",         "specialty_description": "reduced salary, no malus anywhere",                 "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "alexandra", "name": "Alexandra Reyes", "role": "coo",                "inf": 3, "ops": 3, "lead": 3, "inn": 3, "fin": 2, "salary": 4.0, "traits": {"specialty_name": "Prima Donna",          "specialty_description": "superb everywhere; high salary + walk-risk if benched", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "gerald",    "name": "Gerald Vance",    "role": "coo",                "inf": 2, "ops": 3, "lead": 3, "inn": 2, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Dinosaur",             "specialty_description": "top operator; brakes clean-recipe adoption (carbon, later)", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
@@ -5432,12 +5458,89 @@ func advisor_seat_governing_discipline(advisor_id: String, seat_id: String) -> S
 
 # Assign a HIRED, rostered advisor to a seat. Enforces the slot cap and
 # one-seat-per-advisor. Returns false if rejected.
+## Domestic freight the founder pre-paid: units of overland haulage that cost the player
+## nothing. Consumed by TransportService before any charge is raised, so it shows up as
+## genuinely free movement rather than a rebate. The COO gift.
+var freight_credit_units: int = 0
+
+func add_freight_credit(units: int) -> void:
+	if units <= 0:
+		return
+	freight_credit_units += units
+	advisors_changed.emit()
+
+## Spend up to `units` of credit; returns how many were covered (0 when exhausted).
+func consume_freight_credit(units: int) -> int:
+	if freight_credit_units <= 0 or units <= 0:
+		return 0
+	var used := mini(freight_credit_units, units)
+	freight_credit_units -= used
+	return used
+
+
+## Which posts the company can fill. Only CFO and COO exist until the people/labour research
+## node opens the rest — see docs/early-game-onboarding-spec.md §5.4.
+func is_seat_available(seat_id: String) -> bool:
+	return all_seats_unlocked or STARTING_SEATS.has(seat_id)
+
+
+func available_seat_ids() -> Array[String]:
+	var out: Array[String] = []
+	for seat_id in SEAT_DEFINITIONS:
+		if is_seat_available(str(seat_id)):
+			out.append(str(seat_id))
+	return out
+
+
+## Has the founder's pro bono tenure run out? True when he never joined at all.
+func founder_tenure_expired() -> bool:
+	return founder_seat == "" or TurnManager.current_turn >= founder_leaves_turn
+
+
+## Andrew joins pro bono for FOUNDER_TENURE_TURNS, in whichever post the player picked.
+func seat_founder(seat_id: String) -> bool:
+	if not SEAT_DEFINITIONS.has(seat_id):
+		return false
+	if not recruited_advisor_ids.has(FOUNDER_ADVISOR_ID):
+		recruited_advisor_ids.append(FOUNDER_ADVISOR_ID)
+	if not permanent_advisor_ids.has(FOUNDER_ADVISOR_ID):
+		permanent_advisor_ids.append(FOUNDER_ADVISOR_ID)
+	founder_seat = seat_id
+	founder_leaves_turn = TurnManager.current_turn + FOUNDER_TENURE_TURNS
+	var ok := assign_advisor_to_seat(seat_id, FOUNDER_ADVISOR_ID)
+	if not ok:
+		founder_seat = ""
+		founder_leaves_turn = 0
+	return ok
+
+
+## Tenure over: he vacates and the post opens for a normal hire.
+func release_founder() -> void:
+	if founder_seat == "":
+		return
+	if str(advisor_seats.get(founder_seat, "")) == FOUNDER_ADVISOR_ID:
+		advisor_seats.erase(founder_seat)
+	permanent_advisor_ids.erase(FOUNDER_ADVISOR_ID)
+	recruited_advisor_ids.erase(FOUNDER_ADVISOR_ID)
+	founder_seat = ""
+	founder_leaves_turn = 0
+	reconcile_advisor_modifiers()
+	advisors_changed.emit()
+
+
 func assign_advisor_to_seat(seat_id: String, advisor_id: String) -> bool:
 	if not SEAT_DEFINITIONS.has(seat_id):
+		return false
+	if not is_seat_available(seat_id):
 		return false
 	if _roster_entry(advisor_id).is_empty():
 		return false
 	if not permanent_advisor_ids.has(advisor_id):
+		return false
+	# The founder's post is his for the tenure — vacating it out from under him is the one
+	# reassignment the council refuses.
+	if founder_seat != "" and seat_id == founder_seat and advisor_id != FOUNDER_ADVISOR_ID \
+			and not founder_tenure_expired():
 		return false
 	# Capacity gate. An advisor who ALREADY holds a seat is moving, not arriving: the loop below
 	# vacates their old seat, so the seat count does not grow and the cap must not refuse them.

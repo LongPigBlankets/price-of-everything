@@ -103,6 +103,7 @@ func _ready() -> void:
 	_test_market_input_pipeline_ignores_reserved_inbound()
 	_test_tax_dividend_caps()
 	_test_tax_free_profit_floor()
+	_test_founder_advisor()
 	_test_port_ad_valorem_schedule()
 	_test_tutorial_rescue()
 	_test_start_labour_preset()
@@ -6748,6 +6749,59 @@ func _test_start_labour_preset() -> void:
 			EconomyConfig.LABOUR_OUTPUT_MOMENTUM_CAP),
 		"start labour values are clamped to the configured range")
 
+func _test_founder_advisor() -> void:
+	# Only two posts exist until the player earns the rest, and the family friend fills one of
+	# them pro bono for 30 turns. See docs/early-game-onboarding-spec.md §5.4.
+	MatchState.reset()
+	_check(MatchState.is_seat_available("cfo") and MatchState.is_seat_available("coo"),
+		"seats: CFO and COO are open from the start")
+	_check(not MatchState.is_seat_available("vp_logistics")
+		and not MatchState.is_seat_available("government_affairs"),
+		"seats: every other post is closed until unlocked")
+	_check(MatchState.available_seat_ids().size() == MatchState.STARTING_SEATS.size(),
+		"seats: exactly two posts are offered at the start")
+	MatchState.permanent_advisor_ids = ["vera"]
+	_check(not MatchState.assign_advisor_to_seat("vp_logistics", "vera"),
+		"seats: a closed post refuses an appointment")
+	MatchState.all_seats_unlocked = true
+	_check(MatchState.assign_advisor_to_seat("vp_logistics", "vera"),
+		"seats: the research unlock opens the rest of the council")
+
+	# Andrew joins pro bono, holds his post for the tenure, and cannot be displaced.
+	MatchState.reset()
+	TurnManager.current_turn = 3
+	_check(MatchState.seat_founder("coo"), "founder: Andrew takes the post he was offered")
+	_check(MatchState.get_advisor_in_seat("coo") == MatchState.FOUNDER_ADVISOR_ID,
+		"founder: he is seated as COO")
+	_check(MatchState.founder_leaves_turn == 3 + MatchState.FOUNDER_TENURE_TURNS,
+		"founder: his tenure runs %d turns" % MatchState.FOUNDER_TENURE_TURNS)
+	_check(not MatchState.founder_tenure_expired(), "founder: the tenure is live at turn 3")
+	MatchState.permanent_advisor_ids.append("vera")
+	_check(not MatchState.assign_advisor_to_seat("coo", "vera"),
+		"founder: his chair cannot be given away mid-tenure")
+
+	TurnManager.current_turn = MatchState.founder_leaves_turn
+	_check(MatchState.founder_tenure_expired(), "founder: the tenure expires on schedule")
+	MatchState.release_founder()
+	_check(MatchState.get_advisor_in_seat("coo") == "",
+		"founder: he vacates and the post opens")
+	_check(MatchState.assign_advisor_to_seat("coo", "vera"),
+		"founder: a real hire can take the chair afterwards")
+
+	# The COO gift: pre-paid domestic freight, spent before any charge is raised.
+	MatchState.reset()
+	MatchState.add_freight_credit(1000)
+	_check(MatchState.freight_credit_units == 1000, "founder: the freight credit lands")
+	_check(MatchState.consume_freight_credit(400) == 400
+		and MatchState.freight_credit_units == 600,
+		"founder: freight credit is drawn down as it is used")
+	_check(MatchState.consume_freight_credit(5000) == 600
+		and MatchState.freight_credit_units == 0,
+		"founder: the credit covers what it can and then runs out")
+	_check(MatchState.consume_freight_credit(10) == 0,
+		"founder: an exhausted credit covers nothing")
+	TurnManager.current_turn = 1
+
 func _test_port_ad_valorem_schedule() -> void:
 	# Port charging is ad valorem only, on a turn schedule: 0.5% while learning, 3% from t31.
 	# The flat per-good fee is retired — it made quantity free, which is why freight collapsed
@@ -8243,6 +8297,8 @@ func _test_advisor_seat_assign_and_slot_cap() -> void:
 	var saved_seats: Dictionary = MatchState.advisor_seats.duplicate(true)
 	var saved_slots: int = MatchState.max_advisor_slots
 	var saved_hired: Array = MatchState.permanent_advisor_ids.duplicate(true)
+	var saved_unlocked: bool = MatchState.all_seats_unlocked
+	MatchState.all_seats_unlocked = true   # slot-cap mechanics, not the CFO/COO gate
 	MatchState.permanent_advisor_ids = ["vera", "tom", "marcus", "eleanor"]
 	MatchState.advisor_seats = {}
 	MatchState.max_advisor_slots = 2
@@ -8276,6 +8332,7 @@ func _test_advisor_seat_assign_and_slot_cap() -> void:
 	MatchState.advisor_seats = saved_seats
 	MatchState.max_advisor_slots = saved_slots
 	MatchState.permanent_advisor_ids = saved_hired
+	MatchState.all_seats_unlocked = saved_unlocked
 
 func _test_endgame_continuity_verdict() -> void:
 	# Three outcomes, not two: reaching the bell with no track secured is only RECEIVERSHIP if
@@ -9049,7 +9106,7 @@ func _test_people_panel_seat_ui() -> void:
 
 func _test_advisor_roster_merge() -> void:
 	var defs: Array = MatchState._advisor_definitions()
-	_check(defs.size() == 12, "roster merge: _advisor_definitions() has 12 advisors")
+	_check(defs.size() == 13, "roster merge: _advisor_definitions() has 13 advisors")
 	var required := ["id", "name", "role", "happiness", "portrait_color", "bonus", "recommendation", "bio", "agenda", "likes", "dislikes", "bonuses", "missions"]
 	var all_ok := true
 	for d in defs:

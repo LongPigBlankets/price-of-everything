@@ -94,6 +94,35 @@ var _next_uid: int = 1
 # ---------------------------------------------------------------------------
 
 const DECISION_DEFINITIONS := {
+	# Turn 3, every sandbox start. An old friend of the player's father offers to fill ONE of the
+	# two posts that exist, pro bono, for 30 turns. The choice is cheap money versus cheap
+	# movement, and both are good — a new player cannot pick wrong, only differently.
+	# Verbatim line and gifts are owner-locked. See docs/early-game-onboarding-spec.md §5.4.
+	"family_friend": {
+		"title": "An Old Friend of the Family",
+		"body": "Andrew Keeler knew your father for thirty years, and says he owes him more than he ever repaid. He is offering to sit on your board for nothing — but he will only take one chair.\n\n\"I've negotiated lots of deals with suppliers and banks in the past. But my specialty will always be transporting goods cheap.\"",
+		"scope": "company", "category": "governance", "priority": PRIORITY_STORY,
+		"target_selector": "company",
+		"cooldown_turns": 9999, "weight": 0.0, "default_choice": "coo",
+		"choices": [
+			{"id": "cfo", "label": "Give him the CFO's chair",
+				"effects": [
+					{"kind": "seat_founder", "seat": "cfo"},
+					{"kind": "founder_loan", "amount": 200.0, "rate": 0.05},
+				],
+				"advocate_seat": "cfo",
+				"stance": "Cheap money now, and someone who reads a term sheet properly."},
+			{"id": "coo", "label": "Give him the COO's chair",
+				"effects": [
+					{"kind": "seat_founder", "seat": "coo"},
+					{"kind": "freight_credit", "units": 1000},
+					{"kind": "modifier", "domain": "transport_cost", "pct": -20.0,
+						"label": "Andrew Keeler: −20% transport costs"},
+				],
+				"advocate_seat": "coo",
+				"stance": "Moving things is most of what you do. I can make it cost less."},
+		],
+	},
 	"planning_pushback": {
 		"title": "Planning Pushback",
 		"body": "Residents' associations have packed the planning hearing for {target_name}. The build can absorb the consultations — or you can make the problem go away.",
@@ -386,6 +415,28 @@ func has_pending() -> bool:
 func history() -> Array:
 	return _history.duplicate()
 
+## The turn the family friend offers to join. Fixed rather than random: it is the first real
+## decision a new player makes, and it must land before they have committed to a build order.
+const FOUNDER_DECISION_TURN := 3
+
+
+## Andrew's tenure ends: he vacates, the post opens, and the player is told plainly so the
+## sudden loss of his modifier is legible rather than mysterious.
+func _retire_founder() -> void:
+	var seat := MatchState.founder_seat
+	var seat_name := str(MatchState.SEAT_DEFINITIONS.get(seat, {}).get("seat_name", seat))
+	MatchState.release_founder()
+	EventScheduler.emit_event({
+		"kind": "founder_departs",
+		"severity": "info",
+		"title": "Andrew Keeler stands down",
+		"body": "Andrew has served his time as %s and is standing down, with his debt to your family considered paid. He wishes you luck. The chair is open — you can hire for it now." % seat_name,
+		"source": "advisors",
+		"persistent": false,
+		"auto_dismiss_turns": 3,
+	})
+
+
 ## Story beats (carbon arc etc.) reserve their turn ahead of time: the reserved
 ## definition fires unconditionally on that turn and random draws stay clear of
 ## it (that turn and the turn before).
@@ -401,6 +452,10 @@ func reset() -> void:
 	_reservations.clear()
 	_history.clear()
 	flags.clear()
+	# The family friend arrives on a fixed turn in every sandbox match. Reserved here rather
+	# than scheduled elsewhere so it survives a reset and cannot be crowded out by an ambient
+	# draw. Suppressed for tutorials at fire time (the ruleset is not loaded yet at reset).
+	_reservations[FOUNDER_DECISION_TURN] = "family_friend"
 	_next_pulse_turn = FIRST_DECISION_TURN
 	_scheduled_pull = {}
 	_next_uid = 1
@@ -452,7 +507,12 @@ func _tick_narrative() -> void:
 	if _reservations.has(turn) and pending_queue.size() < PENDING_QUEUE_CAP:
 		var def_id := str(_reservations[turn])
 		_reservations.erase(turn)
-		_draw(def_id)
+		# The tutorial teaches one chain; a board appointment is noise inside it.
+		if not (def_id == "family_friend" and bool(MatchState.ruleset.get("tutorial_enabled", false))):
+			_draw(def_id)
+	# The founder's pro bono tenure runs out — he vacates and the post opens for a real hire.
+	if not MatchState.founder_tenure_expired() and turn >= MatchState.founder_leaves_turn:
+		_retire_founder()
 	# C) Pulse: only into a QUIET board — no pending decision, nothing in flight, and
 	#    no story beat landing next turn.
 	elif ambient_ok and not has_pending() and _scheduled_pull.is_empty() \
@@ -1043,6 +1103,13 @@ func _execute_effects(effects: Array, target: Dictionary) -> void:
 				var patches := MatchState.sellable_land_patches(str(target.get("tile_id", "")))
 				MatchState.sell_tile_land(str(target.get("tile_id", "")), patches,
 					MatchState.LAND_PATCH_COST * float(eff.get("price_mult", 1.0)))
+			"seat_founder":
+				MatchState.seat_founder(str(eff.get("seat", "coo")))
+			"founder_loan":
+				# A one-off cheap loan on signing: the CFO's gift. Standard life, half rate.
+				LoanState.take_founder_loan(float(eff.get("amount", 0.0)), float(eff.get("rate", 0.05)))
+			"freight_credit":
+				MatchState.add_freight_credit(int(eff.get("units", 0)))
 			"distressed_program":
 				SolvencyState.accept_distressed_program()
 			"none":
