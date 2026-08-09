@@ -426,7 +426,10 @@ func _build_detail() -> void:
 		focus_seat = str(MatchState.advisor_best_effect_seat(aid))
 	# A stable name lets the tutorial require players to open a candidate profile
 	# and read the seat-specific effects before they hire them.
-	var bonus_title := _sec_label("BONUSES FROM THIS ADVISOR'S EXPERTISE — %s" % _seat_name(focus_seat).to_upper())
+	var bonus_title := Label.new()
+	bonus_title.text = "Bonuses from this advisor's expertise — %s" % _seat_name(focus_seat)
+	bonus_title.add_theme_font_size_override("font_size", 20)
+	bonus_title.add_theme_color_override("font_color", Color("#E9F1FA"))
 	bonus_title.name = "AdvisorBonusSection"
 	left.add_child(bonus_title)
 	left.add_child(_bonus_table(aid, focus_seat))
@@ -509,9 +512,11 @@ func _advisor_bonus_rows(advisor_id: String, seat_id: String) -> Array:
 	var rows: Array = []
 	if seat_id != "":
 		for eff in MatchState.advisor_seat_effect_list(advisor_id, seat_id):
+			var pct := float(eff.get("pct", 0.0))
+			var domain := str(eff.get("domain", ""))
 			rows.append({
-				"name": _effect_text(eff),
-				"effect": "applied while seated",
+				"name": str(_DOMAIN_LABELS.get(domain, domain)).capitalize(),
+				"effect": "%+.0f%%" % pct,
 				"good": _effect_is_beneficial(eff),
 			})
 	if advisor_id == MatchState.FOUNDER_ADVISOR_ID:
