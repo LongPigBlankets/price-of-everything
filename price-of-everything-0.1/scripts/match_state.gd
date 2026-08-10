@@ -927,6 +927,89 @@ func pending_upgrade(instance_id: String) -> Dictionary:
 			return p
 	return {}
 
+
+## Read-only progress snapshot for an upgrade button / diagnostics row. `turns_remaining`
+## alone is not an ETA while a project is awaiting materials: the three-turn build countdown
+## does not start until every outstanding unit has arrived and been claimed. This folds in the
+## tagged shipments and overflow queue, and reports why no finite estimate can be made.
+func upgrade_progress_snapshot(instance_id: String) -> Dictionary:
+	var pending := pending_upgrade(instance_id)
+	if pending.is_empty():
+		return {}
+	var countdown := maxi(0, int(pending.get("turns_remaining", 0)))
+	var status := str(pending.get("status", ""))
+	if status == UPGRADE_STATUS_UPGRADING:
+		return {
+			"status": status, "blocked": false, "estimated_turns": countdown,
+			"tooltip": "Estimated completion: %d turn%s." % [countdown, "" if countdown == 1 else "s"],
+		}
+	if status != UPGRADE_STATUS_AWAITING:
+		var unknown := "The upgrade has an unknown progress state ('%s')." % status
+		return {
+			"status": status, "blocked": true, "estimated_turns": -1,
+			"error": unknown,
+			"tooltip": "Upgrade paused — estimated completion unavailable.\n%s" % unknown,
+		}
+
+	var tile_id := str(pending.get("tile_id", ""))
+	var missing: Dictionary = pending.get("missing", {})
+	var blockers: Array = []
+	var material_eta := 1  # even on-tile goods are claimed on the next processed turn
+	var overflow_qty := 0
+	for gid_value in missing:
+		var gid := str(gid_value)
+		var needed := maxi(0, int(missing[gid_value]))
+		if needed <= 0:
+			continue
+		var accounted := mini(needed, Stockpile.get_at_tile(tile_id, gid))
+		var latest_eta := 0
+		for shipment in pending_transport_shipments:
+			if str((shipment as Dictionary).get("upgrade_instance_id", "")) != instance_id \
+					or str((shipment as Dictionary).get("destination_tile", "")) != tile_id \
+					or str((shipment as Dictionary).get("good_id", "")) != gid:
+				continue
+			var enroute_take := mini(maxi(0, needed - accounted), int((shipment as Dictionary).get("qty", 0)))
+			accounted += enroute_take
+			if enroute_take > 0:
+				latest_eta = maxi(latest_eta, int((shipment as Dictionary).get("turns_remaining", 0)))
+		for overflow in overflow_shipments:
+			if str((overflow as Dictionary).get("upgrade_instance_id", "")) != instance_id \
+					or str((overflow as Dictionary).get("destination_tile", "")) != tile_id \
+					or str((overflow as Dictionary).get("good_id", "")) != gid:
+				continue
+			var held := mini(maxi(0, needed - accounted), int((overflow as Dictionary).get("qty", 0)))
+			accounted += held
+			overflow_qty += held
+			if held > 0:
+				latest_eta = maxi(latest_eta, 1)
+		material_eta = maxi(material_eta, latest_eta)
+		if accounted >= needed:
+			continue
+		var short := needed - accounted
+		var good_name := Catalog.get_display_name(gid)
+		var quote := TransportService.quote_market_buy(tile_id, gid, short, seaport_would_cover(gid))
+		if quote.is_empty():
+			blockers.append("No road, rail or suitable pipe route can deliver %s to this tile." % good_name)
+		else:
+			blockers.append("No shipment is carrying the remaining %d %s." % [short, good_name])
+
+	if overflow_qty > Stockpile.get_free_capacity(tile_id):
+		blockers.append("The tile stockpile is too full to unload the remaining upgrade materials.")
+
+	if not blockers.is_empty():
+		var error := " ".join(blockers)
+		return {
+			"status": status, "blocked": true, "estimated_turns": -1,
+			"error": error,
+			"tooltip": "Upgrade paused — estimated completion unavailable.\n%s" % error,
+		}
+	var estimated := material_eta + countdown
+	var waiting_text := "Materials are on their way." if material_eta > 1 else "Materials will be claimed next turn."
+	return {
+		"status": status, "blocked": false, "estimated_turns": estimated,
+		"tooltip": "%s Estimated completion: %d turn%s." % [waiting_text, estimated, "" if estimated == 1 else "s"],
+	}
+
 # Footprint reserved on a tile by upgrades-in-progress (so a second build can't slip into
 # room the growing building is about to claim). Counted by get_tile_space_used.
 func reserved_upgrade_space_on_tile(tile_id: String) -> float:
@@ -944,6 +1027,55 @@ func reserved_upgrade_space_on_tile(tile_id: String) -> float:
 ## internal_name for all five). Port/airport are not levellable.
 const INFRA_UPGRADABLE: Array = ["roads", "rails", "pipes", "reinf_pipes", "cables"]
 
+## Tile-seeded infrastructure (CSV cables/rails and the baked road network) has no
+## MatchState building instance. TileViewData gives those slots a stable synthetic id
+## (`tile_<tile_id>_<slot>`) so the shared building-detail upgrade UI can still address
+## them. Resolve that id back to the tile + canonical slot, but only while the slot is
+## actually installed on the live HexMap tile.
+func _tile_backed_infra_instance(upgrade_id: String) -> Dictionary:
+	if not upgrade_id.begins_with("tile_"):
+		return {}
+	for slot_value in INFRA_UPGRADABLE:
+		var slot := str(slot_value)
+		var suffix := "_" + slot
+		if not upgrade_id.ends_with(suffix):
+			continue
+		var tile_id := upgrade_id.substr(5, upgrade_id.length() - 5 - suffix.length())
+		if tile_id == "" or not _tile_has_infrastructure_slot(tile_id, slot):
+			continue
+		var building: Dictionary = Catalog.get_building_by_internal_name(slot)
+		if building.is_empty():
+			return {}
+		return {
+			"instance_id": upgrade_id,
+			"building_id": str(building.get("id", "")),
+			"tile_id": tile_id,
+			"owner": "tile_data",
+		}
+	return {}
+
+func _tile_has_infrastructure_slot(tile_id: String, slot: String) -> bool:
+	var tree := get_tree()
+	if tree == null:
+		return false
+	var hm = tree.get_first_node_in_group("hex_map")
+	if hm == null:
+		return false
+	var coord = hm.id_to_coord(tile_id)
+	if not hm.tiles.has(coord):
+		return false
+	for present_value in (hm.tiles[coord] as Dictionary).get("infrastructure_present", []):
+		var present := str(present_value).strip_edges().to_lower()
+		if present in ["rail", "railway", "railways"]:
+			present = "rails"
+		elif present in ["pipework", "pipeworks"]:
+			present = "pipes"
+		elif present in ["reinforced_pipes", "reinforced pipework"]:
+			present = "reinf_pipes"
+		if present == slot:
+			return true
+	return false
+
 ## The tile-level a levellable infra instance sits at (the TILE dict is the gameplay
 ## source of truth — power caps and transport capacity read it, not the instance).
 func infra_tile_level(inst: Dictionary) -> int:
@@ -953,6 +1085,11 @@ func infra_tile_level(inst: Dictionary) -> int:
 ## Write an infra slot's level on the HexMap tile (persisted via the save's structured
 ## infrastructure snapshot). No-ops headless (no map), like the reads.
 func set_tile_infra_level(tile_id: String, slot_key: String, level: int) -> void:
+	# Mirror into the router FIRST and unconditionally: a level changes how far one turn-move
+	# reaches (EconomyConfig.INFRA_RANGE_BY_LEVEL), and Catalog cannot read the HexMap tile —
+	# it routes headless. Doing it before the early-outs below means a headless caller still
+	# gets correct routing even with no map node in the tree.
+	Catalog.set_tile_infra_level(tile_id, slot_key, level)
 	var tree := get_tree()
 	if tree == null:
 		return
@@ -1007,7 +1144,11 @@ func _infra_capacity_delta(internal: String, level: int, target: int) -> Diction
 
 func preview_upgrade(instance_id: String) -> Dictionary:
 	if not buildings.has(instance_id):
-		return {"ok": false, "reason": "No such building."}
+		var tile_infra := _tile_backed_infra_instance(instance_id)
+		if tile_infra.is_empty():
+			return {"ok": false, "reason": "No such building."}
+		var tile_internal := str(Catalog.get_building(str(tile_infra.get("building_id", ""))).get("internal_name", ""))
+		return _preview_infra_upgrade(tile_infra, tile_internal)
 	var inst: Dictionary = buildings[instance_id]
 	var level := int(inst.get("level", 1))
 	var building_id := str(inst.get("building_id", ""))
@@ -1149,7 +1290,13 @@ const UPGRADE_STATUS_UPGRADING := "upgrading"
 ## countdown only begins once every material has been claimed. Returns {ok, reason, status}.
 func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	if not buildings.has(instance_id):
-		return {"ok": false, "reason": "No such building."}
+		var tile_infra := _tile_backed_infra_instance(instance_id)
+		if tile_infra.is_empty():
+			return {"ok": false, "reason": "No such building."}
+		if is_upgrading(instance_id):
+			return {"ok": false, "reason": "An upgrade is already in progress."}
+		var tile_internal := str(Catalog.get_building(str(tile_infra.get("building_id", ""))).get("internal_name", ""))
+		return _start_infra_upgrade(instance_id, tile_infra, tile_internal)
 	if is_upgrading(instance_id):
 		return {"ok": false, "reason": "An upgrade is already in progress."}
 	var inst: Dictionary = buildings[instance_id]
@@ -1284,8 +1431,13 @@ func tick_upgrades() -> Array:
 	var remaining: Array = []
 	for p in pending_upgrades:
 		var instance_id := str(p.get("instance_id", ""))
-		# Drop upgrades whose building vanished (sold/removed mid-flight).
-		if not buildings.has(instance_id):
+		var is_infra := bool(p.get("infra", false))
+		# Production upgrades still require their building. Tile-backed infrastructure
+		# deliberately has no building instance; its tile slot is the persistent target.
+		if not buildings.has(instance_id) and not is_infra:
+			continue
+		if is_infra and not buildings.has(instance_id) \
+				and not _tile_has_infrastructure_slot(str(p.get("tile_id", "")), str(p.get("infra_slot", ""))):
 			continue
 		if str(p.get("status", "")) == UPGRADE_STATUS_AWAITING:
 			var tile_id := str(p.get("tile_id", ""))
@@ -1305,14 +1457,19 @@ func tick_upgrades() -> Array:
 		# Under upgrade — count down, promote at zero.
 		p["turns_remaining"] = int(p.get("turns_remaining", 0)) - 1
 		if int(p["turns_remaining"]) <= 0:
-			var inst: Dictionary = buildings[instance_id]
-			inst["level"] = int(p.get("target_level", int(inst.get("level", 1)) + 1))
-			# Infra: the TILE dict is what power caps / transport capacity read — write
-			# it there too (the instance level is display-only for infra).
-			if bool(p.get("infra", false)):
-				set_tile_infra_level(str(p.get("tile_id", "")), str(p.get("infra_slot", "")), int(inst["level"]))
+			var new_level := int(p.get("target_level", 1))
+			if is_infra:
+				# The TILE dict is what power caps / transport capacity read. A player-built
+				# infra slot also has an instance, but seeded slots intentionally do not.
+				set_tile_infra_level(str(p.get("tile_id", "")), str(p.get("infra_slot", "")), new_level)
+				if buildings.has(instance_id):
+					(buildings[instance_id] as Dictionary)["level"] = new_level
+			else:
+				var inst: Dictionary = buildings[instance_id]
+				new_level = int(p.get("target_level", int(inst.get("level", 1)) + 1))
+				inst["level"] = new_level
 			completed.append(instance_id)
-			building_upgraded.emit(instance_id, int(inst["level"]))
+			building_upgraded.emit(instance_id, new_level)
 		else:
 			building_upgrade_progress.emit(instance_id)
 			remaining.append(p)
@@ -4869,8 +5026,16 @@ func tile_mode_flow(tile_id: String, mode: String) -> int:
 		if str(s.get("source_tile", "")) == tile_id or str(s.get("destination_tile", "")) == tile_id:
 			var goods := _shipment_goods_dict(s)
 			for good_id in goods:
-				if tolerated.has(Catalog.get_transport_class(str(good_id))):
-					total += int(goods[good_id])
+				if not tolerated.has(Catalog.get_transport_class(str(good_id))):
+					continue
+				# A fluid with no leg data is attributed to its PIPE network only. Since the
+				# overland ruling (2026-08-09) road and rail also tolerate fluids, so without
+				# this a leg-less fluid shipment would load BOTH networks and be charged
+				# congestion twice for one delivery. Legged routes are attributed exactly by
+				# the branch above; this only covers the first/last-mile fallback.
+				if Catalog.requires_pipeline(str(good_id)) and not EconomyConfig.PIPE_MODES.has(mode):
+					continue
+				total += int(goods[good_id])
 	return total
 
 # {good_id: qty} a shipment carries (sale shipments may carry several goods).
@@ -5928,6 +6093,59 @@ func advisor_seat_effect_list(advisor_id: String, seat_id: String) -> Array:
 			out.append({"domain": str(eff.get("domain", "")), "pct": pct})
 	return out
 
+
+## A deliberately simple, legible cash snapshot for the council UI: value only the
+## POSITIVE seat effects against the last completed turn's matching ledger line. It
+## is not a forecast — if the company paid no tax or freight that turn, a reduction
+## to that cost is worth £0 in this snapshot. One-off/non-ledger levers (construction,
+## purchases and throughput headroom) likewise stay at £0 rather than inventing value.
+func advisor_bonus_preview_per_turn(advisor_id: String, seat_id: String, snapshot: Dictionary = {}) -> float:
+	var summary: Dictionary = Production.last_turn_summary if snapshot.is_empty() else snapshot
+	var total := 0.0
+	for effect in advisor_seat_effect_list(advisor_id, seat_id):
+		var eff: Dictionary = effect
+		if not advisor_effect_is_beneficial(eff):
+			continue
+		var pct := absf(float(eff.get("pct", 0.0))) / 100.0
+		var domain := str(eff.get("domain", ""))
+		var basis := 0.0
+		match domain:
+			"labour_headcount":
+				basis = float(summary.get("labour_paid", 0.0))
+			"maintenance":
+				basis = float(summary.get("maintenance_paid", 0.0))
+			"building_power":
+				basis = float(summary.get("power_purchase_cost", 0.0))
+			"grid_buy_price":
+				# The tariff modifier does not discount the grid's carbon component.
+				basis = float(summary.get("grid_bought", 0.0)) * EconomyConfig.GRID_BUY_PRICE
+			"grid_sell_price":
+				basis = float(summary.get("grid_sold", 0.0)) * EconomyConfig.GRID_SELL_PRICE
+			"transport_cost":
+				basis = float(summary.get("transport_paid", 0.0))
+			"dividend_rate":
+				basis = float(summary.get("dividends_paid", 0.0))
+			"tax_rate":
+				basis = float(summary.get("taxes_paid", 0.0))
+			"market_spread":
+				# Only the buy markup is tightened, not the underlying value of the goods.
+				var markup := EconomyConfig.MARKET_BUY_MARKUP
+				basis = float(summary.get("goods_purchased_cost", 0.0)) * markup / (1.0 + markup)
+			"market_price":
+				basis = float(summary.get("goods_sales_revenue", 0.0))
+		total += maxf(0.0, basis) * pct
+	return total
+
+
+## Sign alone does not say whether a seat effect helps: lower costs are good,
+## while higher throughput, sale prices and rebates are good.
+func advisor_effect_is_beneficial(effect: Dictionary) -> bool:
+	var pct := float(effect.get("pct", 0.0))
+	var domain := str(effect.get("domain", ""))
+	var positive_is_good := domain in [
+		"transport_throughput", "grid_sell_price", "construction_rebate", "market_price"]
+	return pct > 0.0 if positive_is_good else pct < 0.0
+
 # The seat this advisor best demonstrates: their assigned seat if seated, else the
 # highest-tier seat that actually carries effects (falls back to their top seat).
 func advisor_best_effect_seat(advisor_id: String) -> String:
@@ -6445,9 +6663,32 @@ func advisor_revenue_basis() -> float:
 	return float(s.get("goods_sales_revenue", 0.0)) + float(s.get("power_sales_revenue", 0.0))
 
 
+## Andrew's family-friend appointment is explicitly pro bono for its whole tenure.
+## Keep the exception here, at the source of truth used by both payroll and the UI,
+## rather than relying on the roster's retired static salary field.
+func advisor_is_payrolled(advisor_id: String) -> bool:
+	return permanent_advisor_ids.has(advisor_id) \
+		and not (advisor_id == FOUNDER_ADVISOR_ID and founder_seat != "")
+
+
+func payrolled_advisor_count() -> int:
+	var count := 0
+	for raw_id in permanent_advisor_ids:
+		if advisor_is_payrolled(str(raw_id)):
+			count += 1
+	return count
+
+
+func advisor_cost_for(advisor_id: String, revenue: float = -1.0) -> float:
+	if permanent_advisor_ids.has(advisor_id) and not advisor_is_payrolled(advisor_id):
+		return 0.0
+	var rev: float = advisor_revenue_basis() if revenue < 0.0 else revenue
+	return advisor_cost_per_advisor(rev)
+
+
 func advisor_payroll_per_turn(revenue: float = -1.0) -> float:
 	var rev: float = advisor_revenue_basis() if revenue < 0.0 else revenue
-	return float(permanent_advisor_ids.size()) * advisor_cost_per_advisor(rev)
+	return float(payrolled_advisor_count()) * advisor_cost_per_advisor(rev)
 
 func _sanitize_advisor_ids(ids: Variant) -> Array:
 	var valid := {}

@@ -299,6 +299,59 @@ const TRANSPORT_MODE_COST_MULT := {
 	"reinf_pipes": 1.0,
 	"nothing": 1.0,
 }
+# Liquids and gases hauled OVERLAND — road tankers and rail tank wagons instead of a line
+# that just flows. Owner ruling 2026-08-09: fluids may now leave the pipe network, but the
+# convenience is priced. Multipliers are against the PIPE cost for the same good (pipes are
+# 1.0 above), rail is half of road exactly as it is for solids, and the hazard split that
+# separates pipes from reinforced pipes carries over — a hazardous load needs a certified
+# tanker and an escort, not just a truck.
+#
+# These are the only route by which a fluid can reach a tile with no pipework, so they are
+# also the difference between "expensive" and "impossible": keep them dear enough that
+# building the pipe is obviously right, and cheap enough that a stranded batch has a way out.
+const FLUID_OVERLAND_COST_MULT := {
+	"rail":  {"safe": 3.0, "hazard": 5.0},
+	"roads": {"safe": 6.0, "hazard": 10.0},
+}
+
+## The freight multiplier for one fluid leg over `mode`, or 0.0 when `mode` is not an overland
+## one (the caller then uses the ordinary TRANSPORT_MODE_COST_MULT). Hazard is exactly the
+## split the pipes already make: hazard_liquid is the one class normal pipework refuses.
+func fluid_overland_mult(good_id: String, mode: String) -> float:
+	var by_mode: Dictionary = FLUID_OVERLAND_COST_MULT.get(mode, {})
+	if by_mode.is_empty():
+		return 0.0
+	var hazard := Catalog.get_transport_class(good_id) == "hazard_liquid"
+	return float(by_mode.get("hazard" if hazard else "safe", 1.0))
+# How far one turn-move reaches, by mode and infrastructure LEVEL (owner ruling 2026-08-09).
+# Level 1 must match the `range` column in infrastructure.csv, which stays the fallback for any
+# mode not listed here.
+#
+# Range is not only speed. Freight is charged PER LEG and a leg is one turn-move, so doubling a
+# mode's range halves the number of legs on a long haul and therefore halves its cost: a 9-tile
+# rail run is 3 legs at L1 and 1 leg at L3, i.e. a third of the freight for the same cargo. These
+# numbers are a deliberate long-haul discount as well as a speed-up.
+#
+# The fluid premiums still dominate at every level: rail's best range advantage is 9/5 = 1.8x
+# against a level-3 pipe, which never overcomes the 3x tanker multiplier (5x hazardous). Pipe
+# stays the cheapest way to move a fluid at every level and distance — see
+# docs/fluids-overland-spec.md.
+const INFRA_RANGE_BY_LEVEL := {
+	"roads":       {1: 2, 2: 3, 3: 5},
+	"rail":        {1: 4, 2: 6, 3: 9},
+	"pipes":       {1: 2, 2: 3, 3: 5},
+	"reinf_pipes": {1: 2, 2: 3, 3: 5},
+	"port":        {1: 10, 2: 16, 3: 25},
+}
+
+## Tiles one turn-move covers on `mode` at `level`. Returns 0 when the mode has no level table,
+## so the caller falls back to the flat infrastructure.csv range.
+func infra_range_for_level(mode: String, level: int) -> int:
+	var tiers: Dictionary = INFRA_RANGE_BY_LEVEL.get(mode, {})
+	if tiers.is_empty():
+		return 0
+	return int(tiers.get(clampi(level, 1, 3), tiers.get(1, 0)))
+
 # Per-turn throughput one tile-link can carry by mode and infrastructure level.
 # ENFORCED via a soft cap: when a tile's in-transit flow on a mode exceeds this
 # (after throughput research), the overflow incurs a
@@ -482,11 +535,18 @@ func transport_cost_for_route(good_id: String, qty: int, route: Dictionary) -> f
 		var turns: int = int(route.get("turns", 0))
 		return float(qty) * float(maxi(turns, 0)) * class_rate
 	var total := 0.0
+	var is_fluid := Catalog.requires_pipeline(good_id)
 	for leg in legs:
 		# Every leg is one turn-move: charge the per-unit-per-turn class rate times the
-		# mode multiplier (rail 0.5x; roads/pipes 1x).
+		# mode multiplier (rail 0.5x; roads/pipes 1x) — except a fluid on road or rail, which
+		# pays the tanker premium instead (FLUID_OVERLAND_COST_MULT).
 		var mode := str(leg.get("mode", ""))
-		total += float(qty) * class_rate * float(TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
+		var mult := float(TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
+		if is_fluid:
+			var overland := fluid_overland_mult(good_id, mode)
+			if overland > 0.0:
+				mult = overland
+		total += float(qty) * class_rate * mult
 	return total
 
 func transport_link_capacity(mode: String, level: int) -> float:

@@ -535,6 +535,9 @@ func _apply_infrastructure(infra_by_tile: Dictionary) -> void:
 				infra.append(key)
 				Catalog.add_tile_infrastructure(str(tile_id), key)
 			levels[key] = clampi(int(entry_levels[infra_type]), 1, BuildingLevels.MAX_LEVEL)
+			# The router keeps its own level map (it cannot read the HexMap), so a loaded save
+			# must seed it or every route would be solved at level-1 reach.
+			Catalog.set_tile_infra_level(str(tile_id), key, int(levels[key]))
 		tile["infrastructure_present"] = infra
 		tile["infrastructure_levels"] = levels
 		hex_map.tiles[coord] = tile
@@ -548,6 +551,7 @@ func _clear_scene_infrastructure() -> void:
 		tile["infrastructure_present"] = []
 		tile["infrastructure_levels"] = {}
 		hex_map.tiles[coord] = tile
+	Catalog.clear_tile_infrastructure_levels()
 
 func _normalize_infrastructure_snapshot(raw: Variant) -> Dictionary:
 	var out: Dictionary = {}
