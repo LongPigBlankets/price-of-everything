@@ -233,3 +233,5 @@ _export_v02/
 .codex_tmp/
 Carbon and Capital*/
 *.zip
+# Godot import sidecars generated from tools/tutorial_strings.csv
+price-of-everything-0.1/tools/*.translation

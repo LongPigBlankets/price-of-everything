@@ -3,15 +3,31 @@
 	"start": true,
 	"name": "tutorial",
 	"ruleset": { "name": "tutorial", "tutorial_enabled": true },
-	"money": 2500,
+	"money": 99999,
 	"buildings": [
+		{ "building_id": "b_007", "recipe_id": "r_009", "tile_id": "tile_25_12", "output_to": "market" },
 		{ "building_id": "b_007", "recipe_id": "r_056", "tile_id": "tile_5_9", "owner": "Vandel Glassworks" }
 	],
-	"surveyed_tiles": [ "tile_5_9", "tile_6_6", "tile_7_7", "tile_7_8", "tile_5_8", "tile_5_7" ],
+	"surveyed_tiles": [
+		"tile_25_12", "tile_25_11", "tile_25_10", "tile_25_9", "tile_24_8", "tile_24_7", "tile_26_12",
+		"tile_5_9", "tile_6_6", "tile_7_7", "tile_7_8", "tile_5_8", "tile_5_7"
+	],
 	"land": {
+		"tile_25_12": 50,
+		"tile_25_11": 50,
+		"tile_25_10": 50,
+		"tile_25_9": 50,
+		"tile_24_8": 50,
+		"tile_24_7": 50,
+		"tile_26_12": 50,
 		"tile_5_9": 20
 	},
+	"stockpile": {
+		"tile_25_12": { "g_006": 160, "g_007": 160 }
+	},
 	"infrastructure": {
+		"tile_25_12": { "present": [ "cables" ], "levels": { "cables": 1 } },
+		"tile_26_12": { "present": [ "cables" ], "levels": { "cables": 1 } },
 		"tile_5_10": { "present": [ "reinf_pipes" ], "levels": { "reinf_pipes": 1 } }
 	}
 }

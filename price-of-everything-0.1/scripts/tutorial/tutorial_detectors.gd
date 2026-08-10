@@ -29,6 +29,8 @@ static func poll(decide: Dictionary) -> bool:
 			return _board_has_infra(str(decide.get("infra", "")))
 		"tile_has_infra":
 			return Catalog.tile_has_infrastructure(str(decide.get("tile", "")), str(decide.get("infra", "")))
+		"route_has_infra":
+			return _route_has_infra(decide.get("tiles", []), str(decide.get("infra", "")))
 		"loan_taken":
 			# Any live loan of at least `amount`. Reads LoanState rather than watching a
 			# signal, so the step still completes if the player borrowed before reaching it.
@@ -76,6 +78,11 @@ static func poll(decide: Dictionary) -> bool:
 			return _node_visible(str(decide.get("ref", "")))
 		"node_hidden":
 			return not _node_visible(str(decide.get("ref", "")))
+		"building_detail_open":
+			return _building_detail_open(
+				str(decide.get("tile", "")),
+				str(decide.get("building_id", "")),
+				str(decide.get("recipe_id", "")))
 		"sell_surplus_on_tile":
 			return MatchState.is_sell_surplus_enabled(str(decide.get("tile", "")))
 		"tile_land_at_least":
@@ -86,6 +93,12 @@ static func poll(decide: Dictionary) -> bool:
 			# True once the player's building on the tile has an output explicitly routed
 			# to ANOTHER tile's stockpile — the transport-cost redirect lesson.
 			return _output_route_state(str(decide.get("tile", "")), str(decide.get("building_id", ""))).offtile
+		"output_routed_to_tile":
+			# Exact form of output_routed_offtile: the lesson names one coastal destination,
+			# so choosing an arbitrary neighbouring tile must not advance it.
+			return _output_routed_to_tile(
+				str(decide.get("tile", "")), str(decide.get("building_id", "")),
+				str(decide.get("destination", "")))
 		"output_routed_market":
 			# True once an output is explicitly routed back to the global market.
 			return _output_route_state(str(decide.get("tile", "")), str(decide.get("building_id", ""))).market
@@ -93,6 +106,10 @@ static func poll(decide: Dictionary) -> bool:
 			# True once an output is explicitly routed to THIS tile's stockpile — the
 			# co-located producer→consumer feed (e.g. glass furnace → window factory).
 			return _output_route_state(str(decide.get("tile", "")), str(decide.get("building_id", ""))).ontile
+		"stockpile_good_at_least":
+			return _stockpile_good_at_least(
+				str(decide.get("tile", "")), str(decide.get("good", "")),
+				int(decide.get("amount", 1)))
 		_:
 			return false
 
@@ -118,6 +135,28 @@ static func _node_visible(node_name: String) -> bool:
 		return false
 	var n := tree.current_scene.find_child(node_name, true, false)
 	return n is Control and (n as Control).is_visible_in_tree()
+
+
+static func _building_detail_open(tile_id: String, building_id: String, recipe_id: String) -> bool:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null or tree.current_scene == null:
+		return false
+	var panel := tree.current_scene.find_child("BuildingDetailPanelV2", true, false)
+	if not (panel is Control and (panel as Control).is_visible_in_tree()):
+		return false
+	var building: Dictionary = panel.get("_current_building")
+	return (tile_id == "" or str(building.get("tile_id", "")) == tile_id) \
+		and (building_id == "" or str(building.get("building_id", "")) == building_id) \
+		and (recipe_id == "" or str(building.get("recipe_id", "")) == recipe_id)
+
+
+static func _route_has_infra(tiles: Array, infra: String) -> bool:
+	if tiles.is_empty() or infra == "":
+		return false
+	for tile_id in tiles:
+		if not Catalog.tile_has_infrastructure(str(tile_id), infra):
+			return false
+	return true
 
 static func _research_search_contains(text: String) -> bool:
 	if text == "":
@@ -270,6 +309,32 @@ static func _output_route_state(tile_id: String, building_id: String) -> Diction
 			else:
 				state.offtile = true
 	return state
+
+
+static func _output_routed_to_tile(tile_id: String, building_id: String, destination: String) -> bool:
+	if tile_id == "" or destination == "":
+		return false
+	for iid in MatchState.buildings:
+		var inst: Dictionary = MatchState.buildings[iid]
+		if str(inst.get("tile_id", "")) != tile_id:
+			continue
+		if building_id != "" and str(inst.get("building_id", "")) != building_id:
+			continue
+		if not MatchState.is_player_owned(inst):
+			continue
+		for routed_tile in (MatchState.output_stockpile_destinations.get(str(iid), {}) as Dictionary).values():
+			if str(routed_tile) == destination:
+				return true
+	return false
+
+
+static func _stockpile_good_at_least(tile_id: String, good_name_or_id: String, amount: int) -> bool:
+	if tile_id == "" or good_name_or_id == "" or amount <= 0:
+		return false
+	var good_id := good_name_or_id
+	if Catalog.get_good(good_id).is_empty():
+		good_id = str(Catalog.get_good_by_internal_name(good_name_or_id).get("id", ""))
+	return good_id != "" and Stockpile.get_at_tile(tile_id, good_id) >= amount
 
 
 ## True when the local player owns a building of `building_id` sitting on `tile_id`.

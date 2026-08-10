@@ -124,6 +124,11 @@ func get_breakdown() -> Dictionary:
 		_refresh_breakdown()
 	return _last_breakdown
 
+## Tutorial turns teach the systems without advancing or satisfying victory tracks.
+## The terminal End tutorial action clears the ruleset flag and resets this state.
+func conditions_enabled() -> bool:
+	return not bool(MatchState.ruleset.get("tutorial_enabled", false))
+
 # Points needed to win at a given turn — the RISING BAR (owner 2026-07-11). Flat at
 # WIN_MIN_THRESHOLD until WIN_START_TURN, then +WIN_STEP_POINTS per WIN_STEP_TURNS,
 # capped at WIN_MAX_THRESHOLD. Public for tests.
@@ -143,6 +148,8 @@ func total_for_turn(_turn: int = 0) -> int:
 # goods_movement_recorded signal handler, and directly by tests. Logistics
 # counters are per-turn: they accumulate during the turn and reset at the tick.
 func record_movement(kind: String, category: String, transport_turns: int) -> void:
+	if not conditions_enabled():
+		return
 	logistics_total += 1
 	if transport_turns <= LOGI_EFF_TURNS:
 		logistics_efficient += 1
@@ -221,6 +228,9 @@ func import_state(d: Dictionary) -> void:
 # ── Signal handlers ─────────────────────────────────────────────────────────
 
 func _on_turn_processed(summary: Dictionary) -> void:
+	if not conditions_enabled():
+		_last_summary = {}
+		return
 	# Fires during PROCESS, while TurnManager.current_turn still equals the turn
 	# being resolved (it increments only after all phases). Capture it now so the
 	# scoring tick (on turn_resolution_completed, after the increment) scores the
@@ -237,6 +247,16 @@ func _on_goods_movement_recorded(kind: String, category: String, transport_turns
 # ── The per-turn scoring tick ───────────────────────────────────────────────
 
 func _tick() -> void:
+	if not conditions_enabled():
+		# Discard transient counters so turning victory back on starts from a clean turn,
+		# even if this match was loaded from a tutorial save made by an older build.
+		_last_summary = {}
+		for c in PURCHASE_CATEGORIES:
+			purchases_this_turn[c] = 0
+		logistics_total = 0
+		logistics_efficient = 0
+		_emit_refresh()
+		return
 	# Score the turn just resolved (NOT TurnManager.current_turn, which has already
 	# ticked to the next turn by the time turn_resolution_completed fires).
 	var turn: int = _scored_turn
@@ -407,6 +427,7 @@ func _build_breakdown(turn: int, total: int) -> Dictionary:
 		"won_turn": won_turn,
 		"turn": turn,
 		"max_turns": MAX_TURNS,
+		"conditions_enabled": conditions_enabled(),
 		"tracks": tracks,
 	}
 

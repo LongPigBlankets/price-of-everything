@@ -1,5 +1,5 @@
 extends Node
-## Windowed dev shots of the buy-land + transport tutorial cards: boots the tutorial
+## Windowed dev shots of the opening transport + later tutorial cards: boots the tutorial
 ## start via a REAL scene change (the Tutorial autoload only arms when current_scene is
 ## the main map), fast-forwards the sim state those steps assume (factory bought, cable
 ## laid), then jumps the live engine to each new step and captures the coach card.
@@ -62,19 +62,66 @@ func _run() -> void:
 	await _settle()
 	_capture("tutorial_ui_primer.png")
 
+	Tutorial._jump_to("recipe_inputs_intro")
+	await _settle()
+	_capture("tutorial_recipe_inputs.png")
+
+	Tutorial._jump_to("recipe_outputs_intro")
+	await _settle_frames(75)
+	_capture("tutorial_recipe_destinations_first.png")
+	await _settle_frames(270)
+	_capture("tutorial_recipe_destinations_full.png")
+
+	Tutorial._jump_to("capital_motor_open")
+	await _settle()
+	_capture("tutorial_capital_motor.png")
+
+	Tutorial._jump_to("capital_motor_route")
+	await _settle()
+	_capture("tutorial_capital_output.png")
+
+	# Exercise the actual tutorial factory before opening the money breakdown. This
+	# catches bad seeded input IDs: a shipment can arrive and pay revenue even when
+	# the factory itself never runs, but only a real production dispatch pays freight.
+	TurnManager.fast_mode = true
+	TurnManager.phase_pause_duration = 0.0
+	for _turn in 5:
+		TurnManager.commit_turn()
+		await TurnManager.turn_resolution_completed
+	print("[SHOT] Capital transport paid: ", Production.last_turn_summary.get("transport_paid", 0.0))
+
+	Tutorial._jump_to("capital_money_transport")
+	await _settle()
+	_capture("tutorial_capital_transport_cost.png")
+
+	# Re-enter the map-watching state the real flow passes through so route captures
+	# are not obscured by the factory detail panel left open by this jump harness.
+	Tutorial._jump_to("capital_motor_watch")
+	await _settle()
+
+	Tutorial._jump_to("capital_road_install")
+	await _settle()
+	_capture("tutorial_capital_road_flash.png")
+
+	Tutorial._jump_to("capital_rail_build")
+	await _settle()
+	_capture("tutorial_capital_rail_flash.png")
+
+	Tutorial._jump_to("capital_fluids")
+	await _settle()
+	_capture("tutorial_capital_fluids.png")
+
+	Tutorial._jump_to("capital_port_open")
+	await _settle()
+	_capture("tutorial_capital_port.png")
+
+	Tutorial._jump_to("capital_port_costs")
+	await _settle()
+	_capture("tutorial_capital_port_terms.png")
+
 	Tutorial._jump_to("buy_land")
 	await _settle()
 	_capture("tutorial_buy_land.png")
-
-	Tutorial._jump_to("transport_ports")
-	await _settle()
-	var ev := wm.find_child("EmpireView", true, false)
-	if ev != null:
-		ev.call("toggle")
-		await _settle()
-		_capture("tutorial_transport_empire.png")
-		ev.call("toggle")
-		await _settle()
 
 	Tutorial._jump_to("transport_redirect_open")
 	await _settle()
@@ -87,7 +134,11 @@ func _run() -> void:
 
 
 func _settle() -> void:
-	for _i in 12:
+	await _settle_frames(12)
+
+
+func _settle_frames(count: int) -> void:
+	for _i in count:
 		await get_tree().process_frame
 
 

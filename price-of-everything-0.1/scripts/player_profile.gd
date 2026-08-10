@@ -47,8 +47,8 @@ func has_done_tutorial() -> bool:
 	return tutorial_completed
 
 
-## Mark the tutorial as finished (the Tutorial engine calls this when the player
-## reaches the terminal step). Idempotent; skipped mid-tutorial does NOT count.
+## Mark the tutorial as finished (the Tutorial engine calls this from the terminal
+## End tutorial button). Idempotent; reaching the card or skipping early does NOT count.
 func mark_tutorial_completed() -> void:
 	if DisplayServer.get_name() == "headless":
 		return

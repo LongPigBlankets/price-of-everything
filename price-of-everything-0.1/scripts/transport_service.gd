@@ -215,10 +215,10 @@ func quote_market_buy(dest_tile: String, good_id: String, qty: int, covered: boo
 	var port := nearest_port_tile(dest_tile)
 	if dest_tile == "" or good_id == "" or qty <= 0 or port == "":
 		return {}
-	# A liquid/gas can only come ashore where the port tile has the pipe for it — pipes, or
-	# reinf_pipes for hazard liquids. This closes the same-tile loophole (a building sitting ON
-	# the port used to get fluids delivered with no pipe at all); off-port buyers are also gated
-	# by the pipe network in route() below. Solids are unaffected (helper returns true for them).
+	# A liquid/gas can only come ashore where the port tile has a compatible terminal: road or
+	# rail loading, ordinary pipes for safe fluids, or reinforced pipes for hazardous fluids.
+	# This prevents bare-port same-tile delivery while retaining the tanker routes supported by
+	# infrastructure.csv. Solids are unaffected (the helper returns true for them).
 	if not Catalog.tile_can_pipe_good(port, good_id):
 		return {}
 	var route_data := route(port, dest_tile, good_id)

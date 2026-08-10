@@ -3,11 +3,14 @@ extends Node
 ## use detector kinds the engine actually implements, and reference real node names.
 const TutorialSteps := preload("res://scripts/tutorial/tutorial_steps.gd")
 const KNOWN_KINDS := ["building_owned_on_tile","building_or_project_on_tile","board_has_infra",
-	"tile_has_infra","tile_cabled_or_ordered","tile_infra_or_ordered","tile_land_at_least",
+	"tile_has_infra","route_has_infra","tile_cabled_or_ordered","tile_infra_or_ordered","tile_land_at_least",
 	"tile_panel_open","tile_surveyed","node_visible","node_hidden","in_mapmode",
-	"building_running_on_tile","building_recipe_on_tile","research_unlocked",
-	"output_routed_market","output_routed_offtile","output_routed_same_tile",
-	"sell_surplus_on_tile","loan_taken","advisor_seated"]
+	"building_detail_open","building_running_on_tile","building_recipe_on_tile","research_unlocked",
+	"research_search_contains","research_search_nonempty",
+	"output_routed_market","output_routed_offtile","output_routed_to_tile","output_routed_same_tile",
+	"stockpile_good_at_least",
+	"sell_surplus_on_tile","loan_taken","advisor_seated","turn_advanced","turns_advanced",
+	"market_sale_completed_since_entry","filtered_market_sale_since_entry"]
 var _fails := 0
 func _ready() -> void:
 	var steps: Array = TutorialSteps.steps()
@@ -24,6 +27,9 @@ func _ready() -> void:
 		str(ids.find("buy_land") == ids.find("money_loan_terms") + 1), "true")
 	_check("money arc comes after the transport arc (turns have been ended)",
 		str(ids.find("money_open") > ids.find("transport_pentagon_revert")), "true")
+	_check("five Capital transport beats precede the old factory tutorial",
+		str(ids.find("capital_motor_open") < ids.find("goto_tile")
+			and ids.find("capital_fluids") < ids.find("goto_tile")), "true")
 	_check("loan step is no_dim (the loan needs the Loans tab + dialog)",
 		str(bool((steps[ids.find("money_take_loan")] as Dictionary).get("no_dim", false))), "true")
 	# The advisor arc sits just before integration_done, which stays the closing summary.

@@ -964,6 +964,7 @@ static func _infra_instance_for_tile(tile_id: String, tile_data: Dictionary, key
 				"building_id": str(building_data.get("id", "")),
 				"tile_id": tile_id,
 				"owner": "tile_data",
+				"level": int(tile_data.get("infrastructure_levels", {}).get(key, 1)),
 			}
 	return {}
 

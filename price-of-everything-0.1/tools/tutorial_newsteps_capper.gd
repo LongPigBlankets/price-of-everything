@@ -2,7 +2,9 @@ extends Node
 ## Jumps the LIVE tutorial to each new step and reports whether its spotlight target
 ## actually resolves in the tree — a step whose ref never resolves shows no highlight and
 ## the player is left with a card pointing at nothing.
-const STEPS := ["money_open", "money_primer", "money_take_loan", "money_loan_terms",
+const STEPS := ["capital_motor_open", "capital_motor_route", "capital_money_transport",
+	"capital_fluids", "capital_port_open", "capital_port_costs",
+	"money_open", "money_primer", "money_take_loan", "money_loan_terms",
 	"advisors_intro", "advisors_explain", "advisors_hire", "advisors_effect"]
 var _t := 0.0
 var _built := false

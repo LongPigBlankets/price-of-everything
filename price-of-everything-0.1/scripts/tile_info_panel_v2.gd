@@ -1459,6 +1459,7 @@ func _maybe_add_port_card(pane: VBoxContainer) -> void:
 		return
 	var is_player := MatchState.is_player_owned(port_b)
 	var card := PanelContainer.new()
+	card.name = "PortBuildingCard"
 	var st := StyleBoxFlat.new()
 	st.bg_color = DS.PALETTE["BG_HIGHLIGHT"]
 	st.border_color = DS.PALETTE["ACCENT"]
@@ -1496,12 +1497,18 @@ func _maybe_add_port_card(pane: VBoxContainer) -> void:
 	if not is_player:
 		var price := BuildingReadout.buy_price(port_b)
 		var buy := _make_action_button("Buy — £%s" % _port_fmt_int(price))
+		buy.name = "PortBuyButton"
 		buy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		buy.disabled = Tutorial.port_purchase_disabled(PORT_BUILDING_ID)
+		if buy.disabled:
+			buy.tooltip_text = Tutorial.PORT_PURCHASE_DISABLED_TOOLTIP
 		buy.pressed.connect(func() -> void: _open_port_buy(str(port_b.get("instance_id", "")), price))
 		row.add_child(buy)
 	pane.add_child(card)
 
 func _open_port_buy(iid: String, price: int) -> void:
+	if Tutorial.port_purchase_disabled(PORT_BUILDING_ID):
+		return
 	if _port_buy_layer == null or not is_instance_valid(_port_buy_layer):
 		_port_buy_layer = CanvasLayer.new()
 		_port_buy_layer.layer = 130
@@ -1516,6 +1523,8 @@ func _open_port_buy(iid: String, price: int) -> void:
 func _on_port_buy_confirmed(_dont_ask: bool) -> void:
 	var iid := str(_pending_port_buy.get("iid", ""))
 	var price := int(_pending_port_buy.get("price", 0))
+	if Tutorial.port_purchase_disabled(PORT_BUILDING_ID):
+		return
 	if iid == "" or not MatchState.buildings.has(iid):
 		return
 	if not MatchState.deduct_money(float(price)):
@@ -2797,6 +2806,7 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	var is_npc := not inst.is_empty() and not MatchState.is_player_owned(inst)
 
 	var card := VBoxContainer.new()
+	card.name = "BuildingCard_%s_%s" % [building_id, recipe_id]
 	card.add_theme_constant_override("separation", 4)
 
 	# ── Header row (clickable), on a brushed navy metal plate w/ silver edge ─────

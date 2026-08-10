@@ -314,6 +314,7 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 		"items": items,
 		"total_qty": total_qty,
 		"total_revenue": total_revenue,
+		"transport_turns": turns,
 	}
 	var returned_sale_record := sale_record
 	var returned_items := items

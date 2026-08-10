@@ -37,7 +37,8 @@ OUT = ROOT / "tools/tutorial_strings.csv"
 # Chrome around the steps: the coach card's own furniture and the tutorial's menu screens.
 # (file, line-matching regex, key, field) - the regex must have one group: the literal.
 CHROME = [
-    ("scripts/tutorial/coach_overlay.gd",     r'_eyebrow\.text = ("(?:[^"\\]|\\.)*")',    "coach.eyebrow_format",       "format"),
+	("scripts/tutorial/tutorial_engine.gd",    r'PORT_PURCHASE_DISABLED_TOOLTIP\s*:=\s*("(?:[^"\\]|\\.)*")', "tutorial.port_purchase_disabled", "tooltip"),
+	("scripts/tutorial/coach_overlay.gd",     r'_eyebrow\.text = ("(?:[^"\\]|\\.)*")',    "coach.eyebrow_format",       "format"),
     ("scripts/tutorial/coach_overlay.gd",     r'\.get\("label", ("(?:[^"\\]|\\.)*")\)',   "coach.choice_fallback",      "button"),
     ("scripts/tutorial/coach_overlay.gd",     r'skip\.text = ("(?:[^"\\]|\\.)*")',        "coach.skip_button",          "button"),
     ("scripts/tutorial/coach_overlay.gd",     r'_next_btn\.text = ("(?:[^"\\]|\\.)*")',   "coach.next_button",          "button"),

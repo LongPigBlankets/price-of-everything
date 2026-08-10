@@ -48,8 +48,8 @@ func _run() -> void:
 		"sodium_hydroxide is a hazard_liquid (pipe-only)")
 
 	# Start-config seeding applied.
-	_check(int(MatchState.money) == 2500,
-		"tutorial start grants 2500 money (got %d)" % int(MatchState.money))
+	_check(int(MatchState.money) == TutorialSteps.WEST_COAST_HANDOFF_CASH,
+		"tutorial start grants %d money (got %d)" % [TutorialSteps.WEST_COAST_HANDOFF_CASH, int(MatchState.money)])
 	_check(Catalog.tile_has_infrastructure(PORT_TILE, "reinf_pipes"),
 		"port tile pre-seeded with a reinforced-pipe terminal")
 	_check(not Catalog.tile_has_infrastructure(GLASS_TILE, "reinf_pipes"),
@@ -114,7 +114,8 @@ func _run() -> void:
 
 	# --- Bottom-menu buttons TOGGLE their panel (open on first press, close on the second).
 	var cbtn := _main.find_child("ConstructButton", true, false) as BaseButton
-	var cpanel := _main.find_child("ConstructPanel", true, false) as Control
+	var cpanel_name := "ConstructPanelV2" if MatchState.use_construct_panel_v2 else "ConstructPanel"
+	var cpanel := _main.find_child(cpanel_name, true, false) as Control
 	if cbtn != null and cpanel != null:
 		if cpanel.visible:
 			cbtn.pressed.emit()
@@ -146,6 +147,10 @@ func _run() -> void:
 		bbtn.pressed.emit()
 		await get_tree().process_frame
 		await get_tree().process_frame
+		var active_construct := _main.find_child(cpanel_name, true, false)
+		if active_construct != null and active_construct.has_method("expand_building"):
+			active_construct.expand_building("b_007")
+			await get_tree().process_frame
 		_check(_main.find_child("RecipeRow_r_056", true, false) != null,
 			"opening Build on the factory tile lists the window recipe row (RecipeRow_r_056)")
 	# The sourcing dialog carries the named cost card + buy button the tutorial spotlights.
@@ -203,7 +208,7 @@ func _run() -> void:
 		"furnace + reinforced pipe fit the purchased land (both branches unblocked)")
 
 	# --- Transport lesson: the building panel's output card opens the routing sheet,
-	#     and the route detectors track the redirect → revert loop.
+	#     the exact eastern coastal tile is required, and arrival completes the watch step.
 	MatchState.focus_building_requested.emit(fac_iid)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -222,14 +227,23 @@ func _run() -> void:
 	_check(wf_good != "", "window recipe has an output good for routing")
 	_check(not TutorialDetectors.poll({"kind": "output_routed_offtile", "tile": WINDOW_TILE, "building_id": "b_007"}),
 		"output_routed_offtile false before the redirect")
-	MatchState.set_output_stockpile_destination(fac_iid, "tile_5_7", wf_good)
-	_check(TutorialDetectors.poll({"kind": "output_routed_offtile", "tile": WINDOW_TILE, "building_id": "b_007"}),
-		"output_routed_offtile true once shipped to the sand tile")
-	MatchState.route_output_to_market(fac_iid, wf_good)
-	_check(TutorialDetectors.poll({"kind": "output_routed_market", "tile": WINDOW_TILE, "building_id": "b_007"}),
-		"output_routed_market true once set back to Global market")
+	MatchState.set_output_stockpile_destination(fac_iid, TutorialSteps.INPUT_TILE, wf_good)
+	_check(not TutorialDetectors.poll({"kind": "output_routed_to_tile", "tile": WINDOW_TILE,
+		"building_id": "b_007", "destination": TutorialSteps.WINDOW_REDIRECT_TILE}),
+		"the redirect step rejects a different off-tile destination")
+	MatchState.set_output_stockpile_destination(fac_iid, TutorialSteps.WINDOW_REDIRECT_TILE, wf_good)
+	_check(TutorialDetectors.poll({"kind": "output_routed_to_tile", "tile": WINDOW_TILE,
+		"building_id": "b_007", "destination": TutorialSteps.WINDOW_REDIRECT_TILE}),
+		"the redirect step accepts Stoneshore Coast east of the factory")
+	Stockpile.consume(TutorialSteps.WINDOW_REDIRECT_TILE, wf_good,
+		Stockpile.get_at_tile(TutorialSteps.WINDOW_REDIRECT_TILE, wf_good))
+	var arrived := {"kind": "stockpile_good_at_least", "tile": TutorialSteps.WINDOW_REDIRECT_TILE,
+		"good": "windows", "amount": 1}
+	_check(not TutorialDetectors.poll(arrived), "arrival step waits before windows reach the coast tile")
+	Stockpile.add(TutorialSteps.WINDOW_REDIRECT_TILE, wf_good, 1)
+	_check(TutorialDetectors.poll(arrived), "arrival step completes once windows reach the coast tile")
 	_check(_main.find_child("EmpireView", true, false) != null,
-		"empire view exists for the Tab lesson (transport_ports)")
+		"empire view still exists after the old duplicate port lesson was removed")
 
 
 ## Wait for the async terrain build, then a couple more frames so world_map._ready's
