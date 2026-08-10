@@ -339,7 +339,12 @@ func finish_build(animate: bool) -> void:
 	# screen (tests, e2e, load-game) `animate` is false and placement runs
 	# synchronously, exactly as before.
 	if not loaded_pending or pending_start:
-		_apply_baked_road_flags()
+		# The tutorial's opening lesson deliberately starts with a five-hop freight
+		# route that has no transport infrastructure. Keep the baked RoadNetwork
+		# geometry available so the coach can reveal its road later, but do not make
+		# every baked corridor tile gameplay-active at turn zero in this ruleset.
+		if not pending_tutorial:
+			_apply_baked_road_flags()
 		await _build_yield()
 		# The bulk window coalesces the per-placement redraws (the fast path). The
 		# `swap loading_screen` cheat leaves it off so each placement redraws the whole
@@ -1314,9 +1319,12 @@ func _focus_camera_on_tile(tile_id: String) -> Dictionary:
 
 func _on_v2_pick_destination() -> void:
 	# Enter map pick mode but keep the v2 panel visible; the result returns via
-	# on_destination_picked() so the player can then confirm in the panel.
+	# on_destination_picked() so the player can then confirm in the panel. Step 24
+	# supplies its own precise white flash, so suppress the broad green category and
+	# hover paint there while keeping the map click capture active.
 	_v2_picking_dest = true
-	terrain_layer.begin_stockpile_destination_selection("")
+	var paint_overlay := not Tutorial.is_active_step("transport_redirect_pick")
+	terrain_layer.begin_stockpile_destination_selection("", paint_overlay)
 
 func _on_special_order_reroute_requested() -> void:
 	_special_order_reroute_picking = true
@@ -2176,6 +2184,43 @@ func _apply_built_infrastructure(coord: Vector2i, tile_id: String, infra_type: S
 		terrain_layer.tiles[coord] = tile
 	Catalog.add_tile_infrastructure(tile_id, infra_type)
 	print("Built %s on %s" % [infra_type, tile_id])
+
+## Tutorial-only, zero-cost infrastructure reveal. This is intentionally exposed at
+## the world seam rather than mutating Catalog from the coach: it updates both the
+## authoritative terrain tile and the router in exactly the same way as a completed
+## construction project. Normal matches cannot call it successfully.
+func tutorial_install_infrastructure(tile_ids: Array, infra_type: String) -> void:
+	if not bool(MatchState.ruleset.get("tutorial_enabled", false)):
+		return
+	if not _is_tile_infra_type(infra_type):
+		return
+	for raw_tile_id in tile_ids:
+		var tile_id := str(raw_tile_id)
+		_apply_built_infrastructure(terrain_layer.id_to_coord(tile_id), tile_id, infra_type)
+	# Baked road geometry already exists; changing only the tile clip flags leaves
+	# its edge count unchanged, so force the static renderer to expose the route.
+	var road_visuals := get_node_or_null("RoadNetworkVisuals")
+	if road_visuals is CanvasItem:
+		(road_visuals as CanvasItem).queue_redraw()
+
+## Tutorial-only late reveal for the adjacent demonstration factory. Going through
+## the normal MatchState + building_placed seams keeps simulation, tile indexes and
+## map visuals in sync without making it a construction project the player must wait on.
+func tutorial_spawn_building(building_id: String, recipe_id: String, tile_id: String) -> String:
+	if not bool(MatchState.ruleset.get("tutorial_enabled", false)):
+		return ""
+	for iid in MatchState.tile_buildings.get(tile_id, []):
+		var existing: Dictionary = MatchState.get_building(str(iid))
+		if MatchState.is_player_owned(existing) \
+				and str(existing.get("building_id", "")) == building_id \
+				and str(existing.get("recipe_id", "")) == recipe_id:
+			return str(iid)
+	var coord := terrain_layer.id_to_coord(tile_id)
+	if coord == Vector2i(-1, -1):
+		return ""
+	var instance_id := MatchState.add_building(building_id, recipe_id, tile_id)
+	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
+	return instance_id
 
 func _on_construction_completed_infra(instance_id: String, tile_id: String) -> void:
 	var building_id := str(MatchState.get_building(instance_id).get("building_id", ""))

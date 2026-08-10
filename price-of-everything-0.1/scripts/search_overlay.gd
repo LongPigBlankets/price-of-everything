@@ -15,6 +15,8 @@ const ACCORDION_ICON_SIZE := Vector2(80, 80)
 const BUILDING_ICON_DIR := "res://assets/icons/buildings"
 const HAMMER_ICON_PATH := "res://assets/icons/ui_icons/hammer_off_white.png"
 const BUILD_BUTTON_SIZE := Vector2(46, 46)
+const GOOD_RUBRIC_WIDTH := 720.0
+const GOOD_TRANSPORT_MODES := ["nothing", "roads", "rail", "pipes", "reinf_pipes"]
 const GoodIcons := preload("res://scripts/good_icons.gd")
 
 # Palette aligned to the DS navy theme (was bespoke pure-black). Dark surfaces use
@@ -182,9 +184,9 @@ func _mechanic_body(entry_id: String) -> String:
 			+ "Transport costs are shown as part of the money panel's Transport category. When a building buys inputs or sells output, use the route and capacity information to decide whether to move goods locally, build more infrastructure, or trade through a port.\n\n"
 			+ "Research can improve a transport mode's throughput or lower a specific transport cost. Those bonuses apply to the live route calculation, not just the building card.")
 	if entry_id == "port_transport":
-		return ("Ports connect eligible goods to the world market. Each unowned port charges a per-good fee once in a turn, plus an ad valorem insurance charge based on the market purchase price. Buying a port removes the per-good fee and lowers its insurance rate; its own maintenance and labour then apply instead.\n\n"
+		return ("Ports connect eligible goods to the world market. Port charges are ad valorem: they are based on the market value crossing the docks, for both imports and exports. Owning a port halves that rate; the port's maintenance and labour then apply as operating costs.\n\n"
 			+ "A port normally carries 1,500 units of each transport class per turn. Hazardous liquids, gases and ultra-heavy solids each have a 300-unit limit. Traffic may exceed those limits, but that shipment pays double port fees.\n\n"
-			+ "The port panel lists default terms separately from your current terms, then shows the most recent shipment for each good. Its right-hand figures are per-turn fee | ad valorem charge. Port fees rise gradually as the game advances, and relevant research can reduce those fees or raise throughput.")
+			+ "The standard ad valorem rate is 0.5% in turns 1–30 and 3% from turn 31. It also drifts upward by 0.1% each turn, and relevant research or events can change the live rate or throughput. The port panel lists default terms, current terms and recent shipments, so check it before assuming an import or export cost.")
 	if entry_id == "advisors":
 		# Read the live model rather than restating it — an encyclopedia page that quotes hardcoded
 		# numbers is a page that silently goes wrong the first time the constants are tuned.
@@ -808,7 +810,20 @@ func _make_good_recipes_entry(result: Dictionary) -> Control:
 		tier_label.add_theme_color_override("font_color", SUBTITLE_COLOR)
 		header.add_child(tier_label)
 
+	# Keep the live good data close to the recipes without taking width away from
+	# either recipe column. The expanding spacer pins this compact rubric to the
+	# top-right; adding it here naturally moves both recipe lists down together.
+	var rubric_row := HBoxContainer.new()
+	rubric_row.name = "GoodRubricRow"
+	rubric_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var rubric_spacer := Control.new()
+	rubric_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rubric_row.add_child(rubric_spacer)
+	rubric_row.add_child(_make_good_rubric(good_id))
+	root.add_child(rubric_row)
+
 	var cols := HBoxContainer.new()
+	cols.name = "GoodRecipeColumns"
 	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	cols.add_theme_constant_override("separation", 12)
@@ -816,6 +831,114 @@ func _make_good_recipes_entry(result: Dictionary) -> Control:
 	cols.add_child(_make_recipe_column("Used in", used_in))
 	root.add_child(cols)
 	return root
+
+func _make_good_rubric(good_id: String) -> PanelContainer:
+	var good: Dictionary = Catalog.get_good(good_id)
+	var card := PanelContainer.new()
+	card.name = "GoodRubricCard"
+	card.custom_minimum_size = Vector2(GOOD_RUBRIC_WIDTH, 0)
+	card.add_theme_stylebox_override("panel", _make_panel_style(MUTED_PANEL, RESULT_BORDER, 1.0, 6, 10))
+
+	var content := VBoxContainer.new()
+	content.name = "GoodRubricContent"
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 7)
+	card.add_child(content)
+
+	var heading := Label.new()
+	heading.text = "Good details"
+	heading.add_theme_font_size_override("font_size", 15)
+	heading.add_theme_color_override("font_color", OFF_WHITE)
+	content.add_child(heading)
+
+	var facts := GridContainer.new()
+	facts.name = "GoodRubricFacts"
+	facts.columns = 4
+	facts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	facts.add_theme_constant_override("h_separation", 12)
+	facts.add_theme_constant_override("v_separation", 4)
+	content.add_child(facts)
+	_add_rubric_fact(facts, "Market price", _money_per_unit(MarketState.get_price(good_id)))
+	_add_rubric_fact(facts, "Buy price", _money_per_unit(MarketState.get_buy_price(good_id)))
+	_add_rubric_fact(facts, "Type", _title_or_dash(str(good.get("good_type", ""))))
+	_add_rubric_fact(facts, "Category", _title_or_dash(str(good.get("category", ""))))
+	_add_rubric_fact(facts, "Transport class", _title_or_dash(str(good.get("transport_class", ""))))
+	_add_rubric_fact(facts, "Carbon tax / unit", _good_carbon_tax_text(good_id))
+
+	var transport_heading := Label.new()
+	transport_heading.text = "Transport cost per unit / turn"
+	transport_heading.add_theme_font_size_override("font_size", 12)
+	transport_heading.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	content.add_child(transport_heading)
+
+	var transport_row := HBoxContainer.new()
+	transport_row.name = "GoodTransportModes"
+	transport_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	transport_row.add_theme_constant_override("separation", 8)
+	content.add_child(transport_row)
+	for mode in GOOD_TRANSPORT_MODES:
+		transport_row.add_child(_make_good_transport_cell(good_id, str(mode)))
+
+	return card
+
+func _add_rubric_fact(grid: GridContainer, label_text: String, value_text: String) -> void:
+	var label := Label.new()
+	label.text = label_text
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	grid.add_child(label)
+	var value := Label.new()
+	value.text = value_text
+	value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	value.add_theme_font_size_override("font_size", 12)
+	value.add_theme_color_override("font_color", OFF_WHITE)
+	grid.add_child(value)
+
+func _make_good_transport_cell(good_id: String, mode: String) -> VBoxContainer:
+	var cell := VBoxContainer.new()
+	cell.name = "GoodTransport_%s" % mode
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cell.add_theme_constant_override("separation", 1)
+
+	var mode_label := Label.new()
+	mode_label.text = _good_transport_mode_name(mode)
+	mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mode_label.add_theme_font_size_override("font_size", 11)
+	mode_label.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	cell.add_child(mode_label)
+
+	var supported := _good_supports_transport_mode(good_id, mode)
+	var cost := Label.new()
+	cost.text = ("£%.3f" % _good_transport_unit_cost(good_id, mode)) if supported else "Not supported"
+	cost.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cost.add_theme_font_size_override("font_size", 11)
+	cost.add_theme_color_override("font_color", OFF_WHITE if supported else Color(SUBTITLE_COLOR, 0.62))
+	cell.add_child(cost)
+	return cell
+
+func _good_supports_transport_mode(good_id: String, mode: String) -> bool:
+	if mode == "nothing":
+		return not Catalog.requires_pipeline(good_id)
+	return mode in (Catalog.route_infra_for_good(good_id).get("modes", []) as Array)
+
+func _good_transport_unit_cost(good_id: String, mode: String) -> float:
+	return TransportService.transport_cost(good_id, 1, 1,
+		float(EconomyConfig.TRANSPORT_MODE_COST_MULT.get(mode, 1.0)))
+
+func _good_transport_mode_name(mode: String) -> String:
+	if mode == "nothing":
+		return "No infrastructure"
+	return str(Catalog.infra(mode).get("display_name", mode.replace("_", " ").capitalize()))
+
+func _good_carbon_tax_text(good_id: String) -> String:
+	var turn := int(TurnManager.current_turn)
+	var made := Catalog.embodied_carbon(good_id) * EconomyConfig.CO2_TAX_RATE * PolicyState.co2_tax_scale(turn)
+	var bought := MarketState.carbon_component(good_id)
+	return "Made £%.2f · Bought +£%.2f" % [made, bought]
+
+func _money_per_unit(value: float) -> String:
+	return "£%.2f / unit" % value
 
 func _make_recipe_column(heading_text: String, recipes: Array) -> Control:
 	var col := VBoxContainer.new()
@@ -894,13 +1017,13 @@ func _make_entry_image(result: Dictionary) -> PanelContainer:
 
 func _entry_texture(result: Dictionary) -> Texture2D:
 	if result.get("type", "") == "good":
-		return _load_good_texture(result.get("payload", {}), false)
+		return _load_good_texture(result.get("payload", {}))
 	if result.get("type", "") == "recipe":
 		var recipe: Dictionary = result.get("payload", {})
 		var outputs: Array = recipe.get("outputs", [])
 		if not outputs.is_empty():
 			var output_good: Dictionary = _good_from_recipe_item(outputs[0])
-			var output_texture: Texture2D = _load_good_texture(output_good, false)
+			var output_texture: Texture2D = _load_good_texture(output_good)
 			if output_texture != null:
 				return output_texture
 		return _load_building_texture(recipe.get("building_id", ""))
@@ -909,7 +1032,7 @@ func _entry_texture(result: Dictionary) -> Texture2D:
 		return _load_building_texture(building.get("id", ""))
 	return null
 
-func _load_good_texture(good: Dictionary, prefer_small := true) -> Texture2D:
+func _load_good_texture(good: Dictionary, tier := GoodIcons.TIER_SMALL) -> Texture2D:
 	var good_id: String = good.get("id", good.get("good_id", ""))
 	var internal_name: String = good.get("internal_name", "")
 	if good_id == "" and internal_name != "":
@@ -918,7 +1041,7 @@ func _load_good_texture(good: Dictionary, prefer_small := true) -> Texture2D:
 		internal_name = Catalog.get_internal_name(good_id)
 	if good_id == "":
 		return null
-	return GoodIcons.texture_for(good_id, internal_name, prefer_small)
+	return GoodIcons.texture_for(good_id, internal_name, tier)
 
 func _load_building_texture(building_id: String) -> Texture2D:
 	var building: Dictionary = Catalog.get_building(building_id)
@@ -964,6 +1087,7 @@ func _good_facts(good: Dictionary) -> Array:
 		{"label": "Category", "value": _title_or_dash(good.get("category", ""))},
 		{"label": "Good type", "value": _title_or_dash(good.get("good_type", ""))},
 		{"label": "Transport class", "value": _title_or_dash(good.get("transport_class", ""))},
+		{"label": "Transport infrastructure", "value": str(Catalog.route_infra_for_good(good_id).get("name", "Transport"))},
 		{"label": "Buyable", "value": _yes_no(bool(good.get("is_buyable", false)))},
 		{"label": "Sellable", "value": _yes_no(bool(good.get("is_sellable", false)))},
 		{"label": "Decay rate", "value": _decimal_text(float(good.get("decay_rate", 0.0)))},
@@ -1227,7 +1351,7 @@ func _make_catalog_icon(result: Dictionary) -> Control:
 
 	var texture: Texture2D = null
 	if result.get("type", "") == "good":
-		texture = _load_good_texture(result.get("payload", {}), true)
+		texture = _load_good_texture(result.get("payload", {}))
 	elif result.get("type", "") == "building":
 		var building: Dictionary = result.get("payload", {})
 		texture = _load_building_texture(building.get("id", ""))

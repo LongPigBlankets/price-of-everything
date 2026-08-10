@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dijid0qymjgf4"
-path="res://.godot/imported/coal alt.PNG-b817b67250e24591ab71cd1e647f062c.ctex"
+uid="uid://dgf1vqo7g8i5c"
+path="res://.godot/imported/g_044_tyres.png-5ab0148f38b40a6c09dce7df6f639b89.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/icons/goods/small/coal alt.PNG"
-dest_files=["res://.godot/imported/coal alt.PNG-b817b67250e24591ab71cd1e647f062c.ctex"]
+source_file="res://assets/icons/goods/very_small/g_044_tyres.png"
+dest_files=["res://.godot/imported/g_044_tyres.png-5ab0148f38b40a6c09dce7df6f639b89.ctex"]
 
 [params]
 

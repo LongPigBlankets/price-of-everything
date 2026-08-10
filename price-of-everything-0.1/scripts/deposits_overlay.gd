@@ -338,7 +338,7 @@ func _icon_positions(center: Vector2, count: int, tile: Vector2) -> Array:
 func _texture_for(good_id: String, internal_name: String) -> Texture2D:
 	if _texture_cache.has(good_id):
 		return _texture_cache[good_id]
-	var tex := GoodIcons.texture_for(good_id, internal_name, false)
+	var tex := GoodIcons.texture_for(good_id, internal_name)
 	_texture_cache[good_id] = tex
 	return tex
 

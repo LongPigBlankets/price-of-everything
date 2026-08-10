@@ -36,8 +36,9 @@ static func attach_good_name_tooltip(ctrl: Control, good_id: String) -> void:
 ##   1. NinePatchRect — the off-white plate, edge to edge.
 ##   2. clip(ICON_INSET) → icon(zoom) — the art, inset and slightly zoomed/clipped.
 ##   3. BevelEdge — the raised rim, BevelEdge.INSET px in from the frame edge.
-## `frame_size` is the outer plate; `prefer_small` picks the small icon variant.
-static func make_framed_good_icon(good_id: String, internal_name: String, frame_size: int = 60, prefer_small: bool = true) -> Control:
+## `frame_size` is the outer plate, and it also picks the art tier — the frame IS the display
+## size, so there is nothing for a caller to decide separately.
+static func make_framed_good_icon(good_id: String, internal_name: String, frame_size: int = 60) -> Control:
 	# GoodIconHover root: PASS lets clicks reach clickable parents while the icon
 	# still supplies a hover tooltip (good name + any ancestor tooltip).
 	var root := GoodIconHover.new()
@@ -76,7 +77,7 @@ static func make_framed_good_icon(good_id: String, internal_name: String, frame_
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var tex: Texture2D = GoodIcons.texture_for(good_id, internal_name, prefer_small)
+	var tex: Texture2D = GoodIcons.texture_for_size(good_id, internal_name, float(frame_size))
 	if tex != null:
 		icon.texture = tex
 	clip.add_child(icon)

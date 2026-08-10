@@ -1533,7 +1533,7 @@ func _good_icon(good_id: String, icon_size: int, plate_width: int = -1, qty: int
 	plate.add_theme_stylebox_override("panel", plate_style)
 	holder.add_child(plate)
 	var art := TextureRect.new()
-	art.texture = GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id), true)
+	art.texture = GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id))
 	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var inset := maxf(4.0, float(icon_size) * 0.12)
 	art.offset_left = inset
@@ -1681,7 +1681,7 @@ func _recipe_flow_cell(good_id: String, qty: int, size_px: int) -> Panel:
 	clear.bg_color = Color(1, 1, 1, 0)
 	cell.add_theme_stylebox_override("panel", clear)
 	var art := TextureRect.new()
-	art.texture = GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id), size_px < 80)
+	art.texture = GoodIcons.texture_for_size(good_id, Catalog.get_internal_name(good_id), float(size_px))
 	art.set_anchors_preset(Control.PRESET_FULL_RECT)
 	art.offset_left = 3
 	art.offset_top = 3

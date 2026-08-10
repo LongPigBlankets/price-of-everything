@@ -694,7 +694,7 @@ func _site_lanes(iid: String) -> Array:
 			at = (0.0 if eta < 0 else 1.0 - float(eta) / float(maxi(maxi(total, eta), 1)))
 		out.append({
 			"good": gid,
-			"icon": GoodIcons.texture_for(gid, str(Catalog.get_internal_name(gid)), true),
+			"icon": GoodIcons.texture_for(gid, str(Catalog.get_internal_name(gid))),
 			"required": required,
 			"arrived": maxi(0, required - outstanding),
 			"outstanding": outstanding,

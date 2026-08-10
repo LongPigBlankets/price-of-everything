@@ -63,7 +63,7 @@ func _build() -> void:
 	header.add_theme_constant_override("separation", 22)
 	col.add_child(header)
 	var icon := TextureRect.new()
-	icon.texture = GoodIcons.texture_for("g_004", "iron_ingots", false)
+	icon.texture = GoodIcons.texture_for("g_004", "iron_ingots")
 	icon.custom_minimum_size = Vector2(96, 96)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED

@@ -59,7 +59,7 @@ func setup(recipe_data: Dictionary, parent_building_id: String) -> void:
 	if Catalog.get_internal_name(output_gid) == "power":
 		output_icon.texture = load(RECIPE_POWER_ICON)
 	else:
-		output_icon.texture = GoodIcons.texture_for(output_gid, recipe_data.get("output_name", ""), true)
+		output_icon.texture = GoodIcons.texture_for(output_gid, recipe_data.get("output_name", ""))
 
 	var parts: Array = []
 	for inp in recipe_data.get("inputs", []):

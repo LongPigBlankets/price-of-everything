@@ -186,6 +186,11 @@ func show_building(building: Dictionary) -> void:
 
 func _rebuild(building: Dictionary) -> void:
 	for child in _body.get_children():
+		# A purchase emits building_owner_changed and the tutorial immediately focuses the
+		# newly-owned building. Both paths can rebuild in the same frame. queue_free() alone
+		# leaves the old controls participating in the VBox minimum-size calculation until
+		# frame end, which briefly stretched the detail panel across most of the viewport.
+		_body.remove_child(child)
 		child.queue_free()
 
 	var building_data: Dictionary = Catalog.get_building(str(building.get("building_id", "")))
@@ -199,8 +204,11 @@ func _rebuild(building: Dictionary) -> void:
 	# Catalog.tile_label, not the raw id: this was the one surface still printing
 	# "tile_5_9" at the player instead of "Stoneshore Fields - (5, 9)".
 	var _tile := str(building.get("tile_id", ""))
+	var display_level := int(building.get("level", 1))
+	if MatchState.INFRA_UPGRADABLE.has(str(building_data.get("internal_name", ""))):
+		display_level = MatchState.infra_tile_level(building)
 	_subtitle_label.text = "Level %d · %s" % [
-		int(building.get("level", 1)), Catalog.tile_label(_tile) if _tile != "" else "—"]
+		display_level, Catalog.tile_label(_tile) if _tile != "" else "—"]
 
 	# construction site → materials checklist + countdown only
 	var constr := BuildingReadout.construction(building)
@@ -333,9 +341,13 @@ func _render_npc(building: Dictionary, building_data: Dictionary, recipe: Dictio
 		var display_name := str(building_data.get("display_name", building.get("building_id", "Building")))
 		var price := BuildingReadout.buy_price(building)
 		var buy := Button.new()
+		buy.name = "NPCBuildingBuyButton"
 		buy.theme_type_variation = "Primary"
 		buy.text = "Buy — £%s" % _fmt_int(price)
 		buy.custom_minimum_size = Vector2(0, 46)
+		buy.disabled = Tutorial.port_purchase_disabled(str(building.get("building_id", "")))
+		if buy.disabled:
+			buy.tooltip_text = Tutorial.PORT_PURCHASE_DISABLED_TOOLTIP
 		buy.pressed.connect(func() -> void: _open_buy_dialog(str(building.get("instance_id", "")), display_name, price))
 		_body.add_child(buy)
 
@@ -351,6 +363,9 @@ func _fmt_int(n: int) -> String:
 	return ("-" if n < 0 else "") + out
 
 func _open_buy_dialog(iid: String, building_name: String, price: int) -> void:
+	var building: Dictionary = MatchState.get_building(iid)
+	if Tutorial.port_purchase_disabled(str(building.get("building_id", ""))):
+		return
 	if _buy_layer == null or not is_instance_valid(_buy_layer):
 		_buy_layer = CanvasLayer.new()
 		_buy_layer.layer = 130
@@ -366,6 +381,9 @@ func _on_buy_confirmed(_dont_ask: bool) -> void:
 	var iid := str(_pending_buy.get("iid", ""))
 	var building_name := str(_pending_buy.get("name", ""))
 	var price := int(_pending_buy.get("price", 0))
+	var building: Dictionary = MatchState.get_building(iid)
+	if Tutorial.port_purchase_disabled(str(building.get("building_id", ""))):
+		return
 	if iid == "" or not MatchState.buildings.has(iid):
 		return
 	if not MatchState.deduct_money(float(price)):
@@ -667,6 +685,7 @@ func _infrastructure_level_accordion(key: String, level: int) -> VBoxContainer:
 
 func _build_port_card(building: Dictionary) -> PanelContainer:
 	var card := _make_card()
+	card.name = "PortTermsCard"
 	var vb := card.get_child(0) as VBoxContainer
 	var title_row := HBoxContainer.new()
 	title_row.add_theme_constant_override("separation", 8)
@@ -698,20 +717,21 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 	default_head.text = "DEFAULT PORT TERMS"
 	default_head.add_theme_color_override("font_color", Color.WHITE)
 	vb.add_child(default_head)
-	vb.add_child(_port_metric("Base fee", "£5.00 per active good / turn"))
-	vb.add_child(_port_metric("Insurance", "0.0500% of market buy value"))
+	vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5000% of market buy value"))
+	vb.add_child(_port_metric("Ad valorem · turn 31 onward", "3.0000% of market buy value"))
+	vb.add_child(_port_metric("Annual drift", "+0.1% to the fee each turn"))
 	vb.add_child(_port_metric("Throughput", "1,500 per class · 300 hazardous liquids, gases and ultra-heavy solids"))
 	vb.add_child(_port_metric("At the throughput cap", "Sea fees double for that shipment"))
+	vb.add_child(_port_metric("Owned port", "Ad valorem rate is halved; upkeep and labour apply"))
 	vb.add_child(HSeparator.new())
 	var actual_head := Label.new()
 	actual_head.theme_type_variation = "Caption"
 	actual_head.text = "YOUR CURRENT PORT COSTS"
 	actual_head.add_theme_color_override("font_color", Color.WHITE)
 	vb.add_child(actual_head)
-	var actual_base := "£0.00 per active good" if owned else "£%.2f per active good" % (float(sea.get("base_fee", 0.0)) * growth)
-	vb.add_child(_port_metric("Base fee now", actual_base))
-	vb.add_child(_port_metric("Insurance now", "%.4f%% of market buy value" % rate_pct))
-	vb.add_child(_port_metric("Throughput now", "%s per class · %s restricted classes" % [
+	vb.add_child(_port_metric("Flat fee now", "£%.2f per active good" % (float(sea.get("base_fee", 0.0)) * growth)))
+	vb.add_child(_port_metric("Ad valorem now", "%.4f%% of market buy value" % rate_pct))
+	vb.add_child(_port_metric("Throughput now", "%s per class · %s each for hazardous liquids, gases and ultra-heavy solids" % [
 		_fmt_int(sea_port_cap("g_018")), _fmt_int(sea_port_cap("g_017"))
 	]))
 	if owned:
@@ -754,7 +774,7 @@ func _port_activity_row(row_data: Dictionary, used_by_class: Dictionary) -> HBox
 	var direction := Label.new()
 	direction.add_theme_color_override("font_color", Color.WHITE)
 	direction.add_theme_font_size_override("font_size", 12)
-	direction.text = "Bought %d · sold %d" % [buy_qty, sell_qty]
+	direction.text = "Bought %d | Sold %d" % [buy_qty, sell_qty]
 	detail.add_child(direction)
 	row.add_child(detail)
 	var cost := Label.new()
@@ -795,11 +815,14 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 		lvl = MatchState.infra_tile_level(building)
 
 	var up := Button.new()
+	up.name = "UpgradeButton"
 	up.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	up.custom_minimum_size = Vector2(0, 40)
-	if not MatchState.pending_upgrade(iid).is_empty():
+	var upgrade_progress := MatchState.upgrade_progress_snapshot(iid)
+	if not upgrade_progress.is_empty():
 		up.text = "Upgrading…"
 		up.disabled = true
+		up.tooltip_text = str(upgrade_progress.get("tooltip", "Upgrade in progress."))
 	elif lvl >= BuildingLevels.MAX_LEVEL:
 		up.text = "Max level (L%d)" % lvl
 		up.disabled = true
@@ -855,11 +878,16 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 		if bool(pv.get("already_upgrading", false)):
 			var left := int(pv.get("pending_turns_left", 0))
 			var awaiting := str(pv.get("pending_status", "")) == MatchState.UPGRADE_STATUS_AWAITING
+			var progress := MatchState.upgrade_progress_snapshot(iid)
 			var note := Label.new()
 			note.theme_type_variation = "Body"
 			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			note.add_theme_color_override("font_color", DS.PALETTE["OK"])
-			note.text = ("Waiting on materials, then %d turn%s to upgrade." % [left, "" if left == 1 else "s"]) if awaiting else ("Upgrade in progress — %d turn%s left." % [left, "" if left == 1 else "s"])
+			if bool(progress.get("blocked", false)):
+				note.add_theme_color_override("font_color", DS.PALETTE["DANGER"])
+				note.text = "Upgrade paused. %s" % str(progress.get("error", "The required materials cannot be delivered."))
+			else:
+				note.add_theme_color_override("font_color", DS.PALETTE["OK"])
+				note.text = str(progress.get("tooltip", ("Waiting on materials, then %d turn%s to upgrade." % [left, "" if left == 1 else "s"]) if awaiting else ("Upgrade in progress — %d turn%s left." % [left, "" if left == 1 else "s"])))
 			vb.add_child(note)
 			var is_infra_pending := bool(pv.get("infra", false))
 			var cancel := Button.new()
@@ -1391,7 +1419,7 @@ func _recipe_icon(good_id: String, internal: String, qty: int, size: int, bleed:
 	slot.clip_contents = false
 	if good_id != "":
 		slot.tooltip_text = Catalog.get_display_name(good_id)  # hover shows the good's name
-	var tex := GoodIcons.texture_for(good_id, internal, size <= 48)
+	var tex := GoodIcons.texture_for_size(good_id, internal, float(size))
 	if tex != null:
 		var tr := TextureRect.new()
 		tr.texture = tex
@@ -1420,7 +1448,7 @@ func _recipe_icon(good_id: String, internal: String, qty: int, size: int, bleed:
 # GoodIconHover root supplies the good-name hover tooltip itself. base_qty/mod_pct (output only) →
 # the pill shows the struck base + effective with a coloured outline.
 func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, base_qty: int = -1, mod_pct: int = 0) -> Control:
-	var holder := UIHelpers.make_framed_good_icon(good_id, internal, size, size <= 48)
+	var holder := UIHelpers.make_framed_good_icon(good_id, internal, size)
 	holder.add_child(_qty_pill(qty, base_qty, mod_pct))
 	return holder
 
@@ -1564,7 +1592,7 @@ func _diag_row(r: Dictionary, top_border: bool) -> Control:
 	# A row about a specific commodity shows that good's icon instead of the tone dot.
 	var row_good := str(r.get("good_id", ""))
 	if row_good != "":
-		chip.add_child(UIHelpers.make_framed_good_icon(row_good, Catalog.get_internal_name(row_good), 18, true))
+		chip.add_child(UIHelpers.make_framed_good_icon(row_good, Catalog.get_internal_name(row_good), 18))
 	else:
 		var dot := ColorRect.new()
 		dot.color = c

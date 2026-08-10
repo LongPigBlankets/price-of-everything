@@ -90,7 +90,7 @@ static func build(terrain: Object) -> Dictionary:
 			out_qty = int(round(float((outs[0] as Dictionary).get("qty", 0)) * BuildingLevels.mult("output", level)))
 			out_name = _good_name(out_good)
 			if out_good != "":
-				good_icon = GoodIcons.texture_for(out_good, out_internal, true)
+				good_icon = GoodIcons.texture_for(out_good, out_internal)
 		var sprite_tex: Texture2D = BuildingSprites.texture_for(str(bdata.get("internal_name", "")), level)
 
 		nodes.append({
