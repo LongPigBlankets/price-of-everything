@@ -50,8 +50,17 @@ the image. The owner found it, I reverted, then broke it the same way again.
 What is actually known: a runtime reparent of `BalanceContent` into a `ScrollContainer` empties
 the tab, whatever the surrounding numbers. The sizing can be made exactly right (120 px bottom
 gap, content 939 in a 783 tab, scrollbar present) and it still draws nothing.
-**Current state:** reverted, renders in full, does NOT scroll, and is 1117 px tall on a 1080p
-screen so the bottom rows are off-display. The original complaint is unfixed.
+**FIXED (scene-level, later the same day).** The blank tab was never the reparent as such — it
+was `Balance/MarginContainer` not expanding. A `ScrollContainer`'s minimum height is ZERO, so the
+moment the sheet went behind one, that MarginContainer (no `size_flags_vertical`, sitting in a
+VBoxContainer) shrank to its minimum and gave the scroll a viewport 0 px tall. Every number the
+old diagnostics printed stayed true — the sheet really was 939 px in a 783 px tab — because they
+measured the CONTENT and the TAB and never the scroll's own height. `BalanceScroll` now lives in
+`money_panel.tscn` with the MarginContainer set to expand, and the several dozen `@onready` paths
+point through it. `_balance_panel_height()` gives the panel a height of its own (the sheet's, capped
+to what fits below its top edge), since behind a scroll nothing else asks for one.
+**Measured at 1920×1080:** panel 560×896, bottom gap 90, scroll viewport 718 showing a 939 sheet,
+scrollbar present, scrolls 221 px to Dividends / Profit Sharing / Net Cash Flow. Both ends shot.
 
 **2. Three bugs from adding to a system without checking every reader of it.**
 - Andrew crashed the advisors tab: added to `ADVISOR_ROSTER` but not to the presentation table
@@ -79,35 +88,69 @@ moment it was used.
 
 ---
 
-## Open — reported by the owner, not yet investigated
+## Closed since — with an image each
 
-- **Andrew's departure notice was never seen.** He vanished from the council with no message.
-  The farewell is an `EventScheduler.emit_event` in `DecisionState._retire_founder`; whether it
-  reaches the bell/briefing surface is unverified. Note the tenure bug (failure 3) means the
-  observed disappearance may have come from a different path entirely — worth reproducing on the
-  fixed build before chasing the notice.
-- **Red rows in the advisor bonuses table were unexplained.** The effect column read "applied
-  while seated" for every row, so a red row gave no reason. It now shows the signed percentage,
-  and the heading is 20 px off-white instead of faint navy. Not yet seen in an image.
+- **Andrew's departure is now a blocking notice.** The bell entry was reaching the surface all
+  along; a bell entry is just missable, and it was missed. `_retire_founder` now also draws a
+  `founder_departs` decision — the same single-choice "Understood" shape as the government
+  notices, `PRIORITY_STORY` so it stays out of the random pool. The Briefing auto-expands on an
+  unresolved decision and End Turn is blocked until he is thanked. Retirement is held while the
+  board is full (4 pending) so the farewell can never be dropped. Verified with
+  `tools/founder_departs_shot.gd`, which plays the real arc: answer the turn-3 offer as COO,
+  stand on turn 34, commit — seat empties, notice presents at 35, End Turn blocked.
+- **Single-choice notices no longer bury their button.** `CHOICE_MIN_H` (300 px, there to keep
+  side-by-side choice columns level) was applied to one-choice cards too, so the only CTA sat
+  200 px below the text, past the fold and clipped. Content-sized now when there is one choice;
+  the two- and three-choice cards keep the uniform height. Fixes the carbon/subsidy notices too.
+- **Advisor bonuses table — seen in an image at last** (`tools/advisor_shot.gd`, which was itself
+  broken: it drove a `people_panel._open_advisor_detail` that no longer exists and selected tab 1,
+  which is Labour). The heading reads at 20 px `#E9F1FA`, and the rows carry the signed percentage
+  in green/red — "Loan Interest −25%" green, correctly, because a cost coming down is good.
+  Still weak: the table body is 12 px and its Bonus/Effect captions 11 px in dim navy, noticeably
+  fainter and smaller than everything around them.
+
+- **The money panel's two arithmetic bugs, both measured.**
+  *Transport was missing from the Costs chart entirely* — `_record_chart_history` never wrote a
+  `transport` key (its comment said "transport is excluded") and `money_chart.COST_SERIES` had no
+  such band, so the chart understated every turn by the whole freight bill, the largest cost a
+  grown empire has. Warehousing and advisor salaries were missing the same way. All three now
+  recorded and charted.
+  *The Balance tab's net disagreed with the top bar and the mini-panel*, which both read
+  `money_in − money_out`. Two causes, found by reconciling the two figures turn by turn across a
+  100-turn e2e: **advisor salaries** moved cash with no row on the sheet at all, and **building
+  tabs** — running costs carried, not paid — were charged to the sheet in full while `money_out`
+  excluded them (the sheet showed only the outstanding debt, on a row outside the totals). Gap
+  was £1,844 on one turn of a tabbed build-out. The sheet now carries an "Advisor salaries" row
+  and credits "Deferred to building tabs" (outstanding total moved to its tooltip), and
+  `production.gd` records `building_tab_carried`. Re-measured: exact reconciliation on all 100
+  turns with 61 tabs open and a salaried advisor.
+  Guarded by `_test_balance_sheet_reconciles_with_cash` — a real committed turn asserted against
+  the cash delta, since 2,000 assertions never noticed because nothing compared the two.
+
+- **Fluids by road and rail — BUILT** (`docs/fluids-overland-spec.md`). Rail 3x/5x and road
+  6x/10x against the pipe cost, hazard split preserved. Pipes are still chosen first, explicitly,
+  so the change is strictly additive: the e2e's headline metrics are identical before and after.
+  `INF_TURNS` was NOT retired — a fluid with no link at all is still stranded, which is what keeps
+  the unreachable-cost guard meaningful. Port logistics is the part that wants a playtest.
 
 ## Open — known work, not started
 
-- **Money panel scroll (scene-level).** Add the `ScrollContainer` to `main.tscn` under
-  `Balance/MarginContainer` with real anchors and repoint the panel's several dozen `@onready`
-  paths through it. Do NOT attempt another runtime reparent.
 - **Infrastructure upgrades.** Owner reports level 2/3 roads, pipes, reinforced pipes and rails
   cannot be upgraded to. `TRANSPORT_LINK_CAP_BY_MODE_LEVEL` carries per-level capacities (rail
   600/1200/2000) and `infra_upgrades` appears in e2e output, so some path exists. Unverified:
   whether per-level COSTS exist in `infrastructure.csv` / the buildings CSV, and where the
   upgrade action is gated in the UI. Needs a proper read before estimating.
-- **Fluids by road and rail (P5).** Specced, never built. `Catalog.requires_pipeline()` still
-  hard-gates, which is why water and hydrogen cannot ship without pipework. Also retires the
-  `INF_TURNS` unreachable class.
 - **Goods-graph transport icons** (P5), and the **distribution split** (P6, next full export).
-- **Screenshot pass** over everything from this session: advisor bonuses table, credit dialog in
-  the real flow, building-detail debt and stored-units rows, research panel rows.
+- **Screenshot pass** — remaining: credit dialog in the real flow, building-detail debt and
+  stored-units rows, research panel rows. (Advisor bonuses table done, above.)
 - **Code.gs redeploy** with a fresh `turns` tab before any telemetry from this build is read.
   The freight split is now SIX values (`sea` was removed).
+- **A silent `add_child` failure, somewhere.** Every run — including the headless e2e — prints
+  "Parent node is busy setting up children, `add_child()` failed" followed by "Child is not a
+  child of this node" from `move_child`. That is the add-then-move-child idiom failing, so some
+  row is being built and dropped. Not the money panel (all its inserted rows render);
+  `building_detail_panel.gd` uses that idiom in a dozen places and is the first place to look.
+  Pre-dates today's work.
 
 ## Open questions still in the spec (§9)
 
