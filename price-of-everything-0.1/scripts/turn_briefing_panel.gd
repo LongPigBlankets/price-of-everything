@@ -392,10 +392,15 @@ func _build_decision_detail(it: Dictionary) -> void:
 
 func _choice_card(view: Dictionary, choice: Dictionary) -> Control:
 	var available := bool(choice.get("available", true))
+	# Single-choice narrative updates (government notices, Andrew's farewell) have no columns
+	# to keep uniform, so CHOICE_MIN_H only buys 200 px of dead space that pushes the one CTA
+	# past the fold. Let those cards size to their content; keep the tall uniform cards where
+	# two or three choices really do sit side by side and must line up.
+	var single_choice := (view.get("choices", []) as Array).size() == 1
 	var card := PanelContainer.new()
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	card.custom_minimum_size = Vector2(CHOICE_MIN_W, CHOICE_MIN_H)
+	card.custom_minimum_size = Vector2(CHOICE_MIN_W, 0.0 if single_choice else CHOICE_MIN_H)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color("#0A1623")
 	sb.border_color = Color("#1C3149")
@@ -441,7 +446,6 @@ func _choice_card(view: Dictionary, choice: Dictionary) -> Control:
 
 	# Single-choice narrative updates (government notices): the choice label moves onto
 	# the CTA button itself, so no header label here.
-	var single_choice := (view.get("choices", []) as Array).size() == 1
 	if not single_choice:
 		var label := Label.new()
 		label.theme_type_variation = "BuildingName"
@@ -740,7 +744,7 @@ func _navigate(dl: Dictionary) -> void:
 func _item_icon(it: Dictionary, tint: Color, box: int) -> Control:
 	var gid := str(it.get("icon_good_id", ""))
 	if gid != "":
-		return UIHelpers.make_framed_good_icon(gid, Catalog.get_internal_name(gid), box, true)
+		return UIHelpers.make_framed_good_icon(gid, Catalog.get_internal_name(gid), box)
 	var glyph := Label.new()
 	glyph.text = TurnBriefing.item_glyph(it)
 	glyph.custom_minimum_size = Vector2(box, 0)

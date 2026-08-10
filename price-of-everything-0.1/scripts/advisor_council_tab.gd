@@ -24,8 +24,6 @@ const _ACCENT := Color("#D96AA0")          # the People pink
 const _CARD_BG := Color("#122539")
 const _CARD_BG2 := Color("#0C1A2A")
 const _CARD_BORDER := Color("#1C3149")
-const _TEXT_DIM := Color("#8298AC")
-const _TEXT_FAINT := Color("#62788F")
 const _GOOD := Color("#5FBF6B")
 const _BAD := Color("#E2604A")
 const _WARN := Color("#E6B34A")
@@ -153,6 +151,7 @@ func _build_roster() -> void:
 		var m := _meter(_loyalty_frac(avg), tone.color, 260.0, 9.0)
 		meter_holder.add_child(m)
 	var add_btn := Button.new()
+	add_btn.name = "AdvisorAddNewButton"
 	add_btn.text = "+ Add new advisor"
 	add_btn.theme_type_variation = &"Primary"
 	add_btn.pressed.connect(func() -> void: _set_view({"mode": "picker", "back": "roster"}))
@@ -217,6 +216,7 @@ func _filled_seat_card(seat_id: String, advisor_id: String) -> Control:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	frow.add_child(spacer)
 	frow.add_child(_tone_label("★".repeat(MatchState.advisor_star_by_id(advisor_id)), _WARN, 12))
+	col.add_child(_financial_preview(advisor_id, seat_id, true))
 	return btn
 
 func _empty_seat_card(seat_id: String, locked: bool) -> Control:
@@ -309,16 +309,21 @@ func _candidate_card(adv: Dictionary) -> Control:
 	var fee := VBoxContainer.new()
 	fee.add_theme_constant_override("separation", 0)
 	head.add_child(fee)
-	var fee_v := _tone_label("on payroll" if employed else "£%.1f/turn" % _salary(aid), _WARN, 14)
+	var fee_text := ("unpaid" if not MatchState.advisor_is_payrolled(aid) else "on payroll") \
+		if employed else "£%.1f/turn" % _salary(aid)
+	var fee_v := _tone_label(fee_text, _WARN, 14)
 	fee_v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	fee.add_child(fee_v)
-	var fee_c := _dim_label("benched" if employed else "salary", 10)
+	var fee_c := _dim_label("family friend" if employed and not MatchState.advisor_is_payrolled(aid) else ("benched" if employed else "salary"), 10)
 	fee_c.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	fee.add_child(fee_c)
 
 	var pitch := _dim_label("“%s”" % str(adv.get("recommendation", adv.get("bonus", ""))), 12)
 	pitch.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(pitch)
+	var hire_seat := str(_view.get("hire_seat", ""))
+	if hire_seat != "":
+		col.add_child(_financial_preview(aid, hire_seat, true))
 
 	var chips := HBoxContainer.new()
 	chips.add_theme_constant_override("separation", 8)
@@ -361,8 +366,10 @@ func _build_detail() -> void:
 	else:
 		var fee := VBoxContainer.new()
 		head.add_child(fee)
-		fee.add_child(_tone_label("on payroll" if employed else "£%.1f/turn" % _salary(aid), _WARN, 17))
-		fee.add_child(_dim_label("benched" if employed else "salary", 11))
+		var fee_text := ("unpaid" if not MatchState.advisor_is_payrolled(aid) else "on payroll") \
+			if employed else "£%.1f/turn" % _salary(aid)
+		fee.add_child(_tone_label(fee_text, _WARN, 17))
+		fee.add_child(_dim_label("family friend" if employed and not MatchState.advisor_is_payrolled(aid) else ("benched" if employed else "salary"), 11))
 
 	# Loyalty strip (employed only).
 	if employed:
@@ -394,6 +401,13 @@ func _build_detail() -> void:
 			mcol.add_child(_dim_label("Next: %s" % str(rewards[done]), 11))
 		_root.add_child(strip)
 
+	# Choosing a position is a preview as well as an assignment. Keep the selector
+	# above the bonus table, start with no implicit choice, and rebuild the preview
+	# whenever the player picks a position.
+	var choosing_position := seated_seat == "" or bool(_view.get("reassign", false))
+	if choosing_position:
+		_root.add_child(_seat_choice_row(aid, seated_seat))
+
 	# Two-column body.
 	var body := HBoxContainer.new()
 	body.add_theme_constant_override("separation", 20)
@@ -418,21 +432,28 @@ func _build_detail() -> void:
 		mtr.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(mtr)
 		row.add_child(_tone_label("%d/3" % int(pair[1]), Color("#C7D4E3"), 12))
-	# Effects for the seat in focus (their seat, the hiring seat, or their best).
-	var focus_seat := seated_seat
-	if focus_seat == "":
-		focus_seat = str(_view.get("hire_seat", ""))
-	if focus_seat == "":
-		focus_seat = str(MatchState.advisor_best_effect_seat(aid))
-	# A stable name lets the tutorial require players to open a candidate profile
-	# and read the seat-specific effects before they hire them.
+	# A seated advisor shows their current effects. Candidate/reassignment profiles
+	# stay blank until the player explicitly chooses a position above.
+	var focus_seat := seated_seat if not choosing_position else str(_view.get("selected_seat", ""))
+	if focus_seat != "" and not MatchState.is_seat_available(focus_seat):
+		focus_seat = ""
 	var bonus_title := Label.new()
-	bonus_title.text = "Bonuses from this advisor's expertise — %s" % _seat_name(focus_seat)
 	bonus_title.add_theme_font_size_override("font_size", 20)
 	bonus_title.add_theme_color_override("font_color", Color("#E9F1FA"))
-	bonus_title.name = "AdvisorBonusSection"
+	if focus_seat == "":
+		bonus_title.text = "Choose a position to preview its bonuses"
+		bonus_title.name = "AdvisorBonusPrompt"
+	else:
+		bonus_title.text = "Bonuses from this advisor's expertise — %s" % _seat_name(focus_seat)
+		# A stable name lets the tutorial require an explicit position selection and
+		# a visible seat-specific bonus preview before the player can hire.
+		bonus_title.name = "AdvisorBonusSection"
 	left.add_child(bonus_title)
-	left.add_child(_bonus_table(aid, focus_seat))
+	if focus_seat == "":
+		left.add_child(_dim_label("Select one of the available positions above.", 12))
+	else:
+		left.add_child(_financial_preview(aid, focus_seat))
+		left.add_child(_bonus_table(aid, focus_seat))
 
 	var right := VBoxContainer.new()
 	right.add_theme_constant_override("separation", 10)
@@ -476,10 +497,6 @@ func _build_detail() -> void:
 		foot.add_child(_action_btn("Reassign seat", on_reassign))
 		foot.add_child(_action_btn("Unseat (keep on payroll)", on_unseat))
 		foot.add_child(_action_btn("Dismiss advisor", on_dismiss, _BAD))
-		if bool(_view.get("reassign", false)):
-			_root.add_child(_seat_choice_row(aid, seated_seat))
-	else:
-		_root.add_child(_seat_choice_row(aid, ""))
 
 ## The bonuses table: one row per standing effect this advisor brings in this seat, sourced
 ## from the sim (advisor_seat_effect_list) so it can never drift from what is actually applied.
@@ -507,6 +524,28 @@ func _bonus_table(advisor_id: String, seat_id: String) -> Control:
 	return box
 
 
+## Side-by-side value test for a position, based on the last completed turn.
+## It remains visible after hiring so the player can reassess whether the seat pays.
+func _financial_preview(advisor_id: String, seat_id: String, compact: bool = false) -> Control:
+	var box := VBoxContainer.new()
+	box.name = "AdvisorFinancialPreview"
+	box.add_theme_constant_override("separation", 2)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bonus := MatchState.advisor_bonus_preview_per_turn(advisor_id, seat_id)
+	var salary := _salary(advisor_id)
+	var font_size := 11 if compact else 13
+	var bonus_label := _tone_label("Preview bonuses: £%.2f per turn" % bonus, _GOOD, font_size)
+	bonus_label.name = "AdvisorBonusValue"
+	var salary_label := _tone_label("Salary: £%.2f per turn" % salary, _WARN, font_size)
+	salary_label.name = "AdvisorSalaryValue"
+	var explanation := "Snapshot from the last completed turn. It changes with revenue and costs."
+	bonus_label.tooltip_text = explanation
+	salary_label.tooltip_text = explanation
+	box.add_child(bonus_label)
+	box.add_child(salary_label)
+	return box
+
+
 ## One row per standing effect, plus the founder's one-off gift where it applies.
 func _advisor_bonus_rows(advisor_id: String, seat_id: String) -> Array:
 	var rows: Array = []
@@ -531,8 +570,9 @@ func _advisor_bonus_rows(advisor_id: String, seat_id: String) -> Array:
 	return rows
 
 
-## The "Assign to <seat chips> · Hire & assign" footer for candidates (and the
-## reassign flow). Preselects the seat the journey started from.
+## The "Assign to <seat chips> · Hire & assign" row for candidates (and the
+## reassign flow). Selection is explicit: profiles open with no position chosen,
+## and each choice rebuilds the seat-specific bonus preview below this row.
 func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 	var wrap := VBoxContainer.new()
 	wrap.add_theme_constant_override("separation", 8)
@@ -566,40 +606,37 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 	if not can_take_new_seat:
 		row.add_child(_tone_label("Council is full (%d/%d) — unseat someone first." % [seated, MatchState.max_advisor_slots], _BAD, 12))
 		return wrap
-	# Preselect the seat this journey started from (role-first), else their
-	# current seat, else the first open one.
-	var preselect := str(_view.get("hire_seat", ""))
-	if not open_seats.has(preselect):
-		preselect = current_seat if current_seat != "" else (open_seats[0] if not open_seats.is_empty() else "")
-	var chosen: Array[String] = [preselect]
+	var selected_seat := str(_view.get("selected_seat", ""))
+	if not open_seats.has(selected_seat):
+		selected_seat = ""
 	var chip_holder := HFlowContainer.new()
 	chip_holder.add_theme_constant_override("h_separation", 6)
 	chip_holder.add_theme_constant_override("v_separation", 6)
 	chip_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(chip_holder)
-	var buttons: Dictionary = {}
 	var confirm := Button.new()
 	for sid in open_seats:
 		var b := Button.new()
+		b.name = "AdvisorSeatChoice_%s" % sid
 		b.toggle_mode = true
 		b.text = _seat_name(sid)
 		b.add_theme_font_size_override("font_size", 12)
-		b.button_pressed = sid == chosen[0]
+		var selected := sid == selected_seat
+		b.button_pressed = selected
+		b.theme_type_variation = &"ChoiceSelected" if selected else &""
 		b.pressed.connect(func() -> void:
-			chosen[0] = sid
-			for other in buttons:
-				(buttons[other] as Button).set_pressed_no_signal(str(other) == sid)
-			# Choosing a different seat must not bypass the tutorial's required
-			# bonus-inspection beat.
-			confirm.disabled = _tutorial_bonus_inspection_required())
-		buttons[sid] = b
+			var next_view := _view.duplicate(true)
+			next_view["selected_seat"] = sid
+			_set_view(next_view))
 		chip_holder.add_child(b)
 	var employed := MatchState.permanent_advisor_ids.has(advisor_id)
 	confirm.name = "AdvisorHireAssignButton"
 	confirm.text = "Assign to seat" if employed else "Hire & assign"
 	confirm.theme_type_variation = &"Primary"
-	confirm.disabled = chosen[0] == "" or _tutorial_bonus_inspection_required()
-	if _tutorial_bonus_inspection_required():
+	confirm.disabled = selected_seat == "" or _tutorial_bonus_inspection_required()
+	if selected_seat == "":
+		confirm.tooltip_text = "Choose a position first."
+	elif _tutorial_bonus_inspection_required():
 		confirm.tooltip_text = "Inspect What They Bring before hiring."
 	confirm.pressed.connect(func() -> void:
 		if not MatchState.permanent_advisor_ids.has(advisor_id):
@@ -607,13 +644,13 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 				MatchState.request_toast("Could not hire — council is full or they refuse to return.", "warning")
 				return
 		var who := str(MatchState.get_advisor(advisor_id).get("name", advisor_id))
-		if MatchState.assign_advisor_to_seat(chosen[0], advisor_id):
-			MatchState.request_toast("%s assigned as %s" % [who, _seat_name(chosen[0])], "success")
+		if MatchState.assign_advisor_to_seat(selected_seat, advisor_id):
+			MatchState.request_toast("%s assigned as %s" % [who, _seat_name(selected_seat)], "success")
 		else:
 			# A refused assignment used to fall through silently and return to the roster, so
 			# the advisor appeared in whatever seat they were in before and it read as the game
 			# choosing a different role. Say so instead.
-			MatchState.request_toast("Could not seat %s as %s — the council is full." % [who, _seat_name(chosen[0])], "warning")
+			MatchState.request_toast("Could not seat %s as %s — the council is full." % [who, _seat_name(selected_seat)], "warning")
 		_set_view({"mode": "roster"}))
 	row.add_child(confirm)
 	# Cost sits BELOW the button, not inside its label: it is two numbers plus a percentage and
@@ -832,7 +869,7 @@ func _sec_label(text: String) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", 10)
-	l.add_theme_color_override("font_color", _TEXT_FAINT)
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
 	return l
 
 func _title_label(text: String, fs: int) -> Label:
@@ -847,7 +884,7 @@ func _dim_label(text: String, fs: int) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", fs)
-	l.add_theme_color_override("font_color", _TEXT_DIM)
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
 	return l
 
 func _tone_label(text: String, color: Color, fs: int) -> Label:
@@ -877,8 +914,8 @@ func _archetype(advisor_id: String) -> String:
 ## What one more advisor costs per turn under the live model — a flat base that inflates at
 ## double the labour rate, plus 1% of company revenue each (EconomyConfig, owner 2026-08-01).
 ## Not the roster's old per-advisor `salary` field, which the model replaced.
-func _salary(_advisor_id: String) -> float:
-	return MatchState.advisor_cost_per_advisor(MatchState.advisor_revenue_basis())
+func _salary(advisor_id: String) -> float:
+	return MatchState.advisor_cost_for(advisor_id, MatchState.advisor_revenue_basis())
 
 
 ## The cost broken out, for the line that sits UNDER the hire button.
@@ -908,7 +945,4 @@ func _effect_text(eff: Dictionary) -> String:
 ## Whether an effect helps the player (sign alone isn't enough: −10% labour
 ## cost is good, −10% throughput would be bad).
 func _effect_is_beneficial(eff: Dictionary) -> bool:
-	var pct := float(eff.get("pct", 0.0))
-	var domain := str(eff.get("domain", ""))
-	var positive_is_good := domain in ["transport_throughput", "grid_sell_price", "construction_rebate", "market_price"]
-	return pct > 0.0 if positive_is_good else pct < 0.0
+	return MatchState.advisor_effect_is_beneficial(eff)

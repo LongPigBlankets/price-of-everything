@@ -26,8 +26,6 @@ const NO_EFFECT := "No effect yet — placeholder for a later balance pass."
 
 const _ACCENT := Color("#D96AA0")
 const _CARD_BORDER := Color("#1C3149")
-const _TEXT_DIM := Color("#8298AC")
-const _TEXT_FAINT := Color("#62788F")
 const _GOOD := Color("#5FBF6B")
 const _BAD := Color("#E2604A")
 const _WARN := Color("#E6B34A")
@@ -320,7 +318,7 @@ func _build_labour_costs(parent: Control) -> void:
 	now_row.add_child(_dim_label("%.0f%% of base" % pct, 13))
 	var trend := est - current
 	var trend_l := _dim_label("10-turn estimate £%.2f (%s%.2f)" % [est, "+" if trend >= 0.0 else "−", absf(trend)], 12)
-	trend_l.add_theme_color_override("font_color", _BAD if trend > 0.005 else (_GOOD if trend < -0.005 else _TEXT_DIM))
+	trend_l.add_theme_color_override("font_color", _BAD if trend > 0.005 else (_GOOD if trend < -0.005 else DS.PALETTE.TEXT_MUTED))
 	col.add_child(trend_l)
 	if bool(ov.get("at_floor", false)):
 		var floor_l := _dim_label("Maximum labour reduction reached — further bonuses will not stack below 40% of base.", 11)
@@ -389,12 +387,12 @@ func _sec_label(text: String) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", 10)
-	l.add_theme_color_override("font_color", _TEXT_FAINT)
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
 	return l
 
 func _dim_label(text: String, fs: float) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", int(fs))
-	l.add_theme_color_override("font_color", _TEXT_DIM)
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
 	return l

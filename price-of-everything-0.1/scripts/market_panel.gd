@@ -1075,7 +1075,7 @@ func _make_filter_button(text: String) -> Button:
 	b.add_theme_color_override("font_hover_color", DS.PALETTE.TEXT)
 	b.add_theme_color_override("font_pressed_color", Color.WHITE)        # selected
 	b.add_theme_color_override("font_hover_pressed_color", Color.WHITE)
-	b.add_theme_color_override("font_disabled_color", DS.PALETTE.TEXT_DIM)
+	b.add_theme_color_override("font_disabled_color", DS.PALETTE.TEXT_DISABLED)
 	return b
 
 func _filter_box(bg: Color, border: Color) -> StyleBoxFlat:

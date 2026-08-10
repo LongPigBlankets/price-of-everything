@@ -186,6 +186,10 @@ func _process_production() -> void:
 	"maintenance_paid": 0.0,
 	"labour_paid": 0.0,
 	"advisor_paid": 0.0,
+	# Running costs a building tab carried this turn instead of cash: charged in full to the
+	# *_paid lines above (so every ledger stays honest) and refunded, so money_out excludes
+	# them. The balance sheet has to subtract this or its net stops matching the cash delta.
+	"building_tab_carried": 0.0,
 	# Per-turn storage fee on stockpiled goods (per unit, by transport class —
 	# EconomyConfig.WAREHOUSING_COST_PER_UNIT_BY_CLASS).
 	"warehousing_paid": 0.0,
@@ -546,6 +550,7 @@ func _process_production() -> void:
 			if refunded > 0.0:
 				MatchState.add_money(refunded)
 				summary.money_out -= refunded
+				summary.building_tab_carried += refunded
 		# === LOAN INTEREST PAYMENTS ==+var loan_payment: float = LoanState.process_payments()
 	_apply_advisor_costs(summary)
 	# Warehousing: every stockpiled unit pays a per-turn storage fee by transport
@@ -936,6 +941,10 @@ func _credit_arrived_sale(shipment: Dictionary, summary: Dictionary) -> void:
 		"items": [],
 		"total_qty": 0,
 		"total_revenue": 0.0,
+		# Additive provenance used by the tutorial and useful to any future ledger
+		# drill-down. Old shipments simply report zero/absent as before.
+		"shipment_id": shipment.get("id", null),
+		"transport_turns": int(shipment.get("transport_turns", sale_record.get("transport_turns", 0))),
 	}
 	for item in sale_record.get("items", []):
 		var gid := str(item.get("good_id", ""))
@@ -1286,6 +1295,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 	# the flat per-turn fee (charged once per turn), with no per-unit cost.
 	var in_port_range: bool = port_tile != "" and TransportService.tile_distance(source_tile, port_tile) <= EconomyConfig.SEAPORT_RANGE_TILES
 	var ship_turns: int = int(quote.get("turns", 0))
+	sale_record["transport_turns"] = ship_turns
 	var deferred: bool = port_tile != "" and ship_turns >= 1
 	var transport_cost := 0.0
 	var transport_breakdown: Dictionary = {}

@@ -13,7 +13,7 @@ extends Node
 ## Scheduling — a PULSE PIPELINE that leans deterministic (spec §3.2): every few turns
 ## a pulse PULLS one eligible event and reveals it PULSE_LEAD_TURNS (3) later, so the
 ## reveal is telegraphed. The gap between pulses is derived from how many events are
-## eligible (fuller pool → sooner), clamped to [3,6] with one seeded turn of variation —
+## eligible (fuller pool → sooner), clamped to [6,10] with one seeded turn of variation —
 ## the cadence is deterministic-ish; only WHICH event (the weighted draw) is random.
 ## The same event TYPE (category) can trigger at most once per CATEGORY_COOLDOWN_TURNS
 ## (20). Story beats bypass the pulse: they arrive via reserve()/force_draw() and reveal
@@ -31,8 +31,14 @@ const MIN_PRODUCTIVE_BUILDINGS := 2
 # PRESENTED PULSE_LEAD_TURNS later. The gap between pulses is derived from how many
 # events are eligible right now — a fuller pool pulses sooner — clamped to [PULSE_MIN,
 # PULSE_MAX], with a single seeded ±0/1 turn of variation so it isn't pure clockwork.
-const PULSE_MIN := 3
-const PULSE_MAX := 6
+#
+# Owner call, 2026-08-09: events should land no closer than ~4 turns and no further than ~8,
+# settled at [5,7]. The band is what sets the felt cadence, not PULSE_MAX alone: with 8 ambient
+# definitions eligible, `PULSE_MAX - eligible/2` lands on the FLOOR, so the original [3,6]
+# measured as gaps of 4,4,4,6 over a real run — the ceiling was only ever reached once the
+# 20-turn category cooldowns had thinned the pool.
+const PULSE_MIN := 5
+const PULSE_MAX := 7
 const PULSE_LEAD_TURNS := 3          # turns between a pull and its reveal (telegraphed)
 # Hard rule: the same event TYPE (category) can trigger at most once per this window.
 const CATEGORY_COOLDOWN_TURNS := 20
@@ -121,6 +127,25 @@ const DECISION_DEFINITIONS := {
 				],
 				"advocate_seat": "coo",
 				"stance": "Moving things is most of what you do. I can make it cost less."},
+		],
+	},
+	# The other end of the family_friend arc, drawn by _retire_founder when his tenure runs
+	# out. He used to leave with only a bell entry, so the owner watched him vanish from the
+	# council with no message at all. Same blocking "Understood" shape as the government
+	# notices: PRIORITY_STORY keeps it out of the random pool, so it is draw-only, and the
+	# Turn Briefing auto-expands on an unresolved decision. No seat name in the copy — body
+	# substitution only reaches {target_name}, which is the company.
+	"founder_departs": {
+		"title": "Andrew Keeler Stands Down",
+		"headline": "Andrew has served his thirty turns and is standing down, his debt to your family considered paid. He wishes you luck, and says he can see you are trying your best.",
+		"body": "\"One last piece of advice, and it is the only one that matters: treat your people well. It always pays off in the long term.\"\n\nHe shakes your hand on the way out, and does not look back.",
+		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
+		"target_selector": "company",
+		"once": true, "cooldown_turns": 9999, "weight": 1.0, "default_choice": "understood",
+		"choices": [
+			{"id": "understood", "label": "Thank him, and see him out",
+				"effects": [{"kind": "none",
+					"describe": "His chair is empty from this turn — you can hire into it now. Whatever he was giving you goes with him."}]},
 		],
 	},
 	"planning_pushback": {
@@ -435,6 +460,10 @@ func _retire_founder() -> void:
 		"persistent": false,
 		"auto_dismiss_turns": 3,
 	})
+	# The bell entry alone was missable — and was missed. The blocking notice is what the
+	# player actually sees: the Briefing auto-expands on an unresolved decision and End Turn
+	# stays blocked until it is acknowledged.
+	_draw("founder_departs")
 
 
 ## Story beats (carbon arc etc.) reserve their turn ahead of time: the reserved
@@ -457,6 +486,26 @@ func reset() -> void:
 	_next_uid = 1
 	_reseed(int(MatchState.match_rng_seed))
 	pending_changed.emit()
+
+
+## A match that began as the tutorial must never receive the sandbox's opening
+## family-friend event, including after the final tutorial button turns the normal
+## rules back on. Record it as spent so the suppression survives save/load, and
+## discard a queued copy as well so older in-progress tutorial saves are repaired.
+func suppress_family_friend_for_match() -> void:
+	_fired_once["family_friend"] = true
+	var queue_changed := false
+	for i in range(pending_queue.size() - 1, -1, -1):
+		if str((pending_queue[i] as Dictionary).get("def_id", "")) == "family_friend":
+			pending_queue.remove_at(i)
+			queue_changed = true
+	if str(_scheduled_pull.get("def_id", "")) == "family_friend":
+		_scheduled_pull = {}
+	for reserved_turn in _reservations.keys():
+		if str(_reservations[reserved_turn]) == "family_friend":
+			_reservations.erase(reserved_turn)
+	if queue_changed:
+		pending_changed.emit()
 
 func _reseed(match_seed: int) -> void:
 	# Stable arithmetic derivation (never GDScript hash() — not version-stable).
@@ -513,7 +562,10 @@ func _tick_narrative() -> void:
 		_reservations.erase(turn)
 		_draw(def_id)
 	# The founder's pro bono tenure runs out — he vacates and the post opens for a real hire.
-	if MatchState.founder_seat != "" and turn >= MatchState.founder_leaves_turn:
+	# Held while the board is full (same guard as a story reservation) so his farewell notice
+	# always has a slot: a dropped draw would put him back to leaving silently.
+	if MatchState.founder_seat != "" and turn >= MatchState.founder_leaves_turn \
+			and pending_queue.size() < PENDING_QUEUE_CAP:
 		_retire_founder()
 	# C) Pulse: only into a QUIET board — no pending decision, nothing in flight, and
 	#    no story beat landing next turn.

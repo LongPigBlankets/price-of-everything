@@ -13,6 +13,11 @@ func _ready() -> void:
 		cam.edge_pan_enabled = false
 
 	TurnManager.fast_mode = true
+	# Andrew's turn-3 offer would draw on the first commit here and then block EVERY commit
+	# after it (an unresolved decision stops the turn), so the tool sat at turn 84 and shot the
+	# same offer three times instead of the three notices. This run is about policy, not the
+	# founder arc: mark it fired so it never draws.
+	DecisionState._fired_once["family_friend"] = true
 
 	# 0a. Election news at turn 84, then the insider tip at 86 (Rufus, 3/3 Influencing,
 	# seated in Government Affairs).
