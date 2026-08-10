@@ -220,3 +220,16 @@ __marimo__/
 *_shot.png
 real_tile.png
 enclosure.png
+
+# --- Godot / Carbon and Capital ---
+# Screenshots written to the project root by tools/*_shot.gd — verification artifacts,
+# regenerated on demand, never source.
+price-of-everything-0.1/*.png
+price-of-everything-0.1/*.png.import
+# Godot's import sidecars for the balance report CSVs (generated from the reports themselves).
+price-of-everything-0.1/reports/
+# Local export output and scratch.
+_export_v02/
+.codex_tmp/
+Carbon and Capital*/
+*.zip
