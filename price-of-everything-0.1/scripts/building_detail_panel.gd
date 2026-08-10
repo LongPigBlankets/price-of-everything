@@ -1579,13 +1579,19 @@ func _refresh_upgrade_button() -> void:
 	if _upgrade_button == null:
 		return
 	var level := int(_current_building.get("level", 1))
+	var building_data: Dictionary = Catalog.get_building(str(_current_building.get("building_id", "")))
+	if MatchState.INFRA_UPGRADABLE.has(str(building_data.get("internal_name", ""))):
+		level = MatchState.infra_tile_level(_current_building)
 	var maxed := level >= BuildingLevels.MAX_LEVEL
 	_upgrade_button.visible = not maxed
 	if _max_lvl_badge != null:
 		_max_lvl_badge.visible = maxed
 	if not maxed and _upgrade_numeral != null:
 		_upgrade_numeral.text = str(level + 1)
-		_upgrade_button.tooltip_text = "Upgrade to Level %d" % (level + 1)
+		var progress := MatchState.upgrade_progress_snapshot(str(_current_building.get("instance_id", "")))
+		_upgrade_button.disabled = not progress.is_empty()
+		_upgrade_button.tooltip_text = (str(progress.get("tooltip", "Upgrade in progress."))
+			if not progress.is_empty() else "Upgrade to Level %d" % (level + 1))
 
 func _ensure_upgrade_dialog() -> void:
 	if _upgrade_dialog != null and is_instance_valid(_upgrade_dialog):
@@ -1742,7 +1748,7 @@ func _show_storage_diagram(building: Dictionary) -> void:
 		var holder := Control.new()
 		holder.custom_minimum_size = FLOW_SINGLE_CELL_SIZE  # regular recipe-cell size (~110px)
 		var icon := TextureRect.new()
-		icon.texture = GoodIcons.texture_for(str(gid), str(Catalog.get_good(str(gid)).get("internal_name", "")), true)
+		icon.texture = GoodIcons.texture_for(str(gid), str(Catalog.get_good(str(gid)).get("internal_name", "")))
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -1932,7 +1938,7 @@ func _make_battery_type_card(tile_id: String, internal: String) -> PanelContaine
 	vb.alignment = BoxContainer.ALIGNMENT_CENTER
 	vb.add_theme_constant_override("separation", 2)
 	var icon := TextureRect.new()
-	icon.texture = GoodIcons.texture_for(gid, internal, true)
+	icon.texture = GoodIcons.texture_for(gid, internal)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.custom_minimum_size = Vector2(0, 44)
@@ -2020,31 +2026,28 @@ func _populate_flow_grid(grid: GridContainer, goods: Array, is_input: bool = fal
 	var count: int = max(goods.size(), 1)
 	grid.columns = 2 if count > 2 else 1
 	var cell_size := _flow_cell_size(goods.size())
-	# A single input/output is shown large (one 92px cell) so it uses the medium
-	# master; a 2x2 grid crams several into 52px cells, so those use the small
-	# variant to keep VRAM down.
-	var prefer_small := goods.size() > 1
-
 	if goods.is_empty():
-		grid.add_child(_make_flow_cell({}, cell_size, prefer_small, is_input))
+		grid.add_child(_make_flow_cell({}, cell_size, is_input))
 		return
 
 	for good_item in goods:
-		grid.add_child(_make_flow_cell(good_item, cell_size, prefer_small, is_input))
+		grid.add_child(_make_flow_cell(good_item, cell_size, is_input))
 
 func _flow_cell_size(good_count: int) -> Vector2:
 	if good_count <= 1:
 		return FLOW_SINGLE_CELL_SIZE
 	return FLOW_GRID_CELL_SIZE
 
-func _make_flow_cell(good_item: Dictionary, cell_size: Vector2, prefer_small: bool, is_input: bool = false) -> Panel:
+## The art tier comes from the CELL SIZE, not the cell count: a 92 px single cell and a 52 px grid
+## cell want different art for the same reason, and the size is the thing that reason is about.
+func _make_flow_cell(good_item: Dictionary, cell_size: Vector2, is_input: bool = false) -> Panel:
 	# Tile potential (wind/solar) inputs render as text inside the icon cell.
 	if good_item.has("_potential"):
 		return _make_potential_flow_cell(str(good_item["_potential"]), cell_size)
 	var cell := Panel.new()
 	cell.custom_minimum_size = cell_size
-	var texture: Texture2D = GoodIcons.texture_for(
-		good_item.get("good_id", ""), good_item.get("internal_name", ""), prefer_small)
+	var texture: Texture2D = GoodIcons.texture_for_size(
+		good_item.get("good_id", ""), good_item.get("internal_name", ""), maxf(cell_size.x, cell_size.y))
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(1.0, 1.0, 1.0, 0.0) if texture != null else FLOW_SQUARE_COLOR

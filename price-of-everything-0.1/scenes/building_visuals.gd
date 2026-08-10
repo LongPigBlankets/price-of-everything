@@ -1259,9 +1259,25 @@ func _on_building_owner_changed(instance_id: String) -> void:
 	queue_redraw()
 
 func _on_building_upgraded(instance_id: String, _new_level: int) -> void:
+	# Infrastructure levels currently affect gameplay capacity only. Keep roads on their
+	# network renderer and keep cables/pipes/rails on their L1 enhanced-building treatment
+	# until dedicated infrastructure upgrade art is approved.
+	if _is_infrastructure_instance(instance_id):
+		return
 	var tid := str(MatchState.get_building(instance_id).get("tile_id", ""))
 	if tid != "":
 		_mark_subcomp_dirty(tid)
+
+func _is_infrastructure_instance(instance_id: String) -> bool:
+	var inst: Dictionary = MatchState.get_building(instance_id)
+	if inst.is_empty():
+		return false
+	return str(Catalog.get_building(str(inst.get("building_id", ""))).get("category", "")).to_lower() == "infrastructure"
+
+func _enhanced_visual_level(instance_id: String) -> int:
+	if _is_infrastructure_instance(instance_id):
+		return 1
+	return clampi(int(MatchState.get_building(instance_id).get("level", 1)), 1, 3)
 
 func _mark_subcomp_dirty(tile_id: String) -> void:
 	_subcomp_dirty[tile_id] = true
@@ -1349,7 +1365,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 			continue
 		if bool(p.get("offshore", false)):
 			continue   # platforms at sea carry no annexes/wings/tanks
-		var lvl := clampi(int(MatchState.get_building(iid).get("level", 1)), 1, 3)
+		var lvl := _enhanced_visual_level(iid)
 		# Levels ALWAYS show: L2/L3 stack rooftop storey blocks on the parent
 		# (wings depend on free ground and are skipped inside block-masses —
 		# a storey needs neither). Drawn on top, slightly toward a seeded
@@ -4078,7 +4094,7 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 	var art_key: String = INK_ART_KEY.get(str(placement.get("iname", "")), "")
 	if art_key == "" or verts.size() < 3:
 		return false
-	var lvl := clampi(int((MatchState.get_building(str(placement.instance_id)) as Dictionary).get("level", 1)), 1, 3)
+	var lvl := _enhanced_visual_level(str(placement.instance_id))
 	var dir := (verts[1] - verts[0]).normalized()
 	var ctr := _poly_centroid(verts)
 	var dmax := 0.0

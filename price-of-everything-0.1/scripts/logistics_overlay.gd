@@ -253,7 +253,7 @@ func _draw_stock_bar_im(col_x: float, col_w: float, baseline: float, bar_max_h: 
 	_draw_diag_light(bar_rect, Color(1, 1, 1, 0.28), Color(0, 0, 0, 0.28))
 	_stock_text(font, str(qty), Vector2(cx, baseline - bh - qty_fs * 0.3), qty_fs, DS.PALETTE.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	if good_id != "":
-		var tex := GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id), true)
+		var tex := GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id))
 		if tex != null:
 			draw_texture_rect(tex, Rect2(cx - icon_sz * 0.5, baseline + icon_sz * 0.05, icon_sz, icon_sz), false)
 

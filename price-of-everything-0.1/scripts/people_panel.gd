@@ -59,6 +59,10 @@ var _permanent_advisors: Array = []
 
 func _ready() -> void:
 	name = "PeoplePanel"
+	# This panel is created lazily and can be mounted beneath a non-Control helper
+	# in tests/tools, so bind the design-system theme at the panel boundary.
+	if DS and DS.theme:
+		theme = DS.theme
 	custom_minimum_size = MARKET_FALLBACK_SIZE
 	size = MARKET_FALLBACK_SIZE
 	_apply_research_window(self)
@@ -753,8 +757,10 @@ func _refresh_advisor_payroll_label() -> void:
 	if not is_instance_valid(_advisor_payroll_label):
 		return
 	var count := MatchState.permanent_advisor_ids.size()
+	var unpaid := count - MatchState.payrolled_advisor_count()
 	var payroll := MatchState.advisor_payroll_per_turn()
-	_advisor_payroll_label.text = "%d / %d advisor%s · £%.2f/turn" % [count, MatchState.max_advisor_slots, ("" if count == 1 else "s"), payroll]
+	var unpaid_note := " · %d unpaid" % unpaid if unpaid > 0 else ""
+	_advisor_payroll_label.text = "%d / %d advisor%s%s · £%.2f/turn" % [count, MatchState.max_advisor_slots, ("" if count == 1 else "s"), unpaid_note, payroll]
 
 func _add_advisor_section(parent: VBoxContainer, title_text: String, advisors: Array, permanent: bool) -> Control:
 	var section := VBoxContainer.new()

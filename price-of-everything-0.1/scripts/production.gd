@@ -186,6 +186,10 @@ func _process_production() -> void:
 	"maintenance_paid": 0.0,
 	"labour_paid": 0.0,
 	"advisor_paid": 0.0,
+	# Running costs a building tab carried this turn instead of cash: charged in full to the
+	# *_paid lines above (so every ledger stays honest) and refunded, so money_out excludes
+	# them. The balance sheet has to subtract this or its net stops matching the cash delta.
+	"building_tab_carried": 0.0,
 	# Per-turn storage fee on stockpiled goods (per unit, by transport class —
 	# EconomyConfig.WAREHOUSING_COST_PER_UNIT_BY_CLASS).
 	"warehousing_paid": 0.0,
@@ -234,6 +238,9 @@ func _process_production() -> void:
 	# turn). claim_materials() lets awaiting projects consume their goods off the tile first, so
 	# construction owns them ahead of production/sell/surplus. Order matters: tick before claim,
 	# so a project that becomes under_construction this turn isn't also ticked the same turn.
+	# Stock held off-tile from a purchase moves in as capacity frees up. Before production, so a
+	# building that could not be fully stocked on the day it was bought can run on what lands.
+	MatchState.drain_ghost_holdings()
 	TurnProfiler.section_begin("construction")
 	var completed_construction: Array = Construction.tick_turn()
 	for completed_instance_id in completed_construction:
@@ -513,7 +520,13 @@ func _process_production() -> void:
 		var maint: float = _calculate_maintenance_cost(building)
 		var active_recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
 		# A paused (mothballed) building keeps its upkeep but carries no workforce.
-		var labour: float = 0.0 if MatchState.is_building_paused(str(building.get("instance_id", ""))) else _calculate_labour_cost(building, active_recipe)
+		var iid_cost := str(building.get("instance_id", ""))
+		var labour: float = 0.0 if MatchState.is_building_paused(iid_cost) else _calculate_labour_cost(building, active_recipe)
+		# "Worker pay while not running": a building that produced NOTHING this turn pays its
+		# workforce at the policy rate. Keyed strictly on having run — a derated building did
+		# run, so it pays in full and its labour still reaches CostSolver at the true figure.
+		if labour > 0.0 and not bool(last_turn_run.get(iid_cost, false)):
+			labour *= MatchState.idle_labour_pay_share
 		var total_cost: float = maint + labour
 		MatchState.add_money(-total_cost)
 		summary.maintenance_paid += maint
@@ -521,6 +534,23 @@ func _process_production() -> void:
 		summary.money_out += total_cost
 		_accumulate_by_type(summary.maintenance_by_type, btype, maint)
 		_accumulate_by_type(summary.labour_by_type, btype, labour)
+		# A new build's first turns are CARRIED, not paid: charge as normal above so every
+		# ledger stays honest, then refund onto its tab. Inputs are attributed synthetically
+		# (recipe x market price) because no per-building record of a market buy exists; power
+		# is the grid-imported share of its draw, since own generation costs nothing extra.
+		if MatchState.building_tabs.has(iid_cost):
+			var carried := labour + maint
+			for input in active_recipe.get("inputs", []):
+				var in_gid := str(input.get("good_id", ""))
+				if in_gid != "":
+					carried += float(_scaled_input_qty(input, building)) * MarketState.get_buy_price(in_gid)
+			if not Power.is_supplied(str(building.get("tile_id", "")), 0):
+				carried += float(_effective_energy_req(building, active_recipe)) * EconomyConfig.GRID_BUY_PRICE
+			var refunded := MatchState.accrue_building_tab(iid_cost, carried)
+			if refunded > 0.0:
+				MatchState.add_money(refunded)
+				summary.money_out -= refunded
+				summary.building_tab_carried += refunded
 		# === LOAN INTEREST PAYMENTS ==+var loan_payment: float = LoanState.process_payments()
 	_apply_advisor_costs(summary)
 	# Warehousing: every stockpiled unit pays a per-turn storage fee by transport
@@ -545,6 +575,7 @@ func _process_production() -> void:
 	TurnProfiler.section_end("maintenance_labour")
 
 	TurnProfiler.section_begin("loan_payments")
+	MatchState.tick_building_tabs()
 	var loan_payment: float = LoanState.process_payments()
 	if loan_payment > 0:
 		summary.interest_paid = loan_payment
@@ -680,7 +711,9 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 	# subset. Market input buys are real expenses and must prevent loss-making turns
 	# from paying tax or dividends.
 	var pre_tax_profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
-	var taxable_profit := maxf(0.0, pre_tax_profit)
+	# The first TAX_FREE_PROFIT_FLOOR of profit each turn is assessed at nothing, for tax
+	# and dividends alike. Only the slice above the floor is assessable.
+	var taxable_profit := maxf(0.0, pre_tax_profit - EconomyConfig.TAX_FREE_PROFIT_FLOOR)
 	var revenue := float(summary.get("goods_sales_revenue", 0.0)) + float(summary.get("power_sales_revenue", 0.0))
 	var cfo := MatchState.cfo_seated()
 	if taxable_profit <= 0.0:
@@ -688,8 +721,9 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 		summary.dividends_paid = 0.0
 		# CFO tax-loss carry-forward: age the existing credit windows, then bank a fresh
 		# credit off this losing turn's revenue (banked after aging so it keeps 5 turns).
+		# A turn inside the floor is profitable, not a loss, so it banks no credit.
 		MatchState.cfo_age_tax_credits()
-		if cfo:
+		if cfo and pre_tax_profit <= 0.0:
 			summary["tax_credit_banked"] = MatchState.cfo_bank_tax_credit(revenue)
 		return pre_tax_profit
 
@@ -907,6 +941,10 @@ func _credit_arrived_sale(shipment: Dictionary, summary: Dictionary) -> void:
 		"items": [],
 		"total_qty": 0,
 		"total_revenue": 0.0,
+		# Additive provenance used by the tutorial and useful to any future ledger
+		# drill-down. Old shipments simply report zero/absent as before.
+		"shipment_id": shipment.get("id", null),
+		"transport_turns": int(shipment.get("transport_turns", sale_record.get("transport_turns", 0))),
 	}
 	for item in sale_record.get("items", []):
 		var gid := str(item.get("good_id", ""))
@@ -1070,7 +1108,8 @@ func _dispatch_output_to_destination(building: Dictionary, good: Dictionary, qty
 				Catalog.get_display_name(good.id), str(stockpile_coord), kept, qty,
 			])
 		return
-	var transport_cost: float = TransportService.transport_cost_for_route(good.id, qty, route)
+	# Founder freight credit applies to overland hauls; commit=true actually spends it.
+	var transport_cost: float = TransportService.land_cost_after_credit(good.id, qty, route, true)
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 		summary.transport_paid += transport_cost
@@ -1256,6 +1295,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 	# the flat per-turn fee (charged once per turn), with no per-unit cost.
 	var in_port_range: bool = port_tile != "" and TransportService.tile_distance(source_tile, port_tile) <= EconomyConfig.SEAPORT_RANGE_TILES
 	var ship_turns: int = int(quote.get("turns", 0))
+	sale_record["transport_turns"] = ship_turns
 	var deferred: bool = port_tile != "" and ship_turns >= 1
 	var transport_cost := 0.0
 	var transport_breakdown: Dictionary = {}
@@ -1271,14 +1311,17 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		MarketState.record_market_sale_volume(good_key, sold_qty)
 		var sold_revenue: float = float(sold_qty) * price
 		if not (in_port_range and bool(covered_goods.get(good_key, false))):
-			transport_cost += TransportService.transport_cost_for_route(good_key, sold_qty, route)
+			transport_cost += TransportService.land_cost_after_credit(good_key, sold_qty, route, true)
 			_add_transport_breakdown(transport_breakdown, TransportService.transport_cost_breakdown_for_route(good_key, sold_qty, route))
 		# Every market sale crosses the sea leg. The subscription only waives the local
 		# inland route, never the port's handling and insurance charge.
 		var sea_charge := MatchState.commit_sea_shipping(port_tile, good_key, sold_qty, "sell")
 		transport_cost += float(sea_charge.get("total", 0.0))
-		transport_breakdown["port_fees"] = float(transport_breakdown.get("port_fees", 0.0)) + float(sea_charge.get("base_fee", 0.0))
-		transport_breakdown["port_insurance"] = float(transport_breakdown.get("port_insurance", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
+		# Export leg — the mirror of queue_buy's port_inbound. "sea" carries the ad valorem
+		# for both directions so the redesign's headline component stands alone.
+		# Mirror of queue_buy's port_inbound: the whole export-side port charge on one line.
+		transport_breakdown["port_outbound"] = float(transport_breakdown.get("port_outbound", 0.0)) \
+			+ float(sea_charge.get("base_fee", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,

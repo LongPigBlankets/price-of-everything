@@ -32,6 +32,12 @@ const UNLOCK_WORD := "CandC"  # case-sensitive pass-phrase for `debug <word>`
 # useful ones — e.g. arm the slow-load recording before starting a game). Everything
 # else would poke a not-yet-started MatchState or a missing map scene.
 const MENU_SAFE_COMMANDS := {"swap": true, "help": true}
+# Commands that only look at the game or change presentation, so they leave the run
+# honest for telemetry. Everything else sets MatchState.cheats_used.
+const READ_ONLY_COMMANDS := {
+	"help": true, "logs": true, "saves": true, "save": true, "load": true,
+	"swap": true, "toggle": true, "anim": true,
+}
 
 # Set true when this terminal is instantiated on the main menu (main_menu.gd).
 var menu_mode := false
@@ -131,9 +137,15 @@ func _run_command(text: String) -> String:
 		return "invalid operation"
 	if not _cheats_unlocked:
 		return "invalid operation"
-	if menu_mode and not MENU_SAFE_COMMANDS.has(parts[0].to_lower()):
-		return "'%s' is only available during a match  (main menu: swap loading_screen | swap song | help)" % parts[0].to_lower()
-	match parts[0].to_lower():
+	var cmd := parts[0].to_lower()
+	if menu_mode and not MENU_SAFE_COMMANDS.has(cmd):
+		return "'%s' is only available during a match  (main menu: swap loading_screen | swap song | help)" % cmd
+	# Anything that can move the sim taints the run for telemetry: an unflagged cheat run
+	# silently poisons aggregate balance data. Commands not on the read-only list — including
+	# any added later — taint by default, because under-flagging is the costlier mistake.
+	if not READ_ONLY_COMMANDS.has(cmd):
+		MatchState.note_cheat_used()
+	match cmd:
 		"cash":
 			if parts.size() < 2 or not parts[1].is_valid_int():
 				return "usage: cash <integer>"

@@ -24,6 +24,13 @@ var hidden_buildings_unlocked: bool = false
 # is defined today — add per-rule keys beside it as rules become real.
 const DEFAULT_RULESET := {"name": "standard"}
 var ruleset: Dictionary = DEFAULT_RULESET.duplicate(true)
+## Which start config this match began from ("metal_magnate", "tutorial", …). Telemetry's
+## primary segmentation field; empty for matches built without a start config (tests).
+## Unlike ruleset.name this is NOT reset by state_reset mid-teardown, so it stays readable.
+var scenario_name: String = ""
+## Sticky once any debug command moves the sim. Telemetry reports it so cheat runs can be
+## excluded from aggregates instead of silently poisoning them.
+var cheats_used: bool = false
 
 const DEFAULT_TILE_LAND_OWNED := 0
 const LAND_PATCH_SIZE := 10
@@ -75,6 +82,35 @@ var permanent_advisor_ids: Array = []
 # --- Advisor seats (seat framework, docs/advisor-system-spec.md §4-6) ---
 # advisor_seats is sparse: only occupied seats are keys, so .size() == seated count.
 var advisor_seats: Dictionary = {}          # seat_id -> advisor_id
+## Only CFO and COO exist until the player earns the rest. A new player choosing between two
+## posts is a real decision; choosing between eleven is a menu.
+## See docs/early-game-onboarding-spec.md §5.4.
+const STARTING_SEATS: Array[String] = ["cfo", "coo"]
+const FOUNDER_ADVISOR_ID := "andrew"
+const FOUNDER_TENURE_TURNS := 30
+## The research title that opens the rest of the council (data/research_unlocks.csv).
+const SEATS_UNLOCK_TITLE := "Executive Search"
+var all_seats_unlocked: bool = false        # set by the people/labour research node
+## "Worker pay while building not running": what share of a workforce's pay a building owes on a
+## turn it produced NOTHING. 1.0 is the old behaviour (they are paid in full regardless).
+## Deliberately keyed on zero output, never on "starving": a derated building still ran and is
+## still in CostSolver, and paying it less would make its imputed cost FALL as it got sicker.
+const IDLE_LABOUR_PAY_CHOICES: Array[float] = [0.5, 0.75, 1.0]
+var idle_labour_pay_share: float = 1.0
+
+func set_idle_labour_pay_share(value: float) -> void:
+	# Off-menu values are REFUSED, not rounded: this is a three-position policy switch, and
+	# silently snapping an unexpected value would hide a caller bug behind a plausible number.
+	var matched := false
+	for choice in IDLE_LABOUR_PAY_CHOICES:
+		if is_equal_approx(choice, value):
+			matched = true
+	if not matched or is_equal_approx(value, idle_labour_pay_share):
+		return
+	idle_labour_pay_share = value
+	labour_multiplier_changed.emit(labour_multiplier)   # the People panel repaints on this
+var founder_seat: String = ""               # which post Andrew took, "" if he never joined
+var founder_leaves_turn: int = 0            # tenure end; he cannot be dismissed before it
 const MAX_ADVISOR_SLOTS_DEFAULT := 2
 const MAX_ADVISOR_SLOTS_CAP := 5            # spec §4.1 hard ceiling
 var max_advisor_slots: int = MAX_ADVISOR_SLOTS_DEFAULT
@@ -360,6 +396,9 @@ var _unlock_progress: Dictionary = {}
 # market's general sales ledger: the logistics research chain requires that the
 # goods actually crossed a port.
 var _port_sale_total: int = 0
+## Lifetime units EXPORTED through each port (port_tile -> units). Drives the Logistics
+## shipping line's "through each port" condition — see docs/early-game-onboarding-spec.md §4.2b.
+var _port_sales_by_port: Dictionary = {}
 var _port_sales_by_class: Dictionary = {}
 # Consecutive-turn progress for the infrastructure-utilisation research gates.
 # Kept separately from the legacy action/object accumulator because its Quantity is
@@ -696,6 +735,10 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 		_grant_building_land(instance_id)
 		# The tile size chart stacks buildings bought off an NPC at the top of the pile.
 		buildings[instance_id]["acquired_from_npc"] = true
+		# A purchase is a going concern, so it arrives with stock to run on. Seeded HERE rather
+		# than in the market panel because three separate surfaces transfer ownership (market
+		# panel, building detail, tile info) and the tutorial buys through one of them.
+		seed_purchase_inventory(instance_id)
 	building_owner_changed.emit(instance_id)
 	# A newly player-owned building may satisfy a count condition after the turn
 	# settles; never trigger a full scan from an interaction callback.
@@ -884,6 +927,89 @@ func pending_upgrade(instance_id: String) -> Dictionary:
 			return p
 	return {}
 
+
+## Read-only progress snapshot for an upgrade button / diagnostics row. `turns_remaining`
+## alone is not an ETA while a project is awaiting materials: the three-turn build countdown
+## does not start until every outstanding unit has arrived and been claimed. This folds in the
+## tagged shipments and overflow queue, and reports why no finite estimate can be made.
+func upgrade_progress_snapshot(instance_id: String) -> Dictionary:
+	var pending := pending_upgrade(instance_id)
+	if pending.is_empty():
+		return {}
+	var countdown := maxi(0, int(pending.get("turns_remaining", 0)))
+	var status := str(pending.get("status", ""))
+	if status == UPGRADE_STATUS_UPGRADING:
+		return {
+			"status": status, "blocked": false, "estimated_turns": countdown,
+			"tooltip": "Estimated completion: %d turn%s." % [countdown, "" if countdown == 1 else "s"],
+		}
+	if status != UPGRADE_STATUS_AWAITING:
+		var unknown := "The upgrade has an unknown progress state ('%s')." % status
+		return {
+			"status": status, "blocked": true, "estimated_turns": -1,
+			"error": unknown,
+			"tooltip": "Upgrade paused — estimated completion unavailable.\n%s" % unknown,
+		}
+
+	var tile_id := str(pending.get("tile_id", ""))
+	var missing: Dictionary = pending.get("missing", {})
+	var blockers: Array = []
+	var material_eta := 1  # even on-tile goods are claimed on the next processed turn
+	var overflow_qty := 0
+	for gid_value in missing:
+		var gid := str(gid_value)
+		var needed := maxi(0, int(missing[gid_value]))
+		if needed <= 0:
+			continue
+		var accounted := mini(needed, Stockpile.get_at_tile(tile_id, gid))
+		var latest_eta := 0
+		for shipment in pending_transport_shipments:
+			if str((shipment as Dictionary).get("upgrade_instance_id", "")) != instance_id \
+					or str((shipment as Dictionary).get("destination_tile", "")) != tile_id \
+					or str((shipment as Dictionary).get("good_id", "")) != gid:
+				continue
+			var enroute_take := mini(maxi(0, needed - accounted), int((shipment as Dictionary).get("qty", 0)))
+			accounted += enroute_take
+			if enroute_take > 0:
+				latest_eta = maxi(latest_eta, int((shipment as Dictionary).get("turns_remaining", 0)))
+		for overflow in overflow_shipments:
+			if str((overflow as Dictionary).get("upgrade_instance_id", "")) != instance_id \
+					or str((overflow as Dictionary).get("destination_tile", "")) != tile_id \
+					or str((overflow as Dictionary).get("good_id", "")) != gid:
+				continue
+			var held := mini(maxi(0, needed - accounted), int((overflow as Dictionary).get("qty", 0)))
+			accounted += held
+			overflow_qty += held
+			if held > 0:
+				latest_eta = maxi(latest_eta, 1)
+		material_eta = maxi(material_eta, latest_eta)
+		if accounted >= needed:
+			continue
+		var short := needed - accounted
+		var good_name := Catalog.get_display_name(gid)
+		var quote := TransportService.quote_market_buy(tile_id, gid, short, seaport_would_cover(gid))
+		if quote.is_empty():
+			blockers.append("No road, rail or suitable pipe route can deliver %s to this tile." % good_name)
+		else:
+			blockers.append("No shipment is carrying the remaining %d %s." % [short, good_name])
+
+	if overflow_qty > Stockpile.get_free_capacity(tile_id):
+		blockers.append("The tile stockpile is too full to unload the remaining upgrade materials.")
+
+	if not blockers.is_empty():
+		var error := " ".join(blockers)
+		return {
+			"status": status, "blocked": true, "estimated_turns": -1,
+			"error": error,
+			"tooltip": "Upgrade paused — estimated completion unavailable.\n%s" % error,
+		}
+	var estimated := material_eta + countdown
+	var waiting_text := "Materials are on their way." if material_eta > 1 else "Materials will be claimed next turn."
+	return {
+		"status": status, "blocked": false, "estimated_turns": estimated,
+		"tooltip": "%s Estimated completion: %d turn%s." % [waiting_text, estimated, "" if estimated == 1 else "s"],
+	}
+
 # Footprint reserved on a tile by upgrades-in-progress (so a second build can't slip into
 # room the growing building is about to claim). Counted by get_tile_space_used.
 func reserved_upgrade_space_on_tile(tile_id: String) -> float:
@@ -901,6 +1027,55 @@ func reserved_upgrade_space_on_tile(tile_id: String) -> float:
 ## internal_name for all five). Port/airport are not levellable.
 const INFRA_UPGRADABLE: Array = ["roads", "rails", "pipes", "reinf_pipes", "cables"]
 
+## Tile-seeded infrastructure (CSV cables/rails and the baked road network) has no
+## MatchState building instance. TileViewData gives those slots a stable synthetic id
+## (`tile_<tile_id>_<slot>`) so the shared building-detail upgrade UI can still address
+## them. Resolve that id back to the tile + canonical slot, but only while the slot is
+## actually installed on the live HexMap tile.
+func _tile_backed_infra_instance(upgrade_id: String) -> Dictionary:
+	if not upgrade_id.begins_with("tile_"):
+		return {}
+	for slot_value in INFRA_UPGRADABLE:
+		var slot := str(slot_value)
+		var suffix := "_" + slot
+		if not upgrade_id.ends_with(suffix):
+			continue
+		var tile_id := upgrade_id.substr(5, upgrade_id.length() - 5 - suffix.length())
+		if tile_id == "" or not _tile_has_infrastructure_slot(tile_id, slot):
+			continue
+		var building: Dictionary = Catalog.get_building_by_internal_name(slot)
+		if building.is_empty():
+			return {}
+		return {
+			"instance_id": upgrade_id,
+			"building_id": str(building.get("id", "")),
+			"tile_id": tile_id,
+			"owner": "tile_data",
+		}
+	return {}
+
+func _tile_has_infrastructure_slot(tile_id: String, slot: String) -> bool:
+	var tree := get_tree()
+	if tree == null:
+		return false
+	var hm = tree.get_first_node_in_group("hex_map")
+	if hm == null:
+		return false
+	var coord = hm.id_to_coord(tile_id)
+	if not hm.tiles.has(coord):
+		return false
+	for present_value in (hm.tiles[coord] as Dictionary).get("infrastructure_present", []):
+		var present := str(present_value).strip_edges().to_lower()
+		if present in ["rail", "railway", "railways"]:
+			present = "rails"
+		elif present in ["pipework", "pipeworks"]:
+			present = "pipes"
+		elif present in ["reinforced_pipes", "reinforced pipework"]:
+			present = "reinf_pipes"
+		if present == slot:
+			return true
+	return false
+
 ## The tile-level a levellable infra instance sits at (the TILE dict is the gameplay
 ## source of truth — power caps and transport capacity read it, not the instance).
 func infra_tile_level(inst: Dictionary) -> int:
@@ -910,6 +1085,11 @@ func infra_tile_level(inst: Dictionary) -> int:
 ## Write an infra slot's level on the HexMap tile (persisted via the save's structured
 ## infrastructure snapshot). No-ops headless (no map), like the reads.
 func set_tile_infra_level(tile_id: String, slot_key: String, level: int) -> void:
+	# Mirror into the router FIRST and unconditionally: a level changes how far one turn-move
+	# reaches (EconomyConfig.INFRA_RANGE_BY_LEVEL), and Catalog cannot read the HexMap tile —
+	# it routes headless. Doing it before the early-outs below means a headless caller still
+	# gets correct routing even with no map node in the tree.
+	Catalog.set_tile_infra_level(tile_id, slot_key, level)
 	var tree := get_tree()
 	if tree == null:
 		return
@@ -964,7 +1144,11 @@ func _infra_capacity_delta(internal: String, level: int, target: int) -> Diction
 
 func preview_upgrade(instance_id: String) -> Dictionary:
 	if not buildings.has(instance_id):
-		return {"ok": false, "reason": "No such building."}
+		var tile_infra := _tile_backed_infra_instance(instance_id)
+		if tile_infra.is_empty():
+			return {"ok": false, "reason": "No such building."}
+		var tile_internal := str(Catalog.get_building(str(tile_infra.get("building_id", ""))).get("internal_name", ""))
+		return _preview_infra_upgrade(tile_infra, tile_internal)
 	var inst: Dictionary = buildings[instance_id]
 	var level := int(inst.get("level", 1))
 	var building_id := str(inst.get("building_id", ""))
@@ -1106,7 +1290,13 @@ const UPGRADE_STATUS_UPGRADING := "upgrading"
 ## countdown only begins once every material has been claimed. Returns {ok, reason, status}.
 func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	if not buildings.has(instance_id):
-		return {"ok": false, "reason": "No such building."}
+		var tile_infra := _tile_backed_infra_instance(instance_id)
+		if tile_infra.is_empty():
+			return {"ok": false, "reason": "No such building."}
+		if is_upgrading(instance_id):
+			return {"ok": false, "reason": "An upgrade is already in progress."}
+		var tile_internal := str(Catalog.get_building(str(tile_infra.get("building_id", ""))).get("internal_name", ""))
+		return _start_infra_upgrade(instance_id, tile_infra, tile_internal)
 	if is_upgrading(instance_id):
 		return {"ok": false, "reason": "An upgrade is already in progress."}
 	var inst: Dictionary = buildings[instance_id]
@@ -1241,8 +1431,13 @@ func tick_upgrades() -> Array:
 	var remaining: Array = []
 	for p in pending_upgrades:
 		var instance_id := str(p.get("instance_id", ""))
-		# Drop upgrades whose building vanished (sold/removed mid-flight).
-		if not buildings.has(instance_id):
+		var is_infra := bool(p.get("infra", false))
+		# Production upgrades still require their building. Tile-backed infrastructure
+		# deliberately has no building instance; its tile slot is the persistent target.
+		if not buildings.has(instance_id) and not is_infra:
+			continue
+		if is_infra and not buildings.has(instance_id) \
+				and not _tile_has_infrastructure_slot(str(p.get("tile_id", "")), str(p.get("infra_slot", ""))):
 			continue
 		if str(p.get("status", "")) == UPGRADE_STATUS_AWAITING:
 			var tile_id := str(p.get("tile_id", ""))
@@ -1262,14 +1457,19 @@ func tick_upgrades() -> Array:
 		# Under upgrade — count down, promote at zero.
 		p["turns_remaining"] = int(p.get("turns_remaining", 0)) - 1
 		if int(p["turns_remaining"]) <= 0:
-			var inst: Dictionary = buildings[instance_id]
-			inst["level"] = int(p.get("target_level", int(inst.get("level", 1)) + 1))
-			# Infra: the TILE dict is what power caps / transport capacity read — write
-			# it there too (the instance level is display-only for infra).
-			if bool(p.get("infra", false)):
-				set_tile_infra_level(str(p.get("tile_id", "")), str(p.get("infra_slot", "")), int(inst["level"]))
+			var new_level := int(p.get("target_level", 1))
+			if is_infra:
+				# The TILE dict is what power caps / transport capacity read. A player-built
+				# infra slot also has an instance, but seeded slots intentionally do not.
+				set_tile_infra_level(str(p.get("tile_id", "")), str(p.get("infra_slot", "")), new_level)
+				if buildings.has(instance_id):
+					(buildings[instance_id] as Dictionary)["level"] = new_level
+			else:
+				var inst: Dictionary = buildings[instance_id]
+				new_level = int(p.get("target_level", int(inst.get("level", 1)) + 1))
+				inst["level"] = new_level
 			completed.append(instance_id)
-			building_upgraded.emit(instance_id, int(inst["level"]))
+			building_upgraded.emit(instance_id, new_level)
 		else:
 			building_upgrade_progress.emit(instance_id)
 			remaining.append(p)
@@ -1878,6 +2078,11 @@ func grant_unlock(title: String, via_condition: bool = false) -> void:
 	if title == "" or unlocked_titles.has(title):
 		return
 	unlocked_titles[title] = true
+	# Opening the rest of the council is not a modifier, so it is applied here rather than
+	# through apply_unlock_modifier. See docs/early-game-onboarding-spec.md §5.4.
+	if title == SEATS_UNLOCK_TITLE:
+		all_seats_unlocked = true
+		advisors_changed.emit()
 	_surveyable_dirty = true  # e.g. Geoscanning changes survey range
 	flag_agenda_event(AGENDA_TECH_UNLOCK)
 	# Apply any standing modifier this unlock grants NOW, not only via the signal
@@ -1977,6 +2182,8 @@ func unlock_condition_text(title: String) -> String:
 		"Produce": return "Produce %d %s" % [qty, object_name.capitalize()]
 		"Sell": return "Sell %d units through the market" % qty if _research_key(object_name) == "freight" else "Sell %d %s through the market" % [qty, object_name.capitalize()]
 		"Sell Through Ports": return "Sell %d units through ports" % qty
+		"Sell Through Every Port": return "Export %d units through EVERY port" % qty
+		"Own Port At Level": return "Own a port upgraded to level %d" % qty
 		"Sell Through Ports Classes": return "Sell at least %d units of each weight class through ports" % qty
 		"Purchase Ports": return "Purchase all %d ports" % qty
 		"Build": return "Build %d %s" % [qty, object_name.capitalize()]
@@ -2105,6 +2312,22 @@ func _live_condition_met(d: Dictionary) -> bool:
 			return sell_good != "" and MarketState.lifetime_sold(sell_good) >= need
 		"Sell Through Ports":
 			return _port_sale_total >= need
+		"Sell Through Every Port":
+			# Every port on the map must have carried `need` units of the player's exports.
+			# Volume is the small part; the real ask is REACH.
+			for port in Catalog.all_ports():
+				var ptile := str(port.get("tile_id", ""))
+				if ptile != "" and int(_port_sales_by_port.get(ptile, 0)) < need:
+					return false
+			return true
+		"Own Port At Level":
+			# A port building (b_004) the player owns, upgraded to at least `need`.
+			for b in buildings.values():
+				if not (b is Dictionary) or not is_player_owned(b):
+					continue
+				if str(b.get("building_id", "")) == "b_004" and int(b.get("level", 1)) >= need:
+					return true
+			return false
 		"Sell Through Ports Classes":
 			var classes := obj.split("|", false)
 			if classes.is_empty():
@@ -2342,6 +2565,8 @@ func _research_condition_issue(d: Dictionary) -> String:
 		return "" if _research_key(obj) == "ports" else "unsupported port ownership target"
 	if action == "Sell Through Ports":
 		return "" if _research_key(obj) == "ports" else "unsupported port-sale target"
+	if action == "Sell Through Every Port" or action == "Own Port At Level":
+		return "" if _research_key(obj) == "ports" else "unsupported port target"
 	if action == "Sell Through Ports Classes":
 		var classes := obj.split("|", false)
 		if classes.is_empty():
@@ -2966,8 +3191,16 @@ func reset() -> void:
 	workforce_policy_effects.clear()
 	labour_multiplier = EconomyConfig.LABOUR_MULTIPLIER_DEFAULT
 	labour_output_pressure_pct = 0.0
+	idle_labour_pay_share = 1.0
 	permanent_advisor_ids.clear()
 	advisor_seats.clear()
+	all_seats_unlocked = false
+	founder_seat = ""
+	founder_leaves_turn = 0
+	freight_credit_units = 0
+	ghost_holdings.clear()
+	building_tabs.clear()
+	construct_credit_default = "ask"
 	max_advisor_slots = MAX_ADVISOR_SLOTS_DEFAULT
 	crossed_milestones.clear()
 	recruited_advisor_ids.clear()
@@ -3005,6 +3238,7 @@ func reset() -> void:
 	unlocked_titles.clear()
 	_unlock_progress.clear()
 	_port_sale_total = 0
+	_port_sales_by_port.clear()
 	_port_sales_by_class.clear()
 	_infrastructure_usage_streaks.clear()
 	_infrastructure_usage_last_turn.clear()
@@ -3019,6 +3253,8 @@ func reset() -> void:
 	Production.reset_lifetime_research_metrics()
 	_next_instance_counter = 0
 	ruleset = DEFAULT_RULESET.duplicate(true)
+	scenario_name = ""
+	cheats_used = false
 	state_reset.emit()
 	advisors_changed.emit()
 
@@ -3050,6 +3286,8 @@ func export_state() -> Dictionary:
 	return {
 		"money": money,
 		"ruleset": ruleset.duplicate(true),
+		"scenario_name": scenario_name,
+		"cheats_used": cheats_used,
 		"construct_cost_display": construct_cost_display,
 		"construct_start_half_capacity": construct_start_half_capacity,
 		"construct_auto_buy_land": construct_auto_buy_land,
@@ -3063,10 +3301,18 @@ func export_state() -> Dictionary:
 		"pending_battery_fills": pending_battery_fills.duplicate(true),
 		"labour_multiplier": labour_multiplier,
 		"labour_output_pressure_pct": labour_output_pressure_pct,
+		"idle_labour_pay_share": idle_labour_pay_share,
 		"workforce_policies": workforce_policies.duplicate(true),
 		"workforce_policy_effects": workforce_policy_effects.duplicate(true),
 		"permanent_advisor_ids": permanent_advisor_ids.duplicate(true),
 		"advisor_seats": advisor_seats.duplicate(true),
+		"all_seats_unlocked": all_seats_unlocked,
+		"founder_seat": founder_seat,
+		"founder_leaves_turn": founder_leaves_turn,
+		"freight_credit_units": freight_credit_units,
+		"ghost_holdings": ghost_holdings.duplicate(true),
+		"building_tabs": building_tabs.duplicate(true),
+		"construct_credit_default": construct_credit_default,
 		"max_advisor_slots": max_advisor_slots,
 		"advisor_rng_seed": match_rng_seed,
 		"advisor_rng_state": _match_rng.state,
@@ -3119,6 +3365,7 @@ func export_state() -> Dictionary:
 		"unlocked_titles": unlocked_titles.duplicate(true),
 		"unlock_progress": _unlock_progress.duplicate(true),
 		"port_sale_total": _port_sale_total,
+		"port_sales_by_port": _port_sales_by_port.duplicate(true),
 		"port_sales_by_class": _port_sales_by_class.duplicate(true),
 		"infrastructure_usage_streaks": _infrastructure_usage_streaks.duplicate(true),
 		"infrastructure_usage_last_turn": _infrastructure_usage_last_turn.duplicate(true),
@@ -3137,6 +3384,9 @@ func import_state(d: Dictionary) -> void:
 	# new-game default, so older/partial snapshots (and Phase 3 start configs) load.
 	money = float(d.get("money", EconomyConfig.STARTING_MONEY))
 	ruleset = (d.get("ruleset", DEFAULT_RULESET) as Dictionary).duplicate(true)
+	# Tolerant readers: saves from before these existed load as an unknown start, uncheated.
+	scenario_name = str(d.get("scenario_name", ""))
+	cheats_used = bool(d.get("cheats_used", false))
 	set_construct_cost_display(str(d.get("construct_cost_display", "grid")), false)
 	set_construct_start_half_capacity(bool(d.get("construct_start_half_capacity", false)), false)
 	# Additive key: saves written before this setting existed simply default to off.
@@ -3151,6 +3401,7 @@ func import_state(d: Dictionary) -> void:
 	pending_battery_fills = (d.get("pending_battery_fills", []) as Array).duplicate(true)
 	labour_multiplier = float(d.get("labour_multiplier", EconomyConfig.LABOUR_MULTIPLIER_DEFAULT))
 	labour_output_pressure_pct = float(d.get("labour_output_pressure_pct", 0.0))
+	idle_labour_pay_share = float(d.get("idle_labour_pay_share", 1.0))
 	workforce_policies = (d.get("workforce_policies", {}) as Dictionary).duplicate(true)
 	workforce_policy_effects = (d.get("workforce_policy_effects", {}) as Dictionary).duplicate(true)
 	recruited_advisor_ids = _sanitize_advisor_ids(d.get("recruited_advisor_ids", STARTING_TRIO))
@@ -3183,6 +3434,15 @@ func import_state(d: Dictionary) -> void:
 	for pid in permanent_advisor_ids:
 		advisor_hired_turn[str(pid)] = int(raw_hired.get(str(pid), int(TurnManager.current_turn) - 1))
 	advisor_seats = _sanitize_advisor_seats(d.get("advisor_seats", {}))
+	# Tolerant readers: saves from before the founder existed load with every seat open, which
+	# is what those saves already behaved like.
+	all_seats_unlocked = bool(d.get("all_seats_unlocked", true))
+	founder_seat = str(d.get("founder_seat", ""))
+	founder_leaves_turn = int(d.get("founder_leaves_turn", 0))
+	freight_credit_units = int(d.get("freight_credit_units", 0))
+	ghost_holdings = (d.get("ghost_holdings", {}) as Dictionary).duplicate(true)
+	building_tabs = (d.get("building_tabs", {}) as Dictionary).duplicate(true)
+	construct_credit_default = str(d.get("construct_credit_default", "ask"))
 	max_advisor_slots = clampi(int(d.get("max_advisor_slots", MAX_ADVISOR_SLOTS_DEFAULT)), MAX_ADVISOR_SLOTS_DEFAULT, MAX_ADVISOR_SLOTS_CAP)
 	match_rng_seed = int(d.get("advisor_rng_seed", DEFAULT_MATCH_RNG_SEED))
 	_match_rng.seed = match_rng_seed
@@ -3235,6 +3495,7 @@ func import_state(d: Dictionary) -> void:
 		unlocked_titles.erase("Containerized Freight")
 	_unlock_progress = (d.get("unlock_progress", {}) as Dictionary).duplicate(true)
 	_port_sale_total = int(d.get("port_sale_total", 0))
+	_port_sales_by_port = (d.get("port_sales_by_port", {}) as Dictionary).duplicate(true)
 	_port_sales_by_class = (d.get("port_sales_by_class", {}) as Dictionary).duplicate(true)
 	_infrastructure_usage_streaks = (d.get("infrastructure_usage_streaks", {}) as Dictionary).duplicate(true)
 	_infrastructure_usage_last_turn = (d.get("infrastructure_usage_last_turn", {}) as Dictionary).duplicate(true)
@@ -4032,7 +4293,11 @@ func seaport_base_fee(port_tile: String) -> float:
 	return maxf(0.0, Modifiers.apply("port_per_turn_fee", "port", EconomyConfig.SEAPORT_BASE_FEE_PER_GOOD))
 
 func seaport_insurance_rate(port_tile: String) -> float:
-	var base := EconomyConfig.OWNED_SEAPORT_INSURANCE_RATE if is_seaport_player_owned(port_tile) else EconomyConfig.SEAPORT_INSURANCE_RATE
+	# Turn-scheduled ad valorem: cheap while the player is learning, real from t31. Owning the
+	# port still halves it. Research relief rides the same port_ad_valorem_fee domain.
+	var base := EconomyConfig.seaport_ad_valorem_rate(TurnManager.current_turn)
+	if is_seaport_player_owned(port_tile):
+		base *= EconomyConfig.OWNED_SEAPORT_AD_VALOREM_SHARE
 	return maxf(0.0, Modifiers.apply("port_ad_valorem_fee", "port", base))
 
 func is_seaport_player_owned(port_tile: String) -> bool:
@@ -4095,6 +4360,7 @@ func commit_sea_shipping(port_tile: String, good_id: String, qty: int, direction
 		row["sell_qty"] = int(row.get("sell_qty", 0)) + qty
 		_port_sale_total += qty
 		_port_sales_by_class[transport_class] = int(_port_sales_by_class.get(transport_class, 0)) + qty
+		_port_sales_by_port[port_tile] = int(_port_sales_by_port.get(port_tile, 0)) + qty
 	else:
 		row["buy_qty"] = int(row.get("buy_qty", 0)) + qty
 	row["total_qty"] = int(row.get("total_qty", 0)) + qty
@@ -4173,8 +4439,13 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 		total += actual_sea - sea_quote
 	var transport_breakdown: Dictionary = (quote.get("route_transport_breakdown", {}) as Dictionary).duplicate()
 	if not sea_charge.is_empty():
-		transport_breakdown["port_fees"] = float(transport_breakdown.get("port_fees", 0.0)) + float(sea_charge.get("base_fee", 0.0))
-		transport_breakdown["port_insurance"] = float(transport_breakdown.get("port_insurance", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
+		# Split by DIRECTION: this is the import leg. The ad valorem rides its own "sea" line
+		# rather than being folded in, because it is the component about to carry the freight
+		# redesign and needs to be watchable on its own.
+		# The whole port charge, by direction. Splitting fee-from-ad-valorem left both direction
+		# lines reading zero once the flat fee was retired — reported from a turn-63 save.
+		transport_breakdown["port_inbound"] = float(transport_breakdown.get("port_inbound", 0.0)) \
+			+ float(sea_charge.get("base_fee", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
 	# Goods with a transit leg are paid for ON ARRIVAL; instant (0-turn) deliveries have no
 	# transit to defer over, so they settle here.
 	if turns < 1:
@@ -4755,8 +5026,16 @@ func tile_mode_flow(tile_id: String, mode: String) -> int:
 		if str(s.get("source_tile", "")) == tile_id or str(s.get("destination_tile", "")) == tile_id:
 			var goods := _shipment_goods_dict(s)
 			for good_id in goods:
-				if tolerated.has(Catalog.get_transport_class(str(good_id))):
-					total += int(goods[good_id])
+				if not tolerated.has(Catalog.get_transport_class(str(good_id))):
+					continue
+				# A fluid with no leg data is attributed to its PIPE network only. Since the
+				# overland ruling (2026-08-09) road and rail also tolerate fluids, so without
+				# this a leg-less fluid shipment would load BOTH networks and be charged
+				# congestion twice for one delivery. Legged routes are attributed exactly by
+				# the branch above; this only covers the first/last-mile fallback.
+				if Catalog.requires_pipeline(str(good_id)) and not EconomyConfig.PIPE_MODES.has(mode):
+					continue
+				total += int(goods[good_id])
 	return total
 
 # {good_id: qty} a shipment carries (sale shipments may carry several goods).
@@ -5283,6 +5562,9 @@ const SEAT_DEFINITIONS := {
 # never stored. salary is static (Phase-2 payroll); advisor_payroll_per_turn stays
 # flat for now. traits.specialty_domain is filled in Phase 1+ for effect routing.
 const ADVISOR_ROSTER := [
+	# The family friend. Joins pro bono at turn 3 in whichever post the player picks, then
+	# leaves at t33. Salary 0 — he is a favour, not a hire. See spec §5.4.
+	{"id": "andrew",    "name": "Andrew Keeler",   "role": "coo",                "inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 3, "salary": 0.0, "traits": {"specialty_name": "Old Family Friend", "specialty_description": "owes your family a debt; serves 30 turns for nothing", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "vera",      "name": "Vera Ashby",      "role": "cfo",                "inf": 3, "ops": 3, "lead": 3, "inn": 2, "fin": 3, "salary": 1.0, "traits": {"specialty_name": "Family Trust",         "specialty_description": "reduced salary, no malus anywhere",                 "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "alexandra", "name": "Alexandra Reyes", "role": "coo",                "inf": 3, "ops": 3, "lead": 3, "inn": 3, "fin": 2, "salary": 4.0, "traits": {"specialty_name": "Prima Donna",          "specialty_description": "superb everywhere; high salary + walk-risk if benched", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
 	{"id": "gerald",    "name": "Gerald Vance",    "role": "coo",                "inf": 2, "ops": 3, "lead": 3, "inn": 2, "fin": 2, "salary": 2.0, "traits": {"specialty_name": "Dinosaur",             "specialty_description": "top operator; brakes clean-recipe adoption (carbon, later)", "specialty_domain": "", "specialty_value": 0.0, "mission_unlock_turn": 0}},
@@ -5411,12 +5693,326 @@ func advisor_seat_governing_discipline(advisor_id: String, seat_id: String) -> S
 
 # Assign a HIRED, rostered advisor to a seat. Enforces the slot cap and
 # one-seat-per-advisor. Returns false if rejected.
+## Building operational loans (spec §5.3). A newly CONSTRUCTED building has no cash flow yet,
+## so its first TAB_WINDOW_TURNS of running costs are carried rather than paid: each turn they
+## are charged as normal and then refunded onto the tab, which keeps every existing cost site
+## and the money panel's ledger honest instead of diverting four separate charge paths.
+##
+## Exposure is bounded by construction — exactly five turns — which is why the earlier
+## open-ended version's 1x-capex cap and forced sale are gone. Requires a seated CFO: with no
+## one to arrange it, costs simply hit cash as before.
+const TAB_WINDOW_TURNS := 5
+const TAB_SLICES := 12
+## What to do when a build's credit facility comes up: "ask" raises the dialog, the other three
+## answer it silently. Stored beside the other construct-panel defaults.
+const CREDIT_DEFAULT_CHOICES: Array[String] = ["ask", "slices", "loan", "none"]
+var construct_credit_default: String = "ask"
+
+func set_construct_credit_default(value: String) -> void:
+	if not CREDIT_DEFAULT_CHOICES.has(value) or value == construct_credit_default:
+		return
+	construct_credit_default = value
+	construct_settings_changed.emit()
+var building_tabs: Dictionary = {}   # instance_id -> {turns_left, accrued, mode, slices_left}
+
+
+func can_open_building_tab() -> bool:
+	return cfo_seated()
+
+
+## Start carrying a building's running costs. Called the turn BEFORE it completes, because that
+## is when its inputs are ordered and the first money moves.
+func open_building_tab(instance_id: String, mode: String = "slices") -> bool:
+	if not can_open_building_tab() or instance_id == "" or building_tabs.has(instance_id):
+		return false
+	building_tabs[instance_id] = {
+		"turns_left": TAB_WINDOW_TURNS, "accrued": 0.0,
+		"mode": mode, "slices_left": 0,
+	}
+	return true
+
+
+## The player's answer to the credit offer. "none" closes the tab so this building's costs hit
+## cash exactly as they would have without the facility.
+func set_building_tab_mode(instance_id: String, mode: String) -> void:
+	if not building_tabs.has(instance_id):
+		return
+	if mode == "none":
+		building_tabs.erase(instance_id)
+		return
+	var tab: Dictionary = building_tabs[instance_id]
+	tab["mode"] = mode
+	building_tabs[instance_id] = tab
+
+
+func building_tab_debt(instance_id: String) -> float:
+	return float((building_tabs.get(instance_id, {}) as Dictionary).get("accrued", 0.0))
+
+
+## Everything the player still owes across every building tab — the money panel's row.
+func total_building_tab_debt() -> float:
+	var total := 0.0
+	for iid in building_tabs:
+		total += float(building_tabs[iid].get("accrued", 0.0))
+	return total
+
+
+## Carry one turn of a building's running costs. Returns the amount refunded onto the tab, which
+## the caller credits back so the turn's cash matches what the player actually paid.
+func accrue_building_tab(instance_id: String, amount: float) -> float:
+	var tab: Dictionary = building_tabs.get(instance_id, {})
+	if tab.is_empty() or int(tab.get("turns_left", 0)) <= 0 or amount <= 0.0:
+		return 0.0
+	tab["accrued"] = float(tab.get("accrued", 0.0)) + amount
+	building_tabs[instance_id] = tab
+	return amount
+
+
+## End of turn: wind the window down and settle any tab that has run its course.
+func tick_building_tabs() -> void:
+	for iid in building_tabs.keys():
+		var tab: Dictionary = building_tabs[iid]
+		var left := int(tab.get("turns_left", 0))
+		if left > 0:
+			tab["turns_left"] = left - 1
+			if tab["turns_left"] == 0:
+				_settle_building_tab(str(iid), tab)
+				# Settling may have closed the tab outright (the loan route converts and
+				# erases). Writing it back unconditionally would resurrect it.
+				if not building_tabs.has(iid):
+					continue
+			building_tabs[iid] = tab
+			continue
+		# Repayment: one interest-free slice a turn until it is cleared.
+		if str(tab.get("mode", "slices")) == "slices" and int(tab.get("slices_left", 0)) > 0:
+			var slice: float = float(tab.get("accrued", 0.0)) / float(tab.get("slices_left", 1))
+			add_money(-slice)
+			tab["accrued"] = maxf(0.0, float(tab.get("accrued", 0.0)) - slice)
+			tab["slices_left"] = int(tab.get("slices_left", 0)) - 1
+			building_tabs[iid] = tab
+			if int(tab["slices_left"]) <= 0 or float(tab["accrued"]) <= 0.01:
+				building_tabs.erase(iid)
+
+
+func _settle_building_tab(instance_id: String, tab: Dictionary) -> void:
+	var owed := float(tab.get("accrued", 0.0))
+	if owed <= 0.0:
+		building_tabs.erase(instance_id)
+		return
+	if str(tab.get("mode", "slices")) == "loan":
+		# Converts to an ordinary loan — smaller payments, but it carries interest.
+		LoanState.take_distress_loan(owed)
+		building_tabs.erase(instance_id)
+		return
+	tab["slices_left"] = TAB_SLICES
+
+
+## Purchased buildings arrive with PURCHASE_SEED_TURNS of their recipe's inputs — a going
+## concern comes with stock, where a fresh build comes with a ramp to finance (§5.3's tab).
+## Infra and input-less recipes get nothing: there is no inventory to seed.
+const PURCHASE_SEED_TURNS := 2
+## Goods that could not fit in the tile when a purchase was seeded. They exist, the player can
+## see them on the building's detail panel, and NOTHING else can draw on them — they drain into
+## the tile as real capacity frees up. instance_id -> {good_id: qty}
+var ghost_holdings: Dictionary = {}
+
+
+## What the stock a purchase arrives with is worth at market. The buyer pays for PURCHASE_SEED_
+## TURNS of it — an advisor may hand over a THIRD turn's worth, but the two are always paid for.
+func purchase_kit_cost(building: Dictionary) -> float:
+	var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
+	var total := 0.0
+	for input in recipe.get("inputs", []):
+		var gid := str(input.get("good_id", ""))
+		if gid != "":
+			total += float(int(input.get("qty", 0)) * PURCHASE_SEED_TURNS) * MarketState.get_buy_price(gid)
+	return total
+
+
+## The full asking price for an NPC building: the advisor-adjusted sale value plus the stock it
+## comes with. One helper so the listing, the Buy button and the charge cannot disagree.
+func building_purchase_price(building: Dictionary) -> int:
+	return int(round(
+		purchase_cost_after_advisor(float(BuildingPrice.sale_price(building)))
+		+ purchase_kit_cost(building)))
+
+
+## How many turns of inputs a purchase actually receives. The player pays for PURCHASE_SEED_
+## TURNS; a seated COO throws in one more (§5.4) — a gift of goods, not a discount on price.
+func purchase_seed_turns() -> int:
+	return PURCHASE_SEED_TURNS + (1 if get_advisor_in_seat("coo") != "" else 0)
+
+
+## Seed a newly-bought building with stock. Returns the total units seeded (0 for infra, for
+## input-less recipes, and for a building that already has its own stock on the tile).
+func seed_purchase_inventory(instance_id: String) -> int:
+	var building: Dictionary = buildings.get(instance_id, {})
+	if building.is_empty():
+		return 0
+	var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
+	var inputs: Array = recipe.get("inputs", [])
+	if inputs.is_empty():
+		return 0
+	var tile_id := str(building.get("tile_id", ""))
+	if tile_id == "":
+		return 0
+	var seeded := 0
+	for input in inputs:
+		var gid := str(input.get("good_id", ""))
+		var qty := int(input.get("qty", 0)) * purchase_seed_turns()
+		if gid == "" or qty <= 0:
+			continue
+		var placed: int = Stockpile.add(tile_id, gid, qty)
+		seeded += qty
+		var overflow := qty - placed
+		if overflow > 0:
+			_add_ghost_holding(instance_id, gid, overflow)
+	return seeded
+
+
+func _add_ghost_holding(instance_id: String, good_id: String, qty: int) -> void:
+	if qty <= 0:
+		return
+	var held: Dictionary = ghost_holdings.get(instance_id, {})
+	held[good_id] = int(held.get(good_id, 0)) + qty
+	ghost_holdings[instance_id] = held
+	print("[Purchase] %s: %d %s held off-tile (no room) — will move in as space frees" % [
+		instance_id, qty, good_id])
+
+
+## What is waiting off-tile for this building, for its detail panel's
+## "x units stored for this building" line.
+func ghost_holding_for(instance_id: String) -> Dictionary:
+	return (ghost_holdings.get(instance_id, {}) as Dictionary).duplicate()
+
+
+func ghost_holding_units(instance_id: String) -> int:
+	var total := 0
+	for gid in (ghost_holdings.get(instance_id, {}) as Dictionary):
+		total += int(ghost_holdings[instance_id][gid])
+	return total
+
+
+## Move held goods onto the tile as capacity allows. Called each turn before production, so a
+## building that could not be fully stocked on purchase fills up as it consumes what it has.
+func drain_ghost_holdings() -> void:
+	if ghost_holdings.is_empty():
+		return
+	for instance_id in ghost_holdings.keys():
+		var building: Dictionary = buildings.get(str(instance_id), {})
+		if building.is_empty():
+			ghost_holdings.erase(instance_id)   # building gone; the goods go with it
+			continue
+		var tile_id := str(building.get("tile_id", ""))
+		var held: Dictionary = ghost_holdings[instance_id]
+		for gid in held.keys():
+			var want := int(held[gid])
+			if want <= 0:
+				held.erase(gid)
+				continue
+			var placed: int = Stockpile.add(tile_id, str(gid), want)
+			if placed > 0:
+				held[gid] = want - placed
+			if int(held.get(gid, 0)) <= 0:
+				held.erase(gid)
+		if held.is_empty():
+			ghost_holdings.erase(instance_id)
+		else:
+			ghost_holdings[instance_id] = held
+
+
+## Domestic freight the founder pre-paid: units of overland haulage that cost the player
+## nothing. Consumed by TransportService before any charge is raised, so it shows up as
+## genuinely free movement rather than a rebate. The COO gift.
+var freight_credit_units: int = 0
+
+func add_freight_credit(units: int) -> void:
+	if units <= 0:
+		return
+	freight_credit_units += units
+	advisors_changed.emit()
+
+## Spend up to `units` of credit; returns how many were covered (0 when exhausted).
+func consume_freight_credit(units: int) -> int:
+	if freight_credit_units <= 0 or units <= 0:
+		return 0
+	var used := mini(freight_credit_units, units)
+	freight_credit_units -= used
+	return used
+
+
+## How much WOULD be covered, without spending it. Quotes, previews and the build forecast
+## must use this — they call the same costing path as a real shipment, and consuming there
+## would drain the gift by looking at it.
+func peek_freight_credit(units: int) -> int:
+	if freight_credit_units <= 0 or units <= 0:
+		return 0
+	return mini(freight_credit_units, units)
+
+
+## Which posts the company can fill. Only CFO and COO exist until the people/labour research
+## node opens the rest — see docs/early-game-onboarding-spec.md §5.4.
+func is_seat_available(seat_id: String) -> bool:
+	return all_seats_unlocked or STARTING_SEATS.has(seat_id)
+
+
+func available_seat_ids() -> Array[String]:
+	var out: Array[String] = []
+	for seat_id in SEAT_DEFINITIONS:
+		if is_seat_available(str(seat_id)):
+			out.append(str(seat_id))
+	return out
+
+
+## Has the founder's pro bono tenure run out? True when he never joined at all.
+func founder_tenure_expired() -> bool:
+	return founder_seat == "" or TurnManager.current_turn >= founder_leaves_turn
+
+
+## Andrew joins pro bono for FOUNDER_TENURE_TURNS, in whichever post the player picked.
+func seat_founder(seat_id: String) -> bool:
+	if not SEAT_DEFINITIONS.has(seat_id):
+		return false
+	if not recruited_advisor_ids.has(FOUNDER_ADVISOR_ID):
+		recruited_advisor_ids.append(FOUNDER_ADVISOR_ID)
+	if not permanent_advisor_ids.has(FOUNDER_ADVISOR_ID):
+		permanent_advisor_ids.append(FOUNDER_ADVISOR_ID)
+	founder_seat = seat_id
+	founder_leaves_turn = TurnManager.current_turn + FOUNDER_TENURE_TURNS
+	var ok := assign_advisor_to_seat(seat_id, FOUNDER_ADVISOR_ID)
+	if not ok:
+		founder_seat = ""
+		founder_leaves_turn = 0
+	return ok
+
+
+## Tenure over: he vacates and the post opens for a normal hire.
+func release_founder() -> void:
+	if founder_seat == "":
+		return
+	if str(advisor_seats.get(founder_seat, "")) == FOUNDER_ADVISOR_ID:
+		advisor_seats.erase(founder_seat)
+	permanent_advisor_ids.erase(FOUNDER_ADVISOR_ID)
+	recruited_advisor_ids.erase(FOUNDER_ADVISOR_ID)
+	founder_seat = ""
+	founder_leaves_turn = 0
+	reconcile_advisor_modifiers()
+	advisors_changed.emit()
+
+
 func assign_advisor_to_seat(seat_id: String, advisor_id: String) -> bool:
 	if not SEAT_DEFINITIONS.has(seat_id):
+		return false
+	if not is_seat_available(seat_id):
 		return false
 	if _roster_entry(advisor_id).is_empty():
 		return false
 	if not permanent_advisor_ids.has(advisor_id):
+		return false
+	# The founder's post is his for the tenure — vacating it out from under him is the one
+	# reassignment the council refuses.
+	if founder_seat != "" and seat_id == founder_seat and advisor_id != FOUNDER_ADVISOR_ID \
+			and not founder_tenure_expired():
 		return false
 	# Capacity gate. An advisor who ALREADY holds a seat is moving, not arriving: the loop below
 	# vacates their old seat, so the seat count does not grow and the cap must not refuse them.
@@ -5496,6 +6092,59 @@ func advisor_seat_effect_list(advisor_id: String, seat_id: String) -> Array:
 		if pct != 0.0:
 			out.append({"domain": str(eff.get("domain", "")), "pct": pct})
 	return out
+
+
+## A deliberately simple, legible cash snapshot for the council UI: value only the
+## POSITIVE seat effects against the last completed turn's matching ledger line. It
+## is not a forecast — if the company paid no tax or freight that turn, a reduction
+## to that cost is worth £0 in this snapshot. One-off/non-ledger levers (construction,
+## purchases and throughput headroom) likewise stay at £0 rather than inventing value.
+func advisor_bonus_preview_per_turn(advisor_id: String, seat_id: String, snapshot: Dictionary = {}) -> float:
+	var summary: Dictionary = Production.last_turn_summary if snapshot.is_empty() else snapshot
+	var total := 0.0
+	for effect in advisor_seat_effect_list(advisor_id, seat_id):
+		var eff: Dictionary = effect
+		if not advisor_effect_is_beneficial(eff):
+			continue
+		var pct := absf(float(eff.get("pct", 0.0))) / 100.0
+		var domain := str(eff.get("domain", ""))
+		var basis := 0.0
+		match domain:
+			"labour_headcount":
+				basis = float(summary.get("labour_paid", 0.0))
+			"maintenance":
+				basis = float(summary.get("maintenance_paid", 0.0))
+			"building_power":
+				basis = float(summary.get("power_purchase_cost", 0.0))
+			"grid_buy_price":
+				# The tariff modifier does not discount the grid's carbon component.
+				basis = float(summary.get("grid_bought", 0.0)) * EconomyConfig.GRID_BUY_PRICE
+			"grid_sell_price":
+				basis = float(summary.get("grid_sold", 0.0)) * EconomyConfig.GRID_SELL_PRICE
+			"transport_cost":
+				basis = float(summary.get("transport_paid", 0.0))
+			"dividend_rate":
+				basis = float(summary.get("dividends_paid", 0.0))
+			"tax_rate":
+				basis = float(summary.get("taxes_paid", 0.0))
+			"market_spread":
+				# Only the buy markup is tightened, not the underlying value of the goods.
+				var markup := EconomyConfig.MARKET_BUY_MARKUP
+				basis = float(summary.get("goods_purchased_cost", 0.0)) * markup / (1.0 + markup)
+			"market_price":
+				basis = float(summary.get("goods_sales_revenue", 0.0))
+		total += maxf(0.0, basis) * pct
+	return total
+
+
+## Sign alone does not say whether a seat effect helps: lower costs are good,
+## while higher throughput, sale prices and rebates are good.
+func advisor_effect_is_beneficial(effect: Dictionary) -> bool:
+	var pct := float(effect.get("pct", 0.0))
+	var domain := str(effect.get("domain", ""))
+	var positive_is_good := domain in [
+		"transport_throughput", "grid_sell_price", "construction_rebate", "market_price"]
+	return pct > 0.0 if positive_is_good else pct < 0.0
 
 # The seat this advisor best demonstrates: their assigned seat if seated, else the
 # highest-tier seat that actually carries effects (falls back to their top seat).
@@ -5579,6 +6228,11 @@ func draw_advisor_from_pool() -> String:
 func cheat_add_cash(amount: float) -> void:
 	add_money(amount)
 	fake_money_this_turn += amount
+
+## Sticky taint flag for telemetry — set by the debug terminal for any command that can
+## move the sim. Once set it rides the save for the rest of the match.
+func note_cheat_used() -> void:
+	cheats_used = true
 
 # The next un-crossed profit milestone (advisor recruit), or 0 if all crossed.
 func next_advisor_milestone() -> int:
@@ -6009,9 +6663,32 @@ func advisor_revenue_basis() -> float:
 	return float(s.get("goods_sales_revenue", 0.0)) + float(s.get("power_sales_revenue", 0.0))
 
 
+## Andrew's family-friend appointment is explicitly pro bono for its whole tenure.
+## Keep the exception here, at the source of truth used by both payroll and the UI,
+## rather than relying on the roster's retired static salary field.
+func advisor_is_payrolled(advisor_id: String) -> bool:
+	return permanent_advisor_ids.has(advisor_id) \
+		and not (advisor_id == FOUNDER_ADVISOR_ID and founder_seat != "")
+
+
+func payrolled_advisor_count() -> int:
+	var count := 0
+	for raw_id in permanent_advisor_ids:
+		if advisor_is_payrolled(str(raw_id)):
+			count += 1
+	return count
+
+
+func advisor_cost_for(advisor_id: String, revenue: float = -1.0) -> float:
+	if permanent_advisor_ids.has(advisor_id) and not advisor_is_payrolled(advisor_id):
+		return 0.0
+	var rev: float = advisor_revenue_basis() if revenue < 0.0 else revenue
+	return advisor_cost_per_advisor(rev)
+
+
 func advisor_payroll_per_turn(revenue: float = -1.0) -> float:
 	var rev: float = advisor_revenue_basis() if revenue < 0.0 else revenue
-	return float(permanent_advisor_ids.size()) * advisor_cost_per_advisor(rev)
+	return float(payrolled_advisor_count()) * advisor_cost_per_advisor(rev)
 
 func _sanitize_advisor_ids(ids: Variant) -> Array:
 	var valid := {}
@@ -6031,6 +6708,10 @@ func _sanitize_advisor_ids(ids: Variant) -> Array:
 # accent is a hex string (const-safe; converted to Color at build time). Only 4
 # portrait PNGs exist (spec §11 stub art); the rest fall back to accent+initials.
 const ADVISOR_DISPLAY := {
+	# The family friend. Added to ADVISOR_ROSTER without a presentation entry, which is what
+	# crashed the advisors tab when he was clicked — every other reader of this table assumes
+	# one exists for anyone on the roster.
+	"andrew":   {"initials": "AK", "portrait_path": "", "accent": "#6B7F5A", "bonus": "Old Family Friend: serves 30 turns unpaid, in one of two chairs", "recommendation": "Free, capable, and temporary — take the seat you need most for the next 30 turns.", "bio": "A friend of your father's for thirty years, who says he owes the family more than he ever repaid. He has come to settle it.", "agenda": "Repay an old debt, then leave with it settled.", "likes": ["Being useful", "Cheap freight"], "dislikes": ["Being kept past his welcome"], "bonuses": ["No salary for his tenure", "A signing gift in either chair"]},
 	"vera":      {"initials": "VA", "portrait_path": "res://assets/advisors/natasha.png", "accent": "#7C5A80", "bonus": "Family Trust: cheap, steady, strong almost anywhere", "recommendation": "Your reliable keystone — she holds any seat well.", "bio": "Your sister and the steady hand on the board: numerate, unflappable, and very hard to surprise twice.", "agenda": "Anchor the board and keep every seat competently filled.", "likes": ["Steady growth", "A balanced board"], "dislikes": ["Reckless bets", "Idle capital"], "bonuses": ["Reduced salary", "No weak seat"]},
 	"alexandra": {"initials": "AR", "portrait_path": "res://assets/advisors/alexandra.png", "accent": "#8A5A5A", "bonus": "Prima Donna: superb everywhere, high salary + walk-risk", "recommendation": "A top hire who forces a full board reshuffle when she arrives.", "bio": "A rival operator good enough at everything to make your whole board nervous — and she knows her price.", "agenda": "Be indispensable, be paid, and never be sidelined.", "likes": ["Being centrally slotted", "Ambitious plays"], "dislikes": ["Being benched", "Being under-slotted"], "bonuses": ["Strong in any seat", "Commands a high salary"]},
 	"gerald":    {"initials": "GV", "portrait_path": "res://assets/advisors/dan.png", "accent": "#455C78", "bonus": "Dinosaur: superb operator, brakes the green pivot", "recommendation": "Keep him for the throughput; the carbon squeeze makes him a dilemma.", "bio": "A superb pure operator who runs a plant beautifully and fights decarbonisation on instinct.", "agenda": "Maximise output and upkeep; resist the clean transition.", "likes": ["High utilisation", "Cheap fuel"], "dislikes": ["Clean retrofits", "Carbon rules"], "bonuses": ["Excellent COO", "Drags clean adoption"]},

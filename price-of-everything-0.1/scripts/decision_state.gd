@@ -13,7 +13,7 @@ extends Node
 ## Scheduling — a PULSE PIPELINE that leans deterministic (spec §3.2): every few turns
 ## a pulse PULLS one eligible event and reveals it PULSE_LEAD_TURNS (3) later, so the
 ## reveal is telegraphed. The gap between pulses is derived from how many events are
-## eligible (fuller pool → sooner), clamped to [3,6] with one seeded turn of variation —
+## eligible (fuller pool → sooner), clamped to [6,10] with one seeded turn of variation —
 ## the cadence is deterministic-ish; only WHICH event (the weighted draw) is random.
 ## The same event TYPE (category) can trigger at most once per CATEGORY_COOLDOWN_TURNS
 ## (20). Story beats bypass the pulse: they arrive via reserve()/force_draw() and reveal
@@ -31,8 +31,14 @@ const MIN_PRODUCTIVE_BUILDINGS := 2
 # PRESENTED PULSE_LEAD_TURNS later. The gap between pulses is derived from how many
 # events are eligible right now — a fuller pool pulses sooner — clamped to [PULSE_MIN,
 # PULSE_MAX], with a single seeded ±0/1 turn of variation so it isn't pure clockwork.
-const PULSE_MIN := 3
-const PULSE_MAX := 6
+#
+# Owner call, 2026-08-09: events should land no closer than ~4 turns and no further than ~8,
+# settled at [5,7]. The band is what sets the felt cadence, not PULSE_MAX alone: with 8 ambient
+# definitions eligible, `PULSE_MAX - eligible/2` lands on the FLOOR, so the original [3,6]
+# measured as gaps of 4,4,4,6 over a real run — the ceiling was only ever reached once the
+# 20-turn category cooldowns had thinned the pool.
+const PULSE_MIN := 5
+const PULSE_MAX := 7
 const PULSE_LEAD_TURNS := 3          # turns between a pull and its reveal (telegraphed)
 # Hard rule: the same event TYPE (category) can trigger at most once per this window.
 const CATEGORY_COOLDOWN_TURNS := 20
@@ -94,6 +100,54 @@ var _next_uid: int = 1
 # ---------------------------------------------------------------------------
 
 const DECISION_DEFINITIONS := {
+	# Turn 3, every sandbox start. An old friend of the player's father offers to fill ONE of the
+	# two posts that exist, pro bono, for 30 turns. The choice is cheap money versus cheap
+	# movement, and both are good — a new player cannot pick wrong, only differently.
+	# Verbatim line and gifts are owner-locked. See docs/early-game-onboarding-spec.md §5.4.
+	"family_friend": {
+		"title": "An Old Friend of the Family",
+		"body": "Andrew Keeler knew your father for thirty years, and says he owes him more than he ever repaid. He is offering to sit on your board for nothing — but he will only take one chair.\n\n\"I've negotiated lots of deals with suppliers and banks in the past. But my specialty will always be transporting goods cheap.\"",
+		"scope": "company", "category": "governance", "priority": PRIORITY_STORY,
+		"target_selector": "company",
+		"cooldown_turns": 9999, "weight": 0.0, "default_choice": "coo",
+		"choices": [
+			{"id": "cfo", "label": "Give him the CFO's chair",
+				"effects": [
+					{"kind": "seat_founder", "seat": "cfo"},
+					{"kind": "founder_loan", "amount": 200.0, "rate": 0.05},
+				],
+				"advocate_seat": "cfo",
+				"stance": "Cheap money now, and someone who reads a term sheet properly."},
+			{"id": "coo", "label": "Give him the COO's chair",
+				"effects": [
+					{"kind": "seat_founder", "seat": "coo"},
+					{"kind": "freight_credit", "units": 1000},
+					{"kind": "modifier", "domain": "transport_cost", "pct": -20.0,
+						"label": "Andrew Keeler: −20% transport costs"},
+				],
+				"advocate_seat": "coo",
+				"stance": "Moving things is most of what you do. I can make it cost less."},
+		],
+	},
+	# The other end of the family_friend arc, drawn by _retire_founder when his tenure runs
+	# out. He used to leave with only a bell entry, so the owner watched him vanish from the
+	# council with no message at all. Same blocking "Understood" shape as the government
+	# notices: PRIORITY_STORY keeps it out of the random pool, so it is draw-only, and the
+	# Turn Briefing auto-expands on an unresolved decision. No seat name in the copy — body
+	# substitution only reaches {target_name}, which is the company.
+	"founder_departs": {
+		"title": "Andrew Keeler Stands Down",
+		"headline": "Andrew has served his thirty turns and is standing down, his debt to your family considered paid. He wishes you luck, and says he can see you are trying your best.",
+		"body": "\"One last piece of advice, and it is the only one that matters: treat your people well. It always pays off in the long term.\"\n\nHe shakes your hand on the way out, and does not look back.",
+		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
+		"target_selector": "company",
+		"once": true, "cooldown_turns": 9999, "weight": 1.0, "default_choice": "understood",
+		"choices": [
+			{"id": "understood", "label": "Thank him, and see him out",
+				"effects": [{"kind": "none",
+					"describe": "His chair is empty from this turn — you can hire into it now. Whatever he was giving you goes with him."}]},
+		],
+	},
 	"planning_pushback": {
 		"title": "Planning Pushback",
 		"body": "Residents' associations have packed the planning hearing for {target_name}. The build can absorb the consultations — or you can make the problem go away.",
@@ -386,6 +440,32 @@ func has_pending() -> bool:
 func history() -> Array:
 	return _history.duplicate()
 
+## The turn the family friend offers to join. Fixed rather than random: it is the first real
+## decision a new player makes, and it must land before they have committed to a build order.
+const FOUNDER_DECISION_TURN := 3
+
+
+## Andrew's tenure ends: he vacates, the post opens, and the player is told plainly so the
+## sudden loss of his modifier is legible rather than mysterious.
+func _retire_founder() -> void:
+	var seat := MatchState.founder_seat
+	var seat_name := str(MatchState.SEAT_DEFINITIONS.get(seat, {}).get("seat_name", seat))
+	MatchState.release_founder()
+	EventScheduler.emit_event({
+		"kind": "founder_departs",
+		"severity": "info",
+		"title": "Andrew Keeler stands down",
+		"body": "Andrew has served his time as %s and is standing down, his debt to your family considered paid. He wishes you luck, and says he can see you are trying your best.\n\n\"One last piece of advice, and it is the only one that matters: treat your people well. It always pays off in the long term.\"\n\nThe chair is open — you can hire for it now." % seat_name,
+		"source": "advisors",
+		"persistent": false,
+		"auto_dismiss_turns": 3,
+	})
+	# The bell entry alone was missable — and was missed. The blocking notice is what the
+	# player actually sees: the Briefing auto-expands on an unresolved decision and End Turn
+	# stays blocked until it is acknowledged.
+	_draw("founder_departs")
+
+
 ## Story beats (carbon arc etc.) reserve their turn ahead of time: the reserved
 ## definition fires unconditionally on that turn and random draws stay clear of
 ## it (that turn and the turn before).
@@ -406,6 +486,26 @@ func reset() -> void:
 	_next_uid = 1
 	_reseed(int(MatchState.match_rng_seed))
 	pending_changed.emit()
+
+
+## A match that began as the tutorial must never receive the sandbox's opening
+## family-friend event, including after the final tutorial button turns the normal
+## rules back on. Record it as spent so the suppression survives save/load, and
+## discard a queued copy as well so older in-progress tutorial saves are repaired.
+func suppress_family_friend_for_match() -> void:
+	_fired_once["family_friend"] = true
+	var queue_changed := false
+	for i in range(pending_queue.size() - 1, -1, -1):
+		if str((pending_queue[i] as Dictionary).get("def_id", "")) == "family_friend":
+			pending_queue.remove_at(i)
+			queue_changed = true
+	if str(_scheduled_pull.get("def_id", "")) == "family_friend":
+		_scheduled_pull = {}
+	for reserved_turn in _reservations.keys():
+		if str(_reservations[reserved_turn]) == "family_friend":
+			_reservations.erase(reserved_turn)
+	if queue_changed:
+		pending_changed.emit()
 
 func _reseed(match_seed: int) -> void:
 	# Stable arithmetic derivation (never GDScript hash() — not version-stable).
@@ -449,10 +549,24 @@ func _tick_narrative() -> void:
 	#    gated by ambient_ok — these are scripted beats (the carbon-levy notice at t90 is
 	#    blocking by design) and a reservation is ERASED as it fires, so skipping its turn
 	#    would drop that beat from the run permanently.
+	# The family friend arrives on a fixed turn in every sandbox match. Checked here rather than
+	# reserved at reset: import_state() clears _reservations wholesale and a NEW GAME has no
+	# "decisions" key, so import_state({}) ran immediately after reset() and wiped the booking.
+	# _fired_once is saved, so it is a once-only marker that survives both paths.
+	if turn >= FOUNDER_DECISION_TURN and not _fired_once.has("family_friend") \
+			and not bool(MatchState.ruleset.get("tutorial_enabled", false)) \
+			and pending_queue.size() < PENDING_QUEUE_CAP:
+		_draw("family_friend")
 	if _reservations.has(turn) and pending_queue.size() < PENDING_QUEUE_CAP:
 		var def_id := str(_reservations[turn])
 		_reservations.erase(turn)
 		_draw(def_id)
+	# The founder's pro bono tenure runs out — he vacates and the post opens for a real hire.
+	# Held while the board is full (same guard as a story reservation) so his farewell notice
+	# always has a slot: a dropped draw would put him back to leaving silently.
+	if MatchState.founder_seat != "" and turn >= MatchState.founder_leaves_turn \
+			and pending_queue.size() < PENDING_QUEUE_CAP:
+		_retire_founder()
 	# C) Pulse: only into a QUIET board — no pending decision, nothing in flight, and
 	#    no story beat landing next turn.
 	elif ambient_ok and not has_pending() and _scheduled_pull.is_empty() \
@@ -1043,6 +1157,13 @@ func _execute_effects(effects: Array, target: Dictionary) -> void:
 				var patches := MatchState.sellable_land_patches(str(target.get("tile_id", "")))
 				MatchState.sell_tile_land(str(target.get("tile_id", "")), patches,
 					MatchState.LAND_PATCH_COST * float(eff.get("price_mult", 1.0)))
+			"seat_founder":
+				MatchState.seat_founder(str(eff.get("seat", "coo")))
+			"founder_loan":
+				# A one-off cheap loan on signing: the CFO's gift. Standard life, half rate.
+				LoanState.take_founder_loan(float(eff.get("amount", 0.0)), float(eff.get("rate", 0.05)))
+			"freight_credit":
+				MatchState.add_freight_credit(int(eff.get("units", 0)))
 			"distressed_program":
 				SolvencyState.accept_distressed_program()
 			"none":
@@ -1203,6 +1324,14 @@ func _describe_effects(effects: Array, target: Dictionary) -> String:
 			"grant_unlock":
 				var title := _pick_free_tech(target)
 				parts.append("free research unlock: %s" % (title if title != "" else "none available"))
+			"seat_founder":
+				parts.append("he takes the %s's chair for %d turns, unpaid" % [
+					str(eff.get("seat", "")).to_upper(), MatchState.FOUNDER_TENURE_TURNS])
+			"founder_loan":
+				parts.append("a one-off £%.0f loan at %.0f%% as a signing gift" % [
+					float(eff.get("amount", 0.0)), float(eff.get("rate", 0.0)) * 100.0])
+			"freight_credit":
+				parts.append("%d units of pre-paid domestic freight" % int(eff.get("units", 0)))
 			"agenda_tag":
 				pass   # advisor sentiment ripples are shown via loyalty, not here
 			"schedule_event":

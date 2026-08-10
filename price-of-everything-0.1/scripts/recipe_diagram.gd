@@ -149,7 +149,7 @@ static func _recipe_icon(good_id: String, internal: String, qty: int, size: int,
 	slot.clip_contents = false
 	if good_id != "":
 		slot.tooltip_text = Catalog.get_display_name(good_id)
-	var tex := GoodIcons.texture_for(good_id, internal, size <= 48)
+	var tex := GoodIcons.texture_for_size(good_id, internal, float(size))
 	if tex != null:
 		var tr := TextureRect.new()
 		tr.texture = tex

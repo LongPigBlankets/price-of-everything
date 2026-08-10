@@ -28,7 +28,7 @@ func _process(delta: float) -> void:
 		_t0 = _t
 		_last = cam.position
 		_last_zoom = cam.zoom.x
-		Tutorial._enter(Tutorial._index_of_id("view_shipment"))
+		Tutorial._enter(Tutorial._index_of_id("capital_motor_watch"))
 		print("[SNAP] entered step; watching for per-frame jumps")
 		return
 	if _armed:

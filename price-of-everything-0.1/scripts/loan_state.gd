@@ -57,6 +57,14 @@ func take_distress_loan(amount: float) -> bool:
 	return _create_loan(maxf(amount, EconomyConfig.LOAN_MINIMUM), effective_loan_interest_rate(),
 		EconomyConfig.LOAN_TERM_TURNS, EconomyConfig.LOAN_GRACE_TURNS)
 
+# Founder's gift (spec §5.4): a one-off loan at a favourable rate on the standard life,
+# bypassing borrowing capacity — it is offered by a board member, not applied for.
+func take_founder_loan(amount: float, rate: float) -> bool:
+	if amount <= 0.0:
+		return false
+	return _create_loan(maxf(amount, EconomyConfig.LOAN_MINIMUM), maxf(0.0, rate),
+		EconomyConfig.LOAN_TERM_TURNS, EconomyConfig.LOAN_GRACE_TURNS)
+
 func take_construction_loan(amount: float) -> bool:
 	# 10-turn, 5% build loan. Respects the same borrowing capacity as any other loan.
 	if amount <= 0.0 or amount > available_capacity():

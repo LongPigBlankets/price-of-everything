@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://d1unatsek2ups"]
+
+[ext_resource type="Script" path="res://tools/mapmodes_shot.gd" id="1"]
+
+[node name="MapmodesShot" type="Node2D"]
+script = ExtResource("1")

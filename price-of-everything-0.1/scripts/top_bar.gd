@@ -54,7 +54,6 @@ const C_MOD_BORDER := Color("#22384f")
 const C_ACTIVE_BG := Color("#15304a")
 const C_ACTIVE_BORDER := Color("#2f5578")
 const C_WARN_BORDER := Color(0.886, 0.376, 0.29, 0.55) # rgba(226,96,74,.55)
-const C_MUTED := Color("#62788f")
 const C_TEXT := Color("#cdd9e6")
 const C_BRIGHT := Color("#f3f8fd")
 const C_GOOD := Color("#7ec98a")
@@ -131,6 +130,8 @@ var _refresh_queued := false
 
 
 func _ready() -> void:
+	# Deferred so the flyout is rebuilt after the turn's numbers have settled, not mid-resolution.
+	TurnManager.turn_resolution_completed.connect(func() -> void: _refresh_open_fly.call_deferred())
 	_style_bar()
 	_build_treasury()
 	_build_power()
@@ -244,7 +245,7 @@ func _tag(text: String) -> Label:
 	var l := Label.new()
 	l.text = text.to_upper()
 	l.add_theme_font_size_override("font_size", 10)
-	l.add_theme_color_override("font_color", C_MUTED)
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
 	return l
 
 func _mini(text: String, color: Color, size: int = 10) -> Label:
@@ -404,7 +405,7 @@ func _build_power() -> void:
 	row.add_child(col)
 	_power_head = _mini("Powered", C_GOOD, 15)
 	col.add_child(_power_head)
-	_power_sub = _mini("self-sufficient", C_MUTED, 12)
+	_power_sub = _mini("self-sufficient", DS.PALETTE.TEXT_DIM, 12)
 	col.add_child(_power_sub)
 	_hbox().add_child(mod)
 	_power_btn = mod
@@ -462,7 +463,7 @@ func _build_victory() -> void:
 	_victory_score.add_theme_font_size_override("font_size", 18)
 	_victory_score.add_theme_color_override("font_color", C_CREAM)
 	col.add_child(_victory_score)
-	_victory_target = _mini("/ 4,000", C_MUTED, 11)   # updated to the rising threshold each refresh
+	_victory_target = _mini("/ 4,000", DS.PALETTE.TEXT_DIM, 11)   # updated to the rising threshold each refresh
 	_victory_target.tooltip_text = "Points needed to win rise over the game — 1 track from turn 105 up to 4 tracks by turn 300."
 	col.add_child(_victory_target)
 	mod.pressed.connect(func() -> void: _toggle_fly("victory"))
@@ -490,7 +491,7 @@ func _build_rankings() -> void:
 	col.add_child(_tag("Rankings"))
 	_rankings_head = _mini("10TH OF 10", C_BRIGHT, 14)
 	col.add_child(_rankings_head)
-	_rankings_sub = _mini("total revenue", C_MUTED, 11)
+	_rankings_sub = _mini("total revenue", DS.PALETTE.TEXT_DIM, 11)
 	col.add_child(_rankings_sub)
 	mod.pressed.connect(func() -> void: _toggle_fly("rankings"))
 	_hbox().add_child(mod)
@@ -565,7 +566,7 @@ func _refresh_victory() -> void:
 		fill.offset_right = -1
 		meter.add_child(fill)
 		cell.add_child(meter)
-		var letter := _mini(str(t.get("name", "?")).substr(0, 1), C_MUTED, 9)
+		var letter := _mini(str(t.get("name", "?")).substr(0, 1), DS.PALETTE.TEXT_DIM, 9)
 		letter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		letter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cell.add_child(letter)
@@ -765,7 +766,7 @@ func _build_briefing() -> void:
 	row.add_child(col)
 	_briefing_head = _mini("Briefing", C_BRIGHT, 18)
 	col.add_child(_briefing_head)
-	_briefing_sub = _mini("0 updates", C_MUTED, 14)
+	_briefing_sub = _mini("0 updates", DS.PALETTE.TEXT_DIM, 14)
 	col.add_child(_briefing_sub)
 	notch.pressed.connect(func() -> void:
 		_close_fly()
@@ -808,7 +809,7 @@ func _refresh_briefing() -> void:
 	_briefing_head.text = ("%d decision%s to make" % [decisions, "" if decisions == 1 else "s"]) if hot else "Briefing"
 	_briefing_head.add_theme_color_override("font_color", Color("#f0a496") if hot else C_BRIGHT)
 	_briefing_sub.text = "%d update%s" % [updates, "" if updates == 1 else "s"]
-	_briefing_sub.add_theme_color_override("font_color", C_TEXT if updates > 0 else C_MUTED)
+	_briefing_sub.add_theme_color_override("font_color", C_TEXT if updates > 0 else DS.PALETTE.TEXT_DIM)
 	_briefing_dot.visible = decisions + updates > 0
 	var dsb := _briefing_dot.get_theme_stylebox("panel") as StyleBoxFlat
 	if dsb != null:
@@ -833,7 +834,7 @@ func _build_council() -> void:
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(col)
 	col.add_child(_tag("Council"))
-	_council_status = _mini("", C_MUTED, 12)
+	_council_status = _mini("", DS.PALETTE.TEXT_DIM, 12)
 	col.add_child(_council_status)
 	_council_stack = HBoxContainer.new()
 	_council_stack.add_theme_constant_override("separation", 6)
@@ -859,13 +860,13 @@ func _refresh_council() -> void:
 	(_council_btn as _ModuleBtn).warn = disloyal > 0
 	if seated.is_empty():
 		_council_status.text = "no seats filled"
-		_council_status.add_theme_color_override("font_color", C_MUTED)
+		_council_status.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
 	elif disloyal > 0:
 		_council_status.text = "%d DISLOYAL" % disloyal
 		_council_status.add_theme_color_override("font_color", C_RED)
 	else:
 		_council_status.text = "%d seated" % seated.size()
-		_council_status.add_theme_color_override("font_color", C_MUTED)
+		_council_status.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
 	_clear_now(_council_stack)
 	for aid in seated:
 		_council_stack.add_child(_portrait_chip(str(aid), 36))
@@ -1063,7 +1064,7 @@ func _adopt_encyclopedia_and_turn() -> void:
 		turn.add_theme_font_size_override("font_size", 16)
 		turn.add_theme_color_override("font_color", C_TEXT)
 		turn.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		_date_label = _mini("", C_MUTED, 12)
+		_date_label = _mini("", DS.PALETTE.TEXT_DIM, 12)
 		_date_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		_date_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		col.add_child(_date_label)
@@ -1139,6 +1140,16 @@ func _toggle_fly(id: String) -> void:
 	else:
 		_open_fly(id)
 
+## A resolved turn changes every number in the treasury mini-panel. It was built once on open,
+## so a player who left it up read last turn's figures — rebuild it in place instead.
+func _refresh_open_fly() -> void:
+	if _fly_open_id == "" or _fly_panel == null or not is_instance_valid(_fly_panel):
+		return
+	var id := _fly_open_id
+	_close_fly()
+	_open_fly(id)
+
+
 func _close_fly() -> void:
 	_fly_open_id = ""
 	_fly_scrim.visible = false
@@ -1147,6 +1158,7 @@ func _close_fly() -> void:
 			_fly_panel.get_parent().remove_child(_fly_panel)
 		_fly_panel.queue_free()
 	_fly_panel = null
+	_fly_open_id = ""
 	if _victory_btn != null:
 		(_victory_btn as _ModuleBtn).active = false
 	if _rankings_btn != null:
@@ -1336,17 +1348,17 @@ func _fly_revenue_rankings(vb: VBoxContainer) -> void:
 	inner.add_child(hint)
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", 10)
-	var rank_head := _mini("RANK", C_MUTED, 10)
+	var rank_head := _mini("RANK", DS.PALETTE.TEXT_DIM, 10)
 	rank_head.custom_minimum_size = Vector2(68, 0)
 	header.add_child(rank_head)
-	var company_head := _mini("COMPANY", C_MUTED, 10)
+	var company_head := _mini("COMPANY", DS.PALETTE.TEXT_DIM, 10)
 	company_head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(company_head)
-	var revenue_head := _mini("REVENUE", C_MUTED, 10)
+	var revenue_head := _mini("REVENUE", DS.PALETTE.TEXT_DIM, 10)
 	revenue_head.custom_minimum_size = Vector2(112, 0)
 	revenue_head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	header.add_child(revenue_head)
-	var average_head := _mini("5T AVG", C_MUTED, 10)
+	var average_head := _mini("5T AVG", DS.PALETTE.TEXT_DIM, 10)
 	average_head.custom_minimum_size = Vector2(112, 0)
 	average_head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	header.add_child(average_head)
@@ -1396,7 +1408,7 @@ func _goods_ranking_card(good: Dictionary) -> Control:
 	details.add_child(name)
 	for producer: Dictionary in (good.get("producers", []) as Array):
 		var producer_row := HBoxContainer.new()
-		var rank := _mini("%s" % _ordinal(int(producer.get("rank", 0))), C_MUTED, 11)
+		var rank := _mini("%s" % _ordinal(int(producer.get("rank", 0))), DS.PALETTE.TEXT_DIM, 11)
 		rank.custom_minimum_size = Vector2(38, 0)
 		producer_row.add_child(rank)
 		var producer_name := Label.new()
@@ -1644,7 +1656,7 @@ func _fly_victory(vb: VBoxContainer) -> void:
 	var foot := _fly_pad(vb)
 	var frow := HBoxContainer.new()
 	frow.add_theme_constant_override("separation", 8)
-	var total := _mini("Total %s / %s to win" % [_thousands(int(bd.get("total", 0))), _thousands(int(bd.get("win_threshold", 4000)))], C_MUTED, 11)
+	var total := _mini("Total %s / %s to win" % [_thousands(int(bd.get("total", 0))), _thousands(int(bd.get("win_threshold", 4000)))], DS.PALETTE.TEXT_DIM, 11)
 	total.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	frow.add_child(total)
 	var full := _fly_btn("Full breakdown", true)
@@ -1660,7 +1672,7 @@ func _fly_council(vb: VBoxContainer) -> void:
 	var inner := _fly_pad(vb, 3)
 	var seats: Dictionary = MatchState.advisor_seats
 	if seats.is_empty():
-		inner.add_child(_mini("No advisors seated — open People to hire.", C_MUTED, 11))
+		inner.add_child(_mini("No advisors seated — open People to hire.", DS.PALETTE.TEXT_DIM, 11))
 	for seat_id in seats:
 		var aid := str(seats[seat_id])
 		var v := MatchState.advisor_loyalty_value(aid)
@@ -1678,7 +1690,7 @@ func _fly_council(vb: VBoxContainer) -> void:
 		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(col)
 		col.add_child(_mini(str(adv.get("name", aid)), Color("#eef4fb"), 12))
-		col.add_child(_mini(MatchState._seat_display_name(str(seat_id)), C_MUTED, 10))
+		col.add_child(_mini(MatchState._seat_display_name(str(seat_id)), DS.PALETTE.TEXT_DIM, 10))
 		var meter := Panel.new()
 		meter.custom_minimum_size = Vector2(58, 5)
 		meter.size_flags_vertical = Control.SIZE_SHRINK_CENTER

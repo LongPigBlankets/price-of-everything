@@ -646,7 +646,7 @@ func _place_resource_markers(center: Vector2, matched: Array, icon_world: float,
 		current_overlays.append(node)
 
 func _make_resource_marker(good_id: String, color: Color, world_size: float) -> Node2D:
-	var tex := GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id), true)
+	var tex := GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id))
 	if tex != null:
 		var sprite := Sprite2D.new()
 		sprite.texture = tex

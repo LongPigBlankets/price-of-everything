@@ -45,7 +45,13 @@ const PALETTE := {
 	"ACCENT_DIM": Color("#7A5F2C"),
 	"TEXT": Color("#E8EEF7"),
 	"TEXT_MUTED": Color("#C2D2E5"),       # was #9BB1CC — bumped much closer to white for legibility
-	"TEXT_DIM": Color("#6B7F98"),
+	# Secondary label text on navy. Was #6B7F98, which measured 4.69:1 against BG_PANEL — over
+	# the WCAG AA line by a hair, and at 11-14px it read as grey-on-grey. Now 9.92:1.
+	# Owner rule, 9 Aug: the dark grey never goes on a navy or dark background.
+	"TEXT_DIM": Color("#A9BCD2"),
+	# DISABLED controls, and only those: low contrast IS the signal there, so this keeps the
+	# old dim value. Never use it for text the player is meant to read.
+	"TEXT_DISABLED": Color("#6B7F98"),
 	"ACTION_BLUE": Color("#314B55"),      # skeuomorphic steel-blue — build / upgrade
 	"ACTION_BLUE_HOVER": Color("#3C5C68"),
 	"ACTION_BLUE_PRESSED": Color("#263A43"),
@@ -93,7 +99,7 @@ const RecipeDiagram := preload("res://scripts/recipe_diagram.gd")
 ## Framed + bevelled good icon (off-white plate + raised metal rim + clipped/zoomed
 ## art) — the market-panel goods-tab treatment. THE way to render a good icon.
 func good_icon(good_id: String, internal_name: String, size: int = 98) -> Control:
-	return UIHelpers.make_framed_good_icon(good_id, internal_name, size, size <= 128)
+	return UIHelpers.make_framed_good_icon(good_id, internal_name, size)
 
 ## Recipe strip (cream card, inputs → navy power-arrow → output, bleeding icons +
 ## qty pills) from a BuildingReadout.flow() dict.
@@ -220,6 +226,25 @@ func _build_theme() -> Theme:
 	t.set_color("font_pressed_color", "Silver", PALETTE["BG_PANEL"])
 	_apply_button_font(t, fonts, "Silver")
 
+	# ── Selected choice (off-white fill, navy text) ─────────────────────
+	# Used by persistent selector rows such as the advisor-position preview.
+	# Every interaction state stays inverted so a selected choice never falls
+	# back to the default steel-blue surface between hover/press transitions.
+	t.set_type_variation("ChoiceSelected", "Button")
+	var choice_normal := _stylebox(PALETTE["ACCENT"], PALETTE["BORDER"], 8, 1, 14, 7)
+	var choice_hover := _stylebox(Color(PALETTE["ACCENT"]).lightened(0.04), PALETTE["BORDER"], 8, 1, 14, 7)
+	var choice_pressed := _stylebox(Color(PALETTE["ACCENT"]).darkened(0.08), PALETTE["BORDER"], 8, 1, 14, 7)
+	t.set_stylebox("normal", "ChoiceSelected", choice_normal)
+	t.set_stylebox("hover", "ChoiceSelected", choice_hover)
+	t.set_stylebox("pressed", "ChoiceSelected", choice_pressed)
+	t.set_stylebox("hover_pressed", "ChoiceSelected", choice_hover)
+	t.set_stylebox("focus", "ChoiceSelected", choice_hover)
+	t.set_stylebox("disabled", "ChoiceSelected", choice_normal)
+	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
+		t.set_color(state, "ChoiceSelected", PALETTE["BG_PANEL"])
+	_apply_button_font(t, fonts, "ChoiceSelected")
+	t.set_constant("outline_size", "ChoiceSelected", 0)
+
 	# ── Build icon button (square 40×40, steel blue, large off-white icon) ──
 	# Tight padding (6) so a 28px icon fills the small square; the text Build
 	# variation's 24px padding alone would force the button wider than 40px.
@@ -251,7 +276,7 @@ func _build_theme() -> Theme:
 	t.set_color("font_selected_color", "TabContainer", PALETTE["BG_PANEL"])   # navy on off-white
 	t.set_color("font_unselected_color", "TabContainer", PALETTE["ACCENT"])    # off-white on navy
 	t.set_color("font_hovered_color", "TabContainer", PALETTE["ACCENT"])
-	t.set_color("font_disabled_color", "TabContainer", PALETTE["TEXT_DIM"])
+	t.set_color("font_disabled_color", "TabContainer", PALETTE["TEXT_DISABLED"])
 	if fonts.get("PLEX_COND_SEMI"):
 		t.set_font("font", "TabContainer", fonts["PLEX_COND_SEMI"])
 	elif fonts.get("PLEX_SEMI"):

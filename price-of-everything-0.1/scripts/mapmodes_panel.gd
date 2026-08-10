@@ -20,6 +20,8 @@ const ROWS: Array = [
 	{"id": "logistics", "label": "Logistics", "kind": "sentinel"},
 	{"id": "surveying", "label": "Surveying", "kind": "sentinel"},
 	{"id": "infrastructure", "label": "Infrastructure", "kind": "sentinel"},
+	{"id": "stockpile", "label": "Stockpile", "kind": "sentinel"},
+	{"id": "ownership", "label": "Ownership", "kind": "sentinel"},
 ]
 
 var _buttons := {}              # mode:int -> Button (for active-state highlight)
@@ -136,6 +138,10 @@ func _mode_for_id(mode_id: String) -> int:
 			return MapMode.Mode.SURVEYING
 		"infrastructure":
 			return MapMode.Mode.INFRASTRUCTURE
+		"stockpile":
+			return MapMode.Mode.STOCKPILE
+		"ownership":
+			return MapMode.Mode.OWNERSHIP
 		_:
 			return MapMode.Mode.NONE
 
@@ -153,6 +159,10 @@ func _sentinel_for(mode_id: String) -> String:
 			return MapMode.SURVEYING_SENTINEL
 		"infrastructure":
 			return MapMode.INFRASTRUCTURE_SENTINEL
+		"stockpile":
+			return MapMode.STOCKPILE_SENTINEL
+		"ownership":
+			return MapMode.OWNERSHIP_SENTINEL
 		_:
 			return ""
 

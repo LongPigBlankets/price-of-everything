@@ -78,6 +78,12 @@ func transport_cost_for_route(good_id: String, qty: int, route_data: Dictionary,
 	var cost: float = EconomyConfig.transport_cost_for_route(good_id, qty, route_data) * surcharge
 	# transport_cost modifiers (research like Route Optimization) trim haulage cost.
 	cost = Modifiers.apply("transport_cost", good_id, cost, {"good_id": good_id})
+	# Overland-only relief (Depot Scheduling). The `transport_cost` domain above is applied to
+	# the whole haul AFTER the legs are summed, so it cannot tell road from pipe. This one is
+	# scaled by the road/rail SHARE of the route, leaving pipework untouched.
+	var overland_pct: float = float(Modifiers.resolve_pct("road_rail_transport_cost", "*", {}).get("net", 0.0))
+	if not is_zero_approx(overland_pct):
+		cost *= 1.0 + (overland_pct / 100.0) * _road_rail_share(route_data)
 	# Throughput congestion, charged MARGINALLY: only the units above a congested link's
 	# remaining capacity pay the surcharge (+100% over cap, +200% over cap + L1 buffer).
 	# The units that still fit ride at the base rate, so upgrading infra pays back by
@@ -90,6 +96,43 @@ func transport_cost_for_route(good_id: String, qty: int, route_data: Dictionary,
 		var within: int = qty - over
 		cost *= (float(within) + float(over) * mult) / float(qty)
 	return cost
+
+
+## Land-leg cost after the founder's pre-paid domestic freight is applied (COO gift, spec §5.4).
+## The credit buys FREE MOVEMENT overland — it never touches the port's ad valorem, which is a
+## trade charge rather than haulage.
+##
+## `commit` decides whether the credit is actually spent. Quotes, previews and the build
+## forecast run through the same costing path as a real shipment, so they MUST pass false or
+## the gift drains every time something is merely looked at.
+func land_cost_after_credit(good_id: String, qty: int, route_data: Dictionary, commit: bool) -> float:
+	var gross := transport_cost_for_route(good_id, qty, route_data)
+	if gross <= 0.0 or qty <= 0 or MatchState.freight_credit_units <= 0:
+		return gross
+	var covered := MatchState.consume_freight_credit(qty) if commit else MatchState.peek_freight_credit(qty)
+	if covered <= 0:
+		return gross
+	if covered >= qty:
+		return 0.0
+	return gross * float(qty - covered) / float(qty)
+
+
+## What fraction of this route's haul runs on road or rail. Legs are weighted by their own
+## cost multiplier, so a rail leg (0.5x) counts for what it actually costs rather than as a
+## whole leg. A route with no built legs is an ordinary overland haul: entirely road.
+func _road_rail_share(route_data: Dictionary) -> float:
+	var legs: Array = route_data.get("legs", [])
+	if legs.is_empty():
+		return 1.0
+	var overland := 0.0
+	var total := 0.0
+	for leg: Dictionary in legs:
+		var mode := str(leg.get("mode", "roads"))
+		var weight: float = float(EconomyConfig.TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
+		total += weight
+		if mode == "roads" or mode == "rail":
+			overland += weight
+	return 0.0 if total <= 0.0 else overland / total
 
 
 ## Split a route's *actual* freight charge by infrastructure mode.  The base
@@ -172,10 +215,10 @@ func quote_market_buy(dest_tile: String, good_id: String, qty: int, covered: boo
 	var port := nearest_port_tile(dest_tile)
 	if dest_tile == "" or good_id == "" or qty <= 0 or port == "":
 		return {}
-	# A liquid/gas can only come ashore where the port tile has the pipe for it — pipes, or
-	# reinf_pipes for hazard liquids. This closes the same-tile loophole (a building sitting ON
-	# the port used to get fluids delivered with no pipe at all); off-port buyers are also gated
-	# by the pipe network in route() below. Solids are unaffected (helper returns true for them).
+	# A liquid/gas can only come ashore where the port tile has a compatible terminal: road or
+	# rail loading, ordinary pipes for safe fluids, or reinforced pipes for hazardous fluids.
+	# This prevents bare-port same-tile delivery while retaining the tanker routes supported by
+	# infrastructure.csv. Solids are unaffected (the helper returns true for them).
 	if not Catalog.tile_can_pipe_good(port, good_id):
 		return {}
 	var route_data := route(port, dest_tile, good_id)

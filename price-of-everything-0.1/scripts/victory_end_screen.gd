@@ -45,7 +45,6 @@ const C_DISPLAY_LOSE := Color("#e8b0a4")
 const C_EPITHET := Color("#8298ac")
 const C_TOTAL_WIN := Color("#5fbf6b")
 const C_TOTAL_LOSE := Color("#e2604a")
-const C_THRESH_TEXT := Color("#62788f")
 const C_TRACK_BG := Color("#0a1623")
 const C_MARKER := Color("#f2e6c8")
 const C_CREST_GOLD_A := Color("#f0dfae")
@@ -60,7 +59,6 @@ const C_NAME_UNLIT := Color("#5b6e84")
 const C_COPY := Color("#a9bccf")
 const C_CARD_BORDER := Color("#1c3149")
 const C_STAT_VALUE := Color("#eef4fb")
-const C_MUTED := Color("#62788f")
 const C_CHART_LABEL := Color("#71859b")
 const C_REV := Color("#5fbf6b")
 const C_OUT := Color("#e6b34a")
@@ -236,7 +234,7 @@ func _build_header(data: Dictionary) -> Control:
 	var total_lbl := _lbl(str(int(data.get("total", 0))), _UIFonts.mono(), 52, total_col)
 	total_lbl.size_flags_vertical = Control.SIZE_SHRINK_END
 	total_row.add_child(total_lbl)
-	var thr_lbl := _lbl("/ %d" % int(data.get("threshold", 0)), _UIFonts.mono(), 20, C_THRESH_TEXT)
+	var thr_lbl := _lbl("/ %d" % int(data.get("threshold", 0)), _UIFonts.mono(), 20, DS.PALETTE.TEXT_DIM)
 	thr_lbl.size_flags_vertical = Control.SIZE_SHRINK_END
 	total_row.add_child(thr_lbl)
 
@@ -247,7 +245,7 @@ func _build_header(data: Dictionary) -> Control:
 	pill_row.add_child(_build_pill(won, int(data.get("turn", 0)), result))
 
 	var sc := int(data.get("secured_count", 0))
-	var sec_lbl := _lbl("%d of 5 tracks secured" % sc, _UIFonts.PLEX_MED, 12, C_MUTED)
+	var sec_lbl := _lbl("%d of 5 tracks secured" % sc, _UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_DIM)
 	sec_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	right.add_child(sec_lbl)
 
@@ -268,10 +266,10 @@ func _build_header(data: Dictionary) -> Control:
 
 	var labels := HBoxContainer.new()
 	bar_wrap.add_child(labels)
-	var l_left := _lbl("Tracks %d" % int(data.get("total", 0)), _UIFonts.PLEX_MED, 12, C_MUTED)
+	var l_left := _lbl("Tracks %d" % int(data.get("total", 0)), _UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_DIM)
 	l_left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	labels.add_child(l_left)
-	var l_mid := _lbl("%d to win" % int(data.get("threshold", 0)), _UIFonts.PLEX_MED, 12, C_MUTED)
+	var l_mid := _lbl("%d to win" % int(data.get("threshold", 0)), _UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_DIM)
 	l_mid.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l_mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	labels.add_child(l_mid)
@@ -383,18 +381,18 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner.add_child(name_lbl)
 
-	var desc_lbl := _lbl(str(t.get("desc", "")), _UIFonts.PLEX, 11, C_MUTED)
+	var desc_lbl := _lbl(str(t.get("desc", "")), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
 	desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	inner.add_child(desc_lbl)
 
 	inner.add_child(_spacer_v(4))
 
-	var stat_lbl := _lbl(str(t.get("stat", "")), _UIFonts.mono(), 19, color if done else C_MUTED)
+	var stat_lbl := _lbl(str(t.get("stat", "")), _UIFonts.mono(), 19, color if done else DS.PALETTE.TEXT_DIM)
 	stat_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner.add_child(stat_lbl)
 
-	var sub_lbl := _lbl(str(t.get("sub", "")), _UIFonts.PLEX, 11, C_MUTED)
+	var sub_lbl := _lbl(str(t.get("sub", "")), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	inner.add_child(sub_lbl)
@@ -416,7 +414,7 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	else:
 		var border := Color("#3a2224") if result == "defeat" else Color("#1c3149")
 		badge.add_theme_stylebox_override("panel", _sb(C_TRACK_BG, border, 1, 8, 0))
-		bmc.add_child(_lbl("%d%% banked" % int(round(float(t.get("pct", 0.0)) * 100.0)), _UIFonts.PLEX_MED, 11, C_MUTED))
+		bmc.add_child(_lbl("%d%% banked" % int(round(float(t.get("pct", 0.0)) * 100.0)), _UIFonts.PLEX_MED, 11, DS.PALETTE.TEXT_DIM))
 	inner.add_child(badge)
 	return card
 
@@ -497,7 +495,7 @@ func _stat_card(value: String, label: String) -> Control:
 	v.add_theme_constant_override("separation", 4)
 	mc.add_child(v)
 	v.add_child(_lbl(value, _UIFonts.mono(), 23, C_STAT_VALUE))
-	v.add_child(_lbl(label.to_upper(), _UIFonts.PLEX_MED, 11, C_MUTED))
+	v.add_child(_lbl(label.to_upper(), _UIFonts.PLEX_MED, 11, DS.PALETTE.TEXT_DIM))
 	return pc
 
 
@@ -570,7 +568,7 @@ func _chart_card(label: String, big: String, sub: String, col: Color, body: Cont
 	var big_lbl := _lbl(big, _UIFonts.mono(), 20, col)
 	big_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(big_lbl)
-	var sub_lbl := _lbl(sub, _UIFonts.PLEX, 11, C_MUTED)
+	var sub_lbl := _lbl(sub, _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(sub_lbl)
 
@@ -579,7 +577,7 @@ func _chart_card(label: String, big: String, sub: String, col: Color, body: Cont
 	v.add_child(body)
 
 	if footer != "":
-		v.add_child(_lbl(footer, _UIFonts.PLEX, 11, C_MUTED))
+		v.add_child(_lbl(footer, _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM))
 	return pc
 
 
@@ -609,7 +607,7 @@ func _build_biggest(charts: Dictionary) -> Control:
 	var big_lbl := _lbl(_num(int(charts.get("top_total", 0))), _UIFonts.mono(), 20, C_BIG)
 	big_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(big_lbl)
-	var sub_lbl := _lbl("lifetime units, top five goods", _UIFonts.PLEX, 11, C_MUTED)
+	var sub_lbl := _lbl("lifetime units, top five goods", _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(sub_lbl)
 
@@ -678,7 +676,7 @@ func _build_empire(empire: Dictionary) -> Control:
 	v.add_child(head)
 	head.add_child(_lbl("THE EMPIRE", _UIFonts.PLEX_MED, 11, C_CHART_LABEL))
 	var ports: Array = empire.get("ports", [])
-	var meta := _lbl("final production network · %d ports" % ports.size(), _UIFonts.PLEX, 11, C_MUTED)
+	var meta := _lbl("final production network · %d ports" % ports.size(), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
 	meta.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	meta.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(meta)

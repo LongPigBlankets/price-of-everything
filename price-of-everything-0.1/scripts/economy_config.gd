@@ -145,9 +145,24 @@ func units_cap_for_impact(max_pct: int) -> int:
 # A subscription gives a good the one-turn sea link. The charge itself is only paid when
 # that good ships. Insurance uses the market BUY price for both imports and exports.
 const SEAPORT_SUBSCRIPTION_COST_PER_GOOD: float = 0.0 # Legacy standing fee; retained for saves.
-const SEAPORT_BASE_FEE_PER_GOOD: float = 5.0
-const SEAPORT_INSURANCE_RATE: float = 0.0005 # 0.05% of market buy value.
-const OWNED_SEAPORT_INSURANCE_RATE: float = 0.00025 # 0.025%; owned ports have no base fee.
+# Port charging is AD VALOREM ONLY (owner ruling 2026-08-09). The flat per-good fee is
+# retired: it was charged once per GOOD per turn, so quantity shipped was effectively free,
+# and freight collapsed from 11.3% of revenue to 0.3% as an empire grew. An ad valorem scales
+# with what actually moves, and is glut-immune — charge and revenue fall together, so the
+# RATIO holds when prices drop. Measured against a real run, this regime cuts port charges 65%
+# in the learning window (t1-30) and raises them 14% afterwards.
+# See docs/early-game-onboarding-spec.md §4.2b and tools/transport_bands.py.
+const SEAPORT_BASE_FEE_PER_GOOD: float = 0.0
+const SEAPORT_AD_VALOREM_EARLY: float = 0.005   # t1-30: learning window
+const SEAPORT_AD_VALOREM_LATE: float = 0.03     # t31+: the squeeze
+const SEAPORT_AD_VALOREM_STEP_TURN: int = 31
+const OWNED_SEAPORT_AD_VALOREM_SHARE: float = 0.5  # owning the port halves it, as before
+const SEAPORT_INSURANCE_RATE: float = 0.0005 # Legacy; superseded by the schedule above.
+const OWNED_SEAPORT_INSURANCE_RATE: float = 0.00025 # Legacy; superseded.
+
+## The ad valorem charged on value crossing a port this turn, before modifiers.
+func seaport_ad_valorem_rate(turn: int) -> float:
+	return SEAPORT_AD_VALOREM_EARLY if turn < SEAPORT_AD_VALOREM_STEP_TURN else SEAPORT_AD_VALOREM_LATE
 const SEAPORT_FEE_GROWTH_PER_TURN: float = 0.001 # Both components rise 0.1% per turn.
 const SEAPORT_THROUGHPUT_STANDARD: int = 1500
 const SEAPORT_THROUGHPUT_RESTRICTED: int = 300
@@ -284,6 +299,59 @@ const TRANSPORT_MODE_COST_MULT := {
 	"reinf_pipes": 1.0,
 	"nothing": 1.0,
 }
+# Liquids and gases hauled OVERLAND — road tankers and rail tank wagons instead of a line
+# that just flows. Owner ruling 2026-08-09: fluids may now leave the pipe network, but the
+# convenience is priced. Multipliers are against the PIPE cost for the same good (pipes are
+# 1.0 above), rail is half of road exactly as it is for solids, and the hazard split that
+# separates pipes from reinforced pipes carries over — a hazardous load needs a certified
+# tanker and an escort, not just a truck.
+#
+# These are the only route by which a fluid can reach a tile with no pipework, so they are
+# also the difference between "expensive" and "impossible": keep them dear enough that
+# building the pipe is obviously right, and cheap enough that a stranded batch has a way out.
+const FLUID_OVERLAND_COST_MULT := {
+	"rail":  {"safe": 3.0, "hazard": 5.0},
+	"roads": {"safe": 6.0, "hazard": 10.0},
+}
+
+## The freight multiplier for one fluid leg over `mode`, or 0.0 when `mode` is not an overland
+## one (the caller then uses the ordinary TRANSPORT_MODE_COST_MULT). Hazard is exactly the
+## split the pipes already make: hazard_liquid is the one class normal pipework refuses.
+func fluid_overland_mult(good_id: String, mode: String) -> float:
+	var by_mode: Dictionary = FLUID_OVERLAND_COST_MULT.get(mode, {})
+	if by_mode.is_empty():
+		return 0.0
+	var hazard := Catalog.get_transport_class(good_id) == "hazard_liquid"
+	return float(by_mode.get("hazard" if hazard else "safe", 1.0))
+# How far one turn-move reaches, by mode and infrastructure LEVEL (owner ruling 2026-08-09).
+# Level 1 must match the `range` column in infrastructure.csv, which stays the fallback for any
+# mode not listed here.
+#
+# Range is not only speed. Freight is charged PER LEG and a leg is one turn-move, so doubling a
+# mode's range halves the number of legs on a long haul and therefore halves its cost: a 9-tile
+# rail run is 3 legs at L1 and 1 leg at L3, i.e. a third of the freight for the same cargo. These
+# numbers are a deliberate long-haul discount as well as a speed-up.
+#
+# The fluid premiums still dominate at every level: rail's best range advantage is 9/5 = 1.8x
+# against a level-3 pipe, which never overcomes the 3x tanker multiplier (5x hazardous). Pipe
+# stays the cheapest way to move a fluid at every level and distance — see
+# docs/fluids-overland-spec.md.
+const INFRA_RANGE_BY_LEVEL := {
+	"roads":       {1: 2, 2: 3, 3: 5},
+	"rail":        {1: 4, 2: 6, 3: 9},
+	"pipes":       {1: 2, 2: 3, 3: 5},
+	"reinf_pipes": {1: 2, 2: 3, 3: 5},
+	"port":        {1: 10, 2: 16, 3: 25},
+}
+
+## Tiles one turn-move covers on `mode` at `level`. Returns 0 when the mode has no level table,
+## so the caller falls back to the flat infrastructure.csv range.
+func infra_range_for_level(mode: String, level: int) -> int:
+	var tiers: Dictionary = INFRA_RANGE_BY_LEVEL.get(mode, {})
+	if tiers.is_empty():
+		return 0
+	return int(tiers.get(clampi(level, 1, 3), tiers.get(1, 0)))
+
 # Per-turn throughput one tile-link can carry by mode and infrastructure level.
 # ENFORCED via a soft cap: when a tile's in-transit flow on a mode exceeds this
 # (after throughput research), the overflow incurs a
@@ -395,6 +463,11 @@ const LOAN_COLLATERAL_LTV_MAX: float = 1.0    # With a seated CFO or Chief Inves
 # --- Tax & Dividends ---
 const TAX_RATE: float = 0.20
 const DIVIDEND_RATE: float = 0.20
+# Marginal tax-free floor: the first slice of each turn's profit is not assessed for
+# tax OR dividends. Kindness that dilutes with scale by construction — worth ~£7/turn
+# at any profit above the floor, which is decisive on a £25/turn early engine and noise
+# on a £500/turn one. See docs/early-game-onboarding-spec.md §4.3.
+const TAX_FREE_PROFIT_FLOOR: float = 20.0
 
 # --- Retrofit / retooling (advisor spec §7) ---
 # Changing a built building's recipe. Labour is a per-turn fraction of base while
@@ -462,11 +535,18 @@ func transport_cost_for_route(good_id: String, qty: int, route: Dictionary) -> f
 		var turns: int = int(route.get("turns", 0))
 		return float(qty) * float(maxi(turns, 0)) * class_rate
 	var total := 0.0
+	var is_fluid := Catalog.requires_pipeline(good_id)
 	for leg in legs:
 		# Every leg is one turn-move: charge the per-unit-per-turn class rate times the
-		# mode multiplier (rail 0.5x; roads/pipes 1x).
+		# mode multiplier (rail 0.5x; roads/pipes 1x) — except a fluid on road or rail, which
+		# pays the tanker premium instead (FLUID_OVERLAND_COST_MULT).
 		var mode := str(leg.get("mode", ""))
-		total += float(qty) * class_rate * float(TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
+		var mult := float(TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
+		if is_fluid:
+			var overland := fluid_overland_mult(good_id, mode)
+			if overland > 0.0:
+				mult = overland
+		total += float(qty) * class_rate * mult
 	return total
 
 func transport_link_capacity(mode: String, level: int) -> float:

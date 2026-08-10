@@ -8,22 +8,22 @@ const HEADER_HEIGHT := 40.0
 @onready var close_button: Button = $MarginContainer/ModalLayout/HeaderRow/CloseButton
 
 # Balance tab @onready references
-@onready var goods_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection/GoodsRow/GoodsValue
-@onready var power_sales_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection/PowerSalesRow/PowerSalesValue
-@onready var total_revenue_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection/TotalRevenueRow/TotalRevenueValue
+@onready var goods_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection/GoodsRow/GoodsValue
+@onready var power_sales_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection/PowerSalesRow/PowerSalesValue
+@onready var total_revenue_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection/TotalRevenueRow/TotalRevenueValue
 
-@onready var maintenance_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection/MaintenanceRow/MaintenanceValue
-@onready var labour_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection/LabourRow/LabourValue
-@onready var power_purchase_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection/PowerPurchaseRow/PowerPurchaseValue
-@onready var total_costs_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection/TotalCostsRow/TotalCostsValue
+@onready var maintenance_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/MaintenanceRow/MaintenanceValue
+@onready var labour_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/LabourRow/LabourValue
+@onready var power_purchase_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/PowerPurchaseRow/PowerPurchaseValue
+@onready var total_costs_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/TotalCostsRow/TotalCostsValue
 
-@onready var operating_profit_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/OperatingProfitRow/OperatingProfitValue
-@onready var interest_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/InterestRow/InterestValue
-@onready var pretax_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/PreTaxRow/PreTaxValue
-@onready var tax_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/TaxRow/TaxValue
-@onready var posttax_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/PostTaxRow/PostTaxValue
-@onready var dividends_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/DividendsRow/DividendsValue
-@onready var net_cashflow_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/NetCashflowRow/NetCashflowValue
+@onready var operating_profit_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/OperatingProfitRow/OperatingProfitValue
+@onready var interest_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/InterestRow/InterestValue
+@onready var pretax_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/PreTaxRow/PreTaxValue
+@onready var tax_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/TaxRow/TaxValue
+@onready var posttax_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/PostTaxRow/PostTaxValue
+@onready var dividends_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/DividendsRow/DividendsValue
+@onready var net_cashflow_value: Label = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/NetCashflowRow/NetCashflowValue
 
 # Stats tab
 @onready var money_value: Label = $MarginContainer/ModalLayout/TabContainer/Stats/MarginContainer/StatsContent/MoneyRow/MoneyValue
@@ -47,16 +47,19 @@ const HEADER_HEIGHT := 40.0
 @onready var proj_maintenance_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_MaintenanceRow/MaintenanceValue
 @onready var proj_labour_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_LabourRow/LabourValue
 @onready var proj_power_purchase_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_PowerPurchaseRow/PowerPurchaseValue
-@onready var _costs_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection
+@onready var _costs_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection
 @onready var _proj_costs_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection
 var _transport_value: Label
 var _transport_caret: Button
 var _transport_breakdown_values: Dictionary = {}
+var _transport_breakdown_amounts: Dictionary = {}
 var _transport_expanded := false
 var _proj_transport_value: Label
 var _goods_purchased_value: Label
 var _proj_goods_purchased_value: Label
 var _warehousing_value: Label
+var _advisor_value: Label
+var _building_tab_value: Label
 var _proj_warehousing_value: Label
 var _profit_sharing_value: Label
 var _proj_profit_sharing_value: Label
@@ -83,16 +86,21 @@ var _drag_offset := Vector2.ZERO
 const CHART_MAX_TURNS := 10
 const DEFAULT_PANEL_SIZE := Vector2(560, 620)
 const CHART_PANEL_SIZE := Vector2(620, 600)
-const EXPANDED_BALANCE_PANEL_SIZE := Vector2(560, 770)
+# Breathing room so the panel never runs to the screen edge.
+const PANEL_SCREEN_MARGIN := 90.0
+# Floor for the Balance tab on a short screen: below this the sheet is all scrollbar.
+const MIN_BALANCE_PANEL_HEIGHT := 360.0
 const TRANSPORT_BREAKDOWN_ROWS := [
-	["port_fees", "Port Transport per Turn Fees"],
-	["port_insurance", "Port Transport Ad Valorem Insurance"],
+	["port_inbound", "Port Charges — Imports"],
+	["port_outbound", "Port Charges — Exports"],
+	["nothing", "No infrastructure"],
 	["rail", "Rail Transport"],
 	["roads", "Road Transport"],
 	["pipes", "Pipe Transport"],
 	["reinf_pipes", "Reinforced Pipe Transport"],
 ]
 @onready var _tab_container: TabContainer = $MarginContainer/ModalLayout/TabContainer
+@onready var _balance_content: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent
 @onready var _chart: Control = $MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent/Chart
 @onready var _chart_revenue_button: Button = $MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent/ToggleRow/RevenueButton
 @onready var _chart_costs_button: Button = $MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent/ToggleRow/CostsButton
@@ -129,11 +137,14 @@ func _insert_cost_row(section: VBoxContainer, after_node_name: String, label_tex
 
 func _insert_transport_accordion(section: VBoxContainer, after_node_name: String) -> Label:
 	var group := VBoxContainer.new()
+	group.name = "TransportCostGroup"
 	group.add_theme_constant_override("separation", 4)
 	var header := HBoxContainer.new()
+	header.name = "TransportCostHeader"
 	header.add_theme_constant_override("separation", 8)
 	group.add_child(header)
 	_transport_caret = Button.new()
+	_transport_caret.name = "TransportCostCaret"
 	_transport_caret.flat = true
 	_transport_caret.focus_mode = Control.FOCUS_NONE
 	_transport_caret.custom_minimum_size = Vector2(22, 0)
@@ -144,11 +155,13 @@ func _insert_transport_accordion(section: VBoxContainer, after_node_name: String
 	name_label.text = "Transport"
 	header.add_child(name_label)
 	var value_label := Label.new()
+	value_label.name = "TransportCostValue"
 	value_label.custom_minimum_size = Vector2(80, 0)
 	value_label.text = "-£0.00"
 	header.add_child(value_label)
 	for spec: Array in TRANSPORT_BREAKDOWN_ROWS:
 		var row := HBoxContainer.new()
+		row.name = "TransportCostRow_%s" % str(spec[0])
 		row.visible = false
 		row.add_theme_constant_override("separation", 8)
 		var indent := Control.new()
@@ -160,10 +173,13 @@ func _insert_transport_accordion(section: VBoxContainer, after_node_name: String
 		detail_label.add_theme_color_override("font_color", Color(0.65, 0.72, 0.8))
 		row.add_child(detail_label)
 		var detail_value := Label.new()
+		detail_value.name = "TransportCostValue_%s" % str(spec[0])
 		detail_value.custom_minimum_size = Vector2(80, 0)
 		detail_value.text = "-£0.00"
 		row.add_child(detail_value)
-		_transport_breakdown_values[str(spec[0])] = detail_value
+		var key := str(spec[0])
+		_transport_breakdown_values[key] = detail_value
+		_transport_breakdown_amounts[key] = 0.0
 		group.add_child(row)
 	section.add_child(group)
 	var after := section.get_node_or_null(after_node_name)
@@ -183,10 +199,13 @@ func _set_transport_expanded(expanded: bool) -> void:
 		return
 	_transport_caret.text = "⌄" if expanded else "›"
 	_transport_caret.tooltip_text = "Hide transport cost breakdown" if expanded else "Show transport cost breakdown"
-	for value_label: Label in _transport_breakdown_values.values():
-		(value_label.get_parent() as Control).visible = expanded
+	for key: String in _transport_breakdown_values:
+		var value_label := _transport_breakdown_values[key] as Label
+		(value_label.get_parent() as Control).visible = expanded \
+			and _transport_amount_is_visible(float(_transport_breakdown_amounts.get(key, 0.0)))
+	# Expanding makes the sheet longer: grow with it while the screen allows, then scroll.
 	if _tab_container != null and _tab_container.get_tab_title(_tab_container.current_tab) == "Balance":
-		size = EXPANDED_BALANCE_PANEL_SIZE if expanded else DEFAULT_PANEL_SIZE
+		_apply_tab_size.call_deferred(_tab_container.current_tab)
 
 func _insert_finance_row(section: VBoxContainer, after_node_name: String, label_text: String, default_text: String) -> Label:
 	var row := HBoxContainer.new()
@@ -212,18 +231,19 @@ func _ready() -> void:
 	_proj_transport_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Transport")
 	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
 	_proj_goods_purchased_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Goods purchased")
+	_advisor_value = _insert_cost_row(_costs_section, "LabourRow", "Advisor salaries")
+	_building_tab_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Deferred to building tabs")
 	_warehousing_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Warehousing")
 	_proj_warehousing_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Warehousing")
 	_carbon_tax_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Carbon tax")
 	_proj_carbon_tax_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Carbon tax")
 	# Green subsidy is INCOME: insert into the revenue sections after the power-sales row.
-	var revenue_section := $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection as VBoxContainer
+	var revenue_section := $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection as VBoxContainer
 	var proj_revenue_section := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_RevenueSection as VBoxContainer
 	_green_subsidy_value = _insert_finance_row(revenue_section, "PowerSalesRow", "Green subsidy", "+£0.00")
 	_proj_green_subsidy_value = _insert_finance_row(proj_revenue_section, "Proj_PowerSalesRow", "Green subsidy", "+£0.00")
-	var balance_content := $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent as VBoxContainer
 	var projection_content := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent as VBoxContainer
-	_profit_sharing_value = _insert_finance_row(balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
+	_profit_sharing_value = _insert_finance_row(_balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
 	_proj_profit_sharing_value = _insert_finance_row(projection_content, "Proj_DividendsRow", "Profit Sharing", "-£0.00")
 	close_button.pressed.connect(hide)
 	title_label.text = "Money"
@@ -267,6 +287,7 @@ func _ready() -> void:
 	_build_purchases_tab()
 	_hide_redundant_tabs()
 	_tab_container.tab_changed.connect(_on_tab_changed)
+	get_viewport().size_changed.connect(_on_viewport_resized)
 	open_tab("Balance")
 	add_child(preload("res://scripts/brass_pipe_frame.gd").new())   # brass frame, drawn on top
 
@@ -288,6 +309,31 @@ func open_tab(tab_name: String) -> void:
 		_on_tab_changed(index)
 		return
 	push_warning("[MoneyPanel] Requested unavailable tab: %s" % tab_name)
+
+
+## Stable tutorial entry point for the full Balance sheet (the top-bar money
+## widget normally opens a compact treasury flyout instead).
+func open_transport_breakdown() -> void:
+	open_tab("Balance")
+	_set_transport_expanded(true)
+	show()
+	PanelStack.push(self)
+	_queue_refresh()
+
+
+func close_for_tutorial() -> void:
+	if visible:
+		PanelStack.remove(self)
+	hide()
+
+
+## The opening Capital exercise and the west-coast factory lesson are intentionally
+## separate financial examples. Drop the former's local chart caches at the handoff.
+func reset_for_tutorial_handoff() -> void:
+	_chart_history.clear()
+	_sales_history.clear()
+	_purchases_history.clear()
+	_queue_refresh()
 
 func _on_turn_processed(_summary: Dictionary) -> void:
 	# History capture must run even while hidden — it's data, not display.
@@ -325,7 +371,11 @@ func _apply_refresh() -> void:
 	_refresh_purchases()
 
 func _on_panel_visibility_changed() -> void:
-	if visible and _dirty:
+	if not visible:
+		return
+	# Re-fit on show: global_position is only meaningful once the panel has been laid out.
+	_apply_tab_size(_tab_container.current_tab)
+	if _dirty:
 		_queue_refresh()
 
 func _refresh() -> void:
@@ -374,6 +424,32 @@ func _on_repay_loan(loan_id: int) -> void:
 func _on_buildings_changed(_arg = null) -> void:
 	_refresh_projection()
 
+# ── The balance sheet's arithmetic, as pure functions of the turn summary ───────────────────
+# Static and summary-only so the test suite can hold the bottom line against the top bar's
+# money_in − money_out without instantiating the panel. They diverged silently twice: advisor
+# salaries were charged to cash with no row here at all, and building-tab deferrals were shown
+# as a debt total while the deferred running costs were still charged as if paid. Any new cash
+# movement in production.gd needs a line here, or the two numbers part again.
+
+static func total_revenue_of(s: Dictionary) -> float:
+	return float(s.get("goods_sales_revenue", 0.0)) + float(s.get("power_sales_revenue", 0.0)) \
+		+ float(s.get("green_subsidy_received", 0.0))
+
+static func operating_costs_of(s: Dictionary) -> float:
+	return float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) \
+		+ float(s.get("advisor_paid", 0.0)) + float(s.get("transport_paid", 0.0)) \
+		+ float(s.get("power_purchase_cost", 0.0)) + float(s.get("goods_purchased_cost", 0.0)) \
+		+ float(s.get("warehousing_paid", 0.0)) + float(s.get("carbon_tax_paid", 0.0)) \
+		- float(s.get("building_tab_carried", 0.0))
+
+## MUST equal money_in − money_out for the same turn — that is what the row promises and what
+## the top bar and the Treasury mini-panel both show.
+static func net_cash_of(s: Dictionary) -> float:
+	return total_revenue_of(s) - operating_costs_of(s) - float(s.get("interest_paid", 0.0)) \
+		- float(s.get("taxes_paid", 0.0)) - float(s.get("dividends_paid", 0.0)) \
+		- float(s.get("profit_sharing_paid", 0.0))
+
+
 func _refresh_balance_sheet() -> void:
 	var summary: Dictionary = Production.last_turn_summary
 	if summary.is_empty():
@@ -388,6 +464,8 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	var power_revenue: float = summary.get("power_sales_revenue", 0.0)
 	var maintenance: float = summary.get("maintenance_paid", 0.0)
 	var labour: float = summary.get("labour_paid", 0.0)
+	var advisor: float = summary.get("advisor_paid", 0.0)
+	var tab_carried: float = summary.get("building_tab_carried", 0.0)
 	var transport: float = summary.get("transport_paid", 0.0)
 	var power_purchase: float = summary.get("power_purchase_cost", 0.0)
 	var goods_purchased: float = summary.get("goods_purchased_cost", 0.0)
@@ -399,13 +477,13 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	var carbon_tax: float = summary.get("carbon_tax_paid", 0.0)
 	var green_subsidy: float = summary.get("green_subsidy_received", 0.0)
 
-	# Compute derived
-	var total_revenue: float = goods_revenue + power_revenue + green_subsidy
-	var total_costs: float = maintenance + labour + transport + power_purchase + goods_purchased + warehousing + carbon_tax
+	# Derived through the statics above, so the displayed total and the tested one cannot drift.
+	var total_revenue: float = total_revenue_of(summary)
+	var total_costs: float = operating_costs_of(summary)
 	var operating_profit: float = total_revenue - total_costs
 	var pretax: float = operating_profit - interest
 	var posttax: float = pretax - tax
-	var net_cashflow: float = posttax - dividends - profit_sharing
+	var net_cashflow: float = net_cash_of(summary)
 	
 	# Render
 	goods_value.text = "+£%.2f" % goods_revenue
@@ -414,11 +492,17 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	
 	maintenance_value.text = "-£%.2f" % maintenance
 	labour_value.text = "-£%.2f" % labour
+	_advisor_value.text = "-£%.2f" % advisor
 	power_purchase_value.text = "-£%.2f" % power_purchase
 	_transport_value.text = "-£%.2f" % transport
 	_render_transport_breakdown(transport, summary.get("transport_breakdown", {}))
 	_goods_purchased_value.text = "-£%.2f" % goods_purchased
 	_warehousing_value.text = "-£%.2f" % warehousing
+	# A CREDIT, not a charge: these running costs are charged in full on the lines above and
+	# then carried, so the row gives the money back and the total tells the truth. What is owed
+	# across every tab is a running balance, not this turn's movement — it goes in the tooltip.
+	_building_tab_value.text = "+£%.2f" % tab_carried
+	_building_tab_value.tooltip_text = "Deferred onto building tabs this turn.\nOutstanding across all tabs: £%.2f" % MatchState.total_building_tab_debt()
 	_carbon_tax_value.text = "-£%.2f" % carbon_tax
 	_green_subsidy_value.text = "+£%.2f" % green_subsidy
 	total_costs_value.text = "-£%.2f" % total_costs
@@ -451,9 +535,15 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 
 func _render_transport_breakdown(transport: float, raw_breakdown: Dictionary) -> void:
 	var breakdown: Dictionary = raw_breakdown.duplicate()
+	# Direct building-output sales use MarketState's more granular export keys.
+	# Fold those into the same export row used by stockpile sales and imports.
+	breakdown["port_outbound"] = float(breakdown.get("port_outbound", 0.0)) \
+		+ float(breakdown.get("port_fees", 0.0)) + float(breakdown.get("port_insurance", 0.0))
+	breakdown.erase("port_fees")
+	breakdown.erase("port_insurance")
 	var component_total := 0.0
-	for value in breakdown.values():
-		component_total += float(value)
+	for spec: Array in TRANSPORT_BREAKDOWN_ROWS:
+		component_total += float(breakdown.get(str(spec[0]), 0.0))
 	# Preserve reconciliation for an old summary or an as-yet-unclassified cost.
 	breakdown["roads"] = float(breakdown.get("roads", 0.0)) + (transport - component_total)
 	var remaining := transport
@@ -461,16 +551,31 @@ func _render_transport_breakdown(transport: float, raw_breakdown: Dictionary) ->
 		var spec: Array = TRANSPORT_BREAKDOWN_ROWS[index]
 		var key := str(spec[0])
 		var amount: float = float(breakdown.get(key, 0.0))
-		# The final displayed row receives the fractional-penny remainder, so the
-		# six visible amounts always add up to the displayed Transport total.
+		# The final component receives the fractional-penny remainder, so the
+		# breakdown always adds up to the displayed Transport total.
 		if index == TRANSPORT_BREAKDOWN_ROWS.size() - 1:
 			amount = remaining
 		else:
 			amount = snappedf(amount, 0.01)
 			remaining -= amount
+		amount = snappedf(amount, 0.01)
+		_transport_breakdown_amounts[key] = amount
 		var value_label := _transport_breakdown_values.get(key) as Label
 		if value_label != null:
 			value_label.text = "-£%.2f" % amount
+			(value_label.get_parent() as Control).visible = _transport_expanded \
+				and _transport_amount_is_visible(amount)
+	# A newly used mode can add a row, while a superseded mode can remove one. Keep
+	# the Balance sheet fitted to its visible breakdown rather than its full mode list.
+	if _transport_expanded and _tab_container != null \
+			and _tab_container.get_tab_title(_tab_container.current_tab) == "Balance":
+		_apply_tab_size.call_deferred(_tab_container.current_tab)
+
+
+func _transport_amount_is_visible(amount: float) -> bool:
+	# Match the two-decimal money display: a component rendered as £0.00 is not a
+	# useful breakdown row, and stale zero rows make old transport modes look active.
+	return not is_zero_approx(snappedf(amount, 0.01))
 
 func _apply_breakdown_tooltip(value_label: Label, by_type: Dictionary, category: String) -> void:
 	if value_label == null:
@@ -763,10 +868,34 @@ func _on_tab_changed(idx: int) -> void:
 		_refresh_chart()
 
 func _apply_tab_size(idx: int) -> void:
-	# The Charts tab needs more room; every other tab uses the compact panel size.
-	var is_charts := _tab_container.get_tab_title(idx) == "Charts"
+	# The Charts tab needs more room; Balance sizes itself to the sheet and the screen;
+	# every other tab uses the compact panel size.
 	custom_minimum_size = Vector2.ZERO
-	size = CHART_PANEL_SIZE if is_charts else DEFAULT_PANEL_SIZE
+	match _tab_container.get_tab_title(idx):
+		"Charts":
+			size = CHART_PANEL_SIZE
+		"Balance":
+			size = Vector2(DEFAULT_PANEL_SIZE.x, _balance_panel_height())
+		_:
+			size = DEFAULT_PANEL_SIZE
+
+
+## Behind BalanceScroll the sheet no longer pushes the panel taller — which is the point, it was
+## 1117 px on a 1080p screen — but it means nothing else asks for height either, so the panel has
+## to work it out: as tall as the sheet wants, capped to what fits below its top edge. Whatever
+## does not fit scrolls. get_combined_minimum_size() here is the panel WITHOUT the sheet (a
+## ScrollContainer's minimum is zero), i.e. header + tab bar + margins.
+func _balance_panel_height() -> float:
+	var chrome: float = get_combined_minimum_size().y
+	var wanted: float = chrome + _balance_content.get_combined_minimum_size().y
+	var available: float = get_viewport_rect().size.y - global_position.y - PANEL_SCREEN_MARGIN
+	return maxf(MIN_BALANCE_PANEL_HEIGHT, minf(wanted, available))
+
+
+## The viewport can change under a live panel (window resize, fullscreen toggle).
+func _on_viewport_resized() -> void:
+	if _tab_container != null:
+		_apply_tab_size(_tab_container.current_tab)
 
 func _on_chart_mode_pressed(mode: String) -> void:
 	_chart_mode = mode
@@ -998,7 +1127,10 @@ func _record_chart_history(summary: Dictionary) -> void:
 	revenue["power"] = float(summary.get("power_sales_revenue", 0.0))
 	revenue["green_subsidy"] = float(summary.get("green_subsidy_received", 0.0))
 
-	# Goods purchased, split by tier (goods value only — transport is excluded).
+	# Goods purchased, split by tier. Freight rides in on the same order but is its own series
+	# below — splitting it across the goods tiers would hide the single largest cost an empire
+	# has, which is exactly what it did before: transport was recorded nowhere and charted
+	# nowhere, so the Costs chart quietly understated every turn by the whole freight bill.
 	var purchased: Dictionary = summary.get("purchased_cost", {})
 	for gid in purchased:
 		var tier := _good_tier(str(gid))
@@ -1011,6 +1143,9 @@ func _record_chart_history(summary: Dictionary) -> void:
 	costs["power"] = float(summary.get("power_purchase_cost", 0.0))
 	costs["maintenance"] = float(summary.get("maintenance_paid", 0.0))
 	costs["labour"] = float(summary.get("labour_paid", 0.0))
+	costs["transport"] = float(summary.get("transport_paid", 0.0))
+	costs["warehousing"] = float(summary.get("warehousing_paid", 0.0))
+	costs["advisor"] = float(summary.get("advisor_paid", 0.0))
 	costs["carbon_tax"] = float(summary.get("carbon_tax_paid", 0.0))
 	costs["taxes"] = float(summary.get("taxes_paid", 0.0))
 	costs["dividends"] = float(summary.get("dividends_paid", 0.0))

@@ -33,8 +33,11 @@ const COST_SERIES := [
 	{"key": "intermediate", "label": "Intermediate bought","color": Color(0.95, 0.45, 0.45)},   # light red
 	{"key": "construction", "label": "Construction bought","color": Color(0.50, 0.33, 0.15)},   # brown
 	{"key": "power",        "label": "Power bought",       "color": Color(0.95, 0.60, 0.15)},   # orange
+	{"key": "transport",    "label": "Transport",          "color": Color(0.20, 0.62, 0.60)},   # teal
+	{"key": "warehousing",  "label": "Warehousing",        "color": Color(0.42, 0.55, 0.35)},   # olive
 	{"key": "maintenance",  "label": "Maintenance",        "color": Color(0.60, 0.30, 0.72)},   # purple
 	{"key": "labour",       "label": "Labour",             "color": Color(0.96, 0.55, 0.78)},   # pink
+	{"key": "advisor",      "label": "Advisor salaries",   "color": Color(0.80, 0.42, 0.62)},   # mauve
 	{"key": "carbon_tax",   "label": "Carbon tax",         "color": Color(0.25, 0.25, 0.28), "hatch": NAVY},  # soot, hatched
 	{"key": "taxes",        "label": "Taxes",              "color": Color(0.78, 0.78, 0.78)},   # light grey
 	{"key": "dividends",    "label": "Dividends",          "color": Color(0.36, 0.36, 0.38)},   # dark grey

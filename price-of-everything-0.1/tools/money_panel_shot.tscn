@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b4yoqktqp18ae"]
+
+[ext_resource type="Script" path="res://tools/money_panel_shot.gd" id="1"]
+
+[node name="MoneyShot" type="Node2D"]
+script = ExtResource("1")

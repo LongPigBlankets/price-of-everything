@@ -15,6 +15,7 @@ signal good_selected(internal_name: String)   # phase 2 hook (focus / recipe-swa
 const LaneOrder := preload("res://scripts/lane_order.gd")
 const GoodsFlowGraph := preload("res://scripts/goods_flow_graph.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const InfraIcons := preload("res://scripts/infra_icons.gd")
 
 const _GOLD := Color(0.995, 0.931, 0.763, 1.0)
 const _CREAM := Color(0.995234, 0.930806, 0.763265)
@@ -82,9 +83,9 @@ var _feeds: Dictionary = {}        # internal -> true, direct consumers of the s
 var _legacy_presentation := false  # session-only; false keeps the current presentation default
 
 # --- alternate-recipes focus grid (owner UX 2026-07-19) ------------------------------
-# WEB shows the base chain; selecting a good expands its card with two buttons
-# ("See alternate recipes" -> GRID of per-recipe minigraph islands, "Encyclopedia
-# entry" -> deep-link). GRID keeps the same pan/zoom camera and a big Back button.
+# WEB shows the base chain; selecting a good expands its card with its supported
+# transport infrastructure plus two actions (alternate recipes -> GRID of per-recipe
+# minigraph islands, Encyclopedia -> deep-link). GRID keeps the same pan/zoom camera.
 enum _Mode { WEB, GRID, FOCUS }
 var _mode := _Mode.WEB
 
@@ -1208,7 +1209,7 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 
 	var pad := 6.0
 	var isz := rect.size.y - pad * 2.0
 	var chip := Rect2(rect.position + Vector2(13.0, pad), Vector2(isz, isz))
-	var icon: Texture2D = GoodIcons.texture_for(str(node.get("good_id", "")), id, false)
+	var icon: Texture2D = GoodIcons.texture_for(str(node.get("good_id", "")), id)
 	draw_colored_polygon(_rounded_rect_points(chip, 8.0), Color(_CREAM, alpha))
 	if icon != null:
 		var tex_size := icon.get_size()
@@ -1288,10 +1289,10 @@ func _rounded_rect_points(rect: Rect2, radius: float, steps: int = 4) -> PackedV
 
 # --- expanded-card action tray ------------------------------------------------------
 
-## The selected card's actions (owner UX 2026-07-19): "See alternate recipes" (when
-## the good has any) opens the minigraph grid; "Encyclopedia entry" deep-links to the
-## good's encyclopedia page. Drawn in world space attached under the card; hit-rects
-## stored in _tray_buttons for _click_at / _update_hover.
+## The selected card's dropdown: supported transport infrastructure on the first row,
+## then the two action pills side by side. Safe fluids show ordinary Pipework rather
+## than also repeating Reinforced Pipework, keeping the row to the intended maximum of
+## road + rail + one pipe type. Power is the exception and shows only Cables.
 func _draw_card_tray(node: Dictionary, font: Font) -> void:
 	var pos: Vector2 = node["pos"]
 	var half: Vector2 = node["half"]
@@ -1309,19 +1310,50 @@ func _draw_card_tray(node: Dictionary, font: Font) -> void:
 	var btn_h := 44.0 * s
 	var m := 10.0 * s
 	var gap := 8.0 * s
-	# Width grows (capped) with the same factor so the labels stay whole, centred
-	# on the card.
-	var tray_w := half.x * 2.0 * clampf(s, 1.0, 1.7)
+	var transport_keys := focused_transport_infrastructure_keys(
+		str(node.get("good_id", "")), str(node.get("good_type", "")))
+	# Infrastructure icons remain approximately 40 screen pixels while zooming, up
+	# to the same 3x safety cap as the rest of the tray.
+	var icon_s := clampf(1.0 / maxf(_view_zoom, 0.001), 1.0, 3.0)
+	var icon_size := 40.0 * icon_s
+	var icon_gap := 6.0 * icon_s
+	var transport_h := icon_size + 12.0 * s
+	# The old card-width tray forced the actions into a vertical stack. A wider
+	# surface gives the three-icon row air and keeps both actions on one line.
+	var icon_run_w := float(transport_keys.size()) * icon_size \
+		+ float(maxi(0, transport_keys.size() - 1)) * icon_gap
+	var tray_w := maxf(520.0 * s, icon_run_w + m * 2.0)
 	var tray := Rect2(pos.x - tray_w * 0.5, pos.y + half.y + 8.0,
-		tray_w, m * 2.0 + entries.size() * btn_h + (entries.size() - 1) * gap)
+		tray_w, m * 2.0 + transport_h + gap + btn_h)
 	draw_colored_polygon(_rounded_rect_points(tray, 10.0 * s), Color(_CARD_BG.r, _CARD_BG.g, _CARD_BG.b, 0.97))
 	var rim := _rounded_rect_points(tray, 10.0 * s)
 	rim.append(rim[0])
 	draw_polyline(rim, _GOLD, 1.8 * s, true)
 
+	# Transport row — icons only, matching the infrastructure art already used by
+	# the build/map panels. It is informative rather than clickable.
+	var icon_x := tray.get_center().x - icon_run_w * 0.5
+	var icon_y := tray.position.y + m + (transport_h - icon_size) * 0.5
+	for key_value in transport_keys:
+		var key := str(key_value)
+		var icon_rect := Rect2(Vector2(icon_x, icon_y), Vector2(icon_size, icon_size))
+		var building: Dictionary = Catalog.get_building_by_internal_name(key)
+		var texture := InfraIcons.texture_for(str(building.get("id", "")), key)
+		if texture != null:
+			draw_texture_rect(texture, icon_rect, false)
+		else:
+			draw_colored_polygon(_rounded_rect_points(icon_rect, 6.0 * s), Color(_PILL_NAVY, 0.96))
+			draw_string(font, Vector2(icon_rect.position.x, icon_rect.get_center().y + 6.0 * s),
+				key.left(1).to_upper(), HORIZONTAL_ALIGNMENT_CENTER, icon_rect.size.x,
+				int(round(17.0 * s)), _CREAM)
+		icon_x += icon_size + icon_gap
+
+	var action_y := tray.position.y + m + transport_h + gap
+	var inner_w := tray.size.x - m * 2.0
+	var action_w := (inner_w - gap * float(maxi(0, entries.size() - 1))) / float(maxi(1, entries.size()))
 	for i in range(entries.size()):
-		var btn := Rect2(tray.position + Vector2(m, m + i * (btn_h + gap)),
-			Vector2(tray.size.x - m * 2.0, btn_h))
+		var btn := Rect2(Vector2(tray.position.x + m + float(i) * (action_w + gap), action_y),
+			Vector2(action_w, btn_h))
 		var hovered := _hover_tray == i
 		var bg := Color("#15304a") if hovered else _PILL_NAVY
 		draw_colored_polygon(_rounded_rect_points(btn, 8.0 * s), bg)
@@ -1333,6 +1365,24 @@ func _draw_card_tray(node: Dictionary, font: Font) -> void:
 			HORIZONTAL_ALIGNMENT_CENTER, btn.size.x, int(round(17.0 * s)),
 			Color("#f3f8fd") if hovered else _CREAM)
 		_tray_buttons.append({"rect": btn, "action": str((entries[i] as Dictionary)["action"])})
+
+
+## Canonical display keys for the selected good's transport row. Routing uses
+## singular `rail`; infrastructure art/buildings use plural `rails`.
+static func focused_transport_infrastructure_keys(good_id: String, good_type: String = "") -> Array[String]:
+	if good_type == "power" or str(Catalog.get_good(good_id).get("good_type", "")) == "power":
+		return ["cables"]
+	var supported: Array = Catalog.route_infra_for_good(good_id).get("modes", [])
+	var keys: Array[String] = []
+	if supported.has("roads"):
+		keys.append("roads")
+	if supported.has("rail"):
+		keys.append("rails")
+	if supported.has("pipes"):
+		keys.append("pipes")
+	elif supported.has("reinf_pipes"):
+		keys.append("reinf_pipes")
+	return keys
 
 
 # --- alternate-recipes minigraph grid -----------------------------------------------
@@ -1596,7 +1646,7 @@ func _draw_grid_good(rect: Rect2, good_id: String, internal: String, display: St
 	var isz := rect.size.y - pad * 2.0
 	var chip := Rect2(rect.position + Vector2(12.0, pad), Vector2(isz, isz))
 	draw_colored_polygon(_rounded_rect_points(chip, 8.0), _CREAM)
-	var icon: Texture2D = GoodIcons.texture_for(good_id, internal, not big)
+	var icon: Texture2D = GoodIcons.texture_for_size(good_id, internal, isz)
 	if icon != null:
 		var tex_size := icon.get_size()
 		var fit := minf((chip.size.x - 8.0) / tex_size.x, (chip.size.y - 8.0) / tex_size.y)

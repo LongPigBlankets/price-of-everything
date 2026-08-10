@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://ctv2cshg1iarg"]
+
+[ext_resource type="Script" path="res://tools/stockpile_mapmode_shot.gd" id="1"]
+
+[node name="StockpileMapmodeShot" type="Node2D"]
+script = ExtResource("1")

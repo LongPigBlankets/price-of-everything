@@ -10,6 +10,11 @@
 		{ "building_id": "b_002", "recipe_id": "r_005", "tile_id": "tile_5_10", "output_to": "market" },
 		{ "building_id": "b_003", "recipe_id": "r_004", "tile_id": "tile_5_10" }
 	],
+	"labour": {
+		"multiplier": 1.2,
+		"output_pressure_pct": 10.0,
+		"idle_pay_share": 0.5
+	},
 	"land": {
 		"tile_6_8": 50,
 		"tile_7_10": 50,

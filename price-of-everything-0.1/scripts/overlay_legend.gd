@@ -33,6 +33,25 @@ const WATER_LEGEND_ROWS: Array = [
 	{"color": WATER_DESAL_COLOR, "text": "Coastal — desalination sites"},
 ]
 
+# Stockpile mode: storage pressure by fill level. Colours come from the overlay itself so the
+# key can never drift from what is actually on the map.
+const StockpileOverlay := preload("res://scripts/stockpile_overlay.gd")
+const STOCKPILE_LEGEND_ROWS: Array = [
+	{"color": StockpileOverlay.LIGHT_GREEN, "text": "Holding stock"},
+	{"color": StockpileOverlay.AMBER, "text": "Over 80% full"},
+	{"color": StockpileOverlay.RED, "text": "95%+ full"},
+	{"color": StockpileOverlay.RED_FLASH, "text": "Flashing - goods turned away last turn"},
+]
+
+# Ownership mode: each tile is 20 bands (MatchState.MAX_TILE_LAND / LAND_PATCH_SIZE) filled from
+# the bottom, so the blue stack IS the percentage of the tile you hold.
+const OwnershipOverlay := preload("res://scripts/ownership_overlay.gd")
+const OWNERSHIP_LEGEND_ROWS: Array = [
+	{"color": OwnershipOverlay.DARK_GREY, "text": "Not yours"},
+	{"color": OwnershipOverlay.MEDIUM_BLUE, "text": "Owned, still empty"},
+	{"color": OwnershipOverlay.LIGHT_BLUE, "text": "Owned and built on (half-width)"},
+]
+
 @onready var entries_vbox: VBoxContainer = $MarginContainer/VBoxContainer/EntriesVBox
 @onready var title_label: Label = $MarginContainer/VBoxContainer/TitleLabel
 
@@ -70,6 +89,10 @@ func _on_selections_changed(mode: int, _selections: Array) -> void:
 		_rebuild_deposits()
 	elif mode == MapMode.Mode.WATER:
 		_rebuild_water()
+	elif mode == MapMode.Mode.STOCKPILE:
+		_rebuild_stockpile()
+	elif mode == MapMode.Mode.OWNERSHIP:
+		_rebuild_ownership()
 	show()
 
 func _on_mode_cleared() -> void:
@@ -149,6 +172,30 @@ func _rebuild_water() -> void:
 		swatch.color = row.color
 		label.text = row.text
 
+# --- Stockpile mode ---
+
+func _rebuild_stockpile() -> void:
+	_clear_entries()
+	for row in STOCKPILE_LEGEND_ROWS:
+		var entry := LegendEntryScene.instantiate()
+		entries_vbox.add_child(entry)
+		(entry.get_node("ColourSwatch") as ColorRect).color = row.color
+		(entry.get_node("NameLabel") as Label).text = row.text
+
+# --- Ownership mode ---
+
+func _rebuild_ownership() -> void:
+	_clear_entries()
+	for row in OWNERSHIP_LEGEND_ROWS:
+		var entry := LegendEntryScene.instantiate()
+		entries_vbox.add_child(entry)
+		(entry.get_node("ColourSwatch") as ColorRect).color = row.color
+		(entry.get_node("NameLabel") as Label).text = row.text
+	var note := LegendEntryScene.instantiate()
+	entries_vbox.add_child(note)
+	(note.get_node("ColourSwatch") as ColorRect).color = Color(0, 0, 0, 0)
+	(note.get_node("NameLabel") as Label).text = "A band is 5%; built climbs left, then right"
+
 # --- Helpers ---
 
 func _get_mode_name(mode: int) -> String:
@@ -167,5 +214,9 @@ func _get_mode_name(mode: int) -> String:
 			return "Logistics"
 		MapMode.Mode.SURVEYING:
 			return "Surveying"
+		MapMode.Mode.STOCKPILE:
+			return "Stockpile"
+		MapMode.Mode.OWNERSHIP:
+			return "Ownership"
 		_:
 			return "Overlay"

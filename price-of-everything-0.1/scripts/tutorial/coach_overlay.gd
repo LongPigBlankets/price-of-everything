@@ -10,6 +10,7 @@ signal advanced           # info-card "Next" pressed
 signal skipped            # "Skip Tutorial" pressed
 signal choice_made(goto)  # a branch choice button pressed (goto = target step id)
 
+const RecipeFlowPanelScript := preload("res://scripts/tutorial/tutorial_recipe_flow_panel.gd")
 const DIM := Color(0, 0, 0, 0.6)
 const GLOW := Color(0.98, 0.80, 0.42)  # warm gold spotlight glow
 
@@ -25,6 +26,7 @@ const IRIS_GROW := 90.0
 
 var _pulse := 0.0                      # drives the animated glow pulse
 var _no_dim := false                   # true = no dim/block (card only), so the map stays visible + interactive
+var _spotlight_passthrough := true      # false keeps a highlighted control read-only for an explanation step
 var _card_side := ""                   # "right" = prefer the bottom-right corner for the card
 var _hole: Rect2 = Rect2()             # SETTLED spotlight rect in screen space (empty = full dim)
 var _reveal := 1.0                     # 0→1 settle of the SPOTLIGHT for the current step
@@ -40,16 +42,19 @@ var _card: PanelContainer = null
 var _eyebrow: Label = null
 var _title: Label = null
 var _body: Label = null
+var _skip_btn: LinkButton = null
 var _next_btn: Button = null
+var _footer: HBoxContainer = null
 var _choices_box: VBoxContainer = null
 var _spot: Dictionary = {}              # the current step's spotlight dict (for re-finding)
 var _reresolve_t := 0.0                 # throttle for re-finding the target as panels settle
 var _scrolled_node: Control = null      # the node we've already scrolled into view
-var _mode := ""                         # "" normal · "welcome" centred intro panel · "annotate" HUD primer
+var _mode := ""                         # "" normal · "welcome" intro · "annotate" HUD primer · "recipe_flow" diagram
 var _welcome_card: PanelContainer = null
 var _welcome_title: Label = null
 var _welcome_body: VBoxContainer = null
 var _welcome_btn: Button = null
+var _recipe_flow_panel = null
 var _annot_items: Array = []            # [{ref, side, label}] — HUD-primer labels + their leader-line targets
 var _hint_items: Array = []             # left-edge fixed hint Labels (no leader line)
 
@@ -66,11 +71,16 @@ func _ready() -> void:
 		theme = DS.theme
 	set_process(false)
 	_build_card()
+	_build_recipe_flow_panel()
 
 
 # Only "solid" (dimmed) area is hit — the spotlight hole passes clicks through to the
 # HUD beneath. The card is a child Control and is hit-tested independently.
 func _has_point(point: Vector2) -> bool:
+	# Some explanatory spotlights identify a control without asking the player to use it.
+	# Keep the cut-out visible, but let this overlay swallow clicks inside it.
+	if _hole.has_area() and not _spotlight_passthrough:
+		return true
 	# no_dim + a hole (e.g. "explore the Encyclopedia"): don't dim, but still restrict clicks
 	# to the spotlit element — the player sees the whole viewport yet can only click the target.
 	if _no_dim and _hole.has_area():
@@ -306,6 +316,7 @@ func refresh_spotlight() -> void:
 ## of the query does not happen under a stale spotlight.
 func release_spotlight_and_dim() -> void:
 	_no_dim = true
+	_spotlight_passthrough = true
 	_spot = {}
 	_target_node = null
 	_virtual_spot = false
@@ -331,8 +342,23 @@ func show_step(step: Dictionary, index: int, total: int) -> void:
 	visible = true
 	_mode = str(step.get("mode", ""))
 	_no_dim = bool(step.get("no_dim", false))
+	_spotlight_passthrough = bool(step.get("spotlight_passthrough", true))
 	_card_side = str(step.get("card_side", ""))   # "right" prefers the bottom-right corner
 	_clear_annotations()
+	if _recipe_flow_panel != null:
+		_recipe_flow_panel.hide()
+
+	# "recipe_flow": a large two-page production diagram. The child panel owns its
+	# staggered phase-two reveal; the overlay supplies the same dim as other coach cards.
+	if _mode == "recipe_flow":
+		_card.visible = false
+		_welcome_card.visible = false
+		_recipe_flow_panel.present(step, index, total)
+		_spot = {}
+		_target_node = null
+		_hole = Rect2()
+		_begin_reveal(Rect2())
+		return
 
 	# "welcome": a centred modal intro panel — no corner card, no spotlight.
 	if _mode == "welcome":
@@ -366,6 +392,8 @@ func show_step(step: Dictionary, index: int, total: int) -> void:
 		b.pressed.connect(func() -> void: choice_made.emit(goto))
 		_choices_box.add_child(b)
 	# Next is for plain info steps only (hidden when this is a choice step).
+	_skip_btn.visible = not bool(step.get("hide_skip", false))
+	_next_btn.text = str(step.get("next_label", "Next"))
 	_next_btn.visible = str(step.get("advance", "auto")) == "next" and choices.is_empty()
 
 	# "annotate": a HUD primer — full dim, the corner card centred, plus labels + leader
@@ -486,23 +514,31 @@ func _build_card() -> void:
 	_card.custom_minimum_size = Vector2(460, 0)
 	add_child(_card)
 
+	# CoachCard already supplies 24px horizontal / 20px vertical padding. Keep another
+	# 10px below the footer so its navigation sits 30px above the panel edge.
 	var margin := MarginContainer.new()
-	for s in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + s, _sp("LG", 18))
+	margin.add_theme_constant_override("margin_bottom", 10)
 	_card.add_child(margin)
 
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", _sp("SM", 8))
+	col.add_theme_constant_override("separation", _sp("XS", 4))
 	margin.add_child(col)
 
+	var eyebrow_row := HBoxContainer.new()
+	col.add_child(eyebrow_row)
 	_eyebrow = Label.new()
 	_eyebrow.theme_type_variation = &"Caption"
-	col.add_child(_eyebrow)
+	_eyebrow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	eyebrow_row.add_child(_eyebrow)
 
+	var title_row := HBoxContainer.new()
+	title_row.add_theme_constant_override("separation", _sp("SM", 8))
+	col.add_child(title_row)
 	_title = Label.new()
 	_title.theme_type_variation = &"Section"
 	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(_title)
+	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(_title)
 
 	_body = Label.new()
 	_body.theme_type_variation = &"Body"
@@ -515,29 +551,36 @@ func _build_card() -> void:
 	_choices_box.add_theme_constant_override("separation", _sp("XS", 4))
 	col.add_child(_choices_box)
 
-	var buttons := HBoxContainer.new()
-	buttons.add_theme_constant_override("separation", _sp("SM", 8))
-	col.add_child(buttons)
+	# Navigation gets a dedicated footer below all copy and choices. The expanding
+	# centre spacer keeps Skip and Next at opposite edges even on short cards.
+	_footer = HBoxContainer.new()
+	_footer.name = "CoachFooter"
+	_footer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_footer.add_theme_constant_override("separation", _sp("SM", 8))
+	col.add_child(_footer)
 
-	# Tertiary "skip" link, bottom-left, underlined and muted.
-	var skip := LinkButton.new()
-	skip.text = "Skip tutorial"
-	skip.underline = LinkButton.UNDERLINE_MODE_ALWAYS
-	skip.focus_mode = Control.FOCUS_NONE
-	skip.add_theme_color_override("font_color", Color(0.995, 0.930, 0.763, 0.72))
-	skip.add_theme_color_override("font_hover_color", Color(0.995, 0.930, 0.763, 1.0))
-	skip.pressed.connect(func() -> void: skipped.emit())
-	buttons.add_child(skip)
+	_skip_btn = LinkButton.new()
+	_skip_btn.name = "CoachSkipButton"
+	_skip_btn.text = "Skip tutorial"
+	_skip_btn.underline = LinkButton.UNDERLINE_MODE_ALWAYS
+	_skip_btn.focus_mode = Control.FOCUS_NONE
+	_skip_btn.add_theme_color_override("font_color", Color(0.995, 0.930, 0.763, 0.72))
+	_skip_btn.add_theme_color_override("font_hover_color", Color(0.995, 0.930, 0.763, 1.0))
+	_skip_btn.pressed.connect(func() -> void: skipped.emit())
+	_footer.add_child(_skip_btn)
 
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	buttons.add_child(spacer)
+	var nav_spacer := Control.new()
+	nav_spacer.name = "CoachNavSpacer"
+	nav_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_footer.add_child(nav_spacer)
 
 	_next_btn = Button.new()
+	_next_btn.name = "CoachNextButton"
 	_next_btn.text = "Next"
 	_next_btn.theme_type_variation = &"Silver"
+	_next_btn.custom_minimum_size = Vector2(86, 40)
 	_next_btn.pressed.connect(func() -> void: advanced.emit())
-	buttons.add_child(_next_btn)
+	_footer.add_child(_next_btn)
 
 	_build_welcome_panel()
 
@@ -597,62 +640,112 @@ func _build_welcome_panel() -> void:
 	wbtns.add_child(_welcome_btn)
 
 
-# Park the card in the first screen corner that clears the spotlight, hugging its
-# content height (never force-grown), and always fully on-screen.
+func _build_recipe_flow_panel() -> void:
+	_recipe_flow_panel = RecipeFlowPanelScript.new()
+	_recipe_flow_panel.advanced.connect(func() -> void: advanced.emit())
+	_recipe_flow_panel.skipped.connect(func() -> void: skipped.emit())
+	add_child(_recipe_flow_panel)
+
+
+# Park the card at a raised lower-left, middle-left or middle-right position, avoiding
+# both the spotlight and major HUD panels. If the preferred slot collides with the
+# Balance panel, the card moves under the top bar at the centre instead.
 func _reposition_card() -> void:
 	if _card == null:
 		return
-	var pad := 40.0
+	var pad := 24.0
+	var top_safe := 110.0
+	var bottom_safe := 125.0
 	# True content size: keep the 460 min width; height is the wrapped content height,
 	# clamped so a very long body can never exceed the screen.
 	var card_size := _card.get_combined_minimum_size()
 	card_size.x = maxf(card_size.x, 460.0)
-	card_size.y = minf(card_size.y, maxf(size.y - 2.0 * pad, 0.0))
+	card_size.y = minf(card_size.y, maxf(size.y - top_safe - bottom_safe, 0.0))
 
 	var left_x := pad
 	var right_x := size.x - card_size.x - pad
-	var top_y := pad
-	var bottom_y := size.y - card_size.y - pad
+	var middle_y := clampf((size.y - card_size.y) * 0.5, top_safe,
+		maxf(size.y - bottom_safe - card_size.y, top_safe))
+	var lower_y := maxf(top_safe, size.y - bottom_safe - card_size.y - 36.0)
+	var centre_top := Vector2((size.x - card_size.x) * 0.5, top_safe)
 	var candidates := [
-		Vector2(left_x, bottom_y), Vector2(right_x, bottom_y),
-		Vector2(left_x, top_y), Vector2(right_x, top_y),
+		Vector2(left_x, lower_y), Vector2(left_x, middle_y),
+		Vector2(right_x, middle_y), centre_top,
 	]
 	match _card_side:
-		# A step can ask for a different corner first (e.g. the empire-view lesson:
-		# the default bottom-left corner sits exactly on the port row it describes).
 		"right":
 			candidates = [
-				Vector2(right_x, bottom_y), Vector2(left_x, bottom_y),
-				Vector2(right_x, top_y), Vector2(left_x, top_y),
+				Vector2(right_x, middle_y), Vector2(left_x, lower_y),
+				Vector2(left_x, middle_y), centre_top,
 			]
 		"top_right":
 			candidates = [
-				Vector2(right_x, top_y), Vector2(left_x, top_y),
-				Vector2(right_x, bottom_y), Vector2(left_x, bottom_y),
+				Vector2(right_x, middle_y), Vector2(left_x, middle_y),
+				Vector2(left_x, lower_y), centre_top,
+			]
+		"center_top":
+			candidates = [
+				centre_top, Vector2(left_x, lower_y), Vector2(left_x, middle_y),
+				Vector2(right_x, middle_y),
 			]
 		_:
 			pass
+	var money_rect := _visible_named_rect(["MoneyPanel", "Balance"])
+	if money_rect.has_area() and Rect2(candidates[0], card_size).intersects(money_rect):
+		candidates.erase(centre_top)
+		candidates.push_front(centre_top)
 	var pos: Vector2 = candidates[0]
+	var blocked_rects := _visible_ui_rects()
 	if _hole.has_area():
-		var chosen := false
-		for c in candidates:
-			if not Rect2(c, card_size).intersects(_hole):
-				pos = c
-				chosen = true
+		blocked_rects.append(_hole.grow(12.0))
+	for candidate in candidates:
+		var candidate_rect := Rect2(candidate, card_size)
+		var clear := true
+		for blocked in blocked_rects:
+			if candidate_rect.intersects(blocked):
+				clear = false
 				break
-		if not chosen:
-			# All corners overlap a huge spotlight: sit fully above or below the hole.
-			pos = candidates[candidates.size() - 1]
-			var above := _hole.position.y - card_size.y - pad
-			pos.y = above if above >= pad else _hole.end.y + pad
+		if clear:
+			pos = candidate
+			break
 	# Clamp fully on-screen so the bottom/edges are never cut off.
 	pos.x = clampf(pos.x, pad, maxf(size.x - card_size.x - pad, pad))
-	pos.y = clampf(pos.y, pad, maxf(size.y - card_size.y - pad, pad))
+	pos.y = clampf(pos.y, top_safe, maxf(size.y - card_size.y - bottom_safe, top_safe))
 
 	_card.position = pos
 	# Width via custom_minimum_size; let the container hug content height.
 	_card.custom_minimum_size = Vector2(card_size.x, 0.0)
 	_card.size = card_size
+
+
+func _visible_named_rect(node_names: Array) -> Rect2:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return Rect2()
+	for node_name in node_names:
+		var control := scene.find_child(str(node_name), true, false) as Control
+		if control != null and control.is_visible_in_tree():
+			return control.get_global_rect().grow(12.0)
+	return Rect2()
+
+
+func _visible_ui_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	var scene := get_tree().current_scene
+	if scene == null:
+		return rects
+	# Deliberately limited to large surfaces. Small spotlight targets and HUD widgets
+	# remain readable through the cut-out and should not disqualify an entire side.
+	for node_name in [
+		"TopBar", "BottomMenuPanel", "BuildingDetailPanel", "BuildingDetailPanelV2",
+		"TileInfoPanel", "ConstructPanel", "ConstructPanelV2", "ResourcePanel",
+		"MarketPanel", "MapModesPanel", "MoneyPanel", "ResearchPanel",
+		"BuildingLedgerPanel", "PeoplePanel", "EmpireView", "SearchOverlay",
+	]:
+		var control := scene.find_child(node_name, true, false) as Control
+		if control != null and control.is_visible_in_tree():
+			rects.append(control.get_global_rect().grow(12.0))
+	return rects
 
 
 # ── Welcome + HUD-primer modes ─────────────────────────────────────────────────────
@@ -699,7 +792,7 @@ func _defer_center_welcome() -> void:
 	_center_welcome()
 
 
-# Park the annotate card in the upper-middle, clear of the top-bar and bottom-bar labels.
+# Park the annotate card midway down the left edge, clear of both HUD bars.
 func _center_card_for_annotate() -> void:
 	if _card == null:
 		return
@@ -707,7 +800,9 @@ func _center_card_for_annotate() -> void:
 	s.x = maxf(s.x, 460.0)
 	_card.custom_minimum_size = Vector2(s.x, 0.0)
 	_card.size = s
-	_card.position = Vector2((size.x - s.x) * 0.5, clampf(size.y * 0.32 - s.y * 0.5, 40.0, maxf(size.y - s.y - 40.0, 40.0)))
+	var x := 24.0 if _card_side == "left" else (size.x - s.x) * 0.5
+	_card.position = Vector2(x, clampf((size.y - s.y) * 0.5, 110.0,
+		maxf(size.y - s.y - 125.0, 110.0)))
 
 
 # Build the HUD-primer child Labels: one per target (pinned near its HUD node with a leader

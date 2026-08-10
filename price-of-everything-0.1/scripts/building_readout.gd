@@ -306,6 +306,9 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	var has_inputs := not (recipe.get("inputs", []) as Array).is_empty()
 	var rs := run_state(building, recipe, is_infrastructure)
 	var tile_id := str(building.get("tile_id", ""))
+	var upgrade_progress := MatchState.upgrade_progress_snapshot(iid)
+	var upgrade_blocked := bool(upgrade_progress.get("blocked", false))
+	var upgrade_fault_label := "Cannot deliver upgrade materials"
 	# A power PRODUCER whose "missing" entry is power = the cable export cap blocked its
 	# dispatch (production._can_run_recipe's can_produce branch) — not an input problem.
 	var grid_blocked := false
@@ -342,8 +345,14 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		rows.append(_row("bad", "warn", "Cannot run", "Not enough inputs to run the recipe this turn."))
 	elif missing:
 		rows.append(_row("bad", "warn", "Critical fault", "Missing required inputs — the recipe could not run this turn."))
+	elif upgrade_blocked:
+		rows.append(_row("bad", "box", upgrade_fault_label, str(upgrade_progress.get("error", "The upgrade is unable to continue."))))
 	else:
 		rows.append(_row("ok", "check", "No critical faults", "Operating normally." if ran else "Ready to run."))
+	# Keep the upgrade fault visible alongside a production fault instead of letting the first
+	# red row hide a separate stalled project.
+	if upgrade_blocked and (rows.is_empty() or str((rows[0] as Dictionary).get("label", "")) != upgrade_fault_label):
+		rows.append(_row("bad", "box", upgrade_fault_label, str(upgrade_progress.get("error", "The upgrade is unable to continue."))))
 
 	# 2) power
 	if produces_power:
@@ -399,13 +408,21 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 				detail += " Expand the warehouse (Stockpile tab) or clear stock."
 				rows.append(_row("bad" if input_c == BuildingStatus.STATUS_RED else "warn", "box",
 					"Stockpile over-utilised", detail))
-		# 3c) a fluid/gas input with no pipeline built to its source can never be delivered
-		var pipe := _pipe_problem(building, recipe)
-		if not pipe.is_empty():
-			if bool(pipe.get("reinforced", false)):
-				rows.append(_row("bad", "pipe", "No input Reinforced Pipeline", "This hazardous liquid/gas needs a reinforced pipeline from its source — none is built."))
+		# 3c) Fluid/gas transport. Road tankers and rail tank wagons are valid, so missing
+		# pipework is only RED when there is no supported route at all. A working overland
+		# route gets an AMBER cost recommendation because pipework is still much cheaper.
+		for fluid_problem in _fluid_input_transport_problems(building, recipe):
+			var gid := str((fluid_problem as Dictionary).get("good_id", ""))
+			var good_name := Catalog.get_display_name(gid)
+			var reinforced := bool((fluid_problem as Dictionary).get("reinforced", false))
+			var pipe_name := "Reinforced Pipeline" if reinforced else "Pipeline"
+			var pipe_phrase := "a reinforced pipeline" if reinforced else "a pipeline"
+			if bool((fluid_problem as Dictionary).get("blocked", false)):
+				rows.append(_row_good("bad", "pipe", gid, "No transport route for %s" % good_name,
+					"%s cannot reach this building. Connect it to its source or the market port by road, rail or %s." % [good_name, pipe_phrase]))
 			else:
-				rows.append(_row("bad", "pipe", "No input pipeline", "This liquid input needs a pipeline from its source — none is built."))
+				rows.append(_row_good("warn", "pipe", gid, "Transport could be cheaper using %s" % pipe_name,
+					"%s can reach this building by road or rail, but %s would carry it more cheaply." % [good_name, pipe_phrase]))
 		# 3d) how far the inputs travel
 		var far := _input_distance_text(building, recipe)
 		if not far.is_empty():
@@ -422,7 +439,7 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		var dest_name := str(route.get("destination", "the destination"))
 		if not bool(route.get("reachable", true)):
 			rows.append(_row("bad", "truck", "Outputs cannot reach destination",
-				"Check infrastructure and connection to %s. Nothing ships (and no transport is charged) until the route exists — fluids need a pipe or reinforced-pipe network." % dest_name))
+				"Check infrastructure and connection to %s. Nothing ships (and no transport is charged) until a road, rail or suitable pipe route exists." % dest_name))
 		else:
 			var reach := "easily reached" if turns <= 1 else ("moderate to reach" if turns <= 4 else "hard to reach")
 			var reach_tone := "ok" if turns <= 1 else ("warn" if turns <= 4 else "bad")
@@ -534,21 +551,71 @@ static func _input_sourcing_row(building: Dictionary, recipe: Dictionary, ran: b
 			tone = "warn"  # (some) bought from the market
 	return {"tone": tone, "detail": _input_sourcing_text(building, recipe)}
 
-# A fluid/gas input that requires a pipeline but can't be delivered (nothing in stock or inbound).
-static func _pipe_problem(building: Dictionary, recipe: Dictionary) -> Dictionary:
+# Fluid/gas input route diagnostics. The ordinary input shortage rows say whether the recipe
+# can run THIS turn; this helper answers the different question of whether the next batch has a
+# route. Default inputs come from the market. "Tile stockpile only" inputs instead use any
+# player producer explicitly routing that good here.
+static func _fluid_input_transport_problems(building: Dictionary, recipe: Dictionary) -> Array:
+	var problems: Array = []
 	var tile := str(building.get("tile_id", ""))
+	var iid := str(building.get("instance_id", ""))
+	if tile == "":
+		return problems
 	for inp in recipe.get("inputs", []):
-		var gid := str(inp.get("good_id", ""))
-		if gid != "" and Catalog.requires_pipeline(gid) and not _can_pipe_input(tile, gid):
-			return {"reinforced": Catalog.get_transport_class(gid) == "hazard_liquid"}
-	return {}
+		var gid := str((inp as Dictionary).get("good_id", ""))
+		if gid == "" or not Catalog.requires_pipeline(gid):
+			continue
+		var routes: Array = []
+		var supplied_on_tile := false
+		if MatchState.is_input_tile_only(iid, gid):
+			for producer in _producers_for_input(inp, iid, tile):
+				var source_tile := str((producer as Dictionary).get("tile_id", ""))
+				if source_tile == tile:
+					supplied_on_tile = true
+					break
+				var producer_route := TransportService.route(source_tile, tile, gid)
+				if TransportService.route_is_reachable(producer_route):
+					routes.append(producer_route)
+			if supplied_on_tile:
+				continue
+			# With no selected external source, the generic starvation diagnostic already
+			# explains the problem. Do not invent a missing-pipe fault for stockpile-only mode.
+			if routes.is_empty():
+				continue
+		else:
+			var quote := TransportService.quote_market_buy(tile, gid, 1, MatchState.seaport_would_cover(gid))
+			if not quote.is_empty():
+				routes.append(quote.get("route", {}))
 
-static func _can_pipe_input(tile: String, gid: String) -> bool:
-	if Stockpile.get_at_tile(tile, gid) > 0:
+		var reinforced := Catalog.get_transport_class(gid) == "hazard_liquid"
+		if routes.is_empty():
+			problems.append({"good_id": gid, "reinforced": reinforced, "blocked": true})
+			continue
+		var has_suitable_pipe := false
+		for route in routes:
+			if _route_uses_suitable_pipe(route as Dictionary, tile, gid):
+				has_suitable_pipe = true
+				break
+		if not has_suitable_pipe:
+			problems.append({"good_id": gid, "reinforced": reinforced, "blocked": false})
+	return problems
+
+
+static func _route_uses_suitable_pipe(route: Dictionary, endpoint_tile: String, good_id: String) -> bool:
+	var legs: Array = route.get("legs", [])
+	for leg in legs:
+		var mode := str((leg as Dictionary).get("mode", ""))
+		if mode != "reinf_pipes" and not (mode == "pipes" and Catalog.get_transport_class(good_id) != "hazard_liquid"):
+			return false
+	if not legs.is_empty():
 		return true
-	for s in MatchState.get_inbound_transport_shipments(tile, gid):
-		if int(s.get("qty", 0)) > 0:
-			return true
+	# Same-tile market delivery has no legs. In that case the terminal's actual mode
+	# distinguishes a piped delivery from a road/rail loading bay.
+	if Catalog.tile_has_infrastructure(endpoint_tile, "reinf_pipes"):
+		return true
+	if Catalog.get_transport_class(good_id) != "hazard_liquid" \
+			and Catalog.tile_has_infrastructure(endpoint_tile, "pipes"):
+		return true
 	return false
 
 # --- helpers ------------------------------------------------------------------------------
@@ -875,7 +942,7 @@ static func company_name(owner_id: String) -> String:
 
 # Purchase price shown on the NPC Buy button (matches the Buildings-market listing).
 static func buy_price(building: Dictionary) -> int:
-	return int(round(MatchState.purchase_cost_after_advisor(float(BuildingPrice.sale_price(building)))))
+	return MatchState.building_purchase_price(building)
 
 # What you recover on Sell — the building's market list value.
 static func sell_value(building: Dictionary) -> int:
@@ -912,11 +979,9 @@ static func construction(building: Dictionary) -> Dictionary:
 	}
 
 
-## Delivery blockers for a building UNDER CONSTRUCTION: a build material that must travel by
-## pipeline (a liquid/gas) can only reach the site if that tile carries a suitable pipe. If it
-## doesn't, the shipment can never be created and the build stalls forever — so surface it as a
-## diagnostics row (one per blocked material), mirroring the run-time "No input pipeline" rows.
-## Takes the `constr` dict from construction() (it carries tile_id + the materials list).
+## Transport advice for fluid/gas construction materials. Road and rail can deliver them, so
+## missing pipework is an amber cost warning when an overland route exists and a red blocker only
+## when the market cannot quote any route to the site.
 static func construction_diagnostics(constr: Dictionary) -> Array:
 	var rows: Array = []
 	var tile := str(constr.get("tile_id", ""))
@@ -927,16 +992,18 @@ static func construction_diagnostics(constr: Dictionary) -> Array:
 			continue
 		var gid := str(m.get("good_id", ""))
 		if gid == "" or not Catalog.requires_pipeline(gid):
-			continue   # solids are trucked in — they don't need a pipe
-		if Catalog.tile_can_pipe_good(tile, gid):
-			continue   # the site already carries a pipe that can move this good
+			continue
 		var nm := str(m.get("name", Catalog.get_display_name(gid)))
-		if Catalog.get_transport_class(gid) == "hazard_liquid":
-			rows.append(_row("bad", "pipe", "No reinforced pipeline to deliver %s" % nm,
-				"%s is a hazardous liquid — it can only reach this site by reinforced pipeline, and none is built here. Lay reinforced pipes (or build on a tile that has them) or the build can't finish." % nm))
-		else:
-			rows.append(_row("bad", "pipe", "No pipeline to deliver %s" % nm,
-				"%s is a liquid or gas — it can only reach this site by pipeline, and none is built here. Lay pipes (or build on a tile that has them) or the build can't finish." % nm))
+		var reinforced := Catalog.get_transport_class(gid) == "hazard_liquid"
+		var pipe_name := "Reinforced Pipeline" if reinforced else "Pipeline"
+		var pipe_phrase := "a reinforced pipeline" if reinforced else "a pipeline"
+		var quote := TransportService.quote_market_buy(tile, gid, 1, MatchState.seaport_would_cover(gid))
+		if quote.is_empty():
+			rows.append(_row_good("bad", "pipe", gid, "No transport route to deliver %s" % nm,
+				"%s cannot reach this site. Connect it to the market port by road, rail or %s, or the build cannot finish." % [nm, pipe_phrase]))
+		elif not _route_uses_suitable_pipe(quote.get("route", {}) as Dictionary, tile, gid):
+			rows.append(_row_good("warn", "pipe", gid, "Transport could be cheaper using %s" % pipe_name,
+				"%s can reach this site by road or rail, but %s would carry it more cheaply." % [nm, pipe_phrase]))
 	return rows
 
 # --- Battery storage ------------------------------------------------------------------------

@@ -18,13 +18,34 @@ extends RefCounted
 ## The loan the Money chapter asks the player to take. Small on purpose: the lesson is the
 ## grace period and the repayment tail, not the sum.
 const TUTORIAL_LOAN_AMOUNT := 100
+const WEST_COAST_HANDOFF_CASH := 99999
+
+# Opening transport lesson in Capital City. The motor factory is exactly five
+# adjacent land tiles from Capital Port; the same ordered route is used by the
+# seeded shipment, automatic road reveal and the rail-completion gate.
+const CAPITAL_PORT_TILE := "tile_24_7"
+const CAPITAL_PORT_NORTH_TILE := "tile_24_6"
+const MOTOR_TILE := "tile_25_12"
+const STEEL_TILE := "tile_26_12"
+const CAPITAL_ROUTE_TILES: Array = [
+	"tile_25_12", "tile_25_11", "tile_25_10", "tile_25_9", "tile_24_8", "tile_24_7",
+]
+# The port terminal is supplied, but the player lays rail on the motor-factory tile
+# and the four sections between it and the port. The lesson holds this set in amber
+# instead of relying on every buildable tile exposed by Rail mode.
+const CAPITAL_RAIL_BUILD_TILES: Array = [
+	"tile_25_12", "tile_25_11", "tile_25_10", "tile_25_9", "tile_24_8",
+]
+const CAPITAL_BOARD_TILES: Array = [
+	"tile_25_12", "tile_25_11", "tile_25_10", "tile_25_9", "tile_24_8", "tile_24_7", "tile_26_12",
+]
 
 const BOARD_TILES: Array = [
 	"tile_6_7", "tile_6_6", "tile_7_7", "tile_7_8", "tile_6_8", "tile_5_8", "tile_5_7", "tile_5_9",
 ]
 const PORT_TILE := "tile_5_10"    # Stoneshore Docks — inputs ship in from here (view-only). Pre-seeded with a
-                                  # reinf_pipes terminal (data/starts/tutorial.json) so a single player pipe on
-                                  # the factory tile connects the glass furnace's sodium_hydroxide feed to it.
+								  # reinf_pipes terminal (data/starts/tutorial.json) so a single player pipe on
+								  # the factory tile makes the glass furnace's sodium_hydroxide feed much cheaper.
 # Camera framing (not the interaction whitelist): includes the port so the player can
 # zoom out and see the port -> factory shipment route in the Logistics view.
 const CAMERA_TILES: Array = [
@@ -35,7 +56,8 @@ const CAMERA_TILES: Array = [
 # glass/aluminium is consumed same-tile (no shipping, no oscillating market top-up, flat input bill). Its
 # cables are stripped in data/tile_properties.csv so the "lay a cable for power" lesson still lands here.
 const WINDOW_TILE := "tile_5_9"   # NPC Industrial Goods Factory (windows) — bought + co-located producers
-const GLASS_TILE := WINDOW_TILE   # glass furnace built on the factory tile (needs a reinf pipe for NaOH)
+const WINDOW_REDIRECT_TILE := "tile_6_9" # Stoneshore Coast — east of the factory, coastal but not a port
+const GLASS_TILE := WINDOW_TILE   # glass furnace built on the factory tile (reinf pipe is cheapest for NaOH)
 const ALU_TILE := WINDOW_TILE     # aluminium furnace built on the factory tile (chlorine needs a reinf pipe)
 const INPUT_TILE := "tile_5_7"    # rural + sand(3000) deposit — the sand on the board (Encyclopedia reference)
 const POWER_TILE := "tile_6_6"    # rural, adjacent — build your own power plant (deeper integration)
@@ -47,7 +69,7 @@ const STUB_TILE := "tile_6_8"     # hill, unsurveyed coal deposit (deeper integr
 #   (sand+NaOH+limestone -> 28 glass), r_054 High Strength Glassmaking (silica+alumina+sulphur -> 48 glass,
 #   research-gated, no NaOH), AND r_232 Bauxite Carbochlorination
 #   (bauxite+graphite+chlorine -> 20 aluminium; Tier-I Metallurgy unlock; chlorine needs reinforced pipes)
-#   b_018 reinf_pipes (£50, 1 turn — the only mode that carries NaOH) · b_003/r_004 coal power plant (deferred)
+#   b_018 reinf_pipes (£50, 1 turn — the cheapest mode for NaOH) · b_003/r_004 coal power plant (deferred)
 
 ## Balance-sensitive numbers in the copy (kit costs, market prices, recipe
 ## quantities, land targets) are COMPUTED from the live Catalog/EconomyConfig at
@@ -58,6 +80,7 @@ const STUB_TILE := "tile_6_8"     # hill, unsurveyed coal deposit (deeper integr
 ##   id/chapter/title/body — identity + coach card copy
 ##   setup     : ordered driver actions run on entry
 ##   spotlight : {kind: node_path|node_name|tile|none, ref}
+##   spotlight_passthrough: false highlights a control but keeps it read-only
 ##   lock_panel: true keeps the spotlit panel open + swallows Esc (no stuck state)
 ##   choices   : [{label, goto}] — renders branch buttons; selecting one jumps to `goto`
 ##   goto      : on advance, jump to this step id instead of the next (branch reconverge)
@@ -85,6 +108,7 @@ static func steps() -> Array:
 			"chapter": "Welcome",
 			"title": "Your control panel",
 			"mode": "annotate",
+			"card_side": "left",
 			"body": "A quick tour of the screen. The bar along the bottom is your toolkit — each tool has a keyboard shortcut (the letter in brackets). The top bar is your dashboard: money, victory tracks, the briefing with updates and decisions, your advisors and the menu. You end each turn from the bottom-right. Have a look, then press Next.",
 			"targets": [
 				{ "ref": "ConstructButton", "label": "Build (C)", "side": "above" },
@@ -101,16 +125,192 @@ static func steps() -> Array:
 				{ "ref": "BriefingModule", "label": "Briefing — updates & decisions", "side": "below" },
 				{ "ref": "CouncilModule", "label": "Advisors", "side": "below" },
 				{ "ref": "EncyclopediaButton", "label": "Encyclopedia (X)", "side": "below" },
+				{ "ref": "GoodsGraphModule", "label": "Goods Graph (G)", "side": "below" },
 				{ "ref": "MenuModule", "label": "Main menu", "side": "below" },
 				{ "ref": "EndTurnButton", "label": "End turn", "side": "above" },
 			],
-			"hints": [
-				"Press G to open the Goods Graph",
-				"Press X to open the Encyclopedia search bar",
-				"Press Tab to view your empire at a glance",
-			],
 			"setup": [],
 			"spotlight": { "kind": "none", "ref": "" },
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
+		},
+		{
+			"id": "recipe_inputs_intro",
+			"chapter": "Production",
+			"title": "Buildings run recipes",
+			"mode": "recipe_flow",
+			"diagram_phase": 1,
+			"body": "Buildings run recipes to produce outputs, like rubber. Each recipe requires inputs: power to run and also goods like oxygen and ethylene.",
+			"setup": [],
+			"spotlight": { "kind": "none", "ref": "" },
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
+		},
+		{
+			"id": "recipe_outputs_intro",
+			"chapter": "Production",
+			"title": "Where the output goes",
+			"mode": "recipe_flow",
+			"diagram_phase": 2,
+			"body": "The resulting goods can then be used in construction, sold to the market or used to feed into something else.",
+			"setup": [],
+			"spotlight": { "kind": "none", "ref": "" },
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
+		},
+		{
+			"id": "capital_motor_open",
+			"chapter": "Moving Goods",
+			"title": "Open your motor factory",
+			"body": "This Industrial Goods Factory belongs to you and makes motors. Click the factory card to open it.",
+			"setup": [ { "action": "focus_tile", "tile": MOTOR_TILE } ],
+			"spotlight": { "kind": "node_name", "ref": "BuildingCard_b_007_r_009" },
+			"done": {
+				"wake": [],
+				"decide": { "kind": "building_detail_open", "tile": MOTOR_TILE, "building_id": "b_007", "recipe_id": "r_009" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "capital_motor_route",
+			"chapter": "Moving Goods",
+			"title": "Choose where output goes",
+			"body": "You can send output to a stockpile, where other buildings may use it, to other tiles, or to the market for sale. Press Next.",
+			"setup": [ { "action": "focus_building_on_tile", "tile": MOTOR_TILE, "building_id": "b_007" } ],
+			"spotlight": { "kind": "node_name", "ref": "OutputDestCard" },
+			"spotlight_passthrough": false,
+			"lock_panel": true,
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
+		},
+		{
+			"id": "capital_motor_watch",
+			"chapter": "Moving Goods",
+			"title": "Watch the first shipment",
+			"body": "There is no road or rail on this route yet. End Turn up to five times and watch the motor pentagon move one tile at a time toward Capital Port. Your first profit arrives only when it reaches the port.",
+			"setup": [ { "action": "close_building_detail" }, { "action": "open_logistics" } ],
+			"spotlight": { "kind": "none", "ref": "" },
+			"no_dim": true,
+			"camera": { "tiles": CAPITAL_BOARD_TILES + [CAPITAL_PORT_NORTH_TILE], "grow": 300.0 },
+			"done": {
+				"wake": ["turn_advanced", "stockpile_market_sale_completed"],
+				"decide": { "kind": "filtered_market_sale_since_entry", "tile": MOTOR_TILE, "good": "motor", "turns": 5 },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "capital_money_transport",
+			"chapter": "Moving Goods",
+			"title": "Transporting without roads is slow and inefficient",
+			"body": "Transporting offroad/using unpaved roads is brutal in terms of time and money. This transport section explains how that cost breaks down. Click next when you're ready to see what roads can do.",
+			"setup": [ { "action": "clear_mapmode" }, { "action": "open_money_transport" } ],
+			"spotlight": { "kind": "node_name", "ref": "TransportCostGroup" },
+			"lock_panel": true,
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
+		},
+		{
+			"id": "capital_road_install",
+			"chapter": "Moving Goods",
+			"title": "Roads speed up deliveries",
+			"body": "Roads and rail ship goods overland faster and cheaper. A road has been automatically built between the factory and the port. Roads allow shipments to go 2 tiles each turn instead of the default 1 tile per turn. The 5 tile journey now completes in just 3 turns. Press Next.",
+			"setup": [
+				{ "action": "close_money_panel" },
+				{ "action": "clear_capital_motor_shipments" },
+				{ "action": "restock_motor_inputs", "turns": 4 },
+				{ "action": "install_tutorial_roads" },
+				{ "action": "seed_motor_shipment", "id": "road", "turns": 3 },
+				{ "action": "flash_capital_route" },
+			],
+			"spotlight": { "kind": "none", "ref": "" },
+			"no_dim": true,
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
+		},
+		{
+			"id": "capital_road_watch",
+			"chapter": "Moving Goods",
+			"title": "Factory to port in 3 turns",
+			"body": "Click End Turn until the shipment reaches the port via roads.",
+			"count_step": false,
+			"setup": [ { "action": "open_logistics" } ],
+			"spotlight": { "kind": "none", "ref": "" },
+			"no_dim": true,
+			"done": {
+				"wake": ["turn_advanced", "stockpile_market_sale_completed"],
+				"decide": { "kind": "filtered_market_sale_since_entry", "tile": MOTOR_TILE, "good": "motor", "turns": 3 },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "capital_rail_build",
+			"chapter": "Moving Goods",
+			"title": "Build rail along the route",
+			"body": "Rail is faster and cheaper for heavy solid goods such as motors. The port terminal is ready. Build Rail on the factory tile and the four amber tiles between it and the port, then End Turn to complete the route.",
+			"setup": [
+				{ "action": "close_tile_panel" },
+				{ "action": "clear_mapmode" },
+				{ "action": "install_tutorial_rail_port_terminal" },
+				{ "action": "enter_infra", "infra": "rails" },
+				{ "action": "hold_capital_rail_tiles" },
+			],
+			"spotlight": { "kind": "none", "ref": "" },
+			"no_dim": true,
+			"done": {
+				"wake": ["construction_completed"],
+				"decide": { "kind": "route_has_infra", "tiles": CAPITAL_ROUTE_TILES, "infra": "rails" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "capital_rail_watch",
+			"chapter": "Moving Goods",
+			"title": "Rail cuts it to two turns",
+			"body": "The rail route is complete. End Turn up to two times and watch: rail covers four tiles per turn, so the five-tile journey now takes only two turns. Its per-unit transport price is lower than the road shipment too.",
+			"count_step": false,
+			"setup": [ { "action": "exit_build_mode" }, { "action": "transfer_capital_transport_infrastructure" }, { "action": "clear_capital_motor_shipments" }, { "action": "restock_motor_inputs", "turns": 3 }, { "action": "open_logistics" } ],
+			"spotlight": { "kind": "none", "ref": "" },
+			"no_dim": true,
+			"done": {
+				"wake": ["turn_advanced", "stockpile_market_sale_completed"],
+				"decide": { "kind": "filtered_market_sale_since_entry", "tile": MOTOR_TILE, "good": "motor", "turns": 2 },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "capital_fluids",
+			"chapter": "Moving Goods",
+			"title": "Some goods can use pipework",
+			"body": "Some goods can travel by Pipework or Reinforced Pipework as well as by road or rail. Hydrogen, for example, can use Reinforced Pipework. It is cheaper and keeps traffic off your roads and rail. Press Next.",
+			"setup": [ { "action": "clear_mapmode" }, { "action": "spawn_steel_demo" }, { "action": "focus_building_on_tile", "tile": STEEL_TILE, "building_id": "b_008" } ],
+			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
+			"lock_panel": true,
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
+		},
+		{
+			"id": "capital_port_open",
+			"chapter": "Moving Goods",
+			"title": "Open Capital Port",
+			"body": "Every market export and import also crosses a port. Open Capital Port to inspect the trade charges added there.",
+			"count_step": false,
+			"setup": [ { "action": "close_building_detail" }, { "action": "focus_tile", "tile": CAPITAL_PORT_TILE } ],
+			"spotlight": { "kind": "node_name", "ref": "PortBuildingCard" },
+			"done": {
+				"wake": [],
+				"decide": { "kind": "building_detail_open", "tile": CAPITAL_PORT_TILE, "building_id": "b_004" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "capital_port_costs",
+			"chapter": "Moving Goods",
+			"title": "Read the port terms",
+			"body": "Port charges are based on the market value of what crosses the docks. Throughput congestion can double them, the fee drifts upward each turn, and the standard ad valorem rate rises in the later era. Owning a port halves that rate, but brings upkeep and labour. Always check the live terms rather than assuming yesterday's export or import cost. Press Next.",
+			"count_step": false,
+			"setup": [ { "action": "focus_any_building_on_tile", "tile": CAPITAL_PORT_TILE, "building_id": "b_004" } ],
+			"spotlight": { "kind": "node_name", "ref": "PortTermsCard" },
+			"lock_panel": true,
 			"done": { "wake": [], "decide": {} },
 			"advance": "next",
 		},
@@ -119,9 +319,14 @@ static func steps() -> Array:
 			"chapter": "First Factory",
 			"title": "Find the factory inland",
 			"body": "Let's begin with your first building. Pan (drag) and zoom (scroll) inland a little to find it — look for the white building; white means an NPC owns it, and this one is up for sale. Click it (the Industrial Goods Factory, the one Vandel Glassworks is selling) to open its tile.",
-			"setup": [],
+			"board_tiles": BOARD_TILES,
+			"setup": [
+				{ "action": "handoff_from_capital_lesson" },
+				{ "action": "close_building_detail" },
+			],
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,
+			"camera": { "tiles": _factory_explore_tiles(), "grow": 160.0 },
 			"done": {
 				"wake": [],
 				"decide": { "kind": "tile_panel_open", "tile": WINDOW_TILE },
@@ -146,6 +351,7 @@ static func steps() -> Array:
 			"chapter": "First Factory",
 			"title": "Pick what it will build",
 			"body": "This is the Build menu. Every building you construct also runs a recipe — you choose it now, and can always change it later. Here's the Industrial Goods Factory: glass + aluminium in, windows out. Click its recipe to price up a build.",
+			"card_side": "center_top",
 			"setup": [ { "action": "expand_construct_building", "building_id": "b_007" } ],
 			"spotlight": { "kind": "node_name", "ref": "RecipeRow_r_056" },
 			"done": {
@@ -158,7 +364,7 @@ static func steps() -> Array:
 			"id": "build_cost",
 			"chapter": "First Factory",
 			"title": "Building costs more than buying — for now",
-			"body": "Here's the build bill. Constructing this factory from scratch costs roughly £%d — see the construction cost estimate. Buying the one Vandel already built is cheaper today, so we'll do that instead. (Later, once you make these materials yourself, building your own can win.) Press Next — don't confirm the build." % _build_confirm_cost("b_007"),
+			"body": "Constructing the factory costs more because we would have to import materials and pay for their transport.\n\nBut purchasing it might be cheaper at the start. If you produce the steel, concrete and frames you need you can make construction dramatically cheaper.",
 			"setup": [],
 			"spotlight": { "kind": "node_name", "ref": "BuildCostValue" },
 			"done": { "wake": [], "decide": {} },
@@ -167,8 +373,8 @@ static func steps() -> Array:
 		{
 			"id": "build_close_buy",
 			"chapter": "First Factory",
-			"title": "Buy it instead",
-			"body": "Close the build panel — we won't build one from scratch. Now open this tile's Buildings for sale yourself, where Vandel's factory is up for grabs.",
+			"title": "Let's buy it instead",
+			"body": "Now open this tile's Buildings for sale yourself, where Vandel's factory is up for grabs.",
 			"setup": [
 				{ "action": "close_sourcing" },
 				{ "action": "close_construct" },
@@ -185,7 +391,7 @@ static func steps() -> Array:
 			"id": "buy_factory",
 			"chapter": "First Factory",
 			"title": "Buy the window factory",
-			"body": "Vandel Glassworks is selling the Industrial Goods Factory on the coast. Open its buildings market and buy it — this factory is where your first supply chain begins.",
+			"body": "The £%d cost to buy it looks like more than to build it, right?\n\nBut within that price comes the first 2 turns of supplies to run the building.\n\nThat means no more transport cost from the port and the building runs the turn after you buy it (assuming power)." % _window_factory_purchase_price(),
 			"setup": [
 				{ "action": "close_construct" },
 				{ "action": "focus_tile", "tile": WINDOW_TILE },
@@ -202,9 +408,12 @@ static func steps() -> Array:
 		{
 			"id": "recipes_intro",
 			"chapter": "First Factory",
-			"title": "Every building runs a recipe",
-			"body": "Here's your factory. It runs one recipe: glass + aluminium in, windows out. That's the whole game in miniature — buildings turn inputs into outputs. But it can't make a thing yet.",
-			"setup": [ { "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" } ],
+			"title": "This factory runs a window making recipe",
+			"body": "Window factories consume aluminium for the window frames and glass for the panes. But as you can tell from the two red diagnostic lines, the building can't run. Click next to begin fixing it.",
+			"setup": [
+				{ "action": "close_market_panel" },
+				{ "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" },
+			],
 			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
 			"lock_panel": true,
 			"done": { "wake": [], "decide": {} },
@@ -214,7 +423,7 @@ static func steps() -> Array:
 			"id": "diagnose_factory",
 			"chapter": "First Factory",
 			"title": "Why isn't it running?",
-			"body": "Read the Diagnostics. The red Power row is the blocker: the factory has no electricity, so it's switched off. That's the first fault to clear — and it's an easy one.",
+			"body": "The red Power row is the blocker: the factory has no electricity, so it's switched off.",
 			"setup": [ { "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" } ],
 			"spotlight": { "kind": "node_name", "ref": "DiagnosticsCard" },
 			"lock_panel": true,
@@ -241,7 +450,7 @@ static func steps() -> Array:
 			"id": "lay_cable_source",
 			"chapter": "Power",
 			"title": "Buy the cable materials",
-			"body": "Laying a cable needs a few construction materials you don't have on this tile yet. Choose Buy from market to order them and start the cable — that's all it takes to switch the tile on.",
+			"body": "Laying a cable needs a few construction materials you don't have on this tile yet. Choose Buy from market to order them and start the cable.",
 			"setup": [],
 			"spotlight": { "kind": "node_name", "ref": "SourcingBuyButton" },
 			"done": {
@@ -254,7 +463,7 @@ static func steps() -> Array:
 			"id": "run_until_running",
 			"chapter": "Power",
 			"title": "End turns until it runs",
-			"body": "The cable takes a turn to build, and your glass and aluminium have to ship in from the port — a couple of turns away. Keep pressing End Turn until the factory reads Running.",
+			"body": "It takes 2 turns for the construction materials to arrive and a 3rd turn to complete. And then the building will make windows. Click 'End turn' a few times until the building runs.",
 			"setup": [ { "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" } ],
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
@@ -262,56 +471,6 @@ static func steps() -> Array:
 				"decide": { "kind": "building_running_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" },
 			},
 			"advance": "auto",
-		},
-		{
-			"id": "open_mapmodes",
-			"chapter": "Power",
-			"title": "Where do the inputs come from?",
-			"body": "Those inputs don't teleport — they ship in from your port. Open the Map Modes menu on the bottom bar to see how.",
-			"setup": [ { "action": "close_building_detail" } ],
-			"spotlight": { "kind": "node_name", "ref": "MapmodesButton" },
-			"done": {
-				"wake": [],
-				"decide": { "kind": "node_visible", "ref": "MapModesPanel" },
-			},
-			"advance": "auto",
-		},
-		{
-			"id": "select_logistics",
-			"chapter": "Power",
-			"title": "Switch to Logistics",
-			"body": "Pick Logistics. The map redraws to show every shipment in transit — routes, cargo and turns-to-arrival.",
-			"setup": [],
-			"spotlight": { "kind": "node_name", "ref": "MapModeRow_logistics" },
-			"done": {
-				"wake": [],
-				"decide": { "kind": "in_mapmode", "mode": "logistics" },
-			},
-			"advance": "auto",
-		},
-		{
-			"id": "view_shipment",
-			"chapter": "Power",
-			"title": "Follow the shipment",
-			"body": "The view has pulled back to Stoneshore Docks — the port just south of your factory, where your inputs come ashore. The coloured line running inland is your glass and aluminium in transit; the pentagon on it shows turns to arrival. Zoom in (scroll) and hover it to see what's aboard. (No shipment? End a turn and it reappears.)",
-			"setup": [],
-			"spotlight": { "kind": "none", "ref": "" },
-			"no_dim": true,
-			"camera": { "grow": 280.0 },
-			"done": { "wake": [], "decide": {} },
-			"advance": "next",
-		},
-		{
-			"id": "transport_ports",
-			"chapter": "Transport",
-			"title": "Everything moves through a port",
-			"body": "Here's the rule behind that shipment: everything you BUY from the market comes ashore at your nearest port, and everything you SELL leaves through it. Press Tab to see your empire at a glance — the thick gold line runs from your factory to Stoneshore Docks, the hexagon below it. Every leg of that journey costs money per unit moved. Press Tab again to come back, then press Next.",
-			"setup": [ { "action": "clear_mapmode" } ],
-			"spotlight": { "kind": "none", "ref": "" },
-			"no_dim": true,
-			"card_side": "top_right",
-			"done": { "wake": [], "decide": {} },
-			"advance": "next",
 		},
 		{
 			"id": "transport_redirect_open",
@@ -334,27 +493,42 @@ static func steps() -> Array:
 			"id": "transport_redirect_pick",
 			"chapter": "Transport",
 			"title": "Ship the windows overland",
-			"body": "Choose 'Ship to another tile', then click a nearby tile on the map — say the sand flats just north-west of your factory. From next turn your windows truck overland to that tile's stockpile instead of sailing out of the docks.",
-			"setup": [],
+			"body": "Choose 'Ship to another tile', then click Stoneshore Coast, the non-port tile immediately east of the factory.",
+			"board_tiles": BOARD_TILES + [WINDOW_REDIRECT_TILE],
+			"setup": [
+				{
+					"action": "flash_tiles", "tiles": [WINDOW_REDIRECT_TILE],
+					"color": "white", "pulse_count": 10, "pulse_seconds": 0.7,
+				},
+			],
+			# Updating board_tiles reapplies the tight interaction-board clamp. Restore the
+			# broader viewing envelope here; it then persists through the glass/metal lessons.
+			"camera": { "tiles": _factory_explore_tiles(), "grow": 160.0 },
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,
 			"done": {
 				"wake": [],
-				"decide": { "kind": "output_routed_offtile", "tile": WINDOW_TILE, "building_id": "b_007" },
+				"decide": {
+					"kind": "output_routed_to_tile", "tile": WINDOW_TILE,
+					"building_id": "b_007", "destination": WINDOW_REDIRECT_TILE,
+				},
 			},
 			"advance": "auto",
 		},
 		{
 			"id": "transport_pentagon_revert",
 			"chapter": "Transport",
-			"title": "Watch it move — then sell to market",
-			"body": "End Turn and watch the map: a pentagon sets off from your factory, hauling windows overland — and every unit aboard pays for the trip. Distance and transport mode set the price; market trades pay the same way on the port run, priced into every sale. Seen it move? Those windows just pile up over there, so set it to sell to market: open the factory's Output destination again and choose Global market.",
+			"title": "Watch the windows arrive",
+			"body": "Click End Turn until the windows reach the coastal tile east of the factory. This step will continue when the shipment arrives.",
 			"setup": [ { "action": "open_logistics" } ],
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,
 			"done": {
-				"wake": [],
-				"decide": { "kind": "output_routed_market", "tile": WINDOW_TILE, "building_id": "b_007" },
+				"wake": ["turn_advanced", "turn_processed", "transport_shipments_changed", "stockpile_changed"],
+				"decide": {
+					"kind": "stockpile_good_at_least", "tile": WINDOW_REDIRECT_TILE,
+					"good": "windows", "amount": 1,
+				},
 			},
 			"advance": "auto",
 		},
@@ -365,6 +539,7 @@ static func steps() -> Array:
 			"body": "Open Cost to Produce. Making windows from bought-in glass and aluminium costs you close to the £%s the market pays per window — a wafer-thin margin, about as good as if you'd simply bought the finished windows instead. That won't outrun the loan sharks. Integration — making your own inputs so your cost per window drops well BELOW £%s — is how you turn that sliver into a real profit and expand." % [_good_price_text("windows"), _good_price_text("windows")],
 			"setup": [
 				{ "action": "clear_mapmode" },
+				{ "action": "route_building_outputs_to_market", "tile": WINDOW_TILE, "building_id": "b_007" },
 				{ "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" },
 			],
 			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
@@ -490,8 +665,8 @@ static func steps() -> Array:
 		{
 			"id": "money_loan_terms",
 			"chapter": "Money",
-			"title": "What you just signed",
-			"body": "Borrowed. Nothing is due for the first %d turns — that's your grace period, and it's the window to turn the money into something that earns. After it, the loan converts and you repay over %d turns, with interest of %d%% across the term. Plan for the repayment landing before it starts, not after." % [
+			"title": "The terms of the loan",
+			"body": "Nothing is due for the first %d turns — that's your grace period, and it's the window to turn the money into something that earns. After it, the loan converts and you repay over %d turns, with interest of %d%% across the term. Plan for the repayment landing before it starts, not after." % [
 				EconomyConfig.LOAN_GRACE_TURNS, EconomyConfig.LOAN_TERM_TURNS,
 				int(round(EconomyConfig.LOAN_INTEREST_RATE * 100.0))],
 			"setup": [ { "action": "open_money_panel" } ],
@@ -555,6 +730,7 @@ static func steps() -> Array:
 			"chapter": "Integration · Margin",
 			"title": "Pick Industrial Glassmaking",
 			"body": "A Furnace can make lots of things — click the highlighted Industrial Glassmaking recipe.",
+			"card_side": "center_top",
 			"setup": [ { "action": "expand_construct_building", "building_id": "b_002" } ],
 			"spotlight": { "kind": "node_name", "ref": "RecipeRow_r_053" },
 			"done": {
@@ -619,13 +795,16 @@ static func steps() -> Array:
 		{
 			"id": "glass_diagnose_pipe",
 			"chapter": "Integration · Margin",
-			"title": "Built — but starved",
-			"body": "The furnace is up and wired for power, and its sand and limestone come in from the docks. But read Diagnostics: 'No input Reinforced Pipeline'. Glassmaking also needs sodium hydroxide — a hazardous liquid that can't travel by road or rail. It moves ONLY through a reinforced pipe, and nothing yet connects the furnace to the docks.",
+			"title": "Inputs are on their way",
+			"body": "The building shows red because it lacks inputs. Don't worry — they're on their way from the port. Click End Turn a couple of times. In future, consider building a reinforced pipeline: sodium hydroxide is a hazardous liquid, and it travels more cheaply that way.",
 			"setup": [ { "action": "focus_building_on_tile", "tile": GLASS_TILE, "building_id": "b_002" } ],
-			"spotlight": { "kind": "node_name", "ref": "DiagnosticsCard" },
+			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"lock_panel": true,
-			"done": { "wake": [], "decide": {} },
-			"advance": "next",
+			"done": {
+				"wake": ["turn_processed", "turn_advanced"],
+				"decide": { "kind": "turns_advanced", "count": 2 },
+			},
+			"advance": "auto",
 		},
 		{
 			"id": "glass_lay_pipe",
@@ -644,48 +823,33 @@ static func steps() -> Array:
 		{
 			"id": "glass_run",
 			"chapter": "Integration · Margin",
-			"title": "End turns until the glass flows",
-			"body": "The pipe takes a turn to lay; then the sodium hydroxide flows in and the furnace fires up. Keep pressing End Turn until it reads Running. Your glass is now being made on-site.",
-			"setup": [ { "action": "focus_building_on_tile", "tile": GLASS_TILE, "building_id": "b_002" } ],
+			"title": "Let the profit settle",
+			"body": "The pipe is being laid, and the furnace will now send its glass to the tile stockpile for the window factory. Press End Turn twice so the new supply chain has two full turns to settle.",
+			"setup": [
+				{ "action": "close_building_detail" },
+				{
+					"action": "route_building_outputs_to_tile", "tile": GLASS_TILE,
+					"building_id": "b_002", "destination": WINDOW_TILE,
+				},
+			],
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
 				"wake": ["turn_processed", "turn_advanced"],
-				"decide": { "kind": "building_running_on_tile", "tile": GLASS_TILE, "building_id": "b_002" },
+				"decide": { "kind": "turns_advanced", "count": 2 },
 			},
 			"advance": "auto",
 		},
 		{
-			"id": "glass_output_check",
+			"id": "glass_profit",
 			"chapter": "Integration · Margin",
-			"title": "Send the glass to the factory, not the market",
-			"body": "One catch with the build menu: it routes a new building's output to the Market by default — so right now the furnace would sell its glass instead of feeding the factory beside it. In the furnace panel, open Output destination and switch it to Tile stockpile. Then the window factory next door consumes the glass on-site — no shipping, no market spread — and the wafer-thin margin widens into real profit.",
-			"setup": [ { "action": "clear_mapmode" }, { "action": "focus_building_on_tile", "tile": GLASS_TILE, "building_id": "b_002" } ],
-			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
-			"lock_panel": true,
-			"done": {
-				"wake": [],
-				"decide": { "kind": "output_routed_same_tile", "tile": GLASS_TILE, "building_id": "b_002" },
-			},
-			"advance": "auto",
-		},
-		{
-			"id": "glass_economics",
-			"chapter": "Integration · Margin",
-			"title": "See the difference",
-			"body": "Open your window factory and read its economics. With glass now made in-house, the cost per window has dropped further below the market price — the wafer-thin margin you started with is now a solid profit, every turn.",
-			"setup": [ { "action": "clear_mapmode" }, { "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" } ],
-			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
-			"lock_panel": true,
-			"done": { "wake": [], "decide": {} },
-			"advance": "next",
-		},
-		{
-			"id": "glass_better",
-			"chapter": "Integration · Research",
-			"title": "We can do better",
-			"body": "A small profit is a fine start — but we can do far better. New recipes are waiting to be unlocked: cleaner, more efficient ways to make the same goods. Let's research a better way to make glass.",
-			"setup": [],
-			"spotlight": { "kind": "none", "ref": "" },
+			"title": "Profit after integration: {profit}",
+			"body": "Your last settled turn made {profit}. Bringing glass in-house improved the margin, but we can do better. Next, unlock a more efficient glass recipe.",
+			"body_dynamic": "last_turn_profit",
+			# This is the result phase of Step 46, after its two required turns. Keeping it
+			# unnumbered makes the following Research instruction Step 47.
+			"count_step": false,
+			"setup": [ { "action": "close_building_detail" } ],
+			"spotlight": { "kind": "node_name", "ref": "MoneyWidget" },
 			"done": { "wake": [], "decide": {} },
 			"advance": "next",
 		},
@@ -744,6 +908,7 @@ static func steps() -> Array:
 			"chapter": "Integration · Revenue",
 			"title": "Pick Aluminium (Hall Heroult) Smelting",
 			"body": "Start with the highlighted Aluminium (Hall Heroult) Smelting recipe. It will get aluminium flowing; later we will unlock a better Furnace process and switch this same building over.",
+			"card_side": "center_top",
 			"setup": [ { "action": "expand_construct_building", "building_id": "b_002" } ],
 			"spotlight": { "kind": "node_name", "ref": "RecipeRow_r_050" },
 			"done": {
@@ -822,13 +987,29 @@ static func steps() -> Array:
 			"id": "alu_output_check",
 			"chapter": "Integration · Revenue",
 			"title": "Feed the factory before selling the surplus",
-			"body": "New buildings send output to the Market by default. In the smelter panel, open Output destination and switch it to Tile stockpile. The window factory can then take its aluminium on-site; only the excess becomes surplus for sale.",
+			"body": "New buildings send output to the Market by default. In the smelter panel, open Output destination and switch it to Tile stockpile. The window factory can then take its aluminium on-site; only the excess becomes surplus for sale. Once it is routed, we'll give the chain two turns to settle.",
 			"setup": [ { "action": "clear_mapmode" }, { "action": "focus_building_on_tile", "tile": ALU_TILE, "building_id": "b_002" } ],
 			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
 			"lock_panel": true,
 			"done": {
 				"wake": [],
 				"decide": { "kind": "output_routed_same_tile", "tile": ALU_TILE, "building_id": "b_002" },
+			},
+			"advance": "auto",
+		},
+		{
+			"id": "alu_base_settle",
+			"chapter": "Integration · Revenue",
+			"title": "Let the supply chain settle",
+			"body": "Press End Turn twice so the smelter can feed the window factory and the new margin can stabilise. Then we'll look at Research.",
+			# This is the second phase of Step 45. It begins only after the player routes
+			# aluminium locally and stays unnumbered so Research remains Step 46.
+			"count_step": false,
+			"setup": [ { "action": "close_building_detail" } ],
+			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
+			"done": {
+				"wake": ["turn_processed", "turn_advanced"],
+				"decide": { "kind": "turns_advanced", "count": 2 },
 			},
 			"advance": "auto",
 		},
@@ -902,13 +1083,15 @@ static func steps() -> Array:
 		{
 			"id": "alu_diagnose_pipe",
 			"chapter": "Integration · Revenue",
-			"title": "The new process needs a chlorine pipe",
-			"body": "The retooled furnace now needs chlorine. Diagnostics reports 'No input Reinforced Pipeline': chlorine is hazardous, so it can move only through a reinforced pipe. The docks already has the terminal; this tile still needs the connection.",
+			"title": "Pipes",
+			"body": "Pipelines can transport gases and liquids easier and cheaper than road or rail. It also decongests your roads and rail. The retool is complete. Press End Turn twice more so the new recipe can run and its costs can settle.",
 			"setup": [ { "action": "focus_building_on_tile", "tile": ALU_TILE, "building_id": "b_002" } ],
-			"spotlight": { "kind": "node_name", "ref": "DiagnosticsCard" },
-			"lock_panel": true,
-			"done": { "wake": [], "decide": {} },
-			"advance": "next",
+			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
+			"done": {
+				"wake": ["turn_processed", "turn_advanced"],
+				"decide": { "kind": "turns_advanced", "count": 2 },
+			},
+			"advance": "auto",
 		},
 		{
 			"id": "alu_lay_pipe",
@@ -927,22 +1110,41 @@ static func steps() -> Array:
 		{
 			"id": "alu_final_run",
 			"chapter": "Integration · Revenue",
-			"title": "End turns until the new process runs",
-			"body": "The pipe takes a turn to lay; then chlorine flows in and the carbochlorination furnace fires up. Keep pressing End Turn until it reads Running.",
-			"setup": [ { "action": "focus_building_on_tile", "tile": ALU_TILE, "building_id": "b_002" } ],
+			"title": "Let the lower cost feed through",
+			"body": "Press End Turn twice. The first turn finishes the pipe and starts the new recipe; the second lets its lower cost feed through the chain.",
+			"count_step": false,
+			"setup": [ { "action": "close_building_detail" } ],
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
 				"wake": ["turn_processed", "turn_advanced"],
-				"decide": { "kind": "building_running_on_tile", "tile": ALU_TILE, "building_id": "b_002" },
+				"decide": { "kind": "turns_advanced", "count": 2 },
 			},
 			"advance": "auto",
+		},
+		{
+			"id": "alu_profit",
+			"chapter": "Integration · Revenue",
+			"title": "Profit after the new recipe: {profit}",
+			"body": "Your last settled turn made {profit}. The cheaper recipe has now fed through the chain. Compare Net last turn with the costs beneath it, then click Next.",
+			"body_dynamic": "last_turn_profit",
+			"mode": "annotate",
+			"targets": [
+				{ "ref": "FlyRowNet", "label": "Profit after every cost", "side": "left" },
+			],
+			"setup": [
+				{ "action": "close_building_detail" },
+				{ "action": "open_money_panel" },
+			],
+			"spotlight": { "kind": "node_name", "ref": "Flyout_treasury" },
+			"done": { "wake": [], "decide": {} },
+			"advance": "next",
 		},
 		{
 			"id": "advisors_intro",
 			"chapter": "Advisors",
 			"title": "You can't run all of it yourself",
 			"body": "One last lever, and it's the one players forget. Open People on the bottom bar (shortcut P). Advisors is the first tab. (The Council badge in the top bar only lists advisors you have already hired, so it's empty until you do.)",
-			"setup": [ { "action": "close_building_detail" } ],
+			"setup": [ { "action": "close_building_detail" }, { "action": "close_money_panel" } ],
 			"spotlight": { "kind": "node_name", "ref": "PeopleButton" },
 			"done": {
 				"wake": [],
@@ -965,9 +1167,9 @@ static func steps() -> Array:
 			"id": "advisors_inspect",
 			"chapter": "Advisors",
 			"title": "Inspect what a candidate brings",
-			"body": "Start with any empty seat, then open a candidate's profile. Read the WHAT THEY BRING bonuses — they change with the seat you chose, so this is where you decide which lever you want to improve.",
+			"body": "Click + Add new advisor, then open a candidate's profile and choose a position. Read the WHAT THEY BRING bonuses — they change with the position you select, so this is where you decide which lever to improve.",
 			"setup": [ { "action": "open_people_panel" } ],
-			"spotlight": { "kind": "node_name", "ref": "PeoplePanel" },
+			"spotlight": { "kind": "node_name", "ref": "AdvisorAddNewButton" },
 			"lock_panel": true,
 			"done": {
 				"wake": [],
@@ -1004,17 +1206,15 @@ static func steps() -> Array:
 		},
 		{
 			"id": "integration_done",
-			"chapter": "Integration",
-			"title": "That's integration",
-			"body": "You brought a cost in-house and made your business more capable. You have now seen every lever the game gives you: buy and build, connect power and pipes, route output, read the books, borrow against the future, research a better recipe, and seat the advisors who bend the numbers. Nothing after this is new machinery — it is the same moves at a larger scale. Press Next to finish and take it from here.",
-			"body_by_branch": {
-				"glass": "You chose the Glass path: you brought the factory's biggest input in-house, then used research to unlock a stronger, more efficient recipe. That is how a wafer-thin margin becomes real profit. You have now seen every lever the game gives you: buy and build, connect power and pipes, route output, read the books, borrow against the future, research a better recipe, and seat the advisors who bend the numbers. Nothing after this is new machinery — it is the same moves at a larger scale. Press Next to finish and take it from here.",
-				"aluminium": "You chose the Aluminium path: you added a surplus revenue line, then used research to unlock the lower-energy Bauxite Carbochlorination process. That is how a wafer-thin margin becomes real profit. You have now seen every lever the game gives you: buy and build, connect power and pipes, route output, read the books, borrow against the future, research a better recipe, and seat the advisors who bend the numbers. Nothing after this is new machinery — it is the same moves at a larger scale. Press Next to finish and take it from here.",
-			},
+			"chapter": "Tutorial",
+			"title": "Tutorial complete",
+			"body": "This tutorial has give you all the basic tools to get on in Carbon and Capital. You can continue playing this tutorial. The victory conditions will now be reenabled after bringing you to a more... reasonable bank balance.",
 			"setup": [ { "action": "clear_mapmode" } ],
 			"spotlight": { "kind": "none", "ref": "" },
 			"done": { "wake": [], "decide": {} },
 			"advance": "next",
+			"next_label": "End tutorial",
+			"hide_skip": true,
 		},
 	]
 
@@ -1022,6 +1222,27 @@ static func steps() -> Array:
 # ── Live-value helpers (balance-proof copy) ──────────────────────────────────────
 # The tutorial quotes prices/quantities from the SAME data the sim runs on, so a
 # rebalance updates the copy automatically. All read the Catalog autoload.
+
+## The west-coast camera may roam five hexes from the factory: an eleven-tile-wide
+## neighbourhood. Keep this separate from BOARD_TILES, which remains the tutorial's
+## interaction whitelist; the player can look around without building on every tile.
+static func _factory_explore_tiles() -> Array:
+	const RADIUS := 5
+	var tiles: Array = [WINDOW_TILE]
+	var seen: Dictionary = {WINDOW_TILE: true}
+	var frontier: Array = [WINDOW_TILE]
+	for _ring in RADIUS:
+		var next_frontier: Array = []
+		for tile_id in frontier:
+			for neighbour in Catalog.tile_neighbours(str(tile_id)):
+				var neighbour_id := str(neighbour)
+				if seen.has(neighbour_id):
+					continue
+				seen[neighbour_id] = true
+				tiles.append(neighbour_id)
+				next_frontier.append(neighbour_id)
+		frontier = next_frontier
+	return tiles
 
 ## Market value of a building's construction kit at base prices ("roughly £N").
 ## The figure the Build CONFIRM screen actually prints, so the copy can't misquote it:
@@ -1032,6 +1253,25 @@ static func steps() -> Array:
 static func _build_confirm_cost(building_id: String) -> int:
 	var cash := maxf(0.0, float(Catalog.get_building(building_id).get("base_price", 0.0)))
 	return int(round(cash + Construction.market_purchase_value(building_id)))
+
+## The live asking price shown beside the tutorial's NPC window factory. The price includes
+## two turns of recipe inputs, so Step 17 must quote the same helper as the market's Buy button.
+static func _window_factory_purchase_price() -> int:
+	for instance_id in MatchState.tile_buildings.get(WINDOW_TILE, []):
+		var building: Dictionary = MatchState.get_building(str(instance_id))
+		if str(building.get("building_id", "")) == "b_007" \
+				and str(building.get("recipe_id", "")) == "r_056" \
+				and not MatchState.is_player_owned(building):
+			return MatchState.building_purchase_price(building)
+	# Headless authoring/tests may inspect steps without loading the tutorial start. Keep a
+	# deterministic fallback; the real tutorial always resolves the placed instance above.
+	return MatchState.building_purchase_price({
+		"instance_id": "tutorial_window_factory",
+		"building_id": "b_007",
+		"recipe_id": "r_056",
+		"tile_id": WINDOW_TILE,
+		"level": 1,
+	})
 
 ## Base market price of a good, trimmed for prose ("10.22", "12.5", "8").
 static func _good_price_text(internal: String) -> String:

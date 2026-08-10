@@ -21,6 +21,9 @@ const MUTED := Color("#8da0b6")
 const GOLD := Color("#e6b34a")
 const GOLD_DARK := Color("#c48d35")
 const GREEN := Color("#5fbf6b")
+const RED := DS.PALETTE["DANGER"]   # shared with the forecast chart's losing segments
+const BuildForecast := preload("res://scripts/build_forecast.gd")
+const BuildForecastTable := preload("res://scripts/build_forecast_table.gd")
 const CREAM := Color("#f4e6c0")
 const CREAM_SHADOW := Color("#9f875d")
 const METAL_LIGHT := Color("#c4ced8")
@@ -712,6 +715,50 @@ func _render_settings() -> void:
 		choice.pressed.connect(_on_material_source_selected.bind(option_id))
 		source_box.add_child(choice)
 
+	# Credit facility default. Greyed out without a CFO: the facility is arranged BY the CFO, so
+	# offering the choice with the seat empty would promise something the sim will refuse.
+	var has_cfo := MatchState.cfo_seated()
+	var credit_card := PanelContainer.new()
+	credit_card.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, NAVY_LINE, 1, 9, 11))
+	_content.add_child(credit_card)
+	var credit_box := VBoxContainer.new()
+	credit_box.add_theme_constant_override("separation", 7)
+	credit_card.add_child(credit_box)
+	var credit_title := Label.new()
+	credit_title.text = "Credit facility for new buildings"
+	credit_title.add_theme_font_size_override("font_size", 14)
+	credit_title.add_theme_color_override("font_color", TEXT if has_cfo else MUTED)
+	credit_box.add_child(credit_title)
+	var credit_note := Label.new()
+	credit_note.text = "A new building's first %d turns of inputs, labour, energy and maintenance can be carried instead of paid." % MatchState.TAB_WINDOW_TURNS
+	credit_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	credit_note.add_theme_font_size_override("font_size", 11)
+	credit_note.add_theme_color_override("font_color", MUTED)
+	credit_box.add_child(credit_note)
+	if not has_cfo:
+		var need_cfo := Label.new()
+		need_cfo.text = "Requires a CFO to enable"
+		need_cfo.add_theme_font_size_override("font_size", 12)
+		need_cfo.add_theme_color_override("font_color", RED)
+		credit_box.add_child(need_cfo)
+	var credit_group := ButtonGroup.new()
+	for option in [
+		{"id": "ask", "title": "Always choose", "detail": "Prompt each time a building is a turn from finishing"},
+		{"id": "slices", "title": "%d turns, no interest" % MatchState.TAB_SLICES, "detail": "Repay in equal interest-free instalments"},
+		{"id": "loan", "title": "Take it as a loan", "detail": "Smaller payments over a full loan term, with interest"},
+		{"id": "none", "title": "Don't use the facility", "detail": "Costs hit cash as they fall"},
+	]:
+		var option_id := str(option.get("id", ""))
+		var selected := MatchState.construct_credit_default == option_id
+		var radio_text := "●" if selected else "○"
+		var choice := _settings_choice_button(
+			"%s  %s\n    %s" % [radio_text, str(option.get("title", "")), str(option.get("detail", ""))],
+			selected, credit_group, true)
+		choice.disabled = not has_cfo
+		if has_cfo:
+			choice.pressed.connect(_on_credit_default_selected.bind(option_id))
+		credit_box.add_child(choice)
+
 	_content.add_child(_settings_toggle_card(
 		"Start at half capacity",
 		"New buildings use half their inputs, power and output for their first successful operating turn. Existing projects are unchanged.",
@@ -798,6 +845,11 @@ func _settings_choice_button(label_text: String, selected: bool, group: ButtonGr
 
 func _on_output_destination_selected(destination: String) -> void:
 	MatchState.set_construct_output_destination(destination)
+
+
+func _on_credit_default_selected(mode: String) -> void:
+	MatchState.set_construct_credit_default(mode)
+	_render()
 
 
 func _on_material_source_selected(source: String) -> void:
@@ -1152,6 +1204,8 @@ func _render_confirm() -> void:
 	value.add_theme_color_override("font_color", TEXT)
 	value_row.add_child(value)
 
+	_add_forecast_section()
+
 	var placement_note := Label.new()
 	if _locked_tile_id != "":
 		placement_note.text = "Confirm to build on %s." % Catalog.tile_label(_locked_tile_id)
@@ -1479,7 +1533,7 @@ func _good_icon(good_id: String, icon_size: int, plate_width: int = -1, qty: int
 	plate.add_theme_stylebox_override("panel", plate_style)
 	holder.add_child(plate)
 	var art := TextureRect.new()
-	art.texture = GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id), true)
+	art.texture = GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id))
 	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var inset := maxf(4.0, float(icon_size) * 0.12)
 	art.offset_left = inset
@@ -1627,7 +1681,7 @@ func _recipe_flow_cell(good_id: String, qty: int, size_px: int) -> Panel:
 	clear.bg_color = Color(1, 1, 1, 0)
 	cell.add_theme_stylebox_override("panel", clear)
 	var art := TextureRect.new()
-	art.texture = GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id), size_px < 80)
+	art.texture = GoodIcons.texture_for_size(good_id, Catalog.get_internal_name(good_id), float(size_px))
 	art.set_anchors_preset(Control.PRESET_FULL_RECT)
 	art.offset_left = 3
 	art.offset_top = 3
@@ -1767,6 +1821,63 @@ func _on_filter_toggled(pressed: bool, category: String) -> void:
 func _on_building_pressed(building_id: String) -> void:
 	_expanded_building_id = "" if _expanded_building_id == building_id else building_id
 	_render()
+
+
+## The trajectory the player is buying: construction turns, the dip while inputs are bought
+## before the first sale settles, then the steady margin. Added to the CONFIRM view because
+## that is the last moment the decision is free. See docs/early-game-onboarding-spec.md §5.1.
+func _add_forecast_section() -> void:
+	var building_id := str(_selected_building.get("id", ""))
+	var recipe_id := str(_selected_recipe.get("recipe_id", ""))
+	if building_id == "" or recipe_id == "":
+		return
+	var data: Dictionary = BuildForecast.project(building_id, recipe_id, _locked_tile_id)
+	var phases: Array = data.get("phases", [])
+	if phases.is_empty():
+		return
+
+	_content.add_child(_section_label("WHAT IT DOES TO YOUR CASH"))
+
+	# A tile with no route to an input is the run-D failure: the player builds, the building
+	# never runs, and nothing says why. Say it here, in red, before the money moves.
+	if bool(data.get("no_supply", false)):
+		var warn := Label.new()
+		warn.text = "No supply route on this tile for %s — it would sit idle." \
+			% ", ".join(PackedStringArray(data.get("input_names", [])))
+		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		warn.add_theme_font_size_override("font_size", 11)
+		warn.add_theme_color_override("font_color", RED)
+		_content.add_child(warn)
+
+	var table: PanelContainer = BuildForecastTable.new()
+	table.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	table.set_forecast(data)
+	_content.add_child(table)
+
+	# The one number that decides whether this build is affordable: what the phases before
+	# revenue will take out of the bank. The playtester's failed expansion was exactly this —
+	# affordable to build, unaffordable to run until it sold anything.
+	var cash_needed := float(data.get("cash_needed", 0.0))
+	var steady := float(data.get("steady_net", 0.0))
+	var summary := Label.new()
+	if steady <= 0.0:
+		summary.text = "Costs %s before the first sale, then still loses %s a turn at today's prices." \
+			% [_money(cash_needed), _money(-steady)]
+		summary.add_theme_color_override("font_color", RED)
+	else:
+		summary.text = "Needs %s in the bank to reach the first sale, then earns %s a turn." \
+			% [_money(cash_needed), _money(steady)]
+		summary.add_theme_color_override("font_color", GREEN if MatchState.money >= cash_needed else RED)
+	summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	summary.add_theme_font_size_override("font_size", 12)
+	_content.add_child(summary)
+
+	var caption := Label.new()
+	caption.text = "Per turn, at today's prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
+	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	caption.add_theme_font_size_override("font_size", 10)
+	caption.add_theme_color_override("font_color", MUTED)
+	_content.add_child(caption)
 
 
 func _on_recipe_pressed(building_id: String, recipe_id: String) -> void:

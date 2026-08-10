@@ -96,275 +96,283 @@ metadata/_tab_index = 1
 
 [node name="MarginContainer" type="MarginContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance" unique_id=40505850]
 layout_mode = 2
+size_flags_vertical = 3
 
-[node name="BalanceContent" type="VBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer" unique_id=1083097913]
+[node name="BalanceScroll" type="ScrollContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer" unique_id=1083097914]
 layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
 
-[node name="HeaderLabel" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=1575703136]
+[node name="BalanceContent" type="VBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll" unique_id=1083097913]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HeaderLabel" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=1575703136]
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "LAST TURN BALANCE SHEET"
 
-[node name="HSeparator" type="HSeparator" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=2112742548]
+[node name="HSeparator" type="HSeparator" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=2112742548]
 layout_mode = 2
 
-[node name="RevenueSection" type="VBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=111984742]
+[node name="RevenueSection" type="VBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=111984742]
 layout_mode = 2
 
-[node name="SectionHeader_Revenue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection" unique_id=424832447]
+[node name="SectionHeader_Revenue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection" unique_id=424832447]
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "REVENUE"
 
-[node name="GoodsRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection" unique_id=2042234427]
+[node name="GoodsRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection" unique_id=2042234427]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 8
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection/GoodsRow" unique_id=1573254896]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection/GoodsRow" unique_id=1573254896]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Goods sold
 "
 
-[node name="GoodsValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection/GoodsRow" unique_id=2050695481]
+[node name="GoodsValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection/GoodsRow" unique_id=2050695481]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "+£0.00"
 
-[node name="PowerSalesRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection" unique_id=1003400578]
+[node name="PowerSalesRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection" unique_id=1003400578]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 8
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection/PowerSalesRow" unique_id=1501487066]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection/PowerSalesRow" unique_id=1501487066]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Power sold
 "
 
-[node name="PowerSalesValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection/PowerSalesRow" unique_id=1560842205]
+[node name="PowerSalesValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection/PowerSalesRow" unique_id=1560842205]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "+£0.00"
 
-[node name="HSeparator5" type="HSeparator" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection" unique_id=242654090]
+[node name="HSeparator5" type="HSeparator" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection" unique_id=242654090]
 layout_mode = 2
 
-[node name="TotalRevenueRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection" unique_id=139545976]
+[node name="TotalRevenueRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection" unique_id=139545976]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 8
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection/TotalRevenueRow" unique_id=402086285]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection/TotalRevenueRow" unique_id=402086285]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Total Revenue
 "
 
-[node name="TotalRevenueValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/RevenueSection/TotalRevenueRow" unique_id=100779803]
+[node name="TotalRevenueValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection/TotalRevenueRow" unique_id=100779803]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "+£0.00"
 
-[node name="HSeparator2" type="HSeparator" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=1252685972]
+[node name="HSeparator2" type="HSeparator" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=1252685972]
 layout_mode = 2
 
-[node name="CostsSection" type="VBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=1331891251]
+[node name="CostsSection" type="VBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=1331891251]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="SectionHeader_Costs" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection" unique_id=680037051]
+[node name="SectionHeader_Costs" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection" unique_id=680037051]
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "OPERATING COSTS"
 
-[node name="MaintenanceRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection" unique_id=1523969933]
+[node name="MaintenanceRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection" unique_id=1523969933]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 8
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection/MaintenanceRow" unique_id=589416959]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/MaintenanceRow" unique_id=589416959]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Maintenance"
 
-[node name="MaintenanceValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection/MaintenanceRow" unique_id=1707137449]
+[node name="MaintenanceValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/MaintenanceRow" unique_id=1707137449]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "-£0.00"
 
-[node name="LabourRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection" unique_id=2098695086]
+[node name="LabourRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection" unique_id=2098695086]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 8
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection/LabourRow" unique_id=605825099]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/LabourRow" unique_id=605825099]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Labour & Salaries
 "
 
-[node name="LabourValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection/LabourRow" unique_id=536994724]
+[node name="LabourValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/LabourRow" unique_id=536994724]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "-£0.00"
 
-[node name="PowerPurchaseRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection" unique_id=630102966]
+[node name="PowerPurchaseRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection" unique_id=630102966]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 8
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection/PowerPurchaseRow" unique_id=958473072]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/PowerPurchaseRow" unique_id=958473072]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Power purchases
 "
 
-[node name="PowerPurchaseValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection/PowerPurchaseRow" unique_id=1057542931]
+[node name="PowerPurchaseValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/PowerPurchaseRow" unique_id=1057542931]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "-£0.00"
 
-[node name="HSeparator5" type="HSeparator" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection" unique_id=129922301]
+[node name="HSeparator5" type="HSeparator" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection" unique_id=129922301]
 layout_mode = 2
 
-[node name="TotalCostsRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection" unique_id=1998694438]
+[node name="TotalCostsRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection" unique_id=1998694438]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 8
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection/TotalCostsRow" unique_id=137961373]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/TotalCostsRow" unique_id=137961373]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Total Operating Costs
 "
 
-[node name="TotalCostsValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/CostsSection/TotalCostsRow" unique_id=621082196]
+[node name="TotalCostsValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/TotalCostsRow" unique_id=621082196]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "-£0.00"
 
-[node name="HSeparator3" type="HSeparator" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=1583856840]
+[node name="HSeparator3" type="HSeparator" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=1583856840]
 layout_mode = 2
 
-[node name="OperatingProfitRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=356914417]
+[node name="OperatingProfitRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=356914417]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/OperatingProfitRow" unique_id=503818274]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/OperatingProfitRow" unique_id=503818274]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Operating Profit
 "
 
-[node name="OperatingProfitValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/OperatingProfitRow" unique_id=511948010]
+[node name="OperatingProfitValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/OperatingProfitRow" unique_id=511948010]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "+£0.00"
 
-[node name="InterestRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=1230347734]
+[node name="InterestRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=1230347734]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/InterestRow" unique_id=245507178]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/InterestRow" unique_id=245507178]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Loan Interest
 "
 
-[node name="InterestValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/InterestRow" unique_id=730497790]
+[node name="InterestValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/InterestRow" unique_id=730497790]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "-£0.00"
 
-[node name="PreTaxRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=1918750493]
+[node name="PreTaxRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=1918750493]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/PreTaxRow" unique_id=242071049]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/PreTaxRow" unique_id=242071049]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Pre-tax profit
 "
 
-[node name="PreTaxValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/PreTaxRow" unique_id=1801484923]
+[node name="PreTaxValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/PreTaxRow" unique_id=1801484923]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "+£0.00"
 
-[node name="TaxRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=2023946622]
+[node name="TaxRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=2023946622]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/TaxRow" unique_id=306447779]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/TaxRow" unique_id=306447779]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Tax (20%)
 "
 
-[node name="TaxValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/TaxRow" unique_id=599583945]
+[node name="TaxValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/TaxRow" unique_id=599583945]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "-£0.00"
 
-[node name="PostTaxRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=1354114319]
+[node name="PostTaxRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=1354114319]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/PostTaxRow" unique_id=950592347]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/PostTaxRow" unique_id=950592347]
 custom_minimum_size = Vector2(80, 30)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Post-tax profit
 "
 
-[node name="PostTaxValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/PostTaxRow" unique_id=930876557]
+[node name="PostTaxValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/PostTaxRow" unique_id=930876557]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "+£0.00"
 
-[node name="DividendsRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=1439372941]
+[node name="DividendsRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=1439372941]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/DividendsRow" unique_id=567782320]
+[node name="Label" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/DividendsRow" unique_id=567782320]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Dividends (20%)"
 
-[node name="DividendsValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/DividendsRow" unique_id=1614045160]
+[node name="DividendsValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/DividendsRow" unique_id=1614045160]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "+£0.00"
 
-[node name="HSeparator4" type="HSeparator" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=1561031976]
+[node name="HSeparator4" type="HSeparator" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=1561031976]
 layout_mode = 2
 
-[node name="NetCashflowRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent" unique_id=366739637]
+[node name="NetCashflowRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent" unique_id=366739637]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="NetCashflowLabel" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/NetCashflowRow" unique_id=274933178]
+[node name="NetCashflowLabel" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/NetCashflowRow" unique_id=274933178]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Net Cash Flow per turn"
 
-[node name="NetCashflowValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceContent/NetCashflowRow" unique_id=2143023728]
+[node name="NetCashflowValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/NetCashflowRow" unique_id=2143023728]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 text = "-£0.00"

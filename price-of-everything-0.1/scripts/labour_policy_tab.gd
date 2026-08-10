@@ -26,8 +26,6 @@ const NO_EFFECT := "No effect yet — placeholder for a later balance pass."
 
 const _ACCENT := Color("#D96AA0")
 const _CARD_BORDER := Color("#1C3149")
-const _TEXT_DIM := Color("#8298AC")
-const _TEXT_FAINT := Color("#62788F")
 const _GOOD := Color("#5FBF6B")
 const _BAD := Color("#E2604A")
 const _WARN := Color("#E6B34A")
@@ -120,6 +118,7 @@ func _rebuild() -> void:
 
 	left.add_child(_sec_label("WORKFORCE POLICIES"))
 	_build_effort(left)
+	_build_idle_pay(left)
 	_build_safety(left)
 	_build_pensions(left)
 	_build_bonus(left)
@@ -147,6 +146,28 @@ func _build_effort(parent: Control) -> void:
 		{"key": "over", "label": "1.2x Overtime",
 			"caption": "Salary cost +20% · output momentum +1%/turn, up to +10%.",
 			"pick": func() -> void: MatchState.set_labour_multiplier(1.2)},
+	], key))
+
+## "Worker pay while not running" — what a workforce is owed on a turn its building produced
+## nothing. Sits beside Work effort because both price the same people, just in opposite
+## directions: one buys more output, this one stops paying for output that never came.
+func _build_idle_pay(parent: Control) -> void:
+	var share := MatchState.idle_labour_pay_share
+	var key := "full"
+	if share < 0.6:
+		key = "half"
+	elif share < 0.9:
+		key = "most"
+	parent.add_child(_spectrum("Worker pay while building not running", [
+		{"key": "half", "label": "50%",
+			"caption": "A building that made nothing this turn pays half its wage bill. Cheapest, and hardest on the workforce.",
+			"pick": func() -> void: MatchState.set_idle_labour_pay_share(0.5)},
+		{"key": "most", "label": "75%",
+			"caption": "Most of the wage bill is paid through an idle turn.",
+			"pick": func() -> void: MatchState.set_idle_labour_pay_share(0.75)},
+		{"key": "full", "label": "100%",
+			"caption": "Workers are paid in full whether the line runs or not.",
+			"pick": func() -> void: MatchState.set_idle_labour_pay_share(1.0)},
 	], key))
 
 func _build_safety(parent: Control) -> void:
@@ -297,7 +318,7 @@ func _build_labour_costs(parent: Control) -> void:
 	now_row.add_child(_dim_label("%.0f%% of base" % pct, 13))
 	var trend := est - current
 	var trend_l := _dim_label("10-turn estimate £%.2f (%s%.2f)" % [est, "+" if trend >= 0.0 else "−", absf(trend)], 12)
-	trend_l.add_theme_color_override("font_color", _BAD if trend > 0.005 else (_GOOD if trend < -0.005 else _TEXT_DIM))
+	trend_l.add_theme_color_override("font_color", _BAD if trend > 0.005 else (_GOOD if trend < -0.005 else DS.PALETTE.TEXT_MUTED))
 	col.add_child(trend_l)
 	if bool(ov.get("at_floor", false)):
 		var floor_l := _dim_label("Maximum labour reduction reached — further bonuses will not stack below 40% of base.", 11)
@@ -366,12 +387,12 @@ func _sec_label(text: String) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", 10)
-	l.add_theme_color_override("font_color", _TEXT_FAINT)
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
 	return l
 
 func _dim_label(text: String, fs: float) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", int(fs))
-	l.add_theme_color_override("font_color", _TEXT_DIM)
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
 	return l

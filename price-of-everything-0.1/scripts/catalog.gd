@@ -53,6 +53,11 @@ var _infra_by_type: Dictionary = {}
 
 # Per-tile routing data (static, from tile_properties.csv; live infra is a later wire-up)
 var _tile_infra: Dictionary = {}   # tile_id -> ["roads","rail",...] (normalised)
+# tile_id -> {mode: level}. The ROUTER's copy of what MatchState keeps on the HexMap tile:
+# routing runs headless (unit suite, e2e harness) where there is no map node to ask, and
+# _turn_move_neighbours is the hottest loop in pathfinding, so it cannot reach into the scene
+# tree. MatchState.set_tile_infra_level and SaveLoad mirror every write here.
+var _tile_infra_levels: Dictionary = {}
 var _tile_land: Dictionary = {}    # tile_id -> bool (false for sea/deep_sea)
 
 # Routing caches. route() pathfinding and nearest_port_tile() are recomputed per
@@ -264,12 +269,40 @@ func add_tile_infrastructure(tile_id: String, infra_type: String) -> void:
 		if ROUTE_AFFECTING_INFRA.has(norm):
 			_route_cache.clear()   # routing network changed: cached paths may now be shorter
 
+## Mirror a tile's infrastructure LEVEL into the router. Levels change a mode's per-turn reach
+## (EconomyConfig.INFRA_RANGE_BY_LEVEL), so an upgrade can shorten routes and must invalidate the
+## cache exactly as laying new infrastructure does.
+func set_tile_infra_level(tile_id: String, infra_type: String, level: int) -> void:
+	var norm := _normalise_infra_id(infra_type.strip_edges().to_lower())
+	if tile_id == "" or norm == "":
+		return
+	var clamped := clampi(level, 1, 3)
+	var levels: Dictionary = _tile_infra_levels.get(tile_id, {})
+	if int(levels.get(norm, 1)) == clamped:
+		return
+	levels[norm] = clamped
+	_tile_infra_levels[tile_id] = levels
+	if ROUTE_AFFECTING_INFRA.has(norm):
+		_route_cache.clear()
+
+## Drop every mirrored level (a save load wipes the scene's infrastructure before re-applying).
+func clear_tile_infrastructure_levels() -> void:
+	if _tile_infra_levels.is_empty():
+		return
+	_tile_infra_levels.clear()
+	_route_cache.clear()
+
+func tile_infra_level(tile_id: String, infra_type: String) -> int:
+	var norm := _normalise_infra_id(infra_type.strip_edges().to_lower())
+	return int((_tile_infra_levels.get(tile_id, {}) as Dictionary).get(norm, 1))
+
 func reset_runtime_infrastructure() -> void:
 	# Rebuild the tile-infra map from the CSV baseline, dropping runtime-built
 	# roads/rails (this autoload outlives the map scene, so a previous match's
 	# infrastructure would otherwise leak into a loaded save). SaveLoad calls this
 	# before re-applying a snapshot's infrastructure.
 	_load_tile_names()
+	_tile_infra_levels.clear()
 	_route_cache.clear()
 
 func clear_tile_infrastructure() -> void:
@@ -277,6 +310,7 @@ func clear_tile_infrastructure() -> void:
 	# the save rather than from the current CSV/runtime scene. Tile names/land masks
 	# remain loaded reference data.
 	_tile_infra.clear()
+	_tile_infra_levels.clear()
 	_route_cache.clear()
 
 func remove_tile_infrastructure(tile_id: String, infra_type: String) -> void:
@@ -365,9 +399,17 @@ func tile_neighbours(tile_id: String) -> Array:
 			out.append("tile_%d_%d" % [nc + 1, nr + 1])
 	return out
 
-func _mode_range(mode: String) -> int:
+## Tiles one turn-move covers on `mode`, leaving `tile_id`. The DEPARTURE tile's level sets the
+## reach: it is the link you are getting on, it is one lookup rather than a scan of the whole run,
+## and it means upgrading the tile you ship FROM visibly pays off. Falls back to the flat
+## infrastructure.csv range for any mode with no level table.
+func _mode_range(mode: String, tile_id: String = "") -> int:
 	if mode == ROUTE_MODE_NONE:
 		return 1
+	if tile_id != "":
+		var leveled := EconomyConfig.infra_range_for_level(mode, tile_infra_level(tile_id, mode))
+		if leveled > 0:
+			return maxi(1, leveled)
 	return maxi(1, infra_range(mode))
 
 func _tile_supports_mode(tile_id: String, mode: String) -> bool:
@@ -379,8 +421,9 @@ const FLUID_CLASSES := ["safe_liquid", "hazard_liquid", "liquid", "gas"]
 
 func _modes_for_good(good_id: String) -> Array:
 	var tclass := get_transport_class(good_id) if good_id != "" else ""
-	# Fluids (liquids/gases) move ONLY by pipe — no overland haul. Solids may go
-	# overland (slow fallback) or by rail/road. rail first (longer range) wins ties.
+	# Fluids have no bare-ground fallback, but may use road tankers or rail tank wagons
+	# as well as suitable pipework. Solids may also move one tile/turn with no built infra.
+	# Rail first (longer range) wins ties; _route_uncached explicitly prefers pipe for fluids.
 	var modes: Array = [] if FLUID_CLASSES.has(tclass) else [ROUTE_MODE_NONE]
 	for m in ["rail", "roads", "pipes", "reinf_pipes"]:
 		var tolerated: Array = _infra_by_type.get(m, {}).get("good_types_tolerated", [])
@@ -395,7 +438,7 @@ func _turn_move_neighbours(tile_id: String, modes: Array) -> Array:
 	for m in modes:
 		if not _tile_supports_mode(tile_id, m):
 			continue
-		var rng := _mode_range(m)
+		var rng := _mode_range(m, tile_id)
 		var visited: Dictionary = {tile_id: true}
 		var frontier: Array = [tile_id]
 		var depth := 0
@@ -434,6 +477,27 @@ func _route_uncached(source_tile: String, dest_tile: String, good_id: String = "
 	if source_tile == dest_tile:
 		return {"turns": 0, "path": [source_tile], "legs": [], "tiles": [source_tile]}  # 0-turn same-tile
 	var modes := _modes_for_good(good_id)
+	# Fluids stay in their pipes whenever a pipe path exists; road and rail are the fallback
+	# for a destination the pipework does not reach, at several times the cost (see
+	# EconomyConfig.FLUID_OVERLAND_COST_MULT). This preference has to be explicit because the
+	# search below is FASTEST-first: rail out-ranges pipe 4 tiles to 2, so without it every
+	# fluid shipment would desert a perfectly good pipe network for the nearest railhead and
+	# quietly cost 3-5x more.
+	if requires_pipeline(good_id):
+		var pipe_only: Array = []
+		for m in modes:
+			if EconomyConfig.PIPE_MODES.has(m):
+				pipe_only.append(m)
+		if not pipe_only.is_empty():
+			var piped := _bfs_route(source_tile, dest_tile, pipe_only)
+			if int(piped.get("turns", 1 << 30)) < (1 << 30):
+				return piped
+	return _bfs_route(source_tile, dest_tile, modes)
+
+
+## Fewest turn-moves from source to dest across `modes`. Split out of _route_uncached so a
+## fluid can be asked for a pipe-only route first and the full network only if that fails.
+func _bfs_route(source_tile: String, dest_tile: String, modes: Array) -> Dictionary:
 	var INF := 1 << 30
 	var dist: Dictionary = {source_tile: 0}
 	var prev: Dictionary = {}  # tile -> {from, mode}
@@ -598,11 +662,9 @@ func get_transport_class(good_id: String) -> String:
 func requires_pipeline(good_id: String) -> bool:
 	return good_id != "" and FLUID_CLASSES.has(get_transport_class(good_id))
 
-## True when `tile_id` has a pipe that can carry `good_id`. Only meaningful for fluids/gases:
-## a liquid/gas can be handled at a tile only if that tile has a suitable pipe — this holds
-## even for a same-tile transfer at a port, so a building on a port can't receive or ship a
-## liquid/gas without the pipe. hazard_liquid needs reinf_pipes; other fluids accept pipes or
-## reinf_pipes (reuses _modes_for_good so it tracks infrastructure.csv). Non-fluids return true.
+## True when `tile_id` has any built terminal mode that can carry `good_id`. The legacy name is
+## retained for callers, but road/rail loading bays now count for fluids as well as suitable
+## pipework. Non-fluids return true.
 func tile_can_pipe_good(tile_id: String, good_id: String) -> bool:
 	if not requires_pipeline(good_id):
 		return true

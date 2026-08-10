@@ -122,7 +122,7 @@ func _pick(pool: Array, i: int) -> int:
 func _goods_with_icons() -> Array:
 	var result: Array = []
 	for good in Catalog.all_goods():
-		if GoodIcons.texture_for(good.get("id", ""), good.get("internal_name", ""), true) != null:
+		if GoodIcons.texture_for(good.get("id", ""), good.get("internal_name", "")) != null:
 			result.append(good)
 	return result
 
@@ -150,7 +150,7 @@ func _relayout_icons() -> void:
 		var good = _layout[i]
 		if good == null:
 			continue
-		var tex: Texture2D = GoodIcons.texture_for(good.get("id", ""), good.get("internal_name", ""), true)
+		var tex: Texture2D = GoodIcons.texture_for(good.get("id", ""), good.get("internal_name", ""))
 		if tex == null:
 			continue
 		var icon := _new_icon(tex, cell - pad * 2.0)
