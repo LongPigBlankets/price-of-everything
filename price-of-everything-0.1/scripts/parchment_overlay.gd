@@ -12,23 +12,20 @@ const NOISE_SEED := 7              # fixed — purely visual, stable between run
 var _tex: NoiseTexture2D = null
 var _rect := Rect2()
 var _ramp: Gradient = null
+var _noise: FastNoiseLite = null
 
 func setup(world_rect: Rect2) -> void:
 	_rect = world_rect
 	z_index = PARCHMENT_Z
-	var noise := FastNoiseLite.new()
-	noise.seed = NOISE_SEED
-	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	noise.frequency = 0.035
-	noise.fractal_octaves = 4
+	_noise = FastNoiseLite.new()
+	_noise.seed = NOISE_SEED
+	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_tex = NoiseTexture2D.new()
-	_tex.width = 256
-	_tex.height = 256
 	_tex.seamless = true
-	_tex.noise = noise
+	_tex.noise = _noise
 	_ramp = Gradient.new()
-	_ramp.offsets = PackedFloat32Array([0.0, 1.0])
 	_apply_ramp()
+	_apply_scale()
 	_tex.color_ramp = _ramp
 	var mat := CanvasItemMaterial.new()
 	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_MUL
@@ -39,13 +36,26 @@ func setup(world_rect: Rect2) -> void:
 		MapStyle.style_changed.connect(_on_style_changed)
 	queue_redraw()
 
+## Offsets first: a Gradient must never be left with more colors than offsets,
+## and the plate ramp has four stops where classic and ink have two.
 func _apply_ramp() -> void:
-	_ramp.colors = PackedColorArray([MapStyle.parchment_darkest(), MapStyle.parchment_lightest()])
+	_ramp.offsets = MapStyle.parchment_offsets()
+	_ramp.colors = MapStyle.parchment_colors()
+
+## Grain scale — how coarse the blotches are, and how far apart the tiling
+## repeats (the texture is drawn 1 texel to 1 world unit).
+func _apply_scale() -> void:
+	_noise.frequency = MapStyle.parchment_noise_frequency()
+	_noise.fractal_octaves = MapStyle.parchment_noise_octaves()
+	var px := MapStyle.parchment_tile_px()
+	_tex.width = px
+	_tex.height = px
 
 func _on_style_changed() -> void:
 	# In-place Gradient edit fires its changed signal (NoiseTexture2D listens
 	# and regenerates); the reassign is belt-and-braces for setter early-outs.
 	_apply_ramp()
+	_apply_scale()
 	_tex.color_ramp = _ramp
 	queue_redraw()
 

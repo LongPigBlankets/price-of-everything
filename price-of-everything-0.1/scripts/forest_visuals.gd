@@ -21,10 +21,9 @@ const RIVER_POINTS := {
 	"HSM6": Vector2(67.5, 120),
 }
 
-const FOREST_BASE := Color("#0d512b")
-const FOREST_DARK := Color("#083b22")
+## Canopy colours live in MapStyle ('toggle ink' / 'toggle plate' swap them):
+## classic and ink return these exact values, so both stay byte-identical.
 const FOREST_SHADOW := Color(0.02, 0.10, 0.05, 0.28)
-const FOREST_ARC := Color("#2d7d3a")
 const RIVER_SCREEN_CLEARANCE_PX := 5.0
 const RIVER_HALF_WIDTH := 7.5
 # Canopy fill: a coarse jittered grid of large overlapping lobes (lobe > step so
@@ -69,6 +68,16 @@ func _white_texture() -> Texture2D:
 		img.fill(Color.WHITE)
 		_white_tex = ImageTexture.create_from_image(img)
 	return _white_tex
+
+func _ready() -> void:
+	MapStyle.style_changed.connect(_on_style_changed)
+
+## Canopy colours are baked into _draw_cache and then into the MultiMesh instance
+## colours, so a style flip has to drop both.
+func _on_style_changed() -> void:
+	_draw_cache.clear()
+	_mm_dirty = true
+	queue_redraw()
 
 func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, instance_id: String, coord: Vector2i) -> void:
 	if not FOREST_BUILDING_IDS.has(building_id):
@@ -132,8 +141,9 @@ func _draw() -> void:
 	_ensure_canopy()
 	if _canopy_mm != null and _canopy_mm.instance_count > 0:
 		draw_multimesh(_canopy_mm, _white_texture())   # all shadows + canopy lobes, one draw call
-	if not _arc_pts.is_empty():
-		draw_multiline(_arc_pts, FOREST_ARC, 3.0)   # all highlight arcs, one draw call
+	var arc := MapStyle.forest_arc()
+	if not _arc_pts.is_empty() and arc.a > 0.0:
+		draw_multiline(_arc_pts, arc, 3.0)   # all highlight arcs, one draw call
 
 ## Build the canopy MultiMesh and batched arc lines from every forest's clipped
 ## draw data. Rebuilt only when forests change (rare); the GPU then redraws the
@@ -145,6 +155,13 @@ func _ensure_canopy() -> void:
 	var shadows: Array = []   # [pos, r]
 	var lobes: Array = []     # [pos, r, color]
 	_arc_pts = PackedVector2Array()
+	# City plate: the canopy is a low park block on the shared light model. One
+	# opaque shadow disc PER LOBE, offset SE — their union IS the offset canopy
+	# silhouette for any footprint shape, where the single centre disc below
+	# under-covers oblong woods (its radius is the MEAN half-extent).
+	var plate := MapStyle.is_plate()
+	var lobe_off := MapStyle.extrude_offset(MapStyle.Extrude.MILD)
+	var lobe_side := MapStyle.extrude_side(MapStyle.forest_base(), MapStyle.Extrude.MILD)
 	for instance_key in _forests.keys():
 		var instance_id: String = str(instance_key)
 		var entry: Dictionary = _forests[instance_id] as Dictionary
@@ -155,7 +172,11 @@ func _ensure_canopy() -> void:
 		var circles: Array = data.circles
 		if circles.is_empty():
 			continue
-		shadows.append([data.center + Vector2(0, 3.0), float(data.shadow_r)])
+		if plate:
+			for circle in circles:
+				shadows.append([circle.pos + lobe_off, float(circle.r)])
+		else:
+			shadows.append([data.center + Vector2(0, 3.0), float(data.shadow_r)])
 		for circle in circles:
 			lobes.append([circle.pos, float(circle.r), circle.color])
 		_append_arc_segments(data.center, float(data.mean_half), instance_id, coord)
@@ -172,7 +193,7 @@ func _ensure_canopy() -> void:
 	var idx := 0
 	for s in shadows:
 		_canopy_mm.set_instance_transform_2d(idx, _disc_xform(s[0], float(s[1])))
-		_canopy_mm.set_instance_color(idx, FOREST_SHADOW)
+		_canopy_mm.set_instance_color(idx, lobe_side if plate else FOREST_SHADOW)
 		idx += 1
 	for l in lobes:
 		_canopy_mm.set_instance_transform_2d(idx, _disc_xform(l[0], float(l[1])))
@@ -229,7 +250,7 @@ func _forest_draw_data(instance_id: String, tile_id: String, coord: Vector2i) ->
 		if _circle_drawable(circle.pos, float(circle.r), coord):
 			visible_circles.append(circle)
 	if visible_circles.is_empty() and _circle_drawable(center, 18.0, coord):
-		visible_circles.append({"pos": center, "r": 18.0, "color": FOREST_BASE})
+		visible_circles.append({"pos": center, "r": 18.0, "color": MapStyle.forest_base()})
 	visible_circles.sort_custom(_sort_circle_radius_desc)
 	var data := {
 		"circles": visible_circles,
@@ -291,12 +312,14 @@ func _forest_circles(instance_id: String, center: Vector2, shape: Dictionary) ->
 	var rot: float = float(shape.get("rot", 0.0))
 	var variant: int = abs(hash(instance_id)) % FOREST_PATTERN_VARIANTS
 	var pattern: Array = _canopy_pattern(kind, variant, float(shape.hw), float(shape.hh))
+	var base := MapStyle.forest_base()
+	var dark := MapStyle.forest_lobe_dark()
 	var circles: Array = []
 	for lobe in pattern:
 		circles.append({
 			"pos": center + (lobe.off as Vector2).rotated(rot),
 			"r": float(lobe.r),
-			"color": FOREST_BASE.lerp(FOREST_DARK, float(lobe.shade)),
+			"color": base.lerp(dark, float(lobe.shade)),
 		})
 	return circles
 

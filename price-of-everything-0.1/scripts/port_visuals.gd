@@ -51,8 +51,11 @@ func _draw() -> void:
 		# Anchor design-space (74, 78) — the quay spine's seaward edge — at the
 		# glyph position on the shoreline, so the spine hugs the coast and the
 		# three piers reach out to sea (owner ruling; -20% size).
+		# City plate washes the compound logistics tan; transparent elsewhere
+		# leaves the generator's own neutral greys.
+		var pwash := MapStyle.port_art_wash()
 		for g in _glyphs:
-			InkBuildingGen.draw(self, "port", 1, g["pos"] as Vector2, float(g["angle"]), float(g["tile_h"]) * 0.44, false, Vector2(74, 78))
+			InkBuildingGen.draw(self, "port", 1, g["pos"] as Vector2, float(g["angle"]), float(g["tile_h"]) * 0.44, false, Vector2(74, 78), pwash)
 		return
 	var dockhouse := MapStyle.port_dockhouse()
 	var outline := MapStyle.port_outline()

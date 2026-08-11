@@ -27,6 +27,7 @@ const AppPaths := preload("res://scripts/app_paths.gd")  # saves now live in <ba
 func _ready() -> void:
 	print("\n==== price-of-everything tests ====")
 	_test_scripts_parse()
+	_test_map_style_plate()
 	_test_widgets_instantiate()
 	_test_recipe_row_instantiates()
 	await _test_unlock_dialog_groups_multiple_unlocks()
@@ -12294,3 +12295,105 @@ func _test_recipe_flow_shows_co_products() -> void:
 	_check(absf(float(econ.get("output_value", 0.0)) - total_value) < 0.0001,
 		"co-products: economics output value equals the sum of every output")
 	MatchState.remove_building(iid)
+
+## City-plate variant (docs/map_city_plate_spec.md). The plate is a sub-variant of
+## ink, so its whole safety story is "classic and ink render exactly as before" —
+## every value below is the pre-plate literal, and this test is what keeps them
+## that way. It also pins the seam semantics the cheat relies on.
+func _test_map_style_plate() -> void:
+	var was_ink: bool = MapStyle.ink
+	var was_plate: bool = MapStyle.plate
+
+	MapStyle.set_plate(false)
+	MapStyle.set_ink(false)
+	_check(not MapStyle.is_plate(), "map style: classic is not plate")
+	_check(MapStyle.ink_color() == Color("3a2c18"), "map style: classic keeps the sepia ink")
+	_check(MapStyle.band_colors()[2] == Color("5e7d44"), "map style: classic band ramp unchanged")
+	_check(MapStyle.road_local() == Color("e8c84a"), "map style: classic road bed unchanged")
+	_check(MapStyle.forest_base() == Color("0d512b"), "map style: classic canopy unchanged")
+	_check(MapStyle.extrude_offset(MapStyle.Extrude.FULL) == Vector2.ZERO,
+		"map style: no extrusion outside plate")
+
+	MapStyle.set_ink(true)
+	_check(not MapStyle.is_plate(), "map style: ink alone is not plate")
+	_check(MapStyle.parchment_offsets().size() == 2 and MapStyle.parchment_colors().size() == 2,
+		"map style: ink parchment ramp stays the original two stops")
+	_check(MapStyle.parchment_colors()[0] == MapStyle.parchment_darkest()
+		and absf(MapStyle.parchment_noise_frequency() - 0.035) < 1e-6
+		and MapStyle.parchment_tile_px() == 256,
+		"map style: ink grain is unchanged")
+	_check(MapStyle.ink_color() == Color("3a2c18"), "map style: ink keeps the sepia ink")
+	_check(MapStyle.band_colors()[2] == Color("9aa465"), "map style: ink band ramp unchanged")
+	_check(MapStyle.road_local() == Color("dfd0a2"), "map style: ink road bed unchanged")
+	_check(MapStyle.road_casing_dashed(), "map style: ink casings stay dashed")
+	_check(MapStyle.trunk_center_dash().size() == 2, "map style: ink keeps the trunk centre dash")
+	_check(MapStyle.forest_base() == Color("0d512b"), "map style: ink canopy unchanged")
+	_check(MapStyle.forest_arc() == Color("2d7d3a"), "map style: ink keeps canopy highlight arcs")
+	_check(MapStyle.building_shadow_color().a > 0.0, "map style: ink keeps the building micro-shadow")
+	_check(MapStyle.extrude_offset(MapStyle.Extrude.FULL) == Vector2.ZERO,
+		"map style: no extrusion in ink")
+
+	MapStyle.set_plate(true)
+	_check(MapStyle.is_plate() and MapStyle.ink, "map style: plate implies ink")
+	_check(MapStyle.ink_color() == Color("4a4136"), "map style: plate swaps to the one plate ink")
+	# Water returned toward the pre-ink blue (owner 2026-08-11): between classic's
+	# saturation and ink's slate, NOT the pale sky the first plate cut used.
+	_check(MapStyle.water_color() == Color("3f7cc4"), "map style: plate water is the deeper pre-ink blue")
+	_check(MapStyle.sea_colors()[5] == MapStyle.band_colors()[1],
+		"map style: the sea's land-base band tracks the coastal sand band")
+	# Owner ruling 2026-08-11: the plate does NOT re-grade the land — it shares
+	# ink's green ramp, and expresses itself through what stands on the ground.
+	_check(MapStyle.band_colors()[2] == Color("9aa465"), "map style: plate keeps ink's green landmass")
+	_check(MapStyle.forest_base() == Color("0d512b"), "map style: plate keeps ink's canopy green")
+	# Three-way ownership read: decor cream, NPC grey with a deeper side face,
+	# player coloured. (The decor BUILDING itself lives on road-density; the
+	# colour rule stays here because it is part of the plate's palette.)
+	_check(MapStyle.plate_block_top("decor") == Color("efe9db"),
+		"map style: decorative buildings are cream")
+	_check(MapStyle.plate_block_top("npc") == Color("8f8d85"),
+		"map style: NPC blocks are grey")
+	var npc_top: Color = MapStyle.plate_block_top("npc")
+	_check(MapStyle.extrude_side(npc_top, MapStyle.Extrude.FULL, true).get_luminance()
+		< MapStyle.extrude_side(npc_top, MapStyle.Extrude.FULL).get_luminance(),
+		"map style: NPC blocks take a deeper side face than the standard prism")
+	# get_luminance() is on gamma values, so compare by margin, not by ratio.
+	_check(MapStyle.road_local().get_luminance() - MapStyle.band_colors()[3].get_luminance() > 0.20,
+		"map style: plate streets read clearly lighter than the land they cross")
+	# Parchment: the plate's paper is quieter AND patchy. The middle stops sit on
+	# clean paper, so most of the sheet carries no grain at all.
+	_check(MapStyle.parchment_offsets().size() == 4 and MapStyle.parchment_colors().size() == 4,
+		"map style: plate parchment ramp has its four shaping stops")
+	_check(MapStyle.parchment_colors()[1] == MapStyle.parchment_lightest()
+		and MapStyle.parchment_colors()[2] == MapStyle.parchment_lightest(),
+		"map style: the plate ramp's middle band is clean paper")
+	_check(MapStyle.parchment_colors()[0].get_luminance() > MapStyle.parchment_darkest().get_luminance(),
+		"map style: plate grain darkens less than ink's")
+	_check(MapStyle.parchment_noise_frequency() < 0.035 and MapStyle.parchment_tile_px() > 256,
+		"map style: plate grain is coarser and repeats less often")
+	_check(not MapStyle.road_casing_dashed(), "map style: plate streets take solid edges")
+	_check(MapStyle.trunk_center_dash().is_empty(), "map style: plate drops the trunk centre dash")
+	_check(MapStyle.building_shadow_color().a == 0.0,
+		"map style: plate drops the micro-shadow (the prism replaces it)")
+	_check(MapStyle.extrude_offset(MapStyle.Extrude.FULL) == Vector2(3.0, 4.0),
+		"map style: plate extrudes FULL masses")
+	_check(MapStyle.extrude_offset(MapStyle.Extrude.MILD) == Vector2(1.5, 2.0),
+		"map style: plate extrudes MILD masses less")
+	var side := MapStyle.extrude_side(Color("6e6b60"), MapStyle.Extrude.FULL)
+	_check(side.a == 1.0 and side.v < Color("6e6b60").v,
+		"map style: side faces are an opaque darkening of the top")
+	_check(MapStyle.plate_block_top("nonsense") == MapStyle.plate_block_top("orange"),
+		"map style: unknown wash families fall through to the default block")
+	# A dark roof takes light motif lines; a light one keeps ink.
+	_check(MapStyle.roof_motif_color(Color("75756d")).v > 0.7,
+		"map style: motifs go light on a dark plate roof")
+	_check(MapStyle.roof_motif_color(Color("e8ddc0")) == MapStyle.ink_color(),
+		"map style: motifs stay ink on a light plate roof")
+
+	# Leaving ink must drop plate too, or classic would render with plate latched.
+	MapStyle.set_ink(false)
+	_check(not MapStyle.plate and not MapStyle.is_plate(),
+		"map style: leaving ink clears the plate sub-variant")
+	_check(MapStyle.ink_color() == Color("3a2c18"), "map style: back in classic, sepia ink returns")
+
+	MapStyle.set_ink(was_ink)
+	MapStyle.set_plate(was_plate)

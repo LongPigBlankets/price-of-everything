@@ -137,6 +137,18 @@ func _draw_bridge_glyph(canvas: CanvasItem, point: Vector2, tangent: Vector2) ->
 		canvas.draw_line(point - tangent * 21.0, point + tangent * 21.0, MapStyle.road_bridge(), 10.0, true)
 		return
 	var n := Vector2(-tangent.y, tangent.x)
+	if MapStyle.is_plate():
+		# The deck is a low prism on the shared light model: side face offset SE
+		# under the deck, rails carrying the linework (MILD masses take no outline).
+		var off := MapStyle.extrude_offset(MapStyle.Extrude.MILD)
+		var a := point - tangent * 21.0
+		var b := point + tangent * 21.0
+		canvas.draw_line(a + off, b + off, MapStyle.extrude_side(MapStyle.road_trunk(), MapStyle.Extrude.MILD), 9.0, true)
+		canvas.draw_line(a, b, MapStyle.road_trunk(), 9.0, true)
+		for ps in [-1.0, 1.0]:
+			var rail: Vector2 = n * (5.4 * float(ps))
+			canvas.draw_line(a + rail, b + rail, MapStyle.road_casing_trunk(), 1.4, true)
+		return
 	canvas.draw_line(point - tangent * 21.0, point + tangent * 21.0, MapStyle.road_local(), 9.0, true)
 	for s in [-1.0, 1.0]:
 		var off: Vector2 = n * (5.4 * float(s))
@@ -165,8 +177,9 @@ func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadN
 				var pts := _styled_run(run, str(edge_id))
 				if pts.size() >= 2:
 					styled.append(pts)
-					_emit_dashes(pts, str(edge_id), dashes, MapStyle.road_dash(), "")
-					if is_trunk:
+					if MapStyle.road_casing_dashed():
+						_emit_dashes(pts, str(edge_id), dashes, MapStyle.road_dash(), "")
+					if is_trunk and not MapStyle.trunk_center_dash().is_empty():
 						# Arteries (trunk tier) carry a dashed centre line.
 						_emit_dashes(pts, str(edge_id), center, MapStyle.trunk_center_dash(), "c")
 			entry = {"styled": styled, "dashes": dashes, "center": center, "n_runs": runs.size(), "n_pts": n_pts}
@@ -182,6 +195,14 @@ func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadN
 		canvas.draw_multiline(dash_local, MapStyle.road_casing(), MapStyle.road_casing_width(false), true)
 	if dash_trunk.size() >= 2:
 		canvas.draw_multiline(dash_trunk, MapStyle.road_casing(), MapStyle.road_casing_width(true), true)
+	# City plate: streets are cream CHANNELS, so the casing is a solid hairline
+	# edge under the bed rather than the survey-map dash. Trunk edges take the
+	# heavier alpha — in this idiom that line is the block frontage.
+	if not MapStyle.road_casing_dashed():
+		for b0 in beds:
+			var trunk0: bool = b0[1]
+			canvas.draw_polyline(b0[0], MapStyle.road_casing_trunk() if trunk0 else MapStyle.road_casing(),
+				MapStyle.road_casing_width(trunk0), true)
 	for b in beds:
 		canvas.draw_polyline(b[0], MapStyle.road_trunk() if b[1] else MapStyle.road_local(), MapStyle.road_width(b[1]), true)
 	if center_trunk.size() >= 2:
