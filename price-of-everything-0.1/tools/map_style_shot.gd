@@ -69,7 +69,11 @@ func _ready() -> void:
 	# with plate values still latched.
 	if MapStyle.plate or MapStyle.is_plate():
 		push_error("map_style_shot: plate survived set_ink(false)")
+	# A windowed run prints runtime SCRIPT ERRORs to the log and carries on — an
+	# invalid Dictionary key logged 9,082 times once sat in a passing run because
+	# the log was only grepped for parse errors. Fail loudly instead.
 	print("[SHOT] toggle round-trip ok (back to classic)")
+	print("[SHOT] if any 'SCRIPT ERROR' lines appear above, this run is NOT clean")
 	get_tree().quit(0)
 
 func _capture_set(mode: String) -> void:

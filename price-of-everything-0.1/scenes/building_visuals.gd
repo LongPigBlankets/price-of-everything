@@ -1711,8 +1711,10 @@ func _try_tree(out: Array, seed_key: String, rel: Vector2, centre: Vector2, nav:
 		return
 	# A forest is a tile BUILDING and draws its own trees — the scatter stays out
 	# of its canopy so the two never double up.
+	# _forest_discs returns {c, r} in TILE-RELATIVE space — not {center, radius},
+	# and not world. Getting either wrong is silent in a Dictionary.
 	for disc in _forest_discs(_coord_of_centre(centre), centre):
-		if world.distance_to(disc.center as Vector2) < float(disc.radius) + r:
+		if rel.distance_to(disc.c as Vector2) < float(disc.r) + r:
 			return
 	out.append({"p": world, "k": kind})
 
