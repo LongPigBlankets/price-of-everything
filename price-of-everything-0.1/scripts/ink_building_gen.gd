@@ -37,6 +37,12 @@ const SHADOW := Color(0.184, 0.169, 0.149, 0.22)
 const LIGHT_DIR := Vector2(-0.7071068, -0.7071068)
 const SHADOW_OFF := Vector2(1.7, 2.2)   # world units per shadow-scale k
 
+## The plate variant unifies ALL map linework on one ink; this file keeps its
+## own slightly darker sepia for ink & wash, so the swap has to be plate-gated
+## rather than a plain MapStyle read (which would change ink-mode pixels).
+static func _ink() -> Color:
+	return MapStyle.ink_color() if MapStyle.is_plate() else INK
+
 static var _cache: Dictionary = {}   # "iname|lvl" -> {prims: Array, size: Vector2}
 ## Category wash for the building masses, supplied per draw by the caller so
 ## the SAME rules as the classic plate look apply (BuildingVisuals._wash_for:
@@ -73,10 +79,21 @@ static func draw(c: CanvasItem, iname: String, lvl: int, ctr: Vector2, ang: floa
 		(groups[k] as Array).append(pr)
 	var ks: Array = groups.keys()
 	ks.sort_custom(func(a, b) -> bool: return float(a) > float(b))
+	# City plate: this same pass becomes the extrusion — one flat SE offset for
+	# the whole compound (not the per-height stagger) filled opaque with the
+	# derived side-face tone, so the building reads as a raised block.
+	var plate := MapStyle.is_plate()
+	var sil_off := MapStyle.extrude_offset(MapStyle.Extrude.FULL)
+	var sil_col := SHADOW
+	if plate:
+		var base: Color = wash if wash.a > 0.0 else MID
+		sil_col = MapStyle.extrude_side(base, MapStyle.Extrude.FULL)
 	for k in ks:
-		c.draw_set_transform(pos + SHADOW_OFF * float(k), ang, Vector2(s, s))
+		c.draw_set_transform(pos + (sil_off if plate else SHADOW_OFF * float(k)), ang, Vector2(s, s))
 		for pr in (groups[k] as Array):
-			_draw_sil(c, pr)
+			if plate and str(pr.t) == "deck":
+				continue   # decks are flat planked surfaces at water level, not prisms
+			_draw_sil(c, pr, sil_col)
 	# body pass
 	c.draw_set_transform(pos, ang, Vector2(s, s))
 	for pr in prims:
@@ -603,20 +620,20 @@ static func _shift(prims: Array, off: Vector2) -> void:
 
 ## ── shadow silhouettes ──────────────────────────────────────────────────────
 
-static func _draw_sil(c: CanvasItem, pr: Dictionary) -> void:
+static func _draw_sil(c: CanvasItem, pr: Dictionary, col: Color = SHADOW) -> void:
 	match str(pr.t):
 		"tank", "sphere", "stack", "vessel", "cbase":
-			c.draw_circle(pr.c, float(pr.r), SHADOW)
+			c.draw_circle(pr.c, float(pr.r), col)
 		"pylon":
-			c.draw_rect(Rect2((pr.c as Vector2) - Vector2(5, 5), Vector2(10, 10)), SHADOW)
+			c.draw_rect(Rect2((pr.c as Vector2) - Vector2(5, 5), Vector2(10, 10)), col)
 		"scaffold":
 			var sd := ((pr.b as Vector2) - (pr.a as Vector2)).normalized()
 			var sn := Vector2(-sd.y, sd.x) * float(pr.w) * 0.5
-			c.draw_colored_polygon(PackedVector2Array([pr.a + sn, pr.b + sn, pr.b - sn, pr.a - sn]), SHADOW)
+			c.draw_colored_polygon(PackedVector2Array([pr.a + sn, pr.b + sn, pr.b - sn, pr.a - sn]), col)
 		"panel":
-			c.draw_colored_polygon(_rect_poly(pr.r), SHADOW)
+			c.draw_colored_polygon(_rect_poly(pr.r), col)
 		"turbine":
-			c.draw_circle(pr.c, float(pr.r) * 0.5, SHADOW)
+			c.draw_circle(pr.c, float(pr.r) * 0.5, col)
 		"pit", "dot":
 			pass   # the pit is an excavation — a mass shadow would invert it
 		"apse":
@@ -624,23 +641,23 @@ static func _draw_sil(c: CanvasItem, pr: Dictionary) -> void:
 			for i in 13:
 				var a := PI * float(i) / 12.0
 				pts.append((pr.c as Vector2) + Vector2(cos(a), sin(a)) * float(pr.r))
-			c.draw_colored_polygon(pts, SHADOW)
+			c.draw_colored_polygon(pts, col)
 		"bar":
 			var dirv := ((pr.b as Vector2) - (pr.a as Vector2)).normalized()
 			var n := Vector2(-dirv.y, dirv.x) * float(pr.w) * 0.5
-			c.draw_colored_polygon(PackedVector2Array([pr.a + n, pr.b + n, pr.b - n, pr.a - n]), SHADOW)
+			c.draw_colored_polygon(PackedVector2Array([pr.a + n, pr.b + n, pr.b - n, pr.a - n]), col)
 		"pipes", "cable", "box":
 			pass
 		"fpoly":
-			c.draw_colored_polygon((pr.rings as Array)[0], SHADOW)
+			c.draw_colored_polygon((pr.rings as Array)[0], col)
 		"capsule":
 			var r: Rect2 = pr.r
 			var hr := r.size.y * 0.5
-			c.draw_colored_polygon(_rect_poly(Rect2(r.position.x + hr, r.position.y, r.size.x - hr * 2.0, r.size.y)), SHADOW)
-			c.draw_circle(r.position + Vector2(hr, hr), hr, SHADOW)
-			c.draw_circle(Vector2(r.end.x - hr, r.position.y + hr), hr, SHADOW)
+			c.draw_colored_polygon(_rect_poly(Rect2(r.position.x + hr, r.position.y, r.size.x - hr * 2.0, r.size.y)), col)
+			c.draw_circle(r.position + Vector2(hr, hr), hr, col)
+			c.draw_circle(Vector2(r.end.x - hr, r.position.y + hr), hr, col)
 		_:
-			c.draw_colored_polygon(_rect_poly(pr.r), SHADOW)
+			c.draw_colored_polygon(_rect_poly(pr.r), col)
 
 ## ── primitive renderers ─────────────────────────────────────────────────────
 
@@ -674,12 +691,12 @@ static func _draw_prim(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw:
 			_rd_apse(c, pr, npc, iw)
 		"pipes":
 			for run in (pr.runs as Array):
-				c.draw_polyline(run, INK, 4.6 * iw, true)
+				c.draw_polyline(run, _ink(), 4.6 * iw, true)
 			for run in (pr.runs as Array):
 				c.draw_polyline(run, _fill(MLT, npc), 2.6 * iw, true)
 		"cable":
 			for run in (pr.runs as Array):
-				c.draw_polyline(run, INK, 0.9 * iw, true)
+				c.draw_polyline(run, _ink(), 0.9 * iw, true)
 		"pad":
 			c.draw_colored_polygon(_rect_poly(pr.r), _fill(PAD_C, npc))
 			_outline_rect(c, pr.r, 1.1 * iw)
@@ -697,10 +714,10 @@ static func _draw_prim(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw:
 			_rd_containers(c, pr, npc, iw)
 		"cbase":
 			c.draw_circle(pr.c, float(pr.r), _fill(MLT, npc))
-			c.draw_arc(pr.c, float(pr.r), 0.0, TAU, 16, INK, 1.2 * iw, true)
-			c.draw_circle(pr.c, 1.2, INK)
+			c.draw_arc(pr.c, float(pr.r), 0.0, TAU, 16, _ink(), 1.2 * iw, true)
+			c.draw_circle(pr.c, 1.2, _ink())
 		"dot":
-			c.draw_circle(pr.c, float(pr.r), INK)
+			c.draw_circle(pr.c, float(pr.r), _ink())
 		"gpad":
 			c.draw_colored_polygon(_rect_poly(pr.r), _fill(GBASE, npc))
 			_outline_rect(c, pr.r, 1.1 * iw)
@@ -718,16 +735,16 @@ static func _draw_prim(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw:
 			var sq := PackedVector2Array([pc + Vector2(-hs, -hs), pc + Vector2(hs, -hs), pc + Vector2(hs, hs), pc + Vector2(-hs, hs)])
 			var loop := sq.duplicate()
 			loop.append(sq[0])
-			c.draw_polyline(loop, INK, 1.1 * iw, true)
-			c.draw_line(sq[0], sq[2], INK, 0.9 * iw, true)
-			c.draw_line(sq[1], sq[3], INK, 0.9 * iw, true)
-			c.draw_line(pc + Vector2(-9, 0), pc + Vector2(9, 0), INK, 1.2 * iw, true)
-			c.draw_circle(pc, 1.2, INK)
+			c.draw_polyline(loop, _ink(), 1.1 * iw, true)
+			c.draw_line(sq[0], sq[2], _ink(), 0.9 * iw, true)
+			c.draw_line(sq[1], sq[3], _ink(), 0.9 * iw, true)
+			c.draw_line(pc + Vector2(-9, 0), pc + Vector2(9, 0), _ink(), 1.2 * iw, true)
+			c.draw_circle(pc, 1.2, _ink())
 
 static func _outline_rect(c: CanvasItem, r: Rect2, w: float) -> void:
 	var loop := _rect_poly(r)
 	loop.append(loop[0])
-	c.draw_polyline(loop, INK, w, true)
+	c.draw_polyline(loop, _ink(), w, true)
 
 static func _rd_flat(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
 	var r: Rect2 = pr.r
@@ -769,7 +786,7 @@ static func _rd_fpoly(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: 
 			c.draw_line(a + inset, b + inset, _fill(_facet3(n, rot), npc), 2.6, true)
 		var loop := rv.duplicate()
 		loop.append(rv[0])
-		c.draw_polyline(loop, INK, 1.4 * iw, true)
+		c.draw_polyline(loop, _ink(), 1.4 * iw, true)
 
 static func _rd_saw(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
 	var r: Rect2 = pr.r
@@ -778,8 +795,8 @@ static func _rd_saw(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: fl
 		var by := r.position.y + i * bh
 		c.draw_rect(Rect2(r.position.x, by, r.size.x, bh * 0.72), _fill(_facet3(Vector2(0, -1), rot), npc))
 		c.draw_rect(Rect2(r.position.x, by + bh * 0.72, r.size.x, bh * 0.28), _fill(_facet3(Vector2(0, 1), rot), npc).darkened(0.06))
-		c.draw_line(Vector2(r.position.x, by + bh * 0.72), Vector2(r.end.x, by + bh * 0.72), INK, 0.9 * iw, true)
-		c.draw_line(Vector2(r.position.x, by + bh), Vector2(r.end.x, by + bh), INK, 0.7 * iw, true)
+		c.draw_line(Vector2(r.position.x, by + bh * 0.72), Vector2(r.end.x, by + bh * 0.72), _ink(), 0.9 * iw, true)
+		c.draw_line(Vector2(r.position.x, by + bh), Vector2(r.end.x, by + bh), _ink(), 0.7 * iw, true)
 	_outline_rect(c, r, 1.4 * iw)
 
 static func _rd_multi(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
@@ -805,23 +822,23 @@ static func _rd_gable(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: 
 	var r: Rect2 = pr.r
 	c.draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * 0.5)), _fill(_facet3(Vector2(0, -1), rot), npc))
 	c.draw_rect(Rect2(r.position + Vector2(0, r.size.y * 0.5), Vector2(r.size.x, r.size.y * 0.5)), _fill(_facet3(Vector2(0, 1), rot), npc))
-	c.draw_line(r.position + Vector2(0, r.size.y * 0.5), r.position + Vector2(r.size.x, r.size.y * 0.5), INK, 0.9 * iw, true)
+	c.draw_line(r.position + Vector2(0, r.size.y * 0.5), r.position + Vector2(r.size.x, r.size.y * 0.5), _ink(), 0.9 * iw, true)
 	_outline_rect(c, r, 1.4 * iw)
 
 static func _rd_tank(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
 	var ctr: Vector2 = pr.c
 	var r := float(pr.r)
 	c.draw_circle(ctr, r, _fill(MLT, npc))
-	c.draw_arc(ctr, r, 0.0, TAU, 28, INK, 1.4 * iw, true)
+	c.draw_arc(ctr, r, 0.0, TAU, 28, _ink(), 1.4 * iw, true)
 	c.draw_arc(ctr, r * 0.62, 0.0, TAU, 22, DK, 1.0 * iw, true)
 	c.draw_arc(ctr, r * 0.75, deg_to_rad(208) - rot, deg_to_rad(262) - rot, 8, HI, 2.0 * iw, true)
-	c.draw_circle(ctr, 1.6, INK)
+	c.draw_circle(ctr, 1.6, _ink())
 
 static func _rd_sphere(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
 	var ctr: Vector2 = pr.c
 	var r := float(pr.r)
 	c.draw_circle(ctr, r, _fill(MLT, npc))
-	c.draw_arc(ctr, r, 0.0, TAU, 26, INK, 1.3 * iw, true)
+	c.draw_arc(ctr, r, 0.0, TAU, 26, _ink(), 1.3 * iw, true)
 	var seam := PackedVector2Array()
 	for i in 13:
 		var a := PI * float(i) / 12.0
@@ -839,7 +856,7 @@ static func _rd_stack(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: 
 	var ctr: Vector2 = pr.c
 	var r := float(pr.r)
 	c.draw_circle(ctr, r, _fill(LT, npc))
-	c.draw_arc(ctr, r, 0.0, TAU, 24, INK, 1.4 * iw, true)
+	c.draw_arc(ctr, r, 0.0, TAU, 24, _ink(), 1.4 * iw, true)
 	c.draw_circle(ctr, r * 0.55, BORE)
 	c.draw_arc(ctr, r * 0.85, deg_to_rad(197) - rot, deg_to_rad(260) - rot, 8, HI, 1.6 * iw, true)
 
@@ -847,7 +864,7 @@ static func _rd_vessel(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw:
 	var ctr: Vector2 = pr.c
 	var r := float(pr.r)
 	c.draw_circle(ctr, r, _fill(MLT, npc))
-	c.draw_arc(ctr, r, 0.0, TAU, 30, INK, 1.5 * iw, true)
+	c.draw_arc(ctr, r, 0.0, TAU, 30, _ink(), 1.5 * iw, true)
 	c.draw_circle(ctr, r * 0.72, _fill(MID, npc))
 	c.draw_arc(ctr, r * 0.72, 0.0, TAU, 26, DK, 0.9 * iw, true)
 	c.draw_arc(ctr, r * 0.8, deg_to_rad(207) - rot, deg_to_rad(261) - rot, 8, HI, 1.8 * iw, true)
@@ -855,7 +872,7 @@ static func _rd_vessel(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw:
 		var a := -PI * 0.5 + float(i) * TAU / 3.0
 		var rc := ctr + Vector2(cos(a), sin(a)) * r * 0.34
 		c.draw_circle(rc, r * 0.16, BORE)
-		c.draw_arc(rc, r * 0.16, 0.0, TAU, 12, INK, 0.7 * iw, true)
+		c.draw_arc(rc, r * 0.16, 0.0, TAU, 12, _ink(), 0.7 * iw, true)
 
 static func _rd_bar(c: CanvasItem, pr: Dictionary, npc: bool, iw: float) -> void:
 	var dirv := ((pr.b as Vector2) - (pr.a as Vector2)).normalized()
@@ -864,7 +881,7 @@ static func _rd_bar(c: CanvasItem, pr: Dictionary, npc: bool, iw: float) -> void
 	c.draw_colored_polygon(quad, _fill(LT, npc))
 	var loop := quad.duplicate()
 	loop.append(quad[0])
-	c.draw_polyline(loop, INK, 1.1 * iw, true)
+	c.draw_polyline(loop, _ink(), 1.1 * iw, true)
 
 static func _rd_capsule(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
 	var r: Rect2 = pr.r
@@ -879,10 +896,10 @@ static func _rd_capsule(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw
 	c.draw_rect(Rect2(Vector2(r.position.x + hr * 0.6, sy), Vector2(r.size.x - hr * 1.2, r.size.y * 0.34)), _fill(LT, npc))
 	c.draw_line(Vector2(ca.x, r.position.y), Vector2(ca.x, r.end.y), DK, 0.8 * iw, true)
 	c.draw_line(Vector2(cb.x, r.position.y), Vector2(cb.x, r.end.y), DK, 0.8 * iw, true)
-	c.draw_arc(ca, hr, PI * 0.5, PI * 1.5, 12, INK, 1.3 * iw, true)
-	c.draw_arc(cb, hr, -PI * 0.5, PI * 0.5, 12, INK, 1.3 * iw, true)
-	c.draw_line(Vector2(ca.x, r.position.y), Vector2(cb.x, r.position.y), INK, 1.3 * iw, true)
-	c.draw_line(Vector2(ca.x, r.end.y), Vector2(cb.x, r.end.y), INK, 1.3 * iw, true)
+	c.draw_arc(ca, hr, PI * 0.5, PI * 1.5, 12, _ink(), 1.3 * iw, true)
+	c.draw_arc(cb, hr, -PI * 0.5, PI * 0.5, 12, _ink(), 1.3 * iw, true)
+	c.draw_line(Vector2(ca.x, r.position.y), Vector2(cb.x, r.position.y), _ink(), 1.3 * iw, true)
+	c.draw_line(Vector2(ca.x, r.end.y), Vector2(cb.x, r.end.y), _ink(), 1.3 * iw, true)
 
 static func _rd_apse(c: CanvasItem, pr: Dictionary, npc: bool, iw: float) -> void:
 	var ctr: Vector2 = pr.c
@@ -897,19 +914,19 @@ static func _rd_apse(c: CanvasItem, pr: Dictionary, npc: bool, iw: float) -> voi
 		c.draw_line(ctr, ctr + Vector2(cos(a), sin(a)) * r, DK, 0.8 * iw, true)
 	var loop := pts.duplicate()
 	loop.append(pts[0])
-	c.draw_polyline(loop, INK, 1.3 * iw, true)
+	c.draw_polyline(loop, _ink(), 1.3 * iw, true)
 
 static func _rd_gable_v(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
 	var r: Rect2 = pr.r
 	c.draw_rect(Rect2(r.position, Vector2(r.size.x * 0.5, r.size.y)), _fill(_facet3(Vector2(-1, 0), rot), npc))
 	c.draw_rect(Rect2(r.position + Vector2(r.size.x * 0.5, 0), Vector2(r.size.x * 0.5, r.size.y)), _fill(_facet3(Vector2(1, 0), rot), npc))
-	c.draw_line(r.position + Vector2(r.size.x * 0.5, 0), r.position + Vector2(r.size.x * 0.5, r.size.y), INK, 0.9 * iw, true)
+	c.draw_line(r.position + Vector2(r.size.x * 0.5, 0), r.position + Vector2(r.size.x * 0.5, r.size.y), _ink(), 0.9 * iw, true)
 	_outline_rect(c, r, 1.4 * iw)
 
 static func _rd_deck(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
 	var r: Rect2 = pr.r
 	c.draw_colored_polygon(_rect_poly(r), _fill(DECK, npc))
-	var tick := Color(INK.r, INK.g, INK.b, 0.4)
+	var tick := Color(_ink().r, _ink().g, _ink().b, 0.4)
 	if bool(pr.vert):
 		var yy := r.position.y + 5.0
 		while yy < r.end.y - 2.0:
@@ -936,7 +953,7 @@ static func _rd_panel(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: 
 	var r: Rect2 = pr.r
 	c.draw_colored_polygon(_rect_poly(r), _fill(Color("5d6470"), npc))
 	c.draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * 0.28)), _fill(_facet3(Vector2(0, -1), rot).lerp(Color("7d8794"), 0.5), npc))
-	c.draw_line(r.position + Vector2(r.size.x * 0.5, 0.0), r.position + Vector2(r.size.x * 0.5, r.size.y), INK, 0.6 * iw, true)
+	c.draw_line(r.position + Vector2(r.size.x * 0.5, 0.0), r.position + Vector2(r.size.x * 0.5, r.size.y), _ink(), 0.6 * iw, true)
 	_outline_rect(c, r, 0.9 * iw)
 
 ## Wind turbine: small triangle for the nacelle + a thin line for the rotor.
@@ -946,9 +963,9 @@ static func _rd_turbine(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw
 	# Every turbine in a farm faces the same way (owner) — real sites yaw into
 	# a common wind. Fixed local angle, so they rotate together with the site.
 	var arm := Vector2(cos(TURBINE_YAW), sin(TURBINE_YAW)) * r * 1.7
-	c.draw_line(ctr - arm, ctr + arm, INK, 1.0 * iw, true)
+	c.draw_line(ctr - arm, ctr + arm, _ink(), 1.0 * iw, true)
 	var perp := Vector2(-arm.y, arm.x) * 0.55
-	c.draw_line(ctr, ctr + perp, INK, 1.0 * iw, true)
+	c.draw_line(ctr, ctr + perp, _ink(), 1.0 * iw, true)
 	var tri := PackedVector2Array([
 		ctr + Vector2(0.0, -r * 0.9),
 		ctr + Vector2(r * 0.75, r * 0.7),
@@ -957,7 +974,7 @@ static func _rd_turbine(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw
 	c.draw_colored_polygon(tri, _fill(LT, npc))
 	var loop := tri.duplicate()
 	loop.append(tri[0])
-	c.draw_polyline(loop, INK, 1.0 * iw, true)
+	c.draw_polyline(loop, _ink(), 1.0 * iw, true)
 
 ## Open pit: concentric wiggly benches stepping down to the floor. The wiggle
 ## is a fixed harmonic (not seeded) so the shape is stable per recipe, and the
@@ -976,7 +993,7 @@ static func _rd_pit(c: CanvasItem, pr: Dictionary, npc: bool, iw: float) -> void
 		c.draw_colored_polygon(ring, _fill(col, npc))
 		var loop := ring.duplicate()
 		loop.append(ring[0])
-		c.draw_polyline(loop, INK, (1.3 if i == 0 else 0.8) * iw, true)
+		c.draw_polyline(loop, _ink(), (1.3 if i == 0 else 0.8) * iw, true)
 
 ## Inclined lift/conveyor down into the pit: deck + rungs.
 static func _rd_scaffold(c: CanvasItem, pr: Dictionary, npc: bool, iw: float) -> void:
@@ -994,10 +1011,10 @@ static func _rd_scaffold(c: CanvasItem, pr: Dictionary, npc: bool, iw: float) ->
 	var t := step
 	while t < len - 1.0:
 		var p := a + dirv * t
-		c.draw_line(p + n, p - n, INK, 0.7 * iw, true)
+		c.draw_line(p + n, p - n, _ink(), 0.7 * iw, true)
 		t += step
-	c.draw_line(a + n, b + n, INK, 1.1 * iw, true)
-	c.draw_line(a - n, b - n, INK, 1.1 * iw, true)
+	c.draw_line(a + n, b + n, _ink(), 1.1 * iw, true)
+	c.draw_line(a - n, b - n, _ink(), 1.1 * iw, true)
 
 static func _rd_unit(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
 	var r: Rect2 = pr.r

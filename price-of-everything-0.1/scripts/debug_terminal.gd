@@ -322,8 +322,11 @@ func _run_command(text: String) -> String:
 				return "heightmap → %s" % ("on" if now_visible else "off (plain map + rivers)")
 			if parts.size() >= 2 and parts[1].to_lower() == "ink":
 				MapStyle.set_ink(not MapStyle.ink)
-				return "map style → %s" % ("ink & wash" if MapStyle.ink else "classic")
-			return "usage: toggle logs | heightmap | roads | roadocc | ink"
+				return "map style → %s" % _style_name()
+			if parts.size() >= 2 and parts[1].to_lower() == "plate":
+				MapStyle.set_plate(not MapStyle.plate)
+				return "map style → %s" % _style_name()
+			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")
@@ -445,6 +448,11 @@ func _roads_route(tile_a: String, tile_b: String) -> String:
 func _toggle_debug_logs() -> String:
 	var enabled: bool = MatchState.toggle_debug_turn_logs()
 	return "verbose turn logs → %s" % ("on" if enabled else "off")
+
+func _style_name() -> String:
+	if MapStyle.is_plate():
+		return "city plate"
+	return "ink & wash" if MapStyle.ink else "classic"
 
 func _sell_mode_name() -> String:
 	match MatchState.sell_mode:

@@ -277,7 +277,8 @@ func _draw_water_lining(canvas: CanvasItem, cull: Rect2, xform: Transform2D) -> 
 		if culling and not cull.intersects(_sea_bb[entry.src].grow(float(tier[0]) + 8.0)):
 			continue
 		var pts: PackedVector2Array = xform * (entry.pts as PackedVector2Array)
-		canvas.draw_polyline(pts, Color(MapStyle.INK.r, MapStyle.INK.g, MapStyle.INK.b, float(tier[1])), float(tier[2]), true)
+		var lk := MapStyle.ink_color()
+		canvas.draw_polyline(pts, Color(lk.r, lk.g, lk.b, float(tier[1])), float(tier[2]), true)
 
 ## Offset the COAST_BAND polys seaward once per lining tier. The geometry is
 ## style-independent, so it's built once ever (lazy: only ink mode asks).
@@ -449,9 +450,10 @@ class HillPainter:
 			_fill("s%d" % i, spts, _sea_colors[clampi(_sea[i].b, 0, _sea_colors.size() - 1)], xform)
 		var lining: Array = MapStyle.water_lining()
 		if not lining.is_empty():
+			var lk := MapStyle.ink_color()
 			for entry in _coast_lines:
 				var tier: Array = lining[entry.tier]
-				draw_polyline(_to_tex(entry.pts), Color(MapStyle.INK.r, MapStyle.INK.g, MapStyle.INK.b, float(tier[1])), float(tier[2]), true)
+				draw_polyline(_to_tex(entry.pts), Color(lk.r, lk.g, lk.b, float(tier[1])), float(tier[2]), true)
 		for i in _polys.size():
 			var pts: PackedVector2Array = _polys[i].p
 			if pts.size() < 3:

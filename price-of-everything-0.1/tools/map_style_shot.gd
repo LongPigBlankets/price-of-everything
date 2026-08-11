@@ -60,9 +60,15 @@ func _ready() -> void:
 	await _capture_set("classic")
 	MapStyle.set_ink(true)
 	await _capture_set("ink")
+	MapStyle.set_plate(true)
+	await _capture_set("plate")
 	MapStyle.set_ink(false)   # round-trip: the game must land back in classic
 	for _i in 5:
 		await get_tree().process_frame
+	# Leaving ink must also drop the plate sub-variant, or classic would render
+	# with plate values still latched.
+	if MapStyle.plate or MapStyle.is_plate():
+		push_error("map_style_shot: plate survived set_ink(false)")
 	print("[SHOT] toggle round-trip ok (back to classic)")
 	get_tree().quit(0)
 
@@ -74,6 +80,9 @@ func _capture_set(mode: String) -> void:
 	await _shot(_plant_pos(), 1.2, "plantclose", mode, 12)
 	await _shot(_named_pos("electrolyser"), 1.6, "elyclose", mode, 12)
 	await _shot(_named_pos("mine"), 1.5, "mineclose", mode, 12)
+	await _shot(_player_pos(), 1.6, "playerclose", mode, 12)
+	await _shot(_dense_pos(), 0.9, "denseclose", mode, 12)
+	await _shot(_dense_pos(), 3.0, "blockclose", mode, 12)
 
 ## Centroid of the first farm field placement — so the close framing always
 ## lands on an actual farm regardless of the seeded layout.
@@ -100,6 +109,52 @@ func _plant_pos() -> Vector2:
 		if p != Vector2.INF:
 			return p
 	return _tile_pos(COAST_TILE)
+
+## Centroid of the first PLAYER-owned footprint — the framing that shows the
+## plate's owned-block colours (NPC blocks are the light family).
+func _player_pos() -> Vector2:
+	var bv: Node = get_tree().get_first_node_in_group("building_footprints")
+	if bv != null:
+		for placement in (bv.get("_placements") as Array):
+			if bool(placement.get("is_npc", true)) or str(placement.get("cat", "")) == "farm":
+				continue
+			var pts: PackedVector2Array = placement.get("verts", PackedVector2Array())
+			if pts.size() >= 3:
+				var c := Vector2.ZERO
+				for p in pts:
+					c += p
+				print("[SHOT] player building '%s'" % str(placement.get("iname", "?")))
+				return c / float(pts.size())
+	return _tile_pos(COAST_TILE)
+
+## Centre of the tile carrying the most footprints — the closest thing the map
+## has to the reference's packed block fabric.
+func _dense_pos() -> Vector2:
+	var bv: Node = get_tree().get_first_node_in_group("building_footprints")
+	if bv == null:
+		return _tile_pos(COAST_TILE)
+	var count: Dictionary = {}
+	var sum: Dictionary = {}
+	for placement in (bv.get("_placements") as Array):
+		var tid := str(placement.get("tile_id", ""))
+		var pts: PackedVector2Array = placement.get("verts", PackedVector2Array())
+		if tid == "" or pts.size() < 3:
+			continue
+		var c := Vector2.ZERO
+		for p in pts:
+			c += p
+		count[tid] = int(count.get(tid, 0)) + 1
+		sum[tid] = (sum.get(tid, Vector2.ZERO) as Vector2) + c / float(pts.size())
+	var best := ""
+	var best_n := 0
+	for tid2 in count:
+		if int(count[tid2]) > best_n:
+			best_n = int(count[tid2])
+			best = str(tid2)
+	if best == "":
+		return _tile_pos(COAST_TILE)
+	print("[SHOT] densest tile %s with %d footprints" % [best, best_n])
+	return (sum[best] as Vector2) / float(best_n)
 
 ## Centroid of the first placement of `iname`, or INF when none is placed.
 func _named_pos(iname: String) -> Vector2:
@@ -141,12 +196,17 @@ func _shot(pos: Vector2, zoom: float, framing: String, mode: String, settle: int
 	_cam.zoom = Vector2(zoom, zoom)
 	if "_target_zoom" in _cam:
 		_cam.set("_target_zoom", Vector2(zoom, zoom))
+	print("[SHOT] framing %s/%s begin" % [framing, mode])
 	for _i in settle:   # give redraws (and the lazy hill re-bake) time to land
 		await get_tree().process_frame
 	# get_texture().get_image() returns whatever the GPU last PRESENTED — without
 	# this the capture is a stale frame from an earlier framing (three different
 	# shots came out byte-identical). Same guard the hill texture bake uses.
-	await RenderingServer.frame_post_draw
+	# An occluded window stops presenting entirely: frame_post_draw never fires
+	# and every later capture comes back as the same stale frame (all seven ink
+	# framings hashed identical). force_draw() renders and swaps synchronously,
+	# so the capture below is this framing regardless of window state.
+	RenderingServer.force_draw()
 	var path := "/tmp/poe_mapstyle_%s_%s.png" % [framing, mode]
 	get_viewport().get_texture().get_image().save_png(path)
 	print("[SHOT] %s" % path)
