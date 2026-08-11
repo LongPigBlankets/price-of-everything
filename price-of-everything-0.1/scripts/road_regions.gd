@@ -5,8 +5,6 @@ extends RefCounted
 ## re-inferring identity from scratch.
 
 const REGIONS_PATH := "res://data/road_regions.json"
-## Optional, additive identity overrides — delete the file to revert (see _apply_overlay).
-const OVERLAY_PATH := "res://data/road_region_overlays.json"
 const TILE_PROPS_PATH := "res://data/tile_properties.csv"
 
 const DEFAULT_REGION_ID := "__unassigned_sparse_rural"
@@ -185,51 +183,8 @@ static func _ensure_loaded() -> void:
 	_loaded = true
 	_tile_types = _load_tile_types()
 	_regions = _load_regions()
-	_apply_overlay()
 	_build_tile_index_and_validation()
 	_warn_validation()
-
-## Raise (or lower) a region's identity WITHOUT editing road_regions.json.
-##
-## Density is a region property — road_region_jobs generates a region's whole web
-## from its identity — so a density experiment means changing an identity, and the
-## naive way to do that is to carve tiles into a new region. That is destructive:
-## it strips members from their home regions, can empty one entirely, and breaks
-## both the region's name and its links to its neighbours. An overlay instead
-## leaves every region's membership exactly as authored and only swaps the
-## identity, so tile-to-tile and region-to-region structure stay coherent and the
-## experiment reverts by deleting one file.
-##
-## data/road_region_overlays.json:
-##     {"version": 1, "identity_overrides": {"crying_shore": "dense_city"}}
-## Absent or empty file == previous behaviour exactly.
-static func _apply_overlay() -> void:
-	if not FileAccess.file_exists(OVERLAY_PATH):
-		return
-	var file := FileAccess.open(OVERLAY_PATH, FileAccess.READ)
-	if file == null:
-		return
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	file.close()
-	if typeof(parsed) != TYPE_DICTIONARY:
-		push_warning("RoadRegions: %s did not parse — overlay ignored." % OVERLAY_PATH)
-		return
-	var overrides: Variant = (parsed as Dictionary).get("identity_overrides", {})
-	if typeof(overrides) != TYPE_DICTIONARY:
-		return
-	for region_id in (overrides as Dictionary).keys():
-		var want := str((overrides as Dictionary)[region_id])
-		if not _regions.has(region_id):
-			push_warning("RoadRegions: overlay names unknown region '%s'." % region_id)
-			continue
-		if not want in VALID_IDENTITIES:
-			push_warning("RoadRegions: overlay identity '%s' is not valid." % want)
-			continue
-		var region: Dictionary = _regions[region_id]
-		region["identity_base"] = str(region.get("identity", DEFAULT_IDENTITY))
-		region["identity"] = want
-		region["identity_source"] = "overlay"
-		print("RoadRegions: overlay %s %s -> %s" % [region_id, region["identity_base"], want])
 
 static func _load_regions() -> Dictionary:
 	var out: Dictionary = {}
