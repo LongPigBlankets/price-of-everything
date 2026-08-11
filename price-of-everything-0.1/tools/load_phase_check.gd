@@ -10,6 +10,11 @@ func _ready() -> void:
 	SaveLoad.prepare_new_game("res://data/starts/coal_baron.json")
 	var screen: Node = LoadingScreenScript.show_global(get_tree())
 	var w := Node.new()
-	w.set_script(preload("res://tools/load_phase_watcher.gd"))
+	# ANATOMY=1 swaps the progress watcher for the frame-anatomy one: same load, but it
+	# accounts for the frame (process / render / present) instead of the job.
+	if OS.get_environment("ANATOMY") != "":
+		w.set_script(preload("res://tools/frame_anatomy_watcher.gd"))
+	else:
+		w.set_script(preload("res://tools/load_phase_watcher.gd"))
 	get_tree().root.add_child(w)        # survives the change_scene
 	screen.begin_load(SaveLoad.MAIN_SCENE)
