@@ -140,6 +140,13 @@ func _draw() -> void:
 	else:
 		_draw_culled_meshes(_view_rect)   # cached vector meshes — works without the bake
 
+## True while the terrain is drawing real vector contours rather than the
+## far-zoom texture bake. Detail-only map furniture (trees) rides THIS rather
+## than inventing its own zoom threshold, so the map can never be in a state
+## where the ground is a blurred texture but individual trees are still drawn.
+func detail_lod() -> bool:
+	return _meshes_warm and _mode == MODE_VECTOR
+
 func _visible_world_rect() -> Rect2:
 	var vp := get_viewport()
 	if vp == null:

@@ -20,6 +20,10 @@ extends Node2D
 # present at re-emit, so relayout() is idempotent there.
 
 const TileViewData := preload("res://scripts/tile_view_data.gd")
+## Preloaded rather than used by class_name: a freshly added class_name is not in
+## Godot's global class cache until the editor re-scans, so a headless run cannot
+## resolve it (this cost a full test cycle to find).
+const Trees := preload("res://scripts/tree_shapes.gd")
 
 # Network infrastructure drawn by its own layer, NOT as a building footprint:
 # b_005 roads (RoadNetworkVisuals). b_006 cables regained a footprint
@@ -252,6 +256,79 @@ const CULL_MARGIN := 600.0
 var _placements: Array = []
 var _placement_index: Dictionary = {}   # instance_id -> index into _placements
 
+# ── Decorative buildings (owner ruling 2026-08-11: one per tile) ──────────────
+## The village fabric a tile carries whether or not anybody has built there:
+## non-industrial, neither NPC nor player. They go through the SAME frontage
+## search as a real building — so they snap to a road when the tile has one —
+## and draw with the same wobble, prism and outline; only the fill differs
+## (cream). What keeps them safe is that they live in their own dictionary:
+## invisible to `_placements`, so occupancy, footprint discs, the road layer and
+## every placement statistic are untouched. Real buildings never collide against
+## decor either; instead a tile's decor is re-placed whenever its buildings
+## change, so the decor is what moves out of the way.
+## (The 2026-08-08 ruling asked for per-terrain counts — rural 1-4, hill 2-3,
+## mountain 0-2, urban 4-10. Superseded by the owner's "1 per tile".)
+## Court apartment blocks: a rectangle with chamfered corners wrapped round an
+## inner courtyard of even thickness — the Berlin/Vienna Hof, and the one
+## building type that reads as housing at map zoom without any icon. Sized to an
+## L1 factory (ART_DRAWN_MIN is 40u), so they sit in the same register as the
+## industry around them rather than as scenery.
+const DECOR_COURT_MIN := 34.0     # outer side, before the seeded spread
+const DECOR_COURT_MAX := 46.0
+const DECOR_WING := 8.5           # wall thickness, EVEN on all four sides
+const DECOR_CORNER_CUT := 0.22    # chamfer as a fraction of the short half-side
+const DECOR_BAY := 9.0            # one apartment bay per this much frontage
+const DECOR_MIN_EDGE := 6.0       # a chamfer face shorter than this carries no roof
+const DECOR_POND_R := 4.0         # ornamental pond / fountain in the yard
+const DECOR_YARD_TREES := 3       # up to this many, whatever the yard fits
+
+## Scattered trees: roadside singles where a tile is not built up, and bunches
+## following the river. Same seeded, cached, draw-only treatment as the decor —
+## they are in no collision set at all, because they are smaller than the gaps
+## the layout already leaves and pretending otherwise would push buildings around.
+const SCATTER_ROAD_MAX_BUILDINGS := 3   # a busier tile has no room to look rural
+const SCATTER_ROAD_OFFSET := 13.0       # how far off the carriageway a roadside tree stands
+const SCATTER_ROAD_STEP := 95.0         # one candidate per this much road
+const SCATTER_RIVER_STEP := 34.0        # river bunches are much tighter than roadside
+const SCATTER_RIVER_OFFSET := 15.0
+## A hard ceiling, deliberately well above what a tile should ever want. This
+## generator walks road and river geometry, and geometry is data — a cap is the
+## difference between "a tile looks wrong" and "the machine dies".
+const SCATTER_MAX_PER_TILE := 40
+## Clearances, in world units, ON TOP of the tree's own radius.
+const TREE_RIVER_CLEAR := 12.0    # the drawn river ribbon is ~15u wide
+const TREE_ROAD_CLEAR := 9.0      # half a trunk carriageway plus its casing
+const TREE_BUILD_CLEAR := 3.0
+## Heights, as NavGrid levels. Nothing grows above the treeline; the middle
+## slopes and hill tiles carry noticeably more (owner 2026-08-11).
+const TREE_LEVEL_MAX := 8
+const TREE_LEVEL_DENSE_MIN := 3
+const TREE_LEVEL_DENSE_MAX := 7
+const TREE_CLUMPS_WOODED := 4
+const TREE_CLUMPS_PLAIN := 1
+const TREE_CLUMP_SPREAD := 46.0
+
+# ── Tree rendering: zoom-gated and viewport-local ────────────────────────────
+## `_scatter` and the courtyard plantings store POSITIONS for the whole map,
+## which is cheap. Nothing turns into geometry until the camera is close enough
+## that individual trees would actually read, and then only for what is on
+## screen. The zoom threshold is not our own: `HillVisuals.detail_lod()` is the
+## same test the terrain uses to swap its texture bake for real vector contours,
+## so trees appear exactly when the ground under them goes crisp.
+## Panning rebuilds the cache for the new rect; zooming out stops drawing at
+## once and frees the cache after a grace period, so a quick zoom-out-and-back
+## does not pay to rebuild.
+const TREE_VIEW_MARGIN := 0.20    # viewport + 20% either way
+const TREE_CACHE_GRACE := 5.0     # seconds zoomed out before the cache is freed
+var _tree_tiles: Dictionary = {}  # tile_id -> Array[{p,k}] for tiles in view ONLY
+var _tree_draw: Array = []        # prepared {poly, shadow, fir} for the current rect
+var _tree_rect := Rect2()         # the rect _tree_draw was built for
+var _tree_detail := false         # is the camera close enough to draw trees at all
+var _tree_idle := 0.0             # seconds spent zoomed out with a cache still held
+const DECOR_FLUSH_PER_FRAME := 10   # 286 tiles at load must not freeze a frame
+var _decor: Dictionary = {}         # tile_id -> placement dict ({} = nothing fitted)
+var _decor_dirty: Dictionary = {}   # tile_id -> true, drained by _process
+
 # Per-tile caches (built lazily, on first building). All static per tile.
 var _tile_land: Dictionary = {}       # tile_id -> PackedByteArray (1 = buildable land cell)
 var _tile_landkeys: Dictionary = {}   # tile_id -> PackedInt32Array (buildable cell keys)
@@ -428,6 +505,7 @@ func end_bulk() -> void:
 	for tid in _bulk_dirty_tiles:
 		_mark_subcomp_dirty(str(tid))
 	_bulk_dirty_tiles.clear()
+	_seed_all_decor()   # every tile gets one, built a slice at a time from here
 	queue_redraw()
 
 ## True once this instance has a drawn footprint — lets the start-building pass skip
@@ -545,6 +623,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	if instance_id != "":
 		_placement_index[instance_id] = _placements.size()
 	_placements.append(placement)
+	_mark_decor_dirty(tile_id)   # the decor yields to real buildings, not vice versa
 	footprint_version += 1
 
 ## True if this (urban) tile uses the slot-grid block mode. Seeded once per tile_id, cached.
@@ -1248,6 +1327,7 @@ func _placement_hits_road(p: Dictionary, segs: Array) -> bool:
 ## tile that already has buildings. Buildings now STAY PUT unless the new road overlaps them (see the guard
 ## below) — the road routes around occupied space. Same per-instance seeds → deterministic.
 func relayout_tile(tile_id: String) -> void:
+	_mark_decor_dirty(tile_id)
 	# OCCUPANCY: a settled road routes AROUND buildings (the graduated building cost in RoadRealizer), so a
 	# building does NOT need to move just because a road appeared. Only re-pack when the new road actually
 	# OVERLAPS a footprint (it would sit ON the road); otherwise keep every building in place and just refresh
@@ -1383,6 +1463,329 @@ func _mark_subcomp_dirty(tile_id: String) -> void:
 	if not _subcomp_queued:
 		_subcomp_queued = true
 		call_deferred("_flush_subcomponents")
+
+## Queue one tile's decorative building for a (re)placement. Cheap and idempotent;
+## the work happens a slice at a time in _process.
+func _mark_decor_dirty(tile_id: String) -> void:
+	if tile_id != "":
+		_decor_dirty[tile_id] = true
+
+## Every land tile gets one, including tiles nobody has built on — that is the
+## point of the feature. Called once the match-start seeding window closes.
+func _seed_all_decor() -> void:
+	if terrain_layer == null:
+		return
+	for coord in terrain_layer.tiles:
+		var tid := str((terrain_layer.tiles[coord] as Dictionary).get("id", ""))
+		if tid != "" and not _decor.has(tid):
+			_mark_decor_dirty(tid)
+
+## Drain a bounded slice of the queue. Paced rather than deferred: the whole map
+## marks itself dirty at once, and doing 286 frontage searches in one frame is
+## exactly the kind of stall the load path has been optimised to avoid.
+func _flush_decor_slice() -> void:
+	var done := 0
+	for t in _decor_dirty.keys():
+		if done >= DECOR_FLUSH_PER_FRAME:
+			break
+		_decor_dirty.erase(t)
+		_rebuild_decor(str(t))
+		done += 1
+	if done > 0:
+		queue_redraw()
+
+## Re-derive one tile's decorative building. Seeded per tile, so it is identical
+## on every load and never uses randf().
+func _rebuild_decor(tile_id: String) -> void:
+	_decor.erase(tile_id)
+	if terrain_layer == null:
+		return
+	var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
+	if coord == Vector2i(-1, -1) or not terrain_layer.tiles.has(coord):
+		return
+	_ensure_tile(tile_id, coord)
+	if not _tile_land.has(tile_id):
+		return
+	# Real buildings are the obstacles; decor is never an obstacle to them.
+	# A full-size court will not fit every tile, so fall back a step before
+	# giving up — a smaller court still reads as a court.
+	var others := _placed_on_tile(tile_id)
+	var placed: Dictionary = {}
+	var lot := PackedVector2Array()
+	for scale in [1.0, 0.78]:
+		lot = _decor_court_verts(tile_id, scale)
+		placed = _search(tile_id, coord, "rectangle", _poly_area(lot), 0, "decor", false, others,
+			ROAD_CLEAR, lot)
+		if not placed.is_empty():
+			break
+	if placed.is_empty():
+		return   # no court fits (mountain, water, a full tile)
+	var verts: PackedVector2Array = placed.verts
+	if verts.size() < 3:
+		return
+	# The courtyard is inset from the PLACED polygon, so the wing thickness is
+	# even in world space whatever rotation the frontage search chose.
+	var hole := _offset_ccw(verts, -DECOR_WING)
+	if _poly_area(hole) < 40.0:
+		hole = PackedVector2Array()   # too small to read as a yard — solid block
+	var yard := _plant_courtyard(tile_id, hole)
+	_decor[tile_id] = {
+		"tile_id": tile_id,
+		"verts": verts,
+		"hole": hole,
+		"pond": yard.get("pond", Vector2.INF),
+		"yard_trees": yard.get("trees", []),
+		"bb": _verts_bb(verts).grow(NPC_OUTLINE_W),
+		"key": "decor|%s" % tile_id,
+	}
+
+## Distance from an interior point to the nearest edge. _dist_point_to_poly
+## returns 0 for anything inside the polygon, which is the opposite of what a
+## "how much room is there" question needs.
+func _edge_clearance(p: Vector2, poly: PackedVector2Array) -> float:
+	var d := 1.0e9
+	var n := poly.size()
+	for k in n:
+		d = minf(d, _pt_seg_dist(p, poly[k], poly[(k + 1) % n]))
+	return d
+
+## Furnish a courtyard: a pond or fountain near the middle, and up to
+## DECOR_YARD_TREES trees set around it — all kept inside the yard with room to
+## spare, so nothing spills over the wings.
+func _plant_courtyard(tile_id: String, hole: PackedVector2Array) -> Dictionary:
+	if hole.size() < 3:
+		return {}
+	var centre := _poly_centroid(hole)
+	var out: Dictionary = {}
+	# The pond only appears where the yard is genuinely open, or it reads as a
+	# blocked drain rather than an ornament.
+	var clear := _edge_clearance(centre, hole)
+	if clear > DECOR_POND_R + 3.0 and RoadHash.pick("decor|%s|pond" % tile_id, 3) > 0:
+		out["pond"] = centre
+	var trees: Array = []
+	var phase := float(RoadHash.pick("decor|%s|yphase" % tile_id, 628)) / 100.0
+	for i in DECOR_YARD_TREES:
+		var a := phase + TAU * float(i) / float(DECOR_YARD_TREES)
+		# Sit them between the pond and the wing, on a seeded ring radius.
+		var ring := clear * (0.45 + float(RoadHash.pick("decor|%s|yr%d" % [tile_id, i], 100)) / 100.0 * 0.25)
+		var p := centre + Vector2(cos(a), sin(a)) * ring
+		# Courtyard trees are garden trees, with the odd specimen.
+		var kind := Trees.pick_kind("%s|yard%d" % [tile_id, i], [6, 2, 2])
+		if _edge_clearance(p, hole) < Trees.radius(kind) + 1.0:
+			continue   # would touch a wing — leave that corner of the yard bare
+		if out.has("pond") and p.distance_to(centre) < DECOR_POND_R + Trees.radius(kind):
+			continue   # would stand in the water
+		trees.append({"p": p, "k": kind, "i": i})
+	out["trees"] = trees
+	return out
+
+## Trees for ONE tile, derived on demand. Nothing is stored map-wide and nothing
+## is generated at load: placement is a pure function of the tile's id and its
+## static geometry, so the cheapest cache is no cache — recompute the handful of
+## tiles actually on screen and throw them away when the camera leaves.
+##
+## Everything here is validated against the things a tree must not sit in:
+## water and sea (NavGrid), rivers, road carriageways, building footprints and
+## the tile's own decorative court.
+func _gen_tile_trees(tile_id: String, coord: Vector2i, centre: Vector2) -> Array:
+	var out: Array = []
+	var nav := NavGrid.instance()
+	if nav == null:
+		return out
+	var base_level := _level_at(nav, centre)
+	if base_level > TREE_LEVEL_MAX:
+		return out   # above the treeline
+	var rivers := _tile_river_segments(coord, centre)
+	var roads := _tile_road_segments(coord, centre)
+	var blds := _placed_on_tile(tile_id)
+	# The court is an INPUT to tree placement, and decor is built a slice at a
+	# time — so a tile looked at before its decor landed would generate trees
+	# that ignore the court, and different trees after a later revisit. Resolve
+	# it first: that is what makes "regenerate on demand" produce the same trees
+	# every time rather than merely usually.
+	if not _decor.has(tile_id) or _decor_dirty.has(tile_id):
+		_decor_dirty.erase(tile_id)
+		_rebuild_decor(tile_id)
+	var court: PackedVector2Array = (_decor.get(tile_id, {}) as Dictionary).get("verts", PackedVector2Array())
+	# Wooded slopes: hill tiles and the mid heights carry more, flat lowland less.
+	var wooded := _tile_type(coord) == "hill" or (base_level >= TREE_LEVEL_DENSE_MIN and base_level <= TREE_LEVEL_DENSE_MAX)
+	var clumps := TREE_CLUMPS_WOODED if wooded else TREE_CLUMPS_PLAIN
+
+	# Riverside bunches.
+	for ri in rivers.size():
+		if out.size() >= SCATTER_MAX_PER_TILE:
+			break
+		var seg: Array = rivers[ri]
+		var a: Vector2 = seg[0]
+		var b: Vector2 = seg[1]
+		var seg_len := a.distance_to(b)
+		if seg_len < 1.0:
+			continue
+		var dir := (b - a) / seg_len
+		var nrm := Vector2(-dir.y, dir.x)
+		var steps := mini(int(seg_len / SCATTER_RIVER_STEP), 12)
+		for k in range(steps + 1):
+			var key := "%s|riv%d|%d" % [tile_id, ri, k]
+			if RoadHash.pick(key + "|on", 4) == 0:
+				continue
+			var side := 1.0 if RoadHash.pick(key + "|side", 2) == 0 else -1.0
+			for j in 1 + RoadHash.pick(key + "|n", 3):
+				var along := (float(RoadHash.pick(key + "|a%d" % j, 100)) / 100.0 - 0.5) * SCATTER_RIVER_STEP
+				var across := SCATTER_RIVER_OFFSET + float(RoadHash.pick(key + "|x%d" % j, 100)) / 100.0 * 11.0
+				var rel := a + dir * (seg_len * float(k) / float(maxi(steps, 1))) + dir * along + nrm * (across * side)
+				_try_tree(out, key + "|k%d" % j, rel, centre, nav, rivers, roads, blds, court, [5, 4, 2])
+
+	# Roadside singles. There is deliberately NO "tile is too built up" switch:
+	# a building REMOVES the trees its footprint covers and nothing else, so
+	# building out a rural tile thins its trees gradually rather than clearing
+	# them in one step. Tree positions are a fixed seeded lattice; construction
+	# subtracts from it, and trees never relocate.
+	if true:
+		for si in roads.size():
+			if out.size() >= SCATTER_MAX_PER_TILE:
+				break
+			var rseg: Array = roads[si]
+			var ra: Vector2 = rseg[0]
+			var rlen := ra.distance_to(rseg[1] as Vector2)
+			if rlen < 1.0:
+				continue
+			var rdir := ((rseg[1] as Vector2) - ra) / rlen
+			var rn := Vector2(-rdir.y, rdir.x)
+			var rsteps := mini(int(rlen / SCATTER_ROAD_STEP), 8)
+			for k2 in range(rsteps + 1):
+				var key2 := "%s|road%d|%d" % [tile_id, si, k2]
+				if RoadHash.pick(key2 + "|on", 3) != 0:
+					continue
+				var rside := 1.0 if RoadHash.pick(key2 + "|side", 2) == 0 else -1.0
+				var rel2 := ra + rdir * (rlen * float(k2) / float(maxi(rsteps, 1))) + rn * (SCATTER_ROAD_OFFSET * rside)
+				_try_tree(out, key2 + "|k", rel2, centre, nav, rivers, roads, blds, court, [4, 3, 3])
+
+	# Clumps on wooded ground, away from everything — this is what makes hills
+	# and the mid heights read as treed rather than bare.
+	for c in clumps:
+		if out.size() >= SCATTER_MAX_PER_TILE:
+			break
+		var ckey := "%s|clump%d" % [tile_id, c]
+		var cc := Vector2(
+			(float(RoadHash.pick(ckey + "|x", 200)) / 200.0 - 0.5) * 420.0,
+			(float(RoadHash.pick(ckey + "|y", 200)) / 200.0 - 0.5) * 380.0)
+		for m in 2 + RoadHash.pick(ckey + "|n", 4):
+			var mk := ckey + "|t%d" % m
+			var spread := Vector2(
+				(float(RoadHash.pick(mk + "|dx", 100)) / 100.0 - 0.5) * TREE_CLUMP_SPREAD,
+				(float(RoadHash.pick(mk + "|dy", 100)) / 100.0 - 0.5) * TREE_CLUMP_SPREAD)
+			_try_tree(out, mk, cc + spread, centre, nav, rivers, roads, blds, court, [4, 4, 3])
+	return out
+
+## Validate one candidate (tile-RELATIVE `rel`) and append it if it stands clear.
+func _try_tree(out: Array, seed_key: String, rel: Vector2, centre: Vector2, nav: NavGrid,
+		rivers: Array, roads: Array, blds: Array, court: PackedVector2Array, weights: Array) -> void:
+	if out.size() >= SCATTER_MAX_PER_TILE:
+		return
+	var world := centre + rel
+	if not _in_tile_hex(world, centre):
+		return
+	var kind := Trees.pick_kind(seed_key, weights)
+	var r := Trees.radius(kind)
+	# Sea, lakes and anything not dry land, plus the treeline.
+	var cell := nav.cell_of(world)
+	if cell.x < 0 or cell.y < 0 or cell.x >= nav.gw or cell.y >= nav.gh:
+		return
+	if nav.water(cell.x, cell.y) != NavGrid.WATER_LAND:
+		return
+	if nav.level(cell.x, cell.y) > TREE_LEVEL_MAX:
+		return
+	# Rivers (the drawn ribbon is ~15u wide) and road carriageways.
+	if _dist_to_rivers(rel, rivers) < r + TREE_RIVER_CLEAR:
+		return
+	for rs in roads:
+		if _pt_seg_dist(rel, rs[0], rs[1]) < r + TREE_ROAD_CLEAR:
+			return
+	# Buildings on this tile, and the tile's own decorative court.
+	for b in blds:
+		var h: Vector2 = b.half
+		var d: Vector2 = (rel - (b.pos as Vector2)).abs()
+		if d.x < h.x + r + TREE_BUILD_CLEAR and d.y < h.y + r + TREE_BUILD_CLEAR:
+			return
+	if court.size() >= 3 and _dist_point_to_poly(world, court) < r + TREE_BUILD_CLEAR:
+		return
+	# A forest is a tile BUILDING and draws its own trees — the scatter stays out
+	# of its canopy so the two never double up.
+	for disc in _forest_discs(_coord_of_centre(centre), centre):
+		if world.distance_to(disc.center as Vector2) < float(disc.radius) + r:
+			return
+	out.append({"p": world, "k": kind})
+
+## The tile coord a world centre belongs to (the generator already has the
+## centre; this avoids threading the coord through _try_tree).
+func _coord_of_centre(centre: Vector2) -> Vector2i:
+	if terrain_layer == null:
+		return Vector2i(-1, -1)
+	return terrain_layer.local_to_map(centre)
+
+## NavGrid level under a world point; -1 when off-grid.
+func _level_at(nav: NavGrid, world: Vector2) -> int:
+	var c := nav.cell_of(world)
+	if c.x < 0 or c.y < 0 or c.x >= nav.gw or c.y >= nav.gh:
+		return -1
+	return nav.level(c.x, c.y)
+
+## The court footprint in local space: a seeded rectangle with SOME corners
+## chamfered (never none, or it is just a box). Emitted in ring order so the
+## chamfer replaces its corner with two points.
+func _decor_court_verts(tile_id: String, scale: float) -> PackedVector2Array:
+	var span := DECOR_COURT_MAX - DECOR_COURT_MIN
+	var w := (DECOR_COURT_MIN + float(RoadHash.pick("decor|%s|w" % tile_id, 100)) / 100.0 * span) * scale
+	var h := (DECOR_COURT_MIN + float(RoadHash.pick("decor|%s|h" % tile_id, 100)) / 100.0 * span) * scale
+	var hw := w * 0.5
+	var hh := h * 0.5
+	var cut := minf(hw, hh) * DECOR_CORNER_CUT * (0.7 + float(RoadHash.pick("decor|%s|cut" % tile_id, 100)) / 100.0 * 0.6)
+	var corners := [Vector2(-hw, -hh), Vector2(hw, -hh), Vector2(hw, hh), Vector2(-hw, hh)]
+	var out := PackedVector2Array()
+	var cuts := 0
+	for i in 4:
+		if RoadHash.pick("decor|%s|corner%d" % [tile_id, i], 4) > 0:
+			cuts += 1
+	for i in 4:
+		var c: Vector2 = corners[i]
+		var chamfer := RoadHash.pick("decor|%s|corner%d" % [tile_id, i], 4) > 0
+		if cuts == 0 and i == 0:
+			chamfer = true   # never a plain box
+		if chamfer:
+			var prev: Vector2 = corners[(i + 3) % 4]
+			var nxt: Vector2 = corners[(i + 1) % 4]
+			out.append(c + (prev - c).normalized() * cut)
+			out.append(c + (nxt - c).normalized() * cut)
+		else:
+			out.append(c)
+	return out
+
+## Apartment rooflines: a ridge down the middle of every wing, with party walls
+## at DECOR_BAY intervals across it. Drawn from the unwobbled ring (the same
+## thing _draw_roof_motifs does) — the wobble is under a pixel at map zoom.
+func _draw_decor_roof(outer: PackedVector2Array, has_yard: bool) -> void:
+	if outer.size() < 3:
+		return
+	var ink := MapStyle.roof_motif_color(MapStyle.decor_fill())
+	var centre := _poly_centroid(outer)
+	var n := outer.size()
+	var depth := DECOR_WING if has_yard else DECOR_WING * 1.6
+	for i in n:
+		var a: Vector2 = outer[i]
+		var b: Vector2 = outer[(i + 1) % n]
+		var seg := b - a
+		var seg_len := seg.length()
+		if seg_len < DECOR_MIN_EDGE:
+			continue   # a chamfer face — too short to roof
+		var dir := seg / seg_len
+		var inward := Vector2(-dir.y, dir.x)
+		if inward.dot(centre - a) < 0.0:
+			inward = -inward
+		draw_line(a + dir * 2.0 + inward * (depth * 0.5), b - dir * 2.0 + inward * (depth * 0.5), ink, 1.0)
+		var bays := maxi(1, int(round(seg_len / DECOR_BAY)))
+		for k in range(1, bays):
+			var p: Vector2 = a + dir * (seg_len * float(k) / float(bays))
+			draw_line(p + inward * 0.6, p + inward * (depth - 0.6), ink, 1.0)
 
 func _flush_subcomponents() -> void:
 	_subcomp_queued = false
@@ -3847,6 +4250,9 @@ func _verts_bb(verts: PackedVector2Array) -> Rect2:
 
 ## Cull to the viewport when zoomed in, else draw all once and stay static.
 func _process(_delta: float) -> void:
+	if not _decor_dirty.is_empty():
+		_flush_decor_slice()
+	_update_tree_cache(_delta)
 	if _placements.is_empty():
 		return
 	var view := _visible_world_rect()
@@ -3864,6 +4270,93 @@ func _process(_delta: float) -> void:
 	elif _cull and view != _view:
 		_view = view
 		queue_redraw()
+
+## Drive the tree cache: build it while the camera is close, drop it a while
+## after it zooms back out. Called once per frame; does no work at all in the
+## common far-zoom case beyond one bool and a countdown.
+func _update_tree_cache(delta: float) -> void:
+	var detail := _hill_detail_lod()
+	if detail != _tree_detail:
+		_tree_detail = detail
+		queue_redraw()          # trees appear/vanish the instant the LOD flips
+	if not detail:
+		if not _tree_draw.is_empty():
+			_tree_idle += delta
+			if _tree_idle >= TREE_CACHE_GRACE:
+				_tree_draw.clear()
+				_tree_tiles.clear()   # positions go too — they are cheap to re-derive
+				_tree_rect = Rect2()
+				_tree_idle = 0.0
+		return
+	_tree_idle = 0.0
+	var want := _tree_view_rect()
+	# Rebuild only when the camera has actually moved off what we prepared. The
+	# cached rect already carries the 20% margin, so small pans are free.
+	if _tree_rect.size.x > 0.0 and _tree_rect.encloses(want):
+		return
+	_tree_rect = want
+	_rebuild_tree_draw(want)
+	queue_redraw()
+
+func _hill_detail_lod() -> bool:
+	var hv := get_tree().get_first_node_in_group("hill_visuals")
+	if hv == null or not hv.has_method("detail_lod"):
+		return true   # no terrain layer (tests, isolated shot scenes) — don't hide
+	return bool(hv.call("detail_lod"))
+
+## The viewport grown by TREE_VIEW_MARGIN on each side.
+func _tree_view_rect() -> Rect2:
+	var view := _visible_world_rect()
+	if view.size.x <= 0.0:
+		return Rect2()
+	return view.grow_individual(
+		view.size.x * TREE_VIEW_MARGIN, view.size.y * TREE_VIEW_MARGIN,
+		view.size.x * TREE_VIEW_MARGIN, view.size.y * TREE_VIEW_MARGIN)
+
+## Turn the stored positions inside `rect` into drawable polygons — the only
+## place tree geometry is ever built, and never for more than one screenful.
+func _rebuild_tree_draw(rect: Rect2) -> void:
+	_tree_draw.clear()
+	if terrain_layer == null:
+		return
+	# Generate (and keep) only the tiles overlapping the grown viewport; drop the
+	# rest. A tile's trees are a pure function of its id, so evicting costs
+	# nothing but the recompute, and the recompute is one tile's worth of work.
+	var live: Dictionary = {}
+	for coord in terrain_layer.tiles:
+		var centre := _tile_center_world_pos(coord)
+		if not rect.intersects(Rect2(centre - Vector2(270.0, 240.0), Vector2(540.0, 480.0))):
+			continue
+		var tid := str((terrain_layer.tiles[coord] as Dictionary).get("id", ""))
+		if tid == "":
+			continue
+		live[tid] = true
+		if not _tree_tiles.has(tid):
+			_tree_tiles[tid] = _gen_tile_trees(tid, coord, centre)
+		var n := 0
+		for t in (_tree_tiles[tid] as Array):
+			if rect.has_point(t.p as Vector2):
+				_append_tree(int(t.k), t.p as Vector2, "%s|t%d" % [tid, n])
+			n += 1
+	for held in _tree_tiles.keys():
+		if not live.has(held):
+			_tree_tiles.erase(held)
+	# Courtyard plantings ride along — they are already stored with their court.
+	for dtid in _decor:
+		var dec: Dictionary = _decor[dtid]
+		for yt in (dec.get("yard_trees", []) as Array):
+			if rect.has_point(yt.p as Vector2):
+				_append_tree(int(yt.k), yt.p as Vector2, "%s|yt%d" % [str(dec.key), int(yt.i)])
+
+func _append_tree(kind: int, centre: Vector2, seed_key: String) -> void:
+	var crown := Trees.canopy(kind, centre, seed_key)
+	if crown.size() < 3:
+		return
+	var off := Trees.shadow_offset(kind)
+	var shadow := PackedVector2Array()
+	for p in crown:
+		shadow.append(p + off)
+	_tree_draw.append({"poly": crown, "shadow": shadow, "fir": kind == Trees.Kind.FIR})
 
 func _visible_world_rect() -> Rect2:
 	var vp := get_viewport()
@@ -3974,6 +4467,10 @@ func footprint_discs() -> Array:
 func clear_all() -> void:
 	# A loaded save rebuilds visuals (world_map._rebuild_after_load).
 	_placements.clear()
+	_decor.clear()
+	_decor_dirty.clear()
+	_tree_tiles.clear()
+	_tree_draw.clear()
 	_placement_index.clear()
 	_clear_tile_caches()
 	_subcomponents.clear()
@@ -4037,7 +4534,7 @@ func _draw() -> void:
 			var mtop: Color = _mass_wash(m)
 			if shadow.a > 0.0:
 				draw_colored_polygon(_offset_pts(mw, shadow_off), shadow)
-			_draw_prism(mw, mtop, ext, edge, edge_w)
+			_draw_prism(mw, mtop, ext, edge, edge_w, MapStyle.Extrude.FULL, bool(m.get("npc", false)))
 			var ml := mw.duplicate()
 			ml.append(mw[0])
 			draw_polyline(ml, edge, edge_w, true)
@@ -4047,6 +4544,41 @@ func _draw() -> void:
 				var hl := hw.duplicate()
 				hl.append(hw[0])
 				draw_polyline(hl, MapStyle.ink_color(), 1.0, true)
+	# Decorative buildings draw UNDER the real ones, so a real building always
+	# wins the pixels where they meet. Same prism, same outline — cream fill.
+	var decor_top := MapStyle.decor_fill()
+	for dtid in _decor:
+		var dec: Dictionary = _decor[dtid]
+		if _cull and not _view.intersects(dec.bb):
+			continue
+		var dw := _wobble_poly(str(dec.key), dec.verts)
+		_draw_prism(dw, decor_top, ext, edge, edge_w)
+		draw_polyline(_closed(dw), edge, edge_w, true)
+		# The courtyard is punched after the fill (the same way block masses do
+		# it) — draw_colored_polygon has no hole support.
+		var dhole: PackedVector2Array = dec.get("hole", PackedVector2Array())
+		if dhole.size() >= 3:
+			var dyard := _wobble_poly(str(dec.key) + "|yard", dhole)
+			draw_colored_polygon(dyard, MapStyle.courtyard_fill())
+			draw_polyline(_closed(dyard), edge, 1.0, true)
+		_draw_decor_roof(dec.verts, dhole.size() >= 3)
+		# A planted yard: a fountain or ornamental pond, ringed by a few trees.
+		var pond: Vector2 = dec.get("pond", Vector2.INF)
+		if pond.is_finite():
+			draw_circle(pond, DECOR_POND_R, MapStyle.water_color())
+			draw_arc(pond, DECOR_POND_R, 0.0, TAU, 14, edge, 1.0, true)
+	# Every tree on the map — courtyard plantings, roadside singles, riverside
+	# bunches — is drawn from ONE prepared, viewport-local cache, and only while
+	# the terrain is at its detail LOD. See _update_tree_cache.
+	if _tree_detail and not _tree_draw.is_empty():
+		var t_shadow := MapStyle.tree_shadow()
+		var t_ink := MapStyle.tree_outline()
+		var t_leaf := MapStyle.tree_fill(false)
+		var t_fir := MapStyle.tree_fill(true)
+		for tr in _tree_draw:
+			draw_colored_polygon(tr.shadow, t_shadow)
+			draw_colored_polygon(tr.poly, t_fir if bool(tr.fir) else t_leaf)
+			draw_polyline(_closed(tr.poly), t_ink, 1.0, true)
 	for placement in _placements:
 		if _cull and not _view.intersects(placement.bb):
 			continue
@@ -4069,7 +4601,8 @@ func _draw() -> void:
 			if not in_mass:
 				if shadow.a > 0.0:
 					draw_colored_polygon(_offset_pts(wob, shadow_off), shadow)
-				_draw_prism(wob, top, ext, edge, edge_w)
+				# NPC blocks get the heavier side face — grey mass, dark shadow.
+				_draw_prism(wob, top, ext, edge, edge_w, MapStyle.Extrude.FULL, bool(placement.is_npc))
 			# A mass member contributes only its party wall — an interior division
 			# on the mass roof, so it takes the roof-motif ink, not the mass edge.
 			if in_mass:
@@ -4398,14 +4931,14 @@ func _offset_pts(pts: PackedVector2Array, off: Vector2) -> PackedVector2Array:
 ## drawn UNDER the top fill, so only the SE-facing edges show a side face — the
 ## reference's raised-cardboard read, at zero new geometry. `off` is ZERO in
 ## every other style, which collapses this to the old single fill.
-func _draw_prism(wob: PackedVector2Array, top: Color, off: Vector2, edge: Color, edge_w: float, tier: int = MapStyle.Extrude.FULL) -> void:
-	_draw_prism_on(self, wob, top, off, edge, edge_w, tier)
+func _draw_prism(wob: PackedVector2Array, top: Color, off: Vector2, edge: Color, edge_w: float, tier: int = MapStyle.Extrude.FULL, deep: bool = false) -> void:
+	_draw_prism_on(self, wob, top, off, edge, edge_w, tier, deep)
 
 ## Same recipe onto an arbitrary canvas (farm outbuildings draw on the underlay).
-func _draw_prism_on(c: CanvasItem, wob: PackedVector2Array, top: Color, off: Vector2, edge: Color, edge_w: float, tier: int = MapStyle.Extrude.FULL) -> void:
+func _draw_prism_on(c: CanvasItem, wob: PackedVector2Array, top: Color, off: Vector2, edge: Color, edge_w: float, tier: int = MapStyle.Extrude.FULL, deep: bool = false) -> void:
 	if off != Vector2.ZERO:
 		var sil := _offset_pts(wob, off)
-		c.draw_colored_polygon(sil, MapStyle.extrude_side(top, tier))
+		c.draw_colored_polygon(sil, MapStyle.extrude_side(top, tier, deep))
 		c.draw_polyline(_closed(sil), edge, edge_w, true)
 	c.draw_colored_polygon(wob, top)
 

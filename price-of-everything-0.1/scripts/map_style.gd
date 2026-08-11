@@ -97,16 +97,19 @@ const _SEA_INK: Array[Color] = [
 	Color("2e4468"), Color("35507a"), Color("46648c"), Color("4f6f99"),
 	Color("6b8fb5"), Color("ddd0a6"),
 ]
-## Plate: the depth ramp is kept but compressed to ~18% value spread, so the sea
-## reads as one light sky-blue plane with just enough offshore weight to sit back.
+## Plate water returns TOWARD the pre-ink blue (owner 2026-08-11): the ink
+## restyle washed the sea out to slate and the first plate cut took it further,
+## to a pale sky. This sits between the two — the saturation and depth of the
+## classic ramp, held a step lighter and warmer so it still belongs on paper.
+## [5] is the sandy LAND BASE and must track band[1], which is ink's now.
 const _SEA_PLATE: Array[Color] = [
-	Color("6fb0d8"), Color("7bb9dd"), Color("88c2e3"), Color("93c9e6"),
-	Color("a2d1ea"), Color("e8ddc0"),
+	Color("13387f"), Color("18428e"), Color("2354a1"), Color("2c62ae"),
+	Color("3f7cc4"), Color("ddd0a6"),
 ]
 
 const _WATER_CLASSIC := Color(0.17647059, 0.40784314, 0.76862745, 1.0)
 const _WATER_INK := Color("5b86b5")
-const _WATER_PLATE := Color("8ec7e8")
+const _WATER_PLATE := Color("3f7cc4")
 
 func band_colors() -> Array[Color]:
 	return _BAND_INK if ink else _BAND_CLASSIC
@@ -268,11 +271,11 @@ const _PLATE_BLOCK_TOPS := {
 	"blue": Color("77a0b4"),      # water
 	"red": Color("c2b08a"),       # urban family default — khaki, NOT red
 	"red_mass": Color("b0483a"),  # the brick accent, courtyard masses only
-	## NPC stays ink's paper-white. A dark NPC block was right while the ground
-	## was cream, but on the green land it measures 1.74:1 against 2.20:1 for
-	## paper-white — the ownership cue reads better the original way round, and
-	## the prism's side face plus its outline still give it mass.
-	"npc": Color("efe9db"),
+	## Three-way ownership read (owner 2026-08-11), which is also the reference's
+	## own block fabric: DECOR is cream, NPC is grey, the player is coloured.
+	## Cream took over the paper-white the NPC used to hold.
+	"npc": Color("8f8d85"),
+	"decor": Color("efe9db"),
 	"ruins": Color("7a5f43"),     # decay, not ownership — player AND NPC ruins
 }
 
@@ -288,6 +291,12 @@ func roof_motif_color(top: Color) -> Color:
 
 func courtyard_fill() -> Color:
 	return Color("e3d7b6") if is_plate() else Color("cfc3a2")
+
+## Decorative buildings: the village fabric that belongs to nobody. Cream in
+## every style — in ink it reads as the same uncoloured paper as an NPC lot,
+## which is correct there; the plate separates them by moving NPC to grey.
+func decor_fill() -> Color:
+	return Color("efe9db") if ink else Color(0.93, 0.92, 0.89)
 
 ## Per-instance value jitter, tightened in plate so a block run stays a family.
 func plate_wash_jitter() -> float:
@@ -411,7 +420,7 @@ func river_casing_extra() -> float:
 ## Flow squiggles inside the river (ink only): short darker-blue dashes.
 func river_squiggle() -> Color:
 	if is_plate():
-		return Color("5b93bd", 0.45)
+		return Color("2c62ae", 0.5)   # a depth band of the sea ramp, like classic's
 	return Color(0.247, 0.435, 0.639, 0.5)
 
 ## ── Forests (forest_visuals) ────────────────────────────────────────────────
@@ -430,6 +439,24 @@ func forest_lobe_dark() -> Color:
 func forest_arc() -> Color:
 	## Transparent = skip: the plate canopy is a flat mass, no highlight arcs.
 	return Color(0.0, 0.0, 0.0, 0.0) if is_plate() else Color("2d7d3a")
+
+## ── Individual trees (TreeShapes) ───────────────────────────────────────────
+## Firs read darker than broadleaves; the shadow is the same warm sepia the rest
+## of the map's light model uses, kept translucent so overlapping crowns in a
+## bunch do not stack into a black mass.
+
+func tree_fill(is_fir: bool) -> Color:
+	if is_fir:
+		return Color("2f6a3c") if ink else Color("1f5b2c")
+	return Color("3f7f45") if ink else Color("2f7a38")
+
+func tree_outline() -> Color:
+	return _ink_alpha(0.55 if is_plate() else 0.45)
+
+func tree_shadow() -> Color:
+	if is_plate():
+		return _ink_alpha(0.24)
+	return Color(0.05, 0.16, 0.08, 0.22)
 
 ## ── City plate: the one fake-3D model ───────────────────────────────────────
 ## One light from the NW. Every solid mass is an opaque prism: the wobbled
@@ -454,8 +481,13 @@ func extrude_offset(tier: int) -> Vector2:
 			return Vector2.ZERO
 
 ## Side faces are always derived from the top face — never hand-picked.
-func extrude_side(fill: Color, tier: int) -> Color:
-	var c := fill.darkened(0.32 if tier == Extrude.FULL else 0.20)
+## `deep` is the NPC treatment: a heavier side face so a grey NPC block sits
+## visibly lower than the cream decor around it (owner 2026-08-11).
+func extrude_side(fill: Color, tier: int, deep: bool = false) -> Color:
+	var f := 0.32 if tier == Extrude.FULL else 0.20
+	if deep:
+		f = 0.52
+	var c := fill.darkened(f)
 	c.a = 1.0
 	return c
 

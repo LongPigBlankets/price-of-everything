@@ -2,10 +2,10 @@
 
 A third map style, sitting beside `classic` and the default `ink` & wash look
 (`docs/map_ink_wash_restyle_spec.md`). It targets the owner's reference plates —
-a vintage printed city plan: extruded block masses, near-white paper streets and
-light sky-blue water — **while staying inside the project's Sanborn / Booth
-idiom**, and (owner ruling, decision 8) on the game's own green land rather than
-the reference's cream. It reads as the same cartographer drawing a
+a vintage printed city plan: extruded block masses and near-white paper streets
+— **while staying inside the project's Sanborn / Booth idiom**, and (owner
+ruling, decision 8) on the game's own green land rather than the reference's
+cream. It reads as the same cartographer drawing a
 denser downtown sheet, not as a different game.
 
 Toggle it in the debug terminal:
@@ -50,7 +50,7 @@ onto the features that exist:
 | Packed dark city blocks | Buildings, block masses and their subcomponents, drawn as prisms |
 | Cream negative-space streets | Near-white paper road beds bounded by solid ink hairlines |
 | Olive parks | Forest canopy — kept ink's green (decision 8), mildly extruded |
-| Light sky-blue water | Sea, rivers and lakes |
+| Light sky-blue water | *Partly adopted* — water sits between classic and ink, not the reference sky |
 | Cream paper ground | *Not adopted* — the plate shares ink's green land (see decision 8) |
 | Rare brick-red landmarks | Farm barns and red-majority courtyard masses only |
 
@@ -60,13 +60,12 @@ is how period plates drew relief anyway.
 
 ## 3. Locked decisions
 
-1. **Ownership stays as ink has it: NPC paper-white, player coloured.** An
-   earlier cut inverted this — dark NPC blocks as the reference's city fabric,
-   player buildings as the coloured lots picked out of it — and it was right
-   *while the ground was cream*. Once the land went back to green (decision 8)
-   the measurement flipped: paper-white reads at 2.20:1 against the green versus
-   1.74:1 for the dark block, so the original cue is simply the better one here.
-   The prism's side face and outline still give NPC buildings mass.
+1. **Ownership is a THREE-way read (owner 2026-08-11):** decorative buildings
+   cream `#efe9db`, NPC grey `#8f8d85` with a deeper side face (0.52 darkening
+   against the standard 0.32), player buildings coloured. Cream took over the
+   paper-white the NPC used to hold. This is also the reference's own block
+   fabric — grey masses, cream masses, rare red — arrived at from the game's own
+   ownership semantics rather than imposed on them.
 2. **One light, one model.** Every solid mass is an opaque prism: wobble the
    polygon, offset the wobbled points toward the SE, draw that silhouette *under*
    the top fill. Only SE-facing edges show a side face. No gradients, no soft
@@ -95,10 +94,10 @@ is how period plates drew relief anyway.
    The cascade is worth understanding, because several values are ink's *because*
    of this. On a mid-value green ground the figure/ground relationship inverts
    back to ink's, so buildings and canopy must read light-on-dark rather than
-   dark-on-light. Specifically: NPC blocks return to paper-white (2.20:1 against
-   the green, versus 1.74:1 for the dark block that suited cream), and the canopy
-   returns to bottle green (an olive canopy sat within a hair of the green ground
-   and the woods vanished).
+   dark-on-light. Specifically: the canopy returns to bottle green (an olive
+   canopy sat within a hair of the green ground and the woods vanished), and the
+   dark NPC block that suited cream was dropped — NPC is now grey, with cream
+   reserved for decor (decision 1).
 9. **Streets are the lightest thing on the map.** One near-white warm paper
    (`#f4efdd`) for both tiers. On the green land that reads as a bright street
    web — which is the Booth idiom, and is what carries the plate character now
@@ -111,8 +110,50 @@ The land, canopy, farms and ownership cue are now shared with ink. The variant i
 
 1. **Extruded blocks** — every solid mass is a prism (the largest difference).
 2. **Paper streets** — near-white beds, solid ink edges, no dashes.
-3. **Lighter water** — `#8ec7e8` against ink's slate `#5b86b5`.
+3. **Water returned toward pre-ink** — `#3f7cc4`, between classic's saturation
+   and ink's slate. The first two cuts (ink slate, then a pale plate sky) both
+   went too far from the original; the sea's land-base band tracks band[1].
 4. **Quieter, patchy paper** — see the parchment section.
+
+### Decorative buildings — court apartment blocks
+
+One per tile, on every land tile — including tiles nobody has built on, which is
+the point: the map should read as inhabited before the player touches it.
+(Supersedes the 2026-08-08 ruling's per-terrain counts of rural 1-4 / hill 2-3 /
+mountain 0-2 / urban 4-10, and answers its open question about how a building
+that is "neither NPC nor player" should read.)
+
+**The form is a court** — the Berlin/Vienna *Hof*: a seeded rectangle with SOME
+corners chamfered (never none, or it is just a box), wrapped around an inner
+courtyard of `DECOR_WING` = 8.5u thickness that is **even on every side**. The
+courtyard is inset from the *placed* polygon rather than the local one, so the
+wing stays even whatever rotation the frontage search picked. A yard that comes
+out under 40u² is dropped and the block draws solid.
+
+**Rooflines say apartments**: a ridge down the centre of every wing, with party
+walls every `DECOR_BAY` = 9u across it. Chamfer faces shorter than 6u carry no
+roof — at that length the linework just reads as noise.
+
+**Sized to an L1 factory.** Outer side 34–46u seeded, against `ART_DRAWN_MIN` =
+40u, so a court sits in the same register as the industry around it rather than
+as scenery. If the full size will not fit, one 0.78× attempt follows before the
+tile is left without one.
+
+They go through the **same frontage search** as a real building, so they snap to
+a road when the tile has one, and they draw with the same wobble, prism and
+outline. Only the fill differs.
+
+What keeps them safe is that they live in their own dictionary, not in
+`_placements`: occupancy, footprint discs, the road layer's terminus
+suppression, and every placement statistic are blind to them. Real buildings
+never collide against decor either — instead a tile's decor is re-placed
+whenever its buildings change, so **the decor is what moves out of the way**. A
+tile where nothing fits (mountain, water, a full tile) simply has none.
+
+Placement is paced at `DECOR_FLUSH_PER_FRAME` tiles per frame from `_process`,
+because the whole map marks itself dirty at once when the match-start seeding
+window closes and 286 frontage searches in one frame is exactly the stall the
+load path has been tuned to avoid. Measured cost: match ready 18.99s → 19.30s.
 
 ## 4. The seam
 
@@ -152,10 +193,11 @@ water, relief bands, decks, pits, pipes and cables, hatch linework.
 |---|---|
 | Linework ink | `#4a4136` |
 | Land ramp, canopy, farm tints | **shared with ink** — unchanged |
-| Water | `#8ec7e8`; sea depth ramp `#6fb0d8` → `#a2d1ea` |
+| Water | `#3f7cc4`; sea depth ramp `#13387f` → `#3f7cc4`, land base tracks band[1] |
 | Road bed (both tiers) | `#f4efdd` — the map's near-white |
 | Street edge local / trunk | ink @ 0.68 / 0.85, ~1.5u per side |
-| NPC block | `#efe9db` paper-white (shared with ink) |
+| Decorative building | `#efe9db` cream |
+| NPC block | `#8f8d85` grey, side face darkened 0.52 instead of 0.32 |
 | Player blocks | navy `#58697a`, power `#be9c3c`, refinery `#9e6b79`, electrochem `#8c9757`, manufacturing `#b3743f`, extraction `#9e9382`, logistics `#c1922c`, water `#77a0b4`, urban `#c2b08a` |
 | Brick accent | `#b0483a` |
 | Ruins | `#7a5f43` |
