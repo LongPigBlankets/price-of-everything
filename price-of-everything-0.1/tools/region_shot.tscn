@@ -1,4 +1,0 @@
-[gd_scene format=3 uid="uid://d1regionshot01"]
-[ext_resource type="Script" path="res://tools/region_shot.gd" id="1"]
-[node name="RegionShot" type="Node"]
-script = ExtResource("1")

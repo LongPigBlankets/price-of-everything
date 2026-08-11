@@ -12,7 +12,6 @@ extends CanvasLayer
 ##   sellmode <stockpile|market|building>  set the global production sell mode
 ##   logs                             toggle verbose production / CostSolver logs
 ##   swap tvp                         toggle between the classic and alternate Tile View Panel
-##   swap density                     swap the baked road network: dense <-> baseline (A/B the layout)
 ##   swap bdp                         toggle to the classic v1 building-detail panel (v2 is default)
 ##   swap construct_panel             toggle the construct-panel redesign
 ##   swap loading_screen              toggle the slow pre-optimization new-game build (for recordings)
@@ -187,8 +186,6 @@ func _run_command(text: String) -> String:
 		"swap":
 			if parts.size() >= 2 and parts[1].to_lower() == "song":
 				return "Now playing: %s" % Audio.swap_song()
-			if parts.size() >= 2 and parts[1].to_lower() == "density":
-				return _swap_road_density()
 			if parts.size() >= 2 and parts[1].to_lower() == "bdp":
 				MatchState.toggle_use_bdp_v2()
 				return "Building Detail panel → %s" % ("v2 (redesign)" if MatchState.use_bdp_v2 else "v1 (classic)")
@@ -467,30 +464,3 @@ func _sell_mode_name() -> String:
 			return "building"
 		_:
 			return "unknown"
-
-## `swap density` — re-seed the road network from the other baked variant.
-##
-## Road layout is baked offline (~25s), so an in-match A/B cannot re-bake: both
-## bakes ship, and this swaps which one the match is seeded from. Tile road FLAGS
-## are additive (that is how the fresh-match path applies them), so swapping to
-## the sparser bake leaves the extra tiles flagged — the geometry is what this is
-## for, not the transport graph. It also drops any road the player has built,
-## since re-seeding rebuilds the network from the bake.
-func _swap_road_density() -> String:
-	if menu_mode:
-		return "swap density needs a running match (it re-seeds the road network)."
-	var want := "baseline" if RoadsBaked.variant() == "dense" else "dense"
-	if not RoadsBaked.set_variant(want):
-		return "swap density: '%s' bake is missing (expected %s)" % [
-			want, str(RoadsBaked.VARIANTS.get(want, "?"))]
-	RoadNetwork.reset()
-	RoadNetwork.bootstrap_from_bake()
-	var wm: Node = get_tree().get_first_node_in_group("world_map")
-	if wm != null and wm.has_method("reapply_baked_road_flags"):
-		wm.call("reapply_baked_road_flags")
-	var rv: Node = get_tree().get_first_node_in_group("road_network_visuals")
-	if rv != null and rv.has_method("invalidate_geometry"):
-		rv.call("invalidate_geometry")
-	var edges: int = (RoadsBaked.network_state().get("edges", {}) as Dictionary).size()
-	return "Road network → %s bake  (%d edges, %d flagged tiles). Player-built roads were dropped; tile flags are additive." % [
-		want, edges, RoadsBaked.flagged_tiles().size()]

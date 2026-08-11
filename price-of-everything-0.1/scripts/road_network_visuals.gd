@@ -37,7 +37,6 @@ func _ready() -> void:
 	_active_layer.name = "ActiveReveals"
 	_active_layer.draw.connect(_draw_active)
 	add_child(_active_layer)
-	add_to_group("road_network_visuals")   # so cheats can force a repaint
 	RoadWorks.order_settled.connect(func(_id: int) -> void: _drawn_edges = -1)
 	MapStyle.style_changed.connect(_on_style_changed)
 
@@ -46,12 +45,6 @@ func _on_style_changed() -> void:
 	_drawn_edges = -1
 	queue_redraw()
 	_active_layer.queue_redraw()
-
-## Drop every cached stroke and repaint. Needed when the network's GEOMETRY is
-## replaced under the same edge ids — swapping baked variants does exactly that,
-## and the per-edge ink cache would otherwise draw the previous bake's shapes.
-func invalidate_geometry() -> void:
-	_on_style_changed()
 
 func _process(_delta: float) -> void:
 	# 'toggle roads' hides the whole layer; drawing is skipped while hidden.

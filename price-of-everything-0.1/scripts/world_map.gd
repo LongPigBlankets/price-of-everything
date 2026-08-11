@@ -104,7 +104,6 @@ var _deposit_dialog_target: Dictionary = {}  # building the current deposit dial
 var build_complete := false
 
 func _ready() -> void:
-	add_to_group("world_map")   # so cheats can reach the map without a hard path
 	# Advisor agenda: any building placement/completion counts as "a building built".
 	building_placed.connect(func(_t: String, _b: String, _r: String, _i: String, _c: Vector2i) -> void:
 		MatchState.note_building_built())
@@ -481,12 +480,6 @@ func _place_yield(animate: bool) -> void:
 ## network crosses (anchors AND corridor tiles — the bake's flagged_tiles list),
 ## mirroring what a settled player road does. Infrastructure is free: it never
 ## counts against build capacity. Fresh start only; loads restore their own flags.
-## Re-run the fresh-match flagging after the baked network has been swapped under
-## us (`swap density`). Additive, like the start path: a tile that loses its road
-## in the other bake keeps the infrastructure it was already granted.
-func reapply_baked_road_flags() -> void:
-	_apply_baked_road_flags()
-
 func _apply_baked_road_flags() -> void:
 	for tid in RoadsBaked.flagged_tiles():
 		var tile_id := str(tid)
