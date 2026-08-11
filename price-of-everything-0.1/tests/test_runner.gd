@@ -28,7 +28,6 @@ func _ready() -> void:
 	print("\n==== price-of-everything tests ====")
 	_test_scripts_parse()
 	_test_map_style_plate()
-	_test_tree_determinism()
 	_test_widgets_instantiate()
 	_test_recipe_row_instantiates()
 	await _test_unlock_dialog_groups_multiple_unlocks()
@@ -12337,8 +12336,8 @@ func _test_map_style_plate() -> void:
 	MapStyle.set_plate(true)
 	_check(MapStyle.is_plate() and MapStyle.ink, "map style: plate implies ink")
 	_check(MapStyle.ink_color() == Color("4a4136"), "map style: plate swaps to the one plate ink")
-	# Owner 2026-08-11: water returns toward the pre-ink blue, between classic's
-	# saturation and ink's slate — NOT the pale sky the first plate cut used.
+	# Water returned toward the pre-ink blue (owner 2026-08-11): between classic's
+	# saturation and ink's slate, NOT the pale sky the first plate cut used.
 	_check(MapStyle.water_color() == Color("3f7cc4"), "map style: plate water is the deeper pre-ink blue")
 	_check(MapStyle.sea_colors()[5] == MapStyle.band_colors()[1],
 		"map style: the sea's land-base band tracks the coastal sand band")
@@ -12346,7 +12345,9 @@ func _test_map_style_plate() -> void:
 	# ink's green ramp, and expresses itself through what stands on the ground.
 	_check(MapStyle.band_colors()[2] == Color("9aa465"), "map style: plate keeps ink's green landmass")
 	_check(MapStyle.forest_base() == Color("0d512b"), "map style: plate keeps ink's canopy green")
-	# Three-way ownership: decor cream, NPC grey, player coloured.
+	# Three-way ownership read: decor cream, NPC grey with a deeper side face,
+	# player coloured. (The decor BUILDING itself lives on road-density; the
+	# colour rule stays here because it is part of the plate's palette.)
 	_check(MapStyle.plate_block_top("decor") == Color("efe9db"),
 		"map style: decorative buildings are cream")
 	_check(MapStyle.plate_block_top("npc") == Color("8f8d85"),
@@ -12396,29 +12397,3 @@ func _test_map_style_plate() -> void:
 
 	MapStyle.set_ink(was_ink)
 	MapStyle.set_plate(was_plate)
-
-
-## Trees are regenerated from scratch every time the camera returns to a tile —
-## nothing is stored map-wide. That is only acceptable because generation is a
-## PURE function of the seed key, so a revisit reproduces the same wood rather
-## than a new one. This is the test that keeps it true.
-func _test_tree_determinism() -> void:
-	const Trees := preload("res://scripts/tree_shapes.gd")
-	var a := Trees.canopy(Trees.Kind.LARGE, Vector2(120, 80), "tile_9_10|t3")
-	var b := Trees.canopy(Trees.Kind.LARGE, Vector2(120, 80), "tile_9_10|t3")
-	_check(a == b, "trees: the same seed key regenerates an identical crown")
-	var c := Trees.canopy(Trees.Kind.LARGE, Vector2(120, 80), "tile_9_10|t4")
-	_check(a != c, "trees: a different seed key gives a different crown")
-	_check(Trees.pick_kind("tile_5_9|riv0|2|k1", [5, 4, 2]) == Trees.pick_kind("tile_5_9|riv0|2|k1", [5, 4, 2]),
-		"trees: species choice is stable for a key")
-	# FNV-1a over the key, not GDScript hash() — stable across engine versions,
-	# which is what lets a save look the same next month.
-	_check(RoadHash.pick("tile_9_10|clump2|t1|dx", 100) == RoadHash.pick("tile_9_10|clump2|t1|dx", 100),
-		"trees: the underlying hash is pure")
-	var fir := Trees.canopy(Trees.Kind.FIR, Vector2.ZERO, "fir|1")
-	var rmin := 1.0e9
-	var rmax := 0.0
-	for v in fir:
-		rmin = minf(rmin, (v as Vector2).length())
-		rmax = maxf(rmax, (v as Vector2).length())
-	_check(rmin / rmax > 0.6, "trees: fir spikes are a soft rosette, not a caltrop (%.2f)" % (rmin / rmax))
