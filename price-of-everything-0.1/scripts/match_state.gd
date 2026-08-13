@@ -4403,6 +4403,11 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	# arrive in N turns. The reusable buy primitive for market-sourced inputs (and later a Buy tab).
 	if dest_tile == "" or good_id == "" or qty <= 0:
 		return {}
+	# An import prohibition is enforced HERE because every purchase route funnels
+	# through this primitive: automated market top-up, recurring buys, construction
+	# and upgrade materials, and the manual buy. One guard closes all of them.
+	if PolicyState.import_banned(good_id, TurnManager.current_turn):
+		return {}
 	var covered := seaport_covers(good_id)
 	var quote := TransportService.quote_market_buy(dest_tile, good_id, qty, covered)
 	if quote.is_empty():
@@ -4516,6 +4521,10 @@ func tiles_consuming(good_id: String) -> Dictionary:
 func preview_buy(dest_tile: String, good_id: String, qty: int) -> Dictionary:
 	# Cost/turns for a buy WITHOUT executing — for the Purchases "Cost to buy" line.
 	if dest_tile == "" or good_id == "" or qty <= 0:
+		return {}
+	# Mirrors the queue_buy guard so the UI never quotes a price for a purchase that
+	# would be refused.
+	if PolicyState.import_banned(good_id, TurnManager.current_turn):
 		return {}
 	var quote := TransportService.quote_market_buy(dest_tile, good_id, qty, seaport_would_cover(good_id))
 	if quote.is_empty():

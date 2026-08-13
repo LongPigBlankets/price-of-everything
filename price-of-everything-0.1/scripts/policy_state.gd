@@ -62,6 +62,7 @@ func _ready() -> void:
 
 func _on_turn_resolution_completed() -> void:
 	_maybe_fire_insider_tip()
+	_enforce_new_prohibitions()
 
 # --- Live levels (pure functions of the turn) ---------------------------------------
 
@@ -103,6 +104,129 @@ func co2_tax_scale(turn: int) -> float:
 	var lvl := clampi(co2_tax_level(turn), 0, EconomyConfig.CO2_TAX_PHASE_SCALE.size() - 1)
 	return float(EconomyConfig.CO2_TAX_PHASE_SCALE[lvl])
 
+## --- PROHIBITIONS -------------------------------------------------------------
+## A ban is a pure function of (turn, schedule) plus one cheat override, so nothing
+## about it needs to survive a save beyond that override — the levels themselves are
+## always re-derived. Two kinds:
+##   "produce" — recipes whose OUTPUT is the good stop running and cannot be selected
+##   "import"  — the good cannot be bought by ANY route (queue_buy is the single primitive)
+## `-1` means the cheat is not engaged; otherwise bans are live from that turn onward.
+var _ban_override_turn: int = -1
+
+## Goods travel through the codebase as catalog IDs ("g_001") in some places and as
+## internal names ("coal") in others; the schedule is authored in internal names
+## because a human writes it. Normalise so callers can pass either.
+func _internal_name_of(good_ref: String) -> String:
+	var by_id: Dictionary = Catalog.get_good(good_ref)
+	var n: String = str(by_id.get("internal_name", ""))
+	return n if n != "" else good_ref
+
+## Every good banned for `kind` at `turn`, as a set of INTERNAL NAMES. Cheap enough to
+## call per recipe/purchase: the schedule is a handful of rows.
+func _banned_set(kind: String, turn: int) -> Dictionary:
+	var out: Dictionary = {}
+	if _ban_override_turn >= 0 and turn >= _ban_override_turn:
+		out["coal"] = true
+	for e in Schedule.SCHEDULE:
+		if turn < int(e.effective_turn):
+			continue
+		var bans: Dictionary = e.get("bans", {})
+		for gid in bans.get(kind, []):
+			out[str(gid)] = true
+	return out
+
+## True when producing `good_id` is prohibited at `turn`. Accepts a catalog ID or an
+## internal name.
+func produce_banned(good_id: String, turn: int) -> bool:
+	return _banned_set("produce", turn).has(_internal_name_of(good_id))
+
+## True when buying `good_id` is prohibited at `turn` — checked by MatchState.queue_buy,
+## which every purchase route (automated top-up, recurring, construction, upgrade,
+## manual) funnels through.
+func import_banned(good_id: String, turn: int) -> bool:
+	return _banned_set("import", turn).has(_internal_name_of(good_id))
+
+## True when any prohibition is live at `turn` (drives UI copy).
+func any_ban_active(turn: int) -> bool:
+	return not (_banned_set("produce", turn).is_empty() and _banned_set("import", turn).is_empty())
+
+## What a prohibition costs the player the turn it lands, and the cancellation it forces.
+##
+## Called at the end of the resolution on the turn a ban first becomes live (the
+## "newly banned" set is `bans(turn) - bans(turn-1)`, so it is self-limiting and needs
+## no extra saved state — the cheat, which sets its override to the current turn, trips
+## the same edge). Standing recurring buy orders for a prohibited good are CANCELLED,
+## because they would otherwise re-issue an illegal purchase every turn. Shipments
+## already paid for and in transit are deliberately left to land: the player has
+## already been charged, and seizing them would be a second, unannounced penalty.
+func _enforce_new_prohibitions() -> void:
+	var turn: int = int(TurnManager.current_turn)
+	var newly_produce: Dictionary = _newly_banned("produce", turn)
+	var newly_import: Dictionary = _newly_banned("import", turn)
+	if newly_produce.is_empty() and newly_import.is_empty():
+		return
+
+	# Buildings whose current recipe is now illegal (they halt in _can_run_recipe).
+	var halted: int = 0
+	for iid in MatchState.buildings:
+		var b: Dictionary = MatchState.buildings[iid]
+		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		if recipe.is_empty():
+			continue
+		if Catalog.is_recipe_prohibited(recipe):
+			halted += 1
+
+	# Standing market orders that can no longer be honoured.
+	var cancelled: int = 0
+	var kept: Array = []
+	for order in MatchState.recurring_buys:
+		var gid: String = str((order as Dictionary).get("good", ""))
+		if newly_import.has(_internal_name_of(gid)):
+			cancelled += 1
+		else:
+			kept.append(order)
+	if cancelled > 0:
+		MatchState.recurring_buys = kept
+
+	var goods: Array = newly_produce.keys()
+	for g in newly_import:
+		if not goods.has(g):
+			goods.append(g)
+	goods.sort()   # deterministic wording (rule #3)
+	var named: String = ", ".join(goods)
+	EventScheduler.emit_event({
+		"id": "policy:prohibition_impact:%d" % turn,
+		"kind": "policy_enacted",
+		"severity": "critical",
+		"title": "Prohibition in force — %s" % named,
+		"body": "%d %s stopped and %d standing market %s cancelled. Shipments already paid for will still arrive; nothing new can be ordered. Switch those buildings to another recipe or demolish them — they keep costing maintenance and labour while idle." % [
+			halted, "building" if halted == 1 else "buildings",
+			cancelled, "order" if cancelled == 1 else "orders"],
+		"source": "policy",
+		"deeplink": {"panel": "money"},
+		"persistent": true,
+		"auto_dismiss_turns": 6,
+	})
+
+## Goods newly prohibited for `kind` on `turn` (live now, not live last turn).
+func _newly_banned(kind: String, turn: int) -> Dictionary:
+	var now: Dictionary = _banned_set(kind, turn)
+	if now.is_empty():
+		return {}
+	var before: Dictionary = _banned_set(kind, turn - 1)
+	var out: Dictionary = {}
+	for g in now:
+		if not before.has(g):
+			out[g] = true
+	return out
+
+## Cheat hook: engage the coal prohibition from the current turn, or lift it.
+func cheat_set_coal_ban(on: bool, turn: int) -> void:
+	_ban_override_turn = turn if on else -1
+
+func coal_ban_override_turn() -> int:
+	return _ban_override_turn
+
 ## How carbon-intensive the NATIONAL GRID is at `turn`, as a fraction of a fully fossil grid.
 ##
 ## 1.0 through turn 70, then falling linearly to GRID_CARBON_FLOOR on the last playable turn.
@@ -135,6 +259,7 @@ func _on_state_reset() -> void:
 	# _seeded and EventScheduler restores its own scheduled events.
 	_seeded = false
 	_insider_tip_fired = false
+	_ban_override_turn = -1
 	call_deferred("_seed_if_needed")
 
 func _seed_if_needed() -> void:
@@ -165,8 +290,7 @@ func _seed_if_needed() -> void:
 		"kind": "policy_enacted",
 		"severity": "warning",
 		"title": "Green Energy Subsidy — programme ended",
-		# LOREM — owner lore pending.
-		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Subsidium energiae viridis finitum est; merces pro megawatt iam non solvitur.",
+		"body": "The green subsidy has ended. I hope we didn't get too attached to the gravy train. Of course, publicly we will complain how it's affecting the country's competitiveness but I reckon we'll be fine. Right?",
 		"forewarn_turns": 0,
 		"source": "policy",
 		"deeplink": {"panel": "money"},
@@ -247,7 +371,11 @@ func get_insider_tip_officer() -> String:
 # --- Save / load (additive key; tolerant reader, no version bump) ---------------------
 
 func export_state() -> Dictionary:
-	return {"seeded": _seeded, "insider_tip_fired": _insider_tip_fired}
+	return {
+		"seeded": _seeded,
+		"insider_tip_fired": _insider_tip_fired,
+		"ban_override_turn": _ban_override_turn,
+	}
 
 func import_state(d: Dictionary) -> void:
 	# Old saves (no "policy" key) arrive as {} → seeded=false → the schedule seeds on
@@ -255,4 +383,6 @@ func import_state(d: Dictionary) -> void:
 	# while the LEVELS are pure functions of the turn and are always correct.
 	_seeded = bool(d.get("seeded", false))
 	_insider_tip_fired = bool(d.get("insider_tip_fired", false))
+	# Old saves have no key → -1 → no cheat prohibition, schedule bans still apply.
+	_ban_override_turn = int(d.get("ban_override_turn", -1))
 	call_deferred("_seed_if_needed")

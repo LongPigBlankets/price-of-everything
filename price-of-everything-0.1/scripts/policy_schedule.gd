@@ -4,8 +4,9 @@ extends RefCounted
 ## seeds the forewarn + enactment announcements into EventScheduler once per match.
 ## (docs/co2-tax-and-green-subsidy-announcements-spec.md)
 ##
-## All `body`/`forewarn_body` strings are PLACEHOLDER Lorem Ipsum — the owner will
-## replace them with lore. Search for LOREM.
+## Owner lore is written for phases 1 and 2. The phase-3 pair is still LOREM —
+## search for LOREM. The two `forewarn_body` strings on the entries with
+## `forewarn_turns: 0` are never shown; they are kept in case a rumour beat is added.
 ## Turns and levels are balance-volatile (rule #7): tune on the e2e harness.
 
 const SCHEDULE: Array = [
@@ -17,10 +18,10 @@ const SCHEDULE: Array = [
 		"id": "green_subsidy_p1", "policy": "green_subsidy", "level": 1,
 		"effective_turn": 105, "forewarn_turns": 0, "severity": "warning",
 		"title": "Green Energy Subsidy",
-		# LOREM — replace with lore (shown in the forewarning news item).
-		"forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesentium subsidium energiae viridis in paucis conversionibus incipiet — qui sol et ventus colunt, remunerabuntur.",
-		# LOREM — replace with lore (shown when the subsidy goes live).
-		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore. Vis viridis nunc per megawatt remuneratur; industria carbonis moneatur.",
+		# NOT SHOWN while forewarn_turns is 0 — the advance notice is the blocking
+		# green_subsidy_notice decision at t100. Kept for if a rumour beat is wanted.
+		"forewarn_body": "There are rumours of a new policy that will benefit solar farms and wind farms. Nothing concrete yet, but our people are certain the government will announce something soon. It always helps to diversify into solar and wind if you haven't already, just in case.",
+		"body": "Producing green power is not only clear of the carbon tax, but thanks to the green subsidy companies producing solar or wind power can benefit from government funds for each MWh produced. This is a real step towards sustainable energy production in Taralia.",
 	},
 
 	# --- CO2 Tax / Carbon Levy (the stick, escalating) ---
@@ -32,19 +33,24 @@ const SCHEDULE: Array = [
 		"id": "co2_tax_p1", "policy": "co2_tax", "level": 1,
 		"effective_turn": 101, "forewarn_turns": 0, "severity": "warning",
 		"title": "Carbon Levy — Phase 1",
-		# LOREM
-		"forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vectigal carbonis mox imponetur in carbonem, oleum confectum et aethylenum — parate rationes vestras.",
-		# LOREM
-		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor. Vectigal carbonis nunc valet: quisquis carbonem urit, solvit.",
+		# NOT SHOWN while forewarn_turns is 0 — the advance notice is the blocking
+		# carbon_tax_notice decision at t90. Kept for if a rumour beat is wanted.
+		"forewarn_body": "There are rumours of a new tax coming. It lines up with what we heard from the Party of Markets on the campaign trail, when they advocated for charging a tax on polluters to force them to innovate away from the old ways that threatened to leave the country's industry behind the rest of the world. It could go either way but we probably want to prepare in case our coal and oil production became affected by some sort of tax.",
+		"body": "The carbon tax has hit full force. Reports across the country corroborate that our competition is hit hard. Everyone was reliant on cheap coal and oil and now their production costs skyrocketed. Nevermind relief, everyone is fearing chain bankruptcy and a mass recession. The press is reporting record layoffs across multiple industrial giants. Our company needs to tread carefully or we'll end up in the ditch too.",
 	},
 	{
 		"id": "co2_tax_p2", "policy": "co2_tax", "level": 2,
 		"effective_turn": 165, "forewarn_turns": 8, "severity": "warning",
 		"title": "Carbon Levy — Phase 2",
-		# LOREM
-		"forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vectigal carbonis mox duplicabitur; tempus est vias mundiores quaerere.",
-		# LOREM
-		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vectigal carbonis auctum est — pretium fumi crescit.",
+		# BANS (balance-volatile, rule #7 — MECHANIC CHANGE, owner-approved 2026-08-13):
+		# from this phase's effective_turn, recipes whose OUTPUT is in `produce` stop
+		# running and cannot be selected, and goods in `import` cannot be bought by any
+		# route (MatchState.queue_buy is the single purchase primitive). PolicyState
+		# reports the halted-building and cancelled-order counts on the turn it lands.
+		# The `ban coal` cheat exercises the identical path at any turn.
+		"bans": {"produce": ["coal"], "import": ["coal"]},
+		"forewarn_body": "The government is looking to appeal to its environmentally conscious voters by promising to double the carbon tax. Or possibly even ban some forms of polluting production. That would be very extreme, but with this government, you never know. We need to protect our interests but it always helps to have a backup in case we can slingshot ahead of everyone else.",
+		"body": "The press called it madness, but the Party of Markets went ahead and doubled the carbon tax. They stopped short of banning coal outright, though the rumours said they would. We probably would have been fine either way, but who knows how many of our competitors would have crumbled away.",
 	},
 	{
 		"id": "co2_tax_p3", "policy": "co2_tax", "level": 3,

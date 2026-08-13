@@ -27,6 +27,8 @@ const AppPaths := preload("res://scripts/app_paths.gd")  # saves now live in <ba
 func _ready() -> void:
 	print("\n==== price-of-everything tests ====")
 	_test_scripts_parse()
+	_test_coal_prohibition()
+	_test_scheduled_coal_prohibition()
 	_test_map_style_plate()
 	_test_widgets_instantiate()
 	_test_recipe_row_instantiates()
@@ -12397,3 +12399,86 @@ func _test_map_style_plate() -> void:
 
 	MapStyle.set_ink(was_ink)
 	MapStyle.set_plate(was_plate)
+
+## The coal prohibition: the `ban coal` cheat and a scheduled ban share one code path.
+## Covers both halves — production stops, and EVERY purchase route is refused — plus
+## the guarantee that lifting it restores the status quo.
+func _test_coal_prohibition() -> void:
+	var turn: int = TurnManager.current_turn
+	var was: int = PolicyState.coal_ban_override_turn()
+
+	# Baseline: not banned, and the coal-mining recipe is selectable + runnable.
+	PolicyState.cheat_set_coal_ban(false, turn)
+	_check(not PolicyState.produce_banned("coal", turn), "coal ban: production legal by default")
+	_check(not PolicyState.import_banned("coal", turn), "coal ban: imports legal by default")
+	# recipes_producing keys on the catalog ID, not the internal name.
+	var coal_gid: String = str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	_check(coal_gid != "", "coal ban: the catalog resolves the coal good")
+	var coal_recipes: Array = Catalog.recipes_producing(coal_gid)
+	_check(coal_recipes.size() > 0, "coal ban: the catalog has at least one coal recipe to prohibit")
+	var coal_recipe: Dictionary = coal_recipes[0] if coal_recipes.size() > 0 else {}
+	_check(not Catalog.is_recipe_prohibited(coal_recipe), "coal ban: coal recipe not prohibited by default")
+	var mine_id: String = str(coal_recipe.get("building_id", ""))
+	var before: int = Catalog.get_recipes_for_building(mine_id).size()
+
+	# Engage it.
+	PolicyState.cheat_set_coal_ban(true, turn)
+	_check(PolicyState.produce_banned("coal", turn), "coal ban: production prohibited once engaged")
+	_check(PolicyState.import_banned("coal", turn), "coal ban: imports prohibited once engaged")
+	_check(Catalog.is_recipe_prohibited(coal_recipe), "coal ban: the coal recipe reads as prohibited")
+	_check(Catalog.get_recipes_for_building(mine_id).size() < before,
+		"coal ban: the prohibited recipe drops out of the building's selectable list")
+	# A non-banned good is untouched — the ban is per-good, not a blanket stop.
+	_check(not PolicyState.import_banned("iron_ore", turn), "coal ban: other goods still importable")
+
+	# The prohibition is time-indexed, not a global switch: turns before the ban
+	# engaged are still legal, which is what keeps it a pure function of the turn.
+	_check(not PolicyState.produce_banned("coal", turn - 1), "coal ban: turns before it engaged stay legal")
+	_check(PolicyState.any_ban_active(turn), "coal ban: any_ban_active reports the live prohibition")
+
+	# Lifting it restores everything.
+	PolicyState.cheat_set_coal_ban(false, turn)
+	_check(not PolicyState.produce_banned("coal", turn), "coal ban: lifting restores production")
+	_check(not PolicyState.import_banned("coal", turn), "coal ban: lifting restores imports")
+	_check(Catalog.get_recipes_for_building(mine_id).size() == before,
+		"coal ban: lifting restores the selectable recipe list")
+
+	# The override survives a save/load round trip.
+	PolicyState.cheat_set_coal_ban(true, turn)
+	var exported: Dictionary = PolicyState.export_state()
+	PolicyState.cheat_set_coal_ban(false, turn)
+	PolicyState.import_state(exported)
+	_check(PolicyState.coal_ban_override_turn() == turn, "coal ban: the override round-trips through save state")
+	# Old saves (no key) must not resurrect a ban.
+	PolicyState.import_state({"seeded": true, "insider_tip_fired": false})
+	_check(PolicyState.coal_ban_override_turn() == -1, "coal ban: a pre-ban save loads with no prohibition")
+
+	PolicyState.cheat_set_coal_ban(was >= 0, was if was >= 0 else turn)
+
+## The SCHEDULED coal prohibition: the phase-2 ban is data on the policy schedule, so
+## it must be live from its effective turn and absent the turn before, with no cheat
+## engaged. Guards against the schedule entry being silently emptied.
+func _test_scheduled_coal_prohibition() -> void:
+	var was: int = PolicyState.coal_ban_override_turn()
+	PolicyState.cheat_set_coal_ban(false, TurnManager.current_turn)
+
+	var ban_turn: int = -1
+	for e in PolicyState.Schedule.SCHEDULE:
+		var bans: Dictionary = e.get("bans", {})
+		if (bans.get("produce", []) as Array).has("coal"):
+			ban_turn = int(e.effective_turn)
+			break
+	_check(ban_turn > 0, "scheduled coal ban: the schedule carries a coal prohibition")
+	if ban_turn <= 0:
+		PolicyState.cheat_set_coal_ban(was >= 0, was if was >= 0 else TurnManager.current_turn)
+		return
+
+	_check(not PolicyState.produce_banned("coal", ban_turn - 1), "scheduled coal ban: legal the turn before it lands")
+	_check(not PolicyState.import_banned("coal", ban_turn - 1), "scheduled coal ban: imports legal the turn before")
+	_check(PolicyState.produce_banned("coal", ban_turn), "scheduled coal ban: production prohibited from its effective turn")
+	_check(PolicyState.import_banned("coal", ban_turn), "scheduled coal ban: imports prohibited from its effective turn")
+	_check(PolicyState.produce_banned("coal", ban_turn + 50), "scheduled coal ban: stays in force afterwards")
+	# It must land WITH the phase-2 doubling, not drift apart from it.
+	_check(PolicyState.co2_tax_level(ban_turn) >= 2, "scheduled coal ban: lands with the phase-2 levy")
+
+	PolicyState.cheat_set_coal_ban(was >= 0, was if was >= 0 else TurnManager.current_turn)

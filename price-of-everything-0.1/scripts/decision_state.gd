@@ -357,8 +357,7 @@ const DECISION_DEFINITIONS := {
 		"title": "Government Notice: Carbon Levy",
 		# Owner copy — shown big + bold above the body.
 		"headline": "The new government is implementing a carbon tax of 100% of market price on anything that consumes coal, crude oil or processed oil. Many buildings will be affected. This will ramp up from turn 91 to turn 101. Our input costs will increase dramatically. We should look into some alternatives.",
-		# LOREM — owner lore pending.
-		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt. Nuntius gravis a ministerio venit: vectigal carbonis rei publicae imponetur.",
+		"body": "The new party in power, the Party of Markets, has won the recent elections with a record 57% of the vote. They campaigned on a platform of liberalising the markets and unleashing the economy. On the campaign track they had reconciled the interventionist nature of a tax with the need to reduce carbon intensive production by pointing to pollution, as well as the fact that importing carbon intensive goods just moves the pollution abroad. Critics say the tax is too harsh on national producers and will lead to job cuts and cause a recession. But the Party of Markets insists this tax will be phased in and will lead to a cleaner, healthier and more prosperous Taralia.",
 		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
 		"target_selector": "company",
 		"once": true, "cooldown_turns": 9999, "weight": 1.0, "default_choice": "understood",
@@ -374,8 +373,7 @@ const DECISION_DEFINITIONS := {
 		"title": "Government Notice: Green Energy Subsidy",
 		# Owner copy — shown big + bold above the body.
 		"headline": "The government wants to speed up the transition away from hydrocarbon power. They will subsidise green power production starting with turn 105.",
-		# LOREM — owner lore pending.
-		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesentium subsidium energiae viridis nuntiatur; qui sol, ventus et aqua colunt, remunerabuntur.",
+		"body": "The ruling Party of Markets has set out a plan to balance the carbon tax with cleaner power. Historically solar and wind power have been expensive to build and require batteries to smooth intermittency. The government's Ministry of Energy and Infrastructure will tender subsidies to producers of solar or wind power. Critics say it is a further waste of government funds exactly as we need to support our ailing coal miners, steel mills and factories.",
 		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
 		"target_selector": "company",
 		"once": true, "cooldown_turns": 9999, "weight": 1.0, "default_choice": "understood",
@@ -391,8 +389,7 @@ const DECISION_DEFINITIONS := {
 		"title": "Government Notice: Subsidy Winding Down",
 		# Owner-directed copy — shown big + bold above the body.
 		"headline": "The green power subsidy is ending. Starting next turn, payments will fall by 10% each turn until they stop completely at turn 191.",
-		# LOREM — owner lore pending.
-		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aerarium subsidii viridis exhauritur; merces paulatim minuentur donec cessent.",
+		"body": "The new Party of Renewal is scrapping the green subsidies, calling them wasteful and ineffective. Its members of parliament point to how it is funnelling money to large companies instead of promoting the small enterprises the previous government said would benefit from subsidies. The payments will end over the next 10 turns.",
 		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
 		"target_selector": "company",
 		"once": true, "cooldown_turns": 9999, "weight": 1.0, "default_choice": "understood",

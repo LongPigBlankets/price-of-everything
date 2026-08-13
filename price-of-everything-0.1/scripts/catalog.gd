@@ -944,10 +944,27 @@ func get_recipes_for_building(building_id: String) -> Array:
 	for r in _recipes_by_building.get(building_id, []):
 		if not is_recipe_visible(r):
 			continue
+		# A prohibited output can't be SELECTED. Buildings already running it are
+		# stopped separately in production._can_run_recipe (get_recipe stays
+		# unfiltered, so a running instance can still resolve its own recipe).
+		if is_recipe_prohibited(r):
+			continue
 		var req: String = str(r.get("tech_unlock_req", ""))
 		if req == "" or MatchState.is_unlocked(req):
 			out.append(r)
 	return out
+
+## True when government policy prohibits producing anything this recipe outputs.
+## Keyed on the OUTPUT good, not the recipe id, so it generalises past coal.
+func is_recipe_prohibited(recipe: Dictionary) -> bool:
+	var turn: int = TurnManager.current_turn
+	var primary: String = str(recipe.get("output_good_id", ""))
+	if primary != "" and PolicyState.produce_banned(primary, turn):
+		return true
+	for o in recipe.get("outputs", []):
+		if PolicyState.produce_banned(str(o.get("good_id", "")), turn):
+			return true
+	return false
 
 func recipe_produces(recipe: Dictionary, good_id: String) -> bool:
 	if str(recipe.get("output_good_id", "")) == good_id:
