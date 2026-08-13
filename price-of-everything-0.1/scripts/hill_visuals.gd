@@ -28,6 +28,8 @@ const BAKE_LONG_SIDE := 4096.0
 ## path is cheap; the crossover lands at a moderate zoom-out.
 const VECTOR_CAP := 450
 const CULL_MARGIN := 320.0   # world units; keep partially-visible polys
+const RELIEF_SHOULDER_HALF_WIDTH := 4.0
+const RELIEF_MATERIAL_MIN_AREA := 1450.0
 
 enum { MODE_TEXTURE, MODE_VECTOR }
 
@@ -57,12 +59,16 @@ func _white_texture() -> Texture2D:
 	return _white_tex
 
 var _bake_deferred := false   # the far-zoom texture bake is pending; built lazily on first need
+var _bake_in_progress := false
+var _bake_generation := 0
+var _completed_bake_generation := -1
 var _meshes_warm := false     # _warm_all_meshes() done → the cached-mesh vector LOD is usable
 # Water-lining polylines: the COAST_BAND polys offset seaward per MapStyle
 # tier, cached once (style-independent geometry; only ink mode draws them).
 # Entries: {src: int (index into _sea), tier: int, pts: PackedVector2Array (closed)}.
 var _coast_lines: Array = []
 var _coast_lines_built := false
+var _relief_shoulder_cache: Dictionary = {}
 
 func _enter_tree() -> void:
 	# the 'toggle heightmap' debug cheat flips visibility on this group
@@ -90,11 +96,188 @@ func _ready() -> void:
 ## re-tints on the next redraw; the far-zoom texture is stale the moment the
 ## style flips — drop it and let _process re-bake lazily on first need.
 func _on_style_changed() -> void:
+	_bake_generation += 1
 	_baked_tex = null
+	_completed_bake_generation = -1
 	_mode = MODE_VECTOR
 	if DisplayServer.get_name() != "headless":
 		_bake_deferred = true
 	queue_redraw()
+
+## Exact, read-only land-relief geometry for draw-only planning layers.
+##
+## The protected shoulders are offsets of the same baked polygon boundaries
+## drawn by this node. NavGrid is used only to identify meaningful connected
+## land-band plateaus and never to invent visible contour geometry.
+func get_land_relief_geometry(extent_polygons: Array,
+		shoulder_half_width: float = RELIEF_SHOULDER_HALF_WIDTH,
+		material_min_area: float = RELIEF_MATERIAL_MIN_AREA) -> Dictionary:
+	var extents: Array = []
+	var bounds := Rect2()
+	for extent_value in extent_polygons:
+		var extent: PackedVector2Array = extent_value
+		if extent.size() < 3:
+			continue
+		var bb := _points_bbox(extent)
+		extents.append({"poly": extent, "bb": bb})
+		bounds = bb if bounds.size == Vector2.ZERO else bounds.merge(bb)
+	var plateaus := _material_plateaus(extents, bounds, material_min_area)
+	var raw_plateaus := _material_plateaus(extents, bounds, 0.0)
+	var material_bands: Dictionary = {}
+	for plateau_value in plateaus:
+		var plateau: Dictionary = plateau_value
+		material_bands[int(plateau.band)] = true
+	var shoulders: Array = []
+	if material_bands.size() >= 3:
+		for i in _polys.size():
+			var entry: Dictionary = _polys[i]
+			var band := int(entry.b)
+			if not material_bands.has(band) or not bounds.intersects(_poly_bb[i]):
+				continue
+			var source: PackedVector2Array = entry.p
+			if source.size() < 3 or not _poly_intersects_extents(source, _poly_bb[i], extents):
+				continue
+			for ring_value in _relief_shoulder_rings(i, shoulder_half_width):
+				var ring: PackedVector2Array = ring_value
+				var ring_bb := _points_bbox(ring)
+				for extent_record_value in extents:
+					var extent_record: Dictionary = extent_record_value
+					if not ring_bb.intersects(extent_record.bb):
+						continue
+					for clipped_value in Geometry2D.intersect_polygons(ring,
+							extent_record.poly):
+						var clipped: PackedVector2Array = clipped_value
+						if clipped.size() >= 3 and _polygon_area(clipped) >= 4.0:
+							shoulders.append({"poly": clipped,
+								"bb": _points_bbox(clipped), "band": band,
+								"source_index": i, "kind": "relief"})
+	return {
+		"active": material_bands.size() >= 3,
+		"material_band_count": material_bands.size(),
+		"material_bands": material_bands.keys(),
+		"plateaus": plateaus,
+		"raw_plateaus": raw_plateaus,
+		"raw_plateau_count": raw_plateaus.size(),
+		"shoulders": shoulders,
+		"shoulder_half_width": shoulder_half_width,
+	}
+
+func _material_plateaus(extents: Array, bounds: Rect2,
+		material_min_area: float) -> Array:
+	var nav := NavGrid.instance()
+	if extents.is_empty() or not nav.is_ready() or bounds.size == Vector2.ZERO:
+		return []
+	var lo := nav.cell_of(bounds.position - Vector2(nav.step, nav.step))
+	var hi := nav.cell_of(bounds.end + Vector2(nav.step, nav.step))
+	var eligible: Dictionary = {}
+	for iy in range(lo.y, hi.y + 1):
+		for ix in range(lo.x, hi.x + 1):
+			if nav.water(ix, iy) != NavGrid.WATER_LAND:
+				continue
+			var point := nav.world_of(ix, iy)
+			if _point_in_extents(point, extents):
+				eligible[Vector2i(ix, iy)] = nav.band(ix, iy)
+	var out: Array = []
+	var directions := [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
+	var ordered: Array = eligible.keys()
+	ordered.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.y < b.y if a.y != b.y else a.x < b.x)
+	for seed_value in ordered:
+		var seed: Vector2i = seed_value
+		if not eligible.has(seed):
+			continue
+		var band := int(eligible[seed])
+		eligible.erase(seed)
+		var queue: Array[Vector2i] = [seed]
+		var cells: Array[Vector2i] = []
+		while not queue.is_empty():
+			var current: Vector2i = queue.pop_front()
+			cells.append(current)
+			for direction_value in directions:
+				var direction: Vector2i = direction_value
+				var neighbor: Vector2i = current + direction
+				if eligible.has(neighbor) and int(eligible[neighbor]) == band:
+					eligible.erase(neighbor)
+					queue.append(neighbor)
+		var area := float(cells.size()) * nav.step * nav.step
+		if area < material_min_area:
+			continue
+		var center := Vector2.ZERO
+		for cell in cells:
+			center += nav.world_of(cell.x, cell.y)
+		center /= float(cells.size())
+		out.append({"band": band, "area": area, "center": center,
+			"cell_count": cells.size(), "key": "band-%d|%d-%d" % [
+				band, seed.x, seed.y]})
+	return out
+
+func _relief_shoulder_rings(index: int, half_width: float) -> Array:
+	var cache_key := "%d|%.3f" % [index, half_width]
+	if _relief_shoulder_cache.has(cache_key):
+		return (_relief_shoulder_cache[cache_key] as Array).duplicate(true)
+	var source: PackedVector2Array = (_polys[index] as Dictionary).p
+	var closed := source.duplicate()
+	closed.append(source[0])
+	var raw: Array = []
+	for part_value in Geometry2D.offset_polyline(closed, half_width,
+			Geometry2D.JOIN_ROUND, Geometry2D.END_BUTT):
+		var part: PackedVector2Array = part_value
+		if part.size() >= 3 and _polygon_area(part) >= 1.0:
+			raw.append(part)
+	var rings := _merge_relief_shoulder_parts(raw)
+	_relief_shoulder_cache[cache_key] = rings.duplicate(true)
+	return rings
+
+func _merge_relief_shoulder_parts(polys: Array) -> Array:
+	var merged: Array = []
+	for poly_value in polys:
+		var pending: PackedVector2Array = poly_value
+		var i := 0
+		while i < merged.size():
+			var unions := Geometry2D.merge_polygons(merged[i], pending)
+			if unions.size() == 1:
+				pending = unions[0]
+				merged.remove_at(i)
+				i = 0
+			else:
+				i += 1
+		merged.append(pending)
+	return merged
+
+func _poly_intersects_extents(poly: PackedVector2Array, bb: Rect2,
+		extents: Array) -> bool:
+	for extent_value in extents:
+		var extent: Dictionary = extent_value
+		if not bb.intersects(extent.bb):
+			continue
+		if not Geometry2D.intersect_polygons(poly, extent.poly).is_empty():
+			return true
+		if Geometry2D.is_point_in_polygon(poly[0], extent.poly) or \
+				Geometry2D.is_point_in_polygon((extent.poly as PackedVector2Array)[0], poly):
+			return true
+	return false
+
+func _point_in_extents(point: Vector2, extents: Array) -> bool:
+	for extent_value in extents:
+		var extent: Dictionary = extent_value
+		if extent.bb.has_point(point) and Geometry2D.is_point_in_polygon(point,
+				extent.poly):
+			return true
+	return false
+
+func _points_bbox(poly: PackedVector2Array) -> Rect2:
+	var lo := poly[0]
+	var hi := poly[0]
+	for point in poly:
+		lo = lo.min(point)
+		hi = hi.max(point)
+	return Rect2(lo, hi - lo)
+
+func _polygon_area(poly: PackedVector2Array) -> float:
+	var twice_area := 0.0
+	for i in poly.size():
+		twice_area += poly[i].cross(poly[(i + 1) % poly.size()])
+	return absf(twice_area) * 0.5
 
 func _bboxes(coll: Array, has_p_key: bool) -> Array:
 	var out: Array = []
@@ -119,9 +302,10 @@ func _process(_delta: float) -> void:
 	if want == MODE_TEXTURE and _baked_tex == null:
 		# First zoomed-out view: build the texture LOD now (it wasn't baked during the load). Keep
 		# drawing the cached vector meshes until it lands a couple of frames later.
-		if _bake_deferred:
+		if _bake_deferred and not _bake_in_progress:
 			_bake_deferred = false
-			_bake_to_texture()
+			_bake_in_progress = true
+			_bake_to_texture(_bake_generation)
 		want = MODE_VECTOR
 	if want != _mode:
 		_mode = want
@@ -157,6 +341,21 @@ func _count_visible(bboxes: Array, view: Rect2) -> int:
 			n += 1
 	return n
 
+## Read-only deterministic-capture seam. A style switch invalidates the
+## far-zoom relief texture and rebuilds it asynchronously; screenshot harnesses
+## must not sample the temporary vector fallback and later compare it with the
+## completed texture. Gameplay rendering never waits on this method.
+func is_capture_ready_for_current_view() -> bool:
+	if not _meshes_warm:
+		return false
+	var view := _visible_world_rect()
+	var visible_polys := _count_visible(_poly_bb, view) + \
+		_count_visible(_sea_bb, view) + _count_visible(_lake_bb, view)
+	if visible_polys > VECTOR_CAP:
+		return _baked_tex != null and _mode == MODE_TEXTURE and \
+			_completed_bake_generation == _bake_generation
+	return _mode == MODE_VECTOR
+
 func _compute_bounds() -> Rect2:
 	var mn := Vector2(INF, INF)
 	var mx := Vector2(-INF, -INF)
@@ -175,9 +374,10 @@ func _compute_bounds() -> Rect2:
 
 ## Render every contour into an off-screen SubViewport once, copy it into a
 ## standalone ImageTexture, then free the viewport.
-func _bake_to_texture() -> void:
+func _bake_to_texture(generation: int) -> void:
 	var size := _bake_rect.size
 	if size.x <= 0.0 or size.y <= 0.0:
+		_bake_in_progress = false
 		return
 	var scale: float = BAKE_LONG_SIDE / maxf(size.x, size.y)
 	var tex_w := int(ceil(size.x * scale))
@@ -199,9 +399,11 @@ func _bake_to_texture() -> void:
 	await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()
-	if img != null and not img.is_empty():
+	if generation == _bake_generation and img != null and not img.is_empty():
 		_baked_tex = ImageTexture.create_from_image(img)
+		_completed_bake_generation = generation
 	vp.queue_free()
+	_bake_in_progress = false
 	queue_redraw()
 
 ## Zoomed-in vector LOD: draw only polygons whose bbox is on screen, using

@@ -326,7 +326,10 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "plate":
 				MapStyle.set_plate(not MapStyle.plate)
 				return "map style → %s" % _style_name()
-			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate"
+			if parts.size() >= 2 and parts[1].to_lower() == "midcentury":
+				MapStyle.set_midcentury(not MapStyle.is_midcentury())
+				return "map style → %s" % _style_name()
+			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")
@@ -375,7 +378,7 @@ func _run_command(text: String) -> String:
 			PolicyState.cheat_set_coal_ban(true, ban_turn)
 			return "Coal BANNED from turn %d: mining halts, imports refused on every route. 'ban coal off' to lift." % ban_turn
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
@@ -462,6 +465,8 @@ func _toggle_debug_logs() -> String:
 	return "verbose turn logs → %s" % ("on" if enabled else "off")
 
 func _style_name() -> String:
+	if MapStyle.is_midcentury():
+		return "inhabited mid-century"
 	if MapStyle.is_plate():
 		return "city plate"
 	return "ink & wash" if MapStyle.ink else "classic"

@@ -107,7 +107,7 @@ func _draw() -> void:
 			runs_by_edge[edge_id] = [edge.geometry]
 		else:
 			runs_by_edge[edge_id] = _clip_to_built(edge.geometry, terrain, flagged)
-	if MapStyle.ink:
+	if MapStyle.uses_ink_linework():
 		_draw_runs_ink(self, runs_by_edge, network)
 	else:
 		for pass_i in 2:   # casing under colour
@@ -133,11 +133,11 @@ func _draw() -> void:
 ## Classic: one thick brown deck stroke. Ink: a tan deck plank with two thin
 ## ink rails along its long sides (the mockup's little bridge symbol).
 func _draw_bridge_glyph(canvas: CanvasItem, point: Vector2, tangent: Vector2) -> void:
-	if not MapStyle.ink:
+	if not MapStyle.uses_ink_linework():
 		canvas.draw_line(point - tangent * 21.0, point + tangent * 21.0, MapStyle.road_bridge(), 10.0, true)
 		return
 	var n := Vector2(-tangent.y, tangent.x)
-	if MapStyle.is_plate():
+	if MapStyle.has_cartographic_depth():
 		# The deck is a low prism on the shared light model: side face offset SE
 		# under the deck, rails carrying the linework (MILD masses take no outline).
 		var off := MapStyle.extrude_offset(MapStyle.Extrude.MILD)
@@ -320,7 +320,7 @@ func _draw_active() -> void:
 		if revealed.size() < 2:
 			continue
 		var runs: Array = _clip_to_built(revealed, terrain, flagged)
-		if MapStyle.ink:
+		if MapStyle.uses_ink_linework():
 			var single: Dictionary = {}
 			single[edge_id] = runs
 			_draw_runs_ink(_active_layer, single, network)

@@ -27,9 +27,12 @@ const AppPaths := preload("res://scripts/app_paths.gd")  # saves now live in <ba
 func _ready() -> void:
 	print("\n==== price-of-everything tests ====")
 	_test_scripts_parse()
+	_test_goods_graph_reopen_clears_focus()
+	_test_map_style_plate()
+	_test_midcentury_road_layout_fixture()
+	_test_accommodation_site_yield()
 	_test_coal_prohibition()
 	_test_scheduled_coal_prohibition()
-	_test_map_style_plate()
 	_test_widgets_instantiate()
 	_test_recipe_row_instantiates()
 	await _test_unlock_dialog_groups_multiple_unlocks()
@@ -12305,7 +12308,9 @@ func _test_recipe_flow_shows_co_products() -> void:
 func _test_map_style_plate() -> void:
 	var was_ink: bool = MapStyle.ink
 	var was_plate: bool = MapStyle.plate
+	var was_midcentury: bool = MapStyle.is_midcentury()
 
+	MapStyle.set_midcentury(false)
 	MapStyle.set_plate(false)
 	MapStyle.set_ink(false)
 	_check(not MapStyle.is_plate(), "map style: classic is not plate")
@@ -12391,14 +12396,103 @@ func _test_map_style_plate() -> void:
 	_check(MapStyle.roof_motif_color(Color("e8ddc0")) == MapStyle.ink_color(),
 		"map style: motifs stay ink on a light plate roof")
 
+	# Midcentury masks the selected legacy mode without mutating it. Its values
+	# come from an independent table and its solid-mass treatment is available
+	# even when the preserved legacy style is classic.
+	MapStyle.set_plate(false)
+	MapStyle.set_ink(false)
+	var legacy_band: Color = MapStyle.band_colors()[2]
+	var legacy_road: Color = MapStyle.road_local()
+	MapStyle.set_midcentury(true)
+	_check(MapStyle.is_midcentury(), "map style: midcentury seam enables")
+	_check(not MapStyle.ink and not MapStyle.plate,
+		"map style: midcentury does not mutate the selected legacy mode")
+	_check(MapStyle.band_colors()[2] == MapMidcenturyStyle.BAND_COLORS[2]
+		and MapStyle.band_colors()[2] != legacy_band,
+		"map style: midcentury owns an independent land palette")
+	_check(MapStyle.road_local() == MapMidcenturyStyle.ROAD_LOCAL
+		and MapStyle.road_local() != legacy_road,
+		"map style: midcentury owns an independent street palette")
+	_check(MapStyle.has_cartographic_depth()
+		and MapStyle.extrude_offset(MapStyle.Extrude.FULL) == Vector2(2.4, 3.0),
+		"map style: midcentury uses restrained cartographic depth")
+	_check(MapStyle.block_top("orange") == MapMidcenturyStyle.gameplay_block_top("orange"),
+		"map style: gameplay industries use the midcentury landmark palette")
+	MapStyle.set_midcentury(false)
+	_check(not MapStyle.is_midcentury() and MapStyle.band_colors()[2] == legacy_band
+		and MapStyle.road_local() == legacy_road,
+		"map style: leaving midcentury restores legacy getters exactly")
+
 	# Leaving ink must drop plate too, or classic would render with plate latched.
 	MapStyle.set_ink(false)
 	_check(not MapStyle.plate and not MapStyle.is_plate(),
 		"map style: leaving ink clears the plate sub-variant")
 	_check(MapStyle.ink_color() == Color("3a2c18"), "map style: back in classic, sepia ink returns")
 
+	MapStyle.set_midcentury(false)
 	MapStyle.set_ink(was_ink)
 	MapStyle.set_plate(was_plate)
+	MapStyle.set_midcentury(was_midcentury)
+
+func _test_midcentury_road_layout_fixture() -> void:
+	var fabric := UrbanFabricVisuals.new()
+	var center := Vector2(500.0, 500.0)
+	var old_roads := [{"a": center + Vector2(-180.0, -70.0),
+		"b": center + Vector2(180.0, -70.0), "trunk": true}]
+	var new_roads := [{"a": center + Vector2(65.0, -180.0),
+		"b": center + Vector2(65.0, 180.0), "trunk": true}]
+	var old_snapshot: Dictionary = fabric.road_layout_fixture_snapshot(center,
+		old_roads)
+	var old_repeat: Dictionary = fabric.road_layout_fixture_snapshot(center,
+		old_roads)
+	var new_snapshot: Dictionary = fabric.road_layout_fixture_snapshot(center,
+		new_roads)
+	_check((old_snapshot.core_position as Vector2).is_equal_approx(
+		old_repeat.core_position) and old_snapshot.core_polygon == \
+		old_repeat.core_polygon,
+		"midcentury road fixture: identical roads reproduce the exact core")
+	_check(absf((old_snapshot.core_tangent as Vector2).dot(Vector2.RIGHT)) > 0.95,
+		"midcentury road fixture: old horizontal road steers horizontal growth")
+	_check(absf((new_snapshot.core_tangent as Vector2).dot(Vector2.DOWN)) > 0.95,
+		"midcentury road fixture: replacement vertical road steers vertical growth")
+	_check((old_snapshot.core_position as Vector2).distance_to(
+		new_snapshot.core_position) > 40.0,
+		"midcentury road fixture: density leaves the removed road and follows the replacement")
+	fabric.free()
+
+func _test_accommodation_site_yield() -> void:
+	var site_a := {"key": "park", "poly": PackedVector2Array([
+		Vector2(0, 0), Vector2(24, 0), Vector2(24, 18), Vector2(0, 18)]),
+		"visual_use": "releasable_park"}
+	var site_b := {"key": "yard", "poly": PackedVector2Array([
+		Vector2(34, 0), Vector2(68, 0), Vector2(68, 22), Vector2(34, 22)]),
+		"visual_use": "releasable_yard"}
+	var hypothetical := [{"poly": (site_a.poly as PackedVector2Array).duplicate()}]
+	var masses := [{"key": "neighbour", "poly": PackedVector2Array([
+		Vector2(75, 0), Vector2(94, 0), Vector2(94, 25), Vector2(75, 25)])}]
+	var was_midcentury := MapStyle.is_midcentury()
+	MapStyle.set_midcentury(false)
+	var legacy_result := AccommodationSitePlanner.yield_for_hypothetical_footprints(
+		[site_a, site_b], hypothetical, masses)
+	MapStyle.set_midcentury(true)
+	var styled_result := AccommodationSitePlanner.yield_for_hypothetical_footprints(
+		[site_a, site_b], hypothetical, masses)
+	_check(int(styled_result.removed_site_count) == 1
+		and str((styled_result.removed_sites as Array)[0].key) == "park"
+		and int(styled_result.retained_site_count) == 1,
+		"accommodation sites: a hypothetical footprint yields the whole releasable record")
+	_check(int(styled_result.releasable_fragment_count) == 0
+		and int(styled_result.retained_site_hypothetical_overlap_count) == 0
+		and int(styled_result.hypothetical_decorative_mass_overlap_count) == 0
+		and int(styled_result.surrounding_mass_count_before) ==
+			int(styled_result.surrounding_mass_count_after),
+		"accommodation sites: yielding leaves no clipped fragment or changed neighbouring mass")
+	_check(int(legacy_result.removed_site_count) == int(styled_result.removed_site_count)
+		and int(legacy_result.retained_site_count) == int(styled_result.retained_site_count)
+		and str((legacy_result.removed_sites as Array)[0].key) ==
+			str((styled_result.removed_sites as Array)[0].key),
+		"accommodation sites: planning result is independent of optional map style state")
+	MapStyle.set_midcentury(was_midcentury)
 
 ## The coal prohibition: the `ban coal` cheat and a scheduled ban share one code path.
 ## Covers both halves — production stops, and EVERY purchase route is refused — plus
@@ -12482,3 +12576,34 @@ func _test_scheduled_coal_prohibition() -> void:
 	_check(PolicyState.co2_tax_level(ban_turn) >= 2, "scheduled coal ban: lands with the phase-2 levy")
 
 	PolicyState.cheat_set_coal_ban(was >= 0, was if was >= 0 else TurnManager.current_turn)
+
+
+## Goods graph reopen: closing the view while a good is FOCUSED and reopening it used
+## to leave the focus animation engaged (_focus_t stuck at 1) while _mode said WEB and
+## the camera was framed on the web bbox — cards drew far off-screen and nothing was
+## clickable until a search re-entered focus. set_graph must clear the animated focus
+## state, not just _mode.
+func _test_goods_graph_reopen_clears_focus() -> void:
+	var world: Node = load("res://scripts/goods_graph_world.gd").new()
+	add_child(world)
+	var flow_graph := preload("res://scripts/goods_flow_graph.gd")   # not in the headless global class cache
+	var layout: Dictionary = flow_graph.build(false, false)
+	world.call("set_graph", layout)
+	_check(is_zero_approx(float(world.get("_focus_t"))), "goods graph: a fresh graph starts unfocused")
+
+	# Enter focus the way a click does, then confirm the state really engaged.
+	var focus_id := ""
+	for nid in (layout.get("by_id", {}) as Dictionary):
+		focus_id = str(nid)
+		break
+	_check(focus_id != "", "goods graph: the layout has a node to focus")
+	world.call("select_good", focus_id)
+	_check(float(world.get("_focus_target")) > 0.0, "goods graph: selecting a good engages focus")
+
+	# Reopening runs set_graph again — it must land back in a clean web view.
+	world.call("set_graph", layout)
+	_check(is_zero_approx(float(world.get("_focus_t"))), "goods graph: reopening clears the focus animation")
+	_check(is_zero_approx(float(world.get("_focus_target"))), "goods graph: reopening clears the focus target")
+	_check((world.get("_fpos") as Dictionary).is_empty(), "goods graph: reopening drops the stale focus positions")
+	_check(str(world.get("_selected_id")) == "", "goods graph: reopening clears the selection")
+	world.queue_free()
