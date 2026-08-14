@@ -69,18 +69,43 @@ exists to cure.** Every form MUST carry deterministic per-instance variation in 
 Variation is seeded through `RoadHash` like everything else: no global `randi()`/`randf()`,
 no wall-clock. Two instances of the same form in unrelated blocks must not be congruent.
 
-## 5. Experimental design — this change is DENSITY-NEUTRAL
+## 5. Coverage rules — SUPERSEDED 2026-08-14, density-neutrality LIFTED
 
-So the vocabulary can be judged on its own merits, this pass **must not change how many
-masses are drawn**. Same mass counts, same parcels, same roles, same areas — only the
-distribution of *forms* changes.
+> **Owner ruling, given after seeing the density-neutral constraint distort the wiring:**
+> *"On the 4 large cities, it's ok to actually increase density or city coverage. On the
+> other cities it's also allowed but I wouldn't cover 100% of any tile in those cases."*
 
-That makes the blind comparison a clean test of one question: *does a wider shape
-vocabulary reduce the perception of procedural repetition?* Density retries (the rejected
-density and parks streams) come **afterwards**, into the wider vocabulary.
+The original density-neutral rule is **withdrawn**. It was an experimental-design device,
+not a design requirement, and it was actively damaging the result: to hold built area
+constant, the wiring had to pin the substitution share to a measured zero, abandon one
+gating attempt that drew only **7 masses map-wide**, and — worst — **keep the legacy
+vocabulary inside tile cores**, banishing the new forms from the densest and most visible
+places, because one vocabulary form replaces what the legacy branch drew as two or three
+masses and so dropped the distinct-core-mass count (Sandy Shore Docks 4 → 3, failing the
+dense-core gate).
 
-Report the before/after form histogram map-wide, and confirm mass count and built area are
-unchanged to within rounding.
+### The rule now in force
+
+- **The four largest urban components** — the same set the park stream settled on: Arin
+  (`tile_10_16`), Capital Port (`tile_23_8`), Teganfort (`tile_18_14`), Patran City
+  (`tile_17_8`) — may **increase built density and settlement coverage freely.** No
+  coverage cap.
+- **Every other urban tile** may also increase density and coverage, but must **leave
+  visible non-urban ground**: at least **10% of the tile's land area stays outside the
+  decorative settlement envelope.** No tile outside the top four is ever wall-to-wall city.
+- The floors of the density addendum still apply everywhere (urban ≥10 small / ≥3 large /
+  ≥2 parks). Coverage may rise; it may not rise by deleting parks.
+- Forms are **no longer excluded from tile cores.** If a vocabulary form reduces the
+  distinct-core-mass count below the dense-core gate, the fix is to place *more* masses,
+  not to banish the form from the core.
+
+### What must still be reported
+
+The before/after **form histogram** map-wide and for the Arin hero slice, plus the
+before/after **mass count and built area** — no longer as a neutrality proof, but so the
+size of the change is visible and attributable. State plainly that a favourable blind
+verdict now reflects *both* a wider vocabulary and higher density, and cannot be
+attributed to the vocabulary alone.
 
 ## 6. Geometric safety — the V3.04 lesson
 
