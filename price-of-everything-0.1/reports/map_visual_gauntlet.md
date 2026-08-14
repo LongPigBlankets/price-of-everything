@@ -1948,6 +1948,625 @@ cd price-of-everything-0.1
 The frozen baseline output is committed at `docs/map-density-audit-baseline.txt`. Compare against it; do not
 regenerate it as a way of moving the goalposts.
 
+## M2. Settlement completion — the per-tile density floors — 2026-08-14
+
+> **Integrator's note (2026-08-14).** This stream originally numbered itself `N1`, colliding with the ports stream's `N1`. It is renumbered **M2** here (its free chronological slot); `N1.01`/`N1.02` inside it became `M2.01`/`M2.02`. No wording otherwise changed. The mechanism is **not** merged — only this postmortem is.
+
+
+### Scope
+
+Stream: section 2 of `docs/map-density-and-port-addendum.md` — the building-count minimums for
+all four tile classes. Branch `gauntlet3/density`, worktree `/tmp/poe_g3_wt/density`, based on
+`gauntlet3/density-audit` @ `781bc519`.
+
+### Baseline, regenerated from this worktree
+
+`res://tools/density_audit.tscn` run here reproduces `docs/map-density-audit-baseline.txt`
+byte-for-byte (exit 2, 395 audited, 285 failing, 285 undocumented). Per class:
+
+| class | tiles | compliant | failing | failure histogram |
+|---|---:|---:|---:|---|
+| urban | 92 | 19 | 73 | green_below_floor 57, large_below_floor 38, small_below_floor 35 |
+| sparse | 204 | 45 | 159 | small_below_floor 154, large_above_cap 6, small_above_cap 2 |
+| mountain | 45 | 45 | 0 | — |
+| remote | 54 | 1 | 53 | small_below_floor 53 |
+
+Zero failing tiles are `physically_constrained` in any class: the minimum measured
+`dry_buildable_area` is 140,269u² for urban (needs 38,400), 38,039u² for sparse (needs 7,200)
+and 141,792u² for remote (needs 2,400). No tile is prevented by land; every miss is a miss of
+invitation, not of space.
+
+### Hypothesis, written before coding
+
+The fabric grows only where a generator was invited, and the invitation list is narrower than
+the map. Three exclusions account for essentially every miss:
+
+1. rural growth is gated on terrain type `rural`, so the 74 sparse **hill** tiles are never visited;
+2. roadless tiles are explicitly skipped (`roadless_skips`), so 53 of 54 **remote** tiles are empty;
+3. urban tiles have no count floor at all, so 73 of 92 fall under 10 small / 3 large / 2 parks.
+
+**Mechanism — one new architectural layer, "settlement completion".** A single deterministic
+stage runs once, after every existing generator and after the universal district audit, before
+sanitisation. It classifies every land tile exactly as `DensityAudit.classify` does, measures the
+tile's current counts under the exact `DensityAudit` rules, leaves compliant tiles untouched, and
+for a tile below its floor grows through an **anchor ladder**, strongest structure first, stopping
+the moment the floor is met:
+
+* **rank 1 — road frontage.** Every BUILT road segment on the tile, sampled at a fine spacing with
+  a per-tile hashed start rotation. This is the D1.01 frontage grammar, extended to the terrain
+  types D1.01 never visited. Occupancy rejection, not a spacing constant, produces the row.
+* **rank 2 — accretion.** A neighbour placed along an existing mass's own long axis at a lane gap,
+  so extra count reads as an accumulated cluster rather than scatter.
+* **rank 3 — homestead seed** (roadless tiles only). ONE clustered farmstead per tile at a
+  deterministically chosen sheltered dry point. One cluster per tile is the opposite of uniform
+  scatter, and it is the only legal way to reach the remote floor, which by definition has no road.
+* **large masses** (urban only): a block-scale mass placed on the local road axis.
+* **parks** (urban only): a green in a clear interstice, using the existing `_add_park` vocabulary.
+
+Every candidate passes the identical safety vocabulary the rural pass already uses, so the seven
+W1.01 counters and the relief counters stay zero by construction. Nothing is removed or moved —
+deletion and reordering are retired mechanisms and are not used. Caps are never approached from
+above: the pass only ever adds, and only up to the floor.
+
+**Prediction:** sparse 45/204 → ≥190, remote 1/54 → ≥50, urban 19/92 → ≥60, mountain 45/45
+unchanged. The six sparse `large_above_cap` tiles are urban SPILL from the accepted district field
+(`tile_23_9` carries 24 large ordinary masses beside Capital Port) and are out of reach of an
+additive mechanism; they are reported, not chased.
+
+### M2.01 — the mechanism, measured (**REJECTED — see M2.02**)
+
+> **Heading corrected at close-out.** The numbers in this section are sound — they were
+> reproduced independently before the revert — but the word "accepted" was written before the
+> blind pair had been scored, and it is wrong. The mechanism was rejected and has been removed
+> completely. Read this section together with M2.02.
+
+The one stage is `UrbanFabricVisuals._complete_density_floors`, called from `_rebuild` after
+`_build_universal_district_audit` and before the two sanitisers. Deliberately after the district
+audit, so the accepted G1.02 district-field counters keep measuring the field mechanism itself
+rather than the floor top-up placed on top of it — those counters are byte-identical to v0.
+
+**Result, regenerated from this worktree** (`res://tools/density_audit.tscn`, exit 2):
+
+| class | tiles | compliant v0 | compliant now | failing now | failure histogram now |
+|---|---:|---:|---:|---:|---|
+| **urban** | 92 | 19 | **77** | 15 | large_below_floor 11, green_below_floor 8 |
+| **sparse** | 204 | 45 | **193** | 11 | large_above_cap 6, small_below_floor 5, small_above_cap 2 |
+| **mountain** | 45 | 45 | **45** | 0 | — |
+| **remote** | 54 | 1 | **54** | 0 | — |
+| **TOTAL** | 395 | 110 (27.8%) | **369 (93.4%)** | 26 | — |
+
+**Undocumented misses: 285 → 6.** All six are the pre-existing sparse CAP violations
+(`tile_8_7`, `tile_17_7`, `tile_22_7`, `tile_22_8`, `tile_23_9`, `tile_26_9`), unchanged from v0
+in both direction and magnitude. They are urban SPILL from the accepted G1.02 district field —
+`tile_23_9` carries 24 large ordinary masses beside Capital Port — and an additive mechanism
+cannot reach them. Removing spill masses to satisfy a cap is post-generation deletion, a retired
+mechanism, so they are reported rather than chased. Every remaining BELOW-FLOOR miss (20 tiles)
+now carries a documented shortfall with its rejected-candidate counts, which is what the addendum
+asks for.
+
+The pass added 583+ masses and 81 greens across 277 tiles; 118 already-compliant tiles were left
+untouched. Fabric totals moved 2,135 → 2,802 blocks and 361 → 444 parks. 53 remote tiles received
+a homestead; 16 accretion masses were needed, i.e. road frontage carried almost all of the growth,
+which is the D1.01 character the stream had to preserve.
+
+### Three engine findings this stream had to fix before the mechanism worked
+
+1. **Relief annuli again.** The first candidate run lost **41,872 of ~64,000 candidates to relief
+   alone** and moved compliance only 110 → 181. The cause is the shoulder-annulus trap the M1
+   stream recorded: `_relief_geometry_for_extents` reports offset RINGS, and clipping a hex by
+   them erases the plateaus they enclose. `_build_morph_component` already abandons relief when it
+   retains less than `MORPH_MIN_RELIEF_AREA_RETENTION` (0.72), and so does the dry-area probe — but
+   `_build_rural_growth` does not, and neither did the first version of this pass. Mirroring the
+   rule (189 of 277 grown tiles hit the fallback) took relief rejections to 600 and compliance to
+   358. Contour discipline is then kept the way B1.01 actually states it: when relief is abandoned,
+   a candidate is rejected if its mass or its shadow spans two land bands
+   (`multi_band_decorative_building_count` stays 0).
+2. **The sanitisers delete what the pass counted.** `_sanitize_decorative_fills` and
+   `_sanitize_gameplay_collisions` run after every generator and remove roughly 98 masses map-wide;
+   the gameplay one is MAP-WIDE and expands each footprint by 4.5u, so a footprint on a
+   *neighbouring* tile removes a mass a per-tile check accepted. Counting a mass that is later
+   deleted converts a satisfied floor into a silent miss. Applying the identical two predicates
+   both when measuring existing masses and when accepting candidates took undocumented misses
+   21 → 6 and urban compliance 72 → 77.
+3. **The size cut has to be enforced, not assumed.** A mass under
+   `DensityAudit.MIN_COUNTED_MASS_AREA` is a fragment the audit ignores entirely, and geometry
+   jitter in `_stepped_row` can push a nominally 22x15 mass under it. `completion_size_class_ok`
+   is now a static, unit-tested predicate with a 40u² margin either side of both frozen cuts.
+
+### M2.01 verification
+
+- Unit suite **2,296 passed, 0 failed** with a real summary line (v0 2,287 in this worktree plus
+  exactly the 9 new completion asserts).
+- Two consecutive density-audit runs byte-identical in both JSON
+  (`658c2f63f6ec0ec8a33ca9004944ef71775e648838065907f5055b3a22a0f438`) and text
+  (`625084084b939e6cb6d8e58a61a0b2073be01e53e42f5bb658a3145503680705`).
+- Road-frontage audit **byte-identical to the v0 archive log**, all eight counters frozen: 177 road
+  tiles, 413 buildings, 79 failing tiles, 177 over 15u, 137 off-road-by-design, 1 service-lane
+  save, 165 block-mode failures without streets, 146.6u `tile_10_3` furnace worst case.
+- Morphology metrics: every named water and relief gate counter is **zero and unchanged from v0** —
+  `water_overlap_count`, `apron_water_overlap_count`, `cross_bank_mass_count`,
+  `disconnected_mass_after_water_clip_count`, `roof_element_water_overlap_count`,
+  `shadow_water_overlap_count`, `uncovered_river_join_count`,
+  `contour_crossing_decorative_mass_count`, `disconnected_mass_after_relief_count`,
+  `multi_band_decorative_building_count`.
+
+### M2.01 capture evidence and a capture-lock contamination incident
+
+- **Determinism.** Three consecutive full all-style capture runs at the final commit are
+  **byte-identical across all 43 artifacts** (runs B, C, D). Two morphology runs are byte-identical
+  across every fixed output, and the morphology metrics JSON is byte-identical between them.
+- **Legacy identity.** A same-machine, same-session control was captured from a detached worktree
+  at the base commit `781bc519`, per the M1 warning that the archived absolute hashes no longer
+  reproduce on this machine (the display forces 2360x1328 instead of the archived 1920x1080). All
+  **32 legacy artifacts** — every classic, ink and plate framing plus `wide_legacy_before` and
+  `wide_legacy_roundtrip` — are byte-identical between the candidate and that control. Within the
+  candidate run, `wide_legacy_before` == `wide_legacy_roundtrip` == `wide_ink`
+  (`82cdd1f07ab4e0fe241466b95119e3dfa967fc5793b2622f871c6664e0cbf96e`) and `wide_midcentury` ==
+  `wide_midcentury_repeat` (`f678d7cbf795a762f7bbcb1aded188e033678e439d6923296c38346386703ff9`).
+  All **10 mid-century framings** differ from the control, which is the intended change.
+- **A capture-lock contamination incident worth recording.** A first capture attempt ("pass A")
+  produced 43 PNGs whose mid-century framings were *pixel-identical to the base commit* while the
+  morphology run from the same code state clearly carried the new masses. Cause: the attempt was
+  run in a foreground shell that blocked in the `while ! mkdir "$LOCK"` wait, and the shell's
+  10-minute limit killed it **before Godot ever launched**; the `/tmp/poe_mapstyle_*.png` files
+  picked up afterwards were another concurrently-running agent's output. The tell was that the
+  attempt's own redirected log file did not exist. **Lesson for concurrent streams: a capture is
+  only yours if its own log exists and carries its own exit line — never authenticate an output set
+  by the presence of files in `/tmp`.** Pass A is discarded; nothing in this report rests on it.
+
+### M2.02 — blind verdict on the completion pass: **REJECTED, mechanism removed**
+
+| field | value |
+|---|---|
+| **Iteration** | M2.02 (close-out of M2.01) |
+| **Stream / lever** | Addendum §2 — per-tile building-count floors across all four tile classes |
+| **Layer changed** | one: `UrbanFabricVisuals._complete_density_floors` (settlement completion) |
+| **Status** | **REJECTED — reverted. Renderer source byte-identical to `781bc519`.** |
+| **Evidence** | blind pair `/tmp/poe_g3_blind/DENSITY/{wide,inland,farmclose,coast,denseclose,playerclose}/image_{1,2}.png` — `image_1` = candidate `61a19b8c`, `image_2` = same-machine control at `781bc519` |
+| **Next bottleneck** | the *form vocabulary* of a completion mark, not its placement rule |
+
+#### The verdict, and why a win is still a rejection
+
+The blind critic returned **`image_1_better`** — the candidate won. It is still rejected, and the
+reason is the standing acceptance rule of §2 of the gauntlet II prompt:
+
+> *Accept only if a primary failing score rises with no material regression elsewhere.*
+
+The four primary failing categories of the whole-map critique scored, candidate / control:
+
+| primary failing gate | candidate | control | movement |
+|---|---:|---:|---|
+| reference-family resemblance | 3 | 3 | — |
+| continuous figure/ground | 3 | 3 | — |
+| historically accumulated character | 3 | 3 | — |
+| absence of procedural repetition | **2** | 3 | **FELL** |
+
+**No primary failing gate rose, and one fell.** The rubric averages are a dead tie, **3.50 / 3.50**.
+The category that did rise — inhabited impression, 3 → 4 — is a real gain but is not one of the
+four gates this gauntlet exists to close, and it was bought by dropping one of them to 2. The
+critic's own summary is *"a narrow win, not a good result… neither image is a passing plate"*, and
+the tie was broken on reference-family reasoning rather than on any score. Both halves of the
+acceptance rule fail, so the candidate is not accepted.
+
+#### The three defects, independently re-measured at close-out
+
+Every claim below was reproduced from the blind PNGs at close-out, not taken on report:
+
+1. **One glyph, ~131 times.** Connected-component extraction of the candidate-minus-control mask
+   over the five close framings yields **134 added elements** (critic: 131) with bounding-box
+   aspect **p10 1.00 / median 1.10 / p90 1.62** (critic: 1.00 / 1.15 / 1.69). Area varies about
+   12×, so scale varies; **form does not**. Not one L, U, courtyard ring, attached terrace or
+   farmyard pair in the whole set. Diff footprints match the critic exactly: wide 0.200%, coast
+   0.507%, denseclose 0.374%, farmclose 0.592%, inland 0.705%, playerclose 0.838%.
+2. **A second, new repeated glyph — the chevron paddock.** Confirmed by direct A/B crop at
+   `denseclose (1102,531)`: the candidate carries a dark-green pentagon with a single white
+   two-stroke chevron where the control has plain green. At `inland (735,817)` and `(740,880)`
+   **two of them sit 63px apart, identical in size, outline and mark, both inside one glance.**
+3. **Bare footprints beside a richer authored vocabulary.** The additions carry no plot boundary,
+   yard or field, and sit next to the map's own hatched strip-field compounds with embedded
+   roofs and mill discs. The average quality of a rural mark falls while the count rises.
+
+#### Root cause of defect 2 — a vocabulary borrowed outside its scale range
+
+`_completion_place_park` reuses `_add_park`, which is correct: reusing the accepted green
+vocabulary was the right instinct. But `_add_park` also stamps a two-segment path mark into
+`_park_marks`, sized `u = min(length*0.25, 16)`, `v = min(depth*0.20, 8)`, with only ±4.0u of
+bend jitter. In a large urban park — the vocabulary's original and only home — that is a small
+path inside a big green. At the completion pass's paddock scale (`COMPLETION_PARK_LENGTH`
+40–56u, `COMPLETION_PARK_DEPTH` 28–38u) the same two strokes span most of the shape and the
+jitter is far too small to differentiate them, so the mark stops being a path and becomes the
+glyph. **An accepted mark is only accepted at the scale it was accepted at.** Reusing a
+vocabulary element at a materially smaller size is a new mechanism and needs its own scrutiny.
+
+#### What this proves about the abstraction
+
+The completion pass separates cleanly into two halves, and the blind pair scores them opposite ways.
+
+- **The placement half is right and should be carried forward.** The anchor ladder (road frontage
+  → accretion → homestead) reached 93.4% compliance with road frontage carrying almost all growth
+  and only 16 accretion masses, which preserves D1.01's road-dependency character. The critic
+  reached the same conclusion from the pixels — *reported* (not re-verified at close-out) as
+  added-element distance-to-nearest-road of median 14px with 90% inside 60px, and summarised as
+  *"image_1's placement rule is already 90% right."* The critic also reports a **10% roadless
+  tail** (13 of 131 beyond 60px, worst 789px). That tail is partly legitimate — the addendum
+  itself gives remote roadless tiles a floor of 1–4 small buildings — but the homestead rung
+  clearly places some of them where they read as a lone shed on open moorland, and attempt 2
+  should tighten it.
+- **The generation half is wrong.** A count floor implemented as *"emit N acceptable masses"*
+  optimises for the audit and produces one shape N times. **Counting gates cannot be satisfied by
+  a single-form emitter without converting a density defect into a repetition defect** — which is
+  a strictly worse trade here, because repetition is one of the four gates and density is not.
+
+This is the third time this project has failed the same way (V4.09a/b hook returns, V2.02 central
+lozenge, H2.04–05 tick glyphs) and the first time it has done so while *winning* its blind pair.
+The graveyard entry is therefore about the emitter, not about density floors.
+
+#### Attempt budget
+
+This is **attempt 1 of 2** on settlement completion. The mechanism is removed from the renderer
+now rather than left live, for two reasons: the standing rule forbids leaving a rejected mechanism
+partly in place, and three other streams (parks, coast, ports) are judged against this same
+baseline — leaving a fabric that a blind critic scored 2/5 on repetition would contaminate their
+comparisons. One attempt remains.
+
+#### Revert verification (all re-run at close-out, not inherited)
+
+- `git diff 781bc519 --stat` → **only `reports/map_visual_gauntlet.md` differs.** The renderer,
+  the test runner and the tools tree are byte-identical to the base commit; the probe scene that
+  read `density_completion` was removed with the metric it read.
+- Unit suite → **`==== 2287 passed, 0 failed ====`** with a real summary line — exactly the v0
+  count for this worktree (the candidate's 2,296 was v0 plus its 9 completion asserts).
+- Density audit (`res://tools/density_audit.tscn`, exit 2) → output **byte-identical to the frozen
+  `docs/map-density-audit-baseline.txt`**: 395 audited, 285 failing, 285 undocumented. The fabric
+  is measurably back at v0, by the same instrument that measured the candidate.
+- Road-frontage audit → log **content-identical to the v0 archive** (`/tmp/poe_g2_baseline/v0/frontage_audit.log`;
+  the only textual differences are per-run planner millisecond timings and the absolute log path).
+  All eight counters frozen: 177 road tiles, 413 buildings, 79 failing tiles, 177 over 15u, 137
+  off-road-by-design, 1 service-lane save, 165 block-mode failures without streets, 146.6u
+  `tile_10_3` furnace worst case. The four port planner hashes are unchanged.
+- All-style capture harness run **twice** at the reverted HEAD, windowed, under the capture lock —
+  see the hash block below.
+- `git diff --check` clean.
+
+The e2e balance harness was not re-run: the net source diff against the base commit is empty, so
+there is no sim surface to regress. That is a statement of what was and was not done, not a claim.
+
+#### Blind-slot authentication (do this, every time)
+
+The slot mapping was verified before the verdict was applied, from the pixels rather than from
+either agent's note. The candidate is purely additive, so the slot carrying *more* structures must
+be the candidate: over all six framings the changed pixels are markedly **darker in `image_1`**
+(mean RGB 100–117, ink masses) than in `image_2` (138–148, open grass). `image_1` = candidate,
+independently. It also matches the capture hash the implementer recorded for `wide_midcentury`
+(`f678d7cb…`), so note and pixels agree — but the pixels were checked first.
+
+#### Next lever
+
+Not a third density mechanism. **Give the completion mark a form vocabulary, then re-run the same
+placement rule** — this is the one change attempt 2 should make:
+
+1. Draw completion masses from the existing accepted mass vocabulary (solid / L / U / courtyard
+   ring / attached pair), in the proportions the accepted urban fabric already uses, instead of a
+   single rounded rectangle. The vocabulary exists and is accepted; the completion pass simply
+   never called it.
+2. Give each mass a plot or yard, so a rural addition reads like the map's own strip-field
+   compounds rather than a footprint dropped on grass.
+3. Cluster 2–4 masses into a hamlet with a shared frontage line instead of spacing single marks
+   evenly along a lane — several inland runs currently read as a dashed cartographic line.
+4. **Drop the `_add_park` path mark entirely at paddock scale**, or scale the mark and its jitter
+   with the shape rather than clamping it.
+5. Leave the anchor ladder, the relief-retention fallback and the sanitiser-mirroring predicates
+   exactly as M2.01 had them — those are the parts that worked.
+
+The three engine findings recorded in M2.01 survive this rejection and remain actionable for every
+other stream, in particular that **`_build_rural_growth` still applies raw relief shoulders with no
+retention fallback**, which is very likely why D1.01 recorded so many relief rejections and reached
+only 184 masses.
+
+#### M2.02 capture evidence — the revert reproduces V0 exactly
+
+Two all-style harness runs at the reverted HEAD, windowed, serialized under
+`/tmp/poe_gauntlet2_capture.lock`, each authenticated by **its own** log file and its own exit
+line (per the pass-A lesson recorded in M2.01):
+
+- **Run-to-run determinism:** R1 vs R2 → **identical=43 differing=0**, both exit 0.
+- **V0 identity, measured against the blind control itself.** The `image_2` slot of the blind pair
+  *is* a same-machine control capture at `781bc519`, so it is the correct V0 reference on this
+  display. All six blind framings at the reverted HEAD are **byte-identical to `image_2`** and
+  byte-different from `image_1`:
+
+  | framing | reverted HEAD = control `image_2` | candidate `image_1` |
+  |---|---|---|
+  | wide | `2edb87aeae1e6891…` ✔ | `f678d7cbf795a762…` |
+  | inland | `29145c7ef2205927…` ✔ | `0a3186d281ddcbac…` |
+  | farmclose | `9f1f247a159be72a…` ✔ | `6c92262aff99aef5…` |
+  | coast | `ecdf5b6155285131…` ✔ | `a48f7bc2cd52b4ad…` |
+  | denseclose | `98caec96b3e03c9d…` ✔ | `110100f9680604ca…` |
+  | playerclose | `ac0ae774531a68f2…` ✔ | `c7be537fea71c139…` |
+
+  This is also the **third independent confirmation of the blind slot mapping** (`image_1` =
+  candidate), after the darker-pixel test and the implementer's recorded hash.
+- **Legacy identity, within run:** `wide_legacy_before` == `wide_legacy_roundtrip` == `wide_ink` ==
+  `82cdd1f07ab4e0fe241466b95119e3dfa967fc5793b2622f871c6664e0cbf96e`; `wide_midcentury` ==
+  `wide_midcentury_repeat`. The harness's own two assertions printed in **both** runs: *"midcentury
+  seeded map layer pixel exact across repeated wide capture"* and *"midcentury round-trip pixel
+  exact in masked map region (back to ink)"*.
+- **Morphology harness** run at the reverted HEAD → exit 1 **as designed** (unresolved G1.02
+  gradient gate). All ten water and relief counters are **zero and equal to the v0 archive record**:
+  `water_overlap_count`, `apron_water_overlap_count`, `cross_bank_mass_count`,
+  `disconnected_mass_after_water_clip_count`, `roof_element_water_overlap_count`,
+  `shadow_water_overlap_count`, `uncovered_river_join_count`,
+  `contour_crossing_decorative_mass_count`, `disconnected_mass_after_relief_count`,
+  `multi_band_decorative_building_count`.
+
+#### A trap for the other gauntlet-3 streams: the archived morph PNGs look comparable and are not
+
+The M1 report already warns that the archived **mapstyle** hashes no longer reproduce, because the
+display now forces 2360x1328 instead of the archived 1920x1080 — and that is obvious, since the
+archived PNGs are visibly a different size. **The archived morph PNGs hide the same problem behind
+an identical file size.** All 22 of them are 960x480 in both the archive and today's runs, so they
+invite a byte comparison; all 22 differ.
+
+The cause is in the harness: `settlement_morphology_shot.gd` does not downsample, it **centre-crops**
+the viewport texture — `crop_origin = (image.width - 960)/2`. A different viewport size therefore
+yields a crop of a different world extent at the same output dimensions. Nothing in the file size,
+the dimensions or the metrics reveals it.
+
+The delta is provably **not** attributable to this stream: the reverted tree is byte-identical to
+`781bc519` (`git diff 781bc519 --stat` lists only this report), so whatever differs from the
+`/tmp/poe_g2_baseline/v0` archive differs at the base commit too. Note also that the archive was
+taken at `5443818d` ("renderer state identical to `e8cd62ca`"), and `4e863c8d` — *"Fix: per-tile
+relief in the dry-area probe; batching over all hexes over-clips"* — landed in
+`scripts/urban_fabric_visuals.gd` between that archive and every gauntlet-3 base.
+
+**Rule for the remaining streams: compare against a same-machine, same-session control captured
+from your own base commit. Do not byte-compare anything in `/tmp/poe_g2_baseline/v0` — not even the
+outputs whose dimensions match.** The counters in that archive remain valid; the pixels do not.
+
+> **Integrator's note (2026-08-14).** The park-halving mechanism is **not** merged; this postmortem is preserved on `gauntlet3/integrated` while the code stays only on `gauntlet3/parks`.
+
+## M3. Park halving in the four largest cities — addendum section 3 — 2026-08-14
+
+### Which four cities — the addendum's guess was right, but only after a tie-break
+
+Connectivity was computed over all 92 authoritative urban tiles (not over the fabric's own component list —
+Arin is lifted into the hero path but is still one city). Ranked by tile count, then by the count of tiles
+whose AUTHORITATIVE profile in `data/visual_settlement_profiles.json` is `metro`, then by first tile id:
+
+| rank | component key | tiles | metro tiles | name | baseline park area |
+|---|---|---|---|---|---|
+| 1 | `tile_10_16` | 9 | 9 | Arin City | 214,177 u² |
+| 2 | `tile_23_8` | 7 | 3 | Capital Port | 78,613 u² |
+| 3 | `tile_18_14` | 5 | 0 | Teganfort | 12,511 u² |
+| 4 | `tile_17_8` | 4 | 2 | Patran City | 39,156 u² |
+
+The second sort key is load-bearing: **six components tie at four tiles** (Fort Silversworth, Copperstown,
+Port Lightning, Patran, Kingstown, Gold Arm). Exactly one of them — Patran City — carries metro tiles, so the
+authoritative profile data resolves the tie without inventing a measure of "largeness". The addendum's
+expectation (Arin, Capital Port, Patran, Teganfort) is therefore confirmed on the data, all four.
+
+⚠ A parity trap sits in the way of anyone re-deriving this: **tile ids are coord+1**, so `tile_23_8` is
+coord (22, 7) and the odd/even column offset in `HexMap._neighbor_offset_for_hsm` keys on the COORD parity,
+not the id parity. Computing adjacency from the id numbers produces a different, wrong component set (it
+merges Tomash into Arin and splits Capital Port from its Foundry and Industrial Zone).
+
+### The defect, measured
+
+Green is drawn as a WHOLE-PARCEL fill: a face whose role is `park` becomes one inset green polygon covering
+the entire street face. Arin averaged ~7,100 u² per green space. Capital's centre-east tile — `tile_25_9`,
+the tile that connects the Old Quarter/Docks half of the city to the Industrial Zone/Foundry half — carried
+**seven greens totalling 31,625 u² and ZERO large buildings**. That is the gap the owner reads as the city
+being split in two.
+
+### The mechanism — one straight cut per park face, freed half built out
+
+One architectural layer: the park fill step of `UrbanFabricVisuals`, shared by the morph, settlement-plan and
+hero-Arin park branches (`_add_park_fill`).
+
+1. A park face whose centroid lies in one of the four components is cut ONCE, straight, by bisection on the
+   projected area (`_split_poly_area_fraction`), retaining 46–58% (hash-jittered per face).
+2. 62% of faces take a **frontage band** cut (buildings on the long street edge, green retreating into the
+   block interior); the rest take an **end cut** (green keeps one end of the block). Two arrangements, so the
+   pass does not stamp one repeated glyph.
+3. The freed half is built with the EXISTING fine-grained micro-row vocabulary
+   (`_morph_add_small_town_micro`, new `allow_pocket = false` so it cannot put green back). Its masses run
+   ~300–600 u², well under the audit's 1,600 u² large cut — the addendum's "smaller decorative buildings,
+   finer-grained than the current ordinary vocabulary".
+4. `AccommodationSitePlanner` sites that sat inside park land now render as **reserved industrial plots**
+   (`releasable_yard` / `industrial_growth`) instead of green, but only where the tile still renders three or
+   more counted green spaces without them, so the conversion can never take a tile below the ≥2 floor.
+
+Nothing draws a line into a park. That is deliberate: the retired promenade greens (H2.08/H2.09) and the
+sampled river offsets (P3.01/P3.02) both failed because they wrote a repeated LINEAR mark into green. Here one
+side simply stops being green and becomes building parcels.
+
+### Three guards, each added because a measurement caught a real loss
+
+- **`PARK_HALVING_MIN_FACE_AREA = 2,600 u²`.** A park face loses roughly `perimeter × inset` before it draws,
+  so a 1,400 u² face renders only ~590 u² of green; halving that puts both halves under the audit's 200 u²
+  counted-green floor. Measured: Teganfort `tile_19_13` went 1 park to 0.
+- **Post-render abandon (`MIN_KEPT_GREEN 420`, `MIN_KEPT_PIECE 260`).** The retained half is inset and clipped
+  against the footprint exclusions FIRST; if what comes out is not a green space the audit would still count,
+  the split is abandoned and the face is drawn whole. 2 of 50 candidate faces abandon.
+- **Home-tile ownership preference.** The audit credits a polygon to the tile it shares the most AREA with. A
+  retained half leaning over a hex side is credited to the neighbour and the home tile silently loses a green
+  space (Capital `tile_24_9`, 2 → 1). The planner now computes the face's owner by the same shared-area rule
+  and flips which side keeps the green when — and only when — that restores the owner. A centroid-based
+  version of this guard was tried first and was strictly worse (it cost `tile_24_8` its only park); it was
+  replaced, not tuned.
+
+### Result — the gate is met at 49.53% retained
+
+| component | tiles | park area before | after | park count before → after | small buildings before → after |
+|---|---|---|---|---|---|
+| Arin City | 9 | 214,177 | 100,658 | 30 → 31 | 142 → 263 |
+| Capital Port | 7 | 78,613 | 43,817 | 11 → 11 | 203 → 298 |
+| Teganfort | 5 | 12,511 | 6,187 | 4 → 4 | 75 → 86 |
+| Patran City | 4 | 39,156 | 19,963 | 9 → 9 | 54 → 77 |
+| **TOTAL** | 25 | **344,457** | **170,625** | **54 → 55** | **474 → 724** |
+
+**49.53% retained** — the addendum asks for half ±10%, i.e. 45–55%. No green space was lost anywhere: the
+count went UP by one. Urban `green_below_floor` tiles are unchanged at 57, parkless urban tiles unchanged at
+37, `small_below_floor` improved 35 → 33, and compliant urban tiles improved **19 → 21**. Park area in every
+OTHER urban component is unchanged to the unit (325,264 u² before and after), which is the scoping proof.
+
+Fabric totals: 2,135 → 2,406 decorative blocks, 361 parks (unchanged), 48 faces split, 2 abandoned, 261
+backfill masses, 9 reserved plots.
+
+### One honest regression — the open G1.02 road-gradient gate goes 7 → 8
+
+`district_field.gradient_failure_count` rises from **7 to 8** of 87 applicable tiles. The new failure is
+**`tile_19_14` Teganfort Old Quarter**, whose gradient delta falls from 15.38 to 4.57 against a 5.00
+requirement: the backfill put buildings into the road-poor part of the tile and flattened the road-rich vs
+road-poor coverage difference. `density_direction_failure_count` moves 7 → 8 with it.
+
+This is a real regression on a gate the addendum explicitly does not reopen (§7) and that the morphology
+harness already exits 1 on. It is not hidden and it is not repaired here: repairing it needs road geometry
+inside the park-split planner, which is a second mechanism. No other district-field counter moves —
+`missing_visible_core_count` 0, `dense_core_failure_count` 0, `internal_seam_failure_count` 0,
+`hex_boundary_failure_count` 13, `local_hex_failure_count` 13, `actual_spill_tile_count` 55, all unchanged.
+
+### Verification
+
+- **Unit suite: 2,296 passed, 0 failed** (2,287 inherited from M1 plus 9 new asserts pinning the area cut,
+  its determinism, the four-city gate, the small-face floor and the shared-area ownership rule).
+- **Two byte-identical morphology capture runs**: all 24 artifacts this branch writes, including
+  `poe_morph_metrics.json`, hash identical across runs A and B.
+- **Two byte-identical density-audit runs** (JSON and text).
+- **All seven W1.01 water counters ZERO** on both settlement plans, plus `dry_land_guard.water_overlap_count`
+  0, `gameplay_collision_guard.opaque_overlap_count` 0, and every relief overlap/disconnected counter 0.
+- **Rural growth and suburban fringe are untouched** — every counter identical to v0 (rural 184 masses,
+  83.15% frontage; suburban 11 masses, 1 cross-tile district, 2 access streets, all failure counters 0).
+- **Scoping proof, two independent ways**: at the fabric level only `settlement-plan|capital-port`,
+  `settlement|tile_17_8`, `settlement|tile_18_14` and `hero_arin` change green or built area — all other 36
+  settlements are identical to v0. At the audit level, urban park area outside the four components is
+  325,264 u² before and after.
+- **Road-frontage audit frozen on all eight counters**: 177 road tiles, 413 buildings, 79 failing tiles, 177
+  over 15u, 137 off-road-by-design, 1 service-lane save, 165 block-mode failures without streets, 146.6u
+  `tile_10_3` furnace worst case.
+- **All-style harness, two full runs 40 minutes apart: all 43 PNGs byte-identical.** Within each run,
+  `legacy_before == legacy_roundtrip == ink` exactly (`82cdd1f0…`) and `midcentury_wide ==
+  midcentury_repeat` exactly (`8336ce4d…`), and the harness's own in-memory masked round-trip assertion
+  passed — that assertion compares viewport images, so it is immune to the `/tmp` filename collisions that
+  concurrent streams cause. Legacy wide hashes: classic `749c72fb…`, ink `82cdd1f0…`, plate `d3989f0e…`. Per
+  M1's finding these do not match the v0 archive because the window is now 2360x1328 rather than 1920x1080;
+  same-machine identity is the available guarantee.
+- **Same-machine base-branch control.** `res://tools/map_style_shot.tscn` was captured from a clean checkout
+  of the base commit (`/tmp/poe_g3_control`, `781bc519`) in the same session and window. All **32 legacy PNGs
+  are byte-identical** to this branch's — classic, ink, plate, `legacy_before` and `legacy_roundtrip`, in
+  every framing. Of the 11 midcentury framings, 6 differ (the intended change) and 5 are identical, those
+  being the framings that do not look at any of the four cities.
+- `git diff --check` clean; the only files this branch changes against `gauntlet3/density-audit` are
+  `scripts/urban_fabric_visuals.gd`, `tests/test_runner.gd` and this report.
+
+### Blind comparison staged
+
+`/tmp/poe_g3_blind/PARKS/{A,B,C}` — slot 1 is the v0 baseline and slot 2 the candidate in all three, so the
+ordering carries no information. A is the Capital continuity framing (the owner's named defect), B is
+Teganfort core, C is the Arin hero slice. A and C are the honest test: A should be clearly better, C should be
+no worse, because Arin is the owner's reference for what already works and it loses 53% of its green area
+here.
+
+### M3 verdict — REJECTED AND REVERTED
+
+| field | value |
+|---|---|
+| iteration | **M3** |
+| stream / lever | Park halving in the four largest cities — addendum §3 |
+| change | One straight cut per park face in Arin / Capital Port / Teganfort / Patran; freed half backfilled with the micro-row vocabulary (261 masses) plus 9 reserved industrial plots |
+| status | **Rejected and reverted.** `scripts/urban_fabric_visuals.gd` and `tests/test_runner.gd` restored byte-identical to the branch base `781bc519`; only this report is retained |
+| evidence | Blind pair `/tmp/poe_g3_blind/PARKS/{A,B,C}`; candidate captures `/tmp/poe_g3_scratch_parks/morphB/`; baseline `/tmp/poe_g2_baseline/v0/morph/` |
+| next bottleneck | The backfill **vocabulary**, not the cut |
+
+**The blind key was re-verified by hash before the verdict was applied.** `image_1.png` in all three subdirs
+hashes exactly to the v0 archive (`poe_morph_capital` `cc5225e6…`, `poe_morph_tegan_core` `d1d3cd19…`,
+`poe_morph_arinold` `157d146f…`) and `image_2.png` exactly to the candidate run. Slot assignment and the
+implementer's note agreed; the artifact is credited to the right image.
+
+The critic **preferred the candidate** — `image_2_better`, average 3.42 vs 3.17 — and it is reverted anyway,
+because the preference was bought with two category regressions:
+
+| category | v0 | candidate |
+|---|---|---|
+| continuous figure/ground | 2 | **4** |
+| inhabited impression | 3 | **4** |
+| streets as negative space | 3 | **4** |
+| green-space integration | 2 | **3** |
+| historically accumulated character | 2 | **3** |
+| decorative/gameplay hierarchy | 4 | **3** ← regression |
+| absence of procedural repetition | 4 | **2** ← regression |
+
+The critic's own summary is the finding: the candidate *"wins, but it wins on a candidate that should NOT pass
+a gate."* The gauntlet bar is "scores better **with no material regression**", and reject-neutral already
+establishes that a regression is disqualifying regardless of what else improves.
+
+### Why it failed — the cut is sound, the backfill vocabulary is not
+
+The two are separable, and the evidence separates them cleanly.
+
+**The cut worked.** Green-space integration rose 2 → 3, and the single edit the critic rated highest in the
+whole set is a halved park: at `C x796–904 / y228–322` the v0 baseline has *"a large flat green rectangle
+occupying a whole city block — precisely the 'large cities look SPLIT by oversized parks' complaint"*, and the
+candidate slices three street-bounded blocks across it. The owner's §4 defect (Capital reading as split in
+two) is answered at `A x560–780 / y300–520`, where an empty pasture wedge inside the urban envelope becomes
+walled riverbank frontage. Arin, the owner's reference, was **not** damaged by losing 53% of its green.
+
+**The backfill failed.** Every one of the critic's four repeated-glyph sites is new backfill massing, and the
+failure is one shape used everywhere: *"a mid-grey quad, near-constant footprint, near-constant rotation,
+near-constant gap, laid one unit deep along a road with open field behind it… beads on a string."* Real
+terraces have back plots, varied depth and rear returns; the micro-row builder has none of those, and at 261
+new masses its uniformity became the dominant reading of the map.
+
+Worse, enabling the micro builder's pocket path re-exposed **disconnected pale cream service-lane ticks** —
+six in `B x165–367 / y315–395` (which also *deleted* a long accreted riverbank parcel boundary and replaced it
+with nothing) and two standing in beach sand at `A ~x638 / ~x660`, free-ended at the seaward end. This is the
+same pale-tick/button artifact family the project already rejected twice as **V3.03 and V3.05**. It is not a
+retry of junction overpaint — a different mechanism reached the same glyph — but the graveyard verdict
+*"overpaint is dead as a class"* was about the artifact, and the artifact is back.
+
+I checked the most alarming claim myself rather than accepting it: the stubs that appear to run into the river
+do **not** overlap water. A pixel test of framing B finds **zero** cream pixels on baseline-water; the only 11
+changed water pixels are 5-unit antialias shifts on dark water. The seven W1.01 counters reading zero was
+correct — the defect is visual (ticks reaching the bank with free ends), not a water-safety breach.
+
+### What this proves about the abstraction
+
+1. **Area is the wrong success measure for a density pass.** The gate (§3, half ±10%) was met almost dead
+   centre at **49.53% retained**, with the ≥2 green floor held and the park *count* up 54 → 55, and the map
+   still got worse in two categories. A numeric gate that says nothing about the grain of what replaces the
+   removed area cannot certify a visual change.
+2. **Freed area is a demand for vocabulary the project does not have yet.** The addendum's two backfill
+   options were "reserved plots" or "smaller decorative buildings". Only 9 plots were reservable under the
+   ≥2-green floor, so 261 of the 270 backfills fell to the micro-row builder — a builder designed for small
+   rural towns, where a dozen uniform masses are plausible, and asked here to fill a city block.
+3. **Precedent is decisive and it is not new.** V3.03 and V3.05 were both rejected and reverted for artifact
+   resistance falling **4 → 3**, while each also fixed something real. This candidate falls **4 → 2** and adds
+   a hierarchy regression. Accepting it would have overturned the standing that killed those two.
+
+### Preserved for attempt 2 — do not re-derive
+
+Under the two-attempt rule this is **attempt 1** of park halving; one attempt remains, and it must change the
+backfill vocabulary, not the cut. The following are measured results and stay valid:
+
+- **The four components are settled** (table above), including the second sort key that resolves the six-way
+  tie at four tiles, and the **coord-parity trap** — `tile_23_8` is coord (22, 7); computing hex adjacency
+  from id numbers yields a different, wrong component set.
+- **The three guards each caught a real, named loss** that the ±10% area number alone would have hidden: the
+  2,600 u² minimum face (inset eats small faces below the counted-green floor), the abandon-after-measuring
+  rule for halves eaten by gameplay footprints, and the shared-area ownership rule (a half leaning over a hex
+  side is credited to the neighbour, silently costing the home tile a park). A centroid-based version of the
+  third was strictly worse and was replaced, not tuned.
+- **`gradient_failure_count` 7 → 8** (`tile_19_14`) was a genuine consequence of backfilling into the
+  road-poor part of a tile, and it disappears with the revert.
+
+### Next lever
+
+Give the backfill a **parcel-aware** vocabulary before cutting any park again: depth variation, rear plots and
+corner returns driven by the street face the row sits on, so the freed half reads as blocks rather than beads.
+The critic's positive finding points the way — the frontage that "walls" a riverbank scored well; it is the
+repetition of one quad, and the pocket service lanes, that lost the run. Until that vocabulary exists, §3's
+freed area has nowhere good to go, and the honest sequencing is vocabulary first, halving second.
+
 ## M4. Coastal reach and single-tile fill — addendum section 4 — 2026-08-14
 
 **Iteration ID** M4.01 · **Stream** coastal reach and single-tile fill (Stoneshore, Vandel) ·
