@@ -54,6 +54,19 @@ const MORPH_COAST_MIN_GAP := 26.0
 const MORPH_COAST_OVERSHOOT := 24.0
 const MORPH_COAST_FRONT_INSET := 12.0
 const MORPH_COAST_SPUR_START := 0.30
+## The reach is bounded by the streets that already run seaward.  Roads are a
+## frozen input, so land the road network never touches cannot be subdivided into
+## street faces: growing the extent past the last seaward street produced huge
+## faces, floating slabs and a collapse of road-frontage occupancy (measured:
+## Vandel 97.5 -> 80.6, Stoneshore 81.0 -> 62.6).  A bearing therefore only
+## qualifies when an authoritative road leads that way, and the reach stops one
+## block depth past the far end of that road.  This is a gate on which bearings
+## qualify, not a road-catchment envelope (retired as C2.01-02) — the extent is
+## still the organic influence-cell union, never a buffered road.
+const MORPH_COAST_ROAD_SAMPLE := 11.0
+const MORPH_COAST_ROAD_LOCAL := 320.0
+const MORPH_COAST_ROAD_MIN_LEAD := 0.62
+const MORPH_COAST_ROAD_BLOCK_DEPTH := 72.0
 ## The extent and the growth-intensity field are two faces of the same district
 ## field.  Growing the extent alone hands the new waterfront to the low-intensity
 ## tail of the role ballot, which turns it into parks and open ground — measured,
@@ -1440,6 +1453,12 @@ func _morph_district_field(specs: Array, road_segments: Array,
 		var core_radius := float(field_tile.core_radius)
 		var tile_bearings := 0
 		var tile_coastal_bearings: Array = []
+		var local_roads: Array = []
+		for road_value in road_segments:
+			var road: Dictionary = road_value
+			if _point_segment_distance(core_position, road.a,
+					road.b) <= MORPH_COAST_ROAD_LOCAL:
+				local_roads.append(road)
 		for edge_index in HEX_VERTS.size():
 			var a: Vector2 = spec.center + HEX_VERTS[edge_index]
 			var b: Vector2 = spec.center + HEX_VERTS[(edge_index + 1) % HEX_VERTS.size()]
@@ -1451,10 +1470,16 @@ func _morph_district_field(specs: Array, road_segments: Array,
 			var shore := _morph_open_water_distance(core_position, direction)
 			if shore < 0.0:
 				continue
-			if shore <= core_radius + MORPH_COAST_MIN_GAP:
+			var frontage_half := clampf(core_radius * 0.80, 68.0, 126.0)
+			var road_lead := _morph_seaward_road_lead(core_position, direction,
+				frontage_half, local_roads)
+			if road_lead < core_radius * MORPH_COAST_ROAD_MIN_LEAD:
+				continue
+			var reach := minf(shore, road_lead + MORPH_COAST_ROAD_BLOCK_DEPTH)
+			if reach <= core_radius + MORPH_COAST_MIN_GAP:
 				continue
 			var spur_start := core_position + direction * (core_radius * MORPH_COAST_SPUR_START)
-			var spur_end := core_position + direction * (shore + MORPH_COAST_OVERSHOOT)
+			var spur_end := core_position + direction * (reach + MORPH_COAST_OVERSHOOT)
 			var spur_half := spur_start.distance_to(spur_end) * 0.5
 			if spur_half <= 1.0:
 				continue
@@ -1462,15 +1487,16 @@ func _morph_district_field(specs: Array, road_segments: Array,
 				direction, spur_half, clampf(core_radius * 0.52, 48.0, 96.0),
 				"%s|%s|coast-spur|%d" % [component_key, str(spec.id), edge_index]))
 			var shore_normal := Vector2(-direction.y, direction.x)
-			var frontage_half := clampf(core_radius * 0.80, 68.0, 126.0)
 			cells.append(_morph_organic_field_cell(
-				core_position + direction * maxf(0.0, shore - MORPH_COAST_FRONT_INSET),
+				core_position + direction * maxf(0.0, reach - MORPH_COAST_FRONT_INSET),
 				shore_normal, frontage_half, 44.0,
 				"%s|%s|coast-front|%d" % [component_key, str(spec.id), edge_index]))
 			tile_coastal_bearings.append({
 				"direction": direction,
-				"reach": shore + MORPH_COAST_OVERSHOOT,
+				"reach": reach + MORPH_COAST_OVERSHOOT,
 				"frontage_half_width": frontage_half,
+				"shore_distance": shore,
+				"road_lead": road_lead,
 			})
 			tile_bearings += 1
 			coast_bearings += 1
@@ -1501,6 +1527,31 @@ func _morph_edge_touches_open_water(a: Vector2, b: Vector2) -> bool:
 		if kind == NavGrid.WATER_SEA or kind == NavGrid.WATER_LAKE:
 			return true
 	return false
+
+## How far an authoritative road already leads along a coastal bearing, measured
+## from the core inside the wedge the frontage cell occupies.  Roads are frozen
+## inputs and the sole source of street faces, so this is the honest limit of how
+## far a settlement can densify seaward without inventing streets.
+func _morph_seaward_road_lead(origin: Vector2, direction: Vector2,
+		half_width: float, roads: Array) -> float:
+	var normal := Vector2(-direction.y, direction.x)
+	var lead := 0.0
+	for road_value in roads:
+		var road: Dictionary = road_value
+		var a: Vector2 = road.a
+		var b: Vector2 = road.b
+		var length := a.distance_to(b)
+		var steps := maxi(1, ceili(length / MORPH_COAST_ROAD_SAMPLE))
+		for step in steps + 1:
+			var point := a.lerp(b, float(step) / float(steps))
+			var offset := point - origin
+			var along := offset.dot(direction)
+			if along <= lead:
+				continue
+			if absf(offset.dot(normal)) > half_width:
+				continue
+			lead = along
+	return lead
 
 ## Distance from `origin` along `direction` to the first open-water cell, or -1
 ## when none is found inside the probe limit.  Read-only against the nav grid.
