@@ -54,31 +54,25 @@ const MORPH_COAST_MIN_GAP := 26.0
 const MORPH_COAST_OVERSHOOT := 24.0
 const MORPH_COAST_FRONT_INSET := 12.0
 const MORPH_COAST_SPUR_START := 0.30
-## The reach is bounded by the streets that already run seaward.  Roads are a
-## frozen input, so land the road network never touches cannot be subdivided into
-## street faces: growing the extent past the last seaward street produced huge
-## faces, floating slabs and a collapse of road-frontage occupancy (measured:
-## Vandel 97.5 -> 80.6, Stoneshore 81.0 -> 62.6).  A bearing therefore only
-## qualifies when an authoritative road leads that way, and the reach stops one
-## block depth past the far end of that road.  This is a gate on which bearings
-## qualify, not a road-catchment envelope (retired as C2.01-02) — the extent is
-## still the organic influence-cell union, never a buffered road.
-const MORPH_COAST_ROAD_SAMPLE := 11.0
-const MORPH_COAST_ROAD_LOCAL := 320.0
-const MORPH_COAST_ROAD_MIN_LEAD := 0.62
-const MORPH_COAST_ROAD_BLOCK_DEPTH := 72.0
 ## The extent and the growth-intensity field are two faces of the same district
 ## field.  Growing the extent alone hands the new waterfront to the low-intensity
-## tail of the role ballot, which turns it into parks and open ground — measured,
-## not assumed: the extent-only variant moved rendered greens 412 -> 473.  A
-## coastal bearing therefore also stretches the effective core radius along that
-## bearing, so a waterfront reads as dense frontage rather than a lawn.  The
-## stretch fades out over a seaward wedge whose half angle is set by this cosine.
-## Two alternatives were measured and rejected against it on the shared density
-## audit: a constant-width corridor instead of the wedge (278 failing tiles,
-## 2,210 masses) and an extra 1.36 radius stretch on top of the wedge (277,
-## 2,302).  The plain wedge below measures 274 failing tiles and 2,287 masses.
-const MORPH_COAST_INTENSITY_COS := 0.58
+## tail, which enlarges the subdivision target and lowers the built share: the
+## extent-only variant rendered coarse floating slabs, moved greens 412 -> 473
+## and dropped Vandel road-frontage occupancy 97.5 -> 80.6.  A coastal bearing
+## therefore also floors the growth intensity, so the waterfront subdivides at
+## core grain and reads as dense frontage rather than lawn.  The floor applies
+## inside the wedge the frontage cell occupies and fades out past the shoreline.
+##
+## A rejected alternative is recorded here so it is not retried: bounding the
+## reach by how far an authoritative road already leads seaward.  It is the
+## honest structural objection — roads are frozen and are the only source of
+## street faces — but measured, it starved the owner's named targets, leaving
+## Stoneshore Old Quarter and Stoneshore Docks at exactly 0% growth while
+## raising dense-core failures from 0 to 2.  Density has to come from intensity,
+## not from refusing to grow.
+const MORPH_COAST_INTENSITY_TARGET := 0.78
+const MORPH_COAST_WEDGE_SPREAD := 1.25
+const MORPH_COAST_TAIL_DEPTH := 70.0
 ## Minimum-retention gate for the reach geometry itself: the enlarged extent is
 ## a superset of the core-only extent, so after the identical clip every tile
 ## must retain at least this ratio of its core-only usable area.  Anything below
@@ -1453,12 +1447,6 @@ func _morph_district_field(specs: Array, road_segments: Array,
 		var core_radius := float(field_tile.core_radius)
 		var tile_bearings := 0
 		var tile_coastal_bearings: Array = []
-		var local_roads: Array = []
-		for road_value in road_segments:
-			var road: Dictionary = road_value
-			if _point_segment_distance(core_position, road.a,
-					road.b) <= MORPH_COAST_ROAD_LOCAL:
-				local_roads.append(road)
 		for edge_index in HEX_VERTS.size():
 			var a: Vector2 = spec.center + HEX_VERTS[edge_index]
 			var b: Vector2 = spec.center + HEX_VERTS[(edge_index + 1) % HEX_VERTS.size()]
@@ -1471,11 +1459,7 @@ func _morph_district_field(specs: Array, road_segments: Array,
 			if shore < 0.0:
 				continue
 			var frontage_half := clampf(core_radius * 0.80, 68.0, 126.0)
-			var road_lead := _morph_seaward_road_lead(core_position, direction,
-				frontage_half, local_roads)
-			if road_lead < core_radius * MORPH_COAST_ROAD_MIN_LEAD:
-				continue
-			var reach := minf(shore, road_lead + MORPH_COAST_ROAD_BLOCK_DEPTH)
+			var reach := shore
 			if reach <= core_radius + MORPH_COAST_MIN_GAP:
 				continue
 			var spur_start := core_position + direction * (core_radius * MORPH_COAST_SPUR_START)
@@ -1495,8 +1479,6 @@ func _morph_district_field(specs: Array, road_segments: Array,
 				"direction": direction,
 				"reach": reach + MORPH_COAST_OVERSHOOT,
 				"frontage_half_width": frontage_half,
-				"shore_distance": shore,
-				"road_lead": road_lead,
 			})
 			tile_bearings += 1
 			coast_bearings += 1
@@ -1528,30 +1510,35 @@ func _morph_edge_touches_open_water(a: Vector2, b: Vector2) -> bool:
 			return true
 	return false
 
-## How far an authoritative road already leads along a coastal bearing, measured
-## from the core inside the wedge the frontage cell occupies.  Roads are frozen
-## inputs and the sole source of street faces, so this is the honest limit of how
-## far a settlement can densify seaward without inventing streets.
-func _morph_seaward_road_lead(origin: Vector2, direction: Vector2,
-		half_width: float, roads: Array) -> float:
-	var normal := Vector2(-direction.y, direction.x)
-	var lead := 0.0
-	for road_value in roads:
-		var road: Dictionary = road_value
-		var a: Vector2 = road.a
-		var b: Vector2 = road.b
-		var length := a.distance_to(b)
-		var steps := maxi(1, ceili(length / MORPH_COAST_ROAD_SAMPLE))
-		for step in steps + 1:
-			var point := a.lerp(b, float(step) / float(steps))
-			var offset := point - origin
-			var along := offset.dot(direction)
-			if along <= lead:
-				continue
-			if absf(offset.dot(normal)) > half_width:
-				continue
-			lead = along
-	return lead
+## Growth intensity floor inside a coastal wedge.  Intensity is what makes the
+## fabric fine grained: it shrinks the subdivision target and raises the built
+## share of the role ballot.  The default field decays with distance from the
+## core, so simply enlarging the extent seaward hands the new land to the sparse
+## tail — measured on the extent-only variant as coarse floating slabs, road
+## frontage occupancy 97.5 -> 80.6 on Vandel, and rendered greens 412 -> 473.
+## Treating a waterfront as core-grade instead is both the truer reading of a
+## port and the only way the new area resolves into small buildings.
+func _morph_coastal_intensity(point: Vector2, tile: Dictionary) -> float:
+	var bearings: Array = tile.get("coastal_bearings", [])
+	if bearings.is_empty():
+		return 0.0
+	var offset := point - (tile.core_position as Vector2)
+	var best := 0.0
+	for bearing_value in bearings:
+		var bearing: Dictionary = bearing_value
+		var direction: Vector2 = bearing.direction
+		var along := offset.dot(direction)
+		if along <= 0.0:
+			continue
+		var lateral := absf(offset.dot(Vector2(-direction.y, direction.x)))
+		var lateral_falloff := clampf(1.0 - lateral / maxf(1.0,
+			float(bearing.frontage_half_width) * MORPH_COAST_WEDGE_SPREAD), 0.0, 1.0)
+		if lateral_falloff <= 0.0:
+			continue
+		var overrun := maxf(0.0, along - float(bearing.reach))
+		var along_falloff := clampf(1.0 - overrun / MORPH_COAST_TAIL_DEPTH, 0.0, 1.0)
+		best = maxf(best, MORPH_COAST_INTENSITY_TARGET * lateral_falloff * along_falloff)
+	return best
 
 ## Distance from `origin` along `direction` to the first open-water cell, or -1
 ## when none is found inside the probe limit.  Read-only against the nav grid.
@@ -3698,25 +3685,12 @@ func _morph_field_sample(point: Vector2, field_tiles: Dictionary,
 	# reach delivers dense frontage instead of the parks and open ground the
 	# low-intensity tail of the role ballot would otherwise produce.  Every other
 	# bearing keeps the tile's own radius exactly.
-	var effective_radius := float(nearest.core_radius)
-	var coastal_bearings: Array = nearest.get("coastal_bearings", [])
-	if not coastal_bearings.is_empty() and core_distance > 1.0:
-		var offset := point - (nearest.core_position as Vector2)
-		for bearing_value in coastal_bearings:
-			var bearing: Dictionary = bearing_value
-			var direction: Vector2 = bearing.direction
-			var alignment := clampf(((offset / core_distance).dot(direction) -
-				MORPH_COAST_INTENSITY_COS) / maxf(0.001,
-				1.0 - MORPH_COAST_INTENSITY_COS), 0.0, 1.0)
-			if alignment <= 0.0:
-				continue
-			effective_radius = maxf(effective_radius, lerpf(
-				float(nearest.core_radius), float(bearing.reach), alignment))
 	var core_strength := clampf(1.0 - core_distance /
-		maxf(1.0, effective_radius * 1.34), 0.0, 1.0)
+		maxf(1.0, float(nearest.core_radius) * 1.34), 0.0, 1.0)
 	var road_strength := clampf(1.0 - road_distance / 150.0, 0.0, 1.0)
 	var intensity := clampf(core_strength * 0.62 + road_strength * 0.30 +
 		float(nearest.road_richness) * 0.08, 0.0, 1.0)
+	intensity = maxf(intensity, _morph_coastal_intensity(point, nearest))
 	return {"tile_id": str(nearest.id), "profile": str(nearest.profile),
 		"core_position": nearest.core_position, "core_distance": core_distance,
 		"core_radius": float(nearest.core_radius), "road_distance": road_distance,
