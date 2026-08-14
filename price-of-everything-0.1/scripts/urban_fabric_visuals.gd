@@ -6251,16 +6251,16 @@ func density_audit_snapshot() -> Dictionary:
 ## itself builds against: the shared water margin, forest discs, relief
 ## shoulders and gameplay footprints. Read-only; changes nothing.
 ##
-## Batched on purpose. `HillVisuals.get_land_relief_geometry` rescans every
-## relief polygon on the map per call, so asking it 395 times (once per land
-## tile) dominated the audit's runtime. One call over all requested hexes gives
-## the identical shoulder set, because the per-tile clip happens below anyway.
+## Relief MUST be resolved one tile at a time. `get_land_relief_geometry` only
+## reports shoulders when the extent it is given spans three or more material
+## bands, so asking it once for every hex at once activates relief on tiles that
+## individually have no relief structure and over-clips them — a batched variant
+## drove some tiles to zero buildable area. The per-tile call is also how the
+## rural growth pass itself asks, so this matches what the fabric built against.
 func tile_dry_buildable_areas(coords: Array) -> Dictionary:
 	var out: Dictionary = {}
 	if _terrain == null:
 		return out
-	var hexes: Dictionary = {}
-	var extents: Array = []
 	for coord_value in coords:
 		var coord: Vector2i = coord_value
 		if not _terrain.tiles.has(coord):
@@ -6270,18 +6270,8 @@ func tile_dry_buildable_areas(coords: Array) -> Dictionary:
 		var hex := PackedVector2Array()
 		for vertex in HEX_VERTS:
 			hex.append(center + vertex)
-		hexes[coord] = hex
-		extents.append(hex)
-	if extents.is_empty():
-		return out
-	var relief := _relief_geometry_for_extents(extents)
-	var all_shoulders: Array = relief.get("shoulders", [])
-	for coord_value in hexes:
-		var coord: Vector2i = coord_value
-		var hex: PackedVector2Array = hexes[coord]
-		var hex_bb := _bbox(hex)
 		var hex_area := _poly_area(hex)
-		var water_exclusions := _hero_water_exclusions(hex_bb)
+		var water_exclusions := _hero_water_exclusions(_bbox(hex))
 		var dry_pieces := _hero_clip_polys([hex], water_exclusions, 1.0)
 		var dry_land_area := 0.0
 		for piece_value in dry_pieces:
@@ -6292,11 +6282,8 @@ func tile_dry_buildable_areas(coords: Array) -> Dictionary:
 		var footprints: Array = []
 		if _buildings != null and _buildings.has_method("footprint_rects_on_tile"):
 			footprints = _buildings.footprint_rects_on_tile(coord)
-		var shoulders: Array = []
-		for shoulder_value in all_shoulders:
-			var shoulder: Dictionary = shoulder_value
-			if hex_bb.intersects(shoulder.bb):
-				shoulders.append(shoulder)
+		var relief := _relief_geometry_for_extents([hex])
+		var shoulders: Array = relief.get("shoulders", [])
 		var buildable_exclusions: Array = []
 		buildable_exclusions.append_array(_hero_forest_exclusions(forest_discs))
 		buildable_exclusions.append_array(shoulders)
