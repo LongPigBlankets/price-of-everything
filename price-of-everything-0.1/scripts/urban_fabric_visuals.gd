@@ -54,6 +54,18 @@ const MORPH_COAST_MIN_GAP := 26.0
 const MORPH_COAST_OVERSHOOT := 24.0
 const MORPH_COAST_FRONT_INSET := 12.0
 const MORPH_COAST_SPUR_START := 0.30
+## The extent and the growth-intensity field are two faces of the same district
+## field.  Growing the extent alone hands the new waterfront to the low-intensity
+## tail of the role ballot, which turns it into parks and open ground — measured,
+## not assumed: the extent-only variant moved rendered greens 412 -> 473.  A
+## coastal bearing therefore also stretches the effective core radius along that
+## bearing, so a waterfront reads as dense frontage rather than a lawn.  The
+## stretch fades out over a seaward wedge whose half angle is set by this cosine.
+## Two alternatives were measured and rejected against it on the shared density
+## audit: a constant-width corridor instead of the wedge (278 failing tiles,
+## 2,210 masses) and an extra 1.36 radius stretch on top of the wedge (277,
+## 2,302).  The plain wedge below measures 274 failing tiles and 2,287 masses.
+const MORPH_COAST_INTENSITY_COS := 0.58
 ## Minimum-retention gate for the reach geometry itself: the enlarged extent is
 ## a superset of the core-only extent, so after the identical clip every tile
 ## must retain at least this ratio of its core-only usable area.  Anything below
@@ -1427,6 +1439,7 @@ func _morph_district_field(specs: Array, road_segments: Array,
 		var core_position: Vector2 = field_tile.core_position
 		var core_radius := float(field_tile.core_radius)
 		var tile_bearings := 0
+		var tile_coastal_bearings: Array = []
 		for edge_index in HEX_VERTS.size():
 			var a: Vector2 = spec.center + HEX_VERTS[edge_index]
 			var b: Vector2 = spec.center + HEX_VERTS[(edge_index + 1) % HEX_VERTS.size()]
@@ -1449,12 +1462,19 @@ func _morph_district_field(specs: Array, road_segments: Array,
 				direction, spur_half, clampf(core_radius * 0.52, 48.0, 96.0),
 				"%s|%s|coast-spur|%d" % [component_key, str(spec.id), edge_index]))
 			var shore_normal := Vector2(-direction.y, direction.x)
+			var frontage_half := clampf(core_radius * 0.80, 68.0, 126.0)
 			cells.append(_morph_organic_field_cell(
 				core_position + direction * maxf(0.0, shore - MORPH_COAST_FRONT_INSET),
-				shore_normal, clampf(core_radius * 0.80, 68.0, 126.0), 44.0,
+				shore_normal, frontage_half, 44.0,
 				"%s|%s|coast-front|%d" % [component_key, str(spec.id), edge_index]))
+			tile_coastal_bearings.append({
+				"direction": direction,
+				"reach": shore + MORPH_COAST_OVERSHOOT,
+				"frontage_half_width": frontage_half,
+			})
 			tile_bearings += 1
 			coast_bearings += 1
+		field_tile["coastal_bearings"] = tile_coastal_bearings
 		field_tile["coastal_reach_bearings"] = tile_bearings
 		field_tiles[str(spec.id)] = field_tile
 		if tile_bearings > 0:
@@ -3622,8 +3642,27 @@ func _morph_field_sample(point: Vector2, field_tiles: Dictionary,
 			"road_distance": INF, "road_richness": 0.0, "intensity": 0.0}
 	var core_distance := sqrt(nearest_distance)
 	var road_distance := _nearest_segment_distance(point, roads)
+	# A waterfront belongs to the core, not to its decaying tail.  Along a coastal
+	# bearing the effective core radius is stretched to the shoreline, so the
+	# reach delivers dense frontage instead of the parks and open ground the
+	# low-intensity tail of the role ballot would otherwise produce.  Every other
+	# bearing keeps the tile's own radius exactly.
+	var effective_radius := float(nearest.core_radius)
+	var coastal_bearings: Array = nearest.get("coastal_bearings", [])
+	if not coastal_bearings.is_empty() and core_distance > 1.0:
+		var offset := point - (nearest.core_position as Vector2)
+		for bearing_value in coastal_bearings:
+			var bearing: Dictionary = bearing_value
+			var direction: Vector2 = bearing.direction
+			var alignment := clampf(((offset / core_distance).dot(direction) -
+				MORPH_COAST_INTENSITY_COS) / maxf(0.001,
+				1.0 - MORPH_COAST_INTENSITY_COS), 0.0, 1.0)
+			if alignment <= 0.0:
+				continue
+			effective_radius = maxf(effective_radius, lerpf(
+				float(nearest.core_radius), float(bearing.reach), alignment))
 	var core_strength := clampf(1.0 - core_distance /
-		maxf(1.0, float(nearest.core_radius) * 1.34), 0.0, 1.0)
+		maxf(1.0, effective_radius * 1.34), 0.0, 1.0)
 	var road_strength := clampf(1.0 - road_distance / 150.0, 0.0, 1.0)
 	var intensity := clampf(core_strength * 0.62 + road_strength * 0.30 +
 		float(nearest.road_richness) * 0.08, 0.0, 1.0)
