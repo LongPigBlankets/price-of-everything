@@ -103,6 +103,35 @@ the same defect the owner is seeing; where the two disagree, **this table wins**
 - The rectangle-and-shore-normal primitive from K1 stays **retired** — straightening the
   arms is not permission to revive a fixed symmetric U stamped on every site.
 
+### 5a. Owner ruling, 2026-08-14 — close the foreshore by moving the port out
+
+Straight arms were delivered (max bend 0.00°, was 18.66–27.24°) but **land remained between
+the arms**: 2,352u² residual, 95.6% inter-arm water. That residual is bounded by the 12u
+NavGrid dry-land lattice, not by the coastline, so it could not be closed by extending the
+apron without drawing geometry outside the instrument that certifies it dry.
+
+> **Owner's ruling:** *"close it by moving the port further out if needed. Port is allowed
+> to sit on up to +10/-10 degrees from perfect orientation on the shore as long as the main
+> body touches the shore at least 75% on the shore-side and there is only sea between the
+> arms."*
+
+The rule now in force:
+
+- **The port may be moved SEAWARD** as far as needed to eliminate land between the arms.
+  This is the sanctioned fix and it replaces the "acceptable foreshore" option.
+- **Orientation tolerance: ±10°** from perfect orientation to the local shore. Ports need
+  not be exactly shore-normal; up to ten degrees either way is permitted to find a seating
+  where the basin is entirely water.
+- **The main body must touch the shore along at least 75% of its shore-side edge.** Moving
+  seaward must not leave the port floating offshore — it stays a landward-rooted structure.
+- **Only sea between the arms. `interarm_sea_coverage` must be 100%** — zero land inside
+  the U, not 95.6%. This is now a hard gate, not a threshold to tune.
+- **Do NOT loosen the existing NavGrid dry-land gate** to achieve this. That was flagged as
+  a goalpost move and remains forbidden. Move the structure; do not weaken the instrument.
+- Everything in section 5 above is retained: straight arms, two cranes one per arm, real
+  road access, no river obstruction, no gameplay or decorative overlap, marine reservations,
+  and all four catalog ports valid.
+
 ## 6. Verification additions
 
 A new deterministic audit must emit, per tile: tile id, nickname, class (urban / sparse /
