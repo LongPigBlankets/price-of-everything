@@ -1948,6 +1948,192 @@ cd price-of-everything-0.1
 The frozen baseline output is committed at `docs/map-density-audit-baseline.txt`. Compare against it; do not
 regenerate it as a way of moving the goalposts.
 
+## M4. Coastal reach and single-tile fill — addendum section 4 — 2026-08-14
+
+**Iteration ID** M4.01 · **Stream** coastal reach and single-tile fill (Stoneshore, Vandel) ·
+**Branch** `gauntlet3/coast`, base `gauntlet3/density-audit` (`781bc519`) · **Status ACCEPTED PARTIAL**
+
+### Lever
+
+Water-adjacent hex edges never carry an authoritative road crossing, so the G1.01 directional crossing lobes
+can never grow the district field seaward: the extent stops roughly a core radius short of the shoreline and
+leaves the unbuilt collar the owner called wrong. The lever adds, **per wet hex bearing**, one more pair of the
+*already-accepted* organic influence cell — a reach spur closing the gap to the measured shoreline, and a
+shore-parallel frontage cell straddling the water line — plus a **growth-intensity floor** inside the frontage
+wedge so the new waterfront subdivides at core grain instead of falling into the sparse tail of the role ballot.
+
+Draw-only. Two files, +260/−1 against the base branch:
+
+- `scripts/urban_fabric_visuals.gd` — the reach block inside `_morph_district_field`, the constants, and
+  `_morph_edge_touches_open_water` / `_morph_open_water_distance` / `_morph_coastal_intensity` /
+  `_morph_polys_area_in_hex` / `_morph_record_coastal_reach`; one added line in `_morph_field_sample`.
+- `tools/settlement_morphology_shot.gd` — four minimum-retention assertions.
+
+Only the **pre-clip** extent moves. The water exclusion, the forbidden sea/mountain hexes, forest, roads,
+relief, and the final dry-land and gameplay guards all run afterwards and remain the sole authority on where a
+mass may sit. Rivers are deliberately excluded — they keep their existing bank and casing treatment. Cell keys
+are `component|tile|coast-spur|edge` / `coast-front|edge`, so the geometry is RoadHash-deterministic; no
+`randi()`/`randf()`, no wall clock, no new nodes, all geometry through the existing batched path.
+
+Not a graveyard retry: this extends the **accepted** G1.01 organic influence cell with a new seed direction. It
+is not a road-catchment envelope (C2.01–02), not a continuous density threshold (D1.01–02), and not
+post-generation deletion or reordering (G1.02).
+
+### Two rejected variants, recorded so they are not retried
+
+1. **Wide frontage cell** (0.80 core radii, 44u depth). Draws more buildings in absolute terms — 1,624 against
+   1,556 small masses map-wide — and holds Vandel Port Works visibly denser in a single 1.35-zoom frame, but
+   **loses on the addendum's own §2 gate**: 27 compliant urban tiles against 32, with Stoneshore Docks and
+   Vandel Port both falling PASS → FAIL, and it degrades the structural counters (new hex-coincident tiles 16
+   against 11, road-gradient failures 8 against 6). §2 wins; the narrow cell ships. **Lesson worth keeping:**
+   per-tile built coverage in one frame is dominated by the parcel-key re-roll lottery and is not a reliable
+   single-frame signal — the audit was right and the eye was wrong.
+2. **Road-bounded reach** (bound the reach by how far an authoritative road already leads seaward). This is the
+   honest structural objection, since roads are frozen and are the only source of street faces. Measured, it
+   starved the owner's named targets — Stoneshore Old Quarter and Stoneshore Docks at exactly **0%** growth —
+   while raising dense-core failures 0 → 2. Density has to come from intensity, not from refusing to grow.
+
+### Blind critic — CANDIDATE WON
+
+Three framings, all visibly different at original resolution (102,343 / 383,894 / 12,299 differing pixels), so
+neither side could be rejected as neutral. Slot assignment constant, `image_1` = candidate. Verdict
+**`image_1_better`**, **3.25 / 5** against **2.58 / 5** on the 12-category whole-map rubric. Candidate gains on
+reference-family resemblance, continuous figure/ground, organic parcel structure, streets as negative space,
+green-space integration, historically accumulated character, multiscale readability and absence of procedural
+repetition; nothing scored lower than v0 in any category.
+
+The critic's own words on the owner's named defect: v0 *"vacates that entire western strip to plain green,
+opening exactly the unbuilt collar between city and water that was called wrong"*, while the candidate's
+*"fabric runs down to the beach — terraces, a staircase-edged cream lot, blocks touching sand."*
+
+**The critic's one honest counter-finding is Vandel**, and the audit agrees with it — see below.
+
+### Measured result (regenerated from an independent verification run, not the implementer's)
+
+Usable settlement envelope inside the tile hex, core-only → with reach:
+
+| tile | nickname | core-only | with reach | retention |
+|---|---|---|---|---|
+| `tile_4_9` | Stoneshore | 118,958 | 150,645 | 1.266 |
+| `tile_4_10` | Stoneshore Old Quarter | 85,614 | 165,729 | 1.936 |
+| `tile_5_10` | Stoneshore Docks | 105,967 | 137,750 | 1.300 |
+| `tile_21_17` | Vandel Port Docks | 58,031 | 69,326 | 1.195 |
+| `tile_21_18` | Vandel Port Old Quarter | 48,716 | 152,029 | 3.121 |
+| `tile_22_16` | Vandel Port | 95,214 | 108,364 | 1.138 |
+| `tile_23_16` | Vandel Port Works | 78,988 | 135,328 | 1.713 |
+| `tile_23_18` | Vandel Island | 50,007 | 134,351 | 2.687 |
+| `tile_24_17` | Vandel Island North | 22,362 | 138,230 | 6.181 |
+
+Coastal-reach gate: 117 bearings, 48 tiles, 26 components, **retention_failure_count 0**, **minimum_retention
+1.0**, reach_area_gain 1,991,051 u².
+
+Shared §2 density audit: failing tiles **285 → 271**, urban compliant **19 → 33** of 92, rendered masses
+2,037 → 2,213, greens 412 → 456; sparse 45, mountain 45 and remote 1 unchanged. Nineteen tiles moved
+FAIL → PASS, including three named targets (Stoneshore Old Quarter, Vandel Port Old Quarter, Vandel Port).
+
+### The load-bearing split — Stoneshore succeeded, Vandel only half did
+
+Component level, measured this run:
+
+| component | envelope | built area | **built_pct** |
+|---|---|---|---|
+| `settlement\|tile_4_10` Stoneshore | 342,192 → 485,777 | 95,599 → 144,561 | 27.94 → **29.76** |
+| `settlement\|tile_21_17` Vandel main | 311,663 → 495,760 | 82,262 → 108,520 | 26.39 → **21.89** |
+| `settlement\|tile_23_18` Vandel Island | 72,369 → 272,581 | 2,784 → 5,969 | 3.85 → **2.19** |
+
+**Stoneshore got bigger *and* denser** — the extent grew 42% and the fabric grew 51%, so built share rose. That
+is the addendum §4 result, and the critic saw it independently.
+
+**Vandel got bigger and thinner.** The extent grew 59% while the fabric grew only 32%; on Vandel Island the
+envelope nearly quadrupled while built share fell to 2.19%. The critic named the same tile as the one place v0
+is better — the candidate's Vandel Port Works is *"a chain of four parallel bars on green"* against v0's
+contiguous L-plus-bar compound — and the §2 audit confirms it numerically: `tile_23_16` small 21 → 14, large
+4 → 2, **gaining** a `large_below_floor` failure; `tile_21_17` small 12 → 8, **gaining** a `small_below_floor`
+failure. The owner's clause *"Vandel must read as a port that presses against both the lake and the sea"* is
+therefore **only partially delivered**: it presses outward, but the new ground is not yet inhabited.
+
+The intensity floor is what separates the two. Where a coastal bearing lands on an already-dense component
+(Stoneshore) it converts new envelope into frontage; where it lands on a thin one (Vandel Island, 3.85% built)
+there is not enough fabric for the floor to work on, and the reach just enlarges an empty field.
+
+### Regressions — reported, not softened
+
+None is in the invariant list, but all are measured worsenings of district-field diagnostics.
+
+1. `local_hex_failure_count` / `hex_boundary_failure_count` **13 → 24**. Where the reach pushes fabric to a hex
+   edge whose neighbour is a forbidden sea/mountain hex, `_forbidden_settlement_tile_exclusions` clips along
+   that hex line and the boundary traces it. Gate B is not reopened by the addendum, but this doubles its
+   failure count. The narrow frontage cell already cut it from 16 new tiles to 11; removing it entirely needs a
+   standoff wider than the frontage cell's own depth, which reinstates the collar.
+2. `dense_core_failure_count` **0 → 1** (`tile_25_6` Gold Arm Old Quarter, 4 core masses / 19% against the town
+   floor of 6 / 25%). **Not a coastal defect.** The parcel role ballot is keyed by INDEX
+   (`component|parcel|N`), so adding parcels anywhere in a component shifts every downstream key and re-rolls
+   the whole component's roles. **Any stream that adds parcels will hit this.** A geometric parcel key fixes it
+   structurally but re-rolls the entire map once.
+3. `whole_body_gate` failing components **20 → 22** (`settlement|tile_14_17`, `settlement|tile_3_3` newly
+   failing; none newly passing). Both named components still clear their floors. This is the honest cost of
+   growing the extent while roads stay frozen — new land has no streets, so masses on it cannot have frontage.
+4. §2 verdicts: 19 tiles FAIL → PASS against **5** PASS → FAIL (`tile_15_2`, `tile_5_14`, `tile_20_12`,
+   `tile_3_14`, `tile_4_15`), and **16** still-failing tiles gained a new failure reason. Net strongly positive
+   (285 → 271 failing) but not monotone — the index-keyed re-roll of item 2 is the mechanism.
+5. `gradient_failure_count` **7 → 6** and `density_direction_failure_count` **7 → 6** — the standing open G1.02
+   gradient gate *improved*.
+
+### Cross-stream contention — the parks stream's baseline has moved
+
+Summed over the §2 audit table, rendered park **area** rose **734,399 → 982,612 u² (+33.8%)** and counted park
+count 150 → 182 (fabric-level parks 361 → 415, audit greens 412 → 456), because parks scale with envelope area
+and this pass grew the envelope by ~2M u². Addendum §3 asks the parks stream to halve park area in the four
+largest cities to ±10%. **That must be measured against the integrated fabric, not against v0**, or the two
+changes cancel or overshoot.
+
+### Environment finding — the frozen legacy hashes need an explicit resolution
+
+`map_style_shot` derives the wide zoom from the **live window size**. Without `--resolution 1920x1080` the
+frozen legacy hashes do **not** reproduce: a default 2360x1328 run yields classic `749c72fb…`, ink `82cdd1f0…`,
+plate `d3989f0e…` and reads as a false legacy regression. This is the same defect M1 diagnosed as a machine
+change; the actual fix is the flag. Re-run at 1920x1080 and all three frozen hashes reproduce exactly. The
+morphology harness `_wide_shot` has the identical defect, so `poe_morph_wide.png` is **not** framing-stable
+across machines and is unusable for blind A/B — use the fixed-zoom slices.
+
+### Independent verification (re-run in full, not inherited)
+
+- Unit suite: **`==== 2287 passed, 0 failed ====`** (real summary line).
+- e2e balance sim, `res://tests/e2e_stoneshore.tscn -- 100`: **`==== E2E 748 passed, 0 failed ====`**.
+- Two windowed morphology capture runs under the shared lock: `diff -r --brief` clean across all **24**
+  artifacts. The harness exits 1 on the unresolved G1.02 gradient gate, as designed.
+- All-style harness at `--resolution 1920x1080`: classic `c263cf65…`, ink `95ba0e42…`, plate `3a98e939…` — all
+  three reproduce the **frozen** hashes exactly. `legacy_before == legacy_roundtrip == ink`;
+  `midcentury_wide == midcentury_repeat` (`6aba3598…`). Of the 43 artifacts, **35 are byte-identical to the v0
+  archive and exactly the 8 midcentury ones differ.**
+- Road-frontage audit frozen on all eight counters: 177 road tiles, 413 buildings, 79 failing tiles, 177 over
+  15u, 137 off-road-by-design, 1 service-lane save, 165 block-mode failures without streets, 146.6u `tile_10_3`
+  furnace worst case. Log diff against the v0 archive shows only per-run planner timing and the worktree path.
+- Seven W1.01 water counters **ZERO** on both SettlementPlan cities; `dry_land_guard.water_overlap_count` 0.
+- Four relief counters **ZERO** on every settlement component and both plans.
+- Untouched control proven: Arin hero `built_pct` 38.2880881497716, envelope 1678971.39156318, 151 parcels, 25
+  street faces, and Capital / Silkstown `built_pct` 45.6912685084547 / 34.4911877897598 — all **bit-identical**
+  to v0.
+- `git diff --check` clean; `git status --porcelain` empty.
+- **Blind-pair provenance verified by hash**: all three staged candidate images are byte-identical to this
+  verification run's own captures, so the critic judged exactly this HEAD.
+
+**Evidence** `/tmp/poe_g3_coast_verify/` (unit, e2e, frontage, density audit, `morphA`/`morphB`, `mapstyle`) ·
+blind pair `/tmp/poe_g3_blind/COAST/` · v0 archive `/tmp/poe_g2_baseline/v0`.
+
+### Next bottleneck
+
+**Frozen roads are now the binding constraint on the coast.** The reach can deliver envelope but not streets,
+and the fabric only densifies where a component already had enough mass for the intensity floor to bite — which
+is why Stoneshore's built share rose and Vandel's fell. Growing extent further without streets will keep
+trading built share for area. The next lever is therefore *not* more reach; it is either
+(a) **shore-parallel decorative frontage streets** on the new waterfront, so the reached ground has faces to
+build against, or (b) a **built-share floor on the reach itself** — refuse to grow a bearing whose component
+built share would fall below its pre-reach value, which would have declined Vandel Island outright.
+
+Two prerequisites for anyone who touches this next: the **geometric parcel key** (item 2 above), without which
+every parcel-adding change keeps re-rolling unrelated components; and a **hex-edge standoff** that does not
+reinstate the collar (item 1).
 
 ## N1. Straight port arms and real water between them — 2026-08-14
 

@@ -39,6 +39,57 @@ const MORPH_MIN_RELIEF_FACE_RETENTION := 0.60
 const MORPH_NEAR_ROAD_DEPTH := 82.0
 const MORPH_CORE_USABLE_MIN_AREA := 700.0
 const MORPH_HEX_EDGE_FAILURE_FRACTION := 0.30
+## Coastal reach.  Water-adjacent hex edges never carry an authoritative road
+## crossing, so the directional crossing lobes can never grow the district field
+## seaward and the extent stops roughly a core radius short of the shoreline.
+## These constants drive one extra pair of the SAME organic influence cell —
+## a reach spur and a shore-parallel frontage — per wet bearing.  They only move
+## the PRE-CLIP extent: the water exclusion, the forbidden sea/mountain hexes,
+## forest, roads, relief and the final dry-land and gameplay guards all run
+## afterwards and remain the sole authority on where a mass may sit.
+const MORPH_COAST_PROBE_STEP := 8.0
+const MORPH_COAST_PROBE_LIMIT := 460.0
+const MORPH_COAST_EDGE_SAMPLES := 7
+const MORPH_COAST_MIN_GAP := 26.0
+const MORPH_COAST_OVERSHOOT := 24.0
+const MORPH_COAST_FRONT_INSET := 12.0
+const MORPH_COAST_FRONT_SPAN := 0.52
+const MORPH_COAST_FRONT_DEPTH := 38.0
+const MORPH_COAST_SPUR_START := 0.30
+## The extent and the growth-intensity field are two faces of the same district
+## field.  Growing the extent alone hands the new waterfront to the low-intensity
+## tail, which enlarges the subdivision target and lowers the built share: the
+## extent-only variant rendered coarse floating slabs, moved greens 412 -> 473
+## and dropped Vandel road-frontage occupancy 97.5 -> 80.6.  A coastal bearing
+## therefore also floors the growth intensity, so the waterfront subdivides at
+## core grain and reads as dense frontage rather than lawn.  The floor applies
+## inside the wedge the frontage cell occupies and fades out past the shoreline.
+##
+## Two rejected variants are recorded so they are not retried.  A WIDER frontage
+## cell (0.80 core radii, 44u depth) draws more buildings in absolute terms —
+## 1,624 against 1,556 small masses map-wide — and holds Vandel Port Works
+## denser, but it loses on the addendum's own section 2 gate (27 compliant urban
+## tiles against 32, with Stoneshore Docks and Vandel Port both falling from
+## PASS to FAIL) and degrades the structural counters (new hex-coincident tiles
+## 16 against 11, road-gradient failures 8 against 6, median road-frontage
+## occupancy 84.3 against 91.9).  Section 2 wins, so the narrow cell ships.
+##
+## The second rejected variant is bounding the
+## reach by how far an authoritative road already leads seaward.  It is the
+## honest structural objection — roads are frozen and are the only source of
+## street faces — but measured, it starved the owner's named targets, leaving
+## Stoneshore Old Quarter and Stoneshore Docks at exactly 0% growth while
+## raising dense-core failures from 0 to 2.  Density has to come from intensity,
+## not from refusing to grow.
+const MORPH_COAST_INTENSITY_TARGET := 0.78
+const MORPH_COAST_WEDGE_SPREAD := 1.25
+const MORPH_COAST_TAIL_DEPTH := 70.0
+## Minimum-retention gate for the reach geometry itself: the enlarged extent is
+## a superset of the core-only extent, so after the identical clip every tile
+## must retain at least this ratio of its core-only usable area.  Anything below
+## one means the new geometry has SUBTRACTED envelope somewhere, which is the
+## failure mode the relief investigation caught, and the run reports it.
+const MORPH_COAST_MIN_RETENTION := 1.0
 const AUDIT_CORE_STANDARD_AREA := 2500.0
 const AUDIT_CORE_CONSTRAINED_MIN_MASSES := 3
 const AUDIT_RICH_POOR_MIN_AREA := 5000.0
@@ -472,6 +523,8 @@ func _build_morph_component(coords: Array[Vector2i], parcel_entries: Array,
 	natural_exclusions.append_array(_hero_forest_exclusions(forest_discs))
 	envelopes = _hero_clip_polys(envelopes, natural_exclusions, MORPH_FACE_MIN_AREA)
 	var envelope_area := _hero_polys_area(envelopes)
+	_morph_record_coastal_reach(component_key, district_field, envelopes,
+		natural_exclusions)
 	var road_corridors := _hero_road_corridors(road_segments)
 	var relief := _relief_geometry_for_extents(envelopes)
 	var relief_shoulders: Array = relief.get("shoulders", [])
@@ -1382,7 +1435,194 @@ func _morph_district_field(specs: Array, road_segments: Array,
 				(field_tile.spill_destinations as Array).append(spill_id)
 		field_tile.spill_destinations.sort()
 		field_tiles[str(spec.id)] = field_tile
-	return {"polys": _hero_merge_polys(cells), "tiles": field_tiles}
+
+	# Core-only union, kept for the minimum-retention gate.  The coastal cells are
+	# added on top of it, so the reach extent is a strict superset by construction
+	# and any per-tile shortfall after the identical downstream clip is a real
+	# defect rather than a tuning artefact.
+	var base_polys := _hero_merge_polys(cells)
+
+	# Coastal reach.  Real cities build up to their waterfront; the field stops
+	# short of it because only authoritative road crossings can pull the extent
+	# outward and a shoreline edge never carries one.  For every hex edge whose
+	# samples fall on open water (sea or lake — rivers keep their own bank
+	# treatment and are deliberately excluded) march from the core to the actual
+	# shoreline and lay the accepted organic cell twice: a spur closing the gap,
+	# and a shore-parallel frontage straddling the water line.
+	var coast_bearings := 0
+	var coast_tiles := 0
+	for spec_value in specs:
+		var spec: Dictionary = spec_value
+		var field_tile: Dictionary = field_tiles[str(spec.id)]
+		var core_position: Vector2 = field_tile.core_position
+		var core_radius := float(field_tile.core_radius)
+		var tile_bearings := 0
+		var tile_coastal_bearings: Array = []
+		for edge_index in HEX_VERTS.size():
+			var a: Vector2 = spec.center + HEX_VERTS[edge_index]
+			var b: Vector2 = spec.center + HEX_VERTS[(edge_index + 1) % HEX_VERTS.size()]
+			if not _morph_edge_touches_open_water(a, b):
+				continue
+			var direction := ((a + b) * 0.5 - core_position).normalized()
+			if direction == Vector2.ZERO:
+				continue
+			var shore := _morph_open_water_distance(core_position, direction)
+			if shore < 0.0:
+				continue
+			var frontage_half := clampf(core_radius * MORPH_COAST_FRONT_SPAN, 56.0, 92.0)
+			var reach := shore
+			if reach <= core_radius + MORPH_COAST_MIN_GAP:
+				continue
+			var spur_start := core_position + direction * (core_radius * MORPH_COAST_SPUR_START)
+			var spur_end := core_position + direction * (reach + MORPH_COAST_OVERSHOOT)
+			var spur_half := spur_start.distance_to(spur_end) * 0.5
+			if spur_half <= 1.0:
+				continue
+			cells.append(_morph_organic_field_cell(spur_start.lerp(spur_end, 0.5),
+				direction, spur_half, clampf(core_radius * 0.52, 48.0, 96.0),
+				"%s|%s|coast-spur|%d" % [component_key, str(spec.id), edge_index]))
+			var shore_normal := Vector2(-direction.y, direction.x)
+			cells.append(_morph_organic_field_cell(
+				core_position + direction * maxf(0.0, reach - MORPH_COAST_FRONT_INSET),
+				shore_normal, frontage_half, MORPH_COAST_FRONT_DEPTH,
+				"%s|%s|coast-front|%d" % [component_key, str(spec.id), edge_index]))
+			tile_coastal_bearings.append({
+				"direction": direction,
+				"reach": reach + MORPH_COAST_OVERSHOOT,
+				"frontage_half_width": frontage_half,
+			})
+			tile_bearings += 1
+			coast_bearings += 1
+		field_tile["coastal_bearings"] = tile_coastal_bearings
+		field_tile["coastal_reach_bearings"] = tile_bearings
+		field_tiles[str(spec.id)] = field_tile
+		if tile_bearings > 0:
+			coast_tiles += 1
+	return {
+		"polys": _hero_merge_polys(cells),
+		"base_polys": base_polys,
+		"tiles": field_tiles,
+		"coast_bearings": coast_bearings,
+		"coast_tiles": coast_tiles,
+	}
+
+## True when a hex edge runs along open water — sea or lake.  Rivers are
+## deliberately excluded: they keep the existing bank and casing treatment, and
+## the owner's direction is about the sea and the lake.
+func _morph_edge_touches_open_water(a: Vector2, b: Vector2) -> bool:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return false
+	for i in MORPH_COAST_EDGE_SAMPLES:
+		var t := float(i + 1) / float(MORPH_COAST_EDGE_SAMPLES + 1)
+		var cell := nav.cell_of(a.lerp(b, t))
+		var kind := nav.water(cell.x, cell.y)
+		if kind == NavGrid.WATER_SEA or kind == NavGrid.WATER_LAKE:
+			return true
+	return false
+
+## Growth intensity floor inside a coastal wedge.  Intensity is what makes the
+## fabric fine grained: it shrinks the subdivision target and raises the built
+## share of the role ballot.  The default field decays with distance from the
+## core, so simply enlarging the extent seaward hands the new land to the sparse
+## tail — measured on the extent-only variant as coarse floating slabs, road
+## frontage occupancy 97.5 -> 80.6 on Vandel, and rendered greens 412 -> 473.
+## Treating a waterfront as core-grade instead is both the truer reading of a
+## port and the only way the new area resolves into small buildings.
+func _morph_coastal_intensity(point: Vector2, tile: Dictionary) -> float:
+	var bearings: Array = tile.get("coastal_bearings", [])
+	if bearings.is_empty():
+		return 0.0
+	var offset := point - (tile.core_position as Vector2)
+	var best := 0.0
+	for bearing_value in bearings:
+		var bearing: Dictionary = bearing_value
+		var direction: Vector2 = bearing.direction
+		var along := offset.dot(direction)
+		if along <= 0.0:
+			continue
+		var lateral := absf(offset.dot(Vector2(-direction.y, direction.x)))
+		var lateral_falloff := clampf(1.0 - lateral / maxf(1.0,
+			float(bearing.frontage_half_width) * MORPH_COAST_WEDGE_SPREAD), 0.0, 1.0)
+		if lateral_falloff <= 0.0:
+			continue
+		var overrun := maxf(0.0, along - float(bearing.reach))
+		var along_falloff := clampf(1.0 - overrun / MORPH_COAST_TAIL_DEPTH, 0.0, 1.0)
+		best = maxf(best, MORPH_COAST_INTENSITY_TARGET * lateral_falloff * along_falloff)
+	return best
+
+## Distance from `origin` along `direction` to the first open-water cell, or -1
+## when none is found inside the probe limit.  Read-only against the nav grid.
+func _morph_open_water_distance(origin: Vector2, direction: Vector2) -> float:
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return -1.0
+	var travelled := MORPH_COAST_PROBE_STEP
+	while travelled <= MORPH_COAST_PROBE_LIMIT:
+		var cell := nav.cell_of(origin + direction * travelled)
+		var kind := nav.water(cell.x, cell.y)
+		if kind == NavGrid.WATER_SEA or kind == NavGrid.WATER_LAKE:
+			return travelled
+		travelled += MORPH_COAST_PROBE_STEP
+	return -1.0
+
+## Minimum-retention gate for the coastal reach, measured in the same run that
+## draws it.  The core-only union is clipped by the identical exclusion set and
+## compared per tile against the reach union.  The reach union is a superset
+## before clipping, so every tile must retain at least its core-only usable
+## area; a ratio below one means the new geometry has subtracted envelope, which
+## is precisely the silent-emptying failure the relief investigation caught.
+func _morph_record_coastal_reach(component_key: String, district_field: Dictionary,
+		envelopes: Array, natural_exclusions: Array) -> void:
+	if not _metrics.has("coastal_reach"):
+		_metrics.coastal_reach = {
+			"bearing_count": 0, "tile_count": 0, "component_count": 0,
+			"retention_failure_count": 0, "minimum_retention": 1.0,
+			"reach_area_gain": 0.0, "tiles": {},
+		}
+	var summary: Dictionary = _metrics.coastal_reach
+	var bearings := int(district_field.get("coast_bearings", 0))
+	summary.bearing_count = int(summary.bearing_count) + bearings
+	summary.tile_count = int(summary.tile_count) + int(district_field.get("coast_tiles", 0))
+	if bearings > 0:
+		summary.component_count = int(summary.component_count) + 1
+	var base_polys: Array = district_field.get("base_polys", [])
+	var base_clipped := _hero_clip_polys(base_polys, natural_exclusions,
+		MORPH_FACE_MIN_AREA)
+	var field_tiles: Dictionary = district_field.get("tiles", {})
+	var tile_ids: Array = field_tiles.keys()
+	tile_ids.sort()
+	for tile_id_value in tile_ids:
+		var tile_id := str(tile_id_value)
+		var tile: Dictionary = field_tiles[tile_id]
+		var center: Vector2 = tile.center
+		var base_area := _morph_polys_area_in_hex(base_clipped, center)
+		var reach_area := _morph_polys_area_in_hex(envelopes, center)
+		var retention := 1.0 if base_area <= 1.0 else reach_area / base_area
+		if retention < MORPH_COAST_MIN_RETENTION - 0.001:
+			summary.retention_failure_count = int(summary.retention_failure_count) + 1
+		summary.minimum_retention = minf(float(summary.minimum_retention), retention)
+		summary.reach_area_gain = float(summary.reach_area_gain) + (reach_area - base_area)
+		(summary.tiles as Dictionary)[tile_id] = {
+			"component": component_key,
+			"coastal_reach_bearings": int(tile.get("coastal_reach_bearings", 0)),
+			"core_only_usable_area": base_area,
+			"usable_area": reach_area,
+			"retention": retention,
+		}
+	_metrics.coastal_reach = summary
+
+## Envelope area falling inside one tile hex.  Used by the coastal-reach
+## minimum-retention gate.
+func _morph_polys_area_in_hex(polys: Array, center: Vector2) -> float:
+	var hex := PackedVector2Array()
+	for vertex in HEX_VERTS:
+		hex.append(center + vertex)
+	var area := 0.0
+	for poly_value in polys:
+		for piece_value in Geometry2D.intersect_polygons(poly_value, hex):
+			area += _poly_area(piece_value)
+	return area
 
 func _register_urban_audit_component(component_key: String, specs: Array,
 		field_polys: Array, parcel_records: Array, masses: Array, roads: Array,
@@ -3451,11 +3691,17 @@ func _morph_field_sample(point: Vector2, field_tiles: Dictionary,
 			"road_distance": INF, "road_richness": 0.0, "intensity": 0.0}
 	var core_distance := sqrt(nearest_distance)
 	var road_distance := _nearest_segment_distance(point, roads)
+	# A waterfront belongs to the core, not to its decaying tail.  Along a coastal
+	# bearing the effective core radius is stretched to the shoreline, so the
+	# reach delivers dense frontage instead of the parks and open ground the
+	# low-intensity tail of the role ballot would otherwise produce.  Every other
+	# bearing keeps the tile's own radius exactly.
 	var core_strength := clampf(1.0 - core_distance /
 		maxf(1.0, float(nearest.core_radius) * 1.34), 0.0, 1.0)
 	var road_strength := clampf(1.0 - road_distance / 150.0, 0.0, 1.0)
 	var intensity := clampf(core_strength * 0.62 + road_strength * 0.30 +
 		float(nearest.road_richness) * 0.08, 0.0, 1.0)
+	intensity = maxf(intensity, _morph_coastal_intensity(point, nearest))
 	return {"tile_id": str(nearest.id), "profile": str(nearest.profile),
 		"core_position": nearest.core_position, "core_distance": core_distance,
 		"core_radius": float(nearest.core_radius), "road_distance": road_distance,
