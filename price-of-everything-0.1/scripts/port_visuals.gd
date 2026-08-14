@@ -153,6 +153,13 @@ func set_diagnostic_overlay(on: bool) -> void:
 func _draw_midcentury_ports() -> void:
 	for plan_value in _midcentury_plans:
 		var plan: Dictionary = plan_value
+		# The wharf is the quay deck carrying the compound out over the water to
+		# the arm roots, so it is drawn in the deck material and UNDER the dry
+		# apron: on land the apron wins, past the waterline the deck is the port.
+		for poly_value in plan.get("wharf_polygons", []):
+			_draw_shadow(poly_value)
+		for poly_value in plan.get("wharf_polygons", []):
+			_draw_filled_poly(poly_value, Color("c8b890"))
 		for poly_value in plan.apron_polygons:
 			_draw_filled_poly(poly_value,
 				MapMidcenturyStyle.industrial_yard("%s|land" % str(plan.key)))
@@ -191,6 +198,8 @@ func _draw_midcentury_diagnostics() -> void:
 		draw_polyline(_closed(corridor), Color("2ca5b8"), 1.7, true)
 		for poly_value in plan.land_polygons:
 			draw_polyline(_closed(poly_value), Color("f4c542"), 2.6, true)
+		for poly_value in plan.get("wharf_polygons", []):
+			draw_polyline(_closed(poly_value), Color("f08a24"), 2.2, true)
 		for poly_value in plan.left_arm_polygons:
 			draw_polyline(_closed(poly_value), Color("e05353"), 2.4, true)
 		for poly_value in plan.right_arm_polygons:

@@ -15,12 +15,39 @@ const SHADOW_OFFSET := Vector2(2.2, 2.8)
 # shifts exist because the harbour throat is now required to be water, which
 # only a locally straight stretch of coast can satisfy.
 const SHORE_SHIFTS := [-18.0, 18.0]
-const APPROACH_ANGLES_DEG := [-22.0, -8.0, 8.0, 22.0]
-## How far SEAWARD of the sampled shore point the quay face — the shared edge
-## between the dry head and the harbour water — is pushed. The head is a
-## seaward-overshooting block clipped back to the real coastline, so the apron
-## covers every scrap of land inside the harbour throat.
-const QUAY_SHIFTS := [10.0, 22.0, 34.0]
+## Addendum 5a: "up to +10/-10 degrees from perfect orientation on the shore."
+## L1/N1 searched +/-22 deg and three of the four ports settled on exactly 22.
+const APPROACH_ANGLES_DEG := [-10.0, -3.4, 3.4, 10.0]
+## ...which is only affordable because "perfect orientation" is MEASURED first.
+## A single cell's 8-neighbour landward gradient on a 12u lattice can point in
+## only a handful of directions — it is quantised into roughly 22-degree buckets
+## — so most of L1/N1's +/-22 window was paying for lattice noise rather than
+## buying real orientation freedom. The owner's tolerance is +/-10 degrees FROM
+## THE SHORE, so the shore normal is smoothed over a real stretch of coast
+## before the tolerance is applied to it. Narrowing the window WITHOUT this
+## measured normal loses Vandel outright: 3/4 valid plans, all 864 candidates
+## rejected, 275 of them for reaching across the river channel.
+const NORMAL_FIT_RADIUS := 58.0
+## Addendum 5a: "close it by moving the port further out if needed." The quay
+## line — the shared root of the basin and of both arms — is pushed SEAWARD of
+## the sampled shore point by the MEASURED last-land clearance plus one of these
+## extras, so nothing but sea is left inside the U. N1 used a fixed 10/22/34.
+const QUAY_EXTRAS := [3.0, 15.0, 29.0]
+## How far seaward the transverse land march looks before giving up, and the
+## transverse ray count. Rays are spaced under one NavGrid step apart, so no
+## 12u land cell in the throat can slip between two of them.
+const CLEARANCE_REACH := 108.0
+const CLEARANCE_RAYS := 13
+const CLEARANCE_STEP := 3.0
+## The wharf is the quay deck that carries the compound from the dry apron out
+## to the quay line, over the water. It is a MARINE structure, exactly like the
+## arm decks (68-92% over sea in N1), so the NavGrid dry-land gate — unchanged —
+## still applies only to the landward apron.
+const WHARF_LANDWARD_BITE := 16.0
+## "The main body must touch the shore along at least 75% of its shore-side
+## edge" (addendum 5a). Measured by casting rays landward across the body.
+const SHORE_CONTACT_RAYS := 48
+const SHORE_CONTACT_REACH := 150.0
 ## Rendered coastline = the boundary of the baked band-5 "land base" polygon.
 ## Probed against NavGrid over 789,496 coastal-band cells: 99.470% agreement.
 const LAND_BASE_BAND := 5
@@ -75,9 +102,11 @@ static func build(hex_map: TileMapLayer, tile_id: String,
 	var land_rejects := 0
 	var land_reasons: Dictionary = {}
 	var river_rejects := 0
+	var river_reasons: Dictionary = {}
 	var access_rejects := 0
 	var collision_rejects := 0
 	var arm_rejects := 0
+	var interarm_rejects := 0
 	var pruned := 0
 	for sample_value in coastline:
 		var sample: Dictionary = sample_value
@@ -90,11 +119,11 @@ static func build(hex_map: TileMapLayer, tile_id: String,
 				var tangent := Vector2(-seaward.y, seaward.x)
 				for spec_value in SITE_SPECS:
 					var spec: Dictionary = spec_value
-					for quay_shift in QUAY_SHIFTS:
+					for quay_extra in QUAY_EXTRAS:
 						considered += 1
 						var candidate := _candidate(hex_map, tile_id, coord, center,
-							shifted_shore, seaward, tangent, spec,
-							float(quay_shift), river_exclusions,
+							shifted_shore, seaward, tangent, float(angle_deg),
+							spec, float(quay_extra), river_exclusions,
 							gameplay_exclusions,
 							-INF if best.is_empty() else float(best.score))
 						if bool(candidate.get("pruned", false)):
@@ -113,9 +142,15 @@ static func build(hex_map: TileMapLayer, tile_id: String,
 							continue
 						if not bool(candidate.get("river_valid", false)):
 							river_rejects += 1
+							var river_reason := str(candidate.get("river_reason", "?"))
+							river_reasons[river_reason] = int(
+								river_reasons.get(river_reason, 0)) + 1
 							continue
 						if not bool(candidate.get("collision_valid", false)):
 							collision_rejects += 1
+							continue
+						if not bool(candidate.get("interarm_valid", false)):
+							interarm_rejects += 1
 							continue
 						if not bool(candidate.get("access_valid", false)):
 							access_rejects += 1
@@ -123,10 +158,11 @@ static func build(hex_map: TileMapLayer, tile_id: String,
 						if best.is_empty() or float(candidate.score) > float(best.score):
 							best = candidate
 	if best.is_empty():
-		print("[MIDCENTURY PORT] %s NO PLAN considered=%d water=%d land=%d %s river=%d collision=%d access=%d" % [
+		print("[MIDCENTURY PORT] %s NO PLAN considered=%d water=%d land=%d %s river=%s collision=%d access=%d" % [
 			tile_id, considered, water_rejects, land_rejects, str(land_reasons),
-			river_rejects, collision_rejects, access_rejects])
-		print("[MIDCENTURY PORT] %s arm_rejects=%d" % [tile_id, arm_rejects])
+			str(river_reasons), collision_rejects, access_rejects])
+		print("[MIDCENTURY PORT] %s arm_rejects=%d interarm_rejects=%d" % [
+			tile_id, arm_rejects, interarm_rejects])
 		return {}
 	var plan := _finish_plan(best, tile_id, instance_id, coord, coastline,
 		river_exclusions)
@@ -136,14 +172,16 @@ static func build(hex_map: TileMapLayer, tile_id: String,
 	plan.diagnostics["river_rejections"] = river_rejects
 	plan.diagnostics["collision_rejections"] = collision_rejects
 	plan.diagnostics["access_rejections"] = access_rejects
+	plan.diagnostics["interarm_rejections"] = interarm_rejects
 	plan.diagnostics["planner_msec"] = Time.get_ticks_msec() - timer_start
 	plan["plan_hash"] = _plan_hash(plan)
 	_plan_cache[cache_key] = plan.duplicate(true)
-	print("[MIDCENTURY PORT] %s candidates=%d planner=%dms hash=%s inset=%.1f rej water=%d land=%s arm=%d river=%d coll=%d access=%d pruned=%d" % [
+	print("[MIDCENTURY PORT] %s candidates=%d planner=%dms hash=%s inset=%.1f quay=%.1f rej water=%d land=%s arm=%d river=%s coll=%d interarm=%d access=%d pruned=%d" % [
 		tile_id, considered, int(plan.diagnostics.planner_msec),
 		str(plan.plan_hash).left(12), float(best.get("head_inset", -1.0)),
-		water_rejects, str(land_reasons), arm_rejects, river_rejects,
-		collision_rejects, access_rejects, pruned])
+		float(best.get("quay_shift", -1.0)),
+		water_rejects, str(land_reasons), arm_rejects, str(river_reasons),
+		collision_rejects, interarm_rejects, access_rejects, pruned])
 	return plan
 
 static func invalidate_cache() -> void:
@@ -151,17 +189,27 @@ static func invalidate_cache() -> void:
 
 static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 		tile_center: Vector2, shore: Vector2, seaward: Vector2, tangent: Vector2,
-		spec: Dictionary, quay_shift: float, river_exclusions: Array,
-		gameplay_exclusions: Array, best_score: float) -> Dictionary:
+		approach_angle_deg: float, spec: Dictionary, quay_extra: float,
+		river_exclusions: Array, gameplay_exclusions: Array,
+		best_score: float) -> Dictionary:
 	var key := "port-adaptive|%s|%.1f|%.1f|%.1f|%.1f" % [tile_id,
 		shore.x, shore.y, seaward.x, float(spec.basin_depth)]
 	var basin_depth := float(spec.basin_depth)
 	var root_half := float(spec.root_half)
 	var mouth_half := float(spec.mouth_half)
 	var arm_width := float(spec.arm_width)
-	# The QUAY FACE is one shared edge: dry head landward of it, harbour water
-	# seaward of it. L1 left an unvalidated throat between the head and the basin
-	# and that throat is the land the owner can see inside the U.
+	# Addendum 5a — MOVE THE PORT SEAWARD. The quay line is placed past the
+	# furthest land the throat contains, measured on the same NavGrid the gates
+	# use, so no land can remain inside the U. N1 pinned it to a fixed offset
+	# from the sampled shore point and the leftover foreshore is what the owner
+	# could still see.
+	# Only the throat between the two arm CENTRELINES has to be cleared — that is
+	# exactly the span the enclosure ring measures. Marching wider than the ring
+	# buys nothing and pushes the port needlessly far out on a curving bay.
+	var quay_shift := _land_clearance(shore, seaward, tangent,
+		root_half + 4.0) + quay_extra
+	# The QUAY LINE is the shared root of the basin and of both arms: harbour
+	# water seaward of it, the port's own quay deck landward of it.
 	var head_front := shore + seaward * quay_shift
 	# Three-point early-out before any polygon work: the harbour throat has to be
 	# open water or this whole candidate is dead.
@@ -207,7 +255,7 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 	# selected plan is bit-identical to the exhaustive search.
 	var score_bound := _poly_area(basin) * 0.012 + mouth_run * 0.42 - \
 		shore.distance_to(tile_center) * 0.035 + 0.22 * 120.0 - \
-		float(HEAD_INSET_LADDER[0]) * 8.0
+		float(HEAD_INSET_LADDER[0]) * 8.0 - quay_shift * 1.35
 	if score_bound <= best_score:
 		return {"pruned": true}
 
@@ -232,7 +280,17 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 		head_back - tangent * right_back_half,
 		head_back + tangent * left_back_half,
 	])
-	var fit := _fit_head(head_block)
+	# The apron is judged against the LANDWARD block it is trying to fill, not
+	# against the overshoot: pushing the quay line further out must not make the
+	# minimum-area gate progressively easier to pass.
+	var head_reference := PackedVector2Array([
+		shore + tangent * front_half,
+		shore - tangent * front_half,
+		head_back - tangent * right_back_half,
+		head_back + tangent * left_back_half,
+	])
+	var fit := _fit_head(head_block, _poly_area(head_reference) *
+		MIN_HEAD_AREA_FRACTION)
 	var head: PackedVector2Array = fit.get("poly", PackedVector2Array())
 	if head.size() < 3:
 		return {"basin_valid": true, "land_valid": false,
@@ -240,6 +298,29 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 	var head_land := float(fit.land)
 	var head_edge_land := float(fit.edge)
 	var head_inset := float(fit.inset)
+
+	# THE WHARF — the quay deck that carries the compound from the dry apron out
+	# to the quay line. It is what "moving the port further out" is made of: a
+	# marine platform over the foreshore and the shallows, in the same family as
+	# the arm decks. The dry-land instrument is untouched and still governs the
+	# apron alone; nothing about it is loosened here.
+	# It TAPERS: the full apron width where it meets the land, and just enough at
+	# the quay line to carry both arm roots. A slab as wide as the apron all the
+	# way out reaches across river mouths it has no business crossing (it cost
+	# Vandel its plan outright) and reads as a landfill rather than a quay.
+	var quay_half := root_half + arm_width * 1.05
+	# ...and it is CUT BACK around any authoritative river or channel it would
+	# otherwise reach across. A navigable channel stays open: that invariant is
+	# older than this pass. Where the cut takes the deck away from the throat the
+	# enclosure gate below rejects the candidate — the port is never quietly
+	# drawn over a river to satisfy a metric.
+	var wharf := _clip_to_open_water(_trapezoid(
+		shore - seaward * WHARF_LANDWARD_BITE, head_front, tangent,
+		front_half, quay_half), river_exclusions)
+	if wharf.size() < 3:
+		return {"basin_valid": true, "land_valid": true, "river_valid": false,
+			"river_reason": "wharf-cut"}
+	var body: Array = [head, wharf]
 
 	# STRAIGHT arms (addendum section 5). Each arm is one run from the quay face
 	# along its own basin edge — no mid vertex, no elbow. Length, width and angle
@@ -263,8 +344,8 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 	# Each arm runs landward along its OWN axis until it bites into the apron, so
 	# the compound reads as one connected quay instead of two floating decks.
 	# Extending backwards along the same axis keeps the run dead straight.
-	var left_start := _attach_to_head(left_root, -left_axis, head)
-	var right_start := _attach_to_head(right_root, -right_axis, head)
+	var left_start := _attach_to_body(left_root, -left_axis, body)
+	var right_start := _attach_to_body(right_root, -right_axis, body)
 	if left_start == Vector2.INF or right_start == Vector2.INF:
 		return {"basin_valid": true, "land_valid": true, "arm_valid": false}
 	var left_points := PackedVector2Array([
@@ -280,21 +361,22 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 	var arm_polys: Array = left_arms + right_arms
 	if _overlap_with_any(basin, arm_polys) > 0.05:
 		return {"basin_valid": true, "land_valid": true,
-			"river_valid": false}
+			"river_valid": false, "river_reason": "arm-in-basin"}
 
-	var opaque_base: Array = [head]
+	var opaque_base: Array = [head, wharf]
 	opaque_base.append_array(arm_polys)
 	var river_overlap := _arrays_overlap_area(opaque_base, river_exclusions)
 	var river_valid := river_overlap <= 0.01
 	if not river_valid:
 		return {"basin_valid": true, "land_valid": true,
-			"river_valid": false}
+			"river_valid": false, "river_reason": "channel"}
 
-	var warehouses := _warehouses(head, head_front, head_back, tangent, seaward,
-		key)
+	# Sheds belong on the DRY apron, so they are laid out against the shoreline
+	# rather than the quay line, which now stands off in the water.
+	var warehouses := _warehouses(head, shore, head_back, tangent, seaward, key)
 	if warehouses.is_empty():
 		return {"basin_valid": true, "land_valid": false, "land_reason": "shed"}
-	var collision_polys: Array = [head]
+	var collision_polys: Array = [head, wharf]
 	collision_polys.append_array(warehouses)
 	collision_polys.append_array(arm_polys)
 	var gameplay_overlap := _arrays_overlap_area(collision_polys,
@@ -303,6 +385,17 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 	if not collision_valid:
 		return {"basin_valid": true, "land_valid": true,
 			"river_valid": true, "collision_valid": false}
+
+	# THE GATE THE OWNER ASKED FOR, inside the search rather than after it: not
+	# one square unit of land may remain uncovered inside the U. Containers and
+	# cranes are deliberately left out — they only ever ADD cover, so a ring that
+	# is clean without them is clean with them.
+	var enclosure_ring := _interarm_ring(left_points, right_points)
+	var interarm_opaque: Array = [head, wharf]
+	interarm_opaque.append_array(arm_polys)
+	if _ring_has_uncovered_land(enclosure_ring, interarm_opaque):
+		return {"basin_valid": true, "land_valid": true, "river_valid": true,
+			"collision_valid": true, "interarm_valid": false}
 
 	# Road access is the most expensive check in the loop (it scans every built
 	# edge on 25 tiles), so it runs last, on candidates nothing else rejected.
@@ -314,7 +407,7 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 	if not access_valid:
 		return {"basin_valid": true, "land_valid": true,
 			"river_valid": true, "collision_valid": true,
-			"access_valid": false}
+			"interarm_valid": true, "access_valid": false}
 
 	var left_length := _polyline_length(left_points)
 	var right_length := _polyline_length(right_points)
@@ -322,17 +415,24 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 		right_length)
 	var access_length := _polyline_length(road_access)
 	var compactness := shore.distance_to(tile_center)
-	# The apron inset is the width of the terrain sliver left between the quay and
-	# the water, so it is exactly the residual the owner would still see inside
-	# the U. Score against it, or the search happily buys basin area with land.
+	# "Move the port further out IF NEEDED" — so the search must prefer the least
+	# push that still clears the throat, or it would wander offshore for free.
+	# The apron inset stays in the score for the same reason it was added: it is
+	# the sliver the apron leaves behind, now covered by the wharf but still a
+	# sign of a badly seated head.
 	var score := _poly_area(basin) * 0.012 + mouth_run * 0.42 - \
 		access_length * 0.30 - compactness * 0.035 + \
-		clampf(asymmetry, 0.06, 0.22) * 120.0 - head_inset * 8.0
+		clampf(asymmetry, 0.06, 0.22) * 120.0 - head_inset * 8.0 - \
+		quay_shift * 1.35
 	return {
 		"basin_valid": true, "land_valid": true, "river_valid": true,
-		"collision_valid": true, "access_valid": true, "score": score,
+		"collision_valid": true, "interarm_valid": true,
+		"access_valid": true, "score": score,
 		"key": key, "shore": shore, "seaward": seaward,
-		"tangent": tangent, "head": head, "warehouses": warehouses,
+		"tangent": tangent, "head": head, "wharf": wharf,
+		"quay_shift": quay_shift, "front_half": front_half,
+		"approach_angle_deg": approach_angle_deg,
+		"warehouses": warehouses,
 		"basin": basin, "corridor": corridor,
 		"basin_mouth_center": basin_mouth_center,
 		"left_points": left_points, "right_points": right_points,
@@ -357,6 +457,7 @@ static func _finish_plan(candidate: Dictionary, tile_id: String,
 	# receive byte-identical shared geometry.
 	var key := "midcentury-port|%s" % tile_id
 	var head: PackedVector2Array = candidate.head
+	var wharf: PackedVector2Array = candidate.wharf
 	var warehouses: Array = candidate.warehouses
 	var basin: PackedVector2Array = candidate.basin
 	var corridor: PackedVector2Array = candidate.corridor
@@ -364,16 +465,16 @@ static func _finish_plan(candidate: Dictionary, tile_id: String,
 	var right_arms: Array = candidate.right_arms
 	var left_points: PackedVector2Array = candidate.left_points
 	var right_points: PackedVector2Array = candidate.right_points
-	var containers := _containers(head, warehouses, left_points, right_points,
-		left_arms, right_arms, basin, corridor, candidate.road_access, key,
-		candidate.seaward, candidate.tangent)
+	var containers := _containers(head, wharf, warehouses, left_points,
+		right_points, left_arms, right_arms, basin, corridor,
+		candidate.road_access, key, candidate.seaward, candidate.tangent)
 	var left_crane := _crane_site(left_points, float(candidate.left_width),
 		"left", key)
 	var right_crane := _crane_site(right_points, float(candidate.right_width),
 		"right", key)
 	var cranes := [left_crane, right_crane]
 	var deck_polys: Array = left_arms + right_arms
-	var solid_polys: Array = [head]
+	var solid_polys: Array = [head, wharf]
 	solid_polys.append_array(warehouses)
 	solid_polys.append_array(deck_polys)
 	solid_polys.append_array(containers)
@@ -394,7 +495,7 @@ static func _finish_plan(candidate: Dictionary, tile_id: String,
 	# trapezoid, which is water by construction, so the land enclosed between the
 	# arms was never measured at all.
 	var enclosure_ring := _interarm_ring(left_points, right_points)
-	var enclosure_opaque: Array = [head]
+	var enclosure_opaque: Array = [head, wharf]
 	enclosure_opaque.append_array(warehouses)
 	enclosure_opaque.append_array(deck_polys)
 	enclosure_opaque.append_array(containers)
@@ -431,6 +532,15 @@ static func _finish_plan(candidate: Dictionary, tile_id: String,
 		"interarm_sea_coverage": float(enclosure.sea_coverage),
 		"max_arm_bend_deg": maxf(_max_bend_deg(left_points),
 			_max_bend_deg(right_points)),
+		# Addendum 5a. How far the port was moved out, how much of the main body
+		# that put over water, and whether the body is still rooted on the shore.
+		"quay_seaward_offset": float(candidate.quay_shift),
+		"wharf_area": _poly_area(wharf),
+		"wharf_sea_coverage": _class_coverage(wharf, NavGrid.WATER_SEA),
+		"shore_contact_coverage": _shore_contact([head, wharf],
+			candidate.shore, candidate.seaward, candidate.tangent,
+			float(candidate.front_half)),
+		"shore_orientation_offset_deg": absf(float(candidate.approach_angle_deg)),
 		"container_count": containers.size(),
 		"crane_count": cranes.size(),
 		"crane_arms": ["left", "right"],
@@ -451,6 +561,7 @@ static func _finish_plan(candidate: Dictionary, tile_id: String,
 		"land_polygons": [head],
 		"warehouse_polygons": warehouses,
 		"apron_polygons": [head],
+		"wharf_polygons": [wharf],
 		"left_arm_polygons": left_arms,
 		"right_arm_polygons": right_arms,
 		"deck_polygons": deck_polys,
@@ -521,6 +632,29 @@ static func _coastline_samples(center: Vector2) -> Array:
 			selected.append(sample)
 			if selected.size() >= MAX_COAST_SAMPLES:
 				break
+	return _smooth_normals(selected, raw)
+
+## Replace each sample's single-cell 8-neighbour normal with the mean seaward
+## direction of every coastal cell within NORMAL_FIT_RADIUS of it. This is the
+## "perfect orientation on the shore" the owner's +/-10 degree tolerance is
+## measured against; the raw per-cell gradient is too quantised to be it.
+static func _smooth_normals(selected: Array, raw: Array) -> Array:
+	for index in range(selected.size()):
+		var sample: Dictionary = selected[index]
+		var origin: Vector2 = sample.shore
+		var sum := Vector2.ZERO
+		var count := 0
+		for value in raw:
+			var other: Dictionary = value
+			if (other.shore as Vector2).distance_to(origin) > NORMAL_FIT_RADIUS:
+				continue
+			sum += (other.seaward as Vector2)
+			count += 1
+		# A headland tip can average to nothing; there the single-cell gradient
+		# is the only orientation available and is kept unchanged.
+		if count >= 3 and sum.length() > 0.35 * float(count):
+			sample["seaward"] = sum.normalized()
+			selected[index] = sample
 	return selected
 
 static func _river_exclusions(hex_map: TileMapLayer, center: Vector2) -> Array:
@@ -657,7 +791,8 @@ static func _warehouses(head: PackedVector2Array, head_front: Vector2,
 			out.append(piece)
 	return out
 
-static func _containers(head: PackedVector2Array, warehouses: Array,
+static func _containers(head: PackedVector2Array, wharf: PackedVector2Array,
+		warehouses: Array,
 		left_points: PackedVector2Array, right_points: PackedVector2Array,
 		left_arms: Array, right_arms: Array, basin: PackedVector2Array,
 		corridor: PackedVector2Array, road_access: PackedVector2Array,
@@ -667,6 +802,9 @@ static func _containers(head: PackedVector2Array, warehouses: Array,
 	exclusions.append_array(warehouses)
 	for i in range(road_access.size() - 1):
 		exclusions.append(_segment_quad(road_access[i], road_access[i + 1], 7.0))
+	# Cargo may stand anywhere on the working surface — apron or wharf. Without
+	# this the quay deck the port now stands on would read as a bare slab.
+	var surface: Array = [head, wharf]
 	var head_center := _poly_center(head)
 	for side in [-1.0, 1.0]:
 		for row in range(3):
@@ -678,7 +816,22 @@ static func _containers(head: PackedVector2Array, warehouses: Array,
 					seaward * (float(row) - 1.0) * 6.5
 				var length := _rr(ckey + "|length", 7.0, 15.5)
 				var poly := _oriented_rect(point, tangent, seaward, length, 4.8)
-				if _poly_inside_fraction(poly, [head]) < 0.995 or \
+				if _poly_inside_fraction(poly, surface) < 0.995 or \
+						_overlap_with_any(poly, exclusions + out) > 0.01:
+					continue
+				out.append(poly)
+	var wharf_center := _poly_center(wharf)
+	for side in [-1.0, 1.0]:
+		for row in range(2):
+			for col in range(3):
+				var ckey := "%s|wharf-container|%d|%d|%d" % [key, int(side), row, col]
+				if RoadHash.pick(ckey + "|skip", 100) < 34:
+					continue
+				var point := wharf_center + tangent * float(side) * (13.0 + col * 8.0) + \
+					seaward * (float(row) - 0.5) * 7.5
+				var length := _rr(ckey + "|length", 6.5, 13.0)
+				var poly := _oriented_rect(point, tangent, seaward, length, 4.6)
+				if _poly_inside_fraction(poly, surface) < 0.995 or \
 						_overlap_with_any(poly, exclusions + out) > 0.01:
 					continue
 				out.append(poly)
@@ -747,9 +900,9 @@ static func _land_polygons() -> Array:
 ## NavGrid dry-land gates are satisfied. Clipping puts the apron's seaward edge
 ## on the drawn coastline; the ladder pays for the 0.53% of coastal cells where
 ## the 12u NavGrid lattice and the drawn coastline disagree, and no further.
-static func _fit_head(block: PackedVector2Array) -> Dictionary:
+static func _fit_head(block: PackedVector2Array,
+		min_area: float) -> Dictionary:
 	var block_bb := _bbox(block)
-	var block_area := _poly_area(block)
 	var clipped := PackedVector2Array()
 	var clipped_area := 0.0
 	for record_value in _land_polygons():
@@ -764,20 +917,20 @@ static func _fit_head(block: PackedVector2Array) -> Dictionary:
 			if area > clipped_area:
 				clipped_area = area
 				clipped = piece
-	if clipped.size() < 3 or clipped_area < block_area * MIN_HEAD_AREA_FRACTION:
+	if clipped.size() < 3 or clipped_area < min_area:
 		return {"reason": "area"}
 	# The dry-land gate is effectively "no sea cell inside", and eroding only ever
 	# removes cells, so if the DEEPEST inset still swallows one, no shallower one
 	# can pass. One offset instead of the whole ladder on the common reject path.
 	var deepest := _largest_inset_piece(clipped,
 		float(HEAD_INSET_LADDER[HEAD_INSET_LADDER.size() - 1]))
-	if deepest.size() < 3 or _poly_area(deepest) < block_area * MIN_HEAD_AREA_FRACTION \
+	if deepest.size() < 3 or _poly_area(deepest) < min_area \
 			or _class_coverage(deepest, NavGrid.WATER_LAND) < 0.999:
 		return {"reason": "cover"}
 	var last_reason := "cover"
 	for inset in HEAD_INSET_LADDER:
 		var best := _largest_inset_piece(clipped, float(inset))
-		if best.size() < 3 or _poly_area(best) < block_area * MIN_HEAD_AREA_FRACTION:
+		if best.size() < 3 or _poly_area(best) < min_area:
 			return {"reason": last_reason}
 		var land := _class_coverage(best, NavGrid.WATER_LAND)
 		if land < 0.999:
@@ -790,17 +943,140 @@ static func _fit_head(block: PackedVector2Array) -> Dictionary:
 		return {"poly": best, "land": land, "edge": edge, "inset": float(inset)}
 	return {"reason": last_reason}
 
-## March an arm backwards along its own axis until it reaches the apron, then
-## bite a little further in. Returns Vector2.INF when the apron is out of reach.
-static func _attach_to_head(root: Vector2, back_direction: Vector2,
-		head: PackedVector2Array) -> Vector2:
+## March an arm backwards along its own axis until it reaches the body, then
+## bite a little further in. Returns Vector2.INF when the body is out of reach.
+static func _attach_to_body(root: Vector2, back_direction: Vector2,
+		body: Array) -> Vector2:
 	var distance := 0.0
 	while distance <= MAX_ARM_ATTACH_REACH:
 		var point := root + back_direction * distance
-		if Geometry2D.is_point_in_polygon(point, head):
-			return root + back_direction * (distance + ARM_HEAD_BITE)
+		for poly_value in body:
+			var poly: PackedVector2Array = poly_value
+			if poly.size() >= 3 and Geometry2D.is_point_in_polygon(point, poly):
+				return root + back_direction * (distance + ARM_HEAD_BITE)
 		distance += 3.0
 	return Vector2.INF
+
+static func _attach_to_head(root: Vector2, back_direction: Vector2,
+		head: PackedVector2Array) -> Vector2:
+	return _attach_to_body(root, back_direction, [head])
+
+## How far SEAWARD of the sampled shore point the last dry-land cell of the
+## harbour throat sits, plus one full NavGrid step so the quay line clears that
+## cell outright. This is the measurement behind "move the port further out":
+## the same NavGrid the dry-land gate uses decides how far out is far enough.
+static func _land_clearance(shore: Vector2, seaward: Vector2, tangent: Vector2,
+		half_width: float) -> float:
+	var furthest := 0.0
+	for index in range(CLEARANCE_RAYS):
+		var across := lerpf(-half_width, half_width,
+			float(index) / float(CLEARANCE_RAYS - 1))
+		var origin := shore + tangent * across
+		var distance := 0.0
+		while distance <= CLEARANCE_REACH:
+			if _water_at(origin + seaward * distance) != NavGrid.WATER_SEA:
+				furthest = maxf(furthest, distance)
+			distance += CLEARANCE_STEP
+	return furthest + NavGrid.instance().step
+
+## True as soon as ONE lattice point inside the ring is neither sea nor covered
+## by the port itself. Same lattice and same water lookup as the reported
+## `interarm_sea_coverage`, so the gate and the number cannot disagree; the early
+## exit is what makes it affordable inside the candidate loop.
+static func _ring_has_uncovered_land(ring: PackedVector2Array,
+		opaque: Array) -> bool:
+	if ring.size() < 3:
+		return true
+	var bb := _bbox(ring)
+	var records: Array = []
+	for value in opaque:
+		var poly: PackedVector2Array = value
+		if poly.size() >= 3:
+			records.append({"poly": poly, "bb": _bbox(poly)})
+	var columns := maxi(1, int(ceil(bb.size.x / ENCLOSURE_SAMPLE_STEP)))
+	var rows := maxi(1, int(ceil(bb.size.y / ENCLOSURE_SAMPLE_STEP)))
+	for iy in range(rows + 1):
+		for ix in range(columns + 1):
+			var point := bb.position + Vector2(float(ix), float(iy)) * \
+				ENCLOSURE_SAMPLE_STEP
+			if _water_at(point) == NavGrid.WATER_SEA:
+				continue
+			if not Geometry2D.is_point_in_polygon(point, ring):
+				continue
+			var covered := false
+			for record_value in records:
+				var record: Dictionary = record_value
+				if not (record.bb as Rect2).has_point(point):
+					continue
+				if Geometry2D.is_point_in_polygon(point, record.poly):
+					covered = true
+					break
+			if not covered:
+				return true
+	return false
+
+## Addendum 5a: "the main body must touch the shore along at least 75% of its
+## shore-side edge." Cast rays landward across the body's full width; a ray
+## counts when the body is standing on dry land somewhere along it. A port moved
+## so far out that it floats offshore fails this, whatever else it satisfies.
+static func _shore_contact(body: Array, shore: Vector2, seaward: Vector2,
+		tangent: Vector2, half_width: float) -> float:
+	var touching := 0
+	for index in range(SHORE_CONTACT_RAYS):
+		var across := lerpf(-half_width, half_width,
+			(float(index) + 0.5) / float(SHORE_CONTACT_RAYS))
+		var origin := shore + tangent * across
+		var distance := -CLEARANCE_STEP * 2.0
+		while distance <= SHORE_CONTACT_REACH:
+			var point := origin - seaward * distance
+			if _water_at(point) == NavGrid.WATER_LAND and \
+					_point_in_any(point, body):
+				touching += 1
+				break
+			distance += CLEARANCE_STEP
+	return float(touching) / float(SHORE_CONTACT_RAYS)
+
+## Subtract every river/channel exclusion that actually reaches the block and
+## keep the largest surviving piece. Returns an empty polygon when the block is
+## cut to nothing, so the caller rejects rather than drawing a sliver.
+static func _clip_to_open_water(block: PackedVector2Array,
+		exclusions: Array) -> PackedVector2Array:
+	var pieces: Array = [block]
+	for value in exclusions:
+		var record: Dictionary = value
+		var cutter: PackedVector2Array = record.get("poly", PackedVector2Array())
+		if cutter.size() < 3:
+			continue
+		var cutter_bb: Rect2 = record.get("bb", _bbox(cutter))
+		var next: Array = []
+		for piece_value in pieces:
+			var piece: PackedVector2Array = piece_value
+			if not _bbox(piece).intersects(cutter_bb):
+				next.append(piece)
+				continue
+			for result_value in Geometry2D.clip_polygons(piece, cutter):
+				var result: PackedVector2Array = result_value
+				if result.size() >= 3 and not Geometry2D.is_polygon_clockwise(result):
+					next.append(result)
+		pieces = next
+		if pieces.is_empty():
+			return PackedVector2Array()
+	var best := PackedVector2Array()
+	var best_area := 0.0
+	for piece_value in pieces:
+		var piece: PackedVector2Array = piece_value
+		var area := _poly_area(piece)
+		if area > best_area:
+			best_area = area
+			best = piece
+	return best
+
+static func _point_in_any(point: Vector2, polys: Array) -> bool:
+	for value in polys:
+		var poly: PackedVector2Array = value
+		if poly.size() >= 3 and Geometry2D.is_point_in_polygon(point, poly):
+			return true
+	return false
 
 static func _largest_inset_piece(poly: PackedVector2Array,
 		inset: float) -> PackedVector2Array:
@@ -1094,8 +1370,8 @@ static func _rr(key: String, low: float, high: float) -> float:
 
 static func _plan_hash(plan: Dictionary) -> String:
 	var parts: Array[String] = [str(plan.tile_id)]
-	for field in ["land_polygons", "warehouse_polygons", "left_arm_polygons",
-			"right_arm_polygons", "container_polygons"]:
+	for field in ["land_polygons", "wharf_polygons", "warehouse_polygons",
+			"left_arm_polygons", "right_arm_polygons", "container_polygons"]:
 		for value in plan.get(field, []):
 			parts.append(_poly_signature(value))
 	parts.append(_poly_signature(plan.basin_polygon))
