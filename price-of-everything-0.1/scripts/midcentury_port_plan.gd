@@ -78,6 +78,7 @@ static func build(hex_map: TileMapLayer, tile_id: String,
 	var access_rejects := 0
 	var collision_rejects := 0
 	var arm_rejects := 0
+	var pruned := 0
 	for sample_value in coastline:
 		var sample: Dictionary = sample_value
 		var base_seaward: Vector2 = sample.seaward
@@ -94,7 +95,11 @@ static func build(hex_map: TileMapLayer, tile_id: String,
 						var candidate := _candidate(hex_map, tile_id, coord, center,
 							shifted_shore, seaward, tangent, spec,
 							float(quay_shift), river_exclusions,
-							gameplay_exclusions)
+							gameplay_exclusions,
+							-INF if best.is_empty() else float(best.score))
+						if bool(candidate.get("pruned", false)):
+							pruned += 1
+							continue
 						if not bool(candidate.get("basin_valid", false)):
 							water_rejects += 1
 							continue
@@ -134,11 +139,11 @@ static func build(hex_map: TileMapLayer, tile_id: String,
 	plan.diagnostics["planner_msec"] = Time.get_ticks_msec() - timer_start
 	plan["plan_hash"] = _plan_hash(plan)
 	_plan_cache[cache_key] = plan.duplicate(true)
-	print("[MIDCENTURY PORT] %s candidates=%d planner=%dms hash=%s inset=%.1f rej water=%d land=%s arm=%d river=%d coll=%d access=%d" % [
+	print("[MIDCENTURY PORT] %s candidates=%d planner=%dms hash=%s inset=%.1f rej water=%d land=%s arm=%d river=%d coll=%d access=%d pruned=%d" % [
 		tile_id, considered, int(plan.diagnostics.planner_msec),
 		str(plan.plan_hash).left(12), float(best.get("head_inset", -1.0)),
 		water_rejects, str(land_reasons), arm_rejects, river_rejects,
-		collision_rejects, access_rejects])
+		collision_rejects, access_rejects, pruned])
 	return plan
 
 static func invalidate_cache() -> void:
@@ -147,7 +152,7 @@ static func invalidate_cache() -> void:
 static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 		tile_center: Vector2, shore: Vector2, seaward: Vector2, tangent: Vector2,
 		spec: Dictionary, quay_shift: float, river_exclusions: Array,
-		gameplay_exclusions: Array) -> Dictionary:
+		gameplay_exclusions: Array, best_score: float) -> Dictionary:
 	var key := "port-adaptive|%s|%.1f|%.1f|%.1f|%.1f" % [tile_id,
 		shore.x, shore.y, seaward.x, float(spec.basin_depth)]
 	var basin_depth := float(spec.basin_depth)
@@ -195,6 +200,16 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 		mouth_run >= 150.0 and face_water >= 0.999
 	if not basin_valid:
 		return {"basin_valid": false}
+
+	# Exact branch-and-bound: every remaining score term can only subtract, except
+	# the bounded asymmetry bonus. A candidate that cannot beat the incumbent even
+	# at its best is skipped before the expensive clip/offset/road work. The
+	# selected plan is bit-identical to the exhaustive search.
+	var score_bound := _poly_area(basin) * 0.012 + mouth_run * 0.42 - \
+		shore.distance_to(tile_center) * 0.035 + 0.22 * 120.0 - \
+		float(HEAD_INSET_LADDER[0]) * 8.0
+	if score_bound <= best_score:
+		return {"pruned": true}
 
 	# The head OVERSHOOTS the quay face and is then clipped back to the rendered
 	# coastline, so the apron covers every scrap of land inside the throat. Its
