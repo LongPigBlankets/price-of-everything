@@ -137,6 +137,8 @@ captures a masked legacy image before and after every midcentury round-trip.
 | V3.03 | Roads / junction layering | Covered shared edge endpoints with small road-bed circles after the casing and bed passes | **Rejected and reverted** | Some internal casing caps disappeared, but repeated cream buttons became visible in Player Close, Stoneshore, and Stoneshore Docks. Artifact resistance fell 4 → 3, linework stayed 3, and average fell 3.85 → 3.77. The next road lever is an angle-aware polygonal junction envelope, not a 360-degree patch. |
 | V3.04 | Roads / junction shape | Built convex envelopes from incident road-bed shoulders | **Invalid and abandoned before scoring** | Near-collinear endpoint sets produced degenerate polygons and Godot triangulation errors. The legacy round-trip still proved exact, but the errored frames were discarded and the polygon path was removed. |
 | V3.05 | Roads / junction linework | Erased only the inward casing-cap seam with a narrow tangent-aligned cross-bed stroke at shared endpoints | **Rejected and reverted** | Subtler than V3.03, but repeated pale diamonds/ticks remained visible in Player Close, Block Close, and Stoneshore. Artifact resistance fell 4 → 3, linework stayed 3, and average fell 3.85 → 3.77. Future junction cleanup must stitch casing paths before drawing and reserve caps for true dead ends. |
+| N1.01 | Ports / quay face (addendum §5) | Put the head front on the sampled shore so the head edge and the basin root were one straight line | **Rejected — 0 of 4 ports** | No site on this map offers the 100–135u of straight coast, sea one side and land the other, that a straight quay face needs at 12u lattice resolution. Dead end recorded; do not retry a straight waterline head. |
+| N1.02 | Ports / straight arms + real inter-arm water (addendum §5) | Head becomes a block overshooting the quay face 10–34u and clipped back to the rendered band-5 coastline, eroded along an inset ladder until the unchanged NavGrid dry-land gate reads 100%; arms are single straight runs on the two edges of an asymmetric basin trapezoid, attached by marching back along their own axis into the apron | **Accepted (partial on the water half)** | Blind critic: **image_2 (candidate) better**, 2.75 → 3.33 average; reference-family resemblance 2 → 4, multiscale 3 → 4, top-down 3 → 4, hierarchy 2 → 3, accumulated character 2 → 3, repetition 2 → 3; no category regressed. Arm straightness **fully met**: `max_arm_bend_deg` 19.57/21.93/18.66/27.24 → **0.00 at all four**. Inter-arm water **improved but not met**: `interarm_sea_coverage` 85.38% → 95.58% mean, land inside the four Us 4,768 → **2,352u² (−51%)**, so land still remains between the arms at every port. Evidence `/tmp/poe_g3_verify_ports/` (vrun1, vrun2, vstyle, basestyle, vmorph, frontage.log, density_audit.txt); blind pair `/tmp/poe_g3_blind/PORTS/`. **Next bottleneck: the 12u NavGrid lattice, not the coastline** — three of four ports still choose a 10u apron inset under an 8×/unit penalty, and that erosion strip *is* the residual land. Closing the last 4–5% needs either a sub-lattice dry-land instrument or an accepted visible foreshore. Second follow-up: `PortVisuals._rebuild_midcentury_plans()` is not style-gated, costing 4.86s of planner work at every map build in every style (was 0.61s). |
 
 ## Rubric scores
 
@@ -1945,3 +1947,172 @@ cd price-of-everything-0.1
 
 The frozen baseline output is committed at `docs/map-density-audit-baseline.txt`. Compare against it; do not
 regenerate it as a way of moving the goalposts.
+
+
+## N1. Straight port arms and real water between them — 2026-08-14
+
+Addendum section 5, on branch `gauntlet3/ports` (worktree `/tmp/poe_g3_wt/ports`), based on
+`gauntlet3/density-audit`. Only the mid-century port plan, its rendering/diagnostic seam and its focused
+audit changed. Settlement density, parks, coastal reach, relief, roads, rivers and the legacy renderers were
+not reopened.
+
+### The diagnosis — the gate was measuring the wrong region
+
+L1 recorded **100% sampled basin water** and **0 opaque basin overlap** for all four ports, and both numbers
+reproduce exactly on this branch: `basin_sea_water_coverage = 1.0000` everywhere. The owner is nevertheless
+right. The reason is neither a rendering divergence nor a stale metric — it is that **`basin_polygon` is not
+the region a viewer reads as "between the arms."**
+
+L1 built the basin as a trapezoid rooted 10u *seaward* of a sampled shore point and then required it to be
+sea. It is water by construction. The arms, however, were rooted on `head_front`, which sits 8–17u *landward*
+of that same shore point, and they splayed outward around the basin. The U that the eye sees is therefore
+bounded by the arms, is strictly larger than the basin, and its landward strip — the harbour throat — was
+never sampled by anything.
+
+The three candidate explanations in the addendum resolve as: **(a) yes, (b) yes, (c) no.**
+
+- **(c) is refuted by measurement.** `tools/port_land_probe.gd` samples every NavGrid cell within 60u of the
+  water boundary — 789,496 cells — and compares the NavGrid water class against containment in the baked
+  band-5 "land base" polygon whose boundary `hill_visuals` strokes as the coastline. **Agreement 99.470%**,
+  and the 0.53% disagreement is a half-cell quantisation band skewed 20:1 toward NavGrid-sea/render-land.
+  The audit and the picture are looking at the same world.
+- **(a) and (b) are both true and are the same defect seen from two sides.** The apron/head fill stops at
+  `head_front`, so the throat is bare terrain; and because the arms start there, they run over that terrain
+  before reaching water — L1's own 29.53% sea-deck figure for Arin's right arm was the visible symptom.
+
+Made testable: `MidcenturyPortPlan` now emits `interarm_open_area`, `interarm_sea_area`,
+`interarm_sea_coverage` and `max_arm_bend_deg`. The enclosure is the closed ring through both arm centrelines
+with every opaque port element subtracted, sampled on a 4u lattice; the diagnostic overlay draws that ring in
+green. Measured on the L1 geometry, plan hashes unchanged (`3679035c`, `15f74d8b`, `47c0d8df`, `aa0b424d`):
+
+| Port | basin sea | **enclosure sea** | **land inside the U** | **max arm bend** |
+|---|---:|---:|---:|---:|
+| Stoneshore `tile_5_10` | 100.00% | 90.36% | 1,072u² | 19.57° |
+| Arin `tile_11_17` | 100.00% | 84.94% | 1,296u² | 21.93° |
+| Capital `tile_24_7` | 100.00% | 82.92% | 1,536u² | 18.66° |
+| Vandel `tile_22_16` | 100.00% | 83.28% | 864u² | 27.24° |
+
+**A gate that passed while the defect was visible is the finding.** L1 proved a property of a polygon it had
+constructed to have that property. Nothing checked the geometry the viewer actually sees.
+
+### N1.01 — rejected: straight quay face at the waterline
+
+Attempt 1 collapsed the throat to zero by putting `head_front` on the sampled shore and rooting the basin
+there, so the head's straight front edge and the basin's root edge were one shared line. Arms became single
+straight segments lying on the basin's two edges.
+
+**0 of 4 ports.** Of 1,944 candidates per port, the basin gate passed 21–39% and then the dry-land head gate
+rejected every survivor. A straight quay face requires 100–135u of straight coastline with sea on one side
+and land on the other at 12u lattice resolution; no site on this map offers it. Recorded as a dead end: a
+straight head front cannot both reach the water and stay dry.
+
+### N1.02 — accepted: coast-clipped apron, straight quays, gated enclosure
+
+The head stops being a rectangle placed near the shore and becomes a block **overshooting the quay face by
+10–34u and clipped back to the rendered coastline**, so its seaward edge *is* the shore and the apron covers
+every scrap of land in the throat. The clip is then eroded along `HEAD_INSET_LADDER` until the **unchanged**
+NavGrid dry-land gate reads 100%; the ladder pays for the 0.53% classification disagreement and no more.
+
+Arms are single straight runs. Each lies on one edge of an **asymmetric** basin trapezoid (independent left
+and right flare, 0.80–1.20× the mouth half-width), so the two arms leave the quay face at different angles,
+with independent length and width. Each arm then marches backwards **along its own axis** until it bites into
+the apron, which attaches it without introducing a vertex. `max_arm_bend_deg` is 0.00 by construction, and
+the K1 fixed rectangle-and-shore-normal primitive stays retired — the search is still over real local
+coastline samples and every port ends up a different shape.
+
+| Port | enclosure sea | land inside the U | arm bend | L/R arm sea-deck | L/R arm length |
+|---|---:|---:|---:|---:|---:|
+| Stoneshore | 90.36% → **96.57%** | 1,072 → **416u²** | 19.57° → **0.00°** | 87→86% / 89→88% | 122 / 151 |
+| Arin | 84.94% → **95.33%** | 1,296 → **624u²** | 21.93° → **0.00°** | 100→90% / **30→73%** | 187 / 126 |
+| Capital | 82.92% → **95.08%** | 1,536 → **672u²** | 18.66° → **0.00°** | 71→92% / 78→88% | 178 / 139 |
+| Vandel | 83.28% → **95.34%** | 864 → **640u²** | 27.24° → **0.00°** | 91→87% / 74→68% | 202 / 141 |
+
+Mean enclosure water 85.38% → 95.58%; total visible land inside the four Us 4,768u² → 2,352u² (−51%);
+every arm dead straight; Arin's land-rooted right quay more than doubles its sea-deck fraction.
+
+**The residual is honest and understood.** The remaining 3.4–4.9% is a 6–10u strip of foreshore between the
+apron and the water: the erosion the NavGrid dry-land gate demands. Drawing the apron out to the coastline
+would close it, at the price of putting the drawn geometry outside the instrument that certifies it dry. The
+gate was kept; the strip is the cost. `interarm_sea_coverage` is gated at **0.94**, below the measured floor
+of 0.9508, with that reasoning written at the gate.
+
+Retained and re-verified: 4/4 valid plans, exactly two cranes per port one per arm, valid authoritative-road
+access at every site, 12–19 cargo groups, zero river/channel obstruction, zero gameplay overlap, zero
+decorative/park overlap, zero opaque basin overlap, 100% dry landward head, and eight marine reservations.
+
+### Cost
+
+Planner time rose from L1's 88–238ms per port to 804–2,564ms (0.61s → 4.86s for all four), because the
+enclosure requirement needs a wider search (864 candidates, up from 432) and the apron clip is polygon work
+against the coastline. Road access was moved to the end of the candidate pipeline, where it only runs on
+candidates nothing else rejected. An exact branch-and-bound prune on the score was implemented and measured
+**useless** (`pruned=0` at every port — the incumbent is found late and the bound is loose); it is left in
+because it is free and correct. The remaining lever, not taken here, is to build the plan lazily on the first
+switch into mid-century instead of during every map build in every style.
+
+### N1 verification — what was run, and what it returned
+
+- **Unit suite: 2,298 passed / 0 failed**, with a real summary line (v0 baseline 2,287 plus exactly the 11
+  new port-geometry asserts). A fresh worktree exits 0 with no summary at all, so the line was checked.
+- **Two byte-identical capture runs.** All nine port artifacts (4 normal, 4 diagnostic, 1 context) share
+  SHA-256s across two independent runs; plan hashes reproduce across five separate processes (both gauntlet
+  runs, the density audit, the morphology harness and the all-style harness):
+  `f3242f47` Stoneshore, `4aae1d4d` Arin, `d88be546` Capital, `aa2ff032` Vandel.
+- **All-style harness exit 0**, which is the harness asserting, in-memory: legacy→mid-century→legacy is
+  full-PNG identical, the masked map-layer round trip is pixel exact, and mid-century wide equals
+  mid-century repeat. Run without the capture lock because of concurrent-stream contention, so the PNGs on
+  disk may have been overwritten by another stream — the verdicts are this process's own image comparisons
+  and are unaffected.
+- **Road-frontage audit byte-identical to the v0 archive**, all eight counters: 177 road tiles, 413
+  buildings, 79 failing tiles, 177 over 15u, 137 off-road-by-design, 1 service-lane save, 165 block-mode
+  failures without streets, 146.6u worst furnace on `tile_10_3`. This is also the evidence that no gameplay
+  building moved, despite the marine reservation changing shape.
+- **Morphology harness: all seven W1.01 water counters ZERO and all relief counters ZERO** on both plans;
+  `dry_land_guard.water_overlap_count` zero; `rural_growth` and `suburban` relief overlap zero. Exit 1, as
+  designed, on the unresolved G1.02 road-gradient gate. Against the frozen v0 metrics record, **10 of 26,171
+  leaf metrics differ**, and all ten are the port envelope changing shape:
+  `gameplay_collision_guard` removes 623 decorative polygons instead of 635, `far_zoom_plate.mass_count`
+  2,037 → 2,042, and 8 `tile_22_16` accommodation candidates move between the `extra` and `gameplay`
+  rejection reasons. Every settlement-plan, water, relief and district-field counter is unchanged.
+- **Density audit: zero verdict changes.** The class compliance table is identical (mountain 45/45, remote
+  1/54, sparse 45/204, urban 19/92) and every per-tile PASS/FAIL verdict and reason list is unchanged.
+  Four counts moved, all on port tiles and all in the fabric's favour: `tile_24_7` small 13→17 and large
+  1→2, `tile_12_17` large 12→13, `tile_22_16` large 5→4. `docs/map-density-audit-baseline.txt` is therefore
+  stale by four numbers on three tiles; the compliance conclusion it supports is not.
+- `git diff --check` clean; working tree clean.
+
+### N1.02 acceptance — independent verification and the blind result
+
+Re-run in full by the closing agent in the same worktree; nothing below is inherited from the implementing
+agent's report.
+
+**Blind chain of custody.** `/tmp/poe_g3_blind/PORTS/*/image_1.png` hashes equal the v0 control captures and
+`image_2.png` equal the candidate `run1` captures at all four sites, and the candidate images are SHA-256
+identical to this agent's own fresh capture — so the geometry the critic scored is the geometry in the tree.
+The critic, rendered blind, chose **image_2, the candidate**, 3.33 vs 2.75, with no category regressing. Its
+decisive observation was the deletion of the octagonal hub disc welded into every L1 arm (8 identical
+instances, 2 per port) — a UI-looking glyph with no cartographic referent — replaced by a readable slip
+between two finger piers at all four sites.
+
+**Legacy proof strengthened.** The implementing agent could not run the all-style harness under the capture
+lock and did not run a base-commit control, so its legacy evidence rested on in-process assertions alone. A
+control capture at the stream base `781bc519` was taken here under the lock and compared file by file:
+**all 10 classic, 10 ink and 10 plate frames are byte-identical to the base commit**, as are
+`wide_legacy_before`, `wide_legacy_roundtrip` and the three mid-century framings with no port in view.
+Exactly 8 frames differ, every one of them a mid-century framing containing a port. `legacy_before ==
+legacy_roundtrip == wide_ink` holds full-PNG, and `midcentury == midcentury_repeat` holds.
+
+**Everything else re-measured green:** unit suite 2,298 / 0 with a real summary line, against 2,287 / 0 at
+the base commit — the delta is exactly the 11 new port asserts; two byte-identical port capture runs, all
+nine artifacts, `valid=4/4 failures=[]`, plan hashes `f3242f47` / `4aae1d4d` / `d88be546` / `aa2ff032`;
+road-frontage audit `diff`-empty against the v0 archive on all eight counters; all 154 water-overlap and 80
+relief-overlap leaves zero, with exactly 10 of 26,171 morphology leaves differing and all ten being the
+documented decorative-envelope side effect; density audit with zero verdict changes; e2e balance sim 748 / 0;
+`git diff --check` clean.
+
+**Why this is accepted PARTIAL.** Addendum §5 has two halves. Arm straightness is fully satisfied — 0.00° at
+every port, zero by construction. "The water between the arms must be water" is *improved but not satisfied*:
+land remains inside the U at all four ports (416 / 624 / 672 / 640u², 95.08–96.57% sea). The critic
+independently saw the residue, noting Arin's right arm "runs ALONG the beach ... sitting roughly half on
+sand." The mechanism is accepted because it wins blind, meets half the gate outright and halves the defect on
+the other half — not because the owner's complaint is closed. It is not.
