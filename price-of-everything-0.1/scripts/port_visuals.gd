@@ -195,6 +195,10 @@ func _draw_midcentury_diagnostics() -> void:
 			draw_polyline(_closed(poly_value), Color("e05353"), 2.4, true)
 		for poly_value in plan.right_arm_polygons:
 			draw_polyline(_closed(poly_value), Color("a34ed4"), 2.4, true)
+		var ring: PackedVector2Array = plan.get("interarm_ring",
+			PackedVector2Array())
+		if ring.size() >= 3:
+			draw_polyline(_closed(ring), Color("18d06a"), 2.0, true)
 		for poly_value in plan.river_exclusions:
 			draw_polyline(_closed(poly_value), Color(0.92, 0.20, 0.20, 0.82),
 				2.0, true)

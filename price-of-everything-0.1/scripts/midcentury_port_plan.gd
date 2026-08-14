@@ -277,6 +277,17 @@ static func _finish_plan(candidate: Dictionary, tile_id: String,
 	])
 	var left_water := _array_class_coverage(left_arms, NavGrid.WATER_SEA)
 	var right_water := _array_class_coverage(right_arms, NavGrid.WATER_SEA)
+	# What a viewer actually sees INSIDE the U. L1 gated the purpose-built basin
+	# trapezoid, which is water by construction, so the land enclosed between the
+	# arms was never measured at all.
+	var enclosure_ring := _interarm_ring(left_points, right_points)
+	var enclosure_opaque: Array = [head]
+	enclosure_opaque.append_array(warehouses)
+	enclosure_opaque.append_array(deck_polys)
+	enclosure_opaque.append_array(containers)
+	for crane_value in cranes:
+		enclosure_opaque.append((crane_value as Dictionary).base_polygon)
+	var enclosure := _enclosure_stats(enclosure_ring, enclosure_opaque)
 	var basin_overlap := _overlap_with_any(basin, solid_polys)
 	# Polygon boolean operations can leave sub-pixel boundary-area noise where a
 	# deck shares the basin edge. Treat less than a tenth of one square world
@@ -302,6 +313,11 @@ static func _finish_plan(candidate: Dictionary, tile_id: String,
 		"road_access_length": float(candidate.access_length),
 		"road_access_valid": (candidate.road_access as PackedVector2Array).size() >= 2,
 		"arm_asymmetry": float(candidate.asymmetry),
+		"interarm_open_area": float(enclosure.open_area),
+		"interarm_sea_area": float(enclosure.sea_area),
+		"interarm_sea_coverage": float(enclosure.sea_coverage),
+		"max_arm_bend_deg": maxf(_max_bend_deg(left_points),
+			_max_bend_deg(right_points)),
 		"container_count": containers.size(),
 		"crane_count": cranes.size(),
 		"crane_arms": ["left", "right"],
@@ -334,6 +350,7 @@ static func _finish_plan(candidate: Dictionary, tile_id: String,
 		"marine_reservation": {"poly": basin, "bb": _bbox(basin),
 			"polygons": [basin, corridor]},
 		"total_compound_envelope": envelope,
+		"interarm_ring": enclosure_ring,
 		"road_access": candidate.road_access,
 		"coastline_samples": coast_points,
 		"river_exclusions": river_debug,
@@ -598,6 +615,74 @@ static func _bent_arm(points: PackedVector2Array, width: float) -> Array:
 	if points.size() >= 3:
 		out.append(_circle_poly(points[1], width * 0.51, 10))
 	return out
+
+## Closed ring through both arm CENTRELINES: left root -> left tip -> right tip
+## -> right root. Using centrelines (not offset inner edges) keeps the ring valid
+## for any arm shape; the arm decks themselves are subtracted as opaque cover.
+static func _interarm_ring(left_points: PackedVector2Array,
+		right_points: PackedVector2Array) -> PackedVector2Array:
+	var ring := PackedVector2Array()
+	for point in left_points:
+		ring.append(point)
+	for index in range(right_points.size() - 1, -1, -1):
+		ring.append(right_points[index])
+	return ring
+
+const ENCLOSURE_SAMPLE_STEP := 4.0
+
+## Area-true land/sea split of the OPEN space inside the ring — every lattice
+## point inside the ring that no opaque port element covers. This is the region
+## the owner reads as "between the arms".
+static func _enclosure_stats(ring: PackedVector2Array,
+		opaque: Array) -> Dictionary:
+	if ring.size() < 3:
+		return {"open_area": 0.0, "sea_area": 0.0, "sea_coverage": 0.0}
+	var bb := _bbox(ring)
+	var records: Array = []
+	for value in opaque:
+		var poly: PackedVector2Array = value
+		if poly.size() >= 3:
+			records.append({"poly": poly, "bb": _bbox(poly)})
+	var open_cells := 0
+	var sea_cells := 0
+	var columns := maxi(1, int(ceil(bb.size.x / ENCLOSURE_SAMPLE_STEP)))
+	var rows := maxi(1, int(ceil(bb.size.y / ENCLOSURE_SAMPLE_STEP)))
+	for iy in range(rows + 1):
+		for ix in range(columns + 1):
+			var point := bb.position + Vector2(float(ix), float(iy)) * \
+				ENCLOSURE_SAMPLE_STEP
+			if not Geometry2D.is_point_in_polygon(point, ring):
+				continue
+			var covered := false
+			for record_value in records:
+				var record: Dictionary = record_value
+				if not (record.bb as Rect2).has_point(point):
+					continue
+				if Geometry2D.is_point_in_polygon(point, record.poly):
+					covered = true
+					break
+			if covered:
+				continue
+			open_cells += 1
+			if _water_at(point) == NavGrid.WATER_SEA:
+				sea_cells += 1
+	var cell_area := ENCLOSURE_SAMPLE_STEP * ENCLOSURE_SAMPLE_STEP
+	return {
+		"open_area": float(open_cells) * cell_area,
+		"sea_area": float(sea_cells) * cell_area,
+		"sea_coverage": float(sea_cells) / maxf(1.0, float(open_cells)),
+	}
+
+## Largest turn angle inside one arm centreline, in degrees. A straight arm is 0.
+static func _max_bend_deg(points: PackedVector2Array) -> float:
+	var worst := 0.0
+	for i in range(1, points.size() - 1):
+		var incoming := points[i] - points[i - 1]
+		var outgoing := points[i + 1] - points[i]
+		if incoming.length_squared() < 0.0001 or outgoing.length_squared() < 0.0001:
+			continue
+		worst = maxf(worst, rad_to_deg(absf(incoming.angle_to(outgoing))))
+	return worst
 
 static func _class_coverage(poly: PackedVector2Array, water_class: int) -> float:
 	var nav := NavGrid.instance()
