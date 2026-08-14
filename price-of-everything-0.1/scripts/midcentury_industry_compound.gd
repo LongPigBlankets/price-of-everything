@@ -11,6 +11,143 @@ const GAMEPLAY_CLEARANCE := 1.5
 const MIN_APRON_CLEARANCE := 0.1
 const CLEARANCE_STEP := 0.5
 
+## ── Rare industrial landmark tier ───────────────────────────────────────────
+## A handful of the largest real works compounds map-wide are promoted to the
+## landmark accent tier so industry survives world scale. Selection is a pure
+## deterministic function of the authoritative gameplay footprints — the largest
+## clustered works win, ties break on instance id, and a RoadHash roll only
+## chooses each landmark's tone and chamfer. No wall-clock, no global RNG.
+const LANDMARK_MAX := 7
+const LANDMARK_CLUSTER_RADIUS := 95.0
+const LANDMARK_MIN_SEPARATION := 900.0
+const LANDMARK_MIN_MEMBERS := 2
+const LANDMARK_MIN_AREA := 2200.0
+## Descending halos: the caller keeps the first patch that lands wholly on dry
+## land, so a coastal works shrinks its printed yard instead of vanishing.
+const LANDMARK_HALOS: Array[float] = [18.0, 13.0, 8.0, 4.0, 0.0]
+
+## Pick the landmark compounds from every mid-century industry site on the map.
+## `sites` are the read-only draw records emitted by BuildingVisuals.
+static func select_landmarks(sites: Array) -> Dictionary:
+	var candidates: Array = []
+	for i in sites.size():
+		var seed_site: Dictionary = sites[i]
+		var seed_poly: PackedVector2Array = seed_site.get("poly", PackedVector2Array())
+		if seed_poly.size() < 3:
+			continue
+		var seed_center := _poly_centroid(seed_poly)
+		var members: Array = []
+		var member_ids: Array = []
+		var area := 0.0
+		var bounds := _bbox(seed_poly)
+		for j in sites.size():
+			var other: Dictionary = sites[j]
+			var other_poly: PackedVector2Array = other.get("poly", PackedVector2Array())
+			if other_poly.size() < 3:
+				continue
+			if _poly_centroid(other_poly).distance_to(seed_center) > LANDMARK_CLUSTER_RADIUS:
+				continue
+			members.append(other)
+			member_ids.append(str(other.get("instance_id", "industry-%d" % j)))
+			area += absf(SettlementPlan.polygon_area(other_poly))
+			bounds = bounds.merge(_bbox(other_poly))
+		if members.size() < LANDMARK_MIN_MEMBERS or area < LANDMARK_MIN_AREA:
+			continue
+		member_ids.sort()
+		candidates.append({
+			"key": str(seed_site.get("instance_id", "industry-%d" % i)),
+			"center": bounds.get_center(),
+			"bounds": bounds,
+			"area": area,
+			"member_count": members.size(),
+			"member_ids": member_ids,
+		})
+	candidates.sort_custom(_landmark_sort)
+	var chosen: Array = []
+	var instance_ids: Dictionary = {}
+	var seen_member_sets: Dictionary = {}
+	for candidate_value in candidates:
+		if chosen.size() >= LANDMARK_MAX:
+			break
+		var candidate: Dictionary = candidate_value
+		var member_signature := "|".join(PackedStringArray(candidate.member_ids))
+		if seen_member_sets.has(member_signature):
+			continue
+		var center: Vector2 = candidate.center
+		var too_close := false
+		for accepted_value in chosen:
+			if (accepted_value as Dictionary).center.distance_to(
+					center) < LANDMARK_MIN_SEPARATION:
+				too_close = true
+				break
+		if too_close:
+			continue
+		var overlaps_accepted := false
+		for id_value in candidate.member_ids:
+			if instance_ids.has(str(id_value)):
+				overlaps_accepted = true
+				break
+		if overlaps_accepted:
+			continue
+		seen_member_sets[member_signature] = true
+		for id_value in candidate.member_ids:
+			instance_ids[str(id_value)] = str(candidate.key)
+		chosen.append(candidate)
+	return {
+		"compounds": chosen,
+		"instance_ids": instance_ids,
+		"diagnostics": {
+			"site_count": sites.size(),
+			"candidate_count": candidates.size(),
+			"landmark_count": chosen.size(),
+			"max_allowed": LANDMARK_MAX,
+			"landmark_keys": _landmark_keys(chosen),
+		},
+	}
+
+## Deterministic ordering: largest clustered works first, then most members,
+## then instance id. Never depends on iteration order of a hash container.
+static func _landmark_sort(a: Dictionary, b: Dictionary) -> bool:
+	if absf(float(a.area) - float(b.area)) > 0.0001:
+		return float(a.area) > float(b.area)
+	if int(a.member_count) != int(b.member_count):
+		return int(a.member_count) > int(b.member_count)
+	return str(a.key) < str(b.key)
+
+static func _landmark_keys(chosen: Array) -> Array:
+	var out: Array = []
+	for value in chosen:
+		out.append(str((value as Dictionary).key))
+	return out
+
+## The printed works patch for one landmark compound: its real footprint bounds
+## grown by `halo` and chamfered, so the world-scale accent reads as a works
+## block rather than a rectangle. Draw-only; it reserves nothing.
+static func landmark_patch(bounds: Rect2, halo: float,
+		key: String) -> PackedVector2Array:
+	var rect := bounds.grow(halo)
+	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
+		return PackedVector2Array()
+	var chamfer := minf(
+		6.0 + float(RoadHash.pick("mc-landmark-chamfer|%s" % key, 7)),
+		minf(rect.size.x, rect.size.y) * 0.24)
+	return PackedVector2Array([
+		rect.position + Vector2(chamfer, 0.0),
+		Vector2(rect.end.x - chamfer, rect.position.y),
+		Vector2(rect.end.x, rect.position.y + chamfer),
+		rect.end - Vector2(0.0, chamfer),
+		rect.end - Vector2(chamfer, 0.0),
+		Vector2(rect.position.x + chamfer, rect.end.y),
+		Vector2(rect.position.x, rect.end.y - chamfer),
+		Vector2(rect.position.x, rect.position.y + chamfer),
+	])
+
+static func _poly_centroid(poly: PackedVector2Array) -> Vector2:
+	var center := Vector2.ZERO
+	for point in poly:
+		center += point
+	return center / maxf(1.0, float(poly.size()))
+
 static func plan(industry_sites: Array, gameplay_sites: Array, roads: Array,
 		water_exclusions: Array, relief_exclusions: Array,
 		preferred_clearance: float, key_prefix: String) -> Dictionary:
