@@ -5,7 +5,7 @@ extends RefCounted
 ## this same geometry. Nothing here changes terrain, water, roads or occupancy.
 
 const SEARCH_RADIUS := 520.0
-const MAX_COAST_SAMPLES := 18
+const MAX_COAST_SAMPLES := 12
 const MAX_ACCESS_LENGTH := 310.0
 const RIVER_CLEARANCE := 9.5
 const SHADOW_OFFSET := Vector2(2.2, 2.8)
@@ -14,7 +14,7 @@ const SHADOW_OFFSET := Vector2(2.2, 2.8)
 # rectangle-and-shore-normal primitive is RETIRED. The extra angles and quay
 # shifts exist because the harbour throat is now required to be water, which
 # only a locally straight stretch of coast can satisfy.
-const SHORE_SHIFTS := [-18.0, 0.0, 18.0]
+const SHORE_SHIFTS := [-18.0, 18.0]
 const APPROACH_ANGLES_DEG := [-22.0, -8.0, 8.0, 22.0]
 ## How far SEAWARD of the sampled shore point the quay face — the shared edge
 ## between the dry head and the harbour water — is pushed. The head is a
@@ -290,20 +290,10 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 		return {"basin_valid": true, "land_valid": true,
 			"river_valid": false}
 
-	var entrance := head_back + tangent * _rr(key + "|entrance", -0.18, 0.18) * \
-		minf(left_back_half, right_back_half)
-	var road_access := _road_access(hex_map, coord, entrance, [basin, corridor],
-		river_exclusions, gameplay_exclusions)
-	var access_valid := road_access.size() >= 2
-	if not access_valid:
-		return {"basin_valid": true, "land_valid": true,
-			"river_valid": true, "collision_valid": true,
-			"access_valid": false}
-
 	var warehouses := _warehouses(head, head_front, head_back, tangent, seaward,
 		key)
 	if warehouses.is_empty():
-		return {"basin_valid": true, "land_valid": false}
+		return {"basin_valid": true, "land_valid": false, "land_reason": "shed"}
 	var collision_polys: Array = [head]
 	collision_polys.append_array(warehouses)
 	collision_polys.append_array(arm_polys)
@@ -313,6 +303,18 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 	if not collision_valid:
 		return {"basin_valid": true, "land_valid": true,
 			"river_valid": true, "collision_valid": false}
+
+	# Road access is the most expensive check in the loop (it scans every built
+	# edge on 25 tiles), so it runs last, on candidates nothing else rejected.
+	var entrance := head_back + tangent * _rr(key + "|entrance", -0.18, 0.18) * \
+		minf(left_back_half, right_back_half)
+	var road_access := _road_access(hex_map, coord, entrance, [basin, corridor],
+		river_exclusions, gameplay_exclusions)
+	var access_valid := road_access.size() >= 2
+	if not access_valid:
+		return {"basin_valid": true, "land_valid": true,
+			"river_valid": true, "collision_valid": true,
+			"access_valid": false}
 
 	var left_length := _polyline_length(left_points)
 	var right_length := _polyline_length(right_points)
